@@ -94,6 +94,22 @@ func TestFakeCLIStreamsCardAndStops(t *testing.T) {
 	if ev[0].Type != StatusCancelled {
 		t.Fatalf("%+v", ev[0])
 	}
+	deadline = time.Now().Add(3 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		mu2.Lock()
+		if n := len(live); n > 0 {
+			last = live[n-1]
+		}
+		mu2.Unlock()
+		if strings.Contains(last, `status="cancelled"`) && strings.Contains(last, id) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(last, `status="cancelled"`) || !strings.Contains(last, id) || strings.Contains(last, `status="running"`) {
+		t.Fatalf("final card %q", last)
+	}
 	waitIdle(t, l)
 	waitIdle(t, l2)
 }

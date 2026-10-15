@@ -169,11 +169,34 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 		})
 	}
 	cur, err := l.rec.Get(task.ID)
-	if err != nil || cur.Status != StatusRunning {
+	if err == nil && cur.Status == StatusRunning {
+		l.finalCard(task.ID, out.Status, out.Text)
+		if _, ferr := l.rec.Finish(task.ID, out.Text, out.Status != StatusDone); ferr == nil {
+			return
+		}
+		cur, err = l.rec.Get(task.ID)
+	}
+	if err != nil || !terminal(cur.Status) {
 		return
 	}
-	l.stream(task.ID, out.Status, out.Text)
-	_, _ = l.rec.Finish(task.ID, out.Text, out.Status != StatusDone)
+	text := cur.Result
+	if strings.TrimSpace(text) == "" {
+		text = out.Text
+	}
+	l.finalCard(task.ID, cur.Status, text)
+}
+
+// finalCard appends the card the UI keeps for this id. A cancel has already
+// left the record, so this still runs when the process is no longer running.
+func (l *Link) finalCard(id, status, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = status
+	}
+	if text == "" {
+		return
+	}
+	l.stream(id, status, text)
 }
 
 func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task, notes func() []Note) outcome {
