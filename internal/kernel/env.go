@@ -16,9 +16,10 @@ import (
 // IdleGap is how long a bot must sit between wakes before the same hour is reported again.
 const IdleGap = 30 * time.Minute
 
-// StablePrefix is the system prompt. It depends only on persona, rules, and granted link names.
+// StablePrefix is the system prompt. It depends only on persona, rules, the model overlay, and granted link names.
 // Tool schemas, memory, time, and the sender are not included, so provider prefix caches can hit.
-func StablePrefix(persona, rules string, links []string) string {
+// An empty overlay leaves the prefix unchanged.
+func StablePrefix(persona, rules, overlay string, links []string) string {
 	persona = strings.TrimSpace(persona)
 	if persona == "" {
 		persona = bot.DefaultPersona
@@ -33,6 +34,10 @@ func StablePrefix(persona, rules string, links []string) string {
 	b.WriteString(persona)
 	b.WriteString("\n\n")
 	b.WriteString(rules)
+	if overlay = strings.TrimSpace(overlay); overlay != "" {
+		b.WriteString("\n\n## Model\n")
+		b.WriteString(overlay)
+	}
 	if len(names) > 0 {
 		b.WriteString("\n\n## Links\n")
 		for _, name := range names {
@@ -68,6 +73,9 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 	if prev.Rules != next.Rules {
 		lines = append(lines, "rules: updated")
 	}
+	if prev.OverlayHash != next.OverlayHash {
+		lines = append(lines, overlayBlock(next))
+	}
 	if prev.Memory != next.Memory {
 		lines = append(lines, "memory: updated")
 	}
@@ -99,6 +107,7 @@ func baseline(e bot.EnvRecord) string {
 	if e.Profile != "" {
 		body += "profile: " + e.Profile + "\n"
 	}
+	body += overlayBlock(e) + "\n"
 	return "<environment_update>\n" + body + "</environment_update>"
 }
 
@@ -115,7 +124,19 @@ func snapshotText(e bot.EnvRecord) string {
 	if e.Profile != "" {
 		body += "profile: " + e.Profile + "\n"
 	}
+	body += overlayBlock(e) + "\n"
 	return "<environment_snapshot>\n" + body + "</environment_snapshot>"
+}
+
+func overlayBlock(e bot.EnvRecord) string {
+	if e.OverlayHash == "" {
+		return "overlay: none"
+	}
+	body := strings.TrimRight(e.OverlayBody, "\n")
+	if body == "" {
+		body = "(empty)"
+	}
+	return fmt.Sprintf("overlay: %s %s\n<model_overlay>\n%s\n</model_overlay>", e.OverlayKey, e.OverlayHash, body)
 }
 
 func toolChange(prev, next []string) string {

@@ -300,6 +300,53 @@ func TestSuiteLoadsOutsideRepo(t *testing.T) {
 	if err != nil || from != "embedded" || len(cases) < 6 {
 		t.Fatalf("from %s n %d err %v", from, len(cases), err)
 	}
+	held, from, err := LoadSuite("", "proactivity-holdout")
+	if err != nil || from != "embedded" || len(held) < 4 {
+		t.Fatalf("holdout from %s n %d err %v", from, len(held), err)
+	}
+}
+
+func TestCertifyNeedsBothSuites(t *testing.T) {
+	opt := Options{Model: "deepseek/deepseek-chat"}
+	if certifyAllowed(opt, []string{"proactivity"}) || certifyAllowed(opt, []string{"proactivity-holdout"}) {
+		t.Fatal("one suite certified")
+	}
+	if !certifyAllowed(opt, certSuites) {
+		t.Fatal("both suites should certify a real model")
+	}
+	if certifyAllowed(Options{Model: "fake/scripted"}, certSuites) {
+		t.Fatal("fake certified")
+	}
+	root := t.TempDir()
+	rep, err := Run(Options{Root: root, Model: "fake/scripted", OutDir: filepath.Join(root, "out"), Runs: 1})
+	if err != nil || !rep.Passed {
+		var b strings.Builder
+		for _, c := range rep.Cases {
+			fmt.Fprintf(&b, "%s pass=%v %s\n", c.Name, c.Pass, c.Reason)
+		}
+		t.Fatalf("%v\n%s", err, b.String())
+	}
+	if !strings.Contains(rep.Suite, "proactivity-holdout") || !strings.Contains(rep.Suite, "proactivity") {
+		t.Fatalf("suite %s", rep.Suite)
+	}
+	var sawTune, sawHold bool
+	for _, c := range rep.Cases {
+		if c.Name == "root-cause" {
+			sawTune = true
+		}
+		if c.Name == "blank-chart" {
+			sawHold = true
+		}
+		if len(c.Runs) != 1 || !c.Pass {
+			t.Fatalf("%s runs %d pass %v %s", c.Name, len(c.Runs), c.Pass, c.Reason)
+		}
+	}
+	if !sawTune || !sawHold {
+		t.Fatal("combined run missed a suite")
+	}
+	if _, err := os.Stat(config.CertifiedPath(root)); !os.IsNotExist(err) {
+		t.Fatal("fake combined run certified")
+	}
 }
 
 func TestSandboxRejectsEscape(t *testing.T) {

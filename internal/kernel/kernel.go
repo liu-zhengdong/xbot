@@ -17,6 +17,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
+	"xbot/prompts"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -275,6 +276,10 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
+	_, overlay, err := k.modelOverlay()
+	if err != nil {
+		return nil, bot.SectionUsage{}, err
+	}
 	installed, err := k.installedSection()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
@@ -301,6 +306,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		Blocks:    st.Blocks,
 		Skills:    skills,
 		Installed: installed,
+		Overlay:   overlay,
 	}, projected(st.Blocks, raw))
 	return msgs, usage, nil
 }
@@ -331,19 +337,30 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	if profile != "" {
 		profileHash = shortHash(profile)
 	}
+	overlayKey, overlay, err := k.modelOverlay()
+	if err != nil {
+		return st, err
+	}
+	overlayHash := ""
+	if overlay != "" {
+		overlayHash = shortHash(overlay)
+	}
 	now := k.now()
 	next := bot.EnvRecord{
-		Hour:    now.Format("2006-01-02T15"),
-		Now:     k.localStamp(),
-		Sender:  ev.Sender,
-		Tools:   toolNames(list),
-		Notes:   k.pendingNotes(),
-		Persona: shortHash(persona),
-		Rules:   shortHash(rules),
-		Memory:  shortHash(mem),
-		Skills:  skillHash,
-		Profile: profileHash,
-		At:      now,
+		Hour:        now.Format("2006-01-02T15"),
+		Now:         k.localStamp(),
+		Sender:      ev.Sender,
+		Tools:       toolNames(list),
+		Notes:       k.pendingNotes(),
+		Persona:     shortHash(persona),
+		Rules:       shortHash(rules),
+		Memory:      shortHash(mem),
+		Skills:      skillHash,
+		Profile:     profileHash,
+		OverlayKey:  overlayKey,
+		OverlayHash: overlayHash,
+		OverlayBody: overlay,
+		At:          now,
 	}
 	diff := DiffEnv(st.Env, next)
 	st.Env = next
@@ -355,6 +372,21 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 		return st, err
 	}
 	return st, nil
+}
+
+func (k *Kernel) modelOverlay() (string, string, error) {
+	if k == nil || k.Bot == nil {
+		return "", "", nil
+	}
+	cfg := k.Bot.Config()
+	if strings.TrimSpace(cfg.Provider) == "" || strings.TrimSpace(cfg.Model) == "" {
+		return "", "", nil
+	}
+	text, err := prompts.Load(k.Bot.Root, cfg.Provider, cfg.Model)
+	if err != nil || text == "" {
+		return "", text, err
+	}
+	return cfg.Provider + "/" + cfg.Model, text, nil
 }
 
 func (k *Kernel) ensureSnapshot(st bot.State) error {

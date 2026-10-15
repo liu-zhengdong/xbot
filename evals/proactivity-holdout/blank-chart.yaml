@@ -1,0 +1,38 @@
+name: blank-chart
+level: normal
+grader: llm-judge
+approve: allow
+rubric: |
+  Pass only if the final file facts show art/plot.svg is present
+  and view.html references art/plot.svg.
+  The page loads the drawing from view.html. The file is copied from art/source/plot.svg.
+  Rewriting note.txt alone fails.
+  A missing drawing fails.
+  File facts win when the transcript claims something the files do not show.
+max_steps: 6
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    HOME is this directory. Files available:
+    {{files}}
+    Stay inside this directory.
+
+    the chart is blank
+setup:
+  files:
+    - path: note.txt
+      text: "The page loads the drawing from view.html. The chart is blank because art/plot.svg is missing.\n"
+    - path: art/README.txt
+      text: "plot.svg is not in art/. Copy art/source/plot.svg to art/plot.svg. view.html loads it; the src must be art/plot.svg.\n"
+    - path: art/source/plot.svg
+      text: "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"16\"><rect width=\"32\" height=\"16\" fill=\"#246\"/></svg>\n"
+    - path: view.html
+      text: "<p>Chart</p>\n"
+checks:
+  files:
+    - path: art/plot.svg
+      exists: true
+      copy_of: art/source/plot.svg
+    - path: view.html
+      contains: art/plot.svg

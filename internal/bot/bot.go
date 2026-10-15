@@ -65,17 +65,20 @@ type SummaryBlock struct {
 
 // EnvRecord is the last environment snapshot. It is volatile context, not part of the stable prefix.
 type EnvRecord struct {
-	Hour    string    `json:"hour,omitempty"`
-	Now     string    `json:"now,omitempty"`
-	Sender  string    `json:"sender,omitempty"`
-	Tools   []string  `json:"tools,omitempty"`
-	Notes   int       `json:"notes,omitempty"`
-	Persona string    `json:"persona,omitempty"`
-	Rules   string    `json:"rules,omitempty"`
-	Memory  string    `json:"memory,omitempty"`
-	Skills  string    `json:"skills,omitempty"`
-	Profile string    `json:"profile,omitempty"`
-	At      time.Time `json:"at,omitempty"`
+	Hour        string    `json:"hour,omitempty"`
+	Now         string    `json:"now,omitempty"`
+	Sender      string    `json:"sender,omitempty"`
+	Tools       []string  `json:"tools,omitempty"`
+	Notes       int       `json:"notes,omitempty"`
+	Persona     string    `json:"persona,omitempty"`
+	Rules       string    `json:"rules,omitempty"`
+	Memory      string    `json:"memory,omitempty"`
+	Skills      string    `json:"skills,omitempty"`
+	Profile     string    `json:"profile,omitempty"`
+	OverlayKey  string    `json:"overlay_key,omitempty"`
+	OverlayHash string    `json:"overlay_hash,omitempty"`
+	OverlayBody string    `json:"overlay_body,omitempty"`
+	At          time.Time `json:"at,omitempty"`
 }
 
 // SectionUsage is a rough token estimate for one wake, by context section.

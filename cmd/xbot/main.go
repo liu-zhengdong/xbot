@@ -79,7 +79,7 @@ Usage:
   xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
   xbot [--root DIR] bind <name> --clear
-  xbot [--root DIR] eval <provider/model> [--suite proactivity] [--runs 3] [--out DIR]
+  xbot [--root DIR] eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
@@ -1608,14 +1608,14 @@ func cmdEval(root string, args []string) error {
 	}
 	fs := flag.NewFlagSet("eval", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	suite := fs.String("suite", "proactivity", "embedded suite name, or a directory of cases")
+	suite := fs.String("suite", "", "one embedded suite or a directory; empty runs both certification suites")
 	out := fs.String("out", "", "directory for the JSON and Markdown report")
 	runs := fs.Int("runs", 3, "times to run each case; the case passes by majority")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: xbot eval <provider/model> [--suite proactivity] [--runs 3] [--out DIR]")
+		return errors.New("usage: xbot eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]")
 	}
 	if *runs < 1 {
 		return errors.New("eval: --runs must be positive")
@@ -1637,8 +1637,10 @@ func cmdEval(root string, args []string) error {
 			fmt.Printf("%s\t%s\t%s\n", c.Name, c.Level, mark)
 		},
 	}
-	if info, err := os.Stat(*suite); err == nil && info.IsDir() {
-		opt.CasesDir = *suite
+	if *suite != "" {
+		if info, err := os.Stat(*suite); err == nil && info.IsDir() {
+			opt.CasesDir = *suite
+		}
 	}
 	rep, err := eval.Run(opt)
 	if rep.JSON != "" {

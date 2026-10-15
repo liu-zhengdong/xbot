@@ -147,8 +147,8 @@ func LoadSuite(dir, suite string) ([]Case, string, error) {
 	if suite == "" {
 		suite = "proactivity"
 	}
-	if dir == "" && suite == "proactivity" {
-		return loadFS(evals.Files, "proactivity", "embedded")
+	if dir == "" && embeddedSuite(suite) {
+		return loadFS(evals.Files, suite, "embedded")
 	}
 	var err error
 	if dir == "" {
@@ -184,6 +184,10 @@ func loadDir(dir string) ([]Case, string, error) {
 		out = append(out, c)
 	}
 	return out, dir, nil
+}
+
+func embeddedSuite(suite string) bool {
+	return suite == "proactivity" || suite == "proactivity-holdout"
 }
 
 func loadFS(fsys fs.FS, suite, label string) ([]Case, string, error) {

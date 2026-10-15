@@ -1,9 +1,9 @@
-// Package evals holds the proactivity suite that ships inside the xbot binary.
+// Package evals holds the suites that ship inside the xbot binary.
 package evals
 
 import "embed"
 
-// Files is the default suite. evals/proactivity/*.yaml plus fixtures.
+// Files is the embedded suites: proactivity and proactivity-holdout.
 //
-//go:embed proactivity
+//go:embed proactivity proactivity-holdout
 var Files embed.FS

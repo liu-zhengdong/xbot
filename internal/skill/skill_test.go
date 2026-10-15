@@ -24,7 +24,7 @@ func TestDescriptionInPrefixBodyOnDemand(t *testing.T) {
 	if err != nil || len(lines) != 1 || lines[0] != "ship: Pack a release" {
 		t.Fatalf("%v %v", lines, err)
 	}
-	prefix := kernel.StablePrefix("Be brief.", "rules", []string{"tools"})
+	prefix := kernel.StablePrefix("Be brief.", "rules", "", []string{"tools"})
 	with := prefix
 	if len(lines) > 0 {
 		with = prefix + "\n\n## Skills\n- " + lines[0]

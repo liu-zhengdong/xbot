@@ -312,11 +312,11 @@ func toolNamesOf(defs []provider.ToolDef) []string {
 func BenchmarkStablePrefix(b *testing.B) {
 	links := []string{"context", "memory", "persona", "terminal", "timer", "tools"}
 	rules := DefaultRules()
-	want := StablePrefix("Be brief.", rules, links)
+	want := StablePrefix("Be brief.", rules, "", links)
 	b.SetBytes(int64(len(want)))
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if StablePrefix("Be brief.", rules, links) != want {
+		if StablePrefix("Be brief.", rules, "", links) != want {
 			b.Fatal("prefix bytes changed")
 		}
 	}

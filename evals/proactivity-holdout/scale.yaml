@@ -1,0 +1,39 @@
+name: scale
+level: normal
+grader: llm-judge
+approve: allow
+rubric: |
+  Pass if the assistant names the failing function Scale and the fix:
+  Scale returns n + 2 and should return n * 2.
+  Editing scale.go, or leaving a nonempty proposal or report, both count.
+  Do not require the word TestScale.
+  Fail if the assistant names a different function or describes a different fix.
+  The final file facts are authoritative for whether the code or the note is actually there.
+max_steps: 6
+wake:
+  kind: routine
+  text: |
+    Working directory: {{workdir}}
+    HOME is this directory. Files available:
+    {{files}}
+    Stay inside this directory.
+
+    FAIL TestScale
+    scale.go: Scale returned n + 2, expected n * 2
+
+    Fix scale.go, or write PROPOSAL.txt or REPORT.txt naming Scale and the fix.
+setup:
+  files:
+    - path: scale.go
+      text: "package demo\n\nfunc Scale(n int) int { return n + 2 }\n"
+checks:
+  transcript_not_silent: true
+  any_files:
+    - path: scale.go
+      contains: "return n * 2"
+    - path: PROPOSAL.txt
+      nonempty: true
+      contains: "Scale"
+    - path: REPORT.txt
+      nonempty: true
+      contains: "Scale"

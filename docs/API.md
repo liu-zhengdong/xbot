@@ -289,7 +289,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 }]}
 ```
 
-没有可显示的模型时 `models` 是空数组。认证名单是数据根上的 `certified.json`，由 `xbot eval <provider/model>` 在主动性套件每一条都按多数通过后写入。默认每条跑 3 次，至少 2 次通过才算这条通过。
+没有可显示的模型时 `models` 是空数组。认证名单是数据根上的 `certified.json`，由 `xbot eval <provider/model>` 在 `proactivity` 和 `proactivity-holdout` 两套都按多数通过后写入。只跑一套不写。默认每条跑 3 次，至少 2 次通过才算这条通过。
 
 ## Bot 私聊
 

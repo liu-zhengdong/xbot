@@ -21,7 +21,11 @@ import (
 	"xbot/internal/provider"
 )
 
+// certSuites are both required before a model is written to certified.json.
+var certSuites = []string{"proactivity", "proactivity-holdout"}
+
 // Options selects a model and a suite. Scripts overrides the fake provider for tests.
+// An empty Suite with an empty CasesDir runs both certification suites.
 type Options struct {
 	Root     string
 	Model    string
@@ -42,19 +46,13 @@ type Options struct {
 // Run executes the suite in a fresh sandbox per case and writes the report.
 // A failed case returns the report and an error. A fully passing run certifies the model.
 func Run(opt Options) (Report, error) {
-	if opt.Suite == "" {
-		opt.Suite = "proactivity"
-	}
 	if _, _, err := config.SplitModelID(opt.Model); err != nil {
 		return Report{}, err
 	}
 	if err := requireJail(); err != nil {
 		return Report{}, err
 	}
-	cases, _, err := LoadSuite(opt.CasesDir, opt.Suite)
-	if err != nil {
-		return Report{}, err
-	}
+	suites := opt.suiteList()
 	real, err := openReal(opt.Root, opt.Model)
 	if err != nil {
 		return Report{}, err
@@ -69,26 +67,32 @@ func Run(opt Options) (Report, error) {
 	if out == "" {
 		out = filepath.Join(opt.Root, "eval-reports")
 	}
-	rep := Report{Model: opt.Model, Suite: opt.Suite, Runs: opt.Runs, Passed: true}
-	for _, c := range cases {
-		for _, level := range c.levels() {
-			runs := make([]RunResult, 0, opt.Runs)
-			for i := 0; i < opt.Runs; i++ {
-				one := runCase(c, level, scriptFor(opt, c.Name, i), real)
-				runs = append(runs, RunResult{
-					Pass:       one.Pass,
-					Reason:     one.Reason,
-					Tools:      one.Tools,
-					Transcript: one.Transcript,
-				})
-			}
-			agg := aggregate(c, level, runs)
-			if !agg.Pass {
-				rep.Passed = false
-			}
-			rep.Cases = append(rep.Cases, agg)
-			if opt.Progress != nil {
-				opt.Progress(agg)
+	rep := Report{Model: opt.Model, Suite: strings.Join(suites, "+"), Runs: opt.Runs, Passed: true}
+	for _, suite := range suites {
+		cases, _, err := LoadSuite(opt.CasesDir, suite)
+		if err != nil {
+			return Report{}, err
+		}
+		for _, c := range cases {
+			for _, level := range c.levels() {
+				runs := make([]RunResult, 0, opt.Runs)
+				for i := 0; i < opt.Runs; i++ {
+					one := runCase(c, level, scriptFor(opt, c.Name, i), real)
+					runs = append(runs, RunResult{
+						Pass:       one.Pass,
+						Reason:     one.Reason,
+						Tools:      one.Tools,
+						Transcript: one.Transcript,
+					})
+				}
+				agg := aggregate(c, level, runs)
+				if !agg.Pass {
+					rep.Passed = false
+				}
+				rep.Cases = append(rep.Cases, agg)
+				if opt.Progress != nil {
+					opt.Progress(agg)
+				}
 			}
 		}
 	}
@@ -99,7 +103,7 @@ func Run(opt Options) (Report, error) {
 	if !rep.Passed {
 		return rep, fmt.Errorf("eval: %s failed", opt.Model)
 	}
-	if !certifyAllowed(opt) {
+	if !certifyAllowed(opt, suites) {
 		return rep, nil
 	}
 	if err := config.Certify(opt.Root, opt.Model); err != nil {
@@ -109,17 +113,33 @@ func Run(opt Options) (Report, error) {
 	return writeReport(out, rep)
 }
 
-// certifyAllowed is true only for a real provider on the embedded default suite.
-func certifyAllowed(opt Options) bool {
+func (opt Options) suiteList() []string {
+	if opt.CasesDir != "" {
+		name := opt.Suite
+		if name == "" {
+			name = "custom"
+		}
+		return []string{name}
+	}
+	if opt.Suite == "" {
+		return append([]string(nil), certSuites...)
+	}
+	return []string{opt.Suite}
+}
+
+// certifyAllowed is true only for a real provider that just passed both embedded suites.
+func certifyAllowed(opt Options, suites []string) bool {
 	prov, _, err := config.SplitModelID(opt.Model)
 	if err != nil || prov == "fake" {
 		return false
 	}
-	if opt.CasesDir != "" {
+	if opt.CasesDir != "" || len(suites) != len(certSuites) {
 		return false
 	}
-	if opt.Suite != "" && opt.Suite != "proactivity" {
-		return false
+	for i := range certSuites {
+		if suites[i] != certSuites[i] {
+			return false
+		}
 	}
 	return true
 }
@@ -515,7 +535,7 @@ func judgeFacts(work string) string {
 	}
 	for _, p := range paths {
 		switch strings.ToLower(filepath.Ext(p)) {
-		case ".css", ".go", ".md", ".txt":
+		case ".css", ".go", ".html", ".md", ".svg", ".txt":
 		default:
 			continue
 		}
