@@ -334,19 +334,30 @@ M2：
 | `cron` | 5 段 cron 和最小间隔 |
 | `bm25` | 关键词排序 |
 
-## 家里的电脑，手机经 Tailscale 调用
+## 家里的电脑，手机调用
 
-还没有中继。手机和这台电脑在同一个 Tailscale 网络里时，可以让手机直接打到家里的 `xbot serve`。
+还没有自建中继。两条传输都只是把已经在跑的 `xbot serve` 公布出去，内核不变。
 
-1. 在家用电脑上装好 Tailscale，记下这台机器的地址：`tailscale ip -4`（一般是 `100.x.y.z`）。
-2. 只在这台机器上跑 serve，HTTP 绑到这个地址，不要绑 `0.0.0.0`：
+**Cloudflare。** 本机要有 `cloudflared`。serve 仍绑回环，隧道进程把这个地址公布成一个临时的 `trycloudflare.com` 主机名：
 
 ```bash
-export XBOT_PUBLIC_URL=http://100.x.y.z:8787
-xbot serve --http 100.x.y.z:8787
+xbot serve --http 127.0.0.1:8787 --tunnel cloudflare
 ```
 
-3. `xbot webhook add ada github` 会按 `XBOT_PUBLIC_URL` 打印 URL 和 secret。手机上的快捷指令或其他客户端把请求发到这个 URL，并带上 secret。
-4. 网页也在这个地址上。手机浏览器打开 `http://100.x.y.z:8787`，把 serve 打印的登录 token 贴进去。token 只在这台机器的 0600 文件里，cookie 不会被别的站点带上。可以添加到主屏幕。
-5. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。要给手机用，必须写成 Tailscale 地址。手机和电脑都要在这个 tailnet 上。
+stderr 会多一行 `public url: https://<name>.trycloudflare.com`。手机浏览器打开这个地址，把同一段输出里的登录 token 贴进去。`cloudflared` 不在 `PATH` 上时设 `XBOT_CLOUDFLARED`。进程退出时隧道一起停。
+
+**Tailscale。** 手机和这台电脑在同一个 Tailscale 网络里时，可以让手机直接打到家里的 `xbot serve`。
+
+1. 在家用电脑上装好 Tailscale。
+2. 回环地址会改绑到 `tailscale ip -4`。stderr 打印 `public url`。不要用 `--http 0.0.0.0:8787`：那个绑定不会被改写。
+
+```bash
+xbot serve --tunnel tailscale
+```
+
+也可以自己绑 tailnet 地址，效果一样：`xbot serve --http 100.x.y.z:8787`。`tailscale` 不在 `PATH` 上时设 `XBOT_TAILSCALE`。
+
+3. `xbot webhook add ada github --public-url` 用上面的 `public url`。手机上的快捷指令或其他客户端把请求发到这个 URL，并带上 secret。
+4. 网页也在这个地址上。手机浏览器打开 `public url`，把 serve 打印的登录 token 贴进去。token 只在这台机器的 0600 文件里，cookie 不会被别的站点带上。可以添加到主屏幕。
+5. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。手机和电脑都要在这个 tailnet 上。
 6. 每个 webhook 单独一个 secret。不签名或签名不对会 401。secret 留在 Bot 目录里，权限 0600。

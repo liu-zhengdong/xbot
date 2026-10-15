@@ -575,6 +575,13 @@ func TestGroupCLIKeepsBots(t *testing.T) {
 	}
 }
 
+func TestServeRejectsUnknownTunnel(t *testing.T) {
+	err := cmdServe(t.TempDir(), []string{"--tunnel", "relay"})
+	if err == nil || !strings.Contains(err.Error(), "tunnel") {
+		t.Fatal(err)
+	}
+}
+
 func mustPersona(t *testing.T, b *bot.Bot) string {
 	t.Helper()
 	s, err := b.ReadPersona()

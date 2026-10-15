@@ -37,6 +37,7 @@ import (
 	"xbot/internal/serve"
 	"xbot/internal/skill"
 	"xbot/internal/tools"
+	"xbot/internal/tunnel"
 	"xbot/internal/web"
 	"xbot/internal/work"
 )
@@ -80,7 +81,7 @@ Usage:
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]
-  xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
+  xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
   xbot [--root DIR] webhook list <bot>
@@ -96,7 +97,9 @@ Environment:
   XBOT_API_KEY    API key when a bot has no provider binding
   XBOT_BASE_URL   OpenAI-compatible base URL (default https://api.deepseek.com/v1)
   XBOT_MODEL       Model name (default deepseek-chat)
-  XBOT_PUBLIC_URL  Base URL printed for new webhooks (default http://127.0.0.1:8787)
+  XBOT_PUBLIC_URL   Base URL printed for new webhooks (default http://127.0.0.1:8787)
+  XBOT_CLOUDFLARED  cloudflared binary for --tunnel cloudflare (default cloudflared)
+  XBOT_TAILSCALE    tailscale binary for --tunnel tailscale (default tailscale)
 
 A named provider stores the environment variable name, never the key itself.
 `
@@ -1310,7 +1313,7 @@ func cmdBind(root string, args []string) error {
 }
 
 func cmdServe(root string, args []string) error {
-	ordered, err := reorderFlags(args, map[string]bool{"interval": true, "http": true})
+	ordered, err := reorderFlags(args, map[string]bool{"interval": true, "http": true, "tunnel": true})
 	if err != nil {
 		return err
 	}
@@ -1318,14 +1321,20 @@ func cmdServe(root string, args []string) error {
 	fs.SetOutput(io.Discard)
 	every := fs.Duration("interval", 15*time.Second, "how often to handle inboxes")
 	httpAddr := fs.String("http", "127.0.0.1:8787", "webhook listen address")
+	tunnelMode := fs.String("tunnel", "", "cloudflare or tailscale")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787]")
+		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale]")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	resolved, err := tunnel.Resolve(ctx, *tunnelMode, *httpAddr, os.Getenv("XBOT_TAILSCALE"))
+	if err != nil {
+		return err
+	}
+	*httpAddr = resolved.ListenAddr
 	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce}
 	ui := &web.Server{
 		Root:         root,
@@ -1350,6 +1359,20 @@ func cmdServe(root string, args []string) error {
 	hub.Register(mux)
 	ui.Register(mux)
 	fmt.Fprintf(os.Stderr, "listening on http://%s\n", ln.Addr())
+	publicURL := resolved.PublicURL
+	var cloud *tunnel.Proc
+	if resolved.Mode == tunnel.Cloudflare {
+		cloud, err = tunnel.StartCloudflare(ctx, tunnel.LocalURL(ln.Addr()), os.Getenv("XBOT_CLOUDFLARED"), 45*time.Second)
+		if err != nil {
+			_ = ln.Close()
+			return err
+		}
+		defer cloud.Close()
+		publicURL = cloud.PublicURL
+	}
+	if publicURL != "" {
+		fmt.Fprintf(os.Stderr, "public url: %s\n", publicURL)
+	}
 	fmt.Fprintf(os.Stderr, "login token: %s\n", token)
 	srv := &http.Server{Handler: mux}
 	go func() {

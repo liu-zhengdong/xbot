@@ -49,7 +49,7 @@
 ## 机器与设备
 - **工作机**：一个用户的多个 Bot 共用一台机器，包括装好的工具和登录状态；每个 Bot 有自己的工作目录，另有一个共享目录。技能按 owner 分开，不是全机共用。
 - **家节点**：Bot 住在用户选择的机器上（比如家里的 PC），数据不离开用户的设备。手机、Web、Slack 都只是入口。
-- **远程访问**：Cloudflare Tunnel、Tailscale 直连、自建中继，都可以选；它们只是不同的传输方式，内核不用关心。
+- **远程访问**：Cloudflare Tunnel、Tailscale 直连、自建中继，都可以选；它们只是不同的传输方式，内核不用关心。`xbot serve --tunnel cloudflare` 用本机的 `cloudflared` 把已经在听的 `--http` 公布出去，stderr 打印 `public url`（`*.trycloudflare.com`）。`--tunnel tailscale` 跑 `tailscale ip -4`；`--http` 若是回环地址，就改绑到这个 tailnet 地址，别的绑定保持原样，`public url` 用 tailnet 地址加端口。二进制路径可用 `XBOT_CLOUDFLARED` 和 `XBOT_TAILSCALE`。自建中继仍是后面的网关，这一片不实现。
 - **多节点**：每台设备都可以运行 `xbot node`，Bot 可以调用其他在线节点的能力。
 - **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。
 - **多设备同步**：Bot 不合并，各自住在自己的家节点上；只同步人的身份和人的记忆，用可合并的追加日志实现（记录时间、Bot、设备，以最新为准），通过中继同步。
