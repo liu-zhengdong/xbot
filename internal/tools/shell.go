@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -60,12 +61,34 @@ type shellArgs struct {
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
+// safeCommands are read-only lookups. A command is safe only when it is a
+// single simple invocation of one of these names, with no shell operators.
+var safeCommands = map[string]bool{
+	"date": true, "pwd": true, "whoami": true, "uname": true, "hostname": true,
+	"id": true, "echo": true, "printf": true, "true": true, "false": true,
+	"uptime": true, "ls": true, "which": true, "env": true, "printenv": true, "cal": true,
+}
+
 func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	in, err := parseShellArgs(args)
 	if err != nil {
 		return false, "", err
 	}
+	if safeShell(in.Command) {
+		return false, in.Command, nil
+	}
 	return true, in.Command, nil
+}
+
+func safeShell(command string) bool {
+	if strings.ContainsAny(command, "\n;&|<>`$\\") || strings.Contains(command, "(") || strings.Contains(command, ")") {
+		return false
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	return safeCommands[filepath.Base(fields[0])]
 }
 
 func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {

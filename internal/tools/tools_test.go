@@ -31,8 +31,16 @@ func TestShellEchoAndExit(t *testing.T) {
 
 func TestShellEmptyAndConfirm(t *testing.T) {
 	sh := NewShell()
-	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"ls -1"}`))
-	if err != nil || !need || summary != "ls -1" {
+	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))
+	if err != nil || need || summary != "date" {
+		t.Fatalf("date need=%v summary=%q err=%v", need, summary, err)
+	}
+	need, summary, err = sh.Confirm(json.RawMessage(`{"command":"date; rm -rf /"}`))
+	if err != nil || !need {
+		t.Fatalf("chained date need=%v err=%v", need, err)
+	}
+	need, summary, err = sh.Confirm(json.RawMessage(`{"command":"rm -rf /tmp/nope"}`))
+	if err != nil || !need || summary != "rm -rf /tmp/nope" {
 		t.Fatalf("confirm need=%v summary=%q err=%v", need, summary, err)
 	}
 	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"  "}`)); err == nil {

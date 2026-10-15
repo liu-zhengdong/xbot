@@ -1210,13 +1210,12 @@ func cmdServe(root string, args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	deny := func(context.Context, string, string) (bool, error) { return false, nil }
 	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce}
 	ui := &web.Server{
 		Root:         root,
 		DefaultLinks: defaultLinks,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, _, err := openKernel(root, b, 8, deny, nil, false, runnerSpec{})
+			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
 			return k, err
 		},
 	}
@@ -1266,7 +1265,7 @@ func cmdServe(root string, args []string) error {
 	}()
 	for {
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, _, err := openKernel(root, b, 8, deny, nil, false, runnerSpec{})
+			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
 			return k, err
 		})
 		if err != nil {

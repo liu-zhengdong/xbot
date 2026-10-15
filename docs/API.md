@@ -128,9 +128,12 @@
 
 - `event: delta`，`data: {"text":"..."}`
 - `event: tool`，`data: {"name","summary"}`
+- `event: approval`，`data: {"id","tool","summary"}`。这个工具要主人确认才会跑。界面应立刻展示一张确认卡，写明工具名和 summary，并给出允许、拒绝两个按钮。
 - `event: result`，`data: {"name","output"}`，output 截到 4000 字
 - `event: done`，`data: {"text":"这一轮拼起来的正文"}`
 - `event: error`，`data: {"error":"..."}`
+
+`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。成功 200 `{"status":"ok"}`。60 秒内没有回答，这一次视为不允许，工具不跑。只读的安全命令不发这张卡，包括 `date`、`pwd`、`whoami`、`uname`、`hostname`、`id`、`echo`、`printf`、`true`、`false`、`uptime`、`ls`、`which`、`env`、`printenv`、`cal`，而且命令里不能有管道、重定向、分号或命令替换。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成主人拒绝。主人明确拒绝才是 `denied by user`。
 
 锁被别人占着时不跑模型，只把事件放进 inbox，202 `{"status":"queued"}`。
 

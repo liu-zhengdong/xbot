@@ -113,6 +113,26 @@ func TestRunDeniedSkipsTool(t *testing.T) {
 	}
 }
 
+func TestRunWithoutApproverDoesNotBlameTheUser(t *testing.T) {
+	tool := &echoTool{confirm: true}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "stopped"},
+	}}
+	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tool.ran {
+		t.Fatal("tool ran without an approver")
+	}
+	if strings.Contains(got[1].Content, "user") || !strings.Contains(got[1].Content, "no approver") {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestRunToolErrorContinues(t *testing.T) {
 	tool := &failTool{}
 	p := &scripted{resps: []provider.Message{

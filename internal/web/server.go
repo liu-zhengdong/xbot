@@ -3,7 +3,9 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,9 +43,13 @@ type Server struct {
 	owner string
 	token string
 
-	mu      sync.Mutex
-	kernels map[string]*kernel.Kernel
-	gate    map[string]*sync.Mutex
+	// ApprovalWait is how long an approval card waits. Zero uses 60 seconds.
+	ApprovalWait time.Duration
+
+	mu        sync.Mutex
+	kernels   map[string]*kernel.Kernel
+	gate      map[string]*sync.Mutex
+	approvals map[string]chan bool
 }
 
 // Register mounts the UI and /api routes.
@@ -76,6 +82,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("GET /api/bots/{name}/export", s.exportTranscript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
+	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/steer", s.steer)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
 
@@ -637,13 +644,93 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	k.OnResult = func(name, output string) {
 		sendLocked("result", map[string]string{"name": name, "output": clip(output, 4000)})
 	}
+	prevApprove := k.Approve
+	k.Approve = s.webApprove(b.Name(), sendLocked)
 	err = k.Handle(r.Context(), ev)
+	k.Approve = prevApprove
 	k.OnDelta, k.OnTool, k.OnResult = nil, nil, nil
 	if err != nil {
 		send("error", map[string]string{"error": err.Error()})
 		return
 	}
 	send("done", map[string]string{"text": acc.String()})
+}
+
+func (s *Server) approvalWait() time.Duration {
+	if s.ApprovalWait > 0 {
+		return s.ApprovalWait
+	}
+	return 60 * time.Second
+}
+
+func (s *Server) webApprove(botName string, send func(string, any)) func(context.Context, string, string) (bool, error) {
+	return func(ctx context.Context, tool, summary string) (bool, error) {
+		id := newApprovalID()
+		ch := make(chan bool, 1)
+		key := botName + "/" + id
+		s.mu.Lock()
+		if s.approvals == nil {
+			s.approvals = map[string]chan bool{}
+		}
+		s.approvals[key] = ch
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			delete(s.approvals, key)
+			s.mu.Unlock()
+		}()
+		send("approval", map[string]string{"id": id, "tool": tool, "summary": summary})
+		timer := time.NewTimer(s.approvalWait())
+		defer timer.Stop()
+		select {
+		case allow := <-ch:
+			return allow, nil
+		case <-timer.C:
+			return false, nil
+		case <-ctx.Done():
+			return false, ctx.Err()
+		}
+	}
+}
+
+func newApprovalID() string {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf[:])
+}
+
+func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	var in struct {
+		Allow bool `json:"allow"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	key := b.Name() + "/" + r.PathValue("id")
+	s.mu.Lock()
+	ch := s.approvals[key]
+	s.mu.Unlock()
+	if ch == nil {
+		writeErr(w, http.StatusNotFound, "no such approval")
+		return
+	}
+	select {
+	case ch <- in.Allow:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	default:
+		writeErr(w, http.StatusConflict, "already decided")
+	}
 }
 
 func (s *Server) steer(w http.ResponseWriter, r *http.Request) {

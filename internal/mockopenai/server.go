@@ -247,6 +247,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, `source="watch`):
 		writeText(w, "noted\n")
 		return
+	case strings.Contains(lastUser, "NEED_APPROVAL") && !sawShell:
+		writeTool(w, "call_mkdir", "shell", `{"command":"mkdir -p approved-dir"}`)
+		return
+	case strings.Contains(lastUser, "NEED_APPROVAL"):
+		writeText(w, "made the directory\n")
+		return
 	case strings.Contains(lastUser, "HELLO_WEB"):
 		writeText(w, "web hello\n")
 		return

@@ -138,11 +138,11 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 		opt.OnTool(t.Name(), summary)
 	}
 	if need {
-		approved := false
-		approve.Lock()
-		if opt.Approve != nil {
-			approved, err = opt.Approve(ctx, t.Name(), summary)
+		if opt.Approve == nil {
+			return finish(opt, t.Name(), "not run: no approver available on this link")
 		}
+		approve.Lock()
+		approved, err := opt.Approve(ctx, t.Name(), summary)
 		approve.Unlock()
 		if err != nil {
 			return finish(opt, t.Name(), "error: "+err.Error())
