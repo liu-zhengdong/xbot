@@ -75,13 +75,13 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
 		return
 	}
-	var sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn bool
+	var sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn, sawPeer bool
 	var lastTool, lastUser string
 	for _, m := range req.Messages {
 		if m.Role == "user" {
 			lastUser = m.Content
 			lastTool = ""
-			sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn = false, false, false, false, false, false
+			sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn, sawPeer = false, false, false, false, false, false, false
 		}
 		if m.Role == "tool" {
 			lastTool = m.Content
@@ -100,6 +100,8 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 				sawRecall = true
 			case "spawn":
 				sawSpawn = true
+			case "message_bot":
+				sawPeer = true
 			}
 		}
 	}
@@ -224,6 +226,37 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, `source="watch`):
 		writeText(w, "noted\n")
 		return
+	case strings.Contains(lastUser, "HELLO_WEB"):
+		writeText(w, "web hello\n")
+		return
+	case strings.Contains(lastUser, "FROM_TERMINAL"):
+		writeText(w, "terminal hello\n")
+		return
+	case strings.Contains(lastUser, "MSG_BOB") && !sawPeer:
+		writeTool(w, "call_peer", "message_bot", `{"bot":"bob","text":"hello from ada"}`)
+		return
+	case strings.Contains(lastUser, "MSG_BOB"):
+		writeText(w, "sent\n")
+		return
+	case strings.Contains(lastUser, "hello from ada") && !sawPeer:
+		writeTool(w, "call_peer", "message_bot", `{"bot":"ada","text":"reply from bob"}`)
+		return
+	case strings.Contains(lastUser, "hello from ada"):
+		writeText(w, "sent\n")
+		return
+	case strings.Contains(lastUser, "reply from bob"):
+		writeText(w, "got reply\n")
+		return
+	case strings.Contains(lastUser, "LOOP") && !sawPeer:
+		other := "bob"
+		if scanBotName(req) == "bob" {
+			other = "ada"
+		}
+		writeTool(w, "call_peer", "message_bot", fmt.Sprintf(`{"bot":%q,"text":"LOOP"}`, other))
+		return
+	case strings.Contains(lastUser, "LOOP"):
+		writeText(w, "stopped\n")
+		return
 	}
 	if !sawShell {
 		cmd := "ls -1"
@@ -316,6 +349,30 @@ func flush(w http.ResponseWriter) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+func scanBotName(req incoming) string {
+	const mark = "BOTNAME="
+	for _, m := range req.Messages {
+		i := strings.Index(m.Content, mark)
+		if i < 0 {
+			continue
+		}
+		rest := m.Content[i+len(mark):]
+		var b strings.Builder
+		for _, c := range rest {
+			switch {
+			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
+				b.WriteRune(c)
+			default:
+				return b.String()
+			}
+		}
+		if b.Len() > 0 {
+			return b.String()
+		}
+	}
+	return ""
 }
 
 func joined(req incoming) string {

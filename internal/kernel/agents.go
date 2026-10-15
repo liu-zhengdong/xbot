@@ -126,7 +126,7 @@ func (k *Kernel) forkMessages() ([]provider.Message, error) {
 		return nil, err
 	}
 	st = migrate(st)
-	mem, err := k.memoryText(context.Background(), k.turnSender)
+	mem, err := k.memoryText(context.Background(), k.memoryPerson())
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +192,11 @@ func (k *Kernel) needsEndpoint() bool {
 	}
 	_, ok := k.remote()
 	return ok
+}
+
+// ControlSubagent steers or cancels a running subagent of this kernel.
+func (k *Kernel) ControlSubagent(ctx context.Context, id, kind, text string) (string, error) {
+	return k.control(ctx, id, kind, text)
 }
 
 func (k *Kernel) control(ctx context.Context, id, kind, text string) (string, error) {

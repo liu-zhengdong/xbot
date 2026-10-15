@@ -1,6 +1,6 @@
 # XBot
 
-XBot 是一个从零写的个人助手（M4）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。
+XBot 是一个从零写的个人助手（M5）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。终端和网页是同一条对话的两个入口。
 
 ## 构建与运行
 
@@ -28,6 +28,8 @@ xbot webhook add ada github
 xbot watch add ada notes --path "$HOME/notes/**/*.md"
 xbot runner --addr 127.0.0.1:18771
 ```
+
+`xbot serve` 在同一个 `--http` 上提供网页。启动时往 stderr 打印登录 token，token 文件在 `~/.xbot/web-token.json`，权限 0600。浏览器打开打印出来的地址，把 token 贴进登录框。登录态是 HttpOnly、SameSite=Strict 的 cookie，不放在 localStorage。
 
 `chat` 接着这个 Bot 唯一的一条对话继续。聊天的时候，这个进程持有该 Bot 的处理锁，并在等待输入的同时处理 inbox 里的事件。`serve` 不管有没有人在聊，都会把到点的 routine、到点的文件变化和已经合批的 webhook 投进 inbox；只有拿到处理锁的那一个进程会执行它。`--interval`（默认 15 秒）是没人在聊时，serve 多久处理一次这些事件。正在聊的进程大约每 200 毫秒就能看到。退出输入 `exit`、`quit` 或 `:q`。
 
@@ -63,6 +65,10 @@ xbot bind ada --clear
 
 ```text
 ~/.xbot/providers.json
+~/.xbot/web-token.json
+~/.xbot/web-cursor.json
+~/.xbot/peer-rate.json
+~/.xbot/groups/<id>/{meta.json,transcript.jsonl}
 ~/.xbot/people/<id>/identity.json
 ~/.xbot/people/<id>/memory/{profile,log}.md
 ~/.xbot/bots/<name>/config.json
@@ -87,20 +93,21 @@ xbot bind ada --clear
 
 Markdown 是给人改的。索引比 markdown 旧时会按 markdown 重建。
 
-`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。技能说明按 slug 排序写进稳定前缀，正文用 `read_skill` 再读。没有技能文件时，前缀和以前一样。
+`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`、`web`、`peers`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。技能说明按 slug 排序写进稳定前缀，正文用 `read_skill` 再读。没有技能文件时，前缀和以前一样。
 
 ## 架构
 
 内核只认识收件箱和工具。外面的一切都是 Link。
 
 ```text
-terminal / timer / webhook / watch ──Event──▶ inbox ──▶ kernel ──▶ ModelSelector ──▶ provider
-tools / memory / persona / context ──tools──▶ agent loop
+terminal / web / timer / webhook / watch ──Event──▶ inbox ──▶ kernel ──▶ ModelSelector ──▶ provider
+tools / memory / persona / context / peers ──tools──▶ agent loop
+bot / group ──untrusted Event──▶ 另一个 Bot 的 inbox
 ```
 
 Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模型。同一来源在一个短窗口里的多次投递会合成一条再进 inbox，所以一串请求只会唤醒一次。Bot 自己决定处理、`notify_owner`，或者回复 `SILENT`。
 
-**信任。** 主人在终端 link 上的输入是指令，原文进 transcript。除此之外（别的人、timer、webhook、文件变化、子代理）都包在 `<untrusted_event>` 里，当成数据。是不是主人由内核判断，不看事件自己带的标记。来源不是 terminal 时，就算发送者字符串和 owner 相同，也仍然是不可信数据。
+**信任。** 主人在终端或网页上的输入是指令，原文进 transcript。除此之外（别的人、别的 Bot、群消息、timer、webhook、文件变化、子代理）都包在 `<untrusted_event>` 里，当成数据。是不是主人由内核判断，不看事件自己带的标记。来源不是 terminal 或 web 时，就算发送者字符串和 owner 相同，也仍然是不可信数据。
 
 **稳定前缀和环境快照。** 每次唤醒的 system 消息只有 persona、rules、以及按名字排序的 link 说明。工具 schema、时间、发送者、记忆都不在里面，这样上游的前缀缓存可以对得上。工具列表按名字排序，schema 变化不会把这段前缀打乱。
 
@@ -144,6 +151,22 @@ xbot watch list ada
 xbot watch remove ada notes
 ```
 
+**网页。** `xbot serve --http` 同时挂网页和 webhook。静态文件用 `go:embed` 打进二进制，没有单独的前端进程。同一条 transcript：终端里说的话，网页上看得到；网页里发的消息，终端下一次处理时也在同一条记录里。网页拿到处理锁就直接跑这一轮，并用 SSE 把增量推回来。锁被终端占用时，网页只把事件放进 inbox，返回 202，由持锁的那边处理，不会两边各跑一次。
+
+网页上可以看 Bot 列表（未读点）、连续对话、Markdown 和代码块、可折叠的工具卡片、`ask_user` 的选项卡、通知、右侧详情（persona、provider/model、记忆 profile、routine、正在跑的子代理，可以 steer / cancel），也可以新建 Bot 和群。手机上左侧是抽屉，详情是底部抽屉，composer 避开安全区。支持浅色和深色。
+
+可以「添加到主屏幕」：有 manifest 和 service worker。通知在页面开着时走页面内列表，并在用户允许后用 Notifications API 弹出。后台 Web Push（VAPID）还没做，留作后续：标准库没有现成的载荷加密。
+
+**Bot 之间。** 发送者是 Principal：人、Bot 或群。同一个 owner 的 Bot 默认可互相看见，别人的 Bot 看不见，也发不了消息。工具：
+
+- `list_bots` 列出同 owner 的其他 Bot
+- `message_bot(bot, text)` 往对方 inbox 投一条事件，来源 `bot:<发送者>`，发送者种类是 bot，正文是不可信数据，不附带任何一方的私人记忆
+- `create_group(name, members)` / `list_groups` / `post_group(id, text)`
+
+群有自己的 transcript。一条群消息会扇出到每个成员的 inbox（Bot 自己发的不叫醒自己；人发的会叫醒所有成员）。成员看到的是这条群消息，不是彼此的私人记忆。网页里有群视图。
+
+一条链最多 3 跳（人发起是 0，第一次 Bot 投递是 1）。同一对发送者到目标每分钟最多 8 条。超限的发送直接失败，不会继续转下去。
+
 **子代理。** 主 Bot 自己做短活。长任务调用 `spawn(task, mode)`。`brief` 只有任务说明；`fork` 带上当前主上下文的一份拷贝。子代理有自己的只追加 transcript，步与步之间看自己的 inbox。主 Bot 可以 `steer`（下一步之前插入，已完成的工作保留）、`queue`（当前这次跑完再做）、`interrupt`（停掉当前这一步，用新指令重来，步数预算重置）、`cancel`（停掉，排队的也不做）。子代理把 progress、blocked、done、failed 投回主 inbox。这些事件不是终端输入，内核会包成 `<untrusted_event>`。`read_subagent` / `expand_subagent` 读它的状态和原文，输出有上限。同时最多 4 个，默认最多 16 步、10 分钟。子代理没有 spawn，也不会在后台弹 y/n：`xbot chat --yes` 才自动批准它的 shell；否则需要确认的工具直接拒绝。
 
 **执行器。** `Executor` 有本机 goroutine 实现，也有 HTTP 实现：`POST /v1/start`、`POST /v1/message`、`GET /v1/events`。`xbot runner` 只绑定环回地址，Bearer token 用常量时间比较。请求体里的模型密钥只在这条本机连接上出现。
@@ -167,6 +190,9 @@ xbot watch remove ada notes
 - Webhook secret 只在 `add` 时打印一次，文件权限 0600。`list` 不打印 secret。
 - 文件监听拒绝相对路径、`..` 和从 `/` 开始的扫描。逃出根目录的符号链接不报。事件不含文件内容。每个 Bot 最多 32 个 watch，每个 glob 最多 200 个文件。
 - 同一个 webhook 的突发请求会合成一条唤醒，避免把模型调用打满。
+- 网页登录 token 在 `web-token.json`，权限 0600。cookie 是 HttpOnly、SameSite=Strict。变更请求拒绝 `Sec-Fetch-Site: cross-site`，带了 `Origin` 时必须和请求的 Host 一致。
+- 网页把 Markdown 画成 DOM 文本节点。链接只允许 `http` 和 `https`。接口 JSON 会转义 `<`。
+- Bot 发给 Bot 的正文按不可信事件包起来，不复制私人记忆。链长超过 3 跳，或同一对每分钟超过 8 条，会被拒绝。
 
 ## 测试
 
@@ -175,7 +201,17 @@ go test ./...
 bash scripts/e2e.sh
 ```
 
-`go test` 覆盖这些 M2 行为，M3，以及 M4：
+`go test` 覆盖这些 M5 行为，以及 M2、M3、M4：
+
+- 错误 token 和没有 cookie 的请求是 401。跨站 Origin 或 `Sec-Fetch-Site: cross-site` 是 403。token 文件权限 0600。
+- 网页发一条消息，SSE 里有模型回复；transcript 里主人的原文没有被包成不可信事件。
+- 终端再对同一个 Bot 说一句，网页读到的 transcript 里两边都在。
+- 终端占着处理锁时，网页消息进 inbox 并返回排队，松开锁之后只处理一次。
+- Bot A `message_bot` 给 Bot B，B 回复，A 的 transcript 里看得到回复。B 看到的是 `source="bot:ada"` 的不可信事件，里面没有 A 的私人记忆。
+- 网页建群并发言，每个成员的 inbox 都有这条，群 transcript 也有，正文里没有成员的私人记忆。
+- Bot 之间互相转发 `LOOP` 会在跳数上限停下，成功投递不超过 3 次。
+
+M4：
 
 - 签过名的 webhook 唤醒 Bot，outbox 里有一条通知，正文被包成不可信事件。
 - 没有签名或签名错误会被拒绝，inbox 里没有事件。
@@ -207,6 +243,8 @@ M2：
 | 包 | 职责 |
 | --- | --- |
 | `cmd/xbot` | `new` / `list` / `chat` / `bind` / `serve` / `webhook` / `watch` / `runner` / `provider` |
+| `web` | 登录、网页 API、SSE、嵌入的页面 |
+| `peer` | 同 owner 的 Bot 消息、群、跳数和频率上限 |
 | `inbound` | Webhook HTTP、合批、文件监听 |
 | `proc` | 一个 Bot 的唤醒循环：投递和执行分开 |
 | `exec` | 子代理循环、本机执行器、runner HTTP |
@@ -241,5 +279,6 @@ xbot serve --http 100.x.y.z:8787
 ```
 
 3. `xbot webhook add ada github` 会按 `XBOT_PUBLIC_URL` 打印 URL 和 secret。手机上的快捷指令或其他客户端把请求发到这个 URL，并带上 secret。
-4. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。要给手机用，必须写成 Tailscale 地址。手机和电脑都要在这个 tailnet 上。
-5. 每个 webhook 单独一个 secret。不签名或签名不对会 401。secret 留在 Bot 目录里，权限 0600。
+4. 网页也在这个地址上。手机浏览器打开 `http://100.x.y.z:8787`，把 serve 打印的登录 token 贴进去。token 只在这台机器的 0600 文件里，cookie 不会被别的站点带上。可以添加到主屏幕。
+5. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。要给手机用，必须写成 Tailscale 地址。手机和电脑都要在这个 tailnet 上。
+6. 每个 webhook 单独一个 secret。不签名或签名不对会 401。secret 留在 Bot 目录里，权限 0600。

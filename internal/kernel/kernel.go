@@ -51,6 +51,9 @@ type Kernel struct {
 	startOnce   sync.Once
 	execOnce    sync.Once
 	turnSender  string
+	turnKind    string
+	turnHops    int
+	turnChain   string
 	turnTrusted bool
 }
 
@@ -61,6 +64,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		return err
 	}
 	k.turnSender = ev.Sender
+	k.turnKind = ev.SenderKind
+	k.turnHops = ev.Hops
+	k.turnChain = ev.Chain
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
 	entries, err := k.Bot.Entries()
 	if err != nil {
@@ -84,7 +90,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		return err
 	}
 	st = migrate(st)
-	memText, err := k.memoryText(ctx, ev.Sender)
+	memText, err := k.memoryText(ctx, k.memoryPerson())
 	if err != nil {
 		return err
 	}
@@ -249,6 +255,15 @@ func (k *Kernel) pendingNotes() int {
 		return 0
 	}
 	return len(notes)
+}
+
+// memoryPerson is the sender only when they are a person.
+// A bot or group principal must not be looked up as someone else's memory.
+func (k *Kernel) memoryPerson() string {
+	if k.turnKind == link.KindBot || k.turnKind == link.KindGroup {
+		return ""
+	}
+	return k.turnSender
 }
 
 func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error) {

@@ -34,6 +34,7 @@ import (
 	"xbot/internal/serve"
 	"xbot/internal/skill"
 	"xbot/internal/tools"
+	"xbot/internal/web"
 	"xbot/internal/work"
 )
 
@@ -155,6 +156,7 @@ var defaultLinks = []string{
 	link.NameMemory, link.NamePersona, link.NameContext,
 	link.NameAgents, link.NameSkills,
 	link.NameWebhook, link.NameWatch,
+	link.NameWeb, link.NamePeers,
 }
 
 type newOpts struct {
@@ -473,6 +475,10 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			out = append(out, link.Webhook{})
 		case link.NameWatch:
 			out = append(out, link.Watch{})
+		case link.NameWeb:
+			out = append(out, link.Web{})
+		case link.NamePeers:
+			out = append(out, link.Peers{})
 		case link.NameRunner:
 			url, token := runner.URL, runner.Token
 			if url == "" {
@@ -574,13 +580,30 @@ func cmdServe(root string, args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	deny := func(context.Context, string, string) (bool, error) { return false, nil }
 	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce}
+	ui := &web.Server{
+		Root:         root,
+		DefaultLinks: defaultLinks,
+		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
+			k, _, err := openKernel(root, b, 8, deny, nil, false, runnerSpec{})
+			return k, err
+		},
+	}
+	token, _, err := ui.EnsureToken()
+	if err != nil {
+		return err
+	}
 	ln, err := net.Listen("tcp", *httpAddr)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "webhook listening on %s\n", ln.Addr())
-	srv := &http.Server{Handler: hub.Handler()}
+	mux := http.NewServeMux()
+	hub.Register(mux)
+	ui.Register(mux)
+	fmt.Fprintf(os.Stderr, "listening on http://%s\n", ln.Addr())
+	fmt.Fprintf(os.Stderr, "login token: %s\n", token)
+	srv := &http.Server{Handler: mux}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(os.Stderr, "xbot:", err)
@@ -608,7 +631,6 @@ func cmdServe(root string, args []string) error {
 			}
 		}
 	}()
-	deny := func(context.Context, string, string) (bool, error) { return false, nil }
 	for {
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
 			k, _, err := openKernel(root, b, 8, deny, nil, false, runnerSpec{})

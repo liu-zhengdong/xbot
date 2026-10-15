@@ -28,6 +28,12 @@ func TestOwnerTrustedOnlyOnTerminal(t *testing.T) {
 	if OwnerTrusted(NameTimer, "u1", owners) || OwnerTrusted(NameTerminal, "u2", owners) {
 		t.Fatal("timer and other people stay untrusted")
 	}
+	if !OwnerTrusted(NameWeb, "u1", owners) {
+		t.Fatal("owner web input is trusted")
+	}
+	if OwnerTrusted("bot:ada", "u1", owners) || OwnerTrusted("group:g", "u1", owners) {
+		t.Fatal("bot and group sources stay untrusted")
+	}
 	ev := TerminalEvent("u1", "do the thing", time.Unix(10, 0).UTC())
 	if strings.Contains(Render(ev, true), "<untrusted_event") {
 		t.Fatal("trusted render wrapped the owner")

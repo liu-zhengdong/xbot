@@ -36,9 +36,16 @@ const (
 	NameRunner   = "runner"
 	NameWebhook  = "webhook"
 	NameWatch    = "watch"
+	NameWeb      = "web"
+	NamePeers    = "peers"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"
+
+	// KindPerson, KindBot, and KindGroup are the principal kinds on an event.
+	KindPerson = "person"
+	KindBot    = "bot"
+	KindGroup  = "group"
 
 	// SourceSubagent marks events a subagent posts back to the main inbox.
 	// They are not terminal input, so the kernel wraps them as untrusted data.
@@ -92,9 +99,13 @@ type Event struct {
 	Source    string    `json:"source"`
 	Type      string    `json:"type"`
 	Content   string    `json:"content"`
-	Sender    string    `json:"sender"`
-	Time      time.Time `json:"time"`
-	Untrusted bool      `json:"untrusted"`
+	Sender     string    `json:"sender"`
+	SenderKind string    `json:"sender_kind,omitempty"`
+	Time       time.Time `json:"time"`
+	Untrusted  bool      `json:"untrusted"`
+	// Hops counts bot-to-bot deliveries in one chain. Zero is a person starting it.
+	Hops  int    `json:"hops,omitempty"`
+	Chain string `json:"chain,omitempty"`
 }
 
 // NewEvent builds an event. Untrusted is always true.
@@ -115,7 +126,16 @@ func NewEvent(source, typ, content, sender string, at time.Time) Event {
 
 // TerminalEvent is a user line from the terminal link.
 func TerminalEvent(personID, text string, at time.Time) Event {
-	return NewEvent(NameTerminal, TypeMessage, text, personID, at)
+	ev := NewEvent(NameTerminal, TypeMessage, text, personID, at)
+	ev.SenderKind = KindPerson
+	return ev
+}
+
+// WebEvent is an owner line from the web link.
+func WebEvent(personID, text string, at time.Time) Event {
+	ev := NewEvent(NameWeb, TypeMessage, text, personID, at)
+	ev.SenderKind = KindPerson
+	return ev
 }
 
 // Validate checks the fields the kernel requires.
@@ -127,10 +147,10 @@ func (e Event) Validate() error {
 	return nil
 }
 
-// OwnerTrusted is true only for an owner speaking on the terminal link.
-// Any other source, including a timer wake from the owner id, stays untrusted.
+// OwnerTrusted is true for an owner speaking on the terminal or web link.
+// Any other source, including a timer wake or another bot, stays untrusted.
 func OwnerTrusted(source, sender string, owners []string) bool {
-	if source != NameTerminal || sender == "" {
+	if (source != NameTerminal && source != NameWeb) || sender == "" {
 		return false
 	}
 	for _, id := range owners {

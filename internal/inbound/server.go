@@ -77,9 +77,14 @@ type item struct {
 }
 
 // Handler is the webhook HTTP handler. Only POST /webhook/<bot>/<name> is accepted.
+// Register adds the webhook route to mux.
+func (s *Server) Register(mux *http.ServeMux) {
+	mux.HandleFunc("POST /webhook/{bot}/{name}", s.handleWebhook)
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /webhook/{bot}/{name}", s.handleWebhook)
+	s.Register(mux)
 	return mux
 }
 

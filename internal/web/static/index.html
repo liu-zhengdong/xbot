@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff" id="theme-color">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>XBot</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="login" class="gate">
+  <form id="login-form" class="gate-card">
+    <div class="mark" aria-hidden="true">X</div>
+    <h1>XBot</h1>
+    <p class="muted">用这台机器上 <code>xbot serve</code> 打印的 token 登录。</p>
+    <label class="field">
+      <span>登录 token</span>
+      <input id="token" name="token" type="password" autocomplete="current-password" required>
+    </label>
+    <p id="login-error" class="error" hidden></p>
+    <button class="primary" type="submit">进入</button>
+  </form>
+</div>
+
+<div id="shell" class="shell" hidden>
+  <aside id="sidebar" class="sidebar">
+    <div class="side-head">
+      <button id="collapse" class="icon-btn" type="button" aria-label="收起列表" title="收起列表">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+      </button>
+      <span class="brand">XBot</span>
+      <button id="new-bot" class="icon-btn" type="button" aria-label="新建 Bot" title="新建 Bot">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    <div class="side-label">Bots</div>
+    <nav id="bot-list" class="list"></nav>
+    <div class="side-label row">
+      <span>Groups</span>
+      <button id="new-group" class="text-btn" type="button">新建</button>
+    </div>
+    <nav id="group-list" class="list"></nav>
+    <div class="side-foot">
+      <button id="theme" class="foot-btn" type="button">
+        <svg viewBox="0 0 24 24"><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+        <span>外观</span>
+      </button>
+      <button id="logout" class="foot-btn" type="button">
+        <svg viewBox="0 0 24 24"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3M6 9l-3 3 3 3"/></svg>
+        <span>退出</span>
+      </button>
+    </div>
+  </aside>
+  <div id="backdrop" class="backdrop" hidden></div>
+
+  <main class="main">
+    <header class="top">
+      <button id="menu" class="icon-btn mobile-only" type="button" aria-label="打开列表">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="top-title">
+        <div id="title" class="title">选择一个 Bot</div>
+        <div id="subtitle" class="subtitle"></div>
+      </div>
+      <button id="bell" class="icon-btn" type="button" aria-label="通知">
+        <svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2H4.5L6 16z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>
+        <i id="bell-dot" class="dot" hidden></i>
+      </button>
+      <button id="info" class="icon-btn" type="button" aria-label="详情">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 8h.01"/></svg>
+      </button>
+    </header>
+    <div id="notes" class="notes" hidden></div>
+    <div id="thread" class="thread"></div>
+    <form id="composer" class="composer">
+      <textarea id="input" rows="1" placeholder="写给这个 Bot" maxlength="16000"></textarea>
+      <div class="composer-bar">
+        <button class="icon-btn" type="button" disabled title="附件还没做">
+          <svg viewBox="0 0 24 24"><path d="M8 12.5l6.2-6.2a3 3 0 0 1 4.2 4.2l-7.4 7.5a4.5 4.5 0 0 1-6.4-6.4l7-7"/></svg>
+        </button>
+        <button class="icon-btn" type="button" disabled title="语音还没做">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4"/></svg>
+        </button>
+        <span class="spacer"></span>
+        <button id="send" class="send" type="submit" aria-label="发送">
+          <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
+    </form>
+  </main>
+
+  <aside id="panel" class="panel" aria-label="详情">
+    <div class="panel-head">
+      <span>详情</span>
+      <button id="panel-close" class="icon-btn" type="button" aria-label="关闭详情">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="panel-body" class="panel-body"></div>
+  </aside>
+</div>
+
+<div id="modal" class="modal" hidden>
+  <form id="modal-form" class="modal-card">
+    <h2 id="modal-title">新建</h2>
+    <div id="modal-fields"></div>
+    <p id="modal-error" class="error" hidden></p>
+    <div class="modal-actions">
+      <button class="secondary" type="button" id="modal-cancel">取消</button>
+      <button class="primary" type="submit" id="modal-ok">创建</button>
+    </div>
+  </form>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
