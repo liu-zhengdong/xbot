@@ -157,7 +157,7 @@ xbot watch remove ada notes
 
 **网页。** `xbot serve --http` 同时挂网页和 webhook。静态文件用 `go:embed` 打进二进制，没有单独的前端进程。同一条 transcript：终端里说的话，网页上看得到；网页里发的消息，终端下一次处理时也在同一条记录里。网页拿到处理锁就直接跑这一轮，并用 SSE 把增量推回来。锁被终端占用时，网页只把事件放进 inbox，返回 202，由持锁的那边处理，不会两边各跑一次。
 
-网页上可以看 Bot 列表（未读点）、连续对话、Markdown 和代码块、可折叠的工具卡片、`ask_user` 的选项卡、通知、右侧详情（persona、provider/model、记忆 profile、routine、正在跑的子代理，可以 steer / cancel），也可以新建 Bot 和群。手机上左侧是抽屉，详情是底部抽屉，composer 避开安全区。支持浅色和深色。
+网页上可以看 Bot 列表（未读点）、连续对话、Markdown 和代码块、可折叠的工具卡片、`ask_user` 的选项卡、通知、右侧详情（档案、persona、provider/model、记忆 profile、routine、正在跑的子代理，可以 steer / cancel，也可以导出或导入模板），也可以新建 Bot 和群。手机上左侧是抽屉，详情是底部抽屉，composer 避开安全区。支持浅色和深色。
 
 可以「添加到主屏幕」：有 manifest 和 service worker。通知在页面开着时走页面内列表，并在用户允许后用 Notifications API 弹出。后台 Web Push（VAPID）还没做，留作后续：标准库没有现成的载荷加密。
 
@@ -183,6 +183,21 @@ xbot primary
 xbot primary set ada
 xbot pin ada
 xbot delete xbot
+```
+
+**Bot 档案。** 每个 Bot 有名字（可以改）、一行简介、头像、说话风格、主动程度和免打扰时段。说话风格是语气、回复长度（短 / 中 / 长）、表情（不用 / 少量 / 常用）和默认语言，写进系统提示，跟在 persona 后面。没填的字段不进提示，空档案不会改变原来的稳定前缀。主动程度是安静、适中、积极：只在例程唤醒时提高或放低 `notify_owner` 的门槛（安静只送 high，适中送 normal 和 high，积极全送）。免打扰用 UTC 的 `HH:MM`，时段可以跨过午夜；这段时间里的通知先攒着，结束后合成一条发出。主人在网页右侧「档案」或 CLI 里改，马上生效。Bot 自己用 `propose_profile` 提议，主人确认后才写入，下一次唤醒会看到 `profile: updated`。
+
+头像可以上传 png、jpeg、gif 或 webp。没上传时是一块低饱和的色块加上名字首字母。`GenerateAvatar` 留作以后接生成头像，没设置时不会调用。
+
+模板是一份 JSON：档案、persona、例程，可选头像。不含记忆，也不含 transcript。
+
+```bash
+xbot profile show ada
+xbot profile set ada --description "项目笔记" --tone "平静、具体" --length short --emoji spare --language 中文 --proactivity quiet --quiet 22:00-07:00
+xbot profile set ada --name notes
+xbot profile avatar ada --file face.png
+xbot template export ada --out ada.json
+xbot template import --file ada.json --name ada-copy
 ```
 
 群有自己的 transcript。一条群消息会扇出到每个成员的 inbox（Bot 自己发的不叫醒自己；人发的会叫醒所有成员）。成员看到的是这条群消息，不是彼此的私人记忆。网页里有群视图。

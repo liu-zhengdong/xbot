@@ -60,8 +60,14 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	mux.HandleFunc("POST /api/bots", s.createBot)
+	mux.HandleFunc("POST /api/bots/import", s.importTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/fork", s.forkBot)
 	mux.HandleFunc("POST /api/bots/{name}/pin", s.pinBot)
+	mux.HandleFunc("PATCH /api/bots/{name}", s.patchBot)
+	mux.HandleFunc("GET /api/bots/{name}/avatar", s.getAvatar)
+	mux.HandleFunc("POST /api/bots/{name}/avatar", s.postAvatar)
+	mux.HandleFunc("DELETE /api/bots/{name}/avatar", s.deleteAvatar)
+	mux.HandleFunc("GET /api/bots/{name}/template", s.exportTemplate)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
@@ -140,12 +146,17 @@ func (s *Server) require(w http.ResponseWriter, r *http.Request) bool {
 }
 
 type botItem struct {
-	Name    string `json:"name"`
-	Persona string `json:"persona,omitempty"`
-	Unread  bool   `json:"unread"`
-	Notes   int    `json:"notes"`
-	Pinned  bool   `json:"pinned"`
-	Primary bool   `json:"primary"`
+	Name        string `json:"name"`
+	Persona     string `json:"persona,omitempty"`
+	Description string `json:"description,omitempty"`
+	Unread      bool   `json:"unread"`
+	Notes       int    `json:"notes"`
+	Pinned      bool   `json:"pinned"`
+	Primary     bool   `json:"primary"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+	AvatarBG    string `json:"avatar_bg,omitempty"`
+	AvatarInk   string `json:"avatar_ink,omitempty"`
+	Initial     string `json:"initial,omitempty"`
 }
 
 func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
@@ -169,10 +180,12 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 		}
 		n, _ := noteCount(b)
 		entries, _ := b.Entries()
+		url, bg, ink, initial := paintBot(b)
 		item := botItem{
-			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Notes: n,
+			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Description: cfg.Description, Notes: n,
 			Unread: n > 0 || len(entries) > cur[cfg.Name],
 			Pinned: cfg.Pinned, Primary: cfg.Name == primary,
+			AvatarURL: url, AvatarBG: bg, AvatarInk: ink, Initial: initial,
 		}
 		out = append(out, item)
 	}
@@ -351,8 +364,15 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	primary, _ := bot.Primary(s.Root)
+	url, bg, ink, initial := paintBot(b)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": b.Name(), "persona": persona,
+		"description": b.Config().Description,
+		"style":       b.StyleCopy(),
+		"proactivity": b.Config().Proactivity,
+		"quiet_start": b.Config().QuietStart,
+		"quiet_end":   b.Config().QuietEnd,
+		"avatar_url":  url, "avatar_bg": bg, "avatar_ink": ink, "initial": initial,
 		"provider": b.Config().Provider, "model": b.Config().Model,
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,
 		"memory": mem, "routines": routines, "agents": agents,

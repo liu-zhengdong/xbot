@@ -11,6 +11,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/provider"
 )
 
 func TestSplitGlobal(t *testing.T) {
@@ -192,6 +193,100 @@ func captureStdout(t *testing.T, fn func() error) string {
 		t.Fatal(runErr)
 	}
 	return buf.String()
+}
+
+func TestParseProfileAndTemplate(t *testing.T) {
+	opt, err := parseProfileSet([]string{"ada", "--tone", "warm", "--quiet", "22:00-07:00", "--name", "notes"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Bot != "ada" || opt.Tone != "warm" || opt.Quiet != "22:00-07:00" || opt.Name != "notes" || !opt.Set["tone"] || !opt.Set["quiet"] || !opt.Set["name"] {
+		t.Fatalf("%+v", opt)
+	}
+	opt, err = parseProfileSet([]string{"--description", "项目笔记", "--proactivity", "quiet", "ada"})
+	if err != nil || opt.Bot != "ada" || opt.Description != "项目笔记" || !opt.Set["proactivity"] || opt.Set["tone"] {
+		t.Fatalf("%+v %v", opt, err)
+	}
+	if _, err := parseProfileSet([]string{"ada"}); err == nil {
+		t.Fatal("expected a flag")
+	}
+	av, err := parseProfileAvatar([]string{"ada", "--file", "face.png"})
+	if err != nil || av.Bot != "ada" || av.File != "face.png" || av.Clear {
+		t.Fatalf("%+v %v", av, err)
+	}
+	av, err = parseProfileAvatar([]string{"--clear", "ada"})
+	if err != nil || !av.Clear || av.File != "" {
+		t.Fatalf("%+v %v", av, err)
+	}
+	exp, err := parseTemplateExport([]string{"ada", "--out", "ada.json"})
+	if err != nil || exp.Name != "ada" || exp.Out != "ada.json" {
+		t.Fatalf("%+v %v", exp, err)
+	}
+	imp, err := parseTemplateImport([]string{"--file", "ada.json", "--name", "ada-copy"})
+	if err != nil || imp.File != "ada.json" || imp.Name != "ada-copy" {
+		t.Fatalf("%+v %v", imp, err)
+	}
+	if _, err := parseTemplateExport([]string{"ada"}); err == nil {
+		t.Fatal("expected --out")
+	}
+}
+
+func TestProfileSetExportImport(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "Be brief.", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "SECRET-TRANSCRIPT"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--tone", "warm", "--length", "short", "--emoji", "spare", "--language", "中文", "--proactivity", "quiet", "--quiet", "22:00-07:00"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdProfile(root, []string{"set", "ada", "--name", "notes"}); err != nil {
+		t.Fatal(err)
+	}
+	b, err = bot.Load(root, "notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Config().Description != "项目笔记" || b.StyleCopy().Tone != "warm" || b.StyleCopy().Length != "short" || b.Config().Proactivity != "quiet" || b.Config().QuietStart != "22:00" || b.Config().QuietEnd != "07:00" {
+		t.Fatalf("%+v", b.Config())
+	}
+	out := filepath.Join(root, "notes.json")
+	if err := cmdTemplate(root, []string{"export", "notes", "--out", out}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("SECRET-TRANSCRIPT")) {
+		t.Fatalf("export copied the transcript: %s", raw)
+	}
+	if err := cmdTemplate(root, []string{"import", "--file", out, "--name", "copy"}); err != nil {
+		t.Fatal(err)
+	}
+	copy, err := bot.Load(root, "copy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := copy.Entries()
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("entries %d %v", len(entries), err)
+	}
+	if copy.StyleCopy().Language != "中文" || !strings.Contains(mustPersona(t, copy), "Be brief.") {
+		t.Fatalf("%+v", copy.Config())
+	}
+}
+
+func mustPersona(t *testing.T, b *bot.Bot) string {
+	t.Helper()
+	s, err := b.ReadPersona()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }
 
 func mountBot(t *testing.T, links []string) ([]link.Link, error) {

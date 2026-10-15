@@ -50,6 +50,11 @@ Usage:
   xbot [--root DIR] unpin <name>
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
+  xbot [--root DIR] profile show <name>
+  xbot [--root DIR] profile set <name> [--description TEXT] [--tone TEXT] [--length short|medium|long] [--emoji none|spare|often] [--language TEXT] [--proactivity quiet|normal|active] [--quiet HH:MM-HH:MM] [--name NEW]
+  xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
+  xbot [--root DIR] template export <name> --out FILE
+  xbot [--root DIR] template import --file FILE [--name NAME]
   xbot [--root DIR] bind <name> --provider NAME --model NAME
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
@@ -120,6 +125,10 @@ func run(argv []string) error {
 		return cmdPin(root, rest[1:], false)
 	case "primary":
 		return cmdPrimary(root, rest[1:])
+	case "profile":
+		return cmdProfile(root, rest[1:])
+	case "template":
+		return cmdTemplate(root, rest[1:])
 	case "bind":
 		return cmdBind(root, rest[1:])
 	case "serve":
@@ -420,6 +429,353 @@ func cmdPrimary(root string, args []string) error {
 		return err
 	}
 	fmt.Printf("primary is %s\n", args[1])
+	return nil
+}
+
+func cmdProfile(root string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: xbot profile show|set|avatar")
+	}
+	switch args[0] {
+	case "show":
+		return cmdProfileShow(root, args[1:])
+	case "set":
+		return cmdProfileSet(root, args[1:])
+	case "avatar":
+		return cmdProfileAvatar(root, args[1:])
+	default:
+		return fmt.Errorf("unknown profile command %q", args[0])
+	}
+}
+
+func cmdProfileShow(root string, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: xbot profile show <name>")
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	st := b.StyleCopy()
+	persona, err := b.ReadPersona()
+	if err != nil {
+		return err
+	}
+	quiet := ""
+	if b.Config().QuietStart != "" || b.Config().QuietEnd != "" {
+		quiet = b.Config().QuietStart + "-" + b.Config().QuietEnd
+	}
+	avatar := "color"
+	if b.Config().Avatar == bot.AvatarCustom {
+		avatar = "custom"
+	}
+	fmt.Printf("name: %s\n", b.Name())
+	fmt.Printf("description: %s\n", b.Config().Description)
+	fmt.Printf("tone: %s\n", st.Tone)
+	fmt.Printf("length: %s\n", st.Length)
+	fmt.Printf("emoji: %s\n", st.Emoji)
+	fmt.Printf("language: %s\n", st.Language)
+	fmt.Printf("proactivity: %s\n", b.Config().Proactivity)
+	fmt.Printf("quiet: %s\n", quiet)
+	fmt.Printf("avatar: %s\n", avatar)
+	fmt.Printf("persona: %s\n", persona)
+	return nil
+}
+
+type profileSetOpts struct {
+	Bot         string
+	Description string
+	Tone        string
+	Length      string
+	Emoji       string
+	Language    string
+	Proactivity string
+	Quiet       string
+	Name        string
+	Set         map[string]bool
+}
+
+func parseProfileSet(args []string) (profileSetOpts, error) {
+	ordered, err := reorderFlags(args, map[string]bool{
+		"description": true, "tone": true, "length": true, "emoji": true,
+		"language": true, "proactivity": true, "quiet": true, "name": true,
+	})
+	if err != nil {
+		return profileSetOpts{}, err
+	}
+	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	desc := fs.String("description", "", "one-line description")
+	tone := fs.String("tone", "", "speaking tone")
+	length := fs.String("length", "", "short, medium, or long")
+	emoji := fs.String("emoji", "", "none, spare, or often")
+	lang := fs.String("language", "", "default reply language")
+	pro := fs.String("proactivity", "", "quiet, normal, or active")
+	quiet := fs.String("quiet", "", "HH:MM-HH:MM, or off")
+	name := fs.String("name", "", "new bot name")
+	if err := fs.Parse(ordered); err != nil {
+		return profileSetOpts{}, err
+	}
+	if fs.NArg() != 1 {
+		return profileSetOpts{}, errors.New("usage: xbot profile set <name> [flags]")
+	}
+	opt := profileSetOpts{
+		Bot: fs.Arg(0), Description: *desc, Tone: *tone, Length: *length, Emoji: *emoji,
+		Language: *lang, Proactivity: *pro, Quiet: *quiet, Name: *name, Set: map[string]bool{},
+	}
+	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
+	if len(opt.Set) == 0 {
+		return profileSetOpts{}, errors.New("profile set needs at least one flag")
+	}
+	return opt, nil
+}
+
+func cmdProfileSet(root string, args []string) error {
+	opt, err := parseProfileSet(args)
+	if err != nil {
+		return err
+	}
+	b, err := bot.Load(root, opt.Bot)
+	if err != nil {
+		return err
+	}
+	var u bot.ProfileUpdate
+	if opt.Set["description"] {
+		s := opt.Description
+		u.Description = &s
+	}
+	if opt.Set["tone"] {
+		s := opt.Tone
+		u.Tone = &s
+	}
+	if opt.Set["length"] {
+		s := opt.Length
+		u.Length = &s
+	}
+	if opt.Set["emoji"] {
+		s := opt.Emoji
+		u.Emoji = &s
+	}
+	if opt.Set["language"] {
+		s := opt.Language
+		u.Language = &s
+	}
+	if opt.Set["proactivity"] {
+		s := opt.Proactivity
+		u.Proactivity = &s
+	}
+	if opt.Set["quiet"] {
+		start, end, err := splitQuiet(opt.Quiet)
+		if err != nil {
+			return err
+		}
+		u.QuietStart = &start
+		u.QuietEnd = &end
+	}
+	if u != (bot.ProfileUpdate{}) {
+		if err := b.ApplyProfile(u); err != nil {
+			return err
+		}
+	}
+	name := b.Name()
+	if opt.Set["name"] && opt.Name != b.Name() {
+		if err := kernel.RenameBot(root, b.Name(), opt.Name); err != nil {
+			return err
+		}
+		name = opt.Name
+	}
+	fmt.Printf("updated %s\n", name)
+	return nil
+}
+
+func splitQuiet(s string) (string, string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "off" || s == "-" {
+		return "", "", nil
+	}
+	s = strings.ReplaceAll(s, "–", "-")
+	s = strings.ReplaceAll(s, "—", "-")
+	start, end, ok := strings.Cut(s, "-")
+	if !ok {
+		return "", "", errors.New("quiet hours look like 22:00-07:00")
+	}
+	return strings.TrimSpace(start), strings.TrimSpace(end), nil
+}
+
+type avatarOpts struct {
+	Bot   string
+	File  string
+	Clear bool
+}
+
+func parseProfileAvatar(args []string) (avatarOpts, error) {
+	ordered, err := reorderFlags(args, map[string]bool{"file": true})
+	if err != nil {
+		return avatarOpts{}, err
+	}
+	fs := flag.NewFlagSet("profile avatar", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	file := fs.String("file", "", "image file")
+	clear := fs.Bool("clear", false, "remove the uploaded avatar")
+	if err := fs.Parse(ordered); err != nil {
+		return avatarOpts{}, err
+	}
+	if fs.NArg() != 1 {
+		return avatarOpts{}, errors.New("usage: xbot profile avatar <name> (--file PATH | --clear)")
+	}
+	if *clear == (*file != "") {
+		return avatarOpts{}, errors.New("pass one of --file or --clear")
+	}
+	return avatarOpts{Bot: fs.Arg(0), File: *file, Clear: *clear}, nil
+}
+
+func cmdProfileAvatar(root string, args []string) error {
+	opt, err := parseProfileAvatar(args)
+	if err != nil {
+		return err
+	}
+	b, err := bot.Load(root, opt.Bot)
+	if err != nil {
+		return err
+	}
+	if opt.Clear {
+		if err := b.ClearAvatar(); err != nil {
+			return err
+		}
+		fmt.Printf("cleared avatar for %s\n", b.Name())
+		return nil
+	}
+	data, err := os.ReadFile(opt.File)
+	if err != nil {
+		return err
+	}
+	if err := b.SetAvatar(data, ""); err != nil {
+		return err
+	}
+	fmt.Printf("avatar set for %s\n", b.Name())
+	return nil
+}
+
+func cmdTemplate(root string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: xbot template export|import")
+	}
+	switch args[0] {
+	case "export":
+		return cmdTemplateExport(root, args[1:])
+	case "import":
+		return cmdTemplateImport(root, args[1:])
+	default:
+		return fmt.Errorf("unknown template command %q", args[0])
+	}
+}
+
+type templateExportOpts struct {
+	Name string
+	Out  string
+}
+
+func parseTemplateExport(args []string) (templateExportOpts, error) {
+	ordered, err := reorderFlags(args, map[string]bool{"out": true})
+	if err != nil {
+		return templateExportOpts{}, err
+	}
+	fs := flag.NewFlagSet("template export", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	out := fs.String("out", "", "output JSON file")
+	if err := fs.Parse(ordered); err != nil {
+		return templateExportOpts{}, err
+	}
+	if fs.NArg() != 1 || *out == "" {
+		return templateExportOpts{}, errors.New("usage: xbot template export <name> --out FILE")
+	}
+	return templateExportOpts{Name: fs.Arg(0), Out: *out}, nil
+}
+
+func cmdTemplateExport(root string, args []string) error {
+	opt, err := parseTemplateExport(args)
+	if err != nil {
+		return err
+	}
+	b, err := bot.Load(root, opt.Name)
+	if err != nil {
+		return err
+	}
+	tpl, err := bot.ExportTemplate(b)
+	if err != nil {
+		return err
+	}
+	if err := bot.WriteTemplate(opt.Out, tpl); err != nil {
+		return err
+	}
+	fmt.Printf("exported %s\n", opt.Out)
+	return nil
+}
+
+type templateImportOpts struct {
+	File string
+	Name string
+}
+
+func parseTemplateImport(args []string) (templateImportOpts, error) {
+	ordered, err := reorderFlags(args, map[string]bool{"file": true, "name": true})
+	if err != nil {
+		return templateImportOpts{}, err
+	}
+	fs := flag.NewFlagSet("template import", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	file := fs.String("file", "", "template JSON file")
+	name := fs.String("name", "", "override the bot name")
+	if err := fs.Parse(ordered); err != nil {
+		return templateImportOpts{}, err
+	}
+	if fs.NArg() != 0 || *file == "" {
+		return templateImportOpts{}, errors.New("usage: xbot template import --file FILE [--name NAME]")
+	}
+	return templateImportOpts{File: *file, Name: *name}, nil
+}
+
+func cmdTemplateImport(root string, args []string) error {
+	opt, err := parseTemplateImport(args)
+	if err != nil {
+		return err
+	}
+	tpl, err := bot.ReadTemplate(opt.File)
+	if err != nil {
+		return err
+	}
+	if opt.Name != "" {
+		tpl.Name = opt.Name
+	}
+	existing, err := bot.List(root)
+	if err != nil {
+		return err
+	}
+	ext, display, err := link.Account()
+	if err != nil {
+		return err
+	}
+	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	if err != nil {
+		return err
+	}
+	b, err := bot.ImportTemplate(root, tpl, defaultLinks, who.ID)
+	if err != nil {
+		return err
+	}
+	if err := b.WriteRules(kernel.DefaultRules()); err != nil {
+		return err
+	}
+	if len(existing) == 0 {
+		if err := bot.SetPrimary(root, b.Name()); err != nil {
+			return err
+		}
+	} else if _, err := bot.Primary(root); errors.Is(err, bot.ErrNoPrimary) || errors.Is(err, bot.ErrNotFound) {
+		if _, _, err := bot.EnsurePrimary(root, bot.Seed{Links: defaultLinks, Owner: who.ID}); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("imported %s\n", b.Name())
 	return nil
 }
 

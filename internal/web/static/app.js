@@ -332,9 +332,30 @@
     return box;
   }
 
-  function avatar(name) {
-    const av = el("span", "avatar", (name || "?").slice(0, 1).toUpperCase());
+  function avatar(name, paint) {
+    paint = paint || {};
+    const letter = String(paint.initial || (name || "?").slice(0, 1) || "?").toUpperCase();
+    const av = el("span", "avatar", letter);
+    if (paint.bg) av.style.background = paint.bg;
+    if (paint.ink) av.style.color = paint.ink;
+    if (paint.url) {
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = paint.url;
+      img.addEventListener("error", () => {
+        img.remove();
+        av.textContent = letter;
+      });
+      av.textContent = "";
+      av.append(img);
+    }
     return av;
+  }
+
+  function paintOf(name) {
+    const b = (state.bots || []).find((x) => x.name === name);
+    if (!b) return null;
+    return { initial: b.initial, bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url };
   }
 
   function groupAvatar() {
@@ -347,7 +368,9 @@
     flags = flags || {};
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
-    const av = kind === "group" ? groupAvatar() : avatar(name);
+    const av = kind === "group" ? groupAvatar() : avatar(name, {
+      initial: flags.initial, bg: flags.avatar_bg, ink: flags.avatar_ink, url: flags.avatar_url,
+    });
     if (unread) av.append(el("i", "unread"));
     const label = el("span", "name", name);
     if (flags.primary) label.append(el("span", "badge", "主"));
@@ -361,7 +384,10 @@
     bots.replaceChildren();
     groups.replaceChildren();
     for (const b of state.bots) {
-      const btn = listButton(b.name, state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, "", { primary: !!b.primary, pinned: !!b.pinned });
+      const btn = listButton(b.name, state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, "", {
+        primary: !!b.primary, pinned: !!b.pinned,
+        initial: b.initial, avatar_bg: b.avatar_bg, avatar_ink: b.avatar_ink, avatar_url: b.avatar_url,
+      });
       btn.addEventListener("click", () => selectBot(b.name));
       bots.append(btn);
     }
@@ -500,7 +526,7 @@
 
   function botBubble(m, results, messages, index, who) {
     const row = el("div", "msg bot");
-    row.append(avatar(who));
+    row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
     const head = el("div", "who-row");
     head.append(el("div", "who", who), el("span", "meta", when(m.time)), copyBtn(m.content || ""));
@@ -571,7 +597,7 @@
         wrap.append(bubble, metaRow);
         row.append(wrap);
       } else {
-        row.append(avatar(m.sender || "B"));
+        row.append(avatar(m.sender || "B", paintOf(m.sender)));
         const body = el("div", "body");
         const head = el("div", "who-row");
         head.append(el("div", "who", m.sender || "bot"), el("span", "meta", when(m.time)), copyBtn(text));
@@ -658,9 +684,10 @@
     }
     const data = await api("/api/bots/" + encodeURIComponent(state.sel.id));
     panelBody.replaceChildren();
+    const profile = section("档案");
+    profile.append(profileForm(data));
     const persona = section("人格");
     if (data.primary) persona.append(el("p", "meta", "主 Bot。没有点名的入口会到这里。"));
-    persona.append(el("p", "", data.persona || ""));
     const pin = el("button", "secondary", data.pinned ? "取消置顶" : "置顶");
     pin.type = "button";
     pin.addEventListener("click", () => togglePin(state.sel.id, !data.pinned));
@@ -714,7 +741,187 @@
     forkBtn.type = "button";
     forkBtn.addEventListener("click", () => openFork(state.sel.id));
     fork.append(forkBtn);
-    panelBody.append(persona, bind, mem, routines, agents, fork);
+    panelBody.append(profile, persona, bind, mem, routines, agents, fork);
+  }
+
+  function labeled(label, node) {
+    const box = el("label", "field", label);
+    box.append(node);
+    return box;
+  }
+
+  function textInput(value, max) {
+    const node = document.createElement("input");
+    node.value = value || "";
+    if (max) node.maxLength = max;
+    return node;
+  }
+
+  function choice(options, value) {
+    const node = document.createElement("select");
+    for (const pair of options) {
+      const o = document.createElement("option");
+      o.value = pair[0];
+      o.textContent = pair[1];
+      if (pair[0] === (value || "")) o.selected = true;
+      node.append(o);
+    }
+    return node;
+  }
+
+  function profileForm(data) {
+    const wrap = document.createElement("div");
+    const head = el("div", "profile-head");
+    const mark = avatar(data.name, {
+      initial: data.initial, bg: data.avatar_bg, ink: data.avatar_ink, url: data.avatar_url,
+    });
+    mark.classList.add("lg");
+    const file = document.createElement("input");
+    file.type = "file";
+    file.accept = "image/png,image/jpeg,image/gif,image/webp";
+    const clear = el("button", "secondary", "清除头像");
+    clear.type = "button";
+    const stack = el("div", "stack");
+    stack.append(file, clear);
+    head.append(mark, stack);
+    const style = data.style || {};
+    const name = textInput(data.name, 64);
+    const description = textInput(data.description, 160);
+    const tone = textInput(style.tone, 80);
+    const length = choice([["", "未设置"], ["short", "短"], ["medium", "中"], ["long", "长"]], style.length);
+    const emoji = choice([["", "未设置"], ["none", "不用"], ["spare", "少量"], ["often", "常用"]], style.emoji);
+    const language = textInput(style.language, 40);
+    const pro = choice([["", "未设置"], ["quiet", "安静"], ["normal", "适中"], ["active", "积极"]], data.proactivity);
+    const quietStart = textInput(data.quiet_start, 5);
+    quietStart.type = "time";
+    const quietEnd = textInput(data.quiet_end, 5);
+    quietEnd.type = "time";
+    const persona = document.createElement("textarea");
+    persona.value = data.persona || "";
+    persona.maxLength = 32000;
+    const err = el("p", "error", "");
+    err.hidden = true;
+    const save = el("button", "secondary", "保存");
+    save.type = "button";
+    const exp = el("button", "secondary", "导出模板");
+    exp.type = "button";
+    const imp = el("button", "secondary", "导入模板");
+    imp.type = "button";
+    const fileIn = document.createElement("input");
+    fileIn.type = "file";
+    fileIn.accept = "application/json,.json";
+    fileIn.hidden = true;
+    const actions = el("div", "actions");
+    actions.append(save, exp, imp);
+    wrap.append(
+      head,
+      labeled("名字", name),
+      labeled("简介", description),
+      labeled("语气", tone),
+      labeled("回复长度", length),
+      labeled("表情", emoji),
+      labeled("语言", language),
+      labeled("主动程度", pro),
+      labeled("免打扰开始", quietStart),
+      labeled("免打扰结束", quietEnd),
+      labeled("人格", persona),
+      err, actions, fileIn,
+    );
+    const showErr = (e, fallback) => {
+      err.hidden = false;
+      err.textContent = (e && e.message) || fallback;
+    };
+    file.addEventListener("change", async () => {
+      if (!file.files || !file.files[0]) return;
+      try {
+        await uploadAvatar(data.name, file.files[0]);
+        await refreshLists();
+        await loadPanel();
+      } catch (e) { showErr(e, "头像上传失败"); }
+    });
+    clear.addEventListener("click", async () => {
+      try {
+        await api("/api/bots/" + encodeURIComponent(data.name) + "/avatar", { method: "DELETE" });
+        await refreshLists();
+        await loadPanel();
+      } catch (e) { showErr(e, "清除失败"); }
+    });
+    save.addEventListener("click", async () => {
+      err.hidden = true;
+      const body = {
+        name: name.value.trim(),
+        description: description.value.trim(),
+        tone: tone.value.trim(),
+        length: length.value,
+        emoji: emoji.value,
+        language: language.value.trim(),
+        proactivity: pro.value,
+        quiet_start: quietStart.value,
+        quiet_end: quietEnd.value,
+        persona: persona.value.trim(),
+      };
+      if ((body.quiet_start === "") !== (body.quiet_end === "")) {
+        err.hidden = false;
+        err.textContent = "免打扰需要开始和结束，或都留空。";
+        return;
+      }
+      try {
+        const res = await api("/api/bots/" + encodeURIComponent(data.name), { method: "PATCH", body: body });
+        await refreshLists();
+        const next = (res && res.name) || body.name || data.name;
+        if (next !== state.sel.id) await selectBot(next);
+        else await loadPanel();
+      } catch (e) { showErr(e, "保存失败"); }
+    });
+    exp.addEventListener("click", async () => {
+      err.hidden = true;
+      try { await downloadTemplate(data.name); }
+      catch (e) { showErr(e, "导出失败"); }
+    });
+    imp.addEventListener("click", () => fileIn.click());
+    fileIn.addEventListener("change", async () => {
+      const f = fileIn.files && fileIn.files[0];
+      fileIn.value = "";
+      if (!f) return;
+      err.hidden = true;
+      try {
+        const tpl = JSON.parse(await f.text());
+        const res = await api("/api/bots/import", { method: "POST", body: tpl });
+        await refreshLists();
+        if (res && res.name) await selectBot(res.name);
+      } catch (e) { showErr(e, "导入失败"); }
+    });
+    return wrap;
+  }
+
+  async function uploadAvatar(name, file) {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/bots/" + encodeURIComponent(name) + "/avatar", {
+      method: "POST", credentials: "same-origin", body: body,
+    });
+    const text = await res.text();
+    let payload = {};
+    if (text) {
+      try { payload = JSON.parse(text); } catch (e) { payload = { error: text }; }
+    }
+    if (!res.ok) throw new Error(payload.error || "头像上传失败");
+    return payload;
+  }
+
+  async function downloadTemplate(name) {
+    const res = await fetch("/api/bots/" + encodeURIComponent(name) + "/template", { credentials: "same-origin" });
+    if (!res.ok) {
+      let msg = "导出失败";
+      try { const data = await res.json(); if (data.error) msg = data.error; } catch (e) {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name + ".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   function openFork(src) {
@@ -811,7 +1018,7 @@
     if (inner.querySelector(".empty")) inner.replaceChildren();
     row = el("div", "msg bot live");
     const who = state.sel ? state.sel.id : "Bot";
-    row.append(avatar(who));
+    row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
     const head = el("div", "who-row");
     head.append(el("div", "who", who));

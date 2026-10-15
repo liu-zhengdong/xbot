@@ -40,6 +40,12 @@ type Config struct {
 	Webhooks     []string  `json:"webhooks,omitempty"`
 	Watches      []string  `json:"watches,omitempty"`
 	Pinned       bool      `json:"pinned,omitempty"`
+	Description  string    `json:"description,omitempty"`
+	Avatar       string    `json:"avatar,omitempty"`
+	Style        *Style    `json:"style,omitempty"`
+	Proactivity  string    `json:"proactivity,omitempty"`
+	QuietStart   string    `json:"quiet_start,omitempty"`
+	QuietEnd     string    `json:"quiet_end,omitempty"`
 	Created      time.Time `json:"created"`
 }
 
@@ -63,6 +69,7 @@ type EnvRecord struct {
 	Rules   string    `json:"rules,omitempty"`
 	Memory  string    `json:"memory,omitempty"`
 	Skills  string    `json:"skills,omitempty"`
+	Profile string    `json:"profile,omitempty"`
 	At      time.Time `json:"at,omitempty"`
 }
 
@@ -312,6 +319,9 @@ func (b *Bot) AgentDir(id string) string { return filepath.Join(b.dir(), "agents
 
 // OutboxPath is the notification log.
 func (b *Bot) OutboxPath() string { return filepath.Join(b.dir(), "outbox.jsonl") }
+
+// HeldPath stores notifications kept until quiet hours end.
+func (b *Bot) HeldPath() string { return filepath.Join(b.dir(), "held.json") }
 
 // ReadPersona returns persona.md, or the config string when the file is missing.
 func (b *Bot) ReadPersona() (string, error) {

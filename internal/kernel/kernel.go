@@ -57,6 +57,7 @@ type Kernel struct {
 	turnHops    int
 	turnChain   string
 	turnTrusted bool
+	turnSource  string
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -69,7 +70,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnKind = ev.SenderKind
 	k.turnHops = ev.Hops
 	k.turnChain = ev.Chain
+	k.turnSource = ev.Source
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
+	if _, err := k.releaseQuiet(ctx); err != nil {
+		return err
+	}
 	// Swap a finished background summary on the way in and on the way out.
 	// Both run outside the model call, including when this event is a replay.
 	defer func() {
@@ -191,7 +196,7 @@ func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 }
 
 func (k *Kernel) assemble(entries []bot.Entry, st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
-	persona, err := k.Bot.ReadPersona()
+	persona, err := k.Bot.ComposedPersona()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -236,6 +241,11 @@ func (k *Kernel) syncEnv(entries []bot.Entry, st bot.State, ev link.Event, mem s
 	if len(skills) > 0 {
 		skillHash = shortHash(strings.Join(skills, "\n"))
 	}
+	profile := k.Bot.ProfileText()
+	profileHash := ""
+	if profile != "" {
+		profileHash = shortHash(profile)
+	}
 	now := k.now()
 	next := bot.EnvRecord{
 		Hour:    now.Format("2006-01-02T15"),
@@ -246,6 +256,7 @@ func (k *Kernel) syncEnv(entries []bot.Entry, st bot.State, ev link.Event, mem s
 		Rules:   shortHash(rules),
 		Memory:  shortHash(mem),
 		Skills:  skillHash,
+		Profile: profileHash,
 		At:      now,
 	}
 	diff := DiffEnv(st.Env, next)

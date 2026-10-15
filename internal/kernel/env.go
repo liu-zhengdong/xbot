@@ -62,6 +62,9 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 	if prev.Persona != next.Persona {
 		lines = append(lines, "persona: updated")
 	}
+	if prev.Profile != next.Profile && (prev.Profile != "" || next.Profile != "") {
+		lines = append(lines, "profile: updated")
+	}
 	if prev.Rules != next.Rules {
 		lines = append(lines, "rules: updated")
 	}
@@ -86,6 +89,9 @@ func baseline(e bot.EnvRecord) string {
 	if e.Skills != "" {
 		body += "skills: " + e.Skills + "\n"
 	}
+	if e.Profile != "" {
+		body += "profile: " + e.Profile + "\n"
+	}
 	return "<environment_update>\n" + body + "</environment_update>"
 }
 
@@ -94,6 +100,9 @@ func snapshotText(e bot.EnvRecord) string {
 		e.Hour, e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
 	if e.Skills != "" {
 		body += "skills: " + e.Skills + "\n"
+	}
+	if e.Profile != "" {
+		body += "profile: " + e.Profile + "\n"
 	}
 	return "<environment_snapshot>\n" + body + "</environment_snapshot>"
 }

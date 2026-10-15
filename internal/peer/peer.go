@@ -391,6 +391,31 @@ func (b *Bus) Transcript(id string) ([]Line, error) {
 	return out, err
 }
 
+// RenameMember replaces from with to in every group's member list.
+func RenameMember(root, from, to string) error {
+	bus := &Bus{Root: root}
+	groups, err := bus.ListGroups()
+	if err != nil {
+		return err
+	}
+	for _, g := range groups {
+		changed := false
+		for i, m := range g.Members {
+			if m == from {
+				g.Members[i] = to
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		if err := bus.saveGroup(g); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (b *Bus) saveGroup(g Group) error {
 	raw, err := fsutil.Marshal(g)
 	if err != nil {

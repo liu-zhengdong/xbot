@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
@@ -22,7 +23,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, rememberTool{k}, forgetTool{k}, recallTool{k})
 	}
 	if k.hasLink(link.NamePersona) {
-		list = append(list, personaTool{k})
+		list = append(list, personaTool{k}, profileTool{k})
 	}
 	if k.hasLink(link.NameTimer) {
 		list = append(list, routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k}, notifyTool{k})
@@ -243,15 +244,19 @@ type notifyTool struct{ k *Kernel }
 
 func (notifyTool) Name() string { return "notify_owner" }
 func (notifyTool) Description() string {
-	return "Leave a notification for the owner. Use this on a timer wake when something is worth their attention."
+	return "Leave a notification for the owner. importance is low, normal, or high. On a routine wake, quiet bots deliver only high and active bots deliver all. During quiet hours the note is held and sent as one batch when the window ends."
 }
 func (notifyTool) Parameters() any {
-	return schema(map[string]any{"text": stringProp("what the owner should see")}, []string{"text"})
+	return schema(map[string]any{
+		"text":       stringProp("what the owner should see"),
+		"importance": stringProp("low, normal, or high; default normal"),
+	}, []string{"text"})
 }
 func (notifyTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
 func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
-		Text string `json:"text"`
+		Text       string `json:"text"`
+		Importance string `json:"importance"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -260,15 +265,47 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if text == "" {
 		return "", errors.New("notify: empty text")
 	}
-	if _, err := notify.Open(t.k.Bot.OutboxPath()).Append(text, t.k.now()); err != nil {
+	cfg := t.k.Bot.Config()
+	if t.k.turnSource == link.NameTimer && !bot.AllowsNotify(cfg.Proactivity, in.Importance) {
+		return "not notified: below the proactivity threshold", nil
+	}
+	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, t.k.now()) {
+		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
+			return "", err
+		}
+		return "held until quiet hours end", nil
+	}
+	n, err := t.k.releaseQuiet(ctx)
+	if err != nil {
 		return "", err
 	}
-	desk := t.k.Desktop
+	if err := deliverNote(ctx, t.k, text); err != nil {
+		return "", err
+	}
+	if n > 0 {
+		return "sent the quiet-hours batch, then notified the owner", nil
+	}
+	return "notified the owner", nil
+}
+
+func deliverNote(ctx context.Context, k *Kernel, text string) error {
+	if _, err := notify.Open(k.Bot.OutboxPath()).Append(text, k.now()); err != nil {
+		return err
+	}
+	desk := k.Desktop
 	if desk == nil {
 		desk = notify.Desktop
 	}
-	_ = desk(ctx, t.k.Bot.Name(), text)
-	return "notified the owner", nil
+	_ = desk(ctx, k.Bot.Name(), text)
+	return nil
+}
+
+func (k *Kernel) releaseQuiet(ctx context.Context) (int, error) {
+	cfg := k.Bot.Config()
+	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, k.now()) {
+		return 0, nil
+	}
+	return ReleaseQuiet(ctx, k.Bot, k.now(), k.Desktop)
 }
 
 type routineCreate struct{ k *Kernel }

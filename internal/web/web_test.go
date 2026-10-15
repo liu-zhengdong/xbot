@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -228,6 +229,93 @@ func TestBotListPinsPrimaryFirst(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "bob,cleo,ada" {
 		t.Fatalf("order %s", names)
+	}
+}
+
+func TestProfileAPI(t *testing.T) {
+	root := t.TempDir()
+	s := &Server{Root: root, Owner: "u1"}
+	tok, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameWeb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(muxOf(s))
+	defer srv.Close()
+	client := srv.Client()
+	do := func(method, path string, body io.Reader, contentType string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, srv.URL+path, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	patch := `{"description":"项目笔记","tone":"warm","length":"short","emoji":"none","language":"中文","proactivity":"quiet","quiet_start":"22:00","quiet_end":"07:00"}`
+	res := do(http.MethodPatch, "/api/bots/ada", strings.NewReader(patch), "application/json")
+	if res.StatusCode != 200 {
+		raw, _ := io.ReadAll(res.Body)
+		t.Fatalf("patch %d %s", res.StatusCode, raw)
+	}
+	res.Body.Close()
+	res = do(http.MethodGet, "/api/bots/ada", nil, "")
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"tone":"warm"`)) || !bytes.Contains(raw, []byte(`"proactivity":"quiet"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) {
+		t.Fatalf("panel %d %s", res.StatusCode, raw)
+	}
+	res = do(http.MethodGet, "/api/bots", nil, "")
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if !bytes.Contains(raw, []byte(`"description":"项目笔记"`)) || !bytes.Contains(raw, []byte(`"initial":"A"`)) || !bytes.Contains(raw, []byte(`"avatar_bg"`)) {
+		t.Fatalf("list %s", raw)
+	}
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 1, 2, 3}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", "a.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(png); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	res = do(http.MethodPost, "/api/bots/ada/avatar", &buf, w.FormDataContentType())
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("avatar %d %s", res.StatusCode, raw)
+	}
+	res = do(http.MethodGet, "/api/bots/ada/avatar", nil, "")
+	got, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !bytes.Equal(got, png) {
+		t.Fatalf("get avatar %d %q", res.StatusCode, got)
+	}
+	res = do(http.MethodDelete, "/api/bots/ada/avatar", nil, "")
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("delete %d", res.StatusCode)
+	}
+	res = do(http.MethodGet, "/api/bots/ada/avatar", nil, "")
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("cleared avatar %d", res.StatusCode)
 	}
 }
 
