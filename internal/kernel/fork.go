@@ -149,8 +149,8 @@ func (k *Kernel) handoff(ctx context.Context, role string) (string, error) {
 		return "", err
 	}
 	var prior strings.Builder
-	prior.WriteString("Write a handoff for a new bot. Do not paste the transcript. ")
-	prior.WriteString("Cover project background, key decisions, and context the new role needs.\n")
+	prior.WriteString("Write a handoff for a new bot whose only job is the new role. Do not paste the transcript. ")
+	prior.WriteString("Keep the project background, decisions, and context that role needs, and leave out anything it will not use.\n")
 	prior.WriteString("New role: ")
 	prior.WriteString(oneLine(role))
 	prior.WriteByte('\n')
@@ -228,7 +228,7 @@ func clipNote(s string, n int) string {
 
 func splitFact(s string, n int) []string {
 	s = strings.TrimSpace(s)
-	if s == "" {
+	if s == "" || n <= 0 {
 		return nil
 	}
 	var out []string
@@ -237,13 +237,7 @@ func splitFact(s string, n int) []string {
 			out = append(out, s)
 			break
 		}
-		cut := n
-		for cut > 0 && !utf8.ValidString(s[:cut]) {
-			cut--
-		}
-		if sp := strings.LastIndex(s[:cut], " "); sp > n/2 {
-			cut = sp
-		}
+		cut := splitBoundary(s, n)
 		part := strings.TrimSpace(s[:cut])
 		if part == "" {
 			return nil
@@ -252,6 +246,31 @@ func splitFact(s string, n int) []string {
 		s = strings.TrimSpace(s[cut:])
 	}
 	return out
+}
+
+// splitBoundary prefers a paragraph, then a line, then a word, and never a partial rune.
+func splitBoundary(s string, n int) int {
+	end := n
+	if end > len(s) {
+		end = len(s)
+	}
+	for end > 0 && !utf8.ValidString(s[:end]) {
+		end--
+	}
+	if end == 0 {
+		return 1
+	}
+	window := s[:end]
+	if i := strings.LastIndex(window, "\n\n"); i > 0 {
+		return i
+	}
+	if i := strings.LastIndex(window, "\n"); i > 0 {
+		return i
+	}
+	if i := strings.LastIndex(window, " "); i > 0 {
+		return i
+	}
+	return end
 }
 
 type forkBotTool struct{ k *Kernel }

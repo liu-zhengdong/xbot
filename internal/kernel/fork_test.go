@@ -256,6 +256,27 @@ func TestForkGroupOptional(t *testing.T) {
 	}
 }
 
+func TestSplitFactKeepsParagraphs(t *testing.T) {
+	alpha := strings.TrimSpace(strings.Repeat("alpha ", 40))
+	beta := strings.TrimSpace(strings.Repeat("beta ", 200))
+	text := alpha + "\n\n" + beta
+	parts := splitFact(text, 700)
+	if len(parts) < 2 {
+		t.Fatalf("parts %d", len(parts))
+	}
+	if parts[0] != alpha {
+		t.Fatalf("first chunk %q", parts[0])
+	}
+	for _, p := range parts {
+		if strings.Contains(p, "bet a") || strings.HasSuffix(strings.TrimSpace(p), "be") {
+			t.Fatalf("split a word: %q", p)
+		}
+	}
+	if strings.Contains(parts[0], "beta") {
+		t.Fatal("paragraphs were merged")
+	}
+}
+
 func TestForkEmptyTranscriptSkipsModel(t *testing.T) {
 	root := t.TempDir()
 	src, err := bot.Create(root, "ada", "persona", []string{link.NamePeers})
