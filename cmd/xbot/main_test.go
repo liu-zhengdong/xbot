@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
@@ -46,6 +47,60 @@ func TestParseChat(t *testing.T) {
 	opt, err = parseChat([]string{"ada", "--yes", "--max-steps", "4"})
 	if err != nil || !opt.Yes || opt.MaxSteps != 4 || opt.Name != "ada" {
 		t.Fatalf("%+v %v", opt, err)
+	}
+}
+
+func TestParseExport(t *testing.T) {
+	opt, err := parseExport([]string{"ada", "--format", "jsonl", "--tools", "--from", "2", "--to", "4", "--out", "out.jsonl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Bot != "ada" || opt.Format != "jsonl" || !opt.Tools || opt.From != 2 || opt.To != 4 || opt.Out != "out.jsonl" {
+		t.Fatalf("%+v", opt)
+	}
+	opt, err = parseExport([]string{"--out", "a.md", "ada"})
+	if err != nil || opt.Format != "md" || opt.Tools || opt.Bot != "ada" {
+		t.Fatalf("%+v %v", opt, err)
+	}
+	if _, err := parseExport([]string{"ada", "--from", "1", "--out", "a.md"}); err == nil {
+		t.Fatal("from without to")
+	}
+}
+
+func TestExportCommandRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	if err := b.Append(bot.Entry{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: "seq-one"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleTool, Content: "TOOL-RESULT"}}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(root, "ada.jsonl")
+	if err := cmdExport(root, []string{"ada", "--format", "jsonl", "--tools", "--out", out}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"seq":1`) || !strings.Contains(string(raw), `"seq":2`) || !strings.Contains(string(raw), "TOOL-RESULT") {
+		t.Fatalf("%s", raw)
+	}
+	quiet := filepath.Join(root, "quiet.jsonl")
+	if err := cmdExport(root, []string{"--out", quiet, "--format", "jsonl", "ada"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err = os.ReadFile(quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "TOOL-RESULT") || !strings.Contains(string(raw), `"seq":1`) {
+		t.Fatalf("tools flag %s", raw)
 	}
 }
 

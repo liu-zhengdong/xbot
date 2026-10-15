@@ -123,6 +123,13 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 `recall_history` 和 `expand` 可以多带一个 `bot`，读同一个 owner 的另一个 Bot 的原文。别的 owner、只是同群、或群记录本身，都会拒绝。读到的内容包在 `<untrusted_event>` 里，标明来自那个 Bot，不能当成指令。
 
+```bash
+xbot export ada --out ada.md
+xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
+```
+
+`md` 用本机时区，摘要块单独成段。`jsonl` 每行带原来的 seq，普通行可以再导入。默认不写工具调用和工具结果。网页对应 `GET /api/bots/{name}/export`。
+
 软阈值走另一条路。History 过了大约 70% 就写一份 `compact-job.json`，在后台压一段更早的、守同样边界的范围。主循环继续处理事件。这段范围在任务开始时就定死了，压的过程里新到的消息序号在范围外面，不会被卷进去。每个 Bot 同时只有一个任务；第二个进程抢不到运行锁就退出。摘要和抽出来的事实先落在任务文件里。块只在两轮之间换进 state，不会插在模型调用中间。换过同范围的块再换一次是空操作。任务还在 `running`、摘要没写完时崩溃，不会留下半块；下次唤醒接着压同一段。压完如果尾巴里已经没有环境消息，就再追加一条完整的 `<environment_snapshot>`，避免状态被摘要吃掉。抽事实和摘要在同一个后台任务里做，写入记忆时按正文去重。
 
 **记忆。** 三个范围，两档：

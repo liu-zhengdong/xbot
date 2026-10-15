@@ -56,6 +56,7 @@ Usage:
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
+  xbot [--root DIR] export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE
   xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME
   xbot [--root DIR] bind <name> --clear
@@ -131,6 +132,8 @@ func run(argv []string) error {
 		return cmdProfile(root, rest[1:])
 	case "template":
 		return cmdTemplate(root, rest[1:])
+	case "export":
+		return cmdExport(root, rest[1:])
 	case "reindex":
 		return cmdReindex(root, rest[1:])
 	case "bind":
@@ -658,6 +661,66 @@ func cmdProfileAvatar(root string, args []string) error {
 	}
 	fmt.Printf("avatar set for %s\n", b.Name())
 	return nil
+}
+
+type exportOpts struct {
+	Bot    string
+	Format string
+	Tools  bool
+	From   int
+	To     int
+	Out    string
+	Set    map[string]bool
+}
+
+func parseExport(args []string) (exportOpts, error) {
+	ordered, err := reorderFlags(args, map[string]bool{
+		"format": true, "from": true, "to": true, "out": true,
+	})
+	if err != nil {
+		return exportOpts{}, err
+	}
+	fs := flag.NewFlagSet("export", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	format := fs.String("format", "md", "md or jsonl")
+	tools := fs.Bool("tools", false, "include tool calls and tool results")
+	from := fs.Int("from", 0, "first sequence number")
+	to := fs.Int("to", 0, "last sequence number")
+	out := fs.String("out", "", "output file")
+	if err := fs.Parse(ordered); err != nil {
+		return exportOpts{}, err
+	}
+	if fs.NArg() != 1 || strings.TrimSpace(*out) == "" {
+		return exportOpts{}, errors.New("usage: xbot export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE")
+	}
+	opt := exportOpts{Bot: fs.Arg(0), Format: *format, Tools: *tools, From: *from, To: *to, Out: *out, Set: map[string]bool{}}
+	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
+	if opt.Set["from"] != opt.Set["to"] {
+		return exportOpts{}, errors.New("export: from and to are set together")
+	}
+	return opt, nil
+}
+
+func cmdExport(root string, args []string) error {
+	opt, err := parseExport(args)
+	if err != nil {
+		return err
+	}
+	b, err := bot.Load(root, opt.Bot)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(opt.Out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := bot.ExportTo(f, b, bot.TranscriptExport{
+		Format: opt.Format, Tools: opt.Tools, From: opt.From, To: opt.To, Loc: time.Local,
+	}); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func cmdReindex(root string, args []string) error {

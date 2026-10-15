@@ -6,10 +6,12 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -72,6 +74,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/template", s.exportTemplate)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
+	mux.HandleFunc("GET /api/bots/{name}/export", s.exportTranscript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/steer", s.steer)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
@@ -477,6 +480,81 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		rows = []apiRow{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": rows})
+}
+
+func (s *Server) exportTranscript(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	q := r.URL.Query()
+	format := strings.TrimSpace(q.Get("format"))
+	if format == "" {
+		format = "md"
+	}
+	if format != "md" && format != "jsonl" {
+		writeErr(w, http.StatusBadRequest, "bad format")
+		return
+	}
+	tools, err := queryBool(q.Get("tools"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad tools")
+		return
+	}
+	from, to, err := queryRange(q.Get("from"), q.Get("to"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	opt := bot.TranscriptExport{Format: format, Tools: tools, From: from, To: to, Loc: time.Local}
+	if err := bot.ValidateExport(b, opt); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ext := "md"
+	ctype := "text/markdown; charset=utf-8"
+	if format == "jsonl" {
+		ext = "jsonl"
+		ctype = "application/x-ndjson; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", b.Name()+"."+ext))
+	w.WriteHeader(http.StatusOK)
+	_ = bot.ExportTo(w, b, opt)
+}
+
+func queryBool(raw string) (bool, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "0":
+		return false, nil
+	case "1":
+		return true, nil
+	default:
+		return false, errors.New("bad tools")
+	}
+}
+
+func queryRange(fromRaw, toRaw string) (int, int, error) {
+	fromRaw, toRaw = strings.TrimSpace(fromRaw), strings.TrimSpace(toRaw)
+	if fromRaw == "" && toRaw == "" {
+		return 0, 0, nil
+	}
+	if fromRaw == "" || toRaw == "" {
+		return 0, 0, errors.New("from and to are set together")
+	}
+	from, err := strconv.Atoi(fromRaw)
+	if err != nil {
+		return 0, 0, errors.New("bad from")
+	}
+	to, err := strconv.Atoi(toRaw)
+	if err != nil {
+		return 0, 0, errors.New("bad to")
+	}
+	return from, to, nil
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {

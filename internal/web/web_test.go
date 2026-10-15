@@ -390,6 +390,93 @@ func TestSetPrimaryAndDeleteAPI(t *testing.T) {
 	}
 }
 
+func TestExportAPI(t *testing.T) {
+	root := t.TempDir()
+	s := &Server{Root: root, Owner: "u1"}
+	tok, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ada, err := bot.Create(root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	if err := ada.Append(bot.Entry{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: "hello export"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.Append(bot.Entry{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: "TOOL-RESULT"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.SaveState(bot.State{Blocks: []bot.SummaryBlock{{From: 1, To: 1, Text: "SUMMARY-TEXT"}}}); err != nil {
+		t.Fatal(err)
+	}
+	eve, err := bot.Create(root, "eve", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eve.SetOwners([]string{"u2"}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(muxOf(s))
+	defer srv.Close()
+	get := func(path string, cookie bool) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cookie {
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		}
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	res := get("/api/bots/ada/export?format=md", false)
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("anon %d", res.StatusCode)
+	}
+	res = get("/api/bots/eve/export", true)
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("other owner %d", res.StatusCode)
+	}
+	res = get("/api/bots/ada/export?format=md", true)
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte("## seq 1")) || !bytes.Contains(raw, []byte("hello export")) || !bytes.Contains(raw, []byte("## Summary seq 1-1")) {
+		t.Fatalf("md %d %s", res.StatusCode, raw)
+	}
+	if bytes.Contains(raw, []byte("TOOL-RESULT")) {
+		t.Fatalf("tools default on\n%s", raw)
+	}
+	res = get("/api/bots/ada/export?format=jsonl&tools=1", true)
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"seq":1`)) || !bytes.Contains(raw, []byte(`"seq":2`)) || !bytes.Contains(raw, []byte("TOOL-RESULT")) {
+		t.Fatalf("jsonl %d %s", res.StatusCode, raw)
+	}
+	var entry bot.Entry
+	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		if bytes.Contains(line, []byte(`"kind":"summary"`)) {
+			continue
+		}
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(line, []byte(`"seq":1`)) && entry.Message.Content != "hello export" {
+			t.Fatalf("round trip %s", line)
+		}
+	}
+}
+
 func muxOf(s *Server) http.Handler {
 	mux := http.NewServeMux()
 	s.Register(mux)
