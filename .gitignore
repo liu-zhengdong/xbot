@@ -1,2 +1,13 @@
 /bin/
 *.test
+/vendor/
+/dist/
+*.exe
+*.out
+coverage.*
+*.prof
+*.db
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
