@@ -43,6 +43,7 @@
     replyTo: null,
     placeholder: "写一条消息",
     modelCatalog: null,
+    push: null,
   };
 
   const FACES = [
@@ -3018,7 +3019,76 @@
     const pop = $("connect-pop");
     pop.hidden = !pop.hidden;
     $("connect").setAttribute("aria-expanded", pop.hidden ? "false" : "true");
+    if (!pop.hidden) loadPush().catch(() => {});
   });
+
+  function urlBase64ToUint8Array(s) {
+    const pad = "=".repeat((4 - (s.length % 4)) % 4);
+    const b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(b64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  async function loadPush() {
+    const data = await api("/api/push");
+    state.push = data;
+    const btn = $("phone-push");
+    const label = $("phone-push-state");
+    const dot = $("phone-push-dot");
+    if (btn) btn.textContent = data.subscribed ? "关闭手机推送" : "开启手机推送";
+    if (label) label.textContent = data.subscribed ? "手机推送已开启" : "手机推送未开启";
+    if (dot) {
+      dot.className = data.subscribed ? "status-dot ok" : "status-dot off";
+      setTip(dot, data.subscribed ? "已开启" : "未开启");
+    }
+    return data;
+  }
+
+  async function togglePush() {
+    const hint = $("phone-push-hint");
+    try {
+      const data = state.push || await loadPush();
+      if (data.subscribed) {
+        await api("/api/push/subscribe", { method: "DELETE", body: {} });
+        await loadPush();
+        if (hint) hint.textContent = "页面开着时仍在这里提示。没有页面连着时，才推到手机。免打扰时段不推送。";
+        return;
+      }
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
+        if (hint) hint.textContent = "这台浏览器不支持后台推送。";
+        return;
+      }
+      let perm = Notification.permission;
+      if (perm === "default") perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        if (hint) hint.textContent = "需要允许通知，手机才能在后台收到。";
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(data.public_key),
+      });
+      const json = sub.toJSON();
+      await api("/api/push/subscribe", {
+        method: "POST",
+        body: {
+          endpoint: json.endpoint,
+          p256dh: json.keys && json.keys.p256dh,
+          auth: json.keys && json.keys.auth,
+        },
+      });
+      await loadPush();
+      if (hint) hint.textContent = "已开启。页面开着时仍在这里提示。没有页面连着时，才推到手机。";
+    } catch (e) {
+      if (hint) hint.textContent = e.message || "开启失败";
+    }
+  }
+
+  const phonePush = $("phone-push");
+  if (phonePush) phonePush.addEventListener("click", () => { togglePush().catch(() => {}); });
 
   $("plus").addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -3196,6 +3266,7 @@
   async function boot() {
     await refreshLists();
     await refreshNotes();
+    await loadPush().catch(() => {});
     renderMe();
     const home = state.bots.find((b) => b.primary) || state.bots[0];
     if (!state.sel && home) await selectBot(home.name);

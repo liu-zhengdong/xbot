@@ -51,6 +51,10 @@ type Server struct {
 	kernels   map[string]*kernel.Kernel
 	gate      map[string]*sync.Mutex
 	approvals map[string]chan approvalDecision
+
+	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
+	pushHTTP *http.Client
+	tabs     map[string]*tabState
 }
 
 type approvalDecision struct {
@@ -108,6 +112,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/notes", s.notes)
 	mux.HandleFunc("POST /api/notes/read", s.readNotes)
+	mux.HandleFunc("GET /api/push", s.pushStatus)
+	mux.HandleFunc("POST /api/push/subscribe", s.pushSubscribe)
+	mux.HandleFunc("DELETE /api/push/subscribe", s.pushUnsubscribe)
+	notify.Bind(s.Root, s.onNote)
 
 	mux.HandleFunc("GET /api/groups", s.listGroups)
 	mux.HandleFunc("POST /api/groups", s.createGroup)
@@ -176,6 +184,7 @@ func (s *Server) require(w http.ResponseWriter, r *http.Request) bool {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return false
 	}
+	s.touchTab(s.owner)
 	return true
 }
 
@@ -617,6 +626,8 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
+	s.enterTab(s.owner)
+	defer s.leaveTab(s.owner)
 	var in struct {
 		Text    string `json:"text"`
 		ReplyTo *int   `json:"reply_to"`

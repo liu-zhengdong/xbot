@@ -46,7 +46,11 @@ func (o *Outbox) Append(text string, at time.Time) (Note, error) {
 	}
 	n := Note{ID: newID(), Text: text, Time: at.UTC()}
 	err := fsutil.AppendJSONL(o.path, record{Op: "note", ID: n.ID, Text: n.Text, Time: n.Time})
-	return n, err
+	if err != nil {
+		return n, err
+	}
+	emitNote(o.path, n)
+	return n, nil
 }
 
 // Unread folds the log and returns notes that have not been marked read.

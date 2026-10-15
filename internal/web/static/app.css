@@ -1289,6 +1289,11 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .pop button:active:not(:disabled) { background: var(--selected); }
 
+.push-hint {
+  margin: 0; padding: 2px 10px 8px;
+  font-size: 12px; line-height: 1.45; color: var(--muted);
+}
+
 .more-wrap { position: relative; flex: none; }
 
 .more-pop {

@@ -1,4 +1,4 @@
-const CACHE = "xbot-ui-v7";
+const CACHE = "xbot-ui-v8";
 const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/fonts/MonaSansVF.woff2"];
 
 self.addEventListener("install", (event) => {
@@ -34,4 +34,35 @@ self.addEventListener("message", (event) => {
       tag: data.tag || "xbot"
     });
   }
+});
+
+self.addEventListener("push", (event) => {
+  let title = "XBot";
+  let body = "";
+  let tag = "xbot";
+  try {
+    const data = event.data ? event.data.json() : {};
+    title = data.title || title;
+    body = data.body || "";
+    tag = data.tag || tag;
+  } catch (e) {
+    body = event.data ? event.data.text() : "";
+  }
+  event.waitUntil(self.registration.showNotification(title, {
+    body: body,
+    icon: "/icon-192.png",
+    tag: tag
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("/");
+    })
+  );
 });
