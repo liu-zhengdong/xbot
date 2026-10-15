@@ -50,7 +50,10 @@ func (s *FileStore) Remember(_ context.Context, fact Fact) error {
 			return err
 		}
 		facts = append(facts, fact)
-		return saveTier(dir, fact.Tier, facts)
+		if err := saveTier(dir, fact.Tier, facts); err != nil {
+			return err
+		}
+		return noteSync(s.Root, opRemember, fact)
 	})
 }
 
@@ -108,14 +111,27 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 			if err != nil {
 				return err
 			}
-			kept := facts[:0]
+			kept := make([]Fact, 0, len(facts))
+			var removed []Fact
 			for _, f := range facts {
-				if f.Text != exact {
-					kept = append(kept, f)
+				if f.Text == exact {
+					removed = append(removed, f)
+					continue
 				}
+				kept = append(kept, f)
 			}
-			if len(kept) != len(facts) {
-				if err := saveTier(dir, tier, kept); err != nil {
+			if len(removed) == 0 {
+				continue
+			}
+			if err := saveTier(dir, tier, kept); err != nil {
+				return err
+			}
+			if q.Scope != ScopePerson {
+				continue
+			}
+			for _, f := range removed {
+				f.Time = time.Now().UTC()
+				if err := noteSync(s.Root, opForget, f); err != nil {
 					return err
 				}
 			}

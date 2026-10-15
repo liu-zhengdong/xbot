@@ -96,6 +96,8 @@ Usage:
   xbot [--root DIR] node remove <name>
   xbot [--root DIR] node call <name> info
   xbot [--root DIR] node call <name> shell <command>
+  xbot [--root DIR] sync export --out FILE
+  xbot [--root DIR] sync merge --file FILE
   xbot [--root DIR] machine list
   xbot [--root DIR] machine set <name> allow|ask|off
   xbot [--root DIR] desktop screenshot
@@ -206,6 +208,8 @@ func run(argv []string) error {
 		return cmdWatch(root, rest[1:])
 	case "node":
 		return cmdNode(root, rest[1:])
+	case "sync":
+		return cmdSync(root, rest[1:])
 	case "machine":
 		return cmdMachine(root, rest[1:])
 	case "desktop":

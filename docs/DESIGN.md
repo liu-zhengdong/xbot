@@ -101,7 +101,7 @@
 - **连接器**：Telegram 和飞书。装上之后，外面的消息才进收件箱。安装要主人在确认卡里填密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`）。值写进该 Bot 的 `secrets.json`（权限 0600），不进系统提示，不进 transcript，也不进工具结果。命令行安装从同名环境变量读；变量是空的就不装、不落盘。网页 `POST /api/bots/{name}/links` 不接收密钥，声明了密钥的条目返回 409。入站是 `POST /connector/telegram/{bot}` 和 `POST /connector/lark/{bot}`，不走网页登录。Telegram 用请求头 `X-Telegram-Bot-Api-Secret-Token`，飞书用请求头 `X-Lark-Token` 或正文里的 `token`，和存好的密钥不一致就拒绝，收件箱不写。对上的消息写成来源 `telegram` 或 `lark` 的不可信事件，正文是聊天 id 和文本，没有密钥。飞书的 `url_verification` 只回 `challenge`，不唤醒。同一条 `update_id` 或 `message_id` 只收一次。出站工具是 `telegram_send` 和 `lark_send`。schema 不在首轮工具里，`links load` 之后只留在当前这一轮。调用先落一份草稿，确认卡给主人看收件人和正文；没点头就不发，草稿留着。点头之后才请求 Telegram 的 `sendMessage`，或飞书自定义机器人的 webhook。返回给模型的错误里，密钥换成 `[secret]`。卸下这条 Link 时删掉它的密钥。
 - **市场条目**：标明类型（原生 Link 插件，或 MCP）、能力（工具 / 入站事件）、以及需要的密钥。
 - **编码代理 Link**：和子代理分开。一个 Bot 可以同时留下多条编码任务，每条有自己的工作目录、仓库、步数上限和时间上限，不套用子代理的 16 步、10 分钟。记录在 `bots/<name>/code/<id>.json`，id 以 `ca_` 开头。同时只有一条是 `running`，再开始的进 `queued`。Bot 可以补充（`code_steer`）、排队（`code_queue`）、打断（`code_interrupt`）、取消（`code_cancel`），并用 `code_show` 看记录。取消正在跑的那条时，队列里最早的一条变成 `running`。完成、失败或取消时向该 Bot 的收件箱投来源 `coding-agent` 的不可信事件。这些工具的 schema 要 `links load coding-agent` 之后才进当前这一轮。内核没有新的对象。后端三选一，内核没有新对象。`XBOT_CODE_AGENT` 是已有编码代理的可执行文件，优先用它。否则 `xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner`。都没有时，用这个 Bot 绑定的模型在本进程里跑。步数和时间都用这条任务自己的上限。仓库非空且工作目录还没有 `.git` 时先克隆。这三个都没配时，仍然只写记录。
-- **排期**：Link 插件市场、MCP 适配器、编码代理 Link 一起放在 M6，这几片已经接上。远程隧道、多节点、机器开关、桌面和浏览器也已经接上。手机推送和人的记忆同步仍按里程碑表排在后面。
+- **排期**：Link 插件市场、MCP 适配器、编码代理 Link 一起放在 M6，这几片已经接上。远程隧道、多节点、机器开关、桌面和浏览器也已经接上。手机推送和人的记忆同步见下面的切片。
 
 ### M6 切片
 
@@ -111,6 +111,7 @@
 4. **编码代理任务**。和子代理分开的任务记录：工作目录、仓库、步数上限、时间上限。可以开始、补充、排队、打断、取消。完成、失败或取消时向该 Bot 的收件箱投 Event。后端接口先定好，这一片只用本地记录，不接真的编码代理。
 5. **编码代理后端**。同一份任务记录接到三个后端，内核不加新对象。本机没有单独配置时，用 Bot 绑定的模型在进程里跑，步数和时间用这条任务自己的上限。`xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner` 的 `/v1/code/start`，控制走 `/v1/code/message`，结果从 `/v1/code/events` 回到本地记录。`XBOT_CODE_AGENT` 指向一个已有编码代理的可执行文件时，在工作目录里启动它，目标写在参数里，超时用这条任务的时间上限。仓库非空且目录里还没有 `.git` 时，先 `git clone`。完成、失败、取消仍只通过原来的收件箱事件。优先级是外部命令，然后 runner，然后本机模型。都没有时仍只写记录。
 6. **手机后台推送**。每个 owner 一份 VAPID Web Push 订阅，写在数据根的 `push/subs/<owner>.json`（0600），密钥在 `push/vapid.json`（0600）。网页「连接应用」里开启或关掉。浏览器页面还连着（正在拉接口，或有一条没结束的对话）时，通知仍走页面里原来的提示，不发 Web Push。没有标签页连着，并且这条 note 已经写进出件箱时，才按订阅推到手机。免打扰时段不推：时段内 note 只进 held，不写出件箱；即便出件箱里已经有一条，只要这时还在免打扰，后台推送也停。时段结束后合成的那一条按同样的规则推。页面里的通知列表和提示保持原样。
+7. **人的记忆同步**。人的身份追加在 `people/<id>/identity.jsonl`，人的记忆追加在 `people/<id>/memory/sync.jsonl`。每条记下时间、写下的 Bot、设备。设备用数据根里已有的 `node-id`，没有就记 `local`。`xbot sync export --out FILE` 导出这两份日志，`xbot sync merge --file FILE` 把另一台机器经中继送来的同一份日志并进来。同一条以时间戳较新的为准；时间相同留本机已有的。账号取并集。Bot 目录不改，Bot 仍留在自己的家节点。
 
 用户技能加在已有的 `skills` Link 上，不单列一片，也不替换上面的连接器和编码代理。
 

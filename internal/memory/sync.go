@@ -1,0 +1,294 @@
+package memory
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"xbot/internal/fsutil"
+)
+
+const (
+	opRemember = "remember"
+	opForget   = "forget"
+)
+
+// SyncLine is one append-only person-memory record. The relay merges these by time.
+type SyncLine struct {
+	Time   time.Time `json:"time"`
+	Bot    string    `json:"bot,omitempty"`
+	Device string    `json:"device"`
+	Op     string    `json:"op"`
+	Fact   Fact      `json:"fact"`
+}
+
+// ReadSync returns the person-memory log. A missing file is empty.
+func ReadSync(root, personID string) ([]SyncLine, error) {
+	if err := clean(personID); err != nil {
+		return nil, err
+	}
+	var out []SyncLine
+	err := fsutil.ReadJSONL(syncPath(root, personID), func(line []byte) error {
+		var e SyncLine
+		if err := json.Unmarshal(line, &e); err != nil {
+			return err
+		}
+		out = append(out, e)
+		return nil
+	})
+	return out, err
+}
+
+// ExportSync reads every person-memory log under the data root.
+// Facts that were stored before the log existed are appended first.
+func ExportSync(root string) ([]SyncLine, error) {
+	if err := MergeSync(root, nil); err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(root, "people")
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []SyncLine
+	for _, ent := range entries {
+		if !ent.IsDir() || !ValidID(ent.Name()) {
+			continue
+		}
+		lines, err := ReadSync(root, ent.Name())
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, lines...)
+	}
+	return out, nil
+}
+
+// MergeSync folds remote person-memory lines into this data root.
+// The newest timestamp wins for each key. An equal timestamp keeps the local line.
+// Files under bots/ are left alone.
+func MergeSync(root string, remote []SyncLine) error {
+	byID := map[string][]SyncLine{}
+	for _, ln := range remote {
+		id := ln.Fact.PersonID
+		if err := clean(id); err != nil {
+			return err
+		}
+		if ln.Fact.Scope != "" && ln.Fact.Scope != ScopePerson {
+			continue
+		}
+		ln.Fact.Scope = ScopePerson
+		byID[id] = append(byID[id], ln)
+	}
+	ids := map[string]bool{}
+	entries, err := os.ReadDir(filepath.Join(root, "people"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for _, ent := range entries {
+		if ent.IsDir() && ValidID(ent.Name()) {
+			ids[ent.Name()] = true
+		}
+	}
+	for id := range byID {
+		ids[id] = true
+	}
+	for id := range ids {
+		if err := mergePerson(root, id, byID[id]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mergePerson(root, id string, remote []SyncLine) error {
+	dir := filepath.Join(root, "people", id, "memory")
+	return fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+		local, err := ReadSync(root, id)
+		if err != nil {
+			return err
+		}
+		extra, err := backfill(dir, id, local)
+		if err != nil {
+			return err
+		}
+		for _, ln := range extra {
+			if err := appendSync(root, ln); err != nil {
+				return err
+			}
+			local = append(local, ln)
+		}
+		have := map[string]bool{}
+		for _, ln := range local {
+			have[syncKey(ln)] = true
+		}
+		for _, ln := range remote {
+			ln.Time = ln.Time.UTC()
+			ln.Fact.PersonID = id
+			ln.Fact.Scope = ScopePerson
+			if ln.Op == "" {
+				ln.Op = opRemember
+			}
+			if have[syncKey(ln)] {
+				continue
+			}
+			if err := appendSync(root, ln); err != nil {
+				return err
+			}
+			local = append(local, ln)
+			have[syncKey(ln)] = true
+		}
+		if len(local) == 0 {
+			return nil
+		}
+		return writeFold(dir, id, local)
+	})
+}
+
+func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
+	have := map[string]bool{}
+	for _, ln := range local {
+		have[factMark(ln)] = true
+	}
+	var extra []SyncLine
+	for _, tier := range []Tier{TierProfile, TierLog} {
+		facts, err := loadTier(dir, tier, ScopePerson, "", id)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range facts {
+			ln := SyncLine{Time: f.Time.UTC(), Bot: f.WrittenBy, Device: "local", Op: opRemember, Fact: f}
+			if have[factMark(ln)] {
+				continue
+			}
+			extra = append(extra, ln)
+			have[factMark(ln)] = true
+		}
+	}
+	return extra, nil
+}
+
+func writeFold(dir, id string, lines []SyncLine) error {
+	byTier := map[Tier][]Fact{}
+	winners := foldSync(lines)
+	for _, f := range winners {
+		tier := f.Tier
+		if tier == "" {
+			tier = TierLog
+		}
+		byTier[tier] = append(byTier[tier], f)
+	}
+	for _, tier := range []Tier{TierProfile, TierLog} {
+		facts := byTier[tier]
+		if facts == nil {
+			facts = []Fact{}
+		}
+		if err := saveTier(dir, tier, facts); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func foldSync(lines []SyncLine) []Fact {
+	type slot struct {
+		ln  SyncLine
+		idx int
+		ok  bool
+	}
+	order := []string{}
+	best := map[string]*slot{}
+	for i, ln := range lines {
+		key := ln.Fact.Key
+		if key == "" || (ln.Op != opRemember && ln.Op != opForget) {
+			continue
+		}
+		cur := best[key]
+		if cur == nil {
+			best[key] = &slot{ln: ln, idx: i, ok: true}
+			order = append(order, key)
+			continue
+		}
+		if ln.Time.After(cur.ln.Time) {
+			cur.ln = ln
+			cur.idx = i
+		}
+	}
+	var out []Fact
+	for _, key := range order {
+		ln := best[key].ln
+		if ln.Op == opForget {
+			continue
+		}
+		f := ln.Fact
+		f.Key = key
+		f.Scope = ScopePerson
+		f.Time = ln.Time.UTC()
+		if f.WrittenBy == "" {
+			f.WrittenBy = ln.Bot
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+func noteSync(root string, op string, fact Fact) error {
+	if fact.Scope != ScopePerson {
+		return nil
+	}
+	bot := strings.TrimSpace(fact.WrittenBy)
+	if bot == "" {
+		bot = strings.TrimSpace(fact.BotName)
+	}
+	return appendSync(root, SyncLine{
+		Time:   fact.Time.UTC(),
+		Bot:    bot,
+		Device: deviceOf(root),
+		Op:     op,
+		Fact:   fact,
+	})
+}
+
+func appendSync(root string, ln SyncLine) error {
+	if err := clean(ln.Fact.PersonID); err != nil {
+		return err
+	}
+	if ln.Time.IsZero() {
+		ln.Time = time.Now().UTC()
+	}
+	ln.Time = ln.Time.UTC()
+	if ln.Device == "" {
+		ln.Device = deviceOf(root)
+	}
+	if ln.Op == "" {
+		ln.Op = opRemember
+	}
+	return fsutil.AppendJSONL(syncPath(root, ln.Fact.PersonID), ln)
+}
+
+func syncPath(root, id string) string {
+	return filepath.Join(root, "people", id, "memory", "sync.jsonl")
+}
+
+func syncKey(ln SyncLine) string {
+	return ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + ln.Bot + "\x00" + ln.Device + "\x00" + ln.Op + "\x00" + ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + string(ln.Fact.Tier)
+}
+
+func factMark(ln SyncLine) string {
+	return ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + string(ln.Fact.Tier)
+}
+
+func deviceOf(root string) string {
+	raw, err := os.ReadFile(filepath.Join(root, "node-id"))
+	s := strings.TrimSpace(string(raw))
+	if err != nil || s == "" || strings.ContainsAny(s, "/\\\n\r") || len(s) > 128 {
+		return "local"
+	}
+	return s
+}
