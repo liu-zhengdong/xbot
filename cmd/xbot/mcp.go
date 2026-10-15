@@ -40,7 +40,11 @@ func cmdMCPList(root string, args []string) error {
 		return err
 	}
 	for _, s := range list {
-		fmt.Printf("%s\t%s\t%s\t%s\n", s.Name, s.Command, strings.Join(s.Args, " "), strings.Join(s.SecretEnvs, ","))
+		where := s.Command
+		if s.URL != "" {
+			where = s.URL
+		}
+		fmt.Printf("%s\t%s\t%s\t%s\n", s.Name, where, strings.Join(s.Args, " "), strings.Join(s.SecretEnvs, ","))
 	}
 	return nil
 }
@@ -49,6 +53,7 @@ func cmdMCPAdd(root string, args []string) error {
 	ordered, err := reorderFlags(args, map[string]bool{
 		"command":    true,
 		"arg":        true,
+		"url":        true,
 		"secret-env": true,
 	})
 	if err != nil {
@@ -57,6 +62,7 @@ func cmdMCPAdd(root string, args []string) error {
 	fs := flag.NewFlagSet("mcp add", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	command := fs.String("command", "", "executable")
+	endpoint := fs.String("url", "", "streamable HTTP endpoint")
 	var cmdArgs []string
 	var secrets []string
 	fs.Func("arg", "repeatable argument", func(s string) error {
@@ -70,14 +76,14 @@ func cmdMCPAdd(root string, args []string) error {
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
-	if fs.NArg() != 2 || *command == "" {
-		return errors.New("usage: xbot mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...")
+	if fs.NArg() != 2 || (*command == "" && *endpoint == "") || (*command != "" && *endpoint != "") {
+		return errors.New("usage: xbot mcp add <bot> <name> (--command PATH [--arg A]... | --url URL) [--secret-env NAME]...")
 	}
 	b, err := bot.Load(root, fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	s := link.MCPServer{Name: fs.Arg(1), Command: *command, Args: cmdArgs, SecretEnvs: secrets}
+	s := link.MCPServer{Name: fs.Arg(1), Command: *command, Args: cmdArgs, URL: *endpoint, SecretEnvs: secrets}
 	if err := link.AddMCP(b.MCPPath(), s); err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/code"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -100,6 +101,9 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 	turns := make([]provider.Message, 0, len(entries))
 	var joined strings.Builder
 	for _, e := range entries {
+		if code.IsCard(e.Message.Content) {
+			continue
+		}
 		turns = append(turns, e.Message)
 		joined.WriteString(e.Message.Content)
 		joined.WriteByte('\n')

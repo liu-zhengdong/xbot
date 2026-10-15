@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	heldMu   sync.Mutex
-	heldKeys map[string]string
+	heldMu    sync.Mutex
+	heldKeys  map[string]string
+	heldNames map[string]bool
 )
 
 // HoldKeys copies the named variables into memory and removes them from the
@@ -20,11 +21,15 @@ func HoldKeys(names []string) {
 	if heldKeys == nil {
 		heldKeys = map[string]string{}
 	}
+	if heldNames == nil {
+		heldNames = map[string]bool{}
+	}
 	for _, name := range names {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
 		}
+		heldNames[name] = true
 		value, ok := os.LookupEnv(name)
 		if !ok {
 			continue
@@ -42,7 +47,16 @@ func HoldKeys(names []string) {
 func ForgetKeys() {
 	heldMu.Lock()
 	heldKeys = nil
+	heldNames = nil
 	heldMu.Unlock()
+}
+
+// ProviderKey reports a name passed to HoldKeys. Those values stay in memory
+// and must not be copied into a child process or an outbound header.
+func ProviderKey(name string) bool {
+	heldMu.Lock()
+	defer heldMu.Unlock()
+	return heldNames[strings.TrimSpace(name)]
 }
 
 // Getenv returns a held provider key, or the process environment.

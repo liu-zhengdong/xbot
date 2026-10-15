@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -22,6 +23,20 @@ import (
 
 const maxMCPServers = 32
 
+// providerKeyFn reports provider API key names. main sets it from config.HoldKeys.
+// MCP must not copy those values into a child or an HTTP header.
+var providerKeyFn func(string) bool
+
+// SetProviderKey installs the check used before a secret env is passed on.
+func SetProviderKey(fn func(string) bool) { providerKeyFn = fn }
+
+func providerKey(name string) bool {
+	if providerKeyFn == nil {
+		return false
+	}
+	return providerKeyFn(strings.TrimSpace(name))
+}
+
 var (
 	// ErrMCPExists means this bot already has a server with that name.
 	ErrMCPExists = errors.New("mcp: already exists")
@@ -32,12 +47,15 @@ var (
 	envNameRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 )
 
-// MCPServer is one stdio MCP process. SecretEnvs names variables; values stay in the environment.
-// Dial, when set, replaces the process. Tests use it.
+// MCPServer is one MCP server for this bot. Command starts a stdio process.
+// URL, when set, is a Streamable HTTP endpoint and Command is unused.
+// SecretEnvs names variables; values stay out of the file. Provider API keys
+// are rejected. Dial, when set, replaces both transports. Tests use it.
 type MCPServer struct {
 	Name       string                                                `json:"name"`
-	Command    string                                                `json:"command"`
+	Command    string                                                `json:"command,omitempty"`
 	Args       []string                                              `json:"args"`
+	URL        string                                                `json:"url,omitempty"`
 	SecretEnvs []string                                              `json:"secret_envs"`
 	Dial       func(ctx context.Context) (io.ReadWriteCloser, error) `json:"-"`
 }
@@ -174,6 +192,9 @@ func (m *MCP) start() error {
 func (m *MCP) open(ctx context.Context) (io.ReadWriteCloser, error) {
 	if m.Spec.Dial != nil {
 		return m.Spec.Dial(ctx)
+	}
+	if strings.TrimSpace(m.Spec.URL) != "" {
+		return openStreamable(ctx, m.Spec)
 	}
 	if err := validateCommand(m.Spec.Command); err != nil {
 		return nil, err
@@ -422,7 +443,7 @@ func ValidateMCP(s MCPServer) error {
 	if !mcpNameRe.MatchString(s.Name) {
 		return fmt.Errorf("mcp: invalid name %q", s.Name)
 	}
-	if err := validateCommand(s.Command); err != nil {
+	if err := validateEndpoint(s); err != nil {
 		return err
 	}
 	if len(s.Args) > 64 {
@@ -444,10 +465,40 @@ func ValidateMCP(s MCPServer) error {
 		if !envNameRe.MatchString(n) {
 			return fmt.Errorf("mcp: invalid secret %q", n)
 		}
+		if providerKey(n) {
+			return fmt.Errorf("mcp: provider key %q is not passed", n)
+		}
 		if seen[n] {
 			return fmt.Errorf("mcp: duplicate secret %q", n)
 		}
 		seen[n] = true
+	}
+	return nil
+}
+
+func validateEndpoint(s MCPServer) error {
+	hasURL := strings.TrimSpace(s.URL) != ""
+	hasCmd := strings.TrimSpace(s.Command) != ""
+	if hasURL && hasCmd {
+		return errors.New("mcp: pick command or url")
+	}
+	if hasURL {
+		return validateURL(s.URL)
+	}
+	return validateCommand(s.Command)
+}
+
+func validateURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return errors.New("mcp: empty url")
+	}
+	if len(raw) > 4096 || strings.ContainsAny(raw, "\n\r") || strings.ContainsRune(raw, 0) {
+		return errors.New("mcp: invalid url")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
+		return errors.New("mcp: url must be http or https")
 	}
 	return nil
 }
@@ -468,6 +519,7 @@ func validateCommand(command string) error {
 func normalizeServer(s MCPServer) MCPServer {
 	s.Name = strings.TrimSpace(s.Name)
 	s.Command = strings.TrimSpace(s.Command)
+	s.URL = strings.TrimSpace(s.URL)
 	s.Args = nonNil(s.Args)
 	envs := make([]string, 0, len(s.SecretEnvs))
 	for _, n := range s.SecretEnvs {
@@ -567,6 +619,9 @@ func spawnEnv(names []string, lookup func(string) (string, bool)) []string {
 		add(k)
 	}
 	for _, k := range names {
+		if providerKey(k) {
+			continue
+		}
 		add(k)
 	}
 	return out

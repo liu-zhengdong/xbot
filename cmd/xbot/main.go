@@ -64,8 +64,11 @@ Usage:
   xbot [--root DIR] link install <bot> <id>
   xbot [--root DIR] link remove <bot> <id>
   xbot [--root DIR] mcp list <bot>
-  xbot [--root DIR] mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...
+  xbot [--root DIR] mcp add <bot> <name> (--command PATH [--arg A]... | --url URL) [--secret-env NAME]...
   xbot [--root DIR] mcp remove <bot> <name>
+  xbot [--root DIR] connector list
+  xbot [--root DIR] connector add <bot> <id>
+  xbot [--root DIR] connector remove <bot> <id>
   xbot [--root DIR] skill list
   xbot [--root DIR] skill import <path>
   xbot [--root DIR] skill show <slug>
@@ -158,6 +161,7 @@ func run(argv []string) error {
 	}
 	keyNames := config.KeyEnvNames(root)
 	config.HoldKeys(keyNames)
+	link.SetProviderKey(config.ProviderKey)
 	tools.UseKeyEnv(keyNames)
 	tools.SetKeyLookup(config.Held)
 	tools.SetMachineGate(func() (string, error) {
@@ -181,6 +185,8 @@ func run(argv []string) error {
 		return cmdLink(root, rest[1:])
 	case "mcp":
 		return cmdMCP(root, rest[1:])
+	case "connector":
+		return cmdConnector(root, rest[1:])
 	case "skill":
 		return cmdSkill(root, rest[1:])
 	case "chat":
@@ -1140,7 +1146,10 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		if runner.URL != "" {
 			coding.UseRunner(runner.URL, runner.Token)
 		}
-		if cmd := strings.TrimSpace(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
+		coding.UseTranscript(func(text string) error {
+			return b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: text}})
+		})
+		if cmd := code.ResolveCommand(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
 			coding.UseCommand(cmd)
 		}
 	}

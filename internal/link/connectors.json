@@ -1,0 +1,28 @@
+[
+  {
+    "id": "filesystem",
+    "title": "文件系统",
+    "summary": "stdio MCP。可执行文件 mcp-server-filesystem，由主人安装。密钥不写在目录里。",
+    "transport": "stdio",
+    "command": "mcp-server-filesystem",
+    "args": [],
+    "secret_envs": []
+  },
+  {
+    "id": "fetch",
+    "title": "抓取",
+    "summary": "stdio MCP。可执行文件 mcp-server-fetch。",
+    "transport": "stdio",
+    "command": "mcp-server-fetch",
+    "args": [],
+    "secret_envs": []
+  },
+  {
+    "id": "localhttp",
+    "title": "本机 HTTP",
+    "summary": "Streamable HTTP MCP。默认地址可在装上之后改 mcp.json。MCP_TOKEN 只记名字。",
+    "transport": "http",
+    "url": "http://127.0.0.1:18779/mcp",
+    "secret_envs": ["MCP_TOKEN"]
+  }
+]

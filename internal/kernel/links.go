@@ -351,7 +351,13 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 				l.UseRunner(url, os.Getenv("XBOT_RUNNER_TOKEN"))
 			}
 		}
-		if cmd := strings.TrimSpace(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
+		if k.Bot != nil {
+			b := k.Bot
+			l.UseTranscript(func(text string) error {
+				return b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: text}})
+			})
+		}
+		if cmd := code.ResolveCommand(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
 			l.UseCommand(cmd)
 		}
 		return l

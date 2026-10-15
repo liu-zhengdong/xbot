@@ -222,6 +222,21 @@ func TestMCPSecretsStayNames(t *testing.T) {
 	if err := AddMCP(path, MCPServer{Name: "bad", Command: "/bin/echo", SecretEnvs: []string{"token"}}); err == nil {
 		t.Fatal("lowercase secret accepted")
 	}
+	t.Setenv("XBOT_API_KEY", "sk-provider")
+	SetProviderKey(func(name string) bool { return name == "XBOT_API_KEY" })
+	defer SetProviderKey(nil)
+	leaked := spawnEnv([]string{"XBOT_API_KEY", "MCP_OK"}, func(k string) (string, bool) {
+		if k == "XBOT_API_KEY" {
+			return "sk-provider", true
+		}
+		return os.LookupEnv(k)
+	})
+	if strings.Contains(strings.Join(leaked, "\n"), "sk-provider") || strings.Contains(strings.Join(leaked, "\n"), "XBOT_API_KEY=") {
+		t.Fatalf("provider key passed: %s", leaked)
+	}
+	if err := AddMCP(path, MCPServer{Name: "bad", Command: "/bin/echo", SecretEnvs: []string{"XBOT_API_KEY"}}); err == nil {
+		t.Fatal("provider key accepted")
+	}
 	raw, _ = os.ReadFile(path)
 	if bytes.Contains(raw, []byte("token")) || bytes.Contains(raw, []byte("echo\n")) {
 		t.Fatalf("rejected record stored: %s", raw)

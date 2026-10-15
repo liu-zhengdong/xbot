@@ -1,10 +1,12 @@
 package code
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +32,34 @@ type liveRun struct {
 	stopStep func()
 }
 
-// UseCommand runs this executable instead of a model. The goal is the only argument.
+// ResolveCommand prefers an explicit path. Otherwise it uses the first of
+// cursor-agent, codex, or claude that is on PATH.
+func ResolveCommand(explicit string) string {
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" {
+		return explicit
+	}
+	for _, name := range []string{"cursor-agent", "codex", "claude"} {
+		path, err := exec.LookPath(name)
+		if err == nil && path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+func commandArgs(bin, goal string) []string {
+	switch filepath.Base(bin) {
+	case "claude", "cursor-agent":
+		return []string{"-p", goal}
+	case "codex":
+		return []string{"exec", goal}
+	default:
+		return []string{goal}
+	}
+}
+
+// UseCommand runs this executable instead of a model.
 func (l *Link) UseCommand(path string) {
 	if l == nil {
 		return
@@ -125,7 +154,9 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 	var out outcome
 	switch {
 	case l.command != "":
-		out = runCommand(ctx, l.command, task)
+		out = runCommand(ctx, l.command, task, func(text string) {
+			l.stream(task.ID, StatusRunning, text)
+		})
 	case l.runnerURL != "":
 		out = runRemote(ctx, l.runnerURL, l.runnerToken, task, endpointOf(l.prov))
 	default:
@@ -141,6 +172,7 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 	if err != nil || cur.Status != StatusRunning {
 		return
 	}
+	l.stream(task.ID, out.Status, out.Text)
 	_, _ = l.rec.Finish(task.ID, out.Text, out.Status != StatusDone)
 }
 
@@ -262,33 +294,64 @@ func calledTool(msgs []provider.Message) bool {
 	return false
 }
 
-func runCommand(ctx context.Context, command string, task Task) outcome {
+func runCommand(ctx context.Context, command string, task Task, emit func(string)) outcome {
 	if err := checkout(ctx, task.Repo, task.WorkDir); err != nil {
 		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.TimeoutSec)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, command, task.Goal)
+	cmd := exec.CommandContext(ctx, command, commandArgs(command, task.Goal)...)
 	cmd.Dir = task.WorkDir
-	cmd.Env = []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + os.Getenv("HOME"),
-		"TMPDIR=" + os.Getenv("TMPDIR"),
-		"LANG=" + os.Getenv("LANG"),
-		"XBOT_CODE_ID=" + task.ID,
-		"XBOT_CODE_GOAL=" + task.Goal,
-		"XBOT_CODE_REPO=" + task.Repo,
-		fmt.Sprintf("XBOT_CODE_MAX_STEPS=%d", task.MaxSteps),
-		fmt.Sprintf("XBOT_CODE_TIMEOUT_SEC=%d", task.TimeoutSec),
+	cmd.Env = codeEnv(task)
+	cmd.SysProcAttr = codeProcAttr()
+	cmd.Cancel = func() error { return killCode(cmd) }
+	cmd.WaitDelay = time.Second
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	text := clipText(strings.TrimSpace(stdout.String()))
-	if text == "" {
-		text = clipText(strings.TrimSpace(stderr.String()))
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
+	if err := cmd.Start(); err != nil {
+		return outcome{Status: StatusFailed, Text: err.Error()}
+	}
+	var mu sync.Mutex
+	var b strings.Builder
+	add := func(line string) {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			return
+		}
+		mu.Lock()
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(line)
+		text := clipText(b.String())
+		mu.Unlock()
+		if emit != nil {
+			emit(text)
+		}
+	}
+	var wg sync.WaitGroup
+	scan := func(r io.Reader) {
+		defer wg.Done()
+		sc := bufio.NewScanner(r)
+		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		for sc.Scan() {
+			add(sc.Text())
+		}
+	}
+	wg.Add(2)
+	go scan(stdout)
+	go scan(stderr)
+	wg.Wait()
+	err = cmd.Wait()
+	mu.Lock()
+	text := clipText(strings.TrimSpace(b.String()))
+	mu.Unlock()
 	if ctx.Err() != nil && !errors.Is(ctx.Err(), context.Canceled) {
 		if text == "" {
 			text = "timed out"
@@ -305,6 +368,20 @@ func runCommand(ctx context.Context, command string, task Task) outcome {
 		text = "exited"
 	}
 	return outcome{Status: StatusDone, Text: text}
+}
+
+func codeEnv(task Task) []string {
+	return []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + os.Getenv("HOME"),
+		"TMPDIR=" + os.Getenv("TMPDIR"),
+		"LANG=" + os.Getenv("LANG"),
+		"XBOT_CODE_ID=" + task.ID,
+		"XBOT_CODE_GOAL=" + task.Goal,
+		"XBOT_CODE_REPO=" + task.Repo,
+		fmt.Sprintf("XBOT_CODE_MAX_STEPS=%d", task.MaxSteps),
+		fmt.Sprintf("XBOT_CODE_TIMEOUT_SEC=%d", task.TimeoutSec),
+	}
 }
 
 func clipText(s string) string {

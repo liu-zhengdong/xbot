@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/provider"
 )
@@ -64,6 +65,9 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Mess
 		msgs = append(msgs, summaryMessage(b))
 	}
 	for _, e := range uncovered {
+		if code.IsCard(e.Message.Content) {
+			continue
+		}
 		msgs = append(msgs, e.Message)
 	}
 	return msgs

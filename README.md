@@ -141,9 +141,9 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 侧边栏分组是 Bot 档案上的 `group`，加上当前用户自己的一份顺序。`xbot group` 可以新建、改名、删除分组，或把 Bot 放进去。删除分组不会删除 Bot。这和聊天群不是一回事。
 
-`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram 和飞书要同名环境变量里已经有密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`），缺了就不装。装上之后，`xbot serve` 接受 `POST /connector/telegram/<bot>` 和 `POST /connector/lark/<bot>`，对上密钥的消息进收件箱，当成不可信事件。代表主人发出去的话先留草稿，主人确认后才发。`xbot link install <bot> coding-agent` 加上编码任务。工作目录、仓库、步数和时间按这次任务另定，完成时进收件箱。`XBOT_CODE_AGENT` 指向一个外部编码代理时用它；否则交给 `xbot runner` 的 `/v1/code/start`；都没有就用这个 Bot 的模型在本进程里跑。三个都没配时只写记录。MCP 不走 `link install`。网页上的安装接口不收密钥。
+`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram 和飞书要同名环境变量里已经有密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`），缺了就不装。装上之后，`xbot serve` 接受 `POST /connector/telegram/<bot>` 和 `POST /connector/lark/<bot>`，对上密钥的消息进收件箱，当成不可信事件。代表主人发出去的话先留草稿，主人确认后才发。`xbot link install <bot> coding-agent` 加上编码任务。工作目录、仓库、步数和时间按这次任务另定。`code_start` 要主人确认，因为会改文件。`XBOT_CODE_AGENT` 优先；没设时用 PATH 里的 `cursor-agent`、`codex` 或 `claude`。输出按行出现在对话里的编码卡片上。`code_show` 能看已经流出来的文字，`code_cancel` 停掉进程。没有外部命令时交给 `xbot runner`；再没有就用这个 Bot 的模型。都没配时只写记录。完成时仍进收件箱。MCP 不走 `link install`。网页上的安装接口不收密钥。
 
-`xbot mcp add <bot> <name> --command PATH` 把一个 MCP 服务器记在这个 Bot 的 `mcp.json`。参数用重复的 `--arg`。密钥只写环境变量的名字（`--secret-env NAME`），文件和接口里都没有值。对话里的工具名是 `mcp_<服务器>_<工具>`。`readOnlyHint` 为真的不用确认，其余要确认。服务器可以用通知把不可信事件推进收件箱。
+`xbot mcp add <bot> <name> --command PATH` 把一个 stdio MCP 服务器记在这个 Bot 的 `mcp.json`。`--url URL` 改成 Streamable HTTP，不能和 `--command` 一起用。参数用重复的 `--arg`。密钥只写环境变量的名字（`--secret-env NAME`），文件和接口里都没有值。供应商 API key 不会传给子进程或 HTTP 头。对话里的工具名是 `mcp_<服务器>_<工具>`。`readOnlyHint` 为真的不用确认，其余要确认。服务器可以用通知把不可信事件推进收件箱。`xbot connector list` 看打进二进制的目录，`connector add/remove <bot> <id>` 只给这一个 Bot 启用，没有托管市场。
 
 Bot 用内置工具 `links` 搜索目录、安装、卸下和加载。安装要主人在确认卡上点头；带密钥的还要主人在这张卡里填写，模型看不到值。已安装的 Link 在系统提示里每条一行。`load` 只把工具 schema 带进当前这一轮。
 

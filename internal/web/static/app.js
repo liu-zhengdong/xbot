@@ -897,8 +897,21 @@
     }
     let any = false;
     let lastKey = "";
+    const latestCard = {};
+    messages.forEach((m, i) => {
+      const card = codingCardOf(m && m.content);
+      if (card) latestCard[card.id] = i;
+    });
     messages.forEach((m, i) => {
       if (skipMessage(m)) return;
+      const card = codingCardOf(m.content);
+      if (card) {
+        if (latestCard[card.id] !== i) return;
+        any = true;
+        lastKey = "";
+        inner.append(codingCard(card));
+        return;
+      }
       if (m.role === "user") {
         const parsed = unwrap(m.content || "");
         if (parsed.untrusted && (parsed.source.startsWith("bot:") || parsed.source.startsWith("group:"))) {
@@ -1000,10 +1013,27 @@
     thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
   }
 
+  function codingCardOf(content) {
+    const m = String(content || "").match(/^<coding_card id="([^"]*)" status="([^"]*)">\n([\s\S]*)\n<\/coding_card>$/);
+    if (!m) return null;
+    return { id: m[1], status: m[2], body: m[3] };
+  }
+
+  function codingCard(card) {
+    const row = el("div", "coding-card");
+    const head = el("div", "coding-card-head");
+    head.append(el("span", "k", "编码任务"), el("span", "coding-card-id", card.id || ""), el("span", "coding-card-status", card.status || ""));
+    row.append(head);
+    const pre = el("pre", "");
+    pre.textContent = card.body || "";
+    row.append(pre);
+    return row;
+  }
+
   function hiddenFromPreview(m) {
     if (!m || m.role === "tool" || m.role === "system") return true;
     const raw = String(m.content || "").trim();
-    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<untrusted"))) return true;
+    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<untrusted") || raw.startsWith("<coding_card "))) return true;
     return false;
   }
 

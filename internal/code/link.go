@@ -23,8 +23,10 @@ type Link struct {
 	runnerURL   string
 	runnerToken string
 	prov        provider.Provider
+	transcript  func(string) error
 	mu          sync.Mutex
 	live        map[string]*liveRun
+	tail        map[string]string
 }
 
 // Open binds the record store to a bot directory and posts terminal states to inboxPath.
@@ -78,11 +80,21 @@ type startTool struct{ l *Link }
 
 func (startTool) Name() string { return "code_start" }
 func (startTool) Description() string {
-	return "Start a coding-agent task. work_dir is absolute. max_steps and timeout_sec belong to this task, not the subagent defaults. A second task waits in the queue. It runs on XBOT_CODE_AGENT, the xbot runner, or this bot's model. With none of those, only the record is written."
+	return "Start a coding-agent task. work_dir is absolute. max_steps and timeout_sec belong to this task, not the subagent defaults. A second task waits in the queue. It runs on a local coding CLI (XBOT_CODE_AGENT, or cursor-agent, codex, claude on PATH), the xbot runner, or this bot's model. The owner confirms first because the task edits files. With none of those backends, only the record is written."
 }
 func (startTool) Parameters() any { return startSchema() }
-func (startTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "code_start", nil
+func (startTool) Confirm(args json.RawMessage) (bool, string, error) {
+	var in struct {
+		WorkDir string `json:"work_dir"`
+		Goal    string `json:"goal"`
+	}
+	if len(args) > 0 && string(args) != "null" {
+		if err := json.Unmarshal(args, &in); err != nil {
+			return false, "", err
+		}
+	}
+	summary := "code start\n" + strings.TrimSpace(in.WorkDir) + "\n" + strings.TrimSpace(in.Goal) + "\nedits files"
+	return true, summary, nil
 }
 func (t startTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -220,7 +232,7 @@ func (t showTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return formatTask(task), nil
+	return formatTask(t.l, task), nil
 }
 
 func control(l *Link, args json.RawMessage, kind string) (string, error) {
@@ -239,7 +251,7 @@ func control(l *Link, args json.RawMessage, kind string) (string, error) {
 	return kind + " " + task.ID, nil
 }
 
-func formatTask(task Task) string {
+func formatTask(l *Link, task Task) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s\nwork_dir: %s\nsteps: %d\ntimeout_sec: %d\ngoal: %s",
 		task.Status, task.ID, task.WorkDir, task.MaxSteps, task.TimeoutSec, oneLine(task.Goal))
@@ -248,6 +260,8 @@ func formatTask(task Task) string {
 	}
 	if task.Result != "" {
 		fmt.Fprintf(&b, "\nresult: %s", oneLine(task.Result))
+	} else if text := l.output(task.ID); text != "" {
+		fmt.Fprintf(&b, "\noutput: %s", oneLine(text))
 	}
 	for _, note := range task.Notes {
 		fmt.Fprintf(&b, "\n%s: %s", note.Kind, oneLine(note.Text))
