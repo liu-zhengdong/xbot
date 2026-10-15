@@ -212,7 +212,7 @@ button:disabled { cursor: default; }
 }
 .item:hover { background: var(--hover); }
 .item.active { background: var(--selected); }
-.item .copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.item .item-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .item .name-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .item .name {
   font-size: 14px; font-weight: 500; line-height: 1.35;
@@ -258,9 +258,6 @@ button:disabled { cursor: default; }
 .text-btn:hover { background: var(--hover); color: var(--text); }
 .text-btn.danger { color: var(--err); }
 .text-btn.danger:hover { background: var(--err-bg); color: var(--err); }
-.icon-sun, .icon-moon { display: none; }
-html[data-theme="light"] .icon-moon, html:not([data-theme="dark"]) .icon-moon { display: block; }
-html[data-theme="dark"] .icon-sun { display: block; }
 .dot {
   display: block; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px;
   border-radius: 999px; background: var(--accent);
@@ -320,7 +317,7 @@ html[data-theme="dark"] .icon-sun { display: block; }
 .check-row input { accent-color: var(--accent); width: 16px; height: 16px; }
 .meta { font-size: 12px; line-height: 1.4; color: var(--faint); }
 
-.sidebar.collapsed .item .copy,
+.sidebar.collapsed .item .item-body,
 .sidebar.collapsed .group-label .label,
 .sidebar.collapsed .me-name,
 .sidebar.collapsed .connect-pill span,
@@ -399,9 +396,6 @@ html[data-theme="dark"] .icon-sun { display: block; }
 .msg.user .meta-row { justify-content: flex-end; }
 .msg.user .meta { opacity: 0; transition: opacity 160ms ease-out; }
 .msg.user:hover .meta, .msg.user:focus-within .meta { opacity: 1; }
-@media (hover: none) {
-  .msg.user .meta { opacity: 1; }
-}
 .copy {
   border: 0; background: transparent; color: var(--faint);
   width: 24px; height: 24px; border-radius: 6px; padding: 0;
@@ -721,7 +715,7 @@ html[data-theme="dark"] .card-sub { color: #a0a0a6; }
   .sidebar.open { transform: translateX(0); }
   .sidebar.collapsed { width: 80%; max-width: 320px; }
   .sidebar.collapsed .group-label .icon-btn { display: inline-flex; }
-  .sidebar.collapsed .item .copy,
+  .sidebar.collapsed .item .item-body,
   .sidebar.collapsed .group-label .label,
   .sidebar.collapsed .me-name,
   .sidebar.collapsed .connect-pill span,
@@ -755,6 +749,7 @@ html[data-theme="dark"] .card-sub { color: #a0a0a6; }
   .hero { padding-top: 20px; }
   .dock { padding: 12px 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .copy { opacity: 1; }
+  .msg.user .meta { opacity: 1; }
   .notes { right: 8px; top: 48px; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -33,6 +33,7 @@
     listSig: "",
     tab: "details",
     panelData: null,
+    panelTouched: false,
   };
 
   const FACES = [
@@ -46,11 +47,16 @@
     { bg: "#D4DDD4", shape: "M38 8C54 2 72 14 74 34C76 56 58 74 38 76C16 78 4 58 8 38C12 16 22 12 38 8Z", eyes: [29, 38, 49, 34] },
   ];
 
+  const THEME_MOON = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
+  const THEME_SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
+
   function applyTheme(theme) {
     const dark = theme === "dark";
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const meta = $("theme-color");
     if (meta) meta.setAttribute("content", dark ? "#161618" : "#ffffff");
+    const icon = $("theme-icon");
+    if (icon) icon.innerHTML = dark ? THEME_SUN : THEME_MOON;
     try { localStorage.setItem("xbot-theme", dark ? "dark" : "light"); } catch (e) {}
   }
 
@@ -117,12 +123,13 @@
     if (!t) return "";
     const d = new Date(t);
     if (Number.isNaN(d.getTime())) return "";
-    const hm = d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
     const now = new Date();
-    const today = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-    if (today) return hm;
-    const md = d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-    return md + " " + hm;
+    const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const days = Math.round((start(now) - start(d)) / 86400000);
+    if (days === 0) return hm;
+    if (days === 1) return "昨天 " + hm;
+    return (d.getMonth() + 1) + "月" + d.getDate() + "日";
   }
 
   function cronText(cron, enabled) {
@@ -833,12 +840,12 @@
     btn.title = name + (preview ? " — " + preview : "");
     const av = avatar(name, paint);
     if (unread) av.append(el("i", "unread"));
-    const copy = el("span", "copy");
+    const body = el("span", "item-body");
     const line = el("span", "name-line");
     line.append(el("span", "name", name));
     if (primary) line.append(el("span", "badge", "主"));
-    copy.append(line, el("span", "preview", preview || "还没有消息"));
-    btn.append(av, copy);
+    body.append(line, el("span", "preview", preview || "还没有消息"));
+    btn.append(av, body);
     return btn;
   }
 
@@ -1865,6 +1872,7 @@
   });
 
   backdrop.addEventListener("click", () => {
+    state.panelTouched = true;
     sidebar.classList.remove("open");
     panel.classList.remove("open");
     $("info").setAttribute("aria-expanded", "false");
@@ -1872,6 +1880,7 @@
   });
 
   $("info").addEventListener("click", async () => {
+    state.panelTouched = true;
     const open = panel.classList.toggle("open");
     $("info").setAttribute("aria-expanded", open ? "true" : "false");
     if (open && window.innerWidth < 768) sidebar.classList.remove("open");
@@ -1882,6 +1891,7 @@
   });
 
   $("panel-close").addEventListener("click", () => {
+    state.panelTouched = true;
     panel.classList.remove("open");
     $("info").setAttribute("aria-expanded", "false");
     syncBackdrop();
@@ -1976,6 +1986,7 @@
 
   window.addEventListener("resize", () => {
     if (window.innerWidth >= 768) sidebar.classList.remove("open");
+    syncPanelDefault();
     syncBackdrop();
   });
 
@@ -1991,6 +2002,17 @@
       thread.replaceChildren(inner);
     }
     for (let i = 0; i < state.bots.length + state.groups.length; i++) await warmOne();
+    syncPanelDefault();
+  }
+
+  function syncPanelDefault() {
+    if (state.panelTouched) return;
+    const wide = window.innerWidth >= 1280;
+    const was = panel.classList.contains("open");
+    panel.classList.toggle("open", wide);
+    $("info").setAttribute("aria-expanded", wide ? "true" : "false");
+    syncBackdrop();
+    if (wide && !was) loadPanel().catch(() => {});
   }
 
   initTheme();
