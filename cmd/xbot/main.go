@@ -1694,6 +1694,12 @@ func (p *printer) Tool(name, summary string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.breakLocked()
+	if name == "ask_user" && strings.TrimSpace(summary) != "" {
+		fmt.Fprintln(p.stdout(), summary)
+		p.wrote = true
+		p.nl = true
+		return
+	}
 	fmt.Fprintf(os.Stderr, "[%s] %s\n", name, summary)
 }
 

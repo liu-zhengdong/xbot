@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"xbot/internal/link"
@@ -195,19 +196,49 @@ func (askTool) Parameters() any {
 		"options":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "two to six short choices"},
 	}, []string{"question", "options"})
 }
-func (askTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (askTool) Confirm(args json.RawMessage) (bool, string, error) {
+	q, opts, err := parseAsk(args)
+	if err != nil {
+		return false, "", err
+	}
+	return false, formatAsk(q, opts), nil
+}
 func (askTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+	if _, _, err := parseAsk(args); err != nil {
+		return "", err
+	}
+	return "waiting for the owner to choose", nil
+}
+
+func parseAsk(args json.RawMessage) (string, []string, error) {
 	var in struct {
 		Question string   `json:"question"`
 		Options  []string `json:"options"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	if strings.TrimSpace(in.Question) == "" || len(in.Options) < 2 || len(in.Options) > 6 {
-		return "", errAsk
+	q := strings.TrimSpace(in.Question)
+	var opts []string
+	for _, o := range in.Options {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			opts = append(opts, o)
+		}
 	}
-	return "waiting for the owner to choose", nil
+	if q == "" || len(opts) < 2 || len(opts) > 6 {
+		return "", nil, errAsk
+	}
+	return q, opts, nil
+}
+
+func formatAsk(question string, options []string) string {
+	var b strings.Builder
+	b.WriteString(question)
+	for i, o := range options {
+		fmt.Fprintf(&b, "\n%d. %s", i+1, o)
+	}
+	return b.String()
 }
 
 var errAsk = askError{}

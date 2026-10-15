@@ -480,6 +480,16 @@ func TestDefaultRulesDropIgnoredOffers(t *testing.T) {
 	}
 }
 
+func TestAskUserSummaryListsOptions(t *testing.T) {
+	_, summary, err := (askTool{}).Confirm(json.RawMessage(`{"question":"Ship it?","options":["yes","no"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary != "Ship it?\n1. yes\n2. no" {
+		t.Fatalf("%q", summary)
+	}
+}
+
 func messagesText(msgs []provider.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {

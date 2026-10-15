@@ -76,6 +76,15 @@ func TestRelativeRootSpawn(t *testing.T) {
 	}
 }
 
+func TestPrinterShowsAsk(t *testing.T) {
+	var buf bytes.Buffer
+	p := &printer{out: &buf}
+	p.Tool("ask_user", "Ship it?\n1. yes\n2. no")
+	if buf.String() != "Ship it?\n1. yes\n2. no\n" {
+		t.Fatalf("%q", buf.String())
+	}
+}
+
 func TestPrinterDropsSilent(t *testing.T) {
 	for _, reply := range []string{"SILENT", "SILENT\n"} {
 		var buf bytes.Buffer

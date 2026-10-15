@@ -128,7 +128,7 @@
 `POST /api/bots/{name}/messages`，body `{"text":"..."}`，1 到 16 KiB。拿到处理锁时响应是 `text/event-stream`：
 
 - `event: delta`，`data: {"text":"..."}`
-- `event: tool`，`data: {"name","summary"}`
+- `event: tool`，`data: {"name","summary"}`。`ask_user` 的 summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。
 - `event: approval`，`data: {"id","tool","summary"}`。这个工具要主人确认才会跑。界面应立刻展示一张确认卡，写明工具名和 summary，并给出允许、拒绝两个按钮。
 - `event: result`，`data: {"name","output"}`，output 截到 4000 字
 - `event: done`，`data: {"text":"这一轮拼起来的正文"}`。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。
