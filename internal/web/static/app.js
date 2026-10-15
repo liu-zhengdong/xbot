@@ -40,6 +40,9 @@
     traceOpen: {},
     traceOut: {},
     peer: null,
+    replyTo: null,
+    placeholder: "写一条消息",
+    modelCatalog: null,
   };
 
   const FACES = [
@@ -195,6 +198,8 @@
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+    bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   };
 
   function icon(name, extra) {
@@ -703,10 +708,105 @@
     if (last < src.length) addText(src.slice(last));
   }
 
-  function userBubble(m) {
+  function lineBySeq(messages, seq) {
+    const n = Number(seq);
+    if (!n) return null;
+    for (const m of messages || []) {
+      if (Number(m.seq) === n) return m;
+    }
+    return null;
+  }
+
+  function previewText(m) {
+    if (!m) return "";
+    const raw = m.role === "user" ? unwrap(m.content || "").text : (m.content || "");
+    return String(raw).replace(/\r\n/g, "\n").trim();
+  }
+
+  function quoteLine(text) {
+    return String(text || "")
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/`([^`]*)`/g, "$1")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+      .replace(/[*_~>]+/g, "")
+      .replace(/^\s*[-*+]\s+/gm, "")
+      .replace(/^\s*\d+[.)]\s+/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function quoteSnippet(text) {
+    const line = quoteLine(text);
+    if (!line) return "“较早的消息";
+    return "“" + line;
+  }
+
+  function quoteBlock(messages, seq) {
+    const btn = el("button", "quote-block");
+    btn.type = "button";
+    btn.append(icon("bubble"));
+    btn.append(el("span", "", quoteSnippet(previewText(lineBySeq(messages, seq)))));
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      jumpToSeq(seq);
+    });
+    return btn;
+  }
+
+  function jumpToSeq(seq) {
+    const row = thread.querySelector('.msg[data-seq="' + Number(seq) + '"]');
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.classList.remove("quote-hit");
+    void row.offsetWidth;
+    row.classList.add("quote-hit");
+    window.setTimeout(() => row.classList.remove("quote-hit"), 1500);
+  }
+
+  function replyBtn(m) {
+    const btn = el("button", "reply");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "引用");
+    setTip(btn, "引用");
+    btn.append(icon("reply"));
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      armQuote(m.seq, previewText(m));
+    });
+    return btn;
+  }
+
+  function armTouchQuote(row, m) {
+    let timer = 0;
+    let armed = false;
+    row.addEventListener("pointerdown", (ev) => {
+      if (ev.pointerType === "mouse") return;
+      if (ev.target.closest && ev.target.closest("button, a, input, textarea")) return;
+      armed = false;
+      timer = window.setTimeout(() => {
+        armed = true;
+        row.classList.add("reveal");
+        armQuote(m.seq, previewText(m));
+      }, 480);
+    });
+    const stop = () => window.clearTimeout(timer);
+    row.addEventListener("pointerup", stop);
+    row.addEventListener("pointercancel", stop);
+    row.addEventListener("pointerleave", stop);
+    row.addEventListener("contextmenu", (ev) => {
+      if (armed) ev.preventDefault();
+    });
+  }
+
+  function userBubble(m, messages) {
     const parsed = unwrap(m.content || "");
     const row = el("div", "msg user");
+    if (m.seq) row.dataset.seq = String(m.seq);
     const wrap = el("div", "bubble-col");
+    if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
     const pulled = pullImages(parsed.text);
     if (pulled.text) {
       const bubble = el("div", "bubble");
@@ -723,15 +823,19 @@
     if (parsed.untrusted && !parsed.source.startsWith("bot:")) {
       metaRow.append(el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信"));
     }
-    metaRow.append(el("span", "meta", when(m.time)), copyBtn(parsed.text));
+    metaRow.append(el("span", "meta", when(m.time)));
+    if (m.seq) metaRow.append(replyBtn(m));
+    metaRow.append(copyBtn(parsed.text));
     wrap.append(metaRow);
     row.append(wrap);
     armCopy(row);
+    if (m.seq) armTouchQuote(row, m);
     return row;
   }
 
   function botBubble(m, results, messages, index, who, showName) {
     const row = el("div", "msg bot");
+    if (m.seq) row.dataset.seq = String(m.seq);
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
     if (showName) {
@@ -739,6 +843,7 @@
       if (who) setTip(name, who);
       body.append(name);
     }
+    if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
     if (m.content) appendRich(body, m.content);
     const calls = m.tool_calls || [];
     const peers = [];
@@ -759,10 +864,13 @@
       }
     }
     const metaRow = el("div", "meta-row");
-    metaRow.append(el("span", "meta", when(m.time)), copyBtn(m.content || ""));
+    metaRow.append(el("span", "meta", when(m.time)));
+    if (m.seq) metaRow.append(replyBtn(m));
+    metaRow.append(copyBtn(m.content || ""));
     body.append(metaRow);
     row.append(body);
     armCopy(row);
+    if (m.seq) armTouchQuote(row, m);
     return { row: row, peers: peers };
   }
 
@@ -805,7 +913,7 @@
           return;
         }
         any = true;
-        const row = userBubble(m);
+        const row = userBubble(m, messages);
         if (lastKey === "user") row.classList.add("cont");
         lastKey = "user";
         inner.append(row);
@@ -1399,6 +1507,7 @@
 
   async function openPeer(a, b) {
     if (!a || !b || a === b || state.streaming) return;
+    clearQuote();
     state.peer = { a: a, b: b, list: [], more: false, cursor: null, mock: false };
     paintPeerHeader(a, b);
     await loadPeer(null);
@@ -1430,6 +1539,7 @@
 
   async function selectBot(name) {
     leavePeer();
+    clearQuote();
     state.sel = { type: "bot", id: name };
     state.sig = "";
     state.tab = state.tab || "details";
@@ -1438,7 +1548,7 @@
     setHeader(name);
     setStatus("");
     syncMore();
-    input.placeholder = "写给 " + niceName(name);
+    setComposerPlaceholder("写给 " + niceName(name));
     renderLists();
     await loadThread();
     if (panel.classList.contains("open")) await loadPanel();
@@ -1446,6 +1556,7 @@
 
   async function selectGroup(id) {
     leavePeer();
+    clearQuote();
     state.sel = { type: "group", id: id };
     state.sig = "";
     state.editOpen = false;
@@ -1454,7 +1565,7 @@
     setHeader(id, g ? niceName(g.name || id) : "");
     setStatus("");
     syncMore();
-    input.placeholder = "写到这个群";
+    setComposerPlaceholder("写到这个群");
     renderLists();
     await loadThread();
     if (panel.classList.contains("open")) await loadPanel();
@@ -1947,6 +2058,14 @@
     return model || provider;
   }
 
+  function modelCertified(data) {
+    const model = String((data && data.model) || "").trim();
+    const provider = String((data && data.provider) || "").trim();
+    if (!model) return false;
+    const hits = (state.modelCatalog || []).filter((m) => m.model === model && (!provider || m.provider === provider));
+    return hits.some((m) => m.certified);
+  }
+
   function detailsView(data) {
     const wrap = document.createDocumentFragment();
     const bits = styleChips(data);
@@ -1964,7 +2083,18 @@
       about.append(block);
     }
     const model = modelLabel(data);
-    if (model) about.append(kv("模型", model));
+    if (model) {
+      const row = el("div", "kv");
+      const value = el("div", "v");
+      value.append(document.createTextNode(model));
+      if (modelCertified(data)) {
+        const flag = el("span", "cert");
+        flag.append(icon("check"), document.createTextNode("已认证"));
+        value.append(flag);
+      }
+      row.append(el("div", "k", "模型"), value);
+      about.append(row);
+    }
     if (data.quiet_start || data.quiet_end) about.append(kv("免打扰", (data.quiet_start || "") + " – " + (data.quiet_end || "")));
     wrap.append(about);
     return wrap;
@@ -2035,10 +2165,21 @@
     return wrap;
   }
 
+  async function loadModelCatalog() {
+    if (state.modelCatalog) return;
+    try {
+      const data = await api("/api/models?all=1");
+      state.modelCatalog = (data && data.models) || [];
+    } catch (e) {
+      state.modelCatalog = [];
+    }
+  }
+
   async function loadPanel() {
     if (!state.sel) { paintPanel(); return; }
     if (state.sel.type === "group") { state.panelData = null; paintPanel(); return; }
     state.panelData = await api("/api/bots/" + encodeURIComponent(state.sel.id));
+    await loadModelCatalog();
     paintPanel();
   }
 
@@ -2485,6 +2626,14 @@
           if (status) status.remove();
           host.append(approvalCard(payload));
           thread.scrollTop = thread.scrollHeight;
+        } else if (event === "done" && payload.reply_to && host) {
+          const live = host.closest(".msg");
+          if (live && !live.querySelector(".quote-block")) {
+            const block = quoteBlock(state.messages, payload.reply_to);
+            const bubble = host.querySelector(".bubble");
+            if (bubble) host.insertBefore(block, bubble);
+            else host.prepend(block);
+          }
         } else if (event === "error") {
           setStatus(payload.error || "出错了");
         }
@@ -2506,11 +2655,13 @@
         setStatus("已送到成员的 inbox");
         return;
       }
+      const payload = { text: text };
+      if (state.replyTo && state.replyTo.seq > 0) payload.reply_to = state.replyTo.seq;
       const res = await fetch("/api/bots/" + encodeURIComponent(state.sel.id) + "/messages", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text }),
+        body: JSON.stringify(payload),
       });
       const ct = res.headers.get("content-type") || "";
       if (ct.includes("application/json")) {
@@ -2524,6 +2675,8 @@
         await readSSE(res);
       }
       state.sig = "";
+      clearQuote();
+      state.streaming = false;
       await loadThread();
       if (subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
@@ -2964,11 +3117,48 @@
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) notesEl.hidden = true;
   });
 
+  function setComposerPlaceholder(text) {
+    state.placeholder = text;
+    if (!state.replyTo) input.placeholder = text;
+  }
+
+  function paintQuoteBar() {
+    const bar = $("quote-bar");
+    const on = !!(state.replyTo && state.sel && state.sel.type === "bot" && !state.peer);
+    bar.hidden = !on;
+    composer.classList.toggle("quoting", on);
+    if (on) {
+      $("quote-bar-text").textContent = quoteSnippet(state.replyTo.text);
+      input.placeholder = "回复…";
+    } else {
+      input.placeholder = state.placeholder || "写一条消息";
+    }
+  }
+
+  function armQuote(seq, text) {
+    const n = Number(seq);
+    if (!n || !state.sel || state.sel.type !== "bot" || state.peer) return;
+    state.replyTo = { seq: n, text: String(text || "").trim() };
+    paintQuoteBar();
+    input.focus();
+  }
+
+  function clearQuote() {
+    state.replyTo = null;
+    paintQuoteBar();
+  }
+
+  $("quote-clear").addEventListener("click", () => {
+    clearQuote();
+    input.focus();
+  });
+
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
     hideTip();
     if (!lightbox.hidden) { closeShots(); return; }
     if (!modal.hidden) { closeModal(); return; }
+    if (state.replyTo) { clearQuote(); return; }
     closePops();
     if (panel.classList.contains("open") && window.innerWidth < 1100) {
       panel.classList.remove("open");

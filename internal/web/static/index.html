@@ -107,6 +107,13 @@ try {
     <div id="thread" class="thread"></div>
     <div class="dock">
       <form id="composer" class="composer">
+        <div id="quote-bar" class="quote-row" hidden>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+          <p id="quote-bar-text" class="quote-row-text"></p>
+          <button id="quote-clear" class="ghost" type="button" aria-label="取消引用" data-tip="取消">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
         <div class="plus-wrap">
           <button id="plus" class="icon-btn" type="button" aria-label="更多" data-tip="更多" aria-expanded="false">
             <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -116,12 +123,14 @@ try {
           </div>
         </div>
         <textarea id="input" rows="1" placeholder="写一条消息" maxlength="16000"></textarea>
-        <button id="mic" class="icon-btn" type="button" disabled data-tip="语音" aria-label="语音">
-          <svg class="icon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
-        </button>
-        <button id="send" class="send" type="submit" aria-label="发送" data-tip="发送">
-          <svg class="icon" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
-        </button>
+        <div class="composer-actions">
+          <button id="mic" class="icon-btn" type="button" disabled data-tip="语音" aria-label="语音">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+          </button>
+          <button id="send" class="send" type="submit" aria-label="发送" data-tip="发送">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+          </button>
+        </div>
       </form>
     </div>
   </main>

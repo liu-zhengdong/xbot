@@ -1,4 +1,4 @@
-const CACHE = "xbot-ui-v4";
+const CACHE = "xbot-ui-v7";
 const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/fonts/MonaSansVF.woff2"];
 
 self.addEventListener("install", (event) => {
