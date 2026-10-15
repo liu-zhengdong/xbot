@@ -11,6 +11,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
+	"xbot/internal/link"
 	"xbot/internal/memory"
 )
 
@@ -121,9 +122,13 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		unlock()
 		return
 	}
+	sender := k.turnSender
+	if k.turnSource == link.SourceSubagent || strings.HasPrefix(k.turnSender, "sa_") {
+		sender = k.memoryPerson()
+	}
 	job = compactJob{
 		From: 1, To: to, Focus: defaultFocus, Status: jobRunning,
-		Sender: k.turnSender, Trusted: k.turnTrusted,
+		Sender: sender, Trusted: k.turnTrusted,
 	}
 	if err := k.writeJob(job); err != nil {
 		unlock()

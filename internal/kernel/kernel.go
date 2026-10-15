@@ -335,12 +335,28 @@ func (k *Kernel) pendingNotes() int {
 }
 
 // memoryPerson is the sender only when they are a person.
-// A bot or group principal must not be looked up as someone else's memory.
+// A bot, a group, or a subagent must not be looked up as someone else's memory.
+// A subagent maps to the parent bot's owner, or to no person scope when the bot has none.
 func (k *Kernel) memoryPerson() string {
 	if k.turnKind == link.KindBot || k.turnKind == link.KindGroup {
 		return ""
 	}
+	if k.turnSource == link.SourceSubagent || strings.HasPrefix(k.turnSender, "sa_") {
+		return k.ownerPerson()
+	}
 	return k.turnSender
+}
+
+func (k *Kernel) ownerPerson() string {
+	if k == nil || k.Bot == nil {
+		return ""
+	}
+	for _, id := range k.Bot.Config().Owners {
+		if id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error) {

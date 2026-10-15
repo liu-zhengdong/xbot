@@ -116,7 +116,7 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		Scope:     memory.Scope(in.Scope),
 		Tier:      memory.Tier(in.Tier),
 		Text:      in.Fact,
-		PersonID:  t.k.turnSender,
+		PersonID:  t.k.memoryPerson(),
 		BotName:   t.k.Bot.Name(),
 		WrittenBy: t.k.Bot.Name(),
 		Time:      t.k.now(),
@@ -159,7 +159,7 @@ func (t forgetTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if t.k.Memory == nil {
 		return "", errors.New("memory: no store")
 	}
-	q := memory.Query{Scope: memory.Scope(in.Scope), BotName: t.k.Bot.Name(), PersonID: t.k.turnSender}
+	q := memory.Query{Scope: memory.Scope(in.Scope), BotName: t.k.Bot.Name(), PersonID: t.k.memoryPerson()}
 	if err := t.k.Memory.Forget(ctx, q, in.Fact); err != nil {
 		return "", err
 	}
@@ -197,14 +197,14 @@ func (t recallTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	var facts []memory.Fact
 	for _, scope := range scopes {
 		got, err := t.k.Memory.Recall(ctx, memory.Query{
-			Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.turnSender, Text: in.Query,
+			Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPerson(), Text: in.Query,
 		})
 		if err != nil {
 			return "", err
 		}
 		facts = append(facts, got...)
 	}
-	facts = memory.Resolve(memory.Visible(facts, t.k.Bot.Name(), t.k.turnSender))
+	facts = memory.Resolve(memory.Visible(facts, t.k.Bot.Name(), t.k.memoryPerson()))
 	if len(facts) == 0 {
 		return "no matching facts", nil
 	}

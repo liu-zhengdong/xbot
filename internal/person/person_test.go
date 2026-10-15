@@ -34,6 +34,30 @@ func TestIdentifyStable(t *testing.T) {
 	}
 }
 
+func TestListSkipsMissingIdentity(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(root+"/people/garbage/memory", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root+"/people/sa_abcdef01/memory", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/people/sa_abcdef01/memory/.lock", []byte{}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	acct := Account{Link: "terminal", ExternalID: "uid:1000"}
+	if _, err := Identify(root, acct, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	people, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(people) != 1 || people[0].ID != "u1000" {
+		t.Fatalf("%+v", people)
+	}
+}
+
 func TestIdentifySeparateAccounts(t *testing.T) {
 	root := t.TempDir()
 	a, err := Identify(root, Account{Link: "terminal", ExternalID: "uid:1"}, "one")

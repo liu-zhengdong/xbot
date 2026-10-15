@@ -175,6 +175,21 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "SPAWN_FORK"):
 		writeText(w, "started\n")
 		return
+	case strings.Contains(lastUser, "SPAWN_REMEMBER") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"REMEMBER_TASK","mode":"brief"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_REMEMBER"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(lastUser, "REMEMBER_TASK"):
+		writeText(w, "subagent finished\n")
+		return
+	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished") && !sawRemember:
+		writeTool(w, "call_rem_sub", "remember", `{"fact":"owner likes water","scope":"person","tier":"profile"}`)
+		return
+	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished"):
+		writeText(w, "remembered\n")
+		return
 	case strings.Contains(lastUser, "SPAWN_BRIEF") && !sawSpawn:
 		writeTool(w, "call_spawn", "spawn", `{"task":"BRIEF_TASK","mode":"brief"}`)
 		return

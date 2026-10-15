@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,6 +87,10 @@ func List(root string) ([]Person, error) {
 			continue
 		}
 		p, err := Load(root, ent.Name())
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("person: skipping %s: no identity.json", ent.Name())
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}

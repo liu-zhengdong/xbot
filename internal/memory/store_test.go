@@ -99,6 +99,20 @@ func TestMarkdownEditRebuildsIndex(t *testing.T) {
 	}
 }
 
+func TestSubagentIDIsNotAPerson(t *testing.T) {
+	root := t.TempDir()
+	s := Open(root)
+	err := s.Remember(context.Background(), Fact{
+		Scope: ScopePerson, PersonID: "sa_abcdef01", WrittenBy: "ada", Text: "nope",
+	})
+	if err == nil {
+		t.Fatal("expected subagent id to be refused")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "people", "sa_abcdef01")); !os.IsNotExist(statErr) {
+		t.Fatal(statErr)
+	}
+}
+
 func TestProfileCap(t *testing.T) {
 	s := Open(t.TempDir())
 	ctx := context.Background()

@@ -127,6 +127,9 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 func (s *FileStore) dir(scope Scope, botName, personID string) (string, error) {
 	switch scope {
 	case ScopePerson:
+		if err := rejectSubagent(personID); err != nil {
+			return "", err
+		}
 		if err := clean(personID); err != nil {
 			return "", err
 		}
@@ -138,6 +141,9 @@ func (s *FileStore) dir(scope Scope, botName, personID string) (string, error) {
 		return filepath.Join(s.Root, "bots", botName, "memory"), nil
 	case ScopeBotPerson:
 		if err := clean(botName); err != nil {
+			return "", err
+		}
+		if err := rejectSubagent(personID); err != nil {
 			return "", err
 		}
 		if err := clean(personID); err != nil {
@@ -155,6 +161,13 @@ func ValidID(id string) bool { return idRe.MatchString(id) }
 func clean(id string) error {
 	if !ValidID(id) {
 		return fmt.Errorf("memory: bad id %q", id)
+	}
+	return nil
+}
+
+func rejectSubagent(id string) error {
+	if strings.HasPrefix(id, "sa_") {
+		return fmt.Errorf("memory: %q is a subagent, not a person", id)
 	}
 	return nil
 }
