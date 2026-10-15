@@ -45,7 +45,7 @@ func (k *Kernel) ensureExec() exec.Executor {
 }
 
 func (k *Kernel) remote() (link.Runner, bool) {
-	for _, l := range k.Links {
+	for _, l := range k.snapshotLinks() {
 		r, ok := l.(link.Runner)
 		if ok && strings.TrimSpace(r.BaseURL) != "" {
 			return r, true

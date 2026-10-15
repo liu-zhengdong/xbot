@@ -19,8 +19,9 @@ import (
 )
 
 func (k *Kernel) modelTools() ([]tools.Tool, error) {
+	links := k.snapshotLinks()
 	var active []link.Link
-	for _, l := range k.Links {
+	for _, l := range links {
 		if l == nil {
 			continue
 		}
@@ -30,22 +31,22 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		active = append(active, l)
 	}
 	list := append([]tools.Tool{}, link.CollectTools(active)...)
-	if k.hasLink(link.NameMemory) {
+	if namedLink(links, link.NameMemory) {
 		list = append(list, rememberTool{k}, forgetTool{k}, recallTool{k})
 	}
-	if k.hasLink(link.NamePersona) {
+	if namedLink(links, link.NamePersona) {
 		list = append(list, personaTool{k}, profileTool{k})
 	}
-	if k.hasLink(link.NameTimer) {
+	if namedLink(links, link.NameTimer) {
 		list = append(list, routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k}, notifyTool{k})
 	}
-	if k.hasLink(link.NameContext) {
+	if namedLink(links, link.NameContext) {
 		list = append(list, compactTool{k}, historyTool{k}, expandTool{k})
 	}
-	if k.hasLink(link.NameWeb) {
+	if namedLink(links, link.NameWeb) {
 		list = append(list, askTool{})
 	}
-	if k.hasLink(link.NamePeers) {
+	if namedLink(links, link.NamePeers) {
 		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k})
 	}
 	if k.isPrimary() {
@@ -58,7 +59,11 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 }
 
 func (k *Kernel) hasLink(name string) bool {
-	for _, l := range k.Links {
+	return namedLink(k.snapshotLinks(), name)
+}
+
+func namedLink(links []link.Link, name string) bool {
+	for _, l := range links {
 		if l != nil && l.Name() == name {
 			return true
 		}
@@ -67,7 +72,7 @@ func (k *Kernel) hasLink(name string) bool {
 }
 
 func (k *Kernel) timer() (*link.Timer, error) {
-	for _, l := range k.Links {
+	for _, l := range k.snapshotLinks() {
 		if t, ok := l.(*link.Timer); ok && t != nil {
 			return t, nil
 		}

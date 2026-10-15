@@ -56,6 +56,7 @@ type Kernel struct {
 	execOnce    sync.Once
 	loadMu      sync.Mutex
 	loaded      map[string]bool
+	linksMu     sync.Mutex
 	secretMu    sync.Mutex
 	secrets     map[string]map[string]string
 	compactMu   sync.Mutex
@@ -456,7 +457,7 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 		if k.Inbox == nil {
 			return
 		}
-		for _, l := range k.Links {
+		for _, l := range k.snapshotLinks() {
 			em, ok := l.(link.Emitter)
 			if !ok {
 				continue
@@ -482,7 +483,7 @@ func (k *Kernel) Close() error {
 		return nil
 	}
 	var first error
-	for _, l := range k.Links {
+	for _, l := range k.snapshotLinks() {
 		c, ok := l.(interface{ Close() error })
 		if !ok || c == nil {
 			continue

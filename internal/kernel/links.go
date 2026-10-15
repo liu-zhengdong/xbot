@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
+	"xbot/internal/bot"
+	"xbot/internal/code"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -226,14 +229,15 @@ func (t linksTool) loadedNames(id string) (string, error) {
 }
 
 func (k *Kernel) toolsForLoaded(id string) []tools.Tool {
+	links := k.snapshotLinks()
 	if id == link.NameSkills || id == "skills" {
-		if k.hasLink(link.NameSkills) {
+		if namedLink(links, link.NameSkills) {
 			return []tools.Tool{skillTool{k}, writeSkillTool{k}}
 		}
 		return nil
 	}
 	var out []tools.Tool
-	for _, l := range k.Links {
+	for _, l := range links {
 		if l == nil {
 			continue
 		}
@@ -242,6 +246,109 @@ func (k *Kernel) toolsForLoaded(id string) []tools.Tool {
 		}
 	}
 	return out
+}
+
+// snapshotLinks mounts catalog grants that were installed after this kernel
+// started, and drops catalog grants that were removed. Runner and mcp links stay.
+func (k *Kernel) snapshotLinks() []link.Link {
+	if k == nil {
+		return nil
+	}
+	k.linksMu.Lock()
+	defer k.linksMu.Unlock()
+	if k.Bot != nil {
+		k.syncGrantsLocked()
+	}
+	out := make([]link.Link, len(k.Links))
+	copy(out, k.Links)
+	return out
+}
+
+func (k *Kernel) syncGrantsLocked() {
+	granted := map[string]bool{}
+	for _, name := range k.Bot.Config().Links {
+		if catalogRuntime(name) {
+			granted[name] = true
+		}
+	}
+	var kept []link.Link
+	have := map[string]bool{}
+	for _, l := range k.Links {
+		if l == nil {
+			continue
+		}
+		name := l.Name()
+		if catalogRuntime(name) && !granted[name] {
+			continue
+		}
+		if have[name] {
+			continue
+		}
+		kept = append(kept, l)
+		have[name] = true
+	}
+	for _, name := range k.Bot.Config().Links {
+		if !catalogRuntime(name) || have[name] {
+			continue
+		}
+		mounted := k.mountGrantLocked(name)
+		if mounted == nil {
+			continue
+		}
+		kept = append(kept, mounted)
+		have[name] = true
+	}
+	k.Links = kept
+}
+
+func catalogRuntime(name string) bool {
+	switch name {
+	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding:
+		return true
+	default:
+		return false
+	}
+}
+
+func (k *Kernel) mountGrantLocked(name string) link.Link {
+	dir := bot.Dir(k.Bot.Root, k.Bot.Name())
+	switch name {
+	case link.NameWebhook:
+		return link.Webhook{}
+	case link.NameWatch:
+		return link.Watch{}
+	case link.NameSkills:
+		return link.Skills{}
+	case link.NameTelegram:
+		return link.NewConnector(dir, k.Bot.SecretPath(), link.NameTelegram)
+	case link.NameLark:
+		return link.NewConnector(dir, k.Bot.SecretPath(), link.NameLark)
+	case link.NameCoding:
+		l := code.Open(dir, k.Bot.InboxPath())
+		if k.Provider != nil {
+			l.UseProvider(k.Provider)
+		}
+		wired := false
+		for _, existing := range k.Links {
+			r, ok := existing.(link.Runner)
+			if ok && strings.TrimSpace(r.BaseURL) != "" {
+				l.UseRunner(r.BaseURL, r.Token)
+				wired = true
+				break
+			}
+		}
+		if !wired {
+			if url := strings.TrimSpace(os.Getenv("XBOT_RUNNER_URL")); url != "" {
+				l.UseRunner(url, os.Getenv("XBOT_RUNNER_TOKEN"))
+			}
+		}
+		if cmd := strings.TrimSpace(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
+			l.UseCommand(cmd)
+		}
+		return l
+	default:
+		return nil
+	}
 }
 
 func grantName(id string) string {

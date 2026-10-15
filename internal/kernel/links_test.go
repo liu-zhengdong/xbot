@@ -237,6 +237,42 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 	}
 }
 
+func TestLinksInstallMountsToolsImmediately(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
+	k.StageSecrets("telegram", map[string]string{"TELEGRAM_BOT_TOKEN": "tok"})
+	out, err := (linksTool{k}).install("telegram")
+	if err != nil || out != "installed telegram" {
+		t.Fatalf("install %q %v", out, err)
+	}
+	out, err = (linksTool{k}).load("telegram")
+	if err != nil || !strings.Contains(out, "telegram_send") || strings.Contains(out, "no tools") {
+		t.Fatalf("load %q %v", out, err)
+	}
+	out, err = (linksTool{k}).install("skills")
+	if err != nil || out != "installed skills" {
+		t.Fatalf("skills %q %v", out, err)
+	}
+	out, err = (linksTool{k}).load("skills")
+	if err != nil || !strings.Contains(out, "read_skill") || !strings.Contains(out, "write_skill") {
+		t.Fatalf("skills load %q %v", out, err)
+	}
+	out, err = (linksTool{k}).install("coding-agent")
+	if err != nil || out != "installed coding-agent" {
+		t.Fatalf("coding %q %v", out, err)
+	}
+	out, err = (linksTool{k}).load("coding-agent")
+	if err != nil || !strings.Contains(out, "code_start") || strings.Contains(out, "no tools") {
+		t.Fatalf("coding load %q %v", out, err)
+	}
+	if _, err := (linksTool{k}).remove("telegram"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (linksTool{k}).load("telegram"); err == nil {
+		t.Fatal("removed telegram still loaded")
+	}
+}
+
 func linksCall(action, id string) provider.Message {
 	args := `{"action":"` + action + `","id":"` + id + `"}`
 	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{

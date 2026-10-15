@@ -191,7 +191,7 @@ func (k *Kernel) localStamp() string {
 func (k *Kernel) linkNames() []string {
 	seen := map[string]bool{}
 	var names []string
-	for _, l := range k.Links {
+	for _, l := range k.snapshotLinks() {
 		if l == nil || seen[l.Name()] {
 			continue
 		}
