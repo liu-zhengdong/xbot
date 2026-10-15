@@ -258,6 +258,7 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	now := k.now()
 	next := bot.EnvRecord{
 		Hour:    now.Format("2006-01-02T15"),
+		Now:     k.localStamp(),
 		Sender:  ev.Sender,
 		Tools:   toolNames(list),
 		Notes:   k.pendingNotes(),

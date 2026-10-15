@@ -202,7 +202,7 @@ xbot delete xbot
 
 ```bash
 xbot profile show ada
-xbot profile set ada --description "项目笔记" --tone "平静、具体" --length short --emoji spare --language 中文 --proactivity quiet --quiet 22:00-07:00
+xbot profile set ada --description "项目笔记" --tone "平静、具体" --length short --emoji spare --language 中文 --proactivity quiet --quiet 22:00-07:00 --timezone Asia/Shanghai
 xbot profile set ada --name notes
 xbot profile avatar ada --file face.png
 xbot template export ada --out ada.json

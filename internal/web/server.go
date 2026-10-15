@@ -396,7 +396,9 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, rt := range list {
-		routines = append(routines, map[string]any{"id": rt.ID, "name": rt.Name, "cron": rt.Cron, "enabled": rt.Enabled})
+		routines = append(routines, map[string]any{
+			"id": rt.ID, "name": rt.Name, "cron": rt.Cron, "at": rt.At, "enabled": rt.Enabled,
+		})
 	}
 	agents := []map[string]any{}
 	dir := filepath.Dir(b.AgentDir("none"))
@@ -422,6 +424,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"proactivity": b.Config().Proactivity,
 		"quiet_start": b.Config().QuietStart,
 		"quiet_end":   b.Config().QuietEnd,
+		"timezone":    b.Config().Timezone,
 		"avatar_url":  url, "avatar_bg": bg, "avatar_ink": ink, "initial": initial,
 		"provider": b.Config().Provider, "model": b.Config().Model,
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,

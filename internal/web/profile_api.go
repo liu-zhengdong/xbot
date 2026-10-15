@@ -37,6 +37,7 @@ type profileBody struct {
 	Proactivity *string `json:"proactivity"`
 	QuietStart  *string `json:"quiet_start"`
 	QuietEnd    *string `json:"quiet_end"`
+	Timezone    *string `json:"timezone"`
 	Persona     *string `json:"persona"`
 }
 
@@ -63,6 +64,7 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 	u := bot.ProfileUpdate{
 		Description: in.Description, Tone: in.Tone, Length: in.Length, Emoji: in.Emoji,
 		Language: in.Language, Proactivity: in.Proactivity, QuietStart: in.QuietStart, QuietEnd: in.QuietEnd,
+		Timezone: in.Timezone,
 	}
 	if u != (bot.ProfileUpdate{}) {
 		if err := b.ApplyProfile(u); err != nil {

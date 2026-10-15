@@ -77,6 +77,9 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 	if prev.Hour != next.Hour || next.At.Sub(prev.At) >= IdleGap {
 		lines = append(lines, "time: "+next.Hour)
 	}
+	if next.Now != "" && prev.Now != next.Now {
+		lines = append(lines, "now: "+next.Now)
+	}
 	if len(lines) == 0 {
 		return ""
 	}
@@ -84,8 +87,12 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 }
 
 func baseline(e bot.EnvRecord) string {
-	body := fmt.Sprintf("time: %s\nsender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
-		e.Hour, e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
+	body := fmt.Sprintf("time: %s\n", e.Hour)
+	if e.Now != "" {
+		body += "now: " + e.Now + "\n"
+	}
+	body += fmt.Sprintf("sender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
+		e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
 	if e.Skills != "" {
 		body += "skills: " + e.Skills + "\n"
 	}
@@ -96,8 +103,12 @@ func baseline(e bot.EnvRecord) string {
 }
 
 func snapshotText(e bot.EnvRecord) string {
-	body := fmt.Sprintf("time: %s\nsender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
-		e.Hour, e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
+	body := fmt.Sprintf("time: %s\n", e.Hour)
+	if e.Now != "" {
+		body += "now: " + e.Now + "\n"
+	}
+	body += fmt.Sprintf("sender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
+		e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
 	if e.Skills != "" {
 		body += "skills: " + e.Skills + "\n"
 	}
@@ -153,6 +164,28 @@ func (k *Kernel) now() time.Time {
 		return k.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+// localStamp is the owner's clock to the minute, for the environment block only.
+// It is not part of the stable prefix.
+func (k *Kernel) localStamp() string {
+	utc := k.now()
+	name := "UTC"
+	loc := time.UTC
+	if k != nil && k.Bot != nil {
+		if tz := strings.TrimSpace(k.Bot.Config().Timezone); tz != "" {
+			loaded, err := time.LoadLocation(tz)
+			if err == nil {
+				loc = loaded
+				name = tz
+			}
+		} else if time.Local != nil {
+			loc = time.Local
+			name = loc.String()
+		}
+	}
+	local := utc.In(loc).Truncate(time.Minute)
+	return local.Format(time.RFC3339) + " (" + name + ")"
 }
 
 func (k *Kernel) linkNames() []string {

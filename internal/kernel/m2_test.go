@@ -84,8 +84,11 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("prefix changed within the hour\n%s\n%s", p.reqs[0].Messages[0].Content, p.reqs[1].Messages[0].Content)
 	}
 	updates := envUpdates(t, b)
-	if len(updates) != 1 {
+	if len(updates) != 2 {
 		t.Fatalf("env updates %+v", updates)
+	}
+	if strings.Contains(updates[1], "time:") || !strings.Contains(updates[1], "now: 2026-10-15T08:20:00Z") {
+		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
 	if strings.Join(names, ",") != "edit_file,read_file,shell,write_file" {
@@ -99,11 +102,11 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatal(err)
 	}
 	updates = envUpdates(t, b)
-	if len(updates) != 2 {
+	if len(updates) != 3 {
 		t.Fatalf("updates after hour change: %d", len(updates))
 	}
 	last := updates[len(updates)-1]
-	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, "time:") {
+	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, "time:") || !strings.Contains(last, "now:") {
 		t.Fatalf("diff not small: %s", last)
 	}
 	if p.reqs[2].Messages[0].Content != p.reqs[1].Messages[0].Content {

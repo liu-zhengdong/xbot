@@ -17,15 +17,20 @@ import (
 	"xbot/internal/tools"
 )
 
-// Routine is a saved prompt plus a 5-field cron expression.
+// Routine is a saved prompt plus either a 5-field cron expression or a one-shot At time.
+// At is RFC3339. A one-shot is exempt from the minimum cron gap and disables itself after it fires.
 type Routine struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Prompt   string `json:"prompt"`
-	Cron     string `json:"cron"`
+	Cron     string `json:"cron,omitempty"`
+	At       string `json:"at,omitempty"`
 	Enabled  bool   `json:"enabled"`
 	LastSlot string `json:"last_slot,omitempty"`
 }
+
+// oneShotWindow is how late a poll may be and still fire a one-shot.
+const oneShotWindow = 15 * time.Second
 
 var routineID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
@@ -82,6 +87,13 @@ func (t *Timer) Due(now time.Time) ([]Event, error) {
 		if !r.Enabled {
 			continue
 		}
+		if r.At != "" {
+			ev, ok := dueOnce(r, now, t.sender())
+			if ok {
+				out = append(out, ev)
+			}
+			continue
+		}
 		sched, err := cron.Parse(r.Cron)
 		if err != nil || !sched.Match(now) || r.LastSlot == slot {
 			continue
@@ -91,6 +103,24 @@ func (t *Timer) Due(now time.Time) ([]Event, error) {
 		out = append(out, ev)
 	}
 	return out, nil
+}
+
+func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
+	at, err := time.Parse(time.RFC3339, r.At)
+	if err != nil {
+		return Event{}, false
+	}
+	at = at.UTC()
+	if now.Before(at) || now.Sub(at) > oneShotWindow {
+		return Event{}, false
+	}
+	slot := at.Format("20060102T1504")
+	if r.LastSlot == slot {
+		return Event{}, false
+	}
+	ev := NewEvent(NameTimer, TypeTimer, routineBody(r), sender, now)
+	ev.ID = "rt_" + r.ID + "_" + slot
+	return ev, true
 }
 
 // Fire posts due events and commits their slots.
@@ -121,6 +151,9 @@ func (t *Timer) Commit(ev Event) error {
 		return err
 	}
 	r.LastSlot = slot
+	if r.At != "" {
+		r.Enabled = false
+	}
 	return t.Save(r)
 }
 
@@ -190,8 +223,21 @@ func (t *Timer) Save(r Routine) error {
 	if r.Prompt == "" {
 		return errors.New("timer: routine prompt is empty")
 	}
-	if err := cron.Allow(r.Cron); err != nil {
-		return err
+	r.At = strings.TrimSpace(r.At)
+	r.Cron = strings.TrimSpace(r.Cron)
+	switch {
+	case r.At != "" && r.Cron != "":
+		return errors.New("timer: set at or cron, not both")
+	case r.At != "":
+		at, err := time.Parse(time.RFC3339, r.At)
+		if err != nil {
+			return fmt.Errorf("timer: at: %w", err)
+		}
+		r.At = at.UTC().Format(time.RFC3339)
+	default:
+		if err := cron.Allow(r.Cron); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(t.Dir, 0700); err != nil {
 		return err

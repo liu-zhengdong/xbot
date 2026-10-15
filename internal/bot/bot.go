@@ -46,6 +46,7 @@ type Config struct {
 	Proactivity  string    `json:"proactivity,omitempty"`
 	QuietStart   string    `json:"quiet_start,omitempty"`
 	QuietEnd     string    `json:"quiet_end,omitempty"`
+	Timezone     string    `json:"timezone,omitempty"`
 	Created      time.Time `json:"created"`
 }
 
@@ -62,6 +63,7 @@ type SummaryBlock struct {
 // EnvRecord is the last environment snapshot. It is volatile context, not part of the stable prefix.
 type EnvRecord struct {
 	Hour    string    `json:"hour,omitempty"`
+	Now     string    `json:"now,omitempty"`
 	Sender  string    `json:"sender,omitempty"`
 	Tools   []string  `json:"tools,omitempty"`
 	Notes   int       `json:"notes,omitempty"`

@@ -82,6 +82,7 @@ type ProfileUpdate struct {
 	Proactivity *string
 	QuietStart  *string
 	QuietEnd    *string
+	Timezone    *string
 }
 
 // ApplyProfile validates and stores a partial profile update.
@@ -149,6 +150,15 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		return err
 	}
 	cfg.QuietStart, cfg.QuietEnd = start, end
+	if u.Timezone != nil {
+		v := flat(*u.Timezone)
+		if v != "" {
+			if _, err := time.LoadLocation(v); err != nil {
+				return fmt.Errorf("bot: timezone: %w", err)
+			}
+		}
+		cfg.Timezone = v
+	}
 	b.cfg = cfg
 	return b.SaveConfig()
 }
@@ -356,7 +366,8 @@ type TemplateRoutine struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Prompt  string `json:"prompt"`
-	Cron    string `json:"cron"`
+	Cron    string `json:"cron,omitempty"`
+	At      string `json:"at,omitempty"`
 	Enabled bool   `json:"enabled"`
 }
 
@@ -369,6 +380,7 @@ type Template struct {
 	Proactivity string            `json:"proactivity,omitempty"`
 	QuietStart  string            `json:"quiet_start,omitempty"`
 	QuietEnd    string            `json:"quiet_end,omitempty"`
+	Timezone    string            `json:"timezone,omitempty"`
 	AvatarMIME  string            `json:"avatar_mime,omitempty"`
 	Avatar      string            `json:"avatar,omitempty"`
 	Routines    []TemplateRoutine `json:"routines,omitempty"`
@@ -388,6 +400,7 @@ func ExportTemplate(b *Bot) (Template, error) {
 		Proactivity: b.cfg.Proactivity,
 		QuietStart:  b.cfg.QuietStart,
 		QuietEnd:    b.cfg.QuietEnd,
+		Timezone:    b.cfg.Timezone,
 	}
 	if b.cfg.Avatar == AvatarCustom {
 		data, mime, ok, err := b.AvatarBytes()
@@ -405,7 +418,7 @@ func ExportTemplate(b *Bot) (Template, error) {
 	}
 	for _, r := range list {
 		tpl.Routines = append(tpl.Routines, TemplateRoutine{
-			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, Enabled: r.Enabled,
+			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, At: r.At, Enabled: r.Enabled,
 		})
 	}
 	return tpl, nil
@@ -436,10 +449,10 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 		}
 	}
 	desc, tone, length, emoji, lang := tpl.Description, tpl.Style.Tone, tpl.Style.Length, tpl.Style.Emoji, tpl.Style.Language
-	pro, qs, qe := tpl.Proactivity, tpl.QuietStart, tpl.QuietEnd
+	pro, qs, qe, tz := tpl.Proactivity, tpl.QuietStart, tpl.QuietEnd, tpl.Timezone
 	if err := b.ApplyProfile(ProfileUpdate{
 		Description: &desc, Tone: &tone, Length: &length, Emoji: &emoji, Language: &lang,
-		Proactivity: &pro, QuietStart: &qs, QuietEnd: &qe,
+		Proactivity: &pro, QuietStart: &qs, QuietEnd: &qe, Timezone: &tz,
 	}); err != nil {
 		return fail(err)
 	}
@@ -455,7 +468,7 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	for _, r := range tpl.Routines {
 		if err := tm.Save(link.Routine{
-			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, Enabled: r.Enabled,
+			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, At: r.At, Enabled: r.Enabled,
 		}); err != nil {
 			return fail(err)
 		}

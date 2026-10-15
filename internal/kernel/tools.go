@@ -324,15 +324,16 @@ type routineCreate struct{ k *Kernel }
 
 func (routineCreate) Name() string { return "routine_create" }
 func (routineCreate) Description() string {
-	return "Create a routine: a prompt plus a 5-field cron expression. The minimum gap is 5 minutes."
+	return "Create a routine. Pass cron (5 fields, minimum gap 5 minutes) or at (one RFC3339 time). A one-shot at time fires once and then disables itself. Use at for reminders like 'in 2 minutes' or a single clock time."
 }
 func (routineCreate) Parameters() any {
 	return schema(map[string]any{
 		"id":     stringProp("optional id"),
 		"name":   stringProp("short name"),
 		"prompt": stringProp("what to consider when the routine fires"),
-		"cron":   stringProp("5-field cron, minimum gap 5 minutes"),
-	}, []string{"name", "prompt", "cron"})
+		"cron":   stringProp("5-field cron, minimum gap 5 minutes. Omit when at is set"),
+		"at":     stringProp("RFC3339 one-shot time. Omit when cron is set"),
+	}, []string{"name", "prompt"})
 }
 func (routineCreate) Confirm(json.RawMessage) (bool, string, error) {
 	return true, "create routine", nil
@@ -343,6 +344,7 @@ func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, err
 		Name   string `json:"name"`
 		Prompt string `json:"prompt"`
 		Cron   string `json:"cron"`
+		At     string `json:"at"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -358,7 +360,7 @@ func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, err
 		}
 		in.ID = "r" + hex.EncodeToString(b[:])
 	}
-	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, Enabled: true}
+	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Enabled: true}
 	if err := tm.Save(r); err != nil {
 		return "", err
 	}
@@ -387,7 +389,13 @@ func (t routineList) Run(context.Context, json.RawMessage) (string, error) {
 	}
 	var b strings.Builder
 	for _, r := range list {
-		fmt.Fprintf(&b, "- %s %q cron %s enabled %v\n", r.ID, r.Name, r.Cron, r.Enabled)
+		when := r.Cron
+		if r.At != "" {
+			when = "at " + r.At
+		} else {
+			when = "cron " + when
+		}
+		fmt.Fprintf(&b, "- %s %q %s enabled %v\n", r.ID, r.Name, when, r.Enabled)
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }

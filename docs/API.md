@@ -72,6 +72,7 @@
   "proactivity":"quiet",
   "quiet_start":"22:00",
   "quiet_end":"07:00",
+  "timezone":"Asia/Shanghai",
   "avatar_url":"",
   "avatar_bg":"#rrggbb",
   "avatar_ink":"#rrggbb",
@@ -81,14 +82,14 @@
   "pinned":false,
   "primary":false,
   "memory":[{"scope":"person","text":"..."}],
-  "routines":[{"id":"...","name":"...","cron":"...","enabled":true}],
+  "routines":[{"id":"...","name":"...","cron":"7 * * * *","at":"","enabled":true}],
   "agents":[{"id":"...","status":"running","task":"截到 140 字","mode":"brief","steps":1}]
 }
 ```
 
-`style.length` 是 `short` | `medium` | `long`，空字符串表示没设。`style.emoji` 是 `none` | `spare` | `often`。`proactivity` 是 `quiet` | `normal` | `active`，空字符串按适中处理，并且不会改稳定前缀。免打扰是 UTC 的 `HH:MM`，窗口可以跨过午夜。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统。
+`style.length` 是 `short` | `medium` | `long`，空字符串表示没设。`style.emoji` 是 `none` | `spare` | `often`。`proactivity` 是 `quiet` | `normal` | `active`，空字符串按适中处理，并且不会改稳定前缀。免打扰是 UTC 的 `HH:MM`，窗口可以跨过午夜。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示用这台机器的本地时区。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统。
 
-`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`tone`（80）、`length`、`emoji`、`language`（40）、`proactivity`、`quiet_start`、`quiet_end`、`persona`。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。
+`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`tone`（80）、`length`、`emoji`、`language`（40）、`proactivity`、`quiet_start`、`quiet_end`、`timezone`、`persona`。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
 
 `POST /api/bots/{name}/avatar` 是 `multipart/form-data`，字段名 `file`。只接受 PNG、JPEG、GIF、WebP，最大 1 MiB。成功 200 `{"name","avatar":"custom"}`。之后列表和详情里的 `avatar_url` 指向 `GET /api/bots/{name}/avatar`，响应是图片字节，`Cache-Control: private, no-cache`。没有上传的头像时 GET 是 404。
 
