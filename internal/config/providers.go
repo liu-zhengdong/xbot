@@ -1,0 +1,259 @@
+package config
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"xbot/internal/fsutil"
+)
+
+// envName is an environment variable name, never a secret.
+var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// Provider is one OpenAI-compatible endpoint. The key is the name of an environment variable.
+type Provider struct {
+	Name      string      `json:"name"`
+	BaseURL   string      `json:"base_url"`
+	APIKeyEnv string      `json:"api_key_env"`
+	Models    []ModelSpec `json:"models"`
+}
+
+// ModelSpec is one model id and its context length in tokens.
+type ModelSpec struct {
+	Name    string `json:"name"`
+	Context int    `json:"context"`
+}
+
+// File is ~/.xbot/providers.json. It must not contain raw API keys.
+type File struct {
+	Providers []Provider `json:"providers"`
+}
+
+// Path is the registry file under the data root.
+func Path(root string) string { return filepath.Join(root, "providers.json") }
+
+// Load reads the registry. A missing file is an empty registry.
+func Load(root string) (File, error) {
+	raw, err := os.ReadFile(Path(root))
+	if errors.Is(err, os.ErrNotExist) {
+		return File{}, nil
+	}
+	if err != nil {
+		return File{}, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var f File
+	if err := dec.Decode(&f); err != nil {
+		return File{}, fmt.Errorf("providers: %w", err)
+	}
+	return f, nil
+}
+
+// Save writes the registry. Callers must not put secrets in it.
+func Save(root string, f File) error {
+	raw, err := fsutil.Marshal(f)
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteAtomic(Path(root), raw, 0600)
+}
+
+// Add upserts a provider and one model. A second add with the same model updates its context length.
+func Add(root string, p Provider, model ModelSpec) error {
+	if !nameOK(p.Name) {
+		return fmt.Errorf("providers: bad name %q", p.Name)
+	}
+	if err := validateModel(model); err != nil {
+		return err
+	}
+	f, err := Load(root)
+	if err != nil {
+		return err
+	}
+	i := indexOf(f.Providers, p.Name)
+	if i < 0 {
+		if err := validateProvider(p, false); err != nil {
+			return err
+		}
+		p.BaseURL = strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
+		p.Models = []ModelSpec{model}
+		f.Providers = append(f.Providers, p)
+		return Save(root, f)
+	}
+	cur := f.Providers[i]
+	if p.BaseURL != "" {
+		cur.BaseURL = strings.TrimRight(p.BaseURL, "/")
+	}
+	if p.APIKeyEnv != "" {
+		cur.APIKeyEnv = p.APIKeyEnv
+	}
+	replaced := false
+	for n := range cur.Models {
+		if cur.Models[n].Name == model.Name {
+			cur.Models[n] = model
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		cur.Models = append(cur.Models, model)
+	}
+	f.Providers[i] = cur
+	return Save(root, f)
+}
+
+// Remove deletes a provider, or one model when model is not empty.
+// Removing the last model deletes the provider.
+func Remove(root, name, model string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("providers: name is required")
+	}
+	f, err := Load(root)
+	if err != nil {
+		return err
+	}
+	i := indexOf(f.Providers, name)
+	if i < 0 {
+		return fmt.Errorf("providers: %q not found", name)
+	}
+	if model == "" {
+		f.Providers = append(f.Providers[:i], f.Providers[i+1:]...)
+		return Save(root, f)
+	}
+	cur := f.Providers[i]
+	next := cur.Models[:0]
+	found := false
+	for _, m := range cur.Models {
+		if m.Name == model {
+			found = true
+			continue
+		}
+		next = append(next, m)
+	}
+	if !found {
+		return fmt.Errorf("providers: model %q not found on %q", model, name)
+	}
+	if len(next) == 0 {
+		f.Providers = append(f.Providers[:i], f.Providers[i+1:]...)
+	} else {
+		cur.Models = next
+		f.Providers[i] = cur
+	}
+	return Save(root, f)
+}
+
+// Lookup finds a named provider and model. It does not read the API key.
+func Lookup(root, providerName, modelName string) (Provider, ModelSpec, error) {
+	f, err := Load(root)
+	if err != nil {
+		return Provider{}, ModelSpec{}, err
+	}
+	i := indexOf(f.Providers, providerName)
+	if i < 0 {
+		return Provider{}, ModelSpec{}, fmt.Errorf("providers: %q not found", providerName)
+	}
+	p := f.Providers[i]
+	if modelName == "" && len(p.Models) == 1 {
+		return p, p.Models[0], nil
+	}
+	for _, m := range p.Models {
+		if m.Name == modelName {
+			return p, m, nil
+		}
+	}
+	return Provider{}, ModelSpec{}, fmt.Errorf("providers: model %q is not on %q", modelName, providerName)
+}
+
+// Resolve turns a bot binding into an endpoint. An empty binding uses FromEnv and a zero context length.
+// The API key is read from the environment variable named in the registry.
+func Resolve(root, providerName, modelName string, getenv func(string) string) (endpoint ModelConfig, contextLen int, err error) {
+	providerName = strings.TrimSpace(providerName)
+	modelName = strings.TrimSpace(modelName)
+	if providerName == "" && modelName == "" {
+		m := FromEnv(getenv)
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY"}, 0, nil
+	}
+	if providerName == "" {
+		m := FromEnv(getenv)
+		m.Model = modelName
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY"}, 0, nil
+	}
+	p, model, err := Lookup(root, providerName, modelName)
+	if err != nil {
+		return ModelConfig{}, 0, err
+	}
+	key := strings.TrimSpace(getenv(p.APIKeyEnv))
+	if key == "" {
+		return ModelConfig{}, 0, fmt.Errorf("providers: %s is empty", p.APIKeyEnv)
+	}
+	return ModelConfig{
+		APIKey:  key,
+		BaseURL: strings.TrimRight(p.BaseURL, "/"),
+		Model:   model.Name,
+		KeyEnv:  p.APIKeyEnv,
+	}, model.Context, nil
+}
+
+// ModelConfig is a resolved endpoint. KeyEnv is the variable name, not a place to store the key.
+type ModelConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+	KeyEnv  string
+}
+
+func validateProvider(p Provider, modelRequired bool) error {
+	if !nameOK(p.Name) {
+		return fmt.Errorf("providers: bad name %q", p.Name)
+	}
+	if strings.TrimSpace(p.BaseURL) == "" {
+		return errors.New("providers: base_url is required")
+	}
+	if !envName.MatchString(p.APIKeyEnv) {
+		return fmt.Errorf("providers: api_key_env must be an environment variable name, got %q", p.APIKeyEnv)
+	}
+	if modelRequired && len(p.Models) == 0 {
+		return errors.New("providers: at least one model is required")
+	}
+	return nil
+}
+
+func validateModel(m ModelSpec) error {
+	if strings.TrimSpace(m.Name) == "" {
+		return errors.New("providers: model name is required")
+	}
+	if m.Context <= 0 {
+		return errors.New("providers: model context length must be positive")
+	}
+	return nil
+}
+
+func nameOK(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func indexOf(list []Provider, name string) int {
+	for i, p := range list {
+		if p.Name == name {
+			return i
+		}
+	}
+	return -1
+}

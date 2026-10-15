@@ -28,7 +28,7 @@ func TestPostAckReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev, ok := in.Head()
-	if !ok || ev.ID != a.ID || !ev.Untrusted {
+	if !ok || ev.ID != a.ID || ev.Untrusted {
 		t.Fatalf("head %+v ok=%v", ev, ok)
 	}
 	if err := in.Ack(a.ID); err != nil {
@@ -58,6 +58,35 @@ func TestPostAckReload(t *testing.T) {
 	}
 	if _, ok := re2.Head(); ok {
 		t.Fatal("expected empty inbox")
+	}
+}
+
+func TestAckedIDIsNotReposted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "inbox.jsonl")
+	in, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := link.NewEvent(link.NameTerminal, link.TypeMessage, "one", "u1", time.Now())
+	if err := in.Post(ev); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Ack(ev.ID); err != nil {
+		t.Fatal(err)
+	}
+	ev.Content = "changed"
+	if err := in.Post(ev); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := in.Head(); ok {
+		t.Fatal("acked id must not requeue")
+	}
+	re, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := re.Head(); ok {
+		t.Fatal("reload requeued an acked id")
 	}
 }
 

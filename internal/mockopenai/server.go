@@ -53,9 +53,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
 		return
 	}
-	var sawShell, sawWrite bool
-	var lastTool string
+	var sawShell, sawWrite, sawRemember, sawNotify, sawRecall bool
+	var lastTool, lastUser string
 	for _, m := range req.Messages {
+		if m.Role == "user" {
+			lastUser = m.Content
+		}
 		if m.Role == "tool" {
 			lastTool = m.Content
 		}
@@ -65,11 +68,43 @@ func serve(w http.ResponseWriter, r *http.Request, dir string) {
 				sawShell = true
 			case "write_file":
 				sawWrite = true
+			case "remember":
+				sawRemember = true
+			case "notify_owner":
+				sawNotify = true
+			case "recall":
+				sawRecall = true
 			}
 		}
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	switch {
+	case strings.Contains(lastUser, "REMEMBER_PERSON") && !sawRemember:
+		writeTools(w, []toolSpec{
+			{"call_rem_person", "remember", `{"fact":"Ada likes tea","scope":"person","tier":"profile"}`},
+			{"call_rem_rel", "remember", `{"fact":"secret handshake","scope":"bot-person","tier":"profile"}`},
+		})
+		return
+	case strings.Contains(lastUser, "REMEMBER_PERSON"):
+		writeText(w, "remembered\n")
+		return
+	case strings.Contains(lastUser, "RECALL_PERSON") && !sawRecall:
+		writeTool(w, "call_recall", "recall", `{"query":"tea","scope":"person"}`)
+		return
+	case strings.Contains(lastUser, "RECALL_PERSON"):
+		writeText(w, "recalled\n")
+		return
+	case strings.Contains(lastUser, "<routine") && strings.Contains(lastUser, "QUIET"):
+		writeText(w, "SILENT\n")
+		return
+	case strings.Contains(lastUser, "<routine") && !sawNotify:
+		writeTool(w, "call_notify", "notify_owner", `{"text":"mail is waiting"}`)
+		return
+	case strings.Contains(lastUser, "<routine"):
+		writeText(w, "noted\n")
+		return
+	}
 	if !sawShell {
 		cmd := "ls -1"
 		if dir != "" {
@@ -91,8 +126,36 @@ func serve(w http.ResponseWriter, r *http.Request, dir string) {
 		writeTool(w, "call_write", "write_file", string(args))
 		return
 	}
-	writeData(w, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": "Summary written "}}}})
-	writeData(w, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": "to summary.txt.\n"}}}})
+	writeText(w, "Summary written to summary.txt.\n")
+}
+
+type toolSpec struct {
+	id, name, args string
+}
+
+func writeText(w http.ResponseWriter, text string) {
+	writeData(w, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": text}}}})
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flush(w)
+}
+
+func writeTools(w http.ResponseWriter, calls []toolSpec) {
+	tcs := make([]any, len(calls))
+	for i, c := range calls {
+		tcs[i] = map[string]any{
+			"index": i,
+			"id":    c.id,
+			"type":  "function",
+			"function": map[string]any{
+				"name":      c.name,
+				"arguments": c.args,
+			},
+		}
+	}
+	writeData(w, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{
+		"role":       "assistant",
+		"tool_calls": tcs,
+	}}}})
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flush(w)
 }

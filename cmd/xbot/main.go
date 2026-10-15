@@ -21,21 +21,31 @@ import (
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/notify"
 	"xbot/internal/person"
 	"xbot/internal/provider"
+	"xbot/internal/serve"
 )
 
 const usageText = `XBot is a personal bot. One bot has one continuous conversation.
 
 Usage:
-  xbot [--root DIR] new <name> [--persona TEXT]
+  xbot [--root DIR] new <name> [--persona TEXT] [--provider NAME] [--model NAME]
   xbot [--root DIR] list
   xbot [--root DIR] chat <name> [--yes] [--max-steps N]
+  xbot [--root DIR] bind <name> --provider NAME --model NAME
+  xbot [--root DIR] bind <name> --clear
+  xbot [--root DIR] serve [--interval 15s]
+  xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
+  xbot [--root DIR] provider list
+  xbot [--root DIR] provider remove <name> [--model NAME]
 
 Environment:
-  XBOT_API_KEY    API key (required for chat)
+  XBOT_API_KEY    API key when a bot has no provider binding
   XBOT_BASE_URL   OpenAI-compatible base URL (default https://api.deepseek.com/v1)
   XBOT_MODEL      Model name (default deepseek-chat)
+
+A named provider stores the environment variable name, never the key itself.
 `
 
 var (
@@ -75,6 +85,12 @@ func run(argv []string) error {
 		return cmdList(root)
 	case "chat":
 		return cmdChat(root, rest[1:])
+	case "bind":
+		return cmdBind(root, rest[1:])
+	case "serve":
+		return cmdServe(root, rest[1:])
+	case "provider":
+		return cmdProvider(root, rest[1:])
 	default:
 		return fmt.Errorf("unknown command %q", rest[0])
 	}
@@ -110,26 +126,35 @@ func splitGlobal(argv []string) (string, []string, error) {
 	return root, nil, errUsage
 }
 
+var defaultLinks = []string{
+	link.NameTerminal, link.NameTools, link.NameTimer,
+	link.NameMemory, link.NamePersona, link.NameContext,
+}
+
 type newOpts struct {
-	Name    string
-	Persona string
+	Name     string
+	Persona  string
+	Provider string
+	Model    string
 }
 
 func parseNew(args []string) (newOpts, error) {
-	ordered, err := reorderFlags(args, map[string]bool{"persona": true})
+	ordered, err := reorderFlags(args, map[string]bool{"persona": true, "provider": true, "model": true})
 	if err != nil {
 		return newOpts{}, err
 	}
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	persona := fs.String("persona", bot.DefaultPersona, "system persona")
+	prov := fs.String("provider", "", "named provider")
+	model := fs.String("model", "", "model id")
 	if err := fs.Parse(ordered); err != nil {
 		return newOpts{}, err
 	}
 	if fs.NArg() != 1 {
 		return newOpts{}, errors.New("usage: xbot new <name>")
 	}
-	return newOpts{Name: fs.Arg(0), Persona: *persona}, nil
+	return newOpts{Name: fs.Arg(0), Persona: *persona, Provider: *prov, Model: *model}, nil
 }
 
 func cmdNew(root string, args []string) error {
@@ -137,7 +162,35 @@ func cmdNew(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := bot.Create(root, opt.Name, opt.Persona, []string{link.NameTerminal, link.NameTools}); err != nil {
+	if (opt.Provider == "") != (opt.Model == "") {
+		return errors.New("pass both --provider and --model, or neither")
+	}
+	if opt.Provider != "" {
+		if _, _, err := config.Lookup(root, opt.Provider, opt.Model); err != nil {
+			return err
+		}
+	}
+	b, err := bot.Create(root, opt.Name, opt.Persona, defaultLinks)
+	if err != nil {
+		return err
+	}
+	if opt.Provider != "" {
+		if err := b.SetBinding(opt.Provider, opt.Model); err != nil {
+			return err
+		}
+	}
+	if err := b.WriteRules(kernel.DefaultRules()); err != nil {
+		return err
+	}
+	ext, display, err := link.Account()
+	if err != nil {
+		return err
+	}
+	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	if err != nil {
+		return err
+	}
+	if err := b.SetOwners([]string{who.ID}); err != nil {
 		return err
 	}
 	fmt.Printf("created bot %s\n", opt.Name)
@@ -154,7 +207,11 @@ func cmdList(root string) error {
 		return nil
 	}
 	for _, cfg := range bots {
-		fmt.Printf("%s\t%s\n", cfg.Name, strings.Join(cfg.Links, ","))
+		extra := ""
+		if cfg.Provider != "" {
+			extra = "\t" + cfg.Provider + "/" + cfg.Model
+		}
+		fmt.Printf("%s\t%s%s\n", cfg.Name, strings.Join(cfg.Links, ","), extra)
 	}
 	return nil
 }
@@ -218,51 +275,26 @@ func cmdChat(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg := config.FromEnv(os.Getenv)
-	if cfg.APIKey == "" {
-		return errors.New("XBOT_API_KEY is empty")
-	}
 	b, err := bot.Load(root, opt.Name)
 	if err != nil {
 		return err
 	}
-	if !b.Grants(link.NameTerminal) {
-		return fmt.Errorf("bot %q does not grant the terminal link", opt.Name)
-	}
-	links, err := mount(b.Config().Links)
-	if err != nil {
-		return err
-	}
-	ext, display, err := link.Account()
-	if err != nil {
-		return err
-	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
-	if err != nil {
-		return err
-	}
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		return err
-	}
-	client := &provider.Client{BaseURL: cfg.BaseURL, APIKey: cfg.APIKey, Model: cfg.Model}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	pr := &printer{yes: opt.Yes, reader: bufio.NewReader(os.Stdin)}
-	k := &kernel.Kernel{
-		Bot:       b,
-		Provider:  client,
-		Links:     links,
-		Inbox:     box,
-		Memory:    memory.NopStore{},
-		Compactor: compact.LLM{P: client},
-		Approve:   pr.Approve,
-		MaxSteps:  opt.MaxSteps,
-		Budget:    kernel.BudgetFor(b.Config()),
-		OnDelta:   pr.Delta,
-		OnTool:    pr.Tool,
-		OnResult:  pr.Result,
+	k, who, err := openKernel(root, b, opt.MaxSteps, pr.Approve, pr)
+	if err != nil {
+		return err
 	}
+	lock, err := b.LockHandle()
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+	if err := showNotes(b); err != nil {
+		return err
+	}
+	box := k.Inbox
 	k.StartEmitters(ctx)
 	for {
 		if err := ctx.Err(); err != nil {
@@ -281,6 +313,9 @@ func cmdChat(root string, args []string) error {
 				return err
 			}
 			continue
+		}
+		if err := showNotes(b); err != nil {
+			return err
 		}
 		fmt.Fprintf(os.Stderr, "%s › ", b.Name())
 		line, err := readLine(ctx, pr.reader)
@@ -305,10 +340,70 @@ func cmdChat(root string, args []string) error {
 	}
 }
 
-func mount(names []string) ([]link.Link, error) {
+func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer) (*kernel.Kernel, person.Person, error) {
+	if !b.Grants(link.NameTerminal) && pr != nil {
+		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
+	}
+	links, err := mount(b)
+	if err != nil {
+		return nil, person.Person{}, err
+	}
+	var who person.Person
+	if pr != nil {
+		ext, display, err := link.Account()
+		if err != nil {
+			return nil, person.Person{}, err
+		}
+		who, err = person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+		if err != nil {
+			return nil, person.Person{}, err
+		}
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		return nil, person.Person{}, err
+	}
+	resolved, contextLen, err := config.Resolve(root, b.Config().Provider, b.Config().Model, os.Getenv)
+	if err != nil {
+		return nil, person.Person{}, err
+	}
+	if resolved.APIKey == "" {
+		return nil, person.Person{}, fmt.Errorf("%s is empty", resolved.KeyEnv)
+	}
+	client := &provider.Client{BaseURL: resolved.BaseURL, APIKey: resolved.APIKey, Model: resolved.Model}
+	budget := kernel.BudgetFor(b.Config())
+	if b.Config().ContextLimit == 0 && contextLen > 0 {
+		budget = kernel.BudgetFor(bot.Config{ContextLimit: contextLen})
+	}
+	k := &kernel.Kernel{
+		Bot:       b,
+		Provider:  client,
+		Selector:  provider.FixedSelector{P: client},
+		Links:     links,
+		Inbox:     box,
+		Memory:    memory.Open(root),
+		Compactor: compact.LLM{P: client},
+		Extractor: kernel.LLMExtractor{P: client},
+		Approve:   approve,
+		MaxSteps:  steps,
+		Budget:    budget,
+	}
+	if pr != nil {
+		k.OnDelta = pr.Delta
+		k.OnTool = pr.Tool
+		k.OnResult = pr.Result
+	}
+	return k, who, nil
+}
+
+func mount(b *bot.Bot) ([]link.Link, error) {
+	sender := "timer"
+	if owners := b.Config().Owners; len(owners) > 0 {
+		sender = owners[0]
+	}
 	var out []link.Link
 	seen := map[string]bool{}
-	for _, name := range names {
+	for _, name := range b.Config().Links {
 		if seen[name] {
 			continue
 		}
@@ -319,12 +414,179 @@ func mount(names []string) ([]link.Link, error) {
 		case link.NameTools:
 			out = append(out, link.NewToolsLink())
 		case link.NameTimer:
-			return nil, fmt.Errorf("link %q is not available in M1 (timer interface only)", name)
+			out = append(out, &link.Timer{Dir: b.RoutineDir(), Sender: sender})
+		case link.NameMemory:
+			out = append(out, link.Memory{})
+		case link.NamePersona:
+			out = append(out, link.Persona{})
+		case link.NameContext:
+			out = append(out, link.Context{})
 		default:
 			return nil, fmt.Errorf("unknown link %q", name)
 		}
 	}
 	return out, nil
+}
+
+func showNotes(b *bot.Bot) error {
+	box := notify.Open(b.OutboxPath())
+	notes, err := box.Unread()
+	if err != nil {
+		return err
+	}
+	if len(notes) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(notes))
+	for _, n := range notes {
+		fmt.Fprintf(os.Stderr, "notification: %s\n", n.Text)
+		ids = append(ids, n.ID)
+	}
+	return box.MarkRead(ids)
+}
+
+func cmdBind(root string, args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{"provider": true, "model": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("bind", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	prov := fs.String("provider", "", "named provider")
+	model := fs.String("model", "", "model id")
+	clear := fs.Bool("clear", false, "drop the binding and use environment defaults")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: xbot bind <name> --provider NAME --model NAME")
+	}
+	b, err := bot.Load(root, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if *clear {
+		if err := b.SetBinding("", ""); err != nil {
+			return err
+		}
+		fmt.Printf("cleared provider binding for %s\n", b.Name())
+		return nil
+	}
+	if *prov == "" || *model == "" {
+		return errors.New("usage: xbot bind <name> --provider NAME --model NAME")
+	}
+	if _, _, err := config.Lookup(root, *prov, *model); err != nil {
+		return err
+	}
+	if err := b.SetBinding(*prov, *model); err != nil {
+		return err
+	}
+	fmt.Printf("bound %s to %s/%s\n", b.Name(), *prov, *model)
+	return nil
+}
+
+func cmdServe(root string, args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{"interval": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	every := fs.Duration("interval", 15*time.Second, "how often to poll")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("usage: xbot serve")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	deny := func(context.Context, string, string) (bool, error) { return false, nil }
+	for {
+		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
+			k, _, err := openKernel(root, b, 8, deny, nil)
+			return k, err
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "xbot:", err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(*every):
+		}
+	}
+}
+
+func cmdProvider(root string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: xbot provider add|list|remove")
+	}
+	switch args[0] {
+	case "list":
+		f, err := config.Load(root)
+		if err != nil {
+			return err
+		}
+		if len(f.Providers) == 0 {
+			fmt.Println("no providers")
+			return nil
+		}
+		for _, p := range f.Providers {
+			fmt.Printf("%s\t%s\tkey=%s\n", p.Name, p.BaseURL, p.APIKeyEnv)
+			for _, m := range p.Models {
+				fmt.Printf("  %s\tcontext=%d\n", m.Name, m.Context)
+			}
+		}
+		return nil
+	case "remove":
+		ordered, err := reorderFlags(args[1:], map[string]bool{"model": true})
+		if err != nil {
+			return err
+		}
+		fs := flag.NewFlagSet("provider remove", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		model := fs.String("model", "", "model id to remove")
+		if err := fs.Parse(ordered); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return errors.New("usage: xbot provider remove <name>")
+		}
+		if err := config.Remove(root, fs.Arg(0), *model); err != nil {
+			return err
+		}
+		fmt.Printf("removed %s\n", fs.Arg(0))
+		return nil
+	case "add":
+		ordered, err := reorderFlags(args[1:], map[string]bool{
+			"base-url": true, "api-key-env": true, "model": true, "context": true,
+		})
+		if err != nil {
+			return err
+		}
+		fs := flag.NewFlagSet("provider add", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		base := fs.String("base-url", "", "OpenAI-compatible base URL")
+		keyEnv := fs.String("api-key-env", "", "environment variable that holds the API key")
+		model := fs.String("model", "", "model id")
+		contextLen := fs.Int("context", 0, "context length in tokens")
+		if err := fs.Parse(ordered); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N")
+		}
+		if err := config.Add(root, config.Provider{
+			Name: fs.Arg(0), BaseURL: *base, APIKeyEnv: *keyEnv,
+		}, config.ModelSpec{Name: *model, Context: *contextLen}); err != nil {
+			return err
+		}
+		fmt.Printf("saved provider %s\n", fs.Arg(0))
+		return nil
+	default:
+		return fmt.Errorf("unknown provider command %q", args[0])
+	}
 }
 
 func isQuit(text string) bool {

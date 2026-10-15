@@ -15,8 +15,25 @@ func TestNewEventIsUntrusted(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev.Untrusted = false
-	if err := ev.Validate(); err == nil {
-		t.Fatal("trusted event should be rejected")
+	if err := ev.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOwnerTrustedOnlyOnTerminal(t *testing.T) {
+	owners := []string{"u1"}
+	if !OwnerTrusted(NameTerminal, "u1", owners) {
+		t.Fatal("owner terminal input is trusted")
+	}
+	if OwnerTrusted(NameTimer, "u1", owners) || OwnerTrusted(NameTerminal, "u2", owners) {
+		t.Fatal("timer and other people stay untrusted")
+	}
+	ev := TerminalEvent("u1", "do the thing", time.Unix(10, 0).UTC())
+	if strings.Contains(Render(ev, true), "<untrusted_event") {
+		t.Fatal("trusted render wrapped the owner")
+	}
+	if !strings.Contains(Render(ev, false), "<untrusted_event") {
+		t.Fatal("untrusted render should wrap")
 	}
 }
 

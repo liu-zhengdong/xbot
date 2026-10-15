@@ -1,5 +1,4 @@
-// Package memory defines layered memory. M1 has the interfaces and the
-// conflict rule only. Nothing is stored or retrieved yet; M2 fills the store.
+// Package memory defines layered memory and the file store behind it.
 //
 // Scopes:
 //   - person: facts about a person, shared by every bot. Each fact records which bot wrote it.
@@ -36,31 +35,42 @@ const (
 	KindWork Kind = "work"
 )
 
-// Fact is one memory record. Retrieval is M2; the shape is fixed in M1.
+// Tier is how a fact is loaded. Profile is small and always injected.
+// Log is dated and returned by recall, not by the standing context.
+type Tier string
+
+const (
+	TierProfile Tier = "profile"
+	TierLog     Tier = "log"
+)
+
+// Fact is one memory record.
 type Fact struct {
-	Key       string
-	Kind      Kind
-	Scope     Scope
-	PersonID  string
-	BotName   string
-	WrittenBy string
-	Text      string
-	Time      time.Time
+	Key       string    `json:"key"`
+	Kind      Kind      `json:"kind"`
+	Scope     Scope     `json:"scope"`
+	Tier      Tier      `json:"tier,omitempty"`
+	PersonID  string    `json:"person_id,omitempty"`
+	BotName   string    `json:"bot_name,omitempty"`
+	WrittenBy string    `json:"written_by,omitempty"`
+	Text      string    `json:"text"`
+	Time      time.Time `json:"time"`
 }
 
-// Query selects facts for context assembly. A store must not return
-// bot-person facts for a different person than PersonID.
+// Query selects facts. An empty Tier does not filter. Text is a keyword query.
 type Query struct {
 	Scope    Scope
 	BotName  string
 	PersonID string
+	Tier     Tier
+	Text     string
 }
 
-// Store is the M2 persistence seam. Context assembly calls Recall.
-// M1's NopStore recalls nothing.
+// Store persists the three scopes. Forget removes an exact fact text.
 type Store interface {
 	Remember(ctx context.Context, fact Fact) error
 	Recall(ctx context.Context, q Query) ([]Fact, error)
+	Forget(ctx context.Context, q Query, exactText string) error
 }
 
 // ErrNotImplemented is returned by the M1 store. Remember is not wired to the model.
@@ -72,6 +82,8 @@ type NopStore struct{}
 func (NopStore) Remember(context.Context, Fact) error { return ErrNotImplemented }
 
 func (NopStore) Recall(context.Context, Query) ([]Fact, error) { return nil, nil }
+
+func (NopStore) Forget(context.Context, Query, string) error { return ErrNotImplemented }
 
 // Visible drops facts the current bot and sender must not see.
 // Bot-person facts for anyone else are removed. This is a backstop behind Recall.

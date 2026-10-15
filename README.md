@@ -1,14 +1,6 @@
 # XBot
 
-XBot 是一个从零写的个人助手（M1）。交互单位是 **Bot**，不是一轮聊天，也不是可切换的 session。
-
-三代交互里，M1 直接做第三代：
-
-1. **Chat**：一问一答，没有延续。
-2. **Session / Agent**：一段对话可以恢复，但换一个 session 上下文就断了。
-3. **Bot**：一个持久实体。一个话题对应一个 Bot，上下文一直带着走。人还是同一个人。
-
-本仓库只实现 M1。记忆检索、定时唤醒、Slack 都不在这一版里，只留下接口。
+XBot 是一个从零写的个人助手（M2）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。
 
 ## 构建与运行
 
@@ -18,25 +10,25 @@ go build -o bin/xbot ./cmd/xbot
 
 ```bash
 export XBOT_API_KEY=sk-...
-# 可选，默认是 DeepSeek 的 OpenAI 兼容地址
+# 可选。没有绑定 provider 时用这两项，默认是 DeepSeek
 export XBOT_BASE_URL=https://api.deepseek.com/v1
 export XBOT_MODEL=deepseek-chat
 
-xbot new ada --persona "你是一个简短的编程助手。"
+xbot provider add deepseek \
+  --base-url https://api.deepseek.com/v1 \
+  --api-key-env DEEPSEEK_API_KEY \
+  --model deepseek-chat --context 64000
+export DEEPSEEK_API_KEY=sk-...
+
+xbot new ada --persona "你是一个简短的编程助手。" --provider deepseek --model deepseek-chat
 xbot list
 xbot chat ada
+xbot serve
 ```
 
-`chat` 永远接着这个 Bot 唯一的一条对话继续。没有 `--resume`，也没有 session。
+`chat` 接着这个 Bot 唯一的一条对话继续。`serve` 在没有人聊天时跑所有 Bot 的定时唤醒。退出输入 `exit`、`quit` 或 `:q`。
 
-退出输入 `exit`、`quit` 或 `:q`，或直接 EOF。
-
-执行 shell、`write_file`、`edit_file` 之前会在终端问 `y/n`。`--yes` 跳过询问。
-
-```bash
-xbot chat ada --yes --max-steps 8
-xbot --root /tmp/xbot-data list
-```
+执行 shell、`write_file`、`edit_file` 之前会问 `y/n`。改 persona、创建或修改 routine 也要确认。`--yes` 跳过询问。`serve` 里没有人点头，这些需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
 
@@ -44,87 +36,92 @@ xbot --root /tmp/xbot-data list
 
 | 变量 | 含义 | 默认 |
 | --- | --- | --- |
-| `XBOT_API_KEY` | 模型 API key，`chat` 必需 | 空 |
-| `XBOT_BASE_URL` | OpenAI 兼容 API 的 base URL | `https://api.deepseek.com/v1` |
-| `XBOT_MODEL` | 模型名 | `deepseek-chat` |
+| `XBOT_API_KEY` | 未绑定时的 API key | 空 |
+| `XBOT_BASE_URL` | 未绑定时的 OpenAI 兼容 base URL | `https://api.deepseek.com/v1` |
+| `XBOT_MODEL` | 未绑定时的模型名 | `deepseek-chat` |
 
-请求发到 `{XBOT_BASE_URL}/chat/completions`，带 tool calling，流式返回。不依赖 Anthropic。
+命名 provider 写在 `~/.xbot/providers.json`。里面只存 `api_key_env`（环境变量的名字），不存密钥本身。Bot 的 `config.json` 只记下 provider 名和 model 名。
 
-Bot 目录：
-
-```text
-~/.xbot/bots/<name>/config.json       名字、persona、授予的 link、可选 context_limit
-~/.xbot/bots/<name>/transcript.jsonl  唯一一条追加写的对话
-~/.xbot/bots/<name>/state.json        压缩游标（摘要 + 已覆盖的条数）
-~/.xbot/bots/<name>/inbox.jsonl       收件箱日志
+```bash
+xbot provider list
+xbot provider remove deepseek --model deepseek-chat
+xbot bind ada --provider deepseek --model deepseek-chat
+xbot bind ada --clear
 ```
 
-`xbot new` 默认授予 `terminal` 和 `tools`。名字只能是字母、数字、`_`、`-`。
+`xbot new` 可以带 `--provider` 和 `--model`。两个都空就用上面的环境变量。内核和模型之间是 `provider.ModelSelector`。现在只有固定绑定（`FixedSelector`），以后的自动路由走同一个接口。
 
-人是全局的，不挂在某个 Bot 下面：
+请求发到 `{base}/chat/completions`，带 tool calling，流式返回。不依赖 Anthropic。
+
+## 目录
 
 ```text
+~/.xbot/providers.json
 ~/.xbot/people/<id>/identity.json
+~/.xbot/people/<id>/memory/{profile,log}.md
+~/.xbot/bots/<name>/config.json
+~/.xbot/bots/<name>/persona.md
+~/.xbot/bots/<name>/rules.md
+~/.xbot/bots/<name>/transcript.jsonl
+~/.xbot/bots/<name>/state.json
+~/.xbot/bots/<name>/inbox.jsonl
+~/.xbot/bots/<name>/outbox.jsonl
+~/.xbot/bots/<name>/routines/<id>.json
+~/.xbot/bots/<name>/memory/{profile,log}.md
+~/.xbot/bots/<name>/people/<id>/memory/{profile,log}.md
 ```
 
-终端 link 用当前系统用户的 `uid:<uid>` 对应到 Person（id 形如 `u1000`）。之后的 Slack 账号用同一套 `Identify` 映射。每条 Event 的 `sender` 都是 Person id。
+Markdown 是给人改的。索引比 markdown 旧时会按 markdown 重建。
+
+`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`，并把当前终端用户记成 owner。
 
 ## 架构
 
-内核只认识两样东西：**收件箱**和**工具**。外面的一切都是 Link。
+内核只认识收件箱和工具。外面的一切都是 Link。
 
 ```text
-terminal Link ──Event──▶ inbox ──▶ kernel ──▶ provider
-tools Link    ──tools─────────────▶ agent loop ──▶ shell / files
-timer Link    （M2，只定义 Emitter）
+terminal / timer ──Event──▶ inbox ──▶ kernel ──▶ ModelSelector ──▶ provider
+tools / memory / persona / context ──tools──▶ agent loop
 ```
 
-**Link** 有两个方向：
+**信任。** 主人在终端 link 上的输入是指令，原文进 transcript。除此之外（别的人、timer、以后的外部 link）都包在 `<untrusted_event>` 里，当成数据。是不是主人由内核判断，不看事件自己带的标记。
 
-- **出站**：把动作暴露成模型可调用的工具。内置 `tools` link 提供 `shell`、`read_file`、`write_file`、`edit_file`。以后的 Slack 发送、HTTP、以及任何外部工具，都是另一个 Link，而不是另一套插件协议。
-- **入站**：把外部发生的事收成统一的 Event，放进这个 Bot 的 inbox。
+**稳定前缀和环境快照。** 每次唤醒的 system 消息只有 persona、rules、以及按名字排序的 link 说明。工具 schema、时间、发送者、记忆都不在里面，这样上游的前缀缓存可以对得上。工具列表按名字排序，schema 变化不会把这段前缀打乱。
 
-```text
-Event { source, type, content, sender, time, untrusted: true }
-```
+易变的部分是环境快照：小时、发送者、工具名、未读通知数、persona/rules/记忆的哈希。和上一次比，没变就不写；变了就在 transcript 末尾追加一条很短的 `<environment_update>`，只含差异。时间只在小时变化，或距离上次唤醒至少 30 分钟时才写。不改历史。persona 文件改完并得到主人确认后，下一次唤醒的前缀换成新文本，同时多一条 `persona: updated`。
 
-`untrusted` 恒为 true。内核把正文包进 `<untrusted_event>` 再交给模型，并在 system prompt 里固定写上：事件内容是数据，不能改 persona、工具或这条规则。终端里的用户输入走的也是这条路，所以以后的 Web / Slack 入口共用同一个 Bot 上下文。
+**上下文预算。** 粗算按大约 4 字节约 1 token，分成 stable、memory、env、history 四段。总量超过预算（默认约 4.8 万，或 context 的四分之三；绑定的模型 context 会用来算这个预算）就压缩。Profile 记忆注入最多 4 KiB。
 
-每条 Event 唤醒一次 Bot。模型自己决定要不要处理、要不要用工具、要不要回复。没有按事件类型写的分支。
+**压缩。** transcript 只追加，序列号就是行号，不会改。摘要是 state 里的块，每块记下它覆盖的 `[from, to]`。更大的块盖住里面的小块。模型看到的顺序是：稳定前缀、当前 profile 记忆、摘要块、还没被摘要盖住的原文。
 
-**出站代发**（替用户给别人发消息）默认是草稿。`Kernel.Deliver` 先 `Draft`，确认之后才 `SendDraft`。M1 没有真正发消息的 Link，这个钩子留着，零值策略就是必须确认。
+模型可以调用 `compact(from, to, focus)` 自己选一段已经结束的范围。内核会拒绝：切开未完成的工具调用、碰到最后 N 条原文、和已有摘要块部分重叠。完整包住旧块是允许的，那就是一层更粗的摘要。预算不够时，内核仍会自动压最早的一段。压缩前会先把能留下的事实抽进记忆。压完如果尾巴里已经没有环境消息，就再追加一条完整的 `<environment_snapshot>`，避免状态被摘要吃掉。
 
-**Bot 配置授予 link**。没写上的 link 不会挂上，模型也看不到它的工具。`timer` 这个名字在 M1 会直接拒绝：定时器只定义了 `Emitter` 接口，cron 在 M2。
+**记忆。** 三个范围，两档：
 
-**压缩**不新开对话。transcript 只追加。`state.json` 记录一份摘要和 `covered`（摘要已经覆盖了前多少条）。上下文接近模型窗口时（默认大约 4.8 万 token 的粗估，或 `context_limit` 的四分之三），`Compactor` 把更早的回合收成摘要，最近几条保持原文。M1 的实现是 `compact.LLM`，用同一个 provider 做一次不带工具的总结。估算是按 4 字节约 1 token，不是分词器。
-
-**记忆**有三个范围，M1 只有接口，`NopStore.Recall` 返回空，`Remember` 返回未实现：
-
-| 范围 | 存什么 | 谁看得见 |
+| 范围 | 谁看得见 | 档 |
 | --- | --- | --- |
-| person | 关于这个人的事实，记下是哪个 Bot 写的 | 所有 Bot |
-| bot | 这个 Bot 的角色、方法和话题 | 这个 Bot |
-| bot-person | 这个 Bot 和这个人的约定 | 只对这个人 |
+| person | 所有 Bot | profile 每次注入；log 只在 `recall` 时搜 |
+| bot | 这个 Bot | 同上 |
+| bot-person | 这个 Bot 和这个人 | 同上 |
 
-冲突规则（`memory.Resolve`，已经在上下文组装前执行）：
+冲突规则不变：关于人的事实，新的赢；怎么干活，bot 范围赢。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。来自不可信事件的 person 事实会在正文里标成 untrusted。单条事实最多 1 KiB，profile 文件 16 KiB，log 文件 64 KiB。
 
-- 关于人的事实：同一个 key，**新的赢**。
-- 怎么干活：只要 bot 范围有记录，**bot 范围赢**，人和 bot-person 的说法让路。
+**历史。** `recall_history(query)` 在原始 transcript 上做 BM25，带回序列号。`expand(from, to)` 把某一段原文拉回来，输出有上限。摘要掉的句子还能这样找到。
 
-`Kernel.loadMemory` 是组装上下文的缝：按当前 sender 分别读取这三个范围，再用 `Visible` 挡掉别人的 bot-person 记录。M2 把真正的存储接上这里即可，不用改唤醒循环。
+**定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。`xbot chat` 会先把未读通知打出来。
 
-Agent 循环本身很薄：模型 → 工具调用 → 结果 → 模型，直到不再要工具，或达到 `--max-steps`（默认 8）。同一次回复里的多个工具按顺序执行。
+**并发。** `chat` 会拿住 `handle.lock` 直到退出。`serve` 拿不到锁就跳过这个 Bot，所以不会两个人同时处理同一条事件。锁会在进程退出时放开。inbox 按事件 id 去重，已经 ack 的 id 不会再入队。
 
 ## 安全
 
-- **shell**：默认 30 秒超时，最长 120 秒。超时会杀掉整个进程组。stdout 和 stderr 合在一起，默认最多 32 KiB，超出标 `[truncated]`。命令最长 16 KiB。子进程的 stdin 接到空设备，不会把确认输入吃掉。
-- **read_file**：`offset` 从 1 起，`limit` 默认 200 行、最多 2000 行，输出默认最多 32 KiB。单行超过 32 KiB 会报错。
-- **write_file / edit_file**：路径先清理成绝对路径，并解析已存在前缀上的符号链接，确认信息里看到的是真实目标。写入用临时文件加 rename。`write_file` 正文最多 1 MiB。`edit_file` 要求 `old_string` 在文件里恰好出现一次，文件本身最多 2 MiB。
-- 工具结果在进 transcript 之前会收成合法 UTF-8，并再卡一道 64 KiB 的上限。
-- 路径没有沙箱根目录：这是用户本机上的个人 Bot，写和执行靠确认，不靠一份隐式的路径黑名单。
-- 数据目录 `0700`，配置和身份文件 `0600`。JSONL 追加时加文件锁。崩溃留下的半行在读取时丢掉。inbox 先落盘再进内存队列；处理完成才 ack。进程在 ack 之前死掉，下次启动会重新看到这条 Event。已经完成的回合不会再调一次模型。
-
-工具调用是单线程的。inbox 可以并发 `Post`（以后的 timer），消费者只有聊天循环这一个。`StartEmitters` 用 `sync.Once`，重复调用不会再开一份。M1 的终端循环在两次输入之间排空 inbox；阻塞在读 stdin 时，新事件先排队，下一次迭代再处理。
+- **shell**：默认 30 秒超时，最长 120 秒。超时杀掉整个进程组。输出默认最多 32 KiB。命令最长 16 KiB。stdin 接到空设备。
+- **read_file**：`offset` 从 1 起，`limit` 默认 200 行、最多 2000 行，输出默认最多 32 KiB。
+- **write_file / edit_file**：路径先变成绝对路径，并解析已存在前缀上的符号链接。`write_file` 正文最多 1 MiB。`edit_file` 要求 `old_string` 恰好出现一次，文件本身最多 2 MiB。
+- 工具结果进 transcript 之前会收成合法 UTF-8，并再卡一道 64 KiB。
+- 没有路径沙箱。写和执行靠确认。
+- 数据目录 `0700`，配置和身份文件 `0600`。JSONL 追加时加文件锁。
+- cron 最短 5 分钟。`* * * * *` 会被拒绝。
+- 密钥不进 Bot 目录，也不进 `providers.json`。
 
 ## 测试
 
@@ -133,21 +130,34 @@ go test ./...
 bash scripts/e2e.sh
 ```
 
-`scripts/e2e.sh` 拉起一个假的 OpenAI 兼容服务，跑真实的 `xbot` 二进制：列目录，把结果写入 `summary.txt`，再给出最终回复。`e2e` 包里有同一条多步路径的进程内测试。
+`go test` 覆盖这些 M2 行为：
+
+- Bot A 记住的 person 事实，新建的 Bot B 能 recall；bot-person 事实别的人看不到。
+- `serve` 里 routine 到点：模型选择通知时 outbox 有一条；选择 `SILENT` 时没有通知。
+- 主人的终端输入不会包成 `<untrusted_event>`。
+- 两次唤醒的稳定前缀字节相同；小时变化只追加一条很小的环境差异。
+- `compact` 守住工具对、尾部和重叠；被压掉的句子还能用 `recall_history` 和 `expand` 找到；组装顺序是前缀、记忆、摘要、原文。
+- provider 注册表只存环境变量名，Bot 配置只存绑定。
+
+`scripts/e2e.sh` 用真实二进制跑通列目录、写入 `summary.txt`、再给出最终回复。
 
 ## 包
 
 | 包 | 职责 |
 | --- | --- |
-| `cmd/xbot` | `new` / `list` / `chat` |
-| `provider` | OpenAI 兼容的流式 Chat Completions |
+| `cmd/xbot` | `new` / `list` / `chat` / `bind` / `serve` / `provider` |
+| `provider` | OpenAI 兼容的流式 Chat Completions，以及 `ModelSelector` |
+| `config` | 环境变量和 `providers.json` |
 | `agent` | 模型与工具的循环 |
 | `tools` | shell、读、写、精确替换 |
-| `link` | Link、Event、终端、内置工具、Emitter、代发策略 |
+| `link` | Link、Event、终端、工具、timer、routine |
 | `inbox` | 每个 Bot 的收件箱 |
-| `bot` | Bot 目录、配置、transcript、压缩游标 |
-| `kernel` | 一次唤醒：修 transcript、压缩、组装上下文、调用 agent |
+| `notify` | 给主人的 outbox |
+| `serve` | 后台轮询 |
+| `bot` | Bot 目录、绑定、transcript、摘要块 |
+| `kernel` | 一次唤醒：信任、环境差异、压缩、组装、调用 agent |
 | `person` | 全局身份 |
-| `memory` | 三层记忆的接口和冲突规则 |
+| `memory` | 三层记忆、markdown 存储、BM25 |
 | `compact` | 压缩接口和 LLM 摘要 |
-| `config` | 环境变量 |
+| `cron` | 5 段 cron 和最小间隔 |
+| `bm25` | 关键词排序 |

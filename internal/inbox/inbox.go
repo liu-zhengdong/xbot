@@ -18,6 +18,7 @@ type Inbox struct {
 	mu      sync.Mutex
 	path    string
 	pending []link.Event
+	seen    map[string]bool
 	notify  chan struct{}
 }
 
@@ -29,11 +30,27 @@ type record struct {
 
 // Open loads pending events from the append-only log.
 func Open(path string) (*Inbox, error) {
-	n := &Inbox{path: path, notify: make(chan struct{}, 1)}
+	n := &Inbox{path: path, notify: make(chan struct{}, 1), seen: map[string]bool{}}
+	if err := n.Reload(); err != nil {
+		return nil, err
+	}
+	return n, nil
+}
+
+// Reload folds the log again so a post from another process becomes visible.
+func (n *Inbox) Reload() error {
+	return fsutil.WithLock(n.path+".lock", func() error {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		return n.rebuild()
+	})
+}
+
+func (n *Inbox) rebuild() error {
 	var order []string
 	posted := map[string]link.Event{}
 	acked := map[string]bool{}
-	err := fsutil.ReadJSONL(path, func(line []byte) error {
+	err := fsutil.ReadJSONL(n.path, func(line []byte) error {
 		var rec record
 		if err := json.Unmarshal(line, &rec); err != nil {
 			return err
@@ -44,7 +61,6 @@ func Open(path string) (*Inbox, error) {
 				return errors.New("inbox: post without event")
 			}
 			ev := *rec.Event
-			ev.Untrusted = true
 			if _, seen := posted[ev.ID]; !seen {
 				posted[ev.ID] = ev
 				order = append(order, ev.ID)
@@ -59,44 +75,45 @@ func Open(path string) (*Inbox, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
+	n.seen = map[string]bool{}
+	n.pending = nil
 	for _, id := range order {
+		n.seen[id] = true
 		if !acked[id] {
 			n.pending = append(n.pending, posted[id])
 		}
 	}
-	return n, nil
+	return nil
 }
 
-// Post persists the event and queues it. A repeated id is ignored.
-// Untrusted is forced on.
+// Post persists the event and queues it. A repeated id, including one already acked, is ignored.
+// The Untrusted bit is stored as given. The kernel decides whether the text is trusted.
 func (n *Inbox) Post(ev link.Event) error {
-	ev.Untrusted = true
 	if ev.Time.IsZero() {
 		ev.Time = time.Now().UTC()
 	}
 	if err := ev.Validate(); err != nil {
 		return err
 	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	for _, have := range n.pending {
-		if have.ID == ev.ID {
+	return fsutil.WithLock(n.path+".lock", func() error {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		if err := n.rebuild(); err != nil {
+			return err
+		}
+		if n.seen[ev.ID] {
 			return nil
 		}
-	}
-	// Also ignore ids already acked in this process by checking the log would duplicate.
-	// Duplicate posts of an acked id are ignored by folding on the next Open.
-	// Within this process, a second Post after Ack is a new delivery only if we don't
-	// still have it pending. Callers that retry Post after Ack would enqueue again.
-	// Persist first so a crash cannot lose a queued event.
-	if err := fsutil.AppendJSONL(n.path, record{Op: "post", Event: &ev}); err != nil {
-		return err
-	}
-	n.pending = append(n.pending, ev)
-	n.signal()
-	return nil
+		if err := fsutil.AppendJSONL(n.path, record{Op: "post", Event: &ev}); err != nil {
+			return err
+		}
+		n.seen[ev.ID] = true
+		n.pending = append(n.pending, ev)
+		n.signal()
+		return nil
+	})
 }
 
 // Head returns the oldest pending event without removing it.
@@ -115,19 +132,21 @@ func (n *Inbox) Ack(id string) error {
 	if id == "" {
 		return errors.New("inbox: ack requires an id")
 	}
-	if err := fsutil.AppendJSONL(n.path, record{Op: "ack", ID: id}); err != nil {
-		return err
-	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	filtered := n.pending[:0]
-	for _, ev := range n.pending {
-		if ev.ID != id {
-			filtered = append(filtered, ev)
+	return fsutil.WithLock(n.path+".lock", func() error {
+		if err := fsutil.AppendJSONL(n.path, record{Op: "ack", ID: id}); err != nil {
+			return err
 		}
-	}
-	n.pending = filtered
-	return nil
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		filtered := n.pending[:0]
+		for _, ev := range n.pending {
+			if ev.ID != id {
+				filtered = append(filtered, ev)
+			}
+		}
+		n.pending = filtered
+		return nil
+	})
 }
 
 // Wait receives when Post queues an event. The channel has buffer 1.

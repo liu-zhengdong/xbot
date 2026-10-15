@@ -3,6 +3,9 @@ package main
 import (
 	"errors"
 	"testing"
+
+	"xbot/internal/bot"
+	"xbot/internal/link"
 )
 
 func TestSplitGlobal(t *testing.T) {
@@ -53,15 +56,28 @@ func TestParseNew(t *testing.T) {
 	}
 }
 
-func TestMountTimerRejected(t *testing.T) {
-	if _, err := mount([]string{"terminal", "timer"}); err == nil {
-		t.Fatal("expected timer to be rejected")
-	}
-	links, err := mount([]string{"terminal", "tools", "terminal"})
+func TestMountGrants(t *testing.T) {
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{"terminal", "timer", "tools", "terminal"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(links) != 2 {
+	links, err := mount(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 3 {
 		t.Fatalf("links %d", len(links))
 	}
+	if _, err := mountBot(t, []string{"nope"}); err == nil {
+		t.Fatal("expected unknown link to fail")
+	}
+}
+
+func mountBot(t *testing.T, links []string) ([]link.Link, error) {
+	t.Helper()
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mount(b)
 }

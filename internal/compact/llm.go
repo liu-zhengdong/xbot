@@ -17,6 +17,18 @@ type LLM struct {
 	P provider.Provider
 }
 
+// CompactFocus is Compact with a caller-chosen focus line in the prior summary.
+func (l LLM) CompactFocus(ctx context.Context, prior, focus string, turns []provider.Message) (string, error) {
+	focus = strings.TrimSpace(focus)
+	if focus != "" {
+		if strings.TrimSpace(prior) != "" {
+			prior += "\n\n"
+		}
+		prior += "Focus: " + focus
+	}
+	return l.Compact(ctx, prior, turns)
+}
+
 func (l LLM) Compact(ctx context.Context, prior string, turns []provider.Message) (string, error) {
 	if l.P == nil {
 		return "", errors.New("compact: provider is nil")

@@ -8,7 +8,8 @@
 // Proactivity is a timer Link that emits events. M1 defines Emitter only; cron is M2.
 //
 // Kernel rules enforced here and in the kernel:
-//   - Event content is untrusted data. NewEvent always sets Untrusted.
+//   - NewEvent marks content untrusted. The kernel, not the producer, decides
+//     whether an owner on the terminal link is trusted.
 //   - Messages sent on the user's behalf stay drafts until confirmed (SendPolicy).
 //   - Which links exist is a per-bot grant in the bot config, not a global switch.
 package link
@@ -27,6 +28,9 @@ const (
 	NameTerminal = "terminal"
 	NameTools    = "tools"
 	NameTimer    = "timer"
+	NameMemory   = "memory"
+	NamePersona  = "persona"
+	NameContext  = "context"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"
@@ -40,7 +44,7 @@ type Link interface {
 }
 
 // Emitter is an inbound link that wakes the bot over time.
-// A timer link implements Emitter. M1 does not schedule anything.
+// The timer link implements Emitter.
 type Emitter interface {
 	Link
 	Run(ctx context.Context, emit func(Event) error) error
@@ -106,14 +110,35 @@ func TerminalEvent(personID, text string, at time.Time) Event {
 }
 
 // Validate checks the fields the kernel requires.
+// Untrusted is not required: the kernel decides trust from the sender and the source.
 func (e Event) Validate() error {
 	if e.ID == "" || e.Source == "" || e.Type == "" || e.Sender == "" {
 		return fmt.Errorf("event: id, source, type, and sender are required")
 	}
-	if !e.Untrusted {
-		return fmt.Errorf("event: content must be untrusted")
-	}
 	return nil
+}
+
+// OwnerTrusted is true only for an owner speaking on the terminal link.
+// Any other source, including a timer wake from the owner id, stays untrusted.
+func OwnerTrusted(source, sender string, owners []string) bool {
+	if source != NameTerminal || sender == "" {
+		return false
+	}
+	for _, id := range owners {
+		if id == sender {
+			return true
+		}
+	}
+	return false
+}
+
+// Render returns the event text the model should see.
+// Trusted owner input is the raw text. Everything else is wrapped as data.
+func Render(e Event, trusted bool) string {
+	if trusted {
+		return e.Content
+	}
+	return Wrap(e)
 }
 
 // Wrap renders an event as data the model must not treat as a system instruction.

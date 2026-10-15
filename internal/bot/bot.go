@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"xbot/internal/fsutil"
@@ -27,18 +28,59 @@ var ErrNotFound = errors.New("bot: not found")
 var ErrExists = errors.New("bot: already exists")
 
 // Config is the bot's durable description. Links are granted here.
+// Owners are person ids whose terminal input is a trusted instruction.
 type Config struct {
 	Name         string    `json:"name"`
 	Persona      string    `json:"persona"`
 	Links        []string  `json:"links"`
+	Owners       []string  `json:"owners,omitempty"`
+	Provider     string    `json:"provider,omitempty"`
+	Model        string    `json:"model,omitempty"`
 	ContextLimit int       `json:"context_limit,omitempty"`
 	Created      time.Time `json:"created"`
 }
 
-// State holds the compaction cursor. The transcript itself is never rewritten.
+// SummaryBlock covers an inclusive sequence range of the append-only transcript.
+// A later block with a wider range supersedes the blocks it contains.
+type SummaryBlock struct {
+	From  int       `json:"from"`
+	To    int       `json:"to"`
+	Text  string    `json:"text"`
+	Focus string    `json:"focus,omitempty"`
+	At    time.Time `json:"at,omitempty"`
+}
+
+// EnvRecord is the last environment snapshot. It is volatile context, not part of the stable prefix.
+type EnvRecord struct {
+	Hour    string    `json:"hour,omitempty"`
+	Sender  string    `json:"sender,omitempty"`
+	Tools   []string  `json:"tools,omitempty"`
+	Notes   int       `json:"notes,omitempty"`
+	Persona string    `json:"persona,omitempty"`
+	Rules   string    `json:"rules,omitempty"`
+	Memory  string    `json:"memory,omitempty"`
+	At      time.Time `json:"at,omitempty"`
+}
+
+// SectionUsage is a rough token estimate for one wake, by context section.
+type SectionUsage struct {
+	Stable  int `json:"stable,omitempty"`
+	Memory  int `json:"memory,omitempty"`
+	Env     int `json:"env,omitempty"`
+	History int `json:"history,omitempty"`
+}
+
+// Total sums the four sections.
+func (u SectionUsage) Total() int { return u.Stable + u.Memory + u.Env + u.History }
+
+// State holds compaction blocks and the last environment snapshot.
+// Summary and Covered are the legacy single-summary cursor.
 type State struct {
-	Summary string `json:"summary"`
-	Covered int    `json:"covered"`
+	Summary string         `json:"summary,omitempty"`
+	Covered int            `json:"covered,omitempty"`
+	Blocks  []SummaryBlock `json:"blocks,omitempty"`
+	Env     EnvRecord      `json:"env,omitempty"`
+	Usage   SectionUsage   `json:"usage,omitempty"`
 }
 
 // Entry is one transcript record.
@@ -77,6 +119,9 @@ func Create(root, name, persona string, links []string) (*Bot, error) {
 		return nil, err
 	}
 	if err := b.SaveState(State{}); err != nil {
+		return nil, err
+	}
+	if err := b.WritePersona(persona); err != nil {
 		return nil, err
 	}
 	return b, nil
@@ -202,6 +247,95 @@ func (b *Bot) Entries() ([]Entry, error) {
 // InboxPath is the bot's persisted inbox.
 func (b *Bot) InboxPath() string {
 	return filepath.Join(b.dir(), "inbox.jsonl")
+}
+
+// SetBinding stores the provider and model names. The API key stays in the environment.
+func (b *Bot) SetBinding(providerName, modelName string) error {
+	b.cfg.Provider = providerName
+	b.cfg.Model = modelName
+	return b.SaveConfig()
+}
+
+// SetOwners records the person ids allowed to give trusted terminal instructions.
+func (b *Bot) SetOwners(ids []string) error {
+	b.cfg.Owners = append([]string(nil), ids...)
+	return b.SaveConfig()
+}
+
+// PersonaPath is the editable persona file. It wins over config.json when present.
+func (b *Bot) PersonaPath() string { return filepath.Join(b.dir(), "persona.md") }
+
+// RulesPath is the editable rules file.
+func (b *Bot) RulesPath() string { return filepath.Join(b.dir(), "rules.md") }
+
+// RoutineDir holds one JSON file per routine.
+func (b *Bot) RoutineDir() string { return filepath.Join(b.dir(), "routines") }
+
+// OutboxPath is the notification log.
+func (b *Bot) OutboxPath() string { return filepath.Join(b.dir(), "outbox.jsonl") }
+
+// ReadPersona returns persona.md, or the config string when the file is missing.
+func (b *Bot) ReadPersona() (string, error) {
+	return readText(b.PersonaPath(), b.cfg.Persona, DefaultPersona)
+}
+
+// ReadRules returns rules.md, or fallback when the file is missing.
+func (b *Bot) ReadRules(fallback string) (string, error) {
+	return readText(b.RulesPath(), fallback, fallback)
+}
+
+// WritePersona replaces persona.md. The transcript is not rewritten.
+func (b *Bot) WritePersona(text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return errors.New("bot: empty persona")
+	}
+	if len(text) > 32<<10 {
+		return errors.New("bot: persona too long")
+	}
+	return fsutil.WriteAtomic(b.PersonaPath(), []byte(text+"\n"), 0600)
+}
+
+// WriteRules replaces rules.md.
+func (b *Bot) WriteRules(text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return errors.New("bot: empty rules")
+	}
+	if len(text) > 32<<10 {
+		return errors.New("bot: rules too long")
+	}
+	return fsutil.WriteAtomic(b.RulesPath(), []byte(text+"\n"), 0600)
+}
+
+func readText(path, fallback, def string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if strings.TrimSpace(fallback) != "" {
+			return strings.TrimSpace(fallback), nil
+		}
+		return strings.TrimSpace(def), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if s := strings.TrimSpace(string(raw)); s != "" {
+		return s, nil
+	}
+	if strings.TrimSpace(fallback) != "" {
+		return strings.TrimSpace(fallback), nil
+	}
+	return strings.TrimSpace(def), nil
+}
+
+// LockHandle blocks until this process may run the bot's wake loop.
+func (b *Bot) LockHandle() (*fsutil.FileLock, error) {
+	return fsutil.Lock(filepath.Join(b.dir(), "handle.lock"))
+}
+
+// TryLockHandle reports whether another process already holds the wake lock.
+func (b *Bot) TryLockHandle() (*fsutil.FileLock, bool, error) {
+	return fsutil.TryLock(filepath.Join(b.dir(), "handle.lock"))
 }
 
 // Grants reports whether the bot config includes the link name.
