@@ -21,6 +21,7 @@
 
   const state = {
     bots: [],
+    folders: [],
     groups: [],
     notes: [],
     sel: null,
@@ -192,6 +193,8 @@
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+    folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
   };
 
   function icon(name, extra) {
@@ -966,20 +969,168 @@
     return row;
   }
 
+  function folderStore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem("xbot-folders") || "{}");
+      return raw && typeof raw === "object" ? raw : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function folderCollapsed(name) {
+    return !!folderStore()[name];
+  }
+
+  function setFolderCollapsed(name, on) {
+    const all = folderStore();
+    if (on) all[name] = true;
+    else delete all[name];
+    localStorage.setItem("xbot-folders", JSON.stringify(all));
+  }
+
+  function renameFolderCollapsed(oldName, next) {
+    const all = folderStore();
+    if (Object.prototype.hasOwnProperty.call(all, oldName)) {
+      all[next] = all[oldName];
+      delete all[oldName];
+      localStorage.setItem("xbot-folders", JSON.stringify(all));
+    }
+  }
+
+  function forgetFolderCollapsed(name) {
+    const all = folderStore();
+    if (!Object.prototype.hasOwnProperty.call(all, name)) return;
+    delete all[name];
+    localStorage.setItem("xbot-folders", JSON.stringify(all));
+  }
+
+  function folderError(e) {
+    const msg = (e && e.message) || "";
+    if ((e && e.status === 409) || /already exists/i.test(msg)) return "已经有这个分组";
+    if ((e && e.status === 404) || msg === "not found") return "没有这个分组";
+    return msg || "失败";
+  }
+
+  function closeFolderMenus() {
+    document.querySelectorAll(".folder-menu").forEach((menu) => {
+      menu.hidden = true;
+      menu.remove();
+    });
+    document.querySelectorAll(".folder-more").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function placeMenu(anchor, menu, side) {
+    document.body.append(menu);
+    menu.hidden = false;
+    menu.style.position = "fixed";
+    menu.style.zIndex = "45";
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const r = anchor.getBoundingClientRect();
+    let left = side === "left" ? r.left - width - 6 : r.right - width;
+    if (left < 8) left = Math.min(window.innerWidth - width - 8, r.right + 6);
+    let top = side === "left" ? r.top - 6 : r.bottom + 4;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - height - 8);
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+    menu.style.right = "auto";
+    menu.style.bottom = "auto";
+  }
+
+  function botRow(b) {
+    const btn = listButton(b.name, lineForBot(b), state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, {
+      bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url,
+    }, !!b.primary);
+    btn.addEventListener("click", () => selectBot(b.name));
+    return btn;
+  }
+
+  function folderSection(folder) {
+    const box = el("div", "folder");
+    const collapsed = folderCollapsed(folder.name);
+    const head = el("div", "folder-head");
+    const toggle = el("button", "folder-toggle");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.append(icon(collapsed ? "chevron" : "chevronDown"));
+    toggle.append(el("span", "folder-name", folder.name));
+    toggle.append(el("span", "folder-count", String(folder.count)));
+    toggle.addEventListener("click", () => {
+      closeFolderMenus();
+      setFolderCollapsed(folder.name, !folderCollapsed(folder.name));
+      state.listSig = "";
+      renderLists();
+    });
+    head.append(toggle);
+    if (!folder.ungrouped) {
+      const more = el("button", "icon-btn folder-more");
+      more.type = "button";
+      more.setAttribute("aria-label", "更多");
+      more.setAttribute("aria-expanded", "false");
+      setTip(more, "更多");
+      more.append(icon("ellipsis"));
+      const menu = el("div", "pop folder-menu");
+      menu.hidden = true;
+      const rename = el("button", "menu-row");
+      rename.type = "button";
+      rename.append(icon("pencil"), el("span", "", "重命名"));
+      rename.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeFolderMenus();
+        openRenameFolder(folder.name);
+      });
+      const drop = el("button", "menu-row danger");
+      drop.type = "button";
+      drop.append(icon("trash"), el("span", "", "删除"));
+      drop.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeFolderMenus();
+        confirmDeleteFolder(folder.name);
+      });
+      menu.append(rename, el("div", "menu-rule"), drop);
+      more.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const open = menu.hidden;
+        closeFolderMenus();
+        closePops();
+        if (open) {
+          more.setAttribute("aria-expanded", "true");
+          placeMenu(more, menu, "below");
+        }
+      });
+      head.append(more, menu);
+    }
+    box.append(head);
+    const body = el("div", "folder-bots");
+    body.hidden = collapsed;
+    const byName = {};
+    for (const b of state.bots) byName[b.name] = b;
+    for (const name of folder.bots || []) {
+      if (byName[name]) body.append(botRow(byName[name]));
+    }
+    box.append(body);
+    return box;
+  }
+
   function renderLists() {
+    const collapsed = folderStore();
     const sig = JSON.stringify({
-      bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, b.description, lineForBot(b)]),
+      bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, b.group || "", b.description, lineForBot(b)]),
+      folders: state.folders.map((f) => [f.name, f.count, !!f.ungrouped, (f.bots || []).join("\n"), !!collapsed[f.name]]),
       groups: state.groups.map((g) => [g.id, g.name, lineForGroup(g)]),
       sel: state.sel,
     });
     if (sig === state.listSig) return;
     state.listSig = sig;
+    document.querySelectorAll(".folder-menu").forEach((menu) => menu.remove());
     const pins = $("pin-row");
     const roster = $("roster");
     pins.replaceChildren();
     roster.replaceChildren();
     const pinned = state.bots.filter((b) => b.pinned);
-    const rest = state.bots.filter((b) => !b.pinned);
     for (const b of pinned) {
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
@@ -1001,17 +1152,11 @@
     add.addEventListener("click", openNewBot);
     pins.append(add);
 
-    const addRow = (b) => {
-      const btn = listButton(b.name, lineForBot(b), state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, {
-        bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url,
-      }, !!b.primary);
-      btn.addEventListener("click", () => selectBot(b.name));
-      roster.append(btn);
-    };
-    if (rest.length) {
-      roster.append(sectionLabel("Bot"));
-      rest.forEach(addRow);
-    }
+    const folders = state.folders.length
+      ? state.folders
+      : [{ name: "未分组", count: state.bots.length, bots: state.bots.map((b) => b.name), ungrouped: true }];
+    for (const folder of folders) roster.append(folderSection(folder));
+
     const newer = el("button", "icon-btn");
     newer.type = "button";
     newer.setAttribute("aria-label", "新建群组");
@@ -1413,6 +1558,12 @@
   function closePanelMenu() {
     $("panel-menu").hidden = true;
     $("panel-more").setAttribute("aria-expanded", "false");
+    document.querySelectorAll(".menu-sub").forEach((sub) => {
+      sub.hidden = true;
+      sub.remove();
+    });
+    const move = $("panel-menu").querySelector(".menu-move > .menu-row");
+    if (move) move.setAttribute("aria-expanded", "false");
   }
 
   function syncPanelChrome() {
@@ -1421,17 +1572,123 @@
     $("panel-export").hidden = !bot;
     $("panel-more").hidden = !bot;
     const menu = $("panel-menu");
+    document.querySelectorAll(".menu-sub").forEach((sub) => sub.remove());
     menu.replaceChildren();
     if (!bot) {
       closePanelMenu();
       return;
     }
     const pinned = !!data.pinned;
+    const current = (state.bots.find((b) => b.name === state.sel.id) || {}).group || "";
     menu.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
     menu.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
     menu.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
+    menu.append(moveMenu(state.sel.id, current));
     menu.append(el("div", "menu-rule"));
     menu.append(menuRow("trash", "删除 Bot", () => confirmDelete(state.sel.id), true));
+  }
+
+  function moveMenu(botName, current) {
+    const wrap = el("div", "menu-move");
+    const btn = el("button", "menu-row");
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", "false");
+    btn.append(icon("folder"), el("span", "", "移到分组"), icon("chevron", "mark"));
+    const sub = el("div", "pop menu-sub");
+    sub.hidden = true;
+    const folders = state.folders.length ? state.folders : [{ name: "未分组", ungrouped: true }];
+    for (const folder of folders) {
+      const group = folder.ungrouped ? "" : folder.name;
+      const here = group === (current || "");
+      const item = el("button", "menu-row" + (here ? " here" : ""));
+      item.type = "button";
+      item.append(el("span", "", folder.name));
+      if (here) item.append(icon("check", "mark"));
+      item.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        closePanelMenu();
+        if (here) return;
+        try {
+          await api("/api/bots/" + encodeURIComponent(botName), { method: "PATCH", body: { group: group } });
+          await refreshLists();
+        } catch (e) {
+          setStatus(folderError(e));
+        }
+      });
+      sub.append(item);
+    }
+    sub.append(el("div", "menu-rule"));
+    const create = el("button", "menu-row");
+    create.type = "button";
+    create.append(icon("plus"), el("span", "", "新建分组"));
+    create.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closePanelMenu();
+      openNewFolder(botName);
+    });
+    sub.append(create);
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const open = sub.hidden;
+      sub.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      if (open) {
+        btn.setAttribute("aria-expanded", "true");
+        placeMenu(btn, sub, "left");
+      }
+    });
+    wrap.append(btn, sub);
+    return wrap;
+  }
+
+  function openNewFolder(botName) {
+    openModal("新建分组", [
+      { name: "name", label: "名字", placeholder: "工作", maxLength: 32 },
+    ], async (v) => {
+      const name = (v.name || "").trim();
+      if (!name) throw new Error("需要一个名字");
+      if (name === "未分组") throw new Error("不能用这个名字");
+      try {
+        await api("/api/groups", { method: "POST", body: { name: name } });
+        if (botName) {
+          await api("/api/bots/" + encodeURIComponent(botName), { method: "PATCH", body: { group: name } });
+        }
+      } catch (e) {
+        throw new Error(folderError(e));
+      }
+      await refreshLists();
+    });
+  }
+
+  function openRenameFolder(oldName) {
+    openModal("重命名", [
+      { name: "name", label: "名字", value: oldName, maxLength: 32 },
+    ], async (v) => {
+      const name = (v.name || "").trim();
+      if (!name) throw new Error("需要一个名字");
+      if (name === oldName) return;
+      try {
+        await api("/api/groups/" + encodeURIComponent(oldName), { method: "PATCH", body: { name: name } });
+      } catch (e) {
+        throw new Error(folderError(e));
+      }
+      renameFolderCollapsed(oldName, name);
+      await refreshLists();
+    }, "保存");
+  }
+
+  function confirmDeleteFolder(name) {
+    openModal("删除分组", [
+      { name: "warn", type: "note", label: "「" + name + "」里的 Bot 不会被删除，会回到未分组。" },
+    ], async () => {
+      try {
+        await api("/api/groups/" + encodeURIComponent(name), { method: "DELETE" });
+      } catch (e) {
+        throw new Error(folderError(e));
+      }
+      forgetFolderCollapsed(name);
+      await refreshLists();
+    }, "删除");
   }
 
   function confirmDelete(name) {
@@ -1625,8 +1882,7 @@
     return wrap;
   }
 
-  function detailsView(data) {
-    const wrap = document.createDocumentFragment();
+  function styleChips(data) {
     const style = data.style || {};
     const bits = [];
     if (style.tone) bits.push(style.tone);
@@ -1634,6 +1890,66 @@
     if (style.language) bits.push(style.language);
     const pro = { quiet: "安静", normal: "适中", active: "积极" }[data.proactivity] || "";
     if (pro) bits.push(pro);
+    return dedupeChips(bits);
+  }
+
+  // Groups of labels that mean the same thing. A longer chip covers a shorter one in its group.
+  const CHIP_MEANINGS = [
+    ["短", "简短", "简洁", "精简", "简明", "short", "brief", "concise"],
+    ["长", "详细", "详尽", "long", "detailed"],
+    ["中", "适中", "中等", "medium"],
+    ["安静", "quiet"],
+    ["积极", "主动", "active"],
+  ];
+
+  function chipMeanings(text) {
+    const n = String(text || "").trim().toLowerCase();
+    const hit = [];
+    CHIP_MEANINGS.forEach((words, i) => {
+      for (const word of words) {
+        const key = word.toLowerCase();
+        if (n === key || (key.length >= 2 && n.includes(key))) {
+          hit.push(i);
+          break;
+        }
+      }
+    });
+    return hit;
+  }
+
+  function dedupeChips(bits) {
+    const kept = [];
+    const seen = new Set();
+    for (const bit of bits) {
+      const text = String(bit || "").trim();
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) continue;
+      seen.add(key);
+      kept.push(text);
+    }
+    return kept.filter((text, i) => {
+      const mine = chipMeanings(text);
+      if (!mine.length) return true;
+      return !kept.some((other, j) => {
+        if (i === j) return false;
+        const theirs = chipMeanings(other);
+        if (!mine.every((g) => theirs.includes(g))) return false;
+        if (other.length === text.length) return j < i;
+        return other.length > text.length;
+      });
+    });
+  }
+
+  function modelLabel(data) {
+    const model = String(data.model || "").trim();
+    const provider = String(data.provider || "").trim();
+    if (provider && model && provider !== model) return provider + " / " + model;
+    return model || provider;
+  }
+
+  function detailsView(data) {
+    const wrap = document.createDocumentFragment();
+    const bits = styleChips(data);
     const about = section("");
     if (data.persona) {
       const block = el("div", "kv");
@@ -1647,7 +1963,8 @@
       block.append(el("div", "k", "风格"), chips);
       about.append(block);
     }
-    about.append(kv("模型", (data.provider || "环境变量") + " / " + (data.model || "默认")));
+    const model = modelLabel(data);
+    if (model) about.append(kv("模型", model));
     if (data.quiet_start || data.quiet_end) about.append(kv("免打扰", (data.quiet_start || "") + " – " + (data.quiet_end || "")));
     wrap.append(about);
     return wrap;
@@ -1970,16 +2287,15 @@
   }
 
   function syncBackdrop() {
-    const w = window.innerWidth;
-    const drawer = w < 768 && sidebar.classList.contains("open");
-    const sheet = w < 1100 && panel.classList.contains("open");
-    backdrop.hidden = !(drawer || sheet);
+    const drawer = window.innerWidth < 768 && sidebar.classList.contains("open");
+    backdrop.hidden = !drawer;
   }
 
   async function refreshLists() {
     const data = await api("/api/bots");
     const groups = await api("/api/groups");
     state.bots = data.bots || [];
+    state.folders = groups.folders || [];
     state.groups = groups.groups || [];
     renderLists();
     warmOne().catch(() => {});
@@ -2302,7 +2618,8 @@
       } else {
         const inp = document.createElement("input");
         inp.placeholder = f.placeholder || "";
-        inp.maxLength = 64;
+        inp.maxLength = f.maxLength || 64;
+        if (f.value) inp.value = f.value;
         inp.autocomplete = "off";
         inputs[f.name] = inp;
         label.append(inp);
@@ -2438,6 +2755,7 @@
     $("more-menu").hidden = true;
     $("more").setAttribute("aria-expanded", "false");
     closePanelMenu();
+    closeFolderMenus();
     closeToolPop();
     notesEl.hidden = true;
   }
@@ -2640,7 +2958,8 @@
       $("more-menu").hidden = true;
       $("more").setAttribute("aria-expanded", "false");
     }
-    if (!ev.target.closest(".panel-more-wrap")) closePanelMenu();
+    if (!ev.target.closest(".panel-more-wrap") && !ev.target.closest(".menu-sub")) closePanelMenu();
+    if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) notesEl.hidden = true;
   });

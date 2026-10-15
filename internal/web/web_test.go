@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -276,7 +277,8 @@ func TestProfileAPI(t *testing.T) {
 	res = do(http.MethodGet, "/api/bots/ada", nil, "")
 	raw, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"tone":"warm"`)) || !bytes.Contains(raw, []byte(`"proactivity":"quiet"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) {
+	wantModel := config.FromEnv(os.Getenv).Model
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"tone":"warm"`)) || !bytes.Contains(raw, []byte(`"proactivity":"quiet"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) || !bytes.Contains(raw, []byte(`"model":"`+wantModel+`"`)) {
 		t.Fatalf("panel %d %s", res.StatusCode, raw)
 	}
 	res = do(http.MethodGet, "/api/bots", nil, "")

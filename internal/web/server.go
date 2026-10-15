@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/exec"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
@@ -30,7 +31,7 @@ import (
 	"xbot/internal/provider"
 )
 
-//go:embed static/*
+//go:embed static
 var staticFS embed.FS
 
 // Server is the web link. One process keeps a kernel per bot so subagent control stays attached.
@@ -66,6 +67,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /manifest.webmanifest", s.static("static/manifest.webmanifest", "application/manifest+json"))
 	mux.HandleFunc("GET /icon-192.png", s.static("static/icon-192.png", "image/png"))
 	mux.HandleFunc("GET /icon-512.png", s.static("static/icon-512.png", "image/png"))
+	mux.HandleFunc("GET /fonts/MonaSansVF.woff2", s.static("static/fonts/MonaSansVF.woff2", "font/woff2"))
 
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
@@ -437,6 +439,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	primary, _ := bot.Primary(s.Root)
 	url, bg, ink, initial := paintBot(b)
+	providerName, modelName := runningModel(s.Root, b)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": b.Name(), "persona": persona,
 		"description": b.Config().Description,
@@ -446,11 +449,26 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"quiet_end":   b.Config().QuietEnd,
 		"timezone":    b.Config().Timezone,
 		"avatar_url":  url, "avatar_bg": bg, "avatar_ink": ink, "initial": initial,
-		"provider": b.Config().Provider, "model": b.Config().Model,
+		"provider": providerName, "model": modelName,
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,
 		"group":  b.Config().Group,
 		"memory": mem, "routines": routines, "agents": agents,
 	})
+}
+
+// runningModel is the provider and model this bot will call.
+// An empty binding resolves through the process environment, which defaults to deepseek-chat.
+func runningModel(root string, b *bot.Bot) (string, string) {
+	providerName := strings.TrimSpace(b.Config().Provider)
+	modelName := strings.TrimSpace(b.Config().Model)
+	resolved, _, err := config.Resolve(root, providerName, modelName, os.Getenv)
+	if err == nil && strings.TrimSpace(resolved.Model) != "" {
+		return providerName, resolved.Model
+	}
+	if modelName == "" {
+		modelName = config.FromEnv(os.Getenv).Model
+	}
+	return providerName, modelName
 }
 
 func (s *Server) profile(b *bot.Bot) []map[string]string {
