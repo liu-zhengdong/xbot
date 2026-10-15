@@ -8,7 +8,7 @@ import (
 )
 
 func TestMissingOverlayIsEmpty(t *testing.T) {
-	got, err := Load(t.TempDir(), "deepseek", "deepseek-chat")
+	got, err := Load(t.TempDir(), "acme", "no-overlay")
 	if err != nil || got != "" {
 		t.Fatalf("%q %v", got, err)
 	}

@@ -77,7 +77,7 @@ func Run(opt Options) (Report, error) {
 			for _, level := range c.levels() {
 				runs := make([]RunResult, 0, opt.Runs)
 				for i := 0; i < opt.Runs; i++ {
-					one := runCase(c, level, scriptFor(opt, c.Name, i), real)
+					one := runCaseFor(c, level, scriptFor(opt, c.Name, i), real, opt.Model)
 					runs = append(runs, RunResult{
 						Pass:       one.Pass,
 						Reason:     one.Reason,
@@ -211,6 +211,11 @@ func openReal(root, id string) (provider.Provider, error) {
 }
 
 func runCase(c Case, level string, script Script, real provider.Provider) CaseResult {
+	return runCaseFor(c, level, script, real, "")
+}
+
+// runCaseFor binds the case bot to modelID so that model's prompt overlay applies.
+func runCaseFor(c Case, level string, script Script, real provider.Provider, modelID string) CaseResult {
 	res := CaseResult{Name: c.Name, Level: level, Grader: c.Grader, SpotCheck: c.Grader == "llm-judge"}
 	if err := requireJail(); err != nil {
 		res.Reason = err.Error()
@@ -252,6 +257,12 @@ func runCase(c Case, level string, script Script, real provider.Provider) CaseRe
 	if err := b.SetOwners([]string{"owner"}); err != nil {
 		res.Reason = err.Error()
 		return res
+	}
+	if prov, model, err := config.SplitModelID(modelID); err == nil {
+		if err := b.SetBinding(prov, model); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
 	}
 	var up bot.ProfileUpdate
 	if c.QuietStart != "" || c.QuietEnd != "" {

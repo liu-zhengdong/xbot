@@ -1,6 +1,6 @@
 // Package prompts is the embedded per-model overlay tree.
 // A model file is prompts/models/<provider>/<model>.md.
-// This package ships no model text. An empty lookup leaves the shared rules unchanged.
+// A missing file leaves the overlay empty and the shared rules unchanged.
 package prompts
 
 import "embed"

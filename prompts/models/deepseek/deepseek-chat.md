@@ -1,0 +1,2 @@
+- Finish the fix in this turn. Asking the owner to approve an ordinary file edit you already know is needed counts as unfinished work.
+- Use the fewest tool calls that settle the question. Do not probe the system to see which programs exist.
