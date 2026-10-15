@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// ErrUnauthorized is a 401 from the node. The token is wrong.
+// A refused connection is a different error and means the node is offline.
+var ErrUnauthorized = errors.New("node: unauthorized")
+
 // Ping reads GET /v1/node.
 func Ping(ctx context.Context, baseURL, token string) (Info, error) {
 	var info Info
@@ -20,7 +24,7 @@ func Ping(ctx context.Context, baseURL, token string) (Info, error) {
 }
 
 // Call runs one capability and returns its text.
-// command and approved are used by shell. info ignores them.
+// command is used by shell. approved is sent for older nodes; this node ignores it.
 func Call(ctx context.Context, baseURL, token, cap, command string, approved bool) (string, error) {
 	var out struct {
 		Text string `json:"text"`
@@ -68,6 +72,9 @@ func do(ctx context.Context, method, baseURL, token, path string, body []byte, d
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
 	}
 	if resp.StatusCode != http.StatusOK {
 		var env struct {

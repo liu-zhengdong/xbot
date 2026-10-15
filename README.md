@@ -347,7 +347,7 @@ M2：
 xbot serve --http 127.0.0.1:8787 --tunnel cloudflare
 ```
 
-stderr 会多一行 `public url: https://<name>.trycloudflare.com`。手机浏览器打开这个地址，把同一段输出里的登录 token 贴进去。`cloudflared` 不在 `PATH` 上时设 `XBOT_CLOUDFLARED`。进程退出时隧道一起停。
+stderr 会多一行 `public url: https://<name>.trycloudflare.com`。手机浏览器打开这个地址，把同一段输出里的登录 token 贴进去。`cloudflared` 不在 `PATH` 上时设 `XBOT_CLOUDFLARED`。地址打在 stderr，两边一起读。serve 退出或被硬杀掉时，隧道进程一起停。
 
 **Tailscale。** 手机和这台电脑在同一个 Tailscale 网络里时，可以让手机直接打到家里的 `xbot serve`。
 
@@ -367,7 +367,7 @@ xbot serve --tunnel tailscale
 
 ## 另一台机器上的节点
 
-`xbot node serve` 在这台机器上听 `127.0.0.1:18772`，第一次把 bearer token 打到 stdout，并写进 `node-token`（0600）。要给别的设备用，绑 tailnet 地址，不要绑 `0.0.0.0`：
+`xbot node serve` 在这台机器上听 `127.0.0.1:18772`，第一次把 bearer token 打到 stdout，并写进 `node-token`（0600）。token 也可以用 `XBOT_NODE_TOKEN`，或 `--token -` 从 stdin 读一行。`SIGTERM` 会停掉监听。要给别的设备用，绑 tailnet 地址，不要绑 `0.0.0.0`：
 
 ```bash
 xbot node serve --addr 100.x.y.z:18772
@@ -381,7 +381,7 @@ xbot node list
 xbot node call desk info
 ```
 
-`list` 不打印 token。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。
+`add` 会先用 token 问一次对方，401 就不写入。`list` 不打印 token。token 不对显示 `unauthorized`，连不上才是 `offline`。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。开关是 `ask` 时命令不跑，那台机器上执行 `xbot node approve <id>` 才跑。调用方传来的 `approved` 不算数。
 
 ## 机器开关
 
@@ -394,7 +394,7 @@ xbot machine set local off
 xbot machine set desk allow
 ```
 
-`allow`：本机 shell 跟以前一样，`date` 这类只读命令不确认。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时，调用方要先让主人确认，命令行 `xbot node call desk shell ...` 算主人自己在跑。文件工具不看这个开关。桌面和浏览器也看这个开关。
+`allow`：本机 shell 跟以前一样，`date` 这类只读命令不确认。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时远程调用只排队，主人在节点上跑 `xbot node approve <id>`。文件工具不看这个开关。桌面和浏览器也看这个开关。
 
 ## 桌面
 
@@ -409,7 +409,7 @@ xbot desktop scroll -3
 xbot desktop key Return
 ```
 
-`off` 时这些命令直接失败。Bot 里要 `links install desktop`，再 `links load desktop`，才有 `desktop_screenshot`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`。截图写到 `~/.xbot/desktop/`。能用 shell 或 API 做的事不要用桌面。
+`off` 时这些命令直接失败。Bot 里要 `links install desktop`，再 `links load desktop`，才有 `desktop_screenshot`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`。确认卡写明坐标、要输入的原文和按键。截图写到 `~/.xbot/desktop/`，权限 0600。能用 shell 或 API 做的事不要用桌面。
 
 ## 浏览器
 
@@ -423,4 +423,4 @@ xbot browser click 'a'
 xbot browser stop
 ```
 
-`open` 打出标题、地址和可见正文，Chrome 继续留着，所以后面的 `snapshot` 和 `click` 还能连上。`stop` 关掉这次拉起的进程。`off` 时直接失败。Bot 里要 `links install browser`，再 `links load browser`。能用 shell 或 API 做的事不要开浏览器。
+`open` 打出标题、地址和可见正文，包在 `<untrusted_event>` 里。Chrome 继续留着，所以后面的 `snapshot` 和 `click` 还能连上。`stop` 先核对进程命令行里有这个配置目录，再关掉这次拉起的进程。`xbot serve` 退出时也会关。`off` 时打开和点击直接失败，`browser_stop` 仍可用来关掉。Bot 里要 `links install browser`，再 `links load browser`。能用 shell 或 API 做的事不要开浏览器。

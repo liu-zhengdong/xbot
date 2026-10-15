@@ -6,10 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"xbot/internal/node"
@@ -18,7 +18,7 @@ import (
 
 func cmdNode(root string, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: xbot node serve|add|list|remove|call")
+		return errors.New("usage: xbot node serve|add|list|remove|call|approve")
 	}
 	switch args[0] {
 	case "serve":
@@ -31,6 +31,8 @@ func cmdNode(root string, args []string) error {
 		return cmdNodeRemove(root, args[1:])
 	case "call":
 		return cmdNodeCall(root, args[1:])
+	case "approve":
+		return cmdNodeApprove(root, args[1:])
 	default:
 		return fmt.Errorf("unknown node command %q", args[0])
 	}
@@ -52,7 +54,11 @@ func cmdNodeServe(root string, args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("usage: xbot node serve [--addr 127.0.0.1:18772] [--token TOKEN] [--name NAME]")
 	}
-	tok, created, err := node.EnsureToken(root, *token)
+	provided, err := node.ResolveToken(*token, os.Getenv("XBOT_NODE_TOKEN"), os.Stdin)
+	if err != nil {
+		return err
+	}
+	tok, created, err := node.EnsureToken(root, provided)
 	if err != nil {
 		return err
 	}
@@ -64,20 +70,10 @@ func cmdNodeServe(root string, args []string) error {
 		fmt.Printf("token: %s\n", tok)
 	}
 	fmt.Fprintf(os.Stderr, "node %s listening on http://%s\n", info.Name, *addr)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
 	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
-	srv := &http.Server{Addr: *addr, Handler: node.Handler(tok, info, nodeDispatch(root, info))}
-	go func() {
-		<-ctx.Done()
-		shut, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shut)
-	}()
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return node.Serve(ctx, *addr, node.Handler(tok, info, nodeDispatch(root, info)))
 }
 
 func cmdNodeAdd(root string, args []string) error {
@@ -95,7 +91,16 @@ func cmdNodeAdd(root string, args []string) error {
 	if fs.NArg() != 1 || strings.TrimSpace(*rawURL) == "" {
 		return errors.New("usage: xbot node add <name> --url URL [--token TOKEN]")
 	}
-	if err := node.Add(root, node.Node{Name: fs.Arg(0), URL: *rawURL, Token: *token}); err != nil {
+	tok, err := node.ResolveToken(*token, os.Getenv("XBOT_NODE_TOKEN"), os.Stdin)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := node.Ping(ctx, *rawURL, tok); err != nil {
+		return err
+	}
+	if err := node.Add(root, node.Node{Name: fs.Arg(0), URL: *rawURL, Token: tok}); err != nil {
 		return err
 	}
 	fmt.Printf("added %s\n", fs.Arg(0))
@@ -118,8 +123,11 @@ func cmdNodeList(root string, args []string) error {
 	defer cancel()
 	for _, n := range nodes {
 		state := "offline"
-		if info, err := node.Ping(ctx, n.URL, n.Token); err == nil {
+		info, err := node.Ping(ctx, n.URL, n.Token)
+		if err == nil {
 			state = "online " + info.Name
+		} else if errors.Is(err, node.ErrUnauthorized) {
+			state = "unauthorized"
 		}
 		fmt.Printf("%s\t%s\t%s\n", n.Name, state, n.URL)
 	}
@@ -148,7 +156,19 @@ func cmdNodeCall(root string, args []string) error {
 	command := strings.Join(args[2:], " ")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	text, err := node.Call(ctx, n.URL, n.Token, args[1], command, true)
+	text, err := node.Call(ctx, n.URL, n.Token, args[1], command, false)
+	if err != nil {
+		return err
+	}
+	fmt.Println(text)
+	return nil
+}
+
+func cmdNodeApprove(root string, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: xbot node approve <id>")
+	}
+	text, err := node.Approve(root, args[0])
 	if err != nil {
 		return err
 	}
@@ -169,4 +189,8 @@ func nodeDispatch(root string, info node.Info) func(node.Request) (string, error
 			return "", fmt.Errorf("node: unknown cap %q", req.Cap)
 		}
 	}
+}
+
+func stopSignals() []os.Signal {
+	return []os.Signal{os.Interrupt, syscall.SIGTERM}
 }

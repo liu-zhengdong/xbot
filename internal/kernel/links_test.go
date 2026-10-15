@@ -272,7 +272,7 @@ func TestBrowserLoadListsTools(t *testing.T) {
 		}
 	}
 	out, err = (linksTool{k}).load("browser")
-	if err != nil || !strings.Contains(out, "browser_open") || !strings.Contains(out, "browser_snapshot") {
+	if err != nil || !strings.Contains(out, "browser_open") || !strings.Contains(out, "browser_snapshot") || !strings.Contains(out, "browser_stop") {
 		t.Fatalf("load %q %v", out, err)
 	}
 }

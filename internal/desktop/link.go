@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"xbot/internal/link"
@@ -89,7 +90,7 @@ func (t clickTool) Confirm(args json.RawMessage) (bool, string, error) {
 		Y int `json:"y"`
 	}
 	_ = json.Unmarshal(args, &in)
-	return t.l.confirm(Action{Name: "click", X: in.X, Y: in.Y}, "desktop click")
+	return t.l.confirm(Action{Name: "click", X: in.X, Y: in.Y}, fmt.Sprintf("desktop click %d %d", in.X, in.Y))
 }
 func (t clickTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -118,9 +119,9 @@ func (t typeTool) Confirm(args json.RawMessage) (bool, string, error) {
 		Text string `json:"text"`
 	}
 	_ = json.Unmarshal(args, &in)
-	summary := "desktop type"
+	summary := "desktop type\n" + in.Text
 	if sensitive(in.Text) {
-		summary = "desktop type\npayment, login, or send"
+		summary += "\npayment, login, or send"
 	}
 	return t.l.confirm(Action{Name: "type", Text: in.Text}, summary)
 }

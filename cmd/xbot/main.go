@@ -19,10 +19,12 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/browser"
 	"xbot/internal/clip"
 	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/config"
+	"xbot/internal/desktop"
 	"xbot/internal/eval"
 	"xbot/internal/exec"
 	"xbot/internal/inbound"
@@ -31,6 +33,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/machine"
 	"xbot/internal/memory"
+	"xbot/internal/node"
 	"xbot/internal/nodesync"
 	"xbot/internal/notify"
 	"xbot/internal/person"
@@ -91,12 +94,13 @@ Usage:
   xbot [--root DIR] watch add <bot> <id> --path PATTERN
   xbot [--root DIR] watch list <bot>
   xbot [--root DIR] watch remove <bot> <id>
-  xbot [--root DIR] node serve [--addr 127.0.0.1:18772] [--token TOKEN] [--name NAME]
-  xbot [--root DIR] node add <name> --url URL [--token TOKEN]
+  xbot [--root DIR] node serve [--addr 127.0.0.1:18772] [--token TOKEN|-] [--name NAME]
+  xbot [--root DIR] node add <name> --url URL [--token TOKEN|-]
   xbot [--root DIR] node list
   xbot [--root DIR] node remove <name>
   xbot [--root DIR] node call <name> info
   xbot [--root DIR] node call <name> shell <command>
+  xbot [--root DIR] node approve <id>
   xbot [--root DIR] sync export --out FILE
   xbot [--root DIR] sync merge --file FILE
   xbot [--root DIR] machine list
@@ -1024,9 +1028,10 @@ func cmdChat(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
-	pr := &printer{yes: opt.Yes, reader: bufio.NewReader(os.Stdin)}
+	lines := make(chan proc.Line)
+	pr := &printer{yes: opt.Yes, lines: lines}
 	k, who, err := openKernel(root, b, opt.MaxSteps, pr.Approve, pr, opt.Yes, runnerSpec{opt.RunnerURL, opt.RunnerToken})
 	if err != nil {
 		return err
@@ -1036,17 +1041,7 @@ func cmdChat(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	lines := make(chan proc.Line)
-	go func() {
-		defer close(lines)
-		for {
-			line, err := pr.reader.ReadString('\n')
-			lines <- proc.Line{Text: line, Err: err}
-			if err != nil || isQuit(line) {
-				return
-			}
-		}
-	}()
+	go feedLines(bufio.NewReader(os.Stdin), lines)
 	return proc.Run(ctx, proc.Config{
 		K:     k,
 		Lines: lines,
@@ -1227,6 +1222,12 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 				return nil, errors.New("runner token is empty")
 			}
 			out = append(out, link.Runner{BaseURL: url, Token: token})
+		case link.NameNode:
+			out = append(out, node.Open(b.Root))
+		case link.NameDesktop:
+			out = append(out, desktop.Open(b.Root))
+		case link.NameBrowser:
+			out = append(out, browser.Open(b.Root))
 		default:
 			return nil, fmt.Errorf("unknown link %q", name)
 		}
@@ -1362,7 +1363,7 @@ func cmdServe(root string, args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale]")
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
 	resolved, err := tunnel.Resolve(ctx, *tunnelMode, *httpAddr, os.Getenv("XBOT_TAILSCALE"))
 	if err != nil {
@@ -1437,6 +1438,7 @@ func cmdServe(root string, args []string) error {
 			}
 		}
 	}()
+	defer func() { _ = browser.Stop(root) }()
 	seen := map[string]bool{}
 	for {
 		startEmitters(ctx, root, seen)
@@ -1855,6 +1857,17 @@ func isQuit(text string) bool {
 	}
 }
 
+func feedLines(r *bufio.Reader, lines chan<- proc.Line) {
+	defer close(lines)
+	for {
+		line, err := r.ReadString('\n')
+		lines <- proc.Line{Text: line, Err: err}
+		if err != nil || isQuit(line) {
+			return
+		}
+	}
+}
+
 func readLine(ctx context.Context, r *bufio.Reader) (string, error) {
 	type result struct {
 		line string
@@ -1876,6 +1889,7 @@ func readLine(ctx context.Context, r *bufio.Reader) (string, error) {
 type printer struct {
 	yes     bool
 	reader  *bufio.Reader
+	lines   <-chan proc.Line
 	out     io.Writer
 	mu      sync.Mutex
 	pending strings.Builder
@@ -1956,8 +1970,22 @@ func (p *printer) Approve(ctx context.Context, _, _ string) (bool, error) {
 	p.mu.Lock()
 	fmt.Fprint(os.Stderr, "Allow? [y/n] ")
 	p.mu.Unlock()
-	line, err := readLine(ctx, p.reader)
-	if err != nil {
+	var line string
+	var err error
+	if p.lines != nil {
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case got, ok := <-p.lines:
+			if !ok {
+				return false, io.EOF
+			}
+			line, err = got.Text, got.Err
+		}
+	} else {
+		line, err = readLine(ctx, p.reader)
+	}
+	if err != nil && strings.TrimSpace(line) == "" {
 		return false, err
 	}
 	switch strings.ToLower(strings.TrimSpace(line)) {

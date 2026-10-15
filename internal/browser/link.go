@@ -27,7 +27,7 @@ func (l *Link) Tools() []tools.Tool {
 	if l == nil {
 		return nil
 	}
-	return []tools.Tool{openTool{l}, snapTool{l}, clickTool{l}}
+	return []tools.Tool{openTool{l}, snapTool{l}, clickTool{l}, stopTool{l}}
 }
 
 func (l *Link) confirm(summary string) (bool, string, error) {
@@ -128,6 +128,30 @@ func (t clickTool) Run(ctx context.Context, args json.RawMessage) (string, error
 		return "", err
 	}
 	return sess.Click(ctx, in.Selector)
+}
+
+type stopTool struct{ l *Link }
+
+func (stopTool) Name() string { return "browser_stop" }
+func (stopTool) Description() string {
+	return "Stop the Chrome process started for this data root."
+}
+func (stopTool) Parameters() any { return obj(nil, nil) }
+func (stopTool) Confirm(json.RawMessage) (bool, string, error) {
+	return true, "browser stop", nil
+}
+func (t stopTool) Run(context.Context, json.RawMessage) (string, error) {
+	t.l.mu.Lock()
+	sess := t.l.sess
+	t.l.sess = nil
+	t.l.mu.Unlock()
+	if sess != nil {
+		sess.Release()
+	}
+	if err := Stop(t.l.Root); err != nil {
+		return "", err
+	}
+	return "stopped", nil
 }
 
 func (l *Link) snapshot(ctx context.Context) (string, error) {

@@ -1,6 +1,8 @@
 package node
 
 import (
+	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"xbot/internal/fsutil"
 )
@@ -29,9 +32,10 @@ func Caps() []string { return []string{"info", "shell"} }
 
 // Request is one POST /v1/call.
 type Request struct {
-	Cap      string `json:"cap"`
-	Command  string `json:"command,omitempty"`
-	Approved bool   `json:"approved,omitempty"`
+	Cap     string `json:"cap"`
+	Command string `json:"command,omitempty"`
+	// Approved is accepted so older clients are not rejected. This node ignores it.
+	Approved bool `json:"approved,omitempty"`
 }
 
 func idPath(root string) string    { return filepath.Join(root, "node-id") }
@@ -57,6 +61,59 @@ func LoadID(root string) (string, error) {
 		return "", err
 	}
 	return id, nil
+}
+
+// ResolveToken picks a bearer token. "-" reads one line from stdin.
+// An empty flag uses env. An empty result means the caller should generate one.
+func ResolveToken(flag, env string, stdin io.Reader) (string, error) {
+	flag = strings.TrimSpace(flag)
+	switch {
+	case flag == "-":
+		if stdin == nil {
+			return "", errors.New("node: empty token")
+		}
+		sc := bufio.NewScanner(stdin)
+		if !sc.Scan() {
+			if err := sc.Err(); err != nil {
+				return "", err
+			}
+			return "", errors.New("node: empty token")
+		}
+		tok := strings.TrimSpace(sc.Text())
+		if tok == "" {
+			return "", errors.New("node: empty token")
+		}
+		return tok, nil
+	case flag != "":
+		return flag, nil
+	default:
+		return strings.TrimSpace(env), nil
+	}
+}
+
+// Serve listens on addr until ctx is cancelled, then shuts down.
+func Serve(ctx context.Context, addr string, handler http.Handler) error {
+	srv := &http.Server{Addr: addr, Handler: handler}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shut, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shut)
+		err := <-errCh
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	}
 }
 
 // EnsureToken returns the flag value, or the stored node token, or a new one.

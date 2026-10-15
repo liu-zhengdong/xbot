@@ -2,10 +2,14 @@ package tunnel
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -59,7 +63,8 @@ func TestResolveTailscale(t *testing.T) {
 }
 
 func TestStartCloudflare(t *testing.T) {
-	bin := writeFake(t, "#!/bin/sh\necho https://box.trycloudflare.com\nexec sleep 30\n")
+	// Real cloudflared prints the URL on stderr and never closes stdout.
+	bin := writeFake(t, "#!/bin/sh\necho https://box.trycloudflare.com >&2\nexec sleep 30\n")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	proc, err := StartCloudflare(ctx, "http://127.0.0.1:8787", bin, 2*time.Second)
@@ -69,6 +74,64 @@ func TestStartCloudflare(t *testing.T) {
 	defer proc.Close()
 	if proc.PublicURL != "https://box.trycloudflare.com" {
 		t.Fatal(proc.PublicURL)
+	}
+}
+
+func TestCloudflaredDiesWithParent(t *testing.T) {
+	if os.Getenv("XBOT_PDEATH_CHILD") == "1" {
+		proc, err := StartCloudflare(context.Background(), "http://127.0.0.1:9", os.Getenv("XBOT_FAKE_BIN"), 2*time.Second)
+		if err != nil || proc.cmd == nil || proc.cmd.Process == nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(os.Getenv("XBOT_PIDFILE"), []byte(strconv.Itoa(proc.cmd.Process.Pid)), 0600); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		select {}
+	}
+	bin := writeFake(t, "#!/bin/sh\necho https://box.trycloudflare.com >&2\nexec sleep 60\n")
+	pidfile := filepath.Join(t.TempDir(), "pid")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCloudflaredDiesWithParent$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "XBOT_PDEATH_CHILD=1", "XBOT_FAKE_BIN="+bin, "XBOT_PIDFILE="+pidfile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	var pid int
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		raw, err := os.ReadFile(pidfile)
+		if err == nil {
+			pid, err = strconv.Atoi(strings.TrimSpace(string(raw)))
+			if err == nil && pid > 0 {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child did not start cloudflared")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if syscall.Kill(pid, 0) != nil {
+		t.Fatal("cloudflared exited before the parent")
+	}
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cloudflared %d still running after parent was killed", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

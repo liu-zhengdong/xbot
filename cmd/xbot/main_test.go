@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -19,7 +21,9 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/mockopenai"
+	"xbot/internal/node"
 	"xbot/internal/person"
+	"xbot/internal/proc"
 	"xbot/internal/provider"
 )
 
@@ -619,26 +623,25 @@ func TestMachineSetList(t *testing.T) {
 
 func TestNodeAddListRemove(t *testing.T) {
 	root := t.TempDir()
-	if err := cmdNode(root, []string{"add", "desk", "--url", "http://127.0.0.1:1", "--token", "sekret"}); err != nil {
+	info := node.Info{ID: "abc", Name: "desk", Caps: node.Caps()}
+	srv := httptest.NewServer(node.Handler("sekret", info, nil))
+	defer srv.Close()
+	if err := cmdNode(root, []string{"add", "desk", "--url", srv.URL, "--token", "sekret"}); err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
+	if err := cmdNode(root, []string{"add", "nope", "--url", srv.URL, "--token", "wrong"}); err == nil {
+		t.Fatal("bad token stored")
+	}
+	if nodes, err := node.List(root); err != nil || len(nodes) != 1 {
+		t.Fatalf("%v %v", nodes, err)
+	}
+	if err := node.Add(root, node.Node{Name: "bad", URL: srv.URL, Token: "wrong"}); err != nil {
 		t.Fatal(err)
 	}
-	os.Stdout = w
-	err = cmdNode(root, []string{"list"})
-	w.Close()
-	os.Stdout = old
-	_, _ = io.Copy(&buf, r)
-	r.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := buf.String()
-	if !strings.Contains(got, "desk\toffline\thttp://127.0.0.1:1") || strings.Contains(got, "sekret") {
+	got := captureStdout(t, func() error {
+		return cmdNode(root, []string{"list"})
+	})
+	if !strings.Contains(got, "desk\tonline desk\t"+srv.URL) || !strings.Contains(got, "bad\tunauthorized\t"+srv.URL) || strings.Contains(got, "sekret") || strings.Contains(got, "wrong") {
 		t.Fatalf("%s", got)
 	}
 	if err := cmdNode(root, []string{"remove", "desk"}); err != nil {
@@ -646,6 +649,131 @@ func TestNodeAddListRemove(t *testing.T) {
 	}
 	if err := cmdNode(root, []string{"call", "desk", "info"}); err == nil {
 		t.Fatal("removed node still callable")
+	}
+}
+
+func TestNodeApproveCommand(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "machines.json"), []byte(`{"machines":{"local":"ask"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := node.RunShell(root, "echo approved-ok", true)
+	if err == nil || !strings.Contains(err.Error(), "xbot node approve ") {
+		t.Fatal(err)
+	}
+	const mark = "xbot node approve "
+	id := strings.TrimSpace(err.Error()[strings.LastIndex(err.Error(), mark)+len(mark):])
+	out := captureStdout(t, func() error {
+		return cmdNode(root, []string{"approve", id})
+	})
+	if !strings.Contains(out, "approved-ok") {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestMountEveryCatalogLinkTwice(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "Be brief.", []string{"terminal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range link.Catalog() {
+		if !e.Available || e.Grant == "" {
+			continue
+		}
+		if len(e.Secrets) > 0 {
+			vals := map[string]string{}
+			for _, name := range e.Secrets {
+				vals[name] = "test-secret"
+			}
+			if err := link.WriteSecrets(b.SecretPath(), vals); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := b.GrantLink(e.Grant); err != nil {
+			t.Fatalf("grant %s: %v", e.Grant, err)
+		}
+	}
+	first, err := mount(b, runnerSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, item := range first {
+		names[item.Name()] = true
+	}
+	for _, want := range []string{link.NameNode, link.NameDesktop, link.NameBrowser} {
+		if !names[want] {
+			t.Fatalf("missing %s", want)
+		}
+	}
+	if _, err := mount(b, runnerSpec{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStopSignalsIncludeTerm(t *testing.T) {
+	var term, intr bool
+	for _, s := range stopSignals() {
+		if s == syscall.SIGTERM {
+			term = true
+		}
+		if s == os.Interrupt {
+			intr = true
+		}
+	}
+	if !term || !intr {
+		t.Fatalf("%v", stopSignals())
+	}
+}
+
+func TestApproveSharesStdinWithFeeder(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	reader := bufio.NewReader(r)
+	lines := make(chan proc.Line)
+	pr := &printer{reader: reader, lines: lines}
+	go feedLines(reader, lines)
+	time.Sleep(50 * time.Millisecond)
+	type res struct {
+		ok  bool
+		err error
+	}
+	done := make(chan res, 1)
+	go func() {
+		ok, err := pr.Approve(context.Background(), "shell", "echo hi")
+		done <- res{ok, err}
+	}()
+	if _, err := io.WriteString(w, "y\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-done:
+		if got.err != nil || !got.ok {
+			t.Fatalf("approve %v %v", got.ok, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("approve hung")
+	}
+	if _, err := io.WriteString(w, "next\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case line := <-lines:
+		if strings.TrimSpace(line.Text) != "next" {
+			t.Fatalf("next line %q", line.Text)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("next line lost")
+	}
+	_ = w.Close()
+	select {
+	case <-lines:
+	case <-time.After(time.Second):
+		t.Fatal("feeder stuck")
 	}
 }
 

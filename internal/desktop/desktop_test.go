@@ -23,7 +23,10 @@ type fake struct {
 
 func (f *fake) Screenshot(_ context.Context, path string) error {
 	f.shot = path
-	return os.WriteFile(path, []byte("png"), 0600)
+	if err := os.WriteFile(path, []byte("png"), 0644); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0644)
 }
 func (f *fake) Click(_ context.Context, x, y int) error {
 	f.click = strconv.Itoa(x) + " " + strconv.Itoa(y)
@@ -42,6 +45,10 @@ func TestPerformSwitchAndIdle(t *testing.T) {
 	path, err := Perform(context.Background(), root, f, Action{Name: "screenshot"}, false)
 	if err != nil || !strings.HasPrefix(path, filepath.Join(root, "desktop")) {
 		t.Fatalf("%q %v", path, err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil || fi.Mode().Perm() != 0600 {
+		t.Fatalf("screenshot mode %v %v", fi, err)
 	}
 	if _, err := Perform(context.Background(), root, f, Action{Name: "click", X: 3, Y: 4}, true); err != nil || f.click != "3 4" {
 		t.Fatalf("%q %v", f.click, err)
@@ -76,8 +83,20 @@ func TestToolConfirm(t *testing.T) {
 		t.Fatalf("shot need=%v %v", need, err)
 	}
 	need, summary, err := (typeTool{l}).Confirm(json.RawMessage(`{"text":"pay now"}`))
-	if err != nil || !need || !strings.Contains(summary, "payment") {
+	if err != nil || !need || !strings.Contains(summary, "pay now") || !strings.Contains(summary, "payment") {
 		t.Fatalf("need=%v summary=%q %v", need, summary, err)
+	}
+	need, summary, err = (clickTool{l}).Confirm(json.RawMessage(`{"x":8,"y":9}`))
+	if err != nil || !need || !strings.Contains(summary, "desktop click 8 9") {
+		t.Fatalf("click summary %q %v", summary, err)
+	}
+	need, summary, err = (keyTool{l}).Confirm(json.RawMessage(`{"key":"Return"}`))
+	if err != nil || !need || !strings.Contains(summary, "Return") {
+		t.Fatalf("key summary %q %v", summary, err)
+	}
+	need, summary, err = (typeTool{l}).Confirm(json.RawMessage(`{"text":"hello"}`))
+	if err != nil || !need || !strings.Contains(summary, "hello") || strings.Contains(summary, "payment") {
+		t.Fatalf("type summary %q %v", summary, err)
 	}
 	out, err := (clickTool{l}).Run(context.Background(), json.RawMessage(`{"x":8,"y":9}`))
 	if err != nil || !strings.Contains(out, "clicked 8 9") {

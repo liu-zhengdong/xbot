@@ -54,7 +54,16 @@ func (s *Session) Snapshot(ctx context.Context) (string, error) {
 	if len(text) > maxSnap {
 		text = text[:maxSnap] + "…"
 	}
-	return text, nil
+	return wrapPage(text), nil
+}
+
+// wrapPage marks page text as data. A page that contains the closer cannot end the block.
+func wrapPage(text string) string {
+	text = strings.NewReplacer(
+		"</untrusted_event>", "< /untrusted_event>",
+		"<untrusted_event>", "< untrusted_event>",
+	).Replace(text)
+	return "<untrusted_event>\n" + text + "\n</untrusted_event>"
 }
 
 // Click clicks the first element matching a CSS selector.

@@ -21,8 +21,10 @@ import (
 )
 
 type state struct {
-	PID int    `json:"pid"`
-	WS  string `json:"ws"`
+	PID     int    `json:"pid"`
+	WS      string `json:"ws"`
+	Profile string `json:"profile"`
+	Bin     string `json:"bin,omitempty"`
 }
 
 func statePath(root string) string { return filepath.Join(root, "browser", "session.json") }
@@ -57,10 +59,8 @@ func Launch(ctx context.Context, root, page string, headless bool) (*Session, er
 		args = append(args, "--headless=new")
 	}
 	args = append(args, "about:blank")
-	cmd := exec.Command(bin, args...)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err := cmd.Start(); err != nil {
+	cmd, err := startBrowser(bin, args)
+	if err != nil {
 		return nil, err
 	}
 	port, err := waitPort(ctx, profile)
@@ -79,7 +79,7 @@ func Launch(ctx context.Context, root, page string, headless bool) (*Session, er
 		return nil, err
 	}
 	sess.stop = func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }
-	raw, err := fsutil.Marshal(state{PID: cmd.Process.Pid, WS: ws})
+	raw, err := fsutil.Marshal(state{PID: cmd.Process.Pid, WS: ws, Profile: profile, Bin: bin})
 	if err != nil {
 		sess.Close()
 		return nil, err
@@ -105,13 +105,14 @@ func AttachSaved(ctx context.Context, root string) (*Session, error) {
 		return nil, errors.New("browser: not open")
 	}
 	var st state
-	if err := json.Unmarshal(raw, &st); err != nil || st.WS == "" || !alive(st.PID) {
+	if err := json.Unmarshal(raw, &st); err != nil || st.WS == "" || !alive(st.PID) || !chromeOwned(st.PID, st.Profile) {
 		return nil, errors.New("browser: not open")
 	}
 	return Attach(ctx, st.WS)
 }
 
-// Stop kills the saved Chrome, if it is still running.
+// Stop kills the saved Chrome when the pid still belongs to this profile.
+// A live pid with a different command line is left alone, and the state file stays.
 func Stop(root string) error {
 	raw, err := os.ReadFile(statePath(root))
 	if errors.Is(err, os.ErrNotExist) {
@@ -121,13 +122,56 @@ func Stop(root string) error {
 		return err
 	}
 	var st state
-	if json.Unmarshal(raw, &st) == nil && st.PID > 0 && alive(st.PID) {
-		p, err := os.FindProcess(st.PID)
-		if err == nil {
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return os.Remove(statePath(root))
+	}
+	if st.PID > 0 && alive(st.PID) {
+		if !chromeOwned(st.PID, st.Profile) {
+			return fmt.Errorf("browser: pid %d is not the chrome for this profile", st.PID)
+		}
+		signalChrome(st.PID)
+	}
+	return os.Remove(statePath(root))
+}
+
+func startBrowser(bin string, args []string) (*exec.Cmd, error) {
+	cmd := exec.Command(bin, args...)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.SysProcAttr = browserProcAttr()
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
+func browserProcAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+}
+
+func signalChrome(pid int) {
+	if pid <= 0 {
+		return
+	}
+	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+		p, findErr := os.FindProcess(pid)
+		if findErr == nil {
 			_ = p.Signal(syscall.SIGTERM)
 		}
 	}
-	return os.Remove(statePath(root))
+}
+
+// chromeOwned reports whether pid's command line contains this profile directory.
+func chromeOwned(pid int, profile string) bool {
+	profile = strings.TrimSpace(profile)
+	if pid <= 0 || profile == "" {
+		return false
+	}
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil || len(raw) == 0 {
+		return false
+	}
+	return strings.Contains(string(raw), profile)
 }
 
 func allow(root string, approved bool) error {

@@ -127,7 +127,7 @@ var catalog = []CatalogEntry{
 	{
 		ID: "node", Title: "节点", Kind: KindNative,
 		Capabilities: []string{"tools"}, Secrets: []string{},
-		Summary:   "调用其他在线节点上的能力。这一片只有 info。",
+		Summary:   "调用其他在线节点上的能力。info 问身份，shell 在那台机器上跑命令。",
 		Keywords:  []string{"node", "machine"},
 		Available: true, Grant: NameNode,
 	},

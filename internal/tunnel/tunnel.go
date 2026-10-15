@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -126,10 +127,13 @@ type Proc struct {
 	cancel    context.CancelFunc
 }
 
-// Close stops cloudflared.
+// Close stops cloudflared and anything it started in its process group.
 func (p *Proc) Close() {
 	if p == nil {
 		return
+	}
+	if p.cmd != nil && p.cmd.Process != nil {
+		_ = killGroup(p.cmd.Process.Pid)
 	}
 	if p.cancel != nil {
 		p.cancel()
@@ -153,6 +157,7 @@ func StartCloudflare(ctx context.Context, localURL, command string, wait time.Du
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, command, "tunnel", "--no-autoupdate", "--url", localURL)
+	cmd.SysProcAttr = procAttr()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
@@ -167,8 +172,9 @@ func StartCloudflare(ctx context.Context, localURL, command string, wait time.Du
 		cancel()
 		return nil, fmt.Errorf("tunnel: cloudflared: %w", err)
 	}
-	url, err := waitURL(io.MultiReader(stdout, stderr), wait)
+	url, err := waitStreams(stdout, stderr, wait)
 	if err != nil {
+		_ = killGroup(cmd.Process.Pid)
 		cancel()
 		_ = cmd.Wait()
 		return nil, err
@@ -208,53 +214,71 @@ func keepURL(host string) bool {
 	return true
 }
 
-func waitURL(r io.Reader, wait time.Duration) (string, error) {
-	found := make(chan string, 1)
-	done := make(chan struct{})
-	var buf strings.Builder
-	go func() {
-		defer close(done)
+// waitStreams reads both pipes at once. cloudflared prints the public URL on
+// stderr and keeps stdout open, so a sequential read never sees it.
+func waitStreams(stdout, stderr io.Reader, wait time.Duration) (string, error) {
+	ch := make(chan string, 16)
+	var wg sync.WaitGroup
+	pump := func(r io.Reader) {
+		defer wg.Done()
 		sc := bufio.NewReader(r)
 		tmp := make([]byte, 1024)
-		sent := false
 		for {
 			n, err := sc.Read(tmp)
-			if n > 0 && !sent {
-				buf.Write(tmp[:n])
-				if url, ok := ParsePublicURL(buf.String()); ok {
-					found <- url
-					sent = true
-					buf.Reset()
-				} else if buf.Len() > 64<<10 {
-					s := buf.String()
-					buf.Reset()
-					buf.WriteString(s[len(s)-32<<10:])
-				}
+			if n > 0 {
+				ch <- string(append([]byte(nil), tmp[:n]...))
 			}
 			if err != nil {
 				return
 			}
 		}
+	}
+	wg.Add(2)
+	go pump(stdout)
+	go pump(stderr)
+	go func() {
+		wg.Wait()
+		close(ch)
 	}()
+	drain := func() {
+		go func() {
+			for range ch {
+			}
+		}()
+	}
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
-	select {
-	case url := <-found:
-		return url, nil
-	case <-done:
-		if url, ok := ParsePublicURL(buf.String()); ok {
-			return url, nil
+	var buf strings.Builder
+	for {
+		select {
+		case piece, ok := <-ch:
+			if !ok {
+				if url, found := ParsePublicURL(buf.String()); found {
+					return url, nil
+				}
+				tail := buf.String()
+				if len(tail) > 500 {
+					tail = tail[len(tail)-500:]
+				}
+				tail = strings.TrimSpace(tail)
+				if tail == "" {
+					return "", errors.New("tunnel: cloudflared exited before printing a public url")
+				}
+				return "", fmt.Errorf("tunnel: cloudflared exited before printing a public url: %s", tail)
+			}
+			buf.WriteString(piece)
+			if url, found := ParsePublicURL(buf.String()); found {
+				drain()
+				return url, nil
+			}
+			if buf.Len() > 64<<10 {
+				s := buf.String()
+				buf.Reset()
+				buf.WriteString(s[len(s)-32<<10:])
+			}
+		case <-timer.C:
+			drain()
+			return "", errors.New("tunnel: timed out waiting for the cloudflared public url")
 		}
-		tail := buf.String()
-		if len(tail) > 500 {
-			tail = tail[len(tail)-500:]
-		}
-		tail = strings.TrimSpace(tail)
-		if tail == "" {
-			return "", errors.New("tunnel: cloudflared exited before printing a public url")
-		}
-		return "", fmt.Errorf("tunnel: cloudflared exited before printing a public url: %s", tail)
-	case <-timer.C:
-		return "", errors.New("tunnel: timed out waiting for the cloudflared public url")
 	}
 }

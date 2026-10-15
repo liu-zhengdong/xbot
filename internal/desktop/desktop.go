@@ -70,6 +70,9 @@ func Perform(ctx context.Context, root string, d Driver, action Action, approved
 		if err := d.Screenshot(ctx, path); err != nil {
 			return "", err
 		}
+		if err := os.Chmod(path, 0600); err != nil {
+			return "", err
+		}
 		return path, nil
 	case "click":
 		if action.X < 0 || action.Y < 0 || action.X > 10000 || action.Y > 10000 {

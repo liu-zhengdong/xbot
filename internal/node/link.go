@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -57,12 +58,15 @@ func (t listTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
 		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		info, err := Ping(pingCtx, n.URL, n.Token)
 		cancel()
-		if err == nil {
+		switch {
+		case err == nil:
 			state = "online"
 			detail = info.Name
 			if len(info.Caps) > 0 {
 				detail += " caps: " + strings.Join(info.Caps, ",")
 			}
+		case errors.Is(err, ErrUnauthorized):
+			state = "unauthorized"
 		}
 		fmt.Fprintf(&b, "%s\t%s\t%s\n", n.Name, state, detail)
 	}
@@ -73,7 +77,7 @@ type callTool struct{ l *Link }
 
 func (callTool) Name() string { return "node_call" }
 func (callTool) Description() string {
-	return "Call a capability on a registered node. info returns the machine id, name, OS, and arch. shell runs a command there; the owner must confirm, and that machine's switch can still refuse."
+	return "Call a capability on a registered node. info returns the machine id, name, OS, and arch. shell runs a command there when that machine's switch is allow. ask does not run it; someone on that machine must run xbot node approve. A call cannot mark itself approved."
 }
 func (callTool) Parameters() any {
 	return map[string]any{
@@ -123,6 +127,5 @@ func (t callTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	approved := cap == "shell"
-	return Call(callCtx, n.URL, n.Token, cap, in.Command, approved)
+	return Call(callCtx, n.URL, n.Token, cap, in.Command, false)
 }
