@@ -410,3 +410,17 @@ xbot desktop key Return
 ```
 
 `off` 时这些命令直接失败。Bot 里要 `links install desktop`，再 `links load desktop`，才有 `desktop_screenshot`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`。截图写到 `~/.xbot/desktop/`。能用 shell 或 API 做的事不要用桌面。
+
+## 浏览器
+
+用本机 Chrome 的调试端口，配置目录单独放在 `~/.xbot/browser/profile`，不打开主人正在用的那一份。需要 Chrome 或 Chromium 在 PATH 里，或者设 `XBOT_CHROME`。
+
+```bash
+xbot machine set local allow
+xbot browser open --headless https://example.com
+xbot browser snapshot
+xbot browser click 'a'
+xbot browser stop
+```
+
+`open` 打出标题、地址和可见正文，Chrome 继续留着，所以后面的 `snapshot` 和 `click` 还能连上。`stop` 关掉这次拉起的进程。`off` 时直接失败。Bot 里要 `links install browser`，再 `links load browser`。能用 shell 或 API 做的事不要开浏览器。

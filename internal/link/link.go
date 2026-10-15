@@ -43,6 +43,7 @@ const (
 	NameCoding   = "coding-agent"
 	NameNode     = "node"
 	NameDesktop  = "desktop"
+	NameBrowser  = "browser"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"

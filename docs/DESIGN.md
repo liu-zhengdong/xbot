@@ -53,6 +53,7 @@
 - **多节点**：每台设备都可以运行 `xbot node serve`（默认 `127.0.0.1:18772`），用 bearer token 公布本机身份。token 在该数据根的 `node-token`（0600），第一次启动打印一次。主人用 `xbot node add <name> --url URL --token TOKEN` 把地址记在 `nodes.json`（0600）。装上 `node` Link 之后，系统提示里只有一行；`links load node` 才带上 `node_list` 和 `node_call`。能力是 `info`（id、名字、系统、架构）和 `shell`。`shell` 看那台机器的开关。要给别的设备连，把 `--addr` 绑到 tailnet 地址，不要绑 `0.0.0.0`。
 - **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 仍按原来的规则：只读命令不确认，其余要确认。`ask` 让每条 shell 都要主人确认。`off` 直接拒绝，确认也跑不了。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。节点上的 `shell` 看那台机器自己的开关：`ask` 还要调用方已经得到主人确认。文件工具不经过这个开关。
 - **多设备同步**：Bot 不合并，各自住在自己的家节点上；只同步人的身份和人的记忆，用可合并的追加日志实现（记录时间、Bot、设备，以最新为准），通过中继同步。
+- **浏览器**：用 CDP 驱动本机 Chrome，配置目录是数据根下的 `browser/profile`，不碰主人正在用的那一份。`xbot browser open [--headless] <url>` 打开 http 或 https，留下调试端口；`snapshot` 读标题、地址和可见正文；`click <selector>` 点第一个匹配的元素；`stop` 关掉这次拉起的进程。二进制用 `XBOT_CHROME`，否则在 PATH 里找 `google-chrome` 或 `chromium`。装上 `browser` Link 之后，`links load browser` 才有 `browser_open`、`browser_snapshot`、`browser_click`。机器开关和桌面一样：`off` 拒绝，`ask` 每一下都要确认，`allow` 时只有打开和点击要确认。能用命令行或 API 完成的事，优先不用浏览器。
 - **桌面操作**：截图、点击、输入、滚动、按键，也是一个 Link。`xbot desktop` 和装上 `desktop` 之后的工具走同一条。schema 要 `links load desktop` 才进当前这一轮。机器开关是 `off` 就拒绝；`ask` 时每一下都要主人确认，截图也一样；`allow` 时截图不确认，点击、输入、滚动、按键要确认。主人最近几秒还在用这台电脑（`xprintidle` 小于 5 秒）时不点、不打字、不滚动、不按键，截图可以。看不出来就照常做。输入或按键里出现付款、登录、发消息时，确认卡写明这一点。能用命令行或 API 完成的事，工具说明里要求优先不用界面。截图是 PNG，写在数据根的 `desktop/`。点击和按键用 `xdotool`，截图用 ImageMagick 的 `import`。
 
 ## 多 Bot
@@ -100,7 +101,7 @@
 - **连接器**：Telegram 和飞书。装上之后，外面的消息才进收件箱。安装要主人在确认卡里填密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`）。值写进该 Bot 的 `secrets.json`（权限 0600），不进系统提示，不进 transcript，也不进工具结果。命令行安装从同名环境变量读；变量是空的就不装、不落盘。网页 `POST /api/bots/{name}/links` 不接收密钥，声明了密钥的条目返回 409。入站是 `POST /connector/telegram/{bot}` 和 `POST /connector/lark/{bot}`，不走网页登录。Telegram 用请求头 `X-Telegram-Bot-Api-Secret-Token`，飞书用请求头 `X-Lark-Token` 或正文里的 `token`，和存好的密钥不一致就拒绝，收件箱不写。对上的消息写成来源 `telegram` 或 `lark` 的不可信事件，正文是聊天 id 和文本，没有密钥。飞书的 `url_verification` 只回 `challenge`，不唤醒。同一条 `update_id` 或 `message_id` 只收一次。出站工具是 `telegram_send` 和 `lark_send`。schema 不在首轮工具里，`links load` 之后只留在当前这一轮。调用先落一份草稿，确认卡给主人看收件人和正文；没点头就不发，草稿留着。点头之后才请求 Telegram 的 `sendMessage`，或飞书自定义机器人的 webhook。返回给模型的错误里，密钥换成 `[secret]`。卸下这条 Link 时删掉它的密钥。
 - **市场条目**：标明类型（原生 Link 插件，或 MCP）、能力（工具 / 入站事件）、以及需要的密钥。
 - **编码代理 Link**：和子代理分开。一个 Bot 可以同时留下多条编码任务，每条有自己的工作目录、仓库、步数上限和时间上限，不套用子代理的 16 步、10 分钟。记录在 `bots/<name>/code/<id>.json`，id 以 `ca_` 开头。同时只有一条是 `running`，再开始的进 `queued`。Bot 可以补充（`code_steer`）、排队（`code_queue`）、打断（`code_interrupt`）、取消（`code_cancel`），并用 `code_show` 看记录。取消正在跑的那条时，队列里最早的一条变成 `running`。完成、失败或取消时向该 Bot 的收件箱投来源 `coding-agent` 的不可信事件。这些工具的 schema 要 `links load coding-agent` 之后才进当前这一轮。内核没有新的对象。后端三选一，内核没有新对象。`XBOT_CODE_AGENT` 是已有编码代理的可执行文件，优先用它。否则 `xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner`。都没有时，用这个 Bot 绑定的模型在本进程里跑。步数和时间都用这条任务自己的上限。仓库非空且工作目录还没有 `.git` 时先克隆。这三个都没配时，仍然只写记录。
-- **排期**：Link 插件市场、MCP 适配器、编码代理 Link 一起放在 M6。手机推送、远程隧道、多节点、记忆同步、机器开关、桌面和浏览器仍按里程碑表排在后面，不塞进下面这几片。
+- **排期**：Link 插件市场、MCP 适配器、编码代理 Link 一起放在 M6，这几片已经接上。远程隧道、多节点、机器开关、桌面和浏览器也已经接上。手机推送和人的记忆同步仍按里程碑表排在后面。
 
 ### M6 切片
 

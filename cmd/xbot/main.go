@@ -103,6 +103,10 @@ Usage:
   xbot [--root DIR] desktop type <text>
   xbot [--root DIR] desktop scroll <dy>
   xbot [--root DIR] desktop key <key>
+  xbot [--root DIR] browser open [--headless] <url>
+  xbot [--root DIR] browser snapshot
+  xbot [--root DIR] browser click <selector>
+  xbot [--root DIR] browser stop
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
   xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
@@ -206,6 +210,8 @@ func run(argv []string) error {
 		return cmdMachine(root, rest[1:])
 	case "desktop":
 		return cmdDesktop(root, rest[1:])
+	case "browser":
+		return cmdBrowser(root, rest[1:])
 	default:
 		return fmt.Errorf("unknown command %q", rest[0])
 	}

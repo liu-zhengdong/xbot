@@ -255,6 +255,28 @@ func TestLinksSearchMatchesEnglish(t *testing.T) {
 	}
 }
 
+func TestBrowserLoadListsTools(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
+	out, err := (linksTool{k}).install("browser")
+	if err != nil || out != "installed browser" {
+		t.Fatalf("install %q %v", out, err)
+	}
+	list, err := k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range list {
+		if tool.Name() == "browser_open" {
+			t.Fatal("browser tools visible before load")
+		}
+	}
+	out, err = (linksTool{k}).load("browser")
+	if err != nil || !strings.Contains(out, "browser_open") || !strings.Contains(out, "browser_snapshot") {
+		t.Fatalf("load %q %v", out, err)
+	}
+}
+
 func TestDesktopLoadListsTools(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}

@@ -575,6 +575,13 @@ func TestGroupCLIKeepsBots(t *testing.T) {
 	}
 }
 
+func TestBrowserRejectsFileURL(t *testing.T) {
+	err := cmdBrowser(t.TempDir(), []string{"open", "file:///etc/passwd"})
+	if err == nil || !strings.Contains(err.Error(), "http") {
+		t.Fatal(err)
+	}
+}
+
 func TestDesktopRejectsBadKey(t *testing.T) {
 	err := cmdDesktop(t.TempDir(), []string{"key", "rm -rf"})
 	if err == nil || !strings.Contains(err.Error(), "bad key") {

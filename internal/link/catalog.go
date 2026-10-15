@@ -111,6 +111,13 @@ var catalog = []CatalogEntry{
 		Summary:  "把一个 MCP 服务器包成 Link。用 xbot mcp add 登记命令，不从这里安装。",
 	},
 	{
+		ID: "browser", Title: "浏览器", Kind: KindNative,
+		Capabilities: []string{"tools"}, Secrets: []string{},
+		Summary:   "用 CDP 驱动本机 Chrome，单独的配置目录。优先用命令行或 API。",
+		Keywords:  []string{"browser", "chrome", "cdp"},
+		Available: true, Grant: NameBrowser,
+	},
+	{
 		ID: "desktop", Title: "桌面", Kind: KindNative,
 		Capabilities: []string{"tools"}, Secrets: []string{},
 		Summary:   "截图、点击、输入、滚动、按键。主人正在用电脑时不抢鼠标。",
