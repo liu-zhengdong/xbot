@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -22,10 +23,14 @@ const (
 )
 
 // Shell runs a command through sh -c.
+// Dir is the working directory. Empty means the process working directory.
+// Shared, when set with Dir, is exported as XBOT_SHARED.
 type Shell struct {
 	DefaultTimeout time.Duration
 	MaxTimeout     time.Duration
 	MaxOutput      int
+	Dir            string
+	Shared         string
 }
 
 // NewShell returns a shell tool with the default limits.
@@ -69,7 +74,21 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		return "", err
 	}
 	timeout := s.duration(in.TimeoutSeconds)
-	return runCommand(ctx, in.Command, timeout, s.maxOutput())
+	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv())
+}
+
+func (s *Shell) commandEnv() []string {
+	if s.Dir == "" && s.Shared == "" {
+		return nil
+	}
+	env := os.Environ()
+	if s.Dir != "" {
+		env = append(env, "XBOT_WORK="+s.Dir)
+	}
+	if s.Shared != "" {
+		env = append(env, "XBOT_SHARED="+s.Shared)
+	}
+	return env
 }
 
 func (s *Shell) duration(seconds int) time.Duration {
@@ -146,10 +165,16 @@ func (w *capWriter) String() (string, bool) {
 	return w.buf.String(), w.truncated
 }
 
-func runCommand(ctx context.Context, command string, timeout time.Duration, maxOut int) (string, error) {
+func runCommand(ctx context.Context, command string, timeout time.Duration, maxOut int, dir string, env []string) (string, error) {
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(tctx, "sh", "-c", command)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	if len(env) > 0 {
+		cmd.Env = env
+	}
 	configureCmd(cmd)
 	out := &capWriter{max: maxOut}
 	cmd.Stdout = out

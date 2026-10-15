@@ -14,7 +14,10 @@ import (
 const maxEditBytes = 2 << 20
 
 // EditFile replaces one exact occurrence of old_string with new_string.
-type EditFile struct{}
+// Root is the base for relative paths. Empty uses the working directory.
+type EditFile struct {
+	Root string
+}
 
 func (e *EditFile) Name() string { return "edit_file" }
 
@@ -37,7 +40,7 @@ type editArgs struct {
 }
 
 func (e *EditFile) Confirm(args json.RawMessage) (bool, string, error) {
-	in, path, err := parseEdit(args)
+	in, path, err := e.parse(args)
 	if err != nil {
 		return false, "", err
 	}
@@ -48,7 +51,7 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	in, path, err := parseEdit(args)
+	in, path, err := e.parse(args)
 	if err != nil {
 		return "", err
 	}
@@ -92,7 +95,7 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	return fmt.Sprintf("updated %s", path), nil
 }
 
-func parseEdit(args json.RawMessage) (editArgs, string, error) {
+func (e *EditFile) parse(args json.RawMessage) (editArgs, string, error) {
 	var in editArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
@@ -103,7 +106,7 @@ func parseEdit(args json.RawMessage) (editArgs, string, error) {
 	if in.OldString == in.NewString {
 		return editArgs{}, "", fmt.Errorf("edit_file: old_string and new_string are identical")
 	}
-	path, err := Resolve(in.Path)
+	path, err := ResolveRoot(e.Root, in.Path)
 	if err != nil {
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
 	}

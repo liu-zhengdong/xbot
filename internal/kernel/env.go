@@ -68,6 +68,9 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 	if prev.Memory != next.Memory {
 		lines = append(lines, "memory: updated")
 	}
+	if prev.Skills != next.Skills && (prev.Skills != "" || next.Skills != "") {
+		lines = append(lines, "skills: updated")
+	}
 	if prev.Hour != next.Hour || next.At.Sub(prev.At) >= IdleGap {
 		lines = append(lines, "time: "+next.Hour)
 	}
@@ -78,13 +81,21 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 }
 
 func baseline(e bot.EnvRecord) string {
-	return fmt.Sprintf("<environment_update>\ntime: %s\nsender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n</environment_update>",
+	body := fmt.Sprintf("time: %s\nsender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
 		e.Hour, e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
+	if e.Skills != "" {
+		body += "skills: " + e.Skills + "\n"
+	}
+	return "<environment_update>\n" + body + "</environment_update>"
 }
 
 func snapshotText(e bot.EnvRecord) string {
-	return fmt.Sprintf("<environment_snapshot>\ntime: %s\nsender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n</environment_snapshot>",
+	body := fmt.Sprintf("time: %s\nsender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
 		e.Hour, e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
+	if e.Skills != "" {
+		body += "skills: " + e.Skills + "\n"
+	}
+	return "<environment_snapshot>\n" + body + "</environment_snapshot>"
 }
 
 func toolChange(prev, next []string) string {

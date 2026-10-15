@@ -10,6 +10,7 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
+	"xbot/internal/skill"
 )
 
 // UntrustedRule is part of the stable rules. The persona file cannot remove it
@@ -37,11 +38,13 @@ type Input struct {
 	Memory  string
 	Blocks  []bot.SummaryBlock
 	Entries []bot.Entry
+	// Skills are "slug: description" lines. Empty means the prefix is unchanged.
+	Skills []string
 }
 
 // Assemble builds model messages in order: stable prefix, memory, summary blocks, uncovered raw messages.
 func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
-	sys := provider.Message{Role: provider.RoleSystem, Content: StablePrefix(in.Persona, in.Rules, in.Links)}
+	sys := provider.Message{Role: provider.RoleSystem, Content: prefixWithSkills(in.Persona, in.Rules, in.Links, in.Skills)}
 	msgs := []provider.Message{sys}
 	usage := bot.SectionUsage{Stable: compact.EstimateMessage(sys)}
 	if mem := clipMemory(in.Memory); mem != "" {
@@ -59,6 +62,29 @@ func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
 		}
 	}
 	return msgs, usage
+}
+
+func prefixWithSkills(persona, rules string, links, skills []string) string {
+	text := StablePrefix(persona, rules, links)
+	if len(skills) == 0 {
+		return text
+	}
+	var b strings.Builder
+	b.WriteString(text)
+	b.WriteString("\n\n## Skills\n")
+	for _, line := range skills {
+		b.WriteString("- ")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (k *Kernel) skillLines() ([]string, error) {
+	if k.SkillsDir == "" {
+		return nil, nil
+	}
+	return skill.Lines(k.SkillsDir)
 }
 
 func clipMemory(s string) string {

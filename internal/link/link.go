@@ -31,9 +31,16 @@ const (
 	NameMemory   = "memory"
 	NamePersona  = "persona"
 	NameContext  = "context"
+	NameAgents   = "agents"
+	NameSkills   = "skills"
+	NameRunner   = "runner"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"
+
+	// SourceSubagent marks events a subagent posts back to the main inbox.
+	// They are not terminal input, so the kernel wraps them as untrusted data.
+	SourceSubagent = "subagent"
 )
 
 // Link is a channel between one bot and the outside world.

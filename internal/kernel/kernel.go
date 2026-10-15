@@ -5,12 +5,14 @@ package kernel
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -37,8 +39,17 @@ type Kernel struct {
 	Now        func() time.Time
 	Extractor  Extractor
 	Desktop    func(ctx context.Context, title, body string) error
+	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
+	Exec exec.Executor
+	// AllowBackground auto-approves confirm-needed tools inside a subagent.
+	// The main chat approver is not used: a background step cannot block on a prompt.
+	AllowBackground bool
+	WorkDir         string
+	SharedDir       string
+	SkillsDir       string
 
 	startOnce   sync.Once
+	execOnce    sync.Once
 	turnSender  string
 	turnTrusted bool
 }
@@ -160,6 +171,10 @@ func (k *Kernel) assemble(entries []bot.Entry, st bot.State, mem string) ([]prov
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
+	skills, err := k.skillLines()
+	if err != nil {
+		return nil, bot.SectionUsage{}, err
+	}
 	msgs, usage := Assemble(Input{
 		Persona: persona,
 		Rules:   rules,
@@ -167,6 +182,7 @@ func (k *Kernel) assemble(entries []bot.Entry, st bot.State, mem string) ([]prov
 		Memory:  mem,
 		Blocks:  st.Blocks,
 		Entries: entries,
+		Skills:  skills,
 	})
 	return msgs, usage, nil
 }
@@ -184,6 +200,14 @@ func (k *Kernel) syncEnv(entries []bot.Entry, st bot.State, ev link.Event, mem s
 	if err != nil {
 		return nil, st, err
 	}
+	skills, err := k.skillLines()
+	if err != nil {
+		return nil, st, err
+	}
+	skillHash := ""
+	if len(skills) > 0 {
+		skillHash = shortHash(strings.Join(skills, "\n"))
+	}
 	now := k.now()
 	next := bot.EnvRecord{
 		Hour:    now.Format("2006-01-02T15"),
@@ -193,6 +217,7 @@ func (k *Kernel) syncEnv(entries []bot.Entry, st bot.State, ev link.Event, mem s
 		Persona: shortHash(persona),
 		Rules:   shortHash(rules),
 		Memory:  shortHash(mem),
+		Skills:  skillHash,
 		At:      now,
 	}
 	diff := DiffEnv(st.Env, next)

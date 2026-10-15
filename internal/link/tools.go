@@ -7,13 +7,22 @@ type ToolsLink struct {
 	list []tools.Tool
 }
 
-// NewToolsLink returns the default local tools.
+// NewToolsLink returns the default local tools, relative to the process working directory.
 func NewToolsLink() *ToolsLink {
+	return NewToolsLinkAt("", "")
+}
+
+// NewToolsLinkAt aims shell and relative file paths at dir.
+// shared is exported to the shell as XBOT_SHARED when set.
+func NewToolsLinkAt(dir, shared string) *ToolsLink {
+	sh := tools.NewShell()
+	sh.Dir = dir
+	sh.Shared = shared
 	return &ToolsLink{list: []tools.Tool{
-		tools.NewShell(),
-		&tools.ReadFile{},
-		&tools.WriteFile{},
-		&tools.EditFile{},
+		sh,
+		&tools.ReadFile{Root: dir},
+		&tools.WriteFile{Root: dir},
+		&tools.EditFile{Root: dir},
 	}}
 }
 

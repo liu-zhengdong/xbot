@@ -7,19 +7,28 @@ import (
 	"strings"
 )
 
-// Resolve cleans path, makes it absolute against the working directory,
-// and evaluates symlinks on the longest existing prefix so a confirmation
-// shows the real target.
+// Resolve cleans path against the working directory.
 func Resolve(path string) (string, error) {
+	return ResolveRoot("", path)
+}
+
+// ResolveRoot cleans path. Relative paths join root, or the working directory when root is empty.
+// Absolute paths stay absolute. Symlinks on the longest existing prefix are evaluated
+// so a confirmation shows the real target.
+func ResolveRoot(root, path string) (string, error) {
 	if path == "" || strings.ContainsRune(path, 0) {
 		return "", errors.New("invalid path")
 	}
 	if !filepath.IsAbs(path) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", err
+		base := root
+		if base == "" {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", err
+			}
+			base = cwd
 		}
-		path = filepath.Join(cwd, path)
+		path = filepath.Join(base, path)
 	}
 	return evalExisting(filepath.Clean(path))
 }

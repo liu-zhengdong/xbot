@@ -30,6 +30,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	if k.hasLink(link.NameContext) {
 		list = append(list, compactTool{k}, historyTool{k}, expandTool{k})
 	}
+	list = k.modelAgentTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
 	return list, nil
 }

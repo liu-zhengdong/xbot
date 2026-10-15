@@ -61,7 +61,7 @@ func TestMountGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	links, err := mount(b)
+	links, err := mount(b, runnerSpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,5 +79,5 @@ func mountBot(t *testing.T, links []string) ([]link.Link, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mount(b)
+	return mount(b, runnerSpec{})
 }

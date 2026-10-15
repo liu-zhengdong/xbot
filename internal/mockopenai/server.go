@@ -6,6 +6,7 @@ package mockopenai
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,7 @@ func NewMux(dir string) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	h := func(w http.ResponseWriter, r *http.Request) { serve(w, r, dir) }
+	h := func(w http.ResponseWriter, r *http.Request) { serve(w, r, dir, nil) }
 	mux.HandleFunc("/v1/chat/completions", h)
 	mux.HandleFunc("/chat/completions", h)
 	return mux
@@ -38,7 +39,20 @@ type incoming struct {
 	} `json:"messages"`
 }
 
-func serve(w http.ResponseWriter, r *http.Request, dir string) {
+// NewScriptMux is NewMux plus a Script that records bodies and holds selected steps.
+func NewScriptMux(dir string, script *Script) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	h := func(w http.ResponseWriter, r *http.Request) { serve(w, r, dir, script) }
+	mux.HandleFunc("/v1/chat/completions", h)
+	mux.HandleFunc("/chat/completions", h)
+	return mux
+}
+
+func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method", http.StatusMethodNotAllowed)
 		return
@@ -48,16 +62,26 @@ func serve(w http.ResponseWriter, r *http.Request, dir string) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]string{"message": "missing api key"}})
 		return
 	}
-	var req incoming
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
 		return
 	}
-	var sawShell, sawWrite, sawRemember, sawNotify, sawRecall bool
+	if script != nil {
+		script.add(string(raw))
+	}
+	var req incoming
+	if err := json.Unmarshal(raw, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
+		return
+	}
+	var sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn bool
 	var lastTool, lastUser string
 	for _, m := range req.Messages {
 		if m.Role == "user" {
 			lastUser = m.Content
+			lastTool = ""
+			sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn = false, false, false, false, false, false
 		}
 		if m.Role == "tool" {
 			lastTool = m.Content
@@ -74,9 +98,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string) {
 				sawNotify = true
 			case "recall":
 				sawRecall = true
+			case "spawn":
+				sawSpawn = true
 			}
 		}
 	}
+	all := joined(req)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	switch {
@@ -103,6 +130,87 @@ func serve(w http.ResponseWriter, r *http.Request, dir string) {
 		return
 	case strings.Contains(lastUser, "<routine"):
 		writeText(w, "noted\n")
+		return
+	case strings.TrimSpace(lastUser) == "ping":
+		writeText(w, "pong\n")
+		return
+	case strings.TrimSpace(lastUser) == "MARKER_7f3a":
+		writeText(w, "ok\n")
+		return
+	case strings.Contains(lastUser, "SPAWN_LONG") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"LONG_TASK","mode":"brief"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_LONG"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(lastUser, "SPAWN_STEER") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"STEER_TASK","mode":"brief"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_STEER"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(lastUser, "SPAWN_INTERRUPT") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"INTERRUPT_TASK","mode":"brief"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_INTERRUPT"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(lastUser, "SPAWN_CANCEL") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"CANCEL_TASK","mode":"brief"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_CANCEL"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(lastUser, "SPAWN_FORK") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"FORK_TASK","mode":"fork"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_FORK"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(lastUser, "SPAWN_BRIEF") && !sawSpawn:
+		writeTool(w, "call_spawn", "spawn", `{"task":"BRIEF_TASK","mode":"brief"}`)
+		return
+	case strings.Contains(lastUser, "SPAWN_BRIEF"):
+		writeText(w, "started\n")
+		return
+	case strings.Contains(all, "STEER_MARK"):
+		writeText(w, "kept prior work\n")
+		return
+	case strings.Contains(all, "INTERRUPT_NOW"):
+		writeText(w, "restarted after interrupt\n")
+		return
+	case strings.Contains(lastUser, "long task done"):
+		writeText(w, "saw subagent done\n")
+		return
+	case strings.Contains(lastUser, "LONG_TASK") && script != nil:
+		script.Enter("long")
+		_ = script.Wait("long", r.Context())
+		writeText(w, "long task done\n")
+		return
+	case strings.Contains(lastUser, "STEER_TASK") && !sawShell:
+		writeTool(w, "call_prior", "shell", `{"command":"printf PRIOR_WORK"}`)
+		return
+	case strings.Contains(lastUser, "STEER_TASK") && sawShell && script != nil:
+		script.Enter("steer")
+		_ = script.Wait("steer", r.Context())
+		writeTool(w, "call_still", "shell", `{"command":"printf STILL_GOING"}`)
+		return
+	case strings.Contains(lastUser, "INTERRUPT_TASK") && !sawShell:
+		writeTool(w, "call_step", "shell", `{"command":"printf PRIOR_STEP"}`)
+		return
+	case strings.Contains(lastUser, "INTERRUPT_TASK") && script != nil:
+		script.Enter("intr")
+		_ = script.Wait("intr", r.Context())
+		return
+	case strings.Contains(lastUser, "CANCEL_TASK") && script != nil:
+		script.Enter("cancel")
+		_ = script.Wait("cancel", r.Context())
+		return
+	case strings.Contains(lastUser, "FORK_TASK"):
+		writeText(w, "fork done\n")
+		return
+	case strings.Contains(lastUser, "BRIEF_TASK"):
+		writeText(w, "brief done\n")
 		return
 	}
 	if !sawShell {
@@ -196,6 +304,15 @@ func flush(w http.ResponseWriter) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+func joined(req incoming) string {
+	var b strings.Builder
+	for _, m := range req.Messages {
+		b.WriteString(m.Content)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func shellQuote(s string) string {

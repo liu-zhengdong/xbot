@@ -1,6 +1,6 @@
 # XBot
 
-XBot 是一个从零写的个人助手（M2）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。
+XBot 是一个从零写的个人助手（M3）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。
 
 ## 构建与运行
 
@@ -24,9 +24,12 @@ xbot new ada --persona "你是一个简短的编程助手。" --provider deepsee
 xbot list
 xbot chat ada
 xbot serve
+xbot runner --addr 127.0.0.1:18771
 ```
 
-`chat` 接着这个 Bot 唯一的一条对话继续。`serve` 在没有人聊天时跑所有 Bot 的定时唤醒。退出输入 `exit`、`quit` 或 `:q`。
+`chat` 接着这个 Bot 唯一的一条对话继续。聊天的时候，这个进程持有该 Bot 的处理锁，并在等待输入的同时处理 inbox 里的事件。`serve` 不管有没有人在聊，都会把到点的 routine 投进 inbox；只有拿到处理锁的那一个进程会执行它。退出输入 `exit`、`quit` 或 `:q`。
+
+长时间的活用 `spawn` 交给子代理。本机默认是 goroutine。`xbot runner` 是同一套执行器的 HTTP 服务，只听环回地址，要用 token。`xbot chat --runner URL --runner-token TOKEN` 把 Bot 接到它上面。
 
 执行 shell、`write_file`、`edit_file` 之前会问 `y/n`。改 persona、创建或修改 routine 也要确认。`--yes` 跳过询问。`serve` 里没有人点头，这些需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
 
@@ -69,11 +72,15 @@ xbot bind ada --clear
 ~/.xbot/bots/<name>/routines/<id>.json
 ~/.xbot/bots/<name>/memory/{profile,log}.md
 ~/.xbot/bots/<name>/people/<id>/memory/{profile,log}.md
+~/.xbot/bots/<name>/agents/<id>/{transcript.jsonl,meta.json}
+~/.xbot/work/<name>/
+~/.xbot/work/shared/
+~/.xbot/skills/<slug>/SKILL.md
 ```
 
 Markdown 是给人改的。索引比 markdown 旧时会按 markdown 重建。
 
-`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`，并把当前终端用户记成 owner。
+`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。技能说明按 slug 排序写进稳定前缀，正文用 `read_skill` 再读。没有技能文件时，前缀和以前一样。
 
 ## 架构
 
@@ -110,7 +117,11 @@ tools / memory / persona / context ──tools──▶ agent loop
 
 **定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。`xbot chat` 会先把未读通知打出来。
 
-**并发。** `chat` 会拿住 `handle.lock` 直到退出。`serve` 拿不到锁就跳过这个 Bot，所以不会两个人同时处理同一条事件。锁会在进程退出时放开。inbox 按事件 id 去重，已经 ack 的 id 不会再入队。
+**子代理。** 主 Bot 自己做短活。长任务调用 `spawn(task, mode)`。`brief` 只有任务说明；`fork` 带上当前主上下文的一份拷贝。子代理有自己的只追加 transcript，步与步之间看自己的 inbox。主 Bot 可以 `steer`（下一步之前插入，已完成的工作保留）、`queue`（当前这次跑完再做）、`interrupt`（停掉当前这一步，用新指令重来，步数预算重置）、`cancel`（停掉，排队的也不做）。子代理把 progress、blocked、done、failed 投回主 inbox。这些事件不是终端输入，内核会包成 `<untrusted_event>`。`read_subagent` / `expand_subagent` 读它的状态和原文，输出有上限。同时最多 4 个，默认最多 16 步、10 分钟。子代理没有 spawn，也不会在后台弹 y/n：`xbot chat --yes` 才自动批准它的 shell；否则需要确认的工具直接拒绝。
+
+**执行器。** `Executor` 有本机 goroutine 实现，也有 HTTP 实现：`POST /v1/start`、`POST /v1/message`、`GET /v1/events`。`xbot runner` 只绑定环回地址，Bearer token 用常量时间比较。请求体里的模型密钥只在这条本机连接上出现。
+
+**并发。** 每个 Bot 只有一个进程持有 `handle.lock` 并调用 Handle。`serve` 拿不到锁时仍然投递 routine，聊天中的进程会收到并处理，同一条事件不会被两边各跑一次。routine 的事件 id 和 inbox 去重兜住重复投递。锁在进程退出时放开。子代理在别的 goroutine 里跑，完成时只是往主 inbox 投事件，不自己调用 Handle。
 
 ## 安全
 
@@ -122,6 +133,9 @@ tools / memory / persona / context ──tools──▶ agent loop
 - 数据目录 `0700`，配置和身份文件 `0600`。JSONL 追加时加文件锁。
 - cron 最短 5 分钟。`* * * * *` 会被拒绝。
 - 密钥不进 Bot 目录，也不进 `providers.json`。
+- 子代理默认最多 4 个并发、16 步、10 分钟。进度事件默认两秒一条。
+- 子代理的输出是不可信数据，不进 system，读出来时也会标明。
+- `xbot runner` 拒绝非环回地址。token 为空时会生成一个并打印。空 token 不能连上。
 
 ## 测试
 
@@ -130,7 +144,15 @@ go test ./...
 bash scripts/e2e.sh
 ```
 
-`go test` 覆盖这些 M2 行为：
+`go test` 覆盖这些 M2 行为，以及 M3：
+
+- 聊天持有处理锁时，`serve` 仍会投递到点的 routine，聊天里能看到通知，且只处理一次。
+- 主 Bot spawn 一个还在跑的子代理时，仍能回答下一条聊天；完成后收到 done。
+- 中途 steer 保留已有工作；interrupt 停掉当前步并用新指令重来；cancel 停掉且不再接受控制。
+- 同一套控制经 runner 的 HTTP 协议走通。
+- fork 的请求里能看到主上下文；brief 看不到。
+
+M2：
 
 - Bot A 记住的 person 事实，新建的 Bot B 能 recall；bot-person 事实别的人看不到。
 - `serve` 里 routine 到点：模型选择通知时 outbox 有一条；选择 `SILENT` 时没有通知。
@@ -145,7 +167,11 @@ bash scripts/e2e.sh
 
 | 包 | 职责 |
 | --- | --- |
-| `cmd/xbot` | `new` / `list` / `chat` / `bind` / `serve` / `provider` |
+| `cmd/xbot` | `new` / `list` / `chat` / `bind` / `serve` / `runner` / `provider` |
+| `proc` | 一个 Bot 的唤醒循环：投递和执行分开 |
+| `exec` | 子代理循环、本机执行器、runner HTTP |
+| `work` | 每个 Bot 的工作目录和共享目录 |
+| `skill` | 共享技能，前缀里只有说明 |
 | `provider` | OpenAI 兼容的流式 Chat Completions，以及 `ModelSelector` |
 | `config` | 环境变量和 `providers.json` |
 | `agent` | 模型与工具的循环 |

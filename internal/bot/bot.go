@@ -59,6 +59,7 @@ type EnvRecord struct {
 	Persona string    `json:"persona,omitempty"`
 	Rules   string    `json:"rules,omitempty"`
 	Memory  string    `json:"memory,omitempty"`
+	Skills  string    `json:"skills,omitempty"`
 	At      time.Time `json:"at,omitempty"`
 }
 
@@ -270,6 +271,9 @@ func (b *Bot) RulesPath() string { return filepath.Join(b.dir(), "rules.md") }
 
 // RoutineDir holds one JSON file per routine.
 func (b *Bot) RoutineDir() string { return filepath.Join(b.dir(), "routines") }
+
+// AgentDir is one subagent's transcript directory.
+func (b *Bot) AgentDir(id string) string { return filepath.Join(b.dir(), "agents", id) }
 
 // OutboxPath is the notification log.
 func (b *Bot) OutboxPath() string { return filepath.Join(b.dir(), "outbox.jsonl") }

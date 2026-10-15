@@ -1,4 +1,6 @@
-// Package serve runs bots when nobody is chatting: timers fire and inboxes drain.
+// Package serve wakes bots whose chat session is not holding the handle lock.
+// Due routines are always posted, even when the lock is held. Only the lock
+// holder handles them, so a routine is never run twice.
 package serve
 
 import (
@@ -8,10 +10,12 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
+	"xbot/internal/proc"
 )
 
-// Pass visits each bot once. A bot whose chat session holds the handle lock is skipped.
+// Pass posts due timer events for every bot, then handles a bot's inbox when
+// this process can take the handle lock. A chat session that already holds the
+// lock still receives the events in its own loop.
 func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (*kernel.Kernel, error)) error {
 	if now.IsZero() {
 		now = time.Now()
@@ -29,6 +33,13 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 		if err != nil {
 			return err
 		}
+		k, err := newK(b)
+		if err != nil {
+			return err
+		}
+		if err := proc.DeliverDue(k, now); err != nil && first == nil {
+			first = err
+		}
 		lock, ok, err := b.TryLockHandle()
 		if err != nil {
 			return err
@@ -36,57 +47,11 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 		if !ok {
 			continue
 		}
-		err = passBot(ctx, b, now, newK)
+		err = proc.Drain(ctx, k)
 		_ = lock.Release()
 		if err != nil && first == nil && !errors.Is(err, context.Canceled) {
 			first = err
 		}
 	}
 	return first
-}
-
-func passBot(ctx context.Context, b *bot.Bot, now time.Time, newK func(*bot.Bot) (*kernel.Kernel, error)) error {
-	k, err := newK(b)
-	if err != nil {
-		return err
-	}
-	if k.Inbox != nil {
-		if err := k.Inbox.Reload(); err != nil {
-			return err
-		}
-	}
-	for _, l := range k.Links {
-		tm, ok := l.(*link.Timer)
-		if !ok || tm == nil || k.Inbox == nil {
-			continue
-		}
-		evs, err := tm.Due(now)
-		if err != nil {
-			return err
-		}
-		for _, ev := range evs {
-			if err := k.Inbox.Post(ev); err != nil {
-				return err
-			}
-			if err := tm.Commit(ev); err != nil {
-				return err
-			}
-		}
-	}
-	if k.Inbox == nil {
-		return nil
-	}
-	for {
-		ev, ok := k.Inbox.Head()
-		if !ok {
-			return nil
-		}
-		handleErr := k.Handle(ctx, ev)
-		if err := k.Inbox.Ack(ev.ID); err != nil {
-			return err
-		}
-		if handleErr != nil {
-			return handleErr
-		}
-	}
 }

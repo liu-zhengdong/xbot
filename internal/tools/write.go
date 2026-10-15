@@ -13,7 +13,10 @@ import (
 const maxWriteBytes = 1 << 20
 
 // WriteFile replaces a file's contents. The write is atomic.
-type WriteFile struct{}
+// Root is the base for relative paths. Empty uses the working directory.
+type WriteFile struct {
+	Root string
+}
 
 func (w *WriteFile) Name() string { return "write_file" }
 
@@ -34,7 +37,7 @@ type writeArgs struct {
 }
 
 func (w *WriteFile) Confirm(args json.RawMessage) (bool, string, error) {
-	in, path, err := parseWrite(args)
+	in, path, err := w.parse(args)
 	if err != nil {
 		return false, "", err
 	}
@@ -45,7 +48,7 @@ func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	in, path, err := parseWrite(args)
+	in, path, err := w.parse(args)
 	if err != nil {
 		return "", err
 	}
@@ -61,7 +64,7 @@ func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, erro
 	return fmt.Sprintf("wrote %d bytes to %s", len(in.Content), path), nil
 }
 
-func parseWrite(args json.RawMessage) (writeArgs, string, error) {
+func (w *WriteFile) parse(args json.RawMessage) (writeArgs, string, error) {
 	var in writeArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
@@ -69,7 +72,7 @@ func parseWrite(args json.RawMessage) (writeArgs, string, error) {
 	if len(in.Content) > maxWriteBytes {
 		return writeArgs{}, "", fmt.Errorf("write_file: content exceeds %d bytes", maxWriteBytes)
 	}
-	path, err := Resolve(in.Path)
+	path, err := ResolveRoot(w.Root, in.Path)
 	if err != nil {
 		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
 	}

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,14 +19,19 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/compact"
 	"xbot/internal/config"
+	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/person"
+	"xbot/internal/proc"
 	"xbot/internal/provider"
 	"xbot/internal/serve"
+	"xbot/internal/skill"
+	"xbot/internal/tools"
+	"xbot/internal/work"
 )
 
 const usageText = `XBot is a personal bot. One bot has one continuous conversation.
@@ -36,6 +43,7 @@ Usage:
   xbot [--root DIR] bind <name> --provider NAME --model NAME
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] serve [--interval 15s]
+  xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
   xbot [--root DIR] provider list
   xbot [--root DIR] provider remove <name> [--model NAME]
@@ -89,6 +97,8 @@ func run(argv []string) error {
 		return cmdBind(root, rest[1:])
 	case "serve":
 		return cmdServe(root, rest[1:])
+	case "runner":
+		return cmdRunner(rest[1:])
 	case "provider":
 		return cmdProvider(root, rest[1:])
 	default:
@@ -129,6 +139,7 @@ func splitGlobal(argv []string) (string, []string, error) {
 var defaultLinks = []string{
 	link.NameTerminal, link.NameTools, link.NameTimer,
 	link.NameMemory, link.NamePersona, link.NameContext,
+	link.NameAgents, link.NameSkills,
 }
 
 type newOpts struct {
@@ -217,13 +228,15 @@ func cmdList(root string) error {
 }
 
 type chatOpts struct {
-	Name     string
-	Yes      bool
-	MaxSteps int
+	Name        string
+	Yes         bool
+	MaxSteps    int
+	RunnerURL   string
+	RunnerToken string
 }
 
 func parseChat(args []string) (chatOpts, error) {
-	ordered, err := reorderFlags(args, map[string]bool{"max-steps": true})
+	ordered, err := reorderFlags(args, map[string]bool{"max-steps": true, "runner": true, "runner-token": true})
 	if err != nil {
 		return chatOpts{}, err
 	}
@@ -231,13 +244,15 @@ func parseChat(args []string) (chatOpts, error) {
 	fs.SetOutput(io.Discard)
 	yes := fs.Bool("yes", false, "approve shell commands and file writes without prompting")
 	steps := fs.Int("max-steps", 8, "maximum model calls per wake")
+	runnerURL := fs.String("runner", "", "remote executor base URL")
+	runnerToken := fs.String("runner-token", "", "remote executor token")
 	if err := fs.Parse(ordered); err != nil {
 		return chatOpts{}, err
 	}
 	if fs.NArg() != 1 {
 		return chatOpts{}, errors.New("usage: xbot chat <name>")
 	}
-	return chatOpts{Name: fs.Arg(0), Yes: *yes, MaxSteps: *steps}, nil
+	return chatOpts{Name: fs.Arg(0), Yes: *yes, MaxSteps: *steps, RunnerURL: *runnerURL, RunnerToken: *runnerToken}, nil
 }
 
 // reorderFlags moves flags in front of positional args so the name can sit
@@ -282,7 +297,7 @@ func cmdChat(root string, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	pr := &printer{yes: opt.Yes, reader: bufio.NewReader(os.Stdin)}
-	k, who, err := openKernel(root, b, opt.MaxSteps, pr.Approve, pr)
+	k, who, err := openKernel(root, b, opt.MaxSteps, pr.Approve, pr, opt.Yes, runnerSpec{opt.RunnerURL, opt.RunnerToken})
 	if err != nil {
 		return err
 	}
@@ -291,60 +306,66 @@ func cmdChat(root string, args []string) error {
 		return err
 	}
 	defer lock.Release()
-	if err := showNotes(b); err != nil {
-		return err
-	}
-	box := k.Inbox
-	k.StartEmitters(ctx)
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil
+	lines := make(chan proc.Line)
+	go func() {
+		defer close(lines)
+		for {
+			line, err := pr.reader.ReadString('\n')
+			lines <- proc.Line{Text: line, Err: err}
+			if err != nil || isQuit(line) {
+				return
+			}
 		}
-		if ev, ok := box.Head(); ok {
-			err := k.Handle(ctx, ev)
-			pr.Break()
-			if err != nil {
+	}()
+	return proc.Run(ctx, proc.Config{
+		K:     k,
+		Lines: lines,
+		Accept: func(text string) (link.Event, error) {
+			text = strings.TrimRight(text, "\r\n")
+			if isQuit(text) {
+				return link.Event{}, proc.ErrStop
+			}
+			if strings.TrimSpace(text) == "" {
+				return link.Event{}, nil
+			}
+			ev := link.TerminalEvent(who.ID, strings.TrimSpace(text), time.Now())
+			if err := k.Inbox.Post(ev); err != nil {
+				return link.Event{}, err
+			}
+			return ev, nil
+		},
+		Idle: func() {
+			if err := showNotes(b); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot:", err)
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
 			}
-			if err := box.Ack(ev.ID); err != nil {
-				return err
+			fmt.Fprintf(os.Stderr, "%s › ", b.Name())
+		},
+		After: func(_ link.Event, err error) {
+			pr.Break()
+			if err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintln(os.Stderr, "xbot:", err)
 			}
-			continue
-		}
-		if err := showNotes(b); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "%s › ", b.Name())
-		line, err := readLine(ctx, pr.reader)
-		text := strings.TrimRight(line, "\r\n")
-		queued := false
-		if strings.TrimSpace(text) != "" && !isQuit(text) {
-			ev := link.TerminalEvent(who.ID, text, time.Now())
-			if postErr := box.Post(ev); postErr != nil {
-				return postErr
+			if err := showNotes(b); err != nil {
+				fmt.Fprintln(os.Stderr, "xbot:", err)
 			}
-			queued = true
-		}
-		if isQuit(text) {
-			return nil
-		}
-		if err != nil {
-			if queued {
-				continue
-			}
-			return nil
-		}
-	}
+		},
+	})
 }
 
-func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer) (*kernel.Kernel, person.Person, error) {
+type runnerSpec struct {
+	URL   string
+	Token string
+}
+
+func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer, allowBackground bool, runner runnerSpec) (*kernel.Kernel, person.Person, error) {
 	if !b.Grants(link.NameTerminal) && pr != nil {
 		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
 	}
-	links, err := mount(b)
+	links, err := mount(b, runner)
+	if err != nil {
+		return nil, person.Person{}, err
+	}
+	workDir, sharedDir, err := work.Open(root, b.Name())
 	if err != nil {
 		return nil, person.Person{}, err
 	}
@@ -376,17 +397,21 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		budget = kernel.BudgetFor(bot.Config{ContextLimit: contextLen})
 	}
 	k := &kernel.Kernel{
-		Bot:       b,
-		Provider:  client,
-		Selector:  provider.FixedSelector{P: client},
-		Links:     links,
-		Inbox:     box,
-		Memory:    memory.Open(root),
-		Compactor: compact.LLM{P: client},
-		Extractor: kernel.LLMExtractor{P: client},
-		Approve:   approve,
-		MaxSteps:  steps,
-		Budget:    budget,
+		Bot:             b,
+		Provider:        client,
+		Selector:        provider.FixedSelector{P: client},
+		Links:           links,
+		Inbox:           box,
+		Memory:          memory.Open(root),
+		Compactor:       compact.LLM{P: client},
+		Extractor:       kernel.LLMExtractor{P: client},
+		Approve:         approve,
+		MaxSteps:        steps,
+		Budget:          budget,
+		AllowBackground: allowBackground,
+		WorkDir:         workDir,
+		SharedDir:       sharedDir,
+		SkillsDir:       skill.Dir(root),
 	}
 	if pr != nil {
 		k.OnDelta = pr.Delta
@@ -396,7 +421,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	return k, who, nil
 }
 
-func mount(b *bot.Bot) ([]link.Link, error) {
+func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 	sender := "timer"
 	if owners := b.Config().Owners; len(owners) > 0 {
 		sender = owners[0]
@@ -412,7 +437,11 @@ func mount(b *bot.Bot) ([]link.Link, error) {
 		case link.NameTerminal:
 			out = append(out, link.Terminal{})
 		case link.NameTools:
-			out = append(out, link.NewToolsLink())
+			dir, shared, err := work.Open(b.Root, b.Name())
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, link.NewToolsLinkAt(dir, shared))
 		case link.NameTimer:
 			out = append(out, &link.Timer{Dir: b.RoutineDir(), Sender: sender})
 		case link.NameMemory:
@@ -421,9 +450,33 @@ func mount(b *bot.Bot) ([]link.Link, error) {
 			out = append(out, link.Persona{})
 		case link.NameContext:
 			out = append(out, link.Context{})
+		case link.NameAgents:
+			out = append(out, link.Agents{})
+		case link.NameSkills:
+			out = append(out, link.Skills{})
+		case link.NameRunner:
+			url, token := runner.URL, runner.Token
+			if url == "" {
+				url = os.Getenv("XBOT_RUNNER_URL")
+				token = os.Getenv("XBOT_RUNNER_TOKEN")
+			}
+			if url != "" && token == "" {
+				return nil, errors.New("runner token is empty")
+			}
+			out = append(out, link.Runner{BaseURL: url, Token: token})
 		default:
 			return nil, fmt.Errorf("unknown link %q", name)
 		}
+	}
+	if runner.URL == "" {
+		runner.URL = os.Getenv("XBOT_RUNNER_URL")
+		runner.Token = os.Getenv("XBOT_RUNNER_TOKEN")
+	}
+	if runner.URL != "" && !seen[link.NameRunner] {
+		if runner.Token == "" {
+			return nil, errors.New("runner token is empty")
+		}
+		out = append(out, link.Runner{BaseURL: runner.URL, Token: runner.Token})
 	}
 	return out, nil
 }
@@ -504,7 +557,7 @@ func cmdServe(root string, args []string) error {
 	deny := func(context.Context, string, string) (bool, error) { return false, nil }
 	for {
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, _, err := openKernel(root, b, 8, deny, nil)
+			k, _, err := openKernel(root, b, 8, deny, nil, false, runnerSpec{})
 			return k, err
 		})
 		if err != nil {
@@ -516,6 +569,40 @@ func cmdServe(root string, args []string) error {
 		case <-time.After(*every):
 		}
 	}
+}
+
+func cmdRunner(args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{"addr": true, "token": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("runner", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	addr := fs.String("addr", "127.0.0.1:18771", "loopback listen address")
+	token := fs.String("token", "", "shared bearer token")
+	yes := fs.Bool("yes", false, "approve shell and file writes inside subagents")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("usage: xbot runner --addr 127.0.0.1:18771 --token TOKEN")
+	}
+	tok := *token
+	if tok == "" {
+		var b [24]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return err
+		}
+		tok = hex.EncodeToString(b[:])
+		fmt.Printf("token: %s\n", tok)
+	}
+	fmt.Fprintf(os.Stderr, "runner listening on %s\n", *addr)
+	loc := exec.NewLocal(exec.Limits{})
+	loc.Approve = func(context.Context, string, string) (bool, error) { return *yes, nil }
+	loc.ToolSet = func(string) []tools.Tool {
+		return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
+	}
+	return exec.Listen(*addr, tok, loc)
 }
 
 func cmdProvider(root string, args []string) error {

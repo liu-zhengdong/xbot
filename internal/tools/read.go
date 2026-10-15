@@ -19,9 +19,11 @@ const (
 )
 
 // ReadFile reads a text file by line offset.
+// Root is the base for relative paths. Empty uses the working directory.
 type ReadFile struct {
 	MaxLines int
 	MaxBytes int
+	Root     string
 }
 
 func (r *ReadFile) Name() string { return "read_file" }
@@ -125,7 +127,7 @@ func (r *ReadFile) parse(args json.RawMessage) (readArgs, string, error) {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}
-	path, err := Resolve(in.Path)
+	path, err := ResolveRoot(r.Root, in.Path)
 	if err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}

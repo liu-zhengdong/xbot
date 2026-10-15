@@ -27,6 +27,9 @@ type Options struct {
 	OnTool    func(name, summary string)
 	OnResult  func(name, output string)
 	OnMessage func(provider.Message)
+	// OneRound returns after a single model call and that call's tool results.
+	// The step limit error is not used. The caller decides what happens next.
+	OneRound bool
 }
 
 // Run calls the model until it stops requesting tools or the step limit is hit.
@@ -86,6 +89,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			if opt.OnMessage != nil {
 				opt.OnMessage(tm)
 			}
+		}
+		if opt.OneRound {
+			return produced, nil
 		}
 	}
 	return produced, fmt.Errorf("agent: max steps (%d) reached", opt.MaxSteps)
