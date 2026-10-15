@@ -28,6 +28,7 @@ type CatalogEntry struct {
 	Capabilities []string
 	Secrets      []string
 	Summary      string
+	Keywords     []string
 	Available    bool
 	Grant        string
 }
@@ -40,6 +41,7 @@ func Catalog() []CatalogEntry {
 		out[i] = e
 		out[i].Capabilities = append([]string{}, e.Capabilities...)
 		out[i].Secrets = append([]string{}, e.Secrets...)
+		out[i].Keywords = append([]string{}, e.Keywords...)
 	}
 	return out
 }
@@ -71,41 +73,48 @@ var catalog = []CatalogEntry{
 		ID: "webhook", Title: "Webhook", Kind: KindNative,
 		Capabilities: []string{"events"}, Secrets: []string{},
 		Summary:   "接收 HTTP 回调，写成不可信事件。",
+		Keywords:  []string{"http", "callback"},
 		Available: true, Grant: NameWebhook,
 	},
 	{
 		ID: "watch", Title: "文件监听", Kind: KindNative,
 		Capabilities: []string{"events"}, Secrets: []string{},
 		Summary:   "路径变化写成不可信事件，正文只有路径和元数据。",
+		Keywords:  []string{"file watch", "filesystem"},
 		Available: true, Grant: NameWatch,
 	},
 	{
 		ID: "skills", Title: "技能", Kind: KindNative,
 		Capabilities: []string{"tools"}, Secrets: []string{},
 		Summary:   "读取共享技能目录里的说明。",
+		Keywords:  []string{"skill", "skills"},
 		Available: true, Grant: NameSkills,
 	},
 	{
 		ID: "telegram", Title: "Telegram", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{"TELEGRAM_BOT_TOKEN"},
 		Summary:   "把 Telegram 消息推进来，发出去之前先留草稿。",
+		Keywords:  []string{"telegram", "bot"},
 		Available: true, Grant: NameTelegram,
 	},
 	{
 		ID: "lark", Title: "飞书", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{"LARK_APP_SECRET"},
 		Summary:   "把飞书消息推进来，发出去之前先留草稿。",
+		Keywords:  []string{"feishu", "lark"},
 		Available: true, Grant: NameLark,
 	},
 	{
 		ID: "mcp", Title: "MCP", Kind: KindMCP,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
-		Summary: "把一个 MCP 服务器包成 Link。用 xbot mcp add 登记命令，不从这里安装。",
+		Keywords: []string{"mcp", "server"},
+		Summary:  "把一个 MCP 服务器包成 Link。用 xbot mcp add 登记命令，不从这里安装。",
 	},
 	{
 		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
 		Summary:   "长时间编码任务，步数和时间按这次任务另定。先只记本地任务。",
+		Keywords:  []string{"coding agent", "code"},
 		Available: true, Grant: NameCoding,
 	},
 }

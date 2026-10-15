@@ -237,6 +237,24 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 	}
 }
 
+func TestLinksSearchMatchesEnglish(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b}
+	tool := linksTool{k}
+	for _, tc := range []struct{ query, id string }{
+		{"feishu", "lark"},
+		{"file watch", "watch"},
+		{"coding agent", "coding-agent"},
+		{"callback", "webhook"},
+		{"skill", "skills"},
+	} {
+		got := tool.search(tc.query)
+		if !strings.Contains(got, tc.id) {
+			t.Fatalf("%s -> %q", tc.query, got)
+		}
+	}
+}
+
 func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}

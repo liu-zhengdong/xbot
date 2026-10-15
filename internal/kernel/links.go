@@ -90,7 +90,7 @@ func (t linksTool) search(query string) string {
 	}
 	var b strings.Builder
 	for _, e := range link.Catalog() {
-		blob := strings.ToLower(e.ID + " " + e.Title + " " + e.Summary)
+		blob := strings.ToLower(e.ID + " " + e.Title + " " + e.Summary + " " + strings.Join(e.Keywords, " "))
 		if q != "" && !strings.Contains(blob, q) {
 			continue
 		}
