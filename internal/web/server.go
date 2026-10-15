@@ -80,6 +80,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/template", s.exportTemplate)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
+	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
 	mux.HandleFunc("GET /api/bots/{name}/export", s.exportTranscript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
 	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
