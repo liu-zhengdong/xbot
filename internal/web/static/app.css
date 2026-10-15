@@ -384,7 +384,9 @@ html[data-theme="dark"] .field select {
 
 .avatar.xs { width: 16px; height: 16px; }
 
-.avatar svg { width: 100%; height: 100%; display: block; }
+.avatar svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.avatar text { font-family: "Mona Sans VF", "PingFang SC", "Noto Sans SC", sans-serif; }
 
 .avatar.has-photo { overflow: hidden; border-radius: 46% 54% 50% 48% / 48% 46% 54% 50%; }
 

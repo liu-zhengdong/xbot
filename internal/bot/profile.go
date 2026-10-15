@@ -36,7 +36,7 @@ const (
 )
 
 // GenerateAvatar is the seam for a future portrait generator.
-// Nil means an unset avatar is a low-saturation color block plus an initial.
+// Nil means an unset avatar is a low-saturation blob. The initial is optional.
 // Tests should set it through SetGenerateAvatar.
 var GenerateAvatar func(name, description string) ([]byte, error)
 
@@ -288,7 +288,7 @@ func InQuiet(start, end string, now time.Time) bool {
 	return cur >= sm || cur < em
 }
 
-// AvatarColors is the fallback mark: a low-saturation block and an initial.
+// AvatarColors is the fallback fill: a low-saturation color from the name, plus an optional initial.
 func AvatarColors(name string) (bg, ink, initial string) {
 	initial = "?"
 	for _, r := range name {
@@ -325,7 +325,7 @@ func (b *Bot) SetAvatar(data []byte, mime string) error {
 	return b.SaveConfig()
 }
 
-// ClearAvatar removes an upload. The color block is used again.
+// ClearAvatar removes an upload. The generated blob is used again.
 func (b *Bot) ClearAvatar() error {
 	_ = os.Remove(b.AvatarPath())
 	_ = os.Remove(b.avatarMIMEPath())

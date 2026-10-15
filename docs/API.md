@@ -41,7 +41,7 @@
 }]}
 ```
 
-`avatar_url` 只在已上传头像，或进程装了头像生成器时出现。没上传时用 `avatar_bg` / `avatar_ink` / `initial`：低饱和色块加首字符，不是服务端画的脸。`unread` 在有未读通知，或 transcript 比这个浏览器上次打开的游标更长时为 true。
+`avatar_url` 只在已上传头像，或进程装了头像生成器时出现。没上传时界面用 `avatar_bg` 填一块随名字变化的低饱和软边圆斑，轮廓接近圆但不规则，没有五官。`initial` 可选，叠在够大的尺寸上；16 像素不画。不是服务端画的脸。`unread` 在有未读通知，或 transcript 比这个浏览器上次打开的游标更长时为 true。
 
 `POST /api/bots`，body `{"name":"ada","persona":"..."}`。名字匹配 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`。成功 200 `{"name":"ada"}`。这是目录里第一个 Bot 时，它成为主 Bot 并被置顶。
 

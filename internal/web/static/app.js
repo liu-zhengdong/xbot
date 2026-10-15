@@ -46,10 +46,14 @@
     push: null,
   };
 
-  const FACES = [
-    { bg: "#D5DDD6", shape: "M40 6C58 4 74 16 74 36C74 58 58 76 38 74C16 72 4 56 8 36C12 16 24 8 40 6Z", eyes: [30, 36, 50, 36] },
-    { bg: "#E3D9CE", shape: "M28 8C48 2 70 14 72 34C74 56 58 74 36 76C14 78 4 60 6 40C8 18 14 12 28 8Z", eyes: [28, 34, 48, 38] },
-    { bg: "#D5D9E3", shape: "M44 8C62 12 76 26 72 44C68 64 50 76 32 74C12 72 4 54 8 36C12 16 26 4 44 8Z", eyes: [32, 38, 52, 34] },
+  // Soft blobs: near-circles with an irregular edge. No eyes, no smile.
+  const BLOBS = [
+    "M40 8C56 5 72 16 73 34C74 53 61 72 42 73C22 74 7 60 8 40C9 20 24 11 40 8Z",
+    "M38 7C55 4 71 15 74 33C77 52 62 73 41 74C20 75 6 59 7 39C8 19 21 10 38 7Z",
+    "M42 6C59 8 74 20 73 38C72 57 58 74 39 73C19 72 6 57 8 38C10 18 25 4 42 6Z",
+    "M36 9C52 5 70 14 73 32C76 51 63 73 43 74C21 75 6 61 7 41C8 21 20 13 36 9Z",
+    "M41 7C58 6 73 18 74 36C75 55 60 74 40 73C19 72 5 56 8 37C11 17 24 8 41 7Z",
+    "M39 8C54 4 71 17 73 35C75 54 59 75 38 73C17 71 6 55 9 36C12 17 24 12 39 8Z",
   ];
 
   const THEME_MOON = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
@@ -213,29 +217,62 @@
     return svg;
   }
 
-  function faceFor(name, paint) {
-    const face = FACES[hashName(name) % FACES.length];
-    const bg = (paint && paint.bg) || face.bg;
-    const eye = (paint && paint.ink) || "#3A342F";
-    const e = face.eyes;
+  function hslHex(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const hp = ((h / 60) % 6 + 6) % 6;
+    const x = c * (1 - Math.abs(hp % 2 - 1));
+    let r = 0, g = 0, b = 0;
+    if (hp < 1) { r = c; g = x; }
+    else if (hp < 2) { r = x; g = c; }
+    else if (hp < 3) { g = c; b = x; }
+    else if (hp < 4) { g = x; b = c; }
+    else if (hp < 5) { r = x; b = c; }
+    else { r = c; b = x; }
+    const m = l - c / 2;
+    const byte = (v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0");
+    return "#" + byte(r + m) + byte(g + m) + byte(b + m);
+  }
+
+  function blobFill(name, paint) {
+    if (paint && paint.bg) return paint.bg;
+    return hslHex(hashName(name) % 360, 0.30, 0.78);
+  }
+
+  function blobInk(name, paint) {
+    if (paint && paint.ink) return paint.ink;
+    return hslHex(hashName(name) % 360, 0.30, 0.28);
+  }
+
+  function markInitial(name, paint, size) {
+    if (size === "xs") return "";
+    const given = paint && typeof paint.initial === "string" ? paint.initial.trim() : "";
+    if (given) return Array.from(given)[0];
+    const raw = String(name || "").trim();
+    if (!raw) return "";
+    return Array.from(raw)[0].toLocaleUpperCase();
+  }
+
+  function faceFor(name, paint, size) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 80 80");
     svg.setAttribute("aria-hidden", "true");
     const blob = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    blob.setAttribute("d", face.shape);
-    blob.setAttribute("fill", bg);
-    const a = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
-    a.setAttribute("cx", e[0]); a.setAttribute("cy", e[1]); a.setAttribute("rx", "3.5"); a.setAttribute("ry", "4.1"); a.setAttribute("fill", eye);
-    const b = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
-    b.setAttribute("cx", e[2]); b.setAttribute("cy", e[3]); b.setAttribute("rx", "3.5"); b.setAttribute("ry", "4.1"); b.setAttribute("fill", eye);
-    const mouth = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const my = 50 + (hashName(name) % 3);
-    mouth.setAttribute("d", "M" + (e[0] + 2) + " " + my + " Q40 " + (my + 5) + " " + (e[2] - 2) + " " + my);
-    mouth.setAttribute("fill", "none");
-    mouth.setAttribute("stroke", eye);
-    mouth.setAttribute("stroke-width", "2");
-    mouth.setAttribute("stroke-linecap", "round");
-    svg.append(blob, a, b, mouth);
+    blob.setAttribute("d", BLOBS[hashName(name) % BLOBS.length]);
+    blob.setAttribute("fill", blobFill(name, paint));
+    svg.append(blob);
+    const letter = markInitial(name, paint, size);
+    if (letter) {
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      text.setAttribute("x", "40");
+      text.setAttribute("y", "43");
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "central");
+      text.setAttribute("fill", blobInk(name, paint));
+      text.setAttribute("font-size", "30");
+      text.setAttribute("font-weight", "560");
+      text.textContent = letter;
+      svg.append(text);
+    }
     return svg;
   }
 
@@ -243,7 +280,7 @@
     paint = paint || {};
     const av = el("span", "avatar" + (size ? " " + size : ""));
     if (name) setTip(av, name);
-    av.append(faceFor(name, paint));
+    av.append(faceFor(name, paint, size));
     if (paint.url) {
       const img = document.createElement("img");
       img.alt = "";
@@ -255,10 +292,13 @@
     return av;
   }
 
-  function paintOf(name) {
-    const b = (state.bots || []).find((x) => x.name === name);
+  function paintOfBot(b) {
     if (!b) return null;
-    return { bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url };
+    return { bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url, initial: b.initial };
+  }
+
+  function paintOf(name) {
+    return paintOfBot((state.bots || []).find((x) => x.name === name));
   }
 
   function copyText(text, btn) {
@@ -1180,9 +1220,7 @@
   }
 
   function botRow(b) {
-    const btn = listButton(b.name, lineForBot(b), state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, {
-      bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url,
-    }, !!b.primary);
+    const btn = listButton(b.name, lineForBot(b), state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, paintOfBot(b), !!b.primary);
     btn.addEventListener("click", () => selectBot(b.name));
     return btn;
   }
@@ -1275,7 +1313,7 @@
       btn.type = "button";
       setTip(btn, b.name);
       btn.setAttribute("aria-label", niceName(b.name));
-      const av = avatar(b.name, { bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url }, "pin");
+      const av = avatar(b.name, paintOfBot(b), "pin");
       if (b.unread) av.append(el("i", "unread"));
       btn.append(av);
       btn.addEventListener("click", () => selectBot(b.name));
@@ -1881,9 +1919,7 @@
     }
     const data = state.panelData || { name: state.sel.id };
     const desc = data.description || "";
-    const heroBox = hero(data.name || state.sel.id, desc, {
-      bg: data.avatar_bg, ink: data.avatar_ink, url: data.avatar_url,
-    }, {
+    const heroBox = hero(data.name || state.sel.id, desc, paintOfBot(data), {
       on: !!data.pinned,
       toggle: () => togglePin(state.sel.id, !data.pinned),
     });
@@ -2238,7 +2274,7 @@
   function profileForm(data) {
     const wrap = document.createElement("div");
     const head = el("div", "profile-head");
-    let mark = avatar(data.name, { bg: data.avatar_bg, ink: data.avatar_ink, url: data.avatar_url }, "lg");
+    let mark = avatar(data.name, paintOfBot(data), "lg");
     const file = document.createElement("input");
     file.type = "file";
     file.accept = "image/png,image/jpeg,image/gif,image/webp";
@@ -2300,7 +2336,7 @@
         await refreshLists();
         await loadPanel();
         const fresh = state.panelData || data;
-        const next = avatar(fresh.name, { bg: fresh.avatar_bg, ink: fresh.avatar_ink, url: fresh.avatar_url }, "lg");
+        const next = avatar(fresh.name, paintOfBot(fresh), "lg");
         mark.replaceWith(next);
         mark = next;
       } catch (e) { showErr(e, "头像上传失败"); }
@@ -2311,7 +2347,7 @@
         await refreshLists();
         await loadPanel();
         const fresh = state.panelData || data;
-        const next = avatar(fresh.name, { bg: fresh.avatar_bg, ink: fresh.avatar_ink, url: fresh.avatar_url }, "lg");
+        const next = avatar(fresh.name, paintOfBot(fresh), "lg");
         mark.replaceWith(next);
         mark = next;
       } catch (e) { showErr(e, "清除失败"); }
