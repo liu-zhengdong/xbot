@@ -87,7 +87,12 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	if len(updates) != 2 {
 		t.Fatalf("env updates %+v", updates)
 	}
-	if strings.Contains(updates[1], "time:") || !strings.Contains(updates[1], "now: 2026-10-15T08:20:00Z") {
+	loc := time.UTC
+	if time.Local != nil {
+		loc = time.Local
+	}
+	stamp := now.In(loc).Truncate(time.Minute).Format(time.RFC3339)
+	if strings.Contains(updates[1], "time:") || !strings.Contains(updates[1], "now: "+stamp) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
