@@ -20,11 +20,12 @@ func Ping(ctx context.Context, baseURL, token string) (Info, error) {
 }
 
 // Call runs one capability and returns its text.
-func Call(ctx context.Context, baseURL, token, cap string) (string, error) {
+// command and approved are used by shell. info ignores them.
+func Call(ctx context.Context, baseURL, token, cap, command string, approved bool) (string, error) {
 	var out struct {
 		Text string `json:"text"`
 	}
-	body, err := json.Marshal(map[string]string{"cap": cap})
+	body, err := json.Marshal(Request{Cap: cap, Command: command, Approved: approved})
 	if err != nil {
 		return "", err
 	}

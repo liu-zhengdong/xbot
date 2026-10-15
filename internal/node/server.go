@@ -23,8 +23,16 @@ type Info struct {
 	Caps []string `json:"caps"`
 }
 
-// Caps are the capabilities this process can run. Shell waits for the machine switch.
-func Caps() []string { return []string{"info"} }
+// Caps are the capabilities this process can run.
+// shell still consults the machine switch on each call.
+func Caps() []string { return []string{"info", "shell"} }
+
+// Request is one POST /v1/call.
+type Request struct {
+	Cap      string `json:"cap"`
+	Command  string `json:"command,omitempty"`
+	Approved bool   `json:"approved,omitempty"`
+}
 
 func idPath(root string) string    { return filepath.Join(root, "node-id") }
 func tokenPath(root string) string { return filepath.Join(root, "node-token") }
@@ -101,15 +109,15 @@ func InfoText(info Info) string {
 	return fmt.Sprintf("id\t%s\nname\t%s\nos\t%s\narch\t%s", info.ID, info.Name, runtime.GOOS, runtime.GOARCH)
 }
 
-// Handler serves /v1/node and /v1/call. call runs a capability. Nil uses info only.
-func Handler(token string, info Info, call func(cap string) (string, error)) http.Handler {
+// Handler serves /v1/node and /v1/call. call runs a capability. Nil handles info only.
+func Handler(token string, info Info, call func(Request) (string, error)) http.Handler {
 	token = strings.TrimSpace(token)
 	if call == nil {
-		call = func(cap string) (string, error) {
-			if cap == "info" {
+		call = func(req Request) (string, error) {
+			if req.Cap == "info" {
 				return InfoText(info), nil
 			}
-			return "", fmt.Errorf("node: unknown cap %q", cap)
+			return "", fmt.Errorf("node: unknown cap %q", req.Cap)
 		}
 	}
 	mux := http.NewServeMux()
@@ -133,16 +141,15 @@ func Handler(token string, info Info, call func(cap string) (string, error)) htt
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		var in struct {
-			Cap string `json:"cap"`
-		}
+		var in Request
 		dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&in); err != nil {
 			writeErr(w, http.StatusBadRequest, "bad request")
 			return
 		}
-		text, err := call(strings.TrimSpace(in.Cap))
+		in.Cap = strings.TrimSpace(in.Cap)
+		text, err := call(in)
 		if err != nil {
 			status := http.StatusBadRequest
 			if strings.Contains(err.Error(), "unknown cap") {

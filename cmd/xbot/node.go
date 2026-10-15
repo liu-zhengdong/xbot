@@ -63,7 +63,16 @@ func cmdNodeServe(root string, args []string) error {
 		fmt.Printf("token: %s\n", tok)
 	}
 	fmt.Fprintf(os.Stderr, "node %s listening on http://%s\n", info.Name, *addr)
-	srv := &http.Server{Addr: *addr, Handler: node.Handler(tok, info, nil)}
+	srv := &http.Server{Addr: *addr, Handler: node.Handler(tok, info, func(req node.Request) (string, error) {
+		switch req.Cap {
+		case "info":
+			return node.InfoText(info), nil
+		case "shell":
+			return node.RunShell(root, req.Command, req.Approved)
+		default:
+			return "", fmt.Errorf("node: unknown cap %q", req.Cap)
+		}
+	})}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	go func() {
@@ -136,16 +145,17 @@ func cmdNodeRemove(root string, args []string) error {
 }
 
 func cmdNodeCall(root string, args []string) error {
-	if len(args) != 2 {
-		return errors.New("usage: xbot node call <name> <cap>")
+	if len(args) < 2 {
+		return errors.New("usage: xbot node call <name> info | xbot node call <name> shell <command>")
 	}
 	n, err := node.Lookup(root, args[0])
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	command := strings.Join(args[2:], " ")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	text, err := node.Call(ctx, n.URL, n.Token, args[1])
+	text, err := node.Call(ctx, n.URL, n.Token, args[1], command, true)
 	if err != nil {
 		return err
 	}

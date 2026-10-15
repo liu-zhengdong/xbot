@@ -73,25 +73,42 @@ type callTool struct{ l *Link }
 
 func (callTool) Name() string { return "node_call" }
 func (callTool) Description() string {
-	return "Call a capability on a registered node. info returns the machine id, name, OS, and arch. Other capabilities are refused until the machine switch allows them."
+	return "Call a capability on a registered node. info returns the machine id, name, OS, and arch. shell runs a command there; the owner must confirm, and that machine's switch can still refuse."
 }
 func (callTool) Parameters() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"name": map[string]any{"type": "string", "description": "Registered node name"},
-			"cap":  map[string]any{"type": "string", "description": "Capability, currently info"},
+			"name":    map[string]any{"type": "string", "description": "Registered node name"},
+			"cap":     map[string]any{"type": "string", "description": "info or shell"},
+			"command": map[string]any{"type": "string", "description": "Shell command when cap is shell"},
 		},
 		"required":             []string{"name", "cap"},
 		"additionalProperties": false,
 	}
 }
-func (callTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (callTool) Confirm(args json.RawMessage) (bool, string, error) {
+	var in struct {
+		Name    string `json:"name"`
+		Cap     string `json:"cap"`
+		Command string `json:"command"`
+	}
+	if len(args) > 0 && string(args) != "null" {
+		if err := json.Unmarshal(args, &in); err != nil {
+			return false, "", err
+		}
+	}
+	if strings.TrimSpace(in.Cap) == "shell" {
+		return true, "node " + strings.TrimSpace(in.Name) + " shell\n" + in.Command, nil
+	}
+	return false, "", nil
+}
 
 func (t callTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
-		Name string `json:"name"`
-		Cap  string `json:"cap"`
+		Name    string `json:"name"`
+		Cap     string `json:"cap"`
+		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -106,5 +123,6 @@ func (t callTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	return Call(callCtx, n.URL, n.Token, cap)
+	approved := cap == "shell"
+	return Call(callCtx, n.URL, n.Token, cap, in.Command, approved)
 }

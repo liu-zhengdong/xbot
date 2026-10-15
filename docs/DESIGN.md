@@ -50,8 +50,8 @@
 - **工作机**：一个用户的多个 Bot 共用一台机器，包括装好的工具和登录状态；每个 Bot 有自己的工作目录，另有一个共享目录。技能按 owner 分开，不是全机共用。
 - **家节点**：Bot 住在用户选择的机器上（比如家里的 PC），数据不离开用户的设备。手机、Web、Slack 都只是入口。
 - **远程访问**：Cloudflare Tunnel、Tailscale 直连、自建中继，都可以选；它们只是不同的传输方式，内核不用关心。`xbot serve --tunnel cloudflare` 用本机的 `cloudflared` 把已经在听的 `--http` 公布出去，stderr 打印 `public url`（`*.trycloudflare.com`）。`--tunnel tailscale` 跑 `tailscale ip -4`；`--http` 若是回环地址，就改绑到这个 tailnet 地址，别的绑定保持原样，`public url` 用 tailnet 地址加端口。二进制路径可用 `XBOT_CLOUDFLARED` 和 `XBOT_TAILSCALE`。自建中继仍是后面的网关，这一片不实现。
-- **多节点**：每台设备都可以运行 `xbot node serve`（默认 `127.0.0.1:18772`），用 bearer token 公布本机身份。token 在该数据根的 `node-token`（0600），第一次启动打印一次。主人用 `xbot node add <name> --url URL --token TOKEN` 把地址记在 `nodes.json`（0600）。装上 `node` Link 之后，系统提示里只有一行；`links load node` 才带上 `node_list` 和 `node_call`。这一片的能力只有 `info`（id、名字、系统、架构）。在别的机器上执行要等机器开关。要给别的设备连，把 `--addr` 绑到 tailnet 地址，不要绑 `0.0.0.0`。
-- **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。
+- **多节点**：每台设备都可以运行 `xbot node serve`（默认 `127.0.0.1:18772`），用 bearer token 公布本机身份。token 在该数据根的 `node-token`（0600），第一次启动打印一次。主人用 `xbot node add <name> --url URL --token TOKEN` 把地址记在 `nodes.json`（0600）。装上 `node` Link 之后，系统提示里只有一行；`links load node` 才带上 `node_list` 和 `node_call`。能力是 `info`（id、名字、系统、架构）和 `shell`。`shell` 看那台机器的开关。要给别的设备连，把 `--addr` 绑到 tailnet 地址，不要绑 `0.0.0.0`。
+- **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 仍按原来的规则：只读命令不确认，其余要确认。`ask` 让每条 shell 都要主人确认。`off` 直接拒绝，确认也跑不了。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。节点上的 `shell` 看那台机器自己的开关：`ask` 还要调用方已经得到主人确认。文件工具不经过这个开关。
 - **多设备同步**：Bot 不合并，各自住在自己的家节点上；只同步人的身份和人的记忆，用可合并的追加日志实现（记录时间、Bot、设备，以最新为准），通过中继同步。
 - **桌面操作**：截图、点击、输入、滚动、按键，也是一个 Link。操作主人的电脑需要单独开启，主人正在使用时不抢鼠标，涉及付款、登录、发消息的操作要停下来问。能用命令行或 API 完成的事，优先不用 UI。
 

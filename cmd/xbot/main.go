@@ -29,6 +29,7 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/machine"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/person"
@@ -93,7 +94,10 @@ Usage:
   xbot [--root DIR] node add <name> --url URL [--token TOKEN]
   xbot [--root DIR] node list
   xbot [--root DIR] node remove <name>
-  xbot [--root DIR] node call <name> <cap>
+  xbot [--root DIR] node call <name> info
+  xbot [--root DIR] node call <name> shell <command>
+  xbot [--root DIR] machine list
+  xbot [--root DIR] machine set <name> allow|ask|off
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
   xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
@@ -138,6 +142,9 @@ func run(argv []string) error {
 	config.HoldKeys(keyNames)
 	tools.UseKeyEnv(keyNames)
 	tools.SetKeyLookup(config.Held)
+	tools.SetMachineGate(func() (string, error) {
+		return machine.Get(root, machine.Local)
+	})
 	if len(rest) == 0 {
 		return errUsage
 	}
@@ -190,6 +197,8 @@ func run(argv []string) error {
 		return cmdWatch(root, rest[1:])
 	case "node":
 		return cmdNode(root, rest[1:])
+	case "machine":
+		return cmdMachine(root, rest[1:])
 	default:
 		return fmt.Errorf("unknown command %q", rest[0])
 	}

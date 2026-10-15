@@ -40,7 +40,28 @@ var (
 	keyEnvMu    sync.Mutex
 	keyEnvNames = []string{"XBOT_API_KEY"}
 	keyLookup   func(string) (string, bool)
+	// machineGate reports this machine's switch: allow, ask, or off.
+	// Nil means allow, so tests and older processes keep the previous rules.
+	machineGate func() (string, error)
 )
+
+// SetMachineGate installs the local machine switch. off refuses shell.
+// ask makes every command need the owner, including read-only ones.
+func SetMachineGate(fn func() (string, error)) {
+	keyEnvMu.Lock()
+	machineGate = fn
+	keyEnvMu.Unlock()
+}
+
+func localMachine() (string, error) {
+	keyEnvMu.Lock()
+	fn := machineGate
+	keyEnvMu.Unlock()
+	if fn == nil {
+		return "allow", nil
+	}
+	return fn()
+}
 
 // SetKeyLookup supplies provider key values kept in memory after they are
 // removed from the process environment. keys:true puts them back for that call.
@@ -80,7 +101,7 @@ func NewShell() *Shell {
 func (s *Shell) Name() string { return "shell" }
 
 func (s *Shell) Description() string {
-	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve."
+	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, or require approval even for a read-only command."
 }
 
 func (s *Shell) Parameters() any {
@@ -110,13 +131,20 @@ func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
+	mode, err := localMachine()
+	if err != nil {
+		return false, "", err
+	}
+	if mode == "off" {
+		return false, "", errors.New("machine local is off")
+	}
 	if in.Keys {
 		return true, in.Command + "\nwith provider keys", nil
 	}
-	if safeShell(in.Command) {
-		return false, in.Command, nil
+	if mode == "ask" || !safeShell(in.Command) {
+		return true, in.Command, nil
 	}
-	return true, in.Command, nil
+	return false, in.Command, nil
 }
 
 func safeShell(command string) bool {
@@ -134,6 +162,13 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	in, err := parseShellArgs(args)
 	if err != nil {
 		return "", err
+	}
+	mode, err := localMachine()
+	if err != nil {
+		return "", err
+	}
+	if mode == "off" {
+		return "", errors.New("machine local is off")
 	}
 	timeout := s.duration(in.TimeoutSeconds)
 	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv(in.Keys))

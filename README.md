@@ -381,4 +381,17 @@ xbot node list
 xbot node call desk info
 ```
 
-`list` 不打印 token。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。这一片只能问身份。在那台机器上跑命令要等机器开关。
+`list` 不打印 token。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。
+
+## 机器开关
+
+每台机器一份，记在这个数据根的 `machines.json`。没设置时是 `allow`。
+
+```bash
+xbot machine list
+xbot machine set local ask
+xbot machine set local off
+xbot machine set desk allow
+```
+
+`allow`：本机 shell 跟以前一样，`date` 这类只读命令不确认。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时，调用方要先让主人确认，命令行 `xbot node call desk shell ...` 算主人自己在跑。文件工具不看这个开关。

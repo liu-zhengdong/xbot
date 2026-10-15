@@ -49,14 +49,14 @@ func TestCallInfo(t *testing.T) {
 		t.Fatal("bad token accepted")
 	}
 	got, err := Ping(ctx, srv.URL, "tok")
-	if err != nil || got.ID != "abc" || got.Name != "desk" || len(got.Caps) != 1 || got.Caps[0] != "info" {
+	if err != nil || got.ID != "abc" || got.Name != "desk" || !containsCap(got.Caps, "info") || !containsCap(got.Caps, "shell") {
 		t.Fatalf("%+v %v", got, err)
 	}
-	text, err := Call(ctx, srv.URL, "tok", "info")
+	text, err := Call(ctx, srv.URL, "tok", "info", "", false)
 	if err != nil || !strings.Contains(text, "id\tabc") || !strings.Contains(text, "os\t") {
 		t.Fatalf("%q %v", text, err)
 	}
-	if _, err := Call(ctx, srv.URL, "tok", "shell"); err == nil || !strings.Contains(err.Error(), "unknown cap") {
+	if _, err := Call(ctx, srv.URL, "tok", "nope", "", false); err == nil || !strings.Contains(err.Error(), "unknown cap") {
 		t.Fatal(err)
 	}
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/call", strings.NewReader(`{"cap":"info","extra":1}`))
@@ -91,6 +91,43 @@ func TestLinkCall(t *testing.T) {
 	if err != nil || !strings.Contains(out, "id\tabc") {
 		t.Fatalf("%q %v", out, err)
 	}
+}
+
+func TestRunShellSwitch(t *testing.T) {
+	root := t.TempDir()
+	text, err := RunShell(root, "echo hello-node", false)
+	if err != nil || !strings.Contains(text, "hello-node") {
+		t.Fatalf("%q %v", text, err)
+	}
+	if err := setMode(root, "off"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunShell(root, "echo no", true); err == nil || !strings.Contains(err.Error(), "off") {
+		t.Fatal(err)
+	}
+	if err := setMode(root, "ask"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunShell(root, "echo no", false); err == nil || !strings.Contains(err.Error(), "ask") {
+		t.Fatal(err)
+	}
+	text, err = RunShell(root, "echo yes-node", true)
+	if err != nil || !strings.Contains(text, "yes-node") {
+		t.Fatalf("%q %v", text, err)
+	}
+}
+
+func setMode(root, mode string) error {
+	return os.WriteFile(root+"/machines.json", []byte(`{"machines":{"local":"`+mode+`"}}`+"\n"), 0600)
+}
+
+func containsCap(caps []string, want string) bool {
+	for _, c := range caps {
+		if c == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEnsureToken(t *testing.T) {

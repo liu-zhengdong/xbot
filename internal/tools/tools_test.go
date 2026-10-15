@@ -84,6 +84,28 @@ func TestShellOptInRestoresHeldKeys(t *testing.T) {
 	}
 }
 
+func TestShellHonorsMachineSwitch(t *testing.T) {
+	t.Cleanup(func() { SetMachineGate(nil) })
+	SetMachineGate(func() (string, error) { return "ask", nil })
+	sh := NewShell()
+	need, _, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))
+	if err != nil || !need {
+		t.Fatalf("ask date need=%v err=%v", need, err)
+	}
+	SetMachineGate(func() (string, error) { return "off", nil })
+	if _, _, err := sh.Confirm(json.RawMessage(`{"command":"date"}`)); err == nil || !strings.Contains(err.Error(), "off") {
+		t.Fatal(err)
+	}
+	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"echo no"}`)); err == nil || !strings.Contains(err.Error(), "off") {
+		t.Fatal(err)
+	}
+	SetMachineGate(nil)
+	need, _, err = sh.Confirm(json.RawMessage(`{"command":"date"}`))
+	if err != nil || need {
+		t.Fatalf("allow date need=%v err=%v", need, err)
+	}
+}
+
 func TestShellEmptyAndConfirm(t *testing.T) {
 	sh := NewShell()
 	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))

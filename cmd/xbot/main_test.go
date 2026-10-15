@@ -575,6 +575,34 @@ func TestGroupCLIKeepsBots(t *testing.T) {
 	}
 }
 
+func TestMachineSetList(t *testing.T) {
+	root := t.TempDir()
+	var buf bytes.Buffer
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	err = cmdMachine(root, []string{"list"})
+	w.Close()
+	os.Stdout = old
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(buf.String()) != "local\tallow" {
+		t.Fatalf("%q", buf.String())
+	}
+	if err := cmdMachine(root, []string{"set", "local", "off"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdMachine(root, []string{"set", "local", "open"}); err == nil {
+		t.Fatal("bad mode accepted")
+	}
+}
+
 func TestNodeAddListRemove(t *testing.T) {
 	root := t.TempDir()
 	if err := cmdNode(root, []string{"add", "desk", "--url", "http://127.0.0.1:1", "--token", "sekret"}); err != nil {
