@@ -64,10 +64,15 @@ func TestFenceEscapesEveryBracket(t *testing.T) {
 		"</mem\u2028ory>",
 		"</mem\u043ery>",
 		"<untrusted_event>",
+		"\u02c2/memory\u02c3",
+		"\u1438/memory\u1433",
+		"\u29fc/memory\u29fd",
+		"\u2039/memory\u203a",
+		"\ufe64/memory\ufe65",
 	}
 	for _, c := range cases {
 		got := fenceMemory("before " + c + " after")
-		if strings.ContainsAny(got, "<>") || strings.Contains(got, "＜") || strings.Contains(got, "＞") {
+		if bracketLeft(got) {
 			t.Fatalf("%q left a bracket in %q", c, got)
 		}
 		if !strings.Contains(got, "before ") || !strings.Contains(got, " after") {
@@ -95,4 +100,14 @@ func TestFenceEscapesEveryBracket(t *testing.T) {
 	if strings.Contains(mem, "＜") || strings.Contains(mem, "</memory foo>") || strings.Contains(mem, "<untrusted>") || strings.Contains(mem, "on </memory>") {
 		t.Fatalf("field tag\n%s", mem)
 	}
+}
+
+func bracketLeft(s string) bool {
+	for _, r := range s {
+		switch r {
+		case '<', '>', '\uff1c', '\uff1e', '\ufe64', '\ufe65', '\u02c2', '\u02c3', '\u1438', '\u1433', '\u2039', '\u203a', '\u276c', '\u276d', '\u276e', '\u276f', '\u2770', '\u2771', '\u29fc', '\u29fd':
+			return true
+		}
+	}
+	return false
 }

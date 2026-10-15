@@ -191,9 +191,9 @@ func fenceMemory(s string) string {
 	b.Grow(len(s))
 	for _, r := range s {
 		switch r {
-		case '<', '\uff1c', '\ufe64', '\u2329', '\u3008', '\u27e8', '\u2039', '\u00ab', '\u276c', '\u276e', '\u2770':
+		case '<', '\uff1c', '\ufe64', '\u2329', '\u3008', '\u27e8', '\u2039', '\u00ab', '\u276c', '\u276e', '\u2770', '\u02c2', '\u1438', '\u29fc':
 			b.WriteString("&lt;")
-		case '>', '\uff1e', '\ufe65', '\u232a', '\u3009', '\u27e9', '\u203a', '\u00bb', '\u276d', '\u276f', '\u2771':
+		case '>', '\uff1e', '\ufe65', '\u232a', '\u3009', '\u27e9', '\u203a', '\u00bb', '\u276d', '\u276f', '\u2771', '\u02c3', '\u1433', '\u29fd':
 			b.WriteString("&gt;")
 		default:
 			b.WriteRune(r)

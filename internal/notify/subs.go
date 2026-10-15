@@ -182,7 +182,9 @@ func blockedHost(host string) bool {
 }
 
 // lookupHost resolves a push hostname. Tests replace it.
-var lookupHost = func(ctx context.Context, host string) ([]net.IP, error) {
+var lookupHost = defaultLookupHost
+
+func defaultLookupHost(ctx context.Context, host string) ([]net.IP, error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, err
@@ -194,6 +196,16 @@ var lookupHost = func(ctx context.Context, host string) ([]net.IP, error) {
 		}
 	}
 	return out, nil
+}
+
+// SetLookupHost replaces hostname resolution. A nil fn restores the default.
+// Tests use it so a fake DNS answer cannot decide the result.
+func SetLookupHost(fn func(context.Context, string) ([]net.IP, error)) {
+	if fn == nil {
+		lookupHost = defaultLookupHost
+		return
+	}
+	lookupHost = fn
 }
 
 // integerHost is a decimal or hex address written as one integer, such as 2130706433.
@@ -290,12 +302,15 @@ var (
 		netip.MustParsePrefix("240.0.0.0/4"),
 	}
 	special6 = []netip.Prefix{
+		netip.MustParsePrefix("64:ff9b::/96"),
 		netip.MustParsePrefix("64:ff9b:1::/48"),
 		netip.MustParsePrefix("100::/64"),
+		netip.MustParsePrefix("2001::/32"),
 		netip.MustParsePrefix("2001:2::/48"),
 		netip.MustParsePrefix("2001:db8::/32"),
 		netip.MustParsePrefix("2001:10::/28"),
 		netip.MustParsePrefix("2001:20::/28"),
+		netip.MustParsePrefix("2002::/16"),
 	}
 )
 

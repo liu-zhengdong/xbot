@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -175,6 +176,10 @@ func TestPushSubscribeAPI(t *testing.T) {
 	if err := json.Unmarshal(status, &st); err != nil || st.PublicKey == "" || st.Subscribed {
 		t.Fatalf("%s %v", status, err)
 	}
+	notify.SetLookupHost(func(context.Context, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("8.8.8.8")}, nil
+	})
+	t.Cleanup(func() { notify.SetLookupHost(nil) })
 	sub := testPushSub(t, "https://example.com/device")
 	res, err := http.NewRequest(http.MethodPost, api.URL+"/api/push/subscribe", bytes.NewReader(mustJSON(t, sub)))
 	if err != nil {

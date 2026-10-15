@@ -162,7 +162,7 @@ func TestEndpointFailsClosed(t *testing.T) {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
-	for _, ip := range []string{"198.18.0.1", "100.64.0.1", "192.0.2.1", "240.0.0.1", "0.1.2.3", "2001:db8::1"} {
+	for _, ip := range []string{"198.18.0.1", "100.64.0.1", "192.0.2.1", "240.0.0.1", "0.1.2.3", "2001:db8::1", "64:ff9b::808:808", "64:ff9b:1::1", "2002:808:808::", "2001::1"} {
 		lookupHost = func(context.Context, string) ([]net.IP, error) {
 			return []net.IP{net.ParseIP(ip)}, nil
 		}
