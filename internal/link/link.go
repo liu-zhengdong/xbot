@@ -42,6 +42,7 @@ const (
 	NameLark     = "lark"
 	NameCoding   = "coding-agent"
 	NameNode     = "node"
+	NameDesktop  = "desktop"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"

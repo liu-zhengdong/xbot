@@ -394,4 +394,19 @@ xbot machine set local off
 xbot machine set desk allow
 ```
 
-`allow`：本机 shell 跟以前一样，`date` 这类只读命令不确认。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时，调用方要先让主人确认，命令行 `xbot node call desk shell ...` 算主人自己在跑。文件工具不看这个开关。
+`allow`：本机 shell 跟以前一样，`date` 这类只读命令不确认。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时，调用方要先让主人确认，命令行 `xbot node call desk shell ...` 算主人自己在跑。文件工具不看这个开关。桌面和浏览器也看这个开关。
+
+## 桌面
+
+需要本机有 `xdotool` 和 ImageMagick 的 `import`。装了 `xprintidle` 时，主人 5 秒内还在用电脑，点击、输入、滚动、按键会停下来；没有这个命令就分不出来，照常做。截图不受这个限制。
+
+```bash
+xbot machine set local allow
+xbot desktop screenshot
+xbot desktop click 100 200
+xbot desktop type 'hello'
+xbot desktop scroll -3
+xbot desktop key Return
+```
+
+`off` 时这些命令直接失败。Bot 里要 `links install desktop`，再 `links load desktop`，才有 `desktop_screenshot`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`。截图写到 `~/.xbot/desktop/`。能用 shell 或 API 做的事不要用桌面。

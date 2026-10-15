@@ -111,6 +111,13 @@ var catalog = []CatalogEntry{
 		Summary:  "把一个 MCP 服务器包成 Link。用 xbot mcp add 登记命令，不从这里安装。",
 	},
 	{
+		ID: "desktop", Title: "桌面", Kind: KindNative,
+		Capabilities: []string{"tools"}, Secrets: []string{},
+		Summary:   "截图、点击、输入、滚动、按键。主人正在用电脑时不抢鼠标。",
+		Keywords:  []string{"desktop", "screenshot", "click"},
+		Available: true, Grant: NameDesktop,
+	},
+	{
 		ID: "node", Title: "节点", Kind: KindNative,
 		Capabilities: []string{"tools"}, Secrets: []string{},
 		Summary:   "调用其他在线节点上的能力。这一片只有 info。",

@@ -575,6 +575,13 @@ func TestGroupCLIKeepsBots(t *testing.T) {
 	}
 }
 
+func TestDesktopRejectsBadKey(t *testing.T) {
+	err := cmdDesktop(t.TempDir(), []string{"key", "rm -rf"})
+	if err == nil || !strings.Contains(err.Error(), "bad key") {
+		t.Fatal(err)
+	}
+}
+
 func TestMachineSetList(t *testing.T) {
 	root := t.TempDir()
 	var buf bytes.Buffer
