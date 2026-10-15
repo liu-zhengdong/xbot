@@ -83,8 +83,19 @@ func parseFacts(raw string) ([]memory.Fact, error) {
 }
 
 func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, from, to int, focus string) {
-	if k.Extractor == nil || k.Memory == nil {
+	if k.Memory == nil {
 		return
+	}
+	facts := k.collectFacts(ctx, entries, from, to, focus, k.turnSender, k.turnTrusted)
+	_ = k.rememberNew(ctx, facts)
+}
+
+// collectFacts asks the extractor for facts in an inclusive sequence range.
+// It does not write memory. sender and trusted are the turn that owned the range,
+// so a background job does not read the kernel's current turn.
+func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, from, to int, focus, sender string, trusted bool) []memory.Fact {
+	if k.Extractor == nil || k.Bot == nil {
+		return nil
 	}
 	turns := make([]provider.Message, 0, to-from+1)
 	var joined strings.Builder
@@ -94,14 +105,15 @@ func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, from, to 
 		joined.WriteByte('\n')
 	}
 	facts, err := k.Extractor.Extract(ctx, focus, turns)
-	if err != nil {
-		return
+	if err != nil || len(facts) == 0 {
+		return nil
 	}
-	untrusted := strings.Contains(joined.String(), "<untrusted_event>") || !k.turnTrusted
+	untrusted := strings.Contains(joined.String(), "<untrusted_event>") || !trusted
+	out := make([]memory.Fact, 0, len(facts))
 	for _, f := range facts {
 		f.WrittenBy = k.Bot.Name()
 		f.BotName = k.Bot.Name()
-		f.PersonID = k.turnSender
+		f.PersonID = sender
 		f.Time = k.now()
 		if f.Tier == "" {
 			f.Tier = memory.TierLog
@@ -114,6 +126,36 @@ func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, from, to 
 				f.Text += " (untrusted, recorded by " + k.Bot.Name() + ")"
 			}
 		}
-		_ = k.Memory.Remember(ctx, f)
+		out = append(out, f)
 	}
+	return out
+}
+
+// rememberNew stores facts that are not already present with the same scope, tier, and text.
+func (k *Kernel) rememberNew(ctx context.Context, facts []memory.Fact) error {
+	if k.Memory == nil || len(facts) == 0 {
+		return nil
+	}
+	for _, f := range facts {
+		got, err := k.Memory.Recall(ctx, memory.Query{
+			Scope: f.Scope, BotName: f.BotName, PersonID: f.PersonID, Tier: f.Tier,
+		})
+		if err != nil {
+			return err
+		}
+		dup := false
+		for _, e := range got {
+			if e.Text == f.Text && e.Scope == f.Scope && e.Tier == f.Tier {
+				dup = true
+				break
+			}
+		}
+		if dup {
+			continue
+		}
+		if err := k.Memory.Remember(ctx, f); err != nil && !errors.Is(err, memory.ErrNotImplemented) {
+			return err
+		}
+	}
+	return nil
 }

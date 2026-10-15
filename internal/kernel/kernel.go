@@ -50,6 +50,8 @@ type Kernel struct {
 
 	startOnce   sync.Once
 	execOnce    sync.Once
+	compactMu   sync.Mutex
+	compactBusy bool
 	turnSender  string
 	turnKind    string
 	turnHops    int
@@ -68,6 +70,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnHops = ev.Hops
 	k.turnChain = ev.Chain
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
+	// Swap a finished background summary on the way in and on the way out.
+	// Both run outside the model call, including when this event is a replay.
+	defer func() {
+		cur, loadErr := k.Bot.LoadState()
+		if loadErr != nil {
+			return
+		}
+		_, _, _ = k.applyReadyJob(migrate(cur))
+	}()
 	entries, err := k.Bot.Entries()
 	if err != nil {
 		return err
@@ -110,10 +121,21 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		entries = append(entries, entry)
 		idx = len(entries) - 1
 	}
+	st, changed, err := k.applyReadyJob(st)
+	if err != nil {
+		return err
+	}
+	if changed {
+		entries, err = k.Bot.Entries()
+		if err != nil {
+			return err
+		}
+	}
 	entries, st, err = k.autoCompact(ctx, entries, st, idx+1, memText)
 	if err != nil {
 		return err
 	}
+	k.maybeStartBackground(entries, st, idx+1, memText)
 	entries, err = k.ensureSnapshot(entries, st)
 	if err != nil {
 		return err
