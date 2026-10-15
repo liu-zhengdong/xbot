@@ -460,6 +460,26 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 	})
 }
 
+// Close releases links that hold a process, such as an MCP server a short-lived
+// kernel connected while calling a tool. It does not stop emitters on a kernel
+// that is still in use.
+func (k *Kernel) Close() error {
+	if k == nil {
+		return nil
+	}
+	var first error
+	for _, l := range k.Links {
+		c, ok := l.(interface{ Close() error })
+		if !ok || c == nil {
+			continue
+		}
+		if err := c.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
 // Deliver is the outbound hook for messages on the user's behalf.
 // The default policy drafts first and sends only after Approve returns true.
 func (k *Kernel) Deliver(ctx context.Context, m link.Messenger, to, body string) error {

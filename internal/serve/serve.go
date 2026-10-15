@@ -36,6 +36,9 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 		}
 		k, err := newK(b)
 		if err != nil {
+			if k != nil {
+				_ = k.Close()
+			}
 			return err
 		}
 		if _, err := kernel.ReleaseQuiet(ctx, b, now, nil); err != nil && first == nil {
@@ -49,13 +52,16 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 		}
 		lock, ok, err := b.TryLockHandle()
 		if err != nil {
+			_ = k.Close()
 			return err
 		}
 		if !ok {
+			_ = k.Close()
 			continue
 		}
 		err = proc.Drain(ctx, k)
 		_ = lock.Release()
+		_ = k.Close()
 		if err != nil && first == nil && !errors.Is(err, context.Canceled) {
 			first = err
 		}

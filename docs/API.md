@@ -208,6 +208,29 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 命令行：`xbot link list`，`xbot link list <bot>`，`xbot link install <bot> <id>`，`xbot link remove <bot> <id>`。
 
+目录里的 `mcp` 仍然 `available: false`。服务器不是一条目录授权，按下节单独登记。
+
+## MCP 服务器
+
+M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`，权限 0600。文件里只有名字、命令、参数和密钥环境变量的名字，没有密钥的值。
+
+`GET /api/bots/{name}/mcp` 要登录，而且这个人是该 Bot 的 owner。不是 owner 或 Bot 不存在是 404 `{"error":"not found"}`。未登录 401。没有服务器时 `servers` 是空数组。
+
+```json
+{"servers":[{
+  "name":"docs",
+  "command":"/usr/bin/mcp-server",
+  "args":["--stdio"],
+  "secret_envs":["API_TOKEN"]
+}]}
+```
+
+`POST /api/bots/{name}/mcp`，body 同样是 `name`、`command`、`args`、`secret_envs`。成功 200，返回刚写入的这一条。名字是 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`。命令不能空，也不能含换行或 NUL。`secret_envs` 的每一项是 `^[A-Z_][A-Z0-9_]*$`。未知字段 400 `{"error":"bad request"}`，所以不能在 body 里带 token 或密钥的值。名字重复 409，正文含 `already exists`。坏名字、坏命令、坏的变量名是 400。
+
+`DELETE /api/bots/{name}/mcp/{server}` 无 body。成功 200 `{"name":"docs"}`。没有这台服务器是 404 `{"error":"not found"}`。
+
+命令行：`xbot mcp list <bot>`，`xbot mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...`，`xbot mcp remove <bot> <name>`。`--arg` 和 `--secret-env` 可以重复。打印和接口都不显示密钥的值。
+
 ## Bot 私聊
 
 `GET /api/bots/{name}/peers/{peer}/messages?limit=N&before=<to>:<seq>`

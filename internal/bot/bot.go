@@ -258,6 +258,11 @@ func (b *Bot) InboxPath() string {
 	return filepath.Join(b.dir(), "inbox.jsonl")
 }
 
+// MCPPath is the bot's MCP server list. Secret values are not stored there.
+func (b *Bot) MCPPath() string {
+	return filepath.Join(b.dir(), "mcp.json")
+}
+
 // SetBinding stores the provider and model names. The API key stays in the environment.
 func (b *Bot) SetBinding(providerName, modelName string) error {
 	b.cfg.Provider = providerName

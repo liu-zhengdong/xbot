@@ -55,6 +55,9 @@ Usage:
   xbot [--root DIR] link list [bot]
   xbot [--root DIR] link install <bot> <id>
   xbot [--root DIR] link remove <bot> <id>
+  xbot [--root DIR] mcp list <bot>
+  xbot [--root DIR] mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...
+  xbot [--root DIR] mcp remove <bot> <name>
   xbot [--root DIR] chat [name] [--yes] [--max-steps N]
   xbot [--root DIR] pin <name>
   xbot [--root DIR] unpin <name>
@@ -131,6 +134,8 @@ func run(argv []string) error {
 		return cmdGroup(root, rest[1:])
 	case "link":
 		return cmdLink(root, rest[1:])
+	case "mcp":
+		return cmdMCP(root, rest[1:])
 	case "chat":
 		return cmdChat(root, rest[1:])
 	case "pin":
@@ -980,6 +985,7 @@ func cmdChat(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	k.StartEmitters(ctx)
 	seen, err := b.Count()
 	if err != nil {
 		return err
@@ -1170,7 +1176,48 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		}
 		out = append(out, link.Runner{BaseURL: runner.URL, Token: runner.Token})
 	}
+	servers, err := link.LoadMCP(b.MCPPath())
+	if err != nil {
+		return nil, err
+	}
+	for i := range servers {
+		out = append(out, link.NewMCP(servers[i]))
+	}
 	return out, nil
+}
+
+// startEmitters keeps one long-lived kernel for each bot that has an MCP server
+// so notifications reach the inbox while serve is up. The kernel serve.Pass
+// builds every interval is short-lived and must not open another connection.
+// The first server is picked up on a later pass. After that, mcp.json edits
+// need a restart.
+func startEmitters(ctx context.Context, root string, seen map[string]bool) {
+	if ctx.Err() != nil {
+		return
+	}
+	cfgs, err := bot.List(root)
+	if err != nil {
+		return
+	}
+	for _, cfg := range cfgs {
+		if seen[cfg.Name] {
+			continue
+		}
+		b, err := bot.Load(root, cfg.Name)
+		if err != nil {
+			continue
+		}
+		servers, err := link.LoadMCP(b.MCPPath())
+		if err != nil || len(servers) == 0 {
+			continue
+		}
+		k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
+		if err != nil {
+			continue
+		}
+		k.StartEmitters(ctx)
+		seen[cfg.Name] = true
+	}
 }
 
 func showNotes(b *bot.Bot) error {
@@ -1300,7 +1347,9 @@ func cmdServe(root string, args []string) error {
 			}
 		}
 	}()
+	seen := map[string]bool{}
 	for {
+		startEmitters(ctx, root, seen)
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
 			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
 			return k, err

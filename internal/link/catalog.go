@@ -5,7 +5,7 @@ import "errors"
 const (
 	// KindNative is a Link implemented in this process.
 	KindNative = "native"
-	// KindMCP is a Link backed by an MCP server. The adapter is a later slice.
+	// KindMCP is a Link backed by an MCP server. Servers are added with xbot mcp, not installed from this catalog.
 	KindMCP = "mcp"
 )
 
@@ -95,7 +95,7 @@ var catalog = []CatalogEntry{
 	{
 		ID: "mcp", Title: "MCP", Kind: KindMCP,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
-		Summary: "把一个 MCP 服务器包成 Link。适配器还没接上。",
+		Summary: "把一个 MCP 服务器包成 Link。用 xbot mcp add 登记命令，不从这里安装。",
 	},
 	{
 		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
