@@ -56,8 +56,8 @@ func TestRoutineLowImportanceHeldThenReleased(t *testing.T) {
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	b := mustBot(t, root, "ada")
-	start, end := "22:00", "07:00"
-	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end}); err != nil {
+	start, end, utc := "22:00", "07:00", "UTC"
+	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &utc}); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&link.Timer{Dir: b.RoutineDir(), Sender: "u1"}).Save(link.Routine{

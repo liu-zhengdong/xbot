@@ -144,8 +144,8 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 func TestNotifyThresholdAndQuietHours(t *testing.T) {
 	b := testBot(t)
 	pro := "quiet"
-	start, end := "22:00", "07:00"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &pro, QuietStart: &start, QuietEnd: &end}); err != nil {
+	start, end, utc := "22:00", "07:00", "UTC"
+	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &pro, QuietStart: &start, QuietEnd: &end, Timezone: &utc}); err != nil {
 		t.Fatal(err)
 	}
 	var desks []string
@@ -290,6 +290,24 @@ func TestRenameUpdatesPrimaryWorkAndGroup(t *testing.T) {
 	joined := strings.Join(got.Members, ",")
 	if joined != "ada2,bob" {
 		t.Fatalf("members %s", joined)
+	}
+}
+
+func TestNotifyHeldAtShanghaiEvening(t *testing.T) {
+	b := testBot(t)
+	start, end, tz := "18:00", "23:59", "Asia/Shanghai"
+	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &tz}); err != nil {
+		t.Fatal(err)
+	}
+	sh, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 15, 18, 44, 0, 0, sh)
+	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turnSource: link.NameTimer}
+	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"evening"}`))
+	if err != nil || out != "held until quiet hours end" {
+		t.Fatalf("%s %v", out, err)
 	}
 }
 

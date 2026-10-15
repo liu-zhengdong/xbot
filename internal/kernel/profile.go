@@ -20,8 +20,7 @@ func ReleaseQuiet(ctx context.Context, b *bot.Bot, now time.Time, desk func(cont
 	if b == nil {
 		return 0, nil
 	}
-	cfg := b.Config()
-	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, now) {
+	if b.InQuietAt(now) {
 		return 0, nil
 	}
 	notes, err := notify.TakeHeld(b.HeldPath())
@@ -72,8 +71,8 @@ func (profileTool) Parameters() any {
 		"emoji":       stringProp("none, spare, often, or empty"),
 		"language":    stringProp("default reply language; empty clears it"),
 		"proactivity": stringProp("quiet, normal, active, or empty"),
-		"quiet_start": stringProp("quiet hours start HH:MM UTC; set with quiet_end"),
-		"quiet_end":   stringProp("quiet hours end HH:MM UTC; set with quiet_start"),
+		"quiet_start": stringProp("quiet hours start HH:MM in the bot's timezone; set with quiet_end"),
+		"quiet_end":   stringProp("quiet hours end HH:MM in the bot's timezone; set with quiet_start"),
 		"timezone":    stringProp("IANA timezone such as Asia/Shanghai; empty uses the machine zone"),
 	}, nil)
 }

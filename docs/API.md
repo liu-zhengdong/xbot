@@ -87,7 +87,7 @@
 }
 ```
 
-`style.length` 是 `short` | `medium` | `long`，空字符串表示没设。`style.emoji` 是 `none` | `spare` | `often`。`proactivity` 是 `quiet` | `normal` | `active`，空字符串按适中处理，并且不会改稳定前缀。免打扰是 UTC 的 `HH:MM`，窗口可以跨过午夜。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示用这台机器的本地时区。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统。
+`style.length` 是 `short` | `medium` | `long`，空字符串表示没设。`style.emoji` 是 `none` | `spare` | `often`。`proactivity` 是 `quiet` | `normal` | `active`，空字符串按适中处理，并且不会改稳定前缀。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统。
 
 `PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`tone`（80）、`length`、`emoji`、`language`（40）、`proactivity`、`quiet_start`、`quiet_end`、`timezone`、`persona`。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
 

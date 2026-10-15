@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,11 +31,11 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 		t.Fatalf("empty profile changed persona %q", composed)
 	}
 	tone, length, emoji, lang := "warm and plain", "short", "none", "中文"
-	pro, start, end := "quiet", "22:00", "07:00"
+	pro, start, end, utc := "quiet", "22:00", "07:00", "UTC"
 	desc := "项目笔记"
 	if err := b.ApplyProfile(ProfileUpdate{
 		Description: &desc, Tone: &tone, Length: &length, Emoji: &emoji, Language: &lang,
-		Proactivity: &pro, QuietStart: &start, QuietEnd: &end,
+		Proactivity: &pro, QuietStart: &start, QuietEnd: &end, Timezone: &utc,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +88,55 @@ func TestAllowsNotifyAndQuietWindow(t *testing.T) {
 	}
 	if InQuiet("", "", night) || InQuiet("09:00", "09:00", day) {
 		t.Fatal("disabled window")
+	}
+}
+
+func TestQuietHoursUseBotThenOwnerTimezone(t *testing.T) {
+	root := t.TempDir()
+	b, err := Create(root, "ada", "Be brief.", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, end, tz := "18:00", "23:59", "Asia/Shanghai"
+	if err := b.ApplyProfile(ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &tz}); err != nil {
+		t.Fatal(err)
+	}
+	shanghai := time.Date(2026, 10, 15, 18, 44, 0, 0, sh)
+	if !b.InQuietAt(shanghai) || !b.InQuietAt(shanghai.UTC()) {
+		t.Fatal("18:44 Shanghai should be quiet")
+	}
+	utcEvening := time.Date(2026, 10, 15, 18, 44, 0, 0, time.UTC)
+	if b.InQuietAt(utcEvening) {
+		t.Fatal("18:44 UTC is 02:44 in Shanghai")
+	}
+	if !strings.Contains(b.ProfileText(), "Quiet hours: 18:00–23:59 Asia/Shanghai.") {
+		t.Fatal(b.ProfileText())
+	}
+
+	cleared := ""
+	if err := b.ApplyProfile(ProfileUpdate{Timezone: &cleared}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "people", "u1")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"id":"u1","display_name":"U","timezone":"Asia/Shanghai"}`)
+	if err := os.WriteFile(filepath.Join(dir, "identity.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !b.InQuietAt(shanghai.UTC()) {
+		t.Fatal("owner timezone should hold 18:44 Shanghai")
+	}
+	if b.QuietLocation().String() != "Asia/Shanghai" {
+		t.Fatal(b.QuietLocation())
 	}
 }
 

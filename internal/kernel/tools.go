@@ -286,7 +286,7 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if t.k.gateNotify() && !bot.AllowsNotify(cfg.Proactivity, in.Importance) {
 		return "not notified: below the proactivity threshold", nil
 	}
-	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, t.k.now()) {
+	if t.k.Bot.InQuietAt(t.k.now()) {
 		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
 			return "", err
 		}
@@ -363,7 +363,7 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	if !bot.AllowsNotify(cfg.Proactivity, "normal") {
 		return nil
 	}
-	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, k.now()) {
+	if k.Bot.InQuietAt(k.now()) {
 		return notify.Hold(k.Bot.HeldPath(), text)
 	}
 	if _, err := k.releaseQuiet(ctx); err != nil {
@@ -387,8 +387,7 @@ func finalAssistantText(msgs []provider.Message) string {
 }
 
 func (k *Kernel) releaseQuiet(ctx context.Context) (int, error) {
-	cfg := k.Bot.Config()
-	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, k.now()) {
+	if k.Bot.InQuietAt(k.now()) {
 		return 0, nil
 	}
 	return ReleaseQuiet(ctx, k.Bot, k.now(), k.Desktop)

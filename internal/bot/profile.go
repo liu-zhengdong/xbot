@@ -17,6 +17,7 @@ import (
 
 	"xbot/internal/fsutil"
 	"xbot/internal/link"
+	"xbot/internal/person"
 	"xbot/internal/work"
 )
 
@@ -210,7 +211,7 @@ func (b *Bot) ProfileText() string {
 		lines = append(lines, "Proactivity: active. Notify the owner about anything they might want to know, including on untrusted wakes. Importance may be low.")
 	}
 	if b.cfg.QuietStart != "" && b.cfg.QuietEnd != "" && b.cfg.QuietStart != b.cfg.QuietEnd {
-		lines = append(lines, fmt.Sprintf("Quiet hours: %s–%s UTC. Notifications are held and sent as one batch when quiet hours end.", b.cfg.QuietStart, b.cfg.QuietEnd))
+		lines = append(lines, fmt.Sprintf("Quiet hours: %s–%s %s. Notifications are held and sent as one batch when quiet hours end.", b.cfg.QuietStart, b.cfg.QuietEnd, b.QuietLocation().String()))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -253,7 +254,59 @@ func AllowsNotify(level, importance string) bool {
 	return ir >= nr
 }
 
-// InQuiet reports whether now (UTC) falls in [start, end).
+// QuietLocation is the clock for quiet hours: the bot's IANA zone,
+// then the sole owner's zone, then the process local zone.
+func (b *Bot) QuietLocation() *time.Location {
+	if b != nil {
+		if loc, ok := loadZone(b.cfg.Timezone); ok {
+			return loc
+		}
+		if loc, ok := loadZone(b.ownerTimezone()); ok {
+			return loc
+		}
+	}
+	if time.Local != nil {
+		return time.Local
+	}
+	return time.UTC
+}
+
+func (b *Bot) ownerTimezone() string {
+	if b == nil || b.Root == "" {
+		return ""
+	}
+	owners := b.cfg.Owners
+	if len(owners) != 1 {
+		return ""
+	}
+	p, err := person.Load(b.Root, owners[0])
+	if err != nil {
+		return ""
+	}
+	return p.Timezone
+}
+
+func loadZone(name string) (*time.Location, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, false
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, false
+	}
+	return loc, true
+}
+
+// InQuietAt reports whether now falls in this bot's quiet window.
+func (b *Bot) InQuietAt(now time.Time) bool {
+	if b == nil {
+		return false
+	}
+	return InQuiet(b.cfg.QuietStart, b.cfg.QuietEnd, now.In(b.QuietLocation()))
+}
+
+// InQuiet reports whether now falls in [start, end) on now's own clock.
 // An empty window, or equal endpoints, is off. A window may cross midnight.
 func InQuiet(start, end string, now time.Time) bool {
 	if start == "" || end == "" || start == end {
@@ -264,7 +317,11 @@ func InQuiet(start, end string, now time.Time) bool {
 	if !ok1 || !ok2 || sm == em {
 		return false
 	}
-	now = now.UTC()
+	loc := now.Location()
+	if loc == nil {
+		loc = time.UTC
+	}
+	now = now.In(loc)
 	cur := now.Hour()*60 + now.Minute()
 	if sm < em {
 		return cur >= sm && cur < em
