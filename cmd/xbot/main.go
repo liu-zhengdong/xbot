@@ -124,7 +124,10 @@ func run(argv []string) error {
 	if err != nil {
 		return err
 	}
-	tools.UseKeyEnv(config.KeyEnvNames(root))
+	keyNames := config.KeyEnvNames(root)
+	config.HoldKeys(keyNames)
+	tools.UseKeyEnv(keyNames)
+	tools.SetKeyLookup(config.Held)
 	if len(rest) == 0 {
 		return errUsage
 	}
@@ -1083,7 +1086,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	resolved, contextLen, err := config.Resolve(root, b.Config().Provider, b.Config().Model, os.Getenv)
+	resolved, contextLen, err := config.Resolve(root, b.Config().Provider, b.Config().Model, config.Getenv)
 	if err != nil {
 		return nil, person.Person{}, err
 	}

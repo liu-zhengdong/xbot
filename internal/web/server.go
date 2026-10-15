@@ -461,12 +461,12 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 func runningModel(root string, b *bot.Bot) (string, string) {
 	providerName := strings.TrimSpace(b.Config().Provider)
 	modelName := strings.TrimSpace(b.Config().Model)
-	resolved, _, err := config.Resolve(root, providerName, modelName, os.Getenv)
+	resolved, _, err := config.Resolve(root, providerName, modelName, config.Getenv)
 	if err == nil && strings.TrimSpace(resolved.Model) != "" {
 		return providerName, resolved.Model
 	}
 	if modelName == "" {
-		modelName = config.FromEnv(os.Getenv).Model
+		modelName = config.FromEnv(config.Getenv).Model
 	}
 	return providerName, modelName
 }

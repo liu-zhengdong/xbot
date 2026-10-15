@@ -39,7 +39,16 @@ type Shell struct {
 var (
 	keyEnvMu    sync.Mutex
 	keyEnvNames = []string{"XBOT_API_KEY"}
+	keyLookup   func(string) (string, bool)
 )
+
+// SetKeyLookup supplies provider key values kept in memory after they are
+// removed from the process environment. keys:true puts them back for that call.
+func SetKeyLookup(fn func(string) (string, bool)) {
+	keyEnvMu.Lock()
+	keyLookup = fn
+	keyEnvMu.Unlock()
+}
 
 // UseKeyEnv sets provider API key variable names that shell commands omit
 // unless the call sets keys. XBOT_API_KEY is always included.
@@ -131,15 +140,18 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 }
 
 func (s *Shell) commandEnv(passKeys bool) []string {
-	var blocked []string
-	if !passKeys {
-		blocked = s.blockedKeys()
+	blocked := s.blockedKeys()
+	extra := map[string]string{}
+	if passKeys {
+		extra = heldFor(blocked)
 	}
-	if s.Dir == "" && s.Shared == "" && len(blocked) == 0 {
+	if s.Dir == "" && s.Shared == "" && len(extra) == 0 && (passKeys || len(blocked) == 0) {
 		return nil
 	}
 	env := append([]string{}, os.Environ()...)
-	if len(blocked) > 0 {
+	if passKeys {
+		env = mergeHeld(env, extra)
+	} else {
 		env = stripEnv(env, blocked)
 	}
 	if s.Dir != "" {
@@ -147,6 +159,37 @@ func (s *Shell) commandEnv(passKeys bool) []string {
 	}
 	if s.Shared != "" {
 		env = append(env, "XBOT_SHARED="+s.Shared)
+	}
+	return env
+}
+
+func heldFor(names []string) map[string]string {
+	keyEnvMu.Lock()
+	fn := keyLookup
+	keyEnvMu.Unlock()
+	if fn == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, name := range names {
+		if value, ok := fn(name); ok {
+			out[name] = value
+		}
+	}
+	return out
+}
+
+func mergeHeld(env []string, extra map[string]string) []string {
+	if len(extra) == 0 {
+		return env
+	}
+	names := make([]string, 0, len(extra))
+	for name := range extra {
+		names = append(names, name)
+	}
+	env = stripEnv(env, names)
+	for _, name := range names {
+		env = append(env, name+"="+extra[name])
 	}
 	return env
 }

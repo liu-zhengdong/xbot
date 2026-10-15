@@ -55,6 +55,35 @@ func TestShellOmitsProviderKeysUnlessOptIn(t *testing.T) {
 	}
 }
 
+func TestShellOptInRestoresHeldKeys(t *testing.T) {
+	t.Setenv("XBOT_API_KEY", "sekret-held")
+	if err := os.Unsetenv("XBOT_API_KEY"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { SetKeyLookup(nil) })
+	SetKeyLookup(func(name string) (string, bool) {
+		if name == "XBOT_API_KEY" {
+			return "sekret-held", true
+		}
+		return "", false
+	})
+	sh := NewShell()
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY || true"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "sekret-held") {
+		t.Fatalf("default call saw the held key: %q", out)
+	}
+	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY","keys":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "sekret-held") {
+		t.Fatalf("opt-in missed the held key: %q", out)
+	}
+}
+
 func TestShellEmptyAndConfirm(t *testing.T) {
 	sh := NewShell()
 	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))
