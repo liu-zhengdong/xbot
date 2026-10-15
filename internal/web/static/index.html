@@ -30,7 +30,6 @@ try {
       <svg viewBox="0 0 80 80"><path fill="#E4CDB8" d="M40 6C58 4 74 16 74 36C74 58 58 76 38 74C16 72 4 56 8 36C12 16 24 8 40 6Z"/><ellipse cx="30" cy="36" rx="3.4" ry="4" fill="#3A342F"/><ellipse cx="50" cy="36" rx="3.4" ry="4" fill="#3A342F"/><path d="M33 50 Q40 55 47 50" fill="none" stroke="#3A342F" stroke-width="2" stroke-linecap="round"/></svg>
     </div>
     <h1>XBot</h1>
-    <p class="muted">用这台机器上 <code>xbot serve</code> 打印的 token 登录。</p>
     <label class="field">
       <span>登录 token</span>
       <input id="token" name="token" type="password" autocomplete="current-password" required>
@@ -51,7 +50,7 @@ try {
         <span id="me-avatar"></span>
         <span id="me-name" class="me-name">我</span>
         <span class="spacer"></span>
-        <button id="theme" class="icon-btn" type="button" aria-label="外观" title="外观">
+        <button id="theme" class="icon-btn" type="button" aria-label="外观" data-tip="外观">
           <svg id="theme-icon" class="icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
         </button>
       </div>
@@ -61,10 +60,10 @@ try {
           <span>连接应用</span>
         </button>
         <div id="connect-pop" class="pop" hidden>
-          <div class="pop-row"><span>终端</span><span class="meta">已启用</span></div>
-          <div class="pop-row"><span>浏览器</span><span class="meta">未连接</span></div>
-          <div class="pop-row"><span>桌面</span><span class="meta">未连接</span></div>
-          <div class="pop-row"><span>MCP</span><span class="meta">未连接</span></div>
+          <div class="pop-row"><span>终端</span><i class="status-dot ok" data-tip="已启用"></i></div>
+          <div class="pop-row"><span>浏览器</span><i class="status-dot off" data-tip="未连接"></i></div>
+          <div class="pop-row"><span>桌面</span><i class="status-dot off" data-tip="未连接"></i></div>
+          <div class="pop-row"><span>MCP</span><i class="status-dot off" data-tip="未连接"></i></div>
           <button id="logout" type="button">退出</button>
           <button id="collapse" class="desk-only" type="button">收起列表</button>
         </div>
@@ -76,27 +75,30 @@ try {
   <main class="main">
     <header class="top">
       <div class="top-inner">
-        <button id="menu" class="icon-btn mobile-only" type="button" aria-label="打开列表">
+        <button id="menu" class="icon-btn mobile-only" type="button" aria-label="列表" data-tip="列表">
           <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
+        </button>
+        <button id="back" class="icon-btn" type="button" aria-label="返回" data-tip="返回" hidden>
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <div class="top-title">
           <div id="title" class="title">XBot</div>
           <div id="subtitle" class="subtitle" hidden></div>
         </div>
-        <button id="bell" class="icon-btn" type="button" aria-label="通知">
+        <button id="bell" class="icon-btn" type="button" aria-label="通知" data-tip="通知">
           <svg class="icon" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
           <i id="bell-dot" class="dot" hidden></i>
         </button>
         <div id="notes" class="notes" hidden></div>
         <div class="more-wrap">
-          <button id="more" class="icon-btn" type="button" aria-label="更多操作" aria-expanded="false" hidden>
-            <svg class="icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.25" fill="currentColor" stroke="none"/></svg>
+          <button id="more" class="icon-btn" type="button" aria-label="更多" data-tip="更多" aria-expanded="false" hidden>
+            <svg class="icon" viewBox="0 0 24 24"><circle class="solid" cx="5" cy="12" r="1.5"/><circle class="solid" cx="12" cy="12" r="1.5"/><circle class="solid" cx="19" cy="12" r="1.5"/></svg>
           </button>
           <div id="more-menu" class="pop more-pop" hidden>
             <button id="export-chat" type="button">导出对话</button>
           </div>
         </div>
-        <button id="info" class="icon-btn" type="button" aria-label="详情" aria-expanded="false">
+        <button id="info" class="icon-btn" type="button" aria-label="详情" data-tip="详情" aria-expanded="false">
           <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
         </button>
       </div>
@@ -105,18 +107,18 @@ try {
     <div class="dock">
       <form id="composer" class="composer">
         <div class="plus-wrap">
-          <button id="plus" class="icon-btn" type="button" aria-label="更多" aria-expanded="false">
+          <button id="plus" class="icon-btn" type="button" aria-label="更多" data-tip="更多" aria-expanded="false">
             <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           </button>
           <div id="plus-menu" class="pop plus-pop" hidden>
-            <button type="button" disabled>附件还没接上</button>
+            <button type="button" disabled>附件</button>
           </div>
         </div>
         <textarea id="input" rows="1" placeholder="写一条消息" maxlength="16000"></textarea>
-        <button id="mic" class="icon-btn" type="button" disabled title="语音还没接上" aria-label="语音">
+        <button id="mic" class="icon-btn" type="button" disabled data-tip="语音" aria-label="语音">
           <svg class="icon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
         </button>
-        <button id="send" class="send" type="submit" aria-label="发送">
+        <button id="send" class="send" type="submit" aria-label="发送" data-tip="发送">
           <svg class="icon" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
         </button>
       </form>
@@ -125,9 +127,20 @@ try {
 
   <aside id="panel" class="panel" aria-label="详情">
     <div class="sheet-handle" aria-hidden="true"></div>
-    <button id="panel-close" class="icon-btn panel-x" type="button" aria-label="关闭详情">
-      <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-    </button>
+    <div class="panel-bar">
+      <div class="panel-more-wrap">
+        <button id="panel-more" class="ghost" type="button" aria-label="更多" data-tip="更多" aria-expanded="false" hidden>
+          <svg class="icon" viewBox="0 0 24 24"><circle class="solid" cx="5" cy="12" r="1.5"/><circle class="solid" cx="12" cy="12" r="1.5"/><circle class="solid" cx="19" cy="12" r="1.5"/></svg>
+        </button>
+        <div id="panel-menu" class="pop panel-menu" hidden></div>
+      </div>
+      <button id="panel-export" class="ghost" type="button" aria-label="导出" data-tip="导出" hidden>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+      </button>
+      <button id="panel-close" class="ghost" type="button" aria-label="关闭" data-tip="关闭">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
     <div id="panel-body" class="panel-body"></div>
   </aside>
 </div>

@@ -34,17 +34,17 @@
     tab: "details",
     panelData: null,
     panelTouched: false,
+    editOpen: false,
+    messages: [],
+    traceOpen: {},
+    traceOut: {},
+    peer: null,
   };
 
   const FACES = [
-    { bg: "#E4CDB8", shape: "M40 6C58 4 74 16 74 36C74 58 58 76 38 74C16 72 4 56 8 36C12 16 24 8 40 6Z", eyes: [30, 36, 50, 36] },
-    { bg: "#C9D7CE", shape: "M28 8C48 2 70 14 72 34C74 56 58 74 36 76C14 78 4 60 6 40C8 18 14 12 28 8Z", eyes: [28, 34, 48, 38] },
-    { bg: "#E3D0D6", shape: "M44 8C62 12 76 26 72 44C68 64 50 76 32 74C12 72 4 54 8 36C12 16 26 4 44 8Z", eyes: [32, 38, 52, 34] },
-    { bg: "#D5D8E4", shape: "M36 4C54 6 72 8 76 28C80 48 66 72 44 76C22 80 6 64 6 42C6 20 18 2 36 4Z", eyes: [29, 36, 49, 36] },
-    { bg: "#E6D7B8", shape: "M40 8C56 2 74 18 72 38C70 58 54 74 34 74C14 74 6 56 10 36C14 16 24 12 40 8Z", eyes: [31, 37, 51, 33] },
-    { bg: "#C9D6DE", shape: "M32 6C52 4 70 10 74 30C78 52 60 76 38 74C16 72 4 54 8 34C12 14 18 8 32 6Z", eyes: [27, 35, 47, 37] },
-    { bg: "#E5D3C4", shape: "M42 5C60 8 76 20 74 40C72 60 54 78 34 74C12 70 2 52 8 32C14 12 24 2 42 5Z", eyes: [30, 34, 50, 38] },
-    { bg: "#D4DDD4", shape: "M38 8C54 2 72 14 74 34C76 56 58 74 38 76C16 78 4 58 8 38C12 16 22 12 38 8Z", eyes: [29, 38, 49, 34] },
+    { bg: "#D5DDD6", shape: "M40 6C58 4 74 16 74 36C74 58 58 76 38 74C16 72 4 56 8 36C12 16 24 8 40 6Z", eyes: [30, 36, 50, 36] },
+    { bg: "#E3D9CE", shape: "M28 8C48 2 70 14 72 34C74 56 58 74 36 76C14 78 4 60 6 40C8 18 14 12 28 8Z", eyes: [28, 34, 48, 38] },
+    { bg: "#D5D9E3", shape: "M44 8C62 12 76 26 72 44C68 64 50 76 32 74C12 72 4 54 8 36C12 16 26 4 44 8Z", eyes: [32, 38, 52, 34] },
   ];
 
   const THEME_MOON = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
@@ -113,6 +113,14 @@
     return node;
   }
 
+  function setTip(node, text) {
+    if (!node) return;
+    const value = text ? String(text) : "";
+    if (value) node.dataset.tip = value;
+    else delete node.dataset.tip;
+    node.removeAttribute("title");
+  }
+
   function clip(s, n) {
     s = String(s || "").replace(/\s+/g, " ").trim();
     if (s.length <= n) return s;
@@ -155,6 +163,15 @@
     return label;
   }
 
+  function niceName(slug) {
+    const raw = String(slug || "").trim();
+    if (!raw) return "";
+    if (/[^\u0000-\u007F]/.test(raw)) return raw;
+    const parts = raw.split(/[-_\s]+/).filter(Boolean);
+    if (!parts.length) return raw;
+    return parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  }
+
   function hashName(name) {
     let h = 2166136261;
     const s = String(name || "?");
@@ -166,8 +183,15 @@
     terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
+    chevronLeft: '<path d="m15 18-6-6 6-6"/>',
+    chevronDown: '<path d="m6 9 6 6 6-6"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    ellipsis: '<circle class="solid" cx="5" cy="12" r="1.5"/><circle class="solid" cx="12" cy="12" r="1.5"/><circle class="solid" cx="19" cy="12" r="1.5"/>',
     wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
   };
 
   function icon(name, extra) {
@@ -209,6 +233,7 @@
   function avatar(name, paint, size) {
     paint = paint || {};
     const av = el("span", "avatar" + (size ? " " + size : ""));
+    if (name) setTip(av, name);
     av.append(faceFor(name, paint));
     if (paint.url) {
       const img = document.createElement("img");
@@ -442,7 +467,9 @@
       cell.append(img);
       if (extra && i === show.length - 1) {
         cell.classList.add("more");
-        cell.append(el("span", "plus", "+" + extra));
+        const plus = el("span", "plus");
+        plus.append(icon("plus"), el("span", "", String(extra)));
+        cell.append(plus);
       }
       cell.addEventListener("click", () => openShots(urls));
       box.append(cell);
@@ -518,57 +545,105 @@
 
   function peerPhrase(name, args, who) {
     const text = clip(args.text || args.prompt || "", 72);
+    const from = niceName(who) || "Bot";
     if (name === "message_bot") {
       const to = args.bot || args.to || "";
-      if (!to) return (who || "Bot") + (text ? " · " + text : " 发给了另一个 Bot");
-      return (who || "Bot") + " 发给 " + to + (text ? " · " + text : "");
+      const line = !to
+        ? from + (text ? " · " + text : " 发给了另一个 Bot")
+        : from + " 发给 " + niceName(to) + (text ? " · " + text : "");
+      return { text: line, peer: to };
     }
     if (name === "post_group") {
       const g = args.name || args.id || "群";
-      return (who || "Bot") + " 发到 " + g + (text ? " · " + text : "");
+      return { text: from + " 发到 " + niceName(g) + (text ? " · " + text : ""), peer: "" };
     }
-    if (name === "create_group") return (who || "Bot") + " 建了群" + (args.name ? " · " + args.name : "");
-    if (name === "fork_bot") return (who || "Bot") + " 复刻出 " + (args.name || "新 Bot");
-    return "";
+    if (name === "create_group") return { text: from + " 建了群" + (args.name ? " · " + niceName(args.name) : ""), peer: "" };
+    if (name === "fork_bot") return { text: from + " 复刻出 " + niceName(args.name || "新 Bot"), peer: "" };
+    return null;
   }
 
   function toolIconName(name) {
     return /shell|bash|exec|terminal/i.test(name || "") ? "terminal" : "wrench";
   }
 
+  function closeToolPop() {
+    const pop = document.querySelector(".tool-pop");
+    if (pop) pop.remove();
+    document.querySelectorAll(".card.open").forEach((node) => node.classList.remove("open"));
+  }
+
+  function openToolPop(anchor, text) {
+    closeToolPop();
+    const pop = el("div", "pop tool-pop");
+    const pre = document.createElement("pre");
+    pre.textContent = text;
+    pop.append(pre);
+    document.body.append(pop);
+    const r = anchor.getBoundingClientRect();
+    const width = Math.min(420, window.innerWidth - 24);
+    let left = r.left;
+    if (left + width > window.innerWidth - 12) left = window.innerWidth - 12 - width;
+    if (left < 12) left = 12;
+    pop.style.width = width + "px";
+    pop.style.left = left + "px";
+    let top = r.bottom + 6;
+    if (top + 180 > window.innerHeight) top = Math.max(12, r.top - 186);
+    pop.style.top = top + "px";
+    anchor.classList.add("open");
+  }
+
   function toolShell(name, line, resultText) {
-    const card = document.createElement("details");
-    card.className = "card";
-    const sum = document.createElement("summary");
-    sum.className = "card-head";
+    const card = el("button", "card");
+    card.type = "button";
+    const head = el("span", "card-head");
     const well = el("span", "card-icon");
     well.append(icon(toolIconName(name)));
     const text = el("span", "card-copy");
     text.append(el("div", "card-title", name || "tool"));
     if (line) text.append(el("div", "card-sub", line));
-    sum.append(well, text, icon("chevron", "chev"));
-    card.append(sum);
-    if (resultText) {
-      const pre = document.createElement("pre");
-      pre.textContent = resultText;
-      card.append(pre);
+    head.append(well, text);
+    if (resultText) head.append(icon("chevron", "chev"));
+    card.append(head);
+    if (!resultText) card.disabled = true;
+    else {
+      card.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (card.classList.contains("open")) closeToolPop();
+        else openToolPop(card, resultText);
+      });
     }
     return card;
+  }
+
+  function armCopy(row) {
+    let timer = 0;
+    row.addEventListener("pointerdown", () => {
+      timer = window.setTimeout(() => row.classList.add("reveal"), 420);
+    });
+    const stop = () => window.clearTimeout(timer);
+    row.addEventListener("pointerup", stop);
+    row.addEventListener("pointercancel", stop);
+    row.addEventListener("pointerleave", stop);
   }
 
   function copyBtn(text) {
     const btn = el("button", "copy");
     btn.type = "button";
     btn.setAttribute("aria-label", "复制");
-    btn.title = "复制";
+    setTip(btn, "复制");
     btn.append(icon("copy"));
     btn.addEventListener("click", () => copyText(text || "", btn));
     return btn;
   }
 
-  function systemLine(text, who) {
-    const row = el("div", "sysline");
-    row.title = text;
+  function systemLine(text, who, peer) {
+    const row = el(peer ? "button" : "div", "sysline" + (peer ? " link" : ""));
+    setTip(row, text);
+    if (peer) {
+      row.type = "button";
+      row.dataset.peer = peer;
+      row.addEventListener("click", () => openPeer(state.sel && state.sel.id, peer));
+    }
     if (who) row.append(avatar(who, paintOf(who), "xs"));
     row.append(el("span", "label", text));
     return row;
@@ -648,6 +723,7 @@
     metaRow.append(el("span", "meta", when(m.time)), copyBtn(parsed.text));
     wrap.append(metaRow);
     row.append(wrap);
+    armCopy(row);
     return row;
   }
 
@@ -655,7 +731,11 @@
     const row = el("div", "msg bot");
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
-    if (showName) body.append(el("div", "who", who));
+    if (showName) {
+      const name = el("div", "who", niceName(who));
+      if (who) setTip(name, who);
+      body.append(name);
+    }
     if (m.content) appendRich(body, m.content);
     const calls = m.tool_calls || [];
     const peers = [];
@@ -674,12 +754,12 @@
         body.append(optionCards(info, laterUser(messages, index)));
         continue;
       }
-      body.append(toolShell(info.name, info.line, results[call.id] && results[call.id].content));
     }
     const metaRow = el("div", "meta-row");
     metaRow.append(el("span", "meta", when(m.time)), copyBtn(m.content || ""));
     body.append(metaRow);
     row.append(body);
+    armCopy(row);
     return { row: row, peers: peers };
   }
 
@@ -695,7 +775,7 @@
     const prevTop = thread.scrollTop;
     const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
-      inner.append(emptyState(who || "XBot", "还没有消息。写一句，对话会留在这里。", who));
+      inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
       thread.replaceChildren(inner);
       return;
     }
@@ -704,37 +784,46 @@
       if (m.role === "tool" && m.tool_call_id) results[m.tool_call_id] = m;
     }
     let any = false;
-    let lastBot = "";
+    let lastKey = "";
     messages.forEach((m, i) => {
       if (skipMessage(m)) return;
       if (m.role === "user") {
         const parsed = unwrap(m.content || "");
         if (parsed.untrusted && (parsed.source.startsWith("bot:") || parsed.source.startsWith("group:"))) {
           any = true;
-          lastBot = "";
+          lastKey = "";
           const body = clip(pullImages(parsed.text).text, 80) || "一条消息";
           if (parsed.source.startsWith("bot:")) {
             const from = parsed.sender || parsed.source.slice(4);
-            inner.append(systemLine(from + " 发来 · " + body, from));
+            inner.append(systemLine(niceName(from) + " 发来 · " + body, from, from));
           } else {
             inner.append(systemLine("群里 · " + body));
           }
           return;
         }
         any = true;
-        lastBot = "";
-        inner.append(userBubble(m));
+        const row = userBubble(m);
+        if (lastKey === "user") row.classList.add("cont");
+        lastKey = "user";
+        inner.append(row);
         return;
       }
       any = true;
-      const showName = who !== lastBot;
-      lastBot = who;
-      const built = botBubble(m, results, messages, i, who, showName);
-      const empty = !m.content && !(m.tool_calls || []).some((c) => !peerPhrase(toolSummary(c).name, toolSummary(c).args, who));
-      if (!empty) inner.append(built.row);
-      for (const line of built.peers) inner.append(systemLine(line, who));
+      const key = "bot:" + (who || "");
+      const cont = lastKey === key;
+      lastKey = key;
+      const built = botBubble(m, results, messages, i, who, !cont);
+      const asks = (m.tool_calls || []).some((c) => toolSummary(c).name === "ask_user");
+      if (m.content || asks) {
+        if (cont) built.row.classList.add("cont");
+        inner.append(built.row);
+      } else lastKey = "";
+      for (const line of built.peers) {
+        inner.append(systemLine(line.text, who, line.peer));
+        lastKey = "";
+      }
     });
-    if (!any) inner.append(emptyState(who || "XBot", "还没有消息。写一句，对话会留在这里。", who));
+    if (!any) inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
     thread.replaceChildren(inner);
     thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
   }
@@ -744,7 +833,7 @@
     const prevTop = thread.scrollTop;
     const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
-      inner.append(emptyState(who || "群", "还没有消息。写一句，对话会留在这里。", who));
+      inner.append(emptyState(niceName(who) || "群", "没有消息", who));
       thread.replaceChildren(inner);
       return;
     }
@@ -756,11 +845,13 @@
         // Bot speaking after another bot stays a bubble; the action line is the tool call.
       }
       if (!mine && /^\[action\]/i.test(text)) {
-        inner.append(systemLine(clip((m.sender || "Bot") + " · " + text.replace(/^\[action\]\s*/i, ""), 96), m.sender));
-        last = m.sender || "";
+        inner.append(systemLine(clip(niceName(m.sender || "Bot") + " · " + text.replace(/^\[action\]\s*/i, ""), 96), m.sender));
+        last = "";
         continue;
       }
       const row = el("div", "msg " + (mine ? "user" : "bot"));
+      const key = mine ? "user" : ("bot:" + (m.sender || ""));
+      if (key === last) row.classList.add("cont");
       if (mine) {
         const wrap = el("div", "bubble-col");
         const pulled = pullImages(text);
@@ -778,14 +869,19 @@
       } else {
         row.append(avatar(m.sender || "B", paintOf(m.sender)));
         const body = el("div", "body");
-        if (m.sender !== last) body.append(el("div", "who", m.sender || "bot"));
+        if (!row.classList.contains("cont")) {
+          const name = el("div", "who", niceName(m.sender || "bot"));
+          if (m.sender) setTip(name, m.sender);
+          body.append(name);
+        }
         appendRich(body, text);
         const metaRow = el("div", "meta-row");
         metaRow.append(el("span", "meta", when(m.time)), copyBtn(text));
         body.append(metaRow);
         row.append(body);
       }
-      last = mine ? "" : (m.sender || "");
+      armCopy(row);
+      last = key;
       inner.append(row);
     }
     thread.replaceChildren(inner);
@@ -823,7 +919,7 @@
       const m = messages[i];
       const raw = String(m.text || "").trim();
       if (!raw || /^\[action\]/i.test(raw)) continue;
-      const who = m.kind === "person" ? "你" : (m.sender || "");
+      const who = m.kind === "person" ? "你" : niceName(m.sender || "");
       const text = clip(raw, 64);
       return who ? who + "：" + text : text;
     }
@@ -835,26 +931,30 @@
     if (p) return p;
     if (b.description) return b.description;
     if (b.persona) return b.persona;
-    return "还没有消息";
+    return "没有消息";
   }
 
   function lineForGroup(g) {
     const p = state.preview["g:" + g.id];
     if (p) return p;
-    return (g.members || []).join(" · ") || "还没有消息";
+    return (g.members || []).map(niceName).join(" · ") || "没有消息";
   }
 
-  function listButton(name, preview, active, unread, paint, primary) {
+  function listButton(name, preview, active, unread, paint, primary, label) {
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
-    btn.title = name + (preview ? " — " + preview : "");
+    setTip(btn, name);
     const av = avatar(name, paint);
     if (unread) av.append(el("i", "unread"));
     const body = el("span", "item-body");
     const line = el("span", "name-line");
-    line.append(el("span", "name", name));
-    if (primary) line.append(el("span", "badge", "主"));
-    body.append(line, el("span", "preview", preview || "还没有消息"));
+    line.append(el("span", "name", label || niceName(name)));
+    if (primary) {
+      const dot = el("i", "badge");
+      setTip(dot, "主 Bot");
+      line.append(dot);
+    }
+    body.append(line, el("span", "preview", preview || "没有消息"));
     btn.append(av, body);
     return btn;
   }
@@ -883,8 +983,8 @@
     for (const b of pinned) {
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
-      btn.title = b.name;
-      btn.setAttribute("aria-label", b.name);
+      setTip(btn, b.name);
+      btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, { bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url }, "pin");
       if (b.unread) av.append(el("i", "unread"));
       btn.append(av);
@@ -894,7 +994,7 @@
     const add = el("button", "pin add");
     add.type = "button";
     add.setAttribute("aria-label", "新建 Bot");
-    add.title = "新建 Bot";
+    setTip(add, "新建 Bot");
     const face = el("span", "plus-face");
     face.append(icon("plus"));
     add.append(face);
@@ -908,10 +1008,6 @@
       btn.addEventListener("click", () => selectBot(b.name));
       roster.append(btn);
     };
-    if (pinned.length) {
-      roster.append(sectionLabel("置顶"));
-      pinned.forEach(addRow);
-    }
     if (rest.length) {
       roster.append(sectionLabel("Bot"));
       rest.forEach(addRow);
@@ -919,12 +1015,12 @@
     const newer = el("button", "icon-btn");
     newer.type = "button";
     newer.setAttribute("aria-label", "新建群组");
-    newer.title = "新建群组";
+    setTip(newer, "新建群组");
     newer.append(icon("plus"));
     newer.addEventListener("click", openNewGroup);
     roster.append(sectionLabel("群组", newer));
     for (const g of state.groups) {
-      const btn = listButton(g.name || g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false);
+      const btn = listButton(g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false, niceName(g.name || g.id));
       btn.addEventListener("click", () => selectGroup(g.id));
       roster.append(btn);
     }
@@ -935,7 +1031,7 @@
     slot.replaceChildren(avatar(state.owner || "me", null, "me"));
     const name = $("me-name");
     name.textContent = "我";
-    name.title = state.owner || "";
+    setTip(name, state.owner || "");
   }
 
   function renderNotes() {
@@ -951,7 +1047,8 @@
       const btn = el("button", "note");
       btn.type = "button";
       const left = document.createElement("span");
-      left.append(el("b", "", n.bot), document.createTextNode("  " + (n.text || "")));
+      left.append(el("b", "", niceName(n.bot)), document.createTextNode("  " + (n.text || "")));
+      setTip(btn, n.bot || "");
       btn.append(left, el("span", "meta", when(n.time)));
       btn.addEventListener("click", () => openNote(n));
       notesEl.append(btn);
@@ -967,9 +1064,212 @@
     if (n.bot) await selectBot(n.bot);
   }
 
-  function setHeader(name) {
-    titleEl.textContent = name || "XBot";
-    document.title = name ? name + " · XBot" : "XBot";
+  function setHeader(slug, label) {
+    const shown = label || niceName(slug) || "XBot";
+    titleEl.textContent = shown;
+    setTip(titleEl, slug && slug !== shown ? slug : "");
+    document.title = shown + " · XBot";
+  }
+
+  function leavePeer() {
+    state.peer = null;
+    const main = document.querySelector(".main");
+    if (main) main.classList.remove("peer");
+    const back = $("back");
+    if (back) back.hidden = true;
+  }
+
+  function pairSep() {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 4 4");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("pair-sep");
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("cx", "2");
+    c.setAttribute("cy", "2");
+    c.setAttribute("r", "1.1");
+    svg.append(c);
+    return svg;
+  }
+
+  function pairNames(a, b) {
+    const name = el("span", "pair-name");
+    name.append(el("span", "pair-who", niceName(a)), pairSep(), el("span", "pair-who", niceName(b)));
+    return name;
+  }
+
+  function paintPeerHeader(a, b) {
+    const back = $("back");
+    if (back) back.hidden = false;
+    const main = document.querySelector(".main");
+    if (main) main.classList.add("peer");
+    titleEl.replaceChildren();
+    const row = el("div", "pair-title");
+    const faces = el("span", "pair-faces");
+    faces.append(avatar(a, paintOf(a)), avatar(b, paintOf(b)));
+    row.append(faces, pairNames(a, b));
+    titleEl.append(row);
+    const slugTip = (a !== niceName(a) || b !== niceName(b)) ? (a + " · " + b) : "";
+    setTip(titleEl, slugTip);
+    subtitle.textContent = "";
+    subtitle.hidden = true;
+    document.title = niceName(a) + " · " + niceName(b) + " · XBot";
+  }
+
+  const PEER_LIMIT = 50;
+
+  function peerCursor(m) {
+    if (!m || m.to == null || m.to === "" || m.seq == null || Number(m.seq) < 1) return "";
+    return m.to + ":" + m.seq;
+  }
+
+  function comparePeer(x, y) {
+    const tx = Date.parse(x.ts || "") || 0;
+    const ty = Date.parse(y.ts || "") || 0;
+    if (tx !== ty) return tx - ty;
+    const to = String(x.to || "").localeCompare(String(y.to || ""));
+    if (to) return to;
+    const seq = (Number(x.seq) || 0) - (Number(y.seq) || 0);
+    if (seq) return seq;
+    return String(x.id || "").localeCompare(String(y.id || ""));
+  }
+
+  function mockPeerMessages(a, b, before) {
+    if (before) return [];
+    const pair = [a, b].slice().sort().join("\0");
+    if (pair === "ada\0bob") {
+      return [
+        { id: "mock-1", seq: 1, from: "ada", to: "bob", text: "封面在对话里，下午之前看一眼", ts: "2026-10-14T01:13:08Z" },
+        { id: "mock-2", seq: 2, from: "bob", to: "ada", text: "收到，我下午看。", ts: "2026-10-14T01:20:00Z" },
+      ];
+    }
+    return [
+      { id: "mock-1", seq: 1, from: a, to: b, text: "这条往来还没接到。", ts: new Date().toISOString() },
+    ];
+  }
+
+  async function fetchPeerMessages(a, b, before) {
+    const q = new URLSearchParams({ limit: String(PEER_LIMIT) });
+    if (before) q.set("before", String(before));
+    const path = "/api/bots/" + encodeURIComponent(a) + "/peers/" + encodeURIComponent(b) + "/messages?" + q;
+    try {
+      const data = await api(path);
+      const list = data && Array.isArray(data.messages) ? data.messages : null;
+      if (!list) {
+        const err = new Error("bad peer payload");
+        err.status = 502;
+        throw err;
+      }
+      return { list: list, mock: false };
+    } catch (e) {
+      if (e.status === 401) throw e;
+      return { list: null, mock: true };
+    }
+  }
+
+  function renderPeer(list, peer) {
+    const inner = el("div", "thread-inner");
+    const rows = (list || []).slice().sort(comparePeer);
+    if (!rows.length) {
+      const box = emptyState("", "没有消息");
+      const heading = box.querySelector("h2");
+      if (heading) heading.replaceChildren(pairNames(peer.a, peer.b));
+      inner.append(box);
+      thread.replaceChildren(inner);
+      return;
+    }
+    let last = "";
+    for (const m of rows) {
+      const mine = m.from === peer.a;
+      const row = el("div", "msg " + (mine ? "user" : "bot"));
+      if (last === m.from) row.classList.add("cont");
+      if (!mine) row.append(avatar(m.from, paintOf(m.from)));
+      const body = el("div", mine ? "bubble-col" : "body");
+      if (!mine && last !== m.from) {
+        const who = el("div", "who", niceName(m.from));
+        if (m.from) setTip(who, m.from);
+        body.append(who);
+      }
+      const bubble = el("div", "bubble");
+      bubble.textContent = m.text || "";
+      const metaRow = el("div", "meta-row");
+      metaRow.append(el("span", "meta", when(m.ts)));
+      body.append(bubble, metaRow);
+      row.append(body);
+      inner.append(row);
+      last = m.from || "";
+    }
+    thread.replaceChildren(inner);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  async function loadPeer(before) {
+    const peer = state.peer;
+    if (!peer) return;
+    const keep = !!before;
+    const prevHeight = keep ? thread.scrollHeight : 0;
+    const prevTop = keep ? thread.scrollTop : 0;
+    let got;
+    try {
+      got = await fetchPeerMessages(peer.a, peer.b, before);
+    } catch (e) {
+      if (e.status === 401) throw e;
+      got = { list: null, mock: true };
+    }
+    if (state.peer !== peer) return;
+    if (got.mock) {
+      if (keep && peer.list.length && !peer.mock) {
+        peer.more = false;
+        return;
+      }
+      peer.mock = true;
+      peer.list = mockPeerMessages(peer.a, peer.b, before);
+      peer.more = false;
+      peer.cursor = null;
+      renderPeer(peer.list, peer);
+      return;
+    }
+    peer.mock = false;
+    const incoming = got.list;
+    if (keep) {
+      const seen = {};
+      for (const m of peer.list) {
+        const key = m.id || peerCursor(m);
+        if (key) seen[key] = true;
+      }
+      const older = incoming.filter((m) => {
+        const key = m.id || peerCursor(m);
+        return !key || !seen[key];
+      });
+      peer.list = older.concat(peer.list);
+    } else {
+      peer.list = incoming.slice();
+    }
+    peer.list.sort(comparePeer);
+    peer.more = incoming.length >= PEER_LIMIT;
+    peer.cursor = peer.list.length ? peerCursor(peer.list[0]) : null;
+    renderPeer(peer.list, peer);
+    if (keep) thread.scrollTop = Math.max(0, thread.scrollHeight - prevHeight + prevTop);
+  }
+
+  async function openPeer(a, b) {
+    if (!a || !b || a === b || state.streaming) return;
+    state.peer = { a: a, b: b, list: [], more: false, cursor: null, mock: false };
+    paintPeerHeader(a, b);
+    await loadPeer(null);
+  }
+
+  async function closePeer() {
+    if (!state.peer) return;
+    leavePeer();
+    if (state.sel && state.sel.type === "bot") setHeader(state.sel.id);
+    else if (state.sel && state.sel.type === "group") {
+      const g = state.groups.find((x) => x.id === state.sel.id);
+      setHeader(state.sel.id, g ? niceName(g.name || state.sel.id) : "");
+    }
+    setStatus("");
+    state.sig = "";
+    await loadThread();
   }
 
   function setStatus(text) {
@@ -984,25 +1284,29 @@
   }
 
   async function selectBot(name) {
+    leavePeer();
     state.sel = { type: "bot", id: name };
     state.sig = "";
     state.tab = state.tab || "details";
+    state.editOpen = false;
     closeDrawer();
     setHeader(name);
     setStatus("");
     syncMore();
-    input.placeholder = "写给 " + name;
+    input.placeholder = "写给 " + niceName(name);
     renderLists();
     await loadThread();
     if (panel.classList.contains("open")) await loadPanel();
   }
 
   async function selectGroup(id) {
+    leavePeer();
     state.sel = { type: "group", id: id };
     state.sig = "";
+    state.editOpen = false;
     closeDrawer();
     const g = state.groups.find((x) => x.id === id);
-    setHeader(g ? g.name : id);
+    setHeader(id, g ? niceName(g.name || id) : "");
     setStatus("");
     syncMore();
     input.placeholder = "写到这个群";
@@ -1012,17 +1316,23 @@
   }
 
   async function loadThread() {
-    if (!state.sel || state.streaming) return;
+    if (!state.sel || state.streaming || state.peer) return;
     if (state.sel.type === "bot") {
       const data = await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/transcript");
       const messages = data.messages || [];
       const sig = JSON.stringify(messages);
+      state.messages = messages;
       state.preview["b:" + state.sel.id] = previewFromMessages(messages);
       state.previewAt["b:" + state.sel.id] = Date.now();
       renderLists();
-      if (sig === state.sig) return;
+      if (sig === state.sig) {
+        if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
+        return;
+      }
       state.sig = sig;
+      if (state.peer) return;
       renderMessages(messages, state.sel.id);
+      if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
       return;
     }
     const data = await api("/api/groups/" + encodeURIComponent(state.sel.id));
@@ -1048,7 +1358,7 @@
     return row;
   }
 
-  const TABS = [["details", "详情"], ["library", "资料"], ["computer", "电脑"]];
+  const TABS = [["details", "详情"], ["library", "资料"], ["computer", "电脑"], ["trace", "轨迹"]];
 
   function tabBar() {
     const bar = el("div", "tabs");
@@ -1067,18 +1377,88 @@
     return bar;
   }
 
-  function hero(name, desc, paint) {
+  function hero(name, desc, paint, pin) {
     const box = el("div", "hero");
     box.append(avatar(name, paint, "lg"));
-    box.append(el("h2", "", name || "Bot"));
+    const title = el("div", "hero-name");
+    const heading = el("h2", "", niceName(name) || "Bot");
+    if (name && name !== heading.textContent) setTip(heading, name);
+    title.append(heading);
+    if (pin) {
+      const mark = el("button", "pin-mark" + (pin.on ? " on" : ""));
+      mark.type = "button";
+      mark.setAttribute("aria-label", pin.on ? "取消置顶" : "置顶");
+      setTip(mark, pin.on ? "已置顶" : "置顶");
+      mark.append(icon("pin"));
+      mark.addEventListener("click", pin.toggle);
+      title.append(mark);
+    }
+    box.append(title);
     if (desc) box.append(el("p", "desc", desc));
     return box;
+  }
+
+  function menuRow(iconName, label, onClick, danger) {
+    const btn = el("button", "menu-row" + (danger ? " danger" : ""));
+    btn.type = "button";
+    btn.append(icon(iconName), el("span", "", label));
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closePanelMenu();
+      onClick();
+    });
+    return btn;
+  }
+
+  function closePanelMenu() {
+    $("panel-menu").hidden = true;
+    $("panel-more").setAttribute("aria-expanded", "false");
+  }
+
+  function syncPanelChrome() {
+    const bot = state.sel && state.sel.type === "bot";
+    const data = state.panelData || {};
+    $("panel-export").hidden = !bot;
+    $("panel-more").hidden = !bot;
+    const menu = $("panel-menu");
+    menu.replaceChildren();
+    if (!bot) {
+      closePanelMenu();
+      return;
+    }
+    const pinned = !!data.pinned;
+    menu.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
+    menu.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
+    menu.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
+    menu.append(el("div", "menu-rule"));
+    menu.append(menuRow("trash", "删除 Bot", () => confirmDelete(state.sel.id), true));
+  }
+
+  function confirmDelete(name) {
+    openModal("删除 Bot", [
+      { name: "warn", type: "note", label: "「" + niceName(name) + "」和它的对话会一起删掉，不能恢复。" },
+    ], async () => {
+      try {
+        await api("/api/bots/" + encodeURIComponent(name), { method: "DELETE" });
+      } catch (e) {
+        const msg = e.message || "";
+        if (/primary/i.test(msg)) throw new Error("主 Bot 不能删，先把主 Bot 交给另一个。");
+        if (/last bot/i.test(msg)) throw new Error("最后一个 Bot 不能删。");
+        throw new Error(msg || "删除失败");
+      }
+      delete state.preview["b:" + name];
+      if (state.sel && state.sel.type === "bot" && state.sel.id === name) state.sel = null;
+      await refreshLists();
+      const home = state.bots.find((b) => b.primary) || state.bots[0];
+      if (home) await selectBot(home.name);
+      else paintPanel();
+    }, "删除");
   }
 
   function paintPanel() {
     panelBody.replaceChildren();
     if (!state.sel) {
-      panelBody.append(el("p", "hint", "先选一个 Bot。"));
+      syncPanelChrome();
       return;
     }
     if (state.sel.type === "group") {
@@ -1086,28 +1466,163 @@
       panelBody.append(hero(g.name || g.id, (g.members || []).join(" · "), null), tabBar());
       const body = el("div", "tab-body");
       if (state.tab === "library") {
-        body.append(el("p", "hint", "群没有单独的资料。每人只看到群里的消息。"));
+        body.append(el("p", "hint", "没有资料"));
       } else if (state.tab === "computer") {
-        body.append(el("p", "hint", "群没有自己的任务。任务在各个 Bot 的电脑页。"));
+        body.append(el("p", "hint", "没有任务"));
+      } else if (state.tab === "trace") {
+        body.append(el("p", "hint", "没有轨迹"));
       } else {
         const s = section("成员");
-        s.append(el("p", "", (g.members || []).join("、") || "还没有成员"));
-        s.append(el("p", "hint", "成员只看到群里的消息，看不到彼此的私人记忆。"));
+        s.append(el("p", "", (g.members || []).map(niceName).join("、") || "没有成员"));
         body.append(s);
       }
       panelBody.append(body);
+      syncPanelChrome();
       return;
     }
     const data = state.panelData || { name: state.sel.id };
     const desc = data.description || "";
-    panelBody.append(hero(data.name || state.sel.id, desc, {
+    const heroBox = hero(data.name || state.sel.id, desc, {
       bg: data.avatar_bg, ink: data.avatar_ink, url: data.avatar_url,
-    }), tabBar());
+    }, {
+      on: !!data.pinned,
+      toggle: () => togglePin(state.sel.id, !data.pinned),
+    });
+    if (data.primary) {
+      const dot = el("i", "badge");
+      setTip(dot, "主 Bot");
+      heroBox.querySelector(".hero-name").append(dot);
+    }
+    panelBody.append(heroBox, tabBar());
+    syncPanelChrome();
     const body = el("div", "tab-body");
     if (state.tab === "library") body.append(libraryView(data));
     else if (state.tab === "computer") body.append(computerView(data));
+    else if (state.tab === "trace") body.append(traceView());
     else body.append(detailsView(data));
     panelBody.append(body);
+  }
+
+  function durText(ms) {
+    const s = Math.max(1, Math.round(ms / 1000));
+    if (s < 60) return s + "秒";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + "分";
+    return Math.round(m / 60) + "小时";
+  }
+
+  function argText(args) {
+    if (!args || typeof args !== "object") return "";
+    if (typeof args.command === "string" && args.command) return args.command;
+    const keys = Object.keys(args);
+    if (!keys.length) return "";
+    try { return JSON.stringify(args, null, 2); } catch (e) { return ""; }
+  }
+
+  function previewOutput(text) {
+    const raw = String(text || "");
+    const lines = raw.split("\n");
+    let short = lines.slice(0, 4).join("\n");
+    if (short.length > 280) short = short.slice(0, 280);
+    const truncated = short.length < raw.length;
+    return { text: truncated ? short.replace(/\s+$/, "") + "…" : raw, truncated: truncated };
+  }
+
+  function traceTurns(messages) {
+    const results = {};
+    for (const m of messages || []) {
+      if (m.role === "tool" && m.tool_call_id) results[m.tool_call_id] = m;
+    }
+    const turns = [];
+    for (const m of messages || []) {
+      if (m.role !== "assistant" || !(m.tool_calls && m.tool_calls.length)) continue;
+      const calls = [];
+      for (const call of m.tool_calls) {
+        const info = toolSummary(call);
+        if (info.name === "ask_user") continue;
+        const result = results[call.id || ""];
+        calls.push({
+          name: info.name,
+          args: info.args,
+          output: result ? (result.content || "") : "",
+          resultTime: result && result.time,
+        });
+      }
+      if (!calls.length) continue;
+      const start = m.time ? new Date(m.time).getTime() : 0;
+      let end = start;
+      for (const c of calls) {
+        if (!c.resultTime) continue;
+        const t = new Date(c.resultTime).getTime();
+        if (!Number.isNaN(t) && t > end) end = t;
+      }
+      turns.push({
+        key: (state.sel ? state.sel.id : "") + ":" + (m.seq != null ? m.seq : (m.time || turns.length)),
+        time: m.time,
+        names: calls.map((c) => c.name),
+        dur: start && end > start ? end - start : 0,
+        calls: calls,
+      });
+    }
+    return turns;
+  }
+
+  function traceBody(turn) {
+    const box = el("div", "trace-body");
+    turn.calls.forEach((call, i) => {
+      const item = el("div", "trace-call");
+      item.append(el("div", "trace-call-name", call.name));
+      const args = argText(call.args);
+      if (args) item.append(el("pre", "trace-args", args));
+      if (call.output) {
+        const outKey = turn.key + ":" + i;
+        const open = !!state.traceOut[outKey];
+        const preview = previewOutput(call.output);
+        item.append(el("pre", "trace-out", open || !preview.truncated ? call.output : preview.text));
+        if (preview.truncated) {
+          const more = el("button", "text-btn trace-more", open ? "收起" : "展开");
+          more.type = "button";
+          more.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            state.traceOut[outKey] = !state.traceOut[outKey];
+            paintPanel();
+          });
+          item.append(more);
+        }
+      }
+      box.append(item);
+    });
+    return box;
+  }
+
+  function traceView() {
+    const wrap = document.createDocumentFragment();
+    const turns = traceTurns(state.messages);
+    if (!turns.length) {
+      wrap.append(el("p", "hint", "没有轨迹"));
+      return wrap;
+    }
+    const list = el("div", "trace");
+    for (const turn of turns) {
+      const open = !!state.traceOpen[turn.key];
+      const row = el("button", "trace-row" + (open ? " open" : ""));
+      row.type = "button";
+      row.setAttribute("aria-expanded", open ? "true" : "false");
+      row.append(
+        el("span", "trace-time", when(turn.time) || "—"),
+        el("span", "trace-tools", turn.names.join(" · ")),
+        el("span", "trace-dur", turn.dur ? durText(turn.dur) : ""),
+        icon("chevron", "chev")
+      );
+      row.addEventListener("click", () => {
+        state.traceOpen[turn.key] = !state.traceOpen[turn.key];
+        paintPanel();
+      });
+      list.append(row);
+      if (open) list.append(traceBody(turn));
+    }
+    wrap.append(list);
+    return wrap;
   }
 
   function detailsView(data) {
@@ -1119,34 +1634,21 @@
     if (style.language) bits.push(style.language);
     const pro = { quiet: "安静", normal: "适中", active: "积极" }[data.proactivity] || "";
     if (pro) bits.push(pro);
-    if (data.primary) bits.push("主 Bot");
     const about = section("");
     if (data.persona) {
       const block = el("div", "kv");
       block.append(el("div", "k", "人格"), el("p", "clamp v", data.persona));
       about.append(block);
     }
-    if (bits.length) about.append(kv("风格", bits.join(" · ")));
+    if (bits.length) {
+      const block = el("div", "kv");
+      const chips = el("div", "chips");
+      for (const bit of bits) chips.append(el("span", "chip", bit));
+      block.append(el("div", "k", "风格"), chips);
+      about.append(block);
+    }
     about.append(kv("模型", (data.provider || "环境变量") + " / " + (data.model || "默认")));
     if (data.quiet_start || data.quiet_end) about.append(kv("免打扰", (data.quiet_start || "") + " – " + (data.quiet_end || "")));
-    const actions = el("div", "actions");
-    const pin = el("button", "secondary", data.pinned ? "取消置顶" : "置顶");
-    pin.type = "button";
-    pin.addEventListener("click", () => togglePin(state.sel.id, !data.pinned));
-    const forkBtn = el("button", "secondary", "复刻");
-    forkBtn.type = "button";
-    forkBtn.addEventListener("click", () => openFork(state.sel.id));
-    const exp = el("button", "secondary", "导出对话");
-    exp.type = "button";
-    exp.addEventListener("click", openExport);
-    actions.append(pin, forkBtn, exp);
-    about.append(actions);
-    const edit = document.createElement("details");
-    edit.className = "edit";
-    const sum = document.createElement("summary");
-    sum.textContent = "编辑档案";
-    edit.append(sum, profileForm(data));
-    about.append(edit);
     wrap.append(about);
     return wrap;
   }
@@ -1161,13 +1663,12 @@
   function libraryView(data) {
     const wrap = document.createDocumentFragment();
     const facts = data.memory || [];
-    if (!facts.length) wrap.append(el("p", "hint", "还没有记下的资料。"));
+    if (!facts.length) wrap.append(el("p", "hint", "没有资料"));
     for (const f of facts) {
       const card = el("div", "lib-card");
       card.append(el("div", "k", scopeLabel(f.scope)), el("div", "v", f.text || ""));
       wrap.append(card);
     }
-    wrap.append(el("p", "hint", "本机文件还没有列表。Bot 直接读工作目录里的笔记。"));
     return wrap;
   }
 
@@ -1175,17 +1676,19 @@
     const wrap = document.createDocumentFragment();
     const tasks = section("任务");
     const running = data.agents || [];
-    if (!running.length) tasks.append(el("p", "hint", "没有在跑的任务。"));
+    if (!running.length) tasks.append(el("p", "hint", "没有任务"));
     for (const ag of running) {
       const card = el("div", "task");
       const top = el("div", "task-top");
       const labels = { running: "进行中", done: "完成", failed: "失败" };
-      const tagClass = ag.status === "done" ? "tag ok" : ag.status === "failed" ? "tag warn" : "tag info";
-      top.append(el("span", tagClass, labels[ag.status] || ag.status || "进行中"));
+      const kind = ag.status === "done" ? "ok" : ag.status === "failed" ? "bad" : "run";
+      const dot = el("i", "status-dot " + kind);
+      setTip(dot, labels[ag.status] || "进行中");
+      top.append(dot);
       card.append(top, el("p", "task-text", ag.task || ag.id));
       const row = el("div", "row");
       const field = document.createElement("input");
-      field.placeholder = "插一句";
+      field.placeholder = "消息";
       field.maxLength = 4000;
       const go = el("button", "secondary", "引导");
       go.type = "button";
@@ -1199,10 +1702,16 @@
     }
     const routines = section("例程");
     const list = data.routines || [];
-    if (!list.length) routines.append(el("p", "hint", "没有例程。"));
+    if (!list.length) routines.append(el("p", "hint", "没有例程"));
     for (const rt of list) {
       const card = el("div", "routine");
-      card.append(el("span", "", rt.name || rt.id), el("span", "meta", cronText(rt.cron, rt.enabled)));
+      const meta = el("span", "meta", cronText(rt.cron, true));
+      if (rt.enabled === false) {
+        const dot = el("i", "status-dot off");
+        setTip(dot, "停用");
+        meta.append(document.createTextNode(" "), dot);
+      }
+      card.append(el("span", "", rt.name || rt.id), meta);
       routines.append(card);
     }
     wrap.append(tasks, routines);
@@ -1244,14 +1753,14 @@
   function profileForm(data) {
     const wrap = document.createElement("div");
     const head = el("div", "profile-head");
-    const mark = avatar(data.name, { bg: data.avatar_bg, ink: data.avatar_ink, url: data.avatar_url }, "lg");
+    let mark = avatar(data.name, { bg: data.avatar_bg, ink: data.avatar_ink, url: data.avatar_url }, "lg");
     const file = document.createElement("input");
     file.type = "file";
     file.accept = "image/png,image/jpeg,image/gif,image/webp";
     file.hidden = true;
     const pick = el("button", "secondary", "上传头像");
     pick.type = "button";
-    const clear = el("button", "secondary", "清除头像");
+    const clear = el("button", "text-btn danger", "清除头像");
     clear.type = "button";
     const stack = el("div", "stack");
     stack.append(pick, clear, file);
@@ -1287,7 +1796,7 @@
     actions.append(save, exp, imp, fileIn);
     wrap.append(
       head,
-      labeled("名字", name),
+      labeled("标识", name),
       labeled("简介", description),
       labeled("语气", tone),
       labeled("回复长度", length),
@@ -1307,6 +1816,10 @@
         await uploadAvatar(data.name, file.files[0]);
         await refreshLists();
         await loadPanel();
+        const fresh = state.panelData || data;
+        const next = avatar(fresh.name, { bg: fresh.avatar_bg, ink: fresh.avatar_ink, url: fresh.avatar_url }, "lg");
+        mark.replaceWith(next);
+        mark = next;
       } catch (e) { showErr(e, "头像上传失败"); }
     });
     clear.addEventListener("click", async () => {
@@ -1314,6 +1827,10 @@
         await api("/api/bots/" + encodeURIComponent(data.name) + "/avatar", { method: "DELETE" });
         await refreshLists();
         await loadPanel();
+        const fresh = state.panelData || data;
+        const next = avatar(fresh.name, { bg: fresh.avatar_bg, ink: fresh.avatar_ink, url: fresh.avatar_url }, "lg");
+        mark.replaceWith(next);
+        mark = next;
       } catch (e) { showErr(e, "清除失败"); }
     });
     save.addEventListener("click", async () => {
@@ -1337,6 +1854,7 @@
       }
       try {
         const res = await api("/api/bots/" + encodeURIComponent(data.name), { method: "PATCH", body: body });
+        closeModal();
         await refreshLists();
         const next = (res && res.name) || body.name || data.name;
         if (state.sel && next !== state.sel.id) await selectBot(next);
@@ -1357,11 +1875,23 @@
       try {
         const tpl = JSON.parse(await f.text());
         const res = await api("/api/bots/import", { method: "POST", body: tpl });
+        closeModal();
         await refreshLists();
         if (res && res.name) await selectBot(res.name);
       } catch (e) { showErr(e, "导入失败"); }
     });
     return wrap;
+  }
+
+  function openProfile(data) {
+    if (!data || !data.name) return;
+    $("modal-title").textContent = "编辑资料";
+    $("modal-ok").hidden = true;
+    $("modal-cancel").textContent = "关闭";
+    modalFields.replaceChildren(profileForm(data));
+    modalError.hidden = true;
+    modal.hidden = false;
+    modalForm.onsubmit = (ev) => ev.preventDefault();
   }
 
   async function uploadAvatar(name, file) {
@@ -1394,9 +1924,9 @@
 
   function openFork(src) {
     openModal("复刻 Bot", [
-      { name: "name", label: "新名字", placeholder: "reviewer" },
-      { name: "role", label: "角色", placeholder: "负责看这个项目的 pull request。", multiline: true },
-      { name: "group", label: "群（可选）", placeholder: "留空则不建群" },
+      { name: "name", label: "标识", placeholder: "reviewer" },
+      { name: "role", label: "角色", multiline: true },
+      { name: "group", label: "群" },
     ], async (v) => {
       const name = (v.name || "").trim();
       const role = (v.role || "").trim();
@@ -1512,6 +2042,57 @@
     } catch (e) {}
   }
 
+  function setWorking(host, name) {
+    let status = host.querySelector(".live-status");
+    if (!status) {
+      status = el("div", "meta live-status");
+      host.append(status);
+    }
+    status.replaceChildren();
+    const dot = el("i", "status-dot run");
+    setTip(dot, "正在处理");
+    status.append(dot);
+    if (name) status.append(el("span", "working-name", name));
+  }
+
+  function approvalCard(payload) {
+    const card = el("div", "approval");
+    card.append(el("div", "k", "需要确认"));
+    card.append(el("div", "approval-name", payload.tool || payload.name || "tool"));
+    if (payload.summary) card.append(el("div", "approval-sum", payload.summary));
+    const actions = el("div", "approval-actions");
+    const allow = el("button", "secondary", "允许");
+    const deny = el("button", "text-btn danger", "拒绝");
+    allow.type = "button";
+    deny.type = "button";
+    const decide = async (ok) => {
+      allow.disabled = true;
+      deny.disabled = true;
+      try {
+        if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");
+        await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/approvals/" + encodeURIComponent(payload.id || ""), {
+          method: "POST",
+          body: { allow: ok },
+        });
+        card.replaceChildren(el("div", "approval-name", ok ? "已允许" : "已拒绝"));
+      } catch (e) {
+        allow.disabled = false;
+        deny.disabled = false;
+        let err = card.querySelector(".approval-err");
+        if (!err) {
+          err = el("div", "approval-err");
+          card.append(err);
+        }
+        err.textContent = e.message || "确认失败";
+      }
+    };
+    allow.addEventListener("click", () => decide(true));
+    deny.addEventListener("click", () => decide(false));
+    actions.append(allow, deny);
+    card.append(actions);
+    return card;
+  }
+
   function liveBubble() {
     let row = thread.querySelector(".msg.live");
     if (row) return row.querySelector(".prose");
@@ -1522,10 +2103,20 @@
     const who = state.sel ? state.sel.id : "Bot";
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
+    const shown = niceName(who);
+    if (shown) {
+      const name = el("div", "who", shown);
+      setTip(name, who);
+      body.append(name);
+    }
     const bubble = el("div", "bubble");
     const prose = el("div", "prose");
     bubble.append(prose);
-    body.append(bubble, el("div", "meta live-status", "正在回复"));
+    const live = el("div", "meta live-status");
+    const dot = el("i", "status-dot run");
+    setTip(dot, "正在回复");
+    live.append(dot);
+    body.append(bubble, live);
     row.append(body);
     inner.append(row);
     thread.scrollTop = thread.scrollHeight;
@@ -1564,14 +2155,19 @@
           appendMarkdown(prose, acc);
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "tool") {
-          const status = host && host.querySelector(".live-status");
-          if (status) status.remove();
-          const phrase = peerPhrase(payload.name || "", { text: payload.summary || "" }, state.sel && state.sel.id);
-          if (phrase && host) {
-            host.parentElement.insertAdjacentElement("afterend", systemLine(phrase, state.sel && state.sel.id));
-          } else if (host) {
-            host.append(toolShell(payload.name || "tool", payload.summary || "", ""));
+          const who = state.sel && state.sel.id;
+          if (host) {
+            setWorking(host, payload.name || "");
+            const phrase = peerPhrase(payload.name || "", { text: payload.summary || "" }, who);
+            if (phrase && phrase.text && host.parentElement) {
+              host.parentElement.insertAdjacentElement("afterend", systemLine(phrase.text, who, phrase.peer));
+            }
           }
+          thread.scrollTop = thread.scrollHeight;
+        } else if (event === "approval" && host) {
+          const status = host.querySelector(".live-status");
+          if (status) status.remove();
+          host.append(approvalCard(payload));
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "error") {
           setStatus(payload.error || "出错了");
@@ -1605,7 +2201,7 @@
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { showLogin(); return; }
         if (!res.ok) throw new Error(data.error || "发送失败");
-        setStatus(data.status === "queued" ? "已排队，终端正在处理" : "");
+        setStatus(data.status === "queued" ? "已排队" : "");
       } else if (!res.ok) {
         throw new Error("发送失败");
       } else {
@@ -1629,16 +2225,26 @@
     modalError.hidden = true;
     modalError.textContent = "";
     modalForm.onsubmit = null;
+    $("modal-ok").hidden = false;
+    $("modal-ok").className = "primary";
+    $("modal-cancel").textContent = "取消";
   }
 
   function openModal(title, fields, onOk, okLabel) {
     $("modal-title").textContent = title;
+    $("modal-ok").hidden = false;
     $("modal-ok").textContent = okLabel || "创建";
+    $("modal-ok").className = okLabel === "删除" ? "text-btn danger" : "primary";
     $("modal-ok").disabled = false;
+    $("modal-cancel").textContent = "取消";
     modalFields.replaceChildren();
     modalError.hidden = true;
     const inputs = {};
     for (const f of fields) {
+      if (f.type === "note") {
+        modalFields.append(el("p", "note", f.label));
+        continue;
+      }
       if (f.type === "check") {
         const row = el("label", "check-row");
         const cb = document.createElement("input");
@@ -1672,14 +2278,17 @@
         const box = el("div", "checks");
         inputs[f.name] = [];
         for (const opt of f.options || []) {
+          const value = Array.isArray(opt) ? opt[0] : opt;
+          const text = Array.isArray(opt) ? opt[1] : opt;
           const row = el("label", "");
+          setTip(row, value);
           const cb = document.createElement("input");
           cb.type = "checkbox";
-          cb.value = opt;
+          cb.value = value;
           cb.addEventListener("change", () => {
             inputs[f.name] = Array.from(box.querySelectorAll("input:checked")).map((n) => n.value);
           });
-          row.append(cb, document.createTextNode(" " + opt));
+          row.append(cb, document.createTextNode(" " + text));
           box.append(row);
         }
         label.append(box);
@@ -1755,7 +2364,7 @@
       if (text) {
         try { msg = (JSON.parse(text).error || "").trim(); } catch (e) { msg = text.trim().slice(0, 160); }
       }
-      if (res.status === 404 || res.status === 501) throw new Error("导出还没接上");
+      if (res.status === 404 || res.status === 501) throw new Error("导出失败");
       throw new Error(msg || "导出失败");
     }
     const blob = await res.blob();
@@ -1793,8 +2402,8 @@
 
   function openNewBot() {
     openModal("新建 Bot", [
-      { name: "name", label: "名字", placeholder: "ada" },
-      { name: "persona", label: "人设", placeholder: "你是一个简短的助手。", multiline: true },
+      { name: "name", label: "标识", placeholder: "ada" },
+      { name: "persona", label: "人设", multiline: true },
     ], async (v) => {
       const name = (v.name || "").trim();
       if (!name) throw new Error("需要一个名字");
@@ -1807,7 +2416,7 @@
   function openNewGroup() {
     openModal("新建群组", [
       { name: "name", label: "名字", placeholder: "晨会" },
-      { name: "members", label: "成员", type: "checks", options: state.bots.map((b) => b.name) },
+      { name: "members", label: "成员", type: "checks", options: state.bots.map((b) => [b.name, niceName(b.name)]) },
     ], async (v) => {
       const members = v.members || [];
       if (members.length < 2) throw new Error("至少选两个 Bot");
@@ -1828,6 +2437,8 @@
     $("plus").setAttribute("aria-expanded", "false");
     $("more-menu").hidden = true;
     $("more").setAttribute("aria-expanded", "false");
+    closePanelMenu();
+    closeToolPop();
     notesEl.hidden = true;
   }
 
@@ -1889,6 +2500,16 @@
     backdrop.hidden = true;
   });
 
+  $("back").addEventListener("click", () => { closePeer(); });
+
+  thread.addEventListener("scroll", () => {
+    const peer = state.peer;
+    if (!peer || peer.loading || !peer.more || !peer.cursor) return;
+    if (thread.scrollTop > 48) return;
+    peer.loading = true;
+    loadPeer(peer.cursor).finally(() => { if (state.peer) state.peer.loading = false; });
+  });
+
   $("info").addEventListener("click", async () => {
     state.panelTouched = true;
     const open = panel.classList.toggle("open");
@@ -1898,6 +2519,18 @@
     if (open) {
       try { await loadPanel(); } catch (e) { setStatus(e.message || ""); }
     }
+  });
+
+  $("panel-more").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const menu = $("panel-menu");
+    menu.hidden = !menu.hidden;
+    $("panel-more").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+  });
+
+  $("panel-export").addEventListener("click", () => {
+    closePanelMenu();
+    openExport();
   });
 
   $("panel-close").addEventListener("click", () => {
@@ -1912,7 +2545,7 @@
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       try { await Notification.requestPermission(); } catch (e) {}
     }
-    if (!state.notes.length) { setStatus("没有新通知"); return; }
+    if (!state.notes.length) return;
     notesEl.hidden = !notesEl.hidden;
   });
 
@@ -1939,6 +2572,61 @@
 
   $("export-chat").addEventListener("click", () => openExport());
 
+  const tipEl = el("div", "tip");
+  tipEl.setAttribute("role", "tooltip");
+  tipEl.hidden = true;
+  document.body.append(tipEl);
+  let tipTimer = 0;
+  let tipHost = null;
+
+  function hideTip() {
+    window.clearTimeout(tipTimer);
+    tipHost = null;
+    tipEl.hidden = true;
+  }
+
+  function placeTip(host) {
+    const text = host.getAttribute("data-tip");
+    if (!text) { hideTip(); return; }
+    tipEl.textContent = text;
+    tipEl.hidden = false;
+    const r = host.getBoundingClientRect();
+    const tw = tipEl.offsetWidth;
+    const th = tipEl.offsetHeight;
+    let left = r.left + (r.width / 2) - (tw / 2);
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    let top = r.bottom + 6;
+    if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 6);
+    tipEl.style.left = left + "px";
+    tipEl.style.top = top + "px";
+  }
+
+  document.addEventListener("pointerover", (ev) => {
+    const host = ev.target.closest && ev.target.closest("[data-tip]");
+    if (!host || host === tipHost) return;
+    window.clearTimeout(tipTimer);
+    tipHost = host;
+    tipTimer = window.setTimeout(() => { if (tipHost === host) placeTip(host); }, 420);
+  });
+  document.addEventListener("pointerout", (ev) => {
+    if (!tipHost) return;
+    const next = ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest("[data-tip]");
+    if (next === tipHost) return;
+    if (tipHost.contains(ev.relatedTarget)) return;
+    hideTip();
+  });
+  document.addEventListener("focusin", (ev) => {
+    const host = ev.target.closest && ev.target.closest("[data-tip]");
+    if (!host) return;
+    window.clearTimeout(tipTimer);
+    tipHost = host;
+    placeTip(host);
+  });
+  document.addEventListener("focusout", (ev) => {
+    if (tipHost && ev.target.closest && ev.target.closest("[data-tip]") === tipHost) hideTip();
+  });
+  document.addEventListener("scroll", hideTip, true);
+
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".connect-wrap")) {
       $("connect-pop").hidden = true;
@@ -1952,11 +2640,14 @@
       $("more-menu").hidden = true;
       $("more").setAttribute("aria-expanded", "false");
     }
+    if (!ev.target.closest(".panel-more-wrap")) closePanelMenu();
+    if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) notesEl.hidden = true;
   });
 
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
+    hideTip();
     if (!lightbox.hidden) { closeShots(); return; }
     if (!modal.hidden) { closeModal(); return; }
     closePops();
