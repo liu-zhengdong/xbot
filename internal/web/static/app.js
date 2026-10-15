@@ -528,7 +528,7 @@
       return (who || "Bot") + " 发到 " + g + (text ? " · " + text : "");
     }
     if (name === "create_group") return (who || "Bot") + " 建了群" + (args.name ? " · " + args.name : "");
-    if (name === "fork_bot") return (who || "Bot") + " 分叉出 " + (args.name || "新 Bot");
+    if (name === "fork_bot") return (who || "Bot") + " 复刻出 " + (args.name || "新 Bot");
     return "";
   }
 
@@ -792,32 +792,42 @@
     thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
   }
 
+  function hiddenFromPreview(m) {
+    if (!m || m.role === "tool" || m.role === "system") return true;
+    const raw = String(m.content || "").trim();
+    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<untrusted"))) return true;
+    return false;
+  }
+
+  function summaryLine(text) {
+    return /^summary written\b/i.test(String(text || "").trim());
+  }
+
   function previewFromMessages(messages) {
     if (!messages) return "";
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (skipMessage(m)) continue;
-      const calls = m.tool_calls || [];
-      if (calls.length) {
-        const info = toolSummary(calls[0]);
-        const phrase = peerPhrase(info.name, info.args, "");
-        if (phrase && !(m.content || "").trim()) return phrase.replace(/^Bot /, "");
-      }
+      if (hiddenFromPreview(m)) continue;
       const parsed = unwrap(m.content || "");
+      if (parsed.untrusted) continue;
       const text = clip(pullImages(parsed.text).text, 72);
-      if (text) return text;
-      if (calls.length) return toolSummary(calls[0]).name;
+      if (!text || summaryLine(text)) continue;
+      return text;
     }
     return "";
   }
 
   function previewFromGroup(messages) {
-    if (!messages || !messages.length) return "";
-    const m = messages[messages.length - 1];
-    const who = m.kind === "person" ? "你" : (m.sender || "");
-    const text = clip(m.text || "", 64);
-    if (!text) return "";
-    return who ? who + "：" + text : text;
+    if (!messages) return "";
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      const raw = String(m.text || "").trim();
+      if (!raw || /^\[action\]/i.test(raw)) continue;
+      const who = m.kind === "person" ? "你" : (m.sender || "");
+      const text = clip(raw, 64);
+      return who ? who + "：" + text : text;
+    }
+    return "";
   }
 
   function lineForBot(b) {
@@ -1123,7 +1133,7 @@
     const pin = el("button", "secondary", data.pinned ? "取消置顶" : "置顶");
     pin.type = "button";
     pin.addEventListener("click", () => togglePin(state.sel.id, !data.pinned));
-    const forkBtn = el("button", "secondary", "分叉");
+    const forkBtn = el("button", "secondary", "复刻");
     forkBtn.type = "button";
     forkBtn.addEventListener("click", () => openFork(state.sel.id));
     const exp = el("button", "secondary", "导出对话");
@@ -1383,7 +1393,7 @@
   }
 
   function openFork(src) {
-    openModal("分叉 Bot", [
+    openModal("复刻 Bot", [
       { name: "name", label: "新名字", placeholder: "reviewer" },
       { name: "role", label: "角色", placeholder: "负责看这个项目的 pull request。", multiline: true },
       { name: "group", label: "群（可选）", placeholder: "留空则不建群" },
