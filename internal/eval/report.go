@@ -13,6 +13,7 @@ import (
 type Report struct {
 	Model     string       `json:"model"`
 	Suite     string       `json:"suite"`
+	Runs      int          `json:"runs,omitempty"`
 	Passed    bool         `json:"passed"`
 	Certified bool         `json:"certified,omitempty"`
 	Cases     []CaseResult `json:"cases"`
@@ -21,13 +22,24 @@ type Report struct {
 }
 
 // CaseResult is one case at one proactivity level.
+// Pass is the majority of Runs. Reason lists every run.
 type CaseResult struct {
-	Name           string    `json:"name"`
-	Level          string    `json:"level"`
-	Grader         string    `json:"grader"`
+	Name           string      `json:"name"`
+	Level          string      `json:"level"`
+	Grader         string      `json:"grader"`
+	Pass           bool        `json:"pass"`
+	Reason         string      `json:"reason"`
+	SpotCheck      bool        `json:"spot_check,omitempty"`
+	Runs           []RunResult `json:"runs,omitempty"`
+	Tools          []ToolUse   `json:"tools,omitempty"`
+	Transcript     string      `json:"-"`
+	TranscriptFile string      `json:"transcript,omitempty"`
+}
+
+// RunResult is one execution of a case. Pass and Reason are that run alone.
+type RunResult struct {
 	Pass           bool      `json:"pass"`
 	Reason         string    `json:"reason"`
-	SpotCheck      bool      `json:"spot_check,omitempty"`
 	Tools          []ToolUse `json:"tools,omitempty"`
 	Transcript     string    `json:"-"`
 	TranscriptFile string    `json:"transcript,omitempty"`
@@ -45,16 +57,22 @@ func writeReport(dir string, rep Report) (Report, error) {
 		return rep, err
 	}
 	for i, c := range rep.Cases {
-		name := fmt.Sprintf("%s__%s__%s.txt", safe, c.Name, c.Level)
-		path := filepath.Join(td, name)
-		body := c.Transcript
-		if strings.TrimSpace(body) == "" {
-			body = "(empty)\n"
+		for j, run := range c.Runs {
+			name := fmt.Sprintf("%s__%s__%s__%d.txt", safe, c.Name, c.Level, j+1)
+			path := filepath.Join(td, name)
+			body := run.Transcript
+			if strings.TrimSpace(body) == "" {
+				body = "(empty)\n"
+			}
+			if err := fsutil.WriteAtomic(path, []byte(body), 0600); err != nil {
+				return rep, err
+			}
+			rep.Cases[i].Runs[j].TranscriptFile = path
 		}
-		if err := fsutil.WriteAtomic(path, []byte(body), 0600); err != nil {
-			return rep, err
+		if len(rep.Cases[i].Runs) > 0 {
+			rep.Cases[i].Transcript = rep.Cases[i].Runs[0].Transcript
+			rep.Cases[i].TranscriptFile = rep.Cases[i].Runs[0].TranscriptFile
 		}
-		rep.Cases[i].TranscriptFile = path
 	}
 	raw, err := fsutil.Marshal(rep)
 	if err != nil {
@@ -87,8 +105,10 @@ func markdown(rep Report) string {
 	}
 	for _, c := range rep.Cases {
 		fmt.Fprintf(&b, "\n## %s (%s)\n\n%s\n", c.Name, c.Level, strings.TrimSpace(c.Reason))
-		if c.TranscriptFile != "" {
-			fmt.Fprintf(&b, "\nTranscript: %s\n", c.TranscriptFile)
+		for i, run := range c.Runs {
+			if run.TranscriptFile != "" {
+				fmt.Fprintf(&b, "\nRun %d transcript: %s\n", i+1, run.TranscriptFile)
+			}
 		}
 		if c.SpotCheck {
 			b.WriteString("\nSaved for a human spot check.\n")

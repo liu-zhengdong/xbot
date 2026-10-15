@@ -79,7 +79,7 @@ Usage:
   xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
   xbot [--root DIR] bind <name> --clear
-  xbot [--root DIR] eval <provider/model> [--suite proactivity] [--out DIR]
+  xbot [--root DIR] eval <provider/model> [--suite proactivity] [--runs 3] [--out DIR]
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
@@ -1609,7 +1609,7 @@ func cmdRunner(args []string) error {
 }
 
 func cmdEval(root string, args []string) error {
-	ordered, err := reorderFlags(args, map[string]bool{"suite": true, "out": true})
+	ordered, err := reorderFlags(args, map[string]bool{"suite": true, "out": true, "runs": true})
 	if err != nil {
 		return err
 	}
@@ -1617,15 +1617,26 @@ func cmdEval(root string, args []string) error {
 	fs.SetOutput(io.Discard)
 	suite := fs.String("suite", "proactivity", "embedded suite name, or a directory of cases")
 	out := fs.String("out", "", "directory for the JSON and Markdown report")
+	runs := fs.Int("runs", 3, "times to run each case; the case passes by majority")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: xbot eval <provider/model> [--suite proactivity] [--out DIR]")
+		return errors.New("usage: xbot eval <provider/model> [--suite proactivity] [--runs 3] [--out DIR]")
+	}
+	if *runs < 1 {
+		return errors.New("eval: --runs must be positive")
 	}
 	opt := eval.Options{
-		Root: root, Model: fs.Arg(0), Suite: *suite, OutDir: *out,
+		Root: root, Model: fs.Arg(0), Suite: *suite, OutDir: *out, Runs: *runs,
 		Progress: func(c eval.CaseResult) {
+			for i, run := range c.Runs {
+				mark := "fail"
+				if run.Pass {
+					mark = "pass"
+				}
+				fmt.Printf("%s\t%s\t%d\t%s\n", c.Name, c.Level, i+1, mark)
+			}
 			mark := "fail"
 			if c.Pass {
 				mark = "pass"

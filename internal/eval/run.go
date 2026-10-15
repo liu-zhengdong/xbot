@@ -29,7 +29,13 @@ type Options struct {
 	OutDir   string
 	CasesDir string
 	Scripts  map[string]Script
-	// Progress is called after each case. The CLI prints one line per case.
+	// Trials overrides Scripts for one case. Index 0 is the first run.
+	// A run past the end repeats the last script.
+	Trials map[string][]Script
+	// Runs is how many times each case runs. Zero means 3.
+	// The case passes when more runs pass than fail.
+	Runs int
+	// Progress is called after each case, once the majority is known.
 	Progress func(CaseResult)
 }
 
@@ -53,20 +59,36 @@ func Run(opt Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	if opt.Runs == 0 {
+		opt.Runs = 3
+	}
+	if opt.Runs < 1 {
+		return Report{}, fmt.Errorf("eval: runs must be positive")
+	}
 	out := opt.OutDir
 	if out == "" {
 		out = filepath.Join(opt.Root, "eval-reports")
 	}
-	rep := Report{Model: opt.Model, Suite: opt.Suite, Passed: true}
+	rep := Report{Model: opt.Model, Suite: opt.Suite, Runs: opt.Runs, Passed: true}
 	for _, c := range cases {
 		for _, level := range c.levels() {
-			one := runCase(c, level, scriptFor(opt, c.Name), real)
-			if !one.Pass {
+			runs := make([]RunResult, 0, opt.Runs)
+			for i := 0; i < opt.Runs; i++ {
+				one := runCase(c, level, scriptFor(opt, c.Name, i), real)
+				runs = append(runs, RunResult{
+					Pass:       one.Pass,
+					Reason:     one.Reason,
+					Tools:      one.Tools,
+					Transcript: one.Transcript,
+				})
+			}
+			agg := aggregate(c, level, runs)
+			if !agg.Pass {
 				rep.Passed = false
 			}
-			rep.Cases = append(rep.Cases, one)
+			rep.Cases = append(rep.Cases, agg)
 			if opt.Progress != nil {
-				opt.Progress(one)
+				opt.Progress(agg)
 			}
 		}
 	}
@@ -102,7 +124,15 @@ func certifyAllowed(opt Options) bool {
 	return true
 }
 
-func scriptFor(opt Options, name string) Script {
+func scriptFor(opt Options, name string, run int) Script {
+	if opt.Trials != nil {
+		if list := opt.Trials[name]; len(list) > 0 {
+			if run >= len(list) {
+				run = len(list) - 1
+			}
+			return list[run]
+		}
+	}
 	if opt.Scripts != nil {
 		if s, ok := opt.Scripts[name]; ok {
 			return s
@@ -110,6 +140,36 @@ func scriptFor(opt Options, name string) Script {
 	}
 	s, _ := passing(name)
 	return s
+}
+
+// aggregate is the case verdict. More passing runs than failing runs is a pass,
+// so 2 of 3 passes and 1 of 3 fails.
+func aggregate(c Case, level string, runs []RunResult) CaseResult {
+	passN := 0
+	var b strings.Builder
+	for i, r := range runs {
+		if r.Pass {
+			passN++
+		}
+		mark := "fail"
+		if r.Pass {
+			mark = "pass"
+		}
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "run %d: %s\n%s", i+1, mark, strings.TrimSpace(r.Reason))
+	}
+	ok := len(runs) > 0 && passN*2 > len(runs)
+	return CaseResult{
+		Name:      c.Name,
+		Level:     level,
+		Grader:    c.Grader,
+		Pass:      ok,
+		Reason:    fmt.Sprintf("%d/%d passed\n%s", passN, len(runs), b.String()),
+		SpotCheck: c.Grader == "llm-judge",
+		Runs:      runs,
+	}
 }
 
 func openReal(root, id string) (provider.Provider, error) {

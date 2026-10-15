@@ -46,6 +46,9 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 	}
 	var sawTask bool
 	for _, c := range rep.Cases {
+		if len(c.Runs) != 3 || !c.Pass {
+			t.Fatalf("%s runs %d pass %v", c.Name, len(c.Runs), c.Pass)
+		}
 		if c.TranscriptFile == "" {
 			t.Fatalf("missing transcript for %s", c.Name)
 		}
@@ -65,6 +68,61 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 	}
 	if strings.Count(string(md), "boundary") < 3 {
 		t.Fatalf("boundary levels\n%s", md)
+	}
+}
+
+func TestMajorityOfThree(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("name: vote\nlevel: normal\ngrader: auto\napprove: deny\nwake:\n  kind: user\n  text: |\n    Working directory: {{workdir}}\n    HOME is this directory. Files available:\n    {{files}}\n    Stay inside this directory.\n\n    hi\nchecks:\n  transcript_not_silent: true\n")
+	if err := os.WriteFile(filepath.Join(dir, "vote.yaml"), body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	pass := Script{{Text: "hello"}}
+	fail := Script{{Text: "SILENT"}}
+	root := t.TempDir()
+	rep, err := Run(Options{
+		Root: root, Model: "fake/scripted", Suite: "vote", CasesDir: dir,
+		OutDir: filepath.Join(root, "out"),
+		Trials: map[string][]Script{"vote": {pass, fail, pass}},
+	})
+	if err != nil || !rep.Passed || len(rep.Cases) != 1 || !rep.Cases[0].Pass {
+		t.Fatalf("pass/fail/pass: %v %+v", err, rep.Cases)
+	}
+	if len(rep.Cases[0].Runs) != 3 || !rep.Cases[0].Runs[0].Pass || rep.Cases[0].Runs[1].Pass || !rep.Cases[0].Runs[2].Pass {
+		t.Fatalf("runs %+v", rep.Cases[0].Runs)
+	}
+	if !strings.Contains(rep.Cases[0].Reason, "2/3 passed") || !strings.Contains(rep.Cases[0].Reason, "run 2: fail") {
+		t.Fatalf("reason %s", rep.Cases[0].Reason)
+	}
+	raw, err := os.ReadFile(rep.JSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, err := os.ReadFile(rep.Markdown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"pass": false`) || !strings.Contains(string(md), "run 2: fail") {
+		t.Fatalf("report dropped a run\n%s\n%s", raw, md)
+	}
+	if _, err := os.Stat(config.CertifiedPath(root)); !os.IsNotExist(err) {
+		t.Fatal("majority on a custom suite certified")
+	}
+
+	root = t.TempDir()
+	rep, err = Run(Options{
+		Root: root, Model: "fake/scripted", Suite: "vote", CasesDir: dir,
+		OutDir: filepath.Join(root, "out"),
+		Trials: map[string][]Script{"vote": {fail, fail, pass}},
+	})
+	if err == nil || rep.Passed || len(rep.Cases) != 1 || rep.Cases[0].Pass {
+		t.Fatalf("fail/fail/pass: %v pass=%v %+v", err, rep.Passed, rep.Cases)
+	}
+	if !strings.Contains(rep.Cases[0].Reason, "1/3 passed") || !strings.Contains(rep.Cases[0].Reason, "run 3: pass") {
+		t.Fatalf("reason %s", rep.Cases[0].Reason)
+	}
+	if _, err := os.Stat(config.CertifiedPath(root)); !os.IsNotExist(err) {
+		t.Fatal("failed majority wrote certified.json")
 	}
 }
 
