@@ -2,7 +2,7 @@
 
 XBot 是一个从零写的个人助手（M5）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。终端和网页是同一条对话的两个入口。
 
-设计决定记在 [docs/DESIGN.md](docs/DESIGN.md)。后续里程碑以这份记录为准。
+设计决定记在 [docs/DESIGN.md](docs/DESIGN.md)。网页给界面用的 HTTP 接口记在 [docs/API.md](docs/API.md)。后续里程碑以设计记录为准。
 
 ## 构建与运行
 

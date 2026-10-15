@@ -63,6 +63,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/import", s.importTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/fork", s.forkBot)
 	mux.HandleFunc("POST /api/bots/{name}/pin", s.pinBot)
+	mux.HandleFunc("POST /api/bots/{name}/primary", s.setPrimary)
+	mux.HandleFunc("DELETE /api/bots/{name}", s.deleteBot)
 	mux.HandleFunc("PATCH /api/bots/{name}", s.patchBot)
 	mux.HandleFunc("GET /api/bots/{name}/avatar", s.getAvatar)
 	mux.HandleFunc("POST /api/bots/{name}/avatar", s.postAvatar)
@@ -264,6 +266,44 @@ func (s *Server) pinBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "pinned": *in.Pinned})
+}
+
+func (s *Server) setPrimary(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	if err := bot.SetPrimary(s.Root, b.Name()); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "primary": true, "pinned": true})
+}
+
+func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	name := b.Name()
+	if err := bot.Delete(s.Root, name); err != nil {
+		if errors.Is(err, bot.ErrPrimary) || errors.Is(err, bot.ErrLast) {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.forgetKernel(name)
+	writeJSON(w, http.StatusOK, map[string]string{"name": name})
 }
 
 func (s *Server) forkBot(w http.ResponseWriter, r *http.Request) {

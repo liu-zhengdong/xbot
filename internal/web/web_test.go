@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -316,6 +317,76 @@ func TestProfileAPI(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("cleared avatar %d", res.StatusCode)
+	}
+}
+
+func TestSetPrimaryAndDeleteAPI(t *testing.T) {
+	root := t.TempDir()
+	s := &Server{Root: root, Owner: "u1"}
+	tok, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ada", "bob"} {
+		b, err := bot.Create(root, name, "persona", []string{link.NameWeb})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := b.SetOwners([]string{"u1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bot.SetPrimary(root, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(muxOf(s))
+	defer srv.Close()
+	do := func(method, path string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	res := do(http.MethodDelete, "/api/bots/ada")
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusConflict || !bytes.Contains(raw, []byte("primary")) {
+		t.Fatalf("delete primary %d %s", res.StatusCode, raw)
+	}
+	res = do(http.MethodPost, "/api/bots/bob/primary")
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"primary":true`)) || !bytes.Contains(raw, []byte(`"pinned":true`)) {
+		t.Fatalf("set primary %d %s", res.StatusCode, raw)
+	}
+	got, err := bot.Primary(root)
+	if err != nil || got != "bob" {
+		t.Fatalf("primary %q %v", got, err)
+	}
+	bob, err := bot.Load(root, "bob")
+	if err != nil || !bob.Config().Pinned {
+		t.Fatalf("bob pin %v", err)
+	}
+	res = do(http.MethodDelete, "/api/bots/ada")
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("delete ada %d", res.StatusCode)
+	}
+	if _, err := bot.Load(root, "ada"); !errors.Is(err, bot.ErrNotFound) {
+		t.Fatalf("ada still present: %v", err)
+	}
+	res = do(http.MethodDelete, "/api/bots/bob")
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusConflict || !bytes.Contains(raw, []byte("last bot")) {
+		t.Fatalf("delete last %d %s", res.StatusCode, raw)
 	}
 }
 
