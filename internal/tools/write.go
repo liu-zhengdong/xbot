@@ -1,0 +1,91 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"xbot/internal/fsutil"
+)
+
+const maxWriteBytes = 1 << 20
+
+// WriteFile replaces a file's contents. The write is atomic.
+type WriteFile struct{}
+
+func (w *WriteFile) Name() string { return "write_file" }
+
+func (w *WriteFile) Description() string {
+	return "Create or replace a file with the given content. Parent directories are created."
+}
+
+func (w *WriteFile) Parameters() any {
+	return objectSchema(map[string]any{
+		"path":    stringProp("File path"),
+		"content": stringProp("Full new contents of the file"),
+	}, []string{"path", "content"})
+}
+
+type writeArgs struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+func (w *WriteFile) Confirm(args json.RawMessage) (bool, string, error) {
+	in, path, err := parseWrite(args)
+	if err != nil {
+		return false, "", err
+	}
+	return true, fmt.Sprintf("write %s (%d bytes)", path, len(in.Content)), nil
+}
+
+func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	in, path, err := parseWrite(args)
+	if err != nil {
+		return "", err
+	}
+	if err := refuseDir(path); err != nil {
+		return "", fmt.Errorf("write_file: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", fmt.Errorf("write_file: %w", err)
+	}
+	if err := fsutil.WriteAtomic(path, []byte(in.Content), 0644); err != nil {
+		return "", fmt.Errorf("write_file: %w", err)
+	}
+	return fmt.Sprintf("wrote %d bytes to %s", len(in.Content), path), nil
+}
+
+func parseWrite(args json.RawMessage) (writeArgs, string, error) {
+	var in writeArgs
+	if err := json.Unmarshal(args, &in); err != nil {
+		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
+	}
+	if len(in.Content) > maxWriteBytes {
+		return writeArgs{}, "", fmt.Errorf("write_file: content exceeds %d bytes", maxWriteBytes)
+	}
+	path, err := Resolve(in.Path)
+	if err != nil {
+		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
+	}
+	return in, path, nil
+}
+
+func refuseDir(path string) error {
+	st, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if st.IsDir() {
+		return fmt.Errorf("%s is a directory", path)
+	}
+	return nil
+}
