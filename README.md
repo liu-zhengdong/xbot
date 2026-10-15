@@ -125,6 +125,8 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 侧边栏分组是 Bot 档案上的 `group`，加上当前用户自己的一份顺序。`xbot group` 可以新建、改名、删除分组，或把 Bot 放进去。删除分组不会删除 Bot。这和聊天群不是一回事。
 
+`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram、飞书、MCP、编码代理还列在目录里，现在装不上。
+
 ```bash
 xbot export ada --out ada.md
 xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl

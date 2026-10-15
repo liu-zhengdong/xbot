@@ -425,6 +425,51 @@ func TestProfileSetExportImport(t *testing.T) {
 	}
 }
 
+func TestLinkCLIGrantsAndRevokes(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdLink(root, []string{"install", "ada", "telegram"}); err == nil || !strings.Contains(err.Error(), "not available yet") {
+		t.Fatalf("telegram %v", err)
+	}
+	if err := cmdLink(root, []string{"install", "ada", "webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	b, err = bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, name := range b.Config().Links {
+		if name == link.NameWebhook {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("links %v", b.Config().Links)
+	}
+	if _, err := mount(b, runnerSpec{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdLink(root, []string{"remove", "ada", "webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	b, err = bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range b.Config().Links {
+		if name == link.NameWebhook {
+			t.Fatal("webhook still granted")
+		}
+	}
+	if _, err := bot.Load(root, "ada"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGroupCLIKeepsBots(t *testing.T) {
 	root := t.TempDir()
 	ext, display, err := link.Account()

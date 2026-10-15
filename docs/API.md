@@ -184,6 +184,30 @@
 
 命令行：`xbot group list`，`xbot group create <name>`，`xbot group rename <old> <new>`，`xbot group delete <name>`，`xbot group set <bot> <name>`，`xbot group set <bot> --clear`。顺序记在当前终端用户名下。
 
+## Link 目录
+
+M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要登录，返回每一条的 `id`、`title`、`kind`（`native` 或 `mcp`）、`capabilities`（`tools`、`events`）、`secrets`（密钥的名字，没有值）、`summary`、`available`。`available` 为 false 的条目还没有运行时。
+
+```json
+{"links":[{
+  "id":"webhook",
+  "title":"Webhook",
+  "kind":"native",
+  "capabilities":["events"],
+  "secrets":[],
+  "summary":"接收 HTTP 回调，写成不可信事件。",
+  "available":true
+}]}
+```
+
+`GET /api/bots/{name}/links` 是同一份清单，每条多一个 `installed`。不是这个 owner 的 Bot 是 404。
+
+`POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。
+
+`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。
+
+命令行：`xbot link list`，`xbot link list <bot>`，`xbot link install <bot> <id>`，`xbot link remove <bot> <id>`。
+
 ## Bot 私聊
 
 `GET /api/bots/{name}/peers/{peer}/messages?limit=N&before=<to>:<seq>`

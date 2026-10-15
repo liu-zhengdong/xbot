@@ -288,6 +288,28 @@ func (b *Bot) GrantLink(name string) error {
 	return b.SaveConfig()
 }
 
+// RevokeLink removes a link name. A name that is not granted is left as it is.
+func (b *Bot) RevokeLink(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("bot: empty link")
+	}
+	next := make([]string, 0, len(b.cfg.Links))
+	found := false
+	for _, l := range b.cfg.Links {
+		if l == name {
+			found = true
+			continue
+		}
+		next = append(next, l)
+	}
+	if !found {
+		return nil
+	}
+	b.cfg.Links = next
+	return b.SaveConfig()
+}
+
 // ValidName reports whether name can be a bot directory.
 func ValidName(name string) bool { return nameRe.MatchString(name) }
 

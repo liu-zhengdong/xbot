@@ -52,6 +52,9 @@ Usage:
   xbot [--root DIR] group delete <name>
   xbot [--root DIR] group set <bot> <name>
   xbot [--root DIR] group set <bot> --clear
+  xbot [--root DIR] link list [bot]
+  xbot [--root DIR] link install <bot> <id>
+  xbot [--root DIR] link remove <bot> <id>
   xbot [--root DIR] chat [name] [--yes] [--max-steps N]
   xbot [--root DIR] pin <name>
   xbot [--root DIR] unpin <name>
@@ -126,6 +129,8 @@ func run(argv []string) error {
 		return cmdList(root)
 	case "group":
 		return cmdGroup(root, rest[1:])
+	case "link":
+		return cmdLink(root, rest[1:])
 	case "chat":
 		return cmdChat(root, rest[1:])
 	case "pin":
