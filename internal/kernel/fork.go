@@ -124,20 +124,20 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 }
 
 func (k *Kernel) handoff(ctx context.Context, role string) (string, error) {
-	entries, err := k.Bot.Entries()
-	if err != nil {
-		return "", err
-	}
 	st, err := k.Bot.LoadState()
 	if err != nil {
 		return "", err
 	}
 	st = migrate(st)
+	entries, err := k.Bot.Uncovered(st.Blocks)
+	if err != nil {
+		return "", err
+	}
 	facts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name(), Tier: memory.TierProfile})
 	if err != nil {
 		return "", err
 	}
-	turns := project(entries, st.Blocks)
+	turns := projected(st.Blocks, entries)
 	if len(turns) == 0 && len(facts) == 0 {
 		return fmt.Sprintf("Handoff from %s. No transcript yet. New role: %s", k.Bot.Name(), oneLine(role)), nil
 	}

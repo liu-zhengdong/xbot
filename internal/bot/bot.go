@@ -95,10 +95,13 @@ type State struct {
 }
 
 // Entry is one transcript record.
+// Blob, when set, names a file under transcript/blobs that holds the full tool
+// output. Message.Content is then only a clipped preview.
 type Entry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
 	Message provider.Message `json:"message"`
+	Blob    string           `json:"blob,omitempty"`
 }
 
 // Bot is one loaded bot directory.
@@ -233,26 +236,18 @@ func (b *Bot) LoadState() (State, error) {
 	return st, nil
 }
 
-// Append adds one transcript record. The file is append-only.
+// Append adds one transcript record to the open tail segment and updates the index.
 func (b *Bot) Append(e Entry) error {
 	if e.Time.IsZero() {
 		e.Time = time.Now().UTC()
 	}
-	return fsutil.AppendJSONL(filepath.Join(b.dir(), "transcript.jsonl"), e)
+	return b.store().append(e, true)
 }
 
-// Entries reads the transcript in order.
+// Entries reads the transcript in order. Large tool outputs stay as previews;
+// Hydrate loads the blob.
 func (b *Bot) Entries() ([]Entry, error) {
-	var out []Entry
-	err := fsutil.ReadJSONL(filepath.Join(b.dir(), "transcript.jsonl"), func(line []byte) error {
-		var e Entry
-		if err := json.Unmarshal(line, &e); err != nil {
-			return err
-		}
-		out = append(out, e)
-		return nil
-	})
-	return out, err
+	return b.store().entries()
 }
 
 // InboxPath is the bot's persisted inbox.

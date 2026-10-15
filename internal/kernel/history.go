@@ -3,10 +3,12 @@ package kernel
 import (
 	"fmt"
 	"strings"
+	"time"
 
-	"xbot/internal/bm25"
 	"xbot/internal/bot"
 	"xbot/internal/clip"
+	"xbot/internal/link"
+	"xbot/internal/peer"
 	"xbot/internal/provider"
 )
 
@@ -17,23 +19,36 @@ const (
 	snippetRunes = 240
 )
 
-// RecallHistory searches the raw append-only transcript. Sequence numbers stay valid after compaction.
+// RecallHistory searches this bot's raw append-only transcript.
+// Sequence numbers stay valid after compaction.
 func (k *Kernel) RecallHistory(query string) (string, error) {
-	entries, err := k.Bot.Entries()
+	return k.RecallHistoryBot(query, "")
+}
+
+// RecallHistoryBot searches a transcript. An empty name, or this bot's name, searches this bot.
+// Another bot is allowed only when it shares an owner. The text is then untrusted data from that bot.
+func (k *Kernel) RecallHistoryBot(query, name string) (string, error) {
+	target, foreign, err := k.historyBot(name)
 	if err != nil {
 		return "", err
 	}
-	docs := make([]string, len(entries))
-	for i, e := range entries {
-		docs[i] = e.Message.Role + " " + e.Message.Content + " " + toolBlob(e.Message)
+	seqs, err := target.Search(query, recallLimit)
+	if err != nil {
+		return "", err
 	}
-	hits := bm25.Top(query, docs, recallLimit)
-	if len(hits) == 0 {
-		return "no matching transcript lines", nil
+	if len(seqs) == 0 {
+		return k.presentHistory("no matching transcript lines", target.Name(), foreign, recallCap), nil
 	}
 	var b strings.Builder
-	for _, h := range hits {
-		e := entries[h.Index]
+	for _, seq := range seqs {
+		part, err := target.Slice(seq, seq)
+		if err != nil {
+			return "", err
+		}
+		if len(part) == 0 {
+			continue
+		}
+		e := part[0]
 		snip := oneLine(e.Message.Content)
 		if snip == "" {
 			snip = oneLine(toolBlob(e.Message))
@@ -41,32 +56,91 @@ func (k *Kernel) RecallHistory(query string) (string, error) {
 		if len(snip) > snippetRunes {
 			snip = snip[:snippetRunes]
 		}
-		fmt.Fprintf(&b, "%d %s: %s\n", h.Index+1, e.Message.Role, snip)
+		fmt.Fprintf(&b, "%d %s: %s\n", seq, e.Message.Role, snip)
 	}
-	out, _ := clip.Bytes(strings.TrimRight(b.String(), "\n"), recallCap)
-	return out, nil
+	return k.presentHistory(b.String(), target.Name(), foreign, recallCap), nil
 }
 
-// Expand returns the raw transcript text for an inclusive sequence range, capped.
+// Expand returns this bot's raw transcript text for an inclusive sequence range, capped.
 func (k *Kernel) Expand(from, to int) (string, error) {
-	entries, err := k.Bot.Entries()
+	return k.ExpandBot("", from, to)
+}
+
+// ExpandBot returns raw transcript text. The bot rules match RecallHistoryBot.
+func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
+	target, foreign, err := k.historyBot(name)
 	if err != nil {
 		return "", err
 	}
-	if from < 1 || to < from || to > len(entries) {
-		return "", fmt.Errorf("expand: range %d-%d outside 1-%d", from, to, len(entries))
+	n, err := target.Count()
+	if err != nil {
+		return "", err
+	}
+	if from < 1 || to < from || to > n {
+		return "", fmt.Errorf("expand: range %d-%d outside 1-%d", from, to, n)
+	}
+	entries, err := target.Slice(from, to)
+	if err != nil {
+		return "", err
 	}
 	var b strings.Builder
-	for i := from - 1; i < to; i++ {
-		e := entries[i]
-		fmt.Fprintf(&b, "# seq %d %s\n%s\n", i+1, e.Message.Role, e.Message.Content)
+	for i, e := range entries {
+		e, err = target.HydrateLimit(e, expandCap)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, e.Message.Content)
 		if blob := toolBlob(e.Message); blob != "" && e.Message.Content == "" {
 			b.WriteString(blob)
 			b.WriteByte('\n')
 		}
 	}
-	out, _ := clip.Bytes(strings.TrimRight(b.String(), "\n"), expandCap)
-	return out, nil
+	return k.presentHistory(b.String(), target.Name(), foreign, expandCap), nil
+}
+
+// historyBot resolves an optional bot name. foreign is true when the transcript is not this bot's.
+func (k *Kernel) historyBot(name string) (*bot.Bot, bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == k.Bot.Name() {
+		return k.Bot, false, nil
+	}
+	other, err := bot.Load(k.Bot.Root, name)
+	if err != nil {
+		if _, gerr := (&peer.Bus{Root: k.Bot.Root}).LoadGroup(name); gerr == nil {
+			return nil, false, fmt.Errorf("history: %s is a group transcript", name)
+		}
+		return nil, false, err
+	}
+	if !peer.SameOwner(k.Bot, other) {
+		return nil, false, fmt.Errorf("history: %s is not a same-owner bot", other.Name())
+	}
+	return other, true, nil
+}
+
+func (k *Kernel) presentHistory(body, botName string, foreign bool, cap int) string {
+	redactFn := bot.RedactText
+	if k != nil && k.Redact != nil {
+		redactFn = k.Redact
+	}
+	body = redactFn(strings.TrimRight(body, "\n"))
+	if !foreign {
+		out, _ := clip.Bytes(body, cap)
+		return out
+	}
+	at := time.Now().UTC()
+	ev := link.Event{Source: "bot:" + botName, Type: "transcript", Sender: botName, Time: at}
+	overhead := len(link.Wrap(ev))
+	budget := cap - overhead
+	if budget < 1 {
+		budget = 1
+	}
+	clipped, _ := clip.Bytes(body, budget)
+	ev.Content = clipped
+	out := link.Wrap(ev)
+	if len(out) > cap {
+		out, _ = clip.Bytes(out, cap)
+	}
+	return out
 }
 
 func toolBlob(m provider.Message) string {

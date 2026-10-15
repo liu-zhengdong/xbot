@@ -82,26 +82,26 @@ func parseFacts(raw string) ([]memory.Fact, error) {
 	return facts, nil
 }
 
-func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, from, to int, focus string) {
+func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, focus string) {
 	if k.Memory == nil {
 		return
 	}
-	facts := k.collectFacts(ctx, entries, from, to, focus, k.turnSender, k.turnTrusted)
+	facts := k.collectFacts(ctx, entries, focus, k.turnSender, k.turnTrusted)
 	_ = k.rememberNew(ctx, facts)
 }
 
-// collectFacts asks the extractor for facts in an inclusive sequence range.
+// collectFacts asks the extractor for facts in the given lines.
 // It does not write memory. sender and trusted are the turn that owned the range,
 // so a background job does not read the kernel's current turn.
-func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, from, to int, focus, sender string, trusted bool) []memory.Fact {
+func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, sender string, trusted bool) []memory.Fact {
 	if k.Extractor == nil || k.Bot == nil {
 		return nil
 	}
-	turns := make([]provider.Message, 0, to-from+1)
+	turns := make([]provider.Message, 0, len(entries))
 	var joined strings.Builder
-	for i := from - 1; i < to && i < len(entries); i++ {
-		turns = append(turns, entries[i].Message)
-		joined.WriteString(entries[i].Message.Content)
+	for _, e := range entries {
+		turns = append(turns, e.Message)
+		joined.WriteString(e.Message.Content)
 		joined.WriteByte('\n')
 	}
 	facts, err := k.Extractor.Extract(ctx, focus, turns)

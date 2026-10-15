@@ -56,6 +56,7 @@ Usage:
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
+  xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
@@ -130,6 +131,8 @@ func run(argv []string) error {
 		return cmdProfile(root, rest[1:])
 	case "template":
 		return cmdTemplate(root, rest[1:])
+	case "reindex":
+		return cmdReindex(root, rest[1:])
 	case "bind":
 		return cmdBind(root, rest[1:])
 	case "serve":
@@ -654,6 +657,21 @@ func cmdProfileAvatar(root string, args []string) error {
 		return err
 	}
 	fmt.Printf("avatar set for %s\n", b.Name())
+	return nil
+}
+
+func cmdReindex(root string, args []string) error {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		return errors.New("usage: xbot reindex <bot>")
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	if err := b.Reindex(); err != nil {
+		return err
+	}
+	fmt.Printf("reindexed %s\n", b.Name())
 	return nil
 }
 

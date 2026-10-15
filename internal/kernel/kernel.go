@@ -38,7 +38,10 @@ type Kernel struct {
 	Selector   provider.ModelSelector
 	Now        func() time.Time
 	Extractor  Extractor
-	Desktop    func(ctx context.Context, title, body string) error
+	// Redact overrides bot.RedactText for transcript text this kernel returns.
+	// Nil uses the process replacer.
+	Redact  func(string) string
+	Desktop func(ctx context.Context, title, body string) error
 	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
 	Exec exec.Executor
 	// AllowBackground auto-approves confirm-needed tools inside a subagent.
@@ -84,22 +87,30 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		}
 		_, _, _ = k.applyReadyJob(migrate(cur))
 	}()
-	entries, err := k.Bot.Entries()
+	if err := k.repairTail(); err != nil {
+		return err
+	}
+	n, err := k.Bot.Count()
 	if err != nil {
 		return err
 	}
-	entries, err = k.repair(entries)
+	seq, err := k.Bot.FindEvent(ev.ID)
 	if err != nil {
 		return err
 	}
-	idx := indexEvent(entries, ev.ID)
-	if idx >= 0 && turnDone(entries, idx) {
-		if k.OnDelta != nil && ev.Source != link.NameTimer {
-			if text := lastAssistant(entries, idx); text != "" {
-				k.OnDelta(text)
-			}
+	if seq > 0 {
+		span, err := k.Bot.Slice(seq, n)
+		if err != nil {
+			return err
 		}
-		return nil
+		if turnDone(span, 0) {
+			if k.OnDelta != nil && ev.Source != link.NameTimer {
+				if text := lastAssistant(span, 0); text != "" {
+					k.OnDelta(text)
+				}
+			}
+			return nil
+		}
 	}
 	st, err := k.Bot.LoadState()
 	if err != nil {
@@ -110,11 +121,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
-	entries, st, err = k.syncEnv(entries, st, ev, memText)
+	st, err = k.syncEnv(st, ev, memText)
 	if err != nil {
 		return err
 	}
-	if idx < 0 {
+	if seq == 0 {
 		entry := bot.Entry{
 			Time:    ev.Time,
 			EventID: ev.ID,
@@ -123,29 +134,24 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		if err := k.Bot.Append(entry); err != nil {
 			return err
 		}
-		entries = append(entries, entry)
-		idx = len(entries) - 1
-	}
-	st, changed, err := k.applyReadyJob(st)
-	if err != nil {
-		return err
-	}
-	if changed {
-		entries, err = k.Bot.Entries()
+		seq, err = k.Bot.Count()
 		if err != nil {
 			return err
 		}
 	}
-	entries, st, err = k.autoCompact(ctx, entries, st, idx+1, memText)
+	st, _, err = k.applyReadyJob(st)
 	if err != nil {
 		return err
 	}
-	k.maybeStartBackground(entries, st, idx+1, memText)
-	entries, err = k.ensureSnapshot(entries, st)
+	st, err = k.autoCompact(ctx, st, seq, memText)
 	if err != nil {
 		return err
 	}
-	assembled, usage, err := k.assemble(entries, st, memText)
+	k.maybeStartBackground(st, seq, memText)
+	if err := k.ensureSnapshot(st); err != nil {
+		return err
+	}
+	assembled, usage, err := k.assemble(st, memText)
 	if err != nil {
 		return err
 	}
@@ -195,7 +201,7 @@ func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	return k.Provider, nil
 }
 
-func (k *Kernel) assemble(entries []bot.Entry, st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
+func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
 	persona, err := k.Bot.ComposedPersona()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
@@ -208,34 +214,37 @@ func (k *Kernel) assemble(entries []bot.Entry, st bot.State, mem string) ([]prov
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
-	msgs, usage := Assemble(Input{
+	raw, err := k.Bot.Uncovered(st.Blocks)
+	if err != nil {
+		return nil, bot.SectionUsage{}, err
+	}
+	msgs, usage := account(Input{
 		Persona: persona,
 		Rules:   rules,
 		Links:   k.linkNames(),
 		Memory:  mem,
 		Blocks:  st.Blocks,
-		Entries: entries,
 		Skills:  skills,
-	})
+	}, projected(st.Blocks, raw))
 	return msgs, usage, nil
 }
 
-func (k *Kernel) syncEnv(entries []bot.Entry, st bot.State, ev link.Event, mem string) ([]bot.Entry, bot.State, error) {
+func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, error) {
 	persona, err := k.Bot.ReadPersona()
 	if err != nil {
-		return nil, st, err
+		return st, err
 	}
 	rules, err := k.Bot.ReadRules(DefaultRules())
 	if err != nil {
-		return nil, st, err
+		return st, err
 	}
 	list, err := k.modelTools()
 	if err != nil {
-		return nil, st, err
+		return st, err
 	}
 	skills, err := k.skillLines()
 	if err != nil {
-		return nil, st, err
+		return st, err
 	}
 	skillHash := ""
 	if len(skills) > 0 {
@@ -262,24 +271,59 @@ func (k *Kernel) syncEnv(entries []bot.Entry, st bot.State, ev link.Event, mem s
 	diff := DiffEnv(st.Env, next)
 	st.Env = next
 	if diff == "" {
-		return entries, st, nil
+		return st, nil
 	}
 	entry := bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleUser, Content: diff}}
 	if err := k.Bot.Append(entry); err != nil {
-		return nil, st, err
+		return st, err
 	}
-	return append(entries, entry), st, nil
+	return st, nil
 }
 
-func (k *Kernel) ensureSnapshot(entries []bot.Entry, st bot.State) ([]bot.Entry, error) {
-	if st.Env.At.IsZero() || uncoveredHasEnv(entries, st.Blocks) {
-		return entries, nil
+func (k *Kernel) ensureSnapshot(st bot.State) error {
+	if st.Env.At.IsZero() {
+		return nil
+	}
+	raw, err := k.Bot.Uncovered(st.Blocks)
+	if err != nil {
+		return err
+	}
+	if uncoveredHasEnv(raw) {
+		return nil
 	}
 	entry := bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleUser, Content: snapshotText(st.Env)}}
-	if err := k.Bot.Append(entry); err != nil {
-		return nil, err
+	return k.Bot.Append(entry)
+}
+
+func (k *Kernel) repairTail() error {
+	open, err := k.Bot.OpenTools()
+	if err != nil || len(open) == 0 {
+		return err
 	}
-	return append(entries, entry), nil
+	minSeq := open[0].CallSeq
+	for _, t := range open[1:] {
+		if t.CallSeq < minSeq {
+			minSeq = t.CallSeq
+		}
+	}
+	n, err := k.Bot.Count()
+	if err != nil {
+		return err
+	}
+	span, err := k.Bot.Slice(minSeq, n)
+	if err != nil {
+		return err
+	}
+	missing, err := unresolvedTail(span)
+	if err != nil {
+		return err
+	}
+	for _, tc := range missing {
+		if err := k.Bot.Append(placeholder(tc)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (k *Kernel) pendingNotes() int {
@@ -305,21 +349,6 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 		return "", err
 	}
 	return clipMemory(renderMemory(facts)), nil
-}
-
-func (k *Kernel) repair(entries []bot.Entry) ([]bot.Entry, error) {
-	missing, err := unresolvedTail(entries)
-	if err != nil {
-		return nil, err
-	}
-	for _, tc := range missing {
-		entry := placeholder(tc)
-		if err := k.Bot.Append(entry); err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
 }
 
 // loadMemory is the context-assembly seam for the three memory scopes.

@@ -181,11 +181,11 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		n, _ := noteCount(b)
-		entries, _ := b.Entries()
+		count, _ := b.Count()
 		url, bg, ink, initial := paintBot(b)
 		item := botItem{
 			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Description: cfg.Description, Notes: n,
-			Unread: n > 0 || len(entries) > cur[cfg.Name],
+			Unread: n > 0 || count > cur[cfg.Name],
 			Pinned: cfg.Pinned, Primary: cfg.Name == primary,
 			AvatarURL: url, AvatarBG: bg, AvatarInk: ink, Initial: initial,
 		}

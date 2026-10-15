@@ -116,6 +116,10 @@
 
 这次 GET 会把该 Bot 的已读游标记到当前长度。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是主人说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。
 
+跨 Bot 阅读不是 HTTP。模型工具 `recall_history` 和 `expand` 有可选的 `bot`。只能读和调用者至少有一个相同 owner 的 Bot。别的 owner、只是同群或能互发消息的 Bot、以及群 id，都拒绝。搜索和展开用对方 Bot 自己的索引。读到的文本包在 `<untrusted_event source="bot:<name>" ... sender="<name>">` 里，没有指令效力。长度上限和读自己的一样（搜索约 4 KiB，展开约 8 KiB）。
+
+`GET /api/bots/{name}/transcript` 仍一次返回全部消息，给界面用。Bot 列表上的未读比较用序号计数，不读段文件。
+
 `POST /api/bots/{name}/messages`，body `{"text":"..."}`，1 到 16 KiB。拿到处理锁时响应是 `text/event-stream`：
 
 - `event: delta`，`data: {"text":"..."}`

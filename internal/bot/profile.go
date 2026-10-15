@@ -509,6 +509,7 @@ func Rename(root, from, to string) error {
 			return err
 		}
 		fromDir, toDir := Dir(root, from), Dir(root, to)
+		closeStoreDir(fromDir)
 		if err := os.Rename(fromDir, toDir); err != nil {
 			return err
 		}

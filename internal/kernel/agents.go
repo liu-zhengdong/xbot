@@ -117,10 +117,6 @@ func (k *Kernel) endpoint() (exec.Endpoint, error) {
 }
 
 func (k *Kernel) forkMessages() ([]provider.Message, error) {
-	entries, err := k.Bot.Entries()
-	if err != nil {
-		return nil, err
-	}
 	st, err := k.Bot.LoadState()
 	if err != nil {
 		return nil, err
@@ -130,7 +126,7 @@ func (k *Kernel) forkMessages() ([]provider.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	msgs, _, err := k.assemble(entries, st, mem)
+	msgs, _, err := k.assemble(st, mem)
 	if err != nil {
 		return nil, err
 	}

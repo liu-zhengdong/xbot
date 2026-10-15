@@ -43,7 +43,12 @@ type Input struct {
 }
 
 // Assemble builds model messages in order: stable prefix, memory, summary blocks, uncovered raw messages.
+// Entries is the full transcript. The kernel hot path uses uncovered lines instead of this scan.
 func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
+	return account(in, project(in.Entries, in.Blocks))
+}
+
+func account(in Input, hist []provider.Message) ([]provider.Message, bot.SectionUsage) {
 	sys := provider.Message{Role: provider.RoleSystem, Content: prefixWithSkills(in.Persona, in.Rules, in.Links, in.Skills)}
 	msgs := []provider.Message{sys}
 	usage := bot.SectionUsage{Stable: compact.EstimateMessage(sys)}
@@ -52,7 +57,7 @@ func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
 		msgs = append(msgs, mm)
 		usage.Memory = compact.EstimateMessage(mm)
 	}
-	for _, m := range project(in.Entries, in.Blocks) {
+	for _, m := range hist {
 		msgs = append(msgs, m)
 		est := compact.EstimateMessage(m)
 		if strings.HasPrefix(m.Content, "<environment_") {

@@ -325,7 +325,7 @@ func TestHardCompactStaysSynchronous(t *testing.T) {
 	if calls := comp.ncalls(); calls != 1 {
 		t.Fatalf("calls %d", calls)
 	}
-	raw, err := os.ReadFile(filepath.Join(bot.Dir(b.Root, b.Name()), "transcript.jsonl"))
+	raw, err := b.ConcatRaw()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,15 +346,11 @@ func seedHistory(t *testing.T, b *bot.Bot, n, size int) {
 
 func tuneSoftBudget(t *testing.T, k *Kernel) {
 	t.Helper()
-	entries, err := k.Bot.Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
 	st, err := k.Bot.LoadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, usage, err := k.assemble(entries, migrate(st), "")
+	_, usage, err := k.assemble(migrate(st), "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -67,11 +67,11 @@ func (k *Kernel) runLockPath() string {
 
 // maybeStartBackground opens one job when history crosses the soft threshold
 // and the hard cap has not been hit. It returns without waiting for the summary.
-func (k *Kernel) maybeStartBackground(entries []bot.Entry, st bot.State, protectSeq int, mem string) {
+func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) {
 	if k == nil || k.Bot == nil || k.Compactor == nil {
 		return
 	}
-	_, usage, err := k.assemble(entries, st, mem)
+	_, usage, err := k.assemble(st, mem)
 	if err != nil {
 		return
 	}
@@ -98,11 +98,25 @@ func (k *Kernel) maybeStartBackground(entries []bot.Entry, st bot.State, protect
 		unlock()
 		return
 	}
-	maxTo := len(entries) - k.keepTail()
+	n, err := k.Bot.Count()
+	if err != nil {
+		unlock()
+		return
+	}
+	maxTo := n - k.keepTail()
 	if protectSeq > 0 && protectSeq-1 < maxTo {
 		maxTo = protectSeq - 1
 	}
-	to := safeTo(entries, st.Blocks, maxTo)
+	if maxTo < 1 || coveredBy(st.Blocks, 1, maxTo) {
+		unlock()
+		return
+	}
+	span, err := k.Bot.Slice(1, maxTo)
+	if err != nil {
+		unlock()
+		return
+	}
+	to := safeTo(span, 1, n, st.Blocks, maxTo)
 	if to < 1 || coveredBy(st.Blocks, 1, to) {
 		unlock()
 		return
@@ -153,7 +167,7 @@ func (k *Kernel) finishJob() {
 	if err != nil || job.Status != jobRunning || job.To < job.From || job.From < 1 {
 		return
 	}
-	entries, err := k.Bot.Entries()
+	span, err := k.Bot.Slice(job.From, job.To)
 	if err != nil {
 		return
 	}
@@ -163,7 +177,7 @@ func (k *Kernel) finishJob() {
 	}
 	st = migrate(st)
 	// The saved range is the snapshot. Messages appended after it stay outside.
-	text, err := k.summarize(context.Background(), entries, st.Blocks, job.From, job.To, job.Focus)
+	text, err := k.summarize(context.Background(), span, st.Blocks, job.From, job.To, job.Focus)
 	if err != nil {
 		return
 	}
@@ -171,7 +185,7 @@ func (k *Kernel) finishJob() {
 	if text == "" {
 		return
 	}
-	facts := k.collectFacts(context.Background(), entries, job.From, job.To, job.Focus, job.Sender, job.Trusted)
+	facts := k.collectFacts(context.Background(), span, job.Focus, job.Sender, job.Trusted)
 	if err := k.rememberNew(context.Background(), facts); err != nil {
 		return
 	}
@@ -207,10 +221,6 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 	if err != nil || job.Status != jobReady || strings.TrimSpace(job.Summary) == "" {
 		return st, false, err
 	}
-	entries, err := k.Bot.Entries()
-	if err != nil {
-		return st, false, err
-	}
 	fresh, err := k.Bot.LoadState()
 	if err != nil {
 		return st, false, err
@@ -223,7 +233,19 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 	st.Blocks = fresh.Blocks
 	changed := false
 	if !hasSameRange(st.Blocks, job.From, job.To) {
-		if err := validateRange(entries, job.From, job.To, 0, st.Blocks); err != nil || coveredBy(st.Blocks, job.From, job.To) {
+		if coveredBy(st.Blocks, job.From, job.To) {
+			_ = os.Remove(k.jobPath())
+			return st, false, nil
+		}
+		n, err := k.Bot.Count()
+		if err != nil {
+			return st, false, err
+		}
+		span, err := k.Bot.Slice(job.From, job.To)
+		if err != nil {
+			return st, false, err
+		}
+		if err := validateRange(span, job.From, job.From, job.To, 0, n, st.Blocks); err != nil {
 			_ = os.Remove(k.jobPath())
 			return st, false, nil
 		}
@@ -234,11 +256,9 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 			return st, false, err
 		}
 		changed = true
-		entries, err = k.ensureSnapshot(entries, st)
-		if err != nil {
+		if err := k.ensureSnapshot(st); err != nil {
 			return st, changed, err
 		}
-		_ = entries
 	}
 	if !job.FactsDone {
 		if err := k.rememberNew(context.Background(), job.Facts); err != nil {

@@ -2,7 +2,6 @@ package bot
 
 import (
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -45,14 +44,14 @@ func TestCreateLoadAppend(t *testing.T) {
 	if len(entries) != 1 || entries[0].Message.Content != "hi" {
 		t.Fatalf("%+v", entries)
 	}
-	raw, err := os.ReadFile(loaded.dir() + "/transcript.jsonl")
+	raw, err := loaded.ConcatRaw()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := loaded.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "yo"}}); err != nil {
 		t.Fatal(err)
 	}
-	raw2, err := os.ReadFile(loaded.dir() + "/transcript.jsonl")
+	raw2, err := loaded.ConcatRaw()
 	if err != nil {
 		t.Fatal(err)
 	}

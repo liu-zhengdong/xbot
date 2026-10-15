@@ -185,7 +185,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	before, err := os.ReadFile(filepath.Join(bot.Dir(root, "ada"), "transcript.jsonl"))
+	before, err := b.ConcatRaw()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 	if c.calls != 1 || !strings.Contains(c.got[0].Content, "OLD") {
 		t.Fatalf("compactor calls=%d", c.calls)
 	}
-	after, err := os.ReadFile(filepath.Join(bot.Dir(root, "ada"), "transcript.jsonl"))
+	after, err := b.ConcatRaw()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,18 +47,26 @@ func ActiveBlocks(blocks []bot.SummaryBlock) []bot.SummaryBlock {
 func project(entries []bot.Entry, blocks []bot.SummaryBlock) []provider.Message {
 	active := ActiveBlocks(blocks)
 	covered := coverage(len(entries), active)
-	var sums []provider.Message
-	for _, b := range active {
-		sums = append(sums, summaryMessage(b))
-	}
-	var raw []provider.Message
+	var raw []bot.Entry
 	for i, e := range entries {
 		if covered[i+1] {
 			continue
 		}
-		raw = append(raw, e.Message)
+		raw = append(raw, e)
 	}
-	return append(sums, raw...)
+	return projected(blocks, raw)
+}
+
+// projected is summaries plus lines that are already outside every active block.
+func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Message {
+	var msgs []provider.Message
+	for _, b := range ActiveBlocks(blocks) {
+		msgs = append(msgs, summaryMessage(b))
+	}
+	for _, e := range uncovered {
+		msgs = append(msgs, e.Message)
+	}
+	return msgs
 }
 
 func summaryMessage(b bot.SummaryBlock) provider.Message {
@@ -89,7 +97,7 @@ func migrate(st bot.State) bot.State {
 // The last KeepTail messages stay raw. A range may contain whole active blocks and replace them
 // with one coarser block. It may not cut through a block or a tool-call pair.
 func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (string, error) {
-	entries, err := k.Bot.Entries()
+	n, err := k.Bot.Count()
 	if err != nil {
 		return "", err
 	}
@@ -98,18 +106,25 @@ func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (
 		return "", err
 	}
 	st = migrate(st)
-	if err := validateRange(entries, from, to, k.keepTail(), st.Blocks); err != nil {
+	var span []bot.Entry
+	if from >= 1 && to >= from && to <= n {
+		span, err = k.Bot.Slice(from, to)
+		if err != nil {
+			return "", err
+		}
+	}
+	if err := validateRange(span, from, from, to, k.keepTail(), n, st.Blocks); err != nil {
 		return "", err
 	}
 	focus = strings.TrimSpace(focus)
 	if focus == "" {
 		focus = defaultFocus
 	}
-	text, err := k.summarize(ctx, entries, st.Blocks, from, to, focus)
+	text, err := k.summarize(ctx, span, st.Blocks, from, to, focus)
 	if err != nil {
 		return "", err
 	}
-	k.extractInto(ctx, entries, from, to, focus)
+	k.extractInto(ctx, span, focus)
 	st.Blocks = append(st.Blocks, bot.SummaryBlock{
 		From: from, To: to, Text: text, Focus: focus, At: k.now(),
 	})
@@ -135,41 +150,53 @@ func (k *Kernel) compactAt() int {
 	return compact.DefaultBudget().CompactAt
 }
 
-func (k *Kernel) autoCompact(ctx context.Context, entries []bot.Entry, st bot.State, protectSeq int, mem string) ([]bot.Entry, bot.State, error) {
-	_, usage, err := k.assemble(entries, st, mem)
+func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, mem string) (bot.State, error) {
+	_, usage, err := k.assemble(st, mem)
 	if err != nil {
-		return entries, st, err
+		return st, err
 	}
 	if usage.Total() <= k.compactAt() {
 		st.Usage = usage
-		return entries, st, nil
+		return st, nil
 	}
-	maxTo := len(entries) - k.keepTail()
+	n, err := k.Bot.Count()
+	if err != nil {
+		return st, err
+	}
+	maxTo := n - k.keepTail()
 	if protectSeq > 0 && protectSeq-1 < maxTo {
 		maxTo = protectSeq - 1
 	}
-	to := safeTo(entries, st.Blocks, maxTo)
-	if to < 1 || coveredBy(st.Blocks, 1, to) {
+	if maxTo < 1 || coveredBy(st.Blocks, 1, maxTo) {
 		st.Usage = usage
-		return entries, st, nil
+		return st, nil
 	}
-	text, err := k.summarize(ctx, entries, st.Blocks, 1, to, defaultFocus)
+	span, err := k.Bot.Slice(1, maxTo)
 	if err != nil {
-		return entries, st, err
+		return st, err
 	}
-	k.extractInto(ctx, entries, 1, to, defaultFocus)
+	to := safeTo(span, 1, n, st.Blocks, maxTo)
+	if to < 1 || to > len(span) || coveredBy(st.Blocks, 1, to) {
+		st.Usage = usage
+		return st, nil
+	}
+	text, err := k.summarize(ctx, span[:to], st.Blocks, 1, to, defaultFocus)
+	if err != nil {
+		return st, err
+	}
+	k.extractInto(ctx, span[:to], defaultFocus)
 	st.Blocks = append(st.Blocks, bot.SummaryBlock{
 		From: 1, To: to, Text: text, Focus: "automatic", At: k.now(),
 	})
 	if err := k.Bot.SaveState(st); err != nil {
-		return entries, st, err
+		return st, err
 	}
-	return entries, st, nil
+	return st, nil
 }
 
-func safeTo(entries []bot.Entry, blocks []bot.SummaryBlock, maxTo int) int {
+func safeTo(entries []bot.Entry, base, n int, blocks []bot.SummaryBlock, maxTo int) int {
 	for to := maxTo; to >= 1; to-- {
-		if validateRange(entries, 1, to, 0, blocks) == nil {
+		if validateRange(entries, base, 1, to, 0, n, blocks) == nil {
 			return to
 		}
 	}
@@ -185,15 +212,16 @@ func coveredBy(blocks []bot.SummaryBlock, from, to int) bool {
 	return false
 }
 
-func validateRange(entries []bot.Entry, from, to, keep int, blocks []bot.SummaryBlock) error {
-	n := len(entries)
+// validateRange checks an inclusive range. entries is the slice whose first line is sequence base.
+// n is the transcript length, which may be longer than the slice.
+func validateRange(entries []bot.Entry, base, from, to, keep, n int, blocks []bot.SummaryBlock) error {
 	if from < 1 || to < from || to > n {
 		return fmt.Errorf("compact: range %d-%d outside 1-%d", from, to, n)
 	}
 	if keep > 0 && to > n-keep {
 		return fmt.Errorf("compact: last %d messages stay raw", keep)
 	}
-	if err := toolBoundary(entries, from, to); err != nil {
+	if err := toolBoundary(entries, base, from, to); err != nil {
 		return err
 	}
 	return blockOverlap(from, to, blocks)
@@ -212,14 +240,17 @@ func blockOverlap(from, to int, blocks []bot.SummaryBlock) error {
 	return nil
 }
 
-func toolBoundary(entries []bot.Entry, from, to int) error {
+func toolBoundary(entries []bot.Entry, base, from, to int) error {
+	if base < 1 {
+		base = 1
+	}
 	callAt := map[string]int{}
 	var results []struct {
 		id  string
 		seq int
 	}
 	for i, e := range entries {
-		seq := i + 1
+		seq := base + i
 		m := e.Message
 		if m.Role == provider.RoleAssistant {
 			for _, tc := range m.ToolCalls {
@@ -271,9 +302,9 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 			prior.WriteString(b.Text)
 		}
 	}
-	turns := make([]provider.Message, 0, to-from+1)
-	for i := from - 1; i < to && i < len(entries); i++ {
-		turns = append(turns, entries[i].Message)
+	turns := make([]provider.Message, 0, len(entries))
+	for _, e := range entries {
+		turns = append(turns, e.Message)
 	}
 	if f, ok := k.Compactor.(focusedCompactor); ok {
 		return f.CompactFocus(ctx, prior.String(), focus, turns)
@@ -292,12 +323,8 @@ type focusedCompactor interface {
 	CompactFocus(ctx context.Context, prior, focus string, turns []provider.Message) (string, error)
 }
 
-func uncoveredHasEnv(entries []bot.Entry, blocks []bot.SummaryBlock) bool {
-	covered := coverage(len(entries), ActiveBlocks(blocks))
-	for i, e := range entries {
-		if covered[i+1] {
-			continue
-		}
+func uncoveredHasEnv(entries []bot.Entry) bool {
+	for _, e := range entries {
 		if strings.HasPrefix(e.Message.Content, "<environment_") {
 			return true
 		}

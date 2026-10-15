@@ -117,6 +117,15 @@ func OwnerBots(root, owner string) ([]bot.Config, error) {
 	return out, nil
 }
 
+// SameOwner reports whether the two bots share at least one owner.
+// A shared group, or the ability to message each other, is not enough.
+func SameOwner(a, b *bot.Bot) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return sharesOwner(a.Config().Owners, b.Config().Owners)
+}
+
 func sharesOwner(a, b []string) bool {
 	for _, x := range a {
 		if x != "" && contains(b, x) {
