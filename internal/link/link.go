@@ -95,10 +95,10 @@ func (errNotSent) Error() string { return "link: outbound message kept as draft"
 
 // Event is one inbound happening. Content is data, not a system instruction.
 type Event struct {
-	ID        string    `json:"id"`
-	Source    string    `json:"source"`
-	Type      string    `json:"type"`
-	Content   string    `json:"content"`
+	ID         string    `json:"id"`
+	Source     string    `json:"source"`
+	Type       string    `json:"type"`
+	Content    string    `json:"content"`
 	Sender     string    `json:"sender"`
 	SenderKind string    `json:"sender_kind,omitempty"`
 	Time       time.Time `json:"time"`
