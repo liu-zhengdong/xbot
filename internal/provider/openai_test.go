@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDecodeStreamTextAndSplitToolCall(t *testing.T) {
@@ -81,6 +82,61 @@ func TestChatMissingKey(t *testing.T) {
 	c := &Client{BaseURL: "http://example", Model: "m"}
 	if _, err := c.Chat(context.Background(), Request{}, nil); err == nil {
 		t.Fatal("expected missing key")
+	}
+}
+
+func TestChatRetriesEOFAndServerErrors(t *testing.T) {
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		switch n {
+		case 1:
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("no hijacker")
+				return
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			conn.Close()
+		case 2:
+			http.Error(w, "busy", http.StatusBadGateway)
+		case 3:
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"pong\"}}]}\n\n")
+			_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		default:
+			http.Error(w, "extra", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client(), retryWait: time.Millisecond}
+	var deltas []string
+	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) {
+		deltas = append(deltas, s)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Content != "pong" || strings.Join(deltas, "") != "pong" || n != 3 {
+		t.Fatalf("msg %q deltas %v calls %d", msg.Content, deltas, n)
+	}
+}
+
+func TestChatDoesNotRetryClientErrors(t *testing.T) {
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client(), retryWait: time.Millisecond}
+	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "401") || n != 1 {
+		t.Fatalf("err=%v calls=%d", err, n)
 	}
 }
 

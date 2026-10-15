@@ -19,6 +19,9 @@ type Client struct {
 	APIKey     string
 	Model      string
 	HTTPClient *http.Client
+	// retryWait is the first backoff. The second retry waits twice as long.
+	// Zero uses the default. Tests set a short wait.
+	retryWait time.Duration
 }
 
 var defaultHTTP = &http.Client{
@@ -46,7 +49,80 @@ type apiRequest struct {
 }
 
 // Chat streams a completion and returns the assembled assistant message.
+// unexpected EOF, HTTP 429, and HTTP 5xx are retried twice, with backoff.
+// Deltas are delivered only after an attempt succeeds, so a retry does not repeat them.
 func (c *Client) Chat(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
+	var last error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			if err := c.pause(ctx, attempt); err != nil {
+				return Message{}, err
+			}
+		}
+		var deltas []string
+		msg, err := c.chatOnce(ctx, req, func(s string) { deltas = append(deltas, s) })
+		if err == nil {
+			if onDelta != nil {
+				for _, s := range deltas {
+					onDelta(s)
+				}
+			}
+			return msg, nil
+		}
+		last = err
+		if !retryable(err) {
+			return Message{}, err
+		}
+	}
+	return Message{}, last
+}
+
+func (c *Client) pause(ctx context.Context, attempt int) error {
+	wait := c.retryWait
+	if wait <= 0 {
+		wait = 200 * time.Millisecond
+	}
+	wait *= time.Duration(attempt)
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func retryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+		return true
+	}
+	if strings.Contains(err.Error(), "unexpected EOF") {
+		return true
+	}
+	var status interface{ StatusCode() int }
+	if errors.As(err, &status) {
+		code := status.StatusCode()
+		return code == http.StatusTooManyRequests || code >= 500
+	}
+	return false
+}
+
+type statusError struct {
+	code int
+	body string
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("provider: http %d: %s", e.code, e.body)
+}
+
+func (e *statusError) StatusCode() int { return e.code }
+
+func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
 	if strings.TrimSpace(c.APIKey) == "" {
 		return Message{}, errors.New("provider: API key is empty")
 	}
@@ -92,7 +168,7 @@ func (c *Client) Chat(ctx context.Context, req Request, onDelta func(string)) (M
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return Message{}, fmt.Errorf("provider: http %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return Message{}, &statusError{code: resp.StatusCode, body: strings.TrimSpace(string(b))}
 	}
 	msg, err := decodeStream(resp.Body, onDelta)
 	if err != nil {
