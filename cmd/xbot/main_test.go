@@ -38,12 +38,30 @@ func TestParseChat(t *testing.T) {
 	if !opt.Yes || opt.MaxSteps != 4 || opt.Name != "ada" {
 		t.Fatalf("%+v", opt)
 	}
-	if _, err := parseChat(nil); err == nil {
-		t.Fatal("expected usage error")
+	opt, err = parseChat(nil)
+	if err != nil || opt.Name != "" {
+		t.Fatalf("empty chat %+v %v", opt, err)
 	}
 	opt, err = parseChat([]string{"ada", "--yes", "--max-steps", "4"})
 	if err != nil || !opt.Yes || opt.MaxSteps != 4 || opt.Name != "ada" {
 		t.Fatalf("%+v %v", opt, err)
+	}
+}
+
+func TestParseFork(t *testing.T) {
+	opt, err := parseFork([]string{"ada", "reviewer", "--role", "Review pull requests.", "--group", "ship"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Src != "ada" || opt.Name != "reviewer" || opt.Role != "Review pull requests." || opt.Group != "ship" {
+		t.Fatalf("%+v", opt)
+	}
+	opt, err = parseFork([]string{"--role", "Take notes.", "ada", "neo"})
+	if err != nil || opt.Src != "ada" || opt.Name != "neo" || opt.Group != "" {
+		t.Fatalf("%+v %v", opt, err)
+	}
+	if _, err := parseFork([]string{"ada", "neo"}); err == nil {
+		t.Fatal("expected role to be required")
 	}
 }
 

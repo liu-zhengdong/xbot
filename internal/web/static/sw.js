@@ -1,4 +1,4 @@
-const CACHE = "xbot-m5-3";
+const CACHE = "xbot-m6-2";
 const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {

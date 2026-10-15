@@ -42,8 +42,14 @@ const usageText = `XBot is a personal bot. One bot has one continuous conversati
 
 Usage:
   xbot [--root DIR] new <name> [--persona TEXT] [--provider NAME] [--model NAME]
+  xbot [--root DIR] fork <src> <name> --role TEXT [--group NAME]
+  xbot [--root DIR] delete <name>
   xbot [--root DIR] list
-  xbot [--root DIR] chat <name> [--yes] [--max-steps N]
+  xbot [--root DIR] chat [name] [--yes] [--max-steps N]
+  xbot [--root DIR] pin <name>
+  xbot [--root DIR] unpin <name>
+  xbot [--root DIR] primary
+  xbot [--root DIR] primary set <name>
   xbot [--root DIR] bind <name> --provider NAME --model NAME
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
@@ -100,10 +106,20 @@ func run(argv []string) error {
 	switch rest[0] {
 	case "new":
 		return cmdNew(root, rest[1:])
+	case "fork":
+		return cmdFork(root, rest[1:])
+	case "delete":
+		return cmdDelete(root, rest[1:])
 	case "list":
 		return cmdList(root)
 	case "chat":
 		return cmdChat(root, rest[1:])
+	case "pin":
+		return cmdPin(root, rest[1:], true)
+	case "unpin":
+		return cmdPin(root, rest[1:], false)
+	case "primary":
+		return cmdPrimary(root, rest[1:])
 	case "bind":
 		return cmdBind(root, rest[1:])
 	case "serve":
@@ -198,6 +214,10 @@ func cmdNew(root string, args []string) error {
 			return err
 		}
 	}
+	existing, err := bot.List(root)
+	if err != nil {
+		return err
+	}
 	b, err := bot.Create(root, opt.Name, opt.Persona, defaultLinks)
 	if err != nil {
 		return err
@@ -221,15 +241,107 @@ func cmdNew(root string, args []string) error {
 	if err := b.SetOwners([]string{who.ID}); err != nil {
 		return err
 	}
+	if len(existing) == 0 {
+		if err := bot.SetPrimary(root, b.Name()); err != nil {
+			return err
+		}
+	} else if _, err := bot.Primary(root); errors.Is(err, bot.ErrNoPrimary) || errors.Is(err, bot.ErrNotFound) {
+		if _, _, err := bot.EnsurePrimary(root, bot.Seed{Persona: bot.DefaultPersona, Links: defaultLinks, Owner: who.ID}); err != nil {
+			return err
+		}
+	}
 	fmt.Printf("created bot %s\n", opt.Name)
 	return nil
 }
 
+func ensureSeed(root string) error {
+	ext, display, err := link.Account()
+	if err != nil {
+		return err
+	}
+	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	if err != nil {
+		return err
+	}
+	b, created, err := bot.EnsurePrimary(root, bot.Seed{Persona: bot.DefaultPersona, Links: defaultLinks, Owner: who.ID})
+	if err != nil {
+		return err
+	}
+	if !created {
+		return nil
+	}
+	return b.WriteRules(kernel.DefaultRules())
+}
+
+type forkOpts struct {
+	Src   string
+	Name  string
+	Role  string
+	Group string
+}
+
+func parseFork(args []string) (forkOpts, error) {
+	ordered, err := reorderFlags(args, map[string]bool{"role": true, "group": true})
+	if err != nil {
+		return forkOpts{}, err
+	}
+	fs := flag.NewFlagSet("fork", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	role := fs.String("role", "", "persona and handoff focus for the new bot")
+	group := fs.String("group", "", "optional group name containing both bots")
+	if err := fs.Parse(ordered); err != nil {
+		return forkOpts{}, err
+	}
+	if fs.NArg() != 2 || strings.TrimSpace(*role) == "" {
+		return forkOpts{}, errors.New("usage: xbot fork <src> <name> --role TEXT [--group NAME]")
+	}
+	return forkOpts{Src: fs.Arg(0), Name: fs.Arg(1), Role: *role, Group: *group}, nil
+}
+
+func cmdFork(root string, args []string) error {
+	opt, err := parseFork(args)
+	if err != nil {
+		return err
+	}
+	b, err := bot.Load(root, opt.Src)
+	if err != nil {
+		return err
+	}
+	lock, ok, err := b.TryLockHandle()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("bot is busy")
+	}
+	defer lock.Release()
+	k, _, err := openKernel(root, b, 4, func(context.Context, string, string) (bool, error) {
+		return false, nil
+	}, nil, false, runnerSpec{})
+	if err != nil {
+		return err
+	}
+	res, err := k.Fork(context.Background(), kernel.ForkRequest{Name: opt.Name, Role: opt.Role, Group: opt.Group})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("forked %s from %s\n", res.Name, opt.Src)
+	if res.GroupID != "" {
+		fmt.Printf("group %s\t%s\n", res.GroupID, opt.Group)
+	}
+	return nil
+}
+
 func cmdList(root string) error {
+	if err := ensureSeed(root); err != nil {
+		return err
+	}
 	bots, err := bot.List(root)
 	if err != nil {
 		return err
 	}
+	bots = bot.Order(bots)
+	primary, _ := bot.Primary(root)
 	if len(bots) == 0 {
 		fmt.Println("no bots")
 		return nil
@@ -239,8 +351,75 @@ func cmdList(root string) error {
 		if cfg.Provider != "" {
 			extra = "\t" + cfg.Provider + "/" + cfg.Model
 		}
-		fmt.Printf("%s\t%s%s\n", cfg.Name, strings.Join(cfg.Links, ","), extra)
+		var tags []string
+		if cfg.Name == primary {
+			tags = append(tags, "primary")
+		}
+		if cfg.Pinned {
+			tags = append(tags, "pinned")
+		}
+		tag := ""
+		if len(tags) > 0 {
+			tag = "\t" + strings.Join(tags, ",")
+		}
+		fmt.Printf("%s\t%s%s%s\n", cfg.Name, strings.Join(cfg.Links, ","), tag, extra)
 	}
+	return nil
+}
+
+func cmdDelete(root string, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: xbot delete <name>")
+	}
+	if err := bot.Delete(root, args[0]); err != nil {
+		return err
+	}
+	fmt.Printf("deleted %s\n", args[0])
+	return nil
+}
+
+func cmdPin(root string, args []string, on bool) error {
+	usage := "usage: xbot pin <name>"
+	if !on {
+		usage = "usage: xbot unpin <name>"
+	}
+	if len(args) != 1 {
+		return errors.New(usage)
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	if err := b.SetPinned(on); err != nil {
+		return err
+	}
+	if on {
+		fmt.Printf("pinned %s\n", b.Name())
+	} else {
+		fmt.Printf("unpinned %s\n", b.Name())
+	}
+	return nil
+}
+
+func cmdPrimary(root string, args []string) error {
+	if len(args) == 0 {
+		if err := ensureSeed(root); err != nil {
+			return err
+		}
+		name, err := bot.Primary(root)
+		if err != nil {
+			return err
+		}
+		fmt.Println(name)
+		return nil
+	}
+	if len(args) != 2 || args[0] != "set" {
+		return errors.New("usage: xbot primary set <name>")
+	}
+	if err := bot.SetPrimary(root, args[1]); err != nil {
+		return err
+	}
+	fmt.Printf("primary is %s\n", args[1])
 	return nil
 }
 
@@ -266,10 +445,14 @@ func parseChat(args []string) (chatOpts, error) {
 	if err := fs.Parse(ordered); err != nil {
 		return chatOpts{}, err
 	}
-	if fs.NArg() != 1 {
-		return chatOpts{}, errors.New("usage: xbot chat <name>")
+	if fs.NArg() > 1 {
+		return chatOpts{}, errors.New("usage: xbot chat [name]")
 	}
-	return chatOpts{Name: fs.Arg(0), Yes: *yes, MaxSteps: *steps, RunnerURL: *runnerURL, RunnerToken: *runnerToken}, nil
+	name := ""
+	if fs.NArg() == 1 {
+		name = fs.Arg(0)
+	}
+	return chatOpts{Name: name, Yes: *yes, MaxSteps: *steps, RunnerURL: *runnerURL, RunnerToken: *runnerToken}, nil
 }
 
 // reorderFlags moves flags in front of positional args so the name can sit
@@ -306,6 +489,15 @@ func cmdChat(root string, args []string) error {
 	opt, err := parseChat(args)
 	if err != nil {
 		return err
+	}
+	if opt.Name == "" {
+		if err := ensureSeed(root); err != nil {
+			return err
+		}
+		opt.Name, err = bot.Primary(root)
+		if err != nil {
+			return err
+		}
 	}
 	b, err := bot.Load(root, opt.Name)
 	if err != nil {
@@ -592,6 +784,9 @@ func cmdServe(root string, args []string) error {
 	}
 	token, _, err := ui.EnsureToken()
 	if err != nil {
+		return err
+	}
+	if err := ensureSeed(root); err != nil {
 		return err
 	}
 	ln, err := net.Listen("tcp", *httpAddr)

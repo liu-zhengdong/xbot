@@ -60,6 +60,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	mux.HandleFunc("POST /api/bots", s.createBot)
+	mux.HandleFunc("POST /api/bots/{name}/fork", s.forkBot)
+	mux.HandleFunc("POST /api/bots/{name}/pin", s.pinBot)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
@@ -142,6 +144,8 @@ type botItem struct {
 	Persona string `json:"persona,omitempty"`
 	Unread  bool   `json:"unread"`
 	Notes   int    `json:"notes"`
+	Pinned  bool   `json:"pinned"`
+	Primary bool   `json:"primary"`
 }
 
 func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +158,8 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cur, _ := s.readCursor()
+	primary, _ := bot.Primary(s.Root)
+	cfgs = bot.Order(cfgs)
 	var out []botItem
 	for _, cfg := range cfgs {
 		b, err := bot.Load(s.Root, cfg.Name)
@@ -163,7 +169,11 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 		}
 		n, _ := noteCount(b)
 		entries, _ := b.Entries()
-		item := botItem{Name: cfg.Name, Persona: clip(cfg.Persona, 80), Notes: n, Unread: n > 0 || len(entries) > cur[cfg.Name]}
+		item := botItem{
+			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Notes: n,
+			Unread: n > 0 || len(entries) > cur[cfg.Name],
+			Pinned: cfg.Pinned, Primary: cfg.Name == primary,
+		}
 		out = append(out, item)
 	}
 	if out == nil {
@@ -201,7 +211,97 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if _, err := bot.Primary(s.Root); errors.Is(err, bot.ErrNoPrimary) || errors.Is(err, bot.ErrNotFound) {
+		all, err := bot.List(s.Root)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if len(all) == 1 {
+			err = bot.SetPrimary(s.Root, b.Name())
+		} else {
+			_, _, err = bot.EnsurePrimary(s.Root, bot.Seed{Links: links, Owner: s.owner})
+		}
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name()})
+}
+
+func (s *Server) pinBot(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	var in struct {
+		Pinned *bool `json:"pinned"`
+	}
+	if err := decode(r, &in); err != nil || in.Pinned == nil {
+		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if err := b.SetPinned(*in.Pinned); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "pinned": *in.Pinned})
+}
+
+func (s *Server) forkBot(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	src, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	var in struct {
+		Name  string `json:"name"`
+		Role  string `json:"role"`
+		Group string `json:"group"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Role) == "" {
+		writeErr(w, http.StatusBadRequest, "name and role are required")
+		return
+	}
+	lock, ok, err := src.TryLockHandle()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeErr(w, http.StatusConflict, "bot is busy")
+		return
+	}
+	defer lock.Release()
+	k, gate, err := s.kernel(src)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gate.Lock()
+	defer gate.Unlock()
+	res, err := k.Fork(r.Context(), kernel.ForkRequest{Name: in.Name, Role: in.Role, Group: in.Group})
+	if errors.Is(err, bot.ErrExists) {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"name": res.Name, "group_id": res.GroupID})
 }
 
 func (s *Server) owned(name string) (*bot.Bot, error) {
@@ -250,9 +350,11 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 			"id": meta.ID, "status": meta.Status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
 		})
 	}
+	primary, _ := bot.Primary(s.Root)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": b.Name(), "persona": persona,
 		"provider": b.Config().Provider, "model": b.Config().Model,
+		"pinned": b.Config().Pinned, "primary": b.Name() == primary,
 		"memory": mem, "routines": routines, "agents": agents,
 	})
 }

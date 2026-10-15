@@ -343,12 +343,15 @@
     return av;
   }
 
-  function listButton(name, active, unread, kind) {
+  function listButton(name, active, unread, kind, flags) {
+    flags = flags || {};
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
     const av = kind === "group" ? groupAvatar() : avatar(name);
     if (unread) av.append(el("i", "unread"));
-    btn.append(av, el("span", "name", name));
+    const label = el("span", "name", name);
+    if (flags.primary) label.append(el("span", "badge", "主"));
+    btn.append(av, label);
     return btn;
   }
 
@@ -358,7 +361,7 @@
     bots.replaceChildren();
     groups.replaceChildren();
     for (const b of state.bots) {
-      const btn = listButton(b.name, state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread);
+      const btn = listButton(b.name, state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, "", { primary: !!b.primary, pinned: !!b.pinned });
       btn.addEventListener("click", () => selectBot(b.name));
       bots.append(btn);
     }
@@ -656,7 +659,12 @@
     const data = await api("/api/bots/" + encodeURIComponent(state.sel.id));
     panelBody.replaceChildren();
     const persona = section("人格");
+    if (data.primary) persona.append(el("p", "meta", "主 Bot。没有点名的入口会到这里。"));
     persona.append(el("p", "", data.persona || ""));
+    const pin = el("button", "secondary", data.pinned ? "取消置顶" : "置顶");
+    pin.type = "button";
+    pin.addEventListener("click", () => togglePin(state.sel.id, !data.pinned));
+    persona.append(pin);
     const bind = section("模型");
     const provider = data.provider || "环境变量";
     const model = data.model || "默认";
@@ -700,7 +708,42 @@
       card.append(row);
       agents.append(card);
     }
-    panelBody.append(persona, bind, mem, routines, agents);
+    const fork = section("分叉");
+    fork.append(el("p", "meta", "新 Bot 拿到一份交接和自己的角色，对话是空的。它不能读这里的记录，细节用 message_bot 问。"));
+    const forkBtn = el("button", "secondary", "分叉成新 Bot");
+    forkBtn.type = "button";
+    forkBtn.addEventListener("click", () => openFork(state.sel.id));
+    fork.append(forkBtn);
+    panelBody.append(persona, bind, mem, routines, agents, fork);
+  }
+
+  function openFork(src) {
+    openModal("分叉 Bot", [
+      { name: "name", label: "新名字", placeholder: "reviewer" },
+      { name: "role", label: "角色", placeholder: "负责看这个项目的 pull request。源 Bot 会写交接，不复制对话。", multiline: true },
+      { name: "group", label: "群（可选）", placeholder: "留空则不建群" },
+    ], async (v) => {
+      const name = (v.name || "").trim();
+      const role = (v.role || "").trim();
+      if (!name) throw new Error("需要一个名字");
+      if (!role) throw new Error("需要一个角色");
+      const body = { name: name, role: role };
+      const group = (v.group || "").trim();
+      if (group) body.group = group;
+      await api("/api/bots/" + encodeURIComponent(src) + "/fork", { method: "POST", body: body });
+      await refreshLists();
+      await selectBot(name);
+    });
+  }
+
+  async function togglePin(name, pinned) {
+    try {
+      await api("/api/bots/" + encodeURIComponent(name) + "/pin", { method: "POST", body: { pinned: pinned } });
+      await refreshLists();
+      if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadPanel();
+    } catch (e) {
+      subtitle.textContent = e.message || "失败";
+    }
   }
 
   async function controlAgent(id, kind, text) {
@@ -1053,7 +1096,8 @@
   async function boot() {
     await refreshLists();
     await refreshNotes();
-    if (!state.sel && state.bots[0]) await selectBot(state.bots[0].name);
+    const home = state.bots.find((b) => b.primary) || state.bots[0];
+    if (!state.sel && home) await selectBot(home.name);
     else if (!state.sel) {
       thread.replaceChildren(el("div", "thread-inner"));
       thread.querySelector(".thread-inner").append(emptyState("选一个对话", "左边是你的 Bot。"));

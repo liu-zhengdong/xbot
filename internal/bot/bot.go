@@ -39,6 +39,7 @@ type Config struct {
 	ContextLimit int       `json:"context_limit,omitempty"`
 	Webhooks     []string  `json:"webhooks,omitempty"`
 	Watches      []string  `json:"watches,omitempty"`
+	Pinned       bool      `json:"pinned,omitempty"`
 	Created      time.Time `json:"created"`
 }
 
@@ -256,6 +257,38 @@ func (b *Bot) InboxPath() string {
 func (b *Bot) SetBinding(providerName, modelName string) error {
 	b.cfg.Provider = providerName
 	b.cfg.Model = modelName
+	return b.SaveConfig()
+}
+
+// InheritBinding copies the provider name, model, and context limit.
+// Webhooks, watches, and the transcript stay behind.
+func (b *Bot) InheritBinding(from Config) error {
+	b.cfg.Provider = from.Provider
+	b.cfg.Model = from.Model
+	b.cfg.ContextLimit = from.ContextLimit
+	return b.SaveConfig()
+}
+
+// GrantLink adds a link name if it is not already granted.
+func (b *Bot) GrantLink(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("bot: empty link")
+	}
+	next := addUnique(b.cfg.Links, name)
+	if len(next) == len(b.cfg.Links) {
+		return nil
+	}
+	b.cfg.Links = next
+	return b.SaveConfig()
+}
+
+// ValidName reports whether name can be a bot directory.
+func ValidName(name string) bool { return nameRe.MatchString(name) }
+
+// SetPinned records whether this bot sorts ahead of unpinned bots.
+func (b *Bot) SetPinned(on bool) error {
+	b.cfg.Pinned = on
 	return b.SaveConfig()
 }
 

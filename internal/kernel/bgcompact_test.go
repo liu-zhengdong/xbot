@@ -253,7 +253,9 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "second", time.Unix(51, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	waitBlocks(t, b, 1)
+	// The worker can finish after this turn returns. The swap is still only
+	// applied at a turn boundary, which is what the wait does once the job is ready.
+	waitBlocks(t, k, 1)
 	st, err = b.LoadState()
 	if err != nil {
 		t.Fatal(err)
@@ -399,17 +401,20 @@ func waitJob(t *testing.T, b *bot.Bot, status string) {
 	t.Fatalf("job did not reach %s", status)
 }
 
-func waitBlocks(t *testing.T, b *bot.Bot, n int) {
+func waitBlocks(t *testing.T, k *Kernel, n int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		st, err := b.LoadState()
+		st, err := k.Bot.LoadState()
 		if err == nil && len(st.Blocks) >= n {
 			return
 		}
+		if err == nil {
+			_, _, _ = k.applyReadyJob(migrate(st))
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	st, _ := b.LoadState()
+	st, _ := k.Bot.LoadState()
 	t.Fatalf("blocks %+v, want %d", st.Blocks, n)
 }
 

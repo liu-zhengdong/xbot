@@ -166,6 +166,24 @@ xbot watch remove ada notes
 - `list_bots` 列出同 owner 的其他 Bot
 - `message_bot(bot, text)` 往对方 inbox 投一条事件，来源 `bot:<发送者>`，发送者种类是 bot，正文是不可信数据，不附带任何一方的私人记忆
 - `create_group(name, members)` / `list_groups` / `post_group(id, text)`
+- `fork_bot(name, role, group?)` 分叉出一个新 Bot。这不是拷贝。源 Bot 按新角色写一份交接（项目背景、关键决定、这个角色用得上的上下文），写进新 Bot 的 bot 记忆；person 记忆本来就按人共享，不复制。新 Bot 用这份角色当自己的 persona，transcript 是空的，provider 绑定默认继承。两边各记一条：新 Bot 要问细节就 `message_bot` 问源 Bot，不能读源 Bot 的 transcript。`group` 有名字时，再建一个两边都在的群
+
+```bash
+xbot fork ada reviewer --role "Review pull requests for this project."
+xbot fork ada reviewer --role "Review pull requests." --group ship
+```
+
+网页详情里也可以分叉。交接由源 Bot 的压缩器写成。transcript 和 bot 记忆都空时不调用模型，交接记成 `No transcript yet`。
+
+**主 Bot 和置顶。** 第一次 `xbot list`、`xbot chat`（不写名字）或 `xbot serve` 时，如果目录里还没有 Bot，会自动建一个叫 `xbot` 的主 Bot，并且默认置顶。没点名的入口走它：`xbot chat` 不带名字，以及没有所属 Bot 的事件（进主 Bot 的 inbox）。主 Bot 可以 `create_bot`、`fork_bot`、`delete_bot`、`pin_bot`、`set_primary`。主 Bot 不能直接删，先 `xbot primary set <bot>` 把角色交出去，旧的才能删。最后一个 Bot 也不能删，目录里不会变成零个。任何 Bot 都可以 `xbot pin` / `xbot unpin`；置顶的排在前面。网页列表里主 Bot 有一枚「主」标记。
+
+```bash
+xbot chat
+xbot primary
+xbot primary set ada
+xbot pin ada
+xbot delete xbot
+```
 
 群有自己的 transcript。一条群消息会扇出到每个成员的 inbox（Bot 自己发的不叫醒自己；人发的会叫醒所有成员）。成员看到的是这条群消息，不是彼此的私人记忆。网页里有群视图。
 
@@ -212,6 +230,7 @@ bash scripts/e2e.sh
 - 终端再对同一个 Bot 说一句，网页读到的 transcript 里两边都在。
 - 终端占着处理锁时，网页消息进 inbox 并返回排队，松开锁之后只处理一次。
 - Bot A `message_bot` 给 Bot B，B 回复，A 的 transcript 里看得到回复。B 看到的是 `source="bot:ada"` 的不可信事件，里面没有 A 的私人记忆。
+- `fork_bot` 之后，新 Bot 的 bot 记忆里有交接，transcript 是空的，能 `message_bot` 回源 Bot；不传 group 就不建群。源 transcript、webhook 和 person 事实都不拷过去。
 - 网页建群并发言，每个成员的 inbox 都有这条，群 transcript 也有，正文里没有成员的私人记忆。
 - Bot 之间互相转发 `LOOP` 会在跳数上限停下，成功投递不超过 3 次。
 

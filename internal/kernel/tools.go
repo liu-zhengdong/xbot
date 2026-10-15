@@ -34,7 +34,10 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, askTool{})
 	}
 	if k.hasLink(link.NamePeers) {
-		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k})
+		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k})
+	}
+	if k.isPrimary() {
+		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
 	}
 	list = k.modelAgentTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
