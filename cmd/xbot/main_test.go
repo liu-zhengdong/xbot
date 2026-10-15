@@ -431,8 +431,11 @@ func TestLinkCLIGrantsAndRevokes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdLink(root, []string{"install", "ada", "telegram"}); err == nil || !strings.Contains(err.Error(), "not available yet") {
+	if err := cmdLink(root, []string{"install", "ada", "telegram"}); err == nil || !strings.Contains(err.Error(), "TELEGRAM_BOT_TOKEN is empty") {
 		t.Fatalf("telegram %v", err)
+	}
+	if err := cmdLink(root, []string{"install", "ada", "coding-agent"}); err == nil || !strings.Contains(err.Error(), "not available yet") {
+		t.Fatalf("coding-agent %v", err)
 	}
 	if err := cmdLink(root, []string{"install", "ada", "webhook"}); err != nil {
 		t.Fatal(err)

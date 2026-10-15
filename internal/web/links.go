@@ -54,12 +54,20 @@ func (s *Server) installLink(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	name, err := link.GrantName(in.ID)
-	if err != nil {
-		writeLinkErr(w, err)
+	e, ok := link.Lookup(in.ID)
+	if !ok {
+		writeLinkErr(w, link.ErrUnknown)
 		return
 	}
-	if err := b.GrantLink(name); err != nil {
+	if !e.Available || e.Grant == "" {
+		writeLinkErr(w, link.ErrUnavailable)
+		return
+	}
+	if len(e.Secrets) > 0 {
+		writeLinkErr(w, link.ErrSecrets)
+		return
+	}
+	if err := b.GrantLink(e.Grant); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -84,6 +92,12 @@ func (s *Server) removeLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if e.Grant != "" {
 		if err := b.RevokeLink(e.Grant); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if len(e.Secrets) > 0 {
+		if err := link.DropSecrets(b.SecretPath(), e.Secrets); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -125,7 +139,7 @@ func writeLinkErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, link.ErrUnknown):
 		writeErr(w, http.StatusNotFound, "not found")
-	case errors.Is(err, link.ErrUnavailable):
+	case errors.Is(err, link.ErrUnavailable), errors.Is(err, link.ErrSecrets):
 		writeErr(w, http.StatusConflict, err.Error())
 	default:
 		writeErr(w, http.StatusBadRequest, err.Error())

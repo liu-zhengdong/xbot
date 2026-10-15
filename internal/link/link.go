@@ -38,6 +38,8 @@ const (
 	NameWatch    = "watch"
 	NameWeb      = "web"
 	NamePeers    = "peers"
+	NameTelegram = "telegram"
+	NameLark     = "lark"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"

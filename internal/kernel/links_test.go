@@ -87,19 +87,23 @@ func TestLinksInstallHidesSecrets(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install telegram", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if b.Grants("telegram") {
-		t.Fatal("unavailable link was granted")
+	if !b.Grants(link.NameTelegram) {
+		t.Fatal("telegram was not granted")
 	}
 	text := transcriptText(t, b)
 	if strings.Contains(text, secret) {
 		t.Fatal("secret reached the transcript")
 	}
-	if !strings.Contains(text, "not available yet") {
+	if !strings.Contains(text, "installed telegram") {
 		t.Fatal(text)
 	}
 	raw, err := os.ReadFile(b.SecretPath())
-	if err == nil && strings.Contains(string(raw), secret) {
-		t.Fatalf("secret persisted: %s", raw)
+	if err != nil || !strings.Contains(string(raw), secret) {
+		t.Fatalf("secret file: %v %s", err, raw)
+	}
+	info, err := os.Stat(b.SecretPath())
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("mode %v %v", info, err)
 	}
 }
 

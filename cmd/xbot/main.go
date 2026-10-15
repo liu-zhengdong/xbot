@@ -1159,6 +1159,10 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			out = append(out, link.Web{})
 		case link.NamePeers:
 			out = append(out, link.Peers{})
+		case link.NameTelegram:
+			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameTelegram))
+		case link.NameLark:
+			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameLark))
 		case link.NameRunner:
 			url, token := runner.URL, runner.Token
 			if url == "" {

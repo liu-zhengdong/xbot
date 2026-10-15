@@ -80,6 +80,7 @@ type item struct {
 // Register adds the webhook route to mux.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /webhook/{bot}/{name}", s.handleWebhook)
+	mux.HandleFunc("POST /connector/{kind}/{bot}", s.handleConnector)
 }
 
 func (s *Server) Handler() http.Handler {

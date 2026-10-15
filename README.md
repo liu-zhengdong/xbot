@@ -28,6 +28,9 @@ xbot chat ada
 xbot serve --http 127.0.0.1:8787
 xbot webhook add ada github
 xbot watch add ada notes --path "$HOME/notes/**/*.md"
+# Telegram / 飞书要同名环境变量里已有密钥，缺了就不安装
+export TELEGRAM_BOT_TOKEN=1234:abc
+xbot link install ada telegram
 xbot runner --addr 127.0.0.1:18771
 ```
 
@@ -76,6 +79,8 @@ xbot bind ada --clear
 ~/.xbot/bots/<name>/config.json
 ~/.xbot/bots/<name>/mcp.json
 ~/.xbot/bots/<name>/secrets.json
+~/.xbot/bots/<name>/drafts/<id>.json
+~/.xbot/bots/<name>/connectors/seen.json
 ~/.xbot/bots/<name>/persona.md
 ~/.xbot/bots/<name>/rules.md
 ~/.xbot/bots/<name>/transcript.jsonl
@@ -129,7 +134,7 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 侧边栏分组是 Bot 档案上的 `group`，加上当前用户自己的一份顺序。`xbot group` 可以新建、改名、删除分组，或把 Bot 放进去。删除分组不会删除 Bot。这和聊天群不是一回事。
 
-`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram、飞书、编码代理还列在目录里，现在装不上。MCP 不走这条安装。
+`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram 和飞书要同名环境变量里已经有密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`），缺了就不装。装上之后，`xbot serve` 接受 `POST /connector/telegram/<bot>` 和 `POST /connector/lark/<bot>`，对上密钥的消息进收件箱，当成不可信事件。代表主人发出去的话先留草稿，主人确认后才发。编码代理还列在目录里，现在装不上。MCP 不走这条安装。网页上的安装接口不收密钥。
 
 `xbot mcp add <bot> <name> --command PATH` 把一个 MCP 服务器记在这个 Bot 的 `mcp.json`。参数用重复的 `--arg`。密钥只写环境变量的名字（`--secret-env NAME`），文件和接口里都没有值。对话里的工具名是 `mcp_<服务器>_<工具>`。`readOnlyHint` 为真的不用确认，其余要确认。服务器可以用通知把不可信事件推进收件箱。
 

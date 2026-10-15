@@ -204,9 +204,20 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 `GET /api/bots/{name}/links` 是同一份清单，每条多一个 `installed`。不是这个 owner 的 Bot 是 404。
 
-`POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。
+`POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。声明了密钥的条目（Telegram、飞书）也是 409，正文含 `secrets required`，授权和 `secrets.json` 都不变。密钥只能在聊天确认卡里填，或由主人用命令行从同名环境变量安装。
 
-`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。
+`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时从 `secrets.json` 删掉这些名字。
+
+## 连接器入站
+
+不走登录 cookie。`xbot serve` 在同一个 `--http` 上接受：
+
+- `POST /connector/telegram/{bot}`，请求头 `X-Telegram-Bot-Api-Secret-Token` 必须等于该 Bot 的 `TELEGRAM_BOT_TOKEN`。
+- `POST /connector/lark/{bot}`，请求头 `X-Lark-Token`，或正文里的 `token` / `header.token`，必须等于 `LARK_APP_SECRET`。
+
+Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status":"not_found"}`。密钥不对或还没写入，是 401 `{"status":"unauthorized"}`。对上的消息是 200 `{"status":"accepted"}`，收件箱里多一条不可信事件，来源是 `telegram` 或 `lark`，正文是 `chat: <id>` 加文本，没有密钥。同一条 `update_id` 或 `message_id` 再来一次是 200 `{"status":"duplicate"}`，不再写第二份。没有文本是 200 `{"status":"ignored"}`。飞书 `{"type":"url_verification","challenge":"..."}` 在密钥对上之后回 `{"challenge":"..."}`，不写收件箱。
+
+出站不在这个接口上。Bot 用 `telegram_send` 或 `lark_send` 落草稿，主人在确认卡点头之后才发出。
 
 命令行：`xbot link list`，`xbot link list <bot>`，`xbot link install <bot> <id>`，`xbot link remove <bot> <id>`。
 

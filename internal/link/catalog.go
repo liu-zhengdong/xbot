@@ -14,6 +14,9 @@ var (
 	ErrUnavailable = errors.New("link: not available yet")
 	// ErrUnknown means the catalog has no entry with that id.
 	ErrUnknown = errors.New("link: not found")
+	// ErrSecrets means this entry cannot be installed until the owner supplies its secrets.
+	// The HTTP install route has no place to send those values. Chat approval and the CLI do.
+	ErrSecrets = errors.New("link: secrets required")
 )
 
 // CatalogEntry is one curated marketplace row.
@@ -85,12 +88,14 @@ var catalog = []CatalogEntry{
 	{
 		ID: "telegram", Title: "Telegram", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{"TELEGRAM_BOT_TOKEN"},
-		Summary: "把 Telegram 消息推进来，发出去之前先留草稿。",
+		Summary:   "把 Telegram 消息推进来，发出去之前先留草稿。",
+		Available: true, Grant: NameTelegram,
 	},
 	{
 		ID: "lark", Title: "飞书", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{"LARK_APP_SECRET"},
-		Summary: "把飞书消息推进来，发出去之前先留草稿。",
+		Summary:   "把飞书消息推进来，发出去之前先留草稿。",
+		Available: true, Grant: NameLark,
 	},
 	{
 		ID: "mcp", Title: "MCP", Kind: KindMCP,

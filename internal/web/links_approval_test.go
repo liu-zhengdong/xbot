@@ -77,7 +77,7 @@ func TestLinksApprovalCarriesSecretNames(t *testing.T) {
 	if strings.Contains(blob.String(), secret) {
 		t.Fatal(blob.String())
 	}
-	if !strings.Contains(blob.String(), "not available yet") {
+	if !strings.Contains(blob.String(), "installed telegram") {
 		t.Fatal(blob.String())
 	}
 	entries, err := b.Entries()
@@ -93,15 +93,15 @@ func TestLinksApprovalCarriesSecretNames(t *testing.T) {
 		t.Fatal(joined.String())
 	}
 	raw, err := os.ReadFile(b.SecretPath())
-	if err == nil && strings.Contains(string(raw), secret) {
-		t.Fatalf("secret persisted: %s", raw)
+	if err != nil || !strings.Contains(string(raw), secret) {
+		t.Fatalf("secret file: %v %s", err, raw)
 	}
 	loaded, err := bot.Load(root, "ada")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Grants("telegram") {
-		t.Fatal("unavailable link was granted")
+	if !loaded.Grants(link.NameTelegram) {
+		t.Fatal("telegram was not granted")
 	}
 }
 

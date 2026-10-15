@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"xbot/internal/bot"
@@ -51,11 +52,30 @@ func cmdLink(root string, args []string) error {
 		if err != nil {
 			return err
 		}
-		name, err := link.GrantName(args[2])
-		if err != nil {
-			return err
+		e, ok := link.Lookup(args[2])
+		if !ok {
+			return link.ErrUnknown
 		}
-		if err := b.GrantLink(name); err != nil {
+		if !e.Available || e.Grant == "" {
+			return link.ErrUnavailable
+		}
+		if len(e.Secrets) > 0 {
+			vals := map[string]string{}
+			for _, name := range e.Secrets {
+				v := strings.TrimSpace(os.Getenv(name))
+				if v == "" {
+					return fmt.Errorf("link: %s is empty", name)
+				}
+				vals[name] = v
+			}
+			if err := link.WriteSecrets(b.SecretPath(), vals); err != nil {
+				return err
+			}
+		}
+		if err := b.GrantLink(e.Grant); err != nil {
+			if len(e.Secrets) > 0 {
+				_ = link.DropSecrets(b.SecretPath(), e.Secrets)
+			}
 			return err
 		}
 		fmt.Printf("installed %s on %s\n", args[2], b.Name())
@@ -74,6 +94,11 @@ func cmdLink(root string, args []string) error {
 		}
 		if e.Grant != "" {
 			if err := b.RevokeLink(e.Grant); err != nil {
+				return err
+			}
+		}
+		if len(e.Secrets) > 0 {
+			if err := link.DropSecrets(b.SecretPath(), e.Secrets); err != nil {
 				return err
 			}
 		}
