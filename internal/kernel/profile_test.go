@@ -154,12 +154,13 @@ func TestNotifyThresholdAndQuietHours(t *testing.T) {
 		desks = append(desks, body)
 		return nil
 	}}
-	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"ordinary","importance":"normal"}`))
-	if err != nil || !strings.Contains(out, "below the proactivity threshold") {
-		t.Fatalf("%s %v", out, err)
+	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"ordinary","importance":"low"}`))
+	if err != nil || out != "held until quiet hours end" {
+		t.Fatalf("routine low %s %v", out, err)
 	}
-	if notes, _ := notify.Open(b.OutboxPath()).Unread(); len(notes) != 0 || len(desks) != 0 {
-		t.Fatalf("threshold leaked notes %v desks %v", notes, desks)
+	held, err := os.ReadFile(b.HeldPath())
+	if err != nil || !strings.Contains(string(held), "ordinary") {
+		t.Fatalf("held %s %v", held, err)
 	}
 	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"urgent","importance":"high"}`))
 	if err != nil || out != "held until quiet hours end" {
@@ -181,7 +182,7 @@ func TestNotifyThresholdAndQuietHours(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(notes) != 2 || !strings.Contains(notes[0].Text, "Quiet hours batch:") || !strings.Contains(notes[0].Text, "urgent") || !strings.Contains(notes[0].Text, "also urgent") || notes[1].Text != "morning" {
+	if len(notes) != 2 || !strings.Contains(notes[0].Text, "Quiet hours batch:") || !strings.Contains(notes[0].Text, "ordinary") || !strings.Contains(notes[0].Text, "urgent") || !strings.Contains(notes[0].Text, "also urgent") || notes[1].Text != "morning" {
 		t.Fatalf("%+v", notes)
 	}
 	if len(desks) != 2 || !strings.Contains(desks[0], "Quiet hours batch:") || desks[1] != "morning" {
@@ -197,25 +198,23 @@ func TestNotifyThresholdAndQuietHours(t *testing.T) {
 	if err != nil || out != "notified the owner" {
 		t.Fatalf("active %s %v", out, err)
 	}
-	normal := "normal"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &normal}); err != nil {
-		t.Fatal(err)
-	}
-	before, _ := notify.Open(b.OutboxPath()).Unread()
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"skip me","importance":"low"}`))
-	if err != nil || !strings.Contains(out, "below the proactivity threshold") {
-		t.Fatalf("normal low %s %v", out, err)
-	}
-	after, _ := notify.Open(b.OutboxPath()).Unread()
-	if len(after) != len(before) {
-		t.Fatal("normal low wrote a note")
-	}
-	k.turnSource = link.NameTerminal
 	quiet := "quiet"
 	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &quiet, QuietStart: new(string), QuietEnd: new(string)}); err != nil {
 		t.Fatal(err)
 	}
-	// ApplyProfile with pointers to empty string clears quiet hours. new(string) is "".
+	k.turnSource = link.NameWebhook
+	k.turnTrusted = false
+	before, _ := notify.Open(b.OutboxPath()).Unread()
+	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"skip me","importance":"low"}`))
+	if err != nil || !strings.Contains(out, "below the proactivity threshold") {
+		t.Fatalf("untrusted low %s %v", out, err)
+	}
+	after, _ := notify.Open(b.OutboxPath()).Unread()
+	if len(after) != len(before) {
+		t.Fatal("untrusted low wrote a note")
+	}
+	k.turnSource = link.NameTerminal
+	k.turnTrusted = true
 	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"owner chat","importance":"low"}`))
 	if err != nil || out != "notified the owner" {
 		t.Fatalf("chat %s %v", out, err)

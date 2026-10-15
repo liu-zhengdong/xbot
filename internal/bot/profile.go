@@ -193,11 +193,11 @@ func (b *Bot) ProfileText() string {
 	}
 	switch b.cfg.Proactivity {
 	case "quiet":
-		lines = append(lines, "Proactivity: quiet. On a routine wake, notify the owner only when they would want to be interrupted. Set importance to high, otherwise stay silent.")
+		lines = append(lines, "Proactivity: quiet. Owner-requested routines always notify. On a self-initiated or untrusted wake, notify the owner only when they would want to be interrupted. Set importance to high, otherwise stay silent.")
 	case "normal":
-		lines = append(lines, "Proactivity: normal. On a routine wake, notify the owner when something is worth their attention.")
+		lines = append(lines, "Proactivity: normal. Owner-requested routines always notify. On a self-initiated or untrusted wake, notify the owner when something is worth their attention.")
 	case "active":
-		lines = append(lines, "Proactivity: active. On a routine wake, notify the owner about anything they might want to know. Importance may be low.")
+		lines = append(lines, "Proactivity: active. Notify the owner about anything they might want to know, including on untrusted wakes. Importance may be low.")
 	}
 	if b.cfg.QuietStart != "" && b.cfg.QuietEnd != "" && b.cfg.QuietStart != b.cfg.QuietEnd {
 		lines = append(lines, fmt.Sprintf("Quiet hours: %s–%s UTC. Notifications are held and sent as one batch when quiet hours end.", b.cfg.QuietStart, b.cfg.QuietEnd))

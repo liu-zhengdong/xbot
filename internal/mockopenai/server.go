@@ -124,6 +124,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "RECALL_PERSON"):
 		writeText(w, "recalled\n")
 		return
+	case strings.Contains(lastUser, "DRINK_WATER") && !sawNotify:
+		writeTool(w, "call_notify", "notify_owner", `{"text":"drink water","importance":"low"}`)
+		return
+	case strings.Contains(lastUser, "DRINK_WATER"):
+		writeText(w, "noted\n")
+		return
 	case strings.Contains(lastUser, "<routine") && strings.Contains(lastUser, "QUIET"):
 		writeText(w, "SILENT\n")
 		return

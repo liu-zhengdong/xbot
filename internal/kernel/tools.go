@@ -244,7 +244,7 @@ type notifyTool struct{ k *Kernel }
 
 func (notifyTool) Name() string { return "notify_owner" }
 func (notifyTool) Description() string {
-	return "Leave a notification for the owner. importance is low, normal, or high. On a routine wake, quiet bots deliver only high and active bots deliver all. During quiet hours the note is held and sent as one batch when the window ends."
+	return "Leave a notification for the owner. importance is low, normal, or high. A routine wake always delivers, whatever the importance. On a self-initiated or untrusted-source wake, quiet bots deliver only high, normal bots deliver normal and high, and active bots deliver all. During quiet hours the note is held and sent as one batch when the window ends."
 }
 func (notifyTool) Parameters() any {
 	return schema(map[string]any{
@@ -266,7 +266,7 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		return "", errors.New("notify: empty text")
 	}
 	cfg := t.k.Bot.Config()
-	if t.k.turnSource == link.NameTimer && !bot.AllowsNotify(cfg.Proactivity, in.Importance) {
+	if t.k.gateNotify() && !bot.AllowsNotify(cfg.Proactivity, in.Importance) {
 		return "not notified: below the proactivity threshold", nil
 	}
 	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, t.k.now()) {
@@ -286,6 +286,18 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		return "sent the quiet-hours batch, then notified the owner", nil
 	}
 	return "notified the owner", nil
+}
+
+// gateNotify keeps the proactivity filter for self-initiated and untrusted wakes.
+// A routine wake is an owner-requested reminder and always delivers.
+// Owner chat on the terminal or web always delivers.
+func (k *Kernel) gateNotify() bool {
+	switch k.turnSource {
+	case "", link.NameTimer, link.NameTerminal, link.NameWeb:
+		return false
+	default:
+		return !k.turnTrusted
+	}
 }
 
 func deliverNote(ctx context.Context, k *Kernel, text string) error {
