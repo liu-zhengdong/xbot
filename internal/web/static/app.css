@@ -300,6 +300,24 @@ html[data-theme="dark"] .icon-sun { display: block; }
   font-size: 13px; text-align: left; color: var(--text);
 }
 .pop button:disabled { color: var(--muted); opacity: 1; }
+.pop button:hover:not(:disabled) { background: var(--hover); }
+.more-wrap { position: relative; flex: none; }
+.more-pop {
+  top: calc(100% + 6px); bottom: auto; left: auto; right: 0; width: 180px; z-index: 20;
+}
+.choice { display: flex; gap: 8px; }
+.choice-opt {
+  flex: 1; min-height: 40px; border: 1px solid var(--border); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 14px; color: var(--text); cursor: pointer; background: var(--card);
+}
+.choice-opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice-opt input { accent-color: var(--accent); }
+.check-row {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 36px; margin: 4px 0 0; font-size: 14px; color: var(--text);
+}
+.check-row input { accent-color: var(--accent); width: 16px; height: 16px; }
 .meta { font-size: 12px; line-height: 1.4; color: var(--faint); }
 
 .sidebar.collapsed .item .copy,

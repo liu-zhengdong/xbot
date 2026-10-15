@@ -973,6 +973,7 @@
     closeDrawer();
     setHeader(name);
     setStatus("");
+    syncMore();
     input.placeholder = "写给 " + name;
     renderLists();
     await loadThread();
@@ -986,6 +987,7 @@
     const g = state.groups.find((x) => x.id === id);
     setHeader(g ? g.name : id);
     setStatus("");
+    syncMore();
     input.placeholder = "写到这个群";
     renderLists();
     await loadThread();
@@ -1117,7 +1119,10 @@
     const forkBtn = el("button", "secondary", "分叉");
     forkBtn.type = "button";
     forkBtn.addEventListener("click", () => openFork(state.sel.id));
-    actions.append(pin, forkBtn);
+    const exp = el("button", "secondary", "导出对话");
+    exp.type = "button";
+    exp.addEventListener("click", openExport);
+    actions.append(pin, forkBtn, exp);
     about.append(actions);
     const edit = document.createElement("details");
     edit.className = "edit";
@@ -1609,15 +1614,44 @@
     modalForm.onsubmit = null;
   }
 
-  function openModal(title, fields, onOk) {
+  function openModal(title, fields, onOk, okLabel) {
     $("modal-title").textContent = title;
+    $("modal-ok").textContent = okLabel || "创建";
+    $("modal-ok").disabled = false;
     modalFields.replaceChildren();
     modalError.hidden = true;
     const inputs = {};
     for (const f of fields) {
+      if (f.type === "check") {
+        const row = el("label", "check-row");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!f.checked;
+        inputs[f.name] = cb;
+        row.append(cb, el("span", "", f.label));
+        modalFields.append(row);
+        continue;
+      }
       const label = el("label", "field");
       label.append(el("span", "", f.label));
-      if (f.type === "checks") {
+      if (f.type === "choice") {
+        const box = el("div", "choice");
+        box.setAttribute("role", "radiogroup");
+        const group = "choice-" + f.name;
+        const current = f.value || (f.options && f.options[0] && f.options[0][0]) || "";
+        for (const pair of f.options || []) {
+          const opt = el("label", "choice-opt");
+          const radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = group;
+          radio.value = pair[0];
+          radio.checked = pair[0] === current;
+          opt.append(radio, document.createTextNode(pair[1]));
+          box.append(opt);
+        }
+        inputs[f.name] = box;
+        label.append(box);
+      } else if (f.type === "checks") {
         const box = el("div", "checks");
         inputs[f.name] = [];
         for (const opt of f.options || []) {
@@ -1657,16 +1691,87 @@
       const values = {};
       for (const key of Object.keys(inputs)) {
         const node = inputs[key];
-        values[key] = Array.isArray(node) ? node.slice() : node.value;
+        if (Array.isArray(node)) values[key] = node.slice();
+        else if (node instanceof HTMLInputElement && node.type === "checkbox") values[key] = node.checked;
+        else if (node instanceof HTMLElement && node.classList.contains("choice")) {
+          const picked = node.querySelector("input:checked");
+          values[key] = picked ? picked.value : "";
+        } else values[key] = node.value;
       }
+      const ok = $("modal-ok");
+      ok.disabled = true;
       try {
         await onOk(values);
         closeModal();
       } catch (e) {
         modalError.hidden = false;
         modalError.textContent = e.message || "失败";
+      } finally {
+        ok.disabled = false;
       }
     };
+  }
+
+  function exportName(res, name, format) {
+    const disp = res.headers.get("content-disposition") || "";
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(disp);
+    if (star) {
+      try { return decodeURIComponent(star[1].trim()); } catch (e) {}
+    }
+    const plain = /filename="([^"]+)"/i.exec(disp) || /filename=([^;]+)/i.exec(disp);
+    if (plain) return plain[1].trim();
+    return name + (format === "jsonl" ? ".jsonl" : ".md");
+  }
+
+  async function downloadExport(name, format, tools) {
+    const q = "format=" + encodeURIComponent(format) + "&tools=" + (tools ? "1" : "0");
+    const res = await fetch("/api/bots/" + encodeURIComponent(name) + "/export?" + q, {
+      credentials: "same-origin",
+    });
+    if (res.status === 401) {
+      showLogin();
+      throw new Error("需要重新登录");
+    }
+    if (!res.ok) {
+      let msg = "";
+      const text = await res.text().catch(() => "");
+      if (text) {
+        try { msg = (JSON.parse(text).error || "").trim(); } catch (e) { msg = text.trim().slice(0, 160); }
+      }
+      if (res.status === 404 || res.status === 501) throw new Error("导出还没接上");
+      throw new Error(msg || "导出失败");
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportName(res, name, format);
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function openExport() {
+    if (!state.sel || state.sel.type !== "bot") return;
+    const name = state.sel.id;
+    closePops();
+    openModal("导出对话", [
+      { name: "format", label: "格式", type: "choice", value: "md", options: [["md", "Markdown"], ["jsonl", "JSONL"]] },
+      { name: "tools", label: "包含工具细节", type: "check" },
+    ], async (v) => {
+      const format = v.format === "jsonl" ? "jsonl" : "md";
+      await downloadExport(name, format, !!v.tools);
+    }, "下载");
+  }
+
+  function syncMore() {
+    const bot = !!(state.sel && state.sel.type === "bot");
+    $("more").hidden = !bot;
+    if (!bot) {
+      $("more-menu").hidden = true;
+      $("more").setAttribute("aria-expanded", "false");
+    }
   }
 
   function openNewBot() {
@@ -1704,6 +1809,8 @@
     $("connect").setAttribute("aria-expanded", "false");
     $("plus-menu").hidden = true;
     $("plus").setAttribute("aria-expanded", "false");
+    $("more-menu").hidden = true;
+    $("more").setAttribute("aria-expanded", "false");
     notesEl.hidden = true;
   }
 
@@ -1803,6 +1910,15 @@
     $("plus").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
   });
 
+  $("more").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const menu = $("more-menu");
+    menu.hidden = !menu.hidden;
+    $("more").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+  });
+
+  $("export-chat").addEventListener("click", () => openExport());
+
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".connect-wrap")) {
       $("connect-pop").hidden = true;
@@ -1811,6 +1927,10 @@
     if (!ev.target.closest(".plus-wrap")) {
       $("plus-menu").hidden = true;
       $("plus").setAttribute("aria-expanded", "false");
+    }
+    if (!ev.target.closest(".more-wrap")) {
+      $("more-menu").hidden = true;
+      $("more").setAttribute("aria-expanded", "false");
     }
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) notesEl.hidden = true;
   });
