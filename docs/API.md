@@ -233,6 +233,31 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 命令行：`xbot mcp list <bot>`，`xbot mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...`，`xbot mcp remove <bot> <name>`。`--arg` 和 `--secret-env` 可以重复。打印和接口都不显示密钥的值。
 
+## 用户技能
+
+还是 `skills` 这条 Link。库按登录的 owner 分开，文件在数据根的 `skills/<owner>/<slug>/SKILL.md`。这个接口不负责导入；导入用 `xbot skill import`。
+
+`GET /api/bots/{name}/skills` 要登录，而且这个人是该 Bot 的 owner。不是 owner 或 Bot 不存在是 404 `{"error":"not found"}`。未登录 401。返回这个 owner 的技能，每条带上这个 Bot 有没有停用它。没有技能时 `skills` 是空数组。停用的仍在列表里，这样界面可以再打开。
+
+```json
+{"skills":[{
+  "slug":"ship",
+  "name":"ship",
+  "description":"Pack a release",
+  "disabled":false
+}]}
+```
+
+`GET /api/bots/{name}/skills/{slug}` 读这一条。成功 200，有 `slug`、`name`、`description`、`body`。`body` 是 frontmatter 下面的 markdown，不含密钥以外的限制；这里没有密钥。这个 owner 的库里没有这个 slug 是 404 `{"error":"not found"}`。停用了也能读，读的是主人，不是模型。
+
+`POST /api/bots/{name}/skills/{slug}/disable` 无 body。成功 200 `{"slug":"ship","disabled":true}`。已经停用再停一次仍是 200。库里没有这个 slug 是 404。
+
+`POST /api/bots/{name}/skills/{slug}/enable` 无 body。成功 200 `{"slug":"ship","disabled":false}`。本来就开着再开一次仍是 200。没有这个 slug 是 404。
+
+停用名单在这个 Bot 的配置里，不在技能文件里。同一个 owner 的另一个 Bot 不受影响。别的 owner 的 Bot 走 `owned` 的 404，列不到这库。
+
+命令行：`xbot skill list`，`xbot skill import <path>`，`xbot skill show <slug>`，`xbot skill disable <bot> <slug>`，`xbot skill enable <bot> <slug>`。list、import、show 用当前终端用户。disable 和 enable 还要求这个 Bot 的 owner 里有这个人，否则是找不到。
+
 ## Bot 私聊
 
 `GET /api/bots/{name}/peers/{peer}/messages?limit=N&before=<to>:<seq>`

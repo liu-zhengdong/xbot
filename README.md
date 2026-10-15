@@ -92,12 +92,14 @@ xbot bind ada --clear
 ~/.xbot/bots/<name>/agents/<id>/{transcript.jsonl,meta.json}
 ~/.xbot/work/<name>/
 ~/.xbot/work/shared/
-~/.xbot/skills/<slug>/SKILL.md
+~/.xbot/skills/<owner>/<slug>/SKILL.md
 ```
 
 Markdown 是给人改的。索引比 markdown 旧时会按 markdown 重建。
 
-`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`、`web`、`peers`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。技能说明按 slug 排序写进稳定前缀，正文用 `read_skill` 再读。没有技能文件时，前缀和以前一样。
+`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`、`web`、`peers`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。每个 owner 有自己的技能库。恰好一个 owner 的 Bot 默认看见这个人的技能，一行一个名字和说明；正文用 `read_skill` 读，只在当前这一轮。这个 Bot 可以单独停用某一条。没有技能文件时，前缀和以前一样。
+
+`xbot skill import <path>` 把一份 `SKILL.md` 拷进当前用户的库。`path` 可以是技能目录或文件，也可以是符号链接。`xbot skill list` 和 `xbot skill show <slug>` 看这个库。`xbot skill disable <bot> <slug>` 和 `xbot skill enable <bot> <slug>` 只改这个 Bot 的停用名单。
 
 ## 架构
 
@@ -306,7 +308,7 @@ M2：
 | `proc` | 一个 Bot 的唤醒循环：投递和执行分开 |
 | `exec` | 子代理循环、本机执行器、runner HTTP |
 | `work` | 每个 Bot 的工作目录和共享目录 |
-| `skill` | 共享技能，前缀里只有说明 |
+| `skill` | 每个 owner 的技能库，前缀里只有一行说明 |
 | `provider` | OpenAI 兼容的流式 Chat Completions，以及 `ModelSelector` |
 | `config` | 环境变量和 `providers.json` |
 | `agent` | 模型与工具的循环 |

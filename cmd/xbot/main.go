@@ -58,6 +58,11 @@ Usage:
   xbot [--root DIR] mcp list <bot>
   xbot [--root DIR] mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...
   xbot [--root DIR] mcp remove <bot> <name>
+  xbot [--root DIR] skill list
+  xbot [--root DIR] skill import <path>
+  xbot [--root DIR] skill show <slug>
+  xbot [--root DIR] skill disable <bot> <slug>
+  xbot [--root DIR] skill enable <bot> <slug>
   xbot [--root DIR] chat [name] [--yes] [--max-steps N]
   xbot [--root DIR] pin <name>
   xbot [--root DIR] unpin <name>
@@ -136,6 +141,8 @@ func run(argv []string) error {
 		return cmdLink(root, rest[1:])
 	case "mcp":
 		return cmdMCP(root, rest[1:])
+	case "skill":
+		return cmdSkill(root, rest[1:])
 	case "chat":
 		return cmdChat(root, rest[1:])
 	case "pin":

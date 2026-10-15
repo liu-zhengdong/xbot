@@ -2,12 +2,14 @@ package kernel
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/compact"
+	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
@@ -82,25 +84,71 @@ func prefixWithSkills(persona, rules string, links, skills []string, installed s
 	if installed != "" {
 		text += "\n\n" + installed
 	}
-	if len(skills) == 0 {
+	block := skill.FormatPrompt(skills)
+	if block == "" {
 		return text
 	}
-	var b strings.Builder
-	b.WriteString(text)
-	b.WriteString("\n\n## Skills\n")
-	for _, line := range skills {
-		b.WriteString("- ")
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return text + "\n\n" + block
 }
 
 func (k *Kernel) skillLines() ([]string, error) {
-	if k.SkillsDir == "" {
+	infos, err := k.skillInfos()
+	if err != nil || len(infos) == 0 {
+		return nil, err
+	}
+	out := make([]string, len(infos))
+	for i, info := range infos {
+		name := info.Name
+		if name == "" {
+			name = info.Slug
+		}
+		out[i] = name + ": " + info.Description
+	}
+	return out, nil
+}
+
+func (k *Kernel) skillInfos() ([]skill.Info, error) {
+	if k == nil || k.Bot == nil || k.SkillsDir == "" {
 		return nil, nil
 	}
-	return skill.Lines(k.SkillsDir)
+	if !k.Bot.Grants(link.NameSkills) && !k.hasLink(link.NameSkills) {
+		return nil, nil
+	}
+	owner, ok := k.soleOwner()
+	if !ok {
+		return nil, nil
+	}
+	disabled := map[string]bool{}
+	for _, slug := range k.Bot.Config().DisabledSkills {
+		disabled[strings.TrimSpace(slug)] = true
+	}
+	infos, err := skill.List(filepath.Join(k.SkillsDir, owner))
+	if err != nil || len(infos) == 0 {
+		return nil, err
+	}
+	var out []skill.Info
+	for _, info := range infos {
+		if disabled[info.Slug] {
+			continue
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+func (k *Kernel) soleOwner() (string, bool) {
+	if k == nil || k.Bot == nil {
+		return "", false
+	}
+	owners := k.Bot.Config().Owners
+	if len(owners) != 1 {
+		return "", false
+	}
+	owner := strings.TrimSpace(owners[0])
+	if !skill.ValidOwner(owner) {
+		return "", false
+	}
+	return owner, true
 }
 
 func clipMemory(s string) string {

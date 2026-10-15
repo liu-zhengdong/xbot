@@ -30,25 +30,26 @@ var ErrExists = errors.New("bot: already exists")
 // Config is the bot's durable description. Links are granted here.
 // Owners are person ids whose terminal input is a trusted instruction.
 type Config struct {
-	Name         string    `json:"name"`
-	Persona      string    `json:"persona"`
-	Links        []string  `json:"links"`
-	Owners       []string  `json:"owners,omitempty"`
-	Provider     string    `json:"provider,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	ContextLimit int       `json:"context_limit,omitempty"`
-	Webhooks     []string  `json:"webhooks,omitempty"`
-	Watches      []string  `json:"watches,omitempty"`
-	Pinned       bool      `json:"pinned,omitempty"`
-	Description  string    `json:"description,omitempty"`
-	Avatar       string    `json:"avatar,omitempty"`
-	Style        *Style    `json:"style,omitempty"`
-	Proactivity  string    `json:"proactivity,omitempty"`
-	QuietStart   string    `json:"quiet_start,omitempty"`
-	QuietEnd     string    `json:"quiet_end,omitempty"`
-	Timezone     string    `json:"timezone,omitempty"`
-	Group        string    `json:"group,omitempty"`
-	Created      time.Time `json:"created"`
+	Name           string    `json:"name"`
+	Persona        string    `json:"persona"`
+	Links          []string  `json:"links"`
+	Owners         []string  `json:"owners,omitempty"`
+	Provider       string    `json:"provider,omitempty"`
+	Model          string    `json:"model,omitempty"`
+	ContextLimit   int       `json:"context_limit,omitempty"`
+	Webhooks       []string  `json:"webhooks,omitempty"`
+	Watches        []string  `json:"watches,omitempty"`
+	Pinned         bool      `json:"pinned,omitempty"`
+	Description    string    `json:"description,omitempty"`
+	Avatar         string    `json:"avatar,omitempty"`
+	Style          *Style    `json:"style,omitempty"`
+	Proactivity    string    `json:"proactivity,omitempty"`
+	QuietStart     string    `json:"quiet_start,omitempty"`
+	QuietEnd       string    `json:"quiet_end,omitempty"`
+	Timezone       string    `json:"timezone,omitempty"`
+	Group          string    `json:"group,omitempty"`
+	DisabledSkills []string  `json:"disabled_skills,omitempty"`
+	Created        time.Time `json:"created"`
 }
 
 // SummaryBlock covers an inclusive sequence range of the append-only transcript.
@@ -295,6 +296,30 @@ func (b *Bot) GrantLink(name string) error {
 		return nil
 	}
 	b.cfg.Links = next
+	return b.SaveConfig()
+}
+
+// DisableSkill adds slug to this bot's skill disable list.
+func (b *Bot) DisableSkill(slug string) error {
+	slug = strings.TrimSpace(slug)
+	if slug == "" || strings.ContainsAny(slug, "/\\") {
+		return errors.New("bot: bad skill")
+	}
+	b.cfg.DisabledSkills = addUnique(b.cfg.DisabledSkills, slug)
+	return b.SaveConfig()
+}
+
+// EnableSkill removes slug from this bot's skill disable list.
+func (b *Bot) EnableSkill(slug string) error {
+	slug = strings.TrimSpace(slug)
+	next := make([]string, 0, len(b.cfg.DisabledSkills))
+	for _, s := range b.cfg.DisabledSkills {
+		if s == slug {
+			continue
+		}
+		next = append(next, s)
+	}
+	b.cfg.DisabledSkills = next
 	return b.SaveConfig()
 }
 

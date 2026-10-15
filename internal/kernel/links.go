@@ -228,7 +228,7 @@ func (t linksTool) loadedNames(id string) (string, error) {
 func (k *Kernel) toolsForLoaded(id string) []tools.Tool {
 	if id == link.NameSkills || id == "skills" {
 		if k.hasLink(link.NameSkills) {
-			return []tools.Tool{skillTool{k}}
+			return []tools.Tool{skillTool{k}, writeSkillTool{k}}
 		}
 		return nil
 	}
@@ -394,6 +394,7 @@ func (k *Kernel) stableLinkNames() []string {
 }
 
 func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
+	m = redactSkillRead(m)
 	values := k.secretValues()
 	if len(values) == 0 {
 		return m
