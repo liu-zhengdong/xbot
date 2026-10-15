@@ -708,8 +708,8 @@ func TestNodeApproveShowsCommandAndDefaultsNo(t *testing.T) {
 	if _, err := io.Copy(&buf, errR); err != nil {
 		t.Fatal(err)
 	}
-	if runErr != nil {
-		t.Fatal(runErr)
+	if runErr == nil {
+		t.Fatal("decline exited zero")
 	}
 	got := buf.String()
 	if !strings.Contains(got, "touch "+marker) || !strings.Contains(got, "10.0.0.8:1") || !strings.Contains(got, "not approved") {
@@ -721,8 +721,61 @@ func TestNodeApproveShowsCommandAndDefaultsNo(t *testing.T) {
 	listed := captureStdout(t, func() error {
 		return cmdNode(root, []string{"pending"})
 	})
-	if !strings.Contains(listed, id) || !strings.Contains(listed, "10.0.0.8:1") || !strings.Contains(listed, "touch "+marker) {
-		t.Fatalf("%s", listed)
+	if strings.Contains(listed, id) || strings.TrimSpace(listed) != "no pending" {
+		t.Fatalf("decline kept the entry %s", listed)
+	}
+}
+
+func TestNodePendingPrintsLocalTime(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "machines.json"), []byte(`{"machines":{"local":"ask"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := node.RunShell(root, "echo later", "desk", true)
+	if err == nil || !strings.Contains(err.Error(), "xbot node approve ") {
+		t.Fatal(err)
+	}
+	const mark = "xbot node approve "
+	id := strings.TrimSpace(err.Error()[strings.LastIndex(err.Error(), mark)+len(mark):])
+	item, err := node.LookupPending(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := captureStdout(t, func() error {
+		return cmdNode(root, []string{"pending"})
+	})
+	want := item.Time.Local().Format(time.RFC3339)
+	if !strings.Contains(listed, want) {
+		t.Fatalf("local time %s missing in %s", want, listed)
+	}
+}
+
+func TestPersonUnlinkCommand(t *testing.T) {
+	root := t.TempDir()
+	p, err := person.Identify(root, person.Account{Link: "telegram", ExternalID: "42"}, "Ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := person.Identify(root, person.Account{Link: "terminal", ExternalID: "uid:7"}, "Ada"); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, func() error {
+		return cmdPerson(root, []string{"unlink", "telegram:42"})
+	})
+	if !strings.Contains(out, p.ID) {
+		t.Fatalf("%s", out)
+	}
+	got, err := person.Load(root, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range got.Accounts {
+		if a.Link == "telegram" {
+			t.Fatalf("still linked %+v", got.Accounts)
+		}
+	}
+	if err := cmdPerson(root, []string{"unlink", "telegram:42"}); err == nil {
+		t.Fatal("missing account unlinked")
 	}
 }
 

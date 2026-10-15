@@ -28,6 +28,20 @@ func Provenance(text, by, device string) string {
 	return text + suffix
 }
 
+// OwnerProvenance marks a fact the owner wrote on another linked device.
+// The suffix is applied again only when it is not already the end of the text.
+func OwnerProvenance(text, device string) string {
+	device = label(device)
+	suffix := " (owner-recorded)"
+	if device != "" && device != "local" && device != "relay" {
+		suffix = " (owner-recorded on " + device + ")"
+	}
+	if strings.HasSuffix(text, suffix) {
+		return text
+	}
+	return text + suffix
+}
+
 func label(s string) string {
 	s = oneLine(s)
 	if s == "" || hasControl(s) {
@@ -66,7 +80,7 @@ func capStamp(t, now time.Time) time.Time {
 // acceptRemote reports whether a merged line is safe to store.
 // A future timestamp is capped. An illegal field is refused.
 // A device that claims this machine is stored as relay.
-func acceptRemote(ln SyncLine, now time.Time, home string) (SyncLine, bool) {
+func acceptRemote(ln SyncLine, now time.Time, home string, linked map[string]bool) (SyncLine, bool) {
 	ln.Time = capStamp(ln.Time, now)
 	ln.Fact.Time = ln.Time
 	ln.Fact.PersonID = strings.TrimSpace(ln.Fact.PersonID)
@@ -95,8 +109,22 @@ func acceptRemote(ln SyncLine, now time.Time, home string) (SyncLine, bool) {
 	if ln.Device == "" || ln.Device == home || ln.Device == "local" {
 		ln.Device = "relay"
 	}
-	ln.Untrusted = true
+	ln.OwnerRecorded = false
+	ln.Fact.OwnerRecorded = false
+	if linkedDevice(ln.Device, linked) {
+		ln.Untrusted = false
+		ln.OwnerRecorded = true
+	} else {
+		ln.Untrusted = true
+	}
 	return ln, true
+}
+
+func linkedDevice(device string, linked map[string]bool) bool {
+	if device == "" || device == "local" || device == "relay" || linked == nil {
+		return false
+	}
+	return linked[device]
 }
 
 func fieldOK(s string, max int) bool {

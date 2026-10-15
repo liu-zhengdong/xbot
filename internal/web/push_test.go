@@ -135,7 +135,7 @@ func TestPhonePushSkipsOpenTabAndQuietHours(t *testing.T) {
 	}
 	var batch string
 	for _, note := range unread {
-		if notify.IsBatch(note.Text) {
+		if notify.IsBatch(note) {
 			batch = note.Text
 		}
 	}
@@ -175,7 +175,7 @@ func TestPushSubscribeAPI(t *testing.T) {
 	if err := json.Unmarshal(status, &st); err != nil || st.PublicKey == "" || st.Subscribed {
 		t.Fatalf("%s %v", status, err)
 	}
-	sub := testPushSub(t, "https://push.example/device")
+	sub := testPushSub(t, "https://example.com/device")
 	res, err := http.NewRequest(http.MethodPost, api.URL+"/api/push/subscribe", bytes.NewReader(mustJSON(t, sub)))
 	if err != nil {
 		t.Fatal(err)

@@ -24,7 +24,9 @@ type SyncLine struct {
 	Op     string    `json:"op"`
 	// Untrusted is set when the line arrived from another node, or from an untrusted turn.
 	Untrusted bool `json:"untrusted,omitempty"`
-	Fact      Fact `json:"fact"`
+	// OwnerRecorded is set when the line's device is one this machine has linked.
+	OwnerRecorded bool `json:"owner_recorded,omitempty"`
+	Fact          Fact `json:"fact"`
 }
 
 // ReadSync returns the person-memory log. A missing file is empty.
@@ -80,6 +82,7 @@ func ExportSync(root string) ([]SyncLine, error) {
 func MergeSync(root string, remote []SyncLine) error {
 	now := time.Now()
 	home := deviceOf(root)
+	linked := linkedDevices(root)
 	byID := map[string][]SyncLine{}
 	for _, ln := range remote {
 		id := ln.Fact.PersonID
@@ -89,7 +92,7 @@ func MergeSync(root string, remote []SyncLine) error {
 		if ln.Fact.Scope != "" && ln.Fact.Scope != ScopePerson {
 			continue
 		}
-		ln, ok := acceptRemote(ln, now, home)
+		ln, ok := acceptRemote(ln, now, home, linked)
 		if !ok {
 			continue
 		}
@@ -111,7 +114,7 @@ func MergeSync(root string, remote []SyncLine) error {
 	}
 	changed := false
 	for id := range ids {
-		ok, err := mergePerson(root, id, byID[id])
+		ok, err := mergePerson(root, id, byID[id], home, linked)
 		if err != nil {
 			return err
 		}
@@ -123,7 +126,7 @@ func MergeSync(root string, remote []SyncLine) error {
 	return nil
 }
 
-func mergePerson(root, id string, remote []SyncLine) (bool, error) {
+func mergePerson(root, id string, remote []SyncLine, home string, linked map[string]bool) (bool, error) {
 	dir := filepath.Join(root, "people", id, "memory")
 	changed := false
 	err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
@@ -149,7 +152,6 @@ func mergePerson(root, id string, remote []SyncLine) (bool, error) {
 		for _, ln := range remote {
 			ln.Fact.PersonID = id
 			ln.Fact.Scope = ScopePerson
-			ln.Untrusted = true
 			if have[syncKey(ln)] {
 				continue
 			}
@@ -163,7 +165,7 @@ func mergePerson(root, id string, remote []SyncLine) (bool, error) {
 		if len(local) == 0 {
 			return nil
 		}
-		return writeFold(dir, id, local)
+		return writeFold(dir, id, local, home, linked)
 	})
 	return changed, err
 }
@@ -194,9 +196,9 @@ func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
 	return extra, nil
 }
 
-func writeFold(dir, id string, lines []SyncLine) error {
+func writeFold(dir, id string, lines []SyncLine, home string, linked map[string]bool) error {
 	byTier := map[Tier][]Fact{}
-	winners := foldSync(lines)
+	winners := foldSync(lines, home, linked)
 	for _, f := range winners {
 		tier := f.Tier
 		if tier == "" {
@@ -216,7 +218,7 @@ func writeFold(dir, id string, lines []SyncLine) error {
 	return nil
 }
 
-func foldSync(lines []SyncLine) []Fact {
+func foldSync(lines []SyncLine, home string, linked map[string]bool) []Fact {
 	type slot struct {
 		ln  SyncLine
 		idx int
@@ -256,7 +258,12 @@ func foldSync(lines []SyncLine) []Fact {
 		if ln.Device != "" {
 			f.Device = ln.Device
 		}
-		if ln.Untrusted || f.Untrusted {
+		if linkedDevice(f.Device, linked) && f.Device != home {
+			f.Untrusted = false
+			f.OwnerRecorded = true
+			f.Text = OwnerProvenance(f.Text, f.Device)
+		} else if ln.Untrusted || f.Untrusted {
+			f.OwnerRecorded = false
 			f.Untrusted = true
 			f.Text = Provenance(f.Text, f.WrittenBy, f.Device)
 		}
@@ -314,6 +321,30 @@ func syncKey(ln SyncLine) string {
 
 func factMark(ln SyncLine) string {
 	return ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + string(ln.Fact.Tier)
+}
+
+func linkedDevices(root string) map[string]bool {
+	out := map[string]bool{}
+	raw, err := os.ReadFile(filepath.Join(root, "nodes.json"))
+	if err != nil {
+		return out
+	}
+	var doc struct {
+		Nodes []struct {
+			ID string `json:"id"`
+		} `json:"nodes"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return out
+	}
+	for _, n := range doc.Nodes {
+		id := strings.TrimSpace(n.ID)
+		if id == "" || id == "local" || id == "relay" || strings.ContainsAny(id, "/\\\n\r") {
+			continue
+		}
+		out[id] = true
+	}
+	return out
 }
 
 func deviceOf(root string) string {

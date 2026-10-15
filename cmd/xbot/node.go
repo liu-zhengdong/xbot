@@ -100,10 +100,11 @@ func cmdNodeAdd(root string, args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := node.Ping(ctx, *rawURL, tok); err != nil {
+	info, err := node.Ping(ctx, *rawURL, tok)
+	if err != nil {
 		return err
 	}
-	if err := node.Add(root, node.Node{Name: fs.Arg(0), URL: *rawURL, Token: tok}); err != nil {
+	if err := node.Add(root, node.Node{Name: fs.Arg(0), URL: *rawURL, Token: tok, ID: info.ID}); err != nil {
 		return err
 	}
 	fmt.Printf("added %s\n", fs.Arg(0))
@@ -180,7 +181,7 @@ func cmdNodePending(root string, args []string) error {
 		return nil
 	}
 	for _, item := range items {
-		fmt.Printf("%s\t%s\t%s\t%s\n", item.ID, item.Caller, oneLine(item.Command), item.Time.UTC().Format(time.RFC3339))
+		fmt.Printf("%s\t%s\t%s\t%s\n", item.ID, item.Caller, oneLine(item.Command), item.Time.Local().Format(time.RFC3339))
 	}
 	return nil
 }
@@ -203,19 +204,13 @@ func cmdNodeApprove(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "id: %s\ncaller: %s\ntime: %s\ncommand: %s\n", item.ID, item.Caller, item.Time.UTC().Format(time.RFC3339), item.Command)
+	fmt.Fprintf(os.Stderr, "id: %s\ncaller: %s\ntime: %s\ncommand: %s\n", item.ID, item.Caller, item.Time.Local().Format(time.RFC3339), item.Command)
 	if !*yes {
 		fmt.Fprint(os.Stderr, "Approve? [y/N] ")
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil && strings.TrimSpace(line) == "" {
-			fmt.Fprintln(os.Stderr, "not approved")
-			return nil
-		}
-		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "y", "yes":
-		default:
-			fmt.Fprintln(os.Stderr, "not approved")
-			return nil
+		ans := strings.ToLower(strings.TrimSpace(line))
+		if (err != nil && ans == "") || (ans != "y" && ans != "yes") {
+			return declinePending(root, item.ID)
 		}
 	}
 	text, err := node.Approve(root, item.ID)
@@ -224,6 +219,14 @@ func cmdNodeApprove(root string, args []string) error {
 	}
 	fmt.Println(text)
 	return nil
+}
+
+func declinePending(root, id string) error {
+	if err := node.Dismiss(root, id); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "not approved")
+	return errors.New("not approved")
 }
 
 func oneLine(s string) string {

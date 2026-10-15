@@ -158,6 +158,11 @@ func once(ctx context.Context, root string) error {
 		if err := fits(raw); err != nil {
 			return err
 		}
+		if info, err := node.Ping(ctx, n.URL, n.Token); err == nil {
+			if err := node.RememberDevice(root, n.Name, info.ID); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
+			}
+		}
 		text, err := node.Call(ctx, n.URL, n.Token, Cap, string(raw), false)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))

@@ -341,6 +341,9 @@ func renderMD(facts []Fact) string {
 		if f.Device != "" {
 			fmt.Fprintf(&b, "  device: %s\n", oneLine(f.Device))
 		}
+		if f.OwnerRecorded {
+			b.WriteString("  owner_recorded: true\n")
+		}
 		if f.Untrusted {
 			b.WriteString("  untrusted: true\n")
 		}
@@ -389,6 +392,8 @@ func parseMD(s string) ([]Fact, error) {
 			cur.Device = strings.TrimSpace(strings.TrimPrefix(trimmed, "device: "))
 		case trimmed == "untrusted: true":
 			cur.Untrusted = true
+		case trimmed == "owner_recorded: true":
+			cur.OwnerRecorded = true
 		}
 	}
 	flush()

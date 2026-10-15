@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/node"
 )
 
 func TestPersonSyncNewestWinsAndKeepsBots(t *testing.T) {
@@ -131,6 +133,55 @@ func TestMergeDropsPoisonAndCapsTime(t *testing.T) {
 	when := seen["when"]
 	if when.Key != "when" || when.Time.After(time.Now().Add(maxSkew)) || when.Time.Year() == 2099 {
 		t.Fatalf("future %+v", when)
+	}
+}
+
+func TestOwnerLinkedDeviceIsOwnerRecorded(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "node-id"), []byte("home-a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.Add(root, node.Node{Name: "laptop", URL: "http://127.0.0.1:9", Token: "t", ID: "home-b"}); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	own := SyncLine{
+		Time: t0, Bot: "ada", Device: "home-b", Op: opRemember,
+		Fact: Fact{Key: "tea", Scope: ScopePerson, PersonID: "u1", Tier: TierProfile, WrittenBy: "ada", Text: "green", Time: t0},
+	}
+	other := own
+	other.Device = "home-c"
+	other.Fact.Key = "city"
+	other.Fact.Text = "Beijing"
+	other.Fact.WrittenBy = "eve"
+	other.OwnerRecorded = true
+	other.Fact.OwnerRecorded = true
+	spoof := own
+	spoof.Device = "home-a"
+	spoof.Fact.Key = "spoof"
+	spoof.Fact.Text = "mine"
+	spoof.OwnerRecorded = true
+	if err := MergeSync(root, []SyncLine{own, other, spoof}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopePerson, PersonID: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]Fact{}
+	for _, f := range got {
+		seen[f.Key] = f
+	}
+	tea := seen["tea"]
+	if tea.Untrusted || !tea.OwnerRecorded || tea.Text != "green (owner-recorded on home-b)" {
+		t.Fatalf("owner %+v", tea)
+	}
+	city := seen["city"]
+	if !city.Untrusted || city.OwnerRecorded || !strings.Contains(city.Text, "untrusted, recorded by eve on home-c") {
+		t.Fatalf("other %+v", city)
+	}
+	if seen["spoof"].OwnerRecorded || !seen["spoof"].Untrusted || !strings.Contains(seen["spoof"].Text, "relay") {
+		t.Fatalf("spoofed home %+v", seen["spoof"])
 	}
 }
 

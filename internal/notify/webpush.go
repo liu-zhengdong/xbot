@@ -97,9 +97,7 @@ func Send(ctx context.Context, root string, sub Subscription, msg Message, clien
 		req.Header.Set("Topic", msg.Tag)
 	}
 	req.Header.Set("Authorization", "vapid t="+tok+",k="+keys.Public)
-	if client == nil {
-		client = &http.Client{Timeout: 4 * time.Second}
-	}
+	client = publicClient(sub.Endpoint, client)
 	res, err := client.Do(req)
 	if err != nil {
 		return err

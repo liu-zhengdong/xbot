@@ -102,6 +102,7 @@ Usage:
   xbot [--root DIR] node call <name> shell <command>
   xbot [--root DIR] node pending
   xbot [--root DIR] node approve [--yes] <id>
+  xbot [--root DIR] person unlink <link:id>
   xbot [--root DIR] sync export --out FILE
   xbot [--root DIR] sync merge --file FILE
   xbot [--root DIR] machine list
@@ -214,6 +215,8 @@ func run(argv []string) error {
 		return cmdWatch(root, rest[1:])
 	case "node":
 		return cmdNode(root, rest[1:])
+	case "person":
+		return cmdPerson(root, rest[1:])
 	case "sync":
 		return cmdSync(root, rest[1:])
 	case "machine":

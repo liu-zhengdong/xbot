@@ -20,6 +20,8 @@ type Node struct {
 	Name  string `json:"name"`
 	URL   string `json:"url"`
 	Token string `json:"token,omitempty"`
+	// ID is that machine's node-id, learned when the owner linked it.
+	ID string `json:"id,omitempty"`
 }
 
 type file struct {
@@ -104,6 +106,31 @@ func Lookup(root, name string) (Node, error) {
 		}
 	}
 	return Node{}, fmt.Errorf("node: %s not found", name)
+}
+
+// RememberDevice stores the node-id learned from an authenticated info call.
+// An empty, local, or relay id is ignored. A matching id is left as it is.
+func RememberDevice(root, name, id string) error {
+	name = strings.TrimSpace(name)
+	id = strings.TrimSpace(id)
+	if name == "" || id == "" || id == "local" || id == "relay" || strings.ContainsAny(id, "/\\\n\r") {
+		return nil
+	}
+	nodes, err := List(root)
+	if err != nil {
+		return err
+	}
+	for i, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		if n.ID == id {
+			return nil
+		}
+		nodes[i].ID = id
+		return save(root, nodes)
+	}
+	return fmt.Errorf("node: %s not found", name)
 }
 
 func save(root string, nodes []Node) error {

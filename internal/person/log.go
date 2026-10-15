@@ -213,32 +213,26 @@ func foldIdentity(lines []LogEntry, home string) Person {
 			}
 		}
 	}
-	p := best.Person
-	var accounts []Account
+	// Display name, timezone, and accounts follow a local grant.
+	// A remote line can be newer and still not rename the owner.
+	var p Person
 	switch {
 	case grantIdx >= 0:
-		accounts = append([]Account(nil), lines[grantIdx].Person.Accounts...)
+		p = lines[grantIdx].Person
+		p.Accounts = append([]Account(nil), lines[grantIdx].Person.Accounts...)
 	case !anyGrant && homeIdx >= 0:
-		// Logs written before grant existed keep the accounts of the local line.
-		accounts = append([]Account(nil), lines[homeIdx].Person.Accounts...)
+		p = lines[homeIdx].Person
+		p.Accounts = append([]Account(nil), lines[homeIdx].Person.Accounts...)
+	default:
+		p = best.Person
+		p.Accounts = nil
 	}
-	p.Accounts = accounts
 	sort.Slice(p.Accounts, func(i, j int) bool {
 		if p.Accounts[i].Link == p.Accounts[j].Link {
 			return p.Accounts[i].ExternalID < p.Accounts[j].ExternalID
 		}
 		return p.Accounts[i].Link < p.Accounts[j].Link
 	})
-	if p.DisplayName == "" || p.Timezone == "" {
-		for i := len(lines) - 1; i >= 0; i-- {
-			if p.DisplayName == "" {
-				p.DisplayName = lines[i].Person.DisplayName
-			}
-			if p.Timezone == "" {
-				p.Timezone = lines[i].Person.Timezone
-			}
-		}
-	}
 	return p
 }
 

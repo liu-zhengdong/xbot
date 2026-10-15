@@ -95,7 +95,7 @@ func (s *Server) onNote(botName string, n notify.Note) {
 	if err != nil || b.InQuietAt(time.Now()) {
 		return
 	}
-	batch := notify.IsBatch(n.Text)
+	batch := notify.IsBatch(n)
 	for _, owner := range b.Config().Owners {
 		if batch {
 			if s.tabBusy(owner) {

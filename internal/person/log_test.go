@@ -52,8 +52,8 @@ func TestIdentityLogNewestWinsAndKeepsBots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DisplayName != "Later" || got.Timezone != "Asia/Shanghai" {
-		t.Fatalf("%+v", got)
+	if got.DisplayName != "Local" || got.Timezone != "" {
+		t.Fatalf("remote renamed the owner %+v", got)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil || string(raw) != "stay" {
@@ -97,8 +97,8 @@ func TestSyncDoesNotGrantOwnerAndUnlinkRemoves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DisplayName != "Later" || got.Timezone != "Asia/Shanghai" {
-		t.Fatalf("profile %+v", got)
+	if got.DisplayName != "Ada" || got.Timezone != "" {
+		t.Fatalf("remote renamed the owner %+v", got)
 	}
 	for _, a := range got.Accounts {
 		if a.ExternalID == "999" {

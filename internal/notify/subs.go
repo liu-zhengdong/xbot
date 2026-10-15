@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"xbot/internal/fsutil"
@@ -140,7 +142,7 @@ func validEndpoint(raw string) error {
 		return errors.New("notify: bad endpoint")
 	}
 	host := strings.Trim(strings.ToLower(u.Hostname()), "[]")
-	if host == "" {
+	if host == "" || integerHost(host) {
 		return errors.New("notify: bad endpoint")
 	}
 	switch u.Scheme {
@@ -166,16 +168,107 @@ func blockedHost(host string) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return false
+	ips, err := lookupHost(ctx, host)
+	if err != nil || len(ips) == 0 {
+		return true
 	}
 	for _, ip := range ips {
-		if blockedIP(ip.IP) {
+		if blockedIP(ip) {
 			return true
 		}
 	}
 	return false
+}
+
+// lookupHost resolves a push hostname. Tests replace it.
+var lookupHost = func(ctx context.Context, host string) ([]net.IP, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		if a.IP != nil {
+			out = append(out, a.IP)
+		}
+	}
+	return out, nil
+}
+
+// integerHost is a decimal or hex address written as one integer, such as 2130706433.
+func integerHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	if strings.HasPrefix(host, "0x") || strings.HasPrefix(host, "0X") {
+		rest := host[2:]
+		return rest != "" && isHex(rest)
+	}
+	return isDigits(host)
+}
+
+func isDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// publicClient dials endpoint with a control hook that rejects a non-public address.
+// A client that already has a Transport is left alone so tests can use httptest.
+func publicClient(endpoint string, client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: 4 * time.Second}
+	}
+	if client.Transport != nil {
+		return client
+	}
+	timeout := client.Timeout
+	if timeout <= 0 {
+		timeout = 4 * time.Second
+	}
+	return &http.Client{Timeout: timeout, Transport: publicTransport(endpoint)}
+}
+
+func publicTransport(endpoint string) *http.Transport {
+	allowLoop := false
+	if u, err := url.Parse(endpoint); err == nil && u.Scheme == "http" {
+		host := strings.Trim(strings.ToLower(u.Hostname()), "[]")
+		if host == "127.0.0.1" || host == "localhost" || host == "::1" {
+			allowLoop = true
+		}
+	}
+	d := &net.Dialer{Timeout: 4 * time.Second, Control: dialControl(allowLoop)}
+	return &http.Transport{DialContext: d.DialContext}
+}
+
+func dialControl(allowLoop bool) func(string, string, syscall.RawConn) error {
+	return func(network, address string, _ syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return errors.New("notify: bad dial address")
+		}
+		ip := net.ParseIP(host)
+		if ip == nil || blockedIP(ip) {
+			if allowLoop && ip != nil && ip.IsLoopback() {
+				return nil
+			}
+			return errors.New("notify: endpoint host is not a public push service")
+		}
+		return nil
+	}
 }
 
 func blockedIP(ip net.IP) bool {

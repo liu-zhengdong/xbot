@@ -5,6 +5,7 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,6 +102,11 @@ func TestGoneDropsMeaning(t *testing.T) {
 
 func TestSubscriptionRejects(t *testing.T) {
 	root := t.TempDir()
+	prev := lookupHost
+	lookupHost = func(context.Context, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	}
+	t.Cleanup(func() { lookupHost = prev })
 	sub := mustSub(t, "http://example.com/push")
 	if err := SaveSubscription(root, "u1", sub); err == nil {
 		t.Fatal("http endpoint accepted")
@@ -135,6 +141,43 @@ func TestSubscriptionRejects(t *testing.T) {
 	got, err := Subscriptions(root, "u1")
 	if err != nil || len(got) != 1 || got[0].Auth != again.Auth {
 		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestEndpointFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	for _, raw := range []string{
+		"https://2130706433/push",
+		"https://0x7f000001/push",
+		"https://no-such-host.invalid/push",
+	} {
+		sub := mustSub(t, raw)
+		if err := SaveSubscription(root, "u1", sub); err == nil {
+			t.Fatalf("accepted %s", raw)
+		}
+	}
+}
+
+func TestDialControlRejectsPrivate(t *testing.T) {
+	deny := dialControl(false)
+	if err := deny("tcp", "127.0.0.1:443", nil); err == nil {
+		t.Fatal("loopback dial allowed")
+	}
+	if err := deny("tcp", "10.1.2.3:443", nil); err == nil {
+		t.Fatal("private dial allowed")
+	}
+	if err := deny("tcp", "100.64.0.1:443", nil); err == nil {
+		t.Fatal("cgnat dial allowed")
+	}
+	if err := deny("tcp", "8.8.8.8:443", nil); err != nil {
+		t.Fatal(err)
+	}
+	allow := dialControl(true)
+	if err := allow("tcp", "127.0.0.1:80", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := allow("tcp", "10.0.0.1:80", nil); err == nil {
+		t.Fatal("private dial allowed on loopback http")
 	}
 }
 

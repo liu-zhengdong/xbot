@@ -28,7 +28,7 @@ func ReleaseQuiet(ctx context.Context, b *bot.Bot, now time.Time, desk func(cont
 		return 0, err
 	}
 	text := notify.BatchBody(notes)
-	if _, err := notify.Open(b.OutboxPath()).Append(text, now); err != nil {
+	if _, err := notify.Open(b.OutboxPath()).AppendBatch(text, now); err != nil {
 		return 0, err
 	}
 	if desk == nil {

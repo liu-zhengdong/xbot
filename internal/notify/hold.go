@@ -48,9 +48,10 @@ func TakeHeld(path string) ([]string, error) {
 	return notes, err
 }
 
-// IsBatch reports a note produced by BatchBody.
-func IsBatch(text string) bool {
-	return strings.HasPrefix(text, "Quiet hours batch:")
+// IsBatch reports a note marked as a quiet-hours batch on the record.
+// Text that merely starts with the batch heading is not a batch.
+func IsBatch(n Note) bool {
+	return n.Batch
 }
 
 // BatchBody is one outbox note covering every held line.

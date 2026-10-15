@@ -38,7 +38,7 @@ func TestOnChangeSkipsMerge(t *testing.T) {
 		t.Fatalf("duplicate merge writes %d", n)
 	}
 	got, err := Load(root, "u1")
-	if err != nil || got.DisplayName != "Beatrice" {
+	if err != nil || got.DisplayName != "Ada" || got.Timezone != "Asia/Shanghai" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	for _, a := range got.Accounts {

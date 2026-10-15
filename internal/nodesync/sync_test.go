@@ -50,13 +50,14 @@ func TestSyncNewestAcrossNodes(t *testing.T) {
 	if err := Once(context.Background(), a); err != nil {
 		t.Fatal(err)
 	}
+	wantName := map[string]string{a: "Ada", b: "Beatrice"}
 	for _, root := range []string{a, b} {
 		got := texts(t, root)
 		if !factText(got["city"], "Beijing") || !factText(got["food"], "noodles") || !factText(got["drink"], "tea") {
 			t.Fatalf("%s facts %+v", root, got)
 		}
 		p, err := person.Load(root, "u1")
-		if err != nil || p.DisplayName != "Beatrice" {
+		if err != nil || p.DisplayName != wantName[root] || p.Timezone != "Asia/Shanghai" {
 			t.Fatalf("%s person %+v %v", root, p, err)
 		}
 	}
@@ -195,7 +196,7 @@ func texts(t *testing.T, root string) map[string]string {
 }
 
 func factText(got, text string) bool {
-	return got == text || strings.HasPrefix(got, text+" (untrusted,")
+	return got == text || strings.HasPrefix(got, text+" (untrusted,") || strings.HasPrefix(got, text+" (owner-recorded")
 }
 
 func waitFact(t *testing.T, root, key, text string) {

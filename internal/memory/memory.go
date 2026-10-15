@@ -56,9 +56,12 @@ type Fact struct {
 	// Device is the node that wrote the fact. Empty means this machine.
 	Device string `json:"device,omitempty"`
 	// Untrusted is set for a fact that arrived from another node or an untrusted turn.
-	Untrusted bool      `json:"untrusted,omitempty"`
-	Text      string    `json:"text"`
-	Time      time.Time `json:"time"`
+	Untrusted bool `json:"untrusted,omitempty"`
+	// OwnerRecorded is a fact the owner wrote on another of their linked devices.
+	// It is still data, not an instruction.
+	OwnerRecorded bool      `json:"owner_recorded,omitempty"`
+	Text          string    `json:"text"`
+	Time          time.Time `json:"time"`
 }
 
 // Query selects facts. An empty Tier does not filter. Text is a keyword query.
