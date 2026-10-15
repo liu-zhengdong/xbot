@@ -41,6 +41,7 @@ const (
 	NameTelegram = "telegram"
 	NameLark     = "lark"
 	NameCoding   = "coding-agent"
+	NameNode     = "node"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"

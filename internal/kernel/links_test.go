@@ -255,6 +255,28 @@ func TestLinksSearchMatchesEnglish(t *testing.T) {
 	}
 }
 
+func TestNodeLoadListsTools(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
+	out, err := (linksTool{k}).install("node")
+	if err != nil || out != "installed node" {
+		t.Fatalf("install %q %v", out, err)
+	}
+	list, err := k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range list {
+		if tool.Name() == "node_list" || tool.Name() == "node_call" {
+			t.Fatal("node tools visible before load")
+		}
+	}
+	out, err = (linksTool{k}).load("node")
+	if err != nil || !strings.Contains(out, "node_list") || !strings.Contains(out, "node_call") {
+		t.Fatalf("load %q %v", out, err)
+	}
+}
+
 func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}

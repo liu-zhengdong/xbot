@@ -32,6 +32,9 @@ xbot watch add ada notes --path "$HOME/notes/**/*.md"
 export TELEGRAM_BOT_TOKEN=1234:abc
 xbot link install ada telegram
 xbot runner --addr 127.0.0.1:18771
+xbot node serve
+xbot node add desk --url http://100.x.y.z:18772 --token TOKEN
+xbot node call desk info
 ```
 
 `xbot serve` 在同一个 `--http` 上提供网页。启动时往 stderr 打印登录 token，token 文件在 `~/.xbot/web-token.json`，权限 0600。浏览器打开打印出来的地址，把 token 贴进登录框。登录态是 HttpOnly、SameSite=Strict 的 cookie，不放在 localStorage。
@@ -361,3 +364,21 @@ xbot serve --tunnel tailscale
 4. 网页也在这个地址上。手机浏览器打开 `public url`，把 serve 打印的登录 token 贴进去。token 只在这台机器的 0600 文件里，cookie 不会被别的站点带上。可以添加到主屏幕。
 5. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。手机和电脑都要在这个 tailnet 上。
 6. 每个 webhook 单独一个 secret。不签名或签名不对会 401。secret 留在 Bot 目录里，权限 0600。
+
+## 另一台机器上的节点
+
+`xbot node serve` 在这台机器上听 `127.0.0.1:18772`，第一次把 bearer token 打到 stdout，并写进 `node-token`（0600）。要给别的设备用，绑 tailnet 地址，不要绑 `0.0.0.0`：
+
+```bash
+xbot node serve --addr 100.x.y.z:18772
+```
+
+在放 Bot 的那台机器上登记，然后可以直接调 `info`：
+
+```bash
+xbot node add desk --url http://100.x.y.z:18772 --token TOKEN
+xbot node list
+xbot node call desk info
+```
+
+`list` 不打印 token。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。这一片只能问身份。在那台机器上跑命令要等机器开关。

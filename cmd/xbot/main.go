@@ -89,6 +89,11 @@ Usage:
   xbot [--root DIR] watch add <bot> <id> --path PATTERN
   xbot [--root DIR] watch list <bot>
   xbot [--root DIR] watch remove <bot> <id>
+  xbot [--root DIR] node serve [--addr 127.0.0.1:18772] [--token TOKEN] [--name NAME]
+  xbot [--root DIR] node add <name> --url URL [--token TOKEN]
+  xbot [--root DIR] node list
+  xbot [--root DIR] node remove <name>
+  xbot [--root DIR] node call <name> <cap>
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
   xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
@@ -183,6 +188,8 @@ func run(argv []string) error {
 		return cmdWebhook(root, rest[1:])
 	case "watch":
 		return cmdWatch(root, rest[1:])
+	case "node":
+		return cmdNode(root, rest[1:])
 	default:
 		return fmt.Errorf("unknown command %q", rest[0])
 	}

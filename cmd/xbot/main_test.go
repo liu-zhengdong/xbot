@@ -575,6 +575,38 @@ func TestGroupCLIKeepsBots(t *testing.T) {
 	}
 }
 
+func TestNodeAddListRemove(t *testing.T) {
+	root := t.TempDir()
+	if err := cmdNode(root, []string{"add", "desk", "--url", "http://127.0.0.1:1", "--token", "sekret"}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	err = cmdNode(root, []string{"list"})
+	w.Close()
+	os.Stdout = old
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "desk\toffline\thttp://127.0.0.1:1") || strings.Contains(got, "sekret") {
+		t.Fatalf("%s", got)
+	}
+	if err := cmdNode(root, []string{"remove", "desk"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdNode(root, []string{"call", "desk", "info"}); err == nil {
+		t.Fatal("removed node still callable")
+	}
+}
+
 func TestServeRejectsUnknownTunnel(t *testing.T) {
 	err := cmdServe(t.TempDir(), []string{"--tunnel", "relay"})
 	if err == nil || !strings.Contains(err.Error(), "tunnel") {

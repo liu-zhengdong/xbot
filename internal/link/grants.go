@@ -98,4 +98,5 @@ var blurbs = map[string]string{
 	NameTelegram: "Telegram messages arrive as untrusted events. telegram_send keeps a draft until the owner confirms.",
 	NameLark:     "Lark messages arrive as untrusted events. lark_send keeps a draft until the owner confirms.",
 	NameCoding:   "Long coding tasks with their own step and time limits. Records are separate from subagents. Completion is an untrusted event.",
+	NameNode:     "Other machines running xbot node. node_list and node_call reach them. info is the only capability until the machine switch allows more.",
 }

@@ -111,6 +111,13 @@ var catalog = []CatalogEntry{
 		Summary:  "把一个 MCP 服务器包成 Link。用 xbot mcp add 登记命令，不从这里安装。",
 	},
 	{
+		ID: "node", Title: "节点", Kind: KindNative,
+		Capabilities: []string{"tools"}, Secrets: []string{},
+		Summary:   "调用其他在线节点上的能力。这一片只有 info。",
+		Keywords:  []string{"node", "machine"},
+		Available: true, Grant: NameNode,
+	},
+	{
 		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
 		Summary:   "长时间编码任务，步数和时间按这次任务另定。先只记本地任务。",
