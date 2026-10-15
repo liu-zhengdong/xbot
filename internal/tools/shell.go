@@ -26,12 +26,37 @@ const (
 // Shell runs a command through sh -c.
 // Dir is the working directory. Empty means the process working directory.
 // Shared, when set with Dir, is exported as XBOT_SHARED.
+// KeyEnv names extra provider API key variables to omit unless the call sets keys.
 type Shell struct {
 	DefaultTimeout time.Duration
 	MaxTimeout     time.Duration
 	MaxOutput      int
 	Dir            string
 	Shared         string
+	KeyEnv         []string
+}
+
+var (
+	keyEnvMu    sync.Mutex
+	keyEnvNames = []string{"XBOT_API_KEY"}
+)
+
+// UseKeyEnv sets provider API key variable names that shell commands omit
+// unless the call sets keys. XBOT_API_KEY is always included.
+func UseKeyEnv(names []string) {
+	seen := map[string]bool{"XBOT_API_KEY": true}
+	out := []string{"XBOT_API_KEY"}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] || strings.ContainsAny(name, "=\x00") {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	keyEnvMu.Lock()
+	keyEnvNames = out
+	keyEnvMu.Unlock()
 }
 
 // NewShell returns a shell tool with the default limits.
@@ -46,19 +71,21 @@ func NewShell() *Shell {
 func (s *Shell) Name() string { return "shell" }
 
 func (s *Shell) Description() string {
-	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout."
+	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve."
 }
 
 func (s *Shell) Parameters() any {
 	return objectSchema(map[string]any{
 		"command":         stringProp("Shell command to run"),
 		"timeout_seconds": intProp("Timeout in seconds (default 30, max 120)"),
+		"keys":            boolProp("Pass provider API keys through. The owner must approve."),
 	}, []string{"command"})
 }
 
 type shellArgs struct {
 	Command        string `json:"command"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
+	Keys           bool   `json:"keys"`
 }
 
 // safeCommands are read-only lookups. A command is safe only when it is a
@@ -73,6 +100,9 @@ func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	in, err := parseShellArgs(args)
 	if err != nil {
 		return false, "", err
+	}
+	if in.Keys {
+		return true, in.Command + "\nwith provider keys", nil
 	}
 	if safeShell(in.Command) {
 		return false, in.Command, nil
@@ -97,14 +127,21 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		return "", err
 	}
 	timeout := s.duration(in.TimeoutSeconds)
-	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv())
+	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv(in.Keys))
 }
 
-func (s *Shell) commandEnv() []string {
-	if s.Dir == "" && s.Shared == "" {
+func (s *Shell) commandEnv(passKeys bool) []string {
+	var blocked []string
+	if !passKeys {
+		blocked = s.blockedKeys()
+	}
+	if s.Dir == "" && s.Shared == "" && len(blocked) == 0 {
 		return nil
 	}
-	env := os.Environ()
+	env := append([]string{}, os.Environ()...)
+	if len(blocked) > 0 {
+		env = stripEnv(env, blocked)
+	}
 	if s.Dir != "" {
 		env = append(env, "XBOT_WORK="+s.Dir)
 	}
@@ -112,6 +149,43 @@ func (s *Shell) commandEnv() []string {
 		env = append(env, "XBOT_SHARED="+s.Shared)
 	}
 	return env
+}
+
+func (s *Shell) blockedKeys() []string {
+	keyEnvMu.Lock()
+	out := append([]string{}, keyEnvNames...)
+	keyEnvMu.Unlock()
+	seen := map[string]bool{}
+	for _, name := range out {
+		seen[name] = true
+	}
+	if s != nil {
+		for _, name := range s.KeyEnv {
+			name = strings.TrimSpace(name)
+			if name == "" || seen[name] || strings.ContainsAny(name, "=\x00") {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func stripEnv(env, names []string) []string {
+	drop := map[string]bool{}
+	for _, name := range names {
+		drop[name] = true
+	}
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok && drop[key] {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func (s *Shell) duration(seconds int) time.Duration {

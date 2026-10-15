@@ -36,6 +36,10 @@ func TestProviderAddListRemoveAndBind(t *testing.T) {
 	if strings.HasSuffix(f.Providers[0].BaseURL, "/") {
 		t.Fatal("base url should be trimmed")
 	}
+	names := KeyEnvNames(root)
+	if !strings.Contains(strings.Join(names, " "), "XBOT_API_KEY") || !strings.Contains(strings.Join(names, " "), "DEEPSEEK_API_KEY") {
+		t.Fatalf("key env %v", names)
+	}
 
 	env := func(k string) string {
 		if k == "DEEPSEEK_API_KEY" {

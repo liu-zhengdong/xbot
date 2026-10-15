@@ -124,6 +124,7 @@ func run(argv []string) error {
 	if err != nil {
 		return err
 	}
+	tools.UseKeyEnv(config.KeyEnvNames(root))
 	if len(rest) == 0 {
 		return errUsage
 	}

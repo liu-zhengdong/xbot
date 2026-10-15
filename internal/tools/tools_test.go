@@ -29,6 +29,32 @@ func TestShellEchoAndExit(t *testing.T) {
 	}
 }
 
+func TestShellOmitsProviderKeysUnlessOptIn(t *testing.T) {
+	t.Setenv("XBOT_API_KEY", "sekret-xbot")
+	t.Setenv("DEEPSEEK_API_KEY", "sekret-deep")
+	t.Setenv("XBOT_KEEP_ME", "kept-value")
+	sh := NewShell()
+	sh.KeyEnv = []string{"DEEPSEEK_API_KEY"}
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY DEEPSEEK_API_KEY XBOT_KEEP_ME || true"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "sekret-xbot") || strings.Contains(out, "sekret-deep") || !strings.Contains(out, "kept-value") {
+		t.Fatalf("%q", out)
+	}
+	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"printenv XBOT_API_KEY","keys":true}`))
+	if err != nil || !need || !strings.Contains(summary, "with provider keys") {
+		t.Fatalf("need=%v summary=%q err=%v", need, summary, err)
+	}
+	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY DEEPSEEK_API_KEY","keys":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "sekret-xbot") || !strings.Contains(out, "sekret-deep") {
+		t.Fatalf("%q", out)
+	}
+}
+
 func TestShellEmptyAndConfirm(t *testing.T) {
 	sh := NewShell()
 	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))

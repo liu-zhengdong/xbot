@@ -33,3 +33,7 @@ func stringProp(desc string) map[string]any {
 func intProp(desc string) map[string]any {
 	return map[string]any{"type": "integer", "description": desc}
 }
+
+func boolProp(desc string) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc}
+}

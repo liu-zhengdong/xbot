@@ -38,6 +38,26 @@ type File struct {
 // Path is the registry file under the data root.
 func Path(root string) string { return filepath.Join(root, "providers.json") }
 
+// KeyEnvNames is XBOT_API_KEY plus each provider's api_key_env.
+// A missing registry still returns XBOT_API_KEY.
+func KeyEnvNames(root string) []string {
+	names := []string{"XBOT_API_KEY"}
+	seen := map[string]bool{"XBOT_API_KEY": true}
+	f, err := Load(root)
+	if err != nil {
+		return names
+	}
+	for _, p := range f.Providers {
+		name := strings.TrimSpace(p.APIKeyEnv)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
+}
+
 // Load reads the registry. A missing file is an empty registry.
 func Load(root string) (File, error) {
 	raw, err := os.ReadFile(Path(root))
