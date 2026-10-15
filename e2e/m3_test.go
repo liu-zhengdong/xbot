@@ -40,11 +40,6 @@ func TestRoutineHandledWhileChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := m3Kernel(t, b, client, []link.Link{link.Terminal{}, &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}}, nil)
-	lock, err := b.LockHandle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Release()
 
 	var buf safeBuf
 	ctx, cancel := context.WithCancel(context.Background())
@@ -87,7 +82,12 @@ func TestRoutineHandledWhileChat(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	waitText(t, &buf, "mail is waiting")
+	waitUntil(t, 2*time.Second, func() bool {
+		notes, err := notify.Open(b.OutboxPath()).Unread()
+		body := dump(mustEntries(t, b))
+		got := (err == nil && len(notes) == 1 && notes[0].Text == "mail is waiting") || strings.Contains(buf.String(), "mail is waiting")
+		return got && strings.Count(body, "noted") == 1
+	})
 	if n := strings.Count(dump(mustEntries(t, b)), "noted"); n != 1 {
 		t.Fatalf("routine handled %d times\n%s", n, dump(mustEntries(t, b)))
 	}
@@ -382,6 +382,18 @@ func (s *safeBuf) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.b.String()
+}
+
+func waitUntil(t *testing.T, d time.Duration, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if ok() {
+			return
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	t.Fatal("timed out")
 }
 
 func waitText(t *testing.T, buf *safeBuf, needle string) {

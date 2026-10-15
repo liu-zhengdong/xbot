@@ -955,11 +955,10 @@ func cmdChat(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	lock, err := b.LockHandle()
+	seen, err := b.Count()
 	if err != nil {
 		return err
 	}
-	defer lock.Release()
 	lines := make(chan proc.Line)
 	go func() {
 		defer close(lines)
@@ -994,10 +993,16 @@ func cmdChat(root string, args []string) error {
 			}
 			fmt.Fprintf(os.Stderr, "%s › ", b.Name())
 		},
+		CatchUp: func() bool {
+			return showTranscriptSince(b, &seen)
+		},
 		After: func(_ link.Event, err error) {
 			pr.Break()
 			if err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "xbot:", err)
+			}
+			if n, err := b.Count(); err == nil {
+				seen = n
 			}
 			if err := showNotes(b); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot:", err)
@@ -1559,6 +1564,36 @@ func cmdProvider(root string, args []string) error {
 	default:
 		return fmt.Errorf("unknown provider command %q", args[0])
 	}
+}
+
+// showTranscriptSince prints user and assistant lines appended by another
+// process, such as a web turn that ran while this chat sat at the prompt.
+func showTranscriptSince(b *bot.Bot, seen *int) bool {
+	if b == nil || seen == nil {
+		return false
+	}
+	entries, err := b.Entries()
+	if err != nil || len(entries) <= *seen {
+		return false
+	}
+	fresh := entries[*seen:]
+	*seen = len(entries)
+	printed := false
+	for _, e := range fresh {
+		text := strings.TrimSpace(e.Message.Content)
+		if text == "" || strings.Contains(text, "<environment_") {
+			continue
+		}
+		switch e.Message.Role {
+		case provider.RoleUser, provider.RoleAssistant:
+			if len(e.Message.ToolCalls) > 0 {
+				continue
+			}
+			fmt.Fprintln(os.Stdout, text)
+			printed = true
+		}
+	}
+	return printed
 }
 
 func isQuit(text string) bool {

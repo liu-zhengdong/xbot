@@ -1,6 +1,7 @@
 // Package proc is the single wake loop for one bot.
 // Delivery of due routines does not require the handle lock.
-// Handling does: the process that holds the lock is the only consumer.
+// Run holds the lock only while it handles one event, then releases it
+// before waiting for the next line, so an idle chat does not block the web UI.
 package proc
 
 import (
@@ -22,7 +23,7 @@ type Line struct {
 	Err  error
 }
 
-// Config drives one processor. The caller holds the bot's handle lock.
+// Config drives one processor. Run takes the handle lock around each event.
 type Config struct {
 	K    *kernel.Kernel
 	Poll time.Duration
@@ -36,7 +37,10 @@ type Config struct {
 	Accept func(text string) (link.Event, error)
 	// Idle runs once each time the inbox is empty and the loop is about to wait.
 	Idle func()
-	// After runs after each handled event.
+	// CatchUp prints transcript lines another process appended.
+	// It returns true when it printed something, so the prompt can be drawn again.
+	CatchUp func() bool
+	// After runs after each handled event, still holding the handle lock.
 	After func(ev link.Event, err error)
 }
 
@@ -76,15 +80,35 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		if ev, ok := head(cfg.K); ok {
 			idle = false
+			if cfg.K.Bot == nil {
+				return errors.New("proc: nil bot")
+			}
+			lock, err := cfg.K.Bot.LockHandle()
+			if err != nil {
+				return err
+			}
+			if cfg.K.Inbox != nil {
+				if err := cfg.K.Inbox.Reload(); err != nil {
+					_ = lock.Release()
+					return err
+				}
+			}
+			ev, ok = head(cfg.K)
+			if !ok {
+				_ = lock.Release()
+				continue
+			}
 			handleErr := cfg.K.Handle(ctx, ev)
 			if cfg.K.Inbox != nil {
 				if err := cfg.K.Inbox.Ack(ev.ID); err != nil {
+					_ = lock.Release()
 					return err
 				}
 			}
 			if cfg.After != nil {
 				cfg.After(ev, handleErr)
 			}
+			_ = lock.Release()
 			if handleErr != nil && errors.Is(handleErr, context.Canceled) {
 				return nil
 			}
@@ -92,9 +116,14 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		if !idle {
 			idle = true
+			if cfg.CatchUp != nil {
+				cfg.CatchUp()
+			}
 			if cfg.Idle != nil {
 				cfg.Idle()
 			}
+		} else if cfg.CatchUp != nil && cfg.CatchUp() && cfg.Idle != nil {
+			cfg.Idle()
 		}
 		var lines <-chan Line
 		if cfg.Lines != nil && cfg.Accept != nil {
