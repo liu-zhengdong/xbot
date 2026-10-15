@@ -15,22 +15,27 @@ type skillTool struct{ k *Kernel }
 
 func (skillTool) Name() string { return "read_skill" }
 func (skillTool) Description() string {
-	return "Read the body of a shared skill. The stable prefix lists descriptions only. The text is for this turn only."
+	return "Read the body of a shared skill. Pass id, the skill id from the Skills list. The text is for this turn only."
 }
 func (skillTool) Parameters() any {
 	return schema(map[string]any{
-		"slug": stringProp("Skill slug, the directory name under the owner's skills dir"),
-	}, []string{"slug"})
+		"id": stringProp("Skill id from the Skills list"),
+	}, []string{"id"})
 }
 func (skillTool) Confirm(json.RawMessage) (bool, string, error) { return false, "read_skill", nil }
 func (t skillTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
+		ID   string `json:"id"`
 		Slug string `json:"slug"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	dir, info, err := t.k.openSkill(in.Slug)
+	id := strings.TrimSpace(in.ID)
+	if id == "" {
+		id = strings.TrimSpace(in.Slug)
+	}
+	dir, info, err := t.k.openSkill(id)
 	if err != nil {
 		return "", err
 	}
@@ -132,7 +137,7 @@ func (k *Kernel) skillOwner() (string, error) {
 func (k *Kernel) openSkill(id string) (string, skill.Info, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return "", skill.Info{}, fmt.Errorf("skill: slug is required")
+		return "", skill.Info{}, fmt.Errorf("skill: id is required")
 	}
 	owner, err := k.skillOwner()
 	if err != nil {

@@ -98,11 +98,7 @@ func (k *Kernel) skillLines() ([]string, error) {
 	}
 	out := make([]string, len(infos))
 	for i, info := range infos {
-		name := info.Name
-		if name == "" {
-			name = info.Slug
-		}
-		out[i] = name + ": " + info.Description
+		out[i] = skill.Line(info)
 	}
 	return out, nil
 }

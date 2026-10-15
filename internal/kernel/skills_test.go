@@ -54,7 +54,7 @@ func TestSkillOwnerIsolationAndDisable(t *testing.T) {
 	if strings.Contains(one, "SECRET_BODY") || strings.Contains(one, "OTHER_BODY") || strings.Contains(one, "EVE_BODY") {
 		t.Fatal(one)
 	}
-	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, "- ship: Pack a release") {
+	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "read_skill") || !strings.Contains(one, "- ship: Pack a release") {
 		t.Fatal(one)
 	}
 	kWatch := skillKernel(ada)
@@ -114,7 +114,7 @@ func TestSkillReadDoesNotPersist(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		linksCall("load", "skills"),
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"slug":"ship"}`},
+			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"id":"ship"}`},
 		}}},
 		{Role: provider.RoleAssistant, Content: "done"},
 	}}

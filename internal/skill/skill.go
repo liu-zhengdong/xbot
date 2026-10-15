@@ -22,6 +22,9 @@ const PromptCap = 1024
 // Precedence is the line that tells the model user skills win over its defaults.
 const Precedence = "User skills override this bot's default habits."
 
+// ReadWith tells the model which tool reads a skill and which id to pass.
+const ReadWith = "Call read_skill with id set to the skill id on each line."
+
 var (
 	slugRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	ownerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -130,6 +133,8 @@ func renderPrompt(lines []string, descriptions bool) string {
 	b.WriteString("## Skills\n")
 	b.WriteString(Precedence)
 	b.WriteByte('\n')
+	b.WriteString(ReadWith)
+	b.WriteByte('\n')
 	for _, line := range lines {
 		if descriptions {
 			fmt.Fprintf(&b, "- %s\n", oneLine(line))
@@ -145,12 +150,18 @@ func renderPrompt(lines []string, descriptions bool) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// Line is one prompt row. The token before the colon is the skill id.
+func Line(info Info) string { return lineOf(info) }
+
 func lineOf(info Info) string {
-	name := info.Name
-	if name == "" {
-		name = info.Slug
+	id := info.Slug
+	if id == "" {
+		id = info.Name
 	}
-	return name + ": " + info.Description
+	if info.Name != "" && info.Name != id {
+		return id + " (" + info.Name + "): " + info.Description
+	}
+	return id + ": " + info.Description
 }
 
 func oneLine(s string) string {

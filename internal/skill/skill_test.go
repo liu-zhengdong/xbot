@@ -96,7 +96,7 @@ func TestSkillSymlinkAndImport(t *testing.T) {
 func TestSkillPromptOneLineAndCap(t *testing.T) {
 	one := skill.FormatPrompt([]string{"ship: Pack a release"})
 	two := skill.FormatPrompt([]string{"ship: Pack a release", "watch: Watch files"})
-	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, "- ship: Pack a release") {
+	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "- ship: Pack a release") {
 		t.Fatal(one)
 	}
 	if strings.Count(two, "\n") != strings.Count(one, "\n")+1 {
@@ -114,7 +114,7 @@ func TestSkillPromptOneLineAndCap(t *testing.T) {
 	if strings.Contains(text, marker) {
 		t.Fatal("descriptions kept over cap")
 	}
-	if strings.Count(text, "\n") < 39 || !strings.Contains(text, "- skill") || !strings.Contains(text, skill.Precedence) {
+	if strings.Count(text, "\n") < 39 || !strings.Contains(text, "- skill") || !strings.Contains(text, skill.Precedence) || !strings.Contains(text, skill.ReadWith) {
 		t.Fatal(text)
 	}
 }

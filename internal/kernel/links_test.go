@@ -220,7 +220,7 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 		t.Fatal("read_skill missing after load")
 	}
 	for _, def := range p.reqs[1].Tools {
-		if def.Name == "read_skill" && !strings.Contains(def.Description, "Read the body of a shared skill") {
+		if def.Name == "read_skill" && !strings.Contains(def.Description, "Pass id, the skill id") {
 			t.Fatal(def.Description)
 		}
 	}
