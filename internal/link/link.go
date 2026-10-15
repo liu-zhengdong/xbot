@@ -40,6 +40,7 @@ const (
 	NamePeers    = "peers"
 	NameTelegram = "telegram"
 	NameLark     = "lark"
+	NameCoding   = "coding-agent"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"

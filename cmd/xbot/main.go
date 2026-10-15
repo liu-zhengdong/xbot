@@ -20,6 +20,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
+	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/exec"
@@ -1163,6 +1164,8 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameTelegram))
 		case link.NameLark:
 			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameLark))
+		case link.NameCoding:
+			out = append(out, code.Open(bot.Dir(b.Root, b.Name()), b.InboxPath()))
 		case link.NameRunner:
 			url, token := runner.URL, runner.Token
 			if url == "" {

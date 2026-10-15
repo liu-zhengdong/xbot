@@ -105,6 +105,7 @@ var catalog = []CatalogEntry{
 	{
 		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
-		Summary: "长时间编码任务，步数和时间按这次任务另定。任务记录还没做。",
+		Summary:   "长时间编码任务，步数和时间按这次任务另定。先只记本地任务。",
+		Available: true, Grant: NameCoding,
 	},
 }

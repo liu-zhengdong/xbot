@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/code"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -29,6 +30,28 @@ func TestConnectorSchemasWaitForLoad(t *testing.T) {
 	}
 	if !hasToolName(list, "telegram_send") {
 		t.Fatal("schema missing after load")
+	}
+}
+
+func TestCodingSchemasWaitForLoad(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameCoding)
+	k := &Kernel{Bot: b, Links: []link.Link{code.Open(bot.Dir(b.Root, b.Name()), b.InboxPath())}}
+	list, err := k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasToolName(list, "code_start") {
+		t.Fatal("schema was listed before load")
+	}
+	k.markLoaded(link.NameCoding)
+	list, err = k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"code_start", "code_steer", "code_queue", "code_interrupt", "code_cancel", "code_show"} {
+		if !hasToolName(list, name) {
+			t.Fatalf("missing %s", name)
+		}
 	}
 }
 

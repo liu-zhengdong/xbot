@@ -82,9 +82,9 @@ func TestLinkCatalogInstall(t *testing.T) {
 	if code != http.StatusConflict || !strings.Contains(string(raw), "secrets required") {
 		t.Fatalf("telegram %d %s", code, raw)
 	}
-	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"coding-agent"}`, true)
+	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"mcp"}`, true)
 	if code != http.StatusConflict || !strings.Contains(string(raw), "not available yet") {
-		t.Fatalf("coding-agent %d %s", code, raw)
+		t.Fatalf("mcp %d %s", code, raw)
 	}
 	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"missing"}`, true)
 	if code != http.StatusNotFound {

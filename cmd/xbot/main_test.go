@@ -434,10 +434,13 @@ func TestLinkCLIGrantsAndRevokes(t *testing.T) {
 	if err := cmdLink(root, []string{"install", "ada", "telegram"}); err == nil || !strings.Contains(err.Error(), "TELEGRAM_BOT_TOKEN is empty") {
 		t.Fatalf("telegram %v", err)
 	}
-	if err := cmdLink(root, []string{"install", "ada", "coding-agent"}); err == nil || !strings.Contains(err.Error(), "not available yet") {
-		t.Fatalf("coding-agent %v", err)
+	if err := cmdLink(root, []string{"install", "ada", "mcp"}); err == nil || !strings.Contains(err.Error(), "not available yet") {
+		t.Fatalf("mcp %v", err)
 	}
 	if err := cmdLink(root, []string{"install", "ada", "webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdLink(root, []string{"install", "ada", "coding-agent"}); err != nil {
 		t.Fatal(err)
 	}
 	b, err = bot.Load(root, "ada")
@@ -445,12 +448,16 @@ func TestLinkCLIGrantsAndRevokes(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
+	coding := false
 	for _, name := range b.Config().Links {
 		if name == link.NameWebhook {
 			found = true
 		}
+		if name == link.NameCoding {
+			coding = true
+		}
 	}
-	if !found {
+	if !found || !coding {
 		t.Fatalf("links %v", b.Config().Links)
 	}
 	if _, err := mount(b, runnerSpec{}); err != nil {

@@ -416,7 +416,7 @@ func lazyUntilLoad(name string) bool {
 		return true
 	}
 	switch name {
-	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark:
+	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding:
 		return true
 	default:
 		return false
