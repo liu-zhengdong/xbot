@@ -39,6 +39,7 @@ type profileBody struct {
 	QuietEnd    *string `json:"quiet_end"`
 	Timezone    *string `json:"timezone"`
 	Persona     *string `json:"persona"`
+	Group       *string `json:"group"`
 }
 
 func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +83,12 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 			}
 			s.forgetKernel(b.Name())
 			name = next
+		}
+	}
+	if in.Group != nil {
+		if err := bot.SetBotFolder(s.Root, s.owner, name, *in.Group); err != nil {
+			writeFolderErr(w, err)
+			return
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"name": name})

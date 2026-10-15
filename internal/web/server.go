@@ -92,6 +92,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/groups", s.listGroups)
 	mux.HandleFunc("POST /api/groups", s.createGroup)
+	mux.HandleFunc("PATCH /api/groups/{id}", s.patchFolder)
+	mux.HandleFunc("DELETE /api/groups/{id}", s.deleteFolder)
 	mux.HandleFunc("GET /api/groups/{id}", s.groupTranscript)
 	mux.HandleFunc("POST /api/groups/{id}/messages", s.postGroup)
 }
@@ -166,6 +168,7 @@ type botItem struct {
 	Notes       int    `json:"notes"`
 	Pinned      bool   `json:"pinned"`
 	Primary     bool   `json:"primary"`
+	Group       string `json:"group,omitempty"`
 	AvatarURL   string `json:"avatar_url,omitempty"`
 	AvatarBG    string `json:"avatar_bg,omitempty"`
 	AvatarInk   string `json:"avatar_ink,omitempty"`
@@ -197,7 +200,7 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 		item := botItem{
 			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Description: cfg.Description, Notes: n,
 			Unread: n > 0 || count > cur[cfg.Name],
-			Pinned: cfg.Pinned, Primary: cfg.Name == primary,
+			Pinned: cfg.Pinned, Primary: cfg.Name == primary, Group: cfg.Group,
 			AvatarURL: url, AvatarBG: bg, AvatarInk: ink, Initial: initial,
 		}
 		out = append(out, item)
@@ -429,6 +432,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"avatar_url":  url, "avatar_bg": bg, "avatar_ink": ink, "initial": initial,
 		"provider": b.Config().Provider, "model": b.Config().Model,
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,
+		"group":  b.Config().Group,
 		"memory": mem, "routines": routines, "agents": agents,
 	})
 }
@@ -881,7 +885,24 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 	if out == nil {
 		out = []peer.Group{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"groups": out})
+	view, err := bot.Folders(s.Root, s.owner)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	folders := make([]folderJSON, 0, len(view.Folders))
+	for _, f := range view.Folders {
+		bots := f.Bots
+		if bots == nil {
+			bots = []string{}
+		}
+		folders = append(folders, folderJSON{Name: f.Name, Count: f.Count, Bots: bots, Ungrouped: f.Ungrouped})
+	}
+	order := view.Order
+	if order == nil {
+		order = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"order": order, "folders": folders, "groups": out})
 }
 
 func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
@@ -889,14 +910,22 @@ func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name    string   `json:"name"`
-		Members []string `json:"members"`
+		Name    string    `json:"name"`
+		Members *[]string `json:"members"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	g, err := (&peer.Bus{Root: s.Root, Now: time.Now}).CreateGroupForOwner(s.owner, in.Name, in.Members)
+	if in.Members == nil {
+		if err := bot.CreateFolder(s.Root, s.owner, in.Name); err != nil {
+			writeFolderErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"name": strings.TrimSpace(in.Name)})
+		return
+	}
+	g, err := (&peer.Bus{Root: s.Root, Now: time.Now}).CreateGroupForOwner(s.owner, in.Name, *in.Members)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

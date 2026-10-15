@@ -144,13 +144,45 @@
 
 `GET /api/notes` 返回 `{"notes":[{"id","bot","text","time"}]}`，只含未读。`POST /api/notes/read`，body `{"bot":"ada","ids":["..."]}`，200 `{"status":"ok"}`。不可信来源（webhook、watch、其他 Bot、定时器）的最终回复如果不是空也不是 `SILENT`，也会出现在这里；主动程度挡下或免打扰暂存的不会出现。同一轮里 Bot 已经调用 `notify_owner` 时，不再把结尾那句回复再推一条。
 
-`GET /api/groups` 返回当前 owner 全部成员都拥有的群：`{"groups":[{"id","name","members","created"}]}`。`id` 形如 `g_` 加 8 位小写字母或数字。
+`GET /api/groups` 同时返回侧边栏分组和聊天群。聊天群仍在 `groups`：`{"id","name","members","created"}`，`id` 形如 `g_` 加 8 位小写字母或数字，只含当前 owner 全部成员都拥有的群。侧边栏分组见下面的「侧边栏分组」。
 
-`POST /api/groups`，body `{"name":"...","members":["ada","bob"]}`。成功 200 就是这个群对象。
+`POST /api/groups` 带 `members` 时创建聊天群，body `{"name":"...","members":["ada","bob"]}`。成功 200 就是这个群对象。没有 `members` 时创建的是侧边栏分组，见下。
 
 `GET /api/groups/{id}` 返回 `{"group":{...},"messages":[{"id","time","sender","kind","text"}]}`。`kind` 是 `person` 时这行是主人发的。
 
 `POST /api/groups/{id}/messages`，body `{"text":"..."}`。200 `{"status":"sent"}`。
+
+## 侧边栏分组
+
+这是 Bot 档案上的 `group`，加上这个登录用户自己的一份顺序。不是聊天群。界面按 `order` 画可折叠分组，每组用 `count`；最后一组固定是「未分组」。没有拖拽排序。
+
+`GET /api/groups` 的分组部分：
+
+```json
+{
+  "order": ["工作", "生活"],
+  "folders": [
+    {"name": "工作", "count": 2, "bots": ["ada", "bob"]},
+    {"name": "生活", "count": 0, "bots": []},
+    {"name": "未分组", "count": 1, "bots": ["cara"], "ungrouped": true}
+  ],
+  "groups": []
+}
+```
+
+`order` 只含主人建过的分组，不含「未分组」。`folders` 按这个顺序，最后一项永远是「未分组」。组内 Bot 先置顶，再按名字。`count` 是 `bots` 的长度。没有分组时 `order` 是 `[]`，`folders` 只有「未分组」。`groups` 仍是聊天群，上面那一节的对象不变。
+
+`POST /api/groups`，body 只有 `{"name":"工作"}`，没有 `members`。成功 200 `{"name":"工作"}`，名字追加到 `order` 末尾。名字去掉首尾空白，1 到 32 个字符，不能含斜杠、反斜杠或控制字符，也不能叫「未分组」。重名 409，正文含 `group already exists`。坏名字 400。
+
+`PATCH /api/groups/{name}`，body `{"name":"工作台"}`。`{name}` 是现在的分组名，要做 URL 编码。成功 200 `{"name":"工作台"}`。这个 owner 名下、`group` 等于旧名字的 Bot 一起改成新名字。旧名字不存在是 404。新名字已被占用是 409。
+
+`DELETE /api/groups/{name}` 无 body。成功 200 `{"name":"工作"}`。这些 Bot 的 `group` 被清空，于是出现在「未分组」。Bot 目录还在。没有这个分组是 404。「未分组」不能删。
+
+`PATCH /api/bots/{name}` 可以带 `"group":"工作"`，或 `"group":""` 表示挪到未分组。没带 `group` 就不改分组。分组必须已经在这个 owner 的 `order` 里，否则 404。和档案字段可以写在同一次 PATCH 里。
+
+`GET /api/bots` 和 `GET /api/bots/{name}` 多一个 `group`。空字符串或字段省略表示未分组。
+
+命令行：`xbot group list`，`xbot group create <name>`，`xbot group rename <old> <new>`，`xbot group delete <name>`，`xbot group set <bot> <name>`，`xbot group set <bot> --clear`。顺序记在当前终端用户名下。
 
 ## Bot 私聊
 

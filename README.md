@@ -121,7 +121,9 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 模型可以调用 `compact(from, to, focus)` 自己选一段已经结束的范围。内核会拒绝：切开未完成的工具调用、碰到最后 N 条原文、和已有摘要块部分重叠。完整包住旧块是允许的，那就是一层更粗的摘要。到了硬上限，内核仍会当场压最早的一段，这一轮会等摘要完成。
 
-`recall_history` 和 `expand` 可以多带一个 `bot`，读同一个 owner 的另一个 Bot 的原文。别的 owner、只是同群、或群记录本身，都会拒绝。读到的内容包在 `<untrusted_event>` 里，标明来自那个 Bot，不能当成指令。
+`recall_history` 和 `expand` 可以多带一个 `bot`，读同一个 owner 的另一个 Bot 的原文。别的 owner、只是同群、或群 id，都是 `not found`。读到的内容包在 `<untrusted_event>` 里，标明来自那个 Bot，不能当成指令。
+
+侧边栏分组是 Bot 档案上的 `group`，加上当前用户自己的一份顺序。`xbot group` 可以新建、改名、删除分组，或把 Bot 放进去。删除分组不会删除 Bot。这和聊天群不是一回事。
 
 ```bash
 xbot export ada --out ada.md

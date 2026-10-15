@@ -46,6 +46,12 @@ Usage:
   xbot [--root DIR] fork <src> <name> --role TEXT [--group NAME]
   xbot [--root DIR] delete <name>
   xbot [--root DIR] list
+  xbot [--root DIR] group list
+  xbot [--root DIR] group create <name>
+  xbot [--root DIR] group rename <old> <new>
+  xbot [--root DIR] group delete <name>
+  xbot [--root DIR] group set <bot> <name>
+  xbot [--root DIR] group set <bot> --clear
   xbot [--root DIR] chat [name] [--yes] [--max-steps N]
   xbot [--root DIR] pin <name>
   xbot [--root DIR] unpin <name>
@@ -118,6 +124,8 @@ func run(argv []string) error {
 		return cmdDelete(root, rest[1:])
 	case "list":
 		return cmdList(root)
+	case "group":
+		return cmdGroup(root, rest[1:])
 	case "chat":
 		return cmdChat(root, rest[1:])
 	case "pin":
@@ -496,6 +504,7 @@ func cmdProfileShow(root string, args []string) error {
 	fmt.Printf("proactivity: %s\n", b.Config().Proactivity)
 	fmt.Printf("quiet: %s\n", quiet)
 	fmt.Printf("timezone: %s\n", b.Config().Timezone)
+	fmt.Printf("group: %s\n", b.Config().Group)
 	fmt.Printf("avatar: %s\n", avatar)
 	fmt.Printf("persona: %s\n", persona)
 	return nil

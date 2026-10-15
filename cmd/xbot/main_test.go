@@ -18,6 +18,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/mockopenai"
+	"xbot/internal/person"
 	"xbot/internal/provider"
 )
 
@@ -421,6 +422,44 @@ func TestProfileSetExportImport(t *testing.T) {
 	}
 	if copy.StyleCopy().Language != "中文" || !strings.Contains(mustPersona(t, copy), "Be brief.") {
 		t.Fatalf("%+v", copy.Config())
+	}
+}
+
+func TestGroupCLIKeepsBots(t *testing.T) {
+	root := t.TempDir()
+	ext, display, err := link.Account()
+	if err != nil {
+		t.Fatal(err)
+	}
+	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := bot.Create(root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{who.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdGroup(root, []string{"create", "工作"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdGroup(root, []string{"set", "ada", "工作"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdGroup(root, []string{"rename", "工作", "生活"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdGroup(root, []string{"delete", "生活"}); err != nil {
+		t.Fatal(err)
+	}
+	b, err = bot.Load(root, "ada")
+	if err != nil || b.Config().Group != "" {
+		t.Fatalf("group %q %v", b.Config().Group, err)
+	}
+	if err := cmdGroup(root, []string{"nope"}); err == nil {
+		t.Fatal("bad command was accepted")
 	}
 }
 

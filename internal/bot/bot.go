@@ -47,6 +47,7 @@ type Config struct {
 	QuietStart   string    `json:"quiet_start,omitempty"`
 	QuietEnd     string    `json:"quiet_end,omitempty"`
 	Timezone     string    `json:"timezone,omitempty"`
+	Group        string    `json:"group,omitempty"`
 	Created      time.Time `json:"created"`
 }
 
@@ -289,6 +290,12 @@ func (b *Bot) GrantLink(name string) error {
 
 // ValidName reports whether name can be a bot directory.
 func ValidName(name string) bool { return nameRe.MatchString(name) }
+
+// SetGroup records the sidebar folder. An empty name clears it.
+func (b *Bot) SetGroup(name string) error {
+	b.cfg.Group = strings.TrimSpace(name)
+	return b.SaveConfig()
+}
 
 // SetPinned records whether this bot sorts ahead of unpinned bots.
 func (b *Bot) SetPinned(on bool) error {
