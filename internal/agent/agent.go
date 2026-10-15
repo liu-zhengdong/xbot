@@ -30,6 +30,9 @@ type Options struct {
 	OnTool    func(name, summary string)
 	OnResult  func(name, output string)
 	OnMessage func(provider.Message)
+	// AfterStep runs after a step's tool results and before the next model call.
+	// Messages it returns are appended in order and shown to the next step.
+	AfterStep func() ([]provider.Message, error)
 	// OneRound returns after a single model call and that call's tool results.
 	// The step limit error is not used. The caller decides what happens next.
 	OneRound bool
@@ -90,6 +93,19 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		}
 		if opt.OneRound {
 			return produced, nil
+		}
+		if opt.AfterStep != nil {
+			extra, err := opt.AfterStep()
+			if err != nil {
+				return produced, err
+			}
+			for _, m := range extra {
+				convo = append(convo, m)
+				produced = append(produced, m)
+				if opt.OnMessage != nil {
+					opt.OnMessage(m)
+				}
+			}
 		}
 	}
 	return stopSummary(ctx, p, convo, produced, opt)

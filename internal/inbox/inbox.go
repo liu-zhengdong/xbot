@@ -116,6 +116,15 @@ func (n *Inbox) Post(ev link.Event) error {
 	})
 }
 
+// Pending returns a copy of the queue, oldest first.
+func (n *Inbox) Pending() []link.Event {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]link.Event, len(n.pending))
+	copy(out, n.pending)
+	return out
+}
+
 // Head returns the oldest pending event without removing it.
 func (n *Inbox) Head() (link.Event, bool) {
 	n.mu.Lock()

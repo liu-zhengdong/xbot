@@ -61,6 +61,7 @@ type Kernel struct {
 	turnChain   string
 	turnTrusted bool
 	turnSource  string
+	turnEvent   string
 	notedMu     sync.Mutex
 	noted       []string
 }
@@ -76,6 +77,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnHops = ev.Hops
 	k.turnChain = ev.Chain
 	k.turnSource = ev.Source
+	k.turnEvent = ev.ID
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
 	k.notedMu.Lock()
 	k.noted = nil
@@ -189,6 +191,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 			appendErr = k.Bot.Append(bot.Entry{Time: k.now(), Message: m})
 		},
+		AfterStep: func() ([]provider.Message, error) {
+			return k.absorbInbox()
+		},
 	})
 	if appendErr != nil {
 		return appendErr
@@ -197,6 +202,32 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		return pushErr
 	}
 	return err
+}
+
+// absorbInbox appends inbox events that arrived during this turn, oldest first.
+// The event being handled stays pending until the caller acks it.
+func (k *Kernel) absorbInbox() ([]provider.Message, error) {
+	if k.Inbox == nil {
+		return nil, nil
+	}
+	if err := k.Inbox.Reload(); err != nil {
+		return nil, err
+	}
+	var out []provider.Message
+	owners := k.Bot.Config().Owners
+	for _, ev := range k.Inbox.Pending() {
+		if ev.ID == "" || ev.ID == k.turnEvent {
+			continue
+		}
+		out = append(out, provider.Message{
+			Role:    provider.RoleUser,
+			Content: link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, owners)),
+		})
+		if err := k.Inbox.Ack(ev.ID); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
