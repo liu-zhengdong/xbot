@@ -1,6 +1,6 @@
 // Package serve wakes bots whose chat session is not holding the handle lock.
-// Due routines are always posted, even when the lock is held. Only the lock
-// holder handles them, so a routine is never run twice.
+// Due routines and file-watch events are always posted, even when the lock is
+// held. Only the lock holder handles them, so one event is never run twice.
 package serve
 
 import (
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbound"
 	"xbot/internal/kernel"
 	"xbot/internal/proc"
 )
@@ -38,6 +39,9 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 			return err
 		}
 		if err := proc.DeliverDue(k, now); err != nil && first == nil {
+			first = err
+		}
+		if err := inbound.DeliverFeeds(b, now, 0); err != nil && first == nil {
 			first = err
 		}
 		lock, ok, err := b.TryLockHandle()

@@ -149,8 +149,11 @@ func (s *FileStore) dir(scope Scope, botName, personID string) (string, error) {
 	}
 }
 
+// ValidID reports whether id can name a person or a bot in the store.
+func ValidID(id string) bool { return idRe.MatchString(id) }
+
 func clean(id string) error {
-	if !idRe.MatchString(id) {
+	if !ValidID(id) {
 		return fmt.Errorf("memory: bad id %q", id)
 	}
 	return nil

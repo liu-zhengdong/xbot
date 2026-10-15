@@ -34,6 +34,8 @@ const (
 	NameAgents   = "agents"
 	NameSkills   = "skills"
 	NameRunner   = "runner"
+	NameWebhook  = "webhook"
+	NameWatch    = "watch"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"

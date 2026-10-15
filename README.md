@@ -1,6 +1,6 @@
 # XBot
 
-XBot 是一个从零写的个人助手（M3）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。
+XBot 是一个从零写的个人助手（M4）。交互单位是 **Bot**：一个名字、一份 persona、一条只追加的对话。没有 session，也没有 `--resume`。
 
 ## 构建与运行
 
@@ -23,11 +23,13 @@ export DEEPSEEK_API_KEY=sk-...
 xbot new ada --persona "你是一个简短的编程助手。" --provider deepseek --model deepseek-chat
 xbot list
 xbot chat ada
-xbot serve
+xbot serve --http 127.0.0.1:8787
+xbot webhook add ada github
+xbot watch add ada notes --path "$HOME/notes/**/*.md"
 xbot runner --addr 127.0.0.1:18771
 ```
 
-`chat` 接着这个 Bot 唯一的一条对话继续。聊天的时候，这个进程持有该 Bot 的处理锁，并在等待输入的同时处理 inbox 里的事件。`serve` 不管有没有人在聊，都会把到点的 routine 投进 inbox；只有拿到处理锁的那一个进程会执行它。退出输入 `exit`、`quit` 或 `:q`。
+`chat` 接着这个 Bot 唯一的一条对话继续。聊天的时候，这个进程持有该 Bot 的处理锁，并在等待输入的同时处理 inbox 里的事件。`serve` 不管有没有人在聊，都会把到点的 routine、到点的文件变化和已经合批的 webhook 投进 inbox；只有拿到处理锁的那一个进程会执行它。`--interval`（默认 15 秒）是没人在聊时，serve 多久处理一次这些事件。正在聊的进程大约每 200 毫秒就能看到。退出输入 `exit`、`quit` 或 `:q`。
 
 长时间的活用 `spawn` 交给子代理。本机默认是 goroutine。`xbot runner` 是同一套执行器的 HTTP 服务，只听环回地址，要用 token。`xbot chat --runner URL --runner-token TOKEN` 把 Bot 接到它上面。
 
@@ -42,6 +44,7 @@ xbot runner --addr 127.0.0.1:18771
 | `XBOT_API_KEY` | 未绑定时的 API key | 空 |
 | `XBOT_BASE_URL` | 未绑定时的 OpenAI 兼容 base URL | `https://api.deepseek.com/v1` |
 | `XBOT_MODEL` | 未绑定时的模型名 | `deepseek-chat` |
+| `XBOT_PUBLIC_URL` | `webhook add` 打印的对外地址 | `http://127.0.0.1:8787` |
 
 命名 provider 写在 `~/.xbot/providers.json`。里面只存 `api_key_env`（环境变量的名字），不存密钥本身。Bot 的 `config.json` 只记下 provider 名和 model 名。
 
@@ -70,6 +73,10 @@ xbot bind ada --clear
 ~/.xbot/bots/<name>/inbox.jsonl
 ~/.xbot/bots/<name>/outbox.jsonl
 ~/.xbot/bots/<name>/routines/<id>.json
+~/.xbot/bots/<name>/webhooks/id/<name>.json
+~/.xbot/bots/<name>/webhooks/seen.json
+~/.xbot/bots/<name>/watches/id/<id>.json
+~/.xbot/bots/<name>/watches/state.json
 ~/.xbot/bots/<name>/memory/{profile,log}.md
 ~/.xbot/bots/<name>/people/<id>/memory/{profile,log}.md
 ~/.xbot/bots/<name>/agents/<id>/{transcript.jsonl,meta.json}
@@ -80,18 +87,20 @@ xbot bind ada --clear
 
 Markdown 是给人改的。索引比 markdown 旧时会按 markdown 重建。
 
-`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。技能说明按 slug 排序写进稳定前缀，正文用 `read_skill` 再读。没有技能文件时，前缀和以前一样。
+`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。技能说明按 slug 排序写进稳定前缀，正文用 `read_skill` 再读。没有技能文件时，前缀和以前一样。
 
 ## 架构
 
 内核只认识收件箱和工具。外面的一切都是 Link。
 
 ```text
-terminal / timer ──Event──▶ inbox ──▶ kernel ──▶ ModelSelector ──▶ provider
+terminal / timer / webhook / watch ──Event──▶ inbox ──▶ kernel ──▶ ModelSelector ──▶ provider
 tools / memory / persona / context ──tools──▶ agent loop
 ```
 
-**信任。** 主人在终端 link 上的输入是指令，原文进 transcript。除此之外（别的人、timer、以后的外部 link）都包在 `<untrusted_event>` 里，当成数据。是不是主人由内核判断，不看事件自己带的标记。
+Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模型。同一来源在一个短窗口里的多次投递会合成一条再进 inbox，所以一串请求只会唤醒一次。Bot 自己决定处理、`notify_owner`，或者回复 `SILENT`。
+
+**信任。** 主人在终端 link 上的输入是指令，原文进 transcript。除此之外（别的人、timer、webhook、文件变化、子代理）都包在 `<untrusted_event>` 里，当成数据。是不是主人由内核判断，不看事件自己带的标记。来源不是 terminal 时，就算发送者字符串和 owner 相同，也仍然是不可信数据。
 
 **稳定前缀和环境快照。** 每次唤醒的 system 消息只有 persona、rules、以及按名字排序的 link 说明。工具 schema、时间、发送者、记忆都不在里面，这样上游的前缀缓存可以对得上。工具列表按名字排序，schema 变化不会把这段前缀打乱。
 
@@ -117,11 +126,29 @@ tools / memory / persona / context ──tools──▶ agent loop
 
 **定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。`xbot chat` 会先把未读通知打出来。
 
+**Webhook。** `xbot serve` 在 `--http` 上听 `POST /webhook/<bot>/<name>`，默认只绑 `127.0.0.1:8787`。每个 webhook 有自己的 secret，模式是 HMAC（`X-XBot-Signature: sha256=<hex>`）或 `Authorization: Bearer`。没签名、签错、或者用了另一种模式，都是 401。正文超过 32 KiB 是 413，不会存下来。带了 `X-XBot-Delivery`（或 `X-Delivery-Id`）的重复投递只收一次，第二次直接 200 `duplicate`。同一个 webhook 在 2 秒窗口里的多次请求合成一条事件再投进 inbox；窗口是从第一条算起的固定窗，连续灌也不会把模型叫醒超过每个窗口一次。合批正文最多 32 KiB，多出来的只计数。事件来源是 `webhook:<name>`，发送者是外部身份，内核会包成不可信数据。
+
+```bash
+xbot webhook add ada github --auth hmac --public-url http://127.0.0.1:8787
+xbot webhook list ada
+xbot webhook remove ada github
+```
+
+`add` 打印 URL 和 secret。`list` 只打印名字、模式和 URL，不再打印 secret。secret 在 Bot 目录里，文件权限 0600。配置里的 `webhooks` 名单才算授权；只把文件放进目录不会生效。
+
+**文件监听。** `xbot watch add <bot> <id> --path PATTERN`。PATTERN 必须是绝对路径，不能含 `..`，也不能从文件系统根目录扫。用标准库轮询 mtime 和大小，不读文件内容。第一次看见现有文件只做基线，重启不会把它们全部报成 created。之后的 created / modified / deleted 会防抖（默认约 500 毫秒，从最后一次变化算起）。如果一直在写，最多憋住 10 个防抖间隔，然后仍然发出一条。一个 watch 一轮最多报 200 个路径，一个 Bot 最多 32 个 watch。事件里只有路径、种类、大小和 mtime。指向目录外的符号链接会跳过。
+
+```bash
+xbot watch add ada notes --path "$HOME/notes/**/*.md"
+xbot watch list ada
+xbot watch remove ada notes
+```
+
 **子代理。** 主 Bot 自己做短活。长任务调用 `spawn(task, mode)`。`brief` 只有任务说明；`fork` 带上当前主上下文的一份拷贝。子代理有自己的只追加 transcript，步与步之间看自己的 inbox。主 Bot 可以 `steer`（下一步之前插入，已完成的工作保留）、`queue`（当前这次跑完再做）、`interrupt`（停掉当前这一步，用新指令重来，步数预算重置）、`cancel`（停掉，排队的也不做）。子代理把 progress、blocked、done、failed 投回主 inbox。这些事件不是终端输入，内核会包成 `<untrusted_event>`。`read_subagent` / `expand_subagent` 读它的状态和原文，输出有上限。同时最多 4 个，默认最多 16 步、10 分钟。子代理没有 spawn，也不会在后台弹 y/n：`xbot chat --yes` 才自动批准它的 shell；否则需要确认的工具直接拒绝。
 
 **执行器。** `Executor` 有本机 goroutine 实现，也有 HTTP 实现：`POST /v1/start`、`POST /v1/message`、`GET /v1/events`。`xbot runner` 只绑定环回地址，Bearer token 用常量时间比较。请求体里的模型密钥只在这条本机连接上出现。
 
-**并发。** 每个 Bot 只有一个进程持有 `handle.lock` 并调用 Handle。`serve` 拿不到锁时仍然投递 routine，聊天中的进程会收到并处理，同一条事件不会被两边各跑一次。routine 的事件 id 和 inbox 去重兜住重复投递。锁在进程退出时放开。子代理在别的 goroutine 里跑，完成时只是往主 inbox 投事件，不自己调用 Handle。
+**并发。** 每个 Bot 只有一个进程持有 `handle.lock` 并调用 Handle。`serve` 拿不到锁时仍然投递 routine、webhook 和文件变化，聊天中的进程会收到并处理，同一条事件不会被两边各跑一次。事件 id 和 inbox 去重兜住重复投递。文件监听的游标加了锁，chat 和 serve 一起扫也不会各发一条。锁在进程退出时放开。子代理在别的 goroutine 里跑，完成时只是往主 inbox 投事件，不自己调用 Handle。
 
 ## 安全
 
@@ -132,10 +159,14 @@ tools / memory / persona / context ──tools──▶ agent loop
 - 没有路径沙箱。写和执行靠确认。
 - 数据目录 `0700`，配置和身份文件 `0600`。JSONL 追加时加文件锁。
 - cron 最短 5 分钟。`* * * * *` 会被拒绝。
-- 密钥不进 Bot 目录，也不进 `providers.json`。
+- 模型 API key 不进 Bot 目录，也不进 `providers.json`。Webhook secret 要留在本机才能验签，单独放在 0600 的文件里。
 - 子代理默认最多 4 个并发、16 步、10 分钟。进度事件默认两秒一条。
 - 子代理的输出是不可信数据，不进 system，读出来时也会标明。
 - `xbot runner` 拒绝非环回地址。token 为空时会生成一个并打印。空 token 不能连上。
+- Webhook 没有合法的 HMAC 或 Bearer 就拒绝。正文上限 32 KiB。delivery id 在接受时就记下，重复的不再进 inbox。
+- Webhook secret 只在 `add` 时打印一次，文件权限 0600。`list` 不打印 secret。
+- 文件监听拒绝相对路径、`..` 和从 `/` 开始的扫描。逃出根目录的符号链接不报。事件不含文件内容。每个 Bot 最多 32 个 watch，每个 glob 最多 200 个文件。
+- 同一个 webhook 的突发请求会合成一条唤醒，避免把模型调用打满。
 
 ## 测试
 
@@ -144,7 +175,15 @@ go test ./...
 bash scripts/e2e.sh
 ```
 
-`go test` 覆盖这些 M2 行为，以及 M3：
+`go test` 覆盖这些 M2 行为，M3，以及 M4：
+
+- 签过名的 webhook 唤醒 Bot，outbox 里有一条通知，正文被包成不可信事件。
+- 没有签名或签名错误会被拒绝，inbox 里没有事件。
+- 同一个 delivery id 只处理一次。
+- 文件连续改动会防抖成一条，事件里有路径和种类，没有文件内容。
+- 一个窗口里的多次 webhook 合成一条唤醒。
+
+M3：
 
 - 聊天持有处理锁时，`serve` 仍会投递到点的 routine，聊天里能看到通知，且只处理一次。
 - 主 Bot spawn 一个还在跑的子代理时，仍能回答下一条聊天；完成后收到 done。
@@ -167,7 +206,8 @@ M2：
 
 | 包 | 职责 |
 | --- | --- |
-| `cmd/xbot` | `new` / `list` / `chat` / `bind` / `serve` / `runner` / `provider` |
+| `cmd/xbot` | `new` / `list` / `chat` / `bind` / `serve` / `webhook` / `watch` / `runner` / `provider` |
+| `inbound` | Webhook HTTP、合批、文件监听 |
 | `proc` | 一个 Bot 的唤醒循环：投递和执行分开 |
 | `exec` | 子代理循环、本机执行器、runner HTTP |
 | `work` | 每个 Bot 的工作目录和共享目录 |
@@ -187,3 +227,19 @@ M2：
 | `compact` | 压缩接口和 LLM 摘要 |
 | `cron` | 5 段 cron 和最小间隔 |
 | `bm25` | 关键词排序 |
+
+## 家里的电脑，手机经 Tailscale 调用
+
+还没有中继。手机和这台电脑在同一个 Tailscale 网络里时，可以让手机直接打到家里的 `xbot serve`。
+
+1. 在家用电脑上装好 Tailscale，记下这台机器的地址：`tailscale ip -4`（一般是 `100.x.y.z`）。
+2. 只在这台机器上跑 serve，HTTP 绑到这个地址，不要绑 `0.0.0.0`：
+
+```bash
+export XBOT_PUBLIC_URL=http://100.x.y.z:8787
+xbot serve --http 100.x.y.z:8787
+```
+
+3. `xbot webhook add ada github` 会按 `XBOT_PUBLIC_URL` 打印 URL 和 secret。手机上的快捷指令或其他客户端把请求发到这个 URL，并带上 secret。
+4. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。要给手机用，必须写成 Tailscale 地址。手机和电脑都要在这个 tailnet 上。
+5. 每个 webhook 单独一个 secret。不签名或签名不对会 401。secret 留在 Bot 目录里，权限 0600。

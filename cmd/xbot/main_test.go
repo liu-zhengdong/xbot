@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"xbot/internal/bot"
@@ -71,6 +76,104 @@ func TestMountGrants(t *testing.T) {
 	if _, err := mountBot(t, []string{"nope"}); err == nil {
 		t.Fatal("expected unknown link to fail")
 	}
+}
+
+func TestWebhookAndWatchCLI(t *testing.T) {
+	root := t.TempDir()
+	if _, err := bot.Create(root, "ada", "Be brief.", []string{"terminal"}); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, func() error {
+		return cmdWebhook(root, []string{"add", "ada", "github", "--public-url", "http://100.1.2.3:8787"})
+	})
+	if !strings.Contains(out, "url: http://100.1.2.3:8787/webhook/ada/github") || !strings.Contains(out, "secret: ") {
+		t.Fatalf("add output:\n%s", out)
+	}
+	secret := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "secret: ") {
+			secret = strings.TrimPrefix(line, "secret: ")
+		}
+	}
+	if len(secret) < 32 {
+		t.Fatalf("secret %q", secret)
+	}
+	b, err := bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Grants("webhook") || len(b.Config().Webhooks) != 1 {
+		t.Fatalf("%+v", b.Config())
+	}
+	st, err := os.Stat(filepath.Join(b.WebhookDir(), "id", "github.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0600 {
+		t.Fatalf("mode %o", st.Mode().Perm())
+	}
+	listed := captureStdout(t, func() error { return cmdWebhook(root, []string{"list", "ada"}) })
+	if strings.Contains(listed, secret) || !strings.Contains(listed, "github") || !strings.Contains(listed, "hmac") {
+		t.Fatalf("list output:\n%s", listed)
+	}
+	if err := cmdWebhook(root, []string{"remove", "ada", "github"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(b.WebhookDir(), "id", "github.json")); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := cmdWatch(root, []string{"add", "ada", "notes", "--path", "../etc/passwd"}); err == nil {
+		t.Fatal("accepted traversal")
+	}
+	dir := t.TempDir()
+	if err := cmdWatch(root, []string{"add", "ada", "notes", "--path", filepath.Join(dir, "*.txt")}); err != nil {
+		t.Fatal(err)
+	}
+	b, err = bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Grants("watch") || len(b.Config().Watches) != 1 {
+		t.Fatalf("%+v", b.Config())
+	}
+	links, err := mount(b, runnerSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawHook, sawWatch bool
+	for _, l := range links {
+		if l.Name() == link.NameWebhook {
+			sawHook = true
+		}
+		if l.Name() == link.NameWatch {
+			sawWatch = true
+		}
+	}
+	if !sawHook || !sawWatch {
+		t.Fatal("mount missed inbound links")
+	}
+}
+
+func captureStdout(t *testing.T, fn func() error) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+	runErr := fn()
+	_ = w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	return buf.String()
 }
 
 func mountBot(t *testing.T, links []string) ([]link.Link, error) {

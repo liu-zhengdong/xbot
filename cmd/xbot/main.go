@@ -9,6 +9,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -20,6 +22,7 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/exec"
+	"xbot/internal/inbound"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
@@ -42,8 +45,14 @@ Usage:
   xbot [--root DIR] chat <name> [--yes] [--max-steps N]
   xbot [--root DIR] bind <name> --provider NAME --model NAME
   xbot [--root DIR] bind <name> --clear
-  xbot [--root DIR] serve [--interval 15s]
+  xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
+  xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
+  xbot [--root DIR] webhook list <bot>
+  xbot [--root DIR] webhook remove <bot> <name>
+  xbot [--root DIR] watch add <bot> <id> --path PATTERN
+  xbot [--root DIR] watch list <bot>
+  xbot [--root DIR] watch remove <bot> <id>
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
   xbot [--root DIR] provider list
   xbot [--root DIR] provider remove <name> [--model NAME]
@@ -51,7 +60,8 @@ Usage:
 Environment:
   XBOT_API_KEY    API key when a bot has no provider binding
   XBOT_BASE_URL   OpenAI-compatible base URL (default https://api.deepseek.com/v1)
-  XBOT_MODEL      Model name (default deepseek-chat)
+  XBOT_MODEL       Model name (default deepseek-chat)
+  XBOT_PUBLIC_URL  Base URL printed for new webhooks (default http://127.0.0.1:8787)
 
 A named provider stores the environment variable name, never the key itself.
 `
@@ -101,6 +111,10 @@ func run(argv []string) error {
 		return cmdRunner(rest[1:])
 	case "provider":
 		return cmdProvider(root, rest[1:])
+	case "webhook":
+		return cmdWebhook(root, rest[1:])
+	case "watch":
+		return cmdWatch(root, rest[1:])
 	default:
 		return fmt.Errorf("unknown command %q", rest[0])
 	}
@@ -140,6 +154,7 @@ var defaultLinks = []string{
 	link.NameTerminal, link.NameTools, link.NameTimer,
 	link.NameMemory, link.NamePersona, link.NameContext,
 	link.NameAgents, link.NameSkills,
+	link.NameWebhook, link.NameWatch,
 }
 
 type newOpts struct {
@@ -454,6 +469,10 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			out = append(out, link.Agents{})
 		case link.NameSkills:
 			out = append(out, link.Skills{})
+		case link.NameWebhook:
+			out = append(out, link.Webhook{})
+		case link.NameWatch:
+			out = append(out, link.Watch{})
 		case link.NameRunner:
 			url, token := runner.URL, runner.Token
 			if url == "" {
@@ -539,21 +558,56 @@ func cmdBind(root string, args []string) error {
 }
 
 func cmdServe(root string, args []string) error {
-	ordered, err := reorderFlags(args, map[string]bool{"interval": true})
+	ordered, err := reorderFlags(args, map[string]bool{"interval": true, "http": true})
 	if err != nil {
 		return err
 	}
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	every := fs.Duration("interval", 15*time.Second, "how often to poll")
+	every := fs.Duration("interval", 15*time.Second, "how often to handle inboxes")
+	httpAddr := fs.String("http", "127.0.0.1:8787", "webhook listen address")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: xbot serve")
+		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787]")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce}
+	ln, err := net.Listen("tcp", *httpAddr)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "webhook listening on %s\n", ln.Addr())
+	srv := &http.Server{Handler: hub.Handler()}
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fmt.Fprintln(os.Stderr, "xbot:", err)
+		}
+	}()
+	defer func() {
+		shut, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shut)
+	}()
+	go func() {
+		tick := time.NewTicker(200 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-tick.C:
+				if err := hub.Flush(now); err != nil {
+					fmt.Fprintln(os.Stderr, "xbot:", err)
+				}
+				if err := inbound.DeliverAll(root, now, hub.Debounce); err != nil {
+					fmt.Fprintln(os.Stderr, "xbot:", err)
+				}
+			}
+		}
+	}()
 	deny := func(context.Context, string, string) (bool, error) { return false, nil }
 	for {
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
@@ -569,6 +623,176 @@ func cmdServe(root string, args []string) error {
 		case <-time.After(*every):
 		}
 	}
+}
+
+func cmdWebhook(root string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: xbot webhook add|list|remove")
+	}
+	switch args[0] {
+	case "add":
+		return cmdWebhookAdd(root, args[1:])
+	case "list":
+		return cmdWebhookList(root, args[1:])
+	case "remove":
+		return cmdWebhookRemove(root, args[1:])
+	default:
+		return fmt.Errorf("unknown webhook command %q", args[0])
+	}
+}
+
+func cmdWebhookAdd(root string, args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{"auth": true, "public-url": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("webhook add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	auth := fs.String("auth", inbound.AuthHMAC, "hmac or bearer")
+	public := fs.String("public-url", "", "base URL printed with the secret")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 2 {
+		return errors.New("usage: xbot webhook add <bot> <name>")
+	}
+	b, err := bot.Load(root, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	h, err := inbound.AddHook(b, fs.Arg(1), *auth, time.Now())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("url: %s\nsecret: %s\nauth: %s\n", inbound.WebhookURL(publicBase(*public), b.Name(), h.Name), h.Secret, h.Auth)
+	return nil
+}
+
+func cmdWebhookList(root string, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: xbot webhook list <bot>")
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	hooks, err := inbound.ListHooks(b)
+	if err != nil {
+		return err
+	}
+	base := publicBase("")
+	if len(hooks) == 0 {
+		fmt.Println("no webhooks")
+		return nil
+	}
+	for _, h := range hooks {
+		fmt.Printf("%s\t%s\t%s\n", h.Name, h.Auth, inbound.WebhookURL(base, b.Name(), h.Name))
+	}
+	return nil
+}
+
+func cmdWebhookRemove(root string, args []string) error {
+	if len(args) != 2 {
+		return errors.New("usage: xbot webhook remove <bot> <name>")
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	if err := inbound.RemoveHook(b, args[1]); err != nil {
+		return err
+	}
+	fmt.Printf("removed webhook %s\n", args[1])
+	return nil
+}
+
+func publicBase(flag string) string {
+	if strings.TrimSpace(flag) != "" {
+		return strings.TrimRight(strings.TrimSpace(flag), "/")
+	}
+	if v := strings.TrimSpace(os.Getenv("XBOT_PUBLIC_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "http://127.0.0.1:8787"
+}
+
+func cmdWatch(root string, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: xbot watch add|list|remove")
+	}
+	switch args[0] {
+	case "add":
+		return cmdWatchAdd(root, args[1:])
+	case "list":
+		return cmdWatchList(root, args[1:])
+	case "remove":
+		return cmdWatchRemove(root, args[1:])
+	default:
+		return fmt.Errorf("unknown watch command %q", args[0])
+	}
+}
+
+func cmdWatchAdd(root string, args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{"path": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("watch add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	pattern := fs.String("path", "", "absolute glob")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 2 || *pattern == "" {
+		return errors.New("usage: xbot watch add <bot> <id> --path PATTERN")
+	}
+	b, err := bot.Load(root, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	w, err := inbound.AddWatch(b, fs.Arg(1), *pattern)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("watch %s %s\n", w.ID, w.Glob)
+	return nil
+}
+
+func cmdWatchList(root string, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: xbot watch list <bot>")
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	watches, err := inbound.ListWatches(b)
+	if err != nil {
+		return err
+	}
+	if len(watches) == 0 {
+		fmt.Println("no watches")
+		return nil
+	}
+	for _, w := range watches {
+		fmt.Printf("%s\t%s\n", w.ID, w.Glob)
+	}
+	return nil
+}
+
+func cmdWatchRemove(root string, args []string) error {
+	if len(args) != 2 {
+		return errors.New("usage: xbot watch remove <bot> <id>")
+	}
+	b, err := bot.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	if err := inbound.RemoveWatch(b, args[1]); err != nil {
+		return err
+	}
+	fmt.Printf("removed watch %s\n", args[1])
+	return nil
 }
 
 func cmdRunner(args []string) error {

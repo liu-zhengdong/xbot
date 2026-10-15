@@ -281,15 +281,20 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 		return nil, nil
 	}
 	botName := k.Bot.Name()
-	personFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
-	if err != nil {
-		return nil, err
+	var personFacts, relFacts []memory.Fact
+	// External senders such as webhook:github are not person ids. Bot memory still loads.
+	if memory.ValidID(personID) {
+		var err error
+		personFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
+		if err != nil {
+			return nil, err
+		}
+		relFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBotPerson, BotName: botName, PersonID: personID, Tier: memory.TierProfile})
+		if err != nil {
+			return nil, err
+		}
 	}
 	botFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierProfile})
-	if err != nil {
-		return nil, err
-	}
-	relFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBotPerson, BotName: botName, PersonID: personID, Tier: memory.TierProfile})
 	if err != nil {
 		return nil, err
 	}

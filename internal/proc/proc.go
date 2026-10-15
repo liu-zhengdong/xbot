@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"xbot/internal/inbound"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 )
@@ -67,6 +68,9 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		if !cfg.SkipDeliver {
 			if err := DeliverDue(cfg.K, now()); err != nil {
+				return err
+			}
+			if err := inbound.DeliverFeeds(cfg.K.Bot, now(), 0); err != nil {
 				return err
 			}
 		}

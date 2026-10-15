@@ -37,6 +37,8 @@ type Config struct {
 	Provider     string    `json:"provider,omitempty"`
 	Model        string    `json:"model,omitempty"`
 	ContextLimit int       `json:"context_limit,omitempty"`
+	Webhooks     []string  `json:"webhooks,omitempty"`
+	Watches      []string  `json:"watches,omitempty"`
 	Created      time.Time `json:"created"`
 }
 
@@ -350,4 +352,55 @@ func (b *Bot) Grants(name string) bool {
 		}
 	}
 	return false
+}
+
+// WebhookDir holds one JSON file per webhook secret.
+func (b *Bot) WebhookDir() string { return filepath.Join(b.dir(), "webhooks") }
+
+// WatchDir holds watch globs and the poller's cursor.
+func (b *Bot) WatchDir() string { return filepath.Join(b.dir(), "watches") }
+
+// GrantWebhook records the hook name and the webhook link.
+func (b *Bot) GrantWebhook(name string) error {
+	b.cfg.Webhooks = addUnique(b.cfg.Webhooks, name)
+	b.cfg.Links = addUnique(b.cfg.Links, "webhook")
+	return b.SaveConfig()
+}
+
+// RevokeWebhook drops the hook name. The link grant stays.
+func (b *Bot) RevokeWebhook(name string) error {
+	b.cfg.Webhooks = dropName(b.cfg.Webhooks, name)
+	return b.SaveConfig()
+}
+
+// GrantWatch records the watch id and the watch link.
+func (b *Bot) GrantWatch(id string) error {
+	b.cfg.Watches = addUnique(b.cfg.Watches, id)
+	b.cfg.Links = addUnique(b.cfg.Links, "watch")
+	return b.SaveConfig()
+}
+
+// RevokeWatch drops the watch id. The link grant stays.
+func (b *Bot) RevokeWatch(id string) error {
+	b.cfg.Watches = dropName(b.cfg.Watches, id)
+	return b.SaveConfig()
+}
+
+func addUnique(in []string, name string) []string {
+	for _, s := range in {
+		if s == name {
+			return in
+		}
+	}
+	return append(in, name)
+}
+
+func dropName(in []string, name string) []string {
+	var out []string
+	for _, s := range in {
+		if s != name {
+			out = append(out, s)
+		}
+	}
+	return out
 }
