@@ -235,6 +235,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "BRIEF_TASK"):
 		writeText(w, "brief done\n")
 		return
+	case strings.Contains(lastUser, "PEANUT_ORDER"):
+		writeText(w, "X\n")
+		return
+	case strings.Contains(lastUser, "WEBHOOK_SILENT"):
+		writeText(w, "SILENT\n")
+		return
 	case strings.Contains(lastUser, `source="webhook`) && !sawNotify:
 		writeTool(w, "call_notify", "notify_owner", `{"text":"hook fired"}`)
 		return

@@ -14,6 +14,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
+	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
 
@@ -273,6 +274,7 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
 			return "", err
 		}
+		t.k.markNoted(text)
 		return "held until quiet hours end", nil
 	}
 	n, err := t.k.releaseQuiet(ctx)
@@ -309,7 +311,63 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 		desk = notify.Desktop
 	}
 	_ = desk(ctx, k.Bot.Name(), text)
+	k.markNoted(text)
 	return nil
+}
+
+func (k *Kernel) markNoted(text string) {
+	k.notedMu.Lock()
+	k.noted = append(k.noted, strings.TrimSpace(text))
+	k.notedMu.Unlock()
+}
+
+func (k *Kernel) alreadyNoted() bool {
+	k.notedMu.Lock()
+	defer k.notedMu.Unlock()
+	return len(k.noted) > 0
+}
+
+// pushFindings delivers a non-empty final reply from an untrusted wake.
+// Owner chat on the terminal or web is not pushed. SILENT is not a finding.
+// A notify_owner that already delivered or held a note this turn is the note;
+// the trailing reply is not sent again. Proactivity and quiet hours still apply.
+func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
+	switch k.turnSource {
+	case link.NameTerminal, link.NameWeb:
+		return nil
+	}
+	if k.alreadyNoted() {
+		return nil
+	}
+	text := finalAssistantText(produced)
+	if text == "" || text == "SILENT" {
+		return nil
+	}
+	cfg := k.Bot.Config()
+	if !bot.AllowsNotify(cfg.Proactivity, "normal") {
+		return nil
+	}
+	if bot.InQuiet(cfg.QuietStart, cfg.QuietEnd, k.now()) {
+		return notify.Hold(k.Bot.HeldPath(), text)
+	}
+	if _, err := k.releaseQuiet(ctx); err != nil {
+		return err
+	}
+	return deliverNote(ctx, k, text)
+}
+
+func finalAssistantText(msgs []provider.Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m.Role != provider.RoleAssistant {
+			continue
+		}
+		if len(m.ToolCalls) > 0 {
+			return ""
+		}
+		return strings.TrimSpace(m.Content)
+	}
+	return ""
 }
 
 func (k *Kernel) releaseQuiet(ctx context.Context) (int, error) {

@@ -61,6 +61,8 @@ type Kernel struct {
 	turnChain   string
 	turnTrusted bool
 	turnSource  string
+	notedMu     sync.Mutex
+	noted       []string
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -75,6 +77,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnChain = ev.Chain
 	k.turnSource = ev.Source
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
+	k.notedMu.Lock()
+	k.noted = nil
+	k.notedMu.Unlock()
 	if _, err := k.releaseQuiet(ctx); err != nil {
 		return err
 	}
@@ -172,7 +177,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		onDelta = nil
 	}
 	var appendErr error
-	_, err = agent.Run(ctx, p, list, assembled, agent.Options{
+	produced, err := agent.Run(ctx, p, list, assembled, agent.Options{
 		MaxSteps: k.MaxSteps,
 		Approve:  k.Approve,
 		OnDelta:  onDelta,
@@ -187,6 +192,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	})
 	if appendErr != nil {
 		return appendErr
+	}
+	if pushErr := k.pushFindings(ctx, produced); pushErr != nil {
+		return pushErr
 	}
 	return err
 }
