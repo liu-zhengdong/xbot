@@ -132,7 +132,11 @@ func (p Person) save(root string) error {
 	if err := fsutil.WriteAtomic(filepath.Join(root, "people", p.ID, "identity.json"), raw, 0600); err != nil {
 		return err
 	}
-	return appendLog(root, LogEntry{Time: time.Now().UTC(), Device: deviceOf(root), Person: p})
+	if err := appendLog(root, LogEntry{Time: time.Now().UTC(), Device: deviceOf(root), Person: p}); err != nil {
+		return err
+	}
+	notifyChange(root)
+	return nil
 }
 
 func freshID(root string, acct Account) (string, error) {

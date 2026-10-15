@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xbot/internal/node"
+	"xbot/internal/nodesync"
 )
 
 func cmdNode(root string, args []string) error {
@@ -63,18 +64,10 @@ func cmdNodeServe(root string, args []string) error {
 		fmt.Printf("token: %s\n", tok)
 	}
 	fmt.Fprintf(os.Stderr, "node %s listening on http://%s\n", info.Name, *addr)
-	srv := &http.Server{Addr: *addr, Handler: node.Handler(tok, info, func(req node.Request) (string, error) {
-		switch req.Cap {
-		case "info":
-			return node.InfoText(info), nil
-		case "shell":
-			return node.RunShell(root, req.Command, req.Approved)
-		default:
-			return "", fmt.Errorf("node: unknown cap %q", req.Cap)
-		}
-	})}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
+	srv := &http.Server{Addr: *addr, Handler: node.Handler(tok, info, nodeDispatch(root, info))}
 	go func() {
 		<-ctx.Done()
 		shut, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -161,4 +154,19 @@ func cmdNodeCall(root string, args []string) error {
 	}
 	fmt.Println(text)
 	return nil
+}
+
+func nodeDispatch(root string, info node.Info) func(node.Request) (string, error) {
+	return func(req node.Request) (string, error) {
+		switch req.Cap {
+		case "info":
+			return node.InfoText(info), nil
+		case "shell":
+			return node.RunShell(root, req.Command, req.Approved)
+		case nodesync.Cap:
+			return nodesync.Accept(root, req.Command)
+		default:
+			return "", fmt.Errorf("node: unknown cap %q", req.Cap)
+		}
+	}
 }

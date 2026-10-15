@@ -31,6 +31,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/machine"
 	"xbot/internal/memory"
+	"xbot/internal/nodesync"
 	"xbot/internal/notify"
 	"xbot/internal/person"
 	"xbot/internal/proc"
@@ -1407,6 +1408,7 @@ func cmdServe(root string, args []string) error {
 		fmt.Fprintf(os.Stderr, "public url: %s\n", publicURL)
 	}
 	fmt.Fprintf(os.Stderr, "login token: %s\n", token)
+	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
 	srv := &http.Server{Handler: mux}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {

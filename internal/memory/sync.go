@@ -246,13 +246,17 @@ func noteSync(root string, op string, fact Fact) error {
 	if bot == "" {
 		bot = strings.TrimSpace(fact.BotName)
 	}
-	return appendSync(root, SyncLine{
+	if err := appendSync(root, SyncLine{
 		Time:   fact.Time.UTC(),
 		Bot:    bot,
 		Device: deviceOf(root),
 		Op:     op,
 		Fact:   fact,
-	})
+	}); err != nil {
+		return err
+	}
+	notifyChange(root)
+	return nil
 }
 
 func appendSync(root string, ln SyncLine) error {

@@ -52,7 +52,11 @@ func Record(root, bot, device string, at time.Time, p Person) error {
 	if err := appendLog(root, e); err != nil {
 		return err
 	}
-	return rewriteIdentity(root, p.ID)
+	if err := rewriteIdentity(root, p.ID); err != nil {
+		return err
+	}
+	notifyChange(root)
+	return nil
 }
 
 // ExportLog returns every identity line on this data root.
