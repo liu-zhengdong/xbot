@@ -22,8 +22,15 @@ func (k *Kernel) modelAgentTools(list []tools.Tool) []tools.Tool {
 	}
 	if k.hasLink(link.NameSkills) && k.isLoaded(link.NameSkills) {
 		list = append(list, skillTool{k}, writeSkillTool{k})
+	} else if k.listedSkill() {
+		list = append(list, skillTool{k})
 	}
 	return list
+}
+
+func (k *Kernel) listedSkill() bool {
+	infos, err := k.skillInfos()
+	return err == nil && len(infos) > 0
 }
 
 func (k *Kernel) ensureExec() exec.Executor {

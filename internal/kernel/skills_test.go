@@ -222,6 +222,41 @@ func TestSkillWriteRequiresApproval(t *testing.T) {
 	}
 }
 
+func TestReadSkillWithoutLoad(t *testing.T) {
+	ada := testBot(t, link.NameTerminal, link.NameSkills)
+	if err := ada.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := skill.Write(ada.Root, "u1", "ship", "Pack a release", "SECRET_BODY"); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"id":"ship"}`},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	k := skillKernel(ada)
+	k.Provider = p
+	k.MaxSteps = 4
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "read ship", time.Unix(1, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 2 {
+		t.Fatalf("calls %d", len(p.reqs))
+	}
+	if !hasDef(p.reqs[0].Tools, "read_skill") {
+		t.Fatal("read_skill missing while a skill is listed")
+	}
+	if hasDef(p.reqs[0].Tools, "write_skill") {
+		t.Fatal("write_skill should wait for links load")
+	}
+	text := messagesText(p.reqs[1].Messages)
+	if strings.Contains(text, "unknown tool") || !strings.Contains(text, "SECRET_BODY") {
+		t.Fatal(text)
+	}
+}
+
 func skillKernel(b *bot.Bot) *Kernel {
 	return &Kernel{
 		Bot: b, MaxSteps: 4,
