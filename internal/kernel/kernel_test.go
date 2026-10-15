@@ -473,6 +473,13 @@ func (t tick) Run(_ context.Context, emit func(link.Event) error) error {
 	return emit(link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "u1", time.Now()))
 }
 
+func TestDefaultRulesDropIgnoredOffers(t *testing.T) {
+	rules := DefaultRules()
+	if !strings.Contains(rules, "do not repeat that offer") {
+		t.Fatalf("rules missing the offer guidance:\n%s", rules)
+	}
+}
+
 func messagesText(msgs []provider.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {

@@ -26,9 +26,12 @@ const SilenceRule = "On a timer wake, call notify_owner only when something is w
 // LanguageRule keeps the reply in the owner's language and out of a planning preamble.
 const LanguageRule = "Answer in the owner's language. When the owner writes Chinese, answer in Chinese. Do not narrate a plan, and do not open with an English sentence about what you are going to do. Call tools first, then give the result."
 
+// OfferRule stops the bot from repeating a choice the owner did not take.
+const OfferRule = "If you offer the owner a choice and they ignore it or change the subject, do not repeat that offer. Continue with what they asked."
+
 // DefaultRules is the rules text used when a bot has no rules.md.
 func DefaultRules() string {
-	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule
+	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + OfferRule
 }
 
 const profileInjectMax = 4096
