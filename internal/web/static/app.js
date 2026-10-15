@@ -94,9 +94,32 @@
     return d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
+  const ICONS = {
+    terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    chevron: '<path d="m9 18 6-6-6-6"/>',
+    wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  };
+
+  function icon(name, extra) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.classList.add("icon");
+    if (extra) svg.classList.add(extra);
+    svg.innerHTML = ICONS[name] || ICONS.wrench;
+    return svg;
+  }
+
   function copyText(text, btn) {
     const done = () => {
       if (!btn) return;
+      if (btn.querySelector("svg")) {
+        btn.setAttribute("aria-label", "已复制");
+        setTimeout(() => btn.setAttribute("aria-label", "复制"), 1200);
+        return;
+      }
       const prev = btn.textContent;
       btn.textContent = "已复制";
       setTimeout(() => { btn.textContent = prev; }, 1200);
@@ -278,15 +301,27 @@
     if (last < src.length) appendBlocks(parent, src.slice(last));
   }
 
+  const HEAT = [
+    "010010100010010010",
+    "021302110231021102",
+    "132021302110320211",
+    "213021132021103201",
+    "102310211320211032",
+    "021102130210211021",
+    "010010010100010010",
+  ];
+
   function heat() {
     const wrap = el("div", "heat");
-    for (let i = 0; i < 80; i++) {
-      const cell = document.createElement("i");
-      const n = ((i * 17) ^ (i >> 1)) % 7;
-      if (n > 4) cell.className = "on3";
-      else if (n > 3) cell.className = "on2";
-      else if (n > 1) cell.className = "on1";
-      wrap.append(cell);
+    wrap.setAttribute("aria-hidden", "true");
+    const levels = ["", "l1", "l2", "l3"];
+    for (const row of HEAT) {
+      for (const ch of row) {
+        const cell = document.createElement("i");
+        const level = levels[Number(ch)] || "";
+        if (level) cell.className = level;
+        wrap.append(cell);
+      }
     }
     return wrap;
   }
@@ -302,10 +337,16 @@
     return av;
   }
 
-  function listButton(name, active, unread) {
+  function groupAvatar() {
+    const av = el("span", "avatar");
+    av.append(icon("users"));
+    return av;
+  }
+
+  function listButton(name, active, unread, kind) {
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
-    const av = avatar(name);
+    const av = kind === "group" ? groupAvatar() : avatar(name);
     if (unread) av.append(el("i", "unread"));
     btn.append(av, el("span", "name", name));
     return btn;
@@ -322,7 +363,7 @@
       bots.append(btn);
     }
     for (const g of state.groups) {
-      const btn = listButton(g.name || g.id, state.sel && state.sel.type === "group" && state.sel.id === g.id, false);
+      const btn = listButton(g.name || g.id, state.sel && state.sel.type === "group" && state.sel.id === g.id, false, "group");
       btn.addEventListener("click", () => selectGroup(g.id));
       groups.append(btn);
     }
@@ -369,23 +410,43 @@
     return { name: name, args: args, line: bits.join(" · ") };
   }
 
-  function toolCard(call, result) {
-    const info = toolSummary(call);
+  function toolIconName(name) {
+    return /shell|bash|exec|terminal/i.test(name || "") ? "terminal" : "wrench";
+  }
+
+  function toolShell(name, line, resultText) {
     const card = document.createElement("details");
     card.className = "card";
     const sum = document.createElement("summary");
     sum.className = "card-head";
-    const text = document.createElement("span");
-    text.append(el("div", "card-title", info.name));
-    if (info.line) text.append(el("div", "card-sub", info.line));
-    sum.append(text);
+    const well = el("span", "card-icon");
+    well.append(icon(toolIconName(name)));
+    const text = el("span", "card-copy");
+    text.append(el("div", "card-title", name || "tool"));
+    if (line) text.append(el("div", "card-sub", line));
+    sum.append(well, text, icon("chevron", "chev"));
     card.append(sum);
-    if (result && result.content) {
+    if (resultText) {
       const pre = document.createElement("pre");
-      pre.textContent = result.content;
+      pre.textContent = resultText;
       card.append(pre);
     }
     return card;
+  }
+
+  function toolCard(call, result) {
+    const info = toolSummary(call);
+    return toolShell(info.name, info.line, result && result.content);
+  }
+
+  function copyBtn(text) {
+    const btn = el("button", "copy");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "复制");
+    btn.title = "复制";
+    btn.append(icon("copy"));
+    btn.addEventListener("click", () => copyText(text || "", btn));
+    return btn;
   }
 
   function optionCards(info, picked) {
@@ -420,20 +481,16 @@
 
   function userBubble(m) {
     const row = el("div", "msg user");
-    const wrap = document.createElement("div");
+    const wrap = el("div", "bubble-col");
     const parsed = unwrap(m.content || "");
     const bubble = el("div", "bubble");
     bubble.textContent = parsed.text;
-    wrap.append(bubble);
-    const meta = el("div", "meta", when(m.time));
+    const metaRow = el("div", "meta-row");
     if (parsed.untrusted) {
-      const tag = el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信");
-      const line = el("div", "meta");
-      line.append(tag, document.createTextNode("  " + when(m.time)));
-      wrap.append(line);
-    } else {
-      wrap.append(meta);
+      metaRow.append(el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信"));
     }
+    metaRow.append(el("span", "meta", when(m.time)), copyBtn(parsed.text));
+    wrap.append(bubble, metaRow);
     row.append(wrap);
     return row;
   }
@@ -442,7 +499,8 @@
     const row = el("div", "msg bot");
     row.append(avatar(who));
     const body = el("div", "body");
-    const head = el("div", "who", who);
+    const head = el("div", "who-row");
+    head.append(el("div", "who", who), el("span", "meta", when(m.time)), copyBtn(m.content || ""));
     body.append(head);
     const prose = el("div", "prose");
     if (m.content) appendMarkdown(prose, m.content);
@@ -461,7 +519,6 @@
       }
       body.append(toolCard(call, results[call.id]));
     }
-    body.append(el("div", "meta", when(m.time)));
     row.append(body);
     return row;
   }
@@ -469,7 +526,7 @@
   function renderMessages(messages, who) {
     const inner = el("div", "thread-inner");
     if (!messages || !messages.length) {
-      inner.append(emptyState(who || "XBot", "这条对话还是空的。"));
+      inner.append(emptyState(who || "XBot", "还没有消息。写一句，对话会留在这里。"));
       thread.replaceChildren(inner);
       return;
     }
@@ -486,7 +543,7 @@
       if (m.role === "user") inner.append(userBubble(m));
       else inner.append(botBubble(m, results, messages, i, who));
     });
-    if (!any) inner.append(emptyState(who || "XBot", "这条对话还是空的。"));
+    if (!any) inner.append(emptyState(who || "XBot", "还没有消息。写一句，对话会留在这里。"));
     thread.replaceChildren(inner);
     thread.scrollTop = thread.scrollHeight;
   }
@@ -494,21 +551,32 @@
   function renderGroup(messages, who) {
     const inner = el("div", "thread-inner");
     if (!messages || !messages.length) {
-      inner.append(emptyState(who || "群", "这个群还没有消息。"));
+      inner.append(emptyState(who || "群", "还没有消息。写一句，对话会留在这里。"));
       thread.replaceChildren(inner);
       return;
     }
     for (const m of messages) {
       const mine = m.kind === "person";
       const row = el("div", "msg " + (mine ? "user" : "bot"));
-      if (!mine) row.append(avatar(m.sender || "B"));
-      const body = mine ? document.createElement("div") : el("div", "body");
-      if (!mine) body.append(el("div", "who", m.sender || "bot"));
-      const bubble = mine ? el("div", "bubble") : el("div", "prose");
-      if (mine) bubble.textContent = m.text || "";
-      else appendMarkdown(bubble, m.text || "");
-      body.append(bubble, el("div", "meta", when(m.time)));
-      row.append(body);
+      const text = m.text || "";
+      if (mine) {
+        const wrap = el("div", "bubble-col");
+        const bubble = el("div", "bubble");
+        bubble.textContent = text;
+        const metaRow = el("div", "meta-row");
+        metaRow.append(el("span", "meta", when(m.time)), copyBtn(text));
+        wrap.append(bubble, metaRow);
+        row.append(wrap);
+      } else {
+        row.append(avatar(m.sender || "B"));
+        const body = el("div", "body");
+        const head = el("div", "who-row");
+        head.append(el("div", "who", m.sender || "bot"), el("span", "meta", when(m.time)), copyBtn(text));
+        const bubble = el("div", "prose");
+        appendMarkdown(bubble, text);
+        body.append(head, bubble);
+        row.append(body);
+      }
       inner.append(row);
     }
     thread.replaceChildren(inner);
@@ -587,7 +655,7 @@
     }
     const data = await api("/api/bots/" + encodeURIComponent(state.sel.id));
     panelBody.replaceChildren();
-    const persona = section("Persona");
+    const persona = section("人格");
     persona.append(el("p", "", data.persona || ""));
     const bind = section("模型");
     const provider = data.provider || "环境变量";
@@ -601,7 +669,7 @@
       row.append(el("span", "tag info", f.scope || ""), document.createTextNode(" " + (f.text || "")));
       mem.append(row);
     }
-    const routines = section("Routines");
+    const routines = section("例程");
     const list = data.routines || [];
     if (!list.length) routines.append(el("p", "meta", "没有 routine。"));
     for (const rt of list) {
@@ -614,18 +682,18 @@
     if (!running.length) agents.append(el("p", "meta", "没有在跑的子代理。"));
     for (const ag of running) {
       const card = el("div", "agent");
-      const head = document.createElement("div");
+      const labels = { running: "进行中", done: "完成", failed: "失败" };
       const tagClass = ag.status === "done" ? "tag ok" : ag.status === "failed" ? "tag warn" : "tag info";
-      head.append(el("span", tagClass, ag.status || "running"), document.createTextNode("  " + (ag.task || ag.id)));
-      card.append(head);
+      card.append(el("span", tagClass, labels[ag.status] || ag.status || "进行中"));
+      card.append(el("p", "task", ag.task || ag.id));
       const row = el("div", "row");
       const field = document.createElement("input");
-      field.placeholder = "steer";
+      field.placeholder = "插一句";
       field.maxLength = 4000;
-      const go = el("button", "secondary", "Steer");
+      const go = el("button", "secondary", "引导");
       go.type = "button";
       go.addEventListener("click", () => controlAgent(ag.id, "steer", field.value));
-      const stop = el("button", "secondary", "Cancel");
+      const stop = el("button", "secondary", "停止");
       stop.type = "button";
       stop.addEventListener("click", () => controlAgent(ag.id, "cancel", ""));
       row.append(field, go, stop);
@@ -641,7 +709,7 @@
     try {
       if (kind === "cancel") await api(path, { method: "POST" });
       else await api(path, { method: "POST", body: { text: text } });
-      subtitle.textContent = kind === "cancel" ? "已取消" : "已发送 steer";
+      subtitle.textContent = kind === "cancel" ? "已取消" : "已记下";
       await loadPanel();
     } catch (e) {
       subtitle.textContent = e.message || "失败";
@@ -702,9 +770,10 @@
     const who = state.sel ? state.sel.id : "Bot";
     row.append(avatar(who));
     const body = el("div", "body");
-    body.append(el("div", "who", who));
+    const head = el("div", "who-row");
+    head.append(el("div", "who", who));
     const prose = el("div", "prose");
-    body.append(prose);
+    body.append(head, prose, el("div", "meta live-status", "正在回复"));
     row.append(body);
     inner.append(row);
     thread.scrollTop = thread.scrollHeight;
@@ -735,15 +804,17 @@
         let payload = {};
         try { payload = JSON.parse(data); } catch (e) { continue; }
         if (event === "delta" && payload.text) {
+          const status = prose.parentElement && prose.parentElement.querySelector(".live-status");
+          if (status) status.remove();
           acc += payload.text;
           prose.replaceChildren();
           appendMarkdown(prose, acc);
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "tool") {
-          const card = el("div", "card");
-          card.append(el("div", "card-title", payload.name || "tool"));
-          if (payload.summary) card.append(el("div", "card-sub", payload.summary));
-          prose.parentElement.append(card);
+          const status = prose.parentElement && prose.parentElement.querySelector(".live-status");
+          if (status) status.remove();
+          prose.parentElement.append(toolShell(payload.name || "tool", payload.summary || "", ""));
+          thread.scrollTop = thread.scrollHeight;
         } else if (event === "error") {
           subtitle.textContent = payload.error || "出错了";
         }
@@ -985,7 +1056,7 @@
     if (!state.sel && state.bots[0]) await selectBot(state.bots[0].name);
     else if (!state.sel) {
       thread.replaceChildren(el("div", "thread-inner"));
-      thread.querySelector(".thread-inner").append(emptyState("XBot", "新建一个 Bot，对话会一直留在这里。"));
+      thread.querySelector(".thread-inner").append(emptyState("选一个对话", "左边是你的 Bot。"));
     }
   }
 
