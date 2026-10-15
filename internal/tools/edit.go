@@ -15,8 +15,10 @@ const maxEditBytes = 2 << 20
 
 // EditFile replaces one exact occurrence of old_string with new_string.
 // Root is the base for relative paths. Empty uses the working directory.
+// Sandbox, when set, rejects any path that resolves outside it.
 type EditFile struct {
-	Root string
+	Root    string
+	Sandbox string
 }
 
 func (e *EditFile) Name() string { return "edit_file" }
@@ -44,7 +46,7 @@ func (e *EditFile) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return true, fmt.Sprintf("edit %s (%d -> %d bytes)", path, len(in.OldString), len(in.NewString)), nil
+	return true, fmt.Sprintf("edit %s (%d -> %d bytes)", DisplayPath(e.Sandbox, path), len(in.OldString), len(in.NewString)), nil
 }
 
 func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
@@ -55,34 +57,35 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	if err != nil {
 		return "", err
 	}
+	shown := DisplayPath(e.Sandbox, path)
 	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("edit_file: %w", err)
+		return "", fmt.Errorf("edit_file: %s", RewriteHost(e.Sandbox, path, err.Error()))
 	}
 	st, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
-		return "", fmt.Errorf("edit_file: %w", err)
+		return "", fmt.Errorf("edit_file: %s", RewriteHost(e.Sandbox, path, err.Error()))
 	}
 	if st.IsDir() {
 		_ = f.Close()
-		return "", fmt.Errorf("edit_file: %s is a directory", path)
+		return "", fmt.Errorf("edit_file: %s is a directory", shown)
 	}
 	body, err := io.ReadAll(io.LimitReader(f, maxEditBytes+1))
 	_ = f.Close()
 	if err != nil {
-		return "", fmt.Errorf("edit_file: %w", err)
+		return "", fmt.Errorf("edit_file: %s", RewriteHost(e.Sandbox, path, err.Error()))
 	}
 	if len(body) > maxEditBytes {
-		return "", fmt.Errorf("edit_file: %s exceeds %d bytes", path, maxEditBytes)
+		return "", fmt.Errorf("edit_file: %s exceeds %d bytes", shown, maxEditBytes)
 	}
 	s := string(body)
 	n := strings.Count(s, in.OldString)
 	if n == 0 {
-		return "", fmt.Errorf("edit_file: old_string not found in %s", path)
+		return "", fmt.Errorf("edit_file: old_string not found in %s", shown)
 	}
 	if n > 1 {
-		return "", fmt.Errorf("edit_file: old_string matches %d times in %s", n, path)
+		return "", fmt.Errorf("edit_file: old_string matches %d times in %s", n, shown)
 	}
 	updated := strings.Replace(s, in.OldString, in.NewString, 1)
 	mode := st.Mode().Perm()
@@ -90,9 +93,9 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 		mode = 0644
 	}
 	if err := fsutil.WriteAtomic(path, []byte(updated), mode); err != nil {
-		return "", fmt.Errorf("edit_file: %w", err)
+		return "", fmt.Errorf("edit_file: %s", RewriteHost(e.Sandbox, path, err.Error()))
 	}
-	return fmt.Sprintf("updated %s", path), nil
+	return fmt.Sprintf("updated %s", shown), nil
 }
 
 func (e *EditFile) parse(args json.RawMessage) (editArgs, string, error) {
@@ -106,8 +109,11 @@ func (e *EditFile) parse(args json.RawMessage) (editArgs, string, error) {
 	if in.OldString == in.NewString {
 		return editArgs{}, "", fmt.Errorf("edit_file: old_string and new_string are identical")
 	}
-	path, err := ResolveRoot(e.Root, in.Path)
+	path, err := ResolveRoot(e.Root, AliasCase(e.Sandbox, in.Path))
 	if err != nil {
+		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
+	}
+	if err := Confine(e.Sandbox, path); err != nil {
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
 	}
 	return in, path, nil

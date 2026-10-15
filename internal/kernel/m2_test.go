@@ -61,6 +61,10 @@ func TestOwnerTerminalIsNotWrapped(t *testing.T) {
 
 func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
+	tz := "UTC"
+	if err := b.ApplyProfile(bot.ProfileUpdate{Timezone: &tz}); err != nil {
+		t.Fatal(err)
+	}
 	t0 := time.Date(2026, 10, 15, 8, 10, 0, 0, time.UTC)
 	now := t0
 	p := &scripted{resps: []provider.Message{
@@ -87,11 +91,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	if len(updates) != 2 {
 		t.Fatalf("env updates %+v", updates)
 	}
-	loc := time.UTC
-	if time.Local != nil {
-		loc = time.Local
-	}
-	stamp := now.In(loc).Truncate(time.Minute).Format(time.RFC3339)
+	stamp := now.UTC().Truncate(time.Minute).Format(time.RFC3339) + " (UTC)"
 	if strings.Contains(updates[1], "time:") || !strings.Contains(updates[1], "now: "+stamp) {
 		t.Fatalf("minute update: %s", updates[1])
 	}

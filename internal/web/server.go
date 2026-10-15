@@ -73,6 +73,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.session)
 
+	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	mux.HandleFunc("POST /api/bots", s.createBot)
 	mux.HandleFunc("POST /api/bots/import", s.importTemplate)
@@ -501,6 +502,7 @@ type apiRow struct {
 	ToolCalls  []provider.ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string              `json:"tool_call_id,omitempty"`
 	Time       time.Time           `json:"time"`
+	ReplyTo    int                 `json:"reply_to,omitempty"`
 }
 
 func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
@@ -523,6 +525,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, apiRow{
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
+			ReplyTo: e.ReplyTo,
 		})
 	}
 	if rows == nil {
@@ -616,7 +619,8 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Text string `json:"text"`
+		Text    string `json:"text"`
+		ReplyTo *int   `json:"reply_to"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
@@ -627,7 +631,21 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad message")
 		return
 	}
+	replyTo := 0
+	if in.ReplyTo != nil {
+		n, err := b.Count()
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if *in.ReplyTo < 1 || *in.ReplyTo > n {
+			writeErr(w, http.StatusBadRequest, "bad reply_to")
+			return
+		}
+		replyTo = *in.ReplyTo
+	}
 	ev := link.WebEvent(s.owner, text, time.Now())
+	ev.ReplyTo = replyTo
 	lock, ok, err := b.TryLockHandle()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -710,7 +728,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if bot.SilentText(reply) {
 		reply = ""
 	}
-	send("done", map[string]string{"text": reply})
+	send("done", doneBody{Text: reply, ReplyTo: k.ReplySeq()})
+}
+
+type doneBody struct {
+	Text    string `json:"text"`
+	ReplyTo int    `json:"reply_to,omitempty"`
 }
 
 func (s *Server) approvalWait() time.Duration {

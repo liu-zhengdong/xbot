@@ -23,6 +23,7 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/config"
+	"xbot/internal/eval"
 	"xbot/internal/exec"
 	"xbot/internal/inbound"
 	"xbot/internal/inbox"
@@ -76,8 +77,9 @@ Usage:
   xbot [--root DIR] template import --file FILE [--name NAME]
   xbot [--root DIR] export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE
   xbot [--root DIR] reindex <bot>
-  xbot [--root DIR] bind <name> --provider NAME --model NAME
+  xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
   xbot [--root DIR] bind <name> --clear
+  xbot [--root DIR] eval <provider/model> [--suite proactivity] [--out DIR]
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
@@ -87,7 +89,7 @@ Usage:
   xbot [--root DIR] watch list <bot>
   xbot [--root DIR] watch remove <bot> <id>
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
-  xbot [--root DIR] provider list
+  xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
 
 Environment:
@@ -166,6 +168,8 @@ func run(argv []string) error {
 		return cmdReindex(root, rest[1:])
 	case "bind":
 		return cmdBind(root, rest[1:])
+	case "eval":
+		return cmdEval(root, rest[1:])
 	case "serve":
 		return cmdServe(root, rest[1:])
 	case "runner":
@@ -1278,6 +1282,7 @@ func cmdBind(root string, args []string) error {
 	prov := fs.String("provider", "", "named provider")
 	model := fs.String("model", "", "model id")
 	clear := fs.Bool("clear", false, "drop the binding and use environment defaults")
+	uncertified := fs.Bool("uncertified", false, "allow a model that has not passed the proactivity suite")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
@@ -1299,6 +1304,9 @@ func cmdBind(root string, args []string) error {
 		return errors.New("usage: xbot bind <name> --provider NAME --model NAME")
 	}
 	if _, _, err := config.Lookup(root, *prov, *model); err != nil {
+		return err
+	}
+	if err := config.AllowBind(root, *prov, *model, *uncertified); err != nil {
 		return err
 	}
 	if err := b.SetBinding(*prov, *model); err != nil {
@@ -1600,13 +1608,69 @@ func cmdRunner(args []string) error {
 	return exec.ListenCode(*addr, tok, loc, code.NewService())
 }
 
+func cmdEval(root string, args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{"suite": true, "out": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("eval", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	suite := fs.String("suite", "proactivity", "embedded suite name, or a directory of cases")
+	out := fs.String("out", "", "directory for the JSON and Markdown report")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: xbot eval <provider/model> [--suite proactivity] [--out DIR]")
+	}
+	opt := eval.Options{
+		Root: root, Model: fs.Arg(0), Suite: *suite, OutDir: *out,
+		Progress: func(c eval.CaseResult) {
+			mark := "fail"
+			if c.Pass {
+				mark = "pass"
+			}
+			fmt.Printf("%s\t%s\t%s\n", c.Name, c.Level, mark)
+		},
+	}
+	if info, err := os.Stat(*suite); err == nil && info.IsDir() {
+		opt.CasesDir = *suite
+	}
+	rep, err := eval.Run(opt)
+	if rep.JSON != "" {
+		fmt.Printf("report %s\n", rep.JSON)
+	}
+	if err != nil {
+		return err
+	}
+	if rep.Certified {
+		fmt.Printf("certified %s\n", fs.Arg(0))
+	} else {
+		fmt.Printf("passed %s\n", fs.Arg(0))
+	}
+	return nil
+}
+
 func cmdProvider(root string, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: xbot provider add|list|remove")
 	}
 	switch args[0] {
 	case "list":
+		fs := flag.NewFlagSet("provider list", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		all := fs.Bool("all", false, "include models that have not passed the proactivity suite")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return errors.New("usage: xbot provider list [--all]")
+		}
 		f, err := config.Load(root)
+		if err != nil {
+			return err
+		}
+		shown, err := config.VisibleModels(root, *all)
 		if err != nil {
 			return err
 		}
@@ -1614,10 +1678,27 @@ func cmdProvider(root string, args []string) error {
 			fmt.Println("no providers")
 			return nil
 		}
+		byProvider := map[string][]config.ModelInfo{}
+		for _, m := range shown {
+			byProvider[m.Provider] = append(byProvider[m.Provider], m)
+		}
 		for _, p := range f.Providers {
 			fmt.Printf("%s\t%s\tkey=%s\n", p.Name, p.BaseURL, p.APIKeyEnv)
-			for _, m := range p.Models {
-				fmt.Printf("  %s\tcontext=%d\n", m.Name, m.Context)
+			models := byProvider[p.Name]
+			if len(models) == 0 {
+				if *all {
+					fmt.Println("  (no models)")
+				} else {
+					fmt.Println("  (no certified models)")
+				}
+				continue
+			}
+			for _, m := range models {
+				mark := "certified"
+				if !m.Certified {
+					mark = "uncertified"
+				}
+				fmt.Printf("  %s\tcontext=%d\t%s\n", m.Model, m.Context, mark)
 			}
 		}
 		return nil

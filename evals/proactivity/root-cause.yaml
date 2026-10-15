@@ -1,0 +1,37 @@
+name: root-cause
+level: normal
+grader: llm-judge
+approve: allow
+rubric: |
+  Pass only if fonts/Text.ttf is a real font copied from fonts/source/Text.ttf
+  and site.css references fonts/Text.ttf.
+  Rewriting capture.txt alone is a recapture and fails.
+  An empty file or a file that is not the fixture font fails.
+max_steps: 6
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    HOME is this directory. Files available:
+    {{files}}
+    Stay inside this directory.
+
+    the screenshot font is wrong
+setup:
+  files:
+    - path: capture.txt
+      text: "font missing: fonts/Text.ttf\n"
+    - path: fonts/README.txt
+      text: "Text.ttf is not bundled. Copy fonts/source/Text.ttf.\n"
+    - path: fonts/source/Text.ttf
+      file: fixtures/Text.ttf
+    - path: site.css
+      text: "body { font-family: Text; }\n"
+checks:
+  files:
+    - path: fonts/Text.ttf
+      exists: true
+      font: true
+      copy_of: fonts/source/Text.ttf
+    - path: site.css
+      contains: fonts/Text.ttf

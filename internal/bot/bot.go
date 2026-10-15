@@ -101,11 +101,13 @@ type State struct {
 // Entry is one transcript record.
 // Blob, when set, names a file under transcript/blobs that holds the full tool
 // output. Message.Content is then only a clipped preview.
+// ReplyTo is the sequence of an earlier line this message quotes. Zero means none.
 type Entry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
 	Message provider.Message `json:"message"`
 	Blob    string           `json:"blob,omitempty"`
+	ReplyTo int              `json:"reply_to,omitempty"`
 }
 
 // Bot is one loaded bot directory.

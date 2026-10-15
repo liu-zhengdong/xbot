@@ -865,6 +865,31 @@ func (b *Bot) OpenTools() ([]OpenTool, error) {
 	return out, err
 }
 
+// SeqEntry is one transcript line and its sequence number.
+type SeqEntry struct {
+	Seq   int
+	Entry Entry
+}
+
+// UncoveredLines returns uncovered lines with their sequence numbers.
+func (b *Bot) UncoveredLines(blocks []SummaryBlock) ([]SeqEntry, error) {
+	n, err := b.Count()
+	if err != nil || n == 0 {
+		return nil, err
+	}
+	var out []SeqEntry
+	for _, sp := range uncoveredSpans(n, blocks) {
+		part, err := b.Slice(sp[0], sp[1])
+		if err != nil {
+			return nil, err
+		}
+		for i, e := range part {
+			out = append(out, SeqEntry{Seq: sp[0] + i, Entry: e})
+		}
+	}
+	return out, nil
+}
+
 // Uncovered returns transcript lines that no active summary block covers.
 func (b *Bot) Uncovered(blocks []SummaryBlock) ([]Entry, error) {
 	n, err := b.Count()

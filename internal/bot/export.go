@@ -30,6 +30,7 @@ type exportEntry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
 	Message provider.Message `json:"message"`
+	ReplyTo int              `json:"reply_to,omitempty"`
 }
 
 type exportSummary struct {
@@ -121,7 +122,7 @@ func ExportTo(w io.Writer, b *Bot, opt TranscriptExport) error {
 		if !ok {
 			return nil
 		}
-		return write(entryMD(seq, e.Time, msg, opt.Tools, loc))
+		return write(entryMD(seq, e.Time, msg, e.ReplyTo, opt.Tools, loc))
 	})
 }
 
@@ -184,7 +185,7 @@ func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, writ
 		if !ok {
 			return nil
 		}
-		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg})
+		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg, ReplyTo: e.ReplyTo})
 	})
 }
 
@@ -205,9 +206,13 @@ func summaryMD(block SummaryBlock, loc *time.Location) string {
 	return b.String()
 }
 
-func entryMD(seq int, at time.Time, msg provider.Message, tools bool, loc *time.Location) string {
+func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, tools bool, loc *time.Location) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n## seq %d · %s · %s\n\n", seq, stamp(at, loc), msg.Role)
+	fmt.Fprintf(&b, "\n## seq %d · %s · %s\n", seq, stamp(at, loc), msg.Role)
+	if replyTo > 0 {
+		fmt.Fprintf(&b, "reply_to: %d\n", replyTo)
+	}
+	b.WriteByte('\n')
 	if msg.Content != "" {
 		b.WriteString(msg.Content)
 		if !strings.HasSuffix(msg.Content, "\n") {

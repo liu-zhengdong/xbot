@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
@@ -21,6 +22,62 @@ import (
 	"xbot/internal/person"
 	"xbot/internal/provider"
 )
+
+func TestEvalFakeCertifies(t *testing.T) {
+	root := t.TempDir()
+	if err := config.Add(root, config.Provider{Name: "fake", BaseURL: "http://127.0.0.1:9/v1", APIKeyEnv: "XBOT_FAKE_UNUSED"}, config.ModelSpec{Name: "scripted", Context: 1024}); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Add(root, config.Provider{Name: "other", BaseURL: "http://127.0.0.1:9/v1", APIKeyEnv: "XBOT_OTHER_UNUSED"}, config.ModelSpec{Name: "hidden", Context: 8}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"--root", root, "eval", "fake/scripted"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(config.CertifiedPath(root)); !os.IsNotExist(err) {
+		t.Fatalf("fake eval wrote certified.json: %v", err)
+	}
+	var buf bytes.Buffer
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	err = run([]string{"--root", root, "provider", "list"})
+	w.Close()
+	os.Stdout = old
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "fake\t") || !strings.Contains(got, "other\t") {
+		t.Fatalf("providers missing\n%s", got)
+	}
+	if strings.Contains(got, "scripted") || strings.Contains(got, "hidden") {
+		t.Fatalf("uncertified models listed\n%s", got)
+	}
+	buf.Reset()
+	r, w, err = os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	err = run([]string{"--root", root, "provider", "list", "--all"})
+	w.Close()
+	os.Stdout = old
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = buf.String()
+	if !strings.Contains(got, "scripted") || !strings.Contains(got, "hidden") || !strings.Contains(got, "uncertified") {
+		t.Fatalf("all %s", got)
+	}
+}
 
 func TestRelativeRootSpawn(t *testing.T) {
 	wd, err := os.Getwd()

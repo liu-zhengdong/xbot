@@ -20,10 +20,12 @@ const (
 
 // ReadFile reads a text file by line offset.
 // Root is the base for relative paths. Empty uses the working directory.
+// Sandbox, when set, rejects any path that resolves outside it.
 type ReadFile struct {
 	MaxLines int
 	MaxBytes int
 	Root     string
+	Sandbox  string
 }
 
 func (r *ReadFile) Name() string { return "read_file" }
@@ -51,7 +53,7 @@ func (r *ReadFile) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return false, fmt.Sprintf("read %s offset %d limit %d", path, normOffset(in.Offset), r.normLimit(in.Limit)), nil
+	return false, fmt.Sprintf("read %s offset %d limit %d", DisplayPath(r.Sandbox, path), normOffset(in.Offset), r.normLimit(in.Limit)), nil
 }
 
 func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
@@ -62,17 +64,18 @@ func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	if err != nil {
 		return "", err
 	}
+	label := DisplayPath(r.Sandbox, path)
 	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("read_file: %w", err)
+		return "", fmt.Errorf("read_file: %s", RewriteHost(r.Sandbox, path, err.Error()))
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		return "", fmt.Errorf("read_file: %w", err)
+		return "", fmt.Errorf("read_file: %s", RewriteHost(r.Sandbox, path, err.Error()))
 	}
 	if st.IsDir() {
-		return "", fmt.Errorf("read_file: %s is a directory", path)
+		return "", fmt.Errorf("read_file: %s is a directory", label)
 	}
 	offset := normOffset(in.Offset)
 	limit := r.normLimit(in.Limit)
@@ -112,10 +115,10 @@ func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error
 		return "", fmt.Errorf("read_file: %w", err)
 	}
 	if shown == 0 {
-		return fmt.Sprintf("%s: offset %d is past end of file (%d lines)", path, offset, lineNo), nil
+		return fmt.Sprintf("%s: offset %d is past end of file (%d lines)", DisplayPath(r.Sandbox, path), offset, lineNo), nil
 	}
 	body := clip.Valid(strings.TrimRight(b.String(), "\n"))
-	head := fmt.Sprintf("%s lines %d-%d", path, first, last)
+	head := fmt.Sprintf("%s lines %d-%d", DisplayPath(r.Sandbox, path), first, last)
 	if truncated {
 		return head + "\n" + body + "\n[truncated]", nil
 	}
@@ -127,8 +130,11 @@ func (r *ReadFile) parse(args json.RawMessage) (readArgs, string, error) {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}
-	path, err := ResolveRoot(r.Root, in.Path)
+	path, err := ResolveRoot(r.Root, AliasCase(r.Sandbox, in.Path))
 	if err != nil {
+		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
+	}
+	if err := Confine(r.Sandbox, path); err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}
 	return in, path, nil

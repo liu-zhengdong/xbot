@@ -14,8 +14,10 @@ const maxWriteBytes = 1 << 20
 
 // WriteFile replaces a file's contents. The write is atomic.
 // Root is the base for relative paths. Empty uses the working directory.
+// Sandbox, when set, rejects any path that resolves outside it.
 type WriteFile struct {
-	Root string
+	Root    string
+	Sandbox string
 }
 
 func (w *WriteFile) Name() string { return "write_file" }
@@ -41,7 +43,7 @@ func (w *WriteFile) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return true, fmt.Sprintf("write %s (%d bytes)", path, len(in.Content)), nil
+	return true, fmt.Sprintf("write %s (%d bytes)", DisplayPath(w.Sandbox, path), len(in.Content)), nil
 }
 
 func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
@@ -53,15 +55,15 @@ func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, erro
 		return "", err
 	}
 	if err := refuseDir(path); err != nil {
-		return "", fmt.Errorf("write_file: %w", err)
+		return "", fmt.Errorf("write_file: %s", RewriteHost(w.Sandbox, path, err.Error()))
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return "", fmt.Errorf("write_file: %w", err)
+		return "", fmt.Errorf("write_file: %s", RewriteHost(w.Sandbox, path, err.Error()))
 	}
 	if err := fsutil.WriteAtomic(path, []byte(in.Content), 0644); err != nil {
-		return "", fmt.Errorf("write_file: %w", err)
+		return "", fmt.Errorf("write_file: %s", RewriteHost(w.Sandbox, path, err.Error()))
 	}
-	return fmt.Sprintf("wrote %d bytes to %s", len(in.Content), path), nil
+	return fmt.Sprintf("wrote %d bytes to %s", len(in.Content), DisplayPath(w.Sandbox, path)), nil
 }
 
 func (w *WriteFile) parse(args json.RawMessage) (writeArgs, string, error) {
@@ -72,8 +74,11 @@ func (w *WriteFile) parse(args json.RawMessage) (writeArgs, string, error) {
 	if len(in.Content) > maxWriteBytes {
 		return writeArgs{}, "", fmt.Errorf("write_file: content exceeds %d bytes", maxWriteBytes)
 	}
-	path, err := ResolveRoot(w.Root, in.Path)
+	path, err := ResolveRoot(w.Root, AliasCase(w.Sandbox, in.Path))
 	if err != nil {
+		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
+	}
+	if err := Confine(w.Sandbox, path); err != nil {
 		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
 	}
 	return in, path, nil

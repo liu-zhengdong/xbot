@@ -1,0 +1,31 @@
+name: no-task-normal
+level: normal
+grader: auto
+approve: allow
+max_steps: 6
+wake:
+  kind: routine
+  text: |
+    Working directory: {{workdir}}
+    HOME is this directory. Files available:
+    {{files}}
+    Stay inside this directory.
+
+    FAIL TestAdd
+    math.go: Add returned a - b, expected a + b
+setup:
+  files:
+    - path: math.go
+      text: "package demo\n\nfunc Add(a, b int) int { return a - b }\n"
+checks:
+  transcript_not_silent: true
+  assistant_contains: ["TestAdd"]
+  any_files:
+    - path: math.go
+      contains: "return a + b"
+    - path: PROPOSAL.txt
+      nonempty: true
+      contains: "TestAdd"
+    - path: REPORT.txt
+      nonempty: true
+      contains: "TestAdd"

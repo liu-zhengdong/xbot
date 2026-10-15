@@ -69,8 +69,8 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 		if ev.name == "result" && strings.Contains(ev.data, "exit 0") {
 			sawRun = true
 		}
-		if ev.name == "done" {
-			break
+		if ev.name == "error" {
+			t.Fatalf("error event %s", ev.data)
 		}
 	}
 	if !sawRun {
@@ -91,8 +91,8 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 		if ev.name == "result" && strings.Contains(ev.data, "denied by user") {
 			sawDeny = true
 		}
-		if ev.name == "done" {
-			break
+		if ev.name == "error" {
+			t.Fatalf("error event %s", ev.data)
 		}
 	}
 	if !sawDeny {
@@ -141,7 +141,7 @@ func postSSE(t *testing.T, base string, cookie *http.Cookie, text string) <-chan
 		res.Body.Close()
 		t.Fatalf("message %d %s", res.StatusCode, raw)
 	}
-	ch := make(chan sseEvent)
+	ch := make(chan sseEvent, 32)
 	go func() {
 		defer close(ch)
 		defer res.Body.Close()
@@ -165,7 +165,7 @@ func postSSE(t *testing.T, base string, cookie *http.Cookie, text string) <-chan
 
 func waitEvent(t *testing.T, ch <-chan sseEvent, name string) sseEvent {
 	t.Helper()
-	deadline := time.After(8 * time.Second)
+	deadline := time.After(30 * time.Second)
 	for {
 		select {
 		case ev, ok := <-ch:

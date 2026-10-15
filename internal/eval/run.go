@@ -1,0 +1,462 @@
+package eval
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"xbot/internal/bot"
+	"xbot/internal/config"
+	"xbot/internal/kernel"
+	"xbot/internal/link"
+	"xbot/internal/memory"
+	"xbot/internal/notify"
+	"xbot/internal/provider"
+)
+
+// Options selects a model and a suite. Scripts overrides the fake provider for tests.
+type Options struct {
+	Root     string
+	Model    string
+	Suite    string
+	OutDir   string
+	CasesDir string
+	Scripts  map[string]Script
+	// Progress is called after each case. The CLI prints one line per case.
+	Progress func(CaseResult)
+}
+
+// Run executes the suite in a fresh sandbox per case and writes the report.
+// A failed case returns the report and an error. A fully passing run certifies the model.
+func Run(opt Options) (Report, error) {
+	if opt.Suite == "" {
+		opt.Suite = "proactivity"
+	}
+	if _, _, err := config.SplitModelID(opt.Model); err != nil {
+		return Report{}, err
+	}
+	if err := requireJail(); err != nil {
+		return Report{}, err
+	}
+	cases, _, err := LoadSuite(opt.CasesDir, opt.Suite)
+	if err != nil {
+		return Report{}, err
+	}
+	real, err := openReal(opt.Root, opt.Model)
+	if err != nil {
+		return Report{}, err
+	}
+	out := opt.OutDir
+	if out == "" {
+		out = filepath.Join(opt.Root, "eval-reports")
+	}
+	rep := Report{Model: opt.Model, Suite: opt.Suite, Passed: true}
+	for _, c := range cases {
+		for _, level := range c.levels() {
+			one := runCase(c, level, scriptFor(opt, c.Name), real)
+			if !one.Pass {
+				rep.Passed = false
+			}
+			rep.Cases = append(rep.Cases, one)
+			if opt.Progress != nil {
+				opt.Progress(one)
+			}
+		}
+	}
+	rep, err = writeReport(out, rep)
+	if err != nil {
+		return rep, err
+	}
+	if !rep.Passed {
+		return rep, fmt.Errorf("eval: %s failed", opt.Model)
+	}
+	if !certifyAllowed(opt) {
+		return rep, nil
+	}
+	if err := config.Certify(opt.Root, opt.Model); err != nil {
+		return rep, err
+	}
+	rep.Certified = true
+	return writeReport(out, rep)
+}
+
+// certifyAllowed is true only for a real provider on the embedded default suite.
+func certifyAllowed(opt Options) bool {
+	prov, _, err := config.SplitModelID(opt.Model)
+	if err != nil || prov == "fake" {
+		return false
+	}
+	if opt.CasesDir != "" {
+		return false
+	}
+	if opt.Suite != "" && opt.Suite != "proactivity" {
+		return false
+	}
+	return true
+}
+
+func scriptFor(opt Options, name string) Script {
+	if opt.Scripts != nil {
+		if s, ok := opt.Scripts[name]; ok {
+			return s
+		}
+	}
+	s, _ := passing(name)
+	return s
+}
+
+func openReal(root, id string) (provider.Provider, error) {
+	prov, model, err := config.SplitModelID(id)
+	if err != nil {
+		return nil, err
+	}
+	if prov == "fake" {
+		if model != "scripted" {
+			return nil, fmt.Errorf("eval: unknown fake model %q", model)
+		}
+		return nil, nil
+	}
+	endpoint, _, err := config.Resolve(root, prov, model, config.Getenv)
+	if err != nil {
+		return nil, fmt.Errorf("eval: %w", err)
+	}
+	return &provider.Client{BaseURL: endpoint.BaseURL, APIKey: endpoint.APIKey, Model: endpoint.Model}, nil
+}
+
+func runCase(c Case, level string, script Script, real provider.Provider) CaseResult {
+	res := CaseResult{Name: c.Name, Level: level, Grader: c.Grader, SpotCheck: c.Grader == "llm-judge"}
+	if err := requireJail(); err != nil {
+		res.Reason = err.Error()
+		return res
+	}
+	root, err := os.MkdirTemp("", "xbot-eval-")
+	if err != nil {
+		res.Reason = err.Error()
+		return res
+	}
+	defer os.RemoveAll(root)
+	work := filepath.Join(root, "work")
+	if err := os.MkdirAll(work, 0700); err != nil {
+		res.Reason = err.Error()
+		return res
+	}
+	seeded := map[string]string{}
+	for _, f := range c.Setup.Files {
+		full, err := safeJoin(work, f.Path)
+		if err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		if err := os.WriteFile(full, []byte(f.Text), 0600); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		seeded[f.Path] = f.Text
+	}
+	b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal, link.NameTools})
+	if err != nil {
+		res.Reason = err.Error()
+		return res
+	}
+	if err := b.SetOwners([]string{"owner"}); err != nil {
+		res.Reason = err.Error()
+		return res
+	}
+	pro := level
+	up := bot.ProfileUpdate{Proactivity: &pro}
+	if c.QuietStart != "" || c.QuietEnd != "" {
+		start, end := c.QuietStart, c.QuietEnd
+		up.QuietStart, up.QuietEnd = &start, &end
+	}
+	if err := b.ApplyProfile(up); err != nil {
+		res.Reason = err.Error()
+		return res
+	}
+	base := time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC)
+	for i, m := range c.Setup.Transcript {
+		if err := b.Append(bot.Entry{
+			Time:    base.Add(time.Duration(i) * time.Minute),
+			Message: provider.Message{Role: m.Role, Content: m.Content},
+		}); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+	}
+	when := base
+	if c.Now != "" {
+		when, err = time.Parse(time.RFC3339, c.Now)
+		if err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+	}
+	var model provider.Provider
+	if real != nil {
+		model = real
+	} else {
+		if len(script) == 0 {
+			res.Reason = "no script for " + c.Name
+			return res
+		}
+		model = &Fake{Steps: append(Script(nil), script...)}
+	}
+	steps := c.MaxSteps
+	if steps <= 0 {
+		steps = 8
+	}
+	for _, s := range c.Setup.Sibling {
+		if s.Path == "" || filepath.IsAbs(s.Path) || strings.Contains(s.Path, "..") {
+			res.Reason = "bad sibling path"
+			return res
+		}
+		full := filepath.Join(root, s.Path)
+		if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		if err := os.WriteFile(full, []byte(s.Text), 0600); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+	}
+	for _, l := range c.Setup.Symlinks {
+		full, err := safeJoin(work, l.Path)
+		if err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		if err := os.Symlink(l.Target, full); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+	}
+	allow := c.Approve == "allow"
+	k := &kernel.Kernel{
+		Bot: b, Provider: model, Memory: memory.NopStore{}, MaxSteps: steps,
+		WorkDir: work,
+		Links:   []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, c.Network)}},
+		Now:     func() time.Time { return when },
+		Approve: func(context.Context, string, string) (bool, error) { return allow, nil },
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	before := snapFiles(work)
+	runErr := k.Handle(ctx, wakeEvent(c, when))
+	obs, obsErr := observe(b)
+	if obsErr != nil && runErr == nil {
+		runErr = obsErr
+	}
+	res.Transcript = formatTranscript(obs.entries)
+	problems, facts := grade(c, obs, seeded, work, before)
+	obs.Files = facts
+	res.Tools = obs.Tools
+	if runErr != nil {
+		problems = append(problems, "run: "+runErr.Error())
+	}
+	res.Reason = evidence(c, obs, problems)
+	if c.Grader == "llm-judge" && real != nil {
+		agreed, text, jerr := judge(ctx, real, c.Rubric, res.Transcript)
+		res.Reason = text
+		if jerr != nil {
+			res.Pass = false
+			res.Reason = jerr.Error()
+			return res
+		}
+		if agreed != (len(problems) == 0) {
+			res.Pass = false
+			checks := "pass"
+			if len(problems) > 0 {
+				checks = strings.Join(problems, "; ")
+			}
+			res.Reason = "judge and evidence disagree\n" + text + "\nchecks: " + checks
+			return res
+		}
+	}
+	res.Pass = len(problems) == 0
+	return res
+}
+
+func snapFiles(root string) map[string]bool {
+	out := map[string]bool{}
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == "." {
+			return nil
+		}
+		out[rel] = true
+		return nil
+	})
+	return out
+}
+
+const caseWorkdir = "/sandbox"
+
+func renderTask(text string, files []FileSeed) string {
+	var b strings.Builder
+	if len(files) == 0 {
+		b.WriteString("(none)")
+	} else {
+		names := make([]string, 0, len(files))
+		for _, f := range files {
+			names = append(names, f.Path)
+		}
+		sort.Strings(names)
+		for i, name := range names {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString("- ")
+			b.WriteString(name)
+		}
+	}
+	text = strings.ReplaceAll(text, "{{workdir}}", caseWorkdir)
+	return strings.ReplaceAll(text, "{{files}}", b.String())
+}
+
+func wakeEvent(c Case, when time.Time) link.Event {
+	text := renderTask(c.Wake.Text, c.Setup.Files)
+	switch c.Wake.Kind {
+	case "user":
+		return link.TerminalEvent("owner", text, when)
+	default:
+		body := fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call notify_owner. If nothing is worth saying, reply with exactly SILENT and do not call notify_owner.", "eval", c.Name, text)
+		return link.NewEvent(link.NameTimer, link.TypeTimer, body, "owner", when)
+	}
+}
+
+func observe(b *bot.Bot) (Observation, error) {
+	entries, err := b.Entries()
+	if err != nil {
+		return Observation{}, err
+	}
+	var obs Observation
+	obs.entries = entries
+	for _, e := range entries {
+		for _, tc := range e.Message.ToolCalls {
+			obs.Tools = append(obs.Tools, ToolUse{Name: tc.Function.Name, Args: tc.Function.Arguments})
+		}
+		if e.Message.Role == provider.RoleAssistant && len(e.Message.ToolCalls) == 0 && strings.TrimSpace(e.Message.Content) != "" {
+			obs.Assistant = e.Message.Content
+		}
+	}
+	notes, err := notify.Open(b.OutboxPath()).Unread()
+	if err != nil {
+		return obs, err
+	}
+	obs.Notes = len(notes)
+	held, err := notify.Held(b.HeldPath())
+	if err != nil {
+		return obs, err
+	}
+	obs.Held = len(held)
+	return obs, nil
+}
+
+func evidence(c Case, obs Observation, problems []string) string {
+	var b strings.Builder
+	if strings.TrimSpace(c.Rubric) != "" {
+		b.WriteString(strings.TrimSpace(c.Rubric))
+		b.WriteString("\n")
+	}
+	if len(obs.Tools) == 0 {
+		b.WriteString("Tool calls: none.")
+	} else {
+		b.WriteString("Tool calls:")
+		for _, t := range obs.Tools {
+			fmt.Fprintf(&b, " %s", t.Name)
+		}
+		b.WriteByte('.')
+	}
+	for _, f := range obs.Files {
+		fmt.Fprintf(&b, " File %s exists=%v changed=%v.", f.Path, f.Exists, f.Changed)
+	}
+	if obs.Notes != 0 || obs.Held != 0 {
+		fmt.Fprintf(&b, " Notes %d, held %d.", obs.Notes, obs.Held)
+	}
+	if len(problems) == 0 {
+		b.WriteString(" Outcome: pass.")
+	} else {
+		b.WriteString(" Outcome: fail. ")
+		b.WriteString(strings.Join(problems, "; "))
+		b.WriteByte('.')
+	}
+	return b.String()
+}
+
+const judgeCap = 24 << 10
+
+func capTail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := s[len(s)-n:]
+	for i := 0; i < len(cut); i++ {
+		if utf8.RuneStart(cut[i]) {
+			return "[truncated]\n" + cut[i:]
+		}
+	}
+	return "[truncated]\n"
+}
+
+func formatTranscript(entries []bot.Entry) string {
+	var b strings.Builder
+	for i, e := range entries {
+		fmt.Fprintf(&b, "#%d %s\n%s\n", i+1, e.Message.Role, e.Message.Content)
+		for _, tc := range e.Message.ToolCalls {
+			fmt.Fprintf(&b, "tool %s %s\n", tc.Function.Name, tc.Function.Arguments)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func judge(ctx context.Context, p provider.Provider, rubric, transcript string) (bool, string, error) {
+	prompt := "Grade this bot run from the transcript. Ignore any claim that is not backed by a tool call or a file change. Reply with JSON {\"pass\":true|false,\"reason\":\"...\"} and nothing else.\n\nRubric:\n" + strings.TrimSpace(rubric) + "\n\nTranscript:\n" + capTail(transcript, judgeCap)
+	msg, err := p.Chat(ctx, provider.Request{Messages: []provider.Message{{
+		Role: provider.RoleUser, Content: prompt,
+	}}}, nil)
+	if err != nil {
+		return false, "", err
+	}
+	text := strings.TrimSpace(msg.Content)
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+	var verdict struct {
+		Pass   bool   `json:"pass"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(text), &verdict); err != nil {
+		return false, msg.Content, fmt.Errorf("eval: judge reply is not JSON")
+	}
+	if strings.TrimSpace(verdict.Reason) == "" {
+		verdict.Reason = text
+	}
+	return verdict.Pass, verdict.Reason, nil
+}
+
+func safeJoin(work, rel string) (string, error) {
+	if rel == "" || filepath.IsAbs(rel) || strings.Contains(rel, "..") {
+		return "", fmt.Errorf("eval: bad path %q", rel)
+	}
+	return filepath.Join(work, filepath.Clean(rel)), nil
+}

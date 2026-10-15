@@ -68,6 +68,7 @@ type Kernel struct {
 	turnTrusted bool
 	turnSource  string
 	turnEvent   string
+	replyTo     int
 	notedMu     sync.Mutex
 	noted       []string
 }
@@ -85,6 +86,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnSource = ev.Source
 	k.turnEvent = ev.ID
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
+	k.replyTo = 0
 	k.clearLoaded()
 	k.notedMu.Lock()
 	k.noted = nil
@@ -118,6 +120,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			return err
 		}
 		if turnDone(span, 0) {
+			k.replyTo = lastReplyTo(span, 0)
 			if k.OnDelta != nil && ev.Source != link.NameTimer {
 				if text := lastAssistant(span, 0); text != "" {
 					k.OnDelta(text)
@@ -143,6 +146,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		entry := bot.Entry{
 			Time:    ev.Time,
 			EventID: ev.ID,
+			ReplyTo: ev.ReplyTo,
 			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, k.turnTrusted)},
 		}
 		if err := k.Bot.Append(entry); err != nil {
@@ -186,7 +190,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		onDelta = nil
 	}
 	var appendErr error
-	produced, err := agent.Run(ctx, p, list, assembled, agent.Options{
+	produced, err := agent.Run(ctx, &replyProvider{inner: p, accept: k.userReplyTarget}, list, assembled, agent.Options{
 		MaxSteps: k.MaxSteps,
 		Approve:  k.Approve,
 		OnDelta:  onDelta,
@@ -196,7 +200,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			if appendErr != nil {
 				return
 			}
-			appendErr = k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m)})
+			appendErr = k.record(m)
 		},
 		RefreshTools: func() ([]tools.Tool, error) {
 			return k.modelTools()
@@ -229,9 +233,17 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		if ev.ID == "" || ev.ID == k.turnEvent {
 			continue
 		}
+		raw := link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, owners))
+		content := raw
+		if ev.ReplyTo > 0 {
+			if q := k.quotePrefix(ev.ReplyTo); q != "" {
+				content = q + "\n\n" + raw
+			}
+		}
 		out = append(out, provider.Message{
 			Role:    provider.RoleUser,
-			Content: link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, owners)),
+			Content: content,
+			ReplyTo: ev.ReplyTo,
 		})
 		if err := k.Inbox.Ack(ev.ID); err != nil {
 			return nil, err
@@ -267,9 +279,19 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
-	raw, err := k.Bot.Uncovered(st.Blocks)
+	lines, err := k.Bot.UncoveredLines(st.Blocks)
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
+	}
+	raw := make([]bot.Entry, 0, len(lines))
+	for _, ln := range lines {
+		e := ln.Entry
+		if e.ReplyTo > 0 && e.Message.Role == provider.RoleUser {
+			if q := k.quotePrefix(e.ReplyTo); q != "" {
+				e.Message.Content = q + "\n\n" + e.Message.Content
+			}
+		}
+		raw = append(raw, e)
 	}
 	msgs, usage := account(Input{
 		Persona:   persona,

@@ -111,9 +111,12 @@
   "name":"",
   "tool_calls":[],
   "tool_call_id":"",
-  "time":"2026-10-15T00:00:00Z"
+  "time":"2026-10-15T00:00:00Z",
+  "reply_to":4
 }]}
 ```
+
+`reply_to` 省略表示这行没有引用。有的话，它是本 transcript 里另一行的 `seq`。用户消息上的值是主人发送时带的序号。助手消息上的值是这条回复指向的用户消息序号。
 
 这次 GET 会把该 Bot 的已读游标记到当前长度。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是主人说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。主人聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
 
@@ -121,17 +124,17 @@
 
 `GET /api/bots/{name}/export?format=md|jsonl&tools=0|1` 下载这个 Bot 的 transcript。未登录 401。不是这个 owner 的 Bot 是 404。`format` 缺省是 `md`。`tools` 缺省是 `0`；只有 `1` 才包含工具调用和 `role=tool` 的行。可选 `from` 和 `to`，要成对出现，是包含端点的 seq。
 
-正文按 transcript 段流式写出，不把整份历史装进内存。工具结果如果另存成 blob，写出那一行时读回全文。成功时正文不是 JSON。`md` 的 `Content-Type` 是 `text/markdown`，时间用服务器本机时区，摘要块写成 `## Summary seq <from>-<to>`。`jsonl` 是 `application/x-ndjson`。普通行是 transcript 记录再加 `seq`，`json.Unmarshal` 进记录时忽略 `seq`，所以能再导入，序号还是原来的。`{"kind":"summary","from","to","text","focus","at"}` 是摘要块。每一段写出前过 `RedactText`；保险箱还没安装替换函数时，文本原样出去。`Content-Disposition` 是附件，文件名 `<bot>.md` 或 `<bot>.jsonl`。
+正文按 transcript 段流式写出，不把整份历史装进内存。工具结果如果另存成 blob，写出那一行时读回全文。成功时正文不是 JSON。`md` 的 `Content-Type` 是 `text/markdown`，时间用服务器本机时区，摘要块写成 `## Summary seq <from>-<to>`。`jsonl` 是 `application/x-ndjson`。普通行是 transcript 记录再加 `seq`，`json.Unmarshal` 进记录时忽略 `seq`，所以能再导入，序号还是原来的。带引用的行多一个 `reply_to`。`{"kind":"summary","from","to","text","focus","at"}` 是摘要块。每一段写出前过 `RedactText`；保险箱还没安装替换函数时，文本原样出去。`Content-Disposition` 是附件，文件名 `<bot>.md` 或 `<bot>.jsonl`。`md` 在该行标题下写 `reply_to: <seq>`。
 
 `GET /api/bots/{name}/transcript` 仍一次返回全部消息，给界面用。很长的历史用上面的 export。Bot 列表上的未读比较用序号计数，不读段文件。
 
-`POST /api/bots/{name}/messages`，body `{"text":"..."}`，1 到 16 KiB。拿到处理锁时响应是 `text/event-stream`：
+`POST /api/bots/{name}/messages`，body `{"text":"...","reply_to":3}`。`text` 1 到 16 KiB。`reply_to` 可省略；给出时必须是这个 Bot 的 transcript 里已有的序号，否则 400 `{"error":"bad reply_to"}`。群聊的发送接口不接受这个字段。拿到处理锁时响应是 `text/event-stream`：
 
 - `event: delta`，`data: {"text":"..."}`
 - `event: tool`，`data: {"name","summary"}`。`ask_user` 的 summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。
 - `event: approval`，`data: {"id","tool","summary"}`。这个工具要主人确认才会跑。界面应立刻展示一张确认卡，写明工具名和 summary，并给出允许、拒绝两个按钮。
 - `event: result`，`data: {"name","output"}`，output 截到 4000 字
-- `event: done`，`data: {"text":"这一轮拼起来的正文"}`。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。
+- `event: done`，`data: {"text":"这一轮拼起来的正文","reply_to":2}`。`reply_to` 省略表示这条回复没有指向某一条用户消息。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。模型用来标记引用的 `reply_to:` 行不会出现在 `delta` 或 `done.text` 里。
 - `event: error`，`data: {"error":"..."}`
 
 `POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。成功 200 `{"status":"ok"}`。60 秒内没有回答，这一次视为不允许，工具不跑。只读的安全命令不发这张卡，包括 `date`、`pwd`、`whoami`、`uname`、`hostname`、`id`、`echo`、`printf`、`true`、`false`、`uptime`、`ls`、`which`、`env`、`printenv`、`cal`，而且命令里不能有管道、重定向、分号或命令替换。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成主人拒绝。主人明确拒绝才是 `denied by user`。
@@ -272,6 +275,22 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 停用名单在这个 Bot 的配置里，不在技能文件里。同一个 owner 的另一个 Bot 不受影响。别的 owner 的 Bot 走 `owned` 的 404，列不到这库。
 
 命令行：`xbot skill list`，`xbot skill import <path>`，`xbot skill show <slug>`，`xbot skill disable <bot> <slug>`，`xbot skill enable <bot> <slug>`。list、import、show 用当前终端用户。disable 和 enable 还要求这个 Bot 的 owner 里有这个人，否则是找不到。
+
+## 模型
+
+`GET /api/models` 要登录。默认只返回已经配置、并且在认证名单里的模型。`?all=1` 带上未认证的模型。`all` 不是 `0` 或 `1` 是 400 `{"error":"bad all"}`。
+
+```json
+{"models":[{
+  "id":"fake/scripted",
+  "provider":"fake",
+  "model":"scripted",
+  "context":1024,
+  "certified":true
+}]}
+```
+
+没有可显示的模型时 `models` 是空数组。认证名单是数据根上的 `certified.json`，由 `xbot eval <provider/model>` 在主动性套件全部通过后写入。
 
 ## Bot 私聊
 

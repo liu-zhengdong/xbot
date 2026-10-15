@@ -13,6 +13,11 @@ type holdFile struct {
 	Notes []string `json:"notes"`
 }
 
+// Held returns notes waiting out quiet hours. A missing file is empty.
+func Held(path string) ([]string, error) {
+	return readHeld(path)
+}
+
 // Hold appends a notification that should wait until quiet hours end.
 func Hold(path, text string) error {
 	text = strings.TrimSpace(text)

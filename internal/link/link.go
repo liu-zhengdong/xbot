@@ -109,6 +109,8 @@ type Event struct {
 	// Hops counts bot-to-bot deliveries in one chain. Zero is a person starting it.
 	Hops  int    `json:"hops,omitempty"`
 	Chain string `json:"chain,omitempty"`
+	// ReplyTo is a transcript sequence the sender is quoting. Zero means none.
+	ReplyTo int `json:"reply_to,omitempty"`
 }
 
 // NewEvent builds an event. Untrusted is always true.

@@ -13,12 +13,15 @@ const (
 )
 
 // Message is one chat message. Tool call arguments are a JSON string.
+// ReplyTo is a transcript sequence this message answers. It stays off the
+// provider request; the transcript record stores it.
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content,omitempty"`
 	Name       string     `json:"name,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ReplyTo    int        `json:"-"`
 }
 
 // ToolCall is a model request to run a tool.

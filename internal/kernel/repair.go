@@ -124,6 +124,23 @@ func lastAssistant(entries []bot.Entry, idx int) string {
 	return text
 }
 
+func lastReplyTo(entries []bot.Entry, idx int) int {
+	end := len(entries)
+	for i := idx + 1; i < len(entries); i++ {
+		if entries[i].Message.Role == provider.RoleUser && entries[i].EventID != "" && entries[i].EventID != entries[idx].EventID {
+			end = i
+			break
+		}
+	}
+	replyTo := 0
+	for _, e := range entries[idx+1 : end] {
+		if e.Message.Role == provider.RoleAssistant && len(e.Message.ToolCalls) == 0 {
+			replyTo = e.ReplyTo
+		}
+	}
+	return replyTo
+}
+
 func placeholder(tc provider.ToolCall) bot.Entry {
 	return bot.Entry{
 		Time: time.Now().UTC(),

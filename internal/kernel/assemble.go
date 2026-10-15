@@ -31,9 +31,12 @@ const LanguageRule = "Answer in the owner's language. When the owner writes Chin
 // OfferRule stops the bot from repeating a choice the owner did not take.
 const OfferRule = "If you offer the owner a choice and they ignore it or change the subject, do not repeat that offer. Continue with what they asked."
 
+// ReplyRule is when a reply should point at an earlier user message.
+const ReplyRule = "When one reply addresses several of the owner's points, or you return to an earlier topic, start that reply with a single line reply_to: <seq> naming the user message you are answering. Use a sequence number from this transcript. Omit that line for an ordinary next reply. A user message that quotes an earlier one begins with the line \"user is replying to your earlier message (seq N):\". The quote is shortened to about 300 characters. The full text is still in the transcript; call expand on that sequence to read it."
+
 // DefaultRules is the rules text used when a bot has no rules.md.
 func DefaultRules() string {
-	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + OfferRule
+	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + OfferRule + "\n\n" + ReplyRule
 }
 
 const profileInjectMax = 4096
