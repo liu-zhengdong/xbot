@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -167,9 +169,6 @@ func TestRunDuplicateTool(t *testing.T) {
 }
 
 func TestRunToolsInOrder(t *testing.T) {
-	var order []string
-	a := &seqTool{name: "a", order: &order}
-	b := &seqTool{name: "b", order: &order}
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
 			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
@@ -177,11 +176,12 @@ func TestRunToolsInOrder(t *testing.T) {
 		}},
 		{Role: provider.RoleAssistant, Content: "ok"},
 	}}
-	if _, err := Run(context.Background(), p, []tools.Tool{a, b}, nil, Options{}); err != nil {
+	got, err := Run(context.Background(), p, []tools.Tool{&sleepTool{name: "a"}, &sleepTool{name: "b"}}, nil, Options{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(order, ",") != "a,b" {
-		t.Fatalf("order %v", order)
+	if got[1].ToolCallID != "1" || got[1].Content != "a" || got[2].ToolCallID != "2" || got[2].Content != "b" {
+		t.Fatalf("%+v", got)
 	}
 }
 
@@ -197,18 +197,214 @@ func (failTool) Run(context.Context, json.RawMessage) (string, error) {
 	return "", errors.New("boom")
 }
 
-type seqTool struct {
-	name  string
-	order *[]string
+type sleepTool struct {
+	name    string
+	d       time.Duration
+	confirm bool
+	entered chan struct{}
+	onDone  func(string)
 }
 
-func (s *seqTool) Name() string        { return s.name }
-func (s *seqTool) Description() string { return s.name }
-func (s *seqTool) Parameters() any     { return map[string]any{"type": "object"} }
-func (s *seqTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, s.name, nil
+func (s *sleepTool) Name() string        { return s.name }
+func (s *sleepTool) Description() string { return s.name }
+func (s *sleepTool) Parameters() any     { return map[string]any{"type": "object"} }
+func (s *sleepTool) Confirm(json.RawMessage) (bool, string, error) {
+	return s.confirm, s.name, nil
 }
-func (s *seqTool) Run(context.Context, json.RawMessage) (string, error) {
-	*s.order = append(*s.order, s.name)
-	return s.name, nil
+func (s *sleepTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	if s.entered != nil {
+		s.entered <- struct{}{}
+	}
+	timer := time.NewTimer(s.d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-timer.C:
+		if s.onDone != nil {
+			s.onDone(s.name)
+		}
+		return s.name, nil
+	}
+}
+
+func TestParallelToolsBeatSerialTime(t *testing.T) {
+	const d = 200 * time.Millisecond
+	p := &scripted{resps: []provider.Message{{
+		Role: provider.RoleAssistant,
+		ToolCalls: []provider.ToolCall{
+			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
+			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
+			{ID: "3", Type: "function", Function: provider.FunctionCall{Name: "c", Arguments: "{}"}},
+		},
+	}}}
+	start := time.Now()
+	got, err := Run(context.Background(), p, []tools.Tool{
+		&sleepTool{name: "a", d: d},
+		&sleepTool{name: "b", d: d},
+		&sleepTool{name: "c", d: d},
+	}, nil, Options{OneRound: true})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed >= 2*d {
+		t.Fatalf("parallel took %s; serial would be %s", elapsed, 3*d)
+	}
+	if got[1].Content != "a" || got[2].Content != "b" || got[3].Content != "c" {
+		t.Fatalf("order %+v", got)
+	}
+}
+
+func TestToolResultsStayInCallOrder(t *testing.T) {
+	var mu sync.Mutex
+	var finished []string
+	mark := func(name string) {
+		mu.Lock()
+		finished = append(finished, name)
+		mu.Unlock()
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "slow", Arguments: "{}"}},
+			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "fast", Arguments: "{}"}},
+		}},
+		{Role: provider.RoleAssistant, Content: "ok"},
+	}}
+	got, err := Run(context.Background(), p, []tools.Tool{
+		&sleepTool{name: "slow", d: 150 * time.Millisecond, onDone: mark},
+		&sleepTool{name: "fast", onDone: mark},
+	}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(finished, ",") != "fast,slow" {
+		t.Fatalf("finish order %v", finished)
+	}
+	if got[1].ToolCallID != "1" || got[1].Content != "slow" || got[2].ToolCallID != "2" || got[2].Content != "fast" {
+		t.Fatalf("transcript %+v", got[1:3])
+	}
+	msgs := p.reqs[1].Messages
+	if msgs[len(msgs)-2].Content != "slow" || msgs[len(msgs)-1].Content != "fast" {
+		t.Fatalf("next request %+v", msgs[len(msgs)-2:])
+	}
+}
+
+func TestApprovalsAreSerialized(t *testing.T) {
+	var mu sync.Mutex
+	var active, maxActive int
+	started := make(chan struct{})
+	var once sync.Once
+	free := &overlapTool{
+		started: started,
+		active: func() int {
+			mu.Lock()
+			defer mu.Unlock()
+			return active
+		},
+	}
+	p := &scripted{resps: []provider.Message{{
+		Role: provider.RoleAssistant,
+		ToolCalls: []provider.ToolCall{
+			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "ask-a", Arguments: "{}"}},
+			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "free", Arguments: "{}"}},
+			{ID: "3", Type: "function", Function: provider.FunctionCall{Name: "ask-b", Arguments: "{}"}},
+		},
+	}}}
+	got, err := Run(context.Background(), p, []tools.Tool{
+		&sleepTool{name: "ask-a", confirm: true},
+		free,
+		&sleepTool{name: "ask-b", confirm: true},
+	}, nil, Options{
+		OneRound: true,
+		Approve: func(context.Context, string, string) (bool, error) {
+			once.Do(func() { close(started) })
+			mu.Lock()
+			active++
+			if active > maxActive {
+				maxActive = active
+			}
+			mu.Unlock()
+			time.Sleep(120 * time.Millisecond)
+			mu.Lock()
+			active--
+			mu.Unlock()
+			return true, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if maxActive != 1 {
+		t.Fatalf("approvals in flight %d", maxActive)
+	}
+	if !free.saw || got[2].Content != "free" {
+		t.Fatalf("free tool %+v saw %v", got[2], free.saw)
+	}
+	if got[1].ToolCallID != "1" || got[3].ToolCallID != "3" {
+		t.Fatalf("order %+v", got)
+	}
+}
+
+type overlapTool struct {
+	started <-chan struct{}
+	active  func() int
+	saw     bool
+}
+
+func (overlapTool) Name() string        { return "free" }
+func (overlapTool) Description() string { return "free" }
+func (overlapTool) Parameters() any     { return map[string]any{"type": "object"} }
+func (overlapTool) Confirm(json.RawMessage) (bool, string, error) {
+	return false, "free", nil
+}
+func (o *overlapTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	select {
+	case <-o.started:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-time.After(time.Second):
+		return "", errors.New("approval did not start")
+	}
+	if o.active() < 1 {
+		return "", errors.New("approval was not in progress")
+	}
+	o.saw = true
+	return "free", nil
+}
+
+func TestCancelStopsInFlightTools(t *testing.T) {
+	entered := make(chan struct{}, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-entered
+		<-entered
+		cancel()
+	}()
+	p := &scripted{resps: []provider.Message{{
+		Role: provider.RoleAssistant,
+		ToolCalls: []provider.ToolCall{
+			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
+			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
+		},
+	}}}
+	start := time.Now()
+	got, err := Run(ctx, p, []tools.Tool{
+		&sleepTool{name: "a", d: 5 * time.Second, entered: entered},
+		&sleepTool{name: "b", d: 5 * time.Second, entered: entered},
+	}, nil, Options{})
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("cancel took %s", elapsed)
+	}
+	if len(got) != 3 || !strings.Contains(got[1].Content, "canceled") || !strings.Contains(got[2].Content, "canceled") {
+		t.Fatalf("%+v", got)
+	}
+	if got[1].ToolCallID != "1" || got[2].ToolCallID != "2" {
+		t.Fatalf("order %+v", got[1:])
+	}
 }

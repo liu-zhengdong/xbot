@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"xbot/internal/bot"
@@ -1503,17 +1504,26 @@ func readLine(ctx context.Context, r *bufio.Reader) (string, error) {
 type printer struct {
 	yes    bool
 	reader *bufio.Reader
+	mu     sync.Mutex
 	wrote  bool
 	nl     bool
 }
 
 func (p *printer) Delta(s string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	fmt.Fprint(os.Stdout, s)
 	p.wrote = true
 	p.nl = strings.HasSuffix(s, "\n")
 }
 
 func (p *printer) Break() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.breakLocked()
+}
+
+func (p *printer) breakLocked() {
 	if p.wrote && !p.nl {
 		fmt.Fprintln(os.Stdout)
 	}
@@ -1521,11 +1531,15 @@ func (p *printer) Break() {
 }
 
 func (p *printer) Tool(name, summary string) {
-	p.Break()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.breakLocked()
 	fmt.Fprintf(os.Stderr, "[%s] %s\n", name, summary)
 }
 
 func (p *printer) Result(_, output string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	shown, _ := clip.Bytes(output, 400)
 	fmt.Fprintln(os.Stderr, shown)
 }
@@ -1534,7 +1548,9 @@ func (p *printer) Approve(ctx context.Context, _, _ string) (bool, error) {
 	if p.yes {
 		return true, nil
 	}
+	p.mu.Lock()
 	fmt.Fprint(os.Stderr, "Allow? [y/n] ")
+	p.mu.Unlock()
 	line, err := readLine(ctx, p.reader)
 	if err != nil {
 		return false, err

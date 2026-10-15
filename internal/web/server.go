@@ -503,15 +503,21 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	defer gate.Unlock()
 	k.Bot = b
 	var acc strings.Builder
+	var writeMu sync.Mutex
+	sendLocked := func(event string, v any) {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		send(event, v)
+	}
 	k.OnDelta = func(t string) {
 		acc.WriteString(t)
-		send("delta", map[string]string{"text": t})
+		sendLocked("delta", map[string]string{"text": t})
 	}
 	k.OnTool = func(name, summary string) {
-		send("tool", map[string]string{"name": name, "summary": summary})
+		sendLocked("tool", map[string]string{"name": name, "summary": summary})
 	}
 	k.OnResult = func(name, output string) {
-		send("result", map[string]string{"name": name, "output": clip(output, 4000)})
+		sendLocked("result", map[string]string{"name": name, "output": clip(output, 4000)})
 	}
 	err = k.Handle(r.Context(), ev)
 	k.OnDelta, k.OnTool, k.OnResult = nil, nil, nil

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"xbot/internal/clip"
 	"xbot/internal/provider"
@@ -24,6 +25,8 @@ type Options struct {
 	MaxResult int
 	Approve   Approver
 	OnDelta   func(string)
+	// OnTool and OnResult may run at the same time, once per call.
+	// Callers that stream them (the terminal printer, the web SSE writer) must tolerate that.
 	OnTool    func(name, summary string)
 	OnResult  func(name, output string)
 	OnMessage func(provider.Message)
@@ -33,7 +36,9 @@ type Options struct {
 }
 
 // Run calls the model until it stops requesting tools or the step limit is hit.
-// Tool calls in one response run one at a time, in order.
+// Tool calls in one response run concurrently and each respects ctx cancellation.
+// Approvals are asked one at a time; calls that do not need approval keep going.
+// Results are appended in the original call order so the transcript stays deterministic.
 // The returned messages are only the ones produced in this run.
 func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages []provider.Message, opt Options) ([]provider.Message, error) {
 	if opt.MaxSteps <= 0 {
@@ -76,14 +81,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if len(msg.ToolCalls) == 0 {
 			return produced, nil
 		}
-		for _, tc := range msg.ToolCalls {
-			result := execTool(ctx, byName, tc, opt)
-			tm := provider.Message{
-				Role:       provider.RoleTool,
-				ToolCallID: tc.ID,
-				Name:       tc.Function.Name,
-				Content:    result,
-			}
+		for _, tm := range runToolCalls(ctx, byName, msg.ToolCalls, opt) {
 			convo = append(convo, tm)
 			produced = append(produced, tm)
 			if opt.OnMessage != nil {
@@ -97,7 +95,33 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 	return produced, fmt.Errorf("agent: max steps (%d) reached", opt.MaxSteps)
 }
 
-func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options) string {
+// runToolCalls starts every call, then returns tool messages in call order.
+// The approval lock is held only around Approve, so a prompt does not stall the others.
+func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) []provider.Message {
+	out := make([]string, len(calls))
+	var approve sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(len(calls))
+	for i, tc := range calls {
+		go func(i int, tc provider.ToolCall) {
+			defer wg.Done()
+			out[i] = execTool(ctx, byName, tc, opt, &approve)
+		}(i, tc)
+	}
+	wg.Wait()
+	msgs := make([]provider.Message, len(calls))
+	for i, tc := range calls {
+		msgs[i] = provider.Message{
+			Role:       provider.RoleTool,
+			ToolCallID: tc.ID,
+			Name:       tc.Function.Name,
+			Content:    out[i],
+		}
+	}
+	return msgs
+}
+
+func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) string {
 	t, ok := byName[tc.Function.Name]
 	if !ok {
 		return finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))
@@ -115,15 +139,20 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	}
 	if need {
 		approved := false
+		approve.Lock()
 		if opt.Approve != nil {
 			approved, err = opt.Approve(ctx, t.Name(), summary)
-			if err != nil {
-				return finish(opt, t.Name(), "error: "+err.Error())
-			}
+		}
+		approve.Unlock()
+		if err != nil {
+			return finish(opt, t.Name(), "error: "+err.Error())
 		}
 		if !approved {
 			return finish(opt, t.Name(), "denied by user")
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return finish(opt, t.Name(), "error: "+err.Error())
 	}
 	out, err := t.Run(ctx, raw)
 	if err != nil {
