@@ -109,6 +109,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	switch {
+	case strings.Contains(lastUser, "PREAMBLE_ZH") && !sawRemember:
+		writeToolContent(w, "I'll remember those three things.", "call_pre", "remember", `{"fact":"three things","scope":"person","tier":"profile"}`)
+		return
+	case strings.Contains(lastUser, "PREAMBLE_ZH"):
+		writeText(w, "已记住\n")
+		return
 	case strings.Contains(lastUser, "REMEMBER_PERSON") && !sawRemember:
 		writeTools(w, []toolSpec{
 			{"call_rem_person", "remember", `{"fact":"Ada likes tea","scope":"person","tier":"profile"}`},
@@ -341,6 +347,24 @@ func writeTools(w http.ResponseWriter, calls []toolSpec) {
 	writeData(w, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{
 		"role":       "assistant",
 		"tool_calls": tcs,
+	}}}})
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flush(w)
+}
+
+func writeToolContent(w http.ResponseWriter, content, id, name, args string) {
+	writeData(w, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{
+		"role":    "assistant",
+		"content": content,
+		"tool_calls": []any{map[string]any{
+			"index": 0,
+			"id":    id,
+			"type":  "function",
+			"function": map[string]any{
+				"name":      name,
+				"arguments": args,
+			},
+		}},
 	}}}})
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flush(w)

@@ -17,7 +17,7 @@ import (
 	"xbot/internal/provider"
 )
 
-const DefaultPersona = "You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete."
+const DefaultPersona = "You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete. Answer in the owner's language. Do not narrate a plan before you act."
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 

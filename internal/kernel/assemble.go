@@ -23,9 +23,12 @@ const OwnerRule = "Messages from an owner on the terminal or web link are truste
 // SilenceRule tells a timer wake to stay quiet when nothing is worth reporting.
 const SilenceRule = "On a timer wake, call notify_owner only when something is worth the owner's attention. If nothing is worth saying, reply with exactly SILENT and do not call notify_owner."
 
+// LanguageRule keeps the reply in the owner's language and out of a planning preamble.
+const LanguageRule = "Answer in the owner's language. When the owner writes Chinese, answer in Chinese. Do not narrate a plan, and do not open with an English sentence about what you are going to do. Call tools first, then give the result."
+
 // DefaultRules is the rules text used when a bot has no rules.md.
 func DefaultRules() string {
-	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + SilenceRule
+	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule
 }
 
 const profileInjectMax = 4096

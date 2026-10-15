@@ -630,31 +630,29 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	gate.Lock()
 	defer gate.Unlock()
 	k.Bot = b
-	var acc strings.Builder
-	var held strings.Builder
+	var seg strings.Builder
+	sent := 0
 	var writeMu sync.Mutex
 	sendLocked := func(event string, v any) {
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		send(event, v)
 	}
-	flushHeld := func() {
-		s := held.String()
-		held.Reset()
-		if s == "" || bot.SilentText(s) {
-			return
-		}
-		acc.WriteString(s)
-		sendLocked("delta", map[string]string{"text": s})
-	}
 	k.OnDelta = func(t string) {
-		held.WriteString(t)
-		if bot.SilentPrefix(held.String()) {
+		seg.WriteString(t)
+		if bot.SilentPrefix(seg.String()) {
 			return
 		}
-		flushHeld()
+		rest := seg.String()[sent:]
+		sent = seg.Len()
+		if rest != "" {
+			sendLocked("delta", map[string]string{"text": rest})
+		}
 	}
 	k.OnTool = func(name, summary string) {
+		// Text before a tool call is status. The final done text is only the reply after the last tool.
+		seg.Reset()
+		sent = 0
 		sendLocked("tool", map[string]string{"name": name, "summary": summary})
 	}
 	k.OnResult = func(name, output string) {
@@ -669,12 +667,11 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		send("error", map[string]string{"error": err.Error()})
 		return
 	}
-	if bot.SilentText(held.String()) {
-		held.Reset()
-	} else {
-		flushHeld()
+	reply := seg.String()
+	if bot.SilentText(reply) {
+		reply = ""
 	}
-	send("done", map[string]string{"text": acc.String()})
+	send("done", map[string]string{"text": reply})
 }
 
 func (s *Server) approvalWait() time.Duration {
