@@ -60,14 +60,34 @@ try {
           <svg class="icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span>连接应用</span>
         </button>
-        <div id="connect-pop" class="pop" hidden>
-          <div class="pop-row"><span>终端</span><i class="status-dot ok" data-tip="已启用"></i></div>
-          <div class="pop-row"><span>浏览器</span><i class="status-dot off" data-tip="未连接"></i></div>
-          <div class="pop-row"><span>桌面</span><i class="status-dot off" data-tip="未连接"></i></div>
-          <div class="pop-row"><span>MCP</span><i class="status-dot off" data-tip="未连接"></i></div>
-          <div class="pop-row" id="phone-push-row"><span id="phone-push-state">手机推送未开启</span><i id="phone-push-dot" class="status-dot off" data-tip="未开启"></i></div>
-          <button id="phone-push" type="button">开启手机推送</button>
-          <p id="phone-push-hint" class="push-hint">页面开着时仍在这里提示。没有页面连着时，才推到手机。免打扰时段不推送。</p>
+        <div id="connect-pop" class="pop connect-pop" hidden>
+          <div class="connect-row">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/></svg>
+            <span class="name">终端</span>
+            <span class="status"><i class="status-dot ok"></i>已启用</span>
+          </div>
+          <div class="connect-row">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+            <span class="name">浏览器</span>
+            <span class="status"><i class="status-dot off"></i>未连接</span>
+          </div>
+          <div class="connect-row">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+            <span class="name">桌面</span>
+            <span class="status"><i class="status-dot off"></i>未连接</span>
+          </div>
+          <div class="connect-row">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a6 6 0 0 1-12 0V8Z"/></svg>
+            <span class="name">MCP</span>
+            <span class="status"><i class="status-dot off"></i>未连接</span>
+          </div>
+          <button id="phone-push" class="connect-row" type="button" role="switch" aria-checked="false" aria-label="手机推送">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
+            <span class="name">手机推送</span>
+            <span class="switch" aria-hidden="true"></span>
+          </button>
+          <p id="phone-push-hint" class="push-hint" hidden>免打扰时段不推送</p>
+          <div class="connect-sep" role="separator"></div>
           <button id="logout" type="button">退出</button>
           <button id="collapse" class="desk-only" type="button">收起列表</button>
         </div>

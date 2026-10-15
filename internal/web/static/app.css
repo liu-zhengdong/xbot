@@ -1289,10 +1289,47 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .pop button:active:not(:disabled) { background: var(--selected); }
 
-.push-hint {
-  margin: 0; padding: 2px 10px 8px;
-  font-size: 12px; line-height: 1.45; color: var(--muted);
+.connect-pop { min-width: 232px; }
+
+.connect-pop .connect-row {
+  width: 100%; min-height: 36px; padding: 0 8px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+  border: 0; border-radius: 8px; background: transparent;
+  font-size: 14px; font-weight: 500; color: var(--text);
 }
+
+.connect-pop .connect-row .icon { width: 16px; height: 16px; color: var(--muted); }
+
+.connect-pop .connect-row .name { flex: 1; min-width: 0; }
+
+.connect-pop .status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--muted);
+}
+
+.connect-pop .switch {
+  width: 36px; height: 20px; border-radius: 999px; flex: none;
+  background: var(--fill-hover); position: relative;
+}
+
+.connect-pop .switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 999px; background: #fff;
+  transition: transform 160ms ease-out;
+}
+
+.connect-pop #phone-push[aria-checked="true"] .switch { background: var(--primary); }
+
+.connect-pop #phone-push[aria-checked="true"] .switch::after { transform: translateX(16px); }
+
+.connect-sep { height: 1px; margin: 6px 8px; background: var(--fill); border: 0; }
+
+.push-hint {
+  margin: 0; padding: 0 8px 4px 34px;
+  font-size: 12px; line-height: 16px; color: var(--muted);
+}
+
+.push-hint.bad { color: var(--err); }
 
 .more-wrap { position: relative; flex: none; }
 
