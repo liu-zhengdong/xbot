@@ -85,7 +85,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	now := t0
 	call := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
 		ID: "c1", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"tone":"warm and plain","proactivity":"quiet"}`},
+		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"tone":"warm and plain"}`},
 	}}}
 	p := &scripted{resps: []provider.Message{
 		call,
@@ -123,7 +123,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if b.StyleCopy().Tone != "warm and plain" || b.Config().Proactivity != "quiet" {
+	if b.StyleCopy().Tone != "warm and plain" || b.Config().Proactivity != "" {
 		t.Fatalf("profile %+v %s", b.StyleCopy(), b.Config().Proactivity)
 	}
 	now = t0.Add(10 * time.Minute)
@@ -131,7 +131,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	prefix := p.reqs[len(p.reqs)-1].Messages[0].Content
-	if !strings.Contains(prefix, "Tone: warm and plain") || !strings.Contains(prefix, "Proactivity: quiet.") {
+	if !strings.Contains(prefix, "Tone: warm and plain") || strings.Contains(prefix, "Proactivity:") {
 		t.Fatal(prefix)
 	}
 	updates := envUpdates(t, b)
@@ -143,9 +143,8 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 
 func TestNotifyThresholdAndQuietHours(t *testing.T) {
 	b := testBot(t)
-	pro := "quiet"
 	start, end, utc := "22:00", "07:00", "UTC"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &pro, QuietStart: &start, QuietEnd: &end, Timezone: &utc}); err != nil {
+	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &utc}); err != nil {
 		t.Fatal(err)
 	}
 	var desks []string
@@ -189,29 +188,15 @@ func TestNotifyThresholdAndQuietHours(t *testing.T) {
 		t.Fatalf("desks %v", desks)
 	}
 
-	active := "active"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &active}); err != nil {
-		t.Fatal(err)
-	}
-	k.turnSource = link.NameTimer
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"small","importance":"low"}`))
-	if err != nil || out != "notified the owner" {
-		t.Fatalf("active %s %v", out, err)
-	}
-	quiet := "quiet"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &quiet, QuietStart: new(string), QuietEnd: new(string)}); err != nil {
+	empty := ""
+	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &empty, QuietEnd: &empty}); err != nil {
 		t.Fatal(err)
 	}
 	k.turnSource = link.NameWebhook
 	k.turnTrusted = false
-	before, _ := notify.Open(b.OutboxPath()).Unread()
 	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"skip me","importance":"low"}`))
-	if err != nil || !strings.Contains(out, "below the proactivity threshold") {
+	if err != nil || out != "notified the owner" {
 		t.Fatalf("untrusted low %s %v", out, err)
-	}
-	after, _ := notify.Open(b.OutboxPath()).Unread()
-	if len(after) != len(before) {
-		t.Fatal("untrusted low wrote a note")
 	}
 	k.turnSource = link.NameTerminal
 	k.turnTrusted = true

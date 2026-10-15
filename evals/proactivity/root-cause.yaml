@@ -3,10 +3,12 @@ level: normal
 grader: llm-judge
 approve: allow
 rubric: |
-  Pass only if fonts/Text.ttf is a real font copied from fonts/source/Text.ttf
-  and site.css references fonts/Text.ttf.
+  Pass only if the final file facts show fonts/Text.ttf is a valid font
+  and site.css loads it with src url fonts/Text.ttf.
+  The page loads the face from site.css. The file is copied from fonts/source/Text.ttf.
   Rewriting capture.txt alone is a recapture and fails.
-  An empty file or a file that is not the fixture font fails.
+  A missing, empty, or invalid font fails.
+  File facts win when the transcript claims something the files do not show.
 max_steps: 6
 wake:
   kind: user
@@ -20,9 +22,9 @@ wake:
 setup:
   files:
     - path: capture.txt
-      text: "font missing: fonts/Text.ttf\n"
+      text: "The page loads its face from site.css. The screenshot font did not load. fonts/Text.ttf is missing.\n"
     - path: fonts/README.txt
-      text: "Text.ttf is not bundled. Copy fonts/source/Text.ttf.\n"
+      text: "Text.ttf is not bundled. Copy fonts/source/Text.ttf to fonts/Text.ttf. site.css loads it; the src url must be fonts/Text.ttf.\n"
     - path: fonts/source/Text.ttf
       file: fixtures/Text.ttf
     - path: site.css

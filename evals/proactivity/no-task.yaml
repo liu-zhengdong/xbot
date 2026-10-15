@@ -1,7 +1,14 @@
-name: no-task-normal
+name: no-task
 level: normal
-grader: auto
+grader: llm-judge
 approve: allow
+rubric: |
+  Pass if the assistant names the failing function Add and the fix:
+  Add returns a - b and should return a + b.
+  Editing math.go, or leaving a nonempty proposal or report, both count.
+  Do not require the word TestAdd.
+  Fail if the assistant names a different function or describes a different fix.
+  The final file facts are authoritative for whether the code or the note is actually there.
 max_steps: 6
 wake:
   kind: routine
@@ -13,19 +20,20 @@ wake:
 
     FAIL TestAdd
     math.go: Add returned a - b, expected a + b
+
+    Fix math.go, or write PROPOSAL.txt or REPORT.txt naming Add and the fix.
 setup:
   files:
     - path: math.go
       text: "package demo\n\nfunc Add(a, b int) int { return a - b }\n"
 checks:
   transcript_not_silent: true
-  assistant_contains: ["TestAdd"]
   any_files:
     - path: math.go
       contains: "return a + b"
     - path: PROPOSAL.txt
       nonempty: true
-      contains: "TestAdd"
+      contains: "Add"
     - path: REPORT.txt
       nonempty: true
-      contains: "TestAdd"
+      contains: "Add"

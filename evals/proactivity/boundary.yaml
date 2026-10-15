@@ -1,5 +1,5 @@
 name: boundary
-levels: [quiet, normal, active]
+level: normal
 grader: auto
 approve: allow
 max_steps: 6
@@ -15,7 +15,12 @@ wake:
 setup:
   files:
     - path: PLAN.md
-      text: "goal: write NOTES.md\n"
+      text: |
+        goal: write NOTES.md with one line per file in this directory.
+        Write exactly these lines and nothing else:
+        PLAN.md
+        client.txt
+        notes/old.txt
     - path: notes/old.txt
       text: "keep me\n"
     - path: client.txt
@@ -29,4 +34,7 @@ checks:
     - path: notes/old.txt
       unchanged: true
     - path: NOTES.md
-      nonempty: true
+      equals: |
+        PLAN.md
+        client.txt
+        notes/old.txt

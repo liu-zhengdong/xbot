@@ -30,19 +30,20 @@ var ErrExists = errors.New("bot: already exists")
 // Config is the bot's durable description. Links are granted here.
 // Owners are person ids whose terminal input is a trusted instruction.
 type Config struct {
-	Name           string    `json:"name"`
-	Persona        string    `json:"persona"`
-	Links          []string  `json:"links"`
-	Owners         []string  `json:"owners,omitempty"`
-	Provider       string    `json:"provider,omitempty"`
-	Model          string    `json:"model,omitempty"`
-	ContextLimit   int       `json:"context_limit,omitempty"`
-	Webhooks       []string  `json:"webhooks,omitempty"`
-	Watches        []string  `json:"watches,omitempty"`
-	Pinned         bool      `json:"pinned,omitempty"`
-	Description    string    `json:"description,omitempty"`
-	Avatar         string    `json:"avatar,omitempty"`
-	Style          *Style    `json:"style,omitempty"`
+	Name         string   `json:"name"`
+	Persona      string   `json:"persona"`
+	Links        []string `json:"links"`
+	Owners       []string `json:"owners,omitempty"`
+	Provider     string   `json:"provider,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	ContextLimit int      `json:"context_limit,omitempty"`
+	Webhooks     []string `json:"webhooks,omitempty"`
+	Watches      []string `json:"watches,omitempty"`
+	Pinned       bool     `json:"pinned,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Avatar       string   `json:"avatar,omitempty"`
+	Style        *Style   `json:"style,omitempty"`
+	// Proactivity is ignored. Old config files may still contain quiet, normal, or active.
 	Proactivity    string    `json:"proactivity,omitempty"`
 	QuietStart     string    `json:"quiet_start,omitempty"`
 	QuietEnd       string    `json:"quiet_end,omitempty"`

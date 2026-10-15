@@ -23,10 +23,6 @@ func TestWebhookReplyBecomesNote(t *testing.T) {
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	b := mustBot(t, root, "ada")
-	active := "active"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &active}); err != nil {
-		t.Fatal(err)
-	}
 	k := findingKernel(b, client)
 	ev := link.NewEvent("webhook:orders", "push", "PEANUT_ORDER cake with peanut topping", "hook", time.Now().UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -48,10 +44,6 @@ func TestWebhookSilentProducesNoNote(t *testing.T) {
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	b := mustBot(t, root, "ada")
-	active := "active"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Proactivity: &active}); err != nil {
-		t.Fatal(err)
-	}
 	k := findingKernel(b, client)
 	ev := link.NewEvent("webhook:orders", "push", "WEBHOOK_SILENT nothing to say", "hook", time.Now().UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {

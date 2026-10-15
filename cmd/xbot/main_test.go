@@ -405,8 +405,8 @@ func TestParseProfileAndTemplate(t *testing.T) {
 	if opt.Bot != "ada" || opt.Tone != "warm" || opt.Quiet != "22:00-07:00" || opt.Name != "notes" || !opt.Set["tone"] || !opt.Set["quiet"] || !opt.Set["name"] {
 		t.Fatalf("%+v", opt)
 	}
-	opt, err = parseProfileSet([]string{"--description", "项目笔记", "--proactivity", "quiet", "ada"})
-	if err != nil || opt.Bot != "ada" || opt.Description != "项目笔记" || !opt.Set["proactivity"] || opt.Set["tone"] {
+	opt, err = parseProfileSet([]string{"--description", "项目笔记", "--language", "中文", "ada"})
+	if err != nil || opt.Bot != "ada" || opt.Description != "项目笔记" || !opt.Set["language"] || opt.Set["tone"] {
 		t.Fatalf("%+v %v", opt, err)
 	}
 	if _, err := parseProfileSet([]string{"ada"}); err == nil {
@@ -442,7 +442,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "SECRET-TRANSCRIPT"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--tone", "warm", "--length", "short", "--emoji", "spare", "--language", "中文", "--proactivity", "quiet", "--quiet", "22:00-07:00"}); err != nil {
+	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--tone", "warm", "--length", "short", "--emoji", "spare", "--language", "中文", "--quiet", "22:00-07:00"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdProfile(root, []string{"set", "ada", "--name", "notes"}); err != nil {
@@ -452,7 +452,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Config().Description != "项目笔记" || b.StyleCopy().Tone != "warm" || b.StyleCopy().Length != "short" || b.Config().Proactivity != "quiet" || b.Config().QuietStart != "22:00" || b.Config().QuietEnd != "07:00" {
+	if b.Config().Description != "项目笔记" || b.StyleCopy().Tone != "warm" || b.StyleCopy().Length != "short" || b.Config().QuietStart != "22:00" || b.Config().QuietEnd != "07:00" {
 		t.Fatalf("%+v", b.Config())
 	}
 	out := filepath.Join(root, "notes.json")

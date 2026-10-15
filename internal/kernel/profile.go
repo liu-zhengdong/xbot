@@ -60,7 +60,7 @@ type profileTool struct{ k *Kernel }
 
 func (profileTool) Name() string { return "propose_profile" }
 func (profileTool) Description() string {
-	return "Propose a profile change: name, description, speaking style, proactivity, quiet hours, or timezone. It is saved only after the owner confirms, and applies on the next wake."
+	return "Propose a profile change: name, description, speaking style, quiet hours, or timezone. It is saved only after the owner confirms, and applies on the next wake."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
@@ -70,7 +70,6 @@ func (profileTool) Parameters() any {
 		"length":      stringProp("short, medium, long, or empty"),
 		"emoji":       stringProp("none, spare, often, or empty"),
 		"language":    stringProp("default reply language; empty clears it"),
-		"proactivity": stringProp("quiet, normal, active, or empty"),
 		"quiet_start": stringProp("quiet hours start HH:MM in the bot's timezone; set with quiet_end"),
 		"quiet_end":   stringProp("quiet hours end HH:MM in the bot's timezone; set with quiet_start"),
 		"timezone":    stringProp("IANA timezone such as Asia/Shanghai; empty uses the machine zone"),
@@ -123,7 +122,7 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 	}
 	known := []string{
 		"name", "description", "tone", "length", "emoji",
-		"language", "proactivity", "quiet_start", "quiet_end", "timezone",
+		"language", "quiet_start", "quiet_end", "timezone",
 	}
 	allowed := map[string]bool{}
 	for _, key := range known {
@@ -165,9 +164,6 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 		case "language":
 			update.Language = &s
 			parts = append(parts, "language "+quote(s))
-		case "proactivity":
-			update.Proactivity = &s
-			parts = append(parts, "proactivity "+quote(s))
 		case "quiet_start":
 			update.QuietStart = &s
 			parts = append(parts, "quiet_start "+quote(s))

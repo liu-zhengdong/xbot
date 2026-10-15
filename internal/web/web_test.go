@@ -278,7 +278,7 @@ func TestProfileAPI(t *testing.T) {
 	raw, _ := io.ReadAll(res.Body)
 	res.Body.Close()
 	wantModel := config.FromEnv(os.Getenv).Model
-	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"tone":"warm"`)) || !bytes.Contains(raw, []byte(`"proactivity":"quiet"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) || !bytes.Contains(raw, []byte(`"model":"`+wantModel+`"`)) {
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"tone":"warm"`)) || bytes.Contains(raw, []byte(`"proactivity"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) || !bytes.Contains(raw, []byte(`"model":"`+wantModel+`"`)) {
 		t.Fatalf("panel %d %s", res.StatusCode, raw)
 	}
 	res = do(http.MethodGet, "/api/bots", nil, "")

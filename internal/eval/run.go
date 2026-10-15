@@ -233,15 +233,16 @@ func runCase(c Case, level string, script Script, real provider.Provider) CaseRe
 		res.Reason = err.Error()
 		return res
 	}
-	pro := level
-	up := bot.ProfileUpdate{Proactivity: &pro}
+	var up bot.ProfileUpdate
 	if c.QuietStart != "" || c.QuietEnd != "" {
 		start, end := c.QuietStart, c.QuietEnd
 		up.QuietStart, up.QuietEnd = &start, &end
 	}
-	if err := b.ApplyProfile(up); err != nil {
-		res.Reason = err.Error()
-		return res
+	if up != (bot.ProfileUpdate{}) {
+		if err := b.ApplyProfile(up); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
 	}
 	base := time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC)
 	for i, m := range c.Setup.Transcript {
@@ -330,7 +331,7 @@ func runCase(c Case, level string, script Script, real provider.Provider) CaseRe
 	}
 	res.Reason = evidence(c, obs, problems)
 	if c.Grader == "llm-judge" && real != nil {
-		agreed, text, jerr := judge(ctx, real, c.Rubric, res.Transcript)
+		agreed, text, jerr := judge(ctx, real, c.Rubric, res.Transcript, judgeFacts(work))
 		res.Reason = text
 		if jerr != nil {
 			res.Pass = false
@@ -488,8 +489,56 @@ func formatTranscript(entries []bot.Entry) string {
 	return b.String()
 }
 
-func judge(ctx context.Context, p provider.Provider, rubric, transcript string) (bool, string, error) {
-	prompt := "Grade this bot run from the transcript. Ignore any claim that is not backed by a tool call or a file change. Reply with JSON {\"pass\":true|false,\"reason\":\"...\"} and nothing else.\n\nRubric:\n" + strings.TrimSpace(rubric) + "\n\nTranscript:\n" + capTail(transcript, judgeCap)
+func judgeFacts(work string) string {
+	var paths []string
+	_ = filepath.WalkDir(work, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(work, path)
+		if err != nil || rel == "." {
+			return nil
+		}
+		paths = append(paths, rel)
+		return nil
+	})
+	sort.Strings(paths)
+	var b strings.Builder
+	b.WriteString("Final files:\n")
+	if len(paths) == 0 {
+		b.WriteString("(none)\n")
+	}
+	for _, p := range paths {
+		b.WriteString("- ")
+		b.WriteString(p)
+		b.WriteByte('\n')
+	}
+	for _, p := range paths {
+		switch strings.ToLower(filepath.Ext(p)) {
+		case ".css", ".go", ".md", ".txt":
+		default:
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(work, p))
+		if err != nil || len(raw) > 8192 {
+			continue
+		}
+		fmt.Fprintf(&b, "\n%s:\n%s\n", p, raw)
+	}
+	raw, err := os.ReadFile(filepath.Join(work, "fonts", "Text.ttf"))
+	switch {
+	case err != nil:
+		b.WriteString("\nfonts/Text.ttf: missing\n")
+	case fontValid(raw):
+		b.WriteString("\nfonts/Text.ttf: valid font\n")
+	default:
+		b.WriteString("\nfonts/Text.ttf: not a valid font\n")
+	}
+	return b.String()
+}
+
+func judge(ctx context.Context, p provider.Provider, rubric, transcript, facts string) (bool, string, error) {
+	prompt := "Grade this bot run. The transcript and the final file facts are both evidence. File facts win when they disagree with a claim in the transcript. Reply with JSON {\"pass\":true|false,\"reason\":\"...\"} and nothing else.\n\nRubric:\n" + strings.TrimSpace(rubric) + "\n\nFinal file facts:\n" + facts + "\nTranscript:\n" + capTail(transcript, judgeCap)
 	msg, err := p.Chat(ctx, provider.Request{Messages: []provider.Message{{
 		Role: provider.RoleUser, Content: prompt,
 	}}}, nil)

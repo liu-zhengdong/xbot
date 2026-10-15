@@ -445,7 +445,6 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"name": b.Name(), "persona": persona,
 		"description": b.Config().Description,
 		"style":       b.StyleCopy(),
-		"proactivity": b.Config().Proactivity,
 		"quiet_start": b.Config().QuietStart,
 		"quiet_end":   b.Config().QuietEnd,
 		"timezone":    b.Config().Timezone,

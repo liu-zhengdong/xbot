@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
@@ -261,7 +260,7 @@ type notifyTool struct{ k *Kernel }
 
 func (notifyTool) Name() string { return "notify_owner" }
 func (notifyTool) Description() string {
-	return "Leave a notification for the owner. importance is low, normal, or high. A routine wake always delivers, whatever the importance. On a self-initiated or untrusted-source wake, quiet bots deliver only high, normal bots deliver normal and high, and active bots deliver all. During quiet hours the note is held and sent as one batch when the window ends."
+	return "Leave a notification for the owner. importance is low, normal, or high. The note is delivered on any wake. During quiet hours the note is held and sent as one batch when the window ends."
 }
 func (notifyTool) Parameters() any {
 	return schema(map[string]any{
@@ -282,10 +281,6 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if text == "" {
 		return "", errors.New("notify: empty text")
 	}
-	cfg := t.k.Bot.Config()
-	if t.k.gateNotify() && !bot.AllowsNotify(cfg.Proactivity, in.Importance) {
-		return "not notified: below the proactivity threshold", nil
-	}
 	if t.k.Bot.InQuietAt(t.k.now()) {
 		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
 			return "", err
@@ -304,18 +299,6 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		return "sent the quiet-hours batch, then notified the owner", nil
 	}
 	return "notified the owner", nil
-}
-
-// gateNotify keeps the proactivity filter for self-initiated and untrusted wakes.
-// A routine wake is an owner-requested reminder and always delivers.
-// Owner chat on the terminal or web always delivers.
-func (k *Kernel) gateNotify() bool {
-	switch k.turnSource {
-	case "", link.NameTimer, link.NameTerminal, link.NameWeb:
-		return false
-	default:
-		return !k.turnTrusted
-	}
 }
 
 func deliverNote(ctx context.Context, k *Kernel, text string) error {
@@ -346,7 +329,7 @@ func (k *Kernel) alreadyNoted() bool {
 // pushFindings delivers a non-empty final reply from an untrusted wake.
 // Owner chat on the terminal or web is not pushed. SILENT is not a finding.
 // A notify_owner that already delivered or held a note this turn is the note;
-// the trailing reply is not sent again. Proactivity and quiet hours still apply.
+// the trailing reply is not sent again. Quiet hours still hold the note.
 func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
 	switch k.turnSource {
 	case link.NameTerminal, link.NameWeb:
@@ -357,10 +340,6 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	}
 	text := finalAssistantText(produced)
 	if text == "" || text == "SILENT" {
-		return nil
-	}
-	cfg := k.Bot.Config()
-	if !bot.AllowsNotify(cfg.Proactivity, "normal") {
 		return nil
 	}
 	if k.Bot.InQuietAt(k.now()) {

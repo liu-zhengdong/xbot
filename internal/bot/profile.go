@@ -80,7 +80,6 @@ type ProfileUpdate struct {
 	Length      *string
 	Emoji       *string
 	Language    *string
-	Proactivity *string
 	QuietStart  *string
 	QuietEnd    *string
 	Timezone    *string
@@ -132,13 +131,6 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		cfg.Style = nil
 	} else {
 		cfg.Style = &st
-	}
-	if u.Proactivity != nil {
-		v, err := oneOf(flat(*u.Proactivity), "", "quiet", "normal", "active")
-		if err != nil {
-			return fmt.Errorf("bot: proactivity: %w", err)
-		}
-		cfg.Proactivity = v
 	}
 	start, end := cfg.QuietStart, cfg.QuietEnd
 	if u.QuietStart != nil {
@@ -202,14 +194,6 @@ func (b *Bot) ProfileText() string {
 	if st.Language != "" {
 		lines = append(lines, "Language: reply in "+st.Language+".")
 	}
-	switch b.cfg.Proactivity {
-	case "quiet":
-		lines = append(lines, "Proactivity: quiet. Owner-requested routines always notify. On a self-initiated or untrusted wake, notify the owner only when they would want to be interrupted. Set importance to high, otherwise stay silent.")
-	case "normal":
-		lines = append(lines, "Proactivity: normal. Owner-requested routines always notify. On a self-initiated or untrusted wake, notify the owner when something is worth their attention.")
-	case "active":
-		lines = append(lines, "Proactivity: active. Notify the owner about anything they might want to know, including on untrusted wakes. Importance may be low.")
-	}
 	if b.cfg.QuietStart != "" && b.cfg.QuietEnd != "" && b.cfg.QuietStart != b.cfg.QuietEnd {
 		lines = append(lines, fmt.Sprintf("Quiet hours: %s–%s %s. Notifications are held and sent as one batch when quiet hours end.", b.cfg.QuietStart, b.cfg.QuietEnd, b.QuietLocation().String()))
 	}
@@ -227,31 +211,6 @@ func (b *Bot) ComposedPersona() (string, error) {
 		return persona, nil
 	}
 	return persona + "\n\n" + extra, nil
-}
-
-// AllowsNotify reports whether a routine wake at this proactivity should deliver
-// a note of the given importance. Empty proactivity is normal. Empty importance is normal.
-// Non-routine wakes do not use this gate.
-func AllowsNotify(level, importance string) bool {
-	level = flat(level)
-	if level == "" {
-		level = "normal"
-	}
-	importance = flat(importance)
-	if importance == "" {
-		importance = "normal"
-	}
-	rank := map[string]int{"low": 1, "normal": 2, "high": 3}
-	need := map[string]int{"quiet": 3, "normal": 2, "active": 1}
-	ir, ok := rank[importance]
-	if !ok {
-		ir = 2
-	}
-	nr, ok := need[level]
-	if !ok {
-		nr = 2
-	}
-	return ir >= nr
 }
 
 // QuietLocation is the clock for quiet hours: the bot's IANA zone,
@@ -430,10 +389,11 @@ type TemplateRoutine struct {
 
 // Template is a bot without memory or transcript.
 type Template struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Persona     string            `json:"persona,omitempty"`
-	Style       Style             `json:"style,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Persona     string `json:"persona,omitempty"`
+	Style       Style  `json:"style,omitempty"`
+	// Proactivity is accepted on old templates and ignored.
 	Proactivity string            `json:"proactivity,omitempty"`
 	QuietStart  string            `json:"quiet_start,omitempty"`
 	QuietEnd    string            `json:"quiet_end,omitempty"`
@@ -454,7 +414,6 @@ func ExportTemplate(b *Bot) (Template, error) {
 		Description: b.cfg.Description,
 		Persona:     persona,
 		Style:       b.StyleCopy(),
-		Proactivity: b.cfg.Proactivity,
 		QuietStart:  b.cfg.QuietStart,
 		QuietEnd:    b.cfg.QuietEnd,
 		Timezone:    b.cfg.Timezone,
@@ -506,10 +465,10 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 		}
 	}
 	desc, tone, length, emoji, lang := tpl.Description, tpl.Style.Tone, tpl.Style.Length, tpl.Style.Emoji, tpl.Style.Language
-	pro, qs, qe, tz := tpl.Proactivity, tpl.QuietStart, tpl.QuietEnd, tpl.Timezone
+	qs, qe, tz := tpl.QuietStart, tpl.QuietEnd, tpl.Timezone
 	if err := b.ApplyProfile(ProfileUpdate{
 		Description: &desc, Tone: &tone, Length: &length, Emoji: &emoji, Language: &lang,
-		Proactivity: &pro, QuietStart: &qs, QuietEnd: &qe, Timezone: &tz,
+		QuietStart: &qs, QuietEnd: &qe, Timezone: &tz,
 	}); err != nil {
 		return fail(err)
 	}

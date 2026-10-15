@@ -21,7 +21,7 @@ type Report struct {
 	Markdown  string       `json:"-"`
 }
 
-// CaseResult is one case at one proactivity level.
+// CaseResult is one eval case.
 // Pass is the majority of Runs. Reason lists every run.
 type CaseResult struct {
 	Name           string      `json:"name"`

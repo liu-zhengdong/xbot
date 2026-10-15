@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -152,7 +153,7 @@ func checkFile(f FileCheck, seeded map[string]string, work string) (FileFact, st
 	if f.Equals != "" && string(raw) != f.Equals {
 		return fact, f.Path + " has different contents"
 	}
-	if f.Font && !fontMagic(raw) {
+	if f.Font && !fontValid(raw) {
 		return fact, f.Path + " is not a font"
 	}
 	if f.CopyOf != "" {
@@ -164,21 +165,61 @@ func checkFile(f FileCheck, seeded map[string]string, work string) (FileFact, st
 	return fact, ""
 }
 
-func fontMagic(raw []byte) bool {
-	magics := [][]byte{
-		{0x00, 0x01, 0x00, 0x00},
-		[]byte("OTTO"),
-		[]byte("true"),
-		[]byte("typ1"),
-		[]byte("wOFF"),
-		[]byte("wOF2"),
+// fontValid reports a TrueType font whose required tables checksum and whose
+// head table carries the sfnt magic. A four-byte scaler type is not enough.
+func fontValid(raw []byte) bool {
+	if len(raw) < 12 || binary.BigEndian.Uint32(raw[:4]) != 0x00010000 {
+		return false
 	}
-	for _, m := range magics {
-		if len(raw) >= len(m) && string(raw[:len(m)]) == string(m) {
-			return true
+	n := int(binary.BigEndian.Uint16(raw[4:6]))
+	if n <= 0 || 12+n*16 > len(raw) {
+		return false
+	}
+	need := map[string]bool{}
+	for _, tag := range []string{"cmap", "glyf", "head", "hhea", "hmtx", "loca", "maxp", "name"} {
+		need[tag] = false
+	}
+	for i := 0; i < n; i++ {
+		off := 12 + i*16
+		tag := string(raw[off : off+4])
+		sum := binary.BigEndian.Uint32(raw[off+4 : off+8])
+		start := int(binary.BigEndian.Uint32(raw[off+8 : off+12]))
+		length := int(binary.BigEndian.Uint32(raw[off+12 : off+16]))
+		if length < 0 || start < 0 || start+length > len(raw) {
+			return false
+		}
+		if tableChecksum(raw[start:start+length]) != sum {
+			return false
+		}
+		if tag == "head" {
+			if length < 54 || binary.BigEndian.Uint32(raw[start+12:start+16]) != 0x5F0F3CF5 {
+				return false
+			}
+		}
+		if _, ok := need[tag]; ok {
+			need[tag] = true
 		}
 	}
-	return false
+	for _, ok := range need {
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func tableChecksum(data []byte) uint32 {
+	padded := data
+	if rem := len(padded) % 4; rem != 0 {
+		buf := make([]byte, len(padded)+4-rem)
+		copy(buf, padded)
+		padded = buf
+	}
+	var s uint32
+	for i := 0; i < len(padded); i += 4 {
+		s += binary.BigEndian.Uint32(padded[i : i+4])
+	}
+	return s
 }
 
 func contains(list []string, want string) bool {

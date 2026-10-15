@@ -1999,8 +1999,6 @@
     if (style.tone) bits.push(style.tone);
     if (style.length) bits.push(style.length === "short" ? "短" : style.length === "long" ? "长" : style.length === "medium" ? "中" : style.length);
     if (style.language) bits.push(style.language);
-    const pro = { quiet: "安静", normal: "适中", active: "积极" }[data.proactivity] || "";
-    if (pro) bits.push(pro);
     return dedupeChips(bits);
   }
 
@@ -2009,8 +2007,6 @@
     ["短", "简短", "简洁", "精简", "简明", "short", "brief", "concise"],
     ["长", "详细", "详尽", "long", "detailed"],
     ["中", "适中", "中等", "medium"],
-    ["安静", "quiet"],
-    ["积极", "主动", "active"],
   ];
 
   function chipMeanings(text) {
@@ -2230,7 +2226,6 @@
     const length = choice([["", "未设置"], ["short", "短"], ["medium", "中"], ["long", "长"]], style.length);
     const emoji = choice([["", "未设置"], ["none", "不用"], ["spare", "少量"], ["often", "常用"]], style.emoji);
     const language = textInput(style.language, 40);
-    const pro = choice([["", "未设置"], ["quiet", "安静"], ["normal", "适中"], ["active", "积极"]], data.proactivity);
     const quietStart = textInput(data.quiet_start, 5);
     quietStart.type = "time";
     const quietEnd = textInput(data.quiet_end, 5);
@@ -2260,7 +2255,6 @@
       labeled("回复长度", length),
       labeled("表情", emoji),
       labeled("语言", language),
-      labeled("主动程度", pro),
       labeled("免打扰开始", quietStart),
       labeled("免打扰结束", quietEnd),
       labeled("人格", persona),
@@ -2300,7 +2294,6 @@
         length: length.value,
         emoji: emoji.value,
         language: language.value.trim(),
-        proactivity: pro.value,
         quiet_start: quietStart.value,
         quiet_end: quietEnd.value,
         persona: persona.value.trim(),

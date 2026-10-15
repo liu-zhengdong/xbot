@@ -71,7 +71,7 @@ Usage:
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
   xbot [--root DIR] profile show <name>
-  xbot [--root DIR] profile set <name> [--description TEXT] [--tone TEXT] [--length short|medium|long] [--emoji none|spare|often] [--language TEXT] [--proactivity quiet|normal|active] [--quiet HH:MM-HH:MM] [--timezone ZONE] [--name NEW]
+  xbot [--root DIR] profile set <name> [--description TEXT] [--tone TEXT] [--length short|medium|long] [--emoji none|spare|often] [--language TEXT] [--quiet HH:MM-HH:MM] [--timezone ZONE] [--name NEW]
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
@@ -527,7 +527,6 @@ func cmdProfileShow(root string, args []string) error {
 	fmt.Printf("length: %s\n", st.Length)
 	fmt.Printf("emoji: %s\n", st.Emoji)
 	fmt.Printf("language: %s\n", st.Language)
-	fmt.Printf("proactivity: %s\n", b.Config().Proactivity)
 	fmt.Printf("quiet: %s\n", quiet)
 	fmt.Printf("timezone: %s\n", b.Config().Timezone)
 	fmt.Printf("group: %s\n", b.Config().Group)
@@ -543,7 +542,6 @@ type profileSetOpts struct {
 	Length      string
 	Emoji       string
 	Language    string
-	Proactivity string
 	Quiet       string
 	Timezone    string
 	Name        string
@@ -553,7 +551,7 @@ type profileSetOpts struct {
 func parseProfileSet(args []string) (profileSetOpts, error) {
 	ordered, err := reorderFlags(args, map[string]bool{
 		"description": true, "tone": true, "length": true, "emoji": true,
-		"language": true, "proactivity": true, "quiet": true, "timezone": true, "name": true,
+		"language": true, "quiet": true, "timezone": true, "name": true,
 	})
 	if err != nil {
 		return profileSetOpts{}, err
@@ -565,7 +563,6 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	length := fs.String("length", "", "short, medium, or long")
 	emoji := fs.String("emoji", "", "none, spare, or often")
 	lang := fs.String("language", "", "default reply language")
-	pro := fs.String("proactivity", "", "quiet, normal, or active")
 	quiet := fs.String("quiet", "", "HH:MM-HH:MM, or off")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
 	name := fs.String("name", "", "new bot name")
@@ -577,7 +574,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	}
 	opt := profileSetOpts{
 		Bot: fs.Arg(0), Description: *desc, Tone: *tone, Length: *length, Emoji: *emoji,
-		Language: *lang, Proactivity: *pro, Quiet: *quiet, Timezone: *tz, Name: *name, Set: map[string]bool{},
+		Language: *lang, Quiet: *quiet, Timezone: *tz, Name: *name, Set: map[string]bool{},
 	}
 	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
 	if len(opt.Set) == 0 {
@@ -615,10 +612,6 @@ func cmdProfileSet(root string, args []string) error {
 	if opt.Set["language"] {
 		s := opt.Language
 		u.Language = &s
-	}
-	if opt.Set["proactivity"] {
-		s := opt.Proactivity
-		u.Proactivity = &s
 	}
 	if opt.Set["quiet"] {
 		start, end, err := splitQuiet(opt.Quiet)

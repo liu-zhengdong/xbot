@@ -31,11 +31,11 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 		t.Fatalf("empty profile changed persona %q", composed)
 	}
 	tone, length, emoji, lang := "warm and plain", "short", "none", "中文"
-	pro, start, end, utc := "quiet", "22:00", "07:00", "UTC"
+	start, end, utc := "22:00", "07:00", "UTC"
 	desc := "项目笔记"
 	if err := b.ApplyProfile(ProfileUpdate{
 		Description: &desc, Tone: &tone, Length: &length, Emoji: &emoji, Language: &lang,
-		Proactivity: &pro, QuietStart: &start, QuietEnd: &end, Timezone: &utc,
+		QuietStart: &start, QuietEnd: &end, Timezone: &utc,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -46,12 +46,14 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 		"Reply length: short. A few sentences at most.",
 		"Emoji: do not use emoji.",
 		"Language: reply in 中文.",
-		"Proactivity: quiet.",
-		"Quiet hours: 22:00–07:00 UTC.",
+		"Quiet hours: 22:00–07:00 UTC. Notifications are held and sent as one batch when quiet hours end.",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in %s", want, text)
 		}
+	}
+	if strings.Contains(text, "Proactivity:") {
+		t.Fatal(text)
 	}
 	composed, err = b.ComposedPersona()
 	if err != nil || !strings.HasPrefix(composed, file+"\n\n") {
@@ -66,16 +68,48 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 	}
 }
 
-func TestAllowsNotifyAndQuietWindow(t *testing.T) {
-	if AllowsNotify("quiet", "normal") || !AllowsNotify("quiet", "high") {
-		t.Fatal("quiet threshold")
+func TestLegacyProactivityIgnored(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Create(root, "ada", "Be brief.", nil); err != nil {
+		t.Fatal(err)
 	}
-	if AllowsNotify("normal", "low") || !AllowsNotify("normal", "normal") || !AllowsNotify("normal", "high") {
-		t.Fatal("normal threshold")
+	path := filepath.Join(Dir(root, "ada"), "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !AllowsNotify("active", "low") || !AllowsNotify("", "normal") || AllowsNotify("", "low") {
-		t.Fatal("active or default threshold")
+	var cfg map[string]any
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
 	}
+	cfg["proactivity"] = "quiet"
+	cfg["quiet_start"] = "22:00"
+	cfg["quiet_end"] = "07:00"
+	cfg["timezone"] = "UTC"
+	raw, err = json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Config().Proactivity != "quiet" {
+		t.Fatalf("stored field %q", loaded.Config().Proactivity)
+	}
+	if strings.Contains(loaded.ProfileText(), "Proactivity:") || !strings.Contains(loaded.ProfileText(), "Quiet hours:") {
+		t.Fatal(loaded.ProfileText())
+	}
+	night := time.Date(2026, 10, 15, 23, 0, 0, 0, time.UTC)
+	if !loaded.InQuietAt(night) {
+		t.Fatal("quiet hours")
+	}
+}
+
+func TestQuietWindow(t *testing.T) {
 	day := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	night := time.Date(2026, 10, 15, 23, 30, 0, 0, time.UTC)
 	early := time.Date(2026, 10, 16, 6, 59, 0, 0, time.UTC)

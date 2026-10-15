@@ -34,6 +34,7 @@ type profileBody struct {
 	Length      *string `json:"length"`
 	Emoji       *string `json:"emoji"`
 	Language    *string `json:"language"`
+	// Proactivity is accepted from older clients and ignored.
 	Proactivity *string `json:"proactivity"`
 	QuietStart  *string `json:"quiet_start"`
 	QuietEnd    *string `json:"quiet_end"`
@@ -64,7 +65,7 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 	}
 	u := bot.ProfileUpdate{
 		Description: in.Description, Tone: in.Tone, Length: in.Length, Emoji: in.Emoji,
-		Language: in.Language, Proactivity: in.Proactivity, QuietStart: in.QuietStart, QuietEnd: in.QuietEnd,
+		Language: in.Language, QuietStart: in.QuietStart, QuietEnd: in.QuietEnd,
 		Timezone: in.Timezone,
 	}
 	if u != (bot.ProfileUpdate{}) {
