@@ -52,7 +52,7 @@ func TestSyncNewestAcrossNodes(t *testing.T) {
 	}
 	for _, root := range []string{a, b} {
 		got := texts(t, root)
-		if got["city"] != "Beijing" || got["food"] != "noodles" || got["drink"] != "tea" {
+		if !factText(got["city"], "Beijing") || !factText(got["food"], "noodles") || !factText(got["drink"], "tea") {
 			t.Fatalf("%s facts %+v", root, got)
 		}
 		p, err := person.Load(root, "u1")
@@ -119,6 +119,30 @@ func TestSyncPeriodic(t *testing.T) {
 	waitFact(t, b, "city", "Shanghai")
 }
 
+func TestRelayedMergeSyncsSoon(t *testing.T) {
+	a := t.TempDir()
+	c := t.TempDir()
+	sc := serveSync(t, c, "token-c", nil)
+	if err := node.Add(a, node.Node{Name: "c", URL: sc.URL, Token: "token-c"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	Start(ctx, a, time.Hour, 20*time.Millisecond)
+	when := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	line := memory.SyncLine{
+		Time: when, Bot: "bob", Device: "home-b", Op: "remember",
+		Fact: memory.Fact{
+			Key: "city", Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile,
+			WrittenBy: "bob", Text: "Beijing", Time: when,
+		},
+	}
+	if err := memory.MergeSync(a, []memory.SyncLine{line}); err != nil {
+		t.Fatal(err)
+	}
+	waitFact(t, c, "city", "Beijing")
+}
+
 func TestAcceptRejectsOversize(t *testing.T) {
 	root := t.TempDir()
 	_, err := Accept(root, strings.Repeat("a", 1<<20))
@@ -170,11 +194,15 @@ func texts(t *testing.T, root string) map[string]string {
 	return out
 }
 
+func factText(got, text string) bool {
+	return got == text || strings.HasPrefix(got, text+" (untrusted,")
+}
+
 func waitFact(t *testing.T, root, key, text string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if texts(t, root)[key] == text {
+		if factText(texts(t, root)[key], text) {
 			return
 		}
 		time.Sleep(15 * time.Millisecond)

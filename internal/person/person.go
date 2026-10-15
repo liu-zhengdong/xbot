@@ -74,6 +74,34 @@ func Identify(root string, acct Account, display string) (Person, error) {
 	return found, nil
 }
 
+// Unlink removes one account from a person. This is a local owner action.
+// A later sync cannot put the account back onto this machine's owner.
+func Unlink(root, id string, acct Account) error {
+	if !idRe.MatchString(id) {
+		return errors.New("person: bad id")
+	}
+	return fsutil.WithLock(filepath.Join(root, "people", ".lock"), func() error {
+		p, err := Load(root, id)
+		if err != nil {
+			return err
+		}
+		kept := make([]Account, 0, len(p.Accounts))
+		found := false
+		for _, a := range p.Accounts {
+			if a == acct {
+				found = true
+				continue
+			}
+			kept = append(kept, a)
+		}
+		if !found {
+			return fmt.Errorf("person: account not linked")
+		}
+		p.Accounts = kept
+		return Record(root, "", "", time.Time{}, p)
+	})
+}
+
 // List reads every person directory.
 func List(root string) ([]Person, error) {
 	dir := filepath.Join(root, "people")
@@ -132,7 +160,7 @@ func (p Person) save(root string) error {
 	if err := fsutil.WriteAtomic(filepath.Join(root, "people", p.ID, "identity.json"), raw, 0600); err != nil {
 		return err
 	}
-	if err := appendLog(root, LogEntry{Time: time.Now().UTC(), Device: deviceOf(root), Person: p}); err != nil {
+	if err := appendLog(root, LogEntry{Time: time.Now().UTC(), Device: deviceOf(root), Grant: true, Person: p}); err != nil {
 		return err
 	}
 	notifyChange(root)

@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
@@ -9,11 +10,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/notify"
 )
@@ -103,6 +106,55 @@ func TestPhonePushSkipsOpenTabAndQuietHours(t *testing.T) {
 	}
 	if hits != 2 {
 		t.Fatalf("quiet hours pushed, hits %d", hits)
+	}
+
+	if err := notify.Hold(b.HeldPath(), "held one"); err != nil {
+		t.Fatal(err)
+	}
+	if err := notify.Hold(b.HeldPath(), "held two"); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.tabs["u1"].n = 0
+	s.tabs["u1"].last = time.Now()
+	s.mu.Unlock()
+	off := ""
+	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &off, QuietEnd: &off}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := kernel.ReleaseQuiet(context.Background(), b, time.Now().UTC(), func(context.Context, string, string) error { return nil })
+	if err != nil || n != 2 {
+		t.Fatalf("release %d %v", n, err)
+	}
+	if hits != 3 {
+		t.Fatalf("batch while recently open was not pushed, hits %d", hits)
+	}
+	unread, err := notify.Open(b.OutboxPath()).Unread()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var batch string
+	for _, note := range unread {
+		if notify.IsBatch(note.Text) {
+			batch = note.Text
+		}
+	}
+	if !strings.Contains(batch, "held one") || !strings.Contains(batch, "held two") {
+		t.Fatalf("page outbox missed the batch %q", batch)
+	}
+
+	if err := notify.Hold(b.HeldPath(), "while streaming"); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.tabs["u1"].n = 1
+	s.mu.Unlock()
+	n, err = kernel.ReleaseQuiet(context.Background(), b, time.Now().UTC(), func(context.Context, string, string) error { return nil })
+	if err != nil || n != 1 {
+		t.Fatalf("second release %d %v", n, err)
+	}
+	if hits != 3 {
+		t.Fatalf("in-flight page was pushed, hits %d", hits)
 	}
 }
 

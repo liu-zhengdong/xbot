@@ -48,6 +48,11 @@ func TakeHeld(path string) ([]string, error) {
 	return notes, err
 }
 
+// IsBatch reports a note produced by BatchBody.
+func IsBatch(text string) bool {
+	return strings.HasPrefix(text, "Quiet hours batch:")
+}
+
 // BatchBody is one outbox note covering every held line.
 func BatchBody(notes []string) string {
 	var b strings.Builder

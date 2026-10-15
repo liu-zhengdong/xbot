@@ -141,9 +141,8 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		fact.Tier = memory.TierProfile
 	}
 	if !t.k.turnTrusted && (fact.Scope == memory.ScopePerson || fact.Scope == memory.ScopeBotPerson) {
-		if !strings.Contains(strings.ToLower(fact.Text), "untrusted") {
-			fact.Text += " (untrusted, recorded by " + t.k.Bot.Name() + ")"
-		}
+		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
+		fact.Untrusted = true
 	}
 	if err := t.k.Memory.Remember(ctx, fact); err != nil {
 		return "", err

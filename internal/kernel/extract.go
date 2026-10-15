@@ -122,9 +122,8 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 			f.Scope = memory.ScopeBot
 		}
 		if untrusted && (f.Scope == memory.ScopePerson || f.Scope == memory.ScopeBotPerson) {
-			if !strings.Contains(strings.ToLower(f.Text), "untrusted") {
-				f.Text += " (untrusted, recorded by " + k.Bot.Name() + ")"
-			}
+			f.Text = memory.Provenance(f.Text, k.Bot.Name(), "")
+			f.Untrusted = true
 		}
 		out = append(out, f)
 	}

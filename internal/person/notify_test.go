@@ -24,10 +24,26 @@ func TestOnChangeSkipsMerge(t *testing.T) {
 		t.Fatalf("writes %d", n)
 	}
 	p.DisplayName = "Beatrice"
-	if err := MergeLog(root, []LogEntry{{Time: at.Add(time.Hour), Device: "other", Person: p}}); err != nil {
+	line := LogEntry{Time: at.Add(time.Hour), Device: "other", Person: p, Grant: true}
+	if err := MergeLog(root, []LogEntry{line}); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("merge notified, writes %d", n)
+	if n != 2 {
+		t.Fatalf("relayed merge writes %d", n)
+	}
+	if err := MergeLog(root, []LogEntry{line}); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("duplicate merge writes %d", n)
+	}
+	got, err := Load(root, "u1")
+	if err != nil || got.DisplayName != "Beatrice" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	for _, a := range got.Accounts {
+		if a.Link != "" {
+			t.Fatalf("grant leaked %+v", got.Accounts)
+		}
 	}
 }

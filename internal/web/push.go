@@ -62,6 +62,15 @@ func (s *Server) tabLive(owner string) bool {
 	return time.Since(st.last) < tabWindow
 }
 
+// tabBusy is an in-flight page request. A recent API call is not enough:
+// the page may already have finished and will not show a note released now.
+func (s *Server) tabBusy(owner string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.tabs[owner]
+	return st != nil && st.n > 0
+}
+
 func (s *Server) tabState(owner string) *tabState {
 	if s.tabs == nil {
 		s.tabs = map[string]*tabState{}
@@ -86,8 +95,13 @@ func (s *Server) onNote(botName string, n notify.Note) {
 	if err != nil || b.InQuietAt(time.Now()) {
 		return
 	}
+	batch := notify.IsBatch(n.Text)
 	for _, owner := range b.Config().Owners {
-		if s.tabLive(owner) {
+		if batch {
+			if s.tabBusy(owner) {
+				continue
+			}
+		} else if s.tabLive(owner) {
 			continue
 		}
 		subs, err := notify.Subscriptions(s.Root, owner)

@@ -46,13 +46,17 @@ const (
 
 // Fact is one memory record.
 type Fact struct {
-	Key       string    `json:"key"`
-	Kind      Kind      `json:"kind"`
-	Scope     Scope     `json:"scope"`
-	Tier      Tier      `json:"tier,omitempty"`
-	PersonID  string    `json:"person_id,omitempty"`
-	BotName   string    `json:"bot_name,omitempty"`
-	WrittenBy string    `json:"written_by,omitempty"`
+	Key       string `json:"key"`
+	Kind      Kind   `json:"kind"`
+	Scope     Scope  `json:"scope"`
+	Tier      Tier   `json:"tier,omitempty"`
+	PersonID  string `json:"person_id,omitempty"`
+	BotName   string `json:"bot_name,omitempty"`
+	WrittenBy string `json:"written_by,omitempty"`
+	// Device is the node that wrote the fact. Empty means this machine.
+	Device string `json:"device,omitempty"`
+	// Untrusted is set for a fact that arrived from another node or an untrusted turn.
+	Untrusted bool      `json:"untrusted,omitempty"`
 	Text      string    `json:"text"`
 	Time      time.Time `json:"time"`
 }

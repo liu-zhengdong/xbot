@@ -18,7 +18,15 @@ type LogEntry struct {
 	Bot    string    `json:"bot,omitempty"`
 	Device string    `json:"device"`
 	Person Person    `json:"person"`
+	// Grant is set only by a local owner action. Sync clears it.
+	// Owner accounts come from the newest granted entry, so a later local
+	// action can remove an account. A remote line may carry accounts and
+	// still not grant them on this machine.
+	Grant bool `json:"grant,omitempty"`
 }
+
+// maxSkew is how far a merged identity timestamp may sit ahead of this clock.
+const maxSkew = 2 * time.Minute
 
 // ReadLog returns the identity log for one person. A missing file is empty.
 func ReadLog(root, id string) ([]LogEntry, error) {
@@ -48,7 +56,7 @@ func Record(root, bot, device string, at time.Time, p Person) error {
 	if strings.TrimSpace(device) == "" {
 		device = deviceOf(root)
 	}
-	e := LogEntry{Time: at.UTC(), Bot: strings.TrimSpace(bot), Device: device, Person: p}
+	e := LogEntry{Time: at.UTC(), Bot: strings.TrimSpace(bot), Device: device, Person: p, Grant: true}
 	if err := appendLog(root, e); err != nil {
 		return err
 	}
@@ -81,14 +89,23 @@ func ExportLog(root string) ([]LogEntry, error) {
 
 // MergeLog folds remote identity lines into this data root.
 // The newest timestamp wins. An equal timestamp keeps the line already stored here.
-// Bot directories are not touched.
+// A timestamp past now plus a small skew is capped. Illegal lines are dropped.
+// Remote accounts are stored on the log line and do not grant ownership here.
+// Bot directories are not touched. A real change wakes the fast sync path.
 func MergeLog(root string, remote []LogEntry) error {
+	now := time.Now()
+	home := deviceOf(root)
 	byID := map[string][]LogEntry{}
 	for _, e := range remote {
 		id := e.Person.ID
 		if !idRe.MatchString(id) {
-			return errors.New("person: bad id")
+			continue
 		}
+		e, ok := acceptRemote(e, now, home)
+		if !ok {
+			continue
+		}
+		e.Person.ID = id
 		byID[id] = append(byID[id], e)
 	}
 	ids, err := localIDs(root)
@@ -104,26 +121,34 @@ func MergeLog(root string, remote []LogEntry) error {
 			ids = append(ids, id)
 		}
 	}
+	changed := false
 	for _, id := range ids {
-		if err := mergeOne(root, id, byID[id]); err != nil {
+		ok, err := mergeOne(root, id, byID[id])
+		if err != nil {
 			return err
 		}
+		changed = changed || ok
+	}
+	if changed {
+		notifyChange(root)
 	}
 	return nil
 }
 
-func mergeOne(root, id string, remote []LogEntry) error {
-	return fsutil.WithLock(filepath.Join(root, "people", id, ".lock"), func() error {
+func mergeOne(root, id string, remote []LogEntry) (bool, error) {
+	changed := false
+	err := fsutil.WithLock(filepath.Join(root, "people", id, ".lock"), func() error {
 		local, err := ReadLog(root, id)
 		if err != nil {
 			return err
 		}
 		if len(local) == 0 {
 			if cur, err := Load(root, id); err == nil {
-				local = []LogEntry{{Time: time.Unix(0, 0).UTC(), Device: "local", Person: cur}}
+				local = []LogEntry{{Time: time.Unix(0, 0).UTC(), Device: deviceOf(root), Grant: true, Person: cur}}
 				if err := appendLog(root, local[0]); err != nil {
 					return err
 				}
+				changed = true
 			}
 		}
 		have := map[string]bool{}
@@ -131,8 +156,8 @@ func mergeOne(root, id string, remote []LogEntry) error {
 			have[logKey(e)] = true
 		}
 		for _, e := range remote {
-			e.Time = e.Time.UTC()
 			e.Person.ID = id
+			e.Grant = false
 			if have[logKey(e)] {
 				continue
 			}
@@ -140,9 +165,11 @@ func mergeOne(root, id string, remote []LogEntry) error {
 				return err
 			}
 			have[logKey(e)] = true
+			changed = true
 		}
 		return rewriteIdentity(root, id)
 	})
+	return changed, err
 }
 
 func rewriteIdentity(root, id string) error {
@@ -153,7 +180,7 @@ func rewriteIdentity(root, id string) error {
 	if len(lines) == 0 {
 		return nil
 	}
-	p := foldIdentity(lines)
+	p := foldIdentity(lines, deviceOf(root))
 	raw, err := fsutil.Marshal(p)
 	if err != nil {
 		return err
@@ -161,25 +188,41 @@ func rewriteIdentity(root, id string) error {
 	return fsutil.WriteAtomic(filepath.Join(root, "people", id, "identity.json"), raw, 0600)
 }
 
-func foldIdentity(lines []LogEntry) Person {
+func foldIdentity(lines []LogEntry, home string) Person {
 	best := lines[0]
-	accounts := map[Account]struct{}{}
-	for _, a := range best.Person.Accounts {
-		accounts[a] = struct{}{}
-	}
-	for _, e := range lines[1:] {
-		for _, a := range e.Person.Accounts {
-			accounts[a] = struct{}{}
-		}
+	grantIdx := -1
+	var grantAt time.Time
+	homeIdx := -1
+	var homeAt time.Time
+	anyGrant := false
+	for i, e := range lines {
 		if e.Time.After(best.Time) {
 			best = e
 		}
+		if e.Grant {
+			anyGrant = true
+			if grantIdx < 0 || e.Time.After(grantAt) || (e.Time.Equal(grantAt) && i > grantIdx) {
+				grantIdx = i
+				grantAt = e.Time
+			}
+		}
+		if e.Device == home || e.Device == "local" || e.Device == "" {
+			if homeIdx < 0 || e.Time.After(homeAt) || (e.Time.Equal(homeAt) && i > homeIdx) {
+				homeIdx = i
+				homeAt = e.Time
+			}
+		}
 	}
 	p := best.Person
-	p.Accounts = p.Accounts[:0]
-	for a := range accounts {
-		p.Accounts = append(p.Accounts, a)
+	var accounts []Account
+	switch {
+	case grantIdx >= 0:
+		accounts = append([]Account(nil), lines[grantIdx].Person.Accounts...)
+	case !anyGrant && homeIdx >= 0:
+		// Logs written before grant existed keep the accounts of the local line.
+		accounts = append([]Account(nil), lines[homeIdx].Person.Accounts...)
 	}
+	p.Accounts = accounts
 	sort.Slice(p.Accounts, func(i, j int) bool {
 		if p.Accounts[i].Link == p.Accounts[j].Link {
 			return p.Accounts[i].ExternalID < p.Accounts[j].ExternalID

@@ -336,8 +336,15 @@ func renderMD(facts []Fact) string {
 	var b strings.Builder
 	b.WriteString("# memory\n\n")
 	for _, f := range facts {
-		fmt.Fprintf(&b, "- key: %s\n  kind: %s\n  text: %s\n  by: %s\n  at: %s\n\n",
+		fmt.Fprintf(&b, "- key: %s\n  kind: %s\n  text: %s\n  by: %s\n  at: %s\n",
 			oneLine(f.Key), f.Kind, oneLine(f.Text), oneLine(f.WrittenBy), f.Time.UTC().Format(time.RFC3339))
+		if f.Device != "" {
+			fmt.Fprintf(&b, "  device: %s\n", oneLine(f.Device))
+		}
+		if f.Untrusted {
+			b.WriteString("  untrusted: true\n")
+		}
+		b.WriteString("\n")
 	}
 	return b.String()
 }
@@ -378,6 +385,10 @@ func parseMD(s string) ([]Fact, error) {
 				return nil, fmt.Errorf("memory: bad time %q", trimmed)
 			}
 			cur.Time = t
+		case strings.HasPrefix(trimmed, "device: "):
+			cur.Device = strings.TrimSpace(strings.TrimPrefix(trimmed, "device: "))
+		case trimmed == "untrusted: true":
+			cur.Untrusted = true
 		}
 	}
 	flush()

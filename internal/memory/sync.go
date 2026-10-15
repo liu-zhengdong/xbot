@@ -22,7 +22,9 @@ type SyncLine struct {
 	Bot    string    `json:"bot,omitempty"`
 	Device string    `json:"device"`
 	Op     string    `json:"op"`
-	Fact   Fact      `json:"fact"`
+	// Untrusted is set when the line arrived from another node, or from an untrusted turn.
+	Untrusted bool `json:"untrusted,omitempty"`
+	Fact      Fact `json:"fact"`
 }
 
 // ReadSync returns the person-memory log. A missing file is empty.
@@ -72,18 +74,26 @@ func ExportSync(root string) ([]SyncLine, error) {
 
 // MergeSync folds remote person-memory lines into this data root.
 // The newest timestamp wins for each key. An equal timestamp keeps the local line.
-// Files under bots/ are left alone.
+// A timestamp past now plus a small skew is capped. Illegal lines are dropped.
+// A line that arrived from another node is untrusted data and keeps its provenance.
+// Files under bots/ are left alone. A real change wakes the fast sync path.
 func MergeSync(root string, remote []SyncLine) error {
+	now := time.Now()
+	home := deviceOf(root)
 	byID := map[string][]SyncLine{}
 	for _, ln := range remote {
 		id := ln.Fact.PersonID
 		if err := clean(id); err != nil {
-			return err
+			continue
 		}
 		if ln.Fact.Scope != "" && ln.Fact.Scope != ScopePerson {
 			continue
 		}
-		ln.Fact.Scope = ScopePerson
+		ln, ok := acceptRemote(ln, now, home)
+		if !ok {
+			continue
+		}
+		ln.Fact.PersonID = id
 		byID[id] = append(byID[id], ln)
 	}
 	ids := map[string]bool{}
@@ -99,17 +109,24 @@ func MergeSync(root string, remote []SyncLine) error {
 	for id := range byID {
 		ids[id] = true
 	}
+	changed := false
 	for id := range ids {
-		if err := mergePerson(root, id, byID[id]); err != nil {
+		ok, err := mergePerson(root, id, byID[id])
+		if err != nil {
 			return err
 		}
+		changed = changed || ok
+	}
+	if changed {
+		notifyChange(root)
 	}
 	return nil
 }
 
-func mergePerson(root, id string, remote []SyncLine) error {
+func mergePerson(root, id string, remote []SyncLine) (bool, error) {
 	dir := filepath.Join(root, "people", id, "memory")
-	return fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+	changed := false
+	err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
 		local, err := ReadSync(root, id)
 		if err != nil {
 			return err
@@ -123,18 +140,16 @@ func mergePerson(root, id string, remote []SyncLine) error {
 				return err
 			}
 			local = append(local, ln)
+			changed = true
 		}
 		have := map[string]bool{}
 		for _, ln := range local {
 			have[syncKey(ln)] = true
 		}
 		for _, ln := range remote {
-			ln.Time = ln.Time.UTC()
 			ln.Fact.PersonID = id
 			ln.Fact.Scope = ScopePerson
-			if ln.Op == "" {
-				ln.Op = opRemember
-			}
+			ln.Untrusted = true
 			if have[syncKey(ln)] {
 				continue
 			}
@@ -143,12 +158,14 @@ func mergePerson(root, id string, remote []SyncLine) error {
 			}
 			local = append(local, ln)
 			have[syncKey(ln)] = true
+			changed = true
 		}
 		if len(local) == 0 {
 			return nil
 		}
 		return writeFold(dir, id, local)
 	})
+	return changed, err
 }
 
 func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
@@ -163,6 +180,9 @@ func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
 			return nil, err
 		}
 		for _, f := range facts {
+			if f.Untrusted {
+				continue
+			}
 			ln := SyncLine{Time: f.Time.UTC(), Bot: f.WrittenBy, Device: "local", Op: opRemember, Fact: f}
 			if have[factMark(ln)] {
 				continue
@@ -233,6 +253,13 @@ func foldSync(lines []SyncLine) []Fact {
 		if f.WrittenBy == "" {
 			f.WrittenBy = ln.Bot
 		}
+		if ln.Device != "" {
+			f.Device = ln.Device
+		}
+		if ln.Untrusted || f.Untrusted {
+			f.Untrusted = true
+			f.Text = Provenance(f.Text, f.WrittenBy, f.Device)
+		}
 		out = append(out, f)
 	}
 	return out
@@ -247,11 +274,12 @@ func noteSync(root string, op string, fact Fact) error {
 		bot = strings.TrimSpace(fact.BotName)
 	}
 	if err := appendSync(root, SyncLine{
-		Time:   fact.Time.UTC(),
-		Bot:    bot,
-		Device: deviceOf(root),
-		Op:     op,
-		Fact:   fact,
+		Time:      fact.Time.UTC(),
+		Bot:       bot,
+		Device:    deviceOf(root),
+		Op:        op,
+		Untrusted: fact.Untrusted,
+		Fact:      fact,
 	}); err != nil {
 		return err
 	}

@@ -105,6 +105,14 @@ func TestSubscriptionRejects(t *testing.T) {
 	if err := SaveSubscription(root, "u1", sub); err == nil {
 		t.Fatal("http endpoint accepted")
 	}
+	sub.Endpoint = "https://127.0.0.1/push"
+	if err := SaveSubscription(root, "u1", sub); err == nil {
+		t.Fatal("loopback https accepted")
+	}
+	sub.Endpoint = "https://10.1.2.3/push"
+	if err := SaveSubscription(root, "u1", sub); err == nil {
+		t.Fatal("private https accepted")
+	}
 	sub.Endpoint = "https://push.example/s"
 	if err := SaveSubscription(root, "../x", sub); err == nil {
 		t.Fatal("bad owner accepted")

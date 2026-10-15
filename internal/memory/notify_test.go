@@ -30,10 +30,17 @@ func TestOnChangeSkipsMerge(t *testing.T) {
 	fact.Text = "Beijing"
 	fact.Time = at.Add(time.Hour)
 	fact.WrittenBy = "bob"
-	if err := MergeSync(root, []SyncLine{{Time: fact.Time, Bot: "bob", Device: "other", Op: opRemember, Fact: fact}}); err != nil {
+	line := SyncLine{Time: fact.Time, Bot: "bob", Device: "other", Op: opRemember, Fact: fact}
+	if err := MergeSync(root, []SyncLine{line}); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("merge notified, writes %d", n)
+	if n != 2 {
+		t.Fatalf("relayed merge writes %d", n)
+	}
+	if err := MergeSync(root, []SyncLine{line}); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("duplicate merge writes %d", n)
 	}
 }

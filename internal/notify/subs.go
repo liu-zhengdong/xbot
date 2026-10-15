@@ -1,13 +1,16 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"xbot/internal/fsutil"
 )
@@ -136,14 +139,56 @@ func validEndpoint(raw string) error {
 	if err != nil || u.Host == "" || u.User != nil {
 		return errors.New("notify: bad endpoint")
 	}
-	host := strings.Trim(u.Hostname(), "[]")
+	host := strings.Trim(strings.ToLower(u.Hostname()), "[]")
+	if host == "" {
+		return errors.New("notify: bad endpoint")
+	}
 	switch u.Scheme {
-	case "https":
-		return nil
 	case "http":
 		if host == "127.0.0.1" || host == "localhost" || host == "::1" {
 			return nil
 		}
+	case "https":
+		if blockedHost(host) {
+			return errors.New("notify: endpoint host is not a public push service")
+		}
+		return nil
 	}
 	return errors.New("notify: endpoint must be https")
+}
+
+func blockedHost(host string) bool {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || host == "metadata.google.internal" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return blockedIP(ip)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return false
+	}
+	for _, ip := range ips {
+		if blockedIP(ip.IP) {
+			return true
+		}
+	}
+	return false
+}
+
+func blockedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	// Carrier-grade NAT, 100.64.0.0/10.
+	return ip4[0] == 100 && ip4[1]&0xc0 == 64
 }

@@ -32,7 +32,7 @@ func TestNodeDispatchSyncsWithToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := memory.Open(b).Recall(context.Background(), memory.Query{Scope: memory.ScopePerson, PersonID: "u1"})
-	if err != nil || len(got) != 1 || got[0].Text != "Shanghai" {
+	if err != nil || len(got) != 1 || !strings.HasPrefix(got[0].Text, "Shanghai (untrusted, recorded by ada") || !got[0].Untrusted {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if err := node.Remove(a, "b"); err != nil {
