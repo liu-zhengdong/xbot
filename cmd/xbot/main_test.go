@@ -15,6 +15,25 @@ import (
 	"xbot/internal/provider"
 )
 
+func TestPrinterDropsSilent(t *testing.T) {
+	for _, reply := range []string{"SILENT", "SILENT\n"} {
+		var buf bytes.Buffer
+		p := &printer{out: &buf}
+		p.Delta(reply)
+		p.Break()
+		if buf.Len() != 0 {
+			t.Fatalf("%q rendered %q", reply, buf.String())
+		}
+	}
+	var buf bytes.Buffer
+	p := &printer{out: &buf}
+	p.Delta("hello\n")
+	p.Break()
+	if buf.String() != "hello\n" {
+		t.Fatalf("rendered %q", buf.String())
+	}
+}
+
 func TestSplitGlobal(t *testing.T) {
 	root, rest, err := splitGlobal([]string{"--root", "/tmp/xbot", "chat", "ada", "--yes"})
 	if err != nil {

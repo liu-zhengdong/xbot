@@ -631,15 +631,28 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	defer gate.Unlock()
 	k.Bot = b
 	var acc strings.Builder
+	var held strings.Builder
 	var writeMu sync.Mutex
 	sendLocked := func(event string, v any) {
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		send(event, v)
 	}
+	flushHeld := func() {
+		s := held.String()
+		held.Reset()
+		if s == "" || bot.SilentText(s) {
+			return
+		}
+		acc.WriteString(s)
+		sendLocked("delta", map[string]string{"text": s})
+	}
 	k.OnDelta = func(t string) {
-		acc.WriteString(t)
-		sendLocked("delta", map[string]string{"text": t})
+		held.WriteString(t)
+		if bot.SilentPrefix(held.String()) {
+			return
+		}
+		flushHeld()
 	}
 	k.OnTool = func(name, summary string) {
 		sendLocked("tool", map[string]string{"name": name, "summary": summary})
@@ -655,6 +668,11 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		send("error", map[string]string{"error": err.Error()})
 		return
+	}
+	if bot.SilentText(held.String()) {
+		held.Reset()
+	} else {
+		flushHeld()
 	}
 	send("done", map[string]string{"text": acc.String()})
 }

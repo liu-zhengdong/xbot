@@ -1581,7 +1581,7 @@ func showTranscriptSince(b *bot.Bot, seen *int) bool {
 	printed := false
 	for _, e := range fresh {
 		text := strings.TrimSpace(e.Message.Content)
-		if text == "" || strings.Contains(text, "<environment_") {
+		if text == "" || strings.Contains(text, "<environment_") || bot.SilentText(text) {
 			continue
 		}
 		switch e.Message.Role {
@@ -1624,17 +1624,39 @@ func readLine(ctx context.Context, r *bufio.Reader) (string, error) {
 }
 
 type printer struct {
-	yes    bool
-	reader *bufio.Reader
-	mu     sync.Mutex
-	wrote  bool
-	nl     bool
+	yes     bool
+	reader  *bufio.Reader
+	out     io.Writer
+	mu      sync.Mutex
+	pending strings.Builder
+	wrote   bool
+	nl      bool
+}
+
+func (p *printer) stdout() io.Writer {
+	if p.out != nil {
+		return p.out
+	}
+	return os.Stdout
 }
 
 func (p *printer) Delta(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	fmt.Fprint(os.Stdout, s)
+	p.pending.WriteString(s)
+	if bot.SilentPrefix(p.pending.String()) {
+		return
+	}
+	p.writePending()
+}
+
+func (p *printer) writePending() {
+	s := p.pending.String()
+	p.pending.Reset()
+	if s == "" || bot.SilentText(s) {
+		return
+	}
+	fmt.Fprint(p.stdout(), s)
 	p.wrote = true
 	p.nl = strings.HasSuffix(s, "\n")
 }
@@ -1642,6 +1664,11 @@ func (p *printer) Delta(s string) {
 func (p *printer) Break() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if bot.SilentText(p.pending.String()) {
+		p.pending.Reset()
+	} else {
+		p.writePending()
+	}
 	p.breakLocked()
 }
 
