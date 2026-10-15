@@ -166,18 +166,29 @@ func TestRunUnknownTool(t *testing.T) {
 	}
 }
 
+type alwaysTools struct {
+	reqs []provider.Request
+}
+
+func (a *alwaysTools) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	a.reqs = append(a.reqs, req)
+	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		ID: "c", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
+	}}}, nil
+}
+
 func TestRunMaxSteps(t *testing.T) {
-	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-		}}},
-	}}
-	_, err := Run(context.Background(), p, []tools.Tool{&echoTool{}}, nil, Options{MaxSteps: 2})
-	if err == nil || !strings.Contains(err.Error(), "max steps") {
-		t.Fatalf("err=%v", err)
+	p := &alwaysTools{}
+	got, err := Run(context.Background(), p, []tools.Tool{&echoTool{}}, nil, Options{MaxSteps: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) != 3 || len(p.reqs[2].Tools) != 0 {
+		t.Fatalf("summary request %+v", p.reqs)
+	}
+	last := got[len(got)-1]
+	if last.Role != provider.RoleAssistant || strings.TrimSpace(last.Content) == "" || len(last.ToolCalls) != 0 {
+		t.Fatalf("final %+v", last)
 	}
 }
 

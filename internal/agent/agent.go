@@ -92,7 +92,37 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			return produced, nil
 		}
 	}
-	return produced, fmt.Errorf("agent: max steps (%d) reached", opt.MaxSteps)
+	return stopSummary(ctx, p, convo, produced, opt)
+}
+
+// stopSummary asks for a status with tools disabled after the step cap.
+// The turn ends with that assistant text. Tool calls in the reply are dropped.
+// An empty reply is replaced so the owner still sees why the turn stopped.
+func stopSummary(ctx context.Context, p provider.Provider, convo, produced []provider.Message, opt Options) ([]provider.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return produced, err
+	}
+	note := fmt.Sprintf("Stop. The step cap (%d) is reached. Do not call tools. Summarize what was done, what is still pending, and why you stopped.", opt.MaxSteps)
+	convo = append(convo, provider.Message{Role: provider.RoleUser, Content: note})
+	msg, err := p.Chat(ctx, provider.Request{Messages: convo}, opt.OnDelta)
+	if err != nil {
+		return produced, fmt.Errorf("agent: max steps (%d) reached: %w", opt.MaxSteps, err)
+	}
+	if msg.Role == "" {
+		msg.Role = provider.RoleAssistant
+	}
+	msg.ToolCalls = nil
+	if strings.TrimSpace(msg.Content) == "" {
+		msg.Content = fmt.Sprintf("Stopped after %d steps, before the task finished. The last response still requested tools, so they were not run.", opt.MaxSteps)
+		if opt.OnDelta != nil {
+			opt.OnDelta(msg.Content)
+		}
+	}
+	produced = append(produced, msg)
+	if opt.OnMessage != nil {
+		opt.OnMessage(msg)
+	}
+	return produced, nil
 }
 
 // runToolCalls starts every call, then returns tool messages in call order.
