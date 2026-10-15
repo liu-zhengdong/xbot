@@ -105,14 +105,9 @@ func (k *Kernel) historyBot(name string) (*bot.Bot, bool, error) {
 		return k.Bot, false, nil
 	}
 	other, err := bot.Load(k.Bot.Root, name)
-	if err != nil {
-		if _, gerr := (&peer.Bus{Root: k.Bot.Root}).LoadGroup(name); gerr == nil {
-			return nil, false, fmt.Errorf("history: %s is a group transcript", name)
-		}
-		return nil, false, err
-	}
-	if !peer.SameOwner(k.Bot, other) {
-		return nil, false, fmt.Errorf("history: %s is not a same-owner bot", other.Name())
+	if err != nil || !peer.SameOwner(k.Bot, other) {
+		// Missing bots, other owners, and group ids are the same answer.
+		return nil, false, fmt.Errorf("history: %w", bot.ErrNotFound)
 	}
 	return other, true, nil
 }
