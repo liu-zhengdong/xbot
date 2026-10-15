@@ -33,6 +33,9 @@ type Options struct {
 	// AfterStep runs after a step's tool results and before the next model call.
 	// Messages it returns are appended in order and shown to the next step.
 	AfterStep func() ([]provider.Message, error)
+	// RefreshTools rebuilds the tool list before each model call after the first.
+	// Nil keeps the list from the start of the run.
+	RefreshTools func() ([]tools.Tool, error)
 	// OneRound returns after a single model call and that call's tool results.
 	// The step limit error is not used. The caller decides what happens next.
 	OneRound bool
@@ -50,24 +53,25 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 	if opt.MaxResult <= 0 {
 		opt.MaxResult = defaultMaxResult
 	}
-	byName := make(map[string]tools.Tool, len(list))
-	defs := make([]provider.ToolDef, 0, len(list))
-	for _, t := range list {
-		if _, ok := byName[t.Name()]; ok {
-			return nil, fmt.Errorf("agent: duplicate tool %q", t.Name())
-		}
-		byName[t.Name()] = t
-		defs = append(defs, provider.ToolDef{
-			Name:        t.Name(),
-			Description: t.Description(),
-			Parameters:  t.Parameters(),
-		})
+	byName, defs, err := indexTools(list)
+	if err != nil {
+		return nil, err
 	}
 	convo := append([]provider.Message(nil), messages...)
 	var produced []provider.Message
 	for step := 0; step < opt.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return produced, err
+		}
+		if step > 0 && opt.RefreshTools != nil {
+			next, err := opt.RefreshTools()
+			if err != nil {
+				return produced, err
+			}
+			byName, defs, err = indexTools(next)
+			if err != nil {
+				return produced, err
+			}
 		}
 		msg, err := p.Chat(ctx, provider.Request{Messages: convo, Tools: defs}, opt.OnDelta)
 		if err != nil {
@@ -109,6 +113,23 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		}
 	}
 	return stopSummary(ctx, p, convo, produced, opt)
+}
+
+func indexTools(list []tools.Tool) (map[string]tools.Tool, []provider.ToolDef, error) {
+	byName := make(map[string]tools.Tool, len(list))
+	defs := make([]provider.ToolDef, 0, len(list))
+	for _, t := range list {
+		if _, ok := byName[t.Name()]; ok {
+			return nil, nil, fmt.Errorf("agent: duplicate tool %q", t.Name())
+		}
+		byName[t.Name()] = t
+		defs = append(defs, provider.ToolDef{
+			Name:        t.Name(),
+			Description: t.Description(),
+			Parameters:  t.Parameters(),
+		})
+	}
+	return byName, defs, nil
 }
 
 // stopSummary asks for a status with tools disabled after the step cap.

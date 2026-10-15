@@ -46,6 +46,8 @@ type Input struct {
 	Entries []bot.Entry
 	// Skills are "slug: description" lines. Empty means the prefix is unchanged.
 	Skills []string
+	// Installed is the one-line-per-link block. Empty leaves the prefix unchanged.
+	Installed string
 }
 
 // Assemble builds model messages in order: stable prefix, memory, summary blocks, uncovered raw messages.
@@ -55,7 +57,7 @@ func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
 }
 
 func account(in Input, hist []provider.Message) ([]provider.Message, bot.SectionUsage) {
-	sys := provider.Message{Role: provider.RoleSystem, Content: prefixWithSkills(in.Persona, in.Rules, in.Links, in.Skills)}
+	sys := provider.Message{Role: provider.RoleSystem, Content: prefixWithSkills(in.Persona, in.Rules, in.Links, in.Skills, in.Installed)}
 	msgs := []provider.Message{sys}
 	usage := bot.SectionUsage{Stable: compact.EstimateMessage(sys)}
 	if mem := clipMemory(in.Memory); mem != "" {
@@ -75,8 +77,11 @@ func account(in Input, hist []provider.Message) ([]provider.Message, bot.Section
 	return msgs, usage
 }
 
-func prefixWithSkills(persona, rules string, links, skills []string) string {
+func prefixWithSkills(persona, rules string, links, skills []string, installed string) string {
 	text := StablePrefix(persona, rules, links)
+	if installed != "" {
+		text += "\n\n" + installed
+	}
 	if len(skills) == 0 {
 		return text
 	}

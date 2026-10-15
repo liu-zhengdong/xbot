@@ -304,7 +304,7 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err != nil || string(got) != "hi" {
 		t.Fatalf("file %q err=%v", got, err)
 	}
-	if len(p.reqs[0].Tools) != 4 {
+	if len(p.reqs[0].Tools) != 5 {
 		t.Fatalf("tools %d", len(p.reqs[0].Tools))
 	}
 
@@ -313,8 +313,8 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if len(p2.reqs[0].Tools) != 0 {
-		t.Fatalf("expected no tools, got %d", len(p2.reqs[0].Tools))
+	if len(p2.reqs[0].Tools) != 1 || p2.reqs[0].Tools[0].Name != "links" {
+		t.Fatalf("expected the links tool only, got %d", len(p2.reqs[0].Tools))
 	}
 }
 

@@ -19,7 +19,17 @@ import (
 )
 
 func (k *Kernel) modelTools() ([]tools.Tool, error) {
-	list := append([]tools.Tool{}, link.CollectTools(k.Links)...)
+	var active []link.Link
+	for _, l := range k.Links {
+		if l == nil {
+			continue
+		}
+		if lazyUntilLoad(l.Name()) && !k.isLoaded(l.Name()) {
+			continue
+		}
+		active = append(active, l)
+	}
+	list := append([]tools.Tool{}, link.CollectTools(active)...)
 	if k.hasLink(link.NameMemory) {
 		list = append(list, rememberTool{k}, forgetTool{k}, recallTool{k})
 	}
@@ -41,6 +51,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	if k.isPrimary() {
 		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
 	}
+	list = append(list, linksTool{k})
 	list = k.modelAgentTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
 	return list, nil

@@ -75,6 +75,7 @@ xbot bind ada --clear
 ~/.xbot/people/<id>/memory/{profile,log}.md
 ~/.xbot/bots/<name>/config.json
 ~/.xbot/bots/<name>/mcp.json
+~/.xbot/bots/<name>/secrets.json
 ~/.xbot/bots/<name>/persona.md
 ~/.xbot/bots/<name>/rules.md
 ~/.xbot/bots/<name>/transcript.jsonl
@@ -129,6 +130,8 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 `xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram、飞书、编码代理还列在目录里，现在装不上。MCP 不走这条安装。
 
 `xbot mcp add <bot> <name> --command PATH` 把一个 MCP 服务器记在这个 Bot 的 `mcp.json`。参数用重复的 `--arg`。密钥只写环境变量的名字（`--secret-env NAME`），文件和接口里都没有值。对话里的工具名是 `mcp_<服务器>_<工具>`。`readOnlyHint` 为真的不用确认，其余要确认。服务器可以用通知把不可信事件推进收件箱。
+
+Bot 用内置工具 `links` 搜索目录、安装、卸下和加载。安装要主人在确认卡上点头；带密钥的还要主人在这张卡里填写，模型看不到值。已安装的 Link 在系统提示里每条一行。`load` 只把工具 schema 带进当前这一轮。
 
 ```bash
 xbot export ada --out ada.md

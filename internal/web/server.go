@@ -49,7 +49,12 @@ type Server struct {
 	mu        sync.Mutex
 	kernels   map[string]*kernel.Kernel
 	gate      map[string]*sync.Mutex
-	approvals map[string]chan bool
+	approvals map[string]chan approvalDecision
+}
+
+type approvalDecision struct {
+	allow   bool
+	secrets map[string]string
 }
 
 // Register mounts the UI and /api routes.
@@ -671,7 +676,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		sendLocked("result", map[string]string{"name": name, "output": clip(output, 4000)})
 	}
 	prevApprove := k.Approve
-	k.Approve = s.webApprove(b.Name(), sendLocked)
+	k.Approve = s.webApprove(b.Name(), k, sendLocked)
 	err = k.Handle(r.Context(), ev)
 	k.Approve = prevApprove
 	k.OnDelta, k.OnTool, k.OnResult = nil, nil, nil
@@ -693,14 +698,14 @@ func (s *Server) approvalWait() time.Duration {
 	return 60 * time.Second
 }
 
-func (s *Server) webApprove(botName string, send func(string, any)) func(context.Context, string, string) (bool, error) {
+func (s *Server) webApprove(botName string, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
 	return func(ctx context.Context, tool, summary string) (bool, error) {
 		id := newApprovalID()
-		ch := make(chan bool, 1)
+		ch := make(chan approvalDecision, 1)
 		key := botName + "/" + id
 		s.mu.Lock()
 		if s.approvals == nil {
-			s.approvals = map[string]chan bool{}
+			s.approvals = map[string]chan approvalDecision{}
 		}
 		s.approvals[key] = ch
 		s.mu.Unlock()
@@ -709,18 +714,77 @@ func (s *Server) webApprove(botName string, send func(string, any)) func(context
 			delete(s.approvals, key)
 			s.mu.Unlock()
 		}()
-		send("approval", map[string]string{"id": id, "tool": tool, "summary": summary})
+		payload := map[string]any{"id": id, "tool": tool, "summary": summary}
+		names := approvalSecretNames(tool, summary)
+		if len(names) > 0 {
+			payload["secrets"] = names
+		}
+		send("approval", payload)
 		timer := time.NewTimer(s.approvalWait())
 		defer timer.Stop()
 		select {
-		case allow := <-ch:
-			return allow, nil
+		case d := <-ch:
+			if d.allow && k != nil && len(names) > 0 && len(d.secrets) > 0 {
+				k.StageSecrets(linkIDFromSummary(summary), filterSecrets(names, d.secrets))
+			}
+			return d.allow, nil
 		case <-timer.C:
 			return false, nil
 		case <-ctx.Done():
 			return false, ctx.Err()
 		}
 	}
+}
+
+func approvalSecretNames(tool, summary string) []string {
+	if tool != "links" {
+		return nil
+	}
+	return secretNamesFromSummary(summary)
+}
+
+func linkIDFromSummary(summary string) string {
+	line, _, _ := strings.Cut(summary, "\n")
+	line = strings.TrimSpace(line)
+	id, ok := strings.CutPrefix(line, "install ")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(id)
+}
+
+func secretNamesFromSummary(summary string) []string {
+	var names []string
+	for _, line := range strings.Split(summary, "\n") {
+		line = strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(line, "secrets:")
+		if !ok {
+			continue
+		}
+		for _, part := range strings.Split(rest, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				names = append(names, part)
+			}
+		}
+	}
+	return names
+}
+
+func filterSecrets(names []string, values map[string]string) map[string]string {
+	allowed := map[string]bool{}
+	for _, name := range names {
+		allowed[name] = true
+	}
+	out := map[string]string{}
+	for name, value := range values {
+		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
+		if allowed[name] && value != "" {
+			out[name] = value
+		}
+	}
+	return out
 }
 
 func newApprovalID() string {
@@ -741,7 +805,8 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Allow bool `json:"allow"`
+		Allow   bool              `json:"allow"`
+		Secrets map[string]string `json:"secrets"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
@@ -756,7 +821,7 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	select {
-	case ch <- in.Allow:
+	case ch <- approvalDecision{allow: in.Allow, secrets: in.Secrets}:
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	default:
 		writeErr(w, http.StatusConflict, "already decided")

@@ -136,6 +136,8 @@
 
 `POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。成功 200 `{"status":"ok"}`。60 秒内没有回答，这一次视为不允许，工具不跑。只读的安全命令不发这张卡，包括 `date`、`pwd`、`whoami`、`uname`、`hostname`、`id`、`echo`、`printf`、`true`、`false`、`uptime`、`ls`、`which`、`env`、`printenv`、`cal`，而且命令里不能有管道、重定向、分号或命令替换。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成主人拒绝。主人明确拒绝才是 `denied by user`。
 
+`links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<主人填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
+
 锁被别人占着时不跑模型，只把事件放进 inbox，202 `{"status":"queued"}`。
 
 ## 子代理、通知、群

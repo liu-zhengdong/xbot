@@ -18,6 +18,7 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 // Kernel is the bot's turn runner.
@@ -53,6 +54,10 @@ type Kernel struct {
 
 	startOnce   sync.Once
 	execOnce    sync.Once
+	loadMu      sync.Mutex
+	loaded      map[string]bool
+	secretMu    sync.Mutex
+	secrets     map[string]map[string]string
 	compactMu   sync.Mutex
 	compactBusy bool
 	turnSender  string
@@ -79,6 +84,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnSource = ev.Source
 	k.turnEvent = ev.ID
 	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
+	k.clearLoaded()
 	k.notedMu.Lock()
 	k.noted = nil
 	k.notedMu.Unlock()
@@ -189,7 +195,10 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			if appendErr != nil {
 				return
 			}
-			appendErr = k.Bot.Append(bot.Entry{Time: k.now(), Message: m})
+			appendErr = k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m)})
+		},
+		RefreshTools: func() ([]tools.Tool, error) {
+			return k.modelTools()
 		},
 		AfterStep: func() ([]provider.Message, error) {
 			return k.absorbInbox()
@@ -253,17 +262,22 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
+	installed, err := k.installedSection()
+	if err != nil {
+		return nil, bot.SectionUsage{}, err
+	}
 	raw, err := k.Bot.Uncovered(st.Blocks)
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
 	msgs, usage := account(Input{
-		Persona: persona,
-		Rules:   rules,
-		Links:   k.linkNames(),
-		Memory:  mem,
-		Blocks:  st.Blocks,
-		Skills:  skills,
+		Persona:   persona,
+		Rules:     rules,
+		Links:     k.stableLinkNames(),
+		Memory:    mem,
+		Blocks:    st.Blocks,
+		Skills:    skills,
+		Installed: installed,
 	}, projected(st.Blocks, raw))
 	return msgs, usage, nil
 }

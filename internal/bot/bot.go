@@ -263,6 +263,11 @@ func (b *Bot) MCPPath() string {
 	return filepath.Join(b.dir(), "mcp.json")
 }
 
+// SecretPath is the bot's link secrets. Values stay out of the model prompt.
+func (b *Bot) SecretPath() string {
+	return filepath.Join(b.dir(), "secrets.json")
+}
+
 // SetBinding stores the provider and model names. The API key stays in the environment.
 func (b *Bot) SetBinding(providerName, modelName string) error {
 	b.cfg.Provider = providerName

@@ -20,7 +20,7 @@ func (k *Kernel) modelAgentTools(list []tools.Tool) []tools.Tool {
 	if k.hasLink(link.NameAgents) {
 		list = append(list, spawnTool{k}, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k})
 	}
-	if k.hasLink(link.NameSkills) {
+	if k.hasLink(link.NameSkills) && k.isLoaded(link.NameSkills) {
 		list = append(list, skillTool{k})
 	}
 	return list

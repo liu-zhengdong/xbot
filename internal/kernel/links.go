@@ -1,0 +1,426 @@
+package kernel
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+
+	"xbot/internal/link"
+	"xbot/internal/provider"
+	"xbot/internal/tools"
+)
+
+// linksTool lets the bot search, install, remove, and load links.
+// Install always asks the owner. Secret values arrive from the approval card,
+// never from the model, and never go back out in the tool result.
+type linksTool struct{ k *Kernel }
+
+func (linksTool) Name() string { return "links" }
+func (linksTool) Description() string {
+	return "Search the link catalog, install or remove one, or load its tool schemas for this turn only. install always asks the owner. When the catalog entry lists secrets, the owner fills the values in the approval card; you never see those values. remove does not ask. Installed links are one line each in the system prompt. load brings that link's tool schemas into later steps of this turn, then they drop off. search returns summaries, including when the prompt lists ids only."
+}
+func (linksTool) Parameters() any {
+	return schema(map[string]any{
+		"action": stringProp("search, install, remove, or load"),
+		"id":     stringProp("catalog id, or mcp:<server> for load"),
+		"query":  stringProp("search text; empty lists the catalog"),
+	}, []string{"action"})
+}
+
+func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
+	var in struct {
+		Action string `json:"action"`
+		ID     string `json:"id"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return false, "", err
+	}
+	if strings.ToLower(strings.TrimSpace(in.Action)) != "install" {
+		return false, "", nil
+	}
+	id := strings.TrimSpace(in.ID)
+	e, ok := link.Lookup(id)
+	if !ok {
+		return true, "install " + id, nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "install %s\n%s", e.ID, linkOneLine(e.Summary))
+	if len(e.Secrets) > 0 {
+		fmt.Fprintf(&b, "\nsecrets: %s", strings.Join(e.Secrets, ", "))
+	}
+	return true, b.String(), nil
+}
+
+func (t linksTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		Action string `json:"action"`
+		ID     string `json:"id"`
+		Query  string `json:"query"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return "", err
+	}
+	if t.k == nil || t.k.Bot == nil {
+		return "", fmt.Errorf("links: no bot")
+	}
+	switch strings.ToLower(strings.TrimSpace(in.Action)) {
+	case "search":
+		return t.search(in.Query), nil
+	case "install":
+		return t.install(strings.TrimSpace(in.ID))
+	case "remove":
+		return t.remove(strings.TrimSpace(in.ID))
+	case "load":
+		return t.load(strings.TrimSpace(in.ID))
+	default:
+		return "", fmt.Errorf("links: action must be search, install, remove, or load")
+	}
+}
+
+func (t linksTool) search(query string) string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	granted := map[string]bool{}
+	for _, name := range t.k.Bot.Config().Links {
+		granted[name] = true
+	}
+	var b strings.Builder
+	for _, e := range link.Catalog() {
+		blob := strings.ToLower(e.ID + " " + e.Title + " " + e.Summary)
+		if q != "" && !strings.Contains(blob, q) {
+			continue
+		}
+		state := "listed"
+		if e.Available {
+			state = "available"
+		}
+		if e.Grant != "" && granted[e.Grant] {
+			state = "installed"
+		}
+		fmt.Fprintf(&b, "%s\t%s\t%s", e.ID, state, linkOneLine(e.Summary))
+		if len(e.Secrets) > 0 {
+			fmt.Fprintf(&b, "\tsecrets: %s", strings.Join(e.Secrets, ", "))
+		}
+		b.WriteByte('\n')
+	}
+	if servers, err := link.LoadMCP(t.k.Bot.MCPPath()); err == nil {
+		for _, s := range servers {
+			id := "mcp:" + s.Name
+			summary := link.Blurb(id)
+			if q != "" && !strings.Contains(strings.ToLower(id+" "+summary), q) {
+				continue
+			}
+			fmt.Fprintf(&b, "%s\tinstalled\t%s\n", id, linkOneLine(summary))
+		}
+	}
+	text := strings.TrimRight(b.String(), "\n")
+	if text == "" {
+		return "no links"
+	}
+	return scrubSecrets(text, t.k.secretValues())
+}
+
+func (t linksTool) install(id string) (string, error) {
+	e, ok := link.Lookup(id)
+	if !ok {
+		return "", fmt.Errorf("links: not found")
+	}
+	values := t.k.takeSecrets(e.ID)
+	var keep map[string]string
+	if len(e.Secrets) > 0 {
+		var missing []string
+		keep = map[string]string{}
+		for _, name := range e.Secrets {
+			v := strings.TrimSpace(values[name])
+			if v == "" {
+				missing = append(missing, name)
+				continue
+			}
+			keep[name] = v
+		}
+		if len(missing) > 0 {
+			return scrubSecrets("links: owner did not fill "+strings.Join(missing, ", "), values), nil
+		}
+	}
+	if !e.Available || e.Grant == "" {
+		return scrubSecrets("links: not available yet", values), nil
+	}
+	if len(keep) > 0 {
+		if err := link.WriteSecrets(t.k.Bot.SecretPath(), keep); err != nil {
+			return scrubSecrets("links: "+err.Error(), values), nil
+		}
+	}
+	if err := t.k.Bot.GrantLink(e.Grant); err != nil {
+		return scrubSecrets("links: "+err.Error(), values), nil
+	}
+	return scrubSecrets("installed "+e.ID, values), nil
+}
+
+func (t linksTool) remove(id string) (string, error) {
+	e, ok := link.Lookup(id)
+	if !ok {
+		return "", fmt.Errorf("links: not found")
+	}
+	if e.Grant != "" {
+		if err := t.k.Bot.RevokeLink(e.Grant); err != nil {
+			return "", err
+		}
+	}
+	if len(e.Secrets) > 0 {
+		if err := link.DropSecrets(t.k.Bot.SecretPath(), e.Secrets); err != nil {
+			return "", err
+		}
+	}
+	return "removed " + e.ID, nil
+}
+
+func (t linksTool) load(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("links: id is required")
+	}
+	if strings.HasPrefix(id, "mcp:") {
+		name := strings.TrimPrefix(id, "mcp:")
+		servers, err := link.LoadMCP(t.k.Bot.MCPPath())
+		if err != nil {
+			return "", err
+		}
+		found := false
+		for _, s := range servers {
+			if s.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("links: not found")
+		}
+		t.k.markLoaded(id)
+		return t.loadedNames(id)
+	}
+	e, ok := link.Lookup(id)
+	if !ok {
+		return "", fmt.Errorf("links: not found")
+	}
+	if e.Grant == "" || !t.k.Bot.Grants(e.Grant) {
+		return "", fmt.Errorf("links: not installed")
+	}
+	t.k.markLoaded(e.ID)
+	return t.loadedNames(e.ID)
+}
+
+func (t linksTool) loadedNames(id string) (string, error) {
+	list := t.k.toolsForLoaded(id)
+	names := make([]string, 0, len(list))
+	for _, tool := range list {
+		if tool == nil || tool.Name() == "" {
+			continue
+		}
+		names = append(names, tool.Name())
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return "loaded " + id + ": no tools", nil
+	}
+	return "loaded " + id + ": " + strings.Join(names, ", "), nil
+}
+
+func (k *Kernel) toolsForLoaded(id string) []tools.Tool {
+	if id == link.NameSkills || id == "skills" {
+		if k.hasLink(link.NameSkills) {
+			return []tools.Tool{skillTool{k}}
+		}
+		return nil
+	}
+	var out []tools.Tool
+	for _, l := range k.Links {
+		if l == nil {
+			continue
+		}
+		if l.Name() == id || (id != "" && l.Name() == grantName(id)) {
+			out = append(out, l.Tools()...)
+		}
+	}
+	return out
+}
+
+func grantName(id string) string {
+	e, ok := link.Lookup(id)
+	if !ok {
+		return ""
+	}
+	return e.Grant
+}
+
+func (k *Kernel) installedSection() (string, error) {
+	if k == nil || k.Bot == nil {
+		return "", nil
+	}
+	granted := map[string]bool{}
+	for _, name := range k.Bot.Config().Links {
+		granted[name] = true
+	}
+	var refs []link.InstalledRef
+	for _, e := range link.Catalog() {
+		if e.Grant == "" || !granted[e.Grant] {
+			continue
+		}
+		refs = append(refs, link.InstalledRef{ID: e.ID, Summary: e.Summary})
+	}
+	servers, err := link.LoadMCP(k.Bot.MCPPath())
+	if err != nil {
+		return "", err
+	}
+	sort.Slice(servers, func(i, j int) bool { return servers[i].Name < servers[j].Name })
+	for _, s := range servers {
+		id := "mcp:" + s.Name
+		refs = append(refs, link.InstalledRef{ID: id, Summary: link.Blurb(id)})
+	}
+	return link.InstalledSection(refs), nil
+}
+
+func (k *Kernel) markLoaded(id string) {
+	k.loadMu.Lock()
+	defer k.loadMu.Unlock()
+	if k.loaded == nil {
+		k.loaded = map[string]bool{}
+	}
+	k.loaded[id] = true
+}
+
+func (k *Kernel) isLoaded(id string) bool {
+	if k == nil {
+		return false
+	}
+	k.loadMu.Lock()
+	defer k.loadMu.Unlock()
+	return k.loaded[id]
+}
+
+func (k *Kernel) clearLoaded() {
+	if k == nil {
+		return
+	}
+	k.loadMu.Lock()
+	k.loaded = map[string]bool{}
+	k.loadMu.Unlock()
+}
+
+// StageSecrets stores approval-card values for one catalog id until install reads them.
+// The model never receives this map.
+func (k *Kernel) StageSecrets(id string, values map[string]string) {
+	if k == nil || id == "" || len(values) == 0 {
+		return
+	}
+	cp := make(map[string]string, len(values))
+	for name, value := range values {
+		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
+		if name == "" || value == "" {
+			continue
+		}
+		cp[name] = value
+	}
+	if len(cp) == 0 {
+		return
+	}
+	k.secretMu.Lock()
+	defer k.secretMu.Unlock()
+	if k.secrets == nil {
+		k.secrets = map[string]map[string]string{}
+	}
+	k.secrets[id] = cp
+}
+
+func (k *Kernel) takeSecrets(id string) map[string]string {
+	if k == nil {
+		return nil
+	}
+	k.secretMu.Lock()
+	defer k.secretMu.Unlock()
+	values := k.secrets[id]
+	delete(k.secrets, id)
+	return values
+}
+
+func (k *Kernel) secretValues() map[string]string {
+	if k == nil {
+		return nil
+	}
+	k.secretMu.Lock()
+	out := map[string]string{}
+	for _, m := range k.secrets {
+		for name, value := range m {
+			out[name] = value
+		}
+	}
+	k.secretMu.Unlock()
+	if k.Bot == nil {
+		return out
+	}
+	stored, err := link.ReadSecrets(k.Bot.SecretPath())
+	if err != nil {
+		return out
+	}
+	for name, value := range stored {
+		out[name] = value
+	}
+	return out
+}
+
+func scrubSecrets(s string, values map[string]string) string {
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		s = strings.ReplaceAll(s, value, "[secret]")
+	}
+	return s
+}
+
+func linkOneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func (k *Kernel) stableLinkNames() []string {
+	var names []string
+	for _, name := range k.linkNames() {
+		if lazyUntilLoad(name) {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
+	values := k.secretValues()
+	if len(values) == 0 {
+		return m
+	}
+	m.Content = scrubSecrets(m.Content, values)
+	if len(m.ToolCalls) == 0 {
+		return m
+	}
+	calls := append([]provider.ToolCall(nil), m.ToolCalls...)
+	for i := range calls {
+		calls[i].Function.Arguments = scrubSecrets(calls[i].Function.Arguments, values)
+	}
+	m.ToolCalls = calls
+	return m
+}
+
+func lazyUntilLoad(name string) bool {
+	if strings.HasPrefix(name, "mcp:") {
+		return true
+	}
+	switch name {
+	case link.NameWebhook, link.NameWatch, link.NameSkills:
+		return true
+	default:
+		return false
+	}
+}
+
+// silence unused import if tools is only used in toolsForLoaded
+var _ tools.Tool = linksTool{}
