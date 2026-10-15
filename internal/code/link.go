@@ -6,17 +6,25 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
 
-// Link is the coding-agent grant. Its tools edit local records.
-// Schemas stay off the model list until the bot loads this link.
+// Link is the coding-agent grant. Its tools edit local records and, when a
+// backend is configured, run the task. Schemas stay off the model list until load.
 type Link struct {
-	rec   *Record
-	inbox string
+	rec         *Record
+	inbox       string
+	command     string
+	runnerURL   string
+	runnerToken string
+	prov        provider.Provider
+	mu          sync.Mutex
+	live        map[string]*liveRun
 }
 
 // Open binds the record store to a bot directory and posts terminal states to inboxPath.
@@ -70,7 +78,7 @@ type startTool struct{ l *Link }
 
 func (startTool) Name() string { return "code_start" }
 func (startTool) Description() string {
-	return "Start a coding-agent task record. work_dir is absolute. max_steps and timeout_sec are for this task, not the subagent defaults. A second task waits in the queue. This does not run a model."
+	return "Start a coding-agent task. work_dir is absolute. max_steps and timeout_sec belong to this task, not the subagent defaults. A second task waits in the queue. It runs on XBOT_CODE_AGENT, the xbot runner, or this bot's model. With none of those, only the record is written."
 }
 func (startTool) Parameters() any { return startSchema() }
 func (startTool) Confirm(json.RawMessage) (bool, string, error) {
@@ -93,6 +101,9 @@ func (t startTool) Run(_ context.Context, args json.RawMessage) (string, error) 
 	})
 	if err != nil {
 		return "", err
+	}
+	if task.Status == StatusRunning {
+		t.l.launch(task)
 	}
 	return task.Status + " " + task.ID, nil
 }
@@ -164,6 +175,7 @@ func (t cancelTool) Run(_ context.Context, args json.RawMessage) (string, error)
 	if err != nil {
 		return "", err
 	}
+	t.l.nudge(task.ID, KindCancel)
 	return task.Status + " " + task.ID, nil
 }
 
@@ -223,6 +235,7 @@ func control(l *Link, args json.RawMessage, kind string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	l.nudge(task.ID, kind)
 	return kind + " " + task.ID, nil
 }
 

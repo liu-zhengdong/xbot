@@ -208,7 +208,9 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 `DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时从 `secrets.json` 删掉这些名字。
 
-`coding-agent` 可以安装。任务记录不走 HTTP，Bot 用 `code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`code_show`。完成、失败或取消写成该 Bot 收件箱里的不可信事件。
+`coding-agent` 可以安装。任务记录不走这套登录接口。Bot 用 `code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`code_show`。完成、失败或取消写成该 Bot 收件箱里的不可信事件。
+
+`xbot runner` 在环回地址上另有编码任务接口，和子代理一样要 bearer token：`POST /v1/code/start`、`POST /v1/code/message`、`GET /v1/code/events`（SSE）。`start` 的正文是任务字段加可选的 `model`（`base_url`、`api_key`、`model`）。密钥只在这一跳里出现，不进 Bot 的 transcript。
 
 ## 连接器入站
 

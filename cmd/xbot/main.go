@@ -1094,6 +1094,19 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if b.Config().ContextLimit == 0 && contextLen > 0 {
 		budget = kernel.BudgetFor(bot.Config{ContextLimit: contextLen})
 	}
+	for _, item := range links {
+		coding, ok := item.(*code.Link)
+		if !ok {
+			continue
+		}
+		coding.UseProvider(client)
+		if runner.URL != "" {
+			coding.UseRunner(runner.URL, runner.Token)
+		}
+		if cmd := strings.TrimSpace(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
+			coding.UseCommand(cmd)
+		}
+	}
 	k := &kernel.Kernel{
 		Bot:             b,
 		Provider:        client,
@@ -1580,7 +1593,7 @@ func cmdRunner(args []string) error {
 	loc.ToolSet = func(string) []tools.Tool {
 		return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
 	}
-	return exec.Listen(*addr, tok, loc)
+	return exec.ListenCode(*addr, tok, loc, code.NewService())
 }
 
 func cmdProvider(root string, args []string) error {

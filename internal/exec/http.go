@@ -21,6 +21,8 @@ const maxBody = 8 << 20
 type Server struct {
 	Local *Local
 	Token string
+	// Code handles /v1/code/ routes after the loopback and bearer checks.
+	Code http.Handler
 }
 
 // Handler is the runner's HTTP handler.
@@ -36,6 +38,10 @@ func (s *Server) Handler() http.Handler {
 		}
 		if !s.authorized(r) {
 			http.Error(w, "runner: unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if s.Code != nil && strings.HasPrefix(r.URL.Path, "/v1/code/") {
+			s.Code.ServeHTTP(w, r)
 			return
 		}
 		mux.ServeHTTP(w, r)
@@ -157,10 +163,21 @@ func Listen(addr, token string, local *Local) error {
 	if !loopbackAddr(addr) {
 		return errors.New("runner: address must be loopback")
 	}
+	return ListenCode(addr, token, local, nil)
+}
+
+// ListenCode is Listen plus a handler for /v1/code/ routes.
+func ListenCode(addr, token string, local *Local, code http.Handler) error {
+	if strings.TrimSpace(token) == "" {
+		return errors.New("runner: token is empty")
+	}
+	if !loopbackAddr(addr) {
+		return errors.New("runner: address must be loopback")
+	}
 	if local == nil {
 		local = NewLocal(Limits{})
 	}
-	srv := &http.Server{Addr: addr, Handler: (&Server{Local: local, Token: token}).Handler()}
+	srv := &http.Server{Addr: addr, Handler: (&Server{Local: local, Token: token, Code: code}).Handler()}
 	return srv.ListenAndServe()
 }
 
