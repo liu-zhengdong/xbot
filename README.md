@@ -381,7 +381,7 @@ xbot node list
 xbot node call desk info
 ```
 
-`add` 会先用 token 问一次对方，401 就不写入。`list` 不打印 token。token 不对显示 `unauthorized`，连不上才是 `offline`。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。开关是 `ask` 时命令不跑，记在那台机器上，十分钟后过期，最多 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve <id>` 先显示命令，回答 `y` 才执行，`--yes` 跳过提问。回答不是 `y` 时退出码非零，并删掉这条待批。`xbot person unlink <link:id>` 去掉一个已关联账号。网页在跑的话，通知和页面上也能允许或拒绝。调用方传来的 `approved` 不算数。
+`add` 会先用 token 问一次对方，401 就不写入。`list` 不打印 token。token 不对显示 `unauthorized`，连不上才是 `offline`。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。开关是 `ask` 时命令不跑，记在那台机器上，十分钟后过期，最多 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve <id>` 先显示命令，回答 `y` 才执行，`--yes` 跳过提问。回答不是 `y` 时退出码非零，并删掉这条待批。`xbot person unlink [--force] <link:id>` 去掉一个已关联账号。最后一个本机 `terminal:uid:` 账号要加 `--force`。网页在跑的话，通知和页面上也能允许或拒绝。调用方传来的 `approved` 不算数。
 
 ## 机器开关
 

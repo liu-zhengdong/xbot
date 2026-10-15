@@ -779,6 +779,42 @@ func TestPersonUnlinkCommand(t *testing.T) {
 	}
 }
 
+func TestPersonUnlinkKeepsLastLocalAccount(t *testing.T) {
+	root := t.TempDir()
+	p, err := person.Identify(root, person.Account{Link: "terminal", ExternalID: "uid:7"}, "Ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Accounts = append(p.Accounts, person.Account{Link: "telegram", ExternalID: "42"})
+	if err := person.Record(root, "", "", time.Time{}, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdPerson(root, []string{"unlink", "telegram:42"}); err != nil {
+		t.Fatal(err)
+	}
+	err = cmdPerson(root, []string{"unlink", "terminal:uid:7"})
+	if err == nil || !strings.Contains(err.Error(), "last local account") {
+		t.Fatal(err)
+	}
+	got, err := person.Load(root, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Accounts) != 1 || got.Accounts[0].ExternalID != "uid:7" {
+		t.Fatalf("removed %+v", got.Accounts)
+	}
+	if err := cmdPerson(root, []string{"unlink", "--force", "terminal:uid:7"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = person.Load(root, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Accounts) != 0 {
+		t.Fatalf("force left %+v", got.Accounts)
+	}
+}
+
 func TestMountEveryCatalogLinkTwice(t *testing.T) {
 	root := t.TempDir()
 	b, err := bot.Create(root, "ada", "Be brief.", []string{"terminal"})

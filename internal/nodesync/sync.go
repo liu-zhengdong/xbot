@@ -43,7 +43,24 @@ type Bundle struct {
 
 type runner struct {
 	wake chan struct{}
+	done chan struct{}
 	mu   sync.Mutex
+}
+
+// Wait blocks until the sync loop for root has stopped.
+// A root that was never started returns immediately.
+func Wait(root string) {
+	regMu.Lock()
+	r := runners[root]
+	var done <-chan struct{}
+	if r != nil {
+		done = r.done
+	}
+	regMu.Unlock()
+	if done == nil {
+		return
+	}
+	<-done
 }
 
 var (
@@ -66,7 +83,10 @@ func Start(ctx context.Context, root string, every, debounce time.Duration) {
 		return
 	}
 	go func() {
-		defer unbind(root)
+		defer func() {
+			unbind(root)
+			close(r.done)
+		}()
 		timer := time.NewTimer(every)
 		defer timer.Stop()
 		for {
@@ -130,7 +150,7 @@ func Accept(root, command string) (string, error) {
 		if err := json.Unmarshal([]byte(command), &remote); err != nil {
 			return "", err
 		}
-		if err := merge(root, remote); err != nil {
+		if err := merge(root, "", remote); err != nil {
 			return "", err
 		}
 	}
@@ -158,7 +178,9 @@ func once(ctx context.Context, root string) error {
 		if err := fits(raw); err != nil {
 			return err
 		}
+		peer := ""
 		if info, err := node.Ping(ctx, n.URL, n.Token); err == nil {
+			peer = info.ID
 			if err := node.RememberDevice(root, n.Name, info.ID); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
 			}
@@ -173,7 +195,7 @@ func once(ctx context.Context, root string) error {
 			errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
 			continue
 		}
-		if err := merge(root, remote); err != nil {
+		if err := merge(root, peer, remote); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
 			continue
 		}
@@ -203,11 +225,11 @@ func export(root string) (Bundle, error) {
 	return Bundle{People: people, Memory: mem}, nil
 }
 
-func merge(root string, b Bundle) error {
+func merge(root, peer string, b Bundle) error {
 	if err := person.MergeLog(root, b.People); err != nil {
 		return err
 	}
-	return memory.MergeSync(root, b.Memory)
+	return memory.MergeFrom(root, peer, b.Memory)
 }
 
 func marshal(b Bundle) ([]byte, error) {
@@ -235,7 +257,7 @@ func bind(root string) *runner {
 	if _, ok := runners[root]; ok {
 		return nil
 	}
-	r := &runner{wake: make(chan struct{}, 1)}
+	r := &runner{wake: make(chan struct{}, 1), done: make(chan struct{})}
 	runners[root] = r
 	return r
 }

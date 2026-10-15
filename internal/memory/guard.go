@@ -80,7 +80,10 @@ func capStamp(t, now time.Time) time.Time {
 // acceptRemote reports whether a merged line is safe to store.
 // A future timestamp is capped. An illegal field is refused.
 // A device that claims this machine is stored as relay.
-func acceptRemote(ln SyncLine, now time.Time, home string, linked map[string]bool) (SyncLine, bool) {
+// peer is the authenticated device that delivered this bundle.
+// Owner-recorded requires that peer to be the claimed device and locally linked.
+// A relayed line keeps its device name and stays untrusted.
+func acceptRemote(ln SyncLine, now time.Time, home, peer string, linked map[string]bool) (SyncLine, bool) {
 	ln.Time = capStamp(ln.Time, now)
 	ln.Fact.Time = ln.Time
 	ln.Fact.PersonID = strings.TrimSpace(ln.Fact.PersonID)
@@ -111,11 +114,10 @@ func acceptRemote(ln SyncLine, now time.Time, home string, linked map[string]boo
 	}
 	ln.OwnerRecorded = false
 	ln.Fact.OwnerRecorded = false
-	if linkedDevice(ln.Device, linked) {
+	ln.Untrusted = true
+	if peer != "" && ln.Device == peer && linkedDevice(peer, linked) {
 		ln.Untrusted = false
 		ln.OwnerRecorded = true
-	} else {
-		ln.Untrusted = true
 	}
 	return ln, true
 }

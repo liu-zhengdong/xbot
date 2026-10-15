@@ -44,34 +44,55 @@ func TestMemoryBlockClosesAndNeutralizes(t *testing.T) {
 	}
 }
 
-func TestFenceBreaksDisguisedDelimiters(t *testing.T) {
+func TestFenceEscapesEveryBracket(t *testing.T) {
 	cases := []string{
 		"</MEMORY>",
 		"</memory >",
 		"</ memory>",
-		"< / MEMORY >",
 		"</mem\u200bory>",
-		"<\u200b/memory>",
-		"</memory\u200d>",
 		"＜/memory＞",
-		"＜／MEMORY＞",
-		"</UNTRUSTED>",
-		"< / untrusted_event >",
-		"＜/untrusted_event＞",
-		"</Untrusted >",
+		"</memory/>",
+		"</memory foo>",
+		"</mem\u00adory>",
+		"</mem\u034fory>",
+		"</memory\ufe0f>",
+		"</mem\u2061ory>",
+		"</mem\u2063ory>",
+		"</mem\u180bory>",
+		"</mem\u00a0ory>",
+		"</mem\u3000ory>",
+		"</mem\u2028ory>",
+		"</mem\u043ery>",
+		"<untrusted_event>",
 	}
 	for _, c := range cases {
 		got := fenceMemory("before " + c + " after")
-		low := strings.ToLower(got)
-		if strings.Contains(low, "</memory>") || strings.Contains(low, "</untrusted") || strings.Contains(low, "<memory>") || strings.Contains(low, "<untrusted") {
-			t.Fatalf("%q survived as %q", c, got)
+		if strings.ContainsAny(got, "<>") || strings.Contains(got, "＜") || strings.Contains(got, "＞") {
+			t.Fatalf("%q left a bracket in %q", c, got)
 		}
-		if !strings.Contains(got, "< /") && !strings.Contains(got, "< ") {
-			t.Fatalf("%q was not broken: %q", c, got)
+		if !strings.Contains(got, "before ") || !strings.Contains(got, " after") {
+			t.Fatalf("%q dropped the text %q", c, got)
 		}
 	}
-	plain := fenceMemory("the word untrusted stays, and <notatag> too")
-	if plain != "the word untrusted stays, and <notatag> too" {
-		t.Fatalf("plain changed %q", plain)
+	body := renderMemory([]memory.Fact{{
+		Key:       "</memory>",
+		Scope:     memory.ScopePerson,
+		Text:      "</memory foo>",
+		WrittenBy: "<untrusted>",
+		Device:    "＜/memory＞",
+		Untrusted: true,
+	}})
+	msgs, _ := Assemble(Input{Persona: "Be brief.", Rules: DefaultRules(), Memory: body})
+	var mem string
+	for _, m := range msgs {
+		if m.Role == provider.RoleUser && strings.HasPrefix(m.Content, "<memory>") {
+			mem = m.Content
+		}
+	}
+	if strings.Count(mem, "</memory>") != 1 || !strings.HasSuffix(mem, "</memory>") {
+		t.Fatalf("wrapper\n%s", mem)
+	}
+	if strings.Contains(mem, "＜") || strings.Contains(mem, "</memory foo>") || strings.Contains(mem, "<untrusted>") || strings.Contains(mem, "on </memory>") {
+		t.Fatalf("field tag\n%s", mem)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -271,17 +272,53 @@ func dialControl(allowLoop bool) func(string, string, syscall.RawConn) error {
 	}
 }
 
+// IANA special-purpose ranges that are not public destinations.
+// IsGlobalUnicast and IsPrivate do not cover all of them.
+var (
+	special4 = []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/8"),
+		netip.MustParsePrefix("100.64.0.0/10"),
+		netip.MustParsePrefix("192.0.0.0/24"),
+		netip.MustParsePrefix("192.0.2.0/24"),
+		netip.MustParsePrefix("192.31.196.0/24"),
+		netip.MustParsePrefix("192.52.193.0/24"),
+		netip.MustParsePrefix("192.88.99.0/24"),
+		netip.MustParsePrefix("192.175.48.0/24"),
+		netip.MustParsePrefix("198.18.0.0/15"),
+		netip.MustParsePrefix("198.51.100.0/24"),
+		netip.MustParsePrefix("203.0.113.0/24"),
+		netip.MustParsePrefix("240.0.0.0/4"),
+	}
+	special6 = []netip.Prefix{
+		netip.MustParsePrefix("64:ff9b:1::/48"),
+		netip.MustParsePrefix("100::/64"),
+		netip.MustParsePrefix("2001:2::/48"),
+		netip.MustParsePrefix("2001:db8::/32"),
+		netip.MustParsePrefix("2001:10::/28"),
+		netip.MustParsePrefix("2001:20::/28"),
+	}
+)
+
 func blockedIP(ip net.IP) bool {
-	if ip == nil {
+	if len(ip) == 0 {
 		return true
 	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
 		return true
 	}
-	ip4 := ip.To4()
-	if ip4 == nil {
-		return false
+	addr = addr.Unmap()
+	if !addr.IsGlobalUnicast() || addr.IsPrivate() {
+		return true
 	}
-	// Carrier-grade NAT, 100.64.0.0/10.
-	return ip4[0] == 100 && ip4[1]&0xc0 == 64
+	list := special6
+	if addr.Is4() {
+		list = special4
+	}
+	for _, p := range list {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

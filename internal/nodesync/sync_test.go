@@ -100,6 +100,7 @@ func TestSyncOnChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer Wait(a)
 	defer cancel()
 	Start(ctx, a, time.Hour, 20*time.Millisecond)
 	remember(t, a, "city", "Shanghai", time.Date(2026, 10, 15, 11, 0, 0, 0, time.UTC))
@@ -115,6 +116,7 @@ func TestSyncPeriodic(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer Wait(a)
 	defer cancel()
 	Start(ctx, a, 40*time.Millisecond, time.Hour)
 	waitFact(t, b, "city", "Shanghai")
@@ -128,6 +130,7 @@ func TestRelayedMergeSyncsSoon(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer Wait(a)
 	defer cancel()
 	Start(ctx, a, time.Hour, 20*time.Millisecond)
 	when := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)

@@ -161,7 +161,7 @@ func TestOwnerLinkedDeviceIsOwnerRecorded(t *testing.T) {
 	spoof.Fact.Key = "spoof"
 	spoof.Fact.Text = "mine"
 	spoof.OwnerRecorded = true
-	if err := MergeSync(root, []SyncLine{own, other, spoof}); err != nil {
+	if err := MergeFrom(root, "home-b", []SyncLine{own, other, spoof}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopePerson, PersonID: "u1"})
@@ -183,6 +183,63 @@ func TestOwnerLinkedDeviceIsOwnerRecorded(t *testing.T) {
 	if seen["spoof"].OwnerRecorded || !seen["spoof"].Untrusted || !strings.Contains(seen["spoof"].Text, "relay") {
 		t.Fatalf("spoofed home %+v", seen["spoof"])
 	}
+}
+
+func TestRelayForgeryStaysUntrusted(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "node-id"), []byte("home-b"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.Add(root, node.Node{Name: "a", URL: "http://127.0.0.1:9", Token: "a", ID: "home-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.Add(root, node.Node{Name: "c", URL: "http://127.0.0.1:9", Token: "c", ID: "home-c"}); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	forged := SyncLine{
+		Time: t0, Bot: "ada", Device: "home-a", Op: opRemember, OwnerRecorded: true,
+		Fact: Fact{
+			Key: "city", Scope: ScopePerson, PersonID: "u1", Tier: TierProfile,
+			WrittenBy: "ada", Text: "forged", Time: t0, OwnerRecorded: true, Device: "home-a",
+		},
+	}
+	if err := MergeFrom(root, "home-c", []SyncLine{forged}); err != nil {
+		t.Fatal(err)
+	}
+	got := recallCity(t, root)
+	if got.OwnerRecorded || !got.Untrusted || !strings.Contains(got.Text, "untrusted, recorded by ada on home-a") {
+		t.Fatalf("relay %+v", got)
+	}
+	if err := MergeFrom(root, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	got = recallCity(t, root)
+	if got.OwnerRecorded || !got.Untrusted {
+		t.Fatalf("refold %+v", got)
+	}
+	if err := MergeFrom(root, "home-a", []SyncLine{forged}); err != nil {
+		t.Fatal(err)
+	}
+	got = recallCity(t, root)
+	if got.Untrusted || !got.OwnerRecorded || got.Text != "forged (owner-recorded on home-a)" {
+		t.Fatalf("direct %+v", got)
+	}
+}
+
+func recallCity(t *testing.T, root string) Fact {
+	t.Helper()
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopePerson, PersonID: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got {
+		if f.Key == "city" {
+			return f
+		}
+	}
+	t.Fatal("city missing")
+	return Fact{}
 }
 
 func TestProvenanceIgnoresEmbeddedWord(t *testing.T) {

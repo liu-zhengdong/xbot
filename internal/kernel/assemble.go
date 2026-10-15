@@ -183,127 +183,23 @@ func wrapMemory(s string) string {
 	return "<memory>\n" + MemoryRule + "\n" + s + "\n</memory>"
 }
 
+// fenceMemory escapes every angle bracket so a fact cannot form a tag.
+// Look-alike brackets are escaped too. Hidden characters inside a name do not matter:
+// without a raw bracket, no delimiter can close the block.
 func fenceMemory(s string) string {
-	s = normalizeFence(s)
-	var b strings.Builder
-	b.Grow(len(s) + 8)
-	for i := 0; i < len(s); {
-		if s[i] != '<' {
-			b.WriteByte(s[i])
-			i++
-			continue
-		}
-		n, repl, ok := cutFence(s[i:])
-		if !ok {
-			b.WriteByte('<')
-			i++
-			continue
-		}
-		b.WriteString(repl)
-		i += n
-	}
-	return b.String()
-}
-
-// normalizeFence drops characters that hide a delimiter and maps look-alike brackets.
-func normalizeFence(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
 		switch r {
-		case '\u200b', '\u200c', '\u200d', '\ufeff', '\u2060', '\u180e', '\u200e', '\u200f':
-			continue
-		case '＜', '\u2329', '\u3008', '\u27e8':
-			b.WriteByte('<')
-		case '＞', '\u232a', '\u3009', '\u27e9':
-			b.WriteByte('>')
-		case '／':
-			b.WriteByte('/')
+		case '<', '\uff1c', '\ufe64', '\u2329', '\u3008', '\u27e8', '\u2039', '\u00ab', '\u276c', '\u276e', '\u2770':
+			b.WriteString("&lt;")
+		case '>', '\uff1e', '\ufe65', '\u232a', '\u3009', '\u27e9', '\u203a', '\u00bb', '\u276d', '\u276f', '\u2771':
+			b.WriteString("&gt;")
 		default:
 			b.WriteRune(r)
 		}
 	}
 	return b.String()
-}
-
-// cutFence matches one memory or untrusted delimiter at the start of s.
-// Matching ignores case and whitespace inside the tag. memory requires a closing bracket.
-// untrusted and untrusted_event also match the old prefix form without one.
-func cutFence(s string) (int, string, bool) {
-	if s == "" || s[0] != '<' {
-		return 0, "", false
-	}
-	i := skipFenceSpace(s, 1)
-	closing := false
-	if i < len(s) && s[i] == '/' {
-		closing = true
-		i = skipFenceSpace(s, i+1)
-	}
-	name, next := readFenceName(s, i)
-	if name == "" {
-		return 0, "", false
-	}
-	i = skipFenceSpace(s, next)
-	closed := false
-	if i < len(s) && s[i] == '>' {
-		i++
-		closed = true
-	}
-	if name == "memory" && !closed {
-		return 0, "", false
-	}
-	repl := "< " + name + ">"
-	if closing {
-		repl = "< /" + name + ">"
-	}
-	return i, repl, true
-}
-
-func readFenceName(s string, i int) (string, int) {
-	var b strings.Builder
-	for i < len(s) {
-		c := s[i]
-		if isFenceSpace(c) {
-			j := skipFenceSpace(s, i)
-			if j >= len(s) || s[j] == '>' || !isFenceName(s[j]) {
-				break
-			}
-			i++
-			continue
-		}
-		if !isFenceName(c) {
-			break
-		}
-		if c >= 'A' && c <= 'Z' {
-			c = c - 'A' + 'a'
-		}
-		b.WriteByte(c)
-		i++
-		if b.Len() > 32 {
-			return "", i
-		}
-	}
-	switch b.String() {
-	case "memory", "untrusted", "untrusted_event":
-		return b.String(), i
-	default:
-		return "", i
-	}
-}
-
-func skipFenceSpace(s string, i int) int {
-	for i < len(s) && isFenceSpace(s[i]) {
-		i++
-	}
-	return i
-}
-
-func isFenceSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
-}
-
-func isFenceName(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 func renderMemory(facts []memory.Fact) string {

@@ -24,7 +24,8 @@ type SyncLine struct {
 	Op     string    `json:"op"`
 	// Untrusted is set when the line arrived from another node, or from an untrusted turn.
 	Untrusted bool `json:"untrusted,omitempty"`
-	// OwnerRecorded is set when the line's device is one this machine has linked.
+	// OwnerRecorded is set only when the authenticated peer that delivered the
+	// line is this device, and this machine has linked that peer.
 	OwnerRecorded bool `json:"owner_recorded,omitempty"`
 	Fact          Fact `json:"fact"`
 }
@@ -75,14 +76,22 @@ func ExportSync(root string) ([]SyncLine, error) {
 }
 
 // MergeSync folds remote person-memory lines into this data root.
+// The peer is unknown, so every remote line stays untrusted.
 // The newest timestamp wins for each key. An equal timestamp keeps the local line.
 // A timestamp past now plus a small skew is capped. Illegal lines are dropped.
-// A line that arrived from another node is untrusted data and keeps its provenance.
 // Files under bots/ are left alone. A real change wakes the fast sync path.
 func MergeSync(root string, remote []SyncLine) error {
+	return MergeFrom(root, "", remote)
+}
+
+// MergeFrom is MergeSync for a bundle delivered by an authenticated peer.
+// peer is that node's device id. A line is owner-recorded only when its device
+// is this peer and the peer is linked locally. Lines relayed by the peer stay untrusted.
+func MergeFrom(root, peer string, remote []SyncLine) error {
 	now := time.Now()
 	home := deviceOf(root)
 	linked := linkedDevices(root)
+	peer = strings.TrimSpace(peer)
 	byID := map[string][]SyncLine{}
 	for _, ln := range remote {
 		id := ln.Fact.PersonID
@@ -92,7 +101,7 @@ func MergeSync(root string, remote []SyncLine) error {
 		if ln.Fact.Scope != "" && ln.Fact.Scope != ScopePerson {
 			continue
 		}
-		ln, ok := acceptRemote(ln, now, home, linked)
+		ln, ok := acceptRemote(ln, now, home, peer, linked)
 		if !ok {
 			continue
 		}
@@ -114,7 +123,7 @@ func MergeSync(root string, remote []SyncLine) error {
 	}
 	changed := false
 	for id := range ids {
-		ok, err := mergePerson(root, id, byID[id], home, linked)
+		ok, err := mergePerson(root, id, byID[id])
 		if err != nil {
 			return err
 		}
@@ -126,7 +135,7 @@ func MergeSync(root string, remote []SyncLine) error {
 	return nil
 }
 
-func mergePerson(root, id string, remote []SyncLine, home string, linked map[string]bool) (bool, error) {
+func mergePerson(root, id string, remote []SyncLine) (bool, error) {
 	dir := filepath.Join(root, "people", id, "memory")
 	changed := false
 	err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
@@ -146,26 +155,35 @@ func mergePerson(root, id string, remote []SyncLine, home string, linked map[str
 			changed = true
 		}
 		have := map[string]bool{}
+		ownerSeen := map[string]bool{}
 		for _, ln := range local {
-			have[syncKey(ln)] = true
+			key := syncKey(ln)
+			have[key] = true
+			if ln.OwnerRecorded {
+				ownerSeen[key] = true
+			}
 		}
 		for _, ln := range remote {
 			ln.Fact.PersonID = id
 			ln.Fact.Scope = ScopePerson
-			if have[syncKey(ln)] {
+			key := syncKey(ln)
+			if have[key] && (!ln.OwnerRecorded || ownerSeen[key]) {
 				continue
 			}
 			if err := appendSync(root, ln); err != nil {
 				return err
 			}
 			local = append(local, ln)
-			have[syncKey(ln)] = true
+			have[key] = true
+			if ln.OwnerRecorded {
+				ownerSeen[key] = true
+			}
 			changed = true
 		}
 		if len(local) == 0 {
 			return nil
 		}
-		return writeFold(dir, id, local, home, linked)
+		return writeFold(dir, id, local)
 	})
 	return changed, err
 }
@@ -196,9 +214,9 @@ func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
 	return extra, nil
 }
 
-func writeFold(dir, id string, lines []SyncLine, home string, linked map[string]bool) error {
+func writeFold(dir, id string, lines []SyncLine) error {
 	byTier := map[Tier][]Fact{}
-	winners := foldSync(lines, home, linked)
+	winners := foldSync(lines)
 	for _, f := range winners {
 		tier := f.Tier
 		if tier == "" {
@@ -218,7 +236,7 @@ func writeFold(dir, id string, lines []SyncLine, home string, linked map[string]
 	return nil
 }
 
-func foldSync(lines []SyncLine, home string, linked map[string]bool) []Fact {
+func foldSync(lines []SyncLine) []Fact {
 	type slot struct {
 		ln  SyncLine
 		idx int
@@ -240,6 +258,13 @@ func foldSync(lines []SyncLine, home string, linked map[string]bool) []Fact {
 		if ln.Time.After(cur.ln.Time) {
 			cur.ln = ln
 			cur.idx = i
+			continue
+		}
+		// A later direct delivery of the same line can replace a relayed copy.
+		if ln.Time.Equal(cur.ln.Time) && ln.OwnerRecorded && !cur.ln.OwnerRecorded &&
+			ln.Device == cur.ln.Device && ln.Op == cur.ln.Op && ln.Fact.Text == cur.ln.Fact.Text {
+			cur.ln = ln
+			cur.idx = i
 		}
 	}
 	var out []Fact
@@ -258,11 +283,11 @@ func foldSync(lines []SyncLine, home string, linked map[string]bool) []Fact {
 		if ln.Device != "" {
 			f.Device = ln.Device
 		}
-		if linkedDevice(f.Device, linked) && f.Device != home {
+		if ln.OwnerRecorded {
 			f.Untrusted = false
 			f.OwnerRecorded = true
 			f.Text = OwnerProvenance(f.Text, f.Device)
-		} else if ln.Untrusted || f.Untrusted {
+		} else if ln.Untrusted || f.Untrusted || f.OwnerRecorded {
 			f.OwnerRecorded = false
 			f.Untrusted = true
 			f.Text = Provenance(f.Text, f.WrittenBy, f.Device)

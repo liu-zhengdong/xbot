@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -146,6 +147,11 @@ func TestSubscriptionRejects(t *testing.T) {
 
 func TestEndpointFailsClosed(t *testing.T) {
 	root := t.TempDir()
+	prev := lookupHost
+	t.Cleanup(func() { lookupHost = prev })
+	lookupHost = func(context.Context, string) ([]net.IP, error) {
+		return nil, errors.New("no such host")
+	}
 	for _, raw := range []string{
 		"https://2130706433/push",
 		"https://0x7f000001/push",
@@ -155,6 +161,20 @@ func TestEndpointFailsClosed(t *testing.T) {
 		if err := SaveSubscription(root, "u1", sub); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
+	}
+	for _, ip := range []string{"198.18.0.1", "100.64.0.1", "192.0.2.1", "240.0.0.1", "0.1.2.3", "2001:db8::1"} {
+		lookupHost = func(context.Context, string) ([]net.IP, error) {
+			return []net.IP{net.ParseIP(ip)}, nil
+		}
+		if err := SaveSubscription(root, "u1", mustSub(t, "https://push.example/s")); err == nil {
+			t.Fatalf("accepted %s", ip)
+		}
+	}
+	lookupHost = func(context.Context, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("8.8.8.8")}, nil
+	}
+	if err := SaveSubscription(root, "u1", mustSub(t, "https://push.example/s")); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -168,6 +188,12 @@ func TestDialControlRejectsPrivate(t *testing.T) {
 	}
 	if err := deny("tcp", "100.64.0.1:443", nil); err == nil {
 		t.Fatal("cgnat dial allowed")
+	}
+	if err := deny("tcp", "198.18.0.1:443", nil); err == nil {
+		t.Fatal("benchmarking dial allowed")
+	}
+	if err := deny("tcp", "192.0.2.1:443", nil); err == nil {
+		t.Fatal("documentation dial allowed")
 	}
 	if err := deny("tcp", "8.8.8.8:443", nil); err != nil {
 		t.Fatal(err)
