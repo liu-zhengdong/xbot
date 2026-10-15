@@ -102,11 +102,9 @@ func run(argv []string) error {
 	if err != nil {
 		return err
 	}
-	if root == "" {
-		root, err = defaultRoot()
-		if err != nil {
-			return err
-		}
+	root, err = resolveRoot(root)
+	if err != nil {
+		return err
 	}
 	if len(rest) == 0 {
 		return errUsage
@@ -159,6 +157,19 @@ func defaultRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".xbot"), nil
+}
+
+// resolveRoot makes --root absolute before any bot directory is derived from it.
+// A relative root otherwise makes subagent directories relative, and spawn rejects them.
+func resolveRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		var err error
+		root, err = defaultRoot()
+		if err != nil {
+			return "", err
+		}
+	}
+	return filepath.Abs(root)
 }
 
 func splitGlobal(argv []string) (string, []string, error) {

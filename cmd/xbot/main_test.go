@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,9 +13,68 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
+	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/memory"
+	"xbot/internal/mockopenai"
 	"xbot/internal/provider"
 )
+
+func TestRelativeRootSpawn(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(wd, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := resolveRoot(filepath.Join(rel, "root"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(root) {
+		t.Fatalf("root %s", root)
+	}
+	model := httptest.NewServer(mockopenai.NewMux(t.TempDir()))
+	defer model.Close()
+	client := &provider.Client{BaseURL: model.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: model.Client()}
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &kernel.Kernel{
+		Bot: b, Provider: client, Links: []link.Link{link.Terminal{}, link.Agents{}},
+		Inbox: box, Memory: memory.Open(root), MaxSteps: 4,
+		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_BRIEF", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var joined string
+	for _, e := range entries {
+		joined += e.Message.Content + "\n"
+	}
+	if strings.Contains(joined, "dir must be absolute") || !strings.Contains(joined, "started ") {
+		t.Fatalf("spawn:\n%s", joined)
+	}
+	agents, err := os.ReadDir(filepath.Join(bot.Dir(root, b.Name()), "agents"))
+	if err != nil || len(agents) == 0 {
+		t.Fatalf("agents %v %v", agents, err)
+	}
+}
 
 func TestPrinterDropsSilent(t *testing.T) {
 	for _, reply := range []string{"SILENT", "SILENT\n"} {
