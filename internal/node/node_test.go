@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,9 +10,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/bot"
+	"xbot/internal/notify"
 )
 
 func TestRegistryHidesTokenOnDiskMode(t *testing.T) {
@@ -99,21 +104,21 @@ func TestLinkCall(t *testing.T) {
 
 func TestRunShellSwitch(t *testing.T) {
 	root := t.TempDir()
-	text, err := RunShell(root, "echo hello-node", false)
+	text, err := RunShell(root, "echo hello-node", "local", false)
 	if err != nil || !strings.Contains(text, "hello-node") {
 		t.Fatalf("%q %v", text, err)
 	}
 	if err := setMode(root, "off"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RunShell(root, "echo no", true); err == nil || !strings.Contains(err.Error(), "off") {
+	if _, err := RunShell(root, "echo no", "local", true); err == nil || !strings.Contains(err.Error(), "off") {
 		t.Fatal(err)
 	}
 	if err := setMode(root, "ask"); err != nil {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(root, "ran")
-	_, err = RunShell(root, "touch "+marker, true)
+	_, err = RunShell(root, "touch "+marker, "local", true)
 	if err == nil || !strings.Contains(err.Error(), "xbot node approve") {
 		t.Fatal(err)
 	}
@@ -287,5 +292,83 @@ func TestEnsureToken(t *testing.T) {
 	same, err := LoadID(root)
 	if err != nil || same != id {
 		t.Fatalf("%s %s", id, same)
+	}
+}
+
+func TestPendingExpiryCapCallerAndNote(t *testing.T) {
+	root := t.TempDir()
+	if _, err := bot.Create(root, "ada", "Be brief.", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := setMode(root, "ask"); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "ran")
+	cmd := "touch " + marker
+	_, err := RunShell(root, cmd, "10.1.2.3:9", true)
+	if err == nil {
+		t.Fatal("ask ran")
+	}
+	id := pendingFrom(t, err)
+	items, err := ListPending(root)
+	if err != nil || len(items) != 1 || items[0].ID != id || items[0].Caller != "10.1.2.3:9" || items[0].Command != cmd || items[0].Time.IsZero() {
+		t.Fatalf("%+v %v", items, err)
+	}
+	b, err := bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes, err := notify.Open(b.OutboxPath()).Unread()
+	if err != nil || len(notes) != 1 || !strings.Contains(notes[0].Text, id) || !strings.Contains(notes[0].Text, cmd) {
+		t.Fatalf("%+v %v", notes, err)
+	}
+	items[0].Time = time.Now().Add(-PendingTTL - time.Minute)
+	raw, err := json.Marshal(items[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "node-pending", id+".json"), append(raw, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Approve(root, id); err == nil || !strings.Contains(err.Error(), "no pending") {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatal("expired command ran")
+	}
+	if left, err := ListPending(root); err != nil || len(left) != 0 {
+		t.Fatalf("%+v %v", left, err)
+	}
+	for i := 0; i < PendingCap; i++ {
+		_, err := RunShell(root, "echo "+strconv.Itoa(i), "c", false)
+		if err == nil || !strings.Contains(err.Error(), "approve") {
+			t.Fatal(err)
+		}
+	}
+	if _, err := RunShell(root, "echo overflow", "c", false); err == nil || !strings.Contains(err.Error(), "too many") {
+		t.Fatal(err)
+	}
+}
+
+func TestCallerComesFromRemoteAddr(t *testing.T) {
+	root := t.TempDir()
+	if err := setMode(root, "ask"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := Identity(root, "desk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/call", bytes.NewReader([]byte(`{"cap":"shell","command":"echo hi","caller":"spoofed","approved":true}`)))
+	req.Header.Set("Authorization", "Bearer tok")
+	req.RemoteAddr = "10.9.8.7:4000"
+	rr := httptest.NewRecorder()
+	Handler("tok", info, LocalCall(root, info)).ServeHTTP(rr, req)
+	if rr.Code == http.StatusOK {
+		t.Fatalf("ran: %s", rr.Body)
+	}
+	items, err := ListPending(root)
+	if err != nil || len(items) != 1 || items[0].Caller != "10.9.8.7:4000" || strings.Contains(items[0].Caller, "spoofed") {
+		t.Fatalf("%+v %v body %s", items, err, rr.Body)
 	}
 }

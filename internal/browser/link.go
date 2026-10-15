@@ -148,8 +148,12 @@ func (t stopTool) Run(context.Context, json.RawMessage) (string, error) {
 	if sess != nil {
 		sess.Release()
 	}
-	if err := Stop(t.l.Root); err != nil {
+	note, err := Stop(t.l.Root)
+	if err != nil {
 		return "", err
+	}
+	if note != "" {
+		return note, nil
 	}
 	return "stopped", nil
 }

@@ -36,6 +36,8 @@ type Request struct {
 	Command string `json:"command,omitempty"`
 	// Approved is accepted so older clients are not rejected. This node ignores it.
 	Approved bool `json:"approved,omitempty"`
+	// Caller is the remote address. The handler overwrites any client-supplied value.
+	Caller string `json:"caller,omitempty"`
 }
 
 func idPath(root string) string    { return filepath.Join(root, "node-id") }
@@ -206,6 +208,7 @@ func Handler(token string, info Info, call func(Request) (string, error)) http.H
 			return
 		}
 		in.Cap = strings.TrimSpace(in.Cap)
+		in.Caller = r.RemoteAddr
 		text, err := call(in)
 		if err != nil {
 			status := http.StatusBadRequest

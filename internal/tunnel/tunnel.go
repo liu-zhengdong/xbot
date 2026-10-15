@@ -11,6 +11,7 @@ import (
 	"net"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -125,6 +126,8 @@ type Proc struct {
 	PublicURL string
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
+	done      chan struct{}
+	once      sync.Once
 }
 
 // Close stops cloudflared and anything it started in its process group.
@@ -137,6 +140,9 @@ func (p *Proc) Close() {
 	}
 	if p.cancel != nil {
 		p.cancel()
+	}
+	if p.done != nil {
+		p.once.Do(func() { close(p.done) })
 	}
 	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Wait()
@@ -168,18 +174,28 @@ func StartCloudflare(ctx context.Context, localURL, command string, wait time.Du
 		cancel()
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	// Pdeathsig is delivered when the thread that started the child exits, not
+	// only when the process dies. This goroutine keeps that thread until Close.
+	done := make(chan struct{})
+	started := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		started <- cmd.Start()
+		<-done
+	}()
+	if err := <-started; err != nil {
+		close(done)
 		cancel()
 		return nil, fmt.Errorf("tunnel: cloudflared: %w", err)
 	}
+	proc := &Proc{cmd: cmd, cancel: cancel, done: done}
 	url, err := waitStreams(stdout, stderr, wait)
 	if err != nil {
-		_ = killGroup(cmd.Process.Pid)
-		cancel()
-		_ = cmd.Wait()
+		proc.Close()
 		return nil, err
 	}
-	return &Proc{PublicURL: url, cmd: cmd, cancel: cancel}, nil
+	proc.PublicURL = url
+	return proc, nil
 }
 
 var urlPattern = regexp.MustCompile(`https://[A-Za-z0-9][A-Za-z0-9.-]*`)

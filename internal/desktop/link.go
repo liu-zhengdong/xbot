@@ -143,11 +143,17 @@ func (scrollTool) Description() string {
 }
 func (scrollTool) Parameters() any {
 	return obj(map[string]any{
-		"dy": map[string]any{"type": "integer", "description": "Steps, -20..-1 or 1..20"},
+		"dy": map[string]any{"type": "integer", "description": "Steps, -20..-1 or 1..20. Positive is up."},
+		"x":  map[string]any{"type": "integer", "description": "Pixels from the left. Omit to keep the pointer."},
+		"y":  map[string]any{"type": "integer", "description": "Pixels from the top. Omit to keep the pointer."},
 	}, []string{"dy"})
 }
-func (t scrollTool) Confirm(json.RawMessage) (bool, string, error) {
-	return t.l.confirm(Action{Name: "scroll"}, "desktop scroll")
+func (t scrollTool) Confirm(args json.RawMessage) (bool, string, error) {
+	in, err := scrollArgs(args)
+	if err != nil {
+		return false, "", err
+	}
+	return t.l.confirm(Action{Name: "scroll", X: in.x, Y: in.y, Dy: in.dy}, scrollSummary(in))
 }
 func (t scrollTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -189,6 +195,53 @@ func (t keyTool) Run(ctx context.Context, args json.RawMessage) (string, error) 
 		return "", err
 	}
 	return Perform(ctx, t.l.Root, t.l.driver(), Action{Name: "key", Key: in.Key}, true)
+}
+
+type scrollIn struct {
+	dy    int
+	x, y  int
+	hasXY bool
+}
+
+func scrollArgs(args json.RawMessage) (scrollIn, error) {
+	var in struct {
+		Dy *int `json:"dy"`
+		X  *int `json:"x"`
+		Y  *int `json:"y"`
+	}
+	if len(args) > 0 && string(args) != "null" {
+		if err := json.Unmarshal(args, &in); err != nil {
+			return scrollIn{}, err
+		}
+	}
+	got := scrollIn{}
+	if in.Dy != nil {
+		got.dy = *in.Dy
+	}
+	if in.X != nil || in.Y != nil {
+		got.hasXY = true
+		if in.X != nil {
+			got.x = *in.X
+		}
+		if in.Y != nil {
+			got.y = *in.Y
+		}
+	}
+	return got, nil
+}
+
+func scrollSummary(in scrollIn) string {
+	dir := "up"
+	n := in.dy
+	if in.dy < 0 {
+		dir = "down"
+		n = -in.dy
+	}
+	pos := "pointer"
+	if in.hasXY {
+		pos = fmt.Sprintf("%d %d", in.x, in.y)
+	}
+	return fmt.Sprintf("desktop scroll %s %d at %s", dir, n, pos)
 }
 
 func obj(props map[string]any, required []string) map[string]any {

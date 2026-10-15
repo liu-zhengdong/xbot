@@ -381,7 +381,7 @@ xbot node list
 xbot node call desk info
 ```
 
-`add` 会先用 token 问一次对方，401 就不写入。`list` 不打印 token。token 不对显示 `unauthorized`，连不上才是 `offline`。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。开关是 `ask` 时命令不跑，那台机器上执行 `xbot node approve <id>` 才跑。调用方传来的 `approved` 不算数。
+`add` 会先用 token 问一次对方，401 就不写入。`list` 不打印 token。token 不对显示 `unauthorized`，连不上才是 `offline`。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。开关是 `ask` 时命令不跑，记在那台机器上，十分钟后过期，最多 32 条。`xbot node pending` 列出 id、调用方、命令和时间。`xbot node approve <id>` 先显示命令，回答 `y` 才执行，`--yes` 跳过提问。网页在跑的话，通知和页面上也能允许或拒绝。调用方传来的 `approved` 不算数。
 
 ## 机器开关
 
@@ -409,7 +409,7 @@ xbot desktop scroll -3
 xbot desktop key Return
 ```
 
-`off` 时这些命令直接失败。Bot 里要 `links install desktop`，再 `links load desktop`，才有 `desktop_screenshot`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`。确认卡写明坐标、要输入的原文和按键。截图写到 `~/.xbot/desktop/`，权限 0600。能用 shell 或 API 做的事不要用桌面。
+`off` 时这些命令直接失败。Bot 里要 `links install desktop`，再 `links load desktop`，才有 `desktop_screenshot`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`。确认卡写明坐标、要输入的原文、按键，以及滚动的方向、步数和位置。截图写到 `~/.xbot/desktop/`，权限 0600。能用 shell 或 API 做的事不要用桌面。
 
 ## 浏览器
 
@@ -423,4 +423,4 @@ xbot browser click 'a'
 xbot browser stop
 ```
 
-`open` 打出标题、地址和可见正文，包在 `<untrusted_event>` 里。Chrome 继续留着，所以后面的 `snapshot` 和 `click` 还能连上。`stop` 先核对进程命令行里有这个配置目录，再关掉这次拉起的进程。`xbot serve` 退出时也会关。`off` 时打开和点击直接失败，`browser_stop` 仍可用来关掉。Bot 里要 `links install browser`，再 `links load browser`。能用 shell 或 API 做的事不要开浏览器。
+`open` 打出标题、地址和可见正文，包在 `<untrusted_event>` 里。命令退出后 Chrome 还在，所以后面的 `snapshot` 和 `click` 还能连上，直到 `stop`。`stop` 先核对进程命令行里有这个配置目录；对不上就不杀，清掉记录，退出码是 0。`xbot serve` 只关掉自己拉起的 Chrome。`off` 时打开和点击直接失败，`browser_stop` 仍可用来关掉。Bot 里要 `links install browser`，再 `links load browser`。能用 shell 或 API 做的事不要开浏览器。

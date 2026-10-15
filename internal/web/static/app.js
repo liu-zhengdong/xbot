@@ -2468,6 +2468,54 @@
     }
   }
 
+  async function refreshNodePending() {
+    const host = $("node-pending");
+    if (!host) return;
+    let data;
+    try { data = await api("/api/node/pending"); } catch (e) { return; }
+    const items = (data && data.pending) || [];
+    host.replaceChildren();
+    if (!items.length) {
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    for (const item of items) {
+      const card = el("div", "approval");
+      card.append(el("div", "k", "节点命令"));
+      card.append(el("div", "approval-name", item.command || ""));
+      const meta = [item.caller || "", item.id || ""].filter(Boolean).join("  ");
+      if (meta) card.append(el("div", "approval-sum", meta));
+      const actions = el("div", "approval-actions");
+      const allow = el("button", "secondary", "允许");
+      const deny = el("button", "text-btn danger", "拒绝");
+      allow.type = "button";
+      deny.type = "button";
+      const decide = async (ok) => {
+        allow.disabled = true;
+        deny.disabled = true;
+        try {
+          await api("/api/node/pending/" + encodeURIComponent(item.id || ""), { method: "POST", body: { allow: ok } });
+          card.replaceChildren(el("div", "approval-name", ok ? "已允许" : "已拒绝"));
+        } catch (e) {
+          allow.disabled = false;
+          deny.disabled = false;
+          let err = card.querySelector(".approval-err");
+          if (!err) {
+            err = el("div", "approval-err");
+            card.append(err);
+          }
+          err.textContent = e.message || String(e);
+        }
+      };
+      allow.addEventListener("click", () => decide(true));
+      deny.addEventListener("click", () => decide(false));
+      actions.append(allow, deny);
+      card.append(actions);
+      host.append(card);
+    }
+  }
+
   async function refreshNotes() {
     const data = await api("/api/notes");
     const notes = data.notes || [];
@@ -3278,6 +3326,7 @@
   async function boot() {
     await refreshLists();
     await refreshNotes();
+    await refreshNodePending().catch(() => {});
     await loadPush().catch(() => {});
     renderMe();
     const home = state.bots.find((b) => b.primary) || state.bots[0];
@@ -3317,6 +3366,7 @@
     setInterval(() => {
       if (shell.hidden || state.streaming) return;
       refreshNotes().catch(() => {});
+      refreshNodePending().catch(() => {});
       refreshLists().catch(() => {});
       loadThread().catch(() => {});
     }, 3000);

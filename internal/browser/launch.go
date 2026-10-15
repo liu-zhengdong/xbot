@@ -25,7 +25,16 @@ type state struct {
 	WS      string `json:"ws"`
 	Profile string `json:"profile"`
 	Bin     string `json:"bin,omitempty"`
+	// Tied is set when serve started this Chrome. serve's shutdown stops it.
+	// A CLI launch leaves Tied false so the process outlives `xbot browser open`.
+	Tied bool `json:"tied,omitempty"`
 }
+
+// tieLaunch is process-local. serve sets it; the CLI leaves it false.
+var tieLaunch bool
+
+// TieLaunch marks Chrome started in this process as belonging to serve.
+func TieLaunch(on bool) { tieLaunch = on }
 
 func statePath(root string) string { return filepath.Join(root, "browser", "session.json") }
 
@@ -38,7 +47,7 @@ func Launch(ctx context.Context, root, page string, headless bool) (*Session, er
 	if err := checkURL(page); err != nil {
 		return nil, err
 	}
-	_ = Stop(root)
+	_, _ = Stop(root)
 	bin, err := findChrome()
 	if err != nil {
 		return nil, err
@@ -79,7 +88,7 @@ func Launch(ctx context.Context, root, page string, headless bool) (*Session, er
 		return nil, err
 	}
 	sess.stop = func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }
-	raw, err := fsutil.Marshal(state{PID: cmd.Process.Pid, WS: ws, Profile: profile, Bin: bin})
+	raw, err := fsutil.Marshal(state{PID: cmd.Process.Pid, WS: ws, Profile: profile, Bin: bin, Tied: tieLaunch})
 	if err != nil {
 		sess.Close()
 		return nil, err
@@ -111,27 +120,44 @@ func AttachSaved(ctx context.Context, root string) (*Session, error) {
 	return Attach(ctx, st.WS)
 }
 
-// Stop kills the saved Chrome when the pid still belongs to this profile.
-// A live pid with a different command line is left alone, and the state file stays.
-func Stop(root string) error {
+// Stop ends the saved Chrome when the pid still belongs to this profile.
+// A live foreign pid is not signaled. The stale session file is removed and
+// note explains that, with a nil error, so `xbot browser stop` exits 0.
+func Stop(root string) (string, error) {
+	return finishStop(root, false)
+}
+
+// ReleaseTied stops Chrome this serve process started. A CLI session is left running.
+func ReleaseTied(root string) error {
+	_, err := finishStop(root, true)
+	return err
+}
+
+func finishStop(root string, onlyTied bool) (string, error) {
 	raw, err := os.ReadFile(statePath(root))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return "", nil
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
 	var st state
 	if err := json.Unmarshal(raw, &st); err != nil {
-		return os.Remove(statePath(root))
+		return "", os.Remove(statePath(root))
+	}
+	if onlyTied && !st.Tied {
+		return "", nil
+	}
+	if st.PID > 0 && alive(st.PID) && !chromeOwned(st.PID, st.Profile) {
+		if err := os.Remove(statePath(root)); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("browser: cleared stale session; pid %d is not this Chrome", st.PID), nil
 	}
 	if st.PID > 0 && alive(st.PID) {
-		if !chromeOwned(st.PID, st.Profile) {
-			return fmt.Errorf("browser: pid %d is not the chrome for this profile", st.PID)
-		}
 		signalChrome(st.PID)
 	}
-	return os.Remove(statePath(root))
+	return "", os.Remove(statePath(root))
 }
 
 func startBrowser(bin string, args []string) (*exec.Cmd, error) {
@@ -145,8 +171,11 @@ func startBrowser(bin string, args []string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
+// browserProcAttr puts Chrome in its own process group so Stop can signal the
+// group. There is no Pdeathsig: that kills Chrome when the CLI exits, and also
+// when the Go thread that called Start exits.
 func browserProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	return &syscall.SysProcAttr{Setpgid: true}
 }
 
 func signalChrome(pid int) {

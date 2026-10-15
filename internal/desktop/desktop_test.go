@@ -94,6 +94,14 @@ func TestToolConfirm(t *testing.T) {
 	if err != nil || !need || !strings.Contains(summary, "Return") {
 		t.Fatalf("key summary %q %v", summary, err)
 	}
+	need, summary, err = (scrollTool{l}).Confirm(json.RawMessage(`{"dy":-4,"x":11,"y":22}`))
+	if err != nil || !need || !strings.Contains(summary, "down") || !strings.Contains(summary, "4") || !strings.Contains(summary, "11") || !strings.Contains(summary, "22") {
+		t.Fatalf("scroll summary %q %v", summary, err)
+	}
+	need, summary, err = (scrollTool{l}).Confirm(json.RawMessage(`{"dy":2}`))
+	if err != nil || !need || !strings.Contains(summary, "up 2") || !strings.Contains(summary, "pointer") {
+		t.Fatalf("scroll pointer %q %v", summary, err)
+	}
 	need, summary, err = (typeTool{l}).Confirm(json.RawMessage(`{"text":"hello"}`))
 	if err != nil || !need || !strings.Contains(summary, "hello") || strings.Contains(summary, "payment") {
 		t.Fatalf("type summary %q %v", summary, err)

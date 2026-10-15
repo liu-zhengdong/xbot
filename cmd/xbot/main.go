@@ -100,7 +100,8 @@ Usage:
   xbot [--root DIR] node remove <name>
   xbot [--root DIR] node call <name> info
   xbot [--root DIR] node call <name> shell <command>
-  xbot [--root DIR] node approve <id>
+  xbot [--root DIR] node pending
+  xbot [--root DIR] node approve [--yes] <id>
   xbot [--root DIR] sync export --out FILE
   xbot [--root DIR] sync merge --file FILE
   xbot [--root DIR] machine list
@@ -1438,7 +1439,9 @@ func cmdServe(root string, args []string) error {
 			}
 		}
 	}()
-	defer func() { _ = browser.Stop(root) }()
+	browser.TieLaunch(true)
+	defer browser.TieLaunch(false)
+	defer func() { _ = browser.ReleaseTied(root) }()
 	seen := map[string]bool{}
 	for {
 		startEmitters(ctx, root, seen)

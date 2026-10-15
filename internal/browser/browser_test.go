@@ -220,7 +220,7 @@ func TestStopChecksCommandLine(t *testing.T) {
 	if err := os.WriteFile(statePath(root), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Stop(root); err != nil {
+	if _, err := Stop(root); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -243,15 +243,78 @@ func TestStopChecksCommandLine(t *testing.T) {
 	if err := os.WriteFile(statePath(foreign), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Stop(foreign); err == nil {
-		t.Fatal("stopped a foreign pid")
-	}
-	if _, err := os.Stat(statePath(foreign)); err != nil {
+	note, err := Stop(foreign)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(note, "not this Chrome") || !strings.Contains(note, strconv.Itoa(os.Getpid())) {
+		t.Fatalf("note %q", note)
+	}
+	if _, err := os.Stat(statePath(foreign)); !os.IsNotExist(err) {
+		t.Fatal("stale session kept")
 	}
 }
 
-func TestChromeDiesWithParent(t *testing.T) {
+func TestReleaseTiedLeavesCLI(t *testing.T) {
+	root := t.TempDir()
+	profile := filepath.Join(root, "browser", "profile")
+	if err := os.MkdirAll(profile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(profile, "chrome")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(script)
+	cmd.SysProcAttr = browserProcAttr()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill() }()
+	writeState := func(tied bool) {
+		t.Helper()
+		raw, err := json.Marshal(state{PID: cmd.Process.Pid, WS: "ws://127.0.0.1:1", Profile: profile, Tied: tied})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(statePath(root), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeState(false)
+	if err := ReleaseTied(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(cmd.Process.Pid, 0); err != nil {
+		t.Fatal("cli chrome was stopped")
+	}
+	if _, err := os.Stat(statePath(root)); err != nil {
+		t.Fatal(err)
+	}
+	writeState(true)
+	waited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(waited)
+	}()
+	if err := ReleaseTied(root); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-waited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tied chrome still running")
+	}
+	if _, err := os.Stat(statePath(root)); !os.IsNotExist(err) {
+		t.Fatal("tied session kept")
+	}
+}
+
+func TestChromeSurvivesCLIExit(t *testing.T) {
+	attr := browserProcAttr()
+	if attr == nil || attr.Pdeathsig != 0 || !attr.Setpgid {
+		t.Fatalf("proc attr %+v", attr)
+	}
 	if os.Getenv("XBOT_CHROME_CHILD") == "1" {
 		cmd, err := startBrowser(os.Getenv("XBOT_FAKE_BIN"), nil)
 		if err != nil || cmd.Process == nil {
@@ -262,14 +325,14 @@ func TestChromeDiesWithParent(t *testing.T) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		select {}
+		os.Exit(0)
 	}
 	bin := filepath.Join(t.TempDir(), "chrome")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\nsleep 60\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	pidfile := filepath.Join(t.TempDir(), "pid")
-	cmd := exec.Command(os.Args[0], "-test.run=^TestChromeDiesWithParent$", "-test.count=1")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestChromeSurvivesCLIExit$", "-test.count=1")
 	cmd.Env = append(os.Environ(), "XBOT_CHROME_CHILD=1", "XBOT_FAKE_BIN="+bin, "XBOT_PIDFILE="+pidfile)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -293,18 +356,17 @@ func TestChromeDiesWithParent(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if syscall.Kill(pid, 0) != nil {
-		t.Fatal("chrome exited before the parent")
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
 	}
-	_ = cmd.Process.Kill()
-	_ = cmd.Wait()
-	deadline = time.Now().Add(2 * time.Second)
+	defer func() { _ = syscall.Kill(-pid, syscall.SIGKILL) }()
+	deadline = time.Now().Add(time.Second)
 	for {
 		if syscall.Kill(pid, 0) != nil {
-			return
+			t.Fatalf("chrome %d died when the launching process exited", pid)
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("chrome %d still running after parent was killed", pid)
+			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

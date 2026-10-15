@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -18,7 +19,7 @@ import (
 
 func cmdNode(root string, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: xbot node serve|add|list|remove|call|approve")
+		return errors.New("usage: xbot node serve|add|list|remove|call|pending|approve")
 	}
 	switch args[0] {
 	case "serve":
@@ -31,6 +32,8 @@ func cmdNode(root string, args []string) error {
 		return cmdNodeRemove(root, args[1:])
 	case "call":
 		return cmdNodeCall(root, args[1:])
+	case "pending":
+		return cmdNodePending(root, args[1:])
 	case "approve":
 		return cmdNodeApprove(root, args[1:])
 	default:
@@ -164,16 +167,69 @@ func cmdNodeCall(root string, args []string) error {
 	return nil
 }
 
-func cmdNodeApprove(root string, args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: xbot node approve <id>")
+func cmdNodePending(root string, args []string) error {
+	if len(args) != 0 {
+		return errors.New("usage: xbot node pending")
 	}
-	text, err := node.Approve(root, args[0])
+	items, err := node.ListPending(root)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		fmt.Println("no pending")
+		return nil
+	}
+	for _, item := range items {
+		fmt.Printf("%s\t%s\t%s\t%s\n", item.ID, item.Caller, oneLine(item.Command), item.Time.UTC().Format(time.RFC3339))
+	}
+	return nil
+}
+
+func cmdNodeApprove(root string, args []string) error {
+	ordered, err := reorderFlags(args, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("node approve", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	yes := fs.Bool("yes", false, "run without asking")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: xbot node approve [--yes] <id>")
+	}
+	item, err := node.LookupPending(root, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "id: %s\ncaller: %s\ntime: %s\ncommand: %s\n", item.ID, item.Caller, item.Time.UTC().Format(time.RFC3339), item.Command)
+	if !*yes {
+		fmt.Fprint(os.Stderr, "Approve? [y/N] ")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && strings.TrimSpace(line) == "" {
+			fmt.Fprintln(os.Stderr, "not approved")
+			return nil
+		}
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+		default:
+			fmt.Fprintln(os.Stderr, "not approved")
+			return nil
+		}
+	}
+	text, err := node.Approve(root, item.ID)
 	if err != nil {
 		return err
 	}
 	fmt.Println(text)
 	return nil
+}
+
+func oneLine(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\t", " ")
+	return s
 }
 
 func nodeDispatch(root string, info node.Info) func(node.Request) (string, error) {
@@ -182,7 +238,7 @@ func nodeDispatch(root string, info node.Info) func(node.Request) (string, error
 		case "info":
 			return node.InfoText(info), nil
 		case "shell":
-			return node.RunShell(root, req.Command, req.Approved)
+			return node.RunShell(root, req.Command, req.Caller, req.Approved)
 		case nodesync.Cap:
 			return nodesync.Accept(root, req.Command)
 		default:

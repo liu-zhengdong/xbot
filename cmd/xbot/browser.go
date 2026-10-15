@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -53,7 +54,14 @@ func cmdBrowser(root string, args []string) error {
 		if len(args) != 1 {
 			return errors.New("usage: xbot browser stop")
 		}
-		return browser.Stop(root)
+		note, err := browser.Stop(root)
+		if err != nil {
+			return err
+		}
+		if note != "" {
+			fmt.Fprintln(os.Stderr, note)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown browser command %q", args[0])
 	}

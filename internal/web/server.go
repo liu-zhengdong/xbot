@@ -26,6 +26,7 @@ import (
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/node"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
@@ -112,6 +113,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/notes", s.notes)
 	mux.HandleFunc("POST /api/notes/read", s.readNotes)
+	mux.HandleFunc("GET /api/node/pending", s.listNodePending)
+	mux.HandleFunc("POST /api/node/pending/{id}", s.decideNodePending)
 	mux.HandleFunc("GET /api/push", s.pushStatus)
 	mux.HandleFunc("POST /api/push/subscribe", s.pushSubscribe)
 	mux.HandleFunc("DELETE /api/push/subscribe", s.pushUnsubscribe)
@@ -923,6 +926,49 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request, kind string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": msg})
+}
+
+func (s *Server) listNodePending(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	items, err := node.ListPending(s.Root)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if items == nil {
+		items = []node.Pending{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"pending": items})
+}
+
+func (s *Server) decideNodePending(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	var in struct {
+		Allow bool `json:"allow"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	id := r.PathValue("id")
+	if !in.Allow {
+		if err := node.Dismiss(s.Root, id); err != nil {
+			writeErr(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "dismissed"})
+		return
+	}
+	text, err := node.Approve(s.Root, id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "text": text})
 }
 
 func (s *Server) notes(w http.ResponseWriter, r *http.Request) {
