@@ -3,22 +3,17 @@ package web
 
 import (
 	"context"
-	"crypto/rand"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/config"
 	"xbot/internal/exec"
@@ -26,13 +21,11 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
-	"xbot/internal/machine"
 	"xbot/internal/memory"
 	"xbot/internal/node"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
-	"xbot/internal/review"
 )
 
 //go:embed static
@@ -614,36 +607,6 @@ func (s *Server) exportTranscript(w http.ResponseWriter, r *http.Request) {
 	_ = bot.ExportTo(w, b, opt)
 }
 
-func queryBool(raw string) (bool, error) {
-	switch strings.TrimSpace(raw) {
-	case "", "0":
-		return false, nil
-	case "1":
-		return true, nil
-	default:
-		return false, errors.New("bad tools")
-	}
-}
-
-func queryRange(fromRaw, toRaw string) (int, int, error) {
-	fromRaw, toRaw = strings.TrimSpace(fromRaw), strings.TrimSpace(toRaw)
-	if fromRaw == "" && toRaw == "" {
-		return 0, 0, nil
-	}
-	if fromRaw == "" || toRaw == "" {
-		return 0, 0, errors.New("from and to are set together")
-	}
-	from, err := strconv.Atoi(fromRaw)
-	if err != nil {
-		return 0, 0, errors.New("bad from")
-	}
-	to, err := strconv.Atoi(toRaw)
-	if err != nil {
-		return 0, 0, errors.New("bad to")
-	}
-	return from, to, nil
-}
-
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
@@ -771,159 +734,6 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 type doneBody struct {
 	Text    string `json:"text"`
 	ReplyTo int    `json:"reply_to,omitempty"`
-}
-
-func (s *Server) approvalWait() time.Duration {
-	if s.ApprovalWait > 0 {
-		return s.ApprovalWait
-	}
-	return 60 * time.Second
-}
-
-// webApprove shows one confirmation card in the stream and persists it in the
-// transcript, first as pending and then with the resolved state, so the card
-// survives the reply ending and a page reload. A timeout or cancelled wake
-// with no decision records an expired card, never a pending one.
-func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
-	return func(ctx context.Context, tool, summary string) (bool, error) {
-		id := newApprovalID()
-		ch := make(chan approvalDecision, 1)
-		key := b.Name() + "/" + id
-		s.mu.Lock()
-		if s.approvals == nil {
-			s.approvals = map[string]chan approvalDecision{}
-		}
-		s.approvals[key] = ch
-		s.mu.Unlock()
-		defer func() {
-			s.mu.Lock()
-			delete(s.approvals, key)
-			s.mu.Unlock()
-		}()
-		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
-		appendCard := func(state string) {
-			_ = b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, title, subtitle, summary, state)}})
-		}
-		appendCard(bot.ApprovalPending)
-		payload := map[string]any{"id": id, "tool": tool, "summary": summary, "title": title, "subtitle": subtitle}
-		names := approvalSecretNames(tool, summary)
-		if len(names) > 0 {
-			payload["secrets"] = names
-		}
-		send("approval", payload)
-		timer := time.NewTimer(s.approvalWait())
-		defer timer.Stop()
-		select {
-		case d := <-ch:
-			if d.allow && k != nil && len(names) > 0 && len(d.secrets) > 0 {
-				k.StageSecrets(linkIDFromSummary(summary), filterSecrets(names, d.secrets))
-			}
-			state := bot.ApprovalDeclined
-			if d.allow {
-				state = bot.ApprovalApproved
-			}
-			appendCard(state)
-			return d.allow, nil
-		case <-timer.C:
-			appendCard(bot.ApprovalExpired)
-			return false, kernel.ErrApprovalExpired
-		case <-ctx.Done():
-			appendCard(bot.ApprovalExpired)
-			return false, kernel.ErrApprovalExpired
-		}
-	}
-}
-
-func approvalSecretNames(tool, summary string) []string {
-	if tool != "links" {
-		return nil
-	}
-	return secretNamesFromSummary(summary)
-}
-
-func linkIDFromSummary(summary string) string {
-	line, _, _ := strings.Cut(summary, "\n")
-	line = strings.TrimSpace(line)
-	id, ok := strings.CutPrefix(line, "install ")
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(id)
-}
-
-func secretNamesFromSummary(summary string) []string {
-	var names []string
-	for _, line := range strings.Split(summary, "\n") {
-		line = strings.TrimSpace(line)
-		rest, ok := strings.CutPrefix(line, "secrets:")
-		if !ok {
-			continue
-		}
-		for _, part := range strings.Split(rest, ",") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				names = append(names, part)
-			}
-		}
-	}
-	return names
-}
-
-func filterSecrets(names []string, values map[string]string) map[string]string {
-	allowed := map[string]bool{}
-	for _, name := range names {
-		allowed[name] = true
-	}
-	out := map[string]string{}
-	for name, value := range values {
-		name = strings.TrimSpace(name)
-		value = strings.TrimSpace(value)
-		if allowed[name] && value != "" {
-			out[name] = value
-		}
-	}
-	return out
-}
-
-func newApprovalID() string {
-	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(buf[:])
-}
-
-func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	b, err := s.owned(r.PathValue("name"))
-	if err != nil {
-		writeMissing(w, err)
-		return
-	}
-	var in struct {
-		Allow   bool              `json:"allow"`
-		Secrets map[string]string `json:"secrets"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, http.StatusBadRequest, "bad request")
-		return
-	}
-	key := b.Name() + "/" + r.PathValue("id")
-	s.mu.Lock()
-	ch := s.approvals[key]
-	s.mu.Unlock()
-	if ch == nil {
-		writeErr(w, http.StatusNotFound, "no such approval")
-		return
-	}
-	select {
-	case ch <- approvalDecision{allow: in.Allow, secrets: in.Secrets}:
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	default:
-		writeErr(w, http.StatusConflict, "already decided")
-	}
 }
 
 func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
@@ -1064,149 +874,6 @@ func (s *Server) readNotes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	all, err := (&peer.Bus{Root: s.Root}).ListGroups()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	owned, err := peer.OwnerBots(s.Root, s.owner)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	mine := map[string]bool{}
-	for _, cfg := range owned {
-		mine[cfg.Name] = true
-	}
-	var out []peer.Group
-	for _, g := range all {
-		ok := true
-		for _, m := range g.Members {
-			if !mine[m] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			out = append(out, g)
-		}
-	}
-	if out == nil {
-		out = []peer.Group{}
-	}
-	view, err := bot.Folders(s.Root, s.owner)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	folders := make([]folderJSON, 0, len(view.Folders))
-	for _, f := range view.Folders {
-		bots := f.Bots
-		if bots == nil {
-			bots = []string{}
-		}
-		folders = append(folders, folderJSON{Name: f.Name, Count: f.Count, Bots: bots, Ungrouped: f.Ungrouped})
-	}
-	order := view.Order
-	if order == nil {
-		order = []string{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"order": order, "folders": folders, "groups": out})
-}
-
-func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	var in struct {
-		Name    string    `json:"name"`
-		Members *[]string `json:"members"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, http.StatusBadRequest, "bad request")
-		return
-	}
-	if in.Members == nil {
-		if err := bot.CreateFolder(s.Root, s.owner, in.Name); err != nil {
-			writeFolderErr(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"name": strings.TrimSpace(in.Name)})
-		return
-	}
-	g, err := (&peer.Bus{Root: s.Root, Now: time.Now}).CreateGroupForOwner(s.owner, in.Name, *in.Members)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, g)
-}
-
-func (s *Server) groupTranscript(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	bus := &peer.Bus{Root: s.Root}
-	g, err := bus.LoadGroup(r.PathValue("id"))
-	if err != nil {
-		writeErr(w, http.StatusNotFound, "not found")
-		return
-	}
-	if err := s.ownsGroup(g); err != nil {
-		writeErr(w, http.StatusNotFound, "not found")
-		return
-	}
-	lines, err := bus.Transcript(g.ID)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if lines == nil {
-		lines = []peer.Line{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"group": g, "messages": lines})
-}
-
-func (s *Server) postGroup(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	var in struct {
-		Text string `json:"text"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, http.StatusBadRequest, "bad request")
-		return
-	}
-	err := (&peer.Bus{Root: s.Root, Now: time.Now}).PostGroup(link.KindPerson, s.owner, r.PathValue("id"), in.Text, "", 1, time.Now())
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
-}
-
-func (s *Server) ownsGroup(g peer.Group) error {
-	owned, err := peer.OwnerBots(s.Root, s.owner)
-	if err != nil {
-		return err
-	}
-	mine := map[string]bool{}
-	for _, cfg := range owned {
-		mine[cfg.Name] = true
-	}
-	for _, m := range g.Members {
-		if !mine[m] {
-			return os.ErrPermission
-		}
-	}
-	return nil
-}
-
 func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 	if s.NewKernel == nil {
 		return nil, nil, errors.New("web: no kernel")
@@ -1268,56 +935,4 @@ func (s *Server) writeCursor(name string, n int) error {
 		}
 		return fsutil.WriteAtomic(s.cursorPath(), raw, 0600)
 	})
-}
-
-func noteCount(b *bot.Bot) (int, error) {
-	notes, err := notify.Open(b.OutboxPath()).Unread()
-	if err != nil {
-		return 0, err
-	}
-	return len(notes), nil
-}
-
-func contains(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
-		}
-	}
-	return false
-}
-
-func clip(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
-}
-
-func writeMissing(w http.ResponseWriter, err error) {
-	if errors.Is(err, os.ErrPermission) || errors.Is(err, bot.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, "not found")
-		return
-	}
-	writeErr(w, http.StatusBadRequest, err.Error())
-}
-
-func decode(r *http.Request, v any) error {
-	defer r.Body.Close()
-	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-	dec.DisallowUnknownFields()
-	return dec.Decode(v)
-}
-
-func writeErr(w http.ResponseWriter, code int, msg string) {
-	writeJSON(w, code, map[string]string{"error": msg})
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(true)
-	_ = enc.Encode(v)
 }
