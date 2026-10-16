@@ -282,6 +282,11 @@ func (b *Bot) SecretPath() string {
 	return filepath.Join(b.dir(), "secrets.json")
 }
 
+// VaultDir is the bot's encrypted credential vault. Mode 0700; files 0600.
+func (b *Bot) VaultDir() string {
+	return filepath.Join(b.dir(), "vault")
+}
+
 // SetBinding stores the provider and model names. The API key stays in the environment.
 func (b *Bot) SetBinding(providerName, modelName string) error {
 	b.cfg.Provider = providerName

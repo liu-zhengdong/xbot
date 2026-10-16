@@ -30,6 +30,9 @@ type Options struct {
 	OnTool    func(name, summary string)
 	OnResult  func(name, output string)
 	OnMessage func(provider.Message)
+	// Redact masks known secret values in tool output before it is streamed or
+	// recorded. Nil leaves the output unchanged.
+	Redact func(string) string
 	// AfterStep runs after a step's tool results and before the next model call.
 	// Messages it returns are appended in order and shown to the next step.
 	AfterStep func() ([]provider.Message, error)
@@ -227,6 +230,9 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(empty)"
+	}
+	if opt.Redact != nil {
+		out = opt.Redact(out)
 	}
 	out, _ = clip.Bytes(out, opt.MaxResult)
 	return finish(opt, t.Name(), out)

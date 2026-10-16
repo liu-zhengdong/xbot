@@ -43,6 +43,7 @@ import (
 	"xbot/internal/skill"
 	"xbot/internal/tools"
 	"xbot/internal/tunnel"
+	"xbot/internal/vault"
 	"xbot/internal/web"
 	"xbot/internal/work"
 )
@@ -66,6 +67,9 @@ Usage:
   xbot [--root DIR] mcp list <bot>
   xbot [--root DIR] mcp add <bot> <name> (--command PATH [--arg A]... | --url URL) [--secret-env NAME]...
   xbot [--root DIR] mcp remove <bot> <name>
+  xbot [--root DIR] secret set <bot> NAME --domains a.com,b.com
+  xbot [--root DIR] secret list <bot>
+  xbot [--root DIR] secret rm <bot> NAME
   xbot [--root DIR] connector list
   xbot [--root DIR] connector add <bot> <id>
   xbot [--root DIR] connector remove <bot> <id>
@@ -164,6 +168,7 @@ func run(argv []string) error {
 	link.SetProviderKey(config.ProviderKey)
 	tools.UseKeyEnv(keyNames)
 	tools.SetKeyLookup(config.Held)
+	bot.SetRedactText(vault.Redact)
 	tools.SetMachineGate(func() (string, error) {
 		return machine.Get(root, machine.Local)
 	})
@@ -185,6 +190,8 @@ func run(argv []string) error {
 		return cmdLink(root, rest[1:])
 	case "mcp":
 		return cmdMCP(root, rest[1:])
+	case "secret":
+		return cmdSecret(root, rest[1:])
 	case "connector":
 		return cmdConnector(root, rest[1:])
 	case "skill":
@@ -807,13 +814,17 @@ func cmdExport(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	store, err := vault.Open(b.VaultDir())
+	if err != nil {
+		return err
+	}
 	f, err := os.OpenFile(opt.Out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	if err := bot.ExportTo(f, b, bot.TranscriptExport{
-		Format: opt.Format, Tools: opt.Tools, From: opt.From, To: opt.To, Loc: time.Local,
+		Format: opt.Format, Tools: opt.Tools, From: opt.From, To: opt.To, Loc: time.Local, Redact: store.Redact,
 	}); err != nil {
 		return err
 	}
@@ -1153,6 +1164,11 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 			coding.UseCommand(cmd)
 		}
 	}
+	store, err := vault.Open(b.VaultDir())
+	if err != nil {
+		return nil, person.Person{}, err
+	}
+	vault.Register(store)
 	k := &kernel.Kernel{
 		Bot:             b,
 		Provider:        client,
@@ -1169,6 +1185,8 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		WorkDir:         workDir,
 		SharedDir:       sharedDir,
 		SkillsDir:       skill.Dir(root),
+		Vault:           store,
+		Redact:          store.Redact,
 	}
 	if pr != nil {
 		k.OnDelta = pr.Delta

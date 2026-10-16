@@ -52,6 +52,9 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
 	}
 	list = append(list, linksTool{k})
+	if k.Vault != nil && namedLink(links, link.NameTools) {
+		list = append(list, &tools.HTTPRequest{Store: k.Vault}, &tools.SecretList{Store: k.Vault})
+	}
 	list = k.modelAgentTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
 	return list, nil

@@ -17,9 +17,10 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
-	"xbot/prompts"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
+	"xbot/internal/vault"
+	"xbot/prompts"
 )
 
 // Kernel is the bot's turn runner.
@@ -40,9 +41,12 @@ type Kernel struct {
 	Selector   provider.ModelSelector
 	Now        func() time.Time
 	Extractor  Extractor
-	// Redact overrides bot.RedactText for transcript text this kernel returns.
-	// Nil uses the process replacer.
-	Redact  func(string) string
+	// Redact overrides bot.RedactText for text this kernel returns, records, or
+	// streams from a tool. Nil uses the process replacer.
+	Redact func(string) string
+	// Vault holds this bot's credentials. When set, the model gains an
+	// outbound HTTP tool whose {{secret:NAME}} placeholders are filled at egress.
+	Vault   *vault.Store
 	Desktop func(ctx context.Context, title, body string) error
 	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
 	Exec exec.Executor
@@ -197,6 +201,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		OnDelta:  onDelta,
 		OnTool:   k.OnTool,
 		OnResult: k.OnResult,
+		Redact:   k.redactor(),
 		OnMessage: func(m provider.Message) {
 			if appendErr != nil {
 				return

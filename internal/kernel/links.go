@@ -515,8 +515,24 @@ func (k *Kernel) stableLinkNames() []string {
 	return names
 }
 
+func (k *Kernel) redactor() func(string) string {
+	if k != nil && k.Redact != nil {
+		return k.Redact
+	}
+	return bot.RedactText
+}
+
 func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
 	m = redactSkillRead(m)
+	redact := k.redactor()
+	m.Content = redact(m.Content)
+	if len(m.ToolCalls) > 0 {
+		calls := append([]provider.ToolCall(nil), m.ToolCalls...)
+		for i := range calls {
+			calls[i].Function.Arguments = redact(calls[i].Function.Arguments)
+		}
+		m.ToolCalls = calls
+	}
 	values := k.secretValues()
 	if len(values) == 0 {
 		return m
