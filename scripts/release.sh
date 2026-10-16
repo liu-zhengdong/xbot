@@ -62,7 +62,8 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
 fi
 
 git tag -a "$VERSION" -m "xbot $VERSION"
-git push origin "$VERSION"
+TOKEN="$(gh auth token -u liu-zhengdong)"
+git -c credential.helper= push -q "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "refs/tags/$VERSION" 2>&1 | sed "s/x-access-token:[^@]*@/***@/"
 
 # The token stays in the environment; never print it.
 GH_TOKEN="$(gh auth token -u liu-zhengdong)" \
