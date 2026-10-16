@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -57,6 +58,62 @@ func (s *Store) sanitizeError(err error) error {
 		return errors.New(red)
 	}
 	return err
+}
+
+// InjectStream is Inject for a request whose body must not be buffered: it
+// substitutes placeholders in the URL and headers only, validates each bound
+// secret against the target host, applies the same guard over guardBody (the
+// scanned prefix of the streamed body), and clones the request keeping its
+// streaming body intact.
+func (s *Store) InjectStream(req *http.Request, guardBody []byte) (*http.Request, error) {
+	if s == nil || req == nil {
+		return req, nil
+	}
+	if scheme := strings.ToLower(req.URL.Scheme); scheme != "http" && scheme != "https" {
+		return nil, fmt.Errorf("vault: unsupported URL scheme %q", req.URL.Scheme)
+	}
+	rawURL := req.URL.String()
+	header := req.Header.Clone()
+	names := findNames(rawURL, header, nil)
+	hosts := []string{normalizeHost(req.URL.Hostname())}
+	if req.Host != "" {
+		if wire := normalizeHost(req.Host); wire != "" && wire != hosts[0] {
+			hosts = append(hosts, wire)
+		}
+	}
+	for _, name := range names {
+		sec, ok := s.Lookup(name)
+		if !ok {
+			return nil, fmt.Errorf("vault: unknown secret %q", name)
+		}
+		for _, host := range hosts {
+			if !HostAllowed(host, sec.Domains) {
+				return nil, fmt.Errorf("vault: secret %q is not allowed for %q", name, host)
+			}
+		}
+	}
+	rawURL = s.apply(rawURL)
+	for key, values := range header {
+		for i, value := range values {
+			value = s.apply(value)
+			if !validHeaderValue(value) {
+				return nil, fmt.Errorf("vault: header %q value is invalid after injection", key)
+			}
+			values[i] = value
+		}
+		header[key] = values
+	}
+	if err := s.guard(hosts, rawURL, header, guardBody); err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, errors.New("vault: cannot rebuild request: " + s.Redact(err.Error()))
+	}
+	out := req.Clone(req.Context())
+	out.URL = u
+	out.Header = header
+	return out, nil
 }
 
 // Inject replaces {{secret:NAME}} in the URL, every header value, and the body.

@@ -11,7 +11,7 @@ import (
 // SecretList reports credential names and their allowed domains. Values are
 // never included; the model may use a name in {{secret:NAME}} for http_request.
 type SecretList struct {
-	Store *vault.Store
+	Store vault.Backend
 }
 
 func (s *SecretList) Name() string { return "list_secrets" }

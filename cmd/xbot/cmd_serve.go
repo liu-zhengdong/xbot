@@ -92,11 +92,13 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 			coding.UseCommand(cmd)
 		}
 	}
-	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
+	store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	vault.Register(store)
+	if local, ok := store.(*vault.Store); ok {
+		vault.Register(local)
+	}
 	k := &kernel.Kernel{
 		Bot:             b,
 		Provider:        client,

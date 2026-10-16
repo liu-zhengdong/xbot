@@ -26,7 +26,7 @@ const (
 // at egress and only for the domains bound to that secret. The value is never
 // returned to the model.
 type HTTPRequest struct {
-	Store  *vault.Store
+	Store  vault.Backend
 	Client *http.Client
 }
 
@@ -101,9 +101,9 @@ func (h *HTTPRequest) Run(ctx context.Context, args json.RawMessage) (string, er
 	}
 	client := h.Client
 	if client == nil {
-		client = &http.Client{
-			Transport: &vault.Proxy{Store: h.Store},
-			Timeout:   defaultHTTPTimeout,
+		client = &http.Client{Timeout: defaultHTTPTimeout}
+		if h.Store != nil {
+			client.Transport = h.Store.Transport(nil)
 		}
 	}
 	resp, err := client.Do(req)

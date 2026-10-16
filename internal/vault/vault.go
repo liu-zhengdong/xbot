@@ -286,12 +286,15 @@ func (s *Store) reloadLocked() error {
 	return s.load()
 }
 
-// List returns every secret sorted by name. Callers must not print Value.
+// List returns every secret sorted by name. The value is always blank: List is
+// the model- and CLI-facing view, and a Backend.List must never leak a value.
+// Use Lookup for egress.
 func (s *Store) List() []Secret {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]Secret, 0, len(s.secrets))
 	for _, sec := range s.secrets {
+		sec.Value = ""
 		sec.Domains = append([]string{}, sec.Domains...)
 		out = append(out, sec)
 	}

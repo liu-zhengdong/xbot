@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/]
-verified: 2026-10-16 @ 5d3f39c
+verified: 2026-10-16 @ f87647c
 ---
 # 安全：保险箱与权限表
 
@@ -25,7 +25,7 @@ verified: 2026-10-16 @ 5d3f39c
 - **绑定**：每个凭据记一串允许的域名。请求域名不在名单里就拒绝注入，一个字节的真值都不发。按域名标签边界匹配，`a.com` 不覆盖 `evil-a.com` 和 `a.com.evil.com`；只认 ASCII 域名（IDN 用 punycode），只认 http/https，重定向的每一跳都重新校验，跳转 URL 或被复制的头里捎带真值（含 URL 编码、base64 等变体）同样拒绝。
 - **出站代理**：内核在请求离开进程前，把 URL、请求头和请求体里的 `{{secret:名字}}` 换成真值。模型只写名字。
 - **脱敏**：真值出现在工具结果、transcript 或导出里时换成 `[secret]`，接的是现成的 `RedactText`；URL 编码、JSON 转义、base64 等变体以及被截断拆开的残段同样脱敏。
-- **CLI**：`xbot secret set <bot> NAME --domains a.com,b.com`（值从 stdin 读，永不从 argv）、`xbot secret list <bot>`（只列名字和域名）、`xbot secret rm <bot> NAME`。
+- **CLI**：`xbot secret set <bot> NAME --domains a.com,b.com`（值从 stdin 读，永不从 argv）、`xbot secret list <bot>`（只列名字和域名）、`xbot secret rm <bot> NAME`；配了守护进程后用 `xbot secret migrate <bot>` 把本地保险箱整体搬过去（见下）。
 
 完成标准：
 1. Bot 和模型只看得到凭据名字，看不到值。
@@ -34,6 +34,45 @@ verified: 2026-10-16 @ 5d3f39c
 4. 工具结果、transcript 和导出里出现的真值会被脱敏（接上 `RedactText`）。
 5. 落盘加密（AES-GCM + 本地密钥文件），保险箱文件 0600，目录 0700，密钥在 `<root>/keys/vault/<bot>.key`（0600，目录 0700）。
 6. 触及保险箱或密钥路径的 `shell`/`read_file`/`write_file`/`edit_file` 无论机器开关如何都出确认卡；这是防随手读取的尽力而为，不是隔离。
+
+## 独立用户守护进程
+第一步只把密钥挪出 Bot 目录、读写出确认卡，密钥和密文仍在同一系统用户可读处；真正隔离由独立系统用户 `xbot-vault` 的守护进程 `xbot vaultd` 提供（见 [ADR 0005](../adr/0005-vault-daemon-user.md)）。
+
+- **后端接口**：`vault.Backend` 只有 `List`（`Secret.Value` 永远为空）、`Names`、`Set`、`Remove`、`Transport(base)`、`Redact`、`MaskTruncated`。本地 `*Store` 和守护进程客户端 `*Client` 都实现它；`vault.OpenBackend(bot, vaultDir, keyPath)` 在 `XBOT_VAULT_SOCKET` 有值时返回客户端，否则回退到本地 `Store`。`http_request`、内核 `Vault` 字段、serve、`secret` CLI、导出都用接口，不再写死 `*Store`。
+- **协议**：unix socket 上的 HTTP/1.1。接入时每个连接只读一次 `SO_PEERCRED`（`syscall.GetsockoptUcred`），uid 不在允许名单就直接关闭，之后不再逐请求握手。Bot 名走 `X-Vault-Bot` 头，校验 `[A-Za-z0-9_-]`，每个 Bot 一份 `dataDir/<bot>/`（0700），密钥 `dataDir/keys/<bot>.key`（0700 目录 / 0600 文件）。`GET /v1/list` 只回名字和域名；`POST /v1/set`（正文上限 64 KiB）和 `POST /v1/rm` 写；`/v1/forward` 用 `X-Vault-Method`、`X-Vault-URL`、`X-Vault-Host` 带目标，原请求头以 `X-Vault-H-<Name>` 传递，正文流式。守护进程走原有 `Store.Inject`/`guard`（只发绑定域名、重定向逐跳重校验、编码变体），用现有 Proxy 逻辑转发，回包状态放 `X-Vault-Status`、头放 `X-Vault-H-*`，正文边流边脱敏：跨块保留「最长变体长度 − 1」字节的重叠窗口，EOF 冲尾。含占位符的请求体才需要整体替换并缓冲，上限 1 MiB（超了 413）；否则不缓冲直接流。响应上限 8 MiB（超出截断）。任何响应和错误都不含明文，错误先过 `sanitizeError`。
+- **性能**：客户端 `http.Transport` 的 `DialContext` 拨 socket，keep-alive（`MaxIdleConnsPerHost` 4、`IdleConnTimeout` 90s）复用一条长连接；链路只走小控制头加流式正文，没有大块缓冲。`TestDaemonOverheadP95` 用 300 个小 GET（预热、长连接）对比直连，p95 额外开销必须 < 5 毫秒；`BenchmarkDaemonForward` 量转发成本。
+- **后备**：没配 `XBOT_VAULT_SOCKET` 就用本地的同用户 `Store`，开发与测试用；客户端 `Redact`/`MaskTruncated` 原样返回（值只在守护进程侧，回包已脱敏）。
+- **仍防不住什么**：同一用户的进程仍可以叫守护进程把密钥发去它绑定的域名（由权限表的确认卡和域名绑定兜住），也可以覆盖或删除密钥；但读不到值。
+
+**Linux 部署**（socket 目录 0755、socket 0666，但访问由 `SO_PEERCRED` 决定）：
+
+```sh
+sudo useradd --system --home /var/lib/xbot-vault --shell /usr/sbin/nologin xbot-vault
+sudo install -d -o xbot-vault -g xbot-vault -m 0700 /var/lib/xbot-vault
+sudo install -d -o xbot-vault -g xbot-vault -m 0755 /run/xbot-vault
+sudo -u xbot-vault xbot vaultd --dir /var/lib/xbot-vault --socket /run/xbot-vault/vault.sock --allow-uid $(id -u)
+export XBOT_VAULT_SOCKET=/run/xbot-vault/vault.sock; xbot secret migrate <bot>
+```
+
+systemd 单元：
+
+```ini
+[Unit]
+Description=XBot vault daemon
+After=network.target
+
+[Service]
+Type=simple
+User=xbot-vault
+Group=xbot-vault
+RuntimeDirectory=xbot-vault
+RuntimeDirectoryMode=0755
+ExecStart=/usr/local/bin/xbot vaultd --dir /var/lib/xbot-vault --socket /run/xbot-vault/vault.sock --allow-uid 1000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## 危险操作审核
 执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。

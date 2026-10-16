@@ -46,7 +46,7 @@ type Kernel struct {
 	Redact func(string) string
 	// Vault holds this bot's credentials. When set, the model gains an
 	// outbound HTTP tool whose {{secret:NAME}} placeholders are filled at egress.
-	Vault   *vault.Store
+	Vault   vault.Backend
 	Desktop func(ctx context.Context, title, body string) error
 	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
 	Exec exec.Executor

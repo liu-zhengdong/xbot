@@ -43,6 +43,8 @@ Usage:
   xbot [--root DIR] secret set <bot> NAME --domains a.com,b.com
   xbot [--root DIR] secret list <bot>
   xbot [--root DIR] secret rm <bot> NAME
+  xbot [--root DIR] secret migrate <bot>
+  xbot [--root DIR] vaultd --dir DIR --socket PATH --allow-uid N[,N]
   xbot [--root DIR] connector list
   xbot [--root DIR] connector add <bot> <id>
   xbot [--root DIR] connector remove <bot> <id>
@@ -107,6 +109,7 @@ Environment:
   XBOT_PUBLIC_URL   Base URL printed for new webhooks (default http://127.0.0.1:8787)
   XBOT_CLOUDFLARED  cloudflared binary for --tunnel cloudflare (default cloudflared)
   XBOT_TAILSCALE    tailscale binary for --tunnel tailscale (default tailscale)
+  XBOT_VAULT_SOCKET  vault daemon unix socket; when set, secrets use the daemon
 
 A named provider stores the environment variable name, never the key itself.
 `
@@ -165,6 +168,8 @@ func run(argv []string) error {
 		return cmdMCP(root, rest[1:])
 	case "secret":
 		return cmdSecret(root, rest[1:])
+	case "vaultd":
+		return cmdVaultd(root, rest[1:])
 	case "connector":
 		return cmdConnector(root, rest[1:])
 	case "skill":
