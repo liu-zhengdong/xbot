@@ -62,6 +62,7 @@ type Kernel struct {
 	// one policy table.
 	Machine func() (string, error)
 
+	turnMu      sync.Mutex
 	startOnce   sync.Once
 	execOnce    sync.Once
 	loadMu      sync.Mutex
@@ -89,7 +90,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		turnEvent:   ev.ID,
 		turnTrusted: link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
 	}
+	k.turnMu.Lock()
 	k.turn = t
+	k.turnMu.Unlock()
 	k.clearLoaded()
 	if _, err := k.releaseQuiet(ctx); err != nil {
 		return err
@@ -427,11 +430,10 @@ func (k *Kernel) repairTail() error {
 	if err != nil {
 		return err
 	}
-	missing, err := unresolvedTail(span)
+	missing, branches, err := unresolvedCalls(span, minSeq)
 	if err != nil {
 		return err
 	}
-	branches := callBranches(span, minSeq)
 	for _, tc := range missing {
 		e := placeholder(tc)
 		e.Branch = branches[tc.ID]

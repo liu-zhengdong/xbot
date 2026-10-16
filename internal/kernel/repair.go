@@ -19,30 +19,52 @@ func Messages(entries []bot.Entry) []provider.Message {
 	return out
 }
 
-// unresolvedTail returns tool calls at the end of the transcript that have no result.
-// A gap that is not at the tail is an error: the append-only log cannot insert results earlier.
+// unresolvedTail returns tool calls that have no result and can still be answered.
+// See unresolvedCalls; entries start at seq 1.
 func unresolvedTail(entries []bot.Entry) ([]provider.ToolCall, error) {
-	missing := missingResults(Messages(entries))
+	calls, _, err := unresolvedCalls(entries, 1)
+	return calls, err
+}
+
+// unresolvedCalls returns unanswered tool calls in span (which starts at seq first)
+// and the branch of each. Several branches can each have an open call at their own end.
+// A call is repairable when no later row of its own branch, other than tool results and
+// markers, follows the assistant row that made it: the append-only log cannot insert a
+// result earlier in a branch than lines the branch has already written.
+func unresolvedCalls(span []bot.Entry, first int) ([]provider.ToolCall, map[string]string, error) {
+	missing := missingResults(Messages(span))
 	if len(missing) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
-	i := len(entries) - 1
-	for i >= 0 && (entries[i].Message.Role == provider.RoleTool || entries[i].IsForkMark()) {
-		i--
+	seqs := make([]bot.SeqEntry, len(span))
+	for i, e := range span {
+		seqs[i] = bot.SeqEntry{Seq: first + i, Entry: e}
 	}
-	if i < 0 || entries[i].Message.Role != provider.RoleAssistant {
-		return nil, errors.New("transcript: unanswered tool calls are not at the tail")
-	}
-	have := map[string]bool{}
-	for _, tc := range entries[i].Message.ToolCalls {
-		have[tc.ID] = true
-	}
-	for _, tc := range missing {
-		if !have[tc.ID] {
-			return nil, errors.New("transcript: unanswered tool calls are not at the tail")
+	rows, _ := bot.Replay(seqs)
+	at := map[string]int{}
+	branches := map[string]string{}
+	for i, r := range rows {
+		if r.Entry.IsForkMark() || r.Entry.Message.Role != provider.RoleAssistant {
+			continue
+		}
+		for _, tc := range r.Entry.Message.ToolCalls {
+			at[tc.ID] = i
+			branches[tc.ID] = r.Branch
 		}
 	}
-	return missing, nil
+	for _, tc := range missing {
+		i, ok := at[tc.ID]
+		if !ok {
+			return nil, nil, errors.New("transcript: unanswered tool calls are not at the tail")
+		}
+		for _, r := range rows[i+1:] {
+			if r.Branch != branches[tc.ID] || r.Entry.IsForkMark() || r.Entry.Message.Role == provider.RoleTool {
+				continue
+			}
+			return nil, nil, errors.New("transcript: unanswered tool calls are not at the tail")
+		}
+	}
+	return missing, branches, nil
 }
 
 func missingResults(msgs []provider.Message) []provider.ToolCall {
@@ -151,24 +173,4 @@ func placeholder(tc provider.ToolCall) bot.Entry {
 			Content:    interrupted,
 		},
 	}
-}
-
-// callBranches maps each tool call id in span to the branch of the assistant row that made it.
-// span starts at seq first. A repaired result must land on the same branch as its call.
-func callBranches(span []bot.Entry, first int) map[string]string {
-	seqs := make([]bot.SeqEntry, len(span))
-	for i, e := range span {
-		seqs[i] = bot.SeqEntry{Seq: first + i, Entry: e}
-	}
-	rows, _ := bot.Replay(seqs)
-	out := map[string]string{}
-	for _, r := range rows {
-		if r.Entry.Message.Role != provider.RoleAssistant {
-			continue
-		}
-		for _, tc := range r.Entry.Message.ToolCalls {
-			out[tc.ID] = r.Branch
-		}
-	}
-	return out
 }

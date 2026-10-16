@@ -23,7 +23,12 @@ type turn struct {
 // curTurn returns the active turn, or a zero turn when none is running, so a
 // read outside a turn stays zero-valued.
 func (k *Kernel) curTurn() *turn {
-	if k == nil || k.turn == nil {
+	if k == nil {
+		return &turn{}
+	}
+	k.turnMu.Lock()
+	defer k.turnMu.Unlock()
+	if k.turn == nil {
 		return &turn{}
 	}
 	return k.turn
@@ -32,6 +37,8 @@ func (k *Kernel) curTurn() *turn {
 // ensureTurn returns the active turn, creating a zero one when none is
 // running, so a write outside a turn is visible to later reads.
 func (k *Kernel) ensureTurn() *turn {
+	k.turnMu.Lock()
+	defer k.turnMu.Unlock()
 	if k.turn == nil {
 		k.turn = &turn{}
 	}
