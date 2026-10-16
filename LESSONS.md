@@ -8,6 +8,11 @@
 - **耐久文件不放 /tmp。** 原因：盒子重启清空了 /tmp，丢了 F5 的工作，也删掉了 pnpm 包仓库（dsh 跑不起来）。证据：2026-10-16 约 16:42 重启。Seen 1×（2026-10-16）
 - **测试要和外部环境变量隔离（用 t.Setenv 清掉 XBOT_VAULT_SOCKET 等）。** 原因：shell 里留着 XBOT_VAULT_SOCKET，合并前 3 遍测试都挂在 TestSecretMigrateMovesSecretsToDaemon。证据：12602f5 之后的修复。Seen 1×（2026-10-16）
 - **自我 re-exec 要把内存里持有的 key 放回新进程的环境。** 原因：v0.1.0 的 serve 升级重启后报 XBOT_API_KEY is empty（启动时 key 已从环境清掉）。证据：v0.1.1 的修复。Seen 1×（2026-10-16）
+- **提交前看 git status：本地二进制、日志、cookie 不进仓库。** 原因：Bot status UI 回归顺手留下的 cookie.txt、serve.log、21MB `xbot` 二进制被一并提交。证据：`ac35612`。Seen 1×（2026-10-16）
+- **工具 JSON Schema 的 required 用空数组 []，不要 null。** 原因：`json.Marshal` 把 nil slice 编成 null，DeepSeek 拒收，种活三个长跑 Bot 时才发现。证据：`2ed8ca3`。Seen 1×（2026-10-16）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。
+- Bugfix 带旧代码会失败的回归测试（`2ed8ca3`、`7ff7738`、`61f3395`、`2617bc0`，2026-10-16）。
+- 提交说明把没跑的检查列成 Not run（Magpie，2026-10-16）。
+- Bot status UI 用假模型 CDP 回归覆盖 running/awaiting/idle/remote/jump-to-confirm/mobile sheet（`ac35612`，2026-10-16）。

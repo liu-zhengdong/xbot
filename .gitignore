@@ -11,3 +11,7 @@ coverage.*
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+/xbot
+cookie.txt
+serve.log
+*.log
