@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+	"xbot/internal/config"
 
 	"xbot/internal/upgrade"
 	"xbot/internal/version"
@@ -86,5 +87,5 @@ func reexecService(ln net.Listener, ui *web.Server, exe string, argv, env []stri
 			return err
 		}
 	}
-	return syscall.Exec(exe, argv, env)
+	return syscall.Exec(exe, argv, config.HeldEnv(env))
 }

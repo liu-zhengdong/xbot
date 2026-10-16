@@ -74,3 +74,22 @@ func Held(key string) (string, bool) {
 	value, ok := heldKeys[key]
 	return value, ok
 }
+
+// HeldEnv merges the held provider keys back into env as NAME=value entries,
+// replacing any existing entry. Only a self re-exec uses it, so the upgraded
+// process can hold the keys again; no child tool ever gets this env.
+func HeldEnv(env []string) []string {
+	heldMu.Lock()
+	defer heldMu.Unlock()
+	out := make([]string, 0, len(env)+len(heldKeys))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if _, held := heldKeys[name]; !held {
+			out = append(out, kv)
+		}
+	}
+	for name, value := range heldKeys {
+		out = append(out, name+"="+value)
+	}
+	return out
+}
