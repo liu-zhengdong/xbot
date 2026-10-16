@@ -23,6 +23,7 @@
     bots: [],
     folders: [],
     groups: [],
+    others: null,
     notes: [],
     sel: null,
     sig: "",
@@ -311,6 +312,324 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) bgRefresh(); });
     bgTick();
   }
+
+  // ---- Bot status: sidebar second line + step-flow popover (bot-status prototype) ----
+  const stStatus = { map: {} };
+  const stpState = { ready: false, open: false, bot: "", row: null, steps: null };
+
+  function tsOf(v) {
+    if (v == null) return 0;
+    const n = Number(v);
+    if (typeof v !== "string" || /^\d+$/.test(v.trim())) {
+      if (!Number.isFinite(n)) return 0;
+      return n > 0 && n < 1e12 ? n * 1000 : n;
+    }
+    const t = new Date(v).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  }
+
+  function spinIcon(size) {
+    const s = rawSvg('<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>', size, 2.8);
+    s.classList.add("st-spin");
+    return s;
+  }
+
+  function stNodePrefix(st) {
+    const node = st && st.node ? String(st.node).trim() : "";
+    return node && node !== "local" ? node + " · " : "";
+  }
+
+  // The second line is owned by the status poll; rows only record a signature so an
+  // unchanged line is never rewritten and no row is touched without a change.
+  function stDesc(name) {
+    const st = stStatus.map[name] || null;
+    const kind = st ? String(st.state || "idle") : "idle";
+    const pre = stNodePrefix(st);
+    let sig = kind + "|" + pre;
+    const line = el("span", "preview");
+    if (kind === "running") {
+      line.className = "preview st run click";
+      line.append(spinIcon(11));
+      const text = el("span");
+      text.append(pre + "在跑 ");
+      const tool = st && st.tool ? String(st.tool) : "";
+      if (tool) text.append(el("code", "", tool));
+      line.append(text);
+      line.addEventListener("click", (ev) => { ev.stopPropagation(); toggleStp(name, line); });
+      sig += tool;
+    } else if (kind === "awaiting") {
+      line.className = "preview st wait click";
+      line.append(el("i", "wd"));
+      line.append(el("span", "", pre + "等你确认"));
+      line.addEventListener("click", (ev) => { ev.stopPropagation(); jumpToApproval(name); });
+    } else if (kind === "offline") {
+      line.className = "preview st off";
+      const mins = Math.round(Number(st && st.stale_seconds) / 60) || 1;
+      line.append(el("span", "", pre + "离线 · 最后状态 " + mins + " 分钟前"));
+      sig += mins;
+    } else {
+      const bot = (state.bots || []).find((b) => b.name === name);
+      const text = (st && st.last_message ? clip(String(st.last_message), 72) : "") || (bot ? lineForBot(bot) : "") || "没有消息";
+      line.className = "preview";
+      line.append(el("span", "", pre + text));
+      sig += text;
+    }
+    return { sig: sig, node: line, off: kind === "offline" };
+  }
+
+  function otherLabel(o) {
+    const s = String((o && o.state) || "");
+    if (s === "running" || s === "awaiting" || s === "busy") return "在忙";
+    if (s === "away" || s === "offline" || s === "later" || s === "dnd") return "稍后回复";
+    return "空闲";
+  }
+
+  function othersFolder() {
+    const box = el("div", "folder");
+    const collapsed = folderCollapsed("别人的");
+    const head = el("div", "folder-head");
+    const toggle = el("button", "folder-toggle");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.append(icon(collapsed ? "chevron" : "chevronDown"));
+    const name = el("span", "folder-name");
+    const lock = rawSvg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>', 11, 2.2);
+    lock.classList.add("lk");
+    name.append(lock, document.createTextNode("别人的"));
+    toggle.append(name, el("span", "folder-count", String(state.others.length)));
+    toggle.addEventListener("click", () => {
+      closeFolderMenus();
+      setFolderCollapsed("别人的", !folderCollapsed("别人的"));
+      state.listSig = "";
+      renderLists();
+    });
+    head.append(toggle);
+    box.append(head);
+    const body = el("div", "folder-bots");
+    body.hidden = collapsed;
+    for (const o of state.others) {
+      const slug = (o && o.bot) || "?";
+      const row = el("div", "item other");
+      row.dataset.obot = slug;
+      row.dataset.osig = otherLabel(o);
+      row.append(avatar(slug, null));
+      const wrap = el("span", "item-body");
+      const line = el("span", "name-line");
+      line.append(el("span", "name", (o && o.name) || niceName(slug)));
+      const pv = el("span", "preview st");
+      pv.append(el("span", "", row.dataset.osig));
+      wrap.append(line, pv);
+      row.append(wrap);
+      body.append(row);
+    }
+    box.append(body);
+    return box;
+  }
+
+  function paintStatus() {
+    const roster = $("roster");
+    roster.querySelectorAll(".item[data-bot]").forEach((row) => {
+      const d = stDesc(row.dataset.bot);
+      if (row.dataset.stsig === d.sig) return;
+      row.dataset.stsig = d.sig;
+      row.classList.toggle("off", d.off);
+      const old = row.querySelector(".preview");
+      if (old) old.replaceWith(d.node);
+    });
+    const bySlug = {};
+    (state.others || []).forEach((o) => { if (o && o.bot) bySlug[o.bot] = o; });
+    roster.querySelectorAll(".item[data-obot]").forEach((row) => {
+      const label = otherLabel(bySlug[row.dataset.obot]);
+      if (row.dataset.osig === label) return;
+      row.dataset.osig = label;
+      const text = row.querySelector(".preview span");
+      if (text) text.textContent = label;
+    });
+    sortStatusRows();
+  }
+
+  // Running/awaiting first, stable otherwise. Only out-of-place rows are moved.
+  function sortStatusRows() {
+    const hot = (row) => {
+      const st = stStatus.map[row.dataset.bot];
+      return st && (st.state === "running" || st.state === "awaiting") ? 0 : 1;
+    };
+    document.querySelectorAll("#roster .folder-bots").forEach((body) => {
+      const rows = Array.from(body.children).filter((r) => r.dataset.bot);
+      if (rows.length < 2) return;
+      const sorted = rows.slice().sort((a, b) => hot(a) - hot(b));
+      let ref = body.firstChild;
+      for (const row of sorted) {
+        if (row !== ref) body.insertBefore(row, ref);
+        ref = row.nextSibling;
+      }
+    });
+  }
+
+  async function refreshStatus() {
+    const data = await api("/api/bots/status");
+    const map = {};
+    for (const b of (data && data.bots) || []) if (b && b.bot) map[b.bot] = b;
+    stStatus.map = map;
+    state.others = data && Array.isArray(data.others) ? data.others : null;
+    renderLists();
+    paintStatus();
+    if (stpState.open) stpRefresh().catch(() => {});
+  }
+
+  async function jumpToApproval(name) {
+    closeStp();
+    try {
+      if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadThread().catch(() => {});
+      else await selectBot(name);
+    } catch (e) {}
+    const card = thread.querySelector(".approval") || document.querySelector("#node-pending .approval");
+    if (card) card.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  function stpSetup() {
+    if (stpState.ready) return;
+    stpState.ready = true;
+    const shade = el("div", "mshade");
+    shade.id = "mshade";
+    shade.hidden = true;
+    const pop = el("div", "stp");
+    pop.id = "stp";
+    pop.hidden = true;
+    document.body.append(shade, pop);
+    shade.addEventListener("click", closeStp);
+    document.addEventListener("click", (ev) => {
+      if (stpState.open && !pop.contains(ev.target) && !(ev.target instanceof Element && ev.target.closest(".preview.st"))) closeStp();
+    });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshStatus().catch(() => {}); });
+    window.addEventListener("resize", () => { if (stpState.open) placeStp(); });
+  }
+
+  function closeStp() {
+    if (!stpState.open) return;
+    stpState.open = false;
+    stpState.bot = "";
+    stpState.row = null;
+    stpState.steps = null;
+    const pop = document.getElementById("stp");
+    if (pop) pop.hidden = true;
+    const shade = document.getElementById("mshade");
+    if (shade) shade.hidden = true;
+  }
+
+  function toggleStp(name, line) {
+    if (stpState.open && stpState.bot === name) { closeStp(); return; }
+    openStp(name, line).catch(() => {});
+  }
+
+  async function openStp(name, line) {
+    stpSetup();
+    stpState.open = true;
+    stpState.bot = name;
+    stpState.row = line.closest(".item");
+    stpState.steps = null;
+    const pop = document.getElementById("stp");
+    pop.hidden = false;
+    stpPaint();
+    placeStp();
+    const data = await api("/api/bots/" + encodeURIComponent(name) + "/steps?n=20").catch(() => null);
+    if (!stpState.open || stpState.bot !== name) return;
+    stpState.steps = (data && data.steps) || [];
+    stpPaint();
+  }
+
+  async function stpRefresh() {
+    const name = stpState.bot;
+    const st = name && stStatus.map[name];
+    // A finished turn keeps its last steps on screen until the popover is closed.
+    if (!stpState.open || !st || st.state !== "running") return;
+    const data = await api("/api/bots/" + encodeURIComponent(name) + "/steps?n=20").catch(() => null);
+    if (!stpState.open || stpState.bot !== name) return;
+    stpState.steps = (data && data.steps) || [];
+    stpPaint();
+  }
+
+  function stClock(sec) {
+    const s = Math.max(0, Math.round(sec));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function stDu(sec) {
+    if (sec < 10) return sec.toFixed(1) + "s";
+    if (sec < 60) return Math.round(sec) + "s";
+    return stClock(sec);
+  }
+
+  function stpPaint() {
+    const pop = document.getElementById("stp");
+    if (!pop || !stpState.open) return;
+    const name = stpState.bot;
+    const steps = stpState.steps;
+    const head = el("div", "ph");
+    const hi = el("span", "si");
+    const live = stStatus.map[name] && stStatus.map[name].state === "running";
+    hi.append(live ? spinIcon(14) : rawSvg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 14, 2.4));
+    head.append(hi, el("b", "", niceName(name) + " · 本轮"));
+    const cnt = el("span", "cnt");
+    if (!steps) cnt.textContent = "读取中…";
+    else if (!steps.length) cnt.textContent = "本轮还没有步骤";
+    else {
+      const st = stStatus.map[name];
+      const t0 = (st && tsOf(st.since)) || tsOf(steps[0].time) || Date.now();
+      cnt.textContent = "第 " + steps.length + " 步 · " + stClock((Date.now() - t0) / 1000);
+    }
+    head.append(cnt);
+    const x = el("button", "x");
+    x.type = "button";
+    x.setAttribute("aria-label", "关闭");
+    x.append(rawSvg('<path d="M6 6l12 12M18 6L6 18"/>', 16, 2.2));
+    x.addEventListener("click", closeStp);
+    head.append(x);
+    const ol = el("ol");
+    for (let i = 0; i < (steps || []).length; i++) {
+      const step = steps[i];
+      const run = /^(run|running|active)/i.test(String(step.state || ""));
+      const li = el("li", run ? "run" : "ok");
+      const si = el("span", "si");
+      si.append(run ? spinIcon(14) : rawSvg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 14, 2.4));
+      const sx = el("div", "sx");
+      const sl = el("div", "sl");
+      sl.append(el("b", "", String(step.tool || "tool")));
+      // A "detail · result" summary splits into the mono chip and the gray line.
+      const sum = String(step.summary || "").trim();
+      const cut = sum.indexOf(" · ");
+      const rest = cut > 0 ? sum.slice(cut + 3) : sum;
+      if (cut > 0) sl.append(el("code", "", sum.slice(0, cut)));
+      sx.append(sl);
+      if (rest) sx.append(el("div", "sr", rest));
+      li.append(si, sx);
+      const t = tsOf(step.time);
+      const tn = i + 1 < steps.length ? tsOf(steps[i + 1].time) : (run ? Date.now() : 0);
+      if (t && tn > t) li.append(el("span", "du", stDu((tn - t) / 1000)));
+      ol.append(li);
+    }
+    pop.replaceChildren(head, ol);
+  }
+
+  function placeStp() {
+    const pop = document.getElementById("stp");
+    if (!pop || !stpState.open) return;
+    const mob = window.innerWidth <= 767;
+    const shade = document.getElementById("mshade");
+    if (shade) shade.hidden = !mob;
+    pop.style.top = "";
+    pop.style.left = "";
+    if (mob) return;
+    const row = stpState.row && stpState.row.isConnected ? stpState.row : null;
+    const side = sidebar.getBoundingClientRect();
+    let left = side.right + 4;
+    let top = row ? row.getBoundingClientRect().top - 4 : side.top + 12;
+    if (left + pop.offsetWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+    if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, window.innerHeight - pop.offsetHeight - 8);
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+  }
+
 
   function showLogin() {
     shell.hidden = true;
@@ -1601,7 +1920,7 @@
       setTip(dot, "主 Bot");
       line.append(dot);
     }
-    body.append(line, el("span", "preview", preview || "没有消息"));
+    body.append(line, preview instanceof Node ? preview : el("span", "preview", preview || "没有消息"));
     btn.append(av, body);
     return btn;
   }
@@ -1685,7 +2004,11 @@
   }
 
   function botRow(b) {
-    const btn = listButton(b.name, lineForBot(b), state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, paintOfBot(b), !!b.primary);
+    const d = stDesc(b.name);
+    const btn = listButton(b.name, d.node, state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, paintOfBot(b), !!b.primary);
+    btn.dataset.bot = b.name;
+    btn.dataset.stsig = d.sig;
+    btn.classList.toggle("off", d.off);
     btn.addEventListener("click", () => selectBot(b.name));
     return btn;
   }
@@ -1763,6 +2086,7 @@
       bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, b.group || "", b.description, lineForBot(b)]),
       folders: state.folders.map((f) => [f.name, f.count, !!f.ungrouped, (f.bots || []).join("\n"), !!collapsed[f.name]]),
       groups: state.groups.map((g) => [g.id, g.name, lineForGroup(g)]),
+      others: (state.others || []).map((o) => [(o && o.bot) || "", (o && o.name) || ""]),
       sel: state.sel,
     });
     if (sig === state.listSig) return;
@@ -1798,6 +2122,7 @@
       ? state.folders
       : [{ name: "未分组", count: state.bots.length, bots: state.bots.map((b) => b.name), ungrouped: true }];
     for (const folder of folders) roster.append(folderSection(folder));
+    if (state.others && state.others.length) roster.append(othersFolder());
 
     const newer = el("button", "icon-btn");
     newer.type = "button";
@@ -1811,6 +2136,7 @@
       btn.addEventListener("click", () => selectGroup(g.id));
       roster.append(btn);
     }
+    paintStatus();
   }
 
   function renderMe() {
@@ -3785,6 +4111,7 @@
     hideTip();
     if (!lightbox.hidden) { closeShots(); return; }
     if (!modal.hidden) { closeModal(); return; }
+    if (stpState.open) { closeStp(); return; }
     if (state.replyTo) { clearQuote(); return; }
     closePops();
     if (panel.classList.contains("open") && window.innerWidth < 1100) {
@@ -3829,7 +4156,9 @@
 
   async function boot() {
     if (!bgState.ready) { bgState.ready = true; bgSetup(); }
+    stpSetup();
     await refreshLists();
+    await refreshStatus().catch(() => {});
     await refreshNotes();
     await refreshNodePending().catch(() => {});
     await loadPush().catch(() => {});
@@ -3870,6 +4199,7 @@
     startPoll.started = true;
     setInterval(() => {
       if (shell.hidden || state.streaming) return;
+      if (!document.hidden) refreshStatus().catch(() => {});
       refreshNotes().catch(() => {});
       refreshNodePending().catch(() => {});
       refreshLists().catch(() => {});
