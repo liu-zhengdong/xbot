@@ -219,19 +219,22 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	var approve agent.Approver
 	if k.Approve != nil {
 		approve = k.trackApprove(k.Approve)
-		if k.AllowFork {
-			inner := approve
-			approve = func(ctx context.Context, tool, summary string) (bool, error) {
-				if t.isForked() {
-					// The request that could show a card is gone; a background's card goes
-					// to the owner through BackgroundApprove, or the call is declined.
-					if k.BackgroundApprove == nil {
-						return false, nil
-					}
-					return k.trackApprove(k.BackgroundApprove)(ctx, tool, summary)
+	}
+	if k.AllowFork && (approve != nil || k.BackgroundApprove != nil) {
+		inner := approve
+		approve = func(ctx context.Context, tool, summary string) (bool, error) {
+			if t.isForked() {
+				// The request that could show a card is gone; a background's card goes
+				// to the owner through BackgroundApprove, or the call is declined.
+				if k.BackgroundApprove == nil {
+					return false, nil
 				}
-				return inner(ctx, tool, summary)
+				return k.trackApprove(k.BackgroundApprove)(ctx, tool, summary)
 			}
+			if inner == nil {
+				return false, nil
+			}
+			return inner(ctx, tool, summary)
 		}
 	}
 	t.fromSeq = seq

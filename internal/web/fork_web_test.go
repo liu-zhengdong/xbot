@@ -36,9 +36,13 @@ func (*slowTool) Parameters() any     { return map[string]any{"type": "object"} 
 func (*slowTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "slow", nil
 }
-func (s *slowTool) Run(context.Context, json.RawMessage) (string, error) {
+func (s *slowTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
 	s.once.Do(func() { close(s.started) })
-	<-s.release
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 	return "job done", nil
 }
 
