@@ -29,6 +29,12 @@ XBot：Go 写的个人 AI 助手，交互单位是长期存在的 Bot。模块 `
 ## 验证
 `gofmt -l .`、`go vet ./...`、`go test -count=1 ./...`。合入 main 前跑三遍测试。
 
+## 全局要求：性能与界面流畅
+- 链路不传大块数据：只传摘要或流式传输；每次节点调用上限 1 MiB，处处设大小上限。
+- 交互回复 p95 < 3 秒；本机进程间通信（IPC）额外开销 p95 < 5 毫秒；后台导致的变慢不超过 10%。
+- 界面：60fps；动画只动 transform/opacity，时长不超过 200 毫秒；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
+- 每个里程碑验收都要报性能数字。
+
 ## 维护
 改了某块的行为，同步改对应 atlas 节点并刷新 `verified`；设计决策被推翻时新建 ADR，旧的标 Superseded。进度只写 [docs/MILESTONES.md](docs/MILESTONES.md)。运行 `python3 scripts/atlas_audit.py` 检查。
 

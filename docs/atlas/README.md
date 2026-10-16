@@ -81,4 +81,10 @@ flowchart LR
 | 模型提示 | [prompts/models/README.md](../../prompts/models/README.md) | 调提示的人 | 活的 | 开发者 |
 | 模型提示正文 | [deepseek-chat.md](../../prompts/models/deepseek/deepseek-chat.md) | 模型 | 活的 | 开发者 |
 
+## 全局要求：性能与界面流畅
+- 链路不传大块数据：只传摘要或流式传输；每次节点调用上限 1 MiB，处处设大小上限。
+- 交互回复 p95 < 3 秒；本机进程间通信（IPC）额外开销 p95 < 5 毫秒；后台导致的变慢不超过 10%。
+- 界面：60fps；动画只动 transform/opacity，时长不超过 200 毫秒；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
+- 每个里程碑验收都要报性能数字。
+
 ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)。
