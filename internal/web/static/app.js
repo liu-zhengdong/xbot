@@ -166,6 +166,7 @@
     if (badge) badge.classList.remove("on");
   }
   async function bgAct(path, method, body) {
+    bgState.force = true;
     try { await api(path, { method: method, body: body }); } catch (e) { setStatus(e.message || "操作失败"); }
     await bgRefresh();
   }
@@ -210,6 +211,10 @@
     if (badge.hidden) bgClose();
     const pop = document.getElementById("bg-pop");
     if (!bgState.open) return;
+    // Do not rebuild under the owner's fingers: a poll would wipe a half-typed steer.
+    const typing = pop.querySelector(".bg-addin input");
+    if (typing && (typing === document.activeElement || typing.value) && !bgState.force) return;
+    bgState.force = false;
     const taskOf = {};
     running.forEach((r) => { taskOf[r.id] = r.task; });
     const head = el("div", "bg-ph");
@@ -218,7 +223,7 @@
     const list = el("ul", "bg-pl");
     running.forEach((r) => {
       const li = bgRow("run", "spin", r.task || r.id, "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), [
-        bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgRender(); }),
+        bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.force = true; bgRender(); }),
         bgBtn("stop", "取消", () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST")),
       ]);
       const steers = controls.filter((c) => c.background === r.id && c.kind === "steer");
@@ -291,6 +296,7 @@
       pop.hidden = !bgState.open;
       dim.hidden = !bgState.open;
       badge.classList.toggle("on", bgState.open);
+      bgState.force = true;
       bgRender();
     });
     dim.addEventListener("click", bgClose);
