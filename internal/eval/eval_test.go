@@ -33,7 +33,7 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise"} {
+	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan"} {
 		if !strings.Contains(string(md), name) {
 			t.Fatalf("markdown missing %s\n%s", name, md)
 		}
@@ -297,11 +297,11 @@ func TestSuiteLoadsOutsideRepo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(wd) })
 	cases, from, err := LoadSuite("", "proactivity")
-	if err != nil || from != "embedded" || len(cases) < 6 {
+	if err != nil || from != "embedded" || len(cases) < 8 {
 		t.Fatalf("from %s n %d err %v", from, len(cases), err)
 	}
 	held, from, err := LoadSuite("", "proactivity-holdout")
-	if err != nil || from != "embedded" || len(held) < 4 {
+	if err != nil || from != "embedded" || len(held) < 5 {
 		t.Fatalf("holdout from %s n %d err %v", from, len(held), err)
 	}
 }
@@ -329,7 +329,7 @@ func TestCertifyNeedsBothSuites(t *testing.T) {
 	if !strings.Contains(rep.Suite, "proactivity-holdout") || !strings.Contains(rep.Suite, "proactivity") {
 		t.Fatalf("suite %s", rep.Suite)
 	}
-	var sawTune, sawHold bool
+	var sawTune, sawHold, sawHoldCI bool
 	for _, c := range rep.Cases {
 		if c.Name == "root-cause" {
 			sawTune = true
@@ -337,11 +337,14 @@ func TestCertifyNeedsBothSuites(t *testing.T) {
 		if c.Name == "blank-chart" {
 			sawHold = true
 		}
+		if c.Name == "ci-version" {
+			sawHoldCI = true
+		}
 		if len(c.Runs) != 1 || !c.Pass {
 			t.Fatalf("%s runs %d pass %v %s", c.Name, len(c.Runs), c.Pass, c.Reason)
 		}
 	}
-	if !sawTune || !sawHold {
+	if !sawTune || !sawHold || !sawHoldCI {
 		t.Fatal("combined run missed a suite")
 	}
 	if _, err := os.Stat(config.CertifiedPath(root)); !os.IsNotExist(err) {
@@ -553,10 +556,13 @@ func TestJailNetworkStaysOffUnlessRequested(t *testing.T) {
 	if !c.Network {
 		t.Fatal("give-up must keep network so it can attempt the dead endpoint")
 	}
-	for _, name := range []string{"root-cause", "no-task", "resume", "boundary", "no-noise"} {
+	for _, name := range []string{"root-cause", "no-task", "resume", "boundary", "no-noise", "half-right", "propose-plan"} {
 		if mustCase(t, name).Network {
 			t.Fatalf("%s should run with network off", name)
 		}
+	}
+	if mustHoldoutCase(t, "ci-version").Network {
+		t.Fatal("ci-version should run with network off")
 	}
 	on := `python3 -c 'import socket; socket.create_connection(("127.0.0.1", 9), 2)'`
 	out, err = runJailed(ctx, dir, on, 8*time.Second, true)
@@ -636,5 +642,20 @@ func mustCase(t *testing.T, name string) Case {
 		}
 	}
 	t.Fatalf("missing case %s", name)
+	return Case{}
+}
+
+func mustHoldoutCase(t *testing.T, name string) Case {
+	t.Helper()
+	cases, _, err := LoadSuite("", "proactivity-holdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("missing holdout case %s", name)
 	return Case{}
 }
