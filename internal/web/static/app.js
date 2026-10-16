@@ -426,6 +426,74 @@
     return box;
   }
 
+
+  // Remote same-owner bots only appear in /api/bots/status (with a node name).
+  // Keep one row per remote bot under a folder named after the node.
+  function ensureRemoteRows() {
+    const roster = $("roster");
+    if (!roster) return;
+    const local = new Set((state.bots || []).map((b) => b.name));
+    const remotes = Object.values(stStatus.map).filter((st) => st && st.node && st.bot && !local.has(st.bot));
+    // Drop remote folders when empty.
+    roster.querySelectorAll(".folder[data-remote-node]").forEach((f) => {
+      const node = f.dataset.remoteNode;
+      if (!remotes.some((st) => st.node === node)) f.remove();
+    });
+    const byNode = {};
+    remotes.forEach((st) => { (byNode[st.node] || (byNode[st.node] = [])).push(st); });
+    for (const [node, list] of Object.entries(byNode)) {
+      let folder = roster.querySelector('.folder[data-remote-node="' + CSS.escape(node) + '"]');
+      if (!folder) {
+        folder = el("div", "folder");
+        folder.dataset.remoteNode = node;
+        const head = el("div", "folder-head");
+        const toggle = el("button", "folder-toggle");
+        toggle.type = "button";
+        toggle.setAttribute("aria-expanded", "true");
+        toggle.append(icon("chevronDown"));
+        const name = el("span", "folder-name", node);
+        toggle.append(name, el("span", "folder-count", String(list.length)));
+        toggle.addEventListener("click", () => {
+          const body = folder.querySelector(".folder-bots");
+          const open = body.hidden;
+          body.hidden = !open;
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+        head.append(toggle);
+        folder.append(head, el("div", "folder-bots"));
+        // Insert before the locked "别人的" folder if present, else at end.
+        const others = [...roster.querySelectorAll(".folder")].find((f) => f.querySelector(".folder-name")?.textContent?.includes("别人的"));
+        if (others) roster.insertBefore(folder, others);
+        else roster.append(folder);
+      } else {
+        const count = folder.querySelector(".folder-count");
+        if (count) count.textContent = String(list.length);
+      }
+      const body = folder.querySelector(".folder-bots");
+      const have = new Set([...body.querySelectorAll(".item[data-bot]")].map((r) => r.dataset.bot));
+      list.forEach((st) => {
+        if (have.has(st.bot)) return;
+        const row = el("div", "item remote");
+        row.dataset.bot = st.bot;
+        row.append(avatar(st.bot, null));
+        const wrap = el("span", "item-body");
+        const line = el("span", "name-line");
+        line.append(el("span", "name", niceName(st.bot)));
+        wrap.append(line, el("span", "preview"));
+        row.append(wrap);
+        row.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          setTip(row, "在节点 " + node + " 上");
+        });
+        body.append(row);
+      });
+      // Remove rows no longer present.
+      body.querySelectorAll(".item[data-bot]").forEach((r) => {
+        if (!list.some((st) => st.bot === r.dataset.bot)) r.remove();
+      });
+    }
+  }
+
   function paintStatus() {
     const roster = $("roster");
     roster.querySelectorAll(".item[data-bot]").forEach((row) => {
@@ -473,6 +541,7 @@
     stStatus.map = map;
     state.others = data && Array.isArray(data.others) ? data.others : null;
     renderLists();
+    ensureRemoteRows();
     paintStatus();
     if (stpState.open) stpRefresh().catch(() => {});
   }
@@ -480,11 +549,21 @@
   async function jumpToApproval(name) {
     closeStp();
     try {
-      if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadThread().catch(() => {});
+      if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadThread();
       else await selectBot(name);
     } catch (e) {}
-    const card = thread.querySelector(".approval") || document.querySelector("#node-pending .approval");
-    if (card) card.scrollIntoView({ block: "center", behavior: "smooth" });
+    const find = () => thread.querySelector(".approval") || document.querySelector("#thread .approval") || document.querySelector("#node-pending .approval");
+    let card = find();
+    if (!card) {
+      await new Promise((r) => setTimeout(r, 50));
+      card = find();
+    }
+    if (card) {
+      card.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    const lines = thread.querySelectorAll(".approval-line");
+    if (lines.length) lines[lines.length - 1].scrollIntoView({ block: "center", behavior: "smooth" });
   }
 
   function stpSetup() {

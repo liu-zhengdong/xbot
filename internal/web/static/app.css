@@ -1786,6 +1786,12 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .stp .sl b{font-weight:500}
 .stp .sl code{font:12px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis}
 .stp .sr{font-size:12px;color:var(--faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mshade{position:fixed;inset:0;background:rgba(0,0,0,.18);z-index:59}
+@media (max-width:767px){
+  .stp{top:auto!important;left:0!important;right:0!important;bottom:0;width:auto;max-width:none;max-height:75vh;border-radius:18px 18px 0 0;padding-top:4px}
+  .stp:before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--fill-hover);margin:6px auto 4px}
+}
+
 .stp li.run .sr{color:var(--muted)}
 .stp .du{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;margin-top:2px;flex:none}
 .stp .x{border:0;background:transparent;color:var(--faint);width:28px;height:28px;border-radius:8px;display:grid;place-items:center;cursor:pointer;padding:0;flex:none}
