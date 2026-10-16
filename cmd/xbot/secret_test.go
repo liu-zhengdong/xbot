@@ -31,6 +31,8 @@ func withStdin(t *testing.T, in string, fn func() error) error {
 }
 
 func TestSecretCLISetListRm(t *testing.T) {
+	// Keep an exported XBOT_VAULT_SOCKET from changing what this test exercises.
+	t.Setenv("XBOT_VAULT_SOCKET", "")
 	root := t.TempDir()
 	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
 		t.Fatal(err)

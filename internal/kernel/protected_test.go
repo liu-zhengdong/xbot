@@ -170,3 +170,20 @@ func TestReviewCallProtectedShellAsksInAllowMode(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewCallLinkSecretsFileAsks(t *testing.T) {
+	k, workDir := protectedKernel(t)
+	if err := os.WriteFile(k.Bot.SecretPath(), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	read := &tools.ReadFile{Root: workDir}
+	need, _, err := reviewedTool{Tool: read, k: k}.Confirm(json.RawMessage(`{"path":"` + k.Bot.SecretPath() + `"}`))
+	if err != nil || !need {
+		t.Fatalf("read_file secrets.json need=%v err=%v", need, err)
+	}
+	sh := &tools.Shell{}
+	need, _, err = reviewedTool{Tool: sh, k: k}.Confirm(json.RawMessage(`{"command":"cat ../../bots/ada/secrets.json"}`))
+	if err != nil || !need {
+		t.Fatalf("shell cat secrets.json need=%v err=%v", need, err)
+	}
+}

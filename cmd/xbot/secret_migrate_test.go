@@ -47,6 +47,8 @@ func waitMigrateSocket(t *testing.T, socket string) {
 }
 
 func TestSecretMigrateMovesSecretsToDaemon(t *testing.T) {
+	// Keep an exported XBOT_VAULT_SOCKET from changing what this test exercises.
+	t.Setenv("XBOT_VAULT_SOCKET", "")
 	root := t.TempDir()
 	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
 		t.Fatal(err)
@@ -102,11 +104,11 @@ func TestSecretMigrateMovesSecretsToDaemon(t *testing.T) {
 }
 
 func TestSecretMigrateNeedsSocket(t *testing.T) {
+	t.Setenv("XBOT_VAULT_SOCKET", "")
 	root := t.TempDir()
 	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
-	os.Unsetenv("XBOT_VAULT_SOCKET")
 	if err := cmdSecret(root, []string{"migrate", "ada"}); err == nil {
 		t.Fatal("migrate without a socket was accepted")
 	}

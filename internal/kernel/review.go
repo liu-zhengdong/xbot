@@ -112,6 +112,7 @@ func (k *Kernel) protectedPaths() []string {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			out = append(out, filepath.Join(botsDir, entry.Name(), "vault"))
+			out = append(out, filepath.Join(botsDir, entry.Name(), "secrets.json"))
 		}
 	}
 	return out
