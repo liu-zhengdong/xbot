@@ -32,11 +32,11 @@ func TestDefaultAvatarIsSoftBlob(t *testing.T) {
 			t.Fatal("avatar radius is not limited to photos")
 		}
 	}
-	doc, err := os.ReadFile("../../docs/DESIGN.md")
+	doc, err := os.ReadFile("../../docs/atlas/multibot.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Contains(doc, []byte("软边圆斑")) || !bytes.Contains(doc, []byte("没有五官")) {
-		t.Fatal("DESIGN.md does not describe the blob avatar")
+		t.Fatal("atlas multibot.md does not describe the blob avatar")
 	}
 }
