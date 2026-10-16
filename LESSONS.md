@@ -10,6 +10,7 @@
 - **自我 re-exec 要把内存里持有的 key 放回新进程的环境。** 原因：v0.1.0 的 serve 升级重启后报 XBOT_API_KEY is empty（启动时 key 已从环境清掉）。证据：v0.1.1 的修复。Seen 1×（2026-10-16）
 - **提交前看 git status：本地二进制、日志、cookie 不进仓库。** 原因：Bot status UI 回归顺手留下的 cookie.txt、serve.log、21MB `xbot` 二进制被一并提交。证据：`ac35612`。Seen 1×（2026-10-16）
 - **工具 JSON Schema 的 required 用空数组 []，不要 null。** 原因：`json.Marshal` 把 nil slice 编成 null，DeepSeek 拒收，种活三个长跑 Bot 时才发现。证据：`2ed8ca3`。Seen 1×（2026-10-16）
+- **改共享规则后，要用真实 DeepSeek 跑一遍认证再合。规则冲突时写明谁让谁。** 原因：10-16 加的判断/务实规则和 DeepSeek 专用提示里「把修复做完」互相打架：root-cause 只复制字体、不改 site.css；propose-plan 擅自改了快照里的配置；avatar-handoff 把给别的 Bot 留言当成「替你发消息」，停下来先问。修法是写清楚适用范围：任务里写明的改动就直接做；快照或问「怎么办」时一个文件都不写；按文档给别的 Bot 留言不算替你发消息。证据：本提交，两遍 eval 都认证。Seen 1×（2026-10-16）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。
