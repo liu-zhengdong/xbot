@@ -116,3 +116,33 @@ func TestReplayKeepsEntryPayload(t *testing.T) {
 		t.Fatalf("row %+v", rows[0])
 	}
 }
+
+// Two backgrounds run at once: bg_1 forked from the first turn, then the foreground's
+// own turn forked again as bg_2 while bg_1 kept writing tagged rows.
+func TestReplayTwoConcurrentBranches(t *testing.T) {
+	rows, branches := Replay(replayEntries(
+		mainRow("task one"),           // 1 main
+		mainRow("one step"),           // 2 bg_1 (pre-marker)
+		forkRow("bg_1", 1, "one"),     // 3
+		mainRow("task two"),           // 4 main (foreground)
+		branchRow("one more", "bg_1"), // 5
+		mainRow("two step"),           // 6 bg_2 (pre-marker)
+		forkRow("bg_2", 4, "two"),     // 7
+		branchRow("two more", "bg_2"), // 8
+		branchRow("one done", "bg_1"), // 9
+		forkEndRow("bg_1", "done", 3),
+		mainRow("chat"), // 11 main
+	))
+	want := []string{"", "bg_1", "bg_1", "", "bg_1", "bg_2", "bg_2", "bg_2", "bg_1", "bg_1", ""}
+	for i, r := range rows {
+		if r.Branch != want[i] {
+			t.Fatalf("seq %d branch %q want %q", r.Seq, r.Branch, want[i])
+		}
+	}
+	if b := branches["bg_1"]; b.Open || b.Status != "done" {
+		t.Fatalf("bg_1 %+v", b)
+	}
+	if b := branches["bg_2"]; !b.Open || b.Task != "two" {
+		t.Fatalf("bg_2 %+v", b)
+	}
+}
