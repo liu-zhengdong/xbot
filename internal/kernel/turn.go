@@ -43,6 +43,8 @@ type turn struct {
 	forked    chan struct{}
 	runCtx    context.Context
 	cancelRun context.CancelFunc
+	// capFork is set when the turn moved to the background for passing the foreground cap.
+	capFork bool
 	// ctrl is controls sent to a background, read between its steps. resources is
 	// what this turn has written (review.ResourceOf), for the conflict queue.
 	ctrl      []*Control

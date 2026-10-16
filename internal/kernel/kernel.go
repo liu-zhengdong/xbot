@@ -72,6 +72,11 @@ type Kernel struct {
 	BackgroundApprove agent.Approver
 	ForkCap           int
 	ForkAfter         time.Duration
+	// ForegroundMaxTools (default 4) and ForegroundMaxTime (default 20s) cap a
+	// main-line turn when AllowFork is on; past either, the turn moves to the
+	// background if a slot is free. Negative turns a limit off.
+	ForegroundMaxTools int
+	ForegroundMaxTime  time.Duration
 
 	turnMu      sync.Mutex
 	bgMu        sync.Mutex
@@ -367,6 +372,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		case <-t.forked:
 			// The turn goes on in the background; the caller may answer the owner now.
 			stopWatch()
+			t.mu.Lock()
+			capped, id := t.capFork, t.branch
+			t.mu.Unlock()
+			if capped {
+				note := capNotice(id)
+				if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleAssistant, Content: note}}); err != nil {
+					return err
+				}
+				if onDelta != nil {
+					onDelta(note)
+				}
+			}
 			return nil
 		case <-tick:
 			k.tryFork(t)
