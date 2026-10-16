@@ -416,6 +416,20 @@ func TestParseProfileAndTemplate(t *testing.T) {
 	if _, err := parseProfileSet([]string{"ada"}); err == nil {
 		t.Fatal("expected a flag")
 	}
+	// The role flags pick the working defaults and must survive reordering,
+	// including after the bot name.
+	opt, err = parseProfileSet([]string{"ada", "--role", "dev", "--max-steps", "12", "--foreground-max-tools", "6", "--foreground-max-time", "45"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Role != "dev" || opt.MaxSteps != 12 || opt.FgTools != 6 || opt.FgTime != 45 ||
+		!opt.Set["role"] || !opt.Set["max-steps"] || !opt.Set["foreground-max-tools"] || !opt.Set["foreground-max-time"] {
+		t.Fatalf("%+v", opt)
+	}
+	opt, err = parseProfileSet([]string{"--role", "chat", "ada"})
+	if err != nil || opt.Role != "chat" || !opt.Set["role"] || opt.Set["max-steps"] {
+		t.Fatalf("%+v %v", opt, err)
+	}
 	av, err := parseProfileAvatar([]string{"ada", "--file", "face.png"})
 	if err != nil || av.Bot != "ada" || av.File != "face.png" || av.Clear {
 		t.Fatalf("%+v %v", av, err)

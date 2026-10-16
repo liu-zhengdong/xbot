@@ -105,6 +105,13 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if local, ok := store.(*vault.Store); ok {
 		vault.Register(local)
 	}
+	// The bot's role picks the working defaults. An explicit --max-steps wins;
+	// otherwise the role (chat 8, dev 24 steps) sets the cap, and the role's
+	// foreground thresholds apply too.
+	work := b.Config().Working()
+	if steps <= 0 {
+		steps = work.MaxSteps
+	}
 	k := &kernel.Kernel{
 		Bot:             b,
 		Provider:        client,
@@ -118,11 +125,14 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		MaxSteps:        steps,
 		Budget:          budget,
 		AllowBackground: allowBackground,
-		WorkDir:         workDir,
-		SharedDir:       sharedDir,
-		SkillsDir:       skill.Dir(root),
-		Vault:           store,
-		Redact:          store.Redact,
+		// Foreground limits come from the role unless the bot overrode them.
+		ForegroundMaxTools: work.ForegroundMaxTools,
+		ForegroundMaxTime:  work.ForegroundMaxTime,
+		WorkDir:            workDir,
+		SharedDir:          sharedDir,
+		SkillsDir:          skill.Dir(root),
+		Vault:              store,
+		Redact:             store.Redact,
 	}
 	if pr != nil {
 		k.OnDelta = pr.Delta

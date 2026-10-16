@@ -327,6 +327,10 @@ type profileSetOpts struct {
 	Quiet       string
 	Timezone    string
 	Name        string
+	Role        string
+	MaxSteps    int
+	FgTools     int
+	FgTime      int
 	Set         map[string]bool
 }
 
@@ -334,6 +338,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	ordered, err := reorderFlags(args, map[string]bool{
 		"description": true, "tone": true, "length": true, "emoji": true,
 		"language": true, "quiet": true, "timezone": true, "name": true,
+		"role": true, "max-steps": true, "foreground-max-tools": true, "foreground-max-time": true,
 	})
 	if err != nil {
 		return profileSetOpts{}, err
@@ -348,6 +353,10 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	quiet := fs.String("quiet", "", "HH:MM-HH:MM, or off")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
 	name := fs.String("name", "", "new bot name")
+	role := fs.String("role", "", "chat or dev: picks the working defaults")
+	maxSteps := fs.Int("max-steps", 0, "step cap per wake (0 keeps the role default)")
+	fgTools := fs.Int("foreground-max-tools", 0, "tool calls before a turn moves backstage (0 keeps the role default)")
+	fgTime := fs.Int("foreground-max-time", 0, "seconds before a turn moves backstage (0 keeps the role default)")
 	if err := fs.Parse(ordered); err != nil {
 		return profileSetOpts{}, err
 	}
@@ -356,7 +365,8 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	}
 	opt := profileSetOpts{
 		Bot: fs.Arg(0), Description: *desc, Tone: *tone, Length: *length, Emoji: *emoji,
-		Language: *lang, Quiet: *quiet, Timezone: *tz, Name: *name, Set: map[string]bool{},
+		Language: *lang, Quiet: *quiet, Timezone: *tz, Name: *name,
+		Role: *role, MaxSteps: *maxSteps, FgTools: *fgTools, FgTime: *fgTime, Set: map[string]bool{},
 	}
 	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
 	if len(opt.Set) == 0 {
@@ -406,6 +416,22 @@ func cmdProfileSet(root string, args []string) error {
 	if opt.Set["timezone"] {
 		s := opt.Timezone
 		u.Timezone = &s
+	}
+	if opt.Set["role"] {
+		s := opt.Role
+		u.Role = &s
+	}
+	if opt.Set["max-steps"] {
+		n := opt.MaxSteps
+		u.MaxSteps = &n
+	}
+	if opt.Set["foreground-max-tools"] {
+		n := opt.FgTools
+		u.ForegroundMaxTools = &n
+	}
+	if opt.Set["foreground-max-time"] {
+		n := opt.FgTime
+		u.ForegroundMaxTime = &n
 	}
 	if u != (bot.ProfileUpdate{}) {
 		if err := b.ApplyProfile(u); err != nil {
