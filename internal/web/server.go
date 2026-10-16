@@ -758,8 +758,8 @@ func (s *Server) approvalWait() time.Duration {
 
 // webApprove shows one confirmation card in the stream and persists it in the
 // transcript, first as pending and then with the resolved state, so the card
-// survives the reply ending and a page reload. A cancelled wake keeps the
-// pending card: no decision was recorded.
+// survives the reply ending and a page reload. A timeout or cancelled wake
+// with no decision records an expired card, never a pending one.
 func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
 	return func(ctx context.Context, tool, summary string) (bool, error) {
 		id := newApprovalID()
@@ -800,9 +800,10 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			appendCard(state)
 			return d.allow, nil
 		case <-timer.C:
-			appendCard(bot.ApprovalDeclined)
+			appendCard(bot.ApprovalExpired)
 			return false, nil
 		case <-ctx.Done():
+			appendCard(bot.ApprovalExpired)
 			return false, ctx.Err()
 		}
 	}

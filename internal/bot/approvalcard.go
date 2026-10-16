@@ -10,6 +10,7 @@ const (
 	ApprovalPending  = "pending"
 	ApprovalApproved = "approved"
 	ApprovalDeclined = "declined"
+	ApprovalExpired  = "expired"
 )
 
 // ApprovalCard is one owner-confirmation card as persisted in the transcript.

@@ -856,6 +856,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 .approval-state.pending { color: var(--muted); }
 .approval-state.approved { color: var(--ok); }
 .approval-state.declined { color: var(--err); }
+.approval-state.expired { color: var(--muted); }
 
 .options { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 

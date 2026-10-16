@@ -134,7 +134,7 @@ func approvalStates(t *testing.T, base string, cookie *http.Cookie, id string) [
 	return states
 }
 
-func TestWebApprovalTimeoutRecordsDeclined(t *testing.T) {
+func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 	root := t.TempDir()
 	work := t.TempDir()
 	model := httptest.NewServer(mockopenai.NewMux(work))
@@ -176,7 +176,7 @@ func TestWebApprovalTimeoutRecordsDeclined(t *testing.T) {
 			t.Fatalf("error event %s", ev.data)
 		}
 	}
-	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalDeclined}) {
+	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalExpired}) {
 		t.Fatalf("timeout states %v", states)
 	}
 }

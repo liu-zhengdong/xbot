@@ -1073,7 +1073,7 @@
     return { id: attr(m[1]), tool: attr(m[2]), state: attr(m[3]), summary: m[4] };
   }
 
-  const APPROVAL_STATE_LABELS = { pending: "待确认", approved: "已允许", declined: "已拒绝" };
+  const APPROVAL_STATE_LABELS = { pending: "待确认", approved: "已允许", declined: "已拒绝", expired: "已过期" };
 
   function approvalHistoryCard(card) {
     const box = el("div", "approval history");
