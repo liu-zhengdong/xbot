@@ -67,7 +67,7 @@ verified: 2026-10-16 @ d04f79e
 
 **时延保证**：前台要么空闲，要么在一个有上限的步骤里，所以主人的消息最多等一个前台步骤：一次模型调用加最多 10 秒的只读工具。后台的长工具不会挡住任何回复。验收按 p95 3 秒以内（假模型）来测。
 
-**后台控制**（F3）：`steer`、`queue`、`interrupt`、`cancel` 发给 `bg_` id（网页 `POST /api/bots/{name}/agents/{bg}/steer|queue|interrupt|cancel`，模型用原来的子代理控制工具）。控制消息先是 `pending`，后台在当前工具调用返回之后、下一次模型调用之前读走，变成 `applied`，以带前缀的用户消息（`[主人的补充]`、`[排队]`、`[打断]`）写进它的分支。后台本来要结束时还有没读的控制，就带着它们再跑一轮。发给已结束后台的控制返回错误。`cancel` 取消那一轮的 context，结束状态是 `cancelled`。`GET /api/bots/{name}/backgrounds` 返回在跑的后台、控制消息及状态、排队项（原因、位置、文件名）、最近 3 个结束的后台，供 F5 的「后台 N」角标和弹层用。
+**后台控制**（F3）：`steer`、`queue`、`interrupt`、`cancel` 发给 `bg_` id（网页 `POST /api/bots/{name}/agents/{bg}/steer|queue|interrupt|cancel`，模型用原来的子代理控制工具）。控制消息先是 `pending`，后台在当前工具调用返回之后、下一次模型调用之前读走，变成 `applied`，以带前缀的用户消息（`[主人的补充]`、`[排队]`、`[打断]`）写进它的分支。后台本来要结束时还有没读的控制，就带着它们再跑一轮。发给已结束后台的控制返回错误；后台出错或被取消时还没读的控制标成 `dropped`，写进完成事件。`cancel` 取消那一轮的 context，结束状态是 `cancelled`。`GET /api/bots/{name}/backgrounds` 返回在跑的后台、控制消息及状态、排队项（原因、位置、文件名）、最近 3 个结束的后台，供 F5 的「后台 N」角标和弹层用。
 
 **后台的确认**（F3）：后台遇到要确认的操作，走 `Kernel.BackgroundApprove`。网页把它设成 `webApprove`，卡片写进 transcript（带后台的 branch），界面按 transcript 显示按钮，主人点了以后后台继续。没设的时候照旧拒绝。
 

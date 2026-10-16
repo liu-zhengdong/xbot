@@ -317,7 +317,10 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			// background works through its queue before it ends.
 			t.mu.Lock()
 			bg = t.branch != ""
-			pend := t.takeCtrlLocked()
+			var pend []provider.Message
+			if err == nil && bg {
+				pend = t.takeCtrlLocked()
+			}
 			if err != nil || !bg || len(pend) == 0 {
 				t.finished = true
 				t.mu.Unlock()

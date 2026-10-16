@@ -170,6 +170,18 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	if runErr != nil {
 		text += "\n错误：" + clipRunes(runErr.Error(), 300)
 	}
+	t.mu.Lock()
+	var unread []string
+	for _, c := range t.ctrl {
+		if c.State == "pending" {
+			c.State = "dropped"
+			unread = append(unread, c.Kind+"："+c.Text)
+		}
+	}
+	t.mu.Unlock()
+	if len(unread) > 0 {
+		text += "\n没来得及处理的控制：" + strings.Join(unread, "；")
+	}
 	if last := lastText(produced); last != "" {
 		text += "\n最后的回复：\n" + clipRunes(last, forkReplyRunes)
 	}
