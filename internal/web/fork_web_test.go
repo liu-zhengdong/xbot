@@ -160,6 +160,9 @@ func TestWebInterruptForksAndAnswersFast(t *testing.T) {
 		if e.Mark != nil && e.Mark.Kind == bot.ForkKindEnd && e.Mark.Status == "done" {
 			sawEnd = true
 		}
+		if strings.Contains(e.Message.Content, "interrupted before the tool returned") {
+			t.Fatal("the foreground repaired a call the background still had in flight")
+		}
 		if e.Branch != "" && e.Message.Content == "后台完成" {
 			sawBG = true
 		}

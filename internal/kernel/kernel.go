@@ -534,6 +534,16 @@ func (k *Kernel) repairTail() error {
 	if err != nil {
 		return err
 	}
+	// A call on a background still running here is in flight, not lost.
+	k.bgMu.Lock()
+	var lost []provider.ToolCall
+	for _, tc := range missing {
+		if _, running := k.bgs[branches[tc.ID]]; !running {
+			lost = append(lost, tc)
+		}
+	}
+	k.bgMu.Unlock()
+	missing = lost
 	for _, tc := range missing {
 		e := placeholder(tc)
 		e.Branch = branches[tc.ID]
