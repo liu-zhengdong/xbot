@@ -1,0 +1,36 @@
+name: vision-draft
+level: normal
+grader: llm-judge
+approve: deny
+rubric: |
+  The owner asks for a vision section, but notes.md covers only part of it (no target users, no next steps).
+  Pass if VISION.md is written as a real draft built from notes.md, the inferred parts are marked 待确认
+  (or clearly marked as guesses pending confirmation), and the reply asks the owner only for the few missing facts.
+  Fail if the assistant writes nothing and only asks questions, says it cannot do this, or presents guesses as facts.
+  The final file facts are authoritative for whether VISION.md exists and what it says.
+max_steps: 6
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    HOME is this directory. Files available:
+    {{files}}
+    Stay inside this directory.
+
+    帮我把项目的「愿景」写进 VISION.md，材料在 notes.md 里。
+setup:
+  files:
+    - path: notes.md
+      text: |
+        # 杂记
+        - 想做一个一直在线的个人助手，不用每次开新会话
+        - 它能自己醒来，有事才说，没事保持安静
+        - 内核要薄，新能力尽量用已有的抽象
+checks:
+  transcript_not_silent: true
+  files:
+    - path: VISION.md
+      nonempty: true
+      contains: "待确认"
+    - path: notes.md
+      unchanged: true

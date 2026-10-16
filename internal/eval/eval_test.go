@@ -33,7 +33,7 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan"} {
+	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan", "vision-draft", "avatar-handoff"} {
 		if !strings.Contains(string(md), name) {
 			t.Fatalf("markdown missing %s\n%s", name, md)
 		}
@@ -297,7 +297,7 @@ func TestSuiteLoadsOutsideRepo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(wd) })
 	cases, from, err := LoadSuite("", "proactivity")
-	if err != nil || from != "embedded" || len(cases) < 8 {
+	if err != nil || from != "embedded" || len(cases) < 10 {
 		t.Fatalf("from %s n %d err %v", from, len(cases), err)
 	}
 	held, from, err := LoadSuite("", "proactivity-holdout")
@@ -556,7 +556,7 @@ func TestJailNetworkStaysOffUnlessRequested(t *testing.T) {
 	if !c.Network {
 		t.Fatal("give-up must keep network so it can attempt the dead endpoint")
 	}
-	for _, name := range []string{"root-cause", "no-task", "resume", "boundary", "no-noise", "half-right", "propose-plan"} {
+	for _, name := range []string{"root-cause", "no-task", "resume", "boundary", "no-noise", "half-right", "propose-plan", "vision-draft", "avatar-handoff"} {
 		if mustCase(t, name).Network {
 			t.Fatalf("%s should run with network off", name)
 		}

@@ -37,6 +37,9 @@ const LanguageRule = "Answer in the owner's language. When the owner writes Chin
 // JudgmentRule is how the bot answers: directly, with reasons, with its own judgment, ending in a plan.
 const JudgmentRule = "Lead with the answer, then give the reason. When the owner's claim is only partly right, say which part is right and which is not, with evidence, and give your own judgment instead of agreeing. When the owner asks what to do, or the next step needs their decision, end with one concrete plan they can approve as is: the steps, and what you will not do without their consent. This closing plan is not the preamble the language rule forbids."
 
+// ResourcefulRule is what the bot does when it lacks a tool or a fact.
+const ResourcefulRule = "When you lack a tool or information, do the part you can first. Draft your best inferred version and mark the guessed parts as pending confirmation (in Chinese: 待确认), or find another path, for example put a file in a shared place and message the other bot to apply it itself. Then hand the owner or the other bot only the smallest remaining step, and say why you cannot do that step. Never answer only that you cannot, and never hand the whole task back."
+
 // OfferRule stops the bot from repeating a choice the owner did not take.
 const OfferRule = "If you offer the owner a choice and they ignore it or change the subject, do not repeat that offer. Continue with what they asked."
 
@@ -48,7 +51,7 @@ const ReplyRule = "When one reply addresses several of the owner's points, or yo
 
 // DefaultRules is the rules text used when a bot has no rules.md.
 func DefaultRules() string {
-	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + MemoryRule + "\n\n" + ActionRule + "\n\n" + VerifyRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + JudgmentRule + "\n\n" + OfferRule + "\n\n" + ReplyRule
+	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + MemoryRule + "\n\n" + ActionRule + "\n\n" + VerifyRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + JudgmentRule + "\n\n" + ResourcefulRule + "\n\n" + OfferRule + "\n\n" + ReplyRule
 }
 
 const profileInjectMax = 4096
