@@ -70,8 +70,8 @@ type Kernel struct {
 	// BackgroundApprove asks the owner for a background turn's confirmation without
 	// the request that started it, for example as a card in the transcript.
 	BackgroundApprove agent.Approver
-	ForkCap   int
-	ForkAfter time.Duration
+	ForkCap           int
+	ForkAfter         time.Duration
 
 	turnMu      sync.Mutex
 	bgMu        sync.Mutex
@@ -313,8 +313,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			// background works through its queue before it ends.
 			t.mu.Lock()
 			bg = t.branch != ""
-			pend := t.ctrl
-			t.ctrl = nil
+			pend := t.takeCtrlLocked()
 			if err != nil || !bg || len(pend) == 0 {
 				t.finished = true
 				t.mu.Unlock()
@@ -322,8 +321,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 			t.mu.Unlock()
 			convo := append(append([]provider.Message(nil), assembled...), produced...)
-			for _, c := range pend {
-				m := provider.Message{Role: provider.RoleUser, Content: c}
+			for _, m := range pend {
 				if rerr := k.recordTurn(t, m); rerr != nil && appendErr == nil {
 					appendErr = rerr
 				}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -222,8 +223,125 @@ func clipRunes(s string, n int) string {
 
 var _ = bot.ForkKindStart
 
-// controlBackground sends steer, queue, interrupt, or cancel to a running background.
+// QueueCap is how many queued items (owner queue controls and conflict waits) a
+// kernel holds at once. Past it the foreground answers that the queue is full.
+const QueueCap = 5
+
+// Control is one message sent to a background: steer, queue, interrupt, or a
+// foreground call queued behind it on a resource conflict ("conflict").
+// State is pending until the background reads it between steps, then applied.
+type Control struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Text       string `json:"text"`
+	State      string `json:"state"`
+	Background string `json:"background"`
+	Resource   string `json:"resource,omitempty"`
+}
+
+func (c *Control) message() string {
+	switch c.Kind {
+	case "steer":
+		return "[主人的补充] " + c.Text
+	case "queue":
+		return "[排队] 做完当前的事后再做：" + c.Text
+	case "interrupt":
+		return "[打断] 停下当前的做法，先处理：" + c.Text
+	case "conflict":
+		return "[排队] 前台要做的事和你正在动的 " + c.Resource + " 冲突，已排到你之后。做完当前的事再做：" + c.Text
+	}
+	return c.Text
+}
+
+func (c *Control) queued() bool {
+	return c.State == "pending" && (c.Kind == "queue" || c.Kind == "conflict")
+}
+
+// QueueItem is one queued item with why it waits and its place in line.
+// Reason is "conflict" (Background and Resource name the holder) or "slot"
+// (all background slots are taken; an owner message waits in the inbox).
+type QueueItem struct {
+	ID         string `json:"id"`
+	Reason     string `json:"reason"`
+	Background string `json:"background,omitempty"`
+	Resource   string `json:"resource,omitempty"`
+	Text       string `json:"text"`
+	Position   int    `json:"position"`
+}
+
+var ctrlSeq atomic.Int64
+
+// Controls lists every control sent to running backgrounds, pending and applied.
+func (k *Kernel) Controls() []Control {
+	k.bgMu.Lock()
+	defer k.bgMu.Unlock()
+	var out []Control
+	for _, id := range k.bgIDsLocked() {
+		t := k.bgs[id]
+		t.mu.Lock()
+		for _, c := range t.ctrl {
+			out = append(out, *c)
+		}
+		t.mu.Unlock()
+	}
+	return out
+}
+
+func (k *Kernel) bgIDsLocked() []string {
+	ids := make([]string, 0, len(k.bgs))
+	for id := range k.bgs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// Queue lists queued items in order: pending queue and conflict controls by id,
+// then owner messages waiting for a slot while every slot is taken.
+func (k *Kernel) Queue() []QueueItem {
+	k.bgMu.Lock()
+	var out []QueueItem
+	full := len(k.bgs) >= k.forkCap()
+	for _, id := range k.bgIDsLocked() {
+		t := k.bgs[id]
+		t.mu.Lock()
+		for _, c := range t.ctrl {
+			if c.queued() {
+				out = append(out, QueueItem{ID: c.ID, Reason: "conflict", Background: c.Background, Resource: c.Resource, Text: c.Text})
+				if c.Kind == "queue" {
+					out[len(out)-1].Reason = "queue"
+				}
+			}
+		}
+		t.mu.Unlock()
+	}
+	k.bgMu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	if full && k.Inbox != nil && k.Inbox.Reload() == nil {
+		owners := k.Bot.Config().Owners
+		cur := k.curTurn()
+		for _, ev := range k.Inbox.Pending() {
+			if ev.ID == "" || ev.ID == cur.turnEvent || !link.OwnerTrusted(ev.Source, ev.Sender, owners) {
+				continue
+			}
+			out = append(out, QueueItem{ID: ev.ID, Reason: "slot", Text: ev.Content})
+		}
+	}
+	for i := range out {
+		out[i].Position = i + 1
+	}
+	return out
+}
+
+// QueueFull reports that the queue is at QueueCap, so a new item is refused.
+func (k *Kernel) QueueFull() bool { return len(k.Queue()) >= QueueCap }
+
+// controlBackground sends steer, queue, interrupt, or cancel to a running
+// background, or cancels a pending queued control by its id ("cancel_queued").
 func (k *Kernel) controlBackground(id, kind, text string) (string, error) {
+	if kind == "cancel_queued" {
+		return k.cancelQueued(text)
+	}
 	k.bgMu.Lock()
 	t := k.bgs[id]
 	k.bgMu.Unlock()
@@ -231,29 +349,56 @@ func (k *Kernel) controlBackground(id, kind, text string) (string, error) {
 		return "", fmt.Errorf("background %s is not running", id)
 	}
 	text = strings.TrimSpace(text)
-	var msg string
 	switch kind {
 	case "cancel":
 		if t.cancelRun != nil {
 			t.cancelRun()
 		}
 		return "cancel " + id, nil
-	case "steer":
-		msg = "[主人的补充] " + text
-	case "queue":
-		msg = "[排队] 做完当前的事后再做：" + text
-	case "interrupt":
-		msg = "[打断] 停下当前的做法，先处理：" + text
+	case "steer", "queue", "interrupt":
 	default:
 		return "", fmt.Errorf("background: unknown control %q", kind)
 	}
 	if text == "" {
 		return "", fmt.Errorf("background: text is empty")
 	}
-	if !t.queueCtrl(msg) {
+	if kind == "queue" && k.QueueFull() {
+		return "", fmt.Errorf("队列已满（%d 个），没有排入", QueueCap)
+	}
+	c := &Control{ID: fmt.Sprintf("q%d", ctrlSeq.Add(1)), Kind: kind, Text: text}
+	if !t.queueCtrl(c) {
 		return "", fmt.Errorf("background %s has finished", id)
 	}
-	return kind + " " + id, nil
+	return fmt.Sprintf("%s %s %s pending: applied after the current step", kind, id, c.ID), nil
+}
+
+// cancelQueued drops a pending control so the background never reads it.
+func (k *Kernel) cancelQueued(cid string) (string, error) {
+	cid = strings.TrimSpace(cid)
+	k.bgMu.Lock()
+	for _, t := range k.bgs {
+		t.mu.Lock()
+		for i, c := range t.ctrl {
+			if c.ID == cid && c.State == "pending" {
+				t.ctrl = append(t.ctrl[:i], t.ctrl[i+1:]...)
+				t.mu.Unlock()
+				k.bgMu.Unlock()
+				return "cancelled " + cid, nil
+			}
+		}
+		t.mu.Unlock()
+	}
+	k.bgMu.Unlock()
+	// A slot item is an owner message still in the inbox.
+	for _, q := range k.Queue() {
+		if q.ID == cid && q.Reason == "slot" {
+			if err := k.Inbox.Ack(cid); err != nil {
+				return "", err
+			}
+			return "cancelled " + cid, nil
+		}
+	}
+	return "", fmt.Errorf("queued item %s is not pending", cid)
 }
 
 // conflictingBackground returns a running background, other than cur, that has
@@ -274,3 +419,21 @@ func (k *Kernel) conflictingBackground(cur *turn, res string) *turn {
 	}
 	return nil
 }
+
+// CancelBackgrounds cancels every running background, for a bot being deleted or renamed.
+func (k *Kernel) CancelBackgrounds() {
+	k.bgMu.Lock()
+	ts := make([]*turn, 0, len(k.bgs))
+	for _, t := range k.bgs {
+		ts = append(ts, t)
+	}
+	k.bgMu.Unlock()
+	for _, t := range ts {
+		if t.cancelRun != nil {
+			t.cancelRun()
+		}
+	}
+}
+
+// ForkCapValue is the background slot cap in effect.
+func (k *Kernel) ForkCapValue() int { return k.forkCap() }

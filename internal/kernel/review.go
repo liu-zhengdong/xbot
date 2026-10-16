@@ -45,12 +45,12 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		if !cur.isForked() {
 			if bg := k.conflictingBackground(cur, res); bg != nil {
 				_, summary, _ := t.Tool.Confirm(args)
-				bg.mu.Lock()
-				id := bg.branch
-				bg.mu.Unlock()
-				note := fmt.Sprintf("[排队] 前台要做的事和你正在动的 %s 冲突，已排到你之后。做完当前的事再做：%s %s", res, t.Tool.Name(), summary)
-				if bg.queueCtrl(note) {
-					return fmt.Sprintf("已排到后台 %s 之后：它正在动 %s，它做完当前的事会接着做这一步。", id, res), nil
+				if k.QueueFull() {
+					return fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res), nil
+				}
+				c := &Control{ID: fmt.Sprintf("q%d", ctrlSeq.Add(1)), Kind: "conflict", Resource: res, Text: t.Tool.Name() + " " + summary}
+				if bg.queueCtrl(c) {
+					return fmt.Sprintf("已排到后台 %s 之后（队列 %s）：它正在动 %s，做完当前的事会接着做这一步。", c.Background, c.ID, res), nil
 				}
 			}
 		}

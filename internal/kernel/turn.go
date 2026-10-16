@@ -45,29 +45,39 @@ type turn struct {
 	cancelRun context.CancelFunc
 	// ctrl is controls sent to a background, read between its steps. resources is
 	// what this turn has written (review.ResourceOf), for the conflict queue.
-	ctrl      []string
+	ctrl      []*Control
 	resources map[string]bool
 }
 
 // queueCtrl adds a control message. It fails once the turn has finished.
-func (t *turn) queueCtrl(text string) bool {
+func (t *turn) queueCtrl(c *Control) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.finished {
 		return false
 	}
-	t.ctrl = append(t.ctrl, text)
+	c.Background = t.branch
+	c.State = "pending"
+	t.ctrl = append(t.ctrl, c)
 	return true
 }
 
+// takeCtrl marks every pending control applied and returns them as user messages.
+// It runs between steps: after the current tool call returned, before the next
+// model call.
 func (t *turn) takeCtrl() []provider.Message {
 	t.mu.Lock()
-	pend := t.ctrl
-	t.ctrl = nil
-	t.mu.Unlock()
-	out := make([]provider.Message, len(pend))
-	for i, c := range pend {
-		out[i] = provider.Message{Role: provider.RoleUser, Content: c}
+	defer t.mu.Unlock()
+	return t.takeCtrlLocked()
+}
+
+func (t *turn) takeCtrlLocked() []provider.Message {
+	var out []provider.Message
+	for _, c := range t.ctrl {
+		if c.State == "pending" {
+			c.State = "applied"
+			out = append(out, provider.Message{Role: provider.RoleUser, Content: c.message()})
+		}
 	}
 	return out
 }

@@ -111,6 +111,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/steer", s.steer)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
+	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/queue", func(w http.ResponseWriter, r *http.Request) { s.control(w, r, "queue") })
+	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/interrupt", func(w http.ResponseWriter, r *http.Request) { s.control(w, r, "interrupt") })
+	mux.HandleFunc("GET /api/bots/{name}/backgrounds", s.backgrounds)
+	mux.HandleFunc("DELETE /api/bots/{name}/queue/{qid}", s.cancelQueued)
 
 	mux.HandleFunc("GET /api/notes", s.notes)
 	mux.HandleFunc("POST /api/notes/read", s.readNotes)
@@ -689,6 +693,10 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var box *inbox.Inbox
+	if shared && len(k.Backgrounds()) >= k.ForkCapValue() && k.QueueFull() {
+		writeErr(w, http.StatusTooManyRequests, fmt.Sprintf("队列已满（%d 个），没有建任务", kernel.QueueCap))
+		return
+	}
 	if shared {
 		// A turn is running here. Post the message so that turn can fork, then answer
 		// it as the foreground once the gate is free.
@@ -826,9 +834,13 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request, kind string) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	gate.Lock()
-	defer gate.Unlock()
-	k.Bot = b
+	if !strings.HasPrefix(r.PathValue("id"), "bg_") {
+		// A background control only touches that turn's queue, so it never waits
+		// behind the foreground holding the gate.
+		gate.Lock()
+		defer gate.Unlock()
+		k.Bot = b
+	}
 	msg, err := k.ControlSubagent(r.Context(), r.PathValue("id"), kind, in.Text)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -954,6 +966,10 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 			return nil, nil, err
 		}
 		k.AllowFork = s.ForkTurns
+		if s.ForkTurns {
+			// A background's confirmation becomes a card in the transcript for the owner.
+			k.BackgroundApprove = s.webApprove(b, k, func(string, any) {})
+		}
 		s.kernels[b.Name()] = k
 	}
 	return k, s.gate[b.Name()], nil
@@ -995,4 +1011,50 @@ func (s *Server) writeCursor(name string, n int) error {
 		}
 		return fsutil.WriteAtomic(s.cursorPath(), raw, 0600)
 	})
+}
+
+// backgrounds lists running background turns, the controls sent to them with
+// pending or applied state, and the queue with each item's reason and position.
+func (s *Server) backgrounds(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	k, _, err := s.kernel(b)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"backgrounds": k.Backgrounds(),
+		"controls":    k.Controls(),
+		"queue":       k.Queue(),
+		"queue_cap":   kernel.QueueCap,
+	})
+}
+
+func (s *Server) cancelQueued(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	k, _, err := s.kernel(b)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	msg, err := k.ControlSubagent(r.Context(), "bg_", "cancel_queued", r.PathValue("qid"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": msg})
 }

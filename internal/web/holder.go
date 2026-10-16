@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
+	"xbot/internal/proc"
 	"xbot/internal/provider"
 )
 
@@ -77,14 +79,29 @@ func (s *Server) releaseWhenIdle(name string, h *handleHold, k *kernel.Kernel) {
 			s.mu.Unlock()
 			return
 		}
+		if s.holds[name] != h {
+			// forgetKernel already dropped this hold and its lock.
+			s.mu.Unlock()
+			return
+		}
 		if len(k.Backgrounds()) == 0 {
-			if s.holds[name] == h {
-				delete(s.holds, name)
-			}
+			delete(s.holds, name)
 			_ = h.lock.Release()
 			s.mu.Unlock()
 			return
 		}
+		// Backgrounds are still running, so the serve loop cannot take the lock: handle
+		// timers, messages from other channels, and finished backgrounds here.
+		h.users++
+		gate := s.gate[name]
+		s.mu.Unlock()
+		if gate != nil && k.Inbox != nil {
+			gate.Lock()
+			_ = proc.Drain(context.Background(), k)
+			gate.Unlock()
+		}
+		s.mu.Lock()
+		h.users--
 		s.mu.Unlock()
 	}
 }

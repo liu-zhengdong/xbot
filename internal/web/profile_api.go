@@ -22,9 +22,18 @@ func paintBot(b *bot.Bot) (url, bg, ink, initial string) {
 
 func (s *Server) forgetKernel(name string) {
 	s.mu.Lock()
+	k := s.kernels[name]
 	delete(s.kernels, name)
 	delete(s.gate, name)
+	if h := s.holds[name]; h != nil {
+		// The bot is gone or renamed: drop the held lock so nothing keeps the old name.
+		delete(s.holds, name)
+		_ = h.lock.Release()
+	}
 	s.mu.Unlock()
+	if k != nil {
+		k.CancelBackgrounds()
+	}
 }
 
 type profileBody struct {
