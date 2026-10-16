@@ -998,7 +998,7 @@
   function skipMessage(m) {
     if (!m || m.role === "tool" || m.role === "system") return true;
     const c = m.content || "";
-    if (m.role === "user" && (c.startsWith("<environment_") || c.startsWith("<memory>"))) return true;
+    if (m.role === "user" && (c.startsWith("<environment_") || c.startsWith("<memory>") || c.startsWith("<background_tasks>"))) return true;
     return false;
   }
 
@@ -1334,7 +1334,7 @@
   function hiddenFromPreview(m) {
     if (!m || m.role === "tool" || m.role === "system") return true;
     const raw = String(m.content || "").trim();
-    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<untrusted") || raw.startsWith("<coding_card ") || raw.startsWith("<approval_card"))) return true;
+    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<background_tasks>") || raw.startsWith("<untrusted") || raw.startsWith("<coding_card ") || raw.startsWith("<approval_card"))) return true;
     return false;
   }
 
@@ -2967,9 +2967,17 @@
 
   async function sendText(text) {
     text = (text || "").trim();
-    if (!text || !state.sel || state.streaming) return;
-    state.streaming = true;
-    $("send").disabled = true;
+    // A message sent while a reply is streaming interrupts it: the server forks the
+    // running turn to the background and answers this one at once.
+    if (!text || !state.sel) return;
+    state.streaming = (state.streaming || 0) + 1;
+    let counted = true;
+    const settle = () => {
+      if (counted) {
+        counted = false;
+        state.streaming = Math.max(0, state.streaming - 1);
+      }
+    };
     setStatus("正在回复");
     try {
       if (state.sel.type === "group") {
@@ -3000,7 +3008,7 @@
       }
       state.sig = "";
       clearQuote();
-      state.streaming = false;
+      settle();
       await loadThread();
       if (subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
@@ -3008,8 +3016,7 @@
       if (!input.value) input.value = text;
       syncComposer();
     } finally {
-      state.streaming = false;
-      $("send").disabled = false;
+      settle();
     }
   }
 

@@ -171,13 +171,14 @@ func backgroundNote(list []BackgroundInfo) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("后台任务正在执行（不要重复做这些事；要改它们用 steer/queue/interrupt/cancel）：")
+	b.WriteString("<background_tasks>\n后台任务正在执行（不要重复做这些事；要改它们用 steer/queue/interrupt/cancel）：")
 	for _, bg := range list {
 		fmt.Fprintf(&b, "\n- %s：%s，已跑 %d 步", bg.ID, bg.Task, bg.Steps)
 		if bg.LastTool != "" {
 			fmt.Fprintf(&b, "，最近在用 %s", bg.LastTool)
 		}
 	}
+	b.WriteString("\n</background_tasks>")
 	return b.String()
 }
 
