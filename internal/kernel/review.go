@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
@@ -74,8 +76,13 @@ func (k *Kernel) reviewCall(tool tools.Tool, args json.RawMessage, summary strin
 		case machine.Off:
 			return false, "", errors.New("machine local is off")
 		case machine.Ask:
-			return true, summary, nil
+			return true, k.protectedSummary(tool, args, summary), nil
 		}
+	}
+	// A call that reaches a vault or its key always asks, even in allow mode:
+	// the vault is the one thing a bot's own shell should not read.
+	if k.protectedCall(tool, args) {
+		return true, summary + review.ProtectedSuffix, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
 		// write_file and edit_file are a self-edit only when the resolved path
@@ -86,6 +93,66 @@ func (k *Kernel) reviewCall(tool tools.Tool, args json.RawMessage, summary strin
 		return false, summary, nil
 	}
 	return review.NeedsOwner(name, args), summary, nil
+}
+
+// protectedPaths are the paths no bot action may touch without a card: this
+// bot's vault directory, the shared vault keys directory, and every bot's
+// vault directory under the data root.
+func (k *Kernel) protectedPaths() []string {
+	if k == nil || k.Bot == nil || k.Bot.Root == "" {
+		return nil
+	}
+	root := k.Bot.Root
+	out := []string{k.Bot.VaultDir(), bot.VaultKeysDir(root)}
+	botsDir := filepath.Join(root, "bots")
+	entries, err := os.ReadDir(botsDir)
+	if err != nil {
+		return out
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			out = append(out, filepath.Join(botsDir, entry.Name(), "vault"))
+		}
+	}
+	return out
+}
+
+// protectedCall reports whether a file tool's resolved path or a shell command
+// touches a protected path.
+func (k *Kernel) protectedCall(tool tools.Tool, args json.RawMessage) bool {
+	name := tool.Name()
+	if !review.IsFileTool(name) && name != "shell" {
+		return false
+	}
+	protected := k.protectedPaths()
+	if len(protected) == 0 {
+		return false
+	}
+	if name == "shell" {
+		cmd, cwd := review.ShellInvocation(args)
+		if cwd == "" {
+			cwd = k.WorkDir
+		}
+		return review.TouchesProtected(cmd, cwd, protected)
+	}
+	pt, ok := tool.(tools.PathTool)
+	if !ok {
+		return false
+	}
+	path := pt.ResolvedPath(args)
+	if path == "" {
+		return false
+	}
+	return review.TouchesProtected(path, "", protected)
+}
+
+// protectedSummary appends the vault note to a card summary only when the call
+// touches a protected path.
+func (k *Kernel) protectedSummary(tool tools.Tool, args json.RawMessage, summary string) string {
+	if !k.protectedCall(tool, args) {
+		return summary
+	}
+	return summary + review.ProtectedSuffix
 }
 
 // machineMode reads the local machine switch. A nil kernel or bot is allow, so

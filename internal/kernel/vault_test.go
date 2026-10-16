@@ -31,7 +31,7 @@ func TestScrubEntryUsesRedact(t *testing.T) {
 
 func TestModelToolsIncludeVaultToolsOnlyWithVault(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		t.Fatal(err)
 	}

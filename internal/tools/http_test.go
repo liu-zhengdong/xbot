@@ -15,7 +15,8 @@ import (
 
 func httpTestStore(t *testing.T) *vault.Store {
 	t.Helper()
-	s, err := vault.Open(filepath.Join(t.TempDir(), "vault"))
+	base := t.TempDir()
+	s, err := vault.Open(filepath.Join(base, "vault"), filepath.Join(base, "key"))
 	if err != nil {
 		t.Fatal(err)
 	}

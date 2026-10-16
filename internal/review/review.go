@@ -314,11 +314,20 @@ func ShellFlags(cmd string) (deletes, sends bool) {
 }
 
 func shellCommand(args json.RawMessage) string {
+	cmd, _ := ShellInvocation(args)
+	return cmd
+}
+
+// ShellInvocation returns the shell call's command and its cwd argument (empty
+// when unset). The protected-path guard resolves relative words against the
+// cwd, falling back to the kernel WorkDir.
+func ShellInvocation(args json.RawMessage) (command, cwd string) {
 	var in struct {
 		Command string `json:"command"`
+		Cwd     string `json:"cwd"`
 	}
 	_ = json.Unmarshal(args, &in)
-	return in.Command
+	return in.Command, in.Cwd
 }
 
 func shellKeys(args json.RawMessage) bool {
@@ -596,6 +605,21 @@ var readOnlyShell = map[string]bool{
 	"wc": true, "date": true, "echo": true, "stat": true, "du": true, "df": true, "which": true, "file": true,
 }
 
+// ProtectedSuffix is appended to a confirmation summary when the call touches
+// a vault or its key, so the card says why the owner is being asked.
+const ProtectedSuffix = "（触及保险箱/密钥）"
+
+// IsFileTool reports the tools whose first path argument is the thing they act
+// on. Their resolved path is what matters for the protected-path guard.
+func IsFileTool(tool string) bool {
+	switch normalize(tool) {
+	case "read_file", "write_file", "edit_file":
+		return true
+	default:
+		return false
+	}
+}
+
 // ShellIsReadOnly reports a shell command made only of plain read commands: no
 // redirection, no chaining, and a first word from a short list (plus git status, log, diff, show).
 func ShellIsReadOnly(args json.RawMessage) bool {
@@ -611,4 +635,182 @@ func ShellIsReadOnly(args json.RawMessage) bool {
 		return len(w) > 1 && (w[1] == "status" || w[1] == "log" || w[1] == "diff" || w[1] == "show")
 	}
 	return readOnlyShell[w[0]]
+}
+
+// TouchesProtected reports whether a file-tool path or shell command reaches a
+// protected path (a vault directory or a vault key directory). cmdOrPath is
+// the resolved path for a file tool, or the raw shell command. cwd is the
+// directory a relative shell word is resolved against. Each protected entry is
+// an absolute path.
+//
+// The check is best effort, not a sandbox: a command that reaches the files
+// another way is not caught. It exists so a plain `cat vault/key` always asks.
+func TouchesProtected(cmdOrPath, cwd string, protected []string) bool {
+	if strings.TrimSpace(cmdOrPath) == "" || len(protected) == 0 {
+		return false
+	}
+	guards := resolveProtected(protected)
+	if len(guards) == 0 {
+		return false
+	}
+	// Cheap fallback for a shell fragment that cannot be split or resolved:
+	// keys/vault, /vault/, a trailing /vault, or secrets.enc.
+	if rawProtected(cmdOrPath) {
+		return true
+	}
+	for _, w := range shellWords(cmdOrPath) {
+		if strings.ContainsAny(w, "*?[") {
+			if globReaches(w, cwd, guards) {
+				return true
+			}
+			continue
+		}
+		if wordReaches(w, cwd, guards) {
+			return true
+		}
+	}
+	// A file-tool path may contain spaces, which shellWords splits. Check the
+	// whole input as one path too; on a real command this is a harmless miss.
+	return wordReaches(cmdOrPath, cwd, guards)
+}
+
+// rawProtected is the cheap fallback for a command/path that cannot be split
+// or resolved: keys/vault, /vault/, a trailing /vault, or secrets.enc.
+func rawProtected(s string) bool {
+	low := strings.ToLower(s)
+	return strings.Contains(low, "keys/vault") ||
+		strings.Contains(low, "/vault/") ||
+		strings.HasSuffix(low, "/vault") ||
+		strings.Contains(low, "secrets.enc")
+}
+
+// protectedGuard is one protected path in its resolved and cleaned form.
+type protectedGuard struct {
+	path string
+}
+
+// resolveProtected cleans every protected path and resolves symlinks where it
+// exists, so a match compares real paths.
+func resolveProtected(protected []string) []protectedGuard {
+	out := make([]protectedGuard, 0, len(protected))
+	for _, p := range protected {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, protectedGuard{path: resolvePath(p)})
+	}
+	return out
+}
+
+// resolvePath cleans p and resolves symlinks. When p does not exist, the
+// longest existing ancestor is resolved and the missing tail is appended, so a
+// not-yet-created path under a symlinked directory still matches.
+func resolvePath(p string) string {
+	p = filepath.Clean(p)
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	dir, base := filepath.Dir(p), filepath.Base(p)
+	if dir == p {
+		return p
+	}
+	return filepath.Join(resolvePath(dir), base)
+}
+
+// wordReaches reports whether one shell word names a protected path once it is
+// made absolute against cwd, cleaned, and resolved.
+func wordReaches(word, cwd string, guards []protectedGuard) bool {
+	word = trimWord(word)
+	if word == "" || word == "-" || strings.HasPrefix(word, "-") {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(word), "file://") {
+		word = word[len("file://"):]
+	}
+	word = strings.TrimPrefix(word, "=")
+	if !filepath.IsAbs(word) {
+		if cwd == "" {
+			abs, err := filepath.Abs(word)
+			if err != nil {
+				return false
+			}
+			word = abs
+		} else {
+			word = filepath.Join(cwd, word)
+		}
+	}
+	resolved := resolvePath(word)
+	for _, g := range guards {
+		if underOrEqual(resolved, g.path) {
+			return true
+		}
+	}
+	return false
+}
+
+// globReaches checks a word containing a glob metacharacter. It matches the
+// literal prefix before the first metacharacter: the prefix names the deepest
+// directory the glob can reach, and a prefix whose directory is at or under a
+// protected path, or a protected path under that directory, is a match.
+func globReaches(word, cwd string, guards []protectedGuard) bool {
+	word = trimWord(word)
+	if word == "" || strings.HasPrefix(word, "-") {
+		return false
+	}
+	prefix := word
+	if i := strings.IndexAny(word, "*?["); i >= 0 {
+		prefix = word[:i]
+	}
+	// The directory part of the prefix is what must be resolvable; a trailing
+	// partial name is not a real path yet.
+	dir := prefix
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		dir = filepath.Dir(prefix)
+	}
+	if dir == "" || dir == "." {
+		if cwd != "" {
+			dir = cwd
+		} else if abs, err := filepath.Abs("."); err == nil {
+			dir = abs
+		}
+	}
+	if !filepath.IsAbs(dir) {
+		if cwd == "" {
+			abs, err := filepath.Abs(dir)
+			if err != nil {
+				return false
+			}
+			dir = abs
+		} else {
+			dir = filepath.Join(cwd, dir)
+		}
+	}
+	resolved := resolvePath(dir)
+	for _, g := range guards {
+		if underOrEqual(resolved, g.path) || underOrEqual(g.path, resolved) {
+			return true
+		}
+	}
+	return false
+}
+
+// trimWord drops surrounding shell quotes.
+func trimWord(word string) string {
+	return strings.Trim(word, `"'`)
+}
+
+// underOrEqual reports whether path is base or lives under it.
+func underOrEqual(path, base string) bool {
+	if path == base {
+		return true
+	}
+	if base == "" {
+		return false
+	}
+	sep := string(filepath.Separator)
+	if !strings.HasSuffix(base, sep) {
+		base += sep
+	}
+	return strings.HasPrefix(path, base)
 }

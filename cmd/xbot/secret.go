@@ -60,7 +60,7 @@ func cmdSecretSet(root string, args []string) error {
 	if value == "" {
 		return errors.New("secret: empty value on stdin")
 	}
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func cmdSecretList(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func cmdSecretRm(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return err
 	}

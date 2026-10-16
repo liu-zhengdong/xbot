@@ -30,11 +30,11 @@ const (
 // BackgroundInfo is one background turn, as the foreground note and the web
 // stream list it. A running entry has no Status or Ended; a finished one has both.
 type BackgroundInfo struct {
-	ID       string    `json:"id"`
-	Task     string    `json:"task"`
-	Steps    int       `json:"steps"`
-	LastTool string    `json:"last_tool"`
-	Status   string    `json:"status,omitempty"`
+	ID       string     `json:"id"`
+	Task     string     `json:"task"`
+	Steps    int        `json:"steps"`
+	LastTool string     `json:"last_tool"`
+	Status   string     `json:"status,omitempty"`
 	Ended    *time.Time `json:"ended,omitempty"`
 }
 

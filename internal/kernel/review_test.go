@@ -295,7 +295,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	if err := bot.SetPrimary(b.Root, b.Name()); err != nil {
 		t.Fatal(err)
 	}
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		t.Fatal(err)
 	}

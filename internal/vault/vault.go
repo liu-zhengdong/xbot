@@ -3,8 +3,9 @@
 //
 // A vault is one directory. The directory is 0700 and every file in it is 0600.
 // Secrets are serialized as JSON and encrypted with AES-GCM; the key is a local
-// key file next to the ciphertext. Values never reach the process environment,
-// the model prompt, or a tool result.
+// key file outside the bot workspace (normally <root>/keys/vault/<bot>.key), so
+// a bot's own shell cannot read the key next to the ciphertext. Values never
+// reach the process environment, the model prompt, or a tool result.
 package vault
 
 import (
@@ -33,6 +34,9 @@ const (
 	keyLen      = 32
 )
 
+// legacyKeyFile is the old in-vault key name, migration source only.
+const legacyKeyFile = keyFile
+
 // Secret is one stored credential. Domains is the allow-list the value may be
 // sent to. The value is never exposed to the model.
 type Secret struct {
@@ -47,20 +51,34 @@ type secretDisk struct {
 
 // Store is one bot's credential vault. It is safe for concurrent use.
 type Store struct {
-	dir string
+	dir     string
+	keyPath string
 
 	mu      sync.Mutex
 	key     []byte
 	secrets map[string]Secret
 }
 
-// Open loads the vault under dir. A missing vault is empty and no file is
-// created until the first Set, so reading a bot does not leave state behind.
-func Open(dir string) (*Store, error) {
-	s := &Store{dir: dir, secrets: map[string]Secret{}}
-	key, err := readKey(dir)
+// Open loads the vault under dir, reading its key from keyPath. A missing
+// vault is empty and no file is created until the first Set, so reading a bot
+// does not leave state behind.
+//
+// Migration: when keyPath does not exist but the old key next to the
+// ciphertext does, the old key is moved to keyPath under the vault file lock.
+// A new key is never minted while an old one exists.
+func Open(dir, keyPath string) (*Store, error) {
+	s := &Store{dir: dir, keyPath: keyPath, secrets: map[string]Secret{}}
+	key, err := readKey(keyPath)
 	if err != nil {
 		return nil, err
+	}
+	if key == nil {
+		if err := s.migrateKey(); err != nil {
+			return nil, err
+		}
+		if key, err = readKey(keyPath); err != nil {
+			return nil, err
+		}
 	}
 	s.key = key
 	if err := s.load(); err != nil {
@@ -72,8 +90,71 @@ func Open(dir string) (*Store, error) {
 // Dir is the vault directory.
 func (s *Store) Dir() string { return s.dir }
 
-func readKey(dir string) ([]byte, error) {
-	path := filepath.Join(dir, keyFile)
+// KeyPath is the vault key file, outside the vault directory.
+func (s *Store) KeyPath() string { return s.keyPath }
+
+// migrateKey moves the legacy in-vault key to s.keyPath. It runs under the
+// vault file lock so two processes cannot both migrate; the second finds the
+// new key already in place and leaves it alone.
+func (s *Store) migrateKey() error {
+	if !legacyKeyExists(s.dir) {
+		return nil // no old key: nothing to migrate, nothing to create yet
+	}
+	return s.withFileLock(s.migrateKeyLocked)
+}
+
+// migrateKeyLocked is migrateKey with the vault file lock already held. The
+// caller must not already hold s.mu.
+func (s *Store) migrateKeyLocked() error {
+	oldPath := filepath.Join(s.dir, legacyKeyFile)
+	if _, err := os.Stat(oldPath); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	// Another process may have finished the migration while we waited.
+	if _, err := os.Stat(s.keyPath); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	// readKey validates the old key mode before we move it.
+	if _, err := readKey(oldPath); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(s.keyPath), 0700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(s.keyPath), 0700); err != nil {
+		return err
+	}
+	if err := os.Rename(oldPath, s.keyPath); err == nil {
+		return os.Chmod(s.keyPath, 0600)
+	}
+	// Cross-device rename: copy the bytes to the new 0600 file first, then
+	// remove the old one. A crash between the two leaves both, and the next
+	// open sees the new key and does not touch the old file.
+	raw, err := os.ReadFile(oldPath)
+	if err != nil {
+		return err
+	}
+	if len(raw) != keyLen {
+		return errors.New("vault: bad key file")
+	}
+	if err := fsutil.WriteAtomic(s.keyPath, raw, 0600); err != nil {
+		return err
+	}
+	return os.Remove(oldPath)
+}
+
+// legacyKeyExists reports whether a pre-migration key sits next to the
+// ciphertext.
+func legacyKeyExists(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, legacyKeyFile))
+	return err == nil
+}
+
+func readKey(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -155,8 +236,10 @@ func (s *Store) Set(name, value string, domains []string) error {
 // Remove deletes one secret. A missing name is success.
 func (s *Store) Remove(name string) error {
 	name = strings.TrimSpace(name)
-	if _, err := os.Stat(filepath.Join(s.dir, keyFile)); errors.Is(err, os.ErrNotExist) {
-		return nil // no vault on disk yet: nothing to remove, nothing to create
+	if _, err := os.Stat(s.keyPath); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(s.dir, legacyKeyFile)); errors.Is(err, os.ErrNotExist) {
+			return nil // no vault on disk yet: nothing to remove, nothing to create
+		}
 	}
 	return s.withFileLock(func() error {
 		s.mu.Lock()
@@ -180,10 +263,21 @@ func (s *Store) withFileLock(fn func() error) error {
 
 // reloadLocked re-reads the vault from disk so a concurrent writer that held
 // the file lock before us is not silently overwritten (and its key adopted).
+// The caller holds the vault file lock.
 func (s *Store) reloadLocked() error {
-	key, err := readKey(s.dir)
+	key, err := readKey(s.keyPath)
 	if err != nil {
 		return err
+	}
+	if key == nil && legacyKeyExists(s.dir) {
+		// An older writer left the key next to the ciphertext; migrate it under
+		// the lock we already hold instead of minting a second key.
+		if err := s.migrateKeyLocked(); err != nil {
+			return err
+		}
+		if key, err = readKey(s.keyPath); err != nil {
+			return err
+		}
 	}
 	if key != nil {
 		s.key = key
@@ -351,17 +445,24 @@ func (s *Store) ensureKeyLocked() error {
 	if len(s.key) == keyLen {
 		return nil
 	}
-	key := make([]byte, keyLen)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(s.dir, 0700); err != nil {
 		return err
 	}
 	if err := os.Chmod(s.dir, 0700); err != nil {
 		return err
 	}
-	if err := fsutil.WriteAtomic(filepath.Join(s.dir, keyFile), key, 0600); err != nil {
+	keyDir := filepath.Dir(s.keyPath)
+	if err := os.MkdirAll(keyDir, 0700); err != nil {
+		return err
+	}
+	if err := os.Chmod(keyDir, 0700); err != nil {
+		return err
+	}
+	key := make([]byte, keyLen)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return err
+	}
+	if err := fsutil.WriteAtomic(s.keyPath, key, 0600); err != nil {
 		return err
 	}
 	s.key = key

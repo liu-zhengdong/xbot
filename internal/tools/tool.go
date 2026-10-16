@@ -18,8 +18,9 @@ type Tool interface {
 }
 
 // PathTool is a file tool that reports the resolved path it would act on. The
-// kernel uses it to decide whether a call is a persona/profile self-edit. The
-// tool only reports the path; it never decides whether to confirm.
+// kernel uses it to decide whether a call is a persona/profile self-edit or
+// reaches a protected vault path. The tool only reports the path; it never
+// decides whether to confirm.
 type PathTool interface {
 	ResolvedPath(args json.RawMessage) string
 }

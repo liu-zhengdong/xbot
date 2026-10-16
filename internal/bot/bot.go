@@ -376,6 +376,22 @@ func (b *Bot) VaultDir() string {
 	return filepath.Join(b.dir(), "vault")
 }
 
+// keysSubdir is the data-root directory holding per-bot vault keys. It sits
+// outside bots/<name>/, so a bot's own shell or file tools cannot reach the
+// key next to secrets.enc.
+const keysSubdir = "keys/vault"
+
+// VaultKeysDir is the directory holding every bot's vault key: <root>/keys/vault.
+func VaultKeysDir(root string) string {
+	return filepath.Join(root, keysSubdir)
+}
+
+// VaultKeyPath is this bot's vault key file: <root>/keys/vault/<name>.key.
+// It lives outside the bot workspace on purpose; see docs/atlas/security.md.
+func (b *Bot) VaultKeyPath() string {
+	return filepath.Join(VaultKeysDir(b.Root), b.cfg.Name+".key")
+}
+
 // SetBinding stores the provider and model names. The API key stays in the environment.
 func (b *Bot) SetBinding(providerName, modelName string) error {
 	b.cfg.Provider = providerName

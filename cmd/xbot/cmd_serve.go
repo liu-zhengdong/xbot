@@ -92,7 +92,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 			coding.UseCommand(cmd)
 		}
 	}
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return nil, person.Person{}, err
 	}

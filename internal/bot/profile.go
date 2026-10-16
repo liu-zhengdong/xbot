@@ -539,23 +539,32 @@ func Rename(root, from, to string) error {
 		}
 		fromDir, toDir := Dir(root, from), Dir(root, to)
 		closeStoreDir(fromDir)
+		// Move the vault key before the directory so a failure leaves the bot
+		// and its key under the same name. A missing key is fine.
+		if err := moveVaultKey(root, from, to); err != nil {
+			return err
+		}
 		if err := os.Rename(fromDir, toDir); err != nil {
+			_ = moveVaultKey(root, to, from)
 			return err
 		}
 		b, err := Load(root, to)
 		if err != nil {
 			_ = os.Rename(toDir, fromDir)
+			_ = moveVaultKey(root, to, from)
 			return err
 		}
 		b.cfg.Name = to
 		if err := b.SaveConfig(); err != nil {
 			_ = os.Rename(toDir, fromDir)
+			_ = moveVaultKey(root, to, from)
 			return err
 		}
 		if err := rewritePrimaryName(root, from, to); err != nil {
 			b.cfg.Name = from
 			_ = b.SaveConfig()
 			_ = os.Rename(toDir, fromDir)
+			_ = moveVaultKey(root, to, from)
 			return err
 		}
 		if err := moveWork(root, from, to); err != nil {
@@ -563,6 +572,7 @@ func Rename(root, from, to string) error {
 			b.cfg.Name = from
 			_ = b.SaveConfig()
 			_ = os.Rename(toDir, fromDir)
+			_ = moveVaultKey(root, to, from)
 			return err
 		}
 		return nil

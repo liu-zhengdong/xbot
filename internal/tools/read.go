@@ -56,6 +56,16 @@ func (r *ReadFile) Confirm(args json.RawMessage) (bool, string, error) {
 	return false, fmt.Sprintf("read %s offset %d limit %d", DisplayPath(r.Sandbox, path), normOffset(in.Offset), r.normLimit(in.Limit)), nil
 }
 
+// ResolvedPath reports the absolute path this call would read, so the kernel
+// can decide whether it reaches a protected vault path.
+func (r *ReadFile) ResolvedPath(args json.RawMessage) string {
+	_, path, err := r.parse(args)
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
 func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err

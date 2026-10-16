@@ -183,7 +183,10 @@ func Delete(root, name string) error {
 		if name == primary {
 			return ErrPrimary
 		}
-		return os.RemoveAll(Dir(root, name))
+		if err := os.RemoveAll(Dir(root, name)); err != nil {
+			return err
+		}
+		return removeVaultKey(root, name)
 	})
 }
 

@@ -538,7 +538,7 @@ func cmdExport(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	store, err := vault.Open(b.VaultDir())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return err
 	}
