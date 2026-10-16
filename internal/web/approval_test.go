@@ -105,6 +105,16 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalDeclined}) {
 		t.Fatalf("deny states %v", states)
 	}
+	decisions, err := b.Decisions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 2 || decisions[0].State != bot.DecisionAllowed || decisions[1].State != bot.DecisionDeclined {
+		t.Fatalf("decisions %+v", decisions)
+	}
+	if decisions[0].Tool != "shell" || decisions[1].Tool != "shell" || decisions[0].Time.IsZero() {
+		t.Fatalf("decisions %+v", decisions)
+	}
 }
 
 // approvalStates reads the transcript and returns the persisted card states for
@@ -166,7 +176,8 @@ func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 	stream := postSSE(t, ui.URL, cookie, "NEED_APPROVAL")
 	ev := waitEvent(t, stream, "approval")
 	var card struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Tool string `json:"tool"`
 	}
 	if err := json.Unmarshal([]byte(ev.data), &card); err != nil {
 		t.Fatal(err)
@@ -178,6 +189,13 @@ func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 	}
 	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalExpired}) {
 		t.Fatalf("timeout states %v", states)
+	}
+	decisions, err := b.Decisions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 1 || decisions[0].State != bot.DecisionExpired || decisions[0].Tool != card.Tool {
+		t.Fatalf("timeout decisions %+v", decisions)
 	}
 }
 

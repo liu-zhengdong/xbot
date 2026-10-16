@@ -12,13 +12,17 @@ import (
 	"xbot/internal/provider"
 )
 
-func TestLinksConfirmOnlyInstall(t *testing.T) {
+func TestLinksConfirmInstallAndRemove(t *testing.T) {
 	var tool linksTool
 	need, summary, err := tool.Confirm([]byte(`{"action":"install","id":"webhook"}`))
 	if err != nil || !need || !strings.HasPrefix(summary, "install webhook") {
 		t.Fatalf("need %v summary %q err %v", need, summary, err)
 	}
-	for _, action := range []string{"remove", "search", "load"} {
+	need, summary, err = tool.Confirm([]byte(`{"action":"remove","id":"webhook"}`))
+	if err != nil || !need || !strings.HasPrefix(summary, "remove webhook") {
+		t.Fatalf("remove need %v summary %q err %v", need, summary, err)
+	}
+	for _, action := range []string{"search", "load"} {
 		need, summary, err = tool.Confirm([]byte(`{"action":"` + action + `","id":"webhook"}`))
 		if err != nil || need {
 			t.Fatalf("%s need %v summary %q err %v", action, need, summary, err)
@@ -131,7 +135,7 @@ func TestLinksInstallWaitsForSecretFill(t *testing.T) {
 	}
 }
 
-func TestLinksRemoveSkipsApproval(t *testing.T) {
+func TestLinksRemoveRequiresApproval(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	if err := b.GrantLink(link.NameWebhook); err != nil {
 		t.Fatal(err)
@@ -143,13 +147,13 @@ func TestLinksRemoveSkipsApproval(t *testing.T) {
 	asked := false
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
 		asked = true
-		return false, nil
+		return true, nil
 	}}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "remove webhook", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if asked {
-		t.Fatal("remove asked for approval")
+	if !asked {
+		t.Fatal("remove did not ask for approval")
 	}
 	if b.Grants(link.NameWebhook) {
 		t.Fatal("still granted")

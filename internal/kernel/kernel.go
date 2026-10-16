@@ -195,9 +195,13 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		onDelta = nil
 	}
 	var appendErr error
+	var approve agent.Approver
+	if k.Approve != nil {
+		approve = k.trackApprove(k.Approve)
+	}
 	produced, err := agent.Run(ctx, &replyProvider{inner: p, accept: k.userReplyTarget}, list, assembled, agent.Options{
 		MaxSteps: k.MaxSteps,
-		Approve:  k.Approve,
+		Approve:  approve,
 		OnDelta:  onDelta,
 		OnTool:   k.OnTool,
 		OnResult: k.OnResult,
@@ -564,7 +568,7 @@ func (k *Kernel) Deliver(ctx context.Context, m link.Messenger, to, body string)
 	approved := false
 	if !k.SendPolicy.AutoSend {
 		if k.Approve != nil {
-			approved, err = k.Approve(ctx, m.Name(), preview)
+			approved, err = k.trackApprove(k.Approve)(ctx, m.Name(), preview)
 			if err != nil {
 				return err
 			}

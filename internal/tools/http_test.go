@@ -135,3 +135,27 @@ func TestSecretListShowsNamesAndDomainsOnly(t *testing.T) {
 		t.Fatalf("value leaked: %q", out)
 	}
 }
+
+func TestHTTPRequestConfirmAlwaysAsks(t *testing.T) {
+	tool := &HTTPRequest{}
+	for _, raw := range []string{
+		`{"url":"https://example.com"}`,
+		`{"method":"POST","url":"https://example.com","body":"x"}`,
+		`{"url":"https://example.com/?k={{secret:TOKEN}}"}`,
+	} {
+		need, summary, err := tool.Confirm(json.RawMessage(raw))
+		if err != nil || !need {
+			t.Fatalf("%s need=%v err=%v", raw, need, err)
+		}
+		if !strings.Contains(summary, "https://example.com") {
+			t.Fatalf("%s summary %q", raw, summary)
+		}
+	}
+}
+
+func TestSecretListDoesNotAsk(t *testing.T) {
+	need, _, err := (&SecretList{}).Confirm(nil)
+	if err != nil || need {
+		t.Fatalf("list_secrets need=%v err=%v", need, err)
+	}
+}

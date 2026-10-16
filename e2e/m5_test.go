@@ -317,10 +317,19 @@ func m5Kernel(b *bot.Bot, client *provider.Client) (*kernel.Kernel, error) {
 	}
 	return &kernel.Kernel{
 		Bot: b, Provider: client, Memory: memory.Open(b.Root), MaxSteps: 4,
-		Inbox:   box,
-		Links:   []link.Link{link.Terminal{}, link.Web{}, link.Peers{}},
-		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
-		Budget:  compact.DefaultBudget(),
+		Inbox: box,
+		Links: []link.Link{link.Terminal{}, link.Web{}, link.Peers{}},
+		// Bot-to-bot sends need the owner, as dangerous-operation review
+		// requires. These tests approve exactly those sends and refuse the rest.
+		Approve: func(_ context.Context, tool, _ string) (bool, error) {
+			switch tool {
+			case "message_bot", "post_group":
+				return true, nil
+			default:
+				return false, nil
+			}
+		},
+		Budget: compact.DefaultBudget(),
 	}, nil
 }
 

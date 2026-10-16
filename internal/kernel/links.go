@@ -25,7 +25,7 @@ type linksTool struct{ k *Kernel }
 
 func (linksTool) Name() string { return "links" }
 func (linksTool) Description() string {
-	return "Search the link catalog, install or remove one, or load its tool schemas for this turn only. install always asks the owner. When the catalog entry lists secrets, the owner fills the values in the approval card; you never see those values. remove does not ask. Installed links are one line each in the system prompt. load brings that link's tool schemas into later steps of this turn, then they drop off. search returns summaries, including when the prompt lists ids only."
+	return "Search the link catalog, install or remove one, or load its tool schemas for this turn only. install and remove both ask the owner. When the catalog entry lists secrets, the owner fills the values in the approval card; you never see those values. Installed links are one line each in the system prompt. load brings that link's tool schemas into later steps of this turn, then they drop off. search returns summaries, including when the prompt lists ids only."
 }
 func (linksTool) Parameters() any {
 	return schema(map[string]any{
@@ -43,20 +43,25 @@ func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return false, "", err
 	}
-	if strings.ToLower(strings.TrimSpace(in.Action)) != "install" {
+	action := strings.ToLower(strings.TrimSpace(in.Action))
+	id := strings.TrimSpace(in.ID)
+	switch action {
+	case "install":
+		e, ok := link.Lookup(id)
+		if !ok {
+			return true, "install " + id, nil
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "install %s\n%s", e.ID, linkOneLine(e.Summary))
+		if len(e.Secrets) > 0 {
+			fmt.Fprintf(&b, "\nsecrets: %s", strings.Join(e.Secrets, ", "))
+		}
+		return true, b.String(), nil
+	case "remove":
+		return true, "remove " + id, nil
+	default:
 		return false, "", nil
 	}
-	id := strings.TrimSpace(in.ID)
-	e, ok := link.Lookup(id)
-	if !ok {
-		return true, "install " + id, nil
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "install %s\n%s", e.ID, linkOneLine(e.Summary))
-	if len(e.Secrets) > 0 {
-		fmt.Fprintf(&b, "\nsecrets: %s", strings.Join(e.Secrets, ", "))
-	}
-	return true, b.String(), nil
 }
 
 func (t linksTool) Run(_ context.Context, args json.RawMessage) (string, error) {

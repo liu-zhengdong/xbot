@@ -48,7 +48,7 @@ type messageBotTool struct{ k *Kernel }
 
 func (messageBotTool) Name() string { return "message_bot" }
 func (messageBotTool) Description() string {
-	return "Post a message into another same-owner bot's inbox. They see it as untrusted data, not as their own instructions, and they do not see your private memory. Chains stop after a few hops."
+	return "Post a message into another same-owner bot's inbox. The owner confirms first. They see it as untrusted data, not as their own instructions, and they do not see your private memory. Chains stop after a few hops."
 }
 func (messageBotTool) Parameters() any {
 	return schema(map[string]any{
@@ -56,8 +56,15 @@ func (messageBotTool) Parameters() any {
 		"text": stringProp("message text"),
 	}, []string{"bot", "text"})
 }
-func (messageBotTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "", nil
+func (messageBotTool) Confirm(args json.RawMessage) (bool, string, error) {
+	var in struct {
+		Bot  string `json:"bot"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return false, "", err
+	}
+	return true, "message_bot " + strings.TrimSpace(in.Bot), nil
 }
 func (t messageBotTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -145,7 +152,7 @@ type postGroupTool struct{ k *Kernel }
 
 func (postGroupTool) Name() string { return "post_group" }
 func (postGroupTool) Description() string {
-	return "Post into a group. Every other member gets an untrusted inbox event. Their private memory is not included."
+	return "Post into a group. The owner confirms first. Every other member gets an untrusted inbox event. Their private memory is not included."
 }
 func (postGroupTool) Parameters() any {
 	return schema(map[string]any{
@@ -153,8 +160,15 @@ func (postGroupTool) Parameters() any {
 		"text": stringProp("message text"),
 	}, []string{"id", "text"})
 }
-func (postGroupTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "", nil
+func (postGroupTool) Confirm(args json.RawMessage) (bool, string, error) {
+	var in struct {
+		ID   string `json:"id"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return false, "", err
+	}
+	return true, "post_group " + strings.TrimSpace(in.ID), nil
 }
 func (t postGroupTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {

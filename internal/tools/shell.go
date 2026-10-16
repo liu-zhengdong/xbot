@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"xbot/internal/clip"
+	"xbot/internal/review"
 )
 
 const (
@@ -141,7 +142,8 @@ func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	if in.Keys {
 		return true, in.Command + "\nwith provider keys", nil
 	}
-	if mode == "ask" || !safeShell(in.Command) {
+	deletes, sends := review.ShellFlags(in.Command)
+	if mode == "ask" || deletes || sends || !safeShell(in.Command) {
 		return true, in.Command, nil
 	}
 	return false, in.Command, nil

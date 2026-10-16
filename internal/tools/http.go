@@ -75,7 +75,7 @@ func (h *HTTPRequest) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return false, fmt.Sprintf("%s %s", method, in.URL), nil
+	return true, fmt.Sprintf("%s %s", method, in.URL), nil
 }
 
 func (h *HTTPRequest) Run(ctx context.Context, args json.RawMessage) (string, error) {

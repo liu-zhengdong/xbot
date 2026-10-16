@@ -801,10 +801,10 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			return d.allow, nil
 		case <-timer.C:
 			appendCard(bot.ApprovalExpired)
-			return false, nil
+			return false, kernel.ErrApprovalExpired
 		case <-ctx.Done():
 			appendCard(bot.ApprovalExpired)
-			return false, ctx.Err()
+			return false, kernel.ErrApprovalExpired
 		}
 	}
 }

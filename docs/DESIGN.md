@@ -95,7 +95,7 @@
 ## 生态
 - **原生内置 Link**：Shell 和文件、浏览器（通过 CDP 驱动本机 Chrome）、桌面操作、网页抓取和搜索。
 - **MCP 适配器**：内置的 Link。每个 Bot 在自己的 `mcp.json` 里登记服务器，字段是名字、命令、参数，以及密钥环境变量的名字。密钥的值不写进文件，也不进接口。拉起进程时不用 shell，环境只留一小份基础变量（`PATH`、`HOME`、`TMPDIR`、`LANG`、`SYSTEMROOT`），再加上这些名字在当前进程环境里已经有的值。HTTP 把同名且已设置的非供应商密钥放进请求头。供应商 API key（`HoldKeys` 记下的名字，含 `XBOT_API_KEY` 和各 provider 的 `api_key_env`）不能写入 `secret_envs`，不进子进程环境，也不进 HTTP 头，并且不从内存里的 key 副本读出。传输有两种，协议版本都是 `2024-11-05`。stdio 是按行分隔的 JSON-RPC，拉起进程时不用 shell。Streamable HTTP 把 `url` 记在同一份 `mcp.json`：有地址就不再用命令。客户端 POST 一条 JSON-RPC，`Accept` 同时写 `application/json` 和 `text/event-stream`。JSON 响应压成一行再交给原来的读循环；SSE 只取 `data`。响应头 `Mcp-Session-Id` 之后每次都带上。`202` 空响应是通知，不当成失败。拿到会话之后对同一地址 GET 一条 SSE，用来收服务器主动发的通知；对方返回 405 就当没有这条流。两种都是先 `initialize`，再 `notifications/initialized`，然后 `tools/list`（跟着 `nextCursor`，最多 20 页）。模型调用走 `tools/call`。工具名是 `mcp_<服务器>_<工具>`，压到 64 个字符以内。`readOnlyHint` 为真的调用不用确认，其余要确认。`isError` 当成工具失败。图片内容丢掉，文本拼起来。入站是可选的：`notifications/xbot/event` 和 `notifications/message` 的 `text` 写成来源 `mcp:<名字>` 的不可信事件；没有这类通知也可以。通知通道满了就丢掉，不能堵住工具调用。目录里的 `mcp` 条目仍然不能一键安装，因为一条授权没有命令可跑。另有一份打进二进制的连接器目录（JSON），不是托管市场。`xbot connector list` 列出 id、传输、命令或地址、密钥名。`xbot connector add <bot> <id>` 把这一条抄进该 Bot 的 `mcp.json`，只启用这一个 Bot。`xbot connector remove <bot> <id>` 删掉。目录里没有密钥的值。`chat` 和 `serve` 都会把这些事件推进收件箱。`serve` 每一轮用来处理收件箱的内核是短命的，不在那上面再挂一条连接；第一次有服务器时另留一个长期内核来收通知。这一轮已经接上之后再改 `mcp.json`，要重新打开 `chat` 或重启 `serve`。
-- **Bot 自己管理 Link**：内置工具 `links`，动作是 `search`、`install`、`remove`、`load`。`search` 查精选目录，中文摘要之外也匹配英文关键词和 id，返回 id、一行摘要和密钥的名字。`install` 每次都走主人的确认卡，和 shell 这类需要确认的工具同一条审批。这条 Link 如果声明了密钥，确认卡带上密钥的名字，主人在界面里填写值。值写进该 Bot 的 `secrets.json`（权限 0600），不进确认摘要，不进工具结果，也不进给模型的提示。没填齐就不安装。还没有运行时的条目，即使主人填了密钥，也不安装、不把值落盘。`remove` 不需要确认，同时删掉这条 Link 的密钥。已安装的目录 Link 和 `mcp:<名字>` 在系统提示里各自只占一行（id 加一行摘要），不放工具 schema。这一段大约 1KB；超了就只列 id，摘要用 `search` 查。`load` 把该 Link 的工具 schema 加进这一轮后面的模型调用，下一轮丢掉。`install` 写上授权之后，这条 Link 立刻挂到当前进程，不用重启 `serve`，同一次对话里 `load` 就能列出工具。终端的 `--yes` 不能代替主人填写密钥。
+- **Bot 自己管理 Link**：内置工具 `links`，动作是 `search`、`install`、`remove`、`load`。`search` 查精选目录，中文摘要之外也匹配英文关键词和 id，返回 id、一行摘要和密钥的名字。`install` 每次都走主人的确认卡，和 shell 这类需要确认的工具同一条审批。这条 Link 如果声明了密钥，确认卡带上密钥的名字，主人在界面里填写值。值写进该 Bot 的 `secrets.json`（权限 0600），不进确认摘要，不进工具结果，也不进给模型的提示。没填齐就不安装。还没有运行时的条目，即使主人填了密钥，也不安装、不把值落盘。`remove` 也要主人确认，确认后同时删掉这条 Link 的密钥。已安装的目录 Link 和 `mcp:<名字>` 在系统提示里各自只占一行（id 加一行摘要），不放工具 schema。这一段大约 1KB；超了就只列 id，摘要用 `search` 查。`load` 把该 Link 的工具 schema 加进这一轮后面的模型调用，下一轮丢掉。`install` 写上授权之后，这条 Link 立刻挂到当前进程，不用重启 `serve`，同一次对话里 `load` 就能列出工具。终端的 `--yes` 不能代替主人填写密钥。
 - **用户技能**：还是已有的 `skills` Link，不另起机制。每个 owner 一份库，路径是 `~/.xbot/skills/<owner>/<slug>/SKILL.md`。格式和 `~/.agents/skills` 一样：YAML 头里有 `name` 和 `description`，后面是 markdown。`xbot skill import <path>` 把技能拷进这个 owner 的库；源路径可以是符号链接。库里的目录如果本身是指向技能目录的符号链接，同样能列出来、能读。恰好有一个 owner 的 Bot 默认看见这个人的全部技能。这个 Bot 可以用一份停用名单关掉其中几条，不影响同一个 owner 的其他 Bot。没有 owner 的 Bot、有多个 owner 的共用 Bot、以及别的 owner 的 Bot，都看不见这库。聊天群不是 Bot，没有技能库。系统提示里每条技能一行（技能 id 和 description），并写明调用 `read_skill`、把该行的 id 传进去，以及用户技能盖过这个 Bot 的默认习惯。这一段大约 1KB；超了就只留名字和怎么读。正文不进提示。只要提示里列了至少一条技能，`read_skill` 就在工具列表里，不用先 `links load`。`write_skill` 仍要 `load`。Bot 用 `read_skill` 的 `id` 参数读全文，不靠在磁盘上查找。全文只留在当前这一轮，下一轮不在 transcript 里。Bot 可以起草一条新技能或一份修改，`write_skill` 在写盘前走主人的确认卡，和别的需要确认的工具同一条审批。没点头就不写文件。
 - **Link 插件市场**：上架的是实现 Link 协议的插件（出站工具 + 入站 Event），不是 MCP 市场。自定义聊天室、Telegram、飞书（Lark）这类连接器都可以上架，把外面收到的消息推进来，变成 Event。一份精选清单，默认不安装，点一下就添加。
 - **连接器**：Telegram 和飞书。装上之后，外面的消息才进收件箱。安装要主人在确认卡里填密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`）。值写进该 Bot 的 `secrets.json`（权限 0600），不进系统提示，不进 transcript，也不进工具结果。命令行安装从同名环境变量读；变量是空的就不装、不落盘。网页 `POST /api/bots/{name}/links` 不接收密钥，声明了密钥的条目返回 409。入站是 `POST /connector/telegram/{bot}` 和 `POST /connector/lark/{bot}`，不走网页登录。Telegram 用请求头 `X-Telegram-Bot-Api-Secret-Token`，飞书用请求头 `X-Lark-Token` 或正文里的 `token`，和存好的密钥不一致就拒绝，收件箱不写。对上的消息写成来源 `telegram` 或 `lark` 的不可信事件，正文是聊天 id 和文本，没有密钥。飞书的 `url_verification` 只回 `challenge`，不唤醒。同一条 `update_id` 或 `message_id` 只收一次。出站工具是 `telegram_send` 和 `lark_send`。schema 不在首轮工具里，`links load` 之后只留在当前这一轮。调用先落一份草稿，确认卡给主人看收件人和正文；没点头就不发，草稿留着。点头之后才请求 Telegram 的 `sendMessage`，或飞书自定义机器人的 webhook。返回给模型的错误里，密钥换成 `[secret]`。卸下这条 Link 时删掉它的密钥。
@@ -143,6 +143,24 @@
 4. 工具结果、transcript 和导出里出现的真值会被脱敏（接上 `RedactText`）。
 5. 落盘加密（AES-GCM + 本地密钥文件），保险箱文件 0600，目录 0700。
 
+### M7 切片 B：危险操作审核
+
+执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
+
+- **出站 HTTP**：`http_request` 一律要确认，包括要注入 `{{secret:名字}}` 的请求。
+- **删除**：shell 里的删除命令（`rm`、`unlink`、`find -delete` 等）、文件删除工具、`secret rm`，以及经工具删除 Bot、Link 或 MCP 服务器，都要确认。
+- **对外发送**：发给别人或其他 Bot 的消息、邮件、帖子、webhook，都要确认。
+- **改已定的计划**：改计划文件、routine、persona，都要确认。
+- **只读不动**：`read_file`、列表、搜索、只看不发的检查、`list_secrets` 不弹确认卡。
+- **判定集中**：内核有一份集中的分类器，只看工具名和参数；在工具自己的 `Confirm` 之外再兜一层，模型改不了这个判断。
+- **决定留痕**：每个 Bot 一份 `bots/<name>/decisions.jsonl`（0600），每次决定追加一条，写允许、拒绝或过期，以及工具、摘要和时间；摘要先过脱敏，不落真值。
+
+完成标准：
+1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明。
+2. 出站 HTTP（含注入 `{{secret:}}`）、删除（shell 删除命令、文件删除工具、secret rm、经工具删除 Bot/Link/MCP）、对外发送（消息/邮件/帖子/webhook）、改已定计划（计划文件/routine/persona）都要主人确认卡。
+3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
+4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），真值脱敏。
+
 ## 网关（开源，可自建）
 - 优先 P2P 直连，打不通再走中继。可以用 Cloudflare Workers 加 Durable Objects 部署，也可以用 Go 自己部署；客户端可以填入多个网关地址。
 - 网关只转发端到端加密的消息，不存记忆，也看不到内容。
@@ -162,7 +180,7 @@
 | M5 | Web 界面、PWA、Bot 之间通信、群 | 已完成 `caa53a1`；UI 精修中 |
 | M5.x | 后台异步压缩、Fork Bot、主 Bot 与置顶、Bot 档案 | 已完成 `db6487e` `4b07ec4` `5a96e75`。网页接口见 [API.md](API.md)，静态界面由单独的代理维护 |
 | M6 | 手机后台推送、远程访问（Cloudflare Tunnel 等）、多节点、人的记忆同步、机器开关、桌面操作、浏览器原生 Link、MCP 适配器与连接器目录、编码代理 Link | 手机推送、隧道（公网可达性未测）、多节点、记忆同步、机器开关、桌面、浏览器：已验证。精选目录、Telegram/飞书、MCP（stdio 与 Streamable HTTP，按 Bot 启用，密钥只记名字）、编码代理（确认后启动，输出进对话卡片）：已接上。托管市场未做 |
-| M7 | 凭据代理与保险箱、危险操作审核 | 切片 A（保险箱与出站代理）已接上；危险操作审核计划中 |
+| M7 | 凭据代理与保险箱、危险操作审核 | 切片 A（保险箱与出站代理）、切片 B（危险操作审核）已接上 |
 | M8 | 开源网关、P2P、Bot 地址、跨用户通信、模板分享 | 计划中 |
 
 ## 测试与陪练
