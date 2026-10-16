@@ -27,7 +27,7 @@ func unresolvedTail(entries []bot.Entry) ([]provider.ToolCall, error) {
 		return nil, nil
 	}
 	i := len(entries) - 1
-	for i >= 0 && entries[i].Message.Role == provider.RoleTool {
+	for i >= 0 && (entries[i].Message.Role == provider.RoleTool || entries[i].IsForkMark()) {
 		i--
 	}
 	if i < 0 || entries[i].Message.Role != provider.RoleAssistant {

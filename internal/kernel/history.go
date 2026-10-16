@@ -49,6 +49,9 @@ func (k *Kernel) RecallHistoryBot(query, name string) (string, error) {
 			continue
 		}
 		e := part[0]
+		if e.IsForkMark() {
+			continue
+		}
 		snip := oneLine(e.Message.Content)
 		if snip == "" {
 			snip = oneLine(toolBlob(e.Message))
@@ -85,6 +88,9 @@ func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
 	}
 	var b strings.Builder
 	for i, e := range entries {
+		if e.IsForkMark() {
+			continue
+		}
 		e, err = target.HydrateLimit(e, expandCap)
 		if err != nil {
 			return "", err

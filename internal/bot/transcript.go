@@ -1117,6 +1117,9 @@ func newBlobID() (string, error) {
 }
 
 func ftsBody(e Entry) string {
+	if e.Mark != nil {
+		return ""
+	}
 	var b strings.Builder
 	b.WriteString(e.Message.Role)
 	b.WriteByte(' ')
