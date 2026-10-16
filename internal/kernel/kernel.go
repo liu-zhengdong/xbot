@@ -83,6 +83,7 @@ type Kernel struct {
 	bgs         map[string]*turn
 	finished    []BackgroundInfo
 	startOnce   sync.Once
+	recoverOnce sync.Once
 	execOnce    sync.Once
 	loadMu      sync.Mutex
 	loaded      map[string]bool
@@ -100,6 +101,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err := ev.Validate(); err != nil {
 		return err
 	}
+	// Once per kernel lifetime, before repairTail: a branch left open by a crash
+	// gets its fork_end so the dangling call on it can be repaired on that branch.
+	k.recoverOnce.Do(k.RecoverInterrupted)
 	t := &turn{
 		turnSender:  ev.Sender,
 		turnKind:    ev.SenderKind,
