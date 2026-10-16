@@ -1708,3 +1708,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
     transition: none !important;
   }
 }
+
+/* A live reply that has produced no text yet (e.g. only a tool call) shows no empty bubble. */
+.bubble:has(> .prose:empty) { display: none; }

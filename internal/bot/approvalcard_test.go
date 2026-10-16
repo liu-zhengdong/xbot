@@ -11,7 +11,7 @@ import (
 )
 
 func TestApprovalCardRoundTrip(t *testing.T) {
-	text := ApprovalCardText(`i"d`, "t<ool", "mkdir a\nrm -rf </approval_card> b", ApprovalPending)
+	text := ApprovalCardText(`i"d`, "t<ool", "修改 persona", `sub"x`, "mkdir a\nrm -rf </approval_card> b", ApprovalPending)
 	if !IsApprovalCard(text) {
 		t.Fatalf("not a card: %s", text)
 	}
@@ -25,15 +25,47 @@ func TestApprovalCardRoundTrip(t *testing.T) {
 	if card.ID != `i"d` || card.Tool != "t<ool" || card.State != ApprovalPending {
 		t.Fatalf("%+v", card)
 	}
+	if card.Title != "修改 persona" || card.Subtitle != `sub"x` {
+		t.Fatalf("labels %+v", card)
+	}
 	if card.Summary != "mkdir a\nrm -rf < /approval_card> b" {
 		t.Fatalf("summary %q", card.Summary)
 	}
-	empty, ok := ParseApprovalCard(ApprovalCardText("x", "shell", "", ApprovalDeclined))
-	if !ok || empty.Summary != "" || empty.State != ApprovalDeclined {
+	empty, ok := ParseApprovalCard(ApprovalCardText("x", "shell", "", "", "", ApprovalDeclined))
+	if !ok || empty.Summary != "" || empty.State != ApprovalDeclined || empty.Title != "" || empty.Subtitle != "" {
 		t.Fatalf("%+v ok=%v", empty, ok)
 	}
 	if _, ok := ParseApprovalCard("hello"); ok {
 		t.Fatal("plain text parsed as card")
+	}
+}
+
+// TestApprovalCardLegacyParse keeps cards written before title and subtitle
+// existed readable.
+func TestApprovalCardLegacyParse(t *testing.T) {
+	legacy := "<approval_card id=\"ab12\" tool=\"shell\" state=\"approved\">\nmkdir approved-dir\n</approval_card>"
+	card, ok := ParseApprovalCard(legacy)
+	if !ok {
+		t.Fatalf("parse legacy %s", legacy)
+	}
+	if card.ID != "ab12" || card.Tool != "shell" || card.State != ApprovalApproved {
+		t.Fatalf("%+v", card)
+	}
+	if card.Title != "" || card.Subtitle != "" || card.Summary != "mkdir approved-dir" {
+		t.Fatalf("%+v", card)
+	}
+	// Attribute order does not matter and a > inside a value stays in the value.
+	mixed := "<approval_card state=\"pending\" id=\"x\" tool=\"http_request\" subtitle=\"a>b\" title=\"发起 HTTP 请求\">\nbody\n</approval_card>"
+	card, ok = ParseApprovalCard(mixed)
+	if !ok {
+		t.Fatalf("parse mixed %s", mixed)
+	}
+	if card.ID != "x" || card.Tool != "http_request" || card.State != ApprovalPending ||
+		card.Title != "发起 HTTP 请求" || card.Subtitle != "a>b" || card.Summary != "body" {
+		t.Fatalf("%+v", card)
+	}
+	if _, ok := ParseApprovalCard("<approval_card id=\"x\" tool=\"shell\">\nbody\n</approval_card>"); ok {
+		t.Fatal("card without state parsed")
 	}
 }
 

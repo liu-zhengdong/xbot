@@ -19,6 +19,22 @@ const defaultMaxResult = 64 << 10
 // Approver decides whether a confirmed tool call may run.
 type Approver func(ctx context.Context, toolName, summary string) (bool, error)
 
+type toolArgsKey struct{}
+
+// withToolArgs carries one tool call's raw arguments to the approver without
+// widening the Approver signature.
+func withToolArgs(ctx context.Context, args json.RawMessage) context.Context {
+	return context.WithValue(ctx, toolArgsKey{}, args)
+}
+
+// ToolArgs returns the raw arguments of the tool call the approver is deciding
+// on, or nil when there are none. The web approval card uses it to label the
+// action.
+func ToolArgs(ctx context.Context) json.RawMessage {
+	args, _ := ctx.Value(toolArgsKey{}).(json.RawMessage)
+	return args
+}
+
 // Options controls one agent run.
 type Options struct {
 	MaxSteps  int
@@ -212,7 +228,7 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 			return finish(opt, t.Name(), "not run: no approver available on this link")
 		}
 		approve.Lock()
-		approved, err := opt.Approve(ctx, t.Name(), summary)
+		approved, err := opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
 		approve.Unlock()
 		if err != nil {
 			return finish(opt, t.Name(), "error: "+err.Error())

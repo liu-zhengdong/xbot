@@ -1148,17 +1148,52 @@
     return { id: m[1], status: m[2], body: m[3] };
   }
 
+  // Reads the attribute list of an opening <approval_card …> tag: key="value"
+  // pairs in any order, and a > inside a quoted value does not end the tag.
+  // Values are attribute-escaped like every other card attribute.
+  function approvalCardTag(s) {
+    const attr = (v) => v.replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    const attrs = {};
+    let i = 0;
+    for (;;) {
+      while (s[i] === " ") i++;
+      if (s[i] === ">") return { attrs: attrs, end: i + 1 };
+      const eq = s.indexOf("=", i);
+      if (eq < 0) return null;
+      const key = s.slice(i, eq).trim();
+      if (!key || s[eq + 1] !== '"') return null;
+      const q = s.indexOf('"', eq + 2);
+      if (q < 0) return null;
+      attrs[key] = attr(s.slice(eq + 2, q));
+      i = q + 1;
+    }
+  }
+
   function approvalCardOf(content) {
-    const m = String(content || "").match(/^<approval_card id="([^"]*)" tool="([^"]*)" state="([^"]*)">\n([\s\S]*)\n<\/approval_card>$/);
-    if (!m) return null;
-    const attr = (s) => s.replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-    return { id: attr(m[1]), tool: attr(m[2]), state: attr(m[3]), summary: m[4] };
+    const s = String(content || "");
+    const open = "<approval_card ";
+    const tail = "\n</approval_card>";
+    if (!s.startsWith(open) || !s.endsWith(tail)) return null;
+    const tag = approvalCardTag(s.slice(open.length));
+    if (!tag) return null;
+    // Cards written before title and subtitle existed still parse; those fields
+    // come back empty and the renderer falls back to the tool name.
+    if (tag.attrs.id == null || tag.attrs.tool == null || tag.attrs.state == null) return null;
+    const body = s.slice(open.length + tag.end);
+    return {
+      id: tag.attrs.id,
+      tool: tag.attrs.tool,
+      state: tag.attrs.state,
+      title: tag.attrs.title || "",
+      subtitle: tag.attrs.subtitle || "",
+      summary: body.slice(1, body.length - tail.length),
+    };
   }
 
   // The server's default approval wait; the card counts down in step with it.
   const APPROVAL_WAIT_SECS = 60;
 
-  function approvalLine(name, command, state, time) {
+  function approvalLine(title, summary, state, time) {
     const kind = state === "approved" ? "ok" : state === "declined" ? "no" : "exp";
     const row = el("div", "approval-line " + kind);
     const st = el("span", "st");
@@ -1166,10 +1201,10 @@
     else if (state === "declined") st.append(rawSvg(X_PATH, 18, 2.4));
     else st.append(rawSvg(CLOCK_PATH, 17, 2));
     const what = el("span", "what");
-    what.append(document.createTextNode((name || "tool") + (command ? " " : "")));
-    if (command) {
+    what.append(document.createTextNode((title || "tool") + (summary ? " " : "")));
+    if (summary) {
       const code = el("code");
-      code.textContent = command;
+      code.textContent = summary;
       what.append(code);
     }
     row.append(st, what);
@@ -1178,16 +1213,18 @@
   }
 
   function pendingApprovalCard(opt) {
+    const title = opt.title || opt.tool || "tool";
+    const summary = String(opt.summary || "");
     const card = el("div", "approval");
     const head = el("div", "approval-head");
     const ico = el("span", "approval-ico");
     ico.append(rawSvg(ICONS.terminal, 16, 2));
     const main = el("div", "approval-main");
-    main.append(el("div", "approval-title", opt.name || "tool"));
-    if (opt.detail) main.append(el("div", "approval-detail", opt.detail));
-    if (opt.command) {
+    main.append(el("div", "approval-title", title));
+    if (opt.subtitle) main.append(el("div", "approval-detail", opt.subtitle));
+    if (summary) {
       const chip = el("code", "approval-chip");
-      chip.textContent = opt.command;
+      chip.textContent = summary;
       main.append(chip);
     }
     head.append(ico, main);
@@ -1201,7 +1238,7 @@
       if (settled) return;
       settled = true;
       if (tick) window.clearInterval(tick);
-      card.replaceWith(approvalLine(opt.name, opt.command, state, Date.now()));
+      card.replaceWith(approvalLine(title, summary, state, Date.now()));
     };
     if (opt.wait) {
       const timer = el("span", "approval-timer");
@@ -1249,13 +1286,13 @@
   }
 
   function approvalHistoryCard(card, time) {
-    const lines = String(card.summary || "").split("\n");
     const st = card.state || "pending";
     if (st === "pending") {
       const payload = {
-        name: card.tool || "tool",
-        command: lines[0] || "",
-        detail: lines.slice(1).join(" · "),
+        tool: card.tool || "",
+        title: card.title || "",
+        subtitle: card.subtitle || "",
+        summary: card.summary || "",
         wait: APPROVAL_WAIT_SECS,
         decide: async (ok) => {
           if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");
@@ -1267,7 +1304,7 @@
       };
       return pendingApprovalCard(payload);
     }
-    return approvalLine(card.tool || "tool", lines[0] || "", st, time);
+    return approvalLine(card.title || card.tool || "tool", card.summary || "", st, time);
   }
 
   function codingCard(card) {
@@ -2760,9 +2797,9 @@
     for (const item of items) {
       const detail = [item.caller || "", item.id || ""].filter(Boolean).join(" · ");
       host.append(pendingApprovalCard({
-        name: "节点命令",
-        detail: detail,
-        command: item.command || "",
+        title: "节点命令",
+        subtitle: detail,
+        summary: item.command || "",
         wait: 0,
         decide: (ok) => api("/api/node/pending/" + encodeURIComponent(item.id || ""), { method: "POST", body: { allow: ok } }),
       }));
@@ -2808,11 +2845,11 @@
   }
 
   function approvalCard(payload) {
-    const lines = String(payload.summary || "").split("\n");
     return pendingApprovalCard({
-      name: payload.tool || payload.name || "tool",
-      command: lines[0] || "",
-      detail: lines.slice(1).join(" · "),
+      tool: payload.tool || payload.name || "",
+      title: payload.title || "",
+      subtitle: payload.subtitle || "",
+      summary: payload.summary || "",
       wait: APPROVAL_WAIT_SECS,
       decide: async (ok) => {
         if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");

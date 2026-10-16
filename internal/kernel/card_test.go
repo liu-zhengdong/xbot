@@ -38,7 +38,7 @@ func TestApprovalCardStaysOutOfModel(t *testing.T) {
 		Persona: "p",
 		Rules:   "r",
 		Entries: []bot.Entry{
-			{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText("ab12", "shell", "mkdir approved-dir", bot.ApprovalApproved)}},
+			{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText("ab12", "shell", "", "", "mkdir approved-dir", bot.ApprovalApproved)}},
 			{Message: provider.Message{Role: provider.RoleUser, Content: "hello"}},
 		},
 	})
@@ -68,7 +68,7 @@ func TestCardsStayOutOfCompaction(t *testing.T) {
 	rec := &recordCompactor{}
 	k := &Kernel{Compactor: rec}
 	entries := []bot.Entry{
-		{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText("ab12", "shell", "mkdir x", bot.ApprovalApproved)}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText("ab12", "shell", "", "", "mkdir x", bot.ApprovalApproved)}},
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: code.Card("ca_aa", "done", "diff --git")}},
 		{Message: provider.Message{Role: provider.RoleUser, Content: "real turn"}},
 	}

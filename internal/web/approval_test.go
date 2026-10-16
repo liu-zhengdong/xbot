@@ -57,15 +57,20 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	allow := postSSE(t, ui.URL, cookie, "NEED_APPROVAL")
 	ev := waitEvent(t, allow, "approval")
 	var card struct {
-		ID      string `json:"id"`
-		Tool    string `json:"tool"`
-		Summary string `json:"summary"`
+		ID       string `json:"id"`
+		Tool     string `json:"tool"`
+		Summary  string `json:"summary"`
+		Title    string `json:"title"`
+		Subtitle string `json:"subtitle"`
 	}
 	if err := json.Unmarshal([]byte(ev.data), &card); err != nil {
 		t.Fatal(err)
 	}
 	if card.ID == "" || card.Tool != "shell" || !strings.Contains(card.Summary, "mkdir") {
 		t.Fatalf("card %+v", card)
+	}
+	if card.Title != "运行命令" || card.Subtitle != "在本机上执行" {
+		t.Fatalf("card labels %+v", card)
 	}
 	decide(t, ui.URL, cookie, card.ID, true)
 	sawRun := false
@@ -85,6 +90,9 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	}
 	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalApproved}) {
 		t.Fatalf("allow states %v", states)
+	}
+	if title, subtitle := approvalLabels(t, ui.URL, cookie, card.ID); title != "运行命令" || subtitle != "在本机上执行" {
+		t.Fatalf("transcript labels %q %q", title, subtitle)
 	}
 
 	deny := postSSE(t, ui.URL, cookie, "NEED_APPROVAL")
@@ -145,6 +153,29 @@ func approvalStates(t *testing.T, base string, cookie *http.Cookie, id string) [
 		}
 	}
 	return states
+}
+
+// approvalLabels reads the transcript and returns the title and subtitle the
+// API exposes for one approval id. An empty pair means the row never persisted.
+func approvalLabels(t *testing.T, base string, cookie *http.Cookie, id string) (string, string) {
+	t.Helper()
+	raw := getAuth(t, base+"/api/bots/ada/transcript", cookie)
+	var payload struct {
+		Messages []struct {
+			Content  string `json:"content"`
+			Title    string `json:"title"`
+			Subtitle string `json:"subtitle"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range payload.Messages {
+		if card, ok := bot.ParseApprovalCard(m.Content); ok && card.ID == id {
+			return m.Title, m.Subtitle
+		}
+	}
+	return "", ""
 }
 
 func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {

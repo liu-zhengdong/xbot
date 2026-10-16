@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/config"
 	"xbot/internal/exec"
@@ -25,11 +26,13 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/machine"
 	"xbot/internal/memory"
 	"xbot/internal/node"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
+	"xbot/internal/review"
 )
 
 //go:embed static
@@ -510,6 +513,8 @@ type apiRow struct {
 	Role       string              `json:"role"`
 	Content    string              `json:"content,omitempty"`
 	Name       string              `json:"name,omitempty"`
+	Title      string              `json:"title,omitempty"`
+	Subtitle   string              `json:"subtitle,omitempty"`
 	ToolCalls  []provider.ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string              `json:"tool_call_id,omitempty"`
 	Time       time.Time           `json:"time"`
@@ -533,11 +538,15 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	_ = s.writeCursor(b.Name(), len(entries))
 	var rows []apiRow
 	for i, e := range entries {
-		rows = append(rows, apiRow{
+		row := apiRow{
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
 			ReplyTo: e.ReplyTo,
-		})
+		}
+		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok {
+			row.Title, row.Subtitle = card.Title, card.Subtitle
+		}
+		rows = append(rows, row)
 	}
 	if rows == nil {
 		rows = []apiRow{}
@@ -776,11 +785,12 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			delete(s.approvals, key)
 			s.mu.Unlock()
 		}()
+		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
 		appendCard := func(state string) {
-			_ = b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, summary, state)}})
+			_ = b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, title, subtitle, summary, state)}})
 		}
 		appendCard(bot.ApprovalPending)
-		payload := map[string]any{"id": id, "tool": tool, "summary": summary}
+		payload := map[string]any{"id": id, "tool": tool, "summary": summary, "title": title, "subtitle": subtitle}
 		names := approvalSecretNames(tool, summary)
 		if len(names) > 0 {
 			payload["secrets"] = names
