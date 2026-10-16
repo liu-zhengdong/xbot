@@ -232,3 +232,40 @@ func TestSummaryKindsAreDeduplicated(t *testing.T) {
 		t.Fatalf("deletes=%v sends=%v", deletes, sends)
 	}
 }
+
+func TestGitForcePushAsks(t *testing.T) {
+	for _, command := range []string{
+		`git push --force origin main`,
+		`git push -f`,
+		`git push --force-with-lease origin main`,
+		`git push --force-with-lease=origin/main origin main`,
+		`git push --force-if-includes`,
+		`git push --mirror origin`,
+		`git push --delete origin old`,
+		`git push -d origin old`,
+		`git push origin +main`,
+		`git push origin :old`,
+		`sh -c "git -C repo push -f"`,
+	} {
+		if !shellNeed(t, command) {
+			t.Fatalf("%q did not ask", command)
+		}
+	}
+	for _, command := range []string{
+		`git push origin main`,
+		`git log --force`,
+		`echo git push`,
+	} {
+		if shellNeed(t, command) {
+			t.Fatalf("%q wrongly asked", command)
+		}
+	}
+}
+
+func TestGitSecondCommandSeen(t *testing.T) {
+	for _, cmd := range []string{"git add . && git push -f origin main", "git status; git clean -fd"} {
+		if d, _ := ShellFlags(cmd); !d {
+			t.Errorf("%q: want deletes", cmd)
+		}
+	}
+}

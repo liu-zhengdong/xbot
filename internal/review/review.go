@@ -296,6 +296,9 @@ func ShellFlags(cmd string) (deletes, sends bool) {
 	if gitClean(words) {
 		deletes = true
 	}
+	if gitForcePush(words) {
+		deletes = true
+	}
 	for _, part := range []string{"os.remove", "os.unlink", "shutil.rmtree", "fs.rmSync", "fs.unlink", "fs.rm("} {
 		if strings.Contains(cmd, part) {
 			deletes = true
@@ -488,8 +491,57 @@ func gitClean(words []string) bool {
 			case strings.HasPrefix(arg, "-"):
 				j++
 			default:
-				return arg == "clean"
+				if arg == "clean" {
+					return true
+				}
+				j = len(words)
 			}
+		}
+	}
+	return false
+}
+
+// gitForcePush reports a `git push` that rewrites or deletes remote history:
+// --force and its variants, -f, --delete/-d, --mirror, or a refspec beginning
+// with '+' (force) or ':' (delete). Like gitClean it allows global options such
+// as -C <path> before the subcommand, so a forced push buried in `sh -c` is
+// still seen. A different subcommand (git log --force) is not a forced push.
+func gitForcePush(words []string) bool {
+	for i, w := range words {
+		if filepath.Base(w) != "git" {
+			continue
+		}
+		for j := i + 1; j < len(words); {
+			arg := words[j]
+			switch {
+			case arg == "-C" || arg == "-c":
+				j += 2
+			case strings.HasPrefix(arg, "-"):
+				j++
+			default:
+				if arg == "push" && forcePushArgs(words[j+1:]) {
+					return true
+				}
+				j = len(words)
+			}
+		}
+	}
+	return false
+}
+
+// forcePushArgs reports whether any push argument forces or deletes a ref.
+func forcePushArgs(args []string) bool {
+	for _, w := range args {
+		switch w {
+		case "--force", "-f", "--force-with-lease", "--force-if-includes",
+			"--mirror", "--delete", "-d":
+			return true
+		}
+		if strings.HasPrefix(w, "--force-with-lease=") {
+			return true
+		}
+		if strings.HasPrefix(w, "+") || strings.HasPrefix(w, ":") {
+			return true
 		}
 	}
 	return false
