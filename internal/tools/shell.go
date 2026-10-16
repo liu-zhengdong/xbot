@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"xbot/internal/clip"
+	"xbot/internal/review"
 )
 
 const (
@@ -101,7 +101,7 @@ func NewShell() *Shell {
 func (s *Shell) Name() string { return "shell" }
 
 func (s *Shell) Description() string {
-	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, or require approval even for a read-only command."
+	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends."
 }
 
 func (s *Shell) Parameters() any {
@@ -118,14 +118,10 @@ type shellArgs struct {
 	Keys           bool   `json:"keys"`
 }
 
-// safeCommands are read-only lookups. A command is safe only when it is a
-// single simple invocation of one of these names, with no shell operators.
-var safeCommands = map[string]bool{
-	"date": true, "pwd": true, "whoami": true, "uname": true, "hostname": true,
-	"id": true, "echo": true, "printf": true, "true": true, "false": true,
-	"uptime": true, "ls": true, "which": true, "env": true, "printenv": true, "cal": true,
-}
-
+// Confirm follows the local machine switch. off refuses the command. ask
+// asks the owner for every command. allow asks only for the actions the
+// central review flags: deletions and external sends. keys:true always asks,
+// because it puts provider keys into the command environment.
 func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	in, err := parseShellArgs(args)
 	if err != nil {
@@ -141,21 +137,13 @@ func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	if in.Keys {
 		return true, in.Command + "\nwith provider keys", nil
 	}
-	if mode == "ask" || !safeShell(in.Command) {
+	if mode == "ask" {
+		return true, in.Command, nil
+	}
+	if need, _ := review.Check(s.Name(), args); need {
 		return true, in.Command, nil
 	}
 	return false, in.Command, nil
-}
-
-func safeShell(command string) bool {
-	if strings.ContainsAny(command, "\n;&|<>`$\\") || strings.Contains(command, "(") || strings.Contains(command, ")") {
-		return false
-	}
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return false
-	}
-	return safeCommands[filepath.Base(fields[0])]
 }
 
 func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {

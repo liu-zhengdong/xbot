@@ -43,7 +43,7 @@ xbot node call desk info
 
 长时间的活用 `spawn` 交给子代理。本机默认是 goroutine。`xbot runner` 是同一套执行器的 HTTP 服务，只听环回地址，要用 token。`xbot chat --runner URL --runner-token TOKEN` 把 Bot 接到它上面。
 
-执行 shell、`write_file`、`edit_file` 之前会问 `y/n`。改 persona、创建或修改 routine 也要确认。`--yes` 跳过询问。`serve` 里没有人点头，这些需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
+执行 shell 时，机器开关是 `allow` 就只对删除和对外发送问 `y/n`，其余命令直接跑；`ask` 每条都问；`off` 直接拒绝。`write_file`、`edit_file` 一律问 `y/n`。Bot 改自己的 persona 或 profile 也要确认；创建、修改、暂停、删除 routine 不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
 
@@ -168,7 +168,7 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 
 **历史。** 原文按大约 8MB 或 UTC 日期分成段，只有尾段可写。SQLite 索引（纯 Go，无 cgo）把序号映射到段和偏移，并用 FTS5 做全文。`recall_history(query)` 走这个索引的 BM25，带回序列号。`expand(from, to)` 按序号把原文拉回来，输出有上限。大段工具输出另存成 blob，上下文里只留预览。索引丢了会自动重建，也可以 `xbot reindex <bot>`。旧的单文件 `transcript.jsonl` 第一次打开时迁进分段。摘要掉的句子还能这样找到。
 
-**定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。`xbot chat` 会先把未读通知打出来。
+**定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。`xbot chat` 会先把未读通知打出来。Bot 自己创建、修改、暂停、删除 routine 都不弹确认卡。
 
 **Webhook。** `xbot serve` 在 `--http` 上听 `POST /webhook/<bot>/<name>`，默认只绑 `127.0.0.1:8787`。每个 webhook 有自己的 secret，模式是 HMAC（`X-XBot-Signature: sha256=<hex>`）或 `Authorization: Bearer`。没签名、签错、或者用了另一种模式，都是 401。正文超过 32 KiB 是 413，不会存下来。带了 `X-XBot-Delivery`（或 `X-Delivery-Id`）的重复投递只收一次，第二次直接 200 `duplicate`。同一个 webhook 在 2 秒窗口里的多次请求合成一条事件再投进 inbox；窗口是从第一条算起的固定窗，连续灌也不会把模型叫醒超过每个窗口一次。合批正文最多 32 KiB，多出来的只计数。事件来源是 `webhook:<name>`，发送者是外部身份，内核会包成不可信数据。
 
@@ -249,7 +249,7 @@ xbot template import --file ada.json --name ada-copy
 - **read_file**：`offset` 从 1 起，`limit` 默认 200 行、最多 2000 行，输出默认最多 32 KiB。
 - **write_file / edit_file**：路径先变成绝对路径，并解析已存在前缀上的符号链接。`write_file` 正文最多 1 MiB。`edit_file` 要求 `old_string` 恰好出现一次，文件本身最多 2 MiB。
 - 工具结果进 transcript 之前会收成合法 UTF-8，并再卡一道 64 KiB。
-- 没有路径沙箱。写和执行靠确认。
+- 没有路径沙箱。写文件一律确认；shell 按机器开关：`allow` 只对删除和对外发送确认，`ask` 每条都问，`off` 拒绝。
 - 数据目录 `0700`，配置和身份文件 `0600`。JSONL 追加时加文件锁。
 - cron 最短 5 分钟。`* * * * *` 会被拒绝。
 - 模型 API key 不进 Bot 目录，也不进 `providers.json`。Webhook secret 要留在本机才能验签，单独放在 0600 的文件里。
@@ -394,7 +394,7 @@ xbot machine set local off
 xbot machine set desk allow
 ```
 
-`allow`：本机 shell 跟以前一样，`date` 这类只读命令不确认。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时远程调用只排队，主人在节点上跑 `xbot node approve <id>`。文件工具不看这个开关。桌面和浏览器也看这个开关。
+`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时远程调用只排队，主人在节点上跑 `xbot node approve <id>`。文件工具不看这个开关。桌面和浏览器也看这个开关。
 
 ## 桌面
 

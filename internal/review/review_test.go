@@ -166,7 +166,9 @@ func TestPlanRoutinePersonaNotClassified(t *testing.T) {
 		{"edit_file", `{"path":"plans/2026.md"}`},
 		{"write_file", `{"path":"notes.md","content":"x"}`},
 		{"routine_create", `{}`},
-		{"routine_update", `{}`},
+		{"routine_update", `{"id":"r1","enabled":false}`},
+		{"routine_delete", `{"id":"r1"}`},
+		{"routine_pause", `{"id":"r1"}`},
 		{"propose_persona", `{}`},
 		{"propose_profile", `{}`},
 	}
@@ -174,6 +176,16 @@ func TestPlanRoutinePersonaNotClassified(t *testing.T) {
 		if need, kinds := Check(c.tool, json.RawMessage(c.args)); need || len(kinds) != 0 {
 			t.Fatalf("%s %s need=%v kinds=%v", c.tool, c.args, need, kinds)
 		}
+	}
+}
+
+func TestRoutineDeleteIsNotDataDelete(t *testing.T) {
+	args := json.RawMessage(`{"id":"r1"}`)
+	if need, kinds := Check("routine_delete", args); need || hasKind(kinds, KindDelete) {
+		t.Fatalf("routine_delete need=%v kinds=%v", need, kinds)
+	}
+	if need, kinds := Check("routine_remove", args); need || hasKind(kinds, KindDelete) {
+		t.Fatalf("routine_remove need=%v kinds=%v", need, kinds)
 	}
 }
 

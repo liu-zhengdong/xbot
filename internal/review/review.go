@@ -26,7 +26,8 @@ const (
 // bots is not an egress and does not ask here. Deletions of files or data ask.
 // http_request asks only when it injects a secret or uses a method other than
 // GET/HEAD. Editing a planned file, routine or persona is not this classifier's
-// business; those tools keep whatever confirmation they had before.
+// business; those tools keep whatever confirmation they had before. A routine
+// is the bot's own schedule, so routine_delete is not a data deletion here.
 func Check(tool string, args json.RawMessage) (bool, []Kind) {
 	name := strings.ToLower(strings.TrimSpace(tool))
 	var kinds []Kind
@@ -55,6 +56,9 @@ func Check(tool string, args json.RawMessage) (bool, []Kind) {
 		if strings.ToLower(linksAction(args)) == "remove" {
 			add(KindDelete)
 		}
+	case strings.HasPrefix(name, "routine_"):
+		// Creating, updating, pausing or deleting a routine is the bot
+		// managing its own schedule, not owner data. It never matches here.
 	default:
 		if isDeleteTool(name) {
 			add(KindDelete)

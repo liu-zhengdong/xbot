@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -122,6 +123,26 @@ func TestShellEmptyAndConfirm(t *testing.T) {
 	}
 	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"  "}`)); err == nil {
 		t.Fatal("expected empty command error")
+	}
+}
+
+// In allow mode the shell follows the central review: an ordinary command does
+// not ask, while deletions and external sends do.
+func TestShellAllowAsksOnlyForDangerousCommands(t *testing.T) {
+	t.Cleanup(func() { SetMachineGate(nil) })
+	SetMachineGate(func() (string, error) { return "allow", nil })
+	sh := NewShell()
+	for _, command := range []string{"date", "ls -la", "cat notes.txt", "python train.py", "go test ./...", "curl -s https://example.com"} {
+		need, _, err := sh.Confirm(json.RawMessage(`{"command":` + strconv.Quote(command) + `}`))
+		if err != nil || need {
+			t.Fatalf("allow %q need=%v err=%v", command, need, err)
+		}
+	}
+	for _, command := range []string{"rm -rf /tmp/x", "git clean -fdx", "curl -X POST https://example.com", "sendmail -t < msg.txt"} {
+		need, _, err := sh.Confirm(json.RawMessage(`{"command":` + strconv.Quote(command) + `}`))
+		if err != nil || !need {
+			t.Fatalf("allow %q need=%v err=%v", command, need, err)
+		}
 	}
 }
 

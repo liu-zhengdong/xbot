@@ -202,6 +202,26 @@ func TestReviewedToolDoesNotForceBotToBot(t *testing.T) {
 	}
 }
 
+func TestRoutineSelfEditsDoNotAsk(t *testing.T) {
+	for _, tool := range []tools.Tool{routineCreate{}, routineUpdate{}, routineDelete{}} {
+		need, _, err := reviewedTool{tool}.Confirm(json.RawMessage(`{"id":"r1","name":"n","prompt":"p","enabled":false}`))
+		if err != nil || need {
+			t.Fatalf("%s need=%v err=%v", tool.Name(), need, err)
+		}
+	}
+}
+
+func TestPersonaAndProfileSelfEditsStillAsk(t *testing.T) {
+	persona := reviewedTool{personaTool{}}
+	if need, _, err := persona.Confirm(json.RawMessage(`{"text":"new persona"}`)); err != nil || !need {
+		t.Fatalf("propose_persona need=%v err=%v", need, err)
+	}
+	profile := reviewedTool{profileTool{}}
+	if need, _, err := profile.Confirm(json.RawMessage(`{"description":"notes"}`)); err != nil || !need {
+		t.Fatalf("propose_profile need=%v err=%v", need, err)
+	}
+}
+
 func readDecisions(t *testing.T, b *bot.Bot) []bot.Decision {
 	t.Helper()
 	out, err := b.Decisions()

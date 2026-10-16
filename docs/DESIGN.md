@@ -51,7 +51,7 @@
 - **家节点**：Bot 住在用户选择的机器上（比如家里的 PC），数据不离开用户的设备。手机、Web、Slack 都只是入口。
 - **远程访问**：Cloudflare Tunnel、Tailscale 直连、自建中继，都可以选；它们只是不同的传输方式，内核不用关心。`xbot serve --tunnel cloudflare` 用本机的 `cloudflared` 把已经在听的 `--http` 公布出去。真实的 `cloudflared` 把地址打在 stderr，stdout 不关，所以两边一起读。stderr 打印 `public url`（`*.trycloudflare.com`）。`cloudflared` 单独一个进程组，父进程死掉时收到 `SIGKILL`，serve 被硬杀掉也不会留下公开隧道。拉起它的 goroutine 锁住操作系统线程，直到隧道关掉，避免线程先退出把 `SIGKILL` 提前打出去。`--tunnel tailscale` 跑 `tailscale ip -4`；`--http` 若是回环地址，就改绑到这个 tailnet 地址，别的绑定保持原样，`public url` 用 tailnet 地址加端口。二进制路径可用 `XBOT_CLOUDFLARED` 和 `XBOT_TAILSCALE`。自建中继仍是后面的网关，这一片不实现。
 - **多节点**：每台设备都可以运行 `xbot node serve`（默认 `127.0.0.1:18772`），用 bearer token 公布本机身份。token 在该数据根的 `node-token`（0600），第一次启动打印一次。也可以用 `--token TOKEN`、`--token -`（stdin 一行）或环境变量 `XBOT_NODE_TOKEN`。`SIGTERM` 和中断一样停掉监听。主人用 `xbot node add <name> --url URL --token TOKEN` 把地址记在 `nodes.json`（0600）之前，先用这个 token 问一次对方，对不上就不写入。`node list` 把 401 显示成 `unauthorized`，连不上才是 `offline`。装上 `node` Link 之后，系统提示里只有一行；`links load node` 才带上 `node_list` 和 `node_call`。能力是 `info`（id、名字、系统、架构）和 `shell`。`shell` 看那台机器的开关。要给别的设备连，把 `--addr` 绑到 tailnet 地址，不要绑 `0.0.0.0`。
-- **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 仍按原来的规则：只读命令不确认，其余要确认。`ask` 让每条 shell 都要主人确认。`off` 直接拒绝，确认也跑不了。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。节点上的 `shell` 看那台机器自己的开关，不看调用方传来的 `approved`。`allow` 才执行。`ask` 把命令记在 `node-pending/<id>.json`（0600），带上调用方、命令和时间，返回 `xbot node approve <id>`。十条钟后过期，最多留 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve` 先把命令打出来，默认要回答 `y` 才执行，`--yes` 跳过提问。拒绝时退出码非零，并删掉这条待批。这台机器上的 `xbot serve` 在网页里给出允许或拒绝，并往每个 Bot 的通知里写一条。`off` 拒绝，批准也跑不了。文件工具不经过这个开关。
+- **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 只对删除和对外发送要确认（看集中分类器），其余命令直接跑。`ask` 让每条 shell 都要主人确认。`off` 直接拒绝，确认也跑不了。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。节点上的 `shell` 看那台机器自己的开关，不看调用方传来的 `approved`。`allow` 才执行。`ask` 把命令记在 `node-pending/<id>.json`（0600），带上调用方、命令和时间，返回 `xbot node approve <id>`。十条钟后过期，最多留 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve` 先把命令打出来，默认要回答 `y` 才执行，`--yes` 跳过提问。拒绝时退出码非零，并删掉这条待批。这台机器上的 `xbot serve` 在网页里给出允许或拒绝，并往每个 Bot 的通知里写一条。`off` 拒绝，批准也跑不了。文件工具不经过这个开关。
 - **多设备同步**：Bot 不合并，各自住在自己的家节点上；只同步人的身份和人的记忆，用可合并的追加日志实现（记录时间、Bot、设备，以最新为准），通过中继同步。
 - **浏览器**：用 CDP 驱动本机 Chrome，配置目录是数据根下的 `browser/profile`，不碰主人正在用的那一份。`xbot browser open [--headless] <url>` 打开 http 或 https，留下调试端口；`snapshot` 读标题、地址和可见正文；`click <selector>` 点第一个匹配的元素；`stop` 关掉这次拉起的进程。二进制用 `XBOT_CHROME`，否则在 PATH 里找 `google-chrome` 或 `chromium`。装上 `browser` Link 之后，`links load browser` 才有 `browser_open`、`browser_snapshot`、`browser_click`、`browser_stop`。`browser_stop` 在机器开关是 `off` 时也能确认，用来关掉进程。`xbot browser open` 退出后 Chrome 还在，直到 `xbot browser stop`。`xbot serve` 只关掉自己拉起的那一份，用进程组发信号，不用 `Pdeathsig`。停进程之前核对 `/proc/<pid>/cmdline` 里有这个配置目录。对不上就不杀，删掉过期的 `session.json`，命令退出码是 0，并写明原因。页面正文包在 `<untrusted_event>` 里。机器开关和桌面一样：`off` 拒绝，`ask` 每一下都要确认，`allow` 时只有打开和点击要确认。能用命令行或 API 完成的事，优先不用浏览器。
 - **桌面操作**：截图、点击、输入、滚动、按键，也是一个 Link。`xbot desktop` 和装上 `desktop` 之后的工具走同一条。schema 要 `links load desktop` 才进当前这一轮。机器开关是 `off` 就拒绝；`ask` 时每一下都要主人确认，截图也一样；`allow` 时截图不确认，点击、输入、滚动、按键要确认。主人最近几秒还在用这台电脑（`xprintidle` 小于 5 秒）时不点、不打字、不滚动、不按键，截图可以。看不出来就照常做。确认卡写明点击坐标、要输入的原文、按键名，以及滚动的方向、步数和位置。输入或按键里出现付款、登录、发消息时，确认卡再写明这一点。能用命令行或 API 完成的事，工具说明里要求优先不用界面。截图是 PNG，写在数据根的 `desktop/`，权限 0600。点击和按键用 `xdotool`，截图用 ImageMagick 的 `import`。
@@ -65,7 +65,7 @@
 - **Bot 之间的私聊记录**：Bot 发给另一个 Bot 的消息全部留存，不分成临时和永久两类。正文先进收件 Bot 的收件箱，处理之后留在收件 Bot 的 transcript 里，不另建一份会话。因此这些话一直能被搜索、导出，也能被 `recall_history` 看见。主人跟某个 Bot 聊天时，对方 Bot 发来的内容仍只显示成一行淡淡的提示。要按时间翻看两边的原文，用只读接口 `GET /api/bots/{a}/peers/{b}/messages`，而且这个人必须同时是两个 Bot 的 owner。群里的消息不走这个接口。以后可以单独压缩这类来回；现在不压，它们跟这份 transcript 里的其他行走同一套摘要。
 - **跨用户**：必须双方授权，授权范围要具体、可以撤销；来自对方的内容一律当作不可信。
 - **Bot 档案**：名字、简介、头像（没上传时是一块随名字变化的低饱和软边圆斑：接近圆的不规则轮廓，没有五官。首字符可以叠上去，16 像素的小尺寸不画）、说话风格、免打扰时段、IANA 时区。没有安静、适中、积极三档；想怎么通知，写在自己的 persona 里。旧档案里的 `proactivity` 还能读进来，被忽略，不进提示，也不再从 API 或网页返回。免打扰的 `HH:MM` 按 Bot 的时区计算；没设时区就用唯一 owner 的时区，再没有就用本机时区。通知在任何唤醒上都会送出；免打扰时段里先攒着，结束后合成一条。Bot 可以提议修改，主人确认后生效。可以导出模板（不含记忆）。默认人设和规则要求用主人的语言回答，先调用工具再给结果，不要先用另一门语言讲自己打算做什么。主人没接的提议不要再说一遍。
-- **定时例程**：五段 cron，最小间隔 5 分钟；或者一次性的 `at`（RFC3339）。一次性例程不受这个间隔限制，到点后自动停用。错过超过 15 秒不再补发。
+- **定时例程**：五段 cron，最小间隔 5 分钟；或者一次性的 `at`（RFC3339）。一次性例程不受这个间隔限制，到点后自动停用。错过超过 15 秒不再补发。创建、修改、暂停、删除都由 Bot 自己做主，不弹确认卡。
 
 ## 模型供应商
 - 用户配置多个兼容 OpenAI 接口的供应商；API key 只存环境变量的名字。
@@ -88,7 +88,7 @@
 
 评测里的文件工具和 shell 限制在用例目录里。普通 Bot 不是这样，这一轮不改。
 
-普通 shell 的工作目录是该 Bot 的工作区，环境是当前进程的环境，包括 `HOME`。已经登记的供应商密钥不在里面，除非这次调用把 `keys` 设为 true 并得到确认。命令没有命名空间。主人确认之后，`cat ~/sand-data/box-secrets.json` 会读到工作区外面的文件。`ls`、`env`、`printenv` 这类只读命令不弹确认卡，所以 `ls ~` 和 `printenv` 可以不经确认就看到家目录和其余环境变量。终端的 `--yes` 会同意所有命令。子代理在允许后台运行时也会自动同意。
+普通 shell 的工作目录是该 Bot 的工作区，环境是当前进程的环境，包括 `HOME`。已经登记的供应商密钥不在里面，除非这次调用把 `keys` 设为 true 并得到确认。命令没有命名空间。机器开关是 `allow` 时，只有删除和对外发送弹确认卡，`cat ~/sand-data/box-secrets.json`、`ls ~`、`printenv`、`python 脚本` 这类命令都不经确认直接跑，所以普通 Bot 能读到工作区外面的文件和环境变量。终端的 `--yes` 会同意所有命令。子代理在允许后台运行时也会自动同意。
 
 文件工具的相对路径从工作区算起，但绝对路径和 `../` 不拒绝，符号链接会跟着走。普通 Bot 因此也能读到工作区外面。和 shell 一样，这一轮只记下来，不改。
 
@@ -114,7 +114,7 @@
 7. **人的记忆同步**。已验证。人的身份追加在 `people/<id>/identity.jsonl`，人的记忆追加在 `people/<id>/memory/sync.jsonl`。每条记下时间、写下的 Bot、设备。设备用数据根里已有的 `node-id`，没有就记 `local`。`xbot node add` 登记的节点之间自动同步：`xbot serve` 和 `xbot node serve` 每隔 30 秒，以及本机写入或从别的节点合并进新内容之后，用该节点的令牌调用对方的 `sync` 能力，把两份日志换过来再合并。同一条以时间戳较新的为准；时间相同留本机已有的。晚于现在两分钟的时间戳合并时改到这个上限。不合格式的条目（层级、控制字符、长度）丢掉。同步来的账号留在日志里，不授予本机主人身份；主人账号、显示名和时区只由本机操作更换。`xbot person unlink [--force] <link:id>` 去掉一个已关联账号。最后一个本机 `terminal:uid:` 账号要加 `--force`，并先打出警告。记忆放进模型上下文时包在闭合的 memory 块里。不可信记忆的正文、键和设备名里的 `<`、`>` 以及全角和形近尖括号一律转义，块内不能再出现标签。从别的节点来的事实按不可信数据处理，并保留写下的人和设备。只有送达这条记录的已认证对端自己就是所声称的设备，并且该设备已在本机登记，才记成 owner-recorded，仍然是数据，不是指令。经别的节点转发的，即使设备名对得上，也仍是 untrusted。`xbot sync export` 和 `xbot sync merge` 仍可手工导出、合并同一份日志。Bot 目录不改，Bot 仍留在自己的家节点。这一跳走现有的节点调用，单次请求和响应各不超过 1 MiB；装不下时这次同步报错，不截断。
 8. **远程隧道**。已验证 Cloudflare 这条路径：`cloudflared` 的地址从 stderr 读出，进程组跟着 `serve` 结束，启动它的 goroutine 锁住操作系统线程直到关闭。公网能不能访问到这个地址，这次没有测。
 9. **多节点**。已验证。`xbot node serve` 用 bearer token 公布本机身份，`node add` 先核对 token 再写入。`shell` 不信任调用方传来的 `approved`。`ask` 把命令留在本机，十分钟过期，最多 32 条，`node pending` 列出，`node approve` 先显示命令再问 `y/N`。
-10. **机器开关**。已验证。每台机器 `allow`、`ask` 或 `off`。`off` 拒绝 shell、桌面和浏览器动作；`browser_stop` 仍可用来关掉进程。文件工具不经过这个开关。
+10. **机器开关**。已验证。每台机器 `allow`、`ask` 或 `off`。`allow` 只对删除和对外发送的 shell 命令要确认；`ask` 每条都问；`off` 拒绝 shell、桌面和浏览器动作；`browser_stop` 仍可用来关掉进程。文件工具不经过这个开关。
 11. **桌面操作**。已验证。截图、点击、输入、滚动、按键。确认卡写明坐标、原文、按键，以及滚动的方向、步数和位置。截图权限 0600。
 12. **浏览器**。已验证。CDP 驱动单独配置目录里的 Chrome。命令行拉起的进程留到 `browser stop`；`serve` 只停自己拉起的那一份，用进程组，不用 `Pdeathsig`。`session.json` 里的 pid 对不上就不杀，删掉文件，退出码 0。
 
@@ -150,14 +150,14 @@
 - **出站 HTTP**：`http_request` 只在两处要确认：注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD`。普通 `GET`/`HEAD` 且不含占位符的不问。
 - **删除**：shell 里的删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）、文件删除工具、`secret rm`，以及经工具删除 Bot、Link 或 MCP 服务器，都要确认。
 - **对外发送**：数据离开 XBot 才确认：shell 里的 `curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等，以及对外发送工具（`send_email`、`telegram_send`、`lark_send` 等）。主人自己 Bot 之间的 `message_bot`/`post_group` 不算对外发送，不弹确认卡。
-- **计划、routine、persona**：这个集中分类器不管改计划文件、routine 或 persona；这些工具自己原有的 `Confirm` 保持不动。
+- **计划、routine、persona**：这个集中分类器不管改计划文件、routine 或 persona。routine 的创建、修改、暂停、删除由 Bot 自己做主，工具自己的 `Confirm` 返回 false，不再弹确认卡；`routine_delete` 是 Bot 自己的排期，不算数据删除，不落进删除分类。persona 和 profile 的自改仍由工具自己的 `Confirm` 要主人确认。改计划文件（`write_file`/`edit_file`）的行为不变。
 - **只读不动**：`read_file`、列表、搜索、只看不发的检查、`list_secrets` 不弹确认卡。
 - **判定集中**：内核有一份集中的分类器，只看工具名和参数；在工具自己的 `Confirm` 之外再兜一层，模型改不了这个判断。
 - **决定留痕**：每个 Bot 一份 `bots/<name>/decisions.jsonl`（0600），每次决定追加一条，写允许、拒绝或过期，以及工具、摘要和时间；时间写本地时间加时区偏移（RFC3339，例如 `2026-10-16T09:30:00+08:00`），不写 UTC；摘要先过脱敏，不落真值。
 
 完成标准：
 1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明。
-2. 出站 HTTP（注入 `{{secret:}}` 或方法非 `GET`/`HEAD`）、删除（shell 删除命令、文件删除工具、secret rm、经工具删除 Bot/Link/MCP）、真正离开 XBot 的发送（shell 上传/邮件/nc/远端 scp 或 rsync、对外发送工具）都要主人确认卡；主人自己 Bot 之间的消息、只读动作，以及改计划/routine/persona 不由这个分类器判定。
+2. 出站 HTTP（注入 `{{secret:}}` 或方法非 `GET`/`HEAD`）、删除（shell 删除命令、文件删除工具、secret rm、经工具删除 Bot/Link/MCP）、真正离开 XBot 的发送（shell 上传/邮件/nc/远端 scp 或 rsync、对外发送工具）都要主人确认卡；主人自己 Bot 之间的消息、只读动作不由这个分类器判定，改计划/routine/persona 同理由工具自己的规则处理（routine 不问，persona/profile 要问）。
 3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
 4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），时间带本地时区偏移，真值脱敏。
 

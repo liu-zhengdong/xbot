@@ -390,7 +390,7 @@ func (routineCreate) Parameters() any {
 	}, []string{"name", "prompt"})
 }
 func (routineCreate) Confirm(json.RawMessage) (bool, string, error) {
-	return true, "create routine", nil
+	return false, "create routine", nil
 }
 func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -470,7 +470,7 @@ func (routineUpdate) Parameters() any {
 	}, []string{"id"})
 }
 func (routineUpdate) Confirm(json.RawMessage) (bool, string, error) {
-	return true, "update routine", nil
+	return false, "update routine", nil
 }
 func (t routineUpdate) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -517,7 +517,7 @@ func (routineDelete) Parameters() any {
 	return schema(map[string]any{"id": stringProp("routine id")}, []string{"id"})
 }
 func (routineDelete) Confirm(json.RawMessage) (bool, string, error) {
-	return true, "delete routine", nil
+	return false, "delete routine", nil
 }
 func (t routineDelete) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
