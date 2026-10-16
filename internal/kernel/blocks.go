@@ -76,7 +76,49 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Mess
 		}
 		msgs = append(msgs, e.Message)
 	}
-	return msgs
+	return groupToolResults(msgs)
+}
+
+// groupToolResults moves each tool result right after the assistant message
+// that made its call. A background branch writes its tool results after main
+// line rows (a cap notice, an owner message), and strict OpenAI-compatible
+// gateways reject any message between tool_calls and their results. Rows that
+// sat between a call and its results keep their order and follow the results.
+// Results whose call is not in msgs stay where they are.
+func groupToolResults(msgs []provider.Message) []provider.Message {
+	owner := map[string]int{}
+	for i, m := range msgs {
+		if m.Role == provider.RoleAssistant {
+			for _, tc := range m.ToolCalls {
+				if tc.ID != "" {
+					owner[tc.ID] = i
+				}
+			}
+		}
+	}
+	if len(owner) == 0 {
+		return msgs
+	}
+	results := map[int][]provider.Message{}
+	moved := make([]bool, len(msgs))
+	for i, m := range msgs {
+		if m.Role != provider.RoleTool {
+			continue
+		}
+		if at, ok := owner[m.ToolCallID]; ok && at < i {
+			results[at] = append(results[at], m)
+			moved[i] = true
+		}
+	}
+	out := make([]provider.Message, 0, len(msgs))
+	for i, m := range msgs {
+		if moved[i] {
+			continue
+		}
+		out = append(out, m)
+		out = append(out, results[i]...)
+	}
+	return out
 }
 
 func summaryMessage(b bot.SummaryBlock) provider.Message {
