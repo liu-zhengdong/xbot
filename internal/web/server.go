@@ -38,6 +38,10 @@ type Server struct {
 	DefaultLinks []string
 	NewKernel    func(*bot.Bot) (*kernel.Kernel, error)
 
+	// ForkTurns lets an owner message sent mid-turn move the running turn to the
+	// background and get its own answer at once. See docs/atlas/fork.md.
+	ForkTurns bool
+
 	owner string
 	token string
 
@@ -47,6 +51,7 @@ type Server struct {
 	mu        sync.Mutex
 	kernels   map[string]*kernel.Kernel
 	gate      map[string]*sync.Mutex
+	holds     map[string]*handleHold
 	approvals map[string]chan approvalDecision
 
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
@@ -646,7 +651,16 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	ev := link.WebEvent(s.owner, text, time.Now())
 	ev.ReplyTo = replyTo
-	lock, ok, err := b.TryLockHandle()
+	var (
+		shared bool
+		ok     bool
+		lock   *fsutil.FileLock
+	)
+	if s.ForkTurns {
+		shared, ok, err = s.acquireHandle(b)
+	} else {
+		lock, ok, err = b.TryLockHandle()
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -664,11 +678,28 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
 		return
 	}
-	defer lock.Release()
 	k, gate, err := s.kernel(b)
+	if s.ForkTurns {
+		defer s.releaseHandle(b, k)
+	} else {
+		defer lock.Release()
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	var box *inbox.Inbox
+	if shared {
+		// A turn is running here. Post the message so that turn can fork, then answer
+		// it as the foreground once the gate is free.
+		box, err = inbox.Open(b.InboxPath())
+		if err == nil {
+			err = box.Post(ev)
+		}
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -687,6 +718,18 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	gate.Lock()
 	defer gate.Unlock()
 	k.Bot = b
+	if box != nil {
+		defer func() { _ = box.Ack(ev.ID) }()
+		if absorbed, text := s.absorbedReply(b, box, ev.ID); absorbed {
+			// The running turn ended before it could fork and took the message in.
+			send("done", doneBody{Text: text})
+			return
+		}
+	}
+	before := map[string]bool{}
+	for _, bg := range k.Backgrounds() {
+		before[bg.ID] = true
+	}
 	var seg strings.Builder
 	sent := 0
 	var writeMu sync.Mutex
@@ -724,6 +767,13 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		send("error", map[string]string{"error": err.Error()})
 		return
 	}
+	for _, bg := range k.Backgrounds() {
+		if !before[bg.ID] {
+			// This turn moved to the background; its result comes back as an event.
+			send("done", doneBody{Background: bg.ID})
+			return
+		}
+	}
 	reply := seg.String()
 	if bot.SilentText(reply) {
 		reply = ""
@@ -734,6 +784,8 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 type doneBody struct {
 	Text    string `json:"text"`
 	ReplyTo int    `json:"reply_to,omitempty"`
+	// Background is the bg_ id when this request's turn moved to the background.
+	Background string `json:"background,omitempty"`
 }
 
 func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
@@ -894,6 +946,7 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		k.AllowFork = s.ForkTurns
 		s.kernels[b.Name()] = k
 	}
 	return k, s.gate[b.Name()], nil

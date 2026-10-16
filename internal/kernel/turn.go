@@ -31,7 +31,7 @@ type turn struct {
 	answered bool // a final answer is on the transcript; too late to fork
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
-	forkMu sync.Mutex
+	forkMu   sync.Mutex
 	tools    int
 	steps    int
 	lastTool string

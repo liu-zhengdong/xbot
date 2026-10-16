@@ -333,6 +333,7 @@ func cmdServe(root string, args []string) error {
 	ui := &web.Server{
 		Root:         root,
 		DefaultLinks: defaultLinks,
+		ForkTurns:    true,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
 			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
 			return k, err
