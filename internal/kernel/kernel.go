@@ -76,6 +76,7 @@ type Kernel struct {
 	turnMu      sync.Mutex
 	bgMu        sync.Mutex
 	bgs         map[string]*turn
+	finished    []BackgroundInfo
 	startOnce   sync.Once
 	execOnce    sync.Once
 	loadMu      sync.Mutex

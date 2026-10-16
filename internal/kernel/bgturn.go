@@ -24,14 +24,18 @@ const (
 	forkPoll         = 300 * time.Millisecond
 	forkTaskRunes    = 80
 	forkReplyRunes   = 2000
+	finishedCap      = 3
 )
 
-// BackgroundInfo is one running background turn, as the foreground note lists it.
+// BackgroundInfo is one background turn, as the foreground note and the web
+// stream list it. A running entry has no Status or Ended; a finished one has both.
 type BackgroundInfo struct {
-	ID       string
-	Task     string
-	Steps    int
-	LastTool string
+	ID       string    `json:"id"`
+	Task     string    `json:"task"`
+	Steps    int       `json:"steps"`
+	LastTool string    `json:"last_tool"`
+	Status   string    `json:"status,omitempty"`
+	Ended    time.Time `json:"ended,omitempty"`
 }
 
 func (k *Kernel) forkCap() int {
@@ -59,6 +63,16 @@ func (k *Kernel) Backgrounds() []BackgroundInfo {
 		t.mu.Unlock()
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// FinishedBackgrounds lists the most recently finished background turns, newest
+// first, capped at three. It returns a copy the caller may modify.
+func (k *Kernel) FinishedBackgrounds() []BackgroundInfo {
+	k.bgMu.Lock()
+	defer k.bgMu.Unlock()
+	out := make([]BackgroundInfo, len(k.finished))
+	copy(out, k.finished)
 	return out
 }
 
@@ -144,6 +158,10 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	k.writeForkMeta(t, status)
 	k.bgMu.Lock()
 	delete(k.bgs, id)
+	k.finished = append([]BackgroundInfo{{ID: id, Task: t.task, Steps: steps, Status: status, Ended: k.now()}}, k.finished...)
+	if len(k.finished) > finishedCap {
+		k.finished = k.finished[:finishedCap]
+	}
 	k.bgMu.Unlock()
 	if k.Inbox == nil {
 		return
@@ -265,8 +283,23 @@ type QueueItem struct {
 	Reason     string `json:"reason"`
 	Background string `json:"background,omitempty"`
 	Resource   string `json:"resource,omitempty"`
+	Name       string `json:"name,omitempty"`
 	Text       string `json:"text"`
 	Position   int    `json:"position"`
+}
+
+// resourceName is the short label a resource shows in the queue: the base name
+// of a file or directory, or the repository name.
+func resourceName(res string) string {
+	_, rest, ok := strings.Cut(res, ":")
+	if !ok {
+		rest = res
+	}
+	rest = strings.TrimRight(rest, "/")
+	if i := strings.LastIndexByte(rest, '/'); i >= 0 {
+		rest = rest[i+1:]
+	}
+	return rest
 }
 
 var ctrlSeq atomic.Int64
@@ -307,7 +340,7 @@ func (k *Kernel) Queue() []QueueItem {
 		t.mu.Lock()
 		for _, c := range t.ctrl {
 			if c.queued() {
-				out = append(out, QueueItem{ID: c.ID, Reason: "conflict", Background: c.Background, Resource: c.Resource, Text: c.Text})
+				out = append(out, QueueItem{ID: c.ID, Reason: "conflict", Background: c.Background, Resource: c.Resource, Name: resourceName(c.Resource), Text: c.Text})
 				if c.Kind == "queue" {
 					out[len(out)-1].Reason = "queue"
 				}

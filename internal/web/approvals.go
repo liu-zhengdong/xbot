@@ -46,7 +46,7 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 		}()
 		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
 		appendCard := func(state string) {
-			_ = b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, title, subtitle, summary, state)}})
+			_ = b.Append(bot.Entry{Branch: kernel.BranchOf(ctx), Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, title, subtitle, summary, state)}})
 		}
 		appendCard(bot.ApprovalPending)
 		payload := map[string]any{"id": id, "tool": tool, "summary": summary, "title": title, "subtitle": subtitle}

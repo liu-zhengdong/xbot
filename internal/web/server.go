@@ -1031,6 +1031,7 @@ func (s *Server) backgrounds(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"backgrounds": k.Backgrounds(),
+		"finished":    k.FinishedBackgrounds(),
 		"controls":    k.Controls(),
 		"queue":       k.Queue(),
 		"queue_cap":   kernel.QueueCap,

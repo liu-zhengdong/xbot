@@ -134,6 +134,22 @@ func (k *Kernel) ensureTurn() *turn {
 
 type turnKey struct{}
 
+// BranchOf returns the background branch id of the turn stored in ctx, or "" when
+// ctx carries no turn or the turn is still on the main line. It reads the turn's
+// branch under t.mu, so a fork that starts mid-call is seen.
+func BranchOf(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	t, ok := ctx.Value(turnKey{}).(*turn)
+	if !ok || t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.branch
+}
+
 // turnFor returns the turn that owns ctx. Tool code runs on its turn's context, so a
 // background turn's tools see their own turn even after k.turn moved to the foreground.
 func (k *Kernel) turnFor(ctx context.Context) *turn {

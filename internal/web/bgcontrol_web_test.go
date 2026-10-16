@@ -63,6 +63,7 @@ func forkedRig(t *testing.T) (*Server, *bot.Bot, func() *kernel.Kernel, *slowToo
 
 type bgView struct {
 	Backgrounds []kernel.BackgroundInfo `json:"backgrounds"`
+	Finished    []kernel.BackgroundInfo `json:"finished"`
 	Controls    []kernel.Control        `json:"controls"`
 	Queue       []kernel.QueueItem      `json:"queue"`
 }

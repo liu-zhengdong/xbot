@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -160,5 +161,64 @@ func TestForegroundNoteListsBackgrounds(t *testing.T) {
 	}
 	if !strings.Contains(note, "bg_a：整理日志，已跑 3 步，最近在用 shell") || !strings.Contains(note, "bg_b：写报告") {
 		t.Fatalf("note %q", note)
+	}
+}
+
+func TestFinishedBackgroundsCapAndOrder(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b}
+	base := time.Unix(100, 0).UTC()
+	k.Now = func() time.Time { return base }
+	for i := 1; i <= 4; i++ {
+		bg := &turn{branch: fmt.Sprintf("bg_%d", i), task: fmt.Sprintf("任务%d", i), steps: i}
+		k.finishBackground(bg, nil, nil)
+		base = base.Add(time.Minute)
+	}
+	got := k.FinishedBackgrounds()
+	if len(got) != 3 {
+		t.Fatalf("finished %d; want cap 3", len(got))
+	}
+	for i, want := range []string{"bg_4", "bg_3", "bg_2"} {
+		if got[i].ID != want || got[i].Status != "done" || got[i].Ended.IsZero() {
+			t.Fatalf("finished[%d] %+v", i, got[i])
+		}
+	}
+	if got[0].Task != "任务4" || got[0].Steps != 4 {
+		t.Fatalf("finished[0] %+v", got[0])
+	}
+	// A copy, so a caller cannot mutate the kernel's list.
+	got[0].ID = "mutated"
+	if again := k.FinishedBackgrounds(); again[0].ID != "bg_4" {
+		t.Fatalf("FinishedBackgrounds aliases internal state: %+v", again)
+	}
+}
+
+func TestResourceName(t *testing.T) {
+	cases := []struct{ res, want string }{
+		{"file:/a/b.txt", "b.txt"},
+		{"dir:/x/y", "y"},
+		{"repo:o/r", "r"},
+		{"file:/a/b/", "b"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := resourceName(c.res); got != c.want {
+			t.Errorf("resourceName(%q) = %q, want %q", c.res, got, c.want)
+		}
+	}
+}
+
+func TestQueueItemName(t *testing.T) {
+	k := &Kernel{}
+	k.bgs = map[string]*turn{"bg_x": {branch: "bg_x", ctrl: []*Control{
+		{ID: "q1", Kind: "conflict", Resource: "file:/a/b.txt", Text: "写文件", State: "pending"},
+		{ID: "q2", Kind: "queue", Text: "清理", State: "pending"},
+	}}}
+	items := k.Queue()
+	if len(items) != 2 {
+		t.Fatalf("queue %+v", items)
+	}
+	if items[0].Name != "b.txt" || items[1].Name != "" {
+		t.Fatalf("names %+v", items)
 	}
 }
