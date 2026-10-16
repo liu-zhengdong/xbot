@@ -95,7 +95,7 @@ func (k *Kernel) RecoverInterrupted() {
 		if started.IsZero() {
 			started = k.now()
 		}
-		k.writeForkMeta(&turn{branch: id, task: task, fromSeq: fromSeq[id], steps: steps, started: started}, bot.ForkInterrupted)
+		k.writeForkMeta(&turn{branch: id, task: task, fromSeq: fromSeq[id], replies: steps, started: started}, bot.ForkInterrupted)
 		if k.Inbox == nil {
 			continue
 		}

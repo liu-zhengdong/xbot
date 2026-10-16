@@ -100,6 +100,7 @@ var Table = map[string]Class{
 	"create_group": Normal,
 	"post_group":   Normal,
 	"fork_bot":     Normal,
+	"bot_status":   Readonly,
 
 	// Link catalog. install and remove ask; search and load do not.
 	"links": ExternalSend,

@@ -36,7 +36,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if m.Role == provider.RoleAssistant {
-		t.steps++
+		t.replies++
 		if len(m.ToolCalls) == 0 {
 			t.replyTo = replyTo
 			t.answered = true

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"xbot/internal/kernel"
 	"xbot/internal/node"
 	"xbot/internal/nodesync"
 )
@@ -242,6 +243,8 @@ func nodeDispatch(root string, info node.Info) func(node.Request) (string, error
 			return node.InfoText(info), nil
 		case "shell":
 			return node.RunShell(root, req.Command, req.Caller, req.Approved)
+		case "status":
+			return kernel.NodeStatusJSON(root)
 		case nodesync.Cap:
 			return nodesync.Accept(root, req.Command)
 		default:

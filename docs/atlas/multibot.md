@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-16 @ d04f79e
+verified: 2026-10-16 @ 7ff7738
 ---
 # 多 Bot
 
@@ -21,4 +21,6 @@ verified: 2026-10-16 @ d04f79e
 - **跨用户**：必须双方授权，授权范围要具体、可以撤销；来自对方的内容一律当作不可信。
 - **Bot 档案**：名字、简介、头像（没上传时是一块随名字变化的低饱和软边圆斑：接近圆的不规则轮廓，没有五官。首字符可以叠上去，16 像素的小尺寸不画）、说话风格、免打扰时段、IANA 时区。没有安静、适中、积极三档；想怎么通知，写在自己的 persona 里（[ADR 0004](../adr/0004-drop-proactivity-levels.md)）。旧档案里的 `proactivity` 还能读进来，被忽略，不进提示，也不再从 API 或网页返回。免打扰的 `HH:MM` 按 Bot 的时区计算；没设时区就用唯一 owner 的时区，再没有就用本机时区。通知在任何唤醒上都会送出；免打扰时段里先攒着，结束后合成一条。Bot 可以提议修改，主人确认后生效。可以导出模板（不含记忆）。默认人设和规则要求用主人的语言回答，先调用工具再给结果，不要先用另一门语言讲自己打算做什么。主人没接的提议不要再说一遍。
 - **定时例程**：五段 cron，最小间隔 5 分钟；或者一次性的 `at`（RFC3339）。一次性例程不受这个间隔限制，到点后自动停用。错过超过 15 秒不再补发。创建、修改、暂停、删除都由 Bot 自己做主，不弹确认卡。
+- **Bot 状态**：内核从当前这一轮直接推出状态，不调模型。`BotStatus` 有 `bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`（最近一个工具）、`since`（RFC3339，本机时区）、`backgrounds`、`last_message`（空闲时最近一条主人或助手消息，最多 80 个字符，写前过替换函数）、`node`（本机为空）、`stale_seconds`（只有缓存过的远端点掉线时才有）。`awaiting` 表示这一轮停在等主人确认的那一步。内核的每一轮还留一个最多 20 条的步骤环 `{time, tool, summary≤120 字符, state}`，`state` 是 `running`、`done`、`error` 或 `awaiting`。`GET /api/bots/status` 和 `GET /api/bots/{name}/steps` 见 [ui.md](ui.md)；Bot 之间用 `bot_status` 只读地看同一个主人的 Bot。没有活内核的 Bot 是 `idle`，`last_message` 只读 transcript 尾巴。
+- **跨用户的状态可见性（M8）**：默认只看得到别的主人的 Bot 是「空闲 / 在忙 / 稍后回复」，看不到工具名、步骤或消息。要更细，得这个主人按联系人逐条开启，开启后也只给一行状态，永远不给步骤。对方主人写下的东西一律当不可信数据看。这条在 M8 实现。
 

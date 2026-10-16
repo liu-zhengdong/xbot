@@ -59,7 +59,7 @@ func (k *Kernel) Backgrounds() []BackgroundInfo {
 	out := make([]BackgroundInfo, 0, len(k.bgs))
 	for _, t := range k.bgs {
 		t.mu.Lock()
-		out = append(out, BackgroundInfo{ID: t.branch, Task: t.task, Steps: t.steps, LastTool: t.lastTool})
+		out = append(out, BackgroundInfo{ID: t.branch, Task: t.task, Steps: t.replies, LastTool: t.lastTool})
 		t.mu.Unlock()
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -150,7 +150,7 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 // finishBackground closes a background turn: fork_end, meta, and a completion event.
 func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr error) {
 	t.mu.Lock()
-	id, steps := t.branch, t.steps
+	id, steps := t.branch, t.replies
 	t.mu.Unlock()
 	status := "done"
 	if runErr != nil {
@@ -226,7 +226,7 @@ func (k *Kernel) writeForkMeta(t *turn, status string) {
 	}
 	raw, err := json.Marshal(map[string]any{
 		"id": t.branch, "mode": "fork-turn", "status": status, "task": t.task,
-		"from": t.fromSeq, "steps": t.steps, "started": t.started, "updated": k.now(),
+		"from": t.fromSeq, "steps": t.replies, "started": t.started, "updated": k.now(),
 	})
 	if err != nil {
 		return

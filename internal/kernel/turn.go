@@ -25,7 +25,7 @@ type turn struct {
 	notedMu sync.Mutex
 	noted   []string
 
-	// Fork state. mu guards branch, finished, tools, steps, and lastTool.
+	// Fork state. mu guards branch, finished, tools, replies, steps, and lastTool.
 	// branch is set once, when the turn moves to the background.
 	mu       sync.Mutex
 	branch   string
@@ -33,16 +33,24 @@ type turn struct {
 	answered bool // a final answer is on the transcript; too late to fork
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
-	forkMu    sync.Mutex
-	tools     int
-	steps     int
-	lastTool  string
-	started   time.Time
-	fromSeq   int
-	task      string
-	forked    chan struct{}
-	runCtx    context.Context
-	cancelRun context.CancelFunc
+	forkMu   sync.Mutex
+	tools    int
+	replies  int // assistant messages recorded on this turn, for the step count
+	lastTool string
+	// Status tracking for the bot status feature: when the last tool call
+	// started and ended, whether the turn waits on the owner, and a ring of the
+	// last stepRingCap steps.
+	lastToolStart time.Time
+	lastToolEnd   time.Time
+	awaiting      bool
+	awaitingSince time.Time
+	steps         []Step
+	started       time.Time
+	fromSeq       int
+	task          string
+	forked        chan struct{}
+	runCtx        context.Context
+	cancelRun     context.CancelFunc
 	// capFork is set when the turn moved to the background for passing the foreground cap.
 	capFork bool
 	// ctrl is controls sent to a background, read between its steps. resources is

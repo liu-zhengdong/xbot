@@ -50,6 +50,9 @@ type Kernel struct {
 	Desktop func(ctx context.Context, title, body string) error
 	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
 	Exec exec.Executor
+	// Statuses, when set, supplies the bot status across every same-owner bot
+	// including remote nodes. Nil falls back to this process's own bots.
+	Statuses StatusSource
 	// AllowBackground auto-approves confirm-needed tools inside a subagent.
 	// The main chat approver is not used: a background step cannot block on a prompt.
 	AllowBackground bool
@@ -230,6 +233,14 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if k.Approve != nil {
 		approve = k.trackApprove(k.Approve)
 	}
+	if approve != nil {
+		inner := approve
+		approve = func(ctx context.Context, tool, summary string) (bool, error) {
+			k.beginAwait(t, tool)
+			defer k.endAwait(t)
+			return inner(ctx, tool, summary)
+		}
+	}
 	if k.AllowFork && (approve != nil || k.BackgroundApprove != nil) {
 		inner := approve
 		approve = func(ctx context.Context, tool, summary string) (bool, error) {
@@ -268,9 +279,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 		},
 		OnTool: func(name, summary string) {
+			k.beginStep(t, name, summary)
 			t.mu.Lock()
-			t.tools++
-			t.lastTool = name
 			forked := t.branch != ""
 			t.mu.Unlock()
 			if k.OnTool != nil && !forked {
@@ -278,6 +288,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 		},
 		OnResult: func(name, output string) {
+			k.endStep(t, name, output)
 			if k.OnResult != nil && !t.isForked() {
 				k.OnResult(name, output)
 			}

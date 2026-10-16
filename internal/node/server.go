@@ -27,8 +27,9 @@ type Info struct {
 }
 
 // Caps are the capabilities this process can run.
-// shell still consults the machine switch on each call.
-func Caps() []string { return []string{"info", "shell"} }
+// shell still consults the machine switch on each call. status returns this
+// machine's bots' idle status. nodesync is added by the caller.
+func Caps() []string { return []string{"info", "shell", "status"} }
 
 // Request is one POST /v1/call.
 type Request struct {

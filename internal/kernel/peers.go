@@ -186,6 +186,58 @@ func hasMember(members []string, name string) bool {
 	return false
 }
 
+type botStatusTool struct{ k *Kernel }
+
+func (botStatusTool) Name() string { return "bot_status" }
+func (botStatusTool) Description() string {
+	return "Read the status of same-owner bots: idle, running, or awaiting a reply, plus the last tool and message. Runs no model call. Pass bot for one bot; omit for all. steps adds up to 10 recent steps of the current turn. Another owner's bot is not found."
+}
+func (botStatusTool) Parameters() any {
+	return schema(map[string]any{
+		"bot":   stringProp("optional same-owner bot; omit for every bot"),
+		"steps": intProp("optional recent steps to include, at most 10"),
+	}, nil)
+}
+func (botStatusTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (t botStatusTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		Bot   string `json:"bot"`
+		Steps int    `json:"steps"`
+	}
+	if len(args) > 0 && string(args) != "null" {
+		if err := json.Unmarshal(args, &in); err != nil {
+			return "", err
+		}
+	}
+	name := strings.TrimSpace(in.Bot)
+	list := t.k.BotStatuses()
+	if name != "" {
+		filtered := list[:0:0]
+		for _, st := range list {
+			if st.Bot == name {
+				filtered = append(filtered, st)
+			}
+		}
+		if len(filtered) == 0 {
+			return "", fmt.Errorf("bot_status: %s is not a same-owner bot", name)
+		}
+		list = filtered
+	}
+	n := in.Steps
+	if n > 10 {
+		n = 10
+	}
+	var steps []Step
+	if n > 0 {
+		if name != "" {
+			steps = t.k.BotSteps(name, n)
+		} else if len(list) == 1 {
+			steps = t.k.BotSteps(list[0].Bot, n)
+		}
+	}
+	return botStatusText(list, steps), nil
+}
+
 type askTool struct{}
 
 func (askTool) Name() string { return "ask_user" }

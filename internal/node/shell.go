@@ -129,6 +129,7 @@ func Approve(root, id string) (string, error) {
 }
 
 // LocalCall is the /v1/call handler for this machine. It does not trust Request.Approved.
+// The status capability is added by the cmd wiring, where the data root is known.
 func LocalCall(root string, info Info) func(Request) (string, error) {
 	return func(req Request) (string, error) {
 		switch strings.TrimSpace(req.Cap) {

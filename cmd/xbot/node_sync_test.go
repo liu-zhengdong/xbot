@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"xbot/internal/bot"
+	"xbot/internal/kernel"
 	"xbot/internal/memory"
 	"xbot/internal/node"
 	"xbot/internal/nodesync"
+	"xbot/internal/provider"
 )
 
 func TestNodeDispatchSyncsWithToken(t *testing.T) {
@@ -44,5 +48,34 @@ func TestNodeDispatchSyncsWithToken(t *testing.T) {
 	err = nodesync.Once(context.Background(), a)
 	if err == nil || !strings.Contains(err.Error(), "unauthorized") {
 		t.Fatal(err)
+	}
+}
+
+func TestNodeDispatchStatusCap(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "p", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "hi"}}); err != nil {
+		t.Fatal(err)
+	}
+	info := node.Info{ID: "x", Name: "x", Caps: node.Caps()}
+	text, err := nodeDispatch(root, info)(node.Request{Cap: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bots []kernel.BotStatus
+	if err := json.Unmarshal([]byte(text), &bots); err != nil {
+		t.Fatal(err)
+	}
+	if len(bots) != 1 || bots[0].Bot != "ada" || bots[0].State != kernel.StateIdle {
+		t.Fatalf("bots %+v", bots)
+	}
+	if len(text) > 16<<10 {
+		t.Fatalf("status %d bytes", len(text))
+	}
+	if _, err := nodeDispatch(root, info)(node.Request{Cap: "nope"}); err == nil {
+		t.Fatal("unknown cap accepted")
 	}
 }

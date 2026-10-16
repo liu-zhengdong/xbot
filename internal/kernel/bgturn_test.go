@@ -139,8 +139,8 @@ func TestForegroundNoteListsBackgrounds(t *testing.T) {
 	k, _, box := forkKernel(t)
 	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "好"}}}
 	k.bgs = map[string]*turn{
-		"bg_a": {branch: "bg_a", task: "整理日志", steps: 3, lastTool: "shell"},
-		"bg_b": {branch: "bg_b", task: "写报告", steps: 1},
+		"bg_a": {branch: "bg_a", task: "整理日志", replies: 3, lastTool: "shell"},
+		"bg_b": {branch: "bg_b", task: "写报告", replies: 1},
 	}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(30, 0).UTC())
 	if err := box.Post(ev); err != nil {
@@ -170,7 +170,7 @@ func TestFinishedBackgroundsCapAndOrder(t *testing.T) {
 	base := time.Unix(100, 0).UTC()
 	k.Now = func() time.Time { return base }
 	for i := 1; i <= 4; i++ {
-		bg := &turn{branch: fmt.Sprintf("bg_%d", i), task: fmt.Sprintf("任务%d", i), steps: i}
+		bg := &turn{branch: fmt.Sprintf("bg_%d", i), task: fmt.Sprintf("任务%d", i), replies: i}
 		k.finishBackground(bg, nil, nil)
 		base = base.Add(time.Minute)
 	}

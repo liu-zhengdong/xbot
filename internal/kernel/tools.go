@@ -48,7 +48,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, askTool{})
 	}
 	if namedLink(links, link.NamePeers) {
-		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k})
+		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}, botStatusTool{k})
 	}
 	if k.isPrimary() {
 		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})

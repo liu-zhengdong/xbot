@@ -84,7 +84,7 @@ func (callTool) Parameters() any {
 		"type": "object",
 		"properties": map[string]any{
 			"name":    map[string]any{"type": "string", "description": "Registered node name"},
-			"cap":     map[string]any{"type": "string", "description": "info or shell"},
+			"cap":     map[string]any{"type": "string", "description": "info, shell, or status"},
 			"command": map[string]any{"type": "string", "description": "Shell command when cap is shell"},
 		},
 		"required":             []string{"name", "cap"},

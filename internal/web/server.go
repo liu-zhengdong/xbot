@@ -54,6 +54,10 @@ type Server struct {
 	holds     map[string]*handleHold
 	approvals map[string]chan approvalDecision
 
+	// nodeStatuses caches each registered node's last status list so a dead
+	// node never slows /api/bots/status.
+	nodeStatuses map[string]*nodeStatusCache
+
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
 	pushHTTP *http.Client
 	tabs     map[string]*tabState
@@ -87,6 +91,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/bots", s.listBots)
+	s.registerStatusAPI(mux)
 	mux.HandleFunc("POST /api/bots", s.createBot)
 	mux.HandleFunc("POST /api/bots/import", s.importTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/fork", s.forkBot)
@@ -978,6 +983,7 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 			return nil, nil, err
 		}
 		k.AllowFork = s.ForkTurns
+		k.Statuses = statusSource{s}
 		if s.ForkTurns {
 			// A background's confirmation becomes a card in the transcript for the owner.
 			k.BackgroundApprove = s.webApprove(b, k, func(string, any) {})

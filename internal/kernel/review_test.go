@@ -346,7 +346,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	}
 	for _, want := range []string{"shell", "read_file", "write_file", "edit_file", "http_request", "list_secrets",
 		"links", "telegram_send", "lark_send", "code_start", "node_call", "desktop_click", "browser_open",
-		"create_bot", "delete_bot", "mcp_fake_echo"} {
+		"create_bot", "delete_bot", "bot_status", "mcp_fake_echo"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
 		}
