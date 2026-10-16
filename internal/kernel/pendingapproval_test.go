@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -118,6 +119,45 @@ func TestPendingApprovalNoteTextIsShort(t *testing.T) {
 	}
 	if !strings.Contains(note, "3h") {
 		t.Fatalf("age missing: %q", note)
+	}
+}
+
+// TestPendingApprovalReminderOnlyOnOwnerMessages checks the reminder is tied to
+// a message from the owner. A scheduled wake must not carry it: the timer rules
+// let such a wake end in SILENT, and an unsolicited reminder would defeat that.
+func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
+	now := time.Unix(3000, 0).UTC()
+	hasNote := func(reqs []provider.Request) bool {
+		for _, r := range reqs {
+			for _, m := range r.Messages {
+				if strings.Contains(m.Content, "<pending_approvals>") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	run := func(t *testing.T, ev link.Event) bool {
+		t.Helper()
+		b := testBot(t, link.NameTerminal)
+		appendCard(t, b, "card-1", "shell", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
+		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+		k := &Kernel{
+			Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
+			Links: []link.Link{link.Terminal{}, &link.Timer{}},
+			Now:   func() time.Time { return now },
+		}
+		if err := k.Handle(context.Background(), ev); err != nil {
+			t.Fatal(err)
+		}
+		return hasNote(p.reqs)
+	}
+	if !run(t, link.TerminalEvent("u1", "hello", time.Unix(3001, 0).UTC())) {
+		t.Fatal("owner message did not carry the pending-approval reminder")
+	}
+	timerEv := link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "u1", time.Unix(3002, 0).UTC())
+	if run(t, timerEv) {
+		t.Fatal("timer wake carried the pending-approval reminder")
 	}
 }
 
