@@ -91,7 +91,7 @@ func Folders(root, owner string) (FolderView, error) {
 
 // LoadOrder reads this owner's folder names. A missing file is an empty order.
 func LoadOrder(root, owner string) ([]string, error) {
-	if !nameRe.MatchString(owner) {
+	if !ValidName(owner) {
 		return nil, fmt.Errorf("bot: invalid owner %q", owner)
 	}
 	raw, err := os.ReadFile(orderPath(root, owner))
@@ -216,7 +216,7 @@ func rewriteGroup(root, owner, from, to string) error {
 }
 
 func withOrder(root, owner string, fn func([]string) ([]string, error)) error {
-	if !nameRe.MatchString(owner) {
+	if !ValidName(owner) {
 		return fmt.Errorf("bot: invalid owner %q", owner)
 	}
 	path := orderPath(root, owner)

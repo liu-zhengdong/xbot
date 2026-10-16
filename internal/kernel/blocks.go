@@ -68,6 +68,9 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Mess
 		if code.IsCard(e.Message.Content) {
 			continue
 		}
+		if bot.IsApprovalCard(e.Message.Content) {
+			continue
+		}
 		msgs = append(msgs, e.Message)
 	}
 	return msgs
@@ -308,6 +311,9 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 	}
 	turns := make([]provider.Message, 0, len(entries))
 	for _, e := range entries {
+		if code.IsCard(e.Message.Content) || bot.IsApprovalCard(e.Message.Content) {
+			continue
+		}
 		turns = append(turns, e.Message)
 	}
 	if f, ok := k.Compactor.(focusedCompactor); ok {

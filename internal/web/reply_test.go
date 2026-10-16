@@ -142,7 +142,17 @@ type httpResult struct {
 
 func postJSON(t *testing.T, url string, cookie *http.Cookie, body string) httpResult {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	return sendJSON(t, http.MethodPost, url, cookie, body)
+}
+
+func patchJSON(t *testing.T, url string, cookie *http.Cookie, body string) httpResult {
+	t.Helper()
+	return sendJSON(t, http.MethodPatch, url, cookie, body)
+}
+
+func sendJSON(t *testing.T, method, url string, cookie *http.Cookie, body string) httpResult {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

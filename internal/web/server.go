@@ -729,7 +729,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		sendLocked("result", map[string]string{"name": name, "output": clip(output, 4000)})
 	}
 	prevApprove := k.Approve
-	k.Approve = s.webApprove(b.Name(), k, sendLocked)
+	k.Approve = s.webApprove(b, k, sendLocked)
 	err = k.Handle(r.Context(), ev)
 	k.Approve = prevApprove
 	k.OnDelta, k.OnTool, k.OnResult = nil, nil, nil
@@ -756,11 +756,15 @@ func (s *Server) approvalWait() time.Duration {
 	return 60 * time.Second
 }
 
-func (s *Server) webApprove(botName string, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
+// webApprove shows one confirmation card in the stream and persists it in the
+// transcript, first as pending and then with the resolved state, so the card
+// survives the reply ending and a page reload. A cancelled wake keeps the
+// pending card: no decision was recorded.
+func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
 	return func(ctx context.Context, tool, summary string) (bool, error) {
 		id := newApprovalID()
 		ch := make(chan approvalDecision, 1)
-		key := botName + "/" + id
+		key := b.Name() + "/" + id
 		s.mu.Lock()
 		if s.approvals == nil {
 			s.approvals = map[string]chan approvalDecision{}
@@ -772,6 +776,10 @@ func (s *Server) webApprove(botName string, k *kernel.Kernel, send func(string, 
 			delete(s.approvals, key)
 			s.mu.Unlock()
 		}()
+		appendCard := func(state string) {
+			_ = b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, summary, state)}})
+		}
+		appendCard(bot.ApprovalPending)
 		payload := map[string]any{"id": id, "tool": tool, "summary": summary}
 		names := approvalSecretNames(tool, summary)
 		if len(names) > 0 {
@@ -785,8 +793,14 @@ func (s *Server) webApprove(botName string, k *kernel.Kernel, send func(string, 
 			if d.allow && k != nil && len(names) > 0 && len(d.secrets) > 0 {
 				k.StageSecrets(linkIDFromSummary(summary), filterSecrets(names, d.secrets))
 			}
+			state := bot.ApprovalDeclined
+			if d.allow {
+				state = bot.ApprovalApproved
+			}
+			appendCard(state)
 			return d.allow, nil
 		case <-timer.C:
+			appendCard(bot.ApprovalDeclined)
 			return false, nil
 		case <-ctx.Done():
 			return false, ctx.Err()

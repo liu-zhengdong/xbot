@@ -173,12 +173,8 @@
   }
 
   function niceName(slug) {
-    const raw = String(slug || "").trim();
-    if (!raw) return "";
-    if (/[^\u0000-\u007F]/.test(raw)) return raw;
-    const parts = raw.split(/[-_\s]+/).filter(Boolean);
-    if (!parts.length) return raw;
-    return parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    // Names keep their exact case; only surrounding whitespace is trimmed.
+    return String(slug || "").trim();
   }
 
   function hashName(name) {
@@ -938,12 +934,23 @@
     let any = false;
     let lastKey = "";
     const latestCard = {};
+    const latestApproval = {};
     messages.forEach((m, i) => {
       const card = codingCardOf(m && m.content);
       if (card) latestCard[card.id] = i;
+      const appr = approvalCardOf(m && m.content);
+      if (appr) latestApproval[appr.id] = i;
     });
     messages.forEach((m, i) => {
       if (skipMessage(m)) return;
+      const appr = approvalCardOf(m.content);
+      if (appr) {
+        if (latestApproval[appr.id] !== i) return;
+        any = true;
+        lastKey = "";
+        inner.append(approvalHistoryCard(appr));
+        return;
+      }
       const card = codingCardOf(m.content);
       if (card) {
         if (latestCard[card.id] !== i) return;
@@ -1059,6 +1066,26 @@
     return { id: m[1], status: m[2], body: m[3] };
   }
 
+  function approvalCardOf(content) {
+    const m = String(content || "").match(/^<approval_card id="([^"]*)" tool="([^"]*)" state="([^"]*)">\n([\s\S]*)\n<\/approval_card>$/);
+    if (!m) return null;
+    const attr = (s) => s.replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    return { id: attr(m[1]), tool: attr(m[2]), state: attr(m[3]), summary: m[4] };
+  }
+
+  const APPROVAL_STATE_LABELS = { pending: "待确认", approved: "已允许", declined: "已拒绝" };
+
+  function approvalHistoryCard(card) {
+    const box = el("div", "approval history");
+    box.append(el("div", "k", "需要确认"));
+    box.append(el("div", "approval-name", card.tool || "tool"));
+    if (card.summary) box.append(el("div", "approval-sum", card.summary));
+    const state = card.state || "pending";
+    box.append(el("div", "approval-state " + (APPROVAL_STATE_LABELS[state] ? state : "pending"),
+      APPROVAL_STATE_LABELS[state] || state));
+    return box;
+  }
+
   function codingCard(card) {
     const row = el("div", "coding-card");
     const head = el("div", "coding-card-head");
@@ -1073,7 +1100,7 @@
   function hiddenFromPreview(m) {
     if (!m || m.role === "tool" || m.role === "system") return true;
     const raw = String(m.content || "").trim();
-    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<untrusted") || raw.startsWith("<coding_card "))) return true;
+    if (m.role === "user" && (raw.startsWith("<environment") || raw.startsWith("<memory>") || raw.startsWith("<untrusted") || raw.startsWith("<coding_card ") || raw.startsWith("<approval_card"))) return true;
     return false;
   }
 

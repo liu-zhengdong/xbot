@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,9 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(work, "approved-dir")); err != nil {
 		t.Fatal(err)
 	}
+	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalApproved}) {
+		t.Fatalf("allow states %v", states)
+	}
 
 	deny := postSSE(t, ui.URL, cookie, "NEED_APPROVAL")
 	ev = waitEvent(t, deny, "approval")
@@ -97,6 +101,83 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	}
 	if !sawDeny {
 		t.Fatal("deny did not report denied by user")
+	}
+	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalDeclined}) {
+		t.Fatalf("deny states %v", states)
+	}
+}
+
+// approvalStates reads the transcript and returns the persisted card states for
+// one approval id, oldest first. An empty slice means the card never persisted.
+func approvalStates(t *testing.T, base string, cookie *http.Cookie, id string) []string {
+	t.Helper()
+	raw := getAuth(t, base+"/api/bots/ada/transcript", cookie)
+	var payload struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	var states []string
+	for _, m := range payload.Messages {
+		card, ok := bot.ParseApprovalCard(m.Content)
+		if ok && card.ID == id {
+			if m.Role != "user" {
+				t.Fatalf("card stored with role %q", m.Role)
+			}
+			states = append(states, card.State)
+		}
+	}
+	return states
+}
+
+func TestWebApprovalTimeoutRecordsDeclined(t *testing.T) {
+	root := t.TempDir()
+	work := t.TempDir()
+	model := httptest.NewServer(mockopenai.NewMux(work))
+	defer model.Close()
+	client := &provider.Client{BaseURL: model.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: model.Client()}
+	s := &Server{Root: root, Owner: "u1", ApprovalWait: 300 * time.Millisecond}
+	tok, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+		return &kernel.Kernel{
+			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
+			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
+			WorkDir: work,
+		}, nil
+	}
+	ui := httptest.NewServer(muxOf(s))
+	defer ui.Close()
+	cookie := loginCookie(t, ui.URL, tok)
+
+	stream := postSSE(t, ui.URL, cookie, "NEED_APPROVAL")
+	ev := waitEvent(t, stream, "approval")
+	var card struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(ev.data), &card); err != nil {
+		t.Fatal(err)
+	}
+	for ev := range stream {
+		if ev.name == "error" {
+			t.Fatalf("error event %s", ev.data)
+		}
+	}
+	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalDeclined}) {
+		t.Fatalf("timeout states %v", states)
 	}
 }
 

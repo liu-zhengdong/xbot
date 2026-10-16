@@ -15,7 +15,8 @@ import (
 
 const (
 	// SeedName is the bot created when a root has none yet.
-	SeedName = "xbot"
+	// The case is part of the name: it is stored and shown exactly as written.
+	SeedName = "XBot"
 )
 
 var (
