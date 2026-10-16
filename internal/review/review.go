@@ -167,6 +167,18 @@ const mcpPrefix = "mcp_"
 // the call leaves XBot and the remote name is dynamic. A name with no entry
 // falls back to Normal so a custom or not-yet-listed tool does not change
 // behavior at runtime; Known reports it and the guard test rejects it.
+// ReadOnlyHinter is implemented by tools that carry an MCP readOnlyHint.
+type ReadOnlyHinter interface{ ReadOnlyHint() bool }
+
+// ClassOfMCP returns Readonly for an mcp_* tool whose server marked it
+// readOnlyHint, and ClassOf(tool) otherwise.
+func ClassOfMCP(tool string, readOnlyHint bool) Class {
+	if readOnlyHint && strings.HasPrefix(normalize(tool), mcpPrefix) {
+		return Readonly
+	}
+	return ClassOf(tool)
+}
+
 func ClassOf(tool string) Class {
 	name := normalize(tool)
 	if c, ok := Table[name]; ok {

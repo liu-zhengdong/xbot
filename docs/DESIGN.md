@@ -153,7 +153,7 @@
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认；`node_call` 的 `shell` 能力走同一条分类器。
 - **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；`routine_delete` 是 Bot 自己的排期，不算数据删除。
-- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知/MCP 工具确认。主人自己 Bot 之间的消息不算对外发送。
+- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。主人自己 Bot 之间的消息不算对外发送。
 - **self_edit**：`propose_persona`/`propose_profile` 总是确认；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时确认。
 - **只读不动**：`read_file`、列表、搜索、只看不发的检查、`list_secrets` 不弹确认卡。
 - **决定留痕**：每个 Bot 一份 `bots/<name>/decisions.jsonl`（0600），每次决定追加一条，写允许、拒绝或过期，以及工具、摘要和时间；时间写本地时间加时区偏移（RFC3339，例如 `2026-10-16T09:30:00+08:00`），不写 UTC；摘要先过脱敏，不落真值。
@@ -162,10 +162,10 @@
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `read_file`、`list_secrets`、`list_bots`、`list_groups`、`routine_list`、`recall`、`recall_history`、`expand`、`read_skill`、`read_subagent`、`expand_subagent`、`code_show`、`node_list`、`desktop_screenshot`、`browser_snapshot` | 从不 |
+| `readonly` | `read_file`、`list_secrets`、`list_bots`、`list_groups`、`routine_list`、`recall`、`recall_history`、`expand`、`read_skill`、`read_subagent`、`expand_subagent`、`code_show`、`node_list`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不 |
 | `normal` | `remember`、`forget`、`notify_owner`、`routine_create`、`routine_update`、`routine_delete`、`routine_pause`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`ask_user`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`write_skill`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | `delete_bot`、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
-| `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、`mcp_*`（按前缀规则），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
+| `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
 | `shell` | `shell`、`node_call` | 删除或对外发送，或 `shell` 的 `keys:true` |
 | `self_edit` | `propose_persona`、`propose_profile`、`write_file`、`edit_file` | persona/profile 自改 |

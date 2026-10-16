@@ -250,12 +250,16 @@ type mcpTool struct {
 	readOnly bool
 }
 
-func (t mcpTool) Name() string        { return t.local }
+func (t mcpTool) Name() string { return t.local }
+
+// ReadOnlyHint reports the server's readOnlyHint annotation. The kernel
+// review table classifies such MCP tools as readonly.
+func (t mcpTool) ReadOnlyHint() bool  { return t.readOnly }
 func (t mcpTool) Description() string { return t.desc }
 func (t mcpTool) Parameters() any     { return t.schema }
 
 // Confirm only builds the card summary. The kernel review path decides:
-// MCP tools are an external send because the call leaves XBot.
+// MCP tools are an external send unless the server marks them readOnlyHint.
 func (t mcpTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "mcp " + t.mcp.Spec.Name + " " + t.remote, nil
 }

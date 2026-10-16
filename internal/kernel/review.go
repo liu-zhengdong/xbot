@@ -57,6 +57,9 @@ func (k *Kernel) reviewCall(tool tools.Tool, args json.RawMessage, summary strin
 		// is this bot's own persona or profile file.
 		return k.selfEditPath(tool, args), summary, nil
 	}
+	if h, ok := tool.(review.ReadOnlyHinter); ok && review.ClassOfMCP(name, h.ReadOnlyHint()) == review.Readonly {
+		return false, summary, nil
+	}
 	return review.NeedsOwner(name, args), summary, nil
 }
 
