@@ -58,6 +58,13 @@ type Options struct {
 	// OneRound returns after a single model call and that call's tool results.
 	// The step limit error is not used. The caller decides what happens next.
 	OneRound bool
+	// OnCap runs when the run ends because it used all MaxSteps, before the
+	// closing summary is asked for. A nil OnCap leaves the reason invisible to
+	// the caller. The run returns nil error either way.
+	OnCap func()
+	// OnStep runs once per model call, before the request goes out. A caller
+	// that caps a task across several runs counts steps with it.
+	OnStep func()
 }
 
 // Run calls the model until it stops requesting tools or the step limit is hit.
@@ -91,6 +98,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			if err != nil {
 				return produced, err
 			}
+		}
+		if opt.OnStep != nil {
+			opt.OnStep()
 		}
 		msg, err := p.Chat(ctx, provider.Request{Messages: convo, Tools: defs}, opt.OnDelta)
 		if err != nil {
@@ -130,6 +140,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 				}
 			}
 		}
+	}
+	if opt.OnCap != nil {
+		opt.OnCap()
 	}
 	return stopSummary(ctx, p, convo, produced, opt)
 }

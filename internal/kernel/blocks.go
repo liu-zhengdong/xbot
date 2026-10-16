@@ -76,7 +76,7 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Mess
 		}
 		msgs = append(msgs, e.Message)
 	}
-	return groupToolResults(msgs)
+	return strayToolResults(groupToolResults(msgs))
 }
 
 // groupToolResults moves each tool result right after the assistant message
@@ -86,7 +86,12 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Mess
 // sat between a call and its results keep their order and follow the results.
 // Results whose call is not in msgs stay where they are.
 func groupToolResults(msgs []provider.Message) []provider.Message {
+	// owner maps a call id to the nearest assistant row before the current
+	// position that made it. Scanning forward keeps that true even when an id
+	// repeats across turns (a gateway that omits ids gets local ones).
 	owner := map[string]int{}
+	results := map[int][]provider.Message{}
+	moved := make([]bool, len(msgs))
 	for i, m := range msgs {
 		if m.Role == provider.RoleAssistant {
 			for _, tc := range m.ToolCalls {
@@ -94,21 +99,19 @@ func groupToolResults(msgs []provider.Message) []provider.Message {
 					owner[tc.ID] = i
 				}
 			}
+			continue
 		}
-	}
-	if len(owner) == 0 {
-		return msgs
-	}
-	results := map[int][]provider.Message{}
-	moved := make([]bool, len(msgs))
-	for i, m := range msgs {
 		if m.Role != provider.RoleTool {
 			continue
 		}
-		if at, ok := owner[m.ToolCallID]; ok && at < i {
+		if at, ok := owner[m.ToolCallID]; ok {
 			results[at] = append(results[at], m)
 			moved[i] = true
+			delete(owner, m.ToolCallID)
 		}
+	}
+	if len(results) == 0 {
+		return msgs
 	}
 	out := make([]provider.Message, 0, len(msgs))
 	for i, m := range msgs {
@@ -117,6 +120,57 @@ func groupToolResults(msgs []provider.Message) []provider.Message {
 		}
 		out = append(out, m)
 		out = append(out, results[i]...)
+	}
+	return out
+}
+
+// strayToolResults fills in a short result for every tool call whose result is
+// missing from the projected history, so no assistant message carries an
+// unanswered tool_calls. A background branch writes its tool calls into main
+// line rows; when the turn the projection starts from has not answered them
+// yet, a strict OpenAI-compatible gateway rejects the whole request. The real
+// result still lands later, in its own row.
+func strayToolResults(msgs []provider.Message) []provider.Message {
+	answered := map[string]bool{}
+	for _, m := range msgs {
+		if m.Role == provider.RoleTool && m.ToolCallID != "" {
+			answered[m.ToolCallID] = true
+		}
+	}
+	need := false
+	for _, m := range msgs {
+		if m.Role != provider.RoleAssistant {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if !answered[tc.ID] {
+				need = true
+				break
+			}
+		}
+		if need {
+			break
+		}
+	}
+	if !need {
+		return msgs
+	}
+	out := make([]provider.Message, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m)
+		if m.Role != provider.RoleAssistant {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if answered[tc.ID] {
+				continue
+			}
+			out = append(out, provider.Message{
+				Role:       provider.RoleTool,
+				ToolCallID: tc.ID,
+				Content:    "(" + tc.Function.Name + ": no result in this context yet)",
+			})
+		}
 	}
 	return out
 }

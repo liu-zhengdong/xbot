@@ -83,6 +83,13 @@ type ProfileUpdate struct {
 	QuietStart  *string
 	QuietEnd    *string
 	Timezone    *string
+	// Role picks the working defaults (chat or dev). MaxSteps,
+	// ForegroundMaxTools, and ForegroundMaxTime override them: zero uses the
+	// role default, a negative value turns that limit off.
+	Role               *string
+	MaxSteps           *int
+	ForegroundMaxTools *int
+	ForegroundMaxTime  *int
 }
 
 // ApplyProfile validates and stores a partial profile update.
@@ -152,8 +159,42 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		}
 		cfg.Timezone = v
 	}
+	if u.Role != nil {
+		v, err := oneOf(flat(*u.Role), "", RoleChat, RoleDev)
+		if err != nil {
+			return fmt.Errorf("bot: role: %w", err)
+		}
+		cfg.Role = v
+	}
+	if u.MaxSteps != nil {
+		if err := checkRange("max_steps", *u.MaxSteps, 1, 64); err != nil {
+			return err
+		}
+		cfg.MaxSteps = *u.MaxSteps
+	}
+	if u.ForegroundMaxTools != nil {
+		if err := checkRange("foreground_max_tools", *u.ForegroundMaxTools, 0, 64); err != nil {
+			return err
+		}
+		cfg.ForegroundMaxTools = *u.ForegroundMaxTools
+	}
+	if u.ForegroundMaxTime != nil {
+		if err := checkRange("foreground_max_time", *u.ForegroundMaxTime, 0, 600); err != nil {
+			return err
+		}
+		cfg.ForegroundMaxTime = *u.ForegroundMaxTime
+	}
 	b.cfg = cfg
 	return b.SaveConfig()
+}
+
+// checkRange validates one working-limit override. A value of 0 means "use the
+// role default", so the range starts there; a passed 0 is stored as 0.
+func checkRange(name string, v, lo, hi int) error {
+	if v < lo || v > hi {
+		return fmt.Errorf("bot: %s: must be between %d and %d", name, lo, hi)
+	}
+	return nil
 }
 
 // StyleCopy returns the speaking style, or a zero style when unset.

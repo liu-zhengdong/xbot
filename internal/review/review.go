@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 // Class is the one category a tool belongs to. The kernel review path reads
@@ -675,14 +676,74 @@ func TouchesProtected(cmdOrPath, cwd string, protected []string) bool {
 	return wordReaches(cmdOrPath, cwd, guards)
 }
 
-// rawProtected is the cheap fallback for a command/path that cannot be split
-// or resolved: keys/vault, /vault/, a trailing /vault, or secrets.enc.
+// rawProtected is the cheap fallback for a shell fragment that cannot be
+// split or resolved. It works on path segments, not substrings, so a source
+// file like internal/vault/proxy.go is not a hit: a "vault" segment only
+// counts when the path looks like vault data, not source. A "vault" segment
+// counts when it is the last segment (the vault directory itself), when it
+// directly follows a "keys" segment (the shared key store), or when what
+// follows inside it is not source code. A secrets.enc file name counts
+// anywhere.
 func rawProtected(s string) bool {
 	low := strings.ToLower(s)
-	return strings.Contains(low, "keys/vault") ||
-		strings.Contains(low, "/vault/") ||
-		strings.HasSuffix(low, "/vault") ||
-		strings.Contains(low, "secrets.enc")
+	if !strings.Contains(low, "vault") && !strings.Contains(low, "secrets.enc") {
+		return false
+	}
+	words := shellWords(s)
+	if len(words) == 0 {
+		if i := strings.IndexFunc(s, unicode.IsSpace); i < 0 {
+			words = []string{low}
+		} else {
+			words = []string{low[:i]}
+		}
+	}
+	for _, w := range words {
+		segs := strings.FieldsFunc(strings.ToLower(trimWord(w)), func(r rune) bool {
+			return r == '/' || r == '\\'
+		})
+		for i, seg := range segs {
+			if seg == "secrets.enc" {
+				return true
+			}
+			if seg != "vault" {
+				continue
+			}
+			if i == len(segs)-1 {
+				return true
+			}
+			if i > 0 && segs[i-1] == "keys" {
+				return true
+			}
+			// internal/vault/proxy.go and friends are the package's own
+			// source, not stored secrets; a vault directory holds data.
+			if !sourceSegment(segs[i+1]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sourceSegment reports whether a path segment looks like a source or doc file
+// rather than vault data, so a "vault" package path is not mistaken for the
+// vault directory.
+func sourceSegment(seg string) bool {
+	switch {
+	// Go package wildcards (./internal/vault/..., ./pkg/vault) name code.
+	case seg == "..." || strings.HasPrefix(seg, "..."):
+		return true
+	case strings.HasSuffix(seg, ".go"):
+		return true
+	case strings.HasSuffix(seg, ".md"), strings.HasSuffix(seg, ".rst"):
+		return true
+	case strings.HasSuffix(seg, ".txt"), strings.HasSuffix(seg, ".json"):
+		return true
+	case strings.HasSuffix(seg, ".mod"), strings.HasSuffix(seg, ".sum"):
+		return true
+	case strings.HasSuffix(seg, ".yaml"), strings.HasSuffix(seg, ".yml"):
+		return true
+	}
+	return false
 }
 
 // protectedGuard is one protected path in its resolved and cleaned form.

@@ -45,14 +45,17 @@ type Server struct {
 	owner string
 	token string
 
-	// ApprovalWait is how long an approval card waits. Zero uses 60 seconds.
+	// ApprovalWait is how long an approval card waits. Zero uses 24 hours.
 	ApprovalWait time.Duration
 
 	mu        sync.Mutex
 	kernels   map[string]*kernel.Kernel
 	gate      map[string]*sync.Mutex
 	holds     map[string]*handleHold
-	approvals map[string]chan approvalDecision
+	approvals map[string]*pendingApproval
+	// expired keeps cards that timed out with no decision, so a late answer is
+	// told 410 rather than 404. Entries age out.
+	expired map[string]*pendingApproval
 
 	// nodeStatuses caches each registered node's last status list so a dead
 	// node never slows /api/bots/status.

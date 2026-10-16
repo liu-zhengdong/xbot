@@ -51,13 +51,23 @@ type Config struct {
 	Avatar       string   `json:"avatar,omitempty"`
 	Style        *Style   `json:"style,omitempty"`
 	// Proactivity is ignored. Old config files may still contain quiet, normal, or active.
-	Proactivity    string    `json:"proactivity,omitempty"`
-	QuietStart     string    `json:"quiet_start,omitempty"`
-	QuietEnd       string    `json:"quiet_end,omitempty"`
-	Timezone       string    `json:"timezone,omitempty"`
-	Group          string    `json:"group,omitempty"`
-	DisabledSkills []string  `json:"disabled_skills,omitempty"`
-	Created        time.Time `json:"created"`
+	Proactivity string `json:"proactivity,omitempty"`
+	QuietStart  string `json:"quiet_start,omitempty"`
+	QuietEnd    string `json:"quiet_end,omitempty"`
+	Timezone    string `json:"timezone,omitempty"`
+	// Role picks the working defaults: "chat" (default) for interactive use and
+	// "dev" for long engineering runs. It sets the step cap and the foreground
+	// thresholds unless those are set explicitly.
+	Role string `json:"role,omitempty"`
+	// MaxSteps overrides the role's step cap. Zero uses the role default.
+	MaxSteps int `json:"max_steps,omitempty"`
+	// ForegroundMaxTools and ForegroundMaxTime override the role's foreground
+	// thresholds. Zero uses the role default; negative turns a limit off.
+	ForegroundMaxTools int       `json:"foreground_max_tools,omitempty"`
+	ForegroundMaxTime  int       `json:"foreground_max_time,omitempty"` // seconds
+	Group              string    `json:"group,omitempty"`
+	DisabledSkills     []string  `json:"disabled_skills,omitempty"`
+	Created            time.Time `json:"created"`
 }
 
 // SummaryBlock covers an inclusive sequence range of the append-only transcript.

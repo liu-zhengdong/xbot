@@ -34,7 +34,7 @@ func parseChat(args []string) (chatOpts, error) {
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	yes := fs.Bool("yes", false, "approve shell commands and file writes without prompting")
-	steps := fs.Int("max-steps", 8, "maximum model calls per wake")
+	steps := fs.Int("max-steps", 0, "maximum model calls per wake (0 uses the bot's role default)")
 	runnerURL := fs.String("runner", "", "remote executor base URL")
 	runnerToken := fs.String("runner-token", "", "remote executor token")
 	if err := fs.Parse(ordered); err != nil {

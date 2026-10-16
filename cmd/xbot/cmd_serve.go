@@ -40,6 +40,17 @@ import (
 	"xbot/internal/work"
 )
 
+// serveSteps is what the serve path passes to openKernel: 0 lets the bot role
+// decide the step cap (chat 8, dev 24) instead of pinning one here.
+const serveSteps = 0
+
+// newServeKernel opens a kernel the way the serve path does, so every caller
+// there shares one definition of what a served bot gets.
+func newServeKernel(root string, b *bot.Bot) (*kernel.Kernel, error) {
+	k, _, err := openKernel(root, b, serveSteps, nil, nil, false, runnerSpec{})
+	return k, err
+}
+
 func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer, allowBackground bool, runner runnerSpec) (*kernel.Kernel, person.Person, error) {
 	if !b.Grants(link.NameTerminal) && pr != nil {
 		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
@@ -105,6 +116,13 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if local, ok := store.(*vault.Store); ok {
 		vault.Register(local)
 	}
+	// The bot's role picks the working defaults. An explicit --max-steps wins;
+	// otherwise the role (chat 8, dev 24 steps) sets the cap, and the role's
+	// foreground thresholds apply too.
+	work := b.Config().Working()
+	if steps <= 0 {
+		steps = work.MaxSteps
+	}
 	k := &kernel.Kernel{
 		Bot:             b,
 		Provider:        client,
@@ -118,11 +136,16 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		MaxSteps:        steps,
 		Budget:          budget,
 		AllowBackground: allowBackground,
-		WorkDir:         workDir,
-		SharedDir:       sharedDir,
-		SkillsDir:       skill.Dir(root),
-		Vault:           store,
-		Redact:          store.Redact,
+		// Foreground limits come from the role unless the bot overrode them.
+		ForegroundMaxTools: work.ForegroundMaxTools,
+		ForegroundMaxTime:  work.ForegroundMaxTime,
+		// How long one background task may keep going across its segments.
+		BackgroundMaxTime: work.BackgroundMaxTime,
+		WorkDir:           workDir,
+		SharedDir:         sharedDir,
+		SkillsDir:         skill.Dir(root),
+		Vault:             store,
+		Redact:            store.Redact,
 	}
 	if pr != nil {
 		k.OnDelta = pr.Delta
@@ -264,7 +287,7 @@ func startEmitters(ctx context.Context, root string, seen map[string]bool) {
 		if err != nil || len(servers) == 0 {
 			continue
 		}
-		k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
+		k, err := newServeKernel(root, b)
 		if err != nil {
 			continue
 		}
@@ -367,13 +390,20 @@ func cmdServe(root string, args []string) error {
 		DefaultLinks: defaultLinks,
 		ForkTurns:    true,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
-			return k, err
+			return newServeKernel(root, b)
 		},
 	}
 	token, _, err := ui.EnsureToken()
 	if err != nil {
 		return err
+	}
+	// Cards raised before a restart only lived in memory, so nobody can decide
+	// them any more: record them as no-decision rather than leaving a card that
+	// looks pending and can never be answered.
+	if closed, cerr := ui.ResolveRestartOrphans(); cerr != nil {
+		fmt.Fprintf(os.Stderr, "xbot: approval sweep: %v\n", cerr)
+	} else if note := web.DescribeOrphans(closed); note != "" {
+		fmt.Fprintln(os.Stderr, "xbot:", note)
 	}
 	if err := ensureSeed(root); err != nil {
 		return err
@@ -479,8 +509,7 @@ func cmdServe(root string, args []string) error {
 		}
 		startEmitters(ctx, root, seen)
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
-			return k, err
+			return newServeKernel(root, b)
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "xbot:", err)

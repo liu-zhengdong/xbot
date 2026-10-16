@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -40,12 +41,41 @@ func Load(root, provider, model string) (string, error) {
 	return clip(string(raw)), nil
 }
 
-// Rel is models/<provider>/<model>.md. The two names cannot be paths.
+// Rel is models/<provider>/<model>.md. A model id may carry slashes, as routed
+// ids like group/auto-deepseek-v4-1-flash do; each segment is then a directory
+// level under the provider. Neither name may escape the models tree.
 func Rel(provider, model string) (string, error) {
-	if !safeName(provider) || !safeName(model) {
-		return "", fmt.Errorf("prompt: bad model id %q/%q", provider, model)
+	if !safeName(provider) {
+		return "", fmt.Errorf("prompt: bad provider %q", provider)
 	}
-	return filepath.Join("models", provider, model+".md"), nil
+	segs, err := modelPath(model)
+	if err != nil {
+		return "", err
+	}
+	parts := append([]string{"models", provider}, segs...)
+	last := len(parts) - 1
+	parts[last] += ".md"
+	return path.Join(parts...), nil
+}
+
+// modelPath splits a model id into safe path segments. A slash only separates
+// segments; empty, "." and ".." segments, backslashes and any character outside
+// the safe set are refused, so no model id can point outside models/.
+func modelPath(model string) ([]string, error) {
+	bad := func() ([]string, error) {
+		return nil, fmt.Errorf("prompt: bad model id %q", model)
+	}
+	if model == "" {
+		return bad()
+	}
+	var out []string
+	for _, seg := range strings.Split(model, "/") {
+		if !safeName(seg) {
+			return bad()
+		}
+		out = append(out, seg)
+	}
+	return out, nil
 }
 
 func safeName(s string) bool {
