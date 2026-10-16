@@ -15,8 +15,14 @@ func TestMissingOverlayIsEmpty(t *testing.T) {
 	if _, err := Load(t.TempDir(), "..", "x"); err == nil {
 		t.Fatal("path traversal")
 	}
-	if _, err := Rel("deepseek", "chat/extra"); err == nil {
-		t.Fatal("slash in model")
+	// A routed model id carries slashes and maps to a subdirectory, not to a
+	// refusal.
+	rel, err := Rel("deepseek", "group/auto-deepseek-v4-1-flash")
+	if err != nil || rel != "models/deepseek/group/auto-deepseek-v4-1-flash.md" {
+		t.Fatalf("routed model %q %v", rel, err)
+	}
+	if _, err := Load(t.TempDir(), "deepseek", "group/missing"); err != nil {
+		t.Fatalf("missing routed overlay: %v", err)
 	}
 }
 
