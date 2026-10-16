@@ -212,6 +212,14 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
+	// Cards still waiting for the owner ride along with the history, so the
+	// model can remind the owner about them in passing.
+	if note := k.pendingHistory(); len(note) > 0 {
+		assembled = append(assembled, note...)
+		for _, m := range note {
+			usage.Env += compact.EstimateMessage(m)
+		}
+	}
 	st.Usage = usage
 	if err := k.Bot.SaveState(st); err != nil {
 		return err

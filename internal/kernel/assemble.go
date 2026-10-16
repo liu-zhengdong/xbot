@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
@@ -70,6 +71,51 @@ type Input struct {
 	Installed string
 	// Overlay is optional text for this provider/model. Empty leaves the prefix unchanged.
 	Overlay string
+	// Pending lists the owner decisions still waiting on the cards shown so
+	// far. It is appended after the raw history so the model can remind the
+	// owner about them once.
+	Pending []PendingApproval
+}
+
+// PendingApproval is one confirmation card still waiting for the owner.
+type PendingApproval struct {
+	Tool    string
+	Summary string
+	Age     time.Duration
+}
+
+// pendingNote renders Pending as one short note, or "" when none is open.
+func pendingNote(list []PendingApproval) string {
+	if len(list) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("<pending_approvals>\n")
+	b.WriteString("These confirmation cards are still waiting for the owner. Mention them briefly at the start of your reply, then continue with the owner's request. Do not repeat this reminder on later turns unless a card is still open.\n")
+	for _, p := range list {
+		fmt.Fprintf(&b, "- %s: %s (waiting %s)\n", p.Tool, clipSummary(p.Summary, 120), roundAge(p.Age))
+	}
+	b.WriteString("</pending_approvals>")
+	return b.String()
+}
+
+// clipSummary shortens one card summary to a readable preview.
+func clipSummary(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	out, _ := clip.Bytes(s, max)
+	return out
+}
+
+// roundAge keeps the age readable: seconds under a minute, then minutes, then hours.
+func roundAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	}
 }
 
 // Assemble builds model messages in order: stable prefix, memory, summary blocks, uncovered raw messages.
@@ -95,6 +141,11 @@ func account(in Input, hist []provider.Message) ([]provider.Message, bot.Section
 		} else {
 			usage.History += est
 		}
+	}
+	if note := pendingNote(in.Pending); note != "" {
+		nm := provider.Message{Role: provider.RoleUser, Content: note}
+		msgs = append(msgs, nm)
+		usage.Env += compact.EstimateMessage(nm)
 	}
 	return msgs, usage
 }
