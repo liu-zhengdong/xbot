@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -392,7 +395,7 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		buf := tools[idx]
 		id := buf.id
 		if id == "" {
-			id = fmt.Sprintf("call_local_%d", i+1)
+			id = fmt.Sprintf("call_local_%s_%d", localCallNonce(), i+1)
 		}
 		typ := buf.typ
 		if typ == "" {
@@ -408,4 +411,14 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		})
 	}
 	return msg, nil
+}
+
+// localCallNonce makes a fallback tool call id unique across turns. A fixed
+// "call_local_1" repeated in later turns let a result pair with the wrong call.
+func localCallNonce() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
 }
