@@ -152,3 +152,23 @@ func placeholder(tc provider.ToolCall) bot.Entry {
 		},
 	}
 }
+
+// callBranches maps each tool call id in span to the branch of the assistant row that made it.
+// span starts at seq first. A repaired result must land on the same branch as its call.
+func callBranches(span []bot.Entry, first int) map[string]string {
+	seqs := make([]bot.SeqEntry, len(span))
+	for i, e := range span {
+		seqs[i] = bot.SeqEntry{Seq: first + i, Entry: e}
+	}
+	rows, _ := bot.Replay(seqs)
+	out := map[string]string{}
+	for _, r := range rows {
+		if r.Entry.Message.Role != provider.RoleAssistant {
+			continue
+		}
+		for _, tc := range r.Entry.Message.ToolCalls {
+			out[tc.ID] = r.Branch
+		}
+	}
+	return out
+}

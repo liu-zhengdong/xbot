@@ -441,8 +441,11 @@ func (k *Kernel) repairTail() error {
 	if err != nil {
 		return err
 	}
+	branches := callBranches(span, minSeq)
 	for _, tc := range missing {
-		if err := k.Bot.Append(placeholder(tc)); err != nil {
+		e := placeholder(tc)
+		e.Branch = branches[tc.ID]
+		if err := k.Bot.Append(e); err != nil {
 			return err
 		}
 	}
