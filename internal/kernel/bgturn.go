@@ -142,6 +142,7 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 	}
 	k.bgs[id] = t
 	t.capFork = capped
+	t.segments = 1
 	k.writeForkMeta(t, "running")
 	close(t.forked)
 	return true
@@ -151,6 +152,7 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr error) {
 	t.mu.Lock()
 	id, steps := t.branch, t.replies
+	segments, stopReason := t.segments, t.stopReason
 	t.mu.Unlock()
 	status := "done"
 	if runErr != nil {
@@ -172,9 +174,12 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	if k.Inbox == nil {
 		return
 	}
-	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 步。任务：%s", id, status, steps, t.task)
+	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 段 %d 步。任务：%s", id, status, segments, steps, t.task)
 	if runErr != nil {
 		text += "\n错误：" + clipRunes(runErr.Error(), 300)
+	}
+	if stopReason != "" {
+		text += "\n卡在这里：" + stopReason + "。要我接着做，回一句「继续」就行。"
 	}
 	t.mu.Lock()
 	var unread []string

@@ -80,6 +80,12 @@ type Kernel struct {
 	// background if a slot is free. Negative turns a limit off.
 	ForegroundMaxTools int
 	ForegroundMaxTime  time.Duration
+	// MaxSegments (default 4) caps how many segments one background task may
+	// run, the first one included, when a segment ends at its step cap with the
+	// task unfinished. BackgroundMaxTime (default 20m) caps the wall-clock time
+	// all those segments may spend together; a negative value turns it off.
+	MaxSegments       int
+	BackgroundMaxTime time.Duration
 
 	turnMu      sync.Mutex
 	bgMu        sync.Mutex
@@ -306,6 +312,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 		},
 		Redact: k.redactor(),
+		// Hitting the step cap is not an error: it just means this segment is out
+		// of room, which lets a background start the next one.
+		OnCap: func() {
+			t.mu.Lock()
+			t.capStopped = true
+			t.mu.Unlock()
+		},
+		OnStep: func() {
+			t.mu.Lock()
+			t.stepsUsed++
+			t.mu.Unlock()
+		},
 		OnMessage: func(m provider.Message) {
 			if appendErr != nil {
 				return
@@ -346,20 +364,41 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 				err = appendErr
 			}
 			// A queued control that arrived after the last step starts another run, so a
-			// background works through its queue before it ends.
+			// background works through its queue before it ends. A background whose
+			// segment ended at the step cap auto-continues for the same reason, until
+			// its segment, step, or wall-clock budget runs out. The budget is decided
+			// before any control is consumed, so a refused segment leaves the controls
+			// pending and finishBackground reports them as unread.
 			t.mu.Lock()
 			bg = t.branch != ""
 			var pend []provider.Message
+			var reason string
+			var more bool
 			if err == nil && bg {
-				pend = t.takeCtrlLocked()
+				more, reason = k.continueSegmentLocked(t, len(t.pendingCtrlLocked()) > 0)
+				if more {
+					pend = t.takeCtrlLocked()
+				}
 			}
-			if err != nil || !bg || len(pend) == 0 {
+			if err != nil || !bg || (len(pend) == 0 && !more) {
 				t.finished = true
 				t.mu.Unlock()
+				k.markSegmentStop(t, reason)
 				break
 			}
+			// Another run starts fresh: its own end decides whether the task is done.
+			atCap := t.capStopped
+			t.capStopped = false
 			t.mu.Unlock()
 			convo := append(append([]provider.Message(nil), assembled...), produced...)
+			if more && atCap {
+				n := provider.Message{Role: provider.RoleUser, Content: continueNote}
+				if rerr := k.recordTurn(t, n); rerr != nil && appendErr == nil {
+					appendErr = rerr
+				}
+				convo = append(convo, n)
+				produced = append(produced, n)
+			}
 			for _, m := range pend {
 				if rerr := k.recordTurn(t, m); rerr != nil && appendErr == nil {
 					appendErr = rerr
@@ -367,8 +406,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 				convo = append(convo, m)
 				produced = append(produced, m)
 			}
-			more, rerr := agent.Run(runCtx, rp, list, convo, opts)
-			produced = append(produced, more...)
+			more2, rerr := agent.Run(runCtx, rp, list, convo, opts)
+			produced = append(produced, more2...)
 			err = rerr
 		}
 		if bg {
