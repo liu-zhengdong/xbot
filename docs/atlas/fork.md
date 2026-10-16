@@ -68,6 +68,8 @@ verified: 2026-10-16 @ d04f79e
 ## 7. 取消与崩溃
 - **取消**：`cancel bg_7` 取消后台那一轮的 context，正在跑的工具按现有方式收尾；写 `fork_end{status:"cancelled"}`，并投完成事件。`interrupt` 和子代理一样，停在当前步，等新的指示。
 - **前台的取消**（主人在界面点停止）只停前台，不碰后台。
+- **按轮状态**：已挪进 `internal/kernel/turn.go` 的 `turn` 结构，`Kernel.turn` 指向当前一轮（F2 步骤 A）。
+- **崩溃修复的占位结果**写在它所回答的那次调用所属的分支上（`callBranches`）。
 - **锁**：`handle.lock` 由同一个进程拿着，直到两个分支都结束。实现上要把 `Kernel` 上按轮的状态（`turnEvent`、`OnDelta`/`OnTool`/`OnResult`、`ReplySeq`、`Approve`）挪进一个 turn 结构，两轮各一份；网页的 `gate` 改成每个分支一个，不再整台 Kernel 一把。
 - **谁来分叉**：拿着锁的那个进程。网页请求如果就在这个进程里，直接开前台的一轮，用 SSE 流式回给主人；如果锁在别的进程（比如终端），网页照旧把事件投进收件箱，持锁进程立刻（看 `inbox.Wait()`，不是等这一步跑完）分叉，前台的回复通过刷新 transcript 补到网页上。
 - **崩溃恢复**：重启打开 transcript 时，找到有 `fork` 没有 `fork_end` 的分支，补写 `fork_end{status:"interrupted"}`，把 `meta.json` 标成 interrupted，并投一条完成事件：「后台 bg_7 因进程重启中断，做到第 N 步」。第一版不自动续跑，由前台下一轮决定要不要重做。半行照现有规则截掉。
