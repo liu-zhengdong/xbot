@@ -122,6 +122,11 @@ func (s *Server) postGroup(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
+	if !s.BeginTurn() {
+		writeErr(w, http.StatusServiceUnavailable, "restarting")
+		return
+	}
+	defer s.EndTurn()
 	var in struct {
 		Text string `json:"text"`
 	}

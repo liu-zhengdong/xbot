@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"xbot/internal/bot"
@@ -318,12 +320,14 @@ func cmdServe(root string, args []string) error {
 	every := fs.Duration("interval", 15*time.Second, "how often to handle inboxes")
 	httpAddr := fs.String("http", "127.0.0.1:8787", "webhook listen address")
 	tunnelMode := fs.String("tunnel", "", "cloudflare or tailscale")
+	noAutoUpgrade := fs.Bool("no-auto-upgrade", false, "do not check for a newer xbot release")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale]")
+		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale] [--no-auto-upgrade]")
 	}
+	autoUpgrade := !*noAutoUpgrade && os.Getenv("XBOT_AUTO_UPGRADE") != "0"
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
 	resolved, err := tunnel.Resolve(ctx, *tunnelMode, *httpAddr, os.Getenv("XBOT_TAILSCALE"))
@@ -351,6 +355,38 @@ func cmdServe(root string, args []string) error {
 	ln, err := net.Listen("tcp", *httpAddr)
 	if err != nil {
 		return err
+	}
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
+	argv := os.Args
+	env := os.Environ()
+	// restart asks the serve loop to re-exec. A graceful upgrade and SIGHUP both
+	// funnel through it so the listener stays up until the last moment.
+	restartCh := make(chan string, 1)
+	restart := func(reason string) {
+		select {
+		case restartCh <- reason:
+		default:
+		}
+	}
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-hup:
+			restart("SIGHUP")
+		}
+	}()
+	if autoUpgrade {
+		go autoUpgradeLoop(ctx, restart)
 	}
 	mux := http.NewServeMux()
 	hub.Register(mux)
@@ -404,7 +440,17 @@ func cmdServe(root string, args []string) error {
 	defer browser.TieLaunch(false)
 	defer func() { _ = browser.ReleaseTied(root) }()
 	seen := map[string]bool{}
+	// A cloudflare tunnel child should not outlive the process we re-exec into.
+	var cleanup func()
+	if cloud != nil {
+		cleanup = func() { cloud.Close() }
+	}
 	for {
+		select {
+		case reason := <-restartCh:
+			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
+		default:
+		}
 		startEmitters(ctx, root, seen)
 		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
 			k, _, err := openKernel(root, b, 8, nil, nil, false, runnerSpec{})
@@ -416,6 +462,8 @@ func cmdServe(root string, args []string) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case reason := <-restartCh:
+			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
 		case <-time.After(*every):
 		}
 	}

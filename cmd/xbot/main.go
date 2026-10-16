@@ -68,7 +68,7 @@ Usage:
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]
-  xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale]
+  xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale] [--no-auto-upgrade]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
   xbot [--root DIR] webhook list <bot>
@@ -101,6 +101,8 @@ Usage:
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N
   xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
+  xbot version
+  xbot [--root DIR] upgrade [--check]
 
 Environment:
   XBOT_API_KEY    API key when a bot has no provider binding
@@ -110,6 +112,8 @@ Environment:
   XBOT_CLOUDFLARED  cloudflared binary for --tunnel cloudflare (default cloudflared)
   XBOT_TAILSCALE    tailscale binary for --tunnel tailscale (default tailscale)
   XBOT_VAULT_SOCKET  vault daemon unix socket; when set, secrets use the daemon
+  XBOT_AUTO_UPGRADE  0 disables the periodic release check in serve
+  XBOT_UPGRADE_URL   override the release endpoint (default the GitHub API)
 
 A named provider stores the environment variable name, never the key itself.
 `
@@ -210,6 +214,10 @@ func run(argv []string) error {
 		return cmdPerson(root, rest[1:])
 	case "sync":
 		return cmdSync(root, rest[1:])
+	case "version":
+		return cmdVersion()
+	case "upgrade":
+		return cmdUpgrade(root, rest[1:])
 	case "machine":
 		return cmdMachine(root, rest[1:])
 	case "desktop":

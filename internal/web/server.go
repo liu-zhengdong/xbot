@@ -57,6 +57,12 @@ type Server struct {
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
 	pushHTTP *http.Client
 	tabs     map[string]*tabState
+
+	// drainMu guards foreground turn draining for a graceful restart. While
+	// draining is set no new turn starts; Drain waits for inflight to hit 0.
+	drainMu  sync.Mutex
+	draining bool
+	inflight int
 }
 
 type approvalDecision struct {
@@ -625,6 +631,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
+	// A graceful restart stops new turns; one already running keeps its SSE stream.
+	if !s.BeginTurn() {
+		writeErr(w, http.StatusServiceUnavailable, "restarting")
+		return
+	}
+	defer s.EndTurn()
 	s.enterTab(s.owner)
 	defer s.leaveTab(s.owner)
 	var in struct {

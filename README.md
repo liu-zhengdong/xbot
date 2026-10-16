@@ -35,6 +35,8 @@ xbot runner --addr 127.0.0.1:18771
 xbot node serve
 xbot node add desk --url http://100.x.y.z:18772 --token TOKEN
 xbot node call desk info
+xbot version
+xbot upgrade --check
 ```
 
 `xbot serve` 在同一个 `--http` 上提供网页。启动时往 stderr 打印登录 token，token 文件在 `~/.xbot/web-token.json`，权限 0600。浏览器打开打印出来的地址，把 token 贴进登录框。登录态是 HttpOnly、SameSite=Strict 的 cookie，不放在 localStorage。
@@ -46,6 +48,12 @@ xbot node call desk info
 执行工具前，内核只看一张显式的权限表：确认只经过这一张表，工具自己从不确认。只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、以及 persona/profile 自改会问 `y/n`。机器开关管本机工具：`allow` 时 shell 只对删除和对外发送问，普通读写直接做；`ask` 每次都要点头；`off` 直接拒绝。写自己的 persona 或 profile 文件在 `allow` 下仍要确认；创建、修改、暂停、删除 routine，Bot 之间的 `message_bot`/`post_group`，写技能、编码任务都不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
+
+## 版本与升级
+
+`xbot version` 打印编译时注入的版本（默认 `dev`）。发布用 `scripts/release.sh vX.Y.Z`：工作区必须干净、`go test -count=1 ./...` 全绿，然后交叉编译三个平台、写 `SHA256SUMS`、打 tag、发 GitHub Release；`DRY_RUN=1` 只到编译为止。细节见 [docs/atlas/release.md](docs/atlas/release.md)。
+
+`xbot serve` 默认每 6 小时查一次 GitHub 最新 Release（启动约 3 分钟后第一次），校验 SHA256 后原地换二进制并优雅重起；`--no-auto-upgrade` 或 `XBOT_AUTO_UPGRADE=0` 关闭。`xbot upgrade [--check]` 手动检查/升级。开发时的 `dev` 构建不会自动升级，手动命令仍可强制。
 
 ## 配置
 
