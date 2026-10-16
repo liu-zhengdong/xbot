@@ -62,7 +62,17 @@ type Kernel struct {
 	// one policy table.
 	Machine func() (string, error)
 
+	// AllowFork moves a running turn to the background when the owner sends a
+	// message mid-turn, so the next Handle can answer at once. See docs/atlas/fork.md.
+	// ForkCap (default 3) caps concurrent backgrounds; ForkAfter (default 3s) is the
+	// age a turn without any tool call must reach before it forks.
+	AllowFork bool
+	ForkCap   int
+	ForkAfter time.Duration
+
 	turnMu      sync.Mutex
+	bgMu        sync.Mutex
+	bgs         map[string]*turn
 	startOnce   sync.Once
 	execOnce    sync.Once
 	loadMu      sync.Mutex
@@ -90,6 +100,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		turnEvent:   ev.ID,
 		turnTrusted: link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
 	}
+	t.started = k.now()
+	t.task = clipRunes(strings.TrimSpace(ev.Content), forkTaskRunes)
+	t.forked = make(chan struct{})
 	k.turnMu.Lock()
 	k.turn = t
 	k.turnMu.Unlock()
@@ -145,6 +158,13 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
+	if seq == 0 && t.turnTrusted {
+		if note := backgroundNote(k.Backgrounds()); note != "" {
+			if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleUser, Content: note}}); err != nil {
+				return err
+			}
+		}
+	}
 	if seq == 0 {
 		entry := bot.Entry{
 			Time:    ev.Time,
@@ -197,33 +217,107 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if k.Approve != nil {
 		approve = k.trackApprove(k.Approve)
 	}
-	produced, err := agent.Run(ctx, &replyProvider{inner: p, accept: k.userReplyTarget}, list, assembled, agent.Options{
+	t.fromSeq = seq
+	// A turn that may fork runs on a context the caller's cancel reaches only until
+	// it forks; a background outlives the request that started it.
+	runCtx, cancelRun := context.WithCancel(ctx)
+	stopWatch := func() bool { return false }
+	if k.AllowFork {
+		runCtx, cancelRun = context.WithCancel(context.WithoutCancel(ctx))
+		stopWatch = context.AfterFunc(ctx, cancelRun)
+	}
+	t.runCtx = runCtx
+	opts := agent.Options{
 		MaxSteps: k.MaxSteps,
 		Approve:  approve,
-		OnDelta:  onDelta,
-		OnTool:   k.OnTool,
-		OnResult: k.OnResult,
-		Redact:   k.redactor(),
+		OnDelta: func(s string) {
+			if onDelta != nil && !t.isForked() {
+				onDelta(s)
+			}
+		},
+		OnTool: func(name, summary string) {
+			t.mu.Lock()
+			t.tools++
+			t.lastTool = name
+			forked := t.branch != ""
+			t.mu.Unlock()
+			if k.OnTool != nil && !forked {
+				k.OnTool(name, summary)
+			}
+		},
+		OnResult: func(name, output string) {
+			if k.OnResult != nil && !t.isForked() {
+				k.OnResult(name, output)
+			}
+		},
+		Redact: k.redactor(),
 		OnMessage: func(m provider.Message) {
 			if appendErr != nil {
 				return
 			}
-			appendErr = k.record(m)
+			appendErr = k.recordTurn(t, m)
 		},
 		RefreshTools: func() ([]tools.Tool, error) {
 			return k.modelTools()
 		},
 		AfterStep: func() ([]provider.Message, error) {
+			if t.isForked() || k.tryFork(t) {
+				// A background never reads the owner's messages; they belong to the foreground.
+				return nil, nil
+			}
 			return k.absorbInbox()
 		},
-	})
-	if appendErr != nil {
-		return appendErr
 	}
-	if pushErr := k.pushFindings(ctx, produced); pushErr != nil {
-		return pushErr
+	if onDelta == nil {
+		opts.OnDelta = nil
 	}
-	return err
+	type result struct {
+		produced []provider.Message
+		err      error
+	}
+	done := make(chan result, 1)
+	go func() {
+		produced, err := agent.Run(runCtx, &replyProvider{inner: p, accept: k.userReplyTarget}, list, assembled, opts)
+		if err == nil {
+			err = appendErr
+		}
+		t.mu.Lock()
+		bg := t.branch != ""
+		t.finished = true
+		t.mu.Unlock()
+		if bg {
+			k.finishBackground(t, produced, err)
+			cancelRun()
+			return
+		}
+		done <- result{produced, err}
+	}()
+	var tick <-chan time.Time
+	if k.AllowFork {
+		ticker := time.NewTicker(forkPoll)
+		defer ticker.Stop()
+		tick = ticker.C
+	}
+	for {
+		select {
+		case r := <-done:
+			stopWatch()
+			cancelRun()
+			if appendErr != nil {
+				return appendErr
+			}
+			if pushErr := k.pushFindings(ctx, r.produced); pushErr != nil {
+				return pushErr
+			}
+			return r.err
+		case <-t.forked:
+			// The turn goes on in the background; the caller may answer the owner now.
+			stopWatch()
+			return nil
+		case <-tick:
+			k.tryFork(t)
+		}
+	}
 }
 
 // absorbInbox appends inbox events that arrived during this turn, oldest first.

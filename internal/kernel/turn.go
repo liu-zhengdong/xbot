@@ -1,6 +1,10 @@
 package kernel
 
-import "sync"
+import (
+	"context"
+	"sync"
+	"time"
+)
 
 // turn is the state of one kernel turn. Kernel holds a pointer to the active
 // turn and installs a fresh one at the start of Handle. A nil pointer means no
@@ -18,6 +22,30 @@ type turn struct {
 
 	notedMu sync.Mutex
 	noted   []string
+
+	// Fork state. mu guards branch, finished, tools, steps, and lastTool.
+	// branch is set once, when the turn moves to the background.
+	mu       sync.Mutex
+	branch   string
+	finished bool
+	tools    int
+	steps    int
+	lastTool string
+	started  time.Time
+	fromSeq  int
+	task     string
+	forked   chan struct{}
+	runCtx   context.Context
+}
+
+func (t *turn) isForked() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.branch != ""
+}
+
+func (t *turn) cancelled() bool {
+	return t.runCtx != nil && t.runCtx.Err() != nil
 }
 
 // curTurn returns the active turn, or a zero turn when none is running, so a

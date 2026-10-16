@@ -18,6 +18,11 @@ func (k *Kernel) ReplySeq() int {
 }
 
 func (k *Kernel) record(m provider.Message) error {
+	return k.recordTurn(k.curTurn(), m)
+}
+
+// recordTurn appends m for turn t, on t's branch once t has moved to the background.
+func (k *Kernel) recordTurn(t *turn, m provider.Message) error {
 	replyTo := m.ReplyTo
 	m.ReplyTo = 0
 	if m.Role == provider.RoleUser && replyTo > 0 {
@@ -25,10 +30,15 @@ func (k *Kernel) record(m provider.Message) error {
 			m.Content = stripped
 		}
 	}
-	if m.Role == provider.RoleAssistant && len(m.ToolCalls) == 0 {
-		k.ensureTurn().replyTo = replyTo
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if m.Role == provider.RoleAssistant {
+		t.steps++
+		if len(m.ToolCalls) == 0 {
+			t.replyTo = replyTo
+		}
 	}
-	return k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo})
+	return k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch})
 }
 
 func (k *Kernel) quotePrefix(seq int) string {
