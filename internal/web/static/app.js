@@ -213,6 +213,27 @@
     return svg;
   }
 
+  function rawSvg(body, size, stroke) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("width", String(size));
+    svg.setAttribute("height", String(size));
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", String(stroke));
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.innerHTML = body;
+    return svg;
+  }
+
+  const CHECK_PATH = '<path d="M5 12.5l4.5 4.5L19 7.5"/>';
+  const X_PATH = '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>';
+  const CLOCK_PATH = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
+  const PENCIL_PATH = '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
+  const SEND_PATH = '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>';
+
   function hslHex(h, s, l) {
     const c = (1 - Math.abs(2 * l - 1)) * s;
     const hp = ((h / 60) % 6 + 6) % 6;
@@ -694,29 +715,95 @@
     return row;
   }
 
-  function optionCards(info, picked) {
-    const box = el("div", "options");
+  function optionBadge(letter, ghost) {
+    const badge = el("span", "opt-badge" + (ghost ? " ghost" : ""));
+    if (ghost) badge.append(rawSvg(PENCIL_PATH, 14, 2.2));
+    else badge.textContent = letter;
+    return badge;
+  }
+
+  function optionCards(info, picked, question) {
+    const card = el("div", "ask" + (picked != null ? " done" : ""));
+    card.setAttribute("role", "radiogroup");
+    if (question) card.setAttribute("aria-label", question);
     const opts = Array.isArray(info.args.options) ? info.args.options : [];
-    for (const raw of opts) {
+    const rows = [];
+    let chosen = -1;
+    opts.forEach((raw, i) => {
       let label = String(raw);
       let recommend = false;
       if (label.startsWith("* ")) { recommend = true; label = label.slice(2); }
-      const btn = el("button", "option" + (recommend ? " recommend" : ""), label);
-      btn.type = "button";
-      if (picked != null) {
-        btn.disabled = true;
-        if (picked === label || picked === String(raw)) btn.classList.add("picked");
-      } else {
-        btn.addEventListener("click", () => sendText(label));
-      }
-      box.append(btn);
+      if (picked != null && chosen < 0 && (picked === label || picked === String(raw))) chosen = i;
+      rows.push({ label: label, recommend: recommend });
+    });
+    if (question) card.append(el("p", "ask-q", question));
+    if (picked != null) {
+      const row = el("div", "ask-chosen");
+      if (chosen >= 0) row.append(optionBadge(String.fromCharCode(65 + chosen)));
+      else row.append(optionBadge("", true));
+      row.append(el("span", "opt-t", chosen >= 0 ? rows[chosen].label : picked));
+      const check = el("span", "ask-check");
+      check.append(rawSvg(CHECK_PATH, 18, 2.4));
+      row.append(check);
+      card.append(row);
+      return card;
     }
-    return box;
+    const list = el("ul", "ask-opts");
+    rows.forEach((row, i) => {
+      const letter = String.fromCharCode(65 + i);
+      const li = el("li", "ask-opt" + (row.recommend ? " recommend" : ""));
+      li.tabIndex = 0;
+      li.setAttribute("role", "radio");
+      li.append(optionBadge(letter), el("span", "opt-t", row.label), el("span", "opt-kbd", letter));
+      li.addEventListener("click", () => sendText(row.label));
+      list.append(li);
+    });
+    const other = el("li", "ask-opt other");
+    const field = document.createElement("input");
+    field.placeholder = "其他…";
+    field.setAttribute("aria-label", "其他");
+    field.maxLength = 2000;
+    const send = el("button", "ask-send");
+    send.type = "button";
+    send.setAttribute("aria-label", "发送");
+    send.append(rawSvg(SEND_PATH, 14, 2.4));
+    const submit = () => {
+      const text = field.value.trim();
+      if (text) sendText(text);
+    };
+    send.addEventListener("click", submit);
+    field.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); submit(); }
+    });
+    field.addEventListener("input", () => other.classList.toggle("typing", !!field.value.trim()));
+    other.append(optionBadge("", true), field, send);
+    list.append(other);
+    card.addEventListener("keydown", (ev) => {
+      if (ev.target.tagName === "INPUT") return;
+      const items = Array.from(list.querySelectorAll(".ask-opt:not(.other)"));
+      const i = items.indexOf(document.activeElement);
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        const n = (i + (ev.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+        items[n].focus();
+      } else if (ev.key === "Enter" || ev.key === " ") {
+        if (i >= 0) { ev.preventDefault(); sendText(rows[i].label); }
+      } else if (/^[a-zA-Z]$/.test(ev.key)) {
+        const hit = items.find((x) => x.querySelector(".opt-badge").textContent === ev.key.toUpperCase());
+        if (hit) hit.focus();
+      }
+    });
+    card.append(list);
+    return card;
   }
 
   function laterUser(messages, index) {
     for (let i = index + 1; i < messages.length; i++) {
-      if (messages[i].role === "user") return unwrap(messages[i].content || "").text.trim();
+      if (messages[i].role !== "user") continue;
+      const text = unwrap(messages[i].content || "").text.trim();
+      // Card records share the user role; only a typed reply answers the card.
+      if (text.startsWith("<approval_card") || text.startsWith("<coding_card")) continue;
+      return text;
     }
     return null;
   }
@@ -889,14 +976,9 @@
       const phrase = peerPhrase(info.name, info.args, who);
       if (phrase) { peers.push(phrase); continue; }
       if (info.name === "ask_user") {
-        if (info.args.question && !(m.content || "").includes(info.args.question)) {
-          const bubble = el("div", "bubble");
-          const q = document.createElement("p");
-          q.textContent = info.args.question;
-          bubble.append(q);
-          body.append(bubble);
-        }
-        body.append(optionCards(info, laterUser(messages, index)));
+        const q = info.args && info.args.question ? String(info.args.question) : "";
+        const shown = q && !(m.content || "").includes(q) ? q : "";
+        body.append(optionCards(info, laterUser(messages, index), shown));
         continue;
       }
     }
@@ -948,7 +1030,7 @@
         if (latestApproval[appr.id] !== i) return;
         any = true;
         lastKey = "";
-        inner.append(approvalHistoryCard(appr));
+        inner.append(approvalHistoryCard(appr, m.time));
         return;
       }
       const card = codingCardOf(m.content);
@@ -1073,17 +1155,119 @@
     return { id: attr(m[1]), tool: attr(m[2]), state: attr(m[3]), summary: m[4] };
   }
 
-  const APPROVAL_STATE_LABELS = { pending: "待确认", approved: "已允许", declined: "已拒绝", expired: "已过期" };
+  // The server's default approval wait; the card counts down in step with it.
+  const APPROVAL_WAIT_SECS = 60;
 
-  function approvalHistoryCard(card) {
-    const box = el("div", "approval history");
-    box.append(el("div", "k", "需要确认"));
-    box.append(el("div", "approval-name", card.tool || "tool"));
-    if (card.summary) box.append(el("div", "approval-sum", card.summary));
-    const state = card.state || "pending";
-    box.append(el("div", "approval-state " + (APPROVAL_STATE_LABELS[state] ? state : "pending"),
-      APPROVAL_STATE_LABELS[state] || state));
-    return box;
+  function approvalLine(name, command, state, time) {
+    const kind = state === "approved" ? "ok" : state === "declined" ? "no" : "exp";
+    const row = el("div", "approval-line " + kind);
+    const st = el("span", "st");
+    if (state === "approved") st.append(rawSvg(CHECK_PATH, 18, 2.4));
+    else if (state === "declined") st.append(rawSvg(X_PATH, 18, 2.4));
+    else st.append(rawSvg(CLOCK_PATH, 17, 2));
+    const what = el("span", "what");
+    what.append(document.createTextNode((name || "tool") + (command ? " " : "")));
+    if (command) {
+      const code = el("code");
+      code.textContent = command;
+      what.append(code);
+    }
+    row.append(st, what);
+    if (time) row.append(el("span", "when", when(time)));
+    return row;
+  }
+
+  function pendingApprovalCard(opt) {
+    const card = el("div", "approval");
+    const head = el("div", "approval-head");
+    const ico = el("span", "approval-ico");
+    ico.append(rawSvg(ICONS.terminal, 16, 2));
+    const main = el("div", "approval-main");
+    main.append(el("div", "approval-title", opt.name || "tool"));
+    if (opt.detail) main.append(el("div", "approval-detail", opt.detail));
+    if (opt.command) {
+      const chip = el("code", "approval-chip");
+      chip.textContent = opt.command;
+      main.append(chip);
+    }
+    head.append(ico, main);
+    card.append(head);
+    const actions = el("div", "approval-actions");
+    let timerText = null;
+    let left = 0;
+    let tick = 0;
+    let settled = false;
+    const settle = (state) => {
+      if (settled) return;
+      settled = true;
+      if (tick) window.clearInterval(tick);
+      card.replaceWith(approvalLine(opt.name, opt.command, state, Date.now()));
+    };
+    if (opt.wait) {
+      const timer = el("span", "approval-timer");
+      timer.append(rawSvg(CLOCK_PATH, 13, 2));
+      timerText = el("span");
+      timer.append(timerText);
+      left = opt.wait;
+      const paint = () => {
+        timerText.textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+      };
+      paint();
+      tick = window.setInterval(() => {
+        left -= 1;
+        if (left <= 0) { settle("expired"); return; }
+        paint();
+      }, 1000);
+      actions.append(timer);
+    }
+    const deny = el("button", "secondary", "拒绝");
+    const allow = el("button", "primary", "允许");
+    deny.type = "button";
+    allow.type = "button";
+    const decide = async (ok) => {
+      allow.disabled = true;
+      deny.disabled = true;
+      try {
+        await opt.decide(ok);
+        settle(ok ? "approved" : "declined");
+      } catch (e) {
+        allow.disabled = false;
+        deny.disabled = false;
+        let err = card.querySelector(".approval-err");
+        if (!err) {
+          err = el("div", "approval-err");
+          card.append(err);
+        }
+        err.textContent = e.message || "确认失败";
+      }
+    };
+    allow.addEventListener("click", () => decide(true));
+    deny.addEventListener("click", () => decide(false));
+    actions.append(deny, allow);
+    card.append(actions);
+    return card;
+  }
+
+  function approvalHistoryCard(card, time) {
+    const lines = String(card.summary || "").split("\n");
+    const st = card.state || "pending";
+    if (st === "pending") {
+      const payload = {
+        name: card.tool || "tool",
+        command: lines[0] || "",
+        detail: lines.slice(1).join(" · "),
+        wait: APPROVAL_WAIT_SECS,
+        decide: async (ok) => {
+          if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");
+          await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/approvals/" + encodeURIComponent(card.id || ""), {
+            method: "POST",
+            body: { allow: ok },
+          });
+        },
+      };
+      return pendingApprovalCard(payload);
+    }
+    return approvalLine(card.tool || "tool", lines[0] || "", st, time);
   }
 
   function codingCard(card) {
@@ -2574,38 +2758,14 @@
     }
     host.hidden = false;
     for (const item of items) {
-      const card = el("div", "approval");
-      card.append(el("div", "k", "节点命令"));
-      card.append(el("div", "approval-name", item.command || ""));
-      const meta = [item.caller || "", item.id || ""].filter(Boolean).join("  ");
-      if (meta) card.append(el("div", "approval-sum", meta));
-      const actions = el("div", "approval-actions");
-      const allow = el("button", "secondary", "允许");
-      const deny = el("button", "text-btn danger", "拒绝");
-      allow.type = "button";
-      deny.type = "button";
-      const decide = async (ok) => {
-        allow.disabled = true;
-        deny.disabled = true;
-        try {
-          await api("/api/node/pending/" + encodeURIComponent(item.id || ""), { method: "POST", body: { allow: ok } });
-          card.replaceChildren(el("div", "approval-name", ok ? "已允许" : "已拒绝"));
-        } catch (e) {
-          allow.disabled = false;
-          deny.disabled = false;
-          let err = card.querySelector(".approval-err");
-          if (!err) {
-            err = el("div", "approval-err");
-            card.append(err);
-          }
-          err.textContent = e.message || String(e);
-        }
-      };
-      allow.addEventListener("click", () => decide(true));
-      deny.addEventListener("click", () => decide(false));
-      actions.append(allow, deny);
-      card.append(actions);
-      host.append(card);
+      const detail = [item.caller || "", item.id || ""].filter(Boolean).join(" · ");
+      host.append(pendingApprovalCard({
+        name: "节点命令",
+        detail: detail,
+        command: item.command || "",
+        wait: 0,
+        decide: (ok) => api("/api/node/pending/" + encodeURIComponent(item.id || ""), { method: "POST", body: { allow: ok } }),
+      }));
     }
   }
 
@@ -2648,41 +2808,20 @@
   }
 
   function approvalCard(payload) {
-    const card = el("div", "approval");
-    card.append(el("div", "k", "需要确认"));
-    card.append(el("div", "approval-name", payload.tool || payload.name || "tool"));
-    if (payload.summary) card.append(el("div", "approval-sum", payload.summary));
-    const actions = el("div", "approval-actions");
-    const allow = el("button", "secondary", "允许");
-    const deny = el("button", "text-btn danger", "拒绝");
-    allow.type = "button";
-    deny.type = "button";
-    const decide = async (ok) => {
-      allow.disabled = true;
-      deny.disabled = true;
-      try {
+    const lines = String(payload.summary || "").split("\n");
+    return pendingApprovalCard({
+      name: payload.tool || payload.name || "tool",
+      command: lines[0] || "",
+      detail: lines.slice(1).join(" · "),
+      wait: APPROVAL_WAIT_SECS,
+      decide: async (ok) => {
         if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");
         await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/approvals/" + encodeURIComponent(payload.id || ""), {
           method: "POST",
           body: { allow: ok },
         });
-        card.replaceChildren(el("div", "approval-name", ok ? "已允许" : "已拒绝"));
-      } catch (e) {
-        allow.disabled = false;
-        deny.disabled = false;
-        let err = card.querySelector(".approval-err");
-        if (!err) {
-          err = el("div", "approval-err");
-          card.append(err);
-        }
-        err.textContent = e.message || "确认失败";
-      }
-    };
-    allow.addEventListener("click", () => decide(true));
-    deny.addEventListener("click", () => decide(false));
-    actions.append(allow, deny);
-    card.append(actions);
-    return card;
+      },
+    });
   }
 
   function liveBubble() {
