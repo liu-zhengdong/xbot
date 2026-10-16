@@ -67,6 +67,9 @@ type Kernel struct {
 	// ForkCap (default 3) caps concurrent backgrounds; ForkAfter (default 3s) is the
 	// age a turn without any tool call must reach before it forks.
 	AllowFork bool
+	// BackgroundApprove asks the owner for a background turn's confirmation without
+	// the request that started it, for example as a card in the transcript.
+	BackgroundApprove agent.Approver
 	ForkCap   int
 	ForkAfter time.Duration
 
@@ -220,9 +223,12 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			inner := approve
 			approve = func(ctx context.Context, tool, summary string) (bool, error) {
 				if t.isForked() {
-					// The request that could show a card is gone. Until backgrounds get
-					// their own approval route, a background declines.
-					return false, nil
+					// The request that could show a card is gone; a background's card goes
+					// to the owner through BackgroundApprove, or the call is declined.
+					if k.BackgroundApprove == nil {
+						return false, nil
+					}
+					return k.trackApprove(k.BackgroundApprove)(ctx, tool, summary)
 				}
 				return inner(ctx, tool, summary)
 			}
@@ -239,6 +245,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	runCtx = context.WithValue(runCtx, turnKey{}, t)
 	t.runCtx = runCtx
+	t.cancelRun = cancelRun
 	opts := agent.Options{
 		MaxSteps: k.MaxSteps,
 		Approve:  approve,
@@ -280,7 +287,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			defer t.forkMu.Unlock()
 			if t.isForked() || k.tryForkLocked(t) {
 				// A background never reads the owner's messages; they belong to the foreground.
-				return nil, nil
+				// It reads only the controls sent to it: steer, queue, interrupt.
+				return t.takeCtrl(), nil
 			}
 			return k.absorbInbox()
 		},
@@ -294,14 +302,38 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	done := make(chan result, 1)
 	go func() {
-		produced, err := agent.Run(runCtx, &replyProvider{inner: p, accept: k.userReplyTarget}, list, assembled, opts)
-		if err == nil {
-			err = appendErr
+		rp := &replyProvider{inner: p, accept: k.userReplyTarget}
+		produced, err := agent.Run(runCtx, rp, list, assembled, opts)
+		var bg bool
+		for {
+			if err == nil {
+				err = appendErr
+			}
+			// A queued control that arrived after the last step starts another run, so a
+			// background works through its queue before it ends.
+			t.mu.Lock()
+			bg = t.branch != ""
+			pend := t.ctrl
+			t.ctrl = nil
+			if err != nil || !bg || len(pend) == 0 {
+				t.finished = true
+				t.mu.Unlock()
+				break
+			}
+			t.mu.Unlock()
+			convo := append(append([]provider.Message(nil), assembled...), produced...)
+			for _, c := range pend {
+				m := provider.Message{Role: provider.RoleUser, Content: c}
+				if rerr := k.recordTurn(t, m); rerr != nil && appendErr == nil {
+					appendErr = rerr
+				}
+				convo = append(convo, m)
+				produced = append(produced, m)
+			}
+			more, rerr := agent.Run(runCtx, rp, list, convo, opts)
+			produced = append(produced, more...)
+			err = rerr
 		}
-		t.mu.Lock()
-		bg := t.branch != ""
-		t.finished = true
-		t.mu.Unlock()
 		if bg {
 			k.finishBackground(t, produced, err)
 			cancelRun()

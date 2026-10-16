@@ -203,6 +203,9 @@ func (k *Kernel) ControlSubagent(ctx context.Context, id, kind, text string) (st
 }
 
 func (k *Kernel) control(ctx context.Context, id, kind, text string) (string, error) {
+	if strings.HasPrefix(id, "bg_") {
+		return k.controlBackground(id, kind, text)
+	}
 	if !execID(id) {
 		return "", fmt.Errorf("exec: bad id %q", id)
 	}

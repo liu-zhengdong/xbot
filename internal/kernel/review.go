@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
@@ -32,6 +33,30 @@ func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
 		return false, "", err
 	}
 	return t.k.reviewCall(t.Tool, args, summary)
+}
+
+// Run applies the background conflict queue, the second half of the policy: a
+// foreground write to something a running background has written is queued
+// behind that background instead of running beside it.
+func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	k := t.k
+	if res, ok := review.ResourceOf(t.Tool.Name(), args, k.WorkDir); ok {
+		cur := k.turnFor(ctx)
+		if !cur.isForked() {
+			if bg := k.conflictingBackground(cur, res); bg != nil {
+				_, summary, _ := t.Tool.Confirm(args)
+				bg.mu.Lock()
+				id := bg.branch
+				bg.mu.Unlock()
+				note := fmt.Sprintf("[排队] 前台要做的事和你正在动的 %s 冲突，已排到你之后。做完当前的事再做：%s %s", res, t.Tool.Name(), summary)
+				if bg.queueCtrl(note) {
+					return fmt.Sprintf("已排到后台 %s 之后：它正在动 %s，它做完当前的事会接着做这一步。", id, res), nil
+				}
+			}
+		}
+		cur.addResource(res)
+	}
+	return t.Tool.Run(ctx, args)
 }
 
 // reviewCall returns whether the owner must confirm this concrete call.

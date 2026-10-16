@@ -2,8 +2,10 @@ package kernel
 
 import (
 	"context"
+
 	"sync"
 	"time"
+	"xbot/internal/provider"
 )
 
 // turn is the state of one kernel turn. Kernel holds a pointer to the active
@@ -31,15 +33,58 @@ type turn struct {
 	answered bool // a final answer is on the transcript; too late to fork
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
-	forkMu   sync.Mutex
-	tools    int
-	steps    int
-	lastTool string
-	started  time.Time
-	fromSeq  int
-	task     string
-	forked   chan struct{}
-	runCtx   context.Context
+	forkMu    sync.Mutex
+	tools     int
+	steps     int
+	lastTool  string
+	started   time.Time
+	fromSeq   int
+	task      string
+	forked    chan struct{}
+	runCtx    context.Context
+	cancelRun context.CancelFunc
+	// ctrl is controls sent to a background, read between its steps. resources is
+	// what this turn has written (review.ResourceOf), for the conflict queue.
+	ctrl      []string
+	resources map[string]bool
+}
+
+// queueCtrl adds a control message. It fails once the turn has finished.
+func (t *turn) queueCtrl(text string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.finished {
+		return false
+	}
+	t.ctrl = append(t.ctrl, text)
+	return true
+}
+
+func (t *turn) takeCtrl() []provider.Message {
+	t.mu.Lock()
+	pend := t.ctrl
+	t.ctrl = nil
+	t.mu.Unlock()
+	out := make([]provider.Message, len(pend))
+	for i, c := range pend {
+		out[i] = provider.Message{Role: provider.RoleUser, Content: c}
+	}
+	return out
+}
+
+func (t *turn) addResource(res string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.resources == nil {
+		t.resources = map[string]bool{}
+	}
+	t.resources[res] = true
+}
+
+func (t *turn) touches(res string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.resources[res]
 }
 
 func (t *turn) isForked() bool {

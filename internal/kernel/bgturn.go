@@ -221,3 +221,56 @@ func clipRunes(s string, n int) string {
 }
 
 var _ = bot.ForkKindStart
+
+// controlBackground sends steer, queue, interrupt, or cancel to a running background.
+func (k *Kernel) controlBackground(id, kind, text string) (string, error) {
+	k.bgMu.Lock()
+	t := k.bgs[id]
+	k.bgMu.Unlock()
+	if t == nil {
+		return "", fmt.Errorf("background %s is not running", id)
+	}
+	text = strings.TrimSpace(text)
+	var msg string
+	switch kind {
+	case "cancel":
+		if t.cancelRun != nil {
+			t.cancelRun()
+		}
+		return "cancel " + id, nil
+	case "steer":
+		msg = "[主人的补充] " + text
+	case "queue":
+		msg = "[排队] 做完当前的事后再做：" + text
+	case "interrupt":
+		msg = "[打断] 停下当前的做法，先处理：" + text
+	default:
+		return "", fmt.Errorf("background: unknown control %q", kind)
+	}
+	if text == "" {
+		return "", fmt.Errorf("background: text is empty")
+	}
+	if !t.queueCtrl(msg) {
+		return "", fmt.Errorf("background %s has finished", id)
+	}
+	return kind + " " + id, nil
+}
+
+// conflictingBackground returns a running background, other than cur, that has
+// written res. The policy: a foreground write to the same file, repository, or
+// working directory waits behind that background; anything else runs in parallel.
+func (k *Kernel) conflictingBackground(cur *turn, res string) *turn {
+	k.bgMu.Lock()
+	defer k.bgMu.Unlock()
+	ids := make([]string, 0, len(k.bgs))
+	for id := range k.bgs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if t := k.bgs[id]; t != cur && t.touches(res) {
+			return t
+		}
+	}
+	return nil
+}
