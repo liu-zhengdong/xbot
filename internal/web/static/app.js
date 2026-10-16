@@ -105,6 +105,201 @@
     return data;
   }
 
+  // ---- Background tasks: header badge + popover (F5) ----
+  const BG_LAYERS = '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>';
+  function bgIcon(paths, size, extra) {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("viewBox", "0 0 24 24");
+    s.setAttribute("width", size || 16);
+    s.setAttribute("height", size || 16);
+    s.setAttribute("fill", "none");
+    s.setAttribute("stroke", "currentColor");
+    s.setAttribute("stroke-width", "2");
+    s.setAttribute("stroke-linecap", "round");
+    s.setAttribute("stroke-linejoin", "round");
+    if (extra) s.setAttribute("class", extra);
+    s.innerHTML = paths;
+    return s;
+  }
+  const BG_ICONS = {
+    spin: '<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
+    queued: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 3.2"/>',
+    ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    err: '<path d="M6 6l12 12M18 6L6 18"/>',
+    pause: '<circle cx="12" cy="12" r="8.5"/><path d="M9.5 9v6M14.5 9v6"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    steer: '<path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M12 8.5v7M8.5 12h7"/>',
+    stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" stroke="none"/>',
+    up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+  };
+  function bgFrom() {
+    const d = el("div", "bg-from");
+    d.append(bgIcon(BG_LAYERS, 12), document.createTextNode("后台"));
+    return d;
+  }
+  const bgState = { data: null, open: false, steerOpen: {}, timer: 0 };
+  function bgBot() { return state.sel && state.sel.type === "bot" ? state.sel.id : ""; }
+  async function bgRefresh() {
+    const name = bgBot();
+    const badge = document.getElementById("bg-badge");
+    if (!badge) return;
+    if (!name) { badge.hidden = true; bgClose(); return; }
+    try {
+      bgState.data = await api("/api/bots/" + encodeURIComponent(name) + "/backgrounds");
+    } catch (e) { return; }
+    bgRender();
+  }
+  function bgTick() {
+    clearTimeout(bgState.timer);
+    bgState.timer = setTimeout(async () => {
+      if (!document.hidden) await bgRefresh();
+      bgTick();
+    }, 2000);
+  }
+  function bgClose() {
+    bgState.open = false;
+    const pop = document.getElementById("bg-pop");
+    if (pop) pop.hidden = true;
+    const dim = document.getElementById("bg-dim");
+    if (dim) dim.hidden = true;
+    const badge = document.getElementById("bg-badge");
+    if (badge) badge.classList.remove("on");
+  }
+  async function bgAct(path, method, body) {
+    try { await api(path, { method: method, body: body }); } catch (e) { setStatus(e.message || "操作失败"); }
+    await bgRefresh();
+  }
+  function bgClock(t) {
+    const d = new Date(t);
+    if (isNaN(d)) return "";
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function bgRow(cls, icon, title, sub, acts) {
+    const li = el("li", "bg-pr " + cls);
+    const rt = el("div", "bg-rt");
+    const st = el("span", "bg-st");
+    st.append(bgIcon(BG_ICONS[icon], 16, icon === "spin" ? "bg-spin" : ""));
+    const tx = el("div", "bg-tx");
+    tx.append(el("div", "bg-tt", title), el("div", "bg-sub", sub));
+    const a = el("span", "bg-acts");
+    (acts || []).forEach((b) => a.append(b));
+    rt.append(st, tx, a);
+    li.append(rt);
+    return li;
+  }
+  function bgBtn(icon, label, fn) {
+    const b = el("button", "bg-ib");
+    b.type = "button";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.append(bgIcon(BG_ICONS[icon], 15));
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
+    return b;
+  }
+  function bgRender() {
+    const d = bgState.data || {};
+    const running = d.backgrounds || [];
+    const queue = d.queue || [];
+    const finished = (d.finished || []).slice(0, 3);
+    const controls = d.controls || [];
+    const name = bgBot();
+    const base = "/api/bots/" + encodeURIComponent(name);
+    const badge = document.getElementById("bg-badge");
+    badge.hidden = !running.length && !queue.length;
+    badge.querySelector(".bg-n").textContent = "后台 " + running.length;
+    if (badge.hidden) bgClose();
+    const pop = document.getElementById("bg-pop");
+    if (!bgState.open) return;
+    const taskOf = {};
+    running.forEach((r) => { taskOf[r.id] = r.task; });
+    const head = el("div", "bg-ph");
+    head.append(el("b", "", "后台任务"), el("span", "bg-cnt", running.length + " 运行 · " + queue.length + " 排队"));
+    head.append(bgBtn("err", "关闭", bgClose));
+    const list = el("ul", "bg-pl");
+    running.forEach((r) => {
+      const li = bgRow("run", "spin", r.task || r.id, "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), [
+        bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgRender(); }),
+        bgBtn("stop", "取消", () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST")),
+      ]);
+      const steers = controls.filter((c) => c.background === r.id && c.kind === "steer");
+      if (steers.length) {
+        const ins = el("ul", "bg-ins");
+        steers.forEach((c) => {
+          const on = c.state === "applied";
+          const it = el("li", on ? "on" : "");
+          it.append(bgIcon(BG_ICONS[on ? "ok" : c.state === "dropped" ? "err" : "clock"], 13), el("span", "x", c.text), el("span", "r", on ? "已生效" : c.state === "dropped" ? "已丢弃" : "待生效"));
+          ins.append(it);
+        });
+        li.append(ins);
+      }
+      if (bgState.steerOpen[r.id]) {
+        const f = el("form", "bg-addin");
+        const inp = el("input");
+        inp.placeholder = "追加指示，下一步生效…";
+        const go = el("button", "bg-send");
+        go.type = "submit";
+        go.append(bgIcon(BG_ICONS.up, 14));
+        f.append(inp, go);
+        f.addEventListener("submit", (ev) => {
+          ev.preventDefault();
+          const t = inp.value.trim();
+          if (t) bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/steer", "POST", { text: t });
+        });
+        li.append(f);
+        setTimeout(() => inp.focus(), 0);
+      }
+      list.append(li);
+    });
+    queue.forEach((q) => {
+      let sub = "等待空位 · 第 " + q.position + " 位";
+      if (q.reason === "conflict") sub = "等「" + (taskOf[q.background] || q.background) + "」释放 " + (q.name || "") + " · 第 " + q.position + " 位";
+      if (q.reason === "queue") sub = "排在「" + (taskOf[q.background] || q.background) + "」之后 · 第 " + q.position + " 位";
+      list.append(bgRow("q", "queued", q.text || q.id, sub, [
+        bgBtn("stop", "取消", () => bgAct(base + "/queue/" + encodeURIComponent(q.id), "DELETE")),
+      ]));
+    });
+    const parts = [head, list];
+    if (finished.length) {
+      const done = el("ul", "bg-pl");
+      finished.forEach((f) => {
+        const map = {
+          done: ["ok", "ok", "完成 · " + (f.steps || 0) + " 步" + (f.ended ? " · " + bgClock(f.ended) : "")],
+          failed: ["err", "err", "失败"],
+          cancelled: ["int", "pause", "已取消"],
+          interrupted: ["int", "pause", "已中断"],
+        }[f.status] || ["int", "pause", f.status || ""];
+        done.append(bgRow(map[0], map[1], f.task || f.id, map[2]));
+      });
+      parts.push(el("p", "bg-sec", "最近结束"), done);
+    }
+    pop.replaceChildren(...parts);
+  }
+  function bgSetup() {
+    const badge = document.getElementById("bg-badge");
+    if (!badge) return;
+    badge.prepend(bgIcon(BG_LAYERS, 12));
+    const dim = el("div", "bg-dim");
+    dim.id = "bg-dim";
+    dim.hidden = true;
+    const pop = el("div", "bg-pop");
+    pop.id = "bg-pop";
+    pop.hidden = true;
+    document.querySelector(".main").append(dim, pop);
+    badge.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      bgState.open = !bgState.open;
+      pop.hidden = !bgState.open;
+      dim.hidden = !bgState.open;
+      badge.classList.toggle("on", bgState.open);
+      bgRender();
+    });
+    dim.addEventListener("click", bgClose);
+    document.addEventListener("click", (ev) => { if (bgState.open && !pop.contains(ev.target)) bgClose(); });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && bgState.open) bgClose(); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) bgRefresh(); });
+    bgTick();
+  }
+
   function showLogin() {
     shell.hidden = true;
     login.hidden = false;
@@ -348,7 +543,9 @@
     if (!m) return { text: text, untrusted: false, source: "", sender: "" };
     const source = /source="([^"]*)"/.exec(m[1]);
     const sender = /sender="([^"]*)"/.exec(m[1]);
+    const type = /type="([^"]*)"/.exec(m[1]);
     return {
+      type: type ? type[1] : "",
       text: m[2],
       untrusted: true,
       source: source ? source[1] : "",
@@ -930,7 +1127,7 @@
     const row = el("div", "msg user");
     if (m.seq) row.dataset.seq = String(m.seq);
     const wrap = el("div", "bubble-col");
-    if (m.branch) wrap.append(el("div", "branch-tag", "后台 " + m.branch));
+    if (m.branch) wrap.append(bgFrom());
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
     const pulled = pullImages(parsed.text);
     if (pulled.text) {
@@ -963,7 +1160,7 @@
     if (m.seq) row.dataset.seq = String(m.seq);
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
-    if (m.branch) body.append(el("div", "branch-tag", "后台 " + m.branch));
+    if (m.branch) body.append(bgFrom());
     if (showName) {
       const name = el("div", "who", niceName(who));
       if (who) setTip(name, who);
@@ -1002,11 +1199,6 @@
     return false;
   }
 
-  function forkMarkLine(m) {
-    if (m.kind === "fork_end") return "后台任务结束：" + (m.status || "");
-    return "后台任务开始：" + (m.task || "");
-  }
-
   function renderMessages(messages, who) {
     const inner = el("div", "thread-inner");
     const prevTop = thread.scrollTop;
@@ -1032,17 +1224,14 @@
     });
     messages.forEach((m, i) => {
       if (skipMessage(m)) return;
-      if (m.kind === "fork" || m.kind === "fork_end") {
-        any = true;
-        lastKey = "";
-        inner.append(systemLine(forkMarkLine(m)));
-        return;
-      }
+      // Background turns have no cards in the chat; the header badge lists them.
+      if (m.kind === "fork" || m.kind === "fork_end") return;
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;
         any = true;
         lastKey = "";
+        if (m.branch) inner.append(bgFrom());
         inner.append(approvalHistoryCard(appr, m.time));
         return;
       }
@@ -1056,6 +1245,7 @@
       }
       if (m.role === "user") {
         const parsed = unwrap(m.content || "");
+        if (parsed.untrusted && parsed.source === "subagent" && parsed.type === "fork_end") return;
         if (parsed.untrusted && (parsed.source.startsWith("bot:") || parsed.source.startsWith("group:"))) {
           any = true;
           lastKey = "";
@@ -3002,6 +3192,13 @@
       if (ct.includes("application/json")) {
         const data = await res.json().catch(() => ({}));
         if (res.status === 401) { showLogin(); return; }
+        if (res.status === 429) {
+          thread.querySelector(".thread-inner")?.append(el("div", "bg-full", "队列已满，请稍后再发。"));
+          thread.scrollTop = thread.scrollHeight;
+          if (!input.value) input.value = text;
+          syncComposer();
+          return;
+        }
         if (!res.ok) throw new Error(data.error || "发送失败");
         setStatus(data.status === "queued" ? "已排队" : "");
       } else if (!res.ok) {
@@ -3012,6 +3209,7 @@
       state.sig = "";
       clearQuote();
       settle();
+      bgRefresh();
       await loadThread();
       if (subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
@@ -3616,6 +3814,7 @@
   });
 
   async function boot() {
+    if (!bgState.ready) { bgState.ready = true; bgSetup(); }
     await refreshLists();
     await refreshNotes();
     await refreshNodePending().catch(() => {});
