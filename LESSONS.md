@@ -13,6 +13,8 @@
 - **改共享规则后，要用真实 DeepSeek 跑一遍认证再合。规则冲突时写明谁让谁。** 原因：10-16 加的判断/务实规则和 DeepSeek 专用提示里「把修复做完」互相打架：root-cause 只复制字体、不改 site.css；propose-plan 擅自改了快照里的配置；avatar-handoff 把给别的 Bot 留言当成「替你发消息」，停下来先问。修法是写清楚适用范围：任务里写明的改动就直接做；快照或问「怎么办」时一个文件都不写；按文档给别的 Bot 留言不算替你发消息。证据：本提交，两遍 eval 都认证。Seen 1×（2026-10-16）
 - **发给模型的消息里，tool 结果必须紧跟它的 tool_calls。** 原因：一轮超过前台上限转后台后，后台的结果排在前台回复后面；DeepSeek 官方接口宽容，magpie 等严格网关直接 400，dev Bot 每次唤醒都失败、只能重建。证据：`fix/tool-result-order`，`internal/kernel/toolorder_test.go`。Seen 1×（2026-10-16）
 - **每个 Bot 一份的资源（保险箱、目录），共享入口里要按请求的 Bot 去打开，不能取「第一个」。** 原因：dev 第一版让入站 hub 共用 bots 目录里第一个 Bot 的保险箱验签，review 才发现。证据：`106f5f6` 返工前 `inboundVault`；修后 `TestConnectorInboundUsesEachBotsOwnVault`。Seen 1×（2026-10-16）
+- **一批里每个提交都要能单独编译。** 原因：dev 把 serve 调用点的改动拆进 `b6839ee`，它引用下一个提交才加的 BackgroundMaxTime，单独编不过，bisect 会踩到。证据：v0.3.0 合并说明。Seen 1×（2026-10-17）
+- **等待人决定的计时要挂在等待本身上，不能只靠外层流。** 原因：审批卡 60 秒随 SSE 断开失效，dev 第一版改成 24h 却在 ctx.Done 分支没有计时器。证据：`ee240a4`、`6f3ca0c`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。
