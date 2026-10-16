@@ -126,15 +126,28 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
 			return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
 		case <-ctx.Done():
-			if s.waitStillOpen(key, card) {
-				d, ok := <-card.done
+			// The wake moved to the background with the card still open. Keep
+			// waiting for the owner, but never past the card's own deadline:
+			// the same timer that would have fired in the foreground keeps
+			// running here, so an undecided card still expires instead of
+			// blocking this goroutine forever.
+			if !s.waitStillOpen(key, card) {
+				appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
+				return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
+			}
+			select {
+			case d, ok := <-card.done:
 				if !ok {
+					s.retireExpired(key, card)
+					appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
 					return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
 				}
 				return s.applyDecision(b, k, id, summary, names, d, appendCard)
+			case <-timer.C:
+				s.retireExpired(key, card)
+				appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
+				return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
 			}
-			appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
-			return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
 		}
 	}
 }

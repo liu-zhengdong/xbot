@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -347,6 +348,59 @@ func TestWebApprovalForegroundToBackgroundKeepsCard(t *testing.T) {
 	}
 	if states := cardStates(t, b, id); strings.Join(states, ",") != bot.ApprovalPending+","+bot.ApprovalApproved {
 		t.Fatalf("card states %v, want pending then approved", states)
+	}
+}
+
+// TestWebApprovalBackgroundHandoffExpires checks the other half of the
+// handoff: once the wake moves to the background and nobody ever decides, the
+// card must still expire on its own deadline. The waiting goroutine used to
+// block on the decision channel forever, so a card with a 24-hour window would
+// never record no_decision:expired.
+func TestWebApprovalBackgroundHandoffExpires(t *testing.T) {
+	s := &Server{Root: t.TempDir(), ApprovalWait: 50 * time.Millisecond}
+	b, err := bot.Create(s.Root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var id string
+	send := func(name string, payload any) {
+		if name != "approval" {
+			return
+		}
+		m, _ := payload.(map[string]any)
+		id, _ = m["id"].(string)
+	}
+	approve := s.webApprove(b, nil, send)
+	type outcome struct {
+		allowed bool
+		err     error
+	}
+	answered := make(chan outcome, 1)
+	go func() {
+		allowed, err := approve(ctx, "shell", "mkdir a")
+		answered <- outcome{allowed, err}
+	}()
+	for id == "" {
+		time.Sleep(time.Millisecond)
+	}
+	// Hand the turn to the background and never answer.
+	cancel()
+	select {
+	case out := <-answered:
+		if !errors.Is(out.err, kernel.ErrApprovalExpired) {
+			t.Fatalf("approver returned %v, want ErrApprovalExpired", out.err)
+		}
+		if out.allowed {
+			t.Fatal("an undecided card was allowed")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("approver never returned after the handoff; the card waited forever")
+	}
+	states := cardStates(t, b, id)
+	if len(states) != 2 || states[0] != bot.ApprovalPending || !strings.Contains(states[1], bot.ApprovalReasonExpired) {
+		t.Fatalf("card states %v, want pending then %s", states, bot.ApprovalReasonExpired)
 	}
 }
 
