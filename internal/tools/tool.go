@@ -17,6 +17,13 @@ type Tool interface {
 	Run(ctx context.Context, args json.RawMessage) (string, error)
 }
 
+// PathTool is a file tool that reports the resolved path it would act on. The
+// kernel uses it to decide whether a call is a persona/profile self-edit. The
+// tool only reports the path; it never decides whether to confirm.
+type PathTool interface {
+	ResolvedPath(args json.RawMessage) string
+}
+
 func objectSchema(properties map[string]any, required []string) map[string]any {
 	return map[string]any{
 		"type":                 "object",

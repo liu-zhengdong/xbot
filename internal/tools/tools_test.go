@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +43,7 @@ func TestShellOmitsProviderKeysUnlessOptIn(t *testing.T) {
 		t.Fatalf("%q", out)
 	}
 	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"printenv XBOT_API_KEY","keys":true}`))
-	if err != nil || !need || !strings.Contains(summary, "with provider keys") {
+	if err != nil || need || !strings.Contains(summary, "with provider keys") {
 		t.Fatalf("need=%v summary=%q err=%v", need, summary, err)
 	}
 	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY DEEPSEEK_API_KEY","keys":true}`))
@@ -85,40 +84,26 @@ func TestShellOptInRestoresHeldKeys(t *testing.T) {
 	}
 }
 
-func TestShellHonorsMachineSwitch(t *testing.T) {
+// Run still refuses an off machine even though the kernel review path decides
+// confirmation. This is the last line of defense for a direct call.
+func TestShellRunRefusesMachineOff(t *testing.T) {
 	t.Cleanup(func() { SetMachineGate(nil) })
-	SetMachineGate(func() (string, error) { return "ask", nil })
-	sh := NewShell()
-	need, _, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))
-	if err != nil || !need {
-		t.Fatalf("ask date need=%v err=%v", need, err)
-	}
 	SetMachineGate(func() (string, error) { return "off", nil })
-	if _, _, err := sh.Confirm(json.RawMessage(`{"command":"date"}`)); err == nil || !strings.Contains(err.Error(), "off") {
-		t.Fatal(err)
-	}
+	sh := NewShell()
 	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"echo no"}`)); err == nil || !strings.Contains(err.Error(), "off") {
 		t.Fatal(err)
 	}
-	SetMachineGate(nil)
-	need, _, err = sh.Confirm(json.RawMessage(`{"command":"date"}`))
-	if err != nil || need {
-		t.Fatalf("allow date need=%v err=%v", need, err)
-	}
 }
 
-func TestShellEmptyAndConfirm(t *testing.T) {
+// Confirm never decides; it only builds the card summary.
+func TestShellConfirmOnlyBuildsSummary(t *testing.T) {
 	sh := NewShell()
 	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))
 	if err != nil || need || summary != "date" {
 		t.Fatalf("date need=%v summary=%q err=%v", need, summary, err)
 	}
-	need, summary, err = sh.Confirm(json.RawMessage(`{"command":"date; rm -rf /"}`))
-	if err != nil || !need {
-		t.Fatalf("chained date need=%v err=%v", need, err)
-	}
 	need, summary, err = sh.Confirm(json.RawMessage(`{"command":"rm -rf /tmp/nope"}`))
-	if err != nil || !need || summary != "rm -rf /tmp/nope" {
+	if err != nil || need || summary != "rm -rf /tmp/nope" {
 		t.Fatalf("confirm need=%v summary=%q err=%v", need, summary, err)
 	}
 	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"  "}`)); err == nil {
@@ -126,23 +111,38 @@ func TestShellEmptyAndConfirm(t *testing.T) {
 	}
 }
 
-// In allow mode the shell follows the central review: an ordinary command does
-// not ask, while deletions and external sends do.
-func TestShellAllowAsksOnlyForDangerousCommands(t *testing.T) {
+func TestWriteEditRunRefusesMachineOff(t *testing.T) {
 	t.Cleanup(func() { SetMachineGate(nil) })
-	SetMachineGate(func() (string, error) { return "allow", nil })
-	sh := NewShell()
-	for _, command := range []string{"date", "ls -la", "cat notes.txt", "python train.py", "go test ./...", "curl -s https://example.com"} {
-		need, _, err := sh.Confirm(json.RawMessage(`{"command":` + strconv.Quote(command) + `}`))
-		if err != nil || need {
-			t.Fatalf("allow %q need=%v err=%v", command, need, err)
-		}
+	SetMachineGate(func() (string, error) { return "off", nil })
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	writeArgs := json.RawMessage(`{"path":"` + path + `","content":"x"}`)
+	editArgs := json.RawMessage(`{"path":"` + path + `","old_string":"x","new_string":"y"}`)
+	w := &WriteFile{}
+	ed := &EditFile{}
+	if _, err := w.Run(context.Background(), writeArgs); err == nil || !strings.Contains(err.Error(), "off") {
+		t.Fatalf("off write run err=%v", err)
 	}
-	for _, command := range []string{"rm -rf /tmp/x", "git clean -fdx", "curl -X POST https://example.com", "sendmail -t < msg.txt"} {
-		need, _, err := sh.Confirm(json.RawMessage(`{"command":` + strconv.Quote(command) + `}`))
-		if err != nil || !need {
-			t.Fatalf("allow %q need=%v err=%v", command, need, err)
-		}
+	if _, err := ed.Run(context.Background(), editArgs); err == nil || !strings.Contains(err.Error(), "off") {
+		t.Fatalf("off edit run err=%v", err)
+	}
+}
+
+// ResolvedPath reports the path the kernel uses to decide a self-edit.
+func TestWriteEditResolvedPath(t *testing.T) {
+	dir := t.TempDir()
+	base, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(base, "note.txt")
+	w := &WriteFile{Root: dir}
+	if got := w.ResolvedPath(json.RawMessage(`{"path":"note.txt","content":"x"}`)); got != want {
+		t.Fatalf("write path %q want %q", got, want)
+	}
+	ed := &EditFile{Root: dir}
+	if got := ed.ResolvedPath(json.RawMessage(`{"path":"note.txt","old_string":"a","new_string":"b"}`)); got != want {
+		t.Fatalf("edit path %q want %q", got, want)
 	}
 }
 
@@ -252,7 +252,7 @@ func TestWriteFile(t *testing.T) {
 	w := &WriteFile{}
 	args := json.RawMessage(`{"path":"` + path + `","content":"hello"}`)
 	need, summary, err := w.Confirm(args)
-	if err != nil || !need || !strings.Contains(summary, path) {
+	if err != nil || need || !strings.Contains(summary, path) {
 		t.Fatalf("confirm need=%v summary=%q err=%v", need, summary, err)
 	}
 	out, err := w.Run(context.Background(), args)
@@ -320,7 +320,7 @@ func TestEditFile(t *testing.T) {
 		t.Fatal("expected identical strings")
 	}
 	need, _, err := ed.Confirm(json.RawMessage(`{"path":"` + path + `","old_string":"beta","new_string":"BETA"}`))
-	if err != nil || !need {
+	if err != nil || need {
 		t.Fatalf("confirm: %v need=%v", err, need)
 	}
 	out, err := ed.Run(context.Background(), json.RawMessage(`{"path":"`+path+`","old_string":"beta","new_string":"BETA"}`))

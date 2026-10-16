@@ -35,6 +35,8 @@ func (linksTool) Parameters() any {
 	}, []string{"action"})
 }
 
+// Confirm only builds the card summary for install and remove. The kernel
+// review path decides that install and remove need the owner.
 func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
 	var in struct {
 		Action string `json:"action"`
@@ -49,16 +51,16 @@ func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
 	case "install":
 		e, ok := link.Lookup(id)
 		if !ok {
-			return true, "install " + id, nil
+			return false, "install " + id, nil
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "install %s\n%s", e.ID, linkOneLine(e.Summary))
 		if len(e.Secrets) > 0 {
 			fmt.Fprintf(&b, "\nsecrets: %s", strings.Join(e.Secrets, ", "))
 		}
-		return true, b.String(), nil
+		return false, b.String(), nil
 	case "remove":
-		return true, "remove " + id, nil
+		return false, "remove " + id, nil
 	default:
 		return false, "", nil
 	}

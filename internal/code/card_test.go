@@ -31,7 +31,7 @@ func TestFakeCLIStreamsCardAndStops(t *testing.T) {
 	l.UseCommand(script)
 	args := json.RawMessage(`{"work_dir":"` + work + `","max_steps":2,"timeout_sec":10,"goal":"ship the widget"}`)
 	need, summary, err := (startTool{l}).Confirm(args)
-	if err != nil || !need || !strings.Contains(summary, work) || !strings.Contains(summary, "ship the widget") || !strings.Contains(summary, "edits files") {
+	if err != nil || need || !strings.Contains(summary, work) || !strings.Contains(summary, "ship the widget") || !strings.Contains(summary, "edits files") {
 		t.Fatalf("confirm %v %q %v", need, summary, err)
 	}
 	if _, err := toolNamed(l, "code_start").Run(context.Background(), args); err != nil {

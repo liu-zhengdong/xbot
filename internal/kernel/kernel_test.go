@@ -319,6 +319,8 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 }
 
 func TestDeniedWrite(t *testing.T) {
+	// ask mode makes every machine action need the owner, so this test
+	// exercises a refused confirmation instead of an allow-mode auto-write.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "note.txt")
 	args, _ := json.Marshal(map[string]string{"path": path, "content": "hi"})
@@ -331,6 +333,7 @@ func TestDeniedWrite(t *testing.T) {
 	b := testBot(t)
 	k := &Kernel{
 		Bot: b, Provider: p, Links: []link.Link{link.NewToolsLink()},
+		Machine: func() (string, error) { return "ask", nil },
 		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "write", time.Now())); err != nil {

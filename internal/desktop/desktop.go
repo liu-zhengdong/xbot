@@ -115,11 +115,3 @@ func Perform(ctx context.Context, root string, d Driver, action Action, approved
 		return "", fmt.Errorf("desktop: unknown action %q", action.Name)
 	}
 }
-
-// NeedsConfirm reports whether the owner must approve this action under mode.
-func NeedsConfirm(mode string, action Action) bool {
-	if mode == machine.Ask {
-		return true
-	}
-	return action.Name != "screenshot"
-}

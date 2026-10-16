@@ -13,13 +13,14 @@ import (
 )
 
 func TestLinksConfirmInstallAndRemove(t *testing.T) {
+	// The tool only builds the card summary; the kernel review path decides.
 	var tool linksTool
 	need, summary, err := tool.Confirm([]byte(`{"action":"install","id":"webhook"}`))
-	if err != nil || !need || !strings.HasPrefix(summary, "install webhook") {
+	if err != nil || need || !strings.HasPrefix(summary, "install webhook") {
 		t.Fatalf("need %v summary %q err %v", need, summary, err)
 	}
 	need, summary, err = tool.Confirm([]byte(`{"action":"remove","id":"webhook"}`))
-	if err != nil || !need || !strings.HasPrefix(summary, "remove webhook") {
+	if err != nil || need || !strings.HasPrefix(summary, "remove webhook") {
 		t.Fatalf("remove need %v summary %q err %v", need, summary, err)
 	}
 	for _, action := range []string{"search", "load"} {

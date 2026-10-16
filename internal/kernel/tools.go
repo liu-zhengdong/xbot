@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
@@ -57,7 +59,26 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	}
 	list = k.modelAgentTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
-	return reviewedTools(list), nil
+	return k.reviewedTools(list), nil
+}
+
+// selfEditGuard reports whether path is one of this bot's own persona or
+// profile files. A direct write to either still asks the owner even when the
+// local machine switch is allow. It returns nil when the bot is not known.
+func (k *Kernel) selfEditGuard() func(path string) bool {
+	if k == nil || k.Bot == nil || k.Bot.Root == "" {
+		return nil
+	}
+	dir := bot.Dir(k.Bot.Root, k.Bot.Name())
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	persona := filepath.Join(dir, "persona.md")
+	profile := filepath.Join(dir, "config.json")
+	return func(path string) bool {
+		clean := filepath.Clean(path)
+		return clean == persona || clean == profile
+	}
 }
 
 func (k *Kernel) hasLink(name string) bool {
@@ -243,7 +264,7 @@ func (personaTool) Parameters() any {
 	return schema(map[string]any{"text": stringProp("the full persona")}, []string{"text"})
 }
 func (personaTool) Confirm(json.RawMessage) (bool, string, error) {
-	return true, "update persona", nil
+	return false, "update persona", nil
 }
 func (t personaTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {

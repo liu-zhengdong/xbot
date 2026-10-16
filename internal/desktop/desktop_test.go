@@ -74,6 +74,8 @@ func TestPerformSwitchAndIdle(t *testing.T) {
 	}
 }
 
+// Confirm only builds the card summary; the kernel review path decides. Run
+// still refuses when this machine is off.
 func TestToolConfirm(t *testing.T) {
 	root := t.TempDir()
 	l := Open(root)
@@ -83,27 +85,27 @@ func TestToolConfirm(t *testing.T) {
 		t.Fatalf("shot need=%v %v", need, err)
 	}
 	need, summary, err := (typeTool{l}).Confirm(json.RawMessage(`{"text":"pay now"}`))
-	if err != nil || !need || !strings.Contains(summary, "pay now") || !strings.Contains(summary, "payment") {
+	if err != nil || need || !strings.Contains(summary, "pay now") || !strings.Contains(summary, "payment") {
 		t.Fatalf("need=%v summary=%q %v", need, summary, err)
 	}
 	need, summary, err = (clickTool{l}).Confirm(json.RawMessage(`{"x":8,"y":9}`))
-	if err != nil || !need || !strings.Contains(summary, "desktop click 8 9") {
+	if err != nil || need || !strings.Contains(summary, "desktop click 8 9") {
 		t.Fatalf("click summary %q %v", summary, err)
 	}
 	need, summary, err = (keyTool{l}).Confirm(json.RawMessage(`{"key":"Return"}`))
-	if err != nil || !need || !strings.Contains(summary, "Return") {
+	if err != nil || need || !strings.Contains(summary, "Return") {
 		t.Fatalf("key summary %q %v", summary, err)
 	}
 	need, summary, err = (scrollTool{l}).Confirm(json.RawMessage(`{"dy":-4,"x":11,"y":22}`))
-	if err != nil || !need || !strings.Contains(summary, "down") || !strings.Contains(summary, "4") || !strings.Contains(summary, "11") || !strings.Contains(summary, "22") {
+	if err != nil || need || !strings.Contains(summary, "down") || !strings.Contains(summary, "4") || !strings.Contains(summary, "11") || !strings.Contains(summary, "22") {
 		t.Fatalf("scroll summary %q %v", summary, err)
 	}
 	need, summary, err = (scrollTool{l}).Confirm(json.RawMessage(`{"dy":2}`))
-	if err != nil || !need || !strings.Contains(summary, "up 2") || !strings.Contains(summary, "pointer") {
+	if err != nil || need || !strings.Contains(summary, "up 2") || !strings.Contains(summary, "pointer") {
 		t.Fatalf("scroll pointer %q %v", summary, err)
 	}
 	need, summary, err = (typeTool{l}).Confirm(json.RawMessage(`{"text":"hello"}`))
-	if err != nil || !need || !strings.Contains(summary, "hello") || strings.Contains(summary, "payment") {
+	if err != nil || need || !strings.Contains(summary, "hello") || strings.Contains(summary, "payment") {
 		t.Fatalf("type summary %q %v", summary, err)
 	}
 	out, err := (clickTool{l}).Run(context.Background(), json.RawMessage(`{"x":8,"y":9}`))
@@ -113,8 +115,7 @@ func TestToolConfirm(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "machines.json"), []byte(`{"machines":{"local":"off"}}`+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = (shotTool{l}).Confirm(nil)
-	if err == nil || !strings.Contains(err.Error(), "off") {
+	if _, err := (clickTool{l}).Run(context.Background(), json.RawMessage(`{"x":8,"y":9}`)); err == nil || !strings.Contains(err.Error(), "off") {
 		t.Fatal(err)
 	}
 }

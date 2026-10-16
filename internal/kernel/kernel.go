@@ -56,6 +56,11 @@ type Kernel struct {
 	WorkDir         string
 	SharedDir       string
 	SkillsDir       string
+	// Machine reports the local machine switch for tools that touch this
+	// machine. Nil reads machines.json under the bot root; the zero value is
+	// allow. off refuses, ask confirms each machine action, allow follows the
+	// one policy table.
+	Machine func() (string, error)
 
 	startOnce   sync.Once
 	execOnce    sync.Once

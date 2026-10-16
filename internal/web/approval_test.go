@@ -20,14 +20,11 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/mockopenai"
 	"xbot/internal/provider"
-	"xbot/internal/tools"
 )
 
 func TestWebApprovalAllowAndDeny(t *testing.T) {
 	// ask mode makes every shell command need the owner, so this test can use a
 	// harmless mkdir to exercise the approval card on the web.
-	t.Cleanup(func() { tools.SetMachineGate(nil) })
-	tools.SetMachineGate(func() (string, error) { return "ask", nil })
 	root := t.TempDir()
 	work := t.TempDir()
 	model := httptest.NewServer(mockopenai.NewMux(work))
@@ -50,6 +47,7 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
 			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
 			WorkDir: work,
+			Machine: func() (string, error) { return "ask", nil },
 		}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))
@@ -152,8 +150,6 @@ func approvalStates(t *testing.T, base string, cookie *http.Cookie, id string) [
 func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 	// ask mode makes every shell command need the owner, so this test can use a
 	// harmless mkdir to exercise the approval timeout on the web.
-	t.Cleanup(func() { tools.SetMachineGate(nil) })
-	tools.SetMachineGate(func() (string, error) { return "ask", nil })
 	root := t.TempDir()
 	work := t.TempDir()
 	model := httptest.NewServer(mockopenai.NewMux(work))
@@ -176,6 +172,7 @@ func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
 			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
 			WorkDir: work,
+			Machine: func() (string, error) { return "ask", nil },
 		}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))

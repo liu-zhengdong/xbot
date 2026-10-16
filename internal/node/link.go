@@ -103,7 +103,7 @@ func (callTool) Confirm(args json.RawMessage) (bool, string, error) {
 		}
 	}
 	if strings.TrimSpace(in.Cap) == "shell" {
-		return true, "node " + strings.TrimSpace(in.Name) + " shell\n" + in.Command, nil
+		return false, "node " + strings.TrimSpace(in.Name) + " shell\n" + in.Command, nil
 	}
 	return false, "", nil
 }

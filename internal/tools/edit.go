@@ -41,16 +41,32 @@ type editArgs struct {
 	NewString string `json:"new_string"`
 }
 
+// Confirm only builds the card summary. The kernel review path decides
+// whether the edit needs the owner; it calls ResolvedPath to check for a
+// persona or profile self-edit.
 func (e *EditFile) Confirm(args json.RawMessage) (bool, string, error) {
 	in, path, err := e.parse(args)
 	if err != nil {
 		return false, "", err
 	}
-	return true, fmt.Sprintf("edit %s (%d -> %d bytes)", DisplayPath(e.Sandbox, path), len(in.OldString), len(in.NewString)), nil
+	return false, fmt.Sprintf("edit %s (%d -> %d bytes)", DisplayPath(e.Sandbox, path), len(in.OldString), len(in.NewString)), nil
+}
+
+// ResolvedPath reports the absolute path this call would edit, so the kernel
+// can decide whether it is a persona or profile self-edit.
+func (e *EditFile) ResolvedPath(args json.RawMessage) string {
+	_, path, err := e.parse(args)
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := machineOff(); err != nil {
 		return "", err
 	}
 	in, path, err := e.parse(args)

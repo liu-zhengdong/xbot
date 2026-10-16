@@ -149,7 +149,9 @@ func TestSkillReadDoesNotPersist(t *testing.T) {
 	}
 }
 
-func TestSkillWriteRequiresApproval(t *testing.T) {
+// write_skill is a normal tool: it writes a user skill, not this bot's own
+// persona or profile, so the one policy table does not ask.
+func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
 	ada := testBot(t, link.NameTerminal, link.NameSkills)
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
@@ -160,42 +162,16 @@ func TestSkillWriteRequiresApproval(t *testing.T) {
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
 			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "write_skill", Arguments: args},
 		}}},
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		{Role: provider.RoleAssistant, Content: "wrote"},
 	}}
-	var tool, summary string
 	k := skillKernel(ada)
 	k.Provider = p
 	k.MaxSteps = 4
-	k.Approve = func(_ context.Context, name, text string) (bool, error) {
-		if name == "write_skill" {
-			tool, summary = name, text
-			return false, nil
-		}
-		return true, nil
+	k.Approve = func(context.Context, string, string) (bool, error) {
+		t.Fatal("write_skill should not ask")
+		return false, nil
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "draft ship", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	if tool != "write_skill" || !strings.Contains(summary, "write skill ship") || !strings.Contains(summary, "Pack a release") {
-		t.Fatalf("card %s %s", tool, summary)
-	}
-	if _, err := os.Stat(skillPath(ada, "ship")); err == nil {
-		t.Fatal("denied write created a file")
-	}
-	if !strings.Contains(transcriptText(t, ada), "denied by user") {
-		t.Fatal(transcriptText(t, ada))
-	}
-
-	p2 := &scripted{resps: []provider.Message{
-		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "write_skill", Arguments: args},
-		}}},
-		{Role: provider.RoleAssistant, Content: "wrote"},
-	}}
-	k.Provider = p2
-	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "draft again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(skillPath(ada, "ship"))

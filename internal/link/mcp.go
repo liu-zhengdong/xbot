@@ -254,11 +254,10 @@ func (t mcpTool) Name() string        { return t.local }
 func (t mcpTool) Description() string { return t.desc }
 func (t mcpTool) Parameters() any     { return t.schema }
 
+// Confirm only builds the card summary. The kernel review path decides:
+// MCP tools are an external send because the call leaves XBot.
 func (t mcpTool) Confirm(json.RawMessage) (bool, string, error) {
-	if t.readOnly {
-		return false, "", nil
-	}
-	return true, "mcp " + t.mcp.Spec.Name + " " + t.remote, nil
+	return false, "mcp " + t.mcp.Spec.Name + " " + t.remote, nil
 }
 
 func (t mcpTool) Run(ctx context.Context, args json.RawMessage) (string, error) {

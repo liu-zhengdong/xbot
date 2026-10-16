@@ -94,7 +94,7 @@ func (startTool) Confirm(args json.RawMessage) (bool, string, error) {
 		}
 	}
 	summary := "code start\n" + strings.TrimSpace(in.WorkDir) + "\n" + strings.TrimSpace(in.Goal) + "\nedits files"
-	return true, summary, nil
+	return false, summary, nil
 }
 func (t startTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {

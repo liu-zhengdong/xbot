@@ -43,7 +43,7 @@ xbot node call desk info
 
 长时间的活用 `spawn` 交给子代理。本机默认是 goroutine。`xbot runner` 是同一套执行器的 HTTP 服务，只听环回地址，要用 token。`xbot chat --runner URL --runner-token TOKEN` 把 Bot 接到它上面。
 
-执行 shell 时，机器开关是 `allow` 就只对删除和对外发送问 `y/n`，其余命令直接跑；`ask` 每条都问；`off` 直接拒绝。`write_file`、`edit_file` 一律问 `y/n`。Bot 改自己的 persona 或 profile 也要确认；创建、修改、暂停、删除 routine 不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
+执行工具前，内核只看一张显式的权限表：确认只经过这一张表，工具自己从不确认。只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、以及 persona/profile 自改会问 `y/n`。机器开关管本机工具：`allow` 时 shell 只对删除和对外发送问，普通读写直接做；`ask` 每次都要点头；`off` 直接拒绝。写自己的 persona 或 profile 文件在 `allow` 下仍要确认；创建、修改、暂停、删除 routine，Bot 之间的 `message_bot`/`post_group`，写技能、编码任务都不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`notify_owner` 不需要确认，它是说给主人听的。
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
 
@@ -249,7 +249,7 @@ xbot template import --file ada.json --name ada-copy
 - **read_file**：`offset` 从 1 起，`limit` 默认 200 行、最多 2000 行，输出默认最多 32 KiB。
 - **write_file / edit_file**：路径先变成绝对路径，并解析已存在前缀上的符号链接。`write_file` 正文最多 1 MiB。`edit_file` 要求 `old_string` 恰好出现一次，文件本身最多 2 MiB。
 - 工具结果进 transcript 之前会收成合法 UTF-8，并再卡一道 64 KiB。
-- 没有路径沙箱。写文件一律确认；shell 按机器开关：`allow` 只对删除和对外发送确认，`ask` 每条都问，`off` 拒绝。
+- 没有路径沙箱。权限只有内核里的一张表：只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要确认。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关走：`allow` 按表，`ask` 每次都要确认，`off` 拒绝；`browser_stop` 在 `off` 下仍可用来关进程。Bot 自己的 persona/profile 文件在 `allow` 下也确认。
 - 数据目录 `0700`，配置和身份文件 `0600`。JSONL 追加时加文件锁。
 - cron 最短 5 分钟。`* * * * *` 会被拒绝。
 - 模型 API key 不进 Bot 目录，也不进 `providers.json`。Webhook secret 要留在本机才能验签，单独放在 0600 的文件里。
@@ -394,7 +394,7 @@ xbot machine set local off
 xbot machine set desk allow
 ```
 
-`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时远程调用只排队，主人在节点上跑 `xbot node approve <id>`。文件工具不看这个开关。桌面和浏览器也看这个开关。
+`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时远程调用只排队，主人在节点上跑 `xbot node approve <id>`。`read_file`、`write_file`、`edit_file` 也看这个开关：`allow` 下普通读写直接做，写自己的 persona/profile 仍确认；`ask` 每次问；`off` 拒绝。桌面和浏览器也看这个开关，`browser_stop` 在 `off` 下仍可用来关进程。
 
 ## 桌面
 

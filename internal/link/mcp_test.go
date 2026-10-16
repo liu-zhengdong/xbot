@@ -101,12 +101,12 @@ func TestMCPRoundTrip(t *testing.T) {
 	if props["q"] == nil {
 		t.Fatalf("%v", schema)
 	}
-	need, _, err := echo.Confirm(nil)
+	need, summary, err := echo.Confirm(nil)
 	if err != nil || need {
 		t.Fatalf("readonly confirm %v %v", need, err)
 	}
-	need, summary, err := write.Confirm(nil)
-	if err != nil || !need || !strings.Contains(summary, "write") {
+	need, summary, err = write.Confirm(nil)
+	if err != nil || need || !strings.Contains(summary, "write") {
 		t.Fatalf("write confirm %v %q %v", need, summary, err)
 	}
 	out, err := echo.Run(context.Background(), []byte(`{"q":"hi"}`))

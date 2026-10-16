@@ -73,7 +73,7 @@ func (deleteBotTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return false, "", err
 	}
-	return true, "delete bot " + strings.TrimSpace(in.Name), nil
+	return false, "delete bot " + strings.TrimSpace(in.Name), nil
 }
 func (t deleteBotTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	if !t.k.isPrimary() {
@@ -178,7 +178,7 @@ func (setPrimaryTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return false, "", err
 	}
-	return true, "make " + strings.TrimSpace(in.Name) + " the primary", nil
+	return false, "make " + strings.TrimSpace(in.Name) + " the primary", nil
 }
 func (t setPrimaryTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	if !t.k.isPrimary() {

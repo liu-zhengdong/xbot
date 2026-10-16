@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"xbot/internal/clip"
-	"xbot/internal/review"
 )
 
 const (
@@ -61,6 +60,21 @@ func localMachine() (string, error) {
 		return "allow", nil
 	}
 	return fn()
+}
+
+// machineOff reports the local machine switch is off, which refuses both
+// shell and the file tools. The kernel review path already refuses an off
+// machine; this is the last line of defense for a tool call that reaches Run
+// directly.
+func machineOff() error {
+	mode, err := localMachine()
+	if err != nil {
+		return err
+	}
+	if mode == "off" {
+		return errors.New("machine local is off")
+	}
+	return nil
 }
 
 // SetKeyLookup supplies provider key values kept in memory after they are
@@ -118,30 +132,15 @@ type shellArgs struct {
 	Keys           bool   `json:"keys"`
 }
 
-// Confirm follows the local machine switch. off refuses the command. ask
-// asks the owner for every command. allow asks only for the actions the
-// central review flags: deletions and external sends. keys:true always asks,
-// because it puts provider keys into the command environment.
+// Confirm only builds the card summary. The kernel review path decides
+// whether the call needs the owner: a delete, an external send, or keys:true.
 func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 	in, err := parseShellArgs(args)
 	if err != nil {
 		return false, "", err
 	}
-	mode, err := localMachine()
-	if err != nil {
-		return false, "", err
-	}
-	if mode == "off" {
-		return false, "", errors.New("machine local is off")
-	}
 	if in.Keys {
-		return true, in.Command + "\nwith provider keys", nil
-	}
-	if mode == "ask" {
-		return true, in.Command, nil
-	}
-	if need, _ := review.Check(s.Name(), args); need {
-		return true, in.Command, nil
+		return false, in.Command + "\nwith provider keys", nil
 	}
 	return false, in.Command, nil
 }
@@ -151,12 +150,8 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	mode, err := localMachine()
-	if err != nil {
+	if err := machineOff(); err != nil {
 		return "", err
-	}
-	if mode == "off" {
-		return "", errors.New("machine local is off")
 	}
 	timeout := s.duration(in.TimeoutSeconds)
 	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv(in.Keys))

@@ -38,16 +38,32 @@ type writeArgs struct {
 	Content string `json:"content"`
 }
 
+// Confirm only builds the card summary. The kernel review path decides
+// whether the write needs the owner; it calls ResolvedPath to check for a
+// persona or profile self-edit.
 func (w *WriteFile) Confirm(args json.RawMessage) (bool, string, error) {
 	in, path, err := w.parse(args)
 	if err != nil {
 		return false, "", err
 	}
-	return true, fmt.Sprintf("write %s (%d bytes)", DisplayPath(w.Sandbox, path), len(in.Content)), nil
+	return false, fmt.Sprintf("write %s (%d bytes)", DisplayPath(w.Sandbox, path), len(in.Content)), nil
+}
+
+// ResolvedPath reports the absolute path this call would write, so the kernel
+// can decide whether it is a persona or profile self-edit.
+func (w *WriteFile) ResolvedPath(args json.RawMessage) string {
+	_, path, err := w.parse(args)
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := machineOff(); err != nil {
 		return "", err
 	}
 	in, path, err := w.parse(args)

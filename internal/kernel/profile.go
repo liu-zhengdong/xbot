@@ -80,7 +80,7 @@ func (profileTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return true, summary, nil
+	return false, summary, nil
 }
 func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	name, update, _, err := parseProfileArgs(args)

@@ -51,7 +51,7 @@
 - **家节点**：Bot 住在用户选择的机器上（比如家里的 PC），数据不离开用户的设备。手机、Web、Slack 都只是入口。
 - **远程访问**：Cloudflare Tunnel、Tailscale 直连、自建中继，都可以选；它们只是不同的传输方式，内核不用关心。`xbot serve --tunnel cloudflare` 用本机的 `cloudflared` 把已经在听的 `--http` 公布出去。真实的 `cloudflared` 把地址打在 stderr，stdout 不关，所以两边一起读。stderr 打印 `public url`（`*.trycloudflare.com`）。`cloudflared` 单独一个进程组，父进程死掉时收到 `SIGKILL`，serve 被硬杀掉也不会留下公开隧道。拉起它的 goroutine 锁住操作系统线程，直到隧道关掉，避免线程先退出把 `SIGKILL` 提前打出去。`--tunnel tailscale` 跑 `tailscale ip -4`；`--http` 若是回环地址，就改绑到这个 tailnet 地址，别的绑定保持原样，`public url` 用 tailnet 地址加端口。二进制路径可用 `XBOT_CLOUDFLARED` 和 `XBOT_TAILSCALE`。自建中继仍是后面的网关，这一片不实现。
 - **多节点**：每台设备都可以运行 `xbot node serve`（默认 `127.0.0.1:18772`），用 bearer token 公布本机身份。token 在该数据根的 `node-token`（0600），第一次启动打印一次。也可以用 `--token TOKEN`、`--token -`（stdin 一行）或环境变量 `XBOT_NODE_TOKEN`。`SIGTERM` 和中断一样停掉监听。主人用 `xbot node add <name> --url URL --token TOKEN` 把地址记在 `nodes.json`（0600）之前，先用这个 token 问一次对方，对不上就不写入。`node list` 把 401 显示成 `unauthorized`，连不上才是 `offline`。装上 `node` Link 之后，系统提示里只有一行；`links load node` 才带上 `node_list` 和 `node_call`。能力是 `info`（id、名字、系统、架构）和 `shell`。`shell` 看那台机器的开关。要给别的设备连，把 `--addr` 绑到 tailnet 地址，不要绑 `0.0.0.0`。
-- **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 只对删除和对外发送要确认（看集中分类器），其余命令直接跑。`ask` 让每条 shell 都要主人确认。`off` 直接拒绝，确认也跑不了。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。节点上的 `shell` 看那台机器自己的开关，不看调用方传来的 `approved`。`allow` 才执行。`ask` 把命令记在 `node-pending/<id>.json`（0600），带上调用方、命令和时间，返回 `xbot node approve <id>`。十条钟后过期，最多留 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve` 先把命令打出来，默认要回答 `y` 才执行，`--yes` 跳过提问。拒绝时退出码非零，并删掉这条待批。这台机器上的 `xbot serve` 在网页里给出允许或拒绝，并往每个 Bot 的通知里写一条。`off` 拒绝，批准也跑不了。文件工具不经过这个开关。
+- **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 只对删除和对外发送要确认（看集中分类器），其余命令直接跑。`ask` 让每条 shell 都要主人确认。`off` 直接拒绝，确认也跑不了。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。节点上的 `shell` 看那台机器自己的开关，不看调用方传来的 `approved`。`allow` 才执行。`ask` 把命令记在 `node-pending/<id>.json`（0600），带上调用方、命令和时间，返回 `xbot node approve <id>`。十条钟后过期，最多留 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve` 先把命令打出来，默认要回答 `y` 才执行，`--yes` 跳过提问。拒绝时退出码非零，并删掉这条待批。这台机器上的 `xbot serve` 在网页里给出允许或拒绝，并往每个 Bot 的通知里写一条。`off` 拒绝，批准也跑不了。`write_file`/`edit_file` 也跟这个开关：`allow` 普通写不弹卡，写自己的 persona/profile 仍确认，`ask` 每次问，`off` 拒绝。
 - **多设备同步**：Bot 不合并，各自住在自己的家节点上；只同步人的身份和人的记忆，用可合并的追加日志实现（记录时间、Bot、设备，以最新为准），通过中继同步。
 - **浏览器**：用 CDP 驱动本机 Chrome，配置目录是数据根下的 `browser/profile`，不碰主人正在用的那一份。`xbot browser open [--headless] <url>` 打开 http 或 https，留下调试端口；`snapshot` 读标题、地址和可见正文；`click <selector>` 点第一个匹配的元素；`stop` 关掉这次拉起的进程。二进制用 `XBOT_CHROME`，否则在 PATH 里找 `google-chrome` 或 `chromium`。装上 `browser` Link 之后，`links load browser` 才有 `browser_open`、`browser_snapshot`、`browser_click`、`browser_stop`。`browser_stop` 在机器开关是 `off` 时也能确认，用来关掉进程。`xbot browser open` 退出后 Chrome 还在，直到 `xbot browser stop`。`xbot serve` 只关掉自己拉起的那一份，用进程组发信号，不用 `Pdeathsig`。停进程之前核对 `/proc/<pid>/cmdline` 里有这个配置目录。对不上就不杀，删掉过期的 `session.json`，命令退出码是 0，并写明原因。页面正文包在 `<untrusted_event>` 里。机器开关和桌面一样：`off` 拒绝，`ask` 每一下都要确认，`allow` 时只有打开和点击要确认。能用命令行或 API 完成的事，优先不用浏览器。
 - **桌面操作**：截图、点击、输入、滚动、按键，也是一个 Link。`xbot desktop` 和装上 `desktop` 之后的工具走同一条。schema 要 `links load desktop` 才进当前这一轮。机器开关是 `off` 就拒绝；`ask` 时每一下都要主人确认，截图也一样；`allow` 时截图不确认，点击、输入、滚动、按键要确认。主人最近几秒还在用这台电脑（`xprintidle` 小于 5 秒）时不点、不打字、不滚动、不按键，截图可以。看不出来就照常做。确认卡写明点击坐标、要输入的原文、按键名，以及滚动的方向、步数和位置。输入或按键里出现付款、登录、发消息时，确认卡再写明这一点。能用命令行或 API 完成的事，工具说明里要求优先不用界面。截图是 PNG，写在数据根的 `desktop/`，权限 0600。点击和按键用 `xdotool`，截图用 ImageMagick 的 `import`。
@@ -100,7 +100,7 @@
 - **Link 插件市场**：上架的是实现 Link 协议的插件（出站工具 + 入站 Event），不是 MCP 市场。自定义聊天室、Telegram、飞书（Lark）这类连接器都可以上架，把外面收到的消息推进来，变成 Event。一份精选清单，默认不安装，点一下就添加。
 - **连接器**：Telegram 和飞书。装上之后，外面的消息才进收件箱。安装要主人在确认卡里填密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`）。值写进该 Bot 的 `secrets.json`（权限 0600），不进系统提示，不进 transcript，也不进工具结果。命令行安装从同名环境变量读；变量是空的就不装、不落盘。网页 `POST /api/bots/{name}/links` 不接收密钥，声明了密钥的条目返回 409。入站是 `POST /connector/telegram/{bot}` 和 `POST /connector/lark/{bot}`，不走网页登录。Telegram 用请求头 `X-Telegram-Bot-Api-Secret-Token`，飞书用请求头 `X-Lark-Token` 或正文里的 `token`，和存好的密钥不一致就拒绝，收件箱不写。对上的消息写成来源 `telegram` 或 `lark` 的不可信事件，正文是聊天 id 和文本，没有密钥。飞书的 `url_verification` 只回 `challenge`，不唤醒。同一条 `update_id` 或 `message_id` 只收一次。出站工具是 `telegram_send` 和 `lark_send`。schema 不在首轮工具里，`links load` 之后只留在当前这一轮。调用先落一份草稿，确认卡给主人看收件人和正文；没点头就不发，草稿留着。点头之后才请求 Telegram 的 `sendMessage`，或飞书自定义机器人的 webhook。返回给模型的错误里，密钥换成 `[secret]`。卸下这条 Link 时删掉它的密钥。
 - **市场条目**：标明类型（原生 Link 插件，或 MCP）、能力（工具 / 入站事件）、以及需要的密钥。
-- **编码代理 Link**：和子代理分开。一个 Bot 可以同时留下多条编码任务，每条有自己的工作目录、仓库、步数上限和时间上限，不套用子代理的 16 步、10 分钟。记录在 `bots/<name>/code/<id>.json`，id 以 `ca_` 开头。同时只有一条是 `running`，再开始的进 `queued`。`code_start` 先出确认卡，写明工作目录、目标和会改文件，主人点头才启动。Bot 可以补充（`code_steer`）、排队（`code_queue`）、打断（`code_interrupt`）、取消（`code_cancel`），并用 `code_show` 看记录。取消正在跑的那条时，队列里最早的一条变成 `running`。完成、失败或取消时向该 Bot 的收件箱投来源 `coding-agent` 的不可信事件。这些工具的 schema 要 `links load coding-agent` 之后才进当前这一轮。内核没有新的对象。后端三选一。`XBOT_CODE_AGENT` 是已有编码代理的可执行文件，优先用它。没设时在 PATH 里依次找 `cursor-agent`、`codex`、`claude`。`claude` 和 `cursor-agent` 加 `-p`，`codex` 加 `exec`，其它命令仍把目标当作唯一参数。子进程环境只有基础变量和这次任务的 `XBOT_CODE_*`，不带供应商密钥。标准输出和标准错误按行追加进该 Bot 的 transcript，每条包在 `<coding_card id status>` 里。对话里同一个 id 只显示最新的一张卡片。进程结束时再追加一张终态卡片，状态是 done、failed 或 cancelled。取消之后记录已经不是 running，这张卡片仍然要写，不能停在 running。这些卡片不进模型上下文，也不进记忆抽取。`code_show` 在任务还在跑时能看到已经流出来的输出。`code_cancel` 停掉进程，并杀掉它所在的进程组，避免子进程把管道占住。没有外部命令时，`xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner`。都没有时，用这个 Bot 绑定的模型在本进程里跑。步数和时间都用这条任务自己的上限。仓库非空且工作目录还没有 `.git` 时先克隆。这三个都没配时，仍然只写记录。
+- **编码代理 Link**：和子代理分开。一个 Bot 可以同时留下多条编码任务，每条有自己的工作目录、仓库、步数上限和时间上限，不套用子代理的 16 步、10 分钟。记录在 `bots/<name>/code/<id>.json`，id 以 `ca_` 开头。同时只有一条是 `running`，再开始的进 `queued`。`code_start` 记录工作目录、目标和会改文件，然后启动；按权限表它是普通动作，不弹确认卡。Bot 可以补充（`code_steer`）、排队（`code_queue`）、打断（`code_interrupt`）、取消（`code_cancel`），并用 `code_show` 看记录。取消正在跑的那条时，队列里最早的一条变成 `running`。完成、失败或取消时向该 Bot 的收件箱投来源 `coding-agent` 的不可信事件。这些工具的 schema 要 `links load coding-agent` 之后才进当前这一轮。内核没有新的对象。后端三选一。`XBOT_CODE_AGENT` 是已有编码代理的可执行文件，优先用它。没设时在 PATH 里依次找 `cursor-agent`、`codex`、`claude`。`claude` 和 `cursor-agent` 加 `-p`，`codex` 加 `exec`，其它命令仍把目标当作唯一参数。子进程环境只有基础变量和这次任务的 `XBOT_CODE_*`，不带供应商密钥。标准输出和标准错误按行追加进该 Bot 的 transcript，每条包在 `<coding_card id status>` 里。对话里同一个 id 只显示最新的一张卡片。进程结束时再追加一张终态卡片，状态是 done、failed 或 cancelled。取消之后记录已经不是 running，这张卡片仍然要写，不能停在 running。这些卡片不进模型上下文，也不进记忆抽取。`code_show` 在任务还在跑时能看到已经流出来的输出。`code_cancel` 停掉进程，并杀掉它所在的进程组，避免子进程把管道占住。没有外部命令时，`xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner`。都没有时，用这个 Bot 绑定的模型在本进程里跑。步数和时间都用这条任务自己的上限。仓库非空且工作目录还没有 `.git` 时先克隆。这三个都没配时，仍然只写记录。
 - **排期**：M6 每片的状态写在下面。已验证的是这次回归对过的。已接上的是代码里有、还没在这次回归里点过的。托管连接器市场不做。
 
 ### M6 切片
@@ -109,12 +109,12 @@
 2. **MCP 适配器**。已接上。stdio 与 Streamable HTTP 都把服务器包成这个 Bot 的工具。服务器记在该 Bot 的 `mcp.json`，密钥只记环境变量名，供应商 API key 不传。入站事件可选。不从精选目录一键安装。`xbot connector list/add/remove` 用打进二进制的 JSON 目录，按 Bot 启用，没有托管市场。
 3. **连接器**。已接上。Telegram、飞书装上之后，外面的消息变成不可信 Event 进收件箱。代表主人发出去的消息先留草稿，主人确认后才发出。密钥只在确认卡或同名环境变量里填写。
 4. **编码代理任务**。已接上。和子代理分开的任务记录：工作目录、仓库、步数上限、时间上限。可以开始、补充、排队、打断、取消。完成、失败或取消时向该 Bot 的收件箱投 Event。
-5. **编码代理后端**。已接上。同一份任务记录接到外部命令、`xbot runner` 或本机模型，内核不加新对象。`code_start` 要确认，因为会改文件。`XBOT_CODE_AGENT` 优先，否则用 PATH 里的 `cursor-agent`、`codex` 或 `claude`。输出按行流进 transcript 的编码卡片。`code_show` 能看已经流出来的输出，`code_cancel` 停掉进程。仓库非空且目录里还没有 `.git` 时，先 `git clone`。都没有后端时仍只写记录。
+5. **编码代理后端**。已接上。同一份任务记录接到外部命令、`xbot runner` 或本机模型，内核不加新对象。`code_start` 会改文件，但按权限表属于普通动作，不弹确认卡。`XBOT_CODE_AGENT` 优先，否则用 PATH 里的 `cursor-agent`、`codex` 或 `claude`。输出按行流进 transcript 的编码卡片。`code_show` 能看已经流出来的输出，`code_cancel` 停掉进程。仓库非空且目录里还没有 `.git` 时，先 `git clone`。都没有后端时仍只写记录。
 6. **手机后台推送**。已验证。每个 owner 一份 VAPID Web Push 订阅，写在数据根的 `push/subs/<owner>.json`（0600），密钥在 `push/vapid.json`（0600）。网页「连接应用」里开启或关掉。订阅地址是公网 https；环回上的 http 只留给本机测试。内网、环回、链路本地、运营商级 NAT 和未指定地址拒绝。主机名解析失败就拒绝，不放行。十进制或十六进制整数主机（例如 `2130706433`）拒绝。地址还要是全球单播，并排除 IANA 专用段，包括运营商级 NAT、基准测试 `198.18.0.0/15`、文档和保留地址，以及 NAT64、6to4 和 Teredo。真正拨号时再用套接字 Control 核对解析出来的地址，避免检查之后被重新绑定到内网。浏览器页面还连着（正在拉接口，或有一条没结束的对话）时，普通通知仍走页面里原来的提示，不发 Web Push。没有标签页连着，并且这条 note 已经写进出件箱时，才按订阅推到手机。免打扰时段不推：时段内 note 只进 held，不写出件箱；即便出件箱里已经有一条，只要这时还在免打扰，后台推送也停。时段结束后合成的那一条写进出件箱，记录上带批量标记，不靠正文开头那几个字来认。页面拉得到。只有页面正有一条没结束的请求时才不推送；仅仅是最近 12 秒有过接口调用时，这条批量通知仍推到手机，避免两边都没人收。页面里的通知列表和提示保持原样。
 7. **人的记忆同步**。已验证。人的身份追加在 `people/<id>/identity.jsonl`，人的记忆追加在 `people/<id>/memory/sync.jsonl`。每条记下时间、写下的 Bot、设备。设备用数据根里已有的 `node-id`，没有就记 `local`。`xbot node add` 登记的节点之间自动同步：`xbot serve` 和 `xbot node serve` 每隔 30 秒，以及本机写入或从别的节点合并进新内容之后，用该节点的令牌调用对方的 `sync` 能力，把两份日志换过来再合并。同一条以时间戳较新的为准；时间相同留本机已有的。晚于现在两分钟的时间戳合并时改到这个上限。不合格式的条目（层级、控制字符、长度）丢掉。同步来的账号留在日志里，不授予本机主人身份；主人账号、显示名和时区只由本机操作更换。`xbot person unlink [--force] <link:id>` 去掉一个已关联账号。最后一个本机 `terminal:uid:` 账号要加 `--force`，并先打出警告。记忆放进模型上下文时包在闭合的 memory 块里。不可信记忆的正文、键和设备名里的 `<`、`>` 以及全角和形近尖括号一律转义，块内不能再出现标签。从别的节点来的事实按不可信数据处理，并保留写下的人和设备。只有送达这条记录的已认证对端自己就是所声称的设备，并且该设备已在本机登记，才记成 owner-recorded，仍然是数据，不是指令。经别的节点转发的，即使设备名对得上，也仍是 untrusted。`xbot sync export` 和 `xbot sync merge` 仍可手工导出、合并同一份日志。Bot 目录不改，Bot 仍留在自己的家节点。这一跳走现有的节点调用，单次请求和响应各不超过 1 MiB；装不下时这次同步报错，不截断。
 8. **远程隧道**。已验证 Cloudflare 这条路径：`cloudflared` 的地址从 stderr 读出，进程组跟着 `serve` 结束，启动它的 goroutine 锁住操作系统线程直到关闭。公网能不能访问到这个地址，这次没有测。
 9. **多节点**。已验证。`xbot node serve` 用 bearer token 公布本机身份，`node add` 先核对 token 再写入。`shell` 不信任调用方传来的 `approved`。`ask` 把命令留在本机，十分钟过期，最多 32 条，`node pending` 列出，`node approve` 先显示命令再问 `y/N`。
-10. **机器开关**。已验证。每台机器 `allow`、`ask` 或 `off`。`allow` 只对删除和对外发送的 shell 命令要确认；`ask` 每条都问；`off` 拒绝 shell、桌面和浏览器动作；`browser_stop` 仍可用来关掉进程。文件工具不经过这个开关。
+10. **机器开关**。已验证。每台机器 `allow`、`ask` 或 `off`，统一在核心的 review 路径处理本机工具。`allow` 时 `shell` 只对删除和对外发送确认，普通写入直接落盘，本机读取不问；`ask` 每次本机动作都要确认；`off` 拒绝 `shell`、`read_file`、`write_file`、`edit_file`、桌面和浏览器动作；`browser_stop` 仍可用来关掉进程。写自己的 persona/profile 文件在 `allow` 下仍确认。
 11. **桌面操作**。已验证。截图、点击、输入、滚动、按键。确认卡写明坐标、原文、按键，以及滚动的方向、步数和位置。截图权限 0600。
 12. **浏览器**。已验证。CDP 驱动单独配置目录里的 Chrome。命令行拉起的进程留到 `browser stop`；`serve` 只停自己拉起的那一份，用进程组，不用 `Pdeathsig`。`session.json` 里的 pid 对不上就不杀，删掉文件，退出码 0。
 
@@ -147,17 +147,32 @@
 
 执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
 
-- **出站 HTTP**：`http_request` 只在两处要确认：注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD`。普通 `GET`/`HEAD` 且不含占位符的不问。
-- **删除**：shell 里的删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）、文件删除工具、`secret rm`，以及经工具删除 Bot、Link 或 MCP 服务器，都要确认。
-- **对外发送**：数据离开 XBot 才确认：shell 里的 `curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等，以及对外发送工具（`send_email`、`telegram_send`、`lark_send` 等）。主人自己 Bot 之间的 `message_bot`/`post_group` 不算对外发送，不弹确认卡。
-- **计划、routine、persona**：这个集中分类器不管改计划文件、routine 或 persona。routine 的创建、修改、暂停、删除由 Bot 自己做主，工具自己的 `Confirm` 返回 false，不再弹确认卡；`routine_delete` 是 Bot 自己的排期，不算数据删除，不落进删除分类。persona 和 profile 的自改仍由工具自己的 `Confirm` 要主人确认。改计划文件（`write_file`/`edit_file`）的行为不变。
+- **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
+- **只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改。routine 的创建、修改、暂停、删除，Bot 之间的 `message_bot`/`post_group`，写计划文件、写技能、编码任务都是 `normal`，不弹确认卡。
+- **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`shell` 的 `keys:true` 也要确认。
+- **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
+- **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认；`node_call` 的 `shell` 能力走同一条分类器。
+- **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；`routine_delete` 是 Bot 自己的排期，不算数据删除。
+- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知/MCP 工具确认。主人自己 Bot 之间的消息不算对外发送。
+- **self_edit**：`propose_persona`/`propose_profile` 总是确认；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时确认。
 - **只读不动**：`read_file`、列表、搜索、只看不发的检查、`list_secrets` 不弹确认卡。
-- **判定集中**：内核有一份集中的分类器，只看工具名和参数；在工具自己的 `Confirm` 之外再兜一层，模型改不了这个判断。
 - **决定留痕**：每个 Bot 一份 `bots/<name>/decisions.jsonl`（0600），每次决定追加一条，写允许、拒绝或过期，以及工具、摘要和时间；时间写本地时间加时区偏移（RFC3339，例如 `2026-10-16T09:30:00+08:00`），不写 UTC；摘要先过脱敏，不落真值。
 
+策略表：
+
+| 类别 | 工具 | 确认条件 |
+|---|---|---|
+| `readonly` | `read_file`、`list_secrets`、`list_bots`、`list_groups`、`routine_list`、`recall`、`recall_history`、`expand`、`read_skill`、`read_subagent`、`expand_subagent`、`code_show`、`node_list`、`desktop_screenshot`、`browser_snapshot` | 从不 |
+| `normal` | `remember`、`forget`、`notify_owner`、`routine_create`、`routine_update`、`routine_delete`、`routine_pause`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`ask_user`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`write_skill`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `delete` | `delete_bot`、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
+| `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、`mcp_*`（按前缀规则），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
+| `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
+| `shell` | `shell`、`node_call` | 删除或对外发送，或 `shell` 的 `keys:true` |
+| `self_edit` | `propose_persona`、`propose_profile`、`write_file`、`edit_file` | persona/profile 自改 |
+
 完成标准：
-1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明。
-2. 出站 HTTP（注入 `{{secret:}}` 或方法非 `GET`/`HEAD`）、删除（shell 删除命令、文件删除工具、secret rm、经工具删除 Bot/Link/MCP）、真正离开 XBot 的发送（shell 上传/邮件/nc/远端 scp 或 rsync、对外发送工具）都要主人确认卡；主人自己 Bot 之间的消息、只读动作不由这个分类器判定，改计划/routine/persona 同理由工具自己的规则处理（routine 不问，persona/profile 要问）。
+1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明，也不依赖工具自己的 `Confirm`；工具自己的 `Confirm` 只给出摘要。
+2. 只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要主人确认卡；其余动作按表放行。routine 的增删改暂停、Bot 之间的消息、写计划/技能、编码任务都不问。
 3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
 4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），时间带本地时区偏移，真值脱敏。
 

@@ -1,6 +1,6 @@
-// Package review classifies a concrete tool call before it runs. The kernel
-// asks the owner about the action itself: the tool name and the arguments.
-// It never trusts how the model describes the call.
+// Package review holds the single policy table for tool permissions. The
+// kernel asks it what class a tool belongs to, then decides whether the owner
+// must confirm the concrete call. Tools never decide for themselves.
 package review
 
 import (
@@ -9,65 +9,244 @@ import (
 	"strings"
 )
 
-// Kind is one category of action that needs the owner before it runs.
-type Kind string
+// Class is the one category a tool belongs to. The kernel review path reads
+// the class and the call arguments; it never trusts how the model describes
+// the call or what a tool's own Confirm says.
+type Class string
 
 const (
-	KindHTTP   Kind = "http"
-	KindDelete Kind = "delete"
-	KindSend   Kind = "send"
+	// Readonly tools only observe; they never ask.
+	Readonly Class = "readonly"
+	// Normal tools do routine work that does not leave XBot or destroy data.
+	Normal Class = "normal"
+	// Delete tools destroy files or records; they always ask.
+	Delete Class = "delete"
+	// ExternalSend tools send data out of XBot or install an external link;
+	// they always ask.
+	ExternalSend Class = "external_send"
+	// HTTP tools ask only when the call injects a secret or uses a method
+	// other than GET/HEAD.
+	HTTP Class = "http"
+	// Shell tools ask only when the command deletes or sends data out.
+	Shell Class = "shell"
+	// SelfEdit tools change the bot's own persona or profile; they ask.
+	SelfEdit Class = "self_edit"
 )
 
-// Check reports whether the concrete call must be confirmed by the owner and
-// which danger kinds it matched. It reads the tool name and arguments only.
+// Table is the one explicit policy table. Every tool any link or the kernel
+// can register has an entry here. MCP tools cannot be listed by name, so
+// mcp_* names resolve through the rule in ClassOf.
 //
-// It asks for a send only when data leaves XBot: shell tools that write to the
-// network, or an external channel send tool. A message between the owner's own
-// bots is not an egress and does not ask here. Deletions of files or data ask.
-// http_request asks only when it injects a secret or uses a method other than
-// GET/HEAD. Editing a planned file, routine or persona is not this classifier's
-// business; those tools keep whatever confirmation they had before. A routine
-// is the bot's own schedule, so routine_delete is not a data deletion here.
-func Check(tool string, args json.RawMessage) (bool, []Kind) {
-	name := strings.ToLower(strings.TrimSpace(tool))
-	var kinds []Kind
-	add := func(k Kind) {
-		for _, seen := range kinds {
-			if seen == k {
-				return
+// Keep this table in sync with the tools that are actually registered: the
+// guard test fails when a registered tool has no entry.
+var Table = map[string]Class{
+	// Built-in tools link: shell and files.
+	"shell":        Shell,
+	"read_file":    Readonly,
+	"write_file":   SelfEdit,
+	"edit_file":    SelfEdit,
+	"http_request": HTTP,
+	"list_secrets": Readonly,
+
+	// Memory.
+	"remember": Normal,
+	"forget":   Normal,
+	"recall":   Readonly,
+
+	// Persona and profile.
+	"propose_persona": SelfEdit,
+	"propose_profile": SelfEdit,
+
+	// Routines and the owner notification. A routine is the bot's own
+	// schedule, so deleting one is not a data deletion.
+	"routine_create": Normal,
+	"routine_list":   Readonly,
+	"routine_update": Normal,
+	"routine_delete": Normal,
+	"routine_pause":  Normal,
+	"notify_owner":   Normal,
+
+	// Context.
+	"compact":        Normal,
+	"recall_history": Readonly,
+	"expand":         Readonly,
+
+	// Subagents.
+	"spawn":           Normal,
+	"steer":           Normal,
+	"queue":           Normal,
+	"interrupt":       Normal,
+	"cancel":          Normal,
+	"read_subagent":   Readonly,
+	"expand_subagent": Readonly,
+
+	// Skills.
+	"read_skill":  Readonly,
+	"write_skill": Normal,
+
+	// The owner question tool.
+	"ask_user": Normal,
+
+	// Bot management.
+	"create_bot":  Normal,
+	"delete_bot":  Delete,
+	"pin_bot":     Normal,
+	"set_primary": Normal,
+
+	// Peers and groups. A message between the owner's own bots is not egress.
+	"list_bots":    Readonly,
+	"message_bot":  Normal,
+	"list_groups":  Readonly,
+	"create_group": Normal,
+	"post_group":   Normal,
+	"fork_bot":     Normal,
+
+	// Link catalog. install and remove ask; search and load do not.
+	"links": ExternalSend,
+
+	// Connectors.
+	"telegram_send": ExternalSend,
+	"lark_send":     ExternalSend,
+
+	// Coding-agent tasks.
+	"code_start":     Normal,
+	"code_steer":     Normal,
+	"code_queue":     Normal,
+	"code_interrupt": Normal,
+	"code_cancel":    Normal,
+	"code_show":      Readonly,
+
+	// Node calls. A shell command runs on the other machine.
+	"node_list": Readonly,
+	"node_call": Shell,
+
+	// Desktop.
+	"desktop_screenshot": Readonly,
+	"desktop_click":      Normal,
+	"desktop_type":       Normal,
+	"desktop_scroll":     Normal,
+	"desktop_key":        Normal,
+
+	// Browser. browser_stop stays available to close the process.
+	"browser_open":     Normal,
+	"browser_snapshot": Readonly,
+	"browser_click":    Normal,
+	"browser_stop":     Normal,
+
+	// Delete tools that other links may register. Kept explicit so the review
+	// never has to guess from a name suffix.
+	"delete_file":   Delete,
+	"delete_files":  Delete,
+	"remove_file":   Delete,
+	"file_delete":   Delete,
+	"unlink_file":   Delete,
+	"trash_file":    Delete,
+	"delete_secret": Delete,
+	"secret_delete": Delete,
+	"secret_rm":     Delete,
+	"remove_secret": Delete,
+	"delete_link":   Delete,
+	"remove_link":   Delete,
+	"remove_mcp":    Delete,
+	"mcp_remove":    Delete,
+	"delete_mcp":    Delete,
+
+	// External send tools that other links may register.
+	"send_message": ExternalSend,
+	"send_email":   ExternalSend,
+	"post_message": ExternalSend,
+	"send_webhook": ExternalSend,
+	"webhook_send": ExternalSend,
+}
+
+// mcpPrefix marks a tool discovered from an MCP server. The server chooses the
+// remote name, so the local tool name is dynamic and cannot be listed.
+const mcpPrefix = "mcp_"
+
+// ClassOf returns the class for a tool name. MCP tools are an external send:
+// the call leaves XBot and the remote name is dynamic. A name with no entry
+// falls back to Normal so a custom or not-yet-listed tool does not change
+// behavior at runtime; Known reports it and the guard test rejects it.
+func ClassOf(tool string) Class {
+	name := normalize(tool)
+	if c, ok := Table[name]; ok {
+		return c
+	}
+	if strings.HasPrefix(name, mcpPrefix) {
+		return ExternalSend
+	}
+	return Normal
+}
+
+// Known reports whether the tool has an explicit table entry, or is an MCP
+// tool covered by the mcp_* rule.
+func Known(tool string) bool {
+	name := normalize(tool)
+	if _, ok := Table[name]; ok {
+		return true
+	}
+	return strings.HasPrefix(name, mcpPrefix)
+}
+
+// MachineTouching reports whether the tool acts on the local machine. The
+// kernel review path applies the machine switch to these tools: off refuses
+// them, ask confirms every call, and allow follows the table. browser_stop is
+// deliberately excluded so the owner can always close a Chrome process.
+func MachineTouching(tool string) bool {
+	switch normalize(tool) {
+	case "shell", "read_file", "write_file", "edit_file",
+		"desktop_screenshot", "desktop_click", "desktop_type", "desktop_scroll", "desktop_key",
+		"browser_open", "browser_snapshot", "browser_click":
+		return true
+	default:
+		return false
+	}
+}
+
+// NeedsOwner reports whether the call must be confirmed by the owner, based on
+// the class and the arguments alone. It does not consult the machine switch or
+// the bot's own persona/profile paths; the kernel review path adds both.
+func NeedsOwner(tool string, args json.RawMessage) bool {
+	name := normalize(tool)
+	switch ClassOf(name) {
+	case Readonly, Normal:
+		return false
+	case Delete:
+		return true
+	case ExternalSend:
+		// links is one tool with four actions. Only install and remove change
+		// the bot's grants or secrets.
+		if name == "links" {
+			switch strings.ToLower(linksAction(args)) {
+			case "install", "remove":
+				return true
+			default:
+				return false
 			}
 		}
-		kinds = append(kinds, k)
-	}
-	switch {
-	case name == "http_request":
-		if httpNeedsOwner(args) {
-			add(KindHTTP)
+		return true
+	case HTTP:
+		return httpNeedsOwner(args)
+	case Shell:
+		if name == "shell" && shellKeys(args) {
+			return true
 		}
-	case name == "shell":
 		deletes, sends := ShellFlags(shellCommand(args))
-		if deletes {
-			add(KindDelete)
+		return deletes || sends
+	case SelfEdit:
+		// write_file and edit_file are only a self-edit when the path is this
+		// bot's own persona or profile; the kernel checks the resolved path.
+		if name == "write_file" || name == "edit_file" {
+			return false
 		}
-		if sends {
-			add(KindSend)
-		}
-	case name == "links":
-		if strings.ToLower(linksAction(args)) == "remove" {
-			add(KindDelete)
-		}
-	case strings.HasPrefix(name, "routine_"):
-		// Creating, updating, pausing or deleting a routine is the bot
-		// managing its own schedule, not owner data. It never matches here.
+		return true
 	default:
-		if isDeleteTool(name) {
-			add(KindDelete)
-		}
-		if isSendTool(name) {
-			add(KindSend)
-		}
+		return false
 	}
-	return len(kinds) > 0, kinds
+}
+
+func normalize(tool string) string {
+	return strings.ToLower(strings.TrimSpace(tool))
 }
 
 // httpNeedsOwner reports whether an http_request must be confirmed: it injects
@@ -119,43 +298,20 @@ func ShellFlags(cmd string) (deletes, sends bool) {
 	return deletes, sends
 }
 
-var deleteTools = map[string]bool{
-	"delete_file": true, "delete_files": true, "remove_file": true,
-	"file_delete": true, "unlink_file": true, "trash_file": true,
-	"delete_bot": true, "remove_bot": true,
-	"delete_secret": true, "secret_delete": true, "secret_rm": true, "remove_secret": true,
-	"delete_link": true, "remove_link": true,
-	"remove_mcp": true, "mcp_remove": true, "delete_mcp": true,
-}
-
-var sendTools = map[string]bool{
-	"send_message": true,
-	"send_email":   true,
-	"post_message": true,
-	"send_webhook": true,
-	"webhook_send": true,
-}
-
-func isDeleteTool(name string) bool {
-	if deleteTools[name] {
-		return true
-	}
-	return strings.HasSuffix(name, "_delete") || strings.HasSuffix(name, "_remove")
-}
-
-func isSendTool(name string) bool {
-	if sendTools[name] {
-		return true
-	}
-	return strings.HasPrefix(name, "send_") || strings.HasSuffix(name, "_send")
-}
-
 func shellCommand(args json.RawMessage) string {
 	var in struct {
 		Command string `json:"command"`
 	}
 	_ = json.Unmarshal(args, &in)
 	return in.Command
+}
+
+func shellKeys(args json.RawMessage) bool {
+	var in struct {
+		Keys bool `json:"keys"`
+	}
+	_ = json.Unmarshal(args, &in)
+	return in.Keys
 }
 
 func linksAction(args json.RawMessage) string {

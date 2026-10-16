@@ -30,6 +30,10 @@ func (l *Link) Tools() []tools.Tool {
 	return []tools.Tool{openTool{l}, snapTool{l}, clickTool{l}, stopTool{l}}
 }
 
+// confirm is the browser link's local machine adapter. The kernel review path
+// still decides confirmation for the model path; these tools only build the
+// card summary, and this adapter keeps the browser package's own behavior for
+// its direct callers.
 func (l *Link) confirm(summary string) (bool, string, error) {
 	mode, err := machine.Get(l.Root, machine.Local)
 	if err != nil {

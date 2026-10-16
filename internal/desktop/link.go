@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"xbot/internal/link"
-	"xbot/internal/machine"
 	"xbot/internal/tools"
 )
 
@@ -38,26 +37,6 @@ func (l *Link) driver() Driver {
 	return commandDriver{}
 }
 
-func (l *Link) confirm(action Action, summary string) (bool, string, error) {
-	mode, err := machine.Get(l.Root, machine.Local)
-	if err != nil {
-		return false, "", err
-	}
-	if mode == machine.Off {
-		return false, "", errOff()
-	}
-	if NeedsConfirm(mode, action) {
-		return true, summary, nil
-	}
-	return false, summary, nil
-}
-
-func errOff() error { return errString("machine local is off") }
-
-type errString string
-
-func (e errString) Error() string { return string(e) }
-
 type shotTool struct{ l *Link }
 
 func (shotTool) Name() string { return "desktop_screenshot" }
@@ -66,7 +45,7 @@ func (shotTool) Description() string {
 }
 func (shotTool) Parameters() any { return obj(nil, nil) }
 func (t shotTool) Confirm(json.RawMessage) (bool, string, error) {
-	return t.l.confirm(Action{Name: "screenshot"}, "desktop screenshot")
+	return false, "desktop screenshot", nil
 }
 func (t shotTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
 	return Perform(ctx, t.l.Root, t.l.driver(), Action{Name: "screenshot"}, true)
@@ -90,7 +69,7 @@ func (t clickTool) Confirm(args json.RawMessage) (bool, string, error) {
 		Y int `json:"y"`
 	}
 	_ = json.Unmarshal(args, &in)
-	return t.l.confirm(Action{Name: "click", X: in.X, Y: in.Y}, fmt.Sprintf("desktop click %d %d", in.X, in.Y))
+	return false, fmt.Sprintf("desktop click %d %d", in.X, in.Y), nil
 }
 func (t clickTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -123,7 +102,7 @@ func (t typeTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if sensitive(in.Text) {
 		summary += "\npayment, login, or send"
 	}
-	return t.l.confirm(Action{Name: "type", Text: in.Text}, summary)
+	return false, summary, nil
 }
 func (t typeTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -153,7 +132,7 @@ func (t scrollTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return t.l.confirm(Action{Name: "scroll", X: in.x, Y: in.y, Dy: in.dy}, scrollSummary(in))
+	return false, scrollSummary(in), nil
 }
 func (t scrollTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
@@ -185,7 +164,7 @@ func (t keyTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if sensitive(in.Key) {
 		summary += "\npayment, login, or send"
 	}
-	return t.l.confirm(Action{Name: "key", Key: in.Key}, summary)
+	return false, summary, nil
 }
 func (t keyTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {

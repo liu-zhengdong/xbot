@@ -31,7 +31,7 @@ func TestSendStaysDraftUntilRun(t *testing.T) {
 	tool := c.Tools()[0]
 	args := json.RawMessage(`{"to":"42","body":"hello"}`)
 	need, summary, err := tool.Confirm(args)
-	if err != nil || !need || !strings.Contains(summary, "send telegram draft") || strings.Contains(summary, secret) {
+	if err != nil || need || !strings.Contains(summary, "send telegram draft") || strings.Contains(summary, secret) {
 		t.Fatalf("confirm %v %q %v", need, summary, err)
 	}
 	if posted != 0 {

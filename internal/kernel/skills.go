@@ -82,7 +82,7 @@ func (t writeSkillTool) Confirm(args json.RawMessage) (bool, string, error) {
 		}
 		summary += "\n" + body
 	}
-	return true, summary, nil
+	return false, summary, nil
 }
 func (t writeSkillTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	in, err := decodeWriteSkill(args)

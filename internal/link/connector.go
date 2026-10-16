@@ -99,6 +99,8 @@ func (t *sendTool) Parameters() any {
 	}
 }
 
+// Confirm only saves the draft and builds the card summary. The kernel review
+// path decides that an external send needs the owner.
 func (t *sendTool) Confirm(args json.RawMessage) (bool, string, error) {
 	to, body, err := parseSend(args)
 	if err != nil {
@@ -108,7 +110,7 @@ func (t *sendTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return true, draftPreview(t.c.Kind, d), nil
+	return false, draftPreview(t.c.Kind, d), nil
 }
 
 func (t *sendTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
