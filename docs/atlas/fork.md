@@ -50,6 +50,8 @@ verified: 2026-10-16 @ d04f79e
 - **有后台在跑时，前台的写操作自动排到相关后台之后**：写文件、shell 写操作、对外发送、删除这几类，内核用 `queue` 交给对应的后台，前台告诉主人已排队。模型不用自己选（[ADR 0002](../adr/0002-foreground-writes-auto-queue.md)）。
 - 冲突按资源算：每个后台登记自己要碰的文件、仓库或工作目录；新的写操作或新后台和某个在跑的后台重叠，才排到它后面，不相干的并行。
 - 这条规则放在那张权限表里判断（多一个条件：本 Bot 有活着的分叉），不在各工具里加检查，守门测试一起覆盖。
+- **实现**（F3）：`review.ResourceOf(tool, args, workdir)` 给出一次调用写的资源：`write_file`/`edit_file`/`delete_file` 是 `file:<绝对路径>`，非只读的 `shell` 是 `dir:<cwd 或工作目录>`（`ShellIsReadOnly`：`ls`、`cat`、`git status/log/diff` 等，且没有重定向和管道），`code_start` 是 `repo:` 或 `dir:`。`reviewedTool.Run` 把它记在这一轮的 `resources` 里。前台的调用和某个在跑后台记过的资源相同，就不执行，作为一条 `conflict` 控制消息排进那个后台，工具结果告诉模型「已排到后台 bg_x 之后（队列 qN）」。后台之间不互相排队。
+- **队列上限 5**：主人的 `queue` 和 `conflict` 合计最多 5 条，另外后台槽位满时等在收件箱里的主人消息也算（原因 `slot`）。满了以后：冲突的写操作回复「队列已满，没有建任务」，网页插话返回 429。每条排队项有原因（`queue`、`conflict` 带后台 id 和资源、`slot`）和位置，可以按 id 取消（`DELETE /api/bots/{name}/queue/{qid}`）。
 
 ## 6. 连续插话与响应时延
 **目标**：任何时候主人发任何一句话，几秒内都有回复，连着插话也一样，而且不拖慢正在干的活。比较过的方案和被取代的「只有一个后台」见 [ADR 0001](../adr/0001-multiple-backgrounds.md)。
@@ -64,6 +66,12 @@ verified: 2026-10-16 @ d04f79e
 7. 第一版只做网页；终端仍把插话接进当前这一轮。
 
 **时延保证**：前台要么空闲，要么在一个有上限的步骤里，所以主人的消息最多等一个前台步骤：一次模型调用加最多 10 秒的只读工具。后台的长工具不会挡住任何回复。验收按 p95 3 秒以内（假模型）来测。
+
+**后台控制**（F3）：`steer`、`queue`、`interrupt`、`cancel` 发给 `bg_` id（网页 `POST /api/bots/{name}/agents/{bg}/steer|queue|interrupt|cancel`，模型用原来的子代理控制工具）。控制消息先是 `pending`，后台在当前工具调用返回之后、下一次模型调用之前读走，变成 `applied`，以带前缀的用户消息（`[主人的补充]`、`[排队]`、`[打断]`）写进它的分支。后台本来要结束时还有没读的控制，就带着它们再跑一轮。发给已结束后台的控制返回错误。`cancel` 取消那一轮的 context，结束状态是 `cancelled`。`GET /api/bots/{name}/backgrounds` 返回在跑的后台、控制消息及状态、排队项（原因、位置、文件名）、最近 3 个结束的后台，供 F5 的「后台 N」角标和弹层用。
+
+**后台的确认**（F3）：后台遇到要确认的操作，走 `Kernel.BackgroundApprove`。网页把它设成 `webApprove`，卡片写进 transcript（带后台的 branch），界面按 transcript 显示按钮，主人点了以后后台继续。没设的时候照旧拒绝。
+
+**后台在跑时的其他事件**（F3）：后台拿着处理锁时 `serve` 的轮询拿不到锁，所以网页进程在等后台结束的循环里（`releaseWhenIdle`）拿 gate，把收件箱里的事件（定时器、其他渠道、别的后台的 `fork_end`）用 `proc.Drain` 处理掉。删除或改名 Bot 时 `forgetKernel` 取消它的后台、删掉锁记录并放锁。
 
 ## 7. 取消与崩溃
 - **取消**：`cancel bg_7` 取消后台那一轮的 context，正在跑的工具按现有方式收尾；写 `fork_end{status:"cancelled"}`，并投完成事件。`interrupt` 和子代理一样，停在当前步，等新的指示。
