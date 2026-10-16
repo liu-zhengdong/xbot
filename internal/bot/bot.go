@@ -109,16 +109,43 @@ type State struct {
 	Usage   SectionUsage   `json:"usage,omitempty"`
 }
 
+// Fork marker kinds and end statuses.
+const (
+	ForkKindStart = "fork"
+	ForkKindEnd   = "fork_end"
+
+	ForkDone        = "done"
+	ForkFailed      = "failed"
+	ForkCancelled   = "cancelled"
+	ForkInterrupted = "interrupted"
+)
+
+// ForkMark is a branch marker row. Kind is "fork" for the line that opens a
+// branch and "fork_end" for the line that closes it. From and Task belong to
+// the opening line only; Status and Steps belong to the closing line only.
+type ForkMark struct {
+	Kind   string `json:"kind"`
+	Branch string `json:"branch"`
+	From   int    `json:"from,omitempty"`
+	Task   string `json:"task,omitempty"`
+	Status string `json:"status,omitempty"`
+	Steps  int    `json:"steps,omitempty"`
+}
+
 // Entry is one transcript record.
 // Blob, when set, names a file under transcript/blobs that holds the full tool
 // output. Message.Content is then only a clipped preview.
 // ReplyTo is the sequence of an earlier line this message quotes. Zero means none.
+// Branch names the background task this line belongs to; empty means the main line.
+// Mark, when set, makes this a branch marker row instead of a message.
 type Entry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
 	Message provider.Message `json:"message"`
 	Blob    string           `json:"blob,omitempty"`
 	ReplyTo int              `json:"reply_to,omitempty"`
+	Branch  string           `json:"branch,omitempty"`
+	Mark    *ForkMark        `json:"mark,omitempty"`
 }
 
 // Bot is one loaded bot directory.
@@ -260,6 +287,68 @@ func (b *Bot) Append(e Entry) error {
 	}
 	return b.store().append(e, true)
 }
+
+// AppendFork opens a background branch and returns the marker's sequence.
+// branch must be a bg_ task id and from must name an existing line.
+func (b *Bot) AppendFork(branch string, from int, task string) (int, error) {
+	if !validBranch(branch) {
+		return 0, fmt.Errorf("bot: invalid fork branch %q", branch)
+	}
+	if from < 1 {
+		return 0, fmt.Errorf("bot: fork from %d", from)
+	}
+	n, err := b.Count()
+	if err != nil {
+		return 0, err
+	}
+	if from >= n+1 {
+		return 0, fmt.Errorf("bot: fork from %d is not an existing line (next seq %d)", from, n+1)
+	}
+	return b.appendSeq(Entry{
+		Message: provider.Message{Role: provider.RoleUser},
+		Mark:    &ForkMark{Kind: ForkKindStart, Branch: branch, From: from, Task: task},
+	})
+}
+
+// AppendForkEnd closes a background branch and returns the marker's sequence.
+func (b *Bot) AppendForkEnd(branch, status string, steps int) (int, error) {
+	if !validBranch(branch) {
+		return 0, fmt.Errorf("bot: invalid fork branch %q", branch)
+	}
+	if !validForkStatus(status) {
+		return 0, fmt.Errorf("bot: invalid fork status %q", status)
+	}
+	if steps < 0 {
+		return 0, fmt.Errorf("bot: invalid fork steps %d", steps)
+	}
+	return b.appendSeq(Entry{
+		Message: provider.Message{Role: provider.RoleUser},
+		Mark:    &ForkMark{Kind: ForkKindEnd, Branch: branch, Status: status, Steps: steps},
+	})
+}
+
+func (b *Bot) appendSeq(e Entry) (int, error) {
+	if e.Time.IsZero() {
+		e.Time = time.Now().UTC()
+	}
+	return b.store().appendSeq(e, true)
+}
+
+func validBranch(branch string) bool {
+	return strings.HasPrefix(branch, "bg_") && len(branch) > len("bg_")
+}
+
+func validForkStatus(status string) bool {
+	switch status {
+	case ForkDone, ForkFailed, ForkCancelled, ForkInterrupted:
+		return true
+	}
+	return false
+}
+
+// IsForkMark reports a branch marker line. Markers stay out of model context,
+// compaction, and memory extraction.
+func (e Entry) IsForkMark() bool { return e.Mark != nil }
 
 // Entries reads the transcript in order. Large tool outputs stay as previews;
 // Hydrate loads the blob.

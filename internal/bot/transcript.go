@@ -174,7 +174,8 @@ func (s *segStore) migrate() error {
 			return err
 		}
 		seq++
-		return s.appendLocked(e, true)
+		_, err := s.appendLocked(e, true)
+		return err
 	})
 	if err != nil {
 		_ = s.closeDB()
@@ -419,10 +420,24 @@ func (b *Bot) Reindex() error {
 }
 
 func (s *segStore) append(e Entry, indexIt bool) error {
-	return s.with(func() error { return s.appendLocked(e, indexIt) })
+	return s.with(func() error {
+		_, err := s.appendLocked(e, indexIt)
+		return err
+	})
 }
 
-func (s *segStore) appendLocked(e Entry, indexIt bool) error {
+// appendSeq writes a line and reports the sequence it landed on.
+func (s *segStore) appendSeq(e Entry, indexIt bool) (int, error) {
+	var seq int
+	err := s.with(func() error {
+		var err error
+		seq, err = s.appendLocked(e, indexIt)
+		return err
+	})
+	return seq, err
+}
+
+func (s *segStore) appendLocked(e Entry, indexIt bool) (int, error) {
 	full := ftsBody(e)
 	e = spillBlob(s.transcriptDir(), e, s.blobLimit())
 	if e.Time.IsZero() {
@@ -430,38 +445,39 @@ func (s *segStore) appendLocked(e Entry, indexIt bool) error {
 	}
 	line, err := marshalEntry(e)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := s.roll(e.Time, len(line)); err != nil {
-		return err
+		return 0, err
 	}
 	tail, err := s.openTail(e.Time)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	f, err := os.OpenFile(tail.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer f.Close()
 	off, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if _, err := f.Write(line); err != nil {
-		return err
+		return 0, err
 	}
 	if err := f.Sync(); err != nil {
-		return err
-	}
-	if !indexIt {
-		return nil
+		return 0, err
 	}
 	seq, err := s.maxSeq()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return s.index(seq+1, tail.start, off, len(line), e, full)
+	seq++
+	if !indexIt {
+		return seq, nil
+	}
+	return seq, s.index(seq, tail.start, off, len(line), e, full)
 }
 
 // appendSkipIndex writes a durable line and leaves the index behind.

@@ -930,6 +930,7 @@
     const row = el("div", "msg user");
     if (m.seq) row.dataset.seq = String(m.seq);
     const wrap = el("div", "bubble-col");
+    if (m.branch) wrap.append(el("div", "branch-tag", "后台 " + m.branch));
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
     const pulled = pullImages(parsed.text);
     if (pulled.text) {
@@ -962,6 +963,7 @@
     if (m.seq) row.dataset.seq = String(m.seq);
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
+    if (m.branch) body.append(el("div", "branch-tag", "后台 " + m.branch));
     if (showName) {
       const name = el("div", "who", niceName(who));
       if (who) setTip(name, who);
@@ -1000,6 +1002,11 @@
     return false;
   }
 
+  function forkMarkLine(m) {
+    if (m.kind === "fork_end") return "后台任务结束：" + (m.status || "");
+    return "后台任务开始：" + (m.task || "");
+  }
+
   function renderMessages(messages, who) {
     const inner = el("div", "thread-inner");
     const prevTop = thread.scrollTop;
@@ -1025,6 +1032,12 @@
     });
     messages.forEach((m, i) => {
       if (skipMessage(m)) return;
+      if (m.kind === "fork" || m.kind === "fork_end") {
+        any = true;
+        lastKey = "";
+        inner.append(systemLine(forkMarkLine(m)));
+        return;
+      }
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;

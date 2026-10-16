@@ -107,6 +107,9 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 		if bot.IsApprovalCard(e.Message.Content) {
 			continue
 		}
+		if e.IsForkMark() {
+			continue
+		}
 		turns = append(turns, e.Message)
 		joined.WriteString(e.Message.Content)
 		joined.WriteByte('\n')

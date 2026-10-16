@@ -31,6 +31,8 @@ type exportEntry struct {
 	EventID string           `json:"event_id,omitempty"`
 	Message provider.Message `json:"message"`
 	ReplyTo int              `json:"reply_to,omitempty"`
+	Branch  string           `json:"branch,omitempty"`
+	Mark    *ForkMark        `json:"mark,omitempty"`
 }
 
 type exportSummary struct {
@@ -114,6 +116,9 @@ func ExportTo(w io.Writer, b *Bot, opt TranscriptExport) error {
 		return nil
 	}
 	return b.Walk(from, to, func(seq int, e Entry) error {
+		if e.IsForkMark() {
+			return write(forkMarkMD(seq, e.Mark))
+		}
 		e, err := b.Hydrate(e)
 		if err != nil {
 			return err
@@ -122,7 +127,7 @@ func ExportTo(w io.Writer, b *Bot, opt TranscriptExport) error {
 		if !ok {
 			return nil
 		}
-		return write(entryMD(seq, e.Time, msg, e.ReplyTo, opt.Tools, loc))
+		return write(entryMD(seq, e.Time, msg, e.ReplyTo, e.Branch, opt.Tools, loc))
 	})
 }
 
@@ -185,7 +190,7 @@ func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, writ
 		if !ok {
 			return nil
 		}
-		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg, ReplyTo: e.ReplyTo})
+		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg, ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark})
 	})
 }
 
@@ -206,9 +211,13 @@ func summaryMD(block SummaryBlock, loc *time.Location) string {
 	return b.String()
 }
 
-func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, tools bool, loc *time.Location) string {
+func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch string, tools bool, loc *time.Location) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n## seq %d · %s · %s\n", seq, stamp(at, loc), msg.Role)
+	fmt.Fprintf(&b, "\n## seq %d · %s · %s", seq, stamp(at, loc), msg.Role)
+	if branch != "" {
+		fmt.Fprintf(&b, " [后台 %s]", branch)
+	}
+	b.WriteString("\n")
 	if replyTo > 0 {
 		fmt.Fprintf(&b, "reply_to: %d\n", replyTo)
 	}
@@ -225,6 +234,14 @@ func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, tools boo
 		}
 	}
 	return b.String()
+}
+
+// forkMarkMD writes one branch marker as a single markdown line.
+func forkMarkMD(seq int, m *ForkMark) string {
+	if m.Kind == ForkKindEnd {
+		return fmt.Sprintf("\n后台任务结束 [%s] seq %d status %s steps %d\n", m.Branch, seq, m.Status, m.Steps)
+	}
+	return fmt.Sprintf("\n后台任务开始 [%s] seq %d from %d: %s\n", m.Branch, seq, m.From, m.Task)
 }
 
 func visibleMessage(m provider.Message, tools bool) (provider.Message, bool) {

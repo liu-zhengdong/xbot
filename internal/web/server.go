@@ -519,6 +519,12 @@ type apiRow struct {
 	ToolCallID string              `json:"tool_call_id,omitempty"`
 	Time       time.Time           `json:"time"`
 	ReplyTo    int                 `json:"reply_to,omitempty"`
+	Branch     string              `json:"branch,omitempty"`
+	Kind       string              `json:"kind,omitempty"`
+	From       int                 `json:"from,omitempty"`
+	Task       string              `json:"task,omitempty"`
+	Status     string              `json:"status,omitempty"`
+	Steps      int                 `json:"steps,omitempty"`
 }
 
 func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
@@ -536,12 +542,21 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.writeCursor(b.Name(), len(entries))
+	seqEntries := make([]bot.SeqEntry, len(entries))
+	for i, e := range entries {
+		seqEntries[i] = bot.SeqEntry{Seq: i + 1, Entry: e}
+	}
+	replay, _ := bot.Replay(seqEntries)
 	var rows []apiRow
 	for i, e := range entries {
 		row := apiRow{
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
-			ReplyTo: e.ReplyTo,
+			ReplyTo: e.ReplyTo, Branch: replay[i].Branch,
+		}
+		if e.Mark != nil {
+			row.Kind, row.From, row.Task = e.Mark.Kind, e.Mark.From, e.Mark.Task
+			row.Status, row.Steps = e.Mark.Status, e.Mark.Steps
 		}
 		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok {
 			row.Title, row.Subtitle = card.Title, card.Subtitle

@@ -581,6 +581,7 @@ html[data-theme="dark"] .field select {
 .live-status { display: inline-flex; align-items: center; min-height: 16px; }
 
 .meta { font-size: 12px; line-height: 1.4; color: var(--faint); font-variant-numeric: tabular-nums; }
+.branch-tag { font-size: 11px; line-height: 1.4; color: var(--faint); margin-bottom: 2px; }
 
 .thread { flex: 1; overflow: auto; padding: 8px 24px 8px; overscroll-behavior: contain; }
 
