@@ -17,11 +17,52 @@ import (
 	"xbot/internal/review"
 )
 
+// approvalWait is how long a card accepts a decision. The default is a full
+// day: the owner may be away, and a card that expires silently loses work.
 func (s *Server) approvalWait() time.Duration {
 	if s.ApprovalWait > 0 {
 		return s.ApprovalWait
 	}
-	return 60 * time.Second
+	return 24 * time.Hour
+}
+
+// pendingApproval is one card waiting for a decision. It outlives the request
+// that raised it: the owner may decide after the stream that showed the card
+// has closed.
+type pendingApproval struct {
+	bot      string
+	tool     string
+	summary  string
+	wait     time.Duration
+	deadline time.Time
+	// done carries the decision to the waiting wake. It is never closed, so a
+	// late decision after the wait ended is dropped instead of panicking.
+	done chan approvalDecision
+	// decided guards against a second decision overwriting the first.
+	decided bool
+}
+
+// RegisterApproval publishes a card so a later request may decide it. It is
+// exported for the serve wiring that drops cards left pending by a restart.
+func (s *Server) RegisterApproval(botName, id, tool, summary string) {
+	s.mu.Lock()
+	if s.approvals == nil {
+		s.approvals = map[string]*pendingApproval{}
+	}
+	s.approvals[botName+"/"+id] = &pendingApproval{
+		bot: botName, tool: tool, summary: summary,
+		wait: s.approvalWait(), deadline: time.Now().Add(s.approvalWait()),
+		done: make(chan approvalDecision, 1),
+	}
+	s.mu.Unlock()
+}
+
+// DropApproval forgets a card without a decision, so a caller can resolve it in
+// the transcript itself (a process restart does this on startup).
+func (s *Server) DropApproval(botName, id string) {
+	s.mu.Lock()
+	delete(s.approvals, botName+"/"+id)
+	s.mu.Unlock()
 }
 
 // webApprove shows one confirmation card in the stream and persists it in the
@@ -31,17 +72,26 @@ func (s *Server) approvalWait() time.Duration {
 func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
 	return func(ctx context.Context, tool, summary string) (bool, error) {
 		id := newApprovalID()
-		ch := make(chan approvalDecision, 1)
 		key := b.Name() + "/" + id
 		s.mu.Lock()
 		if s.approvals == nil {
-			s.approvals = map[string]chan approvalDecision{}
+			s.approvals = map[string]*pendingApproval{}
 		}
-		s.approvals[key] = ch
+		card := &pendingApproval{
+			bot: b.Name(), tool: tool, summary: summary,
+			wait: s.approvalWait(), deadline: time.Now().Add(s.approvalWait()),
+			done: make(chan approvalDecision, 1),
+		}
+		s.approvals[key] = card
 		s.mu.Unlock()
+		// The card outlives this wake: a decision arriving after the wake ended
+		// still lands on the persisted card, and only the next card with the
+		// same key may replace it.
 		defer func() {
 			s.mu.Lock()
-			delete(s.approvals, key)
+			if s.approvals[key] == card {
+				delete(s.approvals, key)
+			}
 			s.mu.Unlock()
 		}()
 		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
@@ -55,10 +105,13 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			payload["secrets"] = names
 		}
 		send("approval", payload)
-		timer := time.NewTimer(s.approvalWait())
+		timer := time.NewTimer(card.wait)
 		defer timer.Stop()
+		// A wake that moves to the background cancels ctx while the card is
+		// still open. That must not decide anything: the card keeps waiting for
+		// the owner, and only its own deadline or a real decision ends it.
 		select {
-		case d := <-ch:
+		case d := <-card.done:
 			if d.allow && k != nil && len(names) > 0 && len(d.secrets) > 0 {
 				k.StageSecrets(linkIDFromSummary(summary), filterSecrets(names, d.secrets))
 			}
@@ -69,13 +122,66 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			appendCard(state)
 			return d.allow, nil
 		case <-timer.C:
-			appendCard(bot.ApprovalExpired)
-			return false, kernel.ErrApprovalExpired
+			s.retireExpired(key, card)
+			appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
+			return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
 		case <-ctx.Done():
-			appendCard(bot.ApprovalExpired)
-			return false, kernel.ErrApprovalExpired
+			if s.waitStillOpen(key, card) {
+				d, ok := <-card.done
+				if !ok {
+					return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
+				}
+				return s.applyDecision(b, k, id, summary, names, d, appendCard)
+			}
+			appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
+			return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
 		}
 	}
+}
+
+// retireExpired records a card whose window passed with no decision, so a late
+// answer is told the card expired instead of looking like an unknown id. Note
+// the table is only written when a card actually times out: a card created with
+// a tiny wait would otherwise be filed as expired while it is still waiting.
+func (s *Server) retireExpired(key string, card *pendingApproval) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.expired == nil {
+		s.expired = map[string]*pendingApproval{}
+	}
+	if len(s.expired) > 4096 {
+		cutoff := time.Now().Add(-24 * time.Hour)
+		for k, c := range s.expired {
+			if c.deadline.Before(cutoff) {
+				delete(s.expired, k)
+			}
+		}
+	}
+	s.expired[key] = card
+	if s.approvals[key] == card {
+		delete(s.approvals, key)
+	}
+}
+
+// waitStillOpen reports the card is still the one registered, so a ctx
+// cancellation left it waiting rather than ending it.
+func (s *Server) waitStillOpen(key string, card *pendingApproval) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.approvals[key] == card && !card.decided
+}
+
+// applyDecision records a decision that arrived after the waiting wake ended.
+func (s *Server) applyDecision(b *bot.Bot, k *kernel.Kernel, id, summary string, names []string, d approvalDecision, appendCard func(string)) (bool, error) {
+	if d.allow && k != nil && len(names) > 0 && len(d.secrets) > 0 {
+		k.StageSecrets(linkIDFromSummary(summary), filterSecrets(names, d.secrets))
+	}
+	state := bot.ApprovalDeclined
+	if d.allow {
+		state = bot.ApprovalApproved
+	}
+	appendCard(state)
+	return d.allow, nil
 }
 
 func approvalSecretNames(tool, summary string) []string {
@@ -156,16 +262,33 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
 	}
 	key := b.Name() + "/" + r.PathValue("id")
 	s.mu.Lock()
-	ch := s.approvals[key]
-	s.mu.Unlock()
-	if ch == nil {
+	card, live := s.approvals[key]
+	if !live {
+		card = s.expired[key]
+	}
+	switch {
+	case card == nil:
+		s.mu.Unlock()
 		writeErr(w, http.StatusNotFound, "no such approval")
 		return
-	}
-	select {
-	case ch <- approvalDecision{allow: in.Allow, secrets: in.Secrets}:
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	default:
+	case card.decided:
+		s.mu.Unlock()
 		writeErr(w, http.StatusConflict, "already decided")
+		return
+	case !live || time.Now().After(card.deadline):
+		// The wait already ended with no decision. The card is kept for a while
+		// so a late answer reports 410 instead of looking like an unknown id.
+		s.expired[key] = card
+		delete(s.approvals, key)
+		s.mu.Unlock()
+		writeErr(w, http.StatusGone, "approval expired")
+		return
 	}
+	card.decided = true
+	// The decision is handed to whoever waits, in this process or in the wake
+	// that raised the card. A wake that already gave up leaves it unread; the
+	// buffered channel keeps that from blocking this request.
+	card.done <- approvalDecision{allow: in.Allow, secrets: in.Secrets}
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

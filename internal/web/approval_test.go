@@ -224,7 +224,9 @@ func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 			t.Fatalf("error event %s", ev.data)
 		}
 	}
-	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalExpired}) {
+	// A timeout is no decision at all: the owner never said no, so the card must
+	// not read as declined or as a plain expiry.
+	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.NoDecisionText(bot.ApprovalReasonExpired)}) {
 		t.Fatalf("timeout states %v", states)
 	}
 	decisions, err := b.Decisions()

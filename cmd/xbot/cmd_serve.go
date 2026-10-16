@@ -375,6 +375,14 @@ func cmdServe(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Cards raised before a restart only lived in memory, so nobody can decide
+	// them any more: record them as no-decision rather than leaving a card that
+	// looks pending and can never be answered.
+	if closed, cerr := ui.ResolveRestartOrphans(); cerr != nil {
+		fmt.Fprintf(os.Stderr, "xbot: approval sweep: %v\n", cerr)
+	} else if note := web.DescribeOrphans(closed); note != "" {
+		fmt.Fprintln(os.Stderr, "xbot:", note)
+	}
 	if err := ensureSeed(root); err != nil {
 		return err
 	}

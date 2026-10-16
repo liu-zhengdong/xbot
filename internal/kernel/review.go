@@ -16,9 +16,10 @@ import (
 )
 
 // ErrApprovalExpired marks a confirmation that timed out or was cancelled
-// before the owner decided. trackApprove records it as expired and reports a
-// plain "no" so the tool loop does not treat the timeout as a hard error.
-var ErrApprovalExpired = errors.New("approval expired")
+// before the owner decided. The record says "expired", and the wrapped error
+// reaching the model says nobody confirmed, so a timeout never reads as a
+// refusal by the owner.
+var ErrApprovalExpired = errors.New("expired, no decision")
 
 // reviewedTool is the single decision point before a model tool runs. It reads
 // the concrete tool name and arguments and applies the one policy table in
@@ -209,8 +210,10 @@ func (k *Kernel) trackApprove(fn agent.Approver) agent.Approver {
 		approved, err := fn(ctx, tool, summary)
 		switch {
 		case errors.Is(err, ErrApprovalExpired):
+			// Nobody answered: the card is neither approved nor declined, and
+			// the tool must say so instead of blaming the owner.
 			k.RecordDecision(bot.DecisionExpired, tool, summary)
-			return false, nil
+			return false, fmt.Errorf("%w: %s", ErrApprovalExpired, tool)
 		case err != nil:
 			return false, err
 		}

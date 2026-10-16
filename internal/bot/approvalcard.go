@@ -13,7 +13,27 @@ const (
 	ApprovalApproved = "approved"
 	ApprovalDeclined = "declined"
 	ApprovalExpired  = "expired"
+	// ApprovalNoDecision is a card nobody answered: the wait timed out, the
+	// serving process restarted, or the wake was abandoned. It is deliberately
+	// not ApprovalDeclined: the owner never said no.
+	ApprovalNoDecision = "no_decision"
+	// ApprovalReasonExpired and ApprovalReasonRestart name why a card ended
+	// with no decision.
+	ApprovalReasonExpired = "expired"
+	ApprovalReasonRestart = "restart"
 )
+
+// NoDecisionText is the transcript state recorded for a card nobody answered.
+func NoDecisionText(reason string) string {
+	return ApprovalNoDecision + ":" + reason
+}
+
+// NoDecisionReason returns the reason of a no-decision state. ok is false for
+// any other state.
+func NoDecisionReason(state string) (string, bool) {
+	reason, ok := strings.CutPrefix(state, ApprovalNoDecision+":")
+	return reason, ok
+}
 
 // ApprovalCard is one owner-confirmation card as persisted in the transcript.
 // The same ID is rewritten by appending a newer card; readers keep the latest.
