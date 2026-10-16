@@ -59,7 +59,7 @@ func (messageBotTool) Parameters() any {
 func (messageBotTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "", nil
 }
-func (t messageBotTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+func (t messageBotTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Bot  string `json:"bot"`
 		Text string `json:"text"`
@@ -67,7 +67,7 @@ func (t messageBotTool) Run(_ context.Context, args json.RawMessage) (string, er
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	kt := t.k.curTurn()
+	kt := t.k.turnFor(ctx)
 	chain := kt.turnChain
 	if chain == "" {
 		chain = "ch_" + t.k.Bot.Name()
@@ -157,7 +157,7 @@ func (postGroupTool) Parameters() any {
 func (postGroupTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "", nil
 }
-func (t postGroupTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+func (t postGroupTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		ID   string `json:"id"`
 		Text string `json:"text"`
@@ -165,7 +165,7 @@ func (t postGroupTool) Run(_ context.Context, args json.RawMessage) (string, err
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	kt := t.k.curTurn()
+	kt := t.k.turnFor(ctx)
 	chain := kt.turnChain
 	if chain == "" {
 		chain = "ch_" + t.k.Bot.Name()

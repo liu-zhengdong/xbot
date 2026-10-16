@@ -28,6 +28,10 @@ type turn struct {
 	mu       sync.Mutex
 	branch   string
 	finished bool
+	answered bool // a final answer is on the transcript; too late to fork
+	// forkMu serializes the fork decision with absorbing the inbox, so a message
+	// absorbed into this turn cannot also be the one that forks it.
+	forkMu sync.Mutex
 	tools    int
 	steps    int
 	lastTool string
@@ -71,4 +75,17 @@ func (k *Kernel) ensureTurn() *turn {
 		k.turn = &turn{}
 	}
 	return k.turn
+}
+
+type turnKey struct{}
+
+// turnFor returns the turn that owns ctx. Tool code runs on its turn's context, so a
+// background turn's tools see their own turn even after k.turn moved to the foreground.
+func (k *Kernel) turnFor(ctx context.Context) *turn {
+	if ctx != nil {
+		if t, ok := ctx.Value(turnKey{}).(*turn); ok && t != nil {
+			return t
+		}
+	}
+	return k.ensureTurn()
 }

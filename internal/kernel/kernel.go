@@ -226,6 +226,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		runCtx, cancelRun = context.WithCancel(context.WithoutCancel(ctx))
 		stopWatch = context.AfterFunc(ctx, cancelRun)
 	}
+	runCtx = context.WithValue(runCtx, turnKey{}, t)
 	t.runCtx = runCtx
 	opts := agent.Options{
 		MaxSteps: k.MaxSteps,
@@ -261,7 +262,12 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			return k.modelTools()
 		},
 		AfterStep: func() ([]provider.Message, error) {
-			if t.isForked() || k.tryFork(t) {
+			if !k.AllowFork {
+				return k.absorbInbox()
+			}
+			t.forkMu.Lock()
+			defer t.forkMu.Unlock()
+			if t.isForked() || k.tryForkLocked(t) {
 				// A background never reads the owner's messages; they belong to the foreground.
 				return nil, nil
 			}

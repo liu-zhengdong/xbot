@@ -89,8 +89,15 @@ func (k *Kernel) tryFork(t *turn) bool {
 	if !k.AllowFork || t == nil || t.forked == nil {
 		return false
 	}
+	t.forkMu.Lock()
+	defer t.forkMu.Unlock()
+	return k.tryForkLocked(t)
+}
+
+// tryForkLocked is tryFork with t.forkMu held.
+func (k *Kernel) tryForkLocked(t *turn) bool {
 	t.mu.Lock()
-	eligible := t.branch == "" && !t.finished && (t.tools > 0 || k.now().Sub(t.started) >= k.forkAfter())
+	eligible := t.branch == "" && !t.finished && !t.answered && (t.tools > 0 || k.now().Sub(t.started) >= k.forkAfter())
 	t.mu.Unlock()
 	if !eligible || !k.ownerWaiting(t) {
 		return false
@@ -102,7 +109,7 @@ func (k *Kernel) tryFork(t *turn) bool {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.branch != "" || t.finished {
+	if t.branch != "" || t.finished || t.answered {
 		return false
 	}
 	id := newBranchID()

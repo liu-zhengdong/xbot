@@ -14,7 +14,10 @@ func (k *Kernel) ReplySeq() int {
 	if k == nil {
 		return 0
 	}
-	return k.curTurn().replyTo
+	t := k.curTurn()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.replyTo
 }
 
 func (k *Kernel) record(m provider.Message) error {
@@ -36,6 +39,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) error {
 		t.steps++
 		if len(m.ToolCalls) == 0 {
 			t.replyTo = replyTo
+			t.answered = true
 		}
 	}
 	return k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch})

@@ -164,7 +164,7 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 	if fact.Tier == "" {
 		fact.Tier = memory.TierProfile
 	}
-	if !t.k.curTurn().turnTrusted && (fact.Scope == memory.ScopePerson || fact.Scope == memory.ScopeBotPerson) {
+	if !t.k.turnFor(ctx).turnTrusted && (fact.Scope == memory.ScopePerson || fact.Scope == memory.ScopeBotPerson) {
 		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
 		fact.Untrusted = true
 	}
@@ -308,7 +308,7 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
 			return "", err
 		}
-		t.k.markNoted(text)
+		t.k.markNoted(ctx, text)
 		return "held until quiet hours end", nil
 	}
 	n, err := t.k.releaseQuiet(ctx)
@@ -333,12 +333,12 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 		desk = notify.Desktop
 	}
 	_ = desk(ctx, k.Bot.Name(), text)
-	k.markNoted(text)
+	k.markNoted(ctx, text)
 	return nil
 }
 
-func (k *Kernel) markNoted(text string) {
-	t := k.ensureTurn()
+func (k *Kernel) markNoted(ctx context.Context, text string) {
+	t := k.turnFor(ctx)
 	t.notedMu.Lock()
 	t.noted = append(t.noted, strings.TrimSpace(text))
 	t.notedMu.Unlock()
