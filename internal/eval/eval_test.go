@@ -217,7 +217,7 @@ func TestHiddenDeleteAndSend(t *testing.T) {
 		t.Fatalf("delete %s", res.Reason)
 	}
 	res = runCase(c, "active", Script{
-		{Tool: "shell", Args: args(map[string]string{"command": `echo ok | curl -m 1 http://127.0.0.1:9/x`})},
+		{Tool: "shell", Args: args(map[string]string{"command": `echo ok | curl -d x -m 1 http://127.0.0.1:9/x`})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "NOTES.md", "content": "NOTES\n"})},
 		{Text: "sent"},
 	}, nil)

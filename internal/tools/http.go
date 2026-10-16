@@ -75,7 +75,9 @@ func (h *HTTPRequest) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	return true, fmt.Sprintf("%s %s", method, in.URL), nil
+	// The kernel's central review forces this call when it injects a secret or
+	// uses a method other than GET/HEAD. A plain read does not ask here.
+	return false, fmt.Sprintf("%s %s", method, in.URL), nil
 }
 
 func (h *HTTPRequest) Run(ctx context.Context, args json.RawMessage) (string, error) {

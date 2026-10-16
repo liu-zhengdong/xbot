@@ -136,15 +136,16 @@ func TestSecretListShowsNamesAndDomainsOnly(t *testing.T) {
 	}
 }
 
-func TestHTTPRequestConfirmAlwaysAsks(t *testing.T) {
+func TestHTTPRequestConfirmDefersToKernelReview(t *testing.T) {
 	tool := &HTTPRequest{}
+	// The tool itself never forces a card; the kernel's central review does.
 	for _, raw := range []string{
 		`{"url":"https://example.com"}`,
 		`{"method":"POST","url":"https://example.com","body":"x"}`,
 		`{"url":"https://example.com/?k={{secret:TOKEN}}"}`,
 	} {
 		need, summary, err := tool.Confirm(json.RawMessage(raw))
-		if err != nil || !need {
+		if err != nil || need {
 			t.Fatalf("%s need=%v err=%v", raw, need, err)
 		}
 		if !strings.Contains(summary, "https://example.com") {

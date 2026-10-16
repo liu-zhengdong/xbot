@@ -16,11 +16,17 @@ const (
 	KindHTTP   Kind = "http"
 	KindDelete Kind = "delete"
 	KindSend   Kind = "send"
-	KindPlan   Kind = "plan"
 )
 
 // Check reports whether the concrete call must be confirmed by the owner and
 // which danger kinds it matched. It reads the tool name and arguments only.
+//
+// It asks for a send only when data leaves XBot: shell tools that write to the
+// network, or an external channel send tool. A message between the owner's own
+// bots is not an egress and does not ask here. Deletions of files or data ask.
+// http_request asks only when it injects a secret or uses a method other than
+// GET/HEAD. Editing a planned file, routine or persona is not this classifier's
+// business; those tools keep whatever confirmation they had before.
 func Check(tool string, args json.RawMessage) (bool, []Kind) {
 	name := strings.ToLower(strings.TrimSpace(tool))
 	var kinds []Kind
@@ -34,7 +40,9 @@ func Check(tool string, args json.RawMessage) (bool, []Kind) {
 	}
 	switch {
 	case name == "http_request":
-		add(KindHTTP)
+		if httpNeedsOwner(args) {
+			add(KindHTTP)
+		}
 	case name == "shell":
 		deletes, sends := ShellFlags(shellCommand(args))
 		if deletes {
@@ -55,62 +63,56 @@ func Check(tool string, args json.RawMessage) (bool, []Kind) {
 			add(KindSend)
 		}
 	}
-	if isPlanTool(name) || isPlanPathTool(name, args) {
-		add(KindPlan)
-	}
 	return len(kinds) > 0, kinds
 }
 
+// httpNeedsOwner reports whether an http_request must be confirmed: it injects
+// a {{secret:NAME}} placeholder anywhere, or its method is not GET or HEAD.
+func httpNeedsOwner(args json.RawMessage) bool {
+	if strings.Contains(string(args), "{{secret:") {
+		return true
+	}
+	var in struct {
+		Method string `json:"method"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return false
+	}
+	method := strings.ToUpper(strings.TrimSpace(in.Method))
+	return method != "" && method != "GET" && method != "HEAD"
+}
+
 // ShellFlags reports whether a shell command deletes files or content, or
-// sends data out. It splits on shell operators so a delete or send buried in
-// `sh -c`, a pipe, or a quoted string is still visible.
+// sends data out of XBot. It splits on shell operators so a delete or send
+// buried in `sh -c`, a pipe, or a quoted string is still visible.
 func ShellFlags(cmd string) (deletes, sends bool) {
 	words := shellWords(cmd)
 	for _, w := range words {
 		switch filepath.Base(w) {
 		case "rm", "unlink", "rmdir", "shred":
 			deletes = true
-		case "curl", "wget", "nc", "ncat", "netcat", "socat", "sendmail", "mail", "mailx":
+		case "sendmail", "mail", "mailx", "nc", "ncat", "netcat":
 			sends = true
 		}
 	}
-	if strings.Contains(cmd, "-delete") {
-		for _, w := range words {
-			if filepath.Base(w) == "find" {
-				deletes = true
-			}
-		}
+	if strings.Contains(cmd, "-delete") && containsBase(words, "find") {
+		deletes = true
+	}
+	if gitClean(words) {
+		deletes = true
 	}
 	for _, part := range []string{"os.remove", "os.unlink", "shutil.rmtree", "fs.rmSync", "fs.unlink", "fs.rm("} {
 		if strings.Contains(cmd, part) {
 			deletes = true
 		}
 	}
-	low := strings.ToLower(cmd)
-	for _, part := range []string{"requests", "urllib", "http.client", "httplib"} {
-		if strings.Contains(low, part) {
-			sends = true
-		}
+	if curlWrites(words) || wgetWrites(words) || pythonWrites(cmd) {
+		sends = true
+	}
+	if (containsBase(words, "scp") || containsBase(words, "rsync")) && remoteTarget(words) {
+		sends = true
 	}
 	return deletes, sends
-}
-
-// IsPlanPath reports a file that records an agreed plan, so editing it is a
-// plan change rather than an ordinary write.
-func IsPlanPath(path string) bool {
-	p := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(path), "\\", "/"))
-	p = strings.TrimPrefix(p, "./")
-	base := filepath.Base(p)
-	base = strings.TrimSuffix(base, filepath.Ext(base))
-	if base == "plan" {
-		return true
-	}
-	for _, token := range []string{"plan/", "plans/"} {
-		if strings.HasPrefix(p, token) || strings.Contains(p, "/"+token) {
-			return true
-		}
-	}
-	return false
 }
 
 var deleteTools = map[string]bool{
@@ -123,21 +125,11 @@ var deleteTools = map[string]bool{
 }
 
 var sendTools = map[string]bool{
-	"message_bot":  true,
-	"post_group":   true,
 	"send_message": true,
 	"send_email":   true,
 	"post_message": true,
 	"send_webhook": true,
 	"webhook_send": true,
-}
-
-var planTools = map[string]bool{
-	"routine_create":  true,
-	"routine_update":  true,
-	"routine_delete":  true,
-	"propose_persona": true,
-	"propose_profile": true,
 }
 
 func isDeleteTool(name string) bool {
@@ -152,21 +144,6 @@ func isSendTool(name string) bool {
 		return true
 	}
 	return strings.HasPrefix(name, "send_") || strings.HasSuffix(name, "_send")
-}
-
-func isPlanTool(name string) bool { return planTools[name] }
-
-func isPlanPathTool(name string, args json.RawMessage) bool {
-	if name != "write_file" && name != "edit_file" {
-		return false
-	}
-	var in struct {
-		Path string `json:"path"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return false
-	}
-	return IsPlanPath(in.Path)
 }
 
 func shellCommand(args json.RawMessage) string {
@@ -204,4 +181,144 @@ func shellWords(cmd string) []string {
 		}
 	}
 	return out
+}
+
+func containsBase(words []string, want string) bool {
+	for _, w := range words {
+		if filepath.Base(w) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func isWriteMethod(method string) bool {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "POST", "PUT", "PATCH":
+		return true
+	default:
+		return false
+	}
+}
+
+// curlWrites reports a curl invocation that sends a body or uploads a file:
+// -d/--data*, -F/--form, -T/--upload-file, --json, or -X/--request with a
+// write method. A plain GET/HEAD fetch is not a send.
+func curlWrites(words []string) bool {
+	if !containsBase(words, "curl") {
+		return false
+	}
+	for i, w := range words {
+		switch {
+		case w == "-d" || strings.HasPrefix(w, "--data"):
+			return true
+		case w == "-F" || strings.HasPrefix(w, "--form"):
+			return true
+		case w == "-T" || strings.HasPrefix(w, "--upload-file"):
+			return true
+		case w == "--json":
+			return true
+		case (w == "-X" || w == "--request") && i+1 < len(words):
+			if isWriteMethod(words[i+1]) {
+				return true
+			}
+		case strings.HasPrefix(w, "-X"):
+			if isWriteMethod(strings.TrimPrefix(w, "-X")) {
+				return true
+			}
+		case strings.HasPrefix(w, "--request="):
+			if isWriteMethod(strings.TrimPrefix(w, "--request=")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// wgetWrites reports a wget invocation that posts a body.
+func wgetWrites(words []string) bool {
+	if !containsBase(words, "wget") {
+		return false
+	}
+	for i, w := range words {
+		switch {
+		case strings.HasPrefix(w, "--post-data"), strings.HasPrefix(w, "--post-file"),
+			strings.HasPrefix(w, "--body-data"), strings.HasPrefix(w, "--body-file"):
+			return true
+		case w == "--method" && i+1 < len(words):
+			if isWriteMethod(words[i+1]) {
+				return true
+			}
+		case strings.HasPrefix(w, "--method="):
+			if isWriteMethod(strings.TrimPrefix(w, "--method=")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pythonWrites reports a Python one-liner or script that posts data out:
+// requests.post/put/patch, an HTTP client request with a write method, or
+// urllib/http.client with a data= body.
+func pythonWrites(cmd string) bool {
+	low := strings.ToLower(cmd)
+	for _, part := range []string{"requests.post", "requests.put", "requests.patch"} {
+		if strings.Contains(low, part) {
+			return true
+		}
+	}
+	if strings.Contains(low, ".request(") {
+		for _, method := range []string{`"post"`, `'post'`, `"put"`, `'put'`, `"patch"`, `'patch'`} {
+			if strings.Contains(low, method) {
+				return true
+			}
+		}
+	}
+	if strings.Contains(low, "urllib") || strings.Contains(low, "http.client") || strings.Contains(low, "httplib") {
+		if strings.Contains(low, "data=") {
+			return true
+		}
+	}
+	return false
+}
+
+// remoteTarget reports whether any argument names a remote host: a URL scheme,
+// or a host:path (with or without user@) rather than a local path.
+func remoteTarget(words []string) bool {
+	for _, w := range words {
+		if strings.Contains(w, "://") {
+			return true
+		}
+		if strings.HasPrefix(w, "-") {
+			continue
+		}
+		if strings.Contains(w, ":") && !strings.Contains(w, "::") {
+			return true
+		}
+	}
+	return false
+}
+
+// gitClean reports a `git clean` subcommand, allowing global options such as
+// -C <path> before it. A different subcommand (git log --grep clean) is not a
+// clean.
+func gitClean(words []string) bool {
+	for i, w := range words {
+		if filepath.Base(w) != "git" {
+			continue
+		}
+		for j := i + 1; j < len(words); {
+			arg := words[j]
+			switch {
+			case arg == "-C" || arg == "-c":
+				j += 2
+			case strings.HasPrefix(arg, "-"):
+				j++
+			default:
+				return arg == "clean"
+			}
+		}
+	}
+	return false
 }

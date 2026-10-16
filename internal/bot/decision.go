@@ -30,13 +30,14 @@ func (b *Bot) DecisionPath() string {
 }
 
 // LogDecision appends one review outcome. The file is 0600 and created on the
-// first write. The caller redacts the summary before calling.
+// first write. The caller redacts the summary before calling. The timestamp is
+// written in local time with its offset (RFC3339), not converted to UTC.
 func (b *Bot) LogDecision(state, tool, summary string, at time.Time) error {
 	if at.IsZero() {
-		at = time.Now().UTC()
+		at = time.Now()
 	}
 	return fsutil.AppendJSONL(b.DecisionPath(), Decision{
-		Time:    at.UTC(),
+		Time:    at.Local(),
 		Tool:    tool,
 		State:   state,
 		Summary: summary,

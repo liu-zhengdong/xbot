@@ -171,6 +171,37 @@ func TestRecordDecisionRedactsSecrets(t *testing.T) {
 	}
 }
 
+func TestReviewedToolHTTPReview(t *testing.T) {
+	tool := reviewedTool{&tools.HTTPRequest{}}
+	if need, _, err := tool.Confirm(json.RawMessage(`{"url":"https://example.com"}`)); err != nil || need {
+		t.Fatalf("plain GET need=%v err=%v", need, err)
+	}
+	if need, _, err := tool.Confirm(json.RawMessage(`{"method":"POST","url":"https://example.com","body":"x"}`)); err != nil || !need {
+		t.Fatalf("POST need=%v err=%v", need, err)
+	}
+	if need, _, err := tool.Confirm(json.RawMessage(`{"url":"https://example.com/?k={{secret:TOKEN}}"}`)); err != nil || !need {
+		t.Fatalf("secret GET need=%v err=%v", need, err)
+	}
+}
+
+// fakePeerTool stands in for message_bot: it never asks on its own, and the
+// kernel must not force a card either, because the message stays inside the
+// owner's own bots.
+type fakePeerTool struct{}
+
+func (fakePeerTool) Name() string                                         { return "message_bot" }
+func (fakePeerTool) Description() string                                  { return "" }
+func (fakePeerTool) Parameters() any                                      { return map[string]any{} }
+func (fakePeerTool) Confirm(json.RawMessage) (bool, string, error)        { return false, "", nil }
+func (fakePeerTool) Run(context.Context, json.RawMessage) (string, error) { return "sent", nil }
+
+func TestReviewedToolDoesNotForceBotToBot(t *testing.T) {
+	need, _, err := reviewedTool{fakePeerTool{}}.Confirm(json.RawMessage(`{"bot":"bob","text":"hi"}`))
+	if err != nil || need {
+		t.Fatalf("message_bot need=%v err=%v", need, err)
+	}
+}
+
 func readDecisions(t *testing.T, b *bot.Bot) []bot.Decision {
 	t.Helper()
 	out, err := b.Decisions()
