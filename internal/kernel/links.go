@@ -160,7 +160,7 @@ func (t linksTool) install(id string) (string, error) {
 		return scrubSecrets("links: not available yet", values), nil
 	}
 	if len(keep) > 0 {
-		if err := link.WriteSecrets(t.k.Bot.SecretPath(), keep); err != nil {
+		if err := t.k.storeSecrets(keep); err != nil {
 			return scrubSecrets("links: "+err.Error(), values), nil
 		}
 	}
@@ -181,7 +181,7 @@ func (t linksTool) remove(id string) (string, error) {
 		}
 	}
 	if len(e.Secrets) > 0 {
-		if err := link.DropSecrets(t.k.Bot.SecretPath(), e.Secrets); err != nil {
+		if err := t.k.dropSecrets(e); err != nil {
 			return "", err
 		}
 	}
@@ -320,6 +320,56 @@ func catalogRuntime(name string) bool {
 	}
 }
 
+// storeSecrets writes link credentials. With a vault they go to the backend
+// under the connector name; without one the legacy plaintext file keeps the
+// old behaviour. Only connector secrets are vaulted: other links keep their
+// file entry, so a mixed install neither loses nor leaks a value.
+func (k *Kernel) storeSecrets(values map[string]string) error {
+	rest := map[string]string{}
+	for name, value := range values {
+		kind := link.KindForSecret(name)
+		if kind == "" || k.Vault == nil {
+			rest[name] = value
+			continue
+		}
+		if err := link.SetConnectorSecret(k.Vault, kind, value); err != nil {
+			return err
+		}
+	}
+	if len(rest) == 0 {
+		return nil
+	}
+	return link.WriteSecrets(k.Bot.SecretPath(), rest)
+}
+
+// dropSecrets removes link credentials from the vault and the legacy file.
+func (k *Kernel) dropSecrets(e link.CatalogEntry) error {
+	for _, name := range e.Secrets {
+		kind := link.KindForSecret(name)
+		if kind == "" || k.Vault == nil {
+			continue
+		}
+		if err := link.RemoveConnectorSecret(k.Vault, kind); err != nil {
+			return err
+		}
+	}
+	return link.DropSecrets(k.Bot.SecretPath(), e.Secrets)
+}
+
+// connector mounts a Telegram or Lark connector and, on this first access,
+// migrates any legacy plaintext token into the vault. A bot that never touches
+// the connector keeps its file until it is needed.
+func (k *Kernel) connector(dir, kind string) *link.Connector {
+	c := link.NewConnector(dir, k.Bot.SecretPath(), kind)
+	if k == nil || k.Vault == nil {
+		return c
+	}
+	if err := c.UseVault(k.Vault); err != nil {
+		_ = err // a failed migration retries on the next mount; the file stays
+	}
+	return c
+}
+
 func (k *Kernel) mountGrantLocked(name string) link.Link {
 	dir := bot.Dir(k.Bot.Root, k.Bot.Name())
 	switch name {
@@ -330,9 +380,9 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 	case link.NameSkills:
 		return link.Skills{}
 	case link.NameTelegram:
-		return link.NewConnector(dir, k.Bot.SecretPath(), link.NameTelegram)
+		return k.connector(dir, link.NameTelegram)
 	case link.NameLark:
-		return link.NewConnector(dir, k.Bot.SecretPath(), link.NameLark)
+		return k.connector(dir, link.NameLark)
 	case link.NameNode:
 		return node.Open(k.Bot.Root)
 	case link.NameDesktop:
@@ -484,15 +534,13 @@ func (k *Kernel) secretValues() map[string]string {
 		}
 	}
 	k.secretMu.Unlock()
-	if k.Bot == nil {
+	if k.Vault == nil {
 		return out
 	}
-	stored, err := link.ReadSecrets(k.Bot.SecretPath())
-	if err != nil {
-		return out
-	}
-	for name, value := range stored {
-		out[name] = value
+	// The backend redacts its own values; nothing is read back here, so this
+	// works the same when the backend is a client to the vault daemon.
+	for _, name := range k.Vault.Names() {
+		out[name] = ""
 	}
 	return out
 }

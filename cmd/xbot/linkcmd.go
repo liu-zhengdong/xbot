@@ -8,7 +8,42 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
+
+// writeLinkSecrets stores install-time values: connector tokens in the vault,
+// anything else in the legacy plaintext file.
+func writeLinkSecrets(b *bot.Bot, store vault.Backend, values map[string]string) error {
+	rest := map[string]string{}
+	for name, value := range values {
+		kind := link.KindForSecret(name)
+		if kind == "" || store == nil {
+			rest[name] = value
+			continue
+		}
+		if err := link.SetConnectorSecret(store, kind, value); err != nil {
+			return err
+		}
+	}
+	if len(rest) == 0 {
+		return nil
+	}
+	return link.WriteSecrets(b.SecretPath(), rest)
+}
+
+// dropLinkSecrets removes install-time values from the vault and the file.
+func dropLinkSecrets(b *bot.Bot, store vault.Backend, e link.CatalogEntry) error {
+	for _, name := range e.Secrets {
+		kind := link.KindForSecret(name)
+		if kind == "" || store == nil {
+			continue
+		}
+		if err := link.RemoveConnectorSecret(store, kind); err != nil {
+			return err
+		}
+	}
+	return link.DropSecrets(b.SecretPath(), e.Secrets)
+}
 
 func cmdLink(root string, args []string) error {
 	if len(args) == 0 {
@@ -59,6 +94,7 @@ func cmdLink(root string, args []string) error {
 		if !e.Available || e.Grant == "" {
 			return link.ErrUnavailable
 		}
+		var store vault.Backend
 		if len(e.Secrets) > 0 {
 			vals := map[string]string{}
 			for _, name := range e.Secrets {
@@ -68,13 +104,18 @@ func cmdLink(root string, args []string) error {
 				}
 				vals[name] = v
 			}
-			if err := link.WriteSecrets(b.SecretPath(), vals); err != nil {
+			opened, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+			if err != nil {
+				return err
+			}
+			store = opened
+			if err := writeLinkSecrets(b, store, vals); err != nil {
 				return err
 			}
 		}
 		if err := b.GrantLink(e.Grant); err != nil {
 			if len(e.Secrets) > 0 {
-				_ = link.DropSecrets(b.SecretPath(), e.Secrets)
+				_ = dropLinkSecrets(b, store, e)
 			}
 			return err
 		}
@@ -98,7 +139,11 @@ func cmdLink(root string, args []string) error {
 			}
 		}
 		if len(e.Secrets) > 0 {
-			if err := link.DropSecrets(b.SecretPath(), e.Secrets); err != nil {
+			store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+			if err != nil {
+				return err
+			}
+			if err := dropLinkSecrets(b, store, e); err != nil {
 				return err
 			}
 		}

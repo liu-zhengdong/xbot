@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 func (s *Server) handleConnector(w http.ResponseWriter, r *http.Request) {
@@ -37,13 +39,8 @@ func (s *Server) handleConnector(w http.ResponseWriter, r *http.Request) {
 		writeStatus(w, http.StatusNotFound, "not_found")
 		return
 	}
-	vals, err := link.ReadSecrets(b.SecretPath())
-	if err != nil {
-		writeStatus(w, http.StatusInternalServerError, "error")
-		return
-	}
-	secret := strings.TrimSpace(vals[link.SecretName(kind)])
-	if secret == "" {
+	secret, ok := s.connectorSecret(b, kind)
+	if !ok {
 		writeStatus(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -93,6 +90,39 @@ func (s *Server) handleConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeStatus(w, http.StatusOK, "accepted")
+}
+
+// connectorSecret returns the value an inbound webhook must be verified
+// against. Verification needs the plaintext, so it is only possible when this
+// process holds the credential: a local vault store, or the legacy plaintext
+// file before migration. A daemon-backed backend never hands the value out and
+// the request is refused rather than accepted unverified.
+func (s *Server) connectorSecret(b *bot.Bot, kind string) (string, bool) {
+	if s.OpenVault != nil {
+		backend, err := s.OpenVault(b)
+		if err != nil {
+			log.Printf("inbound: %s webhook for %s cannot be verified: opening its vault failed: %v", kind, b.Name(), err)
+			return "", false
+		}
+		if backend == nil {
+			return "", false
+		}
+		if local, ok := backend.(*vault.Store); ok {
+			if sec, ok := local.Lookup(link.VaultName(kind)); ok && sec.Value != "" {
+				return sec.Value, true
+			}
+			return "", false
+		}
+		// A vault daemon keeps the value outside this process.
+		log.Printf("inbound: %s webhook for %s cannot be verified: the vault daemon does not expose the secret to this process", kind, b.Name())
+		return "", false
+	}
+	vals, err := link.ReadSecrets(b.SecretPath())
+	if err != nil {
+		return "", false
+	}
+	secret := strings.TrimSpace(vals[link.SecretName(kind)])
+	return secret, secret != ""
 }
 
 func connectorAuth(kind, secret string, body []byte, h http.Header) bool {

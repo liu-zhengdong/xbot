@@ -15,6 +15,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 const (
@@ -55,6 +56,12 @@ type Server struct {
 	Window   time.Duration
 	Debounce time.Duration
 	Now      func() time.Time
+	// OpenVault returns the backend that verifies a connector webhook for one
+	// bot. Every vault belongs to a single bot, so the hub opens the backend per
+	// request instead of sharing one. Nil falls back to the legacy plaintext
+	// secrets.json; a daemon-backed vault refuses the request because it does
+	// not expose the secret to this process.
+	OpenVault func(*bot.Bot) (vault.Backend, error)
 
 	mu      sync.Mutex
 	batches map[string]*batch

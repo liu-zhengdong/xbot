@@ -19,6 +19,7 @@ import (
 
 	"xbot/internal/fsutil"
 	"xbot/internal/tools"
+	"xbot/internal/vault"
 )
 
 const (
@@ -53,18 +54,73 @@ func SecretName(kind string) string {
 type Poster func(ctx context.Context, to, body, secret string) error
 
 // Connector is the Telegram or Lark grant. Tools stay off the model list until links load.
-// Dir is the bot directory. SecretPath is its secrets.json.
+// Dir is the bot directory. SecretPath is the legacy plaintext secrets.json.
+// Vault holds the credential; it is the only place a token is stored.
 type Connector struct {
 	Dir        string
 	SecretPath string
 	Kind       string
+	// Vault is the credential backend. When set, the token lives there and
+	// every request carries the {{secret:NAME}} placeholder instead of a value.
+	Vault vault.Backend
 	// Post replaces the default HTTP send. Nil uses TelegramAPI or LarkAPI.
 	Post Poster
+	// Client replaces the default outbound client. Nil builds one whose
+	// Transport is Vault.Transport, so placeholders are filled at egress.
+	Client *http.Client
 }
 
 // NewConnector returns a connector link for kind telegram or lark.
 func NewConnector(dir, secretPath, kind string) *Connector {
 	return &Connector{Dir: dir, SecretPath: secretPath, Kind: kind}
+}
+
+// UseVault attaches the credential backend and migrates any legacy plaintext
+// token into it. It is the first-access hook: callers mount the connector and
+// then call UseVault once, so a bot that never touches the connector keeps its
+// file until it is needed.
+func (c *Connector) UseVault(backend vault.Backend) error {
+	if c == nil {
+		return nil
+	}
+	if err := MigrateConnectorSecrets(c.SecretPath, backend); err != nil {
+		return err
+	}
+	c.Vault = backend
+	return nil
+}
+
+// client returns the HTTP client every outbound connector request uses. The
+// transport injects placeholders at egress; a nil vault leaves the default.
+func (c *Connector) client() *http.Client {
+	if c != nil && c.Client != nil {
+		return c.Client
+	}
+	if c == nil || c.Vault == nil {
+		return connectorClient
+	}
+	base := connectorClient.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	clone := *connectorClient
+	clone.Transport = c.Vault.Transport(base)
+	return &clone
+}
+
+// token returns the value handed to Poster: the placeholder when a vault holds
+// the credential, the legacy file value otherwise. The placeholder is only
+// meaningful with a vault-attached client; without one, sending stops here.
+func (c *Connector) token() (string, error) {
+	if c == nil {
+		return "", errors.New("connector: no connector")
+	}
+	if c.Vault != nil {
+		if ph := Placeholder(c.Kind); ph != "" {
+			return ph, nil
+		}
+	}
+	return connectorSecret(c.SecretPath, c.Kind)
 }
 
 func (c *Connector) Name() string {
@@ -125,7 +181,7 @@ func (t *sendTool) Run(ctx context.Context, args json.RawMessage) (string, error
 	if d.Status == draftStatusSent {
 		return "sent " + d.ID, nil
 	}
-	secret, err := connectorSecret(t.c.SecretPath, t.c.Kind)
+	secret, err := t.c.token()
 	if err != nil {
 		return "", err
 	}
@@ -142,11 +198,12 @@ func (c *Connector) send(ctx context.Context, to, body, secret string) error {
 	if c != nil && c.Post != nil {
 		return c.Post(ctx, to, body, secret)
 	}
+	client := c.client()
 	switch c.Kind {
 	case NameTelegram:
-		return PostTelegram(ctx, TelegramAPI, secret, to, body)
+		return postTelegramWith(ctx, client, TelegramAPI, secret, to, body)
 	case NameLark:
-		return PostLark(ctx, LarkAPI, secret, to, body)
+		return postLarkWith(ctx, client, LarkAPI, secret, to, body)
 	default:
 		return errors.New("connector: unknown")
 	}
@@ -350,17 +407,29 @@ func connectorSecret(path, kind string) (string, error) {
 	return secret, nil
 }
 
-// PostTelegram calls sendMessage. token is scrubbed from any error.
+// PostTelegram calls sendMessage with the default client. token is scrubbed from any error.
 func PostTelegram(ctx context.Context, base, token, to, body string) error {
+	return postTelegramWith(ctx, connectorClient, base, token, to, body)
+}
+
+// PostLark calls a custom-bot webhook with the default client. token is the
+// hook secret and is scrubbed from any error.
+func PostLark(ctx context.Context, base, token, to, body string) error {
+	return postLarkWith(ctx, connectorClient, base, token, to, body)
+}
+
+// postTelegramWith calls sendMessage through client. A vault-attached client
+// replaces the placeholder in the path just before egress.
+func postTelegramWith(ctx context.Context, client *http.Client, base, token, to, body string) error {
 	rawURL, err := connectorURL(base, "/bot"+token+"/sendMessage", token)
 	if err != nil {
 		return err
 	}
-	return postJSON(ctx, rawURL, token, map[string]string{"chat_id": to, "text": body}, true)
+	return doJSON(ctx, client, rawURL, token, map[string]string{"chat_id": to, "text": body}, true)
 }
 
-// PostLark calls a custom-bot webhook. token is the hook secret and is scrubbed from any error.
-func PostLark(ctx context.Context, base, token, _, body string) error {
+// postLarkWith calls a custom-bot webhook through client.
+func postLarkWith(ctx context.Context, client *http.Client, base, token, to, body string) error {
 	rawURL, err := connectorURL(base, "/open-apis/bot/v2/hook/"+token, token)
 	if err != nil {
 		return err
@@ -369,7 +438,7 @@ func PostLark(ctx context.Context, base, token, _, body string) error {
 		"msg_type": "text",
 		"content":  map[string]string{"text": body},
 	}
-	return postJSON(ctx, rawURL, token, payload, false)
+	return doJSON(ctx, client, rawURL, token, payload, false)
 }
 
 func connectorURL(base, suffix, token string) (string, error) {
@@ -390,10 +459,30 @@ func safeToken(token string) bool {
 	if token == "" || len(token) > 256 {
 		return false
 	}
+	if strings.HasPrefix(token, "{{secret:") && strings.HasSuffix(token, "}}") {
+		name := token[len("{{secret:") : len(token)-len("}}")]
+		return vaultSecretName(name)
+	}
 	for _, r := range token {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 		case r == ':' || r == '_' || r == '-' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// vaultSecretName is the character class vault's placeholder regexp accepts.
+func vaultSecretName(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '_' || r == '-' || r == '.':
 		default:
 			return false
 		}
@@ -409,6 +498,13 @@ var connectorClient = &http.Client{
 }
 
 func postJSON(ctx context.Context, rawURL, secret string, payload any, telegram bool) error {
+	return doJSON(ctx, connectorClient, rawURL, secret, payload, telegram)
+}
+
+func doJSON(ctx context.Context, client *http.Client, rawURL, secret string, payload any, telegram bool) error {
+	if client == nil {
+		client = connectorClient
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -418,7 +514,7 @@ func postJSON(ctx context.Context, rawURL, secret string, payload any, telegram 
 		return scrubErr(err, secret)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err := connectorClient.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return scrubErr(err, secret)
 	}

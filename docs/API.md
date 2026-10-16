@@ -217,7 +217,11 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 `POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。声明了密钥的条目（Telegram、飞书）也是 409，正文含 `secrets required`，授权和 `secrets.json` 都不变。密钥只能在聊天确认卡里填，或由主人用命令行从同名环境变量安装。
 
-`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时从 `secrets.json` 删掉这些名字。
+`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时删掉这些名字：连接器（Telegram、飞书）的 token 存在保险箱 backend 里，用 `backend.Remove` 删除；只有非连接器的键还留在 `secrets.json`。
+
+连接器 token 的存放：Telegram 与飞书的 token 存在 `vault.Backend` 里（名字 `telegram.token`、`lark.token`，绑定域名分别是 `api.telegram.org` 与 `open.feishu.cn`）。Bot 目录下旧的明文 `secrets.json` 在连接器第一次被打开时自动迁移进 backend，全部写入成功后明文文件被删掉；迁移中途失败则保留明文，下次再迁，重复执行安全。连接器出站请求只携带 `{{secret:telegram.token}}` 这类占位符，真值由 `backend.Transport` 在出口注入。
+
+入站 webhook 的限制：校验 Telegram `X-Telegram-Bot-Api-Secret-Token` 与飞书签名必须拿到明文。当 backend 是本地同用户 Store 时，入站照常用真值校验；当跑着 `xbot vaultd`（backend 是拿不到明文的 Client）时，**Telegram 与飞书的 webhook 入站暂不可用**：请求返回 401，并写一条日志说明是保险箱守护进程不向本进程暴露密钥，不放行、也不做假校验。
 
 `coding-agent` 可以安装。任务记录不走这套登录接口。Bot 用 `code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`code_show`。完成、失败或取消写成该 Bot 收件箱里的不可信事件。
 

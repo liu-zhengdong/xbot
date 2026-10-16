@@ -6,6 +6,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 type linkJSON struct {
@@ -97,12 +98,34 @@ func (s *Server) removeLink(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(e.Secrets) > 0 {
-		if err := link.DropSecrets(b.SecretPath(), e.Secrets); err != nil {
+		if err := dropSecrets(b, e); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "installed": false})
+}
+
+// dropSecrets removes a link's stored credentials: the vault when one is
+// configured, otherwise the legacy plaintext file.
+func dropSecrets(b *bot.Bot, e link.CatalogEntry) error {
+	if b == nil {
+		return nil
+	}
+	if store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath()); err == nil && store != nil {
+		var firstErr error
+		for _, name := range e.Secrets {
+			if kind := link.KindForSecret(name); kind != "" {
+				if err := store.Remove(link.VaultName(kind)); err != nil && firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+		if firstErr != nil {
+			return firstErr
+		}
+	}
+	return link.DropSecrets(b.SecretPath(), e.Secrets)
 }
 
 func catalogRows(b *bot.Bot) []linkJSON {

@@ -19,8 +19,18 @@ const maxRequestBody = 8 << 20
 // placeholder matches {{secret:NAME}} anywhere in a URL, header, or body.
 var placeholder = regexp.MustCompile(`\{\{secret:([A-Za-z0-9_.-]+)\}\}`)
 
+// escapedPlaceholder matches the same placeholder after http.NewRequest has
+// percent-escaped the braces in a URL path ("%7B%7Bsecret:NAME%7D%7D", any
+// case). A token in a Telegram path is only ever seen in this form.
+var escapedPlaceholder = regexp.MustCompile(`(?i)%7B%7Bsecret:([A-Za-z0-9_.-]+)%7D%7D`)
+
+// placeholders are both spellings, in the order a value must be substituted.
+var placeholders = []*regexp.Regexp{placeholder, escapedPlaceholder}
+
 // Proxy is an http.RoundTripper that injects secrets just before egress.
-// A request whose placeholders cannot be resolved safely is refused.
+// Both the plain spelling and the percent-escaped form that net/http writes
+// into a URL path resolve to the same value. A request whose placeholders
+// cannot be resolved safely is refused.
 type Proxy struct {
 	Base  http.RoundTripper
 	Store *Store
@@ -242,26 +252,31 @@ func validHeaderValue(v string) bool {
 }
 
 func (s *Store) apply(text string) string {
-	if !strings.Contains(text, "{{secret:") {
+	if !strings.Contains(text, "secret:") {
 		return text
 	}
-	return placeholder.ReplaceAllStringFunc(text, func(match string) string {
-		sub := placeholder.FindStringSubmatch(match)
-		if len(sub) != 2 {
+	for _, re := range placeholders {
+		text = re.ReplaceAllStringFunc(text, func(match string) string {
+			sub := re.FindStringSubmatch(match)
+			if len(sub) != 2 {
+				return match
+			}
+			if sec, ok := s.Lookup(sub[1]); ok {
+				return sec.Value
+			}
 			return match
-		}
-		if sec, ok := s.Lookup(sub[1]); ok {
-			return sec.Value
-		}
-		return match
-	})
+		})
+	}
+	return text
 }
 
 func findNames(rawURL string, header http.Header, body []byte) []string {
 	found := map[string]bool{}
 	scan := func(text string) {
-		for _, sub := range placeholder.FindAllStringSubmatch(text, -1) {
-			found[sub[1]] = true
+		for _, re := range placeholders {
+			for _, sub := range re.FindAllStringSubmatch(text, -1) {
+				found[sub[1]] = true
+			}
 		}
 	}
 	scan(rawURL)

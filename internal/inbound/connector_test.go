@@ -11,6 +11,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 func TestConnectorInbound(t *testing.T) {
@@ -137,4 +138,45 @@ func postConnector(t *testing.T, url, secret, body string) posted {
 	defer res.Body.Close()
 	buf, _ := io.ReadAll(res.Body)
 	return posted{status: res.StatusCode, body: string(buf)}
+}
+
+// TestConnectorInboundUsesEachBotsOwnVault pins that the hub opens the vault of
+// the bot the request names. A shared vault would verify bot B's webhook with
+// bot A's credential.
+func TestConnectorInboundUsesEachBotsOwnVault(t *testing.T) {
+	root := t.TempDir()
+	ada, err := bot.Create(root, "ada", "persona", []string{link.NameTelegram})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := bot.Create(root, "bob", "persona", []string{link.NameTelegram})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const adaToken = "111:ada-token"
+	const bobToken = "222:bob-token"
+	for b, token := range map[*bot.Bot]string{ada: adaToken, bob: bobToken} {
+		store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
+		if err != nil {
+			t.Fatalf("vault.Open: %v", err)
+		}
+		if err := link.SetConnectorSecret(store, link.NameTelegram, token); err != nil {
+			t.Fatalf("SetConnectorSecret: %v", err)
+		}
+	}
+	s := &Server{Root: root, OpenVault: func(b *bot.Bot) (vault.Backend, error) {
+		return vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	}}
+	ui := httptest.NewServer(s.Handler())
+	defer ui.Close()
+
+	body := `{"update_id":11,"message":{"message_id":1,"from":{"id":4,"username":"bob"},"chat":{"id":42},"text":"hi"}}`
+	res := postConnector(t, ui.URL+"/connector/telegram/bob", bobToken, body)
+	if res.status != http.StatusOK {
+		t.Fatalf("bob with bob's token: %d %s", res.status, res.body)
+	}
+	res = postConnector(t, ui.URL+"/connector/telegram/bob", adaToken, `{"update_id":12,"message":{"text":"x","chat":{"id":1}}}`)
+	if res.status != http.StatusUnauthorized {
+		t.Fatalf("bob with ada's token should be 401, got %d %s", res.status, res.body)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -43,10 +44,17 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if !b.Grants(link.NameTerminal) && pr != nil {
 		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
 	}
+	store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	if err != nil {
+		return nil, person.Person{}, err
+	}
 	links, err := mount(b, runner)
 	if err != nil {
 		return nil, person.Person{}, err
 	}
+	// First access on a mounted connector migrates any legacy plaintext token
+	// into the vault and switches the connector to placeholders.
+	attachConnectors(links, store)
 	workDir, sharedDir, err := work.Open(root, b.Name())
 	if err != nil {
 		return nil, person.Person{}, err
@@ -94,10 +102,6 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 			coding.UseCommand(cmd)
 		}
 	}
-	store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
-	if err != nil {
-		return nil, person.Person{}, err
-	}
 	if local, ok := store.(*vault.Store); ok {
 		vault.Register(local)
 	}
@@ -126,6 +130,26 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		k.OnResult = pr.Result
 	}
 	return k, who, nil
+}
+
+// attachConnectors hands the vault to every connector link and runs the
+// first-access migration. A backend the connector refuses leaves it on the
+// legacy file, so the migration retries on the next start.
+func attachConnectors(links []link.Link, backend vault.Backend) {
+	if backend == nil {
+		return
+	}
+	for _, l := range links {
+		c, ok := l.(*link.Connector)
+		if !ok {
+			continue
+		}
+		if err := c.UseVault(backend); err != nil {
+			// The legacy plaintext stays in place and the migration retries on
+			// the next start. The error carries no value.
+			log.Printf("connector %s: credential migration into the vault failed, retrying next start: %v", c.Kind, err)
+		}
+	}
 }
 
 func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
@@ -335,7 +359,9 @@ func cmdServe(root string, args []string) error {
 		return err
 	}
 	*httpAddr = resolved.ListenAddr
-	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce}
+	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce, OpenVault: func(b *bot.Bot) (vault.Backend, error) {
+		return vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	}}
 	ui := &web.Server{
 		Root:         root,
 		DefaultLinks: defaultLinks,
