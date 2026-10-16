@@ -2958,6 +2958,9 @@
             if (bubble) host.insertBefore(block, bubble);
             else host.prepend(block);
           }
+        } else if (event === "done" && payload.background && host) {
+          const status = host.querySelector(".live-status");
+          if (status) status.remove();
         } else if (event === "error") {
           setStatus(payload.error || "出错了");
         }

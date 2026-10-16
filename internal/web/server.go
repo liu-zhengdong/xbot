@@ -720,9 +720,16 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	k.Bot = b
 	if box != nil {
 		defer func() { _ = box.Ack(ev.ID) }()
-		if absorbed, text := s.absorbedReply(b, box, ev.ID); absorbed {
-			// The running turn ended before it could fork and took the message in.
-			send("done", doneBody{Text: text})
+		if absorbed, text, bg, failed := s.absorbedReply(b, box, ev.ID, text); absorbed {
+			// The running turn took the message in before it could fork.
+			switch {
+			case bg != "":
+				send("done", doneBody{Background: bg})
+			case failed:
+				send("error", map[string]string{"error": "消息已被正在进行的一轮接收，但这一轮没有给出回复"})
+			default:
+				send("done", doneBody{Text: text})
+			}
 			return
 		}
 	}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"strings"
 	"time"
 
 	"xbot/internal/bot"
@@ -57,9 +58,10 @@ func (s *Server) releaseHandle(b *bot.Bot, k *kernel.Kernel) {
 		return
 	}
 	if k == nil || len(k.Backgrounds()) == 0 {
+		// Release under s.mu so a new request cannot fall between the map and the flock.
 		delete(s.holds, b.Name())
+		_ = h.lock.Release()
 		s.mu.Unlock()
-		h.lock.Release()
 		return
 	}
 	s.mu.Unlock()
@@ -79,37 +81,62 @@ func (s *Server) releaseWhenIdle(name string, h *handleHold, k *kernel.Kernel) {
 			if s.holds[name] == h {
 				delete(s.holds, name)
 			}
+			_ = h.lock.Release()
 			s.mu.Unlock()
-			h.lock.Release()
 			return
 		}
 		s.mu.Unlock()
 	}
 }
 
-// absorbedReply reports whether the running turn already took event id from the
-// inbox, and if so the latest main-line reply, which answered it.
-func (s *Server) absorbedReply(b *bot.Bot, box *inbox.Inbox, id string) (bool, string) {
+// absorbedReply reports whether a running turn already took event id from the inbox.
+// If so, it finds the row that turn recorded for text: a row on a background branch
+// returns that branch; a main-line row returns the main-line answer written after it,
+// or failed when none was written.
+func (s *Server) absorbedReply(b *bot.Bot, box *inbox.Inbox, id, text string) (absorbed bool, reply, background string, failed bool) {
 	if err := box.Reload(); err != nil {
-		return false, ""
+		return false, "", "", false
 	}
 	for _, ev := range box.Pending() {
 		if ev.ID == id {
-			return false, ""
+			return false, "", "", false
 		}
 	}
-	entries, err := b.Entries()
+	n, err := b.Count()
+	if err != nil || n == 0 {
+		return true, "", "", true
+	}
+	entries, err := b.Slice(1, n)
 	if err != nil {
-		return true, ""
+		return true, "", "", true
 	}
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := entries[i]
-		if e.Branch == "" && !e.IsForkMark() && e.Message.Role == provider.RoleAssistant && len(e.Message.ToolCalls) == 0 && e.Message.Content != "" {
-			if bot.SilentText(e.Message.Content) {
-				return true, ""
-			}
-			return true, e.Message.Content
+	seqs := make([]bot.SeqEntry, len(entries))
+	for i, e := range entries {
+		seqs[i] = bot.SeqEntry{Seq: i + 1, Entry: e}
+	}
+	rows, _ := bot.Replay(seqs)
+	at := -1
+	for i := len(rows) - 1; i >= 0; i-- {
+		m := rows[i].Entry.Message
+		if m.Role == provider.RoleUser && !rows[i].Entry.IsForkMark() && strings.Contains(m.Content, text) {
+			at = i
+			break
 		}
 	}
-	return true, ""
+	if at < 0 {
+		return true, "", "", true
+	}
+	if br := rows[at].Branch; br != "" {
+		return true, "", br, false
+	}
+	for _, r := range rows[at+1:] {
+		m := r.Entry.Message
+		if r.Branch == "" && !r.Entry.IsForkMark() && m.Role == provider.RoleAssistant && len(m.ToolCalls) == 0 && m.Content != "" {
+			if bot.SilentText(m.Content) {
+				return true, "", "", false
+			}
+			return true, m.Content, "", false
+		}
+	}
+	return true, "", "", true
 }

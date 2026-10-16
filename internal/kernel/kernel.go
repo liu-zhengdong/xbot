@@ -216,6 +216,17 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	var approve agent.Approver
 	if k.Approve != nil {
 		approve = k.trackApprove(k.Approve)
+		if k.AllowFork {
+			inner := approve
+			approve = func(ctx context.Context, tool, summary string) (bool, error) {
+				if t.isForked() {
+					// The request that could show a card is gone. Until backgrounds get
+					// their own approval route, a background declines.
+					return false, nil
+				}
+				return inner(ctx, tool, summary)
+			}
+		}
 	}
 	t.fromSeq = seq
 	// A turn that may fork runs on a context the caller's cancel reaches only until
