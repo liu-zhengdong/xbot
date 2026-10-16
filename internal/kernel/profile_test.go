@@ -149,7 +149,7 @@ func TestNotifyThresholdAndQuietHours(t *testing.T) {
 	}
 	var desks []string
 	now := time.Date(2026, 10, 15, 23, 0, 0, 0, time.UTC)
-	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turnSource: link.NameTimer, Desktop: func(_ context.Context, _, body string) error {
+	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turn: &turn{turnSource: link.NameTimer}, Desktop: func(_ context.Context, _, body string) error {
 		desks = append(desks, body)
 		return nil
 	}}
@@ -192,14 +192,14 @@ func TestNotifyThresholdAndQuietHours(t *testing.T) {
 	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &empty, QuietEnd: &empty}); err != nil {
 		t.Fatal(err)
 	}
-	k.turnSource = link.NameWebhook
-	k.turnTrusted = false
+	k.turn.turnSource = link.NameWebhook
+	k.turn.turnTrusted = false
 	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"skip me","importance":"low"}`))
 	if err != nil || out != "notified the owner" {
 		t.Fatalf("untrusted low %s %v", out, err)
 	}
-	k.turnSource = link.NameTerminal
-	k.turnTrusted = true
+	k.turn.turnSource = link.NameTerminal
+	k.turn.turnTrusted = true
 	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"owner chat","importance":"low"}`))
 	if err != nil || out != "notified the owner" {
 		t.Fatalf("chat %s %v", out, err)
@@ -289,7 +289,7 @@ func TestNotifyHeldAtShanghaiEvening(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 15, 18, 44, 0, 0, sh)
-	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turnSource: link.NameTimer}
+	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turn: &turn{turnSource: link.NameTimer}}
 	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"evening"}`))
 	if err != nil || out != "held until quiet hours end" {
 		t.Fatalf("%s %v", out, err)

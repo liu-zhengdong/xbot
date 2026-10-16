@@ -122,13 +122,14 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		unlock()
 		return
 	}
-	sender := k.turnSender
-	if k.turnSource == link.SourceSubagent || strings.HasPrefix(k.turnSender, "sa_") {
+	ct := k.curTurn()
+	sender := ct.turnSender
+	if ct.turnSource == link.SourceSubagent || strings.HasPrefix(ct.turnSender, "sa_") {
 		sender = k.memoryPerson()
 	}
 	job = compactJob{
 		From: 1, To: to, Focus: defaultFocus, Status: jobRunning,
-		Sender: sender, Trusted: k.turnTrusted,
+		Sender: sender, Trusted: ct.turnTrusted,
 	}
 	if err := k.writeJob(job); err != nil {
 		unlock()

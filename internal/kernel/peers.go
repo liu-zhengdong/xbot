@@ -67,11 +67,12 @@ func (t messageBotTool) Run(_ context.Context, args json.RawMessage) (string, er
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	chain := t.k.turnChain
+	kt := t.k.curTurn()
+	chain := kt.turnChain
 	if chain == "" {
 		chain = "ch_" + t.k.Bot.Name()
 	}
-	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.Bot.Name(), strings.TrimSpace(in.Bot), in.Text, chain, t.k.turnHops+1, t.k.now())
+	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.Bot.Name(), strings.TrimSpace(in.Bot), in.Text, chain, kt.turnHops+1, t.k.now())
 	if err != nil {
 		return "", err
 	}
@@ -164,11 +165,12 @@ func (t postGroupTool) Run(_ context.Context, args json.RawMessage) (string, err
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	chain := t.k.turnChain
+	kt := t.k.curTurn()
+	chain := kt.turnChain
 	if chain == "" {
 		chain = "ch_" + t.k.Bot.Name()
 	}
-	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).PostGroup(link.KindBot, t.k.Bot.Name(), in.ID, in.Text, chain, t.k.turnHops+1, t.k.now())
+	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).PostGroup(link.KindBot, t.k.Bot.Name(), in.ID, in.Text, chain, kt.turnHops+1, t.k.now())
 	if err != nil {
 		return "", err
 	}

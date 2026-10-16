@@ -14,7 +14,7 @@ func (k *Kernel) ReplySeq() int {
 	if k == nil {
 		return 0
 	}
-	return k.replyTo
+	return k.curTurn().replyTo
 }
 
 func (k *Kernel) record(m provider.Message) error {
@@ -26,7 +26,7 @@ func (k *Kernel) record(m provider.Message) error {
 		}
 	}
 	if m.Role == provider.RoleAssistant && len(m.ToolCalls) == 0 {
-		k.replyTo = replyTo
+		k.ensureTurn().replyTo = replyTo
 	}
 	return k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo})
 }

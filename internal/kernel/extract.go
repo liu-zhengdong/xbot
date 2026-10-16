@@ -87,7 +87,7 @@ func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, focus str
 	if k.Memory == nil {
 		return
 	}
-	facts := k.collectFacts(ctx, entries, focus, k.memoryPerson(), k.turnTrusted)
+	facts := k.collectFacts(ctx, entries, focus, k.memoryPerson(), k.curTurn().turnTrusted)
 	_ = k.rememberNew(ctx, facts)
 }
 

@@ -71,16 +71,7 @@ type Kernel struct {
 	secrets     map[string]map[string]string
 	compactMu   sync.Mutex
 	compactBusy bool
-	turnSender  string
-	turnKind    string
-	turnHops    int
-	turnChain   string
-	turnTrusted bool
-	turnSource  string
-	turnEvent   string
-	replyTo     int
-	notedMu     sync.Mutex
-	noted       []string
+	turn        *turn
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -89,18 +80,17 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err := ev.Validate(); err != nil {
 		return err
 	}
-	k.turnSender = ev.Sender
-	k.turnKind = ev.SenderKind
-	k.turnHops = ev.Hops
-	k.turnChain = ev.Chain
-	k.turnSource = ev.Source
-	k.turnEvent = ev.ID
-	k.turnTrusted = link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)
-	k.replyTo = 0
+	t := &turn{
+		turnSender:  ev.Sender,
+		turnKind:    ev.SenderKind,
+		turnHops:    ev.Hops,
+		turnChain:   ev.Chain,
+		turnSource:  ev.Source,
+		turnEvent:   ev.ID,
+		turnTrusted: link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
+	}
+	k.turn = t
 	k.clearLoaded()
-	k.notedMu.Lock()
-	k.noted = nil
-	k.notedMu.Unlock()
 	if _, err := k.releaseQuiet(ctx); err != nil {
 		return err
 	}
@@ -130,7 +120,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			return err
 		}
 		if turnDone(span, 0) {
-			k.replyTo = lastReplyTo(span, 0)
+			t.replyTo = lastReplyTo(span, 0)
 			if k.OnDelta != nil && ev.Source != link.NameTimer {
 				if text := lastAssistant(span, 0); text != "" {
 					k.OnDelta(text)
@@ -157,7 +147,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			Time:    ev.Time,
 			EventID: ev.ID,
 			ReplyTo: ev.ReplyTo,
-			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, k.turnTrusted)},
+			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
 		}
 		if err := k.Bot.Append(entry); err != nil {
 			return err
@@ -245,7 +235,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 	var out []provider.Message
 	owners := k.Bot.Config().Owners
 	for _, ev := range k.Inbox.Pending() {
-		if ev.ID == "" || ev.ID == k.turnEvent {
+		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
 		raw := link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, owners))
@@ -464,13 +454,14 @@ func (k *Kernel) pendingNotes() int {
 // A bot, a group, or a subagent must not be looked up as someone else's memory.
 // A subagent maps to the parent bot's owner, or to no person scope when the bot has none.
 func (k *Kernel) memoryPerson() string {
-	if k.turnKind == link.KindBot || k.turnKind == link.KindGroup {
+	t := k.curTurn()
+	if t.turnKind == link.KindBot || t.turnKind == link.KindGroup {
 		return ""
 	}
-	if k.turnSource == link.SourceSubagent || strings.HasPrefix(k.turnSender, "sa_") {
+	if t.turnSource == link.SourceSubagent || strings.HasPrefix(t.turnSender, "sa_") {
 		return k.ownerPerson()
 	}
-	return k.turnSender
+	return t.turnSender
 }
 
 func (k *Kernel) ownerPerson() string {

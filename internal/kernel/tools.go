@@ -164,7 +164,7 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 	if fact.Tier == "" {
 		fact.Tier = memory.TierProfile
 	}
-	if !t.k.turnTrusted && (fact.Scope == memory.ScopePerson || fact.Scope == memory.ScopeBotPerson) {
+	if !t.k.curTurn().turnTrusted && (fact.Scope == memory.ScopePerson || fact.Scope == memory.ScopeBotPerson) {
 		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
 		fact.Untrusted = true
 	}
@@ -338,15 +338,17 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 }
 
 func (k *Kernel) markNoted(text string) {
-	k.notedMu.Lock()
-	k.noted = append(k.noted, strings.TrimSpace(text))
-	k.notedMu.Unlock()
+	t := k.ensureTurn()
+	t.notedMu.Lock()
+	t.noted = append(t.noted, strings.TrimSpace(text))
+	t.notedMu.Unlock()
 }
 
 func (k *Kernel) alreadyNoted() bool {
-	k.notedMu.Lock()
-	defer k.notedMu.Unlock()
-	return len(k.noted) > 0
+	t := k.curTurn()
+	t.notedMu.Lock()
+	defer t.notedMu.Unlock()
+	return len(t.noted) > 0
 }
 
 // pushFindings delivers a non-empty final reply from an untrusted wake.
@@ -354,7 +356,7 @@ func (k *Kernel) alreadyNoted() bool {
 // A notify_owner that already delivered or held a note this turn is the note;
 // the trailing reply is not sent again. Quiet hours still hold the note.
 func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
-	switch k.turnSource {
+	switch k.curTurn().turnSource {
 	case link.NameTerminal, link.NameWeb:
 		return nil
 	}
