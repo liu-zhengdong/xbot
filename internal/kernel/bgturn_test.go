@@ -179,7 +179,7 @@ func TestFinishedBackgroundsCapAndOrder(t *testing.T) {
 		t.Fatalf("finished %d; want cap 3", len(got))
 	}
 	for i, want := range []string{"bg_4", "bg_3", "bg_2"} {
-		if got[i].ID != want || got[i].Status != "done" || got[i].Ended.IsZero() {
+		if got[i].ID != want || got[i].Status != "done" || got[i].Ended == nil {
 			t.Fatalf("finished[%d] %+v", i, got[i])
 		}
 	}

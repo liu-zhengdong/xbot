@@ -35,7 +35,7 @@ type BackgroundInfo struct {
 	Steps    int       `json:"steps"`
 	LastTool string    `json:"last_tool"`
 	Status   string    `json:"status,omitempty"`
-	Ended    time.Time `json:"ended,omitempty"`
+	Ended    *time.Time `json:"ended,omitempty"`
 }
 
 func (k *Kernel) forkCap() int {
@@ -163,7 +163,8 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	k.writeForkMeta(t, status)
 	k.bgMu.Lock()
 	delete(k.bgs, id)
-	k.finished = append([]BackgroundInfo{{ID: id, Task: t.task, Steps: steps, Status: status, Ended: k.now()}}, k.finished...)
+	ended := k.now()
+	k.finished = append([]BackgroundInfo{{ID: id, Task: t.task, Steps: steps, Status: status, Ended: &ended}}, k.finished...)
 	if len(k.finished) > finishedCap {
 		k.finished = k.finished[:finishedCap]
 	}
