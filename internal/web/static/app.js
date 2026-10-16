@@ -144,9 +144,14 @@
     const badge = document.getElementById("bg-badge");
     if (!badge) return;
     if (!name) { badge.hidden = true; bgClose(); return; }
+    let data;
     try {
-      bgState.data = await api("/api/bots/" + encodeURIComponent(name) + "/backgrounds");
+      data = await api("/api/bots/" + encodeURIComponent(name) + "/backgrounds");
     } catch (e) { return; }
+    if (bgBot() !== name) return;
+    if (bgState.name !== name) { bgState.steerOpen = {}; bgState.force = true; }
+    bgState.data = data;
+    bgState.name = name;
     bgRender();
   }
   function bgTick() {
@@ -203,12 +208,13 @@
     const queue = d.queue || [];
     const finished = (d.finished || []).slice(0, 3);
     const controls = d.controls || [];
-    const name = bgBot();
+    const name = bgState.name || "";
+    if (name !== bgBot()) { bgClose(); return; }
     const base = "/api/bots/" + encodeURIComponent(name);
     const badge = document.getElementById("bg-badge");
     badge.hidden = !running.length && !queue.length;
     badge.querySelector(".bg-n").textContent = "后台 " + running.length;
-    if (badge.hidden) bgClose();
+    // An open popover stays open after the last task ends, so its result can be read.
     const pop = document.getElementById("bg-pop");
     if (!bgState.open) return;
     // Do not rebuild under the owner's fingers: a poll would wipe a half-typed steer.
@@ -223,7 +229,7 @@
     const list = el("ul", "bg-pl");
     running.forEach((r) => {
       const li = bgRow("run", "spin", r.task || r.id, "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), [
-        bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.force = true; bgRender(); }),
+        bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.focusSteer = r.id; bgState.force = true; bgRender(); }),
         bgBtn("stop", "取消", () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST")),
       ]);
       const steers = controls.filter((c) => c.background === r.id && c.kind === "steer");
@@ -251,7 +257,7 @@
           if (t) bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/steer", "POST", { text: t });
         });
         li.append(f);
-        setTimeout(() => inp.focus(), 0);
+        if (bgState.focusSteer === r.id) { bgState.focusSteer = ""; setTimeout(() => inp.focus(), 0); }
       }
       list.append(li);
     });
