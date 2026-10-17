@@ -27,10 +27,13 @@ type Routine struct {
 	At       string `json:"at,omitempty"`
 	Enabled  bool   `json:"enabled"`
 	LastSlot string `json:"last_slot,omitempty"`
+	// Zone is "local" for the computer's local zone, "UTC" for a pinned UTC
+	// schedule, or "" for a legacy file written before C1 (also UTC).
+	Zone string `json:"zone,omitempty"`
 }
 
-// oneShotWindow is how late a poll may be and still fire a one-shot.
-const oneShotWindow = 15 * time.Second
+// OneShotWindow is how late a poll may be and still fire a one-shot.
+const OneShotWindow = 15 * time.Second
 
 var routineID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
@@ -39,6 +42,9 @@ type Timer struct {
 	Dir      string
 	Sender   string
 	Interval time.Duration
+	// Loc is the computer's local zone for routines with Zone "local".
+	// Nil means time.Local.
+	Loc *time.Location
 }
 
 func (t *Timer) Name() string        { return NameTimer }
@@ -49,6 +55,16 @@ func (t *Timer) every() time.Duration {
 		return t.Interval
 	}
 	return 15 * time.Second
+}
+
+// Location is the zone used for routines with Zone "local".
+func (t *Timer) Location() *time.Location { return t.loc() }
+
+func (t *Timer) loc() *time.Location {
+	if t.Loc != nil {
+		return t.Loc
+	}
+	return time.Local
 }
 
 func (t *Timer) sender() string {
@@ -95,7 +111,19 @@ func (t *Timer) Due(now time.Time) ([]Event, error) {
 			continue
 		}
 		sched, err := cron.Parse(r.Cron)
-		if err != nil || !sched.Match(now) || r.LastSlot == slot {
+		if err != nil {
+			continue
+		}
+		var zoneLoc *time.Location
+		switch r.Zone {
+		case "local":
+			zoneLoc = t.loc()
+		case "", "UTC":
+			zoneLoc = time.UTC
+		default:
+			continue
+		}
+		if !sched.MatchIn(now, zoneLoc) || r.LastSlot == slot {
 			continue
 		}
 		ev := NewEvent(NameTimer, TypeTimer, routineBody(r), t.sender(), now)
@@ -111,7 +139,7 @@ func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
 		return Event{}, false
 	}
 	at = at.UTC()
-	if now.Before(at) || now.Sub(at) > oneShotWindow {
+	if now.Before(at) || now.Sub(at) > OneShotWindow {
 		return Event{}, false
 	}
 	slot := at.Format("20060102T1504")
@@ -146,15 +174,13 @@ func (t *Timer) Commit(ev Event) error {
 	if err != nil {
 		return err
 	}
-	r, err := t.Load(id)
-	if err != nil {
-		return err
-	}
-	r.LastSlot = slot
-	if r.At != "" {
-		r.Enabled = false
-	}
-	return t.Save(r)
+	return t.Update(id, func(r *Routine) error {
+		r.LastSlot = slot
+		if r.At != "" {
+			r.Enabled = false
+		}
+		return nil
+	})
 }
 
 func splitRoutineID(eventID string) (string, string, error) {
@@ -220,8 +246,36 @@ func (t *Timer) read(path string) (Routine, error) {
 	return r, nil
 }
 
-// Save validates the cron gap and writes the routine.
+// Save validates the routine and writes it under the directory lock.
 func (t *Timer) Save(r Routine) error {
+	return t.withLock(func() error { return t.saveLocked(r) })
+}
+
+// Update re-reads a routine under the directory lock, applies fn, and saves it.
+func (t *Timer) Update(id string, fn func(*Routine) error) error {
+	return t.withLock(func() error {
+		r, err := t.Load(id)
+		if err != nil {
+			return err
+		}
+		if err := fn(&r); err != nil {
+			return err
+		}
+		return t.saveLocked(r)
+	})
+}
+
+func (t *Timer) withLock(fn func() error) error {
+	lock, err := fsutil.Lock(filepath.Join(t.Dir, ".lock"))
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+	return fn()
+}
+
+// saveLocked validates and writes a routine. The caller holds the directory lock.
+func (t *Timer) saveLocked(r Routine) error {
 	if !routineID.MatchString(r.ID) {
 		return fmt.Errorf("timer: bad id %q", r.ID)
 	}
@@ -231,6 +285,11 @@ func (t *Timer) Save(r Routine) error {
 	}
 	r.At = strings.TrimSpace(r.At)
 	r.Cron = strings.TrimSpace(r.Cron)
+	switch r.Zone {
+	case "", "local", "UTC":
+	default:
+		return fmt.Errorf("timer: bad zone %q", r.Zone)
+	}
 	switch {
 	case r.At != "" && r.Cron != "":
 		return errors.New("timer: set at or cron, not both")
@@ -252,17 +311,77 @@ func (t *Timer) Save(r Routine) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteAtomic(filepath.Join(t.Dir, r.ID+".json"), raw, 0600)
+	if err := fsutil.WriteAtomic(filepath.Join(t.Dir, r.ID+".json"), raw, 0600); err != nil {
+		return err
+	}
+	if r.Zone == "" {
+		return nil
+	}
+	return t.saveZone(r.ID, zoneEntry{Cron: r.Cron, Zone: r.Zone})
 }
 
-// Delete removes a routine file. A missing file is not an error.
+// Delete removes a routine file and its zone index entry. A missing file is not an error.
 func (t *Timer) Delete(id string) error {
 	if !routineID.MatchString(id) {
 		return fmt.Errorf("timer: bad id %q", id)
 	}
-	err := os.Remove(filepath.Join(t.Dir, id+".json"))
+	return t.withLock(func() error {
+		err := os.Remove(filepath.Join(t.Dir, id+".json"))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		zones, err := t.loadZones()
+		if err != nil {
+			return err
+		}
+		if _, ok := zones[id]; !ok {
+			return nil
+		}
+		delete(zones, id)
+		return t.writeZones(zones)
+	})
+}
+
+// zoneEntry remembers the zone and cron this package wrote, so a routine file
+// rewritten by a pre-C1 binary is not converted a second time.
+type zoneEntry struct {
+	Cron string `json:"cron"`
+	Zone string `json:"zone"`
+}
+
+func (t *Timer) zonePath() string { return filepath.Join(t.Dir, ".zones") }
+
+func (t *Timer) loadZones() (map[string]zoneEntry, error) {
+	raw, err := os.ReadFile(t.zonePath())
 	if errors.Is(err, os.ErrNotExist) {
+		return map[string]zoneEntry{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	zones := map[string]zoneEntry{}
+	if err := json.Unmarshal(raw, &zones); err != nil {
+		return nil, fmt.Errorf("timer: %s: %w", t.zonePath(), err)
+	}
+	return zones, nil
+}
+
+func (t *Timer) saveZone(id string, ent zoneEntry) error {
+	zones, err := t.loadZones()
+	if err != nil {
+		return err
+	}
+	if old, ok := zones[id]; ok && old == ent {
 		return nil
 	}
-	return err
+	zones[id] = ent
+	return t.writeZones(zones)
+}
+
+func (t *Timer) writeZones(zones map[string]zoneEntry) error {
+	raw, err := fsutil.Marshal(zones)
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteAtomic(t.zonePath(), raw, 0600)
 }

@@ -218,6 +218,9 @@ func renderField(f field, vals map[int]struct{}, lo, hi int, text string) (strin
 	return strings.Join(ss, ","), true
 }
 
+// EveryHour reports whether the hour field matches every hour.
+func (s Schedule) EveryHour() bool { return s.hour.any }
+
 // MinGap returns the smallest gap among the next n matches.
 func (s Schedule) MinGap(n int) (time.Duration, error) {
 	if n < 2 {

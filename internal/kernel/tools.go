@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cron"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
@@ -435,20 +437,21 @@ type routineCreate struct{ k *Kernel }
 
 func (routineCreate) Name() string { return "routine_create" }
 func (routineCreate) Description() string {
-	return "Create a routine. Pass cron (5 fields, minimum gap 5 minutes) or at (one RFC3339 time). A one-shot at time fires once and then disables itself. Use at for reminders like 'in 2 minutes' or a single clock time."
+	return "Create a routine. Pass cron (5 fields in this computer's local time zone, minimum gap 5 minutes) or at (one RFC3339 time). A one-shot at time fires once and then disables itself. Use at for reminders like 'in 2 minutes' or a single clock time."
 }
 func (routineCreate) Parameters() any {
 	return schema(map[string]any{
 		"id":     stringProp("optional id"),
 		"name":   stringProp("short name"),
 		"prompt": stringProp("what to consider when the routine fires"),
-		"cron":   stringProp("5-field cron, minimum gap 5 minutes. Omit when at is set"),
+		"cron":   stringProp("5-field cron in local time, minimum gap 5 minutes. Omit when at is set"),
 		"at":     stringProp("RFC3339 one-shot time. Omit when cron is set"),
 	}, []string{"name", "prompt"})
 }
 func (routineCreate) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "create routine", nil
 }
+
 func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		ID     string `json:"id"`
@@ -472,10 +475,22 @@ func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, err
 		in.ID = "r" + hex.EncodeToString(b[:])
 	}
 	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Enabled: true}
+	if r.Cron != "" {
+		r.Zone = "local"
+	}
 	if err := tm.Save(r); err != nil {
 		return "", err
 	}
-	return "created routine " + r.ID, nil
+	if r.Cron == "" {
+		return "created routine " + r.ID, nil
+	}
+	msg := "created routine " + r.ID + " (cron in local time"
+	if sched, err := cron.Parse(r.Cron); err == nil {
+		if next, ok := sched.Next(t.k.now(), tm.Location()); ok {
+			msg += ", next " + next.In(tm.Location()).Format(time.RFC3339)
+		}
+	}
+	return msg + ")", nil
 }
 
 type routineList struct{ k *Kernel }
@@ -506,7 +521,14 @@ func (t routineList) Run(context.Context, json.RawMessage) (string, error) {
 		} else {
 			when = "cron " + when
 		}
-		fmt.Fprintf(&b, "- %s %q %s enabled %v\n", r.ID, r.Name, when, r.Enabled)
+		zone := r.Zone
+		if zone == "" {
+			zone = "UTC"
+		}
+		if r.At != "" {
+			zone = "UTC"
+		}
+		fmt.Fprintf(&b, "- %s %q %s zone %s enabled %v\n", r.ID, r.Name, when, zone, r.Enabled)
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }
@@ -544,26 +566,25 @@ func (t routineUpdate) Run(_ context.Context, args json.RawMessage) (string, err
 	if err != nil {
 		return "", err
 	}
-	r, err := tm.Load(in.ID)
-	if err != nil {
+	if err := tm.Update(in.ID, func(r *link.Routine) error {
+		if strings.TrimSpace(in.Name) != "" {
+			r.Name = in.Name
+		}
+		if strings.TrimSpace(in.Prompt) != "" {
+			r.Prompt = in.Prompt
+		}
+		if strings.TrimSpace(in.Cron) != "" {
+			r.Cron = in.Cron
+			r.Zone = "local"
+		}
+		if in.Enabled != nil {
+			r.Enabled = *in.Enabled
+		}
+		return nil
+	}); err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(in.Name) != "" {
-		r.Name = in.Name
-	}
-	if strings.TrimSpace(in.Prompt) != "" {
-		r.Prompt = in.Prompt
-	}
-	if strings.TrimSpace(in.Cron) != "" {
-		r.Cron = in.Cron
-	}
-	if in.Enabled != nil {
-		r.Enabled = *in.Enabled
-	}
-	if err := tm.Save(r); err != nil {
-		return "", err
-	}
-	return "updated routine " + r.ID, nil
+	return "updated routine " + in.ID, nil
 }
 
 type routineDelete struct{ k *Kernel }
