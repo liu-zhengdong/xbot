@@ -91,6 +91,7 @@ flowchart LR
 | 候选清单 | [CANDIDATES.md](../CANDIDATES.md) | 主人、Bot 复刻 | 活的，新想法先进这里，不当场开工 | Bot 复刻（周调研、每晚复盘时更新） |
 | 调研笔记 | [docs/research/](../research/) | 开发者 | 写完即冻结，结论进候选清单或里程碑 | Bot 复刻 |
 | 教训 | [LESSONS.md](../../LESSONS.md) | 编码 Agent、Bot 复刻 | 活的，同一条出现 3 天升级成硬约束 | Bot 复刻 |
+| 规格 | [MEMORY-V2.md](../MEMORY-V2.md)（记忆 v2）、[SCORECARD.md](../SCORECARD.md)（评测成绩单） | 主人、开发者 | 定下来就冻结，落地后提炼进 atlas 和 ADR | Bot 复刻 |
 | 决策记录 | [docs/adr/](../adr/) | 开发者、将来的主人 | 守护层，只追加 | 主人 |
 | 旧设计入口 | [DESIGN.md](../DESIGN.md) | — | 已并入 atlas，只留指针 | — |
 | 模型提示 | [prompts/models/README.md](../../prompts/models/README.md) | 调提示的人 | 活的 | 开发者 |
@@ -102,4 +103,4 @@ flowchart LR
 - 界面：60fps；动画只动 transform/opacity，时长不超过 200 毫秒；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
 - 每个里程碑验收都要报性能数字。
 
-ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)。
+ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻带日期并带最近 8 条](../adr/0008-memory-v2-dated-log-first.md)。
