@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -285,7 +284,7 @@ func TestReleaseTiedLeavesCLI(t *testing.T) {
 	if err := ReleaseTied(root); err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Kill(cmd.Process.Pid, 0); err != nil {
+	if !processAlive(cmd.Process.Pid) {
 		t.Fatal("cli chrome was stopped")
 	}
 	if _, err := os.Stat(statePath(root)); err != nil {
@@ -311,10 +310,6 @@ func TestReleaseTiedLeavesCLI(t *testing.T) {
 }
 
 func TestChromeSurvivesCLIExit(t *testing.T) {
-	attr := browserProcAttr()
-	if attr == nil || attr.Pdeathsig != 0 || !attr.Setpgid {
-		t.Fatalf("proc attr %+v", attr)
-	}
 	if os.Getenv("XBOT_CHROME_CHILD") == "1" {
 		cmd, err := startBrowser(os.Getenv("XBOT_FAKE_BIN"), nil)
 		if err != nil || cmd.Process == nil {
@@ -359,10 +354,10 @@ func TestChromeSurvivesCLIExit(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = syscall.Kill(-pid, syscall.SIGKILL) }()
+	defer killGroup(pid)
 	deadline = time.Now().Add(time.Second)
 	for {
-		if syscall.Kill(pid, 0) != nil {
+		if !processAlive(pid) {
 			t.Fatalf("chrome %d died when the launching process exited", pid)
 		}
 		if time.Now().After(deadline) {

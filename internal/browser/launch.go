@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"xbot/internal/fsutil"
@@ -171,25 +170,6 @@ func startBrowser(bin string, args []string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-// browserProcAttr puts Chrome in its own process group so Stop can signal the
-// group. There is no Pdeathsig: that kills Chrome when the CLI exits, and also
-// when the Go thread that called Start exits.
-func browserProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{Setpgid: true}
-}
-
-func signalChrome(pid int) {
-	if pid <= 0 {
-		return
-	}
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
-		p, findErr := os.FindProcess(pid)
-		if findErr == nil {
-			_ = p.Signal(syscall.SIGTERM)
-		}
-	}
-}
-
 // chromeOwned reports whether pid's command line contains this profile directory.
 func chromeOwned(pid int, profile string) bool {
 	profile = strings.TrimSpace(profile)
@@ -277,11 +257,4 @@ func newPage(ctx context.Context, port int) (string, error) {
 		return "", errors.New("browser: debugger url is not loopback")
 	}
 	return info.WS, nil
-}
-
-func alive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return syscall.Kill(pid, 0) == nil
 }
