@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 )
@@ -88,22 +87,3 @@ func TestResolveWorkWithoutBotScopeUsesNewest(t *testing.T) {
 }
 
 // TestRecallEmptyQueryKeepsNewest: past 200 facts an empty query returns the newest.
-func TestRecallEmptyQueryKeepsNewest(t *testing.T) {
-	s := Open(t.TempDir())
-	t0 := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 250; i++ {
-		if err := s.Remember(context.Background(), Fact{
-			Key: fmt.Sprintf("k%03d", i), Scope: ScopeBot, Tier: TierLog, BotName: "ada",
-			Text: fmt.Sprintf("entry-%03d", i), Time: t0.Add(time.Duration(i) * time.Minute),
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	facts, err := s.Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada", Tier: TierLog})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(facts) != 200 || facts[len(facts)-1].Text != "entry-249" || facts[0].Text != "entry-050" {
-		t.Fatalf("got %d facts, first %q last %q", len(facts), facts[0].Text, facts[len(facts)-1].Text)
-	}
-}

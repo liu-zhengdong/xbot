@@ -1128,6 +1128,15 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	if err != nil {
 		return "", err
 	}
+	if counter, ok := k.Memory.(interface {
+		LogCount(memory.Scope, string, string) (int, error)
+	}); ok {
+		total, err := counter.LogCount(memory.ScopeBot, k.Bot.Name(), "")
+		if err != nil {
+			return "", err
+		}
+		return clipMemory(renderMemory(facts, logs, total)), nil
+	}
 	return clipMemory(renderMemory(facts, logs)), nil
 }
 

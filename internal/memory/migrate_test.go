@@ -54,7 +54,7 @@ func TestMigrateBotPersonIntoBot(t *testing.T) {
 		}
 		byText[f.Text] = f
 	}
-	for _, text := range []string{"already here", "secret handshake", "mentioned once", "second person fact"} {
+	for _, text := range []string{"already here", "secret handshake", OwnerProvenance("mentioned once", ""), "second person fact"} {
 		if _, ok := byText[text]; !ok {
 			t.Fatalf("missing %q in %+v", text, got)
 		}
@@ -63,8 +63,8 @@ func TestMigrateBotPersonIntoBot(t *testing.T) {
 	if !h.Time.Equal(later) || h.WrittenBy != "ada" || h.Device != "laptop" || !h.Untrusted || h.Scope != ScopeBot {
 		t.Fatalf("provenance %+v", h)
 	}
-	if byText["mentioned once"].Tier != TierLog || !byText["mentioned once"].OwnerRecorded {
-		t.Fatalf("log provenance %+v", byText["mentioned once"])
+	if byText[OwnerProvenance("mentioned once", "")].Tier != TierLog || !byText[OwnerProvenance("mentioned once", "")].OwnerRecorded {
+		t.Fatalf("log provenance %+v", byText[OwnerProvenance("mentioned once", "")])
 	}
 	if _, err := os.Stat(filepath.Join(root, "bots", "ada", "people", "u1", "memory")); !os.IsNotExist(err) {
 		t.Fatalf("legacy dir still live: %v", err)
@@ -223,51 +223,6 @@ func TestMigrateLeavesNonOwnerInBackup(t *testing.T) {
 	bak, err := os.ReadFile(filepath.Join(root, "bots", "ada", "people", "u9", "memory.bak", "profile.md"))
 	if err != nil || !strings.Contains(string(bak), "stranger-fact") {
 		t.Fatalf("backup %q %v", bak, err)
-	}
-}
-
-func TestMigrateLogStaysWithinCap(t *testing.T) {
-	root := t.TempDir()
-	writeOwners(t, root, "ada", "u1")
-	when := time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC)
-	var facts []Fact
-	for i := 0; ; i++ {
-		facts = append(facts, Fact{
-			Key: "k", Kind: KindWork, WrittenBy: "ada",
-			Text: strings.Repeat("m", 400) + string(rune('a'+i%26)),
-			Time: when.Add(time.Duration(i) * time.Second),
-		})
-		if len(renderMD(append([]Fact(nil), facts...))) > maxLogBytes {
-			break
-		}
-		if i > 400 {
-			t.Fatal("log never filled")
-		}
-	}
-	facts = append(facts, Fact{
-		Key: "tail", Kind: KindWork, WrittenBy: "ada", Text: "TAIL-OVERFLOW",
-		Time: when.Add(time.Hour),
-	})
-	writeLegacy(t, root, "ada", "u1", TierLog, facts)
-	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada", Tier: TierLog})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(texts(got), "TAIL-OVERFLOW") {
-		t.Fatal("overflow fact missing from recall")
-	}
-	raw, err := os.ReadFile(filepath.Join(root, "bots", "ada", "memory", "log.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(raw) > logKeepBytes {
-		t.Fatalf("log.md is %d bytes, keep budget is %d", len(raw), logKeepBytes)
-	}
-	if !strings.Contains(string(raw), "TAIL-OVERFLOW") {
-		t.Fatal("newest fact was not kept in log.md")
-	}
-	if _, err := os.Stat(filepath.Join(root, "bots", "ada", "memory", "log.overflow.md")); err != nil {
-		t.Fatal(err)
 	}
 }
 

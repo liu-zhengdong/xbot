@@ -348,6 +348,14 @@ func syncKey(ln SyncLine) string {
 }
 
 func factMark(ln SyncLine) string {
+	if ln.Fact.Tier == TierLog {
+		f := ln.Fact
+		f.Device = ln.Device
+		f.OwnerRecorded = f.OwnerRecorded || ln.OwnerRecorded
+		f.Untrusted = f.Untrusted || ln.Untrusted
+		text := logText(f)
+		return text + "\x00" + ln.Time.UTC().Format("2006-01-02 15:04") + "\x00log"
+	}
 	return ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + string(ln.Fact.Tier)
 }
 

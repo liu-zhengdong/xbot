@@ -63,6 +63,7 @@ const (
 
 // Fact is one memory record.
 type Fact struct {
+	Source    string `json:"source,omitempty"`
 	Key       string `json:"key"`
 	Kind      Kind   `json:"kind"`
 	Scope     Scope  `json:"scope"`

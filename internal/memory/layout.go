@@ -120,6 +120,14 @@ func migrateLayout(root string) {
 				continue
 			}
 			err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+				scope, bot, person := ScopeBot, ent.Name(), ""
+				if group == "people" {
+					scope, bot, person = ScopePerson, "", ent.Name()
+				}
+				if err := migrateLogs(dir, scope, bot, person); err != nil {
+					return err
+				}
+
 				if _, err := os.Stat(filepath.Join(dir, "profile.md")); errors.Is(err, os.ErrNotExist) {
 					// A previous crash may have left only the index behind.
 					if _, err := os.Stat(filepath.Join(dir, "memory.md")); err != nil {

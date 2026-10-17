@@ -276,7 +276,7 @@ func fenceMemory(s string) string {
 	return b.String()
 }
 
-func renderMemory(facts, logs []memory.Fact) string {
+func renderMemory(facts, logs []memory.Fact, total ...int) string {
 	if len(facts) == 0 && len(logs) == 0 {
 		return ""
 	}
@@ -318,7 +318,7 @@ func renderMemory(facts, logs []memory.Fact) string {
 			fmt.Fprintf(&b, "- %s\n", text)
 		}
 	}
-	if sec := renderRecentLog(logs); sec != "" {
+	if sec := renderRecentLog(logs, total...); sec != "" {
 		wrote = true
 		b.WriteString(sec)
 	}
@@ -331,23 +331,23 @@ func renderMemory(facts, logs []memory.Fact) string {
 // factText applies the provenance and fence rules shared by profile and log lines.
 func factText(f memory.Fact) string {
 	text := f.Text
-	if f.OwnerRecorded {
+	if f.OwnerRecorded && !strings.Contains(text, " (owner-recorded") {
 		text = memory.OwnerProvenance(text, f.Device)
-	} else if f.Untrusted {
+	} else if f.Untrusted && !strings.Contains(text, " (untrusted, recorded by ") {
 		text = memory.Provenance(text, f.WrittenBy, f.Device)
 	}
 	return fenceMemory(text)
 }
 
 // renderRecentLog shows the newest bot log facts. Older ones stay behind recall.
-func renderRecentLog(logs []memory.Fact) string {
+func renderRecentLog(logs []memory.Fact, total ...int) string {
 	if len(logs) == 0 {
 		return ""
 	}
 	newest := append([]memory.Fact(nil), logs...)
 	sort.SliceStable(newest, func(i, j int) bool { return newest[i].Time.After(newest[j].Time) })
 	var lines []string
-	used := len(fmt.Sprintf("\n%s (%d of %s; older: recall)\n", recentLogHeading, recentLogLines, logCount(logs)))
+	used := len(fmt.Sprintf("\n%s (%d of %s; older: recall)\n", recentLogHeading, recentLogLines, logCount(logs, total...)))
 	for _, f := range newest {
 		if len(lines) >= recentLogLines {
 			break
@@ -364,14 +364,16 @@ func renderRecentLog(logs []memory.Fact) string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s (%d of %s; older: recall)\n", recentLogHeading, len(lines), logCount(logs))
+	fmt.Fprintf(&b, "\n%s (%d of %s; older: recall)\n", recentLogHeading, len(lines), logCount(logs, total...))
 	b.WriteString(strings.Join(lines, ""))
 	return b.String()
 }
 
-// logCount labels the log total. Recall returns at most the newest 200 facts,
-// so a full page is shown as "200+" rather than a wrong exact count.
-func logCount(logs []memory.Fact) string {
+// logCount uses the exact file-store count, with a lower bound for other stores.
+func logCount(logs []memory.Fact, total ...int) string {
+	if len(total) > 0 {
+		return fmt.Sprint(total[0])
+	}
 	if len(logs) >= 200 {
 		return "200+"
 	}
