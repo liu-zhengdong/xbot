@@ -21,11 +21,13 @@ func (k *Kernel) ReplySeq() int {
 }
 
 func (k *Kernel) record(m provider.Message) error {
-	return k.recordTurn(k.curTurn(), m)
+	_, err := k.recordTurn(k.curTurn(), m)
+	return err
 }
 
 // recordTurn appends m for turn t, on t's branch once t has moved to the background.
-func (k *Kernel) recordTurn(t *turn, m provider.Message) error {
+// The returned sequence is the line just written.
+func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	replyTo := m.ReplyTo
 	m.ReplyTo = 0
 	if m.Role == provider.RoleUser && replyTo > 0 {
@@ -42,7 +44,12 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) error {
 			t.answered = true
 		}
 	}
-	return k.Bot.Append(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch})
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch})
+	if err != nil {
+		return 0, err
+	}
+	t.lastRec = seq
+	return seq, nil
 }
 
 func (k *Kernel) quotePrefix(seq int) string {

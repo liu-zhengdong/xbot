@@ -64,10 +64,21 @@ type turn struct {
 	// stopReason is why a background could not run another segment after its
 	// last one ended at the step cap. finishBackground reports it.
 	stopReason string
+	// lastRec is the sequence of the last transcript line this turn wrote.
+	lastRec int
 	// ctrl is controls sent to a background, read between its steps. resources is
 	// what this turn has written (review.ResourceOf), for the conflict queue.
 	ctrl      []*Control
 	resources map[string]bool
+}
+
+func (t *turn) lastSeq() int {
+	if t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.lastRec
 }
 
 // queueCtrl adds a control message. It fails once the turn has finished.

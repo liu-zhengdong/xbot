@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -22,29 +23,62 @@ func appendCard(t *testing.T, b *bot.Bot, id, tool, summary, state string, at ti
 }
 
 // TestPendingApprovalReminderReachesTheModel checks that a card still waiting for
-// the owner produces one short note in the assembled request, so the model can
-// remind the owner in passing.
+// the owner is appended to the newest message, not sent as its own message, so
+// the model can mention it without a second user turn.
 func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Unix(1000, 0).UTC()
 	appendCard(t, b, "card-1", "shell", "mkdir approved-dir", bot.ApprovalPending, now.Add(-90*time.Second))
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
 	k := &Kernel{
-		Bot: b, Memory: memory.NopStore{}, MaxSteps: 4,
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
-	got := k.pendingHistory()
-	if len(got) != 1 {
-		t.Fatalf("pending note messages %d, want 1", len(got))
+	ev := link.TerminalEvent("u1", "hello", now.Add(time.Second))
+	if err := k.Handle(context.Background(), ev); err != nil {
+		t.Fatal(err)
 	}
-	text := got[0].Content
-	for _, want := range []string{"<pending_approvals>", "shell", "mkdir approved-dir", "1m", "</pending_approvals>"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("note %q missing %q", text, want)
+	if len(p.reqs) != 1 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	msgs := p.reqs[0].Messages
+	var hits int
+	var carrier provider.Message
+	for _, m := range msgs {
+		if strings.Contains(m.Content, "<pending_approvals>") {
+			hits++
+			carrier = m
 		}
 	}
-	if got[0].Role != provider.RoleUser {
-		t.Fatalf("note role %q, want user", got[0].Role)
+	if hits != 1 {
+		t.Fatalf("reminder messages %d, want 1 on the newest message", hits)
+	}
+	if !strings.Contains(carrier.Content, "hello") {
+		t.Fatalf("reminder was not appended to the owner message: %q", carrier.Content)
+	}
+	if strings.HasPrefix(strings.TrimSpace(carrier.Content), "<pending_approvals>") {
+		t.Fatal("reminder replaced the newest message instead of appending")
+	}
+	for _, want := range []string{"shell", "mkdir approved-dir", "1m", "</pending_approvals>"} {
+		if !strings.Contains(carrier.Content, want) {
+			t.Fatalf("note %q missing %q", carrier.Content, want)
+		}
+	}
+	if strings.Contains(msgs[0].Content, "<pending_approvals>") {
+		t.Fatal("pending note was folded into the system prefix")
+	}
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, "hello") && strings.Contains(e.Message.Content, "<pending_approvals>") {
+			t.Fatal("reminder was written into the transcript body")
+		}
 	}
 }
 
@@ -61,16 +95,16 @@ func TestPendingApprovalReminderStopsAfterTheAnswer(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
-	if got := k.pendingHistory(); len(got) != 0 {
-		t.Fatalf("decided cards still produced a note: %v", got)
+	if due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(now); err != nil || len(due) != 0 {
+		t.Fatalf("decided cards still produced a note: %v %v", due, err)
 	}
 	appendCard(t, b, "card-3", "http_request", "GET example.test", bot.ApprovalPending, now.Add(-30*time.Second))
-	got := k.pendingHistory()
-	if len(got) != 1 || !strings.Contains(got[0].Content, "http_request") {
-		t.Fatalf("open card not reported: %v", got)
+	due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(now)
+	if err != nil || len(due) != 1 || !strings.Contains(due[0].Text, "http_request") {
+		t.Fatalf("open card not reported: %v %v", due, err)
 	}
-	if strings.Contains(got[0].Content, "card-1") || strings.Contains(got[0].Content, "mkdir a") {
-		t.Fatalf("answered card leaked into the note: %v", got[0].Content)
+	if strings.Contains(due[0].Text, "mkdir a") {
+		t.Fatalf("answered card leaked into the note: %v", due[0].Text)
 	}
 }
 
@@ -79,8 +113,9 @@ func TestPendingApprovalReminderStopsAfterTheAnswer(t *testing.T) {
 func TestPendingApprovalNoteOmitsWhenNothingIsOpen(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}}
-	if got := k.pendingHistory(); len(got) != 0 {
-		t.Fatalf("empty transcript produced a note: %v", got)
+	due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(time.Unix(1, 0).UTC())
+	if err != nil || len(due) != 0 {
+		t.Fatalf("empty transcript produced a note: %v %v", due, err)
 	}
 	if note := pendingNote(nil); note != "" {
 		t.Fatalf("empty list rendered %q", note)
@@ -91,16 +126,26 @@ func TestPendingApprovalNoteOmitsWhenNothingIsOpen(t *testing.T) {
 // must ride with the history, not sit in the system prefix.
 func TestPendingApprovalNoteIsNotInTheStablePrefix(t *testing.T) {
 	list := []PendingApproval{{Tool: "shell", Summary: "运行命令 mkdir a", Age: 2 * time.Minute}}
-	msgs, _ := Assemble(Input{Persona: "p", Rules: "r", Pending: list})
+	hist := []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: "hello"}}}
+	msgs, _ := Assemble(Input{Persona: "p", Rules: "r", Entries: hist})
 	if len(msgs) == 0 {
 		t.Fatal("no messages")
 	}
-	if strings.Contains(msgs[0].Content, "<pending_approvals>") {
+	prefix := msgs[0].Content
+	before := append([]provider.Message(nil), msgs...)
+	msgs = agent.AttachReminder(msgs, pendingNote(list))
+	if msgs[0].Content != prefix || strings.Contains(msgs[0].Content, "<pending_approvals>") {
 		t.Fatal("pending note was folded into the system prefix")
 	}
+	if before[len(before)-1].Content == msgs[len(msgs)-1].Content {
+		t.Fatal("note was not appended to the newest message")
+	}
 	last := msgs[len(msgs)-1]
-	if !strings.Contains(last.Content, "<pending_approvals>") || last.Role != provider.RoleUser {
-		t.Fatalf("note not appended after the history: %+v", last)
+	if !strings.HasPrefix(last.Content, "hello") || !strings.Contains(last.Content, "<pending_approvals>") || last.Role != provider.RoleUser {
+		t.Fatalf("note not appended to the newest message: %+v", last)
+	}
+	if len(msgs) != len(before) {
+		t.Fatalf("attach added a message: %d -> %d", len(before), len(msgs))
 	}
 }
 
@@ -175,7 +220,8 @@ func TestOpenApprovalsReadsLatestCardState(t *testing.T) {
 	if _, _, err := k.assemble(bot.State{}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if got := k.pendingHistory(); len(got) != 0 {
-		t.Fatalf("declined card still noted: %v", got)
+	due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(now)
+	if err != nil || len(due) != 0 {
+		t.Fatalf("declined card still noted: %v %v", due, err)
 	}
 }

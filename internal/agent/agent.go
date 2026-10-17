@@ -52,6 +52,16 @@ type Options struct {
 	// AfterStep runs after a step's tool results and before the next model call.
 	// Messages it returns are appended in order and shown to the next step.
 	AfterStep func() ([]provider.Message, error)
+	// Guard inspects one model step (the assistant message and its tool
+	// results) after AfterStep. remind is appended to the newest message.
+	// stop ends the run: the reason is recorded and the model is asked to
+	// summarize with tools disabled. Nil skips the check.
+	Guard func(step int, msgs []provider.Message) (remind string, stop bool, reason string)
+	// OnReminder is called with the reminder text Guard returned, after it has
+	// been attached to the in-memory conversation.
+	OnReminder func(text string)
+	// OnStop is called when Guard stops the run, before the summary request.
+	OnStop func(reason string)
 	// RefreshTools rebuilds the tool list before each model call after the first.
 	// Nil keeps the list from the start of the run.
 	RefreshTools func() ([]tools.Tool, error)
@@ -117,12 +127,20 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if len(msg.ToolCalls) == 0 {
 			return produced, nil
 		}
-		for _, tm := range runToolCalls(ctx, byName, msg.ToolCalls, opt) {
+		stepMsgs := []provider.Message{msg}
+		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt)
+		for _, tm := range results {
 			convo = append(convo, tm)
 			produced = append(produced, tm)
+			stepMsgs = append(stepMsgs, tm)
 			if opt.OnMessage != nil {
 				opt.OnMessage(tm)
 			}
+		}
+		// A cancelled call is left open. The kernel seals it with one tombstone
+		// instead of recording "error: context canceled" as if the tool had run.
+		if aborted {
+			return produced, ctx.Err()
 		}
 		if opt.OneRound {
 			return produced, nil
@@ -138,6 +156,18 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 				if opt.OnMessage != nil {
 					opt.OnMessage(m)
 				}
+			}
+		}
+		if opt.Guard != nil {
+			remind, stop, reason := opt.Guard(step, stepMsgs)
+			if remind != "" {
+				convo = AttachReminder(convo, remind)
+				if opt.OnReminder != nil {
+					opt.OnReminder(remind)
+				}
+			}
+			if stop {
+				return stopForReason(ctx, p, convo, produced, opt, reason)
 			}
 		}
 	}
@@ -162,6 +192,72 @@ func indexTools(list []tools.Tool) (map[string]tools.Tool, []provider.ToolDef, e
 		})
 	}
 	return byName, defs, nil
+}
+
+// AttachReminder appends text to the newest message. A trailing system message
+// is left intact and the text becomes its own user message, so the stable
+// prefix does not move. Earlier messages are copied unchanged.
+func AttachReminder(msgs []provider.Message, text string) []provider.Message {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return msgs
+	}
+	out := append([]provider.Message(nil), msgs...)
+	if len(out) == 0 || out[len(out)-1].Role == provider.RoleSystem {
+		return append(out, provider.Message{Role: provider.RoleUser, Content: text})
+	}
+	last := out[len(out)-1]
+	if last.Content == "" {
+		last.Content = text
+	} else {
+		last.Content += "\n\n" + text
+	}
+	out[len(out)-1] = last
+	return out
+}
+
+// stopForReason asks for a summary after the circuit breaker trips.
+// The reason note is part of the returned messages so the transcript keeps it.
+func stopForReason(ctx context.Context, p provider.Provider, convo, produced []provider.Message, opt Options, reason string) ([]provider.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return produced, err
+	}
+	if opt.OnStop != nil && reason != "" {
+		opt.OnStop(reason)
+	}
+	note := provider.Message{Role: provider.RoleUser, Content: StopNote(reason)}
+	convo = append(convo, note)
+	produced = append(produced, note)
+	if opt.OnMessage != nil {
+		opt.OnMessage(note)
+	}
+	msg, err := p.Chat(ctx, provider.Request{Messages: convo}, opt.OnDelta)
+	if err != nil {
+		return produced, fmt.Errorf("agent: stopped (%s): %w", reason, err)
+	}
+	if msg.Role == "" {
+		msg.Role = provider.RoleAssistant
+	}
+	msg.ToolCalls = nil
+	if strings.TrimSpace(msg.Content) == "" {
+		msg.Content = "Stopped (" + reason + ") before the task finished."
+		if opt.OnDelta != nil {
+			opt.OnDelta(msg.Content)
+		}
+	}
+	produced = append(produced, msg)
+	if opt.OnMessage != nil {
+		opt.OnMessage(msg)
+	}
+	return produced, nil
+}
+
+// StopNote is the transcript line written when the circuit breaker hard-stops.
+func StopNote(reason string) string {
+	if reason == "" {
+		reason = "unspecified"
+	}
+	return "<stop_reason>" + reason + "</stop_reason>\nStop. Do not call tools. Summarize what was done, what is still pending, and why you stopped."
 }
 
 // stopSummary asks for a status with tools disabled after the step cap.
@@ -196,7 +292,7 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 
 // runToolCalls starts every call, then returns tool messages in call order.
 // The approval lock is held only around Approve, so a prompt does not stall the others.
-func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) []provider.Message {
+func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) ([]provider.Message, bool) {
 	out := make([]string, len(calls))
 	var approve sync.Mutex
 	var wg sync.WaitGroup
@@ -208,16 +304,20 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 		}(i, tc)
 	}
 	wg.Wait()
-	msgs := make([]provider.Message, len(calls))
+	aborted := ctx.Err() != nil
+	msgs := make([]provider.Message, 0, len(calls))
 	for i, tc := range calls {
-		msgs[i] = provider.Message{
+		if aborted && strings.TrimSpace(out[i]) == "error: "+ctx.Err().Error() {
+			continue
+		}
+		msgs = append(msgs, provider.Message{
 			Role:       provider.RoleTool,
 			ToolCallID: tc.ID,
 			Name:       tc.Function.Name,
 			Content:    out[i],
-		}
+		})
 	}
-	return msgs
+	return msgs, aborted && len(msgs) < len(calls)
 }
 
 func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) string {

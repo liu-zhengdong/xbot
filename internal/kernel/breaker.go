@@ -1,0 +1,407 @@
+package kernel
+
+import (
+	"encoding/json"
+	"strings"
+
+	"xbot/internal/compact"
+	"xbot/internal/provider"
+)
+
+// Stop reasons written into the trace. Evals match these codes.
+const (
+	StopRepeatedOutput     = "repeated_output"
+	StopSameToolArgs       = "same_tool_args"
+	StopFileFlipFlop       = "file_flip_flop"
+	StopPollingFailure     = "polling_failure"
+	StopDiminishingReturns = "diminishing_returns"
+	StopDeniedApprovals    = "denied_approvals"
+
+	// diminishingLimit is the per-continuation token ceiling. Three or more
+	// continuation segments whose last two each add fewer assistant tokens
+	// than this are diminishing returns.
+	diminishingLimit = 500
+	// loopThreshold is how many consecutive identical tool calls, or identical
+	// failures, count as one trip. The next one of that same key is the second trip.
+	loopThreshold = 3
+	// looseThreshold is the longer streak allowed for read-only tools, test and
+	// build reruns, and background polls. A normal edit/test loop must not stop.
+	looseThreshold = 8
+)
+
+// Breaker watches one turn for loops. The first time a pattern trips it asks
+// for a reminder. The second time it stops the turn.
+type Breaker struct {
+	trips map[string]int
+
+	prevAssistant string
+	hadAssistant  bool
+
+	callArgs map[string]string // tool call id -> name + args
+	files    map[string][]string
+
+	// Streaks count only consecutive repeats. Another call resets them.
+	streakKey  string
+	streak     int
+	failKey    string
+	failText   string
+	failStreak int
+	denyStreak int
+
+	// contTokens is assistant tokens added by each closed continuation.
+	// openCont is the continuation currently running; the opening segment
+	// is not one.
+	contTokens []int
+	openCont   bool
+	openTokens int
+
+	pendingRemind []string
+	pendingStop   string
+}
+
+func newBreaker() *Breaker {
+	return &Breaker{
+		trips:    map[string]int{},
+		callArgs: map[string]string{},
+		files:    map[string][]string{},
+	}
+}
+
+// Observe folds one model step into the counters and reports what to do.
+// remind is empty when nothing new fired. stop is the second trip; reason is
+// the stable stop code.
+func (b *Breaker) Observe(msgs []provider.Message) (remind string, stop bool, reason string) {
+	if b == nil {
+		return "", false, ""
+	}
+	for _, m := range msgs {
+		switch m.Role {
+		case provider.RoleAssistant:
+			b.seeAssistant(m)
+		case provider.RoleTool:
+			b.seeTool(m)
+		}
+	}
+	return b.take()
+}
+
+func (b *Breaker) seeAssistant(m provider.Message) {
+	text := strings.TrimSpace(m.Content)
+	if text != "" {
+		if b.hadAssistant && text == b.prevAssistant {
+			b.hit(StopRepeatedOutput, text)
+		}
+		b.prevAssistant = text
+		b.hadAssistant = true
+	}
+	// Only a continuation segment counts toward diminishing returns. A short
+	// tool step in the opening segment is ordinary work.
+	if b.openCont {
+		b.openTokens += compact.EstimateMessage(m)
+	}
+	for _, tc := range m.ToolCalls {
+		key := tc.Function.Name + "\n" + tc.Function.Arguments
+		if tc.ID != "" {
+			b.callArgs[tc.ID] = key
+		}
+		b.seeFile(tc.Function.Name, tc.Function.Arguments)
+	}
+}
+
+func (b *Breaker) bumpTool(key string) {
+	if key == "" {
+		return
+	}
+	if key != b.streakKey {
+		b.streakKey = key
+		b.streak = 0
+	}
+	b.streak++
+	if th := callThreshold(key); b.streak == th || b.streak == th+1 {
+		b.hit(StopSameToolArgs, key)
+	}
+}
+
+func (b *Breaker) seeFile(name, args string) {
+	path, sig, ok := fileSig(name, args)
+	if !ok {
+		return
+	}
+	h := b.files[path]
+	if len(h) >= 2 && sig == h[len(h)-2] && sig != h[len(h)-1] {
+		b.hit(StopFileFlipFlop, path)
+	}
+	b.files[path] = append(h, sig)
+}
+
+func (b *Breaker) seeTool(m provider.Message) {
+	content := strings.TrimSpace(m.Content)
+	key := b.callArgs[m.ToolCallID]
+	if key == "" {
+		key = m.Name
+	}
+	// Denials and failures have their own counters. A successful repeat is the
+	// same-tool loop. Counting those here, after the result, keeps one call
+	// from tripping two detectors.
+	if content == "denied by user" {
+		b.breakToolStreaks()
+		b.denyStreak++
+		if b.denyStreak == loopThreshold {
+			b.hit(StopDeniedApprovals, "")
+			b.denyStreak = 0
+		}
+		return
+	}
+	b.denyStreak = 0
+	if isToolError(content) {
+		if b.failKey == key && b.failText == content {
+			b.failStreak++
+		} else {
+			b.failKey = key
+			b.failText = content
+			b.failStreak = 1
+		}
+		b.streakKey = ""
+		b.streak = 0
+		if th := callThreshold(key); b.failStreak == th || b.failStreak == th+1 {
+			b.hit(StopPollingFailure, key)
+		}
+		return
+	}
+	// A success ends the failure streak. fail, fail, ok, fail is not a poll.
+	b.failKey = ""
+	b.failText = ""
+	b.failStreak = 0
+	b.bumpTool(key)
+}
+
+func (b *Breaker) breakToolStreaks() {
+	b.streakKey = ""
+	b.streak = 0
+	b.failKey = ""
+	b.failText = ""
+	b.failStreak = 0
+}
+
+// BeginContinuation opens one continuation turn: a background segment started
+// because the previous segment hit its step cap. It first closes the previous
+// continuation, which is when diminishing returns can trip. The opening
+// segment is not a continuation. A stop means the new segment must not start.
+func (b *Breaker) BeginContinuation() (remind string, stop bool, reason string) {
+	if b == nil {
+		return "", false, ""
+	}
+	b.closeContinuation()
+	remind, stop, reason = b.take()
+	if !stop {
+		b.openCont = true
+		b.openTokens = 0
+		// A new segment is a new attempt. Loop streaks do not carry across it.
+		// Continuation totals were already closed above.
+		b.ResetSegment()
+	}
+	return remind, stop, reason
+}
+
+// EndContinuation closes the open continuation, if any. The caller uses it
+// when the background is not going to start another segment.
+func (b *Breaker) EndContinuation() (remind string, stop bool, reason string) {
+	if b == nil {
+		return "", false, ""
+	}
+	b.closeContinuation()
+	return b.take()
+}
+
+// closeContinuation records the assistant tokens of the open continuation.
+// Three or more continuations, with the last two each under the token ceiling,
+// are one trip.
+func (b *Breaker) closeContinuation() {
+	if !b.openCont {
+		return
+	}
+	b.contTokens = append(b.contTokens, b.openTokens)
+	b.openCont = false
+	b.openTokens = 0
+	n := len(b.contTokens)
+	if n >= 3 && b.contTokens[n-1] < diminishingLimit && b.contTokens[n-2] < diminishingLimit {
+		b.hit(StopDiminishingReturns, "")
+	}
+}
+
+// ResetSegment clears consecutive-loop state at a background segment boundary.
+// File flip-flop history and diminishing-return totals stay: those describe
+// the task, not one segment's tool streak.
+func (b *Breaker) ResetSegment() {
+	if b == nil {
+		return
+	}
+	b.prevAssistant = ""
+	b.hadAssistant = false
+	b.breakToolStreaks()
+	b.denyStreak = 0
+	for id := range b.trips {
+		switch {
+		case strings.HasPrefix(id, StopSameToolArgs),
+			strings.HasPrefix(id, StopPollingFailure),
+			strings.HasPrefix(id, StopRepeatedOutput),
+			strings.HasPrefix(id, StopDeniedApprovals):
+			delete(b.trips, id)
+		}
+	}
+}
+
+func (b *Breaker) hit(reason, key string) {
+	id := reason
+	if key != "" {
+		id += "\n" + key
+	}
+	b.trips[id]++
+	if b.trips[id] >= 2 {
+		if b.pendingStop == "" {
+			b.pendingStop = reason
+		}
+		return
+	}
+	b.pendingRemind = append(b.pendingRemind, reason)
+}
+
+func (b *Breaker) take() (string, bool, string) {
+	if b.pendingStop != "" {
+		reason := b.pendingStop
+		b.pendingStop = ""
+		b.pendingRemind = nil
+		return "", true, reason
+	}
+	if len(b.pendingRemind) == 0 {
+		return "", false, ""
+	}
+	text := loopReminder(b.pendingRemind)
+	b.pendingRemind = nil
+	return text, false, ""
+}
+
+func isToolError(content string) bool {
+	return strings.HasPrefix(content, "error:")
+}
+
+// callThreshold is the consecutive-repeat count that makes one trip.
+// Read-only tools, test and build reruns, and background polls get a longer
+// leash: go test output that does not start with "error:" is still a success,
+// and an edit/test loop or a few go build / go vet passes must not hard-stop.
+func callThreshold(key string) int {
+	name, args, _ := strings.Cut(key, "\n")
+	if looseCall(name, args) {
+		return looseThreshold
+	}
+	return loopThreshold
+}
+
+func looseCall(name, args string) bool {
+	switch name {
+	case "read_file", "list_secrets", "list_bots", "list_groups", "read_skill",
+		"recall", "recall_history", "read_subagent", "wait", "sleep", "poll":
+		return true
+	case "shell":
+		return looseShell(args)
+	default:
+		return false
+	}
+}
+
+func looseShell(args string) bool {
+	var m struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal([]byte(args), &m) != nil {
+		return false
+	}
+	cmd := strings.TrimSpace(m.Command)
+	if i := strings.IndexAny(cmd, "\n;&|"); i >= 0 {
+		cmd = strings.TrimSpace(cmd[:i])
+	}
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 {
+		return false
+	}
+	switch fields[0] {
+	case "gofmt", "sleep":
+		return true
+	case "go":
+		if len(fields) < 2 {
+			return false
+		}
+		switch fields[1] {
+		case "test", "build", "vet":
+			return true
+		}
+	}
+	return false
+}
+
+func fileSig(name, args string) (path, sig string, ok bool) {
+	var m map[string]string
+	if json.Unmarshal([]byte(args), &m) != nil {
+		return "", "", false
+	}
+	path = strings.TrimSpace(m["path"])
+	if path == "" {
+		return "", "", false
+	}
+	switch name {
+	case "write_file":
+		return path, "w:" + m["content"], true
+	case "edit_file":
+		return path, "e:" + m["old_string"] + "\x00" + m["new_string"], true
+	default:
+		return "", "", false
+	}
+}
+
+// loopReminder is the soft warning. polling_failure carries the retry guidance
+// that used to sit in the always-on rules.
+func loopReminder(reasons []string) string {
+	var b strings.Builder
+	b.WriteString("<system-reminder>\n")
+	b.WriteString("Loop warning. You are repeating work. Change approach, or stop and report what is blocked.\n")
+	seen := map[string]bool{}
+	for _, r := range reasons {
+		if seen[r] {
+			continue
+		}
+		seen[r] = true
+		b.WriteString("- ")
+		b.WriteString(r)
+		b.WriteString(": ")
+		b.WriteString(loopHint(r))
+		b.WriteByte('\n')
+	}
+	b.WriteString("</system-reminder>")
+	return b.String()
+}
+
+func breakerHaltReason(why string) string {
+	if why == "" {
+		why = "unspecified"
+	}
+	return "熔断 " + why
+}
+
+func loopHint(reason string) string {
+	switch reason {
+	case StopRepeatedOutput:
+		return "This reply matches the previous one. Do not send it again."
+	case StopSameToolArgs:
+		return "The same tool was called with the same arguments. Do not call it that way again."
+	case StopFileFlipFlop:
+		return "This file was edited back and forth. Stop flipping it and decide."
+	case StopPollingFailure:
+		return "The same call failed again. Do not retry it. Report the exact error."
+	case StopDiminishingReturns:
+		return "The last steps added very little. Summarize and stop, or do one different thing."
+	case StopDeniedApprovals:
+		return "The owner denied the last requests. Ask once what to do instead of trying them again."
+	default:
+		return "Stop the current approach."
+	}
+}

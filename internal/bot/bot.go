@@ -117,6 +117,10 @@ type State struct {
 	Blocks  []SummaryBlock `json:"blocks,omitempty"`
 	Env     EnvRecord      `json:"env,omitempty"`
 	Usage   SectionUsage   `json:"usage,omitempty"`
+	// BoundModel is provider/model at the last wake. A change with an open
+	// tool call is a model switch: the kernel closes the call with a tombstone
+	// instead of an interrupt. Empty on older state files.
+	BoundModel string `json:"bound_model,omitempty"`
 }
 
 // Fork marker kinds and end statuses.
@@ -292,10 +296,17 @@ func (b *Bot) LoadState() (State, error) {
 
 // Append adds one transcript record to the open tail segment and updates the index.
 func (b *Bot) Append(e Entry) error {
+	_, err := b.AppendSeq(e)
+	return err
+}
+
+// AppendSeq adds one transcript record and returns the sequence it landed on.
+// The sequence is the line just written, not a later count of the file.
+func (b *Bot) AppendSeq(e Entry) (int, error) {
 	if e.Time.IsZero() {
 		e.Time = time.Now().UTC()
 	}
-	return b.store().append(e, true)
+	return b.store().appendSeq(e, true)
 }
 
 // AppendFork opens a background branch and returns the marker's sequence.
@@ -338,10 +349,7 @@ func (b *Bot) AppendForkEnd(branch, status string, steps int) (int, error) {
 }
 
 func (b *Bot) appendSeq(e Entry) (int, error) {
-	if e.Time.IsZero() {
-		e.Time = time.Now().UTC()
-	}
-	return b.store().appendSeq(e, true)
+	return b.AppendSeq(e)
 }
 
 func validBranch(branch string) bool {
