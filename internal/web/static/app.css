@@ -1250,6 +1250,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 }
 
 .tabs {
+  position: sticky; top: 0; z-index: 3; background: var(--panel);
   display: flex; justify-content: center; gap: 2px; flex-wrap: nowrap;
   padding: 12px 12px 0; margin-bottom: 4px;
 }
@@ -1367,6 +1368,8 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 }
 
 .task .secondary, .routine .meta { margin: 0; }
+.routine { align-items: center; }
+.routine .meta { font-family: var(--font); font-variant-numeric: tabular-nums; }
 
 .lib-card .k { font-size: 12px; color: var(--faint); }
 
@@ -1866,11 +1869,16 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .routine-silent { color: var(--faint); }
 /* Task lists use surfaces rather than dividing lines. */
 .task { background: transparent; border-radius: 0; margin-top: 0; }
-.task:nth-of-type(even), .recent-task:nth-child(even) { background: var(--card); }
+.task:nth-of-type(even), .recent-task:nth-of-type(even) { background: var(--card); }
 .task .task-top { justify-content: flex-start; align-items: center; font-size: 12px; }
 .recent-toggle { display: flex; align-items: center; gap: 8px; }
 .recent-tasks { margin-top: 8px; }
-.recent-task { display: flex; align-items: baseline; gap: 12px; padding: 8px 12px; font-size: 13px; }
+.recent-task { display: flex; align-items: center; gap: 12px; padding: 8px 12px; font-size: 13px; }
+.recent-task { width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font-family: var(--font); }
+.recent-task:hover { background: var(--hover); }
+.recent-task:focus-visible { outline: 2px solid var(--ring); }
+.recent-detail { margin: 4px 0 12px; }
+.recent-detail .failed { color: var(--err); }
 .recent-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .recent-status { flex-shrink: 0; color: var(--muted); }
 .recent-status.failed { color: var(--err); }

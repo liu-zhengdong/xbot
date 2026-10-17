@@ -499,6 +499,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		agents = append(agents, map[string]any{
 			"id": meta.ID, "status": meta.Status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
+			"summary": clip(meta.Summary, 2000),
 		})
 	}
 	primary, _ := bot.Primary(s.Root)

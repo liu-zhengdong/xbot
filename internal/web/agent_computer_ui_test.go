@@ -66,7 +66,7 @@ func TestComputerTabLayout(t *testing.T) {
 	if !strings.Contains(source, "recentTasksOpen: new Set()") || strings.Contains(view, "localStorage") {
 		t.Error("fold state must be memory-only")
 	}
-	for _, want := range []string{`.recent-task:nth-child(even)`, `.recent-status.failed { color: var(--err); }`} {
+	for _, want := range []string{`.recent-task:nth-of-type(even)`, `.recent-status.failed { color: var(--err); }`} {
 		if !strings.Contains(string(css), want) {
 			t.Errorf("missing task style %s", want)
 		}
