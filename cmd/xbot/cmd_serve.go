@@ -22,6 +22,7 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/desktop"
+	"xbot/internal/fsutil"
 	"xbot/internal/inbound"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
@@ -393,6 +394,15 @@ type serveConfig struct {
 }
 
 func runServe(ctx context.Context, root string, cfg serveConfig) error {
+	lock, ok, err := fsutil.TryLock(filepath.Join(root, "serve.lock"))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("xbot serve is already running for this data root")
+	}
+	defer lock.Release()
+
 	gatewayToken := os.Getenv("XBOT_GATEWAY_TOKEN")
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
