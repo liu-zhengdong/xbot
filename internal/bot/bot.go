@@ -8,25 +8,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"xbot/internal/fsutil"
 	"xbot/internal/provider"
 )
 
 const DefaultPersona = "You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete. Answer in the owner's language. Do not narrate a plan before you act."
-
-// nameRe accepts letters and digits from any script, plus '_' and '-' after the
-// first rune. Path separators, dots, whitespace, and control runes never match,
-// so a name is always one safe path element.
-var nameRe = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}\p{M}_-]{0,63}$`)
-
-// maxNameBytes keeps the longest 64-rune name inside one 255-byte filename.
-const maxNameBytes = 255
 
 // ErrNotFound means the bot directory has no config.
 var ErrNotFound = errors.New("bot: not found")
@@ -186,7 +176,7 @@ type Bot struct {
 
 // Create makes ~/.xbot/bots/<name> with a config and an empty transcript.
 func Create(root, name, persona string, links []string) (*Bot, error) {
-	if !ValidName(name) {
+	if !ValidName(name) || !fsutil.PortableName(name) {
 		return nil, fmt.Errorf("bot: invalid name %q", name)
 	}
 	if persona == "" {
@@ -505,33 +495,7 @@ func (b *Bot) RevokeLink(name string) error {
 // ValidName reports whether name can be a bot directory. Besides the
 // path-safety regex and the byte cap, it rejects code points that render as
 // nothing; otherwise a bot could be named to look exactly like another one.
-func ValidName(name string) bool {
-	if !nameRe.MatchString(name) || len(name) > maxNameBytes {
-		return false
-	}
-	for _, r := range name {
-		if invisibleNameRune(r) {
-			return false
-		}
-	}
-	return true
-}
-
-// invisibleNameRune reports default-ignorable code points, including the
-// variation selectors that unicode.Other_Default_Ignorable_Code_Point misses.
-func invisibleNameRune(r rune) bool {
-	if unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) {
-		return true
-	}
-	switch {
-	case r >= 0x180B && r <= 0x180D, // Mongolian free variation selectors
-		r == 0x180F,
-		r >= 0xFE00 && r <= 0xFE0F,   // variation selectors
-		r >= 0xE0100 && r <= 0xE01EF: // variation selectors supplement
-		return true
-	}
-	return false
-}
+func ValidName(name string) bool { return fsutil.ValidName(name) }
 
 // SetGroup records the sidebar folder. An empty name clears it.
 func (b *Bot) SetGroup(name string) error {

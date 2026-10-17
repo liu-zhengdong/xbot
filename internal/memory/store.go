@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -22,8 +21,6 @@ const (
 	maxLogBytes  = 64 << 10
 	recallLimit  = 20
 )
-
-var idRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 // FileStore is markdown the owner can edit, plus an index rebuilt when the markdown is newer.
 type FileStore struct {
@@ -197,7 +194,7 @@ func (s *FileStore) dir(scope Scope, botName, personID string) (string, error) {
 }
 
 // ValidID reports whether id can name a person or a bot in the store.
-func ValidID(id string) bool { return idRe.MatchString(id) }
+func ValidID(id string) bool { return fsutil.ValidName(id) && fsutil.PortableName(id) }
 
 func clean(id string) error {
 	if !ValidID(id) {

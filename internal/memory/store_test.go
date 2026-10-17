@@ -254,3 +254,27 @@ func TestRememberOnOverCapProfileStillErrors(t *testing.T) {
 		t.Fatal("a rejected remember changed the file")
 	}
 }
+
+func TestUnicodeBotMemoryRoundTrip(t *testing.T) {
+	s := Open(t.TempDir())
+	ctx := context.Background()
+	if err := s.Remember(ctx, Fact{Scope: ScopeBot, Tier: TierProfile, BotName: "测试助手", Text: "remember this fact"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Recall(ctx, Query{Scope: ScopeBot, Tier: TierProfile, BotName: "测试助手"})
+	if err != nil || len(got) != 1 || got[0].Text != "remember this fact" {
+		t.Fatalf("recall %+v: %v", got, err)
+	}
+	if ValidID("a/b") {
+		t.Fatal("accepted path separator")
+	}
+	if ValidID("..") {
+		t.Fatal("accepted parent directory")
+	}
+	if ValidID("con") {
+		t.Fatal("accepted reserved device name")
+	}
+	if ValidID("e\u0301") {
+		t.Fatal("accepted NFD name")
+	}
+}
