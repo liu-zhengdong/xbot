@@ -16,7 +16,7 @@ func TestLoginSessionCopy(t *testing.T) {
 			"先填登录码", "登录码不对，重新复制终端里 login token 那一行",
 			"登录已过期，重新输入登录码", "连不上 XBot", "XBot 出错了，稍后再试",
 			"res.status === 401 && authenticated", "sessionStorage.setItem",
-			"sessionStorage.getItem", `"xbot-draft:" + selection.id`, "closeModal();", "closePops();", "closeStp();",
+			"sessionStorage.getItem", `"xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id`, "closeModal();", "closePops();", "closeStp();",
 		},
 	} {
 		data, err := staticFS.ReadFile(file)

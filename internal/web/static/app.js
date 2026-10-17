@@ -96,7 +96,10 @@
     if (e && e.status >= 500) return "XBot 出错了，稍后再试";
     if (e instanceof TypeError) return "连不上 XBot";
     const msg = String((e && e.message) || "");
-    return /[㐀-鿿]/.test(msg) ? msg : (fallback || "操作失败，稍后再试");
+    if (/[㐀-鿿]/.test(msg)) return msg;
+    // A 4xx with a reason is a problem with the request, not a reason to try later.
+    if (e && e.status >= 400 && e.status < 500 && e.status !== 401 && msg && msg !== "request failed") return "没能完成：" + msg;
+    return fallback || "操作失败，稍后再试";
   }
 
   async function apiFetch(path, opt) {
@@ -2274,7 +2277,7 @@
     btn.dataset.bot = b.name;
     btn.dataset.stsig = d.sig;
     btn.classList.toggle("off", d.off);
-    btn.addEventListener("click", () => selectBot(b.name));
+    btn.addEventListener("click", () => pickBot(b.name));
     return btn;
   }
 
@@ -2370,7 +2373,7 @@
       const av = avatar(b.name, paintOfBot(b), "pin");
       if (b.unread) av.append(el("i", "unread"));
       btn.append(av);
-      btn.addEventListener("click", () => selectBot(b.name));
+      btn.addEventListener("click", () => pickBot(b.name));
       pins.append(btn);
     }
     const add = el("button", "pin add");
@@ -2409,7 +2412,10 @@
     roster.append(sectionLabel("群组", newer));
     for (const g of state.groups) {
       const btn = listButton(g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false, niceName(g.name || g.id));
-      btn.addEventListener("click", () => selectGroup(g.id));
+      btn.addEventListener("click", () => {
+        if (state.sel && state.sel.type === "group" && state.sel.id === g.id && !state.peer) return;
+        selectGroup(g.id);
+      });
       roster.append(btn);
     }
     paintStatus();
@@ -2741,6 +2747,13 @@
     thread.replaceChildren(box);
   }
 
+  // Clicking the conversation that is already open keeps its live reply and
+  // pending or failed sends instead of resetting it.
+  function pickBot(name) {
+    if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) return;
+    return selectBot(name);
+  }
+
   async function selectBot(name) {
     leavePeer();
     clearQuote();
@@ -2782,6 +2795,14 @@
     state.sig = "";
     state.editOpen = false;
     closeDrawer();
+    try {
+      const draft = sessionStorage.getItem("xbot-draft:group:" + id);
+      if (draft) {
+        sessionStorage.removeItem("xbot-draft:group:" + id);
+        if (!input.value) input.value = draft;
+        syncComposer();
+      }
+    } catch (e) {}
     const g = state.groups.find((x) => x.id === id);
     setHeader(id, g ? niceName(g.name || id) : "");
     setStatus("");
@@ -3851,8 +3872,25 @@
     });
   }
 
+  // How many owner messages in the loaded transcript carry exactly this text
+  // (raw content, so image links and blank lines do not change the match).
+  function ownerSends(text) {
+    // Owner messages only: timer, webhook and other untrusted events never count.
+    return (state.messages || []).filter((m) => m && m.role === "user" && !unwrap(m.content || "").untrusted &&
+      String(m.content || "").replace(/\r\n/g, "\n").trim() === text).length;
+  }
+
   function restoreSendFeedback(inner) {
-    state.pendingSends = state.pendingSends.filter((row) => !row.accepted);
+    // A queued send stays until the transcript gains one more copy of its text
+    // than it had when the send was queued; each copy resolves one queued row.
+    const queuedRecorded = (row) => {
+      if (!(state.sel && state.sel.type === "bot") || ownerSends(row.dataset.sendText) <= row.baseline) return false;
+      for (const other of state.pendingSends) {
+        if (other !== row && other.queued && other.dataset.sendText === row.dataset.sendText) other.baseline++;
+      }
+      return true;
+    };
+    state.pendingSends = state.pendingSends.filter((row) => !row.accepted || (row.queued && !queuedRecorded(row)));
     if (state.pendingSends.length) inner.querySelector(".empty")?.remove();
     inner.append(...state.pendingSends, ...state.replyErrors);
   }
@@ -3993,6 +4031,14 @@
     if (!text || !state.sel) return;
     const selection = state.sel;
     ++state.threadLoad;
+    if (!pending) {
+      // Resending a failed text from the composer replaces its failed row.
+      state.pendingSends = state.pendingSends.filter((row) => {
+        const stale = !row.accepted && row.querySelector(".send-failed") && row.dataset.sendText === text;
+        if (stale) row.remove();
+        return !stale;
+      });
+    }
     pending = pending || optimisticMessage(text);
     pending.dataset.sendText = text;
     const marker = pending.querySelector(".send-state");
@@ -4015,6 +4061,11 @@
       });
       pending.classList.remove("optimistic");
       marker.remove();
+      // An older 回复出错了 line is resolved by the next accepted send.
+      if (state.sel === selection) {
+        state.replyErrors.forEach((row) => row.remove());
+        state.replyErrors = [];
+      }
     };
     state.streaming = (state.streaming || 0) + 1;
     let counted = true;
@@ -4040,6 +4091,13 @@
       if (ct.includes("application/json")) {
         const data = await res.json().catch(() => ({}));
         if (state.sel !== selection) return;
+        if (data.status === "queued") {
+          // Not in the transcript yet: keep the bubble, marked 已排队.
+          pending.queued = true;
+          pending.baseline = ownerSends(text);
+          const note = el("div", "send-state", "已排队");
+          pending.querySelector(".bubble-col")?.append(note);
+        }
         setStatus(data.status === "queued" ? "已排队" : "");
       } else if (prose) {
         await readSSE(res, selection, prose);
@@ -4054,8 +4112,9 @@
     } catch (e) {
       // Session expired mid-send: keep the text so the input gets it back
       // after the owner logs in again (showLogin already dropped the thread).
-      if (!accepted && !authenticated && selection.type === "bot") {
-        try { sessionStorage.setItem("xbot-draft:" + selection.id, text); } catch (err) {}
+      if (!accepted && !authenticated) {
+        const key = "xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id;
+        try { sessionStorage.setItem(key, text); } catch (err) {}
       }
       if (state.sel !== selection) return;
       setStatus("");
@@ -4836,6 +4895,8 @@
   api("/api/session").then(async (data) => {
     if (!data || !data.authed) { showLogin(); return; }
     state.owner = (data && data.owner) || "";
+    // The desktop app has no login page to come back to: no 退出 there.
+    $("logout").hidden = !!data.app;
     renderMe();
     showApp();
     await boot();
