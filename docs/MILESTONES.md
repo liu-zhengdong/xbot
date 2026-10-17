@@ -14,6 +14,7 @@
 | M6 | 手机后台推送、远程访问（Cloudflare Tunnel 等）、多节点、人的记忆同步、机器开关、桌面操作、浏览器原生 Link、MCP 适配器与连接器目录、编码代理 Link | 手机推送、隧道（公网可达性未测）、多节点、记忆同步、机器开关、桌面、浏览器：已验证。精选目录、Telegram/飞书、MCP（stdio 与 Streamable HTTP，按 Bot 启用，密钥只记名字）、编码代理（确认后启动，输出进对话卡片）：已接上。托管市场未做 |
 | M7 | 凭据代理与保险箱、危险操作审核 | 盒子回归（假模型，2026-10-16）。已验证：保险箱 CLI、落盘加密与权限、只向绑定域名注入、跨域跳转不带真值、工具结果/transcript/模型输入里脱敏；删除、外发、带密钥或写方法的 HTTP、`keys:true` 都出确认卡，拒绝后不执行；只读不问；`decisions.jsonl` 留痕。修复：强制 `git push` 不确认；密钥挪到 `<root>/keys/vault/<bot>.key`（旧数据打开时迁移），触及保险箱/密钥路径的 `shell`/文件工具无论机器开关都出确认卡。独立用户守护进程 `xbot vaultd`（[ADR 0005](adr/0005-vault-daemon-user.md)）已在盒子上以 `xbot-vault` 用户端到端验证：迁移后 Bot 读不到密钥和密文，注入、拒绝未绑定域名、跨域跳转不带真值照常；其他 uid 连接被 SO_PEERCRED 拒绝；小请求额外开销 p95 0.22 毫秒（300 次）。遗留：Bot 所在用户若有免密 sudo，隔离形同虚设 |
 | M8 | 开源网关、P2P、Bot 地址、跨用户通信、模板分享 | 计划中 |
+| 桌面端 | 本地优先桌面端（Windows、Mac），见下文「本地优先桌面端」 | 计划中（2026-10-17 定） |
 
 
 全局验收：每个里程碑都要报性能数字（交互回复 p95、IPC 开销 p95、后台变慢比例、链路数据量；涉及界面的报帧率），预算见 [AGENTS.md](../AGENTS.md) 的「全局要求：性能与界面流畅」。
@@ -185,6 +186,50 @@ M6 每片的状态。已验证的是回归对过的；已接上的是代码里�
 12. **浏览器**。已验证。CDP 驱动单独配置目录里的 Chrome。命令行拉起的进程留到 `browser stop`；`serve` 只停自己拉起的那一份，用进程组，不用 `Pdeathsig`。`session.json` 里的 pid 对不上就不杀，删掉文件，退出码 0。
 
 用户技能加在已有的 `skills` Link 上，不单列一片，也不替换上面的连接器和编码代理。
+
+## 本地优先桌面端（2026-10-17 定）
+
+主人决定：XBot 装在主人自己的电脑上，Windows 和 Mac 同时做。`serve` 跟着桌面端在本机跑，所有 Bot 数据都在本机，窗口显示本机 `serve` 的现有 Web 界面。设计决定见 [ADR 0007](adr/0007-local-first-desktop-app.md)。
+
+**完成的样子**：主人在 Windows 和 Mac 上各装一个，打开就能直接用本机的 Bot，连续用一周不想换回别的。做出来后先由 UX 设计同事在浏览器里走一遍，再交主人实际使用。
+
+**已定的决定**：
+- Windows 要求装 Git for Windows，shell 工具用 Git Bash（`bash -c` 语义，权限表规则不变）。
+- cron 按电脑的本地时区解释，不再按 UTC；已有例程升级时迁移，触发时刻不变。
+- 关窗口就退出（不做托盘和开机自启）。错过的例程不补跑：下次启动时每个 Bot 收到一条汇总通知，列出错过的时间点，由 Bot 自己决定。
+
+**摸底结论（`d6a90a3`）**：`darwin/arm64`、`darwin/amd64` 的 `CGO_ENABLED=0 go build ./...` 通过，`go vet` 只挂在一处测试代码；`windows/amd64` 编译不过（`fsutil`、`kernel` 的 `flock`，`browser`、`tunnel` 的 `kill` 和进程组，`kernel/project.go` 的 `x/sys/unix`）。编过以后，Windows 上还有三处挡启动或挡核心功能：保险箱密钥的权限检查（Windows 上 0600 读回来是 0666，第二次启动所有 Bot 都起不来）、目录 fsync（对话分段封存失败）、shell 写死 `sh -c`。MyGo 外壳的最小窗口能从 Linux 交叉编译出 Windows 和 mac 版本（每个约 9 MB）；在盒子的 WebKitGTK 里指向本机 `serve`，界面、登录、重开免登录都正常。
+
+每个 PR 约 500 行以内，通用要求：测试三遍全绿、触及包跑 `-race`、每个修复带一条在旧代码上会失败的回归测试、没跑的列成 Not run。
+
+### A 线：跨平台核心
+| PR | 交付 | 验收 |
+|---|---|---|
+| A1 | 文件锁抽象（unix `flock`，Windows `LockFileEx`），`kernel` 的两处改用它；`windows`、`darwin` 的编译和 `go vet`（含测试代码）修好；交叉编译脚本；GitHub Actions 加 Windows 和 macOS 的 `go test`（先不挡合并） | 三个目标 build 和 vet 全绿；Linux 行为不变；CI 上能看到 Windows/mac 的测试结果 |
+| A2 | 进程控制：Windows 用 Job Object 杀整棵进程树、查存活和启动时间；mac 用 `sysctl` 取启动时间；编码代理和浏览器复用 | 取消后不留孤儿进程；`serve` 重启后还在跑的后台任务不被标成 lost |
+| A3 | Windows shell：找 Git Bash（`XBOT_SHELL`、注册表、常见路径），找不到时给出安装指引；系统提示注入当前系统 | Windows 上 shell 工具和后台任务能跑 |
+| A4 | Windows 存储语义：保险箱密钥权限检查、目录 fsync、原子写遇到共享冲突时重试、只读分段；ID 按大小写不敏感查重、拒绝 Windows 保留名、Unicode 规范化 | Windows 上重启后 Bot 照常起来，对话分段能封存；`Dev` 和 `dev` 不会落进同一个目录 |
+| A5 | 重启和升级：Windows 上启动新进程再退出，替换正在运行的 exe 时先改名 `.old`；发布加 Windows 和 `darwin/amd64` | Windows 上实际升级一次 |
+| A6 | 浏览器工具按平台找 Chrome，所有权判断不读 `/proc`；桌面操控工具在 mac/Windows 上标成不可用 | mac/Windows 上能开一次 Chrome |
+| A7 | 编辑工具保持文件原来的换行（CRLF）；子进程的 `HOME`/`USERPROFILE` | CRLF 文件能正常编辑 |
+
+### B 线：桌面外壳
+| PR | 交付 | 验收 |
+|---|---|---|
+| B1 | `internal/appshell` 加 `xbot app`：同进程起 `serve`，固定端口 `127.0.0.1:8787`，单实例，一次性启动码自动登录，日志不含 token；`go.mod` 升到 Go 1.27 | 盒子上能开 Linux 窗口并截图；交叉编译出三个平台 |
+| B2 | 界面适配：标题栏留空位和拖动区域，全局字体加微软雅黑和苹方，原生通知从 Go 端发，外链用系统浏览器打开 | UX 同事在浏览器里走一遍；Windows 标题栏、双击最大化、吸附布局，mac 红绿灯 |
+| B3 | 打包：GitHub Actions 出 mac `.app` 和 dmg、Windows 安装器、Linux `.deb`，附 SHA256SUMS 和不带版本号的固定下载地址；Gatekeeper 和 SmartScreen 放行说明（不签名） | 真机上装得上、放行后能打开 |
+| B4 | 应用内自更新：复用 `internal/upgrade`，后台预下载，「重启以更新」，更新说明只列几条中文要点；mac 整体替换 `.app`，Windows 用 `.old` | 真机上完整升级一次 |
+
+### C 线：定时任务
+| PR | 交付 | 验收 |
+|---|---|---|
+| C1 | cron 按本地时区解释，已有例程迁移（触发时刻不变）；错过窗口的一次性例程不再永远保持启用 | 回归测试在旧代码上失败；线上例程迁移前后触发时刻一致 |
+| C2 | 错过时间点的汇总通知：每个 Bot 记上次轮询的水位线（不放进例程目录），停机或睡眠超过 2 分钟时发一条汇总事件，ID 确定、可去重，最多看 7 天 | 停机 3 小时后正好收到一条汇总；重复投递只有一条；首次运行不发 |
+
+**顺序**：A1 → C1 → C2 → B1 → B2 → B3，到这里 mac 就能装上用。接着 A4 → A3 → A2 → A5，Windows 能用。最后 B4、A6、A7。A1 和 C 线互不依赖，可以并行。
+
+**要主人的真机才能验的**：WebView2 和 WKWebView 的实际渲染、字体、标题栏、拖动和吸附、原生通知；Windows 上 Git Bash、Job Object、`LockFileEx` 的强制锁、目录 fsync、rename 共享冲突、只读文件删除；dmg 和 Windows 安装器、Gatekeeper 和 SmartScreen 放行；mac 整体替换 `.app` 和 Windows `.old` 的自更新；合盖一晚后的汇总通知。盒子上能验的：交叉编译和 `go vet`、Linux 窗口（WebKitGTK）、单元测试；GitHub Actions 上能跑 Windows 和 macOS 的全量测试。
 
 ## 测试与陪练
 Bot 复刻会在自己的电脑上长期运行 XBot，像真实用户一样使用它，发现问题后整理成复现步骤交给编码代理修复，修复后再做回归测试。
