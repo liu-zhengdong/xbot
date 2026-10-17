@@ -9,9 +9,8 @@ func TestNeutralAvatarAndMenuChrome(t *testing.T) {
 	for file, checks := range map[string]struct{ want, avoid []string }{
 		"app.js": {
 			want: []string{
-				`const tone = hashName(name) % 4`,
-				`["#dddddd", "#d3d3d3", "#c9c9c9", "#bfbfbf"][tone]`,
-				`["#333333", "#3d3d3d", "#474747", "#515151"][tone]`,
+				`svg.style.setProperty("--avatar-light", "#d3d3d3")`,
+				`svg.style.setProperty("--avatar-dark", "#3d3d3d")`,
 				`blob.setAttribute("fill", "var(--avatar-fill)")`,
 				`text.setAttribute("fill", "var(--avatar-ink)")`,
 				`BLOBS[hashName(name) % BLOBS.length]`,
