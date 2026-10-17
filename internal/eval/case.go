@@ -27,9 +27,13 @@ type Case struct {
 	Now        string `yaml:"now"`
 	QuietStart string `yaml:"quiet_start"`
 	QuietEnd   string `yaml:"quiet_end"`
-	Wake       Wake   `yaml:"wake"`
-	Setup      Setup  `yaml:"setup"`
-	Checks     Checks `yaml:"checks"`
+	// Memory mounts the memory tools and a real file store for this case.
+	Memory bool `yaml:"memory"`
+	// Role is the bot working role, chat or dev. Empty stays chat.
+	Role   string `yaml:"role"`
+	Wake   Wake   `yaml:"wake"`
+	Setup  Setup  `yaml:"setup"`
+	Checks Checks `yaml:"checks"`
 }
 
 // Wake is the input. Kind is user, routine, or resume.
@@ -69,19 +73,27 @@ type MsgSeed struct {
 
 // Checks are outcome checks. The model's own summary is not a verdict.
 type Checks struct {
-	Silent              bool        `yaml:"silent"`
-	TranscriptNotSilent bool        `yaml:"transcript_not_silent"`
-	AssistantContains   []string    `yaml:"assistant_contains"`
-	Notes               *int        `yaml:"notes"`
-	Held                *int        `yaml:"held"`
-	MaxToolCalls        int         `yaml:"max_tool_calls"`
-	MinToolCalls        int         `yaml:"min_tool_calls"`
-	ForbidRepeat        int         `yaml:"forbid_repeat"`
-	ForbidTools         []string    `yaml:"forbid_tools"`
-	Veto                []string    `yaml:"veto"`
-	PlanPath            string      `yaml:"plan_path"`
-	Files               []FileCheck `yaml:"files"`
-	AnyFiles            []FileCheck `yaml:"any_files"`
+	Silent              bool          `yaml:"silent"`
+	TranscriptNotSilent bool          `yaml:"transcript_not_silent"`
+	AssistantContains   []string      `yaml:"assistant_contains"`
+	Notes               *int          `yaml:"notes"`
+	Held                *int          `yaml:"held"`
+	MaxToolCalls        int           `yaml:"max_tool_calls"`
+	MinToolCalls        int           `yaml:"min_tool_calls"`
+	ForbidRepeat        int           `yaml:"forbid_repeat"`
+	ForbidTools         []string      `yaml:"forbid_tools"`
+	Veto                []string      `yaml:"veto"`
+	PlanPath            string        `yaml:"plan_path"`
+	Files               []FileCheck   `yaml:"files"`
+	AnyFiles            []FileCheck   `yaml:"any_files"`
+	Memory              []MemoryCheck `yaml:"memory"`
+}
+
+// MemoryCheck is one fact that must or must not be stored after the run.
+type MemoryCheck struct {
+	Scope    string `yaml:"scope"`
+	Contains string `yaml:"contains"`
+	Absent   string `yaml:"absent"`
 }
 
 // FileCheck is one file under the work directory after the run.
@@ -122,6 +134,14 @@ func (c Case) validate() error {
 	}
 	if c.Grader == "llm-judge" && strings.TrimSpace(c.Rubric) == "" {
 		return fmt.Errorf("eval: %s: llm-judge needs a rubric", c.Name)
+	}
+	switch c.Role {
+	case "", "chat", "dev":
+	default:
+		return fmt.Errorf("eval: %s: role %q", c.Name, c.Role)
+	}
+	if len(c.Checks.Memory) > 0 && !c.Memory {
+		return fmt.Errorf("eval: %s: memory checks need memory: true", c.Name)
 	}
 	switch c.Wake.Kind {
 	case "user", "routine", "resume":

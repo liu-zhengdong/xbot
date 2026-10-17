@@ -286,7 +286,6 @@ func renderMemory(facts []memory.Fact) string {
 	}{
 		{memory.ScopePerson, "Person"},
 		{memory.ScopeBot, "Bot"},
-		{memory.ScopeBotPerson, "This bot and this person"},
 	}
 	for _, sec := range sections {
 		items := groups[sec.scope]

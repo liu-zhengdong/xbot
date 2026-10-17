@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestPersonFactIsSharedBotPersonIsNot(t *testing.T) {
+func TestPersonFactIsSharedBotFactIsNot(t *testing.T) {
 	root := t.TempDir()
 	s := Open(root)
 	ctx := context.Background()
@@ -23,27 +23,52 @@ func TestPersonFactIsSharedBotPersonIsNot(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = s.Remember(ctx, Fact{
-		Scope: ScopeBotPerson, Tier: TierProfile, BotName: "ada", PersonID: "u1",
+		Scope: ScopeBot, Tier: TierProfile, BotName: "ada",
 		WrittenBy: "ada", Text: "secret handshake", Time: when,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := s.Remember(ctx, Fact{
+		Scope: ScopeBotPerson, BotName: "ada", PersonID: "u1", WrittenBy: "ada", Text: "nope",
+	}); err == nil {
+		t.Fatal("bot-person scope was accepted")
+	}
 	got, err := s.Recall(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierProfile})
 	if err != nil || len(got) != 1 || got[0].Text != "Ada likes tea" {
-		t.Fatalf("bot B person view %+v %v", got, err)
+		t.Fatalf("shared person view %+v %v", got, err)
 	}
-	hidden, err := s.Recall(ctx, Query{Scope: ScopeBotPerson, BotName: "bea", PersonID: "u1", Tier: TierProfile})
-	if err != nil || len(hidden) != 0 {
-		t.Fatalf("other bot saw bot-person %+v %v", hidden, err)
-	}
-	other, err := s.Recall(ctx, Query{Scope: ScopeBotPerson, BotName: "ada", PersonID: "u2", Tier: TierProfile})
+	other, err := s.Recall(ctx, Query{Scope: ScopeBot, BotName: "bea", Tier: TierProfile})
 	if err != nil || len(other) != 0 {
-		t.Fatalf("other person saw handshake %+v %v", other, err)
+		t.Fatalf("other bot saw ada's memory %+v %v", other, err)
 	}
-	own, err := s.Recall(ctx, Query{Scope: ScopeBotPerson, BotName: "ada", PersonID: "u1", Text: "handshake"})
+	own, err := s.Recall(ctx, Query{Scope: ScopeBot, BotName: "ada", Text: "handshake"})
 	if err != nil || len(own) != 1 || own[0].Text != "secret handshake" {
 		t.Fatalf("recall %+v %v", own, err)
+	}
+}
+
+func TestOmittedScopeWritesBot(t *testing.T) {
+	s := Open(t.TempDir())
+	ctx := context.Background()
+	if err := s.Remember(ctx, Fact{
+		BotName: "ada", WrittenBy: "ada", Tier: TierProfile, Text: "run tests before done",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Recall(ctx, Query{Scope: ScopeBot, BotName: "ada", Tier: TierProfile})
+	if err != nil || len(got) != 1 || got[0].Text != "run tests before done" || got[0].Scope != ScopeBot {
+		t.Fatalf("bot %+v %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.Root, "people")); !os.IsNotExist(err) {
+		t.Fatalf("omitted scope wrote person memory: %v", err)
+	}
+	if err := s.Forget(ctx, Query{BotName: "ada"}, "run tests before done"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Recall(ctx, Query{Scope: ScopeBot, BotName: "ada"})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("forget omitted scope %+v %v", got, err)
 	}
 }
 

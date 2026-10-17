@@ -249,7 +249,11 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		}
 		seeded[f.Path] = f.Text
 	}
-	b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal, link.NameTools})
+	grants := []string{link.NameTerminal, link.NameTools}
+	if c.Memory {
+		grants = append(grants, link.NameMemory)
+	}
+	b, err := bot.Create(root, "ada", "Be brief.", grants)
 	if err != nil {
 		res.Reason = err.Error()
 		return res
@@ -268,6 +272,10 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	if c.QuietStart != "" || c.QuietEnd != "" {
 		start, end := c.QuietStart, c.QuietEnd
 		up.QuietStart, up.QuietEnd = &start, &end
+	}
+	if c.Role != "" {
+		role := c.Role
+		up.Role = &role
 	}
 	if up != (bot.ProfileUpdate{}) {
 		if err := b.ApplyProfile(up); err != nil {
@@ -338,10 +346,16 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		}
 	}
 	allow := c.Approve == "allow"
+	var mem memory.Store = memory.NopStore{}
+	links := []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, c.Network)}}
+	if c.Memory {
+		mem = memory.Open(root)
+		links = append(links, link.Memory{})
+	}
 	k := &kernel.Kernel{
-		Bot: b, Provider: model, Memory: memory.NopStore{}, MaxSteps: steps,
+		Bot: b, Provider: model, Memory: mem, MaxSteps: steps,
 		WorkDir: work,
-		Links:   []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, c.Network)}},
+		Links:   links,
 		Now:     func() time.Time { return when },
 		Approve: func(context.Context, string, string) (bool, error) { return allow, nil },
 	}
@@ -355,6 +369,7 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	}
 	res.Transcript = formatTranscript(obs.entries)
 	problems, facts := grade(c, obs, seeded, work, before)
+	problems = append(problems, checkMemory(c, root, b.Name(), "owner")...)
 	obs.Files = facts
 	res.Tools = obs.Tools
 	if runErr != nil {
@@ -381,6 +396,40 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	}
 	res.Pass = len(problems) == 0
 	return res
+}
+
+func checkMemory(c Case, root, botName, personID string) []string {
+	if len(c.Checks.Memory) == 0 {
+		return nil
+	}
+	store := memory.Open(root)
+	ctx := context.Background()
+	var problems []string
+	for _, m := range c.Checks.Memory {
+		scope := memory.Scope(m.Scope)
+		q := memory.Query{Scope: scope, BotName: botName}
+		if scope == memory.ScopePerson {
+			q.PersonID = personID
+		}
+		facts, err := store.Recall(ctx, q)
+		if err != nil {
+			problems = append(problems, "memory "+m.Scope+": "+err.Error())
+			continue
+		}
+		var body strings.Builder
+		for _, f := range facts {
+			body.WriteString(f.Text)
+			body.WriteByte('\n')
+		}
+		text := body.String()
+		if m.Contains != "" && !strings.Contains(text, m.Contains) {
+			problems = append(problems, "memory "+m.Scope+" missing "+m.Contains)
+		}
+		if m.Absent != "" && strings.Contains(text, m.Absent) {
+			problems = append(problems, "memory "+m.Scope+" has "+m.Absent)
+		}
+	}
+	return problems
 }
 
 func snapFiles(root string) map[string]bool {

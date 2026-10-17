@@ -1,13 +1,18 @@
 // Package memory defines layered memory and the file store behind it.
 //
 // Scopes:
-//   - person: facts about a person, shared by every bot. Each fact records which bot wrote it.
-//   - bot: this bot's role, methods, and topic context.
-//   - bot-person: agreements between this bot and this person. Invisible to other people.
+//   - person: facts about the owner that every bot needs (timezone, language,
+//     routine, who they are). Shared. Writing it requires an explicit scope.
+//   - bot: this bot's role, rules agreed with the owner, and project decisions.
+//     This is the default when a scope is omitted.
+//
+// ScopeBotPerson is the removed per-person scope. It is not stored. The
+// constant remains so in-flight callers still compile; Remember and Recall
+// reject it. Legacy files are merged into bot scope on load.
 //
 // Conflict rule:
 //   - Facts about the person (KindAttribute): the newest fact for a key wins.
-//   - How to work (KindWork): bot scope wins over person scope and bot-person scope.
+//   - How to work (KindWork): bot scope wins over person scope.
 package memory
 
 import (
@@ -20,8 +25,10 @@ import (
 type Scope string
 
 const (
-	ScopePerson    Scope = "person"
-	ScopeBot       Scope = "bot"
+	ScopePerson Scope = "person"
+	ScopeBot    Scope = "bot"
+	// ScopeBotPerson is rejected. Facts that used to live here are migrated
+	// into ScopeBot. Callers compiled against the old name still build.
 	ScopeBotPerson Scope = "bot-person"
 )
 
@@ -45,14 +52,13 @@ const (
 )
 
 // ProfileBytes is the write cap for one profile-tier file.
-// Person, bot, and bot-person each have their own file, and standing
-// context renders all three together, so ProfileInjectBytes fits three
-// full files plus section headings. A fact the store accepted is not
-// dropped on the way in.
+// Person and bot each have their own file, and standing context renders
+// both together, so ProfileInjectBytes fits two full files plus section
+// headings. A fact the store accepted is not dropped on the way in.
 const (
 	ProfileBytes       = 4 << 10
 	profileInjectSlack = 512
-	ProfileInjectBytes = 3*ProfileBytes + profileInjectSlack
+	ProfileInjectBytes = 2*ProfileBytes + profileInjectSlack
 )
 
 // Fact is one memory record.
@@ -84,7 +90,7 @@ type Query struct {
 	Text     string
 }
 
-// Store persists the three scopes. Forget removes an exact fact text.
+// Store persists the two scopes. Forget removes an exact fact text.
 type Store interface {
 	Remember(ctx context.Context, fact Fact) error
 	Recall(ctx context.Context, q Query) ([]Fact, error)
@@ -104,7 +110,7 @@ func (NopStore) Recall(context.Context, Query) ([]Fact, error) { return nil, nil
 func (NopStore) Forget(context.Context, Query, string) error { return ErrNotImplemented }
 
 // Visible drops facts the current bot and sender must not see.
-// Bot-person facts for anyone else are removed. This is a backstop behind Recall.
+// This is a backstop behind Recall. The removed bot-person scope is hidden.
 func Visible(facts []Fact, botName, personID string) []Fact {
 	out := make([]Fact, 0, len(facts))
 	for _, f := range facts {
@@ -115,10 +121,6 @@ func Visible(facts []Fact, botName, personID string) []Fact {
 			}
 		case ScopeBot:
 			if f.BotName == botName {
-				out = append(out, f)
-			}
-		case ScopeBotPerson:
-			if f.BotName == botName && f.PersonID == personID {
 				out = append(out, f)
 			}
 		}

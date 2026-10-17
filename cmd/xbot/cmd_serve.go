@@ -52,6 +52,9 @@ func newServeKernel(root string, b *bot.Bot) (*kernel.Kernel, error) {
 }
 
 func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer, allowBackground bool, runner runnerSpec) (*kernel.Kernel, person.Person, error) {
+	if err := memory.Migrate(root); err != nil {
+		return nil, person.Person{}, err
+	}
 	if !b.Grants(link.NameTerminal) && pr != nil {
 		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
 	}

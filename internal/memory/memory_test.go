@@ -24,11 +24,10 @@ func TestVisibleHidesOtherPeople(t *testing.T) {
 		{Key: "city", Scope: ScopePerson, PersonID: "u2", Text: "b"},
 		{Key: "tone", Scope: ScopeBot, BotName: "ada", Text: "terse"},
 		{Key: "tone", Scope: ScopeBot, BotName: "other", Text: "loud"},
-		{Key: "lang", Scope: ScopeBotPerson, BotName: "ada", PersonID: "u1", Text: "zh"},
-		{Key: "lang", Scope: ScopeBotPerson, BotName: "ada", PersonID: "u2", Text: "en"},
+		{Key: "old", Scope: ScopeBotPerson, BotName: "ada", PersonID: "u1", Text: "hidden-scope"},
 	}
 	got := Visible(facts, "ada", "u1")
-	if len(got) != 3 {
+	if len(got) != 2 {
 		t.Fatalf("got %d facts: %+v", len(got), got)
 	}
 	for _, f := range got {
@@ -42,7 +41,7 @@ func TestResolveNewestPersonFact(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	facts := []Fact{
 		{Key: "city", Kind: KindAttribute, Scope: ScopePerson, PersonID: "u1", Text: "old", Time: t0, WrittenBy: "a"},
-		{Key: "city", Kind: KindAttribute, Scope: ScopeBotPerson, PersonID: "u1", BotName: "b", Text: "new", Time: t0.Add(time.Hour), WrittenBy: "b"},
+		{Key: "city", Kind: KindAttribute, Scope: ScopePerson, PersonID: "u1", Text: "new", Time: t0.Add(time.Hour), WrittenBy: "b"},
 	}
 	got := Resolve(facts)
 	if len(got) != 1 || got[0].Text != "new" {
@@ -53,7 +52,6 @@ func TestResolveNewestPersonFact(t *testing.T) {
 func TestResolveWorkBotScopeWins(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	facts := []Fact{
-		{Key: "style", Kind: KindWork, Scope: ScopeBotPerson, BotName: "ada", PersonID: "u1", Text: "casual", Time: t0.Add(2 * time.Hour)},
 		{Key: "style", Kind: KindWork, Scope: ScopePerson, PersonID: "u1", Text: "emoji", Time: t0.Add(3 * time.Hour)},
 		{Key: "style", Kind: KindWork, Scope: ScopeBot, BotName: "ada", Text: "terse", Time: t0},
 		{Key: "style", Kind: KindWork, Scope: ScopeBot, BotName: "ada", Text: "terse-v2", Time: t0.Add(time.Hour)},
@@ -67,7 +65,7 @@ func TestResolveWorkBotScopeWins(t *testing.T) {
 func TestResolveWorkWithoutBotScopeUsesNewest(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	facts := []Fact{
-		{Key: "hours", Kind: KindWork, Scope: ScopeBotPerson, Text: "old", Time: t0},
+		{Key: "hours", Kind: KindWork, Scope: ScopePerson, Text: "old", Time: t0},
 		{Key: "hours", Kind: KindWork, Scope: ScopePerson, Text: "new", Time: t0.Add(time.Minute)},
 	}
 	got := Resolve(facts)
