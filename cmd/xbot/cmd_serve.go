@@ -422,6 +422,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		Root:         root,
 		DefaultLinks: defaultLinks,
 		ForkTurns:    true,
+		App:          cfg.App,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
 			return newServeKernel(root, b)
 		},

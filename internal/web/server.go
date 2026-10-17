@@ -45,6 +45,10 @@ type Server struct {
 	// background and get its own answer at once. See docs/atlas/fork.md.
 	ForkTurns bool
 
+	// App marks the desktop app's serve. Its only way in is the launch code
+	// minted at start, so logging out would lock the owner out until a relaunch.
+	App bool
+
 	owner       string
 	token       string
 	launchCodes map[string]time.Time
@@ -217,6 +221,10 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "cross-origin")
 		return
 	}
+	if s.App {
+		writeErr(w, http.StatusConflict, "桌面版不能退出登录，关闭窗口即可")
+		return
+	}
 	s.clearCookie(w)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -226,7 +234,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authed": true, "owner": s.owner})
+	writeJSON(w, http.StatusOK, map[string]any{"authed": true, "owner": s.owner, "app": s.App})
 }
 
 func (s *Server) require(w http.ResponseWriter, r *http.Request) bool {
