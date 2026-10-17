@@ -57,6 +57,7 @@ code=$("$X" --root "$A" remote invite | head -1)
 "$X" --root "$A" serve --http "127.0.0.1:$P1" --interval 1s --no-auto-upgrade >"$WORK/a.log" 2>&1 &
 PIDS+=("$!")
 XBOT_GATEWAY_TOKEN= "$X" --root "$B" remote join "$code" --name a --as b >>"$WORK/setup.log"
+dir_started=$(ms)
 XBOT_GATEWAY_TOKEN= "$X" --root "$B" serve --http "127.0.0.1:$P2" --interval 1s --no-auto-upgrade >"$WORK/b.log" 2>&1 &
 PIDS+=("$!")
 for log in a b; do
@@ -71,6 +72,12 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 "$X" --root "$A" remote list | grep -q "^b$(printf '\t')" || { echo "FAIL: invite pairing did not complete" >&2; exit 1; }
+for _ in $(seq 1 700); do
+  if grep -rqs '"bob"' "$A/remote/dirs/"; then break; fi
+  sleep 0.1
+done
+grep -rqs '"bob"' "$A/remote/dirs/" || { echo "FAIL: no gateway dir within 70s" >&2; exit 1; }
+echo "PASS gateway dir=$(( $(ms)-dir_started ))ms"
 sent=$(ms)
 printf 'REMOTE_PING\nexit\n' | "$X" --root "$A" chat ada --max-steps 4 >"$WORK/chat.log" 2>&1
 for _ in $(seq 1 600); do

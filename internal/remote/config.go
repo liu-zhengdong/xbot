@@ -180,14 +180,19 @@ func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err erro
 }
 
 func RemoveDevice(root, name string) error {
-	return update(root, func(c *Config) error {
-		for i, d := range c.Devices {
-			if d.Name == name {
-				c.Devices = append(c.Devices[:i], c.Devices[i+1:]...)
-				return nil
+	return fsutil.WithLock(filepath.Join(root, "remote", "seen.json.lock"), func() error {
+		return update(root, func(c *Config) error {
+			for i, d := range c.Devices {
+				if d.Name == name {
+					if err := os.Remove(filepath.Join(root, "remote", "dirs", d.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return err
+					}
+					c.Devices = append(c.Devices[:i], c.Devices[i+1:]...)
+					return nil
+				}
 			}
-		}
-		return fmt.Errorf("remote: device %q not found", name)
+			return fmt.Errorf("remote: device %q not found", name)
+		})
 	})
 }
 
