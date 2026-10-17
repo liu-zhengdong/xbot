@@ -495,6 +495,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	agents := []map[string]any{}
+	var lastApproval map[string]string
 	dir := filepath.Dir(b.AgentDir("none"))
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
@@ -505,6 +506,26 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
+		if meta.Status == "done" && meta.Mode == "fork-turn" && lastApproval == nil {
+			// Replay assigns cards written before a fork to the fork's branch too.
+			lastApproval = map[string]string{}
+			if entries, err := b.Entries(); err == nil {
+				seq := make([]bot.SeqEntry, len(entries))
+				for i, e := range entries {
+					seq[i] = bot.SeqEntry{Seq: i + 1, Entry: e}
+				}
+				rows, _ := bot.Replay(seq)
+				for _, row := range rows {
+					if card, ok := bot.ParseApprovalCard(row.Entry.Message.Content); ok && row.Branch != "" {
+						lastApproval[row.Branch] = card.State
+					}
+				}
+			}
+		}
+		status := string(meta.Status)
+		if status == "done" && meta.Mode == "fork-turn" && lastApproval[meta.ID] == bot.ApprovalDeclined {
+			status = "denied"
+		}
 		var finishedAt any
 		if meta.Status != "running" && meta.Status != "queued" {
 			if info, err := os.Stat(filepath.Join(b.AgentDir(e.Name()), "meta.json")); err == nil {
@@ -512,7 +533,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		agents = append(agents, map[string]any{
-			"id": meta.ID, "status": meta.Status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
+			"id": meta.ID, "status": status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
 			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
 		})
 	}
