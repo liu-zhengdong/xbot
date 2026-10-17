@@ -34,6 +34,9 @@ const (
 
 var groupIDRe = regexp.MustCompile(`^g_[a-z0-9]{8}$`)
 
+// ErrRateLimit marks an explicit rejection rather than a storage failure.
+var ErrRateLimit = errors.New("peer: rate limit")
+
 // Group is a named set of bots with its own transcript.
 type Group struct {
 	ID      string    `json:"id"`
@@ -445,6 +448,9 @@ type rateFile struct {
 	Hits map[string][]int64 `json:"hits"`
 }
 
+// Allow shares the persistent per-pair limit with cross-device messages.
+func (b *Bus) Allow(key string, now time.Time) error { return b.allow(key, now) }
+
 func (b *Bus) allow(key string, now time.Time) error {
 	path := filepath.Join(b.Root, "peer-rate.json")
 	return fsutil.WithLock(path+".lock", func() error {
@@ -469,7 +475,7 @@ func (b *Bus) allow(key string, now time.Time) error {
 			}
 		}
 		if len(kept) >= b.limit() {
-			return errors.New("peer: rate limit")
+			return ErrRateLimit
 		}
 		kept = append(kept, now.UnixNano())
 		rf.Hits[key] = kept

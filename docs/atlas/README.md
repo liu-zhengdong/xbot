@@ -55,7 +55,7 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 | 模型供应商与评测 | 供应商、模型提示、认证、主动性评测 | 改 `internal/provider`、`internal/eval`、`evals/` | [providers.md](providers.md) |
 | 网页界面 | 对话、轨迹、确认卡、侧边栏 | 改 `internal/web` 和静态界面 | [ui.md](ui.md) |
 | 版本与自动升级 | 版本注入、发布脚本、检查与应用升级、优雅重起 | 改 `internal/version`、`internal/upgrade`、`scripts/release.sh` | [release.md](release.md) |
-| 网关 | 开源信箱中继，连接主人自己的几台 XBot（设计已定，实现中） | 做 M8 | [gateway.md](gateway.md) |
+| 网关 | 开源信箱中继，连接主人自己的几台 XBot（G1–G2 已实现：网关、身份、`bot@设备` 收发） | 做 M8 | [gateway.md](gateway.md) |
 
 ## 怎么配合
 ```mermaid

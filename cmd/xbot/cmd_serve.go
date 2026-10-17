@@ -32,6 +32,7 @@ import (
 	"xbot/internal/notify"
 	"xbot/internal/person"
 	"xbot/internal/provider"
+	"xbot/internal/remote"
 	"xbot/internal/serve"
 	"xbot/internal/skill"
 	"xbot/internal/tunnel"
@@ -392,6 +393,7 @@ type serveConfig struct {
 }
 
 func runServe(ctx context.Context, root string, cfg serveConfig) error {
+	gatewayToken := os.Getenv("XBOT_GATEWAY_TOKEN")
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if cfg.App {
@@ -459,6 +461,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	}
 	argv := os.Args
 	env := os.Environ()
+	_ = os.Unsetenv("XBOT_GATEWAY_TOKEN")
 	// restart asks the serve loop to re-exec. A graceful upgrade and SIGHUP both
 	// funnel through it so the listener stays up until the last moment.
 	restartCh := make(chan string, 1)
@@ -503,6 +506,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		fmt.Fprintf(os.Stderr, "login token: %s\n", token)
 	}
 	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
+	go remote.Run(ctx, root, gatewayToken, func(f string, a ...any) { fmt.Fprintf(os.Stderr, "xbot: remote: "+f+"\n", a...) })
 	// Routines get their own ticker, with a fresh now each tick, so a one-shot
 	// does not wait behind every bot's model calls in serve.Pass.
 	go func() {

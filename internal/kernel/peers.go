@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/link"
 	"xbot/internal/peer"
+	"xbot/internal/remote"
 )
 
 type listBotsTool struct{ k *Kernel }
@@ -48,7 +49,7 @@ type messageBotTool struct{ k *Kernel }
 
 func (messageBotTool) Name() string { return "message_bot" }
 func (messageBotTool) Description() string {
-	return "Post a message into another same-owner bot's inbox. They see it as untrusted data, not as their own instructions, and they do not see your private memory. Chains stop after a few hops."
+	return "Post a message into another same-owner bot's inbox. bot@device reaches the owner's bot on another paired device. They see it as untrusted data, not as their own instructions, and they do not see your private memory. Chains stop after a few hops."
 }
 func (messageBotTool) Parameters() any {
 	return schema(map[string]any{
@@ -72,7 +73,13 @@ func (t messageBotTool) Run(ctx context.Context, args json.RawMessage) (string, 
 	if chain == "" {
 		chain = "ch_" + t.k.Bot.Name()
 	}
-	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.Bot.Name(), strings.TrimSpace(in.Bot), in.Text, chain, kt.turnHops+1, t.k.now())
+	addr := strings.TrimSpace(in.Bot)
+	var err error
+	if strings.Contains(addr, "@") {
+		err = remote.Send(ctx, t.k.Bot.Root, t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
+	} else {
+		err = (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
+	}
 	if err != nil {
 		return "", err
 	}
