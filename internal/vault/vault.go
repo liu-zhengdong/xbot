@@ -351,6 +351,14 @@ func (s *Store) Redact(text string) string {
 	return text
 }
 
+// Forms returns every redactable form of every stored value, longest first.
+func (s *Store) Forms() []string {
+	if s == nil {
+		return nil
+	}
+	return s.valueForms()
+}
+
 // valueForms collects every redactable form of every stored value, longest
 // first so a form contained in another never leaves a tail.
 func (s *Store) valueForms() []string {
@@ -616,6 +624,38 @@ func Register(s *Store) func() {
 func MaxRegisteredFormLen() int {
 	n, _ := RegisteredFormState()
 	return n
+}
+
+// RegisteredForms returns every redactable form across registered vaults,
+// longest first. Duplicates are dropped.
+func RegisteredForms() []string {
+	regMu.RLock()
+	stores := append([]*Store(nil), regStores...)
+	regMu.RUnlock()
+	seen := map[string]struct{}{}
+	var forms []string
+	for _, s := range stores {
+		if s == nil {
+			continue
+		}
+		for _, form := range s.Forms() {
+			if form == "" {
+				continue
+			}
+			if _, ok := seen[form]; ok {
+				continue
+			}
+			seen[form] = struct{}{}
+			forms = append(forms, form)
+		}
+	}
+	sort.Slice(forms, func(i, j int) bool {
+		if len(forms[i]) != len(forms[j]) {
+			return len(forms[i]) > len(forms[j])
+		}
+		return forms[i] < forms[j]
+	})
+	return forms
 }
 
 // RegisteredFormGen changes when a registered vault's secrets change or the

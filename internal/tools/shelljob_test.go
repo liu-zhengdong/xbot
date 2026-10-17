@@ -85,6 +85,7 @@ func TestJobWriterRedactsSplitSecret(t *testing.T) {
 	w := newJobWriter(f, 4096, func(s string) string {
 		return strings.ReplaceAll(s, "SUPERSECRET", "[secret]")
 	})
+	w.forms = func() []string { return []string{"SUPERSECRET"} }
 	if _, err := w.Write([]byte("pre SUPERSE")); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +139,7 @@ func TestShellTimeoutMovesToBackground(t *testing.T) {
 	}
 	sh := &Shell{DefaultTimeout: 200 * time.Millisecond, MaxTimeout: 200 * time.Millisecond, MaxOutput: 1024, Jobs: jobs}
 	marker := "xbotbg" + strings.ReplaceAll(t.Name(), "/", "")
-	raw, err := json.Marshal(map[string]string{"command": "echo " + marker + "; printf '%02048d' 0; sleep 30"})
+	raw, err := json.Marshal(map[string]string{"command": "echo " + marker + "; sleep 30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,11 +341,12 @@ func TestBackgroundFileRedactsSecret(t *testing.T) {
 	dir := t.TempDir()
 	jobs := NewJobs(dir)
 	jobs.Redact = func(s string) string { return strings.ReplaceAll(s, "SUPERSECRET", "[secret]") }
+	jobs.Forms = func() []string { return []string{"SUPERSECRET"} }
 	if err := jobs.Load(); err != nil {
 		t.Fatal(err)
 	}
 	out, err := jobs.Run(context.Background(), RunRequest{
-		Command: "printf SUPERSECRET; printf '%02048d' 0; sleep 30", Background: true, Timeout: time.Second,
+		Command: "printf 'SUPERSECRET\\n'; sleep 30", Background: true, Timeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -576,6 +578,7 @@ func TestFinishedJobsArePruned(t *testing.T) {
 func TestForegroundSecretSplitAcrossWrites(t *testing.T) {
 	jobs := NewJobs(t.TempDir())
 	jobs.Redact = func(s string) string { return strings.ReplaceAll(s, "sk-ABCDEFGHIJKLMNOPQRST", "[redacted]") }
+	jobs.Forms = func() []string { return []string{"sk-ABCDEFGHIJKLMNOPQRST"} }
 	if err := jobs.Load(); err != nil {
 		t.Fatal(err)
 	}
@@ -672,11 +675,11 @@ func TestOtherProcessLoadLeavesLiveJob(t *testing.T) {
 
 func TestLongMultilineSecretOnDisk(t *testing.T) {
 	var b strings.Builder
-	b.WriteString("-----BEGIN PRIVATE KEY-----\n")
+	b.WriteString("-----BEGIN " + "PRIVATE KEY-----\n")
 	for i := 0; i < 26; i++ {
 		b.WriteString(strings.Repeat(string(rune('A'+i%26)), 64) + "\n")
 	}
-	b.WriteString("-----END PRIVATE KEY-----")
+	b.WriteString("-----END " + "PRIVATE KEY-----")
 	secret := b.String()
 	dir := t.TempDir()
 	keyFile := filepath.Join(dir, "key.pem")
@@ -685,6 +688,7 @@ func TestLongMultilineSecretOnDisk(t *testing.T) {
 	}
 	jobs := NewJobs(filepath.Join(dir, "shell-jobs"))
 	jobs.Redact = func(s string) string { return strings.ReplaceAll(s, secret, "[secret]") }
+	jobs.Forms = func() []string { return []string{secret} }
 	if err := jobs.Load(); err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +735,7 @@ func TestLongSecretSplitAcrossWrites(t *testing.T) {
 	w := newJobWriter(f, defaultJobBytes, func(s string) string {
 		return strings.ReplaceAll(s, secret, "[secret]")
 	})
-	w.retain = func() int { return len(secret) + 1 }
+	w.forms = func() []string { return []string{secret} }
 	if _, err := w.Write([]byte(secret[:800])); err != nil {
 		t.Fatal(err)
 	}
@@ -758,6 +762,7 @@ func TestStreamOffsetDoesNotMoveBackward(t *testing.T) {
 	w := newJobWriter(f, 4096, func(s string) string {
 		return strings.ReplaceAll(s, "SUPERSECRET", "[secret]")
 	})
+	w.forms = func() []string { return []string{"SUPERSECRET"} }
 	if _, err := w.Write([]byte("pre SUPERSE")); err != nil {
 		t.Fatal(err)
 	}
@@ -784,9 +789,9 @@ func TestJobWriterTrickleStaysSmall(t *testing.T) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		w := newJobWriter(f, defaultJobBytes, func(s string) string {
-			return strings.ReplaceAll(s, "sk-ABCDEFGHIJKLMNOPQRST", "[redacted]")
-		})
+		redact, forms := benchRedactor()
+		w := newJobWriter(f, defaultJobBytes, redact)
+		w.forms = forms
 		line := []byte("ok  \txbot/internal/some/package\t0.123s some more output text\n")
 		for i := 0; i < defaultJobBytes/len(line)+10; i++ {
 			if _, err := w.Write(line); err != nil {
@@ -815,9 +820,9 @@ func BenchmarkJobWriterBulk(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	w := newJobWriter(f, defaultJobBytes, func(s string) string {
-		return strings.ReplaceAll(s, "sk-ABCDEFGHIJKLMNOPQRST", "[redacted]")
-	})
+	redact, forms := benchRedactor()
+	w := newJobWriter(f, defaultJobBytes, redact)
+	w.forms = forms
 	if _, err := w.Write(chunk); err != nil {
 		b.Fatal(err)
 	}
@@ -835,9 +840,9 @@ func BenchmarkJobWriterTrickle(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	w := newJobWriter(f, defaultJobBytes, func(s string) string {
-		return strings.ReplaceAll(s, "sk-ABCDEFGHIJKLMNOPQRST", "[redacted]")
-	})
+	redact, forms := benchRedactor()
+	w := newJobWriter(f, defaultJobBytes, redact)
+	w.forms = forms
 	line := []byte("ok  \txbot/internal/some/package\t0.123s some more output text\n")
 	for i := 0; i < defaultJobBytes/len(line)+10; i++ {
 		if _, err := w.Write(line); err != nil {
@@ -850,6 +855,96 @@ func BenchmarkJobWriterTrickle(b *testing.B) {
 		if _, err := w.Write(line); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// benchRedactor replaces a short token and a ~1.7 KiB PEM form, so the
+// prefix-hold scan runs on the same shape of secret the vault would list.
+func benchRedactor() (func(string) string, func() []string) {
+	secret := "sk-ABCDEFGHIJKLMNOPQRST"
+	var b strings.Builder
+	b.WriteString("-----BEGIN " + "PRIVATE KEY-----\n")
+	line := strings.Repeat("M", 64)
+	for i := 0; i < 26; i++ {
+		b.WriteString(line + "\n")
+	}
+	b.WriteString("-----END " + "PRIVATE KEY-----")
+	pem := b.String()
+	forms := []string{pem, secret}
+	redact := func(s string) string {
+		s = strings.ReplaceAll(s, pem, "[redacted]")
+		return strings.ReplaceAll(s, secret, "[redacted]")
+	}
+	return redact, func() []string { return forms }
+}
+
+func TestPrefixSuffixHold(t *testing.T) {
+	cases := []struct {
+		raw, form string
+		want      int
+	}{
+		{"xxSECRET", "SECRET", 6},
+		{"xxSECR", "SECRET", 4},
+		{"hello\n", "SECRET", 0},
+		{"SECRET", "SECRET", 6},
+		{"SECRET\n", "SECRET", 0},
+		{"aaaa", "aaa", 3},
+		{"baaa", "aaa", 3},
+		{"xyz", "aaa", 0},
+		{"pre SUPERSE", "SUPERSECRET", 7},
+	}
+	for _, tc := range cases {
+		got := prefixSuffixLen(tc.raw, tc.form, prefixFunc(tc.form))
+		if got != tc.want {
+			t.Errorf("raw %q form %q: got %d want %d", tc.raw, tc.form, got, tc.want)
+		}
+	}
+}
+
+func TestShortRunningOutputIsVisible(t *testing.T) {
+	dir := t.TempDir()
+	jobs := NewJobs(dir)
+	if err := jobs.Load(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := jobs.Run(context.Background(), RunRequest{
+		Command:    "printf 'Compiling…\\nerror: missing dep foo\\n'; sleep 30",
+		Background: true,
+		Timeout:    time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := jobIDFrom(out)
+	t.Cleanup(func() { _, _ = jobs.Cancel(id) })
+	deadline := time.Now().Add(2 * time.Second)
+	var text string
+	for {
+		text, err = jobs.Output(id, 0, 0)
+		if err == nil && strings.Contains(text, "Compiling") && strings.Contains(text, "error: missing dep foo") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("output %q err %v", text, err)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if strings.Contains(text, "held_bytes:") {
+		t.Fatalf("banner was held back: %s", text)
+	}
+	if !strings.Contains(text, "next_offset:") {
+		t.Fatalf("%s", text)
+	}
+	st, err := jobs.Status(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Status != "running" || st.Bytes == 0 {
+		t.Fatalf("status %+v", st)
+	}
+	disk, err := os.ReadFile(st.Output)
+	if err != nil || !strings.Contains(string(disk), "missing dep foo") {
+		t.Fatalf("file %q err %v", disk, err)
 	}
 }
 

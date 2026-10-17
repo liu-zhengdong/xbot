@@ -36,10 +36,6 @@ const (
 	maxKeptJobs = 20
 	// maxJobAge is how long a finished job is kept. Running jobs are not aged out.
 	maxJobAge = 7 * 24 * time.Hour
-	// MinRetain is the least raw tail held back so a secret split across writes
-	// is redacted before any of it is committed. Jobs.Retain can raise it to
-	// the longest known secret.
-	MinRetain = 1024
 )
 
 // Job is one shell command tracked for this process. Status is running, done,
@@ -60,6 +56,9 @@ type Job struct {
 	// Bytes is the redacted stream length. Dropped is the prefix no longer in the file.
 	Bytes   int `json:"bytes,omitempty"`
 	Dropped int `json:"dropped,omitempty"`
+	// Held is raw bytes still in memory because they might begin a secret.
+	// It is live state, not stored: a restart has already lost that tail.
+	Held int `json:"-"`
 	// Local is true only for a job this process started. It is not stored.
 	Local bool `json:"-"`
 }
@@ -84,10 +83,10 @@ type Jobs struct {
 	OnDone   func(Job)
 	Now      func() time.Time
 	MaxBytes int
-	// Retain reports how many raw bytes to hold back. The kernel sets it from
-	// the longest vault secret and calls it again when the vault changes.
-	// Nil means MinRetain.
-	Retain func() int
+	// Forms lists the secret strings Redact replaces, including encoded forms.
+	// The writer holds a suffix of pending output only when that suffix is a
+	// prefix of one of these. Nil means nothing is held for a secret.
+	Forms func() []string
 
 	mu     sync.Mutex
 	metaMu sync.Mutex
@@ -131,16 +130,6 @@ func (j *Jobs) outputCap() int {
 		return j.MaxBytes
 	}
 	return defaultJobBytes
-}
-
-func (j *Jobs) retainNow() int {
-	n := MinRetain
-	if j != nil && j.Retain != nil {
-		if v := j.Retain(); v > n {
-			n = v
-		}
-	}
-	return n
 }
 
 // Load reads job records. A record still marked running is lost, unless its
@@ -262,10 +251,11 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 		return "", fmt.Errorf("shell: no such job %s", id)
 	}
 	job := lv.snapshot()
-	var written, discarded int
+	var written, discarded, held int
 	if lv.w != nil {
 		_ = lv.w.Flush()
 		written, discarded = lv.w.span()
+		held = lv.w.held()
 	} else {
 		written, discarded = job.Bytes, job.Dropped
 	}
@@ -322,6 +312,9 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	chunk = clip.Valid(chunk)
 	var b strings.Builder
 	fmt.Fprintf(&b, "status: %s\noffset: %d\nnext_offset: %d\n", job.Status, offset, next)
+	if held > 0 {
+		fmt.Fprintf(&b, "held_bytes: %d\n", held)
+	}
 	if droppedNote {
 		fmt.Fprintf(&b, "dropped_before: %d\n[dropped] output before byte %d is gone\n", discarded, discarded)
 	}
@@ -378,13 +371,14 @@ func (j *Jobs) Shutdown() {
 	}
 }
 
-// Status returns one job. An unknown id is an error.
+// Status returns one job. An unknown id is an error. Bytes and Held for a
+// running job come from the live writer, not the record on disk.
 func (j *Jobs) Status(id string) (Job, error) {
 	lv := j.get(id)
 	if lv == nil {
 		return Job{}, fmt.Errorf("shell: no such job %s", id)
 	}
-	return lv.snapshot(), nil
+	return j.freshen(lv), nil
 }
 
 // List returns every job this process still tracks, oldest first.
@@ -393,13 +387,33 @@ func (j *Jobs) List() []Job {
 		return nil
 	}
 	j.mu.Lock()
-	defer j.mu.Unlock()
-	out := make([]Job, 0, len(j.jobs))
+	lives := make([]*live, 0, len(j.jobs))
 	for _, lv := range j.jobs {
-		out = append(out, lv.snapshot())
+		lives = append(lives, lv)
+	}
+	j.mu.Unlock()
+	out := make([]Job, 0, len(lives))
+	for _, lv := range lives {
+		out = append(out, j.freshen(lv))
 	}
 	sortJobs(out)
 	return out
+}
+
+// freshen fills Bytes and Held from the writer while the job is still running.
+func (j *Jobs) freshen(lv *live) Job {
+	job := lv.snapshot()
+	if lv == nil || lv.w == nil || job.Status != "running" {
+		return job
+	}
+	if err := lv.w.Flush(); err != nil {
+		return job
+	}
+	written, dropped := lv.w.span()
+	job.Bytes = written
+	job.Dropped = dropped
+	job.Held = lv.w.held()
+	return job
 }
 
 // Cancel kills the job's process group. A job that is not running is reported
@@ -445,7 +459,7 @@ func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
 		return nil, err
 	}
 	w := newJobWriter(f, j.outputCap(), j.redact)
-	w.retain = j.retainNow
+	w.forms = j.Forms
 	cmd := exec.Command("sh", "-c", req.Command)
 	setGroup(cmd)
 	if req.Dir != "" {
@@ -869,27 +883,31 @@ type redactSpan struct {
 type redactNeedle struct {
 	old  string
 	repl string
+	pi   []int
 }
 
-// jobWriter appends redacted output. The last retain raw bytes stay in pending
-// and are never written: a known secret could still start there. Each Write
-// redacts the whole pending buffer, maps raw offsets through the replacement
-// spans, and appends only the prefix that covers raw bytes before
-// len(pending)-retain. Close redacts whatever remains and flushes it.
-// Committed bytes are not rewritten, so the stream length never shrinks.
-// written is that committed length; discarded is the prefix rotated off the file.
+// jobWriter appends redacted output. A suffix of pending stays in memory only
+// when it is a prefix of a known secret form, so a secret split across writes
+// is redacted before any of it is committed. Anything that cannot start a
+// secret is committed as soon as its redaction is complete. Close redacts
+// whatever remains. Committed bytes are not rewritten, so the stream length
+// never shrinks. written is that committed length; discarded is the prefix
+// rotated off the file.
 type jobWriter struct {
-	mu         sync.Mutex
-	f          *os.File
-	max        int
-	redact     func(string) string
-	retain     func() int
-	needles    []redactNeedle
-	pending    []byte
-	produced   int // committed redacted bytes, monotonic
-	written    int // high-water stream end; equals produced
-	discarded  int
-	fileStable int // committed bytes currently in the file
+	mu          sync.Mutex
+	f           *os.File
+	max         int
+	redact      func(string) string
+	forms       func() []string
+	formKey     uint64
+	formNeedles []redactNeedle
+	formSet     bool
+	needles     []redactNeedle
+	pending     []byte
+	produced    int // committed redacted bytes, monotonic
+	written     int // high-water stream end; equals produced
+	discarded   int
+	fileStable  int // committed bytes currently in the file
 }
 
 func newJobWriter(f *os.File, max int, redact func(string) string) *jobWriter {
@@ -915,8 +933,8 @@ func (w *jobWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Flush commits the safe redacted prefix. The retained raw tail stays in
-// memory and is not written.
+// Flush commits the safe redacted prefix. A suffix that might still begin a
+// secret stays in memory and is not written.
 func (w *jobWriter) Flush() error {
 	if w == nil {
 		return nil
@@ -926,18 +944,114 @@ func (w *jobWriter) Flush() error {
 	return w.flushBlock(false)
 }
 
-func (w *jobWriter) hold() int {
-	n := MinRetain
-	if w.retain != nil {
-		if v := w.retain(); v > n {
-			n = v
+// prefixFunc is the Knuth–Morris–Pratt border table. pi[i] is the longest
+// proper prefix of form[:i+1] that is also a suffix of it.
+func prefixFunc(form string) []int {
+	pi := make([]int, len(form))
+	for i := 1; i < len(form); i++ {
+		j := pi[i-1]
+		for j > 0 && form[i] != form[j] {
+			j = pi[j-1]
+		}
+		if form[i] == form[j] {
+			j++
+		}
+		pi[i] = j
+	}
+	return pi
+}
+
+// prefixSuffixLen is the longest k such that raw ends with form[:k]. The
+// border table makes one pass over the tail. A full copy of form at the end
+// counts: that secret may still grow into a longer form.
+func prefixSuffixLen(raw, form string, pi []int) int {
+	if form == "" || raw == "" || len(pi) != len(form) {
+		return 0
+	}
+	if len(raw) > len(form) {
+		raw = raw[len(raw)-len(form):]
+	}
+	j := 0
+	for i := 0; i < len(raw); i++ {
+		for j > 0 && raw[i] != form[j] {
+			j = pi[j-1]
+		}
+		if raw[i] == form[j] {
+			j++
+		}
+		if j == len(form) && i+1 < len(raw) {
+			j = pi[j-1]
 		}
 	}
-	return n
+	return j
+}
+
+// retreatCut moves cut back to the start of any form that straddles it.
+// The caller has already held the longest prefix-suffix; this catches a
+// completed form whose last byte is the first byte of that suffix.
+func retreatCut(raw string, forms []redactNeedle, cut int) int {
+	if cut <= 0 || cut > len(raw) {
+		return cut
+	}
+	changed := true
+	for changed {
+		changed = false
+		for _, form := range forms {
+			old := form.old
+			if old == "" || len(old) > len(raw) {
+				continue
+			}
+			from := cut - len(old) + 1
+			if from < 0 {
+				from = 0
+			}
+			to := cut + len(old) - 1
+			if to > len(raw) {
+				to = len(raw)
+			}
+			seg := raw[from:to]
+			off := 0
+			for off < len(seg) {
+				i := strings.Index(seg[off:], old)
+				if i < 0 {
+					break
+				}
+				abs := from + off + i
+				if abs < cut && abs+len(old) > cut {
+					cut = abs
+					changed = true
+					break
+				}
+				off += i + 1
+			}
+		}
+	}
+	if cut < 0 {
+		return 0
+	}
+	return cut
+}
+
+func (w *jobWriter) hold(raw string) int {
+	best := 0
+	for _, n := range w.cachedFormNeedles() {
+		k := prefixSuffixLen(raw, n.old, n.pi)
+		if k > best {
+			best = k
+		}
+	}
+	return best
+}
+
+func (w *jobWriter) formList() []string {
+	if w == nil || w.forms == nil {
+		return nil
+	}
+	return w.forms()
 }
 
 // flushBlock appends the final-redacted prefix of pending. final also commits
-// the retained tail. Bytes already committed are not rewritten.
+// the held tail. Bytes already committed are not rewritten.
 func (w *jobWriter) flushBlock(final bool) error {
 	if w.f == nil {
 		return nil
@@ -948,7 +1062,17 @@ func (w *jobWriter) flushBlock(final bool) error {
 	}
 	hold := 0
 	if !final {
-		hold = w.hold()
+		s := string(raw)
+		hold = w.hold(s)
+		if len(raw) <= hold {
+			return nil
+		}
+		// A form can share its last byte with the held suffix. That byte is
+		// already inside the suffix hold, so the match is not a span yet, and
+		// committing the earlier bytes would freeze a redaction the finished
+		// form would have written differently.
+		cut := retreatCut(s, w.cachedFormNeedles(), len(raw)-hold)
+		hold = len(raw) - cut
 		if len(raw) <= hold {
 			return nil
 		}
@@ -1013,6 +1137,9 @@ func (w *jobWriter) redactSpans(raw string) (red string, spans []redactSpan, sam
 	if red == raw {
 		return red, nil, true, true
 	}
+	if spanned, hit := coverNeedles(raw, w.cachedFormNeedles()); hit && projectSpans(raw, spanned, len(raw)) == red {
+		return red, spanned, false, true
+	}
 	if spanned, hit := coverNeedles(raw, w.needles); hit && projectSpans(raw, spanned, len(raw)) == red {
 		return red, spanned, false, true
 	}
@@ -1024,6 +1151,45 @@ func (w *jobWriter) redactSpans(raw string) (red string, spans []redactSpan, sam
 		w.remember(raw[sp.start:sp.end], sp.repl)
 	}
 	return red, learned, false, true
+}
+
+// cachedFormNeedles is the longest-first replacement list for Forms.
+// A projection that does not match the redactor is ignored by the caller.
+func (w *jobWriter) cachedFormNeedles() []redactNeedle {
+	forms := w.formList()
+	key := formsKey(forms)
+	if w.formSet && key == w.formKey {
+		return w.formNeedles
+	}
+	needles := make([]redactNeedle, 0, len(forms))
+	for _, form := range forms {
+		if form == "" || w.redact == nil {
+			continue
+		}
+		repl := w.redact(form)
+		if repl == form {
+			continue
+		}
+		needles = append(needles, redactNeedle{old: form, repl: repl, pi: prefixFunc(form)})
+	}
+	w.formKey = key
+	w.formNeedles = needles
+	w.formSet = true
+	return needles
+}
+
+func formsKey(forms []string) uint64 {
+	var h uint64 = 14695981039346656037
+	for _, f := range forms {
+		h ^= uint64(len(f))
+		h *= 1099511628211
+		for i := 0; i < len(f); i++ {
+			h ^= uint64(f[i])
+			h *= 1099511628211
+		}
+	}
+	h ^= uint64(len(forms))
+	return h
 }
 
 func (w *jobWriter) remember(old, repl string) {
@@ -1186,25 +1352,28 @@ func learnSpans(raw, red string, redact func(string) string) ([]redactSpan, bool
 	return spans, true
 }
 
-// firstMatchEnd returns the smallest d > 0 such that redact(piece[:d]) differs
-// from piece[:d]. For exact ReplaceAll this is the end of the first match.
+// firstMatchEnd returns the end of the first replacement in piece. The cut is
+// the shortest d where the redactor's output is exactly redact(piece[:d]) plus
+// redact(piece[d:]). A shorter secret that is only a prefix of the real match
+// fails that check, so the longer value is consumed whole.
 func firstMatchEnd(piece string, redact func(string) string) (int, bool) {
-	lo, hi := 1, len(piece)
-	found := 0
-	for lo <= hi {
-		mid := (lo + hi) / 2
-		part := piece[:mid]
-		if redact(part) == part {
-			lo = mid + 1
-			continue
-		}
-		found = mid
-		hi = mid - 1
-	}
-	if found == 0 {
+	if redact == nil || piece == "" {
 		return 0, false
 	}
-	return found, true
+	full := redact(piece)
+	if full == piece {
+		return 0, false
+	}
+	for d := 1; d <= len(piece); d++ {
+		head := redact(piece[:d])
+		if head == piece[:d] {
+			continue
+		}
+		if head+redact(piece[d:]) == full {
+			return d, true
+		}
+	}
+	return 0, false
 }
 
 func coverNeedles(raw string, needles []redactNeedle) ([]redactSpan, bool) {
@@ -1254,6 +1423,15 @@ func (w *jobWriter) span() (written, discarded int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.written, w.discarded
+}
+
+func (w *jobWriter) held() int {
+	if w == nil {
+		return 0
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.pending)
 }
 
 // snapshot commits completed lines and returns the retained file plus stream offsets.
