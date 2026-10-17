@@ -61,7 +61,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	if k.Vault != nil && namedLink(links, link.NameTools) {
 		list = append(list, &tools.HTTPRequest{Store: k.Vault}, &tools.SecretList{Store: k.Vault})
 	}
-	if namedLink(links, link.NameTools) {
+	if shellBackgroundOn(links) {
 		list = append(list, shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k})
 	}
 	list = k.modelAgentTools(list)

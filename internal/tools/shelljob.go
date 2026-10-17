@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,21 +31,35 @@ const (
 	maxJobRead = 32 << 10
 	// maxJobTail is the most lines a tail read returns.
 	maxJobTail = 200
+	// maxKeptJobs is how many finished jobs one bot keeps on disk.
+	maxKeptJobs = 20
+	// maxJobAge is how long a finished job is kept. Running jobs are not aged out.
+	maxJobAge = 7 * 24 * time.Hour
+	// secretOverlap is held back with the incomplete line so a secret split
+	// across writes is redacted before any part of it is appended.
+	secretOverlap = 1024
 )
 
 // Job is one shell command tracked for this process. Status is running, done,
 // cancelled, or lost. lost means a new process found the record still running
 // and did not try to signal the old pid.
 type Job struct {
-	ID       string    `json:"id"`
-	Command  string    `json:"command"`
-	Status   string    `json:"status"`
-	ExitCode int       `json:"exit_code,omitempty"`
-	PID      int       `json:"pid,omitempty"`
-	Output   string    `json:"output"`
-	Started  time.Time `json:"started"`
-	Ended    time.Time `json:"ended,omitempty"`
-	TimedOut bool      `json:"timed_out,omitempty"`
+	ID        string    `json:"id"`
+	Command   string    `json:"command"`
+	Status    string    `json:"status"`
+	ExitCode  int       `json:"exit_code,omitempty"`
+	PID       int       `json:"pid,omitempty"`
+	Output    string    `json:"output"`
+	Started   time.Time `json:"started"`
+	Ended     time.Time `json:"ended,omitempty"`
+	TimedOut  bool      `json:"timed_out,omitempty"`
+	Notified  bool      `json:"notified,omitempty"`
+	ProcStart int64     `json:"proc_start,omitempty"`
+	// Bytes is the redacted stream length. Dropped is the prefix no longer in the file.
+	Bytes   int `json:"bytes,omitempty"`
+	Dropped int `json:"dropped,omitempty"`
+	// Local is true only for a job this process started. It is not stored.
+	Local bool `json:"-"`
 }
 
 // RunRequest is one shell invocation that may outlive its timeout.
@@ -112,8 +127,11 @@ func (j *Jobs) outputCap() int {
 	return defaultJobBytes
 }
 
-// Load reads job records and marks any still running as lost. It does not
-// signal the stored pid: after a restart that pid may belong to someone else.
+// Load reads job records. A record still marked running is lost, unless its
+// pid and proc_start still name a live process: that job belongs to a serve
+// that is still up, and this process must not rewrite it or signal it.
+// Loaded jobs are not Local. Finished jobs older than maxJobAge, and finished
+// jobs past maxKeptJobs, are removed.
 func (j *Jobs) Load() error {
 	if j == nil || j.Dir == "" {
 		return errors.New("shell: no job directory")
@@ -126,7 +144,6 @@ func (j *Jobs) Load() error {
 		return err
 	}
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.jobs == nil {
 		j.jobs = map[string]*live{}
 	}
@@ -147,14 +164,20 @@ func (j *Jobs) Load() error {
 			continue
 		}
 		if job.Status == "running" {
+			if sameProcess(job.PID, job.ProcStart) {
+				continue
+			}
 			job.Status = "lost"
 			job.Ended = j.now()
 			if err := j.writeMeta(job); err != nil {
+				j.mu.Unlock()
 				return err
 			}
 		}
 		j.jobs[id] = &live{job: job, done: closedChan()}
 	}
+	j.mu.Unlock()
+	j.prune()
 	return nil
 }
 
@@ -213,50 +236,75 @@ func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
 	}
 }
 
-// Output reads a job's output file. tail > 0 returns the last tail lines.
-// Otherwise offset is a byte offset into the file. The result is capped.
+// Output reads a job's output. offset is a byte offset into the redacted
+// stream, not into the retained file. tail > 0 returns the last tail lines.
+// When the retained file no longer has the requested prefix, the result says
+// how much was dropped. The result is capped.
 func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	lv := j.get(id)
 	if lv == nil {
 		return "", fmt.Errorf("shell: no such job %s", id)
 	}
+	job := lv.snapshot()
+	var written, discarded int
 	if lv.w != nil {
 		_ = lv.w.Flush()
+		written, discarded = lv.w.span()
+	} else {
+		written, discarded = job.Bytes, job.Dropped
 	}
-	body, err := os.ReadFile(lv.snapshot().Output)
+	body, err := os.ReadFile(job.Output)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	job := lv.snapshot()
-	var chunk string
-	next := offset
-	truncated := false
+	if written < discarded+len(body) {
+		written = discarded + len(body)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	droppedNote := false
+	start := offset
 	if tail > 0 {
 		if tail > maxJobTail {
 			tail = maxJobTail
 		}
+		start = discarded
+		droppedNote = discarded > 0
+	} else if start < discarded {
+		start = discarded
+		droppedNote = true
+	}
+	fileOff := start - discarded
+	if fileOff < 0 {
+		fileOff = 0
+	}
+	if fileOff > len(body) {
+		fileOff = len(body)
+	}
+	var chunk string
+	next := start
+	truncated := false
+	if tail > 0 {
 		chunk = tailLines(string(body), tail)
-		next = len(body)
+		next = written
 	} else {
-		if offset < 0 {
-			offset = 0
-		}
-		if offset > len(body) {
-			offset = len(body)
-		}
-		chunk = string(body[offset:])
-		next = offset + len(chunk)
+		chunk = string(body[fileOff:])
+		next = start + len(chunk)
 	}
 	if len(chunk) > maxJobRead {
 		chunk = chunk[:maxJobRead]
 		truncated = true
 		if tail <= 0 {
-			next = offset + len(chunk)
+			next = start + len(chunk)
 		}
 	}
 	chunk = clip.Valid(chunk)
 	var b strings.Builder
 	fmt.Fprintf(&b, "status: %s\noffset: %d\nnext_offset: %d\n", job.Status, offset, next)
+	if droppedNote {
+		fmt.Fprintf(&b, "dropped_before: %d\n[dropped] output before byte %d is gone\n", discarded, discarded)
+	}
 	if chunk != "" {
 		b.WriteString(strings.TrimRight(chunk, "\n"))
 		b.WriteByte('\n')
@@ -265,6 +313,49 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 		b.WriteString("[truncated]\n")
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+// MarkNotified records that this job was put on the reminder channel or woken.
+// A later process will not announce it again.
+func (j *Jobs) MarkNotified(id string) {
+	lv := j.get(id)
+	if lv == nil {
+		return
+	}
+	j.metaMu.Lock()
+	defer j.metaMu.Unlock()
+	lv.mu.Lock()
+	if lv.job.Notified {
+		lv.mu.Unlock()
+		return
+	}
+	lv.job.Notified = true
+	job := lv.job
+	lv.mu.Unlock()
+	_ = j.writeMeta(job)
+}
+
+// Shutdown kills every process group this Jobs value still owns. It does not
+// signal a job that was only loaded from disk.
+func (j *Jobs) Shutdown() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	var owned []*live
+	for _, lv := range j.jobs {
+		job := lv.snapshot()
+		if job.Local && job.Status == "running" && lv.cmd != nil && lv.cmd.Process != nil {
+			owned = append(owned, lv)
+		}
+	}
+	j.mu.Unlock()
+	for _, lv := range owned {
+		j.kill(lv)
+	}
+	for _, lv := range owned {
+		<-lv.done
+	}
 }
 
 // Status returns one job. An unknown id is an error.
@@ -357,6 +448,7 @@ func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
 		done:     make(chan struct{}),
 		detached: detach,
 	}
+	lv.job.Local = true
 	j.jobs[id] = lv
 	j.mu.Unlock()
 	if err := cmd.Start(); err != nil {
@@ -366,6 +458,7 @@ func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
 	}
 	lv.mu.Lock()
 	lv.job.PID = cmd.Process.Pid
+	lv.job.ProcStart = processStartTicks(cmd.Process.Pid)
 	lv.mu.Unlock()
 	go func() {
 		err := cmd.Wait()
@@ -411,6 +504,11 @@ func (j *Jobs) finish(lv *live, waitErr error) {
 	}
 	lv.job.ExitCode = exitCode(waitErr)
 	lv.job.Ended = j.now()
+	if lv.w != nil {
+		written, dropped := lv.w.span()
+		lv.job.Bytes = written
+		lv.job.Dropped = dropped
+	}
 	job := lv.job
 	lv.mu.Unlock()
 	err := j.writeMeta(job)
@@ -422,6 +520,7 @@ func (j *Jobs) finish(lv *live, waitErr error) {
 	if detached && j.OnDone != nil {
 		j.OnDone(job)
 	}
+	j.prune()
 }
 
 func (j *Jobs) finishForeground(lv *live, maxOut int, status string) (string, error) {
@@ -479,6 +578,58 @@ func (j *Jobs) kill(lv *live) {
 	cmd := lv.cmd
 	lv.mu.Unlock()
 	_ = killProcess(cmd)
+}
+
+// prune drops finished jobs older than maxJobAge and, past that, the oldest
+// finished jobs until maxKeptJobs remain. Running jobs stay.
+func (j *Jobs) prune() {
+	if j == nil {
+		return
+	}
+	now := j.now()
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	type item struct {
+		id  string
+		job Job
+	}
+	var done []item
+	for id, lv := range j.jobs {
+		job := lv.snapshot()
+		if job.Status == "" || job.Status == "running" {
+			continue
+		}
+		done = append(done, item{id, job})
+	}
+	for i := 1; i < len(done); i++ {
+		for k := i; k > 0; k-- {
+			a, b := done[k-1].job, done[k].job
+			if a.Ended.Before(b.Ended) || (a.Ended.Equal(b.Ended) && a.ID <= b.ID) {
+				break
+			}
+			done[k-1], done[k] = done[k], done[k-1]
+		}
+	}
+	drop := func(it item) {
+		delete(j.jobs, it.id)
+		if it.job.Output != "" {
+			_ = os.Remove(it.job.Output)
+		}
+		_ = os.Remove(j.metaPath(it.id))
+	}
+	var stay []item
+	for _, it := range done {
+		if !it.job.Ended.IsZero() && now.Sub(it.job.Ended) > maxJobAge {
+			drop(it)
+			continue
+		}
+		stay = append(stay, it)
+	}
+	if extra := len(stay) - maxKeptJobs; extra > 0 {
+		for _, it := range stay[:extra] {
+			drop(it)
+		}
+	}
 }
 
 func (j *Jobs) remove(lv *live) {
@@ -686,15 +837,22 @@ func envAssign(s string) bool {
 	return r == '_' || unicode.IsLetter(r)
 }
 
-// jobWriter keeps a redacted tail of the process output. The raw tail stays in
-// memory until flush, then the whole tail is redacted and rewritten, so a
-// secret split across writes does not land in the file.
+// jobWriter appends redacted output. It holds the incomplete line plus
+// secretOverlap bytes so a secret split across writes is redacted before it
+// is appended. The file grows by appending until it is past the cap, then the
+// head is dropped in one truncation. Offsets are against the redacted stream:
+// written is the total appended, discarded is the dropped prefix.
 type jobWriter struct {
-	mu     sync.Mutex
-	f      *os.File
-	raw    []byte
-	max    int
-	redact func(string) string
+	mu        sync.Mutex
+	f         *os.File
+	max       int
+	redact    func(string) string
+	pending   []byte
+	carry     []byte // raw tail already on disk, at most secretOverlap, so a split secret can still be redacted
+	carryLen  int    // file bytes that carry occupies at the end
+	written   int
+	discarded int
+	fileSize  int
 }
 
 func newJobWriter(f *os.File, max int, redact func(string) string) *jobWriter {
@@ -713,49 +871,181 @@ func (w *jobWriter) Write(p []byte) (int, error) {
 	if w.f == nil {
 		return len(p), nil
 	}
-	w.raw = append(w.raw, p...)
-	if len(w.raw) > w.max {
-		w.raw = append([]byte(nil), w.raw[len(w.raw)-w.max:]...)
-		if i := bytes.IndexByte(w.raw, '\n'); i >= 0 && i+1 < len(w.raw) {
-			w.raw = append([]byte(nil), w.raw[i+1:]...)
-		}
-	}
-	// Flush every write so a reader sees output while the command is still running.
-	// The retained tail is at most w.max, so the rewrite stays bounded.
-	if err := w.flushLocked(); err != nil {
+	w.pending = append(w.pending, p...)
+	if err := w.drainLocked(false); err != nil {
 		return len(p), err
 	}
 	return len(p), nil
 }
 
-// Flush redacts the retained tail and rewrites the file.
+// Flush appends every completed line. The incomplete line stays buffered.
 func (w *jobWriter) Flush() error {
 	if w == nil {
 		return nil
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.flushLocked()
+	return w.drainLocked(false)
 }
 
-func (w *jobWriter) flushLocked() error {
+func (w *jobWriter) redactBytes(p []byte) []byte {
+	if len(p) == 0 {
+		return nil
+	}
+	if w.redact == nil {
+		return append([]byte(nil), p...)
+	}
+	return []byte(w.redact(string(p)))
+}
+
+// drainLocked appends everything received, including an incomplete line, so a
+// reader sees output while the command is still running. The last
+// secretOverlap raw bytes stay in carry. A later write that finishes a secret
+// rewrites only that overlap, not the whole file.
+func (w *jobWriter) drainLocked(bool) error {
 	if w.f == nil {
 		return nil
 	}
-	text := string(w.raw)
-	if w.redact != nil {
-		text = w.redact(text)
+	for {
+		nl := bytes.IndexByte(w.pending, '\n')
+		if nl < 0 {
+			break
+		}
+		line := append([]byte(nil), w.pending[:nl+1]...)
+		w.pending = append([]byte(nil), w.pending[nl+1:]...)
+		if err := w.appendRedacted(line); err != nil {
+			return err
+		}
 	}
-	if _, err := w.f.Seek(0, ioSeekStart); err != nil {
+	if len(w.pending) == 0 {
+		return nil
+	}
+	raw := w.pending
+	w.pending = nil
+	return w.appendRedacted(raw)
+}
+
+func (w *jobWriter) appendRedacted(raw []byte) error {
+	if len(raw) == 0 || w.f == nil {
+		return nil
+	}
+	window := make([]byte, 0, len(w.carry)+len(raw))
+	window = append(window, w.carry...)
+	window = append(window, raw...)
+	red := w.redactBytes(window)
+	old := w.redactBytes(w.carry)
+	spanned := !bytes.HasPrefix(red, old)
+	if !spanned {
+		extra := red[len(old):]
+		if len(extra) > 0 {
+			if _, err := w.f.Write(extra); err != nil {
+				return err
+			}
+			w.written += len(extra)
+			w.fileSize += len(extra)
+		}
+	} else if err := w.rewriteTail(red); err != nil {
+		return err
+	}
+	if spanned {
+		w.carry = nil
+		w.carryLen = 0
+	} else if len(window) > secretOverlap {
+		w.carry = append([]byte(nil), window[len(window)-secretOverlap:]...)
+		w.carryLen = len(w.redactBytes(w.carry))
+	} else {
+		w.carry = append([]byte(nil), window...)
+		w.carryLen = len(red)
+	}
+	return w.rotateLocked()
+}
+
+func (w *jobWriter) rewriteTail(red []byte) error {
+	back := w.carryLen
+	if back > w.fileSize {
+		back = w.fileSize
+	}
+	if _, err := w.f.Seek(int64(w.fileSize-back), io.SeekStart); err != nil {
+		return err
+	}
+	if err := w.f.Truncate(int64(w.fileSize - back)); err != nil {
+		return err
+	}
+	if _, err := w.f.Write(red); err != nil {
+		return err
+	}
+	w.written = w.written - back + len(red)
+	w.fileSize = w.fileSize - back + len(red)
+	return nil
+}
+
+// rotateLocked drops the head once the file is more than a quarter past the cap,
+// so a full tail is not rewritten on every line.
+func (w *jobWriter) rotateLocked() error {
+	if w.f == nil || w.fileSize <= w.max {
+		return nil
+	}
+	slack := w.max / 4
+	if w.max < 4096 {
+		slack = 0
+	}
+	if w.fileSize <= w.max+slack {
+		return nil
+	}
+	keep := w.max
+	if keep > w.fileSize {
+		keep = w.fileSize
+	}
+	drop := w.fileSize - keep
+	buf := make([]byte, keep)
+	if _, err := w.f.ReadAt(buf, int64(drop)); err != nil {
+		return err
+	}
+	if i := bytes.IndexByte(buf, '\n'); i >= 0 && i+1 < len(buf) {
+		drop += i + 1
+		buf = buf[i+1:]
+	}
+	if _, err := w.f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	if err := w.f.Truncate(0); err != nil {
 		return err
 	}
-	if _, err := w.f.Write([]byte(text)); err != nil {
+	if _, err := w.f.Write(buf); err != nil {
 		return err
 	}
+	w.discarded += drop
+	w.fileSize = len(buf)
 	return nil
+}
+
+func (w *jobWriter) span() (written, discarded int) {
+	if w == nil {
+		return 0, 0
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.written, w.discarded
+}
+
+// snapshot commits completed lines and returns the retained file plus stream offsets.
+func (w *jobWriter) snapshot() (body []byte, written, discarded int, err error) {
+	if w == nil {
+		return nil, 0, 0, nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err = w.drainLocked(false); err != nil {
+		return nil, 0, 0, err
+	}
+	if w.f == nil {
+		return nil, w.written, w.discarded, nil
+	}
+	body, err = io.ReadAll(io.NewSectionReader(w.f, 0, int64(w.fileSize)))
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return body, w.written, w.discarded, nil
 }
 
 func (w *jobWriter) Close() error {
@@ -767,7 +1057,7 @@ func (w *jobWriter) Close() error {
 	if w.f == nil {
 		return nil
 	}
-	err := w.flushLocked()
+	err := w.drainLocked(true)
 	err2 := w.f.Close()
 	w.f = nil
 	if err != nil {
@@ -775,6 +1065,3 @@ func (w *jobWriter) Close() error {
 	}
 	return err2
 }
-
-// ioSeekStart is io.SeekStart without importing io in the signature noise.
-const ioSeekStart = 0

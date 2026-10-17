@@ -26,6 +26,8 @@
 - **`file_change` 的 diff 不能带出密钥文件的内容。** 原因：`.env`、`*.key`、`*.pem`、credentials 一类文件的提醒如果附上 diff，会把刚写进去的值送进模型上下文。这类路径只写 changed。证据：`TestSensitiveFileChangeOmitsDiff`。Seen 1×（2026-10-17）
 - **超时不要杀掉还在出结果的命令；`sleep` 和明显的轮询除外。** 原因：到点杀进程会丢掉长构建和服务器；把 `sleep` 自动转后台又会把空转藏过熔断。证据：`TestShellTimeoutMovesToBackground`、`TestSleepIsNotAutoBackgrounded`。Seen 1×（2026-10-17）
 - **后台命令的输出写在 Bot 目录里，并且先脱敏。** 原因：`/tmp` 会在重启时清空；输出文件里的密钥会在下一轮被 `shell_output` 读回来。证据：`TestBackgroundFileRedactsSecret`、`TestShellJobFileUsesKernelRedactor`。Seen 1×（2026-10-17）
+- **已经报过的后台任务不能只靠进程内的集合去重。** 原因：重启后集合是空的，旧的已完成任务会每条都再开一轮模型。完成标记要写进任务记录，并且只为这个进程自己结束的任务投叫醒。证据：`TestRestartDoesNotRewakeFinishedJobs`。Seen 1×（2026-10-17）
+- **追加的输出不要每次把整段尾部重写一遍。** 原因：尾部满了之后，每写几十个字节都要脱敏并重写 256 KiB。按行追加，只在超过上限时丢掉头部。证据：`TestJobWriterTrickleStaysSmall`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

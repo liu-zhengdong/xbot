@@ -36,6 +36,16 @@ type Shell struct {
 	Shared         string
 	KeyEnv         []string
 	Jobs           *Jobs
+	jobsOnce       sync.Once
+}
+
+// BindJobs sets the job table once. Later calls do not write Jobs, so a shell
+// that is already running can be attached without a data race.
+func (s *Shell) BindJobs(j *Jobs) {
+	if s == nil || j == nil {
+		return
+	}
+	s.jobsOnce.Do(func() { s.Jobs = j })
 }
 
 var (

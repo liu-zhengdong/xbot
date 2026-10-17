@@ -59,9 +59,9 @@
 
 ## shell 后台（研究笔记里的 shell 后台化，本轮称为 M4）
 
-相对待办清单那一版。`shell` 默认超时 120 秒，最长 600 秒，模型可传 `timeout_seconds`。到点不杀进程，转成后台，回一条短结果：任务 id 和输出文件路径。`run_in_background` 立刻转后台。输出写在 `bots/<name>/shell-jobs/<id>.log`（目录 0700，文件 0600），只留尾部最多 256 KiB，写入前对整段尾部脱敏，不写 `/tmp`。`shell_output`（offset 或 tail）、`shell_status`、`shell_cancel`（杀进程组）在权限表里分别是只读、只读、普通。同一 serve 进程里跨回合还在；重启把仍是 running 的标成 lost，不向旧 pid 发信号。完成提醒走已有的提醒通道，种类 `shell_job`，贴在下一步工具返回之后，不打断正在跑的调用。Bot 空闲时往收件箱投一条来源 `shell` 的不可信事件叫醒它，不另开 `bg_` 段，熔断照旧。`sleep`、`watch` 和带 `sleep` 的 `while`/`until` 不自动转后台，交给熔断；显式 `run_in_background` 仍可把 `sleep` 放后台。评测沙箱仍是 30/120 秒并在超时杀掉。没挂任务表的 shell（节点、命令行）也是到点杀掉。
+相对待办清单那一版。`shell` 默认超时 120 秒，最长 600 秒，模型可传 `timeout_seconds`。到点不杀进程，转成后台，回一条短结果：任务 id 和输出文件路径。`run_in_background` 立刻转后台。输出写在 `bots/<name>/shell-jobs/<id>.log`（目录 0700，文件 0600），按行追加并脱敏，未写完的一行和最多 1024 字节重叠留在内存里，跨过重叠的密钥只改写这一小段；文件超过 256 KiB 再丢掉头部。`shell_output` 的 offset 按整段流计算，丢掉的前缀会写明。`shell_output`、`shell_status`、`shell_cancel`（杀进程组）在权限表里分别是只读、只读、普通，只有挂了任务表的 shell 才出现。同一 serve 进程里跨回合还在。重启把对不上 `proc_start` 的 running 标成 lost，不向旧 pid 发信号；另一个进程如果对上了仍活着的 pid 和 `proc_start`，就不改这条记录。完成提醒或叫醒会把 `notified` 写进任务记录，同一次完成不会又提醒又叫醒。只有本进程结束的任务才往收件箱投事件。lost 最多提醒一次。结束的任务只留最近 20 个、且不超过 7 天。`Close` 杀掉本进程拥有的进程组。完成提醒走已有的提醒通道，种类 `shell_job`，贴在下一步工具返回之后，不打断正在跑的调用。Bot 空闲时往收件箱投一条来源 `shell` 的不可信事件叫醒它，不另开 `bg_` 段，熔断照旧。`sleep`、`watch` 和带 `sleep` 的 `while`/`until` 不自动转后台，交给熔断；显式 `run_in_background` 仍可把 `sleep` 放后台。评测沙箱仍是 30/120 秒并在超时杀掉，工具名单不含 `shell_output` / `shell_status` / `shell_cancel`。没挂任务表的 shell（节点、命令行）也是到点杀掉。
 
-假模型回归：`TMPDIR` 在仓库内，`go test -count=1 ./...` 连续三遍，`go test -race ./internal/kernel/...`。本机基准（`go test -bench=BenchmarkShellTailRetain -benchmem -benchtime=200ms`，amd64）：13361 ns/op，25687 B/op。一次尾部改写远低于本机 IPC 5 毫秒预算。不涉及界面帧率。未跑真模型评测，未改网页。Not run: 真模型评测，界面浏览器检查（没有界面改动）。
+假模型回归：`TMPDIR` 在仓库内和默认 `/tmp` 各跑 `go test -count=1 ./...` 连续三遍；`go test -race` 覆盖 `internal/kernel`、`internal/tools`、`internal/eval`、`internal/review`。本机基准（amd64）：`BenchmarkJobWriterTrickle` 3059 ns/op，6656 B/op（尾部已满后每写一行；原先约 0.57 ms、1.9 MB）。远低于本机 IPC 5 毫秒预算。不涉及界面帧率。未跑真模型评测，未改网页。Not run: 真模型评测，界面浏览器检查（没有界面改动）。默认 `TMPDIR` 的第一遍里 `TestControlRunsInTheSegmentItEarns` 一次报 fork_end 为 0，单独再跑 10 次通过，随后三遍全绿。
 
 ## 下个版本（v0.3.1 / v0.4.0）
 v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），撤到下个版本重做，每项配自己的 eval 用例，不靠 give-up 调。

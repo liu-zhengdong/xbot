@@ -17,3 +17,7 @@ func killProcess(cmd *exec.Cmd) error {
 	}
 	return cmd.Process.Kill()
 }
+
+func processStartTicks(int) int64 { return 0 }
+
+func sameProcess(int, int64) bool { return false }

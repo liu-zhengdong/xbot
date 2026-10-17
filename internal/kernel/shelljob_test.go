@@ -3,9 +3,11 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -192,12 +194,12 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 	}
 	var saw bool
 	for _, m := range p.reqs[0].Messages {
-		if strings.Contains(m.Content, "<shell_job>") && strings.Contains(m.Content, id) {
+		if strings.Contains(m.Content, id) && strings.Contains(m.Content, "shell_output") {
 			saw = true
 		}
 	}
 	if !saw {
-		t.Fatal("reminder was not on the wake turn")
+		t.Fatal("wake turn did not name the job")
 	}
 	var stopped bool
 	entries, err := b.Entries()
@@ -312,4 +314,156 @@ func (h shellHoldTool) Run(context.Context, json.RawMessage) (string, error) {
 	close(h.entered)
 	<-h.release
 	return "held", nil
+}
+
+func TestRestartDoesNotRewakeFinishedJobs(t *testing.T) {
+	k, p, _ := freshBot(t)
+	in, err := inbox.Open(k.Bot.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.Inbox = in
+	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "shell-jobs")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for i := 0; i < 6; i++ {
+		id := fmt.Sprintf("sh_%08x", 0xa0000000+i)
+		ids = append(ids, id)
+		job := tools.Job{
+			ID: id, Command: "make", Status: "done",
+			Output:  filepath.Join(dir, id+".log"),
+			Started: time.Unix(10, 0), Ended: time.Unix(20, 0),
+		}
+		raw, err := json.Marshal(job)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, id+".json"), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(job.Output, []byte("ok\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := k.reminders().Record(1, KindShellJob, "<shell_job>\n"+strings.Join(ids, "\n")+"\n</shell_job>", time.Unix(30, 0)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_700_000_000, 0).UTC()
+	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "hi"})
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", now)); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, ev := range in.Pending() {
+		if ev.Type == "shell_job" {
+			n++
+		}
+	}
+	if n > 0 {
+		t.Fatalf("restart queued %d wakes for jobs already reported", n)
+	}
+}
+
+func TestShellClaimedMapRace(t *testing.T) {
+	k, _, _ := freshBot(t)
+	in, err := inbox.Open(k.Bot.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.Inbox = in
+	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "shell-jobs")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 30; i++ {
+		id := fmt.Sprintf("sh_%08x", 0xb0000000+i)
+		job := tools.Job{
+			ID: id, Command: "make", Status: "done", Local: true,
+			Output:  filepath.Join(dir, id+".log"),
+			Started: time.Unix(10, 0), Ended: time.Unix(20, 0),
+		}
+		raw, _ := json.Marshal(job)
+		if err := os.WriteFile(filepath.Join(dir, id+".json"), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if k.shellJobs() == nil {
+		t.Fatal("no jobs")
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			k.flushShellWake()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			k.shellNotice(nil)
+		}
+	}()
+	wg.Wait()
+}
+
+func TestAttachShellJobsOnce(t *testing.T) {
+	k, _, _ := freshBot(t)
+	var sh *tools.Shell
+	for _, l := range k.snapshotLinks() {
+		for _, tl := range l.Tools() {
+			if s, ok := tl.(*tools.Shell); ok {
+				sh = s
+			}
+		}
+	}
+	if sh == nil {
+		t.Fatal("no shell")
+	}
+	k.attachShellJobs()
+	args, _ := json.Marshal(map[string]any{"command": "true"})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			_, _ = k.modelTools()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			_, _ = sh.Run(context.Background(), args)
+		}
+	}()
+	wg.Wait()
+}
+
+type plainShellLink struct{}
+
+func (plainShellLink) Name() string { return link.NameTools }
+func (plainShellLink) Tools() []tools.Tool {
+	return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
+}
+
+func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
+	k, p, _ := freshBot(t)
+	k.Links = []link.Link{link.Terminal{}, plainShellLink{}}
+	p.resps = []provider.Message{{Role: provider.RoleAssistant, Content: "hi"}}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(1_700_000_500, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range p.reqs[0].Tools {
+		names = append(names, tool.Name)
+		if tool.Name == "shell" && strings.Contains(tool.Description, "run_in_background") {
+			t.Fatal("shell without a job table offers backgrounding")
+		}
+	}
+	got := strings.Join(names, ",")
+	if strings.Contains(got, "shell_output") || strings.Contains(got, "shell_status") || strings.Contains(got, "shell_cancel") {
+		t.Fatalf("job tools on a shell with no job table: %s", got)
+	}
 }

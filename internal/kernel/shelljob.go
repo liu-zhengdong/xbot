@@ -28,13 +28,19 @@ func (k *Kernel) shellJobs() *tools.Jobs {
 		j.Now = k.now
 		j.OnDone = k.onShellDone
 		if err := j.Load(); err == nil {
+			k.shellMu.Lock()
 			k.shell = j
+			k.shellMu.Unlock()
 		}
 	})
+	k.shellMu.Lock()
+	defer k.shellMu.Unlock()
 	return k.shell
 }
 
 // attachShellJobs points every shell tool on a mounted link at this bot's jobs.
+// The pointer is written once per shell, so a running Shell.Run does not race
+// with a later modelTools refresh.
 func (k *Kernel) attachShellJobs() {
 	jobs := k.shellJobs()
 	if jobs == nil {
@@ -47,10 +53,28 @@ func (k *Kernel) attachShellJobs() {
 		for _, t := range l.Tools() {
 			sh, ok := t.(*tools.Shell)
 			if ok {
-				sh.Jobs = jobs
+				sh.BindJobs(jobs)
 			}
 		}
 	}
+}
+
+// shellBackgroundOn reports that a real shell on these links has a job table.
+// An eval jail is also named "tools" but its shell is not *tools.Shell and has
+// no jobs, so it must not gain shell_output, shell_status, or shell_cancel.
+func shellBackgroundOn(links []link.Link) bool {
+	for _, l := range links {
+		if l == nil {
+			continue
+		}
+		for _, t := range l.Tools() {
+			sh, ok := t.(*tools.Shell)
+			if ok && sh.Jobs != nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (k *Kernel) onShellDone(job tools.Job) {
@@ -63,7 +87,31 @@ func (k *Kernel) onShellDone(job tools.Job) {
 	if k.turnBusy() {
 		return
 	}
+	if !k.claimShell(job.ID) {
+		return
+	}
+	if k.shell != nil {
+		k.shell.MarkNotified(job.ID)
+	}
 	k.postShellWake(job)
+}
+
+// claimShell marks id as delivered for this process. The caller must not also
+// put the same id on the reminder channel.
+func (k *Kernel) claimShell(id string) bool {
+	if id == "" {
+		return false
+	}
+	k.shellMu.Lock()
+	defer k.shellMu.Unlock()
+	if k.shellClaimed == nil {
+		k.shellClaimed = map[string]bool{}
+	}
+	if k.shellClaimed[id] {
+		return false
+	}
+	k.shellClaimed[id] = true
+	return true
 }
 
 func (k *Kernel) postShellWake(job tools.Job) {
@@ -74,7 +122,7 @@ func (k *Kernel) postShellWake(job tools.Job) {
 		ID:        "shelljob_" + job.ID,
 		Source:    "shell",
 		Type:      "shell_job",
-		Content:   "后台命令 " + job.ID + " 已结束。看提醒里的输出路径，用 shell_output 读，不要紧循环轮询。",
+		Content:   "后台命令 " + job.ID + " 已结束（" + job.Status + "）。输出 " + job.Output + "。用 shell_output 读，不要紧循环轮询。",
 		Sender:    "shell",
 		Time:      k.now(),
 		Untrusted: true,
@@ -87,20 +135,34 @@ func (k *Kernel) flushShellWake() {
 	if k == nil || k.turnBusy() || k.Inbox == nil {
 		return
 	}
+	k.shellMu.Lock()
 	jobs := k.shell
+	k.shellMu.Unlock()
 	if jobs == nil {
 		return
 	}
+	// Only jobs this process finished are woken. Loaded history, including jobs
+	// a previous serve already reported, is not a wake. The claim happens
+	// before the post, under the same lock the reminder path uses, so the two
+	// cannot both fire.
+	var wake []tools.Job
 	k.shellMu.Lock()
-	claimed := k.shellClaimed
-	k.shellMu.Unlock()
+	if k.shellClaimed == nil {
+		k.shellClaimed = map[string]bool{}
+	}
 	for _, job := range jobs.List() {
-		if job.Status == "" || job.Status == "running" {
+		if !job.Local || job.Notified || job.Status == "" || job.Status == "running" {
 			continue
 		}
-		if claimed[job.ID] {
+		if k.shellClaimed[job.ID] {
 			continue
 		}
+		k.shellClaimed[job.ID] = true
+		wake = append(wake, job)
+	}
+	k.shellMu.Unlock()
+	for _, job := range wake {
+		jobs.MarkNotified(job.ID)
 		k.postShellWake(job)
 	}
 }
@@ -169,23 +231,32 @@ func (k *Kernel) shellNotice(prev []Reminder) string {
 	}
 	blob := seen.String()
 	k.shellMu.Lock()
-	defer k.shellMu.Unlock()
 	if k.shellClaimed == nil {
 		k.shellClaimed = map[string]bool{}
 	}
 	var lines []string
+	var mark []string
 	for _, job := range jobs.List() {
 		if job.ID == "" || job.Status == "" || job.Status == "running" {
 			continue
 		}
-		if k.shellClaimed[job.ID] || strings.Contains(blob, job.ID) {
+		if job.Notified || k.shellClaimed[job.ID] || strings.Contains(blob, job.ID) {
+			if strings.Contains(blob, job.ID) && !job.Notified {
+				k.shellClaimed[job.ID] = true
+				mark = append(mark, job.ID)
+			}
 			continue
 		}
 		if len(lines) >= 8 {
 			break
 		}
 		k.shellClaimed[job.ID] = true
+		mark = append(mark, job.ID)
 		lines = append(lines, shellJobLine(job))
+	}
+	k.shellMu.Unlock()
+	for _, id := range mark {
+		jobs.MarkNotified(id)
 	}
 	if len(lines) == 0 {
 		return ""
@@ -205,7 +276,7 @@ type shellOutputTool struct{ k *Kernel }
 
 func (shellOutputTool) Name() string { return "shell_output" }
 func (shellOutputTool) Description() string {
-	return "Read a background shell job's output. Pass offset to continue from a byte position, or tail to take the last N lines. Do not poll in a tight loop; wait for the completion reminder, then read."
+	return "Read a background shell job's output. offset is a byte position in the whole stream, not the retained file; the result names next_offset and says when earlier bytes were dropped. Pass tail to take the last N lines. Do not poll in a tight loop; wait for the completion reminder, then read."
 }
 func (shellOutputTool) Parameters() any {
 	return schema(map[string]any{

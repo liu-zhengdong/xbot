@@ -11,7 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/kernel"
+	"xbot/internal/link"
+	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
@@ -643,6 +647,47 @@ func mustCase(t *testing.T, name string) Case {
 	}
 	t.Fatalf("missing case %s", name)
 	return Case{}
+}
+
+type toolListProvider struct {
+	req provider.Request
+}
+
+func (p *toolListProvider) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	p.req = req
+	return provider.Message{Role: provider.RoleAssistant, Content: "ok"}, nil
+}
+
+// The eval jail link is named tools, but its shell has no job table. The model
+// must see the same tools as before background jobs existed.
+func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{link.NameTerminal, link.NameTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &toolListProvider{}
+	work := t.TempDir()
+	when := time.Unix(1_700_000_000, 0).UTC()
+	k := &kernel.Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
+		Links: []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, false)}},
+		Now:   func() time.Time { return when },
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", when)); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range p.req.Tools {
+		names = append(names, tool.Name)
+		if tool.Name == "shell" && strings.Contains(tool.Description, "run_in_background") {
+			t.Fatal("eval shell offers backgrounding")
+		}
+	}
+	got := strings.Join(names, ",")
+	const want = "edit_file,links,read_file,shell,todo,write_file"
+	if got != want {
+		t.Fatalf("tools %s", got)
+	}
 }
 
 func mustHoldoutCase(t *testing.T, name string) Case {

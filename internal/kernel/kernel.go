@@ -951,6 +951,12 @@ func (k *Kernel) Close() error {
 	if k == nil {
 		return nil
 	}
+	k.shellMu.Lock()
+	jobs := k.shell
+	k.shellMu.Unlock()
+	if jobs != nil {
+		jobs.Shutdown()
+	}
 	var first error
 	for _, l := range k.snapshotLinks() {
 		c, ok := l.(interface{ Close() error })
