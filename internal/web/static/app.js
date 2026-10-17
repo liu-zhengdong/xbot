@@ -1,4 +1,7 @@
 (function () {
+  if (getComputedStyle(document.documentElement).getPropertyValue("--mygo-titlebar-height").trim()) {
+    document.documentElement.classList.add("in-app");
+  }
   const $ = (id) => document.getElementById(id);
   const login = $("login");
   const shell = $("shell");

@@ -1858,3 +1858,28 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .recent-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .recent-status { flex-shrink: 0; color: var(--muted); }
 .recent-status.failed { color: var(--err); }
+/* MyGo sets these variables only in desktop windows. */
+@supports (padding-left: max(0px, 1px)) {
+  .in-app .sidebar .pin-row {
+    padding-top: calc(16px + var(--mygo-titlebar-height, 0px));
+    padding-left: max(var(--mygo-titlebar-inset-left, 0px), 0px);
+    --app-region: drag;
+  }
+  /* The rail is narrower than the traffic-light inset; the top padding
+     already clears the lights, so keep the rail's own side padding. */
+  .in-app .sidebar.collapsed .pin-row { padding-left: 8px; }
+  .in-app .top {
+    --app-region: drag;
+    padding-right: calc(16px + var(--mygo-titlebar-inset-right, 0px));
+    min-height: var(--mygo-titlebar-height, 0px);
+  }
+  .in-app .panel-bar {
+    --app-region: drag;
+    right: calc(8px + var(--mygo-titlebar-inset-right, 0px));
+    left: 8px;
+    justify-content: flex-end;
+  }
+  .in-app :is(.pin-row, .top, .panel-bar) :is(button, a, input, select, textarea, [role="button"]) {
+    --app-region: no-drag;
+  }
+}
