@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Package the desktop app (B3) from Linux, no Apple or Windows machine needed:
+#   macOS: XBot-<v>-macos-<arch>.dmg and .zip (XBot.app, ad-hoc signed, not notarized)
+#   Windows: XBot-<v>-windows-<arch>.zip (XBot.exe opens the window; xbot-cli.exe is the CLI)
+#   Linux: xbot-<v>-linux-amd64.tar.gz (needs WebKitGTK 4.1 for `xbot app`)
+# Usage: scripts/package-desktop.sh <version> <out-dir>
+# Tools: go, python3 + Pillow, zip, genisoimage (dmg), png2icns (icnsutils),
+# go-winres (Windows icon/manifest) and rcodesign (ad-hoc signature); point
+# GO_WINRES and RCODESIGN at them if they are not on PATH. Missing optional tools
+# are reported and that step is skipped. Set TMPDIR to keep temp files out of /tmp.
+set -euo pipefail
+version=${1:?version}
+out=$(mkdir -p "${2:?out dir}" && cd "$2" && pwd)
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+if compgen -G "cmd/xbot/rsrc_windows_*.syso" >/dev/null; then
+	echo "package: cmd/xbot already has rsrc_windows_*.syso; remove them first" >&2
+	exit 1
+fi
+work=$(mktemp -d "${TMPDIR:-$out}/xbot-pkg.XXXXXX")
+trap 'rm -rf "$work"; rm -f cmd/xbot/rsrc_windows_amd64.syso cmd/xbot/rsrc_windows_arm64.syso' EXIT
+winres=${GO_WINRES:-$(command -v go-winres || true)}
+rcodesign=${RCODESIGN:-$(command -v rcodesign || true)}
+short=${version#v}
+# Apple wants numeric versions; build metadata after "+" stays in file names only.
+numeric=${short%%[-+]*}
+ldflags="-s -w -X xbot/internal/version.Version=$version"
+icon=internal/web/static/icon-512.png
+
+# Icons: .icns for macOS, .ico for Windows, both from the web app icon.
+python3 - "$icon" "$work" <<'PY'
+import sys
+from PIL import Image
+src, work = sys.argv[1], sys.argv[2]
+im = Image.open(src).convert("RGBA")
+for s in (16, 32, 128, 256, 512):
+    im.resize((s, s), Image.LANCZOS).save(f"{work}/icon_{s}.png")
+im.save(f"{work}/XBot.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+PY
+png2icns "$work/XBot.icns" "$work"/icon_{16,32,128,256,512}.png >/dev/null
+
+for arch in arm64 amd64; do
+	app="$work/mac-$arch/XBot.app"
+	mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+	CGO_ENABLED=0 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "$ldflags -X main.defaultCommand=app" -o "$app/Contents/MacOS/XBot" ./cmd/xbot
+	cp "$work/XBot.icns" "$app/Contents/Resources/XBot.icns"
+	cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>XBot</string>
+	<key>CFBundleDisplayName</key><string>XBot</string>
+	<key>CFBundleIdentifier</key><string>com.github.liu-zhengdong.xbot</string>
+	<key>CFBundleExecutable</key><string>XBot</string>
+	<key>CFBundleIconFile</key><string>XBot</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>$numeric</string>
+	<key>CFBundleVersion</key><string>$numeric</string>
+	<key>LSMinimumSystemVersion</key><string>13.0</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+</dict>
+</plist>
+PLIST
+	if [[ -n "$rcodesign" ]]; then
+		"$rcodesign" sign "$app" >/dev/null 2>&1 || echo "package: rcodesign failed for $arch; the app keeps the linker's ad-hoc signature" >&2
+	else
+		echo "package: rcodesign not found; XBot.app ($arch) is not bundle-signed" >&2
+	fi
+	(cd "$work/mac-$arch" && zip -qry "$out/XBot-$short-macos-$arch.zip" XBot.app)
+	if command -v genisoimage >/dev/null; then
+		stage="$work/dmg-$arch"
+		mkdir -p "$stage"
+		cp -a "$app" "$stage/"
+		ln -s /Applications "$stage/Applications"
+		genisoimage -quiet -V XBot -D -R -no-pad -o "$out/XBot-$short-macos-$arch.dmg" "$stage"
+	else
+		echo "package: genisoimage not found; skipped the macOS dmg" >&2
+	fi
+done
+
+for arch in amd64 arm64; do
+	dir="$work/win-$arch/XBot"
+	mkdir -p "$dir"
+	if [[ -n "$winres" ]]; then
+		"$winres" simply --arch "$arch" --out cmd/xbot/rsrc --icon "$work/XBot.ico" --manifest gui \
+			--product-name XBot --file-description XBot --product-version "$numeric.0" --file-version "$numeric.0" \
+			--original-filename XBot.exe
+	else
+		echo "package: go-winres not found; Windows binaries have no icon" >&2
+	fi
+	CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ldflags -X main.defaultCommand=app -H windowsgui" -o "$dir/XBot.exe" ./cmd/xbot
+	CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$dir/xbot-cli.exe" ./cmd/xbot
+	rm -f "cmd/xbot/rsrc_windows_$arch.syso"
+	(cd "$work/win-$arch" && zip -qr "$out/XBot-$short-windows-$arch.zip" XBot)
+done
+
+lin="$work/linux/xbot-$short-linux-amd64"
+mkdir -p "$lin"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$ldflags" -o "$lin/xbot" ./cmd/xbot
+tar -C "$work/linux" -czf "$out/xbot-$short-linux-amd64.tar.gz" "xbot-$short-linux-amd64"
+
+(cd "$out" && sha256sum XBot-* xbot-* > SHA256SUMS)
+ls -l "$out"
