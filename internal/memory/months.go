@@ -102,19 +102,12 @@ func writeMonths(dir string, facts []Fact, enforce bool) error {
 	}
 	sort.SliceStable(facts, func(i, j int) bool { return facts[i].Time.Before(facts[j].Time) })
 	for _, f := range facts {
-		t := f.Time.In(time.Local)
+		t := logTime(f)
 		path := filepath.Join(dir, "log", t.Format("2006-01")+".md")
 		if bodies[path] == nil {
 			bodies[path] = &strings.Builder{}
 		}
-		source := oneLine(f.Source)
-		if source == "" && f.Scope == ScopePerson {
-			source = oneLine(f.WrittenBy)
-		}
-		if source == "" {
-			source = "对话"
-		}
-		source = strings.ReplaceAll(source, "]", "")
+		source := logSource(f)
 		text := logText(f)
 		fmt.Fprintf(bodies[path], "- %s [%s] %s\n", t.Format("2006-01-02 15:04"), source, text)
 	}
@@ -172,18 +165,7 @@ func migrateLogs(dir string, scope Scope, bot, person string) error {
 	if err != nil {
 		return err
 	}
-	seen := map[string]bool{}
-	id := func(f Fact) string { return f.Time.In(time.Local).Format("2006-01-02 15:04") + "\x00" + f.Text }
-	for _, f := range facts {
-		seen[id(f)] = true
-	}
-	for _, f := range legacy {
-		f.Text = logText(f)
-		if !seen[id(f)] {
-			facts = append(facts, f)
-			seen[id(f)] = true
-		}
-	}
+	facts = mergeLogs(facts, legacy)
 	if err := writeMonths(dir, facts, false); err != nil {
 		return err
 	}
@@ -234,10 +216,49 @@ func (s *FileStore) LogCount(ctxScope Scope, bot, person string) (int, error) {
 func logText(f Fact) string {
 	text := oneLine(f.Text)
 	if f.OwnerRecorded && !strings.Contains(text, ownerMarker) {
-		return OwnerProvenance(text, f.Device)
+		return text + OwnerProvenance("", f.Device)
 	}
 	if f.Untrusted && !strings.Contains(text, untrustedMarker) {
-		return Provenance(text, f.WrittenBy, f.Device)
+		return text + Provenance("", f.WrittenBy, f.Device)
 	}
 	return text
+}
+
+func logTime(f Fact) time.Time {
+	if f.Time.IsZero() {
+		return time.Unix(0, 0).In(time.Local)
+	}
+	return f.Time.In(time.Local)
+}
+
+func logSource(f Fact) string {
+	source := oneLine(f.Source)
+	if source == "" && f.Scope == ScopePerson {
+		source = oneLine(f.WrittenBy)
+	}
+	source = strings.ReplaceAll(source, "]", "")
+	if source == "" {
+		source = "对话"
+	}
+	return source
+}
+
+// Consume persisted copies one at a time so retries preserve real duplicates.
+func mergeLogs(have, incoming []Fact) []Fact {
+	id := func(f Fact) string {
+		return logTime(f).Format("2006-01-02 15:04") + "\x00" + logSource(f) + "\x00" + logText(f)
+	}
+	counts := map[string]int{}
+	for _, f := range have {
+		counts[id(f)]++
+	}
+	for _, f := range incoming {
+		key := id(f)
+		if counts[key] > 0 {
+			counts[key]--
+			continue
+		}
+		have = append(have, f)
+	}
+	return have
 }

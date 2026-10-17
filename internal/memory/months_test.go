@@ -91,6 +91,18 @@ func TestMonthlyGuardAndRoundTrip(t *testing.T) {
 	if err := s.Remember(ctx, f); err == nil || !strings.Contains(err.Error(), "整理") {
 		t.Fatalf("guard: %v", err)
 	}
+	monthPath := filepath.Join(dir, "log", now.Format("2006-01")+".md")
+	before, _ := os.Stat(monthPath)
+	if err := s.Forget(ctx, Query{Scope: ScopeBot, BotName: "dev", Tier: TierLog}, past[0].Text); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.Stat(monthPath)
+	if after.Size() >= before.Size() {
+		t.Fatal("forget did not shrink current month")
+	}
+	if err := saveTierOpt(dir, TierLog, append(past, past...), true); err != nil {
+		t.Fatal("sync bypass:", err)
+	}
 	p := Fact{Scope: ScopePerson, PersonID: "u1", Tier: TierLog, WrittenBy: "dev", Text: Provenance("remote", "dev", "node"), Untrusted: true, Time: now}
 	if err := s.Remember(ctx, p); err != nil {
 		t.Fatal(err)
@@ -143,5 +155,118 @@ func TestMonthlyTailSkipsOlderFiles(t *testing.T) {
 	}
 	if _, err := s.Recall(context.Background(), Query{Scope: ScopeBot, BotName: "dev", Tier: TierLog, Text: "entry"}); err == nil {
 		t.Fatal("text search skipped old months")
+	}
+}
+
+func TestLegacyMonthlyResume(t *testing.T) {
+	root := t.TempDir()
+	writeOwners(t, root, "dev", "u1")
+	f := Fact{Key: "custom", Text: "legacy", WrittenBy: "other", Device: "node", Untrusted: true, Time: time.Date(2026, 8, 1, 12, 34, 56, 0, time.Local)}
+	writeLegacy(t, root, "dev", "u1", TierLog, []Fact{f, f})
+	f = asBotFact(f, "dev")
+	dir := filepath.Join(root, "bots/dev/memory")
+	if err := writeMonths(dir, []Fact{f, f}, false); err != nil {
+		t.Fatal(err)
+	}
+	migrateRoot(root)
+	got, err := loadTier(dir, TierLog, ScopeBot, "dev", "")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("resume: %d %v", len(got), err)
+	}
+}
+
+func TestMigrationLogIdentityAndText(t *testing.T) {
+	for _, scenario := range []string{"source", "text", "zero"} {
+		t.Run(scenario, func(t *testing.T) {
+			old := time.Local
+			time.Local = time.FixedZone("west", -8*3600)
+			defer func() { time.Local = old }()
+			dir := filepath.Join(t.TempDir(), "memory")
+			f := Fact{Scope: ScopePerson, WrittenBy: "dev", Text: "same", Time: time.Unix(1000, 0)}
+			facts := []Fact{f}
+			switch scenario {
+			case "source":
+				other := f
+				other.WrittenBy = "other"
+				episode := f
+				episode.Source = "episode"
+				facts = []Fact{f, f, other, episode}
+				if err := writeMonths(dir, []Fact{f}, false); err != nil {
+					t.Fatal(err)
+				}
+			case "text":
+				facts[0].Text = strings.Repeat("x", 1000) + "TAIL"
+				facts[0].Untrusted = true
+				owner := facts[0]
+				owner.Untrusted = false
+				owner.OwnerRecorded = true
+				facts = append(facts, owner)
+			case "zero":
+				facts[0].Time = time.Time{}
+			}
+			if err := writeNamed(dir, "log", facts, maxLogBytes, false, false, false); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 2; i++ {
+				if err := migrateLogs(dir, ScopePerson, "", "u1"); err != nil {
+					t.Fatal(err)
+				}
+				got, err := loadTier(dir, TierLog, ScopePerson, "", "u1")
+				if err != nil || len(got) != len(facts) {
+					t.Fatalf("%s: %d want %d %v", scenario, len(got), len(facts), err)
+				}
+				if scenario == "text" {
+					for _, g := range got {
+						if !strings.HasPrefix(g.Text, facts[0].Text) {
+							t.Fatal("tail clipped")
+						}
+					}
+				}
+				if scenario == "zero" && !got[0].Time.Equal(time.Unix(0, 0)) {
+					t.Fatal("zero time lost")
+				}
+				if scenario == "source" {
+					counts := map[string]int{}
+					for _, g := range got {
+						counts[g.Source]++
+					}
+					if counts["dev"] != 2 || counts["other"] != 1 || counts["episode"] != 1 {
+						t.Fatal(counts)
+					}
+				}
+				// Restore the old file to simulate a crash before its backup.
+				if i == 0 {
+					if err := os.Rename(filepath.Join(dir, "log.index.json.bak"), filepath.Join(dir, "log.index.json")); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(filepath.Join(dir, "log.md.bak"), filepath.Join(dir, "log.md")); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestForgetMonthlyDistinctSyncKeys(t *testing.T) {
+	root := t.TempDir()
+	s := Open(root)
+	ctx := context.Background()
+	f := Fact{Scope: ScopePerson, PersonID: "u1", WrittenBy: "dev", Tier: TierLog, Key: "A", Text: "same", Time: time.Now().Add(-time.Hour)}
+	for _, key := range []string{"A", "B"} {
+		f.Key = key
+		if err := s.Remember(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Forget(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog}, f.Text); err != nil {
+		t.Fatal(err)
+	}
+	if err := MergeSync(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Recall(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("resurrected: %+v %v", got, err)
 	}
 }

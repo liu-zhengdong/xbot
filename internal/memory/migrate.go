@@ -310,7 +310,6 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 	for i := range logFacts {
 		logFacts[i] = asBotFact(logFacts[i], botName)
 		logFacts[i].Tier = TierLog
-		seen[factID(logFacts[i])] = true
 	}
 	profileChanged := false
 	logChanged := false
@@ -337,24 +336,18 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 		seen[factID(f)] = true
 		profileChanged = true
 	}
-	for _, f := range incomingLog {
+	var incoming []Fact
+	for _, f := range append(incomingLog, overflow...) {
 		f = asBotFact(f, botName)
 		f.Tier = TierLog
-		if f.Text == "" || seen[factID(f)] {
-			continue
+		if f.Text != "" && !seen[factID(f)] {
+			incoming = append(incoming, f)
 		}
-		logFacts = append(logFacts, f)
-		seen[factID(f)] = true
-		logChanged = true
 	}
-	for _, f := range overflow {
-		if f.Text == "" || seen[factID(f)] {
-			continue
-		}
-		logFacts = append(logFacts, f)
-		seen[factID(f)] = true
-		logChanged = true
-	}
+	before := len(logFacts)
+	logFacts = mergeLogs(logFacts, incoming)
+	logChanged = len(logFacts) != before
+
 	if len(overflow) > 0 && !hasKey(logFacts, migrationNoteKey) && !hasKey(profile, migrationNoteKey) {
 		note := Fact{
 			Key:       migrationNoteKey,

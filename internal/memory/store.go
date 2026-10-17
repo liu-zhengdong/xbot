@@ -143,19 +143,26 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 			if q.Scope != ScopePerson {
 				continue
 			}
+			lines, err := ReadSync(s.Root, q.PersonID)
+			if err != nil {
+				return err
+			}
+			tombstones := map[string]Fact{}
 			for _, f := range removed {
+				matched := false
 				if tier == TierLog {
-					lines, err := ReadSync(s.Root, f.PersonID)
-					if err != nil {
-						return err
-					}
 					for _, ln := range lines {
 						if ln.Op == opRemember && factMark(ln) == factMark(SyncLine{Fact: f, Time: f.Time}) {
-							f.Key = ln.Fact.Key
-							break
+							tombstones[ln.Fact.Key] = ln.Fact
+							matched = true
 						}
 					}
 				}
+				if !matched {
+					tombstones[f.Key] = f
+				}
+			}
+			for _, f := range tombstones {
 				f.Time = time.Now().UTC()
 				if err := noteSync(s.Root, opForget, f); err != nil {
 					return err
@@ -275,14 +282,14 @@ func loadQuery(dir string, q Query) ([]Fact, error) {
 	return all, nil
 }
 
-func tierBases(tier Tier) []string {
+func tierBase(tier Tier) string {
 	if tier == TierLog {
-		return []string{"log"}
+		return "log"
 	}
 	if tier == TierProfile {
-		return []string{"memory"}
+		return "memory"
 	}
-	return []string{string(tier)}
+	return string(tier)
 }
 
 func filterQuery(facts []Fact, q Query) []Fact {
@@ -300,7 +307,7 @@ func loadTier(dir string, tier Tier, scope Scope, botName, personID string) ([]F
 	if tier == TierLog {
 		return loadMonths(dir, scope, botName, personID, 0, true)
 	}
-	return loadNamed(dir, tierBases(tier)[0], scope, tier, botName, personID)
+	return loadNamed(dir, tierBase(tier), scope, tier, botName, personID)
 }
 
 func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID string) ([]Fact, error) {
@@ -420,7 +427,7 @@ func writeTierOpt(dir string, tier Tier, facts []Fact, enforce, fromSync bool) e
 	if tier == TierLog {
 		return writeMonths(dir, facts, enforce && !fromSync)
 	}
-	return writeNamed(dir, tierBases(tier)[0], facts, tierLimit(tier), enforce, fromSync && tier == TierProfile, tier == TierProfile)
+	return writeNamed(dir, tierBase(tier), facts, tierLimit(tier), enforce, fromSync && tier == TierProfile, tier == TierProfile)
 }
 
 func tierLimit(tier Tier) int {
