@@ -374,7 +374,7 @@
       sig += mins;
     } else {
       const bot = (state.bots || []).find((b) => b.name === name);
-      const text = (st && st.last_message ? clip(String(st.last_message), 72) : "") || (bot ? lineForBot(bot) : "") || "没有消息";
+      const text = realPreview(st && st.last_message) || (bot ? lineForBot(bot) : "") || "没有消息";
       line.className = "preview";
       line.append(el("span", "", pre + text));
       sig += text;
@@ -811,6 +811,7 @@
     check: '<path d="M20 6 9 17l-5-5"/>',
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   };
 
   function icon(name, extra) {
@@ -966,6 +967,47 @@
       source: source ? source[1] : "",
       sender: sender ? sender[1] : "",
     };
+  }
+
+  function routineOf(m) {
+    if (m.role !== "user") return null;
+    const parsed = unwrap(m.content || "");
+    if (!parsed.untrusted || parsed.source !== "timer") return null;
+    const text = parsed.text.trim();
+    if (text.startsWith("Missed routine times from")) {
+      const items = text.match(/^- /gm) || [];
+      const more = /^- … and (\d+) more routines/m.exec(text);
+      const count = items.length + (more ? Number(more[1]) - 1 : 0);
+      return { label: "错过的定时 · " + count + " 项", prompt: text };
+    }
+    const routine = /^<routine\b([^>]*)>([\s\S]*?)<\/routine>/.exec(text);
+    if (!routine) return null;
+    const name = /\bname="([^"]*)"/.exec(routine[1]);
+    const id = /\bid="([^"]*)"/.exec(routine[1]);
+    return {
+      label: (name && name[1]) || (id && id[1]) || "定时",
+      prompt: routine[2].trim(),
+      time: when(m.time),
+    };
+  }
+
+  // Drawers the owner opened stay open when a poll redraws the thread.
+  const openRoutines = new Set();
+
+  function routineLine(routine, key) {
+    const row = el("details", "routine-line");
+    if (key && openRoutines.has(key)) row.open = true;
+    row.addEventListener("toggle", () => {
+      if (!key) return;
+      if (row.open) openRoutines.add(key);
+      else openRoutines.delete(key);
+    });
+    const head = el("summary", "sysline");
+    head.append(icon("clock"), el("span", "", routine.label + (routine.time ? " · " + routine.time : "")));
+    const drawer = el("div", "routine-drawer");
+    drawer.append(el("div", "routine-prompt", routine.prompt), el("div", "routine-source", "来源：定时"));
+    row.append(head, drawer);
+    return row;
   }
 
   function appendInline(parent, text) {
@@ -1557,7 +1599,7 @@
       wrap.append(bubble);
     }
     const metaRow = el("div", "meta-row");
-    if (parsed.untrusted && !parsed.source.startsWith("bot:")) {
+    if (parsed.untrusted && parsed.source !== "timer" && !parsed.source.startsWith("bot:")) {
       metaRow.append(el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信"));
     }
     metaRow.append(el("span", "meta", when(m.time)));
@@ -1632,6 +1674,7 @@
     }
     let any = false;
     let lastKey = "";
+    let lastRoutine = null;
     const latestCard = {};
     const latestApproval = {};
     messages.forEach((m, i) => {
@@ -1644,6 +1687,28 @@
       if (skipMessage(m)) return;
       // Background turns have no cards in the chat; the header badge lists them.
       if (m.kind === "fork" || m.kind === "fork_end") return;
+      const routine = routineOf(m);
+      if (routine) {
+        lastRoutine = routineLine(routine, (state.sel ? state.sel.id : "") + ":" + (m.seq || m.time || i));
+        lastRoutine.dataset.branch = m.branch || "";
+        inner.append(lastRoutine);
+        any = true;
+        lastKey = "";
+        return;
+      }
+      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT") {
+        // Pair a quiet reply only with the wake of the same turn (branch).
+        if (lastRoutine && lastRoutine.dataset.branch === (m.branch || "")) {
+          if (!lastRoutine.querySelector(".routine-silent")) {
+            lastRoutine.querySelector("summary").append(el("span", "routine-silent", " · 没什么要说的"));
+          }
+        } else inner.append(systemLine("没什么要说的"));
+        any = true;
+        lastKey = "";
+        return;
+      }
+      // Invisible tool-only messages do not break the routine/result pair.
+      if (m.role === "user" || String(m.content || "").trim()) lastRoutine = null;
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;
@@ -2002,7 +2067,7 @@
       const parsed = unwrap(m.content || "");
       if (parsed.untrusted) continue;
       const text = clip(pullImages(parsed.text).text, 72);
-      if (!text || summaryLine(text)) continue;
+      if (!text || text === "SILENT" || summaryLine(text)) continue;
       return text;
     }
     return "";
@@ -2021,9 +2086,14 @@
     return "";
   }
 
+  function realPreview(text) {
+    const raw = String(text || "").trim();
+    return raw && raw !== "SILENT" ? clip(raw, 72) : "";
+  }
+
   function lineForBot(b) {
     const p = state.preview["b:" + b.name];
-    if (p) return p;
+    if (p && realPreview(p)) return p;
     if (b.description) return b.description;
     if (b.persona) return b.persona;
     return "没有消息";
