@@ -12,8 +12,11 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { defer close(done); runOutbox(ctx, root, logf) }()
-	defer func() { cancel(); <-done }()
+	ready, dirDone := make(chan *gateway.Client, 1), make(chan struct{})
+	go func() { defer close(dirDone); runDirectories(ctx, root, ready, logf) }()
+	defer func() { cancel(); <-done; <-dirDone }()
 	registered := map[string]bool{}
+	var lastDirectoryGateway string
 	backoff := time.Second
 	for ctx.Err() == nil {
 		cfg, err := Load(root)
@@ -39,6 +42,7 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 						logf("registered")
 					}
 				}
+				notifyDirectory(ready, &lastDirectoryGateway, client)
 				envs, err := client.Poll(ctx, 25*time.Second)
 				if err != nil {
 					return err
@@ -89,4 +93,18 @@ func pause(ctx context.Context, d time.Duration) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+// notifyDirectory has one sender and a capacity-one channel. Replace pending
+// work so a busy directory worker picks up the latest active gateway.
+func notifyDirectory(ready chan *gateway.Client, lastURL *string, client *gateway.Client) {
+	if *lastURL == client.Base {
+		return
+	}
+	select {
+	case <-ready:
+	default:
+	}
+	ready <- client // the sole sender has just ensured there is room
+	*lastURL = client.Base
 }

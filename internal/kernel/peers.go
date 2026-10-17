@@ -15,7 +15,7 @@ type listBotsTool struct{ k *Kernel }
 
 func (listBotsTool) Name() string { return "list_bots" }
 func (listBotsTool) Description() string {
-	return "List other bots that share an owner with you. You cannot see bots owned by someone else."
+	return "List other same-owner bots, including bot@device on paired devices. You cannot see bots owned by someone else."
 }
 func (listBotsTool) Parameters() any { return schema(nil, nil) }
 func (listBotsTool) Confirm(json.RawMessage) (bool, string, error) {
@@ -26,8 +26,9 @@ func (t listBotsTool) Run(context.Context, json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(cfgs) == 0 {
-		return "no other bots", nil
+	remotes, err := remote.VisibleBots(t.k.Bot.Root, t.k.Bot.Config().Owners, t.k.now())
+	if err != nil {
+		return "", err
 	}
 	var b strings.Builder
 	for _, cfg := range cfgs {
@@ -41,6 +42,13 @@ func (t listBotsTool) Run(context.Context, json.RawMessage) (string, error) {
 			b.WriteString(persona)
 		}
 		b.WriteByte('\n')
+	}
+	for _, remote := range remotes {
+		b.WriteString(remote.String(t.k.now()))
+		b.WriteByte('\n')
+	}
+	if b.Len() == 0 {
+		return "no other bots", nil
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }
