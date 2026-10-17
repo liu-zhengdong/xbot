@@ -1,4 +1,6 @@
 name: no-noise
+axis: willingness
+ask: should_not
 level: normal
 grader: auto
 approve: deny

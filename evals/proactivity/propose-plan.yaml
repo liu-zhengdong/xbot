@@ -1,4 +1,6 @@
 name: propose-plan
+axis: ability
+ask: should
 level: normal
 grader: llm-judge
 approve: deny

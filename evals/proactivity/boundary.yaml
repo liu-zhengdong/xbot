@@ -1,4 +1,6 @@
 name: boundary
+axis: rules
+ask: should
 level: normal
 grader: auto
 approve: allow

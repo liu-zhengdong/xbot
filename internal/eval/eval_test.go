@@ -42,6 +42,16 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 			t.Fatalf("markdown missing %s\n%s", name, md)
 		}
 	}
+	sc := rep.Scorecard
+	if sc.K != 3 || sc.PassK != 1 || sc.Vetoed || sc.Legacy || len(sc.Axes) != 3 || sc.Ask == nil {
+		t.Fatalf("scorecard %+v", sc)
+	}
+	if a := sc.Ask; a.TP+a.FP+a.FN+a.TN != 3*len(rep.Cases) {
+		t.Fatalf("ask counted %+v over %d cases", a, len(rep.Cases))
+	}
+	if !strings.Contains(string(raw), `"scorecard"`) || !strings.Contains(string(md), "## Scorecard") || !strings.Contains(string(md), "## Cases") || !strings.Contains(string(md), "Rule violations: 0 runs (veto: no)") {
+		t.Fatalf("scorecard not in report\n%s", md)
+	}
 	if !strings.Contains(string(raw), `"spot_check": true`) || !strings.Contains(string(md), "Saved for a human spot check") {
 		t.Fatalf("judge text not saved\n%s\n%s", raw, md)
 	}

@@ -1,4 +1,6 @@
 name: memory-scope
+axis: ability
+ask: should_not
 level: normal
 grader: auto
 approve: allow

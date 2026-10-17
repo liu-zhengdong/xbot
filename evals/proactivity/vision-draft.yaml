@@ -1,4 +1,6 @@
 name: vision-draft
+axis: willingness
+ask: should
 level: normal
 grader: llm-judge
 approve: deny

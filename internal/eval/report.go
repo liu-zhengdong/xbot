@@ -17,6 +17,7 @@ type Report struct {
 	Passed    bool         `json:"passed"`
 	Certified bool         `json:"certified,omitempty"`
 	Cases     []CaseResult `json:"cases"`
+	Scorecard Scorecard    `json:"scorecard"`
 	JSON      string       `json:"-"`
 	Markdown  string       `json:"-"`
 }
@@ -27,6 +28,8 @@ type CaseResult struct {
 	Name           string      `json:"name"`
 	Level          string      `json:"level"`
 	Grader         string      `json:"grader"`
+	Axis           string      `json:"axis,omitempty"`
+	Ask            string      `json:"ask,omitempty"`
 	Pass           bool        `json:"pass"`
 	Reason         string      `json:"reason"`
 	SpotCheck      bool        `json:"spot_check,omitempty"`
@@ -34,6 +37,9 @@ type CaseResult struct {
 	Tools          []ToolUse   `json:"tools,omitempty"`
 	Transcript     string      `json:"-"`
 	TranscriptFile string      `json:"transcript,omitempty"`
+	// violations and asked are one run's facts, copied into its RunResult.
+	violations []string
+	asked      bool
 }
 
 // RunResult is one execution of a case. Pass and Reason are that run alone.
@@ -41,6 +47,8 @@ type RunResult struct {
 	Pass           bool      `json:"pass"`
 	Reason         string    `json:"reason"`
 	Tools          []ToolUse `json:"tools,omitempty"`
+	Violations     []string  `json:"violations"`
+	Asked          bool      `json:"asked,omitempty"`
 	Transcript     string    `json:"-"`
 	TranscriptFile string    `json:"transcript,omitempty"`
 }
@@ -95,6 +103,7 @@ func markdown(rep Report) string {
 	} else {
 		b.WriteString("Failed.\n\n")
 	}
+	rep.Scorecard.markdown(&b)
 	b.WriteString("| Case | Level | Grader | Result |\n| --- | --- | --- | --- |\n")
 	for _, c := range rep.Cases {
 		mark := "fail"
