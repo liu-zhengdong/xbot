@@ -1973,3 +1973,9 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .approval-spinner { animation: approval-pulse 200ms ease-in-out infinite alternate; }
 @keyframes approval-pulse { to { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .approval-spinner { animation: none; } }
+/* External events share routine drawers but stay left aligned. */
+.event-line { align-self: flex-start; max-width: 100%; }
+.event-line .event-toggle { display: flex; justify-content: flex-start; width: 100%; margin: 0; padding: 6px 0; background: transparent; color: var(--muted); text-align: left; white-space: normal; }
+.event-toggle svg { width: 14px; height: 14px; flex-shrink: 0; }
+.event-toggle:focus-visible { outline: 2px solid var(--ring); }
+.event-raw { color: var(--muted); font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }

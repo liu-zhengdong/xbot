@@ -66,8 +66,8 @@ func TestAcceptedSendStatusRecovery(t *testing.T) {
 		"pending.baseline = ownerSends(text)", `event === "queued"`, `payload.status === "queued"`,
 		"await readSSE(res, selection, prose, markQueued)", "没送到，原文还在输入框里",
 		`field.addEventListener("input", () => { go.disabled = !field.value.trim(); })`,
-		`clip(plainText(ag.task || ag.id), 80)`, "没有留下失败原因",
-		"clip(plainText(raw), 72)", "errorDetails(drawer, ag.summary, shown)",
+		`clip(plainText(displayText(ag.task || ag.id)) || "子任务", 80)`, "没有留下失败原因",
+		"const raw = plainText(displayText(text));", "errorDetails(drawer, ag.summary, shown)",
 	} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("missing send/status UI regression contract: %s", want)
