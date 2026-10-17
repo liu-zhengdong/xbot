@@ -1466,7 +1466,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .connect-pop #phone-push[aria-checked="true"] .switch::after { transform: translateX(16px); }
 
-.connect-sep { height: 1px; margin: 6px 8px; background: var(--fill); border: 0; }
 
 .push-hint {
   margin: 0; padding: 0 8px 4px 34px;
@@ -1869,6 +1868,41 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .recent-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .recent-status { flex-shrink: 0; color: var(--muted); }
 .recent-status.failed { color: var(--err); }
+/* Account actions remain reachable from the avatar rail. */
+.account-wrap { position: relative; min-width: 0; }
+.account-trigger {
+  display: flex; align-items: center; gap: 8px; padding: 4px 0;
+  background: transparent; color: var(--text); border: 0; border-radius: 8px;
+}
+.account-trigger:hover { background: var(--hover); }
+.account-menu { min-width: 160px; }
+.account-menu button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
+
+/* Only the profile fields scroll; its actions stay visible. */
+.profile-modal { display: flex; flex-direction: column; overflow: hidden; }
+.profile-modal #modal-fields { min-height: 0; overflow: auto; }
+.profile-modal .modal-actions {
+  position: sticky; bottom: 0; flex: none; flex-wrap: wrap;
+  background: var(--bg); padding-top: 12px;
+}
+.profile-templates {
+  display: flex; align-items: center; gap: 12px;
+  flex: 1 0 100%; padding-bottom: 8px;
+}
+.panel-scrim {
+  position: fixed; inset: var(--panel-overlay-top, 64px) 0 0;
+  z-index: 29; background: rgba(0, 0, 0, 0.28);
+}
+@media (max-width: 1100px) {
+  .panel.open { top: var(--panel-overlay-top, 64px); }
+}
+@media (max-width: 767px) {
+  .panel { top: var(--panel-overlay-top, 52px); bottom: 0; height: auto; }
+  .panel.open {
+    width: min(90%, 400px) !important; min-width: 0;
+    left: auto; right: 0; border-radius: 20px 0 0 0;
+  }
+}
 /* MyGo sets these variables only in desktop windows. */
 @supports (padding-left: max(0px, 1px)) {
   .in-app .sidebar .pin-row {

@@ -751,6 +751,7 @@
     closeShots();
     bgClose();
     panel.classList.remove("open");
+    $("panel-scrim").hidden = true;
     $("info").setAttribute("aria-expanded", "false");
     state.sel = null;
     ++state.threadLoad;
@@ -854,6 +855,8 @@
   }
 
   const ICONS = {
+    logout: '<path d="M9 4H4v16h5"/><path d="M9 12h12m-5-5 5 5-5 5"/>',
+    sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
     terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
@@ -3425,7 +3428,7 @@
     file.hidden = true;
     const pick = el("button", "secondary", "上传头像");
     pick.type = "button";
-    const clear = el("button", "text-btn danger", "清除头像");
+    const clear = el("button", "text-btn", "清除头像");
     clear.type = "button";
     const stack = el("div", "stack");
     stack.append(pick, clear, file);
@@ -3446,18 +3449,21 @@
     persona.maxLength = 32000;
     const err = el("p", "error", "");
     err.hidden = true;
-    const save = el("button", "secondary", "保存");
-    save.type = "button";
-    const exp = el("button", "secondary", "导出模板");
+    const save = $("modal-ok");
+    save.textContent = "保存";
+    save.hidden = false;
+    save.type = "submit";
+    const exp = el("button", "text-btn", "导出模板");
     exp.type = "button";
-    const imp = el("button", "secondary", "导入模板");
+    const imp = el("button", "text-btn", "导入模板");
     imp.type = "button";
     const fileIn = document.createElement("input");
     fileIn.type = "file";
     fileIn.accept = "application/json,.json";
     fileIn.hidden = true;
-    const actions = el("div", "actions");
-    actions.append(save, exp, imp, fileIn);
+    const actions = el("div", "profile-templates");
+    actions.append(exp, imp, fileIn);
+    modalForm.querySelector(".modal-actions").prepend(actions);
     wrap.append(
       head,
       labeled("标识", name),
@@ -3469,7 +3475,7 @@
       labeled("免打扰开始", quietStart),
       labeled("免打扰结束", quietEnd),
       labeled("人设", persona),
-      err, actions,
+      err,
     );
     const showErr = (e, fallback) => { err.hidden = false; err.textContent = visibleError(e, fallback); };
     pick.addEventListener("click", () => file.click());
@@ -3496,7 +3502,8 @@
         mark = next;
       } catch (e) { showErr(e, "清除失败"); }
     });
-    save.addEventListener("click", async () => {
+    modalForm.onsubmit = async (ev) => {
+      ev.preventDefault();
       err.hidden = true;
       const body = {
         name: name.value.trim(),
@@ -3522,7 +3529,7 @@
         if (state.sel && next !== state.sel.id) await selectBot(next);
         else await loadPanel();
       } catch (e) { showErr(e, "保存失败"); }
-    });
+    };
     exp.addEventListener("click", async () => {
       err.hidden = true;
       try { await downloadTemplate(data.name); }
@@ -3548,12 +3555,11 @@
   function openProfile(data) {
     if (!data || !data.name) return;
     $("modal-title").textContent = "编辑资料";
-    $("modal-ok").hidden = true;
-    $("modal-cancel").textContent = "关闭";
+    modalForm.classList.add("profile-modal");
+    $("modal-cancel").textContent = "取消";
     modalFields.replaceChildren(profileForm(data));
     modalError.hidden = true;
     modal.hidden = false;
-    modalForm.onsubmit = (ev) => ev.preventDefault();
   }
 
   async function uploadAvatar(name, file) {
@@ -3634,6 +3640,9 @@
   function syncBackdrop() {
     const drawer = window.innerWidth < 768 && sidebar.classList.contains("open");
     backdrop.hidden = !drawer;
+    const topBottom = document.querySelector(".top").getBoundingClientRect().bottom;
+    $("shell").style.setProperty("--panel-overlay-top", topBottom + "px");
+    $("panel-scrim").hidden = !(window.innerWidth <= 1100 && panel.classList.contains("open") && !drawer);
   }
 
   async function refreshLists() {
@@ -3992,6 +4001,8 @@
 
   function closeModal() {
     modal.hidden = true;
+    modalForm.classList.remove("profile-modal");
+    modalForm.querySelector(".profile-templates")?.remove();
     modalError.hidden = true;
     modalError.textContent = "";
     modalForm.onsubmit = null;
@@ -4201,7 +4212,13 @@
     composer.classList.toggle("has-text", input.value.trim().length > 0);
   }
 
+  function closeAccount() {
+    $("account-menu").hidden = true;
+    $("account").setAttribute("aria-expanded", "false");
+  }
+
   function closePops() {
+    closeAccount();
     $("connect-pop").hidden = true;
     $("connect").setAttribute("aria-expanded", "false");
     $("plus-menu").hidden = true;
@@ -4248,6 +4265,7 @@
   });
 
   $("logout").addEventListener("click", async () => {
+    closeAccount();
     try { await api("/api/logout", { method: "POST" }); } catch (e) {}
     state.sel = null;
     state.knownNotes = null;
@@ -4261,15 +4279,42 @@
     applyTheme(dark ? "light" : "dark");
   });
 
-  $("collapse").addEventListener("click", () => {
-    if (window.innerWidth < 768) { closeDrawer(); return; }
-    sidebar.classList.toggle("collapsed");
-    $("collapse").textContent = sidebar.classList.contains("collapsed") ? "展开列表" : "收起列表";
+  let compactSidebarChoice = null;
+  let wideSidebarCollapsed = false;
+  function syncSidebar() {
+    const compact = window.innerWidth >= 768 && window.innerWidth <= 1100;
+    const collapsed = compact ? compactSidebarChoice !== false : wideSidebarCollapsed;
+    sidebar.classList.toggle("collapsed", collapsed);
+    $("collapse").replaceChildren(icon("sidebar"), document.createTextNode(collapsed ? "展开列表" : "收起列表"));
+  }
+  $("logout").prepend(icon("logout"));
+  $("account").addEventListener("click", () => {
+    const open = $("account-menu").hidden;
+    closePops();
+    $("account-menu").hidden = !open;
+    $("account").setAttribute("aria-expanded", open ? "true" : "false");
   });
+  $("collapse").addEventListener("click", () => {
+    closeAccount();
+    if (window.innerWidth < 768) { closeDrawer(); return; }
+    const collapsed = !sidebar.classList.contains("collapsed");
+    if (window.innerWidth <= 1100) compactSidebarChoice = collapsed;
+    else wideSidebarCollapsed = collapsed;
+    syncSidebar();
+  });
+
+  function rememberPanel(open) {
+    state.panelTouched = true;
+    try { localStorage.setItem("xbot-panel-open", String(open)); } catch (e) {}
+  }
+  $("panel-scrim").addEventListener("click", () => $("panel-close").click());
 
   $("menu").addEventListener("click", () => {
     sidebar.classList.add("open");
-    if (window.innerWidth < 768) panel.classList.remove("open");
+    if (window.innerWidth < 768 && panel.classList.contains("open")) {
+      rememberPanel(false);
+      panel.classList.remove("open");
+    }
     $("info").setAttribute("aria-expanded", "false");
     syncBackdrop();
   });
@@ -4293,8 +4338,8 @@
   });
 
   $("info").addEventListener("click", async () => {
-    state.panelTouched = true;
     const open = panel.classList.toggle("open");
+    rememberPanel(open);
     $("info").setAttribute("aria-expanded", open ? "true" : "false");
     if (open && window.innerWidth < 768) sidebar.classList.remove("open");
     syncBackdrop();
@@ -4316,7 +4361,7 @@
   });
 
   $("panel-close").addEventListener("click", () => {
-    state.panelTouched = true;
+    rememberPanel(false);
     panel.classList.remove("open");
     $("info").setAttribute("aria-expanded", "false");
     syncBackdrop();
@@ -4333,6 +4378,7 @@
 
   $("connect").addEventListener("click", (ev) => {
     ev.stopPropagation();
+    closeAccount();
     const pop = $("connect-pop");
     pop.hidden = !pop.hidden;
     $("connect").setAttribute("aria-expanded", pop.hidden ? "false" : "true");
@@ -4491,6 +4537,7 @@
   document.addEventListener("scroll", hideTip, true);
 
   document.addEventListener("click", (ev) => {
+    if (!ev.target.closest(".account-wrap")) closeAccount();
     if (!ev.target.closest(".connect-wrap")) {
       $("connect-pop").hidden = true;
       $("connect").setAttribute("aria-expanded", "false");
@@ -4547,13 +4594,15 @@
 
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
+    closeAccount();
     hideTip();
     if (!lightbox.hidden) { closeShots(); return; }
     if (!modal.hidden) { closeModal(); return; }
     if (stpState.open) { closeStp(); return; }
     if (state.replyTo) { clearQuote(); return; }
     closePops();
-    if (panel.classList.contains("open") && window.innerWidth < 1100) {
+    if (panel.classList.contains("open") && window.innerWidth <= 1100) {
+      rememberPanel(false);
       panel.classList.remove("open");
       $("info").setAttribute("aria-expanded", "false");
     }
@@ -4589,6 +4638,7 @@
 
   window.addEventListener("resize", () => {
     if (window.innerWidth >= 768) sidebar.classList.remove("open");
+    syncSidebar();
     syncPanelDefault();
     syncBackdrop();
   });
@@ -4617,7 +4667,11 @@
 
   function syncPanelDefault() {
     if (state.panelTouched) return;
-    const wide = window.innerWidth >= 1280;
+    let preference = null;
+    try { preference = localStorage.getItem("xbot-panel-open"); } catch (e) {}
+    // The remembered choice only applies where the panel sits beside the
+    // conversation; narrower windows always start with it closed.
+    const wide = window.innerWidth > 1100 && (preference === "true" || (preference !== "false" && window.innerWidth >= 1440));
     const was = panel.classList.contains("open");
     panel.classList.toggle("open", wide);
     $("info").setAttribute("aria-expanded", wide ? "true" : "false");
@@ -4625,6 +4679,7 @@
     if (wide && !was) loadPanel().catch(() => {});
   }
 
+  syncSidebar();
   initTheme();
   syncComposer();
   const hold = el("div", "thread-inner");

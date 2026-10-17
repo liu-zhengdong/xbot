@@ -50,8 +50,16 @@ try {
     </div>
     <div class="side-foot">
       <div class="me">
-        <span id="me-avatar"></span>
-        <span id="me-name" class="me-name">我</span>
+        <div class="account-wrap">
+          <button id="account" class="account-trigger" type="button" aria-label="我" aria-expanded="false" aria-controls="account-menu">
+            <span id="me-avatar"></span>
+            <span id="me-name" class="me-name">我</span>
+          </button>
+          <div id="account-menu" class="pop account-menu" hidden>
+            <button id="collapse" class="desk-only" type="button">收起列表</button>
+            <button id="logout" type="button">退出</button>
+          </div>
+        </div>
         <span class="spacer"></span>
         <button id="theme" class="icon-btn" type="button" aria-label="外观" data-tip="外观">
           <svg id="theme-icon" class="icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
@@ -89,9 +97,6 @@ try {
             <span class="switch" aria-hidden="true"></span>
           </button>
           <p id="phone-push-hint" class="push-hint" hidden>免打扰时段不推送</p>
-          <div class="connect-sep" role="separator"></div>
-          <button id="logout" type="button">退出</button>
-          <button id="collapse" class="desk-only" type="button">收起列表</button>
         </div>
       </div>
     </div>
@@ -162,6 +167,7 @@ try {
     </div>
   </main>
 
+  <div id="panel-scrim" class="panel-scrim" hidden></div>
   <aside id="panel" class="panel" aria-label="详情">
     <div class="sheet-handle" aria-hidden="true"></div>
     <div class="panel-bar">
