@@ -17,6 +17,18 @@ import (
 var datedFactRE = regexp.MustCompile(`^- \((\d{4}-\d{2}-\d{2})\) (.+)$`)
 var viaRE = regexp.MustCompile(` via ([A-Za-z0-9_-]{1,64})$`)
 
+// ValidMemoryLine reports a memory.md entry the store keeps: - (YYYY-MM-DD) text.
+// Other lines outside the index section are dropped when the store rewrites
+// the file.
+func ValidMemoryLine(line string) bool {
+	m := datedFactRE.FindStringSubmatch(strings.TrimSuffix(line, "\r"))
+	if m == nil {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", m[1])
+	return err == nil
+}
+
 func memoryIndex(body string) string {
 	var lines []string
 	in := false
