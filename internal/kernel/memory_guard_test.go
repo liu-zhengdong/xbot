@@ -144,3 +144,23 @@ func TestMemoryFileOwnEditNoDiff(t *testing.T) {
 		}
 	}
 }
+
+func TestMemoryFileCaseFoldProfileCap(t *testing.T) {
+	previous := memCaseFold
+	memCaseFold = true
+	t.Cleanup(func() { memCaseFold = previous })
+
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
+	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "MEMORY.md")
+	err := guardWrite(t, k, path, strings.Repeat("x", memory.ProfileBytes+1))
+	if err == nil {
+		t.Fatal("case-variant over-cap write accepted")
+	}
+	if !strings.Contains(err.Error(), "memory.md exceeds 4096 bytes") {
+		t.Fatalf("expected profile cap rejection, got: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("rejected new file retained: %v", err)
+	}
+}

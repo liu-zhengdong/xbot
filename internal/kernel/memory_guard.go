@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,6 +16,16 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/tools"
 )
+
+// memCaseFold follows the case-insensitive filesystem defaults on these targets.
+var memCaseFold = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+
+func memoryPathCase(path string) string {
+	if memCaseFold {
+		return strings.ToLower(path)
+	}
+	return path
+}
 
 // memoryFolder classifies an absolute path without resolving its symlinks.
 func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own bool) {
@@ -33,7 +44,7 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 			continue
 		}
 		parts = strings.Split(rel, string(filepath.Separator))
-		if len(parts) >= 3 && parts[2] == "memory" && memory.ValidID(parts[1]) && (parts[0] == "bots" || parts[0] == "people") {
+		if len(parts) >= 3 && memoryPathCase(parts[2]) == "memory" && memory.ValidID(parts[1]) && (memoryPathCase(parts[0]) == "bots" || memoryPathCase(parts[0]) == "people") {
 			root = candidate
 			break
 		}
@@ -42,15 +53,15 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 	if parts == nil {
 		return
 	}
-	switch parts[0] {
+	switch memoryPathCase(parts[0]) {
 	case "people":
 		scope, own = memory.ScopePerson, true
 	case "bots":
-		scope, own = memory.ScopeBot, parts[1] == k.Bot.Name()
+		scope, own = memory.ScopeBot, memoryPathCase(parts[1]) == memoryPathCase(k.Bot.Name())
 	default:
 		return
 	}
-	return filepath.Join(root, parts[0], parts[1], "memory"), scope, own
+	return filepath.Join(root, parts[0], parts[1], parts[2]), scope, own
 }
 
 // memoryCall uses both identities so symlinks cannot erase memory protection.
@@ -109,6 +120,7 @@ func (t reviewedTool) guardMemory(ctx context.Context, args json.RawMessage, tra
 		return "", err
 	}
 	rel, _ := filepath.Rel(dir, path)
+	rel = memoryPathCase(rel)
 	tracked := rel == "memory.md" || rel == "log" || strings.HasPrefix(rel, "log"+string(filepath.Separator))
 	if own && tracked && track {
 		done := t.k.beginOwnWrite(ctx, scope, filepath.Base(filepath.Dir(dir)))
