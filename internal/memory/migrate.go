@@ -55,6 +55,7 @@ func onceFor(root string) *sync.Once {
 }
 
 func migrateRoot(root string) {
+	defer migrateLayout(root)
 	bots := filepath.Join(root, "bots")
 	entries, err := os.ReadDir(bots)
 	if errors.Is(err, os.ErrNotExist) {
@@ -133,7 +134,8 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 	if len(live) == 0 {
 		return false
 	}
-	profile, err := loadTier(dest, TierProfile, ScopeBot, botName, "")
+	profileBase := legacyProfileBase(dest)
+	profile, err := loadNamed(dest, profileBase, ScopeBot, TierProfile, botName, "")
 	if err != nil {
 		log.Printf("memory: migrate %s profile: %v", dest, err)
 		return true
@@ -177,7 +179,7 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 	}
 	profile, logFacts, profileChanged, logChanged := mergeLegacy(botName, profile, logFacts, incomingProfile, incomingLog)
 	if profileChanged {
-		if err := saveTier(dest, TierProfile, profile); err != nil {
+		if err := writeNamed(dest, profileBase, profile, ProfileBytes, true, false, true); err != nil {
 			log.Printf("memory: migrate %s profile: %v", dest, err)
 			return true
 		}
@@ -273,7 +275,7 @@ func botOwners(root, botName string) (map[string]bool, error) {
 func loadLegacy(dir, botName string) (profile, logFacts []Fact, err error) {
 	err = fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
 		var err error
-		profile, err = loadTier(dir, TierProfile, ScopeBot, botName, "")
+		profile, err = loadNamed(dir, legacyProfileBase(dir), ScopeBot, TierProfile, botName, "")
 		if err != nil {
 			return err
 		}
@@ -354,7 +356,7 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 	}
 	profileChanged := false
 	logChanged := false
-	profileOver := len(renderMD(profile)) > ProfileBytes
+	profileOver := memoryProfileSize(renderMemoryMD(append([]Fact(nil), profile...), ""), profile) > ProfileBytes
 	var overflow []Fact
 	for _, f := range incomingProfile {
 		f = asBotFact(f, botName)
@@ -368,7 +370,7 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 			continue
 		}
 		trial := append(append([]Fact{}, profile...), f)
-		if len(renderMD(trial)) > ProfileBytes {
+		if memoryProfileSize(renderMemoryMD(trial, ""), trial) > ProfileBytes {
 			f.Tier = TierLog
 			overflow = append(overflow, f)
 			continue

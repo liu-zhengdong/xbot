@@ -98,7 +98,7 @@ func TestMigrateOverflowGoesToLog(t *testing.T) {
 			Time: when.Add(time.Duration(i) * time.Second),
 		}
 		tiny := Fact{Key: "tiny", Kind: KindAttribute, WrittenBy: "ada", Text: "tiny-fits", Time: when.Add(time.Hour)}
-		if len(renderMD(append(append([]Fact{}, have...), tiny))) > ProfileBytes {
+		if len(renderMemoryMD(append(append([]Fact{}, have...), tiny), "")) > ProfileBytes {
 			if len(have) == 0 {
 				t.Fatal("one fact already over the cap")
 			}
@@ -116,10 +116,10 @@ func TestMigrateOverflowGoesToLog(t *testing.T) {
 		Text: "OVERFLOW " + strings.Repeat("Z", 700),
 		Time: when.Add(2 * time.Hour),
 	}
-	if len(renderMD(append(append([]Fact{}, have...), tiny))) > ProfileBytes {
+	if len(renderMemoryMD(append(append([]Fact{}, have...), tiny), "")) > ProfileBytes {
 		t.Fatal("tiny fact does not fit")
 	}
-	if len(renderMD(append(append(append([]Fact{}, have...), tiny), big))) <= ProfileBytes {
+	if len(renderMemoryMD(append(append(append([]Fact{}, have...), tiny), big), "")) <= ProfileBytes {
 		t.Fatal("fixture still has room for the overflow fact")
 	}
 	writeOwners(t, root, "ada", "u1")
@@ -134,7 +134,7 @@ func TestMigrateOverflowGoesToLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(dest, "profile.md"))
+	raw, err := os.ReadFile(filepath.Join(dest, "memory.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

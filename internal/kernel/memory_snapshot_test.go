@@ -749,3 +749,69 @@ func TestMemoryViewCapKeepsTarget(t *testing.T) {
 		t.Fatalf("target view evicted and rebuilt: %q", st.MemSnap)
 	}
 }
+
+func TestMemoryAcceptedProfilesDoNotClip(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	store := memory.Open(b.Root)
+	ctx := context.Background()
+	for _, scope := range []memory.Scope{memory.ScopeBot, memory.ScopePerson} {
+		for i := 0; ; i++ {
+			f := memory.Fact{Scope: scope, BotName: b.Name(), PersonID: "u1", Tier: memory.TierProfile, WrittenBy: "dev", Text: fmt.Sprintf("%s fact %03d abcdefghijklmnop", scope, i)}
+			if i%10 != 0 {
+				f.Key = fmt.Sprintf("%s-custom-%03d-%s", scope, i, strings.Repeat("k", 70))
+			}
+			if err := store.Remember(ctx, f); err != nil {
+				if i < 4 {
+					t.Fatal(err)
+				}
+				break
+			}
+		}
+	}
+	k := &Kernel{Bot: b, Memory: store}
+	body, err := k.memoryText(ctx, "u1")
+	if err != nil || strings.Contains(body, memoryClipNote) {
+		t.Fatalf("accepted profiles clipped: %v\n%s", err, body)
+	}
+}
+
+func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	store := memory.Open(b.Root)
+	ctx := context.Background()
+	if err := store.Remember(ctx, memory.Fact{Scope: memory.ScopeBot, BotName: b.Name(), Tier: memory.TierProfile, Key: "rule", Text: "keep it small", WrittenBy: "dev"}); err != nil {
+		t.Fatal(err)
+	}
+	old := "## Bot\n- rule: keep it small (written by dev)\n"
+	if err := b.SaveState(bot.State{MemSnapSet: true, MemSnap: old, MemSeen: old, MemOwn: []string{"+old"}, MemOther: map[string]bot.MemView{"u1": {Snap: old, Seen: old}}}); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k := &Kernel{Bot: b, Memory: store, Provider: p, MaxSteps: 2}
+	fresh, err := k.memoryText(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Handle(ctx, link.TerminalEvent("u1", "hello", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) != 1 || len(p.reqs[0].Messages) < 2 {
+		t.Fatal("missing request messages")
+	}
+	msgs := p.reqs[0].Messages
+	if msgs[1].Content != wrapMemory(fresh) {
+		t.Fatalf("snapshot = %q, want %q", msgs[1].Content, fresh)
+	}
+	for _, msg := range msgs {
+		if strings.Contains(msg.Content, "<memory_diff>") || strings.Contains(msg.Content, "memory changed") {
+			t.Fatalf("upgrade emitted bogus diff: %s", msg.Content)
+		}
+	}
+	st, err := b.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.MemRender != memRenderVersion || len(st.MemOther) != 0 || len(st.MemOwn) != 0 {
+		t.Fatalf("old views survived: %+v", st)
+	}
+}

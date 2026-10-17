@@ -267,6 +267,9 @@ func tierBases(tier Tier) []string {
 	if tier == TierLog {
 		return []string{string(TierLog), logOverflowBase}
 	}
+	if tier == TierProfile {
+		return []string{"memory"}
+	}
 	return []string{string(tier)}
 }
 
@@ -282,7 +285,7 @@ func filterQuery(facts []Fact, q Query) []Fact {
 }
 
 func loadTier(dir string, tier Tier, scope Scope, botName, personID string) ([]Fact, error) {
-	return loadNamed(dir, string(tier), scope, tier, botName, personID)
+	return loadNamed(dir, tierBases(tier)[0], scope, tier, botName, personID)
 }
 
 func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID string) ([]Fact, error) {
@@ -290,6 +293,13 @@ func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID strin
 	idxPath := filepath.Join(dir, base+".index.json")
 	mdInfo, mdErr := os.Stat(mdPath)
 	if errors.Is(mdErr, os.ErrNotExist) {
+		if base == "memory" {
+			if _, err := os.Stat(filepath.Join(dir, "profile.md")); err == nil {
+				return nil, fmt.Errorf("memory: legacy profile awaits migration: %s", dir)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
 		return nil, nil
 	}
 	if mdErr != nil {
@@ -308,7 +318,47 @@ func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID strin
 	if err != nil {
 		return nil, err
 	}
-	facts, err := parseMD(string(raw))
+	var facts []Fact
+	if base != "memory" {
+		facts, err = parseMD(string(raw))
+	}
+	if base == "memory" {
+		facts = parseMemoryMD(string(raw), scope)
+		old, _ := readLooseIndex(idxPath)
+		if _, err := os.Stat(idxPath); errors.Is(err, os.ErrNotExist) {
+			old, _ = readLooseIndex(filepath.Join(dir, "profile.index.json"))
+		}
+		used := make([]bool, len(old))
+		for i, f := range facts {
+			full := f.Text
+			if f.WrittenBy != "" {
+				full += " via " + f.WrittenBy
+			}
+			best := -1
+			for _, text := range []string{full, f.Text} {
+				for j, prev := range old {
+					if used[j] || prev.Text != text || (f.WrittenBy != "" && prev.WrittenBy != f.WrittenBy) {
+						continue
+					}
+					if best < 0 {
+						best = j
+					}
+					if prev.Time.In(time.Local).Format("2006-01-02") == f.Time.In(time.Local).Format("2006-01-02") {
+						best = j
+						break
+					}
+				}
+				if best >= 0 {
+					break
+				}
+			}
+			if best >= 0 {
+				facts[i] = old[best]
+				used[best] = true
+			}
+		}
+		err = nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +402,7 @@ func writeTier(dir string, tier Tier, facts []Fact, enforce bool) error {
 }
 
 func writeTierOpt(dir string, tier Tier, facts []Fact, enforce, fromSync bool) error {
-	return writeNamed(dir, string(tier), facts, tierLimit(tier), enforce, fromSync && tier == TierProfile, tier == TierProfile)
+	return writeNamed(dir, tierBases(tier)[0], facts, tierLimit(tier), enforce, fromSync && tier == TierProfile, tier == TierProfile)
 }
 
 func tierLimit(tier Tier) int {
@@ -366,7 +416,18 @@ func tierLimit(tier Tier) int {
 // is how a sync fold saves an over-cap profile. enforce false skips it too.
 func writeNamed(dir, base string, facts []Fact, limit int, enforce, bypass, profile bool) error {
 	body := renderMD(facts)
-	if enforce && !bypass && len(body) > limit {
+	if base == "memory" {
+		raw, err := os.ReadFile(filepath.Join(dir, base+".md"))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		body = renderMemoryMD(facts, memoryIndex(string(raw)))
+	}
+	size := len(body)
+	if base == "memory" {
+		size = memoryProfileSize(body, facts)
+	}
+	if enforce && !bypass && size > limit {
 		cur := -1
 		if info, err := os.Stat(filepath.Join(dir, base+".md")); err == nil {
 			cur = int(info.Size())
@@ -478,6 +539,9 @@ func oneLine(s string) string {
 	return s
 }
 
+// DefaultKey returns the key assigned when a fact has no custom key.
+func DefaultKey(text string) string { return clipKey(text) }
+
 func clipKey(s string) string {
 	if len(s) <= 80 {
 		return s
@@ -487,4 +551,15 @@ func clipKey(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// memoryProfileSize includes custom keys shown by the kernel but absent from memory.md.
+func memoryProfileSize(body string, facts []Fact) int {
+	size := len(body)
+	for _, f := range facts {
+		if f.Key != DefaultKey(f.Text) {
+			size += len(f.Key) + 2
+		}
+	}
+	return size
 }

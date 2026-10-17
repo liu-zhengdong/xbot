@@ -90,6 +90,7 @@ func MergeSync(root string, remote []SyncLine) error {
 // peer is that node's device id. A line is owner-recorded only when its device
 // is this peer and the peer is linked locally. Lines relayed by the peer stay untrusted.
 func MergeFrom(root, peer string, remote []SyncLine) error {
+	_ = Migrate(root)
 	now := time.Now()
 	home := deviceOf(root)
 	linked := linkedDevices(root)

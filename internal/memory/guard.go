@@ -9,6 +9,9 @@ import (
 // maxSkew is how far a merged timestamp may sit ahead of this machine's clock.
 const maxSkew = 2 * time.Minute
 
+const untrustedMarker = " (untrusted, recorded by "
+const ownerMarker = " (owner-recorded"
+
 // Provenance marks a fact as data recorded by someone else.
 // The suffix is applied again only when it is not already the end of the text.
 // The word "untrusted" earlier in the fact does not count.
@@ -18,9 +21,9 @@ func Provenance(text, by, device string) string {
 		by = "unknown"
 	}
 	device = label(device)
-	suffix := " (untrusted, recorded by " + by + ")"
+	suffix := untrustedMarker + by + ")"
 	if device != "" && device != "local" {
-		suffix = " (untrusted, recorded by " + by + " on " + device + ")"
+		suffix = untrustedMarker + by + " on " + device + ")"
 	}
 	if strings.HasSuffix(text, suffix) {
 		return text
@@ -34,9 +37,9 @@ func Provenance(text, by, device string) string {
 // The suffix is applied again only when it is not already the end of the text.
 func OwnerProvenance(text, device string) string {
 	device = label(device)
-	suffix := " (owner-recorded)"
+	suffix := ownerMarker + ")"
 	if device != "" && device != "local" && device != "relay" {
-		suffix = " (owner-recorded on " + device + ")"
+		suffix = ownerMarker + " on " + device + ")"
 	}
 	if strings.HasSuffix(text, suffix) {
 		return text

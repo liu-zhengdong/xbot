@@ -236,6 +236,12 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		k.memWriteMu.Unlock()
 		return err
 	}
+	if st.MemRender != memRenderVersion {
+		st.MemSnapSet = false
+		st.MemSnap, st.MemSeen = "", ""
+		st.MemOwn, st.MemOther = nil, nil
+		st.MemRender = memRenderVersion
+	}
 	switchMemView(&st, key, memText, k.Bot.Config().Owners)
 	k.drainMemOwn(&st)
 	k.memWriteMu.Unlock()
@@ -1078,6 +1084,8 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 	}
 }
 
+const memRenderVersion = 1
+
 // refreshMemSnap re-snapshots standing memory after a compaction appended a block.
 // The prefix already changed, so the active view is replaced and parked views are
 // dropped. The active view keeps its key, whichever turn runs the compaction.
@@ -1098,6 +1106,7 @@ func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) {
 	k.memOwnMu.Lock()
 	k.memOwn = nil
 	k.memOwnMu.Unlock()
+	st.MemRender = memRenderVersion
 	st.MemSnap, st.MemSeen, st.MemSnapSet, st.MemPerson = mem, mem, true, key
 	st.MemOwn, st.MemOther = nil, nil
 }
