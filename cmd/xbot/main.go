@@ -83,6 +83,12 @@ Usage:
   xbot [--root DIR] node add <name> --url URL [--token TOKEN|-]
   xbot [--root DIR] node list
   xbot [--root DIR] node remove <name>
+  xbot [--root DIR] remote id
+  xbot [--root DIR] remote gateway [URL]
+  xbot [--root DIR] remote add <name> <key> [--person ID]
+  xbot [--root DIR] remote list
+  xbot [--root DIR] remote remove <name>
+  xbot [--root DIR] gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]
   xbot [--root DIR] node call <name> info
   xbot [--root DIR] node call <name> shell <command>
   xbot [--root DIR] node pending
@@ -232,6 +238,10 @@ func run(argv []string) error {
 		return cmdWatch(root, rest[1:])
 	case "node":
 		return cmdNode(root, rest[1:])
+	case "remote":
+		return cmdRemote(root, rest[1:])
+	case "gateway":
+		return cmdGateway(root, rest[1:])
 	case "person":
 		return cmdPerson(root, rest[1:])
 	case "sync":
