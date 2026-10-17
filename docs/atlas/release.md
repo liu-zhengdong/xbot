@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/version/, internal/upgrade/, scripts/release.sh]
-verified: 2026-10-16 @ 61f3395
+verified: 2026-10-17 @ 0418c26
 ---
 # 版本与自动升级
 
@@ -27,7 +27,7 @@ var Version = "dev"
 1. 拒绝：工作区不干净、tag 已存在、版本号不合规。
 2. 跑 `go test -count=1 ./...`，不绿就停。
 3. `CGO_ENABLED=0` 交叉编译 linux/amd64、linux/arm64、darwin/arm64 到 `dist/VERSION/xbot_<os>_<arch>`，写 `SHA256SUMS`（sha256sum 格式）。
-4. `git tag -a`、推送 tag、`gh release create`（用 `gh auth token -u liu-zhengdong` 取 token，只走环境变量，不打印）。
+4. `git tag -a`；tag 直接推到 GitHub 仓库 `liu-zhengdong/xbot` 的地址，不经本地的 `origin` 远程；再 `gh release create`。token 用 `gh auth token -u liu-zhengdong` 取，只走环境变量和一次性的推送地址，输出里的 token 换成 `***`，不打印。
 5. `DRY_RUN=1` 只做前 3 步。
 
 `dist/` 在 `.gitignore` 里。
