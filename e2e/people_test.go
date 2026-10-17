@@ -30,14 +30,14 @@ func TestSpawnRememberDoesNotCreateSubagentPerson(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents, link.NameMemory})
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents, link.NameMemory, link.NameTools})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := b.SetOwners([]string{who.ID}); err != nil {
 		t.Fatal(err)
 	}
-	k := m3Kernel(t, b, client, []link.Link{link.Terminal{}, link.Agents{}, link.Memory{}}, newLocal(client))
+	k := m3Kernel(t, b, client, []link.Link{link.Terminal{}, link.Agents{}, link.Memory{}, link.NewToolsLinkAt(root, "")}, newLocal(client))
 	var buf safeBuf
 	k.OnDelta = func(s string) { buf.WriteString(s) }
 	ctx, cancel := context.WithCancel(context.Background())

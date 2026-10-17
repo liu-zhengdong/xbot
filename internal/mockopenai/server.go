@@ -33,7 +33,8 @@ type incoming struct {
 		Content   string `json:"content"`
 		ToolCalls []struct {
 			Function struct {
-				Name string `json:"name"`
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
 			} `json:"function"`
 		} `json:"tool_calls"`
 	} `json:"messages"`
@@ -75,13 +76,13 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
 		return
 	}
-	var sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn, sawPeer bool
+	var sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer bool
 	var lastTool, lastUser string
 	for _, m := range req.Messages {
 		if m.Role == "user" {
 			lastUser = m.Content
 			lastTool = ""
-			sawShell, sawWrite, sawRemember, sawNotify, sawRecall, sawSpawn, sawPeer = false, false, false, false, false, false, false
+			sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer = false, false, false, false, false, false, false
 		}
 		if m.Role == "tool" {
 			lastTool = m.Content
@@ -92,8 +93,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 				sawShell = true
 			case "write_file":
 				sawWrite = true
-			case "remember":
-				sawRemember = true
+				sawMemoryWrite = strings.Contains(tc.Function.Arguments, "memory.md") || sawMemoryWrite
 			case "notify_owner":
 				sawNotify = true
 			case "recall":
@@ -121,16 +121,16 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "REMOTE_PING"), strings.Contains(lastUser, "REMOTE_HELLO"):
 		writeText(w, "sent\n")
 		return
-	case strings.Contains(lastUser, "PREAMBLE_ZH") && !sawRemember:
-		writeToolContent(w, "I'll remember those three things.", "call_pre", "remember", `{"fact":"three things","scope":"person","tier":"profile"}`)
+	case strings.Contains(lastUser, "PREAMBLE_ZH") && !sawMemoryWrite:
+		writeToolContent(w, "I'll remember those three things.", "call_pre", "write_file", memoryWriteArgs(req, "Person", "three things"))
 		return
 	case strings.Contains(lastUser, "PREAMBLE_ZH"):
 		writeText(w, "已记住\n")
 		return
-	case strings.Contains(lastUser, "REMEMBER_PERSON") && !sawRemember:
+	case strings.Contains(lastUser, "REMEMBER_PERSON") && !sawMemoryWrite:
 		writeTools(w, []toolSpec{
-			{"call_rem_person", "remember", `{"fact":"Ada likes tea","scope":"person","tier":"profile"}`},
-			{"call_rem_rel", "remember", `{"fact":"secret handshake","scope":"bot","tier":"profile"}`},
+			{"call_rem_person", "write_file", memoryWriteArgs(req, "Person", "Ada likes tea")},
+			{"call_rem_rel", "write_file", memoryWriteArgs(req, "Bot", "secret handshake")},
 		})
 		return
 	case strings.Contains(lastUser, "REMEMBER_PERSON"):
@@ -202,8 +202,8 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "REMEMBER_TASK"):
 		writeText(w, "subagent finished\n")
 		return
-	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished") && !sawRemember:
-		writeTool(w, "call_rem_sub", "remember", `{"fact":"owner likes water","scope":"person","tier":"profile"}`)
+	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished") && !sawMemoryWrite:
+		writeTool(w, "call_rem_sub", "write_file", memoryWriteArgs(req, "Person", "owner likes water"))
 		return
 	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished"):
 		writeText(w, "remembered\n")
@@ -455,4 +455,25 @@ func joined(req incoming) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// Memory paths come from the snapshot headings, as they do for a real model.
+func memoryWriteArgs(req incoming, scope, text string) string {
+	if scope == "Person" {
+		text += " via " + filepath.Base(filepath.Dir(filepath.Dir(memoryPath(req, "Bot"))))
+	}
+	raw, _ := json.Marshal(map[string]string{"path": memoryPath(req, scope), "content": "- (2026-10-18) " + text + "\n"})
+	return string(raw)
+}
+
+func memoryPath(req incoming, scope string) string {
+	prefix := "### " + scope + " — "
+	for _, m := range req.Messages {
+		for _, line := range strings.Split(m.Content, "\n") {
+			if strings.HasPrefix(line, prefix) {
+				return strings.SplitN(strings.TrimPrefix(line, prefix), ";", 2)[0]
+			}
+		}
+	}
+	return ""
 }

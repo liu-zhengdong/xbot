@@ -255,7 +255,7 @@ func TestMemoryDiffSkipsOwnRemember(t *testing.T) {
 	args := `{"fact":"owner prefers short replies","tier":"profile"}`
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: args},
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "fixture_memory", Arguments: args},
 		}}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "two"},
@@ -265,6 +265,7 @@ func TestMemoryDiffSkipsOwnRemember(t *testing.T) {
 		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
+	p.memoryKernel = k
 	reqs := memDiffRun(t, k, 2, nil)
 	if len(reqs) != 3 {
 		t.Fatalf("requests %d", len(reqs))
@@ -435,7 +436,7 @@ func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
 	args := `{"fact":"own note from the bot","tier":"profile"}`
 	sp := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: args},
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "fixture_memory", Arguments: args},
 		}}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "two"},
@@ -453,6 +454,7 @@ func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
 		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
+	sp.memoryKernel = k
 	memDiffRun(t, k, 2, nil)
 	up := lastEnvUpdate(t, k)
 	if !strings.Contains(up, "outside edit mid turn") {
@@ -493,11 +495,12 @@ func TestMemoryOwnWriteInForkedTurnSkipped(t *testing.T) {
 	k.Links = append(k.Links, link.Memory{})
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"written in the background","tier":"profile"}`}}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "fixture_memory", Arguments: `{"fact":"written in the background","tier":"profile"}`}}}},
 		{Role: provider.RoleAssistant, Content: "后台做完了"},
 		{Role: provider.RoleAssistant, Content: "next"},
 	}}
 	k.Provider = p
+	p.memoryKernel = k
 	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
@@ -564,8 +567,8 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: "hello u2"},
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
-			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"team uses go 1.24","tier":"profile"}`}},
-			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"owner birthday in may","scope":"person","tier":"profile"}`}},
+			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "fixture_memory", Arguments: `{"fact":"team uses go 1.24","tier":"profile"}`}},
+			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "fixture_memory", Arguments: `{"fact":"owner birthday in may","scope":"person","tier":"profile"}`}},
 		}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "owner again"},
@@ -576,6 +579,7 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
+	p.memoryKernel = k
 	// u1 speaks twice, so the own writes are drained into the parked u2 view.
 	for i, who := range []string{"u2", "u1", "u1", "u2"} {
 		if err := k.Handle(context.Background(), link.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
@@ -700,7 +704,7 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"short lived note","tier":"profile"}`},
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "fixture_memory", Arguments: `{"fact":"short lived note","tier":"profile"}`},
 		}}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "two"},
@@ -710,6 +714,7 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
+	p.memoryKernel = k
 	memDiffRun(t, k, 2, func(i int) {
 		if i != 0 {
 			return

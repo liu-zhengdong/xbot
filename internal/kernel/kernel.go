@@ -91,8 +91,8 @@ type Kernel struct {
 	BackgroundMaxTime time.Duration
 
 	turnMu sync.Mutex
-	// memOwnMu guards memOwn: line changes of this bot's own remember/forget
-	// calls, from any turn, drained into State at the next wake (drainMemOwn).
+	// memOwnMu guards memOwn: line changes of this bot's own memory writes
+	// from any turn, drained into State at the next wake (drainMemOwn).
 	memOwnMu sync.Mutex
 	memOwn   []ownChange
 	// memWriteMu serializes own memory writes with their before/after reads.
@@ -1027,7 +1027,7 @@ type ownChange struct {
 	lines  []string
 }
 
-// beginOwnWrite starts recording one own remember/forget. It holds memWriteMu
+// beginOwnWrite starts recording one own memory write. It holds memWriteMu
 // until the returned func runs after the write, so parallel tool calls cannot
 // mix their before/after texts. A bot-scope write is measured on the bot-only
 // rendering, so it can never carry person lines into another person's view.

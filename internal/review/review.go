@@ -56,9 +56,7 @@ var Table = map[string]Class{
 	"list_secrets": Readonly,
 
 	// Memory.
-	"remember": Normal,
-	"forget":   Normal,
-	"recall":   Readonly,
+	"recall": Readonly,
 
 	// Persona and profile.
 	"propose_persona": SelfEdit,

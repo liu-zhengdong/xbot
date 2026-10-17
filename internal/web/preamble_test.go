@@ -25,7 +25,7 @@ func TestDoneTextSkipsPreamble(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameMemory})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameMemory, link.NameTools})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestDoneTextSkipsPreamble(t *testing.T) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, Memory: memory.Open(root), MaxSteps: 4,
 			Budget: compact.DefaultBudget(),
-			Links:  []link.Link{link.Web{}, link.Memory{}},
+			Links:  []link.Link{link.Web{}, link.Memory{}, link.NewToolsLinkAt(root, "")},
 		}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))

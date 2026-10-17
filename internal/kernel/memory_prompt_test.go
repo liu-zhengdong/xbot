@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -110,4 +111,24 @@ func bracketLeft(s string) bool {
 		}
 	}
 	return false
+}
+
+func TestMemoryModelToolsReadOnly(t *testing.T) {
+	k := &Kernel{Bot: testBot(t, link.NameMemory), Links: []link.Link{link.Memory{}}}
+	list, err := k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range list {
+		switch tool.Name() {
+		case "remember", "forget":
+			t.Fatalf("retired tool %s is exposed", tool.Name())
+		case "recall":
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("recall missing")
+	}
 }

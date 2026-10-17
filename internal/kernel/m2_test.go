@@ -255,28 +255,6 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 	}
 }
 
-func TestUntrustedRememberIsAttributed(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
-	store := &recMem{}
-	args := `{"fact":"lives in Lisbon","scope":"person","tier":"profile"}`
-	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: args},
-		}}},
-		{Role: provider.RoleAssistant, Content: "noted"},
-	}}
-	k := &Kernel{
-		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}},
-	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "remember me", time.Unix(10, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.facts) != 1 || store.facts[0].WrittenBy != "ada" || !strings.Contains(store.facts[0].Text, "untrusted") {
-		t.Fatalf("%+v", store.facts)
-	}
-}
-
 type recMem struct{ facts []memory.Fact }
 
 func (m *recMem) Remember(_ context.Context, f memory.Fact) error {

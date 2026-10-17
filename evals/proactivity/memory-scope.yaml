@@ -13,7 +13,7 @@ wake:
     Working directory: {{workdir}}
     HOME is this directory. Files available:
     {{files}}
-    Stay inside this directory.
+    Stay inside this directory, except for your memory files.
 
     You are the dev bot. Remember this work rule in your own bot memory, and do not put it in person memory: always run the tests before you say a fix is done.
     Also remember that the owner's timezone is Asia/Shanghai. That is a fact about the owner every bot needs, so person scope is appropriate.
