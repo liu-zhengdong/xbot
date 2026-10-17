@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-18 @ 312e396
+verified: 2026-10-18 @ 3cfb1f3
 ---
 # 内核：Link、Event、收件箱
 
@@ -12,7 +12,7 @@ verified: 2026-10-18 @ 312e396
 负责：事件进出、可信判断、一轮对话的循环、工具调度和确认路径。不负责：具体工具（见 [生态](ecosystem.md)）、transcript 存储（见 [上下文](context.md)）、权限分类（见 [安全](security.md)）。
 
 ## 怎么运转
-- **Link**：Bot 与外部世界之间的任何一条通道。出站方向把动作暴露成工具；入站方向把外部发生的事变成 Event，投进 Bot 的收件箱。终端、Web 界面、定时器、Webhook、文件监听、MCP、浏览器、编码代理、其他机器、其他 Bot，都是 Link。其他 Bot 走 `message_bot`：同一安装里直接投进对方收件箱；写成 `bot@设备` 时由 `internal/remote` 经网关发给已配对设备上的同主人 Bot（见 [网关](gateway.md)）。
+- **Link**：Bot 与外部世界之间的任何一条通道。出站方向把动作暴露成工具；入站方向把外部发生的事变成 Event，投进 Bot 的收件箱。终端、Web 界面、定时器、Webhook、文件监听、MCP、浏览器、编码代理、其他机器、其他 Bot，都是 Link。其他 Bot 走 `message_bot`：同一安装里直接投进对方收件箱；写成 `bot@设备` 时由 `internal/remote` 经网关发给已配对设备上的同主人 Bot；网关连不上时进本机发件队列，工具结果说明已排队（见 [网关](gateway.md)）。
 - **Event**：统一的事件结构 `{source, type, content, sender, time}`。内核根据来源判断是否可信：只有主人通过经过认证的入口发来的消息才算可信，其余一律当作不可信数据包裹起来。
 - **收件箱与唤醒**：每个 Bot 只有一个事件处理循环，事件按顺序处理，同一事件不会处理两次，主人正在聊天时事件也会被及时处理。终端只在真正跑一轮时拿着处理锁，停在提示符上时不占锁，网页可以当场回复，也可以 fork。网页写进 transcript 的行，终端下一次刷新时补上。主循环在两步之间把这一轮期间新到的收件箱事件按到达顺序接进当前对话，下一步就能看见，transcript 的时间不会倒退。
 - **主体（Principal）**：人、Bot、群都是主体，都可以发消息、可以被授权。
