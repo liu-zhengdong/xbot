@@ -318,7 +318,10 @@ func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID strin
 	if err != nil {
 		return nil, err
 	}
-	facts, err := parseMD(string(raw))
+	var facts []Fact
+	if base != "memory" {
+		facts, err = parseMD(string(raw))
+	}
 	if base == "memory" {
 		facts = parseMemoryMD(string(raw), scope)
 		old, _ := readLooseIndex(idxPath)
@@ -420,7 +423,11 @@ func writeNamed(dir, base string, facts []Fact, limit int, enforce, bypass, prof
 		}
 		body = renderMemoryMD(facts, memoryIndex(string(raw)))
 	}
-	if enforce && !bypass && len(body) > limit {
+	size := len(body)
+	if base == "memory" {
+		size = memoryProfileSize(body, facts)
+	}
+	if enforce && !bypass && size > limit {
 		cur := -1
 		if info, err := os.Stat(filepath.Join(dir, base+".md")); err == nil {
 			cur = int(info.Size())
@@ -544,4 +551,15 @@ func clipKey(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// memoryProfileSize includes custom keys shown by the kernel but absent from memory.md.
+func memoryProfileSize(body string, facts []Fact) int {
+	size := len(body)
+	for _, f := range facts {
+		if f.Key != DefaultKey(f.Text) {
+			size += len(f.Key) + 2
+		}
+	}
+	return size
 }

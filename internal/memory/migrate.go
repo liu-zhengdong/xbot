@@ -356,7 +356,7 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 	}
 	profileChanged := false
 	logChanged := false
-	profileOver := len(renderMemoryMD(append([]Fact(nil), profile...), "")) > ProfileBytes
+	profileOver := memoryProfileSize(renderMemoryMD(append([]Fact(nil), profile...), ""), profile) > ProfileBytes
 	var overflow []Fact
 	for _, f := range incomingProfile {
 		f = asBotFact(f, botName)
@@ -370,7 +370,7 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 			continue
 		}
 		trial := append(append([]Fact{}, profile...), f)
-		if len(renderMemoryMD(trial, "")) > ProfileBytes {
+		if memoryProfileSize(renderMemoryMD(trial, ""), trial) > ProfileBytes {
 			f.Tier = TierLog
 			overflow = append(overflow, f)
 			continue
