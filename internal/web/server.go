@@ -3,7 +3,9 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,6 +91,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /icon-192.png", s.static("static/icon-192.png", "image/png"))
 	mux.HandleFunc("GET /icon-512.png", s.static("static/icon-512.png", "image/png"))
 	mux.HandleFunc("GET /fonts/MonaSansVF.woff2", s.static("static/fonts/MonaSansVF.woff2", "font/woff2"))
+	mux.HandleFunc("GET /fonts/NotoSansSC-subset.woff2", s.static("static/fonts/NotoSansSC-subset.woff2", "font/woff2"))
 
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("GET /app/launch", s.launch)
@@ -152,6 +155,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 func (s *Server) static(name, contentType string) http.HandlerFunc {
 	body, err := staticFS.ReadFile(name)
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.NotFound(w, r)
@@ -159,6 +164,13 @@ func (s *Server) static(name, contentType string) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "no-cache")
+		// no-cache still revalidates every load; the ETag turns that into a
+		// 304 instead of re-sending the 2 MB CJK font over a tunnel.
+		w.Header().Set("ETag", etag)
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 		_, _ = w.Write(body)
 	}
 }
