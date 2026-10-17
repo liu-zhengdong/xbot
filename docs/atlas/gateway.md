@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/gateway/, internal/remote/]
-verified: 2026-10-18 @ 0fd6660
+verified: 2026-10-18 @ 74e6818
 ---
 # 网关（M8，G1–G6 已实现）
 
