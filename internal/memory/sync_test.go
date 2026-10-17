@@ -296,3 +296,28 @@ func TestForgetSyncDropsOlderFact(t *testing.T) {
 		t.Fatalf("forgot %+v %v", got, err)
 	}
 }
+
+// A sync fold on an already over-cap person profile must not wedge: before the
+// fix writeFold hit the profile cap and the whole merge failed.
+func TestMergeSyncOnOverCapProfile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "node-id"), []byte("home-a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	facts := overCapProfile(t, root, "u1")
+	remote := SyncLine{
+		Time: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC), Bot: "bob", Device: "home-b", Op: opRemember,
+		Fact: Fact{Key: "city", Scope: ScopePerson, PersonID: "u1", Tier: TierProfile, WrittenBy: "bob",
+			Text: "Shanghai", Time: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)},
+	}
+	if err := MergeSync(root, []SyncLine{remote}); err != nil {
+		t.Fatalf("merge on an over-cap profile: %v", err)
+	}
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopePerson, PersonID: "u1", Tier: TierProfile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(facts)+1 {
+		t.Fatalf("got %d facts, want %d", len(got), len(facts)+1)
+	}
+}
