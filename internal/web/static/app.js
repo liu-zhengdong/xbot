@@ -894,6 +894,7 @@
   }
 
   const ICONS = {
+    spinner: '<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
     logout: '<path d="M9 4H4v16h5"/><path d="M9 12h12m-5-5 5 5-5 5"/>',
     moon: THEME_MOON,
     sun: THEME_SUN,
@@ -2000,7 +2001,48 @@
     return secs + " 秒";
   }
 
-  function approvalLine(title, summary, state, time) {
+  function approvalPresentation(opt) {
+    const summary = String(opt.summary || "");
+    const command = String(opt.command || summary);
+    const send = opt.title === "对外发送" || opt.kind === "outbound" || opt.kind === "send";
+    let title = opt.title || opt.tool || "操作";
+    let body = summary;
+    if (send) {
+      const url = (command + " " + summary).match(/https?:\/\/[^\s'"<>]+/i);
+      if (url) {
+        try { title = "发到 " + new URL(url[0]).hostname; } catch (e) {}
+      }
+      // Read shell words without executing shell syntax.
+      const words = command.replace(/\\\r?\n/g, "").match(/(?:'[^']*'|"(?:\\.|[^"\\])*"|[^\s'"])+/g) || [];
+      const unquote = (word) => {
+        if (word.startsWith("'") && word.endsWith("'")) return word.slice(1, -1);
+        if (word.startsWith('"') && word.endsWith('"')) {
+          return word.slice(1, -1).replace(/\\(["\\$`])/g, "$1");
+        }
+        return word;
+      };
+      let payload = "";
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        if (/^(?:-d|--data|--data-raw|--data-binary|--json)$/.test(word)) {
+          payload = unquote(words[i + 1] || "");
+          break;
+        }
+        const attached = word.match(/^(?:--(?:data|data-raw|data-binary|json)=|-d)(.+)$/);
+        if (attached) { payload = unquote(attached[1]); break; }
+      }
+      const candidate = payload || command;
+      try {
+        const json = JSON.parse(candidate);
+        body = ["text", "content", "message"].map((key) => json[key]).find((v) => typeof v === "string") || payload || summary;
+      } catch (e) { body = payload || summary; }
+      // A file upload names a source, rather than revealing the message.
+      if (payload.startsWith("@")) body = summary;
+    }
+    return { send, title, body, command };
+  }
+
+  function approvalLine(title, summary, state, time, send = false) {
     const kind = state === "approved" ? "ok" : state === "declined" ? "no" : "exp";
     const row = el("div", "approval-line " + kind);
     const st = el("span", "st");
@@ -2008,7 +2050,10 @@
     else if (state === "declined") st.append(rawSvg(X_PATH, 18, 2.4));
     else st.append(rawSvg(CLOCK_PATH, 17, 2));
     const what = el("span", "what");
-    what.append(document.createTextNode((title || "tool") + (summary ? " " : "")));
+    const decision = state === "approved" ? (send ? "已发送" : "已允许") :
+      state === "declined" ? (send ? "没发" : "已拒绝") :
+      state === "no_decision:restart" ? "已取消，没有执行" : "已过期，没有执行";
+    what.append(document.createTextNode(decision + " · " + (title || "操作") + (summary ? " " : "")));
     if (summary) {
       const code = el("code");
       code.textContent = summary;
@@ -2020,20 +2065,29 @@
   }
 
   function pendingApprovalCard(opt) {
-    const title = opt.title || opt.tool || "tool";
-    const summary = String(opt.summary || "");
+    const view = approvalPresentation(opt);
+    const { title, send } = view;
+    const summary = send ? view.body : String(opt.summary || "");
     const card = el("div", "approval");
     const head = el("div", "approval-head");
     const ico = el("span", "approval-ico");
     ico.append(rawSvg(ICONS.terminal, 16, 2));
     const main = el("div", "approval-main");
     main.append(el("div", "approval-title", title));
-    if (opt.subtitle) main.append(el("div", "approval-detail", opt.subtitle));
-    if (summary) {
-      const chip = el("code", "approval-chip");
-      chip.textContent = summary;
-      main.append(chip);
-    }
+    if (opt.subtitle && !(send && opt.subtitle === "在本机上执行")) main.append(el("div", "approval-detail", opt.subtitle));
+    if (send && summary) main.append(el("blockquote", "quote", summary));
+    if (view.command && (send || view.command.length > 100 || view.command.includes("\n"))) {
+      const toggle = el("button", "text-btn", "查看命令");
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", "false");
+      const command = el("code", "approval-chip", view.command);
+      command.hidden = true;
+      toggle.addEventListener("click", () => {
+        command.hidden = !command.hidden;
+        toggle.setAttribute("aria-expanded", String(!command.hidden));
+      });
+      main.append(toggle, command);
+    } else if (!send && summary) main.append(el("code", "approval-chip", summary));
     head.append(ico, main);
     card.append(head);
     const actions = el("div", "approval-actions");
@@ -2044,11 +2098,11 @@
       if (settled) return;
       settled = true;
       if (tick) window.clearInterval(tick);
-      card.replaceWith(approvalLine(title, summary, state, Date.now()));
+      card.replaceWith(approvalLine(title, summary, state, Date.now(), send));
     };
     const deadlineMs = approvalDeadlineMs(opt);
     if (deadlineMs != null && deadlineMs <= Date.now()) {
-      return approvalLine(title, summary, "expired", opt.since || Date.now());
+      return approvalLine(title, summary, "expired", opt.since || Date.now(), send);
     }
     if (deadlineMs != null) {
       const timer = el("span", "approval-timer");
@@ -2058,18 +2112,25 @@
       const paint = () => {
         const left = deadlineMs - Date.now();
         if (left <= 0) { settle("expired"); return; }
-        const label = approvalRemainText(left);
+        const label = approvalRemainText(left) + "后自动取消" + (send ? "，不会发送" : "");
         if (timerText.textContent !== label) timerText.textContent = label;
       };
       paint();
       tick = window.setInterval(paint, 1000);
       actions.append(timer);
     }
-    const deny = el("button", "secondary", "拒绝");
-    const allow = el("button", "primary", "允许");
+    const deny = el("button", "secondary", send ? "不发" : "拒绝");
+    const allow = el("button", "primary", send ? "发送" : "允许");
     deny.type = "button";
     allow.type = "button";
     const decide = async (ok) => {
+      if (settled || allow.disabled) return;
+      const clicked = ok ? allow : deny;
+      const original = clicked.textContent;
+      const spinner = rawSvg(ICONS.spinner, 13, 2);
+      spinner.classList.add("approval-spinner");
+      clicked.replaceChildren(spinner, document.createTextNode(send && ok ? "正在发送…" : "正在处理…"));
+      clicked.setAttribute("aria-busy", "true");
       allow.disabled = true;
       deny.disabled = true;
       try {
@@ -2080,6 +2141,8 @@
           settle("expired");
           return;
         }
+        clicked.textContent = original;
+        clicked.removeAttribute("aria-busy");
         allow.disabled = false;
         deny.disabled = false;
         let err = card.querySelector(".approval-err");
@@ -2117,7 +2180,8 @@
       };
       return pendingApprovalCard(payload);
     }
-    return approvalLine(card.title || card.tool || "tool", card.summary || "", st, time);
+    const view = approvalPresentation(card);
+    return approvalLine(view.title, view.send ? view.body : card.summary || "", st, time, view.send);
   }
 
   function codingCard(card) {
@@ -3899,6 +3963,8 @@
       title: payload.title || "",
       subtitle: payload.subtitle || "",
       summary: payload.summary || "",
+      command: payload.command || "",
+      kind: payload.kind || "",
       deadline: payload.deadline || payload.expires || "",
       decide: async (ok) => {
         if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");

@@ -934,7 +934,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .approval-line .when { font-size: 12px; color: var(--faint); flex: none; }
 
-.approval-line.no .st { color: var(--err); }
+.approval-line.no .st { color: var(--muted); }
 
 .approval-line.no .what { color: var(--muted); }
 
@@ -1966,3 +1966,10 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .gate-card:has(#login-error:not([hidden])) #login-hint { display: none; }
 
 .error-raw { color: var(--faint); font-family: monospace; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.approval .quote { margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-main > .text-btn { display: block; margin-top: 8px; }
+.approval-chip[hidden] { display: none; }
+.approval-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.approval-spinner { animation: approval-pulse 200ms ease-in-out infinite alternate; }
+@keyframes approval-pulse { to { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .approval-spinner { animation: none; } }
