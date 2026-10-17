@@ -21,6 +21,8 @@ import (
 	"xbot/internal/fsutil"
 )
 
+const installIdleTTL = 30 * 24 * time.Hour
+
 var kindRe = regexp.MustCompile(`^[a-z]{1,16}$`)
 var idRe = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
@@ -94,6 +96,10 @@ func (s *Server) verified(register bool, fn route) http.Handler {
 				if !ok {
 					return 0, nil, httpError{403, "not registered"}
 				}
+				now := s.now()
+				if err := os.Chtimes(filepath.Join(s.Dir, "installs", caller), now, now); err != nil {
+					return 0, nil, err
+				}
 			}
 			return fn(r, body, caller, pub)
 		}()
@@ -116,6 +122,10 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 		return 0, nil, err
 	}
 	if ok {
+		now := s.now()
+		if err := os.Chtimes(path, now, now); err != nil {
+			return 0, nil, err
+		}
 		return 200, map[string]string{"status": "ok"}, nil
 	}
 	if !s.Open {
@@ -133,7 +143,29 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 			return 0, nil, err
 		}
 		if len(files) >= MaxInstalls {
-			return 0, nil, httpError{403, "too many installs"}
+			slices.SortFunc(files, func(a, b queueFile) int {
+				return a.info.ModTime().Compare(b.info.ModTime())
+			})
+			for _, f := range files {
+				if s.now().Sub(f.info.ModTime()) <= installIdleTTL {
+					break
+				}
+				mail, err := s.queueLocked(f.info.Name())
+				if err != nil {
+					return 0, nil, err
+				}
+				if len(mail) != 0 {
+					continue
+				}
+				if err := os.Remove(f.path); err != nil {
+					return 0, nil, err
+				}
+				files = files[:len(files)-1]
+				break
+			}
+			if len(files) >= MaxInstalls {
+				return 0, nil, httpError{403, "too many installs"}
+			}
 		}
 		if err := fsutil.WriteAtomic(path, pub, 0600); err != nil {
 			return 0, nil, err
