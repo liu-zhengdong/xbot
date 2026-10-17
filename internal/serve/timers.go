@@ -9,6 +9,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/proc"
 )
 
 // TimerEvery is how often DeliverTimers checks routines. It is shorter than
@@ -55,18 +56,39 @@ func hasTimer(b *bot.Bot) bool {
 	return false
 }
 
-func deliverBotTimers(b *bot.Bot, now time.Time) error {
+func deliverBotTimers(b *bot.Bot, now time.Time) (err error) {
 	sender := "timer"
 	if owners := b.Config().Owners; len(owners) > 0 {
 		sender = owners[0]
 	}
 	tm := &link.Timer{Dir: b.RoutineDir(), Sender: sender}
+	now = now.UTC()
+	noticeErr := proc.NoticeMissed(tm, func(ev link.Event) error {
+		in, err := inbox.Open(b.InboxPath())
+		if err != nil {
+			return err
+		}
+		return in.Post(ev)
+	}, now)
+	// Notice failures must not block routine delivery, but Expire waits so the
+	// retry still lists a missed one-shot.
+	expire := func(now time.Time) error {
+		if noticeErr != nil {
+			return nil
+		}
+		return tm.Expire(now)
+	}
+	defer func() {
+		if err == nil {
+			err = noticeErr
+		}
+	}()
 	evs, err := tm.Due(now)
 	if err != nil {
 		return err
 	}
 	if len(evs) == 0 {
-		return tm.Expire(now)
+		return expire(now)
 	}
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
@@ -80,5 +102,5 @@ func deliverBotTimers(b *bot.Bot, now time.Time) error {
 			return err
 		}
 	}
-	return tm.Expire(now)
+	return expire(now)
 }
