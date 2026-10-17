@@ -37,7 +37,7 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan", "vision-draft", "avatar-handoff", "memory-scope", "routine-fallback"} {
+	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan", "vision-draft", "avatar-handoff", "memory-scope", "memory-recall", "routine-fallback"} {
 		if !strings.Contains(string(md), name) {
 			t.Fatalf("markdown missing %s\n%s", name, md)
 		}

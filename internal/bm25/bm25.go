@@ -81,7 +81,31 @@ func Top(query string, docs []string, limit int) []Hit {
 }
 
 func tokens(s string) []string {
-	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
+	var out []string
+	var run []rune
+	han := false
+	flush := func() {
+		if han && len(run) > 1 {
+			for i := 1; i < len(run); i++ {
+				out = append(out, string(run[i-1:i+1]))
+			}
+		} else if len(run) > 0 {
+			out = append(out, string(run))
+		}
+		run = run[:0]
+	}
+	for _, r := range strings.ToLower(s) {
+		isHan := unicode.Is(unicode.Han, r)
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			flush()
+			continue
+		}
+		if len(run) > 0 && han != isHan {
+			flush()
+		}
+		han = isHan
+		run = append(run, r)
+	}
+	flush()
+	return out
 }

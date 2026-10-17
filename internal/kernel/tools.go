@@ -15,7 +15,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cron"
 	"xbot/internal/link"
-	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -133,58 +132,6 @@ func stringProp(desc string) map[string]any {
 
 func intProp(desc string) map[string]any {
 	return map[string]any{"type": "integer", "description": desc}
-}
-
-type recallTool struct{ k *Kernel }
-
-func (recallTool) Name() string { return "recall" }
-func (recallTool) Description() string {
-	return "Search memory. Omit scope to search person and bot. person is shared facts about the owner; bot is this bot's own memory."
-}
-func (recallTool) Parameters() any {
-	return schema(map[string]any{
-		"query": stringProp("keywords"),
-		"scope": stringProp("optional bot or person"),
-	}, []string{"query"})
-}
-func (recallTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t recallTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Query string `json:"query"`
-		Scope string `json:"scope"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if t.k.Memory == nil {
-		return "", errors.New("memory: no store")
-	}
-	scopes := []memory.Scope{memory.ScopePerson, memory.ScopeBot}
-	if in.Scope != "" {
-		if memory.Scope(in.Scope) == memory.ScopeBotPerson {
-			return "", errors.New("memory: scope bot-person was removed; omit scope to search person and bot")
-		}
-		scopes = []memory.Scope{memory.Scope(in.Scope)}
-	}
-	var facts []memory.Fact
-	for _, scope := range scopes {
-		got, err := t.k.Memory.Recall(ctx, memory.Query{
-			Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPersonOf(t.k.turnFor(ctx)), Text: in.Query,
-		})
-		if err != nil {
-			return "", err
-		}
-		facts = append(facts, got...)
-	}
-	facts = memory.Resolve(memory.Visible(facts, t.k.Bot.Name(), t.k.memoryPersonOf(t.k.turnFor(ctx))))
-	if len(facts) == 0 {
-		return "no matching facts", nil
-	}
-	var b strings.Builder
-	for _, f := range facts {
-		fmt.Fprintf(&b, "- [%s/%s] %s\n", f.Scope, f.Tier, f.Text)
-	}
-	return strings.TrimRight(b.String(), "\n"), nil
 }
 
 type personaTool struct{ k *Kernel }
