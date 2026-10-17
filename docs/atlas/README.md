@@ -1,6 +1,6 @@
 ---
 kind: part
-verified: 2026-10-17 @ 4e48581
+verified: 2026-10-17 @ c940085
 ---
 # XBot：新人导览
 
