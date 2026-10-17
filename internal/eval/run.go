@@ -19,7 +19,6 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/provider"
-	"xbot/internal/tools"
 )
 
 // certSuites are both required before a model is written to certified.json.
@@ -358,14 +357,10 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	}
 	allow := c.Approve == "allow"
 	var mem memory.Store = memory.NopStore{}
-	fileRoot := work
-	if c.Memory {
-		fileRoot = root
-	} // Only memory cases may access the isolated data root.
 	list := caseTools(work, c.Network)
-	list[1] = &tools.ReadFile{Root: work, Sandbox: fileRoot}
-	list[2] = &tools.WriteFile{Root: work, Sandbox: fileRoot}
-	list[3] = &tools.EditFile{Root: work, Sandbox: fileRoot}
+	if c.Memory {
+		list = memoryCaseTools(work, c.Network)
+	}
 	links := []link.Link{link.Terminal{}, sandboxLink{list: list}}
 	if c.Memory {
 		mem = memory.Open(root)

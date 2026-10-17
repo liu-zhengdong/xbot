@@ -1088,7 +1088,7 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 	}
 }
 
-const memRenderVersion = 2
+const memRenderVersion = 3
 
 // refreshMemSnap re-snapshots standing memory after a compaction appended a block.
 // The prefix already changed, so the active view is replaced and parked views are

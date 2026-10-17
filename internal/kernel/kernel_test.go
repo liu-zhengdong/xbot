@@ -20,10 +20,9 @@ import (
 )
 
 type scripted struct {
-	resps        []provider.Message
-	memoryKernel *Kernel
-	reqs         []provider.Request
-	i            int
+	resps []provider.Message
+	reqs  []provider.Request
+	i     int
 }
 
 func snapshotReq(req provider.Request) provider.Request {
@@ -38,37 +37,13 @@ func snapshotReq(req provider.Request) provider.Request {
 	return req
 }
 
-func (s *scripted) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	s.reqs = append(s.reqs, snapshotReq(req))
 	if s.i >= len(s.resps) {
 		return provider.Message{}, errors.New("no more responses")
 	}
 	m := s.resps[s.i]
 	s.i++
-	// Snapshot fixtures write via the internal API, then return a read-only step.
-	for i, call := range m.ToolCalls {
-		if call.Function.Name != "fixture_memory" {
-			continue
-		}
-		var in struct {
-			Fact  string
-			Scope memory.Scope
-		}
-		if err := json.Unmarshal([]byte(call.Function.Arguments), &in); err != nil {
-			return provider.Message{}, err
-		}
-		if in.Scope == "" {
-			in.Scope = memory.ScopeBot
-		}
-		k := s.memoryKernel
-		done := k.beginOwnWrite(ctx, in.Scope)
-		err := k.Memory.Remember(ctx, memory.Fact{Scope: in.Scope, Tier: memory.TierProfile, Text: in.Fact, BotName: k.Bot.Name(), PersonID: k.memoryPersonOf(k.turnFor(ctx)), WrittenBy: k.Bot.Name(), Time: k.now()})
-		done()
-		if err != nil {
-			return provider.Message{}, err
-		}
-		m.ToolCalls[i].Function = provider.FunctionCall{Name: "recall", Arguments: `{ "query": "fixture" }`}
-	}
 	if onDelta != nil && m.Content != "" {
 		onDelta(m.Content)
 	}

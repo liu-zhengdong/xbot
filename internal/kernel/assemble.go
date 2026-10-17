@@ -64,7 +64,7 @@ const ReplyRule = "When one reply addresses several of the owner's points, or yo
 
 // DefaultRules is the rules text used when a bot has no rules.md.
 func DefaultRules() string {
-	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + ProjectRule + "\n\n" + MemoryRule + "\n\n" + MemoryWriteRule + "\n\n" + ActionRule + "\n\n" + VerifyRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + JudgmentRule + "\n\n" + ResourcefulRule + "\n\n" + OfferRule + "\n\n" + ReplyRule
+	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + ProjectRule + "\n\n" + MemoryRule + "\n\n" + ActionRule + "\n\n" + VerifyRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + JudgmentRule + "\n\n" + ResourcefulRule + "\n\n" + OfferRule + "\n\n" + ReplyRule
 }
 
 // memoryClipNote is appended only when the defensive clip fires.
@@ -256,7 +256,7 @@ func wrapMemory(s string) string {
 	if s == "" {
 		return ""
 	}
-	return "<memory>\n" + MemoryRule + "\n" + s + "\n</memory>"
+	return "<memory>\n" + MemoryRule + "\n" + MemoryWriteRule + "\n" + s + "\n</memory>"
 }
 
 // fenceMemory escapes every angle bracket so a fact cannot form a tag.
