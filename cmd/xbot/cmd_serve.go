@@ -377,14 +377,32 @@ func cmdServe(root string, args []string) error {
 	if fs.NArg() != 0 {
 		return errors.New("usage: xbot serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale] [--no-auto-upgrade]")
 	}
-	autoUpgrade := !*noAutoUpgrade && os.Getenv("XBOT_AUTO_UPGRADE") != "0"
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
-	resolved, err := tunnel.Resolve(ctx, *tunnelMode, *httpAddr, os.Getenv("XBOT_TAILSCALE"))
+	return runServe(ctx, root, serveConfig{HTTPAddr: *httpAddr, Interval: *every, Tunnel: *tunnelMode, AutoUpgrade: !*noAutoUpgrade && os.Getenv("XBOT_AUTO_UPGRADE") != "0"})
+}
+
+type serveConfig struct {
+	HTTPAddr    string
+	Interval    time.Duration
+	Tunnel      string
+	AutoUpgrade bool
+	App         bool
+	OnListening func(ui *web.Server, addr net.Addr)
+}
+
+func runServe(ctx context.Context, root string, cfg serveConfig) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if cfg.App {
+		cfg.Tunnel = ""
+		cfg.AutoUpgrade = false
+	}
+	resolved, err := tunnel.Resolve(ctx, cfg.Tunnel, cfg.HTTPAddr, os.Getenv("XBOT_TAILSCALE"))
 	if err != nil {
 		return err
 	}
-	*httpAddr = resolved.ListenAddr
+	cfg.HTTPAddr = resolved.ListenAddr
 	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce, OpenVault: func(b *bot.Bot) (vault.Backend, error) {
 		return vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
 	}}
@@ -399,6 +417,15 @@ func cmdServe(root string, args []string) error {
 	token, _, err := ui.EnsureToken()
 	if err != nil {
 		return err
+	}
+	// The app binds before touching state, so a second instance on a busy
+	// port does not sweep the running server's approval cards.
+	var ln net.Listener
+	if cfg.App {
+		if ln, err = net.Listen("tcp", cfg.HTTPAddr); err != nil {
+			return err
+		}
+		defer ln.Close()
 	}
 	// Cards raised before a restart only lived in memory, so nobody can decide
 	// them any more: record them as no-decision rather than leaving a card that
@@ -417,9 +444,10 @@ func cmdServe(root string, args []string) error {
 	if err := serve.DeliverTimers(root, time.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "xbot: routines:", err)
 	}
-	ln, err := net.Listen("tcp", *httpAddr)
-	if err != nil {
-		return err
+	if ln == nil {
+		if ln, err = net.Listen("tcp", cfg.HTTPAddr); err != nil {
+			return err
+		}
 	}
 	exe, err := os.Executable()
 	if err == nil {
@@ -450,7 +478,7 @@ func cmdServe(root string, args []string) error {
 			restart("SIGHUP")
 		}
 	}()
-	if autoUpgrade {
+	if cfg.AutoUpgrade {
 		go autoUpgradeLoop(ctx, restart)
 	}
 	mux := http.NewServeMux()
@@ -471,7 +499,9 @@ func cmdServe(root string, args []string) error {
 	if publicURL != "" {
 		fmt.Fprintf(os.Stderr, "public url: %s\n", publicURL)
 	}
-	fmt.Fprintf(os.Stderr, "login token: %s\n", token)
+	if !cfg.App {
+		fmt.Fprintf(os.Stderr, "login token: %s\n", token)
+	}
 	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
 	// Routines get their own ticker, with a fresh now each tick, so a one-shot
 	// does not wait behind every bot's model calls in serve.Pass.
@@ -493,6 +523,10 @@ func cmdServe(root string, args []string) error {
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintln(os.Stderr, "xbot:", err)
+			if cfg.App {
+				// The window is useless without the UI; stop and close it.
+				cancel()
+			}
 		}
 	}()
 	defer func() {
@@ -500,6 +534,9 @@ func cmdServe(root string, args []string) error {
 		defer cancel()
 		_ = srv.Shutdown(shut)
 	}()
+	if cfg.OnListening != nil {
+		cfg.OnListening(ui, ln.Addr())
+	}
 	go func() {
 		tick := time.NewTicker(200 * time.Millisecond)
 		defer tick.Stop()
@@ -529,6 +566,9 @@ func cmdServe(root string, args []string) error {
 	for {
 		select {
 		case reason := <-restartCh:
+			if cfg.App {
+				return nil
+			}
 			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
 		default:
 		}
@@ -543,8 +583,11 @@ func cmdServe(root string, args []string) error {
 		case <-ctx.Done():
 			return nil
 		case reason := <-restartCh:
+			if cfg.App {
+				return nil
+			}
 			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
-		case <-time.After(*every):
+		case <-time.After(cfg.Interval):
 		}
 	}
 }

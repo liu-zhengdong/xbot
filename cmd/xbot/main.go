@@ -70,6 +70,7 @@ Usage:
   xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]
   xbot eval scorecard <report.json>
+  xbot [--root DIR] app [--port 8787]
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale] [--no-auto-upgrade]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
@@ -202,6 +203,8 @@ func run(argv []string) error {
 		return cmdBind(root, rest[1:])
 	case "eval":
 		return cmdEval(root, rest[1:])
+	case "app":
+		return cmdApp(root, rest[1:])
 	case "serve":
 		return cmdServe(root, rest[1:])
 	case "runner":
