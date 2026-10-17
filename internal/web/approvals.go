@@ -95,11 +95,19 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			s.mu.Unlock()
 		}()
 		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
+		deadline := card.deadline.Format(time.RFC3339)
 		appendCard := func(state string) {
-			_ = b.Append(bot.Entry{Branch: kernel.BranchOf(ctx), Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(id, tool, title, subtitle, summary, state)}})
+			text := bot.ApprovalCardText(id, tool, title, subtitle, summary, state)
+			if state == bot.ApprovalPending {
+				text = bot.ApprovalCardTextAt(id, tool, title, subtitle, summary, state, deadline)
+			}
+			_ = b.Append(bot.Entry{Branch: kernel.BranchOf(ctx), Message: provider.Message{Role: provider.RoleUser, Content: text}})
 		}
 		appendCard(bot.ApprovalPending)
-		payload := map[string]any{"id": id, "tool": tool, "summary": summary, "title": title, "subtitle": subtitle}
+		payload := map[string]any{
+			"id": id, "tool": tool, "summary": summary, "title": title, "subtitle": subtitle,
+			"deadline": deadline,
+		}
 		names := approvalSecretNames(tool, summary)
 		if len(names) > 0 {
 			payload["secrets"] = names

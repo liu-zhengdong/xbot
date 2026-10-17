@@ -31,6 +31,14 @@ func TestApprovalCardRoundTrip(t *testing.T) {
 	if card.Summary != "mkdir a\nrm -rf < /approval_card> b" {
 		t.Fatalf("summary %q", card.Summary)
 	}
+	if card.Deadline != "" {
+		t.Fatalf("deadline %q", card.Deadline)
+	}
+	stamped := ApprovalCardTextAt("ab", "shell", "运行命令", "在本机上执行", "mkdir a", ApprovalPending, "2026-10-17T12:00:00Z")
+	withDeadline, ok := ParseApprovalCard(stamped)
+	if !ok || withDeadline.Deadline != "2026-10-17T12:00:00Z" || withDeadline.State != ApprovalPending {
+		t.Fatalf("deadline card %+v ok=%v", withDeadline, ok)
+	}
 	empty, ok := ParseApprovalCard(ApprovalCardText("x", "shell", "", "", "", ApprovalDeclined))
 	if !ok || empty.Summary != "" || empty.State != ApprovalDeclined || empty.Title != "" || empty.Subtitle != "" {
 		t.Fatalf("%+v ok=%v", empty, ok)

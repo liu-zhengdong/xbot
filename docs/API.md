@@ -134,14 +134,14 @@
 
 - `event: delta`，`data: {"text":"..."}`
 - `event: tool`，`data: {"name","summary"}`。`ask_user` 的 summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。
-- `event: approval`，`data: {"id","tool","summary"}`。这个工具要主人确认才会跑。界面应立刻展示一张确认卡，写明工具名和 summary，并给出允许、拒绝两个按钮。
+- `event: approval`，`data: {"id","tool","summary","deadline"}`。`deadline` 是 RFC3339，这张卡停止接受决定的时刻，默认是发出后 24 小时。这个工具要主人确认才会跑。界面应立刻展示一张确认卡，写明工具名和 summary，并给出允许、拒绝两个按钮；倒计时读 `deadline`，没有这个字段就从卡片写入时间起算 24 小时。
 - `event: result`，`data: {"name","output"}`，output 截到 4000 字
 - `event: done`，`data: {"text":"这一轮拼起来的正文","reply_to":2}`。`reply_to` 省略表示这条回复没有指向某一条用户消息。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。模型用来标记引用的 `reply_to:` 行不会出现在 `delta` 或 `done.text` 里。
 - `event: error`，`data: {"error":"..."}`
 
 `POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 24 小时（`Server.ApprovalWait` 可改）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，工具不跑，transcript 追加 `no_decision:expired`，返回给模型的是「过期、没有决定」，不当成拒绝。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、persona/profile 自改（`propose_persona`/`propose_profile`，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。routine 的增删改暂停、Bot 之间的 `message_bot`/`post_group`、写技能、编码任务都不发。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成主人拒绝。主人明确拒绝才是 `denied by user`。
 
-`links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<主人填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
+`links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`，并带 `deadline`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<主人填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
 
 锁被别人占着时不跑模型，只把事件放进 inbox，202 `{"status":"queued"}`。
 

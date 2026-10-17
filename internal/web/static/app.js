@@ -1801,12 +1801,41 @@
       state: tag.attrs.state,
       title: tag.attrs.title || "",
       subtitle: tag.attrs.subtitle || "",
+      deadline: tag.attrs.deadline || "",
       summary: body.slice(1, body.length - tail.length),
     };
   }
 
-  // The server's default approval wait; the card counts down in step with it.
-  const APPROVAL_WAIT_SECS = 60;
+  // Fallback when a card carries no deadline. Matches Server.approvalWait.
+  const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000;
+
+  // Absolute instant this card stops accepting a decision. The server sends
+  // deadline (RFC3339) on the live event and on the persisted card. A card
+  // written before that field existed counts 24 hours from its transcript time.
+  // wait === 0 means this card has no countdown (a node command).
+  function approvalDeadlineMs(opt) {
+    if (!opt || opt.wait === 0) return null;
+    const raw = opt.deadline || opt.expires || opt.expiry;
+    if (raw) {
+      const t = typeof raw === "number" ? raw : Date.parse(raw);
+      if (!Number.isNaN(t)) return t;
+    }
+    if (opt.since) {
+      const t = Date.parse(opt.since);
+      if (!Number.isNaN(t)) return t + APPROVAL_WAIT_MS;
+    }
+    return Date.now() + APPROVAL_WAIT_MS;
+  }
+
+  // Long waits read as hours ("23 小时"), shorter ones as minutes or seconds.
+  function approvalRemainText(ms) {
+    const secs = Math.max(0, Math.ceil(ms / 1000));
+    const hour = 3600;
+    const minute = 60;
+    if (secs >= hour) return Math.floor(secs / hour) + " 小时";
+    if (secs >= minute) return Math.floor(secs / minute) + " 分钟";
+    return secs + " 秒";
+  }
 
   function approvalLine(title, summary, state, time) {
     const kind = state === "approved" ? "ok" : state === "declined" ? "no" : "exp";
@@ -1846,7 +1875,6 @@
     card.append(head);
     const actions = el("div", "approval-actions");
     let timerText = null;
-    let left = 0;
     let tick = 0;
     let settled = false;
     const settle = (state) => {
@@ -1855,21 +1883,23 @@
       if (tick) window.clearInterval(tick);
       card.replaceWith(approvalLine(title, summary, state, Date.now()));
     };
-    if (opt.wait) {
+    const deadlineMs = approvalDeadlineMs(opt);
+    if (deadlineMs != null && deadlineMs <= Date.now()) {
+      return approvalLine(title, summary, "expired", opt.since || Date.now());
+    }
+    if (deadlineMs != null) {
       const timer = el("span", "approval-timer");
       timer.append(rawSvg(CLOCK_PATH, 13, 2));
       timerText = el("span");
       timer.append(timerText);
-      left = opt.wait;
       const paint = () => {
-        timerText.textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+        const left = deadlineMs - Date.now();
+        if (left <= 0) { settle("expired"); return; }
+        const label = approvalRemainText(left);
+        if (timerText.textContent !== label) timerText.textContent = label;
       };
       paint();
-      tick = window.setInterval(() => {
-        left -= 1;
-        if (left <= 0) { settle("expired"); return; }
-        paint();
-      }, 1000);
+      tick = window.setInterval(paint, 1000);
       actions.append(timer);
     }
     const deny = el("button", "secondary", "拒绝");
@@ -1883,6 +1913,10 @@
         await opt.decide(ok);
         settle(ok ? "approved" : "declined");
       } catch (e) {
+        if (e && e.status === 410) {
+          settle("expired");
+          return;
+        }
         allow.disabled = false;
         deny.disabled = false;
         let err = card.querySelector(".approval-err");
@@ -1908,7 +1942,8 @@
         title: card.title || "",
         subtitle: card.subtitle || "",
         summary: card.summary || "",
-        wait: APPROVAL_WAIT_SECS,
+        deadline: card.deadline || "",
+        since: time || "",
         decide: async (ok) => {
           if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");
           await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/approvals/" + encodeURIComponent(card.id || ""), {
@@ -3472,7 +3507,7 @@
       title: payload.title || "",
       subtitle: payload.subtitle || "",
       summary: payload.summary || "",
-      wait: APPROVAL_WAIT_SECS,
+      deadline: payload.deadline || payload.expires || "",
       decide: async (ok) => {
         if (!state.sel || state.sel.type !== "bot") throw new Error("没有选中的 Bot");
         await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/approvals/" + encodeURIComponent(payload.id || ""), {
