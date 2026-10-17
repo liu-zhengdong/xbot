@@ -451,7 +451,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, rt := range list {
 		routines = append(routines, map[string]any{
-			"id": rt.ID, "name": rt.Name, "cron": rt.Cron, "at": rt.At, "enabled": rt.Enabled,
+			"id": rt.ID, "name": rt.Name, "cron": rt.Cron, "at": rt.At, "enabled": rt.Enabled, "zone": rt.Zone,
 		})
 	}
 	agents := []map[string]any{}
