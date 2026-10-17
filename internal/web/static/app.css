@@ -298,8 +298,11 @@ button:disabled { cursor: default; }
 .field input, .field textarea, .field select, .agent input, .task input {
   border: 0; border-radius: 8px; background: var(--fill);
   padding: 8px 12px; min-height: 40px; outline: none; width: 100%;
+  color: var(--text);
   transition: background 160ms ease-out;
 }
+
+.field input::placeholder, .field textarea::placeholder { color: var(--muted); }
 
 .field textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
 
@@ -327,6 +330,8 @@ html[data-theme="dark"] .field select {
 .primary:hover { background: var(--primary-hover); }
 
 .primary:active { opacity: 0.85; }
+
+.primary:disabled, .primary:disabled:hover, .primary:disabled:active { background: var(--fill); color: var(--muted); opacity: 1; cursor: default; }
 
 .secondary { background: var(--fill); border: 0; color: var(--text); }
 
