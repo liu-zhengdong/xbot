@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 
 const migrationNoteKey = "migration-profile-cap"
 
-// migratedMarker is written at the data root after a clean pass. A later
-// process sees it and skips the walk. A pass that had to skip a source does
-// not write it, so the next process tries that source again.
+// migratedMarker is written at bots/<name>/.memory-migrated after that bot's
+// legacy directories are handled cleanly. There is no data-root marker, so a
+// bot that shows up later is still walked. A failed bot does not get the file.
 const migratedMarker = ".memory-migrated"
 
 var migrateOnce struct {
@@ -26,13 +27,15 @@ var migrateOnce struct {
 }
 
 // Migrate folds legacy bots/<name>/people/<id>/memory into bots/<name>/memory.
-// It runs once per root in this process, and once per root on disk after a
-// clean pass. A bad source is logged and left in place; it does not fail the
-// caller, the bot next door, or process start.
+// It runs once per root in this process. Each bot is marked on its own after
+// a clean pass, so a bot added later is still migrated on the next start.
+// A bad source is logged and left in place; it does not fail the caller, the
+// bot next door, or process start.
 //
 // Only a person id listed in that bot's owners is merged. Other people are
 // renamed to memory.bak without merging, because bot scope is visible to every
-// sender. Facts keep their timestamps, provenance, and kind.
+// sender. A missing or unreadable config is not an empty owner list: that bot
+// is left untouched. Facts keep their timestamps, provenance, and kind.
 func Migrate(root string) error {
 	if root == "" {
 		return nil
@@ -57,32 +60,25 @@ func onceFor(root string) *sync.Once {
 }
 
 func migrateRoot(root string) {
-	marker := filepath.Join(root, migratedMarker)
-	if _, err := os.Stat(marker); err == nil {
-		return
-	}
 	bots := filepath.Join(root, "bots")
 	entries, err := os.ReadDir(bots)
 	if errors.Is(err, os.ErrNotExist) {
-		writeMarker(marker)
 		return
 	}
 	if err != nil {
 		log.Printf("memory: migrate %s: %v", bots, err)
 		return
 	}
-	failed := false
 	for _, ent := range entries {
 		if !ent.IsDir() || !ValidID(ent.Name()) {
 			continue
 		}
-		if migrateBot(root, ent.Name()) {
-			failed = true
-		}
+		_ = migrateBot(root, ent.Name())
 	}
-	if !failed {
-		writeMarker(marker)
-	}
+}
+
+func botMigratedMarker(root, botName string) string {
+	return filepath.Join(root, "bots", botName, migratedMarker)
 }
 
 func writeMarker(path string) {
@@ -127,15 +123,28 @@ func migrateBot(root, botName string) bool {
 		failed = migrateLocked(root, botName, dest, sources)
 		return nil
 	})
+	marker := botMigratedMarker(root, botName)
 	if err != nil {
 		log.Printf("memory: migrate %s: %v", dest, err)
+		_ = os.Remove(marker)
 		return true
 	}
-	return failed
+	if failed {
+		if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("memory: migrate %s: %v", marker, err)
+		}
+		return true
+	}
+	writeMarker(marker)
+	return false
 }
 
 func migrateLocked(root, botName, dest string, sources []string) bool {
-	owners := botOwners(root, botName)
+	owners, err := botOwners(root, botName)
+	if err != nil {
+		log.Printf("memory: migrate %s: %v", filepath.Join(root, "bots", botName, "config.json"), err)
+		return true
+	}
 	// Stat again under the dest lock. Another process may have renamed the
 	// directory already; opening it would recreate an empty memory dir and
 	// then rename that to memory.bak.N.
@@ -172,15 +181,18 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 		if !dirExists(src) {
 			continue
 		}
+		id := filepath.Base(filepath.Dir(src))
+		if !owners[id] {
+			// Not an owner: set the folder aside without reading it, so a
+			// corrupt file still moves to memory.bak.
+			log.Printf("memory: migrate %s: %s is not an owner; leaving the legacy folder as memory.bak", botName, src)
+			parked = append(parked, src)
+			continue
+		}
 		p, l, err := loadLegacy(src, botName)
 		if err != nil {
 			log.Printf("memory: migrate %s: %v", src, err)
 			failed = true
-			continue
-		}
-		id := filepath.Base(filepath.Dir(src))
-		if !owners[id] {
-			parked = append(parked, src)
 			continue
 		}
 		incomingProfile = append(incomingProfile, p...)
@@ -194,7 +206,7 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 			return true
 		}
 	}
-	over := len(renderMD(logFacts)) > maxLogBytes
+	over := len(renderMD(logFacts)) > logKeepBytes
 	if logChanged || over || len(prevOverflow) > 0 {
 		fit, rest := packLog(logFacts)
 		if err := writeTier(dest, TierLog, fit, true); err != nil {
@@ -237,9 +249,16 @@ func writeOverflow(dir string, facts []Fact) error {
 }
 
 func packLog(facts []Fact) (fit, rest []Fact) {
-	for _, f := range facts {
+	ordered := append([]Fact(nil), facts...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Time.Equal(ordered[j].Time) {
+			return ordered[i].Key > ordered[j].Key
+		}
+		return ordered[i].Time.After(ordered[j].Time)
+	})
+	for _, f := range ordered {
 		trial := append(append([]Fact{}, fit...), f)
-		if len(renderMD(trial)) > maxLogBytes {
+		if len(renderMD(trial)) > logKeepBytes {
 			rest = append(rest, f)
 			continue
 		}
@@ -253,24 +272,26 @@ func dirExists(path string) bool {
 	return err == nil && st.IsDir()
 }
 
-// botOwners reads bots/<name>/config.json. A missing file means nobody, so no
-// legacy directory is merged.
-func botOwners(root, botName string) map[string]bool {
-	raw, err := os.ReadFile(filepath.Join(root, "bots", botName, "config.json"))
+// botOwners reads bots/<name>/config.json. A missing, unreadable, or invalid
+// file is an error. An empty owners list is a real answer: nobody, so every
+// legacy directory is set aside instead of merged.
+func botOwners(root, botName string) (map[string]bool, error) {
+	path := filepath.Join(root, "bots", botName, "config.json")
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var cfg struct {
 		Owners []string `json:"owners"`
 	}
-	if json.Unmarshal(raw, &cfg) != nil {
-		return nil
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return nil, err
 	}
 	out := map[string]bool{}
 	for _, id := range cfg.Owners {
 		out[id] = true
 	}
-	return out
+	return out, nil
 }
 
 func loadLegacy(dir, botName string) (profile, logFacts []Fact, err error) {

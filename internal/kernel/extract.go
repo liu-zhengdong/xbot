@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/code"
+	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -118,7 +119,8 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 	if err != nil || len(facts) == 0 {
 		return nil
 	}
-	untrusted := strings.Contains(joined.String(), "<untrusted_event>") || !trusted
+	// Wrap writes `<untrusted_event source=...>`, so the tag is not followed by ">".
+	untrusted := strings.Contains(joined.String(), link.UntrustedEventPrefix) || !trusted
 	out := make([]memory.Fact, 0, len(facts))
 	for _, f := range facts {
 		f.WrittenBy = k.Bot.Name()

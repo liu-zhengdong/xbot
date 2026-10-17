@@ -180,8 +180,19 @@ func preferBot(facts []Fact) []Fact {
 }
 
 func newest(facts []Fact) Fact {
-	best := facts[0]
-	for _, f := range facts[1:] {
+	// A trusted bot fact beats a newer untrusted one with the same key.
+	pool := facts
+	var trusted []Fact
+	for _, f := range facts {
+		if f.Scope == ScopeBot && !f.Untrusted {
+			trusted = append(trusted, f)
+		}
+	}
+	if len(trusted) > 0 {
+		pool = trusted
+	}
+	best := pool[0]
+	for _, f := range pool[1:] {
 		if !f.Time.Before(best.Time) {
 			best = f
 		}

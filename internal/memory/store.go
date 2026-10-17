@@ -20,6 +20,9 @@ import (
 const (
 	maxFactBytes = 1024
 	maxLogBytes  = 64 << 10
+	// logKeepBytes is how full a migrated log.md may get. The rest of the
+	// 64 KiB cap is left for later remembers.
+	logKeepBytes = 48 << 10
 	recallLimit  = 20
 	// logOverflowBase is the side file for log facts that do not fit in 64 KiB.
 	// Recall and forget read it with the log tier. Remember still appends to log.md.

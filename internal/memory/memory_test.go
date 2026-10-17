@@ -62,6 +62,18 @@ func TestResolveWorkBotScopeWins(t *testing.T) {
 	}
 }
 
+func TestResolveTrustedBotBeatsNewerUntrusted(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	facts := []Fact{
+		{Key: "rule", Kind: KindWork, Scope: ScopeBot, BotName: "ada", Text: "trusted-rule", Time: t0},
+		{Key: "rule", Kind: KindWork, Scope: ScopeBot, BotName: "ada", Text: "untrusted-rule", Time: t0.Add(time.Hour), Untrusted: true},
+	}
+	got := Resolve(facts)
+	if len(got) != 1 || got[0].Text != "trusted-rule" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestResolveWorkWithoutBotScopeUsesNewest(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	facts := []Fact{

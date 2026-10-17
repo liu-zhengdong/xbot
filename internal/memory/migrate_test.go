@@ -1,8 +1,10 @@
 package memory
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -258,8 +260,11 @@ func TestMigrateLogStaysWithinCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(raw) > maxLogBytes {
-		t.Fatalf("log.md is %d bytes", len(raw))
+	if len(raw) > logKeepBytes {
+		t.Fatalf("log.md is %d bytes, keep budget is %d", len(raw), logKeepBytes)
+	}
+	if !strings.Contains(string(raw), "TAIL-OVERFLOW") {
+		t.Fatal("newest fact was not kept in log.md")
 	}
 	if _, err := os.Stat(filepath.Join(root, "bots", "ada", "memory", "log.overflow.md")); err != nil {
 		t.Fatal(err)
@@ -311,7 +316,143 @@ func TestMigrateCorruptOwnerStaysAndOtherBotWorks(t *testing.T) {
 		t.Fatalf("corrupt source was moved: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, migratedMarker)); !os.IsNotExist(err) {
-		t.Fatal("marker written after a skipped source")
+		t.Fatal("root marker written after a skipped source")
+	}
+	if _, err := os.Stat(botMigratedMarker(root, "broken")); !os.IsNotExist(err) {
+		t.Fatal("bot marker written after a skipped source")
+	}
+}
+
+func TestMigrateBadConfigLeavesLegacyInPlace(t *testing.T) {
+	when := time.Unix(50, 0).UTC()
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, dir string)
+	}{
+		{"missing", func(t *testing.T, dir string) {}},
+		{"invalid", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"unreadable", func(t *testing.T, dir string) {
+			if err := os.Mkdir(filepath.Join(dir, "config.json"), 0700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeLegacy(t, root, "ada", "u1", TierProfile, []Fact{{
+				Key: "keep", Kind: KindAttribute, WrittenBy: "ada", Text: "keep-me", Time: when,
+			}})
+			tc.setup(t, filepath.Join(root, "bots", "ada"))
+			migrateRoot(root)
+			src := filepath.Join(root, "bots", "ada", "people", "u1", "memory", "profile.md")
+			if _, err := os.Stat(src); err != nil {
+				t.Fatalf("source moved: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(root, "bots", "ada", "people", "u1", "memory.bak")); !os.IsNotExist(err) {
+				t.Fatal("legacy folder was set aside without a readable owner list")
+			}
+			got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(texts(got), "keep-me") {
+				t.Fatal("merged without a readable owner list")
+			}
+			if _, err := os.Stat(filepath.Join(root, migratedMarker)); !os.IsNotExist(err) {
+				t.Fatal("root marker written")
+			}
+			if _, err := os.Stat(botMigratedMarker(root, "ada")); !os.IsNotExist(err) {
+				t.Fatal("bot marker written")
+			}
+		})
+	}
+}
+
+func TestMigrateNoOwnersParksAndLogs(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	root := t.TempDir()
+	when := time.Unix(60, 0).UTC()
+	writeOwners(t, root, "ada")
+	writeLegacy(t, root, "ada", "u1", TierProfile, []Fact{{
+		Key: "old", Kind: KindAttribute, WrittenBy: "ada", Text: "only-in-backup", Time: when,
+	}})
+	migrateRoot(root)
+	if _, err := os.Stat(filepath.Join(root, "bots", "ada", "people", "u1", "memory")); !os.IsNotExist(err) {
+		t.Fatalf("non-owner dir still live: %v", err)
+	}
+	bak, err := os.ReadFile(filepath.Join(root, "bots", "ada", "people", "u1", "memory.bak", "profile.md"))
+	if err != nil || !strings.Contains(string(bak), "only-in-backup") {
+		t.Fatalf("backup %q %v", bak, err)
+	}
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(texts(got), "only-in-backup") {
+		t.Fatal("bot with no owners merged legacy memory")
+	}
+	folder := filepath.Join("bots", "ada", "people", "u1", "memory")
+	if !strings.Contains(buf.String(), folder) {
+		t.Fatalf("non-owner folder was not logged: %q", buf.String())
+	}
+}
+
+func TestMigrateLaterBotIsNotBlocked(t *testing.T) {
+	root := t.TempDir()
+	when := time.Unix(70, 0).UTC()
+	writeOwners(t, root, "ada", "u1")
+	writeLegacy(t, root, "ada", "u1", TierProfile, []Fact{{
+		Key: "a", Kind: KindAttribute, WrittenBy: "ada", Text: "ada-fact", Time: when,
+	}})
+	migrateRoot(root)
+	writeOwners(t, root, "bea", "u1")
+	writeLegacy(t, root, "bea", "u1", TierProfile, []Fact{{
+		Key: "b", Kind: KindAttribute, WrittenBy: "bea", Text: "bea-fact", Time: when,
+	}})
+	migrateRoot(root)
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "bea"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(texts(got), "bea-fact") {
+		t.Fatalf("later bot was not migrated: %+v", got)
+	}
+}
+
+func TestMigrateCorruptNonOwnerIsSetAside(t *testing.T) {
+	root := t.TempDir()
+	when := time.Unix(80, 0).UTC()
+	writeOwners(t, root, "ada", "u1")
+	writeLegacy(t, root, "ada", "u1", TierProfile, []Fact{{
+		Key: "mine", Kind: KindAttribute, WrittenBy: "ada", Text: "owner-fact", Time: when,
+	}})
+	bad := filepath.Join(root, "bots", "ada", "people", "u9", "memory")
+	if err := os.MkdirAll(bad, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, ".index.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	migrateRoot(root)
+	if _, err := os.Stat(bad); !os.IsNotExist(err) {
+		t.Fatalf("corrupt non-owner dir still live: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(bad+".bak", ".index.json")); err != nil {
+		t.Fatalf("corrupt non-owner was not set aside: %v", err)
+	}
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(texts(got), "owner-fact") {
+		t.Fatalf("owner fact missing: %+v", got)
 	}
 }
 
