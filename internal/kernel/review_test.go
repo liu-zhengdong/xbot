@@ -43,6 +43,36 @@ type fakeLink struct{ tool tools.Tool }
 func (fakeLink) Name() string          { return "fakedanger" }
 func (l fakeLink) Tools() []tools.Tool { return []tools.Tool{l.tool} }
 
+func TestUntrustedShellMemoryWriteRequiresApproval(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	dir := filepath.Join(b.Root, "people", "owner", "memory")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Bot: b}
+	k.ensureTurn().turnSender = "owner"
+	args, err := json.Marshal(map[string]string{
+		"command": "cd " + filepath.Dir(dir) + " && printf x >> memory/memory.md",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := reviewedTool{Tool: &tools.Shell{Dir: b.Root}, k: k}
+	need, _, err := tool.Confirm(args)
+	if err != nil || !need {
+		t.Fatalf("untrusted shell memory write: approval=%v err=%v, want approval=true", need, err)
+	}
+	read, _ := json.Marshal(map[string]string{"command": "cat " + filepath.Join(dir, "memory.md")})
+	if need, _, err := tool.Confirm(read); err != nil || need {
+		t.Fatalf("untrusted read-only shell: approval=%v err=%v, want approval=false", need, err)
+	}
+	k.ensureTurn().turnTrusted = true
+	need, _, err = tool.Confirm(args)
+	if err != nil || need {
+		t.Fatalf("trusted shell memory write: approval=%v err=%v, want approval=false", need, err)
+	}
+}
+
 func TestReviewedToolForcesDangerousConfirm(t *testing.T) {
 	need, summary, err := reviewedTool{Tool: fakeDangerTool{}}.Confirm(json.RawMessage(`{"path":"notes.txt"}`))
 	if err != nil || !need || summary != "delete notes.txt" {

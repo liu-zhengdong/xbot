@@ -140,6 +140,26 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, summary + " (untrusted turn: memory write)", nil
 		}
 	}
+	if name == "shell" && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellIsReadOnly(args) {
+		root := k.Bot.Root
+		memoryDirs := []string{filepath.Join(root, "bots", k.Bot.Name(), "memory")}
+		if person := k.memoryPersonOf(k.turnFor(ctx)); person != "" {
+			memoryDirs = append(memoryDirs, filepath.Join(root, "people", person, "memory"))
+		}
+		for _, kind := range []string{"bots", "people"} {
+			entries, _ := os.ReadDir(filepath.Join(root, kind))
+			for _, entry := range entries {
+				memoryDirs = append(memoryDirs, filepath.Join(root, kind, entry.Name(), "memory"))
+			}
+		}
+		cmd, cwd := review.ShellInvocation(args)
+		if cwd == "" {
+			cwd = k.cwdFor(ctx)
+		}
+		if review.TouchesProtected(cmd, cwd, memoryDirs) || review.MentionsMemory(cmd) {
+			return true, summary + " (untrusted turn: memory access)", nil
+		}
+	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
 		// write_file and edit_file are a self-edit only when the resolved path
 		// is this bot's own persona or profile file.

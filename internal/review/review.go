@@ -646,6 +646,19 @@ func ShellIsReadOnly(args json.RawMessage) bool {
 	return readOnlyShell[w[0]]
 }
 
+// MentionsMemory reports memory path words even when a shell command changes
+// directory. This deliberately conservative check is for untrusted turns only.
+func MentionsMemory(cmd string) bool {
+	for _, word := range shellWords(cmd) {
+		word = strings.ReplaceAll(strings.ToLower(word), `\`, "/")
+		base := filepath.Base(filepath.Clean(word))
+		if base == "memory" || base == "memory.md" || strings.Contains(word, "memory/") {
+			return true
+		}
+	}
+	return false
+}
+
 // TouchesProtected reports whether a file-tool path or shell command reaches a
 // protected path (a vault directory or a vault key directory). cmdOrPath is
 // the resolved path for a file tool, or the raw shell command. cwd is the
