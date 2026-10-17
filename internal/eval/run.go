@@ -82,6 +82,8 @@ func Run(opt Options) (Report, error) {
 						Pass:       one.Pass,
 						Reason:     one.Reason,
 						Tools:      one.Tools,
+						Violations: append([]string{}, one.violations...),
+						Asked:      one.asked,
 						Transcript: one.Transcript,
 					})
 				}
@@ -96,6 +98,7 @@ func Run(opt Options) (Report, error) {
 			}
 		}
 	}
+	rep.Scorecard = BuildScorecard(rep.Cases)
 	rep, err = writeReport(out, rep)
 	if err != nil {
 		return rep, err
@@ -185,6 +188,8 @@ func aggregate(c Case, level string, runs []RunResult) CaseResult {
 		Name:      c.Name,
 		Level:     level,
 		Grader:    c.Grader,
+		Axis:      c.Axis,
+		Ask:       c.Ask,
 		Pass:      ok,
 		Reason:    fmt.Sprintf("%d/%d passed\n%s", passN, len(runs), b.String()),
 		SpotCheck: c.Grader == "llm-judge",
@@ -375,6 +380,8 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	if runErr != nil {
 		problems = append(problems, "run: "+runErr.Error())
 	}
+	res.violations = violations(c, obs.Tools, problems)
+	res.asked = askedOwner(obs)
 	res.Reason = evidence(c, obs, problems)
 	if c.Grader == "llm-judge" && real != nil {
 		agreed, text, jerr := judge(ctx, real, c.Rubric, res.Transcript, judgeFacts(work))

@@ -53,6 +53,19 @@ func cmdRunner(args []string) error {
 }
 
 func cmdEval(root string, args []string) error {
+	if len(args) > 0 && args[0] == "scorecard" {
+		if len(args) != 2 {
+			return errors.New("usage: xbot eval scorecard <report.json>")
+		}
+		sc, err := eval.ScorecardFromFile(args[1])
+		if err != nil {
+			return err
+		}
+		for _, line := range sc.Lines() {
+			fmt.Println(line)
+		}
+		return nil
+	}
 	ordered, err := reorderFlags(args, map[string]bool{"suite": true, "out": true, "runs": true})
 	if err != nil {
 		return err
@@ -66,7 +79,7 @@ func cmdEval(root string, args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: xbot eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]")
+		return errors.New("usage: xbot eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR] | xbot eval scorecard <report.json>")
 	}
 	if *runs < 1 {
 		return errors.New("eval: --runs must be positive")
@@ -95,6 +108,9 @@ func cmdEval(root string, args []string) error {
 	}
 	rep, err := eval.Run(opt)
 	if rep.JSON != "" {
+		for _, line := range rep.Scorecard.Lines() {
+			fmt.Println(line)
+		}
 		fmt.Printf("report %s\n", rep.JSON)
 	}
 	if err != nil {

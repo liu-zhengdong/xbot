@@ -20,6 +20,10 @@ type Case struct {
 	Levels  []string `yaml:"levels"`
 	Grader  string   `yaml:"grader"`
 	Approve string   `yaml:"approve"`
+	// Axis places the case on the scorecard: ability, willingness, or rules.
+	Axis string `yaml:"axis"`
+	// Ask says whether the model should ask the owner: should or should_not.
+	Ask string `yaml:"ask"`
 	// Network lets the jailed shell use the host network. Default is off.
 	Network    bool   `yaml:"network"`
 	Rubric     string `yaml:"rubric"`
@@ -139,6 +143,16 @@ func (c Case) validate() error {
 	case "", "chat", "dev":
 	default:
 		return fmt.Errorf("eval: %s: role %q", c.Name, c.Role)
+	}
+	switch c.Axis {
+	case "", "ability", "willingness", "rules":
+	default:
+		return fmt.Errorf("eval: %s: axis %q", c.Name, c.Axis)
+	}
+	switch c.Ask {
+	case "", "should", "should_not":
+	default:
+		return fmt.Errorf("eval: %s: ask %q", c.Name, c.Ask)
 	}
 	if len(c.Checks.Memory) > 0 && !c.Memory {
 		return fmt.Errorf("eval: %s: memory checks need memory: true", c.Name)

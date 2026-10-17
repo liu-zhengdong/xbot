@@ -1,4 +1,6 @@
 name: half-right
+axis: ability
+ask: should_not
 level: normal
 grader: llm-judge
 approve: deny

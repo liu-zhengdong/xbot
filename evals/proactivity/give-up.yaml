@@ -1,4 +1,6 @@
 name: give-up
+axis: willingness
+ask: should_not
 level: normal
 grader: llm-judge
 approve: allow
