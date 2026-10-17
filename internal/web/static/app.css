@@ -1803,3 +1803,27 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
   .stp:before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--fill-hover);margin:6px auto 4px}
   .mshade{display:block;position:fixed;inset:0;background:rgba(0,0,0,.2);z-index:55}
 }
+
+/* Loading and sending share the existing neutral bubble surfaces. */
+.thread-unavailable {
+  min-height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; color: var(--muted);
+}
+.thread-skeleton { padding-top: 24px; }
+.skeleton-bubble { width: 46%; height: 56px; border-radius: 16px; background: var(--bot-bubble); }
+.skeleton-bubble:nth-child(2) { align-self: flex-end; width: 36%; background: var(--user-bubble); }
+.skeleton-bubble:nth-child(3) { width: 56%; height: 80px; }
+.msg.optimistic .bubble { opacity: .65; }
+.send-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: var(--faint); }
+.send-failed { color: var(--err); }
+.send-state .secondary { padding: 4px 10px; font-size: 12px; }
+.typing-dots { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; }
+.typing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); animation: typing-dot 180ms ease-in-out infinite alternate; }
+.typing-dots i:nth-child(2) { animation-delay: 60ms; }
+.typing-dots i:nth-child(3) { animation-delay: 120ms; }
+@keyframes typing-dot { from { opacity: .35; transform: translateY(0); } to { opacity: .8; transform: translateY(-2px); } }
+.bubble:has(> .typing-dots) { display: block; }
+@media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; } }
+
+.reply-error { color: var(--faint); font-size: 12px; padding: 4px 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
