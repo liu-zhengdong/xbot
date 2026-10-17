@@ -109,6 +109,18 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	switch {
+	case strings.Contains(lastUser, "REMOTE_PING") && !sawPeer:
+		writeTool(w, "call_remote_ping", "message_bot", `{"bot":"bob@b","text":"REMOTE_HELLO"}`)
+		return
+	case strings.Contains(lastUser, "REMOTE_HELLO") && !sawPeer:
+		writeTool(w, "call_remote_reply", "message_bot", `{"bot":"ada@a","text":"REMOTE_REPLY"}`)
+		return
+	case strings.Contains(lastUser, "REMOTE_REPLY"):
+		writeText(w, "got remote reply\n")
+		return
+	case strings.Contains(lastUser, "REMOTE_PING"), strings.Contains(lastUser, "REMOTE_HELLO"):
+		writeText(w, "sent\n")
+		return
 	case strings.Contains(lastUser, "PREAMBLE_ZH") && !sawRemember:
 		writeToolContent(w, "I'll remember those three things.", "call_pre", "remember", `{"fact":"three things","scope":"person","tier":"profile"}`)
 		return
