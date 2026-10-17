@@ -91,7 +91,7 @@ func TestLayoutMigrationIdempotent(t *testing.T) {
 		}
 	}
 	first := layoutTree(t, root)
-	for _, rel := range []string{"bots/dev/people/u1000/memory.bak/profile.md", "people/u1000/memory/sync.jsonl", "people/u1000/memory/log.md", "bots/dev/memory/log.md", "bots/inbox/memory/log.md"} {
+	for _, rel := range []string{"bots/dev/people/u1000/memory.bak/profile.md", "people/u1000/memory/sync.jsonl"} {
 		if first[rel] != before[rel] {
 			t.Fatalf("changed %s", rel)
 		}
@@ -176,8 +176,17 @@ func TestLiveCopyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string][]string{}
+	logs := map[string]int{}
 	for rel := range layoutTree(t, root) {
 		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) == 4 && parts[2] == "memory" && (parts[3] == "log.md" || parts[3] == "log.overflow.md") {
+			q := layoutQuery(rel)
+			facts, err := loadNamed(filepath.Join(root, filepath.Dir(rel)), strings.TrimSuffix(parts[3], ".md"), q.Scope, TierLog, q.BotName, q.PersonID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			logs[filepath.Dir(rel)] += len(facts)
+		}
 		if len(parts) != 4 || parts[2] != "memory" || parts[3] != "profile.md" {
 			continue
 		}
@@ -192,6 +201,14 @@ func TestLiveCopyMigration(t *testing.T) {
 		for _, f := range facts {
 			want[filepath.Dir(rel)] = append(want[filepath.Dir(rel)], f.Text)
 		}
+	}
+	for rel := range logs {
+		q := layoutQuery(rel)
+		facts, err := loadMonths(filepath.Join(root, rel), q.Scope, q.BotName, q.PersonID, 0, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		logs[rel] += len(facts)
 	}
 	migrateRoot(root)
 	for rel, texts := range want {
@@ -210,6 +227,13 @@ func TestLiveCopyMigration(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(root, rel, "profile.md.bak")); err != nil {
 			t.Fatal(err)
+		}
+	}
+	for rel, wantCount := range logs {
+		q := layoutQuery(rel)
+		facts, err := loadTier(filepath.Join(root, rel), TierLog, q.Scope, q.BotName, q.PersonID)
+		if err != nil || len(facts) != wantCount {
+			t.Fatalf("%s log count: %d want %d (%v)", rel, len(facts), wantCount, err)
 		}
 	}
 	first := layoutTree(t, root)

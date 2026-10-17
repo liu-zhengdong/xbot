@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -140,17 +139,14 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 		log.Printf("memory: migrate %s profile: %v", dest, err)
 		return true
 	}
+	if err := migrateLogs(dest, ScopeBot, botName, ""); err != nil {
+		return true
+	}
 	logFacts, err := loadTier(dest, TierLog, ScopeBot, botName, "")
 	if err != nil {
 		log.Printf("memory: migrate %s log: %v", dest, err)
 		return true
 	}
-	prevOverflow, err := loadNamed(dest, logOverflowBase, ScopeBot, TierLog, botName, "")
-	if err != nil {
-		log.Printf("memory: migrate %s overflow: %v", dest, err)
-		return true
-	}
-	logFacts = append(logFacts, prevOverflow...)
 
 	failed := false
 	var incomingProfile, incomingLog []Fact
@@ -184,18 +180,12 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 			return true
 		}
 	}
-	over := len(renderMD(logFacts)) > logKeepBytes
-	if logChanged || over || len(prevOverflow) > 0 {
-		fit, rest := packLog(logFacts)
-		if err := writeTier(dest, TierLog, fit, true); err != nil {
-			log.Printf("memory: migrate %s log: %v", dest, err)
-			return true
-		}
-		if err := writeOverflow(dest, rest); err != nil {
-			log.Printf("memory: migrate %s overflow: %v", dest, err)
+	if logChanged {
+		if err := writeMonths(dest, logFacts, false); err != nil {
 			return true
 		}
 	}
+
 	for _, src := range append(merged, parked...) {
 		if !dirExists(src) {
 			continue
@@ -206,43 +196,6 @@ func migrateLocked(root, botName, dest string, sources []string) bool {
 		}
 	}
 	return failed
-}
-
-func writeOverflow(dir string, facts []Fact) error {
-	md := filepath.Join(dir, logOverflowBase+".md")
-	idx := filepath.Join(dir, logOverflowBase+".index.json")
-	if len(facts) == 0 {
-		if err := os.Remove(md); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if err := os.Remove(idx); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
-	// enforce is false: this side file is the overflow, so it may pass 64 KiB.
-	// The main log.md stays within the cap. A later shrinking forget uses the
-	// normal cap rule and is allowed to shrink this file.
-	return writeNamed(dir, logOverflowBase, facts, maxLogBytes, false, false, false)
-}
-
-func packLog(facts []Fact) (fit, rest []Fact) {
-	ordered := append([]Fact(nil), facts...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		if ordered[i].Time.Equal(ordered[j].Time) {
-			return ordered[i].Key > ordered[j].Key
-		}
-		return ordered[i].Time.After(ordered[j].Time)
-	})
-	for _, f := range ordered {
-		trial := append(append([]Fact{}, fit...), f)
-		if len(renderMD(trial)) > logKeepBytes {
-			rest = append(rest, f)
-			continue
-		}
-		fit = trial
-	}
-	return fit, rest
 }
 
 func dirExists(path string) bool {
@@ -279,7 +232,12 @@ func loadLegacy(dir, botName string) (profile, logFacts []Fact, err error) {
 		if err != nil {
 			return err
 		}
-		logFacts, err = loadTier(dir, TierLog, ScopeBot, botName, "")
+		logFacts, err = loadNamed(dir, "log", ScopeBot, TierLog, botName, "")
+		if err == nil {
+			extra, e := loadNamed(dir, "log.overflow", ScopeBot, TierLog, botName, "")
+			err = e
+			logFacts = append(logFacts, extra...)
+		}
 		if err != nil {
 			return err
 		}

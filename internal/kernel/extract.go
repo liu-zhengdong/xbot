@@ -130,6 +130,9 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 		if f.Tier == "" {
 			f.Tier = memory.TierLog
 		}
+		if f.Tier == memory.TierLog {
+			f.Source = "episode"
+		}
 		original := f.Scope
 		// Omitted scope, and the removed bot-person label, land in bot.
 		// An explicit person fact is the only automatic write that stays shared.
