@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/]
-verified: 2026-10-17 @ 060672d
+verified: 2026-10-18 @ e6d8488
 ---
 # 安全：保险箱与权限表
 
@@ -23,7 +23,7 @@ verified: 2026-10-17 @ 060672d
 钥匙只在主人这一侧。Bot 和模型只看得到名字，出站时代理才把 `{{secret:名字}}` 换成真值。
 
 - **存储**：每个 Bot 一份保险箱目录 `bots/<name>/vault/`，目录 0700，所有文件 0600。内容用 AES-GCM 加密，密钥挪到 Bot 工作区之外的数据根 `<root>/keys/vault/<bot>.key`（目录 0700，文件 0600）。旧版密钥仍和密文同目录时，`Open` 会在文件锁下把它移到新位置（跨设备则先写 0600 再删旧文件），绝不因迁移另造新钥。Bot 改名时密钥文件跟着走，删除 Bot 时删掉。
-- **保险箱路径一律确认**：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json` 时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
+- **保险箱路径一律确认**：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
 - **绑定**：每个凭据记一串允许的域名。请求域名不在名单里就拒绝注入，一个字节的真值都不发。按域名标签边界匹配，`a.com` 不覆盖 `evil-a.com` 和 `a.com.evil.com`；只认 ASCII 域名（IDN 用 punycode），只认 http/https，重定向的每一跳都重新校验，跳转 URL 或被复制的头里捎带真值（含 URL 编码、base64 等变体）同样拒绝。
 - **出站代理**：内核在请求离开进程前，把 URL、请求头和请求体里的 `{{secret:名字}}` 换成真值。模型只写名字。URL 路径里的花括号会被 Go 转义成 `%7B%7Bsecret:名字%7D%7D`，代理也认这种写法，同样先查域名绑定。Telegram 和飞书连接器的 token 也存在这里，出站只带占位符（见 [生态](ecosystem.md)）。
 - **脱敏**：真值出现在工具结果、transcript 或导出里时换成 `[secret]`，接的是现成的 `RedactText`；URL 编码、JSON 转义、base64 等变体以及被截断拆开的残段同样脱敏。`Store.Forms` 和 `RegisteredForms` 按从长到短列出这些形式（一样长按字节序），后台 shell 用这份列表决定待写尾巴留哪一段。
