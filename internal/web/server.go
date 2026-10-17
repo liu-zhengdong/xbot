@@ -42,8 +42,10 @@ type Server struct {
 	// background and get its own answer at once. See docs/atlas/fork.md.
 	ForkTurns bool
 
-	owner string
-	token string
+	owner       string
+	token       string
+	launchCodes map[string]time.Time
+	launchNow   func() time.Time
 
 	// ApprovalWait is how long an approval card waits. Zero uses 24 hours.
 	ApprovalWait time.Duration
@@ -89,6 +91,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /fonts/MonaSansVF.woff2", s.static("static/fonts/MonaSansVF.woff2", "font/woff2"))
 
 	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("GET /app/launch", s.launch)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.session)
 
