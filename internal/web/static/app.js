@@ -3119,7 +3119,7 @@
     if (!list.length) routines.append(el("p", "hint", "没有例程"));
     for (const rt of list) {
       const card = el("div", "routine");
-      const meta = el("span", "meta", cronText(rt.cron, true));
+      const meta = el("span", "meta", cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : ""));
       if (rt.enabled === false) {
         const dot = el("i", "status-dot off");
         setTip(dot, "停用");

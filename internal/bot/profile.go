@@ -426,6 +426,7 @@ type TemplateRoutine struct {
 	Cron    string `json:"cron,omitempty"`
 	At      string `json:"at,omitempty"`
 	Enabled bool   `json:"enabled"`
+	Zone    string `json:"zone,omitempty"`
 }
 
 // Template is a bot without memory or transcript.
@@ -475,7 +476,7 @@ func ExportTemplate(b *Bot) (Template, error) {
 	}
 	for _, r := range list {
 		tpl.Routines = append(tpl.Routines, TemplateRoutine{
-			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, At: r.At, Enabled: r.Enabled,
+			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, At: r.At, Enabled: r.Enabled, Zone: r.Zone,
 		})
 	}
 	return tpl, nil
@@ -525,7 +526,7 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	for _, r := range tpl.Routines {
 		if err := tm.Save(link.Routine{
-			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, At: r.At, Enabled: r.Enabled,
+			ID: r.ID, Name: r.Name, Prompt: r.Prompt, Cron: r.Cron, At: r.At, Enabled: r.Enabled, Zone: r.Zone,
 		}); err != nil {
 			return fail(err)
 		}

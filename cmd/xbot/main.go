@@ -63,6 +63,7 @@ Usage:
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
+  xbot [--root DIR] routine migrate [--dry-run] [--bot NAME]
   xbot [--root DIR] export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE
   xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
@@ -191,6 +192,8 @@ func run(argv []string) error {
 		return cmdProfile(root, rest[1:])
 	case "template":
 		return cmdTemplate(root, rest[1:])
+	case "routine":
+		return cmdRoutine(root, rest[1:])
 	case "export":
 		return cmdExport(root, rest[1:])
 	case "reindex":
