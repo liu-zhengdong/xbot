@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -959,14 +958,6 @@ func jobIDFrom(out string) string {
 		rest = rest[:n]
 	}
 	return strings.TrimSpace(rest)
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil
 }
 
 func waitDead(t *testing.T, pid int) {

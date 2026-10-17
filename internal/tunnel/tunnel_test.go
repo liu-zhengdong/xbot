@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -45,6 +45,9 @@ func TestTailscaleListenRewritesLoopback(t *testing.T) {
 }
 
 func TestResolveTailscale(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a /bin/sh fake")
+	}
 	bin := writeFake(t, "#!/bin/sh\necho 100.4.5.6\n")
 	got, err := Resolve(context.Background(), "tailscale", "localhost:8787", bin)
 	if err != nil {
@@ -63,6 +66,9 @@ func TestResolveTailscale(t *testing.T) {
 }
 
 func TestStartCloudflare(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a /bin/sh fake")
+	}
 	// Real cloudflared prints the URL on stderr and never closes stdout.
 	bin := writeFake(t, "#!/bin/sh\necho https://box.trycloudflare.com >&2\nexec sleep 30\n")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -78,6 +84,9 @@ func TestStartCloudflare(t *testing.T) {
 }
 
 func TestCloudflaredDiesWithParent(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("relies on Pdeathsig and a /bin/sh fake")
+	}
 	if os.Getenv("XBOT_PDEATH_CHILD") == "1" {
 		proc, err := StartCloudflare(context.Background(), "http://127.0.0.1:9", os.Getenv("XBOT_FAKE_BIN"), 2*time.Second)
 		if err != nil || proc.cmd == nil || proc.cmd.Process == nil {
@@ -118,14 +127,14 @@ func TestCloudflaredDiesWithParent(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if syscall.Kill(pid, 0) != nil {
+	if !processAlive(pid) {
 		t.Fatal("cloudflared exited before the parent")
 	}
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 	deadline = time.Now().Add(2 * time.Second)
 	for {
-		if syscall.Kill(pid, 0) != nil {
+		if !processAlive(pid) {
 			return
 		}
 		if time.Now().After(deadline) {

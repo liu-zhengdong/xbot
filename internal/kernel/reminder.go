@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"xbot/internal/agent"
@@ -362,10 +361,10 @@ func (l *reminderLog) load() error {
 		return err
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH); err != nil {
+	if err := fsutil.LockFile(f, false, true); err != nil {
 		return err
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer fsutil.UnlockFile(f)
 	st, err := f.Stat()
 	if err != nil {
 		return err
