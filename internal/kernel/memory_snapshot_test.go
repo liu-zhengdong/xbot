@@ -654,3 +654,98 @@ func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
 		t.Fatalf("refreshed for the wrong view: %q %q", st.MemPerson, st.MemSnap)
 	}
 }
+
+// TestMemorySubagentWakeKeepsView: a subagent or fork_end wake after a guest's
+// turn keeps the guest's view; the owner's person facts do not appear.
+func TestMemorySubagentWakeKeepsView(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
+	if err := store.Remember(context.Background(), memory.Fact{
+		Key: "home", Scope: memory.ScopePerson, Tier: memory.TierProfile,
+		PersonID: "u1", WrittenBy: "u1", Text: "owner lives in Hangzhou", Time: t0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, Content: "one"},
+		{Role: provider.RoleAssistant, Content: "two"},
+	}}
+	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u2", "hi", t0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Handle(context.Background(), link.NewEvent(link.SourceSubagent, "fork_end", "done", "bg_1", t0.Add(time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Content != p.reqs[1].Messages[1].Content {
+		t.Fatal("subagent wake changed msgs[1]")
+	}
+	if strings.Contains(p.reqs[1].Messages[1].Content, "owner lives in Hangzhou") {
+		t.Fatal("owner fact in a guest's background wake")
+	}
+}
+
+// TestMemoryDiffReportsUndoneOwnWrite: the bot remembers X, someone removes X
+// before the next wake; live equals what was seen, but the removal is reported.
+func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameMemory)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"short lived note","tier":"profile"}`},
+		}}},
+		{Role: provider.RoleAssistant, Content: "noted"},
+		{Role: provider.RoleAssistant, Content: "two"},
+	}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Now:   func() time.Time { return t0 },
+	}
+	memDiffRun(t, k, 2, func(i int) {
+		if i != 0 {
+			return
+		}
+		q := memory.Query{Scope: memory.ScopeBot, BotName: b.Name()}
+		if err := store.Forget(context.Background(), q, "short lived note"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if up := lastEnvUpdate(t, k); !strings.Contains(up, "- [") || !strings.Contains(up, "short lived note") {
+		t.Fatalf("undone own write not reported:\n%s", up)
+	}
+}
+
+// TestRefreshMemSnapClearsOwnQueue: a refreshed snapshot already holds pending
+// own writes, so they must not be applied again.
+func TestRefreshMemSnapClearsOwnQueue(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
+	k.memOwn = []ownChange{{lines: []string{"+[Bot] - x"}}}
+	st := bot.State{MemSnapSet: true}
+	k.refreshMemSnap(context.Background(), &st)
+	if len(k.memOwn) != 0 {
+		t.Fatalf("own queue survived the refresh: %+v", k.memOwn)
+	}
+}
+
+// TestMemoryViewCapKeepsTarget: switching to a parked view at the cap keeps it.
+func TestMemoryViewCapKeepsTarget(t *testing.T) {
+	st := bot.State{}
+	switchMemView(&st, "", "shared view", nil)
+	for i := 0; i < memViewCap; i++ {
+		switchMemView(&st, fmt.Sprintf("g%02d", i), "guest view", nil)
+	}
+	switchMemView(&st, "", "fresh live", nil)
+	if st.MemSnap != "shared view" {
+		t.Fatalf("target view evicted and rebuilt: %q", st.MemSnap)
+	}
+}

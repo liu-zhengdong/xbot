@@ -227,13 +227,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if key := k.boundModelKey(); key != "" {
 		st.BoundModel = key
 	}
+	// memWriteMu keeps a background turn's own write from landing between this
+	// read and the drain, which would report it as removed.
 	key := k.memViewKey(t, st)
+	k.memWriteMu.Lock()
 	memText, err := k.memoryText(ctx, key)
 	if err != nil {
+		k.memWriteMu.Unlock()
 		return err
 	}
 	switchMemView(&st, key, memText, k.Bot.Config().Owners)
 	k.drainMemOwn(&st)
+	k.memWriteMu.Unlock()
 	st, err = k.syncEnv(st, ev, memText)
 	if err != nil {
 		return err
@@ -819,7 +824,8 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	// The memory snapshot in msgs[1] stays frozen; what changed since the bot last
 	// saw memory is appended here as a diff, minus the bot's own changes (MemOwn).
 	memBlock := ""
-	if st.MemSnapSet && mem != st.MemSeen {
+	// Own changes count even when live equals MemSeen: someone may have undone them.
+	if st.MemSnapSet && (mem != st.MemSeen || len(st.MemOwn) > 0) {
 		memBlock = memoryDiff(st.MemSeen, mem, st.MemOwn)
 	}
 	st.MemSeen, st.MemOwn = mem, nil
@@ -948,11 +954,12 @@ func (k *Kernel) ownerPerson() string {
 }
 
 // memViewKey picks whose memory view a turn uses: the person's own view, or the
-// shared bot-only view ("") for groups, peer bots, and connectors. Timer and
-// shell wakes are the bot's own; they keep the active view so the prefix does
-// not flip between a person's turn and its follow-up wake.
+// shared bot-only view ("") for groups, peer bots, and connectors. Timer, shell,
+// and subagent wakes (including a background's fork_end) are the bot's own; they
+// keep the active view, so the prefix does not flip and a guest's background
+// result is not read next to the owner's person facts.
 func (k *Kernel) memViewKey(t *turn, st bot.State) string {
-	if st.MemSnapSet && t != nil && (t.turnSource == link.NameTimer || t.turnSource == "shell") {
+	if st.MemSnapSet && t != nil && (t.turnSource == link.NameTimer || t.turnSource == "shell" || t.turnSource == link.SourceSubagent) {
 		return st.MemPerson
 	}
 	if person := k.memoryPersonOf(t); memory.ValidID(person) {
@@ -973,6 +980,13 @@ func switchMemView(st *bot.State, key, live string, owners []string) {
 	if st.MemSnapSet && st.MemPerson == key {
 		return
 	}
+	// Take the target out first, so eviction cannot drop the view being switched to.
+	v, ok := st.MemOther[key]
+	if ok {
+		delete(st.MemOther, key)
+	} else {
+		v = bot.MemView{Snap: live, Seen: live}
+	}
 	if st.MemSnapSet {
 		if st.MemOther == nil {
 			st.MemOther = map[string]bot.MemView{}
@@ -981,12 +995,6 @@ func switchMemView(st *bot.State, key, live string, owners []string) {
 			evictMemView(st.MemOther, owners)
 		}
 		st.MemOther[st.MemPerson] = bot.MemView{Snap: st.MemSnap, Seen: st.MemSeen, Own: st.MemOwn}
-	}
-	v, ok := st.MemOther[key]
-	if ok {
-		delete(st.MemOther, key)
-	} else {
-		v = bot.MemView{Snap: live, Seen: live}
 	}
 	st.MemSnap, st.MemSeen, st.MemOwn, st.MemPerson, st.MemSnapSet = v.Snap, v.Seen, v.Own, key, true
 }
@@ -1073,16 +1081,23 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 // refreshMemSnap re-snapshots standing memory after a compaction appended a block.
 // The prefix already changed, so the active view is replaced and parked views are
 // dropped. The active view keeps its key, whichever turn runs the compaction.
-// A read error keeps the old snapshot; the next wake diffs as usual.
+// A read error keeps the old snapshot; the next wake diffs as usual. The new
+// snapshot already holds the bot's pending own writes, so the queue is cleared
+// under memWriteMu, which also waits out a write in progress.
 func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) {
 	key := st.MemPerson
 	if !st.MemSnapSet {
 		key = k.memViewKey(k.curTurn(), *st)
 	}
+	k.memWriteMu.Lock()
+	defer k.memWriteMu.Unlock()
 	mem, err := k.memoryText(ctx, key)
 	if err != nil {
 		return
 	}
+	k.memOwnMu.Lock()
+	k.memOwn = nil
+	k.memOwnMu.Unlock()
 	st.MemSnap, st.MemSeen, st.MemSnapSet, st.MemPerson = mem, mem, true, key
 	st.MemOwn, st.MemOther = nil, nil
 }
