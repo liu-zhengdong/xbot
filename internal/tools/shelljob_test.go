@@ -138,7 +138,7 @@ func TestShellTimeoutMovesToBackground(t *testing.T) {
 	}
 	sh := &Shell{DefaultTimeout: 200 * time.Millisecond, MaxTimeout: 200 * time.Millisecond, MaxOutput: 1024, Jobs: jobs}
 	marker := "xbotbg" + strings.ReplaceAll(t.Name(), "/", "")
-	raw, err := json.Marshal(map[string]string{"command": "echo " + marker + "; sleep 30"})
+	raw, err := json.Marshal(map[string]string{"command": "echo " + marker + "; printf '%02048d' 0; sleep 30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestShellOutputOffsetAndTail(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := jobs.Run(context.Background(), RunRequest{
-		Command: "printf 'one\\ntwo\\nthree\\n'; sleep 30", Background: true, Timeout: time.Second,
+		Command: "printf 'one\\ntwo\\nthree\\n'", Background: true, Timeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -303,18 +303,21 @@ func TestShellOutputOffsetAndTail(t *testing.T) {
 	id := jobIDFrom(out)
 	t.Cleanup(func() { _, _ = jobs.Cancel(id) })
 	deadline := time.Now().Add(2 * time.Second)
-	var tail string
 	for {
-		tail, err = jobs.Output(id, 0, 1)
-		if err == nil && strings.Contains(tail, "three") {
+		st, err := jobs.Status(id)
+		if err == nil && st.Status == "done" {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("tail %q err %v", tail, err)
+			t.Fatalf("status %+v err %v", st, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if strings.Contains(tail, "one") {
+	tail, err := jobs.Output(id, 0, 1)
+	if err != nil || !strings.Contains(tail, "three") {
+		t.Fatalf("tail %q err %v", tail, err)
+	}
+	if strings.Contains(tail, "\none\n") || strings.HasPrefix(strings.TrimSpace(tail), "one\n") {
 		t.Fatalf("tail included the head: %s", tail)
 	}
 	full, err := jobs.Output(id, 0, 0)
@@ -328,7 +331,7 @@ func TestShellOutputOffsetAndTail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(again, "one\n") || !strings.Contains(again, "two") {
+	if strings.Contains(again, "\none\n") || !strings.Contains(again, "two") {
 		t.Fatalf("offset %s", again)
 	}
 }
@@ -341,7 +344,7 @@ func TestBackgroundFileRedactsSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := jobs.Run(context.Background(), RunRequest{
-		Command: "printf SUPERSECRET; sleep 30", Background: true, Timeout: time.Second,
+		Command: "printf SUPERSECRET; printf '%02048d' 0; sleep 30", Background: true, Timeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)

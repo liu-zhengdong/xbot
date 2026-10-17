@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -857,24 +858,38 @@ func envAssign(s string) bool {
 	return r == '_' || unicode.IsLetter(r)
 }
 
-// jobWriter appends redacted output. Raw bytes stay in pending until a secret
-// that long cannot still be incomplete. Each Write redacts that retained tail
-// plus the new complete lines once, and appends the block in one write. The
-// uncommitted tail may be replaced; the committed stream length never shrinks.
-// Offsets are against that stream: written is the high-water end, discarded
-// is the prefix rotated off the file.
+// redactSpan is one exact replacement inside a raw buffer. start and end are
+// raw byte offsets. repl is the already-final redaction of raw[start:end].
+type redactSpan struct {
+	start int
+	end   int
+	repl  string
+}
+
+type redactNeedle struct {
+	old  string
+	repl string
+}
+
+// jobWriter appends redacted output. The last retain raw bytes stay in pending
+// and are never written: a known secret could still start there. Each Write
+// redacts the whole pending buffer, maps raw offsets through the replacement
+// spans, and appends only the prefix that covers raw bytes before
+// len(pending)-retain. Close redacts whatever remains and flushes it.
+// Committed bytes are not rewritten, so the stream length never shrinks.
+// written is that committed length; discarded is the prefix rotated off the file.
 type jobWriter struct {
 	mu         sync.Mutex
 	f          *os.File
 	max        int
 	redact     func(string) string
 	retain     func() int
+	needles    []redactNeedle
 	pending    []byte
 	produced   int // committed redacted bytes, monotonic
-	written    int // high-water stream end, including a tail that was shown and then shortened
+	written    int // high-water stream end; equals produced
 	discarded  int
 	fileStable int // committed bytes currently in the file
-	preview    int // replaceable tail after fileStable
 }
 
 func newJobWriter(f *os.File, max int, redact func(string) string) *jobWriter {
@@ -900,8 +915,8 @@ func (w *jobWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Flush redacts the retained tail and the complete lines once more so a reader
-// sees output. The uncommitted tail stays replaceable.
+// Flush commits the safe redacted prefix. The retained raw tail stays in
+// memory and is not written.
 func (w *jobWriter) Flush() error {
 	if w == nil {
 		return nil
@@ -909,16 +924,6 @@ func (w *jobWriter) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.flushBlock(false)
-}
-
-func (w *jobWriter) redactBytes(p []byte) []byte {
-	if len(p) == 0 {
-		return nil
-	}
-	if w.redact == nil {
-		return append([]byte(nil), p...)
-	}
-	return []byte(w.redact(string(p)))
 }
 
 func (w *jobWriter) hold() int {
@@ -931,102 +936,127 @@ func (w *jobWriter) hold() int {
 	return n
 }
 
-// flushBlock redacts the retained raw tail and every complete line from this
-// write as one block, then appends that block once. final also commits the
-// incomplete tail. Bytes already committed are not rewritten, so the stream
-// length does not move backward when a later redact shortens the tail.
+// flushBlock appends the final-redacted prefix of pending. final also commits
+// the retained tail. Bytes already committed are not rewritten.
 func (w *jobWriter) flushBlock(final bool) error {
 	if w.f == nil {
 		return nil
-	}
-	if err := w.discardPreview(); err != nil {
-		return err
 	}
 	raw := w.pending
 	if len(raw) == 0 {
 		return nil
 	}
-	cut := len(raw)
+	hold := 0
 	if !final {
-		hold := w.hold()
-		nl := bytes.LastIndexByte(raw, '\n')
-		if nl < 0 || nl+1 <= hold {
-			return w.writeRedacted(w.redactBytes(raw), 0)
+		hold = w.hold()
+		if len(raw) <= hold {
+			return nil
 		}
-		cut = nl + 1 - hold
-		if i := bytes.LastIndexByte(raw[:cut], '\n'); i >= 0 {
-			cut = i + 1
+	}
+	cut := len(raw) - hold
+	red, spans, same, ok := w.redactSpans(string(raw))
+	var rawEnd int
+	var out []byte
+	switch {
+	case final && (!ok || same):
+		rawEnd = len(raw)
+		if same {
+			out = raw
 		} else {
-			return w.writeRedacted(w.redactBytes(raw), 0)
+			out = []byte(red)
 		}
+	case final:
+		rawEnd = len(raw)
+		out = []byte(projectSpans(string(raw), spans, rawEnd))
+		if string(out) != red {
+			out = []byte(red)
+		}
+	case same:
+		rawEnd = cut
+		out = raw[:rawEnd]
+	case !ok:
+		// Spans could not be proved. Leave every raw byte off disk until Close.
+		return nil
+	default:
+		rawEnd = safeRawEnd(spans, cut)
+		if !spansFit(spans, rawEnd) {
+			return nil
+		}
+		projected := projectSpans(string(raw), spans, rawEnd)
+		if !strings.HasPrefix(red, projected) {
+			return nil
+		}
+		out = []byte(projected)
 	}
-	red := w.redactBytes(raw)
-	rest := raw[cut:]
-	stable := red
-	if len(rest) > 0 && bytes.HasSuffix(red, rest) {
-		stable = red[:len(red)-len(rest)]
+	if rawEnd <= 0 {
+		return nil
+	}
+	if err := w.writeCommitted(out); err != nil {
+		return err
+	}
+	if rawEnd >= len(raw) {
+		w.pending = nil
 	} else {
-		cut = len(raw)
-		rest = nil
-	}
-	if err := w.writeRedacted(red, len(stable)); err != nil {
-		return err
-	}
-	if cut > 0 {
-		w.pending = append([]byte(nil), raw[cut:]...)
+		w.pending = append([]byte(nil), raw[rawEnd:]...)
 	}
 	return nil
 }
 
-// writeRedacted appends one redacted block. stable is how many leading bytes
-// are committed; the rest is a preview the next write may replace. stable
-// equal to len(red), or a zero-length red with stable 0, previews the whole
-// block when stable is 0.
-func (w *jobWriter) writeRedacted(red []byte, stable int) error {
-	if w.f == nil {
-		return nil
+// redactSpans redacts raw and returns the replacement spans that produced the
+// result. same means no byte changed. ok is false when the spans could not be
+// proved to match the redactor; the caller then commits nothing incomplete.
+func (w *jobWriter) redactSpans(raw string) (red string, spans []redactSpan, same, ok bool) {
+	if w == nil || w.redact == nil || raw == "" {
+		return raw, nil, true, true
 	}
-	if stable < 0 || stable > len(red) {
-		stable = len(red)
+	red = w.redact(raw)
+	if red == raw {
+		return red, nil, true, true
 	}
-	if len(red) > 0 {
-		if _, err := w.f.Write(red); err != nil {
-			return err
+	if spanned, hit := coverNeedles(raw, w.needles); hit && projectSpans(raw, spanned, len(raw)) == red {
+		return red, spanned, false, true
+	}
+	learned, learnedOK := learnSpans(raw, red, w.redact)
+	if !learnedOK || projectSpans(raw, learned, len(raw)) != red {
+		return red, nil, false, false
+	}
+	for _, sp := range learned {
+		w.remember(raw[sp.start:sp.end], sp.repl)
+	}
+	return red, learned, false, true
+}
+
+func (w *jobWriter) remember(old, repl string) {
+	if old == "" || old == repl {
+		return
+	}
+	for _, n := range w.needles {
+		if n.old == old {
+			return
 		}
 	}
-	w.produced += stable
-	w.fileStable += stable
-	w.preview = len(red) - stable
-	w.bump()
-	if err := w.rotateStable(); err != nil {
-		return err
-	}
-	return nil
+	w.needles = append(w.needles, redactNeedle{old: old, repl: repl})
 }
 
-func (w *jobWriter) bump() {
-	end := w.produced + w.preview
-	if end > w.written {
-		w.written = end
-	}
-}
-
-func (w *jobWriter) discardPreview() error {
-	if w.preview == 0 || w.f == nil {
+// writeCommitted appends bytes that are already final-redacted. The stream
+// length only moves forward.
+func (w *jobWriter) writeCommitted(p []byte) error {
+	if w.f == nil || len(p) == 0 {
 		return nil
 	}
-	if err := w.f.Truncate(int64(w.fileStable)); err != nil {
+	if _, err := w.f.Write(p); err != nil {
 		return err
 	}
-	if _, err := w.f.Seek(int64(w.fileStable), io.SeekStart); err != nil {
-		return err
+	w.produced += len(p)
+	w.fileStable += len(p)
+	if w.produced > w.written {
+		w.written = w.produced
 	}
-	w.preview = 0
-	return nil
+	return w.rotateStable()
 }
 
 // rotateStable drops the head of the committed bytes once the file is past the
-// cap. The preview is not part of that prefix; it is written again after.
+// cap. Discarded bytes stay in the stream length; written does not shrink.
 func (w *jobWriter) rotateStable() error {
 	if w.f == nil || w.fileStable <= w.max {
 		return nil
@@ -1037,12 +1067,6 @@ func (w *jobWriter) rotateStable() error {
 	}
 	if w.fileStable <= w.max+slack {
 		return nil
-	}
-	preview := make([]byte, w.preview)
-	if w.preview > 0 {
-		if _, err := w.f.ReadAt(preview, int64(w.fileStable)); err != nil {
-			return err
-		}
 	}
 	keep := w.max
 	if keep > w.fileStable {
@@ -1066,14 +1090,161 @@ func (w *jobWriter) rotateStable() error {
 	if _, err := w.f.Write(buf); err != nil {
 		return err
 	}
-	if len(preview) > 0 {
-		if _, err := w.f.Write(preview); err != nil {
-			return err
-		}
-	}
 	w.discarded += drop
 	w.fileStable = len(buf)
 	return nil
+}
+
+// safeRawEnd is the greatest raw offset at or before cut that is not strictly
+// inside a replacement. A secret that crosses the retain window stays pending.
+func safeRawEnd(spans []redactSpan, cut int) int {
+	end := cut
+	if end < 0 {
+		return 0
+	}
+	changed := true
+	for changed {
+		changed = false
+		for _, sp := range spans {
+			if sp.start < end && end < sp.end {
+				end = sp.start
+				changed = true
+			}
+		}
+	}
+	if end < 0 {
+		return 0
+	}
+	return end
+}
+
+func spansFit(spans []redactSpan, rawEnd int) bool {
+	for _, sp := range spans {
+		if sp.start < rawEnd && sp.end > rawEnd {
+			return false
+		}
+	}
+	return true
+}
+
+func projectSpans(raw string, spans []redactSpan, rawEnd int) string {
+	if rawEnd < 0 {
+		rawEnd = 0
+	}
+	if rawEnd > len(raw) {
+		rawEnd = len(raw)
+	}
+	var b strings.Builder
+	prev := 0
+	for _, sp := range spans {
+		if sp.start >= rawEnd {
+			break
+		}
+		if sp.end > rawEnd || sp.start < prev || sp.end < sp.start {
+			return ""
+		}
+		b.WriteString(raw[prev:sp.start])
+		b.WriteString(sp.repl)
+		prev = sp.end
+	}
+	b.WriteString(raw[prev:rawEnd])
+	return b.String()
+}
+
+// learnSpans recovers replacement spans from a pure substring redactor.
+// The smallest prefix whose redaction differs is one whole match, found by
+// binary search, so a shared look at the redacted text is not required.
+func learnSpans(raw, red string, redact func(string) string) ([]redactSpan, bool) {
+	if redact == nil {
+		return nil, false
+	}
+	var spans []redactSpan
+	i, j := 0, 0
+	for i < len(raw) || j < len(red) {
+		for i < len(raw) && j < len(red) && raw[i] == red[j] {
+			i++
+			j++
+		}
+		if i == len(raw) && j == len(red) {
+			return spans, true
+		}
+		if i >= len(raw) || j > len(red) {
+			return nil, false
+		}
+		d, ok := firstMatchEnd(raw[i:], redact)
+		if !ok {
+			return nil, false
+		}
+		repl := redact(raw[i : i+d])
+		if len(repl) > len(red)-j || red[j:j+len(repl)] != repl {
+			return nil, false
+		}
+		spans = append(spans, redactSpan{start: i, end: i + d, repl: repl})
+		i += d
+		j += len(repl)
+	}
+	return spans, true
+}
+
+// firstMatchEnd returns the smallest d > 0 such that redact(piece[:d]) differs
+// from piece[:d]. For exact ReplaceAll this is the end of the first match.
+func firstMatchEnd(piece string, redact func(string) string) (int, bool) {
+	lo, hi := 1, len(piece)
+	found := 0
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		part := piece[:mid]
+		if redact(part) == part {
+			lo = mid + 1
+			continue
+		}
+		found = mid
+		hi = mid - 1
+	}
+	if found == 0 {
+		return 0, false
+	}
+	return found, true
+}
+
+func coverNeedles(raw string, needles []redactNeedle) ([]redactSpan, bool) {
+	if len(needles) == 0 || raw == "" {
+		return nil, false
+	}
+	order := append([]redactNeedle(nil), needles...)
+	sort.Slice(order, func(i, j int) bool {
+		if len(order[i].old) != len(order[j].old) {
+			return len(order[i].old) > len(order[j].old)
+		}
+		return order[i].old < order[j].old
+	})
+	var spans []redactSpan
+	i := 0
+	for i < len(raw) {
+		hit := -1
+		for n := range order {
+			old := order[n].old
+			if old == "" || i+len(old) > len(raw) || raw[i:i+len(old)] != old {
+				continue
+			}
+			hit = n
+			break
+		}
+		if hit < 0 {
+			i++
+			continue
+		}
+		spans = append(spans, redactSpan{
+			start: i,
+			end:   i + len(order[hit].old),
+			repl:  order[hit].repl,
+		})
+		i += len(order[hit].old)
+	}
+	if len(spans) == 0 {
+		return nil, false
+	}
+	return spans, true
 }
 
 func (w *jobWriter) span() (written, discarded int) {
@@ -1098,7 +1269,7 @@ func (w *jobWriter) snapshot() (body []byte, written, discarded int, err error) 
 	if w.f == nil {
 		return nil, w.written, w.discarded, nil
 	}
-	body, err = io.ReadAll(io.NewSectionReader(w.f, 0, int64(w.fileStable+w.preview)))
+	body, err = io.ReadAll(io.NewSectionReader(w.f, 0, int64(w.fileStable)))
 	if err != nil {
 		return nil, 0, 0, err
 	}

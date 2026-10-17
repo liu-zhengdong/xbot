@@ -227,7 +227,7 @@ func TestShellJobFileUsesKernelRedactor(t *testing.T) {
 		Now: func() time.Time { return time.Unix(1_700_000_300, 0).UTC() },
 	}
 	out, err := k.shellJobs().Run(context.Background(), tools.RunRequest{
-		Command: "printf SUPERSECRET; sleep 30", Background: true, Timeout: time.Second,
+		Command: "printf SUPERSECRET; printf '%02048d' 0; sleep 30", Background: true, Timeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -508,6 +508,13 @@ func TestShellRetainCoversVaultSecret(t *testing.T) {
 	k.secrets = map[string]map[string]string{"turn": {"n": "short-secret"}}
 	if got := k.shellRetain(); got < len(value)+1 {
 		t.Fatalf("retain shrank to %d", got)
+	}
+	longer := value + "\n" + value
+	if err := store.Set("pem", longer, []string{"example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := k.shellRetain(); got < len(longer)+1 {
+		t.Fatalf("retain %d after the vault grew, secret %d", got, len(longer))
 	}
 }
 

@@ -57,6 +57,11 @@ type Store struct {
 	mu      sync.Mutex
 	key     []byte
 	secrets map[string]Secret
+	// formLen is the cached longest redactable form. formGen bumps on every
+	// change so callers can keep their own cache and notice a vault write.
+	formLen   int
+	formLenOK bool
+	formGen   uint64
 }
 
 // Open loads the vault under dir, reading its key from keyPath. A missing
@@ -176,6 +181,7 @@ func readKey(path string) ([]byte, error) {
 }
 
 func (s *Store) load() error {
+	defer s.invalidateForms()
 	raw, err := os.ReadFile(filepath.Join(s.dir, secretsFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -229,6 +235,7 @@ func (s *Store) Set(name, value string, domains []string) error {
 			return err
 		}
 		s.secrets[name] = Secret{Name: name, Value: value, Domains: ds}
+		s.invalidateForms()
 		return s.saveLocked()
 	})
 }
@@ -251,6 +258,7 @@ func (s *Store) Remove(name string) error {
 			return nil
 		}
 		delete(s.secrets, name)
+		s.invalidateForms()
 		return s.saveLocked()
 	})
 }
@@ -606,18 +614,95 @@ func Register(s *Store) func() {
 // MaxRegisteredFormLen is the longest redactable form in any vault registered
 // for process-wide redaction. It moves when a registered store changes.
 func MaxRegisteredFormLen() int {
+	n, _ := RegisteredFormState()
+	return n
+}
+
+// RegisteredFormGen changes when a registered vault's secrets change or the
+// set of registered stores changes. It does not recompute the forms.
+func RegisteredFormGen() uint64 {
 	regMu.RLock()
 	defer regMu.RUnlock()
-	best := 0
+	var g uint64 = uint64(len(regStores)) << 32
 	for _, s := range regStores {
+		if s != nil {
+			g += s.FormGen()
+		}
+	}
+	return g
+}
+
+// RegisteredFormState is the cached longest form across registered vaults and
+// the generation that produced it.
+func RegisteredFormState() (int, uint64) {
+	regMu.RLock()
+	stores := append([]*Store(nil), regStores...)
+	regMu.RUnlock()
+	best := 0
+	var g uint64 = uint64(len(stores)) << 32
+	for _, s := range stores {
 		if s == nil {
 			continue
 		}
-		if n := s.MaxFormLen(); n > best {
+		n, sg := s.FormLimit()
+		g += sg
+		if n > best {
 			best = n
 		}
 	}
+	return best, g
+}
+
+// FormGen changes each time the stored secrets change.
+func (s *Store) FormGen() uint64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.formGen
+}
+
+// FormLimit is the longest redactable form and the generation it belongs to.
+// The length is cached until Set, Remove, or a reload.
+func (s *Store) FormLimit() (int, uint64) {
+	if s == nil {
+		return 0, 0
+	}
+	for {
+		s.mu.Lock()
+		if s.formLenOK {
+			n, g := s.formLen, s.formGen
+			s.mu.Unlock()
+			return n, g
+		}
+		g := s.formGen
+		s.mu.Unlock()
+		n := longestForm(s)
+		s.mu.Lock()
+		if s.formGen == g {
+			s.formLen = n
+			s.formLenOK = true
+			s.mu.Unlock()
+			return n, g
+		}
+		s.mu.Unlock()
+	}
+}
+
+func longestForm(s *Store) int {
+	best := 0
+	for _, form := range s.valueForms() {
+		if len(form) > best {
+			best = len(form)
+		}
+	}
 	return best
+}
+
+func (s *Store) invalidateForms() {
+	s.formLenOK = false
+	s.formGen++
 }
 
 // Redact replaces known values across every registered vault. It is installed

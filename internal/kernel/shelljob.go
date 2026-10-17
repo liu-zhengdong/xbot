@@ -105,24 +105,73 @@ func (k *Kernel) onShellDone(job tools.Job) {
 // redacted before any of it is committed. It is at least 1024, and at least
 // one past the longest known secret form. Vault values and their bounded
 // encodings (base64, URL, JSON) come from the store. In-memory values count
-// too. A pattern with no upper bound does not raise the hold.
+// too. A pattern with no upper bound does not raise the hold. The length is
+// cached until the vault generation or the staged secrets change, so a shell
+// write does not recompute every form.
 func (k *Kernel) shellRetain() int {
+	mem := k.maxStagedSecret()
+	vGen := vaultFormGen(k)
+	rGen := vault.RegisteredFormGen()
+	if k != nil {
+		k.shellMu.Lock()
+		if k.retainOK && k.retainMem == mem && k.retainVGen == vGen && k.retainRGen == rGen {
+			n := k.retainN
+			k.shellMu.Unlock()
+			return n
+		}
+		k.shellMu.Unlock()
+	}
 	n := tools.MinRetain
 	bump := func(length int) {
 		if length+1 > n {
 			n = length + 1
 		}
 	}
-	for _, value := range k.secretValues() {
-		bump(len(value))
-	}
+	bump(mem)
 	if k != nil && k.Vault != nil {
 		if sized, ok := k.Vault.(interface{ MaxFormLen() int }); ok {
 			bump(sized.MaxFormLen())
 		}
 	}
 	bump(vault.MaxRegisteredFormLen())
+	if k != nil {
+		k.shellMu.Lock()
+		k.retainOK = true
+		k.retainN = n
+		k.retainMem = mem
+		k.retainVGen = vGen
+		k.retainRGen = rGen
+		k.shellMu.Unlock()
+	}
 	return n
+}
+
+func (k *Kernel) maxStagedSecret() int {
+	if k == nil {
+		return 0
+	}
+	k.secretMu.Lock()
+	defer k.secretMu.Unlock()
+	n := 0
+	for _, m := range k.secrets {
+		for _, value := range m {
+			if len(value) > n {
+				n = len(value)
+			}
+		}
+	}
+	return n
+}
+
+func vaultFormGen(k *Kernel) uint64 {
+	if k == nil || k.Vault == nil {
+		return 0
+	}
+	type gen interface{ FormGen() uint64 }
+	if g, ok := k.Vault.(gen); ok && g != nil {
+		return g.FormGen()
+	}
+	return 0
 }
 
 // claimShell marks id as delivered for this process. The caller must not also

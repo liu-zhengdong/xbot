@@ -438,15 +438,11 @@ func (rs *redactStream) emit(s string) error {
 
 // MaxFormLen is the longest redactable value form, used as a streaming
 // overlap. Zero when no value is stored. Encoded forms (base64, URL, JSON)
-// count; they are bounded by the stored value.
+// count; they are bounded by the stored value. The result is cached until
+// the vault changes.
 func (s *Store) MaxFormLen() int {
-	best := 0
-	for _, form := range s.valueForms() {
-		if len(form) > best {
-			best = len(form)
-		}
-	}
-	return best
+	n, _ := s.FormLimit()
+	return n
 }
 
 func writeErr(w http.ResponseWriter, status int, err error) {
