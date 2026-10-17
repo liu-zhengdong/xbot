@@ -64,3 +64,20 @@ func TestConversationLoadingAndSendFeedback(t *testing.T) {
 		t.Fatal("typing bubble must remain visible and respect reduced motion")
 	}
 }
+
+// Pressing Enter on the restored text used to leave the old failed row below
+// the delivered message, and its 重试 sent the text a second time.
+func TestComposerResendDropsFailedRow(t *testing.T) {
+	data, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(data)
+	a := strings.Index(js, "async function sendText(")
+	send := js[a : a+strings.Index(js[a:], "optimisticMessage(text)")]
+	for _, fragment := range []string{"if (!pending)", `row.querySelector(".send-failed")`, `row.querySelector(".bubble")?.textContent === text`, "row.remove()"} {
+		if !strings.Contains(send, fragment) {
+			t.Errorf("composer resend must drop the stale failed row before the new one: missing %s", fragment)
+		}
+	}
+}

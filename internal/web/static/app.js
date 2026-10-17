@@ -3891,6 +3891,15 @@
     if (!text || !state.sel) return;
     const selection = state.sel;
     ++state.threadLoad;
+    if (!pending) {
+      // Resending a failed text from the composer replaces its failed row, so
+      // that row's 重试 cannot send the same text a second time.
+      state.pendingSends = state.pendingSends.filter((row) => {
+        const stale = !row.accepted && row.querySelector(".send-failed") && row.querySelector(".bubble")?.textContent === text;
+        if (stale) row.remove();
+        return !stale;
+      });
+    }
     pending = pending || optimisticMessage(text);
     const marker = pending.querySelector(".send-state");
     marker.className = "send-state";
