@@ -1893,7 +1893,21 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .account-menu button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
 
 /* Only the profile fields scroll; its actions stay visible. */
+.modal.profile-drawer { padding: 0; place-items: stretch end; }
+.profile-drawer .profile-modal {
+  width: 420px; max-width: 100%; height: 100%; max-height: none;
+  min-height: 0; border-radius: 0; padding: 20px;
+  animation: profile-slide 180ms ease-out;
+}
 .profile-modal { display: flex; flex-direction: column; overflow: hidden; }
+.profile-modal > h2 { flex: none; margin-bottom: 12px; }
+.profile-section + .profile-section { margin-top: 24px; }
+.profile-section h3 { margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.profile-section .profile-head { margin-bottom: 16px; }
+.profile-section:last-of-type textarea { min-height: 160px; }
+@keyframes profile-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (max-width: 767px) { .profile-drawer .profile-modal { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .profile-drawer .profile-modal { animation: none; } }
 .profile-modal #modal-fields { min-height: 0; overflow: auto; }
 .profile-modal .modal-actions {
   position: sticky; bottom: 0; flex: none; flex-wrap: wrap;

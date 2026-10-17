@@ -3490,6 +3490,8 @@
     return node;
   }
 
+  let profileReturnFocus = null;
+
   function profileForm(data) {
     const wrap = document.createElement("div");
     const head = el("div", "profile-head");
@@ -3507,6 +3509,7 @@
     head.append(mark, stack);
     const style = data.style || {};
     const name = textInput(data.name, 64);
+    name.dataset.profileFocus = "true";
     const description = textInput(data.description, 160);
     const tone = textInput(style.tone, 80);
     const length = choice([["", "未设置"], ["short", "短"], ["medium", "中"], ["long", "长"]], style.length);
@@ -3536,17 +3539,17 @@
     const actions = el("div", "profile-templates");
     actions.append(exp, imp, fileIn);
     modalForm.querySelector(".modal-actions").prepend(actions);
+    const section = (title, ...fields) => {
+      const group = el("section", "profile-section");
+      group.append(el("h3", "", title), ...fields);
+      return group;
+    };
     wrap.append(
-      head,
-      labeled("标识", name),
-      labeled("简介", description),
-      labeled("语气", tone),
-      labeled("回复长度", length),
-      labeled("表情", emoji),
-      labeled("语言", language),
-      labeled("免打扰开始", quietStart),
-      labeled("免打扰结束", quietEnd),
-      labeled("人设", persona),
+      section("基本", head, labeled("标识", name), labeled("简介", description)),
+      section("说话方式", labeled("语气", tone), labeled("回复长度", length),
+        labeled("表情", emoji), labeled("语言", language)),
+      section("免打扰", labeled("开始", quietStart), labeled("结束", quietEnd)),
+      section("人设", labeled("人设", persona)),
       err,
     );
     const showErr = (e, fallback) => { err.hidden = false; err.textContent = visibleError(e, fallback); };
@@ -3626,12 +3629,22 @@
 
   function openProfile(data) {
     if (!data || !data.name) return;
+    profileReturnFocus = document.activeElement;
+    hideTip();
     $("modal-title").textContent = "编辑资料";
+    modal.classList.add("profile-drawer");
     modalForm.classList.add("profile-modal");
+    modalForm.setAttribute("role", "dialog");
+    modalForm.setAttribute("aria-modal", "true");
+    modalForm.setAttribute("aria-labelledby", "modal-title");
+    $("modal-ok").className = "primary";
+    $("modal-ok").disabled = false;
     $("modal-cancel").textContent = "取消";
     modalFields.replaceChildren(profileForm(data));
     modalError.hidden = true;
     modal.hidden = false;
+    modalFields.scrollTop = 0;
+    modalFields.querySelector("[data-profile-focus]").focus();
   }
 
   async function uploadAvatar(name, file) {
@@ -4086,7 +4099,18 @@
 
   function closeModal() {
     modal.hidden = true;
+    modal.classList.remove("profile-drawer");
     modalForm.classList.remove("profile-modal");
+    modalForm.removeAttribute("role");
+    modalForm.removeAttribute("aria-modal");
+    modalForm.removeAttribute("aria-labelledby");
+    if (profileReturnFocus) {
+      // The edit menu is closed; return to its visible trigger instead.
+      const target = profileReturnFocus.closest("#panel-menu") || !profileReturnFocus.isConnected
+        ? $("panel-more") : profileReturnFocus;
+      profileReturnFocus = null;
+      target.focus({ preventScroll: true });
+    }
     modalForm.querySelector(".profile-templates")?.remove();
     modalError.hidden = true;
     modalError.textContent = "";
@@ -4698,6 +4722,21 @@
     }
     sidebar.classList.remove("open");
     syncBackdrop();
+  });
+
+  modal.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Tab" || !modal.classList.contains("profile-drawer")) return;
+    const controls = [...modalForm.querySelectorAll("button, input, select, textarea")]
+      .filter((node) => !node.disabled && node.getClientRects().length);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (ev.shiftKey && document.activeElement === first) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && document.activeElement === last) {
+      ev.preventDefault();
+      first.focus();
+    }
   });
 
   modal.addEventListener("click", (ev) => { if (ev.target === modal) closeModal(); });
