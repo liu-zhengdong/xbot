@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/memory/, internal/person/]
-verified: 2026-10-17 @ 1a24c68
+verified: 2026-10-17 @ 966d9f8
 ---
 # 身份与记忆
 
