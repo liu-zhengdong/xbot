@@ -74,8 +74,10 @@
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const meta = $("theme-color");
     if (meta) meta.setAttribute("content", dark ? "#161618" : "#ffffff");
-    const icon = $("theme-icon");
-    if (icon) icon.innerHTML = dark ? THEME_SUN : THEME_MOON;
+    const themeIcon = $("theme-icon");
+    if (themeIcon) themeIcon.innerHTML = dark ? THEME_SUN : THEME_MOON;
+    const accountTheme = $("account-theme");
+    if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"));
     try { localStorage.setItem("xbot-theme", dark ? "dark" : "light"); } catch (e) {}
   }
 
@@ -781,11 +783,13 @@
     return node;
   }
 
-  function setTip(node, text) {
+  function setTip(node, text, placement) {
     if (!node) return;
     const value = text ? String(text) : "";
     if (value) node.dataset.tip = value;
     else delete node.dataset.tip;
+    if (placement) node.dataset.tipPlacement = placement;
+    else delete node.dataset.tipPlacement;
     node.removeAttribute("title");
   }
 
@@ -856,6 +860,8 @@
 
   const ICONS = {
     logout: '<path d="M9 4H4v16h5"/><path d="M9 12h12m-5-5 5 5-5 5"/>',
+    moon: THEME_MOON,
+    sun: THEME_SUN,
     sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
     terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
@@ -910,20 +916,21 @@
   function markInitial(name, paint, size) {
     if (size === "xs") return "";
     const given = paint && typeof paint.initial === "string" ? paint.initial.trim() : "";
-    if (given) return Array.from(given)[0];
     const raw = String(name || "").trim();
     if (!raw) return "";
-    return Array.from(raw)[0].toLocaleUpperCase();
+    const chars = Array.from(raw);
+    if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(chars[0])) return chars[0];
+    if (/^[A-Za-z]{2}/.test(raw)) return chars[0].toUpperCase() + chars[1].toLowerCase();
+    return Array.from(given || raw)[0].toLocaleUpperCase();
   }
 
   function faceFor(name, paint, size) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 80 80");
-    const tone = hashName(name) % 4;
-    svg.style.setProperty("--avatar-light", ["#dddddd", "#d3d3d3", "#c9c9c9", "#bfbfbf"][tone]);
-    svg.style.setProperty("--avatar-dark", ["#333333", "#3d3d3d", "#474747", "#515151"][tone]);
-    svg.style.setProperty("--avatar-letter-light", ["#303030", "#333333", "#363636", "#393939"][tone]);
-    svg.style.setProperty("--avatar-letter-dark", ["#dddddd", "#e4e4e4", "#ebebeb", "#f2f2f2"][tone]);
+    svg.style.setProperty("--avatar-light", "#d3d3d3");
+    svg.style.setProperty("--avatar-dark", "#3d3d3d");
+    svg.style.setProperty("--avatar-letter-light", "#333333");
+    svg.style.setProperty("--avatar-letter-dark", "#e4e4e4");
     svg.setAttribute("aria-hidden", "true");
     const blob = document.createElementNS("http://www.w3.org/2000/svg", "path");
     blob.setAttribute("d", BLOBS[hashName(name) % BLOBS.length]);
@@ -937,7 +944,7 @@
       text.setAttribute("text-anchor", "middle");
       text.setAttribute("dominant-baseline", "central");
       text.setAttribute("fill", "var(--avatar-ink)");
-      text.setAttribute("font-size", "30");
+      text.setAttribute("font-size", Array.from(letter).length > 1 ? "26" : "30");
       text.setAttribute("font-weight", "560");
       text.textContent = letter;
       svg.append(text);
@@ -948,7 +955,7 @@
   function avatar(name, paint, size) {
     paint = paint || {};
     const av = el("span", "avatar" + (size ? " " + size : ""));
-    if (name) setTip(av, name);
+    if (name) setTip(av, name, "right");
     av.append(faceFor(name, paint, size));
     if (paint.url) {
       const img = document.createElement("img");
@@ -2156,7 +2163,7 @@
   function listButton(name, preview, active, unread, paint, primary, label) {
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
-    setTip(btn, name);
+    setTip(btn, name, "right");
     const av = avatar(name, paint);
     if (unread) av.append(el("i", "unread"));
     const body = el("span", "item-body");
@@ -2356,7 +2363,7 @@
     const add = el("button", "pin add");
     add.type = "button";
     add.setAttribute("aria-label", "新建 Bot");
-    setTip(add, "新建 Bot");
+    setTip(add, "新建 Bot", "right");
     const face = el("span", "plus-face");
     face.append(icon("plus"));
     add.append(face);
@@ -2366,13 +2373,24 @@
     const folders = state.folders.length
       ? state.folders
       : [{ name: "未分组", count: state.bots.length, bots: state.bots.map((b) => b.name), ungrouped: true }];
-    for (const folder of folders) roster.append(folderSection(folder));
+    const hasFolders = folders.some((folder) => !folder.ungrouped);
+    for (const folder of folders) {
+      if (!hasFolders && folder.ungrouped) {
+        // No header, but keep the .folder-bots body so sortStatusRows still lifts busy bots.
+        const body = el("div", "folder-bots");
+        for (const name of folder.bots || []) {
+          const b = state.bots.find((bot) => bot.name === name);
+          if (b) body.append(botRow(b));
+        }
+        roster.append(body);
+      } else roster.append(folderSection(folder));
+    }
     if (state.others && state.others.length) roster.append(othersFolder());
 
     const newer = el("button", "icon-btn");
     newer.type = "button";
     newer.setAttribute("aria-label", "新建群组");
-    setTip(newer, "新建群组");
+    setTip(newer, "新建群组", "right");
     newer.append(icon("plus"));
     newer.addEventListener("click", openNewGroup);
     roster.append(sectionLabel("群组", newer));
@@ -4257,9 +4275,14 @@
     showLogin();
   });
 
-  $("theme").addEventListener("click", () => {
+  function toggleTheme() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
     applyTheme(dark ? "light" : "dark");
+  }
+  $("theme").addEventListener("click", toggleTheme);
+  $("account-theme").addEventListener("click", () => {
+    closeAccount();
+    toggleTheme();
   });
 
   let compactSidebarChoice = null;
@@ -4487,7 +4510,9 @@
     const th = tipEl.offsetHeight;
     let left = r.left + (r.width / 2) - (tw / 2);
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
-    let top = r.bottom + 6;
+    const right = host.dataset.tipPlacement === "right" && host.closest(".sidebar.collapsed");
+    if (right) left = Math.max(8, Math.min(r.right + 8, window.innerWidth - tw - 8));
+    let top = right ? Math.max(8, Math.min(r.top + (r.height - th) / 2, window.innerHeight - th - 8)) : r.bottom + 6;
     if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 6);
     tipEl.style.left = left + "px";
     tipEl.style.top = top + "px";

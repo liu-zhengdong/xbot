@@ -19,7 +19,7 @@ func TestP2UIContracts(t *testing.T) {
 		"static/app.css": {
 			`.note .meta { white-space: nowrap; flex: none; }`,
 			`position: sticky; top: 0; z-index: 3; flex: none;`, `background: var(--panel); padding: 10px 8px;`,
-			`.member-option input:checked ~ svg`, `.member-option:has(input:focus-visible)`, `.member-option:nth-child(odd)`,
+			`.member-option input:checked ~ svg`, `.member-option:has(input:focus-visible)`, `.checks .member-option:has(input:checked)`,
 		},
 	} {
 		data, err := staticFS.ReadFile(file)

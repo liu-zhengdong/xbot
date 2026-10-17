@@ -569,13 +569,14 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 .sidebar.collapsed .me .spacer,
 .sidebar.collapsed #theme { display: none; }
 
+.sidebar.collapsed .pin-row .pin:not(.add) { display: none; }
+
 .sidebar.collapsed .pin-row { flex-direction: column; align-items: center; overflow: visible; padding-left: 8px; padding-right: 8px; }
 
 .sidebar.collapsed .item { justify-content: center; padding: 4px; min-height: 48px; }
 
 .sidebar.collapsed .group-label { justify-content: center; padding-left: 0; padding-right: 0; }
 
-.sidebar.collapsed .group-label .icon-btn,
 .sidebar.collapsed .folder-more,
 .sidebar.collapsed .folder-name,
 .sidebar.collapsed .folder-count { display: none; }
@@ -1607,12 +1608,11 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 .checks { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; max-height: 200px; overflow: auto; }
 
 .checks .member-option { position: relative; display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 44px; font-size: 14px; color: var(--text); cursor: pointer; border-radius: 8px; }
-.checks .member-option:nth-child(odd) { background: var(--hover); }
 .checks .member-option input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); }
 .member-option .avatar { filter: grayscale(1); flex: none; }
 .member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-option > svg { width: 20px; height: 20px; flex: none; visibility: hidden; }
-.member-option:has(input:checked) { background: var(--selected); }
+.checks .member-option:has(input:checked) { background: var(--fill); font-weight: 600; }
 .member-option input:checked ~ svg { visibility: visible; }
 .member-option:has(input:focus-visible) { outline: 2px solid var(--text); outline-offset: -2px; }
 
@@ -1656,7 +1656,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   }
   .sidebar.open { transform: translateX(0); }
   .sidebar.collapsed { width: 80%; max-width: 320px; }
-  .sidebar.collapsed .group-label .icon-btn,
   .sidebar.collapsed .folder-more { display: inline-flex; }
   .sidebar.collapsed .folder-name,
   .sidebar.collapsed .folder-count { display: initial; }
