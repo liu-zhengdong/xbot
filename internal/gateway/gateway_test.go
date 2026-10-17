@@ -185,3 +185,63 @@ func TestGateway(t *testing.T) {
 		})
 	}
 }
+
+func TestRegistrationEvictsIdleInstall(t *testing.T) {
+	s := &Server{Dir: t.TempDir(), Open: true}
+	h := s.Handler()
+	hc := &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Result(), nil
+	})}
+	ctx := context.Background()
+	clients := make([]*Client, MaxInstalls+1)
+	for i := range clients {
+		_, key, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients[i] = &Client{Base: "http://gateway", Key: key, HTTP: hc}
+		if i < MaxInstalls {
+			if err := clients[i].Register(ctx, ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	path := func(i int) string {
+		return filepath.Join(s.Dir, "installs", ID(clients[i].Key.Public().(ed25519.PublicKey)))
+	}
+	age := func(i int, days int) {
+		t.Helper()
+		old := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+		if err := os.Chtimes(path(i), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The oldest installation has pending mail and must survive eviction.
+	to := ID(clients[0].Key.Public().(ed25519.PublicKey))
+	if err := clients[1].Send(ctx, NewEnvelope(clients[1].Key, to, "msg", []byte("pending"), time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	age(0, 33)
+	age(1, 32)
+	if _, err := clients[1].Poll(ctx, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := clients[MaxInstalls].Register(ctx, ""); err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("full active/protected installs: %v", err)
+	}
+	age(2, 31)
+	if err := clients[MaxInstalls].Register(ctx, ""); err != nil {
+		t.Fatalf("register after idle eviction: %v", err)
+	}
+	if info, err := os.Stat(path(1)); err != nil || time.Since(info.ModTime()) > time.Minute {
+		t.Fatalf("verified request did not refresh last seen: %v", err)
+	}
+	if _, err := os.Stat(path(2)); !os.IsNotExist(err) {
+		t.Fatalf("idle install was not evicted: %v", err)
+	}
+	if _, err := os.Stat(path(0)); err != nil {
+		t.Fatalf("install with queued mail was evicted: %v", err)
+	}
+}
