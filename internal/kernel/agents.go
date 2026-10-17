@@ -145,7 +145,7 @@ func (m memoryGuarded) ConfirmContext(ctx context.Context, args json.RawMessage)
 }
 
 func (m memoryGuarded) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	return reviewedTool{Tool: m.Tool, k: m.k}.runMemoryGuard(ctx, args)
+	return reviewedTool{Tool: m.Tool, k: m.k}.guardMemory(ctx, args, false)
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {

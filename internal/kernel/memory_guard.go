@@ -93,7 +93,14 @@ func memorySymlinks(dir, path string) error {
 }
 
 // runMemoryGuard surrounds the actual tool execution, after review and queuing.
-func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) (out string, err error) {
+func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) (string, error) {
+	return t.guardMemory(ctx, args, true)
+}
+
+// guardMemory applies the memory rules. track records an own write so the
+// next diff leaves it out; a subagent passes false, because the foreground
+// never saw its tool call and must see the change as an outside one.
+func (t reviewedTool) guardMemory(ctx context.Context, args json.RawMessage, track bool) (out string, err error) {
 	path, dir, scope, own := t.k.memoryCall(ctx, t.Tool, args)
 	if !isFileEdit(t.Name()) || dir == "" {
 		return t.Tool.Run(ctx, args)
@@ -103,7 +110,7 @@ func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) 
 	}
 	rel, _ := filepath.Rel(dir, path)
 	tracked := rel == "memory.md" || rel == "log" || strings.HasPrefix(rel, "log"+string(filepath.Separator))
-	if own && tracked {
+	if own && tracked && track {
 		done := t.k.beginOwnWrite(ctx, scope, filepath.Base(filepath.Dir(dir)))
 		// Other processes can still write between these snapshots and the folder lock.
 		defer func() { done(err == nil) }()

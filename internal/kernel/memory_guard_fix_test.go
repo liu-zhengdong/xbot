@@ -212,6 +212,14 @@ func TestSubagentFileToolsUseMemoryGuard(t *testing.T) {
 		if _, err := os.Stat(old); !os.IsNotExist(err) {
 			t.Fatal("old month written")
 		}
+		// A valid subagent write is not booked as the foreground's own change.
+		args, _ = json.Marshal(map[string]string{"path": filepath.Join(dir, "memory.md"), "content": "- (2026-10-18) from a subagent\n"})
+		if _, err := tool.Run(context.Background(), args); err != nil {
+			t.Fatal(err)
+		}
+		if len(k.memOwn) != 0 {
+			t.Fatalf("subagent write recorded as own: %v", k.memOwn)
+		}
 		return
 	}
 	t.Fatal("no write_file in subagent tools")
