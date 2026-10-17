@@ -2107,6 +2107,19 @@
     return /^summary written\b/i.test(String(text || "").trim());
   }
 
+  function plainText(md) {
+    return String(md || "")
+      .replace(/^\s*(```|~~~)[^\n]*$/gm, " ")
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/gm, "")
+      .replace(/`+/g, "")
+      .replace(/(\*\*|__)([\s\S]*?)\1/g, "$2")
+      .replace(/\*([^*\n]+)\*/g, "$1")
+      .replace(/_([^_\n]+)_/g, "$1")
+      .replace(/\s+/g, " ").trim();
+  }
+
   function previewFromMessages(messages) {
     if (!messages) return "";
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -2114,7 +2127,7 @@
       if (hiddenFromPreview(m)) continue;
       const parsed = unwrap(m.content || "");
       if (parsed.untrusted) continue;
-      const text = clip(pullImages(parsed.text).text, 72);
+      const text = clip(plainText(pullImages(parsed.text).text), 72);
       if (!text || text === "SILENT" || summaryLine(text)) continue;
       return text;
     }
@@ -2128,7 +2141,7 @@
       const raw = String(m.text || "").trim();
       if (!raw || /^\[action\]/i.test(raw)) continue;
       const who = m.kind === "person" ? "你" : niceName(m.sender || "");
-      const text = clip(raw, 64);
+      const text = clip(plainText(raw), 64);
       return who ? who + "：" + text : text;
     }
     return "";
@@ -2142,8 +2155,8 @@
   function lineForBot(b) {
     const p = state.preview["b:" + b.name];
     if (p && realPreview(p)) return p;
-    if (b.description) return b.description;
-    if (b.persona) return b.persona;
+    if (b.description) return plainText(b.description);
+    if (b.persona) return plainText(b.persona);
     return "没有消息";
   }
 
@@ -2419,11 +2432,22 @@
     }
     const open = !notesEl.hidden;
     notesEl.replaceChildren();
+    const header = el("div", "notes-header");
+    const readAll = el("button", "secondary notes-read-all", "全部已读");
+    readAll.type = "button";
+    readAll.addEventListener("click", async () => {
+      readAll.disabled = true;
+      try { await markNotesRead(state.notes.slice()); }
+      catch (e) { setStatus("通知未能标为已读，请重试。", true); }
+      finally { readAll.disabled = false; }
+    });
+    header.append(el("b", "", "通知"), readAll);
+    notesEl.append(header);
     for (const n of state.notes) {
       const btn = el("button", "note");
       btn.type = "button";
       const left = document.createElement("span");
-      left.append(el("b", "", niceName(n.bot)), document.createTextNode("  " + (n.text || "")));
+      left.append(el("b", "", niceName(n.bot)), document.createTextNode("  " + plainText(n.text)));
       setTip(btn, n.bot || "");
       btn.append(left, el("span", "meta", when(n.time)));
       btn.addEventListener("click", () => openNote(n));
@@ -2432,11 +2456,27 @@
     notesEl.hidden = !open;
   }
 
+  async function markNotesRead(notes) {
+    const byBot = new Map();
+    for (const n of notes) {
+      if (!byBot.has(n.bot)) byBot.set(n.bot, []);
+      byBot.get(n.bot).push(n.id);
+    }
+    try {
+      await Promise.all(Array.from(byBot, ([bot, ids]) =>
+        api("/api/notes/read", { method: "POST", body: { bot, ids } })));
+    } finally {
+      await refreshNotes();
+    }
+  }
+
+  async function readBotNotes(name) {
+    const data = await api("/api/notes");
+    await markNotesRead((data.notes || []).filter((n) => n.bot === name));
+  }
+
   async function openNote(n) {
     notesEl.hidden = true;
-    try { await api("/api/notes/read", { method: "POST", body: { bot: n.bot, ids: [n.id] } }); } catch (e) {}
-    await refreshNotes();
-    await refreshLists();
     if (n.bot) await selectBot(n.bot);
   }
 
@@ -2721,6 +2761,11 @@
     setComposerPlaceholder("写给 " + niceName(name));
     renderLists();
     const selection = state.sel;
+    // Reading notifications runs on its own: it never holds up the panel, and a stale
+    // failure never overwrites another bot's status.
+    readBotNotes(name).catch(() => {
+      if (state.sel === selection) setStatus("通知未能标为已读，请重试。", true);
+    });
     await loadThread();
     if (state.sel === selection && panel.classList.contains("open")) await loadPanel();
   }
@@ -4712,6 +4757,7 @@
   }
 
   api("/api/session").then(async (data) => {
+    if (!data || !data.authed) { showLogin(); return; }
     state.owner = (data && data.owner) || "";
     renderMe();
     showApp();
