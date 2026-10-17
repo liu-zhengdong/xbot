@@ -736,31 +736,66 @@ func rawProtected(s string) bool {
 
 // RemoteCLIWrites reports an `xbot remote` command that changes the device
 // table or gateway (add, invite, join, remove, or gateway <url>). The command
-// rewrites the protected remote files without naming their paths.
+// rewrites the protected remote files without naming their paths. xbot must
+// be in command position (after env assignments and sudo/env/exec-style
+// wrappers), or anywhere under a shell or eval, so `grep "xbot remote add"`
+// is not a hit.
 func RemoteCLIWrites(cmd string) bool {
-	words := shellWords(cmd)
-	for i, w := range words {
-		base := strings.ToLower(filepath.Base(w))
-		if base != "xbot" && base != "xbot.exe" {
-			continue
-		}
-		for j := i + 1; j < len(words); j++ {
-			if words[j] != "remote" {
-				continue
-			}
-			if j+1 >= len(words) {
-				break
-			}
-			switch words[j+1] {
-			case "id", "list", "-h", "--help", "help":
-				continue
-			case "gateway":
-				if j+2 >= len(words) {
-					continue
-				}
-			}
+	segments := strings.FieldsFunc(cmd, func(r rune) bool {
+		switch r {
+		case ';', '&', '|', '\n', '\r', '(', ')', '`':
 			return true
 		}
+		return false
+	})
+	for _, seg := range segments {
+		words := shellWords(seg)
+		for len(words) > 0 && (strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-") || commandWrapper(words[0])) {
+			words = words[1:]
+		}
+		if len(words) == 0 {
+			continue
+		}
+		switch strings.ToLower(filepath.Base(words[0])) {
+		case "xbot", "xbot.exe":
+			if remoteWrite(words[1:]) {
+				return true
+			}
+		case "sh", "bash", "zsh", "dash", "ksh", "fish", "eval", "xargs":
+			for i, w := range words {
+				if b := strings.ToLower(filepath.Base(w)); (b == "xbot" || b == "xbot.exe") && remoteWrite(words[i+1:]) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func commandWrapper(w string) bool {
+	switch filepath.Base(w) {
+	case "sudo", "env", "exec", "command", "nohup", "time", "nice", "timeout", "doas":
+		return true
+	}
+	return false
+}
+
+// remoteWrite reports xbot arguments naming a remote subcommand that writes.
+func remoteWrite(args []string) bool {
+	for j, w := range args {
+		if w != "remote" {
+			continue
+		}
+		if j+1 >= len(args) {
+			return false
+		}
+		switch args[j+1] {
+		case "id", "list", "-h", "--help", "help":
+			return false
+		case "gateway":
+			return j+2 < len(args)
+		}
+		return true
 	}
 	return false
 }

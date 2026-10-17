@@ -255,6 +255,9 @@ func TestReviewCallRemoteCLIWritesAsk(t *testing.T) {
 		"xbot remote id":                                           false,
 		"xbot remote gateway":                                      false,
 		"git remote add origin x":                                  false,
+		`grep -rn "xbot remote add" docs/`:                         false,
+		`sh -c "xbot remote add evil AAAA"`:                        true,
+		"FOO=1 sudo xbot remote join code":                         true,
 	} {
 		args, _ := json.Marshal(map[string]string{"command": cmd})
 		need, _, err := reviewedTool{Tool: sh, k: k}.Confirm(args)
