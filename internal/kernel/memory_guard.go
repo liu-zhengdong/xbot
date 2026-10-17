@@ -196,20 +196,29 @@ func validateMemoryWrite(rel string, old, next []byte, now time.Time) error {
 }
 
 // memoryEntryLines rejects new memory.md lines the store would drop: outside
-// the 索引 section, only blank lines, headings and - (YYYY-MM-DD) text entries
-// survive its next rewrite. Lines already in the file are left alone.
+// the 索引 section, only blank lines, its own three headings and
+// - (YYYY-MM-DD) text entries survive its next rewrite. Lines already in the
+// file are left alone.
 func memoryEntryLines(old, next []byte) error {
 	seen := map[string]bool{}
 	for _, line := range strings.Split(string(old), "\n") {
 		seen[strings.TrimSuffix(line, "\r")] = true
 	}
-	inIndex := false
+	inIndex, indexes := false, 0
 	for _, line := range strings.Split(string(next), "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, "## ") {
 			inIndex = line == "## 索引"
+			if inIndex {
+				indexes++
+			}
 		}
-		if inIndex || seen[line] || strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") || memory.ValidMemoryLine(line) {
+		if indexes > 1 {
+			return errors.New("memory: memory.md has one ## 索引 section")
+		}
+		// The store writes back only these headings and the first index section.
+		heading := line == "# memory" || line == "## 索引" || line == "## 条目"
+		if inIndex || heading || seen[line] || strings.TrimSpace(line) == "" || memory.ValidMemoryLine(line) {
 			continue
 		}
 		if r := []rune(line); len(r) > 60 {
