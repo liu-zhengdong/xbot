@@ -16,25 +16,30 @@ import (
 	"xbot/internal/tools"
 )
 
-// memoryFolder matches canonical targets, including aliases into the data root.
+// memoryFolder classifies an absolute path without resolving its symlinks.
 func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own bool) {
 	if k == nil || k.Bot == nil || path == "" {
 		return
 	}
-	root, err := tools.ResolveRoot("", k.Bot.Root)
+	root, err := filepath.Abs(k.Bot.Root)
 	if err != nil {
 		return
 	}
-	path, err = tools.ResolveRoot("", path)
-	if err != nil {
-		return
+	resolved, _ := tools.ResolveRoot("", root)
+	var parts []string
+	for _, candidate := range []string{root, resolved} {
+		rel, err := filepath.Rel(candidate, path)
+		if err != nil {
+			continue
+		}
+		parts = strings.Split(rel, string(filepath.Separator))
+		if len(parts) >= 3 && parts[2] == "memory" && memory.ValidID(parts[1]) && (parts[0] == "bots" || parts[0] == "people") {
+			root = candidate
+			break
+		}
+		parts = nil
 	}
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return
-	}
-	parts := strings.Split(rel, string(filepath.Separator))
-	if len(parts) < 4 || parts[2] != "memory" || !memory.ValidID(parts[1]) {
+	if parts == nil {
 		return
 	}
 	switch parts[0] {
@@ -48,24 +53,64 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 	return filepath.Join(root, parts[0], parts[1], "memory"), scope, own
 }
 
+// memoryCall uses both identities so symlinks cannot erase memory protection.
+func (k *Kernel) memoryCall(ctx context.Context, tool tools.Tool, args json.RawMessage) (path, dir string, scope memory.Scope, own bool) {
+	if logical, ok := tool.(interface {
+		LogicalPathContext(context.Context, json.RawMessage) string
+	}); ok {
+		path = logical.LogicalPathContext(ctx, args)
+		dir, scope, own = k.memoryFolder(path)
+		if dir != "" {
+			return
+		}
+	}
+	path = callPath(ctx, tool, args)
+	dir, scope, own = k.memoryFolder(path)
+	return
+}
+
+func memorySymlinks(dir, path string) error {
+	for cur := path; ; cur = filepath.Dir(cur) {
+		st, err := os.Lstat(cur)
+		if err == nil && st.Mode()&os.ModeSymlink != 0 {
+			return errors.New("memory: symlinks are not allowed in memory folders")
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if cur == dir {
+			if path == dir {
+				return errors.New("memory: cannot write the memory folder itself")
+			}
+			return nil
+		}
+	}
+}
+
 // runMemoryGuard surrounds the actual tool execution, after review and queuing.
-func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) (string, error) {
-	path := callPath(ctx, t.Tool, args)
-	dir, scope, own := t.k.memoryFolder(path)
+func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) (out string, err error) {
+	path, dir, scope, own := t.k.memoryCall(ctx, t.Tool, args)
 	if !isFileEdit(t.Name()) || dir == "" {
 		return t.Tool.Run(ctx, args)
 	}
-	if own {
-		done := t.k.beginOwnWrite(ctx, scope, filepath.Base(filepath.Dir(dir)))
-		defer done() // Snapshot reads take the folder lock too; finish after releasing it.
+	if err := memorySymlinks(dir, path); err != nil {
+		return "", err
 	}
-	var out string
-	err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
-		rel, _ := filepath.Rel(dir, path)
+	rel, _ := filepath.Rel(dir, path)
+	tracked := rel == "memory.md" || rel == "log" || strings.HasPrefix(rel, "log"+string(filepath.Separator))
+	if own && tracked {
+		done := t.k.beginOwnWrite(ctx, scope, filepath.Base(filepath.Dir(dir)))
+		// Other processes can still write between these snapshots and the folder lock.
+		defer func() { done(err == nil) }()
+	}
+	err = fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+		if err := memorySymlinks(dir, path); err != nil {
+			return err
+		}
 		if rel == ".lock" || rel == "memory.index.json" {
 			return errors.New("memory: kernel-managed file")
 		}
-		if rel != "memory.md" && rel != "log" && !strings.HasPrefix(rel, "log"+string(filepath.Separator)) {
+		if !tracked {
 			var err error
 			out, err = t.Tool.Run(ctx, args)
 			return err
@@ -97,6 +142,9 @@ func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) 
 				}
 			}
 			out = ""
+			if restoreErr != nil {
+				restoreErr = fmt.Errorf("memory: restore failed; %s may hold the rejected content: %w", modelPath(t.Tool, path), restoreErr)
+			}
 			return errors.Join(ruleErr, restoreErr, runErr)
 		}
 		return runErr

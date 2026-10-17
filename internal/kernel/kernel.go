@@ -1032,7 +1032,7 @@ type ownChange struct {
 // mix their before/after texts. A bot-scope write is measured on the bot-only
 // rendering, so it can never carry person lines into another person's view.
 // A failed read records nothing; the write then shows as a diff, which is safe.
-func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID ...string) func() {
+func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID ...string) func(...bool) {
 	k.memWriteMu.Lock()
 	key := ""
 	if scope == memory.ScopePerson {
@@ -1043,9 +1043,9 @@ func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID
 		}
 	}
 	before, err := k.memoryText(ctx, key)
-	return func() {
+	return func(record ...bool) {
 		defer k.memWriteMu.Unlock()
-		if err != nil {
+		if err != nil || (len(record) > 0 && !record[0]) {
 			return
 		}
 		after, err := k.memoryText(ctx, key)

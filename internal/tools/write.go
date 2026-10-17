@@ -126,3 +126,22 @@ func refuseDir(path string) error {
 	}
 	return nil
 }
+
+// LogicalPathContext reports the absolute caller path without following symlinks.
+func (w *WriteFile) LogicalPathContext(ctx context.Context, args json.RawMessage) string {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(args, &in) != nil || in.Path == "" {
+		return ""
+	}
+	path := AliasCase(w.Sandbox, in.Path)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(w.rootBind.dir(ctx, w.Root), path)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	return abs
+}

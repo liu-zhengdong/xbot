@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"xbot/internal/fsutil"
@@ -146,4 +147,23 @@ func (e *EditFile) parse(ctx context.Context, args json.RawMessage) (editArgs, s
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
 	}
 	return in, path, nil
+}
+
+// LogicalPathContext reports the absolute caller path without following symlinks.
+func (e *EditFile) LogicalPathContext(ctx context.Context, args json.RawMessage) string {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(args, &in) != nil || in.Path == "" {
+		return ""
+	}
+	path := AliasCase(e.Sandbox, in.Path)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(e.rootBind.dir(ctx, e.Root), path)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	return abs
 }

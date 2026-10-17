@@ -60,6 +60,11 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		}
 	}
 	if isFileEdit(name) {
+		if path, dir, _, _ := t.k.memoryCall(ctx, t.Tool, args); dir != "" {
+			if err := memorySymlinks(dir, path); err != nil {
+				return "", err
+			}
+		}
 		if err := t.k.rejectUnreadOrStale(ctx, t.Tool, args); err != nil {
 			return "", err
 		}
@@ -131,7 +136,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 		return true, summary + review.ProtectedSuffix, nil
 	}
 	if isFileEdit(name) && !k.turnFor(ctx).turnTrusted {
-		if dir, _, _ := k.memoryFolder(callPath(ctx, tool, args)); dir != "" {
+		if _, dir, _, _ := k.memoryCall(ctx, tool, args); dir != "" {
 			return true, summary + " (untrusted turn: memory write)", nil
 		}
 	}
