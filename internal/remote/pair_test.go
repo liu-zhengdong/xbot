@@ -72,7 +72,7 @@ func TestJoinRetry(t *testing.T) {
 	if len(envs) != 1 {
 		t.Fatal("retry did not send pair")
 	}
-	ack, err := Receive(a, self, envs, now)
+	ack, _, err := Receive(a, self, envs, now)
 	mustRemote(t, err)
 	if len(ack) != 1 {
 		t.Fatal("pair not acknowledged")
@@ -109,7 +109,7 @@ func TestReceivePair(t *testing.T) {
 				path := filepath.Join(a, "remote", "devices.json.lock")
 				mustRemote(t, os.Remove(path))
 				mustRemote(t, os.Mkdir(path, 0700))
-				ack, err := Receive(a, self, []gateway.Envelope{env}, now)
+				ack, _, err := Receive(a, self, []gateway.Envelope{env}, now)
 				if err == nil || len(ack) != 0 {
 					t.Fatal("storage error was acknowledged")
 				}
@@ -127,13 +127,13 @@ func TestReceivePair(t *testing.T) {
 				mustRemote(t, update(a, func(c *Config) error { c.Devices[0].Key = pc.Key; return nil }))
 			}
 			body, _ := json.Marshal(message{"ada", "bob", "hello", "chain", 1})
-			msg, err := newBoxEnvelope(kb, Device{ID: self, XKey: pc.XKey}, body, now)
+			msg, err := newBoxEnvelope(kb, Device{ID: self, XKey: pc.XKey}, "box", body, now)
 			mustRemote(t, err)
 			receivedAt := now
 			if mode == "expired" {
 				receivedAt = now.Add(inviteTTL)
 			}
-			ack, err := Receive(a, self, []gateway.Envelope{env, msg}, receivedAt)
+			ack, _, err := Receive(a, self, []gateway.Envelope{env, msg}, receivedAt)
 			mustRemote(t, err)
 			if len(ack) != 2 {
 				t.Fatal("missing ack")
@@ -158,7 +158,7 @@ func TestReceivePair(t *testing.T) {
 			if mode == "batch" {
 				mustRemote(t, RemoveDevice(a, "a"))
 				for range 2 {
-					ack, err = Receive(a, self, []gateway.Envelope{env}, now)
+					ack, _, err = Receive(a, self, []gateway.Envelope{env}, now)
 					mustRemote(t, err)
 					cfg, err := Load(a)
 					mustRemote(t, err)

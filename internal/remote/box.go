@@ -25,8 +25,14 @@ type boxBody struct {
 	Ciphertext []byte `json:"c"`
 }
 
+// boxAAD keeps the G4 form for kind box so queued G4 envelopes and G4 peers
+// still decrypt; every other kind appends itself, so relabeling fails both ways.
 func boxAAD(env gateway.Envelope) []byte {
-	return []byte(boxDomain + "|" + env.ID + "|" + env.From + "|" + env.To)
+	aad := boxDomain + "|" + env.ID + "|" + env.From + "|" + env.To
+	if env.Kind != "box" {
+		aad += "|" + env.Kind
+	}
+	return []byte(aad)
 }
 
 func boxAEAD(priv *ecdh.PrivateKey, pub *ecdh.PublicKey, ephemeral, recipient []byte) (cipher.AEAD, error) {
@@ -47,7 +53,7 @@ func boxAEAD(priv *ecdh.PrivateKey, pub *ecdh.PublicKey, ephemeral, recipient []
 }
 
 // newBoxEnvelope sets the authenticated fields before sealing, then signs.
-func newBoxEnvelope(priv ed25519.PrivateKey, d Device, plaintext []byte, now time.Time) (gateway.Envelope, error) {
+func newBoxEnvelope(priv ed25519.PrivateKey, d Device, kind string, plaintext []byte, now time.Time) (gateway.Envelope, error) {
 	var env gateway.Envelope
 	if len(plaintext) > gateway.MaxBody {
 		return env, errors.New("remote: body exceeds 64 KiB")
@@ -72,7 +78,7 @@ func newBoxEnvelope(priv ed25519.PrivateKey, d Device, plaintext []byte, now tim
 	if _, err := rand.Read(id[:]); err != nil {
 		return env, err
 	}
-	env = gateway.Envelope{V: 1, ID: hex.EncodeToString(id[:]), From: gateway.ID(priv.Public().(ed25519.PublicKey)), To: d.ID, Time: now.UTC(), Kind: "box"}
+	env = gateway.Envelope{V: 1, ID: hex.EncodeToString(id[:]), From: gateway.ID(priv.Public().(ed25519.PublicKey)), To: d.ID, Time: now.UTC(), Kind: kind}
 	b := boxBody{Ephemeral: eph.PublicKey().Bytes(), Nonce: make([]byte, aead.NonceSize())}
 	if _, err := rand.Read(b.Nonce); err != nil {
 		return env, err

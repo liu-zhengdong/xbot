@@ -74,19 +74,19 @@ func TestReceive(t *testing.T) {
 			_, xkey, err := XIdentity(root)
 			mustRemote(t, err)
 			d := Device{ID: self, XKey: xkey}
-			e, err := newBoxEnvelope(key, d, body, now)
+			e, err := newBoxEnvelope(key, d, "box", body, now)
 			mustRemote(t, err)
 			// A valid control must deliver before exercising box rejection.
 			control := name == "ciphertext" || name == "short e" || name == "short nonce" || name == "changed id"
 			if control {
-				ack, err := Receive(root, self, []gateway.Envelope{e}, now)
+				ack, _, err := Receive(root, self, []gateway.Envelope{e}, now)
 				mustRemote(t, err)
 				box, err := inbox.Open(target.InboxPath())
 				mustRemote(t, err)
 				if len(ack) != 1 || len(box.Pending()) != 1 {
 					t.Fatal("valid ciphertext control did not deliver")
 				}
-				e, err = newBoxEnvelope(key, d, body, now)
+				e, err = newBoxEnvelope(key, d, "box", body, now)
 				mustRemote(t, err)
 			}
 			switch name {
@@ -133,7 +133,7 @@ func TestReceive(t *testing.T) {
 				e.Sig[0] ^= 1
 			}
 			var logs []string
-			ack, err := Receive(root, self, []gateway.Envelope{e}, now, func(f string, args ...any) {
+			ack, _, err := Receive(root, self, []gateway.Envelope{e}, now, func(f string, args ...any) {
 				logs = append(logs, fmt.Sprintf(f, args...))
 			})
 			if name == "ciphertext" && (len(logs) != 1 || logs[0] != "remote: cannot decrypt "+e.ID) {
@@ -148,7 +148,7 @@ func TestReceive(t *testing.T) {
 				} else {
 					mustRemote(t, os.Remove(filepath.Join(root, "peer-rate.json")))
 				}
-				ack, err = Receive(root, self, []gateway.Envelope{e}, now)
+				ack, _, err = Receive(root, self, []gateway.Envelope{e}, now)
 			}
 			if err != nil || len(ack) != 1 || ack[0] != e.ID {
 				t.Fatalf("ack=%v err=%v", ack, err)
@@ -171,7 +171,7 @@ func TestReceive(t *testing.T) {
 					t.Fatalf("unsafe remote content: %q", ev.Content)
 				}
 			}
-			if _, err := Receive(root, self, []gateway.Envelope{e}, now); err != nil {
+			if _, _, err := Receive(root, self, []gateway.Envelope{e}, now); err != nil {
 				t.Fatal(err)
 			}
 			mustRemote(t, box.Reload())
@@ -188,7 +188,7 @@ func TestSendWrongOwner(t *testing.T) {
 	mustRemote(t, err)
 	mustRemote(t, sender.SetOwners([]string{"other"}))
 	mustRemote(t, SetGateway(root, "http://127.0.0.1:1"))
-	err = Send(context.Background(), root, "ada", "bob@b", "hello", "chain", 1, time.Now())
+	_, err = Send(context.Background(), root, "ada", "bob@b", "hello", "chain", 1, time.Now())
 	if err == nil || err.Error() != "remote: b belongs to another person" {
 		t.Fatalf("wrong-owner send: %v", err)
 	}
@@ -218,7 +218,8 @@ func TestSendGatewayReceive(t *testing.T) {
 	mustRemote(t, SetGateway(a, "http://gateway"))
 	restore := bot.SetRedactText(func(s string) string { return strings.ReplaceAll(s, "secret-value", "[secret]") })
 	defer restore()
-	mustRemote(t, Send(ctx, a, "gateway-sender", "gateway-recipient@b", " hello secret-value ", "chain", 1, time.Now()))
+	_, err = Send(ctx, a, "gateway-sender", "gateway-recipient@b", " hello secret-value ", "chain", 1, time.Now())
+	mustRemote(t, err)
 	files := 0
 	mustRemote(t, filepath.WalkDir(filepath.Join(queueRoot, "queue"), func(path string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
@@ -252,7 +253,7 @@ func TestSendGatewayReceive(t *testing.T) {
 	if err != nil || len(envs) != 1 {
 		t.Fatalf("poll: %d %v", len(envs), err)
 	}
-	ack, err := Receive(b, self, envs, time.Now())
+	ack, _, err := Receive(b, self, envs, time.Now())
 	if err != nil || len(ack) != 1 {
 		t.Fatalf("receive: %v", err)
 	}
@@ -273,7 +274,7 @@ func TestSendWithoutXKey(t *testing.T) {
 	mustRemote(t, sender.SetOwners([]string{"u1"}))
 	mustRemote(t, SetGateway(root, "http://127.0.0.1:1"))
 	mustRemote(t, update(root, func(c *Config) error { c.Devices[0].XKey = ""; return nil }))
-	err = Send(context.Background(), root, "ada", "bob@b", "hello", "chain", 1, time.Now())
+	_, err = Send(context.Background(), root, "ada", "bob@b", "hello", "chain", 1, time.Now())
 	if err == nil || err.Error() != "remote: b has no encryption key; pair again with xbot remote invite/join" {
 		t.Fatalf("missing-xkey send: %v", err)
 	}

@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+// HTTPError preserves the status for callers deciding whether to retry.
+type HTTPError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPError) Error() string { return e.Message }
+
 // Client authenticates requests with one installation's key.
 type Client struct {
 	Base string
@@ -81,12 +89,6 @@ func (c *Client) request(ctx context.Context, path string, in any, token string,
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
-	if err != nil {
-		return err
-	}
-	if len(raw) > 1<<20 {
-		return errors.New("gateway: response too large")
-	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		var je struct {
 			Error string `json:"error"`
@@ -95,7 +97,13 @@ func (c *Client) request(ctx context.Context, path string, in any, token string,
 		if json.Unmarshal(raw, &je) == nil && je.Error != "" {
 			msg = je.Error
 		}
-		return fmt.Errorf("gateway: %s: %.200s", resp.Status, msg)
+		return &HTTPError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("gateway: %s: %.200s", resp.Status, msg)}
+	}
+	if err != nil {
+		return err
+	}
+	if len(raw) > 1<<20 {
+		return errors.New("gateway: response too large")
 	}
 	if out != nil {
 		return json.Unmarshal(raw, out)

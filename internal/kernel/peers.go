@@ -75,13 +75,17 @@ func (t messageBotTool) Run(ctx context.Context, args json.RawMessage) (string, 
 	}
 	addr := strings.TrimSpace(in.Bot)
 	var err error
+	var queued bool
 	if strings.Contains(addr, "@") {
-		err = remote.Send(ctx, t.k.Bot.Root, t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
+		queued, err = remote.Send(ctx, t.k.Bot.Root, t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
 	} else {
 		err = (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
 	}
 	if err != nil {
 		return "", err
+	}
+	if queued {
+		return "gateway unreachable; message to " + addr + " queued and retried for up to 24 hours", nil
 	}
 	return "sent to " + strings.TrimSpace(in.Bot), nil
 }
