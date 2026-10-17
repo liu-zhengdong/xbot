@@ -28,6 +28,7 @@
 - **后台命令的输出写在 Bot 目录里，并且先脱敏。** 原因：`/tmp` 会在重启时清空；输出文件里的密钥会在下一轮被 `shell_output` 读回来。证据：`TestBackgroundFileRedactsSecret`、`TestShellJobFileUsesKernelRedactor`。Seen 1×（2026-10-17）
 - **已经报过的后台任务不能只靠进程内的集合去重。** 原因：重启后集合是空的，旧的已完成任务会每条都再开一轮模型。完成标记要写进任务记录，并且只为这个进程自己结束的任务投叫醒。证据：`TestRestartDoesNotRewakeFinishedJobs`。Seen 1×（2026-10-17）
 - **追加的输出不要每次把整段尾部重写一遍。** 原因：尾部满了之后，每写几十个字节都要脱敏并重写 256 KiB。按行追加，只在超过上限时丢掉头部。证据：`TestJobWriterTrickleStaysSmall`。Seen 1×（2026-10-17）
+- **脱敏窗口要盖住最长的密钥，不能只盖住固定的 1024 字节。** 原因：按整段替换的密钥比窗口长时，每一小段都对不上，明文会进任务日志。留住的长度取 max(1024, 最长密钥+1)，一次写入整块脱敏。证据：`TestLongMultilineSecretOnDisk`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

@@ -35,9 +35,10 @@ const (
 	maxKeptJobs = 20
 	// maxJobAge is how long a finished job is kept. Running jobs are not aged out.
 	maxJobAge = 7 * 24 * time.Hour
-	// secretOverlap is held back with the incomplete line so a secret split
-	// across writes is redacted before any part of it is appended.
-	secretOverlap = 1024
+	// MinRetain is the least raw tail held back so a secret split across writes
+	// is redacted before any of it is committed. Jobs.Retain can raise it to
+	// the longest known secret.
+	MinRetain = 1024
 )
 
 // Job is one shell command tracked for this process. Status is running, done,
@@ -82,6 +83,10 @@ type Jobs struct {
 	OnDone   func(Job)
 	Now      func() time.Time
 	MaxBytes int
+	// Retain reports how many raw bytes to hold back. The kernel sets it from
+	// the longest vault secret and calls it again when the vault changes.
+	// Nil means MinRetain.
+	Retain func() int
 
 	mu     sync.Mutex
 	metaMu sync.Mutex
@@ -125,6 +130,16 @@ func (j *Jobs) outputCap() int {
 		return j.MaxBytes
 	}
 	return defaultJobBytes
+}
+
+func (j *Jobs) retainNow() int {
+	n := MinRetain
+	if j != nil && j.Retain != nil {
+		if v := j.Retain(); v > n {
+			n = v
+		}
+	}
+	return n
 }
 
 // Load reads job records. A record still marked running is lost, unless its
@@ -291,6 +306,10 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	} else {
 		chunk = string(body[fileOff:])
 		next = start + len(chunk)
+		// A replaced tail must not pull next_offset backward.
+		if fileOff+len(chunk) >= len(body) && next < written {
+			next = written
+		}
 	}
 	if len(chunk) > maxJobRead {
 		chunk = chunk[:maxJobRead]
@@ -425,6 +444,7 @@ func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
 		return nil, err
 	}
 	w := newJobWriter(f, j.outputCap(), j.redact)
+	w.retain = j.retainNow
 	cmd := exec.Command("sh", "-c", req.Command)
 	setGroup(cmd)
 	if req.Dir != "" {
@@ -837,22 +857,24 @@ func envAssign(s string) bool {
 	return r == '_' || unicode.IsLetter(r)
 }
 
-// jobWriter appends redacted output. It holds the incomplete line plus
-// secretOverlap bytes so a secret split across writes is redacted before it
-// is appended. The file grows by appending until it is past the cap, then the
-// head is dropped in one truncation. Offsets are against the redacted stream:
-// written is the total appended, discarded is the dropped prefix.
+// jobWriter appends redacted output. Raw bytes stay in pending until a secret
+// that long cannot still be incomplete. Each Write redacts that retained tail
+// plus the new complete lines once, and appends the block in one write. The
+// uncommitted tail may be replaced; the committed stream length never shrinks.
+// Offsets are against that stream: written is the high-water end, discarded
+// is the prefix rotated off the file.
 type jobWriter struct {
-	mu        sync.Mutex
-	f         *os.File
-	max       int
-	redact    func(string) string
-	pending   []byte
-	carry     []byte // raw tail already on disk, at most secretOverlap, so a split secret can still be redacted
-	carryLen  int    // file bytes that carry occupies at the end
-	written   int
-	discarded int
-	fileSize  int
+	mu         sync.Mutex
+	f          *os.File
+	max        int
+	redact     func(string) string
+	retain     func() int
+	pending    []byte
+	produced   int // committed redacted bytes, monotonic
+	written    int // high-water stream end, including a tail that was shown and then shortened
+	discarded  int
+	fileStable int // committed bytes currently in the file
+	preview    int // replaceable tail after fileStable
 }
 
 func newJobWriter(f *os.File, max int, redact func(string) string) *jobWriter {
@@ -872,20 +894,21 @@ func (w *jobWriter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	w.pending = append(w.pending, p...)
-	if err := w.drainLocked(false); err != nil {
+	if err := w.flushBlock(false); err != nil {
 		return len(p), err
 	}
 	return len(p), nil
 }
 
-// Flush appends every completed line. The incomplete line stays buffered.
+// Flush redacts the retained tail and the complete lines once more so a reader
+// sees output. The uncommitted tail stays replaceable.
 func (w *jobWriter) Flush() error {
 	if w == nil {
 		return nil
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.drainLocked(false)
+	return w.flushBlock(false)
 }
 
 func (w *jobWriter) redactBytes(p []byte) []byte {
@@ -898,105 +921,134 @@ func (w *jobWriter) redactBytes(p []byte) []byte {
 	return []byte(w.redact(string(p)))
 }
 
-// drainLocked appends everything received, including an incomplete line, so a
-// reader sees output while the command is still running. The last
-// secretOverlap raw bytes stay in carry. A later write that finishes a secret
-// rewrites only that overlap, not the whole file.
-func (w *jobWriter) drainLocked(bool) error {
+func (w *jobWriter) hold() int {
+	n := MinRetain
+	if w.retain != nil {
+		if v := w.retain(); v > n {
+			n = v
+		}
+	}
+	return n
+}
+
+// flushBlock redacts the retained raw tail and every complete line from this
+// write as one block, then appends that block once. final also commits the
+// incomplete tail. Bytes already committed are not rewritten, so the stream
+// length does not move backward when a later redact shortens the tail.
+func (w *jobWriter) flushBlock(final bool) error {
 	if w.f == nil {
 		return nil
 	}
-	for {
-		nl := bytes.IndexByte(w.pending, '\n')
-		if nl < 0 {
-			break
-		}
-		line := append([]byte(nil), w.pending[:nl+1]...)
-		w.pending = append([]byte(nil), w.pending[nl+1:]...)
-		if err := w.appendRedacted(line); err != nil {
-			return err
-		}
-	}
-	if len(w.pending) == 0 {
-		return nil
+	if err := w.discardPreview(); err != nil {
+		return err
 	}
 	raw := w.pending
-	w.pending = nil
-	return w.appendRedacted(raw)
-}
-
-func (w *jobWriter) appendRedacted(raw []byte) error {
-	if len(raw) == 0 || w.f == nil {
+	if len(raw) == 0 {
 		return nil
 	}
-	window := make([]byte, 0, len(w.carry)+len(raw))
-	window = append(window, w.carry...)
-	window = append(window, raw...)
-	red := w.redactBytes(window)
-	old := w.redactBytes(w.carry)
-	spanned := !bytes.HasPrefix(red, old)
-	if !spanned {
-		extra := red[len(old):]
-		if len(extra) > 0 {
-			if _, err := w.f.Write(extra); err != nil {
-				return err
-			}
-			w.written += len(extra)
-			w.fileSize += len(extra)
+	cut := len(raw)
+	if !final {
+		hold := w.hold()
+		nl := bytes.LastIndexByte(raw, '\n')
+		if nl < 0 || nl+1 <= hold {
+			return w.writeRedacted(w.redactBytes(raw), 0)
 		}
-	} else if err := w.rewriteTail(red); err != nil {
-		return err
+		cut = nl + 1 - hold
+		if i := bytes.LastIndexByte(raw[:cut], '\n'); i >= 0 {
+			cut = i + 1
+		} else {
+			return w.writeRedacted(w.redactBytes(raw), 0)
+		}
 	}
-	if spanned {
-		w.carry = nil
-		w.carryLen = 0
-	} else if len(window) > secretOverlap {
-		w.carry = append([]byte(nil), window[len(window)-secretOverlap:]...)
-		w.carryLen = len(w.redactBytes(w.carry))
+	red := w.redactBytes(raw)
+	rest := raw[cut:]
+	stable := red
+	if len(rest) > 0 && bytes.HasSuffix(red, rest) {
+		stable = red[:len(red)-len(rest)]
 	} else {
-		w.carry = append([]byte(nil), window...)
-		w.carryLen = len(red)
+		cut = len(raw)
+		rest = nil
 	}
-	return w.rotateLocked()
-}
-
-func (w *jobWriter) rewriteTail(red []byte) error {
-	back := w.carryLen
-	if back > w.fileSize {
-		back = w.fileSize
-	}
-	if _, err := w.f.Seek(int64(w.fileSize-back), io.SeekStart); err != nil {
+	if err := w.writeRedacted(red, len(stable)); err != nil {
 		return err
 	}
-	if err := w.f.Truncate(int64(w.fileSize - back)); err != nil {
-		return err
+	if cut > 0 {
+		w.pending = append([]byte(nil), raw[cut:]...)
 	}
-	if _, err := w.f.Write(red); err != nil {
-		return err
-	}
-	w.written = w.written - back + len(red)
-	w.fileSize = w.fileSize - back + len(red)
 	return nil
 }
 
-// rotateLocked drops the head once the file is more than a quarter past the cap,
-// so a full tail is not rewritten on every line.
-func (w *jobWriter) rotateLocked() error {
-	if w.f == nil || w.fileSize <= w.max {
+// writeRedacted appends one redacted block. stable is how many leading bytes
+// are committed; the rest is a preview the next write may replace. stable
+// equal to len(red), or a zero-length red with stable 0, previews the whole
+// block when stable is 0.
+func (w *jobWriter) writeRedacted(red []byte, stable int) error {
+	if w.f == nil {
+		return nil
+	}
+	if stable < 0 || stable > len(red) {
+		stable = len(red)
+	}
+	if len(red) > 0 {
+		if _, err := w.f.Write(red); err != nil {
+			return err
+		}
+	}
+	w.produced += stable
+	w.fileStable += stable
+	w.preview = len(red) - stable
+	w.bump()
+	if err := w.rotateStable(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *jobWriter) bump() {
+	end := w.produced + w.preview
+	if end > w.written {
+		w.written = end
+	}
+}
+
+func (w *jobWriter) discardPreview() error {
+	if w.preview == 0 || w.f == nil {
+		return nil
+	}
+	if err := w.f.Truncate(int64(w.fileStable)); err != nil {
+		return err
+	}
+	if _, err := w.f.Seek(int64(w.fileStable), io.SeekStart); err != nil {
+		return err
+	}
+	w.preview = 0
+	return nil
+}
+
+// rotateStable drops the head of the committed bytes once the file is past the
+// cap. The preview is not part of that prefix; it is written again after.
+func (w *jobWriter) rotateStable() error {
+	if w.f == nil || w.fileStable <= w.max {
 		return nil
 	}
 	slack := w.max / 4
 	if w.max < 4096 {
 		slack = 0
 	}
-	if w.fileSize <= w.max+slack {
+	if w.fileStable <= w.max+slack {
 		return nil
 	}
-	keep := w.max
-	if keep > w.fileSize {
-		keep = w.fileSize
+	preview := make([]byte, w.preview)
+	if w.preview > 0 {
+		if _, err := w.f.ReadAt(preview, int64(w.fileStable)); err != nil {
+			return err
+		}
 	}
-	drop := w.fileSize - keep
+	keep := w.max
+	if keep > w.fileStable {
+		keep = w.fileStable
+	}
+	drop := w.fileStable - keep
 	buf := make([]byte, keep)
 	if _, err := w.f.ReadAt(buf, int64(drop)); err != nil {
 		return err
@@ -1014,8 +1066,13 @@ func (w *jobWriter) rotateLocked() error {
 	if _, err := w.f.Write(buf); err != nil {
 		return err
 	}
+	if len(preview) > 0 {
+		if _, err := w.f.Write(preview); err != nil {
+			return err
+		}
+	}
 	w.discarded += drop
-	w.fileSize = len(buf)
+	w.fileStable = len(buf)
 	return nil
 }
 
@@ -1035,13 +1092,13 @@ func (w *jobWriter) snapshot() (body []byte, written, discarded int, err error) 
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if err = w.drainLocked(false); err != nil {
+	if err = w.flushBlock(false); err != nil {
 		return nil, 0, 0, err
 	}
 	if w.f == nil {
 		return nil, w.written, w.discarded, nil
 	}
-	body, err = io.ReadAll(io.NewSectionReader(w.f, 0, int64(w.fileSize)))
+	body, err = io.ReadAll(io.NewSectionReader(w.f, 0, int64(w.fileStable+w.preview)))
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -1057,7 +1114,7 @@ func (w *jobWriter) Close() error {
 	if w.f == nil {
 		return nil
 	}
-	err := w.drainLocked(true)
+	err := w.flushBlock(true)
 	err2 := w.f.Close()
 	w.f = nil
 	if err != nil {

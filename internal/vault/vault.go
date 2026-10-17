@@ -603,6 +603,23 @@ func Register(s *Store) func() {
 	}
 }
 
+// MaxRegisteredFormLen is the longest redactable form in any vault registered
+// for process-wide redaction. It moves when a registered store changes.
+func MaxRegisteredFormLen() int {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	best := 0
+	for _, s := range regStores {
+		if s == nil {
+			continue
+		}
+		if n := s.MaxFormLen(); n > best {
+			best = n
+		}
+	}
+	return best
+}
+
 // Redact replaces known values across every registered vault. It is installed
 // with bot.SetRedactText.
 func Redact(text string) string {

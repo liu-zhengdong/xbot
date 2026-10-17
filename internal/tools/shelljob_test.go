@@ -667,6 +667,114 @@ func TestOtherProcessLoadLeavesLiveJob(t *testing.T) {
 	}
 }
 
+func TestLongMultilineSecretOnDisk(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("-----BEGIN PRIVATE KEY-----\n")
+	for i := 0; i < 26; i++ {
+		b.WriteString(strings.Repeat(string(rune('A'+i%26)), 64) + "\n")
+	}
+	b.WriteString("-----END PRIVATE KEY-----")
+	secret := b.String()
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "key.pem")
+	if err := os.WriteFile(keyFile, []byte(secret+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	jobs := NewJobs(filepath.Join(dir, "shell-jobs"))
+	jobs.Redact = func(s string) string { return strings.ReplaceAll(s, secret, "[secret]") }
+	if err := jobs.Load(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := jobs.Run(context.Background(), RunRequest{Command: "cat " + keyFile + "; sleep 0.2", Timeout: time.Minute, Background: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Fields(out)[1]
+	t.Cleanup(func() { _, _ = jobs.Cancel(id) })
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		st, err := jobs.Status(id)
+		if err == nil && st.Status != "running" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status %+v err %v", st, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	disk, err := os.ReadFile(filepath.Join(jobs.Dir, id+".log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat("M", 64)
+	if strings.Contains(string(disk), body) {
+		t.Fatalf("secret (%d bytes) written to job log unredacted (%d bytes on disk)", len(secret), len(disk))
+	}
+	read, err := jobs.Output(id, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(read, body) {
+		t.Fatalf("Jobs.Output returns the unredacted secret")
+	}
+}
+
+func TestLongSecretSplitAcrossWrites(t *testing.T) {
+	secret := strings.Repeat("M", 1500)
+	f, err := os.Create(filepath.Join(t.TempDir(), "o.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newJobWriter(f, defaultJobBytes, func(s string) string {
+		return strings.ReplaceAll(s, secret, "[secret]")
+	})
+	w.retain = func() int { return len(secret) + 1 }
+	if _, err := w.Write([]byte(secret[:800])); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(secret[800:] + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "MMMM") || !strings.Contains(string(body), "[secret]") {
+		t.Fatalf("file %q", body)
+	}
+}
+
+func TestStreamOffsetDoesNotMoveBackward(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "o.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newJobWriter(f, 4096, func(s string) string {
+		return strings.ReplaceAll(s, "SUPERSECRET", "[secret]")
+	})
+	if _, err := w.Write([]byte("pre SUPERSE")); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := w.span()
+	if _, err := w.Write([]byte("CRET post")); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := w.span()
+	if second < first {
+		t.Fatalf("stream end moved backward %d -> %d", first, second)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	third, _ := w.span()
+	if third < second {
+		t.Fatalf("stream end moved backward %d -> %d", second, third)
+	}
+}
+
 func TestJobWriterTrickleStaysSmall(t *testing.T) {
 	res := testing.Benchmark(func(b *testing.B) {
 		f, err := os.Create(filepath.Join(b.TempDir(), "o.log"))
@@ -691,6 +799,31 @@ func TestJobWriterTrickleStaysSmall(t *testing.T) {
 	})
 	if res.AllocedBytesPerOp() > 32<<10 || res.NsPerOp() > 200_000 {
 		t.Fatalf("full tail rewrite: %d B/op %d ns/op", res.AllocedBytesPerOp(), res.NsPerOp())
+	}
+}
+
+func BenchmarkJobWriterBulk(b *testing.B) {
+	line := []byte("ok  \txbot/internal/some/package\t0.123s some more output text\n")
+	var chunk []byte
+	for len(chunk) < 32<<10 {
+		chunk = append(chunk, line...)
+	}
+	f, err := os.Create(filepath.Join(b.TempDir(), "o.log"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	w := newJobWriter(f, defaultJobBytes, func(s string) string {
+		return strings.ReplaceAll(s, "sk-ABCDEFGHIJKLMNOPQRST", "[redacted]")
+	})
+	if _, err := w.Write(chunk); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := w.Write(chunk); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

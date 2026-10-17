@@ -11,6 +11,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/tools"
+	"xbot/internal/vault"
 )
 
 // shellJobs is the process-lifetime job set for this bot. The first call loads
@@ -25,6 +26,7 @@ func (k *Kernel) shellJobs() *tools.Jobs {
 		j.Redact = func(s string) string {
 			return scrubSecrets(k.redactor()(s), k.secretValues())
 		}
+		j.Retain = k.shellRetain
 		j.Now = k.now
 		j.OnDone = k.onShellDone
 		if err := j.Load(); err == nil {
@@ -90,10 +92,37 @@ func (k *Kernel) onShellDone(job tools.Job) {
 	if !k.claimShell(job.ID) {
 		return
 	}
-	if k.shell != nil {
-		k.shell.MarkNotified(job.ID)
+	if err := k.postShellWake(job); err != nil {
+		k.unclaimShell(job.ID)
+		return
 	}
-	k.postShellWake(job)
+	if jobs := k.liveShell(); jobs != nil {
+		jobs.MarkNotified(job.ID)
+	}
+}
+
+// shellRetain is how many raw bytes a job log holds back so a secret is
+// redacted before any of it is committed. It is at least 1024, and at least
+// one past the longest known secret form. Vault values and their bounded
+// encodings (base64, URL, JSON) come from the store. In-memory values count
+// too. A pattern with no upper bound does not raise the hold.
+func (k *Kernel) shellRetain() int {
+	n := tools.MinRetain
+	bump := func(length int) {
+		if length+1 > n {
+			n = length + 1
+		}
+	}
+	for _, value := range k.secretValues() {
+		bump(len(value))
+	}
+	if k != nil && k.Vault != nil {
+		if sized, ok := k.Vault.(interface{ MaxFormLen() int }); ok {
+			bump(sized.MaxFormLen())
+		}
+	}
+	bump(vault.MaxRegisteredFormLen())
+	return n
 }
 
 // claimShell marks id as delivered for this process. The caller must not also
@@ -114,11 +143,29 @@ func (k *Kernel) claimShell(id string) bool {
 	return true
 }
 
-func (k *Kernel) postShellWake(job tools.Job) {
-	if k == nil || k.Inbox == nil || job.ID == "" {
+func (k *Kernel) liveShell() *tools.Jobs {
+	if k == nil {
+		return nil
+	}
+	k.shellMu.Lock()
+	defer k.shellMu.Unlock()
+	return k.shell
+}
+
+func (k *Kernel) unclaimShell(id string) {
+	if k == nil || id == "" {
 		return
 	}
-	_ = k.Inbox.Post(link.Event{
+	k.shellMu.Lock()
+	defer k.shellMu.Unlock()
+	delete(k.shellClaimed, id)
+}
+
+func (k *Kernel) postShellWake(job tools.Job) error {
+	if k == nil || k.Inbox == nil || job.ID == "" {
+		return nil
+	}
+	return k.Inbox.Post(link.Event{
 		ID:        "shelljob_" + job.ID,
 		Source:    "shell",
 		Type:      "shell_job",
@@ -162,8 +209,11 @@ func (k *Kernel) flushShellWake() {
 	}
 	k.shellMu.Unlock()
 	for _, job := range wake {
+		if err := k.postShellWake(job); err != nil {
+			k.unclaimShell(job.ID)
+			continue
+		}
 		jobs.MarkNotified(job.ID)
-		k.postShellWake(job)
 	}
 }
 

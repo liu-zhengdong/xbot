@@ -17,6 +17,7 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
+	"xbot/internal/vault"
 )
 
 func TestShellJobSurvivesTurns(t *testing.T) {
@@ -380,18 +381,30 @@ func TestShellClaimedMapRace(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		id := fmt.Sprintf("sh_%08x", 0xb0000000+i)
 		job := tools.Job{
-			ID: id, Command: "make", Status: "done", Local: true,
+			ID: id, Command: "make", Status: "done",
 			Output:  filepath.Join(dir, id+".log"),
 			Started: time.Unix(10, 0), Ended: time.Unix(20, 0),
 		}
-		raw, _ := json.Marshal(job)
+		raw, err := json.Marshal(job)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, id+".json"), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(job.Output, []byte("ok\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if k.shellJobs() == nil {
 		t.Fatal("no jobs")
 	}
+	// A non-nil map before either goroutine runs is what makes the old
+	// unlocked read race the reminder write. An initially nil map often
+	// hides it from the detector.
+	k.shellMu.Lock()
+	k.shellClaimed = map[string]bool{}
+	k.shellMu.Unlock()
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -465,5 +478,99 @@ func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
 	got := strings.Join(names, ",")
 	if strings.Contains(got, "shell_output") || strings.Contains(got, "shell_status") || strings.Contains(got, "shell_cancel") {
 		t.Fatalf("job tools on a shell with no job table: %s", got)
+	}
+}
+
+func TestShellRetainCoversVaultSecret(t *testing.T) {
+	k, _, _ := freshBot(t)
+	secret := strings.Repeat("M", 64)
+	var b strings.Builder
+	b.WriteString("-----BEGIN PRIVATE KEY-----\n")
+	for i := 0; i < 26; i++ {
+		b.WriteString(secret + "\n")
+	}
+	b.WriteString("-----END PRIVATE KEY-----")
+	value := b.String()
+	store, err := vault.Open(t.TempDir(), filepath.Join(t.TempDir(), "k"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set("pem", value, []string{"example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	k.Vault = store
+	unreg := vault.Register(store)
+	t.Cleanup(unreg)
+	if got := k.shellRetain(); got < len(value)+1 {
+		t.Fatalf("retain %d, secret %d", got, len(value))
+	}
+	// A shorter in-memory value does not shrink the hold.
+	k.secrets = map[string]map[string]string{"turn": {"n": "short-secret"}}
+	if got := k.shellRetain(); got < len(value)+1 {
+		t.Fatalf("retain shrank to %d", got)
+	}
+}
+
+func TestShellWakeFailureReleasesClaim(t *testing.T) {
+	k, _, _ := freshBot(t)
+	in, err := inbox.Open(k.Bot.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.Inbox = in
+	jobs := k.shellJobs()
+	if jobs == nil {
+		t.Fatal("no jobs")
+	}
+	out, err := jobs.Run(context.Background(), tools.RunRequest{Command: "sleep 30", Background: true, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strings.TrimSpace(strings.Split(strings.TrimPrefix(out, "background "), "\n")[0])
+	t.Cleanup(func() { jobs.Shutdown() })
+	st, err := jobs.Status(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := k.Bot.InboxPath()
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	st.Status = "done"
+	k.onShellDone(st)
+	got, err := jobs.Status(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Notified {
+		t.Fatal("failed wake stuck notified")
+	}
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+	in2, err := inbox.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.Inbox = in2
+	k.onShellDone(st)
+	n := 0
+	for _, ev := range in2.Pending() {
+		if ev.Type == "shell_job" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("wakes %d", n)
+	}
+	got, err = jobs.Status(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Notified {
+		t.Fatal("successful wake was not recorded")
 	}
 }
