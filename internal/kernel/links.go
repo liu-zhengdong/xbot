@@ -546,10 +546,28 @@ func (k *Kernel) secretValues() map[string]string {
 }
 
 func scrubSecrets(s string, values map[string]string) string {
+	if s == "" || len(values) == 0 {
+		return s
+	}
+	forms := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		if value == "" {
 			continue
 		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		forms = append(forms, value)
+	}
+	sort.Slice(forms, func(i, j int) bool {
+		if len(forms[i]) != len(forms[j]) {
+			return len(forms[i]) > len(forms[j])
+		}
+		return forms[i] < forms[j]
+	})
+	for _, value := range forms {
 		s = strings.ReplaceAll(s, value, "[secret]")
 	}
 	return s

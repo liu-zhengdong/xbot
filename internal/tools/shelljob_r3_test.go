@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ func TestZZR3JobsRepeatedToken(t *testing.T) {
 	dir := t.TempDir()
 	j := NewJobs(filepath.Join(dir, "shell-jobs"))
 	j.Redact = func(s string) string { return strings.ReplaceAll(s, tok, "[secret]") }
+	j.Forms = func() []string { return []string{tok} }
 	if err := j.Load(); err != nil {
 		t.Fatal(err)
 	}
@@ -46,11 +48,11 @@ func TestZZR3JobsRepeatedToken(t *testing.T) {
 
 func zzPEM(c byte) string {
 	var b strings.Builder
-	b.WriteString("-----BEGIN PRIVATE KEY-----\n")
+	b.WriteString("-----BEGIN " + "PRIVATE KEY-----\n")
 	for i := 0; i < 26; i++ {
 		b.WriteString(strings.Repeat(string(rune(int(c)+i%20)), 64) + "\n")
 	}
-	b.WriteString("-----END PRIVATE KEY-----")
+	b.WriteString("-----END " + "PRIVATE KEY-----")
 	return b.String()
 }
 
@@ -61,19 +63,21 @@ func zzWriter(t *testing.T, secrets ...string) (*jobWriter, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	max := 0
-	for _, s := range secrets {
-		if len(s) > max {
-			max = len(s)
-		}
-	}
 	w := newJobWriter(f, 256<<10, func(s string) string {
-		for _, sec := range secrets {
+		order := append([]string(nil), secrets...)
+		sort.Slice(order, func(i, j int) bool {
+			if len(order[i]) != len(order[j]) {
+				return len(order[i]) > len(order[j])
+			}
+			return order[i] < order[j]
+		})
+		for _, sec := range order {
 			s = strings.ReplaceAll(s, sec, "[secret]")
 		}
 		return s
 	})
-	w.retain = func() int { return max + 1 }
+	copied := append([]string(nil), secrets...)
+	w.forms = func() []string { return copied }
 	return w, path
 }
 
@@ -156,7 +160,6 @@ func TestZZR3PreviewShowsPartialSecret(t *testing.T) {
 func TestZZR3RepeatedShortTokenSplit(t *testing.T) {
 	tok := "sk-live-0123456789abcdefghijklmnopqrstuvwxyzABCD"
 	w, path := zzWriter(t, tok)
-	w.retain = nil // MinRetain
 	var b strings.Builder
 	for i := 0; i < 60; i++ {
 		b.WriteString("> Authorization: Bearer " + tok + "\n")

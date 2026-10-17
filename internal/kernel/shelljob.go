@@ -26,7 +26,7 @@ func (k *Kernel) shellJobs() *tools.Jobs {
 		j.Redact = func(s string) string {
 			return scrubSecrets(k.redactor()(s), k.secretValues())
 		}
-		j.Retain = k.shellRetain
+		j.Forms = k.shellForms
 		j.Now = k.now
 		j.OnDone = k.onShellDone
 		if err := j.Load(); err == nil {
@@ -101,66 +101,99 @@ func (k *Kernel) onShellDone(job tools.Job) {
 	}
 }
 
-// shellRetain is how many raw bytes a job log holds back so a secret is
-// redacted before any of it is committed. It is at least 1024, and at least
-// one past the longest known secret form. Vault values and their bounded
-// encodings (base64, URL, JSON) come from the store. In-memory values count
-// too. A pattern with no upper bound does not raise the hold. The length is
-// cached until the vault generation or the staged secrets change, so a shell
-// write does not recompute every form.
-func (k *Kernel) shellRetain() int {
-	mem := k.maxStagedSecret()
+// shellForms lists every string the job redactor replaces: vault literals and
+// their JSON, URL, and base64 forms, plus staged secret literals. The writer
+// holds a suffix of pending output only when it is a prefix of one of these.
+// Vault forms are cached until the vault generation changes.
+func (k *Kernel) shellForms() []string {
+	if k == nil {
+		return nil
+	}
+	staged := k.stagedSecretValues()
 	vGen := vaultFormGen(k)
 	rGen := vault.RegisteredFormGen()
-	if k != nil {
+	var base []string
+	k.shellMu.Lock()
+	if k.formsOK && k.formsVGen == vGen && k.formsRGen == rGen {
+		base = append([]string(nil), k.forms...)
+		k.shellMu.Unlock()
+	} else {
+		k.shellMu.Unlock()
+		base = k.collectVaultForms()
 		k.shellMu.Lock()
-		if k.retainOK && k.retainMem == mem && k.retainVGen == vGen && k.retainRGen == rGen {
-			n := k.retainN
-			k.shellMu.Unlock()
-			return n
+		if k.formsVGen == vGen && k.formsRGen == rGen && k.formsOK {
+			base = append([]string(nil), k.forms...)
+		} else {
+			k.formsOK = true
+			k.forms = append([]string(nil), base...)
+			k.formsVGen = vGen
+			k.formsRGen = rGen
 		}
 		k.shellMu.Unlock()
 	}
-	n := tools.MinRetain
-	bump := func(length int) {
-		if length+1 > n {
-			n = length + 1
+	if len(staged) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base)+len(staged))
+	for _, f := range base {
+		seen[f] = struct{}{}
+	}
+	out := append([]string(nil), base...)
+	for _, v := range staged {
+		if _, ok := seen[v]; ok {
+			continue
 		}
+		seen[v] = struct{}{}
+		out = append(out, v)
 	}
-	bump(mem)
-	if k != nil && k.Vault != nil {
-		if sized, ok := k.Vault.(interface{ MaxFormLen() int }); ok {
-			bump(sized.MaxFormLen())
-		}
-	}
-	bump(vault.MaxRegisteredFormLen())
-	if k != nil {
-		k.shellMu.Lock()
-		k.retainOK = true
-		k.retainN = n
-		k.retainMem = mem
-		k.retainVGen = vGen
-		k.retainRGen = rGen
-		k.shellMu.Unlock()
-	}
-	return n
+	return out
 }
 
-func (k *Kernel) maxStagedSecret() int {
+func (k *Kernel) collectVaultForms() []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(list []string) {
+		for _, f := range list {
+			if f == "" {
+				continue
+			}
+			if _, ok := seen[f]; ok {
+				continue
+			}
+			seen[f] = struct{}{}
+			out = append(out, f)
+		}
+	}
+	if k != nil && k.Vault != nil {
+		if src, ok := k.Vault.(interface{ Forms() []string }); ok && src != nil {
+			add(src.Forms())
+		}
+	}
+	add(vault.RegisteredForms())
+	return out
+}
+
+func (k *Kernel) stagedSecretValues() []string {
 	if k == nil {
-		return 0
+		return nil
 	}
 	k.secretMu.Lock()
 	defer k.secretMu.Unlock()
-	n := 0
+	var out []string
+	seen := map[string]struct{}{}
 	for _, m := range k.secrets {
 		for _, value := range m {
-			if len(value) > n {
-				n = len(value)
+			if value == "" {
+				continue
 			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			out = append(out, value)
 		}
 	}
-	return n
+	return out
 }
 
 func vaultFormGen(k *Kernel) uint64 {
@@ -375,7 +408,7 @@ type shellOutputTool struct{ k *Kernel }
 
 func (shellOutputTool) Name() string { return "shell_output" }
 func (shellOutputTool) Description() string {
-	return "Read a background shell job's output. offset is a byte position in the whole stream, not the retained file; the result names next_offset and says when earlier bytes were dropped. Pass tail to take the last N lines. Do not poll in a tight loop; wait for the completion reminder, then read."
+	return "Read a background shell job's output. offset is a byte position in the whole stream, not the retained file; the result names next_offset and says when earlier bytes were dropped. When bytes are still buffered because they might begin a secret, the result includes held_bytes. Pass tail to take the last N lines. Do not poll in a tight loop; wait for the completion reminder, then read."
 }
 func (shellOutputTool) Parameters() any {
 	return schema(map[string]any{
@@ -405,7 +438,7 @@ type shellStatusTool struct{ k *Kernel }
 
 func (shellStatusTool) Name() string { return "shell_status" }
 func (shellStatusTool) Description() string {
-	return "Report one background shell job, or list them when id is omitted. Status is running, done, cancelled, or lost. lost means this serve process restarted and is not tracking the process anymore."
+	return "Report one background shell job, or list them when id is omitted. Status is running, done, cancelled, or lost. lost means this serve process restarted and is not tracking the process anymore. When bytes are still buffered because they might begin a secret, the result includes held_bytes."
 }
 func (shellStatusTool) Parameters() any {
 	return schema(map[string]any{
@@ -438,7 +471,11 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 				b.WriteString("...\n")
 				break
 			}
-			fmt.Fprintf(&b, "%s %s %s\n", job.ID, job.Status, clipRunes(job.Command, 80))
+			fmt.Fprintf(&b, "%s %s %s", job.ID, job.Status, clipRunes(job.Command, 80))
+			if job.Held > 0 {
+				fmt.Fprintf(&b, " held_bytes: %d", job.Held)
+			}
+			b.WriteByte('\n')
 		}
 		return strings.TrimRight(b.String(), "\n"), nil
 	}
@@ -449,6 +486,9 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 	line := fmt.Sprintf("%s %s", job.ID, job.Status)
 	if job.Status == "done" {
 		line += fmt.Sprintf(" exit %d", job.ExitCode)
+	}
+	if job.Held > 0 {
+		line += fmt.Sprintf("\nheld_bytes: %d", job.Held)
 	}
 	if job.Output != "" {
 		line += "\noutput: " + job.Output

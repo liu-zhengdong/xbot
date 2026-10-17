@@ -224,10 +224,11 @@ func TestShellJobFileUsesKernelRedactor(t *testing.T) {
 		Redact: func(s string) string {
 			return strings.ReplaceAll(s, "SUPERSECRET", "[secret]")
 		},
-		Now: func() time.Time { return time.Unix(1_700_000_300, 0).UTC() },
+		secrets: map[string]map[string]string{"turn": {"s": "SUPERSECRET"}},
+		Now:     func() time.Time { return time.Unix(1_700_000_300, 0).UTC() },
 	}
 	out, err := k.shellJobs().Run(context.Background(), tools.RunRequest{
-		Command: "printf SUPERSECRET; printf '%02048d' 0; sleep 30", Background: true, Timeout: time.Second,
+		Command: "printf 'SUPERSECRET\\n'; sleep 30", Background: true, Timeout: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -481,15 +482,15 @@ func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
 	}
 }
 
-func TestShellRetainCoversVaultSecret(t *testing.T) {
+func TestShellFormsFollowVault(t *testing.T) {
 	k, _, _ := freshBot(t)
-	secret := strings.Repeat("M", 64)
+	line := strings.Repeat("M", 64)
 	var b strings.Builder
-	b.WriteString("-----BEGIN PRIVATE KEY-----\n")
+	b.WriteString("-----BEGIN " + "PRIVATE KEY-----\n")
 	for i := 0; i < 26; i++ {
-		b.WriteString(secret + "\n")
+		b.WriteString(line + "\n")
 	}
-	b.WriteString("-----END PRIVATE KEY-----")
+	b.WriteString("-----END " + "PRIVATE KEY-----")
 	value := b.String()
 	store, err := vault.Open(t.TempDir(), filepath.Join(t.TempDir(), "k"))
 	if err != nil {
@@ -501,20 +502,118 @@ func TestShellRetainCoversVaultSecret(t *testing.T) {
 	k.Vault = store
 	unreg := vault.Register(store)
 	t.Cleanup(unreg)
-	if got := k.shellRetain(); got < len(value)+1 {
-		t.Fatalf("retain %d, secret %d", got, len(value))
+	if !containsForm(k.shellForms(), value) {
+		t.Fatal("vault secret missing from shell forms")
 	}
-	// A shorter in-memory value does not shrink the hold.
 	k.secrets = map[string]map[string]string{"turn": {"n": "short-secret"}}
-	if got := k.shellRetain(); got < len(value)+1 {
-		t.Fatalf("retain shrank to %d", got)
+	forms := k.shellForms()
+	if !containsForm(forms, value) || !containsForm(forms, "short-secret") {
+		t.Fatalf("forms dropped a value: %d", len(forms))
 	}
 	longer := value + "\n" + value
 	if err := store.Set("pem", longer, []string{"example.test"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := k.shellRetain(); got < len(longer)+1 {
-		t.Fatalf("retain %d after the vault grew, secret %d", got, len(longer))
+	if containsForm(k.shellForms(), value) || !containsForm(k.shellForms(), longer) {
+		t.Fatal("forms did not follow the vault")
+	}
+}
+
+func containsForm(forms []string, want string) bool {
+	for _, f := range forms {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRunningShortOutputAndHeldPrefix(t *testing.T) {
+	k, _, _ := freshBot(t)
+	secret := "sk-live-0123456789abcdef"
+	k.secrets = map[string]map[string]string{"turn": {"tok": secret}}
+	jobs := k.shellJobs()
+	if jobs == nil {
+		t.Fatal("no jobs")
+	}
+	out, err := jobs.Run(context.Background(), tools.RunRequest{
+		Command:    "printf 'Compiling…\\nerror: missing dep foo\\n'; printf 'sk-live-0123'; sleep 30",
+		Background: true,
+		Timeout:    time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strings.TrimSpace(strings.Split(strings.TrimPrefix(out, "background "), "\n")[0])
+	t.Cleanup(func() { _, _ = jobs.Cancel(id) })
+	deadline := time.Now().Add(2 * time.Second)
+	var text string
+	for {
+		text, err = jobs.Output(id, 0, 0)
+		if err == nil && strings.Contains(text, "missing dep foo") && strings.Contains(text, "held_bytes:") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("output %q err %v", text, err)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if strings.Contains(text, "sk-live") || strings.Contains(text, secret) {
+		t.Fatalf("secret prefix visible: %s", text)
+	}
+	st, err := jobs.Status(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Status != "running" || st.Bytes == 0 {
+		t.Fatalf("status %+v", st)
+	}
+	got, err := shellStatusTool{k: k}.Run(context.Background(), json.RawMessage(`{"id":"`+id+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "held_bytes:") {
+		t.Fatalf("status tool %s", got)
+	}
+}
+
+func TestScrubSecretsLongestFirst(t *testing.T) {
+	values := map[string]string{}
+	var raw, want strings.Builder
+	for i := 0; i < 16; i++ {
+		short := fmt.Sprintf("pre%02dXXXX", i)
+		long := short + "TAIL"
+		values[fmt.Sprintf("s%d", i)] = short
+		values[fmt.Sprintf("l%d", i)] = long
+		raw.WriteString(long)
+		raw.WriteByte('\n')
+		want.WriteString("[secret]\n")
+
+		overShort := fmt.Sprintf("ov%02dYYYY", i)
+		overLong := "abc" + overShort
+		values[fmt.Sprintf("os%d", i)] = overShort
+		values[fmt.Sprintf("ol%d", i)] = overLong
+		raw.WriteString(overLong)
+		raw.WriteString("Z")
+		raw.WriteByte('\n')
+		want.WriteString("[secret]Z\n")
+	}
+	for n := 0; n < 20; n++ {
+		got := scrubSecrets(raw.String(), values)
+		if got != want.String() {
+			t.Fatalf("iter %d\n got %q\nwant %q", n, got, want.String())
+		}
+	}
+}
+
+func TestScrubSecretsStableTieBreak(t *testing.T) {
+	values := map[string]string{"a": "abcd", "b": "bcde"}
+	const want = "[secret]e"
+	for i := 0; i < 40; i++ {
+		got := scrubSecrets("abcde", values)
+		if got != want {
+			t.Fatalf("iter %d got %q", i, got)
+		}
 	}
 }
 

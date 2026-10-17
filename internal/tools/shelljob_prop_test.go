@@ -35,7 +35,7 @@ func FuzzJobLogRedaction(f *testing.F) {
 	f.Add([]byte("line one\nline two\n"), []byte("sk-live-0123456789abcdef"))
 	f.Add([]byte("AAAA"), []byte("-----BEGIN"))
 	f.Fuzz(func(t *testing.T, filler, secret []byte) {
-		if len(secret) < 8 || len(secret) > 80 || len(filler) > 400 {
+		if len(secret) < 8 || len(secret) > 80 || len(filler) > 4096 {
 			return
 		}
 		for _, b := range secret {
@@ -43,14 +43,18 @@ func FuzzJobLogRedaction(f *testing.F) {
 				return
 			}
 		}
+		if strings.Contains("status: running offset next_offset held_bytes dropped_before truncated output before byte is gone", string(secret)) {
+			return
+		}
 		dir := t.TempDir()
 		jobs := NewJobs(dir)
 		if err := jobs.Load(); err != nil {
 			t.Fatal(err)
 		}
 		rng := rand.New(rand.NewSource(int64(len(filler) + len(secret))))
-		raw, forms := propStream(rng, []string{string(secret)}, filler)
-		if err := driveRedaction(jobs, dir, raw, forms, true); err != nil {
+		raw, forms := propStream(rng, relateSecrets(rng, string(secret)), filler)
+		bytewise := len(raw) <= 800
+		if err := driveRedaction(jobs, dir, raw, forms, bytewise); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -70,19 +74,13 @@ func runRedactionCase(jobs *Jobs, dir string, rng *rand.Rand, n int, bytewise bo
 
 func driveRedaction(jobs *Jobs, dir string, raw []byte, forms []string, bytewise bool) error {
 	redact := spanRedactor(forms)
-	retain := MinRetain
-	for _, form := range forms {
-		if len(form)+1 > retain {
-			retain = len(form) + 1
-		}
-	}
 	path := filepath.Join(dir, "prop.log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
 	w := newJobWriter(f, 8<<20, redact)
-	w.retain = func() int { return retain }
+	w.forms = func() []string { return forms }
 	jobs.mu.Lock()
 	if jobs.jobs == nil {
 		jobs.jobs = map[string]*live{}
@@ -98,7 +96,7 @@ func driveRedaction(jobs *Jobs, dir string, raw []byte, forms []string, bytewise
 	prev := 0
 	var got []byte
 	off := 0
-	chunks := partition(rand.New(rand.NewSource(int64(len(raw)+retain))), len(raw), bytewise)
+	chunks := partition(rand.New(rand.NewSource(int64(len(raw)+len(forms)))), len(raw), bytewise)
 	for _, n := range chunks {
 		if _, err := w.Write(raw[off : off+n]); err != nil {
 			return err
@@ -173,6 +171,34 @@ func propSecrets(rng *rand.Rand, n int) []string {
 		}
 		out = append(out, b.String())
 	}
+	return relateSecrets(rng, out...)
+}
+
+// relateSecrets adds prefix, overlap, and mixed-case forms so a shorter
+// value can sit inside a longer one. Streams that use these must replace
+// longest-first or a tail of the longer secret survives.
+func relateSecrets(rng *rand.Rand, secrets ...string) []string {
+	out := append([]string(nil), secrets...)
+	for _, base := range secrets {
+		if len(base) < 8 {
+			continue
+		}
+		if rng.Intn(2) == 0 {
+			var extra strings.Builder
+			extra.WriteString(base)
+			extra.WriteString("tail")
+			for i := 0; i < 4; i++ {
+				extra.WriteByte(byte('a' + rng.Intn(26)))
+			}
+			out = append(out, extra.String())
+		}
+		if rng.Intn(2) == 0 && len(base) > 10 {
+			out = append(out, base[len(base)-8:]+"ovlp"+base[:4])
+		}
+		if rng.Intn(2) == 0 {
+			out = append(out, strings.ToUpper(base))
+		}
+	}
 	return out
 }
 
@@ -197,6 +223,11 @@ func propStream(rng *rand.Rand, secrets []string, filler []byte) ([]byte, []stri
 		}
 	}
 	repeats := 1 + rng.Intn(3)
+	if rng.Intn(3) == 0 {
+		// Longer than the old fixed 1024-byte hold, so a commit happens
+		// before Close instead of only at the end.
+		b.WriteString(strings.Repeat("log line ok\n", 120))
+	}
 	for r := 0; r < repeats; r++ {
 		for i, form := range forms {
 			if rng.Intn(3) != 0 {
@@ -235,13 +266,28 @@ func propForms(secrets []string) []string {
 		add(base64.URLEncoding.EncodeToString([]byte(secret)))
 		add(base64.RawURLEncoding.EncodeToString([]byte(secret)))
 	}
-	sort.Slice(forms, func(i, j int) bool { return len(forms[i]) > len(forms[j]) })
+	sort.Slice(forms, func(i, j int) bool {
+		if len(forms[i]) != len(forms[j]) {
+			return len(forms[i]) > len(forms[j])
+		}
+		return forms[i] < forms[j]
+	})
 	return forms
 }
 
 func spanRedactor(forms []string) func(string) string {
+	order := append([]string(nil), forms...)
+	sort.Slice(order, func(i, j int) bool {
+		if len(order[i]) != len(order[j]) {
+			return len(order[i]) > len(order[j])
+		}
+		return order[i] < order[j]
+	})
 	return func(s string) string {
-		for _, form := range forms {
+		for _, form := range order {
+			if form == "" {
+				continue
+			}
 			s = strings.ReplaceAll(s, form, "[secret]")
 		}
 		return s

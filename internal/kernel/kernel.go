@@ -132,13 +132,12 @@ type Kernel struct {
 	shell        *tools.Jobs
 	shellMu      sync.Mutex
 	shellClaimed map[string]bool
-	// retain cache: the longest secret form, invalidated when the vault
-	// generation or the in-memory secrets change.
-	retainOK   bool
-	retainN    int
-	retainMem  int
-	retainVGen uint64
-	retainRGen uint64
+	// forms cache: redactable vault forms, invalidated when a vault generation
+	// changes. Staged secrets are read on each call; they are few and short.
+	formsOK   bool
+	forms     []string
+	formsVGen uint64
+	formsRGen uint64
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
