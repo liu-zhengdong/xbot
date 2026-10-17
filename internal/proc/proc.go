@@ -177,6 +177,9 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 		if !ok || tm == nil {
 			continue
 		}
+		// Best effort: a failed notice leaves the watermark for the next poll to
+		// retry, and Expire waits so the retry still sees the missed one-shot.
+		noticeErr := NoticeMissed(tm, k.Inbox.Post, now)
 		evs, err := tm.Due(now)
 		if err != nil {
 			return err
@@ -191,7 +194,9 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 		}
 		// Expiring a missed one-shot is housekeeping; a bad routine file must
 		// not stop the chat loop. The serve timer ticker retries every 15s.
-		_ = tm.Expire(now)
+		if noticeErr == nil {
+			_ = tm.Expire(now)
+		}
 	}
 	return nil
 }

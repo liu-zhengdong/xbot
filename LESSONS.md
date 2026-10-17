@@ -49,3 +49,4 @@
 - 换默认模型前先用真实接口探路由和思考默认值，再写显式的 thinking 参数（`2062dae`，#29，2026-10-17）。
 - 并行挂住的测试追到根因（共用临时目录被 TestMain 删掉、等待不认 context）再修，不加 sleep 或重试（`b252f4e`，#8，2026-10-17）。
 - 超限修复只拦变大的写，带 forget、remember、merge 三条回归测试（`3a6409c`，#30，2026-10-17）。
+- **定时水位线由所有轮询入口共用，并在停用过期例程前检查漏跑。** 原因：仅 serve 维护会把 chat 已投递的时间点重复列为漏跑，先 Expire 则会漏掉一次性例程。证据：C2 review，`TestChatNoticesBeforeExpiringOneShot`、`TestChatPollsAdvanceWatermark`。Seen 1×（2026-10-18）

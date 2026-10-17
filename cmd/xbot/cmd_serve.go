@@ -412,6 +412,11 @@ func cmdServe(root string, args []string) error {
 		return err
 	}
 	migrateServeRoutines(root)
+	// One synchronous check before the server and the bot pass start, so a
+	// notice for slots missed while down is computed before anything runs them.
+	if err := serve.DeliverTimers(root, time.Now()); err != nil {
+		fmt.Fprintln(os.Stderr, "xbot: routines:", err)
+	}
 	ln, err := net.Listen("tcp", *httpAddr)
 	if err != nil {
 		return err
