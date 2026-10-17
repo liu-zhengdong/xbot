@@ -121,6 +121,13 @@ type State struct {
 	// tool call is a model switch: the kernel closes the call with a tombstone
 	// instead of an interrupt. Empty on older state files.
 	BoundModel string `json:"bound_model,omitempty"`
+	// MemSnap is the memory text injected after the system prompt; frozen
+	// between compactions so the prefix cache keeps hitting.
+	MemSnap string `json:"mem_snap,omitempty"`
+	// MemSnapSet distinguishes an empty snapshot from no snapshot yet.
+	MemSnapSet bool `json:"mem_snap_set,omitempty"`
+	// MemSeen is the memory text the model has seen (snapshot plus appended diffs).
+	MemSeen string `json:"mem_seen,omitempty"`
 }
 
 // Fork marker kinds and end statuses.

@@ -234,6 +234,9 @@ func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (
 	st.Blocks = append(st.Blocks, bot.SummaryBlock{
 		From: from, To: to, Text: text, Focus: focus, At: k.now(),
 	})
+	if err := k.refreshMemSnap(ctx, &st); err != nil {
+		return "", err
+	}
 	if err := k.Bot.SaveState(st); err != nil {
 		return "", err
 	}
@@ -294,6 +297,9 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 	st.Blocks = append(st.Blocks, bot.SummaryBlock{
 		From: 1, To: to, Text: text, Focus: "automatic", At: k.now(),
 	})
+	if err := k.refreshMemSnap(ctx, &st); err != nil {
+		return st, err
+	}
 	if err := k.Bot.SaveState(st); err != nil {
 		return st, err
 	}

@@ -70,6 +70,12 @@ func DefaultRules() string {
 // means the file was hand-edited past the cap or escaping expanded it.
 const memoryClipNote = "\n[memory clipped; consolidate: merge facts, forget stale ones, or move details to the log tier]"
 
+// recentLogBytes is the budget for the recent-log section of the snapshot.
+const recentLogBytes = 1536
+
+// recentLogLines is how many of the newest bot log facts the snapshot shows.
+const recentLogLines = 8
+
 // Input is the context for one wake. Persona, rules, and link names are the stable prefix.
 type Input struct {
 	Persona string
@@ -227,10 +233,11 @@ func clipMemory(s string) string {
 	if s == "" {
 		return ""
 	}
-	if len(s) <= memory.ProfileInjectBytes {
+	budget := memory.ProfileInjectBytes + recentLogBytes
+	if len(s) <= budget {
 		return s
 	}
-	budget := memory.ProfileInjectBytes - len(memoryClipNote)
+	budget -= len(memoryClipNote)
 	if budget < 0 {
 		return strings.TrimSpace(memoryClipNote)
 	}
@@ -269,8 +276,8 @@ func fenceMemory(s string) string {
 	return b.String()
 }
 
-func renderMemory(facts []memory.Fact) string {
-	if len(facts) == 0 {
+func renderMemory(facts, logs []memory.Fact) string {
+	if len(facts) == 0 && len(logs) == 0 {
 		return ""
 	}
 	groups := map[memory.Scope][]memory.Fact{}
@@ -301,13 +308,7 @@ func renderMemory(facts []memory.Fact) string {
 		})
 		fmt.Fprintf(&b, "\n### %s\n", sec.title)
 		for _, f := range items {
-			text := f.Text
-			if f.OwnerRecorded {
-				text = memory.OwnerProvenance(text, f.Device)
-			} else if f.Untrusted {
-				text = memory.Provenance(text, f.WrittenBy, f.Device)
-			}
-			text = fenceMemory(text)
+			text := factText(f)
 			key := fenceMemory(f.Key)
 			if f.WrittenBy != "" && !f.Untrusted && !f.OwnerRecorded {
 				fmt.Fprintf(&b, "- %s: %s (written by %s)\n", key, text, fenceMemory(f.WrittenBy))
@@ -316,8 +317,53 @@ func renderMemory(facts []memory.Fact) string {
 			fmt.Fprintf(&b, "- %s: %s\n", key, text)
 		}
 	}
+	if sec := renderRecentLog(logs); sec != "" {
+		wrote = true
+		b.WriteString(sec)
+	}
 	if !wrote {
 		return ""
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// factText applies the provenance and fence rules shared by profile and log lines.
+func factText(f memory.Fact) string {
+	text := f.Text
+	if f.OwnerRecorded {
+		text = memory.OwnerProvenance(text, f.Device)
+	} else if f.Untrusted {
+		text = memory.Provenance(text, f.WrittenBy, f.Device)
+	}
+	return fenceMemory(text)
+}
+
+// renderRecentLog shows the newest bot log facts. Older ones stay behind recall.
+func renderRecentLog(logs []memory.Fact) string {
+	if len(logs) == 0 {
+		return ""
+	}
+	newest := append([]memory.Fact(nil), logs...)
+	sort.SliceStable(newest, func(i, j int) bool { return newest[i].Time.After(newest[j].Time) })
+	var lines []string
+	used := len(fmt.Sprintf("\n### Recent log (%d of %d; older: recall)\n", recentLogLines, len(logs)))
+	for _, f := range newest {
+		if len(lines) >= recentLogLines {
+			break
+		}
+		text, _ := clip.Bytes(factText(f), 200)
+		line := "- " + text + "\n"
+		if used+len(line) > recentLogBytes {
+			break
+		}
+		used += len(line)
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n### Recent log (%d of %d; older: recall)\n", len(lines), len(logs))
+	b.WriteString(strings.Join(lines, ""))
+	return b.String()
 }

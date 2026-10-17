@@ -183,7 +183,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		if loadErr != nil {
 			return
 		}
-		_, _, _ = k.applyReadyJob(migrate(cur))
+		cur = k.saveMemSeen(t, migrate(cur))
+		_, _, _ = k.applyReadyJob(cur)
 	}()
 	if err := k.repairTail(); err != nil {
 		return err
@@ -223,6 +224,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
+	if !st.MemSnapSet {
+		st.MemSnap, st.MemSeen, st.MemSnapSet = memText, memText, true
+	}
 	st, err = k.syncEnv(st, ev, memText)
 	if err != nil {
 		return err
@@ -253,15 +257,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
-	st, err = k.autoCompact(ctx, st, seq, memText)
+	st, err = k.autoCompact(ctx, st, seq, st.MemSnap)
 	if err != nil {
 		return err
 	}
-	k.maybeStartBackground(st, seq, memText)
+	k.maybeStartBackground(st, seq, st.MemSnap)
 	if err := k.ensureSnapshot(st); err != nil {
 		return err
 	}
-	assembled, usage, err := k.assemble(st, memText)
+	assembled, usage, err := k.assemble(st, st.MemSnap)
 	if err != nil {
 		return err
 	}
@@ -805,6 +809,14 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	if overlay != "" {
 		overlayHash = shortHash(overlay)
 	}
+	// The memory snapshot in msgs[1] stays frozen; what changed since the bot last
+	// saw memory is appended here as a diff. MemSeen already covers the bot's own
+	// writes from earlier turns (see saveMemSeen).
+	memBlock := ""
+	if st.MemSnapSet && mem != st.MemSeen {
+		memBlock = memoryDiff(st.MemSeen, mem)
+	}
+	st.MemSeen = mem
 	now := k.now()
 	next := bot.EnvRecord{
 		Hour:        now.Format("2006-01-02T15"),
@@ -814,7 +826,7 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 		Notes:       k.pendingNotes(),
 		Persona:     shortHash(persona),
 		Rules:       shortHash(rules),
-		Memory:      shortHash(mem),
+		Memory:      shortHash(st.MemSeen),
 		Skills:      skillHash,
 		Profile:     profileHash,
 		OverlayKey:  overlayKey,
@@ -824,6 +836,13 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	}
 	diff := DiffEnv(st.Env, next)
 	st.Env = next
+	if memBlock != "" {
+		if diff == "" {
+			diff = "<environment_update>\n" + memBlock + "\n</environment_update>"
+		} else {
+			diff = strings.TrimSuffix(diff, "</environment_update>") + memBlock + "\n</environment_update>"
+		}
+	}
 	if diff == "" {
 		return st, nil
 	}
@@ -914,19 +933,60 @@ func (k *Kernel) ownerPerson() string {
 	return ""
 }
 
+// noteOwnMemory records memory as the bot sees it right after its own write, so
+// the next turn does not report that write back as a change. An outside edit that
+// lands between the store write and this read is absorbed; that window is accepted.
+func (k *Kernel) noteOwnMemory(ctx context.Context) {
+	mem, err := k.memoryText(ctx, k.memoryPerson())
+	if err != nil {
+		return
+	}
+	t := k.turnFor(ctx)
+	t.memMu.Lock()
+	t.memSeen, t.memSeenSet = mem, true
+	t.memMu.Unlock()
+}
+
+// saveMemSeen persists the turn's own-write memory text as MemSeen and clears it.
+// A failed save leaves the next turn reporting the write as a diff, which is safe.
+func (k *Kernel) saveMemSeen(t *turn, st bot.State) bot.State {
+	t.memMu.Lock()
+	mem, ok := t.memSeen, t.memSeenSet
+	t.memSeen, t.memSeenSet = "", false
+	t.memMu.Unlock()
+	if !ok || !st.MemSnapSet || st.MemSeen == mem {
+		return st
+	}
+	st.MemSeen = mem
+	_ = k.Bot.SaveState(st)
+	return st
+}
+
+// refreshMemSnap re-snapshots standing memory after a compaction appended a block.
+// The frozen snapshot is replaced because the prefix already changed.
+func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
+	mem, err := k.memoryText(ctx, k.memoryPerson())
+	if err != nil {
+		return err
+	}
+	st.MemSnap, st.MemSeen, st.MemSnapSet = mem, mem, true
+	return nil
+}
+
 func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error) {
-	facts, err := k.loadMemory(ctx, personID)
+	facts, logs, err := k.loadMemory(ctx, personID)
 	if err != nil {
 		return "", err
 	}
-	return clipMemory(renderMemory(facts)), nil
+	return clipMemory(renderMemory(facts, logs)), nil
 }
 
 // loadMemory is the context-assembly seam for the person and bot scopes.
 // M1's store recalls nothing. M2 returns facts; Visible and Resolve still apply.
-func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact, error) {
+// logs are bot-scope log facts: the snapshot shows the newest, recall has the rest.
+func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact, []memory.Fact, error) {
 	if k.Memory == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	botName := k.Bot.Name()
 	var personFacts []memory.Fact
@@ -935,15 +995,19 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 		var err error
 		personFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	botFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierProfile})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	logFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierLog})
+	if err != nil {
+		return nil, nil, err
 	}
 	all := append(personFacts, botFacts...)
-	return memory.Resolve(memory.Visible(all, botName, personID)), nil
+	return memory.Resolve(memory.Visible(all, botName, personID)), memory.Visible(logFacts, botName, personID), nil
 }
 
 // StartEmitters runs granted links that implement link.Emitter.

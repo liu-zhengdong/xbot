@@ -168,9 +168,12 @@ func (k *Kernel) forkMessages() ([]provider.Message, error) {
 		return nil, err
 	}
 	st = migrate(st)
-	mem, err := k.memoryText(context.Background(), k.memoryPerson())
-	if err != nil {
-		return nil, err
+	mem := st.MemSnap
+	if !st.MemSnapSet {
+		mem, err = k.memoryText(context.Background(), k.memoryPerson())
+		if err != nil {
+			return nil, err
+		}
 	}
 	msgs, _, err := k.assemble(st, mem)
 	if err != nil {

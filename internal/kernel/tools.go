@@ -189,6 +189,7 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 	if err := t.k.Memory.Remember(ctx, fact); err != nil {
 		return "", err
 	}
+	t.k.noteOwnMemory(ctx)
 	return "remembered", nil
 }
 
@@ -227,6 +228,7 @@ func (t forgetTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if err := t.k.Memory.Forget(ctx, q, in.Fact); err != nil {
 		return "", err
 	}
+	t.k.noteOwnMemory(ctx)
 	return "forgot", nil
 }
 

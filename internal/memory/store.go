@@ -86,8 +86,10 @@ func (s *FileStore) Recall(_ context.Context, q Query) ([]Fact, error) {
 	}
 	facts = filterQuery(facts, q)
 	if strings.TrimSpace(q.Text) == "" {
+		// Keep the newest 200: the snapshot's recent-log section reads the tail.
 		if len(facts) > 200 {
-			facts = facts[:200]
+			sort.SliceStable(facts, func(i, j int) bool { return facts[i].Time.Before(facts[j].Time) })
+			facts = facts[len(facts)-200:]
 		}
 		return facts, nil
 	}
