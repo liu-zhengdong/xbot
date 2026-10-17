@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -475,26 +476,28 @@ func TestMemoryDiffRecentLogOnlyNewEntries(t *testing.T) {
 		return b.String()
 	}
 	got := memoryDiff(render(2, 10, 10), render(3, 11, 11), nil)
-	if !strings.Contains(got, "+ - log entry 10") {
+	if !strings.Contains(got, "+ [Recent log] - log entry 10") {
 		t.Fatalf("new entry missing: %q", got)
 	}
-	if strings.Contains(got, "log entry 02") || strings.Contains(got, "Recent log") {
+	if strings.Contains(got, "log entry 02") || strings.Contains(got, "of 11") {
 		t.Fatalf("window shift or heading reported: %q", got)
 	}
 }
 
-// TestMemoryOwnWriteInForkedTurnSaved: a remember made after the turn forked is
-// saved as the bot's own change when the background finishes.
-func TestMemoryOwnWriteInForkedTurnSaved(t *testing.T) {
+// TestMemoryOwnWriteInForkedTurnSkipped: a remember made after the turn forked
+// is still the bot's own change; the next wake does not report it back.
+func TestMemoryOwnWriteInForkedTurnSkipped(t *testing.T) {
 	k, g, box := forkKernel(t)
 	store := memory.Open(k.Bot.Root)
 	k.Memory = store
 	k.Links = append(k.Links, link.Memory{})
-	k.Provider = &scripted{resps: []provider.Message{
+	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"written in the background","tier":"profile"}`}}}},
 		{Role: provider.RoleAssistant, Content: "后台做完了"},
+		{Role: provider.RoleAssistant, Content: "next"},
 	}}
+	k.Provider = p
 	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
@@ -503,19 +506,151 @@ func TestMemoryOwnWriteInForkedTurnSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(g.release)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) && len(k.Backgrounds()) != 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	st, err := k.Bot.LoadState()
-	if err != nil {
+	waitNoBackgrounds(t, k)
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "and now", time.Unix(30, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, l := range st.MemOwn {
-		found = found || strings.Contains(l, "written in the background")
+	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name()})
+	if err != nil || len(facts) != 1 {
+		t.Fatalf("facts %v %v", facts, err)
 	}
-	if !found {
-		t.Fatalf("background own write not saved: %q", st.MemOwn)
+	for _, up := range envUpdates(t, k.Bot) {
+		if strings.Contains(up, "written in the background") {
+			t.Fatalf("background own write reported back:\n%s", up)
+		}
+	}
+}
+
+// TestMemoryTimerWakeKeepsView: a timer wake keeps the owner's view, so msgs[1]
+// does not flip between the owner's turn and the bot's own follow-up wake.
+func TestMemoryTimerWakeKeepsView(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
+	if err := store.Remember(context.Background(), memory.Fact{
+		Key: "home", Scope: memory.ScopePerson, Tier: memory.TierProfile,
+		PersonID: "u1", WrittenBy: "u1", Text: "owner lives in Hangzhou", Time: t0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, Content: "one"},
+		{Role: provider.RoleAssistant, Content: "two"},
+	}}
+	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Handle(context.Background(), link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "timer", t0.Add(time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Content != p.reqs[1].Messages[1].Content {
+		t.Fatal("timer wake changed msgs[1]")
+	}
+}
+
+// TestMemoryOwnWriteAcrossViews: the owner's bot-scope write is not reported to
+// the shared view, and the owner's person-scope write never reaches it at all.
+func TestMemoryOwnWriteAcrossViews(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameMemory)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, Content: "hello u2"},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"team uses go 1.24","tier":"profile"}`}},
+			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"owner birthday in may","scope":"person","tier":"profile"}`}},
+		}},
+		{Role: provider.RoleAssistant, Content: "noted"},
+		{Role: provider.RoleAssistant, Content: "owner again"},
+		{Role: provider.RoleAssistant, Content: "hello again"},
+	}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Now:   func() time.Time { return t0 },
+	}
+	// u1 speaks twice, so the own writes are drained into the parked u2 view.
+	for i, who := range []string{"u2", "u1", "u1", "u2"} {
+		if err := k.Handle(context.Background(), link.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(p.reqs) != 5 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	for _, up := range envUpdates(t, b) {
+		if strings.Contains(up, "memory changed") {
+			t.Fatalf("own write reported to another view:\n%s", up)
+		}
+	}
+	if strings.Contains(p.reqs[4].Messages[1].Content, "owner birthday") {
+		t.Fatal("owner person fact in the shared view")
+	}
+}
+
+// TestMemoryDiffReportsOutsideRemovalOfOwnLine: another writer removing a line
+// the bot itself added is still reported.
+func TestMemoryDiffReportsOutsideRemovalOfOwnLine(t *testing.T) {
+	old := "### Standing\n- a fact\n"
+	own := []string{"+[Standing] - bot added this"}
+	got := memoryDiff(old, old, own)
+	if !strings.Contains(got, "- [Standing] - bot added this") {
+		t.Fatalf("outside removal of an own line hidden: %q", got)
+	}
+	if memoryDiff(old, old+"- bot added this\n", own) != "" {
+		t.Fatal("own line reported back")
+	}
+}
+
+// TestMemoryViewCapKeepsOwner: past the cap one non-owner view goes, never the owner's.
+func TestMemoryViewCapKeepsOwner(t *testing.T) {
+	st := bot.State{}
+	switchMemView(&st, "u1", "owner view", []string{"u1"})
+	for i := 0; i < memViewCap+2; i++ {
+		switchMemView(&st, fmt.Sprintf("g%02d", i), "guest view", []string{"u1"})
+	}
+	if v, ok := st.MemOther["u1"]; !ok || v.Snap != "owner view" {
+		t.Fatalf("owner view dropped: %+v", st.MemOther)
+	}
+	if len(st.MemOther) > memViewCap {
+		t.Fatalf("parked %d views, cap %d", len(st.MemOther), memViewCap)
+	}
+}
+
+// TestMemSnapForPicksTurnView: a fork for a guest's turn gets the guest's view,
+// not the active owner view.
+func TestMemSnapForPicksTurnView(t *testing.T) {
+	st := bot.State{MemSnapSet: true, MemPerson: "u1", MemSnap: "owner snap",
+		MemOther: map[string]bot.MemView{"": {Snap: "shared snap", Seen: "shared snap"}}}
+	k := &Kernel{}
+	got, err := k.memSnapFor(context.Background(), st, "")
+	if err != nil || got != "shared snap" {
+		t.Fatalf("got %q %v", got, err)
+	}
+}
+
+// TestRefreshMemSnapKeepsActiveKey: a compaction run from another person's turn
+// re-renders the active view for its own key.
+func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	store := memory.Open(b.Root)
+	if err := store.Remember(context.Background(), memory.Fact{
+		Key: "home", Scope: memory.ScopePerson, Tier: memory.TierProfile,
+		PersonID: "u1", WrittenBy: "u1", Text: "owner lives in Hangzhou", Time: time.Unix(1, 0).UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Bot: b, Memory: store, turn: &turn{turnSender: "u2", turnKind: link.KindPerson}}
+	st := bot.State{MemSnapSet: true, MemPerson: "u1", MemSnap: "old", MemSeen: "old"}
+	k.refreshMemSnap(context.Background(), &st)
+	if st.MemPerson != "u1" || !strings.Contains(st.MemSnap, "owner lives in Hangzhou") {
+		t.Fatalf("refreshed for the wrong view: %q %q", st.MemPerson, st.MemSnap)
 	}
 }

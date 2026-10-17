@@ -162,18 +162,17 @@ func (k *Kernel) endpoint() (exec.Endpoint, error) {
 	return exec.Endpoint{BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}, nil
 }
 
-func (k *Kernel) forkMessages() ([]provider.Message, error) {
+func (k *Kernel) forkMessages(ctx context.Context) ([]provider.Message, error) {
 	st, err := k.Bot.LoadState()
 	if err != nil {
 		return nil, err
 	}
 	st = migrate(st)
-	mem := st.MemSnap
-	if !st.MemSnapSet {
-		mem, err = k.memoryText(context.Background(), k.memoryPerson())
-		if err != nil {
-			return nil, err
-		}
+	// The spawning turn's own view: a guest's background turn must not hand the
+	// owner's person facts to its subagent.
+	mem, err := k.memSnapFor(ctx, st, k.memViewKey(k.turnFor(ctx), st))
+	if err != nil {
+		return nil, err
 	}
 	msgs, _, err := k.assemble(st, mem)
 	if err != nil {
@@ -212,7 +211,7 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 		Dir:      k.Bot.AgentDir(id),
 	}
 	if mode == exec.ModeFork {
-		fork, err := k.forkMessages()
+		fork, err := k.forkMessages(ctx)
 		if err != nil {
 			return "", err
 		}

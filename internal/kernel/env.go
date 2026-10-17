@@ -240,18 +240,32 @@ const memDiffBytes = 2048
 // recentLogHeading starts the snapshot's recent-log section (see renderRecentLog).
 const recentLogHeading = "### Recent log"
 
-// memoryDiff renders what changed in standing memory since the bot last saw it,
-// leaving out own ("+line"/"-line"), the bot's own changes. Every line is fenced
-// and blank lines are ignored. In the recent-log section only new entries count:
-// the heading's count and entries leaving the window are not changes. A diff
-// over memDiffBytes collapses to a count.
+// memoryDiff renders what changed in standing memory since the bot last saw it.
+// own lists the bot's own changes since then (see ownLines); they are applied to
+// old first, so the diff compares live memory with what the model believes it is.
+// Line order is ignored: the same lines in another order are no change. Every
+// line is fenced and blank lines are ignored. In the recent-log section only new
+// entries count: the heading's count and entries leaving the window are not
+// changes. A diff over memDiffBytes collapses to a count.
 func memoryDiff(old, cur string, own []string) string {
 	oldMain, oldLog := splitRecentLog(old)
 	curMain, curLog := splitRecentLog(cur)
-	added, removed := lineDiff(nonBlank(oldMain), nonBlank(curMain))
-	logAdded, _ := lineDiff(nonBlank(oldLog), nonBlank(curLog))
-	added = dropOwn(append(added, logAdded...), own, "+")
-	removed = dropOwn(removed, own, "-")
+	believed, believedLog := factLines(oldMain), nonBlank(oldLog)
+	for _, o := range own {
+		switch {
+		case strings.HasPrefix(o, "+"):
+			believed = append(believed, o[1:])
+		case strings.HasPrefix(o, "-"):
+			believed = removeOnce(believed, o[1:])
+		case strings.HasPrefix(o, "L"):
+			believedLog = append(believedLog, o[1:])
+		}
+	}
+	added, removed := multisetDiff(believed, factLines(curMain))
+	logAdded, _ := multisetDiff(believedLog, nonBlank(curLog))
+	for _, l := range logAdded {
+		added = append(added, "[Recent log] "+l)
+	}
 	if len(added) == 0 && len(removed) == 0 {
 		return ""
 	}
@@ -270,10 +284,30 @@ func memoryDiff(old, cur string, own []string) string {
 	return b.String()
 }
 
+// ownLines is the change one own write made, as memoryDiff's own entries:
+// "+line" and "-line" for the main part, "Lline" for a new recent-log entry.
+func ownLines(before, after string) []string {
+	bMain, bLog := splitRecentLog(before)
+	aMain, aLog := splitRecentLog(after)
+	added, removed := multisetDiff(factLines(bMain), factLines(aMain))
+	logAdded, _ := multisetDiff(nonBlank(bLog), nonBlank(aLog))
+	var out []string
+	for _, l := range added {
+		out = append(out, "+"+l)
+	}
+	for _, l := range removed {
+		out = append(out, "-"+l)
+	}
+	for _, l := range logAdded {
+		out = append(out, "L"+l)
+	}
+	return out
+}
+
 // splitRecentLog splits rendered memory into the main part and the recent-log
-// entries, without the section heading.
+// entries, without the section heading. The section always renders last.
 func splitRecentLog(s string) (string, string) {
-	i := strings.Index(s, "\n"+recentLogHeading)
+	i := strings.LastIndex(s, "\n"+recentLogHeading)
 	if i < 0 {
 		return s, ""
 	}
@@ -282,25 +316,6 @@ func splitRecentLog(s string) (string, string) {
 		return s[:i], rest[j+1:]
 	}
 	return s[:i], ""
-}
-
-// dropOwn removes, once each, the lines listed in own with the given sign.
-func dropOwn(lines, own []string, sign string) []string {
-	skip := map[string]int{}
-	for _, o := range own {
-		if strings.HasPrefix(o, sign) {
-			skip[o[len(sign):]]++
-		}
-	}
-	var out []string
-	for _, l := range lines {
-		if skip[l] > 0 {
-			skip[l]--
-			continue
-		}
-		out = append(out, l)
-	}
-	return out
 }
 
 func nonBlank(s string) []string {
@@ -313,63 +328,56 @@ func nonBlank(s string) []string {
 	return out
 }
 
-// lineDiff returns the lines only in b (added) and only in a (removed), in order.
-// It uses an LCS table, and a multiset difference when the table would be large.
-func lineDiff(a, b []string) (added, removed []string) {
-	if len(a)*len(b) > 160000 {
-		count := map[string]int{}
-		for _, l := range a {
-			count[l]++
+// factLines returns the non-blank lines of the main memory part, each tagged
+// with its section ("[Person] - fact"). Heading lines are dropped: they come and
+// go with the sections and are not facts.
+func factLines(s string) []string {
+	var out []string
+	section := ""
+	for _, l := range nonBlank(s) {
+		if strings.HasPrefix(l, "### ") {
+			section = strings.TrimSpace(strings.TrimPrefix(l, "### "))
+			continue
 		}
-		for _, l := range b {
-			if count[l] > 0 {
-				count[l]--
-			} else {
-				added = append(added, l)
-			}
+		if strings.HasPrefix(l, "#") {
+			continue
 		}
-		left := map[string]int{}
-		for _, l := range b {
-			left[l]++
+		if section != "" {
+			l = "[" + section + "] " + l
 		}
-		for _, l := range a {
-			if left[l] > 0 {
-				left[l]--
-			} else {
-				removed = append(removed, l)
-			}
-		}
-		return added, removed
+		out = append(out, l)
 	}
-	n, m := len(a), len(b)
-	lcs := make([][]int, n+1)
-	for i := range lcs {
-		lcs[i] = make([]int, m+1)
-	}
-	for i := n - 1; i >= 0; i-- {
-		for j := m - 1; j >= 0; j-- {
-			if a[i] == b[j] {
-				lcs[i][j] = lcs[i+1][j+1] + 1
-			} else {
-				lcs[i][j] = max(lcs[i+1][j], lcs[i][j+1])
-			}
+	return out
+}
+
+func removeOnce(lines []string, x string) []string {
+	for i, l := range lines {
+		if l == x {
+			return append(lines[:i:i], lines[i+1:]...)
 		}
 	}
-	i, j := 0, 0
-	for i < n && j < m {
-		switch {
-		case a[i] == b[j]:
-			i++
-			j++
-		case lcs[i+1][j] >= lcs[i][j+1]:
-			removed = append(removed, a[i])
-			i++
-		default:
-			added = append(added, b[j])
-			j++
+	return lines
+}
+
+// multisetDiff returns the lines only in b (added) and only in a (removed),
+// counting repeats, each in its own order.
+func multisetDiff(a, b []string) (added, removed []string) {
+	count := map[string]int{}
+	for _, l := range a {
+		count[l]++
+	}
+	for _, l := range b {
+		if count[l] > 0 {
+			count[l]--
+		} else {
+			added = append(added, l)
 		}
 	}
-	removed = append(removed, a[i:]...)
-	added = append(added, b[j:]...)
+	for _, l := range a {
+		if count[l] > 0 {
+			count[l]--
+			removed = append(removed, l)
+		}
+	}
 	return added, removed
 }

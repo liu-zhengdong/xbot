@@ -186,11 +186,12 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
 		fact.Untrusted = true
 	}
-	before := t.k.memBefore(ctx)
-	if err := t.k.Memory.Remember(ctx, fact); err != nil {
+	done := t.k.beginOwnWrite(ctx, fact.Scope)
+	err := t.k.Memory.Remember(ctx, fact)
+	done()
+	if err != nil {
 		return "", err
 	}
-	t.k.noteOwnMemory(ctx, before)
 	return "remembered", nil
 }
 
@@ -226,11 +227,12 @@ func (t forgetTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		return "", errors.New("memory: scope bot-person was removed; use bot, or person for a shared fact about the owner")
 	}
 	q := memory.Query{Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPersonOf(t.k.turnFor(ctx))}
-	before := t.k.memBefore(ctx)
-	if err := t.k.Memory.Forget(ctx, q, in.Fact); err != nil {
+	done := t.k.beginOwnWrite(ctx, scope)
+	err := t.k.Memory.Forget(ctx, q, in.Fact)
+	done()
+	if err != nil {
 		return "", err
 	}
-	t.k.noteOwnMemory(ctx, before)
 	return "forgot", nil
 }
 

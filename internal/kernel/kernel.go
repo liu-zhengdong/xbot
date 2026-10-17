@@ -5,6 +5,8 @@ package kernel
 import (
 	"context"
 	"errors"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -87,7 +89,13 @@ type Kernel struct {
 	MaxSegments       int
 	BackgroundMaxTime time.Duration
 
-	turnMu      sync.Mutex
+	turnMu sync.Mutex
+	// memOwnMu guards memOwn: line changes of this bot's own remember/forget
+	// calls, from any turn, drained into State at the next wake (drainMemOwn).
+	memOwnMu sync.Mutex
+	memOwn   []ownChange
+	// memWriteMu serializes own memory writes with their before/after reads.
+	memWriteMu  sync.Mutex
 	bgMu        sync.Mutex
 	bgs         map[string]*turn
 	finished    []BackgroundInfo
@@ -183,8 +191,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		if loadErr != nil {
 			return
 		}
-		cur = k.saveMemOwn(t, migrate(cur))
-		_, _, _ = k.applyReadyJob(cur)
+		_, _, _ = k.applyReadyJob(migrate(cur))
 	}()
 	if err := k.repairTail(); err != nil {
 		return err
@@ -220,12 +227,13 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if key := k.boundModelKey(); key != "" {
 		st.BoundModel = key
 	}
-	person := k.memoryPerson()
-	memText, err := k.memoryText(ctx, person)
+	key := k.memViewKey(t, st)
+	memText, err := k.memoryText(ctx, key)
 	if err != nil {
 		return err
 	}
-	switchMemView(&st, person, memText)
+	switchMemView(&st, key, memText, k.Bot.Config().Owners)
+	k.drainMemOwn(&st)
 	st, err = k.syncEnv(st, ev, memText)
 	if err != nil {
 		return err
@@ -939,108 +947,156 @@ func (k *Kernel) ownerPerson() string {
 	return ""
 }
 
-// memViewCap bounds the parked per-person views kept in State.
+// memViewKey picks whose memory view a turn uses: the person's own view, or the
+// shared bot-only view ("") for groups, peer bots, and connectors. Timer and
+// shell wakes are the bot's own; they keep the active view so the prefix does
+// not flip between a person's turn and its follow-up wake.
+func (k *Kernel) memViewKey(t *turn, st bot.State) string {
+	if st.MemSnapSet && t != nil && (t.turnSource == link.NameTimer || t.turnSource == "shell") {
+		return st.MemPerson
+	}
+	if person := k.memoryPersonOf(t); memory.ValidID(person) {
+		return person
+	}
+	return ""
+}
+
+// memViewCap bounds the parked views kept in State.
 const memViewCap = 8
 
-// switchMemView makes the view for person active. Each person keeps their own
-// snapshot, so a group or peer turn never sees the owner's person facts and the
-// owner's view is restored unchanged when they speak again. A new person gets a
-// fresh snapshot of live memory.
-func switchMemView(st *bot.State, person, live string) {
-	if st.MemSnapSet && st.MemPerson == person {
+// switchMemView makes the view for key active. Each view keeps its own frozen
+// snapshot, so another person's turn never gets the owner's person facts in
+// msgs[1], and the owner's view comes back unchanged. A new key gets a fresh
+// snapshot of live memory. Past memViewCap parked views, one non-owner view is
+// dropped; an owner's view is never dropped.
+func switchMemView(st *bot.State, key, live string, owners []string) {
+	if st.MemSnapSet && st.MemPerson == key {
 		return
 	}
 	if st.MemSnapSet {
-		if st.MemOther == nil || len(st.MemOther) >= memViewCap {
+		if st.MemOther == nil {
 			st.MemOther = map[string]bot.MemView{}
+		}
+		if len(st.MemOther) >= memViewCap {
+			evictMemView(st.MemOther, owners)
 		}
 		st.MemOther[st.MemPerson] = bot.MemView{Snap: st.MemSnap, Seen: st.MemSeen, Own: st.MemOwn}
 	}
-	v, ok := st.MemOther[person]
+	v, ok := st.MemOther[key]
 	if ok {
-		delete(st.MemOther, person)
+		delete(st.MemOther, key)
 	} else {
 		v = bot.MemView{Snap: live, Seen: live}
 	}
-	st.MemSnap, st.MemSeen, st.MemOwn, st.MemPerson, st.MemSnapSet = v.Snap, v.Seen, v.Own, person, true
+	st.MemSnap, st.MemSeen, st.MemOwn, st.MemPerson, st.MemSnapSet = v.Snap, v.Seen, v.Own, key, true
 }
 
-// memBefore reads memory for the turn that owns ctx before one of its own writes.
-func (k *Kernel) memBefore(ctx context.Context) string {
-	mem, _ := k.memoryText(ctx, k.memoryPersonOf(k.turnFor(ctx)))
-	return mem
-}
-
-// noteOwnMemory records the line changes of the bot's own write: memory before
-// the write against memory after it. Only those lines are left out of the next
-// diff, so an outside edit made earlier in the turn is still reported.
-func (k *Kernel) noteOwnMemory(ctx context.Context, before string) {
-	t := k.turnFor(ctx)
-	person := k.memoryPersonOf(t)
-	after, err := k.memoryText(ctx, person)
-	if err != nil {
-		return
+func evictMemView(views map[string]bot.MemView, owners []string) {
+	keys := make([]string, 0, len(views))
+	for key := range views {
+		keys = append(keys, key)
 	}
-	added, removed := lineDiff(nonBlank(before), nonBlank(after))
-	t.memMu.Lock()
-	defer t.memMu.Unlock()
-	if t.memOwnSet && t.memPerson != person {
-		return
-	}
-	t.memPerson, t.memOwnSet = person, true
-	for _, l := range added {
-		t.memOwn = append(t.memOwn, "+"+l)
-	}
-	for _, l := range removed {
-		t.memOwn = append(t.memOwn, "-"+l)
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !slices.Contains(owners, key) {
+			delete(views, key)
+			return
+		}
 	}
 }
 
-// memOwnCap bounds the own-change lines kept until the next turn start.
-const memOwnCap = 400
-
-// saveMemOwn moves the turn's own changes into State so the next turn's diff
-// leaves them out, then clears them. It runs when Handle returns and when a
-// forked background turn finishes. A lost save only means the bot is shown its
-// own write as a diff, which is safe.
-func (k *Kernel) saveMemOwn(t *turn, st bot.State) bot.State {
-	t.memMu.Lock()
-	own, person, ok := t.memOwn, t.memPerson, t.memOwnSet
-	t.memOwn, t.memPerson, t.memOwnSet = nil, "", false
-	t.memMu.Unlock()
-	if !ok || len(own) == 0 || !st.MemSnapSet {
-		return st
-	}
-	if st.MemPerson == person {
-		st.MemOwn = capOwn(append(st.MemOwn, own...))
-	} else if v, ok := st.MemOther[person]; ok {
-		v.Own = capOwn(append(v.Own, own...))
-		st.MemOther[person] = v
-	} else {
-		return st
-	}
-	_ = k.Bot.SaveState(st)
-	return st
+// ownChange is one own write's line changes. person is the view it belongs to
+// for a person-scope write, or "" for a bot-scope write, which every view shares.
+type ownChange struct {
+	person string
+	lines  []string
 }
 
-func capOwn(own []string) []string {
-	if len(own) > memOwnCap {
-		return own[len(own)-memOwnCap:]
+// beginOwnWrite starts recording one own remember/forget. It holds memWriteMu
+// until the returned func runs after the write, so parallel tool calls cannot
+// mix their before/after texts. A bot-scope write is measured on the bot-only
+// rendering, so it can never carry person lines into another person's view.
+// A failed read records nothing; the write then shows as a diff, which is safe.
+func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope) func() {
+	k.memWriteMu.Lock()
+	key := ""
+	if scope == memory.ScopePerson {
+		st, _ := k.Bot.LoadState()
+		key = k.memViewKey(k.turnFor(ctx), st)
 	}
-	return own
+	before, err := k.memoryText(ctx, key)
+	return func() {
+		defer k.memWriteMu.Unlock()
+		if err != nil {
+			return
+		}
+		after, err := k.memoryText(ctx, key)
+		if err != nil {
+			return
+		}
+		c := ownChange{person: key, lines: ownLines(before, after)}
+		if len(c.lines) == 0 {
+			return
+		}
+		k.memOwnMu.Lock()
+		k.memOwn = append(k.memOwn, c)
+		if len(k.memOwn) > memOwnCap {
+			k.memOwn = k.memOwn[len(k.memOwn)-memOwnCap:]
+		}
+		k.memOwnMu.Unlock()
+	}
+}
+
+// memOwnCap bounds the own writes waiting for the next wake.
+const memOwnCap = 200
+
+// drainMemOwn moves pending own changes into every view they apply to: bot-scope
+// changes go to all views, person-scope changes only to that person's view.
+func (k *Kernel) drainMemOwn(st *bot.State) {
+	k.memOwnMu.Lock()
+	pending := k.memOwn
+	k.memOwn = nil
+	k.memOwnMu.Unlock()
+	for _, c := range pending {
+		if c.person == "" || c.person == st.MemPerson {
+			st.MemOwn = append(st.MemOwn, c.lines...)
+		}
+		for key, v := range st.MemOther {
+			if c.person == "" || c.person == key {
+				v.Own = append(v.Own, c.lines...)
+				st.MemOther[key] = v
+			}
+		}
+	}
 }
 
 // refreshMemSnap re-snapshots standing memory after a compaction appended a block.
 // The prefix already changed, so the active view is replaced and parked views are
-// dropped. A read error keeps the old snapshot; the next wake diffs as usual.
+// dropped. The active view keeps its key, whichever turn runs the compaction.
+// A read error keeps the old snapshot; the next wake diffs as usual.
 func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) {
-	person := k.memoryPerson()
-	mem, err := k.memoryText(ctx, person)
+	key := st.MemPerson
+	if !st.MemSnapSet {
+		key = k.memViewKey(k.curTurn(), *st)
+	}
+	mem, err := k.memoryText(ctx, key)
 	if err != nil {
 		return
 	}
-	st.MemSnap, st.MemSeen, st.MemSnapSet, st.MemPerson = mem, mem, true, person
+	st.MemSnap, st.MemSeen, st.MemSnapSet, st.MemPerson = mem, mem, true, key
 	st.MemOwn, st.MemOther = nil, nil
+}
+
+// memSnapFor returns the frozen snapshot of the view key, or live memory when
+// this session has no view for it yet.
+func (k *Kernel) memSnapFor(ctx context.Context, st bot.State, key string) (string, error) {
+	if st.MemSnapSet && st.MemPerson == key {
+		return st.MemSnap, nil
+	}
+	if v, ok := st.MemOther[key]; ok {
+		return v.Snap, nil
+	}
+	return k.memoryText(ctx, key)
 }
 
 func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error) {
