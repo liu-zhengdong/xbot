@@ -167,7 +167,13 @@ func splitRoutineID(eventID string) (string, string, error) {
 }
 
 func routineBody(r Routine) string {
-	return fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call notify_owner. If nothing is worth saying, reply with exactly SILENT and do not call notify_owner.", r.ID, r.Name, r.Prompt)
+	return RoutineBody(r.ID, r.Name, r.Prompt)
+}
+
+// RoutineBody wraps a routine prompt with the scheduled-wake tail. A routine's
+// own instruction for the empty case wins over the default SILENT reply.
+func RoutineBody(id, name, prompt string) string {
+	return fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call notify_owner. If the routine says what to send when there is nothing (for example \"if nothing, say X\") and you checked and found nothing, send X with notify_owner; do not reply SILENT. Only when the routine gives no such instruction and nothing is worth saying, reply with exactly SILENT and do not call notify_owner.", id, name, prompt)
 }
 
 // List reads every routine file, sorted by id.

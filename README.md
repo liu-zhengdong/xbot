@@ -179,7 +179,7 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 
 **历史。** 原文按大约 8MB 或 UTC 日期分成段，只有尾段可写。SQLite 索引（纯 Go，无 cgo）把序号映射到段和偏移，并用 FTS5 做全文。`recall_history(query)` 走这个索引的 BM25，带回序列号。`expand(from, to)` 按序号把原文拉回来，输出有上限。大段工具输出另存成 blob，上下文里只留预览。索引丢了会自动重建，也可以 `xbot reindex <bot>`。旧的单文件 `transcript.jsonl` 第一次打开时迁进分段。摘要掉的句子还能这样找到。
 
-**定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。`xbot chat` 会先把未读通知打出来。Bot 自己创建、修改、暂停、删除 routine 都不弹确认卡。
+**定时。** routine 是一段 prompt 加 5 段 cron，最小间隔 5 分钟。`xbot serve` 约每 15 秒看一次。到点就往 inbox 投一条事件，id 是 `rt_<id>_<分钟>`，同一分钟不会投两次。唤醒之后，值得说就 `notify_owner`（写入 outbox，并尽量 `notify-send`）；不值得说就只回复 `SILENT`，不发通知。例程自己写了「没内容时怎么回」（比如「没有内容就说今天还没聊」）的，查过确实没内容就照它发，不回 `SILENT`；工具被拒查不了不算没内容。`xbot chat` 会先把未读通知打出来。Bot 自己创建、修改、暂停、删除 routine 都不弹确认卡。
 
 **Webhook。** `xbot serve` 在 `--http` 上听 `POST /webhook/<bot>/<name>`，默认只绑 `127.0.0.1:8787`。每个 webhook 有自己的 secret，模式是 HMAC（`X-XBot-Signature: sha256=<hex>`）或 `Authorization: Bearer`。没签名、签错、或者用了另一种模式，都是 401。正文超过 32 KiB 是 413，不会存下来。带了 `X-XBot-Delivery`（或 `X-Delivery-Id`）的重复投递只收一次，第二次直接 200 `duplicate`。同一个 webhook 在 2 秒窗口里的多次请求合成一条事件再投进 inbox；窗口是从第一条算起的固定窗，连续灌也不会把模型叫醒超过每个窗口一次。合批正文最多 32 KiB，多出来的只计数。事件来源是 `webhook:<name>`，发送者是外部身份，内核会包成不可信数据。
 

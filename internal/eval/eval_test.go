@@ -37,7 +37,7 @@ func TestFakeSuitePassesAndCertifies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan", "vision-draft", "avatar-handoff", "memory-scope"} {
+	for _, name := range []string{"root-cause", "no-task", "give-up", "resume", "boundary", "no-noise", "half-right", "propose-plan", "vision-draft", "avatar-handoff", "memory-scope", "routine-fallback"} {
 		if !strings.Contains(string(md), name) {
 			t.Fatalf("markdown missing %s\n%s", name, md)
 		}
@@ -713,4 +713,13 @@ func mustHoldoutCase(t *testing.T, name string) Case {
 	}
 	t.Fatalf("missing holdout case %s", name)
 	return Case{}
+}
+
+// A routine that names its own fallback must not be answered with SILENT.
+func TestRoutineFallbackSilentFails(t *testing.T) {
+	c := mustCase(t, "routine-fallback")
+	res := runCase(c, "normal", Script{{Text: "SILENT"}}, nil)
+	if res.Pass || !strings.Contains(res.Reason, "expected a report") || !strings.Contains(res.Reason, "notes 0, want 1") {
+		t.Fatalf("%s", res.Reason)
+	}
 }

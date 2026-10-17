@@ -485,7 +485,7 @@ func wakeEvent(c Case, when time.Time) link.Event {
 	case "user":
 		return link.TerminalEvent("owner", text, when)
 	default:
-		body := fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call notify_owner. If nothing is worth saying, reply with exactly SILENT and do not call notify_owner.", "eval", c.Name, text)
+		body := link.RoutineBody("eval", c.Name, text)
 		return link.NewEvent(link.NameTimer, link.TypeTimer, body, "owner", when)
 	}
 }

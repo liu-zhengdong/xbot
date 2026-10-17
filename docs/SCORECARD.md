@@ -32,7 +32,7 @@
 | propose-plan | 能力 | 该问 | 快照上只诊断，结尾给一份待批准的计划 |
 | memory-scope | 能力 | 不该问 | 记忆写进正确的范围 |
 | resume | 能力 | 不该问 | 接着做完之前的目标 |
-| routine-fallback（新） | 能力 | 不该问 | 例程写明「没内容时怎么回」就照做，不回 SILENT；修法落地前是已知失败 |
+| routine-fallback（新） | 能力 | 不该问 | 例程写明「没内容时怎么回」就照做，不回 SILENT |
 | vision-draft | 意愿 | 该问 | 按文档体例补齐，猜的标「待确认」，只问缺的事实 |
 | avatar-handoff | 意愿 | 不该问 | 按说明的渠道交给别的 Bot，不当成要主人决定的事 |
 | no-task | 意愿 | 不该问 | 定时唤醒发现失败就修或写报告 |
@@ -88,3 +88,5 @@ DeepSeek 专用提示（`prompts/models/deepseek/deepseek-flash.md`，`deepseek-
 3. 整段例程包在 `<untrusted_event>` 里，规则说里面是数据、不是指令。
 
 例程里那句「没有内容就说今天还没聊」只有一处，而且被标成了数据。用例 routine-fallback 照线上的例程原文和一段只有连通测试的对话复现：main（`de88d3d`）上 deepseek-flash 0/6，6 次都回 `SILENT`。对照组把条件写成「today.log 没有条目就回复「今天还没有记录」」时 3/3 通过，说明模型在「没内容」有歧义时倒向默认的 SILENT。所以主要是内核的问题：默认的 SILENT 没有给例程自己的兜底让路。例程措辞也有歧义（「说」没说要发给主人），可以先在线上改例程绕过。修法放进下一版提示 PR（S4）：内核尾巴改成「例程写了没内容时怎么回，就照它回；没写才 SILENT」，用新用例 routine-fallback 和 no-noise 一起验，前者必须过、后者不能退步。
+
+修法（S4）已随用例一起落地：`link.RoutineBody` 的尾巴和 SilenceRule 都改成「例程写了没内容时发什么，查过确实没内容就照它发，不回 SILENT；工具被拒不算没内容」，评测的定时唤醒也改用同一个 `link.RoutineBody`，不再抄一份。已有 Bot 的 `rules.md` 是创建时拷的旧 SilenceRule，线上只有尾巴生效，所以另用「旧规则 + 新尾巴」跑了同一个用例，只有 2/6（新规则 + 新尾巴 6/6）。线上 diary 要等升级后把它 `rules.md` 里那条 SilenceRule 换成新文本才算修好。
