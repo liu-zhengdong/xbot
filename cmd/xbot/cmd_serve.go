@@ -411,6 +411,7 @@ func cmdServe(root string, args []string) error {
 	if err := ensureSeed(root); err != nil {
 		return err
 	}
+	migrateServeRoutines(root)
 	ln, err := net.Listen("tcp", *httpAddr)
 	if err != nil {
 		return err
@@ -523,6 +524,48 @@ func cmdServe(root string, args []string) error {
 		case reason := <-restartCh:
 			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
 		case <-time.After(*every):
+		}
+	}
+}
+
+// migrateServeRoutines moves legacy UTC routines to the computer's zone once.
+// A bad file is logged and skipped; it must not stop serve.
+func migrateServeRoutines(root string) {
+	cfgs, err := bot.List(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "xbot: routines:", err)
+		return
+	}
+	now := time.Now()
+	for _, cfg := range cfgs {
+		b, err := bot.Load(root, cfg.Name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "xbot: routines: %s: %v\n", cfg.Name, err)
+			continue
+		}
+		migs, err := link.MigrateRoutines(b.RoutineDir(), time.Local, now, false)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "xbot: routines: %s: %v\n", cfg.Name, err)
+			continue
+		}
+		for _, m := range migs {
+			if !m.Changed {
+				if strings.HasPrefix(m.Note, "skipped") {
+					fmt.Fprintf(os.Stderr, "routines: %s/%s %s\n", cfg.Name, m.ID, m.Note)
+				}
+				continue
+			}
+			if m.OldCron != "" {
+				if m.NewCron == m.OldCron {
+					fmt.Fprintf(os.Stderr, "routines: %s/%s cron %q: %s\n", cfg.Name, m.ID, m.OldCron, m.Note)
+				} else if m.NewZone == "UTC" {
+					fmt.Fprintf(os.Stderr, "routines: %s/%s cron %q UTC -> kept UTC (no exact local equivalent)\n", cfg.Name, m.ID, m.OldCron)
+				} else {
+					fmt.Fprintf(os.Stderr, "routines: %s/%s cron %q UTC -> %q local\n", cfg.Name, m.ID, m.OldCron, m.NewCron)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "routines: %s/%s at %s -> local\n", cfg.Name, m.ID, m.At)
+			}
 		}
 	}
 }

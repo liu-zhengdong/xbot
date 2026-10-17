@@ -202,8 +202,22 @@ func RoutineBody(id, name, prompt string) string {
 	return fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call notify_owner. If the routine says what to send when there is nothing (for example \"if nothing, say X\") and you checked and found nothing, send X with notify_owner; do not reply SILENT. Only when the routine gives no such instruction and nothing is worth saying, reply with exactly SILENT and do not call notify_owner.", id, name, prompt)
 }
 
-// List reads every routine file, sorted by id.
+// List reads every routine file, sorted by id. A zone that a pre-C1 binary
+// dropped is restored from the zone index.
 func (t *Timer) List() ([]Routine, error) {
+	list, err := t.listRaw()
+	if err != nil {
+		return nil, err
+	}
+	zones := t.knownZones()
+	for i := range list {
+		list[i] = restoreZone(list[i], zones)
+	}
+	return list, nil
+}
+
+// listRaw reads every routine file as stored, sorted by id.
+func (t *Timer) listRaw() ([]Routine, error) {
 	entries, err := os.ReadDir(t.Dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -231,7 +245,34 @@ func (t *Timer) Load(id string) (Routine, error) {
 	if !routineID.MatchString(id) {
 		return Routine{}, fmt.Errorf("timer: bad id %q", id)
 	}
-	return t.read(filepath.Join(t.Dir, id+".json"))
+	r, err := t.read(filepath.Join(t.Dir, id+".json"))
+	if err != nil {
+		return Routine{}, err
+	}
+	return restoreZone(r, t.knownZones()), nil
+}
+
+// knownZones reads the zone index for restoreZone. An unreadable index only
+// means no restore; the routines themselves still load.
+func (t *Timer) knownZones() map[string]zoneEntry {
+	zones, err := t.loadZones()
+	if err != nil {
+		return nil
+	}
+	return zones
+}
+
+// restoreZone gives back the zone a pre-C1 binary dropped when it rewrote the
+// file: same id and exactly the cron this package last saved. Otherwise a
+// zone-less file stays legacy UTC.
+func restoreZone(r Routine, zones map[string]zoneEntry) Routine {
+	if r.Zone != "" {
+		return r
+	}
+	if ent, ok := zones[r.ID]; ok && ent.Cron == r.Cron && ent.Zone != "" {
+		r.Zone = ent.Zone
+	}
+	return r
 }
 
 func (t *Timer) read(path string) (Routine, error) {
