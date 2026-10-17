@@ -179,3 +179,20 @@ func TestMemoryMDRejectsLinesTheStoreDrops(t *testing.T) {
 		t.Fatalf("recall %v %v", facts, err)
 	}
 }
+
+// memorySymlinks used to spin forever when the path never reached dir, as on
+// Windows when the path's case differs from the data root.
+func TestMemorySymlinksStopsAtVolumeRoot(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "memory")
+	other := filepath.Join(t.TempDir(), "Memory", "memory.md")
+	done := make(chan error, 1)
+	go func() { done <- memorySymlinks(dir, other) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a path outside dir passed")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("memorySymlinks did not return")
+	}
+}

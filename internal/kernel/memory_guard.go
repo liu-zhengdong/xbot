@@ -84,6 +84,11 @@ func memorySymlinks(dir, path string) error {
 			}
 			return nil
 		}
+		// A path that never meets dir (on Windows, a drive letter or folder in
+		// another case) would otherwise loop at the volume root forever.
+		if filepath.Dir(cur) == cur {
+			return errors.New("memory: path is not inside its memory folder")
+		}
 	}
 }
 
