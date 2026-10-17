@@ -733,12 +733,23 @@ func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	return k.Provider, nil
 }
 
+// rulesText is the bot's rules plus, when a memory store is attached, MemoryWriteRule.
+// It is appended here rather than kept in rules.md so bots with a saved custom
+// rules file get it too, and it sits in the system prompt, not the memory data block.
+func (k *Kernel) rulesText() (string, error) {
+	rules, err := k.Bot.ReadRules(DefaultRules())
+	if err != nil || k.Memory == nil || strings.Contains(rules, MemoryWriteRule) {
+		return rules, err
+	}
+	return rules + "\n\n" + MemoryWriteRule, nil
+}
+
 func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
 	persona, err := k.Bot.ComposedPersona()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
-	rules, err := k.Bot.ReadRules(DefaultRules())
+	rules, err := k.rulesText()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -799,7 +810,7 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	if err != nil {
 		return st, err
 	}
-	rules, err := k.Bot.ReadRules(DefaultRules())
+	rules, err := k.rulesText()
 	if err != nil {
 		return st, err
 	}
@@ -1088,7 +1099,7 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 	}
 }
 
-const memRenderVersion = 3
+const memRenderVersion = 2
 
 // refreshMemSnap re-snapshots standing memory after a compaction appended a block.
 // The prefix already changed, so the active view is replaced and parked views are

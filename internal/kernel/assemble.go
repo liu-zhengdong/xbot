@@ -256,7 +256,7 @@ func wrapMemory(s string) string {
 	if s == "" {
 		return ""
 	}
-	return "<memory>\n" + MemoryRule + "\n" + MemoryWriteRule + "\n" + s + "\n</memory>"
+	return "<memory>\n" + MemoryRule + "\n" + s + "\n</memory>"
 }
 
 // fenceMemory escapes every angle bracket so a fact cannot form a tag.
