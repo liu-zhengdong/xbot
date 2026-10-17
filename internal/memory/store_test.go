@@ -102,8 +102,8 @@ func TestMarkdownEditRebuildsIndex(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	md := filepath.Join(root, "people", "u1", "memory", "profile.md")
-	idx := filepath.Join(root, "people", "u1", "memory", "profile.index.json")
+	md := filepath.Join(root, "people", "u1", "memory", "memory.md")
+	idx := filepath.Join(root, "people", "u1", "memory", "memory.index.json")
 	if err := os.Remove(idx); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestProfileCap(t *testing.T) {
 			t.Fatalf("cap error %q missing %q", msg, part)
 		}
 	}
-	md, err := os.ReadFile(filepath.Join(s.Root, "bots", "ada", "memory", "profile.md"))
+	md, err := os.ReadFile(filepath.Join(s.Root, "bots", "ada", "memory", "memory.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,13 @@ func TestForgetOnOverCapProfileSucceeds(t *testing.T) {
 func TestRememberOnOverCapProfileStillErrors(t *testing.T) {
 	root := t.TempDir()
 	overCapProfile(t, root, "u1000")
-	before, _ := os.ReadFile(filepath.Join(root, "people", "u1000", "memory", "profile.md"))
+	if err := Migrate(root); err != nil {
+		t.Fatal(err)
+	}
+	before, readErr := os.ReadFile(filepath.Join(root, "people", "u1000", "memory", "memory.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	err := Open(root).Remember(context.Background(), Fact{
 		Scope: ScopePerson, PersonID: "u1000", Tier: TierProfile, WrittenBy: "diary", Text: "one more fact",
 	})
@@ -240,7 +246,10 @@ func TestRememberOnOverCapProfileStillErrors(t *testing.T) {
 			t.Fatalf("cap error %q missing %q", err, part)
 		}
 	}
-	after, _ := os.ReadFile(filepath.Join(root, "people", "u1000", "memory", "profile.md"))
+	after, readErr := os.ReadFile(filepath.Join(root, "people", "u1000", "memory", "memory.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(before) != string(after) {
 		t.Fatal("a rejected remember changed the file")
 	}

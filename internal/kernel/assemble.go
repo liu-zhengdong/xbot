@@ -309,12 +309,13 @@ func renderMemory(facts, logs []memory.Fact) string {
 		fmt.Fprintf(&b, "\n### %s\n", sec.title)
 		for _, f := range items {
 			text := factText(f)
-			key := fenceMemory(f.Key)
-			if f.WrittenBy != "" && !f.Untrusted && !f.OwnerRecorded {
-				fmt.Fprintf(&b, "- %s: %s (written by %s)\n", key, text, fenceMemory(f.WrittenBy))
-				continue
+			if f.Key != memory.DefaultKey(f.Text) {
+				text = fenceMemory(f.Key) + ": " + text
 			}
-			fmt.Fprintf(&b, "- %s: %s\n", key, text)
+			if f.Scope == memory.ScopePerson && f.WrittenBy != "" {
+				text += " via " + fenceMemory(f.WrittenBy)
+			}
+			fmt.Fprintf(&b, "- %s\n", text)
 		}
 	}
 	if sec := renderRecentLog(logs); sec != "" {

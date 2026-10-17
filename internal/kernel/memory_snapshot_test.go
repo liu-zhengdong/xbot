@@ -749,3 +749,25 @@ func TestMemoryViewCapKeepsTarget(t *testing.T) {
 		t.Fatalf("target view evicted and rebuilt: %q", st.MemSnap)
 	}
 }
+
+func TestMemoryAcceptedProfilesDoNotClip(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	store := memory.Open(b.Root)
+	ctx := context.Background()
+	for _, scope := range []memory.Scope{memory.ScopeBot, memory.ScopePerson} {
+		for i := 0; ; i++ {
+			f := memory.Fact{Scope: scope, BotName: b.Name(), PersonID: "u1", Tier: memory.TierProfile, WrittenBy: "dev", Text: fmt.Sprintf("%s fact %03d abcdefghijklmnop", scope, i)}
+			if err := store.Remember(ctx, f); err != nil {
+				if i < 40 {
+					t.Fatal(err)
+				}
+				break
+			}
+		}
+	}
+	k := &Kernel{Bot: b, Memory: store}
+	body, err := k.memoryText(ctx, "u1")
+	if err != nil || strings.Contains(body, memoryClipNote) {
+		t.Fatalf("accepted profiles clipped: %v\n%s", err, body)
+	}
+}
