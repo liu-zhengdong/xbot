@@ -176,7 +176,7 @@ func TestWrapPageNeutralizesCloser(t *testing.T) {
 	if !strings.HasPrefix(got, "<untrusted_event>\n") || !strings.HasSuffix(got, "\n</untrusted_event>") {
 		t.Fatal(got)
 	}
-	if strings.Contains(got, "hello </untrusted_event>") || !strings.Contains(got, "< /untrusted_event>") {
+	if strings.Contains(got, "hello </untrusted_event>") || !strings.Contains(got, "[/untrusted_event]") {
 		t.Fatal(got)
 	}
 }

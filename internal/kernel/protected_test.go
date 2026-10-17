@@ -187,3 +187,21 @@ func TestReviewCallLinkSecretsFileAsks(t *testing.T) {
 		t.Fatalf("shell cat secrets.json need=%v err=%v", need, err)
 	}
 }
+
+func TestReviewCallWebAndProvidersFilesAsk(t *testing.T) {
+	k, workDir := protectedKernel(t)
+	read := &tools.ReadFile{Root: workDir}
+	for _, name := range []string{"web.json", "providers.json"} {
+		path := filepath.Join(k.Bot.Root, name)
+		if err := os.WriteFile(path, []byte("{}\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		need, summary, err := reviewedTool{Tool: read, k: k}.Confirm(json.RawMessage(`{"path":"` + path + `"}`))
+		if err != nil || !need {
+			t.Fatalf("%s need=%v err=%v", name, need, err)
+		}
+		if !strings.Contains(summary, review.ProtectedSuffix) {
+			t.Fatalf("%s summary %q", name, summary)
+		}
+	}
+}

@@ -26,16 +26,20 @@ func wrapUntrusted(source, typ, sender string, at time.Time, body string) string
 }
 
 // NeutralizeUntrusted rewrites untrusted_event openers and closers so a
-// payload cannot end or forge the fence. Matching is ASCII-case-insensitive,
-// allows whitespace around the slash, and treats fullwidth ＜ ／ ＞ and
-// fullwidth Latin letters as their ASCII forms.
+// payload cannot end or forge the fence. The replacement is not a tag:
+// "[/untrusted_event]" does not match a later closer scan, and it does not
+// leave a ">" that completes one. Matching is ASCII-case-insensitive, allows
+// whitespace around the slash, folds fullwidth and small brackets, fullwidth
+// underscores, and the extra slash characters, skips zero-width characters,
+// and treats "&lt;" / numeric character references as "<".
 func NeutralizeUntrusted(s string) string {
-	s = NeutralizeCloser(s, "untrusted_event")
-	return NeutralizeOpener(s, "untrusted_event")
+	s = rewriteTag(s, "untrusted_event", true, "[/untrusted_event]")
+	return rewriteTag(s, "untrusted_event", false, "[untrusted_event]")
 }
 
 // NeutralizeCloser rewrites a closing tag to "</ name" without consuming a
 // following ">". "</NAME>", "</ name >", and "< / name" all match.
+// project_instructions uses this form; untrusted_event does not.
 func NeutralizeCloser(s, name string) string {
 	return rewriteTag(s, name, true, "</ "+strings.ToLower(name))
 }
@@ -51,7 +55,7 @@ func rewriteTag(s, name string, closer bool, repl string) string {
 	if name == "" || s == "" {
 		return s
 	}
-	if !strings.Contains(s, "<") && !strings.Contains(s, "＜") {
+	if !strings.ContainsAny(s, "<&") && !strings.Contains(s, "＜") && !strings.Contains(s, "﹤") {
 		return s
 	}
 	var b strings.Builder
@@ -59,14 +63,9 @@ func rewriteTag(s, name string, closer bool, repl string) string {
 	changed := false
 	i := 0
 	for i < len(s) {
-		r, size := utf8.DecodeRuneInString(s[i:])
-		if foldTagRune(r) != '<' {
-			b.WriteString(s[i : i+size])
-			i += size
-			continue
-		}
 		end, ok := matchTag(s[i:], name, closer)
 		if !ok {
+			_, size := utf8.DecodeRuneInString(s[i:])
 			b.WriteString(s[i : i+size])
 			i += size
 			continue
@@ -81,21 +80,20 @@ func rewriteTag(s, name string, closer bool, repl string) string {
 	return b.String()
 }
 
-// matchTag matches "<" + optional space + optional "/" + optional space + name
-// at the start of s. closer requires the slash. The returned length does not
-// include a trailing ">".
+// matchTag matches "<" (or an entity for "<") + optional space + optional "/"
+// + optional space + name at the start of s. closer requires the slash.
+// Zero-width characters are skipped. The returned length does not include a
+// trailing ">".
 func matchTag(s, name string, closer bool) (int, bool) {
-	i := 0
-	r, size := utf8.DecodeRuneInString(s[i:])
-	if foldTagRune(r) != '<' {
+	i, ok := matchLT(s)
+	if !ok {
 		return 0, false
 	}
-	i += size
 	i = skipSpace(s, i)
 	if i >= len(s) {
 		return 0, false
 	}
-	r, size = utf8.DecodeRuneInString(s[i:])
+	r, size := utf8.DecodeRuneInString(s[i:])
 	if foldTagRune(r) == '/' {
 		if !closer {
 			return 0, false
@@ -106,6 +104,7 @@ func matchTag(s, name string, closer bool) (int, bool) {
 		return 0, false
 	}
 	for _, want := range name {
+		i = skipIgnorable(s, i)
 		if i >= len(s) {
 			return 0, false
 		}
@@ -118,10 +117,86 @@ func matchTag(s, name string, closer bool) (int, bool) {
 	return i, true
 }
 
+func matchLT(s string) (int, bool) {
+	if s == "" {
+		return 0, false
+	}
+	r, size := utf8.DecodeRuneInString(s)
+	if foldTagRune(r) == '<' {
+		return size, true
+	}
+	if r != '&' {
+		return 0, false
+	}
+	if n, ok := matchNamed(s, "lt"); ok {
+		return n, true
+	}
+	if n, ok := matchNumeric(s, '<'); ok {
+		return n, true
+	}
+	return 0, false
+}
+
+func matchNamed(s, name string) (int, bool) {
+	need := 1 + len(name) + 1
+	if len(s) < need || s[0] != '&' {
+		return 0, false
+	}
+	if !strings.EqualFold(s[1:1+len(name)], name) || s[1+len(name)] != ';' {
+		return 0, false
+	}
+	return need, true
+}
+
+func matchNumeric(s string, want rune) (int, bool) {
+	if len(s) < 4 || s[0] != '&' || s[1] != '#' {
+		return 0, false
+	}
+	i := 2
+	hex := false
+	if s[i] == 'x' || s[i] == 'X' {
+		hex = true
+		i++
+	}
+	val := 0
+	digits := 0
+	for i < len(s) && digits < 6 {
+		c := s[i]
+		d, ok := hexDigit(c, hex)
+		if !ok {
+			break
+		}
+		if hex {
+			val = val*16 + d
+		} else {
+			val = val*10 + d
+		}
+		digits++
+		i++
+	}
+	if digits == 0 || i >= len(s) || s[i] != ';' || rune(val) != want {
+		return 0, false
+	}
+	return i + 1, true
+}
+
+func hexDigit(c byte, hex bool) (int, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0'), true
+	case hex && c >= 'a' && c <= 'f':
+		return int(c-'a') + 10, true
+	case hex && c >= 'A' && c <= 'F':
+		return int(c-'A') + 10, true
+	default:
+		return 0, false
+	}
+}
+
 func skipSpace(s string, i int) int {
 	for i < len(s) {
 		r, size := utf8.DecodeRuneInString(s[i:])
-		if !unicode.IsSpace(r) {
+		if !unicode.IsSpace(r) && !isIgnorable(r) {
 			break
 		}
 		i += size
@@ -129,14 +204,36 @@ func skipSpace(s string, i int) int {
 	return i
 }
 
+func skipIgnorable(s string, i int) int {
+	for i < len(s) {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if !isIgnorable(r) {
+			break
+		}
+		i += size
+	}
+	return i
+}
+
+func isIgnorable(r rune) bool {
+	switch r {
+	case '\u200b', '\u2060', '\ufeff', '\u00ad':
+		return true
+	default:
+		return false
+	}
+}
+
 func foldTagRune(r rune) rune {
 	switch r {
-	case '<', '＜':
+	case '<', '＜', '﹤':
 		return '<'
-	case '>', '＞':
+	case '>', '＞', '﹥':
 		return '>'
-	case '/', '／':
+	case '/', '／', '∕', '⁄':
 		return '/'
+	case '_', '＿':
+		return '_'
 	}
 	if r >= 'A' && r <= 'Z' {
 		return r + ('a' - 'A')

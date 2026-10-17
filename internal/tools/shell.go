@@ -162,6 +162,25 @@ func UseKeyEnv(names []string) {
 	keyEnvMu.Unlock()
 }
 
+// AddKeyEnv adds names to the set shell commands omit unless keys is set.
+// configureWeb uses it when web.json gains a search key after startup.
+func AddKeyEnv(names []string) {
+	keyEnvMu.Lock()
+	defer keyEnvMu.Unlock()
+	seen := map[string]bool{}
+	for _, name := range keyEnvNames {
+		seen[name] = true
+	}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] || strings.ContainsAny(name, "=\x00") {
+			continue
+		}
+		seen[name] = true
+		keyEnvNames = append(keyEnvNames, name)
+	}
+}
+
 // NewShell returns a shell tool with the default limits.
 func NewShell() *Shell {
 	return &Shell{

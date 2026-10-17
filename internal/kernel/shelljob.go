@@ -155,11 +155,18 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 		if f.Now == nil {
 			f.Now = k.now
 		}
+		if err != nil {
+			if f.Backend == nil {
+				f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, err })
+			}
+			return
+		}
+		k.holdWebKeys(cfg)
 		if f.Backend != nil {
 			return
 		}
-		if err != nil {
-			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, err })
+		if baseErr := config.AllowSearchBase(root, cfg.Search); baseErr != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, baseErr })
 			return
 		}
 		key, keyErr := config.SearchKey(cfg.Search, config.Getenv)
@@ -167,7 +174,7 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, keyErr })
 			return
 		}
-		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, cfg.Search.Model, key, trusted)
+		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, key, trusted)
 		if berr != nil {
 			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, berr })
 			return
@@ -198,6 +205,25 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 		f.Model = model
 		f.Vision = ok
 	}
+}
+
+// holdWebKeys copies search and fetch key names into memory and drops them
+// from the process environment. A web.json written after startup is covered
+// the next time a web tool is configured. DEEPSEEK_API_KEY is held when that
+// is the selected search key.
+func (k *Kernel) holdWebKeys(cfg config.WebFile) {
+	var names []string
+	if env, ok := config.SearchKeyEnv(cfg.Search); ok {
+		names = append(names, env)
+	}
+	if env := strings.TrimSpace(cfg.Fetch.APIKeyEnv); env != "" {
+		names = append(names, env)
+	}
+	if len(names) == 0 {
+		return
+	}
+	config.HoldKeys(names)
+	tools.AddKeyEnv(names)
 }
 
 type failFetch struct{ err error }

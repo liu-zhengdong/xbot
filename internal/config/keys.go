@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -57,6 +58,36 @@ func ProviderKey(name string) bool {
 	heldMu.Lock()
 	defer heldMu.Unlock()
 	return heldNames[strings.TrimSpace(name)]
+}
+
+// RedactHeld replaces held key values with [secret]. Values shorter than 8
+// bytes are left alone so a short test string cannot blank unrelated text.
+// Keys held after startup are included, because the lookup reads the map.
+func RedactHeld(s string) string {
+	if s == "" {
+		return s
+	}
+	heldMu.Lock()
+	vals := make([]string, 0, len(heldKeys))
+	for _, v := range heldKeys {
+		if len(v) >= 8 {
+			vals = append(vals, v)
+		}
+	}
+	heldMu.Unlock()
+	if len(vals) == 0 {
+		return s
+	}
+	sort.Slice(vals, func(i, j int) bool {
+		if len(vals[i]) != len(vals[j]) {
+			return len(vals[i]) > len(vals[j])
+		}
+		return vals[i] < vals[j]
+	})
+	for _, v := range vals {
+		s = strings.ReplaceAll(s, v, "[secret]")
+	}
+	return s
 }
 
 // Getenv returns a held provider key, or the process environment.

@@ -93,14 +93,13 @@ func TestLoadWebDefaultsAndRejectsRawKey(t *testing.T) {
 	if err != nil || key != "from-provider" {
 		t.Fatalf("reuse provider key: %v %q", err, key)
 	}
-	key, err = SearchKey(WebBackend{Backend: "deepseek"}, func(k string) string {
+	if _, err = SearchKey(WebBackend{Backend: "deepseek"}, func(k string) string {
 		if k == "XBOT_API_KEY" {
 			return "from-xbot"
 		}
 		return ""
-	})
-	if err != nil || key != "from-xbot" {
-		t.Fatalf("reuse xbot key: %v %q", err, key)
+	}); err == nil || !strings.Contains(err.Error(), "DEEPSEEK_API_KEY") {
+		t.Fatalf("xbot key must not be reused: %v", err)
 	}
 	key, err = SearchKey(WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY"}, func(k string) string {
 		if k == "SEARCH_KEY" {
@@ -137,6 +136,16 @@ func TestSearchKeyEnvIsHeldLikeProviderKeys(t *testing.T) {
 	if Getenv("SEARCH_KEY") != "sekret-search" {
 		t.Fatalf("memory %q", Getenv("SEARCH_KEY"))
 	}
+	plain := t.TempDir()
+	if err := SaveWeb(plain, WebFile{Search: WebBackend{Backend: "deepseek"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(KeyEnvNames(plain), " "), "DEEPSEEK_API_KEY") {
+		t.Fatalf("default search key missing: %v", KeyEnvNames(plain))
+	}
+	if got := RedactHeld("leak sekret-search"); strings.Contains(got, "sekret-search") || !strings.Contains(got, "[secret]") {
+		t.Fatalf("redact %q", got)
+	}
 }
 
 func TestTrustedEgressCIDRs(t *testing.T) {
@@ -154,5 +163,42 @@ func TestTrustedEgressCIDRs(t *testing.T) {
 	got, err := TrustedEgress(f)
 	if err != nil || len(got) != 1 || got[0].String() != "198.18.0.0/15" {
 		t.Fatalf("%v %+v", err, got)
+	}
+	for _, cidr := range []string{"::ffff:127.0.0.0/104", "::ffff:0:0/96", "::/0"} {
+		if _, err := TrustedEgress(WebFile{TrustedEgressCIDRs: []string{cidr}}); err == nil {
+			t.Fatalf("%s was accepted", cidr)
+		}
+	}
+	mapped, err := TrustedEgress(WebFile{TrustedEgressCIDRs: []string{"::ffff:198.18.0.0/112"}})
+	if err != nil || len(mapped) != 1 {
+		t.Fatalf("mapped benchmark range: %v %+v", err, mapped)
+	}
+}
+
+func TestSearchBaseLocksProviderKeyToOfficialHost(t *testing.T) {
+	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", BaseURL: "http://api.deepseek.com"}); err == nil {
+		t.Fatal("http was accepted")
+	}
+	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", BaseURL: "https://evil.example/v1"}); err == nil || !strings.Contains(err.Error(), "api.deepseek.com") {
+		t.Fatal(err)
+	}
+	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", BaseURL: "https://api.deepseek.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AllowSearchBase("", WebBackend{Backend: "deepseek"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "https://search.example/v1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "http://search.example"}); err == nil {
+		t.Fatal("http search key was accepted")
+	}
+	root := t.TempDir()
+	if err := Add(root, Provider{Name: "other", BaseURL: "https://example.com/v1", APIKeyEnv: "OTHER_KEY"}, ModelSpec{Name: "m", Context: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := AllowSearchBase(root, WebBackend{Backend: "deepseek", APIKeyEnv: "OTHER_KEY", BaseURL: "https://evil.example"}); err == nil {
+		t.Fatal("provider key was sent to another host")
 	}
 }

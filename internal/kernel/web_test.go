@@ -1,7 +1,10 @@
 package kernel
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,7 +61,7 @@ func TestWebSearchAndFetchStayOffTheNetwork(t *testing.T) {
 
 func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.png"), tinyPNG(), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "a.png"), onePixelPNG(t), 0600); err != nil {
 		t.Fatal(err)
 	}
 	b := testBot(t, link.NameTerminal, link.NameTools)
@@ -197,6 +200,95 @@ func TestTrustedCIDRReachesFetchGuard(t *testing.T) {
 	}
 }
 
+func TestConfigureWebHoldsSearchKeyAddedLater(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	const secret = "sekret-later-search"
+	t.Setenv("SEARCH_KEY", secret)
+	t.Cleanup(config.ForgetKeys)
+	if err := config.SaveWeb(b.Root, config.WebFile{Search: config.WebBackend{
+		Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "https://api.deepseek.com",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
+		Links: []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")},
+		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "hi", time.Unix(10, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("SEARCH_KEY") != "" {
+		t.Fatal("search key still in the process environment")
+	}
+	if config.Getenv("SEARCH_KEY") != secret {
+		t.Fatalf("held %q", config.Getenv("SEARCH_KEY"))
+	}
+}
+
+func TestProviderSearchKeyRejectsOtherHost(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	t.Setenv("DEEPSEEK_API_KEY", "sekret-deep-value")
+	t.Cleanup(config.ForgetKeys)
+	if err := config.SaveWeb(b.Root, config.WebFile{Search: config.WebBackend{
+		Backend: "deepseek", BaseURL: "https://evil.example/v1",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	p := &scripted{resps: []provider.Message{
+		toolCall("c1", "web_search", `{"query":"q"}`),
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
+		Links: []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")},
+		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search", time.Unix(10, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	got := toolNamed(t, b, "web_search", false)
+	if !strings.Contains(got, "api.deepseek.com") || strings.Contains(got, "sekret-deep-value") {
+		t.Fatal(got)
+	}
+}
+
+func TestHeldSearchKeyIsRedactedInResults(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	const secret = "sekret-search-value"
+	t.Setenv("SEARCH_ONLY", secret)
+	t.Cleanup(config.ForgetKeys)
+	config.HoldKeys([]string{"SEARCH_ONLY"})
+	dir := t.TempDir()
+	tl := link.NewToolsLinkAt(dir, "")
+	for _, tool := range tl.Tools() {
+		if f, ok := tool.(*tools.WebSearch); ok {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) {
+				return []tools.Hit{{Title: "T", URL: "https://example.com/a", Snippet: "see " + secret}}, nil
+			})
+		}
+	}
+	p := &scripted{resps: []provider.Message{
+		toolCall("c1", "web_search", `{"query":"q"}`),
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
+		Links: []link.Link{link.Terminal{}, tl},
+		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search", time.Unix(10, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	got := toolNamed(t, b, "web_search", false)
+	if strings.Contains(got, secret) || !strings.Contains(got, "[secret]") {
+		t.Fatal(got)
+	}
+}
+
 func (f fetchPage) Fetch(context.Context, string) (tools.Page, error) {
 	return tools.Page{URL: f.url, Status: 200, Title: f.title, Text: f.text}, nil
 }
@@ -240,6 +332,11 @@ func toolNamedBlob(t *testing.T, b *bot.Bot, name string) (string, string) {
 	return text, blob
 }
 
-func tinyPNG() []byte {
-	return []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0, 'I', 'H', 'D', 'R'}
+func onePixelPNG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewNRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }

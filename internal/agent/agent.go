@@ -372,7 +372,12 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) (res toolExec) {
 	defer func() {
 		if r := recover(); r != nil {
-			res = toolExec{text: finish(opt, tc.Function.Name, fmt.Sprintf("error: tool panic: %v", r))}
+			text := fmt.Sprintf("error: tool panic: %v", r)
+			if opt.Redact != nil {
+				text = opt.Redact(text)
+			}
+			text, _ = clip.Bytes(text, opt.MaxResult)
+			res = toolExec{text: finish(opt, tc.Function.Name, text)}
 		}
 	}()
 	t, ok := byName[tc.Function.Name]
@@ -394,9 +399,11 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 		if opt.Approve == nil {
 			return toolExec{text: finish(opt, t.Name(), "not run: no approver available on this link")}
 		}
-		approve.Lock()
-		approved, err := opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
-		approve.Unlock()
+		approved, err := func() (bool, error) {
+			approve.Lock()
+			defer approve.Unlock()
+			return opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
+		}()
 		if err != nil {
 			return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 		}

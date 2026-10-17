@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"xbot/internal/tools"
 )
 
 const maxSnap = 8000
@@ -59,10 +61,7 @@ func (s *Session) Snapshot(ctx context.Context) (string, error) {
 
 // wrapPage marks page text as data. A page that contains the closer cannot end the block.
 func wrapPage(text string) string {
-	text = strings.NewReplacer(
-		"</untrusted_event>", "< /untrusted_event>",
-		"<untrusted_event>", "< untrusted_event>",
-	).Replace(text)
+	text = tools.NeutralizeUntrusted(text)
 	return "<untrusted_event>\n" + text + "\n</untrusted_event>"
 }
 

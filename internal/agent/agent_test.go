@@ -612,3 +612,87 @@ func TestImageTurnCap(t *testing.T) {
 		t.Fatalf("images %d note %v", n, sawNote)
 	}
 }
+
+type approvePanicTool struct{}
+
+func (approvePanicTool) Name() string                                  { return "needs" }
+func (approvePanicTool) Description() string                           { return "needs" }
+func (approvePanicTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (approvePanicTool) Confirm(json.RawMessage) (bool, string, error) { return true, "do it", nil }
+func (approvePanicTool) Run(context.Context, json.RawMessage) (string, error) {
+	return "ok", nil
+}
+
+func TestApprovePanicDoesNotDeadlock(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "needs", Arguments: "{}"}},
+			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "needs", Arguments: "{}"}},
+		}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	done := make(chan struct{})
+	var got []provider.Message
+	var err error
+	go func() {
+		defer close(done)
+		got, err = Run(context.Background(), p, []tools.Tool{approvePanicTool{}}, nil, Options{
+			Approve: func(context.Context, string, string) (bool, error) {
+				panic("approve blew up")
+			},
+		})
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("approve panic held the lock")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var panics int
+	for _, m := range got {
+		if strings.Contains(m.Content, "error: tool panic:") {
+			panics++
+		}
+	}
+	if panics != 2 {
+		t.Fatalf("panics %d in %+v", panics, got)
+	}
+}
+
+func TestToolPanicIsRedactedAndClipped(t *testing.T) {
+	secret := "sk-secret-value"
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "boom", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "still here"},
+	}}
+	tool := panicTextTool{text: secret + " " + strings.Repeat("x", 8000)}
+	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{
+		MaxResult: 128,
+		Redact: func(s string) string {
+			return strings.ReplaceAll(s, secret, "[secret]")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 || strings.Contains(got[1].Content, secret) || !strings.Contains(got[1].Content, "[secret]") {
+		t.Fatalf("%+v", got)
+	}
+	if len(got[1].Content) > 128 {
+		t.Fatalf("panic text len %d", len(got[1].Content))
+	}
+}
+
+type panicTextTool struct{ text string }
+
+func (panicTextTool) Name() string                                  { return "boom" }
+func (panicTextTool) Description() string                           { return "boom" }
+func (panicTextTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (panicTextTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (p panicTextTool) Run(context.Context, json.RawMessage) (string, error) {
+	panic(p.text)
+}

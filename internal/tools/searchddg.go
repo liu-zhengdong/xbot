@@ -41,7 +41,7 @@ func (d DDG) Search(ctx context.Context, query string, n int) ([]Hit, error) {
 		return nil, ddgBlockedError(res.Status)
 	}
 	hits := parseDDG(string(res.Body))
-	if len(hits) == 0 && ddgChallenge(res.Body) {
+	if len(hits) == 0 && ddgChallenge(res.Body, query) {
 		return nil, ddgBlockedError(res.Status)
 	}
 	if len(hits) > n {
@@ -51,10 +51,10 @@ func (d DDG) Search(ctx context.Context, query string, n int) ([]Hit, error) {
 }
 
 func ddgBlockedError(status int) error {
-	return fmt.Errorf("web_search: DuckDuckGo is blocked (HTTP %d). The response is not a result page (non-200 or an anomaly/challenge page), so there are no results. Switch the search backend: set search.backend to \"deepseek\" in web.json, or export XBOT_SEARCH_BACKEND=deepseek. That backend calls POST /responses on deepseek-v4-pro with the web_search tool. The key defaults to DEEPSEEK_API_KEY, then XBOT_API_KEY, unless search.api_key_env or XBOT_SEARCH_API_KEY_ENV names another variable", status)
+	return fmt.Errorf("web_search: DuckDuckGo is blocked (HTTP %d). The response is not a result page, so there are no results. Report this block to the owner. Do not invent results", status)
 }
 
-func ddgChallenge(body []byte) bool {
+func ddgChallenge(body []byte, query string) bool {
 	n := len(body)
 	if n > 8192 {
 		n = 8192
@@ -68,7 +68,26 @@ func ddgChallenge(body []byte) bool {
 		b.WriteByte(c)
 	}
 	s := b.String()
+	// The result page echoes the query. A search for "anomaly" must not
+	// look like the challenge marker just because that word came back.
+	q := asciiLower(query)
+	if len(q) >= 4 {
+		s = strings.ReplaceAll(s, q, "")
+	}
 	return strings.Contains(s, "anomaly") || strings.Contains(s, "challenge") || strings.Contains(s, "bots use duckduckgo")
+}
+
+func asciiLower(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // parseDDG reads result anchors and the following snippet from DuckDuckGo HTML.

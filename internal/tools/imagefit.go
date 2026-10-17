@@ -9,13 +9,21 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"sync"
 )
 
 const (
 	maxImageEdge       = 2048
-	maxImageDecodeSide = 8192
-	maxImagePixels     = 24_000_000
+	maxImageDecodeSide = 4096
+	maxImagePixels     = 8_000_000
+	// maxDecodedBytes is the bitmap a decode is allowed to expand into.
+	// 16-bit PNG uses more bytes per pixel than 8-bit.
+	maxDecodedBytes = 8 << 20
 )
+
+// decodeMu keeps image.Decode to one at a time so two large bitmaps cannot
+// land in memory together.
+var decodeMu sync.Mutex
 
 // fitImage keeps an image within the pixel cap. JPEG, PNG, and GIF that are
 // larger than maxImageEdge on a side are downscaled. WebP has no decoder
@@ -24,11 +32,11 @@ func fitImage(mime string, data []byte) (string, []byte, error) {
 	if len(data) > maxImageSend {
 		return "", nil, errors.New("view_image: image is larger than 10 MiB")
 	}
-	w, h, ok := imageSize(mime, data)
+	w, h, decoded, ok := imageMeta(mime, data)
 	if !ok {
-		return mime, data, nil
+		return "", nil, errors.New("view_image: cannot read image dimensions")
 	}
-	if w > maxImageDecodeSide || h > maxImageDecodeSide || (w > 0 && h > maxImagePixels/w) {
+	if w > maxImageDecodeSide || h > maxImageDecodeSide || decoded > maxDecodedBytes || (w > 0 && h > maxImagePixels/w) {
 		return "", nil, fmt.Errorf("view_image: image is %dx%d, over the pixel cap", w, h)
 	}
 	if mime == "image/webp" {
@@ -40,7 +48,7 @@ func fitImage(mime string, data []byte) (string, []byte, error) {
 	if w <= maxImageEdge && h <= maxImageEdge {
 		return mime, data, nil
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
+	img, err := decodeImage(data)
 	if err != nil {
 		return "", nil, fmt.Errorf("view_image: cannot downscale image: %w", err)
 	}
@@ -51,13 +59,66 @@ func fitImage(mime string, data []byte) (string, []byte, error) {
 		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 80}); err != nil {
 			return "", nil, fmt.Errorf("view_image: cannot downscale image: %w", err)
 		}
+		if buf.Len() > maxImageSend {
+			return "", nil, errors.New("view_image: image is larger than 10 MiB")
+		}
 		return "image/jpeg", buf.Bytes(), nil
 	default:
 		if err := png.Encode(&buf, dst); err != nil {
 			return "", nil, fmt.Errorf("view_image: cannot downscale image: %w", err)
 		}
+		if buf.Len() > maxImageSend {
+			return "", nil, errors.New("view_image: image is larger than 10 MiB")
+		}
 		return "image/png", buf.Bytes(), nil
 	}
+}
+
+func decodeImage(data []byte) (image.Image, error) {
+	decodeMu.Lock()
+	defer decodeMu.Unlock()
+	img, _, err := image.Decode(bytes.NewReader(data))
+	return img, err
+}
+
+func imageMeta(mime string, data []byte) (w, h int, decoded int64, ok bool) {
+	w, h, ok = imageSize(mime, data)
+	if !ok || w <= 0 || h <= 0 {
+		return 0, 0, 0, false
+	}
+	bpp := int64(4)
+	if mime == "image/png" {
+		bpp = pngBytesPerPixel(data)
+	}
+	return w, h, int64(w) * int64(h) * bpp, true
+}
+
+// pngBytesPerPixel estimates the bitmap Go's decoder builds. 16-bit samples
+// take two bytes each. 8-bit and below are counted as 4 bytes per pixel so a
+// palette or gray image that expands to NRGBA is not under-counted.
+func pngBytesPerPixel(b []byte) int64 {
+	if len(b) < 26 {
+		return 4
+	}
+	depth := int(b[24])
+	samples := 4
+	switch b[25] {
+	case 0, 3:
+		samples = 1
+	case 2:
+		samples = 3
+	case 4:
+		samples = 2
+	case 6:
+		samples = 4
+	}
+	if depth > 8 {
+		return int64(samples * 2)
+	}
+	if samples < 4 {
+		return 4
+	}
+	return int64(samples)
 }
 
 func downscale(src image.Image, edge int) image.Image {

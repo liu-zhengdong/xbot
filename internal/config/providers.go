@@ -53,8 +53,10 @@ func Path(root string) string { return filepath.Join(root, "providers.json") }
 
 // KeyEnvNames is XBOT_API_KEY, each provider's api_key_env, and any search or
 // fetch api_key_env from web.json (including names selected by
-// XBOT_SEARCH_API_KEY_ENV and XBOT_FETCH_API_KEY_ENV). A missing registry
-// still returns XBOT_API_KEY.
+// XBOT_SEARCH_API_KEY_ENV and XBOT_FETCH_API_KEY_ENV). DeepSeek search with
+// no api_key_env also names DEEPSEEK_API_KEY. A missing registry still
+// returns XBOT_API_KEY. configureWeb calls HoldKeys again so a web.json
+// written after startup is covered.
 func KeyEnvNames(root string) []string {
 	names := []string{"XBOT_API_KEY"}
 	seen := map[string]bool{"XBOT_API_KEY": true}
@@ -74,6 +76,9 @@ func KeyEnvNames(root string) []string {
 	if w, err := LoadWeb(root); err == nil {
 		add(w.Search.APIKeyEnv)
 		add(w.Fetch.APIKeyEnv)
+		if env, ok := SearchKeyEnv(w.Search); ok {
+			add(env)
+		}
 	} else {
 		add(os.Getenv("XBOT_SEARCH_API_KEY_ENV"))
 		add(os.Getenv("XBOT_FETCH_API_KEY_ENV"))
