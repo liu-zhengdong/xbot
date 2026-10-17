@@ -162,6 +162,10 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 			status = "cancelled"
 		}
 	}
+	// The branch's own memory writes happened after Handle returned; save them now.
+	if st, err := k.Bot.LoadState(); err == nil {
+		k.saveMemOwn(t, migrate(st))
+	}
 	_, _ = k.Bot.AppendForkEnd(id, status, steps)
 	k.writeForkMeta(t, status)
 	k.bgMu.Lock()

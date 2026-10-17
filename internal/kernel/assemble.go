@@ -346,7 +346,7 @@ func renderRecentLog(logs []memory.Fact) string {
 	newest := append([]memory.Fact(nil), logs...)
 	sort.SliceStable(newest, func(i, j int) bool { return newest[i].Time.After(newest[j].Time) })
 	var lines []string
-	used := len(fmt.Sprintf("\n### Recent log (%d of %d; older: recall)\n", recentLogLines, len(logs)))
+	used := len(fmt.Sprintf("\n%s (%d of %s; older: recall)\n", recentLogHeading, recentLogLines, logCount(logs)))
 	for _, f := range newest {
 		if len(lines) >= recentLogLines {
 			break
@@ -363,7 +363,16 @@ func renderRecentLog(logs []memory.Fact) string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n### Recent log (%d of %d; older: recall)\n", len(lines), len(logs))
+	fmt.Fprintf(&b, "\n%s (%d of %s; older: recall)\n", recentLogHeading, len(lines), logCount(logs))
 	b.WriteString(strings.Join(lines, ""))
 	return b.String()
+}
+
+// logCount labels the log total. Recall returns at most the newest 200 facts,
+// so a full page is shown as "200+" rather than a wrong exact count.
+func logCount(logs []memory.Fact) string {
+	if len(logs) >= 200 {
+		return "200+"
+	}
+	return fmt.Sprint(len(logs))
 }

@@ -25,11 +25,12 @@ type turn struct {
 	notedMu sync.Mutex
 	noted   []string
 
-	// memMu guards memSeen: memory text right after this turn's own remember or
-	// forget, saved as State.MemSeen when the turn ends.
-	memMu      sync.Mutex
-	memSeen    string
-	memSeenSet bool
+	// memMu guards memOwn: the line changes of this turn's own remember and
+	// forget calls, for memPerson's view, moved into State when the turn ends.
+	memMu     sync.Mutex
+	memOwn    []string
+	memPerson string
+	memOwnSet bool
 
 	// useMu guards the completion tokens counted for this turn. It is not t.mu.
 	useMu         sync.Mutex

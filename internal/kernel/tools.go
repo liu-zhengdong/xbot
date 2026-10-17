@@ -163,7 +163,7 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		Scope:     memory.Scope(in.Scope),
 		Tier:      memory.Tier(in.Tier),
 		Text:      in.Fact,
-		PersonID:  t.k.memoryPerson(),
+		PersonID:  t.k.memoryPersonOf(t.k.turnFor(ctx)),
 		BotName:   t.k.Bot.Name(),
 		WrittenBy: t.k.Bot.Name(),
 		Time:      t.k.now(),
@@ -186,10 +186,11 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
 		fact.Untrusted = true
 	}
+	before := t.k.memBefore(ctx)
 	if err := t.k.Memory.Remember(ctx, fact); err != nil {
 		return "", err
 	}
-	t.k.noteOwnMemory(ctx)
+	t.k.noteOwnMemory(ctx, before)
 	return "remembered", nil
 }
 
@@ -224,11 +225,12 @@ func (t forgetTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if scope == memory.ScopeBotPerson {
 		return "", errors.New("memory: scope bot-person was removed; use bot, or person for a shared fact about the owner")
 	}
-	q := memory.Query{Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPerson()}
+	q := memory.Query{Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPersonOf(t.k.turnFor(ctx))}
+	before := t.k.memBefore(ctx)
 	if err := t.k.Memory.Forget(ctx, q, in.Fact); err != nil {
 		return "", err
 	}
-	t.k.noteOwnMemory(ctx)
+	t.k.noteOwnMemory(ctx, before)
 	return "forgot", nil
 }
 
@@ -266,14 +268,14 @@ func (t recallTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	var facts []memory.Fact
 	for _, scope := range scopes {
 		got, err := t.k.Memory.Recall(ctx, memory.Query{
-			Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPerson(), Text: in.Query,
+			Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPersonOf(t.k.turnFor(ctx)), Text: in.Query,
 		})
 		if err != nil {
 			return "", err
 		}
 		facts = append(facts, got...)
 	}
-	facts = memory.Resolve(memory.Visible(facts, t.k.Bot.Name(), t.k.memoryPerson()))
+	facts = memory.Resolve(memory.Visible(facts, t.k.Bot.Name(), t.k.memoryPersonOf(t.k.turnFor(ctx))))
 	if len(facts) == 0 {
 		return "no matching facts", nil
 	}

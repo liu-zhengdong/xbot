@@ -273,9 +273,12 @@ func TestMemoryDiffSkipsOwnRemember(t *testing.T) {
 		t.Fatalf("facts %v %v", facts, err)
 	}
 	for _, up := range envUpdates(t, b) {
-		if strings.Contains(up, "memory changed") {
+		if strings.Contains(up, "memory changed") || strings.Contains(up, "memory: updated") {
 			t.Fatalf("own write reported back:\n%s", up)
 		}
+	}
+	if reqs[0].Messages[1].Content != reqs[2].Messages[1].Content {
+		t.Fatal("msgs[1] changed after the bot's own remember")
 	}
 }
 
@@ -315,17 +318,17 @@ func TestMemoryDiffCap(t *testing.T) {
 		fmt.Fprintf(&a, "- old fact number %03d with some padding text\n", i)
 		fmt.Fprintf(&b, "- new fact number %03d with some padding text\n", i)
 	}
-	got := memoryDiff(a.String(), b.String())
-	if got != "memory changed: 100 lines added, 100 removed (too long to show; read your memory)" {
+	got := memoryDiff(a.String(), b.String(), nil)
+	if got != "memory changed: 100 lines added, 100 removed (too long to show; use recall to read it)" {
 		t.Fatalf("got %q", got)
 	}
-	if memoryDiff(a.String(), a.String()) != "" {
+	if memoryDiff(a.String(), a.String(), nil) != "" {
 		t.Fatal("equal texts produced a diff")
 	}
-	if memoryDiff("x\n", "x\n\n\n") != "" {
+	if memoryDiff("x\n", "x\n\n\n", nil) != "" {
 		t.Fatal("blank-line change produced a diff")
 	}
-	if d := memoryDiff("a\nb\n", "a\n<b>\n"); !strings.Contains(d, "+ &lt;b&gt;") || !strings.Contains(d, "- b") {
+	if d := memoryDiff("a\nb\n", "a\n<b>\n", nil); !strings.Contains(d, "+ &lt;b&gt;") || !strings.Contains(d, "- b") {
 		t.Fatalf("diff not fenced or wrong: %q", d)
 	}
 }
@@ -349,11 +352,170 @@ func TestMemoryDiffQuietWithoutChange(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "two"},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
-	memDiffRun(t, k, 2, nil)
+	reqs := memDiffRun(t, k, 2, nil)
+	if len(reqs) != 2 || reqs[0].Messages[1].Content != reqs[1].Messages[1].Content {
+		t.Fatal("msgs[1] changed without a memory change")
+	}
 	ups := envUpdates(t, b)
 	for _, up := range ups[1:] {
 		if strings.Contains(up, "memory changed") || strings.Contains(up, "memory: updated") {
 			t.Fatalf("memory reported without a change:\n%s", up)
 		}
+	}
+}
+
+// TestMemoryViewPerPerson: a turn from another person never sees the owner's
+// person facts, in msgs[1] or in a diff, and the owner's view comes back intact.
+func TestMemoryViewPerPerson(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
+	if err := store.Remember(context.Background(), memory.Fact{
+		Key: "home", Scope: memory.ScopePerson, Tier: memory.TierProfile,
+		PersonID: "u1", WrittenBy: "u1", Text: "owner lives in Hangzhou", Time: t0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, Content: "one"},
+		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: "three"},
+	}}
+	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
+	for i, who := range []string{"u1", "u2", "u1"} {
+		if err := k.Handle(context.Background(), link.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(p.reqs) != 3 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	for _, m := range p.reqs[1].Messages {
+		if strings.Contains(m.Content, "owner lives in Hangzhou") {
+			t.Fatalf("owner fact reached another person's turn:\n%s", m.Content)
+		}
+	}
+	if p.reqs[0].Messages[1].Content != p.reqs[2].Messages[1].Content {
+		t.Fatal("owner's snapshot not restored")
+	}
+	for _, up := range envUpdates(t, b) {
+		if strings.Contains(up, "memory changed") {
+			t.Fatalf("person switch reported as a memory change:\n%s", up)
+		}
+	}
+}
+
+// hookProvider runs hook before the first model call.
+type hookProvider struct {
+	*scripted
+	hook func()
+}
+
+func (h *hookProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+	if h.hook != nil {
+		h.hook()
+		h.hook = nil
+	}
+	return h.scripted.Chat(ctx, req, onDelta)
+}
+
+// TestMemoryDiffKeepsOutsideEditDuringOwnWrite: an outside edit landing in the
+// same turn as the bot's own remember is still reported; only the own line is skipped.
+func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameMemory)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
+	args := `{"fact":"own note from the bot","tier":"profile"}`
+	sp := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: args},
+		}}},
+		{Role: provider.RoleAssistant, Content: "noted"},
+		{Role: provider.RoleAssistant, Content: "two"},
+	}}
+	hp := &hookProvider{scripted: sp, hook: func() {
+		if err := store.Remember(context.Background(), memory.Fact{
+			Key: "outside", Scope: memory.ScopeBot, Tier: memory.TierProfile,
+			BotName: b.Name(), WrittenBy: "owner", Text: "outside edit mid turn", Time: t0,
+		}); err != nil {
+			t.Error(err)
+		}
+	}}
+	k := &Kernel{
+		Bot: b, Provider: hp, Memory: store, MaxSteps: 4,
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Now:   func() time.Time { return t0 },
+	}
+	memDiffRun(t, k, 2, nil)
+	up := lastEnvUpdate(t, k)
+	if !strings.Contains(up, "outside edit mid turn") {
+		t.Fatalf("outside edit swallowed by the own write:\n%s", up)
+	}
+	if strings.Contains(up, "own note from the bot") {
+		t.Fatalf("own write reported back:\n%s", up)
+	}
+}
+
+// TestMemoryDiffRecentLogOnlyNewEntries: a log append shows the new entry only,
+// not the heading count or the entry that left the window.
+func TestMemoryDiffRecentLogOnlyNewEntries(t *testing.T) {
+	render := func(from, to, total int) string {
+		var b strings.Builder
+		b.WriteString("### Standing\n- a fact\n")
+		fmt.Fprintf(&b, "\n%s (%d of %d; older: recall)\n", recentLogHeading, to-from, total)
+		for i := to - 1; i >= from; i-- {
+			fmt.Fprintf(&b, "- log entry %02d\n", i)
+		}
+		return b.String()
+	}
+	got := memoryDiff(render(2, 10, 10), render(3, 11, 11), nil)
+	if !strings.Contains(got, "+ - log entry 10") {
+		t.Fatalf("new entry missing: %q", got)
+	}
+	if strings.Contains(got, "log entry 02") || strings.Contains(got, "Recent log") {
+		t.Fatalf("window shift or heading reported: %q", got)
+	}
+}
+
+// TestMemoryOwnWriteInForkedTurnSaved: a remember made after the turn forked is
+// saved as the bot's own change when the background finishes.
+func TestMemoryOwnWriteInForkedTurnSaved(t *testing.T) {
+	k, g, box := forkKernel(t)
+	store := memory.Open(k.Bot.Root)
+	k.Memory = store
+	k.Links = append(k.Links, link.Memory{})
+	k.Provider = &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"written in the background","tier":"profile"}`}}}},
+		{Role: provider.RoleAssistant, Content: "后台做完了"},
+	}}
+	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
+	if err := box.Post(ev); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Handle(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	close(g.release)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && len(k.Backgrounds()) != 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	st, err := k.Bot.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, l := range st.MemOwn {
+		found = found || strings.Contains(l, "written in the background")
+	}
+	if !found {
+		t.Fatalf("background own write not saved: %q", st.MemOwn)
 	}
 }
