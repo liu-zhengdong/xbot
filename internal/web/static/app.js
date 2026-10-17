@@ -3401,11 +3401,33 @@
         else state.recentTasksOpen.add(botName);
         sync();
       });
+      let openDetail = null;
       for (const ag of finished) {
-        const row = el("div", "recent-task");
+        const row = el("button", "recent-task");
+        row.type = "button";
+        row.setAttribute("aria-expanded", "false");
         row.append(el("span", "recent-title", clip(ag.task || ag.id, 80)),
           el("span", ag.status === "failed" ? "recent-status failed" : "recent-status",
             ag.status === "failed" ? "失败" : ag.status === "cancelled" ? "已取消" : "完成"));
+        row.addEventListener("click", () => {
+          const wasOpen = openDetail && openDetail.row === row;
+          if (openDetail) {
+            openDetail.row.setAttribute("aria-expanded", "false");
+            openDetail.drawer.remove();
+            openDetail = null;
+          }
+          if (wasOpen) return;
+          const drawer = el("div", "routine-drawer recent-detail");
+          drawer.append(el("div", "routine-prompt", ag.task || ag.id),
+            el("div", "routine-source", "状态：" + (ag.status === "failed" ? "失败" : ag.status === "cancelled" ? "已取消" : "完成")));
+          if (ag.finished_at) drawer.append(el("div", "routine-source", "结束时间：" + new Date(ag.finished_at).toLocaleString("zh-CN")));
+          // Red only for an actual error text; a missing summary is just gray.
+          if (ag.summary) drawer.append(el("div", ag.status === "failed" ? "routine-prompt failed" : "routine-prompt", ag.summary));
+          else drawer.append(el("div", "routine-source", "没有留下结果摘要。"));
+          row.after(drawer);
+          row.setAttribute("aria-expanded", "true");
+          openDetail = { row, drawer };
+        });
         list.append(row);
       }
       sync();
