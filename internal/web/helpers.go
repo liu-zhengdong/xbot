@@ -62,10 +62,13 @@ func contains(ss []string, s string) bool {
 
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= n {
-		return s
+	for i := range s {
+		if n == 0 {
+			return s[:i] + "…"
+		}
+		n--
 	}
-	return s[:n] + "…"
+	return s
 }
 
 func writeMissing(w http.ResponseWriter, err error) {

@@ -44,6 +44,7 @@
     editOpen: false,
     messages: [],
     traceOpen: {},
+    recentTasksOpen: new Set(),
     traceOut: {},
     peer: null,
     replyTo: null,
@@ -742,8 +743,9 @@
 
   function clip(s, n) {
     s = String(s || "").replace(/\s+/g, " ").trim();
-    if (s.length <= n) return s;
-    return s.slice(0, n) + "…";
+    const chars = Array.from(s);
+    if (chars.length <= n) return s;
+    return chars.slice(0, n).join("") + "…";
   }
 
   function when(t) {
@@ -3221,32 +3223,6 @@
 
   function computerView(data) {
     const wrap = document.createDocumentFragment();
-    const tasks = section("任务");
-    const running = data.agents || [];
-    if (!running.length) tasks.append(el("p", "hint", "没有任务"));
-    for (const ag of running) {
-      const card = el("div", "task");
-      const top = el("div", "task-top");
-      const labels = { running: "进行中", done: "完成", failed: "失败" };
-      const kind = ag.status === "done" ? "ok" : ag.status === "failed" ? "bad" : "run";
-      const dot = el("i", "status-dot " + kind);
-      setTip(dot, labels[ag.status] || "进行中");
-      top.append(dot);
-      card.append(top, el("p", "task-text", ag.task || ag.id));
-      const row = el("div", "row");
-      const field = document.createElement("input");
-      field.placeholder = "消息";
-      field.maxLength = 4000;
-      const go = el("button", "secondary", "引导");
-      go.type = "button";
-      go.addEventListener("click", () => controlAgent(ag.id, "steer", field.value));
-      const stop = el("button", "text-btn danger", "停止");
-      stop.type = "button";
-      stop.addEventListener("click", () => controlAgent(ag.id, "cancel", ""));
-      row.append(field, go, stop);
-      card.append(row);
-      tasks.append(card);
-    }
     const routines = section("例程");
     const list = data.routines || [];
     if (!list.length) routines.append(el("p", "hint", "没有例程"));
@@ -3261,7 +3237,60 @@
       card.append(el("span", "", rt.name || rt.id), meta);
       routines.append(card);
     }
-    wrap.append(tasks, routines);
+    const tasks = section("进行中");
+    const agents = data.agents || [];
+    const running = agents.filter((ag) => ag.status === "running");
+    const finished = agents.filter((ag) => ag.status === "done" || ag.status === "failed" || ag.status === "cancelled");
+    if (!running.length) tasks.append(el("p", "hint", "没有进行中的任务"));
+    for (const ag of running) {
+      const card = el("div", "task");
+      const top = el("div", "task-top");
+      top.append(el("i", "status-dot run"), el("span", "", "进行中"));
+      card.append(top, el("p", "task-text", clip(ag.task || ag.id, 140)));
+      const row = el("div", "row");
+      const field = document.createElement("input");
+      field.placeholder = "消息";
+      field.maxLength = 4000;
+      const go = el("button", "secondary", "引导");
+      go.type = "button";
+      go.addEventListener("click", () => controlAgent(ag.id, "steer", field.value));
+      const stop = el("button", "secondary", "停止");
+      stop.type = "button";
+      stop.addEventListener("click", () => controlAgent(ag.id, "cancel", ""));
+      row.append(field, go, stop);
+      card.append(row);
+      tasks.append(card);
+    }
+    wrap.append(routines, tasks);
+    if (finished.length) {
+      const recent = section("");
+      const toggle = el("button", "secondary recent-toggle");
+      toggle.type = "button";
+      const list = el("div", "recent-tasks");
+      const botName = data.name;
+      const sync = () => {
+        const open = state.recentTasksOpen.has(botName);
+        toggle.replaceChildren(icon(open ? "chevronDown" : "chevron"),
+          el("span", "", "最近结束 · " + finished.length));
+        toggle.setAttribute("aria-expanded", String(open));
+        list.hidden = !open;
+      };
+      toggle.addEventListener("click", () => {
+        if (state.recentTasksOpen.has(botName)) state.recentTasksOpen.delete(botName);
+        else state.recentTasksOpen.add(botName);
+        sync();
+      });
+      for (const ag of finished) {
+        const row = el("div", "recent-task");
+        row.append(el("span", "recent-title", clip(ag.task || ag.id, 80)),
+          el("span", ag.status === "failed" ? "recent-status failed" : "recent-status",
+            ag.status === "failed" ? "失败" : ag.status === "cancelled" ? "已取消" : "完成"));
+        list.append(row);
+      }
+      sync();
+      recent.append(toggle, list);
+      wrap.append(recent);
+    }
     return wrap;
   }
 
