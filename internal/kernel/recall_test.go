@@ -3,10 +3,13 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+	"xbot/internal/fsutil"
 	"xbot/internal/memory"
 )
 
@@ -53,5 +56,82 @@ func TestRecallFolder(t *testing.T) {
 	}
 	if got := run(`{"query":"absent"}`); got != "no matches" {
 		t.Fatal(got)
+	}
+}
+
+func TestRecallIsolationAndBudgets(t *testing.T) {
+	for _, kind := range []string{"ancestor", "files", "bytes", "lock"} {
+		t.Run(kind, func(t *testing.T) {
+			b := testBot(t)
+			dir := filepath.Join(b.Root, "bots", b.Name(), "memory")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			write := func(path, body string) {
+				t.Helper()
+				if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(filepath.Join(dir, "x.md"), "needle")
+			if kind == "ancestor" {
+				parent := filepath.Dir(dir)
+				if err := os.Rename(parent, parent+"-other"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(parent+"-other", parent); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if kind == "files" || kind == "bytes" {
+				n, body := 2001, "needle"
+				if kind == "bytes" {
+					n, body = 17, strings.Repeat("z", 256<<10)
+				}
+				for i := 0; i < n; i++ {
+					write(filepath.Join(dir, fmt.Sprintf("%04d.txt", i)), body)
+				}
+			}
+			var lock *fsutil.FileLock
+			if kind == "lock" {
+				var err error
+				lock, err = fsutil.Lock(filepath.Join(dir, ".lock"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lock.Release()
+			}
+			result := make(chan string, 1)
+			go func() {
+				got, err := (recallTool{&Kernel{Bot: b}}).Run(context.Background(), json.RawMessage(`{"query":"needle","scope":"bot"}`))
+				if err != nil {
+					got = err.Error()
+				}
+				result <- got
+			}()
+			if lock != nil {
+				select {
+				case got := <-result:
+					t.Fatalf("read while locked: %s", got)
+				case <-time.After(50 * time.Millisecond):
+				}
+				write(filepath.Join(dir, "x.md"), "restored")
+				lock.Release()
+			}
+			got := <-result
+			switch kind {
+			case "ancestor", "lock":
+				if got != "no matches" {
+					t.Fatal(got)
+				}
+			default:
+				if strings.Contains(got, "bot:x.md:") || kind == "files" && !strings.Contains(got, "(1980 more;") {
+					t.Fatal(got)
+				}
+				if !strings.Contains(got, "(search incomplete: file/byte limit reached)") {
+					t.Fatal(got)
+				}
+			}
+		})
 	}
 }

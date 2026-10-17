@@ -37,6 +37,20 @@ type Observation struct {
 }
 
 func grade(c Case, obs Observation, seeded map[string]string, work string, before map[string]bool) (problems []string, facts []FileFact) {
+	for name, parts := range c.Checks.ToolResultContains {
+		for _, part := range parts {
+			found := false
+			for _, e := range obs.entries {
+				if e.Message.Role == "tool" && e.Message.Name == name && strings.Contains(e.Message.Content, part) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				problems = append(problems, fmt.Sprintf("%s result missing %q", name, part))
+			}
+		}
+	}
 	asst := strings.TrimSpace(obs.Assistant)
 	if c.Checks.Silent && asst != "SILENT" {
 		problems = append(problems, "expected no message")

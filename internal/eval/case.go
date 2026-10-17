@@ -78,20 +78,21 @@ type MsgSeed struct {
 
 // Checks are outcome checks. The model's own summary is not a verdict.
 type Checks struct {
-	Silent              bool          `yaml:"silent"`
-	TranscriptNotSilent bool          `yaml:"transcript_not_silent"`
-	AssistantContains   []string      `yaml:"assistant_contains"`
-	Notes               *int          `yaml:"notes"`
-	Held                *int          `yaml:"held"`
-	MaxToolCalls        int           `yaml:"max_tool_calls"`
-	MinToolCalls        int           `yaml:"min_tool_calls"`
-	ForbidRepeat        int           `yaml:"forbid_repeat"`
-	ForbidTools         []string      `yaml:"forbid_tools"`
-	Veto                []string      `yaml:"veto"`
-	PlanPath            string        `yaml:"plan_path"`
-	Files               []FileCheck   `yaml:"files"`
-	AnyFiles            []FileCheck   `yaml:"any_files"`
-	Memory              []MemoryCheck `yaml:"memory"`
+	ToolResultContains  map[string][]string `yaml:"tool_result_contains"`
+	Silent              bool                `yaml:"silent"`
+	TranscriptNotSilent bool                `yaml:"transcript_not_silent"`
+	AssistantContains   []string            `yaml:"assistant_contains"`
+	Notes               *int                `yaml:"notes"`
+	Held                *int                `yaml:"held"`
+	MaxToolCalls        int                 `yaml:"max_tool_calls"`
+	MinToolCalls        int                 `yaml:"min_tool_calls"`
+	ForbidRepeat        int                 `yaml:"forbid_repeat"`
+	ForbidTools         []string            `yaml:"forbid_tools"`
+	Veto                []string            `yaml:"veto"`
+	PlanPath            string              `yaml:"plan_path"`
+	Files               []FileCheck         `yaml:"files"`
+	AnyFiles            []FileCheck         `yaml:"any_files"`
+	Memory              []MemoryCheck       `yaml:"memory"`
 }
 
 // MemoryCheck is one fact that must or must not be stored after the run.

@@ -17,6 +17,8 @@ setup:
     - path: projects/x.md
       text: "The launch code for project X is violet-orbit-73.\n"
 checks:
+  tool_result_contains:
+    recall: ["violet-orbit-73", "bot:projects/x.md:1"]
   min_tool_calls: 1
   max_tool_calls: 2
   assistant_contains: ["violet-orbit-73", "projects/x.md"]
