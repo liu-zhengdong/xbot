@@ -1979,3 +1979,19 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .event-toggle svg { width: 14px; height: 14px; flex-shrink: 0; }
 .event-toggle:focus-visible { outline: 2px solid var(--ring); }
 .event-raw { color: var(--muted); font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Task approval links and rail state are separate from unread markers. */
+.task-awaiting { font: inherit; padding: 4px 8px; }
+.bg-ib[data-stop-until] { width: auto; padding: 0 8px; white-space: nowrap; }
+#roster .item[data-bot], #pin-row button[data-bot] { position: relative; }
+.rail-status {
+  display: none; position: absolute; width: 14px; height: 14px;
+  align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--text); color: var(--base); pointer-events: none;
+}
+#pin-row .rail-status { display: flex; right: 7px; bottom: 7px; }
+.sidebar.collapsed #roster .rail-status { display: flex; right: 9px; bottom: 9px; }
+.rail-status .icon, .rail-status .st-spin { width: 10px; height: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .rail-status .st-spin { animation: none; }
+}

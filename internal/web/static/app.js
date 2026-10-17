@@ -202,7 +202,7 @@
     d.append(bgIcon(BG_LAYERS, 12), document.createTextNode("后台"));
     return d;
   }
-  const bgState = { data: null, open: false, steerOpen: {}, timer: 0 };
+  const bgState = { data: null, open: false, steerOpen: {}, steerDraft: {}, awaitingIDs: new Set(), timer: 0 };
   function bgBot() { return state.sel && state.sel.type === "bot" ? state.sel.id : ""; }
   async function bgRefresh() {
     const name = bgBot();
@@ -214,7 +214,7 @@
       data = await api("/api/bots/" + encodeURIComponent(name) + "/backgrounds");
     } catch (e) { return; }
     if (bgBot() !== name) return;
-    if (bgState.name !== name) { bgState.steerOpen = {}; bgState.force = true; }
+    if (bgState.name !== name) { bgState.steerOpen = {}; bgState.steerDraft = {}; bgState.awaitingIDs = new Set(); bgState.force = true; }
     bgState.data = data;
     bgState.name = name;
     bgRender();
@@ -261,12 +261,53 @@
   function bgBtn(icon, label, fn) {
     const b = el("button", "bg-ib");
     b.type = "button";
-    b.title = label;
+    setTip(b, label);
     b.setAttribute("aria-label", label);
     b.append(bgIcon(BG_ICONS[icon], 15));
     b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
     return b;
   }
+  // Match the pending card's branch; another task of this Bot may still run.
+  function taskAwaiting(task, name) {
+    if (task.status === "awaiting") return true;
+    if (!state.sel || state.sel.type !== "bot" || state.sel.id !== name) return false;
+    const latest = new Map();
+    for (const m of state.messages || []) {
+      const card = approvalCardOf(m.content);
+      if (card) latest.set(card.id, { card, branch: m.branch });
+    }
+    return Array.from(latest.values()).some(({ card, branch }) =>
+      card.state === "pending" && branch === task.id);
+  }
+
+  function approvalTaskButton(name, id) {
+    const button = el("button", "secondary task-awaiting", "等你确认");
+    button.type = "button";
+    button.addEventListener("click", () => { bgClose(); jumpToApproval(name, id); });
+    return button;
+  }
+
+  function confirmTaskStop(button, action) {
+    let until = 0;
+    let timer = 0;
+    const original = Array.from(button.childNodes, (node) => node.cloneNode(true));
+    button.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (Date.now() < until) {
+        clearTimeout(timer);
+        until = 0;
+        button.replaceChildren(...original);
+        delete button.dataset.stopUntil;
+        action();
+        return;
+      }
+      until = Date.now() + 3000;
+      button.dataset.stopUntil = String(until);
+      button.textContent = "再点一次停止";
+      timer = setTimeout(() => { until = 0; delete button.dataset.stopUntil; button.replaceChildren(...original); }, 3000);
+    });
+  }
+
   function bgRender() {
     const d = bgState.data || {};
     const running = d.backgrounds || [];
@@ -278,13 +319,22 @@
     const base = "/api/bots/" + encodeURIComponent(name);
     const badge = document.getElementById("bg-badge");
     badge.hidden = !running.length && !queue.length;
-    badge.querySelector(".bg-n").textContent = "后台 " + running.length;
+    const awaitingIDs = new Set(running.filter((r) => taskAwaiting(r, name)).map((r) => r.id));
+    const awaitingChanged = awaitingIDs.size !== bgState.awaitingIDs.size ||
+      Array.from(awaitingIDs).some((id) => !bgState.awaitingIDs.has(id));
+    const waiting = awaitingIDs.size;
+    badge.querySelector(".bg-n").textContent = "后台 " + running.length + (waiting ? " · 等你确认" : "");
     // An open popover stays open after the last task ends, so its result can be read.
     const pop = document.getElementById("bg-pop");
     if (!bgState.open) return;
     // Do not rebuild under the owner's fingers: a poll would wipe a half-typed steer.
+    if (!awaitingChanged && Array.from(pop.querySelectorAll("[data-stop-until]")).some((b) => Number(b.dataset.stopUntil) > Date.now())) return;
     const typing = pop.querySelector(".bg-addin input");
-    if (typing && (typing === document.activeElement || typing.value) && !bgState.force) return;
+    if (typing && (typing === document.activeElement || typing.value) && !bgState.force && !awaitingChanged) return;
+    pop.querySelectorAll(".bg-addin input").forEach((inp) => {
+      if (inp.dataset.bot === name) bgState.steerDraft[inp.dataset.task] = inp.value;
+    });
+    bgState.awaitingIDs = awaitingIDs;
     bgState.force = false;
     const taskOf = {};
     running.forEach((r) => { taskOf[r.id] = r.task; });
@@ -293,10 +343,14 @@
     head.append(bgBtn("err", "关闭", bgClose));
     const list = el("ul", "bg-pl");
     running.forEach((r) => {
-      const li = bgRow("run", "spin", plainText(displayText(r.task || r.id)) || "后台任务", "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), [
-        bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.focusSteer = r.id; bgState.force = true; bgRender(); }),
-        bgBtn("stop", "取消", () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST")),
-      ]);
+      const awaiting = awaitingIDs.has(r.id);
+      const stop = bgBtn("stop", "停止", () => {});
+      confirmTaskStop(stop, () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST"));
+      const acts = [stop];
+      if (!awaiting) acts.unshift(bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.focusSteer = r.id; bgState.force = true; bgRender(); }));
+      const li = bgRow("run", awaiting ? "pause" : "spin", plainText(displayText(r.task || r.id)) || "后台任务",
+        awaiting ? "" : "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), acts);
+      if (awaiting) li.querySelector(".bg-sub").replaceWith(approvalTaskButton(name, r.id));
       const steers = controls.filter((c) => c.background === r.id && c.kind === "steer");
       if (steers.length) {
         const ins = el("ul", "bg-ins");
@@ -308,20 +362,29 @@
         });
         li.append(ins);
       }
-      if (bgState.steerOpen[r.id]) {
+      if (!awaiting && bgState.steerOpen[r.id]) {
         const f = el("form", "bg-addin");
         const inp = el("input");
         inp.placeholder = "追加指示，下一步生效…";
+        inp.dataset.task = r.id;
+        inp.dataset.bot = name;
+        inp.value = bgState.steerDraft[r.id] || "";
+        inp.addEventListener("input", () => { bgState.steerDraft[r.id] = inp.value; });
         const go = el("button", "bg-send");
         go.type = "submit";
-        go.disabled = true;
+        go.disabled = !inp.value.trim();
         inp.addEventListener("input", () => { go.disabled = !inp.value.trim(); });
         go.append(bgIcon(BG_ICONS.up, 14));
         f.append(inp, go);
         f.addEventListener("submit", (ev) => {
           ev.preventDefault();
           const t = inp.value.trim();
-          if (t) bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/steer", "POST", { text: t });
+          if (!t) return;
+          // A sent instruction is no longer a draft: clear it so polls resume.
+          delete bgState.steerDraft[r.id];
+          inp.value = "";
+          go.disabled = true;
+          bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/steer", "POST", { text: t });
         });
         li.append(f);
         if (bgState.focusSteer === r.id) { bgState.focusSteer = ""; setTimeout(() => inp.focus(), 0); }
@@ -579,7 +642,31 @@
       const text = row.querySelector(".preview span");
       if (text) text.textContent = label;
     });
+    paintRailStatus();
     sortStatusRows();
+  }
+
+  function paintRailStatus() {
+    document.querySelectorAll("#roster .item[data-bot], #pin-row button[data-bot]").forEach((row) => {
+      const name = row.dataset.bot;
+      const kind = (stStatus.map[name] || {}).state || "idle";
+      if (row.dataset.railState === kind) return;
+      row.dataset.railState = kind;
+      const av = row.querySelector(".avatar");
+      if (!av) return;
+      const old = row.querySelector(".rail-status");
+      if (old) old.remove();
+      const busy = kind === "running" || kind === "awaiting";
+      const label = name + (busy ? kind === "awaiting" ? " · 等你确认" : " · 在跑" : "");
+      setTip(av, label, "right");
+      if (row.classList.contains("pin")) setTip(row, label, "right");
+      if (busy) {
+        const dot = el("span", "rail-status " + kind);
+        dot.setAttribute("aria-hidden", "true");
+        dot.append(kind === "running" ? spinIcon(10) : icon("awaiting"));
+        row.append(dot);
+      }
+    });
   }
 
   // Running/awaiting first, stable otherwise. Only out-of-place rows are moved.
@@ -612,20 +699,23 @@
     if (stpState.open) stpRefresh().catch(() => {});
   }
 
-  async function jumpToApproval(name) {
+  async function jumpToApproval(name, branch) {
     closeStp();
     try {
       if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadThread();
       else await selectBot(name);
     } catch (e) {}
-    const find = () => thread.querySelector(".approval") || document.querySelector("#thread .approval") || document.querySelector("#node-pending .approval");
+    const find = () => Array.from(document.querySelectorAll("#thread .approval, #node-pending .approval"))
+      .find((card) => !branch || card.dataset.branch === branch);
     let card = find();
     if (!card) {
       await new Promise((r) => setTimeout(r, 50));
       card = find();
     }
     if (card) {
-      card.scrollIntoView({ block: "center", behavior: "smooth" });
+      card.scrollIntoView({ block: "center", behavior: "instant" });
+      const primary = card.querySelector("button.primary:not(:disabled)");
+      if (primary) primary.focus({ preventScroll: true });
       return;
     }
     const lines = thread.querySelectorAll(".approval-line");
@@ -743,8 +833,8 @@
       // A "detail · result" summary splits into the mono chip and the gray line.
       const sum = String(step.summary || "").trim();
       const cut = sum.indexOf(" · ");
-      const rest = cut > 0 ? sum.slice(cut + 3) : sum;
-      if (cut > 0) sl.append(el("code", "", sum.slice(0, cut)));
+      const rest = cut > 0 ? sum.slice(cut + 3) : "";
+      if (sum) sl.append(el("code", "", cut > 0 ? sum.slice(0, cut) : sum));
       sx.append(sl);
       if (rest) sx.append(el("div", "sr", rest));
       li.append(si, sx);
@@ -895,6 +985,9 @@
 
   const ICONS = {
     spinner: '<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
+    "users-plus": '<circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M19 13v6M16 16h6"/>',
+    person: '<circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/>',
+    awaiting: '<path d="M12 5v9"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>',
     logout: '<path d="M9 4H4v16h5"/><path d="M9 12h12m-5-5 5 5-5 5"/>',
     moon: THEME_MOON,
     sun: THEME_SUN,
@@ -1060,19 +1153,21 @@
     return String(text || "")
       .replace(/已转到后台\s*bg_[0-9a-f]{4,}\b\s*继续做/g, "已转到后台继续做")
       .replace(/\bbg_[0-9a-f]{4,}\b/g, "")
-      .replace(/\bsa_[0-9a-f]{4,}\b/g, "").trim();
+      .replace(/\bsa_[0-9a-f]{4,}\b/g, "")
+      .replace(/后台命令\s*sh[0-9a-f]{6,}\s*/g, "后台命令").replace(/\bsh[0-9a-f]{6,}\b/g, "").trim();
   }
 
   function eventLine(parsed, key) {
     const attrs = parsed.attributes || {};
-    const first = clip(plainText(displayText(parsed.text.split(/\r?\n/)[0])), 80);
-    const task = plainText(displayText(attrs.task_title || attrs.task || attrs.title || attrs.name)) || "子任务";
+    const first = clip(plainText(displayText(parsed.text.split(/\r?\n/)[0]))
+      .replace(/（(done|failed|cancelled|interrupted)）/g, (_, w) => "（" + taskStatus(w) + "）"), 80);
+    const task = plainText(displayText(attrs.task_title || attrs.task || attrs.title || attrs.name));
     const failed = /fail|error/i.test(parsed.type + " " + (attrs.status || ""));
     const timeout = failed && /request timeout after (\d+)m/i.exec(parsed.text);
     const reason = timeout ? "模型超时（" + timeout[1] + " 分钟）" : "出错了";
     const label = parsed.source === "subagent"
-      ? (failed ? "子任务失败：" + reason : "子任务「" + task + "」：" + first)
-      : "来自 " + (displayText(parsed.source) || "外部事件") + "：" + first;
+      ? (failed ? "子任务失败：" + reason : (task ? "子任务「" + task + "」：" : "子任务：") + first)
+      : ({ shell: "后台命令", webhook: "Webhook", watch: "监视" }[parsed.source] || "来自 " + (displayText(parsed.source) || "外部事件")) + "：" + first;
     const row = el("div", "routine-line event-line");
     const head = el("button", "secondary sysline event-toggle");
     head.type = "button";
@@ -1864,7 +1959,9 @@
         any = true;
         lastKey = "";
         if (m.branch) inner.append(bgFrom());
-        inner.append(approvalHistoryCard(appr, m.time));
+        const approval = approvalHistoryCard(appr, m.time);
+        approval.dataset.branch = m.branch || "";
+        inner.append(approval);
         return;
       }
       const card = codingCardOf(m.content);
@@ -2536,6 +2633,7 @@
     for (const b of pinned) {
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
+      btn.dataset.bot = b.name;
       setTip(btn, b.name);
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
@@ -2575,7 +2673,7 @@
     newer.type = "button";
     newer.setAttribute("aria-label", "新建群组");
     setTip(newer, "新建群组", "right");
-    newer.append(icon("plus"));
+    newer.append(icon("users-plus"));
     newer.addEventListener("click", openNewGroup);
     roster.append(sectionLabel("群组", newer));
     for (const g of state.groups) {
@@ -2591,7 +2689,12 @@
 
   function renderMe() {
     const slot = $("me-avatar");
-    slot.replaceChildren(avatar(state.owner || "me", null, "me"));
+    if (state.owner.trim()) slot.replaceChildren(avatar(state.owner, null, "me"));
+    else {
+      const face = el("span", "avatar me");
+      face.append(icon("person"));
+      slot.replaceChildren(face);
+    }
     const name = $("me-name");
     name.textContent = "我";
     setTip(name, state.owner || "");
@@ -3549,14 +3652,17 @@
     }
     const tasks = section("进行中");
     const agents = data.agents || [];
-    const running = agents.filter((ag) => ag.status === "running");
+    const running = agents.filter((ag) => ["running", "awaiting", "queued"].includes(ag.status));
     const finished = agents.filter((ag) => ["done", "failed", "cancelled", "canceled", "interrupted", "denied", "declined"].includes(ag.status));
     if (!running.length) tasks.append(el("p", "hint", "没有进行中的任务"));
     for (const ag of running) {
       const card = el("div", "task");
       const top = el("div", "task-top");
-      top.append(el("i", "status-dot run"), el("span", "", "进行中"));
-      card.append(top, el("p", "task-text", clip(plainText(displayText(ag.task || ag.id)) || "子任务", 140)));
+      const awaiting = taskAwaiting(ag, data.name);
+      if (awaiting) top.append(approvalTaskButton(data.name, ag.id));
+      else if (ag.status === "queued") top.append(el("span", "", "已排队"));
+      if (top.childNodes.length) card.append(top);
+      card.append(el("p", "task-text", clip(plainText(displayText(ag.task || ag.id)) || "子任务", 140)));
       const row = el("div", "row");
       const field = document.createElement("input");
       field.placeholder = "消息";
@@ -3568,8 +3674,9 @@
       go.addEventListener("click", () => controlAgent(ag.id, "steer", field.value));
       const stop = el("button", "secondary", "停止");
       stop.type = "button";
-      stop.addEventListener("click", () => controlAgent(ag.id, "cancel", ""));
-      row.append(field, go, stop);
+      confirmTaskStop(stop, () => controlAgent(ag.id, "cancel", ""));
+      if (!awaiting) row.append(field, go);
+      row.append(stop);
       card.append(row);
       tasks.append(card);
     }
@@ -4030,7 +4137,7 @@
   }
 
   function approvalCard(payload) {
-    return pendingApprovalCard({
+    const card = pendingApprovalCard({
       tool: payload.tool || payload.name || "",
       title: payload.title || "",
       subtitle: payload.subtitle || "",
@@ -4046,6 +4153,8 @@
         });
       },
     });
+    card.dataset.branch = payload.branch || payload.background || "";
+    return card;
   }
 
   // How many owner messages in the loaded transcript carry exactly this text

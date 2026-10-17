@@ -41,8 +41,8 @@ func TestComputerTabLayout(t *testing.T) {
 	view := source[start : start+end]
 	for _, want := range []string{
 		`wrap.append(routines, tasks)`, `section("例程")`, `section("进行中")`,
-		`ag.status === "running"`, `["done", "failed", "cancelled", "canceled", "interrupted", "denied", "declined"].includes(ag.status)`,
-		`top.append(el("i", "status-dot run"), el("span", "", "进行中"))`,
+		`["running", "awaiting", "queued"].includes(ag.status)`, `["done", "failed", "cancelled", "canceled", "interrupted", "denied", "declined"].includes(ag.status)`,
+		`if (awaiting) top.append(approvalTaskButton(data.name, ag.id))`,
 		`"secondary", "引导"`, `"secondary", "停止"`,
 		`"没有进行中的任务"`, `"没有例程"`, `"最近结束 · " + finished.length`,
 		`state.recentTasksOpen.has(botName)`, `toggle.setAttribute("aria-expanded", String(open))`,
