@@ -15,10 +15,13 @@ import (
 const (
 	maxImageEdge       = 2048
 	maxImageDecodeSide = 4096
-	// maxDecodedBytes is one bitmap. decodeMu already runs one decode at a
-	// time, so a second copy is not sitting beside it. The cap applies only
-	// on the path that actually calls image.Decode. WebP is never decoded.
-	maxDecodedBytes = maxImageDecodeSide * maxImageDecodeSide * 4
+	// maxDecodedBytes is one decode's estimate. decodeMu allows only one
+	// decode at a time, so a second bitmap is not sitting beside it. The cap
+	// covers a progressive JPEG's coefficient buffer plus its YCbCr bitmap
+	// (12 bytes per pixel) and a 16-bit PNG bitmap (8 bytes per pixel). It
+	// applies only on the path that actually calls image.Decode. WebP is
+	// never decoded.
+	maxDecodedBytes = 160 << 20
 )
 
 // decodeMu keeps image.Decode to one at a time so two large bitmaps cannot
@@ -92,8 +95,9 @@ func imageMeta(mime string, data []byte) (w, h int, decoded int64, ok bool) {
 	}
 	decoded = int64(w) * int64(h) * bpp
 	if mime == "image/jpeg" && jpegProgressive(data) {
-		// A progressive scan keeps a second buffer beside the bitmap.
-		decoded += int64(w) * int64(h) * 4
+		// A progressive decode keeps its coefficient buffer (about 8 B/px)
+		// beside the YCbCr bitmap (about 1.5-3 B/px), so count both.
+		decoded = int64(w) * int64(h) * 12
 	}
 	return w, h, decoded, true
 }

@@ -261,6 +261,88 @@ func TestSubagentImageRoundDropsAfterReply(t *testing.T) {
 	}
 }
 
+type streakRounds struct {
+	mu   sync.Mutex
+	reqs [][]provider.Message
+	n    int
+}
+
+func (p *streakRounds) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := p.n
+	p.n++
+	snap := append([]provider.Message(nil), req.Messages...)
+	for i := range snap {
+		if len(snap[i].Images) == 0 {
+			continue
+		}
+		snap[i].Images = append([]provider.Image(nil), snap[i].Images...)
+		for j := range snap[i].Images {
+			snap[i].Images[j].Data = append([]byte(nil), snap[i].Images[j].Data...)
+		}
+	}
+	p.reqs = append(p.reqs, snap)
+	if n < 5 {
+		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}}, nil
+	}
+	return provider.Message{Role: provider.RoleAssistant, Content: "saw five"}, nil
+}
+
+func TestSubagentImageStreakKeepsNewest(t *testing.T) {
+	p := &streakRounds{}
+	tool := &roundImage{}
+	loc := NewLocal(Limits{Timeout: 10 * time.Second, ProgressEvery: -1, MaxSteps: 12})
+	loc.Prov = p
+	loc.ToolSet = func(string, string) []tools.Tool { return []tools.Tool{tool} }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range loc.Events() {
+		}
+	}()
+	dir := t.TempDir()
+	id := "sa_imgstreak"
+	if err := loc.Start(ctx, StartRequest{ID: id, Task: "look", Mode: ModeBrief, Dir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		meta, _, err := ReadStatus(dir)
+		if err == nil && meta.Status == statusDone {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	meta, _, err := ReadStatus(dir)
+	if err != nil || meta.Status != statusDone {
+		t.Fatalf("status %+v %v", meta, err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.reqs) != 6 || tool.n != 5 {
+		t.Fatalf("requests %d views %d", len(p.reqs), tool.n)
+	}
+	var got []byte
+	for _, m := range p.reqs[5] {
+		for _, img := range m.Images {
+			got = append(got, img.Data...)
+		}
+	}
+	if len(got) != 1 || got[0] != 5 {
+		t.Fatalf("6th request carried %v", got)
+	}
+	for _, msgs := range p.reqs {
+		for _, m := range msgs {
+			if strings.Contains(m.Content, "image omitted: turn image cap") {
+				t.Fatalf("%s: %s", m.Role, m.Content)
+			}
+		}
+	}
+}
+
 func subFile(t *testing.T, dir string) string {
 	t.Helper()
 	entries, err := readEntries(dir)

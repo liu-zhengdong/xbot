@@ -600,20 +600,23 @@ func TestFitImageDownscalesAndRefusesHugeWebP(t *testing.T) {
 			t.Fatalf("%dx%d downscale %s %dx%d", sz[0], sz[1], mime, cfg.Width, cfg.Height)
 		}
 	}
+	// 3000x3000 at 8 B/px is 72 MiB, inside the 160 MiB cap. The header-only
+	// file still fails to decode, just not on the cap.
 	rgb16 := widePNG(3000, 3000, 16)
 	rgb16[25] = 2
-	if _, _, err = fitImage("image/png", rgb16); err == nil || !strings.Contains(err.Error(), "pixel cap") {
-		t.Fatal(err)
+	if _, _, err = fitImage("image/png", rgb16); err == nil || strings.Contains(err.Error(), "pixel cap") {
+		t.Fatalf("16-bit RGB: %v", err)
 	}
 	gray16 := widePNG(4090, 4090, 16)
 	gray16[25] = 0
 	if _, _, err = fitImage("image/png", gray16); err == nil || strings.Contains(err.Error(), "pixel cap") {
 		t.Fatalf("16-bit gray: %v", err)
 	}
-	if _, _, err = fitImage("image/jpeg", jpegSOF(0xC2, 3000, 3000)); err == nil || !strings.Contains(err.Error(), "pixel cap") {
+	// A progressive JPEG is 12 B/px: 4096x4096 is 192 MiB, over the cap.
+	if _, _, err = fitImage("image/jpeg", jpegSOF(0xC2, 4096, 4096)); err == nil || !strings.Contains(err.Error(), "pixel cap") {
 		t.Fatal(err)
 	}
-	if _, _, err = fitImage("image/jpeg", jpegSOF(0xC0, 3000, 3000)); err == nil || strings.Contains(err.Error(), "pixel cap") {
+	if _, _, err = fitImage("image/jpeg", jpegSOF(0xC0, 4096, 4096)); err == nil || strings.Contains(err.Error(), "pixel cap") {
 		t.Fatalf("baseline jpeg: %v", err)
 	}
 }
