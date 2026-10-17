@@ -137,7 +137,7 @@ type rememberTool struct{ k *Kernel }
 
 func (rememberTool) Name() string { return "remember" }
 func (rememberTool) Description() string {
-	return "Store a fact. scope is person, bot, or bot-person. tier is profile (always loaded) or log (search only)."
+	return fmt.Sprintf("Store a fact. scope is person, bot, or bot-person. tier is profile (always loaded; each scope is capped at %d bytes; if it is full, consolidate: merge facts, forget stale ones, or move details to the log tier) or log (search only).", memory.ProfileBytes)
 }
 func (rememberTool) Parameters() any {
 	return schema(map[string]any{

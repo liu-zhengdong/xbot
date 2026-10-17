@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
@@ -58,7 +59,10 @@ func DefaultRules() string {
 	return UntrustedRule + "\n\n" + OwnerRule + "\n\n" + MemoryRule + "\n\n" + ActionRule + "\n\n" + VerifyRule + "\n\n" + SilenceRule + "\n\n" + LanguageRule + "\n\n" + JudgmentRule + "\n\n" + ResourcefulRule + "\n\n" + OfferRule + "\n\n" + ReplyRule
 }
 
-const profileInjectMax = 4096
+// memoryClipNote is appended only when the defensive clip fires.
+// A profile the store accepted fits in ProfileInjectBytes, so this note
+// means the file was hand-edited past the cap or escaping expanded it.
+const memoryClipNote = "\n[memory clipped; consolidate: merge facts, forget stale ones, or move details to the log tier]"
 
 // Input is the context for one wake. Persona, rules, and link names are the stable prefix.
 type Input struct {
@@ -213,15 +217,21 @@ func (k *Kernel) soleOwner() (string, bool) {
 }
 
 func clipMemory(s string) string {
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(clip.Valid(s))
 	if s == "" {
 		return ""
 	}
-	if len(s) > profileInjectMax {
-		s, _ = clip.Bytes(s, profileInjectMax)
-		s = strings.TrimSpace(s)
+	if len(s) <= memory.ProfileInjectBytes {
+		return s
 	}
-	return s
+	budget := memory.ProfileInjectBytes - len(memoryClipNote)
+	if budget < 0 {
+		return strings.TrimSpace(memoryClipNote)
+	}
+	for budget > 0 && !utf8.RuneStart(s[budget]) {
+		budget--
+	}
+	return strings.TrimSpace(s[:budget]) + memoryClipNote
 }
 
 // wrapMemory closes the block and states that the text is data.
