@@ -452,6 +452,17 @@ func (routineCreate) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "create routine", nil
 }
 
+// routineAtInPast reports whether a one-shot at time is older than the window
+// within which a late poll may still fire it.
+func routineAtInPast(at string, tm *link.Timer, now time.Time) (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return time.Time{}, false
+	}
+	now = now.UTC()
+	return t, t.Before(now.Add(-link.OneShotWindow))
+}
+
 func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		ID     string `json:"id"`
@@ -477,6 +488,11 @@ func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, err
 	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Enabled: true}
 	if r.Cron != "" {
 		r.Zone = "local"
+	}
+	if strings.TrimSpace(r.At) != "" {
+		if at, past := routineAtInPast(r.At, tm, t.k.now()); past {
+			return "", fmt.Errorf("at is in the past: %s (now %s); use a future time", at.UTC().Format(time.RFC3339), t.k.now().UTC().Format(time.RFC3339))
+		}
 	}
 	if err := tm.Save(r); err != nil {
 		return "", err

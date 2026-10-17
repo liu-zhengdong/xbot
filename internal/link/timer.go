@@ -29,11 +29,15 @@ type Routine struct {
 	LastSlot string `json:"last_slot,omitempty"`
 	// Zone is "local" for the computer's local zone, "UTC" for a pinned UTC
 	// schedule, or "" for a legacy file written before C1 (also UTC).
+	// A fixed local wall time inside the repeated fall-back hour fires once,
+	// and a wall time skipped by spring-forward does not fire at all. Wildcard
+	// hours ("0 * * * *") still fire every hour across both transitions.
 	Zone string `json:"zone,omitempty"`
 }
 
-// OneShotWindow is how late a poll may be and still fire a one-shot.
-const OneShotWindow = 15 * time.Second
+// OneShotWindow is how late a poll may be and still fire a one-shot. It is the
+// same threshold C2 uses to decide a computer was down or asleep.
+const OneShotWindow = 2 * time.Minute
 
 var routineID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
@@ -126,11 +130,28 @@ func (t *Timer) Due(now time.Time) ([]Event, error) {
 		if !sched.MatchIn(now, zoneLoc) || r.LastSlot == slot {
 			continue
 		}
+		if r.Zone == "local" && !sched.EveryHour() && repeatedWall(now, zoneLoc) {
+			continue
+		}
 		ev := NewEvent(NameTimer, TypeTimer, routineBody(r), t.sender(), now)
 		ev.ID = "rt_" + r.ID + "_" + slot
 		out = append(out, ev)
 	}
 	return out, nil
+}
+
+// repeatedWall reports whether now is the second pass through a local wall
+// time, i.e. inside the repeated hour after daylight saving ends: some instant
+// d earlier showed the same wall clock. It needs no state, so every time in the
+// repeated hour fires once even when a spec has several times in it.
+func repeatedWall(now time.Time, loc *time.Location) bool {
+	_, off := now.In(loc).Zone()
+	for _, d := range []time.Duration{30 * time.Minute, time.Hour, 2 * time.Hour} {
+		if _, prev := now.Add(-d).In(loc).Zone(); prev-off == int(d/time.Second) {
+			return true
+		}
+	}
+	return false
 }
 
 func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
@@ -162,6 +183,42 @@ func (t *Timer) Fire(now time.Time, emit func(Event) error) error {
 			return err
 		}
 		if err := t.Commit(ev); err != nil {
+			return err
+		}
+	}
+	return t.Expire(now)
+}
+
+// Expire disables a one-shot whose window has passed without firing. It does
+// not commit a slot or emit an event: there is no catch-up.
+func (t *Timer) Expire(now time.Time) error {
+	list, err := t.List()
+	if err != nil {
+		return err
+	}
+	now = now.UTC()
+	for _, r := range list {
+		if !r.Enabled || r.At == "" {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, r.At)
+		if err != nil {
+			continue
+		}
+		at = at.UTC()
+		if now.Sub(at) <= OneShotWindow || r.LastSlot == at.Format("20060102T1504") {
+			continue
+		}
+		slot := at.Format("20060102T1504")
+		// Re-check under the lock: the file may have been fired, edited or
+		// deleted since List.
+		err = t.Update(r.ID, func(cur *Routine) error {
+			if cur.Enabled && cur.At == r.At && cur.LastSlot != slot {
+				cur.Enabled = false
+			}
+			return nil
+		})
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
@@ -293,6 +350,9 @@ func (t *Timer) Save(r Routine) error {
 }
 
 // Update re-reads a routine under the directory lock, applies fn, and saves it.
+// fn must not call a locking Timer method (Save, Update, Delete, Commit,
+// Expire): flock taken again from the same process on another descriptor
+// blocks forever.
 func (t *Timer) Update(id string, fn func(*Routine) error) error {
 	return t.withLock(func() error {
 		r, err := t.Load(id)
