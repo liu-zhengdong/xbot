@@ -140,7 +140,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, summary + " (untrusted turn: memory write)", nil
 		}
 	}
-	if name == "shell" && !k.turnFor(ctx).turnTrusted && k.Bot != nil {
+	if name == "shell" && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellIsReadOnly(args) {
 		root := k.Bot.Root
 		memoryDirs := []string{filepath.Join(root, "bots", k.Bot.Name(), "memory")}
 		if person := k.memoryPersonOf(k.turnFor(ctx)); person != "" {

@@ -62,6 +62,10 @@ func TestUntrustedShellMemoryWriteRequiresApproval(t *testing.T) {
 	if err != nil || !need {
 		t.Fatalf("untrusted shell memory write: approval=%v err=%v, want approval=true", need, err)
 	}
+	read, _ := json.Marshal(map[string]string{"command": "cat " + filepath.Join(dir, "memory.md")})
+	if need, _, err := tool.Confirm(read); err != nil || need {
+		t.Fatalf("untrusted read-only shell: approval=%v err=%v, want approval=false", need, err)
+	}
 	k.ensureTurn().turnTrusted = true
 	need, _, err = tool.Confirm(args)
 	if err != nil || need {
