@@ -17,6 +17,8 @@ const (
 // provider request; the transcript record stores it.
 // Usage is the model-reported token count for this completion. It stays off
 // the provider request and the transcript; the kernel copies it into the trace.
+// Images are sent on the provider request as content parts and are not stored
+// in the transcript.
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content,omitempty"`
@@ -25,6 +27,13 @@ type Message struct {
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	ReplyTo    int        `json:"-"`
 	Usage      TokenUsage `json:"-"`
+	Images     []Image    `json:"-"`
+}
+
+// Image is one picture attached to a message. Data is the raw file bytes.
+type Image struct {
+	MIME string
+	Data []byte
 }
 
 // TokenUsage is one completion's token count. Reported is true only when the

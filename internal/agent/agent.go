@@ -16,6 +16,12 @@ import (
 const defaultMaxSteps = 8
 const defaultMaxResult = 64 << 10
 
+const (
+	maxTurnImages     = 4
+	maxTurnImageBytes = 10 << 20
+	imageCapNote      = "[image omitted: turn image cap]"
+)
+
 // Approver decides whether a confirmed tool call may run.
 type Approver func(ctx context.Context, toolName, summary string) (bool, error)
 
@@ -100,6 +106,8 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 	}
 	convo := append([]provider.Message(nil), messages...)
 	var produced []provider.Message
+	var images imageBudget
+	images.consume(messages)
 	for step := 0; step < opt.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return produced, err
@@ -121,6 +129,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if err != nil {
 			return produced, err
 		}
+		// The newest image set stays for later steps in this run. Older sets are
+		// dropped once a newer view attaches. The transcript does not store
+		// the bytes, and the kernel drops whatever remains when the turn ends.
 		if msg.Role == "" {
 			msg.Role = provider.RoleAssistant
 		}
@@ -150,7 +161,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			return produced, nil
 		}
 		stepMsgs := []provider.Message{msg}
-		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt)
+		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt, &images)
+		convoBase := len(convo)
+		producedBase := len(produced)
 		for _, tm := range results {
 			convo = append(convo, tm)
 			produced = append(produced, tm)
@@ -158,6 +171,10 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			if opt.OnMessage != nil {
 				opt.OnMessage(tm)
 			}
+		}
+		if hasImages(results) {
+			images.release(dropImages(convo[:convoBase]))
+			dropImages(produced[:producedBase])
 		}
 		// A cancelled call is left open. The kernel seals it with one tombstone
 		// instead of recording "error: context canceled" as if the tool had run.
@@ -312,10 +329,16 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 	return produced, nil
 }
 
+type toolExec struct {
+	text   string
+	images []provider.Image
+}
+
 // runToolCalls starts every call, then returns tool messages in call order.
 // The approval lock is held only around Approve, so a prompt does not stall the others.
-func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) ([]provider.Message, bool) {
-	out := make([]string, len(calls))
+
+func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options, budget *imageBudget) ([]provider.Message, bool) {
+	out := make([]toolExec, len(calls))
 	var approve sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(calls))
@@ -329,55 +352,82 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 	aborted := ctx.Err() != nil
 	msgs := make([]provider.Message, 0, len(calls))
 	for i, tc := range calls {
-		if aborted && strings.TrimSpace(out[i]) == "error: "+ctx.Err().Error() {
+		if aborted && strings.TrimSpace(out[i].text) == "error: "+ctx.Err().Error() {
 			continue
+		}
+		imgs, note := budget.take(out[i].images)
+		text := out[i].text
+		if note != "" {
+			if text != "" && !strings.HasSuffix(text, "\n") {
+				text += "\n"
+			}
+			text += note
 		}
 		msgs = append(msgs, provider.Message{
 			Role:       provider.RoleTool,
 			ToolCallID: tc.ID,
 			Name:       tc.Function.Name,
-			Content:    out[i],
+			Content:    text,
+			Images:     imgs,
 		})
 	}
 	return msgs, aborted && len(msgs) < len(calls)
 }
 
-func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) string {
+func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) (res toolExec) {
+	defer func() {
+		if r := recover(); r != nil {
+			text := fmt.Sprintf("error: tool panic: %v", r)
+			if opt.Redact != nil {
+				text = opt.Redact(text)
+			}
+			text, _ = clip.Bytes(text, opt.MaxResult)
+			res = toolExec{text: finish(opt, tc.Function.Name, text)}
+		}
+	}()
 	t, ok := byName[tc.Function.Name]
 	if !ok {
-		return finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))
+		return toolExec{text: finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))}
 	}
 	raw := json.RawMessage(tc.Function.Arguments)
 	if !json.Valid(raw) {
-		return finish(opt, t.Name(), "error: tool arguments are not valid JSON")
+		return toolExec{text: finish(opt, t.Name(), "error: tool arguments are not valid JSON")}
 	}
 	need, summary, err := tools.ConfirmCall(ctx, t, raw)
 	if err != nil {
-		return finish(opt, t.Name(), "error: "+err.Error())
+		return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 	}
 	if opt.OnTool != nil {
 		opt.OnTool(t.Name(), summary)
 	}
 	if need {
 		if opt.Approve == nil {
-			return finish(opt, t.Name(), "not run: no approver available on this link")
+			return toolExec{text: finish(opt, t.Name(), "not run: no approver available on this link")}
 		}
-		approve.Lock()
-		approved, err := opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
-		approve.Unlock()
+		approved, err := func() (bool, error) {
+			approve.Lock()
+			defer approve.Unlock()
+			return opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
+		}()
 		if err != nil {
-			return finish(opt, t.Name(), "error: "+err.Error())
+			return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 		}
 		if !approved {
-			return finish(opt, t.Name(), "denied by user")
+			return toolExec{text: finish(opt, t.Name(), "denied by user")}
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return finish(opt, t.Name(), "error: "+err.Error())
+		return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 	}
+	ctx, sink := tools.WithImageSink(ctx)
 	out, err := t.Run(ctx, raw)
+	var images []provider.Image
 	if err != nil {
 		out = "error: " + err.Error()
+	} else {
+		for _, img := range sink.Take() {
+			images = append(images, provider.Image{MIME: img.MIME, Data: img.Data})
+		}
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(empty)"
@@ -386,7 +436,83 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 		out = opt.Redact(out)
 	}
 	out, _ = clip.Bytes(out, opt.MaxResult)
-	return finish(opt, t.Name(), out)
+	return toolExec{text: finish(opt, t.Name(), out), images: images}
+}
+
+type imageBudget struct {
+	n     int
+	bytes int
+}
+
+// consume counts images already on the conversation. A later run in the same
+// turn (a step-cap continuation, a subagent's next round) must not attach
+// another full budget on top of pictures that are still being sent.
+func (b *imageBudget) consume(msgs []provider.Message) {
+	if b == nil {
+		return
+	}
+	for _, m := range msgs {
+		for _, img := range m.Images {
+			b.n++
+			b.bytes += len(img.Data)
+		}
+	}
+}
+
+func (b *imageBudget) release(n, bytes int) {
+	if b == nil {
+		return
+	}
+	b.n -= n
+	b.bytes -= bytes
+	if b.n < 0 {
+		b.n = 0
+	}
+	if b.bytes < 0 {
+		b.bytes = 0
+	}
+}
+
+func (b *imageBudget) take(imgs []provider.Image) ([]provider.Image, string) {
+	if b == nil || len(imgs) == 0 {
+		return imgs, ""
+	}
+	keep := make([]provider.Image, 0, len(imgs))
+	dropped := false
+	for _, img := range imgs {
+		if b.n >= maxTurnImages || b.bytes+len(img.Data) > maxTurnImageBytes {
+			dropped = true
+			continue
+		}
+		keep = append(keep, img)
+		b.n++
+		b.bytes += len(img.Data)
+	}
+	if !dropped {
+		return keep, ""
+	}
+	return keep, imageCapNote
+}
+
+func hasImages(msgs []provider.Message) bool {
+	for _, m := range msgs {
+		if len(m.Images) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// dropImages clears pictures on msgs and reports how many bytes the budget had counted.
+func dropImages(msgs []provider.Message) (n, bytes int) {
+	for i := range msgs {
+		for _, img := range msgs[i].Images {
+			n++
+			bytes += len(img.Data)
+		}
+		msgs[i].Images = nil
+	}
+	return n, bytes
 }
 
 func finish(opt Options, name, out string) string {

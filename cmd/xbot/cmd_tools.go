@@ -181,7 +181,7 @@ func cmdProvider(root string, args []string) error {
 	case "add":
 		ordered, err := reorderFlags(args[1:], map[string]bool{
 			"base-url": true, "api-key-env": true, "model": true, "context": true,
-			"todo": true, "todo-steps": true, "thinking": true,
+			"todo": true, "todo-steps": true, "thinking": true, "vision": true,
 		})
 		if err != nil {
 			return err
@@ -195,17 +195,19 @@ func cmdProvider(root string, args []string) error {
 		todoFlag := fs.String("todo", "", "todo reminders: on, off, or empty to keep the current setting")
 		todoSteps := fs.Int("todo-steps", 0, "tool steps without a todo update before a reminder; 0 keeps the default")
 		thinking := fs.String("thinking", "", "thinking field: off, omit, or empty to keep the current setting")
+		vision := fs.String("vision", "", "image understanding: on, off, or empty to keep the current setting")
 		if err := fs.Parse(ordered); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--todo on|off] [--todo-steps N] [--thinking off|omit]")
+			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--todo on|off] [--todo-steps N] [--thinking off|omit] [--vision on|off]")
 		}
 		spec := config.ModelSpec{Name: *model, Context: *contextLen, TodoSteps: *todoSteps, Thinking: strings.ToLower(strings.TrimSpace(*thinking))}
 		if prev, _, err := config.Lookup(root, fs.Arg(0), *model); err == nil {
 			for _, m := range prev.Models {
 				if m.Name == *model {
 					spec.Todo = m.Todo
+					spec.Vision = m.Vision
 					if spec.TodoSteps == 0 {
 						spec.TodoSteps = m.TodoSteps
 					}
@@ -222,6 +224,17 @@ func cmdProvider(root string, args []string) error {
 			spec.Todo = &off
 		default:
 			return errors.New("provider add: --todo must be on or off")
+		}
+		switch strings.ToLower(strings.TrimSpace(*vision)) {
+		case "":
+		case "on", "true":
+			on := true
+			spec.Vision = &on
+		case "off", "false":
+			off := false
+			spec.Vision = &off
+		default:
+			return errors.New("provider add: --vision must be on or off")
 		}
 		if err := config.Add(root, config.Provider{
 			Name: fs.Arg(0), BaseURL: *base, APIKeyEnv: *keyEnv,

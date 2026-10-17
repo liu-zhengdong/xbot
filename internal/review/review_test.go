@@ -193,7 +193,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_skill", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "node_list"} {
+	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_skill", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "node_list", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}
@@ -219,12 +219,12 @@ func TestMCPAndUnknownTools(t *testing.T) {
 }
 
 func TestMachineTouchingSet(t *testing.T) {
-	for _, name := range []string{"shell", "read_file", "write_file", "edit_file", "desktop_screenshot", "browser_open", "browser_click"} {
+	for _, name := range []string{"shell", "read_file", "write_file", "edit_file", "view_image", "desktop_screenshot", "browser_open", "browser_click"} {
 		if !MachineTouching(name) {
 			t.Fatalf("%s not machine-touching", name)
 		}
 	}
-	for _, name := range []string{"browser_stop", "message_bot", "http_request", "node_call"} {
+	for _, name := range []string{"browser_stop", "message_bot", "http_request", "node_call", "web_fetch", "web_search"} {
 		if MachineTouching(name) {
 			t.Fatalf("%s wrongly machine-touching", name)
 		}

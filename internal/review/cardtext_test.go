@@ -16,6 +16,16 @@ func TestCardText(t *testing.T) {
 		wantSub string
 	}{
 		{
+			name: "view image", tool: "view_image",
+			args: `{"path":"shots/a.png"}`, summary: "view shots/a.png", machine: "local",
+			wantT: "查看图片", wantSub: "a.png",
+		},
+		{
+			name: "web search", tool: "web_search",
+			args: `{"query":"xbot"}`, summary: "", machine: "",
+			wantT: "搜索网页", wantSub: "xbot",
+		},
+		{
 			name: "shell deletes", tool: "shell",
 			args: `{"command":"rm -rf /tmp/x"}`, summary: "rm -rf /tmp/x", machine: "local",
 			wantT: "删除文件", wantSub: "在本机上执行",

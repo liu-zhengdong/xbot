@@ -22,6 +22,12 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 		return httpCardText(args, summary)
 	case name == "write_file" || name == "edit_file":
 		return fileCardText(args, summary)
+	case name == "view_image":
+		return viewImageCardText(args, summary)
+	case name == "web_fetch":
+		return "抓取网页", hostOf(jsonString(args, "url"))
+	case name == "web_search":
+		return "搜索网页", jsonString(args, "query")
 	case name == "propose_persona":
 		return "修改人设", ""
 	case name == "propose_profile":
@@ -151,6 +157,21 @@ func deleteTitle(name string) string {
 	default:
 		return "删除"
 	}
+}
+
+func viewImageCardText(args json.RawMessage, summary string) (string, string) {
+	if raw := strings.TrimSpace(jsonString(args, "url")); raw != "" {
+		return "查看图片", hostOf(raw)
+	}
+	p := strings.TrimSpace(jsonString(args, "path"))
+	if p == "" {
+		p = pathFromSummary(summary)
+	}
+	base := path.Base(strings.ReplaceAll(p, `\`, "/"))
+	if base == "." || base == "/" || base == `\` {
+		base = ""
+	}
+	return "查看图片", base
 }
 
 func jsonString(args json.RawMessage, key string) string {

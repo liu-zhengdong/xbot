@@ -179,6 +179,15 @@ func TestLLMCompactNeutralizesDelimiter(t *testing.T) {
 	}
 }
 
+func TestEstimateCountsImageBytes(t *testing.T) {
+	bare := provider.Message{Role: provider.RoleTool, Content: "x"}
+	with := bare
+	with.Images = []provider.Image{{MIME: "image/png", Data: make([]byte, 400)}}
+	if EstimateMessage(with) <= EstimateMessage(bare) {
+		t.Fatal("image bytes were free")
+	}
+}
+
 func TestLLMRejectsEmpty(t *testing.T) {
 	_, err := LLM{P: emptyProv{}}.Compact(context.Background(), "", nil)
 	if err == nil || !strings.Contains(err.Error(), "empty") {

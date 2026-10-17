@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,8 +20,20 @@ type scripted struct {
 	i     int
 }
 
+func snapshotReq(req provider.Request) provider.Request {
+	msgs := make([]provider.Message, len(req.Messages))
+	for i, m := range req.Messages {
+		msgs[i] = m
+		if len(m.Images) > 0 {
+			msgs[i].Images = append([]provider.Image(nil), m.Images...)
+		}
+	}
+	req.Messages = msgs
+	return req
+}
+
 func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	s.reqs = append(s.reqs, req)
+	s.reqs = append(s.reqs, snapshotReq(req))
 	if s.i >= len(s.resps) {
 		return provider.Message{}, errors.New("no more responses")
 	}
@@ -490,4 +503,233 @@ func TestGuardRemindsThenStops(t *testing.T) {
 	if !sawReason || !sawSummary {
 		t.Fatalf("produced %+v", got)
 	}
+}
+
+type panicTool struct{}
+
+func (panicTool) Name() string                                  { return "boom" }
+func (panicTool) Description() string                           { return "boom" }
+func (panicTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (panicTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (panicTool) Run(context.Context, json.RawMessage) (string, error) {
+	panic("hostile page")
+}
+
+func TestToolPanicBecomesError(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "boom", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "still here"},
+	}}
+	got, err := Run(context.Background(), p, []tools.Tool{panicTool{}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 || !strings.Contains(got[1].Content, "error: tool panic: hostile page") {
+		t.Fatalf("%+v", got)
+	}
+}
+
+type imageTool struct {
+	n    int
+	size int
+}
+
+func (imageTool) Name() string                                  { return "view_image" }
+func (imageTool) Description() string                           { return "view" }
+func (imageTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (imageTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (im imageTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	n := im.n
+	if n <= 0 {
+		n = 1
+	}
+	size := im.size
+	if size <= 0 {
+		size = 4
+	}
+	for i := 0; i < n; i++ {
+		tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: bytes.Repeat([]byte{byte(i + 1)}, size)})
+	}
+	return "path: a.png", nil
+}
+
+func TestImageStaysUntilTheTurnEnds(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	_, err := Run(context.Background(), p, []tools.Tool{imageTool{}, &echoTool{}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 3 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	for i, req := range p.reqs[1:] {
+		var n int
+		for _, m := range req.Messages {
+			n += len(m.Images)
+			if strings.Contains(m.Content, "[image omitted after the previous step]") {
+				t.Fatalf("request %d told the model the image was gone: %q", i+1, m.Content)
+			}
+		}
+		if n != 1 {
+			t.Fatalf("request %d carried %d images", i+1, n)
+		}
+	}
+}
+
+type seqImage struct{ n int }
+
+func (seqImage) Name() string                                  { return "view_image" }
+func (seqImage) Description() string                           { return "view" }
+func (seqImage) Parameters() any                               { return map[string]any{"type": "object"} }
+func (seqImage) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (im *seqImage) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	im.n++
+	tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: []byte{byte(im.n)}})
+	return "path: a.png", nil
+}
+
+func TestNewestImageSetReplacesOlder(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	_, err := Run(context.Background(), p, []tools.Tool{&seqImage{}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 3 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	var marks []byte
+	for _, m := range p.reqs[2].Messages {
+		for _, img := range m.Images {
+			marks = append(marks, img.Data...)
+		}
+	}
+	if len(marks) != 1 || marks[0] != 2 {
+		t.Fatalf("final request images %v", marks)
+	}
+}
+
+func TestImageTurnCap(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	_, err := Run(context.Background(), p, []tools.Tool{imageTool{n: 5, size: 8}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	var sawNote bool
+	for _, m := range p.reqs[1].Messages {
+		n += len(m.Images)
+		if strings.Contains(m.Content, "[image omitted: turn image cap]") {
+			sawNote = true
+		}
+	}
+	if n != 4 || !sawNote {
+		t.Fatalf("images %d note %v", n, sawNote)
+	}
+}
+
+type approvePanicTool struct{}
+
+func (approvePanicTool) Name() string                                  { return "needs" }
+func (approvePanicTool) Description() string                           { return "needs" }
+func (approvePanicTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (approvePanicTool) Confirm(json.RawMessage) (bool, string, error) { return true, "do it", nil }
+func (approvePanicTool) Run(context.Context, json.RawMessage) (string, error) {
+	return "ok", nil
+}
+
+func TestApprovePanicDoesNotDeadlock(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "needs", Arguments: "{}"}},
+			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "needs", Arguments: "{}"}},
+		}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	done := make(chan struct{})
+	var got []provider.Message
+	var err error
+	go func() {
+		defer close(done)
+		got, err = Run(context.Background(), p, []tools.Tool{approvePanicTool{}}, nil, Options{
+			Approve: func(context.Context, string, string) (bool, error) {
+				panic("approve blew up")
+			},
+		})
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("approve panic held the lock")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var panics int
+	for _, m := range got {
+		if strings.Contains(m.Content, "error: tool panic:") {
+			panics++
+		}
+	}
+	if panics != 2 {
+		t.Fatalf("panics %d in %+v", panics, got)
+	}
+}
+
+func TestToolPanicIsRedactedAndClipped(t *testing.T) {
+	secret := "sk-secret-value"
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "boom", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "still here"},
+	}}
+	tool := panicTextTool{text: secret + " " + strings.Repeat("x", 8000)}
+	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{
+		MaxResult: 128,
+		Redact: func(s string) string {
+			return strings.ReplaceAll(s, secret, "[secret]")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 || strings.Contains(got[1].Content, secret) || !strings.Contains(got[1].Content, "[secret]") {
+		t.Fatalf("%+v", got)
+	}
+	if len(got[1].Content) > 128 {
+		t.Fatalf("panic text len %d", len(got[1].Content))
+	}
+}
+
+type panicTextTool struct{ text string }
+
+func (panicTextTool) Name() string                                  { return "boom" }
+func (panicTextTool) Description() string                           { return "boom" }
+func (panicTextTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (panicTextTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (p panicTextTool) Run(context.Context, json.RawMessage) (string, error) {
+	panic(p.text)
 }

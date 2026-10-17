@@ -31,12 +31,16 @@ type Provider struct {
 // Zero means the default of 6.
 // Thinking is "off" (send thinking disabled), "omit" (send no thinking field),
 // or empty: off for DeepSeek model names, omit for the rest.
+// Vision, when set, is this model's image understanding. Nil uses the default
+// for the model id: deepseek-flash sees images; deepseek-chat and
+// deepseek-v4-pro do not. Other ids do not, until the spec says so.
 type ModelSpec struct {
 	Name      string `json:"name"`
 	Context   int    `json:"context"`
 	Todo      *bool  `json:"todo,omitempty"`
 	TodoSteps int    `json:"todo_steps,omitempty"`
 	Thinking  string `json:"thinking,omitempty"`
+	Vision    *bool  `json:"vision,omitempty"`
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -47,22 +51,37 @@ type File struct {
 // Path is the registry file under the data root.
 func Path(root string) string { return filepath.Join(root, "providers.json") }
 
-// KeyEnvNames is XBOT_API_KEY plus each provider's api_key_env.
-// A missing registry still returns XBOT_API_KEY.
+// KeyEnvNames is XBOT_API_KEY, each provider's api_key_env, and any search or
+// fetch api_key_env from web.json (including names selected by
+// XBOT_SEARCH_API_KEY_ENV and XBOT_FETCH_API_KEY_ENV). DeepSeek search with
+// no api_key_env also names DEEPSEEK_API_KEY. A missing registry still
+// returns XBOT_API_KEY. configureWeb calls HoldKeys again so a web.json
+// written after startup is covered.
 func KeyEnvNames(root string) []string {
 	names := []string{"XBOT_API_KEY"}
 	seen := map[string]bool{"XBOT_API_KEY": true}
-	f, err := Load(root)
-	if err != nil {
-		return names
-	}
-	for _, p := range f.Providers {
-		name := strings.TrimSpace(p.APIKeyEnv)
-		if name == "" || seen[name] {
-			continue
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] || !envName.MatchString(name) {
+			return
 		}
 		seen[name] = true
 		names = append(names, name)
+	}
+	if f, err := Load(root); err == nil {
+		for _, p := range f.Providers {
+			add(p.APIKeyEnv)
+		}
+	}
+	if w, err := LoadWeb(root); err == nil {
+		add(w.Search.APIKeyEnv)
+		add(w.Fetch.APIKeyEnv)
+		if env, ok := SearchKeyEnv(w.Search); ok {
+			add(env)
+		}
+	} else {
+		add(os.Getenv("XBOT_SEARCH_API_KEY_ENV"))
+		add(os.Getenv("XBOT_FETCH_API_KEY_ENV"))
 	}
 	return names
 }
@@ -136,6 +155,9 @@ func Add(root string, p Provider, model ModelSpec) error {
 			}
 			if model.Thinking == "" {
 				model.Thinking = cur.Models[n].Thinking
+			}
+			if model.Vision == nil {
+				model.Vision = cur.Models[n].Vision
 			}
 			cur.Models[n] = model
 			replaced = true
@@ -218,12 +240,12 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	modelName = strings.TrimSpace(modelName)
 	if providerName == "" && modelName == "" {
 		m := FromEnv(getenv)
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY"}, 0, nil
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, 0, nil
 	}
 	if providerName == "" {
 		m := FromEnv(getenv)
 		m.Model = modelName
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY"}, 0, nil
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, 0, nil
 	}
 	p, model, err := Lookup(root, providerName, modelName)
 	if err != nil {
@@ -242,17 +264,20 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		Model:    model.Name,
 		KeyEnv:   p.APIKeyEnv,
 		Thinking: model.Thinking,
+		Vision:   model.SeesImages(),
 	}, model.Context, nil
 }
 
 // ModelConfig is a resolved endpoint. KeyEnv is the variable name, not a place to store the key.
 // Thinking is the model spec's thinking switch, empty when unset.
+// Vision is whether this model understands images.
 type ModelConfig struct {
 	APIKey   string
 	BaseURL  string
 	Model    string
 	KeyEnv   string
 	Thinking string
+	Vision   bool
 }
 
 func validateProvider(p Provider, modelRequired bool) error {

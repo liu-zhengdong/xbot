@@ -25,8 +25,20 @@ type scripted struct {
 	i     int
 }
 
+func snapshotReq(req provider.Request) provider.Request {
+	msgs := make([]provider.Message, len(req.Messages))
+	for i, m := range req.Messages {
+		msgs[i] = m
+		if len(m.Images) > 0 {
+			msgs[i].Images = append([]provider.Image(nil), m.Images...)
+		}
+	}
+	req.Messages = msgs
+	return req
+}
+
 func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	s.reqs = append(s.reqs, req)
+	s.reqs = append(s.reqs, snapshotReq(req))
 	if s.i >= len(s.resps) {
 		return provider.Message{}, errors.New("no more responses")
 	}
@@ -304,7 +316,7 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err != nil || string(got) != "hi" {
 		t.Fatalf("file %q err=%v", got, err)
 	}
-	if len(p.reqs[0].Tools) != 9 {
+	if len(p.reqs[0].Tools) != 12 {
 		t.Fatalf("tools %d", len(p.reqs[0].Tools))
 	}
 

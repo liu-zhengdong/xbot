@@ -23,6 +23,9 @@ func NewToolsLinkAt(dir, shared string) *ToolsLink {
 		&tools.ReadFile{Root: dir},
 		&tools.WriteFile{Root: dir},
 		&tools.EditFile{Root: dir},
+		&tools.WebFetch{},
+		&tools.WebSearch{},
+		&tools.ViewImage{Root: dir},
 	}}
 }
 

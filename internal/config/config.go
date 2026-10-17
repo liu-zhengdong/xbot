@@ -30,3 +30,28 @@ func FromEnv(getenv func(string) string) Model {
 	}
 	return m
 }
+
+// SeesImages reports whether a model understands images.
+// An explicit spec flag wins. Otherwise deepseek-flash does (including a
+// routed id whose name contains both "deepseek" and "flash"), and
+// deepseek-chat and deepseek-v4-pro do not. An empty name is the product
+// default, deepseek-flash. Other ids do not, until a spec sets vision.
+func SeesImages(name string, explicit *bool) bool {
+	if explicit != nil {
+		return *explicit
+	}
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		n = defaultModel
+	}
+	if strings.Contains(n, "deepseek-v4-pro") {
+		return false
+	}
+	if strings.Contains(n, "deepseek-chat") {
+		return false
+	}
+	return strings.Contains(n, "deepseek") && strings.Contains(n, "flash")
+}
+
+// SeesImages reports this spec's image capability.
+func (m ModelSpec) SeesImages() bool { return SeesImages(m.Name, m.Vision) }

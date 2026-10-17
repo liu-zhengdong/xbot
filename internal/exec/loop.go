@@ -110,7 +110,20 @@ func runLoop(j *job) {
 			j.finish(statusCancelled, EvFailed, "cancelled")
 			return
 		}
+		prior := len(msgs)
 		msgs = append(msgs, produced...)
+		// A round that attached a newer image set replaces the one before it.
+		// agent.Run drops the older set on its own copy of the conversation, so
+		// the loop has to drop it here or every round keeps re-sending images.
+		if hasImages(produced) {
+			dropImages(msgs[:prior])
+		}
+		// A reply with no tool calls consumed the images. Drop them before a
+		// queued task, an interrupt, or the next round, so the job can view
+		// another image. A round that is still calling tools keeps its images.
+		if replyClosed(produced) {
+			dropImages(msgs)
+		}
 		if intr != "" {
 			if err := j.appendUser(&msgs, intr); err != nil {
 				j.finish(statusFailed, EvFailed, err.Error())
@@ -269,6 +282,26 @@ func initialMessages(j *job) []provider.Message {
 		{Role: provider.RoleSystem, Content: SubPersona},
 		{Role: provider.RoleUser, Content: j.task},
 	}
+}
+
+func replyClosed(msgs []provider.Message) bool {
+	last := lastAssistant(msgs)
+	return last.Role != "" && len(last.ToolCalls) == 0
+}
+
+func dropImages(msgs []provider.Message) {
+	for i := range msgs {
+		msgs[i].Images = nil
+	}
+}
+
+func hasImages(msgs []provider.Message) bool {
+	for _, m := range msgs {
+		if len(m.Images) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func lastAssistant(msgs []provider.Message) provider.Message {

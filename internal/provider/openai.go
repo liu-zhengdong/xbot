@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -73,12 +74,36 @@ type apiTool struct {
 
 type apiRequest struct {
 	Model         string         `json:"model"`
-	Messages      []Message      `json:"messages"`
+	Messages      []wireMessage  `json:"messages"`
 	Tools         []apiTool      `json:"tools,omitempty"`
 	ToolChoice    string         `json:"tool_choice,omitempty"`
 	Stream        bool           `json:"stream"`
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 	Thinking      *thinkingParam `json:"thinking,omitempty"`
+}
+
+// wireMessage is the Chat Completions message. Content is a string when the
+// message is text, and an array of text and image_url parts when it carries
+// images. DeepSeek flash accepts that array; a model without vision never
+// receives one because view_image refuses first.
+type wireMessage struct {
+	Role       string          `json:"role"`
+	Content    json.RawMessage `json:"content,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	ToolCalls  []ToolCall      `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+}
+
+type textPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type imagePart struct {
+	Type     string `json:"type"`
+	ImageURL struct {
+		URL string `json:"url"`
+	} `json:"image_url"`
 }
 
 // streamOptions asks the endpoint to include a usage object on the last chunk.
@@ -110,6 +135,54 @@ func thinkingFor(model, setting string) *thinkingParam {
 
 type streamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
+}
+
+func wireMessages(in []Message) ([]wireMessage, error) {
+	out := make([]wireMessage, len(in))
+	for i, m := range in {
+		w, err := toWire(m)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = w
+	}
+	return out, nil
+}
+
+func toWire(m Message) (wireMessage, error) {
+	w := wireMessage{
+		Role: m.Role, Name: m.Name, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
+	}
+	raw, err := contentJSON(m)
+	if err != nil {
+		return wireMessage{}, err
+	}
+	w.Content = raw
+	return w, nil
+}
+
+func contentJSON(m Message) (json.RawMessage, error) {
+	if len(m.Images) == 0 {
+		if m.Content == "" {
+			return nil, nil
+		}
+		return json.Marshal(m.Content)
+	}
+	parts := make([]any, 0, 1+len(m.Images))
+	if m.Content != "" {
+		parts = append(parts, textPart{Type: "text", Text: m.Content})
+	}
+	for _, img := range m.Images {
+		mime := img.MIME
+		if mime == "" {
+			mime = "image/png"
+		}
+		var p imagePart
+		p.Type = "image_url"
+		p.ImageURL.URL = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(img.Data)
+		parts = append(parts, p)
+	}
+	return json.Marshal(parts)
 }
 
 // Chat streams a completion and returns the assembled assistant message.
@@ -275,9 +348,13 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	if strings.TrimSpace(c.BaseURL) == "" {
 		return Message{}, errors.New("provider: base URL is empty")
 	}
+	msgs, err := wireMessages(req.Messages)
+	if err != nil {
+		return Message{}, err
+	}
 	body := apiRequest{
 		Model:         c.Model,
-		Messages:      req.Messages,
+		Messages:      msgs,
 		Stream:        true,
 		StreamOptions: &streamOptions{IncludeUsage: true},
 		Thinking:      thinkingFor(c.Model, c.Thinking),

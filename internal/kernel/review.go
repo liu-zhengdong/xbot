@@ -10,6 +10,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/machine"
 	"xbot/internal/review"
 	"xbot/internal/tools"
@@ -153,14 +154,15 @@ func callPath(ctx context.Context, tool tools.Tool, args json.RawMessage) string
 }
 
 // protectedPaths are the paths no bot action may touch without a card: this
-// bot's vault directory, the shared vault keys directory, and every bot's
-// vault directory under the data root.
+// bot's vault directory, the shared vault keys directory, every bot's vault
+// directory under the data root, and the root web.json and providers.json
+// (those files name API key variables).
 func (k *Kernel) protectedPaths() []string {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" {
 		return nil
 	}
 	root := k.Bot.Root
-	out := []string{k.Bot.VaultDir(), bot.VaultKeysDir(root)}
+	out := []string{k.Bot.VaultDir(), bot.VaultKeysDir(root), config.WebPath(root), config.Path(root)}
 	botsDir := filepath.Join(root, "bots")
 	entries, err := os.ReadDir(botsDir)
 	if err != nil {

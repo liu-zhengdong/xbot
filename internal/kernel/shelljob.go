@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
@@ -78,6 +80,7 @@ func (k *Kernel) attachShell() {
 				sh.SetMarkerDir(k.shellMarkerDir())
 			}
 			k.bindFileCwd(t)
+			k.configureWeb(t)
 		}
 	}
 }
@@ -120,7 +123,135 @@ func (k *Kernel) bindFileCwd(t tools.Tool) {
 		if f.Sandbox == "" {
 			f.BindRoot(k.cwdFor)
 		}
+	case *tools.ViewImage:
+		if f.Sandbox == "" {
+			f.BindRoot(k.cwdFor)
+			f.Allowed = k.allowedRoots
+		}
 	}
+}
+
+// configureWeb fills search, fetch, and vision from the data root. A tool that
+// already has a backend or fetcher keeps it, so a test double is not replaced
+// by the keyless default. The search key is read here and never logged.
+func (k *Kernel) configureWeb(t tools.Tool) {
+	if k == nil || t == nil {
+		return
+	}
+	root := ""
+	if k.Bot != nil {
+		root = k.Bot.Root
+	}
+	cfg, err := config.LoadWeb(root)
+	var trusted []netip.Prefix
+	if err == nil {
+		trusted, err = config.TrustedEgress(cfg)
+	}
+	switch f := t.(type) {
+	case *tools.WebSearch:
+		if f.Store == nil {
+			f.Store = k.Vault
+		}
+		if f.Now == nil {
+			f.Now = k.now
+		}
+		if err != nil {
+			if f.Backend == nil {
+				f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, err })
+			}
+			return
+		}
+		k.holdWebKeys(cfg)
+		if f.Backend != nil {
+			return
+		}
+		if baseErr := config.AllowSearchBase(root, cfg.Search); baseErr != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, baseErr })
+			return
+		}
+		key, keyErr := config.SearchKey(cfg.Search, config.Getenv)
+		if keyErr != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, keyErr })
+			return
+		}
+		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, key, trusted)
+		if berr != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, berr })
+			return
+		}
+		f.Backend = b
+	case *tools.WebFetch:
+		if f.Store == nil {
+			f.Store = k.Vault
+		}
+		if f.Now == nil {
+			f.Now = k.now
+		}
+		if f.Fetcher != nil {
+			return
+		}
+		if err != nil {
+			f.Fetcher = failFetch{err}
+			return
+		}
+		ft, ferr := tools.NewFetcher(cfg.Fetch.Backend, trusted)
+		if ferr != nil {
+			f.Fetcher = failFetch{ferr}
+			return
+		}
+		f.Fetcher = ft
+	case *tools.ViewImage:
+		model, ok := k.vision()
+		f.Model = model
+		f.Vision = ok
+	}
+}
+
+// holdWebKeys copies search and fetch key names into memory and drops them
+// from the process environment. A web.json written after startup is covered
+// the next time a web tool is configured. DEEPSEEK_API_KEY is held when that
+// is the selected search key.
+func (k *Kernel) holdWebKeys(cfg config.WebFile) {
+	var names []string
+	if env, ok := config.SearchKeyEnv(cfg.Search); ok {
+		names = append(names, env)
+	}
+	if env := strings.TrimSpace(cfg.Fetch.APIKeyEnv); env != "" {
+		names = append(names, env)
+	}
+	if len(names) == 0 {
+		return
+	}
+	config.HoldKeys(names)
+	tools.AddKeyEnv(names)
+}
+
+type failFetch struct{ err error }
+
+func (f failFetch) Fetch(context.Context, string) (tools.Page, error) { return tools.Page{}, f.err }
+
+// vision is the bound model's image capability. An explicit providers.json
+// vision flag wins. An empty binding follows XBOT_MODEL (default
+// deepseek-flash, which sees images), not a hardcoded id.
+func (k *Kernel) vision() (string, bool) {
+	model := ""
+	if k != nil && k.Bot != nil {
+		cfg := k.Bot.Config()
+		model = strings.TrimSpace(cfg.Model)
+		prov := strings.TrimSpace(cfg.Provider)
+		if k.Bot.Root != "" && prov != "" && model != "" {
+			if _, spec, err := config.Lookup(k.Bot.Root, prov, model); err == nil {
+				return spec.Name, spec.SeesImages()
+			}
+		}
+	}
+	if model == "" {
+		model = strings.TrimSpace(config.FromEnv(config.Getenv).Model)
+	}
+	if model == "" {
+		model = "deepseek-flash"
+	}
+	return model, config.SeesImages(model, nil)
 }
 
 func (k *Kernel) onShellDone(job tools.Job) {
@@ -146,9 +277,11 @@ func (k *Kernel) onShellDone(job tools.Job) {
 }
 
 // shellForms lists every string the job redactor replaces: vault literals and
-// their JSON, URL, and base64 forms, plus staged secret literals. The writer
-// holds a suffix of pending output only when it is a prefix of one of these.
-// Vault forms are cached until the vault generation changes.
+// their JSON, URL, and base64 forms, staged secret literals, and held API
+// key values of at least 8 bytes. The writer holds a suffix of pending output
+// only when it is a prefix of one of these. Vault forms are cached until the
+// vault generation changes. Staged secrets and held keys are appended on
+// every call, because HoldKeys can happen after the cache is filled.
 func (k *Kernel) shellForms() []string {
 	if k == nil {
 		return nil
@@ -175,15 +308,20 @@ func (k *Kernel) shellForms() []string {
 		}
 		k.shellMu.Unlock()
 	}
-	if len(staged) == 0 {
+	extra := append([]string(nil), staged...)
+	extra = append(extra, config.HeldForms()...)
+	if len(extra) == 0 {
 		return base
 	}
-	seen := make(map[string]struct{}, len(base)+len(staged))
+	seen := make(map[string]struct{}, len(base)+len(extra))
 	for _, f := range base {
 		seen[f] = struct{}{}
 	}
 	out := append([]string(nil), base...)
-	for _, v := range staged {
+	for _, v := range extra {
+		if v == "" {
+			continue
+		}
 		if _, ok := seen[v]; ok {
 			continue
 		}

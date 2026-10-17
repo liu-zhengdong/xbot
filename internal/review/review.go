@@ -49,6 +49,9 @@ var Table = map[string]Class{
 	"read_file":    Readonly,
 	"write_file":   SelfEdit,
 	"edit_file":    SelfEdit,
+	"web_fetch":    Readonly,
+	"web_search":   Readonly,
+	"view_image":   Readonly,
 	"http_request": HTTP,
 	"list_secrets": Readonly,
 
@@ -214,7 +217,7 @@ func Known(tool string) bool {
 // deliberately excluded so the owner can always close a Chrome process.
 func MachineTouching(tool string) bool {
 	switch normalize(tool) {
-	case "shell", "read_file", "write_file", "edit_file",
+	case "shell", "read_file", "write_file", "edit_file", "view_image",
 		"desktop_screenshot", "desktop_click", "desktop_type", "desktop_scroll", "desktop_key",
 		"browser_open", "browser_snapshot", "browser_click":
 		return true
@@ -621,7 +624,7 @@ const ProtectedSuffix = "（触及保险箱/密钥）"
 // on. Their resolved path is what matters for the protected-path guard.
 func IsFileTool(tool string) bool {
 	switch normalize(tool) {
-	case "read_file", "write_file", "edit_file":
+	case "read_file", "write_file", "edit_file", "view_image":
 		return true
 	default:
 		return false

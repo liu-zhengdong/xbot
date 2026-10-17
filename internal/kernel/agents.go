@@ -121,7 +121,15 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	read.BindRoot(root)
 	write.BindRoot(root)
 	edit.BindRoot(root)
-	return []tools.Tool{sh, read, write, edit}
+	view := &tools.ViewImage{Root: k.WorkDir}
+	view.BindRoot(root)
+	view.Allowed = k.allowedRoots
+	fetch := &tools.WebFetch{}
+	search := &tools.WebSearch{}
+	k.configureWeb(view)
+	k.configureWeb(fetch)
+	k.configureWeb(search)
+	return []tools.Tool{sh, read, write, edit, fetch, search, view}
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {

@@ -606,6 +606,12 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			produced = append(produced, more2...)
 			err = rerr
 		}
+		// The turn is over. Every request inside it still carried the tool
+		// images. Drop the bytes now so this slice is not a later turn.
+		// The transcript never stored them.
+		for i := range produced {
+			produced[i].Images = nil
+		}
 		if errors.Is(err, context.Canceled) {
 			if serr := k.closeDangling(DangleCancel, false); serr != nil && appendErr == nil {
 				appendErr = serr

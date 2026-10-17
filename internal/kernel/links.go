@@ -11,6 +11,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/browser"
 	"xbot/internal/code"
+	"xbot/internal/config"
 	"xbot/internal/desktop"
 	"xbot/internal/link"
 	"xbot/internal/node"
@@ -589,10 +590,13 @@ func (k *Kernel) stableLinkNames() []string {
 }
 
 func (k *Kernel) redactor() func(string) string {
+	base := bot.RedactText
 	if k != nil && k.Redact != nil {
-		return k.Redact
+		base = k.Redact
 	}
-	return bot.RedactText
+	return func(s string) string {
+		return config.RedactHeld(base(s))
+	}
 }
 
 func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
