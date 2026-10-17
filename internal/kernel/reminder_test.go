@@ -2,6 +2,8 @@ package kernel
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -177,6 +179,94 @@ func TestRetryGuidanceIsConditional(t *testing.T) {
 	hint := loopHint(StopPollingFailure)
 	if !strings.Contains(hint, "exact error") || !strings.Contains(hint, "Do not retry") {
 		t.Fatalf("polling reminder lost the guidance: %q", hint)
+	}
+}
+
+func TestPendingReminderRedactsSecrets(t *testing.T) {
+	const secret = "sk-live-reminder-secret"
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(3000, 0).UTC()
+	appendCard(t, b, "card-1", "shell", "mkdir "+secret, bot.ApprovalPending, now.Add(-time.Minute))
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
+		Links: []link.Link{link.Terminal{}},
+		Now:   func() time.Time { return now },
+		Redact: func(s string) string {
+			return strings.ReplaceAll(s, secret, "[secret]")
+		},
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", now)); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(bot.Dir(b.Root, b.Name()), "reminders.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) || !strings.Contains(string(raw), "[secret]") {
+		t.Fatalf("sidecar %s", raw)
+	}
+	var saw bool
+	for _, m := range p.reqs[0].Messages {
+		if strings.Contains(m.Content, secret) {
+			t.Fatalf("model saw the secret: %q", m.Content)
+		}
+		if strings.Contains(m.Content, "[secret]") && strings.Contains(m.Content, "<pending_approvals>") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatal("redacted pending reminder did not reach the model")
+	}
+}
+
+func TestReminderCompactDropsDeadLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reminders.jsonl")
+	ch := newChannel(path)
+	now := time.Unix(4000, 0).UTC()
+	for i := 1; i <= reminderKeep+10; i++ {
+		if err := ch.Record(i, KindLoop, "old", now.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live := reminderKeep + 11
+	if err := ch.Record(live, KindPendingApproval, "still open", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ch.Compact(live); err != nil {
+		t.Fatal(err)
+	}
+	all, err := ch.log.all()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("kept %+v", all)
+	}
+	var sawLive, sawLatestLoop bool
+	for _, n := range all {
+		if n.Seq == live && n.Kind == KindPendingApproval && n.Text == "still open" {
+			sawLive = true
+		}
+		if n.Kind == KindLoop && n.Seq == reminderKeep+10 {
+			sawLatestLoop = true
+		}
+		if n.Seq < live && n.Kind == KindLoop && n.Seq != reminderKeep+10 {
+			t.Fatalf("dropped line kept: %+v", n)
+		}
+	}
+	if !sawLive || !sawLatestLoop {
+		t.Fatalf("live=%v latestLoop=%v notes=%+v", sawLive, sawLatestLoop, all)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(raw), "\n") != 2 {
+		t.Fatalf("file still has the old lines:\n%s", raw)
 	}
 }
 

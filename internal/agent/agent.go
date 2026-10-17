@@ -128,13 +128,19 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			return produced, nil
 		}
 		stepMsgs := []provider.Message{msg}
-		for _, tm := range runToolCalls(ctx, byName, msg.ToolCalls, opt) {
+		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt)
+		for _, tm := range results {
 			convo = append(convo, tm)
 			produced = append(produced, tm)
 			stepMsgs = append(stepMsgs, tm)
 			if opt.OnMessage != nil {
 				opt.OnMessage(tm)
 			}
+		}
+		// A cancelled call is left open. The kernel seals it with one tombstone
+		// instead of recording "error: context canceled" as if the tool had run.
+		if aborted {
+			return produced, ctx.Err()
 		}
 		if opt.OneRound {
 			return produced, nil
@@ -286,7 +292,7 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 
 // runToolCalls starts every call, then returns tool messages in call order.
 // The approval lock is held only around Approve, so a prompt does not stall the others.
-func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) []provider.Message {
+func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) ([]provider.Message, bool) {
 	out := make([]string, len(calls))
 	var approve sync.Mutex
 	var wg sync.WaitGroup
@@ -298,16 +304,20 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 		}(i, tc)
 	}
 	wg.Wait()
-	msgs := make([]provider.Message, len(calls))
+	aborted := ctx.Err() != nil
+	msgs := make([]provider.Message, 0, len(calls))
 	for i, tc := range calls {
-		msgs[i] = provider.Message{
+		if aborted && strings.TrimSpace(out[i]) == "error: "+ctx.Err().Error() {
+			continue
+		}
+		msgs = append(msgs, provider.Message{
 			Role:       provider.RoleTool,
 			ToolCallID: tc.ID,
 			Name:       tc.Function.Name,
 			Content:    out[i],
-		}
+		})
 	}
-	return msgs
+	return msgs, aborted && len(msgs) < len(calls)
 }
 
 func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) string {

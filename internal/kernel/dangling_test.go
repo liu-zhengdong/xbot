@@ -2,6 +2,8 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -33,48 +35,77 @@ func TestDanglingReasonsShareOneFunction(t *testing.T) {
 	}
 }
 
+// cancelHold blocks until the turn context is cancelled.
+type cancelHold struct{ entered chan struct{} }
+
+func (cancelHold) Name() string                                  { return "hold" }
+func (cancelHold) Description() string                           { return "hold" }
+func (cancelHold) Parameters() any                               { return map[string]any{"type": "object"} }
+func (cancelHold) Confirm(json.RawMessage) (bool, string, error) { return false, "hold", nil }
+func (h *cancelHold) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	close(h.entered)
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+// TestCancelSealsOpenCall cancels Handle while a tool call is in flight.
+// The transcript gets one cancel tombstone from DanglingResult, not a second copy.
 func TestCancelSealsOpenCall(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	if err := b.Append(bot.Entry{Message: provider.Message{
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	p := &scripted{resps: []provider.Message{{
 		Role: provider.RoleAssistant,
 		ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "hold", Arguments: `{}`},
 		}},
-	}}); err != nil {
-		t.Fatal(err)
+	}}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
+		Links: []link.Link{link.Terminal{}, oneToolLink{&cancelHold{entered: entered}}},
 	}
-	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
-	if err := k.closeDangling(DangleCancel, false); err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-entered
+		cancel()
+	}()
+	err := k.Handle(ctx, link.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC()))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
 	}
+	want := DanglingResult(provider.ToolCall{ID: "c1", Function: provider.FunctionCall{Name: "hold"}}, DangleCancel).Content
 	entries, err := b.Entries()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var saw bool
+	n := 0
 	for _, e := range entries {
-		if e.Message.Role == provider.RoleTool && e.Message.ToolCallID == "c1" {
-			if e.Message.Content != DanglingResult(provider.ToolCall{ID: "c1", Function: provider.FunctionCall{Name: "shell"}}, DangleCancel).Content {
-				t.Fatalf("content %q", e.Message.Content)
-			}
-			saw = true
+		if e.Message.ToolCallID != "c1" {
+			continue
+		}
+		n++
+		if e.Message.Content != want {
+			t.Fatalf("content %q", e.Message.Content)
 		}
 	}
-	if !saw {
-		t.Fatal("cancel did not seal the open call")
+	if n != 1 {
+		t.Fatalf("sealed %d times", n)
 	}
 	if err := k.closeDangling(DangleCancel, false); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ = b.Entries()
-	n := 0
+	n = 0
 	for _, e := range entries {
 		if e.Message.ToolCallID == "c1" {
 			n++
 		}
 	}
 	if n != 1 {
-		t.Fatalf("sealed %d times", n)
+		t.Fatalf("sealed %d times after a second pass", n)
 	}
 }
 

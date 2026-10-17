@@ -195,10 +195,10 @@ func TestBreakerStopWritesTrace(t *testing.T) {
 	}
 }
 
-// TestToolStepsAreNotDiminishingReturns is the regression for counting every
-// short tool step as a continuation. A run of distinct small tool calls is
-// the work; it must not remind or stop. The old per-step check stops on the
-// fifth call (it reminds on the fourth).
+// TestToolStepsAreNotDiminishingReturns guards the diminishing-returns counter.
+// Distinct short tool calls are ordinary work and must not remind or stop.
+// f12fd9b has no breaker. The first cut of this milestone treated every short
+// step as a continuation and reminded on the fourth call.
 func TestToolStepsAreNotDiminishingReturns(t *testing.T) {
 	br := newBreaker()
 	for i := 1; i <= 8; i++ {
@@ -272,6 +272,83 @@ func TestLargeContinuationsDoNotTrip(t *testing.T) {
 			toolResult(id, "echo", "ok"),
 		}); stop {
 			t.Fatalf("observe %d stopped (%s)", c, reason)
+		}
+	}
+}
+
+func shellCall(id, command, output string) []provider.Message {
+	args := `{"command":` + jsonString(command) + `}`
+	return []provider.Message{
+		assistantCall(id, "run "+id+" "+command, "shell", args),
+		toolResult(id, "shell", output),
+	}
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// TestEditAndRetestDoesNotStop is the edit + `go test ./...` loop. Failing
+// test output does not start with "error:", so it used to count as a successful
+// repeat and hard-stop on the fourth test.
+func TestEditAndRetestDoesNotStop(t *testing.T) {
+	br := newBreaker()
+	fail := "FAIL\txbot/internal/kernel [build failed]\n"
+	for i := 1; i <= 4; i++ {
+		id := string(rune('a' + i))
+		edit := []provider.Message{
+			assistantCall("e"+id, "edit "+id, "edit_file", `{"path":"a.go","old_string":"old`+id+`","new_string":"new`+id+`"}`),
+			toolResult("e"+id, "edit_file", "ok"),
+		}
+		for _, step := range [][]provider.Message{edit, shellCall("t"+id, "go test ./...", fail)} {
+			remind, stop, reason := br.Observe(step)
+			if stop || strings.Contains(remind, StopSameToolArgs) {
+				t.Fatalf("cycle %s remind=%q stop=%v reason=%q", id, remind, stop, reason)
+			}
+		}
+	}
+}
+
+// TestBuildAndVetDoNotShareAStop runs `go build` and `go vet` three times each.
+// Those used to share one same_tool_args trip counter and hard-stop on call 6.
+func TestBuildAndVetDoNotShareAStop(t *testing.T) {
+	br := newBreaker()
+	var n int
+	run := func(command string) {
+		t.Helper()
+		for i := 0; i < 3; i++ {
+			n++
+			id := string(rune('a' + n))
+			remind, stop, reason := br.Observe(shellCall(id, command, "ok"))
+			if stop || strings.Contains(remind, StopSameToolArgs) {
+				t.Fatalf("%s #%d remind=%q stop=%v reason=%q", command, i+1, remind, stop, reason)
+			}
+		}
+	}
+	run("go build ./...")
+	run("go vet ./...")
+}
+
+// TestSuccessResetsPollingFailure is fail, fail, ok, fail. The success must
+// clear the failure streak so the last failure does not trip polling_failure.
+func TestSuccessResetsPollingFailure(t *testing.T) {
+	br := newBreaker()
+	steps := []struct {
+		id, out string
+	}{
+		{"1", "error: connection refused"},
+		{"2", "error: connection refused"},
+		{"3", "ok"},
+		{"4", "error: connection refused"},
+	}
+	for _, s := range steps {
+		remind, stop, reason := br.Observe([]provider.Message{
+			assistantCall(s.id, "try "+s.id, "http_request", `{"url":"http://down"}`),
+			toolResult(s.id, "http_request", s.out),
+		})
+		if stop || strings.Contains(remind, StopPollingFailure) {
+			t.Fatalf("step %s remind=%q stop=%v reason=%q", s.id, remind, stop, reason)
 		}
 	}
 }

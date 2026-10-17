@@ -432,11 +432,10 @@ func TestCancelStopsInFlightTools(t *testing.T) {
 	if elapsed > time.Second {
 		t.Fatalf("cancel took %s", elapsed)
 	}
-	if len(got) != 3 || !strings.Contains(got[1].Content, "canceled") || !strings.Contains(got[2].Content, "canceled") {
+	// Cancelled calls stay open so the kernel can seal them once. The assistant
+	// request is kept; the fake "error: context canceled" results are not.
+	if len(got) != 1 || len(got[0].ToolCalls) != 2 {
 		t.Fatalf("%+v", got)
-	}
-	if got[1].ToolCallID != "1" || got[2].ToolCallID != "2" {
-		t.Fatalf("order %+v", got[1:])
 	}
 }
 

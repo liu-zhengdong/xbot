@@ -303,7 +303,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	t.runCtx = runCtx
 	t.cancelRun = cancelRun
 	br := newBreaker()
-	var lastRemind string
+	var msgSeqs []int
+	track := func(m provider.Message) error {
+		seq, err := k.recordTurn(t, m)
+		if err != nil {
+			return err
+		}
+		msgSeqs = append(msgSeqs, seq)
+		return nil
+	}
 	opts := agent.Options{
 		MaxSteps: k.MaxSteps,
 		Approve:  approve,
@@ -344,7 +352,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			if appendErr != nil {
 				return
 			}
-			appendErr = k.recordTurn(t, m)
+			appendErr = track(m)
 		},
 		RefreshTools: func() ([]tools.Tool, error) {
 			return k.modelTools()
@@ -365,12 +373,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		Guard: func(_ int, stepMsgs []provider.Message) (string, bool, string) {
 			remind, stop, reason := br.Observe(stepMsgs)
 			if remind != "" {
-				lastRemind = remind
-				seq, serr := k.Bot.Count()
-				if serr != nil && appendErr == nil {
-					appendErr = serr
-				}
-				if rerr := k.reminders().Record(seq, KindLoop, remind, k.now()); rerr != nil && appendErr == nil {
+				// The reminder was attached to the message just recorded, not to
+				// whatever Count returns after a concurrent foreground write.
+				if rerr := k.reminders().Record(t.lastSeq(), KindLoop, remind, k.now()); rerr != nil && appendErr == nil {
 					appendErr = rerr
 				}
 			}
@@ -394,12 +399,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			if text == "" {
 				return
 			}
-			lastRemind = text
-			seq, serr := k.Bot.Count()
-			if serr != nil && appendErr == nil {
-				appendErr = serr
-			}
-			if rerr := k.reminders().Record(seq, KindLoop, text, k.now()); rerr != nil && appendErr == nil {
+			if rerr := k.reminders().Record(t.lastSeq(), KindLoop, text, k.now()); rerr != nil && appendErr == nil {
 				appendErr = rerr
 			}
 		}
@@ -410,7 +410,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 				appendErr = lerr
 			}
 			note := provider.Message{Role: provider.RoleUser, Content: agent.StopNote(why)}
-			if rerr := k.recordTurn(t, note); rerr != nil && appendErr == nil {
+			if rerr := track(note); rerr != nil && appendErr == nil {
 				appendErr = rerr
 			}
 			convo := append(append([]provider.Message(nil), assembled...), *produced...)
@@ -422,7 +422,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 			msg.Role = provider.RoleAssistant
 			msg.ToolCalls = nil
-			if rerr := k.recordTurn(t, msg); rerr != nil && appendErr == nil {
+			if rerr := track(msg); rerr != nil && appendErr == nil {
 				appendErr = rerr
 			}
 			*produced = append(*produced, msg)
@@ -485,25 +485,29 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 					break
 				}
 				recordLoop(remind)
+			} else {
+				br.ResetSegment()
 			}
 			t.mu.Lock()
 			pend := t.takeCtrlLocked()
 			t.mu.Unlock()
 			// Another run starts fresh: its own end decides whether the task is done.
+			// Reminders already recorded stay on the message they were bound to.
+			// They are not copied onto whatever line is newest in this segment.
 			convo := append(append([]provider.Message(nil), assembled...), produced...)
-			if lastRemind != "" {
-				convo = agent.AttachReminder(convo, lastRemind)
+			if err := k.reminders().Apply(convo[len(assembled):], msgSeqs); err != nil && appendErr == nil {
+				appendErr = err
 			}
 			if more && atCap {
 				n := provider.Message{Role: provider.RoleUser, Content: continueNote}
-				if rerr := k.recordTurn(t, n); rerr != nil && appendErr == nil {
+				if rerr := track(n); rerr != nil && appendErr == nil {
 					appendErr = rerr
 				}
 				convo = append(convo, n)
 				produced = append(produced, n)
 			}
 			for _, m := range pend {
-				if rerr := k.recordTurn(t, m); rerr != nil && appendErr == nil {
+				if rerr := track(m); rerr != nil && appendErr == nil {
 					appendErr = rerr
 				}
 				convo = append(convo, m)
@@ -632,6 +636,13 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	}
 	lines, err := k.Bot.UncoveredLines(st.Blocks)
 	if err != nil {
+		return nil, bot.SectionUsage{}, err
+	}
+	minSeq := 0
+	if len(lines) > 0 {
+		minSeq = lines[0].Seq
+	}
+	if err := k.reminders().Compact(minSeq); err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
 	raw := make([]bot.Entry, 0, len(lines))

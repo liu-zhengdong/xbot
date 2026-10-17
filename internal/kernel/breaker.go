@@ -21,9 +21,12 @@ const (
 	// continuation segments whose last two each add fewer assistant tokens
 	// than this are diminishing returns.
 	diminishingLimit = 500
-	// loopThreshold is how many identical tool calls, or identical failures,
-	// count as one trip. The next one is the second trip.
+	// loopThreshold is how many consecutive identical tool calls, or identical
+	// failures, count as one trip. The next one of that same key is the second trip.
 	loopThreshold = 3
+	// looseThreshold is the longer streak allowed for read-only tools, test and
+	// build reruns, and background polls. A normal edit/test loop must not stop.
+	looseThreshold = 8
 )
 
 // Breaker watches one turn for loops. The first time a pattern trips it asks
@@ -34,12 +37,15 @@ type Breaker struct {
 	prevAssistant string
 	hadAssistant  bool
 
-	toolCounts map[string]int
-	callArgs   map[string]string // tool call id -> name + args
-	failCount  map[string]int
-	failPrev   map[string]string
-	files      map[string][]string
+	callArgs map[string]string // tool call id -> name + args
+	files    map[string][]string
 
+	// Streaks count only consecutive repeats. Another call resets them.
+	streakKey  string
+	streak     int
+	failKey    string
+	failText   string
+	failStreak int
 	denyStreak int
 
 	// contTokens is assistant tokens added by each closed continuation.
@@ -55,12 +61,9 @@ type Breaker struct {
 
 func newBreaker() *Breaker {
 	return &Breaker{
-		trips:      map[string]int{},
-		toolCounts: map[string]int{},
-		callArgs:   map[string]string{},
-		failCount:  map[string]int{},
-		failPrev:   map[string]string{},
-		files:      map[string][]string{},
+		trips:    map[string]int{},
+		callArgs: map[string]string{},
+		files:    map[string][]string{},
 	}
 }
 
@@ -86,7 +89,7 @@ func (b *Breaker) seeAssistant(m provider.Message) {
 	text := strings.TrimSpace(m.Content)
 	if text != "" {
 		if b.hadAssistant && text == b.prevAssistant {
-			b.hit(StopRepeatedOutput)
+			b.hit(StopRepeatedOutput, text)
 		}
 		b.prevAssistant = text
 		b.hadAssistant = true
@@ -109,9 +112,13 @@ func (b *Breaker) bumpTool(key string) {
 	if key == "" {
 		return
 	}
-	b.toolCounts[key]++
-	if c := b.toolCounts[key]; c == loopThreshold || c == loopThreshold+1 {
-		b.hit(StopSameToolArgs)
+	if key != b.streakKey {
+		b.streakKey = key
+		b.streak = 0
+	}
+	b.streak++
+	if th := callThreshold(key); b.streak == th || b.streak == th+1 {
+		b.hit(StopSameToolArgs, key)
 	}
 }
 
@@ -122,7 +129,7 @@ func (b *Breaker) seeFile(name, args string) {
 	}
 	h := b.files[path]
 	if len(h) >= 2 && sig == h[len(h)-2] && sig != h[len(h)-1] {
-		b.hit(StopFileFlipFlop)
+		b.hit(StopFileFlipFlop, path)
 	}
 	b.files[path] = append(h, sig)
 }
@@ -137,27 +144,43 @@ func (b *Breaker) seeTool(m provider.Message) {
 	// same-tool loop. Counting those here, after the result, keeps one call
 	// from tripping two detectors.
 	if content == "denied by user" {
+		b.breakToolStreaks()
 		b.denyStreak++
 		if b.denyStreak == loopThreshold {
-			b.hit(StopDeniedApprovals)
+			b.hit(StopDeniedApprovals, "")
 			b.denyStreak = 0
 		}
 		return
 	}
 	b.denyStreak = 0
 	if isToolError(content) {
-		if b.failPrev[key] == content {
-			b.failCount[key]++
+		if b.failKey == key && b.failText == content {
+			b.failStreak++
 		} else {
-			b.failCount[key] = 1
-			b.failPrev[key] = content
+			b.failKey = key
+			b.failText = content
+			b.failStreak = 1
 		}
-		if c := b.failCount[key]; c == loopThreshold || c == loopThreshold+1 {
-			b.hit(StopPollingFailure)
+		b.streakKey = ""
+		b.streak = 0
+		if th := callThreshold(key); b.failStreak == th || b.failStreak == th+1 {
+			b.hit(StopPollingFailure, key)
 		}
 		return
 	}
+	// A success ends the failure streak. fail, fail, ok, fail is not a poll.
+	b.failKey = ""
+	b.failText = ""
+	b.failStreak = 0
 	b.bumpTool(key)
+}
+
+func (b *Breaker) breakToolStreaks() {
+	b.streakKey = ""
+	b.streak = 0
+	b.failKey = ""
+	b.failText = ""
+	b.failStreak = 0
 }
 
 // BeginContinuation opens one continuation turn: a background segment started
@@ -173,6 +196,9 @@ func (b *Breaker) BeginContinuation() (remind string, stop bool, reason string) 
 	if !stop {
 		b.openCont = true
 		b.openTokens = 0
+		// A new segment is a new attempt. Loop streaks do not carry across it.
+		// Continuation totals were already closed above.
+		b.ResetSegment()
 	}
 	return remind, stop, reason
 }
@@ -196,15 +222,42 @@ func (b *Breaker) closeContinuation() {
 	}
 	b.contTokens = append(b.contTokens, b.openTokens)
 	b.openCont = false
+	b.openTokens = 0
 	n := len(b.contTokens)
 	if n >= 3 && b.contTokens[n-1] < diminishingLimit && b.contTokens[n-2] < diminishingLimit {
-		b.hit(StopDiminishingReturns)
+		b.hit(StopDiminishingReturns, "")
 	}
 }
 
-func (b *Breaker) hit(reason string) {
-	b.trips[reason]++
-	if b.trips[reason] >= 2 {
+// ResetSegment clears consecutive-loop state at a background segment boundary.
+// File flip-flop history and diminishing-return totals stay: those describe
+// the task, not one segment's tool streak.
+func (b *Breaker) ResetSegment() {
+	if b == nil {
+		return
+	}
+	b.prevAssistant = ""
+	b.hadAssistant = false
+	b.breakToolStreaks()
+	b.denyStreak = 0
+	for id := range b.trips {
+		switch {
+		case strings.HasPrefix(id, StopSameToolArgs),
+			strings.HasPrefix(id, StopPollingFailure),
+			strings.HasPrefix(id, StopRepeatedOutput),
+			strings.HasPrefix(id, StopDeniedApprovals):
+			delete(b.trips, id)
+		}
+	}
+}
+
+func (b *Breaker) hit(reason, key string) {
+	id := reason
+	if key != "" {
+		id += "\n" + key
+	}
+	b.trips[id]++
+	if b.trips[id] >= 2 {
 		if b.pendingStop == "" {
 			b.pendingStop = reason
 		}
@@ -230,6 +283,60 @@ func (b *Breaker) take() (string, bool, string) {
 
 func isToolError(content string) bool {
 	return strings.HasPrefix(content, "error:")
+}
+
+// callThreshold is the consecutive-repeat count that makes one trip.
+// Read-only tools, test and build reruns, and background polls get a longer
+// leash: go test output that does not start with "error:" is still a success,
+// and an edit/test loop or a few go build / go vet passes must not hard-stop.
+func callThreshold(key string) int {
+	name, args, _ := strings.Cut(key, "\n")
+	if looseCall(name, args) {
+		return looseThreshold
+	}
+	return loopThreshold
+}
+
+func looseCall(name, args string) bool {
+	switch name {
+	case "read_file", "list_secrets", "list_bots", "list_groups", "read_skill",
+		"recall", "recall_history", "read_subagent", "wait", "sleep", "poll":
+		return true
+	case "shell":
+		return looseShell(args)
+	default:
+		return false
+	}
+}
+
+func looseShell(args string) bool {
+	var m struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal([]byte(args), &m) != nil {
+		return false
+	}
+	cmd := strings.TrimSpace(m.Command)
+	if i := strings.IndexAny(cmd, "\n;&|"); i >= 0 {
+		cmd = strings.TrimSpace(cmd[:i])
+	}
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 {
+		return false
+	}
+	switch fields[0] {
+	case "gofmt", "sleep":
+		return true
+	case "go":
+		if len(fields) < 2 {
+			return false
+		}
+		switch fields[1] {
+		case "test", "build", "vet":
+			return true
+		}
+	}
+	return false
 }
 
 func fileSig(name, args string) (path, sig string, ok bool) {
