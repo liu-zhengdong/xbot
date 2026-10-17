@@ -5,6 +5,7 @@ package kernel
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -1031,12 +1032,15 @@ type ownChange struct {
 // mix their before/after texts. A bot-scope write is measured on the bot-only
 // rendering, so it can never carry person lines into another person's view.
 // A failed read records nothing; the write then shows as a diff, which is safe.
-func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope) func() {
+func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID ...string) func() {
 	k.memWriteMu.Lock()
 	key := ""
 	if scope == memory.ScopePerson {
 		st, _ := k.Bot.LoadState()
 		key = k.memViewKey(k.turnFor(ctx), st)
+		if len(personID) > 0 {
+			key = personID[0]
+		}
 	}
 	before, err := k.memoryText(ctx, key)
 	return func() {
@@ -1084,7 +1088,7 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 	}
 }
 
-const memRenderVersion = 1
+const memRenderVersion = 2
 
 // refreshMemSnap re-snapshots standing memory after a compaction appended a block.
 // The prefix already changed, so the active view is replaced and parked views are
@@ -1128,6 +1132,26 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	if err != nil {
 		return "", err
 	}
+	paths := map[memory.Scope]string{}
+	if k.Bot != nil {
+		shown := func(path string) string {
+			for _, l := range k.snapshotLinks() {
+				if l != nil {
+					for _, tool := range l.Tools() {
+						if tool.Name() == "write_file" {
+							return modelPath(tool, path)
+						}
+					}
+				}
+			}
+			return path
+		}
+		dir := filepath.Join(k.Bot.Root, "bots", k.Bot.Name(), "memory")
+		paths[memory.ScopeBot] = shown(filepath.Join(dir, "memory.md")) + "; " + shown(filepath.Join(dir, "log")) + "/"
+		if personID != "" {
+			paths[memory.ScopePerson] = shown(filepath.Join(k.Bot.Root, "people", personID, "memory", "memory.md"))
+		}
+	}
 	if counter, ok := k.Memory.(interface {
 		LogCount(memory.Scope, string, string) (int, error)
 	}); ok {
@@ -1135,9 +1159,9 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 		if err != nil {
 			return "", err
 		}
-		return clipMemory(renderMemory(facts, logs, total)), nil
+		return clipMemory(renderMemoryPaths(facts, logs, paths, total)), nil
 	}
-	return clipMemory(renderMemory(facts, logs)), nil
+	return clipMemory(renderMemoryPaths(facts, logs, paths)), nil
 }
 
 // loadMemory is the context-assembly seam for the person and bot scopes.
