@@ -22,7 +22,7 @@ func TestDefaultAvatarIsSoftBlob(t *testing.T) {
 	if bytes.Contains(js, []byte("ellipse")) || bytes.Contains(html, []byte("ellipse")) {
 		t.Fatal("default avatar still draws a face")
 	}
-	if !bytes.Contains(js, []byte("BLOBS")) || !bytes.Contains(js, []byte("markInitial")) || !bytes.Contains(js, []byte("blobFill")) {
+	if !bytes.Contains(js, []byte("BLOBS")) || !bytes.Contains(js, []byte("markInitial")) || !bytes.Contains(js, []byte("--avatar-fill")) {
 		t.Fatal("soft blob avatar is missing")
 	}
 	if bytes.Contains(css, []byte(".avatar {")) && bytes.Contains(css, []byte("border-radius: 50%")) {
