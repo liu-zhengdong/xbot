@@ -31,6 +31,9 @@ type reviewedTool struct {
 }
 
 func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
+	if t.k != nil && t.k.deniedBefore(t.Name(), args) {
+		return false, "", errors.New(msgDenied)
+	}
 	_, summary, err := t.Tool.Confirm(args)
 	if err != nil {
 		return false, "", err
@@ -38,10 +41,39 @@ func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
 	return t.k.reviewCall(t.Tool, args, summary)
 }
 
-// Run applies the background conflict queue, the second half of the policy: a
-// foreground write to something a running background has written is queued
-// behind that background instead of running beside it.
+// Run applies file freshness, then the background conflict queue. A foreground
+// write to something a running background has written is queued behind that
+// background instead of running beside it.
 func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	name := t.Name()
+	if name == "read_file" {
+		if s, ok := t.k.unchangedReceipt(ctx, t.Tool, args); ok {
+			return s, nil
+		}
+	}
+	if isFileEdit(name) {
+		if err := t.k.rejectUnreadOrStale(t.Tool, args); err != nil {
+			return "", err
+		}
+	}
+	out, ran, err := t.execute(ctx, args)
+	if err != nil || !ran {
+		return out, err
+	}
+	switch name {
+	case "read_file":
+		t.k.noteRead(ctx, t.Tool, args, out)
+	case "write_file", "edit_file":
+		if t.k.noteWrite(ctx, t.Tool, args) {
+			out = appendNote(out, msgRefresh)
+		}
+	}
+	return out, nil
+}
+
+// execute runs the tool, or queues it behind a conflicting background.
+// ran is false when the call was queued and did not touch the file.
+func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	k := t.k
 	if res, ok := review.ResourceOf(t.Tool.Name(), args, k.WorkDir); ok {
 		cur := k.turnFor(ctx)
@@ -49,17 +81,18 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 			if bg := k.conflictingBackground(cur, res); bg != nil {
 				_, summary, _ := t.Tool.Confirm(args)
 				if k.QueueFull() {
-					return fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res), nil
+					return fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res), false, nil
 				}
 				c := &Control{ID: fmt.Sprintf("q%d", ctrlSeq.Add(1)), Kind: "conflict", Resource: res, Text: t.Tool.Name() + " " + summary}
 				if bg.queueCtrl(c) {
-					return fmt.Sprintf("已排到后台 %s 之后（队列 %s）：它正在动 %s，做完当前的事会接着做这一步。", c.Background, c.ID, res), nil
+					return fmt.Sprintf("已排到后台 %s 之后（队列 %s）：它正在动 %s，做完当前的事会接着做这一步。", c.Background, c.ID, res), false, nil
 				}
 			}
 		}
 		cur.addResource(res)
 	}
-	return t.Tool.Run(ctx, args)
+	out, err := t.Tool.Run(ctx, args)
+	return out, true, err
 }
 
 // reviewCall returns whether the owner must confirm this concrete call.
@@ -220,6 +253,8 @@ func (k *Kernel) trackApprove(fn agent.Approver) agent.Approver {
 		state := bot.DecisionDeclined
 		if approved {
 			state = bot.DecisionAllowed
+		} else {
+			k.noteDenial(tool, agent.ToolArgs(ctx))
 		}
 		k.RecordDecision(state, tool, summary)
 		return approved, nil

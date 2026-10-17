@@ -1,4 +1,5 @@
 /bin/
+.test-tmp/
 *.test
 /vendor/
 /dist/

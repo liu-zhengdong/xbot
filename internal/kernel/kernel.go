@@ -105,6 +105,15 @@ type Kernel struct {
 	// channel is the reminder sidecar for this kernel. Lazy, so tests that
 	// never remind pay only the first touch.
 	channel *Channel
+	// files is this bot's read state for the life of the kernel. Another bot's
+	// kernel does not see it, and a new process starts empty.
+	fileMu sync.Mutex
+	files  map[string]*fileRec
+	fileN  uint64
+	// denied remembers tool calls the owner refused during the current turn.
+	// Handle clears it when a new turn starts, so a later message can ask again.
+	denyMu sync.Mutex
+	denied map[string]struct{}
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -131,6 +140,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnMu.Lock()
 	k.turn = t
 	k.turnMu.Unlock()
+	k.clearDenials()
 	k.clearLoaded()
 	if _, err := k.releaseQuiet(ctx); err != nil {
 		return err

@@ -87,10 +87,16 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 		ID: "c1", Type: "function",
 		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"tone":"warm and plain"}`},
 	}}}
+	// A denied call cannot be retried with the same arguments. The later
+	// approval uses a different proposal.
+	call2 := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		ID: "c2", Type: "function",
+		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"tone":"warm and plain","length":"short"}`},
+	}}}
 	p := &scripted{resps: []provider.Message{
 		call,
 		{Role: provider.RoleAssistant, Content: "denied-done"},
-		call,
+		call2,
 		{Role: provider.RoleAssistant, Content: "saved"},
 		{Role: provider.RoleAssistant, Content: "next"},
 	}}

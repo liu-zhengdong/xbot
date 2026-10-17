@@ -59,6 +59,9 @@ func (w *WriteFile) ResolvedPath(args json.RawMessage) string {
 	return path
 }
 
+// ShownPath is the path the model should see. A sandbox rewrites the host path.
+func (w *WriteFile) ShownPath(abs string) string { return DisplayPath(w.Sandbox, abs) }
+
 func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
