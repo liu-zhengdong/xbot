@@ -39,7 +39,7 @@ func pair(t *testing.T) (string, string, *bot.Bot, ed25519.PrivateKey, ed25519.P
 		}
 	}
 	for _, d := range []struct{ root, name, key string }{{a, "b", pb}, {b, "a", pa}} {
-		if _, err := AddDevice(d.root, d.name, d.key, ""); err != nil {
+		if _, err := AddDevice(d.root, d.name, d.key, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -1,9 +1,11 @@
 package remote
 
 import (
+	"crypto/hmac"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -20,7 +22,7 @@ import (
 )
 
 // Receive acknowledges rejected envelopes too, but never operational failures.
-func Receive(root, self string, envs []gateway.Envelope, now time.Time) (ack []string, err error) {
+func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...func(string, ...any)) (ack []string, err error) {
 	path := filepath.Join(root, "remote", "seen.json")
 	err = fsutil.WithLock(path+".lock", func() error {
 		cfg, err := Load(root)
@@ -42,7 +44,11 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time) (ack []s
 		var first error
 		for _, env := range envs {
 			if _, replay := seen[env.ID]; !replay {
-				if err := deliver(root, self, cfg, env, now); err != nil {
+				deliveryErr := deliver(root, self, cfg, env, now, logf...)
+				if deliveryErr == nil && env.Kind == "pair" {
+					cfg, deliveryErr = Load(root)
+				}
+				if err := deliveryErr; err != nil {
 					if first == nil {
 						first = err
 					}
@@ -83,7 +89,10 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time) (ack []s
 	return
 }
 
-func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time) error {
+func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time, logf ...func(string, ...any)) error {
+	if env.Kind == "pair" {
+		return deliverPair(root, self, env, now, logf...)
+	}
 	d, paired := cfg.ByID(env.From)
 	pub, err := base64.StdEncoding.DecodeString(d.Key)
 	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || env.Kind != "msg" || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > 64<<10 {
@@ -123,4 +132,72 @@ func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time)
 		return err
 	}
 	return box.Post(ev)
+}
+
+func deliverPair(root, self string, env gateway.Envelope, now time.Time, logf ...func(string, ...any)) error {
+	if env.To != self || env.V != 1 || len(env.Body) > maxPairBody ||
+		env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) {
+		return nil
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		return err
+	}
+	var pr pairRequest
+	if json.Unmarshal(env.Body, &pr) != nil || !namePattern.MatchString(pr.Name) || !isB64(pr.XKey, 32) {
+		return nil
+	}
+	pub, err := base64.StdEncoding.DecodeString(pr.Key)
+	if err != nil || len(pub) != 32 {
+		return nil
+	}
+	mac, err := base64.StdEncoding.DecodeString(pr.Mac)
+	if err != nil || len(mac) != 32 || gateway.ID(pub) != env.From || env.Verify(pub) != nil {
+		return nil
+	}
+	known, paired := cfg.ByID(env.From)
+	if paired && known.Key != pr.Key {
+		return nil
+	}
+	blob := pairDomain + pr.Key + "|" + pr.XKey + "|" + pr.Name + "|" + self + "|" + env.ID
+	return updateInvites(root, func(list []invite) ([]invite, error) {
+		for i, iv := range list {
+			if iv.Used || iv.Expires <= now.Unix() {
+				continue
+			}
+			secret, err := base64.RawURLEncoding.DecodeString(iv.Secret)
+			if err != nil || len(secret) != 32 || !hmac.Equal(hmacSHA256(secret, blob), mac) {
+				continue
+			}
+			// Already paired with this key: a join retry, or a crash after
+			// AddDevice; either way the invite is consumed now.
+			if !paired {
+				d, err := addDeviceUnique(root, pr.Name, pr.Key, pr.XKey, iv.Person)
+				if err != nil {
+					return nil, err
+				}
+				if len(logf) > 0 && logf[0] != nil {
+					logf[0]("paired with %s %s", d.Name, d.ID[:8])
+				}
+			}
+			list[i].Used = true
+			break
+		}
+		return list, nil
+	})
+}
+
+func addDeviceUnique(root, name, key, xkey, person string) (Device, error) {
+	var d Device
+	var err error
+	for i := 1; i <= 9; i++ {
+		n := name
+		if i > 1 {
+			n = fmt.Sprintf("%.62s-%d", name, i)
+		}
+		if d, err = AddDevice(root, n, key, xkey, person); err == nil {
+			return d, nil
+		}
+	}
+	return Device{}, err
 }

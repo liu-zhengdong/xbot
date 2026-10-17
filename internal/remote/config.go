@@ -2,6 +2,7 @@
 package remote
 
 import (
+	"crypto/ecdh"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -24,6 +25,7 @@ type Device struct {
 	Name   string    `json:"name"`
 	ID     string    `json:"id"`
 	Key    string    `json:"key"`
+	XKey   string    `json:"xkey,omitempty"`
 	Person string    `json:"person"`
 	Added  time.Time `json:"added"`
 }
@@ -43,6 +45,19 @@ func Identity(root string) (priv ed25519.PrivateKey, id, keyB64 string, err erro
 		id, keyB64 = gateway.ID(pub), base64.StdEncoding.EncodeToString(pub)
 	}
 	return
+}
+
+// XIdentity deterministically derives X25519 keys from the Ed25519 seed.
+func XIdentity(root string) (*ecdh.PrivateKey, string, error) {
+	priv, _, _, err := Identity(root)
+	if err != nil {
+		return nil, "", err
+	}
+	key, err := ecdh.X25519().NewPrivateKey(hmacSHA256(priv.Seed(), "xbot-x25519-v1"))
+	if err != nil {
+		return nil, "", err
+	}
+	return key, base64.StdEncoding.EncodeToString(key.PublicKey().Bytes()), nil
 }
 
 func readJSON(path string, v any) error {
@@ -107,13 +122,16 @@ func update(root string, fn func(*Config) error) error {
 	})
 }
 
-func AddDevice(root, name, keyB64, personID string) (d Device, err error) {
+func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err error) {
 	if !namePattern.MatchString(name) {
 		return d, errors.New("remote: invalid device name")
 	}
 	pub, err := base64.StdEncoding.DecodeString(keyB64)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return d, errors.New("remote: invalid public key")
+	}
+	if xkeyB64 != "" && !isB64(xkeyB64, 32) {
+		return d, errors.New("remote: invalid xkey")
 	}
 	_, self, _, err := Identity(root)
 	if err != nil {
@@ -135,7 +153,7 @@ func AddDevice(root, name, keyB64, personID string) (d Device, err error) {
 	if _, err := person.Load(root, personID); err != nil {
 		return d, err
 	}
-	d = Device{Name: name, ID: gateway.ID(pub), Key: base64.StdEncoding.EncodeToString(pub), Person: personID, Added: time.Now().UTC()}
+	d = Device{Name: name, ID: gateway.ID(pub), Key: base64.StdEncoding.EncodeToString(pub), XKey: xkeyB64, Person: personID, Added: time.Now().UTC()}
 	err = update(root, func(c *Config) error {
 		for _, existing := range c.Devices {
 			if existing.Name == name || existing.ID == d.ID {
