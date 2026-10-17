@@ -564,7 +564,7 @@ func ReadTemplate(path string) (Template, error) {
 func Rename(root, from, to string) error {
 	from = flat(from)
 	to = flat(to)
-	if !ValidName(from) || !ValidName(to) {
+	if !ValidName(from) || !ValidName(to) || !fsutil.PortableName(to) {
 		return fmt.Errorf("bot: invalid name %q", to)
 	}
 	if from == to {

@@ -62,11 +62,13 @@ func ExportSync(root string) ([]SyncLine, error) {
 		return nil, err
 	}
 	var out []SyncLine
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		if !ent.IsDir() || !ValidID(ent.Name()) {
+		id := directoryID(dir, ent, seen)
+		if id == "" {
 			continue
 		}
-		lines, err := ReadSync(root, ent.Name())
+		lines, err := ReadSync(root, id)
 		if err != nil {
 			return nil, err
 		}
@@ -116,9 +118,11 @@ func MergeFrom(root, peer string, remote []SyncLine) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		if ent.IsDir() && ValidID(ent.Name()) {
-			ids[ent.Name()] = true
+		id := directoryID(filepath.Join(root, "people"), ent, seen)
+		if id != "" {
+			ids[id] = true
 		}
 	}
 	for id := range byID {

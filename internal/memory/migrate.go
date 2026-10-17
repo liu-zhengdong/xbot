@@ -64,11 +64,13 @@ func migrateRoot(root string) {
 		log.Printf("memory: migrate %s: %v", bots, err)
 		return
 	}
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		if !ent.IsDir() || !ValidID(ent.Name()) {
+		id := directoryID(bots, ent, seen)
+		if id == "" {
 			continue
 		}
-		_ = migrateBot(root, ent.Name())
+		_ = migrateBot(root, id)
 	}
 }
 
@@ -84,11 +86,13 @@ func migrateBot(root, botName string) bool {
 		return true
 	}
 	var sources []string
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		if !ent.IsDir() || !ValidID(ent.Name()) {
+		id := directoryID(people, ent, seen)
+		if id == "" {
 			continue
 		}
-		src := filepath.Join(people, ent.Name(), "memory")
+		src := filepath.Join(people, id, "memory")
 		st, err := os.Stat(src)
 		if errors.Is(err, os.ErrNotExist) || (err == nil && !st.IsDir()) {
 			continue
