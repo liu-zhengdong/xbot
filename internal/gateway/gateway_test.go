@@ -245,3 +245,67 @@ func TestRegistrationEvictsIdleInstall(t *testing.T) {
 		t.Fatalf("install with queued mail was evicted: %v", err)
 	}
 }
+
+func TestGatewaySenderByteQuota(t *testing.T) {
+	s := &Server{Dir: t.TempDir(), Open: true}
+	h := s.Handler()
+	hc := &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Result(), nil
+	})}
+	ctx := context.Background()
+	clients := make([]*Client, 3)
+	for i := range clients {
+		_, key, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients[i] = &Client{Base: "http://gateway", Key: key, HTTP: hc}
+		if err := clients[i].Register(ctx, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	envelope := func(from, to int) Envelope {
+		return NewEnvelope(clients[from].Key, ID(clients[to].Key.Public().(ed25519.PublicKey)), "msg", []byte("mail"), time.Now())
+	}
+	first := envelope(0, 0)
+	raw, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := s.bounds()
+	l.senderBytes = 2 * int64(len(raw))
+	l.totalBytes = 3 * int64(len(raw))
+	s.limits = &l
+	for _, e := range []Envelope{first, envelope(0, 1)} {
+		if err := clients[0].Send(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Rebuild accounting from disk before checking the cross-recipient cap.
+	s = &Server{Dir: s.Dir, Open: true, limits: &l}
+	h = s.Handler()
+	err = clients[0].Send(ctx, envelope(0, 2))
+	if err == nil || !strings.Contains(err.Error(), "507") {
+		t.Errorf("sender quota: want 507, got %v", err)
+	}
+	if err := clients[1].Send(ctx, envelope(1, 2)); err != nil {
+		t.Fatalf("another sender must retain queue capacity: %v", err)
+	}
+	if err := clients[0].Ack(ctx, []string{first.ID}); err != nil {
+		t.Fatal(err)
+	}
+	replacement := envelope(0, 0)
+	if err := clients[0].Send(ctx, replacement); err != nil {
+		t.Fatalf("ack must release sender quota: %v", err)
+	}
+	old := time.Now().Add(-TTL - time.Second)
+	path := filepath.Join(s.Dir, "queue", replacement.To, replacement.From, replacement.ID+".json")
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := clients[0].Send(ctx, envelope(0, 2)); err != nil {
+		t.Fatalf("expiry must release sender quota across recipients: %v", err)
+	}
+}

@@ -27,9 +27,9 @@ var kindRe = regexp.MustCompile(`^[a-z]{1,16}$`)
 var idRe = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type limits struct {
-	pairCount, recipientCount             int
-	pairBytes, recipientBytes, totalBytes int64
-	pollBytes                             int
+	pairCount, recipientCount                          int
+	pairBytes, recipientBytes, senderBytes, totalBytes int64
+	pollBytes                                          int
 }
 
 type pollWaiter struct {
@@ -39,14 +39,15 @@ type pollWaiter struct {
 
 // Server stores signed mail for registered installations. Now defaults to time.Now.
 type Server struct {
-	Dir, Token string
-	Open       bool
-	Now        func() time.Time
-	mu         sync.Mutex
-	waiters    map[string]*pollWaiter
-	limits     *limits // Optional test bounds.
-	totalBytes int64
-	counted    bool
+	Dir, Token  string
+	Open        bool
+	Now         func() time.Time
+	mu          sync.Mutex
+	waiters     map[string]*pollWaiter
+	limits      *limits // Optional test bounds.
+	totalBytes  int64
+	senderBytes map[string]int64
+	counted     bool
 }
 
 type httpError struct {
@@ -220,18 +221,19 @@ func (s *Server) send(_ *http.Request, body []byte, caller string, pub ed25519.P
 	}
 	l := s.bounds()
 	size := int64(len(data))
-	if s.totalBytes+size > l.totalBytes {
+	if s.totalBytes+size > l.totalBytes || s.senderBytes[caller]+size > l.senderBytes {
 		if _, err := s.filesLocked("queue", "", TTL); err != nil {
 			return 0, nil, err
 		}
 	}
-	if pairCount+1 > l.pairCount || pairBytes+size > l.pairBytes || len(files)+1 > l.recipientCount || recipientBytes+size > l.recipientBytes || s.totalBytes+size > l.totalBytes {
+	if pairCount+1 > l.pairCount || pairBytes+size > l.pairBytes || len(files)+1 > l.recipientCount || recipientBytes+size > l.recipientBytes || s.totalBytes+size > l.totalBytes || s.senderBytes[caller]+size > l.senderBytes {
 		return 0, nil, httpError{507, "queue full"}
 	}
 	if err := fsutil.WriteAtomic(filepath.Join(pairDir, env.ID+".json"), data, 0600); err != nil {
 		return 0, nil, err
 	}
 	s.totalBytes += size
+	s.senderBytes[caller] += size
 	if p := s.waiters[env.To]; p != nil {
 		select {
 		case p.ch <- struct{}{}:
@@ -364,7 +366,9 @@ func (s *Server) queueLocked(to string) ([]queueFile, error) {
 		if err != nil {
 			return nil, err
 		}
+		s.senderBytes = make(map[string]int64)
 		for _, f := range files {
+			s.senderBytes[filepath.Base(filepath.Dir(f.path))] += f.info.Size()
 			s.totalBytes += f.info.Size()
 		}
 		s.counted = true
@@ -377,6 +381,11 @@ func (s *Server) removeLocked(f queueFile) error {
 		return err
 	}
 	s.totalBytes -= f.info.Size()
+	sender := filepath.Base(filepath.Dir(f.path))
+	s.senderBytes[sender] -= f.info.Size()
+	if s.senderBytes[sender] == 0 {
+		delete(s.senderBytes, sender)
+	}
 	return nil
 }
 
@@ -384,7 +393,7 @@ func (s *Server) bounds() limits {
 	if s.limits != nil {
 		return *s.limits
 	}
-	return limits{64, MaxQueue, 1 << 20, MaxQueueBytes, 256 << 20, MaxPollBytes}
+	return limits{64, MaxQueue, 1 << 20, MaxQueueBytes, 16 << 20, 256 << 20, MaxPollBytes}
 }
 
 type queueFile struct {
