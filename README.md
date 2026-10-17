@@ -141,7 +141,7 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 易变的部分是环境快照：小时、发送者、工具名、未读通知数、persona/rules/记忆的哈希。和上一次比，没变就不写；变了就在 transcript 末尾追加一条很短的 `<environment_update>`，只含差异。时间只在小时变化，或距离上次唤醒至少 30 分钟时才写。不改历史。persona 文件改完并得到主人确认后，下一次唤醒的前缀换成新文本，同时多一条 `persona: updated`。
 
-**上下文预算。** 粗算按大约 4 字节约 1 token，分成 stable、memory、env、history 四段。总量超过预算（默认约 4.8 万，或 context 的四分之三；绑定的模型 context 会用来算这个预算）就当场压缩。History 自己的预算是总预算减去另外三段。它用到这份预算的大约 70% 时，后台先压更早的一段，这一轮不等它。Profile 记忆注入最多 4 KiB。
+**上下文预算。** 粗算按大约 4 字节约 1 token，分成 stable、memory、env、history 四段。总量超过预算（默认约 4.8 万，或 context 的四分之三；绑定的模型 context 会用来算这个预算）就当场压缩。History 自己的预算是总预算减去另外三段。它用到这份预算的大约 70% 时，后台先压更早的一段，这一轮不等它。Profile 记忆注入最多两份满档加 512 字节（`2×4KiB+512`）。
 
 **压缩。** transcript 只追加，序列号就是行号，不会改。摘要是 state 里的块，每块记下它覆盖的 `[from, to]`。更大的块盖住里面的小块。模型看到的顺序是：稳定前缀、当前 profile 记忆、摘要块、还没被摘要盖住的原文。
 
@@ -166,15 +166,16 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 
 软阈值走另一条路。History 过了大约 70% 就写一份 `compact-job.json`，在后台压一段更早的、守同样边界的范围。主循环继续处理事件。这段范围在任务开始时就定死了，压的过程里新到的消息序号在范围外面，不会被卷进去。每个 Bot 同时只有一个任务；第二个进程抢不到运行锁就退出。摘要和抽出来的事实先落在任务文件里。块只在两轮之间换进 state，不会插在模型调用中间。换过同范围的块再换一次是空操作。任务还在 `running`、摘要没写完时崩溃，不会留下半块；下次唤醒接着压同一段。压完如果尾巴里已经没有环境消息，就再追加一条完整的 `<environment_snapshot>`，避免状态被摘要吃掉。抽事实和摘要在同一个后台任务里做，写入记忆时按正文去重。
 
-**记忆。** 三个范围，两档：
+**记忆。** 两个范围，两档：
 
 | 范围 | 谁看得见 | 档 |
 | --- | --- | --- |
-| person | 所有 Bot | profile 每次注入；log 只在 `recall` 时搜 |
-| bot | 这个 Bot | 同上 |
-| bot-person | 这个 Bot 和这个人 | 同上 |
+| person | 所有 Bot。只放每个 Bot 都需要的、关于主人本人的事实：时区、语言、作息、他是谁。写入必须显式写 `scope=person` | profile 每次注入；log 只在 `recall` 时搜 |
+| bot | 这个 Bot。角色、和主人约定的规则、项目决定。省略 scope 时的默认 | 同上 |
 
-冲突规则不变：关于人的事实，新的赢；怎么干活，bot 范围赢。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。来自不可信事件的 person 事实会在正文里标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（三份一起注入），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。
+冲突规则：关于人的事实，新的赢；怎么干活，bot 范围赢，压过 person。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。不可信回合写进哪一层，正文都会标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（两份一起注入，预算 `2×4KiB+512`），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。已经超限的文件仍能 forget，只要这次写不会把文件变大。工作规则和项目决定不进 person。Bot 记忆每个发送者都看得见。
+
+旧的 bot-person 目录只在该 Bot 的 `owners` 里才并进 `bots/<name>/memory`，去重，保留时间戳、来源和原来的 kind。没有主人的 Bot 不合并，旧事实只留在 `memory.bak`。`config.json` 缺失或读不了时目录留在原地，不算没有主人。其他人的目录改名为 `memory.bak`。profile 放不下的改记 log。迁进 log 时文件留到大约 48 KiB，更旧的写到 `log.overflow.md`。每次进程启动都重新走一遍 `bots/*/people/*/memory`（每个数据根每进程一次）；迁过的目录已改名为 `memory.bak`，所以重复走是幂等的。见 [ADR 0006](docs/adr/0006-two-memory-scopes.md)。
 
 **历史。** 原文按大约 8MB 或 UTC 日期分成段，只有尾段可写。SQLite 索引（纯 Go，无 cgo）把序号映射到段和偏移，并用 FTS5 做全文。`recall_history(query)` 走这个索引的 BM25，带回序列号。`expand(from, to)` 按序号把原文拉回来，输出有上限。大段工具输出另存成 blob，上下文里只留预览。索引丢了会自动重建，也可以 `xbot reindex <bot>`。旧的单文件 `transcript.jsonl` 第一次打开时迁进分段。摘要掉的句子还能这样找到。
 
@@ -310,7 +311,7 @@ M3：
 
 M2：
 
-- Bot A 记住的 person 事实，新建的 Bot B 能 recall；bot-person 事实别的人看不到。
+- Bot A 记住的 person 事实，新建的 Bot B 能 recall；Bot 自己的记忆别的 Bot 看不到。
 - `serve` 里 routine 到点：模型选择通知时 outbox 有一条；选择 `SILENT` 时没有通知。
 - 主人的终端输入不会包成 `<untrusted_event>`。
 - 两次唤醒的稳定前缀字节相同；小时变化只追加一条很小的环境差异。
@@ -342,7 +343,7 @@ M2：
 | `bot` | Bot 目录、绑定、transcript、摘要块 |
 | `kernel` | 一次唤醒：信任、环境差异、压缩、组装、调用 agent |
 | `person` | 全局身份 |
-| `memory` | 三层记忆、markdown 存储、BM25 |
+| `memory` | 两层记忆、markdown 存储、BM25 |
 | `compact` | 压缩接口和 LLM 摘要 |
 | `cron` | 5 段 cron 和最小间隔 |
 | `bm25` | 关键词排序 |

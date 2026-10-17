@@ -916,22 +916,18 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	return clipMemory(renderMemory(facts)), nil
 }
 
-// loadMemory is the context-assembly seam for the three memory scopes.
+// loadMemory is the context-assembly seam for the person and bot scopes.
 // M1's store recalls nothing. M2 returns facts; Visible and Resolve still apply.
 func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact, error) {
 	if k.Memory == nil {
 		return nil, nil
 	}
 	botName := k.Bot.Name()
-	var personFacts, relFacts []memory.Fact
+	var personFacts []memory.Fact
 	// External senders such as webhook:github are not person ids. Bot memory still loads.
 	if memory.ValidID(personID) {
 		var err error
 		personFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
-		if err != nil {
-			return nil, err
-		}
-		relFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBotPerson, BotName: botName, PersonID: personID, Tier: memory.TierProfile})
 		if err != nil {
 			return nil, err
 		}
@@ -940,7 +936,7 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 	if err != nil {
 		return nil, err
 	}
-	all := append(append(personFacts, botFacts...), relFacts...)
+	all := append(personFacts, botFacts...)
 	return memory.Resolve(memory.Visible(all, botName, personID)), nil
 }
 

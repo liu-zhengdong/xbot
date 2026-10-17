@@ -243,8 +243,8 @@ func TestMemorySeam(t *testing.T) {
 		{Key: "city", Kind: memory.KindAttribute, Scope: memory.ScopePerson, PersonID: "u1", Text: "Lisbon", Time: t0.Add(time.Hour), WrittenBy: "ada"},
 		{Key: "style", Kind: memory.KindWork, Scope: memory.ScopeBot, BotName: "ada", Text: "terse", Time: t0},
 		{Key: "style", Kind: memory.KindWork, Scope: memory.ScopePerson, PersonID: "u1", Text: "emoji", Time: t0.Add(2 * time.Hour)},
-		{Key: "secret", Kind: memory.KindAttribute, Scope: memory.ScopeBotPerson, BotName: "ada", PersonID: "u2", Text: "hidden"},
-		{Key: "lang", Kind: memory.KindAttribute, Scope: memory.ScopeBotPerson, BotName: "ada", PersonID: "u1", Text: "zh"},
+		{Key: "secret", Kind: memory.KindAttribute, Scope: memory.ScopeBot, BotName: "other", Text: "hidden"},
+		{Key: "lang", Kind: memory.KindAttribute, Scope: memory.ScopeBot, BotName: "ada", Text: "zh"},
 	}}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2}
@@ -252,14 +252,14 @@ func TestMemorySeam(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.qs) != 3 {
+	if len(store.qs) != 2 {
 		t.Fatalf("queries %+v", store.qs)
 	}
 	scopes := map[memory.Scope]memory.Query{}
 	for _, q := range store.qs {
 		scopes[q.Scope] = q
 	}
-	if scopes[memory.ScopePerson].PersonID != "u1" || scopes[memory.ScopeBot].BotName != "ada" || scopes[memory.ScopeBotPerson].PersonID != "u1" {
+	if scopes[memory.ScopePerson].PersonID != "u1" || scopes[memory.ScopeBot].BotName != "ada" {
 		t.Fatalf("queries %+v", store.qs)
 	}
 	sys := p.reqs[0].Messages[0].Content
@@ -274,7 +274,7 @@ func TestMemorySeam(t *testing.T) {
 		t.Fatalf("work fact: %s", joined)
 	}
 	if strings.Contains(joined, "hidden") || !strings.Contains(joined, "zh") {
-		t.Fatalf("bot-person: %s", joined)
+		t.Fatalf("bot fact: %s", joined)
 	}
 	if !strings.Contains(joined, "sender: u1") {
 		t.Fatal("missing sender")

@@ -118,7 +118,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "REMEMBER_PERSON") && !sawRemember:
 		writeTools(w, []toolSpec{
 			{"call_rem_person", "remember", `{"fact":"Ada likes tea","scope":"person","tier":"profile"}`},
-			{"call_rem_rel", "remember", `{"fact":"secret handshake","scope":"bot-person","tier":"profile"}`},
+			{"call_rem_rel", "remember", `{"fact":"secret handshake","scope":"bot","tier":"profile"}`},
 		})
 		return
 	case strings.Contains(lastUser, "REMEMBER_PERSON"):

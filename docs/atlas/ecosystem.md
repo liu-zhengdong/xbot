@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/link/, internal/skill/, internal/code/, internal/tools/]
-verified: 2026-10-17 @ 2337be8
+verified: 2026-10-17 @ e2fe90d
 ---
 # 生态：Link、MCP、技能、连接器、编码代理
 

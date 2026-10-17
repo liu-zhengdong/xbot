@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -50,7 +51,7 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	k := &Kernel{Bot: b, Memory: store}
 	ctx := context.Background()
 	when := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
-	const marker = "bot-person-fact-must-survive"
+	const marker = "bot-fact-must-survive"
 
 	fill := func(scope memory.Scope, person, anchor string) {
 		t.Helper()
@@ -82,20 +83,19 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	}
 
 	fill(memory.ScopePerson, "u1", "person-anchor "+strings.Repeat("p", 360))
-	fill(memory.ScopeBot, "", "bot-anchor "+strings.Repeat("b", 360))
 	if err := store.Remember(ctx, memory.Fact{
-		Key: "zzz-relation", Scope: memory.ScopeBotPerson, Tier: memory.TierProfile,
-		BotName: b.Name(), PersonID: "u1", WrittenBy: b.Name(), Text: marker, Time: when,
+		Key: "zzz-bot", Scope: memory.ScopeBot, Tier: memory.TierProfile,
+		BotName: b.Name(), WrittenBy: b.Name(), Text: marker, Time: when,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fill(memory.ScopeBotPerson, "u1", "relation-anchor "+strings.Repeat("r", 360))
+	fill(memory.ScopeBot, "", "bot-anchor "+strings.Repeat("b", 360))
 
 	body, err := k.memoryText(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{marker, "This bot and this person", "bot-anchor", "person-anchor"} {
+	for _, want := range []string{marker, "### Bot", "bot-anchor", "person-anchor"} {
 		if !strings.Contains(body, want) {
 			tail := body
 			if len(tail) > 500 {
@@ -108,7 +108,7 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 		t.Fatalf("standing memory was clipped (%d bytes)", len(body))
 	}
 	if len(body) <= 4096 {
-		t.Fatalf("rendered %d bytes; a 4096-byte head clip would hide the bot-person fact", len(body))
+		t.Fatalf("rendered %d bytes; a 4096-byte head clip would hide the bot fact", len(body))
 	}
 	msgs, _ := Assemble(Input{Persona: "Be brief.", Rules: DefaultRules(), Memory: body})
 	var mem string
@@ -119,6 +119,90 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	}
 	if mem == "" || !strings.Contains(mem, marker) || strings.Contains(mem, "memory clipped") {
 		t.Fatalf("injected memory dropped a fact\n%s", mem)
+	}
+}
+
+func TestRememberOmitsScopeWritesBot(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameMemory)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	k := &Kernel{Bot: b, Memory: store, Now: func() time.Time {
+		return time.Date(2026, 10, 17, 4, 0, 0, 0, time.UTC)
+	}}
+	k.ensureTurn().turnSender = "u1"
+	k.ensureTurn().turnTrusted = true
+	tool := rememberTool{k}
+	if _, err := tool.Run(context.Background(), []byte(`{"fact":"always run tests before done","tier":"profile"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tool.Run(context.Background(), []byte(`{"fact":"owner timezone is Asia/Shanghai","scope":"person","tier":"profile"}`)); err != nil {
+		t.Fatal(err)
+	}
+	botFacts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name(), Tier: memory.TierProfile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(botFacts) != 1 || botFacts[0].Text != "always run tests before done" || botFacts[0].Scope != memory.ScopeBot {
+		t.Fatalf("bot %+v", botFacts)
+	}
+	person, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(person) != 1 || !strings.Contains(person[0].Text, "Asia/Shanghai") {
+		t.Fatalf("person %+v", person)
+	}
+	for _, f := range person {
+		if strings.Contains(f.Text, "always run tests") {
+			t.Fatalf("work rule landed in person: %+v", f)
+		}
+	}
+	if _, err := tool.Run(context.Background(), []byte(`{"fact":"nope","scope":"bot-person"}`)); err == nil {
+		t.Fatal("bot-person scope was accepted")
+	}
+}
+
+func TestExtractOmittedScopeWritesBot(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	store := memory.Open(b.Root)
+	k := &Kernel{
+		Bot: b, Memory: store,
+		Extractor: stubExtract{facts: []memory.Fact{
+			{Tier: memory.TierLog, Text: "omitted lands in bot"},
+			{Scope: memory.ScopeBotPerson, Tier: memory.TierLog, Text: "legacy label lands in bot"},
+			{Scope: memory.ScopePerson, Tier: memory.TierProfile, Text: "owner timezone is Asia/Shanghai"},
+		}},
+	}
+	k.ensureTurn().turnTrusted = true
+	k.ensureTurn().turnSender = "u1"
+	k.extractInto(context.Background(), []bot.Entry{{
+		Message: provider.Message{Role: provider.RoleUser, Content: "remember the rule and my timezone"},
+	}}, "")
+	botFacts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := ""
+	for _, f := range botFacts {
+		joined += f.Text + "\n"
+		if f.Scope != memory.ScopeBot {
+			t.Fatalf("scope %+v", f)
+		}
+	}
+	if !strings.Contains(joined, "omitted lands in bot") || !strings.Contains(joined, "legacy label lands in bot") {
+		t.Fatalf("bot facts:\n%s", joined)
+	}
+	if strings.Contains(joined, "Asia/Shanghai") {
+		t.Fatalf("timezone stored in bot:\n%s", joined)
+	}
+	person, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopePerson, PersonID: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(person) != 1 || !strings.Contains(person[0].Text, "Asia/Shanghai") {
+		t.Fatalf("person %+v", person)
 	}
 }
 
