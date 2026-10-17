@@ -277,7 +277,11 @@ func fenceMemory(s string) string {
 }
 
 func renderMemory(facts, logs []memory.Fact, total ...int) string {
-	if len(facts) == 0 && len(logs) == 0 {
+	return renderMemoryPaths(facts, logs, nil, total...)
+}
+
+func renderMemoryPaths(facts, logs []memory.Fact, paths map[memory.Scope]string, total ...int) string {
+	if len(facts) == 0 && len(logs) == 0 && len(paths) == 0 {
 		return ""
 	}
 	groups := map[memory.Scope][]memory.Fact{}
@@ -296,7 +300,7 @@ func renderMemory(facts, logs []memory.Fact, total ...int) string {
 	}
 	for _, sec := range sections {
 		items := groups[sec.scope]
-		if len(items) == 0 {
+		if len(items) == 0 && paths[sec.scope] == "" {
 			continue
 		}
 		wrote = true
@@ -306,7 +310,11 @@ func renderMemory(facts, logs []memory.Fact, total ...int) string {
 			}
 			return items[i].Key < items[j].Key
 		})
-		fmt.Fprintf(&b, "\n### %s\n", sec.title)
+		title := sec.title
+		if path := paths[sec.scope]; path != "" {
+			title += " — " + fenceMemory(path)
+		}
+		fmt.Fprintf(&b, "\n### %s\n", title)
 		for _, f := range items {
 			text := factText(f)
 			if f.Key != memory.DefaultKey(f.Text) {

@@ -18,6 +18,12 @@ import (
 var logLineRE = regexp.MustCompile(`^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) \[([^\]\r\n]+)\] (.+)$`)
 var monthNameRE = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])\.md$`)
 
+// ValidLogLine reports whether line has the dated log format and a valid local time.
+func ValidLogLine(line string) bool {
+	_, ok := parseLogLine(line, ScopeBot, "", "")
+	return ok
+}
+
 func monthPaths(dir string) ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(dir, "log"))
 	if errors.Is(err, os.ErrNotExist) {

@@ -788,7 +788,7 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
 	k := &Kernel{Bot: b, Memory: store, Provider: p, MaxSteps: 2}
-	fresh, err := k.memoryText(ctx, "")
+	fresh, err := k.memoryText(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}

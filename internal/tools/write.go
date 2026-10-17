@@ -126,3 +126,8 @@ func refuseDir(path string) error {
 	}
 	return nil
 }
+
+// LogicalPathContext reports the absolute caller path without following symlinks.
+func (w *WriteFile) LogicalPathContext(ctx context.Context, args json.RawMessage) string {
+	return w.rootBind.logicalPathContext(ctx, w.Root, w.Sandbox, args)
+}

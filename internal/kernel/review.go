@@ -60,6 +60,11 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		}
 	}
 	if isFileEdit(name) {
+		if path, dir, _, _ := t.k.memoryCall(ctx, t.Tool, args); dir != "" {
+			if err := memorySymlinks(dir, path); err != nil {
+				return "", err
+			}
+		}
 		if err := t.k.rejectUnreadOrStale(ctx, t.Tool, args); err != nil {
 			return "", err
 		}
@@ -103,7 +108,7 @@ func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string
 		}
 		cur.addResource(res)
 	}
-	out, err := t.Tool.Run(ctx, args)
+	out, err := t.runMemoryGuard(ctx, args)
 	return out, true, err
 }
 
@@ -129,6 +134,11 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	// the vault is the one thing a bot's own shell should not read.
 	if k.protectedCall(ctx, tool, args) {
 		return true, summary + review.ProtectedSuffix, nil
+	}
+	if isFileEdit(name) && !k.turnFor(ctx).turnTrusted {
+		if _, dir, _, _ := k.memoryCall(ctx, tool, args); dir != "" {
+			return true, summary + " (untrusted turn: memory write)", nil
+		}
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
 		// write_file and edit_file are a self-edit only when the resolved path

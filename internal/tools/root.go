@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
+	"path/filepath"
 	"sync"
 )
 
@@ -38,4 +40,23 @@ func (b *rootBind) dir(ctx context.Context, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+// logicalPathContext keeps the caller's path identity without following symlinks.
+func (b *rootBind) logicalPathContext(ctx context.Context, root, sandbox string, args json.RawMessage) string {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(args, &in) != nil || in.Path == "" {
+		return ""
+	}
+	path := AliasCase(sandbox, in.Path)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(b.dir(ctx, root), path)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	return abs
 }

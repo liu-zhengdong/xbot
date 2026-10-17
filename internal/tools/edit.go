@@ -147,3 +147,8 @@ func (e *EditFile) parse(ctx context.Context, args json.RawMessage) (editArgs, s
 	}
 	return in, path, nil
 }
+
+// LogicalPathContext reports the absolute caller path without following symlinks.
+func (e *EditFile) LogicalPathContext(ctx context.Context, args json.RawMessage) string {
+	return e.rootBind.logicalPathContext(ctx, e.Root, e.Sandbox, args)
+}
