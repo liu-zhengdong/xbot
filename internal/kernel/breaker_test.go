@@ -190,8 +190,14 @@ func TestBreakerStopWritesTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(traces) != 1 || traces[0].Kind != bot.TraceStop || traces[0].Reason != StopRepeatedOutput {
-		t.Fatalf("trace %+v", traces)
+	var stops []bot.Trace
+	for _, tr := range traces {
+		if tr.Kind == bot.TraceStop {
+			stops = append(stops, tr)
+		}
+	}
+	if len(stops) != 1 || stops[0].Reason != StopRepeatedOutput {
+		t.Fatalf("stop traces %+v of %+v", stops, traces)
 	}
 }
 

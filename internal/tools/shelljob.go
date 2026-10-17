@@ -59,18 +59,26 @@ type Job struct {
 	// Held is raw bytes still in memory because they might begin a secret.
 	// It is live state, not stored: a restart has already lost that tail.
 	Held int `json:"-"`
+	// Cwd is the directory the command started in.
+	Cwd string `json:"cwd,omitempty"`
 	// Local is true only for a job this process started. It is not stored.
 	Local bool `json:"-"`
 }
 
 // RunRequest is one shell invocation that may outlive its timeout.
+// Exec is the script actually run. Empty means Command. CwdFile is removed
+// when the process exits; OnCwd receives the directory a foreground command
+// finished in, before Run returns.
 type RunRequest struct {
 	Command    string
+	Exec       string
 	Timeout    time.Duration
 	MaxOutput  int
 	Dir        string
 	Env        []string
 	Background bool
+	CwdFile    string
+	OnCwd      func(string)
 }
 
 // Jobs tracks shell commands for one bot directory. The same value lives for
@@ -103,6 +111,12 @@ type live struct {
 	killed   bool
 	finished bool
 	waitErr  error
+	cwdFile  string
+	onCwd    func(string)
+	// claimCwd is set when finish still owns the session directory. Run's
+	// timeout path waits for done instead of detaching once this is set, so
+	// onCwd cannot run after Run has returned.
+	claimCwd bool
 }
 
 // NewJobs records jobs under dir. Call Load before Run so a restarted process
@@ -220,8 +234,9 @@ func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
 		return "", ctx.Err()
 	case <-timer.C:
 		lv.mu.Lock()
-		if lv.finished {
+		if lv.finished || lv.claimCwd {
 			lv.mu.Unlock()
+			<-lv.done
 			return j.finishForeground(lv, req.MaxOutput, "")
 		}
 		if skipAutoBackground(req.Command) {
@@ -232,12 +247,12 @@ func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		lv.detached = true
 		lv.job.TimedOut = true
-		id, path := lv.job.ID, lv.job.Output
+		id, path, cwd := lv.job.ID, lv.job.Output, lv.job.Cwd
 		lv.mu.Unlock()
 		if err := j.publish(lv); err != nil {
 			return "", err
 		}
-		return formatBackground(Job{ID: id, Output: path}, "still running after "+timeout.String()+"; not killed"), nil
+		return formatBackground(Job{ID: id, Output: path, Cwd: cwd}, "still running after "+timeout.String()+"; not killed"), nil
 	}
 }
 
@@ -460,7 +475,11 @@ func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
 	}
 	w := newJobWriter(f, j.outputCap(), j.redact)
 	w.forms = j.Forms
-	cmd := exec.Command("sh", "-c", req.Command)
+	script := req.Exec
+	if script == "" {
+		script = req.Command
+	}
+	cmd := exec.Command("sh", "-c", script)
 	setGroup(cmd)
 	if req.Dir != "" {
 		cmd.Dir = req.Dir
@@ -477,7 +496,10 @@ func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
 			Status:  "running",
 			Output:  path,
 			Started: j.now(),
+			Cwd:     req.Dir,
 		},
+		cwdFile:  req.CwdFile,
+		onCwd:    req.OnCwd,
 		cmd:      cmd,
 		w:        w,
 		done:     make(chan struct{}),
@@ -522,12 +544,40 @@ func (j *Jobs) publish(lv *live) error {
 }
 
 func (j *Jobs) finish(lv *live, waitErr error) {
+	lv.mu.Lock()
+	if lv.finished {
+		lv.mu.Unlock()
+		return
+	}
+	cwdFile := lv.cwdFile
+	onCwd := lv.onCwd
+	report := !lv.detached
+	if report {
+		lv.claimCwd = true
+	} else {
+		onCwd = nil
+	}
+	lv.mu.Unlock()
+	var ended string
+	if cwdFile != "" {
+		if report {
+			ended = readCwdFile(cwdFile)
+		}
+		_ = os.Remove(cwdFile)
+	}
 	j.metaMu.Lock()
 	lv.mu.Lock()
 	if lv.finished {
 		lv.mu.Unlock()
 		j.metaMu.Unlock()
 		return
+	}
+	// Timeout sets detached only while claimCwd is still false. If it won,
+	// this exit must not move the session directory.
+	if lv.detached {
+		report = false
+		onCwd = nil
+		ended = ""
 	}
 	lv.finished = true
 	lv.waitErr = waitErr
@@ -547,6 +597,9 @@ func (j *Jobs) finish(lv *live, waitErr error) {
 	job := lv.job
 	lv.mu.Unlock()
 	err := j.writeMeta(job)
+	if report && ended != "" && onCwd != nil {
+		onCwd(ended)
+	}
 	close(lv.done)
 	j.metaMu.Unlock()
 	if err != nil {
@@ -787,7 +840,11 @@ func clipCommand(s string) string {
 }
 
 func formatBackground(job Job, note string) string {
-	return fmt.Sprintf("background %s\noutput: %s\n%s\nUse shell_output to read (offset or tail), shell_status to check, and shell_cancel to stop. Do not poll in a tight loop.", job.ID, job.Output, note)
+	cwd := ""
+	if job.Cwd != "" {
+		cwd = "\ncwd: " + job.Cwd
+	}
+	return fmt.Sprintf("background %s\noutput: %s%s\n%s\nUse shell_output to read (offset or tail), shell_status to check, and shell_cancel to stop. Do not poll in a tight loop.", job.ID, job.Output, cwd, note)
 }
 
 func tailLines(s string, n int) string {

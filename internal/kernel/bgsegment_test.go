@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
@@ -192,8 +193,14 @@ func TestQuietContinuationsHardStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(traces) != 1 || traces[0].Reason != StopDiminishingReturns {
-		t.Fatalf("trace %+v", traces)
+	var stops []bot.Trace
+	for _, tr := range traces {
+		if tr.Kind == bot.TraceStop {
+			stops = append(stops, tr)
+		}
+	}
+	if len(stops) != 1 || stops[0].Reason != StopDiminishingReturns {
+		t.Fatalf("stop traces %+v of %+v", stops, traces)
 	}
 	entries, err := k.Bot.Entries()
 	if err != nil {

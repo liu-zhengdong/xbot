@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-17 @ 0418c26
+verified: 2026-10-17 @ c940085
 ---
 # 多 Bot
 

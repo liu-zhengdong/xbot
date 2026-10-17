@@ -323,7 +323,7 @@ func newLocal(client *provider.Client) *exec.Local {
 	loc := exec.NewLocal(exec.Limits{Timeout: 30 * time.Second, ProgressEvery: -1, MaxSteps: 8})
 	loc.Prov = client
 	loc.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
-	loc.ToolSet = func(string) []tools.Tool {
+	loc.ToolSet = func(string, string) []tools.Tool {
 		return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
 	}
 	return loc
@@ -336,7 +336,7 @@ func executorFor(t *testing.T, client *provider.Client, viaRunner bool) (exec.Ex
 	}
 	loc := exec.NewLocal(exec.Limits{Timeout: 30 * time.Second, ProgressEvery: -1, MaxSteps: 8})
 	loc.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
-	loc.ToolSet = func(string) []tools.Tool {
+	loc.ToolSet = func(string, string) []tools.Tool {
 		return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
 	}
 	ts := httptest.NewServer((&exec.Server{Local: loc, Token: "tok"}).Handler())

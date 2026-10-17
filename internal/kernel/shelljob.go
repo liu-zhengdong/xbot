@@ -61,6 +61,27 @@ func (k *Kernel) attachShellJobs() {
 	}
 }
 
+// attachShell points every shell at this bot's job table and persistent cwd.
+func (k *Kernel) attachShell() {
+	k.attachShellJobs()
+	if k == nil {
+		return
+	}
+	for _, l := range k.snapshotLinks() {
+		if l == nil {
+			continue
+		}
+		for _, t := range l.Tools() {
+			sh, ok := t.(*tools.Shell)
+			if ok {
+				sh.BindSession(k.shellStartDir, k.shellAfterDir)
+				sh.SetMarkerDir(k.shellMarkerDir())
+			}
+			k.bindFileCwd(t)
+		}
+	}
+}
+
 // shellBackgroundOn reports that a real shell on these links has a job table.
 // An eval jail is also named "tools" but its shell is not *tools.Shell and has
 // no jobs, so it must not gain shell_output, shell_status, or shell_cancel.
@@ -77,6 +98,29 @@ func shellBackgroundOn(links []link.Link) bool {
 		}
 	}
 	return false
+}
+
+// bindFileCwd points file tools at the shell's current directory. A sandbox
+// stays rooted where it was built. Relative paths resolve at call time;
+// absolute paths stay absolute, and freshness records use that absolute path.
+func (k *Kernel) bindFileCwd(t tools.Tool) {
+	if k == nil || t == nil {
+		return
+	}
+	switch f := t.(type) {
+	case *tools.ReadFile:
+		if f.Sandbox == "" {
+			f.BindRoot(k.cwdFor)
+		}
+	case *tools.WriteFile:
+		if f.Sandbox == "" {
+			f.BindRoot(k.cwdFor)
+		}
+	case *tools.EditFile:
+		if f.Sandbox == "" {
+			f.BindRoot(k.cwdFor)
+		}
+	}
 }
 
 func (k *Kernel) onShellDone(job tools.Job) {
@@ -472,6 +516,9 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 				break
 			}
 			fmt.Fprintf(&b, "%s %s %s", job.ID, job.Status, clipRunes(job.Command, 80))
+			if job.Cwd != "" {
+				fmt.Fprintf(&b, " cwd %s", job.Cwd)
+			}
 			if job.Held > 0 {
 				fmt.Fprintf(&b, " held_bytes: %d", job.Held)
 			}
@@ -486,6 +533,9 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 	line := fmt.Sprintf("%s %s", job.ID, job.Status)
 	if job.Status == "done" {
 		line += fmt.Sprintf(" exit %d", job.ExitCode)
+	}
+	if job.Cwd != "" {
+		line += "\ncwd: " + job.Cwd
 	}
 	if job.Held > 0 {
 		line += fmt.Sprintf("\nheld_bytes: %d", job.Held)

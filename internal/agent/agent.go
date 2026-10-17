@@ -351,7 +351,7 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	if !json.Valid(raw) {
 		return finish(opt, t.Name(), "error: tool arguments are not valid JSON")
 	}
-	need, summary, err := t.Confirm(raw)
+	need, summary, err := tools.ConfirmCall(ctx, t, raw)
 	if err != nil {
 		return finish(opt, t.Name(), "error: "+err.Error())
 	}

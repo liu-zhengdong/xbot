@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,16 +34,20 @@ const (
 
 	pendingCooldown = 10 * time.Minute
 	loopCooldown    = time.Minute
+	// reminderMax clips an ordinary reminder. Project instructions carry their
+	// own larger budget; reminderHardMax is the absolute cap prepare enforces.
 	reminderMax     = 2048
+	reminderHardMax = projectNoteMax
 )
 
 // Kind is one reminder. Cooldown is the minimum gap between firings.
 // Trigger returns the note, or "" when the condition is not met. prev is this
 // kind's earlier firings, oldest first, so a trigger can suppress repeats
-// without rewriting them.
+// without rewriting them. MaxBytes overrides reminderMax for one kind.
 type Kind struct {
 	Name     string
 	Cooldown time.Duration
+	MaxBytes int
 	Trigger  func(now time.Time, prev []Reminder) string
 }
 
@@ -109,7 +114,14 @@ func (c *Channel) Due(now time.Time) ([]Reminder, error) {
 		if k.Cooldown > 0 && !last.IsZero() && now.Sub(last) < k.Cooldown {
 			continue
 		}
-		text := clipReminder(k.Trigger(now, prev))
+		limit := k.MaxBytes
+		if limit <= 0 {
+			limit = reminderMax
+		}
+		if limit > reminderHardMax {
+			limit = reminderHardMax
+		}
+		text := clipLimit(k.Trigger(now, prev), limit)
 		if text == "" {
 			continue
 		}
@@ -120,6 +132,8 @@ func (c *Channel) Due(now time.Time) ([]Reminder, error) {
 
 // Bind appends due reminders to the newest message and records them against seq
 // so the next request can replay the same bytes. Earlier messages are not touched.
+// A repo-provided project note is its own trailing user message, so it is not
+// concatenated into the owner's trusted line.
 func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provider.Message, error) {
 	if c == nil {
 		return msgs, nil
@@ -128,21 +142,27 @@ func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provi
 	if err != nil || len(due) == 0 {
 		return msgs, err
 	}
-	var b strings.Builder
+	var trusted, apart []string
 	for i, d := range due {
 		due[i].Text = c.log.prepare(d.Text)
 		if due[i].Text == "" {
 			continue
 		}
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
+		if projectApart(due[i].Text) {
+			apart = append(apart, due[i].Text)
+			continue
 		}
-		b.WriteString(due[i].Text)
+		trusted = append(trusted, due[i].Text)
 	}
-	if b.Len() == 0 {
+	if len(trusted) == 0 && len(apart) == 0 {
 		return msgs, nil
 	}
-	msgs = agent.AttachReminder(msgs, b.String())
+	if len(trusted) > 0 {
+		msgs = agent.AttachReminder(msgs, strings.Join(trusted, "\n\n"))
+	}
+	for _, text := range apart {
+		msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: text})
+	}
 	if seq <= 0 {
 		return msgs, nil
 	}
@@ -197,13 +217,16 @@ func (c *Channel) Apply(msgs []provider.Message, seqs []int) error {
 
 // Replay appends stored reminders onto the in-memory copies of the lines they
 // belong to. It does not write the transcript. seqs[i] is the sequence of entries[i].
-func (c *Channel) Replay(entries []bot.Entry, seqs []int) error {
+// A repo-provided project note bound to a user line becomes the next message
+// instead of joining that line, so a later wake does not put it back inside
+// the owner's trusted text. The returned slice may be longer than entries.
+func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, error) {
 	if c == nil || len(entries) == 0 {
-		return nil
+		return entries, nil
 	}
 	all, err := c.log.all()
 	if err != nil || len(all) == 0 {
-		return err
+		return entries, err
 	}
 	by := map[int][]string{}
 	for _, n := range all {
@@ -212,19 +235,35 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) error {
 		}
 	}
 	if len(by) == 0 {
-		return nil
+		return entries, nil
 	}
+	out := make([]bot.Entry, 0, len(entries))
 	for i := range entries {
-		if i >= len(seqs) {
-			break
-		}
-		texts := by[seqs[i]]
-		if len(texts) == 0 {
+		e := entries[i]
+		if i < len(seqs) {
+			var join, apart []string
+			for _, text := range by[seqs[i]] {
+				if projectApart(text) && e.Message.Role == provider.RoleUser {
+					apart = append(apart, text)
+					continue
+				}
+				join = append(join, text)
+			}
+			if len(join) > 0 {
+				e.Message.Content = joinReminder(e.Message.Content, strings.Join(join, "\n\n"))
+			}
+			out = append(out, e)
+			for _, text := range apart {
+				out = append(out, bot.Entry{
+					Time:    e.Time,
+					Message: provider.Message{Role: provider.RoleUser, Content: text},
+				})
+			}
 			continue
 		}
-		entries[i].Message.Content = joinReminder(entries[i].Message.Content, strings.Join(texts, "\n\n"))
+		out = append(out, e)
 	}
-	return nil
+	return out, nil
 }
 
 func joinReminder(body, note string) string {
@@ -238,11 +277,15 @@ func joinReminder(body, note string) string {
 }
 
 func clipReminder(s string) string {
+	return clipLimit(s, reminderMax)
+}
+
+func clipLimit(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
-	out, _ := clip.Bytes(s, reminderMax)
+	out, _ := clip.Bytes(s, max)
 	return out
 }
 
@@ -284,7 +327,7 @@ func (l *reminderLog) prepare(text string) string {
 	if fn != nil {
 		text = fn(text)
 	}
-	return clipReminder(text)
+	return clipLimit(text, reminderHardMax)
 }
 
 func (l *reminderLog) all() ([]Reminder, error) {
@@ -517,7 +560,17 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 	ch.Register(Kind{
 		Name:     KindFileChange,
 		Cooldown: fileChangeCooldown,
+		MaxBytes: maxDiffBytes + 2048,
 		Trigger:  k.fileChangeTrigger(),
+	})
+	ch.Register(Kind{
+		Name:     KindProject,
+		MaxBytes: projectNoteMax,
+		Trigger:  k.projectTrigger(),
+	})
+	ch.Register(Kind{
+		Name:    KindContext,
+		Trigger: k.contextTrigger(),
 	})
 	ch.Register(Kind{
 		Name:     KindTodo,
@@ -529,6 +582,84 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 		Trigger: k.shellTrigger(),
 	})
 	return ch
+}
+
+// stepBoundaryNotes records reminders that become true between tool steps:
+// a changed project-instruction set, a context-window threshold, and an
+// external file edit whose cooldown has elapsed. Each one is stored on the
+// reminder channel so the next request replays the same bytes.
+func (k *Kernel) stepBoundaryNotes(t *turn) string {
+	if k == nil || t == nil {
+		return ""
+	}
+	by := k.remindersByKind()
+	seq := t.lastSeq()
+	var parts []string
+	ctx := context.WithValue(context.Background(), turnKey{}, t)
+	if note := k.projectNoteFor(ctx, by[KindProject]); note != "" {
+		if stored := k.storeReminder(seq, KindProject, note); stored != "" {
+			parts = append(parts, stored)
+		}
+	}
+	if note := k.contextNote(by[KindContext]); note != "" {
+		if stored := k.storeReminder(seq, KindContext, note); stored != "" {
+			parts = append(parts, stored)
+		}
+	}
+	if cooledAt(by[KindFileChange], fileChangeCooldown, k.now()) {
+		if note := k.fileChangeTrigger()(k.now(), by[KindFileChange]); note != "" {
+			if stored := k.storeReminder(seq, KindFileChange, note); stored != "" {
+				parts = append(parts, stored)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// remindersByKind reads the sidecar once and groups notes by kind.
+func (k *Kernel) remindersByKind() map[string][]Reminder {
+	all, err := k.reminders().log.all()
+	if err != nil {
+		return nil
+	}
+	by := map[string][]Reminder{}
+	for _, n := range all {
+		by[n.Kind] = append(by[n.Kind], n)
+	}
+	return by
+}
+
+func cooledAt(prev []Reminder, d time.Duration, now time.Time) bool {
+	if d <= 0 || len(prev) == 0 {
+		return true
+	}
+	last := prev[len(prev)-1].At
+	return !last.IsZero() && now.Sub(last) >= d
+}
+
+func (k *Kernel) storeReminder(seq int, kind, text string) string {
+	text = k.reminders().log.prepare(text)
+	if text == "" {
+		return ""
+	}
+	if err := k.reminders().Record(seq, kind, text, k.now()); err != nil {
+		return ""
+	}
+	return text
+}
+
+func (k *Kernel) kindPrev(kind string) []Reminder {
+	all, err := k.reminders().log.all()
+	if err != nil {
+		return nil
+	}
+	var prev []Reminder
+	for _, n := range all {
+		if n.Kind == kind {
+			prev = append(prev, n)
+		}
+	}
+	return prev
 }
 
 // todoPrev is this kind's earlier firings, oldest first.

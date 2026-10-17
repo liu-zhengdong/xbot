@@ -19,6 +19,7 @@ const maxEditBytes = 2 << 20
 type EditFile struct {
 	Root    string
 	Sandbox string
+	rootBind
 }
 
 func (e *EditFile) Name() string { return "edit_file" }
@@ -45,7 +46,11 @@ type editArgs struct {
 // whether the edit needs the owner; it calls ResolvedPath to check for a
 // persona or profile self-edit.
 func (e *EditFile) Confirm(args json.RawMessage) (bool, string, error) {
-	in, path, err := e.parse(args)
+	return e.ConfirmContext(context.Background(), args)
+}
+
+func (e *EditFile) ConfirmContext(ctx context.Context, args json.RawMessage) (bool, string, error) {
+	in, path, err := e.parse(ctx, args)
 	if err != nil {
 		return false, "", err
 	}
@@ -53,9 +58,14 @@ func (e *EditFile) Confirm(args json.RawMessage) (bool, string, error) {
 }
 
 // ResolvedPath reports the absolute path this call would edit, so the kernel
-// can decide whether it is a persona or profile self-edit.
+// can decide whether it is a persona or profile self-edit. It uses the
+// foreground directory. ResolvedPathContext uses the caller's directory.
 func (e *EditFile) ResolvedPath(args json.RawMessage) string {
-	_, path, err := e.parse(args)
+	return e.ResolvedPathContext(context.Background(), args)
+}
+
+func (e *EditFile) ResolvedPathContext(ctx context.Context, args json.RawMessage) string {
+	_, path, err := e.parse(ctx, args)
 	if err != nil {
 		return ""
 	}
@@ -72,7 +82,7 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	if err := machineOff(); err != nil {
 		return "", err
 	}
-	in, path, err := e.parse(args)
+	in, path, err := e.parse(ctx, args)
 	if err != nil {
 		return "", err
 	}
@@ -117,7 +127,7 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	return fmt.Sprintf("updated %s", shown), nil
 }
 
-func (e *EditFile) parse(args json.RawMessage) (editArgs, string, error) {
+func (e *EditFile) parse(ctx context.Context, args json.RawMessage) (editArgs, string, error) {
 	var in editArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
@@ -128,7 +138,7 @@ func (e *EditFile) parse(args json.RawMessage) (editArgs, string, error) {
 	if in.OldString == in.NewString {
 		return editArgs{}, "", fmt.Errorf("edit_file: old_string and new_string are identical")
 	}
-	path, err := ResolveRoot(e.Root, AliasCase(e.Sandbox, in.Path))
+	path, err := ResolveRoot(e.rootBind.dir(ctx, e.Root), AliasCase(e.Sandbox, in.Path))
 	if err != nil {
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
 	}

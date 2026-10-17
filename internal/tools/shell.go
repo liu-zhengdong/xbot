@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,51 @@ type Shell struct {
 	KeyEnv         []string
 	Jobs           *Jobs
 	jobsOnce       sync.Once
+
+	// startDir and afterDir persist the working directory for one execution
+	// context. Nil leaves every call in Dir. The mutex covers the func fields
+	// and markerDir; Run copies them before it starts the process.
+	sessMu    sync.Mutex
+	startDir  func(context.Context) (dir, notice string)
+	afterDir  func(context.Context, string) (kept, notice string)
+	markerDir string
+}
+
+// BindSession installs the working directory for this shell. start reports
+// where this call begins and an optional notice. after receives the directory
+// a foreground command finished in and returns the directory to show, plus a
+// notice when the candidate was rejected. Both receive the call context so one
+// shell can keep a different directory per turn. Either function may be nil.
+func (s *Shell) BindSession(start func(context.Context) (string, string), after func(context.Context, string) (string, string)) {
+	if s == nil {
+		return
+	}
+	s.sessMu.Lock()
+	s.startDir = start
+	s.afterDir = after
+	s.sessMu.Unlock()
+}
+
+// SetMarkerDir is the directory for the cwd marker file. Empty stays empty
+// until a later call. The marker is never created in the process temp dir.
+func (s *Shell) SetMarkerDir(dir string) {
+	if s == nil || dir == "" {
+		return
+	}
+	s.sessMu.Lock()
+	if s.markerDir == "" {
+		s.markerDir = dir
+	}
+	s.sessMu.Unlock()
+}
+
+func (s *Shell) session() (func(context.Context) (string, string), func(context.Context, string) (string, string), string) {
+	if s == nil {
+		return nil, nil, ""
+	}
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
+	return s.startDir, s.afterDir, s.markerDir
 }
 
 // BindJobs sets the job table once. Later calls do not write Jobs, so a shell
@@ -141,10 +187,15 @@ func (s *Shell) timeoutLabel() (def, max int) {
 
 func (s *Shell) Description() string {
 	def, max := s.timeoutLabel()
-	if s != nil && s.Jobs != nil {
-		return fmt.Sprintf("Run a shell command. stdout and stderr are combined. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. If the command is still running at the timeout, it moves to the background and is not killed; the result is a job id and an output file path. Pass run_in_background true to background it immediately (a long build, a server, or anything that should outlive this call). Read output with shell_output (offset or tail), check shell_status, and stop it with shell_cancel. Do not poll a job in a tight loop; a completion reminder arrives at the next turn boundary. sleep and obvious polling loops are not auto-backgrounded. Provider API keys stay out of the environment unless keys is true, which the owner must approve.", def, max)
+	_, after, _ := s.session()
+	persist := ""
+	if after != nil {
+		persist = " The working directory persists across calls for this bot. Each result includes a cwd line. A directory that is missing or outside the workspace falls back to the workspace."
 	}
-	return fmt.Sprintf("Run a shell command. stdout and stderr are combined and truncated. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends.", def, max)
+	if s != nil && s.Jobs != nil {
+		return fmt.Sprintf("Run a shell command. stdout and stderr are combined. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. If the command is still running at the timeout, it moves to the background and is not killed; the result is a job id and an output file path. Pass run_in_background true to background it immediately (a long build, a server, or anything that should outlive this call). Read output with shell_output (offset or tail), check shell_status, and stop it with shell_cancel. Do not poll a job in a tight loop; a completion reminder arrives at the next turn boundary. sleep and obvious polling loops are not auto-backgrounded. Provider API keys stay out of the environment unless keys is true, which the owner must approve.%s", def, max, persist)
+	}
+	return fmt.Sprintf("Run a shell command. stdout and stderr are combined and truncated. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends.%s", def, max, persist)
 }
 
 func (s *Shell) Parameters() any {
@@ -189,19 +240,101 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		return "", err
 	}
 	timeout := s.duration(in.TimeoutSeconds)
+	startDir, afterDir, markerDir := s.session()
+	dir := s.Dir
+	notice := ""
+	if startDir != nil {
+		dir, notice = startDir(ctx)
+	}
+	command := in.Command
+	var marker string
+	var ended string
+	// cwdCh is written by the job's finish goroutine and read only on the
+	// path that actually waited. A late send after a background return does
+	// not touch ended.
+	var cwdCh chan string
+	if startDir != nil {
+		markDir := markerDir
+		if markDir == "" {
+			markDir = s.Dir
+		}
+		if markDir == "" {
+			return "", errors.New("shell: no directory for the cwd marker")
+		}
+		f, err := os.CreateTemp(markDir, "xbot-cwd-*.txt")
+		if err != nil {
+			return "", err
+		}
+		marker = f.Name()
+		f.Close()
+		command = wrapShellCwd(dir, in.Command, marker)
+		cwdCh = make(chan string, 1)
+	}
 	// A job directory keeps the process across the timeout. sleep and obvious
 	// polling loops stay in the foreground so the breaker can see the loop.
+	var out string
 	if s.Jobs != nil && (in.RunInBackground || !skipAutoBackground(in.Command)) {
-		return s.Jobs.Run(ctx, RunRequest{
+		out, err = s.Jobs.Run(ctx, RunRequest{
 			Command:    in.Command,
+			Exec:       command,
 			Timeout:    timeout,
 			MaxOutput:  s.maxOutput(),
-			Dir:        s.Dir,
+			Dir:        dir,
 			Env:        s.commandEnv(in.Keys),
 			Background: in.RunInBackground,
+			CwdFile:    marker,
+			OnCwd: func(got string) {
+				if cwdCh == nil || got == "" {
+					return
+				}
+				select {
+				case cwdCh <- got:
+				default:
+				}
+			},
 		})
+	} else {
+		out, err = runCommand(ctx, command, timeout, s.maxOutput(), dir, s.commandEnv(in.Keys))
+		if marker != "" {
+			ended = readCwdFile(marker)
+			_ = os.Remove(marker)
+		}
 	}
-	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv(in.Keys))
+	if err != nil {
+		if marker != "" && s.Jobs != nil {
+			// A foreground failure returns before finish; a background failure
+			// already removed the marker. Remove is idempotent.
+			_ = os.Remove(marker)
+		}
+		return "", err
+	}
+	if cwdCh != nil && !strings.HasPrefix(out, "background ") {
+		select {
+		case ended = <-cwdCh:
+		default:
+		}
+	}
+	cwd := dir
+	if ended != "" && !strings.HasPrefix(out, "background ") {
+		cwd = ended
+		if afterDir != nil {
+			kept, extra := afterDir(ctx, ended)
+			if kept != "" {
+				cwd = kept
+			}
+			notice = joinNotice(notice, extra)
+		}
+	}
+	if startDir != nil {
+		// A background result already carries the start directory. Adding it
+		// again would put two cwd lines on the same result.
+		show := cwd
+		if strings.HasPrefix(out, "background ") {
+			show = ""
+		}
+		out = withCwd(out, show, notice)
+	}
+	return out, nil
 }
 
 func (s *Shell) commandEnv(passKeys bool) []string {
@@ -415,4 +548,80 @@ func formatShell(status, out string, truncated bool) string {
 		b.WriteString("\n[truncated]")
 	}
 	return b.String()
+}
+
+// wrapShellCwd runs command after cd, and records the physical directory on
+// the way out, including an explicit exit and a set -e abort. The trap writes
+// only the marker file.
+func wrapShellCwd(start, command, marker string) string {
+	var b strings.Builder
+	if start != "" {
+		b.WriteString("cd ")
+		b.WriteString(shQuote(start))
+		b.WriteString(" || exit 97\n")
+	}
+	b.WriteString("trap 'pwd -P > ")
+	b.WriteString(shQuote(marker))
+	b.WriteString("' EXIT\n")
+	b.WriteString(command)
+	if !strings.HasSuffix(command, "\n") {
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func readCwdFile(path string) string {
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	if len(b) > 4096 {
+		return ""
+	}
+	s := strings.TrimSpace(string(b))
+	if s == "" || strings.ContainsAny(s, "\r\n\x00") || !filepath.IsAbs(s) {
+		return ""
+	}
+	return filepath.Clean(s)
+}
+
+func withCwd(result, cwd, notice string) string {
+	if cwd == "" && notice == "" {
+		return result
+	}
+	line, rest, found := strings.Cut(result, "\n")
+	var b strings.Builder
+	b.WriteString(line)
+	if cwd != "" {
+		b.WriteString("\ncwd: ")
+		b.WriteString(cwd)
+	}
+	if notice != "" {
+		b.WriteByte('\n')
+		b.WriteString(notice)
+	}
+	if found {
+		b.WriteByte('\n')
+		b.WriteString(rest)
+	}
+	return b.String()
+}
+
+func joinNotice(a, b string) string {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" {
+		return b
+	}
+	if b == "" || a == b {
+		return a
+	}
+	return a + "\n" + b
 }

@@ -26,8 +26,10 @@ const (
 	// show a short diff without rereading the old bytes from disk.
 	maxPreviewBytes = 8 << 10
 	maxTrackedFiles = 64
-	maxDiffLines    = 8
-	maxDiffFiles    = 8
+	// maxDiffBytes caps one external-change diff. A few kilobytes is enough
+	// for the model to see what moved without dragging the file into the prompt.
+	maxDiffBytes = 4 << 10
+	maxDiffFiles = 8
 
 	fileChangeCooldown = time.Minute
 
@@ -83,7 +85,14 @@ func modelPath(tool tools.Tool, abs string) string {
 	return abs
 }
 
-func toolPath(tool tools.Tool, args json.RawMessage) (string, bool) {
+func toolPath(ctx context.Context, tool tools.Tool, args json.RawMessage) (string, bool) {
+	if pt, ok := tool.(tools.PathContext); ok {
+		p := pt.ResolvedPathContext(ctx, args)
+		if p == "" {
+			return "", false
+		}
+		return p, true
+	}
 	pt, ok := tool.(tools.PathTool)
 	if !ok {
 		return "", false
@@ -240,7 +249,7 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 	if in.Force || in.Offset > 1 || in.Limit > 0 {
 		return "", false
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return "", false
 	}
@@ -271,11 +280,11 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 // rejectUnreadOrStale blocks edit/write of an existing file the model has not
 // read in this session, and of a file whose bytes changed since that read.
 // A file that does not exist yet can be created without a prior read.
-func (k *Kernel) rejectUnreadOrStale(tool tools.Tool, args json.RawMessage) error {
+func (k *Kernel) rejectUnreadOrStale(ctx context.Context, tool tools.Tool, args json.RawMessage) error {
 	if k == nil || tool == nil || !isFileEdit(tool.Name()) {
 		return nil
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return nil
 	}
@@ -315,7 +324,7 @@ func (k *Kernel) noteRead(ctx context.Context, tool tools.Tool, args json.RawMes
 	if k == nil || tool == nil {
 		return
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return
 	}
@@ -343,7 +352,7 @@ func (k *Kernel) noteWrite(ctx context.Context, tool tools.Tool, args json.RawMe
 	if k == nil || tool == nil {
 		return false
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return false
 	}
@@ -495,7 +504,10 @@ func (k *Kernel) fileChangeNote(prev []Reminder) string {
 	var b strings.Builder
 	n := 0
 	for _, it := range items {
-		if n >= maxDiffFiles {
+		if n >= maxDiffFiles || b.Len() >= maxDiffBytes {
+			if b.Len() >= maxDiffBytes {
+				b.WriteString("[diff truncated]\n")
+			}
 			break
 		}
 		label := it.rec.label
@@ -599,7 +611,7 @@ func briefDiff(old, neu string) string {
 	ob := strings.Split(old, "\n")
 	nb := strings.Split(neu, "\n")
 	var b strings.Builder
-	n := 0
+	b.WriteString("--- previous\n+++ current\n@@\n")
 	for i := 0; i < len(ob) || i < len(nb); i++ {
 		var a, c string
 		hasA := i < len(ob)
@@ -613,18 +625,20 @@ func briefDiff(old, neu string) string {
 		if hasA && hasC && a == c {
 			continue
 		}
-		if n >= maxDiffLines {
-			b.WriteString("...\n")
+		if b.Len() >= maxDiffBytes {
+			b.WriteString("[diff truncated]\n")
 			break
 		}
 		if hasA {
 			fmt.Fprintf(&b, "- %s\n", oneDiffLine(a))
-			n++
 		}
-		if hasC && n < maxDiffLines {
+		if hasC && b.Len() < maxDiffBytes {
 			fmt.Fprintf(&b, "+ %s\n", oneDiffLine(c))
-			n++
 		}
+	}
+	if b.Len() > maxDiffBytes {
+		cut := trimUTF8(b.String(), maxDiffBytes)
+		return strings.TrimRight(cut, "\n") + "\n[diff truncated]"
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

@@ -628,7 +628,7 @@ func BenchmarkFileFreshGuard(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := k.rejectUnreadOrStale(tool, args); err != nil {
+		if err := k.rejectUnreadOrStale(context.Background(), tool, args); err != nil {
 			b.Fatal(err)
 		}
 	}

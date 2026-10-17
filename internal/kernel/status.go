@@ -53,9 +53,12 @@ type BotStatus struct {
 	LastMessage string `json:"last_message,omitempty"`
 	// Todo is one line from the bot's task list, when it has open items.
 	// The steps ring does not carry the list; GET /api/bots/{name}/todos does.
-	Todo         string `json:"todo,omitempty"`
-	Node         string `json:"node,omitempty"`
-	StaleSeconds int    `json:"stale_seconds,omitempty"`
+	Todo string `json:"todo,omitempty"`
+	// Tokens is the latest model-call usage and the session totals. Empty
+	// until the kernel has seen a completion.
+	Tokens       *TokenUse `json:"tokens,omitempty"`
+	Node         string    `json:"node,omitempty"`
+	StaleSeconds int       `json:"stale_seconds,omitempty"`
 }
 
 // Step is one tool step in a turn, kept in a small ring for the web and the
@@ -194,6 +197,9 @@ func (k *Kernel) Status() BotStatus {
 	t.mu.Unlock()
 	st.Backgrounds = len(k.Backgrounds())
 	st.Todo = TodoSummary(k.Bot)
+	if use, ok := k.tokenSnap(); ok {
+		st.Tokens = &use
+	}
 	bgs := st.Backgrounds
 	st.Tool = tool
 	switch {

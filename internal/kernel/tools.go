@@ -20,7 +20,7 @@ import (
 )
 
 func (k *Kernel) modelTools() ([]tools.Tool, error) {
-	k.attachShellJobs()
+	k.attachShell()
 	links := k.snapshotLinks()
 	var active []link.Link
 	for _, l := range links {
