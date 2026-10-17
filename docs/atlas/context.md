@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-17 @ 060672d
+verified: 2026-10-18 @ bc4d5e4
 ---
 # 上下文与 transcript
 
@@ -24,6 +24,7 @@ verified: 2026-10-17 @ 060672d
 - **Bot 可以自己选范围压缩**：`compact(from, to, focus)`，内核负责把关边界（不切断未完成的工具调用，保留最近几轮原文）。预算超限时内核自动压缩作为兜底。估算按大约 4 字节一个 token，图片字节也算进去，不再当成 0。送给模型的历史包在数据标记里，并要求它忽略其中的指令。正文里的标记会换掉，避免提前结束这段数据。
 - **后台异步压缩**：上下文用到约 70% 时在后台压缩，压完后在两轮对话之间换上新摘要；只有压缩没跟上、真的快满了，才同步压缩。
 - **找回很久以前的内容**：重要结论在压缩时提炼进记忆；原文永远保留。`recall_history` 用该 Bot 的 FTS 索引搜索，`expand` 按序号把原文读回来。跨 Bot 时用对方 Bot 自己的索引，不把对方的历史读进内存。
+- **BM25 分词**：`internal/bm25` 按字母数字切词，连续汉字切成重叠的双字（单个汉字保留为一字），所以中文关键词能命中长句里的片段；记忆的 `recall` 和存储内部检索都用它。
 - **跨 Bot 读原文**：`recall_history` 和 `expand` 可以带可选的 `bot`。只能读和自己至少有一个相同 owner 的其他 Bot。别的 owner 的 Bot、只是同群或能互发消息的 Bot、以及群 id，一律 `not found`，错误里不说明是哪一种。读到的文本标明来自那个 Bot，包在 `<untrusted_event>` 里，当成数据，没有指令效力。输出长度上限和读自己的一样。
 - **导出 transcript**：`xbot export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE`，网页是 `GET /api/bots/{name}/export`（要登录，且这个人是该 Bot 的 owner）。按段流式写出，不把整份历史装进内存；blob 在写出那一行时读回。`md` 给人看，时间用跑进程的那台机器的本地时区，摘要块单独标成 Summary，不混进对话行。`jsonl` 是可再导入的原文：普通行能解成 transcript 记录，多一个 `seq`（导入时忽略，序号仍是原来的行号）；`kind` 为 `summary` 的行是摘要块。默认不带工具调用和工具结果，`--tools` 或 `tools=1` 才带上。每一段写出前过 `RedactText`。保险箱还没接上时，这个函数原样返回。带引用的行在 Markdown 标题下多一行 `reply_to: <seq>`，JSONL 在记录上多一个 `reply_to`。
 - **引用回复**：只用于这个 Bot 自己的网页对话，群聊不带这个字段。主人发送时可以带可选的 `reply_to`，值是本 transcript 里已有的序号；没有这一行就是 400。序号记在这条用户消息上，不放进发给模型供应商的消息体。组装这一轮时，在该用户正文前加一行 `user is replying to your earlier message (seq <n>): <原文>`。原文按 Unicode 字符截到 300，超出末尾加 `…`。存档里的用户正文仍是主人这次写的字。全文用 `expand` 按这个序号读回。Bot 的回复也可以带可选的 `reply_to`，指向一条用户消息。只在一条回复同时回应几个点，或回到更早的话题时使用。模型在回复第一行单独写 `reply_to: <seq>`，内核取下这一行，不留在正文里；序号不是用户消息就丢掉。SSE 的 `done` 和 transcript 接口都带上这个字段，没有引用时省略。
