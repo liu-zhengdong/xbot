@@ -156,7 +156,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 		if cwd == "" {
 			cwd = k.cwdFor(ctx)
 		}
-		if review.TouchesProtected(cmd, cwd, memoryDirs) {
+		if review.TouchesProtected(cmd, cwd, memoryDirs) || review.MentionsMemory(cmd) {
 			return true, summary + " (untrusted turn: memory access)", nil
 		}
 	}

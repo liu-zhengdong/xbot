@@ -52,7 +52,7 @@ func TestUntrustedShellMemoryWriteRequiresApproval(t *testing.T) {
 	k := &Kernel{Bot: b}
 	k.ensureTurn().turnSender = "owner"
 	args, err := json.Marshal(map[string]string{
-		"command": "printf '%s\\n' '- (2026-10-18) injected fact' >> " + filepath.Join(dir, "memory.md"),
+		"command": "cd " + filepath.Dir(dir) + " && printf x >> memory/memory.md",
 	})
 	if err != nil {
 		t.Fatal(err)
