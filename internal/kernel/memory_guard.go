@@ -107,7 +107,7 @@ func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) 
 		if err := memorySymlinks(dir, path); err != nil {
 			return err
 		}
-		if rel == ".lock" || rel == "memory.index.json" {
+		if kernelManaged(rel) {
 			return errors.New("memory: kernel-managed file")
 		}
 		if !tracked {
@@ -150,6 +150,19 @@ func (t reviewedTool) runMemoryGuard(ctx context.Context, args json.RawMessage) 
 		return runErr
 	})
 	return out, err
+}
+
+// kernelManaged reports a file at the folder root that only the store writes:
+// the lock, indexes, the person sync journal, and the legacy log.md,
+// log.overflow.md and profile.md names, whose presence makes every load wait
+// for a migration that runs once per process.
+func kernelManaged(rel string) bool {
+	low := strings.ToLower(rel)
+	switch low {
+	case ".lock", "sync.jsonl", "log.md", "log.overflow.md", "profile.md":
+		return true
+	}
+	return !strings.ContainsRune(low, filepath.Separator) && strings.HasSuffix(low, ".index.json")
 }
 
 func validateMemoryWrite(rel string, old, next []byte, now time.Time) error {

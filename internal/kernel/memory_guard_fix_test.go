@@ -131,3 +131,27 @@ func TestMemoryRejectedWriteRestore(t *testing.T) {
 		}
 	}
 }
+
+// A file tool writing a legacy log.md used to be accepted as a free file, after
+// which every load failed with "legacy log awaits migration" until restart.
+func TestMemoryKernelManagedNamesRejected(t *testing.T) {
+	k, dir := memoryGuardFixture(t)
+	person := filepath.Join(k.Bot.Root, "people", "owner", "memory")
+	for _, path := range []string{
+		filepath.Join(dir, "log.md"), filepath.Join(dir, "log.overflow.md"), filepath.Join(dir, "Profile.md"),
+		filepath.Join(dir, "log.index.json"), filepath.Join(person, "sync.jsonl"), filepath.Join(person, "profile.md"),
+	} {
+		if err := guardWrite(t, k, path, "notes\n"); err == nil || !strings.Contains(err.Error(), "kernel-managed") {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("%s was written", path)
+		}
+	}
+	if _, err := k.Memory.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name(), Tier: memory.TierLog}); err != nil {
+		t.Fatalf("load after rejected writes: %v", err)
+	}
+	if err := guardWrite(t, k, filepath.Join(dir, "notes", "log.md"), "free\n"); err != nil {
+		t.Fatalf("free file in a subfolder: %v", err)
+	}
+}
