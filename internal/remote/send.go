@@ -35,6 +35,9 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 	if !ok || cfg.Gateway == "" {
 		return errors.New("remote: paired device and gateway required")
 	}
+	if d.XKey == "" {
+		return fmt.Errorf("remote: %s has no encryption key; pair again with xbot remote invite/join", device)
+	}
 	sender, err := bot.Load(root, fromBot)
 	if err != nil {
 		return err
@@ -54,10 +57,11 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 	if err != nil {
 		return err
 	}
-	if len(body) > 64<<10 {
-		return errors.New("remote: body exceeds 64 KiB")
-	}
 	priv, _, _, err := Identity(root)
+	if err != nil {
+		return err
+	}
+	env, err := newBoxEnvelope(priv, d, body, now)
 	if err != nil {
 		return err
 	}
@@ -66,5 +70,5 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	return (&gateway.Client{Base: cfg.Gateway, Key: priv}).Send(ctx, gateway.NewEnvelope(priv, d.ID, "msg", body, now))
+	return (&gateway.Client{Base: cfg.Gateway, Key: priv}).Send(ctx, env)
 }
