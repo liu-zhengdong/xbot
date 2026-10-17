@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/text/unicode/norm"
-
 	"xbot/internal/fsutil"
 )
 
@@ -66,9 +64,10 @@ func migrateRoot(root string) {
 		log.Printf("memory: migrate %s: %v", bots, err)
 		return
 	}
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		id := norm.NFC.String(ent.Name())
-		if !ent.IsDir() || !ValidID(id) {
+		id := directoryID(bots, ent, seen)
+		if id == "" {
 			continue
 		}
 		_ = migrateBot(root, id)
@@ -87,9 +86,10 @@ func migrateBot(root, botName string) bool {
 		return true
 	}
 	var sources []string
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		id := norm.NFC.String(ent.Name())
-		if !ent.IsDir() || !ValidID(id) {
+		id := directoryID(people, ent, seen)
+		if id == "" {
 			continue
 		}
 		src := filepath.Join(people, id, "memory")

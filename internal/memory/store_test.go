@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/fsutil"
 )
 
 func TestPersonFactIsSharedBotFactIsNot(t *testing.T) {
@@ -271,8 +273,11 @@ func TestUnicodeBotMemoryRoundTrip(t *testing.T) {
 	if ValidID("..") {
 		t.Fatal("accepted parent directory")
 	}
-	if ValidID("con") {
-		t.Fatal("accepted reserved device name")
+	if !ValidID("con") {
+		t.Fatal("rejected existing reserved bot name")
+	}
+	if fsutil.PortableName("con") || fsutil.PortableName("COM¹") || fsutil.PortableName("e\u0301") {
+		t.Fatal("accepted nonportable new name")
 	}
 	if ValidID("e\u0301") {
 		t.Fatal("accepted NFD name")

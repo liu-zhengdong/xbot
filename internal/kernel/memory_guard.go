@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"xbot/internal/fsutil"
 	"xbot/internal/memory"
 	"xbot/internal/tools"
@@ -44,7 +46,7 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 			continue
 		}
 		parts = strings.Split(rel, string(filepath.Separator))
-		if len(parts) >= 3 && memoryPathCase(parts[2]) == "memory" && memory.ValidID(parts[1]) && (memoryPathCase(parts[0]) == "bots" || memoryPathCase(parts[0]) == "people") {
+		if len(parts) >= 3 && memoryPathCase(parts[2]) == "memory" && fsutil.ValidName(parts[1]) && (memoryPathCase(parts[0]) == "bots" || memoryPathCase(parts[0]) == "people") {
 			root = candidate
 			break
 		}
@@ -57,7 +59,7 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 	case "people":
 		scope, own = memory.ScopePerson, true
 	case "bots":
-		scope, own = memory.ScopeBot, memoryPathCase(parts[1]) == memoryPathCase(k.Bot.Name())
+		scope, own = memory.ScopeBot, memoryPathCase(norm.NFC.String(parts[1])) == memoryPathCase(norm.NFC.String(k.Bot.Name()))
 	default:
 		return
 	}

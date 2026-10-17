@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"xbot/internal/bm25"
 	"xbot/internal/fsutil"
 )
@@ -194,7 +196,7 @@ func (s *FileStore) dir(scope Scope, botName, personID string) (string, error) {
 }
 
 // ValidID reports whether id can name a person or a bot in the store.
-func ValidID(id string) bool { return fsutil.ValidName(id) && fsutil.PortableName(id) }
+func ValidID(id string) bool { return fsutil.ValidName(id) && norm.NFC.IsNormalString(id) }
 
 func clean(id string) error {
 	if !ValidID(id) {
@@ -585,4 +587,33 @@ func memoryProfileSize(body string, facts []Fact) int {
 		}
 	}
 	return size
+}
+
+// directoryID accepts a decomposed directory name only when its NFC spelling
+// resolves to the same directory, as on macOS. Each ID is visited once.
+func directoryID(dir string, ent os.DirEntry, seen map[string]bool) string {
+	if !ent.IsDir() {
+		return ""
+	}
+	name := ent.Name()
+	if !norm.NFC.IsNormalString(name) {
+		n := norm.NFC.String(name)
+		if !ValidID(n) {
+			return ""
+		}
+		original, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			return ""
+		}
+		normalized, err := os.Stat(filepath.Join(dir, n))
+		if err != nil || !os.SameFile(original, normalized) {
+			return ""
+		}
+		name = n
+	}
+	if !ValidID(name) || seen[name] {
+		return ""
+	}
+	seen[name] = true
+	return name
 }

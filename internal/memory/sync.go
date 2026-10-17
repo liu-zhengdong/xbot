@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/text/unicode/norm"
-
 	"xbot/internal/fsutil"
 )
 
@@ -64,9 +62,10 @@ func ExportSync(root string) ([]SyncLine, error) {
 		return nil, err
 	}
 	var out []SyncLine
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		id := norm.NFC.String(ent.Name())
-		if !ent.IsDir() || !ValidID(id) {
+		id := directoryID(dir, ent, seen)
+		if id == "" {
 			continue
 		}
 		lines, err := ReadSync(root, id)
@@ -119,9 +118,10 @@ func MergeFrom(root, peer string, remote []SyncLine) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	seen := map[string]bool{}
 	for _, ent := range entries {
-		id := norm.NFC.String(ent.Name())
-		if ent.IsDir() && ValidID(id) {
+		id := directoryID(filepath.Join(root, "people"), ent, seen)
+		if id != "" {
 			ids[id] = true
 		}
 	}
