@@ -100,6 +100,11 @@ func TestStepErrorState(t *testing.T) {
 	if len(steps) != 1 || steps[0].State != StepError {
 		t.Fatalf("steps %+v", steps)
 	}
+	k.beginStep(turnObj, "shell", "curl")
+	k.endStep(turnObj, "shell", "exit 35\ncurl: (35) TLS connect error")
+	if steps := k.Steps(1); len(steps) != 1 || steps[0].State != StepError {
+		t.Fatalf("failed shell exit shown as %+v", steps)
+	}
 }
 
 func TestAwaitingState(t *testing.T) {

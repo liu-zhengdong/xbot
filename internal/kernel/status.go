@@ -280,13 +280,13 @@ func (k *Kernel) beginStep(t *turn, name, summary string) {
 }
 
 // endStep records a tool call finishing. output is the tool result, whose
-// "error:" prefix marks a failed step.
+// "error:" prefix or non-zero "exit N" first line (shell) marks a failed step.
 func (k *Kernel) endStep(t *turn, name, output string) {
 	if t == nil {
 		return
 	}
 	state := StepDone
-	if strings.HasPrefix(strings.TrimSpace(output), "error:") {
+	if strings.HasPrefix(strings.TrimSpace(output), "error:") || failedExit(output) {
 		state = StepError
 	}
 	t.mu.Lock()
@@ -470,4 +470,16 @@ func botStatusText(list []BotStatus, steps []Step) string {
 	}
 	clipped, _ := clip.Bytes(out, botStatusCap)
 	return clipped
+}
+
+// failedExit reports a shell result whose first line is "exit N" with N != 0,
+// so an allowed command that failed is not shown as a finished step.
+func failedExit(output string) bool {
+	line, _, _ := strings.Cut(strings.TrimSpace(output), "\n")
+	code, ok := strings.CutPrefix(line, "exit ")
+	if !ok {
+		return false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(code))
+	return err == nil && n != 0
 }
