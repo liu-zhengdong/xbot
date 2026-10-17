@@ -34,20 +34,20 @@ func TestMemoryFileProfileGuard(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
 	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "memory.md")
-	if err := guardWrite(t, k, path, "old"); err != nil {
+	if err := guardWrite(t, k, path, "- (2026-10-18) old\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := guardWrite(t, k, path, strings.Repeat("x", memory.ProfileBytes+1)); err == nil {
+	if err := guardWrite(t, k, path, "- (2026-10-18) "+strings.Repeat("x", memory.ProfileBytes+1)); err == nil {
 		t.Fatal("over-cap write accepted")
 	}
 	raw, _ := os.ReadFile(path)
-	if string(raw) != "old" {
+	if string(raw) != "- (2026-10-18) old\n" {
 		t.Fatal("file was not restored")
 	}
-	if err := os.WriteFile(path, []byte(strings.Repeat("x", memory.ProfileBytes+10)), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("- (2026-10-18) "+strings.Repeat("x", memory.ProfileBytes+10)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := guardWrite(t, k, path, strings.Repeat("x", memory.ProfileBytes+1)); err != nil {
+	if err := guardWrite(t, k, path, "- (2026-10-18) "+strings.Repeat("x", memory.ProfileBytes+1)); err != nil {
 		t.Fatalf("shrinking: %v", err)
 	}
 }

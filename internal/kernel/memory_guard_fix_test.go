@@ -155,3 +155,24 @@ func TestMemoryKernelManagedNamesRejected(t *testing.T) {
 		t.Fatalf("free file in a subfolder: %v", err)
 	}
 }
+
+// An undated memory.md line was accepted, never reached the snapshot, and was
+// deleted by the store's next rewrite of the file.
+func TestMemoryMDRejectsLinesTheStoreDrops(t *testing.T) {
+	k, dir := memoryGuardFixture(t)
+	path := filepath.Join(dir, "memory.md")
+	if err := guardWrite(t, k, path, "# memory\n\n- always run the tests\n"); err == nil || !strings.Contains(err.Error(), "YYYY-MM-DD") {
+		t.Fatalf("undated entry: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("rejected file left behind")
+	}
+	ok := "# memory\n\n## 索引\nnotes/ - free notes\n\n## 条目\n- (2026-10-18) always run the tests\n"
+	if err := guardWrite(t, k, path, ok); err != nil {
+		t.Fatal(err)
+	}
+	facts, err := k.Memory.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name(), Tier: memory.TierProfile})
+	if err != nil || len(facts) != 1 {
+		t.Fatalf("recall %v %v", facts, err)
+	}
+}
