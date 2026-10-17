@@ -48,7 +48,7 @@ func TestEvalScorecardCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "scorecard\trules\t1/1\tpass^1=0.67\tpass^3=0.00\nscorecard\treliability\tpass^1=0.67\tpass^3=0.00\nscorecard\tveto\tviolations>=1\tvetoed=yes (legacy report: judge runs not parsed)\n"
+	want := "scorecard\trules\t1/1\tpass^1=0.67\tpass^3=0.00\nscorecard\treliability\tpass^1=0.67\tpass^3=0.00\nscorecard\tveto\tviolations>=1\tvetoed=yes (legacy report: violations are a lower bound)\n"
 	if buf.String() != want {
 		t.Fatalf("got\n%s", buf.String())
 	}
