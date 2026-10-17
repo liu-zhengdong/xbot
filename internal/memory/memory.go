@@ -44,6 +44,17 @@ const (
 	TierLog     Tier = "log"
 )
 
+// ProfileBytes is the write cap for one profile-tier file.
+// Person, bot, and bot-person each have their own file, and standing
+// context renders all three together, so ProfileInjectBytes fits three
+// full files plus section headings. A fact the store accepted is not
+// dropped on the way in.
+const (
+	ProfileBytes       = 4 << 10
+	profileInjectSlack = 512
+	ProfileInjectBytes = 3*ProfileBytes + profileInjectSlack
+)
+
 // Fact is one memory record.
 type Fact struct {
 	Key       string `json:"key"`

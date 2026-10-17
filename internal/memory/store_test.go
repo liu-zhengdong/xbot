@@ -116,14 +116,38 @@ func TestSubagentIDIsNotAPerson(t *testing.T) {
 func TestProfileCap(t *testing.T) {
 	s := Open(t.TempDir())
 	ctx := context.Background()
+	var hit error
 	for i := 0; i < 80; i++ {
 		err := s.Remember(ctx, Fact{
 			Scope: ScopeBot, BotName: "ada", Tier: TierProfile,
 			Text: strings.Repeat("word ", 80) + string(rune('a'+i%26)),
 		})
 		if err != nil {
-			return
+			hit = err
+			break
 		}
 	}
-	t.Fatal("expected the profile tier to hit its cap")
+	if hit == nil {
+		t.Fatal("expected the profile tier to hit its cap")
+	}
+	msg := hit.Error()
+	for _, part := range []string{"Consolidate", "merge facts", "forget stale", "log tier"} {
+		if !strings.Contains(msg, part) {
+			t.Fatalf("cap error %q missing %q", msg, part)
+		}
+	}
+	md, err := os.ReadFile(filepath.Join(s.Root, "bots", "ada", "memory", "profile.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(md) > ProfileBytes {
+		t.Fatalf("profile file is %d bytes, over the %d cap", len(md), ProfileBytes)
+	}
+	got, err := s.Recall(ctx, Query{Scope: ScopeBot, BotName: "ada", Tier: TierProfile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || len(got) >= 80 {
+		t.Fatalf("stored %d facts after a rejected remember", len(got))
+	}
 }

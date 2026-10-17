@@ -172,7 +172,7 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 | bot | 这个 Bot | 同上 |
 | bot-person | 这个 Bot 和这个人 | 同上 |
 
-冲突规则不变：关于人的事实，新的赢；怎么干活，bot 范围赢。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。来自不可信事件的 person 事实会在正文里标成 untrusted。单条事实最多 1 KiB，profile 文件 16 KiB，log 文件 64 KiB。
+冲突规则不变：关于人的事实，新的赢；怎么干活，bot 范围赢。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。来自不可信事件的 person 事实会在正文里标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（三份一起注入），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。
 
 **历史。** 原文按大约 8MB 或 UTC 日期分成段，只有尾段可写。SQLite 索引（纯 Go，无 cgo）把序号映射到段和偏移，并用 FTS5 做全文。`recall_history(query)` 走这个索引的 BM25，带回序列号。`expand(from, to)` 按序号把原文拉回来，输出有上限。大段工具输出另存成 blob，上下文里只留预览。索引丢了会自动重建，也可以 `xbot reindex <bot>`。旧的单文件 `transcript.jsonl` 第一次打开时迁进分段。摘要掉的句子还能这样找到。
 

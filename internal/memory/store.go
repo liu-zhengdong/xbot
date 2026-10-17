@@ -18,10 +18,9 @@ import (
 )
 
 const (
-	maxFactBytes    = 1024
-	maxProfileBytes = 16 << 10
-	maxLogBytes     = 64 << 10
-	recallLimit     = 20
+	maxFactBytes = 1024
+	maxLogBytes  = 64 << 10
+	recallLimit  = 20
 )
 
 var idRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -302,9 +301,12 @@ func saveTier(dir string, tier Tier, facts []Fact) error {
 	body := renderMD(facts)
 	limit := maxLogBytes
 	if tier == TierProfile {
-		limit = maxProfileBytes
+		limit = ProfileBytes
 	}
 	if len(body) > limit {
+		if tier == TierProfile {
+			return fmt.Errorf("memory: profile tier is full (%d byte cap). Consolidate: merge facts, forget stale ones, or move details to the log tier", limit)
+		}
 		return fmt.Errorf("memory: %s tier exceeds %d bytes", tier, limit)
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
