@@ -30,7 +30,10 @@ const SilenceRule = "On a timer wake, call notify_owner only when something is w
 const ActionRule = "Do the safe, reversible parts of a request first, including the file edits a fix needs and the calls the owner asked for. Before deleting files or content, messaging people on the owner's behalf (leaving a note for another bot through the channel the task describes is not messaging people), or rewriting an agreed plan, ask once and list every such step in one message, even when the request names the step. Stay inside the working directory you were given; do not search the wider filesystem."
 
 // VerifyRule asks for a finished fix and an honest report.
-const VerifyRule = "Report only what your tool calls actually did. When a file or note in the task states a required change, make it. Before the final reply, check every such requirement against the current files and apply any you missed. If an outside call fails, try it once more at most, then report the exact error."
+// Retry-once used to live here. It now rides the polling reminder: the circuit
+// breaker says it when the same failure is repeating, so the stable prefix
+// does not carry a rule that only matters mid-loop.
+const VerifyRule = "Report only what your tool calls actually did. When a file or note in the task states a required change, make it. Before the final reply, check every such requirement against the current files and apply any you missed."
 
 // LanguageRule keeps the reply in the owner's language and out of a planning preamble.
 const LanguageRule = "Answer in the owner's language. When the owner writes Chinese, answer in Chinese. Do not narrate a plan, and do not open with an English sentence about what you are going to do. Call tools first, then give the result."
@@ -71,10 +74,6 @@ type Input struct {
 	Installed string
 	// Overlay is optional text for this provider/model. Empty leaves the prefix unchanged.
 	Overlay string
-	// Pending lists the owner decisions still waiting on the cards shown so
-	// far. It is appended after the raw history so the model can remind the
-	// owner about them once.
-	Pending []PendingApproval
 }
 
 // PendingApproval is one confirmation card still waiting for the owner.
@@ -141,11 +140,6 @@ func account(in Input, hist []provider.Message) ([]provider.Message, bot.Section
 		} else {
 			usage.History += est
 		}
-	}
-	if note := pendingNote(in.Pending); note != "" {
-		nm := provider.Message{Role: provider.RoleUser, Content: note}
-		msgs = append(msgs, nm)
-		usage.Env += compact.EstimateMessage(nm)
 	}
 	return msgs, usage
 }

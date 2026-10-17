@@ -117,6 +117,10 @@ type State struct {
 	Blocks  []SummaryBlock `json:"blocks,omitempty"`
 	Env     EnvRecord      `json:"env,omitempty"`
 	Usage   SectionUsage   `json:"usage,omitempty"`
+	// BoundModel is provider/model at the last wake. A change with an open
+	// tool call is a model switch: the kernel closes the call with a tombstone
+	// instead of an interrupt. Empty on older state files.
+	BoundModel string `json:"bound_model,omitempty"`
 }
 
 // Fork marker kinds and end statuses.

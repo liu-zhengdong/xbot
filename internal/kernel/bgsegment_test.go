@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,9 +18,16 @@ type loopProvider struct{ calls int }
 
 func (p *loopProvider) Chat(_ context.Context, _ provider.Request, _ func(string)) (provider.Message, error) {
 	p.calls++
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-		ID: "c", Type: "function", Function: provider.FunctionCall{Name: "wait", Arguments: "{}"},
-	}}}, nil
+	// Each step is a different call with enough new text that the circuit
+	// breaker does not treat this cap-filling loop as a stuck loop.
+	return provider.Message{
+		Role:    provider.RoleAssistant,
+		Content: fmt.Sprintf("step %d %s", p.calls, strings.Repeat("x", 2200)),
+		ToolCalls: []provider.ToolCall{{
+			ID: fmt.Sprintf("c%d", p.calls), Type: "function",
+			Function: provider.FunctionCall{Name: "wait", Arguments: fmt.Sprintf(`{"n":%d}`, p.calls)},
+		}},
+	}, nil
 }
 
 // waitTool blocks on its first call, which is what gets the turn forked to the
@@ -112,6 +120,69 @@ func TestBackgroundContinuesUntilSegmentCap(t *testing.T) {
 	}
 	if n := continueNotes(t, k); n != 3 {
 		t.Fatalf("continue notes %d, want 3", n)
+	}
+}
+
+// quietProvider fills every segment with a distinct tiny tool call, so the only
+// pattern that can stop it before the segment cap is diminishing returns.
+type quietProvider struct{ calls int }
+
+func (p *quietProvider) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	p.calls++
+	if len(req.Tools) == 0 {
+		return provider.Message{Role: provider.RoleAssistant, Content: "summary"}, nil
+	}
+	return provider.Message{
+		Role:    provider.RoleAssistant,
+		Content: fmt.Sprintf("q%d", p.calls),
+		ToolCalls: []provider.ToolCall{{
+			ID: fmt.Sprintf("c%d", p.calls), Type: "function",
+			Function: provider.FunctionCall{Name: "wait", Arguments: fmt.Sprintf(`{"n":%d}`, p.calls)},
+		}},
+	}, nil
+}
+
+// TestQuietContinuationsHardStop is the kernel-level diminishing-returns
+// regression: five quiet cap-continuations stop the background before a high
+// segment cap, and the trace records the code.
+func TestQuietContinuationsHardStop(t *testing.T) {
+	k, rel, _ := segmentKernel(t)
+	p := &quietProvider{}
+	k.Provider = p
+	k.MaxSegments = 8
+	id := runBackground(t, k, rel, "安静地续")
+	text := endEvent(t, k, id)
+	if !strings.Contains(text, StopDiminishingReturns) {
+		t.Fatalf("event %q", text)
+	}
+	if strings.Contains(text, "段数上限") {
+		t.Fatalf("segment cap stopped it instead %q", text)
+	}
+	if !strings.Contains(text, "5 段") {
+		t.Fatalf("event segments %q", text)
+	}
+	traces, err := k.Bot.Traces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traces) != 1 || traces[0].Reason != StopDiminishingReturns {
+		t.Fatalf("trace %+v", traces)
+	}
+	entries, err := k.Bot.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var note bool
+	for _, e := range entries {
+		if strings.Contains(e.Message.Content, "<stop_reason>"+StopDiminishingReturns+"</stop_reason>") {
+			note = true
+		}
+	}
+	if !note {
+		t.Fatal("transcript has no stop reason")
+	}
+	if n := continueNotes(t, k); n != 4 {
+		t.Fatalf("continue notes %d, want 4", n)
 	}
 }
 

@@ -102,6 +102,9 @@ type Kernel struct {
 	compactMu   sync.Mutex
 	compactBusy bool
 	turn        *turn
+	// channel is the reminder sidecar for this kernel. Lazy, so tests that
+	// never remind pay only the first touch.
+	channel *Channel
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -172,6 +175,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		return err
 	}
 	st = migrate(st)
+	if key := k.boundModelKey(); key != "" {
+		st.BoundModel = key
+	}
 	memText, err := k.memoryText(ctx, k.memoryPerson())
 	if err != nil {
 		return err
@@ -218,16 +224,24 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
-	// Cards still waiting for the owner ride along with the history, so the
-	// model can remind the owner in passing. Only on a message from the owner:
-	// a scheduled wake must stay free to end in SILENT, and an unsolicited
-	// reminder would conflict with that.
-	if ev.Source != link.NameTimer {
-		if note := k.pendingHistory(); len(note) > 0 {
-			assembled = append(assembled, note...)
-			for _, m := range note {
-				usage.Env += compact.EstimateMessage(m)
-			}
+	// Reminders stick to the newest message. The sidecar replays them on the
+	// next wake so that message's bytes stay what the model already saw.
+	// Timer wakes skip the pending-card kind; the trigger returns empty.
+	seqNow, seqErr := k.newestReminderSeq(st.Blocks)
+	if seqErr != nil {
+		return seqErr
+	}
+	before := 0
+	if n := len(assembled); n > 0 {
+		before = compact.EstimateMessage(assembled[n-1])
+	}
+	assembled, err = k.reminderKinds(ev).Bind(assembled, seqNow, k.now())
+	if err != nil {
+		return err
+	}
+	if n := len(assembled); n > 0 {
+		if delta := compact.EstimateMessage(assembled[n-1]) - before; delta > 0 {
+			usage.Env += delta
 		}
 	}
 	st.Usage = usage
@@ -288,6 +302,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	runCtx = context.WithValue(runCtx, turnKey{}, t)
 	t.runCtx = runCtx
 	t.cancelRun = cancelRun
+	br := newBreaker()
+	var lastRemind string
 	opts := agent.Options{
 		MaxSteps: k.MaxSteps,
 		Approve:  approve,
@@ -346,6 +362,23 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 			return k.absorbInbox()
 		},
+		Guard: func(_ int, stepMsgs []provider.Message) (string, bool, string) {
+			remind, stop, reason := br.Observe(stepMsgs)
+			if remind != "" {
+				lastRemind = remind
+				seq, serr := k.Bot.Count()
+				if serr != nil && appendErr == nil {
+					appendErr = serr
+				}
+				if rerr := k.reminders().Record(seq, KindLoop, remind, k.now()); rerr != nil && appendErr == nil {
+					appendErr = rerr
+				}
+			}
+			if stop {
+				_ = k.Bot.LogTrace(bot.TraceStop, reason, k.now())
+			}
+			return remind, stop, reason
+		},
 	}
 	if onDelta == nil {
 		opts.OnDelta = nil
@@ -357,6 +390,43 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	done := make(chan result, 1)
 	go func() {
 		rp := &replyProvider{inner: p, accept: k.userReplyTarget}
+		recordLoop := func(text string) {
+			if text == "" {
+				return
+			}
+			lastRemind = text
+			seq, serr := k.Bot.Count()
+			if serr != nil && appendErr == nil {
+				appendErr = serr
+			}
+			if rerr := k.reminders().Record(seq, KindLoop, text, k.now()); rerr != nil && appendErr == nil {
+				appendErr = rerr
+			}
+		}
+		// haltBreaker is the hard stop between segments. Inside a segment the
+		// Guard path does the same thing via agent.stopForReason.
+		haltBreaker := func(why string, produced *[]provider.Message) {
+			if lerr := k.Bot.LogTrace(bot.TraceStop, why, k.now()); lerr != nil && appendErr == nil {
+				appendErr = lerr
+			}
+			note := provider.Message{Role: provider.RoleUser, Content: agent.StopNote(why)}
+			if rerr := k.recordTurn(t, note); rerr != nil && appendErr == nil {
+				appendErr = rerr
+			}
+			convo := append(append([]provider.Message(nil), assembled...), *produced...)
+			convo = append(convo, note)
+			*produced = append(*produced, note)
+			msg, cerr := rp.Chat(runCtx, provider.Request{Messages: convo}, opts.OnDelta)
+			if cerr != nil || strings.TrimSpace(msg.Content) == "" {
+				msg = provider.Message{Role: provider.RoleAssistant, Content: "Stopped (" + why + ") before the task finished."}
+			}
+			msg.Role = provider.RoleAssistant
+			msg.ToolCalls = nil
+			if rerr := k.recordTurn(t, msg); rerr != nil && appendErr == nil {
+				appendErr = rerr
+			}
+			*produced = append(*produced, msg)
+		}
 		produced, err := agent.Run(runCtx, rp, list, assembled, opts)
 		var bg bool
 		for {
@@ -371,26 +441,59 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			// pending and finishBackground reports them as unread.
 			t.mu.Lock()
 			bg = t.branch != ""
-			var pend []provider.Message
 			var reason string
 			var more bool
 			if err == nil && bg {
 				more, reason = k.continueSegmentLocked(t, len(t.pendingCtrlLocked()) > 0)
-				if more {
-					pend = t.takeCtrlLocked()
-				}
 			}
-			if err != nil || !bg || (len(pend) == 0 && !more) {
+			// Controls stay pending until the next segment is actually allowed to
+			// start. A breaker stop must not mark them applied.
+			atCap := t.capStopped
+			finishing := err != nil || !bg || !more
+			if finishing {
 				t.finished = true
-				t.mu.Unlock()
+			} else {
+				t.capStopped = false
+			}
+			t.mu.Unlock()
+			if finishing {
+				if bg && err == nil {
+					remind, stop, why := br.EndContinuation()
+					recordLoop(remind)
+					if stop {
+						haltBreaker(why, &produced)
+						reason = breakerHaltReason(why)
+					}
+				}
 				k.markSegmentStop(t, reason)
 				break
 			}
-			// Another run starts fresh: its own end decides whether the task is done.
-			atCap := t.capStopped
-			t.capStopped = false
+			// A cap continuation is the unit diminishing returns counts. The
+			// opening segment is not one. A second trip refuses the next segment
+			// and gives back the segment count continueSegmentLocked just took.
+			if more && atCap {
+				remind, stop, why := br.BeginContinuation()
+				if stop {
+					t.mu.Lock()
+					if t.segments > 0 {
+						t.segments--
+					}
+					t.finished = true
+					t.mu.Unlock()
+					haltBreaker(why, &produced)
+					k.markSegmentStop(t, breakerHaltReason(why))
+					break
+				}
+				recordLoop(remind)
+			}
+			t.mu.Lock()
+			pend := t.takeCtrlLocked()
 			t.mu.Unlock()
+			// Another run starts fresh: its own end decides whether the task is done.
 			convo := append(append([]provider.Message(nil), assembled...), produced...)
+			if lastRemind != "" {
+				convo = agent.AttachReminder(convo, lastRemind)
+			}
 			if more && atCap {
 				n := provider.Message{Role: provider.RoleUser, Content: continueNote}
 				if rerr := k.recordTurn(t, n); rerr != nil && appendErr == nil {
@@ -409,6 +512,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			more2, rerr := agent.Run(runCtx, rp, list, convo, opts)
 			produced = append(produced, more2...)
 			err = rerr
+		}
+		if errors.Is(err, context.Canceled) {
+			if serr := k.closeDangling(DangleCancel, false); serr != nil && appendErr == nil {
+				appendErr = serr
+			}
 		}
 		if bg {
 			k.finishBackground(t, produced, err)
@@ -527,6 +635,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		return nil, bot.SectionUsage{}, err
 	}
 	raw := make([]bot.Entry, 0, len(lines))
+	seqs := make([]int, 0, len(lines))
 	for _, ln := range lines {
 		e := ln.Entry
 		if e.ReplyTo > 0 && e.Message.Role == provider.RoleUser {
@@ -535,6 +644,10 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 			}
 		}
 		raw = append(raw, e)
+		seqs = append(seqs, ln.Seq)
+	}
+	if err := k.reminders().Replay(raw, seqs); err != nil {
+		return nil, bot.SectionUsage{}, err
 	}
 	msgs, usage := account(Input{
 		Persona:   persona,
@@ -643,46 +756,19 @@ func (k *Kernel) ensureSnapshot(st bot.State) error {
 }
 
 func (k *Kernel) repairTail() error {
-	open, err := k.Bot.OpenTools()
-	if err != nil || len(open) == 0 {
-		return err
-	}
-	minSeq := open[0].CallSeq
-	for _, t := range open[1:] {
-		if t.CallSeq < minSeq {
-			minSeq = t.CallSeq
-		}
-	}
-	n, err := k.Bot.Count()
-	if err != nil {
-		return err
-	}
-	span, err := k.Bot.Slice(minSeq, n)
-	if err != nil {
-		return err
-	}
-	missing, branches, err := unresolvedCalls(span, minSeq)
-	if err != nil {
-		return err
-	}
 	// A call on a background still running here is in flight, not lost.
-	k.bgMu.Lock()
-	var lost []provider.ToolCall
-	for _, tc := range missing {
-		if _, running := k.bgs[branches[tc.ID]]; !running {
-			lost = append(lost, tc)
-		}
+	return k.closeDangling(k.danglingReason(), true)
+}
+
+func (k *Kernel) newestReminderSeq(blocks []bot.SummaryBlock) (int, error) {
+	if k == nil || k.Bot == nil {
+		return 0, nil
 	}
-	k.bgMu.Unlock()
-	missing = lost
-	for _, tc := range missing {
-		e := placeholder(tc)
-		e.Branch = branches[tc.ID]
-		if err := k.Bot.Append(e); err != nil {
-			return err
-		}
+	lines, err := k.Bot.UncoveredLines(blocks)
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	return newestSeq(lines), nil
 }
 
 func (k *Kernel) pendingNotes() int {

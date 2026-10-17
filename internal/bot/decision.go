@@ -44,6 +44,43 @@ func (b *Bot) LogDecision(state, tool, summary string, at time.Time) error {
 	})
 }
 
+// Trace kinds written for eval scoring. Stop is a circuit-breaker hard stop.
+const TraceStop = "stop"
+
+// Trace is one append-only trace event. Reason is a stable code, never a secret.
+type Trace struct {
+	Time   time.Time `json:"time"`
+	Kind   string    `json:"kind"`
+	Reason string    `json:"reason"`
+}
+
+// TracePath is the append-only trace for this bot.
+func (b *Bot) TracePath() string {
+	return filepath.Join(b.dir(), "trace.jsonl")
+}
+
+// LogTrace appends one trace event. The file is 0600 and created on the first write.
+func (b *Bot) LogTrace(kind, reason string, at time.Time) error {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	return fsutil.AppendJSONL(b.TracePath(), Trace{Time: at.UTC(), Kind: kind, Reason: reason})
+}
+
+// Traces reads the trace log in order. A missing log is empty.
+func (b *Bot) Traces() ([]Trace, error) {
+	var out []Trace
+	err := fsutil.ReadJSONL(b.TracePath(), func(line []byte) error {
+		var t Trace
+		if err := json.Unmarshal(line, &t); err != nil {
+			return err
+		}
+		out = append(out, t)
+		return nil
+	})
+	return out, err
+}
+
 // Decisions reads the review log in order. A missing log is empty.
 func (b *Bot) Decisions() ([]Decision, error) {
 	var out []Decision

@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -37,9 +38,14 @@ func (p *bgControlProvider) Chat(_ context.Context, req provider.Request, _ func
 		}
 		return provider.Message{Role: provider.RoleAssistant, Content: "这一段做完"}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-		ID: "c", Type: "function", Function: provider.FunctionCall{Name: "wait", Arguments: "{}"},
-	}}}, nil
+	return provider.Message{
+		Role:    provider.RoleAssistant,
+		Content: fmt.Sprintf("step %d %s", p.calls, strings.Repeat("x", 2200)),
+		ToolCalls: []provider.ToolCall{{
+			ID: fmt.Sprintf("c%d", p.calls), Type: "function",
+			Function: provider.FunctionCall{Name: "wait", Arguments: fmt.Sprintf(`{"n":%d}`, p.calls)},
+		}},
+	}, nil
 }
 
 // controlAtCapKernel is segmentKernel with a provider that sends a steer to its

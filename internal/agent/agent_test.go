@@ -439,3 +439,56 @@ func TestCancelStopsInFlightTools(t *testing.T) {
 		t.Fatalf("order %+v", got[1:])
 	}
 }
+
+func TestGuardRemindsThenStops(t *testing.T) {
+	tool := &echoTool{}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: `{"n":"1"}`},
+		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: `{"n":"2"}`},
+		}}},
+		{Role: provider.RoleAssistant, Content: "summarized"},
+	}}
+	var stops []string
+	got, err := Run(context.Background(), p, []tools.Tool{tool}, []provider.Message{
+		{Role: provider.RoleUser, Content: "go"},
+	}, Options{
+		Guard: func(step int, _ []provider.Message) (string, bool, string) {
+			if step == 0 {
+				return "loop warning", false, ""
+			}
+			return "", true, "repeated_output"
+		},
+		OnStop: func(reason string) { stops = append(stops, reason) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stops) != 1 || stops[0] != "repeated_output" {
+		t.Fatalf("stops %v", stops)
+	}
+	if len(p.reqs) != 3 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	last := p.reqs[1].Messages[len(p.reqs[1].Messages)-1]
+	if !strings.Contains(last.Content, "loop warning") {
+		t.Fatalf("reminder not on the newest message: %q", last.Content)
+	}
+	if strings.Contains(p.reqs[1].Messages[0].Content, "loop warning") {
+		t.Fatal("reminder rewrote an earlier message")
+	}
+	var sawReason, sawSummary bool
+	for _, m := range got {
+		if strings.Contains(m.Content, "<stop_reason>repeated_output</stop_reason>") {
+			sawReason = true
+		}
+		if m.Content == "summarized" {
+			sawSummary = true
+		}
+	}
+	if !sawReason || !sawSummary {
+		t.Fatalf("produced %+v", got)
+	}
+}

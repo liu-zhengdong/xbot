@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"errors"
-	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/provider"
@@ -161,16 +160,4 @@ func lastReplyTo(entries []bot.Entry, idx int) int {
 		}
 	}
 	return replyTo
-}
-
-func placeholder(tc provider.ToolCall) bot.Entry {
-	return bot.Entry{
-		Time: time.Now().UTC(),
-		Message: provider.Message{
-			Role:       provider.RoleTool,
-			ToolCallID: tc.ID,
-			Name:       tc.Function.Name,
-			Content:    interrupted,
-		},
-	}
 }

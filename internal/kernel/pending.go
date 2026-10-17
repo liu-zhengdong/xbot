@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/provider"
 )
 
 // openApprovals lists the confirmation cards still waiting for the owner. Cards
@@ -49,14 +48,4 @@ func (k *Kernel) openApprovals() []PendingApproval {
 		out = append(out, PendingApproval{Tool: o.card.Tool, Summary: o.card.Title + " " + o.card.Summary, Age: age})
 	}
 	return out
-}
-
-// pendingHistory is the note appended after the raw history, so the model can
-// remind the owner once about cards still open.
-func (k *Kernel) pendingHistory() []provider.Message {
-	note := pendingNote(k.openApprovals())
-	if note == "" {
-		return nil
-	}
-	return []provider.Message{{Role: provider.RoleUser, Content: note}}
 }

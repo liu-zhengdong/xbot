@@ -16,7 +16,9 @@ verified: 2026-10-16 @ d04f79e
 - **Event**：统一的事件结构 `{source, type, content, sender, time}`。内核根据来源判断是否可信：只有主人通过经过认证的入口发来的消息才算可信，其余一律当作不可信数据包裹起来。
 - **收件箱与唤醒**：每个 Bot 只有一个事件处理循环，事件按顺序处理，同一事件不会处理两次，主人正在聊天时事件也会被及时处理。终端只在真正跑一轮时拿着处理锁，停在提示符上时不占锁，网页可以当场回复，也可以 fork。网页写进 transcript 的行，终端下一次刷新时补上。主循环在两步之间把这一轮期间新到的收件箱事件按到达顺序接进当前对话，下一步就能看见，transcript 的时间不会倒退。
 - **主体（Principal）**：人、Bot、群都是主体，都可以发消息、可以被授权。
-
+- **提醒通道**：条件成立才提醒，冷却期内不重复。正文只追加在最新一条消息末尾，不改写更早的消息，也不写进 transcript 正文。落在 `bots/<name>/reminders.jsonl`，下次组装按序号原样贴回，前缀字节保持不变。现在接上的种类：待确认卡（定时唤醒不带）、打转警告、后台任务完成。`todo` 和外部文件改动用同一个 `Register`，触发器以后再接。设计笔记见 [claude-code-internals.md](../research/claude-code-internals.md)。
+- **熔断**：同一轮里数六件事：重复输出、同工具同参数、文件来回改、同一失败反复轮询、收益递减、连续 3 次确认被拒。收益递减只数后台因为步数上限而开的续段，不算普通工具步：连续 3 段续轮且最近两段各自新增少于 500 token 先提醒，再来一段就硬停。第一次只注入打转提醒；第二次硬停，让模型总结，并把 `<stop_reason>` 写进 transcript，同时往 `trace.jsonl` 追加 `{kind:stop, reason}`。
+- **悬空工具调用**：中断、取消、切换模型都走 `DanglingResult`，给没返回的调用补一条占位结果，配对不会断。
 
 ## 共享规则
-所有 Bot 共用的规则在 [assemble.go](../../internal/kernel/assemble.go) 的 `DefaultRules`。其中两条是主人的做事方式：`JudgmentRule`（先给答案和理由；主人的说法只对一半时指出哪部分对、哪部分不对，给独立判断；需要决定时以一份可直接批准的方案收尾）和 `ResourcefulRule`（缺工具或信息时先做能做的部分，推断的内容标「待确认」，或换一条路，例如把文件放到共享处再给别的 Bot 发消息让它自己改；只把最小的剩余一步交出去并说明原因）。评测用例 `half-right`、`propose-plan`、`vision-draft`、`avatar-handoff` 和留出的 `ci-version` 守着它们。
+所有 Bot 共用的规则在 [assemble.go](../../internal/kernel/assemble.go) 的 `DefaultRules`。其中两条是主人的做事方式：`JudgmentRule`（先给答案和理由；主人的说法只对一半时指出哪部分对、哪部分不对，给独立判断；需要决定时以一份可直接批准的方案收尾）和 `ResourcefulRule`（缺工具或信息时先做能做的部分，推断的内容标「待确认」，或换一条路，例如把文件放到共享处再给别的 Bot 发消息让它自己改；只把最小的剩余一步交出去并说明原因）。评测用例 `half-right`、`propose-plan`、`vision-draft`、`avatar-handoff` 和留出的 `ci-version` 守着它们。外部调用失败后「最多再试一次」不在常驻规则里，改由熔断的轮询提醒在真的重复失败时说。
