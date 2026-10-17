@@ -147,6 +147,8 @@ give-up 单测数据（每个构建 6 次，2026-10-17）：7e64ec6 6/6；加上
 
 另：第 9 项（中文回复前的英文开场白；`xbot provider add/list/remove`；`xbot new` 拒绝未知供应商）也留到下个版本。
 
+评测按四维成绩单出结果（能力、意愿、可靠性 pass^k、守规矩一票否决，另报 Ask-F1），贴用例的 DeepSeek 规则清单和替换原则也在里面：见 [SCORECARD.md](SCORECARD.md)。第一步只给 `xbot eval` 加成绩单输出，不改提示词。
+
 ## 插话时分叉（F1–F5）
 设计见 [插话时分叉](atlas/fork.md)。
 | 切片 | 内容 |
