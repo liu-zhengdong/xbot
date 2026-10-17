@@ -31,6 +31,7 @@
 - **未写完的输出只留可能是密钥开头的那一段，不要固定留 1024 字节。** 原因：固定窗口把短于 1 KiB 的启动横幅整段藏住，模型以为命令没有输出；窗口又必须盖住跨写入的密钥。留住的是当前尾巴里最长的、正好是某个已知形式前缀的后缀，留着的字节数写进 `held_bytes`。多个密钥按从长到短替换。证据：`TestShortRunningOutputIsVisible`、`TestRunningShortOutputAndHeldPrefix`、`TestScrubSecretsLongestFirst`。Seen 1×（2026-10-17）
 - **提交日志时要按替换区间映射偏移，不能看脱敏结果的后缀还在不在。** 原因：同一段里先出现过一次完整密钥时，后缀对不上，整块连同下一次密钥的前半会被写进文件。没提交的尾部也不能先作为预览落盘。证据：`TestZZR3SecondCopyCommittedRaw`、`TestZZR3PreviewShowsPartialSecret`、`TestJobLogRedactionProperty`。Seen 1×（2026-10-17）
 - **换模型名时要显式写出依赖供应商默认值的参数，并检查按模型名挂的东西。** 原因：官方新名 deepseek-flash 默认开思考（旧名 deepseek-chat 被路由到它的非思考模式），XBot 从不发 thinking 字段，开着思考带工具又必须回传 reasoning_content；模型提示也按模型名找文件，换名会悄悄丢掉 `deepseek-chat.md`。证据：deepseek-flash 切换 PR 的 `TestDeepSeekRequestDisablesThinking`，2026-10-17 实测探针。Seen 1×（2026-10-17）
+- **加容量上限时，已经超限的旧数据要能往小里改。** 原因：PR #13 让每次写都检查整个 profile ≤ 4KB，线上 person profile 已有 7402 字节，forget 一条也报满，同步合并也卡住，Bot 没法逐步整理。只拦变大的写。证据：`TestForgetOnOverCapProfileSucceeds`、`TestMergeSyncOnOverCapProfile`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

@@ -297,17 +297,32 @@ func stamp(facts []Fact, scope Scope, tier Tier, botName, personID string) []Fac
 	return facts
 }
 
+// saveTier writes one tier. A write over the tier's cap is rejected only when
+// it would grow the file: a profile already over the cap (written before the
+// cap, or by sync) must still accept forgets, or it can never be consolidated.
+// Sync folds pass fromSync so a remote fold is not wedged by the profile cap;
+// the injection clip is the backstop there.
 func saveTier(dir string, tier Tier, facts []Fact) error {
+	return saveTierOpt(dir, tier, facts, false)
+}
+
+func saveTierOpt(dir string, tier Tier, facts []Fact, fromSync bool) error {
 	body := renderMD(facts)
 	limit := maxLogBytes
 	if tier == TierProfile {
 		limit = ProfileBytes
 	}
-	if len(body) > limit {
-		if tier == TierProfile {
-			return fmt.Errorf("memory: profile tier is full (%d byte cap). Consolidate: merge facts, forget stale ones, or move details to the log tier", limit)
+	if len(body) > limit && !(fromSync && tier == TierProfile) {
+		cur := -1
+		if info, err := os.Stat(filepath.Join(dir, string(tier)+".md")); err == nil {
+			cur = int(info.Size())
 		}
-		return fmt.Errorf("memory: %s tier exceeds %d bytes", tier, limit)
+		if len(body) > cur {
+			if tier == TierProfile {
+				return fmt.Errorf("memory: profile tier is full (%d bytes, %d byte cap). Consolidate: merge facts, forget stale ones, or move details to the log tier", max(cur, 0), limit)
+			}
+			return fmt.Errorf("memory: %s tier exceeds %d bytes", tier, limit)
+		}
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err

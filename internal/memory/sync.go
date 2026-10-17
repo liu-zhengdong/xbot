@@ -229,7 +229,7 @@ func writeFold(dir, id string, lines []SyncLine) error {
 		if facts == nil {
 			facts = []Fact{}
 		}
-		if err := saveTier(dir, tier, facts); err != nil {
+		if err := saveTierOpt(dir, tier, facts, true); err != nil {
 			return err
 		}
 	}

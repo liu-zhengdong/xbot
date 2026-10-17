@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,5 +150,73 @@ func TestProfileCap(t *testing.T) {
 	}
 	if len(got) == 0 || len(got) >= 80 {
 		t.Fatalf("stored %d facts after a rejected remember", len(got))
+	}
+}
+
+// overCapProfile writes a person profile larger than ProfileBytes straight to
+// disk, as files written before the cap existed are, and returns its facts.
+func overCapProfile(t *testing.T, root, id string) []Fact {
+	t.Helper()
+	var facts []Fact
+	for i := 0; i < 20; i++ {
+		facts = append(facts, Fact{
+			Key: fmt.Sprintf("k%02d", i), WrittenBy: "diary",
+			Text: fmt.Sprintf("fact %02d %s", i, strings.Repeat("x", 300)),
+			Time: time.Date(2026, 10, 1, 0, i, 0, 0, time.UTC),
+		})
+	}
+	body := renderMD(append([]Fact(nil), facts...))
+	if len(body) <= ProfileBytes {
+		t.Fatalf("fixture is only %d bytes", len(body))
+	}
+	dir := filepath.Join(root, "people", id, "memory")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "profile.md"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return facts
+}
+
+// A profile already over the cap must accept forgets one at a time, or the
+// bot can never consolidate it. Before the fix every write checked the whole
+// file against the cap, so this forget failed with "profile tier is full".
+func TestForgetOnOverCapProfileSucceeds(t *testing.T) {
+	root := t.TempDir()
+	facts := overCapProfile(t, root, "u1000")
+	s := Open(root)
+	ctx := context.Background()
+	q := Query{Scope: ScopePerson, PersonID: "u1000", Tier: TierProfile}
+	if err := s.Forget(ctx, q, facts[0].Text); err != nil {
+		t.Fatalf("forget on an over-cap profile: %v", err)
+	}
+	got, err := s.Recall(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(facts)-1 {
+		t.Fatalf("got %d facts, want %d", len(got), len(facts)-1)
+	}
+}
+
+func TestRememberOnOverCapProfileStillErrors(t *testing.T) {
+	root := t.TempDir()
+	overCapProfile(t, root, "u1000")
+	before, _ := os.ReadFile(filepath.Join(root, "people", "u1000", "memory", "profile.md"))
+	err := Open(root).Remember(context.Background(), Fact{
+		Scope: ScopePerson, PersonID: "u1000", Tier: TierProfile, WrittenBy: "diary", Text: "one more fact",
+	})
+	if err == nil {
+		t.Fatal("remember on an over-cap profile should fail")
+	}
+	for _, part := range []string{"Consolidate", "merge facts", "forget stale", "log tier"} {
+		if !strings.Contains(err.Error(), part) {
+			t.Fatalf("cap error %q missing %q", err, part)
+		}
+	}
+	after, _ := os.ReadFile(filepath.Join(root, "people", "u1000", "memory", "profile.md"))
+	if string(before) != string(after) {
+		t.Fatal("a rejected remember changed the file")
 	}
 }
