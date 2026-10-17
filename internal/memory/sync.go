@@ -229,7 +229,14 @@ func profileDeletes(root, dir string, local []SyncLine) ([]SyncLine, error) {
 		if f.Tier != TierProfile || !ok || prev.Text != f.Text || !prev.Time.Equal(f.Time) {
 			continue
 		}
-		if present[f.Text+"\x00"+f.WrittenBy] {
+		// Compare the same representation that is persisted, including author
+		// parsing limits and whitespace normalization.
+		rendered := parseMemoryMD(renderMemoryMD([]Fact{f}, ""), ScopePerson)
+		if len(rendered) == 0 {
+			continue
+		}
+		entry := rendered[0]
+		if present[entry.Text+"\x00"+entry.WrittenBy] {
 			continue
 		}
 		now := time.Now().UTC()

@@ -371,3 +371,33 @@ func TestExportSyncPreservesProfileDeletion(t *testing.T) {
 		t.Fatalf("deleted fact propagated: %+v, %v", got, err)
 	}
 }
+
+func TestExportSyncPreservesLongAuthor(t *testing.T) {
+	root := t.TempDir()
+	remote := SyncLine{
+		Time: time.Now().UTC().Add(-time.Minute), Device: "other", Op: opRemember,
+		Fact: Fact{Key: "timezone", Scope: ScopePerson, PersonID: "owner", Tier: TierProfile,
+			WrittenBy: strings.Repeat("a", 70), Text: "Asia/Shanghai"},
+	}
+	if err := MergeSync(root, []SyncLine{remote}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "people", "owner", "memory", "memory.md")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		lines, err := ExportSync(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lines) != 1 || lines[0].Op != opRemember {
+			t.Fatalf("ExportSync %d changed untouched long-author journal: %+v", i+1, lines)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("ExportSync changed untouched profile: %q, %v", after, err)
+	}
+}
