@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
@@ -78,6 +79,7 @@ func (k *Kernel) attachShell() {
 				sh.SetMarkerDir(k.shellMarkerDir())
 			}
 			k.bindFileCwd(t)
+			k.configureWeb(t)
 		}
 	}
 }
@@ -120,7 +122,101 @@ func (k *Kernel) bindFileCwd(t tools.Tool) {
 		if f.Sandbox == "" {
 			f.BindRoot(k.cwdFor)
 		}
+	case *tools.ViewImage:
+		if f.Sandbox == "" {
+			f.BindRoot(k.cwdFor)
+			f.Allowed = k.allowedRoots
+		}
 	}
+}
+
+// configureWeb fills search, fetch, and vision from the data root. A tool that
+// already has a backend or fetcher keeps it, so a test double is not replaced
+// by the keyless default. The search key is read here and never logged.
+func (k *Kernel) configureWeb(t tools.Tool) {
+	if k == nil || t == nil {
+		return
+	}
+	root := ""
+	if k.Bot != nil {
+		root = k.Bot.Root
+	}
+	cfg, err := config.LoadWeb(root)
+	switch f := t.(type) {
+	case *tools.WebSearch:
+		if f.Store == nil {
+			f.Store = k.Vault
+		}
+		if f.Now == nil {
+			f.Now = k.now
+		}
+		if f.Backend != nil {
+			return
+		}
+		if err != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, err })
+			return
+		}
+		key, keyErr := config.SearchKey(cfg.Search, config.Getenv)
+		if keyErr != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, keyErr })
+			return
+		}
+		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, key)
+		if berr != nil {
+			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, berr })
+			return
+		}
+		f.Backend = b
+	case *tools.WebFetch:
+		if f.Store == nil {
+			f.Store = k.Vault
+		}
+		if f.Now == nil {
+			f.Now = k.now
+		}
+		if f.Fetcher != nil {
+			return
+		}
+		if err != nil {
+			f.Fetcher = failFetch{err}
+			return
+		}
+		ft, ferr := tools.NewFetcher(cfg.Fetch.Backend)
+		if ferr != nil {
+			f.Fetcher = failFetch{ferr}
+			return
+		}
+		f.Fetcher = ft
+	case *tools.ViewImage:
+		model, ok := k.vision()
+		f.Model = model
+		f.Vision = ok
+	}
+}
+
+type failFetch struct{ err error }
+
+func (f failFetch) Fetch(context.Context, string) (tools.Page, error) { return tools.Page{}, f.err }
+
+// vision is the bound model's image capability. An empty binding is
+// deepseek-flash, which sees images. An explicit providers.json vision flag wins.
+func (k *Kernel) vision() (string, bool) {
+	model := "deepseek-flash"
+	if k == nil || k.Bot == nil {
+		return model, config.SeesImages(model, nil)
+	}
+	cfg := k.Bot.Config()
+	if name := strings.TrimSpace(cfg.Model); name != "" {
+		model = name
+	}
+	prov := strings.TrimSpace(cfg.Provider)
+	if k.Bot.Root != "" && prov != "" {
+		if _, spec, err := config.Lookup(k.Bot.Root, prov, model); err == nil {
+			return spec.Name, spec.SeesImages()
+		}
+	}
+	return model, config.SeesImages(model, nil)
 }
 
 func (k *Kernel) onShellDone(job tools.Job) {

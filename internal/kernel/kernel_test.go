@@ -304,7 +304,7 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err != nil || string(got) != "hi" {
 		t.Fatalf("file %q err=%v", got, err)
 	}
-	if len(p.reqs[0].Tools) != 9 {
+	if len(p.reqs[0].Tools) != 12 {
 		t.Fatalf("tools %d", len(p.reqs[0].Tools))
 	}
 

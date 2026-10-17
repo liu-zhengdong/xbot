@@ -31,12 +31,16 @@ type Provider struct {
 // Zero means the default of 6.
 // Thinking is "off" (send thinking disabled), "omit" (send no thinking field),
 // or empty: off for DeepSeek model names, omit for the rest.
+// Vision, when set, is this model's image understanding. Nil uses the default
+// for the model id: deepseek-flash sees images; deepseek-chat and
+// deepseek-v4-pro do not. Other ids do not, until the spec says so.
 type ModelSpec struct {
 	Name      string `json:"name"`
 	Context   int    `json:"context"`
 	Todo      *bool  `json:"todo,omitempty"`
 	TodoSteps int    `json:"todo_steps,omitempty"`
 	Thinking  string `json:"thinking,omitempty"`
+	Vision    *bool  `json:"vision,omitempty"`
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -137,6 +141,9 @@ func Add(root string, p Provider, model ModelSpec) error {
 			if model.Thinking == "" {
 				model.Thinking = cur.Models[n].Thinking
 			}
+			if model.Vision == nil {
+				model.Vision = cur.Models[n].Vision
+			}
 			cur.Models[n] = model
 			replaced = true
 			break
@@ -218,12 +225,12 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	modelName = strings.TrimSpace(modelName)
 	if providerName == "" && modelName == "" {
 		m := FromEnv(getenv)
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY"}, 0, nil
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, 0, nil
 	}
 	if providerName == "" {
 		m := FromEnv(getenv)
 		m.Model = modelName
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY"}, 0, nil
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, 0, nil
 	}
 	p, model, err := Lookup(root, providerName, modelName)
 	if err != nil {
@@ -242,17 +249,20 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		Model:    model.Name,
 		KeyEnv:   p.APIKeyEnv,
 		Thinking: model.Thinking,
+		Vision:   model.SeesImages(),
 	}, model.Context, nil
 }
 
 // ModelConfig is a resolved endpoint. KeyEnv is the variable name, not a place to store the key.
 // Thinking is the model spec's thinking switch, empty when unset.
+// Vision is whether this model understands images.
 type ModelConfig struct {
 	APIKey   string
 	BaseURL  string
 	Model    string
 	KeyEnv   string
 	Thinking string
+	Vision   bool
 }
 
 func validateProvider(p Provider, modelRequired bool) error {

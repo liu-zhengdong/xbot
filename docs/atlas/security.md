@@ -79,7 +79,7 @@ WantedBy=multi-user.target
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
 - **只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。routine 的创建、修改、暂停、删除，Bot 之间的 `message_bot`/`post_group`，写计划文件、写技能、编码任务都是 `normal`，不弹确认卡。
-- **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`shell` 的 `keys:true` 也要确认。
+- **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认；`node_call` 的 `shell` 能力走同一条分类器。
 - **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；`routine_delete` 是 Bot 自己的排期，不算数据删除。
@@ -92,7 +92,7 @@ WantedBy=multi-user.target
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `read_file`、`shell_output`、`shell_status`、`list_secrets`、`list_bots`、`list_groups`、`routine_list`、`recall`、`recall_history`、`expand`、`read_skill`、`read_subagent`、`expand_subagent`、`code_show`、`node_list`、`bot_status`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 触及保险箱/密钥路径时确认） |
+| `readonly` | `read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、`list_bots`、`list_groups`、`routine_list`、`recall`、`recall_history`、`expand`、`read_skill`、`read_subagent`、`expand_subagent`、`code_show`、`node_list`、`bot_status`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
 | `normal` | `remember`、`forget`、`notify_owner`、`routine_create`、`routine_update`、`routine_delete`、`routine_pause`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`write_skill`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | `delete_bot`、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |

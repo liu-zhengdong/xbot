@@ -312,10 +312,16 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 	return produced, nil
 }
 
+type toolExec struct {
+	text   string
+	images []provider.Image
+}
+
 // runToolCalls starts every call, then returns tool messages in call order.
 // The approval lock is held only around Approve, so a prompt does not stall the others.
+
 func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) ([]provider.Message, bool) {
-	out := make([]string, len(calls))
+	out := make([]toolExec, len(calls))
 	var approve sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(calls))
@@ -329,55 +335,62 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 	aborted := ctx.Err() != nil
 	msgs := make([]provider.Message, 0, len(calls))
 	for i, tc := range calls {
-		if aborted && strings.TrimSpace(out[i]) == "error: "+ctx.Err().Error() {
+		if aborted && strings.TrimSpace(out[i].text) == "error: "+ctx.Err().Error() {
 			continue
 		}
 		msgs = append(msgs, provider.Message{
 			Role:       provider.RoleTool,
 			ToolCallID: tc.ID,
 			Name:       tc.Function.Name,
-			Content:    out[i],
+			Content:    out[i].text,
+			Images:     out[i].images,
 		})
 	}
 	return msgs, aborted && len(msgs) < len(calls)
 }
 
-func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) string {
+func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) toolExec {
 	t, ok := byName[tc.Function.Name]
 	if !ok {
-		return finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))
+		return toolExec{text: finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))}
 	}
 	raw := json.RawMessage(tc.Function.Arguments)
 	if !json.Valid(raw) {
-		return finish(opt, t.Name(), "error: tool arguments are not valid JSON")
+		return toolExec{text: finish(opt, t.Name(), "error: tool arguments are not valid JSON")}
 	}
 	need, summary, err := tools.ConfirmCall(ctx, t, raw)
 	if err != nil {
-		return finish(opt, t.Name(), "error: "+err.Error())
+		return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 	}
 	if opt.OnTool != nil {
 		opt.OnTool(t.Name(), summary)
 	}
 	if need {
 		if opt.Approve == nil {
-			return finish(opt, t.Name(), "not run: no approver available on this link")
+			return toolExec{text: finish(opt, t.Name(), "not run: no approver available on this link")}
 		}
 		approve.Lock()
 		approved, err := opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
 		approve.Unlock()
 		if err != nil {
-			return finish(opt, t.Name(), "error: "+err.Error())
+			return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 		}
 		if !approved {
-			return finish(opt, t.Name(), "denied by user")
+			return toolExec{text: finish(opt, t.Name(), "denied by user")}
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return finish(opt, t.Name(), "error: "+err.Error())
+		return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 	}
+	ctx, sink := tools.WithImageSink(ctx)
 	out, err := t.Run(ctx, raw)
+	var images []provider.Image
 	if err != nil {
 		out = "error: " + err.Error()
+	} else {
+		for _, img := range sink.Take() {
+			images = append(images, provider.Image{MIME: img.MIME, Data: img.Data})
+		}
 	}
 	if strings.TrimSpace(out) == "" {
 		out = "(empty)"
@@ -386,7 +399,7 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 		out = opt.Redact(out)
 	}
 	out, _ = clip.Bytes(out, opt.MaxResult)
-	return finish(opt, t.Name(), out)
+	return toolExec{text: finish(opt, t.Name(), out), images: images}
 }
 
 func finish(opt Options, name, out string) string {

@@ -344,7 +344,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 			t.Fatalf("tool %q answered need=true on its own; the table must decide", name)
 		}
 	}
-	for _, want := range []string{"shell", "read_file", "write_file", "edit_file", "http_request", "list_secrets",
+	for _, want := range []string{"shell", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
 		"links", "telegram_send", "lark_send", "code_start", "node_call", "desktop_click", "browser_open",
 		"create_bot", "delete_bot", "bot_status", "mcp_fake_echo"} {
 		if !seen[want] {
