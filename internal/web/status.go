@@ -268,6 +268,28 @@ func (s *Server) botSteps(name string, n int) []kernel.Step {
 func (s *Server) registerStatusAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/status", s.botStatusAPI)
 	mux.HandleFunc("GET /api/bots/{name}/steps", s.botStepsAPI)
+	mux.HandleFunc("GET /api/bots/{name}/todos", s.botTodosAPI)
+}
+
+// botTodosAPI returns the bot's task list. The steps view does not render it.
+func (s *Server) botTodosAPI(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	items, err := kernel.ReadTodos(b)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "todos unreadable")
+		return
+	}
+	if items == nil {
+		items = []kernel.TodoItem{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // botStatusAPI returns {bots:[BotStatus]} for every same-owner bot.

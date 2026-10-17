@@ -102,6 +102,34 @@ func TestProviderAddListRemoveAndBind(t *testing.T) {
 	}
 }
 
+func TestModelTodoSwitchRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	off := false
+	err := Add(root, Provider{
+		Name: "deepseek", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "DEEPSEEK_API_KEY",
+	}, ModelSpec{Name: "deepseek-chat", Context: 64000, Todo: &off, TodoSteps: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-chat", Context: 32000}); err != nil {
+		t.Fatal(err)
+	}
+	_, spec, err := Lookup(root, "deepseek", "deepseek-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Context != 32000 || spec.Todo == nil || *spec.Todo || spec.TodoSteps != 8 {
+		t.Fatalf("update dropped the switch: %+v", spec)
+	}
+	raw, err := os.ReadFile(Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "sk-") {
+		t.Fatalf("registry stored a raw key:\n%s", raw)
+	}
+}
+
 func TestProviderRejectsRawKeyField(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(Path(root), []byte(`{"providers":[{"name":"x","base_url":"http://localhost","api_key":"secret","api_key_env":"X","models":[{"name":"m","context":1}]}]}`), 0600); err != nil {

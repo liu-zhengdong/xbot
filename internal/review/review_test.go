@@ -46,6 +46,7 @@ func TestTableHasEveryClass(t *testing.T) {
 		"code_start":      Normal,
 		"browser_stop":    Normal,
 		"bot_status":      Readonly,
+		"todo":            Normal,
 	}
 	for name, class := range want {
 		if !Known(name) {

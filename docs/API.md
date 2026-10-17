@@ -147,9 +147,11 @@
 
 ## Bot 状态
 
-`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`since`（RFC3339，本机时区）、`backgrounds`、`last_message`（最多 80 个字符，写前过替换函数）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等主人确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
+`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`since`（RFC3339，本机时区）、`backgrounds`、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等主人确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
 
 `GET /api/bots/{name}/steps?n=20` 返回 `{"steps":[{"time","tool","summary","state"}]}`，是这个 Bot 当前这一轮的步骤环。`summary` 最多 120 个字符，写前过替换函数；`state` 是 `running`、`done`、`error` 或 `awaiting`。`n` 缺省 20，最多 20，小于 1 是 400 `{"error":"bad n"}`。不是这个 owner 的 Bot 是 404。远端 Bot 只给状态，不给步骤，空数组。
+
+`GET /api/bots/{name}/todos` 返回 `{"items":[{"id","content","status","reason"}]}`，是这个 Bot 当前任务的待办清单。没有活动清单时 `items` 是空数组。新的主人消息换任务，或每一项都已完成或放弃时，旧清单归档，不再出现在这里。`status` 是 `pending`、`in_progress`、`done` 或 `dropped`。`BotStatus` 多一个 `todo` 字段，有未完成项时是一行摘要（进行中的那条，或「N pending」），写前过替换函数，最多 80 个字符；没有未完成项就省略。步骤环不放清单。不是这个 owner 的 Bot 是 404。
 
 ## 子代理、通知、群
 

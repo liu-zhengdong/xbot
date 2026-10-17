@@ -114,6 +114,17 @@ type Kernel struct {
 	// Handle clears it when a new turn starts, so a later message can ask again.
 	denyMu sync.Mutex
 	denied map[string]struct{}
+
+	// TodoSteps is how many tool steps a list must sit unchanged before a
+	// reminder. Zero uses the model spec's todo_steps, or 6.
+	TodoSteps int
+
+	todoMu     sync.Mutex
+	todoCached bool
+	todoOnV    bool
+	todoStepsV int
+	todoLoaded bool
+	todoMem    todoFile
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -201,6 +212,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleUser, Content: note}}); err != nil {
 				return err
 			}
+		}
+	}
+	if seq == 0 && ev.Source != link.NameTimer {
+		if err := k.archiveTodoForNewTask(); err != nil {
+			return err
 		}
 	}
 	if seq == 0 {
@@ -331,6 +347,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 		},
 		OnTool: func(name, summary string) {
+			if name == "ask_user" {
+				t.mu.Lock()
+				t.askedOwner = true
+				t.mu.Unlock()
+			}
 			k.beginStep(t, name, summary)
 			t.mu.Lock()
 			forked := t.branch != ""
@@ -381,6 +402,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			return k.absorbInbox()
 		},
 		Guard: func(_ int, stepMsgs []provider.Message) (string, bool, string) {
+			k.noteTodoStep(stepMsgs)
 			remind, stop, reason := br.Observe(stepMsgs)
 			if remind != "" {
 				// The reminder was attached to the message just recorded, not to
@@ -389,10 +411,29 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 					appendErr = rerr
 				}
 			}
+			if todo := k.todoNote(k.now(), k.todoPrev()); todo != "" {
+				if rerr := k.reminders().Record(t.lastSeq(), KindTodo, todo, k.now()); rerr != nil && appendErr == nil {
+					appendErr = rerr
+				}
+				if remind != "" {
+					remind += "\n\n" + todo
+				} else {
+					remind = todo
+				}
+			}
 			if stop {
 				_ = k.Bot.LogTrace(bot.TraceStop, reason, k.now())
 			}
 			return remind, stop, reason
+		},
+		OnIdle: func(msg provider.Message) (string, bool) {
+			if br.Stopped() {
+				return "", false
+			}
+			// The gate is a new user message, recorded by OnMessage. Binding it
+			// onto the assistant line would end the request on an assistant turn
+			// and make replay attribute the text to the model.
+			return k.todoGate(t, msg)
 		},
 	}
 	if onDelta == nil {

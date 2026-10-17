@@ -54,6 +54,9 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
 	}
 	list = append(list, linksTool{k})
+	if k.todoToolOn() {
+		list = append(list, todoTool{k})
+	}
 	if k.Vault != nil && namedLink(links, link.NameTools) {
 		list = append(list, &tools.HTTPRequest{Store: k.Vault}, &tools.SecretList{Store: k.Vault})
 	}
