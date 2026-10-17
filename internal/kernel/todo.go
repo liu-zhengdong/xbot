@@ -126,7 +126,7 @@ func writeTodoFile(path string, f todoFile) error {
 // todoPolicy says whether reminders and the tool are on, and how many quiet
 // steps must pass. Kernel.TodoSteps wins when set. Otherwise the model spec's
 // todo_steps wins, then 6. An explicit model spec todo flag wins over the
-// deepseek default. An empty binding is the product default, deepseek-chat.
+// deepseek default. An empty binding is the product default, deepseek-flash.
 func (k *Kernel) todoPolicy() (enabled bool, steps int) {
 	steps = defaultTodoStaleSteps
 	if k == nil {

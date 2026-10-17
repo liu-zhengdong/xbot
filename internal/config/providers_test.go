@@ -139,3 +139,44 @@ func TestProviderRejectsRawKeyField(t *testing.T) {
 		t.Fatal("api_key field must be rejected")
 	}
 }
+
+func TestModelThinkingRoundTripAndValidation(t *testing.T) {
+	root := t.TempDir()
+	p := Provider{Name: "deepseek", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "DEEPSEEK_API_KEY"}
+	if err := Add(root, p, ModelSpec{Name: "deepseek-flash", Context: 1000000, Thinking: "omit"}); err != nil {
+		t.Fatal(err)
+	}
+	// A context-length update keeps the explicit thinking setting.
+	if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-flash", Context: 900000}); err != nil {
+		t.Fatal(err)
+	}
+	env := func(string) string { return "k" }
+	got, n, err := Resolve(root, "deepseek", "deepseek-flash", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Thinking != "omit" || n != 900000 {
+		t.Fatalf("%+v context %d", got, n)
+	}
+	if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-flash", Context: 1000, Thinking: "on"}); err == nil {
+		t.Fatal("thinking on should be rejected")
+	}
+	// A hand-edited bad value fails at resolve time rather than being guessed.
+	f, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Providers[0].Models[0].Thinking = "enabled"
+	if err := Save(root, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Resolve(root, "deepseek", "deepseek-flash", env); err == nil {
+		t.Fatal("bad thinking value should fail at resolve time")
+	}
+}
+
+func TestFromEnvDefaultIsDeepSeekFlash(t *testing.T) {
+	if m := FromEnv(func(string) string { return "" }); m.Model != "deepseek-flash" {
+		t.Fatalf("default model %q", m.Model)
+	}
+}

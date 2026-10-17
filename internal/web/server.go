@@ -488,7 +488,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 }
 
 // runningModel is the provider and model this bot will call.
-// An empty binding resolves through the process environment, which defaults to deepseek-chat.
+// An empty binding resolves through the process environment, which defaults to deepseek-flash.
 func runningModel(root string, b *bot.Bot) (string, string) {
 	providerName := strings.TrimSpace(b.Config().Provider)
 	modelName := strings.TrimSpace(b.Config().Model)

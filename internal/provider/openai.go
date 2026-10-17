@@ -33,7 +33,18 @@ type Client struct {
 	// than waiting forever. Zero uses defaultStreamIdleTimeout; a negative
 	// value turns the check off.
 	StreamIdleTimeout time.Duration
+	// Thinking is the per-model thinking switch: ThinkingOff sends
+	// {"thinking":{"type":"disabled"}}, ThinkingOmit sends nothing, and empty
+	// picks by model name (see thinkingFor).
+	Thinking string
 }
+
+const (
+	// ThinkingOff asks the endpoint to skip its thinking phase.
+	ThinkingOff = "off"
+	// ThinkingOmit leaves the thinking field out of the request.
+	ThinkingOmit = "omit"
+)
 
 var defaultHTTP = &http.Client{
 	Transport: &http.Transport{
@@ -67,10 +78,36 @@ type apiRequest struct {
 	ToolChoice    string         `json:"tool_choice,omitempty"`
 	Stream        bool           `json:"stream"`
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+	Thinking      *thinkingParam `json:"thinking,omitempty"`
 }
 
 // streamOptions asks the endpoint to include a usage object on the last chunk.
 // Endpoints that omit it leave TokenUsage.Reported false.
+type thinkingParam struct {
+	Type string `json:"type"`
+}
+
+// thinkingFor returns the thinking field for one request, or nil to leave it
+// out. DeepSeek models think by default (deepseek-flash does, deepseek-chat did
+// not), and XBot does not send reasoning_content back on tool turns, which the
+// API requires while thinking is on. So any DeepSeek model gets thinking turned
+// off unless the model spec says omit. Other endpoints may reject the unknown
+// field, so they get nothing unless the spec says off. deepseek-reasoner is
+// the legacy thinking-only id and is left alone.
+func thinkingFor(model, setting string) *thinkingParam {
+	switch setting {
+	case ThinkingOff:
+		return &thinkingParam{Type: "disabled"}
+	case ThinkingOmit:
+		return nil
+	}
+	m := strings.ToLower(model)
+	if strings.Contains(m, "deepseek") && !strings.Contains(m, "reasoner") {
+		return &thinkingParam{Type: "disabled"}
+	}
+	return nil
+}
+
 type streamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
@@ -243,6 +280,7 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 		Messages:      req.Messages,
 		Stream:        true,
 		StreamOptions: &streamOptions{IncludeUsage: true},
+		Thinking:      thinkingFor(c.Model, c.Thinking),
 	}
 	if len(req.Tools) > 0 {
 		body.ToolChoice = "auto"

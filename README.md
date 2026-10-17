@@ -14,15 +14,15 @@ go build -o bin/xbot ./cmd/xbot
 export XBOT_API_KEY=sk-...
 # 可选。没有绑定 provider 时用这两项，默认是 DeepSeek
 export XBOT_BASE_URL=https://api.deepseek.com/v1
-export XBOT_MODEL=deepseek-chat
+export XBOT_MODEL=deepseek-flash
 
 xbot provider add deepseek \
   --base-url https://api.deepseek.com/v1 \
   --api-key-env DEEPSEEK_API_KEY \
-  --model deepseek-chat --context 64000
+  --model deepseek-flash --context 1000000
 export DEEPSEEK_API_KEY=sk-...
 
-xbot new ada --persona "你是一个简短的编程助手。" --provider deepseek --model deepseek-chat
+xbot new ada --persona "你是一个简短的编程助手。" --provider deepseek --model deepseek-flash
 xbot list
 xbot chat ada
 xbot serve --http 127.0.0.1:8787
@@ -61,7 +61,7 @@ xbot upgrade --check
 | --- | --- | --- |
 | `XBOT_API_KEY` | 未绑定时的 API key | 空 |
 | `XBOT_BASE_URL` | 未绑定时的 OpenAI 兼容 base URL | `https://api.deepseek.com/v1` |
-| `XBOT_MODEL` | 未绑定时的模型名 | `deepseek-chat` |
+| `XBOT_MODEL` | 未绑定时的模型名 | `deepseek-flash` |
 | `XBOT_PUBLIC_URL` | `webhook add` 打印的对外地址 | `http://127.0.0.1:8787` |
 | `XBOT_RUNNER_URL` | 子代理和编码任务使用的 runner | 空，本机执行 |
 | `XBOT_RUNNER_TOKEN` | runner 的 bearer token | 空 |
@@ -71,10 +71,12 @@ xbot upgrade --check
 
 ```bash
 xbot provider list
-xbot provider remove deepseek --model deepseek-chat
-xbot bind ada --provider deepseek --model deepseek-chat
+xbot provider remove deepseek --model deepseek-flash
+xbot bind ada --provider deepseek --model deepseek-flash
 xbot bind ada --clear
 ```
+
+DeepSeek 的模型默认会先思考；XBot 对模型名含 deepseek 的请求一律带上 `"thinking":{"type":"disabled"}`，关掉思考。`deepseek-chat` 是官方已停用的旧名，现在被路由到 deepseek-flash 的非思考模式，仍能用。模型条目可以写 `thinking`：`off` 总是带上这个字段，`omit` 不带（给不认这个字段的网关用）。`xbot provider add --thinking off|omit` 写入它。
 
 `xbot new` 可以带 `--provider` 和 `--model`。两个都空就用上面的环境变量。内核和模型之间是 `provider.ModelSelector`。现在只有固定绑定（`FixedSelector`），以后的自动路由走同一个接口。
 
