@@ -137,17 +137,19 @@
 评审修复后再跑：`gofmt -l` 无输出，`go vet ./...` 通过。`TMPDIR=/workspace/.test-tmp/m33-{1,2,3}` 跑 `go test -count=1 ./...` 三遍。第 1、3 遍全绿。第 2 遍只有 `internal/browser` 的 `TestReleaseTiedLeavesCLI` 失败（`tied chrome still running`，2 秒没等到进程退出）；单独再跑这条和 `TestStopChecksCommandLine` 通过。`TestStopChecksCommandLine`（issue #27）这三遍没有失败。`memory-scope` 的检查放宽成子串 `run the tests` 和 `Asia/Shanghai`。回归：`TestM33UntrustedDefaultScopeRememberIsAttributed`、`TestM33CorruptLegacyIndexDoesNotBreakOtherBots`、`TestMigrateCorruptOwnerStaysAndOtherBotWorks`、`TestMigrateLeavesNonOwnerInBackup`、`TestMigrateLogStaysWithinCap`、`TestForgetOnOverCapLogSucceeds`。Not run: 真模型评测，界面浏览器手点（网页只删了 bot-person 的读取和标签），`-race`，`go test -fuzz`，默认 `TMPDIR`。
 
 ## 记忆 v2（2026-10-17 定）
-规格见 [MEMORY-V2.md](MEMORY-V2.md)，决策见 [ADR 0008](adr/0008-memory-v2-dated-log-first.md)。批 1–3 放在晚上的时段做，批 4–6 在 11/30 之前完成，自带技能目录放在桌面端 B 阶段。
+规格见 [MEMORY-V2.md](MEMORY-V2.md)，决策见 [ADR 0008](adr/0008-memory-v2-dated-log-first.md)、[ADR 0009](adr/0009-memory-as-folder.md)。批 1–4 放在晚上的时段做，批 5–8 在 11/30 之前完成，自带技能目录放在桌面端 B 阶段。
 
 | 批 | 内容 | 状态 |
 |---|---|---|
 | 1 | 常驻带日期、倒序、去重 key、显示用量；`recall` 带日期并提示"另有 N 条" | 进行中 |
-| 2 | `update` 与按唯一子串 `forget` | 计划中 |
-| 3 | 默认写日志，常驻最近 8 条 | 计划中 |
-| 4 | 日志按月分文件 | 计划中 |
-| 5 | 经过摘要 | 计划中 |
-| 6 | 每晚整理（工作档案） | 计划中 |
-| 7 | 导入 Grok 导出、`xbot backup` | 计划中 |
+| 2 | 目录布局（`memory.md`、`log/YYYY-MM.md`）和迁移 | 计划中 |
+| 3 | 索引渲染和不一致提示；文件工具不能直接写 `memory.md` 和 `log/` | 计划中 |
+| 4 | 默认写日志，常驻最近 8 条 | 计划中 |
+| 5 | `revise`（`forget` 作为别名） | 计划中 |
+| 6 | `recall` 搜自由文件 | 计划中 |
+| 7 | 经过摘要 | 计划中 |
+| 8 | 每晚整理（含索引核对、工作档案） | 计划中 |
+| 9 | 导入 Grok 导出、`xbot backup` | 计划中 |
 
 ## 下个版本（v0.3.1 / v0.4.0）
 v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），撤到下个版本重做，每项配自己的 eval 用例，不靠 give-up 调。

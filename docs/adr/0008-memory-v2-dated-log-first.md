@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Accepted
+status: Accepted（存储布局和工具集由 ADR 0009 修订）
 date: 2026-10-17
 ---
 # 0008 记忆 v2：默认写日志，常驻带日期并带最近 8 条
