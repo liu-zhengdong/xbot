@@ -21,8 +21,15 @@ import (
 	"xbot/internal/tools"
 )
 
+type bounce struct {
+	Ref    string `json:"ref"`
+	From   string `json:"from_bot"`
+	To     string `json:"to_bot"`
+	Reason string `json:"reason"`
+}
+
 // Receive acknowledges rejected envelopes too, but never operational failures.
-func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...func(string, ...any)) (ack []string, err error) {
+func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...func(string, ...any)) (ack []string, bounces []gateway.Envelope, err error) {
 	path := filepath.Join(root, "remote", "seen.json")
 	err = fsutil.WithLock(path+".lock", func() error {
 		cfg, err := Load(root)
@@ -44,7 +51,7 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...
 		var first error
 		for _, env := range envs {
 			if _, replay := seen[env.ID]; !replay {
-				deliveryErr := deliver(root, self, cfg, env, now, logf...)
+				deliveryErr := deliver(root, self, cfg, env, now, &bounces, logf...)
 				if deliveryErr == nil && env.Kind == "pair" {
 					cfg, deliveryErr = Load(root)
 				}
@@ -73,15 +80,15 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...
 		}
 		raw, err := json.Marshal(seen)
 		if err != nil {
-			ack = nil
+			ack, bounces = nil, nil
 			return err
 		}
 		if len(raw) > 1<<20 {
-			ack = nil
+			ack, bounces = nil, nil
 			return errors.New("remote: seen state exceeds 1 MiB")
 		}
 		if err := fsutil.WriteAtomic(path, raw, 0600); err != nil {
-			ack = nil
+			ack, bounces = nil, nil
 			return err
 		}
 		return first
@@ -89,13 +96,13 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...
 	return
 }
 
-func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time, logf ...func(string, ...any)) error {
+func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time, bounces *[]gateway.Envelope, logf ...func(string, ...any)) error {
 	if env.Kind == "pair" {
 		return deliverPair(root, self, env, now, logf...)
 	}
 	d, paired := cfg.ByID(env.From)
 	pub, err := base64.StdEncoding.DecodeString(d.Key)
-	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || env.Kind != "box" || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > gateway.MaxBody {
+	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || (env.Kind != "box" && env.Kind != "bounce") || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > gateway.MaxBody {
 		return nil
 	}
 	priv, _, err := XIdentity(root)
@@ -109,27 +116,68 @@ func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time,
 		}
 		return nil
 	}
+	if env.Kind == "bounce" {
+		var b bounce
+		if json.Unmarshal(body, &b) != nil || !bot.ValidName(b.From) || !bot.ValidName(b.To) || b.Ref == "" || b.Reason != "no such bot" {
+			return nil
+		}
+		target, err := bot.Load(root, b.From)
+		if errors.Is(err, bot.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if d.Person == "" || !slices.Contains(target.Config().Owners, d.Person) {
+			return nil
+		}
+		if err := (&peer.Bus{Root: root}).Allow("remote-in:"+d.Name+":"+b.To+"->"+b.From, now); err != nil {
+			if errors.Is(err, peer.ErrRateLimit) {
+				return nil
+			}
+			return err
+		}
+		return postRemote(root, b.From, "remote_bounce_"+env.ID, "message to "+b.To+"@"+d.Name+" was not delivered: no such bot", now)
+	}
 	var m message
-	if json.Unmarshal(body, &m) != nil || !bot.ValidName(m.From) || m.Hops < 1 || m.Hops > peer.MaxHops {
+	if json.Unmarshal(body, &m) != nil || !bot.ValidName(m.From) || !bot.ValidName(m.To) || m.Hops < 1 || m.Hops > peer.MaxHops {
 		return nil
 	}
 	m.Text = strings.TrimSpace(m.Text)
 	if m.Text == "" || len(m.Text) > peer.MaxText {
 		return nil
 	}
-	target, err := bot.Load(root, m.To)
-	if errors.Is(err, bot.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if d.Person == "" || !slices.Contains(target.Config().Owners, d.Person) {
-		return nil
-	}
 	if err := (&peer.Bus{Root: root}).Allow("remote-in:"+d.Name+":"+m.From+"->"+m.To, now); err != nil {
 		if errors.Is(err, peer.ErrRateLimit) {
 			return nil
+		}
+		return err
+	}
+	target, err := bot.Load(root, m.To)
+	if err != nil && !errors.Is(err, bot.ErrNotFound) {
+		return err
+	}
+	if errors.Is(err, bot.ErrNotFound) || d.Person == "" || !slices.Contains(target.Config().Owners, d.Person) {
+		if d.XKey == "" {
+			return nil
+		}
+		if err := (&peer.Bus{Root: root}).Allow("remote-bounce:"+d.ID, now); err != nil {
+			if errors.Is(err, peer.ErrRateLimit) {
+				return nil
+			}
+			return err
+		}
+		key, _, _, err := Identity(root)
+		if err != nil {
+			return err
+		}
+		body, err := json.Marshal(bounce{env.ID, m.From, m.To, "no such bot"})
+		if err != nil {
+			return err
+		}
+		reply, err := newBoxEnvelope(key, d, "bounce", body, now)
+		if err == nil {
+			*bounces = append(*bounces, reply)
 		}
 		return err
 	}

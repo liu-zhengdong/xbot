@@ -35,7 +35,8 @@ unset XBOT_VAULT_SOCKET
 "$ROOT/bin/mockopenai" -addr "127.0.0.1:$MOCK" >"$WORK/mock.log" 2>&1 &
 PIDS+=("$!")
 "$ROOT/bin/xbot" gateway serve --addr "127.0.0.1:$GW" --dir "$WORK/gw" >"$WORK/gateway.log" 2>&1 &
-PIDS+=("$!")
+GW_PID=$!
+PIDS+=("$GW_PID")
 wait_http() {
   for _ in $(seq 1 50); do
     if curl -fsS "$1" >/dev/null 2>&1; then return; fi
@@ -76,9 +77,26 @@ for _ in $(seq 1 600); do
   if grep -rqs "got remote reply" "$A/bots/ada/transcript" && grep -rqs "bot:ada@a" "$B/bots/bob/transcript"; then
     ended=$(ms)
     echo "PASS gateway round-trip=$((ended-sent))ms total=$((ended-started))ms"
+    break
+  fi
+  sleep 0.1
+done
+grep -rqs "got remote reply" "$A/bots/ada/transcript" || { echo "FAIL: no remote reply within 60s" >&2; exit 1; }
+kill "$GW_PID"
+wait "$GW_PID" || true
+sent=$(ms)
+printf 'REMOTE_PING_RETRY\nexit\n' | "$X" --root "$A" chat ada --max-steps 4 >"$WORK/retry-chat.log" 2>&1
+compgen -G "$A/remote/outbox/*.json" >/dev/null || { echo "FAIL: outage message not queued" >&2; exit 1; }
+"$X" gateway serve --addr "127.0.0.1:$GW" --dir "$WORK/gw" >>"$WORK/gateway.log" 2>&1 &
+PIDS+=("$!")
+wait_http "http://127.0.0.1:$GW/healthz"
+for _ in $(seq 1 400); do
+  if grep -rqs "REMOTE_OUTAGE_DELIVERY" "$B/bots/bob/transcript"; then
+    ended=$(ms)
+    echo "PASS gateway outage-retry=$((ended-sent))ms"
     exit 0
   fi
   sleep 0.1
 done
-echo "FAIL: no remote reply within 60s" >&2
+echo "FAIL: outage message not delivered within 40s" >&2
 exit 1

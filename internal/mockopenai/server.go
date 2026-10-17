@@ -109,6 +109,9 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	switch {
+	case strings.Contains(lastUser, "REMOTE_PING_RETRY") && !sawPeer:
+		writeTool(w, "call_remote_retry", "message_bot", `{"bot":"bob@b","text":"REMOTE_OUTAGE_DELIVERY"}`)
+		return
 	case strings.Contains(lastUser, "REMOTE_PING") && !sawPeer:
 		writeTool(w, "call_remote_ping", "message_bot", `{"bot":"bob@b","text":"REMOTE_HELLO"}`)
 		return

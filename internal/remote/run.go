@@ -9,6 +9,10 @@ import (
 
 // Run owns one poll loop per process. State locks serialize concurrent receivers.
 func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); runOutbox(ctx, root, logf) }()
+	defer func() { cancel(); <-done }()
 	registered := map[string]bool{}
 	backoff := time.Second
 	for ctx.Err() == nil {
@@ -39,7 +43,15 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 				if err != nil {
 					return err
 				}
-				ack, receiveErr := Receive(root, self, envs, time.Now(), logf)
+				ack, bounces, receiveErr := Receive(root, self, envs, time.Now(), logf)
+				for _, env := range bounces {
+					if err := client.Send(ctx, env); retryable(err) {
+						err = enqueue(root, outboxItem{Env: env, Created: time.Now(), Attempts: 1, Next: time.Now().Add(5 * time.Second)})
+						if err != nil && logf != nil {
+							logf("cannot queue bounce %s", env.ID)
+						}
+					}
+				}
 				if len(ack) > 0 {
 					if err := client.Ack(ctx, ack); err != nil {
 						return err
