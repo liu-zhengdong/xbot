@@ -28,6 +28,11 @@
     sel: null,
     sig: "",
     streaming: false,
+    pendingSends: [],
+    replyErrors: [],
+    firstRender: true,
+    threadLoad: 0,
+    panelLoad: 0,
     knownNotes: null,
     owner: "",
     preview: {},
@@ -1612,10 +1617,13 @@
   function renderMessages(messages, who) {
     const inner = el("div", "thread-inner");
     const prevTop = thread.scrollTop;
-    const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
       inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
+      restoreSendFeedback(inner);
       thread.replaceChildren(inner);
+      state.firstRender = false;
+      if (near) thread.scrollTop = thread.scrollHeight;
       return;
     }
     const results = {};
@@ -1693,17 +1701,22 @@
       }
     });
     if (!any) inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
+    restoreSendFeedback(inner);
     thread.replaceChildren(inner);
+    state.firstRender = false;
     thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
   }
 
   function renderGroup(messages, who) {
     const inner = el("div", "thread-inner");
     const prevTop = thread.scrollTop;
-    const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
       inner.append(emptyState(niceName(who) || "群", "没有消息", who));
+      restoreSendFeedback(inner);
       thread.replaceChildren(inner);
+      state.firstRender = false;
+      if (near) thread.scrollTop = thread.scrollHeight;
       return;
     }
     let last = "";
@@ -1753,7 +1766,9 @@
       last = key;
       inner.append(row);
     }
+    restoreSendFeedback(inner);
     thread.replaceChildren(inner);
+    state.firstRender = false;
     thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
   }
 
@@ -2511,10 +2526,47 @@
     subtitle.hidden = !show;
   }
 
+  function resetConversation() {
+    state.streaming = 0;
+    state.pendingSends = [];
+    state.replyErrors = [];
+    state.firstRender = true;
+    state.messages = [];
+    state.panelData = null;
+    state.traceOpen = {};
+    state.traceOut = {};
+    ++state.threadLoad;
+    ++state.panelLoad;
+    thread.replaceChildren();
+    const skeleton = el("div", "thread-inner thread-skeleton");
+    skeleton.setAttribute("aria-label", "正在加载对话");
+    for (let i = 0; i < 3; i++) skeleton.append(el("div", "skeleton-bubble"));
+    thread.append(skeleton);
+    panelBody.replaceChildren(el("div", "muted", "正在加载"));
+    closePanelMenu();
+  }
+
+  function threadUnavailable() {
+    state.sig = "";
+    const box = el("div", "thread-unavailable");
+    box.setAttribute("role", "status");
+    const retry = el("button", "secondary", "重试");
+    retry.type = "button";
+    retry.addEventListener("click", async () => {
+      retry.disabled = true;
+      await loadThread();
+      retry.disabled = false;
+      if (panel.classList.contains("open")) await loadPanel();
+    });
+    box.append(el("p", "", "连不上 XBot"), retry);
+    thread.replaceChildren(box);
+  }
+
   async function selectBot(name) {
     leavePeer();
     clearQuote();
     state.sel = { type: "bot", id: name };
+    resetConversation();
     state.sig = "";
     state.tab = state.tab || "details";
     state.editOpen = false;
@@ -2524,14 +2576,16 @@
     syncMore();
     setComposerPlaceholder("写给 " + niceName(name));
     renderLists();
+    const selection = state.sel;
     await loadThread();
-    if (panel.classList.contains("open")) await loadPanel();
+    if (state.sel === selection && panel.classList.contains("open")) await loadPanel();
   }
 
   async function selectGroup(id) {
     leavePeer();
     clearQuote();
     state.sel = { type: "group", id: id };
+    resetConversation();
     state.sig = "";
     state.editOpen = false;
     closeDrawer();
@@ -2541,39 +2595,48 @@
     syncMore();
     setComposerPlaceholder("写到这个群");
     renderLists();
+    const selection = state.sel;
     await loadThread();
-    if (panel.classList.contains("open")) await loadPanel();
+    if (state.sel === selection && panel.classList.contains("open")) await loadPanel();
   }
 
   async function loadThread() {
     if (!state.sel || state.streaming || state.peer) return;
-    if (state.sel.type === "bot") {
-      const data = await api("/api/bots/" + encodeURIComponent(state.sel.id) + "/transcript");
-      const messages = data.messages || [];
-      const sig = JSON.stringify(messages);
-      state.messages = messages;
-      state.preview["b:" + state.sel.id] = previewFromMessages(messages);
-      state.previewAt["b:" + state.sel.id] = Date.now();
-      renderLists();
-      if (sig === state.sig) {
+    const selection = state.sel;
+    const request = ++state.threadLoad;
+    try {
+      if (selection.type === "bot") {
+        const data = await api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript");
+        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
+        const messages = data.messages || [];
+        const sig = JSON.stringify(messages);
+        state.messages = messages;
+        state.preview["b:" + selection.id] = previewFromMessages(messages);
+        state.previewAt["b:" + selection.id] = Date.now();
+        renderLists();
+        if (sig === state.sig) {
+          if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
+          return;
+        }
+        state.sig = sig;
+        if (state.peer) return;
+        renderMessages(messages, selection.id);
         if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
         return;
       }
+      const data = await api("/api/groups/" + encodeURIComponent(selection.id));
+      if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
+      const messages = data.messages || [];
+      const sig = JSON.stringify(messages);
+      state.preview["g:" + selection.id] = previewFromGroup(messages);
+      state.previewAt["g:" + selection.id] = Date.now();
+      renderLists();
+      if (sig === state.sig) return;
       state.sig = sig;
-      if (state.peer) return;
-      renderMessages(messages, state.sel.id);
-      if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
-      return;
+      renderGroup(messages, data.group && data.group.name);
+    } catch (e) {
+      if (state.sel === selection && request === state.threadLoad && !state.streaming && !state.pendingSends.length) threadUnavailable();
     }
-    const data = await api("/api/groups/" + encodeURIComponent(state.sel.id));
-    const messages = data.messages || [];
-    const sig = JSON.stringify(messages);
-    state.preview["g:" + state.sel.id] = previewFromGroup(messages);
-    state.previewAt["g:" + state.sel.id] = Date.now();
-    renderLists();
-    if (sig === state.sig) return;
-    state.sig = sig;
-    renderGroup(messages, data.group && data.group.name);
   }
 
   function section(title) {
@@ -3145,9 +3208,19 @@
   async function loadPanel() {
     if (!state.sel) { paintPanel(); return; }
     if (state.sel.type === "group") { state.panelData = null; paintPanel(); return; }
-    state.panelData = await api("/api/bots/" + encodeURIComponent(state.sel.id));
-    await loadModelCatalog();
-    paintPanel();
+    const selection = state.sel;
+    const request = ++state.panelLoad;
+    try {
+      const data = await api("/api/bots/" + encodeURIComponent(selection.id));
+      await loadModelCatalog();
+      if (state.sel !== selection || request !== state.panelLoad) return;
+      state.panelData = data;
+      paintPanel();
+    } catch (e) {
+      if (state.sel === selection && request === state.panelLoad) {
+        panelBody.replaceChildren(el("div", "muted", "连不上 XBot"));
+      }
+    }
   }
 
   function labeled(label, node) {
@@ -3517,13 +3590,29 @@
     });
   }
 
+  function restoreSendFeedback(inner) {
+    state.pendingSends = state.pendingSends.filter((row) => !row.accepted);
+    if (state.pendingSends.length) inner.querySelector(".empty")?.remove();
+    inner.append(...state.pendingSends, ...state.replyErrors);
+  }
+
+  let sendStatus;
+  function announceSend(text) {
+    if (!sendStatus) {
+      sendStatus = el("div", "visually-hidden");
+      sendStatus.setAttribute("role", "status");
+      sendStatus.setAttribute("aria-live", "polite");
+      document.body.append(sendStatus);
+    }
+    sendStatus.textContent = text;
+  }
+
   function liveBubble() {
-    let row = thread.querySelector(".msg.live");
-    if (row) return row.querySelector(".prose");
+
     const inner = thread.querySelector(".thread-inner") || thread;
     const empty = inner.querySelector(".empty");
     if (empty) empty.remove();
-    row = el("div", "msg bot live");
+    const row = el("div", "msg bot live");
     const who = state.sel ? state.sel.id : "Bot";
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
@@ -3535,7 +3624,10 @@
     }
     const bubble = el("div", "bubble");
     const prose = el("div", "prose");
-    bubble.append(prose);
+    const dots = el("span", "typing-dots");
+    dots.setAttribute("aria-label", "正在回复");
+    for (let i = 0; i < 3; i++) dots.append(el("i", ""));
+    bubble.append(prose, dots);
     const live = el("div", "meta live-status");
     const dot = el("i", "status-dot run");
     setTip(dot, "正在回复");
@@ -3547,14 +3639,18 @@
     return prose;
   }
 
-  async function readSSE(res) {
+  async function readSSE(res, selection, prose) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
     let acc = "";
-    const prose = liveBubble();
+    // After a switch keep reading without touching the view: closing the
+    // request would cancel the turn on the server.
+    const drain = async () => { try { while (!(await reader.read()).done) { /* discard */ } } catch (e) { /* gone */ } };
+    if (state.sel !== selection) { await drain(); return; }
     while (true) {
       const step = await reader.read();
+      if (state.sel !== selection) { await drain(); return; }
       if (step.done) break;
       buf += dec.decode(step.value, { stream: true });
       let cut;
@@ -3574,6 +3670,7 @@
         if (event === "delta" && payload.text) {
           const status = host && host.querySelector(".live-status");
           if (status) status.remove();
+          host.querySelector(".typing-dots")?.remove();
           acc += payload.text;
           prose.replaceChildren();
           appendMarkdown(prose, acc);
@@ -3605,71 +3702,119 @@
           const status = host.querySelector(".live-status");
           if (status) status.remove();
         } else if (event === "error") {
-          setStatus(payload.error || "出错了");
+          throw new Error("发送失败");
         }
       }
     }
   }
 
-  async function sendText(text) {
+  function optimisticMessage(text) {
+    let inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
+    if (!inner) {
+      inner = el("div", "thread-inner");
+      thread.replaceChildren(inner);
+    }
+    inner.querySelector(".empty")?.remove();
+    const row = el("div", "msg user optimistic");
+    const body = el("div", "bubble-col");
+    body.append(el("div", "bubble", text), el("div", "send-state", "发送中"));
+    row.append(body);
+    inner.append(row);
+    thread.scrollTop = thread.scrollHeight;
+    state.pendingSends.push(row);
+    return row;
+  }
+
+  async function sendText(text, pending) {
     text = (text || "").trim();
     // A message sent while a reply is streaming interrupts it: the server forks the
     // running turn to the background and answers this one at once.
     if (!text || !state.sel) return;
+    const selection = state.sel;
+    ++state.threadLoad;
+    pending = pending || optimisticMessage(text);
+    const marker = pending.querySelector(".send-state");
+    marker.className = "send-state";
+    marker.replaceChildren(document.createTextNode("发送中"));
+    announceSend("发送中");
+    const prose = selection.type === "bot" ? liveBubble() : null;
+    const live = prose?.closest(".msg.live");
+    let accepted = false;
+    const markSent = () => {
+      accepted = true;
+      pending.accepted = true;
+      pending.classList.remove("optimistic");
+      marker.remove();
+    };
     state.streaming = (state.streaming || 0) + 1;
     let counted = true;
     const settle = () => {
       if (counted) {
         counted = false;
-        state.streaming = Math.max(0, state.streaming - 1);
+        if (state.sel === selection) state.streaming = Math.max(0, state.streaming - 1);
       }
     };
     setStatus("正在回复");
     try {
-      if (state.sel.type === "group") {
-        await api("/api/groups/" + encodeURIComponent(state.sel.id) + "/messages", { method: "POST", body: { text: text } });
-        state.sig = "";
-        await loadThread();
-        setStatus("已送到成员的 inbox");
-        return;
-      }
       const payload = { text: text };
       if (state.replyTo && state.replyTo.seq > 0) payload.reply_to = state.replyTo.seq;
-      const res = await fetch("/api/bots/" + encodeURIComponent(state.sel.id) + "/messages", {
+      const res = await fetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (res.status === 401) showLogin();
+      if (!res.ok) throw new Error("发送失败");
+      markSent();
       const ct = res.headers.get("content-type") || "";
       if (ct.includes("application/json")) {
         const data = await res.json().catch(() => ({}));
-        if (res.status === 401) { showLogin(); return; }
-        if (res.status === 429) {
-          thread.querySelector(".thread-inner")?.append(el("div", "bg-full", "队列已满，请稍后再发。"));
-          thread.scrollTop = thread.scrollHeight;
-          if (!input.value) input.value = text;
-          syncComposer();
-          return;
-        }
-        if (!res.ok) throw new Error(data.error || "发送失败");
+        if (state.sel !== selection) return;
         setStatus(data.status === "queued" ? "已排队" : "");
-      } else if (!res.ok) {
-        throw new Error("发送失败");
-      } else {
-        await readSSE(res);
+      } else if (prose) {
+        await readSSE(res, selection, prose);
       }
+      if (state.sel !== selection) return;
       state.sig = "";
       clearQuote();
       settle();
       bgRefresh();
       await loadThread();
-      if (subtitle.textContent === "正在回复") setStatus("");
+      if (state.sel === selection && subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
-      setStatus(e.message || "发送失败");
+      if (state.sel !== selection) return;
+      setStatus("");
+      if (accepted) {
+        const error = el("div", "reply-error", "回复出错了");
+        live?.replaceWith(error);
+        if (!live) thread.querySelector(".thread-inner")?.append(error);
+        state.replyErrors.push(error);
+        announceSend("回复出错了");
+        settle();
+        state.sig = "";
+        await loadThread();
+        return;
+      }
+      live?.remove();
+      marker.className = "send-state send-failed";
+      const retry = el("button", "secondary", "重试");
+      retry.type = "button";
+      retry.addEventListener("click", () => {
+        if (state.sel !== selection) return;
+        if (input.value.trim() === text) input.value = "";
+        syncComposer();
+        sendText(text, pending);
+        input.focus();
+      });
+      marker.replaceChildren(el("span", "", "没发出去，原文还在输入框里"), retry);
+      announceSend("没发出去，原文还在输入框里");
       if (!input.value) input.value = text;
       syncComposer();
     } finally {
+      live?.querySelector(".typing-dots")?.remove();
+      live?.querySelector(".live-status")?.remove();
+      if (prose && !prose.textContent && !live?.querySelector(".approval")) live?.remove();
       settle();
     }
   }
