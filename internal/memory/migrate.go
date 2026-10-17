@@ -16,19 +16,14 @@ import (
 
 const migrationNoteKey = "migration-profile-cap"
 
-// migratedMarker is written at bots/<name>/.memory-migrated after that bot's
-// legacy directories are handled cleanly. There is no data-root marker, so a
-// bot that shows up later is still walked. A failed bot does not get the file.
-const migratedMarker = ".memory-migrated"
-
 var migrateOnce struct {
 	mu    sync.Mutex
 	roots map[string]*sync.Once
 }
 
 // Migrate folds legacy bots/<name>/people/<id>/memory into bots/<name>/memory.
-// It runs once per root in this process. Each bot is marked on its own after
-// a clean pass, so a bot added later is still migrated on the next start.
+// It re-walks every bot on each process start, once per root in this process:
+// migrated folders are renamed to memory.bak, so the walk is idempotent.
 // A bad source is logged and left in place; it does not fail the caller, the
 // bot next door, or process start.
 //
@@ -77,16 +72,6 @@ func migrateRoot(root string) {
 	}
 }
 
-func botMigratedMarker(root, botName string) string {
-	return filepath.Join(root, "bots", botName, migratedMarker)
-}
-
-func writeMarker(path string) {
-	if err := os.WriteFile(path, []byte("ok\n"), 0600); err != nil {
-		log.Printf("memory: migrate marker: %v", err)
-	}
-}
-
 // migrateBot reports whether any source for this bot was left unmerged.
 func migrateBot(root, botName string) bool {
 	people := filepath.Join(root, "bots", botName, "people")
@@ -123,20 +108,11 @@ func migrateBot(root, botName string) bool {
 		failed = migrateLocked(root, botName, dest, sources)
 		return nil
 	})
-	marker := botMigratedMarker(root, botName)
 	if err != nil {
 		log.Printf("memory: migrate %s: %v", dest, err)
-		_ = os.Remove(marker)
 		return true
 	}
-	if failed {
-		if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("memory: migrate %s: %v", marker, err)
-		}
-		return true
-	}
-	writeMarker(marker)
-	return false
+	return failed
 }
 
 func migrateLocked(root, botName, dest string, sources []string) bool {

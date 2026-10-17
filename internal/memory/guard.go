@@ -25,8 +25,8 @@ func Provenance(text, by, device string) string {
 	if strings.HasSuffix(text, suffix) {
 		return text
 	}
-	// The size check sees the fact before this suffix. Leave room so the
-	// stored line still fits in maxFactBytes.
+	// Remember's size check runs after this call, on the text plus suffix.
+	// Clip the text so text+suffix fits in maxFactBytes.
 	return clipTo(text, maxFactBytes-len(suffix)) + suffix
 }
 

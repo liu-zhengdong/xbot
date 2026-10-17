@@ -315,12 +315,6 @@ func TestMigrateCorruptOwnerStaysAndOtherBotWorks(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(bad, ".index.json")); err != nil {
 		t.Fatalf("corrupt source was moved: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, migratedMarker)); !os.IsNotExist(err) {
-		t.Fatal("root marker written after a skipped source")
-	}
-	if _, err := os.Stat(botMigratedMarker(root, "broken")); !os.IsNotExist(err) {
-		t.Fatal("bot marker written after a skipped source")
-	}
 }
 
 func TestMigrateBadConfigLeavesLegacyInPlace(t *testing.T) {
@@ -362,12 +356,6 @@ func TestMigrateBadConfigLeavesLegacyInPlace(t *testing.T) {
 			}
 			if strings.Contains(texts(got), "keep-me") {
 				t.Fatal("merged without a readable owner list")
-			}
-			if _, err := os.Stat(filepath.Join(root, migratedMarker)); !os.IsNotExist(err) {
-				t.Fatal("root marker written")
-			}
-			if _, err := os.Stat(botMigratedMarker(root, "ada")); !os.IsNotExist(err) {
-				t.Fatal("bot marker written")
 			}
 		})
 	}
