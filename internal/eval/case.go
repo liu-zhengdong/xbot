@@ -48,9 +48,10 @@ type Wake struct {
 
 // Setup is the sandbox before the wake.
 type Setup struct {
-	Files      []FileSeed `yaml:"files"`
-	Transcript []MsgSeed  `yaml:"transcript"`
-	Symlinks   []Symlink  `yaml:"symlinks"`
+	MemoryFiles []FileSeed `yaml:"memory_files"` // Paths relative to this bot's memory folder.
+	Files       []FileSeed `yaml:"files"`
+	Transcript  []MsgSeed  `yaml:"transcript"`
+	Symlinks    []Symlink  `yaml:"symlinks"`
 	// Sibling files are written next to work, outside the sandbox. Tests use them.
 	Sibling []FileSeed `yaml:"-"`
 }

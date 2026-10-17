@@ -263,6 +263,24 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		res.Reason = err.Error()
 		return res
 	}
+	for _, f := range c.Setup.MemoryFiles {
+		if !c.Memory {
+			res.Reason = "memory_files needs memory: true"
+			return res
+		}
+		full, err := safeJoin(filepath.Join(root, "bots", b.Name(), "memory"), f.Path)
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(full), 0700)
+		}
+		if err == nil {
+			err = os.WriteFile(full, []byte(f.Text), 0600)
+		}
+		if err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+	}
+
 	if err := b.SetOwners([]string{"owner"}); err != nil {
 		res.Reason = err.Error()
 		return res

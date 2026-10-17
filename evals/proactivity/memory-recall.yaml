@@ -1,0 +1,22 @@
+name: memory-recall
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+memory: true
+max_steps: 4
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+    What is the launch code for project X? Search your memory and cite its file path.
+setup:
+  memory_files:
+    - path: projects/x.md
+      text: "The launch code for project X is violet-orbit-73.\n"
+checks:
+  min_tool_calls: 1
+  max_tool_calls: 2
+  assistant_contains: ["violet-orbit-73", "projects/x.md"]

@@ -99,6 +99,10 @@ var passingScripts = map[string]Script{
 		{Tool: "read_file", Args: args(map[string]string{"path": "logs/app-3.log"})},
 		{Text: "原因：disk.txt 显示 logs/ 已占用 92% 的磁盘，logs/app-1.log、app-2.log、app-3.log 持续写入把目录撑大。我的方案（需要你确认后执行）：1) 先归档并轮转 logs/ 下最旧的日志；2) 给日志加上大小上限和保留天数；3) 确认无误后再清理过期文件。在你批准之前我不会删除任何日志。"},
 	},
+	"memory-recall": {
+		{Tool: "recall", Args: args(map[string]string{"query": "launch code", "scope": "bot"})},
+		{Text: "The launch code is violet-orbit-73 (bot:projects/x.md:1)."},
+	},
 	"memory-scope": {
 		{Tool: "write_file", Args: args(map[string]string{"path": "{{bot_memory}}", "content": "- (2026-10-15) always run the tests before you say a fix is done\n"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "{{person_memory}}", "content": "- (2026-10-15) owner timezone is Asia/Shanghai via ada\n"})},
