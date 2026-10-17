@@ -4,6 +4,7 @@ package appshell
 
 import (
 	"errors"
+	"net/url"
 	"sync/atomic"
 
 	"github.com/egoist/mygo"
@@ -11,6 +12,7 @@ import (
 
 type Options struct {
 	Title, URL    string
+	StatePath     string
 	Width, Height int
 }
 
@@ -19,7 +21,7 @@ func defaults(opts Options) Options {
 		opts.Width = 1100
 	}
 	if opts.Height <= 0 {
-		opts.Height = 760
+		opts.Height = 720
 	}
 	return opts
 }
@@ -37,7 +39,30 @@ func Run(opts Options, ready func()) error {
 			mygo.App.Quit()
 			return
 		}
-		mygo.NewWindow(mygo.WindowOptions{Title: opts.Title, URL: opts.URL, Width: opts.Width, Height: opts.Height})
+		if opts.StatePath != "" {
+			// MyGo restores the bounds only when they land on a connected
+			// display, and saves them when the window closes or the app quits.
+			mygo.App.SetWindowStateStore(fileStore{opts.StatePath})
+		}
+		win := mygo.NewWindow(mygo.WindowOptions{
+			Title: opts.Title, URL: opts.URL, Width: opts.Width, Height: opts.Height,
+			StateKey: stateKey, MinWidth: 900, MinHeight: 560, BackgroundColor: "#ffffff",
+			TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 40,
+			TrafficLightPosition: &mygo.Point{X: 18, Y: 18},
+		})
+		win.Page().OnPageTitleUpdated(func(e *mygo.TitleEvent) { e.PreventDefault() })
+		origin, _ := url.Parse(opts.URL)
+		win.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
+			target, err := url.Parse(e.URL)
+			if err == nil && origin != nil && target.Scheme == origin.Scheme && target.Host == origin.Host && target.User == nil {
+				return
+			}
+			e.PreventDefault()
+			if err == nil && (target.Scheme == "http" || target.Scheme == "https" || target.Scheme == "mailto") {
+				go mygo.Shell.OpenExternal(e.URL)
+			}
+		})
+		win.OnClosed(func() { mygo.App.Quit() })
 		running.Store(true)
 		if ready != nil {
 			ready()

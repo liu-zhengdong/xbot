@@ -94,7 +94,7 @@ func cmdApp(root string, args []string) error {
 			}
 		}()
 		// MyGo locks the main goroutine's OS thread in init. Keep Run here.
-		err := appshell.Run(appshell.Options{Title: "XBot", URL: launch.url, Width: 1100, Height: 760}, nil)
+		err := appshell.Run(appshell.Options{Title: "XBot", URL: launch.url, StatePath: filepath.Join(root, "app-window.json")}, nil)
 		close(shellDone)
 		stopErr := wait()
 		if err != nil {
