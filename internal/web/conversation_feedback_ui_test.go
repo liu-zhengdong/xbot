@@ -41,7 +41,7 @@ func TestConversationLoadingAndSendFeedback(t *testing.T) {
 		}
 	}
 	send := part("async function sendText(", "function closeModal(")
-	if strings.Index(send, "optimisticMessage(text)") < 0 || strings.Index(send, "optimisticMessage(text)") > strings.Index(send, "await fetch(") || strings.Index(send, "liveBubble()") > strings.Index(send, "await fetch(") {
+	if strings.Index(send, "optimisticMessage(text)") < 0 || strings.Index(send, "optimisticMessage(text)") > strings.Index(send, "await apiFetch(") || strings.Index(send, "liveBubble()") > strings.Index(send, "await apiFetch(") {
 		t.Fatal("user bubble and typing feedback must precede the network request")
 	}
 	for _, fragment := range []string{"发送中", "没发出去，原文还在输入框里", "sendText(text, pending)", "input.value = text", "await loadThread()", "if (accepted)", "markSent();", "pending.accepted = true", "live?.remove()", "input.focus()", "回复出错了"} {
