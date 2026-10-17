@@ -49,7 +49,7 @@ func TestComposerFeedbackAndTriggerTips(t *testing.T) {
 	}
 	for _, want := range []string{
 		`marker.className = "send-state send-failed";`,
-		`marker.replaceChildren(el("span", "", "没发出去，原文还在输入框里"));`,
+		`marker.replaceChildren(el("span", "", accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里"));`,
 		`input.value = text;`,
 		`row.dataset.sendText === text`,
 		`"放回输入框"`,

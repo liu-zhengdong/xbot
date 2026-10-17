@@ -505,9 +505,15 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
+		var finishedAt any
+		if meta.Status != "running" && meta.Status != "queued" {
+			if info, err := os.Stat(filepath.Join(b.AgentDir(e.Name()), "meta.json")); err == nil {
+				finishedAt = info.ModTime().UTC()
+			}
+		}
 		agents = append(agents, map[string]any{
 			"id": meta.ID, "status": meta.Status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
-			"summary": clip(meta.Summary, 2000),
+			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
 		})
 	}
 	primary, _ := bot.Primary(s.Root)
