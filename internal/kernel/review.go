@@ -165,14 +165,15 @@ func callPath(ctx context.Context, tool tools.Tool, args json.RawMessage) string
 
 // protectedPaths are the paths no bot action may touch without a card: this
 // bot's vault directory, the shared vault keys directory, every bot's vault
-// directory under the data root, and the root web.json and providers.json
-// (those files name API key variables).
+// directory under the data root, the root web.json and providers.json
+// (those files name API key variables), and the root env file, which holds key
+// values and endpoints the desktop app loads at launch.
 func (k *Kernel) protectedPaths() []string {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" {
 		return nil
 	}
 	root := k.Bot.Root
-	out := []string{k.Bot.VaultDir(), bot.VaultKeysDir(root), config.WebPath(root), config.Path(root), filepath.Join(root, "keys", "remote"), filepath.Join(root, "remote")}
+	out := []string{k.Bot.VaultDir(), bot.VaultKeysDir(root), config.WebPath(root), config.Path(root), filepath.Join(root, "env"), filepath.Join(root, "keys", "remote"), filepath.Join(root, "remote")}
 	botsDir := filepath.Join(root, "bots")
 	entries, err := os.ReadDir(botsDir)
 	if err != nil {
