@@ -138,13 +138,24 @@ func main() {
 }
 
 func run(argv []string) error {
-	root, rest, err := splitGlobal(argv)
+	root, rest, err := splitGlobal(launchArgs(argv))
+	if errors.Is(err, errUsage) && defaultCommand != "" {
+		err = nil // a double-clicked desktop build runs defaultCommand
+	}
 	if err != nil {
 		return err
 	}
 	root, err = resolveRoot(root)
 	if err != nil {
 		return err
+	}
+	if len(rest) == 0 && defaultCommand != "" {
+		rest = []string{defaultCommand}
+	}
+	if len(rest) > 0 && rest[0] == "app" {
+		if err := loadEnvFile(filepath.Join(root, "env")); err != nil {
+			return err
+		}
 	}
 	keyNames := config.KeyEnvNames(root)
 	config.HoldKeys(keyNames)
@@ -204,7 +215,11 @@ func run(argv []string) error {
 	case "eval":
 		return cmdEval(root, rest[1:])
 	case "app":
-		return cmdApp(root, rest[1:])
+		err := cmdApp(root, rest[1:])
+		if err != nil && defaultCommand != "" {
+			logAppError(root, err)
+		}
+		return err
 	case "serve":
 		return cmdServe(root, rest[1:])
 	case "runner":
