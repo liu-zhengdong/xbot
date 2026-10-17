@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/]
-verified: 2026-10-17 @ 60e29f8
+verified: 2026-10-17 @ 57ce4d2
 ---
 # 安全：保险箱与权限表
 
