@@ -129,7 +129,23 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	k.configureWeb(view)
 	k.configureWeb(fetch)
 	k.configureWeb(search)
-	return []tools.Tool{sh, read, write, edit, fetch, search, view}
+	return []tools.Tool{sh, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view}
+}
+
+// memoryGuarded runs a subagent's file edit through the memory guard. The
+// subagent set has no review wrapper, so without it a subagent could rewrite
+// old log months, kernel-managed files, or exceed the memory.md cap.
+type memoryGuarded struct {
+	tools.Tool
+	k *Kernel
+}
+
+func (m memoryGuarded) ConfirmContext(ctx context.Context, args json.RawMessage) (bool, string, error) {
+	return tools.ConfirmCall(ctx, m.Tool, args)
+}
+
+func (m memoryGuarded) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	return reviewedTool{Tool: m.Tool, k: m.k}.guardMemory(ctx, args, false)
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {
