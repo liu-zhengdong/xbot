@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
@@ -323,16 +322,12 @@ func lockPath(path string, nonblock bool) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	op := syscall.LOCK_EX
-	if nonblock {
-		op |= syscall.LOCK_NB
-	}
-	if err := syscall.Flock(int(f.Fd()), op); err != nil {
+	if err := fsutil.LockFile(f, true, !nonblock); err != nil {
 		_ = f.Close()
 		return nil, err
 	}
 	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = fsutil.UnlockFile(f)
 		_ = f.Close()
 	}, nil
 }

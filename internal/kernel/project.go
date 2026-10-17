@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"xbot/internal/tools"
 )
 
@@ -259,7 +257,7 @@ func (k *Kernel) projectOwner(dir string, roots []string) bool {
 // hash covers the bytes read, which are capped so a huge file cannot be
 // pulled into memory.
 func readProjectFile(path string, roots []string) (string, string, bool) {
-	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW, 0)
+	f, err := openProjectFile(path)
 	if err != nil {
 		return "", "", false
 	}
@@ -321,15 +319,6 @@ func projectFreshKey(dir string, roots []string) string {
 		cur = parent
 	}
 	return b.String()
-}
-
-func projectStamp(path string) string {
-	var st unix.Stat_t
-	if err := unix.Lstat(path, &st); err != nil {
-		return "absent"
-	}
-	link := st.Mode&unix.S_IFMT == unix.S_IFLNK
-	return fmt.Sprintf("%d.%09d:%d:%t:%d:%d.%09d", st.Mtim.Sec, st.Mtim.Nsec, st.Size, link, st.Ino, st.Ctim.Sec, st.Ctim.Nsec)
 }
 
 // renderProject keeps the nearest files when the set exceeds the cap.
