@@ -31,14 +31,21 @@ type reviewedTool struct {
 }
 
 func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
+	return t.ConfirmContext(context.Background(), args)
+}
+
+// ConfirmContext decides against the caller's working directory. File tools
+// and shell on one link are shared by the foreground and every background
+// branch, so the directory comes from ctx, not from a kernel-global.
+func (t reviewedTool) ConfirmContext(ctx context.Context, args json.RawMessage) (bool, string, error) {
 	if t.k != nil && t.k.deniedBefore(t.Name(), args) {
 		return false, "", errors.New(msgDenied)
 	}
-	_, summary, err := t.Tool.Confirm(args)
+	_, summary, err := tools.ConfirmCall(ctx, t.Tool, args)
 	if err != nil {
 		return false, "", err
 	}
-	return t.k.reviewCall(t.Tool, args, summary)
+	return t.k.reviewCall(ctx, t.Tool, args, summary)
 }
 
 // Run applies file freshness, then the background conflict queue. A foreground
@@ -52,7 +59,7 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 		}
 	}
 	if isFileEdit(name) {
-		if err := t.k.rejectUnreadOrStale(t.Tool, args); err != nil {
+		if err := t.k.rejectUnreadOrStale(ctx, t.Tool, args); err != nil {
 			return "", err
 		}
 	}
@@ -76,16 +83,14 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	k := t.k
 	base := k.WorkDir
-	if t.Tool.Name() == "shell" {
-		if dir := k.shellCwd(); dir != "" {
-			base = dir
-		}
+	if dir := k.cwdFor(ctx); dir != "" {
+		base = dir
 	}
 	if res, ok := review.ResourceOf(t.Tool.Name(), args, base); ok {
 		cur := k.turnFor(ctx)
 		if !cur.isForked() {
 			if bg := k.conflictingBackground(cur, res); bg != nil {
-				_, summary, _ := t.Tool.Confirm(args)
+				_, summary, _ := tools.ConfirmCall(ctx, t.Tool, args)
 				if k.QueueFull() {
 					return fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res), false, nil
 				}
@@ -102,7 +107,7 @@ func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string
 }
 
 // reviewCall returns whether the owner must confirm this concrete call.
-func (k *Kernel) reviewCall(tool tools.Tool, args json.RawMessage, summary string) (bool, string, error) {
+func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawMessage, summary string) (bool, string, error) {
 	name := tool.Name()
 	// The machine switch is orthogonal to the class: it applies to every tool
 	// that touches this machine. off refuses, ask confirms each action, and
@@ -116,23 +121,35 @@ func (k *Kernel) reviewCall(tool tools.Tool, args json.RawMessage, summary strin
 		case machine.Off:
 			return false, "", errors.New("machine local is off")
 		case machine.Ask:
-			return true, k.protectedSummary(tool, args, summary), nil
+			return true, k.protectedSummary(ctx, tool, args, summary), nil
 		}
 	}
 	// A call that reaches a vault or its key always asks, even in allow mode:
 	// the vault is the one thing a bot's own shell should not read.
-	if k.protectedCall(tool, args) {
+	if k.protectedCall(ctx, tool, args) {
 		return true, summary + review.ProtectedSuffix, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
 		// write_file and edit_file are a self-edit only when the resolved path
 		// is this bot's own persona or profile file.
-		return k.selfEditPath(tool, args), summary, nil
+		return k.selfEditPath(ctx, tool, args), summary, nil
 	}
 	if h, ok := tool.(review.ReadOnlyHinter); ok && review.ClassOfMCP(name, h.ReadOnlyHint()) == review.Readonly {
 		return false, summary, nil
 	}
 	return review.NeedsOwner(name, args), summary, nil
+}
+
+// callPath is the absolute path a file tool would use for this context.
+func callPath(ctx context.Context, tool tools.Tool, args json.RawMessage) string {
+	if p, ok := tool.(tools.PathContext); ok {
+		return p.ResolvedPathContext(ctx, args)
+	}
+	pt, ok := tool.(tools.PathTool)
+	if !ok {
+		return ""
+	}
+	return pt.ResolvedPath(args)
 }
 
 // protectedPaths are the paths no bot action may touch without a card: this
@@ -160,7 +177,7 @@ func (k *Kernel) protectedPaths() []string {
 
 // protectedCall reports whether a file tool's resolved path or a shell command
 // touches a protected path.
-func (k *Kernel) protectedCall(tool tools.Tool, args json.RawMessage) bool {
+func (k *Kernel) protectedCall(ctx context.Context, tool tools.Tool, args json.RawMessage) bool {
 	name := tool.Name()
 	if !review.IsFileTool(name) && name != "shell" {
 		return false
@@ -172,15 +189,11 @@ func (k *Kernel) protectedCall(tool tools.Tool, args json.RawMessage) bool {
 	if name == "shell" {
 		cmd, cwd := review.ShellInvocation(args)
 		if cwd == "" {
-			cwd = k.shellCwd()
+			cwd = k.cwdFor(ctx)
 		}
 		return review.TouchesProtected(cmd, cwd, protected)
 	}
-	pt, ok := tool.(tools.PathTool)
-	if !ok {
-		return false
-	}
-	path := pt.ResolvedPath(args)
+	path := callPath(ctx, tool, args)
 	if path == "" {
 		return false
 	}
@@ -189,8 +202,8 @@ func (k *Kernel) protectedCall(tool tools.Tool, args json.RawMessage) bool {
 
 // protectedSummary appends the vault note to a card summary only when the call
 // touches a protected path.
-func (k *Kernel) protectedSummary(tool tools.Tool, args json.RawMessage, summary string) string {
-	if !k.protectedCall(tool, args) {
+func (k *Kernel) protectedSummary(ctx context.Context, tool tools.Tool, args json.RawMessage, summary string) string {
+	if !k.protectedCall(ctx, tool, args) {
 		return summary
 	}
 	return summary + review.ProtectedSuffix
@@ -218,12 +231,13 @@ func isFileEdit(name string) bool {
 // selfEditPath reports whether the resolved path of a file tool is this bot's
 // own persona or profile file. A tool that cannot report a path is a self-edit
 // so an unknown path never slips past the guard.
-func (k *Kernel) selfEditPath(tool tools.Tool, args json.RawMessage) bool {
-	pt, ok := tool.(tools.PathTool)
-	if !ok {
-		return true
+func (k *Kernel) selfEditPath(ctx context.Context, tool tools.Tool, args json.RawMessage) bool {
+	if _, ok := tool.(tools.PathTool); !ok {
+		if _, ok := tool.(tools.PathContext); !ok {
+			return true
+		}
 	}
-	path := pt.ResolvedPath(args)
+	path := callPath(ctx, tool, args)
 	if path == "" {
 		return true
 	}

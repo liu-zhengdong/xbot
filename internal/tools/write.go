@@ -43,7 +43,11 @@ type writeArgs struct {
 // whether the write needs the owner; it calls ResolvedPath to check for a
 // persona or profile self-edit.
 func (w *WriteFile) Confirm(args json.RawMessage) (bool, string, error) {
-	in, path, err := w.parse(args)
+	return w.ConfirmContext(context.Background(), args)
+}
+
+func (w *WriteFile) ConfirmContext(ctx context.Context, args json.RawMessage) (bool, string, error) {
+	in, path, err := w.parse(ctx, args)
 	if err != nil {
 		return false, "", err
 	}
@@ -51,9 +55,14 @@ func (w *WriteFile) Confirm(args json.RawMessage) (bool, string, error) {
 }
 
 // ResolvedPath reports the absolute path this call would write, so the kernel
-// can decide whether it is a persona or profile self-edit.
+// can decide whether it is a persona or profile self-edit. It uses the
+// foreground directory. ResolvedPathContext uses the caller's directory.
 func (w *WriteFile) ResolvedPath(args json.RawMessage) string {
-	_, path, err := w.parse(args)
+	return w.ResolvedPathContext(context.Background(), args)
+}
+
+func (w *WriteFile) ResolvedPathContext(ctx context.Context, args json.RawMessage) string {
+	_, path, err := w.parse(ctx, args)
 	if err != nil {
 		return ""
 	}
@@ -70,7 +79,7 @@ func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if err := machineOff(); err != nil {
 		return "", err
 	}
-	in, path, err := w.parse(args)
+	in, path, err := w.parse(ctx, args)
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +95,7 @@ func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, erro
 	return fmt.Sprintf("wrote %d bytes to %s", len(in.Content), DisplayPath(w.Sandbox, path)), nil
 }
 
-func (w *WriteFile) parse(args json.RawMessage) (writeArgs, string, error) {
+func (w *WriteFile) parse(ctx context.Context, args json.RawMessage) (writeArgs, string, error) {
 	var in writeArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
@@ -94,7 +103,7 @@ func (w *WriteFile) parse(args json.RawMessage) (writeArgs, string, error) {
 	if len(in.Content) > maxWriteBytes {
 		return writeArgs{}, "", fmt.Errorf("write_file: content exceeds %d bytes", maxWriteBytes)
 	}
-	path, err := ResolveRoot(w.rootBind.dir(w.Root), AliasCase(w.Sandbox, in.Path))
+	path, err := ResolveRoot(w.rootBind.dir(ctx, w.Root), AliasCase(w.Sandbox, in.Path))
 	if err != nil {
 		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
 	}

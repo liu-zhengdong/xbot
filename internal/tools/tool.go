@@ -25,6 +25,26 @@ type PathTool interface {
 	ResolvedPath(args json.RawMessage) string
 }
 
+// ContextConfirmer is a tool whose confirmation summary depends on the call
+// context, for example which working directory the turn is in.
+type ContextConfirmer interface {
+	ConfirmContext(ctx context.Context, args json.RawMessage) (need bool, summary string, err error)
+}
+
+// PathContext is a file tool that resolves a path against the call context.
+type PathContext interface {
+	ResolvedPathContext(ctx context.Context, args json.RawMessage) string
+}
+
+// ConfirmCall uses ConfirmContext when the tool has one, so a shared tool can
+// confirm against the caller's working directory.
+func ConfirmCall(ctx context.Context, t Tool, args json.RawMessage) (bool, string, error) {
+	if c, ok := t.(ContextConfirmer); ok {
+		return c.ConfirmContext(ctx, args)
+	}
+	return t.Confirm(args)
+}
+
 func objectSchema(properties map[string]any, required []string) map[string]any {
 	if required == nil {
 		required = []string{}

@@ -85,7 +85,14 @@ func modelPath(tool tools.Tool, abs string) string {
 	return abs
 }
 
-func toolPath(tool tools.Tool, args json.RawMessage) (string, bool) {
+func toolPath(ctx context.Context, tool tools.Tool, args json.RawMessage) (string, bool) {
+	if pt, ok := tool.(tools.PathContext); ok {
+		p := pt.ResolvedPathContext(ctx, args)
+		if p == "" {
+			return "", false
+		}
+		return p, true
+	}
 	pt, ok := tool.(tools.PathTool)
 	if !ok {
 		return "", false
@@ -242,7 +249,7 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 	if in.Force || in.Offset > 1 || in.Limit > 0 {
 		return "", false
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return "", false
 	}
@@ -273,11 +280,11 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 // rejectUnreadOrStale blocks edit/write of an existing file the model has not
 // read in this session, and of a file whose bytes changed since that read.
 // A file that does not exist yet can be created without a prior read.
-func (k *Kernel) rejectUnreadOrStale(tool tools.Tool, args json.RawMessage) error {
+func (k *Kernel) rejectUnreadOrStale(ctx context.Context, tool tools.Tool, args json.RawMessage) error {
 	if k == nil || tool == nil || !isFileEdit(tool.Name()) {
 		return nil
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return nil
 	}
@@ -317,7 +324,7 @@ func (k *Kernel) noteRead(ctx context.Context, tool tools.Tool, args json.RawMes
 	if k == nil || tool == nil {
 		return
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return
 	}
@@ -345,7 +352,7 @@ func (k *Kernel) noteWrite(ctx context.Context, tool tools.Tool, args json.RawMe
 	if k == nil || tool == nil {
 		return false
 	}
-	path, ok := toolPath(tool, args)
+	path, ok := toolPath(ctx, tool, args)
 	if !ok {
 		return false
 	}

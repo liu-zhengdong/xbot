@@ -39,20 +39,21 @@ type Shell struct {
 	Jobs           *Jobs
 	jobsOnce       sync.Once
 
-	// startDir and afterDir persist the working directory for one bot.
-	// Nil leaves every call in Dir. The mutex covers the func fields and
-	// markerDir; Run copies them before it starts the process.
+	// startDir and afterDir persist the working directory for one execution
+	// context. Nil leaves every call in Dir. The mutex covers the func fields
+	// and markerDir; Run copies them before it starts the process.
 	sessMu    sync.Mutex
-	startDir  func() (dir, notice string)
-	afterDir  func(dir string) (kept, notice string)
+	startDir  func(context.Context) (dir, notice string)
+	afterDir  func(context.Context, string) (kept, notice string)
 	markerDir string
 }
 
-// BindSession installs the per-bot working directory. start reports where this
-// call begins and an optional notice. after receives the directory a foreground
-// command finished in and returns the directory to show, plus a notice when the
-// candidate was rejected. Either function may be nil.
-func (s *Shell) BindSession(start func() (string, string), after func(string) (string, string)) {
+// BindSession installs the working directory for this shell. start reports
+// where this call begins and an optional notice. after receives the directory
+// a foreground command finished in and returns the directory to show, plus a
+// notice when the candidate was rejected. Both receive the call context so one
+// shell can keep a different directory per turn. Either function may be nil.
+func (s *Shell) BindSession(start func(context.Context) (string, string), after func(context.Context, string) (string, string)) {
 	if s == nil {
 		return
 	}
@@ -75,7 +76,7 @@ func (s *Shell) SetMarkerDir(dir string) {
 	s.sessMu.Unlock()
 }
 
-func (s *Shell) session() (func() (string, string), func(string) (string, string), string) {
+func (s *Shell) session() (func(context.Context) (string, string), func(context.Context, string) (string, string), string) {
 	if s == nil {
 		return nil, nil, ""
 	}
@@ -243,7 +244,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	dir := s.Dir
 	notice := ""
 	if startDir != nil {
-		dir, notice = startDir()
+		dir, notice = startDir(ctx)
 	}
 	command := in.Command
 	var marker string
@@ -317,7 +318,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if ended != "" && !strings.HasPrefix(out, "background ") {
 		cwd = ended
 		if afterDir != nil {
-			kept, extra := afterDir(ended)
+			kept, extra := afterDir(ctx, ended)
 			if kept != "" {
 				cwd = kept
 			}

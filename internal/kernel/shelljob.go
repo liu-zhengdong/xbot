@@ -110,15 +110,15 @@ func (k *Kernel) bindFileCwd(t tools.Tool) {
 	switch f := t.(type) {
 	case *tools.ReadFile:
 		if f.Sandbox == "" {
-			f.BindRoot(k.shellCwd)
+			f.BindRoot(k.cwdFor)
 		}
 	case *tools.WriteFile:
 		if f.Sandbox == "" {
-			f.BindRoot(k.shellCwd)
+			f.BindRoot(k.cwdFor)
 		}
 	case *tools.EditFile:
 		if f.Sandbox == "" {
-			f.BindRoot(k.shellCwd)
+			f.BindRoot(k.cwdFor)
 		}
 	}
 }

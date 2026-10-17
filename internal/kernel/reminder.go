@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -594,7 +595,8 @@ func (k *Kernel) stepBoundaryNotes(t *turn) string {
 	by := k.remindersByKind()
 	seq := t.lastSeq()
 	var parts []string
-	if note := k.projectNote(by[KindProject]); note != "" {
+	ctx := context.WithValue(context.Background(), turnKey{}, t)
+	if note := k.projectNoteFor(ctx, by[KindProject]); note != "" {
 		if stored := k.storeReminder(seq, KindProject, note); stored != "" {
 			parts = append(parts, stored)
 		}

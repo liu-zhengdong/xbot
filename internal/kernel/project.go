@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -35,7 +36,11 @@ func (k *Kernel) projectTrigger() func(time.Time, []Reminder) string {
 }
 
 func (k *Kernel) projectNote(prev []Reminder) string {
-	text, sig := k.projectText()
+	return k.projectNoteFor(context.Background(), prev)
+}
+
+func (k *Kernel) projectNoteFor(ctx context.Context, prev []Reminder) string {
+	text, sig := k.projectTextFor(ctx)
 	if text == "" || sig == "" {
 		return ""
 	}
@@ -56,8 +61,8 @@ func projectSeen(prev []Reminder, sig string) bool {
 }
 
 // projectCache remembers one rendered instruction set. The key is the working
-// directory plus each directory and candidate file's mtime and size, so an
-// unchanged chain is a stat, not a read and a hash.
+// directory plus each directory and candidate file's mtime, size, inode, and
+// ctime, so an unchanged chain is a stat, not a read and a hash.
 type projectCache struct {
 	mu   sync.Mutex
 	key  string
@@ -90,14 +95,19 @@ func (c *projectCache) put(key, text, sig string) {
 	c.mu.Unlock()
 }
 
-// projectText loads the instruction set for the current directory. A file at
-// an allowed root is an owner-placed convention. A file from a subdirectory
-// or a cloned repo is data: formatProject wraps that set so the caller can
-// keep it out of the owner's message. The body is not copied into the system
+// projectText loads the instruction set for the foreground directory.
+// projectTextFor uses the caller's directory. A file is owner-placed only at
+// an allowed root that is not a git checkout and not the shared directory.
+// Anything else is data: formatProject wraps that set so the caller can keep
+// it out of the owner's message. The body is not copied into the system
 // prompt, and the permission table does not read it. Vault redaction still
 // runs when the reminder is stored.
 func (k *Kernel) projectText() (string, string) {
-	dir := k.shellCwd()
+	return k.projectTextFor(context.Background())
+}
+
+func (k *Kernel) projectTextFor(ctx context.Context) (string, string) {
+	dir := k.cwdFor(ctx)
 	roots := k.allowedRoots()
 	if dir == "" || len(roots) == 0 || !insideRoots(dir, roots) {
 		return "", ""
@@ -106,7 +116,7 @@ func (k *Kernel) projectText() (string, string) {
 	if text, sig, ok := k.projects.get(key); ok {
 		return text, sig
 	}
-	files := loadProjectFiles(dir, roots)
+	files := k.loadProjectFiles(dir, roots)
 	if len(files) == 0 {
 		k.projects.put(key, "", "")
 		return "", ""
@@ -171,7 +181,7 @@ type projectFile struct {
 // loadProjectFiles walks from dir up to the allowed root that contains it.
 // At each directory AGENTS.md wins; CLAUDE.md is the fallback name. Nearest
 // is last. A file whose resolved path leaves the allowed roots is skipped.
-func loadProjectFiles(dir string, roots []string) []projectFile {
+func (k *Kernel) loadProjectFiles(dir string, roots []string) []projectFile {
 	var chain []string
 	cur, ok := cleanDir(dir)
 	if !ok {
@@ -193,11 +203,11 @@ func loadProjectFiles(dir string, roots []string) []projectFile {
 	}
 	var files []projectFile
 	for i := len(chain) - 1; i >= 0; i-- {
-		if f, ok := readProjectName(chain[i], "AGENTS.md", roots); ok {
+		if f, ok := k.readProjectName(chain[i], "AGENTS.md", roots); ok {
 			files = append(files, f)
 			continue
 		}
-		if f, ok := readProjectName(chain[i], "CLAUDE.md", roots); ok {
+		if f, ok := k.readProjectName(chain[i], "CLAUDE.md", roots); ok {
 			files = append(files, f)
 		}
 	}
@@ -213,13 +223,32 @@ func rootHit(dir string, roots []string) bool {
 	return false
 }
 
-func readProjectName(dir, name string, roots []string) (projectFile, bool) {
+func (k *Kernel) readProjectName(dir, name string, roots []string) (projectFile, bool) {
 	path := filepath.Join(dir, name)
 	body, hash, ok := readProjectFile(path, roots)
 	if !ok {
 		return projectFile{}, false
 	}
-	return projectFile{path: path, body: body, hash: hash, owner: rootHit(dir, roots)}, true
+	return projectFile{path: path, body: body, hash: hash, owner: k.projectOwner(dir, roots)}, true
+}
+
+// projectOwner is true only for a file sitting on an allowed root that the
+// owner placed: not the shared directory (any bot can write it) and not a
+// directory that is itself a git checkout. .git may be a directory, a file
+// (worktree), or a symlink.
+func (k *Kernel) projectOwner(dir string, roots []string) bool {
+	if !rootHit(dir, roots) {
+		return false
+	}
+	if k != nil && k.SharedDir != "" {
+		if shared, ok := cleanDir(k.SharedDir); ok && shared == dir {
+			return false
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+		return false
+	}
+	return true
 }
 
 // readProjectFile reads a regular file inside roots. O_NOFOLLOW refuses a
@@ -266,8 +295,8 @@ func neutralizeProject(s string) string {
 }
 
 // projectFreshKey is the cache key for dir. It stats the chain and the two
-// candidate names. A content change that keeps the same mtime and size is
-// not detected until one of those changes.
+// candidate names. inode and ctime catch a same-size rewrite that puts the
+// old mtime back.
 func projectFreshKey(dir string, roots []string) string {
 	cur, ok := cleanDir(dir)
 	if !ok {
@@ -299,11 +328,12 @@ func projectFreshKey(dir string, roots []string) string {
 }
 
 func projectStamp(path string) string {
-	st, err := os.Lstat(path)
-	if err != nil {
+	var st unix.Stat_t
+	if err := unix.Lstat(path, &st); err != nil {
 		return "absent"
 	}
-	return fmt.Sprintf("%d.%d:%d:%t", st.ModTime().Unix(), st.ModTime().Nanosecond(), st.Size(), st.Mode()&os.ModeSymlink != 0)
+	link := st.Mode&unix.S_IFMT == unix.S_IFLNK
+	return fmt.Sprintf("%d.%09d:%d:%t:%d:%d.%09d", st.Mtim.Sec, st.Mtim.Nsec, st.Size, link, st.Ino, st.Ctim.Sec, st.Ctim.Nsec)
 }
 
 // renderProject keeps the nearest files when the set exceeds the cap.

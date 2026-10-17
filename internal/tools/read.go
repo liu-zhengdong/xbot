@@ -51,7 +51,11 @@ type readArgs struct {
 }
 
 func (r *ReadFile) Confirm(args json.RawMessage) (bool, string, error) {
-	in, path, err := r.parse(args)
+	return r.ConfirmContext(context.Background(), args)
+}
+
+func (r *ReadFile) ConfirmContext(ctx context.Context, args json.RawMessage) (bool, string, error) {
+	in, path, err := r.parse(ctx, args)
 	if err != nil {
 		return false, "", err
 	}
@@ -59,9 +63,14 @@ func (r *ReadFile) Confirm(args json.RawMessage) (bool, string, error) {
 }
 
 // ResolvedPath reports the absolute path this call would read, so the kernel
-// can decide whether it reaches a protected vault path.
+// can decide whether it reaches a protected vault path. It uses the foreground
+// directory. ResolvedPathContext uses the caller's directory.
 func (r *ReadFile) ResolvedPath(args json.RawMessage) string {
-	_, path, err := r.parse(args)
+	return r.ResolvedPathContext(context.Background(), args)
+}
+
+func (r *ReadFile) ResolvedPathContext(ctx context.Context, args json.RawMessage) string {
+	_, path, err := r.parse(ctx, args)
 	if err != nil {
 		return ""
 	}
@@ -75,7 +84,7 @@ func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	in, path, err := r.parse(args)
+	in, path, err := r.parse(ctx, args)
 	if err != nil {
 		return "", err
 	}
@@ -140,12 +149,12 @@ func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	return head + "\n" + body, nil
 }
 
-func (r *ReadFile) parse(args json.RawMessage) (readArgs, string, error) {
+func (r *ReadFile) parse(ctx context.Context, args json.RawMessage) (readArgs, string, error) {
 	var in readArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}
-	path, err := ResolveRoot(r.rootBind.dir(r.Root), AliasCase(r.Sandbox, in.Path))
+	path, err := ResolveRoot(r.rootBind.dir(ctx, r.Root), AliasCase(r.Sandbox, in.Path))
 	if err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}

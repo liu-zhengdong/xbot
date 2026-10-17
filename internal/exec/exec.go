@@ -113,7 +113,7 @@ type Local struct {
 	Limits   Limits
 	Prov     provider.Provider
 	Approve  agent.Approver
-	ToolSet  func(dir string) []tools.Tool
+	ToolSet  func(id, dir string) []tools.Tool
 	mu       sync.Mutex
 	jobs     map[string]*job
 	events   chan Event
@@ -178,7 +178,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 	}
 	var list []tools.Tool
 	if l.ToolSet != nil {
-		list = l.ToolSet(req.Dir)
+		list = l.ToolSet(req.ID, req.Dir)
 	}
 	j := &job{
 		id:            req.ID,

@@ -65,8 +65,8 @@ func TestShellCwdPersistsWhenBound(t *testing.T) {
 	sh := NewShell()
 	sh.Dir = dir
 	sh.BindSession(
-		func() (string, string) { return cur, "" },
-		func(got string) (string, string) {
+		func(context.Context) (string, string) { return cur, "" },
+		func(_ context.Context, got string) (string, string) {
 			if got == "" || !strings.HasPrefix(got, wantDir) {
 				return cur, "working directory " + got + " is outside the workspace; staying in " + cur
 			}
@@ -133,8 +133,8 @@ func TestShellBackgroundRecordsStartCwd(t *testing.T) {
 	sh.Dir = dir
 	sh.Jobs = NewJobs(t.TempDir())
 	sh.BindSession(
-		func() (string, string) { return cur, "" },
-		func(got string) (string, string) {
+		func(context.Context) (string, string) { return cur, "" },
+		func(_ context.Context, got string) (string, string) {
 			cur = got
 			return got, ""
 		},

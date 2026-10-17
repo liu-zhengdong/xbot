@@ -1,9 +1,5 @@
 package kernel
 
-// M5 P2 repro: shell cwd persists, but read_file/write_file/edit_file still
-// resolve relative paths against the workspace root.
-// Copy into internal/kernel/ and run: go test -count=1 -run ZZM5Cwd -v ./internal/kernel/
-
 import (
 	"os"
 	"path/filepath"
@@ -13,7 +9,7 @@ import (
 	"xbot/internal/provider"
 )
 
-func TestZZM5CwdFileToolsIgnoreCwd(t *testing.T) {
+func TestCwdReadFollowsShell(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "pkg", "notes.txt"), "IN-PKG\n")
 	k, p, now := workBot(t, dir)
@@ -39,7 +35,7 @@ func TestZZM5CwdFileToolsIgnoreCwd(t *testing.T) {
 }
 
 // write_file after cd lands at the workspace root, silently.
-func TestZZM5CwdWriteLandsAtRoot(t *testing.T) {
+func TestCwdWriteFollowsShell(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "pkg", "go.mod"), "module pkg\n")
 	k, _, now := workBot(t, dir)

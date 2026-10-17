@@ -137,6 +137,7 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 		return false
 	}
 	t.branch = id
+	k.adoptForeground(id)
 	if k.bgs == nil {
 		k.bgs = map[string]*turn{}
 	}

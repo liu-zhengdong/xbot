@@ -46,7 +46,7 @@ func cmdRunner(args []string) error {
 	fmt.Fprintf(os.Stderr, "runner listening on %s\n", *addr)
 	loc := exec.NewLocal(exec.Limits{})
 	loc.Approve = func(context.Context, string, string) (bool, error) { return *yes, nil }
-	loc.ToolSet = func(string) []tools.Tool {
+	loc.ToolSet = func(string, string) []tools.Tool {
 		return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
 	}
 	return exec.ListenCode(*addr, tok, loc, code.NewService())

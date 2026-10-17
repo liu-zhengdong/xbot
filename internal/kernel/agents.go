@@ -42,7 +42,12 @@ func (k *Kernel) ensureExec() exec.Executor {
 				loc := exec.NewLocal(exec.Limits{})
 				loc.Prov = k.boundProvider()
 				loc.Approve = k.subApprove()
-				loc.ToolSet = func(string) []tools.Tool { return k.subTools() }
+				loc.ToolSet = func(id, _ string) []tools.Tool {
+					if id == "" {
+						id = k.allocScope(context.Background())
+					}
+					return k.toolsForScope(id)
+				}
 				k.Exec = loc
 			}
 		}
@@ -82,18 +87,40 @@ func (k *Kernel) subApprove() agent.Approver {
 }
 
 func (k *Kernel) subTools() []tools.Tool {
+	return k.toolsForScope(k.allocScope(context.Background()))
+}
+
+// allocScope copies the cwd of ctx into a new scope. Each subTools call gets
+// its own scope, so a direct shell on that set cannot move the foreground.
+func (k *Kernel) allocScope(ctx context.Context) string {
+	id, err := newAgentID()
+	if err != nil {
+		id = "sc_fallback"
+	}
+	k.adoptScope(ctx, id)
+	return id
+}
+
+// toolsForScope is a shell and file set whose directory is scope, inherited
+// from the parent at creation. Calls ignore the context's branch: the scope
+// id is the subagent, not whatever turn happens to be running the tool.
+func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	sh := tools.NewShell()
 	sh.Dir = k.WorkDir
 	sh.Shared = k.SharedDir
 	sh.BindJobs(k.shellJobs())
-	sh.BindSession(k.shellStartDir, k.shellAfterDir)
+	sh.BindSession(
+		func(context.Context) (string, string) { return k.shellStartScope(scope) },
+		func(_ context.Context, dir string) (string, string) { return k.shellAfterScope(scope, dir) },
+	)
 	sh.SetMarkerDir(k.shellMarkerDir())
+	root := func(context.Context) string { return k.cwdScope(scope) }
 	read := &tools.ReadFile{Root: k.WorkDir}
 	write := &tools.WriteFile{Root: k.WorkDir}
 	edit := &tools.EditFile{Root: k.WorkDir}
-	read.BindRoot(k.shellCwd)
-	write.BindRoot(k.shellCwd)
-	edit.BindRoot(k.shellCwd)
+	read.BindRoot(root)
+	write.BindRoot(root)
+	edit.BindRoot(root)
 	return []tools.Tool{sh, read, write, edit}
 }
 
@@ -164,6 +191,7 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 	if err != nil {
 		return "", err
 	}
+	k.adoptScope(ctx, id)
 	req := exec.StartRequest{
 		ID:       id,
 		Bot:      k.Bot.Name(),
