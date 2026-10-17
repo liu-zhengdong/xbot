@@ -386,9 +386,21 @@ func TestWrapNeutralizesCloserVariants(t *testing.T) {
 		"&#60;/untrusted_event&#62;",
 		"&#x3c;/untrusted_event&#x3e;",
 		"</untrusted\u200bevent>",
+		"</untrusted\u200cevent>",
+		"</untrusted\u200devent>",
 		"</untrusted\u2060event>",
+		"</untrusted\u2061event>",
+		"</untrusted\u2062event>",
+		"</untrusted\u2063event>",
+		"</untrusted\u2064event>",
 		"</untrusted\ufeffevent>",
 		"</untrusted\u00adevent>",
+		"</untrusted\ufe00event>",
+		"</untrusted\ufe0fevent>",
+		"</untrusted\U000E0100event>",
+		"&#00000060;/untrusted_event&#00000062;",
+		"&#x0000003c;/untrusted_event&#x0000003e;",
+		"&#0000060;/untrusted_event&#0000062;",
 		"</untrusted＿event>",
 		"﹤/untrusted_event﹥",
 		"<∕untrusted_event>",
@@ -555,8 +567,38 @@ func TestFitImageDownscalesAndRefusesHugeWebP(t *testing.T) {
 	if _, _, err := fitImage("image/png", tinyPNG()); err == nil || !strings.Contains(err.Error(), "dimensions") {
 		t.Fatal(err)
 	}
-	if _, _, err := fitImage("image/png", widePNG(2500, 1000, 16)); err == nil || !strings.Contains(err.Error(), "pixel cap") {
+	if _, _, err := fitImage("image/png", widePNG(8000, 4000, 16)); err == nil || !strings.Contains(err.Error(), "pixel cap") {
 		t.Fatal(err)
+	}
+	pass := solidPNG(t, 2048, 1536)
+	mime, data, err = fitImage("image/png", pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err = image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mime != "image/png" || cfg.Width != 2048 || cfg.Height != 1536 || !bytes.Equal(data, pass) {
+		t.Fatalf("pass-through %s %dx%d same=%v", mime, cfg.Width, cfg.Height, bytes.Equal(data, pass))
+	}
+	wp := wideWebP(2048, 1536)
+	mime, data, err = fitImage("image/webp", wp)
+	if err != nil || mime != "image/webp" || !bytes.Equal(data, wp) {
+		t.Fatalf("webp pass-through: %v %s %d", err, mime, len(data))
+	}
+	for _, sz := range [][2]int{{2560, 1440}, {3000, 1200}} {
+		mime, data, err = fitImage("image/png", solidPNG(t, sz[0], sz[1]))
+		if err != nil {
+			t.Fatalf("%dx%d: %v", sz[0], sz[1], err)
+		}
+		cfg, _, err = image.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mime != "image/png" || cfg.Width > maxImageEdge || cfg.Height > maxImageEdge || (cfg.Width != maxImageEdge && cfg.Height != maxImageEdge) {
+			t.Fatalf("%dx%d downscale %s %dx%d", sz[0], sz[1], mime, cfg.Width, cfg.Height)
+		}
 	}
 }
 
@@ -643,7 +685,16 @@ func onePixelPNG(t *testing.T) []byte {
 }
 
 // widePNG is an IHDR only. depth 16 and color type 6 (RGBA) make the decoded
-// bitmap 8 bytes per pixel, which the decode cap refuses before image.Decode.
+// bitmap 8 bytes per pixel. A side over 4096 is refused before image.Decode.
+
+func solidPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewNRGBA(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
 func widePNG(w, h, depth int) []byte {
 	b := make([]byte, 26)
 	b[0] = 0x89

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -516,6 +517,46 @@ func TestShellFormsFollowVault(t *testing.T) {
 	}
 	if containsForm(k.shellForms(), value) || !containsForm(k.shellForms(), longer) {
 		t.Fatal("forms did not follow the vault")
+	}
+}
+
+func TestShellFormsHoldSplitKey(t *testing.T) {
+	const secret = "heldkey-0123456789abcdef"
+	t.Setenv("MAGPIE_API_KEY", secret)
+	t.Cleanup(config.ForgetKeys)
+	config.HoldKeys([]string{"MAGPIE_API_KEY"})
+	k, _, _ := freshBot(t)
+	if !containsForm(k.shellForms(), secret) {
+		t.Fatal("held key missing from shell forms")
+	}
+	jobs := k.shellJobs()
+	if jobs == nil {
+		t.Fatal("no jobs")
+	}
+	out, err := jobs.Run(context.Background(), tools.RunRequest{
+		Command:    "printf 'before\\n'; printf 'heldkey-0123'; sleep 30",
+		Background: true,
+		Timeout:    time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strings.TrimSpace(strings.Split(strings.TrimPrefix(out, "background "), "\n")[0])
+	t.Cleanup(func() { _, _ = jobs.Cancel(id) })
+	deadline := time.Now().Add(2 * time.Second)
+	var text string
+	for {
+		text, err = jobs.Output(id, 0, 0)
+		if err == nil && strings.Contains(text, "before") && strings.Contains(text, "held_bytes:") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("split key was not held back: err %v", err)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if strings.Contains(text, "heldkey") || strings.Contains(text, secret) {
+		t.Fatal("held key leaked into shell output")
 	}
 }
 

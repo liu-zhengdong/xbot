@@ -31,7 +31,8 @@ func wrapUntrusted(source, typ, sender string, at time.Time, body string) string
 // leave a ">" that completes one. Matching is ASCII-case-insensitive, allows
 // whitespace around the slash, folds fullwidth and small brackets, fullwidth
 // underscores, and the extra slash characters, skips zero-width characters,
-// and treats "&lt;" / numeric character references as "<".
+// ZWJ, ZWNJ, and variation selectors, and treats "&lt;" / numeric character
+// references (including long runs of leading zeros) as "<".
 func NeutralizeUntrusted(s string) string {
 	s = rewriteTag(s, "untrusted_event", true, "[/untrusted_event]")
 	return rewriteTag(s, "untrusted_event", false, "[untrusted_event]")
@@ -158,20 +159,28 @@ func matchNumeric(s string, want rune) (int, bool) {
 		hex = true
 		i++
 	}
+	// Leading zeros do not count toward the digit budget. &#00000060; is still
+	// U+003C. Significant digits stop at a rune; another digit means the
+	// reference is larger than a Unicode scalar and is not a match.
+	for i < len(s) && s[i] == '0' {
+		i++
+	}
 	val := 0
 	digits := 0
-	for i < len(s) && digits < 6 {
-		c := s[i]
-		d, ok := hexDigit(c, hex)
+	base := 10
+	if hex {
+		base = 16
+	}
+	for i < len(s) {
+		d, ok := hexDigit(s[i], hex)
 		if !ok {
 			break
 		}
-		if hex {
-			val = val*16 + d
-		} else {
-			val = val*10 + d
-		}
 		digits++
+		if val > (unicode.MaxRune-d)/base {
+			return 0, false
+		}
+		val = val*base + d
 		i++
 	}
 	if digits == 0 || i >= len(s) || s[i] != ';' || rune(val) != want {
@@ -217,11 +226,16 @@ func skipIgnorable(s string, i int) int {
 
 func isIgnorable(r rune) bool {
 	switch r {
-	case '\u200b', '\u2060', '\ufeff', '\u00ad':
+	case '\u200b', '\u200c', '\u200d', '\u2060', '\u2061', '\u2062', '\u2063', '\u2064', '\ufeff', '\u00ad':
 		return true
-	default:
-		return false
 	}
+	if r >= '\ufe00' && r <= '\ufe0f' {
+		return true
+	}
+	if r >= 0xE0100 && r <= 0xE01EF {
+		return true
+	}
+	return false
 }
 
 func foldTagRune(r rune) rune {

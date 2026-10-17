@@ -277,9 +277,11 @@ func (k *Kernel) onShellDone(job tools.Job) {
 }
 
 // shellForms lists every string the job redactor replaces: vault literals and
-// their JSON, URL, and base64 forms, plus staged secret literals. The writer
-// holds a suffix of pending output only when it is a prefix of one of these.
-// Vault forms are cached until the vault generation changes.
+// their JSON, URL, and base64 forms, staged secret literals, and held API
+// key values of at least 8 bytes. The writer holds a suffix of pending output
+// only when it is a prefix of one of these. Vault forms are cached until the
+// vault generation changes. Staged secrets and held keys are appended on
+// every call, because HoldKeys can happen after the cache is filled.
 func (k *Kernel) shellForms() []string {
 	if k == nil {
 		return nil
@@ -306,15 +308,20 @@ func (k *Kernel) shellForms() []string {
 		}
 		k.shellMu.Unlock()
 	}
-	if len(staged) == 0 {
+	extra := append([]string(nil), staged...)
+	extra = append(extra, config.HeldForms()...)
+	if len(extra) == 0 {
 		return base
 	}
-	seen := make(map[string]struct{}, len(base)+len(staged))
+	seen := make(map[string]struct{}, len(base)+len(extra))
 	for _, f := range base {
 		seen[f] = struct{}{}
 	}
 	out := append([]string(nil), base...)
-	for _, v := range staged {
+	for _, v := range extra {
+		if v == "" {
+			continue
+		}
 		if _, ok := seen[v]; ok {
 			continue
 		}

@@ -555,7 +555,7 @@ func (im imageTool) Run(ctx context.Context, _ json.RawMessage) (string, error) 
 	return "path: a.png", nil
 }
 
-func TestImageSentOnceThenOmitted(t *testing.T) {
+func TestImageStaysUntilTheTurnEnds(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
@@ -572,19 +572,16 @@ func TestImageSentOnceThenOmitted(t *testing.T) {
 	if len(p.reqs) < 3 {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
-	var first int
-	for _, m := range p.reqs[1].Messages {
-		first += len(m.Images)
-	}
-	if first != 1 {
-		t.Fatalf("step after the tool sent %d images", first)
-	}
-	for _, m := range p.reqs[2].Messages {
-		if len(m.Images) != 0 {
-			t.Fatal("image was sent again")
+	for i, req := range p.reqs[1:] {
+		var n int
+		for _, m := range req.Messages {
+			n += len(m.Images)
+			if strings.Contains(m.Content, "[image omitted after the previous step]") {
+				t.Fatalf("request %d told the model the image was gone: %q", i+1, m.Content)
+			}
 		}
-		if m.Name == "view_image" && !strings.Contains(m.Content, "[image omitted after the previous step]") {
-			t.Fatalf("placeholder missing: %q", m.Content)
+		if n != 1 {
+			t.Fatalf("request %d carried %d images", i+1, n)
 		}
 	}
 }

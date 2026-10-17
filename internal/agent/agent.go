@@ -19,7 +19,6 @@ const defaultMaxResult = 64 << 10
 const (
 	maxTurnImages     = 4
 	maxTurnImageBytes = 10 << 20
-	imageOmittedNote  = "[image omitted after the previous step]"
 	imageCapNote      = "[image omitted: turn image cap]"
 )
 
@@ -108,6 +107,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 	convo := append([]provider.Message(nil), messages...)
 	var produced []provider.Message
 	var images imageBudget
+	images.consume(messages)
 	for step := 0; step < opt.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return produced, err
@@ -129,10 +129,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if err != nil {
 			return produced, err
 		}
-		// The request just sent every image still attached to convo. Later
-		// steps, including the kernel's follow-up chats, must not send them again.
-		omitSentImages(convo)
-		omitSentImages(produced)
+		// Tool images stay attached for every later request in this run, still
+		// inside the turn budget. The transcript does not store the bytes, and
+		// the kernel drops them when the turn ends.
 		if msg.Role == "" {
 			msg.Role = provider.RoleAssistant
 		}
@@ -439,6 +438,21 @@ type imageBudget struct {
 	bytes int
 }
 
+// consume counts images already on the conversation. A later run in the same
+// turn (a step-cap continuation, a subagent's next round) must not attach
+// another full budget on top of pictures that are still being sent.
+func (b *imageBudget) consume(msgs []provider.Message) {
+	if b == nil {
+		return
+	}
+	for _, m := range msgs {
+		for _, img := range m.Images {
+			b.n++
+			b.bytes += len(img.Data)
+		}
+	}
+}
+
 func (b *imageBudget) take(imgs []provider.Image) ([]provider.Image, string) {
 	if b == nil || len(imgs) == 0 {
 		return imgs, ""
@@ -458,22 +472,6 @@ func (b *imageBudget) take(imgs []provider.Image) ([]provider.Image, string) {
 		return keep, ""
 	}
 	return keep, imageCapNote
-}
-
-func omitSentImages(msgs []provider.Message) {
-	for i := range msgs {
-		if len(msgs[i].Images) == 0 {
-			continue
-		}
-		msgs[i].Images = nil
-		if strings.Contains(msgs[i].Content, imageOmittedNote) {
-			continue
-		}
-		if msgs[i].Content != "" && !strings.HasSuffix(msgs[i].Content, "\n") {
-			msgs[i].Content += "\n"
-		}
-		msgs[i].Content += imageOmittedNote
-	}
 }
 
 func finish(opt Options, name, out string) string {

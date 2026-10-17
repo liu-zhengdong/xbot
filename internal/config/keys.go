@@ -8,9 +8,11 @@ import (
 )
 
 var (
-	heldMu    sync.Mutex
-	heldKeys  map[string]string
-	heldNames map[string]bool
+	heldMu       sync.Mutex
+	heldKeys     map[string]string
+	heldNames    map[string]bool
+	heldRedact   []string
+	heldRedactOK bool
 )
 
 // HoldKeys copies the named variables into memory and removes them from the
@@ -25,6 +27,8 @@ func HoldKeys(names []string) {
 	if heldNames == nil {
 		heldNames = map[string]bool{}
 	}
+	heldRedactOK = false
+	heldRedact = nil
 	for _, name := range names {
 		name = strings.TrimSpace(name)
 		if name == "" {
@@ -49,6 +53,8 @@ func ForgetKeys() {
 	heldMu.Lock()
 	heldKeys = nil
 	heldNames = nil
+	heldRedact = nil
+	heldRedactOK = false
 	heldMu.Unlock()
 }
 
@@ -63,20 +69,44 @@ func ProviderKey(name string) bool {
 // RedactHeld replaces held key values with [secret]. Values shorter than 8
 // bytes are left alone so a short test string cannot blank unrelated text.
 // Keys held after startup are included, because the lookup reads the map.
+// The sorted value list is cached until HoldKeys or ForgetKeys. Callers must
+// not mutate the slice RedactHeld reads; HoldKeys replaces it.
 func RedactHeld(s string) string {
 	if s == "" {
 		return s
 	}
 	heldMu.Lock()
+	vals := redactListLocked()
+	heldMu.Unlock()
+	for _, v := range vals {
+		s = strings.ReplaceAll(s, v, "[secret]")
+	}
+	return s
+}
+
+// HeldForms returns a copy of the values RedactHeld would replace, longest
+// first. Shell output uses it to hold back a key split across writes.
+func HeldForms() []string {
+	heldMu.Lock()
+	defer heldMu.Unlock()
+	src := redactListLocked()
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]string, len(src))
+	copy(out, src)
+	return out
+}
+
+func redactListLocked() []string {
+	if heldRedactOK {
+		return heldRedact
+	}
 	vals := make([]string, 0, len(heldKeys))
 	for _, v := range heldKeys {
 		if len(v) >= 8 {
 			vals = append(vals, v)
 		}
-	}
-	heldMu.Unlock()
-	if len(vals) == 0 {
-		return s
 	}
 	sort.Slice(vals, func(i, j int) bool {
 		if len(vals[i]) != len(vals[j]) {
@@ -84,10 +114,9 @@ func RedactHeld(s string) string {
 		}
 		return vals[i] < vals[j]
 	})
-	for _, v := range vals {
-		s = strings.ReplaceAll(s, v, "[secret]")
-	}
-	return s
+	heldRedact = vals
+	heldRedactOK = true
+	return heldRedact
 }
 
 // Getenv returns a held provider key, or the process environment.

@@ -15,10 +15,10 @@ import (
 const (
 	maxImageEdge       = 2048
 	maxImageDecodeSide = 4096
-	maxImagePixels     = 8_000_000
-	// maxDecodedBytes is the bitmap a decode is allowed to expand into.
-	// 16-bit PNG uses more bytes per pixel than 8-bit.
-	maxDecodedBytes = 8 << 20
+	// maxDecodedBytes is one bitmap. decodeMu already runs one decode at a
+	// time, so a second copy is not sitting beside it. The cap applies only
+	// on the path that actually calls image.Decode. WebP is never decoded.
+	maxDecodedBytes = maxImageDecodeSide * maxImageDecodeSide * 4
 )
 
 // decodeMu keeps image.Decode to one at a time so two large bitmaps cannot
@@ -36,9 +36,6 @@ func fitImage(mime string, data []byte) (string, []byte, error) {
 	if !ok {
 		return "", nil, errors.New("view_image: cannot read image dimensions")
 	}
-	if w > maxImageDecodeSide || h > maxImageDecodeSide || decoded > maxDecodedBytes || (w > 0 && h > maxImagePixels/w) {
-		return "", nil, fmt.Errorf("view_image: image is %dx%d, over the pixel cap", w, h)
-	}
 	if mime == "image/webp" {
 		if w > maxImageEdge || h > maxImageEdge {
 			return "", nil, fmt.Errorf("view_image: webp is %dx%d, over %d px, and cannot be downscaled", w, h, maxImageEdge)
@@ -47,6 +44,9 @@ func fitImage(mime string, data []byte) (string, []byte, error) {
 	}
 	if w <= maxImageEdge && h <= maxImageEdge {
 		return mime, data, nil
+	}
+	if w > maxImageDecodeSide || h > maxImageDecodeSide || decoded > maxDecodedBytes {
+		return "", nil, fmt.Errorf("view_image: image is %dx%d, over the pixel cap", w, h)
 	}
 	img, err := decodeImage(data)
 	if err != nil {

@@ -202,3 +202,38 @@ func TestSearchBaseLocksProviderKeyToOfficialHost(t *testing.T) {
 		t.Fatal("provider key was sent to another host")
 	}
 }
+
+func TestSearchBaseFailsClosedForHeldAndUnreadableRegistry(t *testing.T) {
+	t.Cleanup(ForgetKeys)
+	root := t.TempDir()
+	t.Setenv("MAGPIE_API_KEY", "magpie-key-value")
+	HoldKeys([]string{"MAGPIE_API_KEY"})
+	err := AllowSearchBase(root, WebBackend{Backend: "deepseek", APIKeyEnv: "MAGPIE_API_KEY", BaseURL: "https://evil.example"})
+	if err == nil || !strings.Contains(err.Error(), "api.deepseek.com") {
+		t.Fatal(err)
+	}
+	bad := t.TempDir()
+	if err := os.WriteFile(Path(bad), []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err = AllowSearchBase(bad, WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_ONLY", BaseURL: "https://evil.example"})
+	if err == nil || !strings.Contains(err.Error(), "api.deepseek.com") {
+		t.Fatal(err)
+	}
+}
+
+func TestRedactHeldCacheFollowsHoldAndForget(t *testing.T) {
+	t.Setenv("XBOT_CACHE_KEY", "cache-key-0123456789")
+	t.Cleanup(ForgetKeys)
+	HoldKeys([]string{"XBOT_CACHE_KEY"})
+	if strings.Contains(RedactHeld("cache-key-0123456789"), "cache-key") {
+		t.Fatal("first redact missed")
+	}
+	if strings.Contains(RedactHeld("cache-key-0123456789"), "cache-key") {
+		t.Fatal("cached redact missed")
+	}
+	ForgetKeys()
+	if got := RedactHeld("cache-key-0123456789"); !strings.Contains(got, "cache-key") {
+		t.Fatalf("forget left a cached value: %q", got)
+	}
+}

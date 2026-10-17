@@ -168,8 +168,9 @@ func SearchKeyEnv(b WebBackend) (string, bool) {
 // AllowSearchBase reports whether a search key may be sent to base_url.
 // A keyless backend is always allowed. An empty base is the official
 // https://api.deepseek.com endpoint. http is rejected whenever a key is sent.
-// A provider key (DEEPSEEK_API_KEY, XBOT_API_KEY, or a providers.json
-// api_key_env) is sent only to https://api.deepseek.com.
+// A provider key is sent only to https://api.deepseek.com. That is
+// DEEPSEEK_API_KEY, XBOT_API_KEY, any name in KeyEnvNames, any name already
+// held, and every name when providers.json cannot be loaded.
 func AllowSearchBase(root string, b WebBackend) error {
 	env, ok := SearchKeyEnv(b)
 	if !ok {
@@ -188,12 +189,15 @@ func providerSearchEnv(root, env string) bool {
 	if env == "DEEPSEEK_API_KEY" || env == "XBOT_API_KEY" {
 		return true
 	}
-	f, err := Load(root)
-	if err != nil {
-		return false
+	// A registry we cannot read might list this name. Fail closed.
+	if _, err := Load(root); err != nil {
+		return true
 	}
-	for _, p := range f.Providers {
-		if p.APIKeyEnv == env {
+	if ProviderKey(env) {
+		return true
+	}
+	for _, name := range KeyEnvNames(root) {
+		if name == env {
 			return true
 		}
 	}
