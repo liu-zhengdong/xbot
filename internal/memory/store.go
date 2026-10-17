@@ -21,6 +21,9 @@ const (
 	maxFactBytes = 1024
 	maxLogBytes  = 64 << 10
 	recallLimit  = 20
+	// logOverflowBase is the side file for log facts that do not fit in 64 KiB.
+	// Recall and forget read it with the log tier. Remember still appends to log.md.
+	logOverflowBase = "log.overflow"
 )
 
 var idRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -119,32 +122,34 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 			tiers = []Tier{q.Tier}
 		}
 		for _, tier := range tiers {
-			facts, err := loadTier(dir, tier, q.Scope, q.BotName, q.PersonID)
-			if err != nil {
-				return err
-			}
-			kept := make([]Fact, 0, len(facts))
-			var removed []Fact
-			for _, f := range facts {
-				if f.Text == exact {
-					removed = append(removed, f)
+			for _, base := range tierBases(tier) {
+				facts, err := loadNamed(dir, base, q.Scope, tier, q.BotName, q.PersonID)
+				if err != nil {
+					return err
+				}
+				kept := make([]Fact, 0, len(facts))
+				var removed []Fact
+				for _, f := range facts {
+					if f.Text == exact {
+						removed = append(removed, f)
+						continue
+					}
+					kept = append(kept, f)
+				}
+				if len(removed) == 0 {
 					continue
 				}
-				kept = append(kept, f)
-			}
-			if len(removed) == 0 {
-				continue
-			}
-			if err := saveTier(dir, tier, kept); err != nil {
-				return err
-			}
-			if q.Scope != ScopePerson {
-				continue
-			}
-			for _, f := range removed {
-				f.Time = time.Now().UTC()
-				if err := noteSync(s.Root, opForget, f); err != nil {
+				if err := writeNamed(dir, base, kept, tierLimit(tier), true, false, tier == TierProfile); err != nil {
 					return err
+				}
+				if q.Scope != ScopePerson {
+					continue
+				}
+				for _, f := range removed {
+					f.Time = time.Now().UTC()
+					if err := noteSync(s.Root, opForget, f); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -242,13 +247,22 @@ func loadQuery(dir string, q Query) ([]Fact, error) {
 	}
 	var all []Fact
 	for _, tier := range tiers {
-		facts, err := loadTier(dir, tier, q.Scope, q.BotName, q.PersonID)
-		if err != nil {
-			return nil, err
+		for _, base := range tierBases(tier) {
+			facts, err := loadNamed(dir, base, q.Scope, tier, q.BotName, q.PersonID)
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, facts...)
 		}
-		all = append(all, facts...)
 	}
 	return all, nil
+}
+
+func tierBases(tier Tier) []string {
+	if tier == TierLog {
+		return []string{string(TierLog), logOverflowBase}
+	}
+	return []string{string(tier)}
 }
 
 func filterQuery(facts []Fact, q Query) []Fact {
@@ -263,8 +277,12 @@ func filterQuery(facts []Fact, q Query) []Fact {
 }
 
 func loadTier(dir string, tier Tier, scope Scope, botName, personID string) ([]Fact, error) {
-	mdPath := filepath.Join(dir, string(tier)+".md")
-	idxPath := filepath.Join(dir, string(tier)+".index.json")
+	return loadNamed(dir, string(tier), scope, tier, botName, personID)
+}
+
+func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID string) ([]Fact, error) {
+	mdPath := filepath.Join(dir, base+".md")
+	idxPath := filepath.Join(dir, base+".index.json")
 	mdInfo, mdErr := os.Stat(mdPath)
 	if errors.Is(mdErr, os.ErrNotExist) {
 		return nil, nil

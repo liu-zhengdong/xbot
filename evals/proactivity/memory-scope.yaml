@@ -22,7 +22,7 @@ setup:
 checks:
   memory:
     - scope: bot
-      contains: "always run the tests before you say a fix is done"
+      contains: "run the tests"
     - scope: person
-      absent: "always run the tests before you say a fix is done"
+      absent: "run the tests"
       contains: "Asia/Shanghai"

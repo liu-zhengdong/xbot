@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"xbot/internal/fsutil"
@@ -13,42 +15,92 @@ import (
 
 const migrationNoteKey = "migration-profile-cap"
 
+// migratedMarker is written at the data root after a clean pass. A later
+// process sees it and skips the walk. A pass that had to skip a source does
+// not write it, so the next process tries that source again.
+const migratedMarker = ".memory-migrated"
+
+var migrateOnce struct {
+	mu    sync.Mutex
+	roots map[string]*sync.Once
+}
+
 // Migrate folds legacy bots/<name>/people/<id>/memory into bots/<name>/memory.
-// It runs on startup and on the first store operation. A second call is a no-op:
-// the old directory is renamed to memory.bak (or memory.bak.N) and is not read again.
-// Facts keep their timestamps and provenance. A merged profile that would pass
-// ProfileBytes puts the overflow in the log tier and records why. Nothing is deleted.
+// It runs once per root in this process, and once per root on disk after a
+// clean pass. A bad source is logged and left in place; it does not fail the
+// caller, the bot next door, or process start.
+//
+// Only a person id listed in that bot's owners is merged. Other people are
+// renamed to memory.bak without merging, because bot scope is visible to every
+// sender. Facts keep their timestamps, provenance, and kind.
 func Migrate(root string) error {
 	if root == "" {
 		return nil
 	}
+	root = filepath.Clean(root)
+	onceFor(root).Do(func() { migrateRoot(root) })
+	return nil
+}
+
+func onceFor(root string) *sync.Once {
+	migrateOnce.mu.Lock()
+	defer migrateOnce.mu.Unlock()
+	if migrateOnce.roots == nil {
+		migrateOnce.roots = map[string]*sync.Once{}
+	}
+	o := migrateOnce.roots[root]
+	if o == nil {
+		o = &sync.Once{}
+		migrateOnce.roots[root] = o
+	}
+	return o
+}
+
+func migrateRoot(root string) {
+	marker := filepath.Join(root, migratedMarker)
+	if _, err := os.Stat(marker); err == nil {
+		return
+	}
 	bots := filepath.Join(root, "bots")
 	entries, err := os.ReadDir(bots)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		writeMarker(marker)
+		return
 	}
 	if err != nil {
-		return err
+		log.Printf("memory: migrate %s: %v", bots, err)
+		return
 	}
+	failed := false
 	for _, ent := range entries {
 		if !ent.IsDir() || !ValidID(ent.Name()) {
 			continue
 		}
-		if err := migrateBot(root, ent.Name()); err != nil {
-			return err
+		if migrateBot(root, ent.Name()) {
+			failed = true
 		}
 	}
-	return nil
+	if !failed {
+		writeMarker(marker)
+	}
 }
 
-func migrateBot(root, botName string) error {
+func writeMarker(path string) {
+	if err := os.WriteFile(path, []byte("ok\n"), 0600); err != nil {
+		log.Printf("memory: migrate marker: %v", err)
+	}
+}
+
+// migrateBot reports whether any source for this bot was left unmerged.
+func migrateBot(root, botName string) bool {
 	people := filepath.Join(root, "bots", botName, "people")
 	entries, err := os.ReadDir(people)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return false
 	}
 	if err != nil {
-		return err
+		log.Printf("memory: migrate %s: %v", people, err)
+		return true
 	}
 	var sources []string
 	for _, ent := range entries {
@@ -61,50 +113,164 @@ func migrateBot(root, botName string) error {
 			continue
 		}
 		if err != nil {
-			return err
+			log.Printf("memory: migrate %s: %v", src, err)
+			return true
 		}
 		sources = append(sources, src)
 	}
 	if len(sources) == 0 {
-		return nil
+		return false
 	}
 	dest := filepath.Join(root, "bots", botName, "memory")
-	return fsutil.WithLock(filepath.Join(dest, ".lock"), func() error {
-		profile, err := loadTier(dest, TierProfile, ScopeBot, botName, "")
-		if err != nil {
-			return err
-		}
-		logFacts, err := loadTier(dest, TierLog, ScopeBot, botName, "")
-		if err != nil {
-			return err
-		}
-		var incomingProfile, incomingLog []Fact
-		for _, src := range sources {
-			p, l, err := loadLegacy(src, botName)
-			if err != nil {
-				return err
-			}
-			incomingProfile = append(incomingProfile, p...)
-			incomingLog = append(incomingLog, l...)
-		}
-		profile, logFacts, profileChanged, logChanged := mergeLegacy(botName, profile, logFacts, incomingProfile, incomingLog)
-		if profileChanged {
-			if err := saveTier(dest, TierProfile, profile); err != nil {
-				return err
-			}
-		}
-		if logChanged {
-			if err := writeTier(dest, TierLog, logFacts, false); err != nil {
-				return err
-			}
-		}
-		for _, src := range sources {
-			if err := backupDir(src); err != nil {
-				return err
-			}
-		}
+	failed := false
+	err = fsutil.WithLock(filepath.Join(dest, ".lock"), func() error {
+		failed = migrateLocked(root, botName, dest, sources)
 		return nil
 	})
+	if err != nil {
+		log.Printf("memory: migrate %s: %v", dest, err)
+		return true
+	}
+	return failed
+}
+
+func migrateLocked(root, botName, dest string, sources []string) bool {
+	owners := botOwners(root, botName)
+	// Stat again under the dest lock. Another process may have renamed the
+	// directory already; opening it would recreate an empty memory dir and
+	// then rename that to memory.bak.N.
+	var live []string
+	for _, src := range sources {
+		if dirExists(src) {
+			live = append(live, src)
+		}
+	}
+	if len(live) == 0 {
+		return false
+	}
+	profile, err := loadTier(dest, TierProfile, ScopeBot, botName, "")
+	if err != nil {
+		log.Printf("memory: migrate %s profile: %v", dest, err)
+		return true
+	}
+	logFacts, err := loadTier(dest, TierLog, ScopeBot, botName, "")
+	if err != nil {
+		log.Printf("memory: migrate %s log: %v", dest, err)
+		return true
+	}
+	prevOverflow, err := loadNamed(dest, logOverflowBase, ScopeBot, TierLog, botName, "")
+	if err != nil {
+		log.Printf("memory: migrate %s overflow: %v", dest, err)
+		return true
+	}
+	logFacts = append(logFacts, prevOverflow...)
+
+	failed := false
+	var incomingProfile, incomingLog []Fact
+	var merged, parked []string
+	for _, src := range live {
+		if !dirExists(src) {
+			continue
+		}
+		p, l, err := loadLegacy(src, botName)
+		if err != nil {
+			log.Printf("memory: migrate %s: %v", src, err)
+			failed = true
+			continue
+		}
+		id := filepath.Base(filepath.Dir(src))
+		if !owners[id] {
+			parked = append(parked, src)
+			continue
+		}
+		incomingProfile = append(incomingProfile, p...)
+		incomingLog = append(incomingLog, l...)
+		merged = append(merged, src)
+	}
+	profile, logFacts, profileChanged, logChanged := mergeLegacy(botName, profile, logFacts, incomingProfile, incomingLog)
+	if profileChanged {
+		if err := saveTier(dest, TierProfile, profile); err != nil {
+			log.Printf("memory: migrate %s profile: %v", dest, err)
+			return true
+		}
+	}
+	over := len(renderMD(logFacts)) > maxLogBytes
+	if logChanged || over || len(prevOverflow) > 0 {
+		fit, rest := packLog(logFacts)
+		if err := writeTier(dest, TierLog, fit, true); err != nil {
+			log.Printf("memory: migrate %s log: %v", dest, err)
+			return true
+		}
+		if err := writeOverflow(dest, rest); err != nil {
+			log.Printf("memory: migrate %s overflow: %v", dest, err)
+			return true
+		}
+	}
+	for _, src := range append(merged, parked...) {
+		if !dirExists(src) {
+			continue
+		}
+		if err := backupDir(src); err != nil {
+			log.Printf("memory: migrate %s: %v", src, err)
+			failed = true
+		}
+	}
+	return failed
+}
+
+func writeOverflow(dir string, facts []Fact) error {
+	md := filepath.Join(dir, logOverflowBase+".md")
+	idx := filepath.Join(dir, logOverflowBase+".index.json")
+	if len(facts) == 0 {
+		if err := os.Remove(md); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err := os.Remove(idx); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	// enforce is false: this side file is the overflow, so it may pass 64 KiB.
+	// The main log.md stays within the cap. A later shrinking forget uses the
+	// normal cap rule and is allowed to shrink this file.
+	return writeNamed(dir, logOverflowBase, facts, maxLogBytes, false, false, false)
+}
+
+func packLog(facts []Fact) (fit, rest []Fact) {
+	for _, f := range facts {
+		trial := append(append([]Fact{}, fit...), f)
+		if len(renderMD(trial)) > maxLogBytes {
+			rest = append(rest, f)
+			continue
+		}
+		fit = trial
+	}
+	return fit, rest
+}
+
+func dirExists(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
+}
+
+// botOwners reads bots/<name>/config.json. A missing file means nobody, so no
+// legacy directory is merged.
+func botOwners(root, botName string) map[string]bool {
+	raw, err := os.ReadFile(filepath.Join(root, "bots", botName, "config.json"))
+	if err != nil {
+		return nil
+	}
+	var cfg struct {
+		Owners []string `json:"owners"`
+	}
+	if json.Unmarshal(raw, &cfg) != nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, id := range cfg.Owners {
+		out[id] = true
+	}
+	return out
 }
 
 func loadLegacy(dir, botName string) (profile, logFacts []Fact, err error) {
@@ -154,6 +320,8 @@ func readLooseIndex(path string) ([]Fact, error) {
 	return facts, nil
 }
 
+// asBotFact moves a legacy fact into bot scope. Kind is kept as stored, including
+// empty. Resolve treats an empty kind as an attribute, not a working agreement.
 func asBotFact(f Fact, botName string) Fact {
 	f.Scope = ScopeBot
 	f.BotName = botName
@@ -268,6 +436,11 @@ func hasKey(facts []Fact, key string) bool {
 }
 
 func backupDir(src string) error {
+	// Missing means another runner already renamed it. Do not create the
+	// directory (WithLock would) and do not invent memory.bak.N.
+	if !dirExists(src) {
+		return nil
+	}
 	base := src + ".bak"
 	dest := base
 	for i := 1; i < 1000; i++ {

@@ -180,7 +180,9 @@ func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, er
 	default:
 		return "", fmt.Errorf("memory: unknown scope %q", fact.Scope)
 	}
-	if !t.k.turnFor(ctx).turnTrusted && fact.Scope == memory.ScopePerson {
+	// An untrusted turn is data, whatever scope it lands in. Omitted scope is bot,
+	// and that write is marked too.
+	if !t.k.turnFor(ctx).turnTrusted {
 		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
 		fact.Untrusted = true
 	}

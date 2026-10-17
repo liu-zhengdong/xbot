@@ -245,3 +245,48 @@ func TestRememberOnOverCapProfileStillErrors(t *testing.T) {
 		t.Fatal("a rejected remember changed the file")
 	}
 }
+
+func TestForgetOnOverCapLogSucceeds(t *testing.T) {
+	root := t.TempDir()
+	when := time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC)
+	var facts []Fact
+	for i := 0; ; i++ {
+		next := Fact{
+			Key: fmt.Sprintf("k%03d", i), WrittenBy: "ada",
+			Text: fmt.Sprintf("log %03d %s", i, strings.Repeat("y", 500)),
+			Time: when.Add(time.Duration(i) * time.Second),
+		}
+		trial := append(append([]Fact(nil), facts...), next)
+		if len(facts) > 0 && len(renderMD(trial)) > maxLogBytes {
+			facts = append(facts, next)
+			break
+		}
+		facts = append(facts, next)
+		if i > 400 {
+			t.Fatal("log never filled")
+		}
+	}
+	body := renderMD(append([]Fact(nil), facts...))
+	if len(body) <= maxLogBytes {
+		t.Fatalf("fixture is %d bytes", len(body))
+	}
+	dir := filepath.Join(root, "bots", "ada", "memory")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := Open(root)
+	q := Query{Scope: ScopeBot, BotName: "ada", Tier: TierLog}
+	if err := s.Forget(context.Background(), q, facts[0].Text); err != nil {
+		t.Fatalf("forget on an over-cap log: %v", err)
+	}
+	got, err := s.Recall(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(facts)-1 {
+		t.Fatalf("got %d facts, want %d", len(got), len(facts)-1)
+	}
+}

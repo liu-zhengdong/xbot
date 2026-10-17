@@ -520,7 +520,6 @@ func (s *Server) profile(b *bot.Bot) []map[string]string {
 	}
 	add(memory.ScopePerson, s.owner)
 	add(memory.ScopeBot, "")
-	add(memory.ScopeBotPerson, s.owner)
 	return out
 }
 

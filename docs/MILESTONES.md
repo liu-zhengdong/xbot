@@ -95,13 +95,13 @@
 
 主人决定记忆只留 person 和 bot。person 跨所有 Bot 共享，只放每个 Bot 都需要的、关于主人本人的事实（时区、语言、作息、他是谁），写入必须显式带 scope。bot 是这个 Bot 自己的角色、约定和项目决定，也是默认：省略 scope 的 `remember`、自动抽事实、不可信回合的自动写入都进 bot。工作规则和项目决定不进 person。bot-person 不再存储。怎么做事的冲突以 Bot 自己的记忆为准，压过 person。常驻注入从三份 profile（`3×4KiB+512`，12800 字节）改成两份（`2×4KiB+512`，8704 字节）。
 
-迁移在进程打开内核时跑（`serve` 和 `chat` 都走 `openKernel`），Remember、Recall、Forget 也会再跑一次。`bots/<name>/people/<id>/memory/` 里的 profile、log 和可选的 `.index.json` 并进 `bots/<name>/memory`。按键、正文、时间、作者、kind、设备、untrusted、owner_recorded 去重，保留时间戳和来源。已有的 profile 事实留着。新来的 profile 事实按顺序加入，渲染后仍不超过 4096 字节才写进 profile；放不下的改记 log。profile 已经超过上限时不改写这份文件，新来的 profile 事实全部进 log。log 这一次写入不按 64 KiB 上限丢事实。有溢出时追加一条键为 `migration-profile-cap` 的说明，同一键只留一条。旧目录改名为 `memory.bak`，已有备份就加序号，不删除。再跑一次是空操作。人的跨设备同步日志仍是 person 通道，不进这次合并。
+迁移每个数据根只跑一次（进程内 `sync.Once`，干净跑完写 `.memory-migrated`）。`serve` 和 `chat` 打开内核时触发，Remember、Recall、Forget 也会触发，但同一进程里不会重复走。只合并该 Bot `owners` 里的人：Bot 记忆每个发送者都看得见。其他人的目录改名为 `memory.bak`，不并进去。某个目录读失败就记日志、跳过、留在原地，不让别的 Bot 的读写失败，也不让启动失败。合并去重，保留时间戳、来源和原来的 kind（空 kind 不改写成 work）。profile 放不下的改记 log，并写一条 `migration-profile-cap`。log 超过 64 KiB 时，多出来的写到 `log.overflow.md`，`log.md` 本身不超过 64 KiB；检索和 forget 把这份溢出和日志一起读。已经超限的 profile 或 log 上，缩小文件的 forget 仍然成功。人的同步日志仍是 person 通道。不可信回合的 `remember` 和抽事实，不论落在哪一层，都标 `Untrusted` 并加上 provenance。
 
-`ScopeBotPerson` 这个常量还留着，网页档案里那一次读取不用改文件也能编过。存储层拒绝这个范围。网页忽略读取错误，合并后的事实从 bot 层读到。
+网页档案不再读已删除的 bot-person 范围，界面上也不再标「你们之间」。`ScopeBotPerson` 常量还留着，存储层拒绝这个范围。
 
 空数据根上 `Migrate` 只做一次目录读取：844.3 ns/op。已有一个 Bot、没有旧的人目录时 7849 ns/op（amd64，`-benchtime=200ms`，一次性基准，没有提交进仓库）。都低于本机进程间通信 5 毫秒。不涉及界面帧率。
 
-假模型回归：`gofmt -l` 无输出，`go vet ./...` 通过，`python3 scripts/atlas_audit.py` 在刷过 `verified` 之后通过。`TMPDIR=/workspace/.test-tmp/scopes-1`、`scopes-2`、`scopes-3` 各跑一遍 `go test -count=1 ./...`，三遍全绿，含 `internal/browser`（`TestStopChecksCommandLine` 这三遍没有失败）。评测套件里的 `memory-scope` 随 `internal/eval` 通过：开发角色省略 scope 时工作规则进 bot，时区用显式 person。会在旧代码上失败的回归：`TestOmittedScopeWritesBot`、`TestRememberOmitsScopeWritesBot`、`TestExtractOmittedScopeWritesBot`、`TestMigrateBotPersonIntoBot`、`TestMigrateOverflowGoesToLog`。Not run: 真模型评测，界面浏览器检查（没有界面改动），`-race`，`go test -fuzz`，默认 `TMPDIR`（三遍都用了工作区临时目录）。
+评审修复后再跑：`gofmt -l` 无输出，`go vet ./...` 通过。`TMPDIR=/workspace/.test-tmp/m33-{1,2,3}` 跑 `go test -count=1 ./...` 三遍。第 1、3 遍全绿。第 2 遍只有 `internal/browser` 的 `TestReleaseTiedLeavesCLI` 失败（`tied chrome still running`，2 秒没等到进程退出）；单独再跑这条和 `TestStopChecksCommandLine` 通过。`TestStopChecksCommandLine`（issue #27）这三遍没有失败。`memory-scope` 的检查放宽成子串 `run the tests` 和 `Asia/Shanghai`。回归：`TestM33UntrustedDefaultScopeRememberIsAttributed`、`TestM33CorruptLegacyIndexDoesNotBreakOtherBots`、`TestMigrateCorruptOwnerStaysAndOtherBotWorks`、`TestMigrateLeavesNonOwnerInBackup`、`TestMigrateLogStaysWithinCap`、`TestForgetOnOverCapLogSucceeds`。Not run: 真模型评测，界面浏览器手点（网页只删了 bot-person 的读取和标签），`-race`，`go test -fuzz`，默认 `TMPDIR`。
 
 ## 下个版本（v0.3.1 / v0.4.0）
 v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），撤到下个版本重做，每项配自己的 eval 用例，不靠 give-up 调。

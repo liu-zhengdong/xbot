@@ -134,7 +134,8 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 		if original == "" || original == memory.ScopeBotPerson {
 			f.Scope = memory.ScopeBot
 		}
-		if untrusted && (original == memory.ScopePerson || original == memory.ScopeBotPerson) {
+		// Every fact from an untrusted turn is data, including the bot default.
+		if untrusted {
 			f.Text = memory.Provenance(f.Text, k.Bot.Name(), "")
 			f.Untrusted = true
 		}

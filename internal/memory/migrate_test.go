@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,13 +15,14 @@ func TestMigrateBotPersonIntoBot(t *testing.T) {
 	ctx := context.Background()
 	when := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
 	later := when.Add(time.Hour)
-	s := Open(root)
-	if err := s.Remember(ctx, Fact{
-		Key: "rule", Scope: ScopeBot, Tier: TierProfile, BotName: "ada",
+	writeOwners(t, root, "ada", "u1", "u2")
+	if err := saveTier(filepath.Join(root, "bots", "ada", "memory"), TierProfile, []Fact{{
+		Key: "rule", Kind: KindWork, Scope: ScopeBot, Tier: TierProfile, BotName: "ada",
 		WrittenBy: "ada", Text: "already here", Time: when,
-	}); err != nil {
+	}}); err != nil {
 		t.Fatal(err)
 	}
+	s := Open(root)
 	// Same fact in the legacy dir must not be doubled.
 	dup := Fact{
 		Key: "rule", Kind: KindWork, Text: "already here", WrittenBy: "ada", Time: when,
@@ -118,6 +120,7 @@ func TestMigrateOverflowGoesToLog(t *testing.T) {
 	if len(renderMD(append(append(append([]Fact{}, have...), tiny), big))) <= ProfileBytes {
 		t.Fatal("fixture still has room for the overflow fact")
 	}
+	writeOwners(t, root, "ada", "u1")
 	dest := filepath.Join(root, "bots", "ada", "memory")
 	if err := saveTier(dest, TierProfile, have); err != nil {
 		t.Fatal(err)
@@ -166,6 +169,21 @@ func TestMigrateOverflowGoesToLog(t *testing.T) {
 	}
 }
 
+func writeOwners(t *testing.T, root, bot string, ids ...string) {
+	t.Helper()
+	dir := filepath.Join(root, "bots", bot)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{"name": bot, "owners": ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), append(raw, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func writeLegacy(t *testing.T, root, bot, person string, tier Tier, facts []Fact) {
 	t.Helper()
 	dir := filepath.Join(root, "bots", bot, "people", person, "memory")
@@ -176,6 +194,124 @@ func writeLegacy(t *testing.T, root, bot, person string, tier Tier, facts []Fact
 	path := filepath.Join(dir, string(tier)+".md")
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMigrateLeavesNonOwnerInBackup(t *testing.T) {
+	root := t.TempDir()
+	when := time.Unix(100, 0).UTC()
+	writeOwners(t, root, "ada", "u1")
+	writeLegacy(t, root, "ada", "u1", TierProfile, []Fact{{
+		Key: "mine", Kind: KindAttribute, WrittenBy: "ada", Text: "owner-fact", Time: when,
+	}})
+	writeLegacy(t, root, "ada", "u9", TierProfile, []Fact{{
+		Key: "theirs", Kind: KindAttribute, WrittenBy: "ada", Text: "stranger-fact", Time: when,
+	}})
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := texts(got)
+	if !strings.Contains(body, "owner-fact") || strings.Contains(body, "stranger-fact") {
+		t.Fatalf("bot memory:\n%s", body)
+	}
+	if _, err := os.Stat(filepath.Join(root, "bots", "ada", "people", "u9", "memory")); !os.IsNotExist(err) {
+		t.Fatalf("non-owner dir still live: %v", err)
+	}
+	bak, err := os.ReadFile(filepath.Join(root, "bots", "ada", "people", "u9", "memory.bak", "profile.md"))
+	if err != nil || !strings.Contains(string(bak), "stranger-fact") {
+		t.Fatalf("backup %q %v", bak, err)
+	}
+}
+
+func TestMigrateLogStaysWithinCap(t *testing.T) {
+	root := t.TempDir()
+	writeOwners(t, root, "ada", "u1")
+	when := time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC)
+	var facts []Fact
+	for i := 0; ; i++ {
+		facts = append(facts, Fact{
+			Key: "k", Kind: KindWork, WrittenBy: "ada",
+			Text: strings.Repeat("m", 400) + string(rune('a'+i%26)),
+			Time: when.Add(time.Duration(i) * time.Second),
+		})
+		if len(renderMD(append([]Fact(nil), facts...))) > maxLogBytes {
+			break
+		}
+		if i > 400 {
+			t.Fatal("log never filled")
+		}
+	}
+	facts = append(facts, Fact{
+		Key: "tail", Kind: KindWork, WrittenBy: "ada", Text: "TAIL-OVERFLOW",
+		Time: when.Add(time.Hour),
+	})
+	writeLegacy(t, root, "ada", "u1", TierLog, facts)
+	got, err := Open(root).Recall(context.Background(), Query{Scope: ScopeBot, BotName: "ada", Tier: TierLog})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(texts(got), "TAIL-OVERFLOW") {
+		t.Fatal("overflow fact missing from recall")
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "bots", "ada", "memory", "log.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) > maxLogBytes {
+		t.Fatalf("log.md is %d bytes", len(raw))
+	}
+	if _, err := os.Stat(filepath.Join(root, "bots", "ada", "memory", "log.overflow.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestM33CorruptLegacyIndexDoesNotBreakOtherBots(t *testing.T) {
+	root := t.TempDir()
+	bad := filepath.Join(root, "bots", "broken", "people", "u1", "memory")
+	if err := os.MkdirAll(bad, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, ".index.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "bots", "good"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := Open(root)
+	ctx := context.Background()
+	err := s.Remember(ctx, Fact{Scope: ScopeBot, BotName: "good", Tier: TierProfile, Text: "hello", WrittenBy: "good", Time: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatalf("remember for an unrelated bot failed: %v", err)
+	}
+	if _, err := s.Recall(ctx, Query{Scope: ScopeBot, BotName: "good", Tier: TierProfile}); err != nil {
+		t.Fatalf("recall for an unrelated bot failed: %v", err)
+	}
+}
+
+func TestMigrateCorruptOwnerStaysAndOtherBotWorks(t *testing.T) {
+	root := t.TempDir()
+	bad := filepath.Join(root, "bots", "broken", "people", "u1", "memory")
+	writeOwners(t, root, "broken", "u1")
+	if err := os.MkdirAll(bad, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, ".index.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "bots", "good"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := Open(root)
+	ctx := context.Background()
+	if err := s.Remember(ctx, Fact{Scope: ScopeBot, BotName: "good", Tier: TierProfile, Text: "hello", WrittenBy: "good", Time: time.Unix(1, 0)}); err != nil {
+		t.Fatalf("remember for an unrelated bot failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(bad, ".index.json")); err != nil {
+		t.Fatalf("corrupt source was moved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, migratedMarker)); !os.IsNotExist(err) {
+		t.Fatal("marker written after a skipped source")
 	}
 }
 

@@ -173,9 +173,9 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 | person | 所有 Bot。只放每个 Bot 都需要的、关于主人本人的事实：时区、语言、作息、他是谁。写入必须显式写 `scope=person` | profile 每次注入；log 只在 `recall` 时搜 |
 | bot | 这个 Bot。角色、和主人约定的规则、项目决定。省略 scope 时的默认 | 同上 |
 
-冲突规则：关于人的事实，新的赢；怎么干活，bot 范围赢，压过 person。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。来自不可信事件的 person 事实会在正文里标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（两份一起注入，预算 `2×4KiB+512`），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。工作规则和项目决定不进 person。
+冲突规则：关于人的事实，新的赢；怎么干活，bot 范围赢，压过 person。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。不可信回合写进哪一层，正文都会标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（两份一起注入，预算 `2×4KiB+512`），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。已经超限的文件仍能 forget，只要这次写不会把文件变大。工作规则和项目决定不进 person。Bot 记忆每个发送者都看得见。
 
-旧的 bot-person 目录（`bots/<name>/people/<id>/memory/`）在启动或第一次读写时并进该 Bot 的 `bots/<name>/memory`，去重，保留时间戳和来源。profile 合并后会超过 4 KiB 时，多出来的事实改记到 log，并写一条说明。旧目录留成 `memory.bak`，不删除。见 [ADR 0006](docs/adr/0006-two-memory-scopes.md)。
+旧的 bot-person 目录只在该 Bot 的 `owners` 里才并进 `bots/<name>/memory`，去重，保留时间戳、来源和原来的 kind。其他人的目录改名为 `memory.bak`，不并进去。profile 放不下的改记 log。log 超过 64 KiB 时，多出来的写到 `log.overflow.md`。某个目录读失败就跳过，原目录留着，不挡住别的 Bot，也不让启动失败。每个数据根只迁一次。见 [ADR 0006](docs/adr/0006-two-memory-scopes.md)。
 
 **历史。** 原文按大约 8MB 或 UTC 日期分成段，只有尾段可写。SQLite 索引（纯 Go，无 cgo）把序号映射到段和偏移，并用 FTS5 做全文。`recall_history(query)` 走这个索引的 BM25，带回序列号。`expand(from, to)` 按序号把原文拉回来，输出有上限。大段工具输出另存成 blob，上下文里只留预览。索引丢了会自动重建，也可以 `xbot reindex <bot>`。旧的单文件 `transcript.jsonl` 第一次打开时迁进分段。摘要掉的句子还能这样找到。
 
