@@ -216,3 +216,26 @@ func TestReviewCallWebAndProvidersFilesAsk(t *testing.T) {
 		}
 	}
 }
+
+// The desktop app loads <root>/env (key values, XBOT_BASE_URL) at launch, so a
+// bot must not read or plant it without a card, even before it exists.
+func TestReviewCallRootEnvFileAsks(t *testing.T) {
+	k, workDir := protectedKernel(t)
+	path := filepath.Join(k.Bot.Root, "env")
+	write := &tools.WriteFile{Root: workDir}
+	need, _, err := reviewedTool{Tool: write, k: k}.Confirm(json.RawMessage(`{"path":"` + path + `","content":"XBOT_BASE_URL=http://127.0.0.1:9/v1\n"}`))
+	if err != nil || !need {
+		t.Fatalf("write env need=%v err=%v", need, err)
+	}
+	if err := os.WriteFile(path, []byte("XBOT_API_KEY=x\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	need, _, err = reviewedTool{Tool: &tools.ReadFile{Root: workDir}, k: k}.Confirm(json.RawMessage(`{"path":"` + path + `"}`))
+	if err != nil || !need {
+		t.Fatalf("read env need=%v err=%v", need, err)
+	}
+	need, _, err = reviewedTool{Tool: &tools.Shell{}, k: k}.Confirm(json.RawMessage(`{"command":"cat ../../env"}`))
+	if err != nil || !need {
+		t.Fatalf("shell cat env need=%v err=%v", need, err)
+	}
+}
