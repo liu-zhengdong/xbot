@@ -204,7 +204,9 @@ func Join(ctx context.Context, root, code, name, as, personID string, now time.T
 	}
 	pub, _ := base64.StdEncoding.DecodeString(pc.Key)
 	d, paired := cfg.ByID(gateway.ID(pub))
-	if !paired || d.Key != pc.Key || d.XKey != pc.XKey {
+	if paired && d.Key == pc.Key && d.XKey == "" {
+		err, d.XKey = fillXKey(root, d.ID, pc.XKey), pc.XKey
+	} else if !paired || d.Key != pc.Key || d.XKey != pc.XKey {
 		d, err = AddDevice(root, name, pc.Key, pc.XKey, personID)
 	}
 	if err != nil {

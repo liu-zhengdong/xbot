@@ -57,8 +57,13 @@ func TestJoinRetry(t *testing.T) {
 		t.Fatal("send should fail")
 	}
 	failSend = false
+	// A device recorded without an xkey gets it from a later join.
+	mustRemote(t, update(b, func(c *Config) error { c.Devices[0].XKey = ""; return nil }))
 	_, err = Join(ctx, b, code, "a", "", "", now)
 	mustRemote(t, err)
+	if cfg, _ := Load(b); cfg.Devices[0].XKey == "" {
+		t.Fatal("join did not fill the missing xkey")
+	}
 	kb, _, _, err := Identity(b)
 	mustRemote(t, err)
 	mustRemote(t, (&gateway.Client{Base: "http://gateway", Key: kb}).Register(ctx, ""))
@@ -75,10 +80,10 @@ func TestJoinRetry(t *testing.T) {
 }
 
 func TestReceivePair(t *testing.T) {
-	for _, mode := range []string{"batch", "storage", "retry", "key mismatch", "expired", "bad mac"} {
+	for _, mode := range []string{"batch", "storage", "retry", "fill xkey", "key mismatch", "expired", "bad mac"} {
 		t.Run(mode, func(t *testing.T) {
 			sender, a, target, kb, _, self := pair(t)
-			if mode != "retry" && mode != "key mismatch" {
+			if mode != "retry" && mode != "fill xkey" && mode != "key mismatch" {
 				mustRemote(t, RemoveDevice(a, "a"))
 			}
 			now := time.Now()
@@ -115,11 +120,15 @@ func TestReceivePair(t *testing.T) {
 				}
 				mustRemote(t, os.Remove(path))
 			}
+			if mode == "fill xkey" {
+				mustRemote(t, update(a, func(c *Config) error { c.Devices[0].XKey = ""; return nil }))
+			}
 			if mode == "key mismatch" {
 				mustRemote(t, update(a, func(c *Config) error { c.Devices[0].Key = pc.Key; return nil }))
 			}
 			body, _ := json.Marshal(message{"ada", "bob", "hello", "chain", 1})
-			msg := gateway.NewEnvelope(kb, self, "msg", body, now)
+			msg, err := newBoxEnvelope(kb, Device{ID: self, XKey: pc.XKey}, body, now)
+			mustRemote(t, err)
 			receivedAt := now
 			if mode == "expired" {
 				receivedAt = now.Add(inviteTTL)
@@ -142,6 +151,9 @@ func TestReceivePair(t *testing.T) {
 			mustRemote(t, readJSON(filepath.Join(a, "remote", "invites.json"), &list))
 			if list[0].Used != (want == 1) { // retry also covers a crash between AddDevice and marking used
 				t.Fatal("wrong invite consumption")
+			}
+			if cfg, _ := Load(a); mode == "fill xkey" && cfg.Devices[0].XKey != xkey {
+				t.Fatal("pairing did not fill the missing xkey")
 			}
 			if mode == "batch" {
 				mustRemote(t, RemoveDevice(a, "a"))

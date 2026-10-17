@@ -122,6 +122,19 @@ func update(root string, fn func(*Config) error) error {
 	})
 }
 
+// fillXKey records the X25519 key of a paired device that has none (added
+// without --xkey); a different existing key is left alone.
+func fillXKey(root, id, xkey string) error {
+	return update(root, func(c *Config) error {
+		for i := range c.Devices {
+			if c.Devices[i].ID == id && c.Devices[i].XKey == "" {
+				c.Devices[i].XKey = xkey
+			}
+		}
+		return nil
+	})
+}
+
 func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err error) {
 	if !namePattern.MatchString(name) {
 		return d, errors.New("remote: invalid device name")

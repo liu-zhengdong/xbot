@@ -95,11 +95,22 @@ func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time,
 	}
 	d, paired := cfg.ByID(env.From)
 	pub, err := base64.StdEncoding.DecodeString(d.Key)
-	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || env.Kind != "msg" || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > 64<<10 {
+	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || env.Kind != "box" || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > gateway.MaxBody {
+		return nil
+	}
+	priv, _, err := XIdentity(root)
+	if err != nil {
+		return err
+	}
+	body, err := openBox(priv, env)
+	if err != nil {
+		if len(logf) > 0 && logf[0] != nil {
+			logf[0]("remote: cannot decrypt %s", env.ID)
+		}
 		return nil
 	}
 	var m message
-	if json.Unmarshal(env.Body, &m) != nil || !bot.ValidName(m.From) || m.Hops < 1 || m.Hops > peer.MaxHops {
+	if json.Unmarshal(body, &m) != nil || !bot.ValidName(m.From) || m.Hops < 1 || m.Hops > peer.MaxHops {
 		return nil
 	}
 	m.Text = strings.TrimSpace(m.Text)
@@ -178,6 +189,10 @@ func deliverPair(root, self string, env gateway.Envelope, now time.Time, logf ..
 				}
 				if len(logf) > 0 && logf[0] != nil {
 					logf[0]("paired with %s %s", d.Name, d.ID[:8])
+				}
+			} else if known.XKey == "" {
+				if err := fillXKey(root, known.ID, pr.XKey); err != nil {
+					return nil, err
 				}
 			}
 			list[i].Used = true
