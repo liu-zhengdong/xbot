@@ -84,6 +84,12 @@ func TestReviewCallProtectedWriteAndEditAskInAllowMode(t *testing.T) {
 		want bool
 	}{
 		{
+			name: "write remote device table",
+			tool: &tools.WriteFile{Root: workDir},
+			args: `{"path":"` + filepath.Join(k.Bot.Root, "remote", "devices.json") + `","content":"x"}`,
+			want: true,
+		},
+		{
 			name: "write into the vault",
 			tool: &tools.WriteFile{Root: workDir},
 			args: `{"path":"` + filepath.Join(k.Bot.VaultDir(), "secrets.enc") + `","content":"x"}`,
@@ -126,6 +132,11 @@ func TestReviewCallProtectedShellAsksInAllowMode(t *testing.T) {
 		args string
 		want bool
 	}{
+		{
+			name: "remote install key",
+			args: `{"command":"cat ` + filepath.Join(k.Bot.Root, "keys", "remote", "install.key") + `"}`,
+			want: true,
+		},
 		{
 			name: "glob in bot dir",
 			args: `{"command":"cat vault/*","cwd":"` + botDir + `"}`,

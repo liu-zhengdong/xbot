@@ -695,7 +695,7 @@ func TouchesProtected(cmdOrPath, cwd string, protected []string) bool {
 // anywhere.
 func rawProtected(s string) bool {
 	low := strings.ToLower(s)
-	if !strings.Contains(low, "vault") && !strings.Contains(low, "secrets.enc") {
+	if !strings.Contains(low, "vault") && !strings.Contains(low, "secrets.enc") && !strings.Contains(low, "remote") {
 		return false
 	}
 	words := shellWords(s)
@@ -711,6 +711,9 @@ func rawProtected(s string) bool {
 			return r == '/' || r == '\\'
 		})
 		for i, seg := range segs {
+			if seg == "remote" && ((i > 0 && segs[i-1] == "keys") || (i+1 < len(segs) && (segs[i+1] == "devices.json" || segs[i+1] == "seen.json"))) {
+				return true
+			}
 			if seg == "secrets.enc" {
 				return true
 			}
