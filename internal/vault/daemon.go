@@ -378,7 +378,7 @@ type redactStream struct {
 func newRedactStream(w io.Writer, store *Store, limit int64) *redactStream {
 	overlap := 0
 	if store != nil {
-		if n := store.maxFormLen(); n > 0 {
+		if n := store.MaxFormLen(); n > 0 {
 			overlap = n - 1
 		}
 	}
@@ -436,16 +436,13 @@ func (rs *redactStream) emit(s string) error {
 	return err
 }
 
-// maxFormLen is the longest redactable value form, used as the streaming
-// overlap. Zero when no value is stored.
-func (s *Store) maxFormLen() int {
-	best := 0
-	for _, form := range s.valueForms() {
-		if len(form) > best {
-			best = len(form)
-		}
-	}
-	return best
+// MaxFormLen is the longest redactable value form, used as a streaming
+// overlap. Zero when no value is stored. Encoded forms (base64, URL, JSON)
+// count; they are bounded by the stored value. The result is cached until
+// the vault changes.
+func (s *Store) MaxFormLen() int {
+	n, _ := s.FormLimit()
+	return n
 }
 
 func writeErr(w http.ResponseWriter, status int, err error) {

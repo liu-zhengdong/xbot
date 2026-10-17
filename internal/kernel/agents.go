@@ -85,6 +85,7 @@ func (k *Kernel) subTools() []tools.Tool {
 	sh := tools.NewShell()
 	sh.Dir = k.WorkDir
 	sh.Shared = k.SharedDir
+	sh.BindJobs(k.shellJobs())
 	return []tools.Tool{
 		sh,
 		&tools.ReadFile{Root: k.WorkDir},

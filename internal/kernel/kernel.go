@@ -125,6 +125,20 @@ type Kernel struct {
 	todoStepsV int
 	todoLoaded bool
 	todoMem    todoFile
+
+	// shell jobs live for this kernel, which is the serve process. A new kernel
+	// loads the same directory and marks anything still running as lost.
+	shellOnce    sync.Once
+	shell        *tools.Jobs
+	shellMu      sync.Mutex
+	shellClaimed map[string]bool
+	// retain cache: the longest secret form, invalidated when the vault
+	// generation or the in-memory secrets change.
+	retainOK   bool
+	retainN    int
+	retainMem  int
+	retainVGen uint64
+	retainRGen uint64
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -416,6 +430,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 					remind = todo
 				}
 			}
+			// A shell job that finished during this step is attached here, after
+			// the tool results, so it does not land in the middle of a call.
+			if note := k.shellNotice(k.shellPrev()); note != "" {
+				if rerr := k.reminders().Record(t.lastSeq(), KindShellJob, note, k.now()); rerr != nil && appendErr == nil {
+					appendErr = rerr
+				}
+				if remind != "" {
+					remind += "\n\n" + note
+				} else {
+					remind = note
+				}
+			}
 			if stop {
 				_ = k.Bot.LogTrace(bot.TraceStop, reason, k.now())
 			}
@@ -570,9 +596,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		}
 		if bg {
 			k.finishBackground(t, produced, err)
+			k.flushShellWake()
 			cancelRun()
 			return
 		}
+		k.flushShellWake()
 		done <- result{produced, err}
 	}()
 	var tick <-chan time.Time
@@ -929,6 +957,12 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 func (k *Kernel) Close() error {
 	if k == nil {
 		return nil
+	}
+	k.shellMu.Lock()
+	jobs := k.shell
+	k.shellMu.Unlock()
+	if jobs != nil {
+		jobs.Shutdown()
 	}
 	var first error
 	for _, l := range k.snapshotLinks() {
