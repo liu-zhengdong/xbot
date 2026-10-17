@@ -214,11 +214,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 		}
 	}
-	if seq == 0 && ev.Source != link.NameTimer {
-		if err := k.archiveTodoForNewTask(); err != nil {
-			return err
-		}
-	}
 	if seq == 0 {
 		entry := bot.Entry{
 			Time:    ev.Time,

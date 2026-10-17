@@ -464,9 +464,61 @@ func (k *Kernel) todoGate(t *turn, msg provider.Message) (string, bool) {
 	return text, true
 }
 
+// asksOwner is true when the model stops on a question to the owner.
+// Only the last sentence of the last line counts, so a "?" inside a URL or
+// a code span earlier in the reply does not suppress the gate.
 func asksOwner(msg provider.Message) bool {
-	s := strings.TrimSpace(msg.Content)
-	return strings.Contains(s, "?") || strings.Contains(s, "？")
+	line := lastNonEmptyLine(msg.Content)
+	if line == "" {
+		return false
+	}
+	sent := strings.TrimSpace(lastSentence(line))
+	sent = strings.TrimRight(sent, "\"'`）)]】」")
+	if sent == "" {
+		return false
+	}
+	r := []rune(sent)
+	switch r[len(r)-1] {
+	case '?', '？':
+		return true
+	default:
+		return false
+	}
+}
+
+func lastNonEmptyLine(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+// lastSentence returns the tail of line after the last sentence break.
+// A break is . ! ? 。 ！ ？ followed by whitespace and more text. A "?" that
+// is not followed by whitespace, as in a URL or a code token, stays put.
+func lastSentence(line string) string {
+	rs := []rune(line)
+	start := 0
+	for i := 0; i < len(rs); i++ {
+		switch rs[i] {
+		case '.', '!', '?', '。', '！', '？':
+			j := i + 1
+			if j >= len(rs) || (rs[j] != ' ' && rs[j] != '\t') {
+				continue
+			}
+			for j < len(rs) && (rs[j] == ' ' || rs[j] == '\t') {
+				j++
+			}
+			if j < len(rs) {
+				start = j
+			}
+		}
+	}
+	return string(rs[start:])
 }
 
 // TodoSummary is one short line for the status API. Empty when there is no list.
@@ -607,31 +659,6 @@ func sameTodoTask(prev, next []TodoItem) bool {
 		}
 	}
 	return false
-}
-
-// archiveTodoForNewTask moves the active list aside when a new owner message
-// starts. A timer wake is not a new task and leaves the list in place.
-func (k *Kernel) archiveTodoForNewTask() error {
-	if k == nil || k.turnIsTimer() {
-		return nil
-	}
-	on, _ := k.todoPolicy()
-	if !on {
-		return nil
-	}
-	k.todoMu.Lock()
-	defer k.todoMu.Unlock()
-	f, err := k.todoStateLocked()
-	if err != nil || len(f.Items) == 0 {
-		return err
-	}
-	if err := k.appendTodoArchive(f.Items); err != nil {
-		return err
-	}
-	f.Items = nil
-	f.Reminded = nil
-	k.todoMem = f
-	return k.saveTodo(f)
 }
 
 func (k *Kernel) appendTodoArchive(items []TodoItem) error {
