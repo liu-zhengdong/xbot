@@ -204,7 +204,7 @@ func (k *Kernel) protectedCall(ctx context.Context, tool tools.Tool, args json.R
 		if cwd == "" {
 			cwd = k.cwdFor(ctx)
 		}
-		return review.TouchesProtected(cmd, cwd, protected)
+		return review.TouchesProtected(cmd, cwd, protected) || review.RemoteCLIWrites(cmd)
 	}
 	path := callPath(ctx, tool, args)
 	if path == "" {

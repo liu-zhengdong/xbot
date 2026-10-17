@@ -734,6 +734,37 @@ func rawProtected(s string) bool {
 	return false
 }
 
+// RemoteCLIWrites reports an `xbot remote` command that changes the device
+// table or gateway (add, invite, join, remove, or gateway <url>). The command
+// rewrites the protected remote files without naming their paths.
+func RemoteCLIWrites(cmd string) bool {
+	words := shellWords(cmd)
+	for i, w := range words {
+		base := strings.ToLower(filepath.Base(w))
+		if base != "xbot" && base != "xbot.exe" {
+			continue
+		}
+		for j := i + 1; j < len(words); j++ {
+			if words[j] != "remote" {
+				continue
+			}
+			if j+1 >= len(words) {
+				break
+			}
+			switch words[j+1] {
+			case "id", "list", "-h", "--help", "help":
+				continue
+			case "gateway":
+				if j+2 >= len(words) {
+					continue
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // sourceSegment reports whether a path segment looks like a source or doc file
 // rather than vault data, so a "vault" package path is not mistaken for the
 // vault directory.

@@ -239,3 +239,27 @@ func TestReviewCallRootEnvFileAsks(t *testing.T) {
 		t.Fatalf("shell cat env need=%v err=%v", need, err)
 	}
 }
+
+// `xbot remote add/join/gateway` rewrites the protected device table without
+// naming it, so it used to run with no card under allow mode.
+func TestReviewCallRemoteCLIWritesAsk(t *testing.T) {
+	k, _ := protectedKernel(t)
+	sh := &tools.Shell{}
+	for cmd, want := range map[string]bool{
+		"xbot remote add evil AAAA --xkey BBBB":                    true,
+		"cd /tmp && xbot --root ~/.xbot remote join xbot-pair:abc": true,
+		"/usr/local/bin/xbot remote gateway https://evil.example":  true,
+		"xbot remote remove laptop":                                true,
+		"xbot remote invite":                                       true,
+		"xbot remote list":                                         false,
+		"xbot remote id":                                           false,
+		"xbot remote gateway":                                      false,
+		"git remote add origin x":                                  false,
+	} {
+		args, _ := json.Marshal(map[string]string{"command": cmd})
+		need, _, err := reviewedTool{Tool: sh, k: k}.Confirm(args)
+		if err != nil || need != want {
+			t.Errorf("%q need=%v err=%v, want %v", cmd, need, err, want)
+		}
+	}
+}
