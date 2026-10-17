@@ -92,7 +92,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if resolved.APIKey == "" {
 		return nil, person.Person{}, fmt.Errorf("%s is empty", resolved.KeyEnv)
 	}
-	client := &provider.Client{BaseURL: resolved.BaseURL, APIKey: resolved.APIKey, Model: resolved.Model}
+	client := &provider.Client{BaseURL: resolved.BaseURL, APIKey: resolved.APIKey, Model: resolved.Model, Thinking: resolved.Thinking}
 	budget := kernel.BudgetFor(b.Config())
 	if b.Config().ContextLimit == 0 && contextLen > 0 {
 		budget = kernel.BudgetFor(bot.Config{ContextLimit: contextLen})

@@ -207,7 +207,7 @@ func openReal(root, id string) (provider.Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("eval: %w", err)
 	}
-	return &provider.Client{BaseURL: endpoint.BaseURL, APIKey: endpoint.APIKey, Model: endpoint.Model}, nil
+	return &provider.Client{BaseURL: endpoint.BaseURL, APIKey: endpoint.APIKey, Model: endpoint.Model, Thinking: endpoint.Thinking}, nil
 }
 
 func runCase(c Case, level string, script Script, real provider.Provider) CaseResult {

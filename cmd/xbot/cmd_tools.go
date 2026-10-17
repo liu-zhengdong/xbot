@@ -181,7 +181,7 @@ func cmdProvider(root string, args []string) error {
 	case "add":
 		ordered, err := reorderFlags(args[1:], map[string]bool{
 			"base-url": true, "api-key-env": true, "model": true, "context": true,
-			"todo": true, "todo-steps": true,
+			"todo": true, "todo-steps": true, "thinking": true,
 		})
 		if err != nil {
 			return err
@@ -194,13 +194,14 @@ func cmdProvider(root string, args []string) error {
 		contextLen := fs.Int("context", 0, "context length in tokens")
 		todoFlag := fs.String("todo", "", "todo reminders: on, off, or empty to keep the current setting")
 		todoSteps := fs.Int("todo-steps", 0, "tool steps without a todo update before a reminder; 0 keeps the default")
+		thinking := fs.String("thinking", "", "thinking field: off, omit, or empty to keep the current setting")
 		if err := fs.Parse(ordered); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--todo on|off] [--todo-steps N]")
+			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--todo on|off] [--todo-steps N] [--thinking off|omit]")
 		}
-		spec := config.ModelSpec{Name: *model, Context: *contextLen, TodoSteps: *todoSteps}
+		spec := config.ModelSpec{Name: *model, Context: *contextLen, TodoSteps: *todoSteps, Thinking: strings.ToLower(strings.TrimSpace(*thinking))}
 		if prev, _, err := config.Lookup(root, fs.Arg(0), *model); err == nil {
 			for _, m := range prev.Models {
 				if m.Name == *model {

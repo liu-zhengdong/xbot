@@ -29,11 +29,14 @@ type Provider struct {
 // provider or model name contains "deepseek", off otherwise.
 // TodoSteps is how many tool steps a list must sit unchanged before a reminder.
 // Zero means the default of 6.
+// Thinking is "off" (send thinking disabled), "omit" (send no thinking field),
+// or empty: off for DeepSeek model names, omit for the rest.
 type ModelSpec struct {
 	Name      string `json:"name"`
 	Context   int    `json:"context"`
 	Todo      *bool  `json:"todo,omitempty"`
 	TodoSteps int    `json:"todo_steps,omitempty"`
+	Thinking  string `json:"thinking,omitempty"`
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -131,6 +134,9 @@ func Add(root string, p Provider, model ModelSpec) error {
 			if model.TodoSteps == 0 {
 				model.TodoSteps = cur.Models[n].TodoSteps
 			}
+			if model.Thinking == "" {
+				model.Thinking = cur.Models[n].Thinking
+			}
 			cur.Models[n] = model
 			replaced = true
 			break
@@ -223,24 +229,30 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	if err != nil {
 		return ModelConfig{}, 0, err
 	}
+	if err := validThinking(model.Thinking); err != nil {
+		return ModelConfig{}, 0, err
+	}
 	key := strings.TrimSpace(getenv(p.APIKeyEnv))
 	if key == "" {
 		return ModelConfig{}, 0, fmt.Errorf("providers: %s is empty", p.APIKeyEnv)
 	}
 	return ModelConfig{
-		APIKey:  key,
-		BaseURL: strings.TrimRight(p.BaseURL, "/"),
-		Model:   model.Name,
-		KeyEnv:  p.APIKeyEnv,
+		APIKey:   key,
+		BaseURL:  strings.TrimRight(p.BaseURL, "/"),
+		Model:    model.Name,
+		KeyEnv:   p.APIKeyEnv,
+		Thinking: model.Thinking,
 	}, model.Context, nil
 }
 
 // ModelConfig is a resolved endpoint. KeyEnv is the variable name, not a place to store the key.
+// Thinking is the model spec's thinking switch, empty when unset.
 type ModelConfig struct {
-	APIKey  string
-	BaseURL string
-	Model   string
-	KeyEnv  string
+	APIKey   string
+	BaseURL  string
+	Model    string
+	KeyEnv   string
+	Thinking string
 }
 
 func validateProvider(p Provider, modelRequired bool) error {
@@ -269,7 +281,15 @@ func validateModel(m ModelSpec) error {
 	if m.TodoSteps < 0 {
 		return errors.New("providers: todo_steps must not be negative")
 	}
-	return nil
+	return validThinking(m.Thinking)
+}
+
+func validThinking(v string) error {
+	switch v {
+	case "", "off", "omit":
+		return nil
+	}
+	return fmt.Errorf("providers: thinking must be off or omit, got %q", v)
 }
 
 func nameOK(s string) bool {

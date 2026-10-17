@@ -107,7 +107,7 @@ Usage:
 Environment:
   XBOT_API_KEY    API key when a bot has no provider binding
   XBOT_BASE_URL   OpenAI-compatible base URL (default https://api.deepseek.com/v1)
-  XBOT_MODEL       Model name (default deepseek-chat)
+  XBOT_MODEL       Model name (default deepseek-flash)
   XBOT_PUBLIC_URL   Base URL printed for new webhooks (default http://127.0.0.1:8787)
   XBOT_CLOUDFLARED  cloudflared binary for --tunnel cloudflare (default cloudflared)
   XBOT_TAILSCALE    tailscale binary for --tunnel tailscale (default tailscale)

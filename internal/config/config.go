@@ -5,7 +5,7 @@ import "strings"
 
 const (
 	defaultBaseURL = "https://api.deepseek.com/v1"
-	defaultModel   = "deepseek-chat"
+	defaultModel   = "deepseek-flash"
 )
 
 // Model is the OpenAI-compatible endpoint the bot talks to.
