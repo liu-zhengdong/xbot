@@ -46,7 +46,7 @@ func TestComputerTabLayout(t *testing.T) {
 		`"secondary", "引导"`, `"secondary", "停止"`,
 		`"没有进行中的任务"`, `"没有例程"`, `"最近结束 · " + finished.length`,
 		`state.recentTasksOpen.has(botName)`, `toggle.setAttribute("aria-expanded", String(open))`,
-		`list.hidden = !open`, `clip(plainText(ag.task || ag.id), 80)`, `taskStatus(ag.status)`,
+		`list.hidden = !open`, `clip(plainText(displayText(ag.task || ag.id)) || "子任务", 80)`, `taskStatus(ag.status)`,
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("computer tab missing %s", want)

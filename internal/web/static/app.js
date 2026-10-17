@@ -293,7 +293,7 @@
     head.append(bgBtn("err", "关闭", bgClose));
     const list = el("ul", "bg-pl");
     running.forEach((r) => {
-      const li = bgRow("run", "spin", r.task || r.id, "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), [
+      const li = bgRow("run", "spin", plainText(displayText(r.task || r.id)) || "后台任务", "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), [
         bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.focusSteer = r.id; bgState.force = true; bgRender(); }),
         bgBtn("stop", "取消", () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST")),
       ]);
@@ -346,7 +346,7 @@
           cancelled: ["int", "pause", "已取消"],
           interrupted: ["int", "pause", "已中断"],
         }[f.status] || ["int", "pause", taskStatus(f.status)];
-        done.append(bgRow(map[0], map[1], f.task || f.id, map[2]));
+        done.append(bgRow(map[0], map[1], plainText(displayText(f.task || f.id)) || "后台任务", map[2]));
       });
       parts.push(el("p", "bg-sec", "最近结束"), done);
     }
@@ -1044,13 +1044,77 @@
     const source = /source="([^"]*)"/.exec(m[1]);
     const sender = /sender="([^"]*)"/.exec(m[1]);
     const type = /type="([^"]*)"/.exec(m[1]);
+    const attrs = Object.fromEntries(Array.from(m[1].matchAll(/([\w-]+)="([^"]*)"/g), a => [a[1], a[2]]));
     return {
+      attributes: attrs,
       type: type ? type[1] : "",
       text: m[2],
       untrusted: true,
       source: source ? source[1] : "",
       sender: sender ? sender[1] : "",
     };
+  }
+
+  // Display only: transcript content and routing identifiers stay intact.
+  function displayText(text) {
+    return String(text || "")
+      .replace(/已转到后台\s*bg_[0-9a-f]{4,}\b\s*继续做/g, "已转到后台继续做")
+      .replace(/\bbg_[0-9a-f]{4,}\b/g, "")
+      .replace(/\bsa_[0-9a-f]{4,}\b/g, "").trim();
+  }
+
+  function eventLine(parsed, key) {
+    const attrs = parsed.attributes || {};
+    const first = clip(plainText(displayText(parsed.text.split(/\r?\n/)[0])), 80);
+    const task = plainText(displayText(attrs.task_title || attrs.task || attrs.title || attrs.name)) || "子任务";
+    const failed = /fail|error/i.test(parsed.type + " " + (attrs.status || ""));
+    const timeout = failed && /request timeout after (\d+)m/i.exec(parsed.text);
+    const reason = timeout ? "模型超时（" + timeout[1] + " 分钟）" : "出错了";
+    const label = parsed.source === "subagent"
+      ? (failed ? "子任务失败：" + reason : "子任务「" + task + "」：" + first)
+      : "来自 " + (displayText(parsed.source) || "外部事件") + "：" + first;
+    const row = el("div", "routine-line event-line");
+    const head = el("button", "secondary sysline event-toggle");
+    head.type = "button";
+    head.append(icon("bubble"), el("span", "", label));
+    const drawer = el("div", "routine-drawer event-raw", parsed.text);
+    drawer.hidden = !openRoutines.has(key);
+    head.setAttribute("aria-expanded", String(!drawer.hidden));
+    head.addEventListener("click", () => {
+      drawer.hidden = !drawer.hidden;
+      head.setAttribute("aria-expanded", String(!drawer.hidden));
+      if (drawer.hidden) openRoutines.delete(key);
+      else openRoutines.add(key);
+    });
+    row.append(head, drawer);
+    return row;
+  }
+
+  function backgroundRelays(messages) {
+    const normalize = text => String(text || "").replace(/\s+/g, " ").trim();
+    const finalByBranch = new Map();
+    messages.forEach((m, i) => {
+      if (m.role === "assistant" && m.branch) finalByBranch.set(m.branch, i);
+    });
+    const suppressed = new Set();
+    const pending = new Set();
+    messages.forEach((m, i) => {
+      const parsed = unwrap(m.content || "");
+      if (m.role === "user" && parsed.untrusted && parsed.source === "subagent" && parsed.type === "fork_end") {
+        if (normalize(parsed.text)) pending.add(normalize(parsed.text));
+      }
+      if (m.role !== "assistant") return;
+      if (m.branch) {
+        if (finalByBranch.get(m.branch) === i && !(m.tool_calls || []).length && normalize(m.content)) {
+          pending.add(normalize(m.content));
+        }
+        return;
+      }
+      if (!(m.tool_calls || []).length && pending.has(normalize(m.content))) suppressed.add(i);
+      // Even a different or tool-calling first reply consumes the opportunity.
+      pending.clear();
+    });
+    return suppressed;
   }
 
   function routineOf(m) {
@@ -1582,7 +1646,7 @@
   function previewText(m) {
     if (!m) return "";
     const raw = m.role === "user" ? unwrap(m.content || "").text : (m.content || "");
-    return String(raw).replace(/\r\n/g, "\n").trim();
+    return String(m.role === "assistant" ? displayText(raw) : raw).replace(/\r\n/g, "\n").trim();
   }
 
   function quoteLine(text) {
@@ -1708,7 +1772,7 @@
       body.append(name);
     }
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    if (m.content) appendRich(body, m.content);
+    if (m.content) appendRich(body, displayText(m.content));
     const calls = m.tool_calls || [];
     const peers = [];
     for (const call of calls) {
@@ -1759,6 +1823,7 @@
     let any = false;
     let lastKey = "";
     let lastRoutine = null;
+    const relays = backgroundRelays(messages);
     const latestCard = {};
     const latestApproval = {};
     messages.forEach((m, i) => {
@@ -1827,6 +1892,12 @@
           }
           return;
         }
+        if (parsed.untrusted) {
+          inner.append(eventLine(parsed, (state.sel ? state.sel.id : "") + ":event:" + (m.seq || m.time || i)));
+          any = true;
+          lastKey = "";
+          return;
+        }
         any = true;
         const row = userBubble(m, messages);
         if (lastKey === "user") row.classList.add("cont");
@@ -1834,6 +1905,7 @@
         inner.append(row);
         return;
       }
+      if (relays.has(i)) return;
       any = true;
       const key = "bot:" + (who || "");
       const cont = lastKey === key;
@@ -2207,7 +2279,7 @@
   }
 
   function plainText(md) {
-    return String(md || "")
+    return displayText(md)
       .replace(/^\s*(```|~~~)[^\n]*$/gm, " ")
       .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -2247,8 +2319,8 @@
   }
 
   function realPreview(text) {
-    const raw = String(text || "").trim();
-    return raw && raw !== "SILENT" ? clip(plainText(raw), 72) : "";
+    const raw = plainText(displayText(text));
+    return raw && raw !== "SILENT" ? clip(raw, 72) : "";
   }
 
   function lineForBot(b) {
@@ -3484,7 +3556,7 @@
       const card = el("div", "task");
       const top = el("div", "task-top");
       top.append(el("i", "status-dot run"), el("span", "", "进行中"));
-      card.append(top, el("p", "task-text", clip(plainText(ag.task || ag.id), 140)));
+      card.append(top, el("p", "task-text", clip(plainText(displayText(ag.task || ag.id)) || "子任务", 140)));
       const row = el("div", "row");
       const field = document.createElement("input");
       field.placeholder = "消息";
@@ -3525,7 +3597,7 @@
         const row = el("button", "recent-task");
         row.type = "button";
         row.setAttribute("aria-expanded", "false");
-        row.append(el("span", "recent-title", clip(plainText(ag.task || ag.id), 80)),
+        row.append(el("span", "recent-title", clip(plainText(displayText(ag.task || ag.id)) || "子任务", 80)),
           el("span", ag.status === "failed" ? "recent-status failed" : "recent-status",
             taskStatus(ag.status)));
         row.addEventListener("click", () => {
@@ -3537,7 +3609,7 @@
           }
           if (wasOpen) return;
           const drawer = el("div", "routine-drawer recent-detail");
-          drawer.append(el("div", "routine-prompt", plainText(ag.task || ag.id)),
+          drawer.append(el("div", "routine-prompt", plainText(displayText(ag.task || ag.id)) || "子任务"),
             el("div", "routine-source", "状态：" + (taskStatus(ag.status))));
           if (ag.finished_at) drawer.append(el("div", "routine-source", "结束时间：" + new Date(ag.finished_at).toLocaleString("zh-CN")));
           // Red only for an actual error text; a missing summary is just gray.
@@ -4078,7 +4150,7 @@
           host.querySelector(".typing-dots")?.remove();
           acc += payload.text;
           prose.replaceChildren();
-          appendMarkdown(prose, acc);
+          appendMarkdown(prose, displayText(acc));
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "tool") {
           const who = state.sel && state.sel.id;
