@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -25,15 +26,100 @@ func (w *writeTool) Run(context.Context, json.RawMessage) (string, error) {
 	return "ok", nil
 }
 
-func waitNoBackgrounds(t *testing.T, k *Kernel) {
+// backgroundWait bounds a test that is waiting for a background to fork or to
+// write its fork_end event. Past this, the helper fails instead of sitting
+// until the process timeout.
+const backgroundWait = 30 * time.Second
+
+// waitNoBackgrounds waits until each background has its fork_end event in the
+// inbox. An empty id list watches whatever is running now (or already finished).
+// "No backgrounds left" is not the signal: finishBackground drops the turn
+// from the running set before it posts the event, so a helper that returns on
+// an empty list lets the caller read the inbox one step too early.
+func waitNoBackgrounds(t *testing.T, k *Kernel, ids ...string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for len(k.Backgrounds()) > 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("background did not finish")
-		}
-		time.Sleep(20 * time.Millisecond)
+	if len(ids) == 0 {
+		ids = watchBackgroundIDs(t, k)
 	}
+	if len(ids) == 0 {
+		t.Fatal("no background to wait for")
+	}
+	for _, id := range ids {
+		waitForkEnd(t, k, id)
+	}
+}
+
+// watchBackgroundIDs collects background ids until none are running. If the
+// turn already finished before the first look, the ids come from the finished
+// list, which is updated in the same step that clears the running set and
+// before the inbox post.
+func watchBackgroundIDs(t *testing.T, k *Kernel) []string {
+	t.Helper()
+	deadline := time.Now().Add(backgroundWait)
+	seen := map[string]struct{}{}
+	for {
+		running := k.Backgrounds()
+		for _, bg := range running {
+			seen[bg.ID] = struct{}{}
+		}
+		if len(running) == 0 {
+			if len(seen) == 0 {
+				for _, bg := range k.FinishedBackgrounds() {
+					seen[bg.ID] = struct{}{}
+				}
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background still running after %s: %s", backgroundWait, joinIDs(seen))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return joinIDSlice(seen)
+}
+
+// waitForkEnd waits until the inbox log contains exactly one fork_end event
+// for id. Reload then synchronizes with the post, so later reads of the turn
+// see the writes that happened before the event.
+func waitForkEnd(t *testing.T, k *Kernel, id string) link.Event {
+	t.Helper()
+	if id == "" {
+		t.Fatal("fork_end wait missing background id")
+	}
+	deadline := time.Now().Add(backgroundWait)
+	want := "ev_" + id + "_end"
+	for {
+		posted := inboxPosts(t, k.Bot.InboxPath(), want)
+		switch len(posted) {
+		case 1:
+			if k.Inbox != nil {
+				if err := k.Inbox.Reload(); err != nil {
+					t.Fatalf("reload inbox after %s: %v", want, err)
+				}
+			}
+			return posted[0]
+		case 0:
+		default:
+			t.Fatalf("fork_end events %d for %s", len(posted), id)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("fork_end event %s not written within %s (running backgrounds: %d)", want, backgroundWait, len(k.Backgrounds()))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func joinIDs(seen map[string]struct{}) string {
+	return strings.Join(joinIDSlice(seen), ", ")
+}
+
+func joinIDSlice(seen map[string]struct{}) []string {
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func TestBackgroundSteerAppliedAfterStep(t *testing.T) {
@@ -52,7 +138,7 @@ func TestBackgroundSteerAppliedAfterStep(t *testing.T) {
 		t.Fatalf("controls %+v", cs)
 	}
 	close(g.release)
-	waitNoBackgrounds(t, k)
+	waitNoBackgrounds(t, k, id)
 	p := k.Provider.(*scripted)
 	last := p.reqs[len(p.reqs)-1].Messages
 	var steered bool
@@ -141,8 +227,12 @@ func TestBackgroundConfirmationGoesToOwner(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
+	bgs := k.Backgrounds()
+	if len(bgs) != 1 {
+		t.Fatalf("backgrounds %d", len(bgs))
+	}
 	close(g.release)
-	waitNoBackgrounds(t, k)
+	waitNoBackgrounds(t, k, bgs[0].ID)
 	select {
 	case tool := <-asked:
 		if tool != "send_email" {
@@ -175,3 +265,41 @@ func (oneToolLink) Name() string          { return "one" }
 func (l oneToolLink) Tools() []tools.Tool { return []tools.Tool{l.t} }
 
 func gateLinkOf(t tools.Tool) link.Link { return oneToolLink{t} }
+
+// TestWaitNoBackgroundsWaitsForForkEndEvent is the regression for the helper
+// returning as soon as the running set is empty. finishBackground clears that
+// set and only then posts the inbox event; a caller that reads the inbox at
+// the empty set sees zero fork_end events.
+func TestWaitNoBackgroundsWaitsForForkEndEvent(t *testing.T) {
+	k, _, box := forkKernel(t)
+	id := "bg_waitend"
+	k.bgMu.Lock()
+	k.bgs = map[string]*turn{id: {branch: id, task: "hold"}}
+	k.bgMu.Unlock()
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		k.bgMu.Lock()
+		delete(k.bgs, id)
+		ended := time.Now()
+		k.finished = append([]BackgroundInfo{{ID: id, Task: "hold", Status: "done", Ended: &ended}}, k.finished...)
+		k.bgMu.Unlock()
+		// The old helper has already returned in this window. The event is
+		// still absent, which is the failure the suite was hitting.
+		time.Sleep(300 * time.Millisecond)
+		ev := link.Event{
+			ID: "ev_" + id + "_end", Source: link.SourceSubagent, Type: "fork_end",
+			Content: "done", Sender: id, Time: time.Now().UTC(),
+		}
+		if err := box.Post(ev); err != nil {
+			t.Errorf("post fork_end: %v", err)
+		}
+	}()
+	start := time.Now()
+	waitNoBackgrounds(t, k, id)
+	if n := len(inboxPosts(t, k.Bot.InboxPath(), "ev_"+id+"_end")); n != 1 {
+		t.Fatalf("fork_end events %d", n)
+	}
+	if time.Since(start) < 250*time.Millisecond {
+		t.Fatal("wait returned before the fork_end event was written")
+	}
+}
