@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/machine/, internal/node/, internal/nodesync/, internal/tunnel/, internal/browser/, internal/desktop/]
-verified: 2026-10-17 @ 8c2279f
+verified: 2026-10-17 @ 060672d
 ---
 # 机器与设备
 
