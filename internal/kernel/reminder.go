@@ -1,11 +1,15 @@
 package kernel
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"xbot/internal/agent"
@@ -17,8 +21,9 @@ import (
 	"xbot/internal/provider"
 )
 
-// Reminder kinds wired now. Todo and file-change use the same Register path;
-// nothing in the kernel fires them until a later milestone plugs in a trigger.
+// Reminder kinds wired now. Todo uses the same Register path; nothing in the
+// kernel fires it until a later milestone plugs in a trigger. File changes are
+// fired from the freshness scan.
 const (
 	KindPendingApproval = "pending_approval"
 	KindLoop            = "loop"
@@ -246,14 +251,17 @@ func clipReminder(s string) string {
 const reminderKeep = 48
 
 // reminderLog is the sidecar. An empty path keeps notes in memory for tests.
-// The transcript body is never rewritten. Notes stay cached after the first
-// read; compaction rewrites the file when the live window no longer needs
-// the older lines.
+// The transcript body is never rewritten. Notes stay cached while the file's
+// size and mtime match the last read, so a second process appending or
+// rewriting the file is picked up on the next lookup. Compaction rewrites the
+// file when the live window no longer needs the older lines.
 type reminderLog struct {
 	mu     sync.Mutex
 	path   string
 	notes  []Reminder
 	loaded bool
+	size   int64
+	mtime  time.Time
 	redact func(string) string
 }
 
@@ -291,27 +299,76 @@ func (l *reminderLog) all() ([]Reminder, error) {
 	return append([]Reminder(nil), l.notes...), nil
 }
 
-// load reads the file once. The caller holds l.mu.
+// load reads the sidecar when it has not been read, or when size or mtime
+// changed since the last read. The caller holds l.mu. Stat and the read share
+// one shared file lock so a concurrent append cannot land between them.
 func (l *reminderLog) load() error {
-	if l.loaded || l.path == "" {
+	if l.path == "" {
 		l.loaded = true
 		return nil
 	}
-	var notes []Reminder
-	err := fsutil.ReadJSONL(l.path, func(line []byte) error {
-		var n Reminder
-		if err := json.Unmarshal(line, &n); err != nil {
-			return err
-		}
-		notes = append(notes, n)
+	f, err := os.Open(l.path)
+	if os.IsNotExist(err) {
+		l.notes = nil
+		l.loaded = true
+		l.size = 0
+		l.mtime = time.Time{}
 		return nil
-	})
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if l.loaded && st.Size() == l.size && st.ModTime().Equal(l.mtime) {
+		return nil
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	notes, err := parseReminderNotes(l.path, data)
 	if err != nil {
 		return err
 	}
 	l.notes = notes
+	l.size = st.Size()
+	l.mtime = st.ModTime()
 	l.loaded = true
 	return nil
+}
+
+func parseReminderNotes(path string, data []byte) ([]Reminder, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	if data[len(data)-1] != '\n' {
+		if i := bytes.LastIndexByte(data, '\n'); i < 0 {
+			return nil, nil
+		} else {
+			data = data[:i+1]
+		}
+	}
+	lines := bytes.Split(data, []byte("\n"))
+	var notes []Reminder
+	for i, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		var n Reminder
+		if err := json.Unmarshal(line, &n); err != nil {
+			return nil, fmt.Errorf("%s:%d: %w", path, i+1, err)
+		}
+		notes = append(notes, n)
+	}
+	return notes, nil
 }
 
 func (l *reminderLog) Append(seq int, kind, text string, at time.Time) error {
@@ -332,7 +389,13 @@ func (l *reminderLog) Append(seq int, kind, text string, at time.Time) error {
 	if l.path == "" {
 		return nil
 	}
-	return fsutil.AppendJSONL(l.path, n)
+	if err := fsutil.AppendJSONL(l.path, n); err != nil {
+		return err
+	}
+	// Another writer may have appended between our cached read and this write.
+	// Drop the cache and read the file back under its lock.
+	l.loaded = false
+	return l.load()
 }
 
 // Compact drops reminders that belong to transcript lines the next request
@@ -406,7 +469,11 @@ func (l *reminderLog) rewrite() error {
 		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, l.path)
+	if err := os.Rename(tmp, l.path); err != nil {
+		return err
+	}
+	l.loaded = false
+	return l.load()
 }
 
 func (k *Kernel) reminderPath() string {
@@ -426,8 +493,8 @@ func (k *Kernel) reminders() *Channel {
 	return k.channel
 }
 
-// reminderKinds registers the live kinds for this wake. Todo and file-change
-// stay unregistered until their milestones supply a trigger.
+// reminderKinds registers the live kinds for this wake. Todo stays
+// unregistered until its milestone supplies a trigger.
 func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 	// A fresh channel per wake shares the sidecar. The background loop and the
 	// foreground wake both touch the log; they must not share the kind slice.
@@ -446,6 +513,11 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 		Name:     KindBackgroundDone,
 		Cooldown: 0,
 		Trigger:  k.backgroundTrigger(),
+	})
+	ch.Register(Kind{
+		Name:     KindFileChange,
+		Cooldown: fileChangeCooldown,
+		Trigger:  k.fileChangeTrigger(),
 	})
 	return ch
 }

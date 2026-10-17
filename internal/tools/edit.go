@@ -62,6 +62,9 @@ func (e *EditFile) ResolvedPath(args json.RawMessage) string {
 	return path
 }
 
+// ShownPath is the path the model should see. A sandbox rewrites the host path.
+func (e *EditFile) ShownPath(abs string) string { return DisplayPath(e.Sandbox, abs) }
+
 func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err

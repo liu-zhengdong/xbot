@@ -17,6 +17,7 @@
 - **等待人决定的计时要挂在等待本身上，不能只靠外层流。** 原因：审批卡 60 秒随 SSE 断开失效，dev 第一版改成 24h 却在 ctx.Done 分支没有计时器。证据：`ee240a4`、`6f3ca0c`。Seen 1×（2026-10-17）
 - **收益递减只数续段，不数普通工具步。** 原因：把每一步短工具调用都当成续轮后，第 4 步提醒、第 5 步硬停，25 步的状态接口停在 step 5。续段是后台因步数上限开的下一段。证据：`TestToolStepsAreNotDiminishingReturns`、`TestBotStepsEndpoint`。Seen 1×（2026-10-17）
 - **同参循环只数连续重复，并按命令分开计。** 原因：失败的 `go test` 输出不以 `error:` 开头，被当成成功；`go build` 三次加 `go vet` 三次共用一个停机计数，第 6 次硬停。中间夹了别的调用要清零，成功一次要清掉失败计数。证据：`TestEditAndRetestDoesNotStop`、`TestBuildAndVetDoNotShareAStop`。Seen 1×（2026-10-17）
+- **追加日志的进程内缓存要在文件 size 或 mtime 变了之后重新读。** 原因：两个进程各写一份 `reminders.jsonl` 时，先读进内存的那份一直用旧列表，冷却和去重都看漏。证据：`TestReminderCacheReloadsWhenFileChanges`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

@@ -31,7 +31,7 @@ type ReadFile struct {
 func (r *ReadFile) Name() string { return "read_file" }
 
 func (r *ReadFile) Description() string {
-	return "Read a text file. offset is the 1-based starting line. limit is how many lines to return."
+	return "Read a text file. offset is the 1-based starting line. limit is how many lines to return. force reads it again even when the file is unchanged since the last read."
 }
 
 func (r *ReadFile) Parameters() any {
@@ -39,6 +39,7 @@ func (r *ReadFile) Parameters() any {
 		"path":   stringProp("File path"),
 		"offset": intProp("1-based line number to start at (default 1)"),
 		"limit":  intProp("Maximum number of lines (default 200)"),
+		"force":  boolProp("Return the file again even if it is unchanged since the last read"),
 	}, []string{"path"})
 }
 
@@ -65,6 +66,9 @@ func (r *ReadFile) ResolvedPath(args json.RawMessage) string {
 	}
 	return path
 }
+
+// ShownPath is the path the model should see. A sandbox rewrites the host path.
+func (r *ReadFile) ShownPath(abs string) string { return DisplayPath(r.Sandbox, abs) }
 
 func (r *ReadFile) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if err := ctx.Err(); err != nil {

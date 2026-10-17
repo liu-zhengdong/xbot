@@ -15,6 +15,7 @@ func rootCauseScript() Script {
 	return Script{
 		{Tool: "read_file", Args: args(map[string]string{"path": "fonts/README.txt"})},
 		{Tool: "shell", Args: args(map[string]string{"command": "cp fonts/source/Text.ttf fonts/Text.ttf"})},
+		{Tool: "read_file", Args: args(map[string]string{"path": "site.css"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "site.css", "content": css})},
 		{Text: "The page loads the face from site.css. fonts/Text.ttf was missing, so I copied it from fonts/source/Text.ttf."},
 	}
@@ -75,6 +76,7 @@ var passingScripts = map[string]Script{
 	"blank-chart": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "art/README.txt"})},
 		{Tool: "shell", Args: args(map[string]string{"command": "cp art/source/plot.svg art/plot.svg"})},
+		{Tool: "read_file", Args: args(map[string]string{"path": "view.html"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "view.html", "content": "<p>Chart</p>\n<img src=\"art/plot.svg\">\n"})},
 		{Text: "The page loads the drawing from view.html. art/plot.svg was missing, so I copied it from art/source/plot.svg."},
 	},

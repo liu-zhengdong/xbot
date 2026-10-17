@@ -1,0 +1,568 @@
+package kernel
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"xbot/internal/tools"
+)
+
+const (
+	// maxFreshBytes caps the bytes hashed for a freshness check. Larger files
+	// are compared by size plus a prefix hash.
+	maxFreshBytes = 4 << 20
+	// maxPreviewBytes is how much of a file is kept so a later reminder can
+	// show a short diff without rereading the old bytes from disk.
+	maxPreviewBytes = 8 << 10
+	maxTrackedFiles = 64
+	maxDiffLines    = 8
+	maxDiffFiles    = 8
+
+	fileChangeCooldown = time.Minute
+
+	msgNotRead = "has not been read in this session; read it before writing"
+	msgStale   = "changed on disk since it was read at step"
+	msgReceipt = "unchanged since last read at step"
+	msgRefresh = "record refreshed; no need to reread to verify"
+	msgDenied  = "already denied by the owner with these arguments; do not retry this call unchanged"
+)
+
+// fileRec is one file this bot has read or written during this kernel's life.
+type fileRec struct {
+	mtime   time.Time
+	size    int64
+	hash    string
+	partial bool
+	step    int
+	full    bool
+	preview string
+	label   string
+	seq     uint64
+}
+
+type fileSnap struct {
+	mtime   time.Time
+	size    int64
+	hash    string
+	partial bool
+	lines   int
+	preview string
+}
+
+type readParams struct {
+	Offset int  `json:"offset"`
+	Limit  int  `json:"limit"`
+	Force  bool `json:"force"`
+}
+
+type pathViewer interface {
+	ShownPath(abs string) string
+}
+
+func modelPath(tool tools.Tool, abs string) string {
+	if v, ok := tool.(pathViewer); ok {
+		if s := v.ShownPath(abs); s != "" {
+			return s
+		}
+	}
+	return abs
+}
+
+func toolPath(tool tools.Tool, args json.RawMessage) (string, bool) {
+	pt, ok := tool.(tools.PathTool)
+	if !ok {
+		return "", false
+	}
+	p := pt.ResolvedPath(args)
+	if p == "" {
+		return "", false
+	}
+	return p, true
+}
+
+func (rec *fileRec) matches(snap fileSnap) bool {
+	return rec != nil && rec.size == snap.size && rec.hash == snap.hash && rec.partial == snap.partial
+}
+
+// freshEnough reports whether path still has the bytes rec recorded.
+// Equal size and mtime skip the hash. A newer mtime with the same hash is
+// clock jitter and still counts as fresh; the returned snap carries that mtime.
+func freshEnough(rec *fileRec, path string) (fileSnap, bool, error) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return fileSnap{}, false, err
+	}
+	if st.IsDir() {
+		return fileSnap{}, false, fmt.Errorf("directory")
+	}
+	if rec != nil && !rec.partial && st.Size() == rec.size && st.ModTime().Equal(rec.mtime) {
+		return fileSnap{mtime: st.ModTime(), size: st.Size(), hash: rec.hash}, true, nil
+	}
+	snap, err := snapshotFile(path)
+	if err != nil {
+		return fileSnap{}, false, err
+	}
+	if rec == nil {
+		return snap, false, nil
+	}
+	return snap, rec.matches(snap), nil
+}
+
+// snapshotFile stats and hashes path. A missing file returns the os error.
+func snapshotFile(path string) (fileSnap, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return fileSnap{}, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return fileSnap{}, err
+	}
+	if st.IsDir() {
+		return fileSnap{}, fmt.Errorf("directory")
+	}
+	buf := make([]byte, maxFreshBytes+1)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return fileSnap{}, err
+	}
+	partial := n > maxFreshBytes
+	if partial {
+		n = maxFreshBytes
+	}
+	sum := sha256.Sum256(buf[:n])
+	prev := buf[:n]
+	if len(prev) > maxPreviewBytes {
+		prev = prev[:maxPreviewBytes]
+	}
+	lines := 0
+	if !partial {
+		lines = bytes.Count(buf[:n], []byte{'\n'})
+		if n > 0 && buf[n-1] != '\n' {
+			lines++
+		}
+	}
+	return fileSnap{
+		mtime:   st.ModTime(),
+		size:    st.Size(),
+		hash:    hex.EncodeToString(sum[:]),
+		partial: partial,
+		lines:   lines,
+		preview: string(prev),
+	}, nil
+}
+
+// unchangedReceipt is the short stand-in for a second read of a file this
+// session already saw in full, when the bytes on disk still match.
+func (k *Kernel) unchangedReceipt(tool tools.Tool, args json.RawMessage) (string, bool) {
+	if k == nil || tool == nil || tool.Name() != "read_file" {
+		return "", false
+	}
+	var in readParams
+	if json.Unmarshal(args, &in) != nil {
+		return "", false
+	}
+	if in.Force || in.Offset > 1 || in.Limit > 0 {
+		return "", false
+	}
+	path, ok := toolPath(tool, args)
+	if !ok {
+		return "", false
+	}
+	k.fileMu.Lock()
+	rec := k.files[path]
+	var copy fileRec
+	if rec != nil {
+		copy = *rec
+	}
+	k.fileMu.Unlock()
+	if rec == nil || !copy.full {
+		return "", false
+	}
+	snap, okMatch, err := freshEnough(&copy, path)
+	if err != nil || !okMatch {
+		return "", false
+	}
+	if !snap.mtime.Equal(copy.mtime) {
+		k.touchMtime(path, snap.mtime)
+	}
+	label := copy.label
+	if label == "" {
+		label = modelPath(tool, path)
+	}
+	return fmt.Sprintf("%s %d (%s, %d bytes). Pass force or a line range to read it again.", msgReceipt, copy.step, label, copy.size), true
+}
+
+// rejectUnreadOrStale blocks edit/write of an existing file the model has not
+// read in this session, and of a file whose bytes changed since that read.
+// A file that does not exist yet can be created without a prior read.
+func (k *Kernel) rejectUnreadOrStale(tool tools.Tool, args json.RawMessage) error {
+	if k == nil || tool == nil || !isFileEdit(tool.Name()) {
+		return nil
+	}
+	path, ok := toolPath(tool, args)
+	if !ok {
+		return nil
+	}
+	st, err := os.Stat(path)
+	if err != nil || st.IsDir() {
+		return nil
+	}
+	label := modelPath(tool, path)
+	k.fileMu.Lock()
+	rec := k.files[path]
+	var copy *fileRec
+	if rec != nil {
+		c := *rec
+		copy = &c
+	}
+	k.fileMu.Unlock()
+	name := tool.Name()
+	if copy == nil {
+		return fmt.Errorf("%s: %s %s", name, label, msgNotRead)
+	}
+	snap, okMatch, err := freshEnough(copy, path)
+	if err != nil {
+		return nil
+	}
+	if !okMatch {
+		return fmt.Errorf("%s: %s %s %d; read it again before writing", name, label, msgStale, copy.step)
+	}
+	if !snap.mtime.Equal(copy.mtime) {
+		k.touchMtime(path, snap.mtime)
+	}
+	return nil
+}
+
+// noteRead records a successful read. A ranged or truncated read still stores
+// the hash, but a later plain read returns the body until a full view exists.
+func (k *Kernel) noteRead(ctx context.Context, tool tools.Tool, args json.RawMessage, out string) {
+	if k == nil || tool == nil {
+		return
+	}
+	path, ok := toolPath(tool, args)
+	if !ok {
+		return
+	}
+	snap, err := snapshotFile(path)
+	if err != nil {
+		return
+	}
+	var in readParams
+	_ = json.Unmarshal(args, &in)
+	full := readCovered(out, snap)
+	// A range that starts past the first line has not seen the whole file,
+	// even when the returned span happens to reach the end.
+	if in.Offset > 1 {
+		full = false
+	}
+	k.storeFile(path, snap, k.currentStep(ctx), full, modelPath(tool, path))
+}
+
+// noteWrite refreshes the record from the bytes just written so the model
+// does not have to read the file back to prove the write. It reports whether
+// a record was stored.
+func (k *Kernel) noteWrite(ctx context.Context, tool tools.Tool, args json.RawMessage) bool {
+	if k == nil || tool == nil {
+		return false
+	}
+	path, ok := toolPath(tool, args)
+	if !ok {
+		return false
+	}
+	snap, err := snapshotFile(path)
+	if err != nil {
+		return false
+	}
+	k.storeFile(path, snap, k.currentStep(ctx), !snap.partial, modelPath(tool, path))
+	return true
+}
+
+func readCovered(out string, snap fileSnap) bool {
+	if strings.Contains(out, "[truncated]") {
+		return false
+	}
+	if strings.Contains(out, "past end of file") {
+		return snap.size == 0
+	}
+	if snap.partial {
+		return false
+	}
+	first, last, ok := parseLineSpan(out)
+	if !ok || first > 1 {
+		return false
+	}
+	if snap.lines == 0 {
+		return snap.size == 0
+	}
+	return last >= snap.lines
+}
+
+func parseLineSpan(out string) (first, last int, ok bool) {
+	line := out
+	if i := strings.IndexByte(out, '\n'); i >= 0 {
+		line = out[:i]
+	}
+	i := strings.LastIndex(line, "lines ")
+	if i < 0 {
+		return 0, 0, false
+	}
+	if _, err := fmt.Sscanf(line[i:], "lines %d-%d", &first, &last); err != nil {
+		return 0, 0, false
+	}
+	return first, last, true
+}
+
+func (k *Kernel) currentStep(ctx context.Context) int {
+	if k == nil {
+		return 0
+	}
+	t := k.turnFor(ctx)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.tools
+}
+
+func (k *Kernel) storeFile(path string, snap fileSnap, step int, full bool, label string) {
+	k.fileMu.Lock()
+	defer k.fileMu.Unlock()
+	if k.files == nil {
+		k.files = map[string]*fileRec{}
+	}
+	k.fileN++
+	k.files[path] = &fileRec{
+		mtime:   snap.mtime,
+		size:    snap.size,
+		hash:    snap.hash,
+		partial: snap.partial,
+		step:    step,
+		full:    full && !snap.partial,
+		preview: snap.preview,
+		label:   label,
+		seq:     k.fileN,
+	}
+	for len(k.files) > maxTrackedFiles {
+		var drop string
+		var oldest uint64 = ^uint64(0)
+		for p, r := range k.files {
+			if r != nil && r.seq < oldest {
+				oldest = r.seq
+				drop = p
+			}
+		}
+		if drop == "" {
+			return
+		}
+		delete(k.files, drop)
+	}
+}
+
+func (k *Kernel) touchMtime(path string, m time.Time) {
+	k.fileMu.Lock()
+	defer k.fileMu.Unlock()
+	if r := k.files[path]; r != nil {
+		r.mtime = m
+	}
+}
+
+func appendNote(out, note string) string {
+	if note == "" {
+		return out
+	}
+	if strings.TrimSpace(out) == "" {
+		return note
+	}
+	return out + "\n" + note
+}
+
+// fileChangeTrigger reports external edits to files this bot has read.
+// The channel supplies the cooldown. The same path and content hash is not
+// described twice.
+func (k *Kernel) fileChangeTrigger() func(time.Time, []Reminder) string {
+	return func(_ time.Time, prev []Reminder) string {
+		body := k.fileChangeNote(prev)
+		if body == "" {
+			return ""
+		}
+		return "<file_change>\nThese files changed on disk after they were read. Read them again before editing.\n" + body + "\n</file_change>"
+	}
+}
+
+func (k *Kernel) fileChangeNote(prev []Reminder) string {
+	if k == nil {
+		return ""
+	}
+	type item struct {
+		path string
+		rec  fileRec
+	}
+	k.fileMu.Lock()
+	items := make([]item, 0, len(k.files))
+	for p, r := range k.files {
+		if r != nil {
+			items = append(items, item{p, *r})
+		}
+	}
+	k.fileMu.Unlock()
+	sort.Slice(items, func(i, j int) bool { return items[i].rec.seq < items[j].rec.seq })
+	var b strings.Builder
+	n := 0
+	for _, it := range items {
+		if n >= maxDiffFiles {
+			break
+		}
+		label := it.rec.label
+		if label == "" {
+			label = it.path
+		}
+		snap, okMatch, err := freshEnough(&it.rec, it.path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				continue
+			}
+			if reportedChange(prev, label, "deleted") {
+				continue
+			}
+			fmt.Fprintf(&b, "- %s was deleted since it was read at step %d sig=%s\n", label, it.rec.step, "deleted")
+			n++
+			continue
+		}
+		if okMatch {
+			if !snap.mtime.Equal(it.rec.mtime) {
+				k.touchMtime(it.path, snap.mtime)
+			}
+			continue
+		}
+		sig := snap.hash
+		if len(sig) > 12 {
+			sig = sig[:12]
+		}
+		if reportedChange(prev, label, sig) {
+			continue
+		}
+		fmt.Fprintf(&b, "- %s changed since it was read at step %d sig=%s\n", label, it.rec.step, sig)
+		diff := briefDiff(it.rec.preview, snap.preview)
+		if diff == "" {
+			fmt.Fprintf(&b, "  size %d -> %d\n", it.rec.size, snap.size)
+		} else {
+			for _, line := range strings.Split(diff, "\n") {
+				b.WriteString("  ")
+				b.WriteString(line)
+				b.WriteByte('\n')
+			}
+		}
+		n++
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func reportedChange(prev []Reminder, label, sig string) bool {
+	needle := "sig=" + sig
+	for _, p := range prev {
+		if strings.Contains(p.Text, label) && strings.Contains(p.Text, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func briefDiff(old, neu string) string {
+	old = strings.TrimRight(strings.ReplaceAll(old, "\r\n", "\n"), "\n")
+	neu = strings.TrimRight(strings.ReplaceAll(neu, "\r\n", "\n"), "\n")
+	if old == neu {
+		return ""
+	}
+	ob := strings.Split(old, "\n")
+	nb := strings.Split(neu, "\n")
+	var b strings.Builder
+	n := 0
+	for i := 0; i < len(ob) || i < len(nb); i++ {
+		var a, c string
+		hasA := i < len(ob)
+		hasC := i < len(nb)
+		if hasA {
+			a = ob[i]
+		}
+		if hasC {
+			c = nb[i]
+		}
+		if hasA && hasC && a == c {
+			continue
+		}
+		if n >= maxDiffLines {
+			b.WriteString("...\n")
+			break
+		}
+		if hasA {
+			fmt.Fprintf(&b, "- %s\n", oneDiffLine(a))
+			n++
+		}
+		if hasC && n < maxDiffLines {
+			fmt.Fprintf(&b, "+ %s\n", oneDiffLine(c))
+			n++
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func oneDiffLine(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) <= 80 {
+		return s
+	}
+	budget := 80
+	for budget > 0 && !utf8.RuneStart(s[budget]) {
+		budget--
+	}
+	return s[:budget]
+}
+
+func canonArgs(raw json.RawMessage) string {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return ""
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return string(raw)
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return string(raw)
+	}
+	return string(b)
+}
+
+func (k *Kernel) noteDenial(name string, args json.RawMessage) {
+	if k == nil || name == "" {
+		return
+	}
+	key := name + "\n" + canonArgs(args)
+	k.denyMu.Lock()
+	defer k.denyMu.Unlock()
+	if k.denied == nil {
+		k.denied = map[string]struct{}{}
+	}
+	k.denied[key] = struct{}{}
+}
+
+func (k *Kernel) deniedBefore(name string, args json.RawMessage) bool {
+	if k == nil || name == "" {
+		return false
+	}
+	key := name + "\n" + canonArgs(args)
+	k.denyMu.Lock()
+	defer k.denyMu.Unlock()
+	_, ok := k.denied[key]
+	return ok
+}
