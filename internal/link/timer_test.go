@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	_ "time/tzdata"
 )
 
 func TestOneShotFiresOnceNearTheSlot(t *testing.T) {
