@@ -767,20 +767,30 @@
   function cronText(cron, enabled) {
     const raw = String(cron || "").trim();
     const parts = raw.split(/\s+/);
-    let label = raw;
-    if (parts.length >= 5) {
-      const min = parts[0];
-      const hour = parts[1];
-      const dom = parts[2];
-      const mon = parts[3];
-      const dow = parts[4];
-      const week = { 0: "周日", 7: "周日", 1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六" };
-      if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
-        const hm = String(hour).padStart(2, "0") + ":" + String(min).padStart(2, "0");
-        if (mon === "*" && dom === "*" && dow === "*") label = "每天 " + hm;
-        else if (mon === "*" && dom === "*" && (dow === "1-5" || dow === "1,2,3,4,5")) label = "工作日 " + hm;
-        else if (mon === "*" && dom === "*" && week[dow]) label = "每" + week[dow] + " " + hm;
-        else if (mon === "*" && dow === "*" && /^\d+$/.test(dom)) label = "每月" + Number(dom) + "日 " + hm;
+    let label = "自定义时间";
+    const number = (s, max, min = 0) => /^\d+$/.test(s) && Number(s) >= min && Number(s) <= max;
+    if (parts.length === 5) {
+      const [min, hour, dom, mon, dow] = parts;
+      const daily = dom === "*" && mon === "*" && dow === "*";
+      const step = (s, max) => /^\*\/\d+$/.test(s) && number(s.slice(2), max, 1);
+      if (daily && hour === "*" && step(min, 59)) label = "每 " + Number(min.slice(2)) + " 分钟";
+      else if (daily && min === "0" && step(hour, 23)) label = "每 " + Number(hour.slice(2)) + " 小时";
+      else if (number(min, 59)) {
+        const hours = hour.split(",");
+        const range = hour.split("-");
+        if (daily && min === "0" && hours.length > 1 && hours.every((h) => number(h, 23))) {
+          label = "每天 " + hours.map(Number).join("、") + " 点";
+        } else if (daily && min === "0" && range.length === 2 && range.every((h) => number(h, 23)) && Number(range[0]) <= Number(range[1])) {
+          label = "每天 " + Number(range[0]) + "–" + Number(range[1]) + " 点每小时";
+        } else if (number(hour, 23)) {
+          const hm = Number(hour) + ":" + String(Number(min)).padStart(2, "0");
+          const days = dow.split(",");
+          const week = ["日", "一", "二", "三", "四", "五", "六", "日"];
+          if (daily) label = "每天 " + hm;
+          else if (mon === "*" && dom === "*" && (dow === "1-5" || dow === "1,2,3,4,5")) label = "工作日 " + hm;
+          else if (mon === "*" && dom === "*" && days.every((d) => number(d, 7))) label = "每周" + days.map((d) => week[Number(d)]).join("、") + " " + hm;
+          else if (mon === "*" && dow === "*" && number(dom, 31, 1)) label = "每月 " + Number(dom) + " 日 " + hm;
+        }
       }
     }
     if (enabled === false) label += (label ? " · " : "") + "停用";
@@ -2726,7 +2736,7 @@
     return row;
   }
 
-  const TABS = [["details", "详情"], ["library", "资料"], ["computer", "电脑"], ["trace", "轨迹"]];
+  const TABS = [["details", "详情"], ["library", "记忆"], ["computer", "任务"], ["trace", "轨迹"]];
 
   function tabBar() {
     const bar = el("div", "tabs");
@@ -2946,7 +2956,7 @@
       panelBody.append(hero(g.name || g.id, (g.members || []).join(" · "), null), tabBar());
       const body = el("div", "tab-body");
       if (state.tab === "library") {
-        body.append(el("p", "hint", "没有资料"));
+        body.append(el("p", "hint", "还没有记住任何事。对它说「记住……」就会出现在这里"));
       } else if (state.tab === "computer") {
         body.append(el("p", "hint", "没有任务"));
       } else if (state.tab === "trace") {
@@ -3178,7 +3188,7 @@
     const about = section("");
     if (data.persona) {
       const block = el("div", "kv");
-      block.append(el("div", "k", "人格"), el("p", "clamp v", data.persona));
+      block.append(el("div", "k", "人设"), el("p", "clamp v", data.persona));
       about.append(block);
     }
     if (bits.length) {
@@ -3215,7 +3225,7 @@
   function libraryView(data) {
     const wrap = document.createDocumentFragment();
     const facts = data.memory || [];
-    if (!facts.length) wrap.append(el("p", "hint", "没有资料"));
+    if (!facts.length) wrap.append(el("p", "hint", "还没有记住任何事。对它说「记住……」就会出现在这里"));
     for (const f of facts) {
       const card = el("div", "lib-card");
       card.append(el("div", "k", scopeLabel(f.scope)), el("div", "v", f.text || ""));
@@ -3231,6 +3241,7 @@
     if (!list.length) routines.append(el("p", "hint", "没有例程"));
     for (const rt of list) {
       const card = el("div", "routine");
+      card.title = String(rt.cron || "");
       const meta = el("span", "meta", cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : ""));
       if (rt.enabled === false) {
         const dot = el("i", "status-dot off");
@@ -3403,7 +3414,7 @@
       labeled("语言", language),
       labeled("免打扰开始", quietStart),
       labeled("免打扰结束", quietEnd),
-      labeled("人格", persona),
+      labeled("人设", persona),
       err, actions,
     );
     const showErr = (e, fallback) => { err.hidden = false; err.textContent = (e && e.message) || fallback; };
@@ -3956,7 +3967,7 @@
         modalFields.append(row);
         continue;
       }
-      const label = el("label", "field");
+      const label = el(f.type === "checks" ? "div" : "label", "field");
       label.append(el("span", "", f.label));
       if (f.type === "choice") {
         const box = el("div", "choice");
@@ -3981,7 +3992,7 @@
         for (const opt of f.options || []) {
           const value = Array.isArray(opt) ? opt[0] : opt;
           const text = Array.isArray(opt) ? opt[1] : opt;
-          const row = el("label", "");
+          const row = el("label", "member-option");
           setTip(row, value);
           const cb = document.createElement("input");
           cb.type = "checkbox";
@@ -3989,7 +4000,8 @@
           cb.addEventListener("change", () => {
             inputs[f.name] = Array.from(box.querySelectorAll("input:checked")).map((n) => n.value);
           });
-          row.append(cb, document.createTextNode(" " + text));
+          const bot = state.bots.find((b) => b.name === value);
+          row.append(cb, avatar(value, bot ? paintOfBot(bot) : null), el("span", "member-name", text), icon("check"));
           box.append(row);
         }
         label.append(box);
