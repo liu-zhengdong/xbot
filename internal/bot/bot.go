@@ -121,6 +121,20 @@ type State struct {
 	// tool call is a model switch: the kernel closes the call with a tombstone
 	// instead of an interrupt. Empty on older state files.
 	BoundModel string `json:"bound_model,omitempty"`
+	// MemSnap is the memory text injected after the system prompt; frozen
+	// between compactions so the prefix cache keeps hitting.
+	MemSnap string `json:"mem_snap,omitempty"`
+	// MemSnapSet distinguishes an empty snapshot from no snapshot yet.
+	MemSnapSet bool `json:"mem_snap_set,omitempty"`
+	// MemSeen is the memory text the model has seen (snapshot plus appended diffs).
+	MemSeen string `json:"mem_seen,omitempty"`
+	// MemPerson is the person the snapshot was rendered for; person-scope facts differ.
+	MemPerson string `json:"mem_person,omitempty"`
+	// MemOwn holds this bot's own memory line changes ("+line"/"-line") since
+	// MemSeen, left out of the next diff.
+	MemOwn []string `json:"mem_own,omitempty"`
+	// MemOther parks the views of other people seen in this session.
+	MemOther map[string]MemView `json:"mem_other,omitempty"`
 }
 
 // Fork marker kinds and end statuses.
@@ -676,4 +690,12 @@ func dropName(in []string, name string) []string {
 		}
 	}
 	return out
+}
+
+// MemView is standing memory as seen by one person's turns: the frozen snapshot,
+// what the model has seen since, and the bot's own changes not yet folded in.
+type MemView struct {
+	Snap string   `json:"snap"`
+	Seen string   `json:"seen"`
+	Own  []string `json:"own,omitempty"`
 }

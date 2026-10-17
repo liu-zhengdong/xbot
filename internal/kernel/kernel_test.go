@@ -264,7 +264,7 @@ func TestMemorySeam(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.qs) != 2 {
+	if len(store.qs) != 3 {
 		t.Fatalf("queries %+v", store.qs)
 	}
 	scopes := map[memory.Scope]memory.Query{}

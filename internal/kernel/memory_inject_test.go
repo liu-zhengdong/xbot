@@ -207,7 +207,7 @@ func TestExtractOmittedScopeWritesBot(t *testing.T) {
 }
 
 func TestClipMemoryReportsConsolidation(t *testing.T) {
-	body := strings.Repeat("a", memory.ProfileInjectBytes+80)
+	body := strings.Repeat("a", memory.ProfileInjectBytes+recentLogBytes+80)
 	got := clipMemory(body)
 	if !strings.Contains(got, "memory clipped") || !strings.Contains(got, "consolidate") {
 		end := got
@@ -219,7 +219,7 @@ func TestClipMemoryReportsConsolidation(t *testing.T) {
 	if !strings.HasPrefix(got, "aaa") {
 		t.Fatal("clip did not keep the head")
 	}
-	if len(got) > memory.ProfileInjectBytes {
+	if len(got) > memory.ProfileInjectBytes+recentLogBytes {
 		t.Fatalf("clipped memory is %d bytes, over the budget", len(got))
 	}
 }

@@ -5,6 +5,8 @@ package kernel
 import (
 	"context"
 	"errors"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -87,7 +89,13 @@ type Kernel struct {
 	MaxSegments       int
 	BackgroundMaxTime time.Duration
 
-	turnMu      sync.Mutex
+	turnMu sync.Mutex
+	// memOwnMu guards memOwn: line changes of this bot's own remember/forget
+	// calls, from any turn, drained into State at the next wake (drainMemOwn).
+	memOwnMu sync.Mutex
+	memOwn   []ownChange
+	// memWriteMu serializes own memory writes with their before/after reads.
+	memWriteMu  sync.Mutex
 	bgMu        sync.Mutex
 	bgs         map[string]*turn
 	finished    []BackgroundInfo
@@ -219,10 +227,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if key := k.boundModelKey(); key != "" {
 		st.BoundModel = key
 	}
-	memText, err := k.memoryText(ctx, k.memoryPerson())
+	// memWriteMu keeps a background turn's own write from landing between this
+	// read and the drain, which would report it as removed.
+	key := k.memViewKey(t, st)
+	k.memWriteMu.Lock()
+	memText, err := k.memoryText(ctx, key)
 	if err != nil {
+		k.memWriteMu.Unlock()
 		return err
 	}
+	switchMemView(&st, key, memText, k.Bot.Config().Owners)
+	k.drainMemOwn(&st)
+	k.memWriteMu.Unlock()
 	st, err = k.syncEnv(st, ev, memText)
 	if err != nil {
 		return err
@@ -253,15 +269,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if err != nil {
 		return err
 	}
-	st, err = k.autoCompact(ctx, st, seq, memText)
+	st, err = k.autoCompact(ctx, st, seq, st.MemSnap)
 	if err != nil {
 		return err
 	}
-	k.maybeStartBackground(st, seq, memText)
+	k.maybeStartBackground(st, seq, st.MemSnap)
 	if err := k.ensureSnapshot(st); err != nil {
 		return err
 	}
-	assembled, usage, err := k.assemble(st, memText)
+	assembled, usage, err := k.assemble(st, st.MemSnap)
 	if err != nil {
 		return err
 	}
@@ -805,6 +821,14 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	if overlay != "" {
 		overlayHash = shortHash(overlay)
 	}
+	// The memory snapshot in msgs[1] stays frozen; what changed since the bot last
+	// saw memory is appended here as a diff, minus the bot's own changes (MemOwn).
+	memBlock := ""
+	// Own changes count even when live equals MemSeen: someone may have undone them.
+	if st.MemSnapSet && (mem != st.MemSeen || len(st.MemOwn) > 0) {
+		memBlock = memoryDiff(st.MemSeen, mem, st.MemOwn)
+	}
+	st.MemSeen, st.MemOwn = mem, nil
 	now := k.now()
 	next := bot.EnvRecord{
 		Hour:        now.Format("2006-01-02T15"),
@@ -814,7 +838,7 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 		Notes:       k.pendingNotes(),
 		Persona:     shortHash(persona),
 		Rules:       shortHash(rules),
-		Memory:      shortHash(mem),
+		Memory:      shortHash(st.MemSeen),
 		Skills:      skillHash,
 		Profile:     profileHash,
 		OverlayKey:  overlayKey,
@@ -824,6 +848,13 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	}
 	diff := DiffEnv(st.Env, next)
 	st.Env = next
+	if memBlock != "" {
+		if diff == "" {
+			diff = "<environment_update>\n" + memBlock + "\n</environment_update>"
+		} else {
+			diff = strings.TrimSuffix(diff, "</environment_update>") + memBlock + "\n</environment_update>"
+		}
+	}
 	if diff == "" {
 		return st, nil
 	}
@@ -892,7 +923,15 @@ func (k *Kernel) pendingNotes() int {
 // A bot, a group, or a subagent must not be looked up as someone else's memory.
 // A subagent maps to the parent bot's owner, or to no person scope when the bot has none.
 func (k *Kernel) memoryPerson() string {
-	t := k.curTurn()
+	return k.memoryPersonOf(k.curTurn())
+}
+
+// memoryPersonOf is memoryPerson for a given turn, so a background turn's tools
+// render memory for their own sender rather than the foreground turn's.
+func (k *Kernel) memoryPersonOf(t *turn) string {
+	if t == nil {
+		return ""
+	}
 	if t.turnKind == link.KindBot || t.turnKind == link.KindGroup {
 		return ""
 	}
@@ -914,19 +953,181 @@ func (k *Kernel) ownerPerson() string {
 	return ""
 }
 
+// memViewKey picks whose memory view a turn uses: the person's own view, or the
+// shared bot-only view ("") for groups, peer bots, and connectors. Timer, shell,
+// and subagent wakes (including a background's fork_end) are the bot's own; they
+// keep the active view, so the prefix does not flip and a guest's background
+// result is not read next to the owner's person facts.
+func (k *Kernel) memViewKey(t *turn, st bot.State) string {
+	if st.MemSnapSet && t != nil && (t.turnSource == link.NameTimer || t.turnSource == "shell" || t.turnSource == link.SourceSubagent) {
+		return st.MemPerson
+	}
+	if person := k.memoryPersonOf(t); memory.ValidID(person) {
+		return person
+	}
+	return ""
+}
+
+// memViewCap bounds the parked views kept in State.
+const memViewCap = 8
+
+// switchMemView makes the view for key active. Each view keeps its own frozen
+// snapshot, so another person's turn never gets the owner's person facts in
+// msgs[1], and the owner's view comes back unchanged. A new key gets a fresh
+// snapshot of live memory. Past memViewCap parked views, one non-owner view is
+// dropped; an owner's view is never dropped.
+func switchMemView(st *bot.State, key, live string, owners []string) {
+	if st.MemSnapSet && st.MemPerson == key {
+		return
+	}
+	// Take the target out first, so eviction cannot drop the view being switched to.
+	v, ok := st.MemOther[key]
+	if ok {
+		delete(st.MemOther, key)
+	} else {
+		v = bot.MemView{Snap: live, Seen: live}
+	}
+	if st.MemSnapSet {
+		if st.MemOther == nil {
+			st.MemOther = map[string]bot.MemView{}
+		}
+		if len(st.MemOther) >= memViewCap {
+			evictMemView(st.MemOther, owners)
+		}
+		st.MemOther[st.MemPerson] = bot.MemView{Snap: st.MemSnap, Seen: st.MemSeen, Own: st.MemOwn}
+	}
+	st.MemSnap, st.MemSeen, st.MemOwn, st.MemPerson, st.MemSnapSet = v.Snap, v.Seen, v.Own, key, true
+}
+
+func evictMemView(views map[string]bot.MemView, owners []string) {
+	keys := make([]string, 0, len(views))
+	for key := range views {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !slices.Contains(owners, key) {
+			delete(views, key)
+			return
+		}
+	}
+}
+
+// ownChange is one own write's line changes. person is the view it belongs to
+// for a person-scope write, or "" for a bot-scope write, which every view shares.
+type ownChange struct {
+	person string
+	lines  []string
+}
+
+// beginOwnWrite starts recording one own remember/forget. It holds memWriteMu
+// until the returned func runs after the write, so parallel tool calls cannot
+// mix their before/after texts. A bot-scope write is measured on the bot-only
+// rendering, so it can never carry person lines into another person's view.
+// A failed read records nothing; the write then shows as a diff, which is safe.
+func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope) func() {
+	k.memWriteMu.Lock()
+	key := ""
+	if scope == memory.ScopePerson {
+		st, _ := k.Bot.LoadState()
+		key = k.memViewKey(k.turnFor(ctx), st)
+	}
+	before, err := k.memoryText(ctx, key)
+	return func() {
+		defer k.memWriteMu.Unlock()
+		if err != nil {
+			return
+		}
+		after, err := k.memoryText(ctx, key)
+		if err != nil {
+			return
+		}
+		c := ownChange{person: key, lines: ownLines(before, after)}
+		if len(c.lines) == 0 {
+			return
+		}
+		k.memOwnMu.Lock()
+		k.memOwn = append(k.memOwn, c)
+		if len(k.memOwn) > memOwnCap {
+			k.memOwn = k.memOwn[len(k.memOwn)-memOwnCap:]
+		}
+		k.memOwnMu.Unlock()
+	}
+}
+
+// memOwnCap bounds the own writes waiting for the next wake.
+const memOwnCap = 200
+
+// drainMemOwn moves pending own changes into every view they apply to: bot-scope
+// changes go to all views, person-scope changes only to that person's view.
+func (k *Kernel) drainMemOwn(st *bot.State) {
+	k.memOwnMu.Lock()
+	pending := k.memOwn
+	k.memOwn = nil
+	k.memOwnMu.Unlock()
+	for _, c := range pending {
+		if c.person == "" || c.person == st.MemPerson {
+			st.MemOwn = append(st.MemOwn, c.lines...)
+		}
+		for key, v := range st.MemOther {
+			if c.person == "" || c.person == key {
+				v.Own = append(v.Own, c.lines...)
+				st.MemOther[key] = v
+			}
+		}
+	}
+}
+
+// refreshMemSnap re-snapshots standing memory after a compaction appended a block.
+// The prefix already changed, so the active view is replaced and parked views are
+// dropped. The active view keeps its key, whichever turn runs the compaction.
+// A read error keeps the old snapshot; the next wake diffs as usual. The new
+// snapshot already holds the bot's pending own writes, so the queue is cleared
+// under memWriteMu, which also waits out a write in progress.
+func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) {
+	key := st.MemPerson
+	if !st.MemSnapSet {
+		key = k.memViewKey(k.curTurn(), *st)
+	}
+	k.memWriteMu.Lock()
+	defer k.memWriteMu.Unlock()
+	mem, err := k.memoryText(ctx, key)
+	if err != nil {
+		return
+	}
+	k.memOwnMu.Lock()
+	k.memOwn = nil
+	k.memOwnMu.Unlock()
+	st.MemSnap, st.MemSeen, st.MemSnapSet, st.MemPerson = mem, mem, true, key
+	st.MemOwn, st.MemOther = nil, nil
+}
+
+// memSnapFor returns the frozen snapshot of the view key, or live memory when
+// this session has no view for it yet.
+func (k *Kernel) memSnapFor(ctx context.Context, st bot.State, key string) (string, error) {
+	if st.MemSnapSet && st.MemPerson == key {
+		return st.MemSnap, nil
+	}
+	if v, ok := st.MemOther[key]; ok {
+		return v.Snap, nil
+	}
+	return k.memoryText(ctx, key)
+}
+
 func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error) {
-	facts, err := k.loadMemory(ctx, personID)
+	facts, logs, err := k.loadMemory(ctx, personID)
 	if err != nil {
 		return "", err
 	}
-	return clipMemory(renderMemory(facts)), nil
+	return clipMemory(renderMemory(facts, logs)), nil
 }
 
 // loadMemory is the context-assembly seam for the person and bot scopes.
 // M1's store recalls nothing. M2 returns facts; Visible and Resolve still apply.
-func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact, error) {
+// logs are bot-scope log facts: the snapshot shows the newest, recall has the rest.
+func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact, []memory.Fact, error) {
 	if k.Memory == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	botName := k.Bot.Name()
 	var personFacts []memory.Fact
@@ -935,15 +1136,19 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 		var err error
 		personFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	botFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierProfile})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	logFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierLog})
+	if err != nil {
+		return nil, nil, err
 	}
 	all := append(personFacts, botFacts...)
-	return memory.Resolve(memory.Visible(all, botName, personID)), nil
+	return memory.Resolve(memory.Visible(all, botName, personID)), memory.Visible(logFacts, botName, personID), nil
 }
 
 // StartEmitters runs granted links that implement link.Emitter.
