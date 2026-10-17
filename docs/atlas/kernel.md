@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-17 @ d2f9d17
+verified: 2026-10-17 @ 57ce4d2
 ---
 # 内核：Link、Event、收件箱
 
