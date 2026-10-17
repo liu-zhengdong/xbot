@@ -468,6 +468,22 @@ func cmdServe(root string, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "login token: %s\n", token)
 	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
+	// Routines get their own ticker, with a fresh now each tick, so a one-shot
+	// does not wait behind every bot's model calls in serve.Pass.
+	go func() {
+		tick := time.NewTicker(serve.TimerEvery)
+		defer tick.Stop()
+		for {
+			if err := serve.DeliverTimers(root, time.Now()); err != nil {
+				fmt.Fprintln(os.Stderr, "xbot: routines:", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+		}
+	}()
 	srv := &http.Server{Handler: mux}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {

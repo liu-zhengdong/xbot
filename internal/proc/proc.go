@@ -189,6 +189,9 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 				return err
 			}
 		}
+		// Expiring a missed one-shot is housekeeping; a bad routine file must
+		// not stop the chat loop. The serve timer ticker retries every 15s.
+		_ = tm.Expire(now)
 	}
 	return nil
 }
