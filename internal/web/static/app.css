@@ -409,6 +409,11 @@ html[data-theme="dark"] .field select {
 
 .avatar.xs { width: 16px; height: 16px; }
 
+.avatar svg { --avatar-fill: var(--avatar-light); --avatar-ink: var(--avatar-letter-light); }
+html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avatar-ink: var(--avatar-letter-dark); }
+.primary-mark.icon { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.primary-label { font-size: 12px; font-weight: 400; color: var(--muted); }
+
 .avatar svg { width: 100%; height: 100%; display: block; overflow: visible; }
 
 .avatar text { font-family: "Mona Sans VF", "XBot SC", "PingFang SC", "Noto Sans SC", sans-serif; }

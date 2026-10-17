@@ -907,32 +907,6 @@
   const PENCIL_PATH = '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
   const SEND_PATH = '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>';
 
-  function hslHex(h, s, l) {
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const hp = ((h / 60) % 6 + 6) % 6;
-    const x = c * (1 - Math.abs(hp % 2 - 1));
-    let r = 0, g = 0, b = 0;
-    if (hp < 1) { r = c; g = x; }
-    else if (hp < 2) { r = x; g = c; }
-    else if (hp < 3) { g = c; b = x; }
-    else if (hp < 4) { g = x; b = c; }
-    else if (hp < 5) { r = x; b = c; }
-    else { r = c; b = x; }
-    const m = l - c / 2;
-    const byte = (v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0");
-    return "#" + byte(r + m) + byte(g + m) + byte(b + m);
-  }
-
-  function blobFill(name, paint) {
-    if (paint && paint.bg) return paint.bg;
-    return hslHex(hashName(name) % 360, 0.30, 0.78);
-  }
-
-  function blobInk(name, paint) {
-    if (paint && paint.ink) return paint.ink;
-    return hslHex(hashName(name) % 360, 0.30, 0.28);
-  }
-
   function markInitial(name, paint, size) {
     if (size === "xs") return "";
     const given = paint && typeof paint.initial === "string" ? paint.initial.trim() : "";
@@ -945,10 +919,15 @@
   function faceFor(name, paint, size) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 80 80");
+    const tone = hashName(name) % 4;
+    svg.style.setProperty("--avatar-light", ["#dddddd", "#d3d3d3", "#c9c9c9", "#bfbfbf"][tone]);
+    svg.style.setProperty("--avatar-dark", ["#333333", "#3d3d3d", "#474747", "#515151"][tone]);
+    svg.style.setProperty("--avatar-letter-light", ["#303030", "#333333", "#363636", "#393939"][tone]);
+    svg.style.setProperty("--avatar-letter-dark", ["#dddddd", "#e4e4e4", "#ebebeb", "#f2f2f2"][tone]);
     svg.setAttribute("aria-hidden", "true");
     const blob = document.createElementNS("http://www.w3.org/2000/svg", "path");
     blob.setAttribute("d", BLOBS[hashName(name) % BLOBS.length]);
-    blob.setAttribute("fill", blobFill(name, paint));
+    blob.setAttribute("fill", "var(--avatar-fill)");
     svg.append(blob);
     const letter = markInitial(name, paint, size);
     if (letter) {
@@ -957,7 +936,7 @@
       text.setAttribute("y", "43");
       text.setAttribute("text-anchor", "middle");
       text.setAttribute("dominant-baseline", "central");
-      text.setAttribute("fill", blobInk(name, paint));
+      text.setAttribute("fill", "var(--avatar-ink)");
       text.setAttribute("font-size", "30");
       text.setAttribute("font-weight", "560");
       text.textContent = letter;
@@ -2167,6 +2146,13 @@
     return (g.members || []).map(niceName).join(" · ") || "没有消息";
   }
 
+  function primaryMark() {
+    const mark = icon("pin", "primary-mark");
+    setTip(mark, "主 Bot");
+    mark.setAttribute("aria-label", "主 Bot");
+    return mark;
+  }
+
   function listButton(name, preview, active, unread, paint, primary, label) {
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
@@ -2177,9 +2163,7 @@
     const line = el("span", "name-line");
     line.append(el("span", "name", label || niceName(name)));
     if (primary) {
-      const dot = el("i", "badge");
-      setTip(dot, "主 Bot");
-      line.append(dot);
+      line.append(primaryMark());
     }
     body.append(line, preview instanceof Node ? preview : el("span", "preview", preview || "没有消息"));
     btn.append(av, body);
@@ -2308,7 +2292,7 @@
         closeFolderMenus();
         openRenameFolder(folder.name);
       });
-      const drop = el("button", "menu-row danger");
+      const drop = el("button", "menu-row secondary");
       drop.type = "button";
       drop.append(icon("trash"), el("span", "", "删除"));
       drop.addEventListener("click", (ev) => {
@@ -3034,9 +3018,8 @@
       toggle: () => togglePin(state.sel.id, !data.pinned),
     });
     if (data.primary) {
-      const dot = el("i", "badge");
-      setTip(dot, "主 Bot");
-      heroBox.querySelector(".hero-name").append(dot);
+      // The hero already has the 置顶 pin toggle; say 主 Bot in words here.
+      heroBox.querySelector(".hero-name").append(el("span", "primary-label", "主 Bot"));
     }
     panelBody.append(heroBox, tabBar());
     syncPanelChrome();
@@ -3428,7 +3411,7 @@
     file.hidden = true;
     const pick = el("button", "secondary", "上传头像");
     pick.type = "button";
-    const clear = el("button", "text-btn", "清除头像");
+    const clear = el("button", "secondary", "清除头像");
     clear.type = "button";
     const stack = el("div", "stack");
     stack.append(pick, clear, file);
@@ -4015,7 +3998,7 @@
     $("modal-title").textContent = title;
     $("modal-ok").hidden = false;
     $("modal-ok").textContent = okLabel || "创建";
-    $("modal-ok").className = okLabel === "删除" ? "text-btn danger" : "primary";
+    $("modal-ok").className = okLabel === "删除" ? (title === "删除 Bot" ? "text-btn danger" : "secondary") : "primary";
     $("modal-ok").disabled = false;
     $("modal-cancel").textContent = "取消";
     modalFields.replaceChildren();
