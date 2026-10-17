@@ -43,6 +43,9 @@ const (
 var Table = map[string]Class{
 	// Built-in tools link: shell and files.
 	"shell":        Shell,
+	"shell_output": Readonly,
+	"shell_status": Readonly,
+	"shell_cancel": Normal,
 	"read_file":    Readonly,
 	"write_file":   SelfEdit,
 	"edit_file":    SelfEdit,

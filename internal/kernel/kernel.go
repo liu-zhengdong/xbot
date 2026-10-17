@@ -125,6 +125,13 @@ type Kernel struct {
 	todoStepsV int
 	todoLoaded bool
 	todoMem    todoFile
+
+	// shell jobs live for this kernel, which is the serve process. A new kernel
+	// loads the same directory and marks anything still running as lost.
+	shellOnce    sync.Once
+	shell        *tools.Jobs
+	shellMu      sync.Mutex
+	shellClaimed map[string]bool
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -416,6 +423,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 					remind = todo
 				}
 			}
+			// A shell job that finished during this step is attached here, after
+			// the tool results, so it does not land in the middle of a call.
+			if note := k.shellNotice(k.shellPrev()); note != "" {
+				if rerr := k.reminders().Record(t.lastSeq(), KindShellJob, note, k.now()); rerr != nil && appendErr == nil {
+					appendErr = rerr
+				}
+				if remind != "" {
+					remind += "\n\n" + note
+				} else {
+					remind = note
+				}
+			}
 			if stop {
 				_ = k.Bot.LogTrace(bot.TraceStop, reason, k.now())
 			}
@@ -570,9 +589,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		}
 		if bg {
 			k.finishBackground(t, produced, err)
+			k.flushShellWake()
 			cancelRun()
 			return
 		}
+		k.flushShellWake()
 		done <- result{produced, err}
 	}()
 	var tick <-chan time.Time

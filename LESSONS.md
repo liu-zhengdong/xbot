@@ -24,6 +24,8 @@
 - **主人拒绝过的调用只挡这一轮，下一轮要重新问。** 原因：进程级拒绝表让主人下一条消息说「改主意了」时，相同参数直接报错，不再出确认。证据：`TestDenialClearsOnNextOwnerTurn`。Seen 1×（2026-10-17）
 - **按文件大小决定的缓冲不要按上限预分配。** 原因：6 字节的文件快照分配了 4 MiB 以上。哈希用流式读，缓冲按文件大小封顶。证据：`TestSnapshotSmallFileAlloc`。Seen 1×（2026-10-17）
 - **`file_change` 的 diff 不能带出密钥文件的内容。** 原因：`.env`、`*.key`、`*.pem`、credentials 一类文件的提醒如果附上 diff，会把刚写进去的值送进模型上下文。这类路径只写 changed。证据：`TestSensitiveFileChangeOmitsDiff`。Seen 1×（2026-10-17）
+- **超时不要杀掉还在出结果的命令；`sleep` 和明显的轮询除外。** 原因：到点杀进程会丢掉长构建和服务器；把 `sleep` 自动转后台又会把空转藏过熔断。证据：`TestShellTimeoutMovesToBackground`、`TestSleepIsNotAutoBackgrounded`。Seen 1×（2026-10-17）
+- **后台命令的输出写在 Bot 目录里，并且先脱敏。** 原因：`/tmp` 会在重启时清空；输出文件里的密钥会在下一轮被 `shell_output` 读回来。证据：`TestBackgroundFileRedactsSecret`、`TestShellJobFileUsesKernelRedactor`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

@@ -20,6 +20,7 @@ import (
 )
 
 func (k *Kernel) modelTools() ([]tools.Tool, error) {
+	k.attachShellJobs()
 	links := k.snapshotLinks()
 	var active []link.Link
 	for _, l := range links {
@@ -59,6 +60,9 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	}
 	if k.Vault != nil && namedLink(links, link.NameTools) {
 		list = append(list, &tools.HTTPRequest{Store: k.Vault}, &tools.SecretList{Store: k.Vault})
+	}
+	if namedLink(links, link.NameTools) {
+		list = append(list, shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k})
 	}
 	list = k.modelAgentTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })

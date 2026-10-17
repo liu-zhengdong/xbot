@@ -198,6 +198,10 @@ type evalShell struct {
 func newEvalShell(root string, network bool) *evalShell {
 	inner := tools.NewShell()
 	inner.Dir = root
+	// The jail stops the command. These limits are the ones Run enforces;
+	// the model-facing description is read from the inner shell.
+	inner.DefaultTimeout = 30 * time.Second
+	inner.MaxTimeout = 120 * time.Second
 	return &evalShell{root: root, network: network, inner: inner}
 }
 

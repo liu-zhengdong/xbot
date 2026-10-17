@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultShellTimeout = 30 * time.Second
-	maxShellTimeout     = 120 * time.Second
+	defaultShellTimeout = 120 * time.Second
+	maxShellTimeout     = 600 * time.Second
 	maxShellOutput      = 32 << 10
 	maxCommandBytes     = 16 << 10
 )
@@ -26,6 +26,8 @@ const (
 // Dir is the working directory. Empty means the process working directory.
 // Shared, when set with Dir, is exported as XBOT_SHARED.
 // KeyEnv names extra provider API key variables to omit unless the call sets keys.
+// Jobs, when set, keeps a command that outlives the timeout. Without it the
+// command is killed at the timeout, which is what node and eval shells do.
 type Shell struct {
 	DefaultTimeout time.Duration
 	MaxTimeout     time.Duration
@@ -33,6 +35,7 @@ type Shell struct {
 	Dir            string
 	Shared         string
 	KeyEnv         []string
+	Jobs           *Jobs
 }
 
 var (
@@ -114,22 +117,44 @@ func NewShell() *Shell {
 
 func (s *Shell) Name() string { return "shell" }
 
+func (s *Shell) timeoutLabel() (def, max int) {
+	d := defaultShellTimeout
+	m := maxShellTimeout
+	if s != nil && s.DefaultTimeout > 0 {
+		d = s.DefaultTimeout
+	}
+	if s != nil && s.MaxTimeout > 0 {
+		m = s.MaxTimeout
+	}
+	return int(d / time.Second), int(m / time.Second)
+}
+
 func (s *Shell) Description() string {
-	return "Run a shell command. stdout and stderr are combined and truncated. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends."
+	def, max := s.timeoutLabel()
+	if s != nil && s.Jobs != nil {
+		return fmt.Sprintf("Run a shell command. stdout and stderr are combined. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. If the command is still running at the timeout, it moves to the background and is not killed; the result is a job id and an output file path. Pass run_in_background true to background it immediately (a long build, a server, or anything that should outlive this call). Read output with shell_output (offset or tail), check shell_status, and stop it with shell_cancel. Do not poll a job in a tight loop; a completion reminder arrives at the next turn boundary. sleep and obvious polling loops are not auto-backgrounded. Provider API keys stay out of the environment unless keys is true, which the owner must approve.", def, max)
+	}
+	return fmt.Sprintf("Run a shell command. stdout and stderr are combined and truncated. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends.", def, max)
 }
 
 func (s *Shell) Parameters() any {
-	return objectSchema(map[string]any{
+	def, max := s.timeoutLabel()
+	props := map[string]any{
 		"command":         stringProp("Shell command to run"),
-		"timeout_seconds": intProp("Timeout in seconds (default 30, max 120)"),
+		"timeout_seconds": intProp(fmt.Sprintf("Timeout in seconds (default %d, max %d)", def, max)),
 		"keys":            boolProp("Pass provider API keys through. The owner must approve."),
-	}, []string{"command"})
+	}
+	if s != nil && s.Jobs != nil {
+		props["run_in_background"] = boolProp("Start in the background immediately and return a job id. Do not use this to sleep or to poll.")
+	}
+	return objectSchema(props, []string{"command"})
 }
 
 type shellArgs struct {
-	Command        string `json:"command"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-	Keys           bool   `json:"keys"`
+	Command         string `json:"command"`
+	TimeoutSeconds  int    `json:"timeout_seconds"`
+	Keys            bool   `json:"keys"`
+	RunInBackground bool   `json:"run_in_background"`
 }
 
 // Confirm only builds the card summary. The kernel review path decides
@@ -154,6 +179,18 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		return "", err
 	}
 	timeout := s.duration(in.TimeoutSeconds)
+	// A job directory keeps the process across the timeout. sleep and obvious
+	// polling loops stay in the foreground so the breaker can see the loop.
+	if s.Jobs != nil && (in.RunInBackground || !skipAutoBackground(in.Command)) {
+		return s.Jobs.Run(ctx, RunRequest{
+			Command:    in.Command,
+			Timeout:    timeout,
+			MaxOutput:  s.maxOutput(),
+			Dir:        s.Dir,
+			Env:        s.commandEnv(in.Keys),
+			Background: in.RunInBackground,
+		})
+	}
 	return runCommand(ctx, in.Command, timeout, s.maxOutput(), s.Dir, s.commandEnv(in.Keys))
 }
 
