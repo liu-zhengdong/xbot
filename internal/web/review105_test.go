@@ -59,7 +59,7 @@ func TestDesktopAppKeepsItsSession(t *testing.T) {
 		`if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) return;`,
 		`"xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id`,
 		`sessionStorage.getItem("xbot-draft:group:" + id)`,
-		`row.queued && !queuedRecorded(row)`,
+		`(row.queued || row.keepFailed) && !queuedRecorded(row)`,
 		`pending.baseline = ownerSends(text);`,
 		`!unwrap(m.content || "").untrusted &&`,
 		`state.replyErrors.forEach((row) => row.remove());`,

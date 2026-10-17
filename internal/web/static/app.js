@@ -92,14 +92,44 @@
 
   let authenticated = false;
 
+  function zhError(msg) {
+    msg = String(msg || "").trim();
+    const timeout = msg.match(/request timeout after (\d+)m/i);
+    if (timeout) return "模型超时（" + timeout[1] + " 分钟）";
+    for (const [pattern, text] of [
+      [/text is empty/i, "内容是空的"], [/unanswered tool calls/i, "有一张确认卡片还没处理"],
+      [/cancelled|canceled/i, "已取消"], [/interrupted/i, "被中断"],
+      [/context deadline exceeded|timeout/i, "超时"], [/connection refused|no such host/i, "连不上"],
+    ]) if (pattern.test(msg)) return text;
+    return /[㐀-鿿]/.test(msg) ? msg : "出错了";
+  }
+
+  function taskStatus(status) {
+    return ({ done: "完成", failed: "失败", cancelled: "已取消", canceled: "已取消",
+      interrupted: "已中断", denied: "已拒绝", declined: "已拒绝",
+      running: "进行中", queued: "已排队" })[status] || zhError(status);
+  }
+
+  function errorDetails(host, raw, shown) {
+    if (!raw || raw === shown) return;
+    const toggle = el("button", "text-btn", "详情");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    const detail = el("pre", "error-raw", raw);
+    detail.hidden = true;
+    toggle.addEventListener("click", () => {
+      detail.hidden = !detail.hidden;
+      toggle.setAttribute("aria-expanded", String(!detail.hidden));
+    });
+    host.append(toggle, detail);
+  }
+
   function visibleError(e, fallback) {
-    if (e && e.status >= 500) return "XBot 出错了，稍后再试";
     if (e instanceof TypeError) return "连不上 XBot";
-    const msg = String((e && e.message) || "");
-    if (/[㐀-鿿]/.test(msg)) return msg;
-    // A 4xx with a reason is a problem with the request, not a reason to try later.
-    if (e && e.status >= 400 && e.status < 500 && e.status !== 401 && msg && msg !== "request failed") return "没能完成：" + msg;
-    return fallback || "操作失败，稍后再试";
+    const raw = String((e && e.message) || "");
+    const msg = zhError(raw);
+    if (e && e.status >= 400 && e.status < 500 && e.status !== 401 && raw && raw !== "request failed") return "没能完成：" + msg;
+    return raw ? msg : fallback || "操作失败，稍后再试";
   }
 
   async function apiFetch(path, opt) {
@@ -221,7 +251,7 @@
     const st = el("span", "bg-st");
     st.append(bgIcon(BG_ICONS[icon], 16, icon === "spin" ? "bg-spin" : ""));
     const tx = el("div", "bg-tx");
-    tx.append(el("div", "bg-tt", title), el("div", "bg-sub", sub));
+    tx.append(el("div", "bg-tt", plainText(title)), el("div", "bg-sub", sub));
     const a = el("span", "bg-acts");
     (acts || []).forEach((b) => a.append(b));
     rt.append(st, tx, a);
@@ -284,6 +314,8 @@
         inp.placeholder = "追加指示，下一步生效…";
         const go = el("button", "bg-send");
         go.type = "submit";
+        go.disabled = true;
+        inp.addEventListener("input", () => { go.disabled = !inp.value.trim(); });
         go.append(bgIcon(BG_ICONS.up, 14));
         f.append(inp, go);
         f.addEventListener("submit", (ev) => {
@@ -313,7 +345,7 @@
           failed: ["err", "err", "失败"],
           cancelled: ["int", "pause", "已取消"],
           interrupted: ["int", "pause", "已中断"],
-        }[f.status] || ["int", "pause", f.status || ""];
+        }[f.status] || ["int", "pause", taskStatus(f.status)];
         done.append(bgRow(map[0], map[1], f.task || f.id, map[2]));
       });
       parts.push(el("p", "bg-sec", "最近结束"), done);
@@ -2152,12 +2184,12 @@
 
   function realPreview(text) {
     const raw = String(text || "").trim();
-    return raw && raw !== "SILENT" ? clip(raw, 72) : "";
+    return raw && raw !== "SILENT" ? clip(plainText(raw), 72) : "";
   }
 
   function lineForBot(b) {
     const p = state.preview["b:" + b.name];
-    if (p && realPreview(p)) return p;
+    if (p && realPreview(p)) return realPreview(p);
     if (b.description) return plainText(b.description);
     if (b.persona) return plainText(b.persona);
     return "没有消息";
@@ -2165,7 +2197,7 @@
 
   function lineForGroup(g) {
     const p = state.preview["g:" + g.id];
-    if (p) return p;
+    if (p) return plainText(p);
     return (g.members || []).map(niceName).join(" · ") || "没有消息";
   }
 
@@ -3382,19 +3414,21 @@
     const tasks = section("进行中");
     const agents = data.agents || [];
     const running = agents.filter((ag) => ag.status === "running");
-    const finished = agents.filter((ag) => ag.status === "done" || ag.status === "failed" || ag.status === "cancelled");
+    const finished = agents.filter((ag) => ["done", "failed", "cancelled", "canceled", "interrupted", "denied", "declined"].includes(ag.status));
     if (!running.length) tasks.append(el("p", "hint", "没有进行中的任务"));
     for (const ag of running) {
       const card = el("div", "task");
       const top = el("div", "task-top");
       top.append(el("i", "status-dot run"), el("span", "", "进行中"));
-      card.append(top, el("p", "task-text", clip(ag.task || ag.id, 140)));
+      card.append(top, el("p", "task-text", clip(plainText(ag.task || ag.id), 140)));
       const row = el("div", "row");
       const field = document.createElement("input");
       field.placeholder = "消息";
       field.maxLength = 4000;
       const go = el("button", "secondary", "引导");
       go.type = "button";
+      go.disabled = true;
+      field.addEventListener("input", () => { go.disabled = !field.value.trim(); });
       go.addEventListener("click", () => controlAgent(ag.id, "steer", field.value));
       const stop = el("button", "secondary", "停止");
       stop.type = "button";
@@ -3427,9 +3461,9 @@
         const row = el("button", "recent-task");
         row.type = "button";
         row.setAttribute("aria-expanded", "false");
-        row.append(el("span", "recent-title", clip(ag.task || ag.id, 80)),
+        row.append(el("span", "recent-title", clip(plainText(ag.task || ag.id), 80)),
           el("span", ag.status === "failed" ? "recent-status failed" : "recent-status",
-            ag.status === "failed" ? "失败" : ag.status === "cancelled" ? "已取消" : "完成"));
+            taskStatus(ag.status)));
         row.addEventListener("click", () => {
           const wasOpen = openDetail && openDetail.row === row;
           if (openDetail) {
@@ -3439,12 +3473,15 @@
           }
           if (wasOpen) return;
           const drawer = el("div", "routine-drawer recent-detail");
-          drawer.append(el("div", "routine-prompt", ag.task || ag.id),
-            el("div", "routine-source", "状态：" + (ag.status === "failed" ? "失败" : ag.status === "cancelled" ? "已取消" : "完成")));
+          drawer.append(el("div", "routine-prompt", plainText(ag.task || ag.id)),
+            el("div", "routine-source", "状态：" + (taskStatus(ag.status))));
           if (ag.finished_at) drawer.append(el("div", "routine-source", "结束时间：" + new Date(ag.finished_at).toLocaleString("zh-CN")));
           // Red only for an actual error text; a missing summary is just gray.
-          if (ag.summary) drawer.append(el("div", ag.status === "failed" ? "routine-prompt failed" : "routine-prompt", ag.summary));
-          else drawer.append(el("div", "routine-source", "没有留下结果摘要。"));
+          if (ag.summary) {
+            const shown = ag.status === "done" ? plainText(ag.summary) : zhError(ag.summary);
+            drawer.append(el("div", ag.status === "failed" ? "routine-prompt failed" : "routine-prompt", shown));
+            errorDetails(drawer, ag.summary, shown);
+          } else drawer.append(el("div", "routine-source", ag.status === "failed" ? "没有留下失败原因" : "没有留下结果摘要。"));
           row.after(drawer);
           row.setAttribute("aria-expanded", "true");
           openDetail = { row, drawer };
@@ -3726,6 +3763,7 @@
   }
 
   async function controlAgent(id, kind, text) {
+    if (kind === "steer" && !String(text || "").trim()) return;
     if (!state.sel || state.sel.type !== "bot") return;
     const path = "/api/bots/" + encodeURIComponent(state.sel.id) + "/agents/" + encodeURIComponent(id) + "/" + kind;
     try {
@@ -3886,11 +3924,11 @@
     const queuedRecorded = (row) => {
       if (!(state.sel && state.sel.type === "bot") || ownerSends(row.dataset.sendText) <= row.baseline) return false;
       for (const other of state.pendingSends) {
-        if (other !== row && other.queued && other.dataset.sendText === row.dataset.sendText) other.baseline++;
+        if (other !== row && (other.queued || other.keepFailed) && other.dataset.sendText === row.dataset.sendText) other.baseline++;
       }
       return true;
     };
-    state.pendingSends = state.pendingSends.filter((row) => !row.accepted || (row.queued && !queuedRecorded(row)));
+    state.pendingSends = state.pendingSends.filter((row) => !row.accepted || ((row.queued || row.keepFailed) && !queuedRecorded(row)));
     if (state.pendingSends.length) inner.querySelector(".empty")?.remove();
     inner.append(...state.pendingSends, ...state.replyErrors);
   }
@@ -3938,7 +3976,7 @@
     return prose;
   }
 
-  async function readSSE(res, selection, prose) {
+  async function readSSE(res, selection, prose, onQueued) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -3962,9 +4000,11 @@
           if (line.startsWith("event:")) event = line.slice(6).trim();
           else if (line.startsWith("data:")) data += line.slice(5).trim();
         }
+        if (event === "queued") { onQueued(); continue; }
         if (!data) continue;
         let payload = {};
         try { payload = JSON.parse(data); } catch (e) { continue; }
+        if (payload.status === "queued") { onQueued(); continue; }
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "delta" && payload.text) {
           const status = host && host.querySelector(".live-status");
@@ -4001,7 +4041,7 @@
           const status = host.querySelector(".live-status");
           if (status) status.remove();
         } else if (event === "error") {
-          throw new Error("发送失败");
+          throw new Error(payload.error || payload.message || "回复出错了");
         }
       }
     }
@@ -4041,19 +4081,28 @@
     }
     pending = pending || optimisticMessage(text);
     pending.dataset.sendText = text;
+    pending.baseline = ownerSends(text);
     const marker = pending.querySelector(".send-state");
     marker.className = "send-state";
     marker.replaceChildren(document.createTextNode("发送中"));
     announceSend("发送中");
     const prose = selection.type === "bot" ? liveBubble() : null;
     const live = prose?.closest(".msg.live");
+    const markQueued = () => {
+      if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
+      pending.queued = true;
+      pending.keepFailed = false;
+      pending.querySelector(".send-state")?.remove();
+      pending.querySelector(".bubble-col")?.append(el("div", "send-state", "已排队"));
+      announceSend("已排队");
+    };
     let accepted = false;
     const markSent = () => {
       accepted = true;
       pending.accepted = true;
       if (state.sel === selection) state.pendingSends = state.pendingSends.filter((row) => {
         // Only a failed copy of this same text is resolved by this send.
-        if (row !== pending && row.querySelector(".send-failed") && row.dataset.sendText === text) {
+        if (row !== pending && !row.keepFailed && row.querySelector(".send-failed") && row.dataset.sendText === text) {
           row.remove();
           return false;
         }
@@ -4092,15 +4141,11 @@
         const data = await res.json().catch(() => ({}));
         if (state.sel !== selection) return;
         if (data.status === "queued") {
-          // Not in the transcript yet: keep the bubble, marked 已排队.
-          pending.queued = true;
-          pending.baseline = ownerSends(text);
-          const note = el("div", "send-state", "已排队");
-          pending.querySelector(".bubble-col")?.append(note);
+          markQueued();
         }
         setStatus(data.status === "queued" ? "已排队" : "");
       } else if (prose) {
-        await readSSE(res, selection, prose);
+        await readSSE(res, selection, prose, markQueued);
       }
       if (state.sel !== selection) return;
       state.sig = "";
@@ -4119,7 +4164,17 @@
       if (state.sel !== selection) return;
       setStatus("");
       if (accepted) {
-        const error = el("div", "reply-error", "回复出错了");
+        if (pending.queued) {
+          live?.remove();
+          settle();
+          state.sig = "";
+          await loadThread();
+          return;
+        }
+        if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
+        pending.keepFailed = true;
+        const error = el("div", "reply-error", "回复出错了：" + zhError(e.message));
+        errorDetails(error, e.message, zhError(e.message));
         live?.replaceWith(error);
         if (!live) thread.querySelector(".thread-inner")?.append(error);
         state.replyErrors.push(error);
@@ -4127,13 +4182,16 @@
         settle();
         state.sig = "";
         await loadThread();
-        return;
+        if (state.sel !== selection) return;
+        // The transcript already holds this message: it did arrive, only the reply failed.
+        if (!state.pendingSends.includes(pending)) return;
       }
       live?.remove();
+      if (!marker.isConnected) pending.querySelector(".bubble-col")?.append(marker);
       marker.className = "send-state send-failed";
       if (!input.value.trim()) {
         input.value = text;
-        marker.replaceChildren(el("span", "", "没发出去，原文还在输入框里"));
+        marker.replaceChildren(el("span", "", accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里"));
         announceSend("没发出去，原文还在输入框里");
       } else {
         // A newer draft is in the composer: keep it, and let the owner bring this text back.
@@ -4144,7 +4202,7 @@
           syncComposer();
           input.focus();
         });
-        marker.replaceChildren(el("span", "", "没发出去"), back);
+        marker.replaceChildren(el("span", "", accepted ? "没送到" : "没发出去"), back);
         announceSend("没发出去，可以放回输入框");
       }
       syncComposer();

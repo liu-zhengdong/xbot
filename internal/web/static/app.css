@@ -1964,3 +1964,5 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 
 /* Login guidance yields to the actionable error. */
 .gate-card:has(#login-error:not([hidden])) #login-hint { display: none; }
+
+.error-raw { color: var(--faint); font-family: monospace; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }

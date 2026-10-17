@@ -41,12 +41,12 @@ func TestComputerTabLayout(t *testing.T) {
 	view := source[start : start+end]
 	for _, want := range []string{
 		`wrap.append(routines, tasks)`, `section("例程")`, `section("进行中")`,
-		`ag.status === "running"`, `ag.status === "done" || ag.status === "failed" || ag.status === "cancelled"`, `"已取消"`,
+		`ag.status === "running"`, `["done", "failed", "cancelled", "canceled", "interrupted", "denied", "declined"].includes(ag.status)`,
 		`top.append(el("i", "status-dot run"), el("span", "", "进行中"))`,
 		`"secondary", "引导"`, `"secondary", "停止"`,
 		`"没有进行中的任务"`, `"没有例程"`, `"最近结束 · " + finished.length`,
 		`state.recentTasksOpen.has(botName)`, `toggle.setAttribute("aria-expanded", String(open))`,
-		`list.hidden = !open`, `clip(ag.task || ag.id, 80)`, `? "已取消" : "完成"`,
+		`list.hidden = !open`, `clip(plainText(ag.task || ag.id), 80)`, `taskStatus(ag.status)`,
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("computer tab missing %s", want)

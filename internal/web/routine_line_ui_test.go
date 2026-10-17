@@ -22,7 +22,7 @@ func TestRoutineWakeIsSystemLine(t *testing.T) {
 		`el("div", "routine-prompt", routine.prompt)`,
 		`m.role === "assistant" && String(m.content || "").trim() === "SILENT"`,
 		`lastRoutine.querySelector("summary").append`, `lastRoutine.dataset.branch === (m.branch || "")`, `openRoutines.has(key)`, ` · 没什么要说的`,
-		`realPreview(st && st.last_message)`, `if (p && realPreview(p)) return p;`,
+		`realPreview(st && st.last_message)`, `if (p && realPreview(p)) return realPreview(p);`,
 		`if (!text || text === "SILENT" || summaryLine(text)) continue;`,
 	} {
 		if !strings.Contains(string(js), want) {
