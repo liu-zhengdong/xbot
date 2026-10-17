@@ -188,10 +188,14 @@ func TestSearchBaseLocksProviderKeyToOfficialHost(t *testing.T) {
 	if err := AllowSearchBase("", WebBackend{Backend: "deepseek"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "https://search.example/v1"}); err != nil {
+	searchRoot := t.TempDir()
+	t.Setenv("SEARCH_KEY", "sekret-search-value")
+	t.Cleanup(ForgetKeys)
+	HoldKeys([]string{"SEARCH_KEY"})
+	if err := AllowSearchBase(searchRoot, WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "https://search.example/v1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := AllowSearchBase("", WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "http://search.example"}); err == nil {
+	if err := AllowSearchBase(searchRoot, WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_KEY", BaseURL: "http://search.example"}); err == nil {
 		t.Fatal("http search key was accepted")
 	}
 	root := t.TempDir()
@@ -203,20 +207,19 @@ func TestSearchBaseLocksProviderKeyToOfficialHost(t *testing.T) {
 	}
 }
 
-func TestSearchBaseFailsClosedForHeldAndUnreadableRegistry(t *testing.T) {
+func TestSearchBaseFailsClosedWhenRegistryUnreadable(t *testing.T) {
 	t.Cleanup(ForgetKeys)
 	root := t.TempDir()
 	t.Setenv("MAGPIE_API_KEY", "magpie-key-value")
 	HoldKeys([]string{"MAGPIE_API_KEY"})
-	err := AllowSearchBase(root, WebBackend{Backend: "deepseek", APIKeyEnv: "MAGPIE_API_KEY", BaseURL: "https://evil.example"})
-	if err == nil || !strings.Contains(err.Error(), "api.deepseek.com") {
+	if err := AllowSearchBase(root, WebBackend{Backend: "deepseek", APIKeyEnv: "MAGPIE_API_KEY", BaseURL: "https://search.example"}); err != nil {
 		t.Fatal(err)
 	}
 	bad := t.TempDir()
 	if err := os.WriteFile(Path(bad), []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err = AllowSearchBase(bad, WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_ONLY", BaseURL: "https://evil.example"})
+	err := AllowSearchBase(bad, WebBackend{Backend: "deepseek", APIKeyEnv: "SEARCH_ONLY", BaseURL: "https://evil.example"})
 	if err == nil || !strings.Contains(err.Error(), "api.deepseek.com") {
 		t.Fatal(err)
 	}

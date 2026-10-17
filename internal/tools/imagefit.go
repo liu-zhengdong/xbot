@@ -90,35 +90,30 @@ func imageMeta(mime string, data []byte) (w, h int, decoded int64, ok bool) {
 	if mime == "image/png" {
 		bpp = pngBytesPerPixel(data)
 	}
-	return w, h, int64(w) * int64(h) * bpp, true
+	decoded = int64(w) * int64(h) * bpp
+	if mime == "image/jpeg" && jpegProgressive(data) {
+		// A progressive scan keeps a second buffer beside the bitmap.
+		decoded += int64(w) * int64(h) * 4
+	}
+	return w, h, decoded, true
 }
 
-// pngBytesPerPixel estimates the bitmap Go's decoder builds. 16-bit samples
-// take two bytes each. 8-bit and below are counted as 4 bytes per pixel so a
-// palette or gray image that expands to NRGBA is not under-counted.
+// pngBytesPerPixel estimates the bitmap Go's decoder builds. 16-bit color
+// (types 2, 4, and 6) expands to NRGBA64, 8 bytes per pixel. 16-bit gray
+// stays Gray16, 2 bytes. 8-bit and below are counted as 4 bytes per pixel so
+// a palette or gray image that expands to NRGBA is not under-counted.
 func pngBytesPerPixel(b []byte) int64 {
-	if len(b) < 26 {
+	if len(b) < 26 || int(b[24]) <= 8 {
 		return 4
 	}
-	depth := int(b[24])
-	samples := 4
 	switch b[25] {
-	case 0, 3:
-		samples = 1
-	case 2:
-		samples = 3
-	case 4:
-		samples = 2
-	case 6:
-		samples = 4
-	}
-	if depth > 8 {
-		return int64(samples * 2)
-	}
-	if samples < 4 {
+	case 0:
+		return 2
+	case 2, 4, 6:
+		return 8
+	default:
 		return 4
 	}
-	return int64(samples)
 }
 
 func downscale(src image.Image, edge int) image.Image {
@@ -196,20 +191,30 @@ func gifSize(b []byte) (int, int, bool) {
 	return w, h, true
 }
 
+func jpegProgressive(b []byte) bool {
+	_, _, prog, ok := jpegInfo(b)
+	return ok && prog
+}
+
 func jpegSize(b []byte) (int, int, bool) {
+	w, h, _, ok := jpegInfo(b)
+	return w, h, ok
+}
+
+func jpegInfo(b []byte) (w, h int, progressive, ok bool) {
 	if len(b) < 4 || b[0] != 0xFF || b[1] != 0xD8 {
-		return 0, 0, false
+		return 0, 0, false, false
 	}
 	i := 2
 	for i+4 < len(b) {
 		if b[i] != 0xFF {
-			return 0, 0, false
+			return 0, 0, false, false
 		}
 		for i < len(b) && b[i] == 0xFF {
 			i++
 		}
 		if i >= len(b) {
-			return 0, 0, false
+			return 0, 0, false, false
 		}
 		marker := b[i]
 		i++
@@ -217,29 +222,29 @@ func jpegSize(b []byte) (int, int, bool) {
 			continue
 		}
 		if i+1 >= len(b) {
-			return 0, 0, false
+			return 0, 0, false, false
 		}
 		seglen := int(b[i])<<8 | int(b[i+1])
 		if seglen < 2 || i+seglen > len(b) {
-			return 0, 0, false
+			return 0, 0, false, false
 		}
 		if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC {
 			if seglen < 7 {
-				return 0, 0, false
+				return 0, 0, false, false
 			}
 			h := int(b[i+3])<<8 | int(b[i+4])
 			w := int(b[i+5])<<8 | int(b[i+6])
 			if w > 0 && h > 0 {
-				return w, h, true
+				return w, h, marker == 0xC2, true
 			}
-			return 0, 0, false
+			return 0, 0, false, false
 		}
 		if marker == 0xDA {
-			return 0, 0, false
+			return 0, 0, false, false
 		}
 		i += seglen
 	}
-	return 0, 0, false
+	return 0, 0, false, false
 }
 
 func webpSize(b []byte) (int, int, bool) {

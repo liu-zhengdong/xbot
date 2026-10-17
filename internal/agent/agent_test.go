@@ -586,6 +586,46 @@ func TestImageStaysUntilTheTurnEnds(t *testing.T) {
 	}
 }
 
+type seqImage struct{ n int }
+
+func (seqImage) Name() string                                  { return "view_image" }
+func (seqImage) Description() string                           { return "view" }
+func (seqImage) Parameters() any                               { return map[string]any{"type": "object"} }
+func (seqImage) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (im *seqImage) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	im.n++
+	tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: []byte{byte(im.n)}})
+	return "path: a.png", nil
+}
+
+func TestNewestImageSetReplacesOlder(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	_, err := Run(context.Background(), p, []tools.Tool{&seqImage{}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 3 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	var marks []byte
+	for _, m := range p.reqs[2].Messages {
+		for _, img := range m.Images {
+			marks = append(marks, img.Data...)
+		}
+	}
+	if len(marks) != 1 || marks[0] != 2 {
+		t.Fatalf("final request images %v", marks)
+	}
+}
+
 func TestImageTurnCap(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{

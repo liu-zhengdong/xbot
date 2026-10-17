@@ -129,9 +129,9 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if err != nil {
 			return produced, err
 		}
-		// Tool images stay attached for every later request in this run, still
-		// inside the turn budget. The transcript does not store the bytes, and
-		// the kernel drops them when the turn ends.
+		// The newest image set stays for later steps in this run. Older sets are
+		// dropped once a newer view attaches. The transcript does not store
+		// the bytes, and the kernel drops whatever remains when the turn ends.
 		if msg.Role == "" {
 			msg.Role = provider.RoleAssistant
 		}
@@ -162,6 +162,8 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		}
 		stepMsgs := []provider.Message{msg}
 		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt, &images)
+		convoBase := len(convo)
+		producedBase := len(produced)
 		for _, tm := range results {
 			convo = append(convo, tm)
 			produced = append(produced, tm)
@@ -169,6 +171,10 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			if opt.OnMessage != nil {
 				opt.OnMessage(tm)
 			}
+		}
+		if hasImages(results) {
+			images.release(dropImages(convo[:convoBase]))
+			dropImages(produced[:producedBase])
 		}
 		// A cancelled call is left open. The kernel seals it with one tombstone
 		// instead of recording "error: context canceled" as if the tool had run.
@@ -453,6 +459,20 @@ func (b *imageBudget) consume(msgs []provider.Message) {
 	}
 }
 
+func (b *imageBudget) release(n, bytes int) {
+	if b == nil {
+		return
+	}
+	b.n -= n
+	b.bytes -= bytes
+	if b.n < 0 {
+		b.n = 0
+	}
+	if b.bytes < 0 {
+		b.bytes = 0
+	}
+}
+
 func (b *imageBudget) take(imgs []provider.Image) ([]provider.Image, string) {
 	if b == nil || len(imgs) == 0 {
 		return imgs, ""
@@ -472,6 +492,27 @@ func (b *imageBudget) take(imgs []provider.Image) ([]provider.Image, string) {
 		return keep, ""
 	}
 	return keep, imageCapNote
+}
+
+func hasImages(msgs []provider.Message) bool {
+	for _, m := range msgs {
+		if len(m.Images) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// dropImages clears pictures on msgs and reports how many bytes the budget had counted.
+func dropImages(msgs []provider.Message) (n, bytes int) {
+	for i := range msgs {
+		for _, img := range msgs[i].Images {
+			n++
+			bytes += len(img.Data)
+		}
+		msgs[i].Images = nil
+	}
+	return n, bytes
 }
 
 func finish(opt Options, name, out string) string {

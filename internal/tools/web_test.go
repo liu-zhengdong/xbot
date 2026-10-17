@@ -600,6 +600,30 @@ func TestFitImageDownscalesAndRefusesHugeWebP(t *testing.T) {
 			t.Fatalf("%dx%d downscale %s %dx%d", sz[0], sz[1], mime, cfg.Width, cfg.Height)
 		}
 	}
+	rgb16 := widePNG(3000, 3000, 16)
+	rgb16[25] = 2
+	if _, _, err = fitImage("image/png", rgb16); err == nil || !strings.Contains(err.Error(), "pixel cap") {
+		t.Fatal(err)
+	}
+	gray16 := widePNG(4090, 4090, 16)
+	gray16[25] = 0
+	if _, _, err = fitImage("image/png", gray16); err == nil || strings.Contains(err.Error(), "pixel cap") {
+		t.Fatalf("16-bit gray: %v", err)
+	}
+	if _, _, err = fitImage("image/jpeg", jpegSOF(0xC2, 3000, 3000)); err == nil || !strings.Contains(err.Error(), "pixel cap") {
+		t.Fatal(err)
+	}
+	if _, _, err = fitImage("image/jpeg", jpegSOF(0xC0, 3000, 3000)); err == nil || strings.Contains(err.Error(), "pixel cap") {
+		t.Fatalf("baseline jpeg: %v", err)
+	}
+}
+
+func jpegSOF(marker byte, w, h int) []byte {
+	return []byte{
+		0xFF, 0xD8, 0xFF, marker, 0x00, 0x0B, 8,
+		byte(h >> 8), byte(h), byte(w >> 8), byte(w),
+		1, 1, 0x11, 0,
+	}
 }
 
 func wideWebP(w, h int) []byte {

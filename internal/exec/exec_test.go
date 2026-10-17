@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 type seqProv struct {
@@ -134,6 +136,128 @@ func TestRunnerRejectsBadAuthAndRemote(t *testing.T) {
 	}
 	if err := Listen("0.0.0.0:1", "secret", loc); err == nil {
 		t.Fatal("expected non-loopback to be refused")
+	}
+}
+
+type roundImage struct{ n int }
+
+func (roundImage) Name() string                                  { return "view_image" }
+func (roundImage) Description() string                           { return "view" }
+func (roundImage) Parameters() any                               { return map[string]any{"type": "object"} }
+func (roundImage) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (im *roundImage) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	im.n++
+	tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: []byte{byte(im.n)}})
+	return "path: a.png", nil
+}
+
+type imageRounds struct {
+	mu   sync.Mutex
+	reqs [][]provider.Message
+	n    int
+	hold chan struct{}
+}
+
+func (p *imageRounds) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	p.mu.Lock()
+	n := p.n
+	p.n++
+	hold := p.hold
+	p.mu.Unlock()
+	if n == 0 && hold != nil {
+		<-hold
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	snap := append([]provider.Message(nil), req.Messages...)
+	for i := range snap {
+		if len(snap[i].Images) == 0 {
+			continue
+		}
+		snap[i].Images = append([]provider.Image(nil), snap[i].Images...)
+		for j := range snap[i].Images {
+			snap[i].Images[j].Data = append([]byte(nil), snap[i].Images[j].Data...)
+		}
+	}
+	p.reqs = append(p.reqs, snap)
+	if n%2 == 0 {
+		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}}, nil
+	}
+	return provider.Message{Role: provider.RoleAssistant, Content: "saw"}, nil
+}
+
+func TestSubagentImageRoundDropsAfterReply(t *testing.T) {
+	hold := make(chan struct{})
+	p := &imageRounds{hold: hold}
+	tool := &roundImage{}
+	loc := NewLocal(Limits{Timeout: 10 * time.Second, ProgressEvery: -1, MaxSteps: 12})
+	loc.Prov = p
+	loc.ToolSet = func(string, string) []tools.Tool { return []tools.Tool{tool} }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range loc.Events() {
+		}
+	}()
+	dir := t.TempDir()
+	id := "sa_imground1"
+	if err := loc.Start(ctx, StartRequest{ID: id, Task: "look", Mode: ModeBrief, Dir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		if err := loc.Control(ctx, id, Control{Kind: KindQueue, Text: "again"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(hold)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		meta, _, err := ReadStatus(dir)
+		if err == nil && meta.Status == statusDone {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	meta, _, err := ReadStatus(dir)
+	if err != nil || meta.Status != statusDone {
+		t.Fatalf("status %+v %v", meta, err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.reqs) < 10 || tool.n != 5 {
+		t.Fatalf("requests %d views %d", len(p.reqs), tool.n)
+	}
+	var first []byte
+	for _, m := range p.reqs[1] {
+		for _, img := range m.Images {
+			first = append(first, img.Data...)
+		}
+	}
+	if len(first) != 1 || first[0] != 1 {
+		t.Fatalf("reply that consumed round 1 carried %v", first)
+	}
+	for _, m := range p.reqs[2] {
+		if len(m.Images) != 0 {
+			t.Fatal("round 1 image was still in the request after that reply")
+		}
+	}
+	var fifth int
+	var sawOld bool
+	for _, m := range p.reqs[9] {
+		for _, img := range m.Images {
+			fifth++
+			if len(img.Data) == 1 && img.Data[0] == 1 {
+				sawOld = true
+			}
+			if len(img.Data) != 1 || img.Data[0] != 5 {
+				t.Fatalf("5th image %v", img.Data)
+			}
+		}
+	}
+	if fifth != 1 || sawOld {
+		t.Fatalf("5th request images %d old %v", fifth, sawOld)
 	}
 }
 
