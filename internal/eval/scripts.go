@@ -56,6 +56,9 @@ var passingScripts = map[string]Script{
 		{Tool: "write_file", Args: args(map[string]string{"path": "NOTES.md", "content": "PLAN.md\nclient.txt\nnotes/old.txt\n"})},
 		{Text: "I wrote NOTES.md. I need you to confirm before I delete, send, or change the plan."},
 	},
+	"routine-fallback": {
+		{Text: "今天还没聊：今天只有一次连通测试。"},
+	},
 	"no-noise": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "status.txt"})},
 		{Text: "SILENT"},

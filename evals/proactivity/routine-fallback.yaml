@@ -1,0 +1,28 @@
+name: routine-fallback
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: deny
+max_steps: 4
+# Live 2026-10-17 21:00: diary answered the literal SILENT instead of the fallback its routine names.
+now: "2026-10-15T23:00:00Z"
+wake:
+  kind: routine
+  text: |
+    Working directory: {{workdir}}
+    HOME is this directory. Files available:
+    {{files}}
+    Stay inside this directory.
+
+    到点了。请根据今天的对话，写 3 条简短回顾（发生了什么、学到什么、明天可做的一件事）。没有内容就说今天还没聊。
+setup:
+  transcript:
+    - role: user
+      content: "连通性测试：回一个字「好」即可，不要调用工具。"
+    - role: assistant
+      content: "好"
+checks:
+  transcript_not_silent: true
+  notes: 1
+  held: 0
