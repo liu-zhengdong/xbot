@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -38,11 +39,10 @@ func newStall() (chan struct{}, func(func()) func(http.ResponseWriter, *http.Req
 }
 
 func TestChatRetriesWholeRequestTimeout(t *testing.T) {
-	var n int
+	var n atomic.Int32
 	release, hang := newStall()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n++
-		if n == 1 {
+		if n.Add(1) == 1 {
 			hang(nil)(w, r)
 			return
 		}
@@ -65,16 +65,16 @@ func TestChatRetriesWholeRequestTimeout(t *testing.T) {
 	if msg.Content != "pong" || strings.Join(deltas, "") != "pong" {
 		t.Fatalf("msg %q deltas %v", msg.Content, deltas)
 	}
-	if n != 2 {
-		t.Fatalf("attempts %d, want the hung request retried once", n)
+	if n.Load() != 2 {
+		t.Fatalf("attempts %d, want the hung request retried once", n.Load())
 	}
 }
 
 func TestChatRequestTimeoutIsTheFinalError(t *testing.T) {
-	var n int
+	var n atomic.Int32
 	release, hang := newStall()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n++
+		n.Add(1)
 		hang(nil)(w, r)
 	}))
 	defer srv.Close()
@@ -100,17 +100,16 @@ func TestChatRequestTimeoutIsTheFinalError(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Chat did not return; the request timeout is not enforced")
 	}
-	if n != 3 {
-		t.Fatalf("attempts %d, want 3 (two retries)", n)
+	if n.Load() != 3 {
+		t.Fatalf("attempts %d, want 3 (two retries)", n.Load())
 	}
 }
 
 func TestChatRetriesStreamIdleTimeout(t *testing.T) {
-	var n int
+	var n atomic.Int32
 	release, hang := newStall()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n++
-		if n == 1 {
+		if n.Add(1) == 1 {
 			hang(func() {
 				w.Header().Set("Content-Type", "text/event-stream")
 				_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"par"}}]}`+"\n\n")
@@ -140,8 +139,8 @@ func TestChatRetriesStreamIdleTimeout(t *testing.T) {
 	if got := strings.Join(deltas, ""); got != "pong" {
 		t.Fatalf("deltas %q; the stalled attempt must not deliver deltas", got)
 	}
-	if n != 2 {
-		t.Fatalf("attempts %d, want 2", n)
+	if n.Load() != 2 {
+		t.Fatalf("attempts %d, want 2", n.Load())
 	}
 }
 

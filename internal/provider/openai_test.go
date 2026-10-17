@@ -60,6 +60,9 @@ func TestChatHTTP(t *testing.T) {
 		text := string(b)
 		sawStream = strings.Contains(text, `"stream":true`)
 		sawTool = strings.Contains(text, `"name":"shell"`)
+		if !strings.Contains(text, `"include_usage":true`) {
+			t.Errorf("request missing include_usage: %s", text)
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"pong\"}}]}\n\n")
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
@@ -149,5 +152,59 @@ func TestChatHTTPError(t *testing.T) {
 	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil)
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatal(err)
+	}
+}
+
+func TestDecodeStreamUsage(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"choices":[{"delta":{"role":"assistant","content":"ok"}}]}`,
+		`data: {"choices":[],"usage":{"prompt_tokens":800,"completion_tokens":12,"prompt_cache_hit_tokens":3,"prompt_tokens_details":{"cached_tokens":40}}}`,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+	msg, err := decodeStream(strings.NewReader(body), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Content != "ok" {
+		t.Fatalf("content %q", msg.Content)
+	}
+	u := msg.Usage
+	if !u.Reported || u.Estimated || u.PromptTokens != 800 || u.CompletionTokens != 12 || u.CachedTokens != 40 {
+		t.Fatalf("usage %+v", u)
+	}
+}
+
+func TestDecodeStreamUsageCacheHit(t *testing.T) {
+	body := "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":1,\"prompt_cache_hit_tokens\":7}}\n\ndata: [DONE]\n"
+	msg, err := decodeStream(strings.NewReader(body), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := msg.Usage
+	if !u.Reported || u.PromptTokens != 10 || u.CompletionTokens != 1 || u.CachedTokens != 7 {
+		t.Fatalf("usage %+v", u)
+	}
+}
+
+func TestDecodeStreamZeroUsageIsReported(t *testing.T) {
+	body := "data: {\"choices\":[{\"delta\":{\"content\":\"z\"}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":0}}\n\ndata: [DONE]\n"
+	msg, err := decodeStream(strings.NewReader(body), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !msg.Usage.Reported || msg.Usage.PromptTokens != 0 || msg.Usage.Estimated {
+		t.Fatalf("usage %+v", msg.Usage)
+	}
+}
+
+func TestDecodeStreamMissingUsageIsNotReported(t *testing.T) {
+	body := "data: {\"choices\":[{\"delta\":{\"content\":\"z\"}}]}\n\ndata: [DONE]\n"
+	msg, err := decodeStream(strings.NewReader(body), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Usage.Reported || msg.Usage.Estimated || msg.Usage.PromptTokens != 0 {
+		t.Fatalf("usage %+v", msg.Usage)
 	}
 }

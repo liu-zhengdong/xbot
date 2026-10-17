@@ -61,6 +61,25 @@ func (k *Kernel) attachShellJobs() {
 	}
 }
 
+// attachShell points every shell at this bot's job table and persistent cwd.
+func (k *Kernel) attachShell() {
+	k.attachShellJobs()
+	if k == nil {
+		return
+	}
+	for _, l := range k.snapshotLinks() {
+		if l == nil {
+			continue
+		}
+		for _, t := range l.Tools() {
+			sh, ok := t.(*tools.Shell)
+			if ok {
+				sh.BindSession(k.shellStartDir, k.shellAfterDir)
+			}
+		}
+	}
+}
+
 // shellBackgroundOn reports that a real shell on these links has a job table.
 // An eval jail is also named "tools" but its shell is not *tools.Shell and has
 // no jobs, so it must not gain shell_output, shell_status, or shell_cancel.
@@ -472,6 +491,9 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 				break
 			}
 			fmt.Fprintf(&b, "%s %s %s", job.ID, job.Status, clipRunes(job.Command, 80))
+			if job.Cwd != "" {
+				fmt.Fprintf(&b, " cwd %s", job.Cwd)
+			}
 			if job.Held > 0 {
 				fmt.Fprintf(&b, " held_bytes: %d", job.Held)
 			}
@@ -486,6 +508,9 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 	line := fmt.Sprintf("%s %s", job.ID, job.Status)
 	if job.Status == "done" {
 		line += fmt.Sprintf(" exit %d", job.ExitCode)
+	}
+	if job.Cwd != "" {
+		line += "\ncwd: " + job.Cwd
 	}
 	if job.Held > 0 {
 		line += fmt.Sprintf("\nheld_bytes: %d", job.Held)

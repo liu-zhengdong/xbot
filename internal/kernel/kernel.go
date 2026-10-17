@@ -138,6 +138,11 @@ type Kernel struct {
 	forms     []string
 	formsVGen uint64
 	formsRGen uint64
+
+	// cwd is the persistent shell working directory for this bot.
+	cwd cwdState
+	// tokens is model-reported usage for this kernel's lifetime.
+	tokens tokenState
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -431,10 +436,19 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 			// A shell job that finished during this step is attached here, after
 			// the tool results, so it does not land in the middle of a call.
+			// Project instructions and context usage use the same boundary:
+			// they show up on the next model call, not in the middle of one.
 			if note := k.shellNotice(k.shellPrev()); note != "" {
 				if rerr := k.reminders().Record(t.lastSeq(), KindShellJob, note, k.now()); rerr != nil && appendErr == nil {
 					appendErr = rerr
 				}
+				if remind != "" {
+					remind += "\n\n" + note
+				} else {
+					remind = note
+				}
+			}
+			if note := k.stepBoundaryNotes(t); note != "" {
 				if remind != "" {
 					remind += "\n\n" + note
 				} else {
@@ -465,7 +479,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	done := make(chan result, 1)
 	go func() {
-		rp := &replyProvider{inner: p, accept: k.userReplyTarget}
+		rp := &replyProvider{inner: p, accept: k.userReplyTarget, onUse: func(req provider.Request, msg provider.Message) {
+			k.noteUsage(t, req, msg)
+		}}
 		recordLoop := func(text string) {
 			if text == "" {
 				return

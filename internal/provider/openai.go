@@ -61,11 +61,18 @@ type apiTool struct {
 }
 
 type apiRequest struct {
-	Model      string    `json:"model"`
-	Messages   []Message `json:"messages"`
-	Tools      []apiTool `json:"tools,omitempty"`
-	ToolChoice string    `json:"tool_choice,omitempty"`
-	Stream     bool      `json:"stream"`
+	Model         string         `json:"model"`
+	Messages      []Message      `json:"messages"`
+	Tools         []apiTool      `json:"tools,omitempty"`
+	ToolChoice    string         `json:"tool_choice,omitempty"`
+	Stream        bool           `json:"stream"`
+	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+}
+
+// streamOptions asks the endpoint to include a usage object on the last chunk.
+// Endpoints that omit it leave TokenUsage.Reported false.
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 // Chat streams a completion and returns the assembled assistant message.
@@ -232,9 +239,10 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 		return Message{}, errors.New("provider: base URL is empty")
 	}
 	body := apiRequest{
-		Model:    c.Model,
-		Messages: req.Messages,
-		Stream:   true,
+		Model:         c.Model,
+		Messages:      req.Messages,
+		Stream:        true,
+		StreamOptions: &streamOptions{IncludeUsage: true},
 	}
 	if len(req.Tools) > 0 {
 		body.ToolChoice = "auto"
@@ -320,6 +328,32 @@ type streamChunk struct {
 			} `json:"tool_calls"`
 		} `json:"delta"`
 	} `json:"choices"`
+	Usage *apiUsage `json:"usage,omitempty"`
+}
+
+// apiUsage is the OpenAI-compatible usage object. Cached tokens are read from
+// prompt_tokens_details.cached_tokens, or from prompt_cache_hit_tokens when
+// that is what the endpoint sends. A present object is real; a missing one is not.
+type apiUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	PromptCacheHit   int `json:"prompt_cache_hit_tokens"`
+	PromptDetails    *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+}
+
+func (u apiUsage) tokenUsage() TokenUsage {
+	cached := u.PromptCacheHit
+	if u.PromptDetails != nil && u.PromptDetails.CachedTokens > 0 {
+		cached = u.PromptDetails.CachedTokens
+	}
+	return TokenUsage{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		CachedTokens:     cached,
+		Reported:         true,
+	}
 }
 
 type toolBuf struct {
@@ -334,6 +368,7 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 	role := RoleAssistant
 	tools := map[int]*toolBuf{}
 	var order []int
+	var usage TokenUsage
 	for sc.Scan() {
 		line := strings.TrimRight(sc.Text(), "\r")
 		if line == "" || strings.HasPrefix(line, ":") {
@@ -352,6 +387,9 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		}
 		if chunk.Error != nil && chunk.Error.Message != "" {
 			return Message{}, fmt.Errorf("provider: %s", chunk.Error.Message)
+		}
+		if chunk.Usage != nil {
+			usage = chunk.Usage.tokenUsage()
 		}
 		if len(chunk.Choices) == 0 {
 			continue
@@ -390,7 +428,7 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 	if err := sc.Err(); err != nil {
 		return Message{}, err
 	}
-	msg := Message{Role: role, Content: content.String()}
+	msg := Message{Role: role, Content: content.String(), Usage: usage}
 	for i, idx := range order {
 		buf := tools[idx]
 		id := buf.id

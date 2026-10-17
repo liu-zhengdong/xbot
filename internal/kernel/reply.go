@@ -91,6 +91,7 @@ func (k *Kernel) userReplyTarget(seq int) bool {
 type replyProvider struct {
 	inner  provider.Provider
 	accept func(int) bool
+	onUse  func(provider.Request, provider.Message)
 	hold   replyHold
 }
 
@@ -106,6 +107,9 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 	})
 	if err != nil {
 		return provider.Message{}, err
+	}
+	if s.onUse != nil {
+		s.onUse(req, msg)
 	}
 	if onDelta != nil {
 		if rest := s.hold.Flush(); rest != "" {

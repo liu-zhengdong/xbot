@@ -14,7 +14,7 @@ verified: 2026-10-17 @ 60e29f8
 ## 怎么运转
 - 用户配置多个兼容 OpenAI 接口的供应商；API key 只存环境变量的名字。
 - 每个 Bot 绑定一个供应商和模型。模型条目可以带 `todo`（true 或 false）和 `todo_steps`。`todo` 缺省时，供应商或模型名含 deepseek 才打开待办提醒，其余关掉；`todo_steps` 缺省是 6。空绑定仍是 deepseek-chat，提醒开。`xbot provider add --todo on|off --todo-steps N` 写入这两个字段，省略时保留原来的值。密钥仍然只记环境变量名。
-- **每次请求都有时限**：一次尝试从发出到最后一个字节最多 3 分钟；流式回复里两块之间超过 90 秒没动静就切断（设成负数可以关掉这一条）。两种超时和意外 EOF、429、5xx 一样可以重试，最多再试两次，间隔递增。增量文字只在一次尝试成功后才交出去，所以重试不会把半截回答重复说一遍。之前出现过请求挂几分钟不报错的情况，这是对它的修复。
+- **每次请求都有时限**：一次尝试从发出到最后一个字节最多 3 分钟；流式回复里两块之间超过 90 秒没动静就切断（设成负数可以关掉这一条）。两种超时和意外 EOF、429、5xx 一样可以重试，最多再试两次，间隔递增。增量文字只在一次尝试成功后才交出去，所以重试不会把半截回答重复说一遍。之前出现过请求挂几分钟不报错的情况，这是对它的修复。流式请求带 `stream_options.include_usage`。响应里有 usage 对象就按原数记下 prompt、completion 和 cached（`prompt_tokens_details.cached_tokens`，否则 `prompt_cache_hit_tokens`），全是 0 也算报告过。没有这个对象时，内核才按大约 4 字一 token 估计，并在 `trace.jsonl` 里把 reason 写成 estimated。用量不进 transcript。
 - **工具调用 id**：有的网关回复里不带工具调用 id，客户端补一个本地 id，并带随机后缀，不同轮之间不会撞号。工具结果按 id 配给它之前最近的那次调用；以前同一个 id 跨轮重复，结果配错位置，严格网关回 400，dev Bot 每次唤醒都失败。
 - 预留一个选择模型的接口，以后做按任务自动选模型时再实现。
 - **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，系统提示和原来逐字节一样；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `## Model`。环境更新里看得到：没有时写 `overlay: none`，有时写 `provider/model`、内容哈希，以及 `<model_overlay>` 里的正文。正文超过 8KB 会截断。

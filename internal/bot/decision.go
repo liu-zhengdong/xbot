@@ -45,13 +45,27 @@ func (b *Bot) LogDecision(state, tool, summary string, at time.Time) error {
 }
 
 // Trace kinds written for eval scoring. Stop is a circuit-breaker hard stop.
-const TraceStop = "stop"
+// Usage is one model call's token count.
+const (
+	TraceStop  = "stop"
+	TraceUsage = "usage"
+)
 
 // Trace is one append-only trace event. Reason is a stable code, never a secret.
+// The token fields are set only for kind usage.
 type Trace struct {
-	Time   time.Time `json:"time"`
-	Kind   string    `json:"kind"`
-	Reason string    `json:"reason"`
+	Time              time.Time `json:"time"`
+	Kind              string    `json:"kind"`
+	Reason            string    `json:"reason"`
+	Prompt            int       `json:"prompt,omitempty"`
+	Completion        int       `json:"completion,omitempty"`
+	Cached            int       `json:"cached,omitempty"`
+	TurnCompletion    int       `json:"turn_completion,omitempty"`
+	SessionPrompt     int       `json:"session_prompt,omitempty"`
+	SessionCompletion int       `json:"session_completion,omitempty"`
+	SessionCached     int       `json:"session_cached,omitempty"`
+	Window            int       `json:"window,omitempty"`
+	Estimated         bool      `json:"estimated,omitempty"`
 }
 
 // TracePath is the append-only trace for this bot.
@@ -65,6 +79,25 @@ func (b *Bot) LogTrace(kind, reason string, at time.Time) error {
 		at = time.Now().UTC()
 	}
 	return fsutil.AppendJSONL(b.TracePath(), Trace{Time: at.UTC(), Kind: kind, Reason: reason})
+}
+
+// LogUsage appends one usage trace. The counts are integers; the caller does
+// not put prompt text or secrets in the record.
+func (b *Bot) LogUsage(t Trace) error {
+	if t.Time.IsZero() {
+		t.Time = time.Now().UTC()
+	} else {
+		t.Time = t.Time.UTC()
+	}
+	t.Kind = TraceUsage
+	if t.Reason == "" {
+		if t.Estimated {
+			t.Reason = "estimated"
+		} else {
+			t.Reason = "reported"
+		}
+	}
+	return fsutil.AppendJSONL(b.TracePath(), t)
 }
 
 // Traces reads the trace log in order. A missing log is empty.

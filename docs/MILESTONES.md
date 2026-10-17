@@ -28,7 +28,7 @@
 | M2 | 文件新鲜度 | 已合入 |
 | M3 | 待办清单 | 已合入 |
 | M4 | shell 后台化 | 已合入 |
-| M5 | 环境感知（AGENTS.md 分层加载、持久 cd、token 用量、外部改动 diff） | 待做 |
+| M5 | 环境感知（AGENTS.md 分层加载、持久 cd、token 用量、外部改动 diff） | 待评审 |
 | M6 | 搜索与看图 | 待做 |
 | M7 | 子代理类型（工具白名单、提示片段、步数上限、防递归） | 待做 |
 | M8 | 权限规则（deny → ask → allow，「不再询问」） | 待做 |
@@ -68,6 +68,22 @@
 运行中的任务不再固定留住最后 1024 字节。待写尾巴里只留最长的、正好是某个已知密钥形式（原文、JSON、URL、base64，以及暂存密钥原文）前缀的那一段；对不上时，完整脱敏过的输出立刻进文件和 `shell_output`。还留着的字节数在 `shell_output` 和 `shell_status` 里写成 `held_bytes: N`（大于 0 才写）。`scrubSecrets` 按从长到短替换，一样长按字节序。测试里的 PEM 头尾在运行时拼接，扫描器不会把假私钥当成真的。
 
 假模型回归：`TMPDIR=/workspace/.test-tmp` 跑 `go test -count=1 ./...` 连续三遍，默认 `TMPDIR` 一遍。`go test -race` 覆盖 `internal/kernel`、`internal/tools`、`internal/eval`、`internal/review`。`go test -fuzz=FuzzJobLogRedaction -fuzztime=2m ./internal/tools/`。本机基准（amd64，`-benchtime=200ms`，脱敏函数同时认一个短 token 和约 1.7 KiB 的 PEM 形式）：`BenchmarkJobWriterTrickle` 4249 ns/op，432 B/op，3 allocs/op；`BenchmarkJobWriterBulk` 93232 ns/op，253532 B/op，3 allocs/op（一次约 32 KiB）。单次写入远低于本机 IPC 5 毫秒预算。2 万行按 32 KiB 一块写，写端大约 4 毫秒。不涉及界面帧率。在 `a9c1ffa` 上会失败的回归：`TestShortRunningOutputIsVisible`、`TestShellTimeoutMovesToBackground`、`TestBackgroundFileRedactsSecret`、`TestShellJobFileUsesKernelRedactor`、`TestRunningShortOutputAndHeldPrefix`、`TestScrubSecretsLongestFirst`、`TestScrubSecretsStableTieBreak`。Not run: 真模型评测，界面浏览器检查（没有界面改动），这四个包以外的 `-race`。
+
+## 环境感知（研究笔记里的 M5）
+
+相对 shell 后台那一版。四件事都走已有的提醒通道，不进系统提示，也不新加工具。
+
+项目说明：Bot 的工作目录（没设工作区时不读进程当前目录）向上读到工作区或共享目录根。每层有 `AGENTS.md` 就用它，否则用 `CLAUDE.md`，近的在后。同一套只注入一次，`cd` 进了另一个子目录才再发。合计最多 32 KiB，更远的文件先丢掉，截断时正文写 `[truncated]`。文件里的 `</project_instructions>` 会被拆开，避免它把提醒标签提前关掉。允许的根以外的路径不读，指到外面的符号链接也不跟。正文是主人写的数据：权限表不看它，写入提醒前仍过脱敏。
+
+持久工作目录：同一个 Bot 的前台 `shell` 里，`cd` 留到下一次调用，记在内存和 `bots/<name>/cwd`。每次调用确认目录还在、并且在工作区或共享目录里；丢了或不在里面就回到工作区，结果里写明。结果在状态行后面加 `cwd:`。`false` 和显式 `exit` 也留下目录。后台任务只记下启动时的目录，不改这份会话目录。没挂会话的 shell（评测沙箱、节点、命令行）每次仍从自己的目录开始。查项目说明或做权限判断时不把回退写进这份记录，免得把「目录丢了」的说明吞掉。
+
+用量：流式请求带 `include_usage`。有 usage 对象就按原数记 prompt、completion、cached，0 也算报告过，不用估计值替换。没有对象才按大约 4 字一 token 估计，trace 的 reason 是 estimated，提醒里写 estimated。prompt 跨过该模型 `providers.json` 上下文窗口的 50/75/90% 时，提醒通道发一行；同一档不重复，掉下去再跨过才再发。没有窗口长度就不发百分比，计数仍进 `trace.jsonl` 和 `BotStatus.tokens`。本进程累计，重启从 0 开始，历史在 trace 里。
+
+外部改动：`file_change` 改成不超过 4 KiB 的统一 diff，放不下写 `[diff truncated]`。敏感文件名仍只写 changed。自己 `write_file` / `edit_file` 成功后刷新记录，冷却过了也不再报。
+
+提醒通道这一轮多出来的 token（`compact.Estimate`，大约 4 字一 token，不是供应商分词器）：一份大约 3094 字节的 `AGENTS.md` 第一次注入 3393 字节、849 token；下一轮新注入 0 字节，历史里仍带着那 849 token，直到压缩。再 `cd` 进一个大约 1 KiB 的子项目说明后，新的一套是 4538 字节、1135 token。50% 那一行 133 字节、34 token，只有跨过门槛才发。一小段外部 diff 大约 34 字节。读这一套项目说明的平均耗时 64 微秒；基准 `BenchmarkProjectText` 53243 ns/op，43668 B/op，249 allocs/op（amd64，200ms）。远低于本机 IPC 5 毫秒预算。不涉及界面帧率。
+
+假模型回归：`TMPDIR=/workspace/.test-tmp/full` 跑 `go test -count=1 ./...` 连续三遍，默认 `TMPDIR` 一遍。`go test -race -count=1` 覆盖 `internal/kernel`、`internal/tools`、`internal/provider`、`internal/bot`。供应商超时测试里的重试计数原来没有同步，两个请求叠在一起时 `-race` 会报，改成原子计数。Not run: 真模型评测，界面浏览器检查（没有界面改动），这四个包以外的 `-race`，`go test -fuzz`。
 
 ## 下个版本（v0.3.1 / v0.4.0）
 v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），撤到下个版本重做，每项配自己的 eval 用例，不靠 give-up 调。

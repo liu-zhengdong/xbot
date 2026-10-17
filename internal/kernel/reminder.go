@@ -33,16 +33,20 @@ const (
 
 	pendingCooldown = 10 * time.Minute
 	loopCooldown    = time.Minute
+	// reminderMax clips an ordinary reminder. Project instructions carry their
+	// own larger budget; reminderHardMax is the absolute cap prepare enforces.
 	reminderMax     = 2048
+	reminderHardMax = projectNoteMax
 )
 
 // Kind is one reminder. Cooldown is the minimum gap between firings.
 // Trigger returns the note, or "" when the condition is not met. prev is this
 // kind's earlier firings, oldest first, so a trigger can suppress repeats
-// without rewriting them.
+// without rewriting them. MaxBytes overrides reminderMax for one kind.
 type Kind struct {
 	Name     string
 	Cooldown time.Duration
+	MaxBytes int
 	Trigger  func(now time.Time, prev []Reminder) string
 }
 
@@ -109,7 +113,14 @@ func (c *Channel) Due(now time.Time) ([]Reminder, error) {
 		if k.Cooldown > 0 && !last.IsZero() && now.Sub(last) < k.Cooldown {
 			continue
 		}
-		text := clipReminder(k.Trigger(now, prev))
+		limit := k.MaxBytes
+		if limit <= 0 {
+			limit = reminderMax
+		}
+		if limit > reminderHardMax {
+			limit = reminderHardMax
+		}
+		text := clipLimit(k.Trigger(now, prev), limit)
 		if text == "" {
 			continue
 		}
@@ -238,11 +249,15 @@ func joinReminder(body, note string) string {
 }
 
 func clipReminder(s string) string {
+	return clipLimit(s, reminderMax)
+}
+
+func clipLimit(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
-	out, _ := clip.Bytes(s, reminderMax)
+	out, _ := clip.Bytes(s, max)
 	return out
 }
 
@@ -284,7 +299,7 @@ func (l *reminderLog) prepare(text string) string {
 	if fn != nil {
 		text = fn(text)
 	}
-	return clipReminder(text)
+	return clipLimit(text, reminderHardMax)
 }
 
 func (l *reminderLog) all() ([]Reminder, error) {
@@ -517,7 +532,17 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 	ch.Register(Kind{
 		Name:     KindFileChange,
 		Cooldown: fileChangeCooldown,
+		MaxBytes: maxDiffBytes + 2048,
 		Trigger:  k.fileChangeTrigger(),
+	})
+	ch.Register(Kind{
+		Name:     KindProject,
+		MaxBytes: projectNoteMax,
+		Trigger:  k.projectTrigger(),
+	})
+	ch.Register(Kind{
+		Name:    KindContext,
+		Trigger: k.contextTrigger(),
 	})
 	ch.Register(Kind{
 		Name:     KindTodo,
@@ -529,6 +554,73 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 		Trigger: k.shellTrigger(),
 	})
 	return ch
+}
+
+// stepBoundaryNotes records reminders that become true between tool steps:
+// a changed project-instruction set, a context-window threshold, and an
+// external file edit whose cooldown has elapsed. Each one is stored on the
+// reminder channel so the next request replays the same bytes.
+func (k *Kernel) stepBoundaryNotes(t *turn) string {
+	if k == nil || t == nil {
+		return ""
+	}
+	seq := t.lastSeq()
+	var parts []string
+	if note := k.projectNote(k.kindPrev(KindProject)); note != "" {
+		if stored := k.storeReminder(seq, KindProject, note); stored != "" {
+			parts = append(parts, stored)
+		}
+	}
+	if note := k.contextNote(k.kindPrev(KindContext)); note != "" {
+		if stored := k.storeReminder(seq, KindContext, note); stored != "" {
+			parts = append(parts, stored)
+		}
+	}
+	if k.cooled(KindFileChange, fileChangeCooldown) {
+		if note := k.fileChangeTrigger()(k.now(), k.kindPrev(KindFileChange)); note != "" {
+			if stored := k.storeReminder(seq, KindFileChange, note); stored != "" {
+				parts = append(parts, stored)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func (k *Kernel) storeReminder(seq int, kind, text string) string {
+	text = k.reminders().log.prepare(text)
+	if text == "" {
+		return ""
+	}
+	if err := k.reminders().Record(seq, kind, text, k.now()); err != nil {
+		return ""
+	}
+	return text
+}
+
+func (k *Kernel) cooled(kind string, d time.Duration) bool {
+	if d <= 0 {
+		return true
+	}
+	prev := k.kindPrev(kind)
+	if len(prev) == 0 {
+		return true
+	}
+	last := prev[len(prev)-1].At
+	return !last.IsZero() && k.now().Sub(last) >= d
+}
+
+func (k *Kernel) kindPrev(kind string) []Reminder {
+	all, err := k.reminders().log.all()
+	if err != nil {
+		return nil
+	}
+	var prev []Reminder
+	for _, n := range all {
+		if n.Kind == kind {
+			prev = append(prev, n)
+		}
+	}
+	return prev
 }
 
 // todoPrev is this kind's earlier firings, oldest first.

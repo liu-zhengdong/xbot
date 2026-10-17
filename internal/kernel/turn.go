@@ -25,6 +25,10 @@ type turn struct {
 	notedMu sync.Mutex
 	noted   []string
 
+	// useMu guards the completion tokens counted for this turn. It is not t.mu.
+	useMu         sync.Mutex
+	useCompletion int
+
 	// Fork state. mu guards branch, finished, tools, replies, steps, and lastTool.
 	// branch is set once, when the turn moves to the background.
 	mu       sync.Mutex

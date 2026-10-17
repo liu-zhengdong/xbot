@@ -75,7 +75,13 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 // ran is false when the call was queued and did not touch the file.
 func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	k := t.k
-	if res, ok := review.ResourceOf(t.Tool.Name(), args, k.WorkDir); ok {
+	base := k.WorkDir
+	if t.Tool.Name() == "shell" {
+		if dir := k.shellCwd(); dir != "" {
+			base = dir
+		}
+	}
+	if res, ok := review.ResourceOf(t.Tool.Name(), args, base); ok {
 		cur := k.turnFor(ctx)
 		if !cur.isForked() {
 			if bg := k.conflictingBackground(cur, res); bg != nil {
@@ -166,7 +172,7 @@ func (k *Kernel) protectedCall(tool tools.Tool, args json.RawMessage) bool {
 	if name == "shell" {
 		cmd, cwd := review.ShellInvocation(args)
 		if cwd == "" {
-			cwd = k.WorkDir
+			cwd = k.shellCwd()
 		}
 		return review.TouchesProtected(cmd, cwd, protected)
 	}
