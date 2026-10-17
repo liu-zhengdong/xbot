@@ -196,3 +196,23 @@ func TestMemorySymlinksStopsAtVolumeRoot(t *testing.T) {
 		t.Fatal("memorySymlinks did not return")
 	}
 }
+
+// Subagent file tools had no review wrapper, so they skipped the memory guard.
+func TestSubagentFileToolsUseMemoryGuard(t *testing.T) {
+	k, dir := memoryGuardFixture(t)
+	old := filepath.Join(dir, "log", "2025-01.md")
+	for _, tool := range k.toolsForScope(k.allocScope(context.Background())) {
+		if tool.Name() != "write_file" {
+			continue
+		}
+		args, _ := json.Marshal(map[string]string{"path": old, "content": "- 2025-01-02 10:00 [对话] backdated\n"})
+		if _, err := tool.Run(context.Background(), args); err == nil || !strings.Contains(err.Error(), "current month") {
+			t.Fatalf("subagent backdated log write: %v", err)
+		}
+		if _, err := os.Stat(old); !os.IsNotExist(err) {
+			t.Fatal("old month written")
+		}
+		return
+	}
+	t.Fatal("no write_file in subagent tools")
+}
