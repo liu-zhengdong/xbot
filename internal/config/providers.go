@@ -25,9 +25,15 @@ type Provider struct {
 }
 
 // ModelSpec is one model id and its context length in tokens.
+// Todo turns the todo reminder on or off. Nil means the default: on when the
+// provider or model name contains "deepseek", off otherwise.
+// TodoSteps is how many tool steps a list must sit unchanged before a reminder.
+// Zero means the default of 6.
 type ModelSpec struct {
-	Name    string `json:"name"`
-	Context int    `json:"context"`
+	Name      string `json:"name"`
+	Context   int    `json:"context"`
+	Todo      *bool  `json:"todo,omitempty"`
+	TodoSteps int    `json:"todo_steps,omitempty"`
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -117,6 +123,14 @@ func Add(root string, p Provider, model ModelSpec) error {
 	replaced := false
 	for n := range cur.Models {
 		if cur.Models[n].Name == model.Name {
+			// A context-length update leaves an explicit todo switch in place
+			// unless the caller set one.
+			if model.Todo == nil {
+				model.Todo = cur.Models[n].Todo
+			}
+			if model.TodoSteps == 0 {
+				model.TodoSteps = cur.Models[n].TodoSteps
+			}
 			cur.Models[n] = model
 			replaced = true
 			break
@@ -251,6 +265,9 @@ func validateModel(m ModelSpec) error {
 	}
 	if m.Context <= 0 {
 		return errors.New("providers: model context length must be positive")
+	}
+	if m.TodoSteps < 0 {
+		return errors.New("providers: todo_steps must not be negative")
 	}
 	return nil
 }

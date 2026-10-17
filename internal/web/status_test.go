@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -111,6 +112,42 @@ func TestBotStatusEndpointShapeAndSize(t *testing.T) {
 		if st.Node != "" {
 			t.Fatalf("node %q", st.Node)
 		}
+	}
+}
+
+func TestBotTodosEndpoint(t *testing.T) {
+	s, tok, bots := statusFixture(t, 1)
+	raw, err := json.Marshal(map[string]any{
+		"items": []kernel.TodoItem{{ID: "t1", Content: "write the tests", Status: "in_progress"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kernel.TodoPath(bots[0]), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ui := httptest.NewServer(muxOf(s))
+	defer ui.Close()
+	cookie := loginCookie(t, ui.URL, tok)
+	body := getAuth(t, ui.URL+"/api/bots/"+bots[0].Name()+"/todos", cookie)
+	var payload struct {
+		Items []kernel.TodoItem `json:"items"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Content != "write the tests" || payload.Items[0].Status != "in_progress" {
+		t.Fatalf("%+v", payload.Items)
+	}
+	statusBody := getAuth(t, ui.URL+"/api/bots/status", cookie)
+	var status struct {
+		Bots []kernel.BotStatus `json:"bots"`
+	}
+	if err := json.Unmarshal(statusBody, &status); err != nil {
+		t.Fatal(err)
+	}
+	if len(status.Bots) != 1 || !strings.Contains(status.Bots[0].Todo, "write the tests") {
+		t.Fatalf("status todo %+v", status.Bots)
 	}
 }
 

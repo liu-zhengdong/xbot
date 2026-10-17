@@ -66,6 +66,16 @@ type turn struct {
 	stopReason string
 	// lastRec is the sequence of the last transcript line this turn wrote.
 	lastRec int
+	// todoGated is set once the completion gate has continued this turn.
+	todoGated bool
+	// todoTouched is set when this turn wrote or updated the list. A later
+	// turn does not inherit it, so an old list cannot open the gate.
+	todoTouched bool
+	// askedOwner is set when this turn called ask_user.
+	askedOwner bool
+	// todoQuiet is cached for the turn so a step does not rebuild the tool list.
+	todoQuietSet bool
+	todoQuietV   bool
 	// ctrl is controls sent to a background, read between its steps. resources is
 	// what this turn has written (review.ResourceOf), for the conflict queue.
 	ctrl      []*Control
@@ -163,6 +173,16 @@ func (k *Kernel) curTurn() *turn {
 	if k.turn == nil {
 		return &turn{}
 	}
+	return k.turn
+}
+
+// liveTurn is the turn Handle installed, or nil when none is running.
+func (k *Kernel) liveTurn() *turn {
+	if k == nil {
+		return nil
+	}
+	k.turnMu.Lock()
+	defer k.turnMu.Unlock()
 	return k.turn
 }
 

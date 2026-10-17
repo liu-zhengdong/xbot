@@ -13,7 +13,7 @@ verified: 2026-10-16 @ d04f79e
 
 ## 怎么运转
 - 用户配置多个兼容 OpenAI 接口的供应商；API key 只存环境变量的名字。
-- 每个 Bot 绑定一个供应商和模型。
+- 每个 Bot 绑定一个供应商和模型。模型条目可以带 `todo`（true 或 false）和 `todo_steps`。`todo` 缺省时，供应商或模型名含 deepseek 才打开待办提醒，其余关掉；`todo_steps` 缺省是 6。空绑定仍是 deepseek-chat，提醒开。`xbot provider add --todo on|off --todo-steps N` 写入这两个字段，省略时保留原来的值。密钥仍然只记环境变量名。
 - 预留一个选择模型的接口，以后做按任务自动选模型时再实现。
 - **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。两个都没有就是空的，系统提示和原来逐字节一样。有内容时插在共享规则之后、Links 之前，标题是 `## Model`。环境更新里看得到：没有时写 `overlay: none`，有时写 `provider/model`、内容哈希，以及 `<model_overlay>` 里的正文。正文超过 8KB 会截断。
 - **认证名单**：`xbot eval <provider/model>` 先跑内置的 `proactivity`，再跑 `proactivity-holdout`。两套里每一条都按多数通过，才把 `provider/model` 写进该数据根的 `certified.json`。只跑其中一套，或 `--suite` 指向一个目录，都不写。默认每条跑 3 次，通过次数多于失败次数才算这条通过，3 次里就是至少 2 次。有一条多数没过就不写。`fake/*` 不写。认证是定期做的：主人隔一段时间自己跑真模型评测，不作为合并条件，也不进 CI。测试和 CI 只用 `fake/scripted`，不调用真模型。`GET /api/models` 默认只列出已经配置、并且在这份名单里的模型；`?all=1` 才带上未认证的。`xbot provider list` 始终列出已配置的供应商；下面的模型默认只有认证过的，`--all` 才带上其余的，并标明未认证。一个供应商还没有认证模型时，这一行仍然打出来。`xbot bind` 绑定未认证模型要加 `--uncertified`。

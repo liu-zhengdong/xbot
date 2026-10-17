@@ -96,7 +96,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
-	if strings.Join(names, ",") != "edit_file,links,read_file,shell,write_file" {
+	if strings.Join(names, ",") != "edit_file,links,read_file,shell,todo,write_file" {
 		t.Fatalf("tool order %v", names)
 	}
 	if strings.Join(names, ",") != strings.Join(toolNamesOf(p.reqs[1].Tools), ",") {

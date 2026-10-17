@@ -21,9 +21,8 @@ import (
 	"xbot/internal/provider"
 )
 
-// Reminder kinds wired now. Todo uses the same Register path; nothing in the
-// kernel fires it until a later milestone plugs in a trigger. File changes are
-// fired from the freshness scan.
+// Reminder kinds wired now. File changes fire from the freshness scan.
+// Todo fires from todoNote when the active list is stale. Timer wakes skip it.
 const (
 	KindPendingApproval = "pending_approval"
 	KindLoop            = "loop"
@@ -66,8 +65,8 @@ func newChannel(path string) *Channel {
 	return &Channel{log: &reminderLog{path: path}}
 }
 
-// Register adds or replaces a kind. Later milestones register todo and
-// file_change the same way; the channel does not special-case names.
+// Register adds or replaces a kind. File-change uses the same path; the
+// channel does not special-case names.
 func (c *Channel) Register(k Kind) {
 	if c == nil || k.Name == "" {
 		return
@@ -493,8 +492,8 @@ func (k *Kernel) reminders() *Channel {
 	return k.channel
 }
 
-// reminderKinds registers the live kinds for this wake. Todo stays
-// unregistered until its milestone supplies a trigger.
+// reminderKinds registers the live kinds for this wake. File changes fire
+// from the freshness scan. Todo fires from todoNote when the list is stale.
 func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 	// A fresh channel per wake shares the sidecar. The background loop and the
 	// foreground wake both touch the log; they must not share the kind slice.
@@ -519,7 +518,27 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 		Cooldown: fileChangeCooldown,
 		Trigger:  k.fileChangeTrigger(),
 	})
+	ch.Register(Kind{
+		Name:     KindTodo,
+		Cooldown: todoCooldown,
+		Trigger:  k.todoTrigger(),
+	})
 	return ch
+}
+
+// todoPrev is this kind's earlier firings, oldest first.
+func (k *Kernel) todoPrev() []Reminder {
+	all, err := k.reminders().log.all()
+	if err != nil {
+		return nil
+	}
+	var prev []Reminder
+	for _, n := range all {
+		if n.Kind == KindTodo {
+			prev = append(prev, n)
+		}
+	}
+	return prev
 }
 
 func (k *Kernel) pendingTrigger(ev link.Event) func(time.Time, []Reminder) string {

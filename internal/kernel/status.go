@@ -45,12 +45,15 @@ const (
 // node label for a remote one. StaleSeconds is set only for a cached remote
 // status whose node is now unreachable.
 type BotStatus struct {
-	Bot          string `json:"bot"`
-	State        string `json:"state"`
-	Tool         string `json:"tool,omitempty"`
-	Since        string `json:"since,omitempty"`
-	Backgrounds  int    `json:"backgrounds,omitempty"`
-	LastMessage  string `json:"last_message,omitempty"`
+	Bot         string `json:"bot"`
+	State       string `json:"state"`
+	Tool        string `json:"tool,omitempty"`
+	Since       string `json:"since,omitempty"`
+	Backgrounds int    `json:"backgrounds,omitempty"`
+	LastMessage string `json:"last_message,omitempty"`
+	// Todo is one line from the bot's task list, when it has open items.
+	// The steps ring does not carry the list; GET /api/bots/{name}/todos does.
+	Todo         string `json:"todo,omitempty"`
 	Node         string `json:"node,omitempty"`
 	StaleSeconds int    `json:"stale_seconds,omitempty"`
 }
@@ -163,6 +166,7 @@ func IdleStatus(b *bot.Bot, now time.Time) BotStatus {
 	}
 	preview, at := tailMessage(b)
 	st.LastMessage = preview
+	st.Todo = TodoSummary(b)
 	if at.IsZero() {
 		at = now
 	}
@@ -189,6 +193,7 @@ func (k *Kernel) Status() BotStatus {
 	toolStart := t.lastToolStart
 	t.mu.Unlock()
 	st.Backgrounds = len(k.Backgrounds())
+	st.Todo = TodoSummary(k.Bot)
 	bgs := st.Backgrounds
 	st.Tool = tool
 	switch {

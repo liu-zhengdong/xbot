@@ -75,6 +75,11 @@ type Options struct {
 	// OnStep runs once per model call, before the request goes out. A caller
 	// that caps a task across several runs counts steps with it.
 	OnStep func()
+	// OnIdle runs when the model stops without tool calls and another step
+	// still fits in MaxSteps. cont asks for one more step. remind is sent as
+	// its own user message, not appended to the assistant line. The caller
+	// must not continue forever.
+	OnIdle func(msg provider.Message) (remind string, cont bool)
 }
 
 // Run calls the model until it stops requesting tools or the step limit is hit.
@@ -125,6 +130,23 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			opt.OnMessage(msg)
 		}
 		if len(msg.ToolCalls) == 0 {
+			if opt.OnIdle != nil && step+1 < opt.MaxSteps {
+				remind, cont := opt.OnIdle(msg)
+				if cont {
+					if remind != "" {
+						note := provider.Message{Role: provider.RoleUser, Content: strings.TrimSpace(remind)}
+						convo = append(convo, note)
+						produced = append(produced, note)
+						if opt.OnMessage != nil {
+							opt.OnMessage(note)
+						}
+						if opt.OnReminder != nil {
+							opt.OnReminder(remind)
+						}
+					}
+					continue
+				}
+			}
 			return produced, nil
 		}
 		stepMsgs := []provider.Message{msg}

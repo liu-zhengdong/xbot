@@ -57,6 +57,9 @@ type Breaker struct {
 
 	pendingRemind []string
 	pendingStop   string
+	// hardStop is set once a second trip has stopped the turn. The todo
+	// completion gate checks it and does not start another step.
+	hardStop bool
 }
 
 func newBreaker() *Breaker {
@@ -271,6 +274,7 @@ func (b *Breaker) take() (string, bool, string) {
 		reason := b.pendingStop
 		b.pendingStop = ""
 		b.pendingRemind = nil
+		b.hardStop = true
 		return "", true, reason
 	}
 	if len(b.pendingRemind) == 0 {
@@ -279,6 +283,11 @@ func (b *Breaker) take() (string, bool, string) {
 	text := loopReminder(b.pendingRemind)
 	b.pendingRemind = nil
 	return text, false, ""
+}
+
+// Stopped reports whether this breaker has already hard-stopped the turn.
+func (b *Breaker) Stopped() bool {
+	return b != nil && b.hardStop
 }
 
 func isToolError(content string) bool {

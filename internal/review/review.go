@@ -88,6 +88,9 @@ var Table = map[string]Class{
 	// The owner question tool.
 	"ask_user": Normal,
 
+	// The bot's own task list. It does not leave XBot or destroy data.
+	"todo": Normal,
+
 	// Bot management.
 	"create_bot":  Normal,
 	"delete_bot":  Delete,
