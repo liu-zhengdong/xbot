@@ -19,6 +19,7 @@ const maxEditBytes = 2 << 20
 type EditFile struct {
 	Root    string
 	Sandbox string
+	rootBind
 }
 
 func (e *EditFile) Name() string { return "edit_file" }
@@ -128,7 +129,7 @@ func (e *EditFile) parse(args json.RawMessage) (editArgs, string, error) {
 	if in.OldString == in.NewString {
 		return editArgs{}, "", fmt.Errorf("edit_file: old_string and new_string are identical")
 	}
-	path, err := ResolveRoot(e.Root, AliasCase(e.Sandbox, in.Path))
+	path, err := ResolveRoot(e.rootBind.dir(e.Root), AliasCase(e.Sandbox, in.Path))
 	if err != nil {
 		return editArgs{}, "", fmt.Errorf("edit_file: %w", err)
 	}

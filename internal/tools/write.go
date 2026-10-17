@@ -18,6 +18,7 @@ const maxWriteBytes = 1 << 20
 type WriteFile struct {
 	Root    string
 	Sandbox string
+	rootBind
 }
 
 func (w *WriteFile) Name() string { return "write_file" }
@@ -93,7 +94,7 @@ func (w *WriteFile) parse(args json.RawMessage) (writeArgs, string, error) {
 	if len(in.Content) > maxWriteBytes {
 		return writeArgs{}, "", fmt.Errorf("write_file: content exceeds %d bytes", maxWriteBytes)
 	}
-	path, err := ResolveRoot(w.Root, AliasCase(w.Sandbox, in.Path))
+	path, err := ResolveRoot(w.rootBind.dir(w.Root), AliasCase(w.Sandbox, in.Path))
 	if err != nil {
 		return writeArgs{}, "", fmt.Errorf("write_file: %w", err)
 	}

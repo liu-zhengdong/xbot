@@ -87,12 +87,14 @@ func (k *Kernel) subTools() []tools.Tool {
 	sh.Shared = k.SharedDir
 	sh.BindJobs(k.shellJobs())
 	sh.BindSession(k.shellStartDir, k.shellAfterDir)
-	return []tools.Tool{
-		sh,
-		&tools.ReadFile{Root: k.WorkDir},
-		&tools.WriteFile{Root: k.WorkDir},
-		&tools.EditFile{Root: k.WorkDir},
-	}
+	sh.SetMarkerDir(k.shellMarkerDir())
+	read := &tools.ReadFile{Root: k.WorkDir}
+	write := &tools.WriteFile{Root: k.WorkDir}
+	edit := &tools.EditFile{Root: k.WorkDir}
+	read.BindRoot(k.shellCwd)
+	write.BindRoot(k.shellCwd)
+	edit.BindRoot(k.shellCwd)
+	return []tools.Tool{sh, read, write, edit}
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {

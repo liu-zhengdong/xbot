@@ -141,6 +141,8 @@ type Kernel struct {
 
 	// cwd is the persistent shell working directory for this bot.
 	cwd cwdState
+	// projects caches the AGENTS.md chain for the current directory stamp.
+	projects projectCache
 	// tokens is model-reported usage for this kernel's lifetime.
 	tokens tokenState
 }
@@ -746,7 +748,8 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		raw = append(raw, e)
 		seqs = append(seqs, ln.Seq)
 	}
-	if err := k.reminders().Replay(raw, seqs); err != nil {
+	raw, err = k.reminders().Replay(raw, seqs)
+	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
 	msgs, usage := account(Input{

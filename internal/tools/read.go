@@ -26,6 +26,7 @@ type ReadFile struct {
 	MaxBytes int
 	Root     string
 	Sandbox  string
+	rootBind
 }
 
 func (r *ReadFile) Name() string { return "read_file" }
@@ -144,7 +145,7 @@ func (r *ReadFile) parse(args json.RawMessage) (readArgs, string, error) {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}
-	path, err := ResolveRoot(r.Root, AliasCase(r.Sandbox, in.Path))
+	path, err := ResolveRoot(r.rootBind.dir(r.Root), AliasCase(r.Sandbox, in.Path))
 	if err != nil {
 		return readArgs{}, "", fmt.Errorf("read_file: %w", err)
 	}

@@ -20,6 +20,19 @@ type cwdState struct {
 	dir    string
 }
 
+// shellMarkerDir is where a foreground command records the directory it
+// finished in. It lives under the bot data directory, not the process temp dir.
+func (k *Kernel) shellMarkerDir() string {
+	if k == nil || k.Bot == nil || k.Bot.Root == "" || k.Bot.Name() == "" {
+		return ""
+	}
+	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "cwd-markers")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return ""
+	}
+	return dir
+}
+
 func (k *Kernel) cwdPath() string {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" || k.Bot.Name() == "" {
 		return ""

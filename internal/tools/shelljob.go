@@ -113,6 +113,10 @@ type live struct {
 	waitErr  error
 	cwdFile  string
 	onCwd    func(string)
+	// claimCwd is set when finish still owns the session directory. Run's
+	// timeout path waits for done instead of detaching once this is set, so
+	// onCwd cannot run after Run has returned.
+	claimCwd bool
 }
 
 // NewJobs records jobs under dir. Call Load before Run so a restarted process
@@ -230,8 +234,9 @@ func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
 		return "", ctx.Err()
 	case <-timer.C:
 		lv.mu.Lock()
-		if lv.finished {
+		if lv.finished || lv.claimCwd {
 			lv.mu.Unlock()
+			<-lv.done
 			return j.finishForeground(lv, req.MaxOutput, "")
 		}
 		if skipAutoBackground(req.Command) {
@@ -540,13 +545,22 @@ func (j *Jobs) publish(lv *live) error {
 
 func (j *Jobs) finish(lv *live, waitErr error) {
 	lv.mu.Lock()
+	if lv.finished {
+		lv.mu.Unlock()
+		return
+	}
 	cwdFile := lv.cwdFile
-	detached := lv.detached
 	onCwd := lv.onCwd
+	report := !lv.detached
+	if report {
+		lv.claimCwd = true
+	} else {
+		onCwd = nil
+	}
 	lv.mu.Unlock()
 	var ended string
 	if cwdFile != "" {
-		if !detached {
+		if report {
 			ended = readCwdFile(cwdFile)
 		}
 		_ = os.Remove(cwdFile)
@@ -558,9 +572,16 @@ func (j *Jobs) finish(lv *live, waitErr error) {
 		j.metaMu.Unlock()
 		return
 	}
+	// Timeout sets detached only while claimCwd is still false. If it won,
+	// this exit must not move the session directory.
+	if lv.detached {
+		report = false
+		onCwd = nil
+		ended = ""
+	}
 	lv.finished = true
 	lv.waitErr = waitErr
-	detached = lv.detached
+	detached := lv.detached
 	if lv.killed {
 		lv.job.Status = "cancelled"
 	} else {
@@ -576,7 +597,7 @@ func (j *Jobs) finish(lv *live, waitErr error) {
 	job := lv.job
 	lv.mu.Unlock()
 	err := j.writeMeta(job)
-	if ended != "" && onCwd != nil {
+	if report && ended != "" && onCwd != nil {
 		onCwd(ended)
 	}
 	close(lv.done)

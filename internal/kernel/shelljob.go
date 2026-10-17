@@ -75,7 +75,9 @@ func (k *Kernel) attachShell() {
 			sh, ok := t.(*tools.Shell)
 			if ok {
 				sh.BindSession(k.shellStartDir, k.shellAfterDir)
+				sh.SetMarkerDir(k.shellMarkerDir())
 			}
+			k.bindFileCwd(t)
 		}
 	}
 }
@@ -96,6 +98,29 @@ func shellBackgroundOn(links []link.Link) bool {
 		}
 	}
 	return false
+}
+
+// bindFileCwd points file tools at the shell's current directory. A sandbox
+// stays rooted where it was built. Relative paths resolve at call time;
+// absolute paths stay absolute, and freshness records use that absolute path.
+func (k *Kernel) bindFileCwd(t tools.Tool) {
+	if k == nil || t == nil {
+		return
+	}
+	switch f := t.(type) {
+	case *tools.ReadFile:
+		if f.Sandbox == "" {
+			f.BindRoot(k.shellCwd)
+		}
+	case *tools.WriteFile:
+		if f.Sandbox == "" {
+			f.BindRoot(k.shellCwd)
+		}
+	case *tools.EditFile:
+		if f.Sandbox == "" {
+			f.BindRoot(k.shellCwd)
+		}
+	}
 }
 
 func (k *Kernel) onShellDone(job tools.Job) {

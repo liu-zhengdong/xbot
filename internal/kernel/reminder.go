@@ -131,6 +131,8 @@ func (c *Channel) Due(now time.Time) ([]Reminder, error) {
 
 // Bind appends due reminders to the newest message and records them against seq
 // so the next request can replay the same bytes. Earlier messages are not touched.
+// A repo-provided project note is its own trailing user message, so it is not
+// concatenated into the owner's trusted line.
 func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provider.Message, error) {
 	if c == nil {
 		return msgs, nil
@@ -139,21 +141,27 @@ func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provi
 	if err != nil || len(due) == 0 {
 		return msgs, err
 	}
-	var b strings.Builder
+	var trusted, apart []string
 	for i, d := range due {
 		due[i].Text = c.log.prepare(d.Text)
 		if due[i].Text == "" {
 			continue
 		}
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
+		if projectApart(due[i].Text) {
+			apart = append(apart, due[i].Text)
+			continue
 		}
-		b.WriteString(due[i].Text)
+		trusted = append(trusted, due[i].Text)
 	}
-	if b.Len() == 0 {
+	if len(trusted) == 0 && len(apart) == 0 {
 		return msgs, nil
 	}
-	msgs = agent.AttachReminder(msgs, b.String())
+	if len(trusted) > 0 {
+		msgs = agent.AttachReminder(msgs, strings.Join(trusted, "\n\n"))
+	}
+	for _, text := range apart {
+		msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: text})
+	}
 	if seq <= 0 {
 		return msgs, nil
 	}
@@ -208,13 +216,16 @@ func (c *Channel) Apply(msgs []provider.Message, seqs []int) error {
 
 // Replay appends stored reminders onto the in-memory copies of the lines they
 // belong to. It does not write the transcript. seqs[i] is the sequence of entries[i].
-func (c *Channel) Replay(entries []bot.Entry, seqs []int) error {
+// A repo-provided project note bound to a user line becomes the next message
+// instead of joining that line, so a later wake does not put it back inside
+// the owner's trusted text. The returned slice may be longer than entries.
+func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, error) {
 	if c == nil || len(entries) == 0 {
-		return nil
+		return entries, nil
 	}
 	all, err := c.log.all()
 	if err != nil || len(all) == 0 {
-		return err
+		return entries, err
 	}
 	by := map[int][]string{}
 	for _, n := range all {
@@ -223,19 +234,35 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) error {
 		}
 	}
 	if len(by) == 0 {
-		return nil
+		return entries, nil
 	}
+	out := make([]bot.Entry, 0, len(entries))
 	for i := range entries {
-		if i >= len(seqs) {
-			break
-		}
-		texts := by[seqs[i]]
-		if len(texts) == 0 {
+		e := entries[i]
+		if i < len(seqs) {
+			var join, apart []string
+			for _, text := range by[seqs[i]] {
+				if projectApart(text) && e.Message.Role == provider.RoleUser {
+					apart = append(apart, text)
+					continue
+				}
+				join = append(join, text)
+			}
+			if len(join) > 0 {
+				e.Message.Content = joinReminder(e.Message.Content, strings.Join(join, "\n\n"))
+			}
+			out = append(out, e)
+			for _, text := range apart {
+				out = append(out, bot.Entry{
+					Time:    e.Time,
+					Message: provider.Message{Role: provider.RoleUser, Content: text},
+				})
+			}
 			continue
 		}
-		entries[i].Message.Content = joinReminder(entries[i].Message.Content, strings.Join(texts, "\n\n"))
+		out = append(out, e)
 	}
-	return nil
+	return out, nil
 }
 
 func joinReminder(body, note string) string {
@@ -564,26 +591,48 @@ func (k *Kernel) stepBoundaryNotes(t *turn) string {
 	if k == nil || t == nil {
 		return ""
 	}
+	by := k.remindersByKind()
 	seq := t.lastSeq()
 	var parts []string
-	if note := k.projectNote(k.kindPrev(KindProject)); note != "" {
+	if note := k.projectNote(by[KindProject]); note != "" {
 		if stored := k.storeReminder(seq, KindProject, note); stored != "" {
 			parts = append(parts, stored)
 		}
 	}
-	if note := k.contextNote(k.kindPrev(KindContext)); note != "" {
+	if note := k.contextNote(by[KindContext]); note != "" {
 		if stored := k.storeReminder(seq, KindContext, note); stored != "" {
 			parts = append(parts, stored)
 		}
 	}
-	if k.cooled(KindFileChange, fileChangeCooldown) {
-		if note := k.fileChangeTrigger()(k.now(), k.kindPrev(KindFileChange)); note != "" {
+	if cooledAt(by[KindFileChange], fileChangeCooldown, k.now()) {
+		if note := k.fileChangeTrigger()(k.now(), by[KindFileChange]); note != "" {
 			if stored := k.storeReminder(seq, KindFileChange, note); stored != "" {
 				parts = append(parts, stored)
 			}
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// remindersByKind reads the sidecar once and groups notes by kind.
+func (k *Kernel) remindersByKind() map[string][]Reminder {
+	all, err := k.reminders().log.all()
+	if err != nil {
+		return nil
+	}
+	by := map[string][]Reminder{}
+	for _, n := range all {
+		by[n.Kind] = append(by[n.Kind], n)
+	}
+	return by
+}
+
+func cooledAt(prev []Reminder, d time.Duration, now time.Time) bool {
+	if d <= 0 || len(prev) == 0 {
+		return true
+	}
+	last := prev[len(prev)-1].At
+	return !last.IsZero() && now.Sub(last) >= d
 }
 
 func (k *Kernel) storeReminder(seq int, kind, text string) string {
@@ -595,18 +644,6 @@ func (k *Kernel) storeReminder(seq int, kind, text string) string {
 		return ""
 	}
 	return text
-}
-
-func (k *Kernel) cooled(kind string, d time.Duration) bool {
-	if d <= 0 {
-		return true
-	}
-	prev := k.kindPrev(kind)
-	if len(prev) == 0 {
-		return true
-	}
-	last := prev[len(prev)-1].At
-	return !last.IsZero() && k.now().Sub(last) >= d
 }
 
 func (k *Kernel) kindPrev(kind string) []Reminder {

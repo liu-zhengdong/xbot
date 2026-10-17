@@ -40,11 +40,12 @@ type Shell struct {
 	jobsOnce       sync.Once
 
 	// startDir and afterDir persist the working directory for one bot.
-	// Nil leaves every call in Dir. The mutex covers the two func fields;
-	// Run copies them before it starts the process.
-	sessMu   sync.Mutex
-	startDir func() (dir, notice string)
-	afterDir func(dir string) (kept, notice string)
+	// Nil leaves every call in Dir. The mutex covers the func fields and
+	// markerDir; Run copies them before it starts the process.
+	sessMu    sync.Mutex
+	startDir  func() (dir, notice string)
+	afterDir  func(dir string) (kept, notice string)
+	markerDir string
 }
 
 // BindSession installs the per-bot working directory. start reports where this
@@ -61,13 +62,26 @@ func (s *Shell) BindSession(start func() (string, string), after func(string) (s
 	s.sessMu.Unlock()
 }
 
-func (s *Shell) session() (func() (string, string), func(string) (string, string)) {
+// SetMarkerDir is the directory for the cwd marker file. Empty stays empty
+// until a later call. The marker is never created in the process temp dir.
+func (s *Shell) SetMarkerDir(dir string) {
+	if s == nil || dir == "" {
+		return
+	}
+	s.sessMu.Lock()
+	if s.markerDir == "" {
+		s.markerDir = dir
+	}
+	s.sessMu.Unlock()
+}
+
+func (s *Shell) session() (func() (string, string), func(string) (string, string), string) {
 	if s == nil {
-		return nil, nil
+		return nil, nil, ""
 	}
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
-	return s.startDir, s.afterDir
+	return s.startDir, s.afterDir, s.markerDir
 }
 
 // BindJobs sets the job table once. Later calls do not write Jobs, so a shell
@@ -172,7 +186,7 @@ func (s *Shell) timeoutLabel() (def, max int) {
 
 func (s *Shell) Description() string {
 	def, max := s.timeoutLabel()
-	_, after := s.session()
+	_, after, _ := s.session()
 	persist := ""
 	if after != nil {
 		persist = " The working directory persists across calls for this bot. Each result includes a cwd line. A directory that is missing or outside the workspace falls back to the workspace."
@@ -225,7 +239,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		return "", err
 	}
 	timeout := s.duration(in.TimeoutSeconds)
-	startDir, afterDir := s.session()
+	startDir, afterDir, markerDir := s.session()
 	dir := s.Dir
 	notice := ""
 	if startDir != nil {
@@ -234,14 +248,26 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	command := in.Command
 	var marker string
 	var ended string
+	// cwdCh is written by the job's finish goroutine and read only on the
+	// path that actually waited. A late send after a background return does
+	// not touch ended.
+	var cwdCh chan string
 	if startDir != nil {
-		f, err := os.CreateTemp("", "xbot-cwd-*.txt")
+		markDir := markerDir
+		if markDir == "" {
+			markDir = s.Dir
+		}
+		if markDir == "" {
+			return "", errors.New("shell: no directory for the cwd marker")
+		}
+		f, err := os.CreateTemp(markDir, "xbot-cwd-*.txt")
 		if err != nil {
 			return "", err
 		}
 		marker = f.Name()
 		f.Close()
 		command = wrapShellCwd(dir, in.Command, marker)
+		cwdCh = make(chan string, 1)
 	}
 	// A job directory keeps the process across the timeout. sleep and obvious
 	// polling loops stay in the foreground so the breaker can see the loop.
@@ -257,7 +283,13 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			Background: in.RunInBackground,
 			CwdFile:    marker,
 			OnCwd: func(got string) {
-				ended = got
+				if cwdCh == nil || got == "" {
+					return
+				}
+				select {
+				case cwdCh <- got:
+				default:
+				}
 			},
 		})
 	} else {
@@ -274,6 +306,12 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			_ = os.Remove(marker)
 		}
 		return "", err
+	}
+	if cwdCh != nil && !strings.HasPrefix(out, "background ") {
+		select {
+		case ended = <-cwdCh:
+		default:
+		}
 	}
 	cwd := dir
 	if ended != "" && !strings.HasPrefix(out, "background ") {
