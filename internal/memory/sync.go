@@ -146,7 +146,12 @@ func mergePerson(root, id string, remote []SyncLine) (bool, error) {
 		if err != nil {
 			return err
 		}
-		extra, err := backfill(dir, id, local)
+		extra, err := profileDeletes(root, dir, local)
+		if err != nil {
+			return err
+		}
+		added, err := backfill(dir, id, local)
+		extra = append(extra, added...)
 		if err != nil {
 			return err
 		}
@@ -189,6 +194,58 @@ func mergePerson(root, id string, remote []SyncLine) (bool, error) {
 		return writeFold(dir, id, local)
 	})
 	return changed, err
+}
+
+// profileDeletes compares the editable file with facts previously materialized
+// locally, before any incoming lines are appended. The ordinary index can be
+// rebuilt by Recall, so keep a separate baseline after each successful fold.
+func profileDeletes(root, dir string, local []SyncLine) ([]SyncLine, error) {
+	previous, err := readLooseIndex(filepath.Join(dir, "memory.sync.index.json"))
+	if err != nil {
+		return nil, err
+	}
+	// The ordinary index also covers Remember writes since the last fold,
+	// and provides conservative evidence when upgrading without a baseline.
+	indexed, err := readLooseIndex(filepath.Join(dir, "memory.index.json"))
+	if err != nil {
+		return nil, err
+	}
+	previous = append(previous, indexed...)
+	raw, err := os.ReadFile(filepath.Join(dir, "memory.md"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	present := map[string]bool{}
+	for _, f := range parseMemoryMD(string(raw), ScopePerson) {
+		present[f.Text+"\x00"+f.WrittenBy] = true
+	}
+	written := map[string]Fact{}
+	for _, f := range previous {
+		written[f.Key] = f
+	}
+	var extra []SyncLine
+	for _, f := range foldSync(local) {
+		prev, ok := written[f.Key]
+		if f.Tier != TierProfile || !ok || prev.Text != f.Text || !prev.Time.Equal(f.Time) {
+			continue
+		}
+		// Compare the same representation that is persisted, including author
+		// parsing limits and whitespace normalization.
+		rendered := parseMemoryMD(renderMemoryMD([]Fact{f}, ""), ScopePerson)
+		if len(rendered) == 0 {
+			continue
+		}
+		entry := rendered[0]
+		if present[entry.Text+"\x00"+entry.WrittenBy] {
+			continue
+		}
+		now := time.Now().UTC()
+		if !now.After(f.Time) {
+			now = f.Time.Add(time.Nanosecond)
+		}
+		extra = append(extra, SyncLine{Time: now, Device: deviceOf(root), Op: opForget, Fact: f})
+	}
+	return extra, nil
 }
 
 func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
@@ -236,7 +293,7 @@ func writeFold(dir, id string, lines []SyncLine) error {
 			return err
 		}
 	}
-	return nil
+	return writeIndex(filepath.Join(dir, "memory.sync.index.json"), byTier[TierProfile])
 }
 
 func foldSync(lines []SyncLine) []Fact {

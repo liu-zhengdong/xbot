@@ -328,3 +328,76 @@ func TestMergeSyncOnOverCapProfile(t *testing.T) {
 		t.Fatalf("got %d facts, want %d", len(got), len(facts)+1)
 	}
 }
+
+func TestExportSyncPreservesProfileDeletion(t *testing.T) {
+	root := t.TempDir()
+	if err := Open(root).Remember(context.Background(), Fact{
+		Key: "timezone", Scope: ScopePerson, PersonID: "owner", Tier: TierProfile,
+		WrittenBy: "ada", Text: "Asia/Shanghai",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExportSync(root); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "people", "owner", "memory", "memory.md")
+	if err := os.WriteFile(path, []byte("# memory\n\n## 条目\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A read may rebuild the ordinary index before the next node sync.
+	if _, err := Open(root).Recall(context.Background(), Query{Scope: ScopePerson, PersonID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	lines, err := ExportSync(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "Asia/Shanghai") {
+		t.Fatal("ExportSync resurrected deleted person fact Asia/Shanghai")
+	}
+	if len(lines) != 2 || lines[1].Op != opForget || lines[1].Fact.Key != "timezone" {
+		t.Fatalf("missing deletion tombstone: %+v", lines)
+	}
+	// Replaying the old remember on another node must preserve the deletion.
+	other := t.TempDir()
+	if err := MergeSync(other, lines); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ExportSync(other); err != nil || len(foldSync(got)) != 0 {
+		t.Fatalf("deleted fact propagated: %+v, %v", got, err)
+	}
+}
+
+func TestExportSyncPreservesLongAuthor(t *testing.T) {
+	root := t.TempDir()
+	remote := SyncLine{
+		Time: time.Now().UTC().Add(-time.Minute), Device: "other", Op: opRemember,
+		Fact: Fact{Key: "timezone", Scope: ScopePerson, PersonID: "owner", Tier: TierProfile,
+			WrittenBy: strings.Repeat("a", 70), Text: "Asia/Shanghai"},
+	}
+	if err := MergeSync(root, []SyncLine{remote}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "people", "owner", "memory", "memory.md")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		lines, err := ExportSync(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lines) != 1 || lines[0].Op != opRemember {
+			t.Fatalf("ExportSync %d changed untouched long-author journal: %+v", i+1, lines)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("ExportSync changed untouched profile: %q, %v", after, err)
+	}
+}
