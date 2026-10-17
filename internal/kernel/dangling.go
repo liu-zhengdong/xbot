@@ -59,20 +59,18 @@ func (k *Kernel) closeDangling(reason string, skipRunning bool) error {
 	if err != nil {
 		return err
 	}
-	missing, branches, err := unresolvedCalls(span, minSeq)
-	if err != nil {
-		return err
-	}
+	var live map[string]bool
 	if skipRunning {
+		live = map[string]bool{}
 		k.bgMu.Lock()
-		var lost []provider.ToolCall
-		for _, tc := range missing {
-			if _, running := k.bgs[branches[tc.ID]]; !running {
-				lost = append(lost, tc)
-			}
+		for id := range k.bgs {
+			live[id] = true
 		}
 		k.bgMu.Unlock()
-		missing = lost
+	}
+	missing, branches, err := unresolvedCallsExcept(span, minSeq, live)
+	if err != nil {
+		return err
 	}
 	for _, tc := range missing {
 		e := bot.Entry{

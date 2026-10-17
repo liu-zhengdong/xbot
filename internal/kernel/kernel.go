@@ -180,6 +180,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnMu.Lock()
 	k.turn = t
 	k.turnMu.Unlock()
+	// A forked turn still belongs to its background goroutine. All other
+	// returns, including setup/repair errors, end this foreground turn.
+	defer func() {
+		t.mu.Lock()
+		if t.branch == "" {
+			t.finished = true
+		}
+		t.mu.Unlock()
+	}()
 	k.clearDenials()
 	k.clearLoaded()
 	if _, err := k.releaseQuiet(ctx); err != nil {

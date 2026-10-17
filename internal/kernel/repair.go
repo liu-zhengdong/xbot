@@ -31,6 +31,11 @@ func unresolvedTail(entries []bot.Entry) ([]provider.ToolCall, error) {
 // markers, follows the assistant row that made it: the append-only log cannot insert a
 // result earlier in a branch than lines the branch has already written.
 func unresolvedCalls(span []bot.Entry, first int) ([]provider.ToolCall, map[string]string, error) {
+	return unresolvedCallsExcept(span, first, nil)
+}
+
+// unresolvedCallsExcept leaves live branches to their executing turns.
+func unresolvedCallsExcept(span []bot.Entry, first int, live map[string]bool) ([]provider.ToolCall, map[string]string, error) {
 	missing := missingResults(Messages(span))
 	if len(missing) == 0 {
 		return nil, nil, nil
@@ -51,7 +56,12 @@ func unresolvedCalls(span []bot.Entry, first int) ([]provider.ToolCall, map[stri
 			branches[tc.ID] = r.Branch
 		}
 	}
+	var dangling []provider.ToolCall
 	for _, tc := range missing {
+		if live[branches[tc.ID]] {
+			continue
+		}
+		dangling = append(dangling, tc)
 		i, ok := at[tc.ID]
 		if !ok {
 			return nil, nil, errors.New("transcript: unanswered tool calls are not at the tail")
@@ -63,7 +73,7 @@ func unresolvedCalls(span []bot.Entry, first int) ([]provider.ToolCall, map[stri
 			return nil, nil, errors.New("transcript: unanswered tool calls are not at the tail")
 		}
 	}
-	return missing, branches, nil
+	return dangling, branches, nil
 }
 
 func missingResults(msgs []provider.Message) []provider.ToolCall {
