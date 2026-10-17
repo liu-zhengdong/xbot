@@ -20,7 +20,7 @@ func TestAddDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, key string }{{"-bad", key}, {strings.Repeat("x", 65), key}, {"b", "bad"}, {"b", self}, {"b", key}} {
-		if _, err := AddDevice(root, tc.name, tc.key, ""); err == nil {
+		if _, err := AddDevice(root, tc.name, tc.key, "", ""); err == nil {
 			t.Fatalf("accepted %s", tc.name)
 		}
 	}
@@ -28,19 +28,19 @@ func TestAddDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := AddDevice(root, "b", key, "")
+	d, err := AddDevice(root, "b", key, "", "")
 	if err != nil || d.Person != p.ID {
 		t.Fatalf("default person: %v", err)
 	}
 	for _, tc := range []struct{ name, key, person string }{{"b", key, p.ID}, {"c", key, p.ID}, {"c", key, "missing"}} {
-		if _, err := AddDevice(root, tc.name, tc.key, tc.person); err == nil {
+		if _, err := AddDevice(root, tc.name, tc.key, "", tc.person); err == nil {
 			t.Fatalf("accepted %s", tc.name)
 		}
 	}
 	if _, err := person.Identify(root, person.Account{Link: "test", ExternalID: "second"}, "second"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AddDevice(root, "c", key, ""); err == nil || !strings.Contains(err.Error(), "--person") {
+	if _, err := AddDevice(root, "c", key, "", ""); err == nil || !strings.Contains(err.Error(), "--person") {
 		t.Fatal("ambiguous default")
 	}
 }

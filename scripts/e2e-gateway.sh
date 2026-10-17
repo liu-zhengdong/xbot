@@ -52,14 +52,11 @@ B="$WORK/b"
 "$X" --root "$A" new ada >"$WORK/setup.log" 2>&1
 "$X" --root "$B" new bob >>"$WORK/setup.log" 2>&1
 "$X" --root "$A" remote gateway "http://127.0.0.1:$GW"
-"$X" --root "$B" remote gateway "http://127.0.0.1:$GW"
-keyA=$("$X" --root "$A" remote id | awk '$1=="key" {print $2}')
-keyB=$("$X" --root "$B" remote id | awk '$1=="key" {print $2}')
-"$X" --root "$A" remote add b "$keyB"
-"$X" --root "$B" remote add a "$keyA"
+code=$("$X" --root "$A" remote invite | head -1)
 "$X" --root "$A" serve --http "127.0.0.1:$P1" --interval 1s --no-auto-upgrade >"$WORK/a.log" 2>&1 &
 PIDS+=("$!")
-"$X" --root "$B" serve --http "127.0.0.1:$P2" --interval 1s --no-auto-upgrade >"$WORK/b.log" 2>&1 &
+XBOT_GATEWAY_TOKEN= "$X" --root "$B" remote join "$code" --name a --as b >>"$WORK/setup.log"
+XBOT_GATEWAY_TOKEN= "$X" --root "$B" serve --http "127.0.0.1:$P2" --interval 1s --no-auto-upgrade >"$WORK/b.log" 2>&1 &
 PIDS+=("$!")
 for log in a b; do
   for _ in $(seq 1 100); do
@@ -68,6 +65,11 @@ for log in a b; do
   done
   grep -q 'xbot: remote: registered' "$WORK/$log.log"
 done
+for _ in $(seq 1 100); do
+  if "$X" --root "$A" remote list | grep -q "^b$(printf '\t')"; then break; fi
+  sleep 0.1
+done
+"$X" --root "$A" remote list | grep -q "^b$(printf '\t')" || { echo "FAIL: invite pairing did not complete" >&2; exit 1; }
 sent=$(ms)
 printf 'REMOTE_PING\nexit\n' | "$X" --root "$A" chat ada --max-steps 4 >"$WORK/chat.log" 2>&1
 for _ in $(seq 1 600); do

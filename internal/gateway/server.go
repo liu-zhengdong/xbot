@@ -110,6 +110,14 @@ func (s *Server) verified(register bool, fn route) http.Handler {
 }
 
 func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.PublicKey) (int, any, error) {
+	path := filepath.Join(s.Dir, "installs", ID(pub))
+	ok, err := exists(path)
+	if err != nil {
+		return 0, nil, err
+	}
+	if ok {
+		return 200, map[string]string{"status": "ok"}, nil
+	}
 	if !s.Open {
 		got, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !bearer || s.Token == "" {
@@ -118,11 +126,6 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 		if subtle.ConstantTimeCompare([]byte(got), []byte(s.Token)) != 1 {
 			return 0, nil, httpError{401, "bad token"}
 		}
-	}
-	path := filepath.Join(s.Dir, "installs", ID(pub))
-	ok, err := exists(path)
-	if err != nil {
-		return 0, nil, err
 	}
 	if !ok {
 		files, err := s.filesLocked("installs", "", 0)

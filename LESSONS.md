@@ -51,3 +51,5 @@
 - 超限修复只拦变大的写，带 forget、remember、merge 三条回归测试（`3a6409c`，#30，2026-10-17）。
 - **定时水位线由所有轮询入口共用，并在停用过期例程前检查漏跑。** 原因：仅 serve 维护会把 chat 已投递的时间点重复列为漏跑，先 Expire 则会漏掉一次性例程。证据：C2 review，`TestChatNoticesBeforeExpiringOneShot`、`TestChatPollsAdvanceWatermark`。Seen 1×（2026-10-18）
 - **切换对话必须同步清空旧视图，异步返回要核对发起时的选择。** 对话、详情和流式回复共用这个约束，避免断网时把上一个 Bot 的内容显示到新 Bot 下。Seen 1×（2026-10-18）
+
+- **一次性邀请码要在同一把锁内先落设备表、再标已用；落盘错误不能确认收件。** Join 的本地配对与网络发送可部分成功，因此同密钥重试必须继续发送。证据：`TestReceivePair/storage`、`TestJoinRetry`。Seen 1×（2026-10-18）

@@ -59,7 +59,7 @@ func TestGateway(t *testing.T) {
 				a.Now = func() time.Time { return time.Now().Add(-10 * time.Minute) }
 				check(a.Register(ctx, "join"), "401")
 				a.Now = nil
-				check(a.Register(ctx, "join"), "")
+				check(a.Register(ctx, ""), "") // Registered keys need only their signature.
 				e := envelope(a, "x")
 				e.From = bid
 				e.Sign(a.Key)

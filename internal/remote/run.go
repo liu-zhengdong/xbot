@@ -39,7 +39,7 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 				if err != nil {
 					return err
 				}
-				ack, receiveErr := Receive(root, self, envs, time.Now())
+				ack, receiveErr := Receive(root, self, envs, time.Now(), logf)
 				if len(ack) > 0 {
 					if err := client.Ack(ctx, ack); err != nil {
 						return err
