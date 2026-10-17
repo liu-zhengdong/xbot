@@ -1511,6 +1511,10 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   box-shadow: var(--shadow); z-index: 20; overflow: auto; max-height: 320px;
 }
 
+.notes-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px 4px; }
+.notes-header b { font-size: 14px; font-weight: 600; }
+.notes-header .notes-read-all { background: transparent; border: 0; padding: 4px 0; font-size: 13px; }
+
 .note {
   width: 100%; text-align: left; border: 0; background: transparent;
   padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px;

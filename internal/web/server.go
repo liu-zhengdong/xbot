@@ -223,10 +223,10 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	if !s.authenticated(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"owner": s.owner})
+	writeJSON(w, http.StatusOK, map[string]any{"authed": true, "owner": s.owner})
 }
 
 func (s *Server) require(w http.ResponseWriter, r *http.Request) bool {
@@ -281,7 +281,7 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 		url, bg, ink, initial := paintBot(b)
 		item := botItem{
 			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Description: cfg.Description, Notes: n,
-			Unread: n > 0 || count > cur[cfg.Name],
+			Unread: count > cur[cfg.Name],
 			Pinned: cfg.Pinned, Primary: cfg.Name == primary, Group: cfg.Group,
 			AvatarURL: url, AvatarBG: bg, AvatarInk: ink, Initial: initial,
 		}

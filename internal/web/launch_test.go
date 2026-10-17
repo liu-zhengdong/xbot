@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,7 +28,7 @@ func TestLaunchLogin(t *testing.T) {
 	r.AddCookie(w.Result().Cookies()[0])
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
-	if w.Code != 200 {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"authed":true`) {
 		t.Fatal("launch cookie did not authenticate")
 	}
 	w = httptest.NewRecorder()
