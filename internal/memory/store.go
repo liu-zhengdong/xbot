@@ -20,7 +20,13 @@ import (
 const (
 	maxFactBytes = 1024
 	maxLogBytes  = 64 << 10
+	// logKeepBytes is how full a migrated log.md may get. The rest of the
+	// 64 KiB cap is left for later remembers.
+	logKeepBytes = 48 << 10
 	recallLimit  = 20
+	// logOverflowBase is the side file for log facts that do not fit in 64 KiB.
+	// Recall and forget read it with the log tier. Remember still appends to log.md.
+	logOverflowBase = "log.overflow"
 )
 
 var idRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -34,7 +40,11 @@ type FileStore struct {
 func Open(root string) *FileStore { return &FileStore{Root: root} }
 
 // Remember validates the fact and appends it to the scope's tier file.
+// An empty scope is bot. person must be set explicitly.
 func (s *FileStore) Remember(_ context.Context, fact Fact) error {
+	if err := Migrate(s.Root); err != nil {
+		return err
+	}
 	fact, err := normalize(fact)
 	if err != nil {
 		return err
@@ -58,6 +68,9 @@ func (s *FileStore) Remember(_ context.Context, fact Fact) error {
 
 // Recall loads the scope and, when Text is set, ranks it with BM25.
 func (s *FileStore) Recall(_ context.Context, q Query) ([]Fact, error) {
+	if err := Migrate(s.Root); err != nil {
+		return nil, err
+	}
 	dir, err := s.dir(q.Scope, q.BotName, q.PersonID)
 	if err != nil {
 		return nil, err
@@ -96,6 +109,12 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 	if exact == "" {
 		return errors.New("memory: forget needs the exact fact text")
 	}
+	if q.Scope == "" {
+		q.Scope = ScopeBot
+	}
+	if err := Migrate(s.Root); err != nil {
+		return err
+	}
 	dir, err := s.dir(q.Scope, q.BotName, q.PersonID)
 	if err != nil {
 		return err
@@ -106,32 +125,34 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 			tiers = []Tier{q.Tier}
 		}
 		for _, tier := range tiers {
-			facts, err := loadTier(dir, tier, q.Scope, q.BotName, q.PersonID)
-			if err != nil {
-				return err
-			}
-			kept := make([]Fact, 0, len(facts))
-			var removed []Fact
-			for _, f := range facts {
-				if f.Text == exact {
-					removed = append(removed, f)
+			for _, base := range tierBases(tier) {
+				facts, err := loadNamed(dir, base, q.Scope, tier, q.BotName, q.PersonID)
+				if err != nil {
+					return err
+				}
+				kept := make([]Fact, 0, len(facts))
+				var removed []Fact
+				for _, f := range facts {
+					if f.Text == exact {
+						removed = append(removed, f)
+						continue
+					}
+					kept = append(kept, f)
+				}
+				if len(removed) == 0 {
 					continue
 				}
-				kept = append(kept, f)
-			}
-			if len(removed) == 0 {
-				continue
-			}
-			if err := saveTier(dir, tier, kept); err != nil {
-				return err
-			}
-			if q.Scope != ScopePerson {
-				continue
-			}
-			for _, f := range removed {
-				f.Time = time.Now().UTC()
-				if err := noteSync(s.Root, opForget, f); err != nil {
+				if err := writeNamed(dir, base, kept, tierLimit(tier), true, false, tier == TierProfile); err != nil {
 					return err
+				}
+				if q.Scope != ScopePerson {
+					continue
+				}
+				for _, f := range removed {
+					f.Time = time.Now().UTC()
+					if err := noteSync(s.Root, opForget, f); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -155,16 +176,7 @@ func (s *FileStore) dir(scope Scope, botName, personID string) (string, error) {
 		}
 		return filepath.Join(s.Root, "bots", botName, "memory"), nil
 	case ScopeBotPerson:
-		if err := clean(botName); err != nil {
-			return "", err
-		}
-		if err := rejectSubagent(personID); err != nil {
-			return "", err
-		}
-		if err := clean(personID); err != nil {
-			return "", err
-		}
-		return filepath.Join(s.Root, "bots", botName, "people", personID, "memory"), nil
+		return "", fmt.Errorf("memory: scope %q was removed; facts now live in bot scope", scope)
 	default:
 		return "", fmt.Errorf("memory: unknown scope %q", scope)
 	}
@@ -200,8 +212,11 @@ func normalize(f Fact) (Fact, error) {
 		f.Key = f.Text
 	}
 	f.Key = clipKey(f.Key)
+	if f.Scope == "" {
+		f.Scope = ScopeBot
+	}
 	switch f.Scope {
-	case ScopePerson, ScopeBotPerson:
+	case ScopePerson:
 		f.Kind = KindAttribute
 		if strings.TrimSpace(f.WrittenBy) == "" {
 			return Fact{}, errors.New("memory: person facts require attribution")
@@ -210,6 +225,8 @@ func normalize(f Fact) (Fact, error) {
 		if f.Kind == "" {
 			f.Kind = KindWork
 		}
+	case ScopeBotPerson:
+		return Fact{}, fmt.Errorf("memory: scope %q was removed; use bot, or person for a fact about the owner", f.Scope)
 	default:
 		return Fact{}, fmt.Errorf("memory: unknown scope %q", f.Scope)
 	}
@@ -233,13 +250,22 @@ func loadQuery(dir string, q Query) ([]Fact, error) {
 	}
 	var all []Fact
 	for _, tier := range tiers {
-		facts, err := loadTier(dir, tier, q.Scope, q.BotName, q.PersonID)
-		if err != nil {
-			return nil, err
+		for _, base := range tierBases(tier) {
+			facts, err := loadNamed(dir, base, q.Scope, tier, q.BotName, q.PersonID)
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, facts...)
 		}
-		all = append(all, facts...)
 	}
 	return all, nil
+}
+
+func tierBases(tier Tier) []string {
+	if tier == TierLog {
+		return []string{string(TierLog), logOverflowBase}
+	}
+	return []string{string(tier)}
 }
 
 func filterQuery(facts []Fact, q Query) []Fact {
@@ -254,8 +280,12 @@ func filterQuery(facts []Fact, q Query) []Fact {
 }
 
 func loadTier(dir string, tier Tier, scope Scope, botName, personID string) ([]Fact, error) {
-	mdPath := filepath.Join(dir, string(tier)+".md")
-	idxPath := filepath.Join(dir, string(tier)+".index.json")
+	return loadNamed(dir, string(tier), scope, tier, botName, personID)
+}
+
+func loadNamed(dir, base string, scope Scope, tier Tier, botName, personID string) ([]Fact, error) {
+	mdPath := filepath.Join(dir, base+".md")
+	idxPath := filepath.Join(dir, base+".index.json")
 	mdInfo, mdErr := os.Stat(mdPath)
 	if errors.Is(mdErr, os.ErrNotExist) {
 		return nil, nil
@@ -303,35 +333,57 @@ func stamp(facts []Fact, scope Scope, tier Tier, botName, personID string) []Fac
 // Sync folds pass fromSync so a remote fold is not wedged by the profile cap;
 // the injection clip is the backstop there.
 func saveTier(dir string, tier Tier, facts []Fact) error {
-	return saveTierOpt(dir, tier, facts, false)
+	return writeTierOpt(dir, tier, facts, true, false)
 }
 
+// saveTierOpt is the sync path. fromSync lets a remote profile fold land even
+// when the merged file is over the cap; the injection clip is the backstop.
 func saveTierOpt(dir string, tier Tier, facts []Fact, fromSync bool) error {
-	body := renderMD(facts)
-	limit := maxLogBytes
+	return writeTierOpt(dir, tier, facts, true, fromSync)
+}
+
+// writeTier stores one tier. enforce is false only when a caller must write
+// past the cap (a migration overflow file). An enforced write over the cap is
+// rejected only when it would grow the file, so a shrinking forget still lands.
+func writeTier(dir string, tier Tier, facts []Fact, enforce bool) error {
+	return writeTierOpt(dir, tier, facts, enforce, false)
+}
+
+func writeTierOpt(dir string, tier Tier, facts []Fact, enforce, fromSync bool) error {
+	return writeNamed(dir, string(tier), facts, tierLimit(tier), enforce, fromSync && tier == TierProfile, tier == TierProfile)
+}
+
+func tierLimit(tier Tier) int {
 	if tier == TierProfile {
-		limit = ProfileBytes
+		return ProfileBytes
 	}
-	if len(body) > limit && !(fromSync && tier == TierProfile) {
+	return maxLogBytes
+}
+
+// writeNamed writes base.md and base.index.json. bypass skips the cap, which
+// is how a sync fold saves an over-cap profile. enforce false skips it too.
+func writeNamed(dir, base string, facts []Fact, limit int, enforce, bypass, profile bool) error {
+	body := renderMD(facts)
+	if enforce && !bypass && len(body) > limit {
 		cur := -1
-		if info, err := os.Stat(filepath.Join(dir, string(tier)+".md")); err == nil {
+		if info, err := os.Stat(filepath.Join(dir, base+".md")); err == nil {
 			cur = int(info.Size())
 		}
 		if len(body) > cur {
-			if tier == TierProfile {
+			if profile {
 				return fmt.Errorf("memory: profile tier is full (%d bytes, %d byte cap). Consolidate: merge facts, forget stale ones, or move details to the log tier", max(cur, 0), limit)
 			}
-			return fmt.Errorf("memory: %s tier exceeds %d bytes", tier, limit)
+			return fmt.Errorf("memory: %s tier exceeds %d bytes", base, limit)
 		}
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	mdPath := filepath.Join(dir, string(tier)+".md")
+	mdPath := filepath.Join(dir, base+".md")
 	if err := fsutil.WriteAtomic(mdPath, []byte(body), 0600); err != nil {
 		return err
 	}
-	return writeIndex(filepath.Join(dir, string(tier)+".index.json"), facts)
+	return writeIndex(filepath.Join(dir, base+".index.json"), facts)
 }
 
 func writeIndex(path string, facts []Fact) error {

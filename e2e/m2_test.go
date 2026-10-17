@@ -59,9 +59,9 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	if err != nil || len(personFacts) != 1 || personFacts[0].Text != "Ada likes tea" || personFacts[0].WrittenBy != "ada" {
 		t.Fatalf("person %+v %v", personFacts, err)
 	}
-	other, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBotPerson, BotName: "ada", PersonID: "u2"})
-	if err != nil || len(other) != 0 {
-		t.Fatalf("other person %+v %v", other, err)
+	own, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: "ada", Tier: memory.TierProfile})
+	if err != nil || len(own) != 1 || own[0].Text != "secret handshake" {
+		t.Fatalf("ada bot %+v %v", own, err)
 	}
 	bea, err := bot.Create(root, "bea", "You are Bea.", []string{link.NameTerminal, link.NameMemory})
 	if err != nil {

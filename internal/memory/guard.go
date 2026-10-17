@@ -25,7 +25,9 @@ func Provenance(text, by, device string) string {
 	if strings.HasSuffix(text, suffix) {
 		return text
 	}
-	return text + suffix
+	// Remember's size check runs after this call, on the text plus suffix.
+	// Clip the text so text+suffix fits in maxFactBytes.
+	return clipTo(text, maxFactBytes-len(suffix)) + suffix
 }
 
 // OwnerProvenance marks a fact the owner wrote on another linked device.
@@ -39,7 +41,21 @@ func OwnerProvenance(text, device string) string {
 	if strings.HasSuffix(text, suffix) {
 		return text
 	}
-	return text + suffix
+	return clipTo(text, maxFactBytes-len(suffix)) + suffix
+}
+
+func clipTo(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for !utf8.ValidString(s) && len(s) > 0 {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 func label(s string) string {

@@ -45,7 +45,7 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 |---|---|---|---|
 | 内核 | Link、Event、收件箱、事件循环，以及一轮里的提醒、熔断、文件新鲜度和待办清单 | 改一轮对话怎么跑、事件怎么进来、什么时候停 | [kernel.md](kernel.md) |
 | 上下文与 transcript | 固定前缀、分段存储、索引、压缩、找回、导出 | 改 `internal/bot/transcript.go`、压缩、导出 | [context.md](context.md) |
-| 身份与记忆 | 人、三层记忆、冲突规则 | 改 `internal/memory`、`internal/person` | [memory.md](memory.md) |
+| 身份与记忆 | 人、两层记忆、冲突规则 | 改 `internal/memory`、`internal/person` | [memory.md](memory.md) |
 | 子代理 | 后台子代理与执行者 | 改 `internal/exec`、`internal/agent` | [subagents.md](subagents.md) |
 | 插话时分叉 | 插话时一轮分成前台和后台 | 做 F1–F5，改分支、前后台调度 | [fork.md](fork.md) |
 | 多 Bot | 主 Bot、分组、Fork Bot、Bot 间通信、档案、例程 | 改 `internal/bot`、`internal/peer`、`internal/cron` | [multibot.md](multibot.md) |
@@ -102,4 +102,4 @@ flowchart LR
 - 界面：60fps；动画只动 transform/opacity，时长不超过 200 毫秒；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
 - 每个里程碑验收都要报性能数字。
 
-ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)。
+ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)。

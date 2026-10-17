@@ -3071,7 +3071,6 @@
   function scopeLabel(scope) {
     if (scope === "person") return "关于你";
     if (scope === "bot") return "关于 Bot";
-    if (scope === "bot-person") return "你们之间";
     return scope || "资料";
   }
 

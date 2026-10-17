@@ -80,6 +80,8 @@ func ExportSync(root string) ([]SyncLine, error) {
 // The newest timestamp wins for each key. An equal timestamp keeps the local line.
 // A timestamp past now plus a small skew is capped. Illegal lines are dropped.
 // Files under bots/ are left alone. A real change wakes the fast sync path.
+// This log is the person channel: an empty scope here stays person.
+// Omitted-scope writes from remember, extraction, and untrusted turns default to bot.
 func MergeSync(root string, remote []SyncLine) error {
 	return MergeFrom(root, "", remote)
 }

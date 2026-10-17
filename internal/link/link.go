@@ -178,10 +178,14 @@ func Render(e Event, trusted bool) string {
 	return Wrap(e)
 }
 
+// UntrustedEventPrefix opens a wrapped event. Attributes follow the name, so
+// callers must match this prefix and not the tag with an immediate ">".
+const UntrustedEventPrefix = "<untrusted_event"
+
 // Wrap renders an event as data the model must not treat as a system instruction.
 func Wrap(e Event) string {
-	return fmt.Sprintf("<untrusted_event source=%q type=%q sender=%q time=%q>\n%s\n</untrusted_event>",
-		e.Source, e.Type, e.Sender, e.Time.UTC().Format(time.RFC3339), e.Content)
+	return fmt.Sprintf("%s source=%q type=%q sender=%q time=%q>\n%s\n</untrusted_event>",
+		UntrustedEventPrefix, e.Source, e.Type, e.Sender, e.Time.UTC().Format(time.RFC3339), e.Content)
 }
 
 func newID() string {
