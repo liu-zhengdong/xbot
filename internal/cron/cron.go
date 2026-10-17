@@ -4,6 +4,7 @@ package cron
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -49,8 +50,14 @@ func Parse(expr string) (Schedule, error) {
 }
 
 // Match reports whether t hits the schedule. The location of t is ignored; fields are UTC.
-func (s Schedule) Match(t time.Time) bool {
-	t = t.UTC()
+func (s Schedule) Match(t time.Time) bool { return s.MatchIn(t, time.UTC) }
+
+// MatchIn reports whether t hits the schedule when its fields are read in loc.
+func (s Schedule) MatchIn(t time.Time, loc *time.Location) bool {
+	if loc == nil {
+		loc = time.UTC
+	}
+	t = t.In(loc)
 	if !s.min.has(t.Minute()) || !s.hour.has(t.Hour()) || !s.mon.has(int(t.Month())) {
 		return false
 	}
@@ -66,6 +73,149 @@ func (s Schedule) Match(t time.Time) bool {
 	default:
 		return domOK || dowOK
 	}
+}
+
+// Next returns the first whole minute strictly after after that matches in loc,
+// searching at most 366 days.
+func (s Schedule) Next(after time.Time, loc *time.Location) (time.Time, bool) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	t := after.Truncate(time.Minute).Add(time.Minute)
+	limit := after.Add(366 * 24 * time.Hour)
+	for t.Before(limit) {
+		if s.MatchIn(t, loc) {
+			return t, true
+		}
+		t = t.Add(time.Minute)
+	}
+	return time.Time{}, false
+}
+
+// Convert returns an expression that, evaluated in to, matches the same instants
+// as expr evaluated in from. ok is false when no exact conversion exists.
+func Convert(expr string, from, to *time.Location, start time.Time) (string, bool, error) {
+	if from == nil {
+		from = time.UTC
+	}
+	if to == nil {
+		to = time.UTC
+	}
+	s, err := Parse(expr)
+	if err != nil {
+		return "", false, err
+	}
+	parts := strings.Fields(expr)
+	if from == to || (from == time.UTC && to == time.UTC) {
+		return expr, true, nil
+	}
+	_, offFrom := start.In(from).Zone()
+	_, offTo := start.In(to).Zone()
+	d := (offTo - offFrom) / 60
+	type pair struct{ min, hour int }
+	pairs := map[pair]struct{}{}
+	mins := map[int]struct{}{}
+	hours := map[int]struct{}{}
+	carry := 0
+	first := true
+	for m := 0; m < 60; m++ {
+		if !s.min.has(m) {
+			continue
+		}
+		for h := 0; h < 24; h++ {
+			if !s.hour.has(h) {
+				continue
+			}
+			c, nm, nh := carryOf(h*60+m, d)
+			pairs[pair{nm, nh}] = struct{}{}
+			mins[nm] = struct{}{}
+			hours[nh] = struct{}{}
+			if first {
+				carry, first = c, false
+			} else if c != carry {
+				carry = 2 // mixed; never valid to shift a weekday
+			}
+		}
+	}
+	if len(pairs) != len(mins)*len(hours) {
+		return "", false, nil
+	}
+	minText, ok := renderField(s.min, mins, 0, 59, parts[0])
+	if !ok {
+		return "", false, nil
+	}
+	hourText, ok := renderField(s.hour, hours, 0, 23, parts[1])
+	if !ok {
+		return "", false, nil
+	}
+	dowText := parts[4]
+	if carry != 0 {
+		if !(s.dom.any && s.mon.any && s.dow.any) {
+			if !s.dom.any || !s.mon.any || carry == 2 {
+				return "", false, nil
+			}
+			shifted := map[int]struct{}{}
+			for v := 0; v < 7; v++ {
+				if s.dow.has(v) {
+					shifted[(v+carry+7)%7] = struct{}{}
+				}
+			}
+			dowText, ok = renderField(s.dow, shifted, 0, 6, parts[4])
+			if !ok {
+				return "", false, nil
+			}
+		}
+	}
+	out := strings.Join([]string{minText, hourText, parts[2], parts[3], dowText}, " ")
+	ns, err := Parse(out)
+	if err != nil {
+		return "", false, nil
+	}
+	limit := start.Truncate(time.Minute).Add(366 * 24 * time.Hour)
+	for t := start.Truncate(time.Minute); t.Before(limit); t = t.Add(time.Minute) {
+		if s.MatchIn(t, from) != ns.MatchIn(t, to) {
+			return "", false, nil
+		}
+	}
+	return out, true, nil
+}
+
+func carryOf(total, d int) (int, int, int) {
+	n := total + d
+	m := ((n % 1440) + 1440) % 1440
+	return (n - m) / 1440, m % 60, m / 60
+}
+
+func renderField(f field, vals map[int]struct{}, lo, hi int, text string) (string, bool) {
+	if len(vals) == 0 {
+		return "", false
+	}
+	same := true
+	for v := lo; v <= hi; v++ {
+		if f.has(v) {
+			if _, ok := vals[v]; !ok {
+				same = false
+			}
+		} else if _, ok := vals[v]; ok {
+			same = false
+		}
+	}
+	if same {
+		return text, true
+	}
+	if len(vals) == hi-lo+1 {
+		return "*", true
+	}
+	out := make([]int, 0, len(vals))
+	for v := range vals {
+		out = append(out, v)
+	}
+	sort.Ints(out)
+	ss := make([]string, len(out))
+	for i, v := range out {
+		ss[i] = strconv.Itoa(v)
+	}
+	return strings.Join(ss, ","), true
 }
 
 // MinGap returns the smallest gap among the next n matches.
