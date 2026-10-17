@@ -51,22 +51,32 @@ type File struct {
 // Path is the registry file under the data root.
 func Path(root string) string { return filepath.Join(root, "providers.json") }
 
-// KeyEnvNames is XBOT_API_KEY plus each provider's api_key_env.
-// A missing registry still returns XBOT_API_KEY.
+// KeyEnvNames is XBOT_API_KEY, each provider's api_key_env, and any search or
+// fetch api_key_env from web.json (including names selected by
+// XBOT_SEARCH_API_KEY_ENV and XBOT_FETCH_API_KEY_ENV). A missing registry
+// still returns XBOT_API_KEY.
 func KeyEnvNames(root string) []string {
 	names := []string{"XBOT_API_KEY"}
 	seen := map[string]bool{"XBOT_API_KEY": true}
-	f, err := Load(root)
-	if err != nil {
-		return names
-	}
-	for _, p := range f.Providers {
-		name := strings.TrimSpace(p.APIKeyEnv)
-		if name == "" || seen[name] {
-			continue
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] || !envName.MatchString(name) {
+			return
 		}
 		seen[name] = true
 		names = append(names, name)
+	}
+	if f, err := Load(root); err == nil {
+		for _, p := range f.Providers {
+			add(p.APIKeyEnv)
+		}
+	}
+	if w, err := LoadWeb(root); err == nil {
+		add(w.Search.APIKeyEnv)
+		add(w.Fetch.APIKeyEnv)
+	} else {
+		add(os.Getenv("XBOT_SEARCH_API_KEY_ENV"))
+		add(os.Getenv("XBOT_FETCH_API_KEY_ENV"))
 	}
 	return names
 }

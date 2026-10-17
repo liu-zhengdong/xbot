@@ -149,6 +149,54 @@ type fetchPage struct {
 	text, url, title string
 }
 
+func TestUnboundVisionUsesEnvModel(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b}
+	t.Setenv("XBOT_MODEL", "deepseek-v4-pro")
+	model, ok := k.vision()
+	if model != "deepseek-v4-pro" || ok {
+		t.Fatalf("env model %s vision %v", model, ok)
+	}
+	t.Setenv("XBOT_MODEL", "")
+	model, ok = k.vision()
+	if model != "deepseek-flash" || !ok {
+		t.Fatalf("default %s vision %v", model, ok)
+	}
+}
+
+func TestTrustedCIDRReachesFetchGuard(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	if err := config.SaveWeb(b.Root, config.WebFile{TrustedEgressCIDRs: []string{"198.18.0.0/15"}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	tl := link.NewToolsLinkAt(dir, "")
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
+		Links: []link.Link{link.Terminal{}, tl},
+		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "hi", time.Unix(10, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	var saw bool
+	for _, tool := range tl.Tools() {
+		f, ok := tool.(*tools.WebFetch)
+		if !ok || f.Fetcher == nil {
+			continue
+		}
+		h, ok := f.Fetcher.(tools.HTTPFetch)
+		if !ok || h.Guard == nil || len(h.Guard.Trusted) != 1 || h.Guard.Trusted[0].String() != "198.18.0.0/15" {
+			t.Fatalf("fetch guard %#v", f.Fetcher)
+		}
+		saw = true
+	}
+	if !saw {
+		t.Fatal("web_fetch was not configured")
+	}
+}
+
 func (f fetchPage) Fetch(context.Context, string) (tools.Page, error) {
 	return tools.Page{URL: f.url, Status: 200, Title: f.title, Text: f.text}, nil
 }

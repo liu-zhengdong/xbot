@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"time"
@@ -142,6 +143,10 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 		root = k.Bot.Root
 	}
 	cfg, err := config.LoadWeb(root)
+	var trusted []netip.Prefix
+	if err == nil {
+		trusted, err = config.TrustedEgress(cfg)
+	}
 	switch f := t.(type) {
 	case *tools.WebSearch:
 		if f.Store == nil {
@@ -162,7 +167,7 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, keyErr })
 			return
 		}
-		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, key)
+		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, cfg.Search.Model, key, trusted)
 		if berr != nil {
 			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, berr })
 			return
@@ -182,7 +187,7 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 			f.Fetcher = failFetch{err}
 			return
 		}
-		ft, ferr := tools.NewFetcher(cfg.Fetch.Backend)
+		ft, ferr := tools.NewFetcher(cfg.Fetch.Backend, trusted)
 		if ferr != nil {
 			f.Fetcher = failFetch{ferr}
 			return
@@ -199,22 +204,26 @@ type failFetch struct{ err error }
 
 func (f failFetch) Fetch(context.Context, string) (tools.Page, error) { return tools.Page{}, f.err }
 
-// vision is the bound model's image capability. An empty binding is
-// deepseek-flash, which sees images. An explicit providers.json vision flag wins.
+// vision is the bound model's image capability. An explicit providers.json
+// vision flag wins. An empty binding follows XBOT_MODEL (default
+// deepseek-flash, which sees images), not a hardcoded id.
 func (k *Kernel) vision() (string, bool) {
-	model := "deepseek-flash"
-	if k == nil || k.Bot == nil {
-		return model, config.SeesImages(model, nil)
-	}
-	cfg := k.Bot.Config()
-	if name := strings.TrimSpace(cfg.Model); name != "" {
-		model = name
-	}
-	prov := strings.TrimSpace(cfg.Provider)
-	if k.Bot.Root != "" && prov != "" {
-		if _, spec, err := config.Lookup(k.Bot.Root, prov, model); err == nil {
-			return spec.Name, spec.SeesImages()
+	model := ""
+	if k != nil && k.Bot != nil {
+		cfg := k.Bot.Config()
+		model = strings.TrimSpace(cfg.Model)
+		prov := strings.TrimSpace(cfg.Provider)
+		if k.Bot.Root != "" && prov != "" && model != "" {
+			if _, spec, err := config.Lookup(k.Bot.Root, prov, model); err == nil {
+				return spec.Name, spec.SeesImages()
+			}
 		}
+	}
+	if model == "" {
+		model = strings.TrimSpace(config.FromEnv(config.Getenv).Model)
+	}
+	if model == "" {
+		model = "deepseek-flash"
 	}
 	return model, config.SeesImages(model, nil)
 }

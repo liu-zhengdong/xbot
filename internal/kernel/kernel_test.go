@@ -25,8 +25,20 @@ type scripted struct {
 	i     int
 }
 
+func snapshotReq(req provider.Request) provider.Request {
+	msgs := make([]provider.Message, len(req.Messages))
+	for i, m := range req.Messages {
+		msgs[i] = m
+		if len(m.Images) > 0 {
+			msgs[i].Images = append([]provider.Image(nil), m.Images...)
+		}
+	}
+	req.Messages = msgs
+	return req
+}
+
 func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	s.reqs = append(s.reqs, req)
+	s.reqs = append(s.reqs, snapshotReq(req))
 	if s.i >= len(s.resps) {
 		return provider.Message{}, errors.New("no more responses")
 	}

@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
 
+	"xbot/internal/clip"
 	"xbot/internal/vault"
 )
 
@@ -64,18 +64,17 @@ func looksHTML(s string) bool {
 }
 
 func pageTitle(htmlSrc string) string {
-	lower := strings.ToLower(htmlSrc)
-	i := strings.Index(lower, "<title")
+	i := indexFold(htmlSrc, "<title")
 	if i < 0 {
 		return ""
 	}
 	rest := htmlSrc[i:]
-	end := strings.Index(rest, ">")
+	end := strings.IndexByte(rest, '>')
 	if end < 0 {
 		return ""
 	}
 	rest = rest[end+1:]
-	j := strings.Index(strings.ToLower(rest), "</title>")
+	j := indexFold(rest, "</title>")
 	if j < 0 {
 		return ""
 	}
@@ -141,11 +140,14 @@ func (w *WebFetch) format(page Page, focus string) string {
 		text += "\n[truncated]"
 	}
 	if len(text) > maxFetchText {
-		text = text[:maxFetchText] + "\n[truncated]"
+		text, _ = clip.Bytes(text, maxFetchText)
 	}
+	title := page.Title
 	if w.Store != nil {
 		text = w.Store.Redact(text)
 		text = w.Store.MaskTruncated(text)
+		title = w.Store.Redact(title)
+		title = w.Store.MaskTruncated(title)
 	}
 	host := page.URL
 	if u, err := url.Parse(page.URL); err == nil && u.Hostname() != "" {
@@ -153,8 +155,8 @@ func (w *WebFetch) format(page Page, focus string) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "url: %s\nstatus: %d\n", page.URL, page.Status)
-	if page.Title != "" {
-		fmt.Fprintf(&b, "title: %s\n", page.Title)
+	if title != "" {
+		fmt.Fprintf(&b, "title: %s\n", title)
 	}
 	if strings.TrimSpace(focus) != "" {
 		fmt.Fprintf(&b, "focus: %s\n", strings.TrimSpace(focus))
@@ -167,6 +169,3 @@ func (w *WebFetch) format(page Page, focus string) string {
 	}
 	return wrapUntrusted("web_fetch", "page", host, at, b.String())
 }
-
-// clipRunes is unused; text caps are byte caps because the transcript spill is in bytes.
-var _ = utf8.RuneCountInString

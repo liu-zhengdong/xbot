@@ -37,27 +37,50 @@ func (d DDG) Search(ctx context.Context, query string, n int) ([]Hit, error) {
 	if err != nil {
 		return nil, err
 	}
-	if res.Status < 200 || res.Status >= 300 {
-		return nil, fmt.Errorf("ddg status %d", res.Status)
+	if res.Status != 200 {
+		return nil, ddgBlockedError(res.Status)
 	}
 	hits := parseDDG(string(res.Body))
+	if len(hits) == 0 && ddgChallenge(res.Body) {
+		return nil, ddgBlockedError(res.Status)
+	}
 	if len(hits) > n {
 		hits = hits[:n]
 	}
 	return hits, nil
 }
 
+func ddgBlockedError(status int) error {
+	return fmt.Errorf("web_search: DuckDuckGo is blocked (HTTP %d). The response is not a result page (non-200 or an anomaly/challenge page), so there are no results. Switch the search backend: set search.backend to \"deepseek\" in web.json, or export XBOT_SEARCH_BACKEND=deepseek. That backend calls POST /responses on deepseek-v4-pro with the web_search tool. The key defaults to DEEPSEEK_API_KEY, then XBOT_API_KEY, unless search.api_key_env or XBOT_SEARCH_API_KEY_ENV names another variable", status)
+}
+
+func ddgChallenge(body []byte) bool {
+	n := len(body)
+	if n > 8192 {
+		n = 8192
+	}
+	var b strings.Builder
+	b.Grow(n)
+	for _, c := range body[:n] {
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b.WriteByte(c)
+	}
+	s := b.String()
+	return strings.Contains(s, "anomaly") || strings.Contains(s, "challenge") || strings.Contains(s, "bots use duckduckgo")
+}
+
 // parseDDG reads result anchors and the following snippet from DuckDuckGo HTML.
 func parseDDG(src string) []Hit {
 	var out []Hit
-	lower := strings.ToLower(src)
 	from := 0
 	for {
-		i := strings.Index(lower[from:], "result__a")
-		if i < 0 {
+		rel := indexFold(src[from:], "result__a")
+		if rel < 0 {
 			break
 		}
-		i += from
+		i := from + rel
 		tagStart := strings.LastIndex(src[:i], "<")
 		if tagStart < 0 {
 			from = i + len("result__a")
@@ -70,21 +93,21 @@ func parseDDG(src string) []Hit {
 		tag := src[tagStart : tagStart+tagEnd]
 		href := attr(tag, "href")
 		innerStart := tagStart + tagEnd + 1
-		close := strings.Index(lower[innerStart:], "</a>")
+		close := indexFold(src[innerStart:], "</a>")
 		if close < 0 {
 			break
 		}
 		title := HTMLToText(src[innerStart : innerStart+close])
 		restFrom := innerStart + close
 		snippet := ""
-		if j := strings.Index(lower[restFrom:], "result__snippet"); j >= 0 {
+		if j := indexFold(src[restFrom:], "result__snippet"); j >= 0 {
 			s := restFrom + j
 			tagAt := strings.LastIndex(src[:s], "<")
 			if tagAt >= 0 {
 				gt := strings.IndexByte(src[tagAt:], '>')
 				if gt >= 0 {
 					body := src[tagAt+gt+1:]
-					end := strings.Index(strings.ToLower(body), "</")
+					end := indexFold(body, "</")
 					if end >= 0 {
 						snippet = HTMLToText(body[:end])
 					}

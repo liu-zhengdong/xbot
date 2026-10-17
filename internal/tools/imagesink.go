@@ -46,6 +46,12 @@ func (s *imageSink) Take() []AttachedImage {
 	return out
 }
 
+// AttachImage adds one image to the sink on ctx. Tools call it from Run.
+// A context without a sink drops the image.
+func AttachImage(ctx context.Context, img AttachedImage) {
+	sinkFrom(ctx).add(img)
+}
+
 func sinkFrom(ctx context.Context) *imageSink {
 	s, _ := ctx.Value(sinkKey{}).(*imageSink)
 	return s

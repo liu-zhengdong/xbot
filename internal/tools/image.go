@@ -41,7 +41,7 @@ type ViewImage struct {
 func (v *ViewImage) Name() string { return "view_image" }
 
 func (v *ViewImage) Description() string {
-	return "Show one local image or public http(s) image to a model that understands images. Pass path or url, not both. JPEG, PNG, GIF, and WebP only, up to 10 MiB. Private addresses are refused. Models without vision return an error."
+	return "Show one local image or public http(s) image to a model that understands images. Pass path or url, not both. JPEG, PNG, GIF, and WebP only, up to 10 MiB. Images larger than 2048 px on a side are downscaled (WebP over that size is refused). Private addresses are refused. Models without vision return an error."
 }
 
 func (v *ViewImage) Parameters() any {
@@ -135,7 +135,7 @@ func (v *ViewImage) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if err != nil {
 		return "", err
 	}
-	sinkFrom(ctx).add(AttachedImage{MIME: mime, Data: data})
+	AttachImage(ctx, AttachedImage{MIME: mime, Data: data})
 	return label, nil
 }
 
@@ -175,6 +175,10 @@ func (v *ViewImage) fromFile(ctx context.Context, raw string) (string, []byte, s
 	mime, ok := imageMIME(data)
 	if !ok {
 		return "", nil, "", fmt.Errorf("view_image: %s is not a JPEG, PNG, GIF, or WebP", label)
+	}
+	mime, data, err = fitImage(mime, data)
+	if err != nil {
+		return "", nil, "", err
 	}
 	return mime, data, fmt.Sprintf("path: %s\nmime: %s\nbytes: %d", label, mime, len(data)), nil
 }
@@ -234,8 +238,13 @@ func (v *ViewImage) fromURL(ctx context.Context, raw string) (string, []byte, st
 	if !ok {
 		return "", nil, "", errors.New("view_image: response is not a JPEG, PNG, GIF, or WebP")
 	}
-	text := fmt.Sprintf("url: %s\nmime: %s\nbytes: %d", res.URL, mime, len(res.Body))
-	return mime, append([]byte(nil), res.Body...), wrapUntrusted("view_image", "image", urlHost(res.URL), time.Now().UTC(), text), nil
+	var data []byte
+	mime, data, err = fitImage(mime, res.Body)
+	if err != nil {
+		return "", nil, "", err
+	}
+	text := fmt.Sprintf("url: %s\nmime: %s\nbytes: %d", res.URL, mime, len(data))
+	return mime, data, wrapUntrusted("view_image", "image", urlHost(res.URL), time.Now().UTC(), text), nil
 }
 
 func imageMIME(b []byte) (string, bool) {

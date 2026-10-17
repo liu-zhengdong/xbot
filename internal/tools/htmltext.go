@@ -4,6 +4,7 @@ import (
 	"html"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // HTMLToText turns a page into readable text. Script and style bodies are
@@ -12,7 +13,6 @@ func HTMLToText(src string) string {
 	var b strings.Builder
 	b.Grow(len(src) / 2)
 	i := 0
-	lower := strings.ToLower(src)
 	var openHref string
 	for i < len(src) {
 		if src[i] != '<' {
@@ -32,7 +32,7 @@ func HTMLToText(src string) string {
 		case "script", "style", "noscript":
 			if !closing {
 				closeTag := "</" + name
-				j := strings.Index(lower[i:], closeTag)
+				j := indexFold(src[i:], closeTag)
 				if j < 0 {
 					return collapseSpace(b.String())
 				}
@@ -80,9 +80,8 @@ func tagInfo(tag string) (name, href string, closing bool) {
 }
 
 func attr(tag, key string) string {
-	lower := strings.ToLower(tag)
 	needle := key + "="
-	i := strings.Index(lower, needle)
+	i := indexFold(tag, needle)
 	if i < 0 {
 		return ""
 	}
@@ -142,9 +141,19 @@ func applyFocus(text, focus string) string {
 	if len(keep) == 0 {
 		head := text
 		if len(head) > 1024 {
-			head = head[:1024]
+			head = cutBytes(head, 1024)
 		}
 		return "focus did not match\n\n" + head
 	}
 	return strings.Join(keep, "\n\n")
+}
+
+func cutBytes(s string, max int) string {
+	if max < 0 || len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
 }

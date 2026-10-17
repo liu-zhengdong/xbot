@@ -16,6 +16,13 @@ import (
 const defaultMaxSteps = 8
 const defaultMaxResult = 64 << 10
 
+const (
+	maxTurnImages     = 4
+	maxTurnImageBytes = 10 << 20
+	imageOmittedNote  = "[image omitted after the previous step]"
+	imageCapNote      = "[image omitted: turn image cap]"
+)
+
 // Approver decides whether a confirmed tool call may run.
 type Approver func(ctx context.Context, toolName, summary string) (bool, error)
 
@@ -100,6 +107,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 	}
 	convo := append([]provider.Message(nil), messages...)
 	var produced []provider.Message
+	var images imageBudget
 	for step := 0; step < opt.MaxSteps; step++ {
 		if err := ctx.Err(); err != nil {
 			return produced, err
@@ -121,6 +129,10 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if err != nil {
 			return produced, err
 		}
+		// The request just sent every image still attached to convo. Later
+		// steps, including the kernel's follow-up chats, must not send them again.
+		omitSentImages(convo)
+		omitSentImages(produced)
 		if msg.Role == "" {
 			msg.Role = provider.RoleAssistant
 		}
@@ -150,7 +162,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			return produced, nil
 		}
 		stepMsgs := []provider.Message{msg}
-		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt)
+		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt, &images)
 		for _, tm := range results {
 			convo = append(convo, tm)
 			produced = append(produced, tm)
@@ -320,7 +332,7 @@ type toolExec struct {
 // runToolCalls starts every call, then returns tool messages in call order.
 // The approval lock is held only around Approve, so a prompt does not stall the others.
 
-func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options) ([]provider.Message, bool) {
+func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options, budget *imageBudget) ([]provider.Message, bool) {
 	out := make([]toolExec, len(calls))
 	var approve sync.Mutex
 	var wg sync.WaitGroup
@@ -338,18 +350,31 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 		if aborted && strings.TrimSpace(out[i].text) == "error: "+ctx.Err().Error() {
 			continue
 		}
+		imgs, note := budget.take(out[i].images)
+		text := out[i].text
+		if note != "" {
+			if text != "" && !strings.HasSuffix(text, "\n") {
+				text += "\n"
+			}
+			text += note
+		}
 		msgs = append(msgs, provider.Message{
 			Role:       provider.RoleTool,
 			ToolCallID: tc.ID,
 			Name:       tc.Function.Name,
-			Content:    out[i].text,
-			Images:     out[i].images,
+			Content:    text,
+			Images:     imgs,
 		})
 	}
 	return msgs, aborted && len(msgs) < len(calls)
 }
 
-func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) toolExec {
+func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.ToolCall, opt Options, approve *sync.Mutex) (res toolExec) {
+	defer func() {
+		if r := recover(); r != nil {
+			res = toolExec{text: finish(opt, tc.Function.Name, fmt.Sprintf("error: tool panic: %v", r))}
+		}
+	}()
 	t, ok := byName[tc.Function.Name]
 	if !ok {
 		return toolExec{text: finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))}
@@ -400,6 +425,48 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	}
 	out, _ = clip.Bytes(out, opt.MaxResult)
 	return toolExec{text: finish(opt, t.Name(), out), images: images}
+}
+
+type imageBudget struct {
+	n     int
+	bytes int
+}
+
+func (b *imageBudget) take(imgs []provider.Image) ([]provider.Image, string) {
+	if b == nil || len(imgs) == 0 {
+		return imgs, ""
+	}
+	keep := make([]provider.Image, 0, len(imgs))
+	dropped := false
+	for _, img := range imgs {
+		if b.n >= maxTurnImages || b.bytes+len(img.Data) > maxTurnImageBytes {
+			dropped = true
+			continue
+		}
+		keep = append(keep, img)
+		b.n++
+		b.bytes += len(img.Data)
+	}
+	if !dropped {
+		return keep, ""
+	}
+	return keep, imageCapNote
+}
+
+func omitSentImages(msgs []provider.Message) {
+	for i := range msgs {
+		if len(msgs[i].Images) == 0 {
+			continue
+		}
+		msgs[i].Images = nil
+		if strings.Contains(msgs[i].Content, imageOmittedNote) {
+			continue
+		}
+		if msgs[i].Content != "" && !strings.HasSuffix(msgs[i].Content, "\n") {
+			msgs[i].Content += "\n"
+		}
+		msgs[i].Content += imageOmittedNote
+	}
 }
 
 func finish(opt Options, name, out string) string {

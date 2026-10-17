@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -37,6 +38,11 @@ type Guard struct {
 	Lookup func(ctx context.Context, host string) ([]net.IP, error)
 	// Dial connects to an already-checked ip:port. Nil uses net.Dialer.
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
+	// Trusted is an explicit allow-list for DNS answers that are not public
+	// (for example 198.18.0.0/15 on a box whose resolver rewrites every name).
+	// Literal IPs in the request URL or in a redirect are never matched
+	// against Trusted.
+	Trusted []netip.Prefix
 }
 
 // FetchResult is a bounded response body. Truncated is set when the body hit MaxBytes.
@@ -207,14 +213,14 @@ func (g *Guard) resolve(ctx context.Context, host string) ([]net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := vetIPs(first); err != nil {
+	if err := g.vetResolved(first); err != nil {
 		return nil, err
 	}
 	second, err := g.lookup(ctx, host)
 	if err != nil {
 		return nil, err
 	}
-	if err := vetIPs(second); err != nil {
+	if err := g.vetResolved(second); err != nil {
 		return nil, errRebind
 	}
 	return second, nil
@@ -235,16 +241,34 @@ func (g *Guard) lookup(ctx context.Context, host string) ([]net.IP, error) {
 	return out, nil
 }
 
-func vetIPs(ips []net.IP) error {
+func (g *Guard) vetResolved(ips []net.IP) error {
 	if len(ips) == 0 {
 		return errBlocked
 	}
 	for _, ip := range ips {
-		if !PublicIP(ip) {
-			return errBlocked
+		if PublicIP(ip) || g.trusted(ip) {
+			continue
 		}
+		return errBlocked
 	}
 	return nil
+}
+
+func (g *Guard) trusted(ip net.IP) bool {
+	if g == nil || len(g.Trusted) == 0 {
+		return false
+	}
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range g.Trusted {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateURL(raw string) error {

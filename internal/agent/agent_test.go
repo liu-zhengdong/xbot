@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,8 +20,20 @@ type scripted struct {
 	i     int
 }
 
+func snapshotReq(req provider.Request) provider.Request {
+	msgs := make([]provider.Message, len(req.Messages))
+	for i, m := range req.Messages {
+		msgs[i] = m
+		if len(m.Images) > 0 {
+			msgs[i].Images = append([]provider.Image(nil), m.Images...)
+		}
+	}
+	req.Messages = msgs
+	return req
+}
+
 func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	s.reqs = append(s.reqs, req)
+	s.reqs = append(s.reqs, snapshotReq(req))
 	if s.i >= len(s.resps) {
 		return provider.Message{}, errors.New("no more responses")
 	}
@@ -489,5 +502,113 @@ func TestGuardRemindsThenStops(t *testing.T) {
 	}
 	if !sawReason || !sawSummary {
 		t.Fatalf("produced %+v", got)
+	}
+}
+
+type panicTool struct{}
+
+func (panicTool) Name() string                                  { return "boom" }
+func (panicTool) Description() string                           { return "boom" }
+func (panicTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (panicTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (panicTool) Run(context.Context, json.RawMessage) (string, error) {
+	panic("hostile page")
+}
+
+func TestToolPanicBecomesError(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "boom", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "still here"},
+	}}
+	got, err := Run(context.Background(), p, []tools.Tool{panicTool{}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 || !strings.Contains(got[1].Content, "error: tool panic: hostile page") {
+		t.Fatalf("%+v", got)
+	}
+}
+
+type imageTool struct {
+	n    int
+	size int
+}
+
+func (imageTool) Name() string                                  { return "view_image" }
+func (imageTool) Description() string                           { return "view" }
+func (imageTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (imageTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (im imageTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	n := im.n
+	if n <= 0 {
+		n = 1
+	}
+	size := im.size
+	if size <= 0 {
+		size = 4
+	}
+	for i := 0; i < n; i++ {
+		tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: bytes.Repeat([]byte{byte(i + 1)}, size)})
+	}
+	return "path: a.png", nil
+}
+
+func TestImageSentOnceThenOmitted(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	_, err := Run(context.Background(), p, []tools.Tool{imageTool{}, &echoTool{}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 3 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	var first int
+	for _, m := range p.reqs[1].Messages {
+		first += len(m.Images)
+	}
+	if first != 1 {
+		t.Fatalf("step after the tool sent %d images", first)
+	}
+	for _, m := range p.reqs[2].Messages {
+		if len(m.Images) != 0 {
+			t.Fatal("image was sent again")
+		}
+		if m.Name == "view_image" && !strings.Contains(m.Content, "[image omitted after the previous step]") {
+			t.Fatalf("placeholder missing: %q", m.Content)
+		}
+	}
+}
+
+func TestImageTurnCap(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	_, err := Run(context.Background(), p, []tools.Tool{imageTool{n: 5, size: 8}}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	var sawNote bool
+	for _, m := range p.reqs[1].Messages {
+		n += len(m.Images)
+		if strings.Contains(m.Content, "[image omitted: turn image cap]") {
+			sawNote = true
+		}
+	}
+	if n != 4 || !sawNote {
+		t.Fatalf("images %d note %v", n, sawNote)
 	}
 }

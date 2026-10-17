@@ -8,12 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"xbot/internal/tools"
 )
 
 const (
@@ -279,19 +280,14 @@ func readProjectFile(path string, roots []string) (string, string, bool) {
 	return body, hex.EncodeToString(sum[:8]), true
 }
 
-var (
-	projectClose   = regexp.MustCompile(`(?i)<\s*/\s*project_instructions`)
-	untrustedClose = regexp.MustCompile(`(?i)<\s*/\s*untrusted_event`)
-)
-
 // neutralizeProject keeps a closing tag in the file from ending the fence.
 // The match is case-insensitive and allows whitespace around the slash, so
 // </Project_Instructions> and < / project_instructions cannot close it.
+// The same helper rewrites untrusted_event, including fullwidth lookalikes.
 // The kernel does not parse this text as instructions.
 func neutralizeProject(s string) string {
-	s = projectClose.ReplaceAllString(s, "</ project_instructions")
-	s = untrustedClose.ReplaceAllString(s, "</ untrusted_event")
-	return s
+	s = tools.NeutralizeCloser(s, "project_instructions")
+	return tools.NeutralizeUntrusted(s)
 }
 
 // projectFreshKey is the cache key for dir. It stats the chain and the two
