@@ -2427,6 +2427,7 @@
     bellDot.hidden = state.notes.length === 0;
     if (!state.notes.length) {
       notesEl.hidden = true;
+      $("bell").setAttribute("aria-expanded", "false");
       notesEl.replaceChildren();
       return;
     }
@@ -2454,6 +2455,7 @@
       notesEl.append(btn);
     }
     notesEl.hidden = !open;
+    $("bell").setAttribute("aria-expanded", String(open));
   }
 
   async function markNotesRead(notes) {
@@ -2477,6 +2479,7 @@
 
   async function openNote(n) {
     notesEl.hidden = true;
+    $("bell").setAttribute("aria-expanded", "false");
     if (n.bot) await selectBot(n.bot);
   }
 
@@ -2749,6 +2752,7 @@
       if (draft) {
         sessionStorage.removeItem("xbot-draft:" + name);
         if (!input.value) input.value = draft;
+        syncComposer();
       }
     } catch (e) {}
     state.sig = "";
@@ -3955,6 +3959,7 @@
     const selection = state.sel;
     ++state.threadLoad;
     pending = pending || optimisticMessage(text);
+    pending.dataset.sendText = text;
     const marker = pending.querySelector(".send-state");
     marker.className = "send-state";
     marker.replaceChildren(document.createTextNode("发送中"));
@@ -3965,6 +3970,14 @@
     const markSent = () => {
       accepted = true;
       pending.accepted = true;
+      if (state.sel === selection) state.pendingSends = state.pendingSends.filter((row) => {
+        // Only a failed copy of this same text is resolved by this send.
+        if (row !== pending && row.querySelector(".send-failed") && row.dataset.sendText === text) {
+          row.remove();
+          return false;
+        }
+        return true;
+      });
       pending.classList.remove("optimistic");
       marker.remove();
     };
@@ -4024,18 +4037,22 @@
       }
       live?.remove();
       marker.className = "send-state send-failed";
-      const retry = el("button", "secondary", "重试");
-      retry.type = "button";
-      retry.addEventListener("click", () => {
-        if (state.sel !== selection) return;
-        if (input.value.trim() === text) input.value = "";
-        syncComposer();
-        sendText(text, pending);
-        input.focus();
-      });
-      marker.replaceChildren(el("span", "", "没发出去，原文还在输入框里"), retry);
-      announceSend("没发出去，原文还在输入框里");
-      if (!input.value) input.value = text;
+      if (!input.value.trim()) {
+        input.value = text;
+        marker.replaceChildren(el("span", "", "没发出去，原文还在输入框里"));
+        announceSend("没发出去，原文还在输入框里");
+      } else {
+        // A newer draft is in the composer: keep it, and let the owner bring this text back.
+        const back = el("button", "secondary", "放回输入框");
+        back.type = "button";
+        back.addEventListener("click", () => {
+          input.value = input.value.trim() ? input.value.replace(/\s*$/, "\n") + text : text;
+          syncComposer();
+          input.focus();
+        });
+        marker.replaceChildren(el("span", "", "没发出去"), back);
+        announceSend("没发出去，可以放回输入框");
+      }
       syncComposer();
     } finally {
       live?.querySelector(".typing-dots")?.remove();
@@ -4255,7 +4272,11 @@
   }
 
   function syncComposer() {
-    composer.classList.toggle("has-text", input.value.trim().length > 0);
+    const hasText = input.value.trim().length > 0;
+    composer.classList.toggle("has-text", hasText);
+    $("send").disabled = !hasText;
+    $("send").classList.toggle("primary", hasText);
+    $("send").classList.toggle("secondary", !hasText);
   }
 
   function closeAccount() {
@@ -4267,14 +4288,13 @@
     closeAccount();
     $("connect-pop").hidden = true;
     $("connect").setAttribute("aria-expanded", "false");
-    $("plus-menu").hidden = true;
-    $("plus").setAttribute("aria-expanded", "false");
     $("more-menu").hidden = true;
     $("more").setAttribute("aria-expanded", "false");
     closePanelMenu();
     closeFolderMenus();
     closeToolPop();
     notesEl.hidden = true;
+    $("bell").setAttribute("aria-expanded", "false");
   }
 
   document.addEventListener("click", () => { if (authenticated && subtitleError) setStatus(""); }, true);
@@ -4424,7 +4444,9 @@
       try { await Notification.requestPermission(); } catch (e) {}
     }
     if (!state.notes.length) return;
+    hideTip();
     notesEl.hidden = !notesEl.hidden;
+    $("bell").setAttribute("aria-expanded", String(!notesEl.hidden));
   });
 
   $("connect").addEventListener("click", (ev) => {
@@ -4516,13 +4538,6 @@
   const phonePush = $("phone-push");
   if (phonePush) phonePush.addEventListener("click", () => { togglePush().catch(() => {}); });
 
-  $("plus").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const menu = $("plus-menu");
-    menu.hidden = !menu.hidden;
-    $("plus").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
-  });
-
   $("more").addEventListener("click", (ev) => {
     ev.stopPropagation();
     const menu = $("more-menu");
@@ -4547,7 +4562,7 @@
 
   function placeTip(host) {
     const text = host.getAttribute("data-tip");
-    if (!text) { hideTip(); return; }
+    if (!text || host.getAttribute("aria-expanded") === "true") { hideTip(); return; }
     tipEl.textContent = text;
     tipEl.hidden = false;
     const r = host.getBoundingClientRect();
@@ -4588,16 +4603,13 @@
     if (tipHost && ev.target.closest && ev.target.closest("[data-tip]") === tipHost) hideTip();
   });
   document.addEventListener("scroll", hideTip, true);
+  document.addEventListener("click", hideTip, true);
 
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".account-wrap")) closeAccount();
     if (!ev.target.closest(".connect-wrap")) {
       $("connect-pop").hidden = true;
       $("connect").setAttribute("aria-expanded", "false");
-    }
-    if (!ev.target.closest(".plus-wrap")) {
-      $("plus-menu").hidden = true;
-      $("plus").setAttribute("aria-expanded", "false");
     }
     if (!ev.target.closest(".more-wrap")) {
       $("more-menu").hidden = true;
@@ -4606,7 +4618,10 @@
     if (!ev.target.closest(".panel-more-wrap") && !ev.target.closest(".menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
-    if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) notesEl.hidden = true;
+    if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) {
+      notesEl.hidden = true;
+      $("bell").setAttribute("aria-expanded", "false");
+    }
   });
 
   function setComposerPlaceholder(text) {
@@ -4670,6 +4685,7 @@
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const text = input.value;
+    if (!text.trim() || !state.sel) return;
     input.value = "";
     input.style.height = "auto";
     syncComposer();

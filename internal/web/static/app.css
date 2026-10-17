@@ -1150,9 +1150,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .plus-wrap { position: relative; flex: none; display: flex; align-items: flex-end; }
 
-.composer:not(.has-text) .send { display: none; }
-
-.composer.has-text #mic { display: none; }
+.send.secondary { background: var(--fill); color: var(--muted); }
 
 .send {
   width: 32px; height: 32px; min-width: 32px; min-height: 32px;
@@ -1936,3 +1934,6 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 }
 
 .not-found-back { display: inline-block; padding: 10px 16px; border-radius: 10px; text-decoration: none; text-align: center; }
+
+/* Login guidance yields to the actionable error. */
+.gate-card:has(#login-error:not([hidden])) #login-hint { display: none; }
