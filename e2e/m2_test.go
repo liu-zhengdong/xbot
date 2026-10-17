@@ -24,7 +24,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	srv := httptest.NewServer(mockopenai.NewMux(work))
 	defer srv.Close()
 	root := t.TempDir()
-	ada, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameMemory})
+	ada, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameMemory, link.NameTools})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	k := &kernel.Kernel{
 		Bot: ada, Provider: client, Memory: store, MaxSteps: 4,
-		Links:   []link.Link{link.Terminal{}, link.Memory{}},
+		Links:   []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(root, "")},
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 		Budget:  compact.DefaultBudget(),
 	}

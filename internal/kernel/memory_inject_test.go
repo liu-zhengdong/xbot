@@ -13,38 +13,6 @@ import (
 	"xbot/internal/provider"
 )
 
-func TestProfileCapErrorAsksToConsolidate(t *testing.T) {
-	// The store test owns the message. This one checks the tool returns it
-	// to the model instead of storing a truncated fact.
-	b := testBot(t, link.NameTerminal)
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	store := memory.Open(b.Root)
-	k := &Kernel{Bot: b, Memory: store, Now: func() time.Time {
-		return time.Date(2026, 10, 17, 4, 0, 0, 0, time.UTC)
-	}}
-	tool := rememberTool{k}
-	var hit error
-	for i := 0; i < 80; i++ {
-		args := fmt.Sprintf(`{"fact":%q,"scope":"bot","tier":"profile"}`, strings.Repeat("word ", 80)+fmt.Sprintf("%d", i))
-		_, err := tool.Run(context.Background(), []byte(args))
-		if err != nil {
-			hit = err
-			break
-		}
-	}
-	if hit == nil {
-		t.Fatal("expected the profile tier to hit its cap")
-	}
-	msg := hit.Error()
-	for _, part := range []string{"Consolidate", "merge facts", "forget stale", "log tier"} {
-		if !strings.Contains(msg, part) {
-			t.Fatalf("tool error %q missing %q", msg, part)
-		}
-	}
-}
-
 func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	store := memory.Open(b.Root)
@@ -119,48 +87,6 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	}
 	if mem == "" || !strings.Contains(mem, marker) || strings.Contains(mem, "memory clipped") {
 		t.Fatalf("injected memory dropped a fact\n%s", mem)
-	}
-}
-
-func TestRememberOmitsScopeWritesBot(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	store := memory.Open(b.Root)
-	k := &Kernel{Bot: b, Memory: store, Now: func() time.Time {
-		return time.Date(2026, 10, 17, 4, 0, 0, 0, time.UTC)
-	}}
-	k.ensureTurn().turnSender = "u1"
-	k.ensureTurn().turnTrusted = true
-	tool := rememberTool{k}
-	if _, err := tool.Run(context.Background(), []byte(`{"fact":"always run tests before done","tier":"profile"}`)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tool.Run(context.Background(), []byte(`{"fact":"owner timezone is Asia/Shanghai","scope":"person","tier":"profile"}`)); err != nil {
-		t.Fatal(err)
-	}
-	botFacts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name(), Tier: memory.TierProfile})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(botFacts) != 1 || botFacts[0].Text != "always run tests before done" || botFacts[0].Scope != memory.ScopeBot {
-		t.Fatalf("bot %+v", botFacts)
-	}
-	person, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(person) != 1 || !strings.Contains(person[0].Text, "Asia/Shanghai") {
-		t.Fatalf("person %+v", person)
-	}
-	for _, f := range person {
-		if strings.Contains(f.Text, "always run tests") {
-			t.Fatalf("work rule landed in person: %+v", f)
-		}
-	}
-	if _, err := tool.Run(context.Background(), []byte(`{"fact":"nope","scope":"bot-person"}`)); err == nil {
-		t.Fatal("bot-person scope was accepted")
 	}
 }
 

@@ -314,7 +314,12 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 			res.Reason = "no script for " + c.Name
 			return res
 		}
-		model = &Fake{Steps: append(Script(nil), script...)}
+		steps := append(Script(nil), script...)
+		paths := strings.NewReplacer("{{bot_memory}}", strings.Trim(args(filepath.Join(root, "bots", b.Name(), "memory", "memory.md")), "\""), "{{person_memory}}", strings.Trim(args(filepath.Join(root, "people", "owner", "memory", "memory.md")), "\""))
+		for i := range steps {
+			steps[i].Args = paths.Replace(steps[i].Args)
+		}
+		model = &Fake{Steps: steps}
 	}
 	steps := c.MaxSteps
 	if steps <= 0 {
@@ -352,7 +357,11 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	}
 	allow := c.Approve == "allow"
 	var mem memory.Store = memory.NopStore{}
-	links := []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, c.Network)}}
+	list := caseTools(work, c.Network)
+	if c.Memory {
+		list = memoryCaseTools(work, c.Network)
+	}
+	links := []link.Link{link.Terminal{}, sandboxLink{list: list}}
 	if c.Memory {
 		mem = memory.Open(root)
 		links = append(links, link.Memory{})

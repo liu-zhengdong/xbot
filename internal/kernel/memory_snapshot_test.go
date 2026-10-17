@@ -2,7 +2,9 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -244,42 +246,40 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 	}
 }
 
-// TestMemoryDiffSkipsOwnRemember: the bot's own remember is not reported back.
-func TestMemoryDiffSkipsOwnRemember(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+// TestMemoryDiffSkipsOwnWrite: the bot's own file write is not reported back.
+func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
-	args := `{"fact":"owner prefers short replies","tier":"profile"}`
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: args},
-		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{memoryWriteCall(b, "c1", memory.ScopeBot, "owner prefers short replies")}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "two"},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
 		Now:   func() time.Time { return t0 },
 	}
 	reqs := memDiffRun(t, k, 2, nil)
 	if len(reqs) != 3 {
 		t.Fatalf("requests %d", len(reqs))
 	}
+	assertMemoryFileWrites(t, b, 1)
 	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
 	if err != nil || len(facts) != 1 {
 		t.Fatalf("facts %v %v", facts, err)
 	}
 	for _, up := range envUpdates(t, b) {
-		if strings.Contains(up, "memory changed") || strings.Contains(up, "memory: updated") {
+		if strings.Contains(up, "owner prefers short replies") || strings.Contains(up, "memory: updated") {
 			t.Fatalf("own write reported back:\n%s", up)
 		}
 	}
 	if reqs[0].Messages[1].Content != reqs[2].Messages[1].Content {
-		t.Fatal("msgs[1] changed after the bot's own remember")
+		t.Fatal("msgs[1] changed after the bot's own file edit")
 	}
 }
 
@@ -424,19 +424,20 @@ func (h *hookProvider) Chat(ctx context.Context, req provider.Request, onDelta f
 }
 
 // TestMemoryDiffKeepsOutsideEditDuringOwnWrite: an outside edit landing in the
-// same turn as the bot's own remember is still reported; only the own line is skipped.
+// same turn as the bot's own file edit is still reported; only the own line is skipped.
 func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
-	args := `{"fact":"own note from the bot","tier":"profile"}`
+	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "memory.md")
+	readArgs, _ := json.Marshal(map[string]string{"path": path})
+	editArgs, _ := json.Marshal(map[string]string{"path": path, "old_string": "outside edit mid turn", "new_string": "outside edit mid turn\n- (2026-10-17) own note from the bot"})
 	sp := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: args},
-		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "read", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: string(readArgs)}}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "edit", Type: "function", Function: provider.FunctionCall{Name: "edit_file", Arguments: string(editArgs)}}}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "two"},
 	}}
@@ -450,10 +451,11 @@ func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: hp, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
 		Now:   func() time.Time { return t0 },
 	}
 	memDiffRun(t, k, 2, nil)
+	assertMemoryFileWrites(t, b, 1)
 	up := lastEnvUpdate(t, k)
 	if !strings.Contains(up, "outside edit mid turn") {
 		t.Fatalf("outside edit swallowed by the own write:\n%s", up)
@@ -484,16 +486,16 @@ func TestMemoryDiffRecentLogOnlyNewEntries(t *testing.T) {
 	}
 }
 
-// TestMemoryOwnWriteInForkedTurnSkipped: a remember made after the turn forked
+// TestMemoryOwnWriteInForkedTurnSkipped: a file write made after the turn forked
 // is still the bot's own change; the next wake does not report it back.
 func TestMemoryOwnWriteInForkedTurnSkipped(t *testing.T) {
 	k, g, box := forkKernel(t)
 	store := memory.Open(k.Bot.Root)
 	k.Memory = store
-	k.Links = append(k.Links, link.Memory{})
+	k.Links = append(k.Links, link.Memory{}, link.NewToolsLinkAt(k.Bot.Root, ""))
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"written in the background","tier":"profile"}`}}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{memoryWriteCall(k.Bot, "c2", memory.ScopeBot, "written in the background")}},
 		{Role: provider.RoleAssistant, Content: "后台做完了"},
 		{Role: provider.RoleAssistant, Content: "next"},
 	}}
@@ -510,6 +512,7 @@ func TestMemoryOwnWriteInForkedTurnSkipped(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "and now", time.Unix(30, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
+	assertMemoryFileWrites(t, k.Bot, 1)
 	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name()})
 	if err != nil || len(facts) != 1 {
 		t.Fatalf("facts %v %v", facts, err)
@@ -555,7 +558,7 @@ func TestMemoryTimerWakeKeepsView(t *testing.T) {
 // TestMemoryOwnWriteAcrossViews: the owner's bot-scope write is not reported to
 // the shared view, and the owner's person-scope write never reaches it at all.
 func TestMemoryOwnWriteAcrossViews(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -564,8 +567,8 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: "hello u2"},
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
-			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"team uses go 1.24","tier":"profile"}`}},
-			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"owner birthday in may","scope":"person","tier":"profile"}`}},
+			memoryWriteCall(b, "c1", memory.ScopeBot, "team uses go 1.24"),
+			memoryWriteCall(b, "c2", memory.ScopePerson, "owner birthday in may"),
 		}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "owner again"},
@@ -573,7 +576,7 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
 		Now:   func() time.Time { return t0 },
 	}
 	// u1 speaks twice, so the own writes are drained into the parked u2 view.
@@ -582,11 +585,12 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	assertMemoryFileWrites(t, b, 2)
 	if len(p.reqs) != 5 {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
 	for _, up := range envUpdates(t, b) {
-		if strings.Contains(up, "memory changed") {
+		if strings.Contains(up, "team uses go 1.24") || strings.Contains(up, "owner birthday in may") {
 			t.Fatalf("own write reported to another view:\n%s", up)
 		}
 	}
@@ -692,22 +696,20 @@ func TestMemorySubagentWakeKeepsView(t *testing.T) {
 // TestMemoryDiffReportsUndoneOwnWrite: the bot remembers X, someone removes X
 // before the next wake; live equals what was seen, but the removal is reported.
 func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "remember", Arguments: `{"fact":"short lived note","tier":"profile"}`},
-		}}},
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{memoryWriteCall(b, "c1", memory.ScopeBot, "short lived note")}},
 		{Role: provider.RoleAssistant, Content: "noted"},
 		{Role: provider.RoleAssistant, Content: "two"},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}},
+		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
 		Now:   func() time.Time { return t0 },
 	}
 	memDiffRun(t, k, 2, func(i int) {
@@ -719,6 +721,7 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	assertMemoryFileWrites(t, b, 1)
 	if up := lastEnvUpdate(t, k); !strings.Contains(up, "- [") || !strings.Contains(up, "short lived note") {
 		t.Fatalf("undone own write not reported:\n%s", up)
 	}
@@ -813,5 +816,38 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 	}
 	if st.MemRender != memRenderVersion || len(st.MemOther) != 0 || len(st.MemOwn) != 0 {
 		t.Fatalf("old views survived: %+v", st)
+	}
+}
+
+// memoryWriteCall emits a real file-tool call; the kernel owns bookkeeping.
+func memoryWriteCall(b *bot.Bot, id string, scope memory.Scope, text string) provider.ToolCall {
+	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "memory.md")
+	if scope == memory.ScopePerson {
+		path = filepath.Join(b.Root, "people", "u1", "memory", "memory.md")
+		text += " via " + b.Name()
+	}
+	raw, _ := json.Marshal(map[string]string{"path": path, "content": "- (2026-10-17) " + text + "\n"})
+	return provider.ToolCall{ID: id, Type: "function", Function: provider.FunctionCall{Name: "write_file", Arguments: string(raw)}}
+}
+
+func assertMemoryFileWrites(t *testing.T, b *bot.Bot, want int) {
+	t.Helper()
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrote := 0
+	for _, entry := range entries {
+		m := entry.Message
+		if m.Role != provider.RoleTool || !isFileEdit(m.Name) {
+			continue
+		}
+		if !strings.HasPrefix(m.Content, "wrote ") && !strings.HasPrefix(m.Content, "updated ") {
+			t.Fatalf("file write failed: %s", m.Content)
+		}
+		wrote++
+	}
+	if wrote != want {
+		t.Fatalf("real file writes = %d, want %d", wrote, want)
 	}
 }

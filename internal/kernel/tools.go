@@ -36,7 +36,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	}
 	list := append([]tools.Tool{}, link.CollectTools(active)...)
 	if namedLink(links, link.NameMemory) {
-		list = append(list, rememberTool{k}, forgetTool{k}, recallTool{k})
+		list = append(list, recallTool{k})
 	}
 	if namedLink(links, link.NamePersona) {
 		list = append(list, personaTool{k}, profileTool{k})
@@ -133,109 +133,6 @@ func stringProp(desc string) map[string]any {
 
 func intProp(desc string) map[string]any {
 	return map[string]any{"type": "integer", "description": desc}
-}
-
-type rememberTool struct{ k *Kernel }
-
-func (rememberTool) Name() string { return "remember" }
-func (rememberTool) Description() string {
-	return fmt.Sprintf("Store a fact. scope defaults to bot when omitted: this bot's role, rules agreed with the owner, and project decisions. Pass scope person only for a fact about the owner that every bot needs — timezone, language, daily routine, or who they are — and never for a work rule or a project decision. tier is profile (always loaded; each scope is capped at %d bytes; if it is full, consolidate: merge facts, forget stale ones, or move details to the log tier) or log (search only).", memory.ProfileBytes)
-}
-func (rememberTool) Parameters() any {
-	return schema(map[string]any{
-		"fact":  stringProp("the fact, one line"),
-		"scope": stringProp("bot (default) or person. person only for timezone, language, routine, or who the owner is. Work rules and project decisions stay bot."),
-		"tier":  stringProp("profile or log; default profile"),
-	}, []string{"fact"})
-}
-func (rememberTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t rememberTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Fact  string `json:"fact"`
-		Scope string `json:"scope"`
-		Tier  string `json:"tier"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if t.k.Memory == nil {
-		return "", errors.New("memory: no store")
-	}
-	fact := memory.Fact{
-		Scope:     memory.Scope(in.Scope),
-		Tier:      memory.Tier(in.Tier),
-		Text:      in.Fact,
-		PersonID:  t.k.memoryPersonOf(t.k.turnFor(ctx)),
-		BotName:   t.k.Bot.Name(),
-		WrittenBy: t.k.Bot.Name(),
-		Time:      t.k.now(),
-	}
-	if fact.Tier == "" {
-		fact.Tier = memory.TierProfile
-	}
-	switch fact.Scope {
-	case "":
-		fact.Scope = memory.ScopeBot
-	case memory.ScopePerson, memory.ScopeBot:
-	case memory.ScopeBotPerson:
-		return "", errors.New("memory: scope bot-person was removed; use bot for this bot's rules and project decisions, or person for a fact about the owner (timezone, language, routine, who they are)")
-	default:
-		return "", fmt.Errorf("memory: unknown scope %q", fact.Scope)
-	}
-	// An untrusted turn is data, whatever scope it lands in. Omitted scope is bot,
-	// and that write is marked too.
-	if !t.k.turnFor(ctx).turnTrusted {
-		fact.Text = memory.Provenance(fact.Text, t.k.Bot.Name(), "")
-		fact.Untrusted = true
-	}
-	done := t.k.beginOwnWrite(ctx, fact.Scope)
-	err := t.k.Memory.Remember(ctx, fact)
-	done()
-	if err != nil {
-		return "", err
-	}
-	return "remembered", nil
-}
-
-type forgetTool struct{ k *Kernel }
-
-func (forgetTool) Name() string { return "forget" }
-func (forgetTool) Description() string {
-	return "Delete a fact whose text matches exactly. scope defaults to bot. Pass person only when deleting a shared fact about the owner."
-}
-func (forgetTool) Parameters() any {
-	return schema(map[string]any{
-		"fact":  stringProp("exact fact text"),
-		"scope": stringProp("bot (default) or person"),
-	}, []string{"fact"})
-}
-func (forgetTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t forgetTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Fact  string `json:"fact"`
-		Scope string `json:"scope"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if t.k.Memory == nil {
-		return "", errors.New("memory: no store")
-	}
-	scope := memory.Scope(in.Scope)
-	if scope == "" {
-		scope = memory.ScopeBot
-	}
-	if scope == memory.ScopeBotPerson {
-		return "", errors.New("memory: scope bot-person was removed; use bot, or person for a shared fact about the owner")
-	}
-	q := memory.Query{Scope: scope, BotName: t.k.Bot.Name(), PersonID: t.k.memoryPersonOf(t.k.turnFor(ctx))}
-	done := t.k.beginOwnWrite(ctx, scope)
-	err := t.k.Memory.Forget(ctx, q, in.Fact)
-	done()
-	if err != nil {
-		return "", err
-	}
-	return "forgot", nil
 }
 
 type recallTool struct{ k *Kernel }

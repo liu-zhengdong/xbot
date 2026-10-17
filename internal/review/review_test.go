@@ -23,8 +23,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"recall_history":  Readonly,
 		"routine_list":    Readonly,
 		"code_show":       Readonly,
-		"remember":        Normal,
-		"forget":          Normal,
 		"recall":          Readonly,
 		"delete_bot":      Delete,
 		"secret_rm":       Delete,

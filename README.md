@@ -173,7 +173,7 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 | person | 所有 Bot。只放每个 Bot 都需要的、关于主人本人的事实：时区、语言、作息、他是谁。写入必须显式写 `scope=person` | profile 每次注入；log 只在 `recall` 时搜 |
 | bot | 这个 Bot。角色、和主人约定的规则、项目决定。省略 scope 时的默认 | 同上 |
 
-冲突规则：关于人的事实，新的赢；怎么干活，bot 范围赢，压过 person。`remember` / `forget` / `recall` 是工具。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。不可信回合写进哪一层，正文都会标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（两份一起注入，预算 `2×4KiB+512`），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。已经超限的文件仍能 forget，只要这次写不会把文件变大。工作规则和项目决定不进 person。Bot 记忆每个发送者都看得见。
+冲突规则：关于人的事实，新的赢；怎么干活，bot 范围赢，压过 person。用 `write_file` / `edit_file` 编辑记忆目录里的文件，用只读 `recall` 检索。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。不可信回合写进哪一层，正文都会标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（两份一起注入，预算 `2×4KiB+512`），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。已经超限的文件仍能 forget，只要这次写不会把文件变大。工作规则和项目决定不进 person。Bot 记忆每个发送者都看得见。
 
 旧的 bot-person 目录只在该 Bot 的 `owners` 里才并进 `bots/<name>/memory`，去重，保留时间戳、来源和原来的 kind。没有主人的 Bot 不合并，旧事实只留在 `memory.bak`。`config.json` 缺失或读不了时目录留在原地，不算没有主人。其他人的目录改名为 `memory.bak`。profile 放不下的改记 log。迁进 log 时文件留到大约 48 KiB，更旧的写到 `log.overflow.md`。每次进程启动都重新走一遍 `bots/*/people/*/memory`（每个数据根每进程一次）；迁过的目录已改名为 `memory.bak`，所以重复走是幂等的。见 [ADR 0006](docs/adr/0006-two-memory-scopes.md)。
 

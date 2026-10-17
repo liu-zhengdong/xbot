@@ -91,8 +91,8 @@ type Kernel struct {
 	BackgroundMaxTime time.Duration
 
 	turnMu sync.Mutex
-	// memOwnMu guards memOwn: line changes of this bot's own remember/forget
-	// calls, from any turn, drained into State at the next wake (drainMemOwn).
+	// memOwnMu guards memOwn: line changes of this bot's own memory writes
+	// from any turn, drained into State at the next wake (drainMemOwn).
 	memOwnMu sync.Mutex
 	memOwn   []ownChange
 	// memWriteMu serializes own memory writes with their before/after reads.
@@ -733,12 +733,23 @@ func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	return k.Provider, nil
 }
 
+// rulesText is the bot's rules plus, when a memory store is attached, MemoryWriteRule.
+// It is appended here rather than kept in rules.md so bots with a saved custom
+// rules file get it too, and it sits in the system prompt, not the memory data block.
+func (k *Kernel) rulesText() (string, error) {
+	rules, err := k.Bot.ReadRules(DefaultRules())
+	if err != nil || k.Memory == nil || strings.Contains(rules, MemoryWriteRule) {
+		return rules, err
+	}
+	return rules + "\n\n" + MemoryWriteRule, nil
+}
+
 func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
 	persona, err := k.Bot.ComposedPersona()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
-	rules, err := k.Bot.ReadRules(DefaultRules())
+	rules, err := k.rulesText()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -799,7 +810,7 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	if err != nil {
 		return st, err
 	}
-	rules, err := k.Bot.ReadRules(DefaultRules())
+	rules, err := k.rulesText()
 	if err != nil {
 		return st, err
 	}
@@ -1027,7 +1038,7 @@ type ownChange struct {
 	lines  []string
 }
 
-// beginOwnWrite starts recording one own remember/forget. It holds memWriteMu
+// beginOwnWrite starts recording one own memory write. It holds memWriteMu
 // until the returned func runs after the write, so parallel tool calls cannot
 // mix their before/after texts. A bot-scope write is measured on the bot-only
 // rendering, so it can never carry person lines into another person's view.
