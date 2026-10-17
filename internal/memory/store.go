@@ -147,13 +147,14 @@ func (s *FileStore) Forget(_ context.Context, q Query, exact string) error {
 			if err != nil {
 				return err
 			}
+			current := foldSync(lines)
 			tombstones := map[string]Fact{}
 			for _, f := range removed {
 				matched := false
 				if tier == TierLog {
-					for _, ln := range lines {
-						if ln.Op == opRemember && factMark(ln) == factMark(SyncLine{Fact: f, Time: f.Time}) {
-							tombstones[ln.Fact.Key] = ln.Fact
+					for _, live := range current {
+						if factMark(SyncLine{Fact: live, Time: live.Time, Device: live.Device}) == factMark(SyncLine{Fact: f, Time: f.Time}) {
+							tombstones[live.Key] = live
 							matched = true
 						}
 					}

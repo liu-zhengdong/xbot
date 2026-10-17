@@ -173,6 +173,21 @@ func TestLegacyMonthlyResume(t *testing.T) {
 	if err != nil || len(got) != 2 {
 		t.Fatalf("resume: %d %v", len(got), err)
 	}
+	// Simulate a crash after writing the profile overflow and its notice.
+	profile := []Fact{{Text: strings.Repeat("p", ProfileBytes+1)}}
+	incoming := []Fact{{Text: "overflow", Time: time.Now()}}
+	_, logs, _, _ := mergeLegacy("dev", profile, got, incoming, nil)
+	if err := writeMonths(dir, logs, false); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := loadTier(dir, TierLog, ScopeBot, "dev", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, retried, _, _ := mergeLegacy("dev", profile, persisted, incoming, nil)
+	if len(retried) != len(logs) {
+		t.Fatalf("notice duplicated: %d want %d", len(retried), len(logs))
+	}
 }
 
 func TestMigrationLogIdentityAndText(t *testing.T) {
@@ -269,4 +284,29 @@ func TestForgetMonthlyDistinctSyncKeys(t *testing.T) {
 	if err != nil || len(got) != 0 {
 		t.Fatalf("resurrected: %+v %v", got, err)
 	}
+	// A historical matching B record must not delete B's newer value.
+	root = t.TempDir()
+	s = Open(root)
+	f.Time = time.Now().Add(-30 * time.Minute)
+	for _, key := range []string{"A", "B"} {
+		f.Key = key
+		if err := s.Remember(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.Key, f.Text, f.Time = "B", "new", f.Time.Add(time.Second)
+	if err := s.Remember(ctx, f); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Forget(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog}, "same"); err != nil {
+		t.Fatal(err)
+	}
+	if err := MergeSync(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Recall(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog})
+	if err != nil || len(got) != 1 || got[0].Text != "new" {
+		t.Fatalf("new value deleted: %+v %v", got, err)
+	}
+
 }

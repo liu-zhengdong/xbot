@@ -348,7 +348,7 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 	logFacts = mergeLogs(logFacts, incoming)
 	logChanged = len(logFacts) != before
 
-	if len(overflow) > 0 && !hasKey(logFacts, migrationNoteKey) && !hasKey(profile, migrationNoteKey) {
+	if len(overflow) > 0 && !hasKey(profile, migrationNoteKey) {
 		note := Fact{
 			Key:       migrationNoteKey,
 			Kind:      KindWork,
@@ -359,8 +359,8 @@ func mergeLegacy(botName string, profile, logFacts, incomingProfile, incomingLog
 			Text:      fmt.Sprintf("migration: %d profile fact(s) from the removed bot-person scope moved to the log tier because the %d-byte profile cap would have been exceeded", len(overflow), ProfileBytes),
 			Time:      time.Now().UTC(),
 		}
-		logFacts = append(logFacts, note)
-		logChanged = true
+		logFacts = mergeLogs(logFacts, []Fact{note})
+		logChanged = len(logFacts) != before
 	}
 	return profile, logFacts, profileChanged, logChanged
 }
