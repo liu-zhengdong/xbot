@@ -44,6 +44,9 @@ type ApprovalCard struct {
 	Subtitle string
 	Summary  string
 	State    string
+	// Deadline is the RFC3339 instant the card stops accepting a decision.
+	// Empty on cards written before the field existed.
+	Deadline string
 }
 
 // CardText labels one approval card in Chinese. It mirrors review.CardText for
@@ -55,11 +58,25 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 // ApprovalCardText wraps one confirmation card as a transcript line. title and
 // subtitle are the human labels; pass empty strings for a card without them.
 func ApprovalCardText(id, tool, title, subtitle, summary, state string) string {
+	return approvalCardText(id, tool, title, subtitle, summary, state, "")
+}
+
+// ApprovalCardTextAt is ApprovalCardText with the server's decision deadline.
+// deadline is RFC3339. An empty deadline omits the attribute, so cards written
+// before it existed stay valid.
+func ApprovalCardTextAt(id, tool, title, subtitle, summary, state, deadline string) string {
+	return approvalCardText(id, tool, title, subtitle, summary, state, deadline)
+}
+
+func approvalCardText(id, tool, title, subtitle, summary, state, deadline string) string {
 	summary = strings.ReplaceAll(summary, "</approval_card>", "< /approval_card>")
-	return "<approval_card id=\"" + escAttr(id) + "\" tool=\"" + escAttr(tool) +
+	open := "<approval_card id=\"" + escAttr(id) + "\" tool=\"" + escAttr(tool) +
 		"\" title=\"" + escAttr(title) + "\" subtitle=\"" + escAttr(subtitle) +
-		"\" state=\"" + escAttr(state) + "\">\n" +
-		summary + "\n</approval_card>"
+		"\" state=\"" + escAttr(state) + "\""
+	if deadline != "" {
+		open += " deadline=\"" + escAttr(deadline) + "\""
+	}
+	return open + ">\n" + summary + "\n</approval_card>"
 }
 
 // IsApprovalCard reports an approval-card transcript line. Those lines stay on
@@ -96,6 +113,7 @@ func ParseApprovalCard(content string) (ApprovalCard, bool) {
 		Subtitle: attrs["subtitle"],
 		Summary:  body,
 		State:    attrs["state"],
+		Deadline: attrs["deadline"],
 	}, true
 }
 
