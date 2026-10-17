@@ -3,6 +3,7 @@
 格式：一行规则；原因；证据（提交或问题）；出现次数「Seen N×」。同一条在 3 个不同日子出现，就升级进 [AGENTS.md](AGENTS.md) 的硬约束。
 
 ## 教训
+- **测试要等真正的结束事件，不能等「已经没有后台」；阻塞用的测试工具要认 context。并行的 `go test` 不能共用一个会在结束时删掉的临时目录。** 原因：`finishBackground` 先把后台从运行表拿掉，再往收件箱写 `fork_end`。`waitNoBackgrounds` 一看到表空就返回，`endEvent` 读到 0 条。`waitTool` 只等 `rel`、不看 context，分叉没发生时 `runBackground` 能卡满 10 分钟。内核 `TestMain` 把所有进程的 `TMPDIR` 指到同一个 `.test-tmp/kernel`，先跑完的进程 `RemoveAll` 会删掉还在写的进程的目录，分叉写不进去，同样卡在 `rel`。证据：`TestControlRunsInTheSegmentItEarns`，6 个进程并行时挂住；`TestWaitNoBackgroundsWaitsForForkEndEvent`、`TestWaitToolStopsWhenContextEnds`。Seen 1×（2026-10-17）
 - **检查 shell 命令要看命令链里的每一段，强制推送算破坏性操作。** 原因：`git push --force` 不弹确认；命令里第一个 git 不是 clean/push 时，后面的就漏查（`git add . && git push -f`）。证据：`2617bc0`。Seen 1×（2026-10-16）
 - **密钥不能和它加密的数据放在一起。** 原因：保险箱密钥放在 `bots/<name>/vault/key`，Bot 的 shell 读出来就能解密。证据：`42cbed0`，[ADR 0005](docs/adr/0005-vault-daemon-user.md)。Seen 1×（2026-10-16）
 - **耐久文件不放 /tmp。** 原因：盒子重启清空了 /tmp，丢了 F5 的工作，也删掉了 pnpm 包仓库（dsh 跑不起来）。证据：2026-10-16 约 16:42 重启。Seen 1×（2026-10-16）

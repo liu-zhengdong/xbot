@@ -336,7 +336,7 @@ func TestCancelBackgroundWritesForkEnd(t *testing.T) {
 	if _, err := k.ControlSubagent(context.Background(), id, "cancel", ""); err != nil {
 		t.Fatal(err)
 	}
-	waitNoBackgrounds(t, k)
+	waitNoBackgrounds(t, k, id)
 
 	if n := forkEndCount(t, b, id); n != 1 {
 		t.Fatalf("fork_end rows %d", n)

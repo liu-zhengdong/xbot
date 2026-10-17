@@ -35,7 +35,12 @@ func repoTempRoot() (string, error) {
 	}
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return filepath.Join(dir, ".test-tmp", "kernel"), nil
+			// One directory per process. Several `go test` processes share this
+			// package, and TestMain removes the directory when it returns. A
+			// shared directory lets the first process to finish delete the
+			// bots the others are still writing, so a fork never lands and a
+			// test blocks on its release channel until the 10 minute timeout.
+			return filepath.Join(dir, ".test-tmp", "kernel", fmt.Sprintf("p%d", os.Getpid())), nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

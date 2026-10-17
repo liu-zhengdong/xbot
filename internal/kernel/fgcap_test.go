@@ -56,7 +56,7 @@ func TestForegroundToolCapMovesTurnToBackground(t *testing.T) {
 	if !strings.Contains(streamed.String(), "已转到后台 bg_") {
 		t.Fatalf("streamed %q", streamed.String())
 	}
-	waitNoBackgrounds(t, k)
+	waitNoBackgrounds(t, k, oneBackgroundID(t, k))
 	entries, _ := k.Bot.Entries()
 	var notice, bgDone bool
 	for _, e := range entries {
@@ -83,8 +83,22 @@ func TestForegroundTimeCapMovesTurnToBackground(t *testing.T) {
 	if len(k.Backgrounds()) != 1 {
 		t.Fatal("no background after the time cap")
 	}
+	id := k.Backgrounds()[0].ID
 	close(bt.release)
-	waitNoBackgrounds(t, k)
+	waitNoBackgrounds(t, k, id)
+}
+
+func oneBackgroundID(t *testing.T, k *Kernel) string {
+	t.Helper()
+	if bgs := k.Backgrounds(); len(bgs) == 1 {
+		return bgs[0].ID
+	}
+	fin := k.FinishedBackgrounds()
+	if len(fin) >= 1 {
+		return fin[0].ID
+	}
+	t.Fatal("no background id")
+	return ""
 }
 
 func TestForegroundCapWithSlotsFullStaysForeground(t *testing.T) {

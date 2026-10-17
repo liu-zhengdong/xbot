@@ -32,15 +32,44 @@ func (p *loopProvider) Chat(_ context.Context, _ provider.Request, _ func(string
 
 // waitTool blocks on its first call, which is what gets the turn forked to the
 // background; the release channel makes every later call return at once.
+// The turn context ends the wait, so a fork that never arrives fails the test
+// instead of blocking until the process timeout.
 type waitTool struct{ release chan struct{} }
 
 func (*waitTool) Name() string                                  { return "wait" }
 func (*waitTool) Description() string                           { return "wait" }
 func (*waitTool) Parameters() any                               { return map[string]any{"type": "object"} }
 func (*waitTool) Confirm(json.RawMessage) (bool, string, error) { return false, "wait", nil }
-func (w *waitTool) Run(context.Context, json.RawMessage) (string, error) {
-	<-w.release
-	return "ok", nil
+func (w *waitTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	select {
+	case <-w.release:
+		return "ok", nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// TestWaitToolStopsWhenContextEnds is the regression for runBackground hanging
+// in waitTool until the process timeout. The tool used to block on the release
+// channel and ignore cancellation, so a turn that never forked never reached
+// close(rel).
+func TestWaitToolStopsWhenContextEnds(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &waitTool{release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, err := w.Run(ctx, nil)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if err != context.Canceled {
+			t.Fatalf("wait tool err %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("wait tool still blocked on release after context ended")
+	}
 }
 
 // segmentKernel builds a kernel whose turn forks to the background at once, so
@@ -57,33 +86,31 @@ func segmentKernel(t *testing.T) (*Kernel, chan struct{}, *loopProvider) {
 	return k, rel, p
 }
 
-// runBackground forks the turn, lets the tool through, and waits for the
-// background to finish. It returns the background id.
+// runBackground forks the turn, lets the tool through, and waits until that
+// background's fork_end event is in the inbox. It returns the background id.
 func runBackground(t *testing.T, k *Kernel, rel chan struct{}, task string) string {
 	t.Helper()
 	ev := link.TerminalEvent("u1", task, time.Unix(10, 0).UTC())
 	if err := k.Inbox.Post(ev); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), ev); err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithTimeout(context.Background(), backgroundWait)
+	defer cancel()
+	if err := k.Handle(ctx, ev); err != nil {
+		t.Fatalf("turn did not fork within %s: %v", backgroundWait, err)
 	}
 	if n := len(k.Backgrounds()); n != 1 {
 		t.Fatalf("backgrounds %d; the turn did not fork", n)
 	}
 	id := k.Backgrounds()[0].ID
 	close(rel)
-	waitNoBackgrounds(t, k)
+	waitNoBackgrounds(t, k, id)
 	return id
 }
 
 func endEvent(t *testing.T, k *Kernel, id string) string {
 	t.Helper()
-	posted := inboxPosts(t, k.Bot.InboxPath(), "ev_"+id+"_end")
-	if len(posted) != 1 {
-		t.Fatalf("fork_end events %d", len(posted))
-	}
-	return posted[0].Content
+	return waitForkEnd(t, k, id).Content
 }
 
 func continueNotes(t *testing.T, k *Kernel) int {
