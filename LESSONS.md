@@ -18,6 +18,11 @@
 - **收益递减只数续段，不数普通工具步。** 原因：把每一步短工具调用都当成续轮后，第 4 步提醒、第 5 步硬停，25 步的状态接口停在 step 5。续段是后台因步数上限开的下一段。证据：`TestToolStepsAreNotDiminishingReturns`、`TestBotStepsEndpoint`。Seen 1×（2026-10-17）
 - **同参循环只数连续重复，并按命令分开计。** 原因：失败的 `go test` 输出不以 `error:` 开头，被当成成功；`go build` 三次加 `go vet` 三次共用一个停机计数，第 6 次硬停。中间夹了别的调用要清零，成功一次要清掉失败计数。证据：`TestEditAndRetestDoesNotStop`、`TestBuildAndVetDoNotShareAStop`。Seen 1×（2026-10-17）
 - **追加日志的进程内缓存要在文件 size 或 mtime 变了之后重新读。** 原因：两个进程各写一份 `reminders.jsonl` 时，先读进内存的那份一直用旧列表，冷却和去重都看漏。证据：`TestReminderCacheReloadsWhenFileChanges`。Seen 1×（2026-10-17）
+- **局部读过的文件，`edit_file` 不能标成已经看全。** 原因：只读了第 1 行再改这一行，下一次整文件读取如果回执，模型就看不到后面的行。`write_file` 可以标完整，因为正文是模型自己给的。证据：`TestRangedReadThenEditDoesNotReceipt`。Seen 1×（2026-10-17）
+- **短回执和「第 N 步」只在记下那次读取的同一轮里有效。** 原因：压缩把工具结果挪走之后，回执仍说没变，模型手里没有正文，步号也是上一轮的。证据：`TestReceiptDoesNotCrossTurns`。Seen 1×（2026-10-17）
+- **主人拒绝过的调用只挡这一轮，下一轮要重新问。** 原因：进程级拒绝表让主人下一条消息说「改主意了」时，相同参数直接报错，不再出确认。证据：`TestDenialClearsOnNextOwnerTurn`。Seen 1×（2026-10-17）
+- **按文件大小决定的缓冲不要按上限预分配。** 原因：6 字节的文件快照分配了 4 MiB 以上。哈希用流式读，缓冲按文件大小封顶。证据：`TestSnapshotSmallFileAlloc`。Seen 1×（2026-10-17）
+- **`file_change` 的 diff 不能带出密钥文件的内容。** 原因：`.env`、`*.key`、`*.pem`、credentials 一类文件的提醒如果附上 diff，会把刚写进去的值送进模型上下文。这类路径只写 changed。证据：`TestSensitiveFileChangeOmitsDiff`。Seen 1×（2026-10-17）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

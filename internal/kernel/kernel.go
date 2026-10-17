@@ -110,8 +110,8 @@ type Kernel struct {
 	fileMu sync.Mutex
 	files  map[string]*fileRec
 	fileN  uint64
-	// denied remembers tool calls the owner refused, so the same arguments
-	// are not offered again this session.
+	// denied remembers tool calls the owner refused during the current turn.
+	// Handle clears it when a new turn starts, so a later message can ask again.
 	denyMu sync.Mutex
 	denied map[string]struct{}
 }
@@ -140,6 +140,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnMu.Lock()
 	k.turn = t
 	k.turnMu.Unlock()
+	k.clearDenials()
 	k.clearLoaded()
 	if _, err := k.releaseQuiet(ctx); err != nil {
 		return err

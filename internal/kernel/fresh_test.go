@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/compact"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -398,6 +399,218 @@ func TestReminderCacheReloadsWhenFileChanges(t *testing.T) {
 	}
 }
 
+func TestRangedReadThenEditDoesNotReceipt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nHIDDEN-LINE-3\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	k, _, now := freshBot(t)
+	runTurn(t, k, now, "go",
+		toolCall("r1", "read_file", mustArgs(t, map[string]any{"path": path, "offset": 1, "limit": 1})),
+		toolCall("e1", "edit_file", mustArgs(t, map[string]any{"path": path, "old_string": "one", "new_string": "ONE"})),
+		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": path})),
+		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+	)
+	got := bodies(t, k)
+	if len(got) != 3 {
+		t.Fatalf("results %q", got)
+	}
+	last := got[len(got)-1]
+	if strings.Contains(last, msgReceipt) || !strings.Contains(last, "HIDDEN-LINE-3") {
+		t.Fatalf("plain read after ranged read+edit hid unread lines: %q", last)
+	}
+}
+
+func TestWriteFileMarksFullAfterPartialRead(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	k, _, now := freshBot(t)
+	runTurn(t, k, now, "replace",
+		toolCall("r1", "read_file", mustArgs(t, map[string]any{"path": path, "offset": 1, "limit": 1})),
+		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": path, "content": "ONE\nTWO\nTHREE\n"})),
+		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": path})),
+		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+	)
+	got := bodies(t, k)
+	if len(got) != 3 {
+		t.Fatalf("results %q", got)
+	}
+	if strings.Contains(got[1], msgNotRead) || strings.Contains(got[1], msgStale) || !strings.Contains(got[1], msgRefresh) {
+		t.Fatalf("write after partial read: %q", got[1])
+	}
+	if !strings.Contains(got[2], msgReceipt) || strings.Contains(got[2], "THREE") {
+		t.Fatalf("write_file should mark the file fully seen: %q", got[2])
+	}
+}
+
+func TestReceiptDoesNotCrossTurns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("purplefinch body\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	k, _, now := freshBot(t)
+	k.Budget = compact.Budget{KeepTail: 1, CompactAt: 1 << 30}
+	k.Compactor = &recCompactor{}
+	runTurn(t, k, now, "look",
+		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
+		provider.Message{Role: provider.RoleAssistant, Content: "seen"},
+	)
+	n, err := k.Bot.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.CompactRange(context.Background(), 1, n-1, "x"); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	runTurn(t, k, now, "what is in the file?",
+		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": path})),
+		provider.Message{Role: provider.RoleAssistant, Content: "?"},
+	)
+	got := bodies(t, k)
+	last := got[len(got)-1]
+	if strings.Contains(last, msgReceipt) || !strings.Contains(last, "purplefinch") {
+		t.Fatalf("later turn returned a receipt for a compacted read: %q", last)
+	}
+}
+
+func TestDenialClearsOnNextOwnerTurn(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	k, _, now := freshBot(t)
+	k.Links = []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")}
+	k.WorkDir = dir
+	asked := 0
+	answer := false
+	k.Approve = func(context.Context, string, string) (bool, error) {
+		asked++
+		return answer, nil
+	}
+	call := `{"command":"rm -rf note.txt","timeout_seconds":1}`
+	runTurn(t, k, now, "delete",
+		toolCall("s1", "shell", call),
+		provider.Message{Role: provider.RoleAssistant, Content: "denied"},
+	)
+	answer = true
+	runTurn(t, k, now, "ok I changed my mind, go ahead",
+		toolCall("s2", "shell", call),
+		provider.Message{Role: provider.RoleAssistant, Content: "?"},
+	)
+	got := bodies(t, k)
+	if asked < 2 {
+		t.Fatalf("owner changed their mind but the call was refused without asking (%d): %q", asked, got)
+	}
+	if len(got) < 2 || strings.Contains(got[len(got)-1], msgDenied) {
+		t.Fatalf("later turn reused the denial: %q", got)
+	}
+}
+
+func TestSensitiveFileChangeOmitsDiff(t *testing.T) {
+	const secret = "supersecret-value"
+	names := []string{".env", ".env.local", "prod.env", "api.key", "cert.pem", "credentials", "credentials.json", "id_rsa", "id_ed25519.pub", ".netrc"}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, name)
+			if err := os.WriteFile(path, []byte("TOKEN="+secret+"-old\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			k, p, now := freshBot(t)
+			runTurn(t, k, now, "look",
+				toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
+				provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+			)
+			if err := os.WriteFile(path, []byte("TOKEN="+secret+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			advance(now, fileChangeCooldown+time.Second)
+			runTurn(t, k, now, "again",
+				provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+			)
+			last := p.reqs[len(p.reqs)-1].Messages
+			tip := last[len(last)-1].Content
+			if !strings.Contains(tip, "<file_change>") || !strings.Contains(tip, "changed") {
+				t.Fatalf("missing change note: %q", tip)
+			}
+			if strings.Contains(tip, secret) || strings.Contains(tip, "TOKEN") || strings.Contains(tip, "\n  +") || strings.Contains(tip, "\n  -") || strings.Contains(tip, "size ") {
+				t.Fatalf("sensitive diff leaked: %q", tip)
+			}
+		})
+	}
+}
+
+func TestSameSizeAndMtimeSkipsContentHash(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	k, _, now := freshBot(t)
+	runTurn(t, k, now, "look",
+		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
+		provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+	)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("BETA!\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	advance(now, time.Second)
+	runTurn(t, k, now, "overwrite",
+		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": path, "content": "gamma\n"})),
+		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+	)
+	got := bodies(t, k)
+	last := got[len(got)-1]
+	if strings.Contains(last, msgStale) || !strings.Contains(last, msgRefresh) {
+		t.Fatalf("same size and mtime should skip the hash and allow the write: %q", last)
+	}
+}
+
+func TestSnapshotSmallFileAlloc(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.txt")
+	if err := os.WriteFile(path, []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	res := testing.Benchmark(func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if _, err := snapshotFile(path); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	if res.AllocedBytesPerOp() > 64<<10 {
+		t.Fatalf("snapshot of 6 bytes allocated %d bytes/op", res.AllocedBytesPerOp())
+	}
+}
+
+func BenchmarkSnapshotSmall(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "s.txt")
+	if err := os.WriteFile(path, []byte("hello\n"), 0644); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := snapshotFile(path); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkFileFreshGuard(b *testing.B) {
 	dir := b.TempDir()
 	path := filepath.Join(dir, "n.txt")
@@ -409,7 +622,7 @@ func BenchmarkFileFreshGuard(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	k.storeFile(path, snap, 1, true, path)
+	k.storeFile(path, snap, 1, true, path, nil)
 	tool := &tools.WriteFile{}
 	args := json.RawMessage(`{"path":"` + path + `","content":"hello\n"}`)
 	b.ReportAllocs()

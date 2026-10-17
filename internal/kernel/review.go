@@ -47,7 +47,7 @@ func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
 func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	name := t.Name()
 	if name == "read_file" {
-		if s, ok := t.k.unchangedReceipt(t.Tool, args); ok {
+		if s, ok := t.k.unchangedReceipt(ctx, t.Tool, args); ok {
 			return s, nil
 		}
 	}
