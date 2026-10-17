@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -83,6 +84,22 @@ type approvalDecision struct {
 
 // Register mounts the UI and /api routes.
 func (s *Server) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		for _, accept := range strings.Split(r.Header.Get("Accept"), ",") {
+			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(accept))
+			if err == nil && mediaType == "text/html" && params["q"] != "0" {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprint(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>没有这个页面 · XBot</title><link rel="stylesheet" href="/app.css"><body><main class="gate"><div class="gate-card"><h1>没有这个页面</h1><a class="secondary not-found-back" href="/">回到对话</a></div></main></body></html>`)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("GET /{$}", s.static("static/index.html", "text/html; charset=utf-8"))
 	mux.HandleFunc("GET /app.js", s.static("static/app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /app.css", s.static("static/app.css", "text/css; charset=utf-8"))

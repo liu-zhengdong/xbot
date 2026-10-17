@@ -88,9 +88,30 @@
     applyTheme(theme);
   }
 
+  let authenticated = false;
+
+  function visibleError(e, fallback) {
+    if (e && e.status >= 500) return "XBot 出错了，稍后再试";
+    if (e instanceof TypeError) return "连不上 XBot";
+    const msg = String((e && e.message) || "");
+    return /[㐀-鿿]/.test(msg) ? msg : (fallback || "操作失败，稍后再试");
+  }
+
+  async function apiFetch(path, opt) {
+    let res;
+    try { res = await fetch(path, opt); } catch (e) { throw new Error("连不上 XBot"); }
+    if (res.status === 401 && authenticated) showLogin(true);
+    if (res.status >= 500) {
+      const err = new Error("XBot 出错了，稍后再试");
+      err.status = res.status;
+      throw err;
+    }
+    return res;
+  }
+
   async function api(path, opt) {
     opt = opt || {};
-    const res = await fetch(path, {
+    const res = await apiFetch(path, {
       method: opt.method || "GET",
       credentials: "same-origin",
       headers: opt.body ? { "Content-Type": "application/json" } : undefined,
@@ -102,7 +123,6 @@
       try { data = JSON.parse(text); } catch (e) { data = { error: text }; }
     }
     if (res.status === 401) {
-      showLogin();
       const err = new Error(data.error || "unauthorized");
       err.status = 401;
       throw err;
@@ -182,7 +202,7 @@
   }
   async function bgAct(path, method, body) {
     bgState.force = true;
-    try { await api(path, { method: method, body: body }); } catch (e) { setStatus(e.message || "操作失败"); }
+    try { await api(path, { method: method, body: body }); } catch (e) { setStatus(visibleError(e), true); }
     await bgRefresh();
   }
   function bgClock(t) {
@@ -719,12 +739,36 @@
   }
 
 
-  function showLogin() {
+  function showLogin(expired = false) {
+    if (expired && state.sel && state.sel.type === "bot") {
+      try { sessionStorage.setItem("xbot-selected-bot", state.sel.id); } catch (e) {}
+    }
+    authenticated = false;
+    closeModal();
+    closePops();
+    closeDrawer();
+    closeStp();
+    closeShots();
+    bgClose();
+    panel.classList.remove("open");
+    $("info").setAttribute("aria-expanded", "false");
+    state.sel = null;
+    ++state.threadLoad;
+    ++state.panelLoad;
+    setStatus("");
+    const notice = $("login-notice");
+    if (expired) notice.textContent = "登录已过期，重新输入登录码";
+    notice.hidden = !notice.textContent;
     shell.hidden = true;
     login.hidden = false;
+    $("token").value = "";
+    $("token").focus();
   }
 
   function showApp() {
+    authenticated = true;
+    $("login-notice").textContent = "";
+    $("login-notice").hidden = true;
     login.hidden = true;
     shell.hidden = false;
   }
@@ -2019,7 +2063,7 @@
           err = el("div", "approval-err");
           card.append(err);
         }
-        err.textContent = e.message || "确认失败";
+        err.textContent = visibleError(e, "确认失败");
       }
     };
     allow.addEventListener("click", () => decide(true));
@@ -2186,7 +2230,7 @@
     const msg = (e && e.message) || "";
     if ((e && e.status === 409) || /already exists/i.test(msg)) return "已经有这个分组";
     if ((e && e.status === 404) || msg === "not found") return "没有这个分组";
-    return msg || "失败";
+    return visibleError(e);
   }
 
   function closeFolderMenus() {
@@ -2600,7 +2644,9 @@
     await loadThread();
   }
 
-  function setStatus(text) {
+  let subtitleError = false;
+  function setStatus(text, isError = false) {
+    subtitleError = isError;
     let desc = "";
     if (!text && state.sel && state.sel.type === "bot") {
       const bot = (state.bots || []).find((b) => b.name === state.sel.id);
@@ -2651,7 +2697,15 @@
     leavePeer();
     clearQuote();
     state.sel = { type: "bot", id: name };
+    try { sessionStorage.setItem("xbot-selected-bot", name); } catch (e) {}
     resetConversation();
+    try {
+      const draft = sessionStorage.getItem("xbot-draft:" + name);
+      if (draft) {
+        sessionStorage.removeItem("xbot-draft:" + name);
+        if (!input.value) input.value = draft;
+      }
+    } catch (e) {}
     state.sig = "";
     state.tab = state.tab || "details";
     state.editOpen = false;
@@ -2845,7 +2899,7 @@
           await api("/api/bots/" + encodeURIComponent(botName), { method: "PATCH", body: { group: group } });
           await refreshLists();
         } catch (e) {
-          setStatus(folderError(e));
+          setStatus(folderError(e), true);
         }
       });
       sub.append(item);
@@ -3417,7 +3471,7 @@
       labeled("人设", persona),
       err, actions,
     );
-    const showErr = (e, fallback) => { err.hidden = false; err.textContent = (e && e.message) || fallback; };
+    const showErr = (e, fallback) => { err.hidden = false; err.textContent = visibleError(e, fallback); };
     pick.addEventListener("click", () => file.click());
     file.addEventListener("change", async () => {
       if (!file.files || !file.files[0]) return;
@@ -3505,7 +3559,7 @@
   async function uploadAvatar(name, file) {
     const body = new FormData();
     body.append("file", file);
-    const res = await fetch("/api/bots/" + encodeURIComponent(name) + "/avatar", {
+    const res = await apiFetch("/api/bots/" + encodeURIComponent(name) + "/avatar", {
       method: "POST", credentials: "same-origin", body: body,
     });
     const text = await res.text();
@@ -3516,7 +3570,7 @@
   }
 
   async function downloadTemplate(name) {
-    const res = await fetch("/api/bots/" + encodeURIComponent(name) + "/template", { credentials: "same-origin" });
+    const res = await apiFetch("/api/bots/" + encodeURIComponent(name) + "/template", { credentials: "same-origin" });
     if (!res.ok) {
       let msg = "导出失败";
       try { const data = await res.json(); if (data.error) msg = data.error; } catch (e) {}
@@ -3555,7 +3609,7 @@
       await refreshLists();
       if (state.sel && state.sel.type === "bot" && state.sel.id === name && panel.classList.contains("open")) await loadPanel();
     } catch (e) {
-      setStatus(e.message || "失败");
+      setStatus(visibleError(e), true);
     }
   }
 
@@ -3568,7 +3622,7 @@
       setStatus(kind === "cancel" ? "已取消" : "已记下");
       await loadPanel();
     } catch (e) {
-      setStatus(e.message || "失败");
+      setStatus(visibleError(e), true);
     }
   }
 
@@ -3871,13 +3925,12 @@
     try {
       const payload = { text: text };
       if (state.replyTo && state.replyTo.seq > 0) payload.reply_to = state.replyTo.seq;
-      const res = await fetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
+      const res = await apiFetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.status === 401) showLogin();
       if (!res.ok) throw new Error("发送失败");
       markSent();
       const ct = res.headers.get("content-type") || "";
@@ -3896,6 +3949,11 @@
       await loadThread();
       if (state.sel === selection && subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
+      // Session expired mid-send: keep the text so the input gets it back
+      // after the owner logs in again (showLogin already dropped the thread).
+      if (!accepted && !authenticated && selection.type === "bot") {
+        try { sessionStorage.setItem("xbot-draft:" + selection.id, text); } catch (err) {}
+      }
       if (state.sel !== selection) return;
       setStatus("");
       if (accepted) {
@@ -4045,7 +4103,7 @@
         closeModal();
       } catch (e) {
         modalError.hidden = false;
-        modalError.textContent = e.message || "失败";
+        modalError.textContent = visibleError(e);
       } finally {
         ok.disabled = false;
       }
@@ -4065,11 +4123,10 @@
 
   async function downloadExport(name, format, tools) {
     const q = "format=" + encodeURIComponent(format) + "&tools=" + (tools ? "1" : "0");
-    const res = await fetch("/api/bots/" + encodeURIComponent(name) + "/export?" + q, {
+    const res = await apiFetch("/api/bots/" + encodeURIComponent(name) + "/export?" + q, {
       credentials: "same-origin",
     });
     if (res.status === 401) {
-      showLogin();
       throw new Error("需要重新登录");
     }
     if (!res.ok) {
@@ -4157,19 +4214,28 @@
     notesEl.hidden = true;
   }
 
+  document.addEventListener("click", () => { if (authenticated && subtitleError) setStatus(""); }, true);
+  document.addEventListener("submit", () => { if (authenticated && subtitleError) setStatus(""); }, true);
+
   $("login-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const err = $("login-error");
     err.hidden = true;
+    if (!$("token").value.trim()) {
+      err.hidden = false;
+      err.textContent = "先填登录码";
+      $("token").focus();
+      return;
+    }
     try {
-      const res = await fetch("/api/login", {
+      const res = await apiFetch("/api/login", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: $("token").value.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error === "unauthorized" ? "token 不对" : (data.error || "登录失败"));
+      if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里 login token 那一行" : "登录失败，稍后再试");
       state.owner = data.owner || "";
       renderMe();
       showApp();
@@ -4177,7 +4243,7 @@
       startPoll();
     } catch (e) {
       err.hidden = false;
-      err.textContent = e.message || "登录失败";
+      err.textContent = visibleError(e, "登录失败");
     }
   });
 
@@ -4186,6 +4252,7 @@
     state.sel = null;
     state.knownNotes = null;
     state.listSig = "";
+    try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
     showLogin();
   });
 
@@ -4232,7 +4299,7 @@
     if (open && window.innerWidth < 768) sidebar.classList.remove("open");
     syncBackdrop();
     if (open) {
-      try { await loadPanel(); } catch (e) { setStatus(e.message || ""); }
+      try { await loadPanel(); } catch (e) { setStatus(visibleError(e), true); }
     }
   });
 
@@ -4345,7 +4412,7 @@
       });
       await loadPush();
     } catch (e) {
-      showPushErr(e.message || "开启失败");
+      showPushErr(visibleError(e, "开启失败"));
     }
   }
 
@@ -4535,7 +4602,9 @@
     await refreshNodePending().catch(() => {});
     await loadPush().catch(() => {});
     renderMe();
-    const home = state.bots.find((b) => b.primary) || state.bots[0];
+    let remembered = "";
+    try { remembered = sessionStorage.getItem("xbot-selected-bot") || ""; } catch (e) {}
+    const home = state.bots.find((b) => b.name === remembered) || state.bots.find((b) => b.primary) || state.bots[0];
     if (!state.sel && home) await selectBot(home.name);
     else if (!state.sel) {
       const inner = el("div", "thread-inner");
