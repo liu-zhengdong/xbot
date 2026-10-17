@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/]
-verified: 2026-10-18 @ 69c570b
+verified: 2026-10-18 @ 5361f44
 ---
 # 网页界面
 
