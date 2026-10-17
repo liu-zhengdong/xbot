@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/bot/transcript.go, internal/exec/]
-verified: 2026-10-17 @ 8c2279f
+verified: 2026-10-17 @ 2025810
 ---
 # 插话时分叉
 
