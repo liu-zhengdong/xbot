@@ -46,7 +46,7 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 			continue
 		}
 		parts = strings.Split(rel, string(filepath.Separator))
-		if len(parts) >= 3 && memoryPathCase(parts[2]) == "memory" && fsutil.ValidName(parts[1]) && (memoryPathCase(parts[0]) == "bots" || memoryPathCase(parts[0]) == "people") {
+		if len(parts) >= 3 && memoryPathCase(parts[2]) == "memory" && fsutil.ValidName(norm.NFC.String(parts[1])) && (memoryPathCase(parts[0]) == "bots" || memoryPathCase(parts[0]) == "people") {
 			root = candidate
 			break
 		}
