@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/bot/transcript.go, internal/exec/]
-verified: 2026-10-17 @ 31babbb
+verified: 2026-10-17 @ 0418c26
 ---
 # 插话时分叉
 
@@ -84,7 +84,7 @@ verified: 2026-10-17 @ 31babbb
 - **谁来分叉**：拿着锁的那个进程。网页请求如果就在这个进程里，直接开前台的一轮，用 SSE 流式回给主人；如果锁在别的进程（比如终端），网页照旧把事件投进收件箱，持锁进程立刻（看 `inbox.Wait()`，不是等这一步跑完）分叉，前台的回复通过刷新 transcript 补到网页上。
 - **崩溃恢复实现**（F4）：`Kernel.RecoverInterrupted`（`internal/kernel/bgrecover.go`），每个内核第一次 `Handle` 时在 `repairTail` 之前跑一次；内核自己有活着的后台时不跑。对有 `fork` 没有 `fork_end` 的分支：写 `fork_end{interrupted}`（步数按这个分支的助手行数算），`meta.json` 改成 interrupted，投一条 id 为 `ev_<bg>_end` 的完成事件（收件箱按 id 去重，重复启动不会再投）。分支末尾没答的调用由 `repairTail` 补一条带分支的占位结果。网页和 `serve` 都走 `Handle`，所以两条路径都会恢复。
 - **崩溃恢复**：重启打开 transcript 时，找到有 `fork` 没有 `fork_end` 的分支，补写 `fork_end{status:"interrupted"}`，把 `meta.json` 标成 interrupted，并投一条完成事件：「后台 bg_7 因进程重启中断，做到第 N 步」。第一版不自动续跑，由前台下一轮决定要不要重做。半行照现有规则截掉。
-- 后台那一轮的步数和时间上限照旧算，不因为分叉重新计时。
+- 后台那一轮的步数和时间上限照旧算，不因为分叉重新计时。后台用完一段的步数上限时不直接停，自己再开下一段：最多 4 段、合计 4 倍步数上限，并且总时长不超过工作角色给的后台预算（`chat` 20 分钟、`dev` 45 分钟，见 [多 Bot](multibot.md)）。完成事件写明是哪一个上限让它停下的。开下一段之前先判断预算还够不够，再读排队的控制消息；预算不够时控制消息留着，报告成未读，不悄悄丢掉。连续几段收效很小时，由熔断的收益递减来停（见 [内核](kernel.md)）。
 
 **网页界面**（F5）：`internal/web/static/app.js` 里以 `bg` 开头的函数。每 2 秒（页面可见时）以及每次发送结束后拉一次 `GET /backgrounds`；输入框里有正在写的追加指示时不重绘弹层；切换 Bot 后旧数据不再渲染。聊天里隐藏 `fork`/`fork_end` 标记行、发给后台的控制消息（`[主人的补充]`、`[排队]`、`[打断]`）和 `fork_end` 事件，带 `branch` 的行上方加「后台」来源标。
 
