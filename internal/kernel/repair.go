@@ -2,8 +2,11 @@ package kernel
 
 import (
 	"errors"
+	"strings"
+	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -155,24 +158,54 @@ func lastAssistant(entries []bot.Entry, idx int) string {
 	return text
 }
 
-// ReplyAfter returns the final answer to the turn that eventID started. done is
-// false while that turn is still running or never started; text is empty when
-// the bot finished with no final line. It reads the transcript only.
-func ReplyAfter(b *bot.Bot, eventID string) (text string, done bool, err error) {
-	seq, err := b.FindEvent(eventID)
-	if err != nil || seq == 0 {
-		return "", false, err
-	}
-	n, err := b.Count()
+// ReplyAfter returns the final answer to the turn that ev started, or, when
+// ev arrived while another turn was running and was absorbed into it, the final
+// answer of that turn. done is false while the turn is still running or never
+// started; text is empty when the bot finished with no final line. It reads
+// the transcript only.
+func ReplyAfter(b *bot.Bot, ev link.Event) (text string, done bool, err error) {
+	seq, err := b.FindEvent(ev.ID)
 	if err != nil {
 		return "", false, err
 	}
-	span, err := b.Slice(seq, n)
-	if err != nil || !turnDone(span, 0) {
+	n, err := b.Count()
+	if err != nil || n == 0 {
 		return "", false, err
 	}
-	return lastAssistant(span, 0), true, nil
+	if seq > 0 {
+		span, err := b.Slice(seq, n)
+		if err != nil || !turnDone(span, 0) {
+			return "", false, err
+		}
+		return lastAssistant(span, 0), true, nil
+	}
+	// Absorbed lines are recorded without an event id: find the line by its
+	// text among the recent entries, then the turn it joined.
+	from := max(1, n-absorbWindow+1)
+	span, err := b.Slice(from, n)
+	if err != nil {
+		return "", false, err
+	}
+	want := link.Render(ev, true)
+	for i, e := range span {
+		if e.Message.Role != provider.RoleUser || e.EventID != "" || e.Time.Before(ev.Time.Add(-2*time.Second)) || !strings.Contains(e.Message.Content, want) {
+			continue
+		}
+		for j := i - 1; j >= 0; j-- {
+			if span[j].Message.Role == provider.RoleUser && span[j].EventID != "" {
+				if !turnDone(span, j) {
+					return "", false, nil
+				}
+				return lastAssistant(span, j), true, nil
+			}
+		}
+		return "", false, nil
+	}
+	return "", false, nil
 }
+
+// absorbWindow is how many recent entries ReplyAfter searches for an absorbed line.
+const absorbWindow = 400
 
 func lastReplyTo(entries []bot.Entry, idx int) int {
 	end := len(entries)
