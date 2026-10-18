@@ -64,6 +64,8 @@ type shortSession struct {
 	replace                 bool              // A: with result, 替换 rather than 添加
 	person                  string            // B: who pressed 连接; A is bound to them
 	sent                    bool              // B: pake3 may have reached A (its reply can be lost)
+	sent1                   time.Time         // B: when pake1 was sent, to count relay delay
+	saved                   bool              // A: the device was saved, so done may be reported
 }
 type shortOwner struct {
 	lookup, secret, person string
@@ -95,7 +97,9 @@ func pairingFor(root string) *pairingState {
 func (s *pairingState) publish() {
 	v := clonePairStatus(s.status)
 	s.view.Store(&v)
-	s.active.Store(s.join != nil || s.owner != nil || s.late != nil)
+	// An expired code with no session left is kept as history, not as work.
+	owner := s.owner != nil && (time.Now().Before(s.owner.expires) || s.owner.active != nil)
+	s.active.Store(s.join != nil || owner || s.late != nil)
 }
 
 // pairingActive keeps Run polling while a pairing is in flight even with no

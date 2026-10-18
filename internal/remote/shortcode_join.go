@@ -19,14 +19,14 @@ func SetJoinPhase(root string, phase PairingPhase) {
 	s := pairingFor(root)
 	s.Lock()
 	defer s.release()
-	s.join, s.client = nil, nil
+	s.join, s.late, s.client = nil, nil, nil
 	s.status.B = phase
 }
 func CancelJoin(root string) {
 	s := pairingFor(root)
 	s.Lock()
 	defer s.release()
-	s.join, s.client = nil, nil
+	s.join, s.late, s.client = nil, nil, nil
 	s.status.B = PairingPhase{Phase: "none"}
 }
 
@@ -34,7 +34,7 @@ func JoinShortCode(ctx context.Context, root, code, gatewayURL string) error {
 	s := pairingFor(root)
 	s.Lock()
 	defer s.release()
-	s.join, s.client = nil, nil
+	s.join, s.late, s.client = nil, nil, nil
 	s.status.B = PairingPhase{Phase: "none"}
 	lookup, secret, err := ParseShortCode(code)
 	if err != nil {
@@ -91,7 +91,7 @@ func (s *pairingState) startJoin(ctx context.Context, root string, c *gateway.Cl
 	if err != nil {
 		return err
 	}
-	s.join = &shortSession{peer: owner, lookup: lookup, state: state, expires: time.Now().Add(20 * time.Second), pa: pa}
+	s.join = &shortSession{peer: owner, lookup: lookup, state: state, expires: time.Now().Add(20 * time.Second), sent1: time.Now(), pa: pa}
 	s.status.B = PairingPhase{Phase: "checking", Expires: s.join.expires}
 	s.publish()
 	env := gateway.NewEnvelope(c.Key, owner, "pake1", nil, time.Now())
@@ -130,7 +130,10 @@ func (s *pairingState) receivePake2(root string, env gateway.Envelope, m shortMe
 	}
 	// A's deadline and the envelope time are both on A's clock (and signed),
 	// so B's window does not depend on the two clocks agreeing.
-	left := time.Unix(info.Deadline, 0).Sub(env.Time)
+	// A's left is measured when A sent pake2, so also take off how long B
+	// waited for it since sending pake1 (B's own clock, elapsed only), or a
+	// delayed pake2 would offer 连接 after A dropped the session.
+	left := time.Unix(info.Deadline, 0).Sub(env.Time) - now.Sub(j.sent1)
 	if info.Deadline == 0 || left <= 0 {
 		s.join = nil
 		s.status.B = PairingPhase{Phase: "offline"}

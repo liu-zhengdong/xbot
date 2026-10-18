@@ -216,8 +216,11 @@ func (s *pairingState) decide(ctx context.Context, root string, allow, replace b
 		if err != nil {
 			return err
 		}
-		name = deviceLabel(d)
+		a.saved, name = true, deviceLabel(d)
 	}
+	// The decision is committed before the save; only a saved device may be
+	// reported as done or sent an allow.
+	allow = allow && a.saved
 	committed := allow
 	a.result = &committed
 	env := gateway.NewEnvelope(o.client.Key, a.peer, "pake4", nil, time.Now())
@@ -241,6 +244,14 @@ func (s *pairingState) decide(ctx context.Context, root string, allow, replace b
 	s.owner = nil
 	return nil
 }
+
+// finalPhase is A's settled answer; an allow whose device was not saved is a denial.
+func (a *shortSession) finalPhase() string {
+	if *a.result && a.saved {
+		return "done"
+	}
+	return "denied"
+}
 func (s *pairingState) tickOwner(ctx context.Context, root string, now time.Time) error {
 	o := s.owner
 	if o == nil {
@@ -250,10 +261,7 @@ func (s *pairingState) tickOwner(ctx context.Context, root string, now time.Time
 		a := o.active
 		if a.result != nil && !now.Before(a.expires.Add(5*time.Minute)) {
 			// The answer never got through within B's late window. Settle locally.
-			s.status.A = PairingPhase{Phase: "denied"}
-			if *a.result {
-				s.status.A = PairingPhase{Phase: "done", Name: a.info.Name}
-			}
+			s.status.A = PairingPhase{Phase: a.finalPhase(), Name: a.info.Name}
 			s.owner = nil
 			return nil
 		}

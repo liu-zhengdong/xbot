@@ -51,7 +51,8 @@ func TestShortCodeRetryLateAndSkew(t *testing.T) {
 		envs := h.poll(h.cb)
 		sb := pairingFor(h.b)
 		sb.Lock()
-		sb.join.expires = sb.join.expires.Add(3 * time.Minute) // B set it by its own fast clock.
+		sb.join.expires = sb.join.expires.Add(3 * time.Minute) // B set these by its own fast clock.
+		sb.join.sent1 = sb.join.sent1.Add(3 * time.Minute)
 		sb.Unlock()
 		_, _, err = Receive(h.b, self, envs, time.Now().Add(3*time.Minute))
 		mustRemote(t, err)
@@ -102,4 +103,94 @@ func TestShortCodeRetryLateAndSkew(t *testing.T) {
 			t.Fatal("allow after a lost response:", got)
 		}
 	})
+}
+
+// A late allow must not pair or overwrite a cancelled or superseded attempt.
+func TestShortCodeLateAllowForgotten(t *testing.T) {
+	ctx := context.Background()
+	for _, mode := range []string{"cancel", "set phase", "rejoin"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newShortHarness(t)
+			h.request()
+			// B's window ends, so the request is kept as late.
+			tickPairing(ctx, h.b, h.cb, time.Now().Add(2*time.Minute+16*time.Second))
+			switch mode {
+			case "cancel":
+				CancelJoin(h.b)
+			case "set phase":
+				SetJoinPhase(h.b, PairingPhase{Phase: "gateway_unreachable"})
+			case "rejoin":
+				// Any new attempt supersedes the late one, even a mistyped code.
+				_ = JoinShortCode(ctx, h.b, "short", h.ca.Base)
+			}
+			before := PairingStatus(h.b).B
+			mustRemote(t, DecidePairing(ctx, h.a, true, false))
+			h.deliver(h.b, h.cb)
+			if got := PairingStatus(h.b).B; got.Phase != before.Phase {
+				t.Fatalf("B overwritten: %+v", got)
+			}
+			cfg, err := Load(h.b)
+			mustRemote(t, err)
+			if len(cfg.Devices) != 0 {
+				t.Fatal("late allow overwrote B")
+			}
+		})
+	}
+}
+
+// A pake2 relayed 15 s late must not keep B offering 连接 past A's deadline:
+// B's window shrinks by the time it waited (its own clock).
+func TestShortCodeLatePake2ShortensWindow(t *testing.T) {
+	window := func(delay time.Duration) time.Duration {
+		h := newShortHarness(t)
+		mustRemote(t, JoinShortCode(context.Background(), h.b, h.code, h.ca.Base))
+		h.deliver(h.a, h.ca)
+		_, self, _, err := Identity(h.b)
+		mustRemote(t, err)
+		envs := h.poll(h.cb)
+		now := time.Now().Add(delay)
+		_, _, err = Receive(h.b, self, envs, now)
+		mustRemote(t, err)
+		got := PairingStatus(h.b).B
+		if got.Phase != "confirm" {
+			t.Fatalf("delay %v: %+v", delay, got)
+		}
+		return got.Expires.Sub(now)
+	}
+	prompt, late := window(0), window(15*time.Second)
+	if d := prompt - late; d < 14*time.Second || d > 16*time.Second {
+		t.Fatalf("window %v on time, %v when 15 s late", prompt, late)
+	}
+}
+
+// Only a saved device may be reported done.
+func TestShortCodeUnsavedNotDone(t *testing.T) {
+	yes := true
+	if p := (&shortSession{result: &yes}).finalPhase(); p != "denied" {
+		t.Fatal("unsaved allow reported as", p)
+	}
+	if p := (&shortSession{result: &yes, saved: true}).finalPhase(); p != "done" {
+		t.Fatal("saved allow reported as", p)
+	}
+}
+
+// An expired code with no session left must not keep Run polling for ever.
+func TestShortCodeExpiredOwnerInactive(t *testing.T) {
+	h := newShortHarness(t)
+	if !pairingActive(h.a) {
+		t.Fatal("live code not active")
+	}
+	s := pairingFor(h.a)
+	s.Lock()
+	s.owner.expires = time.Now().Add(-time.Second)
+	s.release()
+	if pairingActive(h.a) {
+		t.Fatal("expired code still active")
+	}
+	s.Lock()
+	s.owner.active = &shortSession{expires: time.Now().Add(time.Minute)}
+	s.release()
+	if !pairingActive(h.a) {
+		t.Fatal("active session not counted")
+	}
 }
