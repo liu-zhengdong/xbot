@@ -1,0 +1,75 @@
+# Screenshots of the real desktop window on CI runners (Windows: WebView2 and
+# the native caption buttons; macOS: WKWebView and the traffic lights), plus a
+# WebView2 font check of this build against v0.3.1-beta.2. Results are
+# workflow artifacts; nothing is published.
+name: desktop-shots
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - internal/appshell/**
+      - internal/web/static/**
+      - scripts/desktop-shots/**
+      - .github/workflows/desktop-shots.yml
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      XBOT_AUTO_UPGRADE: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build this commit
+        shell: pwsh
+        run: |
+          $v = "v0.0.0-shots+$((git rev-parse --short HEAD).Trim())"
+          go build -trimpath -ldflags "-X xbot/internal/version.Version=$v -X main.defaultCommand=app -H windowsgui" -o "$env:RUNNER_TEMP\new\XBot.exe" ./cmd/xbot
+          go build -o "$env:RUNNER_TEMP\seed.exe" ./scripts/desktop-shots/seed
+      - name: build v0.3.1-beta.2
+        shell: pwsh
+        run: |
+          git worktree add "$env:RUNNER_TEMP\beta2src" v0.3.1-beta.2
+          Push-Location "$env:RUNNER_TEMP\beta2src"
+          go build -trimpath -ldflags "-X xbot/internal/version.Version=v0.3.1-beta.2 -X main.defaultCommand=app -H windowsgui" -o "$env:RUNNER_TEMP\beta2\XBot.exe" ./cmd/xbot
+          Pop-Location
+      - name: font check, v0.3.1-beta.2
+        shell: pwsh
+        continue-on-error: true
+        run: scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\beta2\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label beta2 -Fonts
+      - name: font check and screenshots, this commit
+        shell: pwsh
+        run: scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\new\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label new -Fonts -Shots -Display
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-shots-windows
+          path: shots/
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      XBOT_AUTO_UPGRADE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: |
+          v="v0.0.0-shots+$(git rev-parse --short HEAD)"
+          go build -trimpath -ldflags "-X xbot/internal/version.Version=$v -X main.defaultCommand=app" -o "$RUNNER_TEMP/XBot" ./cmd/xbot
+          go build -o "$RUNNER_TEMP/seed" ./scripts/desktop-shots/seed
+      - name: screenshots
+        run: bash scripts/desktop-shots/macos.sh "$RUNNER_TEMP/XBot" "$RUNNER_TEMP/seed" shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-shots-macos
+          path: shots/
