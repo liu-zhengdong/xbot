@@ -233,6 +233,136 @@ func TestAvatarColorBlockAndGenerator(t *testing.T) {
 	}
 }
 
+func TestAvatarSeedLifecycle(t *testing.T) {
+	root := t.TempDir()
+	b, err := Create(root, "ada", "Be brief.", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "ada" {
+		t.Fatalf("new bot %q %q", av, seed)
+	}
+	if err := Rename(root, "ada", "ada-notes"); err != nil {
+		t.Fatal(err)
+	}
+	b, err = Load(root, "ada-notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "ada" {
+		t.Fatalf("rename changed seed: %q %q", av, seed)
+	}
+
+	for _, bad := range []string{" ", strings.Repeat("周", 81), "<x>", "a\x07b", "a\"b", "a&b", "a\xff"} {
+		if ValidAvatarSeed(bad) {
+			t.Fatalf("accepted %q", bad)
+		}
+		if err := b.SetAvatarSeed(bad); err == nil {
+			t.Fatalf("stored %q", bad)
+		}
+	}
+	for _, good := range []string{"writer#3", "周报", AvatarGlyph, "5116ed70"} {
+		if !ValidAvatarSeed(good) {
+			t.Fatalf("rejected %q", good)
+		}
+	}
+	if !ValidAvatarSeed(strings.Repeat("a", 80)) || ValidAvatarSeed(strings.Repeat("a", 81)) {
+		t.Fatal("80 rune limit")
+	}
+
+	if err := b.SetAvatarSeed("  writer#3 "); err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "writer#3" {
+		t.Fatalf("seed %q %q", av, seed)
+	}
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 7}
+	if err := b.SetAvatar(png, "image/png"); err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarCustom || seed != "writer#3" {
+		t.Fatalf("upload %q %q", av, seed)
+	}
+	if err := b.SetAvatarSeed("周报"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(b.AvatarPath()); !os.IsNotExist(err) {
+		t.Fatalf("upload kept after new seed: %v", err)
+	}
+	if _, err := os.Stat(b.avatarMIMEPath()); !os.IsNotExist(err) {
+		t.Fatalf("mime kept after new seed: %v", err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "周报" {
+		t.Fatalf("after seed %q %q", av, seed)
+	}
+}
+
+func TestUploadThenClearKeepsSeed(t *testing.T) {
+	b, err := Create(t.TempDir(), "ada", "Be brief.", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetAvatarSeed("writer#3"); err != nil {
+		t.Fatal(err)
+	}
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 3}
+	if err := b.SetAvatar(png, "image/png"); err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarCustom || seed != "writer#3" {
+		t.Fatalf("upload %q %q", av, seed)
+	}
+	if err := b.ClearAvatar(); err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "writer#3" {
+		t.Fatalf("cleared %q %q", av, seed)
+	}
+}
+
+func TestOldConfigWithoutAvatar(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Create(root, "ada", "Be brief.", nil); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(Dir(root, "ada"), "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	delete(cfg, "avatar")
+	delete(cfg, "avatar_seed")
+	raw, err = json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "ada" {
+		t.Fatalf("old config %q %q", av, seed)
+	}
+	// Its face came from the old name, so a rename must keep that seed.
+	if err := Rename(root, "ada", "ada2"); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := Load(root, "ada2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, seed := moved.AvatarState(); seed != "ada" {
+		t.Fatalf("rename of an old bot changed its seed to %q", seed)
+	}
+}
+
 func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 	root := t.TempDir()
 	b, err := Create(root, "ada", "Be brief.", nil)
@@ -305,8 +435,40 @@ func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 	if err != nil || !ok || string(data) != string(png) {
 		t.Fatalf("avatar %q ok %v err %v", data, ok, err)
 	}
+	if av, seed := next.AvatarState(); av != AvatarCustom || seed != "ada" {
+		t.Fatalf("custom template %q %q", av, seed)
+	}
 	if _, err := ImportTemplate(root, tpl, nil, ""); err == nil {
 		t.Fatal("expected existing name to fail")
+	}
+
+	// A generated template carries the seed across a rename, and a bad seed
+	// falls back to the new name.
+	if err := b.SetAvatarSeed("writer#3"); err != nil {
+		t.Fatal(err)
+	}
+	tpl, err = ExportTemplate(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tpl.Avatar != "" || tpl.AvatarSeed != "writer#3" {
+		t.Fatalf("generated template %+v", tpl)
+	}
+	tpl.Name = "writer"
+	next, err = ImportTemplate(root, tpl, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := next.AvatarState(); av != AvatarGenerated || seed != "writer#3" {
+		t.Fatalf("generated round trip %q %q", av, seed)
+	}
+	tpl.Name, tpl.AvatarSeed = "notes", "<bad>"
+	next, err = ImportTemplate(root, tpl, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := next.AvatarState(); av != AvatarGenerated || seed != "notes" {
+		t.Fatalf("bad seed %q %q", av, seed)
 	}
 }
 
