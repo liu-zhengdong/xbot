@@ -108,8 +108,30 @@ jobs:
         shell: pwsh
         run: ./scripts/test-windows-installer.ps1 -Setup "dist/XBot-$("${{ github.ref_name }}".TrimStart('v'))-windows-amd64-setup.exe"
 
+  # Rebuild the disk images as drag-to-Applications windows with a background.
+  # dmgbuild needs hdiutil, so this runs on macOS.
+  macos-dmg:
+    needs: package
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: dmgbuild
+        run: python3 -m pip install --user --break-system-packages dmgbuild==1.6.7
+      - name: build and check the disk images
+        run: bash scripts/build-macos-dmg.sh dist "${{ github.ref_name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
   publish:
-    needs: [package, windows-installer]
+    needs: [package, windows-installer, macos-dmg]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -125,8 +147,16 @@ jobs:
         with:
           name: notes
           path: notes
-      - name: verify checksums
-        run: cd dist && sha256sum -c SHA256SUMS
+      - uses: actions/download-artifact@v4
+        with:
+          name: dmg
+          path: dist
+      - name: checksums
+        run: |
+          cd dist
+          sha256sum XBot-* xbot-* > SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 9
+          sha256sum -c SHA256SUMS
       - name: publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}

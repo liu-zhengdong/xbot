@@ -39,7 +39,7 @@ func NewShortCode(ctx context.Context, root, personID string) (display string, e
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if err = c.Register(ctx, gatewayToken()); err != nil {
+	if err = c.Register(ctx, gatewayToken(root)); err != nil {
 		return
 	}
 	s := pairingFor(root)
