@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node --test src/*.test.mjs",
     "check": "tsc -p .",
-    "dev": "cf dev"
+    "dev": "cf dev",
+    "conformance": "bash conformance.sh"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.1",
