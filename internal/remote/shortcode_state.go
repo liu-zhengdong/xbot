@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"path/filepath"
@@ -48,6 +49,7 @@ type shortMessage struct {
 	Key     string          `json:"key,omitempty"`
 	XKey    string          `json:"xkey,omitempty"`
 	Confirm []byte          `json:"confirm,omitempty"`
+	Echo    []byte          `json:"echo,omitempty"` // pake2: which pake1 it answers
 	Info    json.RawMessage `json:"info,omitempty"`
 }
 type shortSession struct {
@@ -59,6 +61,12 @@ type shortSession struct {
 	pa                      []byte            // A: B's pake1 share, to spot a redelivery
 	reply                   *gateway.Envelope // A: signed pake2, resent on redelivery
 	result                  *bool             // A: committed decision; never changes
+	replace                 bool              // A: with result, 替换 rather than 添加
+	person                  string            // B: who pressed 连接; A is bound to them
+	sent                    bool              // B: pake3 may have reached A (its reply can be lost)
+	sent1                   time.Time         // B: when pake1 was sent, to count relay delay
+	saved                   bool              // A: the device was saved, so done may be reported
+	nameFull                bool              // A: the last save found no free name, so the user may still pick 替换 or 拒绝
 }
 type shortOwner struct {
 	lookup, secret, person string
@@ -72,8 +80,10 @@ type pairingState struct {
 	status Status
 	owner  *shortOwner
 	join   *shortSession
+	late   *shortSession // B: a timed-out join that may still get A's allow
 	client *gateway.Client
 	view   atomic.Pointer[Status]
+	active atomic.Bool // A session is in flight, so Run polls the default gateway.
 }
 
 var pairings sync.Map
@@ -85,8 +95,18 @@ func pairingFor(root string) *pairingState {
 }
 
 // publish keeps status polling independent of slow gateway operations.
-func (s *pairingState) publish() { v := clonePairStatus(s.status); s.view.Store(&v) }
-func (s *pairingState) release() { s.publish(); s.Unlock() }
+func (s *pairingState) publish() {
+	v := clonePairStatus(s.status)
+	s.view.Store(&v)
+	// An expired code with no session left is kept as history, not as work.
+	owner := s.owner != nil && (time.Now().Before(s.owner.expires) || s.owner.active != nil)
+	s.active.Store(s.join != nil || owner || s.late != nil)
+}
+
+// pairingActive keeps Run polling while a pairing is in flight even with no
+// devices or gateway set (the default gateway is used then).
+func pairingActive(root string) bool { return pairingFor(root).active.Load() }
+func (s *pairingState) release()     { s.publish(); s.Unlock() }
 func clonePairStatus(out Status) Status {
 	out.A.Bots = append([]string(nil), out.A.Bots...)
 	out.B.Bots = append([]string(nil), out.B.Bots...)
@@ -141,6 +161,9 @@ func receiveShort(root, self string, env gateway.Envelope, now time.Time) error 
 		}
 		if env.Kind == "pake4" {
 			active = s.join
+			if active == nil || active.peer != env.From {
+				active = s.late
+			}
 		}
 		if active == nil || active.peer != env.From {
 			return nil
@@ -162,6 +185,10 @@ func receiveShort(root, self string, env gateway.Envelope, now time.Time) error 
 	}
 	return nil
 }
+
+// paEcho lets B match a pake2 to its current pake1, so the answer to an
+// earlier attempt is ignored instead of shown as 配对码不对.
+func paEcho(pa []byte) []byte { h := sha256.Sum256(pa); return h[:8] }
 func infoPhase(phase string, info pairInfo, expires time.Time) PairingPhase {
 	return PairingPhase{Phase: phase, Name: info.Name, OS: info.OS, Bots: info.Bots, Expires: expires}
 }

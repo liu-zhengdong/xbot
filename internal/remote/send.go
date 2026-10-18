@@ -35,6 +35,9 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 	if !ok {
 		return false, errors.New("remote: paired device required")
 	}
+	if !d.UnpairedAt.IsZero() {
+		return false, fmt.Errorf("remote: device %s was unpaired by the other computer", device)
+	}
 	if d.XKey == "" {
 		return false, fmt.Errorf("remote: %s has no encryption key; pair again with xbot remote invite/join", device)
 	}

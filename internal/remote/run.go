@@ -12,6 +12,8 @@ import (
 
 // Run owns one poll loop per process. State locks serialize concurrent receivers.
 func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
+	rememberRunToken(root, token)
+	defer forgetRunToken(root)
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { defer close(done); runOutbox(ctx, root, logf) }()
@@ -26,7 +28,7 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 		if err == nil && cfg.Gateway == "" && len(cfg.Devices) == 0 {
 			var live bool
 			live, err = hasLiveInvite(root, time.Now())
-			if err == nil && !live {
+			if err == nil && !live && !pairingActive(root) {
 				if !pause(ctx, root, 5*time.Second) {
 					return
 				}

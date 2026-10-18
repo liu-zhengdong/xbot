@@ -58,7 +58,7 @@ func TestShortCodeRunLoopsWithoutJoinerToken(t *testing.T) {
 	// B has no gateway yet: the join sets it and wakes B's idle loop.
 	mustRemote(t, JoinShortCode(ctx, b, code, srv.URL))
 	wait(b, "B", "confirm")
-	mustRemote(t, ConfirmJoin(ctx, b))
+	mustRemote(t, ConfirmJoin(ctx, b, ""))
 	wait(a, "A", "request")
 	mustRemote(t, DecidePairing(ctx, a, true, false))
 	wait(b, "B", "done")

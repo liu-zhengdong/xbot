@@ -233,6 +233,7 @@ func Join(ctx context.Context, root, code, name, as, personID string, now time.T
 	if err != nil {
 		return Device{}, err
 	}
+	clearUnpaired(root, d.ID) // Joining a device that had unpaired us pairs it again.
 	env := gateway.NewEnvelope(priv, d.ID, "pair", nil, now)
 	body := pairRequest{Name: as, Key: keyB64, XKey: xkeyB64}
 	secret, _ := base64.RawURLEncoding.DecodeString(pc.Secret)

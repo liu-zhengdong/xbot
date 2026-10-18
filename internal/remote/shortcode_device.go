@@ -7,12 +7,21 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
 	"xbot/internal/bot"
 	"xbot/internal/person"
 	"xbot/internal/tools"
+)
+
+// Sentinel errors the web layer maps to its own copy: the gateway's 429 on a
+// code, and no free "X 2"…"X 9"/address suffix for a new device.
+var (
+	ErrRateLimited = errors.New("remote: rate limited by the gateway")
+	ErrNameFull    = errors.New("remote: no free device name")
 )
 
 // gatewayToken is the self-host join token, sent only to an explicitly set
@@ -22,8 +31,24 @@ func gatewayToken(root string) string {
 	if err != nil {
 		return ""
 	}
-	return cfg.GatewayToken(os.Getenv("XBOT_GATEWAY_TOKEN"))
+	token := os.Getenv("XBOT_GATEWAY_TOKEN")
+	if v, ok := runTokens.Load(filepath.Clean(root)); ok {
+		token = v.(string)
+	}
+	return cfg.GatewayToken(token)
 }
+
+// runTokens holds the token handed to Run, keyed by cleaned root, since serve
+// removes it from the environment.
+var runTokens sync.Map // root -> string
+
+func rememberRunToken(root, token string) {
+	if token != "" {
+		runTokens.Store(filepath.Clean(root), token)
+	}
+}
+
+func forgetRunToken(root string) { runTokens.Delete(filepath.Clean(root)) }
 func pairingPerson(root, id string) (string, error) {
 	if id == "" {
 		people, err := person.List(root)
@@ -147,17 +172,19 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 		for i, old := range c.Devices {
 			if old.ID == d.ID {
 				old.Key, old.XKey = key, xkey
+				old.UnpairedAt = time.Time{} // Paired again: it talks to us again.
 				c.Devices[i], d = old, old
 				return nil
 			}
 		}
 		if replace {
 			for i, old := range c.Devices {
-				if deviceLabel(old) == label && old.Key != key {
+				if deviceLabel(old) == label && old.Key != key && old.Person == d.Person {
 					if err := os.Remove(filepath.Join(root, "remote", "dirs", old.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 						return err
 					}
 					old.ID, old.Key, old.XKey = d.ID, key, xkey
+					old.UnpairedAt = time.Time{}
 					c.Devices[i], d = old, old
 					return nil
 				}
@@ -185,7 +212,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 			}
 		}
 		if labelNumber == 0 {
-			return errors.New("remote: device label suffixes exhausted")
+			return fmt.Errorf("%w: device label suffixes exhausted", ErrNameFull)
 		}
 		d.Label = label
 		base = d.Name
@@ -199,7 +226,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 				return nil
 			}
 		}
-		return errors.New("remote: device name suffixes exhausted")
+		return fmt.Errorf("%w: device name suffixes exhausted", ErrNameFull)
 	})
 	return d, err
 }

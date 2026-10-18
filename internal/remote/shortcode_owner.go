@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -15,6 +16,11 @@ import (
 
 // The owner (A) side of short-code pairing: the code, up to five SPAKE2
 // sessions, and 「X 想连到这台电脑」 with 拒绝/允许 (auto-declined after 2 minutes).
+
+// OnPairRequest is set by the desktop app; called in its own goroutine when
+// this computer's owner side enters the request state, once per request.
+// nil = in-app prompt only.
+var OnPairRequest func(root, name string)
 
 func cancelLookup(ctx context.Context, c *gateway.Client, lookup string) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -65,6 +71,9 @@ func NewShortCode(ctx context.Context, root, personID string) (display string, e
 			case <-time.After(2100 * time.Millisecond):
 			}
 			err = c.RegisterCode(ctx, code[:4], inviteTTL)
+			if errors.As(err, &he) && he.StatusCode == 429 {
+				return "", expires, fmt.Errorf("%w: %w", ErrRateLimited, err)
+			}
 		}
 		if errors.As(err, &he) && he.StatusCode == 409 {
 			continue
@@ -99,13 +108,16 @@ func (s *pairingState) receivePake1(root, self string, env gateway.Envelope, m s
 		if a.peer == env.From && a.reply != nil && bytes.Equal(a.pa, m.PA) && s.status.A.Phase != "request" {
 			return sendPairing(ctx, o.client, *a.reply)
 		}
-		return nil
+		// The same joiner retrying (it gave up waiting) starts a new session,
+		// counted like any other; anyone else waits for this one to end.
+		if a.peer != env.From || s.status.A.Phase == "request" {
+			return nil
+		}
 	}
 	o.sessions++
 	defer func() {
 		if o.sessions >= gateway.MaxCodeClaims {
-			s.killCode(ctx)
-			s.status.A.Phase = "expired"
+			s.killCode(ctx) // The fifth session stays live; the tick shows 已过期 when it ends.
 		}
 	}()
 	if o.sessions > gateway.MaxCodeClaims {
@@ -142,7 +154,7 @@ func (s *pairingState) receivePake1(root, self string, env gateway.Envelope, m s
 	if err != nil {
 		return err
 	}
-	reply.Body, _ = json.Marshal(shortMessage{PB: pb, Key: ak, XKey: ax, Confirm: keys.MyConfirm, Info: sealed})
+	reply.Body, _ = json.Marshal(shortMessage{PB: pb, Key: ak, XKey: ax, Confirm: keys.MyConfirm, Info: sealed, Echo: paEcho(m.PA)})
 	reply.Sign(o.client.Key)
 	o.active = &shortSession{peer: env.From, key: m.Key, xkey: m.XKey, keys: keys, expires: expires, pa: bytes.Clone(m.PA), reply: &reply}
 	return sendPairing(ctx, o.client, reply)
@@ -166,12 +178,16 @@ func (s *pairingState) receivePake3(root string, env gateway.Envelope, m shortMe
 	s.killCode(ctx)
 	a.info, a.expires = info, now.Add(2*time.Minute)
 	s.status.A = infoPhase("request", info, a.expires)
+	if OnPairRequest != nil {
+		name := info.Name
+		go OnPairRequest(root, name) // Outside the locks; the app may notify the user.
+	}
 	cfg, err := Load(root)
 	if err != nil {
 		return err
 	}
 	for _, d := range cfg.Devices {
-		if deviceLabel(d) == info.Name && d.Key != a.key {
+		if deviceLabel(d) == info.Name && d.Key != a.key && d.Person == o.person {
 			var cache dirCache
 			_ = readJSON(filepath.Join(root, "remote", "dirs", d.ID+".json"), &cache) // Display only.
 			s.status.A.Collision = &PairingCollision{Name: info.Name, Seen: cache.Received, Bots: len(cache.Bots)}
@@ -195,8 +211,8 @@ func DecidePairing(ctx context.Context, root string, allow, replace bool) error 
 func (s *pairingState) decide(ctx context.Context, root string, allow, replace bool) error {
 	o, name := s.owner, ""
 	a := o.active
-	if a.result != nil {
-		allow = *a.result // Committed: a retry or timeout resends the same answer.
+	if a.result != nil && !a.nameFull {
+		allow, replace = *a.result, a.replace // Committed: a retry or timeout resends the same answer.
 	}
 	if allow {
 		// Promote B from a pending install to a full gateway member (the
@@ -205,12 +221,21 @@ func (s *pairingState) decide(ctx context.Context, root string, allow, replace b
 		if err := o.client.AdmitCode(ctx, a.peer); err != nil {
 			return err
 		}
+		// B is a member now, so never turn this into a deny: a failed save
+		// is retried by the tick.
+		committed := true
+		a.result, a.replace = &committed, replace
 		d, err := savePairDevice(root, a.info.Name, a.key, a.xkey, o.person, replace)
+		// No free "X 2"…"X 9": the card stays and its next choice (替换 or 拒绝) wins.
+		a.nameFull = errors.Is(err, ErrNameFull)
 		if err != nil {
 			return err
 		}
-		name = deviceLabel(d)
+		a.saved, name = true, deviceLabel(d)
 	}
+	// The decision is committed before the save; only a saved device may be
+	// reported as done or sent an allow.
+	allow = allow && a.saved
 	committed := allow
 	a.result = &committed
 	env := gateway.NewEnvelope(o.client.Key, a.peer, "pake4", nil, time.Now())
@@ -234,6 +259,14 @@ func (s *pairingState) decide(ctx context.Context, root string, allow, replace b
 	s.owner = nil
 	return nil
 }
+
+// finalPhase is A's settled answer; an allow whose device was not saved is a denial.
+func (a *shortSession) finalPhase() string {
+	if *a.result && a.saved {
+		return "done"
+	}
+	return "denied"
+}
 func (s *pairingState) tickOwner(ctx context.Context, root string, now time.Time) error {
 	o := s.owner
 	if o == nil {
@@ -242,17 +275,16 @@ func (s *pairingState) tickOwner(ctx context.Context, root string, now time.Time
 	if s.status.A.Phase == "request" {
 		a := o.active
 		if a.result != nil && !now.Before(a.expires.Add(5*time.Minute)) {
-			// The answer never got through; B's own timer has long shown 没有允许
-			// or it will pick up pake4 later. Settle locally.
-			s.status.A = PairingPhase{Phase: "denied"}
-			if *a.result {
-				s.status.A = PairingPhase{Phase: "done", Name: a.info.Name}
-			}
+			// The answer never got through within B's late window. Settle locally.
+			s.status.A = PairingPhase{Phase: a.finalPhase(), Name: a.info.Name}
 			s.owner = nil
 			return nil
 		}
-		if !now.Before(a.expires) {
-			return s.decide(ctx, root, false, false)
+		if a.nameFull && now.Before(a.expires) {
+			return nil // The card waits for 替换 or 拒绝; at the 2 minutes it declines.
+		}
+		if a.result != nil || !now.Before(a.expires) {
+			return s.decide(ctx, root, false, false) // Resends a committed answer at once.
 		}
 	} else {
 		if !now.Before(o.expires) && o.secret != "" {
