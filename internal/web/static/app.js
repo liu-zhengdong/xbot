@@ -1171,6 +1171,30 @@
     return paintOfBot((state.bots || []).find((x) => x.name === name));
   }
 
+  // A bot on another computer is drawn from that device's bot_avatars seed. With
+  // no seed (old peer, devices not loaded yet, unknown device) or an upload it is
+  // the geometric glyph, never a local bot's face; "xbot:devices" repaints it.
+  function paintOfPeer(who) {
+    if (!who.device) return paintOf(who.bot);
+    const data = (window.xbotDevices && window.xbotDevices.S && window.xbotDevices.S.data) || {};
+    const d = (data.devices || []).find((x) => x.label === who.device || x.name === who.device || x.id === who.device);
+    const a = (d && d.bot_avatars && d.bot_avatars[who.bot]) || {};
+    return { seed: !a.custom && a.avatar_seed ? a.avatar_seed : "glyph" };
+  }
+
+  function peerAvatar(who, size) {
+    const av = avatar(who.bot, paintOfPeer(who), size);
+    if (who.device) { av.dataset.peerBot = who.bot; av.dataset.peerDevice = who.device; }
+    return av;
+  }
+
+  window.addEventListener("xbot:devices", () => {
+    for (const old of document.querySelectorAll(".avatar[data-peer-device]")) {
+      const size = ["xs", "lg"].find((c) => old.classList.contains(c)) || "";
+      old.replaceWith(peerAvatar({ bot: old.dataset.peerBot, device: old.dataset.peerDevice }, size));
+    }
+  });
+
   function copyText(text, btn) {
     const done = () => {
       if (!btn) return;
@@ -1749,7 +1773,7 @@
     const words = peerEventWords(g);
     const device = g.device || who.device;
     const name = el("span", "peer-event-name", niceName(who.bot) + (device ? " · " + device : ""));
-    row.replaceChildren(el("span", "", words.lead), avatar(who.bot, paintOf(who.bot), "xs"), name);
+    row.replaceChildren(el("span", "", words.lead), peerAvatar({ bot: who.bot, device: device }, "xs"), name);
     if (words.tail) row.append(el("span", "", words.tail));
     // The dot is its own flex item, so the row's gap puts an even space on both
     // sides; a space typed after it came out too thin next to the CJK text.
@@ -3057,7 +3081,7 @@
   function peerWho(name, cls) {
     const who = splitPeer(name);
     const box = el("span", "pair-side");
-    box.append(avatar(who.bot, paintOf(who.bot)), el("span", "pair-who" + (cls ? " " + cls : ""), niceName(who.bot)));
+    box.append(peerAvatar(who), el("span", "pair-who" + (cls ? " " + cls : ""), niceName(who.bot)));
     if (who.device) box.append(el("span", "pair-device", "· " + who.device));
     return box;
   }
@@ -3172,7 +3196,7 @@
       const cont = !groupStart(lastMsg, m, last, m.from || "");
       if (cont) row.classList.add("cont");
       lastMsg = m;
-      row.append(avatar(from.bot, paintOf(from.bot)));
+      row.append(peerAvatar(from));
       const body = el("div", "body");
       if (!cont) {
         const who = el("div", "who");

@@ -96,7 +96,7 @@
   }
 
   async function refresh() {
-    try { S.data = await api("GET", "/api/devices"); S.pairing = S.data.pairing; } catch (e) { /* 离线时保留旧数据 */ }
+    try { S.data = await api("GET", "/api/devices"); S.pairing = S.data.pairing; window.dispatchEvent(new Event("xbot:devices")); } catch (e) { /* 离线时保留旧数据 */ }
     paintCount();
     paintSidebar();
   }
@@ -445,7 +445,7 @@
   const seedOf = (n, id) => {
     const d = ((S.data || {}).devices || []).find((x) => x.id === id);
     const a = (d && d.bot_avatars && d.bot_avatars[n]) || {};
-    return a.custom ? "glyph" : a.avatar_seed || n;
+    return !a.custom && a.avatar_seed ? a.avatar_seed : "glyph"; // 没给 seed 或上传过图片：几何图形，不借别的 Bot 的脸
   };
   const face = (n, id, size) => (window.XBotFaces ? window.XBotFaces.html(n, seedOf(n, id), size) : `<span class="avatar"><svg viewBox="0 0 36 36" aria-hidden="true" style="--avatar-light:#d3d3d3;--avatar-dark:#3d3d3d;--avatar-letter-light:#333333;--avatar-letter-dark:#e4e4e4"><circle cx="18" cy="18" r="18" fill="var(--avatar-fill)"/><text x="18" y="23" text-anchor="middle" font-size="${initials(n).length > 1 ? 13 : 15}" fill="var(--avatar-ink)">${esc(initials(n))}</text></svg></span>`);
   // 没有 Bot 列表的刚配对设备也列出来（「等它的 Bot 列表」）；对方解除配对的隐藏。点组头折叠，和本机分组一样。
