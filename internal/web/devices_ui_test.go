@@ -23,6 +23,10 @@ func TestDevicesDrawerUI(t *testing.T) {
 				"连不上网关，其他电脑的 Bot 暂时用不了。", `const status = !up ? "" : d.online`,
 				`只改这台电脑上显示的名字`, `解除和 ${esc(t.label)} 的配对？`,
 				`class="modal profile-drawer g7-drawer"`, `const pair = !!D.acts.add`,
+				// 空状态文案；登录过期后收层、清状态再 reload；键盘焦点收在顶层设备层里
+				`<p>配对后，两台电脑能互相使用对方的 Bot。</p>`,
+				`if (res.status === 401) { sessionExpired(); }`, `location.reload();`,
+				`function trap(ev)`, `trap(ev);`,
 			},
 			avoid: []string{"记忆", "memory", "同步"},
 		},
