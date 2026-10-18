@@ -3129,7 +3129,7 @@
     const at = Date.parse(peer.at || "") || 0;
     for (const m of rows) {
       if (m.kind === "bounce") {
-        const to = splitPeer(peer.b);
+        const to = m.from_bot ? { bot: m.from_bot, device: m.from_device || "" } : splitPeer(peer.b);
         const line = systemLine("上一条没送到 " + niceName(to.bot) + (to.device ? " · " + to.device : ""));
         setTip(line, m.text || "");
         inner.append(line);
@@ -3137,7 +3137,8 @@
         lastMsg = null;
         continue;
       }
-      const from = splitPeer(m.from);
+      // The API splits bot@device (from_device is the device's label).
+      const from = m.from_bot ? { bot: m.from_bot, device: m.from_device || "" } : splitPeer(m.from);
       const row = el("div", "msg bot peer-msg");
       row.dataset.time = String(m.ts || "");
       if (m.id) row.dataset.id = String(m.id);

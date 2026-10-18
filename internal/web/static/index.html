@@ -18,19 +18,21 @@ try {
 } catch (e) {}
 </script>
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icon-192.png">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>XBot</title>
 <link rel="preload" href="/fonts/MonaSansVF.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/NotoSansSC-subset.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/devices.css">
+<link rel="stylesheet" href="/remotechat.css">
 </head>
 <body>
 <div id="login" class="gate">
   <form id="login-form" class="gate-card" novalidate>
     <div class="mark" aria-hidden="true">
-      <svg viewBox="0 0 80 80"><path fill="#e8e8e8" d="M40 8C56 5 72 16 73 34C74 53 61 72 42 73C22 74 7 60 8 40C9 20 24 11 40 8Z"/><text x="40" y="43" text-anchor="middle" dominant-baseline="central" fill="#333333" font-size="30" font-weight="560" font-family="Mona Sans VF, sans-serif">X</text></svg>
+      <svg viewBox="0 0 100 100"><path d="M16 20 L40 50 L16 80 M84 20 L60 50 L84 80" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <h1>XBot</h1>
     <label class="field">
@@ -60,7 +62,7 @@ try {
 
 <div id="shell" class="shell" hidden>
   <div id="appbar" class="appbar" hidden>
-    <span class="appbar-logo" aria-hidden="true">X</span>
+    <svg class="appbar-logo" viewBox="0 0 16 16" aria-hidden="true"><mask id="xb-appbar-cut"><rect width="16" height="16" fill="#fff"/><path d="M3 4.5 L6 8 L3 11.5 M13 4.5 L10 8 L13 11.5" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></mask><rect width="16" height="16" rx="4" fill="currentColor" mask="url(#xb-appbar-cut)"/></svg>
     <span class="appbar-brand">XBot</span>
     <span id="appbar-ver" class="appbar-ver" hidden></span>
     <span class="appbar-gap"></span>
@@ -199,5 +201,6 @@ try {
 <script src="/app.js"></script>
 <script src="/devices.js"></script>
 <script src="/pairing.js"></script>
+<script src="/remotechat.js"></script>
 </body>
 </html>
