@@ -384,6 +384,70 @@ func (k *Kernel) noteWrite(ctx context.Context, tool tools.Tool, args json.RawMe
 	return true
 }
 
+// noteShellWrites refreshes the records of tracked files that a finished
+// shell command changed (sed -i, a formatter, a redirect), so the next step
+// does not report them as someone else's edit. Only a change whose mtime is
+// inside the call's window counts. The model saw the command, not the bytes,
+// so the refreshed record is never a full read. It returns the labels.
+func (k *Kernel) noteShellWrites(ctx context.Context, start, end time.Time) []string {
+	if k == nil {
+		return nil
+	}
+	type item struct {
+		path string
+		rec  fileRec
+	}
+	k.fileMu.Lock()
+	items := make([]item, 0, len(k.files))
+	for p, r := range k.files {
+		if r != nil {
+			items = append(items, item{p, *r})
+		}
+	}
+	k.fileMu.Unlock()
+	sort.Slice(items, func(i, j int) bool { return items[i].rec.seq < items[j].rec.seq })
+	var labels []string
+	for _, it := range items {
+		st, err := os.Stat(it.path)
+		if err != nil || st.IsDir() {
+			continue
+		}
+		mt := st.ModTime()
+		if mt.Equal(it.rec.mtime) && st.Size() == it.rec.size {
+			continue
+		}
+		if !inCallWindow(mt, start, end) {
+			continue
+		}
+		snap, err := snapshotFile(it.path)
+		if err != nil {
+			continue
+		}
+		if it.rec.matches(snap) {
+			k.touchMtime(it.path, snap.mtime)
+			continue
+		}
+		label := it.rec.label
+		k.storeFile(it.path, snap, k.currentStep(ctx), false, label, k.turnFor(ctx))
+		if label == "" {
+			label = it.path
+		}
+		labels = append(labels, label)
+	}
+	return labels
+}
+
+// inCallWindow reports an mtime between start and end. A filesystem that keeps
+// whole seconds stores a truncated time, so the window then starts at start's
+// second.
+func inCallWindow(mt, start, end time.Time) bool {
+	from := start
+	if mt.Nanosecond() == 0 {
+		from = start.Truncate(time.Second)
+	}
+	return !mt.Before(from) && !mt.After(end)
+}
+
 func readCovered(out string, snap fileSnap) bool {
 	if strings.Contains(out, "[truncated]") {
 		return false
