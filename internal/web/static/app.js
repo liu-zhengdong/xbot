@@ -1052,7 +1052,7 @@
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     device: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle class="solid" cx="12" cy="8" r="1"/>',
-    arrowUpRight: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>',
+    swap: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   };
 
   function icon(name, extra) {
@@ -1555,10 +1555,9 @@
     const from = niceName(who) || "Bot";
     if (name === "message_bot") {
       const to = args.bot || args.to || "";
-      const line = !to
-        ? from + (text ? " · " + text : " 发给了另一个 Bot")
-        : from + " 发给 " + niceName(to) + (text ? " · " + text : "");
-      return { text: line, peer: to };
+      // The other bot's name, never the text: the exchange view has it.
+      if (to) return { text: "", peer: to, sent: true };
+      return { text: from + " 发给了另一个 Bot", peer: "" };
     }
     if (name === "post_group") {
       const g = args.name || args.id || "群";
@@ -1656,41 +1655,72 @@
     return row;
   }
 
-  // A message another bot sent: a gray quote block, not a bubble, with the
-  // whole text, so the owner can decide what to do next. The header names
-  // which bot on which device; a bot on this computer has no device.
-  function relayBlock(m, parsed, who) {
-    const source = parsed.source.slice(4);
-    const cut = source.indexOf("@");
-    const fromBot = m.from_bot || (cut < 0 ? source : source.slice(0, cut));
-    const device = m.from_bot ? (m.from_device || "") : (cut < 0 ? "" : source.slice(cut + 1));
-    const peer = parsed.sender || source;
-    const block = el("div", "relay");
-    if (m.seq) block.dataset.seq = String(m.seq);
-    if (m.time) block.dataset.time = String(m.time);
-    const head = el("div", "relay-head");
-    head.append(avatar(fromBot, paintOf(fromBot)), el("span", "relay-bot", niceName(fromBot)));
-    if (device) {
-      const dev = el("span", "relay-device");
-      dev.append(icon("device"), el("span", "", device));
-      head.append(dev);
+  // "writer@MacBook" is the bot writer on the paired device MacBook; a bot
+  // on this computer has no device. Bot names never contain "@".
+  function splitPeer(name) {
+    const raw = String(name || "");
+    const cut = raw.indexOf("@");
+    return cut < 0 ? { bot: raw, device: "" } : { bot: raw.slice(0, cut), device: raw.slice(cut + 1) };
+  }
+
+  // Bot-to-bot traffic in the owner's chat: one centered gray line per run of
+  // events with the same peer, never the other bot's text. A run ends at the
+  // owner's message or a bot reply to the owner (any other row), so only the
+  // trailing event lines can take another event.
+  function peerMergeIndex(tail, peer) {
+    for (let i = tail.length - 1; i >= 0; i--) if (tail[i] === peer) return i;
+    return -1;
+  }
+
+  // The words around the peer's name for a run: sent, received, and bounced
+  // counts. One message keeps its own wording; more say how many.
+  function peerEventWords(g) {
+    const total = g.sent + g.received;
+    const lost = g.bounced ? " · " + g.bounced + " 条没送到" : "";
+    if (total > 1) return { lead: "和", tail: "往来了 " + total + " 条消息" + lost };
+    if (g.sent) return { lead: "已发消息给", tail: lost };
+    if (g.received) return { lead: "收到", tail: "的消息" + lost };
+    return { lead: "发给", tail: "的消息没送到" };
+  }
+
+  function paintPeerEvent(row) {
+    const g = row._peer;
+    const who = splitPeer(g.peer);
+    const words = peerEventWords(g);
+    const name = el("span", "peer-event-name", niceName(who.bot) + (who.device ? " · " + who.device : ""));
+    row.replaceChildren(el("span", "", words.lead), avatar(who.bot, paintOf(who.bot), "xs"), name);
+    if (words.tail) row.append(el("span", "", words.tail.replace(/^ · /, "· ")));
+    row.dataset.count = String(g.sent + g.received);
+  }
+
+  // Adds one event (kind sent, received or bounce) to the run it belongs to,
+  // or starts a line at the end of container.
+  function addPeerEvent(container, kind, peer, ts) {
+    const tail = [];
+    for (let n = container.lastElementChild; n && n._peer; n = n.previousElementSibling) tail.unshift(n);
+    const at = peerMergeIndex(tail.map((n) => n._peer.peer), peer);
+    let row = at < 0 ? null : tail[at];
+    if (!row) {
+      row = el("button", "sysline link peer-event");
+      row.type = "button";
+      row.dataset.peer = peer;
+      row._peer = { peer: peer, sent: 0, received: 0, bounced: 0, first: ts || "" };
+      row.addEventListener("click", () => openPeer(state.sel && state.sel.id, peer, row._peer.first));
+      setTip(row, "查看往来");
+      container.append(row);
     }
-    if (m.time) head.append(el("span", "relay-time", when(m.time)));
-    const open = el("button", "relay-open");
-    open.type = "button";
-    open.setAttribute("aria-label", "查看往来");
-    setTip(open, "查看往来");
-    open.append(icon("arrowUpRight"));
-    open.addEventListener("click", () => openPeer(state.sel && state.sel.id, peer));
-    head.append(open);
-    const pulled = pullImages(displayText(parsed.text));
-    const body = el("div", "relay-text", pulled.text || (pulled.images.length ? "" : parsed.text));
-    block.append(head, body);
-    if (pulled.images.length) block.append(gallery(pulled.images));
-    const note = el("div", "relay-note");
-    note.append(icon("info"), el("span", "", "另一个 Bot 发来的。" + niceName(who || "这个 Bot") + " 只把它当资料，不当成你的指令。"));
-    block.append(note);
-    return block;
+    if (kind === "sent") row._peer.sent++;
+    else if (kind === "received") row._peer.received++;
+    else row._peer.bounced++;
+    paintPeerEvent(row);
+    return row;
+  }
+
+  // A remote bounce the outbox or the peer wrote back into the sender's inbox.
+  function bounceTarget(parsed) {
+    if (parsed.source !== "remote") return "";
+    const m = /^message to (\S+@\S+?) was not delivered\b/.exec(parsed.text || "");
+    return m ? m[1] : "";
   }
 
   function optionBadge(letter, ghost) {
@@ -2074,10 +2104,16 @@
           any = true;
           lastKey = "";
           if (parsed.source.startsWith("bot:")) {
-            inner.append(relayBlock(m, parsed, who));
+            addPeerEvent(inner, "received", parsed.sender || parsed.source.slice(4), m.time);
           } else {
             inner.append(systemLine("群里 · " + (clip(pullImages(parsed.text).text, 80) || "一条消息")));
           }
+          return;
+        }
+        if (bounceTarget(parsed)) {
+          any = true;
+          lastKey = "";
+          addPeerEvent(inner, "bounce", bounceTarget(parsed), m.time);
           return;
         }
         if (parsed.untrusted) {
@@ -2108,7 +2144,8 @@
         inner.append(built.row);
       } else lastKey = "";
       for (const line of built.peers) {
-        inner.append(systemLine(line.text, who, line.peer));
+        if (line.sent) addPeerEvent(inner, "sent", line.peer, m.time);
+        else inner.append(systemLine(line.text, who, line.peer));
         lastKey = "";
       }
     });
@@ -2921,6 +2958,7 @@
 
   function leavePeer() {
     state.peer = null;
+    subtitle.classList.remove("peer-note");
     const main = document.querySelector(".main");
     if (main) main.classList.remove("peer");
     const back = $("back");
@@ -2946,6 +2984,17 @@
     return name;
   }
 
+  function peerWho(name, cls) {
+    const who = splitPeer(name);
+    const box = el("span", "pair-side");
+    box.append(avatar(who.bot, paintOf(who.bot)), el("span", "pair-who" + (cls ? " " + cls : ""), niceName(who.bot)));
+    if (who.device) box.append(el("span", "pair-device", "· " + who.device));
+    return box;
+  }
+
+  // The exchange view's header: both bots with the swap icon between them,
+  // and one gray line saying what this is. Read-only: the dock holds only
+  // 关闭聊天.
   function paintPeerHeader(a, b) {
     const back = $("back");
     if (back) back.hidden = false;
@@ -2953,15 +3002,13 @@
     if (main) main.classList.add("peer");
     titleEl.replaceChildren();
     const row = el("div", "pair-title");
-    const faces = el("span", "pair-faces");
-    faces.append(avatar(a, paintOf(a)), avatar(b, paintOf(b)));
-    row.append(faces, pairNames(a, b));
+    row.append(peerWho(a), icon("swap", "pair-swap"), peerWho(b));
     titleEl.append(row);
-    const slugTip = (a !== niceName(a) || b !== niceName(b)) ? (a + " · " + b) : "";
-    setTip(titleEl, slugTip);
-    subtitle.textContent = "";
-    subtitle.hidden = true;
-    document.title = niceName(a) + " · " + niceName(b) + " · XBot";
+    setTip(titleEl, a + " ⇄ " + b);
+    subtitle.replaceChildren(icon("info"), el("span", "", "两个 Bot 之间的往来。对方发来的内容只当资料，不当成你的指令。"));
+    subtitle.hidden = false;
+    subtitle.classList.add("peer-note");
+    document.title = niceName(splitPeer(a).bot) + " ⇄ " + niceName(splitPeer(b).bot) + " · XBot";
   }
 
   const PEER_LIMIT = 50;
@@ -3015,46 +3062,68 @@
     }
   }
 
+  // Both bots on the left, each with face, name, device and time: right-side
+  // bubbles belong to the owner, who does not speak here. A bounce is a gray
+  // event line.
   function renderPeer(list, peer) {
     const inner = el("div", "thread-inner");
     const rows = (list || []).slice().sort(comparePeer);
     if (!rows.length) {
-      const box = emptyState("", "没有消息");
+      const box = emptyState("", peer.remote ? "跨设备的往来还取不到。" : "没有消息");
       const heading = box.querySelector("h2");
-      if (heading) heading.replaceChildren(pairNames(peer.a, peer.b));
+      if (heading) heading.replaceChildren(pairNames(splitPeer(peer.a).bot, splitPeer(peer.b).bot));
       inner.append(box);
       thread.replaceChildren(inner);
       return;
     }
     let last = "";
     let lastMsg = null;
+    let target = null;
+    const at = Date.parse(peer.at || "") || 0;
     for (const m of rows) {
-      const mine = m.from === peer.a;
-      const row = el("div", "msg " + (mine ? "user" : "bot"));
+      if (m.kind === "bounce") {
+        const to = splitPeer(peer.b);
+        const line = systemLine("上一条没送到 " + niceName(to.bot) + (to.device ? " · " + to.device : ""));
+        setTip(line, m.text || "");
+        inner.append(line);
+        last = "";
+        lastMsg = null;
+        continue;
+      }
+      const from = splitPeer(m.from);
+      const row = el("div", "msg bot peer-msg");
       row.dataset.time = String(m.ts || "");
+      if (m.id) row.dataset.id = String(m.id);
       const cont = !groupStart(lastMsg, m, last, m.from || "");
       if (cont) row.classList.add("cont");
       lastMsg = m;
-      if (!mine) row.append(avatar(m.from, paintOf(m.from)));
-      const body = el("div", mine ? "bubble-col" : "body");
-      if (!mine && !cont) {
+      row.append(avatar(from.bot, paintOf(from.bot)));
+      const body = el("div", "body");
+      if (!cont) {
         const who = el("div", "who");
-        who.append(el("span", "", niceName(m.from)));
+        who.append(el("span", "", niceName(from.bot)));
+        if (from.device) {
+          const dev = el("span", "who-device");
+          dev.append(icon("device"), el("span", "", from.device));
+          who.append(dev);
+        }
         if (m.ts) who.append(el("time", "", when(m.ts)));
         if (m.from) setTip(who, m.from);
         body.append(who);
       }
-      const bubble = el("div", "bubble");
-      bubble.textContent = m.text || "";
-      const metaRow = el("div", "meta-row");
-      metaRow.append(el("span", "meta", when(m.ts)));
-      body.append(bubble, metaRow);
+      const text = el("div", "peer-text");
+      text.textContent = m.text || "";
+      body.append(text);
       row.append(body);
       inner.append(row);
+      if (!target && at && (Date.parse(m.ts || "") || 0) >= at - 2000) target = row;
       last = m.from || "";
     }
     thread.replaceChildren(inner);
-    thread.scrollTop = thread.scrollHeight;
+    if (target && !peer.scrolled) {
+      peer.scrolled = true;
+      target.scrollIntoView({ block: "start" });
+    } else thread.scrollTop = thread.scrollHeight;
   }
 
   async function loadPeer(before) {
@@ -3071,6 +3140,12 @@
       got = { list: null, mock: true };
     }
     if (state.peer !== peer) return;
+    if (got.mock && peer.remote) {
+      // Cross-device history has no endpoint yet (prototype v2 item 21).
+      if (!keep) renderPeer([], peer);
+      peer.more = false;
+      return;
+    }
     if (got.mock) {
       if (keep && peer.list.length && !peer.mock) {
         peer.more = false;
@@ -3106,10 +3181,11 @@
     if (keep) thread.scrollTop = Math.max(0, thread.scrollHeight - prevHeight + prevTop);
   }
 
-  async function openPeer(a, b) {
+  // at: the first event's time, so the view opens at the run that was clicked.
+  async function openPeer(a, b, at) {
     if (!a || !b || a === b || state.streaming) return;
     clearQuote();
-    state.peer = { a: a, b: b, list: [], more: false, cursor: null, mock: false };
+    state.peer = { a: a, b: b, at: at || "", remote: !!splitPeer(b).device, list: [], more: false, cursor: null, mock: false };
     paintPeerHeader(a, b);
     await loadPeer(null);
   }
@@ -3129,6 +3205,8 @@
 
   let subtitleError = false;
   function setStatus(text, isError = false) {
+    // The exchange view's subtitle is its read-only note; only errors replace it.
+    if (state.peer && !isError) return;
     subtitleError = isError;
     let desc = "";
     if (!text && state.sel && state.sel.type === "bot") {
@@ -4992,6 +5070,7 @@
   });
 
   $("back").addEventListener("click", () => { closePeer(); });
+  $("peer-close").addEventListener("click", () => { closePeer(); });
 
   thread.addEventListener("scroll", () => {
     const peer = state.peer;

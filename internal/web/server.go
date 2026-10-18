@@ -628,11 +628,6 @@ type apiRow struct {
 	Task       string              `json:"task,omitempty"`
 	Status     string              `json:"status,omitempty"`
 	Steps      int                 `json:"steps,omitempty"`
-	// A message another bot sent: the bot, and the paired device it is on
-	// (empty for a bot on this computer). The G7 line uses the same
-	// from_device for the owner's own words typed on a paired device.
-	FromBot    string `json:"from_bot,omitempty"`
-	FromDevice string `json:"from_device,omitempty"`
 }
 
 func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
@@ -668,9 +663,6 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		}
 		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok {
 			row.Title, row.Subtitle = card.Title, card.Subtitle
-		}
-		if e.Message.Role == "user" {
-			row.FromBot, row.FromDevice = relaySender(e.Message.Content)
 		}
 		rows = append(rows, row)
 	}

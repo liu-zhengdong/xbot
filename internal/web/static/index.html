@@ -128,7 +128,7 @@ try {
           <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
         </button>
         <button id="back" class="icon-btn" type="button" aria-label="返回" data-tip="返回" hidden>
-          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
         </button>
         <div class="top-title">
           <div id="title" class="title">XBot</div>
@@ -150,6 +150,8 @@ try {
     </header>
     <div id="node-pending" class="node-pending" hidden></div>
     <div id="thread" class="thread"></div>
+    <!-- The exchange between two bots is read-only: this replaces the composer. -->
+    <div class="peer-dock"><button id="peer-close" class="peer-close secondary" type="button">关闭聊天</button></div>
     <div class="dock">
       <form id="composer" class="composer">
         <div id="quote-bar" class="quote-row" hidden>

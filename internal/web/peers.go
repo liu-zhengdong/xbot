@@ -22,6 +22,7 @@ type peerRow struct {
 	To   string    `json:"to"`
 	Text string    `json:"text"`
 	TS   time.Time `json:"ts"`
+	Kind string    `json:"kind,omitempty"`
 }
 
 func (s *Server) peerMessages(w http.ResponseWriter, r *http.Request) {
@@ -39,17 +40,27 @@ func (s *Server) peerMessages(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	b, err := s.owned(bName)
-	if err != nil {
-		writeMissing(w, err)
-		return
-	}
 	limit, err := peerLimit(r.URL.Query().Get("limit"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad limit")
 		return
 	}
-	msgs, err := peer.Conversation(a, b)
+	var msgs []peer.Direct
+	if strings.Contains(bName, "@") {
+		// A bot on a paired device: both halves are in a's transcript.
+		msgs, err = peer.RemoteConversation(a, bName)
+		if errors.Is(err, peer.ErrBadRemote) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+	} else {
+		b, err := s.owned(bName)
+		if err != nil {
+			writeMissing(w, err)
+			return
+		}
+		msgs, err = peer.Conversation(a, b)
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -62,7 +73,7 @@ func (s *Server) peerMessages(w http.ResponseWriter, r *http.Request) {
 	rows := make([]peerRow, 0, len(page))
 	for _, m := range page {
 		rows = append(rows, peerRow{
-			ID: m.ID, Seq: m.Seq, From: m.From, To: m.To, Text: m.Text, TS: m.Time.UTC(),
+			ID: m.ID, Seq: m.Seq, From: m.From, To: m.To, Text: m.Text, TS: m.Time.UTC(), Kind: m.Kind,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": rows})
@@ -100,7 +111,11 @@ func peerPage(msgs []peer.Direct, before string, limit int) ([]peer.Direct, erro
 // seq when exactly one message in the thread carries that number.
 func peerCursor(msgs []peer.Direct, raw string) (int, error) {
 	raw = strings.TrimSpace(raw)
-	to, seqPart, qualified := strings.Cut(raw, ":")
+	// The seq never holds a colon; a device name in "bot@device" may.
+	to, seqPart, qualified := raw, "", false
+	if i := strings.LastIndexByte(raw, ':'); i >= 0 {
+		to, seqPart, qualified = raw[:i], raw[i+1:], true
+	}
 	if !qualified {
 		seq, err := strconv.Atoi(raw)
 		if err != nil || seq < 1 {

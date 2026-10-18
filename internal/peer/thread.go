@@ -21,6 +21,7 @@ type Direct struct {
 	To   string
 	Text string
 	Time time.Time
+	Kind string // "" for a message, KindBounce for a delivery notice
 }
 
 // Conversation reads the private messages between a and b.
