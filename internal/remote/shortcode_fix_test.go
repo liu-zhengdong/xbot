@@ -233,6 +233,15 @@ func TestShortCodeNameFull(t *testing.T) {
 	if cfg, err := Load(h.a); err != nil || len(cfg.Devices) != 9 {
 		t.Fatalf("A saved the joiner anyway: %v", err)
 	}
+	// The card stays (a tick does not turn it into a deny) and 替换旧的 still works.
+	tickPairing(context.Background(), h.a, h.ca, time.Now())
+	if got := PairingStatus(h.a).A.Phase; got != "request" {
+		t.Fatalf("tick after a full name: %s", got)
+	}
+	mustRemote(t, DecidePairing(context.Background(), h.a, true, true))
+	if got := PairingStatus(h.a).A.Phase; got != "done" {
+		t.Fatalf("replace after a full name: %s", got)
+	}
 
 	// B's own side of the same save: A allowed, but B has no free label.
 	other := newShortHarness(t)

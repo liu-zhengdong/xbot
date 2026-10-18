@@ -202,7 +202,7 @@ func DecidePairing(ctx context.Context, root string, allow, replace bool) error 
 func (s *pairingState) decide(ctx context.Context, root string, allow, replace bool) error {
 	o, name := s.owner, ""
 	a := o.active
-	if a.result != nil {
+	if a.result != nil && !a.nameFull {
 		allow, replace = *a.result, a.replace // Committed: a retry or timeout resends the same answer.
 	}
 	if allow {
@@ -217,6 +217,8 @@ func (s *pairingState) decide(ctx context.Context, root string, allow, replace b
 		committed := true
 		a.result, a.replace = &committed, replace
 		d, err := savePairDevice(root, a.info.Name, a.key, a.xkey, o.person, replace)
+		// No free "X 2"…"X 9": the card stays and its next choice (替换 or 拒绝) wins.
+		a.nameFull = errors.Is(err, ErrNameFull)
 		if err != nil {
 			return err
 		}
@@ -268,6 +270,9 @@ func (s *pairingState) tickOwner(ctx context.Context, root string, now time.Time
 			s.status.A = PairingPhase{Phase: a.finalPhase(), Name: a.info.Name}
 			s.owner = nil
 			return nil
+		}
+		if a.nameFull && now.Before(a.expires) {
+			return nil // The card waits for 替换 or 拒绝; at the 2 minutes it declines.
 		}
 		if a.result != nil || !now.Before(a.expires) {
 			return s.decide(ctx, root, false, false) // Resends a committed answer at once.
