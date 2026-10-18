@@ -96,7 +96,7 @@ func (s *Server) saveGateway(ctx context.Context, raw string) (string, error) {
 	if err != nil {
 		return base, err
 	}
-	if cfg.Gateway == base {
+	if cfg.GatewayURL() == base {
 		return base, nil
 	}
 	if !gatewayUp(ctx, base, true) {
