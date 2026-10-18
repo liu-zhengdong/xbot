@@ -131,12 +131,8 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
   & $Seed $root $mode | ForEach-Object { Say $_ }
   Set-Content (Join-Path $root 'app-window.json') '{"main":{"x":16,"y":16,"width":1024,"height":640}}'
   Set-AppTheme $theme
-  # Both ways WebView2 takes extra browser arguments from outside the app:
-  # the loader's environment variable and the per-exe policy value.
+  # Read by the CI build's patched MyGo (patch-mygo.ps1).
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($script:cdp)"
-  $pol = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
-  New-Item -Force $pol -ErrorAction SilentlyContinue | Out-Null
-  Set-ItemProperty $pol (Split-Path $Exe -Leaf) "--remote-debugging-port=$($script:cdp)"
   $p = Start-Process -FilePath $Exe -ArgumentList '--root', $root, 'app', '--port', $script:port -PassThru
   try {
     $hwnd = [IntPtr]::Zero

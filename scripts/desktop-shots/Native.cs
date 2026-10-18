@@ -16,7 +16,7 @@ public static class Native {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll", SetLastError = true)] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
 
   // SetCursorPos alone sends no WM_MOUSEMOVE, so hover states never show;
@@ -25,8 +25,11 @@ public static class Native {
   [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
   [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
 
+  [DllImport("user32.dll", SetLastError = true)] static extern bool GetCursorPos(out POINT p);
+
   public static string Hover(int x, int y) {
-    SetCursorPos(x - 1, y);
+    bool moved = SetCursorPos(x - 1, y);
+    int moveErr = moved ? 0 : Marshal.GetLastWin32Error();
     mouse_event(0x0001, 1, 0, 0, UIntPtr.Zero);
     System.Threading.Thread.Sleep(50);
     mouse_event(0x0001, 0, 0, 0, UIntPtr.Zero);
@@ -39,7 +42,11 @@ public static class Native {
     IntPtr lp = new IntPtr((y << 16) | (x & 0xffff));
     IntPtr ht = SendMessage(h, 0x0084, IntPtr.Zero, lp); // WM_NCHITTEST
     SendMessage(h, 0x00A0, ht, lp); // WM_NCMOUSEMOVE
-    return "hit-test " + ht.ToInt64();
+    POINT now;
+    string cur = GetCursorPos(out now) ? now.X + "," + now.Y : "unknown (" + Marshal.GetLastWin32Error() + ")";
+    // The leave that TrackMouseEvent posts when the real cursor is elsewhere
+    // clears the hover at once, so say where the cursor really is.
+    return "hit-test " + ht.ToInt64() + "; SetCursorPos " + (moved ? "ok" : "failed " + moveErr) + "; cursor at " + cur + " (wanted " + x + "," + y + ")";
   }
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
