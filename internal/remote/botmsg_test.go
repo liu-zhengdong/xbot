@@ -62,6 +62,20 @@ func TestBotMessagingOff(t *testing.T) {
 		t.Fatalf("send was queued: %v", q)
 	}
 
+	// Queued before the switch went off: the outbox drops it unsent and tells ada.
+	env, err := newBoxEnvelope(ka, cfgA.Devices[0], "box", []byte(`{}`), time.Now())
+	mustRemote(t, err)
+	mustRemote(t, enqueue(a, outboxItem{Env: env, FromBot: "ada", To: "bob@b", Snippet: "hello", Created: time.Now(), Next: time.Now()}))
+	mustRemote(t, flushOutbox(context.Background(), a, &gateway.Client{Base: "http://gateway", Key: ka}, time.Now()))
+	if q := outboxItems(t, a); len(q) != 0 || calls.Load() != 0 {
+		t.Fatalf("queued box still sent or kept: %v calls=%d", q, calls.Load())
+	}
+	adaBox, err := inbox.Open(sender.InboxPath())
+	mustRemote(t, err)
+	if len(adaBox.Pending()) != 1 {
+		t.Fatalf("ada was not told: %d events", len(adaBox.Pending()))
+	}
+
 	// Receive side on B.
 	target, err := bot.Load(b, "bob")
 	mustRemote(t, err)
