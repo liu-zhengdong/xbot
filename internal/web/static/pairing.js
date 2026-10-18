@@ -40,17 +40,31 @@
     if (!S.data || !S.data.self || !S.data.self.gateway) { S.view = "add-gw"; S.gwVal = ""; render(); return; }
     await newCode();
   }
+  let codeGen = 0, codeRun = null;
   async function newCode(gateway) {
+    const gen = ++codeGen;
     S.busy = true; render();
     try {
-      const out = await api("POST", "/api/devices/code", gateway ? { gateway } : {});
+      const p = api("POST", "/api/devices/code", gateway ? { gateway } : {});
+      codeRun = p;
+      const out = await p;
+      if (gen !== codeGen) { api("DELETE", "/api/devices/code").catch(() => {}); return; } // 取消后才返回：丢掉这个码
       S.pairing = out.pairing; S.code = S.pairing.a.code || ""; S.view = "add"; S.fieldErr = "";
       if (gateway) await refresh();
     } catch (e) {
+      if (gen !== codeGen) return;
       S.fieldErr = e.message;
       if (!S.view) S.view = "add-gw";
+    } finally {
+      if (gen === codeGen) { S.busy = false; render(); }
     }
-    S.busy = false; render();
+  }
+  // DELETE /api/devices/code：先废掉在途的 newCode，等它回来再删，保证不会在删除之后落地。
+  async function cancelCode() {
+    ++codeGen;
+    if (codeRun) await codeRun.catch(() => {});
+    S.code = ""; S.busy = false; closeModal();
+    api("DELETE", "/api/devices/code").catch(() => {});
   }
   function startJoin() {
     S.view = "join"; S.joinVal = ""; S.fieldErr = "";
@@ -251,7 +265,7 @@
       case "add": await startAdd(); break;
       case "join-open": startJoin(); break;
       case "renew": await newCode(); break;
-      case "cancel-code": api("DELETE", "/api/devices/code").catch(() => {}); S.code = ""; closeModal(); break;
+      case "cancel-code": await cancelCode(); break;
       case "copy": {
         const code = (S.pairing.a && S.pairing.a.code) || S.code;
         try { await navigator.clipboard.writeText(code); } catch (e) { return; }
@@ -279,7 +293,11 @@
         el.disabled = true;
         try { const out = await api("POST", "/api/devices/request", { decision: d }); S.pairing = out.pairing; }
         catch (e) { el.disabled = false; return; }
-        if (d === "deny") { S.view = null; S.code = ""; } else { S.view = "success-a"; S.code = ""; await refresh(); }
+        const phase = (S.pairing.a || {}).phase;
+        // 过期窗口里点「允许」，服务器回 200 + denied：没配上，回去看设备列表。
+        if (d === "deny" || phase === "denied") { S.view = null; S.code = ""; if (phase === "denied") refresh(); }
+        else if (phase === "done") { S.view = "success-a"; S.code = ""; await refresh(); }
+        else syncFromPairing();
         render(); break;
       }
     }
@@ -305,7 +323,14 @@
   };
   D.onKey = (ev) => {
     if (ev.key === "Enter" && ev.target.id === "g7-gw" && S.view === "add-gw" && S.gwVal.trim()) { ev.preventDefault(); act("save-gw-code", ev.target); return true; }
-    if (ev.key === "Escape" && S.view === "add-gw") { closeModal(); return true; }
+    // Escape 等同当前弹窗上可见的取消/关闭按钮。
+    if (ev.key === "Escape" && Object.prototype.hasOwnProperty.call(D.views, S.view)) {
+      ev.preventDefault();
+      const name = S.view === "add" ? "cancel-code" : ["join", "confirm", "waiting", "success-b"].includes(S.view) ? "close-join" : S.view === "request" ? "decide" : "";
+      if (name) act(name, { dataset: S.view === "request" ? { d: "deny" } : {}, disabled: false });
+      else closeModal(); // add-gw, denied, success-a: nothing to cancel
+      return true;
+    }
     return false;
   };
   setInterval(poll, 1500);
