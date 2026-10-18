@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // wrapUntrusted marks external text as data, in the same form as link.Wrap.
@@ -29,10 +31,12 @@ func wrapUntrusted(source, typ, sender string, at time.Time, body string) string
 // payload cannot end or forge the fence. The replacement is not a tag:
 // "[/untrusted_event]" does not match a later closer scan, and it does not
 // leave a ">" that completes one. Matching is ASCII-case-insensitive, allows
-// whitespace around the slash, folds fullwidth and small brackets, fullwidth
-// underscores, and the extra slash characters, skips zero-width characters,
-// ZWJ, ZWNJ, and variation selectors, and treats "&lt;" / numeric character
-// references (including long runs of leading zeros) as "<".
+// whitespace around the slash, folds every bracket lookalike IsLT and IsGT
+// know, compatibility forms (fullwidth, mathematical and circled letters),
+// Cyrillic and Greek letters that look like Latin ones, and the extra slash
+// characters, skips zero-width characters, ZWJ, ZWNJ, variation selectors and
+// combining marks, and treats "&lt;" / numeric character references
+// (including long runs of leading zeros) as "<".
 func NeutralizeUntrusted(s string) string {
 	s = rewriteTag(s, "untrusted_event", true, "[/untrusted_event]")
 	return rewriteTag(s, "untrusted_event", false, "[untrusted_event]")
@@ -56,7 +60,7 @@ func rewriteTag(s, name string, closer bool, repl string) string {
 	if name == "" || s == "" {
 		return s
 	}
-	if !strings.ContainsAny(s, "<&") && !strings.Contains(s, "＜") && !strings.Contains(s, "﹤") {
+	if !mayOpenTag(s) {
 		return s
 	}
 	var b strings.Builder
@@ -123,7 +127,7 @@ func matchLT(s string) (int, bool) {
 		return 0, false
 	}
 	r, size := utf8.DecodeRuneInString(s)
-	if foldTagRune(r) == '<' {
+	if IsLT(r) {
 		return size, true
 	}
 	if r != '&' {
@@ -224,7 +228,41 @@ func skipIgnorable(s string, i int) int {
 	return i
 }
 
+// mayOpenTag reports whether s has anything matchLT could start on.
+func mayOpenTag(s string) bool {
+	for _, r := range s {
+		if r == '&' || IsLT(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsLT reports whether r reads as "<": the ASCII bracket and the lookalikes a
+// model may take for one (fullwidth, small, angle, vertical, single guillemet,
+// ornamental, modifier and syllabics forms). No other rune folds to "<", so a
+// tag can only start on one of these.
+func IsLT(r rune) bool {
+	switch r {
+	case '<', '\uff1c', '\ufe64', '\u2329', '\u3008', '\ufe3f', '\u27e8', '\u2039', '\u00ab', '\u276c', '\u276e', '\u2770', '\u02c2', '\u1438', '\u29fc':
+		return true
+	}
+	return false
+}
+
+// IsGT is IsLT for ">".
+func IsGT(r rune) bool {
+	switch r {
+	case '>', '\uff1e', '\ufe65', '\u232a', '\u3009', '\ufe40', '\u27e9', '\u203a', '\u00bb', '\u276d', '\u276f', '\u2771', '\u02c3', '\u1433', '\u29fd':
+		return true
+	}
+	return false
+}
+
 func isIgnorable(r rune) bool {
+	if r >= 0x300 && unicode.Is(unicode.Mn, r) {
+		return true
+	}
 	switch r {
 	case '\u200b', '\u200c', '\u200d', '\u2060', '\u2061', '\u2062', '\u2063', '\u2064', '\ufeff', '\u00ad':
 		return true
@@ -239,27 +277,55 @@ func isIgnorable(r rune) bool {
 }
 
 func foldTagRune(r rune) rune {
-	switch r {
-	case '<', '＜', '﹤':
-		return '<'
-	case '>', '＞', '﹥':
-		return '>'
-	case '/', '／', '∕', '⁄':
-		return '/'
-	case '_', '＿':
-		return '_'
-	}
-	if r >= 'A' && r <= 'Z' {
-		return r + ('a' - 'A')
-	}
-	if r >= 'a' && r <= 'z' {
+	if r < utf8.RuneSelf {
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
 		return r
 	}
-	if r >= 0xFF21 && r <= 0xFF3A {
-		return r - 0xFF21 + 'a'
+	switch {
+	case IsLT(r):
+		return '<'
+	case IsGT(r):
+		return '>'
 	}
-	if r >= 0xFF41 && r <= 0xFF5A {
-		return r - 0xFF41 + 'a'
+	switch r {
+	case '∕', '⁄', '⧸', '╱':
+		return '/'
+	}
+	if c, ok := latinLookalike[r]; ok {
+		return c
+	}
+	// Compatibility forms: fullwidth, mathematical and circled letters, small
+	// forms. Only a single-rune decomposition counts.
+	var buf [utf8.UTFMax]byte
+	n := utf8.EncodeRune(buf[:], r)
+	if d := norm.NFKC.Properties(buf[:n]).Decomposition(); len(d) > 0 {
+		if c, size := utf8.DecodeRune(d); size == len(d) && c != r {
+			return foldTagRune(c)
+		}
 	}
 	return r
+}
+
+// latinLookalike maps Cyrillic, Greek and Armenian letters that look like the
+// Latin letters of a fence name to those letters.
+var latinLookalike = map[rune]rune{
+	'а': 'a', 'А': 'a', 'Α': 'a',
+	'с': 'c', 'С': 'c',
+	'ԁ': 'd',
+	'е': 'e', 'Е': 'e', 'Ε': 'e',
+	'һ': 'h',
+	'і': 'i', 'І': 'i', 'Ι': 'i', 'ι': 'i', 'ı': 'i',
+	'ј': 'j', 'Ј': 'j',
+	'Ν': 'n', 'ո': 'n',
+	'о': 'o', 'О': 'o', 'ο': 'o', 'Ο': 'o',
+	'р': 'p', 'Р': 'p', 'ρ': 'p', 'Ρ': 'p',
+	'г': 'r',
+	'ѕ': 's', 'Ѕ': 's',
+	'Т': 't', 'Τ': 't',
+	'ս': 'u',
+	'ν': 'v',
+	'х': 'x', 'Х': 'x', 'Χ': 'x',
+	'у': 'y',
 }

@@ -15,6 +15,7 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
+	"xbot/internal/tools"
 )
 
 // UntrustedRule is part of the stable rules. The persona file cannot remove it
@@ -266,10 +267,10 @@ func fenceMemory(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		switch r {
-		case '<', '\uff1c', '\ufe64', '\u2329', '\u3008', '\u27e8', '\u2039', '\u00ab', '\u276c', '\u276e', '\u2770', '\u02c2', '\u1438', '\u29fc':
+		switch {
+		case tools.IsLT(r):
 			b.WriteString("&lt;")
-		case '>', '\uff1e', '\ufe65', '\u232a', '\u3009', '\u27e9', '\u203a', '\u00bb', '\u276d', '\u276f', '\u2771', '\u02c3', '\u1433', '\u29fd':
+		case tools.IsGT(r):
 			b.WriteString("&gt;")
 		default:
 			b.WriteRune(r)
