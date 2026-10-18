@@ -1050,6 +1050,9 @@
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    device: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle class="solid" cx="12" cy="8" r="1"/>',
+    arrowUpRight: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>',
   };
 
   function icon(name, extra) {
@@ -1653,6 +1656,43 @@
     return row;
   }
 
+  // A message another bot sent: a gray quote block, not a bubble, with the
+  // whole text, so the owner can decide what to do next. The header names
+  // which bot on which device; a bot on this computer has no device.
+  function relayBlock(m, parsed, who) {
+    const source = parsed.source.slice(4);
+    const cut = source.indexOf("@");
+    const fromBot = m.from_bot || (cut < 0 ? source : source.slice(0, cut));
+    const device = m.from_bot ? (m.from_device || "") : (cut < 0 ? "" : source.slice(cut + 1));
+    const peer = parsed.sender || source;
+    const block = el("div", "relay");
+    if (m.seq) block.dataset.seq = String(m.seq);
+    if (m.time) block.dataset.time = String(m.time);
+    const head = el("div", "relay-head");
+    head.append(avatar(fromBot, paintOf(fromBot)), el("span", "relay-bot", niceName(fromBot)));
+    if (device) {
+      const dev = el("span", "relay-device");
+      dev.append(icon("device"), el("span", "", device));
+      head.append(dev);
+    }
+    if (m.time) head.append(el("span", "relay-time", when(m.time)));
+    const open = el("button", "relay-open");
+    open.type = "button";
+    open.setAttribute("aria-label", "查看往来");
+    setTip(open, "查看往来");
+    open.append(icon("arrowUpRight"));
+    open.addEventListener("click", () => openPeer(state.sel && state.sel.id, peer));
+    head.append(open);
+    const pulled = pullImages(displayText(parsed.text));
+    const body = el("div", "relay-text", pulled.text || (pulled.images.length ? "" : parsed.text));
+    block.append(head, body);
+    if (pulled.images.length) block.append(gallery(pulled.images));
+    const note = el("div", "relay-note");
+    note.append(icon("info"), el("span", "", "另一个 Bot 发来的。" + niceName(who || "这个 Bot") + " 只把它当资料，不当成你的指令。"));
+    block.append(note);
+    return block;
+  }
+
   function optionBadge(letter, ghost) {
     const badge = el("span", "opt-badge" + (ghost ? " ghost" : ""));
     if (ghost) badge.append(rawSvg(PENCIL_PATH, 14, 2.2));
@@ -2033,12 +2073,10 @@
         if (parsed.untrusted && (parsed.source.startsWith("bot:") || parsed.source.startsWith("group:"))) {
           any = true;
           lastKey = "";
-          const body = clip(pullImages(parsed.text).text, 80) || "一条消息";
           if (parsed.source.startsWith("bot:")) {
-            const from = parsed.sender || parsed.source.slice(4);
-            inner.append(systemLine(niceName(from) + " 发来 · " + body, from, from));
+            inner.append(relayBlock(m, parsed, who));
           } else {
-            inner.append(systemLine("群里 · " + body));
+            inner.append(systemLine("群里 · " + (clip(pullImages(parsed.text).text, 80) || "一条消息")));
           }
           return;
         }
