@@ -12,6 +12,15 @@ import (
 
 // The joiner (B) side of short-code pairing.
 
+// SetJoinPhase records a join failure found before the gateway was asked
+// (the web layer's gateway check), so the modal shows it like the others.
+func SetJoinPhase(root string, phase PairingPhase) {
+	s := pairingFor(root)
+	s.Lock()
+	defer s.release()
+	s.join, s.client = nil, nil
+	s.status.B = phase
+}
 func CancelJoin(root string) {
 	s := pairingFor(root)
 	s.Lock()

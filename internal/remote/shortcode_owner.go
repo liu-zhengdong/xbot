@@ -172,7 +172,9 @@ func (s *pairingState) receivePake3(root string, env gateway.Envelope, m shortMe
 	}
 	for _, d := range cfg.Devices {
 		if deviceLabel(d) == info.Name && d.Key != a.key {
-			s.status.A.Collision = &PairingCollision{Name: info.Name}
+			var cache dirCache
+			_ = readJSON(filepath.Join(root, "remote", "dirs", d.ID+".json"), &cache) // Display only.
+			s.status.A.Collision = &PairingCollision{Name: info.Name, Seen: cache.Received, Bots: len(cache.Bots)}
 			break
 		}
 	}

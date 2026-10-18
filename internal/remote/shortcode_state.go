@@ -21,7 +21,9 @@ import (
 // pake3 B→A confirmation after B's 连接, pake4 A→B sealed allow/deny.
 
 type PairingCollision struct {
-	Name string `json:"name"`
+	Name string    `json:"name"`
+	Seen time.Time `json:"seen,omitzero"` // the old device's last directory
+	Bots int       `json:"bots"`
 }
 type PairingPhase struct {
 	Phase     string            `json:"phase"`

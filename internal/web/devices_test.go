@@ -2,14 +2,18 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/gateway"
@@ -121,5 +125,112 @@ func TestDevicesAPIList(t *testing.T) {
 	a.call("GET", "/api/devices", "", &list)
 	if len(list.Devices) != 0 {
 		t.Fatalf("unpair kept the device: %+v", list)
+	}
+}
+
+type pairingOut struct {
+	Pairing remote.Status `json:"pairing"`
+}
+
+func (d *deviceSide) waitPhase(side, phase string) remote.PairingPhase {
+	d.t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	var got remote.PairingPhase
+	for time.Now().Before(deadline) {
+		var out pairingOut
+		d.call("GET", "/api/devices/pairing", "", &out)
+		got = out.Pairing.A
+		if side == "B" {
+			got = out.Pairing.B
+		}
+		if got.Phase == phase {
+			return got
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	d.t.Fatalf("%s never reached %s: %+v", side, phase, got)
+	return got
+}
+
+// Key path through the HTTP API: A saves a gateway and makes a code, B (no
+// gateway token) types it with the gateway in the 加入 modal, both confirm, and
+// each 设备 list shows the other by its display name.
+func TestDevicesAPIPairing(t *testing.T) {
+	gwDir := t.TempDir()
+	gw := httptest.NewServer((&gateway.Server{Dir: gwDir, Token: "test"}).Handler())
+	defer gw.Close()
+	t.Setenv("XBOT_GATEWAY_TOKEN", "test")
+	a, b := newDeviceSide(t, "书房 iMac", "ada"), newDeviceSide(t, "MacBook", "bob")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{}, 2)
+	go func() { remote.Run(ctx, a.root, "test", nil); done <- struct{}{} }()
+	go func() { remote.Run(ctx, b.root, "", nil); done <- struct{}{} }()
+	defer func() { cancel(); <-done; <-done }()
+
+	if code := a.call("POST", "/api/devices/code", `{}`, nil); code != http.StatusConflict {
+		t.Fatalf("no gateway yet: want 409, got %d", code)
+	}
+	if code := a.call("PUT", "/api/devices/gateway", `{"gateway":"http://127.0.0.1:1"}`, nil); code != http.StatusBadGateway {
+		t.Fatalf("unreachable gateway: want 502, got %d", code)
+	}
+	var made pairingOut
+	if code := a.call("POST", "/api/devices/code", `{"gateway":"`+gw.URL+`"}`, &made); code != 200 || made.Pairing.A.Phase != "waiting" || len(made.Pairing.A.Code) != 14 {
+		t.Fatalf("code: %d %+v", code, made)
+	}
+	code := made.Pairing.A.Code
+
+	var out pairingOut
+	typo := code[:13] + string(code[13]^1)
+	if b.call("POST", "/api/devices/join", `{"code":"`+typo+`"}`, &out); out.Pairing.B.Phase != "typo" {
+		t.Fatalf("typo: %+v", out)
+	}
+	if _, err := os.Stat(filepath.Join(b.root, "remote", "config.json")); err == nil {
+		if cfg, _ := remote.Load(b.root); cfg.Gateway != "" {
+			t.Fatal("a typo must not touch the gateway settings")
+		}
+	}
+	b.call("POST", "/api/devices/join", `{"code":"`+code+`","gateway":"`+gw.URL+`"}`, &out)
+	got := b.waitPhase("B", "confirm")
+	if got.Name != "书房 iMac" || len(got.Bots) != 1 || got.Bots[0] != "ada" {
+		t.Fatalf("B confirm: %+v", got)
+	}
+	b.call("POST", "/api/devices/join/confirm", "", nil)
+	req := a.waitPhase("A", "request")
+	if req.Name != "MacBook" || req.Collision != nil {
+		t.Fatalf("A request: %+v", req)
+	}
+	if code := a.call("POST", "/api/devices/request", `{"decision":"allow"}`, nil); code != 200 {
+		t.Fatalf("allow: %d", code)
+	}
+	b.waitPhase("B", "done")
+
+	var listA, listB struct {
+		Self      remote.SelfInfo `json:"self"`
+		GatewayOK bool            `json:"gateway_ok"`
+		Devices   []deviceRow     `json:"devices"`
+	}
+	a.call("GET", "/api/devices", "", &listA)
+	b.call("GET", "/api/devices", "", &listB)
+	if !listA.GatewayOK || listA.Self.Name != "书房 iMac" || len(listA.Devices) != 1 || listA.Devices[0].Label != "MacBook" {
+		t.Fatalf("A list: %+v", listA)
+	}
+	if len(listB.Devices) != 1 || listB.Devices[0].Label != "书房 iMac" || listB.Self.Gateway != gw.URL {
+		t.Fatalf("B list: %+v", listB)
+	}
+	// The used code is now dead at the gateway: 410.
+	b.call("POST", "/api/devices/join", `{"code":"`+code+`"}`, &out)
+	if out.Pairing.B.Phase != "already" && out.Pairing.B.Phase != "expired" {
+		t.Fatalf("reuse: %+v", out)
+	}
+	id := listA.Devices[0].ID
+	if code := a.call("PATCH", "/api/devices/"+id, `{"label":"我的 MacBook"}`, nil); code != 200 {
+		t.Fatalf("rename: %d", code)
+	}
+	if code := a.call("DELETE", "/api/devices/"+id, "", nil); code != 200 {
+		t.Fatalf("unpair: %d", code)
+	}
+	a.call("GET", "/api/devices", "", &listA)
+	if len(listA.Devices) != 0 {
+		t.Fatalf("unpair kept the device: %+v", listA)
 	}
 }
