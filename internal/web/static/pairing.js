@@ -17,13 +17,17 @@
     }
     return ALPHA[(n - (sum % n)) % n];
   }
-  // 粘贴整段话时取第一段合法的 12 位；否则只留字符表里的字符。
+  // 粘贴整段话时按整词（ASCII 字母数字）拼出第一段合法的 12 位，前后的话不会混进来；否则只留字符表里的字符。
   function cleanCode(raw) {
     const up = String(raw || "").toUpperCase();
-    let run = "";
-    for (const ch of up) {
-      if (ALPHA.includes(ch)) { run += ch; if (run.length === 12) return run; }
-      else if (/[\p{L}\p{N}]/u.test(ch)) run = "";
+    const words = up.match(/[A-Z0-9]+/g) || [];
+    for (let i = 0; i < words.length; i++) {
+      let c = "";
+      for (const w of words.slice(i)) {
+        if ([...w].some((ch) => !ALPHA.includes(ch)) || c.length + w.length > 12) break;
+        c += w;
+        if (c.length === 12 && codeOK(c)) return c;
+      }
     }
     const kept = [...up].filter((c) => ALPHA.includes(c)).join("");
     return kept.slice(0, 12);
