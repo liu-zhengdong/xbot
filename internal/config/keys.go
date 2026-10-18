@@ -13,6 +13,7 @@ var (
 	heldNames    map[string]bool
 	heldRedact   []string
 	heldRedactOK bool
+	heldRepl     *strings.Replacer // one pass over heldRedact
 )
 
 // HoldKeys copies the named variables into memory and removes them from the
@@ -93,12 +94,15 @@ func RedactHeld(s string) string {
 		return s
 	}
 	heldMu.Lock()
-	vals := redactListLocked()
+	redactListLocked()
+	repl := heldRepl
 	heldMu.Unlock()
-	for _, v := range vals {
-		s = strings.ReplaceAll(s, v, "[secret]")
+	if repl == nil {
+		return s
 	}
-	return s
+	// One pass, longest first at each position: an inserted [secret] is not
+	// scanned again.
+	return repl.Replace(s)
 }
 
 // HeldForms returns a copy of the values RedactHeld would replace, longest
@@ -132,6 +136,14 @@ func redactListLocked() []string {
 		return vals[i] < vals[j]
 	})
 	heldRedact = vals
+	heldRepl = nil
+	if len(vals) > 0 {
+		pairs := make([]string, 0, 2*len(vals))
+		for _, v := range vals {
+			pairs = append(pairs, v, "[secret]")
+		}
+		heldRepl = strings.NewReplacer(pairs...)
+	}
 	heldRedactOK = true
 	return heldRedact
 }

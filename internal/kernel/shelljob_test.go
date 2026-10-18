@@ -721,3 +721,22 @@ func TestShellWakeFailureReleasesClaim(t *testing.T) {
 		t.Fatal("successful wake was not recorded")
 	}
 }
+
+// The job writer holds a split secret back only for forms it is given; a
+// table without Forms would commit secret prefixes as they arrive (#17).
+func TestKernelShellJobsHaveForms(t *testing.T) {
+	k, _, _ := freshBot(t)
+	jobs := k.shellJobs()
+	if jobs == nil || jobs.Forms == nil || jobs.Redact == nil {
+		t.Fatalf("jobs %+v", jobs)
+	}
+}
+
+// Staged secrets are scrubbed in one pass: an inserted [secret] is not
+// scanned again, so a value that matches across it cannot mangle it (#17).
+func TestScrubSecretsIsOnePass(t *testing.T) {
+	got := scrubSecrets("XYZ12345tail1", map[string]string{"a": "XYZ12345", "b": "et]tail1"})
+	if got != "[secret]tail1" {
+		t.Fatalf("got %q", got)
+	}
+}
