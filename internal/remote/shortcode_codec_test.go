@@ -24,6 +24,12 @@ func TestParseShortCode(t *testing.T) {
 	if lookup != code[:4] || secret != code[4:11] {
 		t.Fatal("pasted sentence not extracted")
 	}
+	// Words before the code never join it, even ones made of code characters.
+	for _, prose := range []string{"Code: ", "Pairing code: ", "KEY: ", "配对码", "XBot 2 pairing "} {
+		if l, sec, err := ParseShortCode(prose + displayCode(code) + " (10 min)"); err != nil || l+sec != code[:11] {
+			t.Fatalf("%q: not extracted", prose)
+		}
+	}
 	for i := range code {
 		bad := []byte(code)
 		bad[i] = gateway.CodeAlphabet[(strings.IndexByte(gateway.CodeAlphabet, bad[i])+1)%len(gateway.CodeAlphabet)]
