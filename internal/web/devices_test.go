@@ -83,6 +83,9 @@ func TestDevicesAPIList(t *testing.T) {
 	gw := httptest.NewServer((&gateway.Server{Dir: t.TempDir(), Token: "test"}).Handler())
 	defer gw.Close()
 	a := newDeviceSide(t, "书房 iMac", "ada")
+	if self, err := remote.Self(a.root, ""); err != nil || self.Gateway != remote.DefaultGateway {
+		t.Fatalf("unset gateway is not the official default: %+v %v", self, err)
+	}
 	pub, _, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatal(err)
