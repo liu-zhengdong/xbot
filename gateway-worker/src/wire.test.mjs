@@ -39,3 +39,7 @@ test('envelope UTC signature preserves nanoseconds and original offset', async (
   }
 });
 
+test('base64 round-trips a MaxBody-sized payload', () => {
+  const big = crypto.getRandomValues(new Uint8Array(65536));
+  assert.deepEqual(decode(b64(big)), big);
+});

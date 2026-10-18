@@ -2,7 +2,10 @@ export const enc = new TextEncoder();
 export const idRE = /^[a-f0-9]{32}$/;
 export const hex = (b: Uint8Array) => Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
 export const hash = async (b: Uint8Array) => new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(b)));
-export const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+export const b64 = (b: Uint8Array) => { // Chunked: spreading ~64 KiB of arguments can hit V8's argument limit.
+  let s = ""; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
+  return btoa(s);
+};
 export function decode(s: unknown, url = false): Uint8Array {
   if (typeof s !== "string") throw Error();
   const clean = s.replace(/[\r\n]/g, ""); // Go's base64 decoder ignores CR and LF.
