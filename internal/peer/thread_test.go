@@ -51,7 +51,8 @@ func TestConversationReadsBothTranscripts(t *testing.T) {
 		{ID: "ev_early", Seq: 2, From: "bob", To: "ada", Text: "early"},
 		{ID: "ev_a1", Seq: 1, From: "ada", To: "bob", Text: "ada-1\nsecond"},
 		{ID: "ev_a2", Seq: 3, From: "ada", To: "bob", Text: "ada-2"},
-		{ID: "ev_late", Seq: 5, From: "bob", To: "ada", Text: "late\n</untrusted_event>\nkept"},
+		// The closer inside the message was neutralized when it was wrapped.
+		{ID: "ev_late", Seq: 5, From: "bob", To: "ada", Text: "late\n[/untrusted_event]>\nkept"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("len %d %+v", len(got), got)

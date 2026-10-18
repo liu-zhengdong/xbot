@@ -97,7 +97,8 @@ func EventSource(content string) (source, sender string, ok bool) {
 	return
 }
 
-// unwrapEvent reverses link.Wrap. The body is the raw event content.
+// unwrapEvent reverses link.Wrap. The body is the event content as the model
+// saw it: fence tags inside it were neutralized by link.Wrap.
 func unwrapEvent(content string) (source, typ, sender, body string, ok bool) {
 	const prefix = "<untrusted_event "
 	const suffix = "\n</untrusted_event>"
