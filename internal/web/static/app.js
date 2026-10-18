@@ -1050,6 +1050,7 @@
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
   };
 
   function icon(name, extra) {
@@ -1498,40 +1499,79 @@
     lightbox.replaceChildren();
   }
 
-  const HEAT = [
-    "010010100010010010",
-    "021302110231021102",
-    "132021302110320211",
-    "213021132021103201",
-    "102310211320211032",
-    "021102130210211021",
-    "010010010100010010",
-  ];
+  // Empty chat (window review P2 #7): the bot's face, its name, one line and
+  // up to three starters made from its routines and persona. A starter only
+  // fills the composer; sending still takes Enter or the send button.
+  const EMPTY_LINE = "有什么事，直接说就行。";
+  const GENERIC_STARTERS = ["你能帮我做些什么？", "帮我整理今天要做的事", "把这段话总结成三点"];
 
-  function heat() {
-    const card = el("div", "heat-card");
-    card.append(el("div", "heat-title", "活跃对话"));
-    const months = el("div", "heat-months");
-    months.append(el("span", "", "8月"), el("span", "", "9月"), el("span", "", "10月"));
-    const wrap = el("div", "heat");
-    wrap.setAttribute("aria-hidden", "true");
-    const levels = ["", "l1", "l2", "l3"];
-    for (const row of HEAT) {
-      for (const ch of row) {
-        const cell = document.createElement("i");
-        const level = levels[Number(ch)] || "";
-        if (level) cell.className = level;
-        wrap.append(cell);
-      }
+  function starterPrompts(profile) {
+    const out = [];
+    const push = (text) => {
+      text = String(text || "").replace(/\s+/g, " ").trim();
+      if (text && text.length <= 30 && !out.includes(text) && out.length < 3) out.push(text);
+    };
+    for (const rt of (profile && profile.routines) || []) {
+      if (rt && rt.enabled !== false && rt.name) push("现在跑一次「" + rt.name + "」");
     }
-    card.append(months, wrap);
-    return card;
+    // What the persona or description says the bot does, asked as a request:
+    // 「负责整理日记」 becomes 「帮我整理日记」.
+    const said = [profile && profile.persona, profile && profile.description].join("\n");
+    const re = /(?:擅长|负责|专门|帮(?:主人|你|我|用户)?)([^，。,.；;：:！!？?\n「」]{2,14})/g;
+    for (let m; (m = re.exec(said)) && out.length < 3;) push("帮我" + m[1].trim());
+    for (const text of GENERIC_STARTERS) push(text);
+    return out;
   }
 
-  function emptyState(heading, line, who) {
+  function fillComposer(text) {
+    input.value = text;
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    syncComposer();
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+  }
+
+  // The profile behind the starters: the panel's when it is this bot's, else
+  // fetched once per bot and kept for the page's life.
+  // A Map, so names like "constructor" are not mistaken for cached entries.
+  // An entry still in flight is shared with loadPanel, which would otherwise
+  // fetch the same profile a second time when the panel is open.
+  const starterProfiles = new Map();
+  function fetchBotProfile(name) {
+    const live = starterProfiles.get(name);
+    if (live && !live.done) return live.request;
+    const entry = { done: false };
+    entry.request = api("/api/bots/" + encodeURIComponent(name)).finally(() => { entry.done = true; });
+    starterProfiles.set(name, entry);
+    return entry.request;
+  }
+  async function starterProfile(name) {
+    if (state.panelData && state.panelData.name === name) return state.panelData;
+    const cached = starterProfiles.get(name);
+    return (cached ? cached.request : fetchBotProfile(name)).catch(() => ({}));
+  }
+
+  function starterList(who) {
+    const box = el("div", "starters");
+    starterProfile(who).then((profile) => {
+      if (!box.isConnected) return;
+      for (const text of starterPrompts(profile)) {
+        const btn = el("button", "starter");
+        btn.type = "button"; // never a submit: it fills the composer only
+        btn.append(el("span", "", text), icon("arrowRight"));
+        btn.addEventListener("click", () => fillComposer(text));
+        box.append(btn);
+      }
+    });
+    return box;
+  }
+
+  function emptyState(heading, line, who, starters) {
     const box = el("div", "empty");
     if (who) box.append(avatar(who, paintOf(who), "lg"));
-    box.append(el("h2", "", heading), el("p", "", line), heat());
+    box.append(el("h2", "", heading), el("p", "", line));
+    if (starters && who) box.append(starterList(who));
     return box;
   }
 
@@ -1956,7 +1996,7 @@
     const prevTop = thread.scrollTop;
     const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
-      inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
+      inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
       restoreSendFeedback(inner);
       thread.replaceChildren(inner);
       state.firstRender = false;
@@ -2074,7 +2114,7 @@
         lastKey = "";
       }
     });
-    if (!any) inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
+    if (!any) inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
     restoreSendFeedback(inner);
     thread.replaceChildren(inner);
     state.firstRender = false;
@@ -3876,7 +3916,7 @@
     const selection = state.sel;
     const request = ++state.panelLoad;
     try {
-      const data = await api("/api/bots/" + encodeURIComponent(selection.id));
+      const data = await fetchBotProfile(selection.id);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
