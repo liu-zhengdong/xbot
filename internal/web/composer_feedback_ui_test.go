@@ -16,7 +16,7 @@ func TestComposerFeedbackAndTriggerTips(t *testing.T) {
 	js, html, css := read("app.js"), read("index.html"), read("app.css")
 	for _, want := range []string{
 		`.gate-card:has(#login-error:not([hidden])) #login-hint { display: none; }`,
-		`.send.secondary { background: var(--fill); color: var(--muted); }`,
+		".send.secondary,\n.send:disabled { background: var(--send-off); color: var(--send-off-ink); }",
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("missing conditional guidance or disabled styling: %s", want)

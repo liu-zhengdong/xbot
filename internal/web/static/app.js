@@ -967,6 +967,18 @@
     return (d.getMonth() + 1) + "月" + d.getDate() + "日";
   }
 
+  // Message grouping (P1 / 5): one sender writing again in under five minutes
+  // continues the group above it. Pure, so the same rule decides the name/time
+  // header and the spacing for history, new pages and live appends.
+  const GROUP_GAP_MS = 5 * 60 * 1000;
+
+  function groupStart(prev, cur, prevKey, key) {
+    if (!prev || prevKey !== key) return true;
+    const a = Date.parse(prev.time || prev.ts || "");
+    const b = Date.parse(cur.time || cur.ts || "");
+    return !Number.isFinite(a) || !Number.isFinite(b) || b - a >= GROUP_GAP_MS;
+  }
+
   function cronText(cron, enabled) {
     const raw = String(cron || "").trim();
     const parts = raw.split(/\s+/);
@@ -1734,7 +1746,9 @@
     return null;
   }
 
-  function appendRich(parent, text) {
+  // `plain`: the bot writes straight on the card (no bubble, no group meta
+  // collapse); the group view still draws other bots as bubbles.
+  function appendRich(parent, text, plain) {
     const src = String(text || "");
     const re = /```([^\n`]*)\n?([\s\S]*?)```/g;
     let last = 0;
@@ -1742,11 +1756,14 @@
     const addText = (chunk) => {
       const pulled = pullImages(chunk);
       if (pulled.text) {
-        const bubble = el("div", "bubble");
         const prose = el("div", "prose");
         appendMarkdown(prose, pulled.text);
-        bubble.append(prose);
-        parent.append(bubble);
+        if (plain) parent.append(prose);
+        else {
+          const bubble = el("div", "bubble");
+          bubble.append(prose);
+          parent.append(bubble);
+        }
       }
       if (pulled.images.length) parent.append(gallery(pulled.images));
     };
@@ -1855,6 +1872,8 @@
     const parsed = unwrap(m.content || "");
     const row = el("div", "msg user");
     if (m.seq) row.dataset.seq = String(m.seq);
+    if (m.time) row.dataset.time = String(m.time);
+    row.dataset.sender = "user";
     const wrap = el("div", "bubble-col");
     if (m.branch) wrap.append(bgFrom());
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
@@ -1887,16 +1906,20 @@
   function botBubble(m, results, messages, index, who, showName) {
     const row = el("div", "msg bot");
     if (m.seq) row.dataset.seq = String(m.seq);
+    if (m.time) row.dataset.time = String(m.time);
+    row.dataset.sender = "bot:" + (who || "");
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
     if (m.branch) body.append(bgFrom());
     if (showName) {
-      const name = el("div", "who", niceName(who));
+      const name = el("div", "who");
+      name.append(el("span", "", niceName(who)));
+      if (m.time) name.append(el("time", "", when(m.time)));
       if (who) setTip(name, who);
       body.append(name);
     }
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    if (m.content) appendRich(body, displayText(m.content));
+    if (m.content) appendRich(body, displayText(m.content), true);
     const calls = m.tool_calls || [];
     const peers = [];
     for (const call of calls) {
@@ -1946,6 +1969,7 @@
     }
     let any = false;
     let lastKey = "";
+    let lastMsg = null;
     let lastRoutine = null;
     const relays = backgroundRelays(messages);
     const latestCard = {};
@@ -2026,7 +2050,9 @@
         }
         any = true;
         const row = userBubble(m, messages);
-        if (lastKey === "user") row.classList.add("cont");
+        const cont = !groupStart(lastMsg, m, lastKey, "user");
+        if (cont) row.classList.add("cont");
+        lastMsg = m;
         lastKey = "user";
         inner.append(row);
         return;
@@ -2034,8 +2060,9 @@
       if (relays.has(i)) return;
       any = true;
       const key = "bot:" + (who || "");
-      const cont = lastKey === key;
+      const cont = !groupStart(lastMsg, m, lastKey, key);
       lastKey = key;
+      lastMsg = m;
       const built = botBubble(m, results, messages, i, who, !cont);
       const asks = (m.tool_calls || []).some((c) => toolSummary(c).name === "ask_user");
       if (m.content || asks) {
@@ -2067,6 +2094,7 @@
       return;
     }
     let last = "";
+    let lastMsg = null;
     for (const m of messages) {
       const mine = m.kind === "person";
       const text = m.text || "";
@@ -2080,7 +2108,10 @@
       }
       const row = el("div", "msg " + (mine ? "user" : "bot"));
       const key = mine ? "user" : ("bot:" + (m.sender || ""));
-      if (key === last) row.classList.add("cont");
+      row.dataset.sender = key;
+      if (m.time) row.dataset.time = String(m.time);
+      if (!groupStart(lastMsg, m, last, key)) row.classList.add("cont");
+      lastMsg = m;
       if (mine) {
         const wrap = el("div", "bubble-col");
         const pulled = pullImages(text);
@@ -2099,7 +2130,9 @@
         row.append(avatar(m.sender || "B", paintOf(m.sender)));
         const body = el("div", "body");
         if (!row.classList.contains("cont")) {
-          const name = el("div", "who", niceName(m.sender || "bot"));
+          const name = el("div", "who");
+          name.append(el("span", "", niceName(m.sender || "bot")));
+          if (m.time) name.append(el("time", "", when(m.time)));
           if (m.sender) setTip(name, m.sender);
           body.append(name);
         }
@@ -2904,14 +2937,20 @@
       return;
     }
     let last = "";
+    let lastMsg = null;
     for (const m of rows) {
       const mine = m.from === peer.a;
       const row = el("div", "msg " + (mine ? "user" : "bot"));
-      if (last === m.from) row.classList.add("cont");
+      row.dataset.time = String(m.ts || "");
+      const cont = !groupStart(lastMsg, m, last, m.from || "");
+      if (cont) row.classList.add("cont");
+      lastMsg = m;
       if (!mine) row.append(avatar(m.from, paintOf(m.from)));
       const body = el("div", mine ? "bubble-col" : "body");
-      if (!mine && last !== m.from) {
-        const who = el("div", "who", niceName(m.from));
+      if (!mine && !cont) {
+        const who = el("div", "who");
+        who.append(el("span", "", niceName(m.from)));
+        if (m.ts) who.append(el("time", "", when(m.ts)));
         if (m.from) setTip(who, m.from);
         body.append(who);
       }
@@ -4220,33 +4259,56 @@
     sendStatus.textContent = text;
   }
 
+  // The last row on screen, so a live reply or send groups against it the same
+  // way the next full render will (groupStart).
+  function lastRow(inner) {
+    // The last thing on screen, not the last message: an event line or card
+    // after it ends the group, as it does in renderMessages.
+    const last = inner.lastElementChild;
+    return last && last.classList.contains("msg") ? last : null;
+  }
+
+  // Marks a row appended live as a group continuation of the row above it,
+  // using the same helper as the renderers.
+  function markLiveGroup(inner, row) {
+    const last = lastRow(inner);
+    // Tool and event lines between turns break a group, as they do on render.
+    if (!last || !last.dataset.sender || groupStart({ time: last.dataset.time }, { time: row.dataset.time }, last.dataset.sender, row.dataset.sender)) return;
+    row.classList.add("cont");
+    // A continuation never repeats the name line.
+    row.querySelector(".who")?.remove();
+  }
+
   function liveBubble() {
 
     const inner = thread.querySelector(".thread-inner") || thread;
     const empty = inner.querySelector(".empty");
     if (empty) empty.remove();
-    const row = el("div", "msg bot live");
     const who = state.sel ? state.sel.id : "Bot";
+    const now = new Date().toISOString();
+    const row = el("div", "msg bot live");
+    row.dataset.sender = "bot:" + who;
+    row.dataset.time = now;
     row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
     const shown = niceName(who);
     if (shown) {
-      const name = el("div", "who", shown);
+      const name = el("div", "who");
+      name.append(el("span", "", shown), el("time", "", when(now)));
       setTip(name, who);
       body.append(name);
     }
-    const bubble = el("div", "bubble");
     const prose = el("div", "prose");
     const dots = el("span", "typing-dots");
     dots.setAttribute("aria-label", "正在回复");
     for (let i = 0; i < 3; i++) dots.append(el("i", ""));
-    bubble.append(prose, dots);
     const live = el("div", "meta live-status");
     const dot = el("i", "status-dot run");
     setTip(dot, "正在回复");
     live.append(dot);
-    body.append(bubble, live);
+    body.append(prose, dots, live);
     row.append(body);
+    markLiveGroup(inner, row);
     inner.append(row);
     thread.scrollTop = thread.scrollHeight;
     return prose;
@@ -4332,8 +4394,11 @@
     inner.querySelector(".empty")?.remove();
     const row = el("div", "msg user optimistic");
     const body = el("div", "bubble-col");
+    row.dataset.sender = "user";
+    row.dataset.time = new Date().toISOString();
     body.append(el("div", "bubble", text), el("div", "send-state", "发送中"));
     row.append(body);
+    markLiveGroup(inner, row);
     inner.append(row);
     thread.scrollTop = thread.scrollHeight;
     state.pendingSends.push(row);
