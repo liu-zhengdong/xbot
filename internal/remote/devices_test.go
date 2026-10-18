@@ -4,11 +4,15 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"testing"
+
+	"xbot/internal/person"
 )
 
 // The drawer removes by ID inside the locked update: only that device goes.
 func TestRemoveDeviceID(t *testing.T) {
 	root := t.TempDir()
+	_, err := person.Identify(root, person.Account{Link: "terminal", ExternalID: "uid:1"}, "owner")
+	mustRemote(t, err)
 	add := func(name string) Device {
 		pub, _, err := ed25519.GenerateKey(nil)
 		mustRemote(t, err)
