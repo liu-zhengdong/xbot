@@ -36,6 +36,10 @@ type Device struct {
 	// unpair). Local removal is still the user's call, so the device stays but
 	// sends and receives nothing until it is removed or paired again.
 	UnpairedAt time.Time `json:"unpaired_at,omitzero"`
+	// NoBotMessaging is the opposite of the 设备 switch 「Bot 互发消息」: zero
+	// value means on, so existing device files keep working. It gates only
+	// box and bounce between this computer and that device.
+	NoBotMessaging bool `json:"no_bot_messaging,omitempty"`
 }
 type Config struct {
 	Gateway string   `json:"gateway"`

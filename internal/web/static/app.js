@@ -86,10 +86,8 @@
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const meta = $("theme-color");
     if (meta) meta.setAttribute("content", dark ? "#161618" : "#ffffff");
-    const themeIcon = $("theme-icon");
-    if (themeIcon) themeIcon.innerHTML = dark ? THEME_SUN : THEME_MOON;
     const accountTheme = $("account-theme");
-    if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"));
+    if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"), el("span", "menu-count", dark ? "深色" : "浅色"));
     try { localStorage.setItem("xbot-theme", dark ? "dark" : "light"); } catch (e) {}
     // The desktop window's native buttons follow XBot's own theme, not the OS's.
     if (inApp) {
@@ -638,7 +636,7 @@
         row.append(wrap);
         row.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          setTip(row, "在节点 " + node + " 上");
+          setTip(row, "在 " + node + " 上");
         });
         body.append(row);
       });
@@ -1036,6 +1034,7 @@
     terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     chevronLeft: '<path d="m15 18-6-6 6-6"/>',
     chevronDown: '<path d="m6 9 6 6 6-6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -2658,7 +2657,9 @@
     toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
     toggle.append(icon(collapsed ? "chevron" : "chevronDown"));
     toggle.append(el("span", "folder-name", folder.name));
-    toggle.append(el("span", "folder-count", String(folder.count)));
+    // Pinned bots sit in the pin row only, so the count leaves them out.
+    const pinnedHere = (folder.bots || []).filter((n) => (state.bots.find((b) => b.name === n) || {}).pinned).length;
+    toggle.append(el("span", "folder-count", String(Math.max(0, folder.count - pinnedHere))));
     toggle.addEventListener("click", () => {
       closeFolderMenus();
       setFolderCollapsed(folder.name, !folderCollapsed(folder.name));
@@ -2710,7 +2711,7 @@
     const byName = {};
     for (const b of state.bots) byName[b.name] = b;
     for (const name of folder.bots || []) {
-      if (byName[name]) body.append(botRow(byName[name]));
+      if (byName[name] && !byName[name].pinned) body.append(botRow(byName[name]));
     }
     box.append(body);
     return box;
@@ -2737,22 +2738,32 @@
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
       btn.dataset.bot = b.name;
-      setTip(btn, b.name);
+      setTip(btn, b.name !== niceName(b.name) ? b.name : "");
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
       if (b.unread) av.append(el("i", "unread"));
-      btn.append(av);
+      // A pinned bot shows its name under the face; the primary bot keeps its pin.
+      const label = el("span", "pin-name");
+      label.append(el("span", "pin-label", niceName(b.name)));
+      if (b.primary) label.append(primaryMark());
+      btn.append(av, label);
       btn.addEventListener("click", () => pickBot(b.name));
       pins.append(btn);
     }
+    // One 新建 for the sidebar: 新建 Bot or 新建群组 (the 群组 "+" merged in).
     const add = el("button", "pin add");
     add.type = "button";
-    add.setAttribute("aria-label", "新建 Bot");
-    setTip(add, "新建 Bot", "right");
+    add.setAttribute("aria-label", "新建 Bot 或群组");
+    add.setAttribute("aria-haspopup", "menu");
+    add.setAttribute("aria-expanded", "false");
+    setTip(add, "新建 Bot 或群组", "right");
     const face = el("span", "plus-face");
     face.append(icon("plus"));
-    add.append(face);
-    add.addEventListener("click", openNewBot);
+    add.append(face, el("span", "pin-name pin-label", "新建"));
+    add.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleNewMenu(add);
+    });
     pins.append(add);
 
     const folders = state.folders.length
@@ -2765,20 +2776,14 @@
         const body = el("div", "folder-bots");
         for (const name of folder.bots || []) {
           const b = state.bots.find((bot) => bot.name === name);
-          if (b) body.append(botRow(b));
+          if (b && !b.pinned) body.append(botRow(b));
         }
         roster.append(body);
       } else roster.append(folderSection(folder));
     }
     if (state.others && state.others.length) roster.append(othersFolder());
 
-    const newer = el("button", "icon-btn");
-    newer.type = "button";
-    newer.setAttribute("aria-label", "新建群组");
-    setTip(newer, "新建群组", "right");
-    newer.append(icon("users-plus"));
-    newer.addEventListener("click", openNewGroup);
-    roster.append(sectionLabel("群组", newer));
+    roster.append(sectionLabel("群组"));
     for (const g of state.groups) {
       const btn = listButton(g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false, niceName(g.name || g.id));
       btn.addEventListener("click", () => {
@@ -2798,9 +2803,45 @@
       face.append(icon("person"));
       slot.replaceChildren(face);
     }
-    const name = $("me-name");
-    name.textContent = "我";
-    setTip(name, state.owner || "");
+    $("me-name").textContent = state.owner.trim() || "我";
+  }
+
+  // The 新建 menu under the pin row's last button.
+  function closeNewMenu() {
+    const menu = document.querySelector(".new-menu");
+    if (!menu) return;
+    const hadFocus = menu.contains(document.activeElement);
+    menu.remove();
+    const add = document.querySelector(".pin.add");
+    if (add) {
+      add.setAttribute("aria-expanded", "false");
+      if (hadFocus) add.focus(); // Escape returns to 新建, not to the page
+    }
+  }
+
+  function toggleNewMenu(anchor) {
+    const open = !document.querySelector(".new-menu");
+    closePops();
+    if (!open) return;
+    const menu = el("div", "pop folder-menu new-menu");
+    menu.setAttribute("role", "menu");
+    const item = (iconName, label, run) => {
+      const b = el("button", "menu-row");
+      b.type = "button";
+      b.setAttribute("role", "menuitem");
+      b.append(icon(iconName), el("span", "", label));
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeNewMenu();
+        run();
+      });
+      menu.append(b);
+    };
+    item("plus", "新建 Bot", openNewBot);
+    item("users-plus", "新建群组", openNewGroup);
+    anchor.setAttribute("aria-expanded", "true");
+    placeMenu(anchor, menu, "below");
+    menu.querySelector("button").focus();
   }
 
   function renderNotes() {
@@ -4210,7 +4251,7 @@
     for (const item of items) {
       const detail = [item.caller || "", item.id || ""].filter(Boolean).join(" · ");
       host.append(pendingApprovalCard({
-        title: "节点命令",
+        title: "另一台电脑要执行命令",
         subtitle: detail,
         summary: item.command || "",
         wait: 0,
@@ -4831,12 +4872,18 @@
   function closeAccount() {
     $("account-menu").hidden = true;
     $("account").setAttribute("aria-expanded", "false");
+    closeConnect(); // its list never outlives the 我 menu
+  }
+
+  function closeConnect() {
+    $("connect-pop").hidden = true;
+    $("account-connect").setAttribute("aria-expanded", "false");
   }
 
   function closePops() {
     closeAccount();
-    $("connect-pop").hidden = true;
-    $("connect").setAttribute("aria-expanded", "false");
+    closeConnect();
+    closeNewMenu();
     closePanelMenu();
     closeFolderMenus();
     closeToolPop();
@@ -4891,7 +4938,6 @@
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
     applyTheme(dark ? "light" : "dark");
   }
-  $("theme").addEventListener("click", toggleTheme);
   $("account-theme").addEventListener("click", () => {
     closeAccount();
     toggleTheme();
@@ -4900,7 +4946,9 @@
   let compactSidebarChoice = null;
   let wideSidebarCollapsed = false;
   function syncSidebar() {
-    const compact = window.innerWidth >= 768 && window.innerWidth <= 1100;
+    // Only below 960 does the list fold into the rail on its own; at 1024 it
+    // stays a list, 240px wide (device prototype v2, item 13).
+    const compact = window.innerWidth >= 768 && window.innerWidth < 960;
     const collapsed = compact ? compactSidebarChoice !== false : wideSidebarCollapsed;
     sidebar.classList.toggle("collapsed", collapsed);
     $("collapse").replaceChildren(icon("sidebar"), document.createTextNode(collapsed ? "展开列表" : "收起列表"));
@@ -4916,7 +4964,7 @@
     closeAccount();
     if (window.innerWidth < 768) { closeDrawer(); return; }
     const collapsed = !sidebar.classList.contains("collapsed");
-    if (window.innerWidth <= 1100) compactSidebarChoice = collapsed;
+    if (window.innerWidth < 960) compactSidebarChoice = collapsed;
     else wideSidebarCollapsed = collapsed;
     syncSidebar();
   });
@@ -4986,13 +5034,24 @@
   });
   window.addEventListener("resize", () => { if (inApp && !notesEl.hidden) fitNotes(); });
 
-  $("connect").addEventListener("click", (ev) => {
+  // 连接应用 is a row of the 我 menu; its list opens beside the menu.
+  $("account-connect").prepend(icon("link"));
+  $("account-connect").append(icon("chevron", "mark"));
+  $("account-connect").addEventListener("click", (ev) => {
     ev.stopPropagation();
-    closeAccount();
     const pop = $("connect-pop");
-    pop.hidden = !pop.hidden;
-    $("connect").setAttribute("aria-expanded", pop.hidden ? "false" : "true");
-    if (!pop.hidden) loadPush().catch(() => {});
+    const open = pop.hidden;
+    pop.hidden = !open;
+    $("account-connect").setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) return;
+    // Beside the menu, bottoms aligned; on a phone, above it.
+    const m = $("account-menu").getBoundingClientRect();
+    const side = window.innerWidth >= 768 && m.right + 8 + pop.offsetWidth <= window.innerWidth - 8;
+    pop.style.left = (side ? m.right + 8 : m.left) + "px";
+    pop.style.bottom = (side ? window.innerHeight - m.bottom : window.innerHeight - m.top + 8) + "px";
+    pop.style.top = "auto";
+    pop.style.maxHeight = Math.max(120, (side ? m.bottom : m.top - 8) - 8) + "px"; // scrolls on short screens
+    loadPush().catch(() => {});
   });
 
   function urlBase64ToUint8Array(s) {
@@ -5135,10 +5194,8 @@
 
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".account-wrap")) closeAccount();
-    if (!ev.target.closest(".connect-wrap")) {
-      $("connect-pop").hidden = true;
-      $("connect").setAttribute("aria-expanded", "false");
-    }
+    if (!ev.target.closest(".account-wrap")) closeConnect();
+    if (!ev.target.closest(".new-menu")) closeNewMenu();
     if (!ev.target.closest(".panel-actions") && !ev.target.closest(".menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
