@@ -288,6 +288,6 @@
   // devices.js 刷到新的设备数据后重画标题和离线说明。
   D.onPaint = () => { if (isOpen()) draw(); };
 
-  D.chat = { open: open, close: close, isOpen: isOpen, key: key, same: same };
-  window.xbotRemoteChat = D.chat;
+  // D.chat is a getter over window.xbotRemoteChat (devices.js), so set the window one.
+  window.xbotRemoteChat = { open: open, close: close, isOpen: isOpen, key: key, same: same };
 })();

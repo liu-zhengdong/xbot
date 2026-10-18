@@ -13,7 +13,7 @@ import (
 func TestRemoteChatUI(t *testing.T) {
 	for file, contract := range map[string]struct{ want, avoid []string }{
 		"index.html":     {want: []string{`<link rel="stylesheet" href="/remotechat.css">`, `<script src="/remotechat.js"></script>`}},
-		"remotechat.js":  {want: chatContract(t), avoid: []string{"节点", "disabled"}},
+		"remotechat.js":  {want: chatContract(t), avoid: []string{"节点", "disabled", "D.chat = "}},
 		"remotechat.css": {want: []string{`.rc { position: absolute; inset: 0;`, `.rc[hidden] { display: none; }`, `.rc-state .rc-hint {`, `.rc-error[hidden], .rc-error:empty { display: none; }`}},
 	} {
 		data, err := staticFS.ReadFile("static/" + file)
@@ -54,6 +54,7 @@ func chatContract(t *testing.T) []string {
 	// One literal per line, as in the rest of this file: chatContract itself
 	// has no raw string, so it cannot span from one literal to the next.
 	return []string{
+		`window.xbotRemoteChat = { open: open,`, // devices.js reads D.chat through a getter over this
 		`"/api/remote/" + encodeURIComponent(d) + "/bots/" + encodeURIComponent(b)`,
 		`api("POST", path(d, b) + "/messages", { text: t })`, `api("POST", path(V.dev, V.bot) + "/read")`,
 		`e.status === 502 && e.data && e.data.message`,
