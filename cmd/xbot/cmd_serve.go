@@ -518,6 +518,8 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	}
 	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
 	// Waited for on return, so nothing writes the data root after serve stops.
+	// remote cannot import kernel, so serve hands it the reply reader.
+	remote.TurnReply = kernel.ReplyAfter
 	remoteCtx, stopRemote := context.WithCancel(ctx)
 	remoteDone := make(chan struct{})
 	go func() {
