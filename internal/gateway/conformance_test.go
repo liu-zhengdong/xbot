@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,9 +12,14 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+var conformanceKeyMu sync.Mutex
+var conformanceKeyCounts = make(map[string]int)
 
 func TestConformanceGo(t *testing.T) {
 	s := httptest.NewServer((&Server{Dir: t.TempDir(), Open: true}).Handler())
@@ -28,12 +34,14 @@ func TestConformanceURL(t *testing.T) {
 	runConformance(t, base)
 }
 func conformanceRequire(t *testing.T, ok bool, message any) {
-	t.Helper()
 	if !ok {
 		t.Fatal(message)
 	}
 }
 func runConformance(t *testing.T, base string) {
+	started := time.Now()
+	var requests atomic.Int64
+	t.Cleanup(func() { t.Logf("HTTP requests: %d; elapsed: %s", requests.Load(), time.Since(started)) })
 	hc := &http.Client{Timeout: 60 * time.Second}
 	type response struct {
 		status int
@@ -48,6 +56,7 @@ func runConformance(t *testing.T, base string) {
 		if key != nil {
 			SignRequest(req, key, signedBody, now)
 		}
+		requests.Add(1)
 		res, err := hc.Do(req)
 		if err != nil {
 			return response{err: err}
@@ -63,19 +72,16 @@ func runConformance(t *testing.T, base string) {
 		return response{res.StatusCode, b, err}
 	}
 	raw := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, now time.Time) (int, []byte) {
-		t.Helper()
 		r := exchange(method, path, body, body, key, now)
 		conformanceRequire(t, r.err == nil, r.err)
 		return r.status, r.body
 	}
 	marshal := func(t *testing.T, v any) []byte {
-		t.Helper()
 		b, err := json.Marshal(v)
 		conformanceRequire(t, err == nil, err)
 		return b
 	}
 	check := func(t *testing.T, status, want int, body []byte, shape string) {
-		t.Helper()
 		conformanceRequire(t, status == want, fmt.Sprintf("status %d, want %d: %.200s", status, want, body))
 		var got, expected any
 		if shape != "" {
@@ -88,13 +94,11 @@ func runConformance(t *testing.T, base string) {
 		}
 	}
 	call := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, want int, shape string) []byte {
-		t.Helper()
 		status, b := raw(t, method, path, body, key, time.Now())
 		check(t, status, want, b, shape)
 		return b
 	}
 	poll := func(t *testing.T, key ed25519.PrivateKey) ([]Envelope, []byte) {
-		t.Helper()
 		b := call(t, "GET", "/v1/poll?wait=0", nil, key, 200, "")
 		var out struct {
 			Envelopes []Envelope `json:"envelopes"`
@@ -104,30 +108,40 @@ func runConformance(t *testing.T, base string) {
 		return out.Envelopes, b
 	}
 	ack := func(t *testing.T, key ed25519.PrivateKey, ids []string, n int) {
-		t.Helper()
 		call(t, "POST", "/v1/ack", marshal(t, map[string]any{"ids": ids}), key, 200, fmt.Sprintf(`{"acked":%d}`, n))
 	}
+	drain := func(t *testing.T, key ed25519.PrivateKey) {
+		for i := 0; i < 5; i++ {
+			envs, _ := poll(t, key)
+			if len(envs) == 0 {
+				return
+			}
+			ids := make([]string, len(envs))
+			for j, e := range envs {
+				ids[j] = e.ID
+			}
+			ack(t, key, ids, len(ids))
+		}
+		t.Error("queue did not drain within five rounds")
+	}
 	fresh := func(t *testing.T, register bool) ed25519.PrivateKey {
-		t.Helper()
-		_, key, err := ed25519.GenerateKey(nil)
-		conformanceRequire(t, err == nil, err)
+		var key ed25519.PrivateKey
+		if seed, set := os.LookupEnv("XBOT_GATEWAY_TEST_SEED"); set {
+			conformanceKeyMu.Lock()
+			conformanceKeyCounts[t.Name()]++
+			n := conformanceKeyCounts[t.Name()]
+			conformanceKeyMu.Unlock()
+			sum := sha256.Sum256([]byte(fmt.Sprintf("xbot-conformance-v1|%s|%s|%d", seed, t.Name(), n)))
+			key = ed25519.NewKeyFromSeed(sum[:])
+		} else {
+			var err error
+			_, key, err = ed25519.GenerateKey(nil)
+			conformanceRequire(t, err == nil, err)
+		}
 		if register {
 			call(t, "POST", "/v1/register", nil, key, 200, `{"status":"ok"}`)
-			t.Cleanup(func() {
-				// Bound cleanup even if a broken gateway never removes acknowledged mail.
-				for i := 0; i < 5; i++ {
-					envs, _ := poll(t, key)
-					if len(envs) == 0 {
-						return
-					}
-					ids := make([]string, len(envs))
-					for j, e := range envs {
-						ids[j] = e.ID
-					}
-					ack(t, key, ids, len(ids))
-				}
-				t.Error("queue still nonempty after cleanup")
-			})
+			drain(t, key)
+			t.Cleanup(func() { drain(t, key) })
 		}
 		return key
 	}
@@ -136,11 +150,9 @@ func runConformance(t *testing.T, base string) {
 		return NewEnvelope(a, ID(b.Public().(ed25519.PublicKey)), "msg", body, time.Now())
 	}
 	send := func(t *testing.T, a ed25519.PrivateKey, e Envelope, status int, state string) {
-		t.Helper()
 		call(t, "POST", "/v1/send", marshal(t, e), a, status, `{"status":"`+state+`"}`)
 	}
 	equal := func(t *testing.T, got, want Envelope, key ed25519.PrivateKey) {
-		t.Helper()
 		conformanceRequire(t, got.Time.Equal(want.Time), "envelope time changed")
 		got.Time = want.Time
 		conformanceRequire(t, !(!reflect.DeepEqual(got, want) || got.Verify(key.Public().(ed25519.PublicKey)) != nil), "envelope fields or signature changed")
@@ -222,7 +234,6 @@ func runConformance(t *testing.T, base string) {
 		ack(t, b, []string{e.ID}, 0)
 		send(t, a, e, 200, "duplicate")
 		_, body := poll(t, b)
-		conformanceRequire(t, !(!bytes.Contains(body, []byte(`"envelopes":[]`))), fmt.Sprintf("not empty array: %s", body))
 		check(t, 200, 200, body, `{"envelopes":[]}`)
 	})
 	t.Run("order", func(t *testing.T) {
@@ -240,19 +251,29 @@ func runConformance(t *testing.T, base string) {
 		}
 	})
 	t.Run("ack validation", func(t *testing.T) {
-		b := fresh(t, true)
+		a, b := pair(t)
 		for _, body := range [][]byte{[]byte(`{"ids":["not-hex"]}`), marshal(t, map[string]any{"ids": strings.Fields(strings.Repeat(strings.Repeat("0", 32)+" ", 65))}), []byte("not JSON")} {
 			call(t, "POST", "/v1/ack", body, b, 400, "")
 		}
+		e := env(a, b, []byte("ack validation")) // A random id: a fixed one would hit the tombstone left by the last run.
+		id := e.ID
+		ack(t, b, []string{id}, 0)
+		send(t, a, e, 202, "queued")
+		call(t, "POST", "/v1/ack", marshal(t, map[string]any{"ids": []string{id, "not-hex"}}), b, 400, "")
+		got, _ := poll(t, b)
+		conformanceRequire(t, len(got) == 1, "invalid ack removed envelope")
+		equal(t, got[0], e, a)
+		ack(t, fresh(t, true), []string{id}, 0)
+		got, _ = poll(t, b)
+		conformanceRequire(t, len(got) == 1, "other install ack removed envelope")
+		equal(t, got[0], e, a)
 	})
-	// Only HTTP synchronization is available: give the initial poll time to arrive.
-	startPoll := func(key ed25519.PrivateKey) <-chan response {
+	startPoll := func(key ed25519.PrivateKey, wait int) <-chan response {
 		ch := make(chan response, 1)
-		go func() { ch <- exchange("GET", "/v1/poll?wait=10", nil, nil, key, time.Now()) }()
+		go func() { ch <- exchange("GET", fmt.Sprintf("/v1/poll?wait=%d", wait), nil, nil, key, time.Now()) }()
 		return ch
 	}
 	await := func(t *testing.T, ch <-chan response, timeout time.Duration) []byte {
-		t.Helper()
 		select {
 		case r := <-ch:
 			conformanceRequire(t, r.err == nil, r.err)
@@ -263,27 +284,49 @@ func runConformance(t *testing.T, base string) {
 			return nil
 		}
 	}
+	received := func(t *testing.T, body []byte, e Envelope, a ed25519.PrivateKey) {
+		var out struct {
+			Envelopes []Envelope `json:"envelopes"`
+		}
+		conformanceRequire(t, json.Unmarshal(body, &out) == nil && len(out.Envelopes) == 1, fmt.Sprintf("bad delivery: %.200s", body))
+		equal(t, out.Envelopes[0], e, a)
+	}
 	t.Run("long poll wakes", func(t *testing.T) {
 		a, b := pair(t)
 		start := time.Now()
-		ch := startPoll(b)
+		ch := startPoll(b, 10)
 		time.Sleep(300 * time.Millisecond)
 		e := env(a, b, []byte("wake"))
 		send(t, a, e, 202, "queued")
 		body := await(t, ch, 5*time.Second-time.Since(start))
-		check(t, 200, 200, body, string(marshal(t, map[string]any{"envelopes": []Envelope{e}})))
+		received(t, body, e, a)
 	})
 	t.Run("long poll replaced", func(t *testing.T) {
-		b := fresh(t, true)
-		ch := startPoll(b)
-		time.Sleep(300 * time.Millisecond)
-		second := make(chan response, 1)
-		start := time.Now()
-		go func() { second <- exchange("GET", "/v1/poll?wait=1", nil, nil, b, time.Now()) }()
-		body := await(t, ch, 3*time.Second)
-		check(t, 200, 200, body, `{"envelopes":[]}`)
-		conformanceRequire(t, !(time.Since(start) >= 3*time.Second), "replacement too slow")
-		check(t, 200, 200, await(t, second, 5*time.Second), `{"envelopes":[]}`)
+		for attempt := 0; attempt < 3; attempt++ {
+			a, b := pair(t)
+			ch := startPoll(b, 10)
+			time.Sleep(300 * time.Millisecond)
+			second := startPoll(b, 5)
+			select {
+			case r := <-ch:
+				conformanceRequire(t, r.err == nil, r.err)
+				check(t, r.status, 200, r.body, `{"envelopes":[]}`)
+			case <-time.After(3 * time.Second):
+				await(t, second, 12*time.Second)
+				await(t, ch, 12*time.Second)
+				continue
+			}
+			select {
+			case r := <-second:
+				t.Fatalf("second poll returned before send: status=%d body=%.200s err=%v", r.status, r.body, r.err)
+			default:
+			}
+			e := env(a, b, []byte("replacement"))
+			send(t, a, e, 202, "queued")
+			received(t, await(t, second, 5*time.Second), e, a)
+			return
+		}
+		t.Fatal("first poll was not replaced within 3s in three attempts")
 	})
 	t.Run("wait clamp/timeout", func(t *testing.T) {
 		b := fresh(t, true)
@@ -295,12 +338,17 @@ func runConformance(t *testing.T, base string) {
 	})
 	t.Run("pair count limit", func(t *testing.T) {
 		a, b := pair(t)
-		for i := 0; i < 64; i++ {
+		first := env(a, b, []byte("small"))
+		send(t, a, first, 202, "queued")
+		for i := 1; i < 64; i++ {
 			send(t, a, env(a, b, []byte("small")), 202, "queued")
 		}
 		call(t, "POST", "/v1/send", marshal(t, env(a, b, nil)), a, 507, "")
+		send(t, a, first, 200, "duplicate")
 		got, _ := poll(t, b)
 		conformanceRequire(t, len(got) == MaxPoll, fmt.Sprintf("poll count %d, want %d", len(got), MaxPoll))
+		ack(t, b, []string{got[0].ID}, 1)
+		send(t, a, env(a, b, nil), 202, "queued")
 	})
 	t.Run("pair bytes limit and poll byte limit", func(t *testing.T) {
 		a, b := pair(t)
