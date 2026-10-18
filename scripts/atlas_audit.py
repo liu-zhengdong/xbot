@@ -43,6 +43,8 @@ for p in nodes:
 
     if p != ENTRY and not field(head, 'kind'):
         issues.append(f'[meta]   {rel}: missing kind in frontmatter')
+    if re.search(r'^(<{7} |={7}$|>{7} )', text, re.M):
+        issues.append(f'[merge]  {rel}: leftover merge conflict markers')
     budget = BUDGET['entry' if p == ENTRY else 'node']
     lines = text.count('\n')
     if lines > budget:
