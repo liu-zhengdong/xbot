@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -28,8 +29,6 @@ import (
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
-	"xbot/internal/node"
-	"xbot/internal/nodesync"
 	"xbot/internal/notify"
 	"xbot/internal/person"
 	"xbot/internal/provider"
@@ -238,7 +237,11 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			}
 			out = append(out, link.Runner{BaseURL: url, Token: token})
 		case link.NameNode:
-			out = append(out, node.Open(b.Root))
+			// The node feature is gone; an old grant mounts nothing and must not
+			// fail the bot. One notice per bot and process keeps restarts quiet.
+			if noteLegacyNodeGrant(b.Name()) {
+				fmt.Fprintf(os.Stderr, "xbot: bot %s: 节点功能已移除，忽略 node 授权\n", b.Name())
+			}
 		case link.NameDesktop:
 			out = append(out, desktop.Open(b.Root))
 		case link.NameBrowser:
@@ -265,6 +268,34 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		out = append(out, link.NewMCP(servers[i]))
 	}
 	return out, nil
+}
+
+// legacyNodeFiles names the retired node feature's files under root, in the
+// order the notice lists them. Serve only reports them; nothing is deleted.
+func legacyNodeFiles(root string) []string {
+	var found []string
+	for _, name := range []string{"nodes.json", "node-token", "node-pending"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
+			found = append(found, name)
+		}
+	}
+	return found
+}
+
+var (
+	legacyNodeGrants   = map[string]bool{}
+	legacyNodeGrantsMu sync.Mutex
+)
+
+// noteLegacyNodeGrant reports true the first time a bot's node grant is skipped.
+func noteLegacyNodeGrant(name string) bool {
+	legacyNodeGrantsMu.Lock()
+	defer legacyNodeGrantsMu.Unlock()
+	if legacyNodeGrants[name] {
+		return false
+	}
+	legacyNodeGrants[name] = true
+	return true
 }
 
 // startEmitters keeps one long-lived kernel for each bot that has an MCP server
@@ -516,7 +547,9 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	if !cfg.App {
 		fmt.Fprintf(os.Stderr, "login token: %s\n", token)
 	}
-	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
+	if legacy := legacyNodeFiles(root); len(legacy) > 0 {
+		fmt.Fprintln(os.Stderr, "xbot: 节点功能已移除，忽略数据目录里的旧节点文件（nodes.json、node-token、node-pending），文件保留不删")
+	}
 	// Waited for on return, so nothing writes the data root after serve stops.
 	// remote cannot import kernel, so serve hands it the reply reader.
 	remote.TurnReply = kernel.ReplyAfter

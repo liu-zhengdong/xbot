@@ -79,10 +79,6 @@ Usage:
   xbot [--root DIR] watch add <bot> <id> --path PATTERN
   xbot [--root DIR] watch list <bot>
   xbot [--root DIR] watch remove <bot> <id>
-  xbot [--root DIR] node serve [--addr 127.0.0.1:18772] [--token TOKEN|-] [--name NAME]
-  xbot [--root DIR] node add <name> --url URL [--token TOKEN|-]
-  xbot [--root DIR] node list
-  xbot [--root DIR] node remove <name>
   xbot [--root DIR] remote id
   xbot [--root DIR] remote gateway [URL|default]
   xbot [--root DIR] remote add <name> <key> [--xkey KEY] [--person ID]
@@ -91,13 +87,7 @@ Usage:
   xbot [--root DIR] remote list
   xbot [--root DIR] remote remove <name>
   xbot [--root DIR] gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]
-  xbot [--root DIR] node call <name> info
-  xbot [--root DIR] node call <name> shell <command>
-  xbot [--root DIR] node pending
-  xbot [--root DIR] node approve [--yes] <id>
   xbot [--root DIR] person unlink [--force] <link:id>
-  xbot [--root DIR] sync export --out FILE
-  xbot [--root DIR] sync merge --file FILE
   xbot [--root DIR] machine list
   xbot [--root DIR] machine set <name> allow|ask|off
   xbot [--root DIR] desktop screenshot
@@ -239,7 +229,7 @@ func run(argv []string) error {
 	case "watch":
 		return cmdWatch(root, rest[1:])
 	case "node":
-		return cmdNode(root, rest[1:])
+		return errors.New("xbot node 已移除：多台电脑之间请在「设备」里配对（命令行：xbot remote invite / xbot remote join）")
 	case "remote":
 		return cmdRemote(root, rest[1:])
 	case "gateway":
@@ -247,7 +237,7 @@ func run(argv []string) error {
 	case "person":
 		return cmdPerson(root, rest[1:])
 	case "sync":
-		return cmdSync(root, rest[1:])
+		return errors.New("xbot sync 已移除：每台电脑各自保留数据，不再同步人和记忆")
 	case "version":
 		return cmdVersion()
 	case "upgrade":
