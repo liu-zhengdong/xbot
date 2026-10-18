@@ -197,16 +197,6 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
       [Native]::Hover($sw.Width - 5, $sw.Height - 60) | Out-Null
       [Native]::Focus($hwnd) | Out-Null; Start-Sleep 1
       Shot $hwnd "$mode-$theme"
-      # Before hover and the screen shot: after those the page stops answering CDP.
-      if ($extras -contains 'login' -and $ws) {
-        try {
-          Say "login: socket $($ws.State)"
-          Cdp-Eval $ws "document.getElementById('login').hidden = false; true" | Out-Null
-          Start-Sleep 1
-          Shot $hwnd "$mode-$theme-login"
-          Cdp-Eval $ws "document.getElementById('login').hidden = true; true" | Out-Null
-        } catch { Say "login shot skipped: $($_.Exception.Message)" }
-      }
       if ($extras -contains 'hover') {
         $r = [Native]::Bounds($hwnd); $s = [Native]::GetDpiForWindow($hwnd) / 96.0
         foreach ($b in @(@{ n = 'close'; x = 23 }, @{ n = 'max'; x = 69 }, @{ n = 'min'; x = 115 })) {
@@ -233,13 +223,33 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
   }
 }
 
+# The login page exists only in the browser (the desktop app signs in by itself), so it is
+# shot in headless Edge at 2x against `xbot serve`. CDP in the app window stopped answering here.
+function Shot-Login([string] $theme) {
+  $root = Join-Path $env:RUNNER_TEMP "xbot-shots-$Label-login"
+  if (-not (Test-Path $root)) { & $Seed $root empty | ForEach-Object { Say $_ } }
+  $srv = Start-Process -FilePath $Exe -ArgumentList '--root', $root, 'serve', '--http', '127.0.0.1:8899' -PassThru -WindowStyle Hidden
+  try {
+    for ($i = 0; $i -lt 40; $i++) { try { Invoke-WebRequest 'http://127.0.0.1:8899/' -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep -Milliseconds 500 } }
+    $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    $file = Join-Path (Resolve-Path $Out) "$Label-login-$theme.png"
+    $ea = @('--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=2', '--window-size=1024,672',
+      "--user-data-dir=$env:RUNNER_TEMP\edge-login-$theme", "--screenshot=$file")
+    if ($theme -eq 'dark') { $ea += '--force-dark-mode' }
+    $ea += 'http://127.0.0.1:8899/'
+    $e = Start-Process -FilePath $edge -ArgumentList $ea -PassThru -Wait -WindowStyle Hidden
+    Say "login $theme -> $(if (Test-Path $file) { $file } else { 'no file' }) (edge exit $($e.ExitCode))"
+  } finally { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
+}
+
 Add-Type -AssemblyName System.Windows.Forms
 if ($Shots) {
-  Run-Case rich light @('hover', 'unfocused', 'screen', 'login')
-  Run-Case rich dark @('hover', 'unfocused', 'screen', 'login')
+  Run-Case rich light @('hover', 'unfocused', 'screen')
+  Run-Case rich dark @('hover', 'unfocused', 'screen')
   Run-Case empty light @()
   Run-Case chat dark @()
   Run-Case relay light @()
+  try { Shot-Login light; Shot-Login dark } catch { Say "login shots failed: $($_.Exception.Message)" }
 } elseif ($Fonts) {
   Run-Case chat light @()
 }

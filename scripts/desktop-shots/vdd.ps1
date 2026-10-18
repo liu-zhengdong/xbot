@@ -65,11 +65,17 @@ Get-PnpDevice -Class Display | ForEach-Object { Write-Host "display device: $($_
 Add-Type -AssemblyName System.Windows.Forms
 [Windows.Forms.Screen]::AllScreens | ForEach-Object { Write-Host "screen $($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }
 # Leave only the virtual display, so the app and the shots land on it.
-$virt = Get-PnpDevice -Class Display | Where-Object { $_.InstanceId -like "$hwid*" -and $_.Status -eq 'OK' }
+$virt = Get-PnpDevice -Class Display | Where-Object { $_.FriendlyName -eq 'Virtual Display Driver' -and $_.Status -eq 'OK' }
 if ($virt -and ([Windows.Forms.Screen]::AllScreens.Count -gt 1)) {
-  Get-PnpDevice -Class Display | Where-Object { $_.InstanceId -notlike "$hwid*" -and $_.Status -eq 'OK' } | ForEach-Object {
-    Write-Host "disabling $($_.FriendlyName)"; Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false
+  # "Second screen only": the system topology switch, as Win+P does.
+  & "$env:WINDIR\System32\DisplaySwitch.exe" /external
+  Start-Sleep 6
+  [Windows.Forms.Screen]::AllScreens | ForEach-Object { Write-Host "after switch: screen $($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }
+  if ([Windows.Forms.Screen]::AllScreens.Count -gt 1) {
+    Get-PnpDevice -Class Display | Where-Object { $_.FriendlyName -ne 'Virtual Display Driver' -and $_.Status -eq 'OK' } | ForEach-Object {
+      Write-Host "disabling $($_.FriendlyName)"; Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false
+    }
+    Start-Sleep 6
+    [Windows.Forms.Screen]::AllScreens | ForEach-Object { Write-Host "after disable: screen $($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }
   }
-  Start-Sleep 5
-  [Windows.Forms.Screen]::AllScreens | ForEach-Object { Write-Host "after: screen $($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }
 } else { Write-Host 'virtual display not attached; keeping the runner display' }
