@@ -4,9 +4,10 @@ import { fields, idRE } from "./wire";
 type Row = {id: string; sender: string; at: number; seq: number; size: number; data: string};
 const TTL = 7 * 86400000;
 export class Mailbox extends DurableObject<Env> {
+  private ready: boolean;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT); CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,sender TEXT,at INTEGER,seq INTEGER,size INTEGER,data TEXT); CREATE TABLE IF NOT EXISTS acked(id TEXT PRIMARY KEY,at INTEGER)");
+    this.ready = ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'").toArray().length > 0;
   }
   private sql<T extends Record<string, SqlStorageValue>>(q: string, ...args: SqlStorageValue[]) { return this.ctx.storage.sql.exec<T>(q, ...args).toArray(); }
   private meta(k: string) { return this.sql<{v: string}>("SELECT v FROM meta WHERE k=?", k)[0]?.v; }
@@ -41,16 +42,20 @@ export class Mailbox extends DurableObject<Env> {
   private wake(text: string) {
     for (const ws of this.ctx.getWebSockets()) try { ws.send(text); ws.close(1000); } catch {}
   }
-  registered(pub: number[]) { return this.ctx.blockConcurrencyWhile(async () => { await this.expire(); this.set("pub", JSON.stringify(pub)); this.set("registered", 1); this.touch(); }); }
-  idle(now: number) { return this.ctx.blockConcurrencyWhile(async () => { await this.expire(now); return {seen: Number(this.meta("seen") || 0), empty: !this.sql("SELECT id FROM queue LIMIT 1").length}; }); }
+  registered(pub: number[]) { return this.ctx.blockConcurrencyWhile(async () => {
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT); CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,sender TEXT,at INTEGER,seq INTEGER,size INTEGER,data TEXT); CREATE TABLE IF NOT EXISTS acked(id TEXT PRIMARY KEY,at INTEGER)");
+    this.ready = true; await this.expire(); this.set("pub", JSON.stringify(pub)); this.set("registered", 1); this.touch(); }); }
+  idle(now: number) { return this.ctx.blockConcurrencyWhile(async () => { if (!this.ready) return {seen: 0, empty: true}; await this.expire(now); return {seen: Number(this.meta("seen") || 0), empty: !this.sql("SELECT id FROM queue LIMIT 1").length}; }); }
   forget(now: number) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (!this.ready) return true;
     await this.expire(now);
     if (now - Number(this.meta("seen") || 0) <= 30 * 86400000 || this.sql("SELECT id FROM queue LIMIT 1").length) return false;
-    this.wake(empty); await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); return true;
+    this.wake(empty); await this.ctx.storage.deleteAll(); this.ready = false; await this.ctx.storage.deleteAlarm(); return true;
   }); }
-  alarm() { return this.ctx.blockConcurrencyWhile(() => this.expire()); }
+  alarm() { return this.ctx.blockConcurrencyWhile(async () => { if (this.ready) await this.expire(); }); }
   enqueue(data: string, sender: string, id: string, size: number, now: number) {
     return this.ctx.blockConcurrencyWhile(async () => {
+      if (!this.ready) return error(404, "unknown recipient");
       await this.expire(now);
       if (!this.meta("registered")) return error(404, "unknown recipient");
       if (this.sql("SELECT id FROM queue WHERE id=? UNION ALL SELECT id FROM acked WHERE id=?", id, id).length) return result(200, {status: "duplicate"});
@@ -67,6 +72,7 @@ export class Mailbox extends DurableObject<Env> {
     });
   }
   ack(raw: string) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (!this.ready) return error(403, "not registered");
     await this.expire();
     if (!this.meta("registered")) return error(403, "not registered");
     this.touch(); let ids: unknown;
@@ -83,6 +89,7 @@ export class Mailbox extends DurableObject<Env> {
     return result(200, {acked: removed.length});
   }); }
   fetch(r: Request) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (!this.ready) return jsonResponse(error(403, "not registered"));
     await this.expire();
     if (!this.meta("registered")) return jsonResponse(error(403, "not registered"));
     this.touch(); this.wake(empty);

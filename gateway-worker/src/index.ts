@@ -34,7 +34,7 @@ export default {
     let auth;
     try { auth = await authenticate(r, body, Date.now()); } catch (e) { return fail(401, (e as Error).message); }
     const {caller, pub} = auth, dir = env.DIRECTORY.getByName("global"), box = env.MAILBOX.getByName(caller), raw = new TextDecoder().decode(body);
-    if (u.pathname === "/v1/register") return jsonResponse(await dir.register(caller, Array.from(pub), r.headers.get("Authorization")));
+    if (u.pathname === "/v1/register") return jsonResponse(await dir.register(caller, Array.from(pub), r.headers.get("Authorization"), r.headers.get("CF-Connecting-IP") || ""));
     if (u.pathname === "/v1/send") {
       let e;
       try { e = await envelope(raw, caller, pub); } catch { const registered = await dir.isRegistered(caller); return fail(registered ? 400 : 403, registered ? "bad envelope" : "not registered"); }

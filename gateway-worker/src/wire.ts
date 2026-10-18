@@ -36,7 +36,7 @@ export async function authenticate(r: Request, body: Uint8Array, now: number) {
 }
 function timestamp(s: unknown) {
   if (typeof s !== "string") throw Error();
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.exec(s);
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([.,]\d+)?(Z|[+-]\d{2}:\d{2})$/.exec(s);
   if (!m) throw Error();
   const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number);
   const date = new Date(0); date.setUTCFullYear(y, mo - 1, d); date.setUTCHours(h, mi, sec, 0);
@@ -45,7 +45,7 @@ function timestamp(s: unknown) {
   if (zh > 23 || zm > 59) throw Error();
   date.setTime(date.getTime() - (zone[0] === "-" ? -1 : 1) * (zh * 60 + zm) * 60000);
   if (date.getUTCFullYear() < 0 || date.getUTCFullYear() > 9999) throw Error();
-  const fraction = (m[7] || "").replace(/0+$/, "").replace(/\.$/, "");
+  const digits = (m[7] || "").slice(1, 10).replace(/0+$/, ""), fraction = digits ? "." + digits : "";
   return {utc: date.toISOString().slice(0, 19) + fraction + "Z", stored: s.slice(0, 19) + fraction + (zh === 0 && zm === 0 ? "Z" : zone)};
 }
 // encoding/json matches struct field names without regard to case; unknown fields are ignored.

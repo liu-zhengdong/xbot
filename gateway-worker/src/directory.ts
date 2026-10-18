@@ -1,10 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { error, result, type Env } from "./index";
-import { enc, hash } from "./wire";
+import { enc, hash, hex } from "./wire";
 export class Directory extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS installs(id TEXT PRIMARY KEY,pub TEXT,seen INTEGER); CREATE TABLE IF NOT EXISTS bytes(sender TEXT PRIMARY KEY,n INTEGER)");
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS installs(id TEXT PRIMARY KEY,pub TEXT,seen INTEGER); CREATE TABLE IF NOT EXISTS bytes(sender TEXT PRIMARY KEY,n INTEGER); CREATE TABLE IF NOT EXISTS registrations(day TEXT,k TEXT PRIMARY KEY,n INTEGER)");
   }
   private sql<T extends Record<string, SqlStorageValue>>(q: string, ...args: SqlStorageValue[]) { return this.ctx.storage.sql.exec<T>(q, ...args).toArray(); }
   isRegistered(id: string) {
@@ -15,7 +15,10 @@ export class Directory extends DurableObject<Env> {
     if (to && !this.sql("SELECT id FROM installs WHERE id=?", to).length) return error(404, "unknown recipient");
     return null;
   }
-  async register(id: string, pub: number[], authorization: string | null) {
+  // Not blockConcurrencyWhile: Mailbox calls made from here may call release() back on this object.
+  async register(id: string, pub: number[], authorization: string | null, ip: string) {
+    const day = new Date().toISOString().slice(0, 10);
+    this.sql("DELETE FROM registrations WHERE day<?", day);
     if (this.isRegistered(id)) { await this.env.MAILBOX.getByName(id).registered(pub); return result(200, {status: "ok"}); }
     if (this.env.REGISTER_TOKEN) {
       if (!authorization?.startsWith("Bearer ")) return error(403, "registration closed");
@@ -23,9 +26,11 @@ export class Directory extends DurableObject<Env> {
       let diff = 0; for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
       if (diff) return error(401, "bad token");
     }
+    const k = hex(await hash(enc.encode("xbot-reg|" + day + "|" + ip))).slice(0, 32);
+    if ((this.sql<{n: number}>("SELECT n FROM registrations WHERE k=?", k)[0]?.n || 0) >= 30) return error(429, "too many registrations");
     const now = Date.now(), cap = Number(this.env.MAX_INSTALLS || "1000");
     const count = () => this.sql<{n: number}>("SELECT COUNT(*) AS n FROM installs")[0].n;
-    if (count() >= cap) for (const row of this.sql<{id: string; seen: number}>("SELECT id,seen FROM installs WHERE seen<? ORDER BY seen LIMIT 8", now - 30 * 86400000)) {
+    if (count() >= cap) for (const row of this.sql<{id: string; seen: number}>("SELECT id,seen FROM installs WHERE seen<? ORDER BY seen LIMIT 64", now - 30 * 86400000)) {
       const box = this.env.MAILBOX.getByName(row.id), state = await box.idle(now);
       if (state.empty && now - state.seen > 30 * 86400000 && await box.forget(now)) {
         this.sql("DELETE FROM installs WHERE id=?", row.id); break;
@@ -34,6 +39,7 @@ export class Directory extends DurableObject<Env> {
     }
     if (!this.isRegistered(id)) {
       if (count() >= cap) return error(403, "too many installs");
+      this.sql("INSERT INTO registrations VALUES(?,?,1) ON CONFLICT(k) DO UPDATE SET n=n+1", day, k);
       this.sql("INSERT INTO installs VALUES(?,?,?)", id, JSON.stringify(pub), now);
     }
     await this.env.MAILBOX.getByName(id).registered(pub);

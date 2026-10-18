@@ -3,6 +3,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root/gateway-worker"
 # A dedicated process group lets cleanup include cf's Vite/workerd children.
+rm -rf .cloudflare/state
+# Fresh local state each run: the official gateway caps new installs per IP per day.
 setsid npx cf dev > conformance-dev.log 2>&1 &
 pid=$!
 cleanup() { kill -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -f conformance-dev.log; }
