@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -58,4 +60,23 @@ func TestCodeRetentionAndLimits(t *testing.T) {
 	}
 	_, err = client().ClaimCode(ctx, "ZZZZ")
 	check(err, 429)
+
+	// IPv6 is limited per /64: two addresses in one /64 share the budget.
+	now = now.Add(2 * time.Minute)
+	h := s.Handler()
+	for i := range 11 {
+		c := client()
+		c.HTTP = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+			r.RemoteAddr = fmt.Sprintf("[2001:db8::%d]:1", i)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			return w.Result(), nil
+		})}
+		_, err = c.ClaimCode(ctx, "ZZZZ")
+		check(err, map[bool]int{true: 429, false: 404}[i == 10])
+	}
 }
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

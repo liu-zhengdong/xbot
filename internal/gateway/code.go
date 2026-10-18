@@ -212,6 +212,9 @@ func (s *Server) claimCode(r *http.Request, body []byte, caller string, pub ed25
 			}
 		}
 	}
+	if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
+		ip = parsed.Mask(net.CIDRMask(64, 128)).String() // One IPv6 host usually owns a /64.
+	}
 	stale := func(t time.Time) bool { return !t.After(s.now().Add(-time.Minute)) }
 	s.codeTries = slices.DeleteFunc(s.codeTries, stale)
 	for host, tries := range s.codeFailures {
