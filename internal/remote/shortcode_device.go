@@ -145,7 +145,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 		}
 		if replace {
 			for i, old := range c.Devices {
-				if deviceLabel(old) == label && old.Key != key {
+				if deviceLabel(old) == label && old.Key != key && old.Person == d.Person {
 					if err := os.Remove(filepath.Join(root, "remote", "dirs", old.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 						return err
 					}

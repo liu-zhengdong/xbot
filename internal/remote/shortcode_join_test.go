@@ -96,7 +96,7 @@ func (o *fakeOwner) answer(secret string) pake.Keys {
 	info := pairInfo{Name: "书房 iMac", OS: "macOS", Bots: []string{"ada"}, Deadline: time.Now().Add(2 * time.Minute).Unix()}
 	sealed, err := sealPair(keys, reply, info)
 	mustRemote(o.t, err)
-	reply.Body, _ = json.Marshal(shortMessage{PB: pb, Key: o.key, XKey: o.x, Confirm: keys.MyConfirm, Info: sealed})
+	reply.Body, _ = json.Marshal(shortMessage{PB: pb, Key: o.key, XKey: o.x, Confirm: keys.MyConfirm, Info: sealed, Echo: paEcho(m.PA)})
 	reply.Sign(o.c.Key)
 	mustRemote(o.t, o.c.Send(context.Background(), reply))
 	o.deliverB()

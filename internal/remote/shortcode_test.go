@@ -298,7 +298,7 @@ func TestShortCodeCollision(t *testing.T) {
 			mustRemote(t, err)
 			_, err = person.Identify(h.a, person.Account{Link: "terminal", ExternalID: "uid:2"}, "other")
 			mustRemote(t, err)
-			old, err := AddDevice(h.a, "keep-address", oldKey, oldX, "u2")
+			old, err := AddDevice(h.a, "keep-address", oldKey, oldX, "u1") // 替换 only within one person.
 			mustRemote(t, err)
 			mustRemote(t, update(h.a, func(c *Config) error { c.Devices[0].Label = "Café laptop"; return nil }))
 			cache := filepath.Join(h.a, "remote", "dirs", oldID+".json")

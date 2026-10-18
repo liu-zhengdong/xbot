@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -90,7 +91,7 @@ func (s *pairingState) startJoin(ctx context.Context, root string, c *gateway.Cl
 	if err != nil {
 		return err
 	}
-	s.join = &shortSession{peer: owner, lookup: lookup, state: state, expires: time.Now().Add(20 * time.Second)}
+	s.join = &shortSession{peer: owner, lookup: lookup, state: state, expires: time.Now().Add(20 * time.Second), pa: pa}
 	s.status.B = PairingPhase{Phase: "checking", Expires: s.join.expires}
 	s.publish()
 	env := gateway.NewEnvelope(c.Key, owner, "pake1", nil, time.Now())
@@ -104,8 +105,8 @@ func (s *pairingState) startJoin(ctx context.Context, root string, c *gateway.Cl
 }
 func (s *pairingState) receivePake2(root string, env gateway.Envelope, m shortMessage, now time.Time) error {
 	j := s.join
-	if j == nil || j.peer != env.From || s.status.B.Phase != "checking" || !now.Before(j.expires) {
-		return nil
+	if j == nil || j.peer != env.From || s.status.B.Phase != "checking" || !now.Before(j.expires) || !bytes.Equal(m.Echo, paEcho(j.pa)) {
+		return nil // An answer to an earlier attempt is not a wrong code.
 	}
 	_, _, bk, err := Identity(root)
 	if err != nil {
@@ -127,26 +128,31 @@ func (s *pairingState) receivePake2(root string, env gateway.Envelope, m shortMe
 		s.status.B = PairingPhase{Phase: "wrong"}
 		return nil
 	}
-	deadline := time.Unix(info.Deadline, 0)
-	if info.Deadline == 0 || !now.Before(deadline) {
+	// A's deadline and the envelope time are both on A's clock (and signed),
+	// so B's window does not depend on the two clocks agreeing.
+	left := time.Unix(info.Deadline, 0).Sub(env.Time)
+	if info.Deadline == 0 || left <= 0 {
 		s.join = nil
 		s.status.B = PairingPhase{Phase: "offline"}
 		return nil
 	}
 	j.state = nil
 	j.keys, j.key, j.xkey, j.info = keys, m.Key, m.XKey, info
-	j.expires = deadline
-	if limit := now.Add(2 * time.Minute); limit.Before(j.expires) {
-		j.expires = limit
-	}
+	j.expires = now.Add(min(left, 2*time.Minute))
 	s.status.B = infoPhase("confirm", info, j.expires)
 	return nil
 }
 func (s *pairingState) receivePake4(root string, env gateway.Envelope, now time.Time) error {
-	j := s.join
-	if s.status.B.Phase != "waiting" || !now.Before(j.expires) {
+	// A's allow can arrive after B's window (B asleep, a slow gateway) when A
+	// has already saved B, so accept it for 5 more minutes.
+	j, late := s.join, false
+	if j == nil || j.peer != env.From || s.status.B.Phase != "waiting" {
+		j, late = s.late, true
+	}
+	if j == nil || !now.Before(j.expires.Add(5*time.Minute)) {
 		return nil
 	}
+	late = late || !now.Before(j.expires)
 	var result struct {
 		OK bool `json:"ok"`
 	}
@@ -166,10 +172,14 @@ func (s *pairingState) receivePake4(root string, env gateway.Envelope, now time.
 		}
 		s.status.B = PairingPhase{Phase: "done", Name: deviceLabel(d)}
 		wakeDirectories(root)
-	} else {
+	} else if !late {
 		s.status.B = PairingPhase{Phase: "denied"}
 	}
-	s.join = nil
+	if j == s.late {
+		s.late = nil
+	} else {
+		s.join = nil
+	}
 	return nil
 }
 func ConfirmJoin(ctx context.Context, root string) error {
@@ -204,7 +214,13 @@ func (s *pairingState) tickJoin(now time.Time) {
 		if s.status.B.Phase == "checking" {
 			phase = "offline"
 		}
+		if phase == "denied" {
+			s.late = j
+		}
 		s.join = nil
 		s.status.B = PairingPhase{Phase: phase}
+	}
+	if l := s.late; l != nil && !now.Before(l.expires.Add(5*time.Minute)) {
+		s.late = nil
 	}
 }

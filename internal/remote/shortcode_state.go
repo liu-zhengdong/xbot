@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -48,6 +49,7 @@ type shortMessage struct {
 	Key     string          `json:"key,omitempty"`
 	XKey    string          `json:"xkey,omitempty"`
 	Confirm []byte          `json:"confirm,omitempty"`
+	Echo    []byte          `json:"echo,omitempty"` // pake2: which pake1 it answers
 	Info    json.RawMessage `json:"info,omitempty"`
 }
 type shortSession struct {
@@ -59,6 +61,7 @@ type shortSession struct {
 	pa                      []byte            // A: B's pake1 share, to spot a redelivery
 	reply                   *gateway.Envelope // A: signed pake2, resent on redelivery
 	result                  *bool             // A: committed decision; never changes
+	replace                 bool              // A: with result, 替换 rather than 添加
 }
 type shortOwner struct {
 	lookup, secret, person string
@@ -72,6 +75,7 @@ type pairingState struct {
 	status Status
 	owner  *shortOwner
 	join   *shortSession
+	late   *shortSession // B: a timed-out join that may still get A's allow
 	client *gateway.Client
 	view   atomic.Pointer[Status]
 }
@@ -144,6 +148,9 @@ func receiveShort(root, self string, env gateway.Envelope, now time.Time) error 
 		}
 		if env.Kind == "pake4" {
 			active = s.join
+			if active == nil || active.peer != env.From {
+				active = s.late
+			}
 		}
 		if active == nil || active.peer != env.From {
 			return nil
@@ -165,6 +172,10 @@ func receiveShort(root, self string, env gateway.Envelope, now time.Time) error 
 	}
 	return nil
 }
+
+// paEcho lets B match a pake2 to its current pake1, so the answer to an
+// earlier attempt is ignored instead of shown as 配对码不对.
+func paEcho(pa []byte) []byte { h := sha256.Sum256(pa); return h[:8] }
 func infoPhase(phase string, info pairInfo, expires time.Time) PairingPhase {
 	return PairingPhase{Phase: phase, Name: info.Name, OS: info.OS, Bots: info.Bots, Expires: expires}
 }
