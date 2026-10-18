@@ -430,6 +430,8 @@ type serveConfig struct {
 	AutoUpgrade bool
 	App         bool
 	OnListening func(ui *web.Server, addr net.Addr)
+	// DeliverTimers replaces serve.DeliverTimers; nil uses it.
+	DeliverTimers func(root string, now time.Time) error
 }
 
 func runServe(ctx context.Context, root string, cfg serveConfig) error {
@@ -445,6 +447,14 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	gatewayToken := os.Getenv("XBOT_GATEWAY_TOKEN")
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// Tickers that write the data root are waited for on return, after the
+	// context ends, so nothing writes the root once serve has stopped.
+	var tickers sync.WaitGroup
+	defer func() { cancel(); tickers.Wait() }()
+	deliverTimers := cfg.DeliverTimers
+	if deliverTimers == nil {
+		deliverTimers = serve.DeliverTimers
+	}
 	if cfg.App {
 		cfg.Tunnel = ""
 		cfg.AutoUpgrade = false
@@ -493,7 +503,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	migrateServeRoutines(root)
 	// One synchronous check before the server and the bot pass start, so a
 	// notice for slots missed while down is computed before anything runs them.
-	if err := serve.DeliverTimers(root, time.Now()); err != nil {
+	if err := deliverTimers(root, time.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "xbot: routines:", err)
 	}
 	if ln == nil {
@@ -570,11 +580,13 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	defer func() { stopRemote(); <-remoteDone }()
 	// Routines get their own ticker, with a fresh now each tick, so a one-shot
 	// does not wait behind every bot's model calls in serve.Pass.
+	tickers.Add(1)
 	go func() {
+		defer tickers.Done()
 		tick := time.NewTicker(serve.TimerEvery)
 		defer tick.Stop()
 		for {
-			if err := serve.DeliverTimers(root, time.Now()); err != nil {
+			if err := deliverTimers(root, time.Now()); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot: routines:", err)
 			}
 			select {
@@ -602,7 +614,9 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	if cfg.OnListening != nil {
 		cfg.OnListening(ui, ln.Addr())
 	}
+	tickers.Add(1)
 	go func() {
+		defer tickers.Done()
 		tick := time.NewTicker(200 * time.Millisecond)
 		defer tick.Stop()
 		for {

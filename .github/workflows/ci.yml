@@ -28,18 +28,8 @@ jobs:
         # The eval jail uses unshare; Ubuntu 24.04 runners block that through AppArmor by default.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: go test
-        # Known flakes, skipped by name only:
-        #   #51 TempDir cleanup race: TestRunningShortOutputAndHeldPrefix, TestRelativeRootSpawn
-        #   #55 holdout blank-chart is a live-model eval case, not a go test, so there is nothing to skip here.
-        #   #144 TempDir cleanup race: TestSpawnWhileChatKeepsAnswering
-        #   #222 TempDir cleanup race: TestShellJobFileUsesKernelRedactor
-        #   #223 TempDir cleanup race: TestShellFormsHoldSplitKey
-        #   #224 TempDir cleanup race: TestRunServeApp
-        #   #225 2s process-exit deadline: TestStopChecksCommandLine
-        #   #226 2s process-exit deadline: TestReleaseTiedLeavesCLI
-        # They still run locally. Drop a name here when its issue is closed.
         # Pull requests run -short (lighter property test, skips the 5 s unpair timeout); pushes to main run the full suite.
-        run: go test -count=1 ${{ github.event_name == 'pull_request' && '-short' || '' }} -skip '^(TestRunningShortOutputAndHeldPrefix|TestRelativeRootSpawn|TestSpawnWhileChatKeepsAnswering|TestShellJobFileUsesKernelRedactor|TestShellFormsHoldSplitKey|TestRunServeApp|TestStopChecksCommandLine|TestReleaseTiedLeavesCLI)$' ./...
+        run: go test -count=1 ${{ github.event_name == 'pull_request' && '-short' || '' }} ./...
 
   build:
     name: build (${{ matrix.os }})
