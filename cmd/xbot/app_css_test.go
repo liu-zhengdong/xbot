@@ -18,16 +18,13 @@ func TestDesktopTitleBarCSS(t *testing.T) {
 		t.Fatal(rec.Code)
 	}
 	css := rec.Body.String()
+	// The desktop window: a drag strip as tall as MyGo's title bar, the native
+	// window buttons' inset kept empty, and the card starting below the strip.
 	for _, rule := range []string{
-		"@supports (padding-left: max(0px, 1px))",
-		".in-app .sidebar .pin-row {",
-		"padding-top: calc(16px + var(--mygo-titlebar-height, 0px))",
-		"padding-left: max(var(--mygo-titlebar-inset-left, 0px), 0px)",
-		".in-app .top {\n    --app-region: drag;",
-		"padding-right: calc(16px + var(--mygo-titlebar-inset-right, 0px))",
-		".in-app .panel-bar {\n    --app-region: drag;",
-		"right: calc(8px + var(--mygo-titlebar-inset-right, 0px))",
-		".in-app :is(.pin-row, .top, .panel-bar) :is(button, a, input, select, textarea, [role=\"button\"])",
+		"--strip-h: var(--mygo-titlebar-height, 40px);",
+		"--strip-reserve: var(--mygo-titlebar-inset-right, 0px);",
+		"background: var(--base); --app-region: drag;",
+		".in-app .shell { padding: var(--strip-h) 8px 8px 0; }",
 		"--app-region: no-drag",
 	} {
 		if !strings.Contains(css, rule) {

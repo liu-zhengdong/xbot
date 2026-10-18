@@ -19,7 +19,9 @@
 
 `POST /api/logout` 清 cookie，200 `{"status":"ok"}`。
 
-`GET /api/session` 已登录时 200 `{"owner":"<id>"}`。
+`GET /api/session` 已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。
+
+`POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 
 ## Bot 列表与创建
 

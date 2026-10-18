@@ -66,6 +66,7 @@ type shortSession struct {
 	sent                    bool              // B: pake3 may have reached A (its reply can be lost)
 	sent1                   time.Time         // B: when pake1 was sent, to count relay delay
 	saved                   bool              // A: the device was saved, so done may be reported
+	nameFull                bool              // A: the last save found no free name, so the user may still pick 替换 or 拒绝
 }
 type shortOwner struct {
 	lookup, secret, person string
