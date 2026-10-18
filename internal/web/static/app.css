@@ -245,10 +245,15 @@ button:disabled { cursor: default; }
   mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
 
-/* The header avatar: the same round face as the list (device prototype 68). */
+/* Header and message faces are 24px and round (window review P1 #4 size,
+   device prototype v2 shape), so header, bot message and composer share x. */
 .title .avatar.head {
-  width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex: none;
+  width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex: none;
 }
+
+.msg > .avatar { width: 24px; height: 24px; margin-top: 1px; }
+
+.msg { gap: 12px; }
 
 .pair-title {
   display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%;
