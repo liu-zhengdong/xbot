@@ -119,12 +119,10 @@ func readCursorOf(root, device, name string) readCursor {
 	return c
 }
 
-// MarkChatRead moves the cursor to the newest line, so the unread count stays
-// zero until the bot answers again. Without a transcript it does nothing.
-
 // MarkChatRead moves the read cursor to the line upTo, or to the newest line
 // when upTo is empty, so a reply that arrived after the owner's view stays
-// unread. No transcript or an unknown upTo leaves the cursor alone.
+// unread. No transcript or an unknown upTo leaves the cursor alone, and the
+// cursor never moves back: overlapping views can finish out of order.
 func MarkChatRead(root, deviceID, botName, upTo string) error {
 	if !bot.ValidName(botName) {
 		return errors.New("remote: invalid bot name")
@@ -148,11 +146,18 @@ func MarkChatRead(root, deviceID, botName, upTo string) error {
 			return nil
 		}
 	}
-	raw, err := fsutil.Marshal(readCursor{ID: lines[at].ID, At: lines[at].At})
-	if err != nil {
-		return err
-	}
-	return fsutil.WriteAtomic(readPath(root, d.ID, botName), raw, 0600)
+	path := readPath(root, d.ID, botName)
+	return fsutil.WithLock(path+".lock", func() error {
+		cur := readCursorOf(root, d.ID, botName)
+		if i := slices.IndexFunc(lines, func(m ChatMessage) bool { return m.ID == cur.ID }); i > at || (i < 0 && cur.At.After(lines[at].At)) {
+			return nil
+		}
+		raw, err := fsutil.Marshal(readCursor{ID: lines[at].ID, At: lines[at].At})
+		if err != nil {
+			return err
+		}
+		return fsutil.WriteAtomic(path, raw, 0600)
+	})
 }
 
 var (
