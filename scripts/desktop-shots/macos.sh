@@ -27,6 +27,12 @@ $icon
 PLIST
 log="$out/mac-log.txt"; : > "$log"
 say() { echo "$(date +%T) $*" | tee -a "$log"; }
+# A 2x virtual display as the main one (best effort; the runner's own display is 1x).
+if clang -fobjc-arc -framework Foundation -framework CoreGraphics -o "$work/vdisplay" "$here/vdisplay.m" 2>>"$log"; then
+  "$work/vdisplay" >>"$log" 2>&1 &
+  vpid=$!; trap 'kill $vpid 2>/dev/null || true' EXIT
+  sleep 5
+else say "vdisplay did not build"; fi
 say "screen: $(system_profiler SPDisplaysDataType 2>/dev/null | grep -E 'Resolution|Retina|UI Looks' | tr -s ' ' | tr '\n' ';')"
 
 appearance() { # light|dark
