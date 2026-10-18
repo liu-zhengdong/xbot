@@ -32,13 +32,16 @@
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.status === 401) { sessionExpired(); }
+    authed = true;
     let data = null;
     try { data = await res.json(); } catch (e) { data = null; }
     if (!res.ok) { const err = new Error((data && data.error) || "请求失败"); err.status = res.status; throw err; }
     return data;
   }
   // 登录过期：收起设备抽屉和弹窗、清掉状态和挂到 body 上的层，重新加载让 app.js 走登录流程
+  let authed = false; // Before login (the login page) a 401 is normal: never reload then.
   function sessionExpired() {
+    if (!authed) { const err = new Error("未登录"); err.status = 401; throw err; }
     S.drawer = false; S.view = null; S.menuFor = ""; S.target = null; S.fieldErr = ""; S.busy = false;
     if (drawerEl) { try { drawerEl.remove(); } catch (e) { drawerEl.innerHTML = ""; } }
     if (modalEl) { try { modalEl.remove(); } catch (e) { modalEl.innerHTML = ""; } }
