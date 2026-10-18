@@ -48,6 +48,23 @@ func HoldKeys(names []string) {
 	}
 }
 
+// SetHeld keeps a provider key that arrived after startup, such as the one the
+// desktop first-run screen saves. It is never put in the process environment.
+func SetHeld(name, value string) {
+	heldMu.Lock()
+	defer heldMu.Unlock()
+	if heldKeys == nil {
+		heldKeys = map[string]string{}
+	}
+	if heldNames == nil {
+		heldNames = map[string]bool{}
+	}
+	heldNames[name] = true
+	heldKeys[name] = strings.Clone(value)
+	heldRedactOK = false
+	heldRedact = nil
+}
+
 // ForgetKeys drops the in-memory copies. Tests use it.
 func ForgetKeys() {
 	heldMu.Lock()

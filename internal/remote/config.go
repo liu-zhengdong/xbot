@@ -253,5 +253,9 @@ func SetGateway(root, raw string) error {
 	if isOfficial(raw) {
 		raw = "" // Stored as the default so the idle privacy rule still applies.
 	}
-	return update(root, func(c *Config) error { c.Gateway = raw; return nil })
+	err := update(root, func(c *Config) error { c.Gateway = raw; return nil })
+	if err == nil {
+		wakeRun(root) // A loop idling without a gateway starts now.
+	}
+	return err
 }

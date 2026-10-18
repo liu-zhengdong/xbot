@@ -164,7 +164,9 @@ func runOutbox(ctx context.Context, root string, logf func(string, ...any)) {
 			priv, _, _, keyErr := Identity(root)
 			err = keyErr
 			if err == nil {
-				err = flushOutbox(ctx, root, &gateway.Client{Base: cfg.GatewayURL(), Key: priv}, time.Now())
+				client := &gateway.Client{Base: cfg.GatewayURL(), Key: priv}
+				tickPairing(ctx, root, client, time.Now())
+				err = flushOutbox(ctx, root, client, time.Now())
 			}
 		}
 		if err != nil && logf != nil && ctx.Err() == nil {
