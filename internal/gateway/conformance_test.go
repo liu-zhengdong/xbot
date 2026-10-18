@@ -44,11 +44,13 @@ func runConformance(t *testing.T, base string) {
 	t.Cleanup(func() { t.Logf("HTTP requests: %d; elapsed: %s", requests.Load(), time.Since(started)) })
 	hc := &http.Client{Timeout: 60 * time.Second}
 	type response struct {
-		status int
-		body   []byte
-		err    error
+		status  int
+		body    []byte
+		err     error
+		retried bool // a transport error was retried, so the first attempt may have landed
 	}
-	exchange := func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
+	var exchange func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response
+	once := func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
 		req, err := http.NewRequest(method, strings.TrimRight(base, "/")+path, bytes.NewReader(body))
 		if err != nil {
 			return response{err: err}
@@ -69,7 +71,18 @@ func runConformance(t *testing.T, base string) {
 		if strings.HasPrefix(path, "/v1/") && res.StatusCode != 404 && !strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") {
 			err = fmt.Errorf("Content-Type: %q", res.Header.Get("Content-Type"))
 		}
-		return response{res.StatusCode, b, err}
+		return response{res.StatusCode, b, err, false}
+	}
+	// Remote runs cross real networks that drop a fraction of a percent of connections (seen
+	// even against unrelated hosts). Retry those once or twice; HTTP replies are never retried.
+	exchange = func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
+		r := once(method, path, body, signedBody, key, now)
+		for i := 0; i < 2 && r.status == 0 && r.err != nil && base != "" && !strings.HasPrefix(base, "http://127.0.0.1"); i++ {
+			t.Logf("retrying %s %s after transport error: %v", method, path, r.err)
+			r = once(method, path, body, signedBody, key, now)
+			r.retried = true
+		}
+		return r
 	}
 	raw := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, now time.Time) (int, []byte) {
 		r := exchange(method, path, body, body, key, now)
@@ -94,9 +107,13 @@ func runConformance(t *testing.T, base string) {
 		}
 	}
 	call := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, want int, shape string) []byte {
-		status, b := raw(t, method, path, body, key, time.Now())
-		check(t, status, want, b, shape)
-		return b
+		r := exchange(method, path, body, body, key, time.Now())
+		conformanceRequire(t, r.err == nil, r.err)
+		if r.retried && r.status == 200 && (want == 202 && path == "/v1/send" || path == "/v1/ack") {
+			return r.body // The dropped attempt may have queued or acked already; the retry then sees a duplicate or fewer acks.
+		}
+		check(t, r.status, want, r.body, shape)
+		return r.body
 	}
 	poll := func(t *testing.T, key ed25519.PrivateKey) ([]Envelope, []byte) {
 		b := call(t, "GET", "/v1/poll?wait=0", nil, key, 200, "")
