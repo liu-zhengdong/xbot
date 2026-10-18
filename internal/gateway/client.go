@@ -32,6 +32,11 @@ type Client struct {
 func (c *Client) Register(ctx context.Context, token string) error {
 	return c.request(ctx, "/v1/register", nil, strings.TrimSpace(token), 15*time.Second, nil)
 }
+
+// AdmitCode promotes a pending install that claimed this owner's code.
+func (c *Client) AdmitCode(ctx context.Context, install string) error {
+	return c.request(ctx, "/v1/code/admit", map[string]string{"install": install}, "", 15*time.Second, nil)
+}
 func (c *Client) Send(ctx context.Context, env Envelope) error {
 	return c.request(ctx, "/v1/send", env, "", 15*time.Second, nil)
 }
