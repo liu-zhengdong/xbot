@@ -10,7 +10,6 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"unicode"
 
 	"xbot/internal/gateway"
 	"xbot/internal/pake"
@@ -36,23 +35,25 @@ func checkChar(data string) byte {
 	return gateway.CodeAlphabet[(n-sum%n)%n]
 }
 
-// ParseShortCode extracts the first twelve code characters, including pasted prose.
+// ParseShortCode finds the code in pasted text: twelve code characters made of
+// consecutive ASCII words (any other character separates words), so prose
+// around it ("Code: 2345-6789-ABC7") is never folded into the code.
 func ParseShortCode(s string) (lookup, secret string, err error) {
 	if len(s) > codeMax {
 		return "", "", ErrBadCode
 	}
-	var run []byte
-	for _, r := range strings.ToUpper(s) {
-		if strings.ContainsRune(gateway.CodeAlphabet, r) {
-			run = append(run, byte(r))
-			if len(run) == 12 {
-				if checkChar(string(run[:11])) != run[11] {
-					return "", "", ErrBadCode
-				}
-				return string(run[:4]), string(run[4:11]), nil
+	words := strings.FieldsFunc(strings.ToUpper(s), func(r rune) bool {
+		return !('A' <= r && r <= 'Z' || '0' <= r && r <= '9')
+	})
+	for i := range words {
+		code := ""
+		for _, w := range words[i:] {
+			if strings.Trim(w, gateway.CodeAlphabet) != "" || len(code)+len(w) > 12 {
+				break
 			}
-		} else if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			run = run[:0]
+			if code += w; len(code) == 12 && checkChar(code[:11]) == code[11] {
+				return code[:4], code[4:11], nil
+			}
 		}
 	}
 	return "", "", ErrBadCode
