@@ -109,3 +109,27 @@ func TestNewBotDialogPicksAvatar(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteFacesUseDeviceSeeds(t *testing.T) {
+	read := func(name string) string {
+		raw, err := staticFS.ReadFile("static/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	dev, chat := read("devices.js"), read("remotechat.js")
+	for _, want := range []string{
+		`const a = (d && d.bot_avatars && d.bot_avatars[n]) || {};`,
+		`return a.custom ? "glyph" : a.avatar_seed || n;`,
+		`window.XBotFaces.html(n, seedOf(n, id), size)`,
+		`${faceX(b, d.id)}`,
+	} {
+		if !strings.Contains(dev, want) {
+			t.Errorf("devices.js: missing %s", want)
+		}
+	}
+	if strings.Count(chat, "sideFaces(V.bot, V.dev)") != 3 || strings.Contains(chat, "sideFaces(V.bot)") {
+		t.Error("remote chat faces are drawn from the device's seed")
+	}
+}
