@@ -37,12 +37,15 @@
 .rc-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 .rc-state .icon { width: 12px; height: 12px; }
 .rc-state .text-btn { min-height: 22px; padding: 0 6px; font-size: 12px; color: var(--text); }
+.rc-state .rc-hint { font-size: 11.5px; color: var(--muted); opacity: .8; }
 
 /* 输入框：离线也不禁用；上方一行离线说明（原型 67） */
 .rc-dock { flex: none; display: flex; flex-direction: column; align-items: center; padding: 4px 0 calc(16px + env(safe-area-inset-bottom)); }
 .rc-note { width: min(720px, 100% - 64px); display: flex; gap: 8px; align-items: flex-start; padding: 0 6px 10px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
 .rc-note:empty { display: none; }
 .rc-note .icon { flex: none; margin-top: 2px; }
+.rc-error { width: min(720px, 100% - 64px); padding: 0 6px 8px; font-size: 12.5px; line-height: 1.55; color: var(--muted); overflow-wrap: anywhere; }
+.rc-error[hidden], .rc-error:empty { display: none; }
 .rc-composer { width: min(720px, 100% - 64px); min-height: 52px; display: flex; align-items: flex-end; gap: 8px; padding: 0 8px 0 20px; border-radius: 24px; background: var(--composer); }
 .rc-composer textarea { flex: 1; min-width: 0; min-height: 52px; max-height: 140px; padding: 16px 0; border: 0; outline: none; resize: none; background: transparent; color: var(--text); font: inherit; font-size: 15px; line-height: 20px; }
 .rc-composer textarea::placeholder { color: var(--faint); }
@@ -69,7 +72,7 @@
   .rc-body { position: relative; }
   .rc-thread { padding: 8px 16px; }
   .rc-info { position: absolute; inset: 0; width: auto; margin: 0; border-radius: 0; }
-  .rc-note { padding: 0 22px 10px; }
+  .rc-note, .rc-error { padding: 0 22px 10px; }
   .rc-dock { padding: 4px 12px calc(12px + env(safe-area-inset-bottom)); }
   .rc-composer textarea { font-size: 16px; } /* 手机上小于 16px 聚焦会放大页面 */
   .rc-u .bubble { max-width: 84%; }

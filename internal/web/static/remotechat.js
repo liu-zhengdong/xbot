@@ -64,10 +64,12 @@
     try {
       const r = await api("GET", path(d, b) + "/messages?limit=" + LIMIT);
       if (!same(d, b)) return;
+      const lastBefore = V.list.length ? V.list[V.list.length - 1].id : "";
       V.list = (r.messages || []).filter((m) => m && m.text != null);
       V.devInfo = r.device || null;
       settle();
       if (initial) markRead();
+      else if (V.list.length && V.list[V.list.length - 1].id !== lastBefore && D.refresh) D.refresh(); // 新回复：侧栏的最新一句跟上
       draw();
       scrollDown(initial);
     } catch (e) {
@@ -89,6 +91,7 @@
     if (!t) return;
     const d = V.dev, b = V.bot;
     V.failed = V.failed.filter((x) => x !== t);
+    showError("");
     V.send = { text: t, role: "me", state: "sending" };
     if (el.input) { el.input.value = ""; grow(); }
     draw();
@@ -100,14 +103,26 @@
     } catch (e) {
       if (!same(d, b)) return;
       // 502 {error, message}：网关没送到，服务端已经把这行存成 failed；其他错误留在本机，给「重试」。
+      const msg = e.data && e.data.error;
       if (e.status === 502 && e.data && e.data.message) merge(e.data.message);
-      else if (!V.failed.includes(t)) V.failed.push(t);
+      else if (e.status >= 400 && e.status < 500 && msg) {
+        // 4xx 带 error（如 409 已解除配对）：没发出去，不进 V.failed；原文放回空着的输入框，上面写一行报错。
+        if (el.input && !el.input.value) { el.input.value = t; grow(); el.input.focus(); }
+        showError("没能完成：" + msg);
+      } else if (!V.failed.includes(t)) V.failed.push(t);
     }
     if (!same(d, b)) return;
     V.send = null;
     draw();
     scrollDown();
     if (D.refresh) D.refresh(); // 侧栏的最新一句和「排队中」
+  }
+
+  // 输入框上方的报错：纯文本写入（textContent），空串就收起。
+  function showError(text) {
+    if (!el.error) return;
+    el.error.textContent = text;
+    el.error.hidden = !text;
   }
 
   // ---- 打开、关闭 ----
@@ -120,7 +135,7 @@
     root.hidden = false;
     document.documentElement.classList.add("rc-open"); // 手机上输入框 16px，聚焦时不自动缩放
     titleSig = "";
-    render();
+    render(); // 上一个对话的报错随整块重画一起清掉
     draw(true);
     load(true);
     if (was && D.repaint) D.repaint();
@@ -143,11 +158,12 @@
     root.innerHTML = `<header class="rc-head"><div class="rc-head-in" id="rc-title"></div></header>
       <div class="rc-body"><div class="rc-thread" id="rc-thread" role="log" aria-label="对话"></div><aside class="rc-info" id="rc-info" aria-label="详情" hidden></aside></div>
       <div class="rc-dock"><div class="rc-note" id="rc-note" role="status"></div>
+      <div class="rc-error" id="rc-error" role="alert" hidden></div>
       <form class="rc-composer" id="rc-form" novalidate><textarea id="rc-input" rows="1" maxlength="${MAX}" placeholder="${esc("写给 " + V.bot)}" aria-label="写给 ${esc(V.bot)}"></textarea>
       <button class="rc-send" type="submit" aria-label="发送">${svg("send")}</button></form></div>`;
     el = {
       title: root.querySelector("#rc-title"), thread: root.querySelector("#rc-thread"), info: root.querySelector("#rc-info"),
-      note: root.querySelector("#rc-note"), form: root.querySelector("#rc-form"), input: root.querySelector("#rc-input"),
+      note: root.querySelector("#rc-note"), error: root.querySelector("#rc-error"), form: root.querySelector("#rc-form"), input: root.querySelector("#rc-input"),
     };
     // Enter 发送、Shift+Enter 换行；输入法选词时的回车（isComposing 或 229）不算发送。
     el.input.addEventListener("keydown", (ev) => {
@@ -155,7 +171,7 @@
       ev.preventDefault();
       sendText(el.input.value);
     });
-    el.input.addEventListener("input", grow);
+    el.input.addEventListener("input", () => { grow(); showError(""); }); // 主人一改就收起上次的报错
     el.form.addEventListener("submit", (ev) => { ev.preventDefault(); sendText(el.input.value); });
     el.thread.addEventListener("scroll", () => {
       const t = el.thread;
@@ -187,16 +203,18 @@
   // 正文一律当纯文本：先转义，再把换行变成 <br>。
   const lines = (t) => esc(String(t).replace(/\r\n?/g, "\n").replace(/\n+$/, "")).replace(/\n/g, "<br>");
   const clock = (at) => { const t = new Date(at); return isNaN(t.getTime()) ? "" : String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); };
-  // 主人这条下面的状态：本机还没发出、网关里等离线设备上线、没发出去；其他不写。
+  // 主人这条下面的状态：本机还没发出、网关里等离线设备上线、设备在线但没回执、没发出去；其他不写。
   function stateOf(m) {
-    if (V.failed.includes(m.text)) return "failed";
+    if (m.role === "me" && (m.state === "failed" || V.failed.includes(m.text))) return "failed"; // 服务端存成 failed 的（502）重新打开也给「重试」
     if (m.state === "queued_local") return "local";
+    if (m.role === "me" && m.no_ack && online()) return "noack"; // 离线仍按「已排队」写
     if (m.state === "sent" && !online()) return "waiting";
     return "";
   }
   const stateHTML = (kind) => kind === "failed" ? `<div class="rc-state"><span>没发出去</span><button class="text-btn" type="button" data-rc="retry">重试</button></div>`
     : kind === "local" ? `<div class="rc-state">${svg("clock", 12)}<span>已排队 · 还在这台电脑上</span></div>`
-    : kind === "waiting" ? `<div class="rc-state">${svg("clock", 12)}<span>已排队 · 等 ${esc(label())} 上线</span></div>` : "";
+    : kind === "waiting" ? `<div class="rc-state">${svg("clock", 12)}<span>已排队 · 等 ${esc(label())} 上线</span></div>`
+    : kind === "noack" ? `<div class="rc-state">${svg("clock", 12)}<span>没收到 ${esc(label())} 的回执</span><span class="rc-hint">可以在「设备」里看看它的状态</span></div>` : "";
   const owner = (text, kind) => `<div class="rc-u"><div class="bubble">${lines(text)}</div>${stateHTML(kind)}</div>`;
   function drawThread() {
     const items = [];
@@ -212,6 +230,8 @@
       else items.push(`<div class="rc-b">${sideFaces(V.bot)}<div class="rc-bbody"><div class="who">${esc(V.bot)}<time>${clock(m.at)}</time></div><div class="rc-text">${lines(m.text)}</div></div></div>`);
       prevBot = true;
     }
+    // 连不上 XBot 时没进记录的那句：留在原处给「重试」。
+    for (const t of V.failed) if (!V.list.some((m) => m.role === "me" && m.text === t)) items.push(owner(t, "failed"));
     if (V.send) items.push(owner(V.send.text, ""));
     el.thread.innerHTML = `<div class="thread-inner">${items.join("")}</div>`;
   }
