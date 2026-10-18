@@ -1,10 +1,8 @@
 # dmgbuild settings for the drag-to-Applications disk image.
-# dmgbuild -s packaging/macos/dmg-settings.py -D app=<path/XBot.app> XBot <out.dmg>
-# Runs on macOS (it needs hdiutil); release.yml calls it on a macOS runner.
-import os.path
-
-app = defines["app"]  # noqa: F821 (provided by dmgbuild)
-here = os.path.dirname(os.path.abspath(__file__))
+# dmgbuild -s packaging/macos/dmg-settings.py -D app=<path/XBot.app> \
+#   -D background=<path/dmg-background.png> XBot <out.dmg>
+# Runs on macOS (it needs hdiutil); scripts/build-macos-dmg.sh passes both paths.
+app = defines["app"]  # noqa: F821 (provided by dmgbuild; __file__ is not)
 
 format = "UDZO"
 filesystem = "HFS+"
@@ -13,7 +11,7 @@ symlinks = {"Applications": "/Applications"}
 hide_extension = ["XBot.app"]
 
 # dmgbuild combines dmg-background.png with dmg-background@2x.png for Retina.
-background = os.path.join(here, "dmg-background.png")
+background = defines["background"]  # noqa: F821
 window_rect = ((200, 120), (660, 400))
 default_view = "icon-view"
 show_status_bar = False

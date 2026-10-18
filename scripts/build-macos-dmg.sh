@@ -19,7 +19,8 @@ for arch in arm64 amd64; do
 	ditto -x -k "$zip" "$work/$arch"
 	codesign --verify --strict "$work/$arch/XBot.app" || echo "build-macos-dmg: XBot.app ($arch) has no valid bundle signature" >&2
 	rm -f "$dmg"
-	python3 -m dmgbuild -s "$root/packaging/macos/dmg-settings.py" -D app="$work/$arch/XBot.app" XBot "$dmg"
+	python3 -m dmgbuild -s "$root/packaging/macos/dmg-settings.py" -D app="$work/$arch/XBot.app" \
+		-D background="$root/packaging/macos/dmg-background.png" XBot "$dmg"
 	mnt="$work/mnt-$arch"
 	mkdir -p "$mnt"
 	hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
