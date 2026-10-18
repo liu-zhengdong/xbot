@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Package the desktop app (B3) from Linux, no Apple or Windows machine needed:
 #   macOS: XBot-<v>-macos-<arch>.dmg and .zip (XBot.app, ad-hoc signed, not notarized)
-#   Windows: XBot-<v>-windows-<arch>.zip (XBot.exe opens the window; xbot-cli.exe is the CLI)
+#   Windows: XBot-<v>-windows-<arch>-setup.exe (per-user installer, packaging/windows/xbot.nsi)
+#            and XBot-<v>-windows-<arch>.zip (portable: XBot.exe opens the window; xbot-cli.exe is the CLI)
 #   Linux: xbot-<v>-linux-amd64.tar.gz (needs WebKitGTK 4.1 for `xbot app`)
 # Usage: scripts/package-desktop.sh <version> <out-dir>
-# Tools: go, python3 + Pillow, zip, genisoimage (dmg), png2icns (icnsutils),
+# Tools: go, python3 + Pillow, zip, genisoimage (dmg), png2icns (icnsutils), makensis (nsis),
 # go-winres (Windows icon/manifest) and rcodesign (ad-hoc signature); point
 # GO_WINRES and RCODESIGN at them if they are not on PATH. Missing optional tools
 # are reported and that step is skipped. Set TMPDIR to keep temp files out of /tmp.
@@ -94,6 +95,12 @@ for arch in amd64 arm64; do
 	CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$dir/xbot-cli.exe" ./cmd/xbot
 	rm -f "cmd/xbot/rsrc_windows_$arch.syso"
 	(cd "$work/win-$arch" && zip -qr "$out/XBot-$short-windows-$arch.zip" XBot)
+	if command -v makensis >/dev/null; then
+		makensis -V2 -DVERSION="$version" -DNUMERIC="$numeric" -DARCH="$arch" -DSRC="$dir" -DICON="$work/XBot.ico" \
+			-DOUT="$out/XBot-$short-windows-$arch-setup.exe" packaging/windows/xbot.nsi
+	else
+		echo "package: makensis not found; skipped the Windows installer" >&2
+	fi
 done
 
 lin="$work/linux/xbot-$short-linux-amd64"
