@@ -231,7 +231,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setCookie(w, s.token)
-	writeJSON(w, http.StatusOK, map[string]string{"owner": s.owner})
+	writeJSON(w, http.StatusOK, map[string]string{"owner": s.owner, "owner_name": s.ownerName()})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +252,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	out := map[string]any{"authed": true, "owner": s.owner, "app": s.App, "version": displayVersion(version.Version)}
+	out := map[string]any{"authed": true, "owner": s.owner, "owner_name": s.ownerName(), "app": s.App, "version": displayVersion(version.Version)}
 	if s.needsKey() {
 		out["needs_key"] = true
 		out["key_host"] = keyHost()
