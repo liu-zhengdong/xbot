@@ -1535,11 +1535,22 @@
 
   // The profile behind the starters: the panel's when it is this bot's, else
   // fetched once per bot and kept for the page's life.
-  const starterProfiles = {};
+  // A Map, so names like "constructor" are not mistaken for cached entries.
+  // An entry still in flight is shared with loadPanel, which would otherwise
+  // fetch the same profile a second time when the panel is open.
+  const starterProfiles = new Map();
+  function fetchBotProfile(name) {
+    const live = starterProfiles.get(name);
+    if (live && !live.done) return live.request;
+    const entry = { done: false };
+    entry.request = api("/api/bots/" + encodeURIComponent(name)).finally(() => { entry.done = true; });
+    starterProfiles.set(name, entry);
+    return entry.request;
+  }
   async function starterProfile(name) {
     if (state.panelData && state.panelData.name === name) return state.panelData;
-    if (!starterProfiles[name]) starterProfiles[name] = api("/api/bots/" + encodeURIComponent(name)).catch(() => ({}));
-    return starterProfiles[name];
+    const cached = starterProfiles.get(name);
+    return (cached ? cached.request : fetchBotProfile(name)).catch(() => ({}));
   }
 
   function starterList(who) {
@@ -3864,7 +3875,7 @@
     const selection = state.sel;
     const request = ++state.panelLoad;
     try {
-      const data = await api("/api/bots/" + encodeURIComponent(selection.id));
+      const data = await fetchBotProfile(selection.id);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
