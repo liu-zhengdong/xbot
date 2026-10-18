@@ -24,6 +24,8 @@
   const svg = (k, size) => `<svg viewBox="0 0 24 24" aria-hidden="true" class="icon"${size ? ` style="width:${size}px;height:${size}px"` : ""}>${I[k]}</svg>`;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const host = (u) => { try { return new URL(u).host || u; } catch (e) { return u || ""; } };
+  // Same rule as the server (remote.NormalizeGateway): trim, https:// for a bare host, drop the trailing slash.
+  const normGw = (u) => { const s = String(u || "").trim().replace(/\/+$/, ""); return s && s.indexOf("://") < 0 ? "https://" + s : s; };
 
   async function api(method, path, body) {
     const res = await fetch(path, {
@@ -117,7 +119,7 @@
     const top = modalEl && modalEl.firstChild ? "modal" : drawerEl && drawerEl.firstChild ? "drawer" : "";
     if (!top) return false;
     if (ev.key === "Escape") {
-      if (top === "modal" && S.view !== "rename" && S.view !== "unpair") return false; // pairing.js owns its modals' Escape (it cancels codes)
+      if (top === "modal" && S.view !== "rename" && S.view !== "unpair" && S.view !== "gw-confirm") return false; // pairing.js owns its modals' Escape (it cancels codes)
       top === "modal" ? closeModal() : closeDrawer();
       return true;
     }
@@ -149,6 +151,14 @@
       <p class="g7-lead">左侧列表里不再显示 ${esc(t.label)} 的 ${(t.bots || []).length} 个 Bot，${esc(t.label)} 也用不了这台电脑上的 Bot。想再连，重新配对就行。</p>
       ${S.fieldErr ? `<p class="error g7-field-err">${esc(S.fieldErr)}</p>` : ""}
       <div class="modal-actions"><button class="secondary" type="button" data-act="close">取消</button><button class="primary" type="button" data-act="unpair">解除配对</button></div>`, "g7-over");
+  }
+  function viewGwConfirm() {
+    const devs = (S.data && S.data.devices) || [];
+    return modal(`<h2>改网关地址？</h2>
+      <p class="g7-lead">这些设备连在原来的网关上，改了以后要在两台电脑上重新配对：</p>
+      <ul class="g7-plain">${devs.map((d) => `<li>${esc(d.label)}</li>`).join("")}</ul>
+      <p class="g7-fine">配对不会被删除，改回原来的地址就能继续用。</p>
+      <div class="modal-actions"><button class="secondary" type="button" data-act="gw-confirm-cancel">取消</button><span class="spacer"></span><button class="primary" type="button" data-act="gw-confirm-save">改网关地址</button></div>`, "g7-over");
   }
 
   function devRow(d, up) {
@@ -208,7 +218,7 @@
     const wasDrawer = !!drawerEl.firstChild, wasView = lastView;
     drawerEl.innerHTML = S.drawer ? viewDrawer() : "";
     if (wasDrawer && S.drawer) drawerEl.querySelector(".profile-modal").style.animation = "none";
-    const V = Object.assign({ rename: viewRename, unpair: viewUnpair }, D.views)[S.view];
+    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm }, D.views)[S.view];
     modalEl.innerHTML = V ? V() : "";
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
     lastView = S.view || "";
@@ -250,8 +260,15 @@
         S.view = null; await refresh(); render(); break;
       case "self-gw-edit": S.selfGwEdit = true; S.selfGwErr = ""; S.gwVal = (data.self && data.self.gateway) || ""; render(); { const g = document.getElementById("g7-self-gw"); if (g) g.focus(); } break;
       case "self-gw-cancel": S.selfGwEdit = false; S.selfGwErr = ""; render(); break;
-      case "self-gw-save":
-        S.busy = true; render();
+      case "self-gw-save": {
+        // Paired devices would need re-pairing: ask first unless the address is unchanged.
+        const gwNow = normGw(data.self && data.self.gateway), gwNew = normGw(S.gwVal);
+        if ((data.devices || []).length && gwNew && gwNew !== gwNow) { S.fieldErr = ""; S.view = "gw-confirm"; render(); break; }
+        return act("gw-confirm-save", el);
+      }
+      case "gw-confirm-cancel": S.view = null; render(); break; // back to the drawer, editor open with the typed value
+      case "gw-confirm-save":
+        S.view = null; S.busy = true; render();
         try { await api("PUT", "/api/devices/gateway", { gateway: S.gwVal }); S.selfGwEdit = false; S.selfGwErr = ""; await refresh(); }
         catch (e) { S.selfGwErr = e.message; }
         S.busy = false; render(); break;

@@ -10,6 +10,7 @@
 .g7-lead { margin: 0 0 4px; font-size: 14px; line-height: 1.6; color: var(--muted); }
 .g7-h3 { margin: 20px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .g7-fine { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.g7-plain { margin: 8px 0 0; padding: 0 0 0 18px; font-size: 14px; line-height: 1.7; }
 .modal-actions .spacer { flex: 1; }
 .modal-actions { align-items: center; }
 .modal-actions .primary, .modal-actions .secondary { display: inline-flex; align-items: center; gap: 6px; }
