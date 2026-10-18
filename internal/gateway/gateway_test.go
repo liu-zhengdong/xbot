@@ -266,8 +266,9 @@ func TestGatewaySenderByteQuota(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	stamp := time.Now() // Keep RFC3339Nano width identical for byte-exact quota fixtures.
 	envelope := func(from, to int) Envelope {
-		return NewEnvelope(clients[from].Key, ID(clients[to].Key.Public().(ed25519.PublicKey)), "msg", []byte("mail"), time.Now())
+		return NewEnvelope(clients[from].Key, ID(clients[to].Key.Public().(ed25519.PublicKey)), "msg", []byte("mail"), stamp)
 	}
 	first := envelope(0, 0)
 	raw, err := json.Marshal(first)
