@@ -33,8 +33,14 @@ jobs:
         run: |
           scripts/desktop-shots/patch-mygo.ps1 -Modules .
           $v = "v0.0.0-shots+$((git rev-parse --short HEAD).Trim())"
+          # The taskbar shows the exe's icon: embed it as the release does.
+          if (Test-Path packaging/icons/XBot.ico) {
+            go install github.com/tc-hib/go-winres@v0.3.3
+            & "$(go env GOPATH)\bin\go-winres.exe" simply --arch amd64 --out cmd/xbot/rsrc --icon packaging/icons/XBot.ico --manifest gui --product-name XBot --file-description XBot
+          }
           go build -trimpath -ldflags "-X xbot/internal/version.Version=$v -X main.defaultCommand=app -H windowsgui" -o "$env:RUNNER_TEMP\new\XBot.exe" ./cmd/xbot
           go build -o "$env:RUNNER_TEMP\seed.exe" ./scripts/desktop-shots/seed
+          Remove-Item cmd/xbot/rsrc_windows_*.syso -ErrorAction SilentlyContinue
           git checkout -- go.mod go.sum
       - name: build v0.3.1-beta.2
         shell: pwsh

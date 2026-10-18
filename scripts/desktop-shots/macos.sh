@@ -9,8 +9,11 @@ work="${RUNNER_TEMP:?}/xbot-shots-mac"
 rm -rf "$work"; mkdir -p "$work"
 swiftc -O -o "$work/macwin" "$here/macwin.swift"
 app="$work/XBot.app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/XBot"
+# The app icon in the Dock, when this commit has the hand-tuned .icns.
+icon=""
+if [ -f packaging/icons/XBot.icns ]; then cp packaging/icons/XBot.icns "$app/Contents/Resources/XBot.icns"; icon="<key>CFBundleIconFile</key><string>XBot</string>"; fi
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
@@ -18,6 +21,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleIdentifier</key><string>com.github.liu-zhengdong.xbot.shots</string>
 <key>CFBundleExecutable</key><string>XBot</string>
 <key>CFBundlePackageType</key><string>APPL</string>
+$icon
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
@@ -56,6 +60,8 @@ run_case() { # mode theme extras...
       "$work/macwin" move $((x + 22)) $((y + 20)); sleep 0.8
       screencapture -x -o -l "$id" "$out/mac-$mode-$theme-hover.png"
       "$work/macwin" move 5 5 ;;
+    screen) # the whole screen: menu bar, the window and the Dock with the app icon
+      screencapture -x "$out/mac-$mode-$theme-screen.png" ;;
     unfocused)
       # A freshly opened app takes the focus; Finder alone did not on the runner.
       open -a Calculator; sleep 2
@@ -68,8 +74,8 @@ run_case() { # mode theme extras...
   kill "$pid" 2>/dev/null || true; sleep 2
 }
 
-run_case rich light hover unfocused || true
-run_case rich dark hover unfocused || true
+run_case rich light hover screen unfocused || true
+run_case rich dark hover screen unfocused || true
 run_case empty light || true
 run_case relay light || true
 appearance light

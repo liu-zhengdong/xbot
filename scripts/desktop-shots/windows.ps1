@@ -102,6 +102,21 @@ function Shot($hwnd, [string] $name) {
   Say "shot $file ${w}x$h"
 }
 
+# The whole primary screen, taskbar included (the app icon on the taskbar).
+function Shot-Screen([string] $name) {
+  $sw = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $bmp = [Drawing.Bitmap]::new($sw.Width, $sw.Height)
+  $g = [Drawing.Graphics]::FromImage($bmp)
+  $hdc = $g.GetHdc()
+  $ok = [Native]::BltScreen($hdc, $sw.Left, $sw.Top, $sw.Width, $sw.Height)
+  $g.ReleaseHdc($hdc)
+  if (-not $ok) { $g.CopyFromScreen($sw.Left, $sw.Top, 0, 0, [Drawing.Size]::new($sw.Width, $sw.Height)) }
+  $file = Join-Path $Out "$Label-$name.png"
+  $bmp.Save($file, [Drawing.Imaging.ImageFormat]::Png)
+  $g.Dispose(); $bmp.Dispose()
+  Say "screen $file $($sw.Width)x$($sw.Height)"
+}
+
 # A small window of our own takes the focus away from XBot.
 function Steal-Focus {
   Add-Type -AssemblyName System.Windows.Forms
@@ -182,6 +197,13 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
         }
         [Native]::Hover($sw.Width - 5, $sw.Height - 60) | Out-Null
       }
+      if ($extras -contains 'screen') { Shot-Screen "$mode-$theme-screen" }
+      if ($extras -contains 'login' -and $ws) {
+        Cdp-Eval $ws "document.getElementById('login').hidden = false; true" | Out-Null
+        Start-Sleep 1
+        Shot $hwnd "$mode-$theme-login"
+        Cdp-Eval $ws "document.getElementById('login').hidden = true; true" | Out-Null
+      }
       if ($extras -contains 'unfocused') {
         $f = Steal-Focus; Start-Sleep 1
         Say "foreground is XBot: $([Native]::GetForegroundWindow() -eq $hwnd)"
@@ -200,8 +222,8 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
 
 Add-Type -AssemblyName System.Windows.Forms
 if ($Shots) {
-  Run-Case rich light @('hover', 'unfocused')
-  Run-Case rich dark @('hover', 'unfocused')
+  Run-Case rich light @('hover', 'unfocused', 'screen', 'login')
+  Run-Case rich dark @('hover', 'unfocused', 'screen', 'login')
   Run-Case empty light @()
   Run-Case chat dark @()
   Run-Case relay light @()
