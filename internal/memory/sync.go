@@ -2,7 +2,6 @@ package memory
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,16 +15,17 @@ const (
 	opForget   = "forget"
 )
 
-// SyncLine is one append-only person-memory record. The relay merges these by time.
+// SyncLine is one record in the person-memory log (people/<id>/memory/sync.jsonl).
+// The log is local and append-only; read-time folds pick the winning record per key.
 type SyncLine struct {
 	Time   time.Time `json:"time"`
 	Bot    string    `json:"bot,omitempty"`
 	Device string    `json:"device"`
 	Op     string    `json:"op"`
-	// Untrusted is set when the line arrived from another node, or from an untrusted turn.
+	// Untrusted marks a fact that came from an untrusted turn.
 	Untrusted bool `json:"untrusted,omitempty"`
-	// OwnerRecorded is set only when the authenticated peer that delivered the
-	// line is this device, and this machine has linked that peer.
+	// OwnerRecorded is kept so lines written before node sync was retired still
+	// load; nothing sets it any more.
 	OwnerRecorded bool `json:"owner_recorded,omitempty"`
 	Fact          Fact `json:"fact"`
 }
@@ -47,259 +47,8 @@ func ReadSync(root, personID string) ([]SyncLine, error) {
 	return out, err
 }
 
-// ExportSync reads every person-memory log under the data root.
-// Facts that were stored before the log existed are appended first.
-func ExportSync(root string) ([]SyncLine, error) {
-	if err := MergeSync(root, nil); err != nil {
-		return nil, err
-	}
-	dir := filepath.Join(root, "people")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var out []SyncLine
-	seen := map[string]bool{}
-	for _, ent := range entries {
-		id := directoryID(dir, ent, seen)
-		if id == "" {
-			continue
-		}
-		lines, err := ReadSync(root, id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, lines...)
-	}
-	return out, nil
-}
-
-// MergeSync folds remote person-memory lines into this data root.
-// The peer is unknown, so every remote line stays untrusted.
-// The newest timestamp wins for each key. An equal timestamp keeps the local line.
-// A timestamp past now plus a small skew is capped. Illegal lines are dropped.
-// Files under bots/ are left alone. A real change wakes the fast sync path.
-// This log is the person channel: an empty scope here stays person.
-// Omitted-scope writes from remember, extraction, and untrusted turns default to bot.
-func MergeSync(root string, remote []SyncLine) error {
-	return MergeFrom(root, "", remote)
-}
-
-// MergeFrom is MergeSync for a bundle delivered by an authenticated peer.
-// peer is that node's device id. A line is owner-recorded only when its device
-// is this peer and the peer is linked locally. Lines relayed by the peer stay untrusted.
-func MergeFrom(root, peer string, remote []SyncLine) error {
-	_ = Migrate(root)
-	now := time.Now()
-	home := deviceOf(root)
-	linked := linkedDevices(root)
-	peer = strings.TrimSpace(peer)
-	byID := map[string][]SyncLine{}
-	for _, ln := range remote {
-		id := ln.Fact.PersonID
-		if err := clean(id); err != nil {
-			continue
-		}
-		if ln.Fact.Scope != "" && ln.Fact.Scope != ScopePerson {
-			continue
-		}
-		ln, ok := acceptRemote(ln, now, home, peer, linked)
-		if !ok {
-			continue
-		}
-		ln.Fact.PersonID = id
-		byID[id] = append(byID[id], ln)
-	}
-	ids := map[string]bool{}
-	entries, err := os.ReadDir(filepath.Join(root, "people"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	seen := map[string]bool{}
-	for _, ent := range entries {
-		id := directoryID(filepath.Join(root, "people"), ent, seen)
-		if id != "" {
-			ids[id] = true
-		}
-	}
-	for id := range byID {
-		ids[id] = true
-	}
-	changed := false
-	for id := range ids {
-		ok, err := mergePerson(root, id, byID[id])
-		if err != nil {
-			return err
-		}
-		changed = changed || ok
-	}
-	if changed {
-		notifyChange(root)
-	}
-	return nil
-}
-
-func mergePerson(root, id string, remote []SyncLine) (bool, error) {
-	dir := filepath.Join(root, "people", id, "memory")
-	changed := false
-	err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
-		local, err := ReadSync(root, id)
-		if err != nil {
-			return err
-		}
-		extra, err := profileDeletes(root, dir, local)
-		if err != nil {
-			return err
-		}
-		added, err := backfill(dir, id, local)
-		extra = append(extra, added...)
-		if err != nil {
-			return err
-		}
-		for _, ln := range extra {
-			if err := appendSync(root, ln); err != nil {
-				return err
-			}
-			local = append(local, ln)
-			changed = true
-		}
-		have := map[string]bool{}
-		ownerSeen := map[string]bool{}
-		for _, ln := range local {
-			key := syncKey(ln)
-			have[key] = true
-			if ln.OwnerRecorded {
-				ownerSeen[key] = true
-			}
-		}
-		for _, ln := range remote {
-			ln.Fact.PersonID = id
-			ln.Fact.Scope = ScopePerson
-			key := syncKey(ln)
-			if have[key] && (!ln.OwnerRecorded || ownerSeen[key]) {
-				continue
-			}
-			if err := appendSync(root, ln); err != nil {
-				return err
-			}
-			local = append(local, ln)
-			have[key] = true
-			if ln.OwnerRecorded {
-				ownerSeen[key] = true
-			}
-			changed = true
-		}
-		if len(local) == 0 {
-			return nil
-		}
-		return writeFold(dir, id, local)
-	})
-	return changed, err
-}
-
-// profileDeletes compares the editable file with facts previously materialized
-// locally, before any incoming lines are appended. The ordinary index can be
-// rebuilt by Recall, so keep a separate baseline after each successful fold.
-func profileDeletes(root, dir string, local []SyncLine) ([]SyncLine, error) {
-	previous, err := readLooseIndex(filepath.Join(dir, "memory.sync.index.json"))
-	if err != nil {
-		return nil, err
-	}
-	// The ordinary index also covers Remember writes since the last fold,
-	// and provides conservative evidence when upgrading without a baseline.
-	indexed, err := readLooseIndex(filepath.Join(dir, "memory.index.json"))
-	if err != nil {
-		return nil, err
-	}
-	previous = append(previous, indexed...)
-	raw, err := os.ReadFile(filepath.Join(dir, "memory.md"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	present := map[string]bool{}
-	for _, f := range parseMemoryMD(string(raw), ScopePerson) {
-		present[f.Text+"\x00"+f.WrittenBy] = true
-	}
-	written := map[string]Fact{}
-	for _, f := range previous {
-		written[f.Key] = f
-	}
-	var extra []SyncLine
-	for _, f := range foldSync(local) {
-		prev, ok := written[f.Key]
-		if f.Tier != TierProfile || !ok || prev.Text != f.Text || !prev.Time.Equal(f.Time) {
-			continue
-		}
-		// Compare the same representation that is persisted, including author
-		// parsing limits and whitespace normalization.
-		rendered := parseMemoryMD(renderMemoryMD([]Fact{f}, ""), ScopePerson)
-		if len(rendered) == 0 {
-			continue
-		}
-		entry := rendered[0]
-		if present[entry.Text+"\x00"+entry.WrittenBy] {
-			continue
-		}
-		now := time.Now().UTC()
-		if !now.After(f.Time) {
-			now = f.Time.Add(time.Nanosecond)
-		}
-		extra = append(extra, SyncLine{Time: now, Device: deviceOf(root), Op: opForget, Fact: f})
-	}
-	return extra, nil
-}
-
-func backfill(dir, id string, local []SyncLine) ([]SyncLine, error) {
-	have := map[string]bool{}
-	for _, ln := range local {
-		have[factMark(ln)] = true
-	}
-	var extra []SyncLine
-	for _, tier := range []Tier{TierProfile, TierLog} {
-		facts, err := loadTier(dir, tier, ScopePerson, "", id)
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range facts {
-			if f.Untrusted {
-				continue
-			}
-			ln := SyncLine{Time: f.Time.UTC(), Bot: f.WrittenBy, Device: "local", Op: opRemember, Fact: f}
-			if have[factMark(ln)] {
-				continue
-			}
-			extra = append(extra, ln)
-			have[factMark(ln)] = true
-		}
-	}
-	return extra, nil
-}
-
-func writeFold(dir, id string, lines []SyncLine) error {
-	byTier := map[Tier][]Fact{}
-	winners := foldSync(lines)
-	for _, f := range winners {
-		tier := f.Tier
-		if tier == "" {
-			tier = TierLog
-		}
-		byTier[tier] = append(byTier[tier], f)
-	}
-	for _, tier := range []Tier{TierProfile, TierLog} {
-		facts := byTier[tier]
-		if facts == nil {
-			facts = []Fact{}
-		}
-		if err := saveTierOpt(dir, tier, facts, true); err != nil {
-			return err
-		}
-	}
-	return writeIndex(filepath.Join(dir, "memory.sync.index.json"), byTier[TierProfile])
-}
-
+// foldSync returns the winning fact per key after replaying the log in order:
+// the newest record wins, and a forget record drops the fact.
 func foldSync(lines []SyncLine) []Fact {
 	type slot struct {
 		ln  SyncLine
@@ -324,7 +73,7 @@ func foldSync(lines []SyncLine) []Fact {
 			cur.idx = i
 			continue
 		}
-		// A later direct delivery of the same line can replace a relayed copy.
+		// An owner-recorded copy of the same line replaces a non-owner copy.
 		if ln.Time.Equal(cur.ln.Time) && ln.OwnerRecorded && !cur.ln.OwnerRecorded &&
 			ln.Device == cur.ln.Device && ln.Op == cur.ln.Op && ln.Fact.Text == cur.ln.Fact.Text {
 			cur.ln = ln
@@ -361,6 +110,7 @@ func foldSync(lines []SyncLine) []Fact {
 	return out
 }
 
+// noteSync appends one record for a person-scope fact to the local log.
 func noteSync(root string, op string, fact Fact) error {
 	if fact.Scope != ScopePerson {
 		return nil
@@ -404,10 +154,6 @@ func syncPath(root, id string) string {
 	return filepath.Join(root, "people", id, "memory", "sync.jsonl")
 }
 
-func syncKey(ln SyncLine) string {
-	return ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + ln.Bot + "\x00" + ln.Device + "\x00" + ln.Op + "\x00" + ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + string(ln.Fact.Tier)
-}
-
 func factMark(ln SyncLine) string {
 	if ln.Fact.Tier == TierLog {
 		f := ln.Fact
@@ -418,30 +164,6 @@ func factMark(ln SyncLine) string {
 		return text + "\x00" + ln.Time.UTC().Format("2006-01-02 15:04") + "\x00log"
 	}
 	return ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + string(ln.Fact.Tier)
-}
-
-func linkedDevices(root string) map[string]bool {
-	out := map[string]bool{}
-	raw, err := os.ReadFile(filepath.Join(root, "nodes.json"))
-	if err != nil {
-		return out
-	}
-	var doc struct {
-		Nodes []struct {
-			ID string `json:"id"`
-		} `json:"nodes"`
-	}
-	if json.Unmarshal(raw, &doc) != nil {
-		return out
-	}
-	for _, n := range doc.Nodes {
-		id := strings.TrimSpace(n.ID)
-		if id == "" || id == "local" || id == "relay" || strings.ContainsAny(id, "/\\\n\r") {
-			continue
-		}
-		out[id] = true
-	}
-	return out
 }
 
 func deviceOf(root string) string {

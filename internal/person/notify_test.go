@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestOnChangeSkipsMerge(t *testing.T) {
+func TestOnChangeFromRecord(t *testing.T) {
 	root := t.TempDir()
 	var n int
 	OnChange(func(got string) {
@@ -24,26 +24,21 @@ func TestOnChangeSkipsMerge(t *testing.T) {
 		t.Fatalf("writes %d", n)
 	}
 	p.DisplayName = "Beatrice"
-	line := LogEntry{Time: at.Add(time.Hour), Device: "other", Person: p, Grant: true}
-	if err := MergeLog(root, []LogEntry{line}); err != nil {
+	if err := Record(root, "ada", "dev", at.Add(time.Hour), p); err != nil {
 		t.Fatal(err)
 	}
 	if n != 2 {
-		t.Fatalf("relayed merge writes %d", n)
-	}
-	if err := MergeLog(root, []LogEntry{line}); err != nil {
-		t.Fatal(err)
-	}
-	if n != 2 {
-		t.Fatalf("duplicate merge writes %d", n)
+		t.Fatalf("second write %d", n)
 	}
 	got, err := Load(root, "u1")
-	if err != nil || got.DisplayName != "Ada" || got.Timezone != "Asia/Shanghai" {
+	if err != nil || got.DisplayName != "Beatrice" || got.Timezone != "Asia/Shanghai" {
 		t.Fatalf("%+v %v", got, err)
 	}
-	for _, a := range got.Accounts {
-		if a.Link != "" {
-			t.Fatalf("grant leaked %+v", got.Accounts)
-		}
+	// A local identify appends to the same log and notifies once.
+	if _, err := Identify(root, Account{Link: "slack", ExternalID: "b"}, "Bea"); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("identify writes %d", n)
 	}
 }
