@@ -5262,7 +5262,7 @@
         body: JSON.stringify({ token: $("token").value.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里 login token 那一行" : "登录失败，稍后再试");
+      if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里登录码那一行" : "登录失败，稍后再试");
       state.owner = data.owner || "";
       state.ownerName = data.owner_name || "";
       renderMe();
