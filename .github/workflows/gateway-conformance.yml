@@ -1,0 +1,20 @@
+# Gateway protocol conformance only. CI and release workflows belong to the desktop line, in their own files.
+name: gateway-conformance
+on:
+  pull_request:
+    paths: ["internal/gateway/**", "gateway-worker/**", ".github/workflows/gateway-conformance.yml"]
+  push:
+    branches: [main]
+    paths: ["internal/gateway/**", "gateway-worker/**", ".github/workflows/gateway-conformance.yml"]
+permissions:
+  contents: read
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 ./internal/gateway
