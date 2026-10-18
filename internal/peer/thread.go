@@ -14,13 +14,17 @@ import (
 
 // Direct is one private bot-to-bot delivery recorded in the recipient transcript.
 // Seq is that transcript's sequence, the same number export and expand use.
+// Kind is "" for a message and "bounce" for an undelivered remote message.
+// Status is set only on outgoing remote rows: sent, queued, or failed.
 type Direct struct {
-	ID   string
-	Seq  int
-	From string
-	To   string
-	Text string
-	Time time.Time
+	ID     string
+	Seq    int
+	From   string
+	To     string
+	Text   string
+	Time   time.Time
+	Kind   string
+	Status string
 }
 
 // Conversation reads the private messages between a and b.
@@ -37,6 +41,12 @@ func Conversation(a, b *bot.Bot) ([]Direct, error) {
 	if err := collectDirect(b, a.Name(), &out); err != nil {
 		return nil, err
 	}
+	sortDirect(out)
+	return out, nil
+}
+
+// sortDirect orders a thread by time, then recipient, seq, and id.
+func sortDirect(out []Direct) {
 	sort.Slice(out, func(i, j int) bool {
 		if !out[i].Time.Equal(out[j].Time) {
 			return out[i].Time.Before(out[j].Time)
@@ -49,7 +59,6 @@ func Conversation(a, b *bot.Bot) ([]Direct, error) {
 		}
 		return out[i].ID < out[j].ID
 	})
-	return out, nil
 }
 
 func collectDirect(self *bot.Bot, peerName string, out *[]Direct) error {
