@@ -1,0 +1,67 @@
+# Throwaway branch only (avatar/shots): screenshots for the avatar PRs.
+# Native window shots reuse #172's scripts; the 2x element shots use the
+# platform's own engine (Edge = WebView2's Chromium, WebKit = WKWebView's).
+name: avatar-shots
+on:
+  push:
+    branches: [avatar/shots]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shots:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            engine: msedge
+            label: win
+          - os: macos-latest
+            engine: webkit
+            label: mac
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      XBOT_AUTO_UPGRADE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: build
+        shell: bash
+        run: |
+          ext=""; [ "$RUNNER_OS" = Windows ] && ext=.exe
+          go build -o "$RUNNER_TEMP/xbot$ext" ./cmd/xbot
+          go build -o "$RUNNER_TEMP/seed$ext" ./scripts/desktop-shots/seed
+          echo "EXT=$ext" >> "$GITHUB_ENV"
+      - name: playwright
+        shell: bash
+        run: |
+          cd scripts/avatar-shots && npm init -y >/dev/null && npm install --no-audit --no-fund playwright@1.64.0
+          if [ "${{ matrix.engine }}" = webkit ]; then npx playwright install webkit; fi
+      - name: 2x element shots (light, dark)
+        shell: bash
+        run: node scripts/avatar-shots/run.mjs "$RUNNER_TEMP/xbot$EXT" "$RUNNER_TEMP/seed$EXT" shots ${{ matrix.label }}-2x ${{ matrix.engine }}
+      - name: native window, macOS
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          go build -trimpath -ldflags "-X main.defaultCommand=app" -o "$RUNNER_TEMP/XBot" ./cmd/xbot
+          bash scripts/desktop-shots/macos.sh "$RUNNER_TEMP/XBot" "$RUNNER_TEMP/seed" shots/native
+      - name: native window, Windows
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          go build -trimpath -ldflags "-X main.defaultCommand=app -H windowsgui" -o "$env:RUNNER_TEMP\new\XBot.exe" ./cmd/xbot
+          scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\new\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots/native -Label win -Shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: avatar-shots-${{ matrix.label }}
+          path: shots/
