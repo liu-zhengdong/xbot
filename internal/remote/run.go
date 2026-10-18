@@ -2,6 +2,9 @@ package remote
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"xbot/internal/gateway"
@@ -21,7 +24,7 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 	for ctx.Err() == nil {
 		cfg, err := Load(root)
 		if err == nil && cfg.Gateway == "" {
-			if !pause(ctx, 30*time.Second) {
+			if !pause(ctx, root, 30*time.Second) {
 				return
 			}
 			continue
@@ -34,12 +37,20 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 				}
 				client := &gateway.Client{Base: cfg.Gateway, Key: priv}
 				if !registered[cfg.Gateway] {
-					if err := client.Register(ctx, token); err != nil {
+					err := client.Register(ctx, token)
+					var he *gateway.HTTPError
+					switch {
+					case err == nil:
+						registered[cfg.Gateway] = true
+						if logf != nil {
+							logf("registered")
+						}
+					case errors.As(err, &he) && (he.StatusCode == 401 || he.StatusCode == 403):
+						// Not admitted (yet). A short-code joiner is a pending install
+						// that may still poll its owner's pairing replies; retry the
+						// registration on the next pass, which works once A admits it.
+					default:
 						return err
-					}
-					registered[cfg.Gateway] = true
-					if logf != nil {
-						logf("registered")
 					}
 				}
 				notifyDirectory(ready, &lastDirectoryGateway, client)
@@ -77,20 +88,56 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 		if logf != nil && ctx.Err() == nil {
 			logf("retrying after gateway or local state failure")
 		}
-		if !pause(ctx, backoff) {
+		if !pause(ctx, root, backoff) {
 			return
 		}
 		backoff = min(2*backoff, time.Minute)
 	}
 }
 
-func pause(ctx context.Context, d time.Duration) bool {
+// runWake cuts a poll-loop pause short after the gateway is set or a short-code
+// claim, so a joiner starts polling within its 20-second pairing window.
+// One channel per data root, so roots sharing a process (tests) do not steal
+// each other's wake-ups.
+var runWakes sync.Map // root -> chan struct{}
+
+func wakeChan(root string) chan struct{} {
+	ch, _ := runWakes.LoadOrStore(filepath.Clean(root), make(chan struct{}, 1))
+	return ch.(chan struct{})
+}
+
+// dirWakes asks runDirectories to push now, e.g. right after a pairing, so the
+// new device shows this computer's bots (and as online) within seconds.
+var dirWakes sync.Map // root -> chan struct{}
+
+func dirWake(root string) chan struct{} {
+	ch, _ := dirWakes.LoadOrStore(filepath.Clean(root), make(chan struct{}, 1))
+	return ch.(chan struct{})
+}
+
+func wakeDirectories(root string) {
+	select {
+	case dirWake(root) <- struct{}{}:
+	default:
+	}
+}
+
+func wakeRun(root string) {
+	select {
+	case wakeChan(root) <- struct{}{}:
+	default:
+	}
+}
+
+func pause(ctx context.Context, root string, d time.Duration) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return false
 	case <-timer.C:
+		return true
+	case <-wakeChan(root):
 		return true
 	}
 }

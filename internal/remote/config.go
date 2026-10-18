@@ -212,5 +212,9 @@ func SetGateway(root, raw string) error {
 			return errors.New("remote: gateway must be an http(s) URL with a host")
 		}
 	}
-	return update(root, func(c *Config) error { c.Gateway = strings.TrimRight(raw, "/"); return nil })
+	err := update(root, func(c *Config) error { c.Gateway = strings.TrimRight(raw, "/"); return nil })
+	if err == nil {
+		wakeRun(root) // A loop idling without a gateway starts now.
+	}
+	return err
 }

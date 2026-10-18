@@ -113,6 +113,7 @@ func runDirectories(ctx context.Context, root string, ready <-chan *gateway.Clie
 		case client = <-ready: // first check immediately after registration
 			ticker.Reset(time.Minute)
 		case <-ticker.C:
+		case <-dirWake(root):
 		}
 		if client != nil {
 			if err := pushDirectories(ctx, root, client, time.Now()); err != nil && logf != nil {
