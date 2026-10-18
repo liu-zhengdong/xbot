@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,31 +27,34 @@ var conformanceKeyCounts = make(map[string]int)
 func TestConformanceGo(t *testing.T) {
 	s := httptest.NewServer((&Server{Dir: t.TempDir(), Open: true}).Handler())
 	defer s.Close()
-	runConformance(t, s.URL)
+	runConformance(t, s.URL, false)
 }
 func TestConformanceURL(t *testing.T) {
 	base := os.Getenv("XBOT_GATEWAY_URL")
 	if base == "" {
 		t.Skip("XBOT_GATEWAY_URL is unset")
 	}
-	runConformance(t, base)
+	runConformance(t, base, true)
 }
 func conformanceRequire(t *testing.T, ok bool, message any) {
 	if !ok {
 		t.Fatal(message)
 	}
 }
-func runConformance(t *testing.T, base string) {
+func runConformance(t *testing.T, base string, remote bool) {
 	started := time.Now()
 	var requests atomic.Int64
 	t.Cleanup(func() { t.Logf("HTTP requests: %d; elapsed: %s", requests.Load(), time.Since(started)) })
 	hc := &http.Client{Timeout: 60 * time.Second}
 	type response struct {
-		status int
-		body   []byte
-		err    error
+		status  int
+		body    []byte
+		err     error
+		retried bool   // a transport error was retried, so the first attempt may have landed
+		note    string // retry notes, logged by the caller (polls run in goroutines)
 	}
-	exchange := func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
+	var exchange func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response
+	once := func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
 		req, err := http.NewRequest(method, strings.TrimRight(base, "/")+path, bytes.NewReader(body))
 		if err != nil {
 			return response{err: err}
@@ -70,11 +75,31 @@ func runConformance(t *testing.T, base string) {
 		if strings.HasPrefix(path, "/v1/") && res.StatusCode != 404 && !strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") {
 			err = fmt.Errorf("Content-Type: %q", res.Header.Get("Content-Type"))
 		}
-		return response{res.StatusCode, b, err}
+		return response{status: res.StatusCode, body: b, err: err}
+	}
+	// Remote runs cross real networks that drop a fraction of a percent of connections (seen
+	// even against unrelated hosts). Retry those once or twice; HTTP replies are never retried.
+	exchange = func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
+		r := once(method, path, body, signedBody, key, now)
+		note := ""
+		for i := 0; i < 2 && remote && r.status == 0 && r.err != nil && !isTimeout(r.err); i++ {
+			note += fmt.Sprintf("retried %s %s after: %v; ", method, path, r.err)
+			r = once(method, path, body, signedBody, key, now)
+			r.retried = true
+		}
+		r.note = note
+		return r
+	}
+	do := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, now time.Time) response {
+		r := exchange(method, path, body, body, key, now)
+		if r.note != "" {
+			t.Log(r.note)
+		}
+		conformanceRequire(t, r.err == nil, r.err)
+		return r
 	}
 	raw := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, now time.Time) (int, []byte) {
-		r := exchange(method, path, body, body, key, now)
-		conformanceRequire(t, r.err == nil, r.err)
+		r := do(t, method, path, body, key, now)
 		return r.status, r.body
 	}
 	marshal := func(t *testing.T, v any) []byte {
@@ -95,9 +120,21 @@ func runConformance(t *testing.T, base string) {
 		}
 	}
 	call := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, want int, shape string) []byte {
-		status, b := raw(t, method, path, body, key, time.Now())
-		check(t, status, want, b, shape)
-		return b
+		r := do(t, method, path, body, key, time.Now())
+		// The dropped attempt may have queued or acked already; the retry then sees a duplicate or fewer acks.
+		if r.retried && r.status == 200 && want == 202 && path == "/v1/send" {
+			check(t, r.status, 200, r.body, `{"status":"duplicate"}`)
+			return r.body
+		}
+		if r.retried && r.status == 200 && want == 200 && path == "/v1/ack" {
+			var got struct{ Acked *int }
+			var n int
+			fmt.Sscanf(shape, `{"acked":%d}`, &n)
+			conformanceRequire(t, json.Unmarshal(r.body, &got) == nil && got.Acked != nil && *got.Acked <= n, fmt.Sprintf("retried ack: %.200s", r.body))
+			return r.body
+		}
+		check(t, r.status, want, r.body, shape)
+		return r.body
 	}
 	poll := func(t *testing.T, key ed25519.PrivateKey) ([]Envelope, []byte) {
 		b := call(t, "GET", "/v1/poll?wait=0", nil, key, 200, "")
@@ -358,7 +395,12 @@ func runConformance(t *testing.T, base string) {
 		for i := 0; i < 30; i++ {
 			data := marshal(t, env(a, b, bytes.Repeat([]byte("x"), 45<<10)))
 			conformanceRequire(t, !(len(data) > MaxBody), "test request exceeds MaxBody")
-			status, body := raw(t, "POST", "/v1/send", data, a, time.Now())
+			res := do(t, "POST", "/v1/send", data, a, time.Now())
+			status, body := res.status, res.body
+			if res.retried && status == 200 {
+				check(t, status, 200, body, `{"status":"duplicate"}`) // the dropped attempt landed
+				status, body = 202, []byte(`{"status":"queued"}`)
+			}
 			if status == 507 {
 				check(t, status, 507, body, "")
 				full = true
@@ -446,4 +488,9 @@ func runConformance(t *testing.T, base string) {
 		status, _ := raw(t, "GET", "/v1/nope", nil, nil, time.Now())
 		conformanceRequire(t, status == 404, fmt.Sprintf("unknown route: %d", status))
 	})
+}
+
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
