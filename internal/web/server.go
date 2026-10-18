@@ -159,6 +159,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/notes", s.notes)
 	mux.HandleFunc("POST /api/notes/read", s.readNotes)
+	s.registerDevicesAPI(mux)
 	mux.HandleFunc("GET /api/node/pending", s.listNodePending)
 	mux.HandleFunc("POST /api/node/pending/{id}", s.decideNodePending)
 	mux.HandleFunc("GET /api/push", s.pushStatus)
