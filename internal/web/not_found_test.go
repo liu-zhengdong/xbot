@@ -30,7 +30,7 @@ func TestUnknownPage(t *testing.T) {
 			}
 		}
 	}
-	for _, path := range []string{"/", "/app.js", "/app.css", "/fonts/MonaSansVF.woff2", "/fonts/NotoSansSC-subset.woff2"} {
+	for _, path := range []string{"/", "/app.js", "/app.css", "/fonts/MonaSansVF.woff2", "/fonts/NotoSansSC-subset.woff2", "/fonts/NotoSansSC-full.woff2"} {
 		req := httptest.NewRequest("GET", path, nil)
 		req.Header.Set("Accept", "text/html")
 		rec := httptest.NewRecorder()

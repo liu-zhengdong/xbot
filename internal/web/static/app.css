@@ -9,15 +9,31 @@
   font-display: swap;
 }
 
-/* Bundled Noto Sans SC subset (GB2312, weights 400-700) so Chinese text
-   looks the same on every OS; unicode-range keeps it off Latin text. */
+/* Bundled Noto Sans SC (weights 400-700) so Chinese text looks the same on
+   every OS; unicode-range keeps it off Latin text. Never local(): an installed
+   static Regular would serve every weight and force synthetic bold.
+   Full Noto Sans SC variable font from google/fonts ofl/notosanssc/NotoSansSC[wght].ttf
+   (https://github.com/google/fonts/raw/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf)
+   sha256 of the .ttf a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da, converted to woff2 with fontTools.
+   It covers all of CJK Unified and Ext-A but only part of Ext-B and later; those
+   few characters still use whatever the OS has. */
 @font-face {
   font-family: "XBot SC";
-  src: local("Noto Sans SC"), local("NotoSansSC-Regular"), url("/fonts/NotoSansSC-subset.woff2") format("woff2");
+  src: url("/fonts/NotoSansSC-full.woff2") format("woff2");
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+  unicode-range: U+2E80-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE6F, U+FF00-FFEF, U+20000-2FA1F;
+}
+
+/* Declared after the full face on purpose: overlapping faces of one family are tried in reverse declaration order, so the subset is used whenever it has the glyph and the full file downloads only for characters it lacks. The subset's range lists only the blocks it carries (GB2312 hanzi, CJK punctuation, kana, bopomofo, fullwidth forms). */
+@font-face {
+  font-family: "XBot SC";
+  src: url("/fonts/NotoSansSC-subset.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+3000-312F, U+3220-3229, U+4E00-9FFF, U+FF00-FFEF;
 }
 
 :root {
@@ -67,7 +83,7 @@
   --eye: #3a342f;
   --composer: #f0f0f2;
   --panel: #f6f6f8;
-  --font: "Mona Sans VF", "XBot SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Backtick Fix", "Noto Sans", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font: "Mona Sans VF", "XBot SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   --side: 260px;
   color-scheme: light;

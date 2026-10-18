@@ -122,6 +122,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /icon-512.png", s.static("static/icon-512.png", "image/png"))
 	mux.HandleFunc("GET /fonts/MonaSansVF.woff2", s.static("static/fonts/MonaSansVF.woff2", "font/woff2"))
 	mux.HandleFunc("GET /fonts/NotoSansSC-subset.woff2", s.static("static/fonts/NotoSansSC-subset.woff2", "font/woff2"))
+	// Fetched on demand for characters the subset lacks; never preloaded or precached.
+	mux.HandleFunc("GET /fonts/NotoSansSC-full.woff2", s.static("static/fonts/NotoSansSC-full.woff2", "font/woff2"))
 
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("GET /app/launch", s.launch)
