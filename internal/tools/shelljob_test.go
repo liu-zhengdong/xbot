@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -1002,5 +1003,57 @@ func waitGone(t *testing.T, bin string) {
 			t.Fatalf("%s still running", bin)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// Cancel and Shutdown return only after OnDone, which may still write into the
+// job directory (a wake, the notified mark). A job that has just exited counts
+// too: Status says done before its record is written. Returning earlier let a
+// test's TempDir cleanup race those writes (#222, #223, #51).
+func TestStopWaitsForOnDone(t *testing.T) {
+	for _, stop := range []string{"cancel", "shutdown", "cancel-exited"} {
+		t.Run(stop, func(t *testing.T) {
+			dir := t.TempDir()
+			j := NewJobs(dir)
+			var finished atomic.Bool
+			j.OnDone = func(job Job) {
+				time.Sleep(100 * time.Millisecond)
+				_ = os.WriteFile(filepath.Join(dir, job.ID+".wake"), nil, 0600)
+				finished.Store(true)
+			}
+			cmd := "sleep 30"
+			if stop == "cancel-exited" {
+				cmd = "true"
+			}
+			out, err := j.Run(context.Background(), RunRequest{Command: cmd, Background: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := jobIDFrom(out)
+			switch stop {
+			case "shutdown":
+				j.Shutdown()
+			case "cancel-exited":
+				deadline := time.Now().Add(5 * time.Second)
+				for {
+					st, err := j.Status(id)
+					if err == nil && st.Status != "running" {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("status %+v err %v", st, err)
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+				fallthrough
+			default:
+				if _, err := j.Cancel(id); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !finished.Load() {
+				t.Fatal(stop + " returned before OnDone finished writing")
+			}
+		})
 	}
 }

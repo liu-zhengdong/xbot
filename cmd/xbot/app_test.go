@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,5 +133,59 @@ func TestRunServeAppBusyPortTouchesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "bots")); !os.IsNotExist(err) {
 		t.Fatalf("root changed before bind: %v", err)
+	}
+}
+
+// serve returns only after its routine ticker has finished writing the data
+// root, and the ticker does not run again afterwards. Returning earlier raced
+// TempDir cleanup in TestRunServeApp (#224).
+func TestRunServeWaitsForTimerTicker(t *testing.T) {
+	root := t.TempDir()
+	var calls, active atomic.Int32
+	var returned, late atomic.Bool
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	listening := make(chan struct{}, 1)
+	go func() {
+		done <- runServe(ctx, root, serveConfig{HTTPAddr: "127.0.0.1:0", Interval: time.Hour, App: true,
+			OnListening: func(*web.Server, net.Addr) { listening <- struct{}{} },
+			// The first call is the synchronous check; later ones are the ticker.
+			DeliverTimers: func(string, time.Time) error {
+				if returned.Load() {
+					late.Store(true)
+				}
+				active.Add(1)
+				defer active.Add(-1)
+				if calls.Add(1) == 2 {
+					time.Sleep(200 * time.Millisecond)
+				}
+				return nil
+			},
+		})
+	}()
+	select {
+	case <-listening:
+	case err := <-done:
+		t.Fatalf("serve exited before listening: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("listener not ready")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve failed to stop")
+	}
+	returned.Store(true)
+	if active.Load() != 0 {
+		t.Fatal("serve returned while the routine ticker was still delivering")
+	}
+	time.Sleep(300 * time.Millisecond)
+	if late.Load() {
+		t.Fatal("the routine ticker ran after serve returned")
 	}
 }

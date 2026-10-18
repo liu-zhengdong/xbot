@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
@@ -165,6 +167,39 @@ func TestRelativeRootSpawn(t *testing.T) {
 	if err != nil || len(agents) == 0 {
 		t.Fatalf("agents %v %v", agents, err)
 	}
+	// The subagent can still be writing under the root after Handle returns.
+	// Its final event reaching the inbox log is the last write, so wait for it
+	// before TempDir cleanup (#51). The turn may already have acked it.
+	deadline := time.Now().Add(10 * time.Second)
+	for !subagentEnded(t, b.InboxPath()) {
+		if time.Now().After(deadline) {
+			t.Fatal("subagent did not finish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// subagentEnded reports whether the inbox log holds a subagent's final event,
+// acked or not.
+func subagentEnded(t *testing.T, path string) bool {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		var rec struct {
+			Op    string      `json:"op"`
+			Event *link.Event `json:"event"`
+		}
+		if json.Unmarshal(line, &rec) != nil || rec.Op != "post" || rec.Event == nil {
+			continue
+		}
+		if rec.Event.Source == link.SourceSubagent && (rec.Event.Type == exec.EvDone || rec.Event.Type == exec.EvFailed) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPrinterShowsAsk(t *testing.T) {

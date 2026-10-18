@@ -170,13 +170,25 @@ func startBrowser(bin string, args []string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
+// readCmdline reads a process's command line; tests replace it.
+var readCmdline = func(pid int) ([]byte, error) {
+	return os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+}
+
 // chromeOwned reports whether pid's command line contains this profile directory.
 func chromeOwned(pid int, profile string) bool {
 	profile = strings.TrimSpace(profile)
 	if pid <= 0 || profile == "" {
 		return false
 	}
-	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	// A process that has just been started can still be inside exec, where
+	// Linux shows an empty command line for a moment. Reading it as foreign
+	// would clear the session and leave that Chrome running.
+	raw, err := readCmdline(pid)
+	for tries := 0; err == nil && len(raw) == 0 && tries < 50; tries++ {
+		time.Sleep(10 * time.Millisecond)
+		raw, err = readCmdline(pid)
+	}
 	if err != nil || len(raw) == 0 {
 		return false
 	}

@@ -440,6 +440,9 @@ func (j *Jobs) Cancel(id string) (string, error) {
 	}
 	job := lv.snapshot()
 	if job.Status != "running" {
+		// A job that has just exited may still be writing its record and
+		// running OnDone. A loaded job's done is already closed.
+		<-lv.done
 		return "status " + job.Status, nil
 	}
 	if lv.cmd == nil || lv.cmd.Process == nil {
@@ -600,8 +603,11 @@ func (j *Jobs) finish(lv *live, waitErr error) {
 	if report && ended != "" && onCwd != nil {
 		onCwd(ended)
 	}
-	close(lv.done)
 	j.metaMu.Unlock()
+	// done closes after OnDone and prune, so Cancel and Shutdown return only
+	// once this job has stopped writing: OnDone may post a wake and mark the
+	// record notified.
+	defer close(lv.done)
 	if err != nil {
 		return
 	}

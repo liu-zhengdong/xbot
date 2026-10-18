@@ -134,9 +134,13 @@ func TestSpawnWhileChatKeepsAnswering(t *testing.T) {
 	var buf safeBuf
 	k.OnDelta = func(s string) { buf.WriteString(s) }
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	runDone := make(chan struct{})
+	// The kernel still writes (outbox, transcript) after the reply text has
+	// streamed, so wait for the loop to return before TempDir cleanup (#144).
+	defer func() { cancel(); <-runDone }()
 	lines := make(chan proc.Line, 4)
 	go func() {
+		defer close(runDone)
 		_ = proc.Run(ctx, proc.Config{
 			K:      k,
 			Poll:   20 * time.Millisecond,
