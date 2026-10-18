@@ -85,6 +85,12 @@ func TestChatSummaries(t *testing.T) {
 	if sums, _ = ChatSummaries(root, dev); sums["bob"].Unread != 1 {
 		t.Fatalf("read up to b4: %+v", sums["bob"])
 	}
+	// A late view of an older snapshot does not move the cursor back.
+	mustRemote(t, MarkChatRead(root, dev, "bob", ""))
+	mustRemote(t, MarkChatRead(root, dev, "bob", "b4"))
+	if sums, _ = ChatSummaries(root, dev); sums["bob"].Unread != 0 {
+		t.Fatalf("cursor moved back: %+v", sums["bob"])
+	}
 
 	// No transcript at all is an empty map, not an error or a nil.
 	if sums, err = ChatSummaries(root, strings.Repeat("cd", 16)); err != nil || sums == nil || len(sums) != 0 {
