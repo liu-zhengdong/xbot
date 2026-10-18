@@ -31,10 +31,22 @@
       headers: body === undefined ? {} : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    if (res.status === 401) { sessionExpired(); }
     let data = null;
     try { data = await res.json(); } catch (e) { data = null; }
     if (!res.ok) { const err = new Error((data && data.error) || "请求失败"); err.status = res.status; throw err; }
     return data;
+  }
+  // 登录过期：收起设备抽屉和弹窗、清掉状态和挂到 body 上的层，重新加载让 app.js 走登录流程
+  function sessionExpired() {
+    S.drawer = false; S.view = null; S.menuFor = ""; S.target = null; S.fieldErr = ""; S.busy = false;
+    if (drawerEl) { try { drawerEl.remove(); } catch (e) { drawerEl.innerHTML = ""; } }
+    if (modalEl) { try { modalEl.remove(); } catch (e) { modalEl.innerHTML = ""; } }
+    drawerEl = modalEl = null;
+    location.reload();
+    const err = new Error("登录已过期");
+    err.status = 401;
+    throw err;
   }
 
   function left(expires, minus) {
@@ -64,7 +76,7 @@
     joinVal: "", gwOpen: false, gwVal: "", fieldErr: "",
     menuFor: "", target: null, selfGwEdit: false, selfGwErr: "", busy: false,
   };
-  let drawerEl = null, modalEl = null, lastView = "";
+  let drawerEl = null, modalEl = null, lastView = "", opener = null;
 
   function ensureHosts() {
     if (drawerEl) return;
@@ -87,12 +99,34 @@
   // ---- 打开、关闭 ----
   async function openDrawer() {
     ensureHosts();
+    if (!S.drawer) opener = document.activeElement;
     S.drawer = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
     await refresh();
     render();
   }
-  function closeDrawer() { S.drawer = false; render(); }
+  function closeDrawer() { S.drawer = false; S.view = null; render(); }
   function closeModal() { S.view = null; S.fieldErr = ""; render(); }
+
+  const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+  // 顶层设备层 = 有弹窗时弹窗，否则抽屉；Tab/Shift+Tab 在层内循环，Escape 关掉这一层
+  function trap(ev) {
+    const top = modalEl && modalEl.firstChild ? "modal" : drawerEl && drawerEl.firstChild ? "drawer" : "";
+    if (!top) return false;
+    if (ev.key === "Escape") {
+      if (top === "modal" && S.view !== "rename" && S.view !== "unpair") return false; // pairing.js owns its modals' Escape (it cancels codes)
+      top === "modal" ? closeModal() : closeDrawer();
+      return true;
+    }
+    if (ev.key !== "Tab") return false;
+    const layer = top === "modal" ? modalEl : drawerEl;
+    const items = Array.from(layer.querySelectorAll(FOCUSABLE));
+    if (!items.length) return false;
+    const i = items.indexOf(ev.target);
+    ev.preventDefault();
+    const next = ev.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i < 0 || i === items.length - 1 ? 0 : i + 1);
+    items[next].focus();
+    return true;
+  }
 
   function modal(inner, cls) { return `<div class="modal${cls ? " " + cls : ""}" data-g7-modal><div class="modal-card g7-card" role="dialog" aria-modal="true">${inner}</div></div>`; }
 
@@ -143,7 +177,7 @@
       ? `<section class="profile-section"><h3>已配对 · ${devs.length}</h3>
           ${gw && !up ? `<div class="g7-gw-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><span class="spacer"></span><button class="ghost" type="button" aria-label="重试" data-act="gw-retry">${svg("refresh")}</button></div>` : ""}
           ${devs.map((d) => devRow(d, up)).join("")}</section>`
-      : `<div class="g7-empty"><span class="g7-empty-ico">${svg("devices", 28)}</span><h3>还没有配对的设备</h3><p>配对后，就能在这里用另一台电脑上的 Bot。</p></div>
+      : `<div class="g7-empty"><span class="g7-empty-ico">${svg("devices", 28)}</span><h3>还没有配对的设备</h3><p>配对后，两台电脑能互相使用对方的 Bot。</p></div>
          ${pair ? `<div class="g7-options">
           <button class="g7-option" type="button" data-act="add"><span class="g7-opt-ico">${svg("plus", 18)}</span><span><b>添加设备</b><small>在这台电脑上生成配对码，到另一台电脑上输入</small></span></button>
           <button class="g7-option" type="button" data-act="join-open"><span class="g7-opt-ico">${svg("keyboard", 18)}</span><span><b>加入另一台设备</b><small>输入另一台电脑上显示的配对码</small></span></button></div>` : ""}`;
@@ -164,7 +198,7 @@
     ensureHosts();
     const focusId = document.activeElement && document.activeElement.id;
     const sel = document.activeElement && "selectionStart" in document.activeElement ? document.activeElement.selectionStart : null;
-    const wasDrawer = !!drawerEl.firstChild;
+    const wasDrawer = !!drawerEl.firstChild, wasView = lastView;
     drawerEl.innerHTML = S.drawer ? viewDrawer() : "";
     if (wasDrawer && S.drawer) drawerEl.querySelector(".profile-modal").style.animation = "none";
     const V = Object.assign({ rename: viewRename, unpair: viewUnpair }, D.views)[S.view];
@@ -172,8 +206,12 @@
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
     lastView = S.view || "";
     const f = focusId && document.getElementById(focusId);
+    const inside = document.activeElement === document.body || (drawerEl.contains(document.activeElement) || modalEl.contains(document.activeElement));
     if (f && !f.disabled) { f.focus(); if (sel != null && f.setSelectionRange) try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {} }
-    else if (V) { const first = modalEl.querySelector("input:not([disabled])"); if (first && (S.view === "join" || S.view === "add-gw" || S.view === "rename")) first.focus(); }
+    else if (V && (S.view !== wasView || !inside)) { const first = modalEl.querySelector("input:not([disabled])") || modalEl.querySelector(FOCUSABLE); if (first) first.focus(); }
+    else if (!inside) { const first = (V ? modalEl : drawerEl).querySelector(V ? ".modal-card button" : ".profile-modal button"); if (first) first.focus(); }
+    if (!S.drawer && opener && opener.focus && document.contains(opener)) opener.focus();
+    if (!S.drawer) opener = null;
   }
 
   // ---- 事件 ----
@@ -232,14 +270,12 @@
     if (ev.key === "Enter" && ev.target.id === "g7-self-gw") { ev.preventDefault(); act("self-gw-save", ev.target); }
     if (ev.key === "Enter" && ev.target.id === "g7-name") { ev.preventDefault(); act("save-name", ev.target); }
     if (D.onKey && D.onKey(ev)) return;
-    if (ev.key !== "Escape") return;
-    if (S.view === "rename" || S.view === "unpair") { closeModal(); return; }
-    if (!S.view && S.drawer) closeDrawer();
+    if (drawerEl && (drawerEl.firstChild || modalEl.firstChild)) trap(ev);
   });
 
   // 倒计时只改文字，不重画
   setInterval(() => {
-    if (!modalEl) return;
+    if (!modalEl || !modalEl.firstChild) return;
     modalEl.querySelectorAll("[data-left]").forEach((el) => { el.textContent = left(el.dataset.left, Number(el.dataset.minus || 0)); });
   }, 1000);
 
@@ -252,6 +288,7 @@
       if (menu) menu.hidden = true;
       const acct = document.getElementById("account");
       if (acct) acct.setAttribute("aria-expanded", "false");
+      opener = btn;
       openDrawer();
     });
     const acct = document.getElementById("account");
