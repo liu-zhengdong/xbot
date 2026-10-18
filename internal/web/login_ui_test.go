@@ -10,7 +10,7 @@ func TestLoginSessionCopy(t *testing.T) {
 		"static/index.html": {
 			`id="login-form" class="gate-card" novalidate`,
 			`id="modal-form" class="modal-card" novalidate`,
-			"登录码", "启动 XBot 时终端里会打印 login token", "autofocus",
+			"登录码", "启动 XBot 时，终端里会打印登录码", "autofocus",
 		},
 		"static/app.js": {
 			"先填登录码", "登录码不对，重新复制终端里 login token 那一行",
