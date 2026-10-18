@@ -94,4 +94,8 @@ test('an expired pending mailbox drops its mail and releases the quota', async (
   db.exec("UPDATE meta SET v='1' WHERE k='pexp'"); await b.pend(B, [1], A, Date.now() + 1000); // Reclaimed after expiry.
   assert.deepEqual(released, ['e'.repeat(32)]); assert.deepEqual(dropped, [[A, B]]); assert.equal(db.prepare('SELECT COUNT(*) n FROM queue').get().n, 0);
   db.exec("UPDATE meta SET v='1' WHERE k='pexp'"); await b.alarm(); assert.equal((await b.ack('{}')).status, 403); assert.equal(dropped.length, 2);
+  // If the owner side could not be cleaned, a renewal is refused until it is (the claim is retried).
+  await b.pend(B, [1], A, Date.now() + 1000); db.exec("UPDATE meta SET v='1' WHERE k='pexp'");
+  b.env.MAILBOX = {getByName:()=>({dropFrom:async()=>{ throw Error('down'); }})};
+  await assert.rejects(b.pend(B, [1], A, Date.now() + 1000), /unfinished/);
 });

@@ -52,7 +52,9 @@ export class Mailbox extends DurableObject<Env> {
   }
   // Removes what this pending install sent to owner, as Go does when it expires or moves.
   private async dropAt(owner: string) {
-    try { await this.env.MAILBOX.getByName(owner).dropFrom(this.meta("self") || ""); return true; } catch { return false; }
+    const self = this.meta("self");
+    if (!self) return false;
+    try { await this.env.MAILBOX.getByName(owner).dropFrom(self); return true; } catch { return false; }
   }
   // Members always; a pending install (G7) until its expiry, after which its mail both ways is dropped.
   // 'pending' outlives 'pexp' until the owner's side is cleaned; the alarm retries every minute.
@@ -81,6 +83,7 @@ export class Mailbox extends DurableObject<Env> {
       if (this.meta("registered")) return;
       if (this.meta("pending") === owner && this.meta("pexp") === String(expires)) return; // Retried claim: no writes.
       await this.live(); // An expired previous lifetime is cleaned up first.
+      if (this.ready && !this.meta("pexp") && this.meta("pending")) throw Error("previous pending cleanup unfinished"); // The claim retry tries again.
     }
     this.ctx.storage.sql.exec(TABLES); this.ready = true;
     const old = this.meta("pending");
