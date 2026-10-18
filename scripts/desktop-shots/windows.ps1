@@ -201,6 +201,8 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
         $r = [Native]::Bounds($hwnd); $s = [Native]::GetDpiForWindow($hwnd) / 96.0
         foreach ($b in @(@{ n = 'close'; x = 23 }, @{ n = 'max'; x = 69 }, @{ n = 'min'; x = 115 })) {
           Say "hover $($b.n): $([Native]::Hover([int]($r.Right - $b.x * $s), [int]($r.Top + 20 * $s)))"
+          # Shot at once too: tells a hover that never paints from one that a leave clears.
+          if ($b.n -eq 'close') { Shot $hwnd "$mode-$theme-hover-close-now" }
           Start-Sleep -Milliseconds 700
           Shot $hwnd "$mode-$theme-hover-$($b.n)"
         }
