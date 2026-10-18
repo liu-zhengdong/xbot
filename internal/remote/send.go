@@ -38,6 +38,10 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 	if !d.UnpairedAt.IsZero() {
 		return false, fmt.Errorf("remote: device %s was unpaired by the other computer", device)
 	}
+	// 「Bot 互发消息」 off: no envelope, no queue; the outbox is left as it is.
+	if d.NoBotMessaging {
+		return false, fmt.Errorf("remote: bot messages to %s are turned off in 设备", device)
+	}
 	if d.XKey == "" {
 		return false, fmt.Errorf("remote: %s has no encryption key; pair again with xbot remote invite/join", device)
 	}
