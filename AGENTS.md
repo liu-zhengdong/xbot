@@ -19,6 +19,12 @@ XBot：Go 写的个人 AI 助手，交互单位是长期存在的 Bot。模块 `
 | `internal/provider/`、`prompts/`、`internal/eval/`、`evals/` | [providers.md](docs/atlas/providers.md) |
 | `internal/web/` | [ui.md](docs/atlas/ui.md)、[API.md](docs/API.md) |
 
+## 核心旅程
+- 开工前读 [docs/JOURNEYS.md](docs/JOURNEYS.md)。同一时间只推进一个功能点，它必须挂在某一条旅程上；挂不上的写进 [候选清单](docs/CANDIDATES.md)，不当场开工。
+- 主人一次说了好几件事，只挑最影响旅程的那一件来做，其余写进候选清单，并告诉主人放了哪些。
+- 汇报完成时说清级别：已合入 / 端到端通过 / 主人日用通过。只有「已合入」时不说「做完了」。
+- 旅程和「怎样算对」由主人定，Agent 不能自己改。
+
 ## 硬约束
 - 不打印、不记录、不提交任何密钥；供应商 key 只记环境变量名。
 - 新工具必须在内核权限表里归类，工具自己不决定确认（守门测试会挡）。

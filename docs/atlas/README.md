@@ -26,6 +26,7 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 
 | 思想 | 一句话 | 读完能明白什么 | 文档 |
 |---|---|---|---|
+| 核心旅程驱动 | 最多 7 条主人每天会走的旅程；一次只推进一个挂在旅程上的功能点，其余进候选清单 | 下一步该做什么，什么时候才算「做完了」 | [JOURNEYS.md](../JOURNEYS.md) |
 | 内核要薄 | 只留 Link、Event、收件箱、执行器任务几个抽象，约束由 harness 强制执行 | 为什么新功能先找已有抽象，为什么规则放在工具和内核里而不是提示里 | [ideas/thin-kernel.md](ideas/thin-kernel.md) |
 | 评测把关，不对着题调 | 行为由评测判定；留出套件只在验收时跑；每条规则都要是通用原则 | 怎么改提示才算改好了，为什么普通套件全过还不够 | [ideas/eval-gated.md](ideas/eval-gated.md) |
 | 收敛与主动补齐 | 主动做目标显然需要的配套，同时有预算、有边界、做不到就停 | Bot 什么时候该多走一步，什么时候该停下 | [ideas/convergence-and-ownership.md](ideas/convergence-and-ownership.md) |
@@ -87,6 +88,7 @@ flowchart LR
 | 文档 | 在哪 | 给谁 | 活的 / 冻结 | 谁维护 |
 |---|---|---|---|---|
 | 项目说明与构建 | [README.md](../../README.md) | 所有人 | 活的 | 主人 |
+| 核心旅程 | [JOURNEYS.md](../JOURNEYS.md) | 主人、编码 Agent | 活的，最多 7 条，主人定 | 主人 |
 | Agent 入口 | [AGENTS.md](../../AGENTS.md) | 编码 Agent | 活的 | 主人 |
 | 里程碑与进度 | [MILESTONES.md](../MILESTONES.md) | 主人、开发者 | 活的，天天变 | Bot 复刻 |
 | 网页 HTTP 接口 | [API.md](../API.md) | 界面开发者 | 活的 | 开发者 |
