@@ -64,10 +64,12 @@
     try {
       const r = await api("GET", path(d, b) + "/messages?limit=" + LIMIT);
       if (!same(d, b)) return;
+      const lastBefore = V.list.length ? V.list[V.list.length - 1].id : "";
       V.list = (r.messages || []).filter((m) => m && m.text != null);
       V.devInfo = r.device || null;
       settle();
       if (initial) markRead();
+      else if (V.list.length && V.list[V.list.length - 1].id !== lastBefore && D.refresh) D.refresh(); // 新回复：侧栏的最新一句跟上
       draw();
       scrollDown(initial);
     } catch (e) {
@@ -203,7 +205,7 @@
   const clock = (at) => { const t = new Date(at); return isNaN(t.getTime()) ? "" : String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); };
   // 主人这条下面的状态：本机还没发出、网关里等离线设备上线、设备在线但没回执、没发出去；其他不写。
   function stateOf(m) {
-    if (V.failed.includes(m.text)) return "failed";
+    if (m.role === "me" && (m.state === "failed" || V.failed.includes(m.text))) return "failed"; // 服务端存成 failed 的（502）重新打开也给「重试」
     if (m.state === "queued_local") return "local";
     if (m.role === "me" && m.no_ack && online()) return "noack"; // 离线仍按「已排队」写
     if (m.state === "sent" && !online()) return "waiting";
@@ -228,6 +230,8 @@
       else items.push(`<div class="rc-b">${sideFaces(V.bot)}<div class="rc-bbody"><div class="who">${esc(V.bot)}<time>${clock(m.at)}</time></div><div class="rc-text">${lines(m.text)}</div></div></div>`);
       prevBot = true;
     }
+    // 连不上 XBot 时没进记录的那句：留在原处给「重试」。
+    for (const t of V.failed) if (!V.list.some((m) => m.role === "me" && m.text === t)) items.push(owner(t, "failed"));
     if (V.send) items.push(owner(V.send.text, ""));
     el.thread.innerHTML = `<div class="thread-inner">${items.join("")}</div>`;
   }

@@ -55,6 +55,8 @@ func chatContract(t *testing.T) []string {
 	// has no raw string, so it cannot span from one literal to the next.
 	return []string{
 		`window.xbotRemoteChat = { open: open,`, // devices.js reads D.chat through a getter over this
+		`m.state === "failed" || V.failed.includes(m.text)`,
+		`for (const t of V.failed) if (!V.list.some((m) => m.role === "me" && m.text === t)) items.push(owner(t, "failed"));`,
 		`"/api/remote/" + encodeURIComponent(d) + "/bots/" + encodeURIComponent(b)`,
 		`api("POST", path(d, b) + "/messages", { text: t })`, `api("POST", path(V.dev, V.bot) + "/read")`,
 		`e.status === 502 && e.data && e.data.message`,
