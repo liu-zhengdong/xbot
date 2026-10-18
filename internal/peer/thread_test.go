@@ -70,6 +70,19 @@ func TestConversationReadsBothTranscripts(t *testing.T) {
 	}
 }
 
+func TestEventSource(t *testing.T) {
+	at := time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+	wrap := link.Wrap(link.NewEvent("bot:writer@MacBook", link.TypeMessage, "hi\nbye", "writer@MacBook", at))
+	if source, sender, ok := EventSource(wrap); !ok || source != "bot:writer@MacBook" || sender != "writer@MacBook" {
+		t.Fatalf("wrapped %q %q %v", source, sender, ok)
+	}
+	for _, raw := range []string{"plain words", "", "<untrusted_event source=\"bot:a\" type=\"message\">\nx\n</untrusted_event>"} {
+		if source, sender, ok := EventSource(raw); ok || source != "" || sender != "" {
+			t.Fatalf("%q is not a wrapped event: %q %q %v", raw, source, sender, ok)
+		}
+	}
+}
+
 func appendDirect(t *testing.T, b *bot.Bot, id, from, text string, at time.Time) {
 	t.Helper()
 	ev := link.NewEvent("bot:"+from, link.TypeMessage, text, from, at)
