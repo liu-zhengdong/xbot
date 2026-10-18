@@ -136,7 +136,7 @@ func (s *Server) deleteOwnerCodesLocked(owner string) error {
 	return nil
 }
 
-func (s *Server) registerCode(_ *http.Request, body []byte, caller string, _ ed25519.PublicKey) (int, any, error) {
+func (s *Server) registerCode(r *http.Request, body []byte, caller string, _ ed25519.PublicKey) (int, any, error) {
 	in, err := parseCode(body)
 	if err != nil {
 		return 0, nil, err
@@ -153,19 +153,26 @@ func (s *Server) registerCode(_ *http.Request, body []byte, caller string, _ ed2
 	if err == nil && s.now().Before(stamp.ModTime().Add(codeRegisterGap)) {
 		return 0, nil, httpError{429, "code registration too frequent"}
 	}
-	records, err := s.codeRecordsLocked()
-	if err != nil {
-		return 0, nil, err
+	ip := s.clientIP(r)
+	if s.codeLimitedLocked(ip) {
+		return 0, nil, httpError{429, "too many tries"}
 	}
-	path := s.codePath(in.Lookup)
-	if old, ok := records[path]; ok && old.Owner != caller && !old.Dead && old.Claims < MaxCodeClaims && s.now().Before(old.Expires) {
-		return 0, nil, httpError{409, "lookup taken"}
-	}
+	// Every attempt, a 409 included, uses the gap, so register is no faster
+	// a way than claim to find live lookups.
 	if err := fsutil.WriteAtomic(ratePath, nil, 0600); err != nil {
 		return 0, nil, err
 	}
 	if err := os.Chtimes(ratePath, s.now(), s.now()); err != nil {
 		return 0, nil, err
+	}
+	records, err := s.codeRecordsLocked()
+	if err != nil {
+		return 0, nil, err
+	}
+	path := s.codePath(in.Lookup)
+	if old, ok := records[path]; ok && old.Owner != caller && !old.Dead && s.now().Before(old.Expires) {
+		s.codeFailedLocked(ip)
+		return 0, nil, httpError{409, "lookup taken"} // Also when all five claims are used.
 	}
 	for p, old := range records {
 		if old.Owner == caller {
@@ -191,7 +198,10 @@ func (s *Server) cancelCode(_ *http.Request, body []byte, caller string, _ ed255
 	if err != nil {
 		return 0, nil, err
 	}
-	record.Dead = true
+	if !record.Dead {
+		record.Dead = true
+		record.Expires = minTime(record.Expires, s.now()) // Retention runs from the cancel.
+	}
 	return 200, map[string]string{"status": "ok"}, writeCode(path, record)
 }
 
@@ -200,32 +210,8 @@ func (s *Server) claimCode(r *http.Request, body []byte, caller string, pub ed25
 	if err != nil {
 		return 0, nil, err
 	}
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
-	}
-	if s.TrustForwarded {
-		if values := r.Header.Values("X-Forwarded-For"); len(values) > 0 {
-			forwarded := values[len(values)-1]
-			if last := net.ParseIP(strings.TrimSpace(forwarded[strings.LastIndex(forwarded, ",")+1:])); last != nil {
-				ip = last.String()
-			}
-		}
-	}
-	if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
-		ip = parsed.Mask(net.CIDRMask(64, 128)).String() // One IPv6 host usually owns a /64.
-	}
-	stale := func(t time.Time) bool { return !t.After(s.now().Add(-time.Minute)) }
-	s.codeTries = slices.DeleteFunc(s.codeTries, stale)
-	for host, tries := range s.codeFailures {
-		tries = slices.DeleteFunc(tries, stale)
-		if len(tries) == 0 {
-			delete(s.codeFailures, host)
-		} else {
-			s.codeFailures[host] = tries
-		}
-	}
-	if len(s.codeTries) >= 120 || len(s.codeFailures[ip]) >= 10 {
+	ip := s.clientIP(r)
+	if s.codeLimitedLocked(ip) {
 		return 0, nil, httpError{429, "too many tries"}
 	}
 	path := s.codePath(in.Lookup)
@@ -242,13 +228,8 @@ func (s *Server) claimCode(r *http.Request, body []byte, caller string, pub ed25
 	case !s.now().Before(record.Expires):
 		failure = httpError{410, "code expired"}
 	}
-	// Only counted failures create entries, so the IP map is bounded by 120.
 	if failure.status != 0 {
-		if s.codeFailures == nil {
-			s.codeFailures = make(map[string][]time.Time)
-		}
-		s.codeFailures[ip] = append(s.codeFailures[ip], s.now())
-		s.codeTries = append(s.codeTries, s.now())
+		s.codeFailedLocked(ip)
 		return 0, nil, failure
 	}
 	if record.Owner == caller {
@@ -265,4 +246,58 @@ func (s *Server) claimCode(r *http.Request, body []byte, caller string, pub ed25
 		}
 	}
 	return 200, map[string]string{"install": record.Owner}, nil
+}
+
+// clientIP is the address failed lookups are counted against: RemoteAddr, or
+// the last X-Forwarded-For entry behind a proxy; IPv6 by /64.
+func (s *Server) clientIP(r *http.Request) string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	if s.TrustForwarded {
+		if values := r.Header.Values("X-Forwarded-For"); len(values) > 0 {
+			forwarded := values[len(values)-1]
+			if last := net.ParseIP(strings.TrimSpace(forwarded[strings.LastIndex(forwarded, ",")+1:])); last != nil {
+				ip = last.String()
+			}
+		}
+	}
+	if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
+		ip = parsed.Mask(net.CIDRMask(64, 128)).String() // One IPv6 host usually owns a /64.
+	}
+	return ip
+}
+
+// codeLimitedLocked reports whether ip (10/min) or the gateway (120/min) has
+// used up its failed lookups: unknown, dead or full claims and 409s on register.
+func (s *Server) codeLimitedLocked(ip string) bool {
+	stale := func(t time.Time) bool { return !t.After(s.now().Add(-time.Minute)) }
+	s.codeTries = slices.DeleteFunc(s.codeTries, stale)
+	for host, tries := range s.codeFailures {
+		tries = slices.DeleteFunc(tries, stale)
+		if len(tries) == 0 {
+			delete(s.codeFailures, host)
+		} else {
+			s.codeFailures[host] = tries
+		}
+	}
+	return len(s.codeTries) >= 120 || len(s.codeFailures[ip]) >= 10
+}
+
+// codeFailedLocked counts a failure; only failures create entries, so the IP
+// map is bounded by the global limit.
+func (s *Server) codeFailedLocked(ip string) {
+	if s.codeFailures == nil {
+		s.codeFailures = make(map[string][]time.Time)
+	}
+	s.codeFailures[ip] = append(s.codeFailures[ip], s.now())
+	s.codeTries = append(s.codeTries, s.now())
+}
+
+func minTime(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
 }

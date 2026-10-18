@@ -416,14 +416,52 @@ func runConformance(t *testing.T, base string, remote bool) {
 	})
 	// G7 short-code pairing: lookup registration, claim (token-free joiner
 	// becomes a pending install of the owner), cancel, expiry and admit.
+	// Keys here are always random, even with XBOT_GATEWAY_TEST_SEED: pending
+	// and admitted installs outlive a run. Lookups never repeat within a run.
+	used := map[string]bool{}
 	lookup := func(t *testing.T) string {
-		var b [LookupLen]byte
-		_, err := rand.Read(b[:])
-		conformanceRequire(t, err == nil, err)
-		for i := range b {
-			b[i] = CodeAlphabet[int(b[i])%len(CodeAlphabet)]
+		for {
+			var b [LookupLen]byte
+			_, err := rand.Read(b[:])
+			conformanceRequire(t, err == nil, err)
+			for i := range b {
+				b[i] = CodeAlphabet[int(b[i])%len(CodeAlphabet)]
+			}
+			if !used[string(b[:])] {
+				used[string(b[:])] = true
+				return string(b[:])
+			}
 		}
-		return string(b[:])
+	}
+	random := func(t *testing.T, register bool) ed25519.PrivateKey {
+		_, key, err := ed25519.GenerateKey(nil)
+		conformanceRequire(t, err == nil, err)
+		if register {
+			call(t, "POST", "/v1/register", nil, key, 200, `{"status":"ok"}`)
+			t.Cleanup(func() { drain(t, key) })
+		}
+		return key
+	}
+	// registerCode tolerates what a live gateway may do: another owner holds
+	// the random lookup (409, pick another), or a retried request whose first
+	// attempt landed hits the 2 s gap (429, wait it out).
+	registerCode := func(t *testing.T, key ed25519.PrivateKey, ttl int) string {
+		l := lookup(t)
+		for range 4 {
+			status, body := raw(t, "POST", "/v1/code", marshal(t, map[string]any{"lookup": l, "ttl": ttl}), key, time.Now())
+			switch status {
+			case 200:
+				return l
+			case 409:
+				l = lookup(t)
+			case 429:
+			default:
+				conformanceRequire(t, false, fmt.Sprintf("register code: %d %s", status, body))
+			}
+			time.Sleep(2100 * time.Millisecond)
+		}
+		conformanceRequire(t, false, "register code: no free lookup")
+		return ""
 	}
 	code := func(t *testing.T, path string, key ed25519.PrivateKey, l string, ttl, want int, shape string) []byte {
 		body := map[string]any{"lookup": l}
@@ -434,17 +472,17 @@ func runConformance(t *testing.T, base string, remote bool) {
 	}
 	idOf := func(k ed25519.PrivateKey) string { return ID(k.Public().(ed25519.PublicKey)) }
 	t.Run("short code", func(t *testing.T) {
-		a, c := pair(t)
+		a, c := random(t, true), random(t, true)
 		l := lookup(t)
-		code(t, "/v1/code", fresh(t, false), l, 60, 403, "")
+		code(t, "/v1/code", random(t, false), l, 60, 403, "")
 		for _, bad := range []string{"", "K7Q", "K7QMM", "k7qm", "K7Q0", "K7QO", "K7QI", "K7QU"} {
 			code(t, "/v1/code", a, bad, 60, 400, "")
 		}
 		code(t, "/v1/code", a, l, 0, 400, "")
 		code(t, "/v1/code", a, l, 601, 400, "")
-		code(t, "/v1/code", a, l, 60, 200, `{"status":"ok"}`)
+		l = registerCode(t, a, 60)
 		code(t, "/v1/code/claim", a, l, 0, 400, "") // Own code.
-		b := fresh(t, false)
+		b := random(t, false)
 		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`)
 		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`) // Idempotent.
 		// Pending: own mailbox, and mail only to and from its owner.
@@ -465,24 +503,23 @@ func runConformance(t *testing.T, base string, remote bool) {
 		drain(t, a)
 		drain(t, c)
 		// Unknown lookups are 404; cancelled ones 410 (retained an hour).
-		code(t, "/v1/code/claim", fresh(t, false), lookup(t), 0, 404, "")
+		code(t, "/v1/code/claim", random(t, false), lookup(t), 0, 404, "")
 		code(t, "/v1/code/cancel", c, l, 0, 404, "") // Not c's code.
 		code(t, "/v1/code/cancel", a, l, 0, 200, `{"status":"ok"}`)
-		code(t, "/v1/code/claim", fresh(t, false), l, 0, 410, "")
+		code(t, "/v1/code/claim", random(t, false), l, 0, 410, "")
 	})
 	t.Run("short code expiry and claim limit", func(t *testing.T) {
-		owner := fresh(t, true)
-		l := lookup(t)
-		code(t, "/v1/code", owner, l, 60, 200, `{"status":"ok"}`)
+		owner := random(t, true)
+		l := registerCode(t, owner, 60)
 		for i := 0; i < MaxCodeClaims; i++ {
-			code(t, "/v1/code/claim", fresh(t, false), l, 0, 200, `{"install":"`+idOf(owner)+`"}`)
+			code(t, "/v1/code/claim", random(t, false), l, 0, 200, `{"install":"`+idOf(owner)+`"}`)
 		}
-		code(t, "/v1/code/claim", fresh(t, false), l, 0, 410, "")
-		e := fresh(t, true)
-		l2 := lookup(t)
-		code(t, "/v1/code", e, l2, 1, 200, `{"status":"ok"}`)
+		code(t, "/v1/code/claim", random(t, false), l, 0, 410, "")
+		code(t, "/v1/code", random(t, true), l, 60, 409, "") // A full code is still taken.
+		e := random(t, true)
+		l2 := registerCode(t, e, 1)
 		time.Sleep(1200 * time.Millisecond)
-		code(t, "/v1/code/claim", fresh(t, false), l2, 0, 410, "")
+		code(t, "/v1/code/claim", random(t, false), l2, 0, 410, "")
 	})
 	t.Run("unknown route", func(t *testing.T) {
 		status, _ := raw(t, "GET", "/v1/nope", nil, nil, time.Now())

@@ -61,6 +61,14 @@ func TestCodeRetentionAndLimits(t *testing.T) {
 	_, err = client().ClaimCode(ctx, "ZZZZ")
 	check(err, 429)
 
+	// Retention runs from a cancel, not from the original expiry.
+	now = now.Add(2 * time.Minute)
+	check(a.RegisterCode(ctx, "MNPQ", 10*time.Minute), 200)
+	check(a.CancelCode(ctx, "MNPQ"), 200)
+	now = now.Add(61 * time.Minute)
+	_, err = client().ClaimCode(ctx, "MNPQ")
+	check(err, 404)
+
 	// IPv6 is limited per /64: two addresses in one /64 share the budget.
 	now = now.Add(2 * time.Minute)
 	h := s.Handler()
