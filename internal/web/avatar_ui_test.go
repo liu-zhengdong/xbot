@@ -51,11 +51,11 @@ func TestDefaultAvatarIsGeneratedPortrait(t *testing.T) {
 			t.Errorf("avatar() uses %q; the logo is never an avatar", avoid)
 		}
 	}
-	if !strings.Contains(body, `if (size === "me")`) {
-		t.Error("the 我 avatar must keep its own path")
+	if !strings.Contains(body, `if (size === "me" && !paint.url && !portraitURL(seed, false)) {`) {
+		t.Error("the 我 avatar keeps the blob only as the no-bundle fallback")
 	}
 
-	if !strings.Contains(css, "#e4e4e7") || !strings.Contains(css, "#c9c9ce") {
+	if !strings.Contains(css, "#e4e4e7") || !strings.Contains(css, "#a8a8ad") {
 		t.Error("app.css misses the portrait container backgrounds")
 	}
 	if strings.Contains(css, "46% 54%") || strings.Contains(css, ".avatar.has-photo") {
@@ -131,5 +131,27 @@ func TestRemoteFacesUseDeviceSeeds(t *testing.T) {
 	}
 	if strings.Count(chat, "sideFaces(V.bot, V.dev)") != 3 || strings.Contains(chat, "sideFaces(V.bot)") {
 		t.Error("remote chat faces are drawn from the device's seed")
+	}
+}
+
+// 我 is a line-art portrait from owner_name; the blob with initials is only the
+// no-bundle fallback. Dark mode darkens the round container to #a8a8ad.
+func TestOwnerAvatarIsPortrait(t *testing.T) {
+	read := func(name string) string {
+		raw, err := staticFS.ReadFile("static/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	js, css := read("app.js"), read("app.css")
+	if !strings.Contains(js, `if (size === "me" && !paint.url && !portraitURL(seed, false)) {`) || !strings.Contains(js, `if (name) slot.replaceChildren(avatar(name, null, "me"));`) {
+		t.Error("the 我 avatar is drawn from the owner's name, with the blob only as fallback")
+	}
+	if !strings.Contains(css, `.avatar.me.blob { background: transparent;`) || strings.Contains(css, `.avatar.me { background: transparent;`) {
+		t.Error("only the blob fallback drops the round container")
+	}
+	if !strings.Contains(css, `html[data-theme="dark"] .avatar { background: #a8a8ad; }`) || strings.Contains(css, "#c9c9ce") {
+		t.Error("dark container is #a8a8ad")
 	}
 }
