@@ -197,12 +197,8 @@ func (s *Server) newCode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if cfg.Gateway == "" {
-		writeErr(w, http.StatusConflict, "还没设网关地址")
-		return
-	}
 	if _, _, err := remote.NewShortCode(r.Context(), s.Root, s.owner); err != nil {
-		writeErr(w, http.StatusBadGateway, "连不上网关 "+cfg.Gateway+"。检查一下网络，或者改一下网关地址。")
+		writeErr(w, http.StatusBadGateway, "连不上网关 "+cfg.GatewayURL()+"。检查一下网络，或者改一下网关地址。")
 		return
 	}
 	s.writePairing(w)

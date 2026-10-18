@@ -170,9 +170,6 @@ func TestDevicesAPIPairing(t *testing.T) {
 	go func() { remote.Run(ctx, b.root, "", nil); done <- struct{}{} }()
 	defer func() { cancel(); <-done; <-done }()
 
-	if code := a.call("POST", "/api/devices/code", `{}`, nil); code != http.StatusConflict {
-		t.Fatalf("no gateway yet: want 409, got %d", code)
-	}
 	if code := a.call("PUT", "/api/devices/gateway", `{"gateway":"http://127.0.0.1:1"}`, nil); code != http.StatusBadGateway {
 		t.Fatalf("unreachable gateway: want 502, got %d", code)
 	}
