@@ -4,6 +4,7 @@ package appshell
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"sync/atomic"
 
@@ -46,9 +47,11 @@ func Run(opts Options, ready func()) error {
 		}
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title: opts.Title, URL: opts.URL, Width: opts.Width, Height: opts.Height,
-			StateKey: stateKey, MinWidth: 900, MinHeight: 560, BackgroundColor: "#ffffff",
-			TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 40,
-			TrafficLightPosition: &mygo.Point{X: 18, Y: 18},
+			StateKey: stateKey, MinWidth: 900, MinHeight: 560,
+			// Follows the page's theme, so startup and resize never flash white.
+			BackgroundColor: "light-dark(#f3f3f5, #141416)",
+			TitleBarStyle:   mygo.TitleBarHidden, TitleBarHeight: 40,
+			TrafficLightPosition: &mygo.Point{X: 16, Y: 14},
 		})
 		win.Page().OnPageTitleUpdated(func(e *mygo.TitleEvent) { e.PreventDefault() })
 		origin, _ := url.Parse(opts.URL)
@@ -76,6 +79,30 @@ func Run(opts Options, ready func()) error {
 }
 
 func Quit() { mygo.App.Quit() }
+
+// SetTheme makes the native window buttons follow XBot's own light or dark
+// theme instead of the OS setting. The page calls it through the web server.
+func SetTheme(theme string) error {
+	source, err := themeSource(theme)
+	if err != nil {
+		return err
+	}
+	mygo.Theme.SetSource(source)
+	return nil
+}
+
+// themeSource maps the page's theme name to MyGo's theme source.
+func themeSource(theme string) (mygo.ThemeSource, error) {
+	switch theme {
+	case "light":
+		return mygo.ThemeLight, nil
+	case "dark":
+		return mygo.ThemeDark, nil
+	case "system", "":
+		return mygo.ThemeSystem, nil
+	}
+	return mygo.ThemeSystem, fmt.Errorf("appshell: unknown theme %q", theme)
+}
 
 // Notify shows a native notification while the shell is running.
 func Notify(title, body string) error {
