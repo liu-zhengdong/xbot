@@ -139,3 +139,22 @@ func TestJoinShortCodeAgainstOwner(t *testing.T) {
 		t.Fatalf("not paired: %+v %+v", got, cfg.Devices)
 	}
 }
+
+// With no gateway set, pairing uses the official default and keeps Run polling.
+func TestShortCodeDefaultGateway(t *testing.T) {
+	root := t.TempDir()
+	c, err := shortClient(root)
+	if err != nil || c.Base != DefaultGateway {
+		t.Fatalf("short client %v %v", c, err)
+	}
+	s := pairingFor(root)
+	if pairingActive(root) {
+		t.Fatal("idle pairing counted as active")
+	}
+	s.Lock()
+	s.join = &shortSession{}
+	s.release()
+	if !pairingActive(root) {
+		t.Fatal("in-flight join does not keep Run polling")
+	}
+}

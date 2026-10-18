@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -57,6 +56,7 @@ type pairingState struct {
 	join   *shortSession
 	client *gateway.Client
 	view   atomic.Pointer[Status]
+	active atomic.Bool // A session is in flight, so Run polls the default gateway.
 }
 
 var pairings sync.Map
@@ -68,7 +68,15 @@ func pairingFor(root string) *pairingState {
 }
 
 // publish keeps status polling independent of slow gateway operations.
-func (s *pairingState) publish() { v := clonePairStatus(s.status); s.view.Store(&v) }
+func (s *pairingState) publish() {
+	v := clonePairStatus(s.status)
+	s.view.Store(&v)
+	s.active.Store(s.join != nil)
+}
+
+// pairingActive keeps Run polling while a pairing is in flight even with no
+// devices or gateway set (the default gateway is used then).
+func pairingActive(root string) bool { return pairingFor(root).active.Load() }
 func (s *pairingState) release() { s.publish(); s.Unlock() }
 func clonePairStatus(out Status) Status {
 	out.A.Bots = append([]string(nil), out.A.Bots...)
@@ -86,11 +94,8 @@ func shortClient(root string) (*gateway.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Gateway == "" {
-		return nil, errors.New("remote: set a gateway first")
-	}
 	key, _, _, err := Identity(root)
-	return &gateway.Client{Base: cfg.Gateway, Key: key}, err
+	return &gateway.Client{Base: cfg.GatewayURL(), Key: key}, err
 }
 func sendPairing(ctx context.Context, c *gateway.Client, env gateway.Envelope) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
