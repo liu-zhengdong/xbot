@@ -1,0 +1,17 @@
+{
+  "name": "xbot-avatar",
+  "private": true,
+  "description": "Builds internal/web/static/vendor/xbot-avatar.min.js. Versions are pinned exactly: any change re-rolls every bot's face.",
+  "license": "MIT",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --minify --format=iife --legal-comments=none --outfile=../../internal/web/static/vendor/xbot-avatar.min.js",
+    "golden": "node golden.js"
+  },
+  "dependencies": {
+    "@dicebear/core": "9.4.2",
+    "@dicebear/notionists": "9.4.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

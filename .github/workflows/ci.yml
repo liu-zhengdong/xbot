@@ -52,3 +52,20 @@ jobs:
         run: go build ./...
       - name: build the xbot binary
         run: go build -o xbot-ci-check ./cmd/xbot
+
+  avatar:
+    name: avatar bundle golden
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: rebuild the bundle from the pinned lockfile
+        working-directory: scripts/avatar
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: rebuilt bundle matches the vendored one
+        run: git diff --exit-code -- internal/web/static/vendor/xbot-avatar.min.js
+      - name: fixed seeds render the golden faces
+        run: node scripts/avatar/golden.js

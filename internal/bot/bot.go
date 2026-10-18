@@ -39,6 +39,7 @@ type Config struct {
 	Pinned       bool     `json:"pinned,omitempty"`
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
+	AvatarSeed   string   `json:"avatar_seed,omitempty"`
 	Style        *Style   `json:"style,omitempty"`
 	// Proactivity is ignored. Old config files may still contain quiet, normal, or active.
 	Proactivity string `json:"proactivity,omitempty"`
@@ -187,10 +188,12 @@ func Create(root, name, persona string, links []string) (*Bot, error) {
 		return nil, fmt.Errorf("bot %q: %w", name, ErrExists)
 	}
 	cfg := Config{
-		Name:    name,
-		Persona: persona,
-		Links:   append([]string(nil), links...),
-		Created: time.Now().UTC(),
+		Name:       name,
+		Persona:    persona,
+		Links:      append([]string(nil), links...),
+		Avatar:     AvatarGenerated,
+		AvatarSeed: name,
+		Created:    time.Now().UTC(),
 	}
 	b := &Bot{Root: root, cfg: cfg}
 	if err := b.SaveConfig(); err != nil {
