@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"xbot/internal/tools"
+	"xbot/internal/vault"
 )
 
 const (
@@ -546,6 +547,10 @@ func (k *Kernel) fileChangeNote(prev []Reminder) string {
 			diff := briefDiff(it.rec.preview, snap.preview)
 			if diff == "" {
 				fmt.Fprintf(&b, "  size %d -> %d\n", it.rec.size, snap.size)
+			} else if vault.LooksLikeSecret(diff) {
+				// Vault redaction only knows vault values. A token someone else
+				// wrote into an ordinary file would ride the diff into context.
+				b.WriteString("  diff not shown: it may contain a secret\n")
 			} else {
 				for _, line := range strings.Split(diff, "\n") {
 					b.WriteString("  ")

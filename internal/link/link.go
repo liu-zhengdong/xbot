@@ -196,9 +196,11 @@ func Render(e Event, trusted bool) string {
 const UntrustedEventPrefix = "<untrusted_event"
 
 // Wrap renders an event as data the model must not treat as a system instruction.
+// The content cannot close or forge the fence: its openers and closers are
+// rewritten as in tools.NeutralizeUntrusted.
 func Wrap(e Event) string {
 	return fmt.Sprintf("%s source=%q type=%q sender=%q time=%q>\n%s\n</untrusted_event>",
-		UntrustedEventPrefix, e.Source, e.Type, e.Sender, e.Time.UTC().Format(time.RFC3339), e.Content)
+		UntrustedEventPrefix, e.Source, e.Type, e.Sender, e.Time.UTC().Format(time.RFC3339), tools.NeutralizeUntrusted(e.Content))
 }
 
 func newID() string {
