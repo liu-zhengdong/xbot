@@ -44,6 +44,15 @@ func (c Config) GatewayURL() string {
 	return DefaultGateway
 }
 
+// GatewayToken scopes a self-host join token to an explicitly configured gateway, so it never
+// reaches the official one (which takes no token).
+func (c Config) GatewayToken(token string) string {
+	if c.Gateway == "" {
+		return ""
+	}
+	return token
+}
+
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 // Identity loads or creates this install's key; LoadOrCreateKey holds the
@@ -216,5 +225,9 @@ func SetGateway(root, raw string) error {
 			return errors.New("remote: gateway must be an http(s) URL with a host")
 		}
 	}
-	return update(root, func(c *Config) error { c.Gateway = strings.TrimRight(raw, "/"); return nil })
+	raw = strings.TrimRight(raw, "/")
+	if raw == DefaultGateway {
+		raw = "" // Stored as the default so the idle privacy rule still applies.
+	}
+	return update(root, func(c *Config) error { c.Gateway = raw; return nil })
 }

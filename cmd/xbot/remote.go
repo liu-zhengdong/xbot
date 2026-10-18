@@ -70,9 +70,9 @@ func cmdRemote(root string, args []string) error {
 			_, err = remote.AddDevice(root, fs.Arg(0), fs.Arg(1), xkey, *person)
 		case args[0] == "invite" && fs.NArg() == 0:
 			var code, id string
+			var pc remote.PairCode
 			code, err = remote.CreateInvite(root, *person, time.Now())
 			if err == nil {
-				var pc remote.PairCode
 				pc, err = remote.ParseCode(code)
 				if err != nil {
 					return err
@@ -84,7 +84,11 @@ func cmdRemote(root string, args []string) error {
 				}
 			}
 			if err == nil {
-				fmt.Printf("%s\nfingerprint %s expires in 10 minutes; the code contains the gateway join token — share it only with your own device\n", code, id[:8])
+				note := ""
+				if pc.Token != "" {
+					note = "; the code contains the gateway join token"
+				}
+				fmt.Printf("%s\nfingerprint %s expires in 10 minutes%s — share it only with your own device\n", code, id[:8], note)
 			}
 		case args[0] == "join" && fs.NArg() == 1:
 			var d remote.Device

@@ -214,3 +214,23 @@ func TestJoinKeepsDefaultGatewayWithDevices(t *testing.T) {
 		t.Fatalf("gateway moved to %q", cfg.Gateway)
 	}
 }
+
+// A self-host join token in the environment never goes to the official default gateway.
+func TestDefaultGatewayGetsNoToken(t *testing.T) {
+	t.Setenv("XBOT_GATEWAY_TOKEN", "self-host-secret")
+	a := pairingRoot(t)
+	mustRemote(t, SetGateway(a, DefaultGateway+"/"))
+	if cfg, _ := Load(a); cfg.Gateway != "" {
+		t.Fatalf("official URL stored explicitly: %q", cfg.Gateway)
+	}
+	code, err := CreateInvite(a, "", time.Now())
+	mustRemote(t, err)
+	pc, err := ParseCode(code)
+	mustRemote(t, err)
+	if pc.Gateway != DefaultGateway || pc.Token != "" {
+		t.Fatalf("code: gateway %q, token %q", pc.Gateway, pc.Token)
+	}
+	if cfg, _ := Load(a); cfg.GatewayToken("x") != "" {
+		t.Fatal("run would send the token to the default gateway")
+	}
+}

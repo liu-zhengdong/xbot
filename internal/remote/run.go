@@ -38,7 +38,7 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 				}
 				client := &gateway.Client{Base: cfg.GatewayURL(), Key: priv}
 				if !registered[cfg.GatewayURL()] {
-					if err := client.Register(ctx, token); err != nil {
+					if err := client.Register(ctx, cfg.GatewayToken(token)); err != nil {
 						return err
 					}
 					registered[cfg.GatewayURL()] = true

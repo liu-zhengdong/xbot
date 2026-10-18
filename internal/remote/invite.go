@@ -121,7 +121,7 @@ func CreateInvite(root, personID string, now time.Time) (string, error) {
 		return "", err
 	}
 	enc, expires := base64.RawURLEncoding.EncodeToString(secret), now.Add(inviteTTL).Unix()
-	raw, _ := json.Marshal(PairCode{1, cfg.GatewayURL(), os.Getenv("XBOT_GATEWAY_TOKEN"), keyB64, xkeyB64, suggestName(), enc, expires})
+	raw, _ := json.Marshal(PairCode{1, cfg.GatewayURL(), cfg.GatewayToken(os.Getenv("XBOT_GATEWAY_TOKEN")), keyB64, xkeyB64, suggestName(), enc, expires})
 	code := pairPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	if len(code) > codeMax {
 		return "", errors.New("remote: invite code exceeds 2 KiB")
@@ -192,9 +192,13 @@ func Join(ctx context.Context, root, code, name, as, personID string, now time.T
 	if err != nil {
 		return Device{}, err
 	}
+	live, err := hasLiveInvite(root, now)
+	if err != nil {
+		return Device{}, err
+	}
 	err = update(root, func(cfg *Config) error {
-		// An install already paired on the default gateway must not silently move elsewhere.
-		if (cfg.Gateway != "" || len(cfg.Devices) > 0) && cfg.GatewayURL() != pc.Gateway {
+		// An install already paired (or inviting) on the default gateway must not silently move elsewhere.
+		if (cfg.Gateway != "" || len(cfg.Devices) > 0 || live) && cfg.GatewayURL() != pc.Gateway {
 			return errors.New("remote: gateway mismatch")
 		}
 		if cfg.Gateway != "" || pc.Gateway != DefaultGateway {
