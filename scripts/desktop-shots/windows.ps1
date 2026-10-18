@@ -126,7 +126,7 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
   $root = Join-Path $env:RUNNER_TEMP "xbot-shots-$Label-$mode-$theme"
   if (Test-Path $root) { Remove-Item -Recurse -Force $root }
   & $Seed $root $mode | ForEach-Object { Say $_ }
-  Set-Content (Join-Path $root 'app-window.json') '{"main":{"x":40,"y":40,"width":1024,"height":672}}'
+  Set-Content (Join-Path $root 'app-window.json') '{"main":{"x":16,"y":16,"width":1024,"height":640}}'
   Set-AppTheme $theme
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($script:cdp)"
   $p = Start-Process -FilePath $Exe -ArgumentList '--root', $root, 'app', '--port', $script:port -PassThru
@@ -163,17 +163,17 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
     }
     if ($Shots) {
       $sw = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-      [Native]::SetCursorPos($sw.Width - 5, $sw.Height - 5) | Out-Null
+      [Native]::Hover($sw.Width - 5, $sw.Height - 60)
       [Native]::Focus($hwnd) | Out-Null; Start-Sleep 1
       Shot $hwnd "$mode-$theme"
       if ($extras -contains 'hover') {
         $r = [Native]::Bounds($hwnd); $s = [Native]::GetDpiForWindow($hwnd) / 96.0
         foreach ($b in @(@{ n = 'close'; x = 23 }, @{ n = 'max'; x = 69 }, @{ n = 'min'; x = 115 })) {
-          [Native]::SetCursorPos([int]($r.Right - $b.x * $s), [int]($r.Top + 20 * $s)) | Out-Null
+          [Native]::Hover([int]($r.Right - $b.x * $s), [int]($r.Top + 20 * $s))
           Start-Sleep -Milliseconds 700
           Shot $hwnd "$mode-$theme-hover-$($b.n)"
         }
-        [Native]::SetCursorPos($sw.Width - 5, $sw.Height - 5) | Out-Null
+        [Native]::Hover($sw.Width - 5, $sw.Height - 60)
       }
       if ($extras -contains 'unfocused') {
         $f = Steal-Focus; Start-Sleep 1
@@ -185,6 +185,8 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
     if ($ws) { $ws.Dispose() }
   } finally {
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    # A WebView2 browser left running would be reused with its old arguments.
+    Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep 2
   }
 }

@@ -57,8 +57,12 @@ run_case() { # mode theme extras...
       screencapture -x -o -l "$id" "$out/mac-$mode-$theme-hover.png"
       "$work/macwin" move 5 5 ;;
     unfocused)
-      osascript -e 'tell application "Finder" to activate' 2>>"$log" || open -a Finder; sleep 1.5
-      screencapture -x -o -l "$id" "$out/mac-$mode-$theme-unfocused.png" ;;
+      # A freshly opened app takes the focus; Finder alone did not on the runner.
+      open -a Calculator; sleep 2
+      osascript -e 'tell application "Calculator" to activate' 2>>"$log" || true; sleep 1
+      say "frontmost: $(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>&1)"
+      screencapture -x -o -l "$id" "$out/mac-$mode-$theme-unfocused.png"
+      osascript -e 'quit app "Calculator"' 2>/dev/null || true ;;
     esac
   done
   kill "$pid" 2>/dev/null || true; sleep 2

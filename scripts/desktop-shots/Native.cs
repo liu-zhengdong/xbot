@@ -17,6 +17,16 @@ public static class Native {
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+
+  // SetCursorPos alone sends no WM_MOUSEMOVE, so hover states never show;
+  // a one-pixel relative move there and back does.
+  public static void Hover(int x, int y) {
+    SetCursorPos(x - 1, y);
+    mouse_event(0x0001, 1, 0, 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(50);
+    mouse_event(0x0001, 0, 0, 0, UIntPtr.Zero);
+  }
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 
