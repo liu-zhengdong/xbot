@@ -97,3 +97,23 @@ func appendBounce(t *testing.T, b *bot.Bot, id, text string, at time.Time) {
 	ev.ID = id
 	appendUser(t, b, id, link.Wrap(ev), at)
 }
+
+// One assistant entry may call message_bot to the same address twice; both are rows.
+func TestRemoteConversationTwoCallsOneEntry(t *testing.T) {
+	root := t.TempDir()
+	a, err := bot.Create(root, "ada", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(id, text string) provider.ToolCall {
+		return provider.ToolCall{ID: id, Type: "function", Function: provider.FunctionCall{Name: "message_bot", Arguments: `{"bot":"writer@MacBook","text":"` + text + `"}`}}
+	}
+	at := time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+	if err := a.Append(bot.Entry{Time: at, Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{call("c1", "one"), call("c2", "two")}}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := RemoteConversation(a, "writer@MacBook")
+	if err != nil || len(rows) != 2 || rows[0].ID != "c1" || rows[1].ID != "c2" || rows[1].Text != "two" {
+		t.Fatalf("%+v %v", rows, err)
+	}
+}

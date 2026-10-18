@@ -14,6 +14,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/peer"
 	"xbot/internal/person"
 	"xbot/internal/provider"
 	"xbot/internal/remote"
@@ -374,5 +375,24 @@ func appendWebUser(t *testing.T, b *bot.Bot, id, content string, at time.Time) {
 		Message: provider.Message{Role: provider.RoleUser, Content: content},
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A page never splits rows that share one entry, so the oldest row's cursor
+// covers the whole entry.
+func TestPeerPageKeepsEntryTogether(t *testing.T) {
+	msgs := []peer.Direct{
+		{ID: "in", To: "ada", Seq: 1},
+		{ID: "c1", To: "w@M", Seq: 2},
+		{ID: "c2", To: "w@M", Seq: 2},
+		{ID: "in2", To: "ada", Seq: 3},
+	}
+	page, err := peerPage(msgs, "", 2)
+	if err != nil || len(page) != 3 || page[0].ID != "c1" {
+		t.Fatalf("%+v %v", page, err)
+	}
+	page, err = peerPage(msgs, "w@M:2", 10)
+	if err != nil || len(page) != 1 || page[0].ID != "in" {
+		t.Fatalf("before: %+v %v", page, err)
 	}
 }

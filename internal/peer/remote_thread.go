@@ -42,9 +42,7 @@ func RemoteConversation(a *bot.Bot, addr string) ([]Direct, error) {
 	}
 	var out []Direct
 	err = a.Walk(1, 0, func(seq int, e bot.Entry) error {
-		if d, ok := remoteRow(a.Name(), addr, seq, e, results); ok {
-			out = append(out, d)
-		}
+		out = append(out, remoteRows(a.Name(), addr, seq, e, results)...)
 		return nil
 	})
 	if err != nil {
@@ -54,26 +52,29 @@ func RemoteConversation(a *bot.Bot, addr string) ([]Direct, error) {
 	return out, nil
 }
 
-func remoteRow(self, addr string, seq int, e bot.Entry, results map[string]string) (Direct, bool) {
+// remoteRows is the thread rows in one entry. One assistant entry can call
+// message_bot to the same address several times; each call is its own row.
+func remoteRows(self, addr string, seq int, e bot.Entry, results map[string]string) []Direct {
 	at := e.Time.UTC()
 	if e.Message.Role == provider.RoleUser && e.EventID != "" {
 		source, typ, sender, body, ok := unwrapEvent(e.Message.Content)
 		if !ok {
-			return Direct{}, false
+			return nil
 		}
 		if source == "bot:"+addr && typ == link.TypeMessage && sender == addr {
-			return Direct{ID: e.EventID, Seq: seq, From: addr, To: self, Text: body, Time: at}, true
+			return []Direct{{ID: e.EventID, Seq: seq, From: addr, To: self, Text: body, Time: at}}
 		}
 		// remote.Receive and the outbox post "message to <addr> ..." notices as plain events.
 		if (strings.HasPrefix(e.EventID, "remote_bounce_") || strings.HasPrefix(e.EventID, "remote_undelivered_")) &&
 			source == "remote" && strings.HasPrefix(body, "message to "+addr+" ") {
-			return Direct{ID: e.EventID, Seq: seq, From: addr, To: self, Text: body, Time: at, Kind: KindBounce}, true
+			return []Direct{{ID: e.EventID, Seq: seq, From: addr, To: self, Text: body, Time: at, Kind: KindBounce}}
 		}
-		return Direct{}, false
+		return nil
 	}
 	if e.Message.Role != provider.RoleAssistant {
-		return Direct{}, false
+		return nil
 	}
+	var out []Direct
 	for _, tc := range e.Message.ToolCalls {
 		if tc.Function.Name != "message_bot" || tc.ID == "" {
 			continue
@@ -89,9 +90,9 @@ func remoteRow(self, addr string, seq int, e bot.Entry, results map[string]strin
 		if result, called := results[tc.ID]; called {
 			status = toolStatus(result)
 		}
-		return Direct{ID: tc.ID, Seq: seq, From: self, To: addr, Text: args.Text, Time: at, Status: status}, true
+		out = append(out, Direct{ID: tc.ID, Seq: seq, From: self, To: addr, Text: args.Text, Time: at, Status: status})
 	}
-	return Direct{}, false
+	return out
 }
 
 // toolStatus maps a message_bot result to the delivery state it reports.

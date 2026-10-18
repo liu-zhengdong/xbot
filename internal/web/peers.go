@@ -155,9 +155,11 @@ func peerPage(msgs []peer.Direct, before string, limit int) ([]peer.Direct, erro
 		}
 		end = idx
 	}
-	start := end - limit
-	if start < 0 {
-		start = 0
+	start := max(end-limit, 0)
+	// Rows sharing one entry (several message_bot calls) share <to>:<seq>, so a
+	// page never splits them: the cursor of the oldest row must cover them all.
+	for start > 0 && start < end && msgs[start-1].To == msgs[start].To && msgs[start-1].Seq == msgs[start].Seq {
+		start--
 	}
 	return msgs[start:end], nil
 }
