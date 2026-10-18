@@ -10,9 +10,9 @@ func TestSidebarRailAndMemberSelection(t *testing.T) {
 		"app.css": {
 			want: []string{
 				".checks .member-option:has(input:checked) { background: var(--fill); font-weight: 600; }",
-				".sidebar.collapsed .pin-row .pin:not(.add) { display: none; }",
+				".sidebar.collapsed .pin-row .pin.add { order: -1; }",
 			},
-			avoid: []string{".checks .member-option:nth-child(odd)", ".sidebar.collapsed .group-label .icon-btn"},
+			avoid: []string{".sidebar.collapsed .pin-row .pin:not(.add) { display: none; }", ".checks .member-option:nth-child(odd)", ".sidebar.collapsed .group-label .icon-btn"},
 		},
 		"app.js": {
 			want: []string{
@@ -21,8 +21,8 @@ func TestSidebarRailAndMemberSelection(t *testing.T) {
 				`host.dataset.tipPlacement === "right" && host.closest(".sidebar.collapsed")`,
 				`r.right + 8`, `r.top + (r.height - th) / 2`,
 				`setTip(av, name, "right")`, `setTip(btn, name, "right")`,
-				`setTip(add, "新建 Bot", "right")`, `add.addEventListener("click", openNewBot)`,
-				`setTip(newer, "新建群组", "right")`, `newer.addEventListener("click", openNewGroup)`,
+				`setTip(add, "新建 Bot 或群组", "right")`, `item("plus", "新建 Bot", openNewBot)`,
+				`item("users-plus", "新建群组", openNewGroup)`,
 				`if (size === "xs") return ""`, `Script=Han`,
 				`chars[0].toUpperCase() + chars[1].toLowerCase()`,
 				`Array.from(letter).length > 1 ? "26" : "30"`,
@@ -30,13 +30,12 @@ func TestSidebarRailAndMemberSelection(t *testing.T) {
 				`svg.style.setProperty("--avatar-dark", "#3d3d3d")`,
 				`svg.style.setProperty("--avatar-letter-light", "#333333")`,
 				`svg.style.setProperty("--avatar-letter-dark", "#e4e4e4")`,
-				`$("theme").addEventListener("click", toggleTheme)`,
 				`$("account-theme").addEventListener("click", () => {`,
-				`accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"))`,
+				`accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"), el("span", "menu-count", dark ? "深色" : "浅色"))`,
 				`const hasFolders = folders.some((folder) => !folder.ungrouped)`,
-				`if (!hasFolders && folder.ungrouped)`, `if (b) body.append(botRow(b))`, `const body = el("div", "folder-bots")`,
+				`if (!hasFolders && folder.ungrouped)`, `if (b && !b.pinned) body.append(botRow(b))`, `const body = el("div", "folder-bots")`,
 			},
-			avoid: []string{`const tone = hashName(name) % 4`},
+			avoid: []string{`const tone = hashName(name) % 4`, `$("theme")`, `const newer = el("button", "icon-btn")`},
 		},
 		"index.html": {want: []string{`id="account-theme" type="button">外观</button>`}},
 	} {
