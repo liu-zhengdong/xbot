@@ -15,7 +15,15 @@ import (
 	"xbot/internal/tools"
 )
 
-func gatewayToken() string { return os.Getenv("XBOT_GATEWAY_TOKEN") }
+// gatewayToken is the self-host join token, sent only to an explicitly set
+// gateway, never to the official default.
+func gatewayToken(root string) string {
+	cfg, err := Load(root)
+	if err != nil {
+		return ""
+	}
+	return cfg.GatewayToken(os.Getenv("XBOT_GATEWAY_TOKEN"))
+}
 func pairingPerson(root, id string) (string, error) {
 	if id == "" {
 		people, err := person.List(root)
