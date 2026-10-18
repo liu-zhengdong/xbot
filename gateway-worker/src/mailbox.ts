@@ -8,20 +8,23 @@ export class Mailbox extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ready = ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'").toArray().length > 0;
+    if (this.ready) ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS unreleased(id TEXT PRIMARY KEY)"); // mailboxes made before this table existed
   }
   private sql<T extends Record<string, SqlStorageValue>>(q: string, ...args: SqlStorageValue[]) { return this.ctx.storage.sql.exec<T>(q, ...args).toArray(); }
   private meta(k: string) { return this.sql<{v: string}>("SELECT v FROM meta WHERE k=?", k)[0]?.v; }
   private set(k: string, v: string | number) { this.sql("INSERT OR REPLACE INTO meta VALUES(?,?)", k, String(v)); }
   private touch() { const now = Date.now(); if (now - Number(this.meta("seen") || 0) > 3600000) this.set("seen", now); }
-  private async release(rows: Row[]) {
-    if (!rows.length) return;
-    const bytes: Record<string, number> = {};
-    for (const r of rows) bytes[r.sender] = (bytes[r.sender] || 0) + r.size;
-    await this.env.DIRECTORY.getByName("global").release(bytes);
+  // Quota releases that failed are kept and retried (Directory releases by id, so retries are safe).
+  private async release(ids: string[]) {
+    const pending = this.sql<{id: string}>("SELECT id FROM unreleased").map(r => r.id), all = [...new Set([...ids, ...pending])];
+    if (!all.length) return;
+    try { await this.env.DIRECTORY.getByName("global").release(all); if (pending.length) this.sql("DELETE FROM unreleased"); }
+    catch { for (const id of ids) this.sql("INSERT OR IGNORE INTO unreleased VALUES(?)", id); }
   }
   private async schedule() {
     const at = this.sql<{at: number | null}>("SELECT MIN(at) AS at FROM queue")[0].at;
-    const wanted = at === null ? null : at + TTL;
+    let wanted = at === null ? null : at + TTL;
+    if (this.sql("SELECT id FROM unreleased LIMIT 1").length) wanted = Math.min(wanted ?? Infinity, Date.now() + 60000);
     if (await this.ctx.storage.getAlarm() !== wanted) {
       if (wanted === null) await this.ctx.storage.deleteAlarm(); else await this.ctx.storage.setAlarm(wanted);
     }
@@ -29,7 +32,7 @@ export class Mailbox extends DurableObject<Env> {
   private async expire(now = Date.now()) {
     const rows = this.sql<Row>("DELETE FROM queue WHERE at<=? RETURNING *", now - TTL);
     this.sql("DELETE FROM acked WHERE at<=?", now - 600000);
-    if (rows.length) { await this.release(rows); await this.schedule(); }
+    if (rows.length || this.sql("SELECT id FROM unreleased LIMIT 1").length) { await this.release(rows.map(r => r.id)); await this.schedule(); }
   }
   private list() {
     const out: string[] = []; let size = 16;
@@ -43,13 +46,13 @@ export class Mailbox extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) try { ws.send(text); ws.close(1000); } catch {}
   }
   registered(pub: number[]) { return this.ctx.blockConcurrencyWhile(async () => {
-    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT); CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,sender TEXT,at INTEGER,seq INTEGER,size INTEGER,data TEXT); CREATE TABLE IF NOT EXISTS acked(id TEXT PRIMARY KEY,at INTEGER)");
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT); CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,sender TEXT,at INTEGER,seq INTEGER,size INTEGER,data TEXT); CREATE TABLE IF NOT EXISTS acked(id TEXT PRIMARY KEY,at INTEGER); CREATE TABLE IF NOT EXISTS unreleased(id TEXT PRIMARY KEY)");
     this.ready = true; await this.expire(); this.set("pub", JSON.stringify(pub)); this.set("registered", 1); this.touch(); }); }
   idle(now: number) { return this.ctx.blockConcurrencyWhile(async () => { if (!this.ready) return {seen: 0, empty: true}; await this.expire(now); return {seen: Number(this.meta("seen") || 0), empty: !this.sql("SELECT id FROM queue LIMIT 1").length}; }); }
   forget(now: number) { return this.ctx.blockConcurrencyWhile(async () => {
     if (!this.ready) return true;
     await this.expire(now);
-    if (now - Number(this.meta("seen") || 0) <= 30 * 86400000 || this.sql("SELECT id FROM queue LIMIT 1").length) return false;
+    if (now - Number(this.meta("seen") || 0) <= 30 * 86400000 || this.sql("SELECT id FROM queue UNION ALL SELECT id FROM unreleased LIMIT 1").length) return false;
     this.wake(empty); await this.ctx.storage.deleteAll(); this.ready = false; await this.ctx.storage.deleteAlarm(); return true;
   }); }
   alarm() { return this.ctx.blockConcurrencyWhile(async () => { if (this.ready) await this.expire(); }); }
@@ -64,10 +67,12 @@ export class Mailbox extends DurableObject<Env> {
       const seq = Number(this.meta("seq") || 0) + 1; this.set("seq", seq);
       // Occupy the slot synchronously before the cross-object reservation; the gate hides pending mail.
       this.sql("INSERT INTO queue VALUES(?,?,?,?,?,?)", id, sender, now, seq, size, data);
-      let reserved = false;
-      try { reserved = await this.env.DIRECTORY.getByName("global").reserve(sender, size); }
-      finally { if (!reserved) this.sql("DELETE FROM queue WHERE id=?", id); }
-      if (!reserved) return error(507, "queue full");
+      let reserved: boolean;
+      try { reserved = await this.env.DIRECTORY.getByName("global").reserve(id, sender, size); }
+      catch (e) { // The reservation may have landed: undo it by id (kept for retry if that fails too).
+        this.sql("DELETE FROM queue WHERE id=?", id); await this.release([id]); await this.schedule(); throw e;
+      }
+      if (!reserved) { this.sql("DELETE FROM queue WHERE id=?", id); return error(507, "queue full"); }
       await this.schedule(); this.wake(this.list()); return result(202, {status: "queued"});
     });
   }
@@ -85,7 +90,7 @@ export class Mailbox extends DurableObject<Env> {
       const rows = this.sql<Row>("DELETE FROM queue WHERE id=? RETURNING *", id);
       if (rows.length) { removed.push(...rows); this.sql("INSERT OR REPLACE INTO acked VALUES(?,?)", id, now); }
     }
-    if (removed.length) { await this.release(removed); await this.schedule(); }
+    if (removed.length) { await this.release(removed.map(r => r.id)); await this.schedule(); }
     return result(200, {acked: removed.length});
   }); }
   fetch(r: Request) { return this.ctx.blockConcurrencyWhile(async () => {
