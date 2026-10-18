@@ -24,7 +24,7 @@ func TestTaskRailApprovalAndControls(t *testing.T) {
 			`" · 等你确认" : " · 在跑"`, `icon("awaiting")`,
 			`cut > 0 ? sum.slice(0, cut) : sum`,
 			`b.append(icon(iconName), el("span", "", label))`, `face.append(icon("person"))`,
-			`avatar(state.owner, null, "me")`,
+			`avatar(name, null, "me")`,
 		},
 		"static/app.css": {
 			`.sidebar.collapsed #roster .rail-status`, `#pin-row .rail-status`,
