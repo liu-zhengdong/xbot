@@ -19,7 +19,7 @@ import (
 
 func cmdGateway(root string, args []string) error {
 	if len(args) == 0 || args[0] != "serve" {
-		return errors.New("usage: xbot gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]")
+		return errors.New("usage: xbot gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open] [--behind-proxy]")
 	}
 	ordered, err := reorderFlags(args[1:], map[string]bool{"addr": true, "dir": true})
 	if err != nil {
@@ -30,11 +30,12 @@ func cmdGateway(root string, args []string) error {
 	addr := fs.String("addr", "127.0.0.1:8790", "listen address")
 	dir := fs.String("dir", "", "gateway data directory")
 	open := fs.Bool("open", false, "allow registration without a token")
+	behindProxy := fs.Bool("behind-proxy", false, "trust the last X-Forwarded-For address")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: xbot gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]")
+		return errors.New("usage: xbot gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open] [--behind-proxy]")
 	}
 	if strings.TrimSpace(*dir) == "" {
 		*dir = filepath.Join(root, "gateway")
@@ -43,7 +44,7 @@ func cmdGateway(root string, args []string) error {
 	if token == "" && !*open {
 		return errors.New("gateway: set XBOT_GATEWAY_TOKEN in the environment, or pass --open to allow unauthenticated registration")
 	}
-	srv := &gateway.Server{Dir: *dir, Token: token, Open: *open}
+	srv := &gateway.Server{Dir: *dir, Token: token, Open: *open, TrustForwarded: *behindProxy}
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
 	ln, err := net.Listen("tcp", *addr)

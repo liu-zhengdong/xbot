@@ -90,6 +90,9 @@ func (s *Server) sweepLocked() error {
 	if _, err := s.sweepPendingLocked(); err != nil {
 		return err
 	}
+	if _, err := s.codeRecordsLocked(); err != nil { // also drops records past retention
+		return err
+	}
 	s.pendingSweep = s.now().Add(time.Minute)
 	return nil
 }

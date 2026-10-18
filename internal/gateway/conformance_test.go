@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -370,6 +371,76 @@ func runConformance(t *testing.T, base string) {
 		conformanceRequire(t, !(!full || total > 1<<20), fmt.Sprintf("quota: accepted=%d bytes=%d full=%v", count, total, full))
 		got, body := poll(t, b)
 		conformanceRequire(t, !(len(body) > MaxPollBytes+1024 || len(got) == 0 || len(got) >= count), fmt.Sprintf("poll: bytes=%d envelopes=%d queued=%d", len(body), len(got), count))
+	})
+	// G7 short-code pairing: lookup registration, claim (token-free joiner
+	// becomes a pending install of the owner), cancel, expiry and admit.
+	lookup := func(t *testing.T) string {
+		var b [LookupLen]byte
+		_, err := rand.Read(b[:])
+		conformanceRequire(t, err == nil, err)
+		for i := range b {
+			b[i] = CodeAlphabet[int(b[i])%len(CodeAlphabet)]
+		}
+		return string(b[:])
+	}
+	code := func(t *testing.T, path string, key ed25519.PrivateKey, l string, ttl, want int, shape string) []byte {
+		body := map[string]any{"lookup": l}
+		if path == "/v1/code" {
+			body["ttl"] = ttl
+		}
+		return call(t, "POST", path, marshal(t, body), key, want, shape)
+	}
+	idOf := func(k ed25519.PrivateKey) string { return ID(k.Public().(ed25519.PublicKey)) }
+	t.Run("short code", func(t *testing.T) {
+		a, c := pair(t)
+		l := lookup(t)
+		code(t, "/v1/code", fresh(t, false), l, 60, 403, "")
+		for _, bad := range []string{"", "K7Q", "K7QMM", "k7qm", "K7Q0", "K7QO", "K7QI", "K7QU"} {
+			code(t, "/v1/code", a, bad, 60, 400, "")
+		}
+		code(t, "/v1/code", a, l, 0, 400, "")
+		code(t, "/v1/code", a, l, 601, 400, "")
+		code(t, "/v1/code", a, l, 60, 200, `{"status":"ok"}`)
+		code(t, "/v1/code/claim", a, l, 0, 400, "") // Own code.
+		b := fresh(t, false)
+		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`)
+		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`) // Idempotent.
+		// Pending: own mailbox, and mail only to and from its owner.
+		send(t, b, env(b, a, []byte("pake1")), 202, "queued")
+		call(t, "POST", "/v1/send", marshal(t, env(b, c, nil)), b, 403, "")
+		call(t, "POST", "/v1/send", marshal(t, env(c, b, nil)), c, 403, "")
+		send(t, a, env(a, b, []byte("pake2")), 202, "queued")
+		envs, _ := poll(t, b)
+		conformanceRequire(t, len(envs) == 1 && string(envs[0].Body) == "pake2", "pending mailbox")
+		ack(t, b, []string{envs[0].ID}, 1)
+		code(t, "/v1/code", b, lookup(t), 60, 403, "")
+		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), c, 404, "")
+		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), b, 403, "")
+		// Admit, idempotent; then b is a member.
+		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), a, 200, `{"status":"ok"}`)
+		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), a, 200, `{"status":"ok"}`)
+		send(t, b, env(b, c, nil), 202, "queued")
+		drain(t, a)
+		drain(t, c)
+		// Unknown lookups are 404; cancelled ones 410 (retained an hour).
+		code(t, "/v1/code/claim", fresh(t, false), lookup(t), 0, 404, "")
+		code(t, "/v1/code/cancel", c, l, 0, 404, "") // Not c's code.
+		code(t, "/v1/code/cancel", a, l, 0, 200, `{"status":"ok"}`)
+		code(t, "/v1/code/claim", fresh(t, false), l, 0, 410, "")
+	})
+	t.Run("short code expiry and claim limit", func(t *testing.T) {
+		owner := fresh(t, true)
+		l := lookup(t)
+		code(t, "/v1/code", owner, l, 60, 200, `{"status":"ok"}`)
+		for i := 0; i < MaxCodeClaims; i++ {
+			code(t, "/v1/code/claim", fresh(t, false), l, 0, 200, `{"install":"`+idOf(owner)+`"}`)
+		}
+		code(t, "/v1/code/claim", fresh(t, false), l, 0, 410, "")
+		e := fresh(t, true)
+		l2 := lookup(t)
+		code(t, "/v1/code", e, l2, 1, 200, `{"status":"ok"}`)
+		time.Sleep(1200 * time.Millisecond)
+		code(t, "/v1/code/claim", fresh(t, false), l2, 0, 410, "")
 	})
 	t.Run("unknown route", func(t *testing.T) {
 		status, _ := raw(t, "GET", "/v1/nope", nil, nil, time.Now())
