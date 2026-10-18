@@ -42,7 +42,7 @@ func Self(root, personID string) (SelfInfo, error) {
 		return SelfInfo{}, err
 	}
 	cfg, err := Load(root)
-	return SelfInfo{Name: info.Name, OS: info.OS, Bots: info.Bots, Gateway: cfg.Gateway}, err
+	return SelfInfo{Name: info.Name, OS: info.OS, Bots: info.Bots, Gateway: cfg.GatewayURL()}, err
 }
 
 func Devices(root string) ([]DeviceView, error) {
