@@ -5,7 +5,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 async function object(name) {
   const source = (await readFile(new URL(`./${name.toLowerCase()}.ts`, import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-  const prelude = `const enc=new TextEncoder(), hex=b=>Array.from(b,x=>x.toString(16).padStart(2,"0")).join(""), hash=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b)); class DurableObject { constructor(ctx, env) { this.ctx=ctx; this.env=env; } } const result=(status,value)=>({status,value}), error=(s,e)=>result(s,{error:e}), jsonResponse=r=>new Response(JSON.stringify(r.value),{status:r.status}), empty='';`;
+  const prelude = `const enc=new TextEncoder(), hex=b=>Array.from(b,x=>x.toString(16).padStart(2,"0")).join(""), hash=async b=>new Uint8Array(await crypto.subtle.digest("SHA-256",b)); class DurableObject { constructor(ctx, env) { this.ctx=ctx; this.env=env; } } const idRE=/^[a-f0-9]{32}$/, fields=raw=>{const v=JSON.parse(raw); if(v===null) return null; if(typeof v!=='object'||Array.isArray(v)) throw Error(); return Object.fromEntries(Object.entries(v).map(([k,v])=>[k.toLowerCase(),v]));}; const result=(status,value)=>({status,value}), error=(s,e)=>result(s,{error:e}), jsonResponse=r=>new Response(JSON.stringify(r.value),{status:r.status}), empty='';`;
   const mod = await import('data:text/javascript;base64,' + Buffer.from(prelude + stripTypeScriptTypes(source)).toString('base64'));
   const db = new DatabaseSync(':memory:'), writes = [];
   const ctx = {blockConcurrencyWhile: fn=>fn(), getWebSockets: ()=>[], storage: {deleteAlarm: async()=>{}, setAlarm: async()=>{}, getAlarm: async()=>null, deleteAll: async()=>db.exec('DROP TABLE meta; DROP TABLE queue; DROP TABLE acked; DROP TABLE unreleased'), sql: {exec(q,...args) { args = args.map(a=>a instanceof ArrayBuffer ? new Uint8Array(a) : a);
@@ -46,4 +46,44 @@ test('eviction keeps an install that re-registered meanwhile', async () => {
   const {instance:d, db} = await object('Directory'); d.env.MAX_INSTALLS='1'; db.prepare('INSERT INTO installs VALUES(?,?,0)').run('old','[]');
   d.env.MAILBOX.getByName = id => ({registered:async()=>{}, idle:async()=>({seen:0,empty:true}), forget:async()=>{ db.prepare('UPDATE installs SET seen=? WHERE id=?').run(Date.now(), 'old'); return true; }});
   assert.equal((await d.register('new',[],null,'')).status, 403); assert.equal(db.prepare("SELECT COUNT(*) n FROM installs WHERE id='old'").get().n, 1);
+});
+const A='a'.repeat(32), B='b'.repeat(32), C='c'.repeat(32), L='{"lookup":"K7QM","ttl":60}';
+async function codes() {
+  const o = await object('Directory'), pends = []; o.instance.env.MAX_INSTALLS = '1000';
+  o.instance.env.MAILBOX.getByName = id => ({registered:async()=>{}, pend:async(...a)=>pends.push([id,...a])});
+  for (const id of [A, C]) await o.instance.register(id, [], null, '');
+  return {...o, pends};
+}
+test('short codes are stored hashed, answer 410 for an hour after expiry, then 404', async () => {
+  const {instance:d, db, writes} = await codes(); const realNow = Date.now; let now = realNow(); Date.now = () => now;
+  try {
+    assert.equal((await d.codeRegister(A, L, '')).status, 200); assert.ok(!JSON.stringify(writes).includes('K7QM'));
+    assert.deepEqual(await d.codeClaim(B, [1], L, ''), {status:200, value:{install:A}});
+    now += 61000; assert.equal((await d.codeClaim(B, [1], L, '')).status, 410);
+    now += 3600000; assert.equal((await d.codeClaim(B, [1], L, '')).status, 404); assert.equal(db.prepare('SELECT COUNT(*) n FROM codes').get().n, 0);
+  } finally { Date.now = realNow; }
+});
+test('failed claims are limited per IPv6 /64, successes are not counted', async () => {
+  const {instance:d} = await codes(); await d.codeRegister(A, L, '');
+  for (let i = 0; i < 3; i++) assert.equal((await d.codeClaim(B, [1], L, '2001:db8::1')).status, 200);
+  for (let i = 0; i < 10; i++) assert.equal((await d.codeClaim(B, [1], '{"lookup":"2222"}', `2001:db8:0:0:${i}::1`)).status, 404);
+  assert.deepEqual(await d.codeClaim(B, [1], L, '2001:db8::9'), {status:429, value:{error:'too many tries'}});
+  assert.equal((await d.codeClaim(B, [1], L, '2001:db9::1')).status, 200);
+});
+test('a pending install moved to another owner keeps its expiry; admission uses install capacity', async () => {
+  const {instance:d, db, pends} = await codes(); await d.codeRegister(A, L, ''); await d.codeClaim(B, [1], L, '');
+  await d.codeRegister(C, '{"lookup":"P9XZ","ttl":60}', ''); await d.codeClaim(B, [1], '{"lookup":"P9XZ"}', '');
+  assert.equal(pends[1][2], C); assert.equal(pends[1][3], pends[0][3]);
+  assert.equal((await d.codeAdmit(A, JSON.stringify({install:B}))).status, 404);
+  d.env.MAX_INSTALLS = '2'; assert.deepEqual(await d.codeAdmit(C, JSON.stringify({install:B})), {status:403, value:{error:'too many installs'}});
+  d.env.MAX_INSTALLS = '3'; assert.equal((await d.codeAdmit(C, JSON.stringify({install:B}))).status, 200); assert.equal(db.prepare('SELECT COUNT(*) n FROM pending').get().n, 0);
+});
+test('an expired pending mailbox drops its mail and releases the quota', async () => {
+  const {instance:b, db} = await object('Mailbox'); const released = [];
+  b.env.DIRECTORY = {getByName:()=>({reserve:async()=>true, release:async ids=>{ released.push(...ids); }})};
+  await b.pend([1], A, Date.now() + 1000);
+  assert.equal((await b.enqueue('{}', C, 'e'.repeat(32), 2, Date.now())).status, 403);
+  assert.equal((await b.enqueue('{}', A, 'e'.repeat(32), 2, Date.now())).status, 202);
+  db.exec("UPDATE meta SET v='1' WHERE k='pexp'"); await b.alarm();
+  assert.deepEqual(released, ['e'.repeat(32)]); assert.equal((await b.ack('{}')).status, 403);
 });
