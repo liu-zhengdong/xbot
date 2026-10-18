@@ -729,7 +729,7 @@
       if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadThread();
       else await selectBot(name);
     } catch (e) {}
-    const find = () => Array.from(document.querySelectorAll("#thread .approval, #node-pending .approval"))
+    const find = () => Array.from(document.querySelectorAll("#thread .approval"))
       .find((card) => !branch || card.dataset.branch === branch);
     let card = find();
     if (!card) {
@@ -4236,30 +4236,6 @@
     }
   }
 
-  async function refreshNodePending() {
-    const host = $("node-pending");
-    if (!host) return;
-    let data;
-    try { data = await api("/api/node/pending"); } catch (e) { return; }
-    const items = (data && data.pending) || [];
-    host.replaceChildren();
-    if (!items.length) {
-      host.hidden = true;
-      return;
-    }
-    host.hidden = false;
-    for (const item of items) {
-      const detail = [item.caller || "", item.id || ""].filter(Boolean).join(" · ");
-      host.append(pendingApprovalCard({
-        title: "另一台电脑要执行命令",
-        subtitle: detail,
-        summary: item.command || "",
-        wait: 0,
-        decide: (ok) => api("/api/node/pending/" + encodeURIComponent(item.id || ""), { method: "POST", body: { allow: ok } }),
-      }));
-    }
-  }
-
   async function refreshNotes() {
     const data = await api("/api/notes");
     const notes = data.notes || [];
@@ -5314,7 +5290,6 @@
     await refreshLists();
     await refreshStatus().catch(() => {});
     await refreshNotes();
-    await refreshNodePending().catch(() => {});
     await loadPush().catch(() => {});
     renderMe();
     let remembered = "";
@@ -5362,7 +5337,6 @@
       if (shell.hidden || state.streaming) return;
       if (!document.hidden) refreshStatus().catch(() => {});
       refreshNotes().catch(() => {});
-      refreshNodePending().catch(() => {});
       refreshLists().catch(() => {});
       loadThread().catch(() => {});
     }, 3000);

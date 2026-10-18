@@ -43,7 +43,6 @@ const (
 	NameTelegram    = "telegram"
 	NameLark        = "lark"
 	NameCoding      = "coding-agent"
-	NameNode        = "node"
 	NameDesktop     = "desktop"
 	NameBrowser     = "browser"
 

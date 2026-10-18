@@ -53,7 +53,7 @@ func TestMountSkipsNodeGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.GrantLink(link.NameNode); err != nil {
+	if err := b.GrantLink(legacyNodeGrant); err != nil {
 		t.Fatal(err)
 	}
 	got, err := mount(b, runnerSpec{})
@@ -61,7 +61,7 @@ func TestMountSkipsNodeGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, item := range got {
-		if item.Name() == link.NameNode {
+		if item.Name() == legacyNodeGrant {
 			t.Fatal("old node grant still mounted")
 		}
 	}
