@@ -34,12 +34,40 @@ test('envelope UTC signature preserves nanoseconds and original offset', async (
     const normalized = await envelope(raw, caller, pub);
     assert.equal(normalized.json, JSON.stringify({...e, time: stored, sig}));
     assert.equal(normalized.size, enc.encode(normalized.json).length);
-    await assert.rejects(envelope(JSON.stringify({...e, time: '2026-02-30T00:00:00Z', sig}), caller, pub));
-    await assert.rejects(envelope(JSON.stringify({...e, kind: 'Msg', sig}), caller, pub));
   }
 });
 
 test('base64 round-trips a MaxBody-sized payload', () => {
   const big = crypto.getRandomValues(new Uint8Array(65536));
   assert.deepEqual(decode(b64(big)), big);
+});
+const signed = async (e, utc = e.time, body = new Uint8Array()) => ({...e, sig: b64(await sign(`xbot-env-v1\n1|${e.id}|${caller}|${e.to}|${utc}|${e.kind}|${hex(await hash(body))}`))});
+const base = {v: 1, id: 'a'.repeat(32), from: caller, to: 'b'.repeat(32), time: '2026-10-18T08:00:00Z', kind: 'msg', body: null};
+test('invalid fields are rejected even when correctly signed', async () => {
+  for (const e of [{...base, time: '2026-02-30T00:00:00Z'}, {...base, kind: 'Msg'}, {...base, time: '2026-10-18T08:00:00+24:00'}])
+    await assert.rejects(envelope(JSON.stringify(await signed(e, e.time.replace('+24:00', 'Z'))), caller, pub));
+  const raw = JSON.stringify(await signed(base));
+  for (const v of ['1.0', '1e0']) await assert.rejects(envelope(raw.replace('"v":1', `"v":${v}`), caller, pub));
+});
+test('Go-compatible envelope decoding', async () => {
+  const zero = '0001-01-01T00:00:00Z', bytes = new Uint8Array([1, 2, 255]);
+  const {time, ...untimed} = await signed(base, zero); void time;
+  assert.match((await envelope(JSON.stringify(untimed), caller, pub)).json, /"time":"0001-01-01T00:00:00Z"/);
+  const late = await signed({...base, time: '2026-10-18T8:00:00Z'}, '2026-10-18T08:00:00Z');
+  assert.match((await envelope(JSON.stringify(late), caller, pub)).json, /"time":"2026-10-18T08:00:00Z"/);
+  const arr = await signed({...base, body: [1, 2, 255]}, base.time, bytes);
+  assert.match((await envelope(JSON.stringify(arr), caller, pub)).json, /"body":"AQL\/"/);
+  await assert.rejects(envelope(JSON.stringify({...arr, body: [1, 2, 256]}), caller, pub));
+  const str = await signed({...base, body: 'AQL/'}, base.time, bytes);
+  assert.match((await envelope(JSON.stringify(str).replace('"AQL/"', '"AQ\\nL/"'), caller, pub)).json, /"body":"AQL\/"/);
+  const blank = await signed({...base, body: ''});
+  assert.match((await envelope(JSON.stringify(blank), caller, pub)).json, /"body":""/);
+  const mixed = JSON.stringify(await signed(base)).replace('"kind"', '"KIND"').replace('"sig"', '"ſig"');
+  assert.match((await envelope(mixed, caller, pub)).json, /"kind":"msg"/);
+});
+test('a bare trailing ? is part of the signed request target, as in Go', async () => {
+  const secs = 1792281600, body = new Uint8Array();
+  const sig = await sign(`xbot-gw-v1\nGET\n/v1/poll?\n${secs}\n${hex(await hash(body))}`);
+  const request = new Request('https://gateway/v1/poll?', {headers: {'X-Xbot-Key': url64(pub), 'X-Xbot-Time': String(secs), 'X-Xbot-Sig': url64(sig)}});
+  assert.equal((await authenticate(request, body, secs * 1000)).caller, caller);
 });
