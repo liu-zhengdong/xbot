@@ -23,6 +23,7 @@ import (
 
 type Device struct {
 	Name   string    `json:"name"`
+	Label  string    `json:"label,omitempty"`
 	ID     string    `json:"id"`
 	Key    string    `json:"key"`
 	XKey   string    `json:"xkey,omitempty"`
@@ -135,7 +136,7 @@ func fillXKey(root, id, xkey string) error {
 	})
 }
 
-func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err error) {
+func newDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err error) {
 	if !namePattern.MatchString(name) {
 		return d, errors.New("remote: invalid device name")
 	}
@@ -167,6 +168,14 @@ func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err erro
 		return d, err
 	}
 	d = Device{Name: name, ID: gateway.ID(pub), Key: base64.StdEncoding.EncodeToString(pub), XKey: xkeyB64, Person: personID, Added: time.Now().UTC()}
+	return d, nil
+}
+
+func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err error) {
+	d, err = newDevice(root, name, keyB64, xkeyB64, personID)
+	if err != nil {
+		return d, err
+	}
 	err = update(root, func(c *Config) error {
 		for _, existing := range c.Devices {
 			if existing.Name == name || existing.ID == d.ID {
