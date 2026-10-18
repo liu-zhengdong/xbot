@@ -2,13 +2,15 @@ name: installer
 
 # On PRs that touch packaging: build the Windows Setup.exe on Linux, then
 # install, upgrade and uninstall it on a Windows runner and check that the user
-# and machine environment did not change. release.yml runs the same check on tags.
+# and machine environment did not change; and build and check the macOS disk
+# images on a macOS runner. release.yml runs the same checks on tags.
 on:
   pull_request:
     paths:
       - packaging/**
       - scripts/package-desktop.sh
       - scripts/test-windows-installer.ps1
+      - scripts/build-macos-dmg.sh
       - .github/workflows/installer.yml
       - .github/workflows/release.yml
 
@@ -41,6 +43,11 @@ jobs:
           name: setup
           path: dist/XBot-0.0.0-ci-windows-amd64-setup.exe
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-zips
+          path: dist/XBot-0.0.0-ci-macos-*.zip
+          if-no-files-found: error
 
   windows:
     needs: build
@@ -55,3 +62,18 @@ jobs:
       - name: install, upgrade, uninstall
         shell: pwsh
         run: ./scripts/test-windows-installer.ps1 -Setup dist/XBot-0.0.0-ci-windows-amd64-setup.exe
+
+  macos-dmg:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-zips
+          path: dist
+      - name: dmgbuild
+        run: python3 -m pip install --user --break-system-packages dmgbuild==1.6.7
+      - name: build and check the disk images
+        run: bash scripts/build-macos-dmg.sh dist v0.0.0-ci
