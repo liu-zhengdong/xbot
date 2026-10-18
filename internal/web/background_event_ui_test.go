@@ -23,7 +23,7 @@ func TestBackgroundEventDisplay(t *testing.T) {
 		`el("div", "routine-drawer event-raw", parsed.text)`, `openRoutines.add(key)`,
 		`inner.append(eventLine(parsed,`,
 		`.replace(/\bbg_[0-9a-f]{4,}\b/g, "")`, `.replace(/\bsa_[0-9a-f]{4,}\b/g, "")`,
-		`已转到后台继续做`, `appendRich(body, displayText(m.content))`, `appendMarkdown(prose, displayText(acc))`,
+		`已转到后台继续做`, `appendRich(body, displayText(m.content), true)`, `appendMarkdown(prose, displayText(acc))`,
 		`plainText(displayText(ag.task || ag.id))`, `plainText(displayText(text))`,
 		`const relays = backgroundRelays(messages)`, `if (relays.has(i)) return;`,
 	} {

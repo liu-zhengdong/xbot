@@ -60,7 +60,11 @@
   --badge-bg: #d6d6db;
   --badge-ink: #111111;
   --bot-bubble: #f2f2f4;
-  --user-bubble: #e8e8eb;
+  --user-bubble: #f0f0f2;
+  --send: #111111;
+  --send-ink: #ffffff;
+  --send-off: #e2e2e6;
+  --send-off-ink: #a6a6ac;
   --code: #f6f6f7;
   --inline: #f3f3f5;
   --chip: #f7f7f8;
@@ -79,9 +83,8 @@
   --heat-1: #b1b2b9;
   --heat-2: #84858c;
   --heat-3: #1a1a1a;
-  --send-ink: #ffffff;
   --eye: #3a342f;
-  --composer: #f0f0f2;
+  --composer: #f3f3f5;
   --panel: #f6f6f8;
   --font: "Mona Sans VF", "XBot SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
@@ -113,7 +116,11 @@ html[data-theme="dark"] {
   --badge-bg: rgba(255, 255, 255, 0.12);
   --badge-ink: #ffffff;
   --bot-bubble: #2a2a2e;
-  --user-bubble: rgba(255, 255, 255, 0.12);
+  --user-bubble: #2a2a2e;
+  --send: #f2f2f2;
+  --send-ink: #111111;
+  --send-off: rgba(255, 255, 255, 0.08);
+  --send-off-ink: #6f6f75;
   --code: #18181b;
   --inline: rgba(255, 255, 255, 0.08);
   --chip: rgba(255, 255, 255, 0.08);
@@ -132,9 +139,8 @@ html[data-theme="dark"] {
   --heat-1: #55555c;
   --heat-2: #7d7d85;
   --heat-3: #ededef;
-  --send-ink: #ffffff;
   --eye: #241f1c;
-  --composer: #242428;
+  --composer: #252528;
   --panel: #222226;
   color-scheme: dark;
 }
@@ -223,8 +229,11 @@ button:disabled { cursor: default; }
   padding: 0 16px 0 24px; flex: none;
 }
 
+/* One centred column for the header, messages and composer (P1 / 5–6). */
+.top-inner, .thread-inner, .composer { width: min(720px, 100% - 64px); }
+
 .top-inner {
-  width: 100%; max-width: 760px;
+  width: 100%;
   display: flex; align-items: center; gap: 2px;
   position: relative; min-width: 0; height: 100%;
 }
@@ -621,49 +630,83 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 .meta { font-size: 12px; line-height: 1.4; color: var(--faint); font-variant-numeric: tabular-nums; }
 .branch-tag { font-size: 11px; line-height: 1.4; color: var(--faint); margin-bottom: 2px; }
 
-.thread { flex: 1; overflow: auto; padding: 8px 24px 8px; overscroll-behavior: contain; }
+.thread { flex: 1; overflow: auto; padding: 8px 0; overscroll-behavior: contain; }
 
+/* Short conversations sit at the bottom, next to the composer; margin-top:auto
+   on the first row keeps "scroll to bottom" and loading older rows intact. */
 .thread-inner {
-  max-width: 760px; margin: 0 auto; min-height: 100%;
-  display: flex; flex-direction: column; gap: 0;
+  margin: 0 auto; min-height: 100%;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 0;
 }
 
-.thread-inner > * { margin-top: 24px; }
+.thread-inner > * { margin-top: 22px; }
 
-.thread-inner > :first-child { margin-top: 0; }
+.thread-inner > :first-child { margin-top: auto; }
 
-.thread-inner > .msg.cont { margin-top: 8px; }
+/* Same sender, less than 5 minutes apart: 6px inside the group (overrides
+   :first-child when an older page starts inside a group). */
+.thread-inner > .msg.cont { margin-top: 6px; }
 
 .msg.cont > .avatar { visibility: hidden; }
+
+.msg.cont > .body > .who { display: none; }
 
 .msg { display: flex; gap: 10px; align-items: flex-start; animation: rise 180ms ease-out; }
 
 .msg.user { justify-content: flex-end; }
 
-.bubble-col, .msg.bot .body {
-  max-width: min(80%, 560px); min-width: 0;
-  display: flex; flex-direction: column; gap: 4px;
-}
+.bubble-col { max-width: 72%; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
 .msg.user .bubble-col { align-items: flex-end; }
 
-.msg.bot .body { align-items: flex-start; flex: 1; }
+.msg.bot .body { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
 
+/* The owner keeps a light-grey bubble; the bot writes straight on the card. */
 .bubble {
-  --bubble-fill: var(--bot-bubble);
-  background: var(--bubble-fill); border: 0; border-radius: 16px;
-  padding: 10px 14px; white-space: pre-wrap; word-break: break-word;
-  line-height: 1.6; font-size: 14px; font-weight: 500;
+  border: 0; border-radius: 18px; padding: 9px 15px;
+  white-space: pre-wrap; word-break: break-word;
+  line-height: 1.6; font-size: 15px; font-weight: 400;
   color: var(--text); opacity: 1;
 }
 
-.msg.user .bubble { --bubble-fill: var(--user-bubble); background: var(--bubble-fill); color: var(--text); opacity: 1; }
+.msg.user .bubble { background: var(--user-bubble); }
 
 .bubble .prose, .bubble .prose p { color: var(--text); opacity: 1; }
 
-.who { font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--text); }
+/* Bot reply: 15px on the card at line-height 1.7, no bubble. */
+.msg.bot .body > .bubble, .msg.bot .body > .prose { font-size: 15px; line-height: 1.7; }
+
+.bubble > .prose { font-size: inherit; line-height: inherit; }
+
+.msg.bot .body > .bubble { background: transparent; border-radius: 0; padding: 0; max-width: 100%; }
+
+.who { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 620; line-height: 1.3; color: var(--text); }
+
+.who > time { font-size: 12px; font-weight: 450; color: #9a9aa0; }
+
+html[data-theme="dark"] .who > time { color: var(--faint); }
+
+/* A bot group's first reply carries its time in the name line; the rest of
+   the group reveal theirs on hover. */
+.msg.bot:not(.cont) > .body:has(> .who) > .meta-row > .meta { display: none; }
+
+.msg.bot.cont > .body > .meta-row > .meta { opacity: 0; transition: opacity 160ms ease-out; }
+
+.msg.bot.cont:hover > .body > .meta-row > .meta, .msg.bot.cont:focus-within > .body > .meta-row > .meta { opacity: 1; }
 
 .meta-row { display: flex; align-items: center; gap: 4px; height: 16px; }
+
+/* Time and actions hang below a message without adding to the 22px / 6px
+   rhythm between messages (the thread keeps room for the last one). */
+.msg > .bubble-col, .msg > .body { position: relative; }
+
+.msg > .bubble-col > .meta-row, .msg > .body > .meta-row { position: absolute; top: 100%; margin-top: 2px; }
+
+.msg.user > .bubble-col > .meta-row { right: 0; }
+
+.msg.bot > .body > .meta-row { left: 0; }
+
+.thread-inner { padding-bottom: 20px; }
 
 .meta-row > .copy, .meta-row > .reply { margin-top: -6px; margin-bottom: -6px; }
 
@@ -672,6 +715,10 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 .msg.user .meta { opacity: 0; transition: opacity 160ms ease-out; }
 
 .msg.user:hover .meta, .msg.user:focus-within .meta { opacity: 1; }
+
+.main.peer .msg.bot .meta { opacity: 0; transition: opacity 160ms ease-out; }
+
+.main.peer .msg.bot:hover .meta, .main.peer .msg.bot:focus-within .meta { opacity: 1; }
 
 .copy {
   border: 0; background: transparent; color: var(--faint);
@@ -1087,24 +1134,27 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 /* Composer */
 
+/* 16px from the bottom; the composer draws its own 64px side inset. */
 .dock {
   flex: none;
-  padding: 4px 24px 16px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 4px 0 calc(16px + env(safe-area-inset-bottom));
 }
 
 .main.peer .dock { display: none; }
 
 .main.peer .msg.user .meta { opacity: 1; }
 
+.main.peer .msg.bot .meta { opacity: 1; }
+
 .composer {
-  max-width: 760px; margin: 0 auto;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "plus input actions";
-  align-items: end; gap: 4px;
+  align-items: end; gap: 8px;
   background: var(--composer); border-radius: 24px;
-  padding: 8px; min-height: 48px;
+  /* 12 + the empty plus column's 8px gap = the 20px text inset. */
+  padding: 0 8px 0 12px; min-height: 52px;
   transition: background 160ms ease-out;
 }
 
@@ -1115,14 +1165,14 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
     "plus . actions";
   align-items: stretch;
   row-gap: 2px;
-  padding: 8px 8px 8px;
+  padding: 8px;
 }
 
 .plus-wrap { grid-area: plus; }
 
 .composer textarea { grid-area: input; }
 
-.composer-actions { grid-area: actions; display: flex; align-items: flex-end; }
+.composer-actions { grid-area: actions; display: flex; align-items: flex-end; padding-bottom: 8px; }
 
 .quote-row {
   grid-area: quote;
@@ -1152,43 +1202,34 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .composer textarea {
   width: 100%; min-width: 0; border: 0; resize: none; outline: none; background: transparent;
-  margin: 0; padding: 6px 4px; max-height: 140px;
-  line-height: 20px; font-size: 14px; height: 32px; min-height: 32px;
+  margin: 0; padding: 16px 0; max-height: 140px;
+  line-height: 20px; font-size: 15px; height: auto; min-height: 52px;
 }
 
 .composer.quoting textarea { padding: 2px 8px 4px; height: 28px; min-height: 28px; }
 
 .composer textarea::placeholder { color: var(--faint); }
 
-.composer .icon-btn,
-.composer .send {
-  width: 32px; height: 32px; min-width: 32px; min-height: 32px;
-  align-self: flex-end; margin: 0;
-}
+.composer .send { margin: 0; flex: none; align-self: center; }
 
-.composer .icon-btn svg,
-.composer .send svg { width: 20px; height: 20px; }
-
-.plus-wrap { position: relative; flex: none; display: flex; align-items: flex-end; }
-
-.send.secondary { background: var(--fill); color: var(--muted); }
-
+/* 36px circle, 18px arrow at 2px: dark ink when it can send, grey while empty. */
 .send {
-  width: 32px; height: 32px; min-width: 32px; min-height: 32px;
-  padding: 0; margin: 0; border: 0; border-radius: 8px; flex: none; line-height: 0;
-  background: var(--primary); color: var(--primary-text);
+  width: 36px; height: 36px; min-width: 36px; min-height: 36px;
+  padding: 0; margin: 0; border: 0; border-radius: 18px; line-height: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  align-self: flex-end;
   transition: opacity 160ms ease-out;
 }
 
-.send svg { width: 20px; height: 20px; }
+.send.secondary,
+.send:disabled { background: var(--send-off); color: var(--send-off-ink); }
+
+.send.primary:not(:disabled) { background: var(--send); color: var(--send-ink); }
+
+.send svg { width: 18px; height: 18px; stroke-width: 2; }
 
 .send:hover:not(:disabled) { opacity: 0.88; }
 
 .send:active:not(:disabled) { opacity: 0.8; }
-
-.send:disabled { opacity: 0.4; }
 
 /* Info panel */
 
@@ -1670,7 +1711,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
     height: 52px; padding: 0 16px;
     padding-top: env(safe-area-inset-top);
   }
-  .thread { padding: 8px 16px 8px; }
+  .thread { padding: 8px 0; }
   .composer textarea { font-size: 16px; }
   .backdrop { background: rgba(0, 0, 0, 0.4); }
   .sidebar {
@@ -1718,7 +1759,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   }
   .panel-bar { top: 0; }
   .hero { padding-top: 8px; }
-  .dock { padding: 12px 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .dock { padding: 12px 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .msg.user .meta { opacity: 1; }
   .notes { right: 8px; top: 48px; }
 }
