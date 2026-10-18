@@ -75,14 +75,25 @@ func updateInvites(root string, fn func([]invite) ([]invite, error)) error {
 	})
 }
 
+// hasLiveInvite reads atomically written state without changing or consuming it.
+func hasLiveInvite(root string, now time.Time) (bool, error) {
+	var list []invite
+	if err := readJSON(filepath.Join(root, "remote", "invites.json"), &list); err != nil {
+		return false, err
+	}
+	for _, iv := range list {
+		if !iv.Used && iv.Expires > now.Unix() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // CreateInvite mints one single-use, 10-minute code for a device to join.
 func CreateInvite(root, personID string, now time.Time) (string, error) {
 	cfg, err := Load(root)
 	if err != nil {
 		return "", err
-	}
-	if cfg.Gateway == "" {
-		return "", errors.New("remote: set a gateway first")
 	}
 	if personID == "" {
 		people, err := person.List(root)
@@ -110,7 +121,7 @@ func CreateInvite(root, personID string, now time.Time) (string, error) {
 		return "", err
 	}
 	enc, expires := base64.RawURLEncoding.EncodeToString(secret), now.Add(inviteTTL).Unix()
-	raw, _ := json.Marshal(PairCode{1, cfg.Gateway, os.Getenv("XBOT_GATEWAY_TOKEN"), keyB64, xkeyB64, suggestName(), enc, expires})
+	raw, _ := json.Marshal(PairCode{1, cfg.GatewayURL(), cfg.GatewayToken(os.Getenv("XBOT_GATEWAY_TOKEN")), keyB64, xkeyB64, suggestName(), enc, expires})
 	code := pairPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	if len(code) > codeMax {
 		return "", errors.New("remote: invite code exceeds 2 KiB")
@@ -155,6 +166,9 @@ func ParseCode(code string) (p PairCode, err error) {
 		return PairCode{}, bad
 	}
 	p.Gateway = strings.TrimRight(p.Gateway, "/")
+	if isOfficial(p.Gateway) {
+		p.Gateway = DefaultGateway
+	}
 	return p, nil
 }
 
@@ -181,11 +195,18 @@ func Join(ctx context.Context, root, code, name, as, personID string, now time.T
 	if err != nil {
 		return Device{}, err
 	}
+	live, err := hasLiveInvite(root, now)
+	if err != nil {
+		return Device{}, err
+	}
 	err = update(root, func(cfg *Config) error {
-		if cfg.Gateway != "" && cfg.Gateway != pc.Gateway {
+		// An install already paired (or inviting) on the default gateway must not silently move elsewhere.
+		if (cfg.Gateway != "" || len(cfg.Devices) > 0 || live) && cfg.GatewayURL() != pc.Gateway {
 			return errors.New("remote: gateway mismatch")
 		}
-		cfg.Gateway = pc.Gateway
+		if cfg.Gateway != "" || pc.Gateway != DefaultGateway {
+			cfg.Gateway = pc.Gateway
+		}
 		return nil
 	})
 	if err != nil {
