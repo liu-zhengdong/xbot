@@ -1,0 +1,91 @@
+name: release
+
+# On a v* tag: build the desktop packages (the same set scripts/package-desktop.sh
+# makes by hand) and publish them as a GitHub prerelease. Uses only GITHUB_TOKEN.
+# Builds are unsigned (macOS ad-hoc signature, Windows unsigned); INSTALL.md says
+# how to let them run.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.ref_name }}
+      RCODESIGN_VERSION: "0.29.0"
+      RCODESIGN_SHA256: dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: packaging tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q genisoimage icnsutils zip python3-pil
+          go install github.com/tc-hib/go-winres@v0.3.3
+          tools="$RUNNER_TEMP/tools"
+          mkdir -p "$tools"
+          name="apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL -o "$tools/rcodesign.tar.gz" \
+            "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${name}.tar.gz"
+          echo "${RCODESIGN_SHA256}  $tools/rcodesign.tar.gz" | sha256sum -c -
+          tar -C "$tools" -xzf "$tools/rcodesign.tar.gz"
+          echo "RCODESIGN=$tools/$name/rcodesign" >> "$GITHUB_ENV"
+          echo "GO_WINRES=$(go env GOPATH)/bin/go-winres" >> "$GITHUB_ENV"
+      # Tags are cut from main, where ci.yml already ran vet and the tests.
+      - name: vet
+        run: go vet ./...
+      - name: package
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash scripts/package-desktop.sh "$TAG" dist
+      - name: check the package set
+        run: |
+          short="${TAG#v}"
+          cd dist
+          for f in \
+            "XBot-$short-macos-arm64.dmg" "XBot-$short-macos-arm64.zip" \
+            "XBot-$short-macos-amd64.dmg" "XBot-$short-macos-amd64.zip" \
+            "XBot-$short-windows-amd64.zip" "XBot-$short-windows-arm64.zip" \
+            "xbot-$short-linux-amd64.tar.gz" SHA256SUMS; do
+            test -s "$f" || { echo "missing $f"; exit 1; }
+          done
+          sha256sum -c SHA256SUMS
+          cp ../packaging/INSTALL.md INSTALL.md
+      - name: release notes
+        run: |
+          notes="packaging/release-notes/$TAG.md"
+          if [ -f "$notes" ]; then
+            cp "$notes" dist-notes.md
+          else
+            prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+            {
+              echo "XBot 桌面版 $TAG（预发布）"
+              echo
+              echo "安装和第一次打开的放行步骤见附件 INSTALL.md。安装包没有开发者签名。"
+              echo
+              echo "本版合并的改动："
+              git log --format='- %s' ${prev:+"$prev..$TAG"}
+            } > dist-notes.md
+          fi
+      - name: publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease --verify-tag \
+            --title "XBot $TAG" \
+            --notes-file dist-notes.md
