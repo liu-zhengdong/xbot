@@ -275,9 +275,8 @@ func TestGatewaySenderByteQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := s.bounds()
-	// Slack for RFC 3339 fractions, whose trailing zeros are trimmed so sizes vary by a few bytes.
-	l.senderBytes = 2*int64(len(raw)) + 16
-	l.totalBytes = 3*int64(len(raw)) + 32
+	l.senderBytes = 2 * int64(len(raw))
+	l.totalBytes = 3 * int64(len(raw))
 	s.limits = &l
 	for _, e := range []Envelope{first, envelope(0, 1)} {
 		if err := clients[0].Send(ctx, e); err != nil {
