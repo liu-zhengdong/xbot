@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
@@ -69,11 +71,20 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 			return "", err
 		}
 	}
+	start := time.Now()
 	out, ran, err := t.execute(ctx, args)
 	if err != nil || !ran {
 		return out, err
 	}
 	switch name {
+	case "shell":
+		// A command moved to the background may still be writing; its
+		// changes are reported as usual.
+		if !strings.HasPrefix(out, "background ") {
+			if changed := t.k.noteShellWrites(ctx, start, time.Now()); len(changed) > 0 {
+				out = appendNote(out, "files you had read were changed by this command (records refreshed; read them again to see the new bytes): "+strings.Join(changed, ", "))
+			}
+		}
 	case "read_file":
 		t.k.noteRead(ctx, t.Tool, args, out)
 	case "write_file", "edit_file":
