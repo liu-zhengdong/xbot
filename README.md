@@ -32,9 +32,6 @@ xbot watch add ada notes --path "$HOME/notes/**/*.md"
 export TELEGRAM_BOT_TOKEN=1234:abc
 xbot link install ada telegram
 xbot runner --addr 127.0.0.1:18771
-xbot node serve
-xbot node add desk --url http://100.x.y.z:18772 --token TOKEN
-xbot node call desk info
 xbot version
 xbot upgrade --check
 ```
@@ -376,23 +373,11 @@ xbot serve --tunnel tailscale
 5. 默认 `--http` 是 `127.0.0.1:8787`，只有本机能访问。手机和电脑都要在这个 tailnet 上。
 6. 每个 webhook 单独一个 secret。不签名或签名不对会 401。secret 留在 Bot 目录里，权限 0600。
 
-## 另一台机器上的节点
+## 多台电脑
 
-`xbot node serve` 在这台机器上听 `127.0.0.1:18772`，第一次把 bearer token 打到 stdout，并写进 `node-token`（0600）。token 也可以用 `XBOT_NODE_TOKEN`，或 `--token -` 从 stdin 读一行。`SIGTERM` 会停掉监听。要给别的设备用，绑 tailnet 地址，不要绑 `0.0.0.0`：
+用「设备」配对：桌面端账号菜单 → 设备，或命令行 `xbot remote invite` / `xbot remote join`（看 [docs/gateway-selfhost.md](docs/gateway-selfhost.md)）。配对后只能 Bot 之间发消息，地址写成 `bot@设备`，不传文件，也不同步记忆。
 
-```bash
-xbot node serve --addr 100.x.y.z:18772
-```
-
-在放 Bot 的那台机器上登记，然后可以直接调 `info`：
-
-```bash
-xbot node add desk --url http://100.x.y.z:18772 --token TOKEN
-xbot node list
-xbot node call desk info
-```
-
-`add` 会先用 token 问一次对方，401 就不写入。`list` 不打印 token。token 不对显示 `unauthorized`，连不上才是 `offline`。Bot 要先 `links install node`，再 `links load node`，才有 `node_list` 和 `node_call`。`info` 只问身份。`shell` 在那台机器上跑命令，先看它的机器开关。开关是 `ask` 时命令不跑，记在那台机器上，十分钟后过期，最多 32 条。`xbot node pending` 列出 id、调用方、命令和本机本地时间。`xbot node approve <id>` 先显示命令，回答 `y` 才执行，`--yes` 跳过提问。回答不是 `y` 时退出码非零，并删掉这条待批。`xbot person unlink [--force] <link:id>` 去掉一个已关联账号。最后一个本机 `terminal:uid:` 账号要加 `--force`。网页在跑的话，通知和页面上也能允许或拒绝。调用方传来的 `approved` 不算数。
+旧的 `xbot node` 已退役（[ADR 0012](docs/adr/0012-retire-node.md)），`xbot node …` 和 `xbot sync …` 会说明已移除。数据根里留下的 `nodes.json`、`node-token`、`node-pending/` 不会被删，`serve` 启动时打一行日志忽略它们。
 
 ## 机器开关
 
@@ -405,7 +390,7 @@ xbot machine set local off
 xbot machine set desk allow
 ```
 
-`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。节点进程上的 `shell` 用的是那台机器的 `local`。`ask` 时远程调用只排队，主人在节点上跑 `xbot node approve <id>`。`read_file`、`write_file`、`edit_file` 也看这个开关：`allow` 下普通读写直接做，写自己的 persona/profile 仍确认；`ask` 每次问；`off` 拒绝。桌面和浏览器也看这个开关，`browser_stop` 在 `off` 下仍可用来关进程。
+`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。`read_file`、`write_file`、`edit_file` 也看这个开关：`allow` 下普通读写直接做，写自己的 persona/profile 仍确认；`ask` 每次问；`off` 拒绝。桌面和浏览器也看这个开关，`browser_stop` 在 `off` 下仍可用来关进程。
 
 ## 桌面
 
