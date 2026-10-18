@@ -1054,6 +1054,9 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle class="solid" cx="12" cy="8" r="1"/>',
     swap: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
     arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+    imageUp: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 9 5-5 5 5"/><path d="M12 4v12"/>',
+    refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+    undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
   };
 
   function icon(name, extra) {
@@ -1126,17 +1129,99 @@
     return svg;
   }
 
+  // A bot's fallback mark is a geometric tile derived from its name: four of
+  // seven shapes, each in one of four turns. Only numbers go into the markup.
+  function fnv(s) {
+    let h = 0x811c9dc5;
+    for (const ch of new TextEncoder().encode(String(s))) { h ^= ch; h = Math.imul(h, 0x01000193) >>> 0; }
+    return h >>> 0;
+  }
+
+  function glyph(name) {
+    let h = fnv(name);
+    const take = (n) => { const v = h % n; h = Math.floor(h / n) || fnv(name + h); return v; };
+    const S = 40;
+    const shapes = [
+      (x, y) => `<path d="M${x} ${y}h${S}v${S}h-${S}z"/>`,
+      (x, y) => `<path d="M${x} ${y}h${S}A${S} ${S} 0 0 1 ${x} ${y + S}z"/>`,
+      (x, y) => `<path d="M${x} ${y + S}h${S}A${S / 2} ${S / 2} 0 0 0 ${x} ${y + S}z"/>`,
+      (x, y) => `<circle cx="${x + S / 2}" cy="${y + S / 2}" r="${S / 2 - 3}"/>`,
+      (x, y) => `<path d="M${x} ${y}h${S}L${x} ${y + S}z"/>`,
+      (x, y) => `<circle cx="${x + S / 2}" cy="${y + S / 2}" r="${S / 5}"/>`,
+      (x, y) => `<path d="M${x} ${y + S / 2}h${S}v${S / 2}h-${S}z"/>`,
+      () => "",
+    ];
+    let g = "";
+    for (let i = 0; i < 4; i++) {
+      const x = 20 + (i % 2) * S, y = 20 + Math.floor(i / 2) * S;
+      const k = take(8), r = take(4) * 90;
+      g += `<g transform="rotate(${r} ${x + S / 2} ${y + S / 2})">${shapes[k](x, y)}</g>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 120 120" data-kind="glyph"><rect width="120" height="120" style="fill:var(--av-bg,#dcdce0)"/><g style="fill:var(--av-ink,#1a1a1a)">${g}</g></svg>`;
+  }
+
+  // The glyph markup is numbers only, so parsing it is safe. Parsing keeps
+  // the <svg> in the SVG namespace; two on one page are told apart by index.
+  let glyphCount = 0;
+  function glyphSVG(name) {
+    const doc = new DOMParser().parseFromString(glyph(name), "image/svg+xml");
+    if (!doc.documentElement || doc.documentElement.nodeName !== "svg") return null;
+    const svg = document.importNode(doc.documentElement, true);
+    svg.setAttribute("id", "xbot-glyph-" + ++glyphCount);
+    svg.setAttribute("aria-hidden", "true");
+    return svg;
+  }
+
+  // Portraits are drawn here and handed over as a data URL: the server never
+  // stores generated SVG, and a src never lets the markup run as script.
+  const PORTRAITS = new Map();
+  function portraitURL(seed, small) {
+    const key = (small ? "f:" : "p:") + seed;
+    if (PORTRAITS.has(key)) return PORTRAITS.get(key);
+    let url = "";
+    try {
+      const lib = window.XBotAvatar;
+      if (lib) url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent((small ? lib.face(seed) : lib.portrait(seed)) || "");
+    } catch (e) { url = ""; }
+    if (PORTRAITS.size >= 256) PORTRAITS.delete(PORTRAITS.keys().next().value);
+    PORTRAITS.set(key, url);
+    return url;
+  }
+
+  // The fallback for a broken upload, a "glyph" seed or a missing bundle.
+  function drawGlyph(av, name) {
+    const svg = glyphSVG(name);
+    if (!svg) return;
+    av.replaceChildren(svg);
+    av.classList.add("glyph");
+  }
+
   function avatar(name, paint, size) {
     paint = paint || {};
     const av = el("span", "avatar" + (size ? " " + size : ""));
     if (name) setTip(av, name, "right");
-    av.append(faceFor(name, paint, size));
+    if (size === "me") {
+      // The owner is a person; the soft blob (and its initial) never changes.
+      av.append(faceFor(name, paint, size));
+      return av;
+    }
+    const seed = String(paint.seed || name || "");
     if (paint.url) {
       const img = document.createElement("img");
       img.alt = "";
       img.src = paint.url;
-      img.addEventListener("load", () => av.classList.add("has-photo"));
-      img.addEventListener("error", () => img.remove());
+      img.addEventListener("error", () => drawGlyph(av, name || seed));
+      av.append(img);
+    } else if (seed === "glyph") {
+      drawGlyph(av, name || seed);
+    } else {
+      const src = portraitURL(seed, size === "xs");
+      if (!src) { drawGlyph(av, name || seed); return av; }
+      const img = document.createElement("img");
+      img.alt = "";
+      img.decoding = "async";
+      img.draggable = false;
+      img.src = src;
       av.append(img);
     }
     return av;
@@ -1144,8 +1229,16 @@
 
   function paintOfBot(b) {
     if (!b) return null;
-    return { bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url, initial: b.initial };
+    return {
+      bg: b.avatar_bg, ink: b.avatar_ink, url: b.avatar_url, initial: b.initial,
+      avatar: b.avatar, seed: b.avatar_seed || b.name, remote: !!b.remote,
+    };
   }
+
+  // devices.js renders other computers' bots from HTML strings.
+  window.XBotFaces = {
+    html: (name, seed, size) => avatar(name, { seed: seed || name }, size || "").outerHTML,
+  };
 
   function paintOf(name) {
     return paintOfBot((state.bots || []).find((x) => x.name === name));
@@ -2987,7 +3080,8 @@
   let titleFace = "", titleAv = null;
   function setHeader(slug, label) {
     const shown = label || niceName(slug) || "XBot";
-    const head = `bot:${slug}:${slug ? (paintOf(slug) || {}).url || "" : ""}`;
+    const face = (slug && paintOf(slug)) || {};
+    const head = `bot:${slug}:${face.url || ""}:${face.url ? "" : face.seed || ""}`;
     if (head !== titleFace) {
       titleFace = head;
       const bot = slug && (state.bots || []).find((b) => b.name === slug);
@@ -4102,21 +4196,174 @@
 
   let profileReturnFocus = null;
 
-  function profileForm(data) {
-    const wrap = document.createElement("div");
-    const head = el("div", "profile-head");
-    let mark = avatar(data.name, paintOfBot(data), "lg");
+  const AVATAR_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+  const AVATAR_MAX = 1024 * 1024;
+  const AVATAR_BIG = "没换成：图片超过 1 MB。换一张小一点的，或者先裁一下。";
+  const AVATAR_KIND = "没换成：只能用 PNG、JPEG、GIF、WebP。";
+  const avatarURLOf = (name) => "/api/bots/" + encodeURIComponent(name) + "/avatar";
+
+  // The same limits the server keeps, checked before sending so a wrong file
+  // never costs a round trip. null means "fine".
+  function avatarFileProblem(file) {
+    if (file.size > AVATAR_MAX) return AVATAR_BIG;
+    const type = String(file.type || "").toLowerCase();
+    if (AVATAR_TYPES.indexOf(type) < 0 && !/\.(png|jpe?g|gif|webp)$/i.test(file.name || "")) return AVATAR_KIND;
+    return null;
+  }
+
+  // After sending: the server's own words tell size from type. The type branch
+  // stays rare on purpose: the server sniffs bytes, so nearly any file passes
+  // as some image, and a plain refusal there is almost always the size.
+  function avatarUploadProblem(e) {
+    const status = e && e.status, msg = String((e && e.message) || "");
+    if (status === 413 || /\btoo large\b|1 ?MB|1048576/i.test(msg)) return AVATAR_BIG;
+    if (/\btype\b|unsupported/i.test(msg)) return AVATAR_KIND;
+    // "bad avatar" is the multipart reader giving up past its 2 MiB cap.
+    if (status === 400 && /bad avatar/i.test(msg)) return AVATAR_BIG;
+    return "没换成：" + visibleError(e);
+  }
+
+  // 换一张: the current portrait, five fresh seeds for this batch, the glyph
+  // and an upload. A pick applies at once; nothing waits for 保存.
+  function avatarSection(name) {
+    const pickOf = (b) => ({ avatar: (b && b.avatar) || "generated", seed: (b && b.avatar_seed) || name });
+    let picked = pickOf(state.panelData || (state.bots || []).find((b) => b.name === name));
+    let batch = 0, busy = false;
+    const root = el("div", "avatar-block");
+    // A failed change leaves the avatar as it was and says why, right under it.
+    const problem = el("p", "avatar-note err", "");
+    problem.setAttribute("role", "alert");
+    const fail = (text) => { problem.textContent = text; paint(); };
+    const row = el("div", "avatar-row");
+    const grid = el("div", "avatar-grid");
     const file = document.createElement("input");
     file.type = "file";
-    file.accept = "image/png,image/jpeg,image/gif,image/webp";
+    file.accept = AVATAR_TYPES.join(",");
     file.hidden = true;
-    const pick = el("button", "secondary", "上传头像");
-    pick.type = "button";
-    const clear = el("button", "secondary", "清除头像");
+    const clear = el("button", "icon-btn");
     clear.type = "button";
-    const stack = el("div", "stack");
-    stack.append(pick, clear, file);
-    head.append(mark, stack);
+    clear.setAttribute("aria-label", "清除上传的图，用回生成的");
+    setTip(clear, "清除上传的图，用回生成的");
+    clear.append(icon("undo"));
+    const again = el("button", "icon-btn");
+    again.type = "button";
+    again.setAttribute("aria-label", "换一批");
+    setTip(again, "换一批");
+    again.append(icon("refresh"));
+
+    const big = () => (picked.avatar === "custom"
+      ? avatar(name, { url: avatarURLOf(name) + "?v=" + Date.now(), seed: picked.seed }, "xl")
+      : avatar(name, { seed: picked.seed }, "xl"));
+    const pick = (label, make, on, onPick) => {
+      const btn = el("button", "avatar-pick");
+      btn.type = "button";
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("aria-pressed", String(!!on));
+      btn.append(make());
+      btn.addEventListener("click", onPick);
+      return btn;
+    };
+
+    function paint() {
+      const custom = picked.avatar === "custom";
+      root.replaceChildren(big(), el("span", "avatar-name", name));
+      if (problem.textContent) root.append(problem);
+      row.replaceChildren(el("span", "muted", "换一张"));
+      if (custom) row.append(clear);
+      row.append(again);
+      root.append(row, grid, file);
+      grid.replaceChildren();
+      const isGlyph = !custom && picked.seed === "glyph";
+      const seeds = [isGlyph ? name : picked.seed];
+      for (let i = 1; i <= 5; i++) seeds.push(name + "#" + (5 * batch + i));
+      for (const seed of seeds) {
+        grid.append(pick(!custom && seed === picked.seed ? "当前头像" : "换一张",
+          () => avatar(name, { seed: seed }, "pick"), !custom && seed === picked.seed, () => apply(seed)));
+      }
+      const mark = el("span", "avatar pick glyph");
+      const svg = glyphSVG(name);
+      if (svg) mark.append(svg);
+      grid.append(pick("几何图形", () => mark, isGlyph, () => apply("glyph")));
+      const up = el("button", "avatar-pick up");
+      up.type = "button";
+      up.setAttribute("aria-label", "上传图片");
+      setTip(up, "上传图片");
+      up.append(icon("imageUp"));
+      up.addEventListener("click", () => file.click());
+      grid.append(up);
+    }
+
+    // After the server took it, every list and the panel show the new face.
+    async function settled(fallback) {
+      await refreshLists();
+      await loadPanel();
+      picked = pickOf(state.panelData || (state.bots || []).find((b) => b.name === name) || fallback);
+      paint();
+    }
+
+    async function apply(seed) {
+      if (busy) return;
+      busy = true;
+      problem.textContent = "";
+      try {
+        await api("/api/bots/" + encodeURIComponent(name), { method: "PATCH", body: { avatar_seed: seed } });
+        picked = { avatar: "generated", seed: seed };
+        await settled(picked);
+      } catch (e) {
+        fail("没换成：" + visibleError(e));
+      } finally { busy = false; }
+    }
+
+    again.addEventListener("click", () => { batch += 1; paint(); });
+    clear.addEventListener("click", async () => {
+      if (busy) return;
+      busy = true;
+      problem.textContent = "";
+      try {
+        const res = await api(avatarURLOf(name), { method: "DELETE" });
+        picked = { avatar: "generated", seed: (res && res.avatar_seed) || name };
+        await settled(picked);
+      } catch (e) {
+        fail("没换成：" + visibleError(e));
+      } finally { busy = false; }
+    });
+    file.addEventListener("change", async () => {
+      const f = file.files && file.files[0];
+      file.value = "";
+      if (!f || busy) return;
+      const bad = avatarFileProblem(f);
+      if (bad) { fail(bad); return; }
+      problem.textContent = "";
+      busy = true;
+      const url = URL.createObjectURL(f);
+      const note = el("p", "avatar-note", "正在上传 " + f.name);
+      const overlay = el("span", "avatar-spin");
+      overlay.setAttribute("aria-hidden", "true");
+      overlay.append(icon("spinner"));
+      const preview = avatar(name, null, "xl");
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = url;
+      preview.replaceChildren(img, overlay);
+      root.replaceChildren(preview, el("span", "avatar-name", name), row, note, grid, file);
+      try {
+        await uploadAvatar(name, f);
+        picked = { avatar: "custom", seed: picked.seed };
+        await settled(picked);
+      } catch (e) {
+        fail(avatarUploadProblem(e));
+      } finally {
+        URL.revokeObjectURL(url);
+        busy = false;
+      }
+    });
+    paint();
+    return root;
+  }
+
+  function profileForm(data) {
+    const wrap = document.createElement("div");
+    const head = avatarSection(data.name);
     const style = data.style || {};
     const name = textInput(data.name, 64);
     name.dataset.profileFocus = "true";
@@ -4163,30 +4410,6 @@
       err,
     );
     const showErr = (e, fallback) => { err.hidden = false; err.textContent = visibleError(e, fallback); };
-    pick.addEventListener("click", () => file.click());
-    file.addEventListener("change", async () => {
-      if (!file.files || !file.files[0]) return;
-      try {
-        await uploadAvatar(data.name, file.files[0]);
-        await refreshLists();
-        await loadPanel();
-        const fresh = state.panelData || data;
-        const next = avatar(fresh.name, paintOfBot(fresh), "lg");
-        mark.replaceWith(next);
-        mark = next;
-      } catch (e) { showErr(e, "头像上传失败"); }
-    });
-    clear.addEventListener("click", async () => {
-      try {
-        await api("/api/bots/" + encodeURIComponent(data.name) + "/avatar", { method: "DELETE" });
-        await refreshLists();
-        await loadPanel();
-        const fresh = state.panelData || data;
-        const next = avatar(fresh.name, paintOfBot(fresh), "lg");
-        mark.replaceWith(next);
-        mark = next;
-      } catch (e) { showErr(e, "清除失败"); }
-    });
     modalForm.onsubmit = async (ev) => {
       ev.preventDefault();
       err.hidden = true;
@@ -4266,7 +4489,7 @@
     const text = await res.text();
     let payload = {};
     if (text) { try { payload = JSON.parse(text); } catch (e) { payload = { error: text }; } }
-    if (!res.ok) throw new Error(payload.error || "头像上传失败");
+    if (!res.ok) { const e = new Error(payload.error || "头像上传失败"); e.status = res.status; throw e; }
     return payload;
   }
 
