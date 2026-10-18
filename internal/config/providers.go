@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -137,6 +139,9 @@ func Add(root string, p Provider, model ModelSpec) error {
 	}
 	cur := f.Providers[i]
 	if p.BaseURL != "" {
+		if err := checkProviderBase(p.BaseURL); err != nil {
+			return err
+		}
 		cur.BaseURL = strings.TrimRight(p.BaseURL, "/")
 	}
 	if p.APIKeyEnv != "" {
@@ -254,6 +259,10 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	if err := validThinking(model.Thinking); err != nil {
 		return ModelConfig{}, 0, err
 	}
+	// The file may have been edited by hand; the key goes wherever base_url says.
+	if err := checkProviderBase(p.BaseURL); err != nil {
+		return ModelConfig{}, 0, err
+	}
 	key := strings.TrimSpace(getenv(p.APIKeyEnv))
 	if key == "" {
 		return ModelConfig{}, 0, fmt.Errorf("providers: %s is empty", p.APIKeyEnv)
@@ -287,6 +296,9 @@ func validateProvider(p Provider, modelRequired bool) error {
 	if strings.TrimSpace(p.BaseURL) == "" {
 		return errors.New("providers: base_url is required")
 	}
+	if err := checkProviderBase(p.BaseURL); err != nil {
+		return err
+	}
 	if !envName.MatchString(p.APIKeyEnv) {
 		return fmt.Errorf("providers: api_key_env must be an environment variable name, got %q", p.APIKeyEnv)
 	}
@@ -294,6 +306,47 @@ func validateProvider(p Provider, modelRequired bool) error {
 		return errors.New("providers: at least one model is required")
 	}
 	return nil
+}
+
+// checkProviderBase rejects a base_url that would leak the provider key: not
+// an absolute http(s) URL, user info, a query or fragment, or plain http to a
+// host that is not this machine or a private address.
+func checkProviderBase(base string) error {
+	base = strings.TrimSpace(base)
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" || u.Hostname() == "" {
+		return fmt.Errorf("providers: base_url %q is not an absolute URL", base)
+	}
+	if u.User != nil {
+		return errors.New("providers: base_url must not include user info")
+	}
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return errors.New("providers: base_url must not include a query or fragment")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		if localHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("providers: base_url must be https for %s; plain http is only for this machine or a private address", u.Hostname())
+	default:
+		return fmt.Errorf("providers: base_url must be http or https, got %q", u.Scheme)
+	}
+}
+
+// localHost is localhost, or a loopback or private IP literal.
+func localHost(host string) bool {
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return true
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	return addr.IsLoopback() || addr.IsPrivate()
 }
 
 func validateModel(m ModelSpec) error {
