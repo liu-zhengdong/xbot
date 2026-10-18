@@ -186,3 +186,34 @@ func TestProjectCacheSeesSameMtimeEdit(t *testing.T) {
 		t.Errorf("cache served stale AGENTS.md after a same-size edit with identical mtime (first AAAA=%v second BBBB=%v)", strings.Contains(a, "AAAA"), strings.Contains(b, "BBBB"))
 	}
 }
+
+// Two same-size rewrites inside one timestamp tick can leave every stamp
+// equal. A file changed within the last second is therefore never served
+// from the cache: here the cache holds stale text under the current key (#23).
+func TestProjectCacheDistrustsRecentChange(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "VERSION-AAAA\n")
+	k, _, _ := workBot(t, dir)
+	if a, _ := k.projectText(); !strings.Contains(a, "AAAA") {
+		t.Fatalf("first read %q", a)
+	}
+	k.projects.mu.Lock()
+	k.projects.text = strings.ReplaceAll(k.projects.text, "AAAA", "STALE")
+	k.projects.mu.Unlock()
+	if b, _ := k.projectText(); !strings.Contains(b, "AAAA") || strings.Contains(b, "STALE") {
+		t.Fatalf("recent file served from the cache: %q", b)
+	}
+	// Once the change is older than the window, the stat-only cache is used.
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "AGENTS.md"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second + 50*time.Millisecond) // let the Chtimes ctime age
+	k.projectText()
+	k.projects.mu.Lock()
+	k.projects.text = strings.ReplaceAll(k.projects.text, "AAAA", "CACHED")
+	k.projects.mu.Unlock()
+	if c, _ := k.projectText(); !strings.Contains(c, "CACHED") {
+		t.Fatalf("settled file was read again: %q", c)
+	}
+}
