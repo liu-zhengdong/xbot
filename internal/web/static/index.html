@@ -23,6 +23,7 @@ try {
 <title>XBot</title>
 <link rel="preload" href="/fonts/MonaSansVF.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/devices.css">
 </head>
 <body>
 <div id="login" class="gate">
@@ -70,6 +71,7 @@ try {
             <span id="me-name" class="me-name">我</span>
           </button>
           <div id="account-menu" class="pop account-menu" hidden>
+            <button id="account-devices" type="button">设备<span id="account-devices-count" class="menu-count"></span></button>
             <button id="collapse" class="desk-only" type="button">收起列表</button>
             <button id="account-theme" type="button">外观</button>
             <button id="logout" type="button">退出</button>
@@ -205,5 +207,6 @@ try {
 </div>
 <div id="lightbox" class="lightbox" hidden></div>
 <script src="/app.js"></script>
+<script src="/devices.js"></script>
 </body>
 </html>

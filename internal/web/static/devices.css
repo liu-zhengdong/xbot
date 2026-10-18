@@ -1,0 +1,157 @@
+/* G7 设备 · 配对两台电脑。只用 app.css 里的变量；不加边框、不加分隔线。 */
+.g7-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* 账户菜单：「设备」放第一项，右侧是已配对数量 */
+.account-menu { min-width: 180px; }
+#account-devices .menu-count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+
+/* 弹窗通用 */
+.g7-card { width: min(460px, 100%); }
+.g7-lead { margin: 0 0 4px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+.g7-h3 { margin: 20px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.g7-fine { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.modal-actions .spacer { flex: 1; }
+.modal-actions { align-items: center; }
+.modal-actions .primary, .modal-actions .secondary { display: inline-flex; align-items: center; gap: 6px; }
+.g7-center { justify-content: center; }
+.g7-busy:disabled { opacity: 0.85; cursor: progress; }
+
+/* 配对码：3 组 × 4 位，每组一块浅灰面 */
+.g7-code { display: flex; justify-content: center; gap: 10px; margin: 20px 0 12px; }
+.g7-group {
+  display: flex; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--cardx);
+}
+.g7-group i {
+  font-style: normal; width: 22px; text-align: center;
+  font-size: 28px; line-height: 36px; font-weight: 560; letter-spacing: 0;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.g7-code.is-expired .g7-group { opacity: 0.45; }
+.g7-code-meta { display: flex; align-items: center; gap: 8px; }
+.g7-timer { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.g7-sm { min-height: 32px !important; padding: 0 12px !important; font-size: 13px !important; display: inline-flex; align-items: center; gap: 6px; }
+.g7-sm .icon { width: 14px; height: 14px; }
+.g7-allow-note {
+  display: flex; gap: 10px; align-items: flex-start; margin-top: 16px;
+  padding: 12px 14px; border-radius: 12px; background: var(--hover);
+}
+.g7-allow-note .icon { margin-top: 3px; color: var(--muted); }
+.g7-allow-note p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.g7-wait { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.g7-spin { animation: g7spin 0.9s linear infinite; }
+@keyframes g7spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .g7-spin { animation: none; } }
+
+/* 输入配对码 */
+.g7-code-field { margin: 20px 0 8px; }
+.g7-code-field input {
+  min-height: 56px; text-align: center; font-size: 24px; font-weight: 560;
+  letter-spacing: 0.12em; font-variant-numeric: tabular-nums; border-radius: 12px; text-transform: uppercase;
+}
+.g7-code-field input::placeholder { color: var(--faint); font-weight: 400; letter-spacing: 0.12em; }
+.g7-code-field input { color: var(--text); }
+.g7-code-field input:disabled { color: var(--muted); }
+.g7-card .primary:disabled { opacity: 0.4; cursor: default; }
+.g7-code-field.is-bad input { background: var(--err-bg); }
+.g7-hint { margin: 0; min-height: 22px; font-size: 13px; color: var(--muted); text-align: center; }
+.g7-info { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text); }
+.g7-msg { text-align: center; margin: 0; }
+
+/* 设备卡 */
+.g7-device { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--hover); margin-top: 16px; }
+.g7-dev-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--text); }
+.g7-dev-main { flex: 1; min-width: 0; }
+.g7-dev-name { font-size: 15px; font-weight: 500; line-height: 1.4; }
+.g7-dev-sub { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.g7-dev-side { color: var(--muted); }
+.g7-allows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.g7-allows li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.g7-allows .icon { color: var(--muted); }
+
+/* A 端的确认：沿用审批卡的头部 */
+.g7-req-head .approval-title { font-size: 17px; }
+.g7-request .approval-actions { margin-top: 20px; }
+
+/* 成功 */
+.g7-done { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 8px 4px; }
+.g7-done-ico { width: 48px; height: 48px; border-radius: 999px; display: grid; place-items: center; background: var(--primary); color: var(--primary-text); margin-bottom: 12px; }
+.g7-done-ico .icon { stroke-width: 2; }
+.g7-done h2 { margin: 0 0 6px !important; }
+
+/* 设备抽屉：沿用「编辑资料」抽屉 */
+.g7-drawer .profile-modal { padding: 0; }
+.g7-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 4px 20px; flex: none; }
+.g7-drawer-head h2 { margin: 0 !important; }
+.g7-drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 20px 20px; }
+.g7-drawer-body .profile-section h3 { margin-bottom: 8px; }
+.g7-drawer .g7-device { margin-top: 0; }
+.g7-self { background: var(--hover); }
+.g7-drawer-foot { position: static !important; padding: 12px 20px 20px !important; margin: 0; background: var(--bg); }
+
+.g7-dev-card { border-radius: 14px; background: var(--hover); padding: 2px 0 12px; }
+.g7-dev-card + .g7-dev-card { margin-top: 8px; }
+.g7-flat { background: transparent; padding-bottom: 6px; }
+.g7-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.status-dot.off-ring { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
+.g7-dev-card.is-off .g7-dev-ico { color: var(--muted); }
+.g7-bots { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 0 62px; }
+.g7-bot { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: var(--bg); font-size: 12px; }
+.g7-bot .avatar.xs { width: 18px; height: 18px; }
+.g7-dev-card.is-off .g7-bot { color: var(--muted); }
+.g7-dev-card.is-off .g7-bot .avatar { opacity: 0.5; }
+.g7-more-wrap { position: relative; }
+.ghost.is-on { background: var(--selected); color: var(--text); }
+.g7-row-menu { top: calc(100% + 4px); bottom: auto; left: auto; right: 0; min-width: 160px; }
+.g7-row-menu .menu-row { justify-content: flex-start; gap: 8px; }
+
+.g7-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 40px 12px 20px; color: var(--muted); }
+.g7-empty-ico { width: 56px; height: 56px; border-radius: 16px; background: var(--hover); color: var(--muted); display: grid; place-items: center; margin-bottom: 12px; }
+.g7-empty h3 { margin: 0 0 4px; font-size: 16px; font-weight: 500; color: var(--text); }
+.g7-empty p { margin: 0; font-size: 13px; line-height: 1.6; max-width: 300px; }
+.g7-options { display: flex; flex-direction: column; gap: 8px; }
+.g7-option {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 14px; border: 0; border-radius: 14px; background: var(--hover); color: var(--text);
+  transition: background 160ms ease-out;
+}
+.g7-option:hover { background: var(--selected); }
+.g7-option b { display: block; font-weight: 500; font-size: 14px; }
+.g7-option small { display: block; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.g7-opt-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); }
+
+/* 抽屉上再叠一个确认弹窗 */
+.modal.g7-over { z-index: 60; }
+
+/* 矮窗口：弹窗内容收紧 */
+@media (max-height: 640px) {
+  .g7-code { margin: 12px 0 8px; }
+  .g7-allow-note { margin-top: 12px; }
+  .g7-h3 { margin-top: 14px; }
+  .g7-device { margin-top: 12px; }
+  .g7-card { padding: 20px; }
+}
+
+/* 网关：已设时折成一行灰字加「改」，没设时展开成输入框 */
+.g7-gw { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.g7-gw .icon { color: var(--faint); }
+.g7-gw .text-btn { min-height: 22px; padding: 0 6px; color: var(--text); font-size: 12px; }
+.g7-gw-field { margin: 16px 0 0; }
+.g7-gw-field input { color: var(--text); }
+.g7-gw-field input::placeholder { color: var(--faint); }
+.g7-gw-why { margin-top: 8px; }
+.modal-actions .text-btn.g7-gw-change { font-size: 13px; min-height: 32px; color: var(--text); padding: 0 10px; }
+/* 同名设备替换 */
+.g7-old { margin-top: 16px; }
+.g7-old .g7-dev-sub { display: flex; align-items: center; gap: 6px; }
+.g7-timer-row { margin-top: 16px; }
+.g7-replace-actions { margin-top: 10px; }
+
+/* 设备抽屉：网关一行、连不上网关的提示、行内编辑 */
+.g7-self-gw { margin-top: 8px; justify-content: flex-start; padding: 0 4px; }
+.g7-gw-edit-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.g7-gw-edit-row input { flex: 1; min-width: 0; color: var(--text); }
+.g7-inline-err { margin: 6px 4px 0; font-size: 12px; }
+.g7-gw-down { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--hover); color: var(--muted); font-size: 13px; }
+.g7-gw-down .spacer { flex: 1; }
+.g7-field-err { margin: 6px 0 0; font-size: 13px; }
+.g7-layer:empty { display: none; }

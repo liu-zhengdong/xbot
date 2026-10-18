@@ -109,6 +109,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", s.static("static/index.html", "text/html; charset=utf-8"))
 	mux.HandleFunc("GET /app.js", s.static("static/app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /app.css", s.static("static/app.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /devices.js", s.static("static/devices.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /devices.css", s.static("static/devices.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /sw.js", s.static("static/sw.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /manifest.webmanifest", s.static("static/manifest.webmanifest", "application/manifest+json"))
 	mux.HandleFunc("GET /icon-192.png", s.static("static/icon-192.png", "image/png"))
