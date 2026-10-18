@@ -33,6 +33,22 @@ func (c *Client) Register(ctx context.Context, token string) error {
 	return c.request(ctx, "/v1/register", nil, strings.TrimSpace(token), 15*time.Second, nil)
 }
 
+func (c *Client) RegisterCode(ctx context.Context, lookup string, ttl time.Duration) error {
+	return c.request(ctx, "/v1/code", codeInput{lookup, int(ttl / time.Second)}, "", 15*time.Second, nil)
+}
+func (c *Client) CancelCode(ctx context.Context, lookup string) error {
+	return c.request(ctx, "/v1/code/cancel", codeInput{Lookup: lookup}, "", 15*time.Second, nil)
+}
+
+// ClaimCode returns the owner's install id; the caller becomes a pending install.
+func (c *Client) ClaimCode(ctx context.Context, lookup string) (owner string, err error) {
+	var out struct {
+		Install string `json:"install"`
+	}
+	err = c.request(ctx, "/v1/code/claim", codeInput{Lookup: lookup}, "", 15*time.Second, &out)
+	return out.Install, err
+}
+
 // AdmitCode promotes a pending install that claimed this owner's code.
 func (c *Client) AdmitCode(ctx context.Context, install string) error {
 	return c.request(ctx, "/v1/code/admit", map[string]string{"install": install}, "", 15*time.Second, nil)

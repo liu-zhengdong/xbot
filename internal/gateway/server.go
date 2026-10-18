@@ -39,17 +39,21 @@ type pollWaiter struct {
 
 // Server stores signed mail for registered installations. Now defaults to time.Now.
 type Server struct {
-	Dir, Token  string
-	Open        bool
-	Now         func() time.Time
-	mu          sync.Mutex
-	waiters     map[string]*pollWaiter
-	limits      *limits // Optional test bounds.
-	totalBytes  int64
-	senderBytes map[string]int64
-	counted     bool
+	Dir, Token string
+	Open       bool
+	// TrustForwarded trusts the last X-Forwarded-For address (set behind a proxy).
+	TrustForwarded bool
+	Now            func() time.Time
+	mu             sync.Mutex
+	waiters        map[string]*pollWaiter
+	limits         *limits // Optional test bounds.
+	totalBytes     int64
+	senderBytes    map[string]int64
+	counted        bool
 
 	pendingSweep time.Time
+	codeFailures map[string][]time.Time
+	codeTries    []time.Time
 }
 
 type httpError struct {
@@ -64,8 +68,8 @@ type route func(*http.Request, []byte, string, ed25519.PublicKey) (int, any, err
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	for path, fn := range map[string]route{"POST /v1/register": s.register, "POST /v1/send": s.send, "GET /v1/poll": s.servePoll, "POST /v1/ack": s.ack, "POST /v1/code/admit": s.admitCode} {
-		mux.Handle(path, s.verified(path == "POST /v1/register", fn))
+	for path, fn := range map[string]route{"POST /v1/register": s.register, "POST /v1/send": s.send, "GET /v1/poll": s.servePoll, "POST /v1/ack": s.ack, "POST /v1/code": s.registerCode, "POST /v1/code/cancel": s.cancelCode, "POST /v1/code/claim": s.claimCode, "POST /v1/code/admit": s.admitCode} {
+		mux.Handle(path, s.verified(path == "POST /v1/register" || path == "POST /v1/code/claim", fn))
 	}
 	return mux
 }
@@ -113,7 +117,7 @@ func (s *Server) verified(allowUnregistered bool, fn route) http.Handler {
 				// A pending install (see pending.go) may only use its mailbox, or
 				// register with the join token like anyone else.
 				if (!allowUnregistered && (pending == nil || !mail)) ||
-					(pending != nil && !mail && r.URL.Path != "/v1/register") {
+					(pending != nil && !mail && r.URL.Path != "/v1/register" && r.URL.Path != "/v1/code/claim") {
 					return 0, nil, httpError{403, "not registered"}
 				}
 			}
@@ -178,6 +182,9 @@ func (s *Server) admitLocked(pub ed25519.PublicKey) error {
 				}
 				if len(mail) != 0 {
 					continue
+				}
+				if err := s.deleteOwnerCodesLocked(f.info.Name()); err != nil {
+					return err
 				}
 				if err := os.Remove(f.path); err != nil {
 					return err
