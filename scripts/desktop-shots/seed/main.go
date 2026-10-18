@@ -44,7 +44,7 @@ func main() {
 
 func seed(root, mode string) error {
 	switch mode {
-	case "chat", "empty", "rich":
+	case "chat", "empty", "rich", "relay":
 	default:
 		return fmt.Errorf("unknown mode %q", mode)
 	}
@@ -84,6 +84,9 @@ func seed(root, mode string) error {
 	if err := b.Append(reply); err != nil {
 		return err
 	}
+	if mode == "relay" {
+		return seedRelay(b, now)
+	}
 	if mode != "rich" {
 		return nil
 	}
@@ -107,6 +110,21 @@ func seed(root, mode string) error {
 	defer bot.CloseStore(diary)
 	note := bot.Entry{Time: at(now, 9, 40), Message: provider.Message{Role: provider.RoleAssistant, Content: "今天天气不错，记得出去走一走。"}}
 	return diary.Append(note)
+}
+
+// seedRelay adds messages other bots sent: one from a bot on a paired
+// device, one from a bot on this computer, each answered.
+func seedRelay(b *bot.Bot, now time.Time) error {
+	for _, e := range []bot.Entry{
+		{Time: at(now, 10, 40), Message: provider.Message{Role: provider.RoleUser, Content: link.Wrap(link.NewEvent("bot:writer@MacBook", link.TypeMessage, "游记写到第二天下午了，还差晚上那段。另外请把你记的周六行程发我一份，我照着补细节。", "writer@MacBook", at(now, 10, 41)))}},
+		{Time: at(now, 10, 42), Message: provider.Message{Role: provider.RoleAssistant, Content: "周六行程已经发给 writer 了。"}},
+		{Time: at(now, 11, 5), Message: provider.Message{Role: provider.RoleUser, Content: link.Wrap(link.NewEvent("bot:dev", link.TypeMessage, "测试都过了，等你看一眼。", "dev", at(now, 11, 5)))}},
+	} {
+		if err := b.Append(e); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // at returns today's local wall-clock time, stored the way the kernel stores it.

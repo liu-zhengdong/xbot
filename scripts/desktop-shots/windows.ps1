@@ -204,6 +204,7 @@ if ($Shots) {
   Run-Case rich dark @('hover', 'unfocused')
   Run-Case empty light @()
   Run-Case chat dark @()
+  Run-Case relay light @()
 } elseif ($Fonts) {
   Run-Case chat light @()
 }

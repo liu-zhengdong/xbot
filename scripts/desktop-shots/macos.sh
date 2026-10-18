@@ -71,5 +71,6 @@ run_case() { # mode theme extras...
 run_case rich light hover unfocused || true
 run_case rich dark hover unfocused || true
 run_case empty light || true
+run_case relay light || true
 appearance light
 for f in "$out"/mac-*.png; do say "$(basename "$f") $(sips -g pixelWidth -g pixelHeight "$f" | tail -2 | awk '{print $2}' | tr '\n' 'x')"; done
