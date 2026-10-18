@@ -81,6 +81,10 @@ func flushOutbox(ctx context.Context, root string, client *gateway.Client, now t
 	if err != nil {
 		return err
 	}
+	cfg, err := Load(root)
+	if err != nil {
+		return err
+	}
 	down := false
 	for _, entry := range entries {
 		if ctx.Err() != nil {
@@ -107,7 +111,12 @@ func flushOutbox(ctx context.Context, root string, client *gateway.Client, now t
 			continue
 		}
 		reason := "after 24h"
-		if !expired {
+		// Switched off after it queued: Bot messages to that device stop here too.
+		off := false
+		if d, ok := cfg.ByID(item.Env.To); ok && d.NoBotMessaging && (item.Env.Kind == "box" || item.Env.Kind == "bounce") {
+			off, reason = true, "because 「Bot 互发消息」 is off for that device"
+		}
+		if !expired && !off {
 			if down {
 				continue // one pass stops sending after the first retryable failure; expiries still run
 			}
@@ -125,7 +134,7 @@ func flushOutbox(ctx context.Context, root string, client *gateway.Client, now t
 			}
 			reason = "because the gateway rejected it"
 		}
-		if (expired || err != nil) && item.FromBot != "" && item.Env.Kind != "bounce" {
+		if (expired || off || err != nil) && item.FromBot != "" && item.Env.Kind != "bounce" {
 			text := fmt.Sprintf("message to %s was not delivered %s: %s", item.To, reason, item.Snippet)
 			if err := postRemote(root, item.FromBot, "remote_undelivered_"+item.Env.ID, text, now); err != nil {
 				return err
