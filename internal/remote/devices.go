@@ -30,6 +30,9 @@ type DeviceView struct {
 	Bots  []string  `json:"bots"`
 	Seen  time.Time `json:"seen,omitzero"`
 	Added time.Time `json:"added,omitzero"`
+	// Unpaired reports that the other computer unpaired this one; the user
+	// removes it from the 设备 drawer.
+	Unpaired bool `json:"unpaired,omitempty"`
 }
 
 // OnlineWindow: directories are re-sent every 15 minutes and within a minute of
@@ -56,7 +59,7 @@ func Devices(root string) ([]DeviceView, error) {
 		if err := readJSON(filepath.Join(root, "remote", "dirs", d.ID+".json"), &cache); err != nil {
 			return nil, err
 		}
-		v := DeviceView{ID: d.ID, Label: deviceLabel(d), Name: d.Name, Bots: []string{}, Seen: cache.Received, Added: d.Added}
+		v := DeviceView{ID: d.ID, Label: deviceLabel(d), Name: d.Name, Bots: []string{}, Seen: cache.Received, Added: d.Added, Unpaired: !d.UnpairedAt.IsZero()}
 		for _, b := range cache.Bots[:min(64, len(cache.Bots))] {
 			if bot.ValidName(b.Name) {
 				v.Bots = append(v.Bots, b.Name)
@@ -82,10 +85,6 @@ func RenameDevice(root, id, label string) error {
 		}
 		return errors.New("remote: device not found")
 	})
-}
-
-func RemoveDeviceID(root, id string) error {
-	return removeDevice(root, func(d Device) bool { return d.ID == id }, id)
 }
 
 // SetSelfName sets how this computer appears to devices paired from now on.

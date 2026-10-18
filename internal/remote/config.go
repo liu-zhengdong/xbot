@@ -2,6 +2,7 @@
 package remote
 
 import (
+	"context"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -31,6 +32,10 @@ type Device struct {
 	XKey   string    `json:"xkey,omitempty"`
 	Person string    `json:"person"`
 	Added  time.Time `json:"added"`
+	// UnpairedAt is when the other computer said it unpaired this device (kind
+	// unpair). Local removal is still the user's call, so the device stays but
+	// sends and receives nothing until it is removed or paired again.
+	UnpairedAt time.Time `json:"unpaired_at,omitzero"`
 }
 type Config struct {
 	Gateway string   `json:"gateway"`
@@ -219,11 +224,43 @@ func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err erro
 		c.Devices = append(c.Devices, d)
 		return nil
 	})
-	return
+	if err != nil {
+		return Device{}, err
+	}
+	clearUnpaired(root, d.ID) // A new pairing replaces any earlier "unpaired by the peer".
+	return d, nil
+}
+
+// clearUnpaired drops the unpair mark left by an earlier pairing of the same device.
+func clearUnpaired(root, id string) {
+	_ = update(root, func(c *Config) error {
+		for i := range c.Devices {
+			if c.Devices[i].ID == id {
+				c.Devices[i].UnpairedAt = time.Time{}
+			}
+		}
+		return nil
+	})
 }
 
 func RemoveDevice(root, name string) error {
-	return removeDevice(root, func(d Device) bool { return d.Name == name }, fmt.Sprintf("%q", name))
+	return unpairDevice(root, func(d Device) bool { return d.Name == name }, fmt.Sprintf("%q", name))
+}
+
+// unpairDevice tells the other computer first (best effort, never required)
+// and then removes locally, so both sides learn even when the send is slow.
+func unpairDevice(root string, match func(Device) bool, what string) error {
+	cfg, err := Load(root)
+	if err != nil {
+		return err
+	}
+	for _, d := range cfg.Devices {
+		if match(d) {
+			notifyUnpair(context.Background(), root, d, time.Now())
+			break
+		}
+	}
+	return removeDevice(root, match, what)
 }
 
 // removeDevice matches inside the locked update, so a device replaced while

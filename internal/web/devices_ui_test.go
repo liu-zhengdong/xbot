@@ -20,17 +20,20 @@ func TestDevicesDrawerUI(t *testing.T) {
 			want: []string{
 				`"网关 " + esc(host(gw))`, `data-act="self-gw-edit">${gw ? "改" : "设置"}`,
 				`api("PUT", "/api/devices/gateway", { gateway: S.gwVal })`, `S.selfGwErr = e.message`,
-				"连不上网关，其他电脑的 Bot 暂时用不了。", `const status = !up ? "" : d.online`,
+				"连不上网关，其他电脑的 Bot 暂时用不了。", `: !up ? "" : d.online`,
 				`只改这台电脑上显示的名字`, `解除和 ${esc(t.label)} 的配对？`,
 				`class="modal profile-drawer g7-drawer"`, `const pair = !!D.acts.add`,
 				// 空状态文案；登录过期后收层、清状态再 reload；键盘焦点收在顶层设备层里
 				`<p>配对后，两台电脑能互相使用对方的 Bot。</p>`,
 				`if (res.status === 401) { sessionExpired(); }`, `location.reload();`, `if (!authed) {`,
 				`function trap(ev)`, `trap(ev);`,
+				// 对方解除了配对：灰色标记代替在线状态，菜单只剩解除配对，侧栏不显示
+				`已解除配对`, `<span class="g7-status g7-unpaired">已解除配对</span>`,
+				`const rename = d.unpaired ? "" :`, `d.bots && d.bots.length && !d.unpaired`,
 			},
 			avoid: []string{"记忆", "memory", "同步"},
 		},
-		"devices.css": {want: []string{".g7-dev-card.is-off .g7-dev-ico { color: var(--muted); }", ".g7-layer:empty { display: none; }"}},
+		"devices.css": {want: []string{".g7-dev-card.is-off .g7-dev-ico { color: var(--muted); }", ".g7-layer:empty { display: none; }", ".g7-unpaired {"}},
 	} {
 		data, err := staticFS.ReadFile("static/" + file)
 		if err != nil {

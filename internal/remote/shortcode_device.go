@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -164,6 +165,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 		for i, old := range c.Devices {
 			if old.ID == d.ID {
 				old.Key, old.XKey = key, xkey
+				old.UnpairedAt = time.Time{} // Paired again: it talks to us again.
 				c.Devices[i], d = old, old
 				return nil
 			}
@@ -175,6 +177,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 						return err
 					}
 					old.ID, old.Key, old.XKey = d.ID, key, xkey
+					old.UnpairedAt = time.Time{}
 					c.Devices[i], d = old, old
 					return nil
 				}

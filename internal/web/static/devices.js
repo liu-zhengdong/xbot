@@ -152,15 +152,18 @@
   }
 
   function devRow(d, up) {
-    const status = !up ? "" : d.online
+    // 对方解除了配对：只留一个灰色标记和「解除配对」，不再显示在线状态。
+    const status = d.unpaired
+      ? `<span class="g7-status g7-unpaired">已解除配对</span>`
+      : !up ? "" : d.online
       ? `<span class="g7-status"><i class="status-dot ok"></i>在线</span>`
       : `<span class="g7-status"><i class="status-dot off-ring"></i>离线${fmtSeen(d.seen) ? " · 最后在线 " + esc(fmtSeen(d.seen)) : ""}</span>`;
-    const bots = d.bots.map((b) => `<span class="g7-bot"><span>${esc(b)}</span></span>`).join("");
+    const bots = d.unpaired ? "" : d.bots.map((b) => `<span class="g7-bot"><span>${esc(b)}</span></span>`).join("");
     const open = S.menuFor === d.id;
-    const menu = open ? `<div class="pop g7-row-menu">
-        <button type="button" class="menu-row" data-act="rename" data-id="${esc(d.id)}">${svg("pencil")}<span>重命名</span></button>
+    const rename = d.unpaired ? "" : `<button type="button" class="menu-row" data-act="rename" data-id="${esc(d.id)}">${svg("pencil")}<span>重命名</span></button>`;
+    const menu = open ? `<div class="pop g7-row-menu">${rename}
         <button type="button" class="menu-row" data-act="ask-unpair" data-id="${esc(d.id)}">${svg("unlink")}<span>解除配对</span></button></div>` : "";
-    return `<div class="g7-dev-card${up && !d.online ? " is-off" : ""}">
+    return `<div class="g7-dev-card${!d.unpaired && up && !d.online ? " is-off" : ""}">
       <div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(d.label)}</div>${status}</div>
         <div class="g7-more-wrap"><button class="ghost${open ? " is-on" : ""}" type="button" aria-label="更多" data-act="row-menu" data-id="${esc(d.id)}">${svg("ellipsis")}</button>${menu}</div></div>
@@ -308,7 +311,7 @@
     const nav = document.getElementById("remote-roster");
     if (!nav) return;
     const data = S.data || {};
-    const devs = (data.devices || []).filter((d) => d.bots && d.bots.length);
+    const devs = (data.devices || []).filter((d) => d.bots && d.bots.length && !d.unpaired);
     const up = !!data.gateway_ok, folds = sideFolds();
     const sig = JSON.stringify([devs, up, folds]);
     if (sig === sideSig) return;

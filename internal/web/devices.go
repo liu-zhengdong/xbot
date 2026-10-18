@@ -75,7 +75,7 @@ func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
 	up := gatewayUp(r.Context(), self.Gateway, r.URL.Query().Get("retry") == "1")
 	rows := make([]deviceRow, 0, len(views))
 	for _, v := range views {
-		rows = append(rows, deviceRow{v, up && !v.Seen.IsZero() && time.Since(v.Seen) < remote.OnlineWindow})
+		rows = append(rows, deviceRow{v, !v.Unpaired && up && !v.Seen.IsZero() && time.Since(v.Seen) < remote.OnlineWindow})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"self": self, "gateway_ok": up, "devices": rows, "pairing": remote.PairingStatus(s.Root)})
 }
