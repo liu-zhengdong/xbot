@@ -133,6 +133,47 @@ func TestDevicesAPIList(t *testing.T) {
 	}
 }
 
+// A device that unpaired us stays listed with "unpaired": true, never online,
+// so the drawer offers only 解除配对 and the sidebar leaves it out.
+func TestDevicesAPIUnpaired(t *testing.T) {
+	a := newDeviceSide(t, "书房 iMac", "ada")
+	pub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := remote.AddDevice(a.root, "mbp", base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(make([]byte, 32)), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The peer's kind unpair sets this in devices.json; set it the same way here.
+	cfg, err := remote.Load(a.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range cfg.Devices {
+		if cfg.Devices[i].ID == d.ID {
+			cfg.Devices[i].UnpairedAt = time.Now().UTC()
+		}
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a.root, "remote", "devices.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var list struct {
+		Devices []map[string]any `json:"devices"`
+	}
+	if code := a.call("GET", "/api/devices", "", &list); code != 200 || len(list.Devices) != 1 {
+		t.Fatalf("list: %d %+v", code, list)
+	}
+	got := list.Devices[0]
+	if got["unpaired"] != true || got["online"] != false || got["label"] != "mbp" {
+		t.Fatalf("unpaired device row: %+v", got)
+	}
+}
+
 // A gateway 429 on the code and a full name are not 连不上网关 or 没送到:
 // pairErrCopy gives each its status and copy, and the handlers use it.
 func TestDevicesAPIErrorCopy(t *testing.T) {

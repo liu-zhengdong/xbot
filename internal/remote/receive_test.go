@@ -59,7 +59,7 @@ func pair(t *testing.T) (string, string, *bot.Bot, ed25519.PrivateKey, ed25519.P
 }
 
 func TestReceive(t *testing.T) {
-	for _, name := range []string{"accept", "untrusted tags", "wrong to", "unpaired", "bad signature", "stale", "future", "hops zero", "wrong owner", "unknown version", "unknown kind", "bad body", "ciphertext", "plaintext msg", "short e", "short nonce", "changed id", "inbox failure", "rate failure"} {
+	for _, name := range []string{"accept", "untrusted tags", "wrong to", "unpaired", "unpaired by peer", "bad signature", "stale", "future", "hops zero", "wrong owner", "unknown version", "unknown kind", "bad body", "ciphertext", "plaintext msg", "short e", "short nonce", "changed id", "inbox failure", "rate failure"} {
 		t.Run(name, func(t *testing.T) {
 			_, root, target, key, _, self := pair(t)
 			now := time.Now()
@@ -94,6 +94,9 @@ func TestReceive(t *testing.T) {
 				e.To = "other"
 			case "unpaired":
 				mustRemote(t, RemoveDevice(root, "a"))
+			case "unpaired by peer":
+				// Marked, not removed: what it still sends is dropped.
+				mustRemote(t, update(root, func(c *Config) error { c.Devices[0].UnpairedAt = now; return nil }))
 			case "stale":
 				e.Time = now.Add(-7*24*time.Hour - 6*time.Minute)
 			case "future":

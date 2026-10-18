@@ -71,7 +71,7 @@ func pushDirectories(ctx context.Context, root string, client *gateway.Client, n
 	next := map[string]dirSent{}
 	changed := false
 	for _, d := range cfg.Devices {
-		if d.XKey == "" {
+		if d.XKey == "" || !d.UnpairedAt.IsZero() {
 			continue
 		}
 		next[d.ID] = sent[d.ID]
@@ -165,7 +165,7 @@ func VisibleBots(root string, owners []string, now time.Time) ([]RemoteBot, erro
 	}
 	var out []RemoteBot
 	for _, d := range cfg.Devices {
-		if d.Person == "" || !slices.Contains(owners, d.Person) {
+		if d.Person == "" || !slices.Contains(owners, d.Person) || !d.UnpairedAt.IsZero() {
 			continue
 		}
 		var cache dirCache
