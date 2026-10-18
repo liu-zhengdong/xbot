@@ -51,6 +51,10 @@ const legacyNodeGrant = "node"
 
 // newServeKernel opens a kernel the way the serve path does, so every caller
 // there shares one definition of what a served bot gets.
+// loginTokenLine is the startup line with the web 登录码. It keeps "login token"
+// because log filters and docs search for that text.
+const loginTokenLine = "登录码（login token）: %s\n"
+
 func newServeKernel(root string, b *bot.Bot) (*kernel.Kernel, error) {
 	k, _, err := openKernel(root, b, serveSteps, nil, nil, false, runnerSpec{})
 	return k, err
@@ -549,7 +553,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		fmt.Fprintf(os.Stderr, "public url: %s\n", publicURL)
 	}
 	if !cfg.App {
-		fmt.Fprintf(os.Stderr, "login token: %s\n", token)
+		fmt.Fprintf(os.Stderr, loginTokenLine, token)
 	}
 	if legacy := legacyNodeFiles(root); len(legacy) > 0 {
 		fmt.Fprintln(os.Stderr, "xbot: 节点功能已移除，忽略数据目录里的旧节点文件（nodes.json、node-token、node-pending），文件保留不删")

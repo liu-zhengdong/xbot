@@ -57,6 +57,8 @@ addPeerEvent(inner, "received", "writer@MacBook", "t6");
 check(lines(), ["和[writer]writer · MacBook往来了 6 条消息"]);
 addPeerEvent(inner, "bounce", "writer@MacBook", "t7");
 check(lines(), ["和[writer]writer · MacBook往来了 6 条消息 · 1 条没送到"]);
+// The dot stands alone, with the row's gap on both sides (beta.3 review).
+check(inner.kids[0].kids.slice(3).map((k) => k.text), ["往来了 6 条消息", " · ", "1 条没送到"]);
 // Another peer gets its own line, and the run with writer goes on past it.
 addPeerEvent(inner, "received", "dev", "t8");
 // The transcript's display label for the device wins over the raw name.
