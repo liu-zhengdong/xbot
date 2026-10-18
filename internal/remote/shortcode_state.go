@@ -23,14 +23,15 @@ type PairingCollision struct {
 	Name string `json:"name"`
 }
 type PairingPhase struct {
-	Phase     string            `json:"phase"`
-	Code      string            `json:"code,omitempty"`
-	Expires   time.Time         `json:"expires,omitempty"`
-	Name      string            `json:"name,omitempty"`
-	OS        string            `json:"os,omitempty"`
-	Bots      []string          `json:"bots,omitempty"`
-	Gateway   string            `json:"gateway,omitempty"`
-	Collision *PairingCollision `json:"collision,omitempty"`
+	Phase   string    `json:"phase"`
+	Code    string    `json:"code,omitempty"`
+	Expires time.Time `json:"expires,omitempty"`
+	Name    string    `json:"name,omitempty"`
+	OS      string    `json:"os,omitempty"`
+	Bots    []string  `json:"bots,omitempty"`
+	Gateway string    `json:"gateway,omitempty"`
+
+	Collision *PairingCollision `json:"collision,omitempty"` // A: the 替换/添加 card
 }
 
 // Status is a detached UI snapshot. It never exposes keys or the PAKE state.
