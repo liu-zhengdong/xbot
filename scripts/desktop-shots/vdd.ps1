@@ -67,8 +67,9 @@ Add-Type -AssemblyName System.Windows.Forms
 # Leave only the virtual display, so the app and the shots land on it.
 $virt = Get-PnpDevice -Class Display | Where-Object { $_.FriendlyName -eq 'Virtual Display Driver' -and $_.Status -eq 'OK' }
 if ($virt -and ([Windows.Forms.Screen]::AllScreens.Count -gt 1)) {
-  # "Second screen only": the system topology switch, as Win+P does.
-  & "$env:WINDIR\System32\DisplaySwitch.exe" /external
+  # The Win+P topology switch. On the runner "/external" keeps Hyper-V Video, so the
+  # virtual display counts as the internal one.
+  & "$env:WINDIR\System32\DisplaySwitch.exe" /internal
   Start-Sleep 6
   [Windows.Forms.Screen]::AllScreens | ForEach-Object { Write-Host "after switch: screen $($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }
   if ([Windows.Forms.Screen]::AllScreens.Count -gt 1) {
