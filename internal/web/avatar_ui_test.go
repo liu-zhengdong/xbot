@@ -108,6 +108,8 @@ func TestNewBotDialogPicksAvatar(t *testing.T) {
 			t.Errorf("new bot dialog: missing %s", want)
 		}
 	}
+}
+
 func TestRemoteFacesUseDeviceSeeds(t *testing.T) {
 	read := func(name string) string {
 		raw, err := staticFS.ReadFile("static/" + name)
