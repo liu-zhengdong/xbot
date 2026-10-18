@@ -313,6 +313,8 @@
     const sig = JSON.stringify([devs, up, folds]);
     if (sig === sideSig) return;
     sideSig = sig;
+    const had = document.activeElement && nav.contains(document.activeElement) ? document.activeElement.closest("[data-side]") : null;
+    const key = had ? `[data-side="${had.dataset.side}"]` + (had.dataset.id ? `[data-id="${CSS.escape(had.dataset.id)}"]` : "") : "";
     nav.hidden = !devs.length;
     nav.innerHTML = !devs.length ? "" : (up ? "" : `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><button class="ghost" type="button" aria-label="重试" data-side="retry">${svg("refresh")}</button></div>`)
       + devs.map((d) => {
@@ -323,6 +325,9 @@
           <span class="folder-name">${svg("laptop", 13)}<span>${esc(d.label)}</span></span>${up && !d.online ? `<span class="g7-side-off">离线</span>` : ""}<span class="folder-count">${d.bots.length}</span></button></div>
           <div class="folder-bots"${closed ? " hidden" : ""}>${rows}</div></div>`;
       }).join("");
+    // 重画会换掉按钮，键盘焦点留在同一个折叠或重试按钮上。
+    const back = key && nav.querySelector(key);
+    if (back) back.focus();
   }
   document.addEventListener("click", async (ev) => {
     const t = ev.target.closest && ev.target.closest("[data-side]");

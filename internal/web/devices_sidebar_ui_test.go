@@ -18,7 +18,7 @@ func TestDevicesSidebarUI(t *testing.T) {
 		`(up ? "" : ` + "`" + `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span>`,
 		`const off = !up || !d.online`, `${up && !d.online ? ` + "`" + `<span class="g7-side-off">离线</span>` + "`" + ` : ""}`,
 		`<span class="folder-name">${svg("laptop", 13)}<span>${esc(d.label)}</span></span>`,
-		`<span class="preview">在 ${esc(d.label)} 上</span>`, `paintSidebar();`,
+		`<span class="preview">在 ${esc(d.label)} 上</span>`, `paintSidebar();`, `if (back) back.focus();`,
 	} {
 		if !strings.Contains(string(js), want) {
 			t.Errorf("devices.js missing %s", want)
