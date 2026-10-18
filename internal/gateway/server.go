@@ -23,7 +23,7 @@ import (
 
 const installIdleTTL = 30 * 24 * time.Hour
 
-var kindRe = regexp.MustCompile(`^[a-z]{1,16}$`)
+var kindRe = regexp.MustCompile(`^[a-z][a-z0-9]{0,15}$`)
 var idRe = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type limits struct {
@@ -48,6 +48,8 @@ type Server struct {
 	totalBytes  int64
 	senderBytes map[string]int64
 	counted     bool
+
+	pendingSweep time.Time
 }
 
 type httpError struct {
@@ -62,7 +64,7 @@ type route func(*http.Request, []byte, string, ed25519.PublicKey) (int, any, err
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	for path, fn := range map[string]route{"POST /v1/register": s.register, "POST /v1/send": s.send, "GET /v1/poll": s.servePoll, "POST /v1/ack": s.ack} {
+	for path, fn := range map[string]route{"POST /v1/register": s.register, "POST /v1/send": s.send, "GET /v1/poll": s.servePoll, "POST /v1/ack": s.ack, "POST /v1/code/admit": s.admitCode} {
 		mux.Handle(path, s.verified(path == "POST /v1/register", fn))
 	}
 	return mux
@@ -75,7 +77,7 @@ func (s *Server) now() time.Time {
 	return time.Now()
 }
 
-func (s *Server) verified(register bool, fn route) http.Handler {
+func (s *Server) verified(allowUnregistered bool, fn route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		status, out, err := func() (int, any, error) {
 			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBody))
@@ -89,17 +91,30 @@ func (s *Server) verified(register bool, fn route) http.Handler {
 			caller := ID(pub)
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if !register {
-				ok, err := exists(filepath.Join(s.Dir, "installs", caller))
+			if err := s.sweepLocked(); err != nil {
+				return 0, nil, err
+			}
+			path := filepath.Join(s.Dir, "installs", caller)
+			registered, err := exists(path)
+			if err != nil {
+				return 0, nil, err
+			}
+			if registered {
+				now := s.now()
+				if err := os.Chtimes(path, now, now); err != nil {
+					return 0, nil, err
+				}
+			} else {
+				pending, err := s.pendingLocked(caller)
 				if err != nil {
 					return 0, nil, err
 				}
-				if !ok {
+				mail := r.URL.Path == "/v1/poll" || r.URL.Path == "/v1/ack" || r.URL.Path == "/v1/send"
+				// A pending install (see pending.go) may only use its mailbox, or
+				// register with the join token like anyone else.
+				if (!allowUnregistered && (pending == nil || !mail)) ||
+					(pending != nil && !mail && r.URL.Path != "/v1/register") {
 					return 0, nil, httpError{403, "not registered"}
-				}
-				now := s.now()
-				if err := os.Chtimes(filepath.Join(s.Dir, "installs", caller), now, now); err != nil {
-					return 0, nil, err
 				}
 			}
 			return fn(r, body, caller, pub)
@@ -122,14 +137,7 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 	if err != nil {
 		return 0, nil, err
 	}
-	if ok {
-		now := s.now()
-		if err := os.Chtimes(path, now, now); err != nil {
-			return 0, nil, err
-		}
-		return 200, map[string]string{"status": "ok"}, nil
-	}
-	if !s.Open {
+	if !ok && !s.Open {
 		got, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !bearer || s.Token == "" {
 			return 0, nil, httpError{403, "registration closed"}
@@ -138,10 +146,23 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 			return 0, nil, httpError{401, "bad token"}
 		}
 	}
+	if err := s.admitLocked(pub); err != nil {
+		return 0, nil, err
+	}
+	return 200, map[string]string{"status": "ok"}, nil
+}
+
+// admitLocked shares install capacity, eviction and last-seen updates across admission paths.
+func (s *Server) admitLocked(pub ed25519.PublicKey) error {
+	path := filepath.Join(s.Dir, "installs", ID(pub))
+	ok, err := exists(path)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		files, err := s.filesLocked("installs", "", 0)
 		if err != nil {
-			return 0, nil, err
+			return err
 		}
 		if len(files) >= MaxInstalls {
 			slices.SortFunc(files, func(a, b queueFile) int {
@@ -153,32 +174,51 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 				}
 				mail, err := s.queueLocked(f.info.Name())
 				if err != nil {
-					return 0, nil, err
+					return err
 				}
 				if len(mail) != 0 {
 					continue
 				}
 				if err := os.Remove(f.path); err != nil {
-					return 0, nil, err
+					return err
 				}
 				files = files[:len(files)-1]
 				break
 			}
 			if len(files) >= MaxInstalls {
-				return 0, nil, httpError{403, "too many installs"}
+				return httpError{403, "too many installs"}
 			}
 		}
 		if err := fsutil.WriteAtomic(path, pub, 0600); err != nil {
-			return 0, nil, err
+			return err
 		}
 	}
-	return 200, map[string]string{"status": "ok"}, nil
+	if err := os.Chtimes(path, s.now(), s.now()); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(s.Dir, "pending", ID(pub))); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) send(_ *http.Request, body []byte, caller string, pub ed25519.PublicKey) (int, any, error) {
 	var env Envelope
 	if json.Unmarshal(body, &env) != nil || env.V != 1 || !validID(env.ID) || !validID(env.To) || !kindRe.MatchString(env.Kind) || env.From != caller || env.Verify(pub) != nil {
 		return 0, nil, httpError{400, "bad envelope"}
+	}
+	registered, err := exists(filepath.Join(s.Dir, "installs", caller))
+	if err != nil {
+		return 0, nil, err
+	}
+	if !registered {
+		pending, err := s.pendingLocked(caller)
+		if err != nil {
+			return 0, nil, err
+		}
+		if pending == nil || env.To != pending.Owner {
+			return 0, nil, httpError{403, "pending may only send to owner"}
+		}
 	}
 	data, err := json.Marshal(env)
 	if err != nil {
@@ -192,7 +232,16 @@ func (s *Server) send(_ *http.Request, body []byte, caller string, pub ed25519.P
 		return 0, nil, err
 	}
 	if !ok {
-		return 0, nil, httpError{404, "unknown recipient"}
+		pending, err := s.pendingLocked(env.To)
+		if err != nil {
+			return 0, nil, err
+		}
+		if pending == nil {
+			return 0, nil, httpError{404, "unknown recipient"}
+		}
+		if pending.Owner != caller {
+			return 0, nil, httpError{403, "pending recipient belongs to another owner"}
+		}
 	}
 	tombstones, err := s.filesLocked("acked", env.To, AckTTL)
 	if err != nil {
@@ -275,6 +324,19 @@ func (s *Server) servePoll(r *http.Request, _ []byte, to string, _ ed25519.Publi
 		timer.Stop()
 		s.mu.Lock()
 		if !p.replaced {
+			registered, checkErr := exists(filepath.Join(s.Dir, "installs", to))
+			if checkErr != nil {
+				return 0, nil, checkErr
+			}
+			if !registered {
+				pending, checkErr := s.pendingLocked(to)
+				if checkErr != nil {
+					return 0, nil, checkErr
+				}
+				if pending == nil {
+					return 0, nil, httpError{403, "not registered"}
+				}
+			}
 			envs, err = s.listLocked(to)
 		}
 	}
