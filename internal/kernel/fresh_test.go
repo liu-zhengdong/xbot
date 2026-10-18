@@ -545,6 +545,37 @@ func TestSensitiveFileChangeOmitsDiff(t *testing.T) {
 	}
 }
 
+// A token written into an ordinary file is not in the vault, so redaction
+// cannot catch it. Its diff is withheld; the change is still reported (#24).
+func TestFileChangeWithholdsSecretLookingDiff(t *testing.T) {
+	token := "ghp_" + "aB3dE5gH7jK9mN1pQ3sT5vX7zA9cE1gI3kM5"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("name: app\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	k, p, now := freshBot(t)
+	runTurn(t, k, now, "look",
+		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
+		provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+	)
+	if err := os.WriteFile(path, []byte("name: app\ngithub_token: "+token+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	advance(now, fileChangeCooldown+time.Second)
+	runTurn(t, k, now, "again",
+		provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+	)
+	last := p.reqs[len(p.reqs)-1].Messages
+	tip := last[len(last)-1].Content
+	if !strings.Contains(tip, "config.yaml changed") || !strings.Contains(tip, "diff not shown") {
+		t.Fatalf("missing change note: %q", tip)
+	}
+	if strings.Contains(tip, token) || strings.Contains(tip, "ghp_") {
+		t.Fatalf("token leaked through the diff: %q", tip)
+	}
+}
+
 func TestSameSizeAndMtimeSkipsContentHash(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "note.txt")
