@@ -51,7 +51,7 @@ func TestAccountProfileAndResponsiveLayout(t *testing.T) {
 		`const exp = el("button", "text-btn", "导出模板");`,
 		`const imp = el("button", "text-btn", "导入模板");`,
 		`modalForm.classList.remove("profile-modal");`,
-		`window.innerWidth >= 768 && window.innerWidth <= 1100`,
+		`window.innerWidth >= 768 && window.innerWidth < 960`,
 		`compactSidebarChoice !== false`, `compactSidebarChoice = collapsed`,
 		`localStorage.getItem("xbot-panel-open")`,
 		`localStorage.setItem("xbot-panel-open", String(open))`,
