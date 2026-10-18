@@ -410,6 +410,7 @@ func TestShortCodeFailurePhases(t *testing.T) {
 				mustRemote(t, err)
 				_, xkey, err := XIdentity(h.a)
 				mustRemote(t, err)
+				mustRemote(t, SetGateway(h.b, h.ca.Base)) // Devices on another gateway are a mismatch.
 				_, err = AddDevice(h.b, "known", key, xkey, "")
 				mustRemote(t, err)
 				want = "already"
