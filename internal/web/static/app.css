@@ -79,10 +79,6 @@
   --err-bg: #fbeaea;
   --err: #b23a3a;
   --scroll: #d4d4d8;
-  --heat-0: #c8c9cf;
-  --heat-1: #b1b2b9;
-  --heat-2: #84858c;
-  --heat-3: #1a1a1a;
   --eye: #3a342f;
   --composer: #f3f3f5;
   --panel: #f6f6f8;
@@ -136,10 +132,6 @@ html[data-theme="dark"] {
   --err-bg: #3a2222;
   --err: #e3a0a0;
   --scroll: #3a3a40;
-  --heat-0: #3a3a40;
-  --heat-1: #55555c;
-  --heat-2: #7d7d85;
-  --heat-3: #ededef;
   --eye: #241f1c;
   --composer: #252528;
   --panel: #222226;
@@ -218,10 +210,13 @@ button:disabled { cursor: default; }
   gap: 0;
 }
 
+/* The card (the 8px spacing scale): radius 12; it starts where the sidebar
+   ends (the list and the 72px rail carry their own gutter), 8 right and
+   bottom (window review P2 #8, device prototype v2). */
 .main {
   flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
   position: relative; background: var(--bg);
-  margin-left: 8px; border-radius: 20px; overflow: hidden;
+  margin-left: 0; border-radius: 12px; overflow: hidden;
 }
 
 /* The header, the thread and the composer share one centred column, so the
@@ -249,10 +244,15 @@ button:disabled { cursor: default; }
   mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
 
-/* The header avatar: the same round face as the list (device prototype 68). */
+/* Header and message faces are 24px and round (window review P1 #4 size,
+   device prototype v2 shape), so header, bot message and composer share x. */
 .title .avatar.head {
-  width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex: none;
+  width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex: none;
 }
+
+.msg > .avatar { width: 24px; height: 24px; margin-top: 1px; }
+
+.msg { gap: 12px; }
 
 .pair-title {
   display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%;
@@ -913,9 +913,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .working-name { font-size: 12px; color: var(--muted); line-height: 1.4; }
 
-.node-pending { padding: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; }
-.node-pending .approval { margin: 0; }
-
 .coding-card {
   margin: 8px 0; padding: 12px; border-radius: 12px; background: var(--fill); max-width: 100%;
 }
@@ -1085,43 +1082,42 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .tag.warn { background: var(--warn-bg); color: var(--warn); }
 
-.heat-card {
-  margin: 16px auto 0; padding: 12px 14px 14px; width: max-content;
-  border: 0; border-radius: 12px; background: var(--fill);
-  text-align: left;
-}
-
-.heat-title { font-size: 12px; line-height: 1.4; color: var(--muted); margin-bottom: 8px; }
-
-.heat-months {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  font-size: 11px; line-height: 1.4; color: var(--faint); margin-bottom: 4px;
-}
-
-.heat {
-  display: grid; grid-template-columns: repeat(18, 8px); grid-auto-rows: 8px;
-  gap: 3px; width: max-content;
-}
-
-.heat i { display: block; width: 8px; height: 8px; border-radius: 2px; background: var(--heat-0); }
-
-.heat i.l1 { background: var(--heat-1); }
-
-.heat i.l2 { background: var(--heat-2); }
-
-.heat i.l3 { background: var(--heat-3); }
-
+/* Empty chat: 48px face, name 18/640, one muted line, then up to three
+   starters on the composer's surface (window review P2 #7). The face is round
+   like every other face (device prototype v2). */
 .empty {
   margin: auto; text-align: center; color: var(--muted);
-  padding: 32px 24px; max-width: 420px;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 32px 24px; width: min(468px, 100%);
+  display: flex; flex-direction: column; align-items: center;
 }
 
-.empty h2 { font-size: 20px; font-weight: 500; color: var(--text); margin: 8px 0 0; letter-spacing: -0.015em; }
+.empty .avatar.lg { width: 48px; height: 48px; }
 
-.empty h2 .pair-name { font-size: 20px; }
+.empty h2 { font-size: 18px; font-weight: 640; color: var(--text); margin: 14px 0 4px; letter-spacing: -0.015em; }
 
-.empty p { margin: 0; font-size: 14px; line-height: 1.6; }
+.empty h2 .pair-name { font-size: 18px; }
+
+.empty p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--muted); }
+
+.starters { display: flex; flex-direction: column; gap: 8px; width: min(420px, 100%); margin-top: 22px; }
+
+.starters:empty { display: none; }
+
+.starter {
+  width: 100%; border: 0; border-radius: 12px; padding: 11px 16px;
+  background: var(--composer); color: var(--text);
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  font-size: 14px; line-height: 1.5;
+  transition: background 160ms ease-out;
+}
+
+.starter span { flex: 1; min-width: 0; }
+
+.starter .icon { width: 16px; height: 16px; flex: none; color: var(--faint); }
+
+.starter:hover { background: var(--selected); }
+
+.starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 
 /* Composer */
 
@@ -1232,7 +1228,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .panel.open {
   flex: 0 0 320px; width: 320px; min-width: 280px; max-width: 320px;
-  margin-left: 8px; background: var(--panel); border-radius: 20px;
+  margin-left: 8px; background: var(--panel); border-radius: 12px;
 }
 
 .panel-bar {
@@ -1670,7 +1666,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
     position: absolute; left: auto; right: 8px; top: 8px; bottom: 8px;
     flex: 0 0 320px; width: 320px; min-width: 280px; max-width: 320px;
     margin-left: 0; z-index: 30;
-    background: var(--panel); border-radius: 20px;
+    background: var(--panel); border-radius: 12px;
     box-shadow: var(--shadow);
     transition: none;
   }

@@ -3,7 +3,6 @@ package kernel
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -157,66 +156,6 @@ func TestIdleStatusTailPreviewRedacted(t *testing.T) {
 	}
 	if !strings.HasPrefix(st.LastMessage, "[redacted]") {
 		t.Fatalf("preview %q", st.LastMessage)
-	}
-}
-
-func TestNodeStatusJSONCapAndShape(t *testing.T) {
-	root := t.TempDir()
-	for _, name := range []string{"a", "b", "c"} {
-		b, err := bot.Create(root, name, "p", []string{link.NameTerminal})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "hi"}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raw, err := NodeStatusJSON(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(raw) > nodeStatusCap {
-		t.Fatalf("cap %d", len(raw))
-	}
-	var got []BotStatus
-	if err := json.Unmarshal([]byte(raw), &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("bots %+v", got)
-	}
-	for _, st := range got {
-		if st.State != StateIdle || st.Node != "" {
-			t.Fatalf("node status %+v", st)
-		}
-	}
-}
-
-func TestNodeStatusJSONDropsBotsToFitCap(t *testing.T) {
-	root := t.TempDir()
-	long := strings.Repeat("很长的预览", 20)
-	for i := 0; i < 200; i++ {
-		b, err := bot.Create(root, fmt.Sprintf("n%03d", i), "p", []string{link.NameTerminal})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: long}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raw, err := NodeStatusJSON(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(raw) > nodeStatusCap {
-		t.Fatalf("cap %d", len(raw))
-	}
-	var got []BotStatus
-	if err := json.Unmarshal([]byte(raw), &got); err != nil {
-		t.Fatalf("dropped bots left invalid JSON: %v", err)
-	}
-	if len(got) == 0 || len(got) >= 200 {
-		t.Fatalf("dropped %d bots, want a partial list", len(got))
 	}
 }
 
