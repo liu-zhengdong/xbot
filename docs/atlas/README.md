@@ -7,7 +7,7 @@ verified: 2026-10-17 @ c940085
 > **30 秒版**：XBot 是用 Go 从零写的个人 AI 助手，给一个主人在自己的机器上长期使用。交互单位是 **Bot**：一个有名字、有记忆、长期存在的实体，同一个主题只找一个 Bot，上下文一直连着，系统里没有"会话"。Bot 能在没人叫它时醒来，判断有没有值得告诉主人的事；能在授权的机器上做主人在终端里能做的事。终端和网页是同一条对话的两个入口。
 
 ## 愿景与思想
-> 已确认（2026-10-16，主人确认；最后一段 2026-10-17 更新，主人确认）。
+> 已确认（2026-10-16，主人确认；「现阶段优先级」一段 2026-10-18 主人确认，其余最后一段 2026-10-17 更新，主人确认）。
 
 Bot 是第三代交互模型。第一代是 Chat，第二代是 Session 和 Agent，第三代是 Bot：一个有记忆、长期存在的实体。主人不需要管理会话，也不需要 `--resume`；想聊哪件事，就去找负责这件事的那个 Bot。
 
@@ -17,7 +17,9 @@ Bot 有主动性。webhook、文件监听、其他 Bot、定时器都能唤醒�
 
 Bot 是全能的。授权给它的机器，它能做主人在终端里能做的任何事。隔离靠部署方式，安全靠操作审核和保险箱，不靠假装能限制文件访问。
 
-主人希望 Bot 任何时候都能在几秒内回应，哪怕它正忙着长任务，这一点靠「插话时分叉」做到了。现在在做的是对照 Claude Code 内部机制调研定下的 8 步内核计划：提醒通道与熔断、文件新鲜度、待办清单、shell 后台化、环境感知、搜索与看图已经合入，接下来是子代理类型和权限规则。同时三个 Bot 连续运行两周做验收，到 10-30 结束。再往后是开源网关、P2P 和跨用户通信。新想法先进 [候选清单](../CANDIDATES.md)，不当场开工；计划和进度见 [MILESTONES](../MILESTONES.md)。
+**现阶段优先级**：产品还没有用户，现阶段最重要的是把功能调通、调顺，然后再接安全。安全只留接口（一张权限表和它的守门测试、内核的统一审查入口、保险箱占位），不再加新的安全工作；挡住 Agent 干活的确认和拒写要收进一个默认放行的开关。见 [ADR 0013](../adr/0013-features-before-security.md)。
+
+主人希望 Bot 任何时候都能在几秒内回应，哪怕它正忙着长任务，这一点靠「插话时分叉」做到了。现在在做的是对照 Claude Code 内部机制调研定下的 8 步内核计划：提醒通道与熔断、文件新鲜度、待办清单、shell 后台化、环境感知、搜索与看图已经合入，接下来是子代理类型；权限规则按 ADR 0013 暂缓。同时三个 Bot 连续运行两周做验收，到 10-30 结束。再往后是开源网关、P2P 和跨用户通信。新想法先进 [候选清单](../CANDIDATES.md)，不当场开工；计划和进度见 [MILESTONES](../MILESTONES.md)。
 
 ## 思想地图
 上面「愿景与思想」讲的是想把 XBot 做成什么样；下面几篇讲主人做这件事的方法。改内核、改提示、改合并流程之前，先读对应的那一篇。
@@ -105,4 +107,4 @@ flowchart LR
 - 界面：60fps；动画只动 transform/opacity，时长不超过 200 毫秒；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
 - 每个里程碑验收都要报性能数字。
 
-ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻快照加差异](../adr/0008-memory-v2-dated-log-first.md)、[0009 每个记忆范围是一个文件夹，用普通文件工具编辑](../adr/0009-memory-as-folder.md)、[0010 跨设备靠开源信箱中继传 Bot 消息，不同步数据](../adr/0010-gateway-mailbox-relay.md)、[0011 官方网关跑在 Cloudflare Workers 上，客户端默认连它](../adr/0011-official-gateway-on-workers.md)、[0012 退役「节点」，多台电脑只靠网关配对](../adr/0012-retire-node.md)。
+ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻快照加差异](../adr/0008-memory-v2-dated-log-first.md)、[0009 每个记忆范围是一个文件夹，用普通文件工具编辑](../adr/0009-memory-as-folder.md)、[0010 跨设备靠开源信箱中继传 Bot 消息，不同步数据](../adr/0010-gateway-mailbox-relay.md)、[0011 官方网关跑在 Cloudflare Workers 上，客户端默认连它](../adr/0011-official-gateway-on-workers.md)、[0012 退役「节点」，多台电脑只靠网关配对](../adr/0012-retire-node.md)、[0013 现阶段先把功能调通调顺，安全只留接口](../adr/0013-features-before-security.md)。
