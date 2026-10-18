@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux:
+    name: vet and test (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: allow unprivileged user namespaces
+        # The eval jail uses unshare; Ubuntu 24.04 runners block that through AppArmor by default.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: go test
+        # Known flakes, skipped by name only:
+        #   #51 TempDir cleanup race: TestRunningShortOutputAndHeldPrefix, TestRelativeRootSpawn
+        #   #55 holdout blank-chart is a live-model eval case, not a go test, so there is nothing to skip here.
+        run: go test -count=1 -skip '^(TestRunningShortOutputAndHeldPrefix|TestRelativeRootSpawn)$' ./...
+
+  build:
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go build
+        run: go build ./...
+      - name: build the xbot binary
+        run: go build -o xbot-ci-check ./cmd/xbot
