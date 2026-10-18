@@ -1,6 +1,6 @@
 # 开源网关与跨设备 Link 规格
 
-2026-10-18 起草。主人的决定：每台 XBot 只管自己的数据和自己对主人的理解，不做文件同步；不同电脑上的 Bot 通过 link 协议对话；网关必须开源（见 [CANDIDATES](CANDIDATES.md) 里"跨设备"一行）。取舍见 [ADR 0010](adr/0010-gateway-mailbox-relay.md)，落地后的现行设计在 [atlas/gateway.md](atlas/gateway.md)。本文是过程快照，定下来就冻结。
+2026-10-18 起草。主人的决定：每台 XBot 只管自己的数据和自己对主人的理解，不做文件同步；不同电脑上的 Bot 通过 link 协议对话；网关必须开源（见 [CANDIDATES](CANDIDATES.md) 里"跨设备"一行）。取舍见 [ADR 0010](adr/0010-gateway-mailbox-relay.md)，落地后的现行设计在 [atlas/gateway.md](atlas/gateway.md)。本文是过程快照，定下来就冻结；能力清单的状态在 2026-10-18 按 G7 落地更新过一次。
 
 ## 目标与能力清单
 主人在 Mac 和 Windows 上各装一个 XBot。Mac 上的 `dev` 要问 Windows 上的 `health` 一件事，`health` 回答，两台电脑都在 NAT 后面，都不开入站端口。
@@ -16,10 +16,11 @@
 | 离线排队：收件安装离线时网关代存；网关连不上时发件安装本地重试 | 网关侧 G1，发件侧 G5 |
 | 自建：网关就是 `xbot gateway serve`，同一个二进制，一个数据目录 | 设计内（G1） |
 | `list_bots` 看得到配对设备推送的 Bot 目录；远端 `bot_status` 不在本批范围 | 设计内（G6） |
-| 桌面端设置页里配对 | 设计内（G7，等桌面端 B2） |
-| P2P 直连、内网直连 | 不做（先有中继兜底；直连只省延迟，个人用量下不值得先做） |
+| 桌面端设置页里配对 | 已做（G7：「我」菜单的「设备」抽屉用 12 位配对码；CLI 的 `remote invite`/`join` 保留，给脚本和没有界面的机器用） |
+| 内网直连 | 已排期（G7 之后，见 [CANDIDATES](CANDIDATES.md) 里"网关局域网直连"一行；2026-10-18 改，原为不做） |
+| P2P 打洞 | 推迟（先有中继兜底；只有大文件或实时流才值得） |
 | 跨用户通信、Bot 模板分享 | 不做（这一版只连同一个主人的设备，跨用户要另一套授权） |
-| Cloudflare Workers 部署 | 不做（先只有 Go 二进制；协议简单，以后可移植） |
+| Cloudflare Workers 部署 | 已部署：官方网关 `https://xbot.babelgo.cn`，客户端默认用它，见 [ADR 0011](adr/0011-official-gateway-on-workers.md)（2026-10-18 改，原为不做） |
 | 网关存记忆、同步文件 | 不做（主人决定） |
 
 ## 关键决策与理由
