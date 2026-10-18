@@ -100,8 +100,7 @@ func appendBounce(t *testing.T, b *bot.Bot, id, text string, at time.Time) {
 
 // One assistant entry may call message_bot to the same address twice; both are rows.
 func TestRemoteConversationTwoCallsOneEntry(t *testing.T) {
-	root := t.TempDir()
-	a, err := bot.Create(root, "ada", "", nil)
+	a, err := bot.Create(t.TempDir(), "ada", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
