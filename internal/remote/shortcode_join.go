@@ -62,6 +62,9 @@ func JoinShortCode(ctx context.Context, root, code, gatewayURL string) error {
 			if he.StatusCode == 410 {
 				phase = "expired"
 			}
+			if he.StatusCode == 429 {
+				phase = "rate_limited"
+			}
 		}
 		s.status.B = PairingPhase{Phase: phase, Gateway: c.Base}
 		return err
@@ -170,6 +173,12 @@ func (s *pairingState) receivePake4(root string, env gateway.Envelope, now time.
 			return err
 		}
 		d, err := savePairDevice(root, j.info.Name, j.key, j.xkey, personID, false)
+		if errors.Is(err, ErrNameFull) {
+			// A's allow can no longer be saved here: say why, not 「没有允许」.
+			s.join = nil
+			s.status.B = PairingPhase{Phase: "name_full", Name: j.info.Name}
+			return nil
+		}
 		if err != nil {
 			return err
 		}

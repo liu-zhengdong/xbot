@@ -29,6 +29,7 @@ import (
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
+	"xbot/internal/version"
 )
 
 //go:embed static
@@ -48,6 +49,10 @@ type Server struct {
 	// App marks the desktop app's serve. Its only way in is the launch code
 	// minted at start, so logging out would lock the owner out until a relaunch.
 	App bool
+
+	// AppTheme applies the page's theme to the desktop window's native buttons.
+	// Nil accepts the theme and changes nothing; the app sets it before serving.
+	AppTheme func(theme string) error
 
 	owner       string
 	token       string
@@ -126,6 +131,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.session)
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
+	mux.HandleFunc("POST /api/app/theme", s.appTheme)
 
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/bots", s.listBots)
@@ -243,7 +249,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	out := map[string]any{"authed": true, "owner": s.owner, "app": s.App}
+	out := map[string]any{"authed": true, "owner": s.owner, "app": s.App, "version": displayVersion(version.Version)}
 	if s.needsKey() {
 		out["needs_key"] = true
 		out["key_host"] = keyHost()

@@ -1952,29 +1952,69 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
     left: auto; right: 0; border-radius: 20px 0 0 0;
   }
 }
-/* MyGo sets these variables only in desktop windows. */
-@supports (padding-left: max(0px, 1px)) {
-  .in-app .sidebar .pin-row {
-    padding-top: calc(16px + var(--mygo-titlebar-height, 0px));
-    padding-left: max(var(--mygo-titlebar-inset-left, 0px), 0px);
-    --app-region: drag;
-  }
-  /* The rail is narrower than the traffic-light inset; the top padding
-     already clears the lights, so keep the rail's own side padding. */
-  .in-app .sidebar.collapsed .pin-row { padding-left: 8px; }
-  .in-app .top {
-    --app-region: drag;
-    padding-right: calc(16px + var(--mygo-titlebar-inset-right, 0px));
-    min-height: var(--mygo-titlebar-height, 0px);
-  }
-  .in-app .panel-bar {
-    --app-region: drag;
-    padding-right: calc(8px + var(--mygo-titlebar-inset-right, 0px));
-  }
-  .in-app :is(.pin-row, .top, .panel-bar) :is(button, a, input, select, textarea, [role="button"]) {
-    --app-region: no-drag;
-  }
+/* Desktop app window (html.in-app): a 40px strip owns the title bar, and the
+   card starts right below it with 8px gutters right and bottom (the 8px
+   spacing scale). MyGo sets the --mygo-titlebar-* variables only there.
+   The strip's --strip-reserve keeps the native window buttons' area empty;
+   nothing in the browser UI matches .appbar, so the plain UI is unchanged. */
+.in-app {
+  --strip-h: var(--mygo-titlebar-height, 40px);
+  --strip-reserve: var(--mygo-titlebar-inset-right, 0px);
 }
+
+.appbar {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--strip-h);
+  z-index: 31; display: flex; align-items: center;
+  padding: 0 var(--strip-reserve) 0 0;
+  background: var(--base); --app-region: drag;
+}
+
+.appbar-gap { flex: 1; }
+
+.appbar-slot { display: flex; align-items: center; }
+
+.appbar-slot .icon-btn {
+  color: var(--muted); --app-region: no-drag;
+  transition: none;
+}
+
+.appbar-slot .icon-btn:hover { background: var(--hover); }
+
+.appbar-slot .dot { top: 7px; right: 7px; width: 6px; height: 6px; box-shadow: 0 0 0 2px var(--base); }
+
+/* Windows: the logo's centre sits on the rail centre (x=36), then the wordmark,
+   the version, and the bell 8px in front of the native buttons. */
+.appbar-logo {
+  width: 16px; height: 16px; margin-left: 28px; flex: none;
+  display: grid; place-items: center; border-radius: 4px;
+  background: var(--text); color: var(--bg);
+  font-size: 10px; font-weight: 700; line-height: 1;
+}
+
+.appbar-brand { margin-left: 8px; font-size: 13px; font-weight: 620; letter-spacing: 0.1px; }
+
+.appbar-ver { margin-left: 8px; font-size: 12px; font-weight: 450; color: var(--faint); }
+
+.appbar-slot .icon-btn { margin-left: 8px; }
+
+/* macOS: traffic lights sit above the rail; the wordmark starts at the card's
+   left content padding (rail 72 + 16) and the bell keeps 12px from the edge. */
+.in-app.os-mac { --strip-reserve: 0px; }
+
+.in-app.os-mac .appbar { padding-right: 12px; }
+
+.in-app.os-mac .appbar-logo { display: none; }
+
+.in-app.os-mac .appbar-brand { margin-left: calc(72px + 16px); }
+
+.in-app.os-mac .appbar-slot .icon-btn { margin-left: 0; }
+
+.in-app .shell { padding: var(--strip-h) 8px 8px 0; }
+
+.in-app .main { border-radius: 12px; }
+
+/* The note list hangs from the bell in the strip; fitNotes() places it. */
+.in-app .notes { position: fixed; z-index: 40; }
 
 .not-found-back { display: inline-block; padding: 10px 16px; border-radius: 10px; text-decoration: none; text-align: center; }
 
