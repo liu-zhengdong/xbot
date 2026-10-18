@@ -89,4 +89,48 @@ func TestPendingInstall(t *testing.T) {
 	if err != nil || len(queued) != 0 {
 		t.Fatalf("lapsed pending left mail: %v %v", queued, err)
 	}
+
+	// Review fixes: per-owner cap, owner must be a member, re-pointing drops
+	// the old owner's mail and keeps the expiry, stale files are harmless.
+	admit := func(x *Client, owner string) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		err := s.admitPendingLocked(x.Key.Public().(ed25519.PublicKey), owner)
+		if he, ok := err.(httpError); ok {
+			return &HTTPError{StatusCode: he.status, Message: he.msg}
+		}
+		return err
+	}
+	check(a.Register(ctx, "join"), 200)
+	check(c.Register(ctx, "join"), 200)
+	e, f, g := client(), client(), client()
+	check(admit(e, id(g)), 404) // Unregistered owner.
+	check(admit(e, id(a)), 200)
+	check(admit(f, id(a)), 200)
+	check(admit(g, id(a)), 429) // MaxPendingPerOwner.
+	check(e.Send(ctx, NewEnvelope(e.Key, id(a), "pake1", nil, now)), 200)
+	check(a.Send(ctx, NewEnvelope(a.Key, id(e), "pake2", nil, now)), 200)
+	before, _ := os.ReadFile(filepath.Join(s.Dir, "pending", id(e)))
+	now = now.Add(time.Minute)
+	check(admit(e, id(c)), 200)
+	after, _ := os.ReadFile(filepath.Join(s.Dir, "pending", id(e)))
+	if envs, err := e.Poll(ctx, 0); err != nil || len(envs) != 0 {
+		t.Fatalf("re-pointed install kept the old owner's mail: %v %v", envs, err)
+	}
+	if strings.Split(string(before), `"expires":`)[1][:30] != strings.Split(string(after), `"expires":`)[1][:30] {
+		t.Fatal("re-pointing extended the expiry")
+	}
+	check(c.AdmitCode(ctx, id(e)), 200)
+	check(c.Send(ctx, NewEnvelope(c.Key, id(e), "msg", nil, now)), 200)
+	stale := []byte(`{"owner":"` + id(c) + `","expires":"2000-01-01T00:00:00Z","pub":"` + strings.TrimSuffix(strings.Split(string(after), `"pub":"`)[1], `"}`) + `"}`)
+	check(os.WriteFile(filepath.Join(s.Dir, "pending", id(e)), stale, 0600), 200)
+	check(os.WriteFile(filepath.Join(s.Dir, "pending", strings.Repeat("f", 32)), []byte("{"), 0600), 200)
+	now = now.Add(2 * time.Minute) // Next sweep.
+	envs, err = e.Poll(ctx, 0)
+	if err != nil || len(envs) != 1 {
+		t.Fatalf("stale pending file wiped a member's mailbox: %v %v", envs, err)
+	}
+	if files, _ := os.ReadDir(filepath.Join(s.Dir, "pending")); len(files) != 1 { // Only f remains.
+		t.Fatalf("stale pending files kept: %d", len(files))
+	}
 }

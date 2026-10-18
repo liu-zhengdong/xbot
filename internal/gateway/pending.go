@@ -18,6 +18,7 @@ import (
 // after PendingTTL with its mail. Claiming codes (code.go) creates it.
 const (
 	MaxPendingInstalls = 16
+	MaxPendingPerOwner = 2 // so one member cannot hold every pending slot
 	PendingTTL         = 15 * time.Minute
 )
 
@@ -27,8 +28,13 @@ type pendingInstall struct {
 	Pub     ed25519.PublicKey `json:"pub"`
 }
 
+// pendingLocked returns a live pending install. It drops an expired one with
+// its mail, and only the file when it cannot be parsed or the install was
+// already admitted (a crash between writing installs/ and removing pending/),
+// so a stale file never wipes a member's mailbox.
 func (s *Server) pendingLocked(id string) (*pendingInstall, error) {
-	data, err := os.ReadFile(filepath.Join(s.Dir, "pending", id))
+	path := filepath.Join(s.Dir, "pending", id)
+	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -36,62 +42,71 @@ func (s *Server) pendingLocked(id string) (*pendingInstall, error) {
 		return nil, err
 	}
 	var p pendingInstall
-	if err := json.Unmarshal(data, &p); err != nil {
+	member, err := exists(filepath.Join(s.Dir, "installs", id))
+	if err != nil {
 		return nil, err
 	}
+	if member || json.Unmarshal(data, &p) != nil || ID(p.Pub) != id {
+		return nil, os.Remove(path)
+	}
 	if !s.now().Before(p.Expires) {
-		return nil, s.dropPendingLocked(id)
+		if err := s.dropMailLocked(id, ""); err != nil {
+			return nil, err
+		}
+		if err := os.RemoveAll(filepath.Join(s.Dir, "acked", id)); err != nil {
+			return nil, err
+		}
+		return nil, os.Remove(path)
 	}
 	return &p, nil
 }
 
-func (s *Server) dropPendingLocked(id string) error {
+// dropMailLocked deletes queued mail between id and peer, or all of id's mail
+// when peer is empty. Queue files are queue/<to>/<from>/<envelope>.json.
+func (s *Server) dropMailLocked(id, peer string) error {
 	files, err := s.queueLocked("")
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
-		sender := filepath.Dir(f.path)
-		if filepath.Base(sender) == id || filepath.Base(filepath.Dir(sender)) == id {
+		from := filepath.Base(filepath.Dir(f.path))
+		to := filepath.Base(filepath.Dir(filepath.Dir(f.path)))
+		if (to == id && (peer == "" || from == peer)) || (from == id && (peer == "" || to == peer)) {
 			if err := s.removeLocked(f); err != nil {
 				return err
 			}
 		}
 	}
-	if err := os.RemoveAll(filepath.Join(s.Dir, "acked", id)); err != nil {
-		return err
-	}
-	return os.Remove(filepath.Join(s.Dir, "pending", id))
+	return nil
 }
 
-func (s *Server) sweepPendingLocked() ([]queueFile, error) {
+func (s *Server) sweepPendingLocked() ([]*pendingInstall, error) {
 	files, err := s.filesLocked("pending", "", 0)
 	if err != nil {
 		return nil, err
 	}
-	var live []queueFile
+	var live []*pendingInstall
 	for _, f := range files {
 		p, err := s.pendingLocked(f.info.Name())
 		if err != nil {
 			return nil, err
 		}
 		if p != nil {
-			live = append(live, f)
+			live = append(live, p)
 		}
 	}
 	return live, nil
 }
 
-// sweepLocked drops expired pending installs at most once a minute.
+// sweepLocked drops expired pending installs at most once a minute. The next
+// sweep is scheduled first, so a failing one cannot fail every request.
 func (s *Server) sweepLocked() error {
 	if s.now().Before(s.pendingSweep) {
 		return nil
 	}
-	if _, err := s.sweepPendingLocked(); err != nil {
-		return err
-	}
 	s.pendingSweep = s.now().Add(time.Minute)
-	return nil
+	_, err := s.sweepPendingLocked()
+	return err
 }
 
 func (s *Server) admitPendingLocked(pub ed25519.PublicKey, owner string) error {
@@ -99,26 +114,43 @@ func (s *Server) admitPendingLocked(pub ed25519.PublicKey, owner string) error {
 	if ok, err := exists(filepath.Join(s.Dir, "installs", id)); err != nil || ok {
 		return err
 	}
+	if ok, err := exists(filepath.Join(s.Dir, "installs", owner)); err != nil || !ok || owner == id {
+		if err == nil {
+			err = httpError{404, "no such owner"}
+		}
+		return err
+	}
 	p, err := s.pendingLocked(id)
 	if err != nil {
 		return err
 	}
-	// A pending install that claims a fresh code (a retry after a typo, or
-	// another machine) is re-pointed at that code's owner. It can still only
-	// ever talk to one owner.
 	if p != nil && p.Owner == owner {
-		return nil // Same owner: keep the original expiry.
+		return nil
 	}
-	if p == nil {
-		files, err := s.sweepPendingLocked()
-		if err != nil {
+	live, err := s.sweepPendingLocked()
+	if err != nil {
+		return err
+	}
+	mine := 0
+	for _, q := range live {
+		if q.Owner == owner {
+			mine++
+		}
+	}
+	if mine >= MaxPendingPerOwner || (p == nil && len(live) >= MaxPendingInstalls) {
+		return httpError{429, "too many pending installs"}
+	}
+	expires := s.now().Add(PendingTTL)
+	if p != nil {
+		// A pending install that claims another owner's code (a retry on
+		// another machine) is re-pointed: mail with the old owner goes, and
+		// the expiry stays, so hopping between codes never extends it.
+		if err := s.dropMailLocked(id, p.Owner); err != nil {
 			return err
 		}
-		if len(files) >= MaxPendingInstalls {
-			return httpError{429, "too many pending installs"}
-		}
+		expires = p.Expires
 	}
-	data, err := json.Marshal(pendingInstall{owner, s.now().Add(PendingTTL), pub})
+	data, err := json.Marshal(pendingInstall{owner, expires, pub})
 	if err != nil {
 		return err
 	}
