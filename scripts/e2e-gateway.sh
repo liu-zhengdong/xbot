@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Two installs exchange signed bot messages using only the scripted model.
 # XBOT_E2E_OFFICIAL=1 leaves the gateway unset so both use the official default; the outage step is skipped.
+# Official runs keep both install keys in bin/e2e-gateway-official-keys, so reruns re-register the same
+# installs instead of using up the gateway's 30 new installs per IP per day.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK="$ROOT/bin/e2e-gateway"
@@ -57,6 +59,17 @@ A="$WORK/a"
 B="$WORK/b"
 "$X" --root "$A" new ada >"$WORK/setup.log" 2>&1
 "$X" --root "$B" new bob >>"$WORK/setup.log" 2>&1
+if [[ -n "$OFFICIAL" ]]; then
+  KEYS="$ROOT/bin/e2e-gateway-official-keys"
+  mkdir -p "$KEYS" && chmod 700 "$KEYS"
+  for r in a b; do
+    root="$WORK/$r"
+    mkdir -p "$root/keys/remote"
+    # Same format as gateway.LoadOrCreateKey (hex Ed25519 seed), made before any network step.
+    [[ -f "$KEYS/$r.key" ]] || (umask 077; python3 -c 'import secrets; print(secrets.token_hex(32))' >"$KEYS/$r.key")
+    cp -p "$KEYS/$r.key" "$root/keys/remote/install.key"
+  done
+fi
 [[ -n "$OFFICIAL" ]] || "$X" --root "$A" remote gateway "http://127.0.0.1:$GW"
 code=$("$X" --root "$A" remote invite | head -1)
 "$X" --root "$A" serve --http "127.0.0.1:$P1" --interval 1s --no-auto-upgrade >"$WORK/a.log" 2>&1 &

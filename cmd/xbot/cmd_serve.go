@@ -517,7 +517,14 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		fmt.Fprintf(os.Stderr, "login token: %s\n", token)
 	}
 	nodesync.Start(ctx, root, nodesync.DefaultEvery, nodesync.DefaultDebounce)
-	go remote.Run(ctx, root, gatewayToken, func(f string, a ...any) { fmt.Fprintf(os.Stderr, "xbot: remote: "+f+"\n", a...) })
+	// Waited for on return, so nothing writes the data root after serve stops.
+	remoteCtx, stopRemote := context.WithCancel(ctx)
+	remoteDone := make(chan struct{})
+	go func() {
+		defer close(remoteDone)
+		remote.Run(remoteCtx, root, gatewayToken, func(f string, a ...any) { fmt.Fprintf(os.Stderr, "xbot: remote: "+f+"\n", a...) })
+	}()
+	defer func() { stopRemote(); <-remoteDone }()
 	// Routines get their own ticker, with a fresh now each tick, so a one-shot
 	// does not wait behind every bot's model calls in serve.Pass.
 	go func() {
