@@ -325,6 +325,9 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 		}
 	}
 	chunk = clip.Valid(chunk)
+	// The file was redacted as it was written. A value the vault learned since
+	// is caught here; offsets still count the stream as written.
+	chunk = j.redact(chunk)
 	var b strings.Builder
 	fmt.Fprintf(&b, "status: %s\noffset: %d\nnext_offset: %d\n", job.Status, offset, next)
 	if held > 0 {
@@ -963,9 +966,11 @@ type jobWriter struct {
 	redact      func(string) string
 	forms       func() []string
 	formKey     uint64
-	formNeedles []redactNeedle
+	formNeedles []redactNeedle // longest first, then bytes
+	formIndex   *needleIndex
 	formSet     bool
-	needles     []redactNeedle
+	needles     []redactNeedle // learned; kept in the same order
+	needleIndex *needleIndex
 	pending     []byte
 	produced    int // committed redacted bytes, monotonic
 	written     int // high-water stream end; equals produced
@@ -1200,10 +1205,10 @@ func (w *jobWriter) redactSpans(raw string) (red string, spans []redactSpan, sam
 	if red == raw {
 		return red, nil, true, true
 	}
-	if spanned, hit := coverNeedles(raw, w.cachedFormNeedles()); hit && projectSpans(raw, spanned, len(raw)) == red {
+	if spanned, hit := coverNeedles(raw, w.cachedFormNeedles(), w.formIndex); hit && projectSpans(raw, spanned, len(raw)) == red {
 		return red, spanned, false, true
 	}
-	if spanned, hit := coverNeedles(raw, w.needles); hit && projectSpans(raw, spanned, len(raw)) == red {
+	if spanned, hit := coverNeedles(raw, w.needles, w.needleIndex); hit && projectSpans(raw, spanned, len(raw)) == red {
 		return red, spanned, false, true
 	}
 	learned, learnedOK := learnSpans(raw, red, w.redact)
@@ -1235,10 +1240,37 @@ func (w *jobWriter) cachedFormNeedles() []redactNeedle {
 		}
 		needles = append(needles, redactNeedle{old: form, repl: repl, pi: prefixFunc(form)})
 	}
+	sortNeedles(needles)
 	w.formKey = key
 	w.formNeedles = needles
+	w.formIndex = indexNeedles(needles)
 	w.formSet = true
 	return needles
+}
+
+// needleIndex lists, for each first byte, the positions of the needles that
+// start with it, in list order.
+type needleIndex [256][]int32
+
+func indexNeedles(list []redactNeedle) *needleIndex {
+	var idx needleIndex
+	for i, n := range list {
+		if n.old != "" {
+			idx[n.old[0]] = append(idx[n.old[0]], int32(i))
+		}
+	}
+	return &idx
+}
+
+// sortNeedles orders longest first, then by bytes: at one position the longest
+// form wins, as in the vault's single-pass replacer.
+func sortNeedles(list []redactNeedle) {
+	sort.SliceStable(list, func(i, j int) bool {
+		if len(list[i].old) != len(list[j].old) {
+			return len(list[i].old) > len(list[j].old)
+		}
+		return list[i].old < list[j].old
+	})
 }
 
 func formsKey(forms []string) uint64 {
@@ -1265,6 +1297,8 @@ func (w *jobWriter) remember(old, repl string) {
 		}
 	}
 	w.needles = append(w.needles, redactNeedle{old: old, repl: repl})
+	sortNeedles(w.needles)
+	w.needleIndex = indexNeedles(w.needles)
 }
 
 // writeCommitted appends bytes that are already final-redacted. The stream
@@ -1439,27 +1473,22 @@ func firstMatchEnd(piece string, redact func(string) string) (int, bool) {
 	return 0, false
 }
 
-func coverNeedles(raw string, needles []redactNeedle) ([]redactSpan, bool) {
-	if len(needles) == 0 || raw == "" {
+// coverNeedles finds the leftmost, then longest, needle at each position.
+// needles must be in sortNeedles order and idx built from them.
+func coverNeedles(raw string, needles []redactNeedle, idx *needleIndex) ([]redactSpan, bool) {
+	if len(needles) == 0 || raw == "" || idx == nil {
 		return nil, false
 	}
-	order := append([]redactNeedle(nil), needles...)
-	sort.Slice(order, func(i, j int) bool {
-		if len(order[i].old) != len(order[j].old) {
-			return len(order[i].old) > len(order[j].old)
-		}
-		return order[i].old < order[j].old
-	})
 	var spans []redactSpan
 	i := 0
 	for i < len(raw) {
 		hit := -1
-		for n := range order {
-			old := order[n].old
-			if old == "" || i+len(old) > len(raw) || raw[i:i+len(old)] != old {
+		for _, n := range idx[raw[i]] {
+			old := needles[n].old
+			if i+len(old) > len(raw) || raw[i:i+len(old)] != old {
 				continue
 			}
-			hit = n
+			hit = int(n)
 			break
 		}
 		if hit < 0 {
@@ -1468,10 +1497,10 @@ func coverNeedles(raw string, needles []redactNeedle) ([]redactSpan, bool) {
 		}
 		spans = append(spans, redactSpan{
 			start: i,
-			end:   i + len(order[hit].old),
-			repl:  order[hit].repl,
+			end:   i + len(needles[hit].old),
+			repl:  needles[hit].repl,
 		})
-		i += len(order[hit].old)
+		i += len(needles[hit].old)
 	}
 	if len(spans) == 0 {
 		return nil, false

@@ -565,10 +565,12 @@ func scrubSecrets(s string, values map[string]string) string {
 		}
 		return forms[i] < forms[j]
 	})
+	pairs := make([]string, 0, 2*len(forms))
 	for _, value := range forms {
-		s = strings.ReplaceAll(s, value, "[secret]")
+		pairs = append(pairs, value, "[secret]")
 	}
-	return s
+	// One pass, longest first at each position, as the vault does.
+	return strings.NewReplacer(pairs...).Replace(s)
 }
 
 func linkOneLine(s string) string {

@@ -62,6 +62,9 @@ type Store struct {
 	formLen   int
 	formLenOK bool
 	formGen   uint64
+	// cache is rebuilt after formGen moves.
+	cache   formCache
+	formsOK bool
 }
 
 // Open loads the vault under dir, reading its key from keyPath. A missing
@@ -341,28 +344,48 @@ func (s *Store) Values() map[string]string {
 
 // Redact replaces every stored value in text with [secret], including the
 // URL-escaped, JSON-escaped, and base64 forms a server or transcript may carry.
+// It is one left-to-right pass: at each position the longest form wins, and
+// an inserted [secret] is never scanned again.
 func (s *Store) Redact(text string) string {
 	if text == "" {
 		return text
 	}
-	for _, form := range s.valueForms() {
-		text = strings.ReplaceAll(text, form, "[secret]")
+	c := s.cachedForms()
+	if c.repl == nil {
+		return text
 	}
-	return text
+	return redactWrapped(c.repl.Replace(text), c.wrap)
 }
 
-// Forms returns every redactable form of every stored value, longest first.
+// Forms returns every redactable form of every stored value, longest first,
+// equal lengths in byte order.
 func (s *Store) Forms() []string {
 	if s == nil {
 		return nil
 	}
-	return s.valueForms()
+	return append([]string(nil), s.valueForms()...)
 }
 
-// valueForms collects every redactable form of every stored value, longest
-// first so a form contained in another never leaves a tail.
+// valueForms is the cached form list. Callers must not modify it.
 func (s *Store) valueForms() []string {
+	return s.cachedForms().forms
+}
+
+// formCache is everything Redact needs, computed once per vault generation.
+type formCache struct {
+	forms []string          // longest first, so a form inside another never leaves a tail
+	repl  *strings.Replacer // one pass over forms
+	wrap  []string          // base64-alphabet forms worth looking for across line breaks
+}
+
+func (s *Store) cachedForms() formCache {
 	s.mu.Lock()
+	if s.formsOK {
+		c := s.cache
+		s.mu.Unlock()
+		return c
+	}
+	g := s.formGen
 	values := make([]string, 0, len(s.secrets))
 	for _, sec := range s.secrets {
 		if sec.Value != "" {
@@ -370,12 +393,49 @@ func (s *Store) valueForms() []string {
 		}
 	}
 	s.mu.Unlock()
+	seen := map[string]struct{}{}
 	var forms []string
 	for _, value := range values {
-		forms = append(forms, redactForms(value)...)
+		for _, form := range redactForms(value) {
+			if _, ok := seen[form]; ok {
+				continue
+			}
+			seen[form] = struct{}{}
+			forms = append(forms, form)
+		}
 	}
-	sort.Slice(forms, func(i, j int) bool { return len(forms[i]) > len(forms[j]) })
-	return forms
+	sortForms(forms)
+	var repl *strings.Replacer
+	if len(forms) > 0 {
+		pairs := make([]string, 0, 2*len(forms))
+		for _, form := range forms {
+			pairs = append(pairs, form, "[secret]")
+		}
+		repl = strings.NewReplacer(pairs...)
+	}
+	c := formCache{forms: forms, repl: repl}
+	for _, form := range forms {
+		if len(form) >= minStreamForm && base64Line(form) {
+			c.wrap = append(c.wrap, form)
+		}
+	}
+	s.mu.Lock()
+	if s.formGen == g {
+		s.cache, s.formsOK = c, true
+	}
+	s.mu.Unlock()
+	return c
+}
+
+// sortForms orders longest first, then by bytes, so equal-length forms come
+// out the same way every time.
+func sortForms(forms []string) {
+	sort.Slice(forms, func(i, j int) bool {
+		if len(forms[i]) != len(forms[j]) {
+			return len(forms[i]) > len(forms[j])
+		}
+		return forms[i] < forms[j]
+	})
 }
 
 // minEncodedValue is the shortest value whose encoded forms are matched.
@@ -416,7 +476,136 @@ func redactForms(value string) []string {
 	} {
 		add(enc.EncodeToString([]byte(value)))
 	}
+	// Inside a longer base64 stream (Basic auth "user:token", a JSON blob)
+	// the value starts at any offset in a 3-byte group, and its last group
+	// mixes with what follows. The whole groups in between encode the same
+	// for a given alignment, so each alignment's middle is a form too.
+	for skip := 0; skip < 3; skip++ {
+		whole := (len(value) - skip) / 3 * 3
+		if whole <= 0 {
+			continue
+		}
+		mid := []byte(value[skip : skip+whole])
+		for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {
+			if form := enc.EncodeToString(mid); len(form) >= minStreamForm {
+				add(form)
+			}
+		}
+	}
 	return forms
+}
+
+// minStreamForm is the shortest unaligned base64 middle that is matched.
+const minStreamForm = 12
+
+// minWrapLine is the shortest line width taken as wrapped base64.
+const minWrapLine = 16
+
+// redactWrapped replaces forms that a base64 tool split into lines of equal
+// width (76 for MIME, 64 for PEM, any -w). A block is two or more lines of
+// base64 characters, all but the last the same width and the last no wider.
+// The replaced range keeps the line breaks it spanned out of the output.
+func redactWrapped(text string, forms []string) string {
+	if len(forms) == 0 || strings.Count(text, "\n") == 0 {
+		return text
+	}
+	type line struct{ start, end int } // end excludes "\r\n" or "\n"
+	var lines []line
+	for i := 0; i < len(text); {
+		j := strings.IndexByte(text[i:], '\n')
+		next := len(text)
+		end := len(text)
+		if j >= 0 {
+			end = i + j
+			next = end + 1
+		}
+		if end > i && text[end-1] == '\r' {
+			end--
+		}
+		lines = append(lines, line{i, end})
+		i = next
+	}
+	var out strings.Builder
+	last := 0
+	for a := 0; a < len(lines); {
+		width := lines[a].end - lines[a].start
+		if width < minWrapLine || !base64Line(text[lines[a].start:lines[a].end]) {
+			a++
+			continue
+		}
+		b := a + 1
+		for b < len(lines) {
+			w := lines[b].end - lines[b].start
+			if w == 0 || w > width || !base64Line(text[lines[b].start:lines[b].end]) {
+				break
+			}
+			b++
+			if w < width {
+				break
+			}
+		}
+		if b-a < 2 {
+			a++
+			continue
+		}
+		var joined strings.Builder
+		for _, ln := range lines[a:b] {
+			joined.WriteString(text[ln.start:ln.end])
+		}
+		at := func(j int) int { // joined offset -> text offset
+			return lines[a+j/width].start + j%width
+		}
+		for _, m := range wrappedMatches(joined.String(), forms) {
+			start, end := at(m[0]), at(m[1]-1)+1
+			if start < last {
+				continue
+			}
+			if !strings.Contains(text[start:end], "\n") {
+				continue // on one line: the single pass already had its chance
+			}
+			out.WriteString(text[last:start])
+			out.WriteString("[secret]")
+			last = end
+		}
+		a = b
+	}
+	if last == 0 {
+		return text
+	}
+	out.WriteString(text[last:])
+	return out.String()
+}
+
+// wrappedMatches is the leftmost, then longest, non-overlapping match of any
+// form in s. forms are longest first.
+func wrappedMatches(s string, forms []string) [][2]int {
+	var out [][2]int
+	for i := 0; i < len(s); {
+		hit := 0
+		for _, f := range forms {
+			if strings.HasPrefix(s[i:], f) {
+				hit = len(f)
+				break
+			}
+		}
+		if hit == 0 {
+			i++
+			continue
+		}
+		out = append(out, [2]int{i, i + hit})
+		i += hit
+	}
+	return out
+}
+
+func base64Line(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '=' || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return s != ""
 }
 
 func jsonEscape(s string, html bool) string {
@@ -742,6 +931,7 @@ func longestForm(s *Store) int {
 
 func (s *Store) invalidateForms() {
 	s.formLenOK = false
+	s.formsOK = false
 	s.formGen++
 }
 
