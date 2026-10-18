@@ -52,7 +52,7 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...
 		for _, env := range envs {
 			if _, replay := seen[env.ID]; !replay {
 				deliveryErr := deliver(root, self, cfg, env, now, &bounces, logf...)
-				if deliveryErr == nil && env.Kind == "pair" {
+				if deliveryErr == nil && (env.Kind == "pair" || env.Kind == "pake4") {
 					cfg, deliveryErr = Load(root)
 				}
 				if err := deliveryErr; err != nil {
@@ -97,6 +97,9 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...
 }
 
 func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time, bounces *[]gateway.Envelope, logf ...func(string, ...any)) error {
+	if env.Kind == "pake1" || env.Kind == "pake2" || env.Kind == "pake3" || env.Kind == "pake4" {
+		return receiveShort(root, self, env, now)
+	}
 	if env.Kind == "pair" {
 		return deliverPair(root, self, env, now, logf...)
 	}
