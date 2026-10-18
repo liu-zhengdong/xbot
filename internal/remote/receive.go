@@ -105,7 +105,7 @@ func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time,
 	}
 	d, paired := cfg.ByID(env.From)
 	pub, err := base64.StdEncoding.DecodeString(d.Key)
-	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || (env.Kind != "box" && env.Kind != "bounce" && env.Kind != "dir" && env.Kind != "unpair") || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > gateway.MaxBody {
+	if env.To != self || !paired || err != nil || env.Verify(pub) != nil || env.V != 1 || (env.Kind != "box" && env.Kind != "bounce" && env.Kind != "dir" && env.Kind != "unpair" && env.Kind != "chat" && env.Kind != "chatreply") || env.Time.Before(now.Add(-7*24*time.Hour-5*time.Minute)) || env.Time.After(now.Add(5*time.Minute)) || len(env.Body) > gateway.MaxBody {
 		return nil
 	}
 	priv, _, err := XIdentity(root)
@@ -123,10 +123,19 @@ func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time,
 		return nil // It unpaired us: drop what it still sends until it is removed or paired again.
 	}
 	if env.Kind == "dir" {
-		return receiveDirectory(root, d.ID, body, now)
+		return receiveDirectory(root, d.ID, body, now) // The sidebar still needs the bot list.
+	}
+	if d.NoBotMessaging && (env.Kind == "box" || env.Kind == "bounce") {
+		return nil // 「Bot 互发消息」 off: acked below and dropped, no inbox post, no bounce.
 	}
 	if env.Kind == "unpair" {
 		return receiveUnpair(root, d.ID, body, now)
+	}
+	if env.Kind == "chat" {
+		return receiveChat(root, d, env, body, now, bounces)
+	}
+	if env.Kind == "chatreply" {
+		return receiveChatReply(root, d, env, body, now)
 	}
 	if env.Kind == "bounce" {
 		var b bounce

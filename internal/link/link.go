@@ -38,11 +38,13 @@ const (
 	NameWatch    = "watch"
 	NameWeb      = "web"
 	NamePeers    = "peers"
-	NameTelegram = "telegram"
-	NameLark     = "lark"
-	NameCoding   = "coding-agent"
-	NameDesktop  = "desktop"
-	NameBrowser  = "browser"
+	// NameRemoteOwner is the owner typing in a chat on another paired device.
+	NameRemoteOwner = "remote-owner"
+	NameTelegram    = "telegram"
+	NameLark        = "lark"
+	NameCoding      = "coding-agent"
+	NameDesktop     = "desktop"
+	NameBrowser     = "browser"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"
@@ -145,6 +147,17 @@ func WebEvent(personID, text string, at time.Time) Event {
 	return ev
 }
 
+// RemoteOwnerEvent is an owner line typed on another paired device.
+// Only internal/remote creates this source, after it has checked that the
+// envelope is authenticated by a paired device, that the device is bound to
+// this person, that the person owns the bot, and that the body says the owner
+// typed it. A bot relay, a tool, or message_bot never reaches it.
+func RemoteOwnerEvent(personID, text string, at time.Time) Event {
+	ev := NewEvent(NameRemoteOwner, TypeMessage, text, personID, at)
+	ev.SenderKind = KindPerson
+	return ev
+}
+
 // Validate checks the fields the kernel requires.
 // Untrusted is not required: the kernel decides trust from the sender and the source.
 func (e Event) Validate() error {
@@ -154,10 +167,11 @@ func (e Event) Validate() error {
 	return nil
 }
 
-// OwnerTrusted is true for an owner speaking on the terminal or web link.
-// Any other source, including a timer wake or another bot, stays untrusted.
+// OwnerTrusted is true for an owner speaking on the terminal, web, or
+// remote-owner link. Any other source, including a timer wake or another bot,
+// stays untrusted.
 func OwnerTrusted(source, sender string, owners []string) bool {
-	if (source != NameTerminal && source != NameWeb) || sender == "" {
+	if (source != NameTerminal && source != NameWeb && source != NameRemoteOwner) || sender == "" {
 		return false
 	}
 	for _, id := range owners {

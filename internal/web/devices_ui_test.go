@@ -13,7 +13,7 @@ import (
 func TestDevicesDrawerUI(t *testing.T) {
 	for file, contract := range map[string]struct{ want, avoid []string }{
 		"index.html": {want: []string{
-			"<div id=\"account-menu\" class=\"pop account-menu\" hidden>\n            <button id=\"account-devices\" type=\"button\">设备",
+			"<div id=\"account-menu\" class=\"pop account-menu\" hidden>\n          <button id=\"account-devices\" type=\"button\">设备",
 			`<link rel="stylesheet" href="/devices.css">`, `<script src="/devices.js"></script>`,
 		}},
 		"devices.js": {
