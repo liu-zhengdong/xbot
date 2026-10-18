@@ -58,8 +58,8 @@ func TestBrandMark(t *testing.T) {
 	if !strings.Contains(css, ".mark { width: 48px; height: 48px; color: var(--text); }") || strings.Contains(css, "font-size: 10px; font-weight: 700; line-height: 1;\n}") {
 		t.Error("the login mark is single-color and the titlebar logo is the cut-out square")
 	}
-	if !strings.Contains(sw, `const CACHE = "xbot-ui-v10";`) || !strings.Contains(sw, `"/favicon.svg"`) {
-		t.Error("the service worker cache moves to v10 and keeps the new icons")
+	if !strings.Contains(sw, `const CACHE = "xbot-ui-v11";`) || !strings.Contains(sw, `"/favicon.svg"`) {
+		t.Error("the service worker cache moves to v11 (avatar bundle) and keeps the new icons")
 	}
 	if !strings.Contains(manifest, `"purpose": "maskable"`) {
 		t.Error("the manifest lists the maskable icon")

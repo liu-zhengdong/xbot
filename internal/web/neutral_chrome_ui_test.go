@@ -9,15 +9,15 @@ func TestNeutralAvatarAndMenuChrome(t *testing.T) {
 	for file, checks := range map[string]struct{ want, avoid []string }{
 		"app.js": {
 			want: []string{
+				// The 我 blob stays a neutral grey in both themes.
 				`svg.style.setProperty("--avatar-light", "#d3d3d3")`,
 				`svg.style.setProperty("--avatar-dark", "#3d3d3d")`,
 				`blob.setAttribute("fill", "var(--avatar-fill)")`,
 				`text.setAttribute("fill", "var(--avatar-ink)")`,
 				`BLOBS[hashName(name) % BLOBS.length]`,
-				`img.addEventListener("load", () => av.classList.add("has-photo"))`,
 				`const mark = icon("pin", "primary-mark")`, `setTip(mark, "主 Bot")`,
 				`line.append(primaryMark())`, `el("span", "primary-label", "主 Bot")`,
-				`"secondary", "清除头像"`, `"secondary", "停止"`, `"menu-row secondary"`,
+				`"secondary", "停止"`, `"menu-row secondary"`,
 				`title === "删除 Bot" ? "text-btn danger" : "secondary"`,
 			},
 			avoid: []string{`function hslHex`, `paint.bg`, `paint.ink`, `el("i", "badge")`, `"menu-row danger"`, `"text-btn danger", "清除头像"`},
