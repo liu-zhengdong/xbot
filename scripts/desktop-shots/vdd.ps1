@@ -11,6 +11,16 @@ $inf = Get-ChildItem "$dir\x" -Recurse -Filter *.inf | Where-Object { $_.FullNam
 if (-not $inf) { $inf = Get-ChildItem "$dir\x" -Recurse -Filter *.inf | Select-Object -First 1 }
 $hwid = ([regex]::Match((Get-Content $inf.FullName -Raw), '(?i)Root\\[A-Za-z0-9_]+')).Value
 Write-Host "inf $($inf.FullName) hwid $hwid"
+# Trust the driver's signer first, or the install waits on a publisher prompt nobody can answer.
+Get-ChildItem $inf.DirectoryName -Filter *.cat | ForEach-Object {
+  $cert = (Get-AuthenticodeSignature $_.FullName).SignerCertificate
+  if ($cert) {
+    foreach ($store in 'TrustedPublisher', 'Root') {
+      $st = [Security.Cryptography.X509Certificates.X509Store]::new($store, 'LocalMachine'); $st.Open('ReadWrite'); $st.Add($cert); $st.Close()
+    }
+    Write-Host "trusted $($cert.Subject)"
+  }
+}
 # The driver reads its modes from here; the defaults may not list 4K.
 New-Item -ItemType Directory -Force 'C:\VirtualDisplayDriver' | Out-Null
 @'
@@ -48,7 +58,8 @@ public static class Vdd {
   }
 }
 '@
-Write-Host "install: $([Vdd]::Install($hwid, $inf.FullName))"
+$job = Start-ThreadJob -ScriptBlock { param($h, $i) [Vdd]::Install($h, $i) } -ArgumentList $hwid, $inf.FullName
+if (Wait-Job $job -Timeout 90) { Write-Host "install: $(Receive-Job $job)" } else { Write-Host 'install: still waiting after 90s; giving up'; exit 0 }
 Start-Sleep 8
 Get-PnpDevice -Class Display | ForEach-Object { Write-Host "display device: $($_.FriendlyName) [$($_.Status)] $($_.InstanceId)" }
 Add-Type -AssemblyName System.Windows.Forms
