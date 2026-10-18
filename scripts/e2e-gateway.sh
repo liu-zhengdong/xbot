@@ -65,16 +65,16 @@ if [[ -n "$OFFICIAL" ]]; then
   for r in a b; do
     root="$WORK/$r"
     mkdir -p "$root/keys/remote"
-    if [[ -f "$KEYS/$r.key" ]]; then cp -p "$KEYS/$r.key" "$root/keys/remote/install.key"; fi
+    # Same format as gateway.LoadOrCreateKey (hex Ed25519 seed), made before any network step.
+    [[ -f "$KEYS/$r.key" ]] || (umask 077; python3 -c 'import secrets; print(secrets.token_hex(32))' >"$KEYS/$r.key")
+    cp -p "$KEYS/$r.key" "$root/keys/remote/install.key"
   done
 fi
 [[ -n "$OFFICIAL" ]] || "$X" --root "$A" remote gateway "http://127.0.0.1:$GW"
 code=$("$X" --root "$A" remote invite | head -1)
-if [[ -n "$OFFICIAL" && ! -f "$KEYS/a.key" ]]; then cp -p "$A/keys/remote/install.key" "$KEYS/a.key"; fi
 "$X" --root "$A" serve --http "127.0.0.1:$P1" --interval 1s --no-auto-upgrade >"$WORK/a.log" 2>&1 &
 PIDS+=("$!")
 XBOT_GATEWAY_TOKEN= "$X" --root "$B" remote join "$code" --name a --as b >>"$WORK/setup.log"
-if [[ -n "$OFFICIAL" && ! -f "$KEYS/b.key" ]]; then cp -p "$B/keys/remote/install.key" "$KEYS/b.key"; fi
 dir_started=$(ms)
 XBOT_GATEWAY_TOKEN= "$X" --root "$B" serve --http "127.0.0.1:$P2" --interval 1s --no-auto-upgrade >"$WORK/b.log" 2>&1 &
 PIDS+=("$!")
