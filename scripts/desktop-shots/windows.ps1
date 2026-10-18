@@ -78,8 +78,11 @@ function Open-Cdp([int] $cdpPort, [int] $appPort) {
     Start-Sleep -Milliseconds 500
   }
   Say "no DevTools page for port $appPort ($last)"
-  $wv = Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Select-Object -First 1
-  if ($wv) { Say "webview2 browser args: $(($wv.CommandLine -split ' ' | Where-Object { $_ -like '--remote*' -or $_ -like '--user-data-dir*' }) -join ' ')" } else { Say 'no msedgewebview2.exe running' }
+  $wv = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object { $_.CommandLine -notmatch '--type=' })
+  foreach ($b in $wv) { Say "webview2 browser: $(($b.CommandLine -split ' ' | Where-Object { $_ -like '--remote*' -or $_ -like '--user-data-dir*' -or $_ -like '--embedded-browser-webview*' -or $_ -like '--webview-exe-name*' }) -join ' ')" }
+  if (-not $wv) { Say 'no msedgewebview2.exe browser process' }
+  $app = Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($Exe)) -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($app) { Say "loader in process: $(@($app.Modules | Where-Object { $_.ModuleName -eq 'WebView2Loader.dll' }).Count); env: $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS" }
   Say "listening on ${cdpPort}: $(@(Get-NetTCPConnection -State Listen -LocalPort $cdpPort -ErrorAction SilentlyContinue).Count)"
   return $null
 }
@@ -128,7 +131,12 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
   & $Seed $root $mode | ForEach-Object { Say $_ }
   Set-Content (Join-Path $root 'app-window.json') '{"main":{"x":16,"y":16,"width":1024,"height":640}}'
   Set-AppTheme $theme
+  # Both ways WebView2 takes extra browser arguments from outside the app:
+  # the loader's environment variable and the per-exe policy value.
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($script:cdp)"
+  $pol = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+  New-Item -Force $pol -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty $pol (Split-Path $Exe -Leaf) "--remote-debugging-port=$($script:cdp)"
   $p = Start-Process -FilePath $Exe -ArgumentList '--root', $root, 'app', '--port', $script:port -PassThru
   try {
     $hwnd = [IntPtr]::Zero
