@@ -33,6 +33,8 @@
     return kept.slice(0, 12);
   }
   const groupCode = (c) => c.replace(/(.{4})(?=.)/g, "$1-");
+  // 和 serve 的 429/409 文案一致（devices.go 的 pairErrCopy）。
+  const rateLimited = "操作太频繁，等一分钟再试", nameFull = "同名设备已满 9 台，先解除或改名旧的，或选择替换旧的";
   const codeOK = (c) => c.length === 12 && checkChar(c.slice(0, 11)) === c[11];
 
   async function startAdd() {
@@ -54,7 +56,7 @@
     } catch (e) {
       if (gen !== codeGen) return;
       S.fieldErr = e.message;
-      if (!S.view) S.view = "add-gw";
+      if (!S.view) S.view = !gateway && S.data && S.data.self && S.data.self.gateway ? "add" : "add-gw"; // 429 等：网关已设时不再问地址
     } finally {
       if (gen === codeGen) { S.busy = false; render(); }
     }
@@ -74,6 +76,7 @@
     render();
   }
   async function submitJoin() {
+    S.joinErr = "";
     const code = cleanCode(S.joinVal);
     if (code.length !== 12) return;
     if (!codeOK(code)) { S.pairing.b = { phase: "typo" }; render(); return; } // 本机判断，不连网关
@@ -96,7 +99,7 @@
     if (a.phase === "request" && S.view !== "request") { S.view = "request"; }
     if (S.view === "request" && a.phase === "done") { S.view = "success-a"; S.peer = { name: a.name }; refresh(); }
     if (S.view === "request" && a.phase === "denied") { S.view = null; }
-    if (S.view === "add" && a.phase === "none") { S.view = null; }
+    if (S.view === "add" && a.phase === "none" && !S.fieldErr) { S.view = null; } // 出码失败的提示留着
     if (["join", "confirm", "waiting"].includes(S.view)) {
       if (b.phase === "confirm") { S.view = "confirm"; S.peer = { name: b.name, os: b.os, bots: b.bots || [] }; }
       else if (b.phase === "waiting") { S.view = "waiting"; }
@@ -138,6 +141,10 @@
     const a = S.pairing.a || {};
     const code = a.code || S.code;
     const exp = a.phase === "expired";
+    const err = S.fieldErr ? `<p class="error g7-field-err">${esc(S.fieldErr)}</p>` : "";
+    if (!code) return modal(`<h2>添加设备</h2>${err}
+      <div class="modal-actions"><span class="spacer"></span><button class="secondary" type="button" data-act="cancel-code">取消</button>
+        <button class="primary" type="button" data-act="renew" ${S.busy ? "disabled" : ""}>${svg("refresh")}<span>重试</span></button></div>`);
     const groups = (code || "").split("-").map((g) => `<span class="g7-group">${g.split("").map((c) => `<i>${esc(c)}</i>`).join("")}</span>`).join("");
     return modal(`<h2>添加设备</h2>
       <p class="g7-lead">在另一台电脑的 XBot 里打开「设备」，选「加入另一台设备」，输入下面的配对码。</p>
@@ -179,10 +186,12 @@
       expired: `<p class="error g7-msg">这个配对码已经过期，在另一台电脑上点「重新生成」。</p>`,
       already: `<p class="g7-hint g7-info">${svg("check", 14)}<span>这台电脑已经和「${esc(peerName)}」配对了，不用再配。</span></p>`,
       gateway_unreachable: `<p class="error g7-msg">连不上网关 ${esc(host(gw))}。检查一下网络，或者改一下网关地址。</p>`,
+      rate_limited: `<p class="error g7-msg">${rateLimited}</p>`,
+      name_full: `<p class="error g7-msg">${nameFull}</p>`,
       offline: `<p class="error g7-msg">另一台电脑没有回应。确认它开着 XBot，再试一次。</p>`,
     }[ph] || "";
     const bad = ph === "typo" || ph === "expired" || ph === "wrong_or_used";
-    const retry = ph === "gateway_unreachable" || ph === "offline";
+    const retry = ph === "gateway_unreachable" || ph === "rate_limited" || ph === "offline"; // 429: 码不标红，不提示改网关
     let actions;
     if (ph === "already") actions = `<button class="secondary" type="button" data-act="close">关闭</button><button class="primary" type="button" data-act="to-drawer">查看设备</button>`;
     else if (retry) actions = `${ph === "gateway_unreachable" ? `<button class="text-btn g7-gw-change" type="button" data-act="gw-open">改网关地址</button>` : ""}<span class="spacer"></span><button class="secondary" type="button" data-act="close-join">取消</button><button class="primary" type="button" data-act="retry">${svg("refresh")}<span>重试</span></button>`;
@@ -196,7 +205,7 @@
       <label class="field g7-code-field${bad ? " is-bad" : ""}"><span class="g7-sr">配对码</span>
         <input id="g7-code" type="text" inputmode="text" autocomplete="one-time-code" spellcheck="false" autocapitalize="characters" maxlength="200"
           placeholder="XXXX-XXXX-XXXX" value="${esc(v)}" ${ph === "checking" ? "disabled" : ""}></label>
-      ${msg}${gwBlock}
+      ${S.joinErr ? `<p class="error g7-msg">${esc(S.joinErr)}</p>` : ""}${msg}${gwBlock}
       <div class="modal-actions">${actions}</div>`);
   }
   function viewConfirm() {
@@ -236,14 +245,14 @@
         <div class="g7-device g7-old"><span class="g7-dev-ico">${svg("laptop", 20)}</span><div class="g7-dev-main"><div class="g7-dev-name">已经有一台 ${esc(c.name)}</div>
           <div class="g7-dev-sub"><i class="status-dot ${old && old.online ? "ok" : "off-ring"}"></i>${esc(status)} · ${c.bots} 个 Bot</div></div></div>
         <p class="g7-fine">如果是同一台电脑重装了 XBot，就替换旧的：侧栏里的分组和你起的名字都保留。不是你自己在操作，就点「拒绝」。</p>
-        <div class="g7-timer-row">${timer}</div>
+        <div class="g7-timer-row">${timer}</div>${S.fieldErr ? `<p class="error g7-field-err">${esc(S.fieldErr)}</p>` : ""}
         <div class="modal-actions g7-replace-actions"><button class="secondary" type="button" data-act="decide" data-d="deny">拒绝</button><span class="spacer"></span>
           <button class="secondary" type="button" data-act="decide" data-d="add">作为新设备添加</button>
           <button class="primary" type="button" data-act="decide" data-d="replace">替换旧的 ${esc(c.name)}</button></div>`, "g7-request");
     }
     return modal(`${head}
       <h3 class="g7-h3">允许后</h3>${allows(a.name, (a.bots || []).length, selfBots())}
-      <p class="g7-fine">不是你自己在另一台电脑上操作，就点「拒绝」，这个配对码会立刻作废。</p>
+      <p class="g7-fine">不是你自己在另一台电脑上操作，就点「拒绝」，这个配对码会立刻作废。</p>${S.fieldErr ? `<p class="error g7-field-err">${esc(S.fieldErr)}</p>` : ""}
       <div class="modal-actions approval-actions">${timer}<span class="spacer"></span>
         <button class="secondary" type="button" data-act="decide" data-d="deny">拒绝</button>
         <button class="primary" type="button" data-act="decide" data-d="allow">允许</button></div>`, "g7-request");
@@ -283,16 +292,20 @@
         render(); { const g = document.getElementById("g7-gw"); if (g) g.focus(); } break;
       case "close-join": api("DELETE", "/api/devices/join").catch(() => {}); S.pairing.b = { phase: "none" }; closeModal(); break;
       case "confirm":
-        S.busy = true; render();
+        S.joinErr = ""; S.busy = true; render();
         try { const out = await api("POST", "/api/devices/join/confirm"); S.pairing = out.pairing; S.view = "waiting"; }
-        catch (e) { S.pairing.b = { phase: "none" }; S.view = "join"; }
+        catch (e) {
+          if (e.message === nameFull || e.message === rateLimited) S.joinErr = e.message; // 回来时显示服务端原话
+          else { S.pairing.b = { phase: "none" }; S.view = "join"; }
+        }
         S.busy = false; syncFromPairing(); render(); break;
       case "decide": {
         const d = el.dataset.d;
+        S.fieldErr = "";
         S.peer = { name: S.pairing.a.name, bots: S.pairing.a.bots || [] };
         el.disabled = true;
         try { const out = await api("POST", "/api/devices/request", { decision: d }); S.pairing = out.pairing; }
-        catch (e) { el.disabled = false; return; }
+        catch (e) { el.disabled = false; S.fieldErr = e.message; render(); return; } // 同名满 9 台等：在卡片上说原因
         const phase = (S.pairing.a || {}).phase;
         // 过期窗口里点「允许」，服务器回 200 + denied：没配上，回去看设备列表。
         if (d === "deny" || phase === "denied") { S.view = null; S.code = ""; if (phase === "denied") refresh(); }
