@@ -28,6 +28,7 @@ import (
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
+	"xbot/internal/remote"
 	"xbot/internal/version"
 )
 
@@ -621,6 +622,79 @@ type apiRow struct {
 	Task       string              `json:"task,omitempty"`
 	Status     string              `json:"status,omitempty"`
 	Steps      int                 `json:"steps,omitempty"`
+	FromDevice *apiFromDevice      `json:"from_device,omitempty"`
+	Relay      *apiRelay           `json:"relay,omitempty"`
+}
+
+// apiFromDevice names the paired device an owner line was typed on.
+type apiFromDevice struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// apiRelay names the Bot that relayed a wrapped event, and the paired device
+// it came from. A local relay omits the device.
+type apiRelay struct {
+	Bot    string `json:"bot"`
+	Device string `json:"device,omitempty"`
+}
+
+// sourceInfo resolves row origins from one remote config per request. A config
+// that cannot be read leaves labels and device names empty.
+type sourceInfo struct {
+	cfg   remote.Config
+	known bool
+}
+
+func loadSources(root string) *sourceInfo {
+	cfg, err := remote.Load(root)
+	return &sourceInfo{cfg: cfg, known: err == nil}
+}
+
+func (src *sourceInfo) label(d remote.Device) string {
+	if d.Label != "" {
+		return d.Label
+	}
+	return d.Name
+}
+
+// fromDevice reads rchat_<deviceID>_<lineID>: an owner line typed on another
+// paired device. Lines typed on this computer carry no such id.
+func (src *sourceInfo) fromDevice(eventID string) *apiFromDevice {
+	id, ok := strings.CutPrefix(eventID, "rchat_")
+	if !ok || len(id) < 34 || id[32] != '_' {
+		return nil
+	}
+	out := &apiFromDevice{ID: id[:32]}
+	if src.known {
+		if d, ok := src.cfg.ByID(out.ID); ok {
+			out.Label = src.label(d)
+		}
+	}
+	return out
+}
+
+// relay reads source bot:<bot> (local) or bot:<bot>@<device name>. It only
+// parses hostnames, which admit no '@', so the two do not overlap.
+func (src *sourceInfo) relay(content string) *apiRelay {
+	source, _, wrapped := peer.EventSource(content)
+	name, ok := strings.CutPrefix(source, "bot:")
+	if !wrapped || !ok {
+		return nil
+	}
+	botName, device, _ := strings.Cut(name, "@")
+	if botName == "" {
+		return nil
+	}
+	if device == "" {
+		return &apiRelay{Bot: botName}
+	}
+	if src.known {
+		if d, ok := src.cfg.ByName(device); ok {
+			device = src.label(d)
+		}
+	}
+	return &apiRelay{Bot: botName, Device: device}
 }
 
 func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
@@ -643,12 +717,16 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		seqEntries[i] = bot.SeqEntry{Seq: i + 1, Entry: e}
 	}
 	replay, _ := bot.Replay(seqEntries)
+	src := loadSources(s.Root)
 	var rows []apiRow
 	for i, e := range entries {
 		row := apiRow{
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch,
+		}
+		if e.Message.Role == provider.RoleUser {
+			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Content)
 		}
 		if e.Mark != nil {
 			row.Kind, row.From, row.Task = e.Mark.Kind, e.Mark.From, e.Mark.Task
