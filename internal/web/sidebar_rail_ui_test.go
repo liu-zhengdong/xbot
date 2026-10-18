@@ -23,7 +23,7 @@ func TestSidebarRailAndMemberSelection(t *testing.T) {
 				`setTip(av, name, "right")`, `setTip(btn, name, "right")`,
 				`setTip(add, "新建 Bot 或群组", "right")`, `item("plus", "新建 Bot", openNewBot)`,
 				`item("users-plus", "新建群组", openNewGroup)`,
-				`if (size === "xs") return ""`, `Script=Han`, `if (size === "me") {`,
+				`if (size === "xs") return ""`, `Script=Han`, `if (size === "me" && !paint.url && !portraitURL(seed, false)) {`,
 				`chars[0].toUpperCase() + chars[1].toLowerCase()`,
 				`Array.from(letter).length > 1 ? "26" : "30"`,
 				`svg.style.setProperty("--avatar-light", "#d3d3d3")`,

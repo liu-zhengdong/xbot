@@ -441,13 +441,13 @@ html[data-theme="dark"] .field select {
 /* A bot avatar is a portrait, not a glyph: a round window onto it, like a photo. */
 .avatar { width: 36px; height: 36px; flex: none; display: block; position: relative; border-radius: 50%; overflow: hidden; background: #e4e4e7; }
 
-html[data-theme="dark"] .avatar { background: #c9c9ce; }
+html[data-theme="dark"] .avatar { background: #a8a8ad; }
 
 /* The size class "pin" is also the pin button's class; keep the button's tile,
    radius, padding and hover fill off the avatar itself. */
 span.avatar.pin { border-radius: 50%; padding: 0; background: #e4e4e7; }
 
-html[data-theme="dark"] span.avatar.pin { background: #c9c9ce; }
+html[data-theme="dark"] span.avatar.pin { background: #a8a8ad; }
 
 span.avatar.pin.glyph { background: transparent; }
 
@@ -480,7 +480,7 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 /* 「我」 is a person: the soft blob stays on a transparent box. */
-.avatar.me { background: transparent; overflow: hidden; }
+.avatar.me.blob { background: transparent; overflow: hidden; }
 
 .list { padding: 0 8px 8px; }
 

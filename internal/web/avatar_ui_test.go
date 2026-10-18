@@ -51,11 +51,11 @@ func TestDefaultAvatarIsGeneratedPortrait(t *testing.T) {
 			t.Errorf("avatar() uses %q; the logo is never an avatar", avoid)
 		}
 	}
-	if !strings.Contains(body, `if (size === "me")`) {
-		t.Error("the 我 avatar must keep its own path")
+	if !strings.Contains(body, `if (size === "me" && !paint.url && !portraitURL(seed, false)) {`) {
+		t.Error("the 我 avatar keeps the blob only as the no-bundle fallback")
 	}
 
-	if !strings.Contains(css, "#e4e4e7") || !strings.Contains(css, "#c9c9ce") {
+	if !strings.Contains(css, "#e4e4e7") || !strings.Contains(css, "#a8a8ad") {
 		t.Error("app.css misses the portrait container backgrounds")
 	}
 	if strings.Contains(css, "46% 54%") || strings.Contains(css, ".avatar.has-photo") {

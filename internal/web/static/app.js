@@ -1127,12 +1127,14 @@
     paint = paint || {};
     const av = el("span", "avatar" + (size ? " " + size : ""));
     if (name) setTip(av, name, "right");
-    if (size === "me") {
-      // The owner is a person; the soft blob (and its initial) never changes.
+    const seed = String(paint.seed || name || "");
+    if (size === "me" && !paint.url && !portraitURL(seed, false)) {
+      // 我 is a line-art portrait from the owner's name like the bots; the soft
+      // blob and its initial are only the fallback when the bundle didn't load.
+      av.classList.add("blob");
       av.append(faceFor(name, paint, size));
       return av;
     }
-    const seed = String(paint.seed || name || "");
     if (paint.url) {
       const img = document.createElement("img");
       img.alt = "";
@@ -2927,7 +2929,7 @@
     const name = state.ownerName.trim();
     if (name) slot.replaceChildren(avatar(name, null, "me"));
     else {
-      const face = el("span", "avatar me");
+      const face = el("span", "avatar me blob");
       face.append(icon("person"));
       slot.replaceChildren(face);
     }
