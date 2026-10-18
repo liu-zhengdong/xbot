@@ -23,11 +23,15 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		cfg, err := Load(root)
-		if err == nil && cfg.Gateway == "" {
-			if !pause(ctx, root, 30*time.Second) {
-				return
+		if err == nil && cfg.Gateway == "" && len(cfg.Devices) == 0 {
+			var live bool
+			live, err = hasLiveInvite(root, time.Now())
+			if err == nil && !live {
+				if !pause(ctx, root, 5*time.Second) {
+					return
+				}
+				continue
 			}
-			continue
 		}
 		if err == nil {
 			err = func() error {
@@ -35,13 +39,13 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 				if err != nil {
 					return err
 				}
-				client := &gateway.Client{Base: cfg.Gateway, Key: priv}
-				if !registered[cfg.Gateway] {
-					err := client.Register(ctx, token)
+				client := &gateway.Client{Base: cfg.GatewayURL(), Key: priv}
+				if !registered[cfg.GatewayURL()] {
+					err := client.Register(ctx, cfg.GatewayToken(token))
 					var he *gateway.HTTPError
 					switch {
 					case err == nil:
-						registered[cfg.Gateway] = true
+						registered[cfg.GatewayURL()] = true
 						if logf != nil {
 							logf("registered")
 						}

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Two installs exchange signed bot messages using only the scripted model.
+# XBOT_E2E_OFFICIAL=1 leaves the gateway unset so both use the official default; the outage step is skipped.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK="$ROOT/bin/e2e-gateway"
@@ -29,14 +30,18 @@ MOCK=${XBOT_E2E_MOCK_PORT:-18865}
 GW=${XBOT_E2E_GATEWAY_PORT:-18866}
 P1=${XBOT_E2E_A_PORT:-18867}
 P2=${XBOT_E2E_B_PORT:-18868}
-export XBOT_GATEWAY_TOKEN=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+OFFICIAL=${XBOT_E2E_OFFICIAL:-}
+export XBOT_GATEWAY_TOKEN=
+[[ -n "$OFFICIAL" ]] || XBOT_GATEWAY_TOKEN=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
 export XBOT_API_KEY=test XBOT_BASE_URL="http://127.0.0.1:$MOCK/v1" XBOT_MODEL=mock XBOT_AUTO_UPGRADE=0
 unset XBOT_VAULT_SOCKET
 "$ROOT/bin/mockopenai" -addr "127.0.0.1:$MOCK" >"$WORK/mock.log" 2>&1 &
 PIDS+=("$!")
-"$ROOT/bin/xbot" gateway serve --addr "127.0.0.1:$GW" --dir "$WORK/gw" >"$WORK/gateway.log" 2>&1 &
-GW_PID=$!
-PIDS+=("$GW_PID")
+if [[ -z "$OFFICIAL" ]]; then
+  "$ROOT/bin/xbot" gateway serve --addr "127.0.0.1:$GW" --dir "$WORK/gw" >"$WORK/gateway.log" 2>&1 &
+  GW_PID=$!
+  PIDS+=("$GW_PID")
+fi
 wait_http() {
   for _ in $(seq 1 50); do
     if curl -fsS "$1" >/dev/null 2>&1; then return; fi
@@ -46,13 +51,13 @@ wait_http() {
   return 1
 }
 wait_http "http://127.0.0.1:$MOCK/health"
-wait_http "http://127.0.0.1:$GW/healthz"
+[[ -n "$OFFICIAL" ]] || wait_http "http://127.0.0.1:$GW/healthz"
 X="$ROOT/bin/xbot"
 A="$WORK/a"
 B="$WORK/b"
 "$X" --root "$A" new ada >"$WORK/setup.log" 2>&1
 "$X" --root "$B" new bob >>"$WORK/setup.log" 2>&1
-"$X" --root "$A" remote gateway "http://127.0.0.1:$GW"
+[[ -n "$OFFICIAL" ]] || "$X" --root "$A" remote gateway "http://127.0.0.1:$GW"
 code=$("$X" --root "$A" remote invite | head -1)
 "$X" --root "$A" serve --http "127.0.0.1:$P1" --interval 1s --no-auto-upgrade >"$WORK/a.log" 2>&1 &
 PIDS+=("$!")
@@ -89,6 +94,7 @@ for _ in $(seq 1 600); do
   sleep 0.1
 done
 grep -rqs "got remote reply" "$A/bots/ada/transcript" || { echo "FAIL: no remote reply within 60s" >&2; exit 1; }
+[[ -z "$OFFICIAL" ]] || { "$X" --root "$A" remote gateway; "$X" --root "$B" remote gateway; exit 0; }
 kill "$GW_PID"
 wait "$GW_PID" || true
 sent=$(ms)

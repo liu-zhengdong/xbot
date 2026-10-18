@@ -199,3 +199,45 @@ func TestInvitePerson(t *testing.T) {
 		t.Fatal("minted oversized code")
 	}
 }
+
+// A default-gateway install with pairs refuses a code from another gateway instead of moving.
+func TestJoinKeepsDefaultGatewayWithDevices(t *testing.T) {
+	a, b := pairingRoot(t), pairingRoot(t)
+	mustRemote(t, SetGateway(a, "http://other"))
+	code, err := CreateInvite(a, "", time.Now())
+	mustRemote(t, err)
+	mustRemote(t, update(b, func(c *Config) error { c.Devices = []Device{{Name: "c", ID: "peer"}}; return nil }))
+	if _, err := Join(context.Background(), b, code, "a", "", "", time.Now()); err == nil || !strings.Contains(err.Error(), "gateway mismatch") {
+		t.Fatalf("join: %v", err)
+	}
+	if cfg, _ := Load(b); cfg.Gateway != "" {
+		t.Fatalf("gateway moved to %q", cfg.Gateway)
+	}
+}
+
+// A self-host join token in the environment never goes to the official default gateway.
+func TestDefaultGatewayGetsNoToken(t *testing.T) {
+	t.Setenv("XBOT_GATEWAY_TOKEN", "self-host-secret")
+	a := pairingRoot(t)
+	mustRemote(t, SetGateway(a, DefaultGateway+"/"))
+	if cfg, _ := Load(a); cfg.Gateway != "" {
+		t.Fatalf("official URL stored explicitly: %q", cfg.Gateway)
+	}
+	code, err := CreateInvite(a, "", time.Now())
+	mustRemote(t, err)
+	pc, err := ParseCode(code)
+	mustRemote(t, err)
+	if pc.Gateway != DefaultGateway || pc.Token != "" {
+		t.Fatalf("code: gateway %q, token %q", pc.Gateway, pc.Token)
+	}
+	if cfg, _ := Load(a); cfg.GatewayToken("x") != "" {
+		t.Fatal("run would send the token to the default gateway")
+	}
+	// Older configs and other spellings of the official URL count as the default too.
+	for _, raw := range []string{"https://xbot.babelgo.cn", "https://XBOT.babelgo.cn:443/"} {
+		mustRemote(t, update(a, func(c *Config) error { c.Gateway = raw; return nil }))
+		if cfg, _ := Load(a); cfg.Gateway != "" || cfg.GatewayToken("x") != "" {
+			t.Fatalf("%s: gateway %q", raw, cfg.Gateway)
+		}
+	}
+}

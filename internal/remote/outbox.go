@@ -160,11 +160,11 @@ func runOutbox(ctx context.Context, root string, logf func(string, ...any)) {
 	defer ticker.Stop()
 	for ctx.Err() == nil {
 		cfg, err := Load(root)
-		if err == nil && cfg.Gateway != "" {
+		if err == nil {
 			priv, _, _, keyErr := Identity(root)
 			err = keyErr
 			if err == nil {
-				client := &gateway.Client{Base: cfg.Gateway, Key: priv}
+				client := &gateway.Client{Base: cfg.GatewayURL(), Key: priv}
 				tickPairing(ctx, root, client, time.Now())
 				err = flushOutbox(ctx, root, client, time.Now())
 			}

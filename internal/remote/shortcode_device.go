@@ -39,7 +39,7 @@ func pairingGateway(root, raw string) error {
 		return err
 	}
 	raw = strings.TrimRight(raw, "/")
-	if cfg.Gateway != "" && cfg.Gateway != raw && len(cfg.Devices) != 0 {
+	if len(cfg.Devices) != 0 && cfg.GatewayURL() != raw && !(isOfficial(raw) && cfg.Gateway == "") {
 		return errors.New("remote: gateway mismatch")
 	}
 	return SetGateway(root, raw)
