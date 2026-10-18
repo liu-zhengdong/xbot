@@ -17,6 +17,13 @@ import (
 	"xbot/internal/tools"
 )
 
+// Sentinel errors the web layer maps to its own copy: the gateway's 429 on a
+// code, and no free "X 2"…"X 9"/address suffix for a new device.
+var (
+	ErrRateLimited = errors.New("remote: rate limited by the gateway")
+	ErrNameFull    = errors.New("remote: no free device name")
+)
+
 // gatewayToken is the self-host join token, sent only to an explicitly set
 // gateway, never to the official default.
 func gatewayToken(root string) string {
@@ -205,7 +212,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 			}
 		}
 		if labelNumber == 0 {
-			return errors.New("remote: device label suffixes exhausted")
+			return fmt.Errorf("%w: device label suffixes exhausted", ErrNameFull)
 		}
 		d.Label = label
 		base = d.Name
@@ -219,7 +226,7 @@ func savePairDevice(root, label, key, xkey, personID string, replace bool) (Devi
 				return nil
 			}
 		}
-		return errors.New("remote: device name suffixes exhausted")
+		return fmt.Errorf("%w: device name suffixes exhausted", ErrNameFull)
 	})
 	return d, err
 }

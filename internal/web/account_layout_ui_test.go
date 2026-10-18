@@ -64,8 +64,7 @@ func TestAccountProfileAndResponsiveLayout(t *testing.T) {
 		".profile-modal .modal-actions", "position: sticky; bottom: 0; flex: none;",
 		".panel-scrim", "top: var(--panel-overlay-top, 64px)",
 		"width: min(90%, 400px) !important",
-		".in-app .sidebar .pin-row", ".in-app .top", ".in-app .panel-bar",
-		"--app-region: drag;", "--app-region: no-drag;")
+		".in-app .shell", ".appbar {", "--app-region: drag;", "--app-region: no-drag;")
 	if strings.Contains(js, `$("modal-cancel").textContent = "关闭"`) {
 		t.Error("profile footer must use cancel instead of a separate close row")
 	}

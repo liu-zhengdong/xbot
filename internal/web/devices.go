@@ -178,6 +178,19 @@ func (s *Server) unpairDevice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// pairErrCopy is the copy for pairing errors the gateway reports as distinct
+// from 连不上网关: its 429 on a code, and no free "X 2"…"X 9" name. Other
+// errors keep their caller's copy.
+func pairErrCopy(err error) (int, string, bool) {
+	switch {
+	case errors.Is(err, remote.ErrRateLimited):
+		return http.StatusTooManyRequests, "操作太频繁，等一分钟再试", true
+	case errors.Is(err, remote.ErrNameFull):
+		return http.StatusConflict, "同名设备已满 9 台，先解除或改名旧的，或选择替换旧的", true
+	}
+	return 0, "", false
+}
+
 func (s *Server) newCode(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
@@ -198,6 +211,10 @@ func (s *Server) newCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, err := remote.NewShortCode(r.Context(), s.Root, s.owner); err != nil {
+		if code, msg, ok := pairErrCopy(err); ok {
+			writeErr(w, code, msg)
+			return
+		}
 		writeErr(w, http.StatusBadGateway, "连不上网关 "+cfg.GatewayURL()+"。检查一下网络，或者改一下网关地址。")
 		return
 	}
@@ -283,6 +300,10 @@ func (s *Server) decideRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := remote.DecidePairing(r.Context(), s.Root, allow, in.Decision == "replace"); err != nil {
+		if code, msg, ok := pairErrCopy(err); ok {
+			writeErr(w, code, msg)
+			return
+		}
 		writeErr(w, http.StatusConflict, "没送到另一台电脑，再点一次试试")
 		return
 	}

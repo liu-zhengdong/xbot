@@ -6,6 +6,8 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -169,6 +171,45 @@ func TestDevicesAPIUnpaired(t *testing.T) {
 	got := list.Devices[0]
 	if got["unpaired"] != true || got["online"] != false || got["label"] != "mbp" {
 		t.Fatalf("unpaired device row: %+v", got)
+	}
+}
+
+// A gateway 429 on the code and a full name are not 连不上网关 or 没送到:
+// pairErrCopy gives each its status and copy, and the handlers use it.
+func TestDevicesAPIErrorCopy(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		code int
+		msg  string
+	}{
+		{remote.ErrRateLimited, http.StatusTooManyRequests, "操作太频繁，等一分钟再试"},
+		{fmt.Errorf("%w: device name suffixes exhausted", remote.ErrNameFull), http.StatusConflict, "同名设备已满 9 台，先解除或改名旧的，或选择替换旧的"},
+	} {
+		if code, msg, ok := pairErrCopy(fmt.Errorf("gateway: %w", c.err)); !ok || code != c.code || msg != c.msg {
+			t.Fatalf("wrapped %v: %d %q %v", c.err, code, msg, ok)
+		}
+		if _, _, ok := pairErrCopy(errors.New("remote: no pairing request")); ok {
+			t.Fatal("other errors took a 429/409 copy")
+		}
+	}
+	// The handler: a gateway answering 429 to /v1/code twice (after the 2 s
+	// retry too) is 「操作太频繁」, not 连不上网关.
+	real := (&gateway.Server{Dir: t.TempDir(), Open: true}).Handler()
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/code" {
+			real.ServeHTTP(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer fake.Close()
+	a := newDeviceSide(t, "书房", "ada")
+	var e struct {
+		Error string `json:"error"`
+	}
+	if code := a.call("POST", "/api/devices/code", `{"gateway":"`+fake.URL+`"}`, &e); code != http.StatusTooManyRequests || e.Error != "操作太频繁，等一分钟再试" {
+		t.Fatalf("code on 429: %d %+v", code, e)
 	}
 }
 
