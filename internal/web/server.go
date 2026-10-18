@@ -25,10 +25,10 @@ import (
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
-	"xbot/internal/node"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
+	"xbot/internal/remote"
 	"xbot/internal/version"
 )
 
@@ -70,10 +70,6 @@ type Server struct {
 	// expired keeps cards that timed out with no decision, so a late answer is
 	// told 410 rather than 404. Entries age out.
 	expired map[string]*pendingApproval
-
-	// nodeStatuses caches each registered node's last status list so a dead
-	// node never slows /api/bots/status.
-	nodeStatuses map[string]*nodeStatusCache
 
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
 	pushHTTP *http.Client
@@ -178,8 +174,6 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/notes", s.notes)
 	mux.HandleFunc("POST /api/notes/read", s.readNotes)
 	s.registerDevicesAPI(mux)
-	mux.HandleFunc("GET /api/node/pending", s.listNodePending)
-	mux.HandleFunc("POST /api/node/pending/{id}", s.decideNodePending)
 	mux.HandleFunc("GET /api/push", s.pushStatus)
 	mux.HandleFunc("POST /api/push/subscribe", s.pushSubscribe)
 	mux.HandleFunc("DELETE /api/push/subscribe", s.pushUnsubscribe)
@@ -632,6 +626,79 @@ type apiRow struct {
 	Task       string              `json:"task,omitempty"`
 	Status     string              `json:"status,omitempty"`
 	Steps      int                 `json:"steps,omitempty"`
+	FromDevice *apiFromDevice      `json:"from_device,omitempty"`
+	Relay      *apiRelay           `json:"relay,omitempty"`
+}
+
+// apiFromDevice names the paired device an owner line was typed on.
+type apiFromDevice struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// apiRelay names the Bot that relayed a wrapped event, and the paired device
+// it came from. A local relay omits the device.
+type apiRelay struct {
+	Bot    string `json:"bot"`
+	Device string `json:"device,omitempty"`
+}
+
+// sourceInfo resolves row origins from one remote config per request. A config
+// that cannot be read leaves labels and device names empty.
+type sourceInfo struct {
+	cfg   remote.Config
+	known bool
+}
+
+func loadSources(root string) *sourceInfo {
+	cfg, err := remote.Load(root)
+	return &sourceInfo{cfg: cfg, known: err == nil}
+}
+
+func (src *sourceInfo) label(d remote.Device) string {
+	if d.Label != "" {
+		return d.Label
+	}
+	return d.Name
+}
+
+// fromDevice reads rchat_<deviceID>_<lineID>: an owner line typed on another
+// paired device. Lines typed on this computer carry no such id.
+func (src *sourceInfo) fromDevice(eventID string) *apiFromDevice {
+	id, ok := strings.CutPrefix(eventID, "rchat_")
+	if !ok || len(id) < 34 || id[32] != '_' {
+		return nil
+	}
+	out := &apiFromDevice{ID: id[:32]}
+	if src.known {
+		if d, ok := src.cfg.ByID(out.ID); ok {
+			out.Label = src.label(d)
+		}
+	}
+	return out
+}
+
+// relay reads source bot:<bot> (local) or bot:<bot>@<device name>. It only
+// parses hostnames, which admit no '@', so the two do not overlap.
+func (src *sourceInfo) relay(content string) *apiRelay {
+	source, _, wrapped := peer.EventSource(content)
+	name, ok := strings.CutPrefix(source, "bot:")
+	if !wrapped || !ok {
+		return nil
+	}
+	botName, device, _ := strings.Cut(name, "@")
+	if botName == "" {
+		return nil
+	}
+	if device == "" {
+		return &apiRelay{Bot: botName}
+	}
+	if src.known {
+		if d, ok := src.cfg.ByName(device); ok {
+			device = src.label(d)
+		}
+	}
+	return &apiRelay{Bot: botName, Device: device}
 }
 
 func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
@@ -654,12 +721,16 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		seqEntries[i] = bot.SeqEntry{Seq: i + 1, Entry: e}
 	}
 	replay, _ := bot.Replay(seqEntries)
+	src := loadSources(s.Root)
 	var rows []apiRow
 	for i, e := range entries {
 		row := apiRow{
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch,
+		}
+		if e.Message.Role == provider.RoleUser {
+			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Content)
 		}
 		if e.Mark != nil {
 			row.Kind, row.From, row.Task = e.Mark.Kind, e.Mark.From, e.Mark.Task
@@ -958,49 +1029,6 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request, kind string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": msg})
-}
-
-func (s *Server) listNodePending(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	items, err := node.ListPending(s.Root)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if items == nil {
-		items = []node.Pending{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"pending": items})
-}
-
-func (s *Server) decideNodePending(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	var in struct {
-		Allow bool `json:"allow"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, http.StatusBadRequest, "bad request")
-		return
-	}
-	id := r.PathValue("id")
-	if !in.Allow {
-		if err := node.Dismiss(s.Root, id); err != nil {
-			writeErr(w, http.StatusNotFound, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "dismissed"})
-		return
-	}
-	text, err := node.Approve(s.Root, id)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "text": text})
 }
 
 func (s *Server) notes(w http.ResponseWriter, r *http.Request) {

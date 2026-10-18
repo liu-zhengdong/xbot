@@ -60,10 +60,6 @@
 
 /* 设备卡 */
 .g7-device { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--hover); margin-top: 16px; }
-.g7-dev-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--text); }
-.g7-dev-main { flex: 1; min-width: 0; }
-.g7-dev-name { font-size: 15px; font-weight: 500; line-height: 1.4; }
-.g7-dev-sub { font-size: 12px; line-height: 1.5; color: var(--muted); }
 .g7-dev-side { color: var(--muted); }
 .g7-allows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .g7-allows li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
@@ -79,35 +75,88 @@
 .g7-done-ico .icon { stroke-width: 2; }
 .g7-done h2 { margin: 0 0 6px !important; }
 
-/* 设备抽屉：沿用「编辑资料」抽屉 */
-.g7-drawer .profile-modal { padding: 0; }
-.g7-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 4px 20px; flex: none; }
-.g7-drawer-head h2 { margin: 0 !important; }
-.g7-drawer-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 20px 20px; }
-.g7-drawer-body .profile-section h3 { margin-bottom: 8px; }
-.g7-drawer .g7-device { margin-top: 0; }
-.g7-self { background: var(--hover); }
-.g7-drawer-foot { position: static !important; padding: 12px 20px 20px !important; margin: 0; background: var(--bg); }
-
-.g7-dev-card { border-radius: 14px; background: var(--hover); padding: 2px 0 12px; }
-.g7-dev-card + .g7-dev-card { margin-top: 8px; }
-.g7-flat { background: transparent; padding-bottom: 6px; }
-.g7-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.g7-unpaired { padding: 0 6px; border-radius: 4px; background: var(--faint, rgba(127, 127, 127, 0.12)); }
+/* 设备抽屉（v2）：440px，上到下是说明、网关不通横幅、这台电脑、已配对、连接、底部按钮。
+   卡片和设置在抽屉里是 --hover 灰底，里面的 Bot 药丸、地址、能力行用 --bg 白底（深色反过来）。不加边框。 */
+.g7-drawer .profile-modal { width: 440px; max-width: 100%; border-radius: 16px; padding: 0; }
+.g7-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 0 20px; flex: none; }
+.g7-head h2 { margin: 0 !important; font-size: 18px !important; font-weight: 600 !important; }
+.g7-lead { margin: 4px 20px 0; font-size: 13px; line-height: 1.6; color: var(--muted); flex: none; }
+.g7-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 20px 16px; }
+.g7-body .profile-section + .profile-section { margin-top: 20px; }
+.g7-body .profile-section h3 { margin-bottom: 8px; }
+.g7-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 20px 16px; flex: none; }
+.g7-foot button { display: inline-flex; align-items: center; gap: 6px; }
+.g7-fine { margin: 8px 2px 0; font-size: 12px; line-height: 1.6; color: var(--faint); }
+.g7-muted { color: var(--muted); }
+.g7-inline-err { margin: 6px 4px 0; font-size: 12px; }
+.g7-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* 网关不通：灰底，不用红色（这是状态，不是这次操作的错误） */
+.g7-banner { display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--hover); font-size: 13px; line-height: 1.5; flex: none; }
+.g7-banner > span:nth-child(2) { flex: 1; min-width: 0; }
+.g7-banner small { display: block; color: var(--muted); font-size: 12px; }
+.g7-banner-ico { display: grid; color: var(--muted); flex: none; }
+/* 设备卡 */
+.g7-device { display: flex; align-items: center; gap: 12px; padding: 10px 8px 10px 14px; border-radius: 14px; background: var(--hover); }
+.g7-dev-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--text); }
+.g7-dev-main { flex: 1; min-width: 0; }
+.g7-dev-name { font-size: 15px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.g7-dev-sub { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.g7-dev-card { margin-top: 8px; border-radius: 14px; background: var(--hover); padding: 10px 8px 10px 14px; }
+.g7-flat { background: transparent; padding: 0 0 6px; }
+.g7-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 1.5; color: var(--muted); flex-wrap: wrap; }
+.g7-status .icon { color: var(--muted); }
+.g7-dev-card.is-off .g7-dev-ico, .g7-dev-card.is-off .g7-bot { color: var(--muted); }
+.g7-dev-card.is-off .g7-cap, .g7-caps.is-off .g7-cap-t { opacity: 0.6; }
 .status-dot.off-ring { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
-.g7-dev-card.is-off .g7-dev-ico { color: var(--muted); }
-.g7-bots { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 0 62px; }
+.g7-bots { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 6px 0 48px; }
 .g7-bot { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: var(--bg); font-size: 12px; }
-.g7-bot .avatar.xs { width: 18px; height: 18px; }
-.g7-dev-card.is-off .g7-bot { color: var(--muted); }
-.g7-dev-card.is-off .g7-bot .avatar { opacity: 0.5; }
-.g7-more-wrap { position: relative; }
+.g7-bot .avatar.xs, .g7-bot .avatar.xs svg { width: 18px; height: 18px; }
+.g7-meta { margin: 8px 6px 0 48px; font-size: 12px; line-height: 1.6; color: var(--faint); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.g7-dev-card.is-gone .g7-meta { margin: 2px 6px 0 48px; }
+.g7-addr { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 5px; }
+.g7-more-wrap { position: relative; align-self: flex-start; }
 .ghost.is-on { background: var(--selected); color: var(--text); }
-.g7-row-menu { top: calc(100% + 4px); bottom: auto; left: auto; right: 0; min-width: 160px; }
+.g7-row-menu { top: calc(100% + 4px); bottom: auto; left: auto; right: 0; min-width: 168px; }
 .g7-row-menu .menu-row { justify-content: flex-start; gap: 8px; }
+/* 按设备的能力：现在只有「Bot 互发消息」一项，以后的能力加在这张列表里 */
+.g7-caps { margin: 10px 6px 0 48px; border-radius: 10px; background: var(--bg); padding: 2px 14px; }
+.g7-cap { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.g7-cap-t { flex: 1; min-width: 0; }
+.g7-cap-t b { display: block; font-size: 13px; font-weight: 520; }
+.g7-cap-t small { display: block; font-size: 12px; line-height: 1.5; color: var(--muted); }
+/* 开关：静态 span（局域网直连）和按钮（Bot 互发消息）共用 */
+.g7-switch { position: relative; width: 36px; height: 20px; border: 0; border-radius: 999px; flex: none; padding: 0; background: var(--fill-hover); }
+.g7-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px; background: #fff; transition: transform 160ms ease-out; }
+.g7-switch[aria-checked="true"] { background: var(--primary); }
+.g7-switch[aria-checked="true"]::after { transform: translateX(16px); }
+html[data-theme="dark"] .g7-switch[aria-checked="true"]::after { background: var(--bg); }
+span.g7-switch { margin-top: 2px; opacity: 0.55; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .g7-switch::after { transition: none; } }
+/* 设置行（局域网直连、网关） */
+.g7-set { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: var(--hover); }
+.g7-set + .g7-set { margin-top: 8px; }
+.g7-set-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--text); }
+.g7-set-main { flex: 1; min-width: 0; }
+.g7-set-main b { display: block; font-size: 14px; font-weight: 500; line-height: 1.4; }
+.g7-set-main small { display: block; font-size: 12px; line-height: 1.55; color: var(--muted); margin-top: 2px; }
+.g7-set-act, .g7-gw-acts .text-btn { min-height: 28px; padding: 0 10px; font-size: 13px; color: var(--text); background: var(--fill); }
+/* 网关编辑：整块变成一列；先检查新地址，502 时保留旧地址并原地报错 */
+.g7-set-edit { display: block; }
+.g7-set-head { display: flex; gap: 12px; align-items: flex-start; }
+.g7-set-edit .field { margin: 10px 0 6px; }
+.g7-set-edit .field input { color: var(--text); background: var(--bg); }
+.g7-set-edit .field.is-bad input { background: var(--err-bg); }
+.g7-set-edit .g7-fine { margin-top: 6px; }
+.g7-gw-acts { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.g7-gw-acts .spacer { flex: 1; }
+.g7-gw-acts .text-btn { background: transparent; }
+.g7-can { list-style: none; margin: 0 2px 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.g7-can li { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.55; }
+.g7-can .icon { color: var(--muted); margin-top: 2px; flex: none; }
+.g7-can li.no { color: var(--muted); }
 
-.g7-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 40px 12px 20px; color: var(--muted); }
-.g7-empty-ico { width: 56px; height: 56px; border-radius: 16px; background: var(--hover); color: var(--muted); display: grid; place-items: center; margin-bottom: 12px; }
+.g7-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 12px 18px; color: var(--muted); }
+.g7-ico-box { width: 52px; height: 52px; border-radius: 16px; background: var(--hover); color: var(--muted); display: grid; place-items: center; margin-bottom: 12px; }
 .g7-empty h3 { margin: 0 0 4px; font-size: 16px; font-weight: 500; color: var(--text); }
 .g7-empty p { margin: 0; font-size: 13px; line-height: 1.6; max-width: 300px; }
 .g7-options { display: flex; flex-direction: column; gap: 8px; }
@@ -133,26 +182,17 @@
   .g7-card { padding: 20px; }
 }
 
-/* 网关：已设时折成一行灰字加「改」，没设时展开成输入框 */
-.g7-gw { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 12px; font-size: 12px; color: var(--muted); }
-.g7-gw .icon { color: var(--faint); }
-.g7-gw .text-btn { min-height: 22px; padding: 0 6px; color: var(--text); font-size: 12px; }
 .g7-gw-field { margin: 16px 0 0; }
 .g7-gw-field input { color: var(--text); }
 .g7-gw-field input::placeholder { color: var(--faint); }
 .g7-gw-why { margin-top: 8px; }
-.modal-actions .text-btn.g7-gw-change { font-size: 13px; min-height: 32px; color: var(--text); padding: 0 10px; }
 /* 同名设备替换 */
 .g7-old { margin-top: 16px; }
 .g7-old .g7-dev-sub { display: flex; align-items: center; gap: 6px; }
 .g7-timer-row { margin-top: 16px; }
 .g7-replace-actions { margin-top: 10px; }
 
-/* 设备抽屉：网关一行、连不上网关的提示、行内编辑 */
-.g7-self-gw { margin-top: 8px; justify-content: flex-start; padding: 0 4px; }
-.g7-gw-edit-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-.g7-gw-edit-row input { flex: 1; min-width: 0; color: var(--text); }
-.g7-inline-err { margin: 6px 4px 0; font-size: 12px; }
+/* 连不上网关的旧提示（配对弹窗里还在用） */
 .g7-gw-down { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--hover); color: var(--muted); font-size: 13px; }
 .g7-gw-down .spacer { flex: 1; }
 .g7-field-err { margin: 6px 0 0; font-size: 13px; }

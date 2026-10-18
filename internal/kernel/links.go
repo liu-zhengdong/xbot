@@ -14,7 +14,6 @@ import (
 	"xbot/internal/config"
 	"xbot/internal/desktop"
 	"xbot/internal/link"
-	"xbot/internal/node"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -314,7 +313,7 @@ func (k *Kernel) syncGrantsLocked() {
 
 func catalogRuntime(name string) bool {
 	switch name {
-	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameNode, link.NameDesktop, link.NameBrowser:
+	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser:
 		return true
 	default:
 		return false
@@ -384,8 +383,6 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 		return k.connector(dir, link.NameTelegram)
 	case link.NameLark:
 		return k.connector(dir, link.NameLark)
-	case link.NameNode:
-		return node.Open(k.Bot.Root)
 	case link.NameDesktop:
 		return desktop.Open(k.Bot.Root)
 	case link.NameBrowser:
@@ -631,7 +628,7 @@ func lazyUntilLoad(name string) bool {
 		return true
 	}
 	switch name {
-	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameNode, link.NameDesktop, link.NameBrowser:
+	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser:
 		return true
 	default:
 		return false
