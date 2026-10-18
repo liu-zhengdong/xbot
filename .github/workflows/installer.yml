@@ -1,0 +1,57 @@
+name: installer
+
+# On PRs that touch packaging: build the Windows Setup.exe on Linux, then
+# install, upgrade and uninstall it on a Windows runner and check that the user
+# and machine environment did not change. release.yml runs the same check on tags.
+on:
+  pull_request:
+    paths:
+      - packaging/**
+      - scripts/package-desktop.sh
+      - scripts/test-windows-installer.ps1
+      - .github/workflows/installer.yml
+      - .github/workflows/release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: packaging tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q icnsutils zip python3-pil nsis
+      - name: package
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash scripts/package-desktop.sh v0.0.0-ci dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup
+          path: dist/XBot-0.0.0-ci-windows-amd64-setup.exe
+          if-no-files-found: error
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: setup
+          path: dist
+      - name: install, upgrade, uninstall
+        shell: pwsh
+        run: ./scripts/test-windows-installer.ps1 -Setup dist/XBot-0.0.0-ci-windows-amd64-setup.exe

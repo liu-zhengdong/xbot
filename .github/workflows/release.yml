@@ -9,7 +9,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -33,7 +33,7 @@ jobs:
       - name: packaging tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q genisoimage icnsutils zip python3-pil
+          sudo apt-get install -y -q genisoimage icnsutils zip python3-pil nsis
           go install github.com/tc-hib/go-winres@v0.3.3
           tools="$RUNNER_TEMP/tools"
           mkdir -p "$tools"
@@ -58,6 +58,7 @@ jobs:
           for f in \
             "XBot-$short-macos-arm64.dmg" "XBot-$short-macos-arm64.zip" \
             "XBot-$short-macos-amd64.dmg" "XBot-$short-macos-amd64.zip" \
+            "XBot-$short-windows-amd64-setup.exe" "XBot-$short-windows-arm64-setup.exe" \
             "XBot-$short-windows-amd64.zip" "XBot-$short-windows-arm64.zip" \
             "xbot-$short-linux-amd64.tar.gz" SHA256SUMS; do
             test -s "$f" || { echo "missing $f"; exit 1; }
@@ -66,9 +67,10 @@ jobs:
           cp ../packaging/INSTALL.md INSTALL.md
       - name: release notes
         run: |
+          mkdir -p notes
           notes="packaging/release-notes/$TAG.md"
           if [ -f "$notes" ]; then
-            cp "$notes" dist-notes.md
+            cp "$notes" notes/notes.md
           else
             prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
             {
@@ -78,8 +80,53 @@ jobs:
               echo
               echo "本版合并的改动："
               git log --format='- %s' ${prev:+"$prev..$TAG"}
-            } > dist-notes.md
+            } > notes/notes.md
           fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes
+          path: notes/notes.md
+
+  # Install, upgrade and uninstall the real Setup.exe on Windows and check that
+  # no environment variable changed, before anything is published.
+  windows-installer:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: install, upgrade, uninstall
+        shell: pwsh
+        run: ./scripts/test-windows-installer.ps1 -Setup "dist/XBot-$("${{ github.ref_name }}".TrimStart('v'))-windows-amd64-setup.exe"
+
+  publish:
+    needs: [package, windows-installer]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: notes
+          path: notes
+      - name: verify checksums
+        run: cd dist && sha256sum -c SHA256SUMS
       - name: publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,4 +135,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --prerelease --verify-tag \
             --title "XBot $TAG" \
-            --notes-file dist-notes.md
+            --notes-file notes/notes.md
