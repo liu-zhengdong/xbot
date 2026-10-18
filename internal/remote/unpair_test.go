@@ -67,10 +67,13 @@ func TestUnpairNotifiesPeer(t *testing.T) {
 	if len(envs) != 1 || envs[0].Kind != "unpair" || envs[0].From != aid || envs[0].To != bid {
 		t.Fatalf("A did not send one unpair envelope to B: %+v", envs)
 	}
-	ack, _, err := Receive(b, bid, envs, now)
+	// A box from A in the same poll batch, after the unpair, is dropped too.
+	box, err := newBoxEnvelope(ka, bOnA, "box", []byte(`{"from_bot":"bob","to_bot":"ada","text":"late","chain":"c","hops":1}`), now)
 	mustRemote(t, err)
-	if len(ack) != 1 {
-		t.Fatal("unpair envelope not acknowledged")
+	ack, _, err := Receive(b, bid, append(envs, box), now)
+	mustRemote(t, err)
+	if len(ack) != 2 {
+		t.Fatal("unpair envelope and box not acknowledged")
 	}
 	cfg, err = Load(b)
 	mustRemote(t, err)
@@ -82,14 +85,6 @@ func TestUnpairNotifiesPeer(t *testing.T) {
 	}
 	if _, err := Send(context.Background(), b, "ada", "bob@a", "hello", "chain", 1, now); err == nil || err.Error() != "remote: device a was unpaired by the other computer" {
 		t.Fatalf("send to an unpaired device: %v", err)
-	}
-	// A's box is dropped once B has marked A as unpaired.
-	box, err := newBoxEnvelope(ka, bOnA, "box", []byte(`{"from_bot":"bob","to_bot":"ada","text":"late","chain":"c","hops":1}`), now)
-	mustRemote(t, err)
-	ack, _, err = Receive(b, bid, []gateway.Envelope{box}, now)
-	mustRemote(t, err)
-	if len(ack) != 1 {
-		t.Fatal("box from an unpaired device not acknowledged")
 	}
 	in, err := inbox.Open(sender.InboxPath())
 	mustRemote(t, err)

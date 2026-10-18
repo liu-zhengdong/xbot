@@ -52,7 +52,7 @@ func Receive(root, self string, envs []gateway.Envelope, now time.Time, logf ...
 		for _, env := range envs {
 			if _, replay := seen[env.ID]; !replay {
 				deliveryErr := deliver(root, self, cfg, env, now, &bounces, logf...)
-				if deliveryErr == nil && (env.Kind == "pair" || env.Kind == "pake4") {
+				if deliveryErr == nil && (env.Kind == "pair" || env.Kind == "pake4" || env.Kind == "unpair") {
 					cfg, deliveryErr = Load(root)
 				}
 				if err := deliveryErr; err != nil {
@@ -250,10 +250,13 @@ func deliverPair(root, self string, env gateway.Envelope, now time.Time, logf ..
 				if len(logf) > 0 && logf[0] != nil {
 					logf[0]("paired with %s %s", d.Name, d.ID[:8])
 				}
-			} else if known.XKey == "" {
-				if err := fillXKey(root, known.ID, pr.XKey); err != nil {
-					return nil, err
+			} else {
+				if known.XKey == "" {
+					if err := fillXKey(root, known.ID, pr.XKey); err != nil {
+						return nil, err
+					}
 				}
+				clearUnpaired(root, known.ID) // Paired again: it talks to us again.
 			}
 			list[i].Used = true
 			break
