@@ -105,6 +105,10 @@
     if (!el) return;
     const n = S.data && S.data.devices ? S.data.devices.length : 0;
     el.textContent = n ? String(n) : "";
+    // This computer's name under 我 at the bottom of the sidebar.
+    const me = document.getElementById("me-device");
+    const self = (S.data && S.data.self) || {};
+    if (me) { me.textContent = self.name || self.label || ""; me.hidden = !me.textContent; }
   }
 
   // ---- 打开、关闭 ----
@@ -423,6 +427,8 @@
     btn.addEventListener("click", () => {
       const menu = document.getElementById("account-menu");
       if (menu) menu.hidden = true;
+      const pop = document.getElementById("connect-pop");
+      if (pop) pop.hidden = true;
       const acct = document.getElementById("account");
       if (acct) acct.setAttribute("aria-expanded", "false");
       opener = btn;
