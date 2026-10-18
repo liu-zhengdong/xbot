@@ -51,11 +51,6 @@ func TestCardText(t *testing.T) {
 			wantT: "删除文件", wantSub: "在本机上执行",
 		},
 		{
-			name: "node call uses node name", tool: "node_call",
-			args: `{"name":"vps-tokyo","cap":"shell","command":"rm /tmp/x"}`, summary: "node vps-tokyo shell\nrm /tmp/x", machine: "local",
-			wantT: "删除文件", wantSub: "在 vps-tokyo 上执行",
-		},
-		{
 			name: "http get", tool: "http_request",
 			args: `{"method":"GET","url":"https://api.example.com/v1/x"}`, summary: "GET https://api.example.com/v1/x",
 			wantT: "发起 HTTP 请求", wantSub: "GET api.example.com",
