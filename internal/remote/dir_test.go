@@ -2,6 +2,8 @@ package remote
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/gateway"
+	"xbot/internal/person"
 )
 
 func TestDirectoryReceiveVisible(t *testing.T) {
@@ -168,6 +171,125 @@ func TestDirectoryIgnoresUnknownFields(t *testing.T) {
 	mustRemote(t, json.Unmarshal(raw, &cache))
 	if len(cache.Bots) != 1 || cache.Bots[0].Name != "bob" || strings.Contains(string(raw), "persona") || strings.Contains(string(raw), "future") {
 		t.Fatal("unknown fields rejected or persisted")
+	}
+}
+
+// Each bot carries its portrait seed, or its name when none was set, plus the
+// custom flag. Uploaded images never travel.
+func TestDirectorySendsAvatarSeed(t *testing.T) {
+	root := t.TempDir()
+	seeded, err := bot.Create(root, "ada", "", nil)
+	mustRemote(t, err)
+	mustRemote(t, seeded.SetOwners([]string{"u1"}))
+	mustRemote(t, seeded.SetAvatarSeed("writer#2"))
+	old, err := bot.Create(root, "old", "", nil)
+	mustRemote(t, err)
+	mustRemote(t, old.SetOwners([]string{"u1"}))
+	cfg := old.Config()
+	cfg.AvatarSeed = "" // what a bot created before seeds looks like
+	raw, err := json.Marshal(cfg)
+	mustRemote(t, err)
+	mustRemote(t, os.WriteFile(filepath.Join(bot.Dir(root, "old"), "config.json"), raw, 0600))
+	mustRemote(t, old.SetAvatar([]byte("\x89PNG\r\n\x1a\n"), "image/png"))
+	bots, err := directoryFor(root, Device{Person: "u1"})
+	mustRemote(t, err)
+	want := []dirBot{{Name: "ada", Seed: "writer#2"}, {Name: "old", Seed: "old", Custom: true}}
+	if len(bots) != len(want) || bots[0] != want[0] || bots[1] != want[1] {
+		t.Fatalf("directory avatars: %+v", bots)
+	}
+	sent, err := json.Marshal(bots[1])
+	mustRemote(t, err)
+	if strings.Contains(string(sent), "PNG") || strings.Contains(string(sent), "image") {
+		t.Fatal("uploaded image data or type sent in directory")
+	}
+}
+
+// The directory hash covers the seed, so changing one resends at once.
+func TestDirectorySeedChangeIsDue(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	state, due := directoryDue([]dirBot{{Name: "ada", Seed: "ada"}}, dirSent{}, now)
+	if !due {
+		t.Fatal("first directory not due")
+	}
+	if _, due := directoryDue([]dirBot{{Name: "ada", Seed: "ada"}}, state, now.Add(time.Minute)); due {
+		t.Fatal("unchanged directory resent")
+	}
+	for _, next := range [][]dirBot{
+		{{Name: "ada", Seed: "writer#2"}},
+		{{Name: "ada", Seed: "ada", Custom: true}},
+	} {
+		if _, due := directoryDue(next, state, now.Add(time.Minute)); !due {
+			t.Fatalf("avatar change not due: %+v", next)
+		}
+	}
+}
+
+// A bad seed costs that bot its portrait only; the rest of the directory stays
+// and a valid seed is kept.
+func TestDirectoryReceiveSeeds(t *testing.T) {
+	root := t.TempDir()
+	now := time.Unix(1_800_000_000, 0)
+	body, err := json.Marshal(directory{Bots: []dirBot{
+		{Name: "ada", Seed: "writer#2"},
+		{Name: "bob", Seed: "<script>", Custom: true},
+		{Name: "cid", Seed: strings.Repeat("x", 81)},
+	}, At: now.Unix()})
+	mustRemote(t, err)
+	mustRemote(t, receiveDirectory(root, "device", body, now))
+	var cache dirCache
+	mustRemote(t, readJSON(filepath.Join(root, "remote", "dirs", "device.json"), &cache))
+	want := []dirBot{{Name: "ada", Seed: "writer#2"}, {Name: "bob", Custom: true}, {Name: "cid"}}
+	if len(cache.Bots) != len(want) || cache.Bots[0] != want[0] || cache.Bots[1] != want[1] || cache.Bots[2] != want[2] {
+		t.Fatalf("received seeds: %+v", cache.Bots)
+	}
+}
+
+// Devices() lists one avatar per bot, always a map; an old peer's cache entry
+// without a seed gives an empty seed, and a bad one is dropped there too.
+func TestDevicesBotAvatars(t *testing.T) {
+	root := t.TempDir()
+	_, err := person.Identify(root, person.Account{Link: "terminal", ExternalID: "uid:1"}, "owner")
+	mustRemote(t, err)
+	add := func(name string) Device {
+		pub, _, err := ed25519.GenerateKey(nil)
+		mustRemote(t, err)
+		d, err := AddDevice(root, name, base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(make([]byte, 32)), "")
+		mustRemote(t, err)
+		return d
+	}
+	somewhere, empty, fresh := add("mbp"), add("imac"), add("mini")
+	now := time.Unix(1_800_000_000, 0)
+	old, err := json.Marshal(map[string]any{"bots": []map[string]any{{"name": "bob"}, {"name": "eve", "seed": "<script>"}}, "at": now.Unix()})
+	mustRemote(t, err)
+	good, err := json.Marshal(directory{Bots: []dirBot{{Name: "writer", Seed: "writer#2"}, {Name: "coach", Seed: "coach", Custom: true}}, At: now.Unix()})
+	mustRemote(t, err)
+	for id, body := range map[string][]byte{somewhere.ID: old, empty.ID: good} {
+		path := filepath.Join(root, "remote", "dirs", id+".json")
+		mustRemote(t, os.MkdirAll(filepath.Dir(path), 0700))
+		mustRemote(t, os.WriteFile(path, body, 0600))
+	}
+	views, err := Devices(root)
+	mustRemote(t, err)
+	for _, v := range views {
+		if v.BotAvatars == nil {
+			t.Fatalf("nil bot_avatars: %+v", v)
+		}
+	}
+	byID := map[string]DeviceView{}
+	for _, v := range views {
+		byID[v.ID] = v
+	}
+	if got := byID[somewhere.ID].BotAvatars; len(got) != 2 || got["bob"] != (BotAvatar{}) || got["eve"] != (BotAvatar{}) {
+		t.Fatalf("old peer avatars: %+v", got)
+	}
+	if got := byID[empty.ID].BotAvatars; len(got) != 2 || got["writer"] != (BotAvatar{Seed: "writer#2"}) || got["coach"] != (BotAvatar{Seed: "coach", Custom: true}) {
+		t.Fatalf("avatars: %+v", got)
+	}
+	// A device whose directory never arrived still sends a map, not null.
+	raw, err := json.Marshal(byID[fresh.ID])
+	mustRemote(t, err)
+	if !strings.Contains(string(raw), `"bot_avatars":{}`) || strings.Contains(string(raw), "bot_avatars\":null") {
+		t.Fatalf("empty device json: %s", raw)
 	}
 }
 

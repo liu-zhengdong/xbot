@@ -284,8 +284,43 @@ func TestProfileAPI(t *testing.T) {
 	res = do(http.MethodGet, "/api/bots", nil, "")
 	raw, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	if !bytes.Contains(raw, []byte(`"description":"项目笔记"`)) || !bytes.Contains(raw, []byte(`"initial":"A"`)) || !bytes.Contains(raw, []byte(`"avatar_bg"`)) {
+	if !bytes.Contains(raw, []byte(`"description":"项目笔记"`)) || !bytes.Contains(raw, []byte(`"initial":"A"`)) || !bytes.Contains(raw, []byte(`"avatar_bg"`)) ||
+		!bytes.Contains(raw, []byte(`"avatar":"generated"`)) || !bytes.Contains(raw, []byte(`"avatar_seed":"ada"`)) || bytes.Contains(raw, []byte(`"avatar_url"`)) {
 		t.Fatalf("list %s", raw)
+	}
+	res = do(http.MethodGet, "/api/bots/ada", nil, "")
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if !bytes.Contains(raw, []byte(`"avatar":"generated"`)) || !bytes.Contains(raw, []byte(`"avatar_seed":"ada"`)) {
+		t.Fatalf("detail %s", raw)
+	}
+	// A generated bot has no avatar bytes to serve, even with a generator installed.
+	restore := bot.SetGenerateAvatar(func(name, description string) ([]byte, error) {
+		return []byte("generated-png"), nil
+	})
+	res = do(http.MethodGet, "/api/bots/ada/avatar", nil, "")
+	got, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound || bytes.Contains(got, []byte("generated-png")) {
+		t.Fatalf("generated avatar served: %d %q", res.StatusCode, got)
+	}
+	restore()
+	res = do(http.MethodPatch, "/api/bots/ada", strings.NewReader(`{"avatar_seed":"<x>"}`), "application/json")
+	got, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest || !bytes.Contains(got, []byte("avatar seed")) {
+		t.Fatalf("bad seed %d %q", res.StatusCode, got)
+	}
+	res = do(http.MethodPatch, "/api/bots/ada", strings.NewReader(`{"avatar_seed":"writer#3"}`), "application/json")
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("patch seed %d", res.StatusCode)
+	}
+	if b, err = bot.Load(root, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != bot.AvatarGenerated || seed != "writer#3" {
+		t.Fatalf("seed %q %q", av, seed)
 	}
 	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 1, 2, 3}
 	var buf bytes.Buffer
@@ -301,19 +336,33 @@ func TestProfileAPI(t *testing.T) {
 	res = do(http.MethodPost, "/api/bots/ada/avatar", &buf, w.FormDataContentType())
 	raw, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 {
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"avatar_seed":"writer#3"`)) {
 		t.Fatalf("avatar %d %s", res.StatusCode, raw)
 	}
+	// The upload survives the earlier seed patch: uploading keeps the seed.
+	if b, err = bot.Load(root, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != bot.AvatarCustom || seed != "writer#3" {
+		t.Fatalf("after upload %q %q", av, seed)
+	}
 	res = do(http.MethodGet, "/api/bots/ada/avatar", nil, "")
-	got, _ := io.ReadAll(res.Body)
+	got, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || !bytes.Equal(got, png) {
-		t.Fatalf("get avatar %d %q", res.StatusCode, got)
+	if res.StatusCode != 200 || !bytes.Equal(got, png) || res.Header.Get("Content-Type") != "image/png" || res.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("get avatar %d %q %v", res.StatusCode, got, res.Header)
+	}
+	res = do(http.MethodGet, "/api/bots", nil, "")
+	raw, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if !bytes.Contains(raw, []byte(`"avatar":"custom"`)) || !bytes.Contains(raw, []byte(`"avatar_url":"/api/bots/ada/avatar"`)) {
+		t.Fatalf("custom list %s", raw)
 	}
 	res = do(http.MethodDelete, "/api/bots/ada/avatar", nil, "")
+	raw, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 {
-		t.Fatalf("delete %d", res.StatusCode)
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"avatar":"generated"`)) || !bytes.Contains(raw, []byte(`"avatar_seed":"writer#3"`)) {
+		t.Fatalf("delete %d %s", res.StatusCode, raw)
 	}
 	res = do(http.MethodGet, "/api/bots/ada/avatar", nil, "")
 	res.Body.Close()
@@ -389,6 +438,62 @@ func TestSetPrimaryAndDeleteAPI(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusConflict || !bytes.Contains(raw, []byte("last bot")) {
 		t.Fatalf("delete last %d %s", res.StatusCode, raw)
+	}
+}
+
+func TestCreateBotAvatarSeed(t *testing.T) {
+	root := t.TempDir()
+	s := &Server{Root: root, Owner: "u1"}
+	tok, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(muxOf(s))
+	defer srv.Close()
+	post := func(body string) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/bots", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		return res, raw
+	}
+	res, raw := post(`{"name":"bad","avatar_seed":"<x>"}`)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad seed %d %s", res.StatusCode, raw)
+	}
+	if _, err := bot.Load(root, "bad"); !errors.Is(err, bot.ErrNotFound) {
+		t.Fatalf("bad seed left a bot: %v", err)
+	}
+	res, raw = post(`{"name":"ada","avatar_seed":"writer#3"}`)
+	if res.StatusCode != 200 {
+		t.Fatalf("create %d %s", res.StatusCode, raw)
+	}
+	b, err := bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := b.AvatarState(); av != bot.AvatarGenerated || seed != "writer#3" {
+		t.Fatalf("seed %q %q", av, seed)
+	}
+	res, raw = post(`{"name":"bob"}`)
+	if res.StatusCode != 200 {
+		t.Fatalf("create plain %d %s", res.StatusCode, raw)
+	}
+	bob, err := bot.Load(root, "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if av, seed := bob.AvatarState(); av != bot.AvatarGenerated || seed != "bob" {
+		t.Fatalf("default seed %q %q", av, seed)
 	}
 }
 

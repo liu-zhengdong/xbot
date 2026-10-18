@@ -91,6 +91,25 @@ func TestDefaultAvatarIsGeneratedPortrait(t *testing.T) {
 	}
 }
 
+func TestNewBotDialogPicksAvatar(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(raw)
+	for _, want := range []string{
+		`function openModal(title, fields, onOk, okLabel, after) {`,
+		`if (after) after(inputs);`,
+		`if (!av.follow) body.avatar_seed = av.seed;`,
+		`av.seed = base + "#" + n;`,
+		`try { await uploadAvatar(name, av.file); await refreshLists(); await loadPanel(); }`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("new bot dialog: missing %s", want)
+		}
+	}
+}
+
 func TestRemoteFacesUseDeviceSeeds(t *testing.T) {
 	read := func(name string) string {
 		raw, err := staticFS.ReadFile("static/" + name)
