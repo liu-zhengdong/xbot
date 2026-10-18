@@ -18,7 +18,7 @@ import (
 // after PendingTTL with its mail. Claiming codes (code.go) creates it.
 const (
 	MaxPendingInstalls = 16
-	MaxPendingPerOwner = 2 // so one member cannot hold every pending slot
+	MaxPendingPerOwner = 5 // one per short-code session; one member cannot hold every slot
 	PendingTTL         = 15 * time.Minute
 )
 

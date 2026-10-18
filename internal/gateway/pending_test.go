@@ -107,6 +107,9 @@ func TestPendingInstall(t *testing.T) {
 	check(admit(e, id(g)), 404) // Unregistered owner.
 	check(admit(e, id(a)), 200)
 	check(admit(f, id(a)), 200)
+	for range MaxPendingPerOwner - 2 {
+		check(admit(client(), id(a)), 200)
+	}
 	check(admit(g, id(a)), 429) // MaxPendingPerOwner.
 	check(e.Send(ctx, NewEnvelope(e.Key, id(a), "pake1", nil, now)), 200)
 	check(a.Send(ctx, NewEnvelope(a.Key, id(e), "pake2", nil, now)), 200)
@@ -130,7 +133,7 @@ func TestPendingInstall(t *testing.T) {
 	if err != nil || len(envs) != 1 {
 		t.Fatalf("stale pending file wiped a member's mailbox: %v %v", envs, err)
 	}
-	if files, _ := os.ReadDir(filepath.Join(s.Dir, "pending")); len(files) != 1 { // Only f remains.
+	if files, _ := os.ReadDir(filepath.Join(s.Dir, "pending")); len(files) != MaxPendingPerOwner-1 { // e and the corrupt file went.
 		t.Fatalf("stale pending files kept: %d", len(files))
 	}
 }
