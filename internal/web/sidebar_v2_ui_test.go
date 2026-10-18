@@ -75,7 +75,7 @@ func TestSidebarPrototypeV2(t *testing.T) {
 	if !strings.Contains(dev, `me.textContent = self.name || self.label || "";`) {
 		t.Error("devices.js fills this computer's name under 我 from /api/devices")
 	}
-	if !strings.Contains(js, `$("me-name").textContent = state.owner.trim() || "我";`) {
+	if !strings.Contains(js, `$("me-name").textContent = name || "我";`) {
 		t.Error("我 shows the owner's name when there is one")
 	}
 	if !strings.Contains(js, "function closeConnect()") || !strings.Contains(js, "closeConnect();\n    closeNewMenu();") {
