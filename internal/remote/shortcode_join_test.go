@@ -96,7 +96,7 @@ func (o *fakeOwner) answer(secret string) pake.Keys {
 	info := pairInfo{Name: "书房 iMac", OS: "macOS", Bots: []string{"ada"}, Deadline: time.Now().Add(2 * time.Minute).Unix()}
 	sealed, err := sealPair(keys, reply, info)
 	mustRemote(o.t, err)
-	reply.Body, _ = json.Marshal(shortMessage{PB: pb, Key: o.key, XKey: o.x, Confirm: keys.MyConfirm, Info: sealed})
+	reply.Body, _ = json.Marshal(shortMessage{PB: pb, Key: o.key, XKey: o.x, Confirm: keys.MyConfirm, Info: sealed, Echo: paEcho(m.PA)})
 	reply.Sign(o.c.Key)
 	mustRemote(o.t, o.c.Send(context.Background(), reply))
 	o.deliverB()
@@ -115,7 +115,7 @@ func TestJoinShortCodeAgainstOwner(t *testing.T) {
 	if got := PairingStatus(o.b).B; got.Phase != "confirm" || got.Name != "书房 iMac" || got.OS != "macOS" {
 		t.Fatalf("B did not show A: %+v", got)
 	}
-	mustRemote(t, ConfirmJoin(ctx, o.b))
+	mustRemote(t, ConfirmJoin(ctx, o.b, ""))
 	env := o.next(o.c)
 	var m shortMessage
 	mustRemote(t, json.Unmarshal(env.Body, &m))
@@ -137,5 +137,24 @@ func TestJoinShortCodeAgainstOwner(t *testing.T) {
 	mustRemote(t, err)
 	if got := PairingStatus(o.b).B; got.Phase != "done" || len(cfg.Devices) != 1 || cfg.Devices[0].Key != o.key || cfg.Devices[0].Label != "书房 iMac" || cfg.Devices[0].Person == "" {
 		t.Fatalf("not paired: %+v %+v", got, cfg.Devices)
+	}
+}
+
+// With no gateway set, pairing uses the official default and keeps Run polling.
+func TestShortCodeDefaultGateway(t *testing.T) {
+	root := t.TempDir()
+	c, err := shortClient(root)
+	if err != nil || c.Base != DefaultGateway {
+		t.Fatalf("short client %v %v", c, err)
+	}
+	s := pairingFor(root)
+	if pairingActive(root) {
+		t.Fatal("idle pairing counted as active")
+	}
+	s.Lock()
+	s.join = &shortSession{}
+	s.release()
+	if !pairingActive(root) {
+		t.Fatal("in-flight join does not keep Run polling")
 	}
 }

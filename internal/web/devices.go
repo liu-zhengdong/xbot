@@ -251,7 +251,7 @@ func (s *Server) confirmJoin(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
-	if err := remote.ConfirmJoin(r.Context(), s.Root); err != nil {
+	if err := remote.ConfirmJoin(r.Context(), s.Root, s.owner); err != nil {
 		writeErr(w, http.StatusConflict, "这次配对已经结束了")
 		return
 	}
