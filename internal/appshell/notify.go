@@ -31,6 +31,9 @@ func NotifyAway(title, body string) (shown bool, err error) {
 func bringForward() {
 	go func() {
 		for range 10 {
+			if mygo.FocusedWindow() != nil {
+				return // In front: stop, so switching away again is not undone.
+			}
 			for _, w := range mygo.Windows() {
 				if w.IsMinimized() {
 					w.Restore()
