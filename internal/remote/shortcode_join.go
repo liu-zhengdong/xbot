@@ -146,7 +146,7 @@ func (s *pairingState) receivePake4(root string, env gateway.Envelope, now time.
 	// A's allow can arrive after B's window (B asleep, a slow gateway) when A
 	// has already saved B, so accept it for 5 more minutes.
 	j, late := s.join, false
-	if j == nil || j.peer != env.From || s.status.B.Phase != "waiting" {
+	if j == nil || j.peer != env.From || !(s.status.B.Phase == "waiting" || s.status.B.Phase == "confirm" && j.sent) {
 		j, late = s.late, true
 	}
 	if j == nil || !now.Before(j.expires.Add(5*time.Minute)) {
@@ -162,7 +162,7 @@ func (s *pairingState) receivePake4(root string, env gateway.Envelope, now time.
 	if result.OK {
 		// Bind A to this install's person, as A binds B, so B's bots can
 		// message A's and A's directory shows here (an unbound device is inert).
-		personID, err := pairingPerson(root, "")
+		personID, err := pairingPerson(root, j.person)
 		if err != nil {
 			return err
 		}
@@ -182,7 +182,10 @@ func (s *pairingState) receivePake4(root string, env gateway.Envelope, now time.
 	}
 	return nil
 }
-func ConfirmJoin(ctx context.Context, root string) error {
+
+// ConfirmJoin sends 连接 for personID (the signed-in person; "" when this
+// install has exactly one), who is also bound to A once it allows.
+func ConfirmJoin(ctx context.Context, root, personID string) error {
 	s := pairingFor(root)
 	s.Lock()
 	defer s.release()
@@ -190,7 +193,7 @@ func ConfirmJoin(ctx context.Context, root string) error {
 	if j == nil || s.status.B.Phase != "confirm" || !time.Now().Before(j.expires) {
 		return errors.New("remote: no live join confirmation")
 	}
-	info, err := localPairInfo(root, "")
+	info, err := localPairInfo(root, personID)
 	if err != nil {
 		return err
 	}
@@ -201,6 +204,9 @@ func ConfirmJoin(ctx context.Context, root string) error {
 	}
 	env.Body, _ = json.Marshal(shortMessage{Confirm: j.keys.MyConfirm, Info: sealed})
 	env.Sign(s.client.Key)
+	// Set before sending: if the gateway queued pake3 but the response was
+	// lost, A's allow must still be accepted while B shows 连接 again.
+	j.person, j.sent = personID, true
 	if err = sendPairing(ctx, s.client, env); err != nil {
 		return err
 	}
