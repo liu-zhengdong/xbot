@@ -5021,7 +5021,7 @@
     $("modal-cancel").textContent = "取消";
   }
 
-  function openModal(title, fields, onOk, okLabel) {
+  function openModal(title, fields, onOk, okLabel, after) {
     $("modal-title").textContent = title;
     $("modal-ok").hidden = false;
     $("modal-ok").textContent = okLabel || "创建";
@@ -5103,6 +5103,7 @@
       modalFields.append(label);
     }
     modal.hidden = false;
+    if (after) after(inputs);
     const first = modalFields.querySelector("input, textarea");
     if (first) first.focus();
     modalForm.onsubmit = async (ev) => {
@@ -5184,15 +5185,83 @@
   }
 
   function openNewBot() {
+    // The portrait follows the typed name until 「换一个」 or an upload pins a seed.
+    const av = { seed: "", follow: true, file: null };
     openModal("新建 Bot", [
       { name: "name", label: "标识", placeholder: "ada" },
       { name: "persona", label: "人设", multiline: true },
     ], async (v) => {
       const name = (v.name || "").trim();
       if (!name) throw new Error("需要一个名字");
-      await api("/api/bots", { method: "POST", body: { name: name, persona: (v.persona || "").trim() } });
+      const body = { name: name, persona: (v.persona || "").trim() };
+      if (!av.follow) body.avatar_seed = av.seed;
+      await api("/api/bots", { method: "POST", body: body });
       await refreshLists();
       await selectBot(name);
+      if (av.file) {
+        try { await uploadAvatar(name, av.file); await refreshLists(); await loadPanel(); }
+        catch (e) { setStatus(avatarUploadProblem(e), true); }
+      }
+    }, null, (inputs) => {
+      const name = inputs.name;
+      const file = document.createElement("input");
+      file.type = "file";
+      file.accept = AVATAR_TYPES.join(",");
+      file.hidden = true;
+      const row = el("div", "newbot-avatar");
+      let shot = "";
+      const show = () => {
+        const seed = name.value.trim() || "XBot";
+        const face = av.file ? avatar(seed, { url: shot }, "xl") : avatar(seed, { seed: av.follow ? seed : av.seed }, "xl");
+        const old = row.querySelector(".avatar");
+        if (old) old.replaceWith(face);
+        else row.prepend(face);
+      };
+      const again = el("button", "icon-btn");
+      again.type = "button";
+      again.setAttribute("aria-label", "换一个");
+      setTip(again, "换一个");
+      again.append(icon("refresh"));
+      again.addEventListener("click", () => {
+        const base = name.value.trim() || "XBot";
+        const k = /#(\d+)$/.exec(av.seed);
+        const n = av.seed.startsWith(base + "#") && k ? Number(k[1]) + 1 : 1;
+        if (shot) URL.revokeObjectURL(shot);
+        shot = "";
+        av.file = null;
+        av.follow = false;
+        av.seed = base + "#" + n;
+        show();
+      });
+      const up = el("button", "icon-btn");
+      up.type = "button";
+      up.setAttribute("aria-label", "上传图片");
+      setTip(up, "上传图片");
+      up.append(icon("imageUp"));
+      up.addEventListener("click", () => file.click());
+      file.addEventListener("change", () => {
+        const f = file.files && file.files[0];
+        file.value = "";
+        if (!f) return;
+        const bad = avatarFileProblem(f);
+        if (bad) { modalError.hidden = false; modalError.textContent = bad; return; }
+        modalError.hidden = true;
+        if (shot) URL.revokeObjectURL(shot);
+        shot = URL.createObjectURL(f);
+        av.file = f;
+        av.follow = false;
+        show();
+      });
+      row.append(again, up, file);
+      const note = el("p", "avatar-note");
+      note.append(icon("info"), el("span", "", "头像跟着名字生成，改名字就换一张；点「换一个」就不再跟着名字变。"));
+      modalFields.prepend(row, note);
+      name.addEventListener("input", () => {
+        if (!av.follow) return;
+        av.seed = "";
+        show();
+      });
+      show();
     });
   }
 
