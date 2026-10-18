@@ -4,6 +4,5 @@ export default defineConfig({
     name: "xbot-gateway",
     entrypoint: "./src/index.ts",
     compatibilityDate: "2026-10-01",
-    domains: ["xbot.babelgo.cn"],
   },
 });
