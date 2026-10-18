@@ -340,3 +340,9 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 ```
 
 没有消息时 `messages` 是空数组。没有更旧的消息时，这一页比 `limit` 短。
+
+---
+
+## 设备
+
+`GET /api/devices` 返回已配对的设备列表：`{"self","gateway_ok","devices","pairing"}`，每台设备有 `id`、`label`、`name`、`bots`、`bot_avatars`、`seen`、`online` 等字段（`seen`、`added` 是时间，`unpaired`、`online` 是布尔值）。`bots` 照旧是另一台设备上 Bot 的名字数组。`bot_avatars` 是同一批 Bot 的头像，每个列出的 Bot 一项：`{"writer": {"avatar_seed": "writer#2"}, "coach": {"custom": true}}`。种子由对方随设备目录送来，没设种子时取 Bot 名字；`custom` 表示对方用的是上传的图片，图片不过网关，所以界面在能传图之前先画几何字形。对方版本较旧、没送种子时这一项只有名字，种子为空，界面改用名字当种子。种子先在接收时校验一次，建视图时再校验一次，不合法的丢掉种子、保留 Bot。没有 Bot 时是 `{}`，从不是 `null`。
