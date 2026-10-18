@@ -71,6 +71,9 @@ func TestMessagesAndComposerContract(t *testing.T) {
 		".msg.bot.cont > .body > .meta-row > .meta { opacity: 0;",
 		// The owner bubble hugs its text instead of the action row's width.
 		".msg.user .bubble-col { align-items: flex-end; }",
+		// Long tokens wrap without the bubble; the hovered row floats above the next message.
+		".msg.bot .body > .prose { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }",
+		"z-index: 3; background: var(--bg); border-radius: 8px; padding: 0 4px;",
 		// Time and actions hang below a message, outside the spacing rhythm.
 		".msg > .bubble-col > .meta-row, .msg > .body > .meta-row { position: absolute; top: 100%; margin-top: 2px; }",
 	} {
@@ -136,6 +139,10 @@ func TestMessagesAndComposerContract(t *testing.T) {
 		"!groupStart(lastMsg, m, last, m.from || \"\")",
 		// Live appends follow the same rule.
 		"function markLiveGroup(inner, row) {",
+		// Live rows group against what is on screen: an event line in between breaks it.
+		"const last = inner.lastElementChild;",
+		// Group-chat rows carry their sender so a live send can group against them.
+		"row.dataset.sender = key;",
 		"groupStart({ time: last.dataset.time }, { time: row.dataset.time }, last.dataset.sender, row.dataset.sender)",
 		"markLiveGroup(inner, row);",
 		// Bot replies render prose directly when they are the Bot's own turn.

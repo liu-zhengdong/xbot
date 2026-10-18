@@ -2108,6 +2108,7 @@
       }
       const row = el("div", "msg " + (mine ? "user" : "bot"));
       const key = mine ? "user" : ("bot:" + (m.sender || ""));
+      row.dataset.sender = key;
       if (m.time) row.dataset.time = String(m.time);
       if (!groupStart(lastMsg, m, last, key)) row.classList.add("cont");
       lastMsg = m;
@@ -4261,8 +4262,10 @@
   // The last row on screen, so a live reply or send groups against it the same
   // way the next full render will (groupStart).
   function lastRow(inner) {
-    const rows = inner.querySelectorAll(".msg");
-    return rows.length ? rows[rows.length - 1] : null;
+    // The last thing on screen, not the last message: an event line or card
+    // after it ends the group, as it does in renderMessages.
+    const last = inner.lastElementChild;
+    return last && last.classList.contains("msg") ? last : null;
   }
 
   // Marks a row appended live as a group continuation of the row above it,
