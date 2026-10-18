@@ -24,7 +24,9 @@ func TestRemoteChatUI(t *testing.T) {
 			`placeholder="${esc("写给 " + V.bot)}"`,
 			`if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;`,
 			`const lines = (t) => esc(`, `setInterval(poll, POLL);`,
-		}, avoid: []string{"节点", "disabled"}},
+			// devices.js reads D.chat through a getter over this; assigning D.chat is a no-op.
+			`window.xbotRemoteChat = { open: open,`,
+		}, avoid: []string{"节点", "disabled", "D.chat = "}},
 		"remotechat.css": {want: []string{`.rc { position: absolute; inset: 0;`, `.rc[hidden] { display: none; }`}},
 	} {
 		data, err := staticFS.ReadFile("static/" + file)
