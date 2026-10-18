@@ -1,10 +1,21 @@
 (function () {
-  if (getComputedStyle(document.documentElement).getPropertyValue("--mygo-titlebar-height").trim()) {
-    document.documentElement.classList.add("in-app");
+  // The desktop app: MyGo sets --mygo-titlebar-height and window.mygo.platform.
+  const inApp = !!getComputedStyle(document.documentElement).getPropertyValue("--mygo-titlebar-height").trim();
+  const shell = document.getElementById("shell");
+  if (inApp) {
+    const root = document.documentElement;
+    const platform = (window.mygo && window.mygo.platform) || "";
+    root.classList.add("in-app");
+    root.classList.add(platform === "darwin" ? "os-mac" : platform === "linux" ? "os-linux" : "os-win");
+    if (shell) {
+      document.getElementById("appbar").hidden = false;
+      // Move the live nodes, so existing listeners and ids keep working.
+      document.getElementById("appbar-slot").appendChild(document.getElementById("bell"));
+      shell.appendChild(document.getElementById("notes"));
+    }
   }
   const $ = (id) => document.getElementById(id);
   const login = $("login");
-  const shell = $("shell");
   const sidebar = $("sidebar");
   const backdrop = $("backdrop");
   const thread = $("thread");
@@ -54,6 +65,7 @@
     placeholder: "写一条消息",
     modelCatalog: null,
     push: null,
+    version: "",
   };
 
   // Soft blobs: near-circles with an irregular edge. No eyes, no smile.
@@ -79,6 +91,20 @@
     const accountTheme = $("account-theme");
     if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"));
     try { localStorage.setItem("xbot-theme", dark ? "dark" : "light"); } catch (e) {}
+    // The desktop window's native buttons follow XBot's own theme, not the OS's.
+    if (inApp) {
+      api("/api/app/theme", { method: "POST", body: { theme: dark ? "dark" : "light" } }).catch(() => {});
+    }
+  }
+
+  // The note list opens from the bell, so it must stay inside the window below it.
+  function fitNotes() {
+    const r = $("bell").getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.right - notesEl.offsetWidth, window.innerWidth - notesEl.offsetWidth - 8));
+    notesEl.style.left = left + "px";
+    notesEl.style.right = "auto";
+    notesEl.style.top = Math.round(r.bottom + 6) + "px";
+    notesEl.style.maxHeight = Math.max(120, window.innerHeight - r.bottom - 14) + "px";
   }
 
   function initTheme() {
@@ -899,6 +925,9 @@
     $("login-notice").hidden = true;
     login.hidden = true;
     shell.hidden = false;
+    const ver = state.version;
+    $("appbar-ver").hidden = !ver;
+    $("appbar-ver").textContent = ver;
   }
 
   function el(tag, className, text) {
@@ -4857,7 +4886,9 @@
     hideTip();
     notesEl.hidden = !notesEl.hidden;
     $("bell").setAttribute("aria-expanded", String(!notesEl.hidden));
+    if (!notesEl.hidden && inApp) fitNotes();
   });
+  window.addEventListener("resize", () => { if (inApp && !notesEl.hidden) fitNotes(); });
 
   $("connect").addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -5174,7 +5205,7 @@
   }
 
   syncSidebar();
-  initTheme();
+  initTheme(); // in the app this also tells the window which theme to use
   syncComposer();
   const hold = el("div", "thread-inner");
   hold.append(emptyState("XBot", "登录之后，对话在这里继续。"));
@@ -5234,6 +5265,7 @@
   api("/api/session").then(async (data) => {
     if (!data || !data.authed) { showLogin(); return; }
     state.owner = (data && data.owner) || "";
+    state.version = (data && data.version) || "";
     // The desktop app has no login page to come back to: no 退出 there.
     $("logout").hidden = !!data.app;
     if (data.needs_key) await showSetup(data.key_host || "");

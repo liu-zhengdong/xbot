@@ -55,6 +55,8 @@ func cmdApp(root string, args []string) error {
 		err := runServe(ctx, root, serveConfig{
 			HTTPAddr: net.JoinHostPort("127.0.0.1", strconv.Itoa(*port)), Interval: 15 * time.Second, App: true,
 			OnListening: func(ui *web.Server, addr net.Addr) {
+				// Set before the page loads, so the first POST already reaches the window.
+				ui.AppTheme = appshell.SetTheme
 				code, err := ui.NewLaunchCode()
 				listening <- launch{url: "http://" + addr.String() + "/app/launch?code=" + code, err: err}
 			},

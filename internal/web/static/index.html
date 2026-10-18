@@ -59,6 +59,13 @@ try {
 </div>
 
 <div id="shell" class="shell" hidden>
+  <div id="appbar" class="appbar" hidden>
+    <span class="appbar-logo" aria-hidden="true">X</span>
+    <span class="appbar-brand">XBot</span>
+    <span id="appbar-ver" class="appbar-ver" hidden></span>
+    <span class="appbar-gap"></span>
+    <div id="appbar-slot" class="appbar-slot"></div>
+  </div>
   <aside id="sidebar" class="sidebar">
     <div class="side-scroll">
       <div id="pin-row" class="pin-row"></div>
@@ -136,6 +143,7 @@ try {
           <div id="subtitle" class="subtitle" hidden></div>
         </div>
         <button id="bg-badge" class="bg-badge" type="button" aria-label="后台任务" hidden><span class="bg-n">后台 0</span></button>
+        <!-- In the desktop app, app.js moves #bell into #appbar-slot. -->
         <button id="bell" class="icon-btn" type="button" aria-label="通知" data-tip="通知">
           <svg class="icon" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
           <i id="bell-dot" class="dot" hidden></i>
