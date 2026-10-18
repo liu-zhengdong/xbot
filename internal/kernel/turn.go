@@ -29,6 +29,10 @@ type turn struct {
 	useMu         sync.Mutex
 	useCompletion int
 
+	// projects is the project instruction sets this turn's context carries.
+	// A background branch keeps it: its context is this turn's.
+	projects projectSigs
+
 	// Fork state. mu guards branch, finished, tools, replies, steps, and lastTool.
 	// branch is set once, when the turn moves to the background.
 	mu       sync.Mutex

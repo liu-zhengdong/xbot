@@ -150,6 +150,10 @@ func (m memoryGuarded) Run(ctx context.Context, args json.RawMessage) (string, e
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 	for ev := range ch {
+		if ev.Kind == exec.EvDone || ev.Kind == exec.EvFailed {
+			// A subagent's tools use its id as their cwd scope.
+			k.dropScope(ev.AgentID)
+		}
 		if k.Inbox == nil || ev.AgentID == "" || ev.Kind == "" {
 			continue
 		}
