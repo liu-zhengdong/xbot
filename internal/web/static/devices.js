@@ -197,13 +197,13 @@
   const fineOnline = "「在线」指 16 分钟内收到过对方的 Bot 列表，所以状态可能晚十几分钟才变。关掉 XBot 的电脑会显示离线，发给它的消息在网关里最多等 7 天。";
   const official = "xbot.babelgo.cn";
   // 网关地址只填官方或自建，三种错误：格式不对（400）、连不上新地址（502）、没填。
-  function gwCheck(v) {
+  function gwCheck(v, cur) {
     if (!v) return "请填网关地址";
     const s = normGw(v), m = /^(https?:\/\/)?([^\/:?#\s]+)(:\d+)?(\/[^\s]*)?$/.exec(s);
     if (!m || (s.indexOf("://") >= 0 && !/^https?:\/\//.test(s))) return "网关地址不对：要用 http:// 或 https:// 开头，后面跟主机名。";
     const hostname = m[2].toLowerCase();
     if (!/^([a-z0-9-]+\.)*[a-z0-9-]+$/.test(hostname) || !/[a-z0-9]$/.test(hostname)) return "网关地址不对：要用 http:// 或 https:// 开头，后面跟主机名。";
-    if (s === "https://" + official || s === "http://" + official) return "现在用的就是这个网关。";
+    if (cur && s.replace(/^http:/, "https:") === normGw(cur).replace(/^http:/, "https:")) return "现在用的就是这个网关。";
     return "";
   }
   function gwSection(gw) {
@@ -243,7 +243,7 @@
   function capability(d) {
     const on = d.bot_messaging !== false, err = S.bmErrMsg && S.bmErr === d.id ? S.bmErrMsg : ""; // 关掉时行也变淡，错误照常显示
     return `<div class="g7-caps${on ? "" : " is-off"}"><div class="g7-cap"><span class="g7-cap-t"><b>Bot 互发消息</b><small>两边的 Bot 能互相发消息</small></span>
-      <button class="g7-switch" type="button" role="switch" aria-checked="${on}" aria-label="Bot 互发消息" data-act="bm-toggle" data-id="${esc(d.id)}"></button></div>
+      <button class="g7-switch" id="g7-bm-${esc(d.id)}" type="button" role="switch" aria-checked="${on}" aria-label="Bot 互发消息" data-act="bm-toggle" data-id="${esc(d.id)}"></button></div>
       ${err ? `<p class="error g7-inline-err">${esc(err)}</p>` : ""}</div>`;
   }
   function devCard(d, up) {
@@ -368,7 +368,7 @@
       case "self-gw-cancel": S.selfGwEdit = false; S.selfGwErr = ""; render(); break;
       case "self-gw-official": S.gwVal = official; return act("self-gw-save", el);
       case "self-gw-save": {
-        const bad = gwCheck(S.gwVal);
+        const bad = gwCheck(S.gwVal, data.self && data.self.gateway);
         if (bad) { S.selfGwErr = bad; render(); return; }
         // Paired devices would need re-pairing: ask first unless the address is unchanged.
         const gwNow = normGw(data.self && data.self.gateway), gwNew = normGw(S.gwVal);
@@ -396,8 +396,11 @@
     if (drawerEl && ev.target.matches && ev.target.matches("[data-g7-drawer]") && !S.view) closeDrawer();
   });
   document.addEventListener("input", (ev) => {
-    if (ev.target.id === "g7-self-gw") S.gwVal = ev.target.value;
-    else if (D.onInput) D.onInput(ev.target);
+    if (ev.target.id === "g7-self-gw") {
+      S.gwVal = ev.target.value;
+      const save = drawerEl.querySelector('[data-act="self-gw-save"]');
+      if (save && !S.checking) save.disabled = !S.gwVal.trim();
+    } else if (D.onInput) D.onInput(ev.target);
   });
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && ev.target.id === "g7-self-gw") { ev.preventDefault(); act("self-gw-save", ev.target); }

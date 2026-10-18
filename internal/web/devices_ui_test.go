@@ -42,7 +42,7 @@ func TestDevicesDrawerUI(t *testing.T) {
 				// 连接：局域网直连（灰掉、默认关、公司网络可能不允许）、网关与「改」、编辑器、校验、检查中、502
 				`<b>局域网直连</b>`, "公司网络可能不允许。", `aria-disabled="true"`,
 				`data-act="self-gw-edit">${gw ? "改" : "设置"}`, `现在用：`, `data-act="self-gw-official">用官方网关</button>`,
-				`function gwCheck(v)`, "网关地址不对：要用 http:// 或 https:// 开头，后面跟主机名。", `正在检查 ${esc(host(normGw(v)))}`, `${S.checking ? "检查中" : "保存"}`,
+				`function gwCheck(v, cur)`, "网关地址不对：要用 http:// 或 https:// 开头，后面跟主机名。", `正在检查 ${esc(host(normGw(v)))}`, `${S.checking ? "检查中" : "保存"}`,
 				`api("PUT", "/api/devices/gateway", { gateway: S.gwVal })`, `S.selfGwErr = e.message`, `S.checking = true; render();`,
 				// 已有配对设备时改网关先弹确认（原型 crop 13）
 				`<h2>换网关后要重新配对</h2>`, `一台电脑只用一个网关。换成 ${esc(next)} 以后，下面这 ${devs.length} 台设备都要在新网关上重新配对，才能继续使用。`,
