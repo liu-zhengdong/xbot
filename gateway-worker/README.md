@@ -42,5 +42,12 @@ clients do not contact the gateway. Unauthenticated requests still count, so abu
 can exhaust the daily quota; add WAF/rate-limit rules if that happens. Past the
 limits, move to the Workers Paid plan; do not enable it from code.
 
-G7 short-code support plugs in as a separate `Codes` Durable Object and
-`/v1/code*` routes; it is not implemented here.
+G7 short codes and pending installs (`/v1/code`, `/v1/code/cancel`,
+`/v1/code/claim`, `/v1/code/admit`) live in Directory: lookups are stored only as
+SHA-256, a record answers 410 for an hour after expiry or cancel and 404 after that,
+five claimers use up a code, and failed lookups are limited in memory per IP (IPv6
+by /64) and globally per minute, as in Go. A pending install's Mailbox carries its
+owner and expiry; at expiry, or when it moves to another owner, its mail in both
+directions is dropped (the owner side is retried by alarm). Admission shares the
+install cap and eviction with registration and counts against the claimant IP's
+daily new-install limit.
