@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -22,8 +23,24 @@ func gatewayToken(root string) string {
 	if err != nil {
 		return ""
 	}
-	return cfg.GatewayToken(os.Getenv("XBOT_GATEWAY_TOKEN"))
+	token := os.Getenv("XBOT_GATEWAY_TOKEN")
+	if v, ok := runTokens.Load(filepath.Clean(root)); ok {
+		token = v.(string)
+	}
+	return cfg.GatewayToken(token)
 }
+
+// runTokens holds the token handed to Run, keyed by cleaned root, since serve
+// removes it from the environment.
+var runTokens sync.Map // root -> string
+
+func rememberRunToken(root, token string) {
+	if token != "" {
+		runTokens.Store(filepath.Clean(root), token)
+	}
+}
+
+func forgetRunToken(root string) { runTokens.Delete(filepath.Clean(root)) }
 func pairingPerson(root, id string) (string, error) {
 	if id == "" {
 		people, err := person.List(root)
