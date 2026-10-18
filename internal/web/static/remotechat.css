@@ -1,0 +1,79 @@
+/* 远端 Bot 对话 · 面板盖住 .main，和本机对话同一套排版（v2 原型 66、67、70、73）。
+   只用 app.css 的变量：黑白灰，浅色深色同一套。不加边框和分隔线。 */
+.rc { position: absolute; inset: 0; z-index: 12; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+.rc[hidden] { display: none; }
+.rc .thread-inner { width: min(720px, 100% - 64px); }
+
+/* 标题：56px，和本机卡片标题一样高：头像、名字、在 X 上 · 在线，右边一个「详情」 */
+.rc-head { height: var(--top-h); flex: none; display: flex; justify-content: center; }
+.rc-head-in { width: min(720px, 100% - 64px); display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rc-titles { flex: 1; min-width: 0; }
+.rc-name { font-size: 15px; font-weight: 620; line-height: 1.3; letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.rc-sub { display: flex; gap: 6px; font-size: 12px; line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.rc-st { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rc-st::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 999px; vertical-align: 1px; background: var(--muted); }
+.rc.is-off .rc-st::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
+.rc-info-btn.on { background: var(--selected); color: var(--text); }
+
+/* 正文 + 详情面板（桌面从左到右）；对话贴着输入框排，消息少时不飘在顶上 */
+.rc-body { flex: 1; min-height: 0; display: flex; }
+.rc-thread { flex: 1; min-width: 0; overflow: auto; padding: 8px 0; overscroll-behavior: contain; }
+.rc-thread .thread-inner { margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.rc-thread .thread-inner > * { margin-top: 22px; }
+.rc-thread .thread-inner > :first-child { margin-top: auto; }
+.rc-b.cont { margin-top: 16px; }
+.rc-empty { margin: auto; max-width: 360px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.rc-empty p { margin: 0 0 12px; color: var(--text); }
+
+/* 主人：右对齐浅灰气泡；Bot：头像 + 名字 + 时间，正文直接写在卡片上 */
+.rc-u { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.rc-u .bubble { max-width: 72%; border-radius: 18px; padding: 9px 15px; background: var(--user-bubble); font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rc-b { display: flex; gap: 10px; align-items: flex-start; }
+.rc-b .avatar { flex: none; }
+.rc-bbody { min-width: 0; flex: 1; }
+.rc-text { font-size: 15px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* 主人这条下面的状态：灰色小字，不用红色；「重试」是低权重的文字按钮 */
+.rc-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.rc-state .icon { width: 12px; height: 12px; }
+.rc-state .text-btn { min-height: 22px; padding: 0 6px; font-size: 12px; color: var(--text); }
+
+/* 输入框：离线也不禁用；上方一行离线说明（原型 67） */
+.rc-dock { flex: none; display: flex; flex-direction: column; align-items: center; padding: 4px 0 calc(16px + env(safe-area-inset-bottom)); }
+.rc-note { width: min(720px, 100% - 64px); display: flex; gap: 8px; align-items: flex-start; padding: 0 6px 10px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.rc-note:empty { display: none; }
+.rc-note .icon { flex: none; margin-top: 2px; }
+.rc-composer { width: min(720px, 100% - 64px); min-height: 52px; display: flex; align-items: flex-end; gap: 8px; padding: 0 8px 0 20px; border-radius: 24px; background: var(--composer); }
+.rc-composer textarea { flex: 1; min-width: 0; min-height: 52px; max-height: 140px; padding: 16px 0; border: 0; outline: none; resize: none; background: transparent; color: var(--text); font: inherit; font-size: 15px; line-height: 20px; }
+.rc-composer textarea::placeholder { color: var(--faint); }
+.rc-send { flex: none; align-self: center; margin-bottom: 8px; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 18px; background: var(--fill); color: var(--muted); }
+.rc-composer:focus-within .rc-send, .rc-composer:has(textarea:not(:placeholder-shown)) .rc-send { background: var(--primary); color: var(--primary-text); }
+.rc-send .icon { stroke-width: 2; }
+
+/* 详情（原型 70、73）：设备、地址、聊天记录在哪、记忆在哪、「在「设备」里查看」 */
+.rc-info { width: 300px; flex: none; margin: 8px; padding: 20px 18px; border-radius: 12px; background: var(--panel); overflow: auto; }
+.rc-info[hidden] { display: none; }
+.rc-iface { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 18px; }
+.rc-iface b { margin-top: 4px; font-size: 17px; font-weight: 620; }
+.rc-facts { margin: 0 0 18px; display: flex; flex-direction: column; gap: 12px; }
+.rc-facts dt { font-size: 12px; font-weight: 560; color: var(--faint); }
+.rc-facts dd { margin: 2px 0 0; font-size: 13px; line-height: 1.55; }
+.rc-facts code { padding: 1px 6px; border-radius: 5px; background: var(--hover); font-family: var(--mono); font-size: 12px; }
+.rc-link { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--fill); color: var(--text); font-size: 13px; text-decoration: none; }
+.rc-link:hover { background: var(--fill-hover); }
+
+/* 手机：返回按钮在标题左边（桌面版用标题栏里的返回）；详情铺满正文区 */
+@media (max-width: 767px) {
+  .rc-head { height: calc(var(--top-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0 4px; }
+  .rc-head-in, .rc .thread-inner, .rc-note, .rc-composer { width: 100%; }
+  .rc-body { position: relative; }
+  .rc-thread { padding: 8px 16px; }
+  .rc-info { position: absolute; inset: 0; width: auto; margin: 0; border-radius: 0; }
+  .rc-note { padding: 0 22px 10px; }
+  .rc-dock { padding: 4px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .rc-composer textarea { font-size: 16px; } /* 手机上小于 16px 聚焦会放大页面 */
+  .rc-u .bubble { max-width: 84%; }
+}
+@media (min-width: 768px) { .rc-back { display: none; } }
+
+@media (prefers-reduced-motion: reduce) { .rc * { transition: none !important; animation: none !important; } }
