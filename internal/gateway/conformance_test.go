@@ -418,6 +418,8 @@ func runConformance(t *testing.T, base string, remote bool) {
 	// becomes a pending install of the owner), cancel, expiry and admit.
 	// Keys here are always random, even with XBOT_GATEWAY_TEST_SEED: pending
 	// and admitted installs outlive a run. Lookups never repeat within a run.
+	// A remote run leaves 6 pending installs (15 min) and 5 charged failures
+	// per IP (1 min), so rerun a live gateway at most twice per 15 minutes.
 	used := map[string]bool{}
 	lookup := func(t *testing.T) string {
 		for {
@@ -445,14 +447,21 @@ func runConformance(t *testing.T, base string, remote bool) {
 	// registerCode tolerates what a live gateway may do: another owner holds
 	// the random lookup (409, pick another), or a retried request whose first
 	// attempt landed hits the 2 s gap (429, wait it out).
-	registerCode := func(t *testing.T, key ed25519.PrivateKey, ttl int) string {
-		l := lookup(t)
+	registerCode := func(t *testing.T, key ed25519.PrivateKey, ttl int, l string) string {
+		taken := l != "" // Expect 409 for l; only a retried 429 is tolerated.
+		if !taken {
+			l = lookup(t)
+		}
 		for range 4 {
 			status, body := raw(t, "POST", "/v1/code", marshal(t, map[string]any{"lookup": l, "ttl": ttl}), key, time.Now())
 			switch status {
 			case 200:
+				conformanceRequire(t, !taken, "register code: taken lookup accepted")
 				return l
 			case 409:
+				if taken {
+					return l
+				}
 				l = lookup(t)
 			case 429:
 			default:
@@ -480,7 +489,7 @@ func runConformance(t *testing.T, base string, remote bool) {
 		}
 		code(t, "/v1/code", a, l, 0, 400, "")
 		code(t, "/v1/code", a, l, 601, 400, "")
-		l = registerCode(t, a, 60)
+		l = registerCode(t, a, 60, "")
 		code(t, "/v1/code/claim", a, l, 0, 400, "") // Own code.
 		b := random(t, false)
 		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`)
@@ -510,14 +519,14 @@ func runConformance(t *testing.T, base string, remote bool) {
 	})
 	t.Run("short code expiry and claim limit", func(t *testing.T) {
 		owner := random(t, true)
-		l := registerCode(t, owner, 60)
+		l := registerCode(t, owner, 60, "")
 		for i := 0; i < MaxCodeClaims; i++ {
 			code(t, "/v1/code/claim", random(t, false), l, 0, 200, `{"install":"`+idOf(owner)+`"}`)
 		}
 		code(t, "/v1/code/claim", random(t, false), l, 0, 410, "")
-		code(t, "/v1/code", random(t, true), l, 60, 409, "") // A full code is still taken.
+		registerCode(t, random(t, true), 60, l) // A full code is still taken (409).
 		e := random(t, true)
-		l2 := registerCode(t, e, 1)
+		l2 := registerCode(t, e, 1, "")
 		time.Sleep(1200 * time.Millisecond)
 		code(t, "/v1/code/claim", random(t, false), l2, 0, 410, "")
 	})
