@@ -20,14 +20,18 @@ import (
 // pake1 B→A share and keys, pake2 A→B share, confirmation and sealed info,
 // pake3 B→A confirmation after B's 连接, pake4 A→B sealed allow/deny.
 
+type PairingCollision struct {
+	Name string `json:"name"`
+}
 type PairingPhase struct {
-	Phase   string    `json:"phase"`
-	Code    string    `json:"code,omitempty"`
-	Expires time.Time `json:"expires,omitempty"`
-	Name    string    `json:"name,omitempty"`
-	OS      string    `json:"os,omitempty"`
-	Bots    []string  `json:"bots,omitempty"`
-	Gateway string    `json:"gateway,omitempty"`
+	Phase     string            `json:"phase"`
+	Code      string            `json:"code,omitempty"`
+	Expires   time.Time         `json:"expires,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	OS        string            `json:"os,omitempty"`
+	Bots      []string          `json:"bots,omitempty"`
+	Gateway   string            `json:"gateway,omitempty"`
+	Collision *PairingCollision `json:"collision,omitempty"`
 }
 
 // Status is a detached UI snapshot. It never exposes keys or the PAKE state.
@@ -50,10 +54,21 @@ type shortSession struct {
 	keys                    pake.Keys
 	info                    pairInfo
 	expires                 time.Time
+	pa                      []byte            // A: B's pake1 share, to spot a redelivery
+	reply                   *gateway.Envelope // A: signed pake2, resent on redelivery
+	result                  *bool             // A: committed decision; never changes
+}
+type shortOwner struct {
+	lookup, secret, person string
+	expires                time.Time
+	sessions               int
+	active                 *shortSession
+	client                 *gateway.Client
 }
 type pairingState struct {
 	sync.Mutex
 	status Status
+	owner  *shortOwner
 	join   *shortSession
 	client *gateway.Client
 	view   atomic.Pointer[Status]
@@ -73,6 +88,10 @@ func (s *pairingState) release() { s.publish(); s.Unlock() }
 func clonePairStatus(out Status) Status {
 	out.A.Bots = append([]string(nil), out.A.Bots...)
 	out.B.Bots = append([]string(nil), out.B.Bots...)
+	if out.A.Collision != nil {
+		c := *out.A.Collision
+		out.A.Collision = &c
+	}
 	return out
 }
 func PairingStatus(root string) Status {
@@ -118,6 +137,9 @@ func receiveShort(root, self string, env gateway.Envelope, now time.Time) error 
 		}
 	} else {
 		var active *shortSession
+		if env.Kind == "pake3" && s.owner != nil {
+			active = s.owner.active
+		}
 		if env.Kind == "pake4" {
 			active = s.join
 		}
@@ -130,8 +152,12 @@ func receiveShort(root, self string, env gateway.Envelope, now time.Time) error 
 		}
 	}
 	switch env.Kind {
+	case "pake1":
+		return s.receivePake1(root, self, env, m, now)
 	case "pake2":
 		return s.receivePake2(root, env, m, now)
+	case "pake3":
+		return s.receivePake3(root, env, m, now)
 	case "pake4":
 		return s.receivePake4(root, env, now)
 	}
@@ -146,6 +172,6 @@ func tickPairing(ctx context.Context, root string, client *gateway.Client, now t
 		s.Lock()
 		defer s.release()
 		s.tickJoin(now)
-		return nil
+		return s.tickOwner(ctx, root, now)
 	})
 }
