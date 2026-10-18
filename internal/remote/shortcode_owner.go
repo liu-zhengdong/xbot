@@ -17,6 +17,11 @@ import (
 // The owner (A) side of short-code pairing: the code, up to five SPAKE2
 // sessions, and 「X 想连到这台电脑」 with 拒绝/允许 (auto-declined after 2 minutes).
 
+// OnPairRequest is set by the desktop app; called in its own goroutine when
+// this computer's owner side enters the request state, once per request.
+// nil = in-app prompt only.
+var OnPairRequest func(root, name string)
+
 func cancelLookup(ctx context.Context, c *gateway.Client, lookup string) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -173,6 +178,10 @@ func (s *pairingState) receivePake3(root string, env gateway.Envelope, m shortMe
 	s.killCode(ctx)
 	a.info, a.expires = info, now.Add(2*time.Minute)
 	s.status.A = infoPhase("request", info, a.expires)
+	if OnPairRequest != nil {
+		name := info.Name
+		go OnPairRequest(root, name) // Outside the locks; the app may notify the user.
+	}
 	cfg, err := Load(root)
 	if err != nil {
 		return err

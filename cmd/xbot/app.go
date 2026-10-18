@@ -14,6 +14,7 @@ import (
 
 	"xbot/internal/appshell"
 	"xbot/internal/fsutil"
+	"xbot/internal/remote"
 	"xbot/internal/web"
 )
 
@@ -45,6 +46,9 @@ func cmdApp(root string, args []string) error {
 	defer lock.Release()
 	ctx, cancel := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer cancel()
+	remote.OnPairRequest = func(_ string, name string) {
+		_, _ = appshell.NotifyAway("XBot", name+" 想连到这台电脑，2 分钟内在 XBot 里允许或拒绝")
+	}
 	type launch struct {
 		url string
 		err error

@@ -109,11 +109,12 @@
     }
   }
 
-  let seen = "";
+  let seen = "", pollSkipped = false;
   async function poll() {
-    if (document.hidden) return;
+    if (document.hidden) { pollSkipped = true; return; }
     const active = S.view === "add" || S.view === "join" || S.view === "confirm" || S.view === "waiting" || S.view === "request";
     if (!active && !(S.data && S.data.self && S.data.self.gateway)) return;
+    pollSkipped = false;
     try {
       // Compare with the last server state, not S.pairing: a refresh() that
       // already stored the new state must still move the modal on.
@@ -126,6 +127,10 @@
       syncFromPairing(); render();
     } catch (e) { /* 下次再试 */ }
   }
+  // 窗口在后台时轮询停摆：一回到前台就马上查一次，「X 想连到这台电脑」不用等下一个间隔。
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && pollSkipped) poll();
+  });
 
   const allows = (them, themBots, mineBots) => `<ul class="g7-allows">
       <li>${svg("bot")}<span>这里能用 ${esc(them)} 上的 ${themBots} 个 Bot</span></li>
