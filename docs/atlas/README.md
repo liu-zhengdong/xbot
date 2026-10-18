@@ -26,24 +26,20 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 
 | 思想 | 一句话 | 读完能明白什么 | 文档 |
 |---|---|---|---|
-| 用户旅程驱动 | 已经做好的旅程写在 atlas 里、不许退化；正在开发的「重点」最多 3 条，一次只推进一个功能点，其余进候选清单 | 下一步该做什么，什么不能弄坏，什么时候才算「做完了」 | [journeys.md](journeys.md)、[FOCUS.md](../FOCUS.md) |
+| 旅程驱动 | 进度单位是主人真的会做的一件事；一次只推一条，测试全绿只算「已合入」，端到端跑通才算数，做好后进 `docs/guard/` 守着 | 下一步该做什么，什么不能弄坏，什么时候才算「做完了」 | [ideas/journey-driven.md](ideas/journey-driven.md) |
 | 内核要薄 | 只留 Link、Event、收件箱、执行器任务几个抽象，约束由 harness 强制执行 | 为什么新功能先找已有抽象，为什么规则放在工具和内核里而不是提示里 | [ideas/thin-kernel.md](ideas/thin-kernel.md) |
 | 评测把关，不对着题调 | 行为由评测判定；留出套件只在验收时跑；每条规则都要是通用原则 | 怎么改提示才算改好了，为什么普通套件全过还不够 | [ideas/eval-gated.md](ideas/eval-gated.md) |
 | 收敛与主动补齐 | 主动做目标显然需要的配套，同时有预算、有边界、做不到就停 | Bot 什么时候该多走一步，什么时候该停下 | [ideas/convergence-and-ownership.md](ideas/convergence-and-ownership.md) |
 | 分级合并门槛 | 测试全绿才合并，修复必带回归测试，大改再加复测和独立评审 | 一个改动要过哪些关才能进 main | [ideas/tiered-merge-gates.md](ideas/tiered-merge-gates.md) |
 | 自我修改要可控 | Bot 改自己时，每一步都过评测门、可回滚、留记录 | 自进化可以走多远、哪些线不能碰 | [ideas/self-modification.md](ideas/self-modification.md) |
 
-## 用户旅程
-主人用 XBot 做成的事。这些是已有的基础体验，任何改动都不能让它们退化；每条的步骤、「怎样算对」和冒烟用例状态见 [journeys.md](journeys.md)。正在开发的重点不在这里，在 [FOCUS.md](../FOCUS.md)。
+## 已有旅程
+主人用 XBot 做成的事，任何改动都不能让它们退化。这些旅程横跨好几块组成（一条旅程往往同时用到内核、记忆、界面），所以不拆进组成节点，集中放在一处：
 
-| 旅程 | 一句话 | 文档 |
-|---|---|---|
-| 网页对话 | 在网页上和 Bot 说话，回复流式出现，刷新和换到终端都是同一条对话 | [journeys.md](journeys.md#网页对话) |
-| 记住事情 | 告诉它的事，重启之后还记得，关于主人本人的事别的 Bot 也知道 | [journeys.md](journeys.md#记住事情) |
-| 动手做事 | 让它在机器上跑命令、写文件，事情真的做成，回复说清做了什么 | [journeys.md](journeys.md#动手做事) |
-| 忙时插话 | 它在跑长任务时插一句，3 秒内回答，长任务在后台接着跑完 | [journeys.md](journeys.md#忙时插话) |
-| 主动唤醒 | 到点或事件来了自己醒，有事就说，没事保持安静 | [journeys.md](journeys.md#主动唤醒) |
-| Bot 之间协作 | 让一个 Bot 去问另一个，把对方的意见带回来 | [journeys.md](journeys.md#bot-之间协作) |
+- 已经做好的在 `docs/guard/`，一条一个文件，写明步骤和「怎样算对」，配一条冒烟用例。
+- 功能已经在、日常在用，但还没跑到「端到端通过」的，先在 [FOCUS.md](../FOCUS.md) 的「待验收」里排队；2026-10-18 主人选定的 6 条（网页对话、记住事情、动手做事、忙时插话、主动唤醒、Bot 之间协作）都在那里。
+
+正在开发的重点不在这两处，在 [FOCUS.md](../FOCUS.md)；还没开始的想法在 [候选清单](../CANDIDATES.md)。
 
 ## 你需要知道的术语
 | 术语 | 白话解释 | 代码里叫 |
@@ -100,7 +96,8 @@ flowchart LR
 | 文档 | 在哪 | 给谁 | 活的 / 冻结 | 谁维护 |
 |---|---|---|---|---|
 | 项目说明与构建 | [README.md](../../README.md) | 所有人 | 活的 | 主人 |
-| 当前重点 | [FOCUS.md](../FOCUS.md) | 主人、编码 Agent | 活的，重点最多 3 条，主人挑 | 主人定重点，Agent 更新进度 |
+| 当前重点 | [FOCUS.md](../FOCUS.md) | 主人、编码 Agent | 活的，重点最多 3 条，主人挑；待验收的旅程也排在这里 | 主人定重点和「怎样算对」，Agent 更新级别 |
+| 已做好的旅程 | `docs/guard/`（还没有，第一条旅程毕业时才建） | 主人、编码 Agent | 活的，步骤和「怎样算对」只有主人能改；冒烟用例和级别随测试同步 | Agent 同步，毕业要主人确认 |
 | Agent 入口 | [AGENTS.md](../../AGENTS.md) | 编码 Agent | 活的 | 主人 |
 | 里程碑与进度 | [MILESTONES.md](../MILESTONES.md) | 主人、开发者 | 活的，天天变 | Bot 复刻 |
 | 网页 HTTP 接口 | [API.md](../API.md) | 界面开发者 | 活的 | 开发者 |

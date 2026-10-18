@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atlas audit: meta, anchors, cross-repo links, orphans, staleness, size budget, unmapped docs, unabsorbed ADRs.
+"""Atlas audit: meta, anchors, cross-repo links, orphans, staleness, size budget, unmapped docs, unabsorbed ADRs, guard entries.
 
 Run from the directory that holds the tree (repo root or materials dir).
 --atlas DIR: where the tree lives, default docs/atlas.
@@ -14,6 +14,7 @@ ROOT = pathlib.Path('.').resolve()
 ENTRY = ROOT / 'AGENTS.md'
 ATLAS = ROOT / args.atlas
 TREE_ROOT = ATLAS / 'README.md'
+GUARD = ROOT / 'docs/guard'  # 已经做好的旅程，一条一个文件；由根节点的「已有旅程」节指向
 BUDGET = {'entry': 60, 'node': 250}
 nodes = [p for p in [ENTRY, *sorted(ATLAS.rglob('*.md'))] if p.exists()]
 SKIP_DIRS = {'.git', '.github', 'node_modules', 'vendor', 'dist', 'build', '.venv', 'venv'}  # .github：issue/PR 模板是平台文件
@@ -92,6 +93,31 @@ for p in nodes:
 for p in nodes:
     if p not in (ENTRY, TREE_ROOT) and p.resolve() not in linked:
         issues.append(f'[orphan] {p.relative_to(ROOT)}: no node links here')
+
+# 已经做好的旅程：docs/guard/ 一条一个文件。步骤和「怎样算对」只有主人能改，
+# 冒烟用例和级别由 AI 同步；这里只查机械能核的部分。
+guard_files = sorted(GUARD.glob('*.md')) if GUARD.is_dir() else []
+if guard_files:
+    if 'docs/guard' not in TREE_ROOT.read_text(encoding='utf-8'):
+        issues.append('[guard]  docs/guard/ exists but the tree root does not mention it')
+    linked.add(GUARD.resolve())
+    for p in guard_files:
+        text = p.read_text(encoding='utf-8')
+        rel = p.relative_to(ROOT)
+        smoke = re.search(r'^\*\*冒烟用例\*\*[：:]\s*(\S+)', text, re.M)
+        level = re.search(r'^\*\*级别\*\*[：:]\s*(\S+)', text, re.M)
+        if not smoke:
+            issues.append(f'[guard]  {rel}: no 冒烟用例')
+        elif smoke.group(1) not in ('待写', '无'):
+            for one in smoke.group(1).split('、'):
+                if not (ROOT / one).exists():
+                    issues.append(f'[guard]  {rel}: 冒烟用例 {one} does not exist')
+        if not level:
+            issues.append(f'[guard]  {rel}: no 级别')
+        if not re.search(r'^\*\*怎样算对\*\*', text, re.M):
+            issues.append(f'[guard]  {rel}: no 怎样算对')
+        if re.search(r'^kind:', front(p), re.M):
+            issues.append(f'[guard]  {rel}: guard entries carry no kind frontmatter')
 
 # 每条有效 ADR 都要被某个 atlas 节点直接引用（链到 docs/adr/ 目录不算）
 for p in sorted((ROOT / 'docs/adr').glob('*.md')):
