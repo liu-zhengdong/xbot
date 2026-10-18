@@ -27,6 +27,7 @@ func TestPairingModalsUI(t *testing.T) {
 		`if (c.length === 12 && !codeOK(c)) S.pairing.b = { phase: "typo" }`,
 		`<span>网关 ${esc(host(gw))}</span><button class="text-btn g7-gw-edit" type="button" data-act="gw-open">改</button>`,
 		`if (now === seen) return;`,
+		"const words = up.match(/[A-Z0-9]+/g) || [];", // Pasted prose never joins the code (same as ParseShortCode).
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("pairing.js missing %s", want)
