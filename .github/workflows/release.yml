@@ -33,7 +33,7 @@ jobs:
       - name: packaging tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q genisoimage icnsutils zip python3-pil nsis
+          sudo apt-get install -y -q genisoimage zip nsis
           go install github.com/tc-hib/go-winres@v0.3.3
           tools="$RUNNER_TEMP/tools"
           mkdir -p "$tools"

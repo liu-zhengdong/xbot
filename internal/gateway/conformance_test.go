@@ -560,6 +560,16 @@ func runConformance(t *testing.T, base string, remote bool) {
 		status, _ := raw(t, "GET", "/v1/nope", nil, nil, time.Now())
 		conformanceRequire(t, status == 404, fmt.Sprintf("unknown route: %d", status))
 	})
+	t.Run("favicon", func(t *testing.T) {
+		// The two favicon paths are the only unsigned GETs besides /healthz; both
+		// gateways serve the same XBot mark.
+		for _, path := range []string{"/favicon.svg", "/favicon.ico"} {
+			status, body := raw(t, "GET", path, nil, nil, time.Now())
+			conformanceRequire(t, status == 200 && bytes.Equal(body, faviconSVG), fmt.Sprintf("%s: %d, %d bytes", path, status, len(body)))
+		}
+		status, _ := raw(t, "GET", "/favicon.png", nil, nil, time.Now())
+		conformanceRequire(t, status == 404, fmt.Sprintf("other paths stay 404: %d", status))
+	})
 }
 
 func isTimeout(err error) bool {

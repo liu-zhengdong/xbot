@@ -1,6 +1,7 @@
 import { authenticate, envelope } from "./wire";
 import type { Mailbox } from "./mailbox";
 import type { Directory } from "./directory";
+import { FAVICON_SVG } from "./favicon";
 export { Mailbox } from "./mailbox";
 export { Directory } from "./directory";
 export interface Env { MAILBOX: DurableObjectNamespace<Mailbox>; DIRECTORY: DurableObjectNamespace<Directory>; MAX_INSTALLS: string; REGISTER_TOKEN?: string }
@@ -16,11 +17,12 @@ export function waitSeconds(s: string | null) {
 }
 export default {
   async fetch(r: Request, env: Env): Promise<Response> {
-    const u = new URL(r.url), method = ({"/healthz": "GET", "/v1/register": "POST", "/v1/send": "POST", "/v1/poll": "GET", "/v1/ack": "POST", "/v1/code": "POST", "/v1/code/cancel": "POST", "/v1/code/claim": "POST", "/v1/code/admit": "POST"} as Record<string, string>)[u.pathname];
+    const u = new URL(r.url), method = ({"/healthz": "GET", "/favicon.svg": "GET", "/favicon.ico": "GET", "/v1/register": "POST", "/v1/send": "POST", "/v1/poll": "GET", "/v1/ack": "POST", "/v1/code": "POST", "/v1/code/cancel": "POST", "/v1/code/claim": "POST", "/v1/code/admit": "POST"} as Record<string, string>)[u.pathname];
     const plain = (text: string, status: number, headers = {}) => new Response(text, {status, headers: {"Content-Type": "text/plain; charset=utf-8", ...headers}});
     if (typeof method !== "string") return plain("404 page not found\n", 404);
     if (r.method !== method && !(method === "GET" && r.method === "HEAD")) return plain("Method Not Allowed\n", 405, {Allow: method === "GET" ? "GET, HEAD" : method});
     if (u.pathname === "/healthz") return plain(r.method === "HEAD" ? "" : "ok", 200);
+    if (u.pathname === "/favicon.svg" || u.pathname === "/favicon.ico") return new Response(r.method === "HEAD" ? null : FAVICON_SVG, {headers: {"Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400"}});
     const fail = (status: number, msg: string) => jsonResponse(error(status, msg));
     if (Number(r.headers.get("Content-Length")) > 65536) return fail(413, "body too large");
     const chunks: Uint8Array[] = []; let length = 0;
