@@ -121,6 +121,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /fonts/NotoSansSC-subset.woff2", s.static("static/fonts/NotoSansSC-subset.woff2", "font/woff2"))
 	// Fetched on demand for characters the subset lacks; never preloaded or precached.
 	mux.HandleFunc("GET /fonts/NotoSansSC-full.woff2", s.static("static/fonts/NotoSansSC-full.woff2", "font/woff2"))
+	// Bot portraits are drawn in the browser by this bundle; no SVG is stored or served.
+	mux.HandleFunc("GET /vendor/xbot-avatar.min.js", s.static("static/vendor/xbot-avatar.min.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /vendor/LICENSES.txt", s.static("static/vendor/LICENSES.txt", "text/plain; charset=utf-8"))
 
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("GET /app/launch", s.launch)
