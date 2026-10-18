@@ -263,6 +263,10 @@ func TestRenameUpdatesPrimaryWorkAndGroup(t *testing.T) {
 	if next.Name() != "ada2" || next.Config().Pinned {
 		t.Fatalf("renamed %+v", next.Config())
 	}
+	// The avatar seed is the old name and must survive the rename.
+	if av, seed := next.AvatarState(); av != bot.AvatarGenerated || seed != "ada" {
+		t.Fatalf("rename changed avatar %q %q", av, seed)
+	}
 	primary, err := bot.Primary(root)
 	if err != nil || primary != "ada2" {
 		t.Fatalf("primary %s %v", primary, err)

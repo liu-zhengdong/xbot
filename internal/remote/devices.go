@@ -21,15 +21,27 @@ type SelfInfo struct {
 	Gateway string   `json:"gateway"`
 }
 
+// BotAvatar is a remote bot's portrait: the seed to draw it from, and whether
+// its owner uploaded an image. An entry with no seed means the UI uses the name.
+type BotAvatar struct {
+	Seed   string `json:"avatar_seed,omitempty"`
+	Custom bool   `json:"custom,omitempty"`
+}
+
 // DeviceView is one paired device for the 设备 drawer and the sidebar. Bots and
 // Seen come from the device's last directory (G6); Seen is zero before one.
+// BotAvatars holds one entry per listed bot (always a map, possibly empty). A
+// peer older than seed sharing sends no seed, so that entry has only the name to
+// draw from. Custom means the UI draws the geometric glyph until uploaded images
+// can travel over the gateway.
 type DeviceView struct {
-	ID    string    `json:"id"`
-	Label string    `json:"label"`
-	Name  string    `json:"name"` // ASCII address, used as bot@name
-	Bots  []string  `json:"bots"`
-	Seen  time.Time `json:"seen,omitzero"`
-	Added time.Time `json:"added,omitzero"`
+	ID         string               `json:"id"`
+	Label      string               `json:"label"`
+	Name       string               `json:"name"` // ASCII address, used as bot@name
+	Bots       []string             `json:"bots"`
+	BotAvatars map[string]BotAvatar `json:"bot_avatars"`
+	Seen       time.Time            `json:"seen,omitzero"`
+	Added      time.Time            `json:"added,omitzero"`
 	// Unpaired reports that the other computer unpaired this one; the user
 	// removes it from the 设备 drawer.
 	Unpaired bool `json:"unpaired,omitempty"`
@@ -61,10 +73,16 @@ func Devices(root string) ([]DeviceView, error) {
 		if err := readJSON(filepath.Join(root, "remote", "dirs", d.ID+".json"), &cache); err != nil {
 			return nil, err
 		}
-		v := DeviceView{ID: d.ID, Label: deviceLabel(d), Name: d.Name, Bots: []string{}, Seen: cache.Received, Added: d.Added, Unpaired: !d.UnpairedAt.IsZero(), BotMessaging: !d.NoBotMessaging}
+		v := DeviceView{ID: d.ID, Label: deviceLabel(d), Name: d.Name, Bots: []string{}, BotAvatars: map[string]BotAvatar{}, Seen: cache.Received, Added: d.Added, Unpaired: !d.UnpairedAt.IsZero(), BotMessaging: !d.NoBotMessaging}
 		for _, b := range cache.Bots[:min(64, len(cache.Bots))] {
 			if bot.ValidName(b.Name) {
 				v.Bots = append(v.Bots, b.Name)
+				// The cache may predate the receive check; a bad seed is dropped.
+				seed := ""
+				if bot.ValidAvatarSeed(b.Seed) {
+					seed = b.Seed
+				}
+				v.BotAvatars[b.Name] = BotAvatar{Seed: seed, Custom: b.Custom}
 			}
 		}
 		out = append(out, v)

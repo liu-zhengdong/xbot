@@ -15,8 +15,12 @@ import (
 	"xbot/internal/peer"
 )
 
+// dirBot is one bot on the sending device. Only the portrait seed travels;
+// an uploaded image stays on its own device.
 type dirBot struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Seed   string `json:"seed,omitempty"`
+	Custom bool   `json:"custom,omitempty"`
 }
 type directory struct {
 	Bots []dirBot `json:"bots"`
@@ -41,7 +45,11 @@ func directoryFor(root string, d Device) ([]dirBot, error) {
 		return nil, err
 	}
 	for _, b := range bots[:min(64, len(bots))] {
-		list = append(list, dirBot{b.Name})
+		seed := b.AvatarSeed
+		if seed == "" {
+			seed = b.Name
+		}
+		list = append(list, dirBot{Name: b.Name, Seed: seed, Custom: b.Avatar == bot.AvatarCustom})
 	}
 	return list, nil
 }
@@ -129,9 +137,13 @@ func receiveDirectory(root, id string, body []byte, now time.Time) error {
 	if json.Unmarshal(body, &dir) != nil || len(dir.Bots) > 64 || dir.At <= 0 || dir.At > now.Add(5*time.Minute).Unix() {
 		return nil
 	}
-	for _, b := range dir.Bots {
+	for i, b := range dir.Bots {
 		if !bot.ValidName(b.Name) {
 			return nil
+		}
+		// A bad seed costs that bot its portrait, not the whole directory.
+		if !bot.ValidAvatarSeed(b.Seed) {
+			dir.Bots[i].Seed = ""
 		}
 	}
 	path := filepath.Join(root, "remote", "dirs", id+".json")
