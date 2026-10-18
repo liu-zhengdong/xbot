@@ -2,10 +2,18 @@ package remote
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/gateway"
 )
 
 // Review regressions: a retry from B, a late allow, clock skew, the fifth session, a lost pake3 response.
@@ -171,6 +179,81 @@ func TestShortCodeUnsavedNotDone(t *testing.T) {
 	}
 	if p := (&shortSession{result: &yes, saved: true}).finalPhase(); p != "done" {
 		t.Fatal("saved allow reported as", p)
+	}
+}
+
+// The gateway's 429 on a code is its own error and B phase, never 连不上网关.
+func TestShortCodeRateLimited(t *testing.T) {
+	h := newShortHarness(t)
+	old := http.DefaultClient
+	http.DefaultClient = &http.Client{Transport: pairTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/code" || r.URL.Path == "/v1/code/claim" {
+			return &http.Response{StatusCode: 429, Status: "429 Too Many Requests", Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+		}
+		base := old.Transport
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		return base.RoundTrip(r)
+	})}
+	defer func() { http.DefaultClient = old }()
+	// Once is a retry after the gateway's 2 s gap; 429 again gives up on the code.
+	if _, _, err := NewShortCode(context.Background(), h.a, ""); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("NewShortCode on 429: %v", err)
+	}
+	var he *gateway.HTTPError
+	if err := JoinShortCode(context.Background(), h.b, h.code, h.ca.Base); !errors.As(err, &he) || he.StatusCode != 429 {
+		t.Fatalf("JoinShortCode on 429: %v", err)
+	}
+	if got := PairingStatus(h.b).B; got.Phase != "rate_limited" {
+		t.Fatalf("B on 429: %+v", got)
+	}
+}
+
+// With every "Café laptop 1"…"Café laptop 9" label taken by other installs, a save
+// says ErrNameFull: A's allow reports it, and on B it is a phase, not 没有允许.
+func TestShortCodeNameFull(t *testing.T) {
+	h := newShortHarness(t)
+	for n := 1; n <= 9; n++ {
+		pub, _, err := ed25519.GenerateKey(rand.Reader)
+		mustRemote(t, err)
+		_, err = AddDevice(h.a, fmt.Sprintf("filler-%d", n), base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(make([]byte, 32)), "u1")
+		mustRemote(t, err)
+		label := "Café laptop"
+		if n > 1 {
+			label = fmt.Sprintf("Café laptop %d", n)
+		}
+		i := n - 1
+		mustRemote(t, update(h.a, func(c *Config) error { c.Devices[i].Label = label; return nil }))
+	}
+	h.request()
+	if err := DecidePairing(context.Background(), h.a, true, false); !errors.Is(err, ErrNameFull) {
+		t.Fatalf("allow with a full name: %v", err)
+	}
+	if cfg, err := Load(h.a); err != nil || len(cfg.Devices) != 9 {
+		t.Fatalf("A saved the joiner anyway: %v", err)
+	}
+
+	// B's own side of the same save: A allowed, but B has no free label.
+	other := newShortHarness(t)
+	mustRemote(t, SetGateway(other.b, "http://gateway"))
+	for n := 1; n <= 9; n++ {
+		pub, _, err := ed25519.GenerateKey(rand.Reader)
+		mustRemote(t, err)
+		_, err = AddDevice(other.b, fmt.Sprintf("filler-%d", n), base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(make([]byte, 32)), "")
+		mustRemote(t, err)
+		label := "书房 iMac"
+		if n > 1 {
+			label = fmt.Sprintf("书房 iMac %d", n)
+		}
+		i := n - 1
+		mustRemote(t, update(other.b, func(c *Config) error { c.Devices[i].Label = label; return nil }))
+	}
+	other.request()
+	mustRemote(t, DecidePairing(context.Background(), other.a, true, false))
+	other.deliver(other.b, other.cb)
+	if got := PairingStatus(other.b).B.Phase; got != "name_full" {
+		t.Fatalf("B with a full name: %s", got)
 	}
 }
 

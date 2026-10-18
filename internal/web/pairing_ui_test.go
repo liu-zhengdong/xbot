@@ -26,6 +26,12 @@ func TestPairingModalsUI(t *testing.T) {
 		`data-d="deny">拒绝</button><span class="spacer"></span>`, `data-d="add">作为新设备添加`, `class="primary" type="button" data-act="decide" data-d="replace">替换旧的 ${esc(c.name)}`,
 		"这个配对码有一位不对", "配对码不对或已用过", "这个配对码已经过期，在另一台电脑上点「重新生成」。",
 		`连不上网关 ${esc(host(gw))}`, `data-act="gw-open">改网关地址`, `const bad = ph === "typo" || ph === "expired" || ph === "wrong_or_used";`,
+		// 429: 操作太频繁 on its own line, code not red, no 改网关地址; name_full likewise.
+		`const rateLimited = "操作太频繁，等一分钟再试", nameFull = "同名设备已满 9 台，先解除或改名旧的，或选择替换旧的";`,
+		"rate_limited: `<p class=\"error g7-msg\">${rateLimited}</p>`", "name_full: `<p class=\"error g7-msg\">${nameFull}</p>`",
+		`const retry = ph === "gateway_unreachable" || ph === "rate_limited" || ph === "offline";`,
+		`S.pairing.b = { phase: "none" }`,                                                                        // A 429 ends a retry instead of leaving the code disabled.
+		`S.joinErr = e.message;`, `catch (e) { el.disabled = false; S.fieldErr = e.message; render(); return; }`, // 连接's 429/409 keeps the server copy.
 		`if (c.length === 12 && !codeOK(c)) S.pairing.b = { phase: "typo" }`,
 		`<span>网关 ${esc(host(gw))}</span><button class="text-btn g7-gw-edit" type="button" data-act="gw-open">改</button>`,
 		`if (now === seen) return;`,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -65,6 +66,9 @@ func NewShortCode(ctx context.Context, root, personID string) (display string, e
 			case <-time.After(2100 * time.Millisecond):
 			}
 			err = c.RegisterCode(ctx, code[:4], inviteTTL)
+			if errors.As(err, &he) && he.StatusCode == 429 {
+				return "", expires, fmt.Errorf("%w: %w", ErrRateLimited, err)
+			}
 		}
 		if errors.As(err, &he) && he.StatusCode == 409 {
 			continue
