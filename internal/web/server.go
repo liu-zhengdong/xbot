@@ -72,7 +72,9 @@ type Server struct {
 
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
 	pushHTTP *http.Client
-	tabs     map[string]*tabState
+	// setupMu serializes the desktop first-run key setup.
+	setupMu sync.Mutex
+	tabs    map[string]*tabState
 
 	// drainMu guards foreground turn draining for a graceful restart. While
 	// draining is set no new turn starts; Drain waits for inflight to hit 0.
@@ -120,6 +122,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /app/launch", s.launch)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.session)
+	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/bots", s.listBots)
@@ -237,7 +240,12 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authed": true, "owner": s.owner, "app": s.App})
+	out := map[string]any{"authed": true, "owner": s.owner, "app": s.App}
+	if s.needsKey() {
+		out["needs_key"] = true
+		out["key_host"] = keyHost()
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) require(w http.ResponseWriter, r *http.Request) bool {

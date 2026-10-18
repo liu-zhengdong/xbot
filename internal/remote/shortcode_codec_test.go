@@ -117,3 +117,16 @@ func randomKey(t *testing.T) (ed25519.PublicKey, string, string, ed25519.Private
 	mustRemote(t, err)
 	return pub, gateway.ID(pub), base64.StdEncoding.EncodeToString(pub), priv
 }
+
+// The self-host token never goes to the official default gateway.
+func TestShortCodeTokenScope(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XBOT_GATEWAY_TOKEN", "self-host")
+	if got := gatewayToken(root); got != "" {
+		t.Fatal("token offered to the default gateway")
+	}
+	mustRemote(t, SetGateway(root, "https://gw.example"))
+	if got := gatewayToken(root); got != "self-host" {
+		t.Fatal("token missing for an explicit gateway:", got)
+	}
+}

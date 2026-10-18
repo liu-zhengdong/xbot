@@ -43,6 +43,20 @@ try {
   </form>
 </div>
 
+<div id="setup" class="gate" hidden>
+  <form id="setup-form" class="gate-card" novalidate>
+    <h1>先填模型密钥</h1>
+    <p class="hint">XBot 默认用 DeepSeek：在 platform.deepseek.com 创建一个 API key，整段粘贴到这里。</p>
+    <label class="field">
+      <span>API key</span>
+      <input id="setup-key" name="key" type="password" autocomplete="off" spellcheck="false" required aria-describedby="setup-hint">
+    </label>
+    <p id="setup-hint" class="hint">会先向 <span id="setup-host">模型服务</span> 发一个请求试一下。密钥只存在这台电脑的 XBot 数据目录里，只有你的账户能读，不会写进系统环境变量。</p>
+    <p id="setup-error" class="error" role="alert" hidden></p>
+    <button id="setup-save" class="primary" type="submit" disabled>测试并保存</button>
+  </form>
+</div>
+
 <div id="shell" class="shell" hidden>
   <aside id="sidebar" class="sidebar">
     <div class="side-scroll">

@@ -5197,11 +5197,46 @@
     }, 3000);
   }
 
+  // First run of the desktop app: ask for the model key, test it, save it.
+  function showSetup(host) {
+    login.hidden = true;
+    shell.hidden = true;
+    $("setup").hidden = false;
+    if (host) $("setup-host").textContent = host;
+    $("setup-key").focus();
+    return new Promise((resolve) => {
+      const form = $("setup-form"), input = $("setup-key"), save = $("setup-save"), err = $("setup-error");
+      let busy = false;
+      input.addEventListener("input", () => { save.disabled = busy || !input.value.trim(); err.hidden = true; });
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        if (busy || !input.value.trim()) return;
+        busy = true;
+        save.disabled = true;
+        save.textContent = "正在测试…";
+        try {
+          await api("/api/setup/key", { method: "POST", body: { key: input.value.trim() } });
+          input.value = "";
+          $("setup").hidden = true;
+          resolve();
+        } catch (e) {
+          err.textContent = (e && e.message) || "没保存成功，请重试";
+          err.hidden = false;
+        } finally {
+          busy = false;
+          save.disabled = !input.value.trim();
+          save.textContent = "测试并保存";
+        }
+      });
+    });
+  }
+
   api("/api/session").then(async (data) => {
     if (!data || !data.authed) { showLogin(); return; }
     state.owner = (data && data.owner) || "";
     // The desktop app has no login page to come back to: no 退出 there.
     $("logout").hidden = !!data.app;
+    if (data.needs_key) await showSetup(data.key_host || "");
     renderMe();
     showApp();
     await boot();
