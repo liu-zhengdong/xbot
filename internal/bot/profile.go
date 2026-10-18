@@ -32,7 +32,15 @@ type Style struct {
 const (
 	// AvatarCustom means bots/<name>/avatar holds an uploaded image.
 	AvatarCustom = "custom"
-	maxAvatar    = 1 << 20
+	// AvatarGenerated means the browser draws a line-art portrait from AvatarSeed.
+	AvatarGenerated = "generated"
+	// AvatarGlyph is a reserved seed: the UI draws the geometric glyph instead.
+	AvatarGlyph = "glyph"
+	maxAvatar   = 1 << 20
+	maxSeed     = 80
+	// seedBad are characters a seed may not contain. They would end up in the
+	// web UI, so markup and quotes are kept out.
+	seedBad = "<>\"'&`"
 )
 
 // GenerateAvatar is the seam for a future portrait generator.
@@ -347,7 +355,52 @@ func (b *Bot) AvatarPath() string { return filepath.Join(b.dir(), "avatar") }
 
 func (b *Bot) avatarMIMEPath() string { return filepath.Join(b.dir(), "avatar.mime") }
 
+// ValidAvatarSeed reports whether seed can drive a portrait. The server only
+// stores it; the browser draws from it.
+func ValidAvatarSeed(seed string) bool {
+	seed = strings.TrimSpace(seed)
+	if !utf8.ValidString(seed) {
+		return false
+	}
+	n := utf8.RuneCountInString(seed)
+	if n < 1 || n > maxSeed {
+		return false
+	}
+	for _, r := range seed {
+		if unicode.IsControl(r) || strings.ContainsRune(seedBad, r) {
+			return false
+		}
+	}
+	return true
+}
+
+// AvatarState is what the UI should show. An old or unset avatar is drawn
+// from the name, so it needs no migration. av is never empty.
+func (b *Bot) AvatarState() (avatar, seed string) {
+	avatar, seed = b.cfg.Avatar, b.cfg.AvatarSeed
+	if avatar == "" {
+		avatar = AvatarGenerated
+	}
+	if seed == "" {
+		seed = b.cfg.Name
+	}
+	return avatar, seed
+}
+
+// SetAvatarSeed stores a generated portrait seed and drops any upload.
+func (b *Bot) SetAvatarSeed(seed string) error {
+	if !ValidAvatarSeed(seed) {
+		return fmt.Errorf("bot: avatar seed must be 1–%d characters without <>\"'&` or control characters", maxSeed)
+	}
+	_ = os.Remove(b.AvatarPath())
+	_ = os.Remove(b.avatarMIMEPath())
+	b.cfg.Avatar = AvatarGenerated
+	b.cfg.AvatarSeed = strings.TrimSpace(seed)
+	return b.SaveConfig()
+}
+
 // SetAvatar stores an uploaded image and marks the avatar custom.
+// AvatarSeed stays as it was, so clearing goes back to the previous seed.
 func (b *Bot) SetAvatar(data []byte, mime string) error {
 	kind := SniffImage(data)
 	if kind == "" {
@@ -366,16 +419,18 @@ func (b *Bot) SetAvatar(data []byte, mime string) error {
 	return b.SaveConfig()
 }
 
-// ClearAvatar removes an upload. The generated blob is used again.
+// ClearAvatar removes an upload. The portrait drawn from the seed is used again.
 func (b *Bot) ClearAvatar() error {
+	_, seed := b.AvatarState()
 	_ = os.Remove(b.AvatarPath())
 	_ = os.Remove(b.avatarMIMEPath())
-	b.cfg.Avatar = ""
+	b.cfg.Avatar = AvatarGenerated
+	b.cfg.AvatarSeed = seed
 	return b.SaveConfig()
 }
 
 // AvatarBytes returns a custom image, or a generated portrait when the seam is set.
-// ok is false when the caller should draw the color block.
+// ok is false when the caller should draw the portrait from the seed.
 func (b *Bot) AvatarBytes() (data []byte, mime string, ok bool, err error) {
 	if b.cfg.Avatar == AvatarCustom {
 		data, err = os.ReadFile(b.AvatarPath())
@@ -436,13 +491,16 @@ type Template struct {
 	Persona     string `json:"persona,omitempty"`
 	Style       Style  `json:"style,omitempty"`
 	// Proactivity is accepted on old templates and ignored.
-	Proactivity string            `json:"proactivity,omitempty"`
-	QuietStart  string            `json:"quiet_start,omitempty"`
-	QuietEnd    string            `json:"quiet_end,omitempty"`
-	Timezone    string            `json:"timezone,omitempty"`
-	AvatarMIME  string            `json:"avatar_mime,omitempty"`
-	Avatar      string            `json:"avatar,omitempty"`
-	Routines    []TemplateRoutine `json:"routines,omitempty"`
+	Proactivity string `json:"proactivity,omitempty"`
+	QuietStart  string `json:"quiet_start,omitempty"`
+	QuietEnd    string `json:"quiet_end,omitempty"`
+	Timezone    string `json:"timezone,omitempty"`
+	AvatarMIME  string `json:"avatar_mime,omitempty"`
+	// Avatar is the base64 upload; it is only set for a custom avatar.
+	Avatar     string `json:"avatar,omitempty"`
+	AvatarSeed string `json:"avatar_seed,omitempty"`
+	// Routines run after the avatar is set.
+	Routines []TemplateRoutine `json:"routines,omitempty"`
 }
 
 // ExportTemplate reads profile, persona, and routines. Memory and the transcript stay out.
@@ -460,6 +518,7 @@ func ExportTemplate(b *Bot) (Template, error) {
 		QuietEnd:    b.cfg.QuietEnd,
 		Timezone:    b.cfg.Timezone,
 	}
+	_, tpl.AvatarSeed = b.AvatarState()
 	if b.cfg.Avatar == AvatarCustom {
 		data, mime, ok, err := b.AvatarBytes()
 		if err != nil {
@@ -513,6 +572,13 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 		QuietStart: &qs, QuietEnd: &qe, Timezone: &tz,
 	}); err != nil {
 		return fail(err)
+	}
+	// The seed follows the template even when the name changed. A bad seed is
+	// ignored, which leaves the new name as the seed.
+	if ValidAvatarSeed(tpl.AvatarSeed) {
+		if err := b.SetAvatarSeed(tpl.AvatarSeed); err != nil {
+			return fail(err)
+		}
 	}
 	if tpl.Avatar != "" {
 		raw, err := base64.StdEncoding.DecodeString(tpl.Avatar)
@@ -595,6 +661,11 @@ func Rename(root, from, to string) error {
 			_ = os.Rename(toDir, fromDir)
 			_ = moveVaultKey(root, to, from)
 			return err
+		}
+		// An old bot's portrait was drawn from its name; pin that seed so the
+		// face survives the rename.
+		if b.cfg.AvatarSeed == "" {
+			b.cfg.AvatarSeed = from
 		}
 		b.cfg.Name = to
 		if err := b.SaveConfig(); err != nil {

@@ -14,7 +14,7 @@ import (
 
 func paintBot(b *bot.Bot) (url, bg, ink, initial string) {
 	bg, ink, initial = bot.AvatarColors(b.Name())
-	if b.Config().Avatar == bot.AvatarCustom || bot.HasAvatarGenerator() {
+	if b.Config().Avatar == bot.AvatarCustom {
 		url = "/api/bots/" + b.Name() + "/avatar"
 	}
 	return url, bg, ink, initial
@@ -50,6 +50,7 @@ type profileBody struct {
 	Timezone    *string `json:"timezone"`
 	Persona     *string `json:"persona"`
 	Group       *string `json:"group"`
+	AvatarSeed  *string `json:"avatar_seed"`
 }
 
 func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +66,12 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
+	}
+	if in.AvatarSeed != nil {
+		if err := b.SetAvatarSeed(*in.AvatarSeed); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	if in.Persona != nil {
 		if err := b.WritePersona(*in.Persona); err != nil {
@@ -113,6 +120,11 @@ func (s *Server) getAvatar(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
+	// Only an upload is served here. Generated avatars are drawn in the browser.
+	if b.Config().Avatar != bot.AvatarCustom {
+		http.NotFound(w, r)
+		return
+	}
 	data, mime, ok, err := b.AvatarBytes()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -123,6 +135,7 @@ func (s *Server) getAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", mime)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-cache")
 	_, _ = w.Write(data)
 }
@@ -160,7 +173,7 @@ func (s *Server) postAvatar(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name(), "avatar": "custom"})
+	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name(), "avatar": "custom", "avatar_seed": b.Config().AvatarSeed})
 }
 
 func (s *Server) deleteAvatar(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +189,8 @@ func (s *Server) deleteAvatar(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name(), "avatar": "color"})
+	avatar, seed := b.AvatarState()
+	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name(), "avatar": avatar, "avatar_seed": seed})
 }
 
 func (s *Server) exportTemplate(w http.ResponseWriter, r *http.Request) {
