@@ -30,7 +30,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"lark_send":       ExternalSend,
 		"http_request":    HTTP,
 		"shell":           Shell,
-		"node_call":       Shell,
 		"write_file":      SelfEdit,
 		"edit_file":       SelfEdit,
 		"propose_persona": SelfEdit,
@@ -191,7 +190,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_skill", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "node_list", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_skill", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}
@@ -222,7 +221,7 @@ func TestMachineTouchingSet(t *testing.T) {
 			t.Fatalf("%s not machine-touching", name)
 		}
 	}
-	for _, name := range []string{"browser_stop", "message_bot", "http_request", "node_call", "web_fetch", "web_search"} {
+	for _, name := range []string{"browser_stop", "message_bot", "http_request", "web_fetch", "web_search"} {
 		if MachineTouching(name) {
 			t.Fatalf("%s wrongly machine-touching", name)
 		}

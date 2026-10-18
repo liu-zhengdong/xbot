@@ -942,9 +942,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .working-name { font-size: 12px; color: var(--muted); line-height: 1.4; }
 
-.node-pending { padding: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; }
-.node-pending .approval { margin: 0; }
-
 .coding-card {
   margin: 8px 0; padding: 12px; border-radius: 12px; background: var(--fill); max-width: 100%;
 }

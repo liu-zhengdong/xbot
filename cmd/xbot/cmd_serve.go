@@ -45,6 +45,10 @@ import (
 // decide the step cap (chat 8, dev 24) instead of pinning one here.
 const serveSteps = 0
 
+// legacyNodeGrant is the retired node link's name. It is no longer a link, but
+// an old bot config may still list it; serve skips it with one notice.
+const legacyNodeGrant = "node"
+
 // newServeKernel opens a kernel the way the serve path does, so every caller
 // there shares one definition of what a served bot gets.
 func newServeKernel(root string, b *bot.Bot) (*kernel.Kernel, error) {
@@ -236,7 +240,7 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 				return nil, errors.New("runner token is empty")
 			}
 			out = append(out, link.Runner{BaseURL: url, Token: token})
-		case link.NameNode:
+		case legacyNodeGrant:
 			// The node feature is gone; an old grant mounts nothing and must not
 			// fail the bot. One notice per bot and process keeps restarts quiet.
 			if noteLegacyNodeGrant(b.Name()) {
