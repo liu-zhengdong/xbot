@@ -7,7 +7,12 @@ rm -rf .cloudflare/state
 # Fresh local state each run: the official gateway caps new installs per IP per day.
 setsid npx cf dev > conformance-dev.log 2>&1 &
 pid=$!
-cleanup() { kill -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -f conformance-dev.log; }
+# The cf dev log is kept when the run fails, to diagnose rare local failures.
+cleanup() {
+  local status=$?
+  kill -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+  if [[ $status == 0 ]]; then rm -f conformance-dev.log; else echo "cf dev log kept: gateway-worker/conformance-dev.log" >&2; fi
+}
 trap cleanup EXIT
 ready=0
 for ((i=0; i<120; i++)); do

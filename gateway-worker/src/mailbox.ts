@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { empty, error, jsonResponse, result, waitSeconds, type Env } from "./index";
 import { fields, idRE } from "./wire";
 type Row = {id: string; sender: string; at: number; seq: number; size: number; data: string};
-const TTL = 7 * 86400000;
+const TTL = 7 * 86400000, TABLES = "CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT); CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,sender TEXT,at INTEGER,seq INTEGER,size INTEGER,data TEXT); CREATE TABLE IF NOT EXISTS acked(id TEXT PRIMARY KEY,at INTEGER); CREATE TABLE IF NOT EXISTS unreleased(id TEXT PRIMARY KEY)";
 export class Mailbox extends DurableObject<Env> {
   private ready: boolean;
   constructor(ctx: DurableObjectState, env: Env) {
@@ -25,6 +25,11 @@ export class Mailbox extends DurableObject<Env> {
     const at = this.sql<{at: number | null}>("SELECT MIN(at) AS at FROM queue")[0].at;
     let wanted = at === null ? null : at + TTL;
     if (this.sql("SELECT id FROM unreleased LIMIT 1").length) wanted = Math.min(wanted ?? Infinity, Date.now() + 60000);
+    if (!this.meta("registered")) {
+      const pexp = Number(this.meta("pexp") || 0);
+      if (pexp) wanted = Math.min(wanted ?? Infinity, pexp);
+      else if (this.meta("pending")) wanted = Math.min(wanted ?? Infinity, Date.now() + 60000); // Retry dropAt.
+    }
     if (await this.ctx.storage.getAlarm() !== wanted) {
       if (wanted === null) await this.ctx.storage.deleteAlarm(); else await this.ctx.storage.setAlarm(wanted);
     }
@@ -45,9 +50,54 @@ export class Mailbox extends DurableObject<Env> {
   private wake(text: string) {
     for (const ws of this.ctx.getWebSockets()) try { ws.send(text); ws.close(1000); } catch {}
   }
+  // Removes what this pending install sent to owner, as Go does when it expires or moves.
+  private async dropAt(owner: string) {
+    const self = this.meta("self");
+    if (!self) return false;
+    try { await this.env.MAILBOX.getByName(owner).dropFrom(self); return true; } catch { return false; }
+  }
+  // Members always; a pending install (G7) until its expiry, after which its mail both ways is dropped.
+  // 'pending' outlives 'pexp' until the owner's side is cleaned; the alarm retries every minute.
+  private async live(now = Date.now()) {
+    if (this.meta("registered")) return true;
+    const pexp = Number(this.meta("pexp") || 0);
+    if (pexp && now < pexp) return true;
+    if (pexp) {
+      const rows = this.sql<Row>("DELETE FROM queue RETURNING *");
+      this.sql("DELETE FROM acked"); this.sql("DELETE FROM meta WHERE k='pexp'"); this.wake(empty);
+      await this.release(rows.map(r => r.id));
+    }
+    const owner = this.meta("pending");
+    if (owner && await this.dropAt(owner)) this.sql("DELETE FROM meta WHERE k='pending'");
+    if (this.meta("pending") || this.sql("SELECT id FROM unreleased LIMIT 1").length) await this.schedule();
+    else { await this.ctx.storage.deleteAll(); this.ready = false; await this.ctx.storage.deleteAlarm(); }
+    return false;
+  }
   registered(pub: number[]) { return this.ctx.blockConcurrencyWhile(async () => {
-    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT); CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,sender TEXT,at INTEGER,seq INTEGER,size INTEGER,data TEXT); CREATE TABLE IF NOT EXISTS acked(id TEXT PRIMARY KEY,at INTEGER); CREATE TABLE IF NOT EXISTS unreleased(id TEXT PRIMARY KEY)");
-    this.ready = true; await this.expire(); this.set("pub", JSON.stringify(pub)); this.set("registered", 1); this.touch(); }); }
+    this.ctx.storage.sql.exec(TABLES);
+    this.ready = true; await this.expire(); this.set("pub", JSON.stringify(pub)); this.set("registered", 1);
+    this.sql("DELETE FROM meta WHERE k IN ('pending','pexp')"); this.touch(); await this.schedule(); }); }
+  // Claiming a code makes this a pending install of owner; moving to another owner drops the old owner's mail.
+  pend(self: string, pub: number[], owner: string, expires: number) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (this.ready) {
+      if (this.meta("registered")) return;
+      if (this.meta("pending") === owner && this.meta("pexp") === String(expires)) return; // Retried claim: no writes.
+      await this.live(); // An expired previous lifetime is cleaned up first.
+      if (this.ready && !this.meta("pexp") && this.meta("pending")) throw Error("previous pending cleanup unfinished"); // The claim retry tries again.
+    }
+    this.ctx.storage.sql.exec(TABLES); this.ready = true;
+    const old = this.meta("pending");
+    if (old && old !== owner) {
+      await this.release(this.sql<Row>("DELETE FROM queue WHERE sender=? RETURNING *", old).map(r => r.id));
+      if (!await this.dropAt(old)) throw Error("old owner unreachable"); // The claim retry tries again.
+    }
+    this.set("self", self); this.set("pub", JSON.stringify(pub)); this.set("pending", owner); this.set("pexp", expires); this.touch(); await this.schedule();
+  }); }
+  dropFrom(sender: string) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (!this.ready || !sender) return;
+    const rows = this.sql<Row>("DELETE FROM queue WHERE sender=? RETURNING *", sender);
+    if (rows.length) { await this.release(rows.map(r => r.id)); await this.schedule(); }
+  }); }
   idle(now: number) { return this.ctx.blockConcurrencyWhile(async () => { if (!this.ready) return {seen: 0, empty: true}; await this.expire(now); return {seen: Number(this.meta("seen") || 0), empty: !this.sql("SELECT id FROM queue LIMIT 1").length}; }); }
   forget(now: number) { return this.ctx.blockConcurrencyWhile(async () => {
     if (!this.ready) return true;
@@ -55,12 +105,15 @@ export class Mailbox extends DurableObject<Env> {
     if (now - Number(this.meta("seen") || 0) <= 30 * 86400000 || this.sql("SELECT id FROM queue UNION ALL SELECT id FROM unreleased LIMIT 1").length) return false;
     this.wake(empty); await this.ctx.storage.deleteAll(); this.ready = false; await this.ctx.storage.deleteAlarm(); return true;
   }); }
-  alarm() { return this.ctx.blockConcurrencyWhile(async () => { if (this.ready) await this.expire(); }); }
+  alarm() { return this.ctx.blockConcurrencyWhile(async () => { if (this.ready) { await this.expire(); await this.live(); if (this.ready) await this.schedule(); } }); }
   enqueue(data: string, sender: string, id: string, size: number, now: number) {
     return this.ctx.blockConcurrencyWhile(async () => {
       if (!this.ready) return error(404, "unknown recipient");
       await this.expire(now);
-      if (!this.meta("registered")) return error(404, "unknown recipient");
+      if (!this.meta("registered")) {
+        if (!(await this.live(now))) return error(404, "unknown recipient");
+        if (this.meta("pending") !== sender) return error(403, "pending recipient belongs to another owner");
+      }
       if (this.sql("SELECT id FROM queue WHERE id=? UNION ALL SELECT id FROM acked WHERE id=?", id, id).length) return result(200, {status: "duplicate"});
       const rows = this.sql<Row>("SELECT * FROM queue"), pair = rows.filter(r => r.sender === sender);
       if (rows.length >= 512 || pair.length >= 64 || rows.reduce((n, r) => n + r.size, size) > 8 * 1048576 || pair.reduce((n, r) => n + r.size, size) > 1048576) return error(507, "queue full");
@@ -79,7 +132,7 @@ export class Mailbox extends DurableObject<Env> {
   ack(raw: string) { return this.ctx.blockConcurrencyWhile(async () => {
     if (!this.ready) return error(403, "not registered");
     await this.expire();
-    if (!this.meta("registered")) return error(403, "not registered");
+    if (!(await this.live())) return error(403, "not registered");
     this.touch(); let ids: unknown;
     try {
       ids = fields(raw)?.ids ?? [];
@@ -96,7 +149,7 @@ export class Mailbox extends DurableObject<Env> {
   fetch(r: Request) { return this.ctx.blockConcurrencyWhile(async () => {
     if (!this.ready) return jsonResponse(error(403, "not registered"));
     await this.expire();
-    if (!this.meta("registered")) return jsonResponse(error(403, "not registered"));
+    if (!(await this.live())) return jsonResponse(error(403, "not registered"));
     this.touch(); this.wake(empty);
     const text = this.list(), wait = waitSeconds(new URL(r.url).searchParams.get("wait"));
     if (text !== empty || !wait) return new Response(text, {headers: {"Content-Type": "application/json"}});

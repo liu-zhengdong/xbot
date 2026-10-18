@@ -16,7 +16,7 @@ export function waitSeconds(s: string | null) {
 }
 export default {
   async fetch(r: Request, env: Env): Promise<Response> {
-    const u = new URL(r.url), method = ({"/healthz": "GET", "/v1/register": "POST", "/v1/send": "POST", "/v1/poll": "GET", "/v1/ack": "POST"} as Record<string, string>)[u.pathname];
+    const u = new URL(r.url), method = ({"/healthz": "GET", "/v1/register": "POST", "/v1/send": "POST", "/v1/poll": "GET", "/v1/ack": "POST", "/v1/code": "POST", "/v1/code/cancel": "POST", "/v1/code/claim": "POST", "/v1/code/admit": "POST"} as Record<string, string>)[u.pathname];
     const plain = (text: string, status: number, headers = {}) => new Response(text, {status, headers: {"Content-Type": "text/plain; charset=utf-8", ...headers}});
     if (typeof method !== "string") return plain("404 page not found\n", 404);
     if (r.method !== method && !(method === "GET" && r.method === "HEAD")) return plain("Method Not Allowed\n", 405, {Allow: method === "GET" ? "GET, HEAD" : method});
@@ -34,11 +34,16 @@ export default {
     let auth;
     try { auth = await authenticate(r, body, Date.now()); } catch (e) { return fail(401, (e as Error).message); }
     const {caller, pub} = auth, dir = env.DIRECTORY.getByName("global"), box = env.MAILBOX.getByName(caller), raw = new TextDecoder().decode(body);
-    if (u.pathname === "/v1/register") return jsonResponse(await dir.register(caller, Array.from(pub), r.headers.get("Authorization"), r.headers.get("CF-Connecting-IP") || ""));
+    const ip = r.headers.get("CF-Connecting-IP") || "";
+    if (u.pathname === "/v1/register") return jsonResponse(await dir.register(caller, Array.from(pub), r.headers.get("Authorization"), ip));
+    if (u.pathname === "/v1/code") return jsonResponse(await dir.codeRegister(caller, raw, ip));
+    if (u.pathname === "/v1/code/cancel") return jsonResponse(await dir.codeCancel(caller, raw));
+    if (u.pathname === "/v1/code/claim") return jsonResponse(await dir.codeClaim(caller, Array.from(pub), raw, ip));
+    if (u.pathname === "/v1/code/admit") return jsonResponse(await dir.codeAdmit(caller, raw));
     if (u.pathname === "/v1/send") {
       let e;
-      try { e = await envelope(raw, caller, pub); } catch { const registered = await dir.isRegistered(caller); return fail(registered ? 400 : 403, registered ? "bad envelope" : "not registered"); }
-      const check = await dir.check(caller, e.size > 65536 ? undefined : e.to);
+      try { e = await envelope(raw, caller, pub); } catch { const known = await dir.status(caller) !== ""; return fail(known ? 400 : 403, known ? "bad envelope" : "not registered"); }
+      const check = await dir.check(caller, e.to, e.size > 65536);
       if (check) return jsonResponse(check);
       if (e.size > 65536) return fail(413, "envelope too large");
       return jsonResponse(await env.MAILBOX.getByName(e.to).enqueue(e.json, caller, e.id, e.size, Date.now()));
