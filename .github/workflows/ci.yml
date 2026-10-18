@@ -24,6 +24,9 @@ jobs:
           go-version-file: go.mod
       - name: go vet
         run: go vet ./...
+      - name: allow unprivileged user namespaces
+        # The eval jail uses unshare; Ubuntu 24.04 runners block that through AppArmor by default.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: go test
         # Known flakes, skipped by name only:
         #   #51 TempDir cleanup race: TestRunningShortOutputAndHeldPrefix, TestRelativeRootSpawn
