@@ -117,6 +117,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /devices.js", s.static("static/devices.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /pairing.js", s.static("static/pairing.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /devices.css", s.static("static/devices.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /remotechat.js", s.static("static/remotechat.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /remotechat.css", s.static("static/remotechat.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /sw.js", s.static("static/sw.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /manifest.webmanifest", s.static("static/manifest.webmanifest", "application/manifest+json"))
 	mux.HandleFunc("GET /icon-192.png", s.static("static/icon-192.png", "image/png"))
