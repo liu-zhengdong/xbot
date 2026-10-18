@@ -1,12 +1,12 @@
 ---
 kind: part
 parent: README.md
-code: [internal/gateway/, internal/remote/]
-verified: 2026-10-18 @ d1aad55
+code: [internal/gateway/, internal/remote/, gateway-worker/]
+verified: 2026-10-18 @ 0eec2b1
 ---
 # 网关（M8，G1–G6 已实现）
 
-> **30 秒版**：开源可自建的信箱中继。主人自己的几台 XBot 只向外连网关，把发给另一台设备上 Bot 的消息存进网关、由对方取走；网关不存记忆，不同步文件。规格见 [GATEWAY.md](../GATEWAY.md)，取舍见 [ADR 0010](../adr/0010-gateway-mailbox-relay.md)。
+> **30 秒版**：开源的信箱中继。主人自己的几台 XBot 只向外连网关，把发给另一台设备上 Bot 的消息存进网关、由对方取走。官方网关在 `https://xbot.babelgo.cn`，跑在 Cloudflare Workers + Durable Objects 上；Go 的 `xbot gateway serve` 是自建方案。载荷端到端加密，网关只看到密文；网关不存记忆，也不同步文件，每台安装只管自己的数据。规格见 [GATEWAY.md](../GATEWAY.md)，取舍见 [ADR 0010](../adr/0010-gateway-mailbox-relay.md) 和 [ADR 0011](../adr/0011-official-gateway-on-workers.md)。
 
 ## 边界
 负责：同一个主人的几台安装之间的连接、身份、配对和消息中继。不负责：Bot 之间消息的语义（还是 [多 Bot](multibot.md) 里的 `message_bot`），机器上的远程 shell（见 [机器与设备](machines.md) 的 `node`），跨用户通信。
@@ -21,8 +21,11 @@ verified: 2026-10-18 @ d1aad55
 - **离线队列与退信**（G5）：发信遇到网络错误、408、429、5xx（含 507）时，把签好的信封原样写进 `remote/outbox/<id>.json`（目录 0700，文件 0600，最多 256 封、8 MiB），工具结果说明已排队。serve 里另有一个循环，启动时和之后每 5 秒查一次，退避从 5 秒翻倍到 10 分钟，每次请求限时 10 秒，同一轮第一次失败后不再发后面的，只处理过期。成功或 duplicate 就删掉；超过 24 小时或被网关拒绝时，给发件 Bot 投一条来源 `remote` 的不可信通知，只带脱敏后的前 80 字。读不了的记录留着，坏 JSON 删掉。收件侧：信封通过认证、解密、重放和限流检查后，如果目标 Bot 不存在或 owner 不符，回一封同样加密的 `kind=bounce`，两种情况理由相同，按设备限流；不对退信、配对或没通过检查的信封退信。退信到了变成发件 Bot 收件箱里的不可信事件。AAD 对 `box` 保持 G4 的形式，所以网关里排着的 G4 信封还能解开；其他种类在末尾加上 kind，改标签两边都解不开。
 - **目录发现**（G6）：信箱中继没有同步回复，所以使用加密的 `kind=dir` 主动推送。活动网关切换后立即检查（通知不阻塞，只保留最新网关），之后每 60 秒检查；只推送设备绑定之人的 Bot 名（`bot.ValidName`，最多 64 个），避免脱敏器注册前泄密，消除远端自由文本注入面；变化或满 15 分钟就发送（重新配对或对方缓存丢失后很快补上），失败留到下次检查，不进 outbox。发送哈希在 `remote/dirsent.json`；收件经过配对、签名、时间窗、防重放和解密检查，忽略未知字段后按较新的 `at` 原子写入 `remote/dirs/<设备 id>.json`（目录 0700、文件 0600）。`list_bots` 按调用 Bot 的 owner 过滤设备，显示 `bot@设备` 和收到多久；缓存按目录生成时间计算，超过 7 天隐藏，解除配对时删除。远端 `bot_status` 暂不支持。
 - **端到端**：`scripts/e2e-gateway.sh` 在一台机器上起假模型、网关和两个数据根的两个 serve，两边用 invite/join 配对（B 不带口令），A 上的 ada 发给 `bob@b`，B 上的 bob 回 `ada@a`。盒子上实测（假模型，serve 间隔 1 秒）发出到收到回复约 2.0 秒，大部分是 serve 的轮询间隔。配对后还会在 70 秒内检查目录缓存收到 bob，打印 `PASS gateway dir`。随后停掉网关、确认本地入队，再用原端口和目录重启网关，验证 40 秒内投递并打印 `PASS gateway outage-retry=<ms>`。
-- 早先设想的 P2P 优先、Workers 部署、模板分享和跨用户通信，这一版不做，理由见 ADR 0010。
+- **官方网关与一致性测试**（[ADR 0011](../adr/0011-official-gateway-on-workers.md)）：[`gateway-worker/`](../../gateway-worker/README.md) 用 TypeScript 实现同一套协议，`cf deploy` 部署到 `https://xbot.babelgo.cn`（Free 计划）。每个收件安装一个 `Mailbox` Durable Object，存队列、确认墓碑和注册标记；长轮询用可休眠的 WebSocket 等新信，闲着不计时长。全局一个 `Directory` Durable Object，记安装表和每个发件人、全网关的字节配额。配额和过期时间和 Go 相同。有意的差异：注册开放；每个客户端 IP 每个 UTC 日最多 30 个新安装，超了回 429（`remote join` 会把它报给用户），IP 只按当天随机密钥做 HMAC 计数，第二天连密钥一起删掉；安装上限 1000（Go 固定 64）；"最近见到"每小时最多写一次。不存任何口令。[`conformance_test.go`](../../internal/gateway/conformance_test.go) 只走 HTTP：`go test` 里对 Go 服务器跑，设了 `XBOT_GATEWAY_URL` 就对那个地址跑。两份实现都必须通过，协议以 Go 为准。
+- 早先设想的 P2P 优先、模板分享和跨用户通信，这一版不做，理由见 ADR 0010。
 
 ## 坑
 - `remote.Identity` 不能再包一层 `keys/remote/install.key.lock`：`LoadOrCreateKey` 已经拿着这把锁，flock 按打开的文件算，同一进程再开一次会永远等下去。
 - 同一个数据根上跑两个 serve，两个收信循环会互相顶掉长轮询；不支持这种用法。
+- 官方网关每次空的长轮询算一次 Worker 请求和一次 Durable Object 请求；一次发送 3 次 DO 请求，一次确认 2 次。Free 计划每天各 10 万次、10 万行写入。一台已配对、一直在线的安装每天长轮询约 3,456 次，每个对端再加约 96 次目录推送和确认，合计约 3,750 次 Worker 请求、4,000 次 DO 请求、700 行写入，所以大约撑 20–25 台，对端多了更少。没配对的安装不联系网关。再多就要换付费计划，不能在代码里打开计费。
+- Go 服务器按文件 mtime 给信封排序，Linux 上 mtime 的精度是一个时钟节拍（约 4 毫秒），间隔更短的两封先后不保证。一致性测试只要求间隔 20 毫秒以上的顺序。
