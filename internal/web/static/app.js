@@ -49,6 +49,7 @@
     panelLoad: 0,
     knownNotes: null,
     owner: "",
+    ownerName: "",
     preview: {},
     previewAt: {},
     listSig: "",
@@ -2875,13 +2876,15 @@
 
   function renderMe() {
     const slot = $("me-avatar");
-    if (state.owner.trim()) slot.replaceChildren(avatar(state.owner, null, "me"));
+    // owner_name, never the raw id: on Windows the id carries the account SID (#210).
+    const name = state.ownerName.trim();
+    if (name) slot.replaceChildren(avatar(name, null, "me"));
     else {
       const face = el("span", "avatar me");
       face.append(icon("person"));
       slot.replaceChildren(face);
     }
-    $("me-name").textContent = state.owner.trim() || "我";
+    $("me-name").textContent = name || "我";
   }
 
   // The 新建 menu under the pin row's last button.
@@ -5039,6 +5042,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里 login token 那一行" : "登录失败，稍后再试");
       state.owner = data.owner || "";
+      state.ownerName = data.owner_name || "";
       renderMe();
       showApp();
       await boot();
@@ -5529,6 +5533,7 @@
   api("/api/session").then(async (data) => {
     if (!data || !data.authed) { showLogin(); return; }
     state.owner = (data && data.owner) || "";
+    state.ownerName = (data && data.owner_name) || "";
     state.version = (data && data.version) || "";
     // The desktop app has no login page to come back to: no 退出 there.
     $("logout").hidden = !!data.app;
