@@ -2,12 +2,8 @@ package memory
 
 import (
 	"strings"
-	"time"
 	"unicode/utf8"
 )
-
-// maxSkew is how far a merged timestamp may sit ahead of this machine's clock.
-const maxSkew = 2 * time.Minute
 
 const untrustedMarker = " (untrusted, recorded by "
 const ownerMarker = " (owner-recorded"
@@ -82,75 +78,4 @@ func hasControl(s string) bool {
 		}
 	}
 	return false
-}
-
-func capStamp(t, now time.Time) time.Time {
-	if t.IsZero() {
-		return now.UTC()
-	}
-	t = t.UTC()
-	limit := now.UTC().Add(maxSkew)
-	if t.After(limit) {
-		return limit
-	}
-	return t
-}
-
-// acceptRemote reports whether a merged line is safe to store.
-// A future timestamp is capped. An illegal field is refused.
-// A device that claims this machine is stored as relay.
-// peer is the authenticated device that delivered this bundle.
-// Owner-recorded requires that peer to be the claimed device and locally linked.
-// A relayed line keeps its device name and stays untrusted.
-func acceptRemote(ln SyncLine, now time.Time, home, peer string, linked map[string]bool) (SyncLine, bool) {
-	ln.Time = capStamp(ln.Time, now)
-	ln.Fact.Time = ln.Time
-	ln.Fact.PersonID = strings.TrimSpace(ln.Fact.PersonID)
-	ln.Fact.Scope = ScopePerson
-	if ln.Op == "" {
-		ln.Op = opRemember
-	}
-	if ln.Op != opRemember && ln.Op != opForget {
-		return SyncLine{}, false
-	}
-	if ln.Fact.Tier != TierProfile && ln.Fact.Tier != TierLog {
-		return SyncLine{}, false
-	}
-	if !fieldOK(ln.Fact.Key, 80) || !fieldOK(ln.Fact.Text, maxFactBytes) {
-		return SyncLine{}, false
-	}
-	if ln.Bot != "" && !fieldOK(ln.Bot, 80) {
-		return SyncLine{}, false
-	}
-	if ln.Device != "" && !fieldOK(ln.Device, 128) {
-		return SyncLine{}, false
-	}
-	if ln.Fact.WrittenBy != "" && !fieldOK(ln.Fact.WrittenBy, 80) {
-		return SyncLine{}, false
-	}
-	if ln.Device == "" || ln.Device == home || ln.Device == "local" {
-		ln.Device = "relay"
-	}
-	ln.OwnerRecorded = false
-	ln.Fact.OwnerRecorded = false
-	ln.Untrusted = true
-	if peer != "" && ln.Device == peer && linkedDevice(peer, linked) {
-		ln.Untrusted = false
-		ln.OwnerRecorded = true
-	}
-	return ln, true
-}
-
-func linkedDevice(device string, linked map[string]bool) bool {
-	if device == "" || device == "local" || device == "relay" || linked == nil {
-		return false
-	}
-	return linked[device]
-}
-
-func fieldOK(s string, max int) bool {
-	if s == "" || len(s) > max || hasControl(s) || !utf8.ValidString(s) {
-		return false
-	}
-	return true
 }

@@ -26,6 +26,7 @@ func (s *Server) registerDevicesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/devices/join/confirm", s.confirmJoin)
 	mux.HandleFunc("DELETE /api/devices/join", s.cancelJoin)
 	mux.HandleFunc("POST /api/devices/request", s.decideRequest)
+	s.registerRemoteChatAPI(mux)
 }
 
 // gatewayProbe caches one health check per gateway URL for 30 seconds, so the
@@ -56,6 +57,13 @@ func gatewayUp(ctx context.Context, base string, fresh bool) bool {
 type deviceRow struct {
 	remote.DeviceView
 	Online bool `json:"online"`
+	// Chats is each bot's remote chat with this device; absent without any.
+	Chats map[string]remote.ChatSummary `json:"chats,omitempty"`
+}
+
+// deviceOnline is the one online rule for the 设备 list and a device's chat.
+func deviceOnline(v remote.DeviceView, gatewayOK bool) bool {
+	return !v.Unpaired && gatewayOK && !v.Seen.IsZero() && time.Since(v.Seen) < remote.OnlineWindow
 }
 
 func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +83,12 @@ func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
 	up := gatewayUp(r.Context(), self.Gateway, r.URL.Query().Get("retry") == "1")
 	rows := make([]deviceRow, 0, len(views))
 	for _, v := range views {
-		rows = append(rows, deviceRow{v, !v.Unpaired && up && !v.Seen.IsZero() && time.Since(v.Seen) < remote.OnlineWindow})
+		row := deviceRow{DeviceView: v, Online: deviceOnline(v, up)}
+		if row.Chats, err = remote.ChatSummaries(s.Root, v.ID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		rows = append(rows, row)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"self": self, "gateway_ok": up, "devices": rows, "pairing": remote.PairingStatus(s.Root)})
 }

@@ -12,21 +12,17 @@ import (
 	"xbot/internal/fsutil"
 )
 
-// LogEntry is one append-only identity record. The relay merges these by time.
+// LogEntry is one record in a person's local append-only identity log
+// (people/<id>/identity.jsonl). identity.json is folded from it.
 type LogEntry struct {
 	Time   time.Time `json:"time"`
 	Bot    string    `json:"bot,omitempty"`
 	Device string    `json:"device"`
 	Person Person    `json:"person"`
-	// Grant is set only by a local owner action. Sync clears it.
-	// Owner accounts come from the newest granted entry, so a later local
-	// action can remove an account. A remote line may carry accounts and
-	// still not grant them on this machine.
+	// Grant is set only by a local owner action. The newest granted entry
+	// supplies display name, timezone, and accounts.
 	Grant bool `json:"grant,omitempty"`
 }
-
-// maxSkew is how far a merged identity timestamp may sit ahead of this clock.
-const maxSkew = 2 * time.Minute
 
 // ReadLog returns the identity log for one person. A missing file is empty.
 func ReadLog(root, id string) ([]LogEntry, error) {
@@ -67,111 +63,7 @@ func Record(root, bot, device string, at time.Time, p Person) error {
 	return nil
 }
 
-// ExportLog returns every identity line on this data root.
-func ExportLog(root string) ([]LogEntry, error) {
-	if err := MergeLog(root, nil); err != nil {
-		return nil, err
-	}
-	ids, err := localIDs(root)
-	if err != nil {
-		return nil, err
-	}
-	var out []LogEntry
-	for _, id := range ids {
-		lines, err := ReadLog(root, id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, lines...)
-	}
-	return out, nil
-}
-
-// MergeLog folds remote identity lines into this data root.
-// The newest timestamp wins. An equal timestamp keeps the line already stored here.
-// A timestamp past now plus a small skew is capped. Illegal lines are dropped.
-// Remote accounts are stored on the log line and do not grant ownership here.
-// Bot directories are not touched. A real change wakes the fast sync path.
-func MergeLog(root string, remote []LogEntry) error {
-	now := time.Now()
-	home := deviceOf(root)
-	byID := map[string][]LogEntry{}
-	for _, e := range remote {
-		id := e.Person.ID
-		if !idRe.MatchString(id) {
-			continue
-		}
-		e, ok := acceptRemote(e, now, home)
-		if !ok {
-			continue
-		}
-		e.Person.ID = id
-		byID[id] = append(byID[id], e)
-	}
-	ids, err := localIDs(root)
-	if err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	for _, id := range ids {
-		seen[id] = true
-	}
-	for id := range byID {
-		if !seen[id] {
-			ids = append(ids, id)
-		}
-	}
-	changed := false
-	for _, id := range ids {
-		ok, err := mergeOne(root, id, byID[id])
-		if err != nil {
-			return err
-		}
-		changed = changed || ok
-	}
-	if changed {
-		notifyChange(root)
-	}
-	return nil
-}
-
-func mergeOne(root, id string, remote []LogEntry) (bool, error) {
-	changed := false
-	err := fsutil.WithLock(filepath.Join(root, "people", id, ".lock"), func() error {
-		local, err := ReadLog(root, id)
-		if err != nil {
-			return err
-		}
-		if len(local) == 0 {
-			if cur, err := Load(root, id); err == nil {
-				local = []LogEntry{{Time: time.Unix(0, 0).UTC(), Device: deviceOf(root), Grant: true, Person: cur}}
-				if err := appendLog(root, local[0]); err != nil {
-					return err
-				}
-				changed = true
-			}
-		}
-		have := map[string]bool{}
-		for _, e := range local {
-			have[logKey(e)] = true
-		}
-		for _, e := range remote {
-			e.Person.ID = id
-			e.Grant = false
-			if have[logKey(e)] {
-				continue
-			}
-			if err := appendLog(root, e); err != nil {
-				return err
-			}
-			have[logKey(e)] = true
-			changed = true
-		}
-		return rewriteIdentity(root, id)
-	})
-	return changed, err
-}
-
+// rewriteIdentity folds the person's log into identity.json.
 func rewriteIdentity(root, id string) error {
 	lines, err := ReadLog(root, id)
 	if err != nil {
@@ -214,7 +106,7 @@ func foldIdentity(lines []LogEntry, home string) Person {
 		}
 	}
 	// Display name, timezone, and accounts follow a local grant.
-	// A remote line can be newer and still not rename the owner.
+	// A newer line that carries no grant does not rename the owner.
 	var p Person
 	switch {
 	case grantIdx >= 0:
@@ -252,29 +144,6 @@ func appendLog(root string, e LogEntry) error {
 
 func logPath(root, id string) string {
 	return filepath.Join(root, "people", id, "identity.jsonl")
-}
-
-func logKey(e LogEntry) string {
-	raw, _ := json.Marshal(e.Person.Accounts)
-	return e.Time.UTC().Format(time.RFC3339Nano) + "\x00" + e.Bot + "\x00" + e.Device + "\x00" + e.Person.ID + "\x00" + e.Person.DisplayName + "\x00" + e.Person.Timezone + "\x00" + string(raw)
-}
-
-func localIDs(root string) ([]string, error) {
-	dir := filepath.Join(root, "people")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for _, ent := range entries {
-		if ent.IsDir() && idRe.MatchString(ent.Name()) {
-			ids = append(ids, ent.Name())
-		}
-	}
-	return ids, nil
 }
 
 func deviceOf(root string) string {

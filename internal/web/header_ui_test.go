@@ -38,8 +38,8 @@ func TestCardHeaderColumn(t *testing.T) {
 	if !strings.Contains(css, "@media (max-width: 767px)") || !strings.Contains(css, "height: var(--top-h); padding: 0 16px;") {
 		t.Error("the narrow layout must keep the header's height and side padding")
 	}
-	if !regexp.MustCompile(`\.title \.avatar\.head \{[^}]*width: 28px; height: 28px; border-radius: 50%;`).MatchString(css) {
-		t.Error("the header avatar must be the 28px round face")
+	if !regexp.MustCompile(`\.title \.avatar\.head \{[^}]*width: 24px; height: 24px; border-radius: 50%;`).MatchString(css) || !strings.Contains(css, ".msg > .avatar { width: 24px; height: 24px; margin-top: 1px; }") {
+		t.Error("the header and message faces are 24px and round")
 	}
 	if !regexp.MustCompile(`font-size: 15px; font-weight: 620`).MatchString(css) {
 		t.Error("the header name must be 15px at weight 620")

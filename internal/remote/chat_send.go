@@ -97,9 +97,9 @@ func SendOwnerChat(ctx context.Context, root, deviceID, botName, text string, no
 	cancel()
 	switch {
 	case retryable(sendErr):
-		if err := enqueue(root, outboxItem{Env: env, To: botName + "@" + d.Name, Created: now, Attempts: 1, Next: now.Add(5 * time.Second)}); err != nil {
+		sendErr = enqueue(root, outboxItem{Env: env, To: botName + "@" + d.Name, Created: now, Attempts: 1, Next: now.Add(5 * time.Second)})
+		if sendErr != nil {
 			m.State = "failed"
-			sendErr = err
 		}
 	case sendErr != nil:
 		m.State = "failed"
