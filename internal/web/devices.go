@@ -242,10 +242,6 @@ func (s *Server) joinDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if cfg, err := remote.Load(s.Root); err != nil || cfg.Gateway == "" {
-		writeErr(w, http.StatusConflict, "还没设网关地址")
-		return
-	}
 	// Expected failures (404/410/unreachable/already) are phases, not errors.
 	_ = remote.JoinShortCode(r.Context(), s.Root, in.Code, "")
 	s.writePairing(w)
