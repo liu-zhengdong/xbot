@@ -1,4 +1,4 @@
-// CI only: a HiDPI virtual display made the main one, so the window is shot at 2x.
+// CI only: a HiDPI virtual display next to the runner's 1x one; the window opens on it and is shot at 2x.
 // Hosted macOS runners have one 1x display. CGVirtualDisplay is the CoreGraphics
 // class Chromium's tests use for the same thing; it is not public API.
 // Runs until killed; the display goes away with the process.
@@ -45,16 +45,13 @@ int main(void) {
     if (![v applySettings:s]) { fprintf(stderr, "vdisplay: applySettings failed\n"); return 1; }
     CGDirectDisplayID vid = v.displayID;
     sleep(2);
-    // The display at the origin is the main display; new windows open there.
-    CGDisplayConfigRef c;
-    CGBeginDisplayConfiguration(&c);
-    CGConfigureDisplayOrigin(c, vid, 0, 0);
-    CGError e = CGCompleteDisplayConfiguration(c, kCGConfigurePermanently);
-    sleep(1);
-    printf("vdisplay %u: %zux%zu pixels, %zux%zu points, main=%d, config=%d\n", vid,
-           CGDisplayPixelsWide(vid) ? CGDisplayModeGetPixelWidth(CGDisplayCopyDisplayMode(vid)) : 0,
-           CGDisplayModeGetPixelHeight(CGDisplayCopyDisplayMode(vid)),
-           CGDisplayPixelsWide(vid), CGDisplayPixelsHigh(vid), CGMainDisplayID() == vid, e);
+    CGRect r = CGDisplayBounds(vid);
+    CGDisplayModeRef m = CGDisplayCopyDisplayMode(vid);
+    printf("vdisplay %u: %zux%zu pixels, %zux%zu points\n", vid,
+           m ? CGDisplayModeGetPixelWidth(m) : 0, m ? CGDisplayModeGetPixelHeight(m) : 0,
+           CGDisplayPixelsWide(vid), CGDisplayPixelsHigh(vid));
+    // macos.sh puts the window on this display: it reads this line.
+    printf("vdisplay-origin %d %d\n", (int)r.origin.x, (int)r.origin.y);
     fflush(stdout);
     [[NSRunLoop mainRunLoop] run];
   }

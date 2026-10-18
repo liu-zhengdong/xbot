@@ -27,11 +27,13 @@ $icon
 PLIST
 log="$out/mac-log.txt"; : > "$log"
 say() { echo "$(date +%T) $*" | tee -a "$log"; }
-# A 2x virtual display as the main one (best effort; the runner's own display is 1x).
+# A 2x virtual display beside the runner's 1x one; the windows open on it (best effort).
+vx=0 vy=0
 if clang -fobjc-arc -framework Foundation -framework CoreGraphics -o "$work/vdisplay" "$here/vdisplay.m" 2>>"$log"; then
-  "$work/vdisplay" >>"$log" 2>&1 &
+  "$work/vdisplay" >"$work/vdisplay.out" 2>&1 &
   vpid=$!; trap 'kill $vpid 2>/dev/null || true' EXIT
-  sleep 5
+  sleep 5; cat "$work/vdisplay.out" >>"$log"
+  if read -r _ vx vy < <(grep '^vdisplay-origin' "$work/vdisplay.out"); then say "windows on the 2x display at $vx,$vy"; else vx=0 vy=0; fi
 else say "vdisplay did not build"; fi
 say "screen: $(system_profiler SPDisplaysDataType 2>/dev/null | grep -E 'Resolution|Retina|UI Looks' | tr -s ' ' | tr '\n' ';')"
 
@@ -47,7 +49,7 @@ run_case() { # mode theme extras...
   port=$((port + 1))
   local root="$work/root-$mode-$theme"
   "$seed" "$root" "$mode" | tee -a "$log"
-  echo '{"main":{"x":120,"y":80,"width":1024,"height":672}}' > "$root/app-window.json"
+  echo "{\"main\":{\"x\":$((vx + 120)),\"y\":$((vy + 80)),\"width\":1024,\"height\":672}}" > "$root/app-window.json"
   appearance "$theme"
   "$app/Contents/MacOS/XBot" --root "$root" app --port "$port" >>"$log" 2>&1 &
   local pid=$! win=""
