@@ -68,6 +68,14 @@ type route func(*http.Request, []byte, string, ed25519.PublicKey) (int, any, err
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	// Browsers opening the gateway get the XBot mark (the Worker serves the same).
+	for _, path := range []string{"GET /favicon.svg", "GET /favicon.ico"} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "image/svg+xml")
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			_, _ = w.Write(faviconSVG)
+		})
+	}
 	for path, fn := range map[string]route{"POST /v1/register": s.register, "POST /v1/send": s.send, "GET /v1/poll": s.servePoll, "POST /v1/ack": s.ack, "POST /v1/code": s.registerCode, "POST /v1/code/cancel": s.cancelCode, "POST /v1/code/claim": s.claimCode, "POST /v1/code/admit": s.admitCode} {
 		mux.Handle(path, s.verified(path == "POST /v1/register" || path == "POST /v1/code/claim", fn))
 	}

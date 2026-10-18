@@ -316,6 +316,8 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `GET /api/bots/{name}/peers/{peer}/messages?limit=N&before=<to>:<seq>`
 
+`{peer}` 也可以写成 `bot@设备`（设备是配对表里的设备名），用来读本机 Bot 跟另一台已配对设备上同名主人的 Bot 的来往：收到的部分来自本机 Bot 自己的 transcript 里 `bot:bot@设备` 事件，发出的部分是它给这个地址调 `message_bot` 的那几行和对应工具结果，退回的通知记为 `kind: "bounce"`。另一半不在本机，看不到。
+
 只读。返回这两个 Bot 之间已经写进 transcript 的私聊，时间从旧到新。调用者必须同时是两边的 owner。不是 owner、Bot 不存在，或者 `{name}` 和 `{peer}` 是同一个名字，都是 404 `{"error":"not found"}`。未登录 401。
 
 每条消息只存在收件 Bot 的 transcript 里，这个接口不另存一份。它读的就是搜索、导出和 `recall_history` 能看见的那几行。群消息不在这里。发送方 transcript 里的 `message_bot` 工具调用也不在这里。还留在收件箱、收件 Bot 还没写进 transcript 的，先不出现。主人跟某个 Bot 的聊天窗口不改：对方 Bot 发来的内容仍是一行淡提示。
@@ -324,7 +326,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `before` 可选，是排他游标。取客户端已经拿到的最旧一条的 `to` 和 `seq`，写成 `bob:3` 这种 `<收件人>:<seq>`。返回严格排在这条前面的最多 `limit` 条，仍然从旧到新。没有这条消息时 400 `{"error":"bad before"}`。两个 transcript 各自编号，同一个数字可能落在两边，所以游标带上收件人。只写一个数字时，仅当整段线程里恰好一条消息是这个 seq 才接受，否则同样 400。
 
-`seq` 是这条消息在收件 Bot transcript 里的序号，和 `GET /api/bots/{to}/transcript` 的 `seq` 相同。`id` 是写进 transcript 时的事件 id。`from` 是发送的 Bot，`to` 是收件的 Bot。`text` 是发出去的正文，外面的 `<untrusted_event>` 已经去掉。`ts` 是这条 transcript 记录的时间，UTC。
+`seq` 是这条消息在收件 Bot transcript 里的序号，和 `GET /api/bots/{to}/transcript` 的 `seq` 相同。`id` 是写进 transcript 时的事件 id。`from` 是发送的 Bot，`to` 是收件的 Bot。`text` 是发出去的正文，外面的 `<untrusted_event>` 已经去掉。`ts` 是这条 transcript 记录的时间，UTC。`from_bot`/`from_device`/`to_bot`/`to_device` 是拆开的 `from`/`to`，客户端不用自己解析 `bot@设备`；本机的 Bot 没有设备，`from_device`/`to_device` 省掉，设备取配对表里的 Label，没设就是设备名。跨设备的行 `from`/`to` 仍是完整地址，`kind` 只在不普通时出现（退回是 `"bounce"`），`status` 只在发出的行出现：`sent`、`queued`（网关连不上，排队重试）或 `failed`；还没拿到工具结果的算 `sent`。跨设备的 `seq` 是本机 transcript 的序号，游标 `<to>:<seq>` 照样适用。
 
 ```json
 {"messages":[{
