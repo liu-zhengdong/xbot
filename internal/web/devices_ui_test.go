@@ -20,6 +20,11 @@ func TestDevicesDrawerUI(t *testing.T) {
 			want: []string{
 				`"网关 " + esc(host(gw))`, `data-act="self-gw-edit">${gw ? "改" : "设置"}`,
 				`api("PUT", "/api/devices/gateway", { gateway: S.gwVal })`, `S.selfGwErr = e.message`,
+				// 已有配对设备时改网关先弹确认：列设备、说明要重新配对，取消回到打开着的编辑器
+				`<h2>改网关地址？</h2>`, `这些设备连在原来的网关上，改了以后要在两台电脑上重新配对：`,
+				`<li>${esc(d.label)}</li>`, `配对不会被删除，改回原来的地址就能继续用。`,
+				`data-act="gw-confirm-save">改网关地址`, `data-act="gw-confirm-cancel">取消`,
+				`(data.devices || []).length && gwNew && gwNew !== gwNow`, `case "gw-confirm-cancel": S.view = null;`,
 				"连不上网关，其他电脑的 Bot 暂时用不了。", `const status = !up ? "" : d.online`,
 				`只改这台电脑上显示的名字`, `解除和 ${esc(t.label)} 的配对？`,
 				`class="modal profile-drawer g7-drawer"`, `const pair = !!D.acts.add`,
