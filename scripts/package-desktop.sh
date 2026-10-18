@@ -5,7 +5,7 @@
 #            and XBot-<v>-windows-<arch>.zip (portable: XBot.exe opens the window; xbot-cli.exe is the CLI)
 #   Linux: xbot-<v>-linux-amd64.tar.gz (needs WebKitGTK 4.1 for `xbot app`)
 # Usage: scripts/package-desktop.sh <version> <out-dir>
-# Tools: go, python3 + Pillow, zip, genisoimage (dmg), png2icns (icnsutils), makensis (nsis),
+# Tools: go, zip, genisoimage (dmg), makensis (nsis),
 # go-winres (Windows icon/manifest) and rcodesign (ad-hoc signature); point
 # GO_WINRES and RCODESIGN at them if they are not on PATH. Missing optional tools
 # are reported and that step is skipped. Set TMPDIR to keep temp files out of /tmp.
@@ -26,19 +26,9 @@ short=${version#v}
 # Apple wants numeric versions; build metadata after "+" stays in file names only.
 numeric=${short%%[-+]*}
 ldflags="-s -w -X xbot/internal/version.Version=$version"
-icon=internal/web/static/icon-512.png
-
-# Icons: .icns for macOS, .ico for Windows, both from the web app icon.
-python3 - "$icon" "$work" <<'PY'
-import sys
-from PIL import Image
-src, work = sys.argv[1], sys.argv[2]
-im = Image.open(src).convert("RGBA")
-for s in (16, 32, 128, 256, 512):
-    im.resize((s, s), Image.LANCZOS).save(f"{work}/icon_{s}.png")
-im.save(f"{work}/XBot.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-PY
-png2icns "$work/XBot.icns" "$work"/icon_{16,32,128,256,512}.png >/dev/null
+# Icons: hand-tuned .ico and .icns (16/24/32 are pixel-snapped; never resample them).
+cp packaging/icons/XBot.ico "$work/XBot.ico"
+cp packaging/icons/XBot.icns "$work/XBot.icns"
 
 for arch in arm64 amd64; do
 	app="$work/mac-$arch/XBot.app"
