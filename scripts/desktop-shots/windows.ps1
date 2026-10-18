@@ -42,12 +42,15 @@ function Cdp-Send($ws, [string] $method, $params) {
   $script:cdpId++
   $msg = @{ id = $script:cdpId; method = $method; params = $params } | ConvertTo-Json -Depth 10 -Compress
   $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
-  $ws.SendAsync([ArraySegment[byte]]::new($bytes), 'Text', $true, [Threading.CancellationToken]::None).Wait()
+  # Every CDP call gets 20 seconds, so a stuck socket cannot eat the job's timeout.
+  if ($ws.State -ne 'Open') { throw "cdp $method : socket $($ws.State)" }
+  $cts = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(20))
+  $ws.SendAsync([ArraySegment[byte]]::new($bytes), 'Text', $true, $cts.Token).GetAwaiter().GetResult()
   $buf = [byte[]]::new(1MB)
   while ($true) {
     $ms = [IO.MemoryStream]::new()
     do {
-      $r = $ws.ReceiveAsync([ArraySegment[byte]]::new($buf), [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+      $r = $ws.ReceiveAsync([ArraySegment[byte]]::new($buf), $cts.Token).GetAwaiter().GetResult()
       $ms.Write($buf, 0, $r.Count)
     } while (-not $r.EndOfMessage)
     $o = [Text.Encoding]::UTF8.GetString($ms.ToArray()) | ConvertFrom-Json -Depth 50
@@ -180,6 +183,8 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
       }
       $report = [pscustomobject]@{ label = $Label; mode = $mode; theme = $theme; faces = $info.fonts; nodes = @($rows) }
       $report | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 (Join-Path $Out "$Label-fonts-$mode-$theme.json")
+      Cdp-Send $ws 'CSS.disable' @{} | Out-Null
+      Cdp-Send $ws 'DOM.disable' @{} | Out-Null
       $yahei = @($rows | Where-Object { $_.rendered -match 'YaHei' }).Count
       Say "fonts: $($rows.Count) CJK nodes, $yahei rendered with YaHei; faces: $($info.fonts -join ', ')"
     }
@@ -199,10 +204,13 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
       }
       if ($extras -contains 'screen') { Shot-Screen "$mode-$theme-screen" }
       if ($extras -contains 'login' -and $ws) {
-        Cdp-Eval $ws "document.getElementById('login').hidden = false; true" | Out-Null
-        Start-Sleep 1
-        Shot $hwnd "$mode-$theme-login"
-        Cdp-Eval $ws "document.getElementById('login').hidden = true; true" | Out-Null
+        try {
+          Say "login: socket $($ws.State)"
+          Cdp-Eval $ws "document.getElementById('login').hidden = false; true" | Out-Null
+          Start-Sleep 1
+          Shot $hwnd "$mode-$theme-login"
+          Cdp-Eval $ws "document.getElementById('login').hidden = true; true" | Out-Null
+        } catch { Say "login shot skipped: $($_.Exception.Message)" }
       }
       if ($extras -contains 'unfocused') {
         $f = Steal-Focus; Start-Sleep 1
