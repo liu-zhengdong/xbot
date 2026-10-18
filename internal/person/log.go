@@ -146,24 +146,6 @@ func logPath(root, id string) string {
 	return filepath.Join(root, "people", id, "identity.jsonl")
 }
 
-func localIDs(root string) ([]string, error) {
-	dir := filepath.Join(root, "people")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for _, ent := range entries {
-		if ent.IsDir() && idRe.MatchString(ent.Name()) {
-			ids = append(ids, ent.Name())
-		}
-	}
-	return ids, nil
-}
-
 func deviceOf(root string) string {
 	raw, err := os.ReadFile(filepath.Join(root, "node-id"))
 	s := strings.TrimSpace(string(raw))

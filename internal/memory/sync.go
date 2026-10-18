@@ -154,10 +154,6 @@ func syncPath(root, id string) string {
 	return filepath.Join(root, "people", id, "memory", "sync.jsonl")
 }
 
-func syncKey(ln SyncLine) string {
-	return ln.Time.UTC().Format(time.RFC3339Nano) + "\x00" + ln.Bot + "\x00" + ln.Device + "\x00" + ln.Op + "\x00" + ln.Fact.Key + "\x00" + ln.Fact.Text + "\x00" + string(ln.Fact.Tier)
-}
-
 func factMark(ln SyncLine) string {
 	if ln.Fact.Tier == TierLog {
 		f := ln.Fact
