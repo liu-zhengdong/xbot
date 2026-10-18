@@ -21,6 +21,8 @@ import (
 	"xbot/internal/person"
 )
 
+const DefaultGateway = "https://xbot.babelgo.cn"
+
 type Device struct {
 	Name   string    `json:"name"`
 	ID     string    `json:"id"`
@@ -32,6 +34,23 @@ type Device struct {
 type Config struct {
 	Gateway string   `json:"gateway"`
 	Devices []Device `json:"devices"`
+}
+
+// GatewayURL resolves the default without persisting it in the device table.
+func (c Config) GatewayURL() string {
+	if c.Gateway != "" {
+		return c.Gateway
+	}
+	return DefaultGateway
+}
+
+// GatewayToken scopes a self-host join token to an explicitly configured gateway, so it never
+// reaches the official one (which takes no token).
+func (c Config) GatewayToken(token string) string {
+	if c.Gateway == "" {
+		return ""
+	}
+	return token
 }
 
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -81,7 +100,22 @@ func readJSON(path string, v any) error {
 
 func Load(root string) (cfg Config, err error) {
 	err = readJSON(filepath.Join(root, "remote", "devices.json"), &cfg)
+	if isOfficial(cfg.Gateway) {
+		cfg.Gateway = "" // older configs stored the official URL explicitly
+	}
 	return
+}
+
+// isOfficial reports whether raw names the official gateway in any spelling
+// (case, default port, trailing slash), so it is treated as the default.
+func isOfficial(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || raw == "" {
+		return false
+	}
+	def, _ := url.Parse(DefaultGateway)
+	return strings.EqualFold(u.Scheme, def.Scheme) && strings.EqualFold(u.Hostname(), def.Hostname()) &&
+		(u.Port() == "" || u.Port() == "443") && strings.Trim(u.Path, "/") == "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
 }
 
 func (c Config) ByName(name string) (Device, bool) {
@@ -197,11 +231,18 @@ func RemoveDevice(root, name string) error {
 }
 
 func SetGateway(root, raw string) error {
+	if raw == "default" {
+		raw = ""
+	}
 	if raw != "" {
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return errors.New("remote: gateway must be an http(s) URL with a host")
 		}
 	}
-	return update(root, func(c *Config) error { c.Gateway = strings.TrimRight(raw, "/"); return nil })
+	raw = strings.TrimRight(raw, "/")
+	if isOfficial(raw) {
+		raw = "" // Stored as the default so the idle privacy rule still applies.
+	}
+	return update(root, func(c *Config) error { c.Gateway = raw; return nil })
 }
