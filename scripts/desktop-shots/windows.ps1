@@ -23,7 +23,7 @@ function Say($m) { $line = "$(Get-Date -Format HH:mm:ss) $m"; Write-Host $line; 
 if ($Display) {
   Say "display before: $([Native]::Current())"
   Say ([Native]::Biggest(3840))
-  Say ([Native]::Scale(200))
+  Say ([Native]::Scale(150)) # 1920x1080 allows 175% at most, and only 150% fits a 1024x672 window
   Start-Sleep 3
 }
 
@@ -63,7 +63,8 @@ function Cdp-Eval($ws, [string] $expr) {
 }
 
 function Open-Cdp([int] $cdpPort, [int] $appPort) {
-  $deadline = (Get-Date).AddSeconds(90)
+  $deadline = (Get-Date).AddSeconds(45)
+  $last = ''
   while ((Get-Date) -lt $deadline) {
     try {
       $pages = Invoke-RestMethod "http://127.0.0.1:$cdpPort/json" -TimeoutSec 3
@@ -73,10 +74,14 @@ function Open-Cdp([int] $cdpPort, [int] $appPort) {
         $ws.ConnectAsync([Uri] $page.webSocketDebuggerUrl, [Threading.CancellationToken]::None).Wait()
         return $ws
       }
-    } catch {}
+    } catch { $last = $_.Exception.Message }
     Start-Sleep -Milliseconds 500
   }
-  throw "no DevTools page for port $appPort"
+  Say "no DevTools page for port $appPort ($last)"
+  $wv = Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Select-Object -First 1
+  if ($wv) { Say "webview2 browser args: $(($wv.CommandLine -split ' ' | Where-Object { $_ -like '--remote*' -or $_ -like '--user-data-dir*' }) -join ' ')" } else { Say 'no msedgewebview2.exe running' }
+  Say "listening on ${cdpPort}: $(@(Get-NetTCPConnection -State Listen -LocalPort $cdpPort -ErrorAction SilentlyContinue).Count)"
+  return $null
 }
 
 function Shot($hwnd, [string] $name) {
@@ -131,13 +136,14 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
     if ($hwnd -eq [IntPtr]::Zero) { throw "no XBot window ($mode $theme)" }
     $ws = Open-Cdp $script:cdp $script:port
     $ready = $false
-    for ($i = 0; $i -lt 120 -and -not $ready; $i++) {
+    if (-not $ws) { Start-Sleep 8 }
+    for ($i = 0; $ws -and $i -lt 120 -and -not $ready; $i++) {
       Start-Sleep -Milliseconds 500
       try { $ready = Cdp-Eval $ws "document.readyState === 'complete' && !document.getElementById('shell').hidden && document.fonts.status === 'loaded'" } catch {}
     }
     Say "case $mode $theme ready=$ready dpi=$([Native]::GetDpiForWindow($hwnd))"
     Start-Sleep 2
-    if ($Fonts) {
+    if ($Fonts -and $ws) {
       $raw = Cdp-Eval $ws $fontCheck
       $info = $raw | ConvertFrom-Json
       Cdp-Send $ws 'DOM.enable' @{} | Out-Null
@@ -176,7 +182,7 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
         $f.Close()
       }
     }
-    $ws.Dispose()
+    if ($ws) { $ws.Dispose() }
   } finally {
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
     Start-Sleep 2
