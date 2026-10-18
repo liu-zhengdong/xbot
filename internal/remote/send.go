@@ -32,8 +32,8 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 		return false, err
 	}
 	d, ok := cfg.ByName(device)
-	if !ok || cfg.Gateway == "" {
-		return false, errors.New("remote: paired device and gateway required")
+	if !ok {
+		return false, errors.New("remote: paired device required")
 	}
 	if d.XKey == "" {
 		return false, fmt.Errorf("remote: %s has no encryption key; pair again with xbot remote invite/join", device)
@@ -70,7 +70,7 @@ func Send(ctx context.Context, root, fromBot, addr, text, chain string, hops int
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	err = (&gateway.Client{Base: cfg.Gateway, Key: priv}).Send(ctx, env)
+	err = (&gateway.Client{Base: cfg.GatewayURL(), Key: priv}).Send(ctx, env)
 	if !retryable(err) {
 		return false, err
 	}
