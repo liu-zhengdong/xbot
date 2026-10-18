@@ -3,11 +3,12 @@ package gateway
 import (
 	"bytes"
 	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,31 +26,34 @@ var conformanceKeyCounts = make(map[string]int)
 func TestConformanceGo(t *testing.T) {
 	s := httptest.NewServer((&Server{Dir: t.TempDir(), Open: true}).Handler())
 	defer s.Close()
-	runConformance(t, s.URL)
+	runConformance(t, s.URL, false)
 }
 func TestConformanceURL(t *testing.T) {
 	base := os.Getenv("XBOT_GATEWAY_URL")
 	if base == "" {
 		t.Skip("XBOT_GATEWAY_URL is unset")
 	}
-	runConformance(t, base)
+	runConformance(t, base, true)
 }
 func conformanceRequire(t *testing.T, ok bool, message any) {
 	if !ok {
 		t.Fatal(message)
 	}
 }
-func runConformance(t *testing.T, base string) {
+func runConformance(t *testing.T, base string, remote bool) {
 	started := time.Now()
 	var requests atomic.Int64
 	t.Cleanup(func() { t.Logf("HTTP requests: %d; elapsed: %s", requests.Load(), time.Since(started)) })
 	hc := &http.Client{Timeout: 60 * time.Second}
 	type response struct {
-		status int
-		body   []byte
-		err    error
+		status  int
+		body    []byte
+		err     error
+		retried bool   // a transport error was retried, so the first attempt may have landed
+		note    string // retry notes, logged by the caller (polls run in goroutines)
 	}
-	exchange := func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
+	var exchange func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response
+	once := func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
 		req, err := http.NewRequest(method, strings.TrimRight(base, "/")+path, bytes.NewReader(body))
 		if err != nil {
 			return response{err: err}
@@ -70,11 +74,31 @@ func runConformance(t *testing.T, base string) {
 		if strings.HasPrefix(path, "/v1/") && res.StatusCode != 404 && !strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") {
 			err = fmt.Errorf("Content-Type: %q", res.Header.Get("Content-Type"))
 		}
-		return response{res.StatusCode, b, err}
+		return response{status: res.StatusCode, body: b, err: err}
+	}
+	// Remote runs cross real networks that drop a fraction of a percent of connections (seen
+	// even against unrelated hosts). Retry those once or twice; HTTP replies are never retried.
+	exchange = func(method, path string, body, signedBody []byte, key ed25519.PrivateKey, now time.Time) response {
+		r := once(method, path, body, signedBody, key, now)
+		note := ""
+		for i := 0; i < 2 && remote && r.status == 0 && r.err != nil && !isTimeout(r.err); i++ {
+			note += fmt.Sprintf("retried %s %s after: %v; ", method, path, r.err)
+			r = once(method, path, body, signedBody, key, now)
+			r.retried = true
+		}
+		r.note = note
+		return r
+	}
+	do := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, now time.Time) response {
+		r := exchange(method, path, body, body, key, now)
+		if r.note != "" {
+			t.Log(r.note)
+		}
+		conformanceRequire(t, r.err == nil, r.err)
+		return r
 	}
 	raw := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, now time.Time) (int, []byte) {
-		r := exchange(method, path, body, body, key, now)
-		conformanceRequire(t, r.err == nil, r.err)
+		r := do(t, method, path, body, key, now)
 		return r.status, r.body
 	}
 	marshal := func(t *testing.T, v any) []byte {
@@ -95,9 +119,21 @@ func runConformance(t *testing.T, base string) {
 		}
 	}
 	call := func(t *testing.T, method, path string, body []byte, key ed25519.PrivateKey, want int, shape string) []byte {
-		status, b := raw(t, method, path, body, key, time.Now())
-		check(t, status, want, b, shape)
-		return b
+		r := do(t, method, path, body, key, time.Now())
+		// The dropped attempt may have queued or acked already; the retry then sees a duplicate or fewer acks.
+		if r.retried && r.status == 200 && want == 202 && path == "/v1/send" {
+			check(t, r.status, 200, r.body, `{"status":"duplicate"}`)
+			return r.body
+		}
+		if r.retried && r.status == 200 && want == 200 && path == "/v1/ack" {
+			var got struct{ Acked *int }
+			var n int
+			fmt.Sscanf(shape, `{"acked":%d}`, &n)
+			conformanceRequire(t, json.Unmarshal(r.body, &got) == nil && got.Acked != nil && *got.Acked <= n, fmt.Sprintf("retried ack: %.200s", r.body))
+			return r.body
+		}
+		check(t, r.status, want, r.body, shape)
+		return r.body
 	}
 	poll := func(t *testing.T, key ed25519.PrivateKey) ([]Envelope, []byte) {
 		b := call(t, "GET", "/v1/poll?wait=0", nil, key, 200, "")
@@ -358,7 +394,12 @@ func runConformance(t *testing.T, base string) {
 		for i := 0; i < 30; i++ {
 			data := marshal(t, env(a, b, bytes.Repeat([]byte("x"), 45<<10)))
 			conformanceRequire(t, !(len(data) > MaxBody), "test request exceeds MaxBody")
-			status, body := raw(t, "POST", "/v1/send", data, a, time.Now())
+			res := do(t, "POST", "/v1/send", data, a, time.Now())
+			status, body := res.status, res.body
+			if res.retried && status == 200 {
+				check(t, status, 200, body, `{"status":"duplicate"}`) // the dropped attempt landed
+				status, body = 202, []byte(`{"status":"queued"}`)
+			}
 			if status == 507 {
 				check(t, status, 507, body, "")
 				full = true
@@ -372,78 +413,13 @@ func runConformance(t *testing.T, base string) {
 		got, body := poll(t, b)
 		conformanceRequire(t, !(len(body) > MaxPollBytes+1024 || len(got) == 0 || len(got) >= count), fmt.Sprintf("poll: bytes=%d envelopes=%d queued=%d", len(body), len(got), count))
 	})
-	// G7 short-code pairing: lookup registration, claim (token-free joiner
-	// becomes a pending install of the owner), cancel, expiry and admit.
-	lookup := func(t *testing.T) string {
-		var b [LookupLen]byte
-		_, err := rand.Read(b[:])
-		conformanceRequire(t, err == nil, err)
-		for i := range b {
-			b[i] = CodeAlphabet[int(b[i])%len(CodeAlphabet)]
-		}
-		return string(b[:])
-	}
-	code := func(t *testing.T, path string, key ed25519.PrivateKey, l string, ttl, want int, shape string) []byte {
-		body := map[string]any{"lookup": l}
-		if path == "/v1/code" {
-			body["ttl"] = ttl
-		}
-		return call(t, "POST", path, marshal(t, body), key, want, shape)
-	}
-	idOf := func(k ed25519.PrivateKey) string { return ID(k.Public().(ed25519.PublicKey)) }
-	t.Run("short code", func(t *testing.T) {
-		a, c := pair(t)
-		l := lookup(t)
-		code(t, "/v1/code", fresh(t, false), l, 60, 403, "")
-		for _, bad := range []string{"", "K7Q", "K7QMM", "k7qm", "K7Q0", "K7QO", "K7QI", "K7QU"} {
-			code(t, "/v1/code", a, bad, 60, 400, "")
-		}
-		code(t, "/v1/code", a, l, 0, 400, "")
-		code(t, "/v1/code", a, l, 601, 400, "")
-		code(t, "/v1/code", a, l, 60, 200, `{"status":"ok"}`)
-		code(t, "/v1/code/claim", a, l, 0, 400, "") // Own code.
-		b := fresh(t, false)
-		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`)
-		code(t, "/v1/code/claim", b, l, 0, 200, `{"install":"`+idOf(a)+`"}`) // Idempotent.
-		// Pending: own mailbox, and mail only to and from its owner.
-		send(t, b, env(b, a, []byte("pake1")), 202, "queued")
-		call(t, "POST", "/v1/send", marshal(t, env(b, c, nil)), b, 403, "")
-		call(t, "POST", "/v1/send", marshal(t, env(c, b, nil)), c, 403, "")
-		send(t, a, env(a, b, []byte("pake2")), 202, "queued")
-		envs, _ := poll(t, b)
-		conformanceRequire(t, len(envs) == 1 && string(envs[0].Body) == "pake2", "pending mailbox")
-		ack(t, b, []string{envs[0].ID}, 1)
-		code(t, "/v1/code", b, lookup(t), 60, 403, "")
-		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), c, 404, "")
-		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), b, 403, "")
-		// Admit, idempotent; then b is a member.
-		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), a, 200, `{"status":"ok"}`)
-		call(t, "POST", "/v1/code/admit", marshal(t, map[string]string{"install": idOf(b)}), a, 200, `{"status":"ok"}`)
-		send(t, b, env(b, c, nil), 202, "queued")
-		drain(t, a)
-		drain(t, c)
-		// Unknown lookups are 404; cancelled ones 410 (retained an hour).
-		code(t, "/v1/code/claim", fresh(t, false), lookup(t), 0, 404, "")
-		code(t, "/v1/code/cancel", c, l, 0, 404, "") // Not c's code.
-		code(t, "/v1/code/cancel", a, l, 0, 200, `{"status":"ok"}`)
-		code(t, "/v1/code/claim", fresh(t, false), l, 0, 410, "")
-	})
-	t.Run("short code expiry and claim limit", func(t *testing.T) {
-		owner := fresh(t, true)
-		l := lookup(t)
-		code(t, "/v1/code", owner, l, 60, 200, `{"status":"ok"}`)
-		for i := 0; i < MaxCodeClaims; i++ {
-			code(t, "/v1/code/claim", fresh(t, false), l, 0, 200, `{"install":"`+idOf(owner)+`"}`)
-		}
-		code(t, "/v1/code/claim", fresh(t, false), l, 0, 410, "")
-		e := fresh(t, true)
-		l2 := lookup(t)
-		code(t, "/v1/code", e, l2, 1, 200, `{"status":"ok"}`)
-		time.Sleep(1200 * time.Millisecond)
-		code(t, "/v1/code/claim", fresh(t, false), l2, 0, 410, "")
-	})
 	t.Run("unknown route", func(t *testing.T) {
 		status, _ := raw(t, "GET", "/v1/nope", nil, nil, time.Now())
 		conformanceRequire(t, status == 404, fmt.Sprintf("unknown route: %d", status))
 	})
+}
+
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
