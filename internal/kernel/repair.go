@@ -155,6 +155,25 @@ func lastAssistant(entries []bot.Entry, idx int) string {
 	return text
 }
 
+// ReplyAfter returns the final answer to the turn that eventID started. done is
+// false while that turn is still running or never started; text is empty when
+// the bot finished with no final line. It reads the transcript only.
+func ReplyAfter(b *bot.Bot, eventID string) (text string, done bool, err error) {
+	seq, err := b.FindEvent(eventID)
+	if err != nil || seq == 0 {
+		return "", false, err
+	}
+	n, err := b.Count()
+	if err != nil {
+		return "", false, err
+	}
+	span, err := b.Slice(seq, n)
+	if err != nil || !turnDone(span, 0) {
+		return "", false, err
+	}
+	return lastAssistant(span, 0), true, nil
+}
+
 func lastReplyTo(entries []bot.Entry, idx int) int {
 	end := len(entries)
 	for i := idx + 1; i < len(entries); i++ {

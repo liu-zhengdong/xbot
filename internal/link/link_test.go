@@ -34,7 +34,25 @@ func TestOwnerTrustedOnlyOnTerminal(t *testing.T) {
 	if OwnerTrusted("bot:ada", "u1", owners) || OwnerTrusted("group:g", "u1", owners) {
 		t.Fatal("bot and group sources stay untrusted")
 	}
-	ev := TerminalEvent("u1", "do the thing", time.Unix(10, 0).UTC())
+	if !OwnerTrusted(NameRemoteOwner, "u1", owners) {
+		t.Fatal("owner input from another paired device is trusted")
+	}
+	if OwnerTrusted(NameRemoteOwner, "u2", owners) || OwnerTrusted(NameRemoteOwner, "", owners) {
+		t.Fatal("a non-owner on another device stays untrusted")
+	}
+	for _, source := range []string{"bot:ada@mbp", "bot:ada@web", "bot:u1@terminal"} {
+		if OwnerTrusted(source, "u1", owners) {
+			t.Fatalf("%s is not the owner speaking", source)
+		}
+	}
+	ev := RemoteOwnerEvent("u1", "typed remotely", time.Unix(10, 0).UTC())
+	if !ev.Untrusted || ev.SenderKind != KindPerson || ev.Source != NameRemoteOwner || ev.Content != "typed remotely" {
+		t.Fatalf("remote owner event: %+v", ev)
+	}
+	if !OwnerTrusted(ev.Source, ev.Sender, owners) {
+		t.Fatal("remote owner event source should be trusted for its owner")
+	}
+	ev = TerminalEvent("u1", "do the thing", time.Unix(10, 0).UTC())
 	if strings.Contains(Render(ev, true), "<untrusted_event") {
 		t.Fatal("trusted render wrapped the owner")
 	}
