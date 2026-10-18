@@ -308,9 +308,17 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if n := len(assembled); n > 0 {
 		before = compact.EstimateMessage(assembled[n-1])
 	}
-	assembled, err = k.reminderKinds(ev).Bind(assembled, seqNow, k.now())
+	// The project trigger asks whether a set is already in this context:
+	// replayed reminders are in assembled, and Bind adds any new one.
+	for _, m := range assembled {
+		t.projects.noteText(m.Content)
+	}
+	assembled, err = k.reminderKindsFor(ev, t).Bind(assembled, seqNow, k.now())
 	if err != nil {
 		return err
+	}
+	if n := len(assembled); n > 0 {
+		t.projects.noteText(assembled[n-1].Content)
 	}
 	if n := len(assembled); n > 0 {
 		if delta := compact.EstimateMessage(assembled[n-1]) - before; delta > 0 {

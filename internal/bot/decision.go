@@ -66,6 +66,9 @@ type Trace struct {
 	SessionCached     int       `json:"session_cached,omitempty"`
 	Window            int       `json:"window,omitempty"`
 	Estimated         bool      `json:"estimated,omitempty"`
+	// Branch is set on a usage record from a background branch. Its counts
+	// are that call's own; the foreground's latest counts are not touched.
+	Branch string `json:"branch,omitempty"`
 }
 
 // TracePath is the append-only trace for this bot.

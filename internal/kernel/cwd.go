@@ -163,6 +163,18 @@ func (k *Kernel) storeScope(scope, dir string) {
 	_ = fsutil.WriteAtomic(path, []byte(dir+"\n"), 0600)
 }
 
+// dropScope forgets a background branch's or subagent's directory once it has
+// ended. A long-running serve would otherwise keep one entry per branch and
+// subagent it ever ran.
+func (k *Kernel) dropScope(scope string) {
+	if k == nil || scope == "" {
+		return
+	}
+	k.cwd.mu.Lock()
+	delete(k.cwd.extra, scope)
+	k.cwd.mu.Unlock()
+}
+
 // allowedRoots are the workspace and the shared directory. A shell cwd and a
 // project-instruction file must stay inside one of them.
 func (k *Kernel) allowedRoots() []string {
