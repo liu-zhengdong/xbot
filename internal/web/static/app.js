@@ -1760,11 +1760,11 @@
   // counts. One message keeps its own wording; more say how many.
   function peerEventWords(g) {
     const total = g.sent + g.received;
-    const lost = g.bounced ? " · " + g.bounced + " 条没送到" : "";
-    if (total > 1) return { lead: "和", tail: "往来了 " + total + " 条消息" + lost };
-    if (g.sent) return { lead: "已发消息给", tail: lost };
-    if (g.received) return { lead: "收到", tail: "的消息" + lost };
-    return { lead: "发给", tail: "的消息没送到" };
+    const lost = g.bounced ? g.bounced + " 条没送到" : "";
+    if (total > 1) return { lead: "和", tail: "往来了 " + total + " 条消息", lost: lost };
+    if (g.sent) return { lead: "已发消息给", tail: "", lost: lost };
+    if (g.received) return { lead: "收到", tail: "的消息", lost: lost };
+    return { lead: "发给", tail: "的消息没送到", lost: "" };
   }
 
   function paintPeerEvent(row) {
@@ -1774,7 +1774,10 @@
     const device = g.device || who.device;
     const name = el("span", "peer-event-name", niceName(who.bot) + (device ? " · " + device : ""));
     row.replaceChildren(el("span", "", words.lead), peerAvatar({ bot: who.bot, device: device }, "xs"), name);
-    if (words.tail) row.append(el("span", "", words.tail.replace(/^ · /, "· ")));
+    if (words.tail) row.append(el("span", "", words.tail));
+    // The dot is its own flex item, so the row's gap puts an even space on both
+    // sides; a space typed after it came out too thin next to the CJK text.
+    if (words.lost) row.append(el("span", "peer-event-dot", " · "), el("span", "", words.lost));
     row.dataset.count = String(g.sent + g.received);
   }
 
@@ -2905,7 +2908,8 @@
     }
     if (state.others && state.others.length) roster.append(othersFolder());
 
-    roster.append(sectionLabel("群组"));
+    // No groups, no header: 新建 already offers 新建群组.
+    if (state.groups.length) roster.append(sectionLabel("群组"));
     for (const g of state.groups) {
       const btn = listButton(g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false, niceName(g.name || g.id));
       btn.addEventListener("click", () => {
@@ -5282,7 +5286,7 @@
         body: JSON.stringify({ token: $("token").value.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里 login token 那一行" : "登录失败，稍后再试");
+      if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里登录码那一行" : "登录失败，稍后再试");
       state.owner = data.owner || "";
       state.ownerName = data.owner_name || "";
       renderMe();
