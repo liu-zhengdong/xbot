@@ -45,7 +45,7 @@ const signed = async (e, utc = e.time, body = new Uint8Array()) => ({...e, sig: 
 const base = {v: 1, id: 'a'.repeat(32), from: caller, to: 'b'.repeat(32), time: '2026-10-18T08:00:00Z', kind: 'msg', body: null};
 test('invalid fields are rejected even when correctly signed', async () => {
   for (const e of [{...base, time: '2026-02-30T00:00:00Z'}, {...base, kind: 'Msg'}, {...base, time: '2026-10-18T08:00:00+24:00'}])
-    await assert.rejects(envelope(JSON.stringify(await signed(e, e.time.replace('+24:00', 'Z'))), caller, pub));
+    await assert.rejects(envelope(JSON.stringify(await signed(e, e.time.replace('18T08:00:00+24:00', '17T08:00:00Z'))), caller, pub));
   const raw = JSON.stringify(await signed(base));
   for (const v of ['1.0', '1e0']) await assert.rejects(envelope(raw.replace('"v":1', `"v":${v}`), caller, pub));
 });
@@ -57,7 +57,8 @@ test('Go-compatible envelope decoding', async () => {
   assert.match((await envelope(JSON.stringify(late), caller, pub)).json, /"time":"2026-10-18T08:00:00Z"/);
   const arr = await signed({...base, body: [1, 2, 255]}, base.time, bytes);
   assert.match((await envelope(JSON.stringify(arr), caller, pub)).json, /"body":"AQL\/"/);
-  await assert.rejects(envelope(JSON.stringify({...arr, body: [1, 2, 256]}), caller, pub));
+  for (const b of [[1, 2, 256], [-1], [1.5]]) assert.throws(() => decode(b));
+  assert.throws(() => decode(JSON.parse('[-0]'))); assert.deepEqual(decode([null, 1]), new Uint8Array([0, 1]));
   const str = await signed({...base, body: 'AQL/'}, base.time, bytes);
   assert.match((await envelope(JSON.stringify(str).replace('"AQL/"', '"AQ\\nL/"'), caller, pub)).json, /"body":"AQL\/"/);
   const blank = await signed({...base, body: ''});

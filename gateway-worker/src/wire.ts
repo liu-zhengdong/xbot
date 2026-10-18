@@ -8,7 +8,8 @@ export const b64 = (b: Uint8Array) => { // Chunked: spreading ~64 KiB of argumen
 };
 export function decode(s: unknown, url = false): Uint8Array {
   // encoding/json also fills []byte from an array of integers 0-255 (fields() turns 1.0 into NaN).
-  if (!url && Array.isArray(s) && s.every(x => Number.isInteger(x) && x >= 0 && x <= 255)) return Uint8Array.from(s);
+  // A null element stays 0; -0 is rejected (Go parses uint8 as unsigned).
+  if (!url && Array.isArray(s) && s.every(x => x === null || Number.isInteger(x) && x >= 0 && x <= 255 && !Object.is(x, -0))) return Uint8Array.from(s, x => x ?? 0);
   if (typeof s !== "string") throw Error();
   const clean = s.replace(/[\r\n]/g, ""); // Go's base64 decoder ignores CR and LF.
   if (url ? !/^[A-Za-z0-9_-]*$/.test(clean) || clean.length % 4 === 1 : !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(clean)) throw Error();
