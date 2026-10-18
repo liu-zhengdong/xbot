@@ -56,7 +56,6 @@ type pairingState struct {
 	join   *shortSession
 	client *gateway.Client
 	view   atomic.Pointer[Status]
-	active atomic.Bool // A session is in flight, so Run polls the default gateway.
 }
 
 var pairings sync.Map
@@ -68,15 +67,7 @@ func pairingFor(root string) *pairingState {
 }
 
 // publish keeps status polling independent of slow gateway operations.
-func (s *pairingState) publish() {
-	v := clonePairStatus(s.status)
-	s.view.Store(&v)
-	s.active.Store(s.join != nil)
-}
-
-// pairingActive keeps Run polling while a pairing is in flight even with no
-// devices or gateway set (the default gateway is used then).
-func pairingActive(root string) bool { return pairingFor(root).active.Load() }
+func (s *pairingState) publish() { v := clonePairStatus(s.status); s.view.Store(&v) }
 func (s *pairingState) release() { s.publish(); s.Unlock() }
 func clonePairStatus(out Status) Status {
 	out.A.Bots = append([]string(nil), out.A.Bots...)

@@ -26,7 +26,7 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 		if err == nil && cfg.Gateway == "" && len(cfg.Devices) == 0 {
 			var live bool
 			live, err = hasLiveInvite(root, time.Now())
-			if err == nil && !live && !pairingActive(root) {
+			if err == nil && !live {
 				if !pause(ctx, root, 5*time.Second) {
 					return
 				}
