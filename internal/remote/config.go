@@ -223,10 +223,16 @@ func AddDevice(root, name, keyB64, xkeyB64, personID string) (d Device, err erro
 }
 
 func RemoveDevice(root, name string) error {
+	return removeDevice(root, func(d Device) bool { return d.Name == name }, fmt.Sprintf("%q", name))
+}
+
+// removeDevice matches inside the locked update, so a device replaced while
+// the caller waited is never the one removed.
+func removeDevice(root string, match func(Device) bool, what string) error {
 	return fsutil.WithLock(filepath.Join(root, "remote", "seen.json.lock"), func() error {
 		return update(root, func(c *Config) error {
 			for i, d := range c.Devices {
-				if d.Name == name {
+				if match(d) {
 					if err := os.Remove(filepath.Join(root, "remote", "dirs", d.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 						return err
 					}
@@ -234,7 +240,7 @@ func RemoveDevice(root, name string) error {
 					return nil
 				}
 			}
-			return fmt.Errorf("remote: device %q not found", name)
+			return fmt.Errorf("remote: device %s not found", what)
 		})
 	})
 }
