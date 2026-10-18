@@ -85,15 +85,7 @@ func RenameDevice(root, id, label string) error {
 }
 
 func RemoveDeviceID(root, id string) error {
-	cfg, err := Load(root)
-	if err != nil {
-		return err
-	}
-	d, ok := cfg.ByID(id)
-	if !ok {
-		return errors.New("remote: device not found")
-	}
-	return RemoveDevice(root, d.Name)
+	return removeDevice(root, func(d Device) bool { return d.ID == id }, id)
 }
 
 // SetSelfName sets how this computer appears to devices paired from now on.
