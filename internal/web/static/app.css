@@ -2030,6 +2030,8 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .avatar-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
 .avatar-note .icon { width: 14px; height: 14px; flex: none; }
 .avatar-block .avatar-note.err { color: var(--text); justify-content: center; text-align: center; }
+.newbot-avatar { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; }
+.newbot-avatar .avatar { margin-right: 6px; }
 @media (prefers-reduced-motion: reduce) { .avatar-spin .icon { animation: none; } }
 .panel-scrim {
   position: fixed; inset: var(--panel-overlay-top, 64px) 0 0;
