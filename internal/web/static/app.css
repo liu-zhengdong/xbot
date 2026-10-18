@@ -89,6 +89,7 @@
   --font: "Mona Sans VF", "XBot SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   --side: 260px;
+  --top-h: 56px;
   color-scheme: light;
 }
 
@@ -224,16 +225,17 @@ button:disabled { cursor: default; }
   margin-left: 8px; border-radius: 20px; overflow: hidden;
 }
 
+/* The header, the thread and the composer share one centred column, so the
+   header avatar, the bot message avatar and the composer start on one line. */
 .top {
-  height: 56px; display: flex; align-items: center; justify-content: center;
-  padding: 0 16px 0 24px; flex: none;
+  height: var(--top-h); display: flex; align-items: center; justify-content: center;
+  padding: 0; flex: none;
 }
 
 /* One centred column for the header, messages and composer (P1 / 5–6). */
 .top-inner, .thread-inner, .composer { width: min(720px, 100% - 64px); }
 
 .top-inner {
-  width: 100%;
   display: flex; align-items: center; gap: 2px;
   position: relative; min-width: 0; height: 100%;
 }
@@ -241,8 +243,16 @@ button:disabled { cursor: default; }
 .top-title { flex: 1; min-width: 0; }
 
 .title {
-  font-size: 20px; font-weight: 500; line-height: 1.3; letter-spacing: -0.015em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  font-size: 15px; font-weight: 620; line-height: 1.3; letter-spacing: -0.015em;
+  white-space: nowrap; overflow: hidden;
+  /* A long name fades over its last 32px instead of reaching the buttons. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+
+/* The header avatar: the same round face as the list (device prototype 68). */
+.title .avatar.head {
+  width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex: none;
 }
 
 .pair-title {
@@ -260,7 +270,7 @@ button:disabled { cursor: default; }
 
 .pair-name {
   display: inline-flex; align-items: center; min-width: 0; max-width: 100%;
-  font-size: 16px; font-weight: 500; letter-spacing: -0.015em; line-height: 1;
+  font-size: 15px; font-weight: 620; letter-spacing: -0.015em; line-height: 1;
 }
 
 .pair-who {
@@ -1274,8 +1284,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .ghost svg { width: 20px; height: 20px; }
 
-.panel-more-wrap { position: relative; }
-
 .sheet-handle { display: none; }
 
 .panel-body { overflow: auto; padding: 0 0 24px; flex: 1; min-height: 0; }
@@ -1553,12 +1561,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .push-hint.bad { color: var(--err); }
 
-.more-wrap { position: relative; flex: none; }
-
-.more-pop {
-  top: calc(100% + 6px); bottom: auto; left: auto; right: 0; width: 180px; z-index: 20;
-}
-
 .choice { display: flex; gap: 8px; }
 
 .choice-opt {
@@ -1579,7 +1581,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 .check-row input { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .notes {
-  position: absolute; top: 48px; right: 40px; width: min(360px, calc(100vw - 24px));
+  position: absolute; top: 56px; right: 40px; width: min(360px, calc(100vw - 24px));
   background: var(--bg); border: 0; border-radius: 12px;
   box-shadow: var(--shadow); z-index: 20; overflow: auto; max-height: 320px;
 }
@@ -1619,11 +1621,6 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 }
 
 .plus-pop { left: 0; right: auto; width: 180px; bottom: calc(100% + 8px); }
-
-.panel-menu {
-  top: calc(100% + 6px); bottom: auto; left: auto; right: 0;
-  width: 196px; z-index: 30;
-}
 
 .folder-menu,
 .menu-sub {
@@ -1716,9 +1713,9 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   .ask, .approval, .approval-line { max-width: 100%; }
   .mobile-only { display: inline-flex; }
   .desk-only { display: none !important; }
-  .title { font-size: 16px; }
+  .title { font-size: 15px; }
   .top {
-    height: 52px; padding: 0 16px;
+    height: var(--top-h); padding: 0 16px;
     padding-top: env(safe-area-inset-top);
   }
   .thread { padding: 8px 0; }
@@ -1771,7 +1768,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   .hero { padding-top: 8px; }
   .dock { padding: 12px 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .msg.user .meta { opacity: 1; }
-  .notes { right: 8px; top: 48px; }
+  .notes { right: 8px; top: 52px; }
 }
 
 .tip {
@@ -1781,6 +1778,19 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   font-size: 12px; font-weight: 500; line-height: 1.4;
   white-space: normal;
 }
+
+/* The panel's action row (and the header subtitle). */
+.top-title .subtitle { margin-top: 0; }
+
+/* The header's former "···" actions: icon buttons in the panel bar, left of
+   its close button; 删除 is set apart by a gap. */
+.panel-actions { display: flex; align-items: center; gap: 2px; margin-right: auto; }
+
+.panel-actions .menu-move { position: relative; }
+
+.panel-act.danger { margin-left: 8px; }
+
+.panel-act.danger:hover { color: var(--err); }
 
 .icon-btn:focus-visible,
 .ghost:focus-visible,
@@ -1997,7 +2007,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
   .panel.open { top: var(--panel-overlay-top, 64px); }
 }
 @media (max-width: 767px) {
-  .panel { top: var(--panel-overlay-top, 52px); bottom: 0; height: auto; }
+  .panel { top: var(--panel-overlay-top, 56px); bottom: 0; height: auto; }
   .panel.open {
     width: min(90%, 400px) !important; min-width: 0;
     left: auto; right: 0; border-radius: 20px 0 0 0;

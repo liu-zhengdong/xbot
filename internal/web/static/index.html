@@ -149,16 +149,10 @@ try {
           <i id="bell-dot" class="dot" hidden></i>
         </button>
         <div id="notes" class="notes" hidden></div>
-        <div class="more-wrap">
-          <button id="more" class="icon-btn" type="button" aria-label="更多" data-tip="更多" aria-expanded="false" hidden>
-            <svg class="icon" viewBox="0 0 24 24"><circle class="solid" cx="5" cy="12" r="1.5"/><circle class="solid" cx="12" cy="12" r="1.5"/><circle class="solid" cx="19" cy="12" r="1.5"/></svg>
-          </button>
-          <div id="more-menu" class="pop more-pop" hidden>
-            <button id="export-chat" type="button">导出对话</button>
-          </div>
-        </div>
+        <!-- The one panel control: it opens and closes the info panel, and the
+             bot's actions now sit at the top of that panel. -->
         <button id="info" class="icon-btn" type="button" aria-label="详情" data-tip="详情" aria-expanded="false">
-          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14"/></svg>
         </button>
       </div>
     </header>
@@ -187,15 +181,8 @@ try {
   <aside id="panel" class="panel" aria-label="详情">
     <div class="sheet-handle" aria-hidden="true"></div>
     <div class="panel-bar">
-      <div class="panel-more-wrap">
-        <button id="panel-more" class="ghost" type="button" aria-label="更多" data-tip="更多" aria-expanded="false" hidden>
-          <svg class="icon" viewBox="0 0 24 24"><circle class="solid" cx="5" cy="12" r="1.5"/><circle class="solid" cx="12" cy="12" r="1.5"/><circle class="solid" cx="19" cy="12" r="1.5"/></svg>
-        </button>
-        <div id="panel-menu" class="pop panel-menu" hidden></div>
-      </div>
-      <button id="panel-export" class="ghost" type="button" aria-label="导出" data-tip="导出" hidden>
-        <svg class="icon" viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
-      </button>
+      <!-- The header's former "···" actions, filled in by syncPanelChrome(). -->
+      <div id="panel-actions" class="panel-actions" role="toolbar" aria-label="Bot 操作" hidden></div>
       <button id="panel-close" class="ghost" type="button" aria-label="关闭" data-tip="关闭">
         <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
