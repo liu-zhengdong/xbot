@@ -81,6 +81,13 @@ func directText(content, peerName string) (from, text string, ok bool) {
 	return sender, body, true
 }
 
+// EventSource reports the origin of a wrapped untrusted event: its source
+// attribute and sender. ok is false for any content link.Wrap did not produce.
+func EventSource(content string) (source, sender string, ok bool) {
+	source, _, sender, _, ok = unwrapEvent(content)
+	return
+}
+
 // unwrapEvent reverses link.Wrap. The body is the raw event content.
 func unwrapEvent(content string) (source, typ, sender, body string, ok bool) {
 	const prefix = "<untrusted_event "
