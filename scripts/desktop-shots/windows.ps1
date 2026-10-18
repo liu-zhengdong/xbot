@@ -171,17 +171,17 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
     }
     if ($Shots) {
       $sw = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-      [Native]::Hover($sw.Width - 5, $sw.Height - 60)
+      [Native]::Hover($sw.Width - 5, $sw.Height - 60) | Out-Null
       [Native]::Focus($hwnd) | Out-Null; Start-Sleep 1
       Shot $hwnd "$mode-$theme"
       if ($extras -contains 'hover') {
         $r = [Native]::Bounds($hwnd); $s = [Native]::GetDpiForWindow($hwnd) / 96.0
         foreach ($b in @(@{ n = 'close'; x = 23 }, @{ n = 'max'; x = 69 }, @{ n = 'min'; x = 115 })) {
-          [Native]::Hover([int]($r.Right - $b.x * $s), [int]($r.Top + 20 * $s))
+          Say "hover $($b.n): $([Native]::Hover([int]($r.Right - $b.x * $s), [int]($r.Top + 20 * $s)))"
           Start-Sleep -Milliseconds 700
           Shot $hwnd "$mode-$theme-hover-$($b.n)"
         }
-        [Native]::Hover($sw.Width - 5, $sw.Height - 60)
+        [Native]::Hover($sw.Width - 5, $sw.Height - 60) | Out-Null
       }
       if ($extras -contains 'unfocused') {
         $f = Steal-Focus; Start-Sleep 1

@@ -21,11 +21,25 @@ public static class Native {
 
   // SetCursorPos alone sends no WM_MOUSEMOVE, so hover states never show;
   // a one-pixel relative move there and back does.
-  public static void Hover(int x, int y) {
+  [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
+  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
+  [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+
+  public static string Hover(int x, int y) {
     SetCursorPos(x - 1, y);
     mouse_event(0x0001, 1, 0, 0, UIntPtr.Zero);
     System.Threading.Thread.Sleep(50);
     mouse_event(0x0001, 0, 0, 0, UIntPtr.Zero);
+    // The caption buttons light up on WM_NCMOUSEMOVE; when the session's
+    // synthetic input produces none, hand the window under the point the
+    // same message the mouse would have.
+    var p = new POINT { X = x, Y = y };
+    IntPtr h = WindowFromPoint(p);
+    if (h == IntPtr.Zero) return "no window at point";
+    IntPtr lp = new IntPtr((y << 16) | (x & 0xffff));
+    IntPtr ht = SendMessage(h, 0x0084, IntPtr.Zero, lp); // WM_NCHITTEST
+    SendMessage(h, 0x00A0, ht, lp); // WM_NCMOUSEMOVE
+    return "hit-test " + ht.ToInt64();
   }
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
