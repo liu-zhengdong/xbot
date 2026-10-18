@@ -174,6 +174,45 @@ func TestDevicesAPIUnpaired(t *testing.T) {
 	}
 }
 
+// `PATCH /api/devices/{id}` also flips 「Bot 互发消息」; the label stays when
+// only bot_messaging is sent, and an unknown id is 404 没有这台设备.
+func TestDevicesAPIBotMessaging(t *testing.T) {
+	a := newDeviceSide(t, "书房 iMac", "ada")
+	pub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := remote.AddDevice(a.root, "mbp", base64.StdEncoding.EncodeToString(pub), base64.StdEncoding.EncodeToString(make([]byte, 32)), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := func() map[string]any {
+		var list struct {
+			Devices []map[string]any `json:"devices"`
+		}
+		a.call("GET", "/api/devices", "", &list)
+		if len(list.Devices) != 1 {
+			t.Fatalf("list: %+v", list)
+		}
+		return list.Devices[0]
+	}
+	if got := row(); got["bot_messaging"] != true || got["label"] != "mbp" {
+		t.Fatalf("default row: %+v", got)
+	}
+	if code := a.call("PATCH", "/api/devices/"+d.ID, `{"bot_messaging":false}`, nil); code != 200 {
+		t.Fatalf("switch off: %d", code)
+	}
+	if got := row(); got["bot_messaging"] != false || got["label"] != "mbp" {
+		t.Fatalf("switched-off row: %+v", got)
+	}
+	var e struct {
+		Error string `json:"error"`
+	}
+	if code := a.call("PATCH", "/api/devices/nope", `{"bot_messaging":true}`, &e); code != http.StatusNotFound || e.Error != "没有这台设备" {
+		t.Fatalf("unknown id: %d %+v", code, e)
+	}
+}
+
 // A gateway 429 on the code and a full name are not 连不上网关 or 没送到:
 // pairErrCopy gives each its status and copy, and the handlers use it.
 func TestDevicesAPIErrorCopy(t *testing.T) {
