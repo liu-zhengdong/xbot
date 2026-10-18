@@ -37,6 +37,7 @@ class N {
 const el = (tag, cls, text) => new N(cls, text);
 const avatar = (name) => new N("avatar", "[" + name + "]");
 const paintOf = () => ({});
+const peerAvatar = (who) => avatar(who.bot);
 const setTip = () => {};
 const niceName = (s) => String(s || "").trim();
 const opened = [];
