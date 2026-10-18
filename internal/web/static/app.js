@@ -487,24 +487,18 @@
     return s;
   }
 
-  function stNodePrefix(st) {
-    const node = st && st.node ? String(st.node).trim() : "";
-    return node && node !== "local" ? node + " · " : "";
-  }
-
   // The second line is owned by the status poll; rows only record a signature so an
   // unchanged line is never rewritten and no row is touched without a change.
   function stDesc(name) {
     const st = stStatus.map[name] || null;
     const kind = st ? String(st.state || "idle") : "idle";
-    const pre = stNodePrefix(st);
-    let sig = kind + "|" + pre;
+    let sig = kind;
     const line = el("span", "preview");
     if (kind === "running") {
       line.className = "preview st run click";
       line.append(spinIcon(11));
       const text = el("span");
-      text.append(pre + "在跑 ");
+      text.append("在跑 ");
       const tool = st && st.tool ? String(st.tool) : "";
       if (tool) text.append(el("code", "", tool));
       line.append(text);
@@ -513,18 +507,18 @@
     } else if (kind === "awaiting") {
       line.className = "preview st wait click";
       line.append(el("i", "wd"));
-      line.append(el("span", "", pre + "等你确认"));
+      line.append(el("span", "", "等你确认"));
       line.addEventListener("click", (ev) => { ev.stopPropagation(); jumpToApproval(name); });
     } else if (kind === "offline") {
       line.className = "preview st off";
       const mins = Math.round(Number(st && st.stale_seconds) / 60) || 1;
-      line.append(el("span", "", pre + "离线 · 最后状态 " + mins + " 分钟前"));
+      line.append(el("span", "", "离线 · 最后状态 " + mins + " 分钟前"));
       sig += mins;
     } else {
       const bot = (state.bots || []).find((b) => b.name === name);
       const text = realPreview(st && st.last_message) || (bot ? lineForBot(bot) : "") || "没有消息";
       line.className = "preview";
-      line.append(el("span", "", pre + text));
+      line.append(el("span", "", text));
       sig += text;
     }
     return { sig: sig, node: line, off: kind === "offline" };
@@ -579,73 +573,6 @@
     return box;
   }
 
-
-  // Remote same-owner bots only appear in /api/bots/status (with a node name).
-  // Keep one row per remote bot under a folder named after the node.
-  function ensureRemoteRows() {
-    const roster = $("roster");
-    if (!roster) return;
-    const local = new Set((state.bots || []).map((b) => b.name));
-    const remotes = Object.values(stStatus.map).filter((st) => st && st.node && st.bot && !local.has(st.bot));
-    // Drop remote folders when empty.
-    roster.querySelectorAll(".folder[data-remote-node]").forEach((f) => {
-      const node = f.dataset.remoteNode;
-      if (!remotes.some((st) => st.node === node)) f.remove();
-    });
-    const byNode = {};
-    remotes.forEach((st) => { (byNode[st.node] || (byNode[st.node] = [])).push(st); });
-    for (const [node, list] of Object.entries(byNode)) {
-      let folder = roster.querySelector('.folder[data-remote-node="' + CSS.escape(node) + '"]');
-      if (!folder) {
-        folder = el("div", "folder");
-        folder.dataset.remoteNode = node;
-        const head = el("div", "folder-head");
-        const toggle = el("button", "folder-toggle");
-        toggle.type = "button";
-        toggle.setAttribute("aria-expanded", "true");
-        toggle.append(icon("chevronDown"));
-        const name = el("span", "folder-name", node);
-        toggle.append(name, el("span", "folder-count", String(list.length)));
-        toggle.addEventListener("click", () => {
-          const body = folder.querySelector(".folder-bots");
-          const open = body.hidden;
-          body.hidden = !open;
-          toggle.setAttribute("aria-expanded", open ? "true" : "false");
-        });
-        head.append(toggle);
-        folder.append(head, el("div", "folder-bots"));
-        // Insert before the locked "别人的" folder if present, else at end.
-        const others = [...roster.querySelectorAll(".folder")].find((f) => f.querySelector(".folder-name")?.textContent?.includes("别人的"));
-        if (others) roster.insertBefore(folder, others);
-        else roster.append(folder);
-      } else {
-        const count = folder.querySelector(".folder-count");
-        if (count) count.textContent = String(list.length);
-      }
-      const body = folder.querySelector(".folder-bots");
-      const have = new Set([...body.querySelectorAll(".item[data-bot]")].map((r) => r.dataset.bot));
-      list.forEach((st) => {
-        if (have.has(st.bot)) return;
-        const row = el("div", "item remote");
-        row.dataset.bot = st.bot;
-        row.append(avatar(st.bot, null));
-        const wrap = el("span", "item-body");
-        const line = el("span", "name-line");
-        line.append(el("span", "name", niceName(st.bot)));
-        wrap.append(line, el("span", "preview"));
-        row.append(wrap);
-        row.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          setTip(row, "在 " + node + " 上");
-        });
-        body.append(row);
-      });
-      // Remove rows no longer present.
-      body.querySelectorAll(".item[data-bot]").forEach((r) => {
-        if (!list.some((st) => st.bot === r.dataset.bot)) r.remove();
-      });
-    }
-  }
 
   function paintStatus() {
     const roster = $("roster");
@@ -718,7 +645,6 @@
     stStatus.map = map;
     state.others = data && Array.isArray(data.others) ? data.others : null;
     renderLists();
-    ensureRemoteRows();
     paintStatus();
     if (stpState.open) stpRefresh().catch(() => {});
   }
