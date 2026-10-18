@@ -91,6 +91,7 @@
   async function refresh() {
     try { S.data = await api("GET", "/api/devices"); S.pairing = S.data.pairing; } catch (e) { /* 离线时保留旧数据 */ }
     paintCount();
+    paintSidebar();
   }
   function paintCount() {
     const el = document.getElementById("account-devices-count");
@@ -253,7 +254,7 @@
         S.busy = false; render(); break;
       case "gw-retry":
         try { S.data = await api("GET", "/api/devices?retry=1"); } catch (e) {}
-        render(); break;
+        paintSidebar(); render(); break;
       default: if (D.acts[name]) await D.acts[name](el);
     }
   }
@@ -297,6 +298,50 @@
     const acct = document.getElementById("account");
     if (acct) acct.addEventListener("click", () => { refresh(); });
   }
+  // ---- 侧栏：其他电脑上的 Bot，按设备分组 ----
+  // 网关不通时只在分组上方放一条提示、整体变淡，不给每台标离线；网关通时离线的设备变淡并标「离线」。
+  const initials = (n) => { const c = Array.from(String(n || "?")); return /[A-Za-z]/.test(c[0]) ? (c[0].toUpperCase() + (c[1] || "").toLowerCase()) : c[0]; };
+  const face = (n) => `<span class="avatar"><svg viewBox="0 0 36 36" aria-hidden="true" style="--avatar-light:#d3d3d3;--avatar-dark:#3d3d3d;--avatar-letter-light:#333333;--avatar-letter-dark:#e4e4e4"><circle cx="18" cy="18" r="18" fill="var(--avatar-fill)"/><text x="18" y="23" text-anchor="middle" font-size="${initials(n).length > 1 ? 13 : 15}" fill="var(--avatar-ink)">${esc(initials(n))}</text></svg></span>`;
+  const sideFolds = () => { try { return JSON.parse(localStorage.getItem("xbot-device-folders") || "{}") || {}; } catch (e) { return {}; } };
+  let sideSig = "";
+  function paintSidebar() {
+    const nav = document.getElementById("remote-roster");
+    if (!nav) return;
+    const data = S.data || {};
+    const devs = (data.devices || []).filter((d) => d.bots && d.bots.length);
+    const up = !!data.gateway_ok, folds = sideFolds();
+    const sig = JSON.stringify([devs, up, folds]);
+    if (sig === sideSig) return;
+    sideSig = sig;
+    const had = document.activeElement && nav.contains(document.activeElement) ? document.activeElement.closest("[data-side]") : null;
+    const key = had ? `[data-side="${had.dataset.side}"]` + (had.dataset.id ? `[data-id="${CSS.escape(had.dataset.id)}"]` : "") : "";
+    nav.hidden = !devs.length;
+    nav.innerHTML = !devs.length ? "" : (up ? "" : `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><button class="ghost" type="button" aria-label="重试" data-side="retry">${svg("refresh")}</button></div>`)
+      + devs.map((d) => {
+        const off = !up || !d.online, closed = !!folds[d.id];
+        const rows = d.bots.map((b) => `<div class="item other g7-remote-bot" title="${esc(b)} · 在 ${esc(d.label)} 上">${face(b)}<span class="item-body"><span class="name-line"><span class="name">${esc(b)}</span></span>
+          <span class="preview">在 ${esc(d.label)} 上</span></span></div>`).join("");
+        return `<div class="folder g7-side-dev${off ? " is-off" : ""}"><div class="folder-head"><button class="folder-toggle" type="button" data-side="fold" data-id="${esc(d.id)}" aria-expanded="${closed ? "false" : "true"}">
+          <span class="folder-name">${svg("laptop", 13)}<span>${esc(d.label)}</span></span>${up && !d.online ? `<span class="g7-side-off">离线</span>` : ""}<span class="folder-count">${d.bots.length}</span></button></div>
+          <div class="folder-bots"${closed ? " hidden" : ""}>${rows}</div></div>`;
+      }).join("");
+    // 重画会换掉按钮，键盘焦点留在同一个折叠或重试按钮上。
+    const back = key && nav.querySelector(key);
+    if (back) back.focus();
+  }
+  document.addEventListener("click", async (ev) => {
+    const t = ev.target.closest && ev.target.closest("[data-side]");
+    if (!t) return;
+    if (t.dataset.side === "fold") {
+      const f = sideFolds(); f[t.dataset.id] = !f[t.dataset.id];
+      try { localStorage.setItem("xbot-device-folders", JSON.stringify(f)); } catch (e) {}
+    } else {
+      try { S.data = await api("GET", "/api/devices?retry=1"); } catch (e) {}
+    }
+    paintSidebar();
+  });
+  setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+
   const D = window.xbotDevices = { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDrawer, closeModal,
     views: {}, acts: {}, onInput: null, onKey: null };
   bindMenu();
