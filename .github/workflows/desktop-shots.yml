@@ -54,6 +54,10 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\beta2\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label beta2 -Fonts
+      - name: virtual display for 2x (best effort)
+        continue-on-error: true
+        shell: pwsh
+        run: scripts/desktop-shots/vdd.ps1
       - name: font check and screenshots, this commit
         shell: pwsh
         run: scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\new\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label new -Fonts -Shots -Display

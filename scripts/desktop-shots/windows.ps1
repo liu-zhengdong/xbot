@@ -15,6 +15,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -Path (Join-Path $PSScriptRoot 'Native.cs')
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 [Native]::PerMonitorAware()
 New-Item -ItemType Directory -Force $Out | Out-Null
 $log = Join-Path $Out "$Label-log.txt"
@@ -23,7 +24,10 @@ function Say($m) { $line = "$(Get-Date -Format HH:mm:ss) $m"; Write-Host $line; 
 if ($Display) {
   Say "display before: $([Native]::Current())"
   Say ([Native]::Biggest(3840))
-  Say ([Native]::Scale(150)) # 1920x1080 allows 175% at most, and only 150% fits a 1024x672 window
+  # 1920x1080 (the runner's own display) allows 175% at most, and only 150% fits a 1024x672 window.
+  # The virtual display (vdd.ps1) reaches 3840x2160, where 200% fits.
+  $big = [Windows.Forms.Screen]::PrimaryScreen.Bounds.Width -ge 2560
+  Say ([Native]::Scale($(if ($big) { 200 } else { 150 })))
   Start-Sleep 3
 }
 
@@ -193,6 +197,16 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
       [Native]::Hover($sw.Width - 5, $sw.Height - 60) | Out-Null
       [Native]::Focus($hwnd) | Out-Null; Start-Sleep 1
       Shot $hwnd "$mode-$theme"
+      # Before hover and the screen shot: after those the page stops answering CDP.
+      if ($extras -contains 'login' -and $ws) {
+        try {
+          Say "login: socket $($ws.State)"
+          Cdp-Eval $ws "document.getElementById('login').hidden = false; true" | Out-Null
+          Start-Sleep 1
+          Shot $hwnd "$mode-$theme-login"
+          Cdp-Eval $ws "document.getElementById('login').hidden = true; true" | Out-Null
+        } catch { Say "login shot skipped: $($_.Exception.Message)" }
+      }
       if ($extras -contains 'hover') {
         $r = [Native]::Bounds($hwnd); $s = [Native]::GetDpiForWindow($hwnd) / 96.0
         foreach ($b in @(@{ n = 'close'; x = 23 }, @{ n = 'max'; x = 69 }, @{ n = 'min'; x = 115 })) {
@@ -203,15 +217,6 @@ function Run-Case([string] $mode, [string] $theme, [string[]] $extras) {
         [Native]::Hover($sw.Width - 5, $sw.Height - 60) | Out-Null
       }
       if ($extras -contains 'screen') { Shot-Screen "$mode-$theme-screen" }
-      if ($extras -contains 'login' -and $ws) {
-        try {
-          Say "login: socket $($ws.State)"
-          Cdp-Eval $ws "document.getElementById('login').hidden = false; true" | Out-Null
-          Start-Sleep 1
-          Shot $hwnd "$mode-$theme-login"
-          Cdp-Eval $ws "document.getElementById('login').hidden = true; true" | Out-Null
-        } catch { Say "login shot skipped: $($_.Exception.Message)" }
-      }
       if ($extras -contains 'unfocused') {
         $f = Steal-Focus; Start-Sleep 1
         Say "foreground is XBot: $([Native]::GetForegroundWindow() -eq $hwnd)"
