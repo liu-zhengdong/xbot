@@ -17,7 +17,10 @@ import (
 // form may show up in the file, a snapshot, or shell_output, and the finished
 // file is exactly the redaction of the whole stream.
 func TestJobLogRedactionProperty(t *testing.T) {
-	const iters = 10000
+	iters := 10000
+	if testing.Short() {
+		iters = 1000 // -short runs 1000; the full 10000 runs on main pushes and in plain local go test.
+	}
 	rng := rand.New(rand.NewSource(20261017))
 	dir := t.TempDir()
 	jobs := NewJobs(dir)
