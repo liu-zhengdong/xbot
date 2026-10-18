@@ -73,17 +73,25 @@ test('failed claims are limited per IPv6 /64, successes are not counted', async 
 test('a pending install moved to another owner keeps its expiry; admission uses install capacity', async () => {
   const {instance:d, db, pends} = await codes(); await d.codeRegister(A, L, ''); await d.codeClaim(B, [1], L, '');
   await d.codeRegister(C, '{"lookup":"P9XZ","ttl":60}', ''); await d.codeClaim(B, [1], '{"lookup":"P9XZ"}', '');
-  assert.equal(pends[1][2], C); assert.equal(pends[1][3], pends[0][3]);
+  assert.equal(pends[1][3], C); assert.equal(pends[1][4], pends[0][4]);
   assert.equal((await d.codeAdmit(A, JSON.stringify({install:B}))).status, 404);
   d.env.MAX_INSTALLS = '2'; assert.deepEqual(await d.codeAdmit(C, JSON.stringify({install:B})), {status:403, value:{error:'too many installs'}});
-  d.env.MAX_INSTALLS = '3'; assert.equal((await d.codeAdmit(C, JSON.stringify({install:B}))).status, 200); assert.equal(db.prepare('SELECT COUNT(*) n FROM pending').get().n, 0);
+  // The owner check is repeated after eviction awaits: B moves back to A meanwhile.
+  db.prepare('INSERT INTO installs VALUES(?,?,0)').run('stale', '[]');
+  d.env.MAILBOX.getByName = () => ({registered:async()=>{}, idle:async()=>{ db.prepare('UPDATE pending SET owner=?').run(A); return {seen:0, empty:true}; }, forget:async()=>true});
+  d.env.MAX_INSTALLS = '3';
+  assert.equal((await d.codeAdmit(C, JSON.stringify({install:B}))).status, 404); db.prepare('UPDATE pending SET owner=?').run(C);
+  assert.equal((await d.codeAdmit(C, JSON.stringify({install:B}))).status, 200); assert.equal(db.prepare('SELECT COUNT(*) n FROM pending').get().n, 0);
+  assert.equal(db.prepare('SELECT SUM(n) n FROM registrations').get().n, 3); // A, C, and B's claimant bucket.
 });
 test('an expired pending mailbox drops its mail and releases the quota', async () => {
-  const {instance:b, db} = await object('Mailbox'); const released = [];
+  const {instance:b, db} = await object('Mailbox'); const released = [], dropped = [];
   b.env.DIRECTORY = {getByName:()=>({reserve:async()=>true, release:async ids=>{ released.push(...ids); }})};
-  await b.pend([1], A, Date.now() + 1000);
+  b.env.MAILBOX = {getByName:owner=>({dropFrom:async s=>{ dropped.push([owner, s]); }})};
+  await b.pend(B, [1], A, Date.now() + 1000);
   assert.equal((await b.enqueue('{}', C, 'e'.repeat(32), 2, Date.now())).status, 403);
   assert.equal((await b.enqueue('{}', A, 'e'.repeat(32), 2, Date.now())).status, 202);
-  db.exec("UPDATE meta SET v='1' WHERE k='pexp'"); await b.alarm();
-  assert.deepEqual(released, ['e'.repeat(32)]); assert.equal((await b.ack('{}')).status, 403);
+  db.exec("UPDATE meta SET v='1' WHERE k='pexp'"); await b.pend(B, [1], A, Date.now() + 1000); // Reclaimed after expiry.
+  assert.deepEqual(released, ['e'.repeat(32)]); assert.deepEqual(dropped, [[A, B]]); assert.equal(db.prepare('SELECT COUNT(*) n FROM queue').get().n, 0);
+  db.exec("UPDATE meta SET v='1' WHERE k='pexp'"); await b.alarm(); assert.equal((await b.ack('{}')).status, 403); assert.equal(dropped.length, 2);
 });

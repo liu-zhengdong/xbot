@@ -45,8 +45,9 @@ limits, move to the Workers Paid plan; do not enable it from code.
 G7 short codes and pending installs (`/v1/code`, `/v1/code/cancel`,
 `/v1/code/claim`, `/v1/code/admit`) live in Directory: lookups are stored only as
 SHA-256, a record answers 410 for an hour after expiry or cancel and 404 after that,
-five claimers use up a code, and failed lookups are limited per IP (IPv6 by /64)
-and globally per minute. A pending install's Mailbox carries its owner and expiry;
-its alarm drops its queue at expiry. Deviation: mail the pending install already
-sent to an owner stays in that owner's queue when it expires or moves to another
-owner (Go drops it), so owners must ignore senders they do not know.
+five claimers use up a code, and failed lookups are limited in memory per IP (IPv6
+by /64) and globally per minute, as in Go. A pending install's Mailbox carries its
+owner and expiry; at expiry, or when it moves to another owner, its mail in both
+directions is dropped (the owner side is retried by alarm). Admission shares the
+install cap and eviction with registration and counts against the claimant IP's
+daily new-install limit.

@@ -10,9 +10,12 @@ function prefix(ip: string) {
   return full.slice(0, 4).map(x => parseInt(x || "0", 16).toString(16)).join(":") + "::/64";
 }
 export class Directory extends DurableObject<Env> {
+  // In memory like Go: a restart forgets them, and failed lookups cost no storage writes.
+  private fails: {k: string; at: number}[] = [];
+  private codeTimes = new Map<string, number>();
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS installs(id TEXT PRIMARY KEY,pub TEXT,seen INTEGER); CREATE TABLE IF NOT EXISTS bytes(sender TEXT PRIMARY KEY,n INTEGER); CREATE TABLE IF NOT EXISTS res(id TEXT PRIMARY KEY,sender TEXT,n INTEGER); CREATE TABLE IF NOT EXISTS registrations(day TEXT,k TEXT PRIMARY KEY,n INTEGER); CREATE TABLE IF NOT EXISTS regkey(day TEXT PRIMARY KEY,key BLOB); CREATE TABLE IF NOT EXISTS pending(id TEXT PRIMARY KEY,owner TEXT,pub TEXT,expires INTEGER); CREATE TABLE IF NOT EXISTS codes(h TEXT PRIMARY KEY,owner TEXT,expires INTEGER,claims INTEGER,dead INTEGER,claimers TEXT); CREATE TABLE IF NOT EXISTS codetimes(owner TEXT PRIMARY KEY,at INTEGER); CREATE TABLE IF NOT EXISTS codefail(k TEXT,at INTEGER)");
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS installs(id TEXT PRIMARY KEY,pub TEXT,seen INTEGER); CREATE TABLE IF NOT EXISTS bytes(sender TEXT PRIMARY KEY,n INTEGER); CREATE TABLE IF NOT EXISTS res(id TEXT PRIMARY KEY,sender TEXT,n INTEGER); CREATE TABLE IF NOT EXISTS registrations(day TEXT,k TEXT PRIMARY KEY,n INTEGER); CREATE TABLE IF NOT EXISTS regkey(day TEXT PRIMARY KEY,key BLOB); CREATE TABLE IF NOT EXISTS pending(id TEXT PRIMARY KEY,owner TEXT,pub TEXT,expires INTEGER,k TEXT); CREATE TABLE IF NOT EXISTS codes(h TEXT PRIMARY KEY,owner TEXT,expires INTEGER,claims INTEGER,dead INTEGER,claimers TEXT);");
   }
   private sql<T extends Record<string, SqlStorageValue>>(q: string, ...args: SqlStorageValue[]) { return this.ctx.storage.sql.exec<T>(q, ...args).toArray(); }
   // Liveness is written at most hourly; eviction only looks at installs unseen for 30 days.
@@ -25,7 +28,7 @@ export class Directory extends DurableObject<Env> {
   // A live pending install (G7): a token-free short-code joiner that may only use its mailbox with its owner.
   private pending(id: string) {
     this.sql("DELETE FROM pending WHERE expires<=?", Date.now());
-    return this.sql<{owner: string; pub: string; expires: number}>("SELECT owner,pub,expires FROM pending WHERE id=?", id)[0];
+    return this.sql<{owner: string; pub: string; expires: number; k: string | null}>("SELECT owner,pub,expires,k FROM pending WHERE id=?", id)[0];
   }
   status(id: string) { return this.isRegistered(id) ? "member" : this.pending(id) ? "pending" : ""; }
   // Same order as Go: unknown sender, pending sender to someone else, then (unless too large) the recipient.
@@ -117,24 +120,23 @@ export class Directory extends DurableObject<Env> {
     if (r && !this.member(r.owner)) { this.sql("DELETE FROM codes WHERE h=?", h); return undefined; }
     return r && {...r, claimers: JSON.parse(r.claimers) as string[]};
   }
-  // Failed lookups (unknown, dead, full, 409): 10 a minute per client, 120 a minute in all.
-  private failKey(ip: string) { return this.ipKey(new Date().toISOString().slice(0, 10), "code|" + prefix(ip)); }
+  // Failed lookups (unknown, dead, full, 409): 10 a minute per client (IPv6 /64), 120 a minute in all.
   private limited(k: string, now: number) {
-    this.sql("DELETE FROM codefail WHERE at<=?", now - 60000);
-    return this.sql<{n: number}>("SELECT COUNT(*) AS n FROM codefail")[0].n >= 120 || this.sql<{n: number}>("SELECT COUNT(*) AS n FROM codefail WHERE k=?", k)[0].n >= 10;
+    this.fails = this.fails.filter(f => f.at > now - 60000);
+    return this.fails.length >= 120 || this.fails.filter(f => f.k === k).length >= 10;
   }
   async codeRegister(caller: string, raw: string, ip: string) {
     if (!this.isRegistered(caller)) return error(403, "not registered");
     const inp = this.input(raw);
     if (!inp) return error(400, "bad lookup");
     if (inp.ttl < 1 || inp.ttl > 600) return error(400, "bad ttl");
-    const [h, k] = await Promise.all([inp.h, this.failKey(ip)]), now = Date.now();
-    this.sql("DELETE FROM codetimes WHERE at<=?", now - 2000);
-    if (this.sql("SELECT at FROM codetimes WHERE owner=?", caller).length) return error(429, "code registration too frequent");
+    const h = await inp.h, k = prefix(ip), now = Date.now();
+    for (const [o, at] of this.codeTimes) if (at <= now - 2000) this.codeTimes.delete(o);
+    if (this.codeTimes.has(caller)) return error(429, "code registration too frequent");
     if (this.limited(k, now)) return error(429, "too many tries");
-    this.sql("INSERT OR REPLACE INTO codetimes VALUES(?,?)", caller, now); // A 409 uses the gap too.
+    this.codeTimes.set(caller, now); // A 409 uses the gap too.
     const old = this.record(h, now);
-    if (old && old.owner !== caller && !old.dead && now < old.expires) { this.sql("INSERT INTO codefail VALUES(?,?)", k, now); return error(409, "lookup taken"); }
+    if (old && old.owner !== caller && !old.dead && now < old.expires) { this.fails.push({k, at: now}); return error(409, "lookup taken"); }
     this.sql("DELETE FROM codes WHERE owner=?", caller);
     this.sql("INSERT OR REPLACE INTO codes VALUES(?,?,?,0,0,'[]')", h, caller, now + inp.ttl * 1000);
     return result(200, {status: "ok"});
@@ -151,11 +153,11 @@ export class Directory extends DurableObject<Env> {
   async codeClaim(caller: string, pub: number[], raw: string, ip: string) {
     const inp = this.input(raw);
     if (!inp) return error(400, "bad lookup");
-    const [h, k] = await Promise.all([inp.h, this.failKey(ip)]), now = Date.now();
+    const [h, rk] = await Promise.all([inp.h, this.ipKey(new Date().toISOString().slice(0, 10), ip)]), k = prefix(ip), now = Date.now();
     if (this.limited(k, now)) return error(429, "too many tries");
     const r = this.record(h, now), known = !!r?.claimers.includes(caller);
     const fail = !r ? error(404, "no such code") : r.dead || (!known && r.claims >= CODE_CLAIMS) ? error(410, "code used") : now >= r.expires ? error(410, "code expired") : null;
-    if (fail || !r) { this.sql("INSERT INTO codefail VALUES(?,?)", k, now); return fail!; }
+    if (fail || !r) { this.fails.push({k, at: now}); return fail!; }
     if (r.owner === caller) return error(400, "own code");
     let pend: {owner: string; expires: number} | undefined;
     if (!this.isRegistered(caller)) {
@@ -166,11 +168,11 @@ export class Directory extends DurableObject<Env> {
         if (live.filter(q => q.owner === r.owner).length >= PENDING_PER_OWNER || (!p && live.length >= PENDING_MAX)) return error(429, "too many pending installs");
         // Re-pointing keeps the expiry, so hopping between codes never extends it.
         pend = {owner: r.owner, expires: p ? p.expires : now + PENDING_TTL};
-        this.sql("INSERT OR REPLACE INTO pending VALUES(?,?,?,?)", caller, pend.owner, JSON.stringify(pub), pend.expires);
+        this.sql("INSERT OR REPLACE INTO pending VALUES(?,?,?,?,?)", caller, pend.owner, JSON.stringify(pub), pend.expires, rk);
       }
     }
     if (!known) this.sql("UPDATE codes SET claims=claims+1,claimers=? WHERE h=?", JSON.stringify([...r.claimers, caller]), h);
-    if (pend) await this.env.MAILBOX.getByName(caller).pend(pub, pend.owner, pend.expires);
+    if (pend) await this.env.MAILBOX.getByName(caller).pend(caller, pub, pend.owner, pend.expires);
     return result(200, {install: r.owner});
   }
   async codeAdmit(caller: string, raw: string) {
@@ -181,7 +183,17 @@ export class Directory extends DurableObject<Env> {
     if (this.member(id)) return result(200, {status: "ok"}); // Idempotent.
     const p = this.pending(id);
     if (!p || p.owner !== caller) return error(404, "no such pending install");
-    const pub = JSON.parse(p.pub) as number[], err = await this.admit(id, pub);
+    const pub = JSON.parse(p.pub) as number[], day = new Date().toISOString().slice(0, 10);
+    this.purge(day);
+    const err = await this.admit(id, pub, () => {
+      // Rechecked after the eviction awaits: the install may have moved to another owner or expired.
+      const q = this.pending(id);
+      if (!q || q.owner !== caller) return error(404, "no such pending install");
+      // Promotion counts against the claimant's daily new-install bucket, like open registration.
+      if (q.k && (this.sql<{n: number}>("SELECT n FROM registrations WHERE k=?", q.k)[0]?.n || 0) >= 30) return error(429, "too many registrations");
+      if (q.k) this.sql("INSERT INTO registrations VALUES(?,?,1) ON CONFLICT(k) DO UPDATE SET n=n+1", day, q.k);
+      return null;
+    });
     if (err) return err;
     await this.env.MAILBOX.getByName(id).registered(pub);
     return result(200, {status: "ok"});

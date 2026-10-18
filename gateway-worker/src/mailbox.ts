@@ -25,8 +25,11 @@ export class Mailbox extends DurableObject<Env> {
     const at = this.sql<{at: number | null}>("SELECT MIN(at) AS at FROM queue")[0].at;
     let wanted = at === null ? null : at + TTL;
     if (this.sql("SELECT id FROM unreleased LIMIT 1").length) wanted = Math.min(wanted ?? Infinity, Date.now() + 60000);
-    const pexp = this.meta("registered") ? 0 : Number(this.meta("pexp") || 0);
-    if (pexp) wanted = Math.min(wanted ?? Infinity, pexp);
+    if (!this.meta("registered")) {
+      const pexp = Number(this.meta("pexp") || 0);
+      if (pexp) wanted = Math.min(wanted ?? Infinity, pexp);
+      else if (this.meta("pending")) wanted = Math.min(wanted ?? Infinity, Date.now() + 60000); // Retry dropAt.
+    }
     if (await this.ctx.storage.getAlarm() !== wanted) {
       if (wanted === null) await this.ctx.storage.deleteAlarm(); else await this.ctx.storage.setAlarm(wanted);
     }
@@ -47,16 +50,24 @@ export class Mailbox extends DurableObject<Env> {
   private wake(text: string) {
     for (const ws of this.ctx.getWebSockets()) try { ws.send(text); ws.close(1000); } catch {}
   }
-  // Members always; a pending install (G7) until its expiry, after which its mail is dropped.
+  // Removes what this pending install sent to owner, as Go does when it expires or moves.
+  private async dropAt(owner: string) {
+    try { await this.env.MAILBOX.getByName(owner).dropFrom(this.meta("self") || ""); return true; } catch { return false; }
+  }
+  // Members always; a pending install (G7) until its expiry, after which its mail both ways is dropped.
+  // 'pending' outlives 'pexp' until the owner's side is cleaned; the alarm retries every minute.
   private async live(now = Date.now()) {
     if (this.meta("registered")) return true;
     const pexp = Number(this.meta("pexp") || 0);
-    if (!pexp) return false;
-    if (now < pexp) return true;
-    const rows = this.sql<Row>("DELETE FROM queue RETURNING *");
-    this.sql("DELETE FROM meta WHERE k IN ('pending','pexp')"); this.wake(empty);
-    await this.release(rows.map(r => r.id));
-    if (this.sql("SELECT id FROM unreleased LIMIT 1").length) await this.schedule(); // Retried by the alarm.
+    if (pexp && now < pexp) return true;
+    if (pexp) {
+      const rows = this.sql<Row>("DELETE FROM queue RETURNING *");
+      this.sql("DELETE FROM acked"); this.sql("DELETE FROM meta WHERE k='pexp'"); this.wake(empty);
+      await this.release(rows.map(r => r.id));
+    }
+    const owner = this.meta("pending");
+    if (owner && await this.dropAt(owner)) this.sql("DELETE FROM meta WHERE k='pending'");
+    if (this.meta("pending") || this.sql("SELECT id FROM unreleased LIMIT 1").length) await this.schedule();
     else { await this.ctx.storage.deleteAll(); this.ready = false; await this.ctx.storage.deleteAlarm(); }
     return false;
   }
@@ -65,12 +76,24 @@ export class Mailbox extends DurableObject<Env> {
     this.ready = true; await this.expire(); this.set("pub", JSON.stringify(pub)); this.set("registered", 1);
     this.sql("DELETE FROM meta WHERE k IN ('pending','pexp')"); this.touch(); await this.schedule(); }); }
   // Claiming a code makes this a pending install of owner; moving to another owner drops the old owner's mail.
-  pend(pub: number[], owner: string, expires: number) { return this.ctx.blockConcurrencyWhile(async () => {
+  pend(self: string, pub: number[], owner: string, expires: number) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (this.ready) {
+      if (this.meta("registered")) return;
+      if (this.meta("pending") === owner && this.meta("pexp") === String(expires)) return; // Retried claim: no writes.
+      await this.live(); // An expired previous lifetime is cleaned up first.
+    }
     this.ctx.storage.sql.exec(TABLES); this.ready = true;
-    if (this.meta("registered")) return;
     const old = this.meta("pending");
-    if (old && old !== owner) await this.release(this.sql<Row>("DELETE FROM queue WHERE sender=? RETURNING *", old).map(r => r.id));
-    this.set("pub", JSON.stringify(pub)); this.set("pending", owner); this.set("pexp", expires); this.touch(); await this.schedule();
+    if (old && old !== owner) {
+      await this.release(this.sql<Row>("DELETE FROM queue WHERE sender=? RETURNING *", old).map(r => r.id));
+      if (!await this.dropAt(old)) throw Error("old owner unreachable"); // The claim retry tries again.
+    }
+    this.set("self", self); this.set("pub", JSON.stringify(pub)); this.set("pending", owner); this.set("pexp", expires); this.touch(); await this.schedule();
+  }); }
+  dropFrom(sender: string) { return this.ctx.blockConcurrencyWhile(async () => {
+    if (!this.ready || !sender) return;
+    const rows = this.sql<Row>("DELETE FROM queue WHERE sender=? RETURNING *", sender);
+    if (rows.length) { await this.release(rows.map(r => r.id)); await this.schedule(); }
   }); }
   idle(now: number) { return this.ctx.blockConcurrencyWhile(async () => { if (!this.ready) return {seen: 0, empty: true}; await this.expire(now); return {seen: Number(this.meta("seen") || 0), empty: !this.sql("SELECT id FROM queue LIMIT 1").length}; }); }
   forget(now: number) { return this.ctx.blockConcurrencyWhile(async () => {
