@@ -67,7 +67,10 @@ func (s *tokenState) snap() TokenUse {
 
 // noteUsage records one model call. Real API numbers are kept as they are.
 // When the response has no usage object, prompt and completion are a rough
-// byte estimate and Estimated is set.
+// byte estimate and Estimated is set. The latest counts, which drive the
+// context-usage reminder and BotStatus, belong to the foreground: a call from
+// a background branch adds to the session totals and is logged with its own
+// counts and branch, but does not replace them.
 func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message) {
 	if k == nil || k.Bot == nil {
 		return
@@ -75,18 +78,24 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 	u := observedUsage(req, msg)
 	window := k.contextWindow()
 	turnCompletion := 0
+	branch := ""
 	if tr != nil {
 		tr.useMu.Lock()
 		tr.useCompletion += u.CompletionTokens
 		turnCompletion = tr.useCompletion
 		tr.useMu.Unlock()
+		tr.mu.Lock()
+		branch = tr.branch
+		tr.mu.Unlock()
 	}
 	k.tokens.mu.Lock()
-	k.tokens.prompt = u.PromptTokens
-	k.tokens.completion = u.CompletionTokens
-	k.tokens.cached = u.CachedTokens
-	k.tokens.estimated = u.Estimated
-	k.tokens.turnCompletion = turnCompletion
+	if branch == "" {
+		k.tokens.prompt = u.PromptTokens
+		k.tokens.completion = u.CompletionTokens
+		k.tokens.cached = u.CachedTokens
+		k.tokens.estimated = u.Estimated
+		k.tokens.turnCompletion = turnCompletion
+	}
 	k.tokens.sessPrompt += u.PromptTokens
 	k.tokens.sessComp += u.CompletionTokens
 	k.tokens.sessCached += u.CachedTokens
@@ -94,7 +103,7 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 	k.tokens.seen = true
 	snap := k.tokens.snap()
 	k.tokens.mu.Unlock()
-	_ = k.Bot.LogUsage(bot.Trace{
+	rec := bot.Trace{
 		Time:              k.now(),
 		Reason:            usageReason(u.Estimated),
 		Prompt:            snap.Prompt,
@@ -106,7 +115,12 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 		SessionCached:     snap.SessionCached,
 		Window:            snap.Window,
 		Estimated:         snap.Estimated,
-	})
+	}
+	if branch != "" {
+		rec.Prompt, rec.Completion, rec.Cached = u.PromptTokens, u.CompletionTokens, u.CachedTokens
+		rec.TurnCompletion, rec.Estimated, rec.Branch = turnCompletion, u.Estimated, branch
+	}
+	_ = k.Bot.LogUsage(rec)
 }
 
 func usageReason(estimated bool) string {

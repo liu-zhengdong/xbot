@@ -164,6 +164,7 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	}
 	_, _ = k.Bot.AppendForkEnd(id, status, steps)
 	k.writeForkMeta(t, status)
+	k.dropScope(id)
 	k.bgMu.Lock()
 	delete(k.bgs, id)
 	ended := k.now()

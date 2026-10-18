@@ -538,6 +538,12 @@ func (k *Kernel) reminders() *Channel {
 // reminderKinds registers the live kinds for this wake. File changes fire
 // from the freshness scan. Todo fires from todoNote when the list is stale.
 func (k *Kernel) reminderKinds(ev link.Event) *Channel {
+	return k.reminderKindsFor(ev, nil)
+}
+
+// reminderKindsFor is reminderKinds for turn t, whose context decides whether
+// a project instruction set was already sent.
+func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 	// A fresh channel per wake shares the sidecar. The background loop and the
 	// foreground wake both touch the log; they must not share the kind slice.
 	ch := &Channel{log: k.reminders().log}
@@ -565,7 +571,7 @@ func (k *Kernel) reminderKinds(ev link.Event) *Channel {
 	ch.Register(Kind{
 		Name:     KindProject,
 		MaxBytes: projectNoteMax,
-		Trigger:  k.projectTrigger(),
+		Trigger:  k.projectTrigger(t),
 	})
 	ch.Register(Kind{
 		Name:    KindContext,
@@ -597,6 +603,7 @@ func (k *Kernel) stepBoundaryNotes(t *turn) string {
 	ctx := context.WithValue(context.Background(), turnKey{}, t)
 	if note := k.projectNoteFor(ctx, by[KindProject]); note != "" {
 		if stored := k.storeReminder(seq, KindProject, note); stored != "" {
+			t.projects.noteText(stored)
 			parts = append(parts, stored)
 		}
 	}

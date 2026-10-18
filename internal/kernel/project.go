@@ -28,9 +28,19 @@ const (
 // projectTrigger injects AGENTS.md (CLAUDE.md when that name is absent) from
 // the working directory up to the workspace root, nearest last. The same set
 // is injected once; a later turn sends it again only after the set changes.
-func (k *Kernel) projectTrigger() func(time.Time, []Reminder) string {
+//
+// With a turn, "already sent" means the set is in that turn's context: the
+// assembled messages it started with, plus what it injected since. A set a
+// background branch injected is not in the foreground's context, and one that
+// compaction dropped is in nobody's, so both are sent again. Without a turn
+// (tests), any earlier firing counts.
+func (k *Kernel) projectTrigger(t *turn) func(time.Time, []Reminder) string {
 	return func(_ time.Time, prev []Reminder) string {
-		return k.projectNote(prev)
+		ctx := context.Background()
+		if t != nil {
+			ctx = context.WithValue(ctx, turnKey{}, t)
+		}
+		return k.projectNoteFor(ctx, prev)
 	}
 }
 
@@ -43,10 +53,67 @@ func (k *Kernel) projectNoteFor(ctx context.Context, prev []Reminder) string {
 	if text == "" || sig == "" {
 		return ""
 	}
+	if t := turnOf(ctx); t != nil {
+		if t.projects.has(sig) {
+			return ""
+		}
+		return text
+	}
 	if projectSeen(prev, sig) {
 		return ""
 	}
 	return text
+}
+
+func turnOf(ctx context.Context) *turn {
+	if ctx == nil {
+		return nil
+	}
+	t, _ := ctx.Value(turnKey{}).(*turn)
+	return t
+}
+
+// projectSigs is a set of instruction-set signatures.
+type projectSigs struct {
+	mu sync.Mutex
+	m  map[string]bool
+}
+
+func (p *projectSigs) has(sig string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.m[sig]
+}
+
+func (p *projectSigs) add(sig string) {
+	if sig == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.m == nil {
+		p.m = map[string]bool{}
+	}
+	p.m[sig] = true
+}
+
+// noteText adds every set whose opening tag is in s. Only the kernel writes
+// that tag: a tag inside instruction text is neutralized to "< project_...".
+func (p *projectSigs) noteText(s string) {
+	const open = "<project_instructions sig="
+	for {
+		i := strings.Index(s, open)
+		if i < 0 {
+			return
+		}
+		s = s[i+len(open):]
+		j := strings.IndexByte(s, '>')
+		if j < 0 {
+			return
+		}
+		p.add(s[:j])
+		s = s[j:]
+	}
 }
 
 func projectSeen(prev []Reminder, sig string) bool {
