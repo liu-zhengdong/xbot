@@ -174,7 +174,7 @@ button:disabled { cursor: default; }
 
 ::selection { background: color-mix(in srgb, var(--text) 18%, transparent); }
 
-.icon, .icon-btn svg, .ghost svg, .send svg, .connect-pill svg, .pair-sep {
+.icon, .icon-btn svg, .ghost svg, .send svg, .pair-sep {
   display: block; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.5;
   stroke-linecap: round; stroke-linejoin: round;
@@ -184,7 +184,6 @@ button:disabled { cursor: default; }
 
 .icon-btn svg, .ghost svg, .send svg { width: 20px; height: 20px; }
 
-.connect-pill svg { width: 16px; height: 16px; }
 
 .icon .solid, .icon-btn svg .solid, .ghost svg .solid { fill: currentColor; stroke: none; }
 
@@ -560,46 +559,23 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 
 .item.active .unread, .pin.active .unread { box-shadow: 0 0 0 2px var(--selected); }
 
-.side-foot {
-  margin-top: auto;
-  padding: 8px 12px 16px;
-  display: flex; flex-direction: column; gap: 8px;
-}
-
-.me { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 4px; }
-
-.me-name {
-  font-size: 14px; font-weight: 500; line-height: 1.3;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.connect-wrap { position: relative; }
-
-.connect-pill {
-  width: 100%; min-height: 36px; padding: 0 12px;
-  border-radius: 999px; border: 0;
-  background: var(--fill); color: var(--text);
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  font-size: 13px; font-weight: 500;
-  transition: background 160ms ease-out;
-}
-
-.connect-pill:hover { background: var(--fill-hover); }
-
-.connect-pill:active { background: var(--selected); }
-
-.connect-pill svg { width: 16px; height: 16px; color: inherit; }
+.side-foot { margin-top: auto; padding: 6px 8px 10px; }
 
 .sidebar.collapsed .item .item-body,
 .sidebar.collapsed .group-label .label,
-.sidebar.collapsed .me-name,
-.sidebar.collapsed .connect-pill span,
+.sidebar.collapsed .me-text,
+.sidebar.collapsed .me-chev,
+.sidebar.collapsed .pin-name,
 .sidebar.collapsed .badge,
-.sidebar.collapsed .text-btn,
-.sidebar.collapsed .me .spacer,
-.sidebar.collapsed #theme { display: none; }
+.sidebar.collapsed .text-btn { display: none; }
 
-.sidebar.collapsed .pin-row .pin:not(.add) { display: none; }
+/* Collapsed: 新建 first, then the pinned faces (no names), then the list. */
+.sidebar.collapsed .pin-row .pin { width: 52px; padding: 4px 0; }
+
+.sidebar.collapsed .pin-row .pin.add { order: -1; }
+
+.sidebar.collapsed .pin .avatar.pin,
+.sidebar.collapsed .pin .avatar.pin > svg { width: 36px; height: 36px; }
 
 .sidebar.collapsed .pin-row { flex-direction: column; align-items: center; overflow: visible; padding-left: 8px; padding-right: 8px; }
 
@@ -613,13 +589,8 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 
 .sidebar.collapsed .folder-toggle { justify-content: center; padding: 0; }
 
-.sidebar.collapsed .me { justify-content: center; padding: 0; }
+.sidebar.collapsed .account-trigger { width: 52px; justify-content: center; padding: 8px 0; margin: 0 auto; }
 
-.sidebar.collapsed .connect-pill { width: 44px; height: 44px; padding: 0; margin: 0 auto; }
-
-.sidebar.collapsed .side-foot { align-items: center; padding-left: 8px; padding-right: 8px; }
-
-.sidebar.collapsed .connect-wrap { width: 44px; }
 
 .sidebar.collapsed .pop { left: 8px; right: auto; }
 
@@ -1739,18 +1710,18 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   .sidebar.collapsed .folder-toggle { justify-content: flex-start; padding: 0 2px 0 8px; }
   .sidebar.collapsed .item .item-body,
   .sidebar.collapsed .group-label .label,
-  .sidebar.collapsed .me-name,
-  .sidebar.collapsed .connect-pill span,
   .sidebar.collapsed .badge,
-  .sidebar.collapsed .text-btn,
-  .sidebar.collapsed #theme,
-  .sidebar.collapsed .me .spacer { display: initial; }
-  .sidebar.collapsed .connect-wrap { width: auto; }
+  .sidebar.collapsed .text-btn { display: initial; }
+  .sidebar.collapsed .me-text, .sidebar.collapsed .pin-name { display: flex; }
+  .sidebar.collapsed .me-chev { display: block; }
+  .sidebar.collapsed .account-trigger { width: 100%; justify-content: flex-start; padding: 7px 10px; }
   .sidebar.collapsed .pop { left: 0; right: 0; }
-  .sidebar.collapsed .me { justify-content: flex-start; }
   .sidebar.collapsed .item { justify-content: flex-start; padding: 8px 10px; min-height: 56px; }
   .sidebar.collapsed .pin-row { flex-direction: row; overflow-x: auto; align-items: center; }
-  .sidebar.collapsed .connect-pill { width: 100%; height: auto; min-height: 36px; padding: 0 12px; }
+  .sidebar.collapsed .pin-row .pin { width: 64px; padding: 6px 0 5px; }
+  .sidebar.collapsed .pin-row .pin.add { order: 0; }
+  .sidebar.collapsed .pin .avatar.pin,
+  .sidebar.collapsed .pin .avatar.pin > svg { width: 44px; height: 44px; }
   .sidebar.collapsed .side-foot { align-items: stretch; }
   .sidebar.collapsed .group-label { justify-content: space-between; }
   .panel {
@@ -1796,7 +1767,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 .quote-block:focus-visible,
 .pin-mark:focus-visible,
 .folder-toggle:focus-visible,
-.connect-pill:focus-visible {
+.account-trigger:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 0;
 }
@@ -1956,13 +1927,40 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .recent-status.failed { color: var(--err); }
 /* Account actions remain reachable from the avatar rail. */
 .account-wrap { position: relative; min-width: 0; }
+/* Bottom of the sidebar: only 我 — face, name, this computer's name and an
+   up/down mark; it opens the 我 menu (device prototype v2, item 15). */
+.account-wrap { position: relative; }
 .account-trigger {
-  display: flex; align-items: center; gap: 8px; padding: 4px 0;
-  background: transparent; color: var(--text); border: 0; border-radius: 8px;
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  background: transparent; color: var(--text); border: 0; border-radius: 12px; text-align: left;
 }
 .account-trigger:hover { background: var(--hover); }
-.account-menu { min-width: 160px; }
-.account-menu button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
+.account-trigger[aria-expanded="true"] { background: var(--selected); }
+.me-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.me-name, .me-device { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-name { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.me-device { font-size: 12px; line-height: 1.35; color: var(--faint); }
+.me-chev { width: 16px; height: 16px; flex: none; color: var(--faint); }
+.account-menu { min-width: 220px; }
+.account-menu button { display: flex; align-items: center; justify-content: flex-start; gap: 10px; font-size: 14px; }
+.account-menu button .icon { width: 18px; height: 18px; color: var(--muted); }
+.account-menu .menu-count, .account-menu .mark { margin-left: auto; font-size: 12px; color: var(--faint); }
+.account-menu .mark { width: 16px; height: 16px; }
+/* 连接应用's list opens beside the 我 menu; app.js places it. */
+.account-wrap .connect-pop { position: fixed; right: auto; z-index: 45; }
+
+/* Sidebar width: 260px, 240px from 768 to 1100 wide (the list no longer folds
+   at 1024). Pinned bots show their name under the face. */
+@media (min-width: 768px) and (max-width: 1100px) { :root { --side: 240px; } }
+.pin { width: 64px; height: auto; padding: 6px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 5px; border-radius: 14px; }
+.pin.add .plus-face { border-radius: 22px; }
+/* In the column the face's percentage height did not resolve (44x33). */
+.pin .avatar.pin { flex: none; }
+.pin .avatar.pin > svg { width: 44px; height: 44px; }
+.pin-name { display: flex; align-items: center; gap: 3px; max-width: 60px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text); }
+.pin-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin.add .pin-name { color: var(--muted); }
+.pin-name .primary-mark { width: 11px; height: 11px; flex: none; }
 
 /* Only the profile fields scroll; its actions stay visible. */
 .modal.profile-drawer { padding: 0; place-items: stretch end; }
