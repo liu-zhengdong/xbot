@@ -138,6 +138,17 @@ func (k *Kernel) presentHistory(body, botName string, foreign bool, cap int) str
 	clipped, _ := clip.Bytes(body, budget)
 	ev.Content = clipped
 	out := link.Wrap(ev)
+	// Neutralizing can grow the body. Shrink the body rather than cut the
+	// wrapped text, which would drop the closer.
+	for len(out) > cap && budget > 1 {
+		budget -= len(out) - cap
+		if budget < 1 {
+			budget = 1
+		}
+		clipped, _ = clip.Bytes(body, budget)
+		ev.Content = clipped
+		out = link.Wrap(ev)
+	}
 	if len(out) > cap {
 		out, _ = clip.Bytes(out, cap)
 	}
