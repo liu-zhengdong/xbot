@@ -83,6 +83,9 @@ func TestDevicesAPIList(t *testing.T) {
 	gw := httptest.NewServer((&gateway.Server{Dir: t.TempDir(), Token: "test"}).Handler())
 	defer gw.Close()
 	a := newDeviceSide(t, "书房 iMac", "ada")
+	if self, err := remote.Self(a.root, ""); err != nil || self.Gateway != remote.DefaultGateway {
+		t.Fatalf("unset gateway is not the official default: %+v %v", self, err)
+	}
 	pub, _, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -167,9 +170,6 @@ func TestDevicesAPIPairing(t *testing.T) {
 	go func() { remote.Run(ctx, b.root, "", nil); done <- struct{}{} }()
 	defer func() { cancel(); <-done; <-done }()
 
-	if code := a.call("POST", "/api/devices/code", `{}`, nil); code != http.StatusConflict {
-		t.Fatalf("no gateway yet: want 409, got %d", code)
-	}
 	if code := a.call("PUT", "/api/devices/gateway", `{"gateway":"http://127.0.0.1:1"}`, nil); code != http.StatusBadGateway {
 		t.Fatalf("unreachable gateway: want 502, got %d", code)
 	}
