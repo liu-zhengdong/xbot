@@ -13,7 +13,7 @@ import (
 )
 
 func cmdRemote(root string, args []string) error {
-	usage := errors.New("usage: xbot remote id | gateway [URL] | add <name> <key> [--xkey KEY] [--person ID] | invite [--person ID] | join <code> [--name NAME] [--as NAME] [--person ID] | list | remove <name>")
+	usage := errors.New("usage: xbot remote id | gateway [URL|default] | add <name> <key> [--xkey KEY] [--person ID] | invite [--person ID] | join <code> [--name NAME] [--as NAME] [--person ID] | list | remove <name>")
 	if len(args) == 0 {
 		return usage
 	}
@@ -36,7 +36,11 @@ func cmdRemote(root string, args []string) error {
 			return err
 		}
 		if args[0] == "gateway" {
-			fmt.Println(cfg.Gateway)
+			suffix := ""
+			if cfg.Gateway == "" {
+				suffix = " (default)"
+			}
+			fmt.Println(cfg.GatewayURL() + suffix)
 		} else {
 			for _, d := range cfg.Devices {
 				fmt.Printf("%s\t%s\t%s\n", d.Name, d.ID, d.Person)

@@ -60,7 +60,7 @@ func directoryDue(bots []dirBot, last dirSent, now time.Time) (dirSent, bool) {
 // enters the outbox: a later check sends the current list after any failure.
 func pushDirectories(ctx context.Context, root string, client *gateway.Client, now time.Time) error {
 	cfg, err := Load(root)
-	if err != nil || cfg.Gateway != client.Base {
+	if err != nil || cfg.GatewayURL() != client.Base {
 		return err
 	}
 	path := filepath.Join(root, "remote", "dirsent.json")

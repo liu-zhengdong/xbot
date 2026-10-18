@@ -21,6 +21,8 @@ import (
 	"xbot/internal/person"
 )
 
+const DefaultGateway = "https://xbot.babelgo.cn"
+
 type Device struct {
 	Name   string    `json:"name"`
 	ID     string    `json:"id"`
@@ -32,6 +34,14 @@ type Device struct {
 type Config struct {
 	Gateway string   `json:"gateway"`
 	Devices []Device `json:"devices"`
+}
+
+// GatewayURL resolves the default without persisting it in the device table.
+func (c Config) GatewayURL() string {
+	if c.Gateway != "" {
+		return c.Gateway
+	}
+	return DefaultGateway
 }
 
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -197,6 +207,9 @@ func RemoveDevice(root, name string) error {
 }
 
 func SetGateway(root, raw string) error {
+	if raw == "default" {
+		raw = ""
+	}
 	if raw != "" {
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {

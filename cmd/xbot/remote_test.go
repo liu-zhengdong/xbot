@@ -14,6 +14,17 @@ import (
 
 func TestRemoteCLI(t *testing.T) {
 	root := t.TempDir()
+	checkDefault := func() {
+		t.Helper()
+		cfg, err := remote.Load(root)
+		if err != nil || cfg.Gateway != "" || cfg.GatewayURL() != remote.DefaultGateway {
+			t.Fatalf("default config: %+v, %v", cfg, err)
+		}
+		if got := captureStdout(t, func() error { return cmdRemote(root, []string{"gateway"}) }); got != "https://xbot.babelgo.cn (default)\n" {
+			t.Fatal(got)
+		}
+	}
+	checkDefault()
 	p, err := person.Identify(root, person.Account{Link: "terminal", ExternalID: "uid:1"}, "owner")
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +42,14 @@ func TestRemoteCLI(t *testing.T) {
 	if got := captureStdout(t, func() error { return cmdRemote(root, []string{"gateway"}) }); got != "https://example.test\n" {
 		t.Fatal(got)
 	}
+	cfg, err := remote.Load(root)
+	if err != nil || cfg.GatewayURL() != "https://example.test" {
+		t.Fatalf("override: %+v, %v", cfg, err)
+	}
+	if err := cmdRemote(root, []string{"gateway", "default"}); err != nil {
+		t.Fatal(err)
+	}
+	checkDefault()
 	got := captureStdout(t, func() error { return cmdRemote(root, []string{"list"}) })
 	if got != "b\t"+fields[1]+"\t"+p.ID+"\n" {
 		t.Fatal("bad device listing")
@@ -38,7 +57,7 @@ func TestRemoteCLI(t *testing.T) {
 	if err := cmdRemote(root, []string{"remove", "b"}); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := remote.Load(root)
+	cfg, err = remote.Load(root)
 	if err != nil || len(cfg.Devices) != 0 {
 		t.Fatal("device not removed")
 	}

@@ -160,11 +160,11 @@ func runOutbox(ctx context.Context, root string, logf func(string, ...any)) {
 	defer ticker.Stop()
 	for ctx.Err() == nil {
 		cfg, err := Load(root)
-		if err == nil && cfg.Gateway != "" {
+		if err == nil {
 			priv, _, _, keyErr := Identity(root)
 			err = keyErr
 			if err == nil {
-				err = flushOutbox(ctx, root, &gateway.Client{Base: cfg.Gateway, Key: priv}, time.Now())
+				err = flushOutbox(ctx, root, &gateway.Client{Base: cfg.GatewayURL(), Key: priv}, time.Now())
 			}
 		}
 		if err != nil && logf != nil && ctx.Err() == nil {

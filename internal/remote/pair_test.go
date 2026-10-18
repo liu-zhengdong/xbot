@@ -199,3 +199,18 @@ func TestInvitePerson(t *testing.T) {
 		t.Fatal("minted oversized code")
 	}
 }
+
+// A default-gateway install with pairs refuses a code from another gateway instead of moving.
+func TestJoinKeepsDefaultGatewayWithDevices(t *testing.T) {
+	a, b := pairingRoot(t), pairingRoot(t)
+	mustRemote(t, SetGateway(a, "http://other"))
+	code, err := CreateInvite(a, "", time.Now())
+	mustRemote(t, err)
+	mustRemote(t, update(b, func(c *Config) error { c.Devices = []Device{{Name: "c", ID: "peer"}}; return nil }))
+	if _, err := Join(context.Background(), b, code, "a", "", "", time.Now()); err == nil || !strings.Contains(err.Error(), "gateway mismatch") {
+		t.Fatalf("join: %v", err)
+	}
+	if cfg, _ := Load(b); cfg.Gateway != "" {
+		t.Fatalf("gateway moved to %q", cfg.Gateway)
+	}
+}
