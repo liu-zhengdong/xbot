@@ -1045,6 +1045,7 @@
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+    download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
@@ -2822,9 +2823,19 @@
     if (n.bot) await selectBot(n.bot);
   }
 
+  // The header repeats the rail's square bot avatar (one character, or the
+  // photo) so its left edge can share the message column's line.
+  let titleFace = "", titleAv = null;
   function setHeader(slug, label) {
     const shown = label || niceName(slug) || "XBot";
-    titleEl.textContent = shown;
+    const head = `bot:${slug}:${slug ? (paintOf(slug) || {}).url || "" : ""}`;
+    if (head !== titleFace) {
+      titleFace = head;
+      const bot = slug && (state.bots || []).find((b) => b.name === slug);
+      titleAv = bot ? avatar(slug, paintOfBot(bot), "head") : null;
+      if (titleAv) setTip(titleAv, "");
+    }
+    titleEl.replaceChildren(...(titleAv ? [titleAv] : []), document.createTextNode(shown));
     setTip(titleEl, slug && slug !== shown ? slug : "");
     document.title = shown + " · XBot";
   }
@@ -3113,7 +3124,6 @@
     closeDrawer();
     setHeader(name);
     setStatus("");
-    syncMore();
     setComposerPlaceholder("写给 " + niceName(name));
     renderLists();
     const selection = state.sel;
@@ -3145,7 +3155,6 @@
     const g = state.groups.find((x) => x.id === id);
     setHeader(id, g ? niceName(g.name || id) : "");
     setStatus("");
-    syncMore();
     setComposerPlaceholder("写到这个群");
     renderLists();
     const selection = state.sel;
@@ -3244,10 +3253,19 @@
     return box;
   }
 
-  function menuRow(iconName, label, onClick, danger) {
-    const btn = el("button", "menu-row" + (danger ? " danger" : ""));
+  // The bot's actions are icon buttons in the info panel's top bar, left of
+  // its close button; the header keeps a single control that opens the panel.
+  function panelAct(iconName, label, danger) {
+    const btn = el("button", "ghost panel-act" + (danger ? " danger" : ""));
     btn.type = "button";
-    btn.append(icon(iconName), el("span", "", label));
+    btn.setAttribute("aria-label", label);
+    setTip(btn, label);
+    btn.append(icon(iconName));
+    return btn;
+  }
+
+  function menuRow(iconName, label, onClick, danger) {
+    const btn = panelAct(iconName, label, danger);
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       closePanelMenu();
@@ -3257,44 +3275,40 @@
   }
 
   function closePanelMenu() {
-    $("panel-menu").hidden = true;
-    $("panel-more").setAttribute("aria-expanded", "false");
-    document.querySelectorAll(".menu-sub").forEach((sub) => {
+    document.querySelectorAll("#panel-actions .menu-sub").forEach((sub) => {
       sub.hidden = true;
       sub.remove();
     });
-    const move = $("panel-menu").querySelector(".menu-move > .menu-row");
-    if (move) move.setAttribute("aria-expanded", "false");
+    document.querySelectorAll("#panel-actions .menu-move > .panel-act").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
   }
 
   function syncPanelChrome() {
     const bot = state.sel && state.sel.type === "bot";
     const data = state.panelData || {};
-    $("panel-export").hidden = !bot;
-    $("panel-more").hidden = !bot;
-    const menu = $("panel-menu");
-    document.querySelectorAll(".menu-sub").forEach((sub) => sub.remove());
-    menu.replaceChildren();
-    if (!bot) {
-      closePanelMenu();
-      return;
-    }
+    const row = $("panel-actions");
+    closePanelMenu();
+    row.replaceChildren();
+    row.hidden = !bot;
+    if (!bot) return;
     const pinned = !!data.pinned;
     const current = (state.bots.find((b) => b.name === state.sel.id) || {}).group || "";
-    menu.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
-    menu.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
-    menu.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
-    menu.append(moveMenu(state.sel.id, current));
-    menu.append(el("div", "menu-rule"));
-    menu.append(menuRow("trash", "删除 Bot", () => confirmDelete(state.sel.id), true));
+    row.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
+    row.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
+    row.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
+    row.append(moveMenu(state.sel.id, current));
+    const exportBtn = menuRow("download", "导出对话", () => openExport());
+    exportBtn.id = "export-chat";
+    row.append(exportBtn);
+    row.append(menuRow("trash", "删除", () => confirmDelete(state.sel.id), true));
   }
 
   function moveMenu(botName, current) {
     const wrap = el("div", "menu-move");
-    const btn = el("button", "menu-row");
-    btn.type = "button";
+    const btn = panelAct("folder", "移到分组");
     btn.setAttribute("aria-expanded", "false");
-    btn.append(icon("folder"), el("span", "", "移到分组"), icon("chevron", "mark"));
+    btn.setAttribute("aria-haspopup", "menu");
     const sub = el("div", "pop menu-sub");
     sub.hidden = true;
     const folders = state.folders.length ? state.folders : [{ name: "未分组", ungrouped: true }];
@@ -3331,11 +3345,10 @@
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const open = sub.hidden;
-      sub.hidden = true;
-      btn.setAttribute("aria-expanded", "false");
+      closePanelMenu();
       if (open) {
         btn.setAttribute("aria-expanded", "true");
-        placeMenu(btn, sub, "left");
+        placeMenu(btn, sub, "below");
       }
     });
     wrap.append(btn, sub);
@@ -4563,9 +4576,10 @@
     modalForm.removeAttribute("aria-modal");
     modalForm.removeAttribute("aria-labelledby");
     if (profileReturnFocus) {
-      // The edit menu is closed; return to its visible trigger instead.
-      const target = profileReturnFocus.closest("#panel-menu") || !profileReturnFocus.isConnected
-        ? $("panel-more") : profileReturnFocus;
+      // The action row is redrawn; return to its live 编辑资料 button instead.
+      const acts = $("panel-actions");
+      const target = profileReturnFocus.closest("#panel-actions") || !profileReturnFocus.isConnected
+        ? acts.querySelector(".panel-act:not(.danger)") || $("info") : profileReturnFocus;
       profileReturnFocus = null;
       target.focus({ preventScroll: true });
     }
@@ -4740,15 +4754,6 @@
     }, "下载");
   }
 
-  function syncMore() {
-    const bot = !!(state.sel && state.sel.type === "bot");
-    $("more").hidden = !bot;
-    if (!bot) {
-      $("more-menu").hidden = true;
-      $("more").setAttribute("aria-expanded", "false");
-    }
-  }
-
   function openNewBot() {
     openModal("新建 Bot", [
       { name: "name", label: "标识", placeholder: "ada" },
@@ -4792,8 +4797,6 @@
     closeAccount();
     $("connect-pop").hidden = true;
     $("connect").setAttribute("aria-expanded", "false");
-    $("more-menu").hidden = true;
-    $("more").setAttribute("aria-expanded", "false");
     closePanelMenu();
     closeFolderMenus();
     closeToolPop();
@@ -4923,18 +4926,6 @@
     }
   });
 
-  $("panel-more").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const menu = $("panel-menu");
-    menu.hidden = !menu.hidden;
-    $("panel-more").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
-  });
-
-  $("panel-export").addEventListener("click", () => {
-    closePanelMenu();
-    openExport();
-  });
-
   $("panel-close").addEventListener("click", () => {
     rememberPanel(false);
     panel.classList.remove("open");
@@ -5044,15 +5035,6 @@
   const phonePush = $("phone-push");
   if (phonePush) phonePush.addEventListener("click", () => { togglePush().catch(() => {}); });
 
-  $("more").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const menu = $("more-menu");
-    menu.hidden = !menu.hidden;
-    $("more").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
-  });
-
-  $("export-chat").addEventListener("click", () => openExport());
-
   const tipEl = el("div", "tip");
   tipEl.setAttribute("role", "tooltip");
   tipEl.hidden = true;
@@ -5117,11 +5099,7 @@
       $("connect-pop").hidden = true;
       $("connect").setAttribute("aria-expanded", "false");
     }
-    if (!ev.target.closest(".more-wrap")) {
-      $("more-menu").hidden = true;
-      $("more").setAttribute("aria-expanded", "false");
-    }
-    if (!ev.target.closest(".panel-more-wrap") && !ev.target.closest(".menu-sub")) closePanelMenu();
+    if (!ev.target.closest(".panel-actions") && !ev.target.closest(".menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) {

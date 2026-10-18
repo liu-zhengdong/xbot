@@ -33,6 +33,8 @@ type DeviceView struct {
 	// Unpaired reports that the other computer unpaired this one; the user
 	// removes it from the 设备 drawer.
 	Unpaired bool `json:"unpaired,omitempty"`
+	// BotMessaging is the 设备 switch 「Bot 互发消息」, on by default.
+	BotMessaging bool `json:"bot_messaging"`
 }
 
 // OnlineWindow: directories are re-sent every 15 minutes and within a minute of
@@ -59,7 +61,7 @@ func Devices(root string) ([]DeviceView, error) {
 		if err := readJSON(filepath.Join(root, "remote", "dirs", d.ID+".json"), &cache); err != nil {
 			return nil, err
 		}
-		v := DeviceView{ID: d.ID, Label: deviceLabel(d), Name: d.Name, Bots: []string{}, Seen: cache.Received, Added: d.Added, Unpaired: !d.UnpairedAt.IsZero()}
+		v := DeviceView{ID: d.ID, Label: deviceLabel(d), Name: d.Name, Bots: []string{}, Seen: cache.Received, Added: d.Added, Unpaired: !d.UnpairedAt.IsZero(), BotMessaging: !d.NoBotMessaging}
 		for _, b := range cache.Bots[:min(64, len(cache.Bots))] {
 			if bot.ValidName(b.Name) {
 				v.Bots = append(v.Bots, b.Name)
@@ -80,6 +82,20 @@ func RenameDevice(root, id, label string) error {
 		for i, d := range c.Devices {
 			if d.ID == id {
 				c.Devices[i].Label = label
+				return nil
+			}
+		}
+		return errors.New("remote: device not found")
+	})
+}
+
+// SetBotMessaging flips 「Bot 互发消息」 for one paired device; off refuses box
+// and bounce both ways, while the owner's own remote chat and directories stay.
+func SetBotMessaging(root, id string, on bool) error {
+	return update(root, func(c *Config) error {
+		for i, d := range c.Devices {
+			if d.ID == id {
+				c.Devices[i].NoBotMessaging = !on
 				return nil
 			}
 		}
