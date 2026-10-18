@@ -130,3 +130,18 @@ func TestShortCodeTokenScope(t *testing.T) {
 		t.Fatal("token missing for an explicit gateway:", got)
 	}
 }
+
+// A serve-managed token reaches pairing even after serve clears the environment.
+func TestShortCodeRunToken(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XBOT_GATEWAY_TOKEN", "")
+	rememberRunToken(root, "self-host")
+	defer forgetRunToken(root)
+	if got := gatewayToken(root); got != "" {
+		t.Fatal("token offered to the default gateway")
+	}
+	mustRemote(t, SetGateway(root, "https://gw.example"))
+	if got := gatewayToken(root); got != "self-host" {
+		t.Fatal("token missing for an explicit gateway:", got)
+	}
+}
