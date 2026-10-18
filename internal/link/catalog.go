@@ -125,13 +125,6 @@ var catalog = []CatalogEntry{
 		Available: true, Grant: NameDesktop,
 	},
 	{
-		ID: "node", Title: "节点", Kind: KindNative,
-		Capabilities: []string{"tools"}, Secrets: []string{},
-		Summary:   "调用其他在线节点上的能力。info 问身份，shell 在那台机器上跑命令。",
-		Keywords:  []string{"node", "machine"},
-		Available: true, Grant: NameNode,
-	},
-	{
 		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
 		Summary:   "长时间编码任务，步数和时间按这次任务另定。先只记本地任务。",

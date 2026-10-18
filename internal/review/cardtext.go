@@ -16,8 +16,8 @@ import (
 func CardText(tool string, args json.RawMessage, summary, machine string) (title, subtitle string) {
 	name := normalize(tool)
 	switch {
-	case name == "shell" || name == "node_call":
-		return shellCardText(name, args, summary, machine)
+	case name == "shell":
+		return shellCardText(args, summary, machine)
 	case name == "http_request":
 		return httpCardText(args, summary)
 	case name == "write_file" || name == "edit_file":
@@ -49,18 +49,13 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 }
 
 // shellCardText labels a shell command by what it does. The machine name comes
-// from args for a node call and from the machine argument otherwise.
-func shellCardText(name string, args json.RawMessage, summary, machine string) (string, string) {
+// from the machine argument.
+func shellCardText(args json.RawMessage, summary, machine string) (string, string) {
 	cmd := jsonString(args, "command")
 	if strings.TrimSpace(cmd) == "" {
 		cmd = firstLine(summary)
 	}
 	target := strings.TrimSpace(machine)
-	if name == "node_call" {
-		if node := strings.TrimSpace(jsonString(args, "name")); node != "" {
-			target = node
-		}
-	}
 	if target == "" || target == "local" {
 		target = "本机"
 	}

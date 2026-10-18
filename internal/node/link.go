@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"xbot/internal/link"
 	"xbot/internal/tools"
 )
 
@@ -20,7 +19,7 @@ type Link struct {
 // Open binds the registry at root.
 func Open(root string) *Link { return &Link{Root: root} }
 
-func (l *Link) Name() string { return link.NameNode }
+func (l *Link) Name() string { return "node" } // package removed in a follow-up
 
 func (l *Link) Tools() []tools.Tool {
 	if l == nil {

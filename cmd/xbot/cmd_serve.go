@@ -45,6 +45,10 @@ import (
 // decide the step cap (chat 8, dev 24) instead of pinning one here.
 const serveSteps = 0
 
+// legacyNodeGrant is the retired node link's name. It is no longer a link, but
+// an old bot config may still list it; serve skips it with one notice.
+const legacyNodeGrant = "node"
+
 // newServeKernel opens a kernel the way the serve path does, so every caller
 // there shares one definition of what a served bot gets.
 func newServeKernel(root string, b *bot.Bot) (*kernel.Kernel, error) {
@@ -236,7 +240,7 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 				return nil, errors.New("runner token is empty")
 			}
 			out = append(out, link.Runner{BaseURL: url, Token: token})
-		case link.NameNode:
+		case legacyNodeGrant:
 			// The node feature is gone; an old grant mounts nothing and must not
 			// fail the bot. One notice per bot and process keeps restarts quiet.
 			if noteLegacyNodeGrant(b.Name()) {
@@ -551,6 +555,8 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		fmt.Fprintln(os.Stderr, "xbot: 节点功能已移除，忽略数据目录里的旧节点文件（nodes.json、node-token、node-pending），文件保留不删")
 	}
 	// Waited for on return, so nothing writes the data root after serve stops.
+	// remote cannot import kernel, so serve hands it the reply reader.
+	remote.TurnReply = kernel.ReplyAfter
 	remoteCtx, stopRemote := context.WithCancel(ctx)
 	remoteDone := make(chan struct{})
 	go func() {

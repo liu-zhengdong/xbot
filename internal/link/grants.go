@@ -98,7 +98,6 @@ var blurbs = map[string]string{
 	NameTelegram: "Telegram messages arrive as untrusted events. telegram_send keeps a draft until the owner confirms.",
 	NameLark:     "Lark messages arrive as untrusted events. lark_send keeps a draft until the owner confirms.",
 	NameCoding:   "Long coding tasks with their own step and time limits. Records are separate from subagents. Completion is an untrusted event.",
-	NameNode:     "Other machines running xbot node. node_list and node_call reach them. info is read-only. shell runs a command there after the owner confirms, and that machine's switch can still refuse.",
 	NameDesktop:  "Local screen: screenshot, click, type, scroll, and key. Yields while the owner is active. Prefer a shell command or an API. The machine switch can refuse it.",
 	NameBrowser:  "Local Chrome over the debugging port, with its own profile. browser_open, browser_snapshot, and browser_click. Prefer a shell command or an API. The machine switch can refuse it.",
 }

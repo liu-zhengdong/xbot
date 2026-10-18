@@ -14,7 +14,6 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/desktop"
 	"xbot/internal/link"
-	"xbot/internal/node"
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
@@ -321,7 +320,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools, link.NameTimer, link.NameMemory, link.NamePersona,
 		link.NameContext, link.NameAgents, link.NameSkills, link.NameWeb, link.NamePeers,
 		link.NameWebhook, link.NameWatch, link.NameTelegram, link.NameLark,
-		link.NameCoding, link.NameNode, link.NameDesktop, link.NameBrowser)
+		link.NameCoding, link.NameDesktop, link.NameBrowser)
 	if err := bot.SetPrimary(b.Root, b.Name()); err != nil {
 		t.Fatal(err)
 	}
@@ -339,13 +338,12 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 		link.NewConnector(dir, b.SecretPath(), link.NameTelegram),
 		link.NewConnector(dir, b.SecretPath(), link.NameLark),
 		code.Open(dir, b.InboxPath()),
-		node.Open(b.Root),
 		desktop.Open(b.Root),
 		browser.Open(b.Root),
 		fakeMCPLink{},
 	)
 	for _, name := range []string{link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram,
-		link.NameLark, link.NameCoding, link.NameNode, link.NameDesktop, link.NameBrowser, "mcp:fake"} {
+		link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser, "mcp:fake"} {
 		k.markLoaded(name)
 	}
 	list, err := k.modelTools()
@@ -375,7 +373,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"shell", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
-		"links", "telegram_send", "lark_send", "code_start", "node_call", "desktop_click", "browser_open",
+		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open",
 		"create_bot", "delete_bot", "bot_status", "mcp_fake_echo"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)

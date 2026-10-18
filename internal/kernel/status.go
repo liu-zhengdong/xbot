@@ -1,7 +1,6 @@
 package kernel
 
 import (
-	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,17 +32,12 @@ const (
 	stepRingCap    = 20
 	statusPreview  = 80
 	stepSummaryCap = 120
-	// nodeStatusCap bounds the status a node returns in one call. The JSON
-	// stays valid: whole bots are dropped until it fits.
-	nodeStatusCap = 16 << 10
-	botStatusCap  = 4 << 10
-	tailRead      = 5
-	tailHydrate   = 512
+	botStatusCap   = 4 << 10
+	tailRead       = 5
+	tailHydrate    = 512
 )
 
-// BotStatus is one bot's derived state. Node is empty for a local bot and the
-// node label for a remote one. StaleSeconds is set only for a cached remote
-// status whose node is now unreachable.
+// BotStatus is one bot's derived state.
 type BotStatus struct {
 	Bot         string `json:"bot"`
 	State       string `json:"state"`
@@ -56,9 +50,7 @@ type BotStatus struct {
 	Todo string `json:"todo,omitempty"`
 	// Tokens is the latest model-call usage and the session totals. Empty
 	// until the kernel has seen a completion.
-	Tokens       *TokenUse `json:"tokens,omitempty"`
-	Node         string    `json:"node,omitempty"`
-	StaleSeconds int       `json:"stale_seconds,omitempty"`
+	Tokens *TokenUse `json:"tokens,omitempty"`
 }
 
 // Step is one tool step in a turn, kept in a small ring for the web and the
@@ -70,9 +62,9 @@ type Step struct {
 	State   string    `json:"state"`
 }
 
-// StatusSource lets a kernel read every same-owner bot's status, including
-// remote bots. The web server implements it over its live kernels and the node
-// registry. A nil source falls back to this process's own bots.
+// StatusSource lets a kernel read every same-owner bot's status. The web
+// server implements it over its live kernels. A nil source falls back to this
+// process's own bots.
 type StatusSource interface {
 	BotStatuses() []BotStatus
 	BotSteps(name string, n int) []Step
@@ -358,7 +350,7 @@ func (k *Kernel) localStatuses() []BotStatus {
 }
 
 // BotStatuses returns the status for every same-owner bot, live or idle. The
-// web server's source also merges remote nodes; without one only this process
+// web server's source covers its live kernels; without one only this process
 // is visible.
 func (k *Kernel) BotStatuses() []BotStatus {
 	if k != nil && k.Statuses != nil {
@@ -382,43 +374,6 @@ func (k *Kernel) BotSteps(name string, n int) []Step {
 	return nil
 }
 
-// NodeStatusJSON is what the node status capability returns: this machine's
-// bots, idle-only, capped at nodeStatusCap bytes of valid JSON.
-func NodeStatusJSON(root string) (string, error) {
-	cfgs, err := bot.List(root)
-	if err != nil {
-		return "", err
-	}
-	now := time.Now()
-	out := make([]BotStatus, 0, len(cfgs))
-	for _, cfg := range cfgs {
-		b, err := bot.Load(root, cfg.Name)
-		if err != nil {
-			continue
-		}
-		out = append(out, IdleStatus(b, now))
-	}
-	if out == nil {
-		out = []BotStatus{}
-	}
-	return statusJSONCapped(out)
-}
-
-// statusJSONCapped marshals bot statuses, dropping whole bots until the JSON
-// fits nodeStatusCap. The result is always valid JSON.
-func statusJSONCapped(out []BotStatus) (string, error) {
-	for {
-		raw, err := json.Marshal(out)
-		if err != nil {
-			return "", err
-		}
-		if len(raw) <= nodeStatusCap || len(out) == 0 {
-			return string(raw), nil
-		}
-		out = out[:len(out)-1]
-	}
-}
-
 // botStatusText renders statuses and optional steps for the bot_status tool.
 func botStatusText(list []BotStatus, steps []Step) string {
 	var b strings.Builder
@@ -437,15 +392,6 @@ func botStatusText(list []BotStatus, steps []Step) string {
 		if st.Backgrounds > 0 {
 			b.WriteString("\tbackgrounds ")
 			b.WriteString(strconv.Itoa(st.Backgrounds))
-		}
-		if st.Node != "" {
-			b.WriteString("\tnode ")
-			b.WriteString(st.Node)
-		}
-		if st.StaleSeconds > 0 {
-			b.WriteString("\tstale ")
-			b.WriteString(strconv.Itoa(st.StaleSeconds))
-			b.WriteString("s")
 		}
 		if st.LastMessage != "" {
 			b.WriteString("\tlast: ")
