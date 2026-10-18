@@ -247,6 +247,32 @@ func runConformance(t *testing.T, base string, remote bool) {
 		e = NewEnvelope(a, strings.Repeat("0", 32), "msg", nil, time.Now())
 		call(t, "POST", "/v1/send", marshal(t, e), a, 404, "")
 	})
+	t.Run("envelope json forms", func(t *testing.T) {
+		// Go's encoding/json is the reference: integer literals only, zero time when absent, []byte from an array.
+		a, b := pair(t)
+		e := env(a, b, nil)
+		call(t, "POST", "/v1/send", []byte(strings.Replace(string(marshal(t, e)), `"v":1,`, `"v":1.0,`, 1)), a, 400, "")
+		form := func(e Envelope, edit func(map[string]any)) []byte {
+			var m map[string]any
+			conformanceRequire(t, json.Unmarshal(marshal(t, e), &m) == nil, "unmarshal")
+			edit(m)
+			return marshal(t, m)
+		}
+		untimed := env(a, b, nil)
+		untimed.Time = time.Time{}
+		untimed.Sign(a)
+		call(t, "POST", "/v1/send", form(untimed, func(m map[string]any) { delete(m, "time") }), a, 202, `{"status":"queued"}`)
+		array := env(a, b, []byte{1, 2, 255})
+		call(t, "POST", "/v1/send", form(array, func(m map[string]any) { m["body"] = []int{1, 2, 255} }), a, 202, `{"status":"queued"}`)
+		got, _ := poll(t, b)
+		conformanceRequire(t, len(got) == 2, fmt.Sprintf("got %d envelopes", len(got)))
+		if got[0].ID != untimed.ID {
+			got[0], got[1] = got[1], got[0]
+		}
+		equal(t, got[0], untimed, a)
+		equal(t, got[1], array, a)
+		ack(t, b, []string{untimed.ID, array.ID}, 2)
+	})
 	t.Run("time canonicalization", func(t *testing.T) {
 		a, b := pair(t)
 		for _, ns := range []time.Duration{123456789, 120000000} {
