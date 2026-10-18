@@ -2,7 +2,6 @@ package link
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -41,8 +40,7 @@ func TestCatalogInstallNames(t *testing.T) {
 	if _, ok := Lookup("lark"); !ok {
 		t.Fatal("lark missing")
 	}
-	node, ok := Lookup("node")
-	if !ok || strings.Contains(node.Summary, "只有 info") || !strings.Contains(node.Summary, "shell") {
-		t.Fatalf("%+v", node)
+	if _, err := GrantName("node"); !errors.Is(err, ErrUnknown) {
+		t.Fatalf("retired node entry is still installable: %v", err)
 	}
 }

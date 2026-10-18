@@ -60,6 +60,9 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 					}
 				}
 				notifyDirectory(ready, &lastDirectoryGateway, client)
+				if err := pumpChatReplies(ctx, root, client, time.Now()); err != nil && logf != nil && ctx.Err() == nil {
+					logf("chat reply local state failure")
+				}
 				envs, err := client.Poll(ctx, 25*time.Second)
 				if err != nil {
 					return err

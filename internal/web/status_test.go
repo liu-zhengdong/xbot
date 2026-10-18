@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
-	"xbot/internal/node"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -109,9 +107,6 @@ func TestBotStatusEndpointShapeAndSize(t *testing.T) {
 		if !strings.HasPrefix(st.LastMessage, "hello from") {
 			t.Fatalf("last %q", st.LastMessage)
 		}
-		if st.Node != "" {
-			t.Fatalf("node %q", st.Node)
-		}
 	}
 }
 
@@ -198,136 +193,6 @@ func TestBotStepsEndpoint(t *testing.T) {
 	}
 }
 
-func TestBotStatusMergesRemoteNodeAndOfflineFallback(t *testing.T) {
-	oldRefresh := nodeStatusRefresh
-	nodeStatusRefresh = 20 * time.Millisecond
-	defer func() { nodeStatusRefresh = oldRefresh }()
-
-	root := t.TempDir()
-	remoteRoot := t.TempDir()
-	rb, err := bot.Create(remoteRoot, "remote1", "p", []string{link.NameTerminal})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := rb.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "remote hi"}}); err != nil {
-		t.Fatal(err)
-	}
-	up := true
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !up {
-			http.Error(w, "down", http.StatusInternalServerError)
-			return
-		}
-		text, err := kernel.NodeStatusJSON(remoteRoot)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"text": text})
-	}))
-	defer srv.Close()
-	if err := node.Add(root, node.Node{Name: "desk", URL: srv.URL, Token: "tok"}); err != nil {
-		t.Fatal(err)
-	}
-	s := &Server{Root: root, Owner: "u1"}
-	if _, _, err := s.EnsureToken(); err != nil {
-		t.Fatal(err)
-	}
-	b, err := bot.Create(root, "local", "p", []string{link.NameTerminal})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	bots := s.botStatuses()
-	if len(bots) != 2 {
-		t.Fatalf("merged %+v", bots)
-	}
-	var remote *kernel.BotStatus
-	for i := range bots {
-		if bots[i].Bot == "remote1" {
-			remote = &bots[i]
-		}
-	}
-	if remote == nil || remote.Node != "desk" || remote.State != kernel.StateIdle || remote.LastMessage != "remote hi" {
-		t.Fatalf("remote %+v", remote)
-	}
-	up = false
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		offline := false
-		for _, st := range s.botStatuses() {
-			if st.Bot == "remote1" && st.State == kernel.StateOffline {
-				offline = true
-			}
-		}
-		if offline {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("never went offline: %+v", s.botStatuses())
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-func TestBotStatusDoesNotWaitOnDeadNode(t *testing.T) {
-	oldTimeout := nodeStatusTimeout
-	nodeStatusTimeout = 300 * time.Millisecond
-	defer func() { nodeStatusTimeout = oldTimeout }()
-
-	root := t.TempDir()
-	// A listener that accepts and never answers: only the client deadline ends
-	// the call. Closing the listener is immediate, unlike an httptest server.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			defer conn.Close()
-		}
-	}()
-	if err := node.Add(root, node.Node{Name: "slow", URL: "http://" + ln.Addr().String(), Token: "tok"}); err != nil {
-		t.Fatal(err)
-	}
-	s := &Server{Root: root, Owner: "u1"}
-	if _, _, err := s.EnsureToken(); err != nil {
-		t.Fatal(err)
-	}
-	b, err := bot.Create(root, "local", "p", []string{link.NameTerminal})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	start := time.Now()
-	bots := s.botStatuses()
-	elapsed := time.Since(start)
-	if elapsed > time.Second {
-		t.Fatalf("first read waited %v on a dead node", elapsed)
-	}
-	if len(bots) != 1 || bots[0].Bot != "local" {
-		t.Fatalf("bots %+v", bots)
-	}
-	// After the first read the node stays unreachable. Further polls must not
-	// pay the deadline again: only the throttled background refresh does.
-	start = time.Now()
-	for i := 0; i < 5; i++ {
-		s.botStatuses()
-	}
-	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
-		t.Fatalf("5 later reads waited %v on a dead node", elapsed)
-	}
-}
-
 func TestBotStatusP95Latency5Bots(t *testing.T) {
 	s, tok, _ := statusFixture(t, 5)
 	mux := muxOf(s)
@@ -401,32 +266,4 @@ func loginCookieB(b *testing.B, base, tok string) *http.Cookie {
 	}
 	b.Fatal("no cookie")
 	return nil
-}
-
-func TestBotStatusManyDeadNodesWaitAtMostOnce(t *testing.T) {
-	oldTimeout := nodeStatusTimeout
-	nodeStatusTimeout = 300 * time.Millisecond
-	defer func() { nodeStatusTimeout = oldTimeout }()
-
-	root := t.TempDir()
-	for i := 0; i < 4; i++ {
-		addr := fmt.Sprintf("http://127.0.0.1:%d", 1) // connection refused: fast, so the deadline is not the cost
-		if err := node.Add(root, node.Node{Name: fmt.Sprintf("n%d", i), URL: addr, Token: "tok"}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	s := &Server{Root: root, Owner: "u1"}
-	if _, _, err := s.EnsureToken(); err != nil {
-		t.Fatal(err)
-	}
-	b, err := bot.Create(root, "local", "p", []string{link.NameTerminal})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := s.botStatuses(); len(got) != 1 || got[0].Bot != "local" {
-		t.Fatalf("bots %+v", got)
-	}
 }

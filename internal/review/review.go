@@ -125,10 +125,6 @@ var Table = map[string]Class{
 	"code_cancel":    Normal,
 	"code_show":      Readonly,
 
-	// Node calls. A shell command runs on the other machine.
-	"node_list": Readonly,
-	"node_call": Shell,
-
 	// Desktop.
 	"desktop_screenshot": Readonly,
 	"desktop_click":      Normal,

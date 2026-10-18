@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestOnChangeSkipsMerge(t *testing.T) {
+func TestOnChangeFromLocalLog(t *testing.T) {
 	root := t.TempDir()
 	var n int
 	OnChange(func(got string) {
@@ -25,22 +25,12 @@ func TestOnChangeSkipsMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 1 {
-		t.Fatalf("writes %d", n)
+		t.Fatalf("remember writes %d", n)
 	}
-	fact.Text = "Beijing"
-	fact.Time = at.Add(time.Hour)
-	fact.WrittenBy = "bob"
-	line := SyncLine{Time: fact.Time, Bot: "bob", Device: "other", Op: opRemember, Fact: fact}
-	if err := MergeSync(root, []SyncLine{line}); err != nil {
+	if err := Open(root).Forget(context.Background(), Query{Scope: ScopePerson, PersonID: "u1"}, "Shanghai"); err != nil {
 		t.Fatal(err)
 	}
 	if n != 2 {
-		t.Fatalf("relayed merge writes %d", n)
-	}
-	if err := MergeSync(root, []SyncLine{line}); err != nil {
-		t.Fatal(err)
-	}
-	if n != 2 {
-		t.Fatalf("duplicate merge writes %d", n)
+		t.Fatalf("forget writes %d", n)
 	}
 }

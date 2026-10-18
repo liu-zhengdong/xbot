@@ -101,7 +101,7 @@ func TestMonthlyGuardAndRoundTrip(t *testing.T) {
 		t.Fatal("forget did not shrink current month")
 	}
 	if err := saveTierOpt(dir, TierLog, append(past, past...), true); err != nil {
-		t.Fatal("sync bypass:", err)
+		t.Fatal("cap bypass:", err)
 	}
 	p := Fact{Scope: ScopePerson, PersonID: "u1", Tier: TierLog, WrittenBy: "dev", Text: Provenance("remote", "dev", "node"), Untrusted: true, Time: now}
 	if err := s.Remember(ctx, p); err != nil {
@@ -277,9 +277,6 @@ func TestForgetMonthlyDistinctSyncKeys(t *testing.T) {
 	if err := s.Forget(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog}, f.Text); err != nil {
 		t.Fatal(err)
 	}
-	if err := MergeSync(root, nil); err != nil {
-		t.Fatal(err)
-	}
 	got, err := s.Recall(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("resurrected: %+v %v", got, err)
@@ -299,9 +296,6 @@ func TestForgetMonthlyDistinctSyncKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.Forget(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog}, "same"); err != nil {
-		t.Fatal(err)
-	}
-	if err := MergeSync(root, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err = s.Recall(ctx, Query{Scope: ScopePerson, PersonID: "u1", Tier: TierLog})
