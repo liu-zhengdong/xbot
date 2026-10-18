@@ -86,10 +86,8 @@
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const meta = $("theme-color");
     if (meta) meta.setAttribute("content", dark ? "#161618" : "#ffffff");
-    const themeIcon = $("theme-icon");
-    if (themeIcon) themeIcon.innerHTML = dark ? THEME_SUN : THEME_MOON;
     const accountTheme = $("account-theme");
-    if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"));
+    if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"), el("span", "menu-count", dark ? "深色" : "浅色"));
     try { localStorage.setItem("xbot-theme", dark ? "dark" : "light"); } catch (e) {}
     // The desktop window's native buttons follow XBot's own theme, not the OS's.
     if (inApp) {
@@ -638,7 +636,7 @@
         row.append(wrap);
         row.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          setTip(row, "在节点 " + node + " 上");
+          setTip(row, "在 " + node + " 上");
         });
         body.append(row);
       });
@@ -731,7 +729,7 @@
       if (state.sel && state.sel.type === "bot" && state.sel.id === name) await loadThread();
       else await selectBot(name);
     } catch (e) {}
-    const find = () => Array.from(document.querySelectorAll("#thread .approval, #node-pending .approval"))
+    const find = () => Array.from(document.querySelectorAll("#thread .approval"))
       .find((card) => !branch || card.dataset.branch === branch);
     let card = find();
     if (!card) {
@@ -1036,6 +1034,7 @@
     terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     chevronLeft: '<path d="m15 18-6-6 6-6"/>',
     chevronDown: '<path d="m6 9 6 6 6-6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -1045,11 +1044,13 @@
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+    download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
   };
 
   function icon(name, extra) {
@@ -1498,40 +1499,79 @@
     lightbox.replaceChildren();
   }
 
-  const HEAT = [
-    "010010100010010010",
-    "021302110231021102",
-    "132021302110320211",
-    "213021132021103201",
-    "102310211320211032",
-    "021102130210211021",
-    "010010010100010010",
-  ];
+  // Empty chat (window review P2 #7): the bot's face, its name, one line and
+  // up to three starters made from its routines and persona. A starter only
+  // fills the composer; sending still takes Enter or the send button.
+  const EMPTY_LINE = "有什么事，直接说就行。";
+  const GENERIC_STARTERS = ["你能帮我做些什么？", "帮我整理今天要做的事", "把这段话总结成三点"];
 
-  function heat() {
-    const card = el("div", "heat-card");
-    card.append(el("div", "heat-title", "活跃对话"));
-    const months = el("div", "heat-months");
-    months.append(el("span", "", "8月"), el("span", "", "9月"), el("span", "", "10月"));
-    const wrap = el("div", "heat");
-    wrap.setAttribute("aria-hidden", "true");
-    const levels = ["", "l1", "l2", "l3"];
-    for (const row of HEAT) {
-      for (const ch of row) {
-        const cell = document.createElement("i");
-        const level = levels[Number(ch)] || "";
-        if (level) cell.className = level;
-        wrap.append(cell);
-      }
+  function starterPrompts(profile) {
+    const out = [];
+    const push = (text) => {
+      text = String(text || "").replace(/\s+/g, " ").trim();
+      if (text && text.length <= 30 && !out.includes(text) && out.length < 3) out.push(text);
+    };
+    for (const rt of (profile && profile.routines) || []) {
+      if (rt && rt.enabled !== false && rt.name) push("现在跑一次「" + rt.name + "」");
     }
-    card.append(months, wrap);
-    return card;
+    // What the persona or description says the bot does, asked as a request:
+    // 「负责整理日记」 becomes 「帮我整理日记」.
+    const said = [profile && profile.persona, profile && profile.description].join("\n");
+    const re = /(?:擅长|负责|专门|帮(?:主人|你|我|用户)?)([^，。,.；;：:！!？?\n「」]{2,14})/g;
+    for (let m; (m = re.exec(said)) && out.length < 3;) push("帮我" + m[1].trim());
+    for (const text of GENERIC_STARTERS) push(text);
+    return out;
   }
 
-  function emptyState(heading, line, who) {
+  function fillComposer(text) {
+    input.value = text;
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    syncComposer();
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+  }
+
+  // The profile behind the starters: the panel's when it is this bot's, else
+  // fetched once per bot and kept for the page's life.
+  // A Map, so names like "constructor" are not mistaken for cached entries.
+  // An entry still in flight is shared with loadPanel, which would otherwise
+  // fetch the same profile a second time when the panel is open.
+  const starterProfiles = new Map();
+  function fetchBotProfile(name) {
+    const live = starterProfiles.get(name);
+    if (live && !live.done) return live.request;
+    const entry = { done: false };
+    entry.request = api("/api/bots/" + encodeURIComponent(name)).finally(() => { entry.done = true; });
+    starterProfiles.set(name, entry);
+    return entry.request;
+  }
+  async function starterProfile(name) {
+    if (state.panelData && state.panelData.name === name) return state.panelData;
+    const cached = starterProfiles.get(name);
+    return (cached ? cached.request : fetchBotProfile(name)).catch(() => ({}));
+  }
+
+  function starterList(who) {
+    const box = el("div", "starters");
+    starterProfile(who).then((profile) => {
+      if (!box.isConnected) return;
+      for (const text of starterPrompts(profile)) {
+        const btn = el("button", "starter");
+        btn.type = "button"; // never a submit: it fills the composer only
+        btn.append(el("span", "", text), icon("arrowRight"));
+        btn.addEventListener("click", () => fillComposer(text));
+        box.append(btn);
+      }
+    });
+    return box;
+  }
+
+  function emptyState(heading, line, who, starters) {
     const box = el("div", "empty");
     if (who) box.append(avatar(who, paintOf(who), "lg"));
-    box.append(el("h2", "", heading), el("p", "", line), heat());
+    box.append(el("h2", "", heading), el("p", "", line));
+    if (starters && who) box.append(starterList(who));
     return box;
   }
 
@@ -1956,7 +1996,7 @@
     const prevTop = thread.scrollTop;
     const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
-      inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
+      inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
       restoreSendFeedback(inner);
       thread.replaceChildren(inner);
       state.firstRender = false;
@@ -2074,7 +2114,7 @@
         lastKey = "";
       }
     });
-    if (!any) inner.append(emptyState(niceName(who) || "XBot", "没有消息", who));
+    if (!any) inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
     restoreSendFeedback(inner);
     thread.replaceChildren(inner);
     state.firstRender = false;
@@ -2617,7 +2657,9 @@
     toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
     toggle.append(icon(collapsed ? "chevron" : "chevronDown"));
     toggle.append(el("span", "folder-name", folder.name));
-    toggle.append(el("span", "folder-count", String(folder.count)));
+    // Pinned bots sit in the pin row only, so the count leaves them out.
+    const pinnedHere = (folder.bots || []).filter((n) => (state.bots.find((b) => b.name === n) || {}).pinned).length;
+    toggle.append(el("span", "folder-count", String(Math.max(0, folder.count - pinnedHere))));
     toggle.addEventListener("click", () => {
       closeFolderMenus();
       setFolderCollapsed(folder.name, !folderCollapsed(folder.name));
@@ -2669,7 +2711,7 @@
     const byName = {};
     for (const b of state.bots) byName[b.name] = b;
     for (const name of folder.bots || []) {
-      if (byName[name]) body.append(botRow(byName[name]));
+      if (byName[name] && !byName[name].pinned) body.append(botRow(byName[name]));
     }
     box.append(body);
     return box;
@@ -2696,22 +2738,32 @@
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
       btn.dataset.bot = b.name;
-      setTip(btn, b.name);
+      setTip(btn, b.name !== niceName(b.name) ? b.name : "");
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
       if (b.unread) av.append(el("i", "unread"));
-      btn.append(av);
+      // A pinned bot shows its name under the face; the primary bot keeps its pin.
+      const label = el("span", "pin-name");
+      label.append(el("span", "pin-label", niceName(b.name)));
+      if (b.primary) label.append(primaryMark());
+      btn.append(av, label);
       btn.addEventListener("click", () => pickBot(b.name));
       pins.append(btn);
     }
+    // One 新建 for the sidebar: 新建 Bot or 新建群组 (the 群组 "+" merged in).
     const add = el("button", "pin add");
     add.type = "button";
-    add.setAttribute("aria-label", "新建 Bot");
-    setTip(add, "新建 Bot", "right");
+    add.setAttribute("aria-label", "新建 Bot 或群组");
+    add.setAttribute("aria-haspopup", "menu");
+    add.setAttribute("aria-expanded", "false");
+    setTip(add, "新建 Bot 或群组", "right");
     const face = el("span", "plus-face");
     face.append(icon("plus"));
-    add.append(face);
-    add.addEventListener("click", openNewBot);
+    add.append(face, el("span", "pin-name pin-label", "新建"));
+    add.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleNewMenu(add);
+    });
     pins.append(add);
 
     const folders = state.folders.length
@@ -2724,20 +2776,14 @@
         const body = el("div", "folder-bots");
         for (const name of folder.bots || []) {
           const b = state.bots.find((bot) => bot.name === name);
-          if (b) body.append(botRow(b));
+          if (b && !b.pinned) body.append(botRow(b));
         }
         roster.append(body);
       } else roster.append(folderSection(folder));
     }
     if (state.others && state.others.length) roster.append(othersFolder());
 
-    const newer = el("button", "icon-btn");
-    newer.type = "button";
-    newer.setAttribute("aria-label", "新建群组");
-    setTip(newer, "新建群组", "right");
-    newer.append(icon("users-plus"));
-    newer.addEventListener("click", openNewGroup);
-    roster.append(sectionLabel("群组", newer));
+    roster.append(sectionLabel("群组"));
     for (const g of state.groups) {
       const btn = listButton(g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false, niceName(g.name || g.id));
       btn.addEventListener("click", () => {
@@ -2757,9 +2803,45 @@
       face.append(icon("person"));
       slot.replaceChildren(face);
     }
-    const name = $("me-name");
-    name.textContent = "我";
-    setTip(name, state.owner || "");
+    $("me-name").textContent = state.owner.trim() || "我";
+  }
+
+  // The 新建 menu under the pin row's last button.
+  function closeNewMenu() {
+    const menu = document.querySelector(".new-menu");
+    if (!menu) return;
+    const hadFocus = menu.contains(document.activeElement);
+    menu.remove();
+    const add = document.querySelector(".pin.add");
+    if (add) {
+      add.setAttribute("aria-expanded", "false");
+      if (hadFocus) add.focus(); // Escape returns to 新建, not to the page
+    }
+  }
+
+  function toggleNewMenu(anchor) {
+    const open = !document.querySelector(".new-menu");
+    closePops();
+    if (!open) return;
+    const menu = el("div", "pop folder-menu new-menu");
+    menu.setAttribute("role", "menu");
+    const item = (iconName, label, run) => {
+      const b = el("button", "menu-row");
+      b.type = "button";
+      b.setAttribute("role", "menuitem");
+      b.append(icon(iconName), el("span", "", label));
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeNewMenu();
+        run();
+      });
+      menu.append(b);
+    };
+    item("plus", "新建 Bot", openNewBot);
+    item("users-plus", "新建群组", openNewGroup);
+    anchor.setAttribute("aria-expanded", "true");
+    placeMenu(anchor, menu, "below");
+    menu.querySelector("button").focus();
   }
 
   function renderNotes() {
@@ -2822,9 +2904,19 @@
     if (n.bot) await selectBot(n.bot);
   }
 
+  // The header repeats the rail's square bot avatar (one character, or the
+  // photo) so its left edge can share the message column's line.
+  let titleFace = "", titleAv = null;
   function setHeader(slug, label) {
     const shown = label || niceName(slug) || "XBot";
-    titleEl.textContent = shown;
+    const head = `bot:${slug}:${slug ? (paintOf(slug) || {}).url || "" : ""}`;
+    if (head !== titleFace) {
+      titleFace = head;
+      const bot = slug && (state.bots || []).find((b) => b.name === slug);
+      titleAv = bot ? avatar(slug, paintOfBot(bot), "head") : null;
+      if (titleAv) setTip(titleAv, "");
+    }
+    titleEl.replaceChildren(...(titleAv ? [titleAv] : []), document.createTextNode(shown));
     setTip(titleEl, slug && slug !== shown ? slug : "");
     document.title = shown + " · XBot";
   }
@@ -3113,7 +3205,6 @@
     closeDrawer();
     setHeader(name);
     setStatus("");
-    syncMore();
     setComposerPlaceholder("写给 " + niceName(name));
     renderLists();
     const selection = state.sel;
@@ -3145,7 +3236,6 @@
     const g = state.groups.find((x) => x.id === id);
     setHeader(id, g ? niceName(g.name || id) : "");
     setStatus("");
-    syncMore();
     setComposerPlaceholder("写到这个群");
     renderLists();
     const selection = state.sel;
@@ -3244,10 +3334,19 @@
     return box;
   }
 
-  function menuRow(iconName, label, onClick, danger) {
-    const btn = el("button", "menu-row" + (danger ? " danger" : ""));
+  // The bot's actions are icon buttons in the info panel's top bar, left of
+  // its close button; the header keeps a single control that opens the panel.
+  function panelAct(iconName, label, danger) {
+    const btn = el("button", "ghost panel-act" + (danger ? " danger" : ""));
     btn.type = "button";
-    btn.append(icon(iconName), el("span", "", label));
+    btn.setAttribute("aria-label", label);
+    setTip(btn, label);
+    btn.append(icon(iconName));
+    return btn;
+  }
+
+  function menuRow(iconName, label, onClick, danger) {
+    const btn = panelAct(iconName, label, danger);
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       closePanelMenu();
@@ -3257,44 +3356,40 @@
   }
 
   function closePanelMenu() {
-    $("panel-menu").hidden = true;
-    $("panel-more").setAttribute("aria-expanded", "false");
-    document.querySelectorAll(".menu-sub").forEach((sub) => {
+    document.querySelectorAll("#panel-actions .menu-sub").forEach((sub) => {
       sub.hidden = true;
       sub.remove();
     });
-    const move = $("panel-menu").querySelector(".menu-move > .menu-row");
-    if (move) move.setAttribute("aria-expanded", "false");
+    document.querySelectorAll("#panel-actions .menu-move > .panel-act").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
   }
 
   function syncPanelChrome() {
     const bot = state.sel && state.sel.type === "bot";
     const data = state.panelData || {};
-    $("panel-export").hidden = !bot;
-    $("panel-more").hidden = !bot;
-    const menu = $("panel-menu");
-    document.querySelectorAll(".menu-sub").forEach((sub) => sub.remove());
-    menu.replaceChildren();
-    if (!bot) {
-      closePanelMenu();
-      return;
-    }
+    const row = $("panel-actions");
+    closePanelMenu();
+    row.replaceChildren();
+    row.hidden = !bot;
+    if (!bot) return;
     const pinned = !!data.pinned;
     const current = (state.bots.find((b) => b.name === state.sel.id) || {}).group || "";
-    menu.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
-    menu.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
-    menu.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
-    menu.append(moveMenu(state.sel.id, current));
-    menu.append(el("div", "menu-rule"));
-    menu.append(menuRow("trash", "删除 Bot", () => confirmDelete(state.sel.id), true));
+    row.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
+    row.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
+    row.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
+    row.append(moveMenu(state.sel.id, current));
+    const exportBtn = menuRow("download", "导出对话", () => openExport());
+    exportBtn.id = "export-chat";
+    row.append(exportBtn);
+    row.append(menuRow("trash", "删除", () => confirmDelete(state.sel.id), true));
   }
 
   function moveMenu(botName, current) {
     const wrap = el("div", "menu-move");
-    const btn = el("button", "menu-row");
-    btn.type = "button";
+    const btn = panelAct("folder", "移到分组");
     btn.setAttribute("aria-expanded", "false");
-    btn.append(icon("folder"), el("span", "", "移到分组"), icon("chevron", "mark"));
+    btn.setAttribute("aria-haspopup", "menu");
     const sub = el("div", "pop menu-sub");
     sub.hidden = true;
     const folders = state.folders.length ? state.folders : [{ name: "未分组", ungrouped: true }];
@@ -3331,11 +3426,10 @@
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const open = sub.hidden;
-      sub.hidden = true;
-      btn.setAttribute("aria-expanded", "false");
+      closePanelMenu();
       if (open) {
         btn.setAttribute("aria-expanded", "true");
-        placeMenu(btn, sub, "left");
+        placeMenu(btn, sub, "below");
       }
     });
     wrap.append(btn, sub);
@@ -3822,7 +3916,7 @@
     const selection = state.sel;
     const request = ++state.panelLoad;
     try {
-      const data = await api("/api/bots/" + encodeURIComponent(selection.id));
+      const data = await fetchBotProfile(selection.id);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
@@ -4139,30 +4233,6 @@
       state.previewAt[job.key] = Date.now();
     } finally {
       warming = false;
-    }
-  }
-
-  async function refreshNodePending() {
-    const host = $("node-pending");
-    if (!host) return;
-    let data;
-    try { data = await api("/api/node/pending"); } catch (e) { return; }
-    const items = (data && data.pending) || [];
-    host.replaceChildren();
-    if (!items.length) {
-      host.hidden = true;
-      return;
-    }
-    host.hidden = false;
-    for (const item of items) {
-      const detail = [item.caller || "", item.id || ""].filter(Boolean).join(" · ");
-      host.append(pendingApprovalCard({
-        title: "节点命令",
-        subtitle: detail,
-        summary: item.command || "",
-        wait: 0,
-        decide: (ok) => api("/api/node/pending/" + encodeURIComponent(item.id || ""), { method: "POST", body: { allow: ok } }),
-      }));
     }
   }
 
@@ -4563,9 +4633,10 @@
     modalForm.removeAttribute("aria-modal");
     modalForm.removeAttribute("aria-labelledby");
     if (profileReturnFocus) {
-      // The edit menu is closed; return to its visible trigger instead.
-      const target = profileReturnFocus.closest("#panel-menu") || !profileReturnFocus.isConnected
-        ? $("panel-more") : profileReturnFocus;
+      // The action row is redrawn; return to its live 编辑资料 button instead.
+      const acts = $("panel-actions");
+      const target = profileReturnFocus.closest("#panel-actions") || !profileReturnFocus.isConnected
+        ? acts.querySelector(".panel-act:not(.danger)") || $("info") : profileReturnFocus;
       profileReturnFocus = null;
       target.focus({ preventScroll: true });
     }
@@ -4740,15 +4811,6 @@
     }, "下载");
   }
 
-  function syncMore() {
-    const bot = !!(state.sel && state.sel.type === "bot");
-    $("more").hidden = !bot;
-    if (!bot) {
-      $("more-menu").hidden = true;
-      $("more").setAttribute("aria-expanded", "false");
-    }
-  }
-
   function openNewBot() {
     openModal("新建 Bot", [
       { name: "name", label: "标识", placeholder: "ada" },
@@ -4786,14 +4848,18 @@
   function closeAccount() {
     $("account-menu").hidden = true;
     $("account").setAttribute("aria-expanded", "false");
+    closeConnect(); // its list never outlives the 我 menu
+  }
+
+  function closeConnect() {
+    $("connect-pop").hidden = true;
+    $("account-connect").setAttribute("aria-expanded", "false");
   }
 
   function closePops() {
     closeAccount();
-    $("connect-pop").hidden = true;
-    $("connect").setAttribute("aria-expanded", "false");
-    $("more-menu").hidden = true;
-    $("more").setAttribute("aria-expanded", "false");
+    closeConnect();
+    closeNewMenu();
     closePanelMenu();
     closeFolderMenus();
     closeToolPop();
@@ -4848,7 +4914,6 @@
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
     applyTheme(dark ? "light" : "dark");
   }
-  $("theme").addEventListener("click", toggleTheme);
   $("account-theme").addEventListener("click", () => {
     closeAccount();
     toggleTheme();
@@ -4857,7 +4922,9 @@
   let compactSidebarChoice = null;
   let wideSidebarCollapsed = false;
   function syncSidebar() {
-    const compact = window.innerWidth >= 768 && window.innerWidth <= 1100;
+    // Only below 960 does the list fold into the rail on its own; at 1024 it
+    // stays a list, 240px wide (device prototype v2, item 13).
+    const compact = window.innerWidth >= 768 && window.innerWidth < 960;
     const collapsed = compact ? compactSidebarChoice !== false : wideSidebarCollapsed;
     sidebar.classList.toggle("collapsed", collapsed);
     $("collapse").replaceChildren(icon("sidebar"), document.createTextNode(collapsed ? "展开列表" : "收起列表"));
@@ -4873,7 +4940,7 @@
     closeAccount();
     if (window.innerWidth < 768) { closeDrawer(); return; }
     const collapsed = !sidebar.classList.contains("collapsed");
-    if (window.innerWidth <= 1100) compactSidebarChoice = collapsed;
+    if (window.innerWidth < 960) compactSidebarChoice = collapsed;
     else wideSidebarCollapsed = collapsed;
     syncSidebar();
   });
@@ -4923,18 +4990,6 @@
     }
   });
 
-  $("panel-more").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const menu = $("panel-menu");
-    menu.hidden = !menu.hidden;
-    $("panel-more").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
-  });
-
-  $("panel-export").addEventListener("click", () => {
-    closePanelMenu();
-    openExport();
-  });
-
   $("panel-close").addEventListener("click", () => {
     rememberPanel(false);
     panel.classList.remove("open");
@@ -4955,13 +5010,24 @@
   });
   window.addEventListener("resize", () => { if (inApp && !notesEl.hidden) fitNotes(); });
 
-  $("connect").addEventListener("click", (ev) => {
+  // 连接应用 is a row of the 我 menu; its list opens beside the menu.
+  $("account-connect").prepend(icon("link"));
+  $("account-connect").append(icon("chevron", "mark"));
+  $("account-connect").addEventListener("click", (ev) => {
     ev.stopPropagation();
-    closeAccount();
     const pop = $("connect-pop");
-    pop.hidden = !pop.hidden;
-    $("connect").setAttribute("aria-expanded", pop.hidden ? "false" : "true");
-    if (!pop.hidden) loadPush().catch(() => {});
+    const open = pop.hidden;
+    pop.hidden = !open;
+    $("account-connect").setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) return;
+    // Beside the menu, bottoms aligned; on a phone, above it.
+    const m = $("account-menu").getBoundingClientRect();
+    const side = window.innerWidth >= 768 && m.right + 8 + pop.offsetWidth <= window.innerWidth - 8;
+    pop.style.left = (side ? m.right + 8 : m.left) + "px";
+    pop.style.bottom = (side ? window.innerHeight - m.bottom : window.innerHeight - m.top + 8) + "px";
+    pop.style.top = "auto";
+    pop.style.maxHeight = Math.max(120, (side ? m.bottom : m.top - 8) - 8) + "px"; // scrolls on short screens
+    loadPush().catch(() => {});
   });
 
   function urlBase64ToUint8Array(s) {
@@ -5044,15 +5110,6 @@
   const phonePush = $("phone-push");
   if (phonePush) phonePush.addEventListener("click", () => { togglePush().catch(() => {}); });
 
-  $("more").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const menu = $("more-menu");
-    menu.hidden = !menu.hidden;
-    $("more").setAttribute("aria-expanded", menu.hidden ? "false" : "true");
-  });
-
-  $("export-chat").addEventListener("click", () => openExport());
-
   const tipEl = el("div", "tip");
   tipEl.setAttribute("role", "tooltip");
   tipEl.hidden = true;
@@ -5113,15 +5170,9 @@
 
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".account-wrap")) closeAccount();
-    if (!ev.target.closest(".connect-wrap")) {
-      $("connect-pop").hidden = true;
-      $("connect").setAttribute("aria-expanded", "false");
-    }
-    if (!ev.target.closest(".more-wrap")) {
-      $("more-menu").hidden = true;
-      $("more").setAttribute("aria-expanded", "false");
-    }
-    if (!ev.target.closest(".panel-more-wrap") && !ev.target.closest(".menu-sub")) closePanelMenu();
+    if (!ev.target.closest(".account-wrap")) closeConnect();
+    if (!ev.target.closest(".new-menu")) closeNewMenu();
+    if (!ev.target.closest(".panel-actions") && !ev.target.closest(".menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) {
@@ -5239,7 +5290,6 @@
     await refreshLists();
     await refreshStatus().catch(() => {});
     await refreshNotes();
-    await refreshNodePending().catch(() => {});
     await loadPush().catch(() => {});
     renderMe();
     let remembered = "";
@@ -5287,7 +5337,6 @@
       if (shell.hidden || state.streaming) return;
       if (!document.hidden) refreshStatus().catch(() => {});
       refreshNotes().catch(() => {});
-      refreshNodePending().catch(() => {});
       refreshLists().catch(() => {});
       loadThread().catch(() => {});
     }, 3000);

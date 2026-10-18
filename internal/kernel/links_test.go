@@ -304,12 +304,20 @@ func TestDesktopLoadListsTools(t *testing.T) {
 	}
 }
 
-func TestNodeLoadListsTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+// TestOldNodeGrantIsIgnored pins the retired node link out of wiring: a bot
+// config that still grants "node" must get no node tools and no error, and
+// loading it must fail rather than mount anything.
+func TestOldNodeGrantIsIgnored(t *testing.T) {
+	b := testBot(t, link.NameTerminal, "node")
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
-	out, err := (linksTool{k}).install("node")
-	if err != nil || out != "installed node" {
-		t.Fatalf("install %q %v", out, err)
+	k.snapshotLinks()
+	for _, l := range k.Links {
+		if l.Name() == "node" {
+			t.Fatal("old node grant still mounted")
+		}
+	}
+	if _, err := (linksTool{k}).load("node"); err == nil {
+		t.Fatal("load node succeeded")
 	}
 	list, err := k.modelTools()
 	if err != nil {
@@ -317,12 +325,8 @@ func TestNodeLoadListsTools(t *testing.T) {
 	}
 	for _, tool := range list {
 		if tool.Name() == "node_list" || tool.Name() == "node_call" {
-			t.Fatal("node tools visible before load")
+			t.Fatalf("%s visible for an old node grant", tool.Name())
 		}
-	}
-	out, err = (linksTool{k}).load("node")
-	if err != nil || !strings.Contains(out, "node_list") || !strings.Contains(out, "node_call") {
-		t.Fatalf("load %q %v", out, err)
 	}
 }
 

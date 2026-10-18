@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestIdentityLogNewestWinsAndKeepsBots(t *testing.T) {
+func TestIdentityLogNewestGrantWins(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "node-id"), []byte("home-a\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -24,36 +24,30 @@ func TestIdentityLogNewestWinsAndKeepsBots(t *testing.T) {
 	if err := Record(root, "ada", "home-a", t0, local); err != nil {
 		t.Fatal(err)
 	}
-	same := LogEntry{
-		Time: t0, Bot: "bob", Device: "home-b",
-		Person: Person{ID: "u1", DisplayName: "Remote", Accounts: []Account{{Link: "slack", ExternalID: "b"}}},
-	}
-	if err := MergeLog(root, []LogEntry{same}); err != nil {
+	later := Person{ID: "u1", DisplayName: "Later", Timezone: "Asia/Shanghai", Accounts: []Account{{Link: "slack", ExternalID: "b"}}}
+	if err := Record(root, "ada", "home-a", t0.Add(time.Hour), later); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load(root, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DisplayName != "Local" {
-		t.Fatalf("equal time kept %q", got.DisplayName)
+	if got.DisplayName != "Later" || got.Timezone != "Asia/Shanghai" {
+		t.Fatalf("newest grant lost %+v", got)
 	}
-	if len(got.Accounts) != 1 || got.Accounts[0].Link != "terminal" {
-		t.Fatalf("sync granted an account %+v", got.Accounts)
+	if len(got.Accounts) != 1 || got.Accounts[0].Link != "slack" {
+		t.Fatalf("accounts %+v", got.Accounts)
 	}
-	newer := same
-	newer.Time = t0.Add(time.Hour)
-	newer.Person.DisplayName = "Later"
-	newer.Person.Timezone = "Asia/Shanghai"
-	if err := MergeLog(root, []LogEntry{newer}); err != nil {
+	lines, err := ReadLog(root, "u1")
+	if err != nil || len(lines) != 2 || !lines[1].Grant || lines[1].Device != "home-a" {
+		t.Fatalf("log %+v %v", lines, err)
+	}
+	if err := Record(root, "ada", "home-a", t0.Add(-time.Hour), local); err != nil {
 		t.Fatal(err)
 	}
 	got, err = Load(root, "u1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.DisplayName != "Local" || got.Timezone != "" {
-		t.Fatalf("remote renamed the owner %+v", got)
+	if err != nil || got.DisplayName != "Later" {
+		t.Fatalf("older grant renamed the owner %+v %v", got, err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil || string(raw) != "stay" {
@@ -65,86 +59,31 @@ func TestIdentityLogNewestWinsAndKeepsBots(t *testing.T) {
 	}
 }
 
-func TestSyncDoesNotGrantOwnerAndUnlinkRemoves(t *testing.T) {
+func TestUnlinkRemovesAccount(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "node-id"), []byte("home-a\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t0 := time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
 	owner := Person{ID: "u1", DisplayName: "Ada", Accounts: []Account{
 		{Link: "terminal", ExternalID: "a"},
 		{Link: "telegram", ExternalID: "1"},
 	}}
-	if err := Record(root, "ada", "home-a", t0, owner); err != nil {
+	if err := Record(root, "ada", "home-a", time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC), owner); err != nil {
 		t.Fatal(err)
 	}
-	crafted := LogEntry{
-		Time: t0.Add(2 * time.Hour), Bot: "eve", Device: "home-a", Grant: true,
-		Person: Person{ID: "u1", DisplayName: "Ada\nrm -rf", Accounts: []Account{{Link: "telegram", ExternalID: "999"}}},
-	}
-	future := LogEntry{
-		Time: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), Bot: "bob", Device: "home-b",
-		Person: Person{ID: "u1", DisplayName: "Later", Timezone: "Asia/Shanghai"},
-	}
-	carried := LogEntry{
-		Time: t0.Add(time.Hour), Bot: "bob", Device: "home-b", Grant: true,
-		Person: Person{ID: "u1", DisplayName: "Ada", Accounts: []Account{{Link: "telegram", ExternalID: "999"}}},
-	}
-	if err := MergeLog(root, []LogEntry{crafted, future, carried}); err != nil {
+	if err := Unlink(root, "u1", Account{Link: "telegram", ExternalID: "1"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load(root, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DisplayName != "Ada" || got.Timezone != "" {
-		t.Fatalf("remote renamed the owner %+v", got)
-	}
-	for _, a := range got.Accounts {
-		if a.ExternalID == "999" {
-			t.Fatalf("sync granted %+v", got.Accounts)
-		}
-	}
-	other, err := Identify(root, Account{Link: "telegram", ExternalID: "999"}, "Eve")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if other.ID == "u1" {
-		t.Fatal("telegram:999 is the owner")
-	}
-	lines, err := ReadLog(root, "u1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	carriedSeen := false
-	for _, e := range lines {
-		if e.Grant && e.Device == "relay" {
-			t.Fatal("relayed line granted")
-		}
-		if e.Time.Year() == 2099 {
-			t.Fatal("future stamp kept")
-		}
-		for _, a := range e.Person.Accounts {
-			if a.ExternalID == "999" {
-				carriedSeen = true
-				if e.Grant {
-					t.Fatal("carried account granted")
-				}
-			}
-		}
-	}
-	if !carriedSeen {
-		t.Fatal("account was not carried")
-	}
-	if err := Unlink(root, "u1", Account{Link: "telegram", ExternalID: "1"}); err != nil {
-		t.Fatal(err)
-	}
-	got, err = Load(root, "u1")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if len(got.Accounts) != 1 || got.Accounts[0] != (Account{Link: "terminal", ExternalID: "a"}) {
 		t.Fatalf("after unlink %+v", got.Accounts)
+	}
+	lines, err := ReadLog(root, "u1")
+	if err != nil || len(lines) != 2 || !lines[1].Grant {
+		t.Fatalf("unlink line %+v %v", lines, err)
 	}
 }
 

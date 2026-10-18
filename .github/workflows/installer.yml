@@ -33,7 +33,7 @@ jobs:
       - name: packaging tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q icnsutils zip python3-pil nsis
+          sudo apt-get install -y -q zip nsis
       - name: package
         env:
           TMPDIR: ${{ runner.temp }}

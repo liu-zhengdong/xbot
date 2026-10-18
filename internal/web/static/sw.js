@@ -1,5 +1,5 @@
-const CACHE = "xbot-ui-v9";
-const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/fonts/MonaSansVF.woff2"];
+const CACHE = "xbot-ui-v10";
+const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/favicon.svg", "/apple-touch-icon.png", "/fonts/MonaSansVF.woff2"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -18,7 +18,7 @@ func (s *Server) registerDevicesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/devices/pairing", s.pairingStatus)
 	mux.HandleFunc("PUT /api/devices/gateway", s.putGateway)
 	mux.HandleFunc("PATCH /api/devices/self", s.renameSelf)
-	mux.HandleFunc("PATCH /api/devices/{id}", s.renameDevice)
+	mux.HandleFunc("PATCH /api/devices/{id}", s.editDevice)
 	mux.HandleFunc("DELETE /api/devices/{id}", s.unpairDevice)
 	mux.HandleFunc("POST /api/devices/code", s.newCode)
 	mux.HandleFunc("DELETE /api/devices/code", s.cancelCode)
@@ -26,6 +26,7 @@ func (s *Server) registerDevicesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/devices/join/confirm", s.confirmJoin)
 	mux.HandleFunc("DELETE /api/devices/join", s.cancelJoin)
 	mux.HandleFunc("POST /api/devices/request", s.decideRequest)
+	s.registerRemoteChatAPI(mux)
 }
 
 // gatewayProbe caches one health check per gateway URL for 30 seconds, so the
@@ -56,6 +57,13 @@ func gatewayUp(ctx context.Context, base string, fresh bool) bool {
 type deviceRow struct {
 	remote.DeviceView
 	Online bool `json:"online"`
+	// Chats is each bot's remote chat with this device; absent without any.
+	Chats map[string]remote.ChatSummary `json:"chats,omitempty"`
+}
+
+// deviceOnline is the one online rule for the 设备 list and a device's chat.
+func deviceOnline(v remote.DeviceView, gatewayOK bool) bool {
+	return !v.Unpaired && gatewayOK && !v.Seen.IsZero() && time.Since(v.Seen) < remote.OnlineWindow
 }
 
 func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +83,12 @@ func (s *Server) listDevices(w http.ResponseWriter, r *http.Request) {
 	up := gatewayUp(r.Context(), self.Gateway, r.URL.Query().Get("retry") == "1")
 	rows := make([]deviceRow, 0, len(views))
 	for _, v := range views {
-		rows = append(rows, deviceRow{v, !v.Unpaired && up && !v.Seen.IsZero() && time.Since(v.Seen) < remote.OnlineWindow})
+		row := deviceRow{DeviceView: v, Online: deviceOnline(v, up)}
+		if row.Chats, err = remote.ChatSummaries(s.Root, v.ID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		rows = append(rows, row)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"self": self, "gateway_ok": up, "devices": rows, "pairing": remote.PairingStatus(s.Root)})
 }
@@ -149,20 +162,42 @@ func (s *Server) renameSelf(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) renameDevice(w http.ResponseWriter, r *http.Request) {
+// editDevice renames a device and/or flips its 「Bot 互发消息」 switch. Each
+// setter matches by ID inside the config lock, so an unknown or just-removed
+// device is 404 没有这台设备 like unpair; a bad label alone is 400.
+func (s *Server) editDevice(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
 	var in struct {
-		Label string `json:"label"`
+		Label        *string `json:"label"`
+		BotMessaging *bool   `json:"bot_messaging"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	if err := remote.RenameDevice(s.Root, r.PathValue("id"), in.Label); err != nil {
-		writeErr(w, http.StatusBadRequest, "改不了这个名字")
-		return
+	id := r.PathValue("id")
+	known := func() bool {
+		cfg, err := remote.Load(s.Root)
+		_, ok := cfg.ByID(id)
+		return err == nil && ok
+	}
+	if in.BotMessaging != nil {
+		if err := remote.SetBotMessaging(s.Root, id, *in.BotMessaging); err != nil {
+			writeErr(w, http.StatusNotFound, "没有这台设备")
+			return
+		}
+	}
+	if in.Label != nil {
+		if err := remote.RenameDevice(s.Root, id, *in.Label); err != nil {
+			if !known() {
+				writeErr(w, http.StatusNotFound, "没有这台设备")
+				return
+			}
+			writeErr(w, http.StatusBadRequest, "改不了这个名字")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -23,7 +23,7 @@ func TestTaskRailApprovalAndControls(t *testing.T) {
 			`function paintRailStatus()`, `row.dataset.railState === kind`,
 			`" · 等你确认" : " · 在跑"`, `icon("awaiting")`,
 			`cut > 0 ? sum.slice(0, cut) : sum`,
-			`newer.append(icon("users-plus"))`, `face.append(icon("person"))`,
+			`b.append(icon(iconName), el("span", "", label))`, `face.append(icon("person"))`,
 			`avatar(state.owner, null, "me")`,
 		},
 		"static/app.css": {
