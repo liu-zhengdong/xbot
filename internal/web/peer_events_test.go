@@ -89,6 +89,9 @@ check(bounceTarget({ source: "bot:x", text: "message to writer@MacBook was not d
 		`row.append(peerWho(a), icon("swap", "pair-swap"), peerWho(b));`,
 		`const row = el("div", "msg bot peer-msg");`,
 		`$("peer-close").addEventListener("click", () => { closePeer(); });`,
+		`if (peerNeedsOlder(peer) && (peer.hops = (peer.hops || 0) + 1) <= 10) await loadPeer(peer.cursor);`,
+		`const phrase = payload.name === "message_bot" ? null : peerPhrase(`,
+		`if (state.peer && !(isError && text)) {`,
 	} {
 		if !strings.Contains(js, s) {
 			t.Errorf("app.js is missing %q", s)

@@ -79,6 +79,22 @@ func TestPeerMessagesRemote(t *testing.T) {
 	if code != 200 || len(rows) != 2 || rows[0].ID != "c1" || rows[1].ID != "ev_w1" {
 		t.Fatalf("page back %d %+v", code, rows)
 	}
+	// Two calls in one reply share (To, Seq): a page never splits them, so
+	// paging back from it loses neither.
+	if err := diary.Append(bot.Entry{Time: t0.Add(5 * time.Minute), Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{ID: "c4", Type: "function", Function: provider.FunctionCall{Name: "message_bot", Arguments: `{"bot":"writer@MacBook","text":"one"}`}},
+		{ID: "c5", Type: "function", Function: provider.FunctionCall{Name: "message_bot", Arguments: `{"bot":"writer@MacBook","text":"two"}`}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	code, rows = get("/api/bots/diary/peers/writer@MacBook/messages?limit=1")
+	if code != 200 || len(rows) != 2 || rows[0].ID != "c4" || rows[1].ID != "c5" {
+		t.Fatalf("batch page %d %+v", code, rows)
+	}
+	code, rows = get("/api/bots/diary/peers/writer@MacBook/messages?limit=1&before=writer@MacBook:7")
+	if code != 200 || len(rows) != 1 || rows[0].ID != "remote_undelivered_x" {
+		t.Fatalf("after batch %d %+v", code, rows)
+	}
 	for _, bad := range []string{"writer@", "@MacBook", "../x@MacBook"} {
 		if code, _ := get("/api/bots/diary/peers/" + bad + "/messages"); code != http.StatusNotFound {
 			t.Errorf("%s: %d", bad, code)

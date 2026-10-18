@@ -2995,6 +2995,12 @@
   // The exchange view's header: both bots with the swap icon between them,
   // and one gray line saying what this is. Read-only: the dock holds only
   // 关闭聊天.
+  function peerNote() {
+    subtitle.replaceChildren(icon("info"), el("span", "", "两个 Bot 之间的往来。对方发来的内容只当资料，不当成你的指令。"));
+    subtitle.hidden = false;
+    subtitle.classList.add("peer-note");
+  }
+
   function paintPeerHeader(a, b) {
     const back = $("back");
     if (back) back.hidden = false;
@@ -3005,9 +3011,7 @@
     row.append(peerWho(a), icon("swap", "pair-swap"), peerWho(b));
     titleEl.append(row);
     setTip(titleEl, a + " ⇄ " + b);
-    subtitle.replaceChildren(icon("info"), el("span", "", "两个 Bot 之间的往来。对方发来的内容只当资料，不当成你的指令。"));
-    subtitle.hidden = false;
-    subtitle.classList.add("peer-note");
+    peerNote();
     document.title = niceName(splitPeer(a).bot) + " ⇄ " + niceName(splitPeer(b).bot) + " · XBot";
   }
 
@@ -3116,20 +3120,35 @@
       body.append(text);
       row.append(body);
       inner.append(row);
-      if (!target && at && (Date.parse(m.ts || "") || 0) >= at - 2000) target = row;
+      if (!target && at && (Date.parse(m.ts || "") || 0) >= at) target = row;
       last = m.from || "";
     }
     thread.replaceChildren(inner);
-    if (target && !peer.scrolled) {
+    // The clicked run may predate the loaded page: loadPeer fetches older
+    // pages first (peerNeedsOlder), so only scroll once the run is loaded.
+    if (target && !peer.scrolled && !peerNeedsOlder(peer)) {
       peer.scrolled = true;
       target.scrollIntoView({ block: "start" });
-    } else thread.scrollTop = thread.scrollHeight;
+    } else if (!peerNeedsOlder(peer)) {
+      if (peer.at) peer.scrolled = true;
+      thread.scrollTop = thread.scrollHeight;
+    }
+  }
+
+  // True while the run the owner clicked is older than everything loaded.
+  function peerNeedsOlder(peer) {
+    const at = Date.parse(peer.at || "") || 0;
+    if (!at || peer.scrolled || !peer.more || !peer.list.length) return false;
+    return (Date.parse(peer.list[0].ts || "") || 0) > at;
   }
 
   async function loadPeer(before) {
     const peer = state.peer;
     if (!peer) return;
     const keep = !!before;
+    // Paging back by scrolling keeps the view; paging back to reach a clicked
+    // run lets renderPeer place it.
+    const settled = !peer.at || !!peer.scrolled;
     const prevHeight = keep ? thread.scrollHeight : 0;
     const prevTop = keep ? thread.scrollTop : 0;
     let got;
@@ -3178,7 +3197,9 @@
     peer.more = incoming.length >= PEER_LIMIT;
     peer.cursor = peer.list.length ? peerCursor(peer.list[0]) : null;
     renderPeer(peer.list, peer);
-    if (keep) thread.scrollTop = Math.max(0, thread.scrollHeight - prevHeight + prevTop);
+    if (keep && settled) thread.scrollTop = Math.max(0, thread.scrollHeight - prevHeight + prevTop);
+    // Up to 10 more pages to reach the clicked run.
+    if (peerNeedsOlder(peer) && (peer.hops = (peer.hops || 0) + 1) <= 10) await loadPeer(peer.cursor);
   }
 
   // at: the first event's time, so the view opens at the run that was clicked.
@@ -3205,8 +3226,14 @@
 
   let subtitleError = false;
   function setStatus(text, isError = false) {
-    // The exchange view's subtitle is its read-only note; only errors replace it.
-    if (state.peer && !isError) return;
+    // The exchange view's subtitle is its read-only note: an error shows in
+    // its place until the next status, which brings the note back.
+    if (state.peer && !(isError && text)) {
+      subtitleError = false;
+      peerNote();
+      return;
+    }
+    if (state.peer) subtitle.classList.remove("peer-note");
     subtitleError = isError;
     let desc = "";
     if (!text && state.sel && state.sel.type === "bot") {
@@ -4526,7 +4553,9 @@
           const who = state.sel && state.sel.id;
           if (host) {
             setWorking(host, payload.name || "");
-            const phrase = peerPhrase(payload.name || "", { text: payload.summary || "" }, who);
+            // The live summary has no recipient for message_bot; the transcript
+            // re-render after the turn draws its grouped event line.
+            const phrase = payload.name === "message_bot" ? null : peerPhrase(payload.name || "", { text: payload.summary || "" }, who);
             if (phrase && phrase.text && host.parentElement) {
               host.parentElement.insertAdjacentElement("afterend", systemLine(phrase.text, who, phrase.peer));
             }

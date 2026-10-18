@@ -104,6 +104,11 @@ func peerPage(msgs []peer.Direct, before string, limit int) ([]peer.Direct, erro
 	if start < 0 {
 		start = 0
 	}
+	// Rows from one transcript entry share (To, Seq), the page cursor (several
+	// message_bot calls in one reply): a page never splits them.
+	for start > 0 && msgs[start-1].To == msgs[start].To && msgs[start-1].Seq == msgs[start].Seq {
+		start--
+	}
 	return msgs[start:end], nil
 }
 
