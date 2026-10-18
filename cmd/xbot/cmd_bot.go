@@ -299,9 +299,9 @@ func cmdProfileShow(root string, args []string) error {
 	if b.Config().QuietStart != "" || b.Config().QuietEnd != "" {
 		quiet = b.Config().QuietStart + "-" + b.Config().QuietEnd
 	}
-	avatar := "color"
-	if b.Config().Avatar == bot.AvatarCustom {
-		avatar = "custom"
+	avatar, seed := b.AvatarState()
+	if avatar == bot.AvatarGenerated {
+		avatar = "generated (seed " + seed + ")"
 	}
 	fmt.Printf("name: %s\n", b.Name())
 	fmt.Printf("description: %s\n", b.Config().Description)

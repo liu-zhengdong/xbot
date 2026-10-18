@@ -127,6 +127,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /fonts/NotoSansSC-subset.woff2", s.static("static/fonts/NotoSansSC-subset.woff2", "font/woff2"))
 	// Fetched on demand for characters the subset lacks; never preloaded or precached.
 	mux.HandleFunc("GET /fonts/NotoSansSC-full.woff2", s.static("static/fonts/NotoSansSC-full.woff2", "font/woff2"))
+	// Bot portraits are drawn in the browser by this bundle; no SVG is stored or served.
+	mux.HandleFunc("GET /vendor/xbot-avatar.min.js", s.static("static/vendor/xbot-avatar.min.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /vendor/LICENSES.txt", s.static("static/vendor/LICENSES.txt", "text/plain; charset=utf-8"))
 
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("GET /app/launch", s.launch)
@@ -228,7 +231,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setCookie(w, s.token)
-	writeJSON(w, http.StatusOK, map[string]string{"owner": s.owner})
+	writeJSON(w, http.StatusOK, map[string]string{"owner": s.owner, "owner_name": s.ownerName()})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +252,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	out := map[string]any{"authed": true, "owner": s.owner, "app": s.App, "version": displayVersion(version.Version)}
+	out := map[string]any{"authed": true, "owner": s.owner, "owner_name": s.ownerName(), "app": s.App, "version": displayVersion(version.Version)}
 	if s.needsKey() {
 		out["needs_key"] = true
 		out["key_host"] = keyHost()
@@ -280,6 +283,8 @@ type botItem struct {
 	Primary     bool   `json:"primary"`
 	Group       string `json:"group,omitempty"`
 	AvatarURL   string `json:"avatar_url,omitempty"`
+	Avatar      string `json:"avatar"`
+	AvatarSeed  string `json:"avatar_seed"`
 	AvatarBG    string `json:"avatar_bg,omitempty"`
 	AvatarInk   string `json:"avatar_ink,omitempty"`
 	Initial     string `json:"initial,omitempty"`
@@ -307,11 +312,12 @@ func (s *Server) listBots(w http.ResponseWriter, r *http.Request) {
 		n, _ := noteCount(b)
 		count, _ := b.Count()
 		url, bg, ink, initial := paintBot(b)
+		avatar, seed := b.AvatarState()
 		item := botItem{
 			Name: cfg.Name, Persona: clip(cfg.Persona, 80), Description: cfg.Description, Notes: n,
 			Unread: count > cur[cfg.Name],
 			Pinned: cfg.Pinned, Primary: cfg.Name == primary, Group: cfg.Group,
-			AvatarURL: url, AvatarBG: bg, AvatarInk: ink, Initial: initial,
+			AvatarURL: url, Avatar: avatar, AvatarSeed: seed, AvatarBG: bg, AvatarInk: ink, Initial: initial,
 		}
 		out = append(out, item)
 	}
@@ -326,11 +332,17 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name    string `json:"name"`
-		Persona string `json:"persona"`
+		Name       string  `json:"name"`
+		Persona    string  `json:"persona"`
+		AvatarSeed *string `json:"avatar_seed"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	// Check the seed before the bot exists so a bad one leaves nothing behind.
+	if in.AvatarSeed != nil && !bot.ValidAvatarSeed(*in.AvatarSeed) {
+		writeErr(w, http.StatusBadRequest, "bot: avatar seed must be 1–80 characters without markup or control characters")
 		return
 	}
 	links := s.DefaultLinks
@@ -341,6 +353,12 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if in.AvatarSeed != nil {
+		if err := b.SetAvatarSeed(*in.AvatarSeed); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	if err := b.SetOwners([]string{s.owner}); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -559,6 +577,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	primary, _ := bot.Primary(s.Root)
 	url, bg, ink, initial := paintBot(b)
+	avatar, seed := b.AvatarState()
 	providerName, modelName := runningModel(s.Root, b)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": b.Name(), "persona": persona,
@@ -567,7 +586,8 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"quiet_start": b.Config().QuietStart,
 		"quiet_end":   b.Config().QuietEnd,
 		"timezone":    b.Config().Timezone,
-		"avatar_url":  url, "avatar_bg": bg, "avatar_ink": ink, "initial": initial,
+		"avatar_url":  url, "avatar": avatar, "avatar_seed": seed,
+		"avatar_bg": bg, "avatar_ink": ink, "initial": initial,
 		"provider": providerName, "model": modelName,
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,
 		"group":  b.Config().Group,

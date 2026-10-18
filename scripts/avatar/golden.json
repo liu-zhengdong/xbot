@@ -1,0 +1,42 @@
+{
+  "diary": {
+    "portrait": "beb856c32fa932c785d730298c0c29a048aa0f42b180933360886a013a841d98",
+    "face": "1cded6c9acff12665594736eb93d5a133be72478568e4a9ffd8d56678c40c2ee"
+  },
+  "health": {
+    "portrait": "a07f24e1512be86b12e98416b30fa43c435b091da1770503874f0d48654bd225",
+    "face": "811f93557671dd35a92907fac7cc708fa819ddc2a1869430c55270651857f95f"
+  },
+  "inbox": {
+    "portrait": "b5e1a05da606c66ed8392fea0f7b685b63f92c18febecd1e80cfceb647130d31",
+    "face": "0c59ad3c72c49fd00d9fafa98a29bb6ed946c83a0cb6d884413499e6b3f9fdfe"
+  },
+  "writer": {
+    "portrait": "a6ecba77476f81c34b826ec94e47b0ff3fef1c28c187ba8179525fb3baa74414",
+    "face": "ee562a612fe8fa8de493999909209c8d80e09e4a86c86bf8db511cd12939c8df"
+  },
+  "coach": {
+    "portrait": "ea889a592eab55c277cf93805d31705d4cc416de7acc096f7aca1f6e08aa953d",
+    "face": "1ad2e7ac4b2545062c0e0d0ce762476420ae06ef1cca77cb31702ac4f77ecf31"
+  },
+  "XBot": {
+    "portrait": "a5b530bb7436a37ff984780d8dfe1f1d28f561e80a77ff5f33d4d14b24e5f150",
+    "face": "2dad9d374955312364a81d8a04f55f4e76db1197ea324afeaba5fd84987b61b2"
+  },
+  "周报": {
+    "portrait": "04553a6c2ab9f0b61c745783d33920f21c62a318ad3c8d4bef7901329c540e88",
+    "face": "eb2876c0585b104ccc7570dd251a6ac995dd9b7bd35ea146bf6745fc5c117c87"
+  },
+  "writer#1": {
+    "portrait": "b03dba73f98d0cb9a7d3967182ed90adf9b1638d3a96ddecf52c6575e5ffa711",
+    "face": "1a38cb11f02872e62d4e2d256232557f880b789b68edb0607dc076d20bb21c9e"
+  },
+  "writer#6": {
+    "portrait": "0747d9de992daba457b77ad5d174c5032f8e0ad65bba056a6f095b56bd0c23f5",
+    "face": "9207e74270f822b29c58027b7209987b763ee15820f65802285ec50751676ddb"
+  },
+  "5116ed70": {
+    "portrait": "4c76b7b9199bc965391735f72adbbbfda820773a4e21a3a4812635b2d2bcc453",
+    "face": "1ccd807bbe01df1592d5bcee36595dc4a3ee1510c220f22bef52d43c272e6511"
+  }
+}

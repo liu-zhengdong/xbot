@@ -438,11 +438,26 @@ html[data-theme="dark"] .field select {
 
 .pin:active { background: var(--selected); }
 
-.avatar { width: 36px; height: 36px; flex: none; display: block; position: relative; }
+/* A bot avatar is a portrait, not a glyph: a round window onto it, like a photo. */
+.avatar { width: 36px; height: 36px; flex: none; display: block; position: relative; border-radius: 50%; overflow: hidden; background: #e4e4e7; }
+
+html[data-theme="dark"] .avatar { background: #c9c9ce; }
+
+/* The size class "pin" is also the pin button's class; keep the button's tile,
+   radius, padding and hover fill off the avatar itself. */
+span.avatar.pin { border-radius: 50%; padding: 0; background: #e4e4e7; }
+
+html[data-theme="dark"] span.avatar.pin { background: #c9c9ce; }
+
+span.avatar.pin.glyph { background: transparent; }
 
 .avatar.pin { width: 44px; height: 44px; }
 
 .avatar.lg { width: 72px; height: 72px; }
+
+.avatar.xl { width: 72px; height: 72px; }
+
+.avatar.pick { width: 56px; height: 56px; }
 
 .avatar.me { width: 32px; height: 32px; }
 
@@ -457,11 +472,15 @@ html[data-theme="dark"] .avatar svg { --avatar-fill: var(--avatar-dark); --avata
 
 .avatar text { font-family: "Mona Sans VF", "XBot SC", "PingFang SC", "Noto Sans SC", sans-serif; }
 
-.avatar.has-photo { overflow: hidden; border-radius: 46% 54% 50% 48% / 48% 46% 54% 50%; }
+.avatar > img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.avatar.has-photo svg { display: none; }
+/* The fallback glyph: a geometric tile, not a photo, so it keeps its own ink. */
+.avatar.glyph { background: transparent; --av-bg: #dcdce0; --av-ink: #1a1a1a; }
 
-.avatar.has-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
+
+/* 「我」 is a person: the soft blob stays on a transparent box. */
+.avatar.me { background: transparent; overflow: hidden; }
 
 .list { padding: 0 8px 8px; }
 
@@ -1993,6 +2012,27 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
   display: flex; align-items: center; gap: 12px;
   flex: 1 0 100%; padding-bottom: 8px;
 }
+/* 头像：一张大图，一行「换一张」和「换一批」「清除」，下面是 4×2 的挑选格。 */
+.avatar-block { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 4px 0 16px; }
+.avatar-block .avatar-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 620; color: var(--text); }
+.avatar-row { display: flex; align-items: center; align-self: stretch; gap: 4px; min-height: 32px; margin: 18px 0 10px; }
+.avatar-row .muted { flex: 1; font-size: 13px; color: var(--muted); }
+.avatar-grid { display: grid; grid-template-columns: repeat(4, 56px); justify-content: space-between; align-self: stretch; padding: 0 8px; gap: 18px 12px; }
+.avatar-pick { position: relative; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; }
+.avatar-pick .avatar { pointer-events: none; }
+.avatar-pick[aria-pressed="true"]::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--text); pointer-events: none; }
+.avatar-pick:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+.avatar-pick.up { background: var(--fill); color: var(--text); }
+.avatar-pick.up:hover { background: var(--fill-hover); }
+.avatar-pick.up .icon { width: 22px; height: 22px; }
+.avatar-spin { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.32); color: #fff; border-radius: 50%; }
+.avatar-spin .icon { width: 28px; height: 28px; animation: bg-sp 1s linear infinite; }
+.avatar-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.avatar-note .icon { width: 14px; height: 14px; flex: none; }
+.avatar-block .avatar-note.err { color: var(--text); justify-content: center; text-align: center; }
+.newbot-avatar { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; }
+.newbot-avatar .avatar { margin-right: 6px; }
+@media (prefers-reduced-motion: reduce) { .avatar-spin .icon { animation: none; } }
 .panel-scrim {
   position: fixed; inset: var(--panel-overlay-top, 64px) 0 0;
   z-index: 29; background: rgba(0, 0, 0, 0.28);
