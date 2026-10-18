@@ -10,7 +10,9 @@ import (
 // Pairing modals follow the designer's copy: the scope line, A's
 // 「X 想连到这台电脑」 with 拒绝/允许 and a 2-minute auto-decline, the reinstall
 // card (拒绝 on the left, 替换旧的 X primary), and B's four failure states; a
-// typo is caught locally with the same alphabet as the Go code.
+// typo is caught locally with the same alphabet as the Go code. Escape cancels
+// like the visible button, a late code POST never reopens a cancelled modal,
+// and a "denied" decide answer is not shown as success.
 func TestPairingModalsUI(t *testing.T) {
 	data, err := staticFS.ReadFile("static/pairing.js")
 	if err != nil {
@@ -28,6 +30,16 @@ func TestPairingModalsUI(t *testing.T) {
 		`<span>网关 ${esc(host(gw))}</span><button class="text-btn g7-gw-edit" type="button" data-act="gw-open">改</button>`,
 		`if (now === seen) return;`,
 		"const words = up.match(/[A-Z0-9]+/g) || [];", // Pasted prose never joins the code (same as ParseShortCode).
+		// Escape = the visible cancel button, routed through the same act() paths.
+		`if (ev.key === "Escape" && Object.prototype.hasOwnProperty.call(D.views, S.view))`,
+		`S.view === "add" ? "cancel-code" : ["join", "confirm", "waiting", "success-b"].includes(S.view) ? "close-join" : S.view === "request" ? "decide" : ""`, "else closeModal(); // add-gw, denied, success-a",
+		`dataset: S.view === "request" ? { d: "deny" } : {}`,
+		// newCode and cancel-code are serialized: a late POST never re-opens the modal.
+		"let codeGen = 0, codeRun = null;", `if (gen !== codeGen) { api("DELETE", "/api/devices/code").catch(() => {}); return; }`,
+		"++codeGen;", "if (codeRun) await codeRun.catch(() => {});", `case "cancel-code": await cancelCode(); break;`,
+		// 允许 clicked after A's window expired comes back 200 + denied: don't claim success.
+		`const phase = (S.pairing.a || {}).phase;`, `else if (phase === "done") { S.view = "success-a"; S.code = ""; await refresh(); }`,
+		`if (d === "deny" || phase === "denied") { S.view = null; S.code = ""; if (phase === "denied") refresh(); }`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("pairing.js missing %s", want)
