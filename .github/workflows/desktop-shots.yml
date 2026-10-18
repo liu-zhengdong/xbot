@@ -51,6 +51,23 @@ jobs:
       - name: font check and screenshots, this commit
         shell: pwsh
         run: scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\new\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label new -Fonts -Shots -Display
+      # The reporter's PC: zh-CN and Windows' own Noto Sans SC variable font
+      # installed system-wide, which beta.2's local("Noto Sans SC") can match.
+      # Runs last because the culture change sticks for the job.
+      - name: font check, the reporter's setup (zh-CN, Noto Sans SC installed)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Set-Culture zh-CN
+          $dir = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $ttf = "$dir\NotoSansSC-VF.ttf"
+          Invoke-WebRequest 'https://github.com/google/fonts/raw/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf' -OutFile $ttf
+          $sum = (Get-FileHash $ttf -Algorithm SHA256).Hash.ToLower()
+          if ($sum -ne 'a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da') { throw "unexpected Noto Sans SC $sum" }
+          New-ItemProperty 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts' -Name 'Noto Sans SC (TrueType)' -Value $ttf -Force | Out-Null
+          scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\beta2\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label beta2-zh -Fonts -Shots
+          scripts/desktop-shots/windows.ps1 -Exe "$env:RUNNER_TEMP\new\XBot.exe" -Seed "$env:RUNNER_TEMP\seed.exe" -Out shots -Label new-zh -Fonts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
