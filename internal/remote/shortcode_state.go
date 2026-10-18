@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -105,11 +104,8 @@ func shortClient(root string) (*gateway.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Gateway == "" {
-		return nil, errors.New("remote: set a gateway first")
-	}
 	key, _, _, err := Identity(root)
-	return &gateway.Client{Base: cfg.Gateway, Key: key}, err
+	return &gateway.Client{Base: cfg.GatewayURL(), Key: key}, err
 }
 func sendPairing(ctx context.Context, c *gateway.Client, env gateway.Envelope) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

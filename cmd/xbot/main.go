@@ -84,7 +84,7 @@ Usage:
   xbot [--root DIR] node list
   xbot [--root DIR] node remove <name>
   xbot [--root DIR] remote id
-  xbot [--root DIR] remote gateway [URL]
+  xbot [--root DIR] remote gateway [URL|default]
   xbot [--root DIR] remote add <name> <key> [--xkey KEY] [--person ID]
   xbot [--root DIR] remote invite [--person ID]
   xbot [--root DIR] remote join <code> [--name NAME] [--person ID]
