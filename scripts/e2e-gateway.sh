@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Two installs exchange signed bot messages using only the scripted model.
 # XBOT_E2E_OFFICIAL=1 leaves the gateway unset so both use the official default; the outage step is skipped.
+# Official runs keep both install keys in bin/e2e-gateway-official-keys, so reruns re-register the same
+# installs instead of using up the gateway's 30 new installs per IP per day.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK="$ROOT/bin/e2e-gateway"
@@ -57,11 +59,22 @@ A="$WORK/a"
 B="$WORK/b"
 "$X" --root "$A" new ada >"$WORK/setup.log" 2>&1
 "$X" --root "$B" new bob >>"$WORK/setup.log" 2>&1
+if [[ -n "$OFFICIAL" ]]; then
+  KEYS="$ROOT/bin/e2e-gateway-official-keys"
+  mkdir -p "$KEYS" && chmod 700 "$KEYS"
+  for r in a b; do
+    root="$WORK/$r"
+    mkdir -p "$root/keys/remote"
+    if [[ -f "$KEYS/$r.key" ]]; then cp -p "$KEYS/$r.key" "$root/keys/remote/install.key"; fi
+  done
+fi
 [[ -n "$OFFICIAL" ]] || "$X" --root "$A" remote gateway "http://127.0.0.1:$GW"
 code=$("$X" --root "$A" remote invite | head -1)
+if [[ -n "$OFFICIAL" && ! -f "$KEYS/a.key" ]]; then cp -p "$A/keys/remote/install.key" "$KEYS/a.key"; fi
 "$X" --root "$A" serve --http "127.0.0.1:$P1" --interval 1s --no-auto-upgrade >"$WORK/a.log" 2>&1 &
 PIDS+=("$!")
 XBOT_GATEWAY_TOKEN= "$X" --root "$B" remote join "$code" --name a --as b >>"$WORK/setup.log"
+if [[ -n "$OFFICIAL" && ! -f "$KEYS/b.key" ]]; then cp -p "$B/keys/remote/install.key" "$KEYS/b.key"; fi
 dir_started=$(ms)
 XBOT_GATEWAY_TOKEN= "$X" --root "$B" serve --http "127.0.0.1:$P2" --interval 1s --no-auto-upgrade >"$WORK/b.log" 2>&1 &
 PIDS+=("$!")
