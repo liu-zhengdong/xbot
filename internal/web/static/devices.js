@@ -235,7 +235,7 @@
   }
 
   // 和侧栏同一个头像：灰阶圆 + 首字，拉丁名两个字母，中文单字（导出的 D.sideFaces，所以下面不改侧栏的 face）。
-  const faceX = (n) => `<span class="avatar xs">${D.sideFaces(n)}</span>`;
+  const faceX = (n, id) => (window.XBotFaces ? D.sideFaces(n, id, "xs") : `<span class="avatar xs">${D.sideFaces(n, id)}</span>`);
   // 在线时写多久前联系过（「3 分钟前联系过」）；隔天或对方一整天都显得在线时，写日期。
   const statusLine = (d, up) => {
     if (d.unpaired) return `<span class="g7-status">${svg("unlink", 13)}已解除配对 · 对方解除的</span>`;
@@ -264,7 +264,7 @@
     const menu = open ? `<div class="pop g7-row-menu">
         <button type="button" class="menu-row" data-act="rename" data-id="${esc(d.id)}">${svg("pencil")}<span>重命名</span></button>
         <button type="button" class="menu-row" data-act="ask-unpair" data-id="${esc(d.id)}">${svg("unlink")}<span>解除配对</span></button></div>` : "";
-    const bots = (d.bots || []).length ? `<div class="g7-bots">${d.bots.map((b) => `<span class="g7-bot">${faceX(b)}<span>${esc(b)}</span></span>`).join("")}</div>` : "";
+    const bots = (d.bots || []).length ? `<div class="g7-bots">${d.bots.map((b) => `<span class="g7-bot">${faceX(b, d.id)}<span>${esc(b)}</span></span>`).join("")}</div>` : "";
     const added = fmtSeen(d.added); // 今天 09:12 / 昨天 18:20 / 10月12日
     const date = !added ? "" : /^今天/.test(added) ? "今天" : added;
     const meta = `<div class="g7-meta"><span>Bot 地址</span><code class="g7-addr">名字@${esc(d.name)}</code>${date ? `<span>·</span><span>${esc(date)}添加</span>` : ""}</div>`;
@@ -441,7 +441,13 @@
   // 组头（label）也是一行按钮：不做折叠，所以设备和 Bot 行都放进 #roster（本机行下面），app.js 重画本机行时不会冲掉；
   // 网关不通时只在分组上方放一条提示、整体变淡，不给每台标离线；离线的设备变淡，但行照样能点开远端对话。
   const initials = (n) => { const c = Array.from(String(n || "?")); return /[A-Za-z]/.test(c[0]) ? (c[0].toUpperCase() + (c[1] || "").toLowerCase()) : c[0]; };
-  const face = (n) => (window.XBotFaces ? window.XBotFaces.html(n, (D.seeds && D.seeds[n]) || n, "") : `<span class="avatar"><svg viewBox="0 0 36 36" aria-hidden="true" style="--avatar-light:#d3d3d3;--avatar-dark:#3d3d3d;--avatar-letter-light:#333333;--avatar-letter-dark:#e4e4e4"><circle cx="18" cy="18" r="18" fill="var(--avatar-fill)"/><text x="18" y="23" text-anchor="middle" font-size="${initials(n).length > 1 ? 13 : 15}" fill="var(--avatar-ink)">${esc(initials(n))}</text></svg></span>`);
+  // 远端 Bot 的人像按那台设备给的 bot_avatars 画：上传过图片的画几何图形（图片不过网关），旧版本的设备没给 seed 就按名字。
+  const seedOf = (n, id) => {
+    const d = ((S.data || {}).devices || []).find((x) => x.id === id);
+    const a = (d && d.bot_avatars && d.bot_avatars[n]) || {};
+    return a.custom ? "glyph" : a.avatar_seed || n;
+  };
+  const face = (n, id, size) => (window.XBotFaces ? window.XBotFaces.html(n, seedOf(n, id), size) : `<span class="avatar"><svg viewBox="0 0 36 36" aria-hidden="true" style="--avatar-light:#d3d3d3;--avatar-dark:#3d3d3d;--avatar-letter-light:#333333;--avatar-letter-dark:#e4e4e4"><circle cx="18" cy="18" r="18" fill="var(--avatar-fill)"/><text x="18" y="23" text-anchor="middle" font-size="${initials(n).length > 1 ? 13 : 15}" fill="var(--avatar-ink)">${esc(initials(n))}</text></svg></span>`);
   // 没有 Bot 列表的刚配对设备也列出来（「等它的 Bot 列表」）；对方解除配对的隐藏。点组头折叠，和本机分组一样。
   const sideFolds = () => { try { return JSON.parse(localStorage.getItem("xbot-device-folders") || "{}") || {}; } catch (e) { return {}; } };
   let sideSig = "";
@@ -470,7 +476,7 @@
       const pv = c.queued ? `<span class="preview g7-side-q"><b class="g7-side-qb">◷ 排队中</b> · 你：${esc(c.queued)}</span>`
         : `<span class="preview">${body ? esc(me + body) : "还没有消息"}</span>`;
       return `<button class="item g7-remote-bot${sel === d.id + "\u0000" + b ? " active" : ""}" type="button" data-side="open" data-id="${esc(d.id)}" data-bot="${esc(b)}">
-        ${c.unread > 0 ? face(b).replace(/<\/span>$/, '<i class="unread"></i></span>') : face(b)}<span class="item-body"><span class="name-line"><span class="name">${esc(b)}</span></span>${pv}</span></button>`;
+        ${c.unread > 0 ? face(b, d.id).replace(/<\/span>$/, '<i class="unread"></i></span>') : face(b, d.id)}<span class="item-body"><span class="name-line"><span class="name">${esc(b)}</span></span>${pv}</span></button>`;
     };
     nav.hidden = !devs.length;
     nav.innerHTML = !devs.length ? "" : (up ? "" : `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><button class="ghost" type="button" aria-label="重试" data-side="retry">${svg("refresh")}</button></div>`)

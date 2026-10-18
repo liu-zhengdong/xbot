@@ -195,7 +195,7 @@
       titleSig = sig;
       const status = on ? "在线" : "离线 · 最后联系 " + (seen() || "很久以前");
       el.title.innerHTML = `<button class="icon-btn rc-back" type="button" data-rc="back" aria-label="返回">${svg("back")}</button>
-        ${sideFaces(V.bot)}<div class="rc-titles"><div class="rc-name">${esc(V.bot)}</div><div class="rc-sub">${esc("在 " + label() + " 上")}<span class="rc-sep" aria-hidden="true">·</span><span class="rc-st">${esc(status)}</span></div></div>
+        ${sideFaces(V.bot, V.dev)}<div class="rc-titles"><div class="rc-name">${esc(V.bot)}</div><div class="rc-sub">${esc("在 " + label() + " 上")}<span class="rc-sep" aria-hidden="true">·</span><span class="rc-st">${esc(status)}</span></div></div>
         <button class="icon-btn rc-info-btn${V.info ? " on" : ""}" type="button" data-rc="info" aria-label="详情" aria-expanded="${V.info}" data-tip="详情">${svg("panel")}</button>`;
       if (D.tip) D.tip(); // 重画换掉了带提示的按钮
     }
@@ -227,7 +227,7 @@
       if (m.role === "me") { items.push(owner(m.text, kind)); prevBot = false; continue; }
       // Bot 连着回的几条：第一条有头像、名字和时间，后面的紧跟着写（原型 66/67）。
       if (prevBot) items.push(`<div class="rc-b cont"><div class="rc-bbody"><div class="rc-text">${lines(m.text)}</div></div></div>`);
-      else items.push(`<div class="rc-b">${sideFaces(V.bot)}<div class="rc-bbody"><div class="who">${esc(V.bot)}<time>${clock(m.at)}</time></div><div class="rc-text">${lines(m.text)}</div></div></div>`);
+      else items.push(`<div class="rc-b">${sideFaces(V.bot, V.dev)}<div class="rc-bbody"><div class="who">${esc(V.bot)}<time>${clock(m.at)}</time></div><div class="rc-text">${lines(m.text)}</div></div></div>`);
       prevBot = true;
     }
     // 连不上 XBot 时没进记录的那句：留在原处给「重试」。
@@ -242,7 +242,7 @@
     el.info.hidden = !V.info;
     if (!V.info) return;
     const d = device(), where = label();
-    el.info.innerHTML = `<div class="rc-iface">${sideFaces(V.bot)}<b>${esc(V.bot)}</b></div>
+    el.info.innerHTML = `<div class="rc-iface">${sideFaces(V.bot, V.dev)}<b>${esc(V.bot)}</b></div>
       <dl class="rc-facts">
         <div><dt>设备</dt><dd>${esc(where)}</dd></div>
         <div><dt>地址</dt><dd><code>${esc(V.bot + "@" + (d.name || d.id || V.dev))}</code></dd></div>
