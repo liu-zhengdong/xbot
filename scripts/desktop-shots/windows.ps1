@@ -92,8 +92,10 @@ function Shot($hwnd, [string] $name) {
   $w = $r.Right - $r.Left; $h = $r.Bottom - $r.Top
   $bmp = [Drawing.Bitmap]::new($w, $h)
   $g = [Drawing.Graphics]::FromImage($bmp)
-  # CaptureBlt also takes layered and composed windows (the caption buttons).
-  $g.CopyFromScreen($r.Left, $r.Top, 0, 0, [Drawing.Size]::new($w, $h), [Drawing.CopyPixelOperation]::SourceCopy -bor [Drawing.CopyPixelOperation]::CaptureBlt)
+  $hdc = $g.GetHdc()
+  $ok = [Native]::BltScreen($hdc, $r.Left, $r.Top, $w, $h)
+  $g.ReleaseHdc($hdc)
+  if (-not $ok) { $g.CopyFromScreen($r.Left, $r.Top, 0, 0, [Drawing.Size]::new($w, $h)) }
   $file = Join-Path $Out "$Label-$name.png"
   $bmp.Save($file, [Drawing.Imaging.ImageFormat]::Png)
   $g.Dispose(); $bmp.Dispose()

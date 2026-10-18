@@ -51,6 +51,18 @@ public static class Native {
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 
+  [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+  [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+  [DllImport("gdi32.dll")] static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+
+  // A screen copy with CAPTUREBLT, which also takes layered and composed
+  // windows (the caption buttons are a child window MyGo paints itself).
+  public static bool BltScreen(IntPtr dst, int x, int y, int w, int h) {
+    IntPtr src = GetDC(IntPtr.Zero);
+    try { return BitBlt(dst, 0, 0, w, h, src, x, y, 0x00CC0020 | 0x40000000); }
+    finally { ReleaseDC(IntPtr.Zero, src); }
+  }
+
   public static void PerMonitorAware() { SetProcessDpiAwarenessContext(new IntPtr(-4)); }
 
   // The visible top-level window of pid whose title is title, or zero.
