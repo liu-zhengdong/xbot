@@ -81,4 +81,14 @@ func TestSidebarPrototypeV2(t *testing.T) {
 	if !strings.Contains(js, "function closeConnect()") || !strings.Contains(js, "closeConnect();\n    closeNewMenu();") {
 		t.Error("closing the popovers closes 连接应用 and 新建 too")
 	}
+	acct := js[strings.Index(js, "function closeAccount() {"):]
+	if !strings.Contains(acct[:strings.Index(acct, "\n  }\n")], "closeConnect();") {
+		t.Error("closing the 我 menu (外观, 收起列表) must close 连接应用's list too")
+	}
+	if !strings.Contains(js, "if (hadFocus) add.focus();") {
+		t.Error("dismissing 新建 from the keyboard returns focus to it")
+	}
+	if !strings.Contains(js, "pop.style.maxHeight = Math.max(120,") || !strings.Contains(css, ".account-wrap .connect-pop { position: fixed; right: auto; z-index: 45; overflow: auto; }") {
+		t.Error("连接应用's list must fit short screens and scroll")
+	}
 }

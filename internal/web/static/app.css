@@ -1947,7 +1947,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .account-menu .menu-count, .account-menu .mark { margin-left: auto; font-size: 12px; color: var(--faint); }
 .account-menu .mark { width: 16px; height: 16px; }
 /* 连接应用's list opens beside the 我 menu; app.js places it. */
-.account-wrap .connect-pop { position: fixed; right: auto; z-index: 45; }
+.account-wrap .connect-pop { position: fixed; right: auto; z-index: 45; overflow: auto; }
 
 /* Sidebar width: 260px, 240px from 768 to 1100 wide (the list no longer folds
    at 1024). Pinned bots show their name under the face. */

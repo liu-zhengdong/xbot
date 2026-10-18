@@ -2767,8 +2767,15 @@
 
   // The 新建 menu under the pin row's last button.
   function closeNewMenu() {
-    document.querySelectorAll(".new-menu").forEach((menu) => menu.remove());
-    document.querySelectorAll(".pin.add").forEach((btn) => btn.setAttribute("aria-expanded", "false"));
+    const menu = document.querySelector(".new-menu");
+    if (!menu) return;
+    const hadFocus = menu.contains(document.activeElement);
+    menu.remove();
+    const add = document.querySelector(".pin.add");
+    if (add) {
+      add.setAttribute("aria-expanded", "false");
+      if (hadFocus) add.focus(); // Escape returns to 新建, not to the page
+    }
   }
 
   function toggleNewMenu(anchor) {
@@ -4820,6 +4827,7 @@
   function closeAccount() {
     $("account-menu").hidden = true;
     $("account").setAttribute("aria-expanded", "false");
+    closeConnect(); // its list never outlives the 我 menu
   }
 
   function closeConnect() {
@@ -5011,6 +5019,7 @@
     pop.style.left = (side ? m.right + 8 : m.left) + "px";
     pop.style.bottom = (side ? window.innerHeight - m.bottom : window.innerHeight - m.top + 8) + "px";
     pop.style.top = "auto";
+    pop.style.maxHeight = Math.max(120, (side ? m.bottom : m.top - 8) - 8) + "px"; // scrolls on short screens
     loadPush().catch(() => {});
   });
 
