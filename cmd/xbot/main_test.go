@@ -21,7 +21,6 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/mockopenai"
-	"xbot/internal/node"
 	"xbot/internal/person"
 	"xbot/internal/proc"
 	"xbot/internal/provider"
@@ -665,135 +664,6 @@ func TestMachineSetList(t *testing.T) {
 	}
 }
 
-func TestNodeAddListRemove(t *testing.T) {
-	root := t.TempDir()
-	info := node.Info{ID: "abc", Name: "desk", Caps: node.Caps()}
-	srv := httptest.NewServer(node.Handler("sekret", info, nil))
-	defer srv.Close()
-	if err := cmdNode(root, []string{"add", "desk", "--url", srv.URL, "--token", "sekret"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmdNode(root, []string{"add", "nope", "--url", srv.URL, "--token", "wrong"}); err == nil {
-		t.Fatal("bad token stored")
-	}
-	if nodes, err := node.List(root); err != nil || len(nodes) != 1 {
-		t.Fatalf("%v %v", nodes, err)
-	}
-	if err := node.Add(root, node.Node{Name: "bad", URL: srv.URL, Token: "wrong"}); err != nil {
-		t.Fatal(err)
-	}
-	got := captureStdout(t, func() error {
-		return cmdNode(root, []string{"list"})
-	})
-	if !strings.Contains(got, "desk\tonline desk\t"+srv.URL) || !strings.Contains(got, "bad\tunauthorized\t"+srv.URL) || strings.Contains(got, "sekret") || strings.Contains(got, "wrong") {
-		t.Fatalf("%s", got)
-	}
-	if err := cmdNode(root, []string{"remove", "desk"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmdNode(root, []string{"call", "desk", "info"}); err == nil {
-		t.Fatal("removed node still callable")
-	}
-}
-
-func TestNodeApproveCommand(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "machines.json"), []byte(`{"machines":{"local":"ask"}}`+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := node.RunShell(root, "echo approved-ok", "local", true)
-	if err == nil || !strings.Contains(err.Error(), "xbot node approve ") {
-		t.Fatal(err)
-	}
-	const mark = "xbot node approve "
-	id := strings.TrimSpace(err.Error()[strings.LastIndex(err.Error(), mark)+len(mark):])
-	out := captureStdout(t, func() error {
-		return cmdNode(root, []string{"approve", "--yes", id})
-	})
-	if !strings.Contains(out, "approved-ok") {
-		t.Fatalf("%s", out)
-	}
-}
-
-func TestNodeApproveShowsCommandAndDefaultsNo(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "machines.json"), []byte(`{"machines":{"local":"ask"}}`+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	marker := filepath.Join(root, "ran")
-	_, err := node.RunShell(root, "touch "+marker, "10.0.0.8:1", true)
-	if err == nil || !strings.Contains(err.Error(), "xbot node approve ") {
-		t.Fatal(err)
-	}
-	const mark = "xbot node approve "
-	id := strings.TrimSpace(err.Error()[strings.LastIndex(err.Error(), mark)+len(mark):])
-	inR, inW, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldIn := os.Stdin
-	os.Stdin = inR
-	defer func() { os.Stdin = oldIn }()
-	errR, errW, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldErr := os.Stderr
-	os.Stderr = errW
-	defer func() { os.Stderr = oldErr }()
-	if _, err := io.WriteString(inW, "n\n"); err != nil {
-		t.Fatal(err)
-	}
-	_ = inW.Close()
-	runErr := cmdNode(root, []string{"approve", id})
-	_ = errW.Close()
-	os.Stderr = oldErr
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, errR); err != nil {
-		t.Fatal(err)
-	}
-	if runErr == nil {
-		t.Fatal("decline exited zero")
-	}
-	got := buf.String()
-	if !strings.Contains(got, "touch "+marker) || !strings.Contains(got, "10.0.0.8:1") || !strings.Contains(got, "not approved") {
-		t.Fatalf("%s", got)
-	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatal("declined command ran")
-	}
-	listed := captureStdout(t, func() error {
-		return cmdNode(root, []string{"pending"})
-	})
-	if strings.Contains(listed, id) || strings.TrimSpace(listed) != "no pending" {
-		t.Fatalf("decline kept the entry %s", listed)
-	}
-}
-
-func TestNodePendingPrintsLocalTime(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "machines.json"), []byte(`{"machines":{"local":"ask"}}`+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := node.RunShell(root, "echo later", "desk", true)
-	if err == nil || !strings.Contains(err.Error(), "xbot node approve ") {
-		t.Fatal(err)
-	}
-	const mark = "xbot node approve "
-	id := strings.TrimSpace(err.Error()[strings.LastIndex(err.Error(), mark)+len(mark):])
-	item, err := node.LookupPending(root, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	listed := captureStdout(t, func() error {
-		return cmdNode(root, []string{"pending"})
-	})
-	want := item.Time.Local().Format(time.RFC3339)
-	if !strings.Contains(listed, want) {
-		t.Fatalf("local time %s missing in %s", want, listed)
-	}
-}
-
 func TestPersonUnlinkCommand(t *testing.T) {
 	root := t.TempDir()
 	p, err := person.Identify(root, person.Account{Link: "telegram", ExternalID: "42"}, "Ada")
@@ -890,7 +760,7 @@ func TestMountEveryCatalogLinkTwice(t *testing.T) {
 	for _, item := range first {
 		names[item.Name()] = true
 	}
-	for _, want := range []string{link.NameNode, link.NameDesktop, link.NameBrowser} {
+	for _, want := range []string{link.NameDesktop, link.NameBrowser} {
 		if !names[want] {
 			t.Fatalf("missing %s", want)
 		}
