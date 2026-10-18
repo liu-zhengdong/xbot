@@ -20,6 +20,12 @@ func (s *Server) registerDevicesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/devices/self", s.renameSelf)
 	mux.HandleFunc("PATCH /api/devices/{id}", s.renameDevice)
 	mux.HandleFunc("DELETE /api/devices/{id}", s.unpairDevice)
+	mux.HandleFunc("POST /api/devices/code", s.newCode)
+	mux.HandleFunc("DELETE /api/devices/code", s.cancelCode)
+	mux.HandleFunc("POST /api/devices/join", s.joinDevice)
+	mux.HandleFunc("POST /api/devices/join/confirm", s.confirmJoin)
+	mux.HandleFunc("DELETE /api/devices/join", s.cancelJoin)
+	mux.HandleFunc("POST /api/devices/request", s.decideRequest)
 }
 
 // gatewayProbe caches one health check per gateway URL for 30 seconds, so the
@@ -170,4 +176,115 @@ func (s *Server) unpairDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) newCode(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	var in struct {
+		Gateway string `json:"gateway"`
+	}
+	_ = decode(r, &in) // The body is optional.
+	if in.Gateway != "" {
+		if base, err := s.saveGateway(r.Context(), in.Gateway); err != nil {
+			writeErr(w, http.StatusBadGateway, "连不上网关 "+base+"。检查一下网络，或者改一下网关地址。")
+			return
+		}
+	}
+	cfg, err := remote.Load(s.Root)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, _, err := remote.NewShortCode(r.Context(), s.Root, s.owner); err != nil {
+		writeErr(w, http.StatusBadGateway, "连不上网关 "+cfg.GatewayURL()+"。检查一下网络，或者改一下网关地址。")
+		return
+	}
+	s.writePairing(w)
+}
+
+func (s *Server) cancelCode(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	remote.CancelShortCode(r.Context(), s.Root)
+	s.writePairing(w)
+}
+
+func (s *Server) joinDevice(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	var in struct {
+		Code    string `json:"code"`
+		Gateway string `json:"gateway"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if _, _, err := remote.ParseShortCode(in.Code); err != nil {
+		// Checked here too so a typo never touches the gateway.
+		_ = remote.JoinShortCode(r.Context(), s.Root, in.Code, "")
+		s.writePairing(w)
+		return
+	}
+	if in.Gateway != "" {
+		base, err := s.saveGateway(r.Context(), in.Gateway)
+		if errors.Is(err, errGatewayDown) {
+			remote.SetJoinPhase(s.Root, remote.PairingPhase{Phase: "gateway_unreachable", Gateway: base})
+			s.writePairing(w)
+			return
+		}
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "网关地址不对："+err.Error())
+			return
+		}
+	}
+	// Expected failures (404/410/unreachable/already) are phases, not errors.
+	_ = remote.JoinShortCode(r.Context(), s.Root, in.Code, "")
+	s.writePairing(w)
+}
+
+func (s *Server) confirmJoin(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	if err := remote.ConfirmJoin(r.Context(), s.Root); err != nil {
+		writeErr(w, http.StatusConflict, "这次配对已经结束了")
+		return
+	}
+	s.writePairing(w)
+}
+
+func (s *Server) cancelJoin(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	remote.CancelJoin(s.Root)
+	s.writePairing(w)
+}
+
+func (s *Server) decideRequest(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	var in struct {
+		Decision string `json:"decision"` // allow | replace | add | deny
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	allow := in.Decision == "allow" || in.Decision == "replace" || in.Decision == "add"
+	if !allow && in.Decision != "deny" {
+		writeErr(w, http.StatusBadRequest, "bad decision")
+		return
+	}
+	if err := remote.DecidePairing(r.Context(), s.Root, allow, in.Decision == "replace"); err != nil {
+		writeErr(w, http.StatusConflict, "没送到另一台电脑，再点一次试试")
+		return
+	}
+	s.writePairing(w)
 }
