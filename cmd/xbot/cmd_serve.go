@@ -555,6 +555,8 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		fmt.Fprintln(os.Stderr, "xbot: 节点功能已移除，忽略数据目录里的旧节点文件（nodes.json、node-token、node-pending），文件保留不删")
 	}
 	// Waited for on return, so nothing writes the data root after serve stops.
+	// remote cannot import kernel, so serve hands it the reply reader.
+	remote.TurnReply = kernel.ReplyAfter
 	remoteCtx, stopRemote := context.WithCancel(ctx)
 	remoteDone := make(chan struct{})
 	go func() {
