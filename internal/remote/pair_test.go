@@ -233,4 +233,11 @@ func TestDefaultGatewayGetsNoToken(t *testing.T) {
 	if cfg, _ := Load(a); cfg.GatewayToken("x") != "" {
 		t.Fatal("run would send the token to the default gateway")
 	}
+	// Older configs and other spellings of the official URL count as the default too.
+	for _, raw := range []string{"https://xbot.babelgo.cn", "https://XBOT.babelgo.cn:443/"} {
+		mustRemote(t, update(a, func(c *Config) error { c.Gateway = raw; return nil }))
+		if cfg, _ := Load(a); cfg.Gateway != "" || cfg.GatewayToken("x") != "" {
+			t.Fatalf("%s: gateway %q", raw, cfg.Gateway)
+		}
+	}
 }

@@ -100,7 +100,22 @@ func readJSON(path string, v any) error {
 
 func Load(root string) (cfg Config, err error) {
 	err = readJSON(filepath.Join(root, "remote", "devices.json"), &cfg)
+	if isOfficial(cfg.Gateway) {
+		cfg.Gateway = "" // older configs stored the official URL explicitly
+	}
 	return
+}
+
+// isOfficial reports whether raw names the official gateway in any spelling
+// (case, default port, trailing slash), so it is treated as the default.
+func isOfficial(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || raw == "" {
+		return false
+	}
+	def, _ := url.Parse(DefaultGateway)
+	return strings.EqualFold(u.Scheme, def.Scheme) && strings.EqualFold(u.Hostname(), def.Hostname()) &&
+		(u.Port() == "" || u.Port() == "443") && strings.Trim(u.Path, "/") == "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
 }
 
 func (c Config) ByName(name string) (Device, bool) {
@@ -226,7 +241,7 @@ func SetGateway(root, raw string) error {
 		}
 	}
 	raw = strings.TrimRight(raw, "/")
-	if raw == DefaultGateway {
+	if isOfficial(raw) {
 		raw = "" // Stored as the default so the idle privacy rule still applies.
 	}
 	return update(root, func(c *Config) error { c.Gateway = raw; return nil })

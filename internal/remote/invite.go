@@ -166,6 +166,9 @@ func ParseCode(code string) (p PairCode, err error) {
 		return PairCode{}, bad
 	}
 	p.Gateway = strings.TrimRight(p.Gateway, "/")
+	if isOfficial(p.Gateway) {
+		p.Gateway = DefaultGateway
+	}
 	return p, nil
 }
 
