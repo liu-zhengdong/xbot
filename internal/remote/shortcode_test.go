@@ -110,7 +110,7 @@ func (h *shortHarness) join() {
 func (h *shortHarness) request() {
 	h.t.Helper()
 	h.join()
-	mustRemote(h.t, ConfirmJoin(context.Background(), h.b))
+	mustRemote(h.t, ConfirmJoin(context.Background(), h.b, ""))
 	h.deliver(h.a, h.ca)
 	if got := PairingStatus(h.a).A; got.Phase != "request" || got.Name != "Café laptop" || !slices.Equal(got.Bots, []string{"bob"}) {
 		h.t.Fatal("owner did not receive join request")

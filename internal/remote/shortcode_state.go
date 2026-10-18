@@ -61,6 +61,8 @@ type shortSession struct {
 	reply                   *gateway.Envelope // A: signed pake2, resent on redelivery
 	result                  *bool             // A: committed decision; never changes
 	replace                 bool              // A: with result, 替换 rather than 添加
+	person                  string            // B: who pressed 连接; A is bound to them
+	sent                    bool              // B: pake3 may have reached A (its reply can be lost)
 }
 type shortOwner struct {
 	lookup, secret, person string
@@ -77,6 +79,7 @@ type pairingState struct {
 	late   *shortSession // B: a timed-out join that may still get A's allow
 	client *gateway.Client
 	view   atomic.Pointer[Status]
+	active atomic.Bool // A session is in flight, so Run polls the default gateway.
 }
 
 var pairings sync.Map
@@ -88,8 +91,16 @@ func pairingFor(root string) *pairingState {
 }
 
 // publish keeps status polling independent of slow gateway operations.
-func (s *pairingState) publish() { v := clonePairStatus(s.status); s.view.Store(&v) }
-func (s *pairingState) release() { s.publish(); s.Unlock() }
+func (s *pairingState) publish() {
+	v := clonePairStatus(s.status)
+	s.view.Store(&v)
+	s.active.Store(s.join != nil || s.owner != nil || s.late != nil)
+}
+
+// pairingActive keeps Run polling while a pairing is in flight even with no
+// devices or gateway set (the default gateway is used then).
+func pairingActive(root string) bool { return pairingFor(root).active.Load() }
+func (s *pairingState) release()     { s.publish(); s.Unlock() }
 func clonePairStatus(out Status) Status {
 	out.A.Bots = append([]string(nil), out.A.Bots...)
 	out.B.Bots = append([]string(nil), out.B.Bots...)

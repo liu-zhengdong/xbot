@@ -2,11 +2,13 @@ package remote
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
 	"time"
 )
 
-// Review regressions: a retry from B, a late allow, clock skew, the fifth session.
+// Review regressions: a retry from B, a late allow, clock skew, the fifth session, a lost pake3 response.
 func TestShortCodeRetryLateAndSkew(t *testing.T) {
 	ctx := context.Background()
 	t.Run("retry", func(t *testing.T) {
@@ -74,6 +76,30 @@ func TestShortCodeRetryLateAndSkew(t *testing.T) {
 		tickPairing(ctx, h.a, h.ca, time.Now().Add(2*time.Minute+time.Second))
 		if got := PairingStatus(h.a).A.Phase; got != "expired" {
 			t.Fatal("after the fifth session:", got)
+		}
+	})
+	t.Run("lost pake3 response", func(t *testing.T) {
+		// The gateway queued B's 连接 but the response was lost: B still shows
+		// 连接, and A's allow must pair both sides, not only A.
+		h := newShortHarness(t)
+		h.join()
+		old := http.DefaultClient
+		http.DefaultClient = &http.Client{Transport: pairTransport(func(r *http.Request) (*http.Response, error) {
+			if resp, err := old.Transport.RoundTrip(r); err == nil { // The harness gateway queues it.
+				resp.Body.Close()
+			}
+			return nil, errors.New("connection reset")
+		})}
+		err := ConfirmJoin(ctx, h.b, "")
+		http.DefaultClient = old
+		if err == nil || PairingStatus(h.b).B.Phase != "confirm" {
+			t.Fatal("lost response not surfaced:", err, PairingStatus(h.b).B.Phase)
+		}
+		h.deliver(h.a, h.ca)
+		mustRemote(t, DecidePairing(ctx, h.a, true, false))
+		h.deliver(h.b, h.cb)
+		if got := PairingStatus(h.b).B.Phase; got != "done" {
+			t.Fatal("allow after a lost response:", got)
 		}
 	})
 }
