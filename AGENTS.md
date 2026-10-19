@@ -54,7 +54,7 @@ XBot：Go 写的个人 AI 助手，交互单位是长期存在的 Bot。模块 `
 ## 维护
 文档分三层，同一件事只写一处：仓库现在的样子写 [docs/atlas/](docs/atlas/)；打算做成什么样、还没落地的写 [docs/dev/](docs/dev/)，落地后提炼进 atlas 再删掉那份；宏观先做哪件事写 [docs/FOCUS.md](docs/FOCUS.md) 和[候选清单](docs/CANDIDATES.md)。atlas 里不写计划，dev 里不写现状，FOCUS 里不写设计细节；dev 的每份设计必须有一节「还没做的」，没有就说明该删了。
 
-改了某块的行为，同步改对应 atlas 节点并刷新 `verified`；设计决策被推翻时新建 ADR，旧的标 Superseded。进度只写 [docs/MILESTONES.md](docs/MILESTONES.md)。运行 `python3 scripts/atlas_audit.py` 检查。
+改了某块的行为，同步改对应 atlas 节点并刷新 `verified`；设计决策被推翻时新建 ADR，旧的标 Superseded。做过什么、验了什么写 [docs/MILESTONES.md](docs/MILESTONES.md)；正在做什么、怎样算做完写 [docs/FOCUS.md](docs/FOCUS.md)，两处不互抄。运行 `python3 scripts/atlas_audit.py` 检查。
 
 ## 地图
 全部文档的入口：[docs/atlas/README.md](docs/atlas/README.md)。

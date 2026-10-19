@@ -1,6 +1,6 @@
 # XBot 里程碑与进度
 
-> 进度天天变，所以单独放在这里；现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
+> 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [FOCUS.md](FOCUS.md)**；还没开始的想法在[候选清单](CANDIDATES.md)。现行设计见 [atlas](atlas/README.md)，还没落地的设计见 [dev](dev/)。每日测试报告不进仓库。
 
 ## 总表
 | 里程碑 | 内容 | 状态 |
@@ -13,8 +13,8 @@
 | M5.x | 后台异步压缩、Fork Bot、主 Bot 与置顶、Bot 档案 | 已完成 `db6487e` `4b07ec4` `5a96e75`。网页接口见 [API.md](API.md)，静态界面由单独的代理维护 |
 | M6 | 手机后台推送、远程访问（Cloudflare Tunnel 等）、多节点、人的记忆同步、机器开关、桌面操作、浏览器原生 Link、MCP 适配器与连接器目录、编码代理 Link | 手机推送、隧道（公网可达性未测）、多节点（2026-10-18 已退役，见 [ADR 0012](adr/0012-retire-node.md)）、人的记忆同步（2026-10-18 已退役，见 [ADR 0012](adr/0012-retire-node.md)）、机器开关、桌面、浏览器：已验证。精选目录、Telegram/飞书、MCP（stdio 与 Streamable HTTP，按 Bot 启用，密钥只记名字）、编码代理（确认后启动，输出进对话卡片）：已接上。托管市场未做 |
 | M7 | 凭据代理与保险箱、危险操作审核 | 盒子回归（假模型，2026-10-16）。已验证：保险箱 CLI、落盘加密与权限、只向绑定域名注入、跨域跳转不带真值、工具结果/transcript/模型输入里脱敏；删除、外发、带密钥或写方法的 HTTP、`keys:true` 都出确认卡，拒绝后不执行；只读不问；`decisions.jsonl` 留痕。修复：强制 `git push` 不确认；密钥挪到 `<root>/keys/vault/<bot>.key`（旧数据打开时迁移），触及保险箱/密钥路径的 `shell`/文件工具无论机器开关都出确认卡。独立用户守护进程 `xbot vaultd`（[ADR 0005](adr/0005-vault-daemon-user.md)）已在盒子上以 `xbot-vault` 用户端到端验证：迁移后 Bot 读不到密钥和密文，注入、拒绝未绑定域名、跨域跳转不带真值照常；其他 uid 连接被 SO_PEERCRED 拒绝；小请求额外开销 p95 0.22 毫秒（300 次）。遗留：Bot 所在用户若有免密 sudo，隔离形同虚设 |
-| M8 | 开源网关与跨设备 Link（[GATEWAY.md](GATEWAY.md)，G1–G7）；P2P、跨用户通信、模板分享推迟 | G1–G6 已合入（2026-10-18）：网关、身份与 `bot@设备` 收发、邀请码配对、端到端加密、发件队列与退信、`list_bots` 目录推送。盒子上两个数据根 e2e 通过（配对、加密往返约 1.9 秒、网关停机后重试送达、目录推送）。官方网关 `https://xbot.babelgo.cn`（Cloudflare Workers，ADR 0011）已部署，客户端默认连它，两台安装经它配对和收发实测通过（2026-10-18，往返约 1.2 秒）。G7 桌面配对界面待做 |
-| 桌面端 | 本地优先桌面端（Windows、Mac），见下文「本地优先桌面端」 | 计划中（2026-10-17 定） |
+| M8 | 开源网关与跨设备 Link（[GATEWAY.md](GATEWAY.md)，G1–G7）；P2P、跨用户通信、模板分享推迟 | G1–G7 全部已合入：网关、身份与 `bot@设备` 收发、邀请码配对、端到端加密、发件队列与退信、`list_bots` 目录推送、桌面「设备」抽屉配对（`internal/web/static/devices.js`）。盒子上两个数据根 e2e 通过（配对、加密往返约 1.9 秒、网关停机后重试送达、目录推送）。官方网关 `https://xbot.babelgo.cn`（Cloudflare Workers，ADR 0011）已部署，客户端默认连它，两台安装经它配对和收发实测通过（2026-10-18，往返约 1.2 秒） |
+| 桌面端 | 本地优先桌面端（Windows、Mac），见下文「本地优先桌面端」 | A、B、C 三线代码已交付：`xbot app`、跨平台核心、打包出 dmg 与 Windows 安装器，GitHub Actions 上 Windows 与 macOS 全量测试在跑。真机逐项验收未做 |
 
 
 全局验收：每个里程碑都要报性能数字（交互回复 p95、IPC 开销 p95、后台变慢比例、链路数据量；涉及界面的报帧率），预算见 [AGENTS.md](../AGENTS.md) 的「全局要求：性能与界面流畅」。
@@ -31,7 +31,7 @@
 | M4 | shell 后台化 | 已合入 |
 | M5 | 环境感知（AGENTS.md 分层加载、持久 cd、token 用量、外部改动 diff） | 已合入 |
 | M6 | 搜索与看图 | 已接上 |
-| M7 | 子代理类型（工具白名单、提示片段、步数上限、防递归） | 待做 |
+| M7 | 子代理类型（工具白名单、提示片段、步数上限、防递归） | 待做（步数上限 `MaxSteps` 已在 `internal/exec` 里） |
 | M8 | 权限规则（deny → ask → allow，「不再询问」） | 暂缓（2026-10-18，[ADR 0013](adr/0013-features-before-security.md)：先把功能调通调顺，安全只留接口） |
 
 两周验收：三个 Bot 从 2026-10-16 连续运行到 2026-10-30。
@@ -137,20 +137,20 @@
 评审修复后再跑：`gofmt -l` 无输出，`go vet ./...` 通过。`TMPDIR=/workspace/.test-tmp/m33-{1,2,3}` 跑 `go test -count=1 ./...` 三遍。第 1、3 遍全绿。第 2 遍只有 `internal/browser` 的 `TestReleaseTiedLeavesCLI` 失败（`tied chrome still running`，2 秒没等到进程退出）；单独再跑这条和 `TestStopChecksCommandLine` 通过。`TestStopChecksCommandLine`（issue #27）这三遍没有失败。`memory-scope` 的检查放宽成子串 `run the tests` 和 `Asia/Shanghai`。回归：`TestM33UntrustedDefaultScopeRememberIsAttributed`、`TestM33CorruptLegacyIndexDoesNotBreakOtherBots`、`TestMigrateCorruptOwnerStaysAndOtherBotWorks`、`TestMigrateLeavesNonOwnerInBackup`、`TestMigrateLogStaysWithinCap`、`TestForgetOnOverCapLogSucceeds`。Not run: 真模型评测，界面浏览器手点（网页只删了 bot-person 的读取和标签），`-race`，`go test -fuzz`，默认 `TMPDIR`。
 
 ## 记忆 v2（2026-10-17 定）
-规格见 [MEMORY-V2.md](MEMORY-V2.md)，决策见 [ADR 0008](adr/0008-memory-v2-dated-log-first.md)、[ADR 0009](adr/0009-memory-as-folder.md)。批 1–3 放在晚上的时段做，批 4–6 在 11/30 之前完成，自带技能目录放在桌面端 B 阶段。
+规格见 [MEMORY-V2.md](MEMORY-V2.md)，决策见 [ADR 0008](adr/0008-memory-v2-dated-log-first.md)、[ADR 0009](adr/0009-memory-as-folder.md)。批 1–5 已落地；批 6、7 未做，排期见 [候选清单](CANDIDATES.md)。
 
 | 批 | 内容 | 状态 |
 |---|---|---|
-| 1 | 快照加差异：会话开始和压缩时拍快照（含最近 8 条日志），中途只追加差异，自己的改动不追加 | 进行中 |
-| 2 | 目录布局（`memory.md`、`log/YYYY-MM.md`）和迁移 | 计划中 |
-| 3 | 记忆路径上的文件工具把关；拿掉 `remember`/`forget` | 计划中 |
-| 4 | 只读的 `recall`（含自由文件） | 计划中 |
-| 5 | 经过摘要 | 计划中 |
-| 6 | 每晚整理（含索引核对、工作档案） | 计划中 |
-| 7 | 导入 Grok 导出、`xbot backup` | 计划中 |
+| 1 | 快照加差异：会话开始和压缩时拍快照（含最近 8 条日志），中途只追加差异，自己的改动不追加 | 已完成 |
+| 2 | 目录布局（`memory.md`、`log/YYYY-MM.md`）和迁移 | 已完成 |
+| 3 | 记忆路径上的文件工具把关；拿掉 `remember`/`forget` | 已完成（工具已从内核移除） |
+| 4 | 只读的 `recall`（含自由文件） | 已完成（`internal/kernel/recall.go`） |
+| 5 | 经过摘要 | 已完成（压缩时写 `episode`，`internal/kernel/extract.go`） |
+| 6 | 每晚整理（含索引核对、工作档案） | 未做 |
+| 7 | 导入 Grok 导出、`xbot backup` | 未做 |
 
-## 下个版本（v0.3.1 / v0.4.0）
-v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），撤到下个版本重做，每项配自己的 eval 用例，不靠 give-up 调。
+## 撤下的提示类改动（v0.3.0 → v0.4.0）
+v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），已撤回。重做的顺序在[候选清单](CANDIDATES.md)，不在这里排。
 
 - **模糊任务规则**（「一两句计划后同轮开工」）。加上后全量 eval 里 give-up 连续 0/3、1/3、1/3，三轮改措辞没稳住：模型在目标已写明的任务前先翻目录、补细节，超出工具上限。
 - **知识问题三档规则**，连同 knowledge-public / knowledge-project / knowledge-fresh 三条用例和 eval 的 `no_tool_calls` 检查。
@@ -160,7 +160,7 @@ give-up 单测数据（每个构建 6 次，2026-10-17）：7e64ec6 6/6；加上
 
 另：第 9 项（中文回复前的英文开场白；`xbot provider add/list/remove`；`xbot new` 拒绝未知供应商）也留到下个版本。
 
-评测按四维成绩单出结果（能力、意愿、可靠性 pass^k、守规矩一票否决，另报 Ask-F1），贴用例的 DeepSeek 规则清单和替换原则也在里面：见 [SCORECARD.md](SCORECARD.md)。第一步只给 `xbot eval` 加成绩单输出，不改提示词。
+成绩单已落地：`xbot eval` 的报告带四维成绩单（能力、意愿、可靠性 pass^k、守规矩一票否决，另报 Ask-F1），`xbot eval scorecard <report.json>` 可从旧报告重算。规格见 [SCORECARD.md](SCORECARD.md)，实现见 [atlas/providers.md](atlas/providers.md)。
 
 ## 插话时分叉（F1–F5）
 设计见 [插话时分叉](atlas/fork.md)。
@@ -202,11 +202,11 @@ M6 每片的状态。已验证的是回归对过的；已接上的是代码里�
 
 用户技能加在已有的 `skills` Link 上，不单列一片，也不替换上面的连接器和编码代理。
 
-## 本地优先桌面端（2026-10-17 定）
+## 本地优先桌面端（2026-10-17 定，代码已交付）
 
 主人决定：XBot 装在主人自己的电脑上，Windows 和 Mac 同时做。`serve` 跟着桌面端在本机跑，所有 Bot 数据都在本机，窗口显示本机 `serve` 的现有 Web 界面。设计决定见 [ADR 0007](adr/0007-local-first-desktop-app.md)。
 
-**完成的样子**：主人在 Windows 和 Mac 上各装一个，打开就能直接用本机的 Bot，连续用一周不想换回别的。做出来后先由 UX 设计同事在浏览器里走一遍，再交主人实际使用。
+**完成的样子**：主人在 Windows 和 Mac 上各装一个，打开就能直接用本机的 Bot，连续用一周不想换回别的。
 
 **已定的决定**：
 - Windows 要求装 Git for Windows，shell 工具用 Git Bash（`bash -c` 语义，权限表规则不变）。
@@ -215,36 +215,20 @@ M6 每片的状态。已验证的是回归对过的；已接上的是代码里�
 
 **摸底结论（`d6a90a3`）**：`darwin/arm64`、`darwin/amd64` 的 `CGO_ENABLED=0 go build ./...` 通过，`go vet` 只挂在一处测试代码；`windows/amd64` 编译不过（`fsutil`、`kernel` 的 `flock`，`browser`、`tunnel` 的 `kill` 和进程组，`kernel/project.go` 的 `x/sys/unix`）。编过以后，Windows 上还有三处挡启动或挡核心功能：保险箱密钥的权限检查（Windows 上 0600 读回来是 0666，第二次启动所有 Bot 都起不来）、目录 fsync（对话分段封存失败）、shell 写死 `sh -c`。MyGo 外壳的最小窗口能从 Linux 交叉编译出 Windows 和 mac 版本（每个约 9 MB）；在盒子的 WebKitGTK 里指向本机 `serve`，界面、登录、重开免登录都正常。
 
-每个 PR 约 500 行以内，通用要求：测试三遍全绿、触及包跑 `-race`、每个修复带一条在旧代码上会失败的回归测试、没跑的列成 Not run。
+**怎么做的**：每个 PR 约 500 行以内，测试三遍全绿、触及包跑 `-race`、每个修复带一条在旧代码上会失败的回归测试、没跑的列成 Not run。
 
-### A 线：跨平台核心
-| PR | 交付 | 验收 |
-|---|---|---|
-| A1 | 文件锁抽象（unix `flock`，Windows `LockFileEx`），`kernel` 的两处改用它；`windows`、`darwin` 的编译和 `go vet`（含测试代码）修好；交叉编译脚本；GitHub Actions 加 Windows 和 macOS 的 `go test`（先不挡合并） | 三个目标 build 和 vet 全绿；Linux 行为不变；CI 上能看到 Windows/mac 的测试结果 |
-| A2 | 进程控制：Windows 用 Job Object 杀整棵进程树、查存活和启动时间；mac 用 `sysctl` 取启动时间；编码代理和浏览器复用 | 取消后不留孤儿进程；`serve` 重启后还在跑的后台任务不被标成 lost |
-| A3 | Windows shell：找 Git Bash（`XBOT_SHELL`、注册表、常见路径），找不到时给出安装指引；系统提示注入当前系统 | Windows 上 shell 工具和后台任务能跑 |
-| A4 | Windows 存储语义：保险箱密钥权限检查、目录 fsync、原子写遇到共享冲突时重试、只读分段；ID 按大小写不敏感查重、拒绝 Windows 保留名、Unicode 规范化 | Windows 上重启后 Bot 照常起来，对话分段能封存；`Dev` 和 `dev` 不会落进同一个目录 |
-| A5 | 重启和升级：Windows 上启动新进程再退出，替换正在运行的 exe 时先改名 `.old`；发布加 Windows 和 `darwin/amd64` | Windows 上实际升级一次 |
-| A6 | 浏览器工具按平台找 Chrome，所有权判断不读 `/proc`；桌面操控工具在 mac/Windows 上标成不可用 | mac/Windows 上能开一次 Chrome |
-| A7 | 编辑工具保持文件原来的换行（CRLF）；子进程的 `HOME`/`USERPROFILE` | CRLF 文件能正常编辑 |
+### 三线交付内容
+A 线（跨平台核心）：文件锁抽象（unix `flock`、Windows `LockFileEx`）、进程控制（Windows Job Object 杀进程树、mac `sysctl` 取启动时间）、Windows shell 走 Git Bash、Windows 存储语义（密钥权限、目录 fsync、原子写重试、只读分段、ID 大小写不敏感）、Windows 重启与升级（`.old` 改名替换）、浏览器按平台找 Chrome、编辑工具保 CRLF 与子进程 `HOME`/`USERPROFILE`。
 
-### B 线：桌面外壳
-| PR | 交付 | 验收 |
-|---|---|---|
-| B1 | `internal/appshell` 加 `xbot app`：同进程起 `serve`，固定端口 `127.0.0.1:8787`，单实例，一次性启动码自动登录，日志不含 token；`go.mod` 升到 Go 1.27 | 盒子上能开 Linux 窗口并截图；交叉编译出三个平台 |
-| B2 | 界面适配：标题栏留空位和拖动区域，全局字体加微软雅黑和苹方，原生通知从 Go 端发，外链用系统浏览器打开 | UX 同事在浏览器里走一遍；Windows 标题栏、双击最大化、吸附布局，mac 红绿灯 |
-| B3 | 打包：GitHub Actions 出 mac `.app` 和 dmg、Windows 安装器、Linux `.deb`，附 SHA256SUMS 和不带版本号的固定下载地址；Gatekeeper 和 SmartScreen 放行说明（不签名） | 真机上装得上、放行后能打开 |
-| B4 | 应用内自更新：复用 `internal/upgrade`，后台预下载，「重启以更新」，更新说明只列几条中文要点；mac 整体替换 `.app`，Windows 用 `.old` | 真机上完整升级一次 |
+B 线（桌面外壳）：`internal/appshell` 与 `xbot app`（同进程起 `serve`，固定 `127.0.0.1:8787`，单实例，一次性启动码自动登录，日志不含 token）、界面适配（标题栏留位与拖动、字体、原生通知、外链走系统浏览器）、打包（GitHub Actions 出 mac `.app`/dmg、Windows 安装器、Linux `.deb`，附 SHA256SUMS；`scripts/package-desktop.sh`、`build-macos-dmg.sh`、`test-windows-installer.ps1`）、应用内自更新（复用 `internal/upgrade`，mac 整体替换 `.app`，Windows 用 `.old`）。
 
-### C 线：定时任务
-| PR | 交付 | 验收 |
-|---|---|---|
-| C1 | cron 按本地时区解释，已有例程迁移（触发时刻不变）；错过窗口的一次性例程不再永远保持启用 | 回归测试在旧代码上失败；线上例程迁移前后触发时刻一致 |
-| C2 | 错过时间点的汇总通知：每个 Bot 记上次轮询的水位线（不放进例程目录），停机或睡眠超过 2 分钟时发一条汇总事件，ID 确定、可去重，最多看 7 天 | 停机 3 小时后正好收到一条汇总；重复投递只有一条；首次运行不发 |
+C 线（定时任务）：cron 按本地时区解释并迁移已有例程（触发时刻不变）、错过时间点的汇总通知（水位线不进例程目录，停机或睡眠超 2 分钟发一条，ID 可去重，最多看 7 天）。
 
-**顺序**：A1 → C1 → C2 → B1 → B2 → B3，到这里 mac 就能装上用。接着 A4 → A3 → A2 → A5，Windows 能用。最后 B4、A6、A7。A1 和 C 线互不依赖，可以并行。
+**当时的顺序**：A1 → C1 → C2 → B1 → B2 → B3，到这里 mac 能装；接着 A4 → A3 → A2 → A5，Windows 能用；最后 B4、A6、A7。A1 与 C 线并行。
 
-**要主人的真机才能验的**：WebView2 和 WKWebView 的实际渲染、字体、标题栏、拖动和吸附、原生通知；Windows 上 Git Bash、Job Object、`LockFileEx` 的强制锁、目录 fsync、rename 共享冲突、只读文件删除；dmg 和 Windows 安装器、Gatekeeper 和 SmartScreen 放行；mac 整体替换 `.app` 和 Windows `.old` 的自更新；合盖一晚后的汇总通知。盒子上能验的：交叉编译和 `go vet`、Linux 窗口（WebKitGTK）、单元测试；GitHub Actions 上能跑 Windows 和 macOS 的全量测试。
+**真机验过的**：还没逐项确认。这些只能在主人的真机上验：WebView2 和 WKWebView 的实际渲染、字体、标题栏、拖动和吸附、原生通知；Windows 上 Git Bash、Job Object、`LockFileEx` 的强制锁、目录 fsync、rename 共享冲突、只读文件删除；dmg 和 Windows 安装器、Gatekeeper 和 SmartScreen 放行；mac 整体替换 `.app` 和 Windows `.old` 的自更新；合盖一晚后的汇总通知。
+
+**盒子和 CI 上验过的**：交叉编译和 `go vet`、Linux 窗口（WebKitGTK）、单元测试；GitHub Actions 上跑 Windows 和 macOS 的全量 `go test`（`ci.yml`）；`installer.yml` 在 PR 上构建 Windows 安装器并在 Windows runner 上装、升、卸，`release.yml` 打 tag 时跑同样的检查。桌面端截图的提交在 `desktop-shots` 系列里。
 
 ## 测试与陪练
 Bot 复刻会在自己的电脑上长期运行 XBot，像真实用户一样使用它，发现问题后整理成复现步骤交给编码代理修复，修复后再做回归测试。
