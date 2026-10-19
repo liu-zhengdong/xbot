@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -204,5 +205,42 @@ func TestInstallOnMacWithoutABundle(t *testing.T) {
 	got, err := os.ReadFile(exe)
 	if err != nil || string(got) != "new" {
 		t.Fatalf("binary = %q, %v", got, err)
+	}
+}
+
+// A newer release whose download fails leaves nothing to install, even though
+// a package was staged a moment ago: the failure must not offer a button that
+// cannot work.
+func TestFailedRedownloadDoesNotClaimAReadyUpdate(t *testing.T) {
+	usePlatform(t, "darwin", "arm64")
+	useVersion(t, "v0.1.0")
+	rel := newRelease(t)
+	rel.publish(t, "v0.2.0", "XBot-0.2.0-macos-arm64.zip", buildZip(t, "new"))
+	root := t.TempDir()
+
+	u := NewUpdater(root)
+	if err := u.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if u.Status().State != StateReady {
+		t.Fatalf("state = %q, want ready", u.Status().State)
+	}
+	// A newer release appears, but its package cannot be downloaded: the
+	// checksum entry points at bytes the server does not serve.
+	rel.publish(t, "v0.3.0", "XBot-0.3.0-macos-arm64.zip", buildZip(t, "newer"))
+	rel.assets["SHA256SUMS"] = []byte(strings.Repeat("0", 64) + "  XBot-0.3.0-macos-arm64.zip\n")
+	if err := u.Check(context.Background()); err == nil {
+		t.Fatal("the check accepted a package with a bad checksum")
+	}
+	st := u.Status()
+	if st.State == StateReady {
+		t.Fatalf("state = ready with nothing on disk (staged = %q)", st.Latest)
+	}
+	if Pending(root) != "" {
+		t.Fatalf("a package survived: %q", Pending(root))
+	}
+	// And the button's action tells the truth instead of failing later.
+	if err := u.Install(); err == nil {
+		t.Fatal("Install claimed to work with nothing staged")
 	}
 }

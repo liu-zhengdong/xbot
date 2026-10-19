@@ -209,14 +209,19 @@ func (u *Updater) begin(state string) bool {
 }
 
 // fail records why the last attempt failed. An update already downloaded
-// stays instalable: the page keeps its button, and the reason is only shown on
+// stays installable: the page keeps its button, and the reason is only shown on
 // the next check.
+//
+// Whether an update is still installable is decided by what is on disk, never
+// by the field alone: Stage clears the staged directory before its own
+// download starts, so a failed download leaves nothing behind while staged
+// still names the old path.
 func (u *Updater) fail(err error) {
 	u.mu.Lock()
-	if u.staged == "" {
-		u.state = StateError
-	} else {
+	if u.staged != "" && exists(u.staged) {
 		u.state = StateReady
+	} else {
+		u.state, u.staged = StateError, ""
 	}
 	u.err = err.Error()
 	u.mu.Unlock()

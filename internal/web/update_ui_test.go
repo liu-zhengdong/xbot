@@ -51,3 +51,20 @@ func TestUpdateButtonIsNotInTheThread(t *testing.T) {
 		t.Fatal("the update control is rendered inside the conversation")
 	}
 }
+
+// The restart poll compares versions the way /api/session reports them: no
+// leading v, nothing after "+". A tag with build metadata must not wait out
+// the whole minute.
+func TestRestartPollNormalizesVersions(t *testing.T) {
+	data, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(data)
+	if !strings.Contains(js, `want = shortVersion(want);`) {
+		t.Fatal("waitForRestart does not normalize the version it waits for")
+	}
+	if !strings.Contains(js, `split("+")[0]`) {
+		t.Fatal("shortVersion keeps the build metadata, which /api/session strips")
+	}
+}

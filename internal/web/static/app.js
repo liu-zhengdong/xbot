@@ -914,7 +914,7 @@
       await api("/api/update/install", { method: "POST" });
       // The process restarts and the page reconnects to the new version.
       label.textContent = "正在重启";
-      waitForRestart(updateState.latest.replace(/^v/, ""));
+      waitForRestart(updateState.latest);
     } catch (e) {
       updateBtn.classList.remove("busy");
       updateBtn.disabled = false;
@@ -924,10 +924,18 @@
     }
   });
 
+  // shortVersion is how the title bar shows a version: no leading v, nothing
+  // after "+". /api/session applies the same rule, so comparing the two needs
+  // it on both sides.
+  function shortVersion(v) {
+    return String(v || "").trim().replace(/^v/, "").split("+")[0];
+  }
+
   // waitForRestart reloads once the server reports the version we installed.
   // The old process keeps answering while it drains in-flight turns, so a 200
   // alone would reload the old page and give up waiting.
   function waitForRestart(want) {
+    want = shortVersion(want);
     const started = Date.now();
     const tick = async () => {
       try {
