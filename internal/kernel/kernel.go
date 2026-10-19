@@ -129,12 +129,8 @@ type Kernel struct {
 	// reminder. Zero uses the model spec's todo_steps, or 6.
 	TodoSteps int
 
-	todoMu     sync.Mutex
-	todoCached bool
-	todoOnV    bool
-	todoStepsV int
-	todoLoaded bool
-	todoMem    todoFile
+	// todo is this bot's task list and its reminder policy.
+	todo todoState
 
 	// shell jobs live for this kernel, which is the serve process. A new kernel
 	// loads the same directory and marks anything still running as lost.
