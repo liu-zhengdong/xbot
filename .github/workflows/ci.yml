@@ -30,16 +30,14 @@ jobs:
       - name: go test
         # Pull requests run -short (lighter property test, skips the 5 s unpair timeout); pushes to main run the full suite.
         run: go test -count=1 ${{ github.event_name == 'pull_request' && '-short' || '' }} ./...
-      - name: go test -race (kernel)
-        # The kernel holds 26 locks across a background fork, the exec forwarder
-        # and MCP emitters, with no documented lock order. A data race there
-        # shows up as a bot that stops answering, which is the hardest kind of
-        # bug to find after the fact. Only the kernel runs under the detector:
-        # it is where the locks are, and -race costs ~50-80 s here versus
-        # tripling the whole suite. internal/web has races in its own test
-        # closures (approval_newwindow_test.go) and internal/tools spawns real
-        # processes, so both would fail for reasons unrelated to this check.
-        run: go test -race -count=1 ${{ github.event_name == 'pull_request' && '-short' || '' }} ./internal/kernel/
+      - name: go test -race (kernel, web)
+        # A data race here shows up as a bot that stops answering, the hardest
+        # kind of bug to find after the fact. The kernel holds the locks; web
+        # drives them from HTTP handlers and SSE streams. -race costs ~60-80 s
+        # for these two packages, versus tripling the whole suite.
+        # internal/tools is left out: it spawns real processes and its job tests
+        # do not pass on every platform.
+        run: go test -race -count=1 ${{ github.event_name == 'pull_request' && '-short' || '' }} ./internal/kernel/ ./internal/web/
 
   build:
     name: build (${{ matrix.os }})

@@ -194,6 +194,11 @@ func TestBotStepsEndpoint(t *testing.T) {
 }
 
 func TestBotStatusP95Latency5Bots(t *testing.T) {
+	if raceEnabled {
+		// The race detector instruments every memory access, so a wall-clock
+		// target measured under it is not the production number.
+		t.Skip("wall-clock latency target is meaningless under -race")
+	}
 	s, tok, _ := statusFixture(t, 5)
 	mux := muxOf(s)
 	req, _ := http.NewRequest(http.MethodGet, "/api/bots/status", nil)

@@ -73,9 +73,8 @@ func (forkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 }
 
 func TestWebInterruptForksAndAnswersFast(t *testing.T) {
-	holdPoll = 20 * time.Millisecond
 	root := t.TempDir()
-	s := &Server{Root: root, Owner: "u1", ForkTurns: true}
+	s := &Server{Root: root, Owner: "u1", ForkTurns: true, PollInterval: 20 * time.Millisecond}
 	tok, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)

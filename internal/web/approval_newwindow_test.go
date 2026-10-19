@@ -133,13 +133,19 @@ func TestWebApprovalSurvivesStreamDisconnect(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var id string
+	// The card id arrives from the approve goroutine, so it crosses a channel
+	// rather than a shared variable the test would have to poll.
+	cardID := make(chan string, 1)
 	send := func(name string, payload any) {
 		if name != "approval" {
 			return
 		}
 		m, _ := payload.(map[string]any)
-		id, _ = m["id"].(string)
+		got, _ := m["id"].(string)
+		select {
+		case cardID <- got:
+		default:
+		}
 	}
 	approve := s.webApprove(b, nil, send)
 	type outcome struct {
@@ -151,8 +157,11 @@ func TestWebApprovalSurvivesStreamDisconnect(t *testing.T) {
 		allowed, err := approve(ctx, "shell", "mkdir a")
 		answered <- outcome{allowed, err}
 	}()
-	for id == "" {
-		time.Sleep(time.Millisecond)
+	var id string
+	select {
+	case id = <-cardID:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no approval card was raised")
 	}
 	// The stream that showed the card is gone; the owner still answers, and the
 	// decision must reach the wake that raised the card.
@@ -300,13 +309,19 @@ func TestWebApprovalForegroundToBackgroundKeepsCard(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var id string
+	// The card id arrives from the approve goroutine, so it crosses a channel
+	// rather than a shared variable the test would have to poll.
+	cardID := make(chan string, 1)
 	send := func(name string, payload any) {
 		if name != "approval" {
 			return
 		}
 		m, _ := payload.(map[string]any)
-		id, _ = m["id"].(string)
+		got, _ := m["id"].(string)
+		select {
+		case cardID <- got:
+		default:
+		}
 	}
 	approve := s.webApprove(b, nil, send)
 	type outcome struct {
@@ -318,8 +333,11 @@ func TestWebApprovalForegroundToBackgroundKeepsCard(t *testing.T) {
 		allowed, err := approve(ctx, "shell", "mkdir a")
 		answered <- outcome{allowed, err}
 	}()
-	for id == "" {
-		time.Sleep(time.Millisecond)
+	var id string
+	select {
+	case id = <-cardID:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no approval card was raised")
 	}
 	// Hand the turn to the background.
 	cancel()
@@ -364,13 +382,19 @@ func TestWebApprovalBackgroundHandoffExpires(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var id string
+	// The card id arrives from the approve goroutine, so it crosses a channel
+	// rather than a shared variable the test would have to poll.
+	cardID := make(chan string, 1)
 	send := func(name string, payload any) {
 		if name != "approval" {
 			return
 		}
 		m, _ := payload.(map[string]any)
-		id, _ = m["id"].(string)
+		got, _ := m["id"].(string)
+		select {
+		case cardID <- got:
+		default:
+		}
 	}
 	approve := s.webApprove(b, nil, send)
 	type outcome struct {
@@ -382,8 +406,11 @@ func TestWebApprovalBackgroundHandoffExpires(t *testing.T) {
 		allowed, err := approve(ctx, "shell", "mkdir a")
 		answered <- outcome{allowed, err}
 	}()
-	for id == "" {
-		time.Sleep(time.Millisecond)
+	var id string
+	select {
+	case id = <-cardID:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no approval card was raised")
 	}
 	// Hand the turn to the background and never answer.
 	cancel()

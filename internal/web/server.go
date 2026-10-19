@@ -67,6 +67,10 @@ type Server struct {
 	// ApprovalWait is how long an approval card waits. Zero uses 24 hours.
 	ApprovalWait time.Duration
 
+	// PollInterval is how often a held handle lock checks whether its
+	// backgrounds ended. Zero uses 200ms. Tests shorten it.
+	PollInterval time.Duration
+
 	mu        sync.Mutex
 	kernels   map[string]*kernel.Kernel
 	gate      map[string]*sync.Mutex
