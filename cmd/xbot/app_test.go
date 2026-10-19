@@ -189,3 +189,16 @@ func TestRunServeWaitsForTimerTicker(t *testing.T) {
 		t.Fatal("the routine ticker ran after serve returned")
 	}
 }
+
+// The desktop app updates itself too: runServe used to switch the automatic
+// check off for it, which left the windowed build with no way to learn about a
+// newer release at all.
+func TestDesktopAppKeepsAutoUpgrade(t *testing.T) {
+	src, err := os.ReadFile("cmd_serve.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(src), "cfg.AutoUpgrade = false") {
+		t.Fatal("runServe still turns the automatic check off for the desktop app")
+	}
+}

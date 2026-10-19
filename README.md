@@ -48,9 +48,9 @@ xbot upgrade --check
 
 ## 版本与升级
 
-`xbot version` 打印编译时注入的版本（默认 `dev`）。发布用 `scripts/release.sh vX.Y.Z`：工作区必须干净、`go test -count=1 ./...` 全绿，然后交叉编译三个平台、写 `SHA256SUMS`、打 tag、发 GitHub Release；`DRY_RUN=1` 只到编译为止。细节见 [docs/atlas/release.md](docs/atlas/release.md)。
+`xbot version` 打印编译时注入的版本（默认 `dev`）。发布就是推一个 `v*` tag：`.github/workflows/release.yml` 自己打包（macOS 的 dmg/zip、Windows 的 setup.exe、Linux 的 tar.gz）并发 Release。细节见 [docs/atlas/release.md](docs/atlas/release.md)。
 
-`xbot serve` 默认每 6 小时查一次 GitHub 最新 Release（启动约 3 分钟后第一次），校验 SHA256 后原地换二进制并优雅重起；`--no-auto-upgrade` 或 `XBOT_AUTO_UPGRADE=0` 关闭。`xbot upgrade [--check]` 手动检查/升级。开发时的 `dev` 构建不会自动升级，手动命令仍可强制。
+`xbot serve` 和桌面版都默认每 6 小时查一次发布列表（启动 30 秒后第一次）。有新版就在后台下载、校验 SHA256，网页顶栏出现「更新」，点一下装好并重启；下载期间不打扰。macOS 换的是整个 `XBot.app`，Windows 交给它自己的安装包。`--no-auto-upgrade` 或 `XBOT_AUTO_UPGRADE=0` 关闭自动检查，`xbot upgrade [--check]` 在命令行手动检查/升级。开发时的 `dev` 构建不会自动升级，手动命令仍可强制。
 
 ## 配置
 

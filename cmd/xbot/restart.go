@@ -8,52 +8,13 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-	"xbot/internal/config"
 
-	"xbot/internal/upgrade"
-	"xbot/internal/version"
+	"xbot/internal/config"
 	"xbot/internal/web"
 )
 
 // drainCap bounds how long a graceful restart waits for in-flight turns.
 const drainCap = 2 * time.Minute
-
-// upgradeFirstDelay lets the service settle before its first release check.
-const upgradeFirstDelay = 3 * time.Minute
-
-// upgradeEvery is the periodic release check interval.
-const upgradeEvery = 6 * time.Hour
-
-// autoUpgradeLoop checks for a newer release now and then. When one applies it
-// asks restart to re-exec the process; it never returns after that.
-func autoUpgradeLoop(ctx context.Context, restart func(string)) {
-	timer := time.NewTimer(upgradeFirstDelay)
-	defer timer.Stop()
-	ticker := time.NewTicker(upgradeEvery)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		case <-ticker.C:
-		}
-		info, err := upgrade.Check(ctx, version.Version)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "xbot: upgrade check:", err)
-			continue
-		}
-		if !info.Available {
-			continue
-		}
-		if _, err := upgrade.Apply(ctx, info); err != nil {
-			fmt.Fprintln(os.Stderr, "xbot: upgrade apply:", err)
-			continue
-		}
-		restart("applied " + info.Latest)
-		return
-	}
-}
 
 // reexecService stops new turns, waits for the running foreground ones, closes
 // the listener, then replaces the process image with itself. cleanup closes any

@@ -29,6 +29,7 @@ import (
 	"xbot/internal/peer"
 	"xbot/internal/provider"
 	"xbot/internal/remote"
+	"xbot/internal/upgrade"
 	"xbot/internal/version"
 )
 
@@ -53,6 +54,10 @@ type Server struct {
 	// AppTheme applies the page's theme to the desktop window's native buttons.
 	// Nil accepts the theme and changes nothing; the app sets it before serving.
 	AppTheme func(theme string) error
+
+	// Updater answers the page's update panel and installs a downloaded
+	// version on the owner's click. Nil leaves the panel out.
+	Updater *upgrade.Updater
 
 	owner       string
 	token       string
@@ -142,6 +147,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	s.registerStatusAPI(mux)
 	s.registerContextAPI(mux)
+	s.registerUpdateAPI(mux)
 	mux.HandleFunc("POST /api/bots", s.createBot)
 	mux.HandleFunc("POST /api/bots/import", s.importTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/fork", s.forkBot)
