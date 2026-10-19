@@ -16,6 +16,8 @@ func TestUpdateButtonContract(t *testing.T) {
 		},
 		"app.css": {
 			`.update-btn[hidden]{display:none}`,
+			// Narrow phones: the version does not fit beside the title.
+			`@media (max-width:480px){.update-btn .update-label{display:none}`,
 			`@media (prefers-reduced-motion:reduce){.update-btn.busy svg{animation:none}}`,
 			`transition:background-color 120ms ease`,
 		},

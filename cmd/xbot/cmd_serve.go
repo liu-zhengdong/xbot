@@ -541,7 +541,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		// has let go of the data root.
 		// argv[0] is this binary, which the helper already puts first.
 		updater.Relaunch = func() {
-			if err := appshell.Relaunch(exe, argv[1:]); err != nil {
+			if err := appshell.Relaunch(exe, argv[1:], config.HeldEnv(env)); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot: relaunch:", err)
 			}
 		}

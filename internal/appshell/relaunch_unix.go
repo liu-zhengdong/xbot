@@ -21,12 +21,16 @@ import (
 // app.lock and exits with "xbot app is already running". The launch waits for
 // this pid to disappear first, in a session of its own so ending this process
 // does not take it with it.
-func Relaunch(exe string, args []string) error {
+func Relaunch(exe string, args, env []string) error {
 	if exe == "" {
 		return errors.New("appshell: no executable to relaunch")
 	}
 	cmd := exec.Command("/bin/sh", "-c", waitThenLaunch(os.Getpid(), exe, args))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// env carries what the running process holds rather than what it started
+	// with: provider keys are taken out of the environment at startup
+	// (config.HoldKeys), so a child given os.Environ() has none of them.
+	cmd.Env = env
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
 		return err

@@ -3,6 +3,7 @@
 package appshell
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -49,5 +50,18 @@ func TestRelaunchArgsExcludeTheProgramName(t *testing.T) {
 	}
 	if strings.Count(script, "MacOS/XBot") != 1 {
 		t.Fatalf("the binary appears more than once: %s", script)
+	}
+}
+
+// The relaunched process must get the environment the running one holds:
+// provider keys were taken out of the startup environment, so a child given
+// os.Environ() cannot reach a model and the window comes back without auth.
+func TestRelaunchCarriesTheHeldEnvironment(t *testing.T) {
+	src, err := os.ReadFile("relaunch_unix.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "cmd.Env = env") {
+		t.Fatal("the relaunch does not set the child's environment")
 	}
 }
