@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/]
-verified: 2026-10-17 @ 060672d
+verified: 2026-10-20 @ PENDING
 ---
 # 后台工作与子代理
 
@@ -12,6 +12,9 @@ verified: 2026-10-17 @ 060672d
 负责：子代理与执行者（`xbot runner`）。不负责：长编码任务（见 [生态](ecosystem.md) 的编码代理 Link）、插话分叉（见 [插话时分叉](fork.md)）。
 
 ## 怎么运转
+- **前台只派活**（[ADR 0016](../adr/0016-foreground-dispatches-typed-subagents.md)，`Kernel.Dispatch`，`serve` 和 `chat` 打开，Bot 要有 agents link）：前台用 `dispatch(type, task)` 把活交给一种预制子代理，自己不动手。前台看不到只用来干活的工具（`spawn`、`http_request`、`code_*` 的启动和控制、desktop/browser 的操作、`write_skill`）；`write_file`/`edit_file` 只能改记忆文件夹，`shell` 只放行纯读命令（`review.ShellIsReadOnly`），别的回「交给子代理」，判断在 `reviewedTool` 里（`foreground.go`）。规则里多一条 `DispatchRule`。到了前台上限（工作角色给的次数或秒数）提醒一次「把剩下的派出去」，之后只剩 `dispatch` 和子代理控制，再走 2 步还没收尾就停（`foreground_limit`）。
+- **子代理类型**（`internal/agenttype`）：一个类型是工具白名单、提示片段、墙钟预算和交回格式。内置 `research`（20 分钟；读文件、只读 shell、搜索、读网页、看图，不能写）、`dev`（2 小时；读写文件、shell、搜索、看图）、`general`（45 分钟；全部）。`bots/<name>/agents/types/<name>.md` 覆盖同名内置或新增一种（头部 `when`、`tools`、`budget`、`report`，正文是提示片段），解析不了的文件跳过。子代理的系统提示是子代理规则、类型提示、交回格式和发起这一轮那个人的记忆快照；任务说明是第一条消息；工具集里永远没有 `dispatch`。墙钟预算按类型，步数只有防呆上限 1000，最多 3 个同时跑，交回上限 4 KiB，`meta.json` 记 `type`。子代理的请求和前台一样过两条线（`fitProvider`），被省略的结果提示「再读一次或再跑一次」。确认在网页上变成卡片（`BackgroundApprove`），没有时按 `AllowBackground`。
+- 真实 DeepSeek（2026-10-20，`chat`）：「写 fib.go 和测试并跑通」，前台一步派给 dev 并转述任务；子代理建 go.mod、写两份文件、跑 `go test` 通过；结果回来后前台转告。中途问时间，前台用只读 `date` 直接答。
 - 快的事主线自己做；耗时长的任务交给子代理，主线保持随时能响应。
 - 子代理有两种起步方式：空白上下文加任务说明，或者 fork 主线当前的上下文。
 - 主线可以随时对运行中的子代理**补充**（不丢已完成的工作）、**排队**、**打断**、**取消**。子代理会把进度、卡住、完成等事件发回主线的收件箱。
