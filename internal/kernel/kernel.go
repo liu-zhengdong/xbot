@@ -518,19 +518,15 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 			}
 		}
 		// An absorbed message is answered by this very turn, so its pictures
-		// travel with it now. The names go on the message too: the line this
-		// turn records is where a later turn finds them again.
+		// travel with it now. The names ride along for the transcript line: the
+		// note naming them is added when the line is assembled, not here, so the
+		// stored text stays the owner's words and is not noted twice.
 		msg := provider.Message{
 			Role:    provider.RoleUser,
 			Content: content,
 			ReplyTo: ev.ReplyTo,
 		}
-		if note := k.pastedNote(ev.Images); note != "" {
-			if strings.TrimSpace(msg.Content) == "" {
-				msg.Content = note
-			} else {
-				msg.Content += "\n\n" + note
-			}
+		if len(ev.Images) > 0 {
 			msg.ImageNames = ev.Images
 			msg.Images, _ = k.pastedImages(ev.Images)
 		}

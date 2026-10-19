@@ -75,6 +75,9 @@
     // Pictures pasted or dropped into the composer, waiting for send. Each
     // entry is {id, uploading, url}; id is empty until the upload lands.
     attach: [],
+    // Bumped whenever the list is abandoned, so an upload still in flight can
+    // tell that the list it was filling is gone.
+    attachBatch: 0,
     placeholder: "写一条消息",
     modelCatalog: null,
     push: null,
@@ -5799,6 +5802,8 @@
   function clearAttach() {
     for (const row of attachState()) if (row.url) URL.revokeObjectURL(row.url);
     state.attach = [];
+    // Anything still uploading belongs to the run that just ended.
+    state.attachBatch = (state.attachBatch || 0) + 1;
     attachNote("");
     paintAttach();
   }
@@ -5816,12 +5821,15 @@
       attachNote("图片先发到一个 Bot 的对话里，群组还不支持。");
       return;
     }
-    // One batch belongs to the conversation it was started in. The owner may
-    // switch bots while the first upload is still in flight, and the rest of
-    // the batch must not land on the new bot or linger in a list nobody sees.
+    // One batch belongs to the conversation it was started in, and to the run
+    // of that conversation. The owner may switch bots while the first upload is
+    // still in flight, and switching away and back must not let the rest of the
+    // batch land in a list that was cleared in between, so a batch number is
+    // taken here and the list is abandoned the moment it changes.
     const owner = state.sel;
+    const batch = state.attachBatch;
     for (const file of files) {
-      if (attachKey(state.sel) !== attachKey(owner)) return;
+      if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) return;
       const rows = attachState();
       if (rows.length >= ATTACH_MAX) {
         attachNote("一次最多 " + ATTACH_MAX + " 张图。");
@@ -5857,12 +5865,12 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "这图片没传上来");
         if (!data.image) throw new Error("这图片没传上来");
-        if (attachKey(state.sel) !== attachKey(owner)) { removeAttach(row); return; }
+        if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) { removeAttach(row); return; }
         row.id = data.image;
         row.uploading = false;
       } catch (e) {
         removeAttach(row);
-        if (attachKey(state.sel) === attachKey(owner)) attachNote(visibleError(e, "这图片没传上来"));
+        if (state.attachBatch === batch && attachKey(state.sel) === attachKey(owner)) attachNote(visibleError(e, "这图片没传上来"));
         continue;
       }
       paintAttach();

@@ -83,39 +83,55 @@ func ValidPastedID(id string) bool {
 // must be a name PastedName made; anything else reports os.ErrNotExist so a
 // caller cannot tell a bad name from a missing file.
 //
-// The file must also really live in the paste directory: a name of the right
-// shape says nothing about what it points at, and following a symlink placed
-// there would hand out a file from anywhere on the machine. Both the file and
-// its directory are resolved before the check, so a linked directory fails too.
+// A name of the right shape says nothing about what it points at. The paste
+// directory must be a real directory in this bot's own workspace, and the file
+// must be a regular file: a link at either step could read a file out of, or
+// write one into, a directory this bot does not own.
 func PastedPath(botDir, id string) (string, error) {
 	if botDir == "" || !ValidPastedID(id) {
 		return "", os.ErrNotExist
 	}
-	dir := PastedDirFor(botDir)
-	realDir, err := filepath.EvalSymlinks(dir)
+	dir, err := realPastedDir(botDir)
 	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, id)
+	st, err := os.Lstat(path)
+	if err != nil || !st.Mode().IsRegular() {
 		return "", os.ErrNotExist
 	}
-	realPath, err := filepath.EvalSymlinks(filepath.Join(dir, id))
-	if err != nil {
-		return "", os.ErrNotExist
-	}
-	rel, err := filepath.Rel(realDir, realPath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || strings.ContainsRune(rel, filepath.Separator) {
-		return "", os.ErrNotExist
-	}
-	return realPath, nil
+	return path, nil
 }
 
-// EnsurePastedDir creates the paste directory and refuses one that is a
-// symlink. A bot's own shell can write its workspace, so the directory a
-// picture is stored in must be a real directory: otherwise a stored file lands
-// wherever the link points.
+// realPastedDir is the paste directory of a bot workspace, checked to be a real
+// directory. The workspace is resolved first, so a workspace reached through a
+// link still finds its own paste directory.
+func realPastedDir(botDir string) (string, error) {
+	realBot, err := filepath.EvalSymlinks(botDir)
+	if err != nil {
+		return "", os.ErrNotExist
+	}
+	dir := filepath.Join(realBot, PastedDir)
+	st, err := os.Lstat(dir)
+	if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+		return "", os.ErrNotExist
+	}
+	return dir, nil
+}
+
+// EnsurePastedDir creates the paste directory and refuses one that is a link.
+// A bot's own shell can write its workspace, so the directory a picture is
+// stored in must be a real directory: a link there would send the file wherever
+// it points.
 func EnsurePastedDir(botDir string) (string, error) {
 	if botDir == "" {
 		return "", os.ErrNotExist
 	}
-	dir := PastedDirFor(botDir)
+	realBot, err := filepath.EvalSymlinks(botDir)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(realBot, PastedDir)
 	if st, err := os.Lstat(dir); err == nil {
 		if st.Mode()&os.ModeSymlink != 0 || !st.IsDir() {
 			return "", os.ErrPermission

@@ -29,6 +29,13 @@ type turn struct {
 	useMu         sync.Mutex
 	useCompletion int
 
+	// pasteMu guards the pictures this turn has already put in a request.
+	// Absorbed messages are added mid-turn, and the per-turn cap counts what the
+	// whole turn carries, not what one message brought.
+	pasteMu    sync.Mutex
+	pasteSeen  int
+	pasteBytes int
+
 	// projects is the project instruction sets this turn's context carries.
 	// A background branch keeps it: its context is this turn's.
 	projects projectSigs

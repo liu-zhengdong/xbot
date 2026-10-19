@@ -69,9 +69,6 @@ func (k *Kernel) attachEventImages(msgs []provider.Message, names []string) ([]p
 	if len(names) == 0 || len(msgs) == 0 {
 		return msgs, 0
 	}
-	if _, sees := k.vision(); !sees {
-		return msgs, 0
-	}
 	at := -1
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == provider.RoleUser {
@@ -111,26 +108,38 @@ func (k *Kernel) readPasted(name string) (string, []byte, error) {
 	return mime, data, nil
 }
 
-// pastedImages loads the named pictures for one request, within the per-turn
-// count and size caps. It returns the pictures and the names it actually read,
-// so a caller can store only what was sent. A name that no longer resolves is
-// skipped: the line keeps it, and the note tells the model the path.
+// pastedImages loads the named pictures for one request, within the count and
+// size caps of the whole turn. It returns the pictures and the names it read, so
+// a caller stores only what was sent. A name that no longer resolves is skipped:
+// the line keeps it, and the note tells the model the path.
+//
+// The caps are the turn's, not the message's: a second absorbed message must not
+// start a fresh four pictures beside the ones already in the request.
 func (k *Kernel) pastedImages(names []string) ([]provider.Image, []string) {
+	if _, sees := k.vision(); !sees {
+		return nil, nil
+	}
+	t := k.curTurn()
+	if t == nil {
+		return nil, nil
+	}
+	t.pasteMu.Lock()
+	defer t.pasteMu.Unlock()
 	var imgs []provider.Image
 	var used []string
-	total := 0
 	for _, name := range names {
-		if len(imgs) >= pastedImagesTurn {
+		if t.pasteSeen >= pastedImagesTurn || t.pasteBytes >= maxPastedBytesTurn {
 			break
 		}
 		mime, data, err := k.readPasted(name)
 		if err != nil {
 			continue
 		}
-		if total+len(data) > maxPastedBytesTurn {
-			break
+		if t.pasteBytes+len(data) > maxPastedBytesTurn {
+			continue
 		}
-		total += len(data)
+		t.pasteSeen++
+		t.pasteBytes += len(data)
 		imgs = append(imgs, provider.Image{MIME: mime, Data: data})
 		used = append(used, name)
 	}

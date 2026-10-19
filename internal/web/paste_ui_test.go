@@ -46,10 +46,17 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 	if !strings.Contains(js, `const ATTACH_MAX = 4;`) || !strings.Contains(js, `一次最多 " + ATTACH_MAX + " 张图。`) {
 		t.Error("the composer must explain the four-picture limit before uploading")
 	}
-	// The batch stays with the conversation it started in, so switching bots
-	// mid-upload cannot land a picture on the new one.
-	if !strings.Contains(js, `if (attachKey(state.sel) !== attachKey(owner)) return;`) {
-		t.Error("an upload batch is not pinned to the conversation it started in")
+	// The batch stays with the conversation it started in, and with the run of
+	// that conversation: switching away and back must not let the rest of a
+	// batch land in a list that was cleared in between.
+	for _, want := range []string{
+		`const batch = state.attachBatch;`,
+		`if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) return;`,
+		`state.attachBatch = (state.attachBatch || 0) + 1;`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("an upload batch can outlive its conversation: %s", want)
+		}
 	}
 	// Sending carries the ids and works with no text at all.
 	for _, want := range []string{
