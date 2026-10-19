@@ -891,6 +891,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		shared bool
 		ok     bool
 		lock   *fsutil.FileLock
+		waited *inbox.Inbox
 	)
 	if s.ForkTurns {
 		shared, ok, err = s.acquireHandle(b)
@@ -911,8 +912,21 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
-		return
+		if s.ForkTurns {
+			writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
+			return
+		}
+		// The owner's word comes first (ADR 0016). The message is in the inbox,
+		// so the running turn reads it at its next step boundary. This request
+		// stays open: once the lock is free it reports that turn's answer, or
+		// answers the message itself when the turn ended before reading it.
+		startStream(w)
+		if lock = s.waitHandle(r.Context(), b); lock == nil {
+			// The page went away or serve is restarting: the message stays in
+			// the inbox and serve answers it.
+			return
+		}
+		waited = box
 	}
 	k, gate, err := s.kernel(b)
 	if s.ForkTurns {
@@ -921,10 +935,14 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		defer lock.Release()
 	}
 	if err != nil {
+		if waited != nil {
+			sendEvent(w, "error", map[string]string{"error": err.Error()})
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	var box *inbox.Inbox
+	box := waited
 	if shared && len(k.Backgrounds()) >= k.ForkCapValue() && k.QueueFull() {
 		writeErr(w, http.StatusTooManyRequests, fmt.Sprintf("队列已满（%d 个），没有建任务", kernel.QueueCap))
 		return
@@ -941,20 +959,8 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-	fl, _ := w.(http.Flusher)
-	flush := func() {
-		if fl != nil {
-			fl.Flush()
-		}
-	}
-	send := func(event string, v any) {
-		raw, _ := json.Marshal(v)
-		_, _ = w.Write([]byte("event: " + event + "\ndata: " + string(raw) + "\n\n"))
-		flush()
-	}
+	startStream(w)
+	send := func(event string, v any) { sendEvent(w, event, v) }
 	gate.Lock()
 	defer gate.Unlock()
 	k.Bot = b
@@ -1026,6 +1032,56 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		reply = ""
 	}
 	send("done", doneBody{Text: reply, ReplyTo: k.ReplySeq()})
+}
+
+// startStream sends the event-stream headers now, so the page knows the
+// message was taken before any answer exists. A second call does nothing.
+func startStream(w http.ResponseWriter) {
+	if w.Header().Get("Content-Type") == "text/event-stream" {
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	if fl, ok := w.(http.Flusher); ok {
+		fl.Flush()
+	}
+}
+
+func sendEvent(w http.ResponseWriter, event string, v any) {
+	raw, _ := json.Marshal(v)
+	_, _ = w.Write([]byte("event: " + event + "\ndata: " + string(raw) + "\n\n"))
+	if fl, ok := w.(http.Flusher); ok {
+		fl.Flush()
+	}
+}
+
+// waitHandle waits for the bot's handle lock. It returns nil when ctx ends or
+// the server starts draining for a restart.
+func (s *Server) waitHandle(ctx context.Context, b *bot.Bot) *fsutil.FileLock {
+	tick := time.NewTicker(s.holdPoll())
+	defer tick.Stop()
+	for {
+		lock, ok, err := b.TryLockHandle()
+		if err != nil {
+			return nil
+		}
+		if ok {
+			return lock
+		}
+		s.drainMu.Lock()
+		draining := s.draining
+		s.drainMu.Unlock()
+		if draining {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+		}
+	}
 }
 
 type doneBody struct {

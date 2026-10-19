@@ -125,8 +125,10 @@ func TestWebAndTerminalShareTranscript(t *testing.T) {
 	}
 }
 
-func TestWebQueuesWhileTerminalHoldsLock(t *testing.T) {
-	root, client, ui, _ := m5Stack(t)
+// While the terminal holds the lock, a web message waits in the inbox with
+// its request open, and is answered on that request once the lock is free.
+func TestWebWaitsWhileTerminalHoldsLock(t *testing.T) {
+	root, _, ui, _ := m5Stack(t)
 	ada := mustM5Bot(t, root, "ada", "You are Ada.")
 	lock, ok, err := ada.TryLockHandle()
 	if err != nil || !ok {
@@ -135,10 +137,31 @@ func TestWebQueuesWhileTerminalHoldsLock(t *testing.T) {
 	srv := httptest.NewServer(webMux(ui))
 	defer srv.Close()
 	webc := loginWeb(t, srv, mustToken(t, ui))
-	res := doJSON(t, webc, http.MethodPost, srv.URL+"/api/bots/ada/messages", `{"text":"HELLO_WEB"}`, "")
-	body := readBody(t, res)
-	if res.StatusCode != http.StatusAccepted || !strings.Contains(body, "queued") {
-		t.Fatalf("queue %d %s", res.StatusCode, body)
+	type result struct {
+		code int
+		body string
+	}
+	done := make(chan result, 1)
+	go func() {
+		res := doJSON(t, webc, http.MethodPost, srv.URL+"/api/bots/ada/messages", `{"text":"HELLO_WEB"}`, "")
+		done <- result{res.StatusCode, readBody(t, res)}
+	}()
+	box, err := inbox.Open(ada.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := box.Reload(); err != nil {
+			t.Fatal(err)
+		}
+		if len(box.Pending()) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("web message never reached the inbox")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	entries, err := ada.Entries()
 	if err != nil {
@@ -150,18 +173,23 @@ func TestWebQueuesWhileTerminalHoldsLock(t *testing.T) {
 	if err := lock.Release(); err != nil {
 		t.Fatal(err)
 	}
-	k, err := m5Kernel(ada, client)
-	if err != nil {
-		t.Fatal(err)
+	var res result
+	select {
+	case res = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("web request never answered after the lock was freed")
 	}
-	if err := proc.Drain(context.Background(), k); err != nil {
-		t.Fatal(err)
+	if res.code != 200 || !strings.Contains(res.body, "web hello") {
+		t.Fatalf("stream %d %s", res.code, res.body)
 	}
 	if n := strings.Count(joinedEntries(t, ada), "HELLO_WEB"); n != 1 {
 		t.Fatalf("HELLO_WEB count %d\n%s", n, joinedEntries(t, ada))
 	}
-	if !strings.Contains(joinedEntries(t, ada), "web hello") {
-		t.Fatal(joinedEntries(t, ada))
+	if err := box.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(box.Pending()); n != 0 {
+		t.Fatalf("%d events left in the inbox", n)
 	}
 }
 

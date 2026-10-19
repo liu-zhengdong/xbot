@@ -151,7 +151,7 @@
 
 `links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`，并带 `deadline`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<主人填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
 
-锁被别人占着时不跑模型，只把事件放进 inbox，202 `{"status":"queued"}`。
+锁被别人占着时（另一轮在跑），事件先放进 inbox，响应立刻以 200 开始事件流，不再回 202。正在跑的那一轮在下一步之间读到这条消息，一并回答；锁一空出来，这次请求发 `done`，`text` 是那一轮的回答。那一轮已经在写最后的回答、没读到这条时，这次请求拿到锁后自己回答它，照常流出 `delta`。页面断开或 serve 正在重启时，消息留在 inbox，由 serve 回答。只有 `Server.ForkTurns` 打开时，锁被别的进程占着才仍回 202 `{"status":"queued"}`。
 
 ## Bot 状态
 
