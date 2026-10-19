@@ -1,5 +1,42 @@
 // Package kernel wakes a bot for one event. It knows the inbox's events and the
 // granted tools. It does not know which link produced the event.
+//
+// # Lock order
+//
+// A Kernel lives for the whole serve process and is shared by the foreground
+// turn, background branches, the exec forwarder and MCP emitters. Most of its
+// locks guard one domain and are never held together. Only two functions hold
+// two locks at once, and both take them in the same direction:
+//
+//	bgMu -> turn.mu          Queue, cancelQueued (bgturn.go)
+//
+// No function anywhere in this package takes turn.mu and then bgMu. Keep it
+// that way: a background finishing while the owner sends a message is the
+// normal case, so the reverse order would deadlock a live bot rather than a
+// test.
+//
+// Every other lock is taken and released inside one function before the next
+// is taken; they are listed here in the order the outer work runs, so a new
+// caller can see where it belongs:
+//
+//	turnMu      the foreground turn pointer (Kernel.turn)
+//	bgMu        the background map (Kernel.bgs, finished)
+//	turn.mu     one turn's own state (branch, steps, tools, todo flags)
+//	forkMu      the fork decision against absorbing the inbox
+//	memWriteMu  a memory write against its own before/after read
+//	memOwnMu    this bot's own memory line changes
+//	todo.mu     the task list
+//	files.mu    read state for the freshness check
+//	shellMu     the background shell job set
+//	secretMu    staged secrets for one turn
+//	linksMu     mounted links and their grants
+//	loadMu      which links are loaded
+//	compactMu   the auto-compaction job
+//	denyMu      tool calls the owner refused this turn
+//
+// The *Once fields (startOnce, recoverOnce, execOnce, shellOnce) never nest:
+// each body runs once and may take other locks freely, because nothing holds a
+// lock across the call that starts them.
 package kernel
 
 import (
