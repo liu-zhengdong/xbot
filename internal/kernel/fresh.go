@@ -413,11 +413,17 @@ func (k *Kernel) noteShellWrites(ctx context.Context, start, end time.Time) []st
 			continue
 		}
 		mt := st.ModTime()
-		if mt.Equal(it.rec.mtime) && st.Size() == it.rec.size {
-			continue
-		}
 		if !inCallWindow(mt, start, end) {
-			continue
+			// The stamp is outside the call, so this command did not write the
+			// file. A clock that lags the filesystem can put a write it did make
+			// just outside the window; that case is caught below, because the
+			// bytes are still compared when the stamp moved at all.
+			if mt.Equal(it.rec.mtime) && st.Size() == it.rec.size {
+				continue
+			}
+			if mt.Before(start) {
+				continue
+			}
 		}
 		snap, err := snapshotFile(it.path)
 		if err != nil {

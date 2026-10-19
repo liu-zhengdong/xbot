@@ -35,7 +35,9 @@ func TestShellOmitsProviderKeysUnlessOptIn(t *testing.T) {
 	t.Setenv("XBOT_KEEP_ME", "kept-value")
 	sh := NewShell()
 	sh.KeyEnv = []string{"DEEPSEEK_API_KEY"}
-	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY DEEPSEEK_API_KEY XBOT_KEEP_ME || true"}`))
+	// BSD printenv prints only the first named variable, so filter env instead.
+	const show = `env | grep -E '^(XBOT_API_KEY|DEEPSEEK_API_KEY|XBOT_KEEP_ME)=' || true`
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"`+show+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +48,7 @@ func TestShellOmitsProviderKeysUnlessOptIn(t *testing.T) {
 	if err != nil || need || !strings.Contains(summary, "with provider keys") {
 		t.Fatalf("need=%v summary=%q err=%v", need, summary, err)
 	}
-	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY DEEPSEEK_API_KEY","keys":true}`))
+	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"`+show+`","keys":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,14 +149,8 @@ func TestWriteEditResolvedPath(t *testing.T) {
 }
 
 func TestShellTimeoutKillsGroup(t *testing.T) {
-	if _, err := exec.LookPath("pgrep"); err != nil {
-		t.Skip("pgrep not installed")
-	}
 	marker := "xbottest-" + strings.ReplaceAll(t.Name(), "/", "-")
-	bin := filepath.Join(t.TempDir(), marker)
-	if err := exec.Command("cp", "/bin/sleep", bin).Run(); err != nil {
-		t.Fatal(err)
-	}
+	bin := privateSleep(t, marker)
 	raw, err := json.Marshal(map[string]string{"command": bin + " 30"})
 	if err != nil {
 		t.Fatal(err)

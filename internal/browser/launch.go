@@ -170,10 +170,9 @@ func startBrowser(bin string, args []string) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-// readCmdline reads a process's command line; tests replace it.
-var readCmdline = func(pid int) ([]byte, error) {
-	return os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-}
+// readCmdline reads a process's command line as NUL-separated arguments;
+// tests replace it. Each platform supplies processCmdline.
+var readCmdline = processCmdline
 
 // chromeOwned reports whether pid's command line contains this profile directory.
 func chromeOwned(pid int, profile string) bool {
