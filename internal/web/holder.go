@@ -13,8 +13,9 @@ import (
 	"xbot/internal/provider"
 )
 
-// holdPoll is how often a held handle lock checks whether its backgrounds ended.
-var holdPoll = 200 * time.Millisecond
+// defaultHoldPoll is how often a held handle lock checks whether its
+// backgrounds ended. A Server may override it through holdPoll.
+const defaultHoldPoll = 200 * time.Millisecond
 
 // handleHold is this process's claim on one bot's handle lock. With fork turns on,
 // the lock stays held while any request is running or any background turn is alive,
@@ -70,9 +71,19 @@ func (s *Server) releaseHandle(b *bot.Bot, k *kernel.Kernel) {
 	go s.releaseWhenIdle(b.Name(), h, k)
 }
 
+// holdPoll is the interval this server polls at. It is a method rather than a
+// package variable so a test's interval cannot race a leftover background from
+// another test.
+func (s *Server) holdPoll() time.Duration {
+	if s != nil && s.PollInterval > 0 {
+		return s.PollInterval
+	}
+	return defaultHoldPoll
+}
+
 func (s *Server) releaseWhenIdle(name string, h *handleHold, k *kernel.Kernel) {
 	for {
-		time.Sleep(holdPoll)
+		time.Sleep(s.holdPoll())
 		s.mu.Lock()
 		if h.users > 0 {
 			// A new request took the claim; it releases when it is done.

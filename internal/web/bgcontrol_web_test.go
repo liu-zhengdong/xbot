@@ -17,9 +17,8 @@ import (
 // forkedRig starts a long turn and interrupts it, so one background is running.
 func forkedRig(t *testing.T) (*Server, *bot.Bot, func() *kernel.Kernel, *slowTool, string, func(string) []byte, func(string, string) httpResult, func()) {
 	t.Helper()
-	holdPoll = 20 * time.Millisecond
 	root := t.TempDir()
-	s := &Server{Root: root, Owner: "u1", ForkTurns: true}
+	s := &Server{Root: root, Owner: "u1", ForkTurns: true, PollInterval: 20 * time.Millisecond}
 	tok, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
