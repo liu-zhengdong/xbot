@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-19 @ 1456c52
+verified: 2026-10-19 @ 1f7a3ef
 ---
 # 上下文与 transcript
 
