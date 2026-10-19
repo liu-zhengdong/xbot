@@ -203,3 +203,72 @@ func TestAbsorbedPicturesRespectVisionAndTheTurnCap(t *testing.T) {
 		})
 	}
 }
+
+// TestPastedPictureSurvivesSummaryAndExpand covers where the name has to
+// travel besides the assembled context: a range that gets summarized, and an
+// expand of a raw line. Both read the transcript, which stores the words only,
+// so a line about a picture would otherwise lose which file it meant.
+func TestPastedPictureSurvivesSummaryAndExpand(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	dir, _, err := work.Open(b.Root, b.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := work.PastedName("image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{
+		Time:    time.Unix(10, 0).UTC(),
+		Origin:  bot.OriginOwner,
+		Message: provider.Message{Role: provider.RoleUser, Content: "看这个"},
+		Images:  []string{id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The manual compact path keeps the newest messages raw, so the transcript
+	// needs enough of them for range 1-2 to be summarizable at all.
+	for i := 0; i < 10; i++ {
+		if err := b.Append(bot.Entry{
+			Time:    time.Unix(int64(20+i), 0).UTC(),
+			Message: provider.Message{Role: provider.RoleAssistant, Content: "看到啦"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := &recordingCompactor{}
+	k := &Kernel{Bot: b, Provider: &scripted{}, Memory: memory.NopStore{}, Compactor: p, WorkDir: dir}
+
+	got, err := k.Expand(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "paste/"+id) {
+		t.Fatalf("expand lost the picture name:\n%s", got)
+	}
+
+	if _, err := k.CompactRange(context.Background(), 1, 2, ""); err != nil {
+		t.Fatal(err)
+	}
+	if p.got == "" || !strings.Contains(p.got, "paste/"+id) {
+		t.Fatalf("the summary input lost the picture name:\n%s", p.got)
+	}
+}
+
+// recordingCompactor records the text it was asked to summarize.
+type recordingCompactor struct {
+	got string
+}
+
+func (c *recordingCompactor) Compact(_ context.Context, prior string, turns []provider.Message) (string, error) {
+	var b strings.Builder
+	for _, m := range turns {
+		b.WriteString(m.Content)
+		b.WriteByte('\n')
+	}
+	c.got = b.String()
+	return "summary " + prior, nil
+}

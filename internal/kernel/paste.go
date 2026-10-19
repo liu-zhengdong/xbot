@@ -142,6 +142,15 @@ func (k *Kernel) pastedImages(names []string) ([]provider.Image, []string) {
 	return imgs, used
 }
 
+// withPastedNote puts the note naming a line's pictures into the text a model
+// or a summary reads. One function so the assembled context, a summary of an
+// old range, and expand all name the pictures the same way: a picture's file
+// outlives the message, and a summary that dropped the name would leave the
+// model with a line about a picture it can no longer find.
+func (k *Kernel) withPastedNote(content string, names []string) string {
+	return joinNote(content, k.pastedNote(names))
+}
+
 // joinNote puts a note after content with the blank line the model expects
 // between two blocks, or alone when there is no text.
 func joinNote(content, note string) string {

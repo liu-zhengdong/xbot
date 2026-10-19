@@ -622,15 +622,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		}
 		// A pasted picture is named here, on the line that carried it. Only the
 		// turn answering that line gets the bytes; see attachEventImages.
-		if e.Message.Role == provider.RoleUser {
-			if note := k.pastedNote(e.Images); note != "" {
-				if strings.TrimSpace(e.Message.Content) == "" {
-					e.Message.Content = note
-				} else {
-					e.Message.Content += "\n\n" + note
-				}
-			}
-		}
+		e.Message.Content = k.withPastedNote(e.Message.Content, e.Images)
 		raw = append(raw, e)
 		seqs = append(seqs, ln.Seq)
 	}

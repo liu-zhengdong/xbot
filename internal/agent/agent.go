@@ -190,6 +190,15 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 				return produced, err
 			}
 			for _, m := range extra {
+				// A message absorbed mid-turn can carry pictures of its own. They
+				// go through the same per-turn allowance a tool's pictures do, so
+				// the request never grows past it; what does not fit is dropped
+				// with the note a tool's extra pictures get.
+				if len(m.Images) > 0 {
+					kept, note := images.take(m.Images)
+					m.Images = kept
+					m.Content = noteAbsorbedPictures(m.Content, note)
+				}
 				convo = append(convo, m)
 				produced = append(produced, m)
 				if opt.OnMessage != nil {
@@ -520,4 +529,16 @@ func finish(opt Options, name, out string) string {
 		opt.OnResult(name, out)
 	}
 	return out
+}
+
+// noteAbsorbedPictures adds the cap note to a message whose pictures did not
+// all fit, in the same words a tool result gets.
+func noteAbsorbedPictures(content, note string) string {
+	if note == "" {
+		return content
+	}
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		return content + "\n" + note
+	}
+	return content + note
 }

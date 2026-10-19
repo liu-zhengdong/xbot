@@ -663,7 +663,13 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 		if e.IsForkMark() {
 			continue
 		}
-		turns = append(turns, e.Message)
+		msg := e.Message
+		// A summary of an old range must say which pictures those lines carried;
+		// otherwise the range is summarized into words about a picture nobody can
+		// find any more.
+
+		msg.Content = k.withPastedNote(msg.Content, e.Images)
+		turns = append(turns, msg)
 	}
 	if f, ok := k.Compactor.(focusedCompactor); ok {
 		return f.CompactFocus(ctx, prior.String(), focus, turns)
