@@ -91,6 +91,17 @@ func TestApplyProfileRoleAndBudgets(t *testing.T) {
 	if err := b.ApplyProfile(ProfileUpdate{BackgroundMaxTime: intptr(24*3600 + 1)}); err == nil {
 		t.Fatal("background_max_time past a day accepted")
 	}
+	// Negative turns the budget off. The CLI multiplies minutes by 60, so -1 on
+	// the command line arrives as -60: any negative value means "no limit".
+	if err := b.ApplyProfile(ProfileUpdate{BackgroundMaxTime: intptr(-60)}); err != nil {
+		t.Fatalf("a negative background_max_time was rejected: %v", err)
+	}
+	if got := b.Config().BackgroundMaxTime; got != -1 {
+		t.Fatalf("stored background_max_time %d, want the off marker -1", got)
+	}
+	if w := b.Config().Working().BackgroundMaxTime; !(w < 0) {
+		t.Fatalf("a negative budget did not reach the working defaults: %s", w)
+	}
 	if got := b.Config(); got.Role != RoleDev || got.ForegroundMaxTools != 6 {
 		t.Fatalf("a rejected update changed the config: %+v", got)
 	}

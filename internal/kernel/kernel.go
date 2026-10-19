@@ -290,6 +290,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			Time:    ev.Time,
 			EventID: ev.ID,
 			ReplyTo: ev.ReplyTo,
+			Origin:  bot.OriginOwner,
 			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
 		}
 		if err := k.Bot.Append(entry); err != nil {
@@ -551,14 +552,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			// A control that arrived after the last step starts another run, so a
 			// background works through its queue before it ends. Nothing else
 			// continues it: a background stops when the model stops, when the breaker
-			// trips, or when its wall-clock budget is spent (the Guard). Controls are
-			// only read once another run is certain, so a refused run leaves them
-			// pending and finishBackground reports them as unread.
+			// trips, or when its wall-clock budget is spent. Controls are read only
+			// once another run is certain: a run the budget refuses leaves them
+			// pending, and finishBackground reports them as unread.
 			t.mu.Lock()
 			bg = t.branch != ""
 			var pend []provider.Message
 			if err == nil && bg && len(t.pendingCtrlLocked()) > 0 {
-				pend = t.takeCtrlLocked()
+				if spent, over := k.backgroundBudgetSpent(t); over {
+					t.stopReason = spent
+				} else {
+					pend = t.takeCtrlLocked()
+				}
 			}
 			finishing := len(pend) == 0
 			if finishing {

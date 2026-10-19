@@ -119,7 +119,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 			coding.UseRunner(runner.URL, runner.Token)
 		}
 		coding.UseTranscript(func(text string) error {
-			return b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: text}})
+			return b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: text}})
 		})
 		if cmd := code.ResolveCommand(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
 			coding.UseCommand(cmd)

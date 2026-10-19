@@ -26,6 +26,30 @@
 
 之后双击就能直接打开。
 
+### 命令行版
+XBot.app 里那个程序本身就是命令行版：带子命令就是命令行，不带就开窗口。装好之后直接用完整路径：
+
+```sh
+/Applications/XBot.app/Contents/MacOS/XBot version
+/Applications/XBot.app/Contents/MacOS/XBot list
+/Applications/XBot.app/Contents/MacOS/XBot serve
+```
+
+不想每次敲全路径，就在 `~/.local/bin` 里建一个链接：
+
+```sh
+mkdir -p ~/.local/bin
+ln -sf /Applications/XBot.app/Contents/MacOS/XBot ~/.local/bin/xbot
+```
+
+然后确认 `echo $PATH` 输出里有 `~/.local/bin`（显示成 `/Users/你的名字/.local/bin`）。没有的话把这一行加进 `~/.zshrc`，再开一个新终端：
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+之后 `xbot version`、`xbot list`、`xbot serve` 都能用。桌面版和命令行版共用同一个数据目录 `~/.xbot`，不要同时开着两个。
+
 ## 第一次启动：填模型密钥
 第一次打开 XBot 会先让你粘贴模型的 API key（默认 DeepSeek），点「测试并保存」后进入。密钥存在本机数据目录（`~/.xbot/env`，Windows 是 `%USERPROFILE%\.xbot\env`），只有你的账户能读，不会写进系统或用户环境变量。以前手写的 `env` 文件照常可用，有密钥时不会再问。
 

@@ -409,7 +409,7 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 		if k.Bot != nil {
 			b := k.Bot
 			l.UseTranscript(func(text string) error {
-				return b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: text}})
+				return b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: text}})
 			})
 		}
 		if cmd := code.ResolveCommand(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {

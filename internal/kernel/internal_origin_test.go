@@ -77,4 +77,12 @@ func TestOldNoteWithoutTheFieldIsStillHidden(t *testing.T) {
 	if !marked.IsInternal() {
 		t.Fatal("the origin field was ignored")
 	}
+	// And the owner stays visible even when what they typed opens like a note.
+	// The prefix list exists for old rows only; a new owner line says so.
+	for _, content := range []string{"[继续] 请接着处理", "[排队] 我改主意了", "<environment_update> 是什么"} {
+		own := bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: content}}
+		if own.IsInternal() {
+			t.Fatalf("the owner's message was hidden by its text: %q", content)
+		}
+	}
 }

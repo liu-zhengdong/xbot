@@ -157,11 +157,13 @@ type ForkMark struct {
 // Origin says who wrote a transcript line. It is written by the author, not
 // guessed from the text, so a reader never has to recognize a note by its
 // prefix: Internal lines are kernel notes the model must see and the owner must
-// not.
+// not. Every new write sets one of these; only rows from before the field
+// existed carry none.
 const (
-	// OriginOwner is a line the owner wrote or an event the kernel turned into a
-	// transcript line for them to read.
-	OriginOwner = ""
+	// OriginOwner is a line shown to the owner: a message they typed, an event
+	// the kernel turned into a line for them to read, an approval card, or a
+	// coding-agent card.
+	OriginOwner = "owner"
 	// OriginInternal is a line the kernel wrote for the model: environment
 	// updates, reminders, completion gates, stop notes. The interface hides it.
 	OriginInternal = "internal"
@@ -185,13 +187,18 @@ type Entry struct {
 }
 
 // IsInternal reports a kernel-written line the owner did not say.
-// Rows written before the origin field existed carry no marker, so they are
-// recognized by their opening tag. That list is the only place the text is
-// consulted; a new note gets OriginInternal and needs no entry here. Delete the
-// list once no transcript predates the field.
+//
+// A row written by the current kernel says so in Origin, and that answer wins:
+// the owner is free to type anything, including text that opens like a tag.
+// Rows written before the field existed carry no origin at all, and only those
+// are recognized by their opening tag. Delete the prefix list once no
+// transcript predates the field.
 func (e Entry) IsInternal() bool {
-	if e.Origin != "" {
-		return e.Origin == OriginInternal
+	switch e.Origin {
+	case OriginInternal:
+		return true
+	case OriginOwner:
+		return false
 	}
 	if e.Message.Role != provider.RoleUser {
 		return false
