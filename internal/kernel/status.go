@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"xbot/internal/bot"
@@ -97,10 +98,64 @@ func oneStatusLine(s string) string {
 
 // tailMessage returns the last assistant or user message preview and its time,
 // reading only the transcript tail. It never asks the model.
+//
+// The status endpoint is polled, and reading the tail takes the transcript
+// lock and checks the index for every bot on every poll. The raw line is
+// cached against the transcript's stamp, which moves on every append from any
+// process, so an unchanged transcript costs two stats. The redaction runs on
+// every call, not into the cache, so a secret added to the vault later is
+// still masked.
 func tailMessage(b *bot.Bot) (string, time.Time) {
 	if b == nil {
 		return "", time.Time{}
 	}
+	key := bot.Dir(b.Root, b.Name())
+	stamp, ok := b.TranscriptStamp()
+	if ok {
+		tails.mu.Lock()
+		c, hit := tails.m[key]
+		tails.mu.Unlock()
+		if hit && c.stamp == stamp {
+			return tailPreview(c.content), c.at
+		}
+	}
+	content, at := readTail(b)
+	if ok {
+		tails.mu.Lock()
+		if tails.m == nil || len(tails.m) >= tailCacheMax {
+			tails.m = map[string]tailEntry{}
+		}
+		tails.m[key] = tailEntry{stamp: stamp, content: content, at: at}
+		tails.mu.Unlock()
+	}
+	return tailPreview(content), at
+}
+
+// tailCacheMax bounds the cache; past it the map starts over. A machine has a
+// handful of bots, so this only matters for a process that sees many.
+const tailCacheMax = 256
+
+type tailEntry struct {
+	stamp   string
+	content string
+	at      time.Time
+}
+
+var tails struct {
+	mu sync.Mutex
+	m  map[string]tailEntry
+}
+
+func tailPreview(content string) string {
+	if content == "" {
+		return ""
+	}
+	return clipStatusPreview(bot.RedactText(content), statusPreview)
+}
+
+// readTail finds the last assistant or user line in the transcript tail and
+// returns it on one line, before redaction.
+func readTail(b *bot.Bot) (string, time.Time) {
 	n, err := b.Count()
 	if err != nil || n == 0 {
 		return "", time.Time{}
@@ -138,7 +193,7 @@ func tailMessage(b *bot.Bot) (string, time.Time) {
 		if _, ok := bot.ParseApprovalCard(content); ok {
 			continue
 		}
-		return clipStatusPreview(bot.RedactText(content), statusPreview), e.Time
+		return content, e.Time
 	}
 	return "", time.Time{}
 }

@@ -123,6 +123,32 @@ func (s *segStore) with(fn func() error) error {
 
 func (s *segStore) transcriptDir() string { return filepath.Join(s.dir, "transcript") }
 
+// TranscriptStamp is a cheap fingerprint of the transcript's tail: the newest
+// segment's name, size and mtime. Segments are append-only, so every append,
+// from this process or another, grows the newest one, and a roll gives it a new
+// name. It takes no lock and opens no index, which is the point: a caller that
+// polls can skip reading the tail when the stamp has not moved. ok is false
+// when the transcript is not in segment form yet; read it instead.
+func (b *Bot) TranscriptStamp() (string, bool) {
+	s := b.store()
+	if _, err := os.Stat(s.readyPath()); err != nil {
+		return "", false
+	}
+	segs, err := s.segments()
+	if err != nil {
+		return "", false
+	}
+	if len(segs) == 0 {
+		return "empty", true
+	}
+	last := segs[len(segs)-1]
+	fi, err := os.Stat(last.path)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s:%d:%d", filepath.Base(last.path), fi.Size(), fi.ModTime().UnixNano()), true
+}
+
 func (s *segStore) readyPath() string { return filepath.Join(s.transcriptDir(), "READY") }
 
 func (s *segStore) legacyPath() string { return filepath.Join(s.dir, "transcript.jsonl") }
