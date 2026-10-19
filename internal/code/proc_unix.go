@@ -1,3 +1,5 @@
+//go:build unix
+
 package code
 
 import (
@@ -5,6 +7,10 @@ import (
 	"syscall"
 )
 
+// codeProcAttr puts the coding agent in its own process group, so a cancel
+// kills the shell and everything it started. Killing only the shell leaves a
+// child such as sleep holding the output pipe open, and the card stays
+// running until that child exits on its own.
 func codeProcAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Setpgid: true}
 }

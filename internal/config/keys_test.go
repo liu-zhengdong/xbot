@@ -3,11 +3,17 @@ package config
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestHoldKeysLeavesProcessEnviron(t *testing.T) {
+	// The check reads the process environment back from /proc, which only
+	// Linux has.
+	if runtime.GOOS != "linux" {
+		t.Skip("reads /proc/self/environ, which only Linux has")
+	}
 	if os.Getenv("XBOT_HOLD_CHILD") == "1" {
 		HoldKeys([]string{"XBOT_API_KEY", "DEEPSEEK_API_KEY"})
 		if os.Getenv("XBOT_API_KEY") != "" || os.Getenv("DEEPSEEK_API_KEY") != "" {

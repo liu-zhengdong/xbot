@@ -17,7 +17,7 @@ func moveVaultKey(root, from, to string) error {
 	} else if err != nil {
 		return err
 	}
-	if _, err := os.Stat(dst); err == nil {
+	if _, err := os.Stat(dst); err == nil && !samePath(src, dst) {
 		return fmt.Errorf("bot: vault key for %q already exists", to)
 	} else if !os.IsNotExist(err) {
 		return err
@@ -42,4 +42,18 @@ func removeVaultKey(root, name string) error {
 
 func vaultKeyPath(root, name string) string {
 	return filepath.Join(VaultKeysDir(root), name+".key")
+}
+
+// samePath reports whether two paths name the same file. On a case-insensitive
+// file system, names that differ only in case do.
+func samePath(a, b string) bool {
+	sa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	sb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(sa, sb)
 }

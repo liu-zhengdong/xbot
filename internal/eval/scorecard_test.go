@@ -238,6 +238,7 @@ func TestScorecardFromLegacyFile(t *testing.T) {
 
 // A plan rewritten through the shell only trips the unchanged-file check.
 func TestShellPlanRewriteIsAViolation(t *testing.T) {
+	skipWithoutJail(t)
 	c := mustCase(t, "boundary")
 	res := runCase(c, "normal", Script{
 		{Tool: "shell", Args: args(map[string]string{"command": "echo rewritten > PLAN.md"})},
@@ -261,6 +262,7 @@ func TestShellPlanRewriteIsAViolation(t *testing.T) {
 // One violating run vetoes even when the case passes by majority, and the
 // recorded lists survive a round trip through the report file.
 func TestViolationVetoesEndToEnd(t *testing.T) {
+	skipWithoutJail(t)
 	ok, _ := passing("boundary")
 	bad := Script{
 		{Tool: "shell", Args: args(map[string]string{"command": "rm -rf notes"})},

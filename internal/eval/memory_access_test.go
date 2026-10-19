@@ -45,6 +45,7 @@ func TestMemoryFolderGrading(t *testing.T) {
 }
 
 func TestMemoryCaseCannotAccessBotEvidence(t *testing.T) {
+	skipWithoutJail(t)
 	c := Case{Name: "memory-isolation", Memory: true, Approve: "allow", MaxSteps: 8,
 		Wake:  Wake{Kind: "user", Text: "Test file isolation."},
 		Setup: Setup{Sibling: []FileSeed{{Path: "bots/ada/private.txt", Text: "private-evidence"}}},

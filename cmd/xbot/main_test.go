@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -59,6 +60,10 @@ func TestEvalScorecardCommand(t *testing.T) {
 }
 
 func TestEvalFakeCertifies(t *testing.T) {
+	// eval runs each case in a sandbox built from Linux namespaces and chroot.
+	if runtime.GOOS != "linux" {
+		t.Skip("the eval sandbox only exists on Linux")
+	}
 	root := t.TempDir()
 	if err := config.Add(root, config.Provider{Name: "fake", BaseURL: "http://127.0.0.1:9/v1", APIKeyEnv: "XBOT_FAKE_UNUSED"}, config.ModelSpec{Name: "scripted", Context: 1024}); err != nil {
 		t.Fatal(err)

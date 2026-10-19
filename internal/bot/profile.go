@@ -646,12 +646,15 @@ func Rename(root, from, to string) error {
 		if _, err := Load(root, from); err != nil {
 			return err
 		}
-		if _, err := Load(root, to); err == nil {
+		fromDir, toDir := Dir(root, from), Dir(root, to)
+		// On a case-insensitive file system (macOS, Windows) a rename that only
+		// changes case finds the bot itself under the new name. That is not a
+		// collision; os.Rename changes the case in place.
+		if _, err := Load(root, to); err == nil && !samePath(fromDir, toDir) {
 			return fmt.Errorf("bot %q: %w", to, ErrExists)
-		} else if !errors.Is(err, ErrNotFound) {
+		} else if err != nil && !errors.Is(err, ErrNotFound) {
 			return err
 		}
-		fromDir, toDir := Dir(root, from), Dir(root, to)
 		closeStoreDir(fromDir)
 		// Move the vault key before the directory so a failure leaves the bot
 		// and its key under the same name. A missing key is fine.

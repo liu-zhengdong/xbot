@@ -168,7 +168,14 @@ func TestNameCasePreserved(t *testing.T) {
 	if err != nil || renamed.Name() != "XBot" {
 		t.Fatalf("%v %v", renamed, err)
 	}
-	if _, err := Load(root, "xBoT"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("old case still resolves: %v", err)
+	// On a case-sensitive file system the old case is gone. On a
+	// case-insensitive one (macOS, Windows) it opens the same directory, and
+	// must then be the renamed bot, not a second one under the old name.
+	if old, err := Load(root, "xBoT"); err == nil {
+		if !samePath(Dir(root, "xBoT"), Dir(root, "XBot")) || old.Name() != "XBot" {
+			t.Fatalf("old case resolves to %q", old.Name())
+		}
+	} else if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("old case: %v", err)
 	}
 }
