@@ -266,3 +266,96 @@ func pngBytes(t *testing.T, w, h int) []byte {
 func storedPastePath(root, name, id string) string {
 	return filepath.Join(work.BotDir(root, name), work.PastedDir, id)
 }
+
+// TestPasteRefusesLinksAndOversize is the regression for three holes the first
+// cut had: a symlink in the paste directory was followed (so any file on the
+// machine could be served or shown to the model), an oversized picture was
+// accepted because the downscale was thrown away, and pictures that fit one by
+// one but not together were accepted and then silently trimmed.
+func TestPasteRefusesLinksAndOversize(t *testing.T) {
+	root, ui, cookie, _ := pasteTestServer(t, true)
+	defer ui.Close()
+
+	// A picture over the edge cap is refused instead of stored.
+	wide := pngBytes(t, 2100, 8)
+	req, _ := http.NewRequest(http.MethodPost, ui.URL+"/api/bots/ada/paste", bytes.NewReader(wide))
+	req.AddCookie(cookie)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest || !bytes.Contains(raw, []byte("2100")) {
+		t.Fatalf("oversize picture: %d %s", res.StatusCode, raw)
+	}
+
+	// A symlink with a valid name is not a stored picture.
+	dir, err := work.EnsurePastedDir(work.BotDir(root, "ada"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(t.TempDir(), "secret.png")
+	if err := os.WriteFile(secret, pngBytes(t, 4, 4), 0600); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("ab", 16) + ".png"
+	if err := os.Symlink(secret, filepath.Join(dir, id)); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := getStatus(t, ui.URL+"/api/bots/ada/paste/"+id, cookie); code != http.StatusNotFound {
+		t.Errorf("GET on a symlinked name: %d, want 404", code)
+	}
+	res2 := postJSON(t, ui.URL+"/api/bots/ada/messages", cookie, fmt.Sprintf(`{"images":[%q]}`, id))
+	if res2.StatusCode != http.StatusBadRequest {
+		t.Errorf("message naming a symlink: %d, want 400", res2.StatusCode)
+	}
+
+	// Two pictures that fit alone but not together are refused at the message.
+	big := pngBytesNoise(t, 1400, 1400)
+	if len(big) <= 5<<20 {
+		t.Fatalf("test picture is only %d bytes; it needs to exceed half the total cap", len(big))
+	}
+	a := uploadPaste(t, ui.URL, cookie, big)
+	b := uploadPaste(t, ui.URL, cookie, big)
+	body := fmt.Sprintf(`{"images":[%q,%q]}`, a, b)
+	res3 := postJSON(t, ui.URL+"/api/bots/ada/messages", cookie, body)
+	if res3.StatusCode != http.StatusBadRequest || !bytes.Contains(res3.Body, []byte("加起来")) {
+		t.Fatalf("two pictures over the total cap: %d %s", res3.StatusCode, res3.Body)
+	}
+}
+
+func getStatus(t *testing.T, url string, cookie *http.Cookie) (int, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	return res.StatusCode, raw
+}
+
+// pngBytesNoise makes a PNG that compresses poorly, so a test can build a
+// picture too big to send beside another one.
+func pngBytesNoise(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	seed := uint32(1)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			seed = seed*1664525 + 1013904223
+			img.Set(x, y, color.RGBA{R: uint8(seed >> 24), G: uint8(seed >> 16), B: uint8(seed >> 8), A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}

@@ -5418,13 +5418,15 @@
       live?.remove();
       if (!marker.isConnected) pending.querySelector(".bubble-col")?.append(marker);
       marker.className = "send-state send-failed";
-      if (!input.value.trim() && !images.length) {
+      // A picture cannot go back into the textarea, but its words can: the
+      // send cleared the input, so the text is restored whether or not a
+      // picture came with it, and the row says what the picture needs.
+      const pictureNote = images.length ? "；图片要重新贴一次" : "";
+      if (!input.value.trim() && text) {
         input.value = text;
-        marker.replaceChildren(el("span", "", accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里"));
-        announceSend("没发出去，原文还在输入框里");
-      } else if (images.length) {
-        // A picture cannot be put back into the textarea: the object URL was
-        // dropped with the send. Say what the owner has to do instead.
+        marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
+        announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
+      } else if (!text && images.length) {
         marker.replaceChildren(el("span", "", accepted ? "没送到；图片要重新贴一次" : "没发出去；图片要重新贴一次"));
         announceSend("没发出去，图片要重新贴一次");
       } else {
@@ -5436,8 +5438,8 @@
           syncComposer();
           input.focus();
         });
-        marker.replaceChildren(el("span", "", accepted ? "没送到" : "没发出去"), back);
-        announceSend("没发出去，可以放回输入框");
+        marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
+        announceSend("没发出去，可以放回输入框" + (images.length ? "，图片要重新贴一次" : ""));
       }
       syncComposer();
     } finally {
@@ -5814,8 +5816,13 @@
       attachNote("图片先发到一个 Bot 的对话里，群组还不支持。");
       return;
     }
-    const rows = attachState();
+    // One batch belongs to the conversation it was started in. The owner may
+    // switch bots while the first upload is still in flight, and the rest of
+    // the batch must not land on the new bot or linger in a list nobody sees.
+    const owner = state.sel;
     for (const file of files) {
+      if (attachKey(state.sel) !== attachKey(owner)) return;
+      const rows = attachState();
       if (rows.length >= ATTACH_MAX) {
         attachNote("一次最多 " + ATTACH_MAX + " 张图。");
         return;
@@ -5829,13 +5836,19 @@
         attachNote("图片超过 10 MB。");
         continue;
       }
+      // The server caps the pictures of one message together as well, so a
+      // batch that would be refused is stopped here, before any upload.
+      const total = rows.reduce((n, r) => n + (r.bytes || 0), 0) + file.size;
+      if (total > 10 * 1024 * 1024) {
+        attachNote("这几张图加起来超过 10 MB，去掉几张再发。");
+        return;
+      }
       attachNote("");
-      const row = { seq: ++attachSeq, id: "", uploading: true, url: URL.createObjectURL(file) };
+      const row = { seq: ++attachSeq, id: "", bytes: file.size, uploading: true, url: URL.createObjectURL(file) };
       rows.push(row);
       paintAttach();
-      const selection = state.sel;
       try {
-        const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/paste", {
+        const res = await apiFetch("/api/bots/" + encodeURIComponent(owner.id) + "/paste", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": file.type || "application/octet-stream" },
@@ -5843,13 +5856,13 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "这图片没传上来");
-        if (attachKey(state.sel) !== attachKey(selection)) { removeAttach(row); continue; }
-        row.id = data.image || "";
+        if (!data.image) throw new Error("这图片没传上来");
+        if (attachKey(state.sel) !== attachKey(owner)) { removeAttach(row); return; }
+        row.id = data.image;
         row.uploading = false;
-        if (!row.id) throw new Error("这图片没传上来");
       } catch (e) {
         removeAttach(row);
-        attachNote(visibleError(e, "这图片没传上来"));
+        if (attachKey(state.sel) === attachKey(owner)) attachNote(visibleError(e, "这图片没传上来"));
         continue;
       }
       paintAttach();
@@ -6321,9 +6334,18 @@
   // Dragging a file anywhere over the chat would otherwise make the browser
   // open it and leave XBot.
   const dropZone = thread.closest("main") || document;
+  // During dragenter and dragover the browser hides the dragged files: only
+  // the item types are readable. Accepting the drag must happen here anyway,
+  // or the browser navigates to the dropped file instead of firing drop.
+  const carriesImage = (data) => {
+    if (!data) return false;
+    const items = [...(data.items || [])];
+    if (items.length) return items.some((it) => it.kind === "file" && /^image\//i.test(it.type));
+    return [...(data.files || [])].some((f) => /^image\//i.test(f.type));
+  };
   for (const type of ["dragenter", "dragover"]) {
     dropZone.addEventListener(type, (ev) => {
-      if (!ev.dataTransfer || !imagesFrom(ev.dataTransfer).length) return;
+      if (!carriesImage(ev.dataTransfer)) return;
       ev.preventDefault();
       composer.classList.add("dropping");
     });

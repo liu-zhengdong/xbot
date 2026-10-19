@@ -31,7 +31,8 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 		`const files = imagesFrom(ev.clipboardData);`,
 		`dropZone.addEventListener("drop", (ev) => {`,
 		`uploadAttach(files);`,
-		`/api/bots/" + encodeURIComponent(selection.id) + "/paste"`,
+		`const owner = state.sel;`,
+		`"/api/bots/" + encodeURIComponent(owner.id) + "/paste"`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("paste or drop is not wired to an upload: %s", want)
@@ -44,6 +45,11 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 	// The server refuses more than four, so the composer says so first.
 	if !strings.Contains(js, `const ATTACH_MAX = 4;`) || !strings.Contains(js, `一次最多 " + ATTACH_MAX + " 张图。`) {
 		t.Error("the composer must explain the four-picture limit before uploading")
+	}
+	// The batch stays with the conversation it started in, so switching bots
+	// mid-upload cannot land a picture on the new one.
+	if !strings.Contains(js, `if (attachKey(state.sel) !== attachKey(owner)) return;`) {
+		t.Error("an upload batch is not pinned to the conversation it started in")
 	}
 	// Sending carries the ids and works with no text at all.
 	for _, want := range []string{
@@ -58,6 +64,27 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 	// The transcript paints the picture from the server, so a reload keeps it.
 	if !strings.Contains(js, `const pasted = pastedURLs(state.sel, m.images);`) {
 		t.Error("a reloaded transcript does not render pasted pictures")
+	}
+	// A failed send with a picture still restores the words, and says the
+	// picture has to be pasted again.
+	for _, want := range []string{
+		`const pictureNote = images.length ? "；图片要重新贴一次" : "";`,
+		`if (!input.value.trim() && text) {`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("a failed send with a picture loses the words: %s", want)
+		}
+	}
+	// Dragging is accepted during dragenter/dragover, when only the item types
+	// are readable; reading files there returns nothing.
+	for _, want := range []string{
+		`const carriesImage = (data) => {`,
+		`return items.some((it) => it.kind === "file" && /^image\//i.test(it.type));`,
+		`if (!carriesImage(ev.dataTransfer)) return;`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("a dragged file cannot be dropped: %s", want)
+		}
 	}
 	// Switching bot drops pictures uploaded to the old one.
 	if !strings.Contains(js, `clearAttach();`+"\n"+`    state.streaming = 0;`) {

@@ -517,11 +517,24 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 				content = q + "\n\n" + raw
 			}
 		}
-		out = append(out, provider.Message{
+		// An absorbed message is answered by this very turn, so its pictures
+		// travel with it now. The names go on the message too: the line this
+		// turn records is where a later turn finds them again.
+		msg := provider.Message{
 			Role:    provider.RoleUser,
 			Content: content,
 			ReplyTo: ev.ReplyTo,
-		})
+		}
+		if note := k.pastedNote(ev.Images); note != "" {
+			if strings.TrimSpace(msg.Content) == "" {
+				msg.Content = note
+			} else {
+				msg.Content += "\n\n" + note
+			}
+			msg.ImageNames = ev.Images
+			msg.Images, _ = k.pastedImages(ev.Images)
+		}
+		out = append(out, msg)
 		if err := k.Inbox.Ack(ev.ID); err != nil {
 			return nil, err
 		}

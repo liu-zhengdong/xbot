@@ -82,22 +82,7 @@ func (k *Kernel) attachEventImages(msgs []provider.Message, names []string) ([]p
 	if at < 0 {
 		return msgs, 0
 	}
-	var imgs []provider.Image
-	total := 0
-	for _, name := range names {
-		if len(imgs) >= pastedImagesTurn {
-			break
-		}
-		mime, data, err := k.readPasted(name)
-		if err != nil {
-			continue
-		}
-		if total+len(data) > maxPastedBytesTurn {
-			break
-		}
-		total += len(data)
-		imgs = append(imgs, provider.Image{MIME: mime, Data: data})
-	}
+	imgs, _ := k.pastedImages(names)
 	if len(imgs) == 0 {
 		return msgs, 0
 	}
@@ -124,4 +109,30 @@ func (k *Kernel) readPasted(name string) (string, []byte, error) {
 		return "", nil, os.ErrNotExist
 	}
 	return mime, data, nil
+}
+
+// pastedImages loads the named pictures for one request, within the per-turn
+// count and size caps. It returns the pictures and the names it actually read,
+// so a caller can store only what was sent. A name that no longer resolves is
+// skipped: the line keeps it, and the note tells the model the path.
+func (k *Kernel) pastedImages(names []string) ([]provider.Image, []string) {
+	var imgs []provider.Image
+	var used []string
+	total := 0
+	for _, name := range names {
+		if len(imgs) >= pastedImagesTurn {
+			break
+		}
+		mime, data, err := k.readPasted(name)
+		if err != nil {
+			continue
+		}
+		if total+len(data) > maxPastedBytesTurn {
+			break
+		}
+		total += len(data)
+		imgs = append(imgs, provider.Image{MIME: mime, Data: data})
+		used = append(used, name)
+	}
+	return imgs, used
 }

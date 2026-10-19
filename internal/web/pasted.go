@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"xbot/internal/bot"
@@ -28,6 +29,9 @@ const (
 	// maxPastedPerMessage caps pictures on one message, matching the model's
 	// four images per turn.
 	maxPastedPerMessage = work.PastedMaxPerMessage
+	// maxPastedTotalBytes caps what they weigh together, so the turn never has
+	// to drop a picture the message asked for.
+	maxPastedTotalBytes = work.PastedMaxTotalBytes
 )
 
 // postPaste stores one pasted image and returns its name.
@@ -59,10 +63,16 @@ func (s *Server) postPaste(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "只认 PNG、JPEG、GIF、WebP")
 		return
 	}
-	// The pixel cap is the model's, not the browser's. Check it here, so a
-	// picture the model would refuse never reaches the transcript.
-	if _, _, err := tools.FitForModel(mime, data); err != nil {
-		writeErr(w, http.StatusBadRequest, pastedProblem(err))
+	// The pixel cap is the model's, not the browser's. A stored picture is what
+	// every later view_image reads back, and view_image only downscales the run
+	// that opens it, so an oversized original is refused here instead of being
+	// kept. Small enough is stored byte for byte.
+	if iw, ih, fits := tools.FitsModel(mime, data); !fits {
+		if iw == 0 && ih == 0 {
+			writeErr(w, http.StatusBadRequest, "这张图读不出尺寸，换一张")
+		} else {
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("这张图 %d×%d，长边超过 %d 像素，先缩小再贴", iw, ih, tools.MaxImageEdge))
+		}
 		return
 	}
 	id, err := work.PastedName(mime)
@@ -70,12 +80,12 @@ func (s *Server) postPaste(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	path, err := work.PastedPath(work.BotDir(s.Root, b.Name()), id)
+	dir, err := work.EnsurePastedDir(work.BotDir(s.Root, b.Name()))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := fsutil.WriteAtomic(path, data, 0600); err != nil {
+	if err := fsutil.WriteAtomic(filepath.Join(dir, id), data, 0600); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -142,6 +152,7 @@ func (s *Server) checkPasted(b *bot.Bot, ids []string) ([]string, error) {
 	dir := work.BotDir(s.Root, b.Name())
 	out := make([]string, 0, len(ids))
 	seen := map[string]bool{}
+	total := 0
 	for _, id := range ids {
 		path, err := work.PastedPath(dir, id)
 		if err != nil {
@@ -151,8 +162,13 @@ func (s *Server) checkPasted(b *bot.Bot, ids []string) ([]string, error) {
 			continue
 		}
 		seen[id] = true
-		if _, err := os.Stat(path); err != nil {
+		st, err := os.Stat(path)
+		if err != nil || !st.Mode().IsRegular() {
 			return nil, errPastedMissing
+		}
+		total += int(st.Size())
+		if total > maxPastedTotalBytes {
+			return nil, errPastedTooBig
 		}
 		out = append(out, id)
 	}
@@ -162,3 +178,7 @@ func (s *Server) checkPasted(b *bot.Bot, ids []string) ([]string, error) {
 // errPastedMissing is one refusal for a name that is not a stored picture.
 // It says the same thing whether the name was malformed or the file is gone.
 var errPastedMissing = errors.New("图片已失效，重新贴一次")
+
+// errPastedTooBig is one refusal for pictures that fit one by one but not
+// together, the case where sending them would silently drop some.
+var errPastedTooBig = errors.New("这几张图加起来超过 10 MB，去掉几张再发")

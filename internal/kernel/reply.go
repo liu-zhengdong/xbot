@@ -49,7 +49,11 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 			t.answered = true
 		}
 	}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin})
+	// A user line answered inside a running turn carries its pictures with it;
+	// the names are recorded on the line so a later turn can find them.
+	images := m.ImageNames
+	m.ImageNames = nil
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
 	if err != nil {
 		return 0, err
 	}
