@@ -103,12 +103,12 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 			t.Errorf("a refused picture explains nothing: %s", want)
 		}
 	}
-	// A result for a batch that is already gone must not wipe a refusal the
-	// owner is reading in the conversation they are in now.
+	// A result for a row that is no longer on screen must not touch anything:
+	// the owner may have removed the picture, switched bots, or sent the batch.
 	for _, want := range []string{
-		`removeAttach(row, true); return;`,
-		`const stale = state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner);`,
-		`removeAttach(row, stale);`,
+		`const stillWanted = () =>`,
+		`state.attachBatch === batch && attachKey(state.sel) === attachKey(owner) && attachState().indexOf(row) >= 0;`,
+		`if (stillWanted()) {`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("a stale upload result can clear the current conversation's note: %s", want)

@@ -107,7 +107,7 @@ func PastedPath(botDir, id string) (string, error) {
 		return "", os.ErrNotExist
 	}
 	defer root.Close()
-	st, err := root.Stat(PastedDir + "/" + id)
+	st, err := root.Stat(pasteRel(id))
 	if err != nil || !st.Mode().IsRegular() {
 		return "", os.ErrNotExist
 	}
@@ -134,13 +134,11 @@ func ReadPasted(botDir, id string) ([]byte, error) {
 	// Stat before opening: opening a FIFO waits for a writer, so a name swapped
 	// for one would hang the request instead of being refused. The type is
 	// checked again on the open file, which is what a read actually uses.
-	// Stat before opening: opening a FIFO waits for a writer, so a name swapped
-	// for one would hang the request instead of being refused. The type is
-	// checked again on the open file, which is what a read actually uses.
-	if st, err := root.Stat(PastedDir + "/" + id); err != nil || !st.Mode().IsRegular() {
-		return nil, os.ErrNotExist
-	}
-	f, err := root.Open(PastedDir + "/" + id)
+	// Open without blocking: opening a FIFO waits for a writer, so a name
+	// swapped for one would hang the request instead of being refused. The type
+	// then comes from the same handle the read uses, so nothing can be swapped
+	// in between.
+	f, err := root.OpenFile(pasteRel(id), os.O_RDONLY|nonBlockOpen, 0)
 	if err != nil {
 		return nil, os.ErrNotExist
 	}
@@ -170,7 +168,7 @@ func WritePasted(botDir, id string, data []byte) error {
 	if err := root.MkdirAll(PastedDir, 0700); err != nil {
 		return err
 	}
-	return root.WriteFile(PastedDir+"/"+id, data, 0600)
+	return root.WriteFile(pasteRel(id), data, 0600)
 }
 
 // PastedDirFor is the directory holding a bot workspace's pasted pictures.
@@ -188,9 +186,12 @@ func PastedSize(botDir, id string) (int, error) {
 		return 0, os.ErrNotExist
 	}
 	defer root.Close()
-	st, err := root.Stat(PastedDir + "/" + id)
+	st, err := root.Stat(pasteRel(id))
 	if err != nil || !st.Mode().IsRegular() || st.Size() > PastedMaxBytes {
 		return 0, os.ErrNotExist
 	}
 	return int(st.Size()), nil
 }
+
+// pasteRel is one picture's path inside the workspace root.
+func pasteRel(id string) string { return PastedDir + "/" + id }

@@ -5795,15 +5795,11 @@
     syncComposer();
   }
 
-  // removeAttach drops one pending picture. quiet keeps it from touching the
-  // note: a result arriving for a batch that is already gone must not wipe a
-  // refusal the owner is reading in the conversation they are in now.
-  function removeAttach(row, quiet) {
+  function removeAttach(row) {
     const rows = attachState();
     const at = rows.indexOf(row);
     if (at >= 0) rows.splice(at, 1);
     if (row.url) URL.revokeObjectURL(row.url);
-    if (quiet) return;
     // With nothing left to explain, an older refusal no longer applies. A
     // caller that has a fresh reason sets it right after this call.
     if (!rows.length) attachNote("");
@@ -5868,6 +5864,13 @@
       const row = { seq: ++attachSeq, id: "", bytes: file.size, uploading: true, url: URL.createObjectURL(file) };
       rows.push(row);
       paintAttach();
+      // stillWanted is the one question every later step asks: is this row
+      // still on screen in the conversation the batch started in? A picture
+      // the owner removed, a switch to another bot, and a list cleared by a
+      // send all make it false, and none of them may be answered by the upload
+      // that was already in flight.
+      const stillWanted = () =>
+        state.attachBatch === batch && attachKey(state.sel) === attachKey(owner) && attachState().indexOf(row) >= 0;
       try {
         const res = await apiFetch("/api/bots/" + encodeURIComponent(owner.id) + "/paste", {
           method: "POST",
@@ -5878,18 +5881,18 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "这图片没传上来");
         if (!data.image) throw new Error("这图片没传上来");
-        if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) { removeAttach(row, true); return; }
-        row.id = data.image;
-        row.uploading = false;
+        if (stillWanted()) {
+          row.id = data.image;
+          row.uploading = false;
+          paintAttach();
+        }
       } catch (e) {
-        // A failure for a batch that is already gone only drops its own row:
-        // the note belongs to whatever conversation the owner is in now.
-        const stale = state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner);
-        removeAttach(row, stale);
-        if (!stale) attachNote(visibleError(e, "这图片没传上来"));
+        if (stillWanted()) {
+          removeAttach(row);
+          attachNote(visibleError(e, "这图片没传上来"));
+        }
         continue;
       }
-      paintAttach();
     }
   }
 
