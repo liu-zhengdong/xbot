@@ -10,12 +10,45 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/clip"
 	"xbot/internal/gateway"
 	"xbot/internal/link"
 )
 
 // chatGiveUp is when a pending reply is dropped unsent.
 const chatGiveUp = 24 * time.Hour
+
+// chatCutNote marks a reply the sender shortened. It is visible to the owner on
+// the asking device, so a long answer never looks complete when it was cut.
+const chatCutNote = "\n\n[已截断：这条回复超过 16 KiB，后面没发出的部分请在对话里查看]"
+
+// clipChatText keeps text within MaxChatText bytes without splitting a rune.
+// The asking computer rejects anything longer, so an unclipped long reply would
+// be dropped there while this side believed it was delivered.
+func clipChatText(text string) string {
+	if len(text) <= MaxChatText {
+		return text
+	}
+	cut, _ := clip.Bytes(text, MaxChatText-len(chatCutNote))
+	return cut + chatCutNote
+}
+
+// pendingChatReplies reports whether any reply file is still waiting. The poll
+// loop uses it to keep the wait short while an answer is owed, so a reply
+// produced during the wait is not stuck behind a full-length poll.
+func pendingChatReplies(root string) bool {
+	dir := filepath.Join(root, "remote", "chatpending")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".json") {
+			return true
+		}
+	}
+	return false
+}
 
 // pumpChatReplies sends each pending answer once its turn is done. Cheap when
 // no reply is pending.
@@ -77,6 +110,10 @@ func pumpChatReplies(ctx context.Context, root string, client *gateway.Client, n
 			continue
 		}
 		var bounces []gateway.Envelope
+		// The asking computer drops a reply longer than MaxChatText and still acks
+		// the envelope, so the answer would vanish silently. Cut it here and say so,
+		// where the sender still knows the text was cut.
+		text = clipChatText(text)
 		if err := queueChatReply(root, d, map[string]any{"ref": p.ID, "bot": p.Bot, "text": text, "at": now.Unix()}, now, &bounces); err != nil {
 			first = errors.Join(first, err)
 			continue

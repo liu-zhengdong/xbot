@@ -108,26 +108,37 @@ func indexEvent(entries []bot.Entry, eventID string) int {
 	return -1
 }
 
-// turnDone reports whether eventID already has a final assistant answer.
-func turnDone(entries []bot.Entry, idx int) bool {
-	if idx < 0 {
-		return false
-	}
+// turnSpan returns the lines belonging to the turn opened at idx. The turn ends
+// at the next user line carrying a different event id. A fork mark does not end
+// it: the turn continues on a background branch, whose lines carry the branch
+// name, and its answer lands there. Reading past the mark is what lets a forked
+// turn be seen as finished.
+func turnSpan(entries []bot.Entry, idx int) []bot.Entry {
 	end := len(entries)
 	for i := idx + 1; i < len(entries); i++ {
-		if entries[i].Message.Role == provider.RoleUser && entries[i].EventID != "" && entries[i].EventID != entries[idx].EventID {
+		e := entries[i]
+		if e.Message.Role == provider.RoleUser && e.EventID != "" && e.EventID != entries[idx].EventID {
 			end = i
 			break
 		}
 	}
+	return entries[idx+1 : end]
+}
+
+// answered reports whether these lines end on a final assistant answer.
+func answered(entries []bot.Entry) (bool, string) {
 	pending := map[string]bool{}
 	sawFinal := false
-	for _, e := range entries[idx+1 : end] {
+	text := ""
+	for _, e := range entries {
 		m := e.Message
 		switch m.Role {
 		case provider.RoleAssistant:
 			if len(m.ToolCalls) == 0 && len(pending) == 0 {
 				sawFinal = true
+				if m.Content != "" {
+					text = m.Content
+				}
 				continue
 			}
 			sawFinal = false
@@ -138,23 +149,88 @@ func turnDone(entries []bot.Entry, idx int) bool {
 			delete(pending, m.ToolCallID)
 		}
 	}
-	return sawFinal && len(pending) == 0
+	if len(pending) > 0 {
+		return false, ""
+	}
+	return sawFinal, text
 }
 
+// turnDone reports whether the turn opened at idx already has a final answer.
+// A turn that forked into the background is done once that branch closed with an
+// answer; a branch that failed or was cancelled never answers, so no reply is
+// invented for it.
+func turnDone(entries []bot.Entry, idx int) bool {
+	if idx < 0 {
+		return false
+	}
+	if done, _ := answered(turnSpan(entries, idx)); done {
+		return true
+	}
+	return forkedAndAnswered(entries, idx)
+}
+
+// forkBranch returns the branch the turn opened at idx forked into, and whether
+// it closed. The opening mark must belong to this turn: scanning past the next
+// user line would attach the following turn's branch to this one, so an
+// unanswered request would inherit the next turn's answer.
+func forkBranch(entries []bot.Entry, idx int) (branch string, closed bool) {
+	span := turnSpan(entries, idx)
+	for _, e := range span {
+		if !e.IsForkMark() || e.Mark.Kind != bot.ForkKindStart {
+			continue
+		}
+		branch = e.Mark.Branch
+		// The branch outlives the turn's span: its lines land after the next
+		// user line, so the closing mark is looked up in the whole transcript.
+		for _, c := range entries {
+			if c.IsForkMark() && c.Mark.Kind == bot.ForkKindEnd && c.Mark.Branch == branch {
+				return branch, true
+			}
+		}
+		return branch, false
+	}
+	return "", false
+}
+
+// branchLines is the branch's own lines, in order, up to its closing mark.
+func branchLines(entries []bot.Entry, branch string) []bot.Entry {
+	var out []bot.Entry
+	for _, e := range entries {
+		if e.IsForkMark() {
+			if e.Mark.Kind == bot.ForkKindEnd && e.Mark.Branch == branch {
+				break
+			}
+			continue
+		}
+		if e.Branch == branch {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// forkedAndAnswered reports whether the turn opened at idx forked into a branch
+// that closed after writing a final answer.
+func forkedAndAnswered(entries []bot.Entry, idx int) bool {
+	branch, closed := forkBranch(entries, idx)
+	if !closed {
+		return false
+	}
+	done, _ := answered(branchLines(entries, branch))
+	return done
+}
+
+// lastAssistant is the newest final answer in the turn opened at idx, on the
+// main line or on the branch it forked into.
 func lastAssistant(entries []bot.Entry, idx int) string {
-	end := len(entries)
-	for i := idx + 1; i < len(entries); i++ {
-		if entries[i].Message.Role == provider.RoleUser && entries[i].EventID != "" && entries[i].EventID != entries[idx].EventID {
-			end = i
-			break
-		}
+	if _, text := answered(turnSpan(entries, idx)); text != "" {
+		return text
 	}
-	text := ""
-	for _, e := range entries[idx+1 : end] {
-		if e.Message.Role == provider.RoleAssistant && e.Message.Content != "" && len(e.Message.ToolCalls) == 0 {
-			text = e.Message.Content
-		}
+	branch, closed := forkBranch(entries, idx)
+	if !closed {
+		return ""
 	}
+	_, text := answered(branchLines(entries, branch))
 	return text
 }
 

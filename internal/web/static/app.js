@@ -3555,12 +3555,15 @@
     return btn;
   }
 
+  // closePanelMenu removes the open submenu. placeMenu moves it to <body> while
+  // open, so it is no longer a descendant of #panel-actions; selecting only
+  // inside the row would leave it on screen, still acting on the old bot.
   function closePanelMenu() {
-    document.querySelectorAll("#panel-actions .menu-sub").forEach((sub) => {
+    document.querySelectorAll(".menu-sub").forEach((sub) => {
       sub.hidden = true;
       sub.remove();
     });
-    document.querySelectorAll("#panel-actions .menu-move > .panel-act").forEach((btn) => {
+    document.querySelectorAll(".menu-move > .panel-act").forEach((btn) => {
       btn.setAttribute("aria-expanded", "false");
     });
   }

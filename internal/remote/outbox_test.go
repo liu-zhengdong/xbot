@@ -314,3 +314,40 @@ func TestOutboxStopsSendingWhenDown(t *testing.T) {
 		t.Fatalf("calls=%d kept=%d; want one attempt and all kept", calls, len(paths))
 	}
 }
+
+// A line queued while the gateway was unreachable must stop showing as
+// queued_local once the retry lands. The line id travels with the envelope.
+func TestOutboxRetrySettlesChatLine(t *testing.T) {
+	a, _, _, _ := chatPair(t)
+	target := deviceOf(t, a, "b")
+	now := time.Now()
+	id := "0011223344556677"
+	if err := appendChat(a, target.ID, "bob", ChatMessage{ID: id, Role: "me", Text: "在家吗", At: now.UTC(), State: "queued_local"}); err != nil {
+		t.Fatal(err)
+	}
+	item := outboxItem{
+		Env:     gateway.Envelope{ID: "env-settle", Kind: "chat", To: "bob@" + target.Name},
+		To:      "bob@" + target.Name,
+		Created: now,
+		Next:    now.Add(-time.Second),
+		ChatRef: id,
+		ChatDev: target.ID,
+		ChatBot: "bob",
+	}
+	if err := enqueue(a, item); err != nil {
+		t.Fatal(err)
+	}
+	// The gateway is unreachable, so the retry fails and the queue gives up.
+	client := &gateway.Client{Base: "http://127.0.0.1:1"}
+	_ = flushOutbox(context.Background(), a, client, now.Add(25*time.Hour))
+	lines, err := readChat(a, target.ID, "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("chat lines %d", len(lines))
+	}
+	if lines[0].State == "queued_local" {
+		t.Fatal("a line the queue gave up on still shows as queued")
+	}
+}

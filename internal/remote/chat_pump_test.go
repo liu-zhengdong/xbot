@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
@@ -57,5 +59,43 @@ func TestPumpChatReplies(t *testing.T) {
 	mustRemote(t, pumpChatReplies(context.Background(), b, clientB, now))
 	if _, err := os.Stat(pendingPath(b, old.Event.ID)); !os.IsNotExist(err) {
 		t.Fatal("stale pending reply kept")
+	}
+}
+
+// A reply longer than MaxChatText used to be sent as-is: the asking computer
+// drops it and still acks the envelope, so the answer vanished silently. The
+// sender now shortens it and says so.
+func TestClipChatTextKeepsLongReply(t *testing.T) {
+	long := strings.Repeat("答", MaxChatText)
+	got := clipChatText(long)
+	if len(got) > MaxChatText {
+		t.Fatalf("clipped length %d still above MaxChatText %d", len(got), MaxChatText)
+	}
+	if !strings.HasSuffix(got, chatCutNote) {
+		t.Fatal("a shortened reply must say it was shortened")
+	}
+	if !utf8.ValidString(got) {
+		t.Fatal("clipping split a rune")
+	}
+	if short := "简短回复"; clipChatText(short) != short {
+		t.Fatal("a short reply was changed")
+	}
+}
+
+// pendingChatReplies is what keeps the poll wait short while an answer is owed.
+func TestPendingChatReplies(t *testing.T) {
+	root := t.TempDir()
+	if pendingChatReplies(root) {
+		t.Fatal("empty root reports a pending reply")
+	}
+	dir := filepath.Join(root, "remote", "chatpending")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ev1.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !pendingChatReplies(root) {
+		t.Fatal("a pending reply file was not seen")
 	}
 }

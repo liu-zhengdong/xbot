@@ -26,6 +26,12 @@ type outboxItem struct {
 	Created  time.Time        `json:"created"`
 	Attempts int              `json:"attempts"`
 	Next     time.Time        `json:"next"`
+	// ChatRef names the chat line this envelope carries, so a retry can settle
+	// it. Without it a line queued while offline stays queued_local forever,
+	// even after the retry lands or the queue gives up on it.
+	ChatRef string `json:"chat_ref,omitempty"`
+	ChatDev string `json:"chat_dev,omitempty"`
+	ChatBot string `json:"chat_bot,omitempty"`
 }
 
 func retryable(err error) bool {
@@ -140,11 +146,38 @@ func flushOutbox(ctx context.Context, root string, client *gateway.Client, now t
 				return err
 			}
 		}
+		// Settle the chat line this envelope carried: it was queued locally when
+		// the send failed, and it must not stay queued after the retry lands or
+		// after the queue gives up on it.
+		settleChatRef(root, item, err == nil && !expired && !off, now)
 		if err := fsutil.WithLock(dir+".lock", func() error { return os.Remove(path) }); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// settleChatRef updates the chat line a queued envelope belongs to. A line is
+// only moved out of queued_local; an ack that already arrived (delivered,
+// answered) keeps its newer state.
+func settleChatRef(root string, item outboxItem, sent bool, now time.Time) {
+	if item.ChatRef == "" || item.ChatDev == "" || item.ChatBot == "" {
+		return
+	}
+	next := "failed"
+	if sent {
+		next = "sent"
+	}
+	_ = updateChat(root, item.ChatDev, item.ChatBot, func(lines []ChatMessage) ([]ChatMessage, bool) {
+		for i := range lines {
+			if lines[i].ID == item.ChatRef && lines[i].Role == "me" && lines[i].State == "queued_local" {
+				lines[i].State = next
+				return lines, true
+			}
+		}
+		return lines, false
+	})
+	_ = now
 }
 
 func postRemote(root, to, id, text string, now time.Time) error {

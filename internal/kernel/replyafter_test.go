@@ -111,3 +111,117 @@ func TestReplyAfterAbsorbed(t *testing.T) {
 		t.Fatalf("an older identical line matched: done=%v err=%v", done, err)
 	}
 }
+
+// A turn that forks into the background answers on the branch, and the answer
+// lands after the owner's next line. ReplyAfter used to stop reading at that
+// line, so a finished background task still looked unfinished and the remote
+// reply was dropped after 24 hours.
+func TestReplyAfterReadsAnswerAfterFork(t *testing.T) {
+	b := testBot(t, link.NameRemoteOwner)
+	ev := link.RemoteOwnerEvent("u1", "run the long build", time.Unix(10, 0).UTC())
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+		t.Fatal(err)
+	}
+	branch := "bg_test1"
+	if _, err := b.AppendFork(branch, 1, "run the long build"); err != nil {
+		t.Fatal(err)
+	}
+	// The owner speaks again while the branch keeps running.
+	next := link.RemoteOwnerEvent("u1", "any progress?", time.Unix(20, 0).UTC())
+	if err := b.Append(bot.Entry{Time: next.Time, EventID: next.ID, Message: provider.Message{Role: provider.RoleUser, Content: next.Content}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: "the build passed"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 1); err != nil {
+		t.Fatal(err)
+	}
+	text, done, err := ReplyAfter(b, ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !done {
+		t.Fatal("a forked turn that answered on its branch is still reported unfinished")
+	}
+	if text != "the build passed" {
+		t.Fatalf("text %q, want the branch's answer", text)
+	}
+}
+
+// A branch that closed without a final line never answers, so ReplyAfter keeps
+// reporting unfinished instead of inventing an empty reply.
+func TestReplyAfterForkWithoutAnswerStaysUnfinished(t *testing.T) {
+	b := testBot(t, link.NameRemoteOwner)
+	ev := link.RemoteOwnerEvent("u1", "run the long build", time.Unix(10, 0).UTC())
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+		t.Fatal(err)
+	}
+	branch := "bg_test2"
+	if _, err := b.AppendFork(branch, 1, "run the long build"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AppendForkEnd(branch, bot.ForkFailed, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, done, err := ReplyAfter(b, ev); err != nil || done {
+		t.Fatalf("done=%v err=%v, want still unfinished", done, err)
+	}
+}
+
+// Request A never answered, and the next request B forked and finished. A must
+// not inherit B's branch: that would report A as answered with B's text and
+// make a replay of A skip it.
+func TestReplyAfterDoesNotBorrowNextTurnsBranch(t *testing.T) {
+	b := testBot(t, link.NameRemoteOwner)
+	first := link.RemoteOwnerEvent("u1", "first request", time.Unix(10, 0).UTC())
+	if err := b.Append(bot.Entry{Time: first.Time, EventID: first.ID, Message: provider.Message{Role: provider.RoleUser, Content: first.Content}}); err != nil {
+		t.Fatal(err)
+	}
+	// A produced no final line (for example the model errored out).
+	second := link.RemoteOwnerEvent("u1", "second request", time.Unix(20, 0).UTC())
+	if err := b.Append(bot.Entry{Time: second.Time, EventID: second.ID, Message: provider.Message{Role: provider.RoleUser, Content: second.Content}}); err != nil {
+		t.Fatal(err)
+	}
+	branch := "bg_test3"
+	if _, err := b.AppendFork(branch, 2, "second request"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: "second answer"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 1); err != nil {
+		t.Fatal(err)
+	}
+	text, done, err := ReplyAfter(b, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done {
+		t.Fatalf("the unanswered first request borrowed the next turn's branch: text %q", text)
+	}
+}
+
+// A forked turn that never forked... the branch must belong to its own turn,
+// so its answer is still read when the branch starts inside the turn's span.
+func TestReplyAfterForkInsideOwnTurn(t *testing.T) {
+	b := testBot(t, link.NameRemoteOwner)
+	ev := link.RemoteOwnerEvent("u1", "run it", time.Unix(10, 0).UTC())
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+		t.Fatal(err)
+	}
+	branch := "bg_test4"
+	if _, err := b.AppendFork(branch, 1, "run it"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: "done on the branch"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 1); err != nil {
+		t.Fatal(err)
+	}
+	text, done, err := ReplyAfter(b, ev)
+	if err != nil || !done || text != "done on the branch" {
+		t.Fatalf("text=%q done=%v err=%v", text, done, err)
+	}
+}

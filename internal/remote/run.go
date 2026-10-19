@@ -63,7 +63,15 @@ func Run(ctx context.Context, root, token string, logf func(string, ...any)) {
 				if err := pumpChatReplies(ctx, root, client, time.Now()); err != nil && logf != nil && ctx.Err() == nil {
 					logf("chat reply local state failure")
 				}
-				envs, err := client.Poll(ctx, 25*time.Second)
+				// A reply that is ready now is sent above. Polling then blocks for
+				// up to 25s, and an answer produced during that wait would sit unsent
+				// until it returns, so the asking device waits the whole poll. Poll
+				// briefly while a reply is still owed, and at full length otherwise.
+				wait := 25 * time.Second
+				if pendingChatReplies(root) {
+					wait = 2 * time.Second
+				}
+				envs, err := client.Poll(ctx, wait)
 				if err != nil {
 					return err
 				}

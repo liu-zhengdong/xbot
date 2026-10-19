@@ -97,7 +97,12 @@ func SendOwnerChat(ctx context.Context, root, deviceID, botName, text string, no
 	cancel()
 	switch {
 	case retryable(sendErr):
-		sendErr = enqueue(root, outboxItem{Env: env, To: botName + "@" + d.Name, Created: now, Attempts: 1, Next: now.Add(5 * time.Second)})
+		sendErr = enqueue(root, outboxItem{
+			Env: env, To: botName + "@" + d.Name, Created: now, Attempts: 1, Next: now.Add(5 * time.Second),
+			// Remember which chat line this carries, so a retry that lands can
+			// mark it sent instead of leaving it queued forever.
+			ChatRef: id, ChatDev: d.ID, ChatBot: botName,
+		})
 		if sendErr != nil {
 			m.State = "failed"
 		}
