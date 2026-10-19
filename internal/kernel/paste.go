@@ -34,6 +34,11 @@ const (
 // pastedNote names the pictures on a line so the model can open any of them
 // with view_image. Empty when the line had none.
 func (k *Kernel) pastedNote(names []string) string {
+	return k.pastedNoteIn(k.Bot, names)
+}
+
+// pastedNoteIn is pastedNote for a named bot's pictures.
+func (k *Kernel) pastedNoteIn(owner *bot.Bot, names []string) string {
 	if len(names) == 0 {
 		return ""
 	}
@@ -47,7 +52,7 @@ func (k *Kernel) pastedNote(names []string) string {
 		if i > 0 {
 			b.WriteString("、")
 		}
-		b.WriteString(k.pastedPathOf(name))
+		b.WriteString(pastedPathIn(owner, name))
 	}
 	// One wording serves both places the note appears. The turn answering this
 	// line already has the bytes, so it needs no tool call; a later turn has only
@@ -180,14 +185,22 @@ func stripPastedNote(content, note string) string {
 	return content
 }
 
-// pastedPathOf is the path the note gives for one stored picture. It is
+// pastedPathIn is the path the note gives for one stored picture. It is
 // absolute: view_image resolves a relative path against whatever directory the
 // bot has cd-ed into, so a relative name would stop working the moment the bot
 // moved, and the note outlives that move. Absolute paths still pass the
 // workspace check view_image applies to every local path.
-func (k *Kernel) pastedPathOf(name string) string {
-	if k == nil || k.Bot == nil || k.Bot.Root == "" {
-		return filepath.Join(work.BotDir(k.Bot.Root, k.Bot.Name()), work.PastedDir, name)
+//
+// It takes the bot the picture belongs to, not the reading kernel: a cross-bot
+// expand must name that bot's workspace.
+func pastedPathIn(b *bot.Bot, name string) string {
+	if b == nil || b.Root == "" {
+		return "paste/" + name
 	}
-	return filepath.Join(work.BotDir(k.Bot.Root, k.Bot.Name()), work.PastedDir, name)
+	return filepath.Join(work.BotDir(b.Root, b.Name()), work.PastedDir, name)
+}
+
+// withPastedNoteIn is withPastedNote for another bot's line.
+func (k *Kernel) withPastedNoteIn(b *bot.Bot, content string, names []string) string {
+	return joinNote(content, k.pastedNoteIn(b, names))
 }

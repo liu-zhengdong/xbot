@@ -431,3 +431,56 @@ func TestPastedPathSurvivesACd(t *testing.T) {
 		t.Fatal("the stored picture is not readable as an image")
 	}
 }
+
+// TestCrossBotExpandNamesThatBotsPictures is the regression for a shared
+// reader: expanding another bot's history must name that bot's workspace, not
+// the reader's. Both pictures would otherwise point at the wrong directory.
+func TestCrossBotExpandNamesThatBotsPictures(t *testing.T) {
+	root := t.TempDir()
+	a, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal, link.NameTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bb, err := bot.Create(root, "bob", "Be brief.", []string{link.NameTerminal, link.NameTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bb.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	dir, _, err := work.Open(root, "bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := work.PastedName("image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := bb.Append(bot.Entry{
+		Time:    time.Unix(10, 0).UTC(),
+		Origin:  bot.OriginOwner,
+		Message: provider.Message{Role: provider.RoleUser, Content: "看这个"},
+		Images:  []string{id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Bot: a, Memory: memory.NopStore{}}
+	got, err := k.ExpandBot("bob", 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantBob := filepath.Join(dir, work.PastedDir, id)
+	if !strings.Contains(got, wantBob) {
+		t.Fatalf("expand named the wrong workspace:\n%s", got)
+	}
+	wantAda := filepath.Join(work.BotDir(root, "ada"), work.PastedDir, id)
+	if strings.Contains(got, wantAda) {
+		t.Fatalf("expand named the reader's workspace:\n%s", got)
+	}
+}
