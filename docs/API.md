@@ -124,7 +124,7 @@
 
 `reply_to` 省略表示这行没有引用。有的话，它是本 transcript 里另一行的 `seq`。用户消息上的值是主人发送时带的序号。助手消息上的值是这条回复指向的用户消息序号。
 
-`branch` 省略表示主线。有值时，这行属于后台任务 `bg_7`；它是接口按 `fork` 标记重放算出的有效分支：`fork` 标记的 `from` 之后、标记之前的行，以及自己带 `branch` 的行都归这个分支。标记行没有正文，用 `kind` 区分：`"kind":"fork"` 另带 `from`（被分出那一轮的起始 seq）和 `task`；`"kind":"fork_end"` 另带 `status`（`done`、`failed`、`cancelled`、`interrupted`）和 `steps`。标记行的 `branch` 是它自己的分支 id。旧记录没有这些字段，读出来和以前完全一样。
+行上还可能有 `images`，是这条消息带的图片文件名（见 `POST /api/bots/{name}/paste`），字节不在里面。`branch` 省略表示主线。有值时，这行属于后台任务 `bg_7`；它是接口按 `fork` 标记重放算出的有效分支：`fork` 标记的 `from` 之后、标记之前的行，以及自己带 `branch` 的行都归这个分支。标记行没有正文，用 `kind` 区分：`"kind":"fork"` 另带 `from`（被分出那一轮的起始 seq）和 `task`；`"kind":"fork_end"` 另带 `status`（`done`、`failed`、`cancelled`、`interrupted`）和 `steps`。标记行的 `branch` 是它自己的分支 id。旧记录没有这些字段，读出来和以前完全一样。
 
 这次 GET 会把该 Bot 的已读游标记到当前长度。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是主人说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。主人聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
 
@@ -136,7 +136,9 @@
 
 `GET /api/bots/{name}/transcript` 仍一次返回全部消息，给界面用。很长的历史用上面的 export。Bot 列表上的未读比较用序号计数，不读段文件。
 
-`POST /api/bots/{name}/messages`，body `{"text":"...","reply_to":3}`。`text` 1 到 16 KiB。`reply_to` 可省略；给出时必须是这个 Bot 的 transcript 里已有的序号，否则 400 `{"error":"bad reply_to"}`。群聊的发送接口不接受这个字段。拿到处理锁时响应是 `text/event-stream`：
+`POST /api/bots/{name}/paste` 收一张要贴进对话的图片。body 是图片原始字节，`Content-Type` 只当提示，类型按字节嗅探。成功 200 `{"image":"<32 位十六进制>.png"}`。只认 PNG、JPEG、GIF、WebP（其他 400 `只认 PNG、JPEG、GIF、WebP`），超过 10 MB 回 413，边长超过 2048 或读不出尺寸回 400 并说明原因。文件存在这个 Bot 的工作区 `paste/` 下，权限 0600。`GET /api/bots/{name}/paste/{image}` 读回这张图，`Content-Type` 按字节定，带 `nosniff`，可长期缓存（文件名不会改）；名字不是一个合法 id 或文件已不在时 404。这两条都要登录，不是这个 owner 的 Bot 是 404。
+
+`POST /api/bots/{name}/messages`，body `{"text":"...","reply_to":3,"images":["<paste id>"]}`。`text` 0 到 16 KiB，`images` 最多 4 个、每个必须是 `POST .../paste` 返回过的名字，否则 400 `图片已失效，重新贴一次`；只有图片、没有文字也可以发。这些图片挂在写入的那行 transcript 上（记录里叫 `images`），回答这条消息的那一轮请求带上图片字节，之后各轮只留一行路径说明，模型要用 `view_image` 自己打开。transcript 和导出里都不带图片字节。群聊的发送接口不接受图片。`reply_to` 可省略；给出时必须是这个 Bot 的 transcript 里已有的序号，否则 400 `{"error":"bad reply_to"}`。群聊的发送接口不接受这个字段。拿到处理锁时响应是 `text/event-stream`：
 
 - `event: delta`，`data: {"text":"..."}`
 - `event: tool`，`data: {"name","summary"}`。`ask_user` 的 summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。

@@ -28,9 +28,18 @@ const (
 // land in memory together.
 var decodeMu sync.Mutex
 
-// fitImage keeps an image within the pixel cap. JPEG, PNG, and GIF that are
-// larger than maxImageEdge on a side are downscaled. WebP has no decoder
-// here: an over-size WebP is refused instead of being sent whole.
+// FitForModel keeps an image within the pixel cap the model accepts. JPEG, PNG,
+// and GIF that are larger than maxImageEdge on a side are downscaled. WebP has
+// no decoder here: an over-size WebP is refused instead of being sent whole.
+//
+// Callers that accept an image from somewhere other than view_image use it to
+// apply the same limits up front, so a picture the model would refuse is
+// rejected before it reaches the transcript.
+func FitForModel(mime string, data []byte) (string, []byte, error) {
+	return fitImage(mime, data)
+}
+
+// fitImage is the shared implementation. Only view_image and FitForModel reach it.
 func fitImage(mime string, data []byte) (string, []byte, error) {
 	if len(data) > maxImageSend {
 		return "", nil, errors.New("view_image: image is larger than 10 MiB")

@@ -1,0 +1,164 @@
+package web
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+
+	"xbot/internal/bot"
+	"xbot/internal/fsutil"
+	"xbot/internal/tools"
+	"xbot/internal/work"
+)
+
+// Pasted images.
+//
+// A picture the owner pastes or drops into the composer is uploaded before the
+// message is sent, so the message only carries the file name. The bytes go into
+// the bot's own workspace, where view_image already resolves them, and never
+// into the transcript: the line holds the name, so a reloaded page still finds
+// the file and the model can open it later by path. That is the same rule a
+// tool result's images follow: the bytes travel only where they are needed.
+const (
+	// maxPastedBytes caps one upload. view_image refuses anything over 10 MiB.
+	maxPastedBytes = work.PastedMaxBytes
+	// maxPastedPerMessage caps pictures on one message, matching the model's
+	// four images per turn.
+	maxPastedPerMessage = work.PastedMaxPerMessage
+)
+
+// postPaste stores one pasted image and returns its name.
+func (s *Server) postPaste(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxPastedBytes+1024)
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxPastedBytes+1))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "图片没传上来")
+		return
+	}
+	if len(data) == 0 {
+		writeErr(w, http.StatusBadRequest, "图片是空的")
+		return
+	}
+	if len(data) > maxPastedBytes {
+		writeErr(w, http.StatusRequestEntityTooLarge, "图片超过 10 MB")
+		return
+	}
+	mime := bot.SniffImage(data)
+	if work.PastedExt(mime) == "" {
+		writeErr(w, http.StatusBadRequest, "只认 PNG、JPEG、GIF、WebP")
+		return
+	}
+	// The pixel cap is the model's, not the browser's. Check it here, so a
+	// picture the model would refuse never reaches the transcript.
+	if _, _, err := tools.FitForModel(mime, data); err != nil {
+		writeErr(w, http.StatusBadRequest, pastedProblem(err))
+		return
+	}
+	id, err := work.PastedName(mime)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	path, err := work.PastedPath(work.BotDir(s.Root, b.Name()), id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := fsutil.WriteAtomic(path, data, 0600); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"image": id})
+}
+
+// pastedProblem turns a view_image refusal into words the owner can act on.
+func pastedProblem(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "pixel cap"), strings.Contains(msg, "cannot be downscaled"):
+		return "这张图太大，先缩小再贴"
+	case strings.Contains(msg, "cannot read image dimensions"), strings.Contains(msg, "cannot downscale"):
+		return "这张图读不出尺寸，换一张"
+	case strings.Contains(msg, "larger than 10 MiB"):
+		return "图片超过 10 MB"
+	}
+	return "这张图用不了"
+}
+
+// getPaste serves a stored picture back to the chat and the composer preview.
+func (s *Server) getPaste(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	path, err := work.PastedPath(work.BotDir(s.Root, b.Name()), r.PathValue("image"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	mime := bot.SniffImage(data)
+	if mime == "" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// An id never changes contents, so the browser may keep it.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	_, _ = w.Write(data)
+}
+
+// checkPasted validates the image names a message carries and returns them in
+// order. Each name must be one this server stored, so a message cannot point
+// at an arbitrary file; the count and the bytes are capped before the turn
+// starts, because a model call takes four images per turn.
+func (s *Server) checkPasted(b *bot.Bot, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if len(ids) > maxPastedPerMessage {
+		return nil, fmt.Errorf("一次最多 %d 张图", maxPastedPerMessage)
+	}
+	dir := work.BotDir(s.Root, b.Name())
+	out := make([]string, 0, len(ids))
+	seen := map[string]bool{}
+	for _, id := range ids {
+		path, err := work.PastedPath(dir, id)
+		if err != nil {
+			return nil, errPastedMissing
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := os.Stat(path); err != nil {
+			return nil, errPastedMissing
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// errPastedMissing is one refusal for a name that is not a stored picture.
+// It says the same thing whether the name was malformed or the file is gone.
+var errPastedMissing = errors.New("图片已失效，重新贴一次")

@@ -323,6 +323,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			ReplyTo: ev.ReplyTo,
 			Origin:  bot.OriginOwner,
 			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
+			Images:  ev.Images,
 		}
 		if err := k.Bot.Append(entry); err != nil {
 			return err
@@ -367,6 +368,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	assembled, err = k.reminderKindsFor(ev, t).Bind(assembled, seqNow, k.now())
 	if err != nil {
 		return err
+	}
+	// The turn answering a message with pictures sees them; a later turn only
+	// sees the note assemble added. This runs after Bind, so the bytes sit on
+	// the same message the reminders landed on and nothing is inserted between
+	// a tool call and its result.
+	if seq > 0 && len(ev.Images) > 0 {
+		var added int
+		assembled, added = k.attachEventImages(assembled, ev.Images)
+		usage.History += added
 	}
 	if n := len(assembled); n > 0 {
 		t.projects.noteText(assembled[n-1].Content)
@@ -593,6 +603,17 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		if e.ReplyTo > 0 && e.Message.Role == provider.RoleUser {
 			if q := k.quotePrefix(e.ReplyTo); q != "" {
 				e.Message.Content = q + "\n\n" + e.Message.Content
+			}
+		}
+		// A pasted picture is named here, on the line that carried it. Only the
+		// turn answering that line gets the bytes; see attachEventImages.
+		if e.Message.Role == provider.RoleUser {
+			if note := k.pastedNote(e.Images); note != "" {
+				if strings.TrimSpace(e.Message.Content) == "" {
+					e.Message.Content = note
+				} else {
+					e.Message.Content += "\n\n" + note
+				}
 			}
 		}
 		raw = append(raw, e)
