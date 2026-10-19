@@ -157,3 +157,39 @@ func TestExportRedacts(t *testing.T) {
 		t.Fatalf("jsonl %s", raw)
 	}
 }
+
+// TestExportKeepsPictureNames is the regression for a picture-only message:
+// the bytes are not in the transcript, so without the names an export would
+// show a blank line and the picture could not be found again.
+func TestExportKeepsPictureNames(t *testing.T) {
+	root := t.TempDir()
+	b, err := Create(root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	id := strings.Repeat("ab", 16) + ".png"
+	if err := b.Append(Entry{
+		Time:    when,
+		Origin:  OriginOwner,
+		Message: provider.Message{Role: provider.RoleUser},
+		Images:  []string{id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	loc := time.UTC
+	md, err := ExportTranscript(b, TranscriptExport{Format: "md", Loc: loc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(md), "image: paste/"+id) {
+		t.Fatalf("markdown export lost the picture:\n%s", md)
+	}
+	raw, err := ExportTranscript(b, TranscriptExport{Format: "jsonl", Loc: loc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"images":["`+id+`"]`) {
+		t.Fatalf("jsonl export lost the picture:\n%s", raw)
+	}
+}

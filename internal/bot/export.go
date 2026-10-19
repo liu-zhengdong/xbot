@@ -33,6 +33,10 @@ type exportEntry struct {
 	ReplyTo int              `json:"reply_to,omitempty"`
 	Branch  string           `json:"branch,omitempty"`
 	Mark    *ForkMark        `json:"mark,omitempty"`
+	// Images names the pictures the line carried. The bytes stay in the
+	// workspace; an export says which files they were so the message is not
+	// blank and the picture can still be found.
+	Images []string `json:"images,omitempty"`
 }
 
 type exportSummary struct {
@@ -127,7 +131,7 @@ func ExportTo(w io.Writer, b *Bot, opt TranscriptExport) error {
 		if !ok {
 			return nil
 		}
-		return write(entryMD(seq, e.Time, msg, e.ReplyTo, e.Branch, opt.Tools, loc))
+		return write(entryMD(seq, e.Time, msg, e.ReplyTo, e.Branch, e.Images, opt.Tools, loc))
 	})
 }
 
@@ -190,7 +194,7 @@ func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, writ
 		if !ok {
 			return nil
 		}
-		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg, ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark})
+		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg, ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark, Images: e.Images})
 	})
 }
 
@@ -211,7 +215,7 @@ func summaryMD(block SummaryBlock, loc *time.Location) string {
 	return b.String()
 }
 
-func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch string, tools bool, loc *time.Location) string {
+func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch string, images []string, tools bool, loc *time.Location) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n## seq %d · %s · %s", seq, stamp(at, loc), msg.Role)
 	if branch != "" {
@@ -227,6 +231,15 @@ func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch st
 		if !strings.HasSuffix(msg.Content, "\n") {
 			b.WriteByte('\n')
 		}
+	}
+	// The picture is named, not embedded: the file lives in the bot workspace
+	// and a summary or a reader can still open it. A message that was only a
+	// picture would otherwise export as an empty line.
+	// The picture is named, not embedded: the file lives in the bot workspace
+	// and a summary or a reader can still open it. A message that was only a
+	// picture would otherwise export as an empty line.
+	for _, name := range images {
+		fmt.Fprintf(&b, "image: paste/%s\n", name)
 	}
 	if tools {
 		for _, tc := range msg.ToolCalls {

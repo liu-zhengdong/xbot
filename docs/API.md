@@ -138,7 +138,7 @@
 
 `POST /api/bots/{name}/paste` 收一张要贴进对话的图片。body 是图片原始字节，`Content-Type` 只当提示，类型按字节嗅探。成功 200 `{"image":"<32 位十六进制>.png"}`。只认 PNG、JPEG、GIF、WebP（其他 400 `只认 PNG、JPEG、GIF、WebP`），超过 10 MB 回 413，边长超过 2048 或读不出尺寸回 400 并说明原因。文件存在这个 Bot 的工作区 `paste/` 下，权限 0600。`GET /api/bots/{name}/paste/{image}` 读回这张图，`Content-Type` 按字节定，带 `nosniff`，可长期缓存（文件名不会改）；名字不是一个合法 id 或文件已不在时 404。这两条都要登录，不是这个 owner 的 Bot 是 404。
 
-`POST /api/bots/{name}/messages`，body `{"text":"...","reply_to":3,"images":["<paste id>"]}`。`text` 0 到 16 KiB，`images` 最多 4 个、每个必须是 `POST .../paste` 返回过的名字，否则 400 `图片已失效，重新贴一次`；只有图片、没有文字也可以发。这些图片挂在写入的那行 transcript 上（记录里叫 `images`），回答这条消息的那一轮请求带上图片字节，之后各轮只留一行路径说明，模型要用 `view_image` 自己打开。transcript 和导出里都不带图片字节。群聊的发送接口不接受图片。`reply_to` 可省略；给出时必须是这个 Bot 的 transcript 里已有的序号，否则 400 `{"error":"bad reply_to"}`。群聊的发送接口不接受这个字段。拿到处理锁时响应是 `text/event-stream`：
+`POST /api/bots/{name}/messages`，body `{"text":"...","reply_to":3,"images":["<paste id>"]}`。`text` 0 到 16 KiB，`images` 最多 4 个、每个必须是 `POST .../paste` 返回过的名字，否则 400 `图片已失效，重新贴一次`；只有图片、没有文字也可以发。这些图片挂在写入的那行 transcript 上（记录里叫 `images`），回答这条消息的那一轮请求带上图片字节，之后各轮只留一行路径说明，模型要用 `view_image` 自己打开。transcript 和导出里都不带图片字节；导出会用 `image: paste/<名字>`（md）或 `images` 字段（jsonl）写出文件名，纯图片的消息不会变成空行。群聊的发送接口不接受图片。`reply_to` 可省略；给出时必须是这个 Bot 的 transcript 里已有的序号，否则 400 `{"error":"bad reply_to"}`。群聊的发送接口不接受这个字段。拿到处理锁时响应是 `text/event-stream`：
 
 - `event: delta`，`data: {"text":"..."}`
 - `event: tool`，`data: {"name","summary"}`。`ask_user` 的 summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。
