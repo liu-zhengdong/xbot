@@ -49,22 +49,41 @@ func project(entries []bot.Entry, blocks []bot.SummaryBlock) []provider.Message 
 	active := ActiveBlocks(blocks)
 	covered := coverage(len(entries), active)
 	var raw []bot.Entry
+	var seqs []int
 	for i, e := range entries {
 		if covered[i+1] {
 			continue
 		}
 		raw = append(raw, e)
+		seqs = append(seqs, i+1)
 	}
-	return projected(blocks, raw)
+	return projected(blocks, raw, seqs)
 }
 
-// projected is summaries plus lines that are already outside every active block.
-func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Message {
-	var msgs []provider.Message
-	for _, b := range ActiveBlocks(blocks) {
-		msgs = append(msgs, summaryMessage(b))
+// projected is summaries and the lines outside every active block, merged back
+// into transcript order. seqs[i] is the sequence number of uncovered[i].
+//
+// The merge is what keeps a gap readable. A manual compact can summarize a
+// middle range and leave raw lines on both sides, so the active blocks do not
+// always cover a leading prefix. Emitting every summary first would present
+// those raw lines after a summary of later messages, and the model would read
+// the transcript out of order. Sorting by sequence number keeps one timeline:
+// a summary occupies the place of the range it covers.
+//
+// A nil seqs means the caller cannot supply positions; the summaries then come
+// first, which is the order for a covered leading prefix.
+func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []provider.Message {
+	active := ActiveBlocks(blocks)
+	type item struct {
+		seq int
+		msg provider.Message
 	}
-	for _, e := range uncovered {
+	items := make([]item, 0, len(active)+len(uncovered))
+	for _, b := range active {
+		items = append(items, item{seq: b.From, msg: summaryMessage(b)})
+	}
+	positioned := len(seqs) == len(uncovered)
+	for i, e := range uncovered {
 		if code.IsCard(e.Message.Content) {
 			continue
 		}
@@ -74,7 +93,20 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry) []provider.Mess
 		if e.IsForkMark() {
 			continue
 		}
-		msgs = append(msgs, e.Message)
+		seq := 0
+		if positioned {
+			seq = seqs[i]
+		}
+		items = append(items, item{seq: seq, msg: e.Message})
+	}
+	if positioned {
+		// Summaries sort before a raw line that starts at the same place; the
+		// two cannot overlap, so this only settles a malformed state.
+		sort.SliceStable(items, func(i, j int) bool { return items[i].seq < items[j].seq })
+	}
+	msgs := make([]provider.Message, 0, len(items))
+	for _, it := range items {
+		msgs = append(msgs, it.msg)
 	}
 	return strayToolResults(groupToolResults(msgs))
 }

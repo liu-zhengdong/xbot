@@ -805,7 +805,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		raw = append(raw, e)
 		seqs = append(seqs, ln.Seq)
 	}
-	raw, err = k.reminders().Replay(raw, seqs)
+	raw, seqs, err = k.reminders().Replay(raw, seqs)
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -818,7 +818,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		Skills:    skills,
 		Installed: installed,
 		Overlay:   overlay,
-	}, projected(st.Blocks, raw))
+	}, projected(st.Blocks, raw, seqs))
 	return msgs, usage, nil
 }
 

@@ -218,14 +218,16 @@ func (c *Channel) Apply(msgs []provider.Message, seqs []int) error {
 // belong to. It does not write the transcript. seqs[i] is the sequence of entries[i].
 // A repo-provided project note bound to a user line becomes the next message
 // instead of joining that line, so a later wake does not put it back inside
-// the owner's trusted text. The returned slice may be longer than entries.
-func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, error) {
+// the owner's trusted text. The returned slice may be longer than entries, so
+// the returned sequence numbers let a caller keep the lines in transcript order:
+// a split-out note carries the sequence of the line it was bound to.
+func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, error) {
 	if c == nil || len(entries) == 0 {
-		return entries, nil
+		return entries, seqs, nil
 	}
 	all, err := c.log.all()
 	if err != nil || len(all) == 0 {
-		return entries, err
+		return entries, seqs, err
 	}
 	by := map[int][]string{}
 	for _, n := range all {
@@ -234,9 +236,10 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, error) {
 		}
 	}
 	if len(by) == 0 {
-		return entries, nil
+		return entries, seqs, nil
 	}
 	out := make([]bot.Entry, 0, len(entries))
+	outSeqs := make([]int, 0, len(seqs))
 	for i := range entries {
 		e := entries[i]
 		if i < len(seqs) {
@@ -252,17 +255,19 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, error) {
 				e.Message.Content = joinReminder(e.Message.Content, strings.Join(join, "\n\n"))
 			}
 			out = append(out, e)
+			outSeqs = append(outSeqs, seqs[i])
 			for _, text := range apart {
 				out = append(out, bot.Entry{
 					Time:    e.Time,
 					Message: provider.Message{Role: provider.RoleUser, Content: text},
 				})
+				outSeqs = append(outSeqs, seqs[i])
 			}
 			continue
 		}
 		out = append(out, e)
 	}
-	return out, nil
+	return out, outSeqs, nil
 }
 
 func joinReminder(body, note string) string {

@@ -461,3 +461,40 @@ func entryMessages(entries []bot.Entry) []provider.Message {
 	}
 	return out
 }
+
+// TestProjectedKeepsSequenceOrderAcrossBlocks is the regression for a gap: a
+// manual compact left raw lines between two blocks, and the projection put
+// every summary first, so the model read 1-10, 20-30, then the raw 11.
+// A gap happens when a manual compact summarizes a middle range; automatic
+// compaction stops at the gap and never creates one.
+func TestProjectedKeepsSequenceOrderAcrossBlocks(t *testing.T) {
+	blocks := []bot.SummaryBlock{
+		{From: 1, To: 10, Text: "older"},
+		{From: 20, To: 30, Text: "newer"},
+	}
+	uncovered := []bot.Entry{
+		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-11"}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-12"}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-19"}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-31"}},
+	}
+	seqs := []int{11, 12, 19, 31}
+	msgs := projected(blocks, uncovered, seqs)
+	want := []string{"<summary", "<summary", "raw-11", "raw-12", "raw-19", "raw-31"}
+	if len(msgs) != len(want) {
+		t.Fatalf("messages %d, want %d: %+v", len(msgs), len(want), msgs)
+	}
+	// The gap lines belong between the two summaries, not after both.
+	if !strings.HasPrefix(msgs[0].Content, "<summary") {
+		t.Fatalf("first message is not the 1-10 summary: %q", head(msgs[0].Content))
+	}
+	if !strings.HasPrefix(msgs[1].Content, "raw-11") {
+		t.Fatalf("second message is %q, want raw-11 (the gap must stay in order)", head(msgs[1].Content))
+	}
+	if !strings.HasPrefix(msgs[4].Content, "<summary") {
+		t.Fatalf("fifth message is %q, want the 20-30 summary", head(msgs[4].Content))
+	}
+	if !strings.HasPrefix(msgs[5].Content, "raw-31") {
+		t.Fatalf("last message is %q, want raw-31", head(msgs[5].Content))
+	}
+}

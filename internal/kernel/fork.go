@@ -129,15 +129,21 @@ func (k *Kernel) handoff(ctx context.Context, role string) (string, error) {
 		return "", err
 	}
 	st = migrate(st)
-	entries, err := k.Bot.Uncovered(st.Blocks)
+	lines, err := k.Bot.UncoveredLines(st.Blocks)
 	if err != nil {
 		return "", err
+	}
+	entries := make([]bot.Entry, 0, len(lines))
+	seqs := make([]int, 0, len(lines))
+	for _, ln := range lines {
+		entries = append(entries, ln.Entry)
+		seqs = append(seqs, ln.Seq)
 	}
 	facts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name(), Tier: memory.TierProfile})
 	if err != nil {
 		return "", err
 	}
-	turns := projected(st.Blocks, entries)
+	turns := projected(st.Blocks, entries, seqs)
 	if len(turns) == 0 && len(facts) == 0 {
 		return fmt.Sprintf("Handoff from %s. No transcript yet. New role: %s", k.Bot.Name(), oneLine(role)), nil
 	}
