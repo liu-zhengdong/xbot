@@ -529,13 +529,27 @@ func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	return k.Provider, nil
 }
 
-// rulesText is the bot's rules plus, when a memory store is attached, MemoryWriteRule.
-// It is appended here rather than kept in rules.md so bots with a saved custom
-// rules file get it too, and it sits in the system prompt, not the memory data block.
+// safetyRules are part of every bot's rules. rules.md is written once, when the
+// bot is created, so a bot created before one of these existed, or whose owner
+// edited its rules, gets the missing ones appended here.
+var safetyRules = []string{UntrustedRule, OwnerRule, ProjectRule, MemoryRule}
+
+// rulesText is the bot's rules, any missing safety rule, and, when a memory
+// store is attached, MemoryWriteRule. They are appended here rather than kept
+// in rules.md so bots with a saved rules file get them too, and they sit in the
+// system prompt, not the memory data block.
 func (k *Kernel) rulesText() (string, error) {
 	rules, err := k.Bot.ReadRules(DefaultRules())
-	if err != nil || k.Memory == nil || strings.Contains(rules, MemoryWriteRule) {
+	if err != nil {
 		return rules, err
+	}
+	for _, r := range safetyRules {
+		if !strings.Contains(rules, r) {
+			rules += "\n\n" + r
+		}
+	}
+	if k.Memory == nil || strings.Contains(rules, MemoryWriteRule) {
+		return rules, nil
 	}
 	return rules + "\n\n" + MemoryWriteRule, nil
 }

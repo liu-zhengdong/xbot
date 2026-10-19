@@ -31,3 +31,27 @@ func TestMemoryWriteRuleWithSavedRules(t *testing.T) {
 		}
 	}
 }
+
+// rules.md is written once, at creation. A bot made before ProjectRule
+// existed, or whose rules were edited, still gets every safety rule in its
+// system prompt, once (#18).
+func TestSavedRulesGetMissingSafetyRules(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	if err := b.WriteRules("Saved rules from an old version.\n\n" + UntrustedRule); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	sys := p.reqs[0].Messages[0].Content
+	if !strings.Contains(sys, "Saved rules from an old version.") {
+		t.Fatal("saved rules dropped")
+	}
+	for _, r := range []string{UntrustedRule, OwnerRule, ProjectRule, MemoryRule} {
+		if n := strings.Count(sys, r); n != 1 {
+			t.Fatalf("rule present %d times: %.60s", n, r)
+		}
+	}
+}
