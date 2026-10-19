@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"runtime"
-	"time"
 )
 
 // Install puts a staged package in place of what is running. The running copy
@@ -21,13 +20,86 @@ func Install(staged string) error {
 		return errors.New("nothing staged")
 	}
 	if app := Bundle(); app != "" {
-		return installBundle(staged, app)
+		// The package is the bundle beside the app being replaced, so the
+		// swap stays inside one filesystem.
+		local, err := bundleBeside(staged, app)
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(filepath.Dir(local))
+		return installBundle(local, app)
 	}
 	exe, err := executable()
 	if err != nil {
 		return err
 	}
+	if goos == "darwin" {
+		// A macOS build outside a bundle was made from source or installed
+		// by hand: the release ships an app bundle, and only its binary is
+		// any use here.
+		bin := filepath.Join(staged, "Contents", "MacOS", "XBot")
+		if !exists(bin) {
+			return fmt.Errorf("%s is not an app bundle; download the release from %s", filepath.Base(exe), releasePage)
+		}
+		return installBinary(bin, exe)
+	}
 	return installBinary(staged, exe)
+}
+
+// releasePage is where a build that cannot install the package itself sends
+// the owner.
+const releasePage = "https://github.com/liu-zhengdong/xbot/releases"
+
+// bundleBeside copies the staged bundle into a directory beside the app being
+// replaced, so the rename onto it stays inside one filesystem: the data root
+// may well sit on another volume.
+func bundleBeside(staged, app string) (string, error) {
+	dir := filepath.Dir(app)
+	tmp, err := os.MkdirTemp(dir, ".xbot-update-")
+	if err != nil {
+		return "", fmt.Errorf("cannot write beside %s: %w", app, err)
+	}
+	local := filepath.Join(tmp, filepath.Base(app))
+	if err := copyTree(staged, local); err != nil {
+		os.RemoveAll(tmp)
+		return "", err
+	}
+	return local, nil
+}
+
+// copyTree copies a directory, keeping each file's mode.
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, rerr := filepath.Rel(src, p)
+		if rerr != nil {
+			return rerr
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		info, ierr := d.Info()
+		if ierr != nil {
+			return ierr
+		}
+		f, oerr := os.Open(p)
+		if oerr != nil {
+			return oerr
+		}
+		defer f.Close()
+		out, cerr := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
+		if cerr != nil {
+			return cerr
+		}
+		if _, werr := io.Copy(out, f); werr != nil {
+			out.Close()
+			return werr
+		}
+		return out.Close()
+	})
 }
 
 // installBundle swaps a whole .app: the old one is renamed beside itself, the
@@ -54,10 +126,6 @@ func installBundle(staged, app string) error {
 	return nil
 }
 
-// movingWaits are the pauses between tries at replacing a running binary. A
-// virus scanner or a sync client can hold it open for a moment.
-var movingWaits = []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond, 800 * time.Millisecond}
-
 // installBinary writes the staged binary over the running one. Unix lets a
 // running executable be replaced; Windows does not, and there the write fails
 // and the caller is told to use the installer.
@@ -70,21 +138,14 @@ func installBinary(staged, exe string) error {
 	if err := os.WriteFile(tmp, data, 0o755); err != nil {
 		return err
 	}
-	var rerr error
-	for i := 0; ; i++ {
-		if rerr = os.Rename(tmp, exe); rerr == nil {
-			return nil
-		}
-		if runtime.GOOS == "windows" || i == len(movingWaits) {
-			break
-		}
-		time.Sleep(movingWaits[i])
+	// A rename over a running executable works on Unix, and the running
+	// process keeps the version it started with. Windows never takes this
+	// path: it has no asset xbot installs by itself (see AssetName).
+	if err := os.Rename(tmp, exe); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("cannot replace %s: %w", filepath.Base(exe), err)
 	}
-	_ = os.Remove(tmp)
-	if runtime.GOOS == "windows" {
-		return fmt.Errorf("%s is in use by the running XBot: quit it first, or run the installer", filepath.Base(exe))
-	}
-	return rerr
+	return nil
 }
 
 // Pending returns the version staged and ready to install, or "".

@@ -11,10 +11,16 @@
 
 校验（可选）：`sha256sum -c SHA256SUMS`（macOS 用 `shasum -a 256 -c SHA256SUMS`）。
 
+## 以后有新版本
+
+XBot 自己会查（启动半分钟后一次，之后每 6 小时一次）。发现新版本就在后台下载好，窗口右上角出现「更新」：点一下，装好并重开窗口，数据不动。下载期间不打扰你。
+
+一个例外是 Windows：安装程序要把正在运行的 XBot 换掉，所以那里点「更新」是下载新的 setup.exe，双击运行一遍就行（旧版本不用先卸，数据保留）。
+
 ## Windows
 1. 双击 `setup.exe`。出现蓝色的「Windows 已保护你的电脑」时，点「更多信息」→「仍要运行」（安装包没有微软代码签名，只需一次）。
 2. 按提示点「安装」。不需要管理员权限，装在 `%LOCALAPPDATA%\Programs\XBot`，开始菜单里有 XBot，桌面快捷方式可选。缺少 WebView2 运行库时安装程序会提示并帮你装上。
-3. 升级：直接运行新版 setup.exe，数据（`%USERPROFILE%\.xbot`）保留。卸载：「设置 → 应用 → 已安装的应用 → XBot → 卸载」，数据同样保留。
+3. 升级：窗口里点「更新」下载新版 setup.exe 后双击运行，或直接下载新版运行；数据（`%USERPROFILE%\.xbot`）保留。卸载：「设置 → 应用 → 已安装的应用 → XBot → 卸载」，数据同样保留。
 
 安装程序不改 PATH 或任何环境变量。命令行版在安装目录里：`& "$env:LOCALAPPDATA\Programs\XBot\xbot-cli.exe" serve`。不想安装可以用 `windows-*.zip` 便携版，解压后双击 `XBot.exe`。
 

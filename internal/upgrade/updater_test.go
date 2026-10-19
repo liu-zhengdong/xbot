@@ -3,6 +3,7 @@ package upgrade
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -134,5 +135,74 @@ func TestInstallRelaunches(t *testing.T) {
 	}
 	if Pending(root) != "" {
 		t.Fatal("the installed package was left on disk")
+	}
+}
+
+// A check that fails after the update was downloaded must not take the
+// install button away: the package is still there and still good.
+func TestFailedCheckKeepsTheDownloadedUpdate(t *testing.T) {
+	usePlatform(t, "darwin", "arm64")
+	useVersion(t, "v0.1.0")
+	rel := newRelease(t)
+	rel.publish(t, "v0.2.0", "XBot-0.2.0-macos-arm64.zip", buildZip(t, "new"))
+	root := t.TempDir()
+
+	u := NewUpdater(root)
+	if err := u.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The network goes away after the download.
+	os.Setenv("XBOT_UPGRADE_URL", "http://127.0.0.1:1/releases")
+	if err := u.Check(context.Background()); err == nil {
+		t.Fatal("the check against a dead endpoint succeeded")
+	}
+	st := u.Status()
+	if st.State != StateReady {
+		t.Fatalf("state = %q, want ready: a downloaded update stays installable", st.State)
+	}
+	if st.Latest != "v0.2.0" {
+		t.Fatalf("Latest = %q, want v0.2.0", st.Latest)
+	}
+}
+
+// A second click while a check is running is refused instead of racing it.
+func TestInstallRefusesWhileChecking(t *testing.T) {
+	usePlatform(t, "darwin", "arm64")
+	u := NewUpdater(t.TempDir())
+	u.mu.Lock()
+	u.state = StateDownloading
+	u.staged = "/tmp/whatever"
+	u.mu.Unlock()
+	if err := u.Install(); err == nil {
+		t.Fatal("Install started while a download was under way")
+	}
+}
+
+// A macOS build outside an app bundle gets its binary from the package, not
+// the bundle directory.
+func TestInstallOnMacWithoutABundle(t *testing.T) {
+	usePlatform(t, "darwin", "arm64")
+	base := t.TempDir()
+	exe := filepath.Join(base, "xbot")
+	if err := os.WriteFile(exe, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldExecutable := executable
+	executable = func() (string, error) { return exe, nil }
+	t.Cleanup(func() { executable = oldExecutable })
+
+	staged := filepath.Join(base, "stage", "XBot.app")
+	if err := os.MkdirAll(filepath.Join(staged, "Contents", "MacOS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staged, "Contents", "MacOS", "XBot"), []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(staged); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(exe)
+	if err != nil || string(got) != "new" {
+		t.Fatalf("binary = %q, %v", got, err)
 	}
 }

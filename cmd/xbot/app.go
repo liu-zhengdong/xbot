@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -58,6 +59,9 @@ func cmdApp(root string, args []string) error {
 	go func() {
 		err := runServe(ctx, root, serveConfig{
 			HTTPAddr: net.JoinHostPort("127.0.0.1", strconv.Itoa(*port)), Interval: 15 * time.Second, App: true,
+			// The window is the only way in, so it has to update itself; the
+			// environment still turns the check off. #update
+			AutoUpgrade: os.Getenv("XBOT_AUTO_UPGRADE") != "0",
 			OnListening: func(ui *web.Server, addr net.Addr) {
 				// Set before the page loads, so the first POST already reaches the window.
 				ui.AppTheme = appshell.SetTheme

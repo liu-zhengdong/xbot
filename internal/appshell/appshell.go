@@ -114,10 +114,3 @@ func Notify(title, body string) error {
 	}
 	return mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
 }
-
-// Relaunch starts the app again once it quits, so a version installed in its
-// place runs. It is safe to call before the window is ready: MyGo queues the
-// request and the app quits as usual.
-func Relaunch() {
-	mygo.App.Relaunch()
-}

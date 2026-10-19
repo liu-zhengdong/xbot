@@ -914,7 +914,7 @@
       await api("/api/update/install", { method: "POST" });
       // The process restarts and the page reconnects to the new version.
       label.textContent = "正在重启";
-      waitForRestart();
+      waitForRestart(updateState.latest.replace(/^v/, ""));
     } catch (e) {
       updateBtn.classList.remove("busy");
       updateBtn.disabled = false;
@@ -924,15 +924,22 @@
     }
   });
 
-  // waitForRestart reloads once the server answers again, which is the new
-  // version. Until then the page keeps showing the old one.
-  function waitForRestart() {
+  // waitForRestart reloads once the server reports the version we installed.
+  // The old process keeps answering while it drains in-flight turns, so a 200
+  // alone would reload the old page and give up waiting.
+  function waitForRestart(want) {
     const started = Date.now();
     const tick = async () => {
       try {
         const res = await fetch("/api/session", { credentials: "same-origin" });
-        if (res.ok && Date.now() - started > 1200) { location.reload(); return; }
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          const now = (data && data.version) || "";
+          if (now && (!want || now === want)) { location.reload(); return; }
+        }
       } catch (e) {}
+      // A minute is long enough for a drain; past it, show whatever is there
+      // rather than leave the page on a spinner.
       if (Date.now() - started > 60000) { location.reload(); return; }
       setTimeout(tick, 700);
     };

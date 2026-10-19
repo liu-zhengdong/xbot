@@ -62,8 +62,8 @@ type Updater struct {
 	done   int64
 	total  int64
 	staged string
-	// installing keeps a second click from starting a second swap while
-	// the first is under way.
+	// installing keeps a second click, or a check, from starting while a
+	// swap is under way.
 	installing bool
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -201,16 +201,24 @@ func (u *Updater) Check(ctx context.Context) error {
 func (u *Updater) begin(state string) bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if u.state == StateChecking || u.state == StateDownloading {
+	if u.state == StateChecking || u.state == StateDownloading || u.installing {
 		return false
 	}
 	u.state, u.err = state, ""
 	return true
 }
 
+// fail records why the last attempt failed. An update already downloaded
+// stays instalable: the page keeps its button, and the reason is only shown on
+// the next check.
 func (u *Updater) fail(err error) {
 	u.mu.Lock()
-	u.state, u.err = StateError, err.Error()
+	if u.staged == "" {
+		u.state = StateError
+	} else {
+		u.state = StateReady
+	}
+	u.err = err.Error()
 	u.mu.Unlock()
 }
 
@@ -224,6 +232,10 @@ func (u *Updater) Install() error {
 	if u.installing {
 		u.mu.Unlock()
 		return errors.New("正在安装，请等它重启")
+	}
+	if u.state == StateDownloading || u.state == StateChecking {
+		u.mu.Unlock()
+		return errors.New("正在下载新版本，稍等一下")
 	}
 	u.installing = true
 	staged := u.staged
