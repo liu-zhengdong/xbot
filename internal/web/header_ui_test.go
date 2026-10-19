@@ -19,9 +19,10 @@ func TestCardHeaderColumn(t *testing.T) {
 	}
 	html, css, js := read("index.html"), read("app.css"), read("app.js")
 
-	// The header, the thread and the composer share one column rule.
-	if !strings.Contains(css, ".top-inner, .thread-inner, .composer { width: min(720px, 100% - 64px); }") {
-		t.Error("the header, the thread and the composer must share the min(720px, 100% - 64px) column")
+	// The header, the thread and the composer share one column rule. 860px is
+	// the reading measure now the info panel is a drawer, not a column (#243).
+	if !strings.Contains(css, ".top-inner, .thread-inner, .composer { width: min(860px, 100% - 64px); }") {
+		t.Error("the header, the thread and the composer must share the min(860px, 100% - 64px) column")
 	}
 	if regexp.MustCompile(`(?m)^\.top-inner \{[^}]*[^-]width:`).MatchString(css) {
 		t.Error("no later .top-inner width may override the shared column")

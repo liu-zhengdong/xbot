@@ -55,14 +55,16 @@ func TestAccountProfileAndResponsiveLayout(t *testing.T) {
 		`compactSidebarChoice !== false`, `compactSidebarChoice = collapsed`,
 		`localStorage.getItem("xbot-panel-open")`,
 		`localStorage.setItem("xbot-panel-open", String(open))`,
-		`preference === "true" || (preference !== "false" && window.innerWidth >= 1440)`,
+		// The panel is a drawer over the card (#243), so it starts closed
+		// everywhere and only an explicit "true" reopens it.
+		`preference === "true"`,
 		`rememberPanel(open);`, `rememberPanel(false);`,
 		`$("panel-scrim").addEventListener("click", () => $("panel-close").click());`,
-		`window.innerWidth <= 1100 && panel.classList.contains("open") && !drawer`,
-		`document.querySelector(".top").getBoundingClientRect().bottom`)
+		`window.innerWidth <= 1100 && panel.classList.contains("open") && !drawer`)
 	check(css, ".account-menu button", ".profile-modal #modal-fields { min-height: 0; overflow: auto; }",
 		".profile-modal .modal-actions", "position: sticky; bottom: 0; flex: none;",
-		".panel-scrim", "top: var(--panel-overlay-top, 64px)",
+		// The scrim covers the card the drawer covers (#243), not the viewport.
+		".panel-scrim", "position: absolute; inset: 0;",
 		"width: min(90%, 400px) !important",
 		".in-app .shell", ".appbar {", "--app-region: drag;", "--app-region: no-drag;")
 	if strings.Contains(js, `$("modal-cancel").textContent = "关闭"`) {
