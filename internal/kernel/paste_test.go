@@ -483,4 +483,9 @@ func TestCrossBotExpandNamesThatBotsPictures(t *testing.T) {
 	if strings.Contains(got, wantAda) {
 		t.Fatalf("expand named the reader's workspace:\n%s", got)
 	}
+	// The reader's own view_image cannot open the other bot's workspace, so the
+	// note says that rather than offering a path that fails.
+	if !strings.Contains(got, "view_image 打不开") {
+		t.Fatalf("expand offers a path this bot cannot open:\n%s", got)
+	}
 }

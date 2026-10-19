@@ -54,6 +54,13 @@ func (k *Kernel) pastedNoteIn(owner *bot.Bot, names []string) string {
 		}
 		b.WriteString(pastedPathIn(owner, name))
 	}
+	if owner != nil && k.Bot != nil && owner.Name() != k.Bot.Name() {
+		b.WriteString("（这些图在对方 Bot 的工作区里，这里的 view_image 打不开）")
+	}
+	// A cross-bot read names the other bot's workspace, which this bot's
+	// view_image may not open. Say so instead of offering a path that fails:
+	// the workspace boundary is deliberate and not worth widening for this.
+
 	// One wording serves both places the note appears. The turn answering this
 	// line already has the bytes, so it needs no tool call; a later turn has only
 	// the file, so it opens the path. Saying both at once keeps the assembled
