@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"xbot/internal/appshell"
 	"xbot/internal/bot"
 	"xbot/internal/browser"
 	"xbot/internal/code"
@@ -36,6 +37,7 @@ import (
 	"xbot/internal/serve"
 	"xbot/internal/skill"
 	"xbot/internal/tunnel"
+	"xbot/internal/upgrade"
 	"xbot/internal/vault"
 	"xbot/internal/web"
 	"xbot/internal/work"
@@ -448,13 +450,16 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	// context ends, so nothing writes the root once serve has stopped.
 	var tickers sync.WaitGroup
 	defer func() { cancel(); tickers.Wait() }()
+	// The updater downloads in the background and, on the owner's click,
+	// installs and starts the new version. The desktop app restarts its
+	// window; serve re-execs this process.
+	updater := upgrade.NewUpdater(root)
 	deliverTimers := cfg.DeliverTimers
 	if deliverTimers == nil {
 		deliverTimers = serve.DeliverTimers
 	}
 	if cfg.App {
 		cfg.Tunnel = ""
-		cfg.AutoUpgrade = false
 	}
 	resolved, err := tunnel.Resolve(ctx, cfg.Tunnel, cfg.HTTPAddr, os.Getenv("XBOT_TAILSCALE"))
 	if err != nil {
@@ -472,6 +477,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
 			return newServeKernel(root, b)
 		},
+		Updater: updater,
 	}
 	token, _, err := ui.EnsureToken()
 	if err != nil {
@@ -528,6 +534,13 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		default:
 		}
 	}
+	// Installing an update ends this way in both modes: the window reopens
+	// (appshell.Relaunch), or serve re-execs the new binary.
+	if cfg.App {
+		updater.Relaunch = appshell.Relaunch
+	} else {
+		updater.Relaunch = func() { restart("updated") }
+	}
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	defer signal.Stop(hup)
@@ -539,7 +552,10 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		}
 	}()
 	if cfg.AutoUpgrade {
-		go autoUpgradeLoop(ctx, restart)
+		go updater.Run(ctx)
+	}
+	if pending := upgrade.Pending(root); pending != "" {
+		fmt.Fprintf(os.Stderr, "xbot: %s 已下载，重启后生效（网页右上角「更新」）\n", pending)
 	}
 	mux := http.NewServeMux()
 	hub.Register(mux)

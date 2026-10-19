@@ -24,6 +24,7 @@
   const titleEl = $("title");
   const subtitle = $("subtitle");
   const bellDot = $("bell-dot");
+  const updateBtn = $("update");
   const panel = $("panel");
   const panelBody = $("panel-body");
   const modal = $("modal");
@@ -865,6 +866,77 @@
     const ver = state.version;
     $("appbar-ver").hidden = !ver;
     $("appbar-ver").textContent = ver;
+  }
+
+  // A newer version, downloaded in the background: one click installs it and
+  // starts XBot again. The button is the whole interface on purpose — while it
+  // downloads nothing shows, and a failure only appears when someone asks.
+  const updateState = { state: "", latest: "" };
+
+  function paintUpdate(st) {
+    updateState.state = (st && st.state) || "";
+    updateState.latest = (st && st.latest) || "";
+    const busy = updateBtn.classList.contains("busy");
+    if (busy) return;
+    // "ready" is the only state worth interrupting for. A platform that
+    // installs with its own installer offers the file instead.
+    const offer = updateState.state === "ready" || updateState.state === "manual";
+    updateBtn.hidden = !offer;
+    if (!offer) return;
+    const label = updateBtn.querySelector(".update-label");
+    const ready = updateState.state === "ready";
+    label.textContent = ready ? "更新到 " + updateState.latest.replace(/^v/, "") : "下载新版";
+    const tip = ready
+      ? "新版本已下载，点一下重启并更新"
+      : "这台电脑用安装包更新，点一下下载";
+    updateBtn.dataset.tip = tip;
+    updateBtn.setAttribute("aria-label", tip);
+  }
+
+  async function refreshUpdate() {
+    const st = await api("/api/update").catch(() => null);
+    paintUpdate(st);
+  }
+
+  updateBtn.addEventListener("click", async () => {
+    if (!updateState.latest) return;
+    if (updateState.state === "manual") {
+      // Windows: hand the installer to the browser, which downloads it.
+      const st = await api("/api/update").catch(() => null);
+      if (st && st.download) window.open(st.download, "_blank", "noopener");
+      return;
+    }
+    const label = updateBtn.querySelector(".update-label");
+    updateBtn.classList.add("busy");
+    updateBtn.disabled = true;
+    label.textContent = "正在更新";
+    try {
+      await api("/api/update/install", { method: "POST" });
+      // The process restarts and the page reconnects to the new version.
+      label.textContent = "正在重启";
+      waitForRestart();
+    } catch (e) {
+      updateBtn.classList.remove("busy");
+      updateBtn.disabled = false;
+      label.textContent = "更新失败";
+      updateBtn.dataset.tip = (e && e.message) || "更新失败，稍后再试";
+      setTimeout(() => { updateBtn.classList.remove("busy"); refreshUpdate().catch(() => {}); }, 4000);
+    }
+  });
+
+  // waitForRestart reloads once the server answers again, which is the new
+  // version. Until then the page keeps showing the old one.
+  function waitForRestart() {
+    const started = Date.now();
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/session", { credentials: "same-origin" });
+        if (res.ok && Date.now() - started > 1200) { location.reload(); return; }
+      } catch (e) {}
+      if (Date.now() - started > 60000) { location.reload(); return; }
+      setTimeout(tick, 700);
+    };
+    setTimeout(tick, 1200);
   }
 
   function el(tag, className, text) {
@@ -6070,6 +6142,7 @@
     await refreshLists();
     await refreshStatus().catch(() => {});
     await refreshNotes();
+    await refreshUpdate().catch(() => {});
     await loadPush().catch(() => {});
     renderMe();
     let remembered = "";
@@ -6116,6 +6189,7 @@
     setInterval(() => {
       if (shell.hidden || state.streaming) return;
       if (!document.hidden) refreshStatus().catch(() => {});
+      if (!document.hidden) refreshUpdate().catch(() => {});
       refreshNotes().catch(() => {});
       refreshLists().catch(() => {});
       loadThread().catch(() => {});

@@ -38,9 +38,6 @@ func cmdUpgrade(root string, args []string) error {
 		return err
 	}
 	fmt.Printf("current: %s\nlatest:  %s\n", version.Version, info.Latest)
-	if *check {
-		return nil
-	}
 	if info.Downgrade {
 		fmt.Println("latest release is older; refusing to downgrade")
 		return nil
@@ -49,10 +46,43 @@ func cmdUpgrade(root string, args []string) error {
 		fmt.Println("already up to date")
 		return nil
 	}
-	path, err := upgrade.Apply(ctx, info)
+	if upgrade.AssetName(info.Latest) == "" {
+		if asset := upgrade.DownloadAsset(info.Latest); asset != "" && info.AssetURL(asset) != "" {
+			fmt.Println("this build cannot replace itself; download and run:")
+			fmt.Println(info.AssetURL(asset))
+		} else {
+			fmt.Println("this build has no update package; see", info.URL)
+		}
+		return nil
+	}
+	if *check {
+		return nil
+	}
+	staged, err := upgrade.Stage(ctx, info, root, progressPrinter())
 	if err != nil {
 		return err
 	}
-	fmt.Printf("updated %s to %s\n", path, info.Latest)
+	fmt.Println()
+	if err := upgrade.Install(staged); err != nil {
+		return err
+	}
+	upgrade.ClearStaged(root)
+	fmt.Printf("installed %s; restart xbot to use it\n", info.Latest)
 	return nil
+}
+
+// progressPrinter reports a download as whole percents on one line.
+func progressPrinter() func(done, total int64) {
+	last := int64(-1)
+	return func(done, total int64) {
+		if total <= 0 {
+			return
+		}
+		pct := done * 100 / total
+		if pct == last {
+			return
+		}
+		last = pct
+		fmt.Printf("\rdownloading %d%%", pct)
+	}
 }

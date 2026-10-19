@@ -2017,6 +2017,17 @@ html[data-theme="dark"] {
 .bg-badge{border:0;background:var(--fill);color:var(--muted);height:26px;padding:0 10px;border-radius:13px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12.5px;font-variant-numeric:tabular-nums;cursor:pointer;margin-right:4px;flex:none}
 .bg-badge[hidden]{display:none}
 .bg-badge:hover,.bg-badge.on{background:var(--fill-hover);color:var(--text)}
+
+/* The update pill sits with the other header chips and only appears once a
+   newer version is downloaded and waiting for a restart. */
+.update-btn{border:0;background:var(--fill);color:var(--text);height:26px;padding:0 10px 0 8px;border-radius:13px;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12.5px;cursor:pointer;margin-right:4px;flex:none;transition:background-color 120ms ease}
+.update-btn[hidden]{display:none}
+.update-btn:hover{background:var(--fill-hover)}
+.update-btn:disabled{cursor:default;color:var(--faint)}
+.update-btn svg{display:block;flex:none;width:14px;height:14px;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.update-btn.busy svg{animation:update-spin 900ms linear infinite}
+@keyframes update-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.update-btn.busy svg{animation:none}}
 .bg-badge svg,.bg-pop svg,.bg-from svg{display:block;flex:none}
 .bg-pop{position:fixed;top:56px;right:12px;width:380px;max-height:calc(100vh - 80px);overflow:auto;background:var(--bg-pop);border-radius:16px;box-shadow:var(--bg-shadow);padding:8px 6px 10px;z-index:60;color:var(--text)}
 .bg-pop[hidden],.bg-dim[hidden]{display:none}

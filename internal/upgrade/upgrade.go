@@ -1,6 +1,13 @@
-// Package upgrade checks GitHub releases for a newer xbot and swaps the running
-// binary in place. It never downgrades, and a "dev" build only moves when the
-// caller forces it (the manual `xbot upgrade` command does).
+// Package upgrade keeps xbot current. The newest GitHub release of
+// liu-zhengdong/xbot is the source: its assets carry one package per platform,
+// each checksummed in that release's SHA256SUMS.
+//
+// A check looks up the newest release, including the pre-releases this project
+// ships; a "dev" build only moves when the caller forces it, so a development
+// machine does not replace itself. The package for this platform is downloaded
+// beside what it replaces and unpacked there, so installing it is a rename on
+// one volume. Nothing is written into place until the checksum matches and the
+// package holds what the platform installs.
 package upgrade
 
 import (
@@ -13,36 +20,30 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// DefaultURL is the GitHub API endpoint for the newest stable release.
-const DefaultURL = "https://api.github.com/repos/liu-zhengdong/xbot/releases/latest"
+// DefaultURL lists the newest releases, pre-releases included. The single
+// "latest release" endpoint is not used: it never answers with a pre-release,
+// and every xbot release so far is one.
+const DefaultURL = "https://api.github.com/repos/liu-zhengdong/xbot/releases?per_page=30"
 
-// MaxDownload caps one release asset. A binary never needs more.
+// MaxDownload caps one release asset. A desktop package never needs more.
 const MaxDownload = 200 << 20
+
+// StageDir is the workspace a package is unpacked in. It sits inside the data
+// root, not beside the app: replacing an app bundle needs a rename, and a
+// bundle in /Applications is usually not the user's to write, while the data
+// root always is.
+const StageDir = "update"
 
 // ErrNotNewer means there is nothing newer to apply.
 var ErrNotNewer = errors.New("already up to date")
 
-// executable locates the running binary with symlinks resolved. Tests replace it.
-var executable = func() (string, error) {
-	p, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", err
-	}
-	return resolved, nil
-}
-
-// goos and goarch select the release asset. Tests replace them.
+// goos and goarch select the package. Tests replace them.
 var (
 	goos   = runtime.GOOS
 	goarch = runtime.GOARCH
@@ -52,6 +53,7 @@ var (
 type Asset struct {
 	Name string `json:"name"`
 	URL  string `json:"browser_download_url"`
+	Size int64  `json:"size"`
 }
 
 // Info is the result of a release check.
@@ -61,6 +63,7 @@ type Info struct {
 	Available bool    // a strictly newer release exists
 	Downgrade bool    // the release is older than current
 	URL       string  // release page
+	Notes     string  // release notes in Markdown
 	Assets    []Asset // attached files
 }
 
@@ -74,6 +77,17 @@ func (i Info) AssetURL(name string) string {
 	return ""
 }
 
+// AssetSize returns the announced size of a named asset, or 0 when the
+// release does not say.
+func (i Info) AssetSize(name string) int64 {
+	for _, a := range i.Assets {
+		if a.Name == name {
+			return a.Size
+		}
+	}
+	return 0
+}
+
 // Check reports whether a newer release exists. A "dev" build is never offered
 // an automatic upgrade.
 func Check(ctx context.Context, current string) (Info, error) {
@@ -83,45 +97,21 @@ func Check(ctx context.Context, current string) (Info, error) {
 // CheckForce is Check with an explicit force: a forced check treats a "dev"
 // build as upgradable so the manual command still works.
 func CheckForce(ctx context.Context, current string, force bool) (Info, error) {
-	url := strings.TrimSpace(os.Getenv("XBOT_UPGRADE_URL"))
-	if url == "" {
-		url = DefaultURL
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	rels, err := listReleases(ctx)
 	if err != nil {
 		return Info{}, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	client := &http.Client{Timeout: 30 * time.Second}
-	res, err := client.Do(req)
-	if err != nil {
-		return Info{}, err
+	info := Info{Current: current}
+	rel, ok := newest(rels)
+	if !ok {
+		return info, errors.New("release check: no published release")
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return Info{}, fmt.Errorf("release check: %s", res.Status)
-	}
-	var body struct {
-		TagName string  `json:"tag_name"`
-		HTMLURL string  `json:"html_url"`
-		Assets  []Asset `json:"assets"`
-	}
-	if err := json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&body); err != nil {
-		return Info{}, err
-	}
-	latest := strings.TrimSpace(body.TagName)
-	if latest == "" {
-		return Info{}, errors.New("release check: no tag_name")
-	}
-	info := Info{Current: current, Latest: latest, URL: body.HTMLURL, Assets: body.Assets}
+	info.Latest, info.URL, info.Notes, info.Assets = rel.Tag, rel.URL, rel.Notes, rel.Assets
 	if isDev(current) {
 		info.Available = force
-		if force {
-			info.Downgrade = false
-		}
 		return info, nil
 	}
-	cmp, err := Compare(latest, current)
+	cmp, err := Compare(rel.Tag, current)
 	if err != nil {
 		return Info{}, err
 	}
@@ -130,92 +120,173 @@ func CheckForce(ctx context.Context, current string, force bool) (Info, error) {
 	return info, nil
 }
 
+// Release is one published release, as the check needs it.
+type Release struct {
+	Tag      string
+	URL      string
+	Notes    string
+	Assets   []Asset
+	Draft    bool
+	Prelease bool
+}
+
+// newest picks the highest semver tag among the published releases. GitHub
+// lists releases by creation time, which is not the same order: a patch cut
+// after a beta sorts before it.
+func newest(rels []Release) (Release, bool) {
+	var best Release
+	found := false
+	for _, r := range rels {
+		if r.Draft {
+			continue
+		}
+		if _, err := parseSemver(r.Tag); err != nil {
+			continue
+		}
+		if !found {
+			best, found = r, true
+			continue
+		}
+		if cmp, err := Compare(r.Tag, best.Tag); err == nil && cmp > 0 {
+			best = r
+		}
+	}
+	return best, found
+}
+
+// listReleases gets the release feed. XBOT_UPGRADE_URL points it elsewhere,
+// which tests use.
+func listReleases(ctx context.Context) ([]Release, error) {
+	url := strings.TrimSpace(os.Getenv("XBOT_UPGRADE_URL"))
+	if url == "" {
+		url = DefaultURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	client := &http.Client{Timeout: 30 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("release check: %s", res.Status)
+	}
+	var body []struct {
+		TagName    string  `json:"tag_name"`
+		HTMLURL    string  `json:"html_url"`
+		Body       string  `json:"body"`
+		Draft      bool    `json:"draft"`
+		Prerelease bool    `json:"prerelease"`
+		Assets     []Asset `json:"assets"`
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&body); err != nil {
+		return nil, err
+	}
+	out := make([]Release, 0, len(body))
+	for _, b := range body {
+		tag := strings.TrimSpace(b.TagName)
+		if tag == "" {
+			continue
+		}
+		out = append(out, Release{Tag: tag, URL: b.HTMLURL, Notes: b.Body, Assets: b.Assets, Draft: b.Draft, Prelease: b.Prerelease})
+	}
+	return out, nil
+}
+
 func isDev(v string) bool {
 	v = strings.TrimSpace(v)
 	return v == "" || v == "dev"
 }
 
-// Apply downloads the asset matching the running os/arch, verifies it against
-// the release's SHA256SUMS, and atomically replaces the running binary. It
-// returns the path it wrote. Nothing is touched unless the checksum matches.
-func Apply(ctx context.Context, info Info) (string, error) {
-	if !info.Available {
-		return "", ErrNotNewer
+// AssetName is the release asset this platform installs from, or "" when xbot
+// cannot replace itself here: Windows has an installer that does the job, and
+// no package is built for other architectures.
+func AssetName(tag string) string {
+	short := strings.TrimPrefix(strings.TrimSpace(tag), "v")
+	switch {
+	case goos == "darwin" && (goarch == "arm64" || goarch == "amd64"):
+		// The app bundle. The disk image only serves a first install:
+		// unpacking a zip needs no hdiutil.
+		return fmt.Sprintf("XBot-%s-macos-%s.zip", short, goarch)
+	case goos == "linux" && goarch == "amd64":
+		return fmt.Sprintf("xbot-%s-linux-amd64.tar.gz", short)
 	}
-	name := fmt.Sprintf("xbot_%s_%s", goos, goarch)
-	binURL := info.AssetURL(name)
-	if binURL == "" {
-		return "", fmt.Errorf("release %s has no asset %s", info.Latest, name)
-	}
-	sumsURL := info.AssetURL("SHA256SUMS")
-	if sumsURL == "" {
-		return "", fmt.Errorf("release %s has no SHA256SUMS", info.Latest)
-	}
-	target, err := executable()
-	if err != nil {
-		return "", err
-	}
-	sums, err := fetch(ctx, sumsURL, 1<<20)
-	if err != nil {
-		return "", err
-	}
-	want := checksumFor(string(sums), name)
-	if want == "" {
-		return "", fmt.Errorf("SHA256SUMS has no entry for %s", name)
-	}
-	data, err := fetch(ctx, binURL, MaxDownload)
-	if err != nil {
-		return "", err
-	}
-	got := sha256.Sum256(data)
-	if !strings.EqualFold(hex.EncodeToString(got[:]), want) {
-		return "", fmt.Errorf("checksum mismatch for %s", name)
-	}
-	return writeBinary(target, data)
+	return ""
 }
 
-// writeBinary writes data beside target and renames it over the file.
-func writeBinary(target string, data []byte) (string, error) {
-	dir := filepath.Dir(target)
-	f, err := os.CreateTemp(dir, ".xbot-upgrade-*")
-	if err != nil {
-		return "", err
+// DownloadAsset is the file a platform that cannot install by itself offers
+// instead: the Windows installer.
+func DownloadAsset(tag string) string {
+	short := strings.TrimPrefix(strings.TrimSpace(tag), "v")
+	switch {
+	case goos == "windows" && (goarch == "arm64" || goarch == "amd64"):
+		return fmt.Sprintf("XBot-%s-windows-%s-setup.exe", short, goarch)
 	}
-	tmp := f.Name()
-	cleanup := func() {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-	}
-	if _, err := f.Write(data); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := f.Chmod(0o755); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := f.Sync(); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return "", err
-	}
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Remove(tmp)
-		return "", err
-	}
-	return target, nil
+	return ""
 }
 
-// fetch GETs url and returns at most max bytes, refusing anything larger.
-func fetch(ctx context.Context, url string, max int64) ([]byte, error) {
+// download fetches url into dst, refusing more than max bytes and reporting
+// progress as it reads.
+func download(ctx context.Context, url, dst string, max int64, progress func(done, total int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Minute}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("download %s: %s", url, res.Status)
+	}
+	total := res.ContentLength
+	if total > max {
+		return fmt.Errorf("download %s exceeds %d bytes", url, max)
+	}
+	f, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var done int64
+	buf := make([]byte, 64<<10)
+	for {
+		n, rerr := res.Body.Read(buf)
+		if n > 0 {
+			done += int64(n)
+			if done > max {
+				return fmt.Errorf("download %s exceeds %d bytes", url, max)
+			}
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			if progress != nil {
+				progress(done, total)
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+	return f.Sync()
+}
+
+// fetchBytes gets url and returns at most max bytes, refusing anything larger.
+func fetchBytes(ctx context.Context, url string, max int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := &http.Client{Timeout: 2 * time.Minute}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -247,6 +318,38 @@ func checksumFor(sums, name string) string {
 		}
 	}
 	return ""
+}
+
+// sumAsset is the checksum list every release carries.
+const sumAsset = "SHA256SUMS"
+
+// verifyChecksum checks file against the release's SHA256SUMS entry for name.
+func verifyChecksum(ctx context.Context, info Info, name, file string) error {
+	sumsURL := info.AssetURL(sumAsset)
+	if sumsURL == "" {
+		return fmt.Errorf("release %s has no %s", info.Latest, sumAsset)
+	}
+	sums, err := fetchBytes(ctx, sumsURL, 1<<20)
+	if err != nil {
+		return err
+	}
+	want := checksumFor(string(sums), name)
+	if want == "" {
+		return fmt.Errorf("%s has no entry for %s", sumAsset, name)
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, want) {
+		return fmt.Errorf("checksum mismatch for %s", name)
+	}
+	return nil
 }
 
 // Compare orders two semver strings. err is non-nil when either is malformed.
