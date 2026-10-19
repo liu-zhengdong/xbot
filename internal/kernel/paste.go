@@ -93,11 +93,7 @@ func (k *Kernel) readPasted(name string) (string, []byte, error) {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" {
 		return "", nil, os.ErrNotExist
 	}
-	path, err := work.PastedPath(work.BotDir(k.Bot.Root, k.Bot.Name()), name)
-	if err != nil {
-		return "", nil, err
-	}
-	data, err := os.ReadFile(path)
+	data, err := work.ReadPasted(work.BotDir(k.Bot.Root, k.Bot.Name()), name)
 	if err != nil {
 		return "", nil, err
 	}
@@ -144,4 +140,34 @@ func (k *Kernel) pastedImages(names []string) ([]provider.Image, []string) {
 		used = append(used, name)
 	}
 	return imgs, used
+}
+
+// joinNote puts a note after content with the blank line the model expects
+// between two blocks, or alone when there is no text.
+func joinNote(content, note string) string {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return content
+	}
+	if strings.TrimSpace(content) == "" {
+		return note
+	}
+	return content + "\n\n" + note
+}
+
+// stripPastedNote removes a note this package appended to a message, so the
+// transcript keeps the owner's own words. The note is added again when the line
+// is assembled, which is why it must not be stored.
+func stripPastedNote(content, note string) string {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return content
+	}
+	if content == note {
+		return ""
+	}
+	if rest, ok := strings.CutSuffix(content, "\n\n"+note); ok {
+		return rest
+	}
+	return content
 }

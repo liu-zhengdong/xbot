@@ -93,6 +93,16 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 			t.Errorf("a dragged file cannot be dropped: %s", want)
 		}
 	}
+	// A refusal with no thumbnail to sit under must still be readable: the bar
+	// follows the note, not only the list.
+	for _, want := range []string{
+		`const has = attachState().length > 0 || !!text;`,
+		`$("attach-bar").hidden = !has;`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("a refused picture explains nothing: %s", want)
+		}
+	}
 	// Switching bot drops pictures uploaded to the old one.
 	if !strings.Contains(js, `clearAttach();`+"\n"+`    state.streaming = 0;`) {
 		t.Error("switching conversations must clear pending pictures")

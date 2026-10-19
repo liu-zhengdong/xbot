@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,6 +102,34 @@ func PastedPath(botDir, id string) (string, error) {
 		return "", os.ErrNotExist
 	}
 	return path, nil
+}
+
+// ReadPasted returns one stored picture's bytes, capped at PastedMaxBytes.
+// The file is opened without following a link, so the check above and this read
+// cannot be separated by a swap, and the size is taken from the open file, so a
+// picture grown past the cap after upload is refused instead of loaded.
+func ReadPasted(botDir, id string) ([]byte, error) {
+	path, err := PastedPath(botDir, id)
+	if err != nil {
+		return nil, err
+	}
+	f, err := openPastedFile(path)
+	if err != nil {
+		return nil, os.ErrNotExist
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, os.ErrNotExist
+	}
+	if st.Size() > PastedMaxBytes {
+		return nil, os.ErrNotExist
+	}
+	buf, err := io.ReadAll(io.LimitReader(f, PastedMaxBytes+1))
+	if err != nil || len(buf) > PastedMaxBytes {
+		return nil, os.ErrNotExist
+	}
+	return buf, nil
 }
 
 // realPastedDir is the paste directory of a bot workspace, checked to be a real

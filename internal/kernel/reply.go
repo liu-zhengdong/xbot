@@ -53,6 +53,12 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	// the names are recorded on the line so a later turn can find them.
 	images := m.ImageNames
 	m.ImageNames = nil
+	// A note naming the pictures may have been added to reach the model in this
+	// request. The line stores the owner's words; the note comes back when the
+	// line is assembled.
+	if len(images) > 0 {
+		m.Content = stripPastedNote(m.Content, k.pastedNote(images))
+	}
 	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
 	if err != nil {
 		return 0, err

@@ -290,6 +290,20 @@ func TestPasteRefusesLinksAndOversize(t *testing.T) {
 		t.Fatalf("oversize picture: %d %s", res.StatusCode, raw)
 	}
 
+	// A picture grown past the cap after upload is refused on read, so a bot
+	// cannot make the process load an arbitrarily large file by rewriting one.
+	grown := uploadPaste(t, ui.URL, cookie, pngBytes(t, 4, 4))
+	grownPath, err := work.PastedPath(work.BotDir(root, "ada"), grown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(grownPath, append(pngBytes(t, 4, 4), bytes.Repeat([]byte{0}, (10<<20)+16)...), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := getStatus(t, ui.URL+"/api/bots/ada/paste/"+grown, cookie); code != http.StatusNotFound {
+		t.Errorf("GET on a picture grown past the cap: %d, want 404", code)
+	}
+
 	// A symlink with a valid name is not a stored picture.
 	dir, err := work.EnsurePastedDir(work.BotDir(root, "ada"))
 	if err != nil {

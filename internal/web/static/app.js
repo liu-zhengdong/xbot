@@ -5749,9 +5749,14 @@
 
   function attachNote(text) {
     const note = $("attach-note");
-    if (!text) { note.hidden = true; note.textContent = ""; return; }
-    note.hidden = false;
-    note.textContent = text;
+    note.textContent = text || "";
+    note.hidden = !text;
+    // A refusal can arrive with no thumbnail to sit under, so the bar follows
+    // the note as well as the list. It is revealed here, not only in
+    // paintAttach, because the caller may not repaint.
+    const has = attachState().length > 0 || !!text;
+    $("attach-bar").hidden = !has;
+    composer.classList.toggle("has-attach", has);
   }
 
   function attachKey(sel) {
@@ -5782,7 +5787,9 @@
       cell.append(drop);
       list.append(cell);
     }
-    const has = rows.length > 0;
+    // The bar stays visible while it has something to say: a refusal has no
+    // thumbnail to sit under, and hiding the whole bar would hide the reason.
+    const has = rows.length > 0 || !$("attach-note").hidden;
     $("attach-bar").hidden = !has;
     composer.classList.toggle("has-attach", has);
     syncComposer();
@@ -5793,6 +5800,8 @@
     const at = rows.indexOf(row);
     if (at >= 0) rows.splice(at, 1);
     if (row.url) URL.revokeObjectURL(row.url);
+    // With nothing left to explain, an older refusal no longer applies. A
+    // caller that has a fresh reason sets it right after this call.
     if (!rows.length) attachNote("");
     paintAttach();
   }

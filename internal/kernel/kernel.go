@@ -528,7 +528,13 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		}
 		if len(ev.Images) > 0 {
 			msg.ImageNames = ev.Images
-			msg.Images, _ = k.pastedImages(ev.Images)
+			imgs, used := k.pastedImages(ev.Images)
+			msg.Images = imgs
+			// The cap may keep a picture out of this request. The model then
+			// needs the path, or the message reads as if nothing came with it.
+			if len(used) < len(ev.Images) {
+				msg.Content = joinNote(msg.Content, k.pastedNote(ev.Images))
+			}
 		}
 		out = append(out, msg)
 		if err := k.Inbox.Ack(ev.ID); err != nil {

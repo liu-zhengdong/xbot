@@ -116,12 +116,7 @@ func (s *Server) getPaste(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	path, err := work.PastedPath(work.BotDir(s.Root, b.Name()), r.PathValue("image"))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	data, err := os.ReadFile(path)
+	data, err := work.ReadPasted(work.BotDir(s.Root, b.Name()), r.PathValue("image"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
