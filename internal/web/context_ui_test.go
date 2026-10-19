@@ -5,42 +5,6 @@ import (
 	"testing"
 )
 
-// TestContextPanelUI pins the panel's contract: a 上下文 tab, the band classes
-// the stylesheet colours by, and the full-width audit view. The JS is not run;
-// a literal going missing is what this catches.
-func TestContextPanelUI(t *testing.T) {
-	for file, wants := range map[string][]string{
-		"static/app.js": {
-			`["context", "上下文"]`,
-			`function contextView(data)`,
-			`function openContextSheet(req, snap)`,
-			`"/context"`,
-			`ctx-band`,
-			`ctx-seq`,
-			`el("span", "", "在完整视图中打开")`,
-			// The panel must not invent a figure the kernel did not send.
-			`if (snap === null) {`,
-		},
-		"static/app.css": {
-			`.ctx-band {`,
-			`.ctx-sheet-wrap {`,
-			`--k-sys: #2f2f33;`,
-			`html[data-theme="dark"]`,
-			`.k-hist { background: var(--k-hist); }`,
-		},
-	} {
-		data, err := staticFS.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, want := range wants {
-			if !strings.Contains(string(data), want) {
-				t.Errorf("%s missing %q", file, want)
-			}
-		}
-	}
-}
-
 // TestContextAPIWired keeps the route mounted. A handler without a route is
 // dead code the UI would call and get 404 from.
 func TestContextAPIWired(t *testing.T) {
@@ -85,30 +49,8 @@ func TestContextSnapshotDroppedOnSwitch(t *testing.T) {
 	if !strings.Contains(body, "state.ctxSnap = null;") {
 		t.Error("resetting a conversation does not drop the context snapshot")
 	}
-	if !strings.Contains(body, "closeContextSheet()") {
-		t.Error("resetting a conversation leaves the audit sheet open")
-	}
-}
-
-// TestContextSheetClosedOnLogin keeps the audit view from surviving an expired
-// session: it hangs off <body>, outside the hidden shell.
-func TestContextSheetClosedOnLogin(t *testing.T) {
-	src := readStatic(t, "static/app.js")
-	body := functionBody(t, src, "function showLogin(expired = false) {")
-	if !strings.Contains(body, "closeContextSheet()") {
-		t.Error("an expired session leaves the context sheet on screen")
-	}
-}
-
-// TestContextRowKeepsScroll pins the in-place toggle: rebuilding the whole
-// sheet on every row click would send a long sequence back to the top.
-func TestContextRowKeepsScroll(t *testing.T) {
-	src := readStatic(t, "static/app.js")
-	if !strings.Contains(src, "mainBox.scrollTop = keep") {
-		t.Error("expanding a row does not restore the scroll offset")
-	}
-	if strings.Contains(src, `state.ctxOpenEntry = open ? "" : "e" + i;`) {
-		t.Error("a row click still rebuilds the whole sheet")
+	if !strings.Contains(body, "state.ctxMenu = false;") {
+		t.Error("resetting a conversation leaves the request menu open")
 	}
 }
 

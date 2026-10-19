@@ -66,10 +66,10 @@
     // message is open, and the snapshot itself (fetched per bot, never cached
     // across a switch so a stale turn cannot be misread as the current one).
     ctxSnap: null,
-    ctxSel: null,
-    ctxStep: 0,
-    ctxOpenRow: "",
-    ctxOpenEntry: "",
+    ctxStep: -1,
+    ctxMenu: false,
+    ctxOpen: { turn: true },
+    ctxRaw: "",
     peer: null,
     replyTo: null,
     // Pictures pasted or dropped into the composer, waiting for send. Each
@@ -843,10 +843,6 @@
     closeStp();
     closeShots();
     bgClose();
-    // The context sheet hangs off <body>, outside the shell that gets hidden,
-    // so it would otherwise keep the prompt and tool output on screen over the
-    // login form.
-    closeContextSheet();
     panel.classList.remove("open");
     $("panel-scrim").hidden = true;
     $("info").setAttribute("aria-expanded", "false");
@@ -3470,10 +3466,9 @@
     // The snapshot belongs to one bot's one wake. Keeping it would show A's
     // context under B's name, so it is dropped and refetched on demand.
     state.ctxSnap = null;
-    state.ctxStep = 0;
-    state.ctxOpenRow = "";
-    state.ctxOpenEntry = "";
-    closeContextSheet();
+    state.ctxStep = -1;
+    state.ctxMenu = false;
+    state.ctxRaw = "";
     ++state.threadLoad;
     ++state.panelLoad;
     thread.replaceChildren();
@@ -4005,65 +4000,42 @@
 
 
   // ---- 上下文检视 ------------------------------------------------------
-  // The panel reports what the model was actually sent on the current wake,
-  // split by band. It is read-only: nothing here writes the transcript. A bot
-  // driven by another process, or one that has not woken yet, has no snapshot
-  // and says so instead of showing zeros.
+  // One card: how full the working set is, what fills it, and the rows behind
+  // the bands the owner is likely to open. It reads the kernel's in-memory
+  // snapshot of the current wake and writes nothing. A bot driven by another
+  // process, or one that has not woken yet, has no snapshot and says so
+  // instead of showing zeros.
 
-  // LAYER_ORDER fixes the band order and the labels the server sends. The
-  // colour comes from CSS, keyed by the band key, so light and dark themes
-  // each keep one readable ramp.
-  function ctxLayers(req) {
-    const order = ["sys", "tools", "mem", "block", "env", "hist"];
-    const rows = req.layers || [];
-    const out = [];
-    for (const key of order) {
-      if (key === "tools") {
-        if (req.tools > 0) out.push({ key: "tools", label: "工具定义", tokens: req.tools, blocks: [] });
-        continue;
-      }
-      if (key === "block") {
-        const blocks = rows.filter((r) => r.key === "block");
-        const tokens = blocks.reduce((a, r) => a + r.tokens, 0);
-        if (tokens > 0) out.push({ key: "block", label: "摘要块", tokens: tokens, blocks: blocks });
-        continue;
-      }
-      const hit = rows.filter((r) => r.key === key);
-      if (hit.length) out.push({ key: key, label: hit[0].label, tokens: hit.reduce((a, r) => a + r.tokens, 0), blocks: [] });
-    }
-    return out;
-  }
+  // CTX_BANDS fixes the legend order. The tools band is not here: tool
+  // definitions are sent but are not part of the working set, so they sit
+  // under the legend with a dash for a share.
+  const CTX_BANDS = [
+    ["turn", "本轮"], ["hist", "早先对话"], ["block", "摘要块"],
+    ["sys", "系统提示词"], ["mem", "记忆"], ["env", "环境更新"],
+  ];
 
-  function ctxTotal(req) { return (req && req.prompt) || 0; }
-
-  function tokenText(n) {
+  function ctxK(n) {
     if (!n) return "0";
     if (n < 1000) return String(n);
-    const v = n / 1000;
-    return (v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)) + "K";
+    return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
   }
 
-  function ctxShare(req, snap) {
-    const set = (snap && snap.working_set) || 0;
-    if (!set) return "";
-    return (ctxTotal(req) * 100 / set).toFixed(1) + "%";
+  // ctxSums folds a request's layers into the legend's bands. Summary blocks
+  // come one layer per block and are summed here.
+  function ctxSums(req) {
+    const sums = {};
+    for (const l of req.layers || []) sums[l.key] = (sums[l.key] || 0) + l.tokens;
+    return sums;
   }
 
-  function ctxBand(layers) {
-    const total = layers.reduce((a, l) => a + l.tokens, 0);
-    const bar = el("div", "ctx-band");
-    for (const l of layers) {
-      if (!total) break;
-      const seg = el("i", "ctx-seg k-" + l.key);
-      seg.style.width = (l.tokens * 100 / total).toFixed(3) + "%";
-      setTip(seg, l.label + " " + tokenText(l.tokens));
-      bar.append(seg);
-    }
-    return bar;
+  function ctxReq(snap) {
+    const reqs = snap.requests || [];
+    if (state.ctxStep < 0 || state.ctxStep >= reqs.length) return reqs[reqs.length - 1];
+    return reqs[state.ctxStep];
   }
 
   function contextView(data) {
-    const wrap = document.createDocumentFragment();
+    const wrap = el("div", "ctx");
     const snap = state.ctxSnap;
     if (snap === null) {
       wrap.append(el("p", "hint", "正在读取……"));
@@ -4076,99 +4048,158 @@
       wrap.append(el("p", "hint hint-sub", "上下文只在每次唤醒时存在。在对话里说一句，或者等它自己醒来，这里就会出现这一轮实际发出去的内容。"));
       return wrap;
     }
-    const req = reqs[Math.min(state.ctxStep, reqs.length - 1)] || reqs[reqs.length - 1];
-    const layers = ctxLayers(req);
+    const req = ctxReq(snap);
+    const latest = req === reqs[reqs.length - 1];
+    const sums = ctxSums(req);
+    const used = Math.max(0, (req.prompt || 0) - (req.tools || 0));
+    const ws = snap.working_set || 0;
+    const denom = ws || used || 1;
+    const free = ws ? Math.max(0, ws - used) : 0;
+    const share = (n) => (n * 100 / denom).toFixed(1) + "%";
 
-    const head = el("div", "ctx-head");
-    head.append(el("b", "ctx-total num", tokenText(ctxTotal(req))), el("span", "ctx-unit", "token"));
+    wrap.append(ctxPicker(reqs, req, latest));
+
+    const head = el("div", "ctx-used");
+    head.append(el("b", "num", ws ? Math.round(used * 100 / ws) + "% 已用" : ctxK(used) + " 已用"));
+    if (ws) head.append(el("span", "num", ctxK(used) + " / " + ctxK(ws)));
     wrap.append(head);
 
-    const share = ctxShare(req, snap);
-    const sub = el("p", "ctx-sub");
-    if (share) sub.append(el("span", "", "工作集 " + tokenText(snap.working_set) + " 的 " + share));
-    if (reqs.length > 1) {
-      if (share) sub.append(el("span", "ctx-dot", "·"));
-      sub.append(el("span", "", "本轮第 " + req.step + " 次请求"));
+    const band = el("div", "ctx-band");
+    for (const [key, label] of CTX_BANDS) {
+      if (!sums[key]) continue;
+      const seg = el("i", "ctx-c-" + key);
+      seg.style.width = Math.min(100, sums[key] * 100 / denom).toFixed(3) + "%";
+      setTip(seg, label + " " + ctxK(sums[key]));
+      band.append(seg);
     }
-    wrap.append(sub);
-    wrap.append(ctxBand(layers));
+    wrap.append(band);
 
-    const list = el("div", "ctx-list");
-    for (const l of layers) {
-      const open = state.ctxOpenRow === l.key;
-      const row = el("button", "ctx-row" + (open ? " open" : ""));
-      row.type = "button";
-      const dot = el("span", "ctx-dotmark k-" + l.key);
-      row.append(dot, el("span", "ctx-name", l.label), el("span", "ctx-tk num", tokenText(l.tokens)));
-      row.addEventListener("click", () => {
-        state.ctxOpenRow = open ? "" : l.key;
-        paintPanel();
-      });
-      list.append(row);
-      if (open) list.append(ctxPeek(req, l));
+    const legend = el("div", "ctx-legend");
+    const line = (cls, label, value, pct) => {
+      const row = el("div", "ctx-lg" + (cls ? " " + cls : ""));
+      row.append(el("span", "ctx-sw"), el("span", "ctx-lg-k", label), el("span", "ctx-lg-v num", value), el("span", "ctx-lg-p num", pct));
+      legend.append(row);
+    };
+    for (const [key, label] of CTX_BANDS) {
+      if (sums[key]) line("ctx-c-" + key, label, ctxK(sums[key]), share(sums[key]));
     }
-    wrap.append(list);
+    if (ws) line("ctx-free", "空余", ctxK(free), share(free));
+    if (req.tools > 0) {
+      legend.append(el("div", "ctx-gap"));
+      line("ctx-c-tools ctx-dim", "工具定义（另算）", ctxK(req.tools), "—");
+    }
+    wrap.append(legend);
 
-    const more = el("button", "ctx-more");
-    more.type = "button";
-    more.append(el("span", "", "在完整视图中打开"), icon("maximize", "ctx-more-icon"));
-    more.addEventListener("click", () => openContextSheet(req, snap));
-    wrap.append(more);
+    const detail = snap.detail;
+    if (detail) wrap.append(ctxDetails(detail, req));
+
+    if (ws) wrap.append(el("p", "ctx-foot num", "离自动压缩还有约 " + ctxK(free)));
     return wrap;
   }
 
-  // ctxPeek shows the first messages of one band, clipped. It is the panel's
-  // down-drill; the full view reads the whole sequence.
-  function ctxPeek(req, layer) {
-    const box = el("div", "ctx-peek");
-    if (layer.key === "block") {
-      for (const b of layer.blocks) {
-        const line = el("div", "ctx-block-line");
-        line.append(el("span", "", "seq " + (b.from || "?") + "–" + (b.to || "?")));
-        box.append(line);
+  // ctxPicker is the title with the request menu: the last ten model calls of
+  // this wake, newest first. The newest is the default and is called 最新.
+  function ctxPicker(reqs, req, latest) {
+    const head = el("div", "ctx-hd");
+    const pick = el("button", "ctx-pick");
+    pick.type = "button";
+    pick.setAttribute("aria-haspopup", "menu");
+    pick.setAttribute("aria-expanded", state.ctxMenu ? "true" : "false");
+    pick.append(el("span", "", "上下文"), el("small", "num", latest ? "最新" : "第 " + req.step + " 次"), icon("chevronDown", "ctx-pick-i"));
+    pick.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      state.ctxMenu = !state.ctxMenu;
+      paintPanel();
+    });
+    head.append(pick);
+    if (state.ctxMenu) {
+      const menu = el("div", "ctx-menu");
+      menu.setAttribute("role", "menu");
+      for (let i = reqs.length - 1; i >= 0; i--) {
+        const r = reqs[i];
+        const item = el("button", "ctx-menu-i" + (r === req ? " on" : ""));
+        item.type = "button";
+        item.setAttribute("role", "menuitem");
+        item.append(el("span", "num", "第 " + r.step + " 次" + (i === reqs.length - 1 ? " · 最新" : "")), el("span", "num", ctxK(Math.max(0, r.prompt - r.tools))));
+        item.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          state.ctxStep = i === reqs.length - 1 ? -1 : i;
+          state.ctxMenu = false;
+          state.ctxRaw = "";
+          paintPanel();
+        });
+        menu.append(item);
       }
-      if (!layer.blocks.length) box.append(el("div", "ctx-block-line", "没有摘要块"));
+      head.append(menu);
     }
-    const hits = (req.entries || []).filter((e) => kindMatches(e.kind, layer.key));
-    let shown = 0;
-    for (const e of hits) {
-      if (shown >= 3) break;
-      shown++;
-      box.append(ctxPeekLine(e));
-    }
-    if (!shown && layer.key !== "block") box.append(el("div", "ctx-block-line", "没有内容"));
-    if (hits.length > 3) box.append(el("div", "ctx-block-line ctx-dim", "还有 " + (hits.length - 3) + " 条"));
+    return head;
+  }
+
+  // ctxDetails is the four sections behind the legend. Steps of an older
+  // request are the first turn_steps steps of the newest one: within one wake
+  // a turn only grows. The other sections always describe the newest request.
+  function ctxDetails(detail, req) {
+    const box = el("div", "ctx-dt");
+    const skip = detail.skipped_steps || 0;
+    const upto = Math.min(req.turn_steps || 0, skip + (detail.steps || []).length);
+    const steps = (detail.steps || []).slice(0, Math.max(0, upto - skip)).map((s, i) => ({
+      id: String(skip + i), code: s.tool, text: s.what || (s.tool ? "" : "回复"), n: s.tokens, bad: s.fail, raw: s.preview,
+    })).reverse();
+    ctxSection(box, "turn", "本轮", upto + " 步", steps, skip > 0 && upto > skip ? "前 " + skip + " 步没有留" : "");
+    const turns = (detail.turns || []).map((t, i) => ({ id: String(i), text: t.ask || "（没有开头的话）", n: t.tokens })).reverse();
+    const earlier = detail.earlier_turns || 0;
+    if (turns.length + earlier) ctxSection(box, "hist", "早先对话", (turns.length + earlier) + " 轮", turns, earlier ? "更早的 " + earlier + " 轮共 " + ctxK(detail.earlier_tokens) : "");
+    const blocks = (detail.blocks || []).map((b, i) => ({ id: String(i), text: "seq " + (b.from || "?") + "–" + (b.to || "?"), n: b.tokens, raw: b.preview }));
+    if (blocks.length) ctxSection(box, "block", "摘要块", String(blocks.length), blocks, "");
+    const tools = (detail.tool_defs || []).map((t, i) => ({ id: String(i), code: t.name, text: "", n: t.tokens }));
+    if (tools.length) ctxSection(box, "tools", "工具", String(tools.length), tools, "");
     return box;
   }
 
-  function kindMatches(kind, key) {
-    if (key === "tools") return false;
-    if (key === "sys") return kind === "sys";
-    if (key === "mem") return kind === "memory";
-    if (key === "env") return kind === "env";
-    if (key === "block") return kind === "block";
-    return kind === "hist";
+  function ctxSection(box, key, label, count, rows, note) {
+    const open = !!state.ctxOpen[key];
+    const head = el("button", "ctx-ds" + (open ? " open" : ""));
+    head.type = "button";
+    head.setAttribute("aria-expanded", open ? "true" : "false");
+    head.append(icon("chevron", "ctx-ds-i"), el("span", "", label), el("span", "ctx-ds-v num", count));
+    head.addEventListener("click", () => {
+      state.ctxOpen[key] = !open;
+      paintPanel();
+    });
+    box.append(head);
+    if (!open) return;
+    const list = el("div", "ctx-rows");
+    for (const r of rows) {
+      const id = key + ":" + r.id;
+      const row = el("button", "ctx-r" + (r.n >= 1000 ? " big" : ""));
+      row.type = "button";
+      const name = el("span", "ctx-r-k");
+      if (r.code) name.append(el("code", "", r.code));
+      if (r.text) name.append(document.createTextNode(r.text));
+      if (r.bad) name.append(el("span", "ctx-bad", "失败"));
+      row.append(name, el("span", "ctx-r-v num", ctxK(r.n)));
+      if (r.raw) {
+        row.addEventListener("click", () => {
+          state.ctxRaw = state.ctxRaw === id ? "" : id;
+          paintPanel();
+        });
+      } else {
+        row.classList.add("flat");
+      }
+      list.append(row);
+      if (state.ctxRaw === id && r.raw) list.append(el("pre", "ctx-raw", r.raw));
+    }
+    if (!rows.length) list.append(el("div", "ctx-note", "还没有"));
+    if (note) list.append(el("div", "ctx-note", note));
+    box.append(list);
   }
 
-  function ctxPeekLine(e) {
-    const line = el("div", "ctx-peek-line");
-    line.append(el("span", "ctx-role", ctxRole(e)));
-    line.append(el("span", "ctx-prev", e.preview || "（空）"));
-    return line;
-  }
-
-  // ctxRole names who wrote a line, in the owner's language. A summary block is
-  // written by the kernel, not by the owner, so it must not read 主人.
-  function ctxRole(e) {
-    if (e.role === "tool") return "结果";
-    if (e.kind === "block") return "摘要";
-    if (e.kind === "sys") return "系统";
-    if (e.kind === "memory") return "记忆";
-    if (e.kind === "env") return "环境";
-    if (e.role === "assistant") return "Bot";
-    if (e.role === "user") return "主人";
-    return e.role || "";
-  }
+  // A click anywhere else closes the request menu, the way the other menus close.
+  document.addEventListener("click", (ev) => {
+    if (!state.ctxMenu || ev.target.closest(".ctx-hd")) return;
+    state.ctxMenu = false;
+    if (state.tab === "context") paintPanel();
+  });
 
   async function loadContext(name) {
     if (!name) return;
@@ -4178,183 +4209,13 @@
       const snap = await api("/api/bots/" + encodeURIComponent(name) + "/context");
       if (state.sel !== sel || request !== state.panelLoad) return;
       state.ctxSnap = snap;
-      state.ctxStep = Math.max(0, (snap.requests || []).length - 1);
+      state.ctxStep = -1;
       if (state.tab === "context") paintPanel();
     } catch (e) {
       if (state.sel !== sel || request !== state.panelLoad) return;
       state.ctxSnap = { requests: [] };
       if (state.tab === "context") paintPanel();
     }
-  }
-
-
-  // openContextSheet is the full-width audit view: the sent sequence, one row
-  // per message, with the text of the chosen row under it. The panel's 320px
-  // is enough for the totals; reading a tool result needs the room.
-  let ctxSheet = null;
-  function openContextSheet(req, snap) {
-    closeContextSheet();
-    const sheet = el("div", "ctx-sheet-wrap");
-    const box = el("div", "ctx-sheet");
-    const bar = el("div", "ctx-sheet-bar");
-    bar.append(el("h1", "", "上下文"));
-    const meta = el("span", "ctx-sheet-meta");
-    meta.append(el("span", "", snap.bot || ""));
-    meta.append(el("span", "ctx-dot", "·"));
-    meta.append(el("span", "", "本轮第 " + req.step + " 次请求"));
-    const share = ctxShare(req, snap);
-    if (share) {
-      meta.append(el("span", "ctx-dot", "·"));
-      meta.append(el("span", "", share + " of " + tokenText(snap.working_set)));
-    }
-    bar.append(meta);
-    const close = el("button", "ghost ctx-sheet-close");
-    close.type = "button";
-    close.setAttribute("aria-label", "关闭");
-    close.append(icon("x"));
-    close.addEventListener("click", closeContextSheet);
-    bar.append(close);
-    box.append(bar);
-
-    const bodyBox = el("div", "ctx-sheet-body");
-    const side = el("div", "ctx-side");
-    const head = el("div", "ctx-side-hd", "本轮请求");
-    side.append(head);
-    if ((snap.requests || []).length > 1) {
-      const chips = el("div", "ctx-reqs");
-      snap.requests.forEach((r, i) => {
-        const chip = el("button", "ctx-req" + (i === state.ctxStep ? " on" : ""));
-        chip.type = "button";
-        chip.append(el("span", "", "第 " + r.step + " 次 " + (when(r.at) || "")), el("span", "ctx-req-tk", tokenText(ctxTotal(r))));
-        chip.addEventListener("click", () => {
-          state.ctxStep = i;
-          openContextSheet(snap.requests[i], snap);
-        });
-        chips.append(chip);
-      });
-      side.append(chips);
-    } else {
-      side.append(el("div", "ctx-reqs ctx-dim", when(req.at) || ""));
-    }
-    side.append(el("div", "ctx-side-hd", "分层"));
-    for (const l of ctxLayers(req)) {
-      const row = el("button", "ctx-side-row");
-      row.type = "button";
-      row.append(el("span", "ctx-dotmark k-" + l.key), el("span", "ctx-name", l.label), el("span", "ctx-tk num", tokenText(l.tokens)));
-      side.append(row);
-      for (const b of l.blocks) {
-        row.addEventListener("click", () => scrollToSeq(b.from));
-        const sub = el("button", "ctx-side-row ctx-side-sub");
-        sub.type = "button";
-        sub.append(el("span", "ctx-name", "seq " + (b.from || "?") + "–" + (b.to || "?")), el("span", "ctx-tk num", tokenText(b.tokens)));
-        sub.addEventListener("click", () => scrollToSeq(b.from));
-        side.append(sub);
-      }
-    }
-    const foot = el("div", "ctx-side-foot");
-    if (snap.working_set) foot.append(el("div", "", "工作集 " + tokenText(snap.working_set) + "，现在用了 " + (ctxShare(req, snap) || "—") + "。"));
-    if (snap.window) foot.append(el("div", "", "模型窗口 " + tokenText(snap.window) + "，只用来防溢出。"));
-    if (req.tools > 0) foot.append(el("div", "", "工具定义 " + tokenText(req.tools) + " 没有算进工作集分母。"));
-    side.append(foot);
-
-    const main = el("div", "ctx-main");
-    const seqHead = el("div", "ctx-seq-head");
-    seqHead.append(el("span", "ctx-seq-h", "实际发出的消息"), el("span", "ctx-seq-s", "按发送顺序，点一行看原文"));
-    main.append(seqHead);
-    const seq = el("div", "ctx-seq");
-    (req.entries || []).forEach((e, i) => {
-      const open = state.ctxOpenEntry === "e" + i;
-      const row = el("button", "ctx-seq-row" + (open ? " on" : ""));
-      row.type = "button";
-      const bar = el("span", "ctx-bar k-" + e.kind);
-      if (e.kind === "block") {
-        row.classList.add("ctx-seq-block");
-        if (e.from) row.dataset.from = String(e.from);
-      }
-      row.append(bar);
-      row.append(el("span", "ctx-seq-n", seqLabel(e)));
-      row.append(el("span", "ctx-seq-role", ctxRole(e)));
-      row.append(el("span", "ctx-seq-prev", e.preview || "（空）"));
-      // The estimate is the kernel's, so the row agrees with the band above it;
-      // a per-entry figure the front end invented would not add up.
-      const tail = el("span", "ctx-seq-tk num", tokenText(e.tokens || 0));
-      if (e.cut) tail.append(el("span", "ctx-seq-cut", "截断"));
-      row.append(tail);
-      seq.append(row);
-      // The text of the open row sits right after it. Toggling rebuilds only
-      // this one row's neighbour and restores the scroll offset, so a long
-      // sequence does not jump back to the top when a row is opened.
-      let doc = null;
-      if (open) doc = ctxDocFor(e);
-      const pair = el("div", "ctx-pair");
-      pair.append(row);
-      if (doc) pair.append(doc);
-      seq.append(pair);
-      row.addEventListener("click", () => {
-        const wasOpen = state.ctxOpenEntry === "e" + i;
-        state.ctxOpenEntry = wasOpen ? "" : "e" + i;
-        const mainBox = pair.closest(".ctx-main");
-        const keep = mainBox ? mainBox.scrollTop : 0;
-        const existing = pair.querySelector(".ctx-doc");
-        if (wasOpen) {
-          if (existing) existing.remove();
-          row.classList.remove("on");
-        } else {
-          if (!existing) pair.append(ctxDocFor(req.entries[i]));
-          row.classList.add("on");
-        }
-        if (mainBox) mainBox.scrollTop = keep;
-      });
-    });
-    if (req.more) seq.append(el("p", "ctx-seq-more", "还有 " + req.more + " 条未列出"));
-    if (!(req.entries || []).length) seq.append(el("p", "hint", "这次请求没有消息。"));
-    main.append(seq);
-    bodyBox.append(side, main);
-    box.append(bodyBox);
-    sheet.append(box);
-    sheet.addEventListener("click", (ev) => { if (ev.target === sheet) closeContextSheet(); });
-    document.body.append(sheet);
-    ctxSheet = sheet;
-    document.addEventListener("keydown", ctxSheetKey);
-  }
-
-  // ctxDocFor is the text of one sent message, as the panel shows it.
-  function ctxDocFor(e) {
-    const doc = el("div", "ctx-doc");
-    doc.append(el("pre", "ctx-pre", (e && e.preview) || "（空）"));
-    if (e && e.cut) doc.append(el("p", "ctx-doc-hint", "这里只显示开头 400 字；这一条完整 " + (e.chars || 0) + " 字节，原文在对话记录里。"));
-    return doc;
-  }
-
-  // seqLabel is the left gutter: only a summary block has one, because it
-  // covers a range the model can expand. A sent message is not labelled with a
-  // transcript line: the request carries the text, not the line number, and a
-  // number inferred by counting would be a guess.
-  function seqLabel(e) {
-    if (e.kind === "block") return e.from ? e.from + "–" + (e.to || "?") : "";
-    return "";
-  }
-
-  // scrollToSeq opens the first entry of a summary block, which is the nearest
-  // row the sheet can show. A block itself covers a range and has no single row.
-  function scrollToSeq(from) {
-    const rows = document.querySelectorAll(".ctx-seq-row");
-    if (!rows.length) return;
-    const target = document.querySelector(".ctx-seq-block[data-from='" + from + "']") || rows[0];
-    target.scrollIntoView({ block: "center", behavior: "smooth" });
-    target.classList.add("ctx-flash");
-    setTimeout(() => target.classList.remove("ctx-flash"), 900);
-  }
-
-  function closeContextSheet() {
-    if (!ctxSheet) return;
-    document.removeEventListener("keydown", ctxSheetKey);
-    ctxSheet.remove();
-    ctxSheet = null;
-  }
-
-  function ctxSheetKey(ev) {
-    if (ev.key === "Escape") closeContextSheet();
   }
 
   function styleChips(data) {
