@@ -397,14 +397,14 @@ func (k *Kernel) noteShellWrites(ctx context.Context, start, end time.Time) []st
 		path string
 		rec  fileRec
 	}
-	k.fileMu.Lock()
-	items := make([]item, 0, len(k.files))
-	for p, r := range k.files {
+	k.files.mu.Lock()
+	items := make([]item, 0, len(k.files.rec))
+	for p, r := range k.files.rec {
 		if r != nil {
 			items = append(items, item{p, *r})
 		}
 	}
-	k.fileMu.Unlock()
+	k.files.mu.Unlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].rec.seq < items[j].rec.seq })
 	var labels []string
 	for _, it := range items {
