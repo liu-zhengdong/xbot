@@ -79,7 +79,7 @@ func (k *Kernel) attachEventImages(msgs []provider.Message, names []string) ([]p
 	if at < 0 {
 		return msgs, 0
 	}
-	imgs, _ := k.pastedImages(names)
+	imgs := k.pastedImages(names)
 	if len(imgs) == 0 {
 		return msgs, 0
 	}
@@ -111,18 +111,17 @@ func (k *Kernel) readPasted(name string) (string, []byte, error) {
 //
 // The caps are the turn's, not the message's: a second absorbed message must not
 // start a fresh four pictures beside the ones already in the request.
-func (k *Kernel) pastedImages(names []string) ([]provider.Image, []string) {
+func (k *Kernel) pastedImages(names []string) []provider.Image {
 	if _, sees := k.vision(); !sees {
-		return nil, nil
+		return nil
 	}
 	t := k.curTurn()
 	if t == nil {
-		return nil, nil
+		return nil
 	}
 	t.pasteMu.Lock()
 	defer t.pasteMu.Unlock()
 	var imgs []provider.Image
-	var used []string
 	for _, name := range names {
 		if t.pasteSeen >= pastedImagesTurn || t.pasteBytes >= maxPastedBytesTurn {
 			break
@@ -137,9 +136,8 @@ func (k *Kernel) pastedImages(names []string) ([]provider.Image, []string) {
 		t.pasteSeen++
 		t.pasteBytes += len(data)
 		imgs = append(imgs, provider.Image{MIME: mime, Data: data})
-		used = append(used, name)
 	}
-	return imgs, used
+	return imgs
 }
 
 // withPastedNote puts the note naming a line's pictures into the text a model

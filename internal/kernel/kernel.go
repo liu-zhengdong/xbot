@@ -528,13 +528,20 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		}
 		if len(ev.Images) > 0 {
 			msg.ImageNames = ev.Images
-			imgs, used := k.pastedImages(ev.Images)
-			msg.Images = imgs
-			// The cap may keep a picture out of this request. The model then
-			// needs the path, or the message reads as if nothing came with it.
-			if len(used) < len(ev.Images) {
-				msg.Content = joinNote(msg.Content, k.pastedNote(ev.Images))
-			}
+			// The note always goes in, not only when a picture is left out: the
+			// agent may still trim to the turn's allowance, and a picture that
+			// fell to the cap needs the path to be found again. The note is
+			// removed again before the line is stored (recordTurn), so the
+			// transcript keeps the owner's words and the assembled context adds
+			// it back exactly once.
+			// The note always goes in, not only when a picture is left out: the
+			// agent may still trim to the turn's allowance, and a picture that
+			// fell to the cap needs the path to be found again. The note is
+			// removed again before the line is stored (recordTurn), so the
+			// transcript keeps the owner's words and the assembled context adds
+			// it back exactly once.
+			msg.Content = k.withPastedNote(msg.Content, ev.Images)
+			msg.Images = k.pastedImages(ev.Images)
 		}
 		out = append(out, msg)
 		if err := k.Inbox.Ack(ev.ID); err != nil {

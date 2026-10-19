@@ -272,3 +272,125 @@ func (c *recordingCompactor) Compact(_ context.Context, prior string, turns []pr
 	c.got = b.String()
 	return "summary " + prior, nil
 }
+
+// TestAbsorbedNoteIsNotStored is the regression for the second cut of the
+// absorbed path: the note naming the pictures was added to reach the model and
+// then also stored, so the next assembly appended it a second time and the
+// owner's own words were no longer the line's text.
+func TestAbsorbedNoteIsNotStored(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	dir, _, err := work.Open(b.Root, b.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := work.PastedName("image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, Content: "好"},
+	}}
+	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2, WorkDir: dir,
+		Links: []link.Link{link.Terminal{}}}
+	// The absorbed message the way absorbInbox builds it.
+	if err := k.record(provider.Message{
+		Role: provider.RoleUser, Content: k.withPastedNote("看这个", []string{id}),
+		ImageNames: []string{id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	for _, e := range entriesFor(t, b) {
+		if e.Message.Role == provider.RoleUser {
+			stored = e.Message.Content
+		}
+	}
+	if strings.Contains(stored, "paste/") {
+		t.Fatalf("the stored line carries the note: %q", stored)
+	}
+	if strings.TrimSpace(stored) != "看这个" {
+		t.Fatalf("the stored line is not the owner's words: %q", stored)
+	}
+}
+
+// TestAbsorbedPictureOverTheCapStillNamesItsPath covers the last way a picture
+// could vanish: the turn's allowance is spent by a tool's pictures, so the
+// absorbed one cannot be attached. The model must still get the path, because
+// the message really did arrive with a picture.
+func TestAbsorbedPictureOverTheCapStillNamesItsPath(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	if err := b.SetBinding("p", "deepseek-flash"); err != nil {
+		t.Fatal(err)
+	}
+	dir, _, err := work.Open(b.Root, b.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := work.PastedName("image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
+		t.Fatal(err)
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The picture message is waiting while the tool spends the allowance.
+	shot := link.WebEvent("u1", "", time.Unix(20, 0).UTC())
+	shot.Images = []string{id}
+	if err := box.Post(shot); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "spend_images", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "看到了"},
+	}}
+	k := &Kernel{Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4, WorkDir: dir,
+		Links: []link.Link{link.Terminal{}, imageSpendLink{}}}
+	ev := link.TerminalEvent("u1", "先看看那四张", time.Unix(10, 0).UTC())
+	if err := box.Post(ev); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Handle(context.Background(), ev); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 2 {
+		t.Fatalf("steps %d", len(p.reqs))
+	}
+	var sawPath bool
+	for _, m := range p.reqs[1].Messages {
+		if strings.Contains(m.Content, "paste/"+id) {
+			sawPath = true
+		}
+	}
+	if !sawPath {
+		t.Fatal("a picture that did not fit left the model without its path")
+	}
+}
+
+// imageSpendLink is a tool that returns four pictures, so a test can spend the
+// turn's allowance before an absorbed message arrives.
+type imageSpendLink struct{}
+
+func (imageSpendLink) Name() string        { return "imagery" }
+func (imageSpendLink) Tools() []tools.Tool { return []tools.Tool{spendTool{}} }
+
+type spendTool struct{}
+
+func (spendTool) Name() string                                  { return "spend_images" }
+func (spendTool) Description() string                           { return "return four pictures" }
+func (spendTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (spendTool) Confirm(json.RawMessage) (bool, string, error) { return false, "spend", nil }
+func (spendTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	for i := 0; i < 4; i++ {
+		tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: []byte{byte(i + 1), 2, 3, 4}})
+	}
+	return "four", nil
+}

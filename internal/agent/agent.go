@@ -192,12 +192,16 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			for _, m := range extra {
 				// A message absorbed mid-turn can carry pictures of its own. They
 				// go through the same per-turn allowance a tool's pictures do, so
-				// the request never grows past it; what does not fit is dropped
-				// with the note a tool's extra pictures get.
+				// the request never grows past it.
+				//
+				// The text is not touched here. The kernel put the note naming
+				// these pictures into the message before handing it over, and the
+				// note already says the picture may need opening by path; adding a
+				// second one would edit a line the transcript is about to store,
+				// and the stored text could no longer be cleaned back to the
+				// owner's own words.
 				if len(m.Images) > 0 {
-					kept, note := images.take(m.Images)
-					m.Images = kept
-					m.Content = noteAbsorbedPictures(m.Content, note)
+					m.Images, _ = images.take(m.Images)
 				}
 				convo = append(convo, m)
 				produced = append(produced, m)
@@ -529,16 +533,4 @@ func finish(opt Options, name, out string) string {
 		opt.OnResult(name, out)
 	}
 	return out
-}
-
-// noteAbsorbedPictures adds the cap note to a message whose pictures did not
-// all fit, in the same words a tool result gets.
-func noteAbsorbedPictures(content, note string) string {
-	if note == "" {
-		return content
-	}
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		return content + "\n" + note
-	}
-	return content + note
 }
