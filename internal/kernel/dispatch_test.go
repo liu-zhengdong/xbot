@@ -235,3 +235,121 @@ func TestSubagentRequestsAreFit(t *testing.T) {
 		t.Fatalf("note %q", sent[3].Content)
 	}
 }
+
+// The dispatching foreground cannot do the work: a file edit outside memory
+// and a shell command that writes are refused, a plain read runs, and the
+// tools that only do work are not offered at all.
+func TestForegroundCannotDoTheWork(t *testing.T) {
+	m := &roleModel{}
+	k, b, _ := dispatchKernel(t, m)
+	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
+	memFile := filepath.Join(b.Root, "bots", b.Name(), "memory", "notes.md")
+	m.fore = []provider.Message{
+		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": filepath.Join(k.WorkDir, "a.txt"), "content": "x"})),
+		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
+		toolCall("s2", "shell", mustArgs(t, map[string]any{"command": "ls"})),
+		toolCall("m1", "write_file", mustArgs(t, map[string]string{"path": memFile, "content": "- likes tea\n"})),
+		{Role: provider.RoleAssistant, Content: "done"},
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	got := bodies(t, k)
+	if len(got) != 4 {
+		t.Fatalf("results %q", got)
+	}
+	for i := 0; i < 2; i++ {
+		if !strings.Contains(got[i], "hand it to a subagent with dispatch") {
+			t.Fatalf("call %d ran: %q", i, got[i])
+		}
+	}
+	if strings.Contains(got[2], "dispatch") {
+		t.Fatalf("a plain read was refused: %q", got[2])
+	}
+	if strings.Contains(got[3], "dispatch") {
+		t.Fatalf("a memory edit was refused: %q", got[3])
+	}
+	for _, f := range []string{"a.txt", "b.txt"} {
+		if _, err := os.Stat(filepath.Join(k.WorkDir, f)); err == nil {
+			t.Fatalf("%s was written", f)
+		}
+	}
+	if raw, err := os.ReadFile(memFile); err != nil || !strings.Contains(string(raw), "likes tea") {
+		t.Fatalf("memory not written: %v %q", err, raw)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	names := toolNamesOf(m.foreReq[0].Tools)
+	for _, hidden := range []string{"spawn", "http_request", "code_start", "write_skill"} {
+		if contains(names, hidden) {
+			t.Fatalf("foreground offers %s", hidden)
+		}
+	}
+	if sys := m.foreReq[0].Messages[0].Content; !strings.Contains(sys, DispatchRule) {
+		t.Fatal("the foreground's rules lack the dispatch rule")
+	}
+}
+
+// Without dispatch the foreground keeps every tool and no dispatch rule.
+func TestForegroundUnchangedWithoutDispatch(t *testing.T) {
+	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k, _, _ := dispatchKernel(t, m)
+	k.Dispatch = false
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	names := toolNamesOf(m.foreReq[0].Tools)
+	if !contains(names, "spawn") || contains(names, "dispatch") {
+		t.Fatalf("tools %v", names)
+	}
+	if strings.Contains(m.foreReq[0].Messages[0].Content, DispatchRule) {
+		t.Fatal("dispatch rule without dispatch")
+	}
+}
+
+// At the foreground limit the model is told to hand the rest out and is left
+// with only dispatch and the controls; past the grace calls the run stops.
+func TestForegroundLimitHandsTheRestOut(t *testing.T) {
+	read := func(id string) provider.Message {
+		return toolCall(id, "shell", mustArgs(t, map[string]any{"command": "ls"}))
+	}
+	m := &roleModel{fore: []provider.Message{
+		read("r1"), read("r2"), read("r3"), read("r4"), read("r5"), read("r6"),
+		{Role: provider.RoleAssistant, Content: "stopped"},
+	}}
+	k, b, _ := dispatchKernel(t, m)
+	k.ForegroundMaxTools = 2
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	reqs := append([]provider.Request(nil), m.foreReq...)
+	m.mu.Unlock()
+	if len(reqs) < 3 {
+		t.Fatalf("requests %d", len(reqs))
+	}
+	capped := reqs[2]
+	if !strings.Contains(messagesText(capped.Messages), "foreground's step limit") {
+		t.Fatal("no limit note after the cap")
+	}
+	for _, n := range toolNamesOf(capped.Tools) {
+		if !capTools[n] {
+			t.Fatalf("after the cap the foreground still has %s", n)
+		}
+	}
+	trs, err := b.Traces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped := false
+	for _, tr := range trs {
+		if tr.Kind == bot.TraceStop && tr.Reason == StopForegroundLimit {
+			stopped = true
+		}
+	}
+	if !stopped {
+		t.Fatal("the foreground kept working past the grace calls")
+	}
+}

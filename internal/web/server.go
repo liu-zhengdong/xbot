@@ -1156,8 +1156,9 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 		}
 		k.AllowFork = s.ForkTurns
 		k.Statuses = statusSource{s}
-		if s.ForkTurns {
-			// A background's confirmation becomes a card in the transcript for the owner.
+		if s.ForkTurns || k.Dispatch {
+			// A background's or a subagent's confirmation becomes a card in the
+			// transcript for the owner.
 			k.BackgroundApprove = s.webApprove(b, k, func(string, any) {})
 		}
 		s.kernels[b.Name()] = k

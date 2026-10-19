@@ -14,6 +14,8 @@ const (
 	StopFileFlipFlop    = "file_flip_flop"
 	StopPollingFailure  = "polling_failure"
 	StopDeniedApprovals = "denied_approvals"
+	// StopForegroundLimit: a dispatching foreground kept working past its limit.
+	StopForegroundLimit = "foreground_limit"
 
 	// loopThreshold is how many consecutive identical tool calls, or identical
 	// failures, count as one trip. The next one of that same key is the second trip.

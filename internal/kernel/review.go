@@ -56,6 +56,9 @@ func (t reviewedTool) ConfirmContext(ctx context.Context, args json.RawMessage) 
 // background instead of running beside it.
 func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	name := t.Name()
+	if err := t.k.foregroundRefuses(ctx, t.Tool, args); err != nil {
+		return "", err
+	}
 	if name == "read_file" {
 		if s, ok := t.k.unchangedReceipt(ctx, t.Tool, args); ok {
 			return s, nil

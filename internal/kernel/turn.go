@@ -54,8 +54,12 @@ type turn struct {
 	answered bool // a final answer is on the transcript; too late to fork
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
-	forkMu   sync.Mutex
-	tools    int
+	forkMu sync.Mutex
+	tools  int
+	// capped is set once a dispatching foreground reached its limit, and
+	// capSteps counts the steps after that (see foregroundCap).
+	capped   bool
+	capSteps int
 	replies  int // assistant messages recorded on this turn, for the step count
 	lastTool string
 	// Status tracking for the bot status feature: when the last tool call

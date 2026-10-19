@@ -77,17 +77,20 @@ func (r *turnRun) seqAt(i int) int {
 // options builds the agent callbacks for this run.
 func (r *turnRun) options(approve agent.Approver) agent.Options {
 	opts := agent.Options{
-		MaxSteps:     r.k.stepGuard(),
-		Approve:      approve,
-		OnDelta:      r.delta,
-		OnTool:       r.toolStart,
-		OnResult:     r.toolEnd,
-		Redact:       r.k.redactor(),
-		OnMessage:    r.onMessage,
-		RefreshTools: func() ([]tools.Tool, error) { return r.k.modelTools() },
-		AfterStep:    r.afterStep,
-		Guard:        r.guardStep,
-		OnIdle:       r.onIdle,
+		MaxSteps:  r.k.stepGuard(),
+		Approve:   approve,
+		OnDelta:   r.delta,
+		OnTool:    r.toolStart,
+		OnResult:  r.toolEnd,
+		Redact:    r.k.redactor(),
+		OnMessage: r.onMessage,
+		RefreshTools: func() ([]tools.Tool, error) {
+			list, err := r.k.modelTools()
+			return r.k.cappedTools(r.t, list), err
+		},
+		AfterStep: r.afterStep,
+		Guard:     r.guardStep,
+		OnIdle:    r.onIdle,
 	}
 	// A timer wake has no one to stream to.
 	if r.onDelta == nil {
@@ -192,6 +195,11 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 	// next model call, not in the middle of one.
 	join.add(r.recordReminder(KindShellJob, r.k.shellNotice(r.k.shellPrev())))
 	join.add(r.k.stepBoundaryNotes(r.t))
+	capRemind, capStop := r.k.foregroundCap(r.t)
+	join.add(capRemind)
+	if capStop && !stop {
+		stop, reason = true, StopForegroundLimit
+	}
 
 	if !stop {
 		if why, over := r.k.backgroundOverBudget(r.t); over {

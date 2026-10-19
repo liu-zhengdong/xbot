@@ -66,6 +66,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k})
 	}
 	list = k.modelAgentTools(list)
+	list = k.foregroundTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
 	return k.reviewedTools(list), nil
 }

@@ -146,6 +146,9 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		MaxSteps:        steps,
 		Budget:          budget,
 		AllowBackground: allowBackground,
+		// The foreground understands and hands out work; typed subagents do
+		// it (ADR 0016).
+		Dispatch: true,
 		// Foreground limits come from the role unless the bot overrode them.
 		ForegroundMaxTools: work.ForegroundMaxTools,
 		ForegroundMaxTime:  work.ForegroundMaxTime,
@@ -471,8 +474,10 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	ui := &web.Server{
 		Root:         root,
 		DefaultLinks: defaultLinks,
-		ForkTurns:    true,
-		App:          cfg.App,
+		// Interjections no longer fork the running turn (ADR 0016): the
+		// foreground's turns are short and the work runs in subagents.
+		ForkTurns: false,
+		App:       cfg.App,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
 			return newServeKernel(root, b)
 		},
