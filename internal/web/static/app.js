@@ -946,9 +946,11 @@
           if (now && (!want || now === want)) { location.reload(); return; }
         }
       } catch (e) {}
-      // A minute is long enough for a drain; past it, show whatever is there
-      // rather than leave the page on a spinner.
-      if (Date.now() - started > 60000) { location.reload(); return; }
+      // serve drains in-flight turns for up to two minutes before it
+      // re-execs, and answers as the old version throughout. Wait past that
+      // rather than reload a page that is still the old one: the new process
+      // swaps in underneath it.
+      if (Date.now() - started > 150000) { location.reload(); return; }
       setTimeout(tick, 700);
     };
     setTimeout(tick, 1200);

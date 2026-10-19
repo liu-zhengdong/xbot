@@ -176,7 +176,10 @@ func (u *Updater) Check(ctx context.Context) error {
 		return nil
 	}
 	u.mu.Lock()
-	u.state, u.info, u.err = StateDownloading, info, ""
+	// info describes the release being fetched; the version a page names
+	// stays the one staged until this download replaces it.
+	u.state, u.err = StateDownloading, ""
+	u.info = info
 	u.done, u.total = 0, info.AssetSize(AssetName(info.Latest))
 	u.mu.Unlock()
 	staged, err := Stage(ctx, info, u.root, func(done, total int64) {
@@ -219,7 +222,12 @@ func (u *Updater) begin(state string) bool {
 func (u *Updater) fail(err error) {
 	u.mu.Lock()
 	if u.staged != "" && exists(u.staged) {
+		// What is staged is still installable, so it stays the offer even
+		// though the check that just failed was for something newer.
 		u.state = StateReady
+		if v := Pending(u.root); v != "" {
+			u.info.Latest = v
+		}
 	} else {
 		u.state, u.staged = StateError, ""
 	}

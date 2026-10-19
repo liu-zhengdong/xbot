@@ -244,3 +244,34 @@ func TestFailedRedownloadDoesNotClaimAReadyUpdate(t *testing.T) {
 		t.Fatal("Install claimed to work with nothing staged")
 	}
 }
+
+// A check that finds a newer release whose package has no asset for this
+// platform leaves the older staged package in place. The page must keep
+// naming what it can install, not the release that failed.
+func TestFailedCheckKeepsTheStagedVersionName(t *testing.T) {
+	usePlatform(t, "darwin", "arm64")
+	useVersion(t, "v0.1.0")
+	rel := newRelease(t)
+	rel.publish(t, "v0.2.0", "XBot-0.2.0-macos-arm64.zip", buildZip(t, "new"))
+	root := t.TempDir()
+
+	u := NewUpdater(root)
+	if err := u.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if u.Status().Latest != "v0.2.0" {
+		t.Fatalf("Latest = %q, want v0.2.0", u.Status().Latest)
+	}
+	// A newer release appears without a package this platform can install.
+	rel.publish(t, "v0.3.0", "XBot-0.3.0-windows-amd64-setup.exe", []byte("nope"))
+	if err := u.Check(context.Background()); err == nil {
+		t.Fatal("the check accepted a release with no macOS asset")
+	}
+	st := u.Status()
+	if st.State != StateReady {
+		t.Fatalf("state = %q, want ready: the older package is still there", st.State)
+	}
+	if st.Latest != "v0.2.0" {
+		t.Fatalf("Latest = %q, want v0.2.0: the page must name what it can install", st.Latest)
+	}
+}
