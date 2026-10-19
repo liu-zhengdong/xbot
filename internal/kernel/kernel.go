@@ -533,12 +533,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	done := make(chan result, 1)
 	go func() {
-		rp := &replyProvider{inner: p, accept: k.userReplyTarget, onUse: func(req provider.Request, msg provider.Message) {
-			k.noteUsage(t, req, msg)
-			// The request is kept for the context panel before it is forgotten.
-			// noteContext clips it, so the ring holds previews, not tool output.
-			k.noteContext(t, req)
-		}}
+		rp := &replyProvider{
+			inner:  p,
+			accept: k.userReplyTarget,
+			// The snapshot is taken before the request leaves, so a call that
+			// times out or fails still shows what was sent. It clips the text,
+			// so the ring holds previews, not tool output.
+			onSend: func(req provider.Request) { k.noteContext(t, req) },
+			onUse:  func(req provider.Request, msg provider.Message) { k.noteUsage(t, req, msg) },
+		}
 		produced, err := agent.Run(runCtx, rp, list, assembled, opts)
 		var bg bool
 		for {

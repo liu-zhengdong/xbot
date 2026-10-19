@@ -1491,6 +1491,8 @@ html[data-theme="dark"] {
 
 .ctx-seq { display: flex; flex-direction: column; gap: 1px; }
 
+.ctx-pair { display: flex; flex-direction: column; gap: 1px; }
+
 .ctx-seq-row {
   display: flex; align-items: center; gap: 10px;
   width: 100%; padding: 7px 9px; min-height: 34px;
@@ -1516,7 +1518,7 @@ html[data-theme="dark"] {
 
 .ctx-seq-more { margin: 10px 0 0; padding: 0 9px; font-size: 11.5px; color: var(--faint); }
 
-.ctx-doc { margin: 2px 0 10px 12px; padding: 12px 14px; border-radius: 8px; background: var(--chip); }
+.ctx-doc { margin: 2px 0 8px 13px; padding: 12px 14px; border-radius: 8px; background: var(--chip); }
 
 .ctx-pre {
   margin: 0; white-space: pre-wrap; word-break: break-word;

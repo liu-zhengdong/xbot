@@ -836,6 +836,10 @@
     closeStp();
     closeShots();
     bgClose();
+    // The context sheet hangs off <body>, outside the shell that gets hidden,
+    // so it would otherwise keep the prompt and tool output on screen over the
+    // login form.
+    closeContextSheet();
     panel.classList.remove("open");
     $("panel-scrim").hidden = true;
     $("info").setAttribute("aria-expanded", "false");
@@ -3358,6 +3362,13 @@
     state.panelData = null;
     state.traceOpen = {};
     state.traceOut = {};
+    // The snapshot belongs to one bot's one wake. Keeping it would show A's
+    // context under B's name, so it is dropped and refetched on demand.
+    state.ctxSnap = null;
+    state.ctxStep = 0;
+    state.ctxOpenRow = "";
+    state.ctxOpenEntry = "";
+    closeContextSheet();
     ++state.threadLoad;
     ++state.panelLoad;
     thread.replaceChildren();
@@ -4164,17 +4175,31 @@
       const tail = el("span", "ctx-seq-tk num", tokenText(e.tokens || 0));
       if (e.cut) tail.append(el("span", "ctx-seq-cut", "截断"));
       row.append(tail);
-      row.addEventListener("click", () => {
-        state.ctxOpenEntry = open ? "" : "e" + i;
-        openContextSheet(req, snap);
-      });
       seq.append(row);
-      if (open) {
-        const doc = el("div", "ctx-doc");
-        doc.append(el("pre", "ctx-pre", e.preview || "（空）"));
-        if (e.cut) doc.append(el("p", "ctx-doc-hint", "这里只显示前 400 字；完整原文在对话记录里。"));
-        seq.append(doc);
-      }
+      // The text of the open row sits right after it. Toggling rebuilds only
+      // this one row's neighbour and restores the scroll offset, so a long
+      // sequence does not jump back to the top when a row is opened.
+      let doc = null;
+      if (open) doc = ctxDocFor(e);
+      const pair = el("div", "ctx-pair");
+      pair.append(row);
+      if (doc) pair.append(doc);
+      seq.append(pair);
+      row.addEventListener("click", () => {
+        const wasOpen = state.ctxOpenEntry === "e" + i;
+        state.ctxOpenEntry = wasOpen ? "" : "e" + i;
+        const mainBox = pair.closest(".ctx-main");
+        const keep = mainBox ? mainBox.scrollTop : 0;
+        const existing = pair.querySelector(".ctx-doc");
+        if (wasOpen) {
+          if (existing) existing.remove();
+          row.classList.remove("on");
+        } else {
+          if (!existing) pair.append(ctxDocFor(req.entries[i]));
+          row.classList.add("on");
+        }
+        if (mainBox) mainBox.scrollTop = keep;
+      });
     });
     if (req.more) seq.append(el("p", "ctx-seq-more", "还有 " + req.more + " 条未列出"));
     if (!(req.entries || []).length) seq.append(el("p", "hint", "这次请求没有消息。"));
@@ -4186,6 +4211,14 @@
     document.body.append(sheet);
     ctxSheet = sheet;
     document.addEventListener("keydown", ctxSheetKey);
+  }
+
+  // ctxDocFor is the text of one sent message, as the panel shows it.
+  function ctxDocFor(e) {
+    const doc = el("div", "ctx-doc");
+    doc.append(el("pre", "ctx-pre", (e && e.preview) || "（空）"));
+    if (e && e.cut) doc.append(el("p", "ctx-doc-hint", "这里只显示开头 400 字；这一条完整 " + (e.chars || 0) + " 字节，原文在对话记录里。"));
+    return doc;
   }
 
   // seqLabel is the left gutter: only a summary block has one, because it

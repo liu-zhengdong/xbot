@@ -76,3 +76,62 @@ func TestContextUsesSVGArrows(t *testing.T) {
 		}
 	}
 }
+
+// TestContextSnapshotDroppedOnSwitch keeps a stale snapshot from showing under
+// another bot's name: the fetch result is per bot and per wake.
+func TestContextSnapshotDroppedOnSwitch(t *testing.T) {
+	src := readStatic(t, "static/app.js")
+	body := functionBody(t, src, "function resetConversation()")
+	if !strings.Contains(body, "state.ctxSnap = null;") {
+		t.Error("resetting a conversation does not drop the context snapshot")
+	}
+	if !strings.Contains(body, "closeContextSheet()") {
+		t.Error("resetting a conversation leaves the audit sheet open")
+	}
+}
+
+// TestContextSheetClosedOnLogin keeps the audit view from surviving an expired
+// session: it hangs off <body>, outside the hidden shell.
+func TestContextSheetClosedOnLogin(t *testing.T) {
+	src := readStatic(t, "static/app.js")
+	body := functionBody(t, src, "function showLogin(expired = false) {")
+	if !strings.Contains(body, "closeContextSheet()") {
+		t.Error("an expired session leaves the context sheet on screen")
+	}
+}
+
+// TestContextRowKeepsScroll pins the in-place toggle: rebuilding the whole
+// sheet on every row click would send a long sequence back to the top.
+func TestContextRowKeepsScroll(t *testing.T) {
+	src := readStatic(t, "static/app.js")
+	if !strings.Contains(src, "mainBox.scrollTop = keep") {
+		t.Error("expanding a row does not restore the scroll offset")
+	}
+	if strings.Contains(src, `state.ctxOpenEntry = open ? "" : "e" + i;`) {
+		t.Error("a row click still rebuilds the whole sheet")
+	}
+}
+
+func readStatic(t *testing.T, name string) string {
+	t.Helper()
+	data, err := staticFS.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// functionBody returns the text of one top-level function, up to the next
+// top-level function. Enough to assert on the body without parsing JS.
+func functionBody(t *testing.T, src, head string) string {
+	t.Helper()
+	start := strings.Index(src, head)
+	if start < 0 {
+		t.Fatalf("not found: %s", head)
+	}
+	rest := src[start+len(head):]
+	if end := strings.Index(rest, "\n  function "); end >= 0 {
+		return rest[:end]
+	}
+	return rest
+}

@@ -92,6 +92,9 @@ type ContextSnap struct {
 type contextRing struct {
 	mu   sync.Mutex
 	reqs []ContextRequest
+	// calls counts model calls in this wake. The ring drops old entries, so
+	// the number cannot be recovered from its length.
+	calls int
 }
 
 // noteContext records one request about to be sent. It runs in the provider
@@ -106,24 +109,14 @@ func (k *Kernel) noteContext(t *turn, req provider.Request) {
 		// foreground's and would otherwise replace what the owner is reading.
 		return
 	}
-	snap := buildContextRequest(req, k.nextStep(), k.now().Format("2006-01-02T15:04:05Z07:00"))
 	k.context.mu.Lock()
 	defer k.context.mu.Unlock()
+	k.context.calls++
+	snap := buildContextRequest(req, k.context.calls, k.now().Format("2006-01-02T15:04:05Z07:00"))
 	k.context.reqs = append(k.context.reqs, snap)
 	if len(k.context.reqs) > contextSnapCap {
 		k.context.reqs = k.context.reqs[len(k.context.reqs)-contextSnapCap:]
 	}
-}
-
-// nextStep numbers the request: one model call per step of the turn. The ring
-// drops old entries, so the number is the call's position, not its index here.
-func (k *Kernel) nextStep() int {
-	k.context.mu.Lock()
-	defer k.context.mu.Unlock()
-	if n := len(k.context.reqs); n > 0 {
-		return k.context.reqs[n-1].Step + 1
-	}
-	return 1
 }
 
 // resetContext drops the kept requests when a new wake starts.
@@ -133,6 +126,7 @@ func (k *Kernel) resetContext() {
 	}
 	k.context.mu.Lock()
 	k.context.reqs = nil
+	k.context.calls = 0
 	k.context.mu.Unlock()
 }
 

@@ -1,6 +1,8 @@
 package kernel
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -110,4 +112,39 @@ func TestEstimateToolsCountsParameters(t *testing.T) {
 	if got := estimateTools(nil); got != 0 {
 		t.Fatalf("empty defs estimate %d, want 0", got)
 	}
+}
+
+// TestContextSnapshotKeptWhenTheCallFails pins the reason the snapshot is taken
+// before the request goes out: a provider that errors or is cancelled still
+// sent a context, and that is exactly the case an audit wants to read.
+func TestContextSnapshotKeptWhenTheCallFails(t *testing.T) {
+	failing := &failModel{}
+	k := &Kernel{Bot: nil}
+	// The ring does not need a bot to record; only the snapshot labels one.
+	t0 := &turn{}
+	rp := &replyProvider{
+		inner:  failing,
+		onSend: func(req provider.Request) { k.noteContext(t0, req) },
+	}
+	req := provider.Request{Messages: []provider.Message{
+		{Role: provider.RoleSystem, Content: "persona"},
+		{Role: provider.RoleUser, Content: "hello"},
+	}}
+	if _, err := rp.Chat(context.Background(), req, nil); err == nil {
+		t.Fatal("the fake provider should have failed")
+	}
+	k.context.mu.Lock()
+	kept := len(k.context.reqs)
+	k.context.mu.Unlock()
+	if kept != 1 {
+		t.Fatalf("kept %d requests, want 1: a failed call must still be inspectable", kept)
+	}
+}
+
+// failModel always returns an error, standing in for a timeout or a provider
+// rejection.
+type failModel struct{}
+
+func (failModel) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
+	return provider.Message{}, errors.New("boom")
 }
