@@ -109,7 +109,7 @@ func (l *trustedListener) Accept() (net.Conn, error) {
 		if err != nil || !uidAllowed(l.allowUIDs, uid) {
 			_ = c.Close()
 			if err != nil {
-				// Off-Linux every peer fails; back off so Accept cannot spin.
+				// Where peer credentials are unsupported every peer fails; back off so Accept cannot spin.
 				time.Sleep(10 * time.Millisecond)
 			}
 			continue

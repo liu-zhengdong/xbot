@@ -27,7 +27,7 @@ type Client struct {
 }
 
 // OpenClient returns a daemon client for one bot. The daemon enforces access by
-// SO_PEERCRED; no token is carried.
+// SO_PEERCRED (LOCAL_PEERCRED on macOS); no token is carried.
 func OpenClient(socket, bot string) (*Client, error) {
 	socket = strings.TrimSpace(socket)
 	if socket == "" {

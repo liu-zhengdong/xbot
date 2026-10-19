@@ -976,12 +976,20 @@ func waitDead(t *testing.T, pid int) {
 // process. The file is named sleep, which is what skipAutoBackground matches.
 func copySleep(t *testing.T) string {
 	t.Helper()
+	return privateSleep(t, "sleep")
+}
+
+// privateSleep puts sleep at a fresh path so pgrep -f can find exactly that
+// process by its argv[0]. It is a symlink, not a copy: macOS SIGKILLs a copied
+// platform binary such as /bin/sleep the moment it runs.
+func privateSleep(t *testing.T, name string) string {
+	t.Helper()
 	if _, err := exec.LookPath("pgrep"); err != nil {
 		t.Skip("pgrep not installed")
 	}
-	bin := filepath.Join(t.TempDir(), "sleep")
-	if err := exec.Command("cp", "/bin/sleep", bin).Run(); err != nil {
-		t.Skip("cannot copy /bin/sleep")
+	bin := filepath.Join(t.TempDir(), name)
+	if err := os.Symlink("/bin/sleep", bin); err != nil {
+		t.Skip("cannot link /bin/sleep")
 	}
 	return bin
 }
