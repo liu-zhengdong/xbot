@@ -177,20 +177,20 @@ try {
         </div>
       </form>
     </div>
+    <div id="panel-scrim" class="panel-scrim" hidden></div>
+    <aside id="panel" class="panel" aria-label="详情">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="panel-bar">
+        <!-- The header's former "···" actions, filled in by syncPanelChrome(). -->
+        <div id="panel-actions" class="panel-actions" role="toolbar" aria-label="Bot 操作" hidden></div>
+        <button id="panel-close" class="ghost" type="button" aria-label="关闭" data-tip="关闭">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div id="panel-body" class="panel-body"></div>
+    </aside>
   </main>
 
-  <div id="panel-scrim" class="panel-scrim" hidden></div>
-  <aside id="panel" class="panel" aria-label="详情">
-    <div class="sheet-handle" aria-hidden="true"></div>
-    <div class="panel-bar">
-      <!-- The header's former "···" actions, filled in by syncPanelChrome(). -->
-      <div id="panel-actions" class="panel-actions" role="toolbar" aria-label="Bot 操作" hidden></div>
-      <button id="panel-close" class="ghost" type="button" aria-label="关闭" data-tip="关闭">
-        <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      </button>
-    </div>
-    <div id="panel-body" class="panel-body"></div>
-  </aside>
 </div>
 
 <div id="modal" class="modal" hidden>

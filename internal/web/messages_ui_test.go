@@ -35,7 +35,7 @@ func TestMessagesAndComposerContract(t *testing.T) {
 
 	for _, want := range []string{
 		// One column for messages and composer (header follows it too).
-		`.top-inner, .thread-inner, .composer { width: min(720px, 100% - 64px); }`,
+		`.top-inner, .thread-inner, .composer { width: min(860px, 100% - 64px); }`,
 		// Short conversations sit at the bottom without breaking scrolling.
 		"justify-content: flex-end",
 		"margin-top: auto",

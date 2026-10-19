@@ -4985,8 +4985,9 @@
   function syncBackdrop() {
     const drawer = window.innerWidth < 768 && sidebar.classList.contains("open");
     backdrop.hidden = !drawer;
-    const topBottom = document.querySelector(".top").getBoundingClientRect().bottom;
-    $("shell").style.setProperty("--panel-overlay-top", topBottom + "px");
+    // The panel is a drawer over the card at every width (#243), so it always
+    // covers part of the conversation: narrow windows get a scrim to click
+    // away, wide ones keep the thread readable and close with 详情 or Escape.
     $("panel-scrim").hidden = !(window.innerWidth <= 1100 && panel.classList.contains("open") && !drawer);
   }
 
@@ -5866,6 +5867,16 @@
     syncBackdrop();
   });
 
+  // The remote conversation is a full panel at z-index 12; this drawer sits at
+  // 30, so it would cover its header and composer. Close it when one opens.
+  window.addEventListener("xbot:remote-open", () => {
+    if (!panel.classList.contains("open")) return;
+    rememberPanel(false);
+    panel.classList.remove("open");
+    $("info").setAttribute("aria-expanded", "false");
+    syncBackdrop();
+  });
+
   $("bell").addEventListener("click", async (ev) => {
     ev.stopPropagation();
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
@@ -6095,7 +6106,9 @@
     if (stpState.open) { closeStp(); return; }
     if (state.replyTo) { clearQuote(); return; }
     closePops();
-    if (panel.classList.contains("open") && window.innerWidth <= 1100) {
+    // Escape closes the drawer at every width now that it covers the thread
+    // (#243); there is no longer a width where it can stay open harmlessly.
+    if (panel.classList.contains("open")) {
       rememberPanel(false);
       panel.classList.remove("open");
       $("info").setAttribute("aria-expanded", "false");
@@ -6179,9 +6192,10 @@
     if (state.panelTouched) return;
     let preference = null;
     try { preference = localStorage.getItem("xbot-panel-open"); } catch (e) {}
-    // The remembered choice only applies where the panel sits beside the
-    // conversation; narrower windows always start with it closed.
-    const wide = window.innerWidth > 1100 && (preference === "true" || (preference !== "false" && window.innerWidth >= 1440));
+    // The panel is a drawer over the conversation now (#243), so it starts
+    // closed everywhere: nothing is hidden until the owner asks for it. Only
+    // an explicit "true" from a previous session opens it again.
+    const wide = preference === "true";
     const was = panel.classList.contains("open");
     panel.classList.toggle("open", wide);
     $("info").setAttribute("aria-expanded", wide ? "true" : "false");

@@ -134,6 +134,9 @@
     V.error = ""; V.info = false; V.loading = false; V.atBottom = true;
     root.hidden = false;
     document.documentElement.classList.add("rc-open"); // 手机上输入框 16px，聚焦时不自动缩放
+    // 本机 Bot 的详情抽屉是盖在卡片上的一层（z-index 30），远端对话只有 12，
+    // 抽屉开着会挡住远端对话的标题和发送区。远端对话整块打开时把它收掉。
+    window.dispatchEvent(new Event("xbot:remote-open"));
     titleSig = "";
     render(); // 上一个对话的报错随整块重画一起清掉
     draw(true);

@@ -212,7 +212,9 @@ button:disabled { cursor: default; }
 
 /* The card (the 8px spacing scale): radius 12; it starts where the sidebar
    ends (the list and the 72px rail carry their own gutter), 8 right and
-   bottom (window review P2 #8, device prototype v2). */
+   bottom (window review P2 #8, device prototype v2). The info panel is a
+   drawer over this card, not a column beside it, so the card keeps its full
+   width whether the panel is open or not (#243). */
 .main {
   flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
   position: relative; background: var(--bg);
@@ -226,8 +228,11 @@ button:disabled { cursor: default; }
   padding: 0; flex: none;
 }
 
-/* One centred column for the header, messages and composer (P1 / 5–6). */
-.top-inner, .thread-inner, .composer { width: min(720px, 100% - 64px); }
+/* One centred column for the header, messages and composer (P1 / 5–6).
+   860px is the reading measure now that the panel no longer takes a column;
+   the column keeps this width while the drawer is open, so opening it never
+   reflows the conversation. */
+.top-inner, .thread-inner, .composer { width: min(860px, 100% - 64px); }
 
 .top-inner {
   display: flex; align-items: center; gap: 2px;
@@ -1239,15 +1244,28 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 /* Info panel */
 
+/* Info panel: a drawer over the card, never a column beside it (#243). Closed
+   it sits off the right edge with no layout box; open it slides in over the
+   conversation, so the thread keeps its column and never reflows. */
 .panel {
-  flex: 0 0 0px; width: 0; min-width: 0; overflow: hidden; background: transparent;
-  display: flex; flex-direction: column; min-height: 0; position: relative;
-  transition: width 240ms ease-out, margin 240ms ease-out;
+  position: absolute; top: 0; bottom: 0; right: 0;
+  width: 340px; min-width: 0; max-width: min(340px, calc(100% - 16px));
+  z-index: 30; overflow: hidden;
+  background: var(--panel); border-radius: 12px;
+  box-shadow: -18px 0 40px -24px rgba(0, 0, 0, 0.3);
+  display: flex; flex-direction: column; min-height: 0;
+  transform: translateX(calc(100% + 16px));
+  visibility: hidden;
+  transition: transform 220ms cubic-bezier(0.2, 0.75, 0.3, 1), visibility 0s linear 220ms;
 }
 
 .panel.open {
-  flex: 0 0 320px; width: 320px; min-width: 280px; max-width: 320px;
-  margin-left: 8px; background: var(--panel); border-radius: 12px;
+  transform: none; visibility: visible;
+  transition: transform 220ms cubic-bezier(0.2, 0.75, 0.3, 1), visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel, .panel.open { transition: none; }
 }
 
 .panel-bar {
@@ -1881,15 +1899,10 @@ html[data-theme="dark"] {
 
 /* Mobile and media queries */
 
+/* Below 1100 the drawer scrim appears, so the click-away works there. The
+   drawer itself is the same element at every width; only its inset changes. */
 @media (max-width: 1100px) and (min-width: 768px) {
-  .panel.open {
-    position: absolute; left: auto; right: 8px; top: 8px; bottom: 8px;
-    flex: 0 0 320px; width: 320px; min-width: 280px; max-width: 320px;
-    margin-left: 0; z-index: 30;
-    background: var(--panel); border-radius: 12px;
-    box-shadow: var(--shadow);
-    transition: none;
-  }
+  .panel { max-width: min(340px, calc(100% - 16px)); }
 }
 
 @media (max-width: 767px) {
@@ -1937,19 +1950,24 @@ html[data-theme="dark"] {
   .sidebar.collapsed .pin .avatar.pin > svg { width: 44px; height: 44px; }
   .sidebar.collapsed .side-foot { align-items: stretch; }
   .sidebar.collapsed .group-label { justify-content: space-between; }
+  /* Phones: the drawer becomes a full sheet rising from the bottom. It now
+     starts at the viewport top, so it carries both safe-area insets itself;
+     the top one keeps the action bar and 关闭 out of the status bar. */
   .panel {
     position: fixed; inset: 0;
     width: 100% !important; min-width: 0; max-width: none; height: 100%;
     z-index: 35; margin: 0; border-radius: 0; background: var(--panel);
-    transform: translateY(100%);
-    transition: transform 240ms ease-out;
+    transform: translateY(100%); visibility: hidden;
+    transition: transform 240ms ease-out, visibility 0s linear 240ms;
     box-shadow: none;
+    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .panel.open {
-    transform: none; flex: none;
+    transform: none; flex: none; visibility: visible;
     width: 100% !important; min-width: 0; max-width: none;
     margin-left: 0; border-radius: 0; box-shadow: none;
+    transition: transform 240ms ease-out, visibility 0s;
   }
   .panel-bar { top: 0; }
   .hero { padding-top: 8px; }
@@ -2248,15 +2266,14 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .newbot-avatar { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; }
 .newbot-avatar .avatar { margin-right: 6px; }
 @media (prefers-reduced-motion: reduce) { .avatar-spin .icon { animation: none; } }
+/* The scrim belongs to the card too (#243): it covers exactly the area the
+   drawer covers, so clicking the conversation closes it while the sidebar
+   stays usable. Fixed positioning would have blanked the sidebar as well. */
 .panel-scrim {
-  position: fixed; inset: var(--panel-overlay-top, 64px) 0 0;
-  z-index: 29; background: rgba(0, 0, 0, 0.28);
-}
-@media (max-width: 1100px) {
-  .panel.open { top: var(--panel-overlay-top, 64px); }
+  position: absolute; inset: 0; z-index: 29;
+  background: rgba(0, 0, 0, 0.22);
 }
 @media (max-width: 767px) {
-  .panel { top: var(--panel-overlay-top, 56px); bottom: 0; height: auto; }
   .panel.open {
     width: min(90%, 400px) !important; min-width: 0;
     left: auto; right: 0; border-radius: 20px 0 0 0;
