@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,11 +32,7 @@ func TestAbsorbedMessageKeepsItsPictures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pasteDir, err := work.EnsurePastedDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(pasteDir, id), onePixelPNG(t), 0600); err != nil {
+	if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -165,15 +159,11 @@ func TestAbsorbedPicturesRespectVisionAndTheTurnCap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			pasteDir, err := work.EnsurePastedDir(dir)
-			if err != nil {
-				t.Fatal(err)
-			}
 			id, err := work.PastedName("image/png")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(pasteDir, id), onePixelPNG(t), 0600); err != nil {
+			if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
 				t.Fatal(err)
 			}
 			box, err := inbox.Open(b.InboxPath())

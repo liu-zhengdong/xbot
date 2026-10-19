@@ -305,8 +305,8 @@ func TestPasteRefusesLinksAndOversize(t *testing.T) {
 	}
 
 	// A symlink with a valid name is not a stored picture.
-	dir, err := work.EnsurePastedDir(work.BotDir(root, "ada"))
-	if err != nil {
+	dir := work.PastedDirFor(work.BotDir(root, "ada"))
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	secret := filepath.Join(t.TempDir(), "secret.png")
@@ -372,4 +372,56 @@ func pngBytesNoise(t *testing.T, w, h int) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+// TestPasteDirThatIsALinkIsRefused covers the case a per-component check
+// misses: the paste directory itself is a link, so a picture in the directory
+// it points at would be served as this bot's own. Reading goes through the
+// workspace root, so it is refused, and writing refuses it too.
+func TestPasteDirThatIsALinkIsRefused(t *testing.T) {
+	root, ui, cookie, _ := pasteTestServer(t, true)
+	defer ui.Close()
+
+	dir := work.PastedDirFor(work.BotDir(root, "ada"))
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	if err := os.Symlink(other, dir); err != nil {
+		t.Fatal(err)
+	}
+	// A picture in the directory the link points at.
+	otherPic := filepath.Join(other, strings.Repeat("cd", 16)+".png")
+	if err := os.WriteFile(otherPic, pngBytes(t, 4, 4), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := getStatus(t, ui.URL+"/api/bots/ada/paste/"+filepath.Base(otherPic), cookie); code != http.StatusNotFound {
+		t.Errorf("GET through a linked paste directory: %d, want 404", code)
+	}
+	res := postJSON(t, ui.URL+"/api/bots/ada/messages", cookie,
+		fmt.Sprintf(`{"images":[%q]}`, filepath.Base(otherPic)))
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("message naming a picture behind a linked paste directory: %d, want 400", res.StatusCode)
+	}
+
+	// Uploading must not write through the link either.
+	before, err := os.ReadDir(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, ui.URL+"/api/bots/ada/paste", bytes.NewReader(pngBytes(t, 4, 4)))
+	req.AddCookie(cookie)
+	up, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(up.Body)
+	up.Body.Close()
+	after, err := os.ReadDir(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if up.StatusCode == http.StatusOK || len(after) != len(before) {
+		t.Fatalf("upload wrote through a linked paste directory: %d %s", up.StatusCode, raw)
+	}
 }

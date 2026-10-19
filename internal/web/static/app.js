@@ -5795,11 +5795,15 @@
     syncComposer();
   }
 
-  function removeAttach(row) {
+  // removeAttach drops one pending picture. quiet keeps it from touching the
+  // note: a result arriving for a batch that is already gone must not wipe a
+  // refusal the owner is reading in the conversation they are in now.
+  function removeAttach(row, quiet) {
     const rows = attachState();
     const at = rows.indexOf(row);
     if (at >= 0) rows.splice(at, 1);
     if (row.url) URL.revokeObjectURL(row.url);
+    if (quiet) return;
     // With nothing left to explain, an older refusal no longer applies. A
     // caller that has a fresh reason sets it right after this call.
     if (!rows.length) attachNote("");
@@ -5874,7 +5878,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "这图片没传上来");
         if (!data.image) throw new Error("这图片没传上来");
-        if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) { removeAttach(row); return; }
+        if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) { removeAttach(row, true); return; }
         row.id = data.image;
         row.uploading = false;
       } catch (e) {

@@ -103,6 +103,11 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 			t.Errorf("a refused picture explains nothing: %s", want)
 		}
 	}
+	// A result for a batch that is already gone must not wipe a refusal the
+	// owner is reading in the conversation they are in now.
+	if !strings.Contains(js, `removeAttach(row, true); return;`) {
+		t.Error("a stale upload result can clear the current conversation's note")
+	}
 	// Switching bot drops pictures uploaded to the old one.
 	if !strings.Contains(js, `clearAttach();`+"\n"+`    state.streaming = 0;`) {
 		t.Error("switching conversations must clear pending pictures")

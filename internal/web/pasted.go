@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"xbot/internal/bot"
-	"xbot/internal/fsutil"
 	"xbot/internal/tools"
 	"xbot/internal/work"
 )
@@ -80,12 +77,7 @@ func (s *Server) postPaste(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	dir, err := work.EnsurePastedDir(work.BotDir(s.Root, b.Name()))
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if err := fsutil.WriteAtomic(filepath.Join(dir, id), data, 0600); err != nil {
+	if err := work.WritePasted(work.BotDir(s.Root, b.Name()), id, data); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -149,7 +141,9 @@ func (s *Server) checkPasted(b *bot.Bot, ids []string) ([]string, error) {
 	seen := map[string]bool{}
 	total := 0
 	for _, id := range ids {
-		path, err := work.PastedPath(dir, id)
+		// PastedSize goes through the workspace root, so a name that resolves
+		// outside it is refused here as well as at read time.
+		size, err := work.PastedSize(dir, id)
 		if err != nil {
 			return nil, errPastedMissing
 		}
@@ -157,11 +151,7 @@ func (s *Server) checkPasted(b *bot.Bot, ids []string) ([]string, error) {
 			continue
 		}
 		seen[id] = true
-		st, err := os.Stat(path)
-		if err != nil || !st.Mode().IsRegular() {
-			return nil, errPastedMissing
-		}
-		total += int(st.Size())
+		total += size
 		if total > maxPastedTotalBytes {
 			return nil, errPastedTooBig
 		}

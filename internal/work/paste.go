@@ -80,49 +80,64 @@ func ValidPastedID(id string) bool {
 	return false
 }
 
-// PastedPath resolves one stored picture. botDir is the bot workspace, and id
-// must be a name PastedName made; anything else reports os.ErrNotExist so a
-// caller cannot tell a bad name from a missing file.
+// pastedRoot opens the bot workspace as an os.Root. Everything below reads and
+// writes through it, so every path is resolved inside the workspace by the
+// kernel: a symlink in the paste directory, a paste directory that is itself a
+// symlink, or a swap between a check and a read cannot reach outside it. Doing
+// this by hand leaves exactly that gap.
+func pastedRoot(botDir string) (*os.Root, error) {
+	if botDir == "" {
+		return nil, os.ErrNotExist
+	}
+	return os.OpenRoot(botDir)
+}
+
+// PastedPath resolves one stored picture to the path it will be read from. The
+// returned path is for display and for tests; a caller that reads the bytes
+// must use ReadPasted, which goes through the workspace root.
 //
-// A name of the right shape says nothing about what it points at. The paste
-// directory must be a real directory in this bot's own workspace, and the file
-// must be a regular file: a link at either step could read a file out of, or
-// write one into, a directory this bot does not own.
+// id must be a name PastedName made. Anything else reports os.ErrNotExist, so a
+// caller cannot tell a bad name from a missing file.
 func PastedPath(botDir, id string) (string, error) {
 	if botDir == "" || !ValidPastedID(id) {
 		return "", os.ErrNotExist
 	}
-	dir, err := realPastedDir(botDir)
+	root, err := pastedRoot(botDir)
 	if err != nil {
-		return "", err
+		return "", os.ErrNotExist
 	}
-	path := filepath.Join(dir, id)
-	st, err := os.Lstat(path)
+	defer root.Close()
+	st, err := root.Stat(PastedDir + "/" + id)
 	if err != nil || !st.Mode().IsRegular() {
 		return "", os.ErrNotExist
 	}
-	return path, nil
+	real, err := filepath.EvalSymlinks(botDir)
+	if err != nil {
+		return "", os.ErrNotExist
+	}
+	return filepath.Join(real, PastedDir, id), nil
 }
 
-// ReadPasted returns one stored picture's bytes, capped at PastedMaxBytes.
-// The file is opened without following a link, so the check above and this read
-// cannot be separated by a swap, and the size is taken from the open file, so a
-// picture grown past the cap after upload is refused instead of loaded.
+// ReadPasted returns one stored picture's bytes, capped at PastedMaxBytes. The
+// file is read through the workspace root, so a link cannot redirect it, and
+// the size is checked on the open file, so a picture grown past the cap after
+// upload is refused instead of loaded into memory.
 func ReadPasted(botDir, id string) ([]byte, error) {
-	path, err := PastedPath(botDir, id)
-	if err != nil {
-		return nil, err
+	if botDir == "" || !ValidPastedID(id) {
+		return nil, os.ErrNotExist
 	}
-	f, err := openPastedFile(path)
+	root, err := pastedRoot(botDir)
+	if err != nil {
+		return nil, os.ErrNotExist
+	}
+	defer root.Close()
+	f, err := root.Open(PastedDir + "/" + id)
 	if err != nil {
 		return nil, os.ErrNotExist
 	}
 	defer f.Close()
 	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() {
-		return nil, os.ErrNotExist
-	}
-	if st.Size() > PastedMaxBytes {
+	if err != nil || !st.Mode().IsRegular() || st.Size() > PastedMaxBytes {
 		return nil, os.ErrNotExist
 	}
 	buf, err := io.ReadAll(io.LimitReader(f, PastedMaxBytes+1))
@@ -132,47 +147,41 @@ func ReadPasted(botDir, id string) ([]byte, error) {
 	return buf, nil
 }
 
-// realPastedDir is the paste directory of a bot workspace, checked to be a real
-// directory. The workspace is resolved first, so a workspace reached through a
-// link still finds its own paste directory.
-func realPastedDir(botDir string) (string, error) {
-	realBot, err := filepath.EvalSymlinks(botDir)
+// WritePasted stores one uploaded picture. It goes through the workspace root
+// for the same reason ReadPasted does, so the file cannot land outside it.
+func WritePasted(botDir, id string, data []byte) error {
+	if botDir == "" || !ValidPastedID(id) {
+		return os.ErrNotExist
+	}
+	root, err := pastedRoot(botDir)
 	if err != nil {
-		return "", os.ErrNotExist
+		return err
 	}
-	dir := filepath.Join(realBot, PastedDir)
-	st, err := os.Lstat(dir)
-	if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
-		return "", os.ErrNotExist
+	defer root.Close()
+	if err := root.MkdirAll(PastedDir, 0700); err != nil {
+		return err
 	}
-	return dir, nil
-}
-
-// EnsurePastedDir creates the paste directory and refuses one that is a link.
-// A bot's own shell can write its workspace, so the directory a picture is
-// stored in must be a real directory: a link there would send the file wherever
-// it points.
-func EnsurePastedDir(botDir string) (string, error) {
-	if botDir == "" {
-		return "", os.ErrNotExist
-	}
-	realBot, err := filepath.EvalSymlinks(botDir)
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(realBot, PastedDir)
-	if st, err := os.Lstat(dir); err == nil {
-		if st.Mode()&os.ModeSymlink != 0 || !st.IsDir() {
-			return "", os.ErrPermission
-		}
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
-	}
-	return dir, nil
+	return root.WriteFile(PastedDir+"/"+id, data, 0600)
 }
 
 // PastedDirFor is the directory holding a bot workspace's pasted pictures.
 func PastedDirFor(botDir string) string { return filepath.Join(botDir, PastedDir) }
+
+// PastedSize reports the size of one stored picture, checked the same way a
+// read is. A caller that only needs the size uses this instead of stat-ing a
+// path itself, which would follow a link.
+func PastedSize(botDir, id string) (int, error) {
+	if botDir == "" || !ValidPastedID(id) {
+		return 0, os.ErrNotExist
+	}
+	root, err := pastedRoot(botDir)
+	if err != nil {
+		return 0, os.ErrNotExist
+	}
+	defer root.Close()
+	st, err := root.Stat(PastedDir + "/" + id)
+	if err != nil || !st.Mode().IsRegular() || st.Size() > PastedMaxBytes {
+		return 0, os.ErrNotExist
+	}
+	return int(st.Size()), nil
+}
