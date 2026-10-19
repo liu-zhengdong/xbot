@@ -45,10 +45,12 @@ func (b *Bot) LogDecision(state, tool, summary string, at time.Time) error {
 }
 
 // Trace kinds written for eval scoring. Stop is a circuit-breaker hard stop.
-// Usage is one model call's token count.
+// Usage is one model call's token count. Fit is a request shrunk inside a turn
+// to stay under the context lines; its reason says how.
 const (
 	TraceStop  = "stop"
 	TraceUsage = "usage"
+	TraceFit   = "fit"
 )
 
 // Trace is one append-only trace event. Reason is a stable code, never a secret.

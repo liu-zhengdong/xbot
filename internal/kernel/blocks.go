@@ -556,7 +556,7 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 	if err != nil {
 		return st, err
 	}
-	if usage.Total() <= k.ceiling() {
+	if k.scaled(usage.Total()) <= k.ceiling() {
 		st.Usage = usage
 		return st, nil
 	}

@@ -102,15 +102,19 @@ type replyProvider struct {
 	// cancelled still left the context it was about to send.
 	onSend func(provider.Request)
 	onUse  func(provider.Request, provider.Message)
-	hold   replyHold
+	// fit cuts a request to stay under the context lines (see fit.go).
+	// overflow says the provider rejected it as too long; the cut request is
+	// then sent once more.
+	fit  func(ctx context.Context, req provider.Request, overflow bool) provider.Request
+	hold replyHold
 }
 
-func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+func (s *replyProvider) send(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	s.hold = replyHold{}
 	if s.onSend != nil {
 		s.onSend(req)
 	}
-	msg, err := s.inner.Chat(ctx, req, func(chunk string) {
+	return s.inner.Chat(ctx, req, func(chunk string) {
 		if onDelta == nil {
 			return
 		}
@@ -118,6 +122,18 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 			onDelta(out)
 		}
 	})
+}
+
+func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+	raw := req
+	if s.fit != nil {
+		req = s.fit(ctx, raw, false)
+	}
+	msg, err := s.send(ctx, req, onDelta)
+	if err != nil && s.fit != nil && provider.IsContextOverflow(err) {
+		req = s.fit(ctx, raw, true)
+		msg, err = s.send(ctx, req, onDelta)
+	}
 	if err != nil {
 		return provider.Message{}, err
 	}

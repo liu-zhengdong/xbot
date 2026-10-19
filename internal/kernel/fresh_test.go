@@ -664,3 +664,30 @@ func BenchmarkFileFreshGuard(b *testing.B) {
 		}
 	}
 }
+
+// A read the request no longer carries cannot be answered with "unchanged
+// since step N": the model has nothing at step N to look at.
+func TestReceiptNotAfterResultLeftOut(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	if err := os.WriteFile(a, []byte(strings.Repeat("purplefinch ", 700)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte(strings.Repeat("bluejay ", 1000)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	k, _, now := freshBot(t)
+	k.Budget = compact.Budget{KeepTail: 1, Ceiling: 4000}
+	k.Compactor = &recCompactor{}
+	runTurn(t, k, now, "look",
+		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": a})),
+		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": b})),
+		toolCall("r3", "read_file", mustArgs(t, map[string]string{"path": a})),
+		provider.Message{Role: provider.RoleAssistant, Content: "seen"},
+	)
+	got := bodies(t, k)
+	last := got[len(got)-1]
+	if strings.Contains(last, msgReceipt) || !strings.Contains(last, "purplefinch") {
+		t.Fatalf("a read left out of the request was answered with a receipt: %.80q", last)
+	}
+}

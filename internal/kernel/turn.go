@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"sync"
+	"sync/atomic"
 	"time"
 	"xbot/internal/provider"
 )
@@ -39,6 +40,11 @@ type turn struct {
 	// projects is the project instruction sets this turn's context carries.
 	// A background branch keeps it: its context is this turn's.
 	projects projectSigs
+
+	// shrunk is set once this turn's requests left out or summarized one of
+	// its own earlier results (see fit.go). A read receipt that points at an
+	// earlier step is then no longer safe: that step may be gone.
+	shrunk atomic.Bool
 
 	// Fork state. mu guards branch, finished, tools, replies, steps, and lastTool.
 	// branch is set once, when the turn moves to the background.

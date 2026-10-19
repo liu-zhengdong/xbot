@@ -34,6 +34,9 @@ type tokenState struct {
 	hw             int
 	hwSet          bool
 	seen           bool
+	// ratio is how many real prompt tokens one estimated token turned out to
+	// be on the last call whose usage the API reported (see calibrate).
+	ratio float64
 }
 
 // TokenUse is the compact usage line on BotStatus. Prompt, completion, and
@@ -89,6 +92,9 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 		tr.mu.Unlock()
 	}
 	k.tokens.mu.Lock()
+	if msg.Usage.Reported && u.PromptTokens > 0 {
+		k.tokens.ratio = calibrate(u.PromptTokens, compact.EstimateMessages(req.Messages)+estimateTools(req.Tools))
+	}
 	if branch == "" {
 		k.tokens.prompt = u.PromptTokens
 		k.tokens.completion = u.CompletionTokens
@@ -121,6 +127,64 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 		rec.TurnCompletion, rec.Estimated, rec.Branch = turnCompletion, u.Estimated, branch
 	}
 	_ = k.Bot.LogUsage(rec)
+}
+
+// Ratio bounds. The estimate is never trusted to be larger than the real count
+// (a picture's bytes overcount it, and shrinking on that would be unsafe), and
+// a reading past twice the estimate is more likely a bad report than a
+// tokenizer.
+const (
+	ratioMin = 1.0
+	ratioMax = 2.0
+)
+
+// calibrate is the reported prompt count over the estimate of the same
+// request, kept between ratioMin and ratioMax. Text that is mostly Chinese
+// comes out near 1.3: the estimate counts a character as 0.75 of a token.
+func calibrate(reported, estimated int) float64 {
+	if estimated <= 0 {
+		return ratioMin
+	}
+	r := float64(reported) / float64(estimated)
+	if r < ratioMin {
+		return ratioMin
+	}
+	if r > ratioMax {
+		return ratioMax
+	}
+	return r
+}
+
+// scaled turns an estimate into the real count the last reported call implies,
+// so the lines are compared with what the model will actually count.
+func (k *Kernel) scaled(n int) int {
+	if k == nil {
+		return n
+	}
+	k.tokens.mu.Lock()
+	r := k.tokens.ratio
+	k.tokens.mu.Unlock()
+	if r <= ratioMin {
+		return n
+	}
+	return int(float64(n) * r)
+}
+
+// overflowed records that the provider rejected a request the estimate said
+// would fit: the real count is larger than the ratio claims, so it is raised by
+// a quarter before the request is shrunk and sent again.
+func (k *Kernel) overflowed() {
+	k.tokens.mu.Lock()
+	defer k.tokens.mu.Unlock()
+	r := k.tokens.ratio
+	if r < ratioMin {
+		r = ratioMin
+	}
+	r *= 1.25
+	if r > ratioMax {
+		r = ratioMax
+	}
+	k.tokens.ratio = r
 }
 
 func usageReason(estimated bool) string {

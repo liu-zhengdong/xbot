@@ -575,3 +575,46 @@ func localCallNonce() string {
 	}
 	return hex.EncodeToString(b[:])
 }
+
+// overflowPhrases are what OpenAI-compatible APIs put in the body when the
+// request is longer than the model's window (OpenAI, DeepSeek, vLLM, and the
+// gateways in front of them).
+var overflowPhrases = []string{
+	"context_length_exceeded",
+	"maximum context length",
+	"context length",
+	"context window",
+	"prompt is too long",
+	"too many tokens",
+	"input is too long",
+}
+
+// IsContextOverflow reports whether err is the provider rejecting a request
+// for being longer than the model's window. The caller can shrink the request
+// and send it once more; retryable does not, because the same request would
+// fail again.
+func IsContextOverflow(err error) bool {
+	var se *statusError
+	if !errors.As(err, &se) {
+		return false
+	}
+	if se.code != http.StatusBadRequest && se.code != http.StatusRequestEntityTooLarge {
+		return false
+	}
+	if se.code == http.StatusRequestEntityTooLarge {
+		return true
+	}
+	body := strings.ToLower(se.body)
+	for _, p := range overflowPhrases {
+		if strings.Contains(body, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// NewStatusError builds the error a non-2xx response produces, for fakes that
+// stand in for a real API in tests.
+func NewStatusError(code int, body string) error {
+	return &statusError{code: code, body: body}
+}

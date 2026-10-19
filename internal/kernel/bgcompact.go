@@ -58,7 +58,8 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 	if err != nil {
 		return
 	}
-	if usage.Total() > k.ceiling() {
+	size := k.scaled(usage.Total())
+	if size > k.ceiling() {
 		return
 	}
 	unlock, err := k.lockJob(false)
@@ -77,7 +78,7 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		}
 		return
 	}
-	if usage.Total() < k.target() {
+	if size < k.target() {
 		unlock()
 		return
 	}

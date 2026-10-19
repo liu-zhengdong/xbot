@@ -271,7 +271,7 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 		copy = *rec
 	}
 	k.files.mu.Unlock()
-	if rec == nil || !copy.full || copy.turn == nil || copy.turn != k.turnFor(ctx) {
+	if rec == nil || !copy.full || copy.turn == nil || copy.turn != k.turnFor(ctx) || copy.turn.shrunk.Load() {
 		return "", false
 	}
 	snap, okMatch, err := freshEnough(&copy, path)

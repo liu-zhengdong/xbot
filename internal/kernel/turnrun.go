@@ -222,6 +222,10 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		onSend: func(req provider.Request) { r.k.noteContext(r.t, req) },
 		onUse:  func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
 	}
+	fit := newTurnFit(len(r.assembled))
+	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
+		return r.k.fit(ctx, r.t, fit, req, overflow)
+	}
 	produced, err := agent.Run(r.t.runCtx, rp, r.list, r.assembled, opts)
 	var bg bool
 	for {
