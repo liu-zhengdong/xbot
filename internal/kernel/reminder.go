@@ -259,6 +259,7 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, e
 			for _, text := range apart {
 				out = append(out, bot.Entry{
 					Time:    e.Time,
+					Origin:  bot.OriginInternal,
 					Message: provider.Message{Role: provider.RoleUser, Content: text},
 				})
 				outSeqs = append(outSeqs, seqs[i])

@@ -47,18 +47,19 @@ type Config struct {
 	QuietEnd    string `json:"quiet_end,omitempty"`
 	Timezone    string `json:"timezone,omitempty"`
 	// Role picks the working defaults: "chat" (default) for interactive use and
-	// "dev" for long engineering runs. It sets the step cap and the foreground
-	// thresholds unless those are set explicitly.
+	// "dev" for long engineering runs. It sets the foreground thresholds and the
+	// background budget unless those are set explicitly.
 	Role string `json:"role,omitempty"`
-	// MaxSteps overrides the role's step cap. Zero uses the role default.
-	MaxSteps int `json:"max_steps,omitempty"`
 	// ForegroundMaxTools and ForegroundMaxTime override the role's foreground
 	// thresholds. Zero uses the role default; negative turns a limit off.
-	ForegroundMaxTools int       `json:"foreground_max_tools,omitempty"`
-	ForegroundMaxTime  int       `json:"foreground_max_time,omitempty"` // seconds
-	Group              string    `json:"group,omitempty"`
-	DisabledSkills     []string  `json:"disabled_skills,omitempty"`
-	Created            time.Time `json:"created"`
+	ForegroundMaxTools int `json:"foreground_max_tools,omitempty"`
+	ForegroundMaxTime  int `json:"foreground_max_time,omitempty"` // seconds
+	// BackgroundMaxTime overrides the role's background budget in seconds. Zero
+	// uses the role default; negative lets a background run with no time limit.
+	BackgroundMaxTime int       `json:"background_max_time,omitempty"`
+	Group             string    `json:"group,omitempty"`
+	DisabledSkills    []string  `json:"disabled_skills,omitempty"`
+	Created           time.Time `json:"created"`
 }
 
 // SummaryBlock covers an inclusive sequence range of the append-only transcript.
@@ -153,6 +154,19 @@ type ForkMark struct {
 	Steps  int    `json:"steps,omitempty"`
 }
 
+// Origin says who wrote a transcript line. It is written by the author, not
+// guessed from the text, so a reader never has to recognize a note by its
+// prefix: Internal lines are kernel notes the model must see and the owner must
+// not.
+const (
+	// OriginOwner is a line the owner wrote or an event the kernel turned into a
+	// transcript line for them to read.
+	OriginOwner = ""
+	// OriginInternal is a line the kernel wrote for the model: environment
+	// updates, reminders, completion gates, stop notes. The interface hides it.
+	OriginInternal = "internal"
+)
+
 // Entry is one transcript record.
 // Blob, when set, names a file under transcript/blobs that holds the full tool
 // output. Message.Content is then only a clipped preview.
@@ -166,7 +180,41 @@ type Entry struct {
 	Blob    string           `json:"blob,omitempty"`
 	ReplyTo int              `json:"reply_to,omitempty"`
 	Branch  string           `json:"branch,omitempty"`
+	Origin  string           `json:"origin,omitempty"`
 	Mark    *ForkMark        `json:"mark,omitempty"`
+}
+
+// IsInternal reports a kernel-written line the owner did not say.
+// Rows written before the origin field existed carry no marker, so they are
+// recognized by their opening tag. That list is the only place the text is
+// consulted; a new note gets OriginInternal and needs no entry here. Delete the
+// list once no transcript predates the field.
+func (e Entry) IsInternal() bool {
+	if e.Origin != "" {
+		return e.Origin == OriginInternal
+	}
+	if e.Message.Role != provider.RoleUser {
+		return false
+	}
+	return hasInternalPrefix(e.Message.Content)
+}
+
+// internalPrefixes are the openings of kernel notes written before the origin
+// field. They are data, not instructions: each one is a tag the kernel emits.
+var internalPrefixes = []string{
+	"<environment_", "<memory>", "<summary ", "<background_tasks>",
+	"<todo_gate>", "<stop_reason>",
+	"[继续]", "[主人的补充] ", "[排队] ", "[打断] ",
+}
+
+func hasInternalPrefix(content string) bool {
+	c := strings.TrimSpace(content)
+	for _, p := range internalPrefixes {
+		if strings.HasPrefix(c, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Bot is one loaded bot directory.

@@ -220,68 +220,6 @@ func TestToolStepsAreNotDiminishingReturns(t *testing.T) {
 	}
 }
 
-// TestDiminishingReturnsCountsContinuations trips only after three quiet
-// continuation segments, then hard-stops when a fourth would start. Small
-// steps before the first continuation are not counted.
-func TestDiminishingReturnsCountsContinuations(t *testing.T) {
-	br := newBreaker()
-	for i := 0; i < 6; i++ {
-		id := string(rune('a' + i))
-		remind, stop, reason := br.Observe([]provider.Message{
-			assistantCall(id, "open "+id, "echo", `{"n":"`+id+`"}`),
-			toolResult(id, "echo", "ok"),
-		})
-		if remind != "" || stop {
-			t.Fatalf("opening step %d remind=%q stop=%v %s", i, remind, stop, reason)
-		}
-	}
-	quiet := func(n int) {
-		t.Helper()
-		id := string(rune('m' + n))
-		if _, stop, reason := br.Observe([]provider.Message{
-			assistantCall(id, "c "+id, "echo", `{"n":"`+id+`"}`),
-			toolResult(id, "echo", "ok"),
-		}); stop {
-			t.Fatalf("observe %d stopped (%s)", n, reason)
-		}
-	}
-	for c := 1; c <= 3; c++ {
-		if remind, stop, reason := br.BeginContinuation(); stop || remind != "" {
-			t.Fatalf("begin %d remind=%q stop=%v %s", c, remind, stop, reason)
-		}
-		quiet(c)
-	}
-	remind, stop, reason := br.BeginContinuation()
-	if stop || !strings.Contains(remind, StopDiminishingReturns) {
-		t.Fatalf("third close remind=%q stop=%v %s", remind, stop, reason)
-	}
-	quiet(4)
-	remind, stop, reason = br.BeginContinuation()
-	if !stop || reason != StopDiminishingReturns || remind != "" {
-		t.Fatalf("fourth close remind=%q stop=%v reason=%q", remind, stop, reason)
-	}
-}
-
-// TestLargeContinuationsDoNotTrip keeps a continuation that actually added
-// text out of the diminishing-returns counter.
-func TestLargeContinuationsDoNotTrip(t *testing.T) {
-	br := newBreaker()
-	big := strings.Repeat("x", 2100)
-	for c := 1; c <= 5; c++ {
-		remind, stop, reason := br.BeginContinuation()
-		if stop || remind != "" {
-			t.Fatalf("begin %d remind=%q stop=%v %s", c, remind, stop, reason)
-		}
-		id := string(rune('a' + c))
-		if _, stop, reason := br.Observe([]provider.Message{
-			assistantCall(id, id+" "+big, "echo", `{"n":"`+id+`"}`),
-			toolResult(id, "echo", "ok"),
-		}); stop {
-			t.Fatalf("observe %d stopped (%s)", c, reason)
-		}
-	}
-}
-
 func shellCall(id, command, output string) []provider.Message {
 	args := `{"command":` + jsonString(command) + `}`
 	return []provider.Message{

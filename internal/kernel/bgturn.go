@@ -25,7 +25,39 @@ const (
 	forkTaskRunes    = 80
 	forkReplyRunes   = 2000
 	finishedCap      = 3
+	// defaultBackgroundMaxTime is how long one background task may keep working
+	// when the kernel was built without a role budget.
+	defaultBackgroundMaxTime = 20 * time.Minute
 )
+
+// backgroundBudget is how long one background task may keep working. A
+// negative value turns the limit off.
+func (k *Kernel) backgroundBudget() time.Duration {
+	if k.BackgroundMaxTime != 0 {
+		return k.BackgroundMaxTime
+	}
+	return defaultBackgroundMaxTime
+}
+
+// backgroundOverBudget reports whether a background turn has spent its
+// wall-clock budget. A turn that is still on the main line has none: the
+// foreground is bounded by its own tool and time caps instead.
+func (k *Kernel) backgroundOverBudget(t *turn) (string, bool) {
+	if !t.isForked() {
+		return "", false
+	}
+	budget := k.backgroundBudget()
+	if budget < 0 {
+		return "", false
+	}
+	t.mu.Lock()
+	spent := k.now().Sub(t.started)
+	t.mu.Unlock()
+	if spent < budget {
+		return "", false
+	}
+	return fmt.Sprintf("background_budget: 后台已跑 %s，用完 %s 的预算", spent.Round(time.Minute), budget), true
+}
 
 // BackgroundInfo is one background turn, as the foreground note and the web
 // stream list it. A running entry has no Status or Ended; a finished one has both.
@@ -143,7 +175,6 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 	}
 	k.bgs[id] = t
 	t.capFork = capped
-	t.segments = 1
 	k.writeForkMeta(t, "running")
 	close(t.forked)
 	return true
@@ -153,7 +184,6 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr error) {
 	t.mu.Lock()
 	id, steps := t.branch, t.replies
-	segments, stopReason := t.segments, t.stopReason
 	t.mu.Unlock()
 	status := "done"
 	if runErr != nil {
@@ -176,12 +206,9 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	if k.Inbox == nil {
 		return
 	}
-	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 段 %d 步。任务：%s", id, status, segments, steps, t.task)
+	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 步。任务：%s", id, status, steps, t.task)
 	if runErr != nil {
 		text += "\n错误：" + clipRunes(runErr.Error(), 300)
-	}
-	if stopReason != "" {
-		text += "\n卡在这里：" + stopReason + "。要我接着做，回一句「继续」就行。"
 	}
 	t.mu.Lock()
 	var unread []string

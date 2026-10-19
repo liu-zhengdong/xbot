@@ -248,20 +248,24 @@ func TestSplitGlobal(t *testing.T) {
 }
 
 func TestParseChat(t *testing.T) {
-	opt, err := parseChat([]string{"--yes", "--max-steps", "4", "ada"})
+	opt, err := parseChat([]string{"--yes", "ada"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opt.Yes || opt.MaxSteps != 4 || opt.Name != "ada" {
+	if !opt.Yes || opt.Name != "ada" {
 		t.Fatalf("%+v", opt)
 	}
 	opt, err = parseChat(nil)
 	if err != nil || opt.Name != "" {
 		t.Fatalf("empty chat %+v %v", opt, err)
 	}
-	opt, err = parseChat([]string{"ada", "--yes", "--max-steps", "4"})
-	if err != nil || !opt.Yes || opt.MaxSteps != 4 || opt.Name != "ada" {
+	opt, err = parseChat([]string{"ada", "--yes"})
+	if err != nil || !opt.Yes || opt.Name != "ada" {
 		t.Fatalf("%+v %v", opt, err)
+	}
+	// Steps are a guard, not a knob: the flag is gone.
+	if _, err := parseChat([]string{"--max-steps", "4", "ada"}); err == nil {
+		t.Fatal("chat still accepts --max-steps")
 	}
 }
 
@@ -482,16 +486,16 @@ func TestParseProfileAndTemplate(t *testing.T) {
 	}
 	// The role flags pick the working defaults and must survive reordering,
 	// including after the bot name.
-	opt, err = parseProfileSet([]string{"ada", "--role", "dev", "--max-steps", "12", "--foreground-max-tools", "6", "--foreground-max-time", "45"})
+	opt, err = parseProfileSet([]string{"ada", "--role", "dev", "--background-max-time", "90", "--foreground-max-tools", "6", "--foreground-max-time", "45"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opt.Role != "dev" || opt.MaxSteps != 12 || opt.FgTools != 6 || opt.FgTime != 45 ||
-		!opt.Set["role"] || !opt.Set["max-steps"] || !opt.Set["foreground-max-tools"] || !opt.Set["foreground-max-time"] {
+	if opt.Role != "dev" || opt.BgTime != 90 || opt.FgTools != 6 || opt.FgTime != 45 ||
+		!opt.Set["role"] || !opt.Set["background-max-time"] || !opt.Set["foreground-max-tools"] || !opt.Set["foreground-max-time"] {
 		t.Fatalf("%+v", opt)
 	}
 	opt, err = parseProfileSet([]string{"--role", "chat", "ada"})
-	if err != nil || opt.Role != "chat" || !opt.Set["role"] || opt.Set["max-steps"] {
+	if err != nil || opt.Role != "chat" || !opt.Set["role"] || opt.Set["background-max-time"] {
 		t.Fatalf("%+v %v", opt, err)
 	}
 	av, err := parseProfileAvatar([]string{"ada", "--file", "face.png"})

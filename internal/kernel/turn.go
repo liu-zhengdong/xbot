@@ -61,17 +61,6 @@ type turn struct {
 	cancelRun     context.CancelFunc
 	// capFork is set when the turn moved to the background for passing the foreground cap.
 	capFork bool
-	// capStopped is set when the last segment ended because it used its step
-	// cap. segments counts the segments this background has run, the first one
-	// included; each continuation adds one.
-	capStopped bool
-	segments   int
-	// stepsUsed counts the model calls that asked for tools, which is what the
-	// step cap counts. It sums over every segment of a background task.
-	stepsUsed int
-	// stopReason is why a background could not run another segment after its
-	// last one ended at the step cap. finishBackground reports it.
-	stopReason string
 	// lastRec is the sequence of the last transcript line this turn wrote.
 	lastRec int
 	// todoGated is set once the completion gate has continued this turn.
@@ -139,7 +128,9 @@ func (t *turn) takeCtrlLocked() []provider.Message {
 	for _, c := range t.ctrl {
 		if c.State == "pending" {
 			c.State = "applied"
-			out = append(out, provider.Message{Role: provider.RoleUser, Content: c.message()})
+			// A control is addressed to the background, not said in the owner's
+			// thread: the chat hides it and the task popover shows it.
+			out = append(out, provider.Message{Role: provider.RoleUser, Content: c.message(), Internal: true})
 		}
 	}
 	return out

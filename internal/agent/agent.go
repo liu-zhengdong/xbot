@@ -145,7 +145,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 				remind, cont := opt.OnIdle(msg)
 				if cont {
 					if remind != "" {
-						note := provider.Message{Role: provider.RoleUser, Content: strings.TrimSpace(remind)}
+						note := provider.Message{Role: provider.RoleUser, Content: strings.TrimSpace(remind), Internal: true}
 						convo = append(convo, note)
 						produced = append(produced, note)
 						if opt.OnMessage != nil {
@@ -264,7 +264,7 @@ func stopForReason(ctx context.Context, p provider.Provider, convo, produced []p
 	if opt.OnStop != nil && reason != "" {
 		opt.OnStop(reason)
 	}
-	note := provider.Message{Role: provider.RoleUser, Content: StopNote(reason)}
+	note := provider.Message{Role: provider.RoleUser, Content: StopNote(reason), Internal: true}
 	convo = append(convo, note)
 	produced = append(produced, note)
 	if opt.OnMessage != nil {
@@ -307,7 +307,7 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 		return produced, err
 	}
 	note := fmt.Sprintf("Stop. The step cap (%d) is reached. Do not call tools. Summarize what was done, what is still pending, and why you stopped.", opt.MaxSteps)
-	convo = append(convo, provider.Message{Role: provider.RoleUser, Content: note})
+	convo = append(convo, provider.Message{Role: provider.RoleUser, Content: note, Internal: true})
 	msg, err := p.Chat(ctx, provider.Request{Messages: convo}, opt.OnDelta)
 	if err != nil {
 		return produced, fmt.Errorf("agent: max steps (%d) reached: %w", opt.MaxSteps, err)

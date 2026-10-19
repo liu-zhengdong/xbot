@@ -264,27 +264,23 @@ func TestShellJobFileUsesKernelRedactor(t *testing.T) {
 	}
 }
 
-func TestShellDoneDoesNotExtendSegment(t *testing.T) {
+// TestShellDoneDoesNotWakeABusyTurn checks a finished shell job does not post a
+// wake while a turn is running: the live turn hears about it at its next
+// boundary through the reminder channel.
+func TestShellDoneDoesNotWakeABusyTurn(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	k := &Kernel{
-		Bot: b, Inbox: in, MaxSegments: 1,
+		Bot: b, Inbox: in,
 		Now: func() time.Time { return time.Unix(1_700_000_200, 0).UTC() },
 	}
-	tr := &turn{started: k.now(), segments: k.segmentCap(), capStopped: true}
 	k.turnMu.Lock()
-	k.turn = tr
+	k.turn = &turn{started: k.now()}
 	k.turnMu.Unlock()
 	k.onShellDone(tools.Job{ID: "sh_aabbccdd", Status: "done", Output: "x"})
-	tr.mu.Lock()
-	segs := tr.segments
-	tr.mu.Unlock()
-	if segs != k.segmentCap() {
-		t.Fatalf("segments %d", segs)
-	}
 	if n := len(in.Pending()); n != 0 {
 		t.Fatalf("busy turn was woken: %d", n)
 	}

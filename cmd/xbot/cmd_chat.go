@@ -21,20 +21,18 @@ import (
 type chatOpts struct {
 	Name        string
 	Yes         bool
-	MaxSteps    int
 	RunnerURL   string
 	RunnerToken string
 }
 
 func parseChat(args []string) (chatOpts, error) {
-	ordered, err := reorderFlags(args, map[string]bool{"max-steps": true, "runner": true, "runner-token": true})
+	ordered, err := reorderFlags(args, map[string]bool{"runner": true, "runner-token": true})
 	if err != nil {
 		return chatOpts{}, err
 	}
 	fs := flag.NewFlagSet("chat", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	yes := fs.Bool("yes", false, "approve shell commands and file writes without prompting")
-	steps := fs.Int("max-steps", 0, "maximum model calls per wake (0 uses the bot's role default)")
 	runnerURL := fs.String("runner", "", "remote executor base URL")
 	runnerToken := fs.String("runner-token", "", "remote executor token")
 	if err := fs.Parse(ordered); err != nil {
@@ -47,7 +45,7 @@ func parseChat(args []string) (chatOpts, error) {
 	if fs.NArg() == 1 {
 		name = fs.Arg(0)
 	}
-	return chatOpts{Name: name, Yes: *yes, MaxSteps: *steps, RunnerURL: *runnerURL, RunnerToken: *runnerToken}, nil
+	return chatOpts{Name: name, Yes: *yes, RunnerURL: *runnerURL, RunnerToken: *runnerToken}, nil
 }
 
 // reorderFlags moves flags in front of positional args so the name can sit
@@ -102,7 +100,7 @@ func cmdChat(root string, args []string) error {
 	defer stop()
 	lines := make(chan proc.Line)
 	pr := &printer{yes: opt.Yes, lines: lines}
-	k, who, err := openKernel(root, b, opt.MaxSteps, pr.Approve, pr, opt.Yes, runnerSpec{opt.RunnerURL, opt.RunnerToken})
+	k, who, err := openKernel(root, b, 0, pr.Approve, pr, opt.Yes, runnerSpec{opt.RunnerURL, opt.RunnerToken})
 	if err != nil {
 		return err
 	}

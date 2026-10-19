@@ -643,13 +643,15 @@ type apiRow struct {
 	Time       time.Time           `json:"time"`
 	ReplyTo    int                 `json:"reply_to,omitempty"`
 	Branch     string              `json:"branch,omitempty"`
-	Kind       string              `json:"kind,omitempty"`
-	From       int                 `json:"from,omitempty"`
-	Task       string              `json:"task,omitempty"`
-	Status     string              `json:"status,omitempty"`
-	Steps      int                 `json:"steps,omitempty"`
-	FromDevice *apiFromDevice      `json:"from_device,omitempty"`
-	Relay      *apiRelay           `json:"relay,omitempty"`
+	// Internal marks a kernel note the owner did not say. The interface hides it.
+	Internal   bool           `json:"internal,omitempty"`
+	Kind       string         `json:"kind,omitempty"`
+	From       int            `json:"from,omitempty"`
+	Task       string         `json:"task,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	Steps      int            `json:"steps,omitempty"`
+	FromDevice *apiFromDevice `json:"from_device,omitempty"`
+	Relay      *apiRelay      `json:"relay,omitempty"`
 }
 
 // apiFromDevice names the paired device an owner line was typed on.
@@ -749,7 +751,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		row := apiRow{
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
-			ReplyTo: e.ReplyTo, Branch: replay[i].Branch,
+			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
 		}
 		if e.Message.Role == provider.RoleUser {
 			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Content)

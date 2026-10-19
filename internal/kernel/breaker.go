@@ -4,23 +4,17 @@ import (
 	"encoding/json"
 	"strings"
 
-	"xbot/internal/compact"
 	"xbot/internal/provider"
 )
 
 // Stop reasons written into the trace. Evals match these codes.
 const (
-	StopRepeatedOutput     = "repeated_output"
-	StopSameToolArgs       = "same_tool_args"
-	StopFileFlipFlop       = "file_flip_flop"
-	StopPollingFailure     = "polling_failure"
-	StopDiminishingReturns = "diminishing_returns"
-	StopDeniedApprovals    = "denied_approvals"
+	StopRepeatedOutput  = "repeated_output"
+	StopSameToolArgs    = "same_tool_args"
+	StopFileFlipFlop    = "file_flip_flop"
+	StopPollingFailure  = "polling_failure"
+	StopDeniedApprovals = "denied_approvals"
 
-	// diminishingLimit is the per-continuation token ceiling. Three or more
-	// continuation segments whose last two each add fewer assistant tokens
-	// than this are diminishing returns.
-	diminishingLimit = 500
 	// loopThreshold is how many consecutive identical tool calls, or identical
 	// failures, count as one trip. The next one of that same key is the second trip.
 	loopThreshold = 3
@@ -47,13 +41,6 @@ type Breaker struct {
 	failText   string
 	failStreak int
 	denyStreak int
-
-	// contTokens is assistant tokens added by each closed continuation.
-	// openCont is the continuation currently running; the opening segment
-	// is not one.
-	contTokens []int
-	openCont   bool
-	openTokens int
 
 	pendingRemind []string
 	pendingStop   string
@@ -96,11 +83,6 @@ func (b *Breaker) seeAssistant(m provider.Message) {
 		}
 		b.prevAssistant = text
 		b.hadAssistant = true
-	}
-	// Only a continuation segment counts toward diminishing returns. A short
-	// tool step in the opening segment is ordinary work.
-	if b.openCont {
-		b.openTokens += compact.EstimateMessage(m)
 	}
 	for _, tc := range m.ToolCalls {
 		key := tc.Function.Name + "\n" + tc.Function.Arguments
@@ -186,55 +168,9 @@ func (b *Breaker) breakToolStreaks() {
 	b.failStreak = 0
 }
 
-// BeginContinuation opens one continuation turn: a background segment started
-// because the previous segment hit its step cap. It first closes the previous
-// continuation, which is when diminishing returns can trip. The opening
-// segment is not a continuation. A stop means the new segment must not start.
-func (b *Breaker) BeginContinuation() (remind string, stop bool, reason string) {
-	if b == nil {
-		return "", false, ""
-	}
-	b.closeContinuation()
-	remind, stop, reason = b.take()
-	if !stop {
-		b.openCont = true
-		b.openTokens = 0
-		// A new segment is a new attempt. Loop streaks do not carry across it.
-		// Continuation totals were already closed above.
-		b.ResetSegment()
-	}
-	return remind, stop, reason
-}
-
-// EndContinuation closes the open continuation, if any. The caller uses it
-// when the background is not going to start another segment.
-func (b *Breaker) EndContinuation() (remind string, stop bool, reason string) {
-	if b == nil {
-		return "", false, ""
-	}
-	b.closeContinuation()
-	return b.take()
-}
-
-// closeContinuation records the assistant tokens of the open continuation.
-// Three or more continuations, with the last two each under the token ceiling,
-// are one trip.
-func (b *Breaker) closeContinuation() {
-	if !b.openCont {
-		return
-	}
-	b.contTokens = append(b.contTokens, b.openTokens)
-	b.openCont = false
-	b.openTokens = 0
-	n := len(b.contTokens)
-	if n >= 3 && b.contTokens[n-1] < diminishingLimit && b.contTokens[n-2] < diminishingLimit {
-		b.hit(StopDiminishingReturns, "")
-	}
-}
-
-// ResetSegment clears consecutive-loop state at a background segment boundary.
-// File flip-flop history and diminishing-return totals stay: those describe
-// the task, not one segment's tool streak.
+// ResetSegment clears consecutive-loop state before another run inside the same
+// turn. File flip-flop history stays: it describes the task, not one run's
+// tool streak.
 func (b *Breaker) ResetSegment() {
 	if b == nil {
 		return
@@ -406,8 +342,6 @@ func loopHint(reason string) string {
 		return "This file was edited back and forth. Stop flipping it and decide."
 	case StopPollingFailure:
 		return "The same call failed again. Do not retry it. Report the exact error."
-	case StopDiminishingReturns:
-		return "The last steps added very little. Summarize and stop, or do one different thing."
 	case StopDeniedApprovals:
 		return "The owner denied the last requests. Ask once what to do instead of trying them again."
 	default:

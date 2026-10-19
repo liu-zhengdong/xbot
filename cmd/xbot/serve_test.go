@@ -2,20 +2,26 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
 )
 
-// TestOpenKernelStepsFollowTheRole is the regression the serve path needs: it
-// opens a kernel exactly the way cmd_serve does, with steps 0, so the bot's
-// role decides the cap. A dev bot must get 24 steps, a chat bot 8.
-func TestOpenKernelStepsFollowTheRole(t *testing.T) {
+// TestOpenKernelBudgetFollowsTheRole is the regression the serve path needs: it
+// opens a kernel exactly the way cmd_serve does, with no step count, so the
+// bot's role decides how long a background may work. Steps are only the
+// runaway guard.
+func TestOpenKernelBudgetFollowsTheRole(t *testing.T) {
 	t.Setenv("XBOT_API_KEY", "sk-test")
 	for _, c := range []struct {
 		role string
-		want int
-	}{{role: "", want: 8}, {role: bot.RoleChat, want: 8}, {role: bot.RoleDev, want: 24}} {
+		want time.Duration
+	}{
+		{role: "", want: 45 * time.Minute},
+		{role: bot.RoleChat, want: 45 * time.Minute},
+		{role: bot.RoleDev, want: 2 * time.Hour},
+	} {
 		root := t.TempDir()
 		b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
 		if err != nil {
@@ -31,26 +37,29 @@ func TestOpenKernelStepsFollowTheRole(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if k.MaxSteps != c.want {
-			t.Fatalf("role %q: openKernel with steps 0 gave MaxSteps %d, want %d", c.role, k.MaxSteps, c.want)
+		if k.BackgroundMaxTime != c.want {
+			t.Fatalf("role %q: openKernel with steps 0 gave BackgroundMaxTime %s, want %s", c.role, k.BackgroundMaxTime, c.want)
+		}
+		if k.MaxSteps != 0 {
+			t.Fatalf("role %q: serve pinned MaxSteps %d; it must stay 0 so the guard applies", c.role, k.MaxSteps)
 		}
 	}
 
-	// An explicit step count still wins over the role.
+	// The profile override wins over the role.
 	root := t.TempDir()
 	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	role := bot.RoleDev
-	if err := b.ApplyProfile(bot.ProfileUpdate{Role: &role}); err != nil {
+	seconds := 15 * 60
+	if err := b.ApplyProfile(bot.ProfileUpdate{BackgroundMaxTime: &seconds}); err != nil {
 		t.Fatal(err)
 	}
-	k, _, err := openKernel(root, b, 3, nil, nil, false, runnerSpec{})
+	k, err := newServeKernel(root, b)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if k.MaxSteps != 3 {
-		t.Fatalf("explicit steps: MaxSteps %d, want 3", k.MaxSteps)
+	if k.BackgroundMaxTime != 15*time.Minute {
+		t.Fatalf("background override: BackgroundMaxTime %s, want 15m", k.BackgroundMaxTime)
 	}
 }

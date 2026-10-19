@@ -53,13 +53,13 @@ Usage:
   xbot [--root DIR] skill show <slug>
   xbot [--root DIR] skill disable <bot> <slug>
   xbot [--root DIR] skill enable <bot> <slug>
-  xbot [--root DIR] chat [name] [--yes] [--max-steps N]
+  xbot [--root DIR] chat [name] [--yes]
   xbot [--root DIR] pin <name>
   xbot [--root DIR] unpin <name>
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
   xbot [--root DIR] profile show <name>
-  xbot [--root DIR] profile set <name> [--description TEXT] [--tone TEXT] [--length short|medium|long] [--emoji none|spare|often] [--language TEXT] [--quiet HH:MM-HH:MM] [--timezone ZONE] [--role chat|dev] [--max-steps N] [--foreground-max-tools N] [--foreground-max-time N] [--name NEW]
+  xbot [--root DIR] profile set <name> [--description TEXT] [--tone TEXT] [--length short|medium|long] [--emoji none|spare|often] [--language TEXT] [--quiet HH:MM-HH:MM] [--timezone ZONE] [--role chat|dev] [--foreground-max-tools N] [--foreground-max-time N] [--background-max-time MIN] [--name NEW]
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]

@@ -91,13 +91,13 @@ type ProfileUpdate struct {
 	QuietStart  *string
 	QuietEnd    *string
 	Timezone    *string
-	// Role picks the working defaults (chat or dev). MaxSteps,
-	// ForegroundMaxTools, and ForegroundMaxTime override them: zero uses the
-	// role default, a negative value turns that limit off.
+	// Role picks the working defaults (chat or dev). ForegroundMaxTools,
+	// ForegroundMaxTime, and BackgroundMaxTime override them: zero uses the role
+	// default, a negative value turns that limit off.
 	Role               *string
-	MaxSteps           *int
 	ForegroundMaxTools *int
 	ForegroundMaxTime  *int
+	BackgroundMaxTime  *int
 }
 
 // ApplyProfile validates and stores a partial profile update.
@@ -174,12 +174,6 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		}
 		cfg.Role = v
 	}
-	if u.MaxSteps != nil {
-		if err := checkRange("max_steps", *u.MaxSteps, 1, 64); err != nil {
-			return err
-		}
-		cfg.MaxSteps = *u.MaxSteps
-	}
 	if u.ForegroundMaxTools != nil {
 		if err := checkRange("foreground_max_tools", *u.ForegroundMaxTools, 0, 64); err != nil {
 			return err
@@ -191,6 +185,12 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 			return err
 		}
 		cfg.ForegroundMaxTime = *u.ForegroundMaxTime
+	}
+	if u.BackgroundMaxTime != nil {
+		if err := checkRange("background_max_time", *u.BackgroundMaxTime, 0, 24*3600); err != nil {
+			return err
+		}
+		cfg.BackgroundMaxTime = *u.BackgroundMaxTime
 	}
 	b.cfg = cfg
 	return b.SaveConfig()

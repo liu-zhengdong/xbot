@@ -30,6 +30,11 @@ func (k *Kernel) record(m provider.Message) error {
 func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	replyTo := m.ReplyTo
 	m.ReplyTo = 0
+	origin := bot.OriginOwner
+	if m.Internal {
+		origin = bot.OriginInternal
+		m.Internal = false
+	}
 	if m.Role == provider.RoleUser && replyTo > 0 {
 		if stripped, ok := bot.StripInjectedQuote(m.Content); ok {
 			m.Content = stripped
@@ -44,7 +49,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 			t.answered = true
 		}
 	}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch})
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin})
 	if err != nil {
 		return 0, err
 	}
@@ -64,7 +69,8 @@ func (k *Kernel) quotePrefix(seq int) string {
 }
 
 // userReplyTarget reports whether seq is a user utterance the bot may point at.
-// Environment updates and memory blocks are not user messages.
+// Environment updates, memory blocks, and any other kernel note are not user
+// messages. The origin field on the transcript record decides, not the text.
 func (k *Kernel) userReplyTarget(seq int) bool {
 	if seq < 1 || k == nil || k.Bot == nil {
 		return false
@@ -74,16 +80,7 @@ func (k *Kernel) userReplyTarget(seq int) bool {
 		return false
 	}
 	e := part[0]
-	if e.Message.Role != provider.RoleUser {
-		return false
-	}
-	c := strings.TrimSpace(e.Message.Content)
-	switch {
-	case strings.HasPrefix(c, "<environment_"), strings.HasPrefix(c, "<memory>"), strings.HasPrefix(c, "<summary "):
-		return false
-	default:
-		return true
-	}
+	return e.Message.Role == provider.RoleUser && !e.IsInternal()
 }
 
 // replyProvider strips a leading reply_to line from assistant text before it

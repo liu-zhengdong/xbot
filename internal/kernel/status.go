@@ -95,15 +95,6 @@ func oneStatusLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-func statusSystemLine(s string) bool {
-	for _, p := range []string{"<environment_", "<memory>", "<summary ", "<background_tasks>"} {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
-}
-
 // tailMessage returns the last assistant or user message preview and its time,
 // reading only the transcript tail. It never asks the model.
 func tailMessage(b *bot.Bot) (string, time.Time) {
@@ -141,7 +132,7 @@ func tailMessage(b *bot.Bot) (string, time.Time) {
 		if content == "" {
 			continue
 		}
-		if role == provider.RoleUser && statusSystemLine(content) {
+		if e.IsInternal() {
 			continue
 		}
 		if _, ok := bot.ParseApprovalCard(content); ok {

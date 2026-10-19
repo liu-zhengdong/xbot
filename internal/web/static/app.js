@@ -2108,9 +2108,9 @@
 
   function skipMessage(m) {
     if (!m || m.role === "tool" || m.role === "system") return true;
-    const c = m.content || "";
-    if (m.role === "user" && (c.startsWith("<environment_") || c.startsWith("<memory>") || c.startsWith("<background_tasks>"))) return true;
-    return false;
+    // A kernel note the owner did not say. The transcript row says so; the
+    // interface does not recognize the text.
+    return !!m.internal;
   }
 
   function renderMessages(messages, who) {
@@ -2190,8 +2190,6 @@
       if (m.role === "user") {
         const parsed = unwrap(m.content || "");
         if (parsed.untrusted && parsed.source === "subagent" && parsed.type === "fork_end") return;
-        // Steer, queue, and interrupt sent to a background show in the badge popover.
-        if (m.branch && /^\[(主人的补充|排队|打断)\]/.test(m.content || "")) return;
         if (parsed.untrusted && (parsed.source.startsWith("bot:") || parsed.source.startsWith("group:"))) {
           any = true;
           lastKey = "";

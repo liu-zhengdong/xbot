@@ -19,6 +19,9 @@ const (
 // the provider request and the transcript; the kernel copies it into the trace.
 // Images are sent on the provider request as content parts and are not stored
 // in the transcript.
+// Internal marks a note the executor wrote for the model instead of something
+// the owner said. It stays off the provider request; the kernel copies it into
+// the transcript record's origin.
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content,omitempty"`
@@ -28,6 +31,7 @@ type Message struct {
 	ReplyTo    int        `json:"-"`
 	Usage      TokenUsage `json:"-"`
 	Images     []Image    `json:"-"`
+	Internal   bool       `json:"-"`
 }
 
 // Image is one picture attached to a message. Data is the raw file bytes.

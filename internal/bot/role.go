@@ -3,7 +3,7 @@ package bot
 import "time"
 
 // Role picks a set of working defaults. chat is interactive: short turns and a
-// small step cap. dev is engineering work: longer turns and more steps.
+// small foreground budget. dev is engineering work: longer turns.
 const (
 	RoleChat = "chat"
 	RoleDev  = "dev"
@@ -11,11 +11,10 @@ const (
 
 // RoleDefaults is the working profile one role implies.
 type RoleDefaults struct {
-	MaxSteps           int
 	ForegroundMaxTools int
 	ForegroundMaxTime  time.Duration
-	// BackgroundMaxTime caps the wall-clock time one background task may spend
-	// across all its segments. Engineering work gets a longer budget.
+	// BackgroundMaxTime caps the wall-clock time one background task may spend.
+	// It is what actually bounds a background: engineering work gets longer.
 	BackgroundMaxTime time.Duration
 }
 
@@ -23,9 +22,9 @@ type RoleDefaults struct {
 // role is chat, the interactive default.
 func DefaultsForRole(role string) RoleDefaults {
 	if role == RoleDev {
-		return RoleDefaults{MaxSteps: 24, ForegroundMaxTools: 8, ForegroundMaxTime: 60 * time.Second, BackgroundMaxTime: 45 * time.Minute}
+		return RoleDefaults{ForegroundMaxTools: 8, ForegroundMaxTime: 60 * time.Second, BackgroundMaxTime: 2 * time.Hour}
 	}
-	return RoleDefaults{MaxSteps: 8, ForegroundMaxTools: 4, ForegroundMaxTime: 20 * time.Second, BackgroundMaxTime: 20 * time.Minute}
+	return RoleDefaults{ForegroundMaxTools: 4, ForegroundMaxTime: 20 * time.Second, BackgroundMaxTime: 45 * time.Minute}
 }
 
 // Working resolves the role defaults together with any explicit overrides. A
@@ -33,14 +32,14 @@ func DefaultsForRole(role string) RoleDefaults {
 // off.
 func (c Config) Working() RoleDefaults {
 	d := DefaultsForRole(c.Role)
-	if c.MaxSteps != 0 {
-		d.MaxSteps = c.MaxSteps
-	}
 	if c.ForegroundMaxTools != 0 {
 		d.ForegroundMaxTools = c.ForegroundMaxTools
 	}
 	if c.ForegroundMaxTime != 0 {
 		d.ForegroundMaxTime = time.Duration(c.ForegroundMaxTime) * time.Second
+	}
+	if c.BackgroundMaxTime != 0 {
+		d.BackgroundMaxTime = time.Duration(c.BackgroundMaxTime) * time.Second
 	}
 	return d
 }

@@ -2,66 +2,78 @@ package kernel
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
-// ctrlText is the control the tests below send while the background is already
-// out of budget for another segment.
+// ctrlText is the control the tests below send while the background is still
+// working on its first step.
 const ctrlText = "改用中文写注释"
 
-// bgControlProvider answers every step with another wait call and posts a
-// control during the closing summary, which runs after the last step of the
-// segment. That is the only window where a control can still be unread when the
-// segment loop decides whether another segment may run.
+// bgControlProvider asks for one wait call and then answers, so the background
+// reaches its end with only the control left to decide another run.
 type bgControlProvider struct {
-	calls int
-	reqs  []provider.Request
-	steer func()
-	// steered keeps the control to the first closing summary. A later summary
-	// would send one more control that nothing can run any more, which is what
-	// the "no budget left" test wants but this one does not.
+	calls   int
+	reqs    []provider.Request
+	steer   func()
 	steered bool
 }
 
 func (p *bgControlProvider) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	p.calls++
 	p.reqs = append(p.reqs, req)
-	if len(req.Tools) == 0 {
-		// The closing summary: tools are disabled here, so this is not a step.
-		if p.steer != nil && !p.steered {
-			p.steered = true
-			p.steer()
-		}
+	if p.steer != nil && !p.steered {
+		p.steered = true
+		p.steer()
+	}
+	if p.calls > 1 || len(req.Tools) == 0 {
 		return provider.Message{Role: provider.RoleAssistant, Content: "这一段做完"}, nil
 	}
 	return provider.Message{
 		Role:    provider.RoleAssistant,
-		Content: fmt.Sprintf("step %d %s", p.calls, strings.Repeat("x", 2200)),
+		Content: "step " + strings.Repeat("x", 100),
 		ToolCalls: []provider.ToolCall{{
-			ID: fmt.Sprintf("c%d", p.calls), Type: "function",
-			Function: provider.FunctionCall{Name: "wait", Arguments: fmt.Sprintf(`{"n":%d}`, p.calls)},
+			ID: "c1", Type: "function",
+			Function: provider.FunctionCall{Name: "wait", Arguments: `{"n":1}`},
 		}},
 	}, nil
 }
 
-// controlAtCapKernel is segmentKernel with a provider that sends a steer to its
-// own background during every closing summary.
-func controlAtCapKernel(t *testing.T) (*Kernel, chan struct{}, *bgControlProvider) {
-	t.Helper()
-	k, rel, _ := segmentKernel(t)
-	p := &bgControlProvider{}
-	p.steer = func() {
-		for _, bg := range k.Backgrounds() {
-			if _, err := k.ControlSubagent(context.Background(), bg.ID, "steer", ctrlText); err != nil {
-				t.Errorf("steer %s: %v", bg.ID, err)
-			}
-		}
+// blockingTool blocks until it is released, which is what keeps the turn on the
+// main line long enough for the control to be sent.
+type blockingTool struct{ release chan struct{} }
+
+func (*blockingTool) Name() string                                  { return "wait" }
+func (*blockingTool) Description() string                           { return "wait" }
+func (*blockingTool) Parameters() any                               { return map[string]any{"type": "object"} }
+func (*blockingTool) Confirm(json.RawMessage) (bool, string, error) { return false, "wait", nil }
+func (h *blockingTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	select {
+	case <-h.release:
+		return "ok", nil
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
+}
+
+// controlKernel is forkKernel with a provider whose first step blocks on a tool
+// so the caller can steer it while it works.
+func controlKernel(t *testing.T) (*Kernel, chan struct{}, *bgControlProvider) {
+	t.Helper()
+	k, g, _ := forkKernel(t)
+	rel := make(chan struct{})
+	k.Links = []link.Link{link.Terminal{}, oneToolLink{&blockingTool{release: rel}}}
+	p := &bgControlProvider{}
 	k.Provider = p
+	k.MaxSteps = 4
+	k.ForegroundMaxTools = 1
+	k.BackgroundMaxTime = -1
+	g.release = rel
 	return k, rel, p
 }
 
@@ -79,57 +91,56 @@ func requestsWithControl(p *bgControlProvider) []int {
 	return idx
 }
 
-// TestControlIsNotDroppedWhenTheBudgetRefusesASegment is the regression for the
-// ordering bug: the segment loop consumed pending controls before it asked the
-// budget, so a control that arrived when no segment could run any more was
-// marked applied, never reached the model, and was not reported as unread
-// either. It must stay pending and be reported.
-func TestControlIsNotDroppedWhenTheBudgetRefusesASegment(t *testing.T) {
-	k, rel, p := controlAtCapKernel(t)
-	k.MaxSegments = 1
-	id := runBackground(t, k, rel, "一直做")
-	text := endEvent(t, k, id)
-
-	if !strings.Contains(text, "没来得及处理的控制") || !strings.Contains(text, ctrlText) {
-		t.Fatalf("the completion event does not report the unread control: %q", text)
+// runControlledBackground posts the owner event, lets the turn fork, releases
+// the first wait call, and waits for the completion event. It returns that
+// event's text.
+func runControlledBackground(t *testing.T, k *Kernel, rel chan struct{}) string {
+	t.Helper()
+	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
+	if err := k.Inbox.Post(ev); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(text, "段数上限") {
-		t.Fatalf("the completion event does not say where it stopped: %q", text)
+	ctx, cancel := context.WithTimeout(context.Background(), backgroundWait)
+	defer cancel()
+	if err := k.Handle(ctx, ev); err != nil {
+		t.Fatalf("turn did not fork: %v", err)
 	}
-	if calls := p.calls; calls != 3 {
-		t.Fatalf("model calls %d, want 3 (2 steps plus the closing summary, one segment)", calls)
+	bgs := k.Backgrounds()
+	if len(bgs) != 1 {
+		t.Fatalf("backgrounds %d", len(bgs))
 	}
-	if idx := requestsWithControl(p); len(idx) != 0 {
-		t.Fatalf("the control was given to model calls %v even though no segment ran for it", idx)
+	id := bgs[0].ID
+	if _, err := k.ControlSubagent(context.Background(), id, "steer", ctrlText); err != nil {
+		t.Fatalf("steer %s: %v", id, err)
 	}
-	if n := continueNotes(t, k); n != 0 {
-		t.Fatalf("continue notes %d, want none", n)
-	}
+	close(rel)
+	waitNoBackgrounds(t, k, id)
+	return waitForkEnd(t, k, id).Content
 }
 
-// TestControlRunsInTheSegmentItEarns checks the other half: while budget is
-// left, a control that arrives at the cap does earn the next segment and
-// reaches the model there.
-func TestControlRunsInTheSegmentItEarns(t *testing.T) {
-	k, rel, p := controlAtCapKernel(t)
-	k.MaxSegments = 2
-	id := runBackground(t, k, rel, "一直做")
-	text := endEvent(t, k, id)
-
+// TestControlEarnsAnotherRun checks a control that arrives while the
+// background is still working is read by the run it starts, and is not
+// reported unread.
+func TestControlEarnsAnotherRun(t *testing.T) {
+	k, rel, p := controlKernel(t)
+	text := runControlledBackground(t, k, rel)
 	if idx := requestsWithControl(p); len(idx) == 0 {
-		t.Fatal("the control never reached the model in the segment it earned")
+		t.Fatal("the control never reached the model")
 	}
 	if strings.Contains(text, "没来得及处理的控制") {
 		t.Fatalf("a control that did run is reported unread: %q", text)
 	}
-	if !strings.Contains(text, "2 段") || !strings.Contains(text, "段数上限") {
-		t.Fatalf("the completion event does not report the two segments: %q", text)
+	if !strings.Contains(text, "done") {
+		t.Fatalf("the completion event does not report success: %q", text)
 	}
-	if calls := p.calls; calls != 6 {
-		t.Fatalf("model calls %d, want 6 (2 segments x (2 steps + 1 summary))", calls)
-	}
-	// The segment the control earned must not also carry the step-cap note.
-	if n := continueNotes(t, k); n != 1 {
-		t.Fatalf("continue notes %d, want 1 (only the segment that really hit the cap)", n)
+}
+
+// TestControlOnFinishedBackgroundIsRefused checks the other half: once the
+// background is gone, a control has nowhere to go and says so.
+func TestControlOnFinishedBackgroundIsRefused(t *testing.T) {
+	k, rel, _ := controlKernel(t)
+	runControlledBackground(t, k, rel)
+	if _, err := k.ControlSubagent(context.Background(), "bg_gone", "steer", ctrlText); err == nil {
+		t.Fatal("a control on a finished background was accepted")
 	}
 }

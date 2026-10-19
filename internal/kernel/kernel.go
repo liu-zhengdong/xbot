@@ -28,13 +28,16 @@ import (
 
 // Kernel is the bot's turn runner.
 type Kernel struct {
-	Bot        *bot.Bot
-	Provider   provider.Provider
-	Links      []link.Link
-	Inbox      *inbox.Inbox
-	Memory     memory.Store
-	Compactor  compact.Compactor
-	Approve    agent.Approver
+	Bot       *bot.Bot
+	Provider  provider.Provider
+	Links     []link.Link
+	Inbox     *inbox.Inbox
+	Memory    memory.Store
+	Compactor compact.Compactor
+	Approve   agent.Approver
+	// MaxSteps is a runaway guard, not a design limit: a turn ends when the
+	// model stops, when the breaker trips, or when the background budget is
+	// spent. Zero uses maxStepsGuard. Tests set it small to keep fixtures short.
 	MaxSteps   int
 	Budget     compact.Budget
 	SendPolicy link.SendPolicy
@@ -83,11 +86,9 @@ type Kernel struct {
 	// background if a slot is free. Negative turns a limit off.
 	ForegroundMaxTools int
 	ForegroundMaxTime  time.Duration
-	// MaxSegments (default 4) caps how many segments one background task may
-	// run, the first one included, when a segment ends at its step cap with the
-	// task unfinished. BackgroundMaxTime (default 20m) caps the wall-clock time
-	// all those segments may spend together; a negative value turns it off.
-	MaxSegments       int
+	// BackgroundMaxTime caps how long one background task may keep working. It
+	// comes from the bot's role; a negative value turns it off. The background
+	// turn's own context carries the deadline (see backgroundBudget).
 	BackgroundMaxTime time.Duration
 
 	turnMu sync.Mutex
@@ -154,6 +155,19 @@ type Kernel struct {
 	projects projectCache
 	// tokens is model-reported usage for this kernel's lifetime.
 	tokens tokenState
+}
+
+// maxStepsGuard bounds one run so a model that never stops cannot spin
+// forever. It is far past any real task: a background is bounded by its
+// wall-clock budget and by the breaker, not by counting steps.
+const maxStepsGuard = 1000
+
+// stepGuard is the step limit in effect for one run.
+func (k *Kernel) stepGuard() int {
+	if k.MaxSteps > 0 {
+		return k.MaxSteps
+	}
+	return maxStepsGuard
 }
 
 // Handle runs one event to a final assistant message, or returns the agent error.
@@ -261,7 +275,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	if seq == 0 && t.turnTrusted {
 		if note := backgroundNote(k.Backgrounds()); note != "" {
-			if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleUser, Content: note}}); err != nil {
+			if err := k.Bot.Append(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: note}}); err != nil {
 				return err
 			}
 		}
@@ -394,7 +408,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		return nil
 	}
 	opts := agent.Options{
-		MaxSteps: k.MaxSteps,
+		MaxSteps: k.stepGuard(),
 		Approve:  approve,
 		OnDelta: func(s string) {
 			if onDelta != nil && !t.isForked() {
@@ -422,18 +436,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 		},
 		Redact: k.redactor(),
-		// Hitting the step cap is not an error: it just means this segment is out
-		// of room, which lets a background start the next one.
-		OnCap: func() {
-			t.mu.Lock()
-			t.capStopped = true
-			t.mu.Unlock()
-		},
-		OnStep: func() {
-			t.mu.Lock()
-			t.stepsUsed++
-			t.mu.Unlock()
-		},
 		OnMessage: func(m provider.Message) {
 			if appendErr != nil {
 				return
@@ -497,6 +499,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 					remind = note
 				}
 			}
+			if !stop {
+				if why, over := k.backgroundOverBudget(t); over {
+					stop, reason = true, why
+				}
+			}
 			if stop {
 				_ = k.Bot.LogTrace(bot.TraceStop, reason, k.now())
 			}
@@ -524,116 +531,39 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		rp := &replyProvider{inner: p, accept: k.userReplyTarget, onUse: func(req provider.Request, msg provider.Message) {
 			k.noteUsage(t, req, msg)
 		}}
-		recordLoop := func(text string) {
-			if text == "" {
-				return
-			}
-			if rerr := k.reminders().Record(t.lastSeq(), KindLoop, text, k.now()); rerr != nil && appendErr == nil {
-				appendErr = rerr
-			}
-		}
-		// haltBreaker is the hard stop between segments. Inside a segment the
-		// Guard path does the same thing via agent.stopForReason.
-		haltBreaker := func(why string, produced *[]provider.Message) {
-			if lerr := k.Bot.LogTrace(bot.TraceStop, why, k.now()); lerr != nil && appendErr == nil {
-				appendErr = lerr
-			}
-			note := provider.Message{Role: provider.RoleUser, Content: agent.StopNote(why)}
-			if rerr := track(note); rerr != nil && appendErr == nil {
-				appendErr = rerr
-			}
-			convo := append(append([]provider.Message(nil), assembled...), *produced...)
-			convo = append(convo, note)
-			*produced = append(*produced, note)
-			msg, cerr := rp.Chat(runCtx, provider.Request{Messages: convo}, opts.OnDelta)
-			if cerr != nil || strings.TrimSpace(msg.Content) == "" {
-				msg = provider.Message{Role: provider.RoleAssistant, Content: "Stopped (" + why + ") before the task finished."}
-			}
-			msg.Role = provider.RoleAssistant
-			msg.ToolCalls = nil
-			if rerr := track(msg); rerr != nil && appendErr == nil {
-				appendErr = rerr
-			}
-			*produced = append(*produced, msg)
-		}
 		produced, err := agent.Run(runCtx, rp, list, assembled, opts)
 		var bg bool
 		for {
 			if err == nil {
 				err = appendErr
 			}
-			// A queued control that arrived after the last step starts another run, so a
-			// background works through its queue before it ends. A background whose
-			// segment ended at the step cap auto-continues for the same reason, until
-			// its segment, step, or wall-clock budget runs out. The budget is decided
-			// before any control is consumed, so a refused segment leaves the controls
+			// A control that arrived after the last step starts another run, so a
+			// background works through its queue before it ends. Nothing else
+			// continues it: a background stops when the model stops, when the breaker
+			// trips, or when its wall-clock budget is spent (the Guard). Controls are
+			// only read once another run is certain, so a refused run leaves them
 			// pending and finishBackground reports them as unread.
 			t.mu.Lock()
 			bg = t.branch != ""
-			var reason string
-			var more bool
-			if err == nil && bg {
-				more, reason = k.continueSegmentLocked(t, len(t.pendingCtrlLocked()) > 0)
+			var pend []provider.Message
+			if err == nil && bg && len(t.pendingCtrlLocked()) > 0 {
+				pend = t.takeCtrlLocked()
 			}
-			// Controls stay pending until the next segment is actually allowed to
-			// start. A breaker stop must not mark them applied.
-			atCap := t.capStopped
-			finishing := err != nil || !bg || !more
+			finishing := len(pend) == 0
 			if finishing {
 				t.finished = true
-			} else {
-				t.capStopped = false
 			}
 			t.mu.Unlock()
 			if finishing {
-				if bg && err == nil {
-					remind, stop, why := br.EndContinuation()
-					recordLoop(remind)
-					if stop {
-						haltBreaker(why, &produced)
-						reason = breakerHaltReason(why)
-					}
-				}
-				k.markSegmentStop(t, reason)
 				break
 			}
-			// A cap continuation is the unit diminishing returns counts. The
-			// opening segment is not one. A second trip refuses the next segment
-			// and gives back the segment count continueSegmentLocked just took.
-			if more && atCap {
-				remind, stop, why := br.BeginContinuation()
-				if stop {
-					t.mu.Lock()
-					if t.segments > 0 {
-						t.segments--
-					}
-					t.finished = true
-					t.mu.Unlock()
-					haltBreaker(why, &produced)
-					k.markSegmentStop(t, breakerHaltReason(why))
-					break
-				}
-				recordLoop(remind)
-			} else {
-				br.ResetSegment()
-			}
-			t.mu.Lock()
-			pend := t.takeCtrlLocked()
-			t.mu.Unlock()
 			// Another run starts fresh: its own end decides whether the task is done.
-			// Reminders already recorded stay on the message they were bound to.
-			// They are not copied onto whatever line is newest in this segment.
+			// Reminders already recorded stay on the message they were bound to;
+			// they are not copied onto whatever line is newest.
+			br.ResetSegment()
 			convo := append(append([]provider.Message(nil), assembled...), produced...)
 			if err := k.reminders().Apply(convo[len(assembled):], msgSeqs); err != nil && appendErr == nil {
 				appendErr = err
-			}
-			if more && atCap {
-				n := provider.Message{Role: provider.RoleUser, Content: continueNote}
-				if rerr := track(n); rerr != nil && appendErr == nil {
-					appendErr = rerr
-				}
-				convo = append(convo, n)
-				produced = append(produced, n)
 			}
 			for _, m := range pend {
 				if rerr := track(m); rerr != nil && appendErr == nil {
@@ -642,8 +572,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 				convo = append(convo, m)
 				produced = append(produced, m)
 			}
-			more2, rerr := agent.Run(runCtx, rp, list, convo, opts)
-			produced = append(produced, more2...)
+			more, rerr := agent.Run(runCtx, rp, list, convo, opts)
+			produced = append(produced, more...)
 			err = rerr
 		}
 		// The turn is over. Every request inside it still carried the tool
@@ -893,7 +823,7 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	if diff == "" {
 		return st, nil
 	}
-	entry := bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleUser, Content: diff}}
+	entry := bot.Entry{Time: now, Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: diff}}
 	if err := k.Bot.Append(entry); err != nil {
 		return st, err
 	}
@@ -926,7 +856,7 @@ func (k *Kernel) ensureSnapshot(st bot.State) error {
 	if uncoveredHasEnv(raw) {
 		return nil
 	}
-	entry := bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleUser, Content: snapshotText(st.Env)}}
+	entry := bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: snapshotText(st.Env)}}
 	return k.Bot.Append(entry)
 }
 
