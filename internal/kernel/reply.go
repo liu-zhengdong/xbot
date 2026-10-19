@@ -88,12 +88,18 @@ func (k *Kernel) userReplyTarget(seq int) bool {
 type replyProvider struct {
 	inner  provider.Provider
 	accept func(int) bool
+	// onSend runs before the request goes out, so a call that fails or is
+	// cancelled still left the context it was about to send.
+	onSend func(provider.Request)
 	onUse  func(provider.Request, provider.Message)
 	hold   replyHold
 }
 
 func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	s.hold = replyHold{}
+	if s.onSend != nil {
+		s.onSend(req)
+	}
 	msg, err := s.inner.Chat(ctx, req, func(chunk string) {
 		if onDelta == nil {
 			return

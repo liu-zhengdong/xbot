@@ -157,6 +157,8 @@
 
 `GET /api/bots/{name}/steps?n=20` 返回 `{"steps":[{"time","tool","summary","state"}]}`，是这个 Bot 当前这一轮的步骤环。`summary` 最多 120 个字符，写前过替换函数；`state` 是 `running`、`done`、`error` 或 `awaiting`。`n` 缺省 20，最多 20，小于 1 是 400 `{"error":"bad n"}`。不是这个 owner 的 Bot 是 404。远端 Bot 只给状态，不给步骤，空数组。
 
+`GET /api/bots/{name}/context` 返回这一轮模型实际收到的上下文：`{"bot","working_set","window","requests":[...]}`。`requests` 是本轮最近的模型调用，最多 3 次，按发生顺序排列；这是内核在内存里留的快照，进程重启或这个 Bot 还没在本进程里发过请求时是空数组，不是 404。每次调用是 `{"step","at","prompt","tools","layers":[{"key","label","tokens","from","to"}],"entries":[{"role","kind","preview","chars","tokens","cut","tool","from","to"}],"more"}`。`step` 是这一轮里的第几次调用，从 1 起；`prompt` 是整次请求的估算用量，含工具定义，`tools` 是其中工具定义那一份（用量记录里不含它，所以面板要单独列出）；`layers` 按发送顺序给分层合计，`key` 是 `sys`、`mem`、`block`、`env`、`hist` 之一，摘要块每块单独一项并带它覆盖的 `from`、`to`；`entries` 是发出的消息列表（第一项通常是系统提示词），`preview` 截到 400 字，`cut` 标出被截过，`chars` 是全文字节数，`tokens` 是按整个内容算的估算，`from`、`to` 同样只出现在摘要块上，`more` 是被省略的条数。所有 `preview` 都过 `RedactText`。只有前台主循环的请求会出现在这里，子代理、记忆抽取和压缩自身的调用不在其中。不是这个 owner 的 Bot 是 404。
+
 `GET /api/bots/{name}/todos` 返回 `{"items":[{"id","content","status","reason"}]}`，是这个 Bot 当前任务的待办清单。没有活动清单时 `items` 是空数组。每一项都已完成或放弃、写入空清单、或换成没有相同 id 的新清单时，旧清单归档，不再出现在这里。主人接着说继续，或前台插话时后台还在跑，活动清单还在。`status` 是 `pending`、`in_progress`、`done` 或 `dropped`。`BotStatus` 多一个 `todo` 字段，有未完成项时是一行摘要（进行中的那条，或「N pending」），写前过替换函数，最多 80 个字符；没有未完成项就省略。步骤环不放清单。不是这个 owner 的 Bot 是 404。
 
 ## 子代理、通知、群

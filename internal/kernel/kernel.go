@@ -155,6 +155,9 @@ type Kernel struct {
 	projects projectCache
 	// tokens is model-reported usage for this kernel's lifetime.
 	tokens tokenState
+	// context keeps the recent requests of this wake for the web inspector.
+	// Memory only; see noteContext.
+	context contextRing
 }
 
 // maxStepsGuard bounds one run so a model that never stops cannot spin
@@ -205,6 +208,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}()
 	k.clearDenials()
 	k.clearLoaded()
+	// A new wake sends a new context; the panel shows this wake, not the last.
+	k.resetContext()
 	if _, err := k.releaseQuiet(ctx); err != nil {
 		return err
 	}
@@ -529,9 +534,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	done := make(chan result, 1)
 	go func() {
-		rp := &replyProvider{inner: p, accept: k.userReplyTarget, onUse: func(req provider.Request, msg provider.Message) {
-			k.noteUsage(t, req, msg)
-		}}
+		rp := &replyProvider{
+			inner:  p,
+			accept: k.userReplyTarget,
+			// The snapshot is taken before the request leaves, so a call that
+			// times out or fails still shows what was sent. It clips the text,
+			// so the ring holds previews, not tool output.
+			onSend: func(req provider.Request) { k.noteContext(t, req) },
+			onUse:  func(req provider.Request, msg provider.Message) { k.noteUsage(t, req, msg) },
+		}
 		produced, err := agent.Run(runCtx, rp, list, assembled, opts)
 		var bg bool
 		for {
