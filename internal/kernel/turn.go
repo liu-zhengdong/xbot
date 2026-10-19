@@ -61,6 +61,10 @@ type turn struct {
 	cancelRun     context.CancelFunc
 	// capFork is set when the turn moved to the background for passing the foreground cap.
 	capFork bool
+	// stopReason says why a background ended before the task was done: the
+	// wall-clock budget ran out with a control still waiting. finishBackground
+	// reports it and leaves the control unread.
+	stopReason string
 	// lastRec is the sequence of the last transcript line this turn wrote.
 	lastRec int
 	// todoGated is set once the completion gate has continued this turn.

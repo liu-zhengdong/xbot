@@ -43,16 +43,27 @@ func (k *Kernel) backgroundBudget() time.Duration {
 // wall-clock budget. A turn that is still on the main line has none: the
 // foreground is bounded by its own tool and time caps instead.
 func (k *Kernel) backgroundOverBudget(t *turn) (string, bool) {
-	if !t.isForked() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return k.backgroundBudgetSpent(t)
+}
+
+// backgroundBudgetSpent is backgroundOverBudget with t.mu held. The run loop
+// calls it while deciding whether a queued control may start another run: an
+// expired background must not be handed a fresh run with full tools just
+// because nobody looked at the clock since its last step.
+//
+// It reads t.branch directly on purpose: isForked would take t.mu again and
+// deadlock the caller that already holds it.
+func (k *Kernel) backgroundBudgetSpent(t *turn) (string, bool) {
+	if t.branch == "" {
 		return "", false
 	}
 	budget := k.backgroundBudget()
 	if budget < 0 {
 		return "", false
 	}
-	t.mu.Lock()
 	spent := k.now().Sub(t.started)
-	t.mu.Unlock()
 	if spent < budget {
 		return "", false
 	}
@@ -183,7 +194,7 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 // finishBackground closes a background turn: fork_end, meta, and a completion event.
 func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr error) {
 	t.mu.Lock()
-	id, steps := t.branch, t.replies
+	id, steps, stopReason := t.branch, t.replies, t.stopReason
 	t.mu.Unlock()
 	status := "done"
 	if runErr != nil {
@@ -209,6 +220,9 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 步。任务：%s", id, status, steps, t.task)
 	if runErr != nil {
 		text += "\n错误：" + clipRunes(runErr.Error(), 300)
+	}
+	if stopReason != "" {
+		text += "\n卡在这里：" + stopReason + "。要我接着做，回一句「继续」就行。"
 	}
 	t.mu.Lock()
 	var unread []string

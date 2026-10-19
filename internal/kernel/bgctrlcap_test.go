@@ -22,12 +22,17 @@ type bgControlProvider struct {
 	reqs    []provider.Request
 	steer   func()
 	steered bool
+	// steerOnSummary sends the control during the closing summary, which runs
+	// with no tools after the last step. That is the only window where a control
+	// is still unread once agent.Run has returned, which is what the budget
+	// check has to catch.
+	steerOnSummary bool
 }
 
 func (p *bgControlProvider) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	p.calls++
 	p.reqs = append(p.reqs, req)
-	if p.steer != nil && !p.steered {
+	if p.steer != nil && !p.steered && (!p.steerOnSummary || len(req.Tools) == 0) {
 		p.steered = true
 		p.steer()
 	}
@@ -91,9 +96,9 @@ func requestsWithControl(p *bgControlProvider) []int {
 	return idx
 }
 
-// runControlledBackground posts the owner event, lets the turn fork, releases
-// the first wait call, and waits for the completion event. It returns that
-// event's text.
+// runControlledBackground posts the owner event, lets the turn fork, steers it,
+// releases the first wait call, and waits for the completion event. It returns
+// that event's text.
 func runControlledBackground(t *testing.T, k *Kernel, rel chan struct{}) string {
 	t.Helper()
 	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
@@ -142,5 +147,37 @@ func TestControlOnFinishedBackgroundIsRefused(t *testing.T) {
 	runControlledBackground(t, k, rel)
 	if _, err := k.ControlSubagent(context.Background(), "bg_gone", "steer", ctrlText); err == nil {
 		t.Fatal("a control on a finished background was accepted")
+	}
+}
+
+// TestControlIsUnreadWhenTheBudgetIsSpent is the regression for a control that
+// starts another run on a background already out of time. The run loop used to
+// consume controls before it looked at the clock: an expired background got a
+// fresh run with every tool, and only the Guard after the first tool result
+// noticed. The clock is now read before the controls are consumed.
+//
+// The control has to arrive during the closing summary: that is the only window
+// where it is still pending once agent.Run has returned, and the summary always
+// runs past the budget in this fixture.
+func TestControlIsUnreadWhenTheBudgetIsSpent(t *testing.T) {
+	k, rel, p := controlKernel(t)
+	k.BackgroundMaxTime = time.Nanosecond
+	p.steer = func() {
+		for _, bg := range k.Backgrounds() {
+			if _, err := k.ControlSubagent(context.Background(), bg.ID, "steer", ctrlText); err != nil {
+				t.Errorf("steer %s: %v", bg.ID, err)
+			}
+		}
+	}
+	p.steerOnSummary = true
+	text := runControlledBackground(t, k, rel)
+	if calls := p.calls; calls > 2 {
+		t.Fatalf("a spent background started another run: %d model calls", calls)
+	}
+	if !strings.Contains(text, "没来得及处理的控制") || !strings.Contains(text, ctrlText) {
+		t.Fatalf("the unread control is not reported: %q", text)
+	}
+	if !strings.Contains(text, "background_budget") {
+		t.Fatalf("the completion event does not say the budget stopped it: %q", text)
 	}
 }

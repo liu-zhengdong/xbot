@@ -46,7 +46,7 @@ func ResolveOrphanApprovals(root, owner string) (int, error) {
 			if card.State != bot.ApprovalPending {
 				continue
 			}
-			_ = b.Append(bot.Entry{Message: botCardMessage(card, bot.NoDecisionText(bot.ApprovalReasonRestart))})
+			_ = b.Append(bot.Entry{Origin: bot.OriginOwner, Message: botCardMessage(card, bot.NoDecisionText(bot.ApprovalReasonRestart))})
 			closed++
 		}
 	}

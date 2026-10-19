@@ -33,8 +33,8 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	origin := bot.OriginOwner
 	if m.Internal {
 		origin = bot.OriginInternal
-		m.Internal = false
 	}
+	m.Internal = false
 	if m.Role == provider.RoleUser && replyTo > 0 {
 		if stripped, ok := bot.StripInjectedQuote(m.Content); ok {
 			m.Content = stripped

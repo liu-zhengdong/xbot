@@ -187,10 +187,16 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		cfg.ForegroundMaxTime = *u.ForegroundMaxTime
 	}
 	if u.BackgroundMaxTime != nil {
-		if err := checkRange("background_max_time", *u.BackgroundMaxTime, 0, 24*3600); err != nil {
+		// Negative turns the budget off, so the low end is negative here rather
+		// than the usual 0. Any nonzero negative value means "no limit"; the
+		// magnitude is meaningless.
+		v := *u.BackgroundMaxTime
+		if v < 0 {
+			v = -1
+		} else if err := checkRange("background_max_time", v, 0, 24*3600); err != nil {
 			return err
 		}
-		cfg.BackgroundMaxTime = *u.BackgroundMaxTime
+		cfg.BackgroundMaxTime = v
 	}
 	b.cfg = cfg
 	return b.SaveConfig()
