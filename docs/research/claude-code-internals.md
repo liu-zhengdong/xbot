@@ -56,11 +56,22 @@ verified: 2026-10-17（未提交）
   - **P0**，是 M1、M2 的共同基础设施。
 
 ## 3. 上下文管理与自动压缩
+
+> **2026-10-19 实测修正**：本节根据二手资料写成，反汇编本机 2.1.292 后有几条被证伪，原文保留在下面并就地标注。修正结论：
+> - **Context Collapse / collapse store / `projectView()` 查不到。** 全库 `collapse` 66 处全是 UI、CSS、SQL 等无关词；`"context collapse"` 只出现 1 次，是一句 `autocompact_state` 的 schema 说明（「context collapse owns headroom」），只有能力位级别的认知，没有 store、没有投影函数。第 4 级应视为**未证实**。
+> - **Snip 机制不存在。** `CLAUDE_SNIP` 是个开关，`snip` 的其余命中绝大多数是 WebKit 的 `Snippet`。
+> - **摘要不是多块，是单块。** `summaryMessages` 恒为单元素数组；`pi()` 从最后一个 `compact_boundary` 起截断数组，之上的历史全部丢弃。`compactMetadata` 没有区间字段，保留段用 UUID（`preservedSegment.headUuid/tailUuid`）加 `parentUuid` 单链表。
+> - **`AUTOCOMPACT_BUFFER_TOKENS` / 减 13k 查不到。** 真实字段是 `autoCompactWindow`。
+> - **9 段是 LLM 输出格式，不是存储结构。** 实际是 `<analysis>` + `<summary>`，后者内部 9 节。
+> - **熔断不是简单 3 次计数**，是 rapid-refill 检测（`consecutiveRapidRefills`、`turnsSincePreviousCompact`）。
+> - 方法与局限：Bun 打包会压短局部标识符，所以「搜不到函数名」证明力弱；上述否定结论都建立在搜**字符串字面量**（遥测事件名、zod `.describe()` 文案、prompt 模板）的基础上。本机 5 个会话 jsonl 都没有真实压缩产物，只有二进制证据，没有运行时样本交叉验证；联网核对全部失败（代理与 key 问题）。
+
 - **怎么做**：从便宜到贵共 5 级 [S1][S3]：
   1. **Tool Result Budget**：截断超大工具结果。
-  2. **Snip**：整段丢弃旧消息，主要用于 headless 会话；释放的 token 数会传给后面的 autocompact 判断。
+  2. **Snip**：整段丢弃旧消息，主要用于 headless 会话；释放的 token 数会传给后面的 autocompact 判断。**（2026-10-19 证伪：机制不存在）**
   3. **Microcompact**：把旧的 read/shell/grep/web 等结果替换成 `[Old tool result content cleared]`。它感知缓存：落在已缓存前缀里的结果先不清，记为待清，等缓存窗口移过去再清。
-  4. **Context Collapse**：读时投影。原消息不动，摘要存在 collapse store，发请求时 `projectView()` 叠加。它排在 autocompact 前面，「如果 collapse 已经降到阈值以下，autocompact 就不触发，保留细粒度上下文」。
+  4. **Context Collapse**：读时投影。原消息不动，摘要存在 collapse store，发请求时 `projectView()` 叠加。它排在 autocompact 前面，「如果 collapse 已经降到阈值以下，autocompact 就不触发，保留细粒度上下文」。**（2026-10-19 查不到，视为未证实）**
+
   5. **Auto-Compact**：让 LLM 做全量摘要。
 - **阈值**：有效窗口减 13k（`AUTOCOMPACT_BUFFER_TOKENS`）时触发；**连续失败 3 次就熔断**。警告分级：剩 20k 黄，剩 13k 压缩，剩 3k 阻断 [S1][S10]。
 - **摘要格式**：9 段，依次是意图、关键概念、文件与代码、错误与修复、问题解决、**用户原话逐条保留**、待办、当前工作、下一步 [S10]。（本对话自己的压缩摘要就是这个结构，可以作为旁证。）
