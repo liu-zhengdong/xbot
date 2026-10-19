@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"xbot/internal/tools"
@@ -358,6 +359,22 @@ func neutralizeProject(s string) string {
 // projectFreshKey is the cache key for dir. It stats the chain and the two
 // candidate names. inode and ctime catch a same-size rewrite that puts the
 // old mtime back.
+// hotWindow is how recent a change must be for its stamp to be distrusted.
+const hotWindow = time.Second
+
+// hotStamp is empty for a change older than hotWindow. For a newer one it is a
+// value that differs on every call, so that key never matches the cache and
+// the file is read and hashed again.
+func hotStamp(changed time.Time) string {
+	now := time.Now()
+	if now.Sub(changed) >= hotWindow || changed.After(now.Add(hotWindow)) {
+		return ""
+	}
+	return fmt.Sprintf(":hot:%d", hotSeq.Add(1))
+}
+
+var hotSeq atomic.Uint64
+
 func projectFreshKey(dir string, roots []string) string {
 	cur, ok := cleanDir(dir)
 	if !ok {

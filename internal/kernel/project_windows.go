@@ -38,12 +38,13 @@ func openProjectFile(path string) (*os.File, error) {
 
 // projectStamp identifies path by size and mtime, with a symlink bit.
 // Windows has no inode or ctime here, so a same-size rewrite that restores
-// the old mtime is not noticed.
+// the old mtime is not noticed. A file written within the last second is
+// never served from the cache.
 func projectStamp(path string) string {
 	st, err := os.Lstat(path)
 	if err != nil {
 		return "absent"
 	}
 	link := st.Mode()&os.ModeSymlink != 0
-	return fmt.Sprintf("%d:%d:%t", st.ModTime().UnixNano(), st.Size(), link)
+	return fmt.Sprintf("%d:%d:%t", st.ModTime().UnixNano(), st.Size(), link) + hotStamp(st.ModTime())
 }
