@@ -371,7 +371,7 @@ func TestProjectReminderTokenCost(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: "in"},
 	)
 	changed := projectBlock(newest(t, p))
-	line := contextLine(50, TokenUse{Prompt: 32000, Window: 64000, Cached: 100, TurnCompletion: 20, SessionCompletion: 40})
+	line := contextLine(50, TokenUse{Prompt: 32000, Window: 64000, Cached: 100, TurnCompletion: 20, SessionCompletion: 40}, compact.WorkingSet)
 	diff := briefDiff("alpha\n", "alpha\nbeta\n")
 	t.Logf("M5_TOKEN file_bytes=%d first_inject_bytes=%d first_inject_tokens=%d second_turn_new_bytes=%d history_copies=%d history_tokens=%d after_cd_bytes=%d after_cd_tokens=%d context50_bytes=%d context50_tokens=%d small_diff_bytes=%d project_text_avg=%s",
 		len(body), len(first), compact.Estimate(first), len(secondNew), history, compact.Estimate(first),
@@ -517,23 +517,75 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	}
 }
 
+// TestUsageLevelThresholds pins the level bands. The denominator is the working
+// set, so a session sitting at its working set reads as 100 percent even though
+// the model window is far larger.
+func TestUsageLevelThresholds(t *testing.T) {
+	set := compact.WorkingSet
+	cases := []struct {
+		prompt int
+		want   int
+	}{
+		{prompt: 0, want: 0},
+		{prompt: set/2 - 1, want: 0},
+		{prompt: set / 2, want: 50},
+		{prompt: set*3/4 - 1, want: 50},
+		{prompt: set * 3 / 4, want: 75},
+		{prompt: set*9/10 - 1, want: 75},
+		{prompt: set * 9 / 10, want: 90},
+		{prompt: set * 2, want: 90},
+	}
+	for _, c := range cases {
+		if got := usageLevel(c.prompt, set); got != c.want {
+			t.Fatalf("usageLevel(%d, %d) = %d, want %d", c.prompt, set, got, c.want)
+		}
+	}
+	if got := usageLevel(set, 0); got != 0 {
+		t.Fatalf("no budget announced a percentage: %d", got)
+	}
+}
+
+// TestContextLineNamesWorkingSet checks the line separates the working set from
+// the model window, so a reader can tell how full the session is and how much
+// the provider allows.
+func TestContextLineNamesWorkingSet(t *testing.T) {
+	line := contextLine(75, TokenUse{Prompt: 75000, Window: 1_000_000, Cached: 100}, compact.WorkingSet)
+	for _, want := range []string{`level="75"`, "context 75%", "100000 working set", "prompt 75000", "window 1000000"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("line %q lacks %q", line, want)
+		}
+	}
+	if strings.Contains(line, "estimated") {
+		t.Fatalf("reported usage was marked estimated: %q", line)
+	}
+	est := contextLine(90, TokenUse{Prompt: 90000, Estimated: true}, compact.WorkingSet)
+	if !strings.Contains(est, "estimated (the API did not report usage)") || !strings.Contains(est, "prompt ~") {
+		t.Fatalf("estimated line %q", est)
+	}
+}
+
+// TestUsageThresholds drives the reminder across the working set. The window is
+// recorded on the trace but does not set the percentage. contextNote reads the
+// previous turn's prompt, so each reminder reflects the step before it.
 func TestUsageThresholds(t *testing.T) {
 	k, p, now := freshBot(t)
-	bindWindow(t, k, 1000)
+	bindWindow(t, k, 1_000_000)
+	set := k.compactAt()
 	steps := []struct {
-		text             string
-		prompt           int
-		wantLevel        string
-		wantReminder     bool
-		sessionAfterPrev int
+		text         string
+		prompt       int
+		wantLevel    string
+		wantReminder bool
 	}{
-		{text: "a", prompt: 800},
-		{text: "b", prompt: 800, wantLevel: "75", wantReminder: true},
-		{text: "c", prompt: 950},
-		{text: "d", prompt: 960, wantLevel: "90", wantReminder: true},
-		{text: "e", prompt: 100},
-		{text: "f", prompt: 500},
-		{text: "g", prompt: 10, wantLevel: "50", wantReminder: true},
+		{text: "a", prompt: set / 2},
+		{text: "b", prompt: set * 3 / 5, wantLevel: "50", wantReminder: true},
+		{text: "c", prompt: set * 4 / 5},
+		{text: "d", prompt: set * 91 / 100, wantLevel: "75", wantReminder: true},
+		{text: "e", prompt: set * 95 / 100, wantLevel: "90", wantReminder: true},
+		{text: "f", prompt: 100},
+		{text: "g", prompt: 100},
+		{text: "h", prompt: set * 3 / 5},
+		{text: "i", prompt: 100, wantLevel: "50", wantReminder: true},
 	}
 	for i, step := range steps {
 		advance(now, time.Second)
@@ -547,17 +599,20 @@ func TestUsageThresholds(t *testing.T) {
 			if !strings.Contains(got, `level="`+step.wantLevel+`"`) || !strings.Contains(got, "context "+step.wantLevel+"%") || strings.Contains(got, "estimated") {
 				t.Fatalf("step %d line: %q", i, got)
 			}
+			if !strings.Contains(got, " working set") {
+				t.Fatalf("step %d line does not name the working set: %q", i, got)
+			}
 		}
 	}
 	uses := usageTraces(t, k)
 	if len(uses) != len(steps) {
 		t.Fatalf("usage traces %d", len(uses))
 	}
-	if uses[0].Reason != "reported" || uses[0].Estimated || uses[0].Prompt != 800 || uses[0].Completion != 10 || uses[0].Cached != 4 || uses[0].Window != 1000 {
+	if uses[0].Reason != "reported" || uses[0].Estimated || uses[0].Prompt != set/2 || uses[0].Completion != 10 || uses[0].Cached != 4 || uses[0].Window != 1_000_000 {
 		t.Fatalf("first trace %+v", uses[0])
 	}
-	// Real numbers are kept. An estimate of this short reply would not be 800.
-	if uses[0].Prompt != 800 {
+	// Real numbers are kept. An estimate of this short reply would not be set/2.
+	if uses[0].Prompt != set/2 {
 		t.Fatalf("reported usage was replaced: %+v", uses[0])
 	}
 	var sum int
@@ -569,7 +624,7 @@ func TestUsageThresholds(t *testing.T) {
 		t.Fatalf("session %+v sum %d", last, sum)
 	}
 	st := k.Status()
-	if st.Tokens == nil || st.Tokens.Prompt != 10 || st.Tokens.Window != 1000 || st.Tokens.Estimated || st.Tokens.SessionPrompt != sum {
+	if st.Tokens == nil || st.Tokens.Prompt != 100 || st.Tokens.Window != 1_000_000 || st.Tokens.Estimated || st.Tokens.SessionPrompt != sum {
 		t.Fatalf("status %+v", st.Tokens)
 	}
 }
@@ -615,15 +670,32 @@ func TestUsageEstimateOnlyWhenMissing(t *testing.T) {
 	if uses[1].Prompt != want || uses[1].Prompt == 0 {
 		t.Fatalf("estimate %+v want %d", uses[1], want)
 	}
+}
 
-	advance(now, time.Second)
-	runTurn(t, k, now, "next", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
-	got := newest(t, p)
-	if !strings.Contains(got, "estimated (the API did not report usage)") || !strings.Contains(got, "prompt ~") || !strings.Contains(got, `level="90"`) {
+// TestContextNoteMarksEstimate checks an estimated prompt still raises a
+// reminder, and that the line says the number is an estimate. The state is set
+// directly: a real estimated prompt large enough to cross the working set would
+// first trip automatic compaction.
+func TestContextNoteMarksEstimate(t *testing.T) {
+	k, _, _ := freshBot(t)
+	k.tokens.mu.Lock()
+	k.tokens.seen = true
+	k.tokens.estimated = true
+	k.tokens.prompt = k.compactAt() * 95 / 100
+	k.tokens.mu.Unlock()
+	got := k.contextNote(nil)
+	if !strings.Contains(got, `level="90"`) {
 		t.Fatalf("estimate reminder: %q", got)
+	}
+	if !strings.Contains(got, "estimated (the API did not report usage)") || !strings.Contains(got, "prompt ~") {
+		t.Fatalf("estimate line: %q", got)
 	}
 }
 
+// TestUsageWithoutWindowStillTraces checks a model whose window the registry
+// does not know: the trace and status still record the reported counts, the
+// window stays 0, and a small prompt raises no reminder. The working set, not
+// the window, decides the percentage, so an unknown window no longer silences it.
 func TestUsageWithoutWindowStillTraces(t *testing.T) {
 	k, p, now := freshBot(t)
 	runTurn(t, k, now, "one", reportedMsg("ok", 800, 3, 1))
@@ -634,7 +706,7 @@ func TestUsageWithoutWindowStillTraces(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "two", reportedMsg("ok", 800, 3, 1))
 	if strings.Contains(newest(t, p), "<context_usage") {
-		t.Fatalf("percentage without a window: %q", newest(t, p))
+		t.Fatalf("800 tokens is far under the working set: %q", newest(t, p))
 	}
 	st := k.Status()
 	if st.Tokens == nil || st.Tokens.Window != 0 || st.Tokens.Prompt != 800 || st.Tokens.SessionPrompt != 1600 {

@@ -16,6 +16,9 @@ type Compactor interface {
 }
 
 // Budget is when to compact, in the rough token estimate used by Estimate.
+// CompactAt is the working set: a long session is held near this size instead
+// of growing to the model's window. KeepTail is a floor on the raw tail, which
+// the automatic paths grow by size as well (see tailBudget).
 type Budget struct {
 	CompactAt int
 	KeepTail  int
@@ -27,12 +30,22 @@ type State struct {
 	Covered int
 }
 
-// DefaultBudget stays under a 64k-token window with a margin, and keeps a short verbatim tail.
+// WorkingSet is the context size a long session is held near, in estimated
+// tokens. A model window is usually far larger, but using it all makes every
+// later turn slower, costlier and less accurate, and one large tool result can
+// then fill what is left. The window is a ceiling, not a target.
+const WorkingSet = 100_000
+
+// DefaultBudget holds a session near WorkingSet and keeps a short verbatim tail.
 func DefaultBudget() Budget {
-	return Budget{CompactAt: 48000, KeepTail: 8}
+	return Budget{CompactAt: WorkingSet, KeepTail: 8}
 }
 
-// Estimate is a rough token count: about 4 bytes per token. It is not a model tokenizer.
+// Estimate is a rough token count: about 4 bytes per token. It is not a model
+// tokenizer. A Chinese character is three bytes in UTF-8, so it counts as 0.75
+// of a token here while a real tokenizer spends about one; text that is mostly
+// Chinese is therefore undercounted by roughly a quarter. Compare this with a
+// reported prompt count before trusting it to hold a fixed size.
 func Estimate(s string) int {
 	if s == "" {
 		return 0

@@ -408,14 +408,25 @@ func TestStartEmittersOnce(t *testing.T) {
 	}
 }
 
+// TestBudgetFor pins the working set against the model window. The set is a
+// fixed size, so a large window does not raise it; a window too small to hold
+// the set wins instead, because it is the real ceiling.
 func TestBudgetFor(t *testing.T) {
 	b := BudgetFor(bot.Config{})
-	if b.CompactAt != compact.DefaultBudget().CompactAt {
-		t.Fatalf("%+v", b)
+	if b.CompactAt != compact.WorkingSet || b.CompactAt != compact.DefaultBudget().CompactAt {
+		t.Fatalf("no window: %+v", b)
+	}
+	b = BudgetFor(bot.Config{ContextLimit: 1_000_000})
+	if b.CompactAt != compact.WorkingSet {
+		t.Fatalf("a large window raised the working set: %+v", b)
 	}
 	b = BudgetFor(bot.Config{ContextLimit: 1000})
 	if b.CompactAt != 750 {
-		t.Fatalf("%+v", b)
+		t.Fatalf("a small window did not cap the set: %+v", b)
+	}
+	b = BudgetFor(bot.Config{ContextLimit: compact.WorkingSet * 2})
+	if b.CompactAt != compact.WorkingSet {
+		t.Fatalf("a window twice the set changed it: %+v", b)
 	}
 }
 

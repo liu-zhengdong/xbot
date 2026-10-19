@@ -98,26 +98,8 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		unlock()
 		return
 	}
-	n, err := k.Bot.Count()
-	if err != nil {
-		unlock()
-		return
-	}
-	maxTo := n - k.keepTail()
-	if protectSeq > 0 && protectSeq-1 < maxTo {
-		maxTo = protectSeq - 1
-	}
-	if maxTo < 1 || coveredBy(st.Blocks, 1, maxTo) {
-		unlock()
-		return
-	}
-	span, err := k.Bot.Slice(1, maxTo)
-	if err != nil {
-		unlock()
-		return
-	}
-	to := safeTo(span, 1, n, st.Blocks, maxTo)
-	if to < 1 || coveredBy(st.Blocks, 1, to) {
+	from, to, _, ok, err := k.compactPlan(st, protectSeq)
+	if err != nil || !ok {
 		unlock()
 		return
 	}
@@ -127,7 +109,7 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		sender = k.memoryPerson()
 	}
 	job = compactJob{
-		From: 1, To: to, Focus: defaultFocus, Status: jobRunning,
+		From: from, To: to, Focus: defaultFocus, Status: jobRunning,
 		Sender: sender, Trusted: ct.turnTrusted,
 	}
 	if err := k.writeJob(job); err != nil {
@@ -254,7 +236,7 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 			_ = os.Remove(k.jobPath())
 			return st, false, nil
 		}
-		st.Blocks = append(st.Blocks, bot.SummaryBlock{
+		st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 			From: job.From, To: job.To, Text: job.Summary, Focus: "background", At: k.now(),
 		})
 		k.refreshMemSnap(context.Background(), &st)
