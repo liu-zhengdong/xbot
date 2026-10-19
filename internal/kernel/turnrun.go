@@ -60,6 +60,20 @@ func (r *turnRun) track(m provider.Message) error {
 	return nil
 }
 
+// seqAt is the transcript sequence of the i-th message of this turn's
+// conversation (counting the assembled context), or 0. msgSeqs holds one
+// sequence per message the turn recorded, in the order the agent appended
+// them, so the two line up unless a write failed; the stored line is checked
+// so a shifted pairing names nothing rather than the wrong line. fit calls it
+// from the goroutine that records, so msgSeqs is not read while it grows.
+func (r *turnRun) seqAt(i int) int {
+	j := i - len(r.assembled)
+	if j < 0 || j >= len(r.msgSeqs) {
+		return 0
+	}
+	return r.msgSeqs[j]
+}
+
 // options builds the agent callbacks for this run.
 func (r *turnRun) options(approve agent.Approver) agent.Options {
 	opts := agent.Options{
@@ -222,7 +236,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		onSend: func(req provider.Request) { r.k.noteContext(r.t, req) },
 		onUse:  func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
 	}
-	fit := newTurnFit(len(r.assembled))
+	fit := newTurnFit(len(r.assembled), r.seqAt)
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
 		return r.k.fit(ctx, r.t, fit, req, overflow)
 	}

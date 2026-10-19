@@ -37,11 +37,18 @@ type turnFit struct {
 	// from it on was produced by this turn. The agent only appends, so an
 	// index names the same message in every request of the turn.
 	pre int
-	// omitted holds the indices of tool results left out.
-	omitted map[int]bool
+	// omitted holds the indices of tool results left out, each with its
+	// transcript sequence (0 when it is not known), so the note can say where
+	// expand finds the result.
+	omitted map[int]int
 	// cut, when past pre, means messages [pre, cut) are sent as summary.
-	cut     int
-	summary string
+	// from and to are the transcript range the summary covers (0 when not
+	// known).
+	cut      int
+	summary  string
+	from, to int
+	// seqOf maps an index of this turn to its transcript sequence, or 0.
+	seqOf func(i int) int
 }
 
 // omitMin is the smallest result worth leaving out, in estimated tokens.
@@ -53,8 +60,18 @@ const omitMin = 512
 // for a few thousand tokens.
 const turnFoldShare = 4
 
-func newTurnFit(pre int) *turnFit {
-	return &turnFit{pre: pre, omitted: map[int]bool{}}
+func newTurnFit(pre int, seqOf func(i int) int) *turnFit {
+	return &turnFit{pre: pre, omitted: map[int]int{}, seqOf: seqOf}
+}
+
+// seq is the transcript sequence of message i, or 0. Only this turn's
+// messages have one here: earlier turns reach the request through the
+// projection, which does not keep a one-to-one index.
+func (f *turnFit) seq(i int) int {
+	if i < f.pre || f.seqOf == nil {
+		return 0
+	}
+	return f.seqOf(i)
 }
 
 // start is the first message of this turn that is still sent verbatim.
@@ -74,30 +91,42 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 	for i, m := range msgs {
 		if f.cut > f.pre && i >= f.pre && i < f.cut {
 			if i == f.pre {
-				out = append(out, turnSummary(f.summary))
+				out = append(out, turnSummary(f.summary, f.from, f.to))
 			}
 			continue
 		}
-		if f.omitted[i] {
-			m = omittedResult(m)
+		if seq, ok := f.omitted[i]; ok {
+			m = omittedResult(m, seq)
 		}
 		out = append(out, m)
 	}
 	return out
 }
 
-func omittedResult(m provider.Message) provider.Message {
+// omittedResult is the note that stands in for a result. The transcript keeps
+// the result whole, so the note points at expand rather than at running the
+// call again: a rerun can be slow, and a file read again may have changed
+// since.
+func omittedResult(m provider.Message, seq int) provider.Message {
 	n := compact.EstimateMessage(m)
-	m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. Run the call again if you still need it.]", n)
+	if seq > 0 {
+		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. Call expand with from=%d to=%d to read it as it was; do not run the call again for that.]", n, seq, seq, seq)
+	} else {
+		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: find it with recall_history, then expand.]", n)
+	}
 	m.Images = nil
 	return m
 }
 
-func turnSummary(text string) provider.Message {
+func turnSummary(text string, from, to int) provider.Message {
+	where := ""
+	if from > 0 && to >= from {
+		where = fmt.Sprintf(" from=\"%d\" to=\"%d\"", from, to)
+	}
 	return provider.Message{
 		Role:     provider.RoleUser,
 		Internal: true,
-		Content:  "<turn_progress>\nThe earlier steps of this turn were summarized to keep the request inside the context window. The steps after this note are verbatim.\n\n" + text + "\n</turn_progress>",
+		Content:  "<turn_progress" + where + ">\nThe earlier steps of this turn were summarized to keep the request inside the context window. The transcript keeps them whole: expand the range to read them. The steps after this note are verbatim.\n\n" + text + "\n</turn_progress>",
 	}
 }
 
@@ -117,7 +146,7 @@ func latestStep(msgs []provider.Message, from int) int {
 func (k *Kernel) omit(f *turnFit, msgs []provider.Message, from, to, size, goal int) int {
 	for i := from; i < to && i < len(msgs) && size > goal; i++ {
 		m := msgs[i]
-		if m.Role != provider.RoleTool || f.omitted[i] {
+		if _, done := f.omitted[i]; m.Role != provider.RoleTool || done {
 			continue
 		}
 		if f.cut > f.pre && i >= f.pre && i < f.cut {
@@ -127,10 +156,29 @@ func (k *Kernel) omit(f *turnFit, msgs []provider.Message, from, to, size, goal 
 		if old < omitMin {
 			continue
 		}
-		f.omitted[i] = true
-		size -= k.scaled(old) - k.scaled(compact.EstimateMessage(omittedResult(m)))
+		seq := k.lineSeq(f, msgs, i)
+		f.omitted[i] = seq
+		size -= k.scaled(old) - k.scaled(compact.EstimateMessage(omittedResult(m, seq)))
 	}
 	return size
+}
+
+// lineSeq is the transcript sequence of msgs[i] after checking that the
+// stored line is that message (same role, same tool call), or 0. A pairing
+// shifted by a failed write must not point expand at the wrong line.
+func (k *Kernel) lineSeq(f *turnFit, msgs []provider.Message, i int) int {
+	seq := f.seq(i)
+	if seq <= 0 || k.Bot == nil || i >= len(msgs) {
+		return 0
+	}
+	got, err := k.Bot.Slice(seq, seq)
+	if err != nil || len(got) != 1 {
+		return 0
+	}
+	if e := got[0].Message; e.Role != msgs[i].Role || e.ToolCallID != msgs[i].ToolCallID {
+		return 0
+	}
+	return seq
 }
 
 // foldTurn summarizes this turn's steps before keep into one note. The
@@ -143,8 +191,8 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 	turns := make([]provider.Message, 0, keep-start)
 	for i := start; i < keep; i++ {
 		m := msgs[i]
-		if f.omitted[i] {
-			m = omittedResult(m)
+		if seq, ok := f.omitted[i]; ok {
+			m = omittedResult(m, seq)
 		}
 		m.Images = nil
 		turns = append(turns, m)
@@ -153,7 +201,13 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 	if err != nil {
 		return err
 	}
-	f.summary, f.cut = text, keep
+	if f.from == 0 {
+		f.from = k.lineSeq(f, msgs, f.pre)
+	}
+	f.summary, f.cut, f.to = text, keep, k.lineSeq(f, msgs, keep-1)
+	if f.from == 0 || f.to < f.from {
+		f.from, f.to = 0, 0
+	}
 	return nil
 }
 

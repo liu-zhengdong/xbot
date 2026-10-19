@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -234,5 +236,116 @@ func TestReportedUsageCalibratesTheEstimate(t *testing.T) {
 	}
 	if calibrate(10*est, est) != ratioMax {
 		t.Fatal("ratio not capped")
+	}
+}
+
+// countTool is bigTool counting how often each call runs.
+type countTool struct {
+	bigTool
+	runs map[string]int
+}
+
+func (t countTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	var in struct{ N string }
+	_ = json.Unmarshal(args, &in)
+	t.runs[in.N]++
+	return t.bigTool.Run(ctx, args)
+}
+
+type countLink struct{ t countTool }
+
+func (countLink) Name() string          { return "big" }
+func (l countLink) Tools() []tools.Tool { return []tools.Tool{l.t} }
+
+// readerModel calls big for steps calls, then, once the first result has been
+// left out, follows the note to expand and answers.
+type readerModel struct {
+	steps    int
+	i        int
+	expanded string
+	reqs     []provider.Request
+}
+
+var leftOutSeq = regexp.MustCompile(`transcript seq (\d+)\. Call expand with from=(\d+) to=(\d+)`)
+
+func (m *readerModel) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	m.reqs = append(m.reqs, snapshotReq(req))
+	last := req.Messages[len(req.Messages)-1]
+	if last.Role == provider.RoleTool && last.Name == "expand" {
+		m.expanded = last.Content
+		return provider.Message{Role: provider.RoleAssistant, Content: "done"}, nil
+	}
+	if m.i < m.steps {
+		m.i++
+		return assistantCall(fmt.Sprintf("c%d", m.i), fmt.Sprintf("reading part %d", m.i), "big", fmt.Sprintf(`{"n":"%d"}`, m.i-1)), nil
+	}
+	for _, msg := range req.Messages {
+		if msg.ToolCallID != "c1" {
+			continue
+		}
+		g := leftOutSeq.FindStringSubmatch(msg.Content)
+		if g == nil {
+			return provider.Message{Role: provider.RoleAssistant, Content: "the first result is not left out with a seq: " + msg.Content}, nil
+		}
+		return assistantCall("x1", "", "expand", fmt.Sprintf(`{"from":%s,"to":%s}`, g[2], g[3])), nil
+	}
+	return provider.Message{}, errors.New("no c1 in request")
+}
+
+// A result left out of the request names its transcript line, and expand reads
+// it back as it was. Before, the note said to run the call again.
+func TestLeftOutResultIsReadBackWithExpand(t *testing.T) {
+	m := &readerModel{steps: 6}
+	ct := countTool{bigTool: bigTool{size: 8000}, runs: map[string]int{}}
+	bt := testBot(t, link.NameTerminal, link.NameContext, "big")
+	if err := bt.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{
+		Bot: bt, Provider: m, Memory: memory.NopStore{}, Compactor: &recCompactor{},
+		Budget: compact.Budget{Ceiling: 12_000, KeepTail: 1}, MaxSteps: 20,
+		Links: []link.Link{link.Terminal{}, link.Context{}, countLink{t: ct}},
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(m.expanded, "result 0 result 0") {
+		t.Fatalf("expand did not return the left-out result: %.200q", m.expanded)
+	}
+	if ct.runs["0"] != 1 {
+		t.Fatalf("call 0 ran %d times", ct.runs["0"])
+	}
+}
+
+// The turn's own summary says which transcript range it covers, so expand can
+// read those steps back.
+func TestTurnSummaryNamesItsRange(t *testing.T) {
+	p := &scripted{resps: longTurn(40, 2000)}
+	k, b := fitKernel(t, p, &recCompactor{}, compact.Budget{Ceiling: 12_000, KeepTail: 1}, 8000)
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`<turn_progress from="(\d+)" to="(\d+)">`)
+	var from, to int
+	for _, req := range p.reqs {
+		for _, msg := range req.Messages {
+			if g := re.FindStringSubmatch(msg.Content); g != nil {
+				from, _ = strconv.Atoi(g[1])
+				to, _ = strconv.Atoi(g[2])
+			}
+		}
+	}
+	if from == 0 || to < from {
+		t.Fatalf("no range on the turn summary (from %d, to %d)", from, to)
+	}
+	got, err := b.Slice(from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Message.Role != provider.RoleAssistant || !strings.HasPrefix(got[0].Message.Content, "step 0 ") {
+		t.Fatalf("range starts at %+v, want the turn's first step", got[0].Message.Role)
+	}
+	if last := got[len(got)-1].Message; last.Role != provider.RoleTool {
+		t.Fatalf("range ends on %s, want a tool result", last.Role)
 	}
 }
