@@ -443,11 +443,17 @@ func (k *Kernel) noteShellWrites(ctx context.Context, start, end time.Time) []st
 	return labels
 }
 
-// inCallWindow reports an mtime between start and end. A filesystem that keeps
-// whole seconds stores a truncated time, so the window then starts at start's
-// second.
+// mtimeTick is how far a file's mtime can sit before the precise time a write
+// happened. Linux stamps files from a coarse clock that advances once per
+// scheduler tick (up to 10ms at HZ=100), so a command's first write can carry
+// a stamp earlier than the time.Now() taken when the command started.
+const mtimeTick = 20 * time.Millisecond
+
+// inCallWindow reports an mtime between start and end, with the window opened
+// one tick early for the coarse clock. A filesystem that keeps whole seconds
+// stores a truncated time, so the window then starts at start's second.
 func inCallWindow(mt, start, end time.Time) bool {
-	from := start
+	from := start.Add(-mtimeTick)
 	if mt.Nanosecond() == 0 {
 		from = start.Truncate(time.Second)
 	}
