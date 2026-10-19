@@ -425,3 +425,22 @@ func TestPasteDirThatIsALinkIsRefused(t *testing.T) {
 		t.Fatalf("upload wrote through a linked paste directory: %d %s", up.StatusCode, raw)
 	}
 }
+
+// TestPasteWorksBeforeTheBotHasRun covers a freshly created bot: its workspace
+// is made by the kernel when the bot first runs, but a picture can be pasted
+// before that. The upload creates what it needs instead of failing.
+func TestPasteWorksBeforeTheBotHasRun(t *testing.T) {
+	root, ui, cookie, _ := pasteTestServer(t, true)
+	defer ui.Close()
+	// The server never made a workspace for this bot.
+	if err := os.RemoveAll(work.BotDir(root, "ada")); err != nil {
+		t.Fatal(err)
+	}
+	id := uploadPaste(t, ui.URL, cookie, pngBytes(t, 8, 8))
+	if !work.ValidPastedID(id) {
+		t.Fatalf("upload returned %q", id)
+	}
+	if _, err := work.ReadPasted(work.BotDir(root, "ada"), id); err != nil {
+		t.Fatalf("the picture is not readable: %v", err)
+	}
+}

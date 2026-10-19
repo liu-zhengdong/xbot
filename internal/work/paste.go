@@ -160,6 +160,12 @@ func WritePasted(botDir, id string, data []byte) error {
 	if botDir == "" || !ValidPastedID(id) {
 		return os.ErrNotExist
 	}
+	// A bot that was just created may have no workspace yet: the kernel creates
+	// it when the bot first runs. The upload can arrive before that, so the
+	// directory is created here rather than assumed.
+	if err := os.MkdirAll(botDir, 0700); err != nil {
+		return err
+	}
 	root, err := pastedRoot(botDir)
 	if err != nil {
 		return err
