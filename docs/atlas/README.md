@@ -104,7 +104,7 @@ flowchart LR
 | 候选清单 | [CANDIDATES.md](../CANDIDATES.md) | 主人、Bot 复刻 | 活的，新想法先进这里，不当场开工 | Bot 复刻（周调研、每晚复盘时更新） |
 | 调研笔记 | [docs/research/](../research/) | 开发者 | 写完即冻结，结论进候选清单或里程碑 | Bot 复刻 |
 | 教训 | [LESSONS.md](../../LESSONS.md) | 编码 Agent、Bot 复刻 | 活的，同一条出现 3 天升级成硬约束 | Bot 复刻 |
-| 规格 | [MEMORY-V2.md](../MEMORY-V2.md)（记忆 v2）、[GATEWAY.md](../GATEWAY.md)（网关与跨设备）、[SCORECARD.md](../SCORECARD.md)（评测成绩单） | 主人、开发者 | 定下来就冻结，落地后提炼进 atlas 和 ADR | Bot 复刻 |
+| 规格 | [CONTEXT.md](../CONTEXT.md)（长程运行的上下文）、[MEMORY-V2.md](../MEMORY-V2.md)（记忆 v2）、[GATEWAY.md](../GATEWAY.md)（网关与跨设备）、[SCORECARD.md](../SCORECARD.md)（评测成绩单） | 主人、开发者 | 定下来就冻结，落地后提炼进 atlas 和 ADR | Bot 复刻 |
 | 自建网关 | [gateway-selfhost.md](../gateway-selfhost.md) | 想自己跑网关的用户 | 活的 | 开发者 |
 | 决策记录 | [docs/adr/](../adr/) | 开发者、将来的主人 | 守护层，只追加 | 主人 |
 | 旧设计入口 | [DESIGN.md](../DESIGN.md) | — | 已并入 atlas，只留指针 | — |
