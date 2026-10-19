@@ -36,3 +36,18 @@ func TestShellQuoteHandlesQuotes(t *testing.T) {
 		t.Fatalf("the shell saw %q, want %q", out, want)
 	}
 }
+
+// The arguments must be the subcommand and what follows it. os.Args[0] is the
+// binary itself, which waitThenLaunch already puts first: passing the whole
+// os.Args would run "XBot XBot app" and the new process exits at once.
+func TestRelaunchArgsExcludeTheProgramName(t *testing.T) {
+	argv := []string{"/Applications/XBot.app/Contents/MacOS/XBot", "app", "--port", "8787"}
+	script := waitThenLaunch(1, argv[0], argv[1:])
+	want := "exec '/Applications/XBot.app/Contents/MacOS/XBot' 'app' '--port' '8787'"
+	if !strings.HasSuffix(script, want) {
+		t.Fatalf("script = %s\nwant it to end with %s", script, want)
+	}
+	if strings.Count(script, "MacOS/XBot") != 1 {
+		t.Fatalf("the binary appears more than once: %s", script)
+	}
+}
