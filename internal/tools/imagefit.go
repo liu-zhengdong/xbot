@@ -13,7 +13,9 @@ import (
 )
 
 const (
-	maxImageEdge       = 2048
+	// MaxImageEdge is the longest side the model is sent without downscaling.
+	MaxImageEdge       = 2048
+	maxImageEdge       = MaxImageEdge
 	maxImageDecodeSide = 4096
 	// maxDecodedBytes is one decode's estimate. decodeMu allows only one
 	// decode at a time, so a second bitmap is not sitting beside it. The cap
@@ -28,9 +30,9 @@ const (
 // land in memory together.
 var decodeMu sync.Mutex
 
-// fitImage keeps an image within the pixel cap. JPEG, PNG, and GIF that are
-// larger than maxImageEdge on a side are downscaled. WebP has no decoder
-// here: an over-size WebP is refused instead of being sent whole.
+// fitImage keeps an image within the pixel cap view_image accepts. JPEG, PNG,
+// and GIF that are larger than maxImageEdge on a side are downscaled. WebP has
+// no decoder here: an over-size WebP is refused instead of being sent whole.
 func fitImage(mime string, data []byte) (string, []byte, error) {
 	if len(data) > maxImageSend {
 		return "", nil, errors.New("view_image: image is larger than 10 MiB")
@@ -300,3 +302,15 @@ func webpSize(b []byte) (int, int, bool) {
 
 // Register gif's decoder. image.Decode needs it for the first frame.
 var _ = gif.Decode
+
+// FitsModel reports whether an image can be shown without downscaling, and the
+// size that refuses it otherwise. view_image downscales oversized pictures on
+// its own; a caller that stores an image should ask this instead, because what
+// it stores is what every later view_image call reads back.
+func FitsModel(mime string, data []byte) (int, int, bool) {
+	w, h, ok := imageSize(mime, data)
+	if !ok || w <= 0 || h <= 0 {
+		return 0, 0, false
+	}
+	return w, h, w <= maxImageEdge && h <= maxImageEdge
+}

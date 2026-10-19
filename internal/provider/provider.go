@@ -31,7 +31,11 @@ type Message struct {
 	ReplyTo    int        `json:"-"`
 	Usage      TokenUsage `json:"-"`
 	Images     []Image    `json:"-"`
-	Internal   bool       `json:"-"`
+	// ImageNames are the workspace files Images came from. They stay off the
+	// request and off the message record; the transcript line keeps them in its
+	// own Images field instead.
+	ImageNames []string `json:"-"`
+	Internal   bool     `json:"-"`
 }
 
 // Image is one picture attached to a message. Data is the raw file bytes.

@@ -323,6 +323,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			ReplyTo: ev.ReplyTo,
 			Origin:  bot.OriginOwner,
 			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
+			Images:  ev.Images,
 		}
 		if err := k.Bot.Append(entry); err != nil {
 			return err
@@ -367,6 +368,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	assembled, err = k.reminderKindsFor(ev, t).Bind(assembled, seqNow, k.now())
 	if err != nil {
 		return err
+	}
+	// The turn answering a message with pictures sees them; a later turn only
+	// sees the note assemble added. This runs after Bind, so the bytes sit on
+	// the same message the reminders landed on and nothing is inserted between
+	// a tool call and its result.
+	if seq > 0 && len(ev.Images) > 0 {
+		var added int
+		assembled, added = k.attachEventImages(assembled, ev.Images)
+		usage.History += added
 	}
 	if n := len(assembled); n > 0 {
 		t.projects.noteText(assembled[n-1].Content)
@@ -507,11 +517,33 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 				content = q + "\n\n" + raw
 			}
 		}
-		out = append(out, provider.Message{
+		// An absorbed message is answered by this very turn, so its pictures
+		// travel with it now. The names ride along for the transcript line: the
+		// note naming them is added when the line is assembled, not here, so the
+		// stored text stays the owner's words and is not noted twice.
+		msg := provider.Message{
 			Role:    provider.RoleUser,
 			Content: content,
 			ReplyTo: ev.ReplyTo,
-		})
+		}
+		if len(ev.Images) > 0 {
+			msg.ImageNames = ev.Images
+			// The note always goes in, not only when a picture is left out: the
+			// agent may still trim to the turn's allowance, and a picture that
+			// fell to the cap needs the path to be found again. The note is
+			// removed again before the line is stored (recordTurn), so the
+			// transcript keeps the owner's words and the assembled context adds
+			// it back exactly once.
+			// The note always goes in, not only when a picture is left out: the
+			// agent may still trim to the turn's allowance, and a picture that
+			// fell to the cap needs the path to be found again. The note is
+			// removed again before the line is stored (recordTurn), so the
+			// transcript keeps the owner's words and the assembled context adds
+			// it back exactly once.
+			msg.Content = k.withPastedNote(msg.Content, ev.Images)
+			msg.Images = k.pastedImages(ev.Images)
+		}
+		out = append(out, msg)
 		if err := k.Inbox.Ack(ev.ID); err != nil {
 			return nil, err
 		}
@@ -595,6 +627,9 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 				e.Message.Content = q + "\n\n" + e.Message.Content
 			}
 		}
+		// A pasted picture is named here, on the line that carried it. Only the
+		// turn answering that line gets the bytes; see attachEventImages.
+		e.Message.Content = k.withPastedNote(e.Message.Content, e.Images)
 		raw = append(raw, e)
 		seqs = append(seqs, ln.Seq)
 	}

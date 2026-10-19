@@ -72,6 +72,12 @@
     ctxOpenEntry: "",
     peer: null,
     replyTo: null,
+    // Pictures pasted or dropped into the composer, waiting for send. Each
+    // entry is {id, uploading, url}; id is empty until the upload lands.
+    attach: [],
+    // Bumped whenever the list is abandoned, so an upload still in flight can
+    // tell that the list it was filling is gone.
+    attachBatch: 0,
     placeholder: "写一条消息",
     modelCatalog: null,
     push: null,
@@ -1609,6 +1615,12 @@
     return { text: rest.replace(/\n{3,}/g, "\n\n").trim(), images: images };
   }
 
+  // pastedURLs turns stored image ids into the URLs that serve them.
+  function pastedURLs(sel, ids) {
+    if (!sel || sel.type !== "bot" || !ids || !ids.length) return [];
+    return ids.map((id) => "/api/bots/" + encodeURIComponent(sel.id) + "/paste/" + encodeURIComponent(id));
+  }
+
   function gallery(urls) {
     const box = el("div", "gallery");
     const extra = urls.length > 3 ? urls.length - 2 : 0;
@@ -2142,13 +2154,15 @@
     if (m.branch) wrap.append(bgFrom());
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
     const pulled = pullImages(parsed.text);
+    const pasted = pastedURLs(state.sel, m.images);
     if (pulled.text) {
       const bubble = el("div", "bubble");
       bubble.textContent = pulled.text;
       wrap.append(bubble);
     }
     if (pulled.images.length) wrap.append(gallery(pulled.images));
-    if (!pulled.text && !pulled.images.length) {
+    if (pasted.length) wrap.append(gallery(pasted));
+    if (!pulled.text && !pulled.images.length && !pasted.length) {
       const bubble = el("div", "bubble");
       bubble.textContent = parsed.text;
       wrap.append(bubble);
@@ -3443,6 +3457,8 @@
   }
 
   function resetConversation() {
+    // Pasted pictures belong to the bot they were uploaded to.
+    clearAttach();
     state.streaming = 0;
     state.pendingSends = [];
     state.replyErrors = [];
@@ -5254,7 +5270,7 @@
     }
   }
 
-  function optimisticMessage(text) {
+  function optimisticMessage(text, images) {
     let inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
     if (!inner) {
       inner = el("div", "thread-inner");
@@ -5265,7 +5281,12 @@
     const body = el("div", "bubble-col");
     row.dataset.sender = "user";
     row.dataset.time = new Date().toISOString();
-    body.append(el("div", "bubble", text), el("div", "send-state", "发送中"));
+    if (text) body.append(el("div", "bubble", text));
+    // The picture is already on the server by the time a send starts, so the
+    // optimistic row points at it directly. Nothing local to revoke, and the
+    // row after the repaint looks exactly the same.
+    if (images && images.length) body.append(gallery(pastedURLs(state.sel, images)));
+    body.append(el("div", "send-state", "发送中"));
     row.append(body);
     markLiveGroup(inner, row);
     inner.append(row);
@@ -5274,11 +5295,12 @@
     return row;
   }
 
-  async function sendText(text, pending) {
+  async function sendText(text, pending, images) {
     text = (text || "").trim();
+    images = images || [];
     // A message sent while a reply is streaming interrupts it: the server forks the
     // running turn to the background and answers this one at once.
-    if (!text || !state.sel) return;
+    if ((!text && !images.length) || !state.sel) return;
     const selection = state.sel;
     ++state.threadLoad;
     if (!pending) {
@@ -5289,7 +5311,7 @@
         return !stale;
       });
     }
-    pending = pending || optimisticMessage(text);
+    pending = pending || optimisticMessage(text, images);
     pending.dataset.sendText = text;
     pending.baseline = ownerSends(text);
     const marker = pending.querySelector(".send-state");
@@ -5337,6 +5359,7 @@
     setStatus("正在回复");
     try {
       const payload = { text: text };
+      if (images.length) payload.images = images;
       if (state.replyTo && state.replyTo.seq > 0) payload.reply_to = state.replyTo.seq;
       const res = await apiFetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
         method: "POST",
@@ -5399,10 +5422,17 @@
       live?.remove();
       if (!marker.isConnected) pending.querySelector(".bubble-col")?.append(marker);
       marker.className = "send-state send-failed";
-      if (!input.value.trim()) {
+      // A picture cannot go back into the textarea, but its words can: the
+      // send cleared the input, so the text is restored whether or not a
+      // picture came with it, and the row says what the picture needs.
+      const pictureNote = images.length ? "；图片要重新贴一次" : "";
+      if (!input.value.trim() && text) {
         input.value = text;
-        marker.replaceChildren(el("span", "", accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里"));
-        announceSend("没发出去，原文还在输入框里");
+        marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
+        announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
+      } else if (!text && images.length) {
+        marker.replaceChildren(el("span", "", accepted ? "没送到；图片要重新贴一次" : "没发出去；图片要重新贴一次"));
+        announceSend("没发出去，图片要重新贴一次");
       } else {
         // A newer draft is in the composer: keep it, and let the owner bring this text back.
         const back = el("button", "secondary", "放回输入框");
@@ -5412,8 +5442,8 @@
           syncComposer();
           input.focus();
         });
-        marker.replaceChildren(el("span", "", accepted ? "没送到" : "没发出去"), back);
-        announceSend("没发出去，可以放回输入框");
+        marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
+        announceSend("没发出去，可以放回输入框" + (images.length ? "，图片要重新贴一次" : ""));
       }
       syncComposer();
     } finally {
@@ -5705,12 +5735,194 @@
     });
   }
 
+  // Pictures pasted or dropped into the composer. Each one is uploaded the
+  // moment it arrives, so sending a message is the same request as before plus
+  // a list of ids; a picture the server refused never gets an id, and the note
+  // above the text says why in the server's words.
+  const ATTACH_MAX = 4;
+  const ATTACH_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+  let attachSeq = 0;
+
+  function attachState() {
+    if (!state.attach) state.attach = [];
+    return state.attach;
+  }
+
+  function attachNote(text) {
+    const note = $("attach-note");
+    note.textContent = text || "";
+    note.hidden = !text;
+    // A refusal can arrive with no thumbnail to sit under, so the bar follows
+    // the note as well as the list. It is revealed here, not only in
+    // paintAttach, because the caller may not repaint.
+    const has = attachState().length > 0 || !!text;
+    $("attach-bar").hidden = !has;
+    composer.classList.toggle("has-attach", has);
+  }
+
+  function attachKey(sel) {
+    return sel ? (sel.type === "group" ? "group:" : "") + sel.id : "";
+  }
+
+  function paintAttach() {
+    const list = $("attach-list");
+    const rows = attachState();
+    list.replaceChildren();
+    for (const row of rows) {
+      const cell = el("div", "attach-thumb");
+      cell.dataset.id = row.id || "";
+      if (row.uploading) cell.classList.add("sending");
+      const img = document.createElement("img");
+      img.alt = "";
+      if (row.url) img.src = row.url;
+      cell.append(img);
+      const drop = el("button", "attach-drop");
+      drop.type = "button";
+      drop.setAttribute("aria-label", "去掉这张图");
+      drop.append(icon("x"));
+      drop.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        removeAttach(row);
+      });
+      cell.append(drop);
+      list.append(cell);
+    }
+    // The bar stays visible while it has something to say: a refusal has no
+    // thumbnail to sit under, and hiding the whole bar would hide the reason.
+    const has = rows.length > 0 || !$("attach-note").hidden;
+    $("attach-bar").hidden = !has;
+    composer.classList.toggle("has-attach", has);
+    syncComposer();
+  }
+
+  function removeAttach(row) {
+    const rows = attachState();
+    const at = rows.indexOf(row);
+    if (at >= 0) rows.splice(at, 1);
+    if (row.url) URL.revokeObjectURL(row.url);
+    // With nothing left to explain, an older refusal no longer applies. A
+    // caller that has a fresh reason sets it right after this call.
+    if (!rows.length) attachNote("");
+    paintAttach();
+  }
+
+  // clearAttach drops every pending picture. It runs after a send and when the
+  // conversation changes, because an id belongs to the bot it was uploaded to.
+  function clearAttach() {
+    for (const row of attachState()) if (row.url) URL.revokeObjectURL(row.url);
+    state.attach = [];
+    // Anything still uploading belongs to the run that just ended.
+    state.attachBatch = (state.attachBatch || 0) + 1;
+    attachNote("");
+    paintAttach();
+  }
+
+  function attachReady() {
+    return attachState().filter((row) => row.id);
+  }
+
+  function attachBusy() {
+    return attachState().some((row) => row.uploading);
+  }
+
+  async function uploadAttach(files) {
+    if (!state.sel || state.sel.type !== "bot") {
+      attachNote("图片先发到一个 Bot 的对话里，群组还不支持。");
+      return;
+    }
+    // One batch belongs to the conversation it was started in, and to the run
+    // of that conversation. The owner may switch bots while the first upload is
+    // still in flight, and switching away and back must not let the rest of the
+    // batch land in a list that was cleared in between, so a batch number is
+    // taken here and the list is abandoned the moment it changes.
+    const owner = state.sel;
+    const batch = state.attachBatch;
+    for (const file of files) {
+      if (state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner)) return;
+      const rows = attachState();
+      if (rows.length >= ATTACH_MAX) {
+        attachNote("一次最多 " + ATTACH_MAX + " 张图。");
+        return;
+      }
+      const type = String(file.type || "").toLowerCase();
+      if (ATTACH_TYPES.indexOf(type) < 0 && !/\.(png|jpe?g|gif|webp)$/i.test(file.name || "")) {
+        attachNote("只认 PNG、JPEG、GIF、WebP。");
+        continue;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        attachNote("图片超过 10 MB。");
+        continue;
+      }
+      // The server caps the pictures of one message together as well, so a
+      // batch that would be refused is stopped here, before any upload.
+      const total = rows.reduce((n, r) => n + (r.bytes || 0), 0) + file.size;
+      if (total > 10 * 1024 * 1024) {
+        attachNote("这几张图加起来超过 10 MB，去掉几张再发。");
+        return;
+      }
+      attachNote("");
+      const row = { seq: ++attachSeq, id: "", bytes: file.size, uploading: true, url: URL.createObjectURL(file) };
+      rows.push(row);
+      paintAttach();
+      // stillWanted is the one question every later step asks: is this row
+      // still on screen in the conversation the batch started in? A picture
+      // the owner removed, a switch to another bot, and a list cleared by a
+      // send all make it false, and none of them may be answered by the upload
+      // that was already in flight.
+      const stillWanted = () =>
+        state.attachBatch === batch && attachKey(state.sel) === attachKey(owner) && attachState().indexOf(row) >= 0;
+      try {
+        const res = await apiFetch("/api/bots/" + encodeURIComponent(owner.id) + "/paste", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "这图片没传上来");
+        if (!data.image) throw new Error("这图片没传上来");
+        if (stillWanted()) {
+          row.id = data.image;
+          row.uploading = false;
+          paintAttach();
+        }
+      } catch (e) {
+        if (stillWanted()) {
+          removeAttach(row);
+          attachNote(visibleError(e, "这图片没传上来"));
+        }
+        continue;
+      }
+    }
+  }
+
+  // imagesFrom pulls the pictures out of a paste or a drop, ignoring everything
+  // else, so a pasted screenshot never arrives as a broken text paste.
+  function imagesFrom(data) {
+    if (!data) return [];
+    const out = [];
+    for (const item of data.items || []) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file && /^image\//i.test(file.type)) out.push(file);
+    }
+    if (!out.length) {
+      for (const file of data.files || []) {
+        if (/^image\//i.test(file.type)) out.push(file);
+      }
+    }
+    return out;
+  }
+
   function syncComposer() {
     const hasText = input.value.trim().length > 0;
+    const ready = attachReady().length > 0;
+    const canSend = hasText || ready;
     composer.classList.toggle("has-text", hasText);
-    $("send").disabled = !hasText;
-    $("send").classList.toggle("primary", hasText);
-    $("send").classList.toggle("secondary", !hasText);
+    $("send").disabled = !canSend || attachBusy();
+    $("send").classList.toggle("primary", canSend);
+    $("send").classList.toggle("secondary", !canSend);
   }
 
   function closeAccount() {
@@ -6139,11 +6351,56 @@
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const text = input.value;
-    if (!text.trim() || !state.sel) return;
+    const images = attachReady().map((row) => row.id);
+    if (attachBusy()) { attachNote("图片还在上传，等一下再发。"); return; }
+    if ((!text.trim() && !images.length) || !state.sel) return;
     input.value = "";
     input.style.height = "auto";
+    clearAttach();
     syncComposer();
-    sendText(text);
+    sendText(text, null, images);
+  });
+
+  // A screenshot pasted from the clipboard arrives here, not as text. The
+  // browser gives the picture in clipboardData; anything else falls through to
+  // the textarea's own paste.
+  input.addEventListener("paste", (ev) => {
+    const files = imagesFrom(ev.clipboardData);
+    if (!files.length) return;
+    ev.preventDefault();
+    uploadAttach(files);
+  });
+
+  // Dragging a file anywhere over the chat would otherwise make the browser
+  // open it and leave XBot.
+  const dropZone = thread.closest("main") || document;
+  // During dragenter and dragover the browser hides the dragged files: only
+  // the item types are readable. Accepting the drag must happen here anyway,
+  // or the browser navigates to the dropped file instead of firing drop.
+  const carriesImage = (data) => {
+    if (!data) return false;
+    const items = [...(data.items || [])];
+    if (items.length) return items.some((it) => it.kind === "file" && /^image\//i.test(it.type));
+    return [...(data.files || [])].some((f) => /^image\//i.test(f.type));
+  };
+  for (const type of ["dragenter", "dragover"]) {
+    dropZone.addEventListener(type, (ev) => {
+      if (!carriesImage(ev.dataTransfer)) return;
+      ev.preventDefault();
+      composer.classList.add("dropping");
+    });
+  }
+  dropZone.addEventListener("dragleave", (ev) => {
+    if (ev.target !== dropZone && dropZone.contains(ev.relatedTarget)) return;
+    composer.classList.remove("dropping");
+  });
+  dropZone.addEventListener("drop", (ev) => {
+    if (!ev.dataTransfer) return;
+    const files = imagesFrom(ev.dataTransfer);
+    composer.classList.remove("dropping");
+    if (!files.length) return;
+    ev.preventDefault();
+    uploadAttach(files);
   });
 
   input.addEventListener("keydown", (ev) => {

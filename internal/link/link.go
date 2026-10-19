@@ -115,6 +115,9 @@ type Event struct {
 	Chain string `json:"chain,omitempty"`
 	// ReplyTo is a transcript sequence the sender is quoting. Zero means none.
 	ReplyTo int `json:"reply_to,omitempty"`
+	// Images are pictures the sender attached, as file names in the bot's
+	// workspace. The bytes are not in the event: they are already on disk.
+	Images []string `json:"images,omitempty"`
 }
 
 // NewEvent builds an event. Untrusted is always true.

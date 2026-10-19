@@ -179,6 +179,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/bots/{name}/mcp/{server}", s.removeMCP)
 	mux.HandleFunc("GET /api/bots/{name}/export", s.exportTranscript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
+	// A pasted picture is uploaded first; the message then names it.
+	mux.HandleFunc("POST /api/bots/{name}/paste", s.postPaste)
+	mux.HandleFunc("GET /api/bots/{name}/paste/{image}", s.getPaste)
 	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/steer", s.steer)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
@@ -663,6 +666,9 @@ type apiRow struct {
 	Steps      int            `json:"steps,omitempty"`
 	FromDevice *apiFromDevice `json:"from_device,omitempty"`
 	Relay      *apiRelay      `json:"relay,omitempty"`
+	// Images are the pictures this line carried, as ids the chat turns back
+	// into GET /api/bots/{name}/paste/{image}.
+	Images []string `json:"images,omitempty"`
 }
 
 // apiFromDevice names the paired device an owner line was typed on.
@@ -763,6 +769,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
 			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
+			Images: e.Images,
 		}
 		if e.Message.Role == provider.RoleUser {
 			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Content)
@@ -845,16 +852,23 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	s.enterTab(s.owner)
 	defer s.leaveTab(s.owner)
 	var in struct {
-		Text    string `json:"text"`
-		ReplyTo *int   `json:"reply_to"`
+		Text    string   `json:"text"`
+		ReplyTo *int     `json:"reply_to"`
+		Images  []string `json:"images"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
 	text := strings.TrimSpace(in.Text)
-	if text == "" || len(text) > 16<<10 {
+	// A picture on its own is a message: "look at this" needs no words.
+	if (text == "" && len(in.Images) == 0) || len(text) > 16<<10 {
 		writeErr(w, http.StatusBadRequest, "bad message")
+		return
+	}
+	images, err := s.checkPasted(b, in.Images)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	replyTo := 0
@@ -872,6 +886,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	ev := link.WebEvent(s.owner, text, time.Now())
 	ev.ReplyTo = replyTo
+	ev.Images = images
 	var (
 		shared bool
 		ok     bool

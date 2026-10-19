@@ -175,6 +175,9 @@ const (
 // ReplyTo is the sequence of an earlier line this message quotes. Zero means none.
 // Branch names the background task this line belongs to; empty means the main line.
 // Mark, when set, makes this a branch marker row instead of a message.
+// Images names pictures the owner attached to this line, as file names in the
+// bot workspace (see internal/web pasted.go). The bytes stay out of the line: the
+// file sits in the workspace, so view_image opens it and the transcript stays small.
 type Entry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
@@ -184,6 +187,7 @@ type Entry struct {
 	Branch  string           `json:"branch,omitempty"`
 	Origin  string           `json:"origin,omitempty"`
 	Mark    *ForkMark        `json:"mark,omitempty"`
+	Images  []string         `json:"images,omitempty"`
 }
 
 // IsInternal reports a kernel-written line the owner did not say.

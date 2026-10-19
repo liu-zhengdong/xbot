@@ -733,3 +733,43 @@ func (panicTextTool) Confirm(json.RawMessage) (bool, string, error) { return fal
 func (p panicTextTool) Run(context.Context, json.RawMessage) (string, error) {
 	panic(p.text)
 }
+
+// TestAbsorbedPicturesCountAgainstTheTurnCap is the regression for a message
+// absorbed mid-turn: its pictures arrive through AfterStep, not through a tool,
+// so the budget used to miss them. A tool's four pictures plus an absorbed
+// fifth must not reach the next request as five.
+func TestAbsorbedPicturesCountAgainstTheTurnCap(t *testing.T) {
+	p := &scripted{resps: []provider.Message{
+		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
+		}}},
+		{Role: provider.RoleAssistant, Content: "done"},
+	}}
+	var absorbed bool
+	opt := Options{AfterStep: func() ([]provider.Message, error) {
+		if absorbed {
+			return nil, nil
+		}
+		absorbed = true
+		return []provider.Message{{
+			Role:    provider.RoleUser,
+			Content: "看这张",
+			Images:  []provider.Image{{MIME: "image/png", Data: []byte{9}}},
+		}}, nil
+	}}
+	// Four pictures from the tool use up the turn's allowance.
+	_, err := Run(context.Background(), p, []tools.Tool{imageTool{n: 4, size: 8}}, nil, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) < 2 {
+		t.Fatalf("requests %d", len(p.reqs))
+	}
+	var n int
+	for _, m := range p.reqs[len(p.reqs)-1].Messages {
+		n += len(m.Images)
+	}
+	if n > maxTurnImages {
+		t.Fatalf("the last request carried %d pictures, over the cap of %d", n, maxTurnImages)
+	}
+}

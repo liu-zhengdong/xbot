@@ -190,6 +190,19 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 				return produced, err
 			}
 			for _, m := range extra {
+				// A message absorbed mid-turn can carry pictures of its own. They
+				// go through the same per-turn allowance a tool's pictures do, so
+				// the request never grows past it.
+				//
+				// The text is not touched here. The kernel put the note naming
+				// these pictures into the message before handing it over, and the
+				// note already says the picture may need opening by path; adding a
+				// second one would edit a line the transcript is about to store,
+				// and the stored text could no longer be cleaned back to the
+				// owner's own words.
+				if len(m.Images) > 0 {
+					m.Images, _ = images.take(m.Images)
+				}
 				convo = append(convo, m)
 				produced = append(produced, m)
 				if opt.OnMessage != nil {

@@ -30,11 +30,18 @@ func TestComposerFeedbackAndTriggerTips(t *testing.T) {
 	if !strings.Contains(html, `id="send" class="send secondary" disabled`) || strings.Contains(css, `.composer:not(.has-text) .send { display: none; }`) {
 		t.Error("empty composer must show a disabled secondary send button")
 	}
+	// A picture alone can be sent: the text is not required when one is attached.
+	if strings.Contains(css, `.composer:not(.has-text) .send { display: none; }`) {
+		t.Error("the send button must not hide when only a picture is attached")
+	}
 	for _, want := range []string{
-		`$("send").disabled = !hasText;`,
-		`$("send").classList.toggle("primary", hasText);`,
-		`$("send").classList.toggle("secondary", !hasText);`,
-		`if (!text.trim() || !state.sel) return;`,
+		`const hasText = input.value.trim().length > 0;`,
+		`const ready = attachReady().length > 0;`,
+		`const canSend = hasText || ready;`,
+		`$("send").disabled = !canSend || attachBusy();`,
+		`$("send").classList.toggle("primary", canSend);`,
+		`$("send").classList.toggle("secondary", !canSend);`,
+		`if ((!text && !images.length) || !state.sel) return;`,
 		`host.getAttribute("aria-expanded") === "true"`,
 		`document.addEventListener("click", hideTip, true);`,
 		`$("bell").setAttribute("aria-expanded", String(!notesEl.hidden));`,
@@ -49,7 +56,7 @@ func TestComposerFeedbackAndTriggerTips(t *testing.T) {
 	}
 	for _, want := range []string{
 		`marker.className = "send-state send-failed";`,
-		`marker.replaceChildren(el("span", "", accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里"));`,
+		`marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));`,
 		`input.value = text;`,
 		`row.dataset.sendText === text`,
 		`"放回输入框"`,
