@@ -196,15 +196,19 @@ func (k *Kernel) contextTrigger() func(time.Time, []Reminder) string {
 	}
 }
 
-// contextNote fires when prompt tokens cross 50, 75, or 90 percent of the
-// working set, which is the size the session is held near, not the model
-// window. A window is usually far larger: against it a session sitting at its
-// working set would read as a small fraction and no threshold would ever fire.
+// contextNote fires when prompt tokens cross 50, 75, or 90 percent of the hard
+// ceiling: the line past which the request would be rejected, which is what the
+// model has to steer by (fewer large reads, shorter outputs). The soft target
+// is the kernel's own business; the background compacts at it. The raw window
+// is not used either, because it leaves no room for the reply or the tools.
 // The same threshold is not repeated until usage falls below it and crosses it again.
 func (k *Kernel) contextNote(prev []Reminder) string {
 	if k == nil {
 		return ""
 	}
+	// The ceiling looks up the model window under k.tokens.mu, so it is read
+	// before that lock is taken here.
+	ceiling := k.ceiling()
 	k.tokens.mu.Lock()
 	defer k.tokens.mu.Unlock()
 	if !k.tokens.seen || k.tokens.prompt <= 0 {
@@ -214,10 +218,10 @@ func (k *Kernel) contextNote(prev []Reminder) string {
 		k.tokens.hw = contextLevelOf(prev)
 		k.tokens.hwSet = true
 	}
-	level := usageLevel(k.tokens.prompt, k.compactAt())
+	level := usageLevel(k.tokens.prompt, ceiling)
 	if level > k.tokens.hw {
 		k.tokens.hw = level
-		return contextLine(level, k.tokens.snap(), k.compactAt())
+		return contextLine(level, k.tokens.snap(), ceiling)
 	}
 	if level < k.tokens.hw {
 		k.tokens.hw = level
@@ -273,9 +277,9 @@ func parseLevel(s string) int {
 	return n
 }
 
-// contextLine names the working set the percentage is against, and the model
-// window separately, so a reader can tell how much room is left in the session
-// and how much the provider allows.
+// contextLine names the limit the percentage is against, and the model window
+// separately, so a reader can tell how much room is left before the request
+// would be rejected and how much the provider allows.
 func contextLine(level int, snap TokenUse, budget int) string {
 	est := ""
 	approx := ""
@@ -283,6 +287,6 @@ func contextLine(level int, snap TokenUse, budget int) string {
 		est = " estimated (the API did not report usage)"
 		approx = "~"
 	}
-	return fmt.Sprintf("<context_usage level=%q>\ncontext %d%%%s of the %d working set (prompt %s%d, window %d, cached %d, turn completion %d, session completion %d)\n</context_usage>",
+	return fmt.Sprintf("<context_usage level=%q>\ncontext %d%%%s of the %d limit (prompt %s%d, window %d, cached %d, turn completion %d, session completion %d)\n</context_usage>",
 		strconv.Itoa(level), level, est, budget, approx, snap.Prompt, snap.Window, snap.Cached, snap.TurnCompletion, snap.SessionCompletion)
 }

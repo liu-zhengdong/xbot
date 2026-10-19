@@ -1122,19 +1122,9 @@ func (k *Kernel) Deliver(ctx context.Context, m link.Messenger, to, body string)
 	return m.SendDraft(ctx, to, body)
 }
 
-// BudgetFor derives the working set from the bot config. The set is
-// compact.WorkingSet, so a long session is held near that size no matter how
-// large the model window is. A window smaller than the set wins: it is the real
-// ceiling, and three quarters of it leaves room for the reply and the estimate's error.
-func BudgetFor(cfg bot.Config) compact.Budget {
-	b := compact.DefaultBudget()
-	if cfg.ContextLimit > 0 {
-		if room := cfg.ContextLimit * 3 / 4; room < b.CompactAt {
-			b.CompactAt = room
-			if b.CompactAt < 1 {
-				b.CompactAt = 1
-			}
-		}
-	}
-	return b
+// BudgetFor is the budget a bot starts with. Both lines are left at zero, so
+// the kernel derives them from the bound model's window and the bot's
+// context_limit on each use (see Kernel.lines), and a model change moves them.
+func BudgetFor(bot.Config) compact.Budget {
+	return compact.DefaultBudget()
 }

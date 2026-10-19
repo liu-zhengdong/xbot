@@ -12,6 +12,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/config"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -205,7 +206,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 	c := &recCompactor{}
 	k := &Kernel{
 		Bot: b, Provider: p, Compactor: c,
-		Budget:   compact.Budget{CompactAt: 30, KeepTail: 1},
+		Budget:   compact.Budget{Ceiling: 30, KeepTail: 1},
 		MaxSteps: 4,
 	}
 	ev := link.TerminalEvent("u1", "now", time.Unix(20, 0).UTC())
@@ -408,25 +409,47 @@ func TestStartEmittersOnce(t *testing.T) {
 	}
 }
 
-// TestBudgetFor pins the working set against the model window. The set is a
-// fixed size, so a large window does not raise it; a window too small to hold
-// the set wins instead, because it is the real ceiling.
+// TestBudgetFor keeps both lines at zero, so the kernel derives them from the
+// bound model on each use instead of freezing them when the kernel is built.
 func TestBudgetFor(t *testing.T) {
-	b := BudgetFor(bot.Config{})
-	if b.CompactAt != compact.WorkingSet || b.CompactAt != compact.DefaultBudget().CompactAt {
-		t.Fatalf("no window: %+v", b)
+	for _, cfg := range []bot.Config{{}, {ContextLimit: 1000}, {ContextLimit: 1_000_000}} {
+		if b := BudgetFor(cfg); b.Target != 0 || b.Ceiling != 0 || b != compact.DefaultBudget() {
+			t.Fatalf("BudgetFor(%+v) = %+v, want the default with no fixed lines", cfg, b)
+		}
 	}
-	b = BudgetFor(bot.Config{ContextLimit: 1_000_000})
-	if b.CompactAt != compact.WorkingSet {
-		t.Fatalf("a large window raised the working set: %+v", b)
+}
+
+// TestLinesFollowTheModel pins ADR 0015: the lines come from the bound model's
+// window, move when the binding changes, are lowered by context_limit, and a
+// value set on Budget wins.
+func TestLinesFollowTheModel(t *testing.T) {
+	k, _, _ := freshBot(t)
+	bind := func(model string, window, limit int) {
+		t.Helper()
+		if err := config.Add(k.Bot.Root, config.Provider{
+			Name: "fake", BaseURL: "http://127.0.0.1:9/v1", APIKeyEnv: "XBOT_FAKE_UNUSED",
+		}, config.ModelSpec{Name: model, Context: window}); err != nil {
+			t.Fatal(err)
+		}
+		if err := k.Bot.InheritBinding(bot.Config{Provider: "fake", Model: model, ContextLimit: limit}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	b = BudgetFor(bot.Config{ContextLimit: 1000})
-	if b.CompactAt != 750 {
-		t.Fatalf("a small window did not cap the set: %+v", b)
+	bind("big", 1_000_000, 0)
+	if tg, c := k.lines(); tg != 200_000 || c != 1_000_000-32_000-100_000 {
+		t.Fatalf("1M window: target %d ceiling %d", tg, c)
 	}
-	b = BudgetFor(bot.Config{ContextLimit: compact.WorkingSet * 2})
-	if b.CompactAt != compact.WorkingSet {
-		t.Fatalf("a window twice the set changed it: %+v", b)
+	bind("small", 128_000, 0)
+	if tg, c := k.lines(); c != 128_000-8_000-12_800 || tg != c*60/100 {
+		t.Fatalf("after binding a 128K model: target %d ceiling %d", tg, c)
+	}
+	bind("small", 128_000, 64_000)
+	if _, c := k.lines(); c != 64_000-4_000-6_400 {
+		t.Fatalf("context_limit 64K: ceiling %d", c)
+	}
+	k.Budget = compact.Budget{Target: 50, Ceiling: 100}
+	if tg, c := k.lines(); tg != 50 || c != 100 {
+		t.Fatalf("budget override: target %d ceiling %d", tg, c)
 	}
 }
 

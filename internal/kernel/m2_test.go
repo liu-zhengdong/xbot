@@ -172,7 +172,7 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	k := &Kernel{Bot: b, Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, CompactAt: 10}}
+	k := &Kernel{Bot: b, Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, Ceiling: 10}}
 	if _, err := k.CompactRange(context.Background(), 2, 2, "tools"); err == nil {
 		t.Fatal("split tool call should fail")
 	}

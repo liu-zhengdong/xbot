@@ -115,9 +115,11 @@ type ContextDetail struct {
 // ContextSnap is what the owner inspects: the requests of the current wake.
 type ContextSnap struct {
 	Bot string `json:"bot"`
-	// WorkingSet is the size the session is held near, and the denominator the
-	// usage reminder uses. Zero means the kernel has no working set.
-	WorkingSet int `json:"working_set"`
+	// Target is the soft line: past it the kernel compacts in the background.
+	// Ceiling is the hard line for the request, tool definitions included:
+	// past it the turn compacts inline. Both follow the bound model (ADR 0015).
+	Target  int `json:"target"`
+	Ceiling int `json:"ceiling"`
 	// Window is the model's context length from providers.json; 0 when unknown.
 	Window int `json:"window,omitempty"`
 	// Requests is the kept model calls of this wake, oldest first.
@@ -134,6 +136,10 @@ type contextRing struct {
 	mu     sync.Mutex
 	reqs   []ContextRequest
 	detail *ContextDetail
+	// tools is the tool-definition estimate of the last request sent, from
+	// any branch. The hard ceiling takes it off, because tools ride on every
+	// request but are not in the message estimate.
+	tools int
 	// calls counts model calls in this wake. The ring drops old entries, so
 	// the number cannot be recovered from its length.
 	calls int
@@ -146,6 +152,10 @@ func (k *Kernel) noteContext(t *turn, req provider.Request) {
 	if k == nil || t == nil {
 		return
 	}
+	tools := estimateTools(req.Tools)
+	k.context.mu.Lock()
+	k.context.tools = tools
+	k.context.mu.Unlock()
 	if t.isForked() {
 		// A background branch has its own context; its requests are not the
 		// foreground's and would otherwise replace what the owner is reading.
@@ -181,7 +191,7 @@ func (k *Kernel) ContextSnapshot() ContextSnap {
 		return snap
 	}
 	snap.Bot = k.Bot.Name()
-	snap.WorkingSet = k.compactAt()
+	snap.Target, snap.Ceiling = k.lines()
 	snap.Window = k.contextWindow()
 	k.context.mu.Lock()
 	snap.Requests = append([]ContextRequest(nil), k.context.reqs...)

@@ -141,8 +141,8 @@ func TestContextAPIShape(t *testing.T) {
 	if got.Bot != b.Name() {
 		t.Fatalf("bot %q, want %q", got.Bot, b.Name())
 	}
-	if got.WorkingSet != compact.WorkingSet {
-		t.Fatalf("working_set %d, want %d", got.WorkingSet, compact.WorkingSet)
+	if got.Target <= 0 || got.Ceiling <= got.Target {
+		t.Fatalf("target %d ceiling %d: want two lines, the soft one below the hard one", got.Target, got.Ceiling)
 	}
 	if len(got.Requests) == 0 {
 		t.Fatal("no requests recorded: the turn did not reach the provider callback")

@@ -19,21 +19,6 @@ import (
 	"xbot/internal/provider"
 )
 
-func TestSoftHistoryThreshold(t *testing.T) {
-	usage := bot.SectionUsage{Stable: 1000, Memory: 100, Env: 100, History: 700}
-	// History budget is 10000-1200. Seventy percent is 6160.
-	if got := softHistoryAt(10000, usage); got != 6160 {
-		t.Fatalf("soft %d", got)
-	}
-	if usage.History >= softHistoryAt(10000, usage) {
-		t.Fatal("700 tokens of history is under the soft line")
-	}
-	usage.History = 6160
-	if usage.History < softHistoryAt(10000, usage) {
-		t.Fatal("history on the soft line should start a job")
-	}
-}
-
 func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	seedHistory(t, b, 8, 4000)
@@ -229,7 +214,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 		}},
 		Compactor: comp, Memory: mem,
 		Extractor: stubExtract{facts: []memory.Fact{{Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "durable"}}},
-		Budget:    compact.Budget{CompactAt: 1_000_000, KeepTail: 1}, MaxSteps: 2,
+		Budget:    compact.Budget{Ceiling: 1_000_000, KeepTail: 1}, MaxSteps: 2,
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Unix(50, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -306,7 +291,7 @@ func TestHardCompactStaysSynchronous(t *testing.T) {
 	comp := &delayCompactor{d: 200 * time.Millisecond}
 	k := &Kernel{
 		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}},
-		Compactor: comp, Budget: compact.Budget{CompactAt: 40, KeepTail: 1}, MaxSteps: 2,
+		Compactor: comp, Budget: compact.Budget{Ceiling: 40, KeepTail: 1}, MaxSteps: 2,
 	}
 	start := time.Now()
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "now", time.Unix(60, 0).UTC())); err != nil {
@@ -358,13 +343,14 @@ func tuneSoftBudget(t *testing.T, k *Kernel) {
 	if margin < 800 {
 		margin = 800
 	}
-	k.Budget.CompactAt = usage.Total() + margin
+	k.Budget.Ceiling = usage.Total() + margin
+	k.Budget.Target = usage.Total()
 	k.Budget.KeepTail = 2
-	if usage.History < softHistoryAt(k.Budget.CompactAt, usage) {
-		t.Fatalf("history %d under soft %d usage %+v", usage.History, softHistoryAt(k.Budget.CompactAt, usage), usage)
+	if usage.Total() < k.target() {
+		t.Fatalf("total %d under the soft target %d", usage.Total(), k.target())
 	}
-	if usage.Total() > k.Budget.CompactAt {
-		t.Fatalf("already over the hard cap: %+v budget %d", usage, k.Budget.CompactAt)
+	if usage.Total() > k.Budget.Ceiling {
+		t.Fatalf("already over the hard cap: %+v budget %d", usage, k.Budget.Ceiling)
 	}
 }
 

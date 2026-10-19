@@ -2,7 +2,7 @@
 
 `xbot serve` 在同一个 `--http` 上提供这些接口。静态页面（`internal/web/static`）由单独的界面代理维护；这里只记后端契约。内核行为以 [DESIGN.md](DESIGN.md) 为准。
 
-后台异步压缩没有 HTTP 接口。历史用到约 70% 时内核自己压，压完的摘要在两轮之间换上。`GET /api/bots/{name}/transcript` 始终返回只追加的原文，不返回模型看到的压缩视图。
+后台异步压缩没有 HTTP 接口。消息总量到软目标时内核自己在后台压，压完的摘要在两轮之间换上（见 [atlas/context.md](atlas/context.md) 的两条线）。`GET /api/bots/{name}/transcript` 始终返回只追加的原文，不返回模型看到的压缩视图。
 
 ## 约定
 
@@ -159,7 +159,7 @@
 
 `GET /api/bots/{name}/steps?n=20` 返回 `{"steps":[{"time","tool","summary","state"}]}`，是这个 Bot 当前这一轮的步骤环。`summary` 最多 120 个字符，写前过替换函数；`state` 是 `running`、`done`、`error` 或 `awaiting`。`n` 缺省 20，最多 20，小于 1 是 400 `{"error":"bad n"}`。不是这个 owner 的 Bot 是 404。远端 Bot 只给状态，不给步骤，空数组。
 
-`GET /api/bots/{name}/context` 返回这一轮模型实际收到的上下文：`{"bot","working_set","window","requests":[...],"detail":{...}}`。`requests` 是本轮最近的模型调用，最多 10 次，按发生顺序排列；这是内核在内存里留的快照，进程重启或这个 Bot 还没在本进程里发过请求时是空数组、没有 `detail`，不是 404。每次调用是 `{"step","at","prompt","tools","layers":[{"key","label","tokens","from","to"}],"turn_steps"}`。`step` 是这次唤醒里的第几次调用，从 1 起；`prompt` 是整次请求的估算用量，含工具定义，`tools` 是其中工具定义那一份（用量记录里不含它，所以面板要单独列出）；`layers` 按发送顺序给分层合计，`key` 是 `sys`、`mem`、`block`、`env`、`hist`（早先对话）、`turn`（本轮，从唤醒这一轮的那条消息起）之一，摘要块每块单独一项并带它覆盖的 `from`、`to`；`turn_steps` 是这次调用带上了本轮的几步。`detail` 只描述最新一次调用：`steps` 是本轮的步骤 `{"tool","what","tokens","fail","preview"}`（一次工具调用和它的结果合成一步，`what` 是命令、路径或查询这类参数，`fail` 表示结果以 error 开头或 exit 非 0，`preview` 是结果开头 240 字；`tool` 为空的是回复文字），最多 150 步，再早的丢掉并写进 `skipped_steps`；`turns` 是早先对话每轮 `{"ask","tokens"}`，最多 40 轮，更早的只记 `earlier_turns`、`earlier_tokens`；`blocks` 是摘要块 `{"from","to","tokens","preview"}`；`tool_defs` 是每个工具定义的 `{"name","tokens"}`，从大到小。较早的一次调用的步骤就是 `steps` 的前 `turn_steps` 步。所有文字都过 `RedactText`。只有前台主循环的请求会出现在这里，子代理、记忆抽取和压缩自身的调用不在其中。不是这个 owner 的 Bot 是 404。
+`GET /api/bots/{name}/context` 返回这一轮模型实际收到的上下文：`{"bot","target","ceiling","window","requests":[...],"detail":{...}}`。`target` 是软目标（消息到这里后台开始压），`ceiling` 是这次请求的硬上限（含工具定义，到这里轮内同步压），都按当前绑定的模型现算。`requests` 是本轮最近的模型调用，最多 10 次，按发生顺序排列；这是内核在内存里留的快照，进程重启或这个 Bot 还没在本进程里发过请求时是空数组、没有 `detail`，不是 404。每次调用是 `{"step","at","prompt","tools","layers":[{"key","label","tokens","from","to"}],"turn_steps"}`。`step` 是这次唤醒里的第几次调用，从 1 起；`prompt` 是整次请求的估算用量，含工具定义，`tools` 是其中工具定义那一份（用量记录里不含它，所以面板要单独列出）；`layers` 按发送顺序给分层合计，`key` 是 `sys`、`mem`、`block`、`env`、`hist`（早先对话）、`turn`（本轮，从唤醒这一轮的那条消息起）之一，摘要块每块单独一项并带它覆盖的 `from`、`to`；`turn_steps` 是这次调用带上了本轮的几步。`detail` 只描述最新一次调用：`steps` 是本轮的步骤 `{"tool","what","tokens","fail","preview"}`（一次工具调用和它的结果合成一步，`what` 是命令、路径或查询这类参数，`fail` 表示结果以 error 开头或 exit 非 0，`preview` 是结果开头 240 字；`tool` 为空的是回复文字），最多 150 步，再早的丢掉并写进 `skipped_steps`；`turns` 是早先对话每轮 `{"ask","tokens"}`，最多 40 轮，更早的只记 `earlier_turns`、`earlier_tokens`；`blocks` 是摘要块 `{"from","to","tokens","preview"}`；`tool_defs` 是每个工具定义的 `{"name","tokens"}`，从大到小。较早的一次调用的步骤就是 `steps` 的前 `turn_steps` 步。所有文字都过 `RedactText`。只有前台主循环的请求会出现在这里，子代理、记忆抽取和压缩自身的调用不在其中。不是这个 owner 的 Bot 是 404。
 
 `GET /api/bots/{name}/todos` 返回 `{"items":[{"id","content","status","reason"}]}`，是这个 Bot 当前任务的待办清单。没有活动清单时 `items` 是空数组。每一项都已完成或放弃、写入空清单、或换成没有相同 id 的新清单时，旧清单归档，不再出现在这里。主人接着说继续，或前台插话时后台还在跑，活动清单还在。`status` 是 `pending`、`in_progress`、`done` 或 `dropped`。`BotStatus` 多一个 `todo` 字段，有未完成项时是一行摘要（进行中的那条，或「N pending」），写前过替换函数，最多 80 个字符；没有未完成项就省略。步骤环不放清单。不是这个 owner 的 Bot 是 404。
 

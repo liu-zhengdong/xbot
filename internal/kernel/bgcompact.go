@@ -17,9 +17,6 @@ import (
 const (
 	jobRunning = "running"
 	jobReady   = "ready"
-	// softHistoryPercent is the share of the history budget that starts a
-	// background job. The hard cap remains Budget.CompactAt on total context.
-	softHistoryPercent = 70
 )
 
 // compactJob is the crash-safe record of one background compaction.
@@ -38,21 +35,6 @@ type compactJob struct {
 	Trusted   bool          `json:"trusted,omitempty"`
 }
 
-// softHistoryAt is 70% of the history budget. That budget is the compaction
-// limit minus the stable, memory, and environment sections, which a summary
-// block does not replace.
-func softHistoryAt(limit int, usage bot.SectionUsage) int {
-	budget := limit - usage.Stable - usage.Memory - usage.Env
-	if budget < 1 {
-		budget = 1
-	}
-	n := budget * softHistoryPercent / 100
-	if n < 1 {
-		return 1
-	}
-	return n
-}
-
 func (k *Kernel) jobPath() string {
 	return filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "compact-job.json")
 }
@@ -65,8 +47,9 @@ func (k *Kernel) runLockPath() string {
 	return filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "compact-run.lock")
 }
 
-// maybeStartBackground opens one job when history crosses the soft threshold
-// and the hard cap has not been hit. It returns without waiting for the summary.
+// maybeStartBackground opens one job when the context crosses the soft target
+// and the hard ceiling has not been hit (past the ceiling the turn compacts
+// inline instead). It returns without waiting for the summary.
 func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) {
 	if k == nil || k.Bot == nil || k.Compactor == nil {
 		return
@@ -75,7 +58,7 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 	if err != nil {
 		return
 	}
-	if usage.Total() > k.compactAt() {
+	if usage.Total() > k.ceiling() {
 		return
 	}
 	unlock, err := k.lockJob(false)
@@ -94,7 +77,7 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		}
 		return
 	}
-	if usage.History < softHistoryAt(k.compactAt(), usage) {
+	if usage.Total() < k.target() {
 		unlock()
 		return
 	}

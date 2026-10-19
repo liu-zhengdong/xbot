@@ -83,7 +83,7 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store,
-		Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, CompactAt: 100000},
+		Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, Ceiling: 100000},
 		MaxSteps: 2, Now: func() time.Time { return t0 },
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", t0)); err != nil {

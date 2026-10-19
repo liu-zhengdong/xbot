@@ -4006,12 +4006,12 @@
   // process, or one that has not woken yet, has no snapshot and says so
   // instead of showing zeros.
 
-  // CTX_BANDS fixes the legend order. The tools band is not here: tool
-  // definitions are sent but are not part of the working set, so they sit
-  // under the legend with a dash for a share.
+  // CTX_BANDS fixes the legend order. The messages come first and the tool
+  // definitions last: the soft target is measured on the messages, so its tick
+  // on the band lines up with where the messages end.
   const CTX_BANDS = [
     ["turn", "本轮"], ["hist", "早先对话"], ["block", "摘要块"],
-    ["sys", "系统提示词"], ["mem", "记忆"], ["env", "环境更新"],
+    ["sys", "系统提示词"], ["mem", "记忆"], ["env", "环境更新"], ["tools", "工具定义"],
   ];
 
   function ctxK(n) {
@@ -4025,6 +4025,7 @@
   function ctxSums(req) {
     const sums = {};
     for (const l of req.layers || []) sums[l.key] = (sums[l.key] || 0) + l.tokens;
+    if (req.tools > 0) sums.tools = req.tools;
     return sums;
   }
 
@@ -4051,17 +4052,22 @@
     const req = ctxReq(snap);
     const latest = req === reqs[reqs.length - 1];
     const sums = ctxSums(req);
-    const used = Math.max(0, (req.prompt || 0) - (req.tools || 0));
-    const ws = snap.working_set || 0;
-    const denom = ws || used || 1;
-    const free = ws ? Math.max(0, ws - used) : 0;
+    // Two lines (ADR 0015). The ceiling is the request's hard limit, tools
+    // included, so the band and the percentage are against it. The target is
+    // the soft line the background compacts at, measured on the messages.
+    const used = Math.max(0, req.prompt || 0);
+    const msgs = Math.max(0, used - (req.tools || 0));
+    const ceiling = snap.ceiling || 0;
+    const target = snap.target || 0;
+    const denom = ceiling || used || 1;
+    const free = ceiling ? Math.max(0, ceiling - used) : 0;
     const share = (n) => (n * 100 / denom).toFixed(1) + "%";
 
     wrap.append(ctxPicker(reqs, req, latest));
 
     const head = el("div", "ctx-used");
-    head.append(el("b", "num", ws ? Math.round(used * 100 / ws) + "% 已用" : ctxK(used) + " 已用"));
-    if (ws) head.append(el("span", "num", ctxK(used) + " / " + ctxK(ws)));
+    head.append(el("b", "num", ceiling ? Math.round(used * 100 / ceiling) + "% 已用" : ctxK(used) + " 已用"));
+    if (ceiling) head.append(el("span", "num", ctxK(used) + " / " + ctxK(ceiling)));
     wrap.append(head);
 
     const band = el("div", "ctx-band");
@@ -4072,7 +4078,15 @@
       setTip(seg, label + " " + ctxK(sums[key]));
       band.append(seg);
     }
-    wrap.append(band);
+    const bandWrap = el("div", "ctx-bandwrap");
+    bandWrap.append(band);
+    if (ceiling && target && target < ceiling) {
+      const mark = el("i", "ctx-mark");
+      mark.style.left = (target * 100 / ceiling).toFixed(3) + "%";
+      setTip(mark, "后台整理线 " + ctxK(target));
+      bandWrap.append(mark);
+    }
+    wrap.append(bandWrap);
 
     const legend = el("div", "ctx-legend");
     const line = (cls, label, value, pct) => {
@@ -4083,17 +4097,17 @@
     for (const [key, label] of CTX_BANDS) {
       if (sums[key]) line("ctx-c-" + key, label, ctxK(sums[key]), share(sums[key]));
     }
-    if (ws) line("ctx-free", "空余", ctxK(free), share(free));
-    if (req.tools > 0) {
-      legend.append(el("div", "ctx-gap"));
-      line("ctx-c-tools ctx-dim", "工具定义（另算）", ctxK(req.tools), "—");
-    }
+    if (ceiling) line("ctx-free", "空余", ctxK(free), share(free));
     wrap.append(legend);
 
     const detail = snap.detail;
     if (detail) wrap.append(ctxDetails(detail, req));
 
-    if (ws) wrap.append(el("p", "ctx-foot num", "离自动压缩还有约 " + ctxK(free)));
+    if (ceiling && target) {
+      wrap.append(el("p", "ctx-foot num", msgs < target
+        ? "离后台整理还有约 " + ctxK(target - msgs)
+        : "后台在整理 · 离上限还有约 " + ctxK(free)));
+    }
     return wrap;
   }
 

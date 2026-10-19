@@ -85,11 +85,16 @@ func TestLongRunJourney(t *testing.T) {
 		Approve:   func(context.Context, string, string) (bool, error) { return true, nil },
 		Budget:    kernel.BudgetFor(b.Config()),
 	}
-	// The journey is about the shipped working set, not a scaled-down one.
-	if k.Budget.CompactAt != compact.WorkingSet || k.Budget.KeepTail != compact.DefaultBudget().KeepTail {
-		t.Fatalf("budget %+v, want the default working set %d", k.Budget, compact.WorkingSet)
+	// The journey is about the shipped lines, derived from the model, not a
+	// scaled-down budget.
+	if k.Budget != compact.DefaultBudget() {
+		t.Fatalf("budget %+v, want the default (lines derived from the model)", k.Budget)
 	}
-	compactAt := k.Budget.CompactAt
+	lines := k.ContextSnapshot()
+	target, ceiling := lines.Target, lines.Ceiling
+	if target <= 0 || ceiling <= target {
+		t.Fatalf("lines target %d ceiling %d", target, ceiling)
+	}
 
 	turns := 0
 	var turnBlocks [][]bot.SummaryBlock
@@ -127,7 +132,7 @@ func TestLongRunJourney(t *testing.T) {
 
 	chat := model.chatCalls()
 
-	// --- 2. the context stays inside the working set ----------------------
+	// --- 2. the context stays near the soft target, never at the ceiling --
 	// Measured before the "did the journey happen at all" guard, so a run whose
 	// context never gets hold of is reported as criterion 2 failing rather than
 	// as a run that never reached a compaction.
@@ -143,18 +148,21 @@ func TestLongRunJourney(t *testing.T) {
 			if c.prompt > peak {
 				peak = c.prompt
 			}
-			if d := c.prompt - compactAt; d > over {
+			if d := c.prompt - target; d > over {
 				over = d
 			}
 		}
 		cyclePeaks = append(cyclePeaks, p)
 	}
-	t.Logf("turns=%d passes=%d walls=%s chat calls=%d prompt peak=%d (working set %d, over by %d) peaks per cycle=%v blocks=%s",
+	t.Logf("turns=%d passes=%d walls=%s chat calls=%d prompt peak=%d (target %d, over by %d; ceiling %d) peaks per cycle=%v blocks=%s",
 		turns, passes, time.Since(started).Round(time.Millisecond), len(chat),
-		peak, compactAt, over, cyclePeaks, blockRanges(blocks))
+		peak, target, over, ceiling, cyclePeaks, blockRanges(blocks))
+	if peak > ceiling {
+		t.Errorf("criterion 2: a prompt peaked at %d, past the %d ceiling", peak, ceiling)
+	}
 	if over > journeyPromptSlack {
-		t.Errorf("criterion 2: a prompt peaked at %d, %d over the %d working set; the allowance is %d (one turn's growth)",
-			peak, over, compactAt, journeyPromptSlack)
+		t.Errorf("criterion 2: a prompt peaked at %d, %d over the %d soft target; the allowance is %d (the turns a background pass takes)",
+			peak, over, target, journeyPromptSlack)
 	}
 	for i := 1; i < len(cyclePeaks); i++ {
 		if cyclePeaks[i] > cyclePeaks[0]+journeyPromptSlack {

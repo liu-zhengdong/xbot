@@ -39,7 +39,7 @@ func TestMaybeKeepsTail(t *testing.T) {
 		provider.Message{Role: provider.RoleUser, Content: "TAIL4"},
 	)
 	c := &rec{}
-	st, err := Maybe(context.Background(), c, Budget{CompactAt: 100, KeepTail: 2}, State{}, msgs)
+	st, err := Maybe(context.Background(), c, Budget{Ceiling: 100, KeepTail: 2}, State{}, msgs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestMaybeKeepsTail(t *testing.T) {
 	if !strings.Contains(c.got[0].Content, "OLD") {
 		t.Fatal("compactor did not see old turns")
 	}
-	again, err := Maybe(context.Background(), c, Budget{CompactAt: 100, KeepTail: 2}, st, msgs)
+	again, err := Maybe(context.Background(), c, Budget{Ceiling: 100, KeepTail: 2}, st, msgs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestMaybeEmptySummaryDoesNotAdvance(t *testing.T) {
 		{Role: provider.RoleUser, Content: "tail"},
 	}
 	c := &rec{sum: "   "}
-	st, err := Maybe(context.Background(), c, Budget{CompactAt: 10, KeepTail: 1}, State{}, msgs)
+	st, err := Maybe(context.Background(), c, Budget{Ceiling: 10, KeepTail: 1}, State{}, msgs)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestMaybeRequiresCompactor(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("x", 400)},
 		{Role: provider.RoleUser, Content: "tail"},
 	}
-	_, err := Maybe(context.Background(), nil, Budget{CompactAt: 10, KeepTail: 1}, State{}, msgs)
+	_, err := Maybe(context.Background(), nil, Budget{Ceiling: 10, KeepTail: 1}, State{}, msgs)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -199,4 +199,23 @@ type emptyProv struct{}
 
 func (emptyProv) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
 	return provider.Message{Role: provider.RoleAssistant, Content: "  "}, nil
+}
+
+// TestLines pins the two lines ADR 0015 derives from a window.
+func TestLines(t *testing.T) {
+	cases := []struct{ window, target, ceiling int }{
+		{1_000_000, 200_000, 868_000},
+		{128_000, 64_320, 107_200},
+		{64_000, 32_160, 53_600},
+		{0, 64_320, 107_200}, // unknown window: DefaultWindow
+	}
+	for _, c := range cases {
+		target, ceiling := Lines(c.window)
+		if target != c.target || ceiling != c.ceiling {
+			t.Errorf("Lines(%d) = %d, %d want %d, %d", c.window, target, ceiling, c.target, c.ceiling)
+		}
+		if target > ceiling {
+			t.Errorf("Lines(%d): target above ceiling", c.window)
+		}
+	}
 }

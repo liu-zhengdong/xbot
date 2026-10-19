@@ -16,12 +16,16 @@ type Compactor interface {
 }
 
 // Budget is when to compact, in the rough token estimate used by Estimate.
-// CompactAt is the working set: a long session is held near this size instead
-// of growing to the model's window. KeepTail is a floor on the raw tail, which
-// the automatic paths grow by size as well (see tailBudget).
+// There are two lines (ADR 0015). Ceiling is the hard one: past it the model
+// would reject the request, so the kernel compacts inside the turn. Target is
+// the soft one: past it the kernel compacts in the background between turns
+// and the turn goes on. Zero for either means "derive it from the model's
+// window" (see Lines). KeepTail is a floor on the raw tail, which the
+// automatic paths grow by size as well (see tailBudget).
 type Budget struct {
-	CompactAt int
-	KeepTail  int
+	Target   int
+	Ceiling  int
+	KeepTail int
 }
 
 // State is stored on the bot. It is not a new session.
@@ -30,15 +34,48 @@ type State struct {
 	Covered int
 }
 
-// WorkingSet is the context size a long session is held near, in estimated
-// tokens. A model window is usually far larger, but using it all makes every
-// later turn slower, costlier and less accurate, and one large tool result can
-// then fill what is left. The window is a ceiling, not a target.
-const WorkingSet = 100_000
+// DefaultWindow stands in for a model whose window providers.json does not
+// give. It is a common size, so the derived lines stay on the safe side.
+const DefaultWindow = 128_000
 
-// DefaultBudget holds a session near WorkingSet and keeps a short verbatim tail.
+// TargetCap and TargetPercent set the soft target from the hard ceiling:
+// min(TargetCap, TargetPercent% of the ceiling). A small window keeps room to
+// tidy up before the ceiling; a large one stops at TargetCap, past which every
+// turn is slower and costlier and the model's attention thins out. The owner
+// set both numbers (ADR 0015).
+const (
+	TargetCap     = 200_000
+	TargetPercent = 60
+)
+
+// Lines derives the soft target and the hard ceiling from a model window.
+// The ceiling leaves room for the reply, min(32K, window/16), and a tenth of
+// the window for the estimate's error. Tool definitions are not taken off
+// here: they vary by turn, and the kernel subtracts what it last sent.
+func Lines(window int) (target, ceiling int) {
+	if window <= 0 {
+		window = DefaultWindow
+	}
+	reserve := min(32_000, window/16)
+	ceiling = window - reserve - window/10
+	if ceiling < 1 {
+		ceiling = 1
+	}
+	return TargetFor(ceiling), ceiling
+}
+
+// TargetFor is the soft target that goes with a ceiling.
+func TargetFor(ceiling int) int {
+	t := min(TargetCap, ceiling*TargetPercent/100)
+	if t < 1 {
+		t = 1
+	}
+	return t
+}
+
+// DefaultBudget derives both lines from the model and keeps a short verbatim tail.
 func DefaultBudget() Budget {
-	return Budget{CompactAt: WorkingSet, KeepTail: 8}
+	return Budget{KeepTail: 8}
 }
 
 // Estimate is a rough token count: about 4 bytes per token. It is not a model
@@ -79,8 +116,8 @@ func EstimateMessage(m provider.Message) int {
 // On a compactor error the returned state includes any passes that already succeeded.
 // The transcript is not modified.
 func Maybe(ctx context.Context, c Compactor, b Budget, st State, msgs []provider.Message) (State, error) {
-	if b.CompactAt <= 0 {
-		b.CompactAt = DefaultBudget().CompactAt
+	if b.Ceiling <= 0 {
+		_, b.Ceiling = Lines(DefaultWindow)
 	}
 	if b.KeepTail <= 0 {
 		b.KeepTail = DefaultBudget().KeepTail
@@ -91,7 +128,7 @@ func Maybe(ctx context.Context, c Compactor, b Budget, st State, msgs []provider
 	for pass := 0; pass < 8; pass++ {
 		recent := msgs[st.Covered:]
 		est := Estimate(st.Summary) + EstimateMessages(recent)
-		if est <= b.CompactAt || len(recent) <= 1 {
+		if est <= b.Ceiling || len(recent) <= 1 {
 			return st, nil
 		}
 		keep := b.KeepTail
@@ -101,7 +138,7 @@ func Maybe(ctx context.Context, c Compactor, b Budget, st State, msgs []provider
 		if keep < 1 {
 			keep = 1
 		}
-		for keep > 1 && Estimate(st.Summary)+EstimateMessages(recent[len(recent)-keep:]) > b.CompactAt {
+		for keep > 1 && Estimate(st.Summary)+EstimateMessages(recent[len(recent)-keep:]) > b.Ceiling {
 			keep--
 		}
 		cut := len(msgs) - keep

@@ -454,7 +454,7 @@ func TestReceiptDoesNotCrossTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	k, _, now := freshBot(t)
-	k.Budget = compact.Budget{KeepTail: 1, CompactAt: 1 << 30}
+	k.Budget = compact.Budget{KeepTail: 1, Ceiling: 1 << 30}
 	k.Compactor = &recCompactor{}
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),

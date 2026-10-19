@@ -172,7 +172,7 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	seedMarked(t, b, 6, 4000)
 	comp := &recCompactor{}
-	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{CompactAt: 1, KeepTail: 1}}
+	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{Ceiling: 1, KeepTail: 1}}
 	if _, err := k.autoCompact(context.Background(), bot.State{}, 0, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func seedMarked(t *testing.T, b *bot.Bot, n, size int) {
 }
 
 // TestFoldBlocksKeepsNewestDetailed checks the fold: once the block region passes
-// its share of the working set, everything but the newest block becomes one
+// its share of the soft target, everything but the newest block becomes one
 // coarser block, and the newest keeps its own range.
 func TestFoldBlocksKeepsNewestDetailed(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
@@ -278,7 +278,7 @@ func TestFoldBlocksKeepsNewestDetailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	comp := &recCompactor{}
-	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{CompactAt: 100, KeepTail: 1}}
+	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{Ceiling: 100, KeepTail: 1}}
 	st, err := b.LoadState()
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +321,7 @@ func TestFoldBlocksStopsAtAGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	comp := &recCompactor{}
-	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{CompactAt: 100, KeepTail: 1}}
+	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{Ceiling: 100, KeepTail: 1}}
 	st, err := b.LoadState()
 	if err != nil {
 		t.Fatal(err)
@@ -355,7 +355,7 @@ func TestFoldBlocksWaitsForEnoughBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	comp := &recCompactor{}
-	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{CompactAt: 100, KeepTail: 1}}
+	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{Ceiling: 100, KeepTail: 1}}
 	st, err := b.LoadState()
 	if err != nil {
 		t.Fatal(err)
@@ -370,11 +370,11 @@ func TestFoldBlocksWaitsForEnoughBlocks(t *testing.T) {
 
 // TestTailStartBoundsBySize checks the raw tail is bounded by size, not only by
 // a message count. A long run of large tool results would otherwise pin the
-// whole context above the working set and leave nothing compactable.
+// whole context above the soft target and leave nothing compactable.
 func TestTailStartBoundsBySize(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	seedMarked(t, b, 40, 4000)
-	k := &Kernel{Bot: b, Budget: compact.Budget{CompactAt: compact.WorkingSet, KeepTail: 1}}
+	k := &Kernel{Bot: b, Budget: compact.Budget{Target: 100_000, Ceiling: 160_000, KeepTail: 1}}
 	start, err := k.tailStart(40)
 	if err != nil {
 		t.Fatal(err)
@@ -400,7 +400,7 @@ func TestTailStartBoundsBySize(t *testing.T) {
 	// A short transcript stays whole even though it exceeds no budget.
 	small := testBot(t, link.NameTerminal)
 	seedMarked(t, small, 3, 100)
-	k2 := &Kernel{Bot: small, Budget: compact.Budget{CompactAt: compact.WorkingSet, KeepTail: 1}}
+	k2 := &Kernel{Bot: small, Budget: compact.Budget{Target: 100_000, Ceiling: 160_000, KeepTail: 1}}
 	start2, err := k2.tailStart(3)
 	if err != nil {
 		t.Fatal(err)
@@ -410,7 +410,7 @@ func TestTailStartBoundsBySize(t *testing.T) {
 	}
 
 	// The message floor still applies: the newest keepTail messages are always raw.
-	k3 := &Kernel{Bot: small, Budget: compact.Budget{CompactAt: 1, KeepTail: 3}}
+	k3 := &Kernel{Bot: small, Budget: compact.Budget{Ceiling: 1, KeepTail: 3}}
 	start3, err := k3.tailStart(3)
 	if err != nil {
 		t.Fatal(err)

@@ -278,7 +278,7 @@ const defaultFocus = "Preserve decisions, names, and unfinished work."
 // keepTail is the floor on the raw tail, in messages. It guards the manual
 // compact path, where the model picks a range itself. The automatic paths bound
 // the tail by size instead, because a few large tool results would otherwise
-// pin the context above the working set and leave nothing to compact.
+// pin the context above the soft target and leave nothing to compact.
 func (k *Kernel) keepTail() int {
 	if k.Budget.KeepTail > 0 {
 		return k.Budget.KeepTail
@@ -286,23 +286,61 @@ func (k *Kernel) keepTail() int {
 	return compact.DefaultBudget().KeepTail
 }
 
-func (k *Kernel) compactAt() int {
-	if k.Budget.CompactAt > 0 {
-		return k.Budget.CompactAt
+// lines returns the soft target and the hard ceiling (ADR 0015). A value set
+// on Budget wins; otherwise both come from the bound model's window, lowered
+// by the bot's context_limit, and follow the model when the binding changes.
+// The ceiling here is the request's: tool definitions are not taken off.
+func (k *Kernel) lines() (target, ceiling int) {
+	window := k.contextWindow()
+	if k != nil && k.Bot != nil {
+		if limit := k.Bot.Config().ContextLimit; limit > 0 && (window <= 0 || limit < window) {
+			window = limit
+		}
 	}
-	return compact.DefaultBudget().CompactAt
+	target, ceiling = compact.Lines(window)
+	if k.Budget.Ceiling > 0 {
+		ceiling = k.Budget.Ceiling
+		target = compact.TargetFor(ceiling)
+	}
+	if k.Budget.Target > 0 {
+		target = k.Budget.Target
+	}
+	if target > ceiling {
+		target = ceiling
+	}
+	return target, ceiling
 }
 
-// tailShare is the raw tail's size bound as a share of the working set: one
+// target is the soft line: past it the kernel compacts in the background.
+func (k *Kernel) target() int {
+	t, _ := k.lines()
+	return t
+}
+
+// ceiling is the hard line for the messages: the request's ceiling less the
+// tool definitions last sent, which ride on every request but are not in the
+// message estimate. Past it the kernel compacts inside the turn.
+func (k *Kernel) ceiling() int {
+	_, c := k.lines()
+	k.context.mu.Lock()
+	tools := k.context.tools
+	k.context.mu.Unlock()
+	if c-tools < 1 {
+		return 1
+	}
+	return c - tools
+}
+
+// tailShare is the raw tail's size bound as a share of the soft target: one
 // eighth. Bounding the tail by size rather than by a message count matters
-// because a few large tool results can otherwise fill the whole working set on
+// because a few large tool results can otherwise fill the whole target on
 // their own, leaving nothing compactable and pushing every request over budget.
 // One eighth keeps the last exchange readable without crowding out the blocks.
 const tailShare = 8
 
 // tailBudget is that bound in estimated tokens.
 func (k *Kernel) tailBudget() int {
-	budget := k.compactAt() / tailShare
+	budget := k.target() / tailShare
 	if budget < 0 {
 		budget = 0
 	}
@@ -409,10 +447,10 @@ func (k *Kernel) compactPlan(st bot.State, protectSeq int) (from, to int, span [
 	return from, to, span[:to-from+1], true, nil
 }
 
-// foldBlocksAt is the share of the working set the summary blocks may occupy
+// foldBlocksAt is the share of the soft target the summary blocks may occupy
 // before the oldest of them are folded into one.
 func (k *Kernel) foldBlocksAt() int {
-	at := k.compactAt() / 3
+	at := k.target() / 3
 	if at < 1 {
 		at = 1
 	}
@@ -466,7 +504,7 @@ func contiguousRun(active []bot.SummaryBlock) []bot.SummaryBlock {
 }
 
 // foldBlocks summarizes the oldest active blocks into one when the block region
-// has grown past its share of the working set, so summaries cannot take the room
+// has grown past its share of the soft target, so summaries cannot take the room
 // the raw tail and the next range need. Blocks are the part of the context that
 // must be rewritten to shrink it, and rewriting them drops the prefix cache from
 // the first block on, so this runs rarely: it folds everything except the newest
@@ -518,7 +556,7 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 	if err != nil {
 		return st, err
 	}
-	if usage.Total() <= k.compactAt() {
+	if usage.Total() <= k.ceiling() {
 		st.Usage = usage
 		return st, nil
 	}
