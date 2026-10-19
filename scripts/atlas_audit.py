@@ -119,6 +119,16 @@ if guard_files:
         if re.search(r'^kind:', front(p), re.M):
             issues.append(f'[guard]  {rel}: guard entries carry no kind frontmatter')
 
+# 开发态设计：docs/dev/ 放还没落地的设计，落地就删。这里只查机械能核的部分：
+# 有没有写「还没做的」，以及里面提到的代码是否已经存在（可能已经落地该删了）。
+DEV = ROOT / 'docs/dev'
+dev_files = sorted(DEV.glob('*.md')) if DEV.is_dir() else []
+for p in dev_files:
+    rel = p.relative_to(ROOT)
+    text = p.read_text(encoding='utf-8')
+    if not re.search(r'^##\s*还没做的', text, re.M):
+        issues.append(f'[dev]    {rel}: no 「还没做的」section; a design with nothing left to do should be deleted into the atlas')
+
 # 每条有效 ADR 都要被某个 atlas 节点直接引用（链到 docs/adr/ 目录不算）
 for p in sorted((ROOT / 'docs/adr').glob('*.md')):
     if re.search(r'^status:\s*(Superseded|Deprecated|Rejected)', p.read_text(encoding='utf-8'), re.M | re.I):
