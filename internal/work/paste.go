@@ -131,6 +131,15 @@ func ReadPasted(botDir, id string) ([]byte, error) {
 		return nil, os.ErrNotExist
 	}
 	defer root.Close()
+	// Stat before opening: opening a FIFO waits for a writer, so a name swapped
+	// for one would hang the request instead of being refused. The type is
+	// checked again on the open file, which is what a read actually uses.
+	// Stat before opening: opening a FIFO waits for a writer, so a name swapped
+	// for one would hang the request instead of being refused. The type is
+	// checked again on the open file, which is what a read actually uses.
+	if st, err := root.Stat(PastedDir + "/" + id); err != nil || !st.Mode().IsRegular() {
+		return nil, os.ErrNotExist
+	}
 	f, err := root.Open(PastedDir + "/" + id)
 	if err != nil {
 		return nil, os.ErrNotExist

@@ -5882,8 +5882,11 @@
         row.id = data.image;
         row.uploading = false;
       } catch (e) {
-        removeAttach(row);
-        if (state.attachBatch === batch && attachKey(state.sel) === attachKey(owner)) attachNote(visibleError(e, "这图片没传上来"));
+        // A failure for a batch that is already gone only drops its own row:
+        // the note belongs to whatever conversation the owner is in now.
+        const stale = state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner);
+        removeAttach(row, stale);
+        if (!stale) attachNote(visibleError(e, "这图片没传上来"));
         continue;
       }
       paintAttach();

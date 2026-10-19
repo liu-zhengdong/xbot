@@ -105,8 +105,14 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 	}
 	// A result for a batch that is already gone must not wipe a refusal the
 	// owner is reading in the conversation they are in now.
-	if !strings.Contains(js, `removeAttach(row, true); return;`) {
-		t.Error("a stale upload result can clear the current conversation's note")
+	for _, want := range []string{
+		`removeAttach(row, true); return;`,
+		`const stale = state.attachBatch !== batch || attachKey(state.sel) !== attachKey(owner);`,
+		`removeAttach(row, stale);`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("a stale upload result can clear the current conversation's note: %s", want)
+		}
 	}
 	// Switching bot drops pictures uploaded to the old one.
 	if !strings.Contains(js, `clearAttach();`+"\n"+`    state.streaming = 0;`) {
