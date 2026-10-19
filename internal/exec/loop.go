@@ -19,10 +19,17 @@ import (
 // Fork mode keeps the main bot's context instead of this text.
 const SubPersona = "You are a subagent working for the main bot. Complete the assigned task. Do not spawn further subagents. If you need a decision, reply with a line that starts with BLOCKED. Otherwise finish with a short result summary."
 
+// reportBytes caps the summary a finished subagent hands back. A typed
+// report has a few sections (what changed, test results, what is left), so it
+// gets more room than a one-line status.
+const reportBytes = 4096
+
 type job struct {
 	id            string
 	task          string
 	mode          string
+	kind          string
+	persona       string
 	fork          []provider.Message
 	maxSteps      int
 	timeout       time.Duration
@@ -56,7 +63,7 @@ func runLoop(j *job) {
 			return
 		}
 	}
-	_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusRunning, Task: j.task, Mode: j.mode})
+	_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusRunning, Task: j.task, Mode: j.mode, Type: j.kind})
 	stepsLeft := j.maxSteps
 	var queued []string
 	var lastProgress time.Time
@@ -142,7 +149,7 @@ func runLoop(j *job) {
 		}
 		j.steps++
 		stepsLeft--
-		_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusRunning, Task: j.task, Mode: j.mode, Steps: j.steps})
+		_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusRunning, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps})
 		stop, steered := j.drain(&msgs, &stepsLeft, &queued)
 		if stop {
 			j.finish(statusCancelled, EvFailed, "cancelled")
@@ -265,11 +272,11 @@ func (j *job) appendUser(msgs *[]provider.Message, text string) error {
 }
 
 func (j *job) finish(status, kind, text string) {
-	text = clipText(strings.TrimSpace(text), 2048)
+	text = clipText(strings.TrimSpace(text), reportBytes)
 	if text == "" {
 		text = status
 	}
-	_ = writeMeta(j.dir, Meta{ID: j.id, Status: status, Summary: text, Task: j.task, Mode: j.mode, Steps: j.steps})
+	_ = writeMeta(j.dir, Meta{ID: j.id, Status: status, Summary: text, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps})
 	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: text})
 }
 
@@ -278,8 +285,12 @@ func initialMessages(j *job) []provider.Message {
 	if j.mode == ModeFork && len(j.fork) > 0 {
 		return append(copyMessages(j.fork), task)
 	}
+	persona := SubPersona
+	if strings.TrimSpace(j.persona) != "" {
+		persona = j.persona
+	}
 	return []provider.Message{
-		{Role: provider.RoleSystem, Content: SubPersona},
+		{Role: provider.RoleSystem, Content: persona},
 		{Role: provider.RoleUser, Content: j.task},
 	}
 }

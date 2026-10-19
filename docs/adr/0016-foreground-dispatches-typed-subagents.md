@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed（主人认可后改 Accepted，同时把 0001、0002 标 Superseded）
+status: Accepted（取代 0001、0002）
 date: 2026-10-20
 ---
 # 0016 前台只理解和派活，干活交给预制类型的子代理

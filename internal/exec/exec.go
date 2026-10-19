@@ -83,6 +83,10 @@ type StartRequest struct {
 	TimeoutSec int                `json:"timeout_sec,omitempty"`
 	Dir        string             `json:"dir"`
 	Model      Endpoint           `json:"model,omitempty"`
+	// Type is the subagent type (ADR 0016); it is recorded in meta.json.
+	Type string `json:"type,omitempty"`
+	// Persona replaces SubPersona as a brief subagent's system prompt.
+	Persona string `json:"persona,omitempty"`
 }
 
 // Control is a message to a running subagent.
@@ -110,10 +114,17 @@ type Executor interface {
 
 // Local runs each subagent as a goroutine.
 type Local struct {
-	Limits   Limits
-	Prov     provider.Provider
-	Approve  agent.Approver
-	ToolSet  func(id, dir string) []tools.Tool
+	Limits  Limits
+	Prov    provider.Provider
+	Approve agent.Approver
+	ToolSet func(id, dir string) []tools.Tool
+	// ToolsFor, when set, wins over ToolSet: it sees the whole request, so the
+	// set can follow the subagent's type.
+	ToolsFor func(req StartRequest) []tools.Tool
+	// Wrap, when set, wraps the job's provider. pre is the number of messages
+	// the job starts with; the kernel uses it to keep the job's requests under
+	// the context lines.
+	Wrap     func(req StartRequest, p provider.Provider, pre int) provider.Provider
 	mu       sync.Mutex
 	jobs     map[string]*job
 	events   chan Event
@@ -177,13 +188,17 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 		}
 	}
 	var list []tools.Tool
-	if l.ToolSet != nil {
+	if l.ToolsFor != nil {
+		list = l.ToolsFor(req)
+	} else if l.ToolSet != nil {
 		list = l.ToolSet(req.ID, req.Dir)
 	}
 	j := &job{
 		id:            req.ID,
 		task:          req.Task,
 		mode:          req.Mode,
+		kind:          req.Type,
+		persona:       req.Persona,
 		fork:          append([]provider.Message(nil), req.Fork...),
 		maxSteps:      steps,
 		timeout:       timeout,
@@ -206,6 +221,9 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 	}
 	l.jobs[req.ID] = j
 	l.mu.Unlock()
+	if l.Wrap != nil {
+		j.provider = l.Wrap(req, j.provider, len(initialMessages(j)))
+	}
 	go func() {
 		defer func() {
 			l.mu.Lock()

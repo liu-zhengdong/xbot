@@ -18,7 +18,11 @@ import (
 
 func (k *Kernel) modelAgentTools(list []tools.Tool) []tools.Tool {
 	if k.hasLink(link.NameAgents) {
-		list = append(list, spawnTool{k}, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k})
+		var start tools.Tool = spawnTool{k}
+		if k.Dispatch {
+			start = dispatchTool{k}
+		}
+		list = append(list, start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k})
 	}
 	if k.hasLink(link.NameSkills) && k.isLoaded(link.NameSkills) {
 		list = append(list, skillTool{k}, writeSkillTool{k})
@@ -40,8 +44,18 @@ func (k *Kernel) ensureExec() exec.Executor {
 				k.Exec = exec.Dial(r.BaseURL, r.Token)
 			} else {
 				loc := exec.NewLocal(exec.Limits{})
+				if k.Dispatch {
+					// Typed subagents do the work, so they run as long as
+					// their type allows; the step count is only the guard.
+					loc = exec.NewLocal(exec.Limits{MaxConcurrent: k.forkCap(), MaxSteps: maxStepsGuard, Timeout: k.maxTypeBudget()})
+					loc.ToolsFor = k.toolsFor
+					loc.Wrap = k.wrapSub
+				}
 				loc.Prov = k.boundProvider()
 				loc.Approve = k.subApprove()
+				if k.Dispatch {
+					loc.Approve = k.subApprover()
+				}
 				loc.ToolSet = func(id, _ string) []tools.Tool {
 					if id == "" {
 						id = k.allocScope(context.Background())

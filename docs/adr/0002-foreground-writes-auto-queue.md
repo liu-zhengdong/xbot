@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Accepted（取代「直接拒绝」）
+status: Superseded by [0016](0016-foreground-dispatches-typed-subagents.md)（2026-10-20）
 date: 2026-10-16
 ---
 # 0002 前台写操作自动排到后台之后

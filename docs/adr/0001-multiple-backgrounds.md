@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Accepted（取代同日较早的「最多一个后台」）
+status: Superseded by [0016](0016-foreground-dispatches-typed-subagents.md)（2026-10-20）
 date: 2026-10-16
 ---
 # 0001 插话分叉允许多个后台并行

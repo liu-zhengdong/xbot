@@ -108,6 +108,11 @@ type Kernel struct {
 	// one policy table.
 	Machine func() (string, error)
 
+	// Dispatch makes the foreground the one that understands, plans, and hands
+	// out work (ADR 0016): it gets dispatch instead of spawn, keeps only quick
+	// read tools and memory edits, and the work runs in typed subagents.
+	Dispatch bool
+
 	// AllowFork moves a running turn to the background when the owner sends a
 	// message mid-turn, so the next Handle can answer at once. See docs/atlas/fork.md.
 	// ForkCap (default 3) caps concurrent backgrounds; ForkAfter (default 3s) is the

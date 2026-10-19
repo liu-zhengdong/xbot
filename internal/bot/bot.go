@@ -589,6 +589,9 @@ func (b *Bot) RoutineDir() string { return filepath.Join(b.dir(), "routines") }
 // AgentDir is one subagent's transcript directory.
 func (b *Bot) AgentDir(id string) string { return filepath.Join(b.dir(), "agents", id) }
 
+// AgentTypesDir holds the bot's own subagent type files (ADR 0016).
+func (b *Bot) AgentTypesDir() string { return filepath.Join(b.dir(), "agents", "types") }
+
 // OutboxPath is the notification log.
 func (b *Bot) OutboxPath() string { return filepath.Join(b.dir(), "outbox.jsonl") }
 

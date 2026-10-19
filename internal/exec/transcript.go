@@ -24,6 +24,9 @@ type Meta struct {
 	Steps   int    `json:"steps"`
 	Task    string `json:"task"`
 	Mode    string `json:"mode"`
+	// Type is the subagent type it was dispatched as (ADR 0016), empty for a
+	// plain spawn.
+	Type string `json:"type,omitempty"`
 }
 
 func transcriptPath(dir string) string { return filepath.Join(dir, "transcript.jsonl") }

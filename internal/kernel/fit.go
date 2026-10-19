@@ -49,6 +49,9 @@ type turnFit struct {
 	from, to int
 	// seqOf maps an index of this turn to its transcript sequence, or 0.
 	seqOf func(i int) int
+	// noSeq, when set, is what the note says for a result without a
+	// sequence, in place of the pointer to recall_history.
+	noSeq string
 }
 
 // omitMin is the smallest result worth leaving out, in estimated tokens.
@@ -96,7 +99,7 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 			continue
 		}
 		if seq, ok := f.omitted[i]; ok {
-			m = omittedResult(m, seq)
+			m = f.omittedResult(m, seq)
 		}
 		out = append(out, m)
 	}
@@ -107,10 +110,12 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 // the result whole, so the note points at expand rather than at running the
 // call again: a rerun can be slow, and a file read again may have changed
 // since.
-func omittedResult(m provider.Message, seq int) provider.Message {
+func (f *turnFit) omittedResult(m provider.Message, seq int) provider.Message {
 	n := compact.EstimateMessage(m)
 	if seq > 0 {
 		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. Call expand with from=%d to=%d to read it as it was; do not run the call again for that.]", n, seq, seq, seq)
+	} else if f.noSeq != "" {
+		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. %s]", n, f.noSeq)
 	} else {
 		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: find it with recall_history, then expand.]", n)
 	}
@@ -158,7 +163,7 @@ func (k *Kernel) omit(f *turnFit, msgs []provider.Message, from, to, size, goal 
 		}
 		seq := k.lineSeq(f, msgs, i)
 		f.omitted[i] = seq
-		size -= k.scaled(old) - k.scaled(compact.EstimateMessage(omittedResult(m, seq)))
+		size -= k.scaled(old) - k.scaled(compact.EstimateMessage(f.omittedResult(m, seq)))
 	}
 	return size
 }
@@ -192,7 +197,7 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 	for i := start; i < keep; i++ {
 		m := msgs[i]
 		if seq, ok := f.omitted[i]; ok {
-			m = omittedResult(m, seq)
+			m = f.omittedResult(m, seq)
 		}
 		m.Images = nil
 		turns = append(turns, m)

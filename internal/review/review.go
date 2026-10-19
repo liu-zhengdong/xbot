@@ -78,6 +78,7 @@ var Table = map[string]Class{
 
 	// Subagents.
 	"spawn":           Normal,
+	"dispatch":        Normal,
 	"steer":           Normal,
 	"queue":           Normal,
 	"interrupt":       Normal,

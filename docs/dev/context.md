@@ -235,7 +235,7 @@
 
 ## 相关
 
-- [dev/dispatch.md](dispatch.md)：前台只派活、干活交给预制子代理，让主线上下文只留对话和计划（[ADR 0016](../adr/0016-foreground-dispatches-typed-subagents.md)，提议中）。
+- [dev/dispatch.md](dispatch.md)：前台只派活、干活交给预制子代理，让主线上下文只留对话和计划（[ADR 0016](../adr/0016-foreground-dispatches-typed-subagents.md)）。
 
 - 现行实现：[atlas/context.md](../atlas/context.md)
 - 旅程与验收：[FOCUS.md](../FOCUS.md) 的「长程运行」
