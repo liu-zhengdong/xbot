@@ -32,7 +32,7 @@
 - **提交日志时要按替换区间映射偏移，不能看脱敏结果的后缀还在不在。** 原因：同一段里先出现过一次完整密钥时，后缀对不上，整块连同下一次密钥的前半会被写进文件。没提交的尾部也不能先作为预览落盘。证据：`TestZZR3SecondCopyCommittedRaw`、`TestZZR3PreviewShowsPartialSecret`、`TestJobLogRedactionProperty`。Seen 1×（2026-10-17）
 - **换模型名时要显式写出依赖供应商默认值的参数，并检查按模型名挂的东西。** 原因：官方新名 deepseek-flash 默认开思考（旧名 deepseek-chat 被路由到它的非思考模式），XBot 从不发 thinking 字段，开着思考带工具又必须回传 reasoning_content；模型提示也按模型名找文件，换名会悄悄丢掉 `deepseek-chat.md`。证据：deepseek-flash 切换 PR 的 `TestDeepSeekRequestDisablesThinking`，2026-10-17 实测探针。Seen 1×（2026-10-17）
 - **加容量上限时，已经超限的旧数据要能往小里改。** 原因：PR #13 让每次写都检查整个 profile ≤ 4KB，线上 person profile 已有 7402 字节，forget 一条也报满，同步合并也卡住，Bot 没法逐步整理。只拦变大的写。证据：`TestForgetOnOverCapProfileSucceeds`、`TestMergeSyncOnOverCapProfile`。Seen 1×（2026-10-17）
-- **合入 main 前跑三遍 `go test` 是 AGENTS.md 的要求，不能写一句 Not run 就合。** 原因：Not run 是用来如实交代没跑的检查，不是跳过门槛的许可；10-17 的 #7 只跑一遍、#10（M5）写明没跑三遍就合了，而同一天并行跑测试刚挂过一次（`b252f4e`）。证据：`fd66d9e`、`2337be8` 的提交说明。Seen 1×（2026-10-17）
+- **合入 main 前的测试门槛（2026-10-19 起：全量一遍 + 改到的包 `-count=3`）不能写一句 Not run 就跳过。** 原因：Not run 是用来如实交代没跑的检查，不是跳过门槛的许可；10-17 的 #7 只跑一遍、#10（M5）写明没跑三遍就合了，而同一天并行跑测试刚挂过一次（`b252f4e`）。证据：`fd66d9e`、`2337be8` 的提交说明。Seen 1×（2026-10-17）
 - **atlas 的 verified 戳要指向 main 上真实存在的提交；squash 合并后再统一补戳。** 原因：分支上的提交在 squash 后就不在历史里了，`ba7de7f`、`617c0be` 一类戳全部悬空，每个大 PR 合完都要再开一个补戳 PR。证据：`7e8fdeb`、`2337be8` 的说明，补戳 PR #28、#35、#37。Seen 1×（2026-10-17）
 - **不可信内容的围栏不能用内容自己能写出来的闭合标签。** 原因：仓库里的 AGENTS.md 能写出闭合标签跳出项目围栏、混进主人的消息（M5）；网页结果的闭合标签换大小写、加空格、用全角字符也能绕过（M6），最后改成不是标签的围栏才算收口。证据：`2337be8`、`060672d`。Seen 1×（2026-10-17）
 - **接外部接口前先用真请求探一次端点、参数和默认值，再写实现。** 原因：M6 的 DeepSeek 搜索先按 Responses API 写，又改成官方 `/v1/tools/search`；默认的 DuckDuckGo 在盒子上直接被挡（202 页面），线上只能改用 DeepSeek 后端。两轮返工都是先写后探。证据：`060672d`（#31）的第 2、4 个提交。Seen 1×（2026-10-17）

@@ -160,11 +160,11 @@ func TestContextAPIShape(t *testing.T) {
 	if len(last.Layers) == 0 || last.Layers[0].Key != "sys" {
 		t.Fatalf("layers %+v, want a leading sys band", last.Layers)
 	}
-	if len(last.Entries) == 0 {
-		t.Fatal("no entries: the panel has nothing to drill into")
+	if got.Detail == nil || len(got.Detail.ToolDefs) == 0 {
+		t.Fatalf("detail %+v: the panel has nothing to drill into", got.Detail)
 	}
-	if last.Entries[0].Kind != "sys" {
-		t.Fatalf("first entry kind %q, want sys", last.Entries[0].Kind)
+	if !strings.Contains(string(raw), `"turn_steps":`) || !strings.Contains(string(raw), `"steps":[`) {
+		t.Fatalf("missing the fields the request picker reads: %s", raw)
 	}
 }
 
@@ -195,8 +195,8 @@ func TestContextAPIToolBand(t *testing.T) {
 	}
 }
 
-// TestContextAPIToolResultPresent checks the entry list carries the tool result
-// a turn produced, which is what an audit looks for.
+// TestContextAPIToolResultPresent checks the current turn's steps carry the
+// tool call with its result folded in, which is what an audit looks for.
 func TestContextAPIToolResultPresent(t *testing.T) {
 	s, tok, b, k := contextFixture(t)
 	s = contextServer(s, b, k)
@@ -208,21 +208,23 @@ func TestContextAPIToolResultPresent(t *testing.T) {
 	if err := json.Unmarshal(getAuth(t, srv.URL+"/api/bots/"+b.Name()+"/context", cookie), &got); err != nil {
 		t.Fatal(err)
 	}
-	last := got.Requests[len(got.Requests)-1]
 	found := false
-	for _, e := range last.Entries {
-		if e.Role == provider.RoleTool && strings.Contains(e.Preview, "probe output") {
+	for _, st := range got.Detail.Steps {
+		if st.Tool == "ctxprobe" && strings.Contains(st.Preview, "probe output") {
 			found = true
-			if e.Tool == "" {
-				t.Fatal("tool result has no tool name")
+			if st.What != "x" {
+				t.Fatalf("what %q, want the call's argument", st.What)
 			}
-			if e.Chars == 0 {
-				t.Fatal("tool result has no length, so a clipped preview cannot show its size")
+			if st.Tokens <= 0 {
+				t.Fatal("the step has no estimate")
 			}
 		}
 	}
 	if !found {
-		t.Fatalf("no tool result in the entries: %+v", last.Entries)
+		t.Fatalf("no tool step with its result: %+v", got.Detail.Steps)
+	}
+	if last := got.Requests[len(got.Requests)-1]; last.TurnSteps != len(got.Detail.Steps)+got.Detail.SkippedSteps {
+		t.Fatalf("turn_steps %d, steps %d", last.TurnSteps, len(got.Detail.Steps))
 	}
 }
 
