@@ -3,6 +3,7 @@ package kernel
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"xbot/internal/bot"
@@ -30,8 +31,8 @@ const (
 	maxPastedBytesTurn = 10 << 20
 )
 
-// pastedNote names the pictures on a line, relative to the workspace, so the
-// model can open any of them with view_image. Empty when the line had none.
+// pastedNote names the pictures on a line so the model can open any of them
+// with view_image. Empty when the line had none.
 func (k *Kernel) pastedNote(names []string) string {
 	if len(names) == 0 {
 		return ""
@@ -46,7 +47,7 @@ func (k *Kernel) pastedNote(names []string) string {
 		if i > 0 {
 			b.WriteString("、")
 		}
-		b.WriteString("paste/" + name)
+		b.WriteString(k.pastedPathOf(name))
 	}
 	// One wording serves both places the note appears. The turn answering this
 	// line already has the bytes, so it needs no tool call; a later turn has only
@@ -54,7 +55,7 @@ func (k *Kernel) pastedNote(names []string) string {
 	// context identical in either case, which is what makes the request
 	// cacheable across steps.
 	if _, sees := k.vision(); sees {
-		b.WriteString("。写在主人这条消息上；这一轮请求已附上图片，早先的消息则用 view_image 打开这个路径。")
+		b.WriteString("。写在主人这条消息上；这一轮请求已附上图片，早先的消息则用 view_image 打开这个路径。路径是绝对的，Bot 换过工作目录也照样打得开。")
 	} else {
 		b.WriteString("。当前模型看不了图；需要时请主人说图里有什么。")
 	}
@@ -177,4 +178,16 @@ func stripPastedNote(content, note string) string {
 		return rest
 	}
 	return content
+}
+
+// pastedPathOf is the path the note gives for one stored picture. It is
+// absolute: view_image resolves a relative path against whatever directory the
+// bot has cd-ed into, so a relative name would stop working the moment the bot
+// moved, and the note outlives that move. Absolute paths still pass the
+// workspace check view_image applies to every local path.
+func (k *Kernel) pastedPathOf(name string) string {
+	if k == nil || k.Bot == nil || k.Bot.Root == "" {
+		return filepath.Join(work.BotDir(k.Bot.Root, k.Bot.Name()), work.PastedDir, name)
+	}
+	return filepath.Join(work.BotDir(k.Bot.Root, k.Bot.Name()), work.PastedDir, name)
 }

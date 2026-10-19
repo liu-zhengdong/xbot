@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -393,4 +394,40 @@ func (spendTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
 		tools.AttachImage(ctx, tools.AttachedImage{MIME: "image/png", Data: []byte{byte(i + 1), 2, 3, 4}})
 	}
 	return "four", nil
+}
+
+// TestPastedPathSurvivesACd covers the note a later turn reads: it names an
+// absolute path, because view_image resolves a relative one against the bot's
+// current shell directory. A bot that cd-ed elsewhere must still be able to
+// open a picture from an earlier message.
+func TestPastedPathSurvivesACd(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	dir, _, err := work.Open(b.Root, b.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := work.PastedName("image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.WritePasted(dir, id, onePixelPNG(t)); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}, WorkDir: dir}
+	note := k.pastedNote([]string{id})
+	want := filepath.Join(dir, work.PastedDir, id)
+	if !strings.Contains(note, want) {
+		t.Fatalf("the note does not name an absolute path:\n%s", note)
+	}
+	if !filepath.IsAbs(want) {
+		t.Fatal("the path in the note is not absolute")
+	}
+	// The file is where the note says, and it is a picture view_image accepts.
+	data, err := work.ReadPasted(dir, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bot.SniffImage(data) != "image/png" {
+		t.Fatal("the stored picture is not readable as an image")
+	}
 }
