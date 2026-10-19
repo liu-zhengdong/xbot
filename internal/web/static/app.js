@@ -61,6 +61,14 @@
     traceOpen: {},
     recentTasksOpen: new Set(),
     traceOut: {},
+    // The context panel's own UI state: which request is shown, which band or
+    // message is open, and the snapshot itself (fetched per bot, never cached
+    // across a switch so a stale turn cannot be misread as the current one).
+    ctxSnap: null,
+    ctxSel: null,
+    ctxStep: 0,
+    ctxOpenRow: "",
+    ctxOpenEntry: "",
     peer: null,
     replyTo: null,
     placeholder: "写一条消息",
@@ -971,6 +979,7 @@
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+    maximize: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3 13.5 10.5"/><path d="M3 21l7.5-7.5"/>',
     download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
@@ -3492,7 +3501,7 @@
     return row;
   }
 
-  const TABS = [["details", "详情"], ["library", "记忆"], ["computer", "任务"], ["trace", "轨迹"]];
+  const TABS = [["details", "详情"], ["library", "记忆"], ["computer", "任务"], ["trace", "轨迹"], ["context", "上下文"]];
 
   function tabBar() {
     const bar = el("div", "tabs");
@@ -3724,6 +3733,8 @@
         body.append(el("p", "hint", "没有任务"));
       } else if (state.tab === "trace") {
         body.append(el("p", "hint", "没有轨迹"));
+      } else if (state.tab === "context") {
+        body.append(el("p", "hint", "群组没有上下文"));
       } else {
         const s = section("成员");
         s.append(el("p", "", (g.members || []).map(niceName).join("、") || "没有成员"));
@@ -3749,6 +3760,7 @@
     if (state.tab === "library") body.append(libraryView(data));
     else if (state.tab === "computer") body.append(computerView(data));
     else if (state.tab === "trace") body.append(traceView());
+    else if (state.tab === "context") body.append(contextView(data));
     else body.append(detailsView(data));
     panelBody.append(body);
   }
@@ -3873,6 +3885,338 @@
     }
     wrap.append(list);
     return wrap;
+  }
+
+
+  // ---- 上下文检视 ------------------------------------------------------
+  // The panel reports what the model was actually sent on the current wake,
+  // split by band. It is read-only: nothing here writes the transcript. A bot
+  // driven by another process, or one that has not woken yet, has no snapshot
+  // and says so instead of showing zeros.
+
+  // LAYER_ORDER fixes the band order and the labels the server sends. The
+  // colour comes from CSS, keyed by the band key, so light and dark themes
+  // each keep one readable ramp.
+  function ctxLayers(req) {
+    const order = ["sys", "tools", "mem", "block", "env", "hist"];
+    const rows = req.layers || [];
+    const out = [];
+    for (const key of order) {
+      if (key === "tools") {
+        if (req.tools > 0) out.push({ key: "tools", label: "工具定义", tokens: req.tools, blocks: [] });
+        continue;
+      }
+      if (key === "block") {
+        const blocks = rows.filter((r) => r.key === "block");
+        const tokens = blocks.reduce((a, r) => a + r.tokens, 0);
+        if (tokens > 0) out.push({ key: "block", label: "摘要块", tokens: tokens, blocks: blocks });
+        continue;
+      }
+      const hit = rows.filter((r) => r.key === key);
+      if (hit.length) out.push({ key: key, label: hit[0].label, tokens: hit.reduce((a, r) => a + r.tokens, 0), blocks: [] });
+    }
+    return out;
+  }
+
+  function ctxTotal(req) { return (req && req.prompt) || 0; }
+
+  function tokenText(n) {
+    if (!n) return "0";
+    if (n < 1000) return String(n);
+    const v = n / 1000;
+    return (v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)) + "K";
+  }
+
+  function ctxShare(req, snap) {
+    const set = (snap && snap.working_set) || 0;
+    if (!set) return "";
+    return (ctxTotal(req) * 100 / set).toFixed(1) + "%";
+  }
+
+  function ctxBand(layers) {
+    const total = layers.reduce((a, l) => a + l.tokens, 0);
+    const bar = el("div", "ctx-band");
+    for (const l of layers) {
+      if (!total) break;
+      const seg = el("i", "ctx-seg k-" + l.key);
+      seg.style.width = (l.tokens * 100 / total).toFixed(3) + "%";
+      setTip(seg, l.label + " " + tokenText(l.tokens));
+      bar.append(seg);
+    }
+    return bar;
+  }
+
+  function contextView(data) {
+    const wrap = document.createDocumentFragment();
+    const snap = state.ctxSnap;
+    if (snap === null) {
+      wrap.append(el("p", "hint", "正在读取……"));
+      loadContext(data && data.name);
+      return wrap;
+    }
+    const reqs = snap.requests || [];
+    if (!reqs.length) {
+      wrap.append(el("p", "hint", "这个 Bot 还没在本进程里发过请求。"));
+      wrap.append(el("p", "hint hint-sub", "上下文只在每次唤醒时存在。在对话里说一句，或者等它自己醒来，这里就会出现这一轮实际发出去的内容。"));
+      return wrap;
+    }
+    const req = reqs[Math.min(state.ctxStep, reqs.length - 1)] || reqs[reqs.length - 1];
+    const layers = ctxLayers(req);
+
+    const head = el("div", "ctx-head");
+    head.append(el("b", "ctx-total num", tokenText(ctxTotal(req))), el("span", "ctx-unit", "token"));
+    wrap.append(head);
+
+    const share = ctxShare(req, snap);
+    const sub = el("p", "ctx-sub");
+    if (share) sub.append(el("span", "", "工作集 " + tokenText(snap.working_set) + " 的 " + share));
+    if (reqs.length > 1) {
+      if (share) sub.append(el("span", "ctx-dot", "·"));
+      sub.append(el("span", "", "本轮第 " + req.step + " 次请求"));
+    }
+    wrap.append(sub);
+    wrap.append(ctxBand(layers));
+
+    const list = el("div", "ctx-list");
+    for (const l of layers) {
+      const open = state.ctxOpenRow === l.key;
+      const row = el("button", "ctx-row" + (open ? " open" : ""));
+      row.type = "button";
+      const dot = el("span", "ctx-dotmark k-" + l.key);
+      row.append(dot, el("span", "ctx-name", l.label), el("span", "ctx-tk num", tokenText(l.tokens)));
+      row.addEventListener("click", () => {
+        state.ctxOpenRow = open ? "" : l.key;
+        paintPanel();
+      });
+      list.append(row);
+      if (open) list.append(ctxPeek(req, l));
+    }
+    wrap.append(list);
+
+    const more = el("button", "ctx-more");
+    more.type = "button";
+    more.append(el("span", "", "在完整视图中打开"), icon("maximize", "ctx-more-icon"));
+    more.addEventListener("click", () => openContextSheet(req, snap));
+    wrap.append(more);
+    return wrap;
+  }
+
+  // ctxPeek shows the first messages of one band, clipped. It is the panel's
+  // down-drill; the full view reads the whole sequence.
+  function ctxPeek(req, layer) {
+    const box = el("div", "ctx-peek");
+    if (layer.key === "block") {
+      for (const b of layer.blocks) {
+        const line = el("div", "ctx-block-line");
+        line.append(el("span", "", "seq " + (b.from || "?") + "–" + (b.to || "?")));
+        box.append(line);
+      }
+      if (!layer.blocks.length) box.append(el("div", "ctx-block-line", "没有摘要块"));
+    }
+    const hits = (req.entries || []).filter((e) => kindMatches(e.kind, layer.key));
+    let shown = 0;
+    for (const e of hits) {
+      if (shown >= 3) break;
+      shown++;
+      box.append(ctxPeekLine(e));
+    }
+    if (!shown && layer.key !== "block") box.append(el("div", "ctx-block-line", "没有内容"));
+    if (hits.length > 3) box.append(el("div", "ctx-block-line ctx-dim", "还有 " + (hits.length - 3) + " 条"));
+    return box;
+  }
+
+  function kindMatches(kind, key) {
+    if (key === "tools") return false;
+    if (key === "sys") return kind === "sys";
+    if (key === "mem") return kind === "memory";
+    if (key === "env") return kind === "env";
+    if (key === "block") return kind === "block";
+    return kind === "hist";
+  }
+
+  function ctxPeekLine(e) {
+    const line = el("div", "ctx-peek-line");
+    line.append(el("span", "ctx-role", ctxRole(e)));
+    line.append(el("span", "ctx-prev", e.preview || "（空）"));
+    return line;
+  }
+
+  // ctxRole names who wrote a line, in the owner's language. A summary block is
+  // written by the kernel, not by the owner, so it must not read 主人.
+  function ctxRole(e) {
+    if (e.role === "tool") return "结果";
+    if (e.kind === "block") return "摘要";
+    if (e.kind === "sys") return "系统";
+    if (e.kind === "memory") return "记忆";
+    if (e.kind === "env") return "环境";
+    if (e.role === "assistant") return "Bot";
+    if (e.role === "user") return "主人";
+    return e.role || "";
+  }
+
+  async function loadContext(name) {
+    if (!name) return;
+    const sel = state.sel;
+    const request = ++state.panelLoad;
+    try {
+      const snap = await api("/api/bots/" + encodeURIComponent(name) + "/context");
+      if (state.sel !== sel || request !== state.panelLoad) return;
+      state.ctxSnap = snap;
+      state.ctxStep = Math.max(0, (snap.requests || []).length - 1);
+      if (state.tab === "context") paintPanel();
+    } catch (e) {
+      if (state.sel !== sel || request !== state.panelLoad) return;
+      state.ctxSnap = { requests: [] };
+      if (state.tab === "context") paintPanel();
+    }
+  }
+
+
+  // openContextSheet is the full-width audit view: the sent sequence, one row
+  // per message, with the text of the chosen row under it. The panel's 320px
+  // is enough for the totals; reading a tool result needs the room.
+  let ctxSheet = null;
+  function openContextSheet(req, snap) {
+    closeContextSheet();
+    const sheet = el("div", "ctx-sheet-wrap");
+    const box = el("div", "ctx-sheet");
+    const bar = el("div", "ctx-sheet-bar");
+    bar.append(el("h1", "", "上下文"));
+    const meta = el("span", "ctx-sheet-meta");
+    meta.append(el("span", "", snap.bot || ""));
+    meta.append(el("span", "ctx-dot", "·"));
+    meta.append(el("span", "", "本轮第 " + req.step + " 次请求"));
+    const share = ctxShare(req, snap);
+    if (share) {
+      meta.append(el("span", "ctx-dot", "·"));
+      meta.append(el("span", "", share + " of " + tokenText(snap.working_set)));
+    }
+    bar.append(meta);
+    const close = el("button", "ghost ctx-sheet-close");
+    close.type = "button";
+    close.setAttribute("aria-label", "关闭");
+    close.append(icon("x"));
+    close.addEventListener("click", closeContextSheet);
+    bar.append(close);
+    box.append(bar);
+
+    const bodyBox = el("div", "ctx-sheet-body");
+    const side = el("div", "ctx-side");
+    const head = el("div", "ctx-side-hd", "本轮请求");
+    side.append(head);
+    if ((snap.requests || []).length > 1) {
+      const chips = el("div", "ctx-reqs");
+      snap.requests.forEach((r, i) => {
+        const chip = el("button", "ctx-req" + (i === state.ctxStep ? " on" : ""));
+        chip.type = "button";
+        chip.append(el("span", "", "第 " + r.step + " 次 " + (when(r.at) || "")), el("span", "ctx-req-tk", tokenText(ctxTotal(r))));
+        chip.addEventListener("click", () => {
+          state.ctxStep = i;
+          openContextSheet(snap.requests[i], snap);
+        });
+        chips.append(chip);
+      });
+      side.append(chips);
+    } else {
+      side.append(el("div", "ctx-reqs ctx-dim", when(req.at) || ""));
+    }
+    side.append(el("div", "ctx-side-hd", "分层"));
+    for (const l of ctxLayers(req)) {
+      const row = el("button", "ctx-side-row");
+      row.type = "button";
+      row.append(el("span", "ctx-dotmark k-" + l.key), el("span", "ctx-name", l.label), el("span", "ctx-tk num", tokenText(l.tokens)));
+      side.append(row);
+      for (const b of l.blocks) {
+        row.addEventListener("click", () => scrollToSeq(b.from));
+        const sub = el("button", "ctx-side-row ctx-side-sub");
+        sub.type = "button";
+        sub.append(el("span", "ctx-name", "seq " + (b.from || "?") + "–" + (b.to || "?")), el("span", "ctx-tk num", tokenText(b.tokens)));
+        sub.addEventListener("click", () => scrollToSeq(b.from));
+        side.append(sub);
+      }
+    }
+    const foot = el("div", "ctx-side-foot");
+    if (snap.working_set) foot.append(el("div", "", "工作集 " + tokenText(snap.working_set) + "，现在用了 " + (ctxShare(req, snap) || "—") + "。"));
+    if (snap.window) foot.append(el("div", "", "模型窗口 " + tokenText(snap.window) + "，只用来防溢出。"));
+    if (req.tools > 0) foot.append(el("div", "", "工具定义 " + tokenText(req.tools) + " 没有算进工作集分母。"));
+    side.append(foot);
+
+    const main = el("div", "ctx-main");
+    const seqHead = el("div", "ctx-seq-head");
+    seqHead.append(el("span", "ctx-seq-h", "实际发出的消息"), el("span", "ctx-seq-s", "按发送顺序，点一行看原文"));
+    main.append(seqHead);
+    const seq = el("div", "ctx-seq");
+    (req.entries || []).forEach((e, i) => {
+      const open = state.ctxOpenEntry === "e" + i;
+      const row = el("button", "ctx-seq-row" + (open ? " on" : ""));
+      row.type = "button";
+      const bar = el("span", "ctx-bar k-" + e.kind);
+      if (e.kind === "block") {
+        row.classList.add("ctx-seq-block");
+        if (e.from) row.dataset.from = String(e.from);
+      }
+      row.append(bar);
+      row.append(el("span", "ctx-seq-n", seqLabel(e)));
+      row.append(el("span", "ctx-seq-role", ctxRole(e)));
+      row.append(el("span", "ctx-seq-prev", e.preview || "（空）"));
+      // The estimate is the kernel's, so the row agrees with the band above it;
+      // a per-entry figure the front end invented would not add up.
+      const tail = el("span", "ctx-seq-tk num", tokenText(e.tokens || 0));
+      if (e.cut) tail.append(el("span", "ctx-seq-cut", "截断"));
+      row.append(tail);
+      row.addEventListener("click", () => {
+        state.ctxOpenEntry = open ? "" : "e" + i;
+        openContextSheet(req, snap);
+      });
+      seq.append(row);
+      if (open) {
+        const doc = el("div", "ctx-doc");
+        doc.append(el("pre", "ctx-pre", e.preview || "（空）"));
+        if (e.cut) doc.append(el("p", "ctx-doc-hint", "这里只显示前 400 字；完整原文在对话记录里。"));
+        seq.append(doc);
+      }
+    });
+    if (req.more) seq.append(el("p", "ctx-seq-more", "还有 " + req.more + " 条未列出"));
+    if (!(req.entries || []).length) seq.append(el("p", "hint", "这次请求没有消息。"));
+    main.append(seq);
+    bodyBox.append(side, main);
+    box.append(bodyBox);
+    sheet.append(box);
+    sheet.addEventListener("click", (ev) => { if (ev.target === sheet) closeContextSheet(); });
+    document.body.append(sheet);
+    ctxSheet = sheet;
+    document.addEventListener("keydown", ctxSheetKey);
+  }
+
+  // seqLabel is the left gutter: only a summary block has one, because it
+  // covers a range the model can expand. A sent message is not labelled with a
+  // transcript line: the request carries the text, not the line number, and a
+  // number inferred by counting would be a guess.
+  function seqLabel(e) {
+    if (e.kind === "block") return e.from ? e.from + "–" + (e.to || "?") : "";
+    return "";
+  }
+
+  // scrollToSeq opens the first entry of a summary block, which is the nearest
+  // row the sheet can show. A block itself covers a range and has no single row.
+  function scrollToSeq(from) {
+    const rows = document.querySelectorAll(".ctx-seq-row");
+    if (!rows.length) return;
+    const target = document.querySelector(".ctx-seq-block[data-from='" + from + "']") || rows[0];
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.classList.add("ctx-flash");
+    setTimeout(() => target.classList.remove("ctx-flash"), 900);
+  }
+
+  function closeContextSheet() {
+    if (!ctxSheet) return;
+    document.removeEventListener("keydown", ctxSheetKey);
+    ctxSheet.remove();
+    ctxSheet = null;
+  }
+
+  function ctxSheetKey(ev) {
+    if (ev.key === "Escape") closeContextSheet();
   }
 
   function styleChips(data) {

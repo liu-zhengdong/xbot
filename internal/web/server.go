@@ -141,6 +141,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	s.registerStatusAPI(mux)
+	s.registerContextAPI(mux)
 	mux.HandleFunc("POST /api/bots", s.createBot)
 	mux.HandleFunc("POST /api/bots/import", s.importTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/fork", s.forkBot)
