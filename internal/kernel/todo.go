@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -53,6 +54,22 @@ type todoFile struct {
 	Step        int        `json:"step,omitempty"`
 	UpdatedStep int        `json:"updated_step,omitempty"`
 	Reminded    []TodoItem `json:"reminded,omitempty"`
+}
+
+// todoState is this kernel's view of one bot's task list: the switch and stale
+// step count resolved from the model spec, and the list cached in memory so a
+// step count does not touch the file. The kernel owns one per bot for its
+// lifetime, like cwdState and projectCache.
+type todoState struct {
+	mu sync.Mutex
+	// on and steps are the policy, cached because it costs a config lookup.
+	on     bool
+	steps  int
+	policy bool
+	// loaded and file are the list. Step changes stay in file until a write or
+	// a reminder saves it.
+	loaded bool
+	file   todoFile
 }
 
 func (k *Kernel) todoPath() string {
@@ -132,10 +149,10 @@ func (k *Kernel) todoPolicy() (enabled bool, steps int) {
 	if k == nil {
 		return false, steps
 	}
-	k.todoMu.Lock()
-	defer k.todoMu.Unlock()
-	if k.todoCached {
-		return k.todoOnV, k.todoStepsV
+	k.todo.mu.Lock()
+	defer k.todo.mu.Unlock()
+	if k.todo.policy {
+		return k.todo.on, k.todo.steps
 	}
 	if k.TodoSteps > 0 {
 		steps = k.TodoSteps
@@ -151,18 +168,18 @@ func (k *Kernel) todoPolicy() (enabled bool, steps int) {
 				}
 				if spec.Todo != nil {
 					enabled = *spec.Todo
-					k.todoOnV = enabled
-					k.todoStepsV = steps
-					k.todoCached = true
+					k.todo.on = enabled
+					k.todo.steps = steps
+					k.todo.policy = true
 					return enabled, steps
 				}
 			}
 		}
 		enabled = deepseekDefault(prov, model)
 	}
-	k.todoOnV = enabled
-	k.todoStepsV = steps
-	k.todoCached = true
+	k.todo.on = enabled
+	k.todo.steps = steps
+	k.todo.policy = true
 	return enabled, steps
 }
 
@@ -245,17 +262,17 @@ func (k *Kernel) saveTodo(f todoFile) error {
 }
 
 // todoStateLocked returns the in-memory list, loading it once. The caller
-// holds todoMu. Step changes stay here until a write or a reminder saves.
+// holds todo.mu. Step changes stay here until a write or a reminder saves.
 func (k *Kernel) todoStateLocked() (todoFile, error) {
-	if k.todoLoaded {
-		return k.todoMem, nil
+	if k.todo.loaded {
+		return k.todo.file, nil
 	}
 	f, err := k.loadTodo()
 	if err != nil {
 		return todoFile{}, err
 	}
-	k.todoMem = f
-	k.todoLoaded = true
+	k.todo.file = f
+	k.todo.loaded = true
 	return f, nil
 }
 
@@ -272,8 +289,8 @@ func (k *Kernel) noteTodoStep(msgs []provider.Message) {
 		return
 	}
 	updated := stepUpdatedTodo(msgs)
-	k.todoMu.Lock()
-	defer k.todoMu.Unlock()
+	k.todo.mu.Lock()
+	defer k.todo.mu.Unlock()
 	f, err := k.todoStateLocked()
 	if err != nil {
 		return
@@ -285,7 +302,7 @@ func (k *Kernel) noteTodoStep(msgs []provider.Message) {
 	if updated {
 		f.UpdatedStep = f.Step
 	}
-	k.todoMem = f
+	k.todo.file = f
 }
 
 func stepUpdatedTodo(msgs []provider.Message) bool {
@@ -322,8 +339,8 @@ func (k *Kernel) todoNote(now time.Time, prev []Reminder) string {
 	if !todoCooled(prev, now) {
 		return ""
 	}
-	k.todoMu.Lock()
-	defer k.todoMu.Unlock()
+	k.todo.mu.Lock()
+	defer k.todo.mu.Unlock()
 	f, err := k.todoStateLocked()
 	if err != nil || len(f.Items) == 0 {
 		return ""
@@ -337,7 +354,7 @@ func (k *Kernel) todoNote(now time.Time, prev []Reminder) string {
 		return ""
 	}
 	f.Reminded = append([]TodoItem(nil), f.Items...)
-	k.todoMem = f
+	k.todo.file = f
 	if err := k.saveTodo(f); err != nil {
 		return ""
 	}
@@ -445,9 +462,9 @@ func (k *Kernel) todoGate(t *turn, msg provider.Message) (string, bool) {
 	if len(k.openApprovals()) > 0 {
 		return "", false
 	}
-	k.todoMu.Lock()
+	k.todo.mu.Lock()
 	f, err := k.todoStateLocked()
-	k.todoMu.Unlock()
+	k.todo.mu.Unlock()
 	if err != nil {
 		return "", false
 	}
@@ -596,8 +613,8 @@ func (t todoTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	t.k.todoMu.Lock()
-	defer t.k.todoMu.Unlock()
+	t.k.todo.mu.Lock()
+	defer t.k.todo.mu.Unlock()
 	f, err := t.k.todoStateLocked()
 	if err != nil {
 		return "", err
@@ -622,7 +639,7 @@ func (t todoTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	// Fresh immediately, before noteTodoStep advances the counter, so a
 	// reminder cannot land in the gap after this write.
 	f.UpdatedStep = f.Step
-	t.k.todoMem = f
+	t.k.todo.file = f
 	if err := t.k.saveTodo(f); err != nil {
 		return "", err
 	}
