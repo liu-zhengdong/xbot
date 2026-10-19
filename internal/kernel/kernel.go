@@ -392,7 +392,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if ev.Source == link.NameTimer {
 		onDelta = nil
 	}
-	var appendErr error
 	var approve agent.Approver
 	if k.Approve != nil {
 		approve = k.trackApprove(k.Approve)
@@ -434,215 +433,18 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	runCtx = context.WithValue(runCtx, turnKey{}, t)
 	t.runCtx = runCtx
 	t.cancelRun = cancelRun
-	br := newBreaker()
-	var msgSeqs []int
-	track := func(m provider.Message) error {
-		seq, err := k.recordTurn(t, m)
-		if err != nil {
-			return err
-		}
-		msgSeqs = append(msgSeqs, seq)
-		return nil
+	r := &turnRun{
+		k:         k,
+		t:         t,
+		p:         p,
+		list:      list,
+		assembled: assembled,
+		onDelta:   onDelta,
+		br:        newBreaker(),
 	}
-	opts := agent.Options{
-		MaxSteps: k.stepGuard(),
-		Approve:  approve,
-		OnDelta: func(s string) {
-			if onDelta != nil && !t.isForked() {
-				onDelta(s)
-			}
-		},
-		OnTool: func(name, summary string) {
-			if name == "ask_user" {
-				t.mu.Lock()
-				t.askedOwner = true
-				t.mu.Unlock()
-			}
-			k.beginStep(t, name, summary)
-			t.mu.Lock()
-			forked := t.branch != ""
-			t.mu.Unlock()
-			if k.OnTool != nil && !forked {
-				k.OnTool(name, summary)
-			}
-		},
-		OnResult: func(name, output string) {
-			k.endStep(t, name, output)
-			if k.OnResult != nil && !t.isForked() {
-				k.OnResult(name, output)
-			}
-		},
-		Redact: k.redactor(),
-		OnMessage: func(m provider.Message) {
-			if appendErr != nil {
-				return
-			}
-			appendErr = track(m)
-		},
-		RefreshTools: func() ([]tools.Tool, error) {
-			return k.modelTools()
-		},
-		AfterStep: func() ([]provider.Message, error) {
-			if !k.AllowFork {
-				return k.absorbInbox()
-			}
-			t.forkMu.Lock()
-			defer t.forkMu.Unlock()
-			if t.isForked() || k.tryForkLocked(t) {
-				// A background never reads the owner's messages; they belong to the foreground.
-				// It reads only the controls sent to it: steer, queue, interrupt.
-				return t.takeCtrl(), nil
-			}
-			return k.absorbInbox()
-		},
-		Guard: func(_ int, stepMsgs []provider.Message) (string, bool, string) {
-			k.noteTodoStep(stepMsgs)
-			remind, stop, reason := br.Observe(stepMsgs)
-			if remind != "" {
-				// The reminder was attached to the message just recorded, not to
-				// whatever Count returns after a concurrent foreground write.
-				if rerr := k.reminders().Record(t.lastSeq(), KindLoop, remind, k.now()); rerr != nil && appendErr == nil {
-					appendErr = rerr
-				}
-			}
-			if todo := k.todoNote(k.now(), k.todoPrev()); todo != "" {
-				if rerr := k.reminders().Record(t.lastSeq(), KindTodo, todo, k.now()); rerr != nil && appendErr == nil {
-					appendErr = rerr
-				}
-				if remind != "" {
-					remind += "\n\n" + todo
-				} else {
-					remind = todo
-				}
-			}
-			// A shell job that finished during this step is attached here, after
-			// the tool results, so it does not land in the middle of a call.
-			// Project instructions and context usage use the same boundary:
-			// they show up on the next model call, not in the middle of one.
-			if note := k.shellNotice(k.shellPrev()); note != "" {
-				if rerr := k.reminders().Record(t.lastSeq(), KindShellJob, note, k.now()); rerr != nil && appendErr == nil {
-					appendErr = rerr
-				}
-				if remind != "" {
-					remind += "\n\n" + note
-				} else {
-					remind = note
-				}
-			}
-			if note := k.stepBoundaryNotes(t); note != "" {
-				if remind != "" {
-					remind += "\n\n" + note
-				} else {
-					remind = note
-				}
-			}
-			if !stop {
-				if why, over := k.backgroundOverBudget(t); over {
-					stop, reason = true, why
-				}
-			}
-			if stop {
-				_ = k.Bot.LogTrace(bot.TraceStop, reason, k.now())
-			}
-			return remind, stop, reason
-		},
-		OnIdle: func(msg provider.Message) (string, bool) {
-			if br.Stopped() {
-				return "", false
-			}
-			// The gate is a new user message, recorded by OnMessage. Binding it
-			// onto the assistant line would end the request on an assistant turn
-			// and make replay attribute the text to the model.
-			return k.todoGate(t, msg)
-		},
-	}
-	if onDelta == nil {
-		opts.OnDelta = nil
-	}
-	type result struct {
-		produced []provider.Message
-		err      error
-	}
-	done := make(chan result, 1)
-	go func() {
-		rp := &replyProvider{
-			inner:  p,
-			accept: k.userReplyTarget,
-			// The snapshot is taken before the request leaves, so a call that
-			// times out or fails still shows what was sent. It clips the text,
-			// so the ring holds previews, not tool output.
-			onSend: func(req provider.Request) { k.noteContext(t, req) },
-			onUse:  func(req provider.Request, msg provider.Message) { k.noteUsage(t, req, msg) },
-		}
-		produced, err := agent.Run(runCtx, rp, list, assembled, opts)
-		var bg bool
-		for {
-			if err == nil {
-				err = appendErr
-			}
-			// A control that arrived after the last step starts another run, so a
-			// background works through its queue before it ends. Nothing else
-			// continues it: a background stops when the model stops, when the breaker
-			// trips, or when its wall-clock budget is spent. Controls are read only
-			// once another run is certain: a run the budget refuses leaves them
-			// pending, and finishBackground reports them as unread.
-			t.mu.Lock()
-			bg = t.branch != ""
-			var pend []provider.Message
-			if err == nil && bg && len(t.pendingCtrlLocked()) > 0 {
-				if spent, over := k.backgroundBudgetSpent(t); over {
-					t.stopReason = spent
-				} else {
-					pend = t.takeCtrlLocked()
-				}
-			}
-			finishing := len(pend) == 0
-			if finishing {
-				t.finished = true
-			}
-			t.mu.Unlock()
-			if finishing {
-				break
-			}
-			// Another run starts fresh: its own end decides whether the task is done.
-			// Reminders already recorded stay on the message they were bound to;
-			// they are not copied onto whatever line is newest.
-			br.ResetSegment()
-			convo := append(append([]provider.Message(nil), assembled...), produced...)
-			if err := k.reminders().Apply(convo[len(assembled):], msgSeqs); err != nil && appendErr == nil {
-				appendErr = err
-			}
-			for _, m := range pend {
-				if rerr := track(m); rerr != nil && appendErr == nil {
-					appendErr = rerr
-				}
-				convo = append(convo, m)
-				produced = append(produced, m)
-			}
-			more, rerr := agent.Run(runCtx, rp, list, convo, opts)
-			produced = append(produced, more...)
-			err = rerr
-		}
-		// The turn is over. Every request inside it still carried the tool
-		// images. Drop the bytes now so this slice is not a later turn.
-		// The transcript never stored them.
-		for i := range produced {
-			produced[i].Images = nil
-		}
-		if errors.Is(err, context.Canceled) {
-			if serr := k.closeDangling(DangleCancel, false); serr != nil && appendErr == nil {
-				appendErr = serr
-			}
-		}
-		if bg {
-			k.finishBackground(t, produced, err)
-			k.flushShellWake()
-			cancelRun()
-			return
-		}
-		k.flushShellWake()
-		done <- result{produced, err}
-	}()
+	opts := r.options(approve)
+	done := make(chan turnResult, 1)
+	go r.drive(opts, done)
 	var tick <-chan time.Time
 	if k.AllowFork {
 		ticker := time.NewTicker(forkPoll)
@@ -651,16 +453,16 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	}
 	for {
 		select {
-		case r := <-done:
+		case res := <-done:
 			stopWatch()
 			cancelRun()
-			if appendErr != nil {
-				return appendErr
+			if r.err != nil {
+				return r.err
 			}
-			if pushErr := k.pushFindings(ctx, r.produced); pushErr != nil {
+			if pushErr := k.pushFindings(ctx, res.produced); pushErr != nil {
 				return pushErr
 			}
-			return r.err
+			return res.err
 		case <-t.forked:
 			// The turn goes on in the background; the caller may answer the owner now.
 			stopWatch()
