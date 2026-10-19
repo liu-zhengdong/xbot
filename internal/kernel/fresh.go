@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -65,6 +66,15 @@ type fileSnap struct {
 	partial bool
 	lines   int
 	preview string
+}
+
+// freshState is the files this kernel has read or written, oldest dropped past
+// maxTrackedFiles. It lives for the kernel's lifetime and is not persisted: a
+// new process starts empty. The kernel owns one per bot, like cwdState.
+type freshState struct {
+	mu  sync.Mutex
+	rec map[string]*fileRec
+	n   uint64
 }
 
 type readParams struct {
@@ -254,13 +264,13 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 	if !ok {
 		return "", false
 	}
-	k.fileMu.Lock()
-	rec := k.files[path]
+	k.files.mu.Lock()
+	rec := k.files.rec[path]
 	var copy fileRec
 	if rec != nil {
 		copy = *rec
 	}
-	k.fileMu.Unlock()
+	k.files.mu.Unlock()
 	if rec == nil || !copy.full || copy.turn == nil || copy.turn != k.turnFor(ctx) {
 		return "", false
 	}
@@ -294,14 +304,14 @@ func (k *Kernel) rejectUnreadOrStale(ctx context.Context, tool tools.Tool, args 
 		return nil
 	}
 	label := modelPath(tool, path)
-	k.fileMu.Lock()
-	rec := k.files[path]
+	k.files.mu.Lock()
+	rec := k.files.rec[path]
 	var copy *fileRec
 	if rec != nil {
 		c := *rec
 		copy = &c
 	}
-	k.fileMu.Unlock()
+	k.files.mu.Unlock()
 	name := tool.Name()
 	if copy == nil {
 		return fmt.Errorf("%s: %s %s", name, label, msgNotRead)
@@ -364,11 +374,11 @@ func (k *Kernel) noteWrite(ctx context.Context, tool tools.Tool, args json.RawMe
 	full := !snap.partial
 	if tool.Name() == "edit_file" {
 		full = false
-		k.fileMu.Lock()
-		if rec := k.files[path]; rec != nil {
+		k.files.mu.Lock()
+		if rec := k.files.rec[path]; rec != nil {
 			full = rec.full
 		}
-		k.fileMu.Unlock()
+		k.files.mu.Unlock()
 	}
 	k.storeFile(path, snap, k.currentStep(ctx), full, modelPath(tool, path), k.turnFor(ctx))
 	return true
@@ -420,13 +430,13 @@ func (k *Kernel) currentStep(ctx context.Context) int {
 }
 
 func (k *Kernel) storeFile(path string, snap fileSnap, step int, full bool, label string, tr *turn) {
-	k.fileMu.Lock()
-	defer k.fileMu.Unlock()
-	if k.files == nil {
-		k.files = map[string]*fileRec{}
+	k.files.mu.Lock()
+	defer k.files.mu.Unlock()
+	if k.files.rec == nil {
+		k.files.rec = map[string]*fileRec{}
 	}
-	k.fileN++
-	k.files[path] = &fileRec{
+	k.files.n++
+	k.files.rec[path] = &fileRec{
 		mtime:   snap.mtime,
 		size:    snap.size,
 		hash:    snap.hash,
@@ -435,13 +445,13 @@ func (k *Kernel) storeFile(path string, snap fileSnap, step int, full bool, labe
 		full:    full && !snap.partial,
 		preview: snap.preview,
 		label:   label,
-		seq:     k.fileN,
+		seq:     k.files.n,
 		turn:    tr,
 	}
-	for len(k.files) > maxTrackedFiles {
+	for len(k.files.rec) > maxTrackedFiles {
 		var drop string
 		var oldest uint64 = ^uint64(0)
-		for p, r := range k.files {
+		for p, r := range k.files.rec {
 			if r != nil && r.seq < oldest {
 				oldest = r.seq
 				drop = p
@@ -450,14 +460,14 @@ func (k *Kernel) storeFile(path string, snap fileSnap, step int, full bool, labe
 		if drop == "" {
 			return
 		}
-		delete(k.files, drop)
+		delete(k.files.rec, drop)
 	}
 }
 
 func (k *Kernel) touchMtime(path string, m time.Time) {
-	k.fileMu.Lock()
-	defer k.fileMu.Unlock()
-	if r := k.files[path]; r != nil {
+	k.files.mu.Lock()
+	defer k.files.mu.Unlock()
+	if r := k.files.rec[path]; r != nil {
 		r.mtime = m
 	}
 }
@@ -493,14 +503,14 @@ func (k *Kernel) fileChangeNote(prev []Reminder) string {
 		path string
 		rec  fileRec
 	}
-	k.fileMu.Lock()
-	items := make([]item, 0, len(k.files))
-	for p, r := range k.files {
+	k.files.mu.Lock()
+	items := make([]item, 0, len(k.files.rec))
+	for p, r := range k.files.rec {
 		if r != nil {
 			items = append(items, item{p, *r})
 		}
 	}
-	k.fileMu.Unlock()
+	k.files.mu.Unlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].rec.seq < items[j].rec.seq })
 	var b strings.Builder
 	n := 0

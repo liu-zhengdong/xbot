@@ -117,9 +117,7 @@ type Kernel struct {
 	channel *Channel
 	// files is this bot's read state for the life of the kernel. Another bot's
 	// kernel does not see it, and a new process starts empty.
-	fileMu sync.Mutex
-	files  map[string]*fileRec
-	fileN  uint64
+	files freshState
 	// denied remembers tool calls the owner refused during the current turn.
 	// Handle clears it when a new turn starts, so a later message can ask again.
 	denyMu sync.Mutex
