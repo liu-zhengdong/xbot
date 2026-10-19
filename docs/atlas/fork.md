@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/bot/transcript.go, internal/exec/]
-verified: 2026-10-19 @ b3532b5
+verified: 2026-10-19 @ b758a86
 ---
 # 插话时分叉
 
@@ -85,10 +85,10 @@ verified: 2026-10-19 @ b3532b5
 - **谁来分叉**：拿着锁的那个进程。网页请求如果就在这个进程里，直接开前台的一轮，用 SSE 流式回给主人；如果锁在别的进程（比如终端），网页照旧把事件投进收件箱，持锁进程立刻（看 `inbox.Wait()`，不是等这一步跑完）分叉，前台的回复通过刷新 transcript 补到网页上。
 - **崩溃恢复实现**（F4）：`Kernel.RecoverInterrupted`（`internal/kernel/bgrecover.go`），每个内核第一次 `Handle` 时在 `repairTail` 之前跑一次；内核自己有活着的后台时不跑。对有 `fork` 没有 `fork_end` 的分支：写 `fork_end{interrupted}`（步数按这个分支的助手行数算），`meta.json` 改成 interrupted，投一条 id 为 `ev_<bg>_end` 的完成事件（收件箱按 id 去重，重复启动不会再投）。分支末尾没答的调用由 `repairTail` 补一条带分支的占位结果。网页和 `serve` 都走 `Handle`，所以两条路径都会恢复。
 - **崩溃恢复**：重启打开 transcript 时，找到有 `fork` 没有 `fork_end` 的分支，补写 `fork_end{status:"interrupted"}`，把 `meta.json` 标成 interrupted，并投一条完成事件：「后台 bg_7 因进程重启中断，做到第 N 步」。第一版不自动续跑，由前台下一轮决定要不要重做。半行照现有规则截掉。
-- **后台只受墙钟预算约束，不按步数分段**（[ADR 0014](../adr/0014-no-background-segments.md)）。 后台从分叉那一刻开始计时，总时长不超过工作角色给的后台预算（`chat` 45 分钟、`dev` 2 小时，`profile set --background-max-time` 改，见 [多 Bot](multibot.md)）。预算用完时 `Guard` 停下这一轮，写 `<stop_reason>` 收尾，完成事件写明是预算让它停下的。步数只剩一个防呆常量（`maxStepsGuard` 1000），不参与设计；以前那套「用满一段步数就自己再开一段、最多 4 段」的续段机制已删除，正是它把「上一段用完了步数上限」这种假主人消息写进了对话。
+- **后台只受墙钟预算约束，不按步数分段**（[ADR 0014](../adr/0014-no-background-segments.md)）。 后台从分叉那一刻开始计时，总时长不超过工作角色给的后台预算（`chat` 45 分钟、`dev` 2 小时，`profile set --background-max-time` 改，见 [多 Bot](multibot.md)）。预算每步之后由 `Guard` 检查，也在为一条排队控制消息另起一轮之前检查；用完时写 `<stop_reason>` 收尾，完成事件写明是预算停下的，没来得及读的控制标成未读。步数只剩一个防呆常量（`maxStepsGuard` 1000），不参与设计；以前那套「用满一段步数就自己再开一段、最多 4 段」的续段机制已删除，正是它把「上一段用完了步数上限」这种假主人消息写进了对话。
 - **排队的控制消息另起一轮。** 后台本来要结束时还有没读的 steer / queue / interrupted，就带着它们再跑一轮；是不是再跑只看控制消息在不在，不看步数。
 
-**网页界面**（F5）：`internal/web/static/app.js` 里以 `bg` 开头的函数。每 2 秒（页面可见时）以及每次发送结束后拉一次 `GET /backgrounds`；输入框里有正在写的追加指示时不重绘弹层；切换 Bot 后旧数据不再渲染。聊天里隐藏 `fork`/`fork_end` 标记行和 `fork_end` 事件，带 `branch` 的行上方加「后台」来源标。发给后台的控制消息和内核写给模型的注记（环境更新、提醒、完成门、停止说明、控制消息）一律靠 transcript 行的 `origin: "internal"` 字段隐藏，界面不按文本开头猜；`skipMessage` 只读这个字段。
+**网页界面**（F5）：`internal/web/static/app.js` 里以 `bg` 开头的函数。每 2 秒（页面可见时）以及每次发送结束后拉一次 `GET /backgrounds`；输入框里有正在写的追加指示时不重绘弹层；切换 Bot 后旧数据不再渲染。聊天里隐藏 `fork`/`fork_end` 标记行和 `fork_end` 事件，带 `branch` 的行上方加「后台」来源标。发给后台的控制消息和内核写给模型的注记（环境更新、提醒、完成门、停止说明、控制消息）一律靠 transcript 行的 `origin` 字段隐藏，界面不按文本开头猜；`skipMessage` 只读这个字段。字段是三态：`owner` 显示、`internal` 隐藏、空只出现在改动前的旧行（那些才回落到开头匹配）。
 
 ## 8. 验收与测试
 **做完长什么样**：用假模型跑一个要 10 分钟的后台任务，中途主人连发 5 句话，每句都在 3 秒内（p95）看到回复，后台的总耗时和不插话时相比增加不超过 10%；前台遇到一个长活会转成新的后台；同时跑 2 个互不相干的后台，期间再插话，两个都不受影响、各有一张卡，碰同一仓库的第三件活排在对应后台之后；界面上有后台任务卡在动；后台照常做完，完成后 Bot 主动告诉主人；刷新页面，卡片和前后台消息的顺序都还在。
