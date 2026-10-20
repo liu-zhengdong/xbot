@@ -35,15 +35,19 @@ func TestDoThings(t *testing.T) {
 		}
 	}
 
+	// The reference is taken before anything is dispatched: the subagent
+	// writes into this same directory, and listing it later would pick up
+	// summary.txt or an atomic-write temp file.
+	summary := filepath.Join(dir, "summary.txt")
+	wantContent := "files:\n" + lsOutput(t, dir)
+
 	task := srv.Send("ada", "SMOKE_DO dir="+dir)
 	if task.Done != "交给子代理了" {
 		t.Fatalf("SMOKE_DO: done.text %q, want %q", task.Done, "交给子代理了")
 	}
 
-	// The file appears within 60 seconds with exactly `files:` plus what
-	// ls -1 returns here.
-	summary := filepath.Join(dir, "summary.txt")
-	wantContent := "files:\n" + lsOutput(t, dir)
+	// The file appears within 60 seconds with exactly `files:` plus the
+	// listing captured above.
 	WaitFor(t, 60*time.Second, "summary.txt on disk", func() (bool, string) {
 		info, err := os.Stat(summary)
 		if err != nil {
@@ -86,9 +90,11 @@ func TestDoThings(t *testing.T) {
 		}
 	}
 	checkClean("done.text", task.Done)
+	var streamed strings.Builder
 	for _, d := range task.Deltas {
-		checkClean("delta", d.Text)
+		streamed.WriteString(d.Text)
 	}
+	checkClean("streamed deltas joined", streamed.String())
 	rows := srv.Transcript("ada")
 	for _, r := range rows {
 		if r.Role == "assistant" {
