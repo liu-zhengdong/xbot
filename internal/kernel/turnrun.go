@@ -92,16 +92,24 @@ func (r *turnRun) options(approve agent.Approver) agent.Options {
 		Guard:     r.guardStep,
 		OnIdle:    r.onIdle,
 	}
-	// A timer wake has no one to stream to.
-	if r.onDelta == nil {
+	// A timer wake has no one to stream to, until an owner message takes
+	// over its output.
+	if r.onDelta == nil && r.k.AllowFork {
 		opts.OnDelta = nil
+	}
+	if !r.k.AllowFork {
+		opts.Preempt = r.t.preempt
+		opts.Preempted = r.takeOwner
 	}
 	return opts
 }
 
 func (r *turnRun) delta(s string) {
-	if r.onDelta != nil && !r.t.isForked() {
-		r.onDelta(s)
+	if r.t.isForked() {
+		return
+	}
+	if sk := r.t.sinkNow(); sk != nil && sk.OnDelta != nil {
+		sk.OnDelta(s)
 	}
 }
 
@@ -115,15 +123,15 @@ func (r *turnRun) toolStart(name, summary string) {
 	r.t.mu.Lock()
 	forked := r.t.branch != ""
 	r.t.mu.Unlock()
-	if r.k.OnTool != nil && !forked {
-		r.k.OnTool(name, summary)
+	if sk := r.t.sinkNow(); sk != nil && sk.OnTool != nil && !forked {
+		sk.OnTool(name, summary)
 	}
 }
 
 func (r *turnRun) toolEnd(name, output string) {
 	r.k.endStep(r.t, name, output)
-	if r.k.OnResult != nil && !r.t.isForked() {
-		r.k.OnResult(name, output)
+	if sk := r.t.sinkNow(); sk != nil && sk.OnResult != nil && !r.t.isForked() {
+		sk.OnResult(name, output)
 	}
 }
 
@@ -140,7 +148,10 @@ func (r *turnRun) onMessage(m provider.Message) {
 // a turn that may fork, the controls addressed to its background.
 func (r *turnRun) afterStep() ([]provider.Message, error) {
 	if !r.k.AllowFork {
-		return r.k.absorbInbox()
+		// The owner's words go first, then whatever the inbox brought.
+		owner := r.takeOwner()
+		rest, err := r.k.absorbInbox()
+		return append(owner, rest...), err
 	}
 	r.t.forkMu.Lock()
 	defer r.t.forkMu.Unlock()
@@ -270,6 +281,13 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 				pend = r.t.takeCtrlLocked()
 			}
 		}
+		if len(pend) == 0 && !bg && !r.k.AllowFork && err == nil {
+			// The owner spoke as the model finished: answer in this turn.
+			// The lock order is t.mu, then t.inter.mu, the same everywhere.
+			if pend = r.k.closeInterject(r.t, false); len(pend) > 0 {
+				r.k.freshAllowanceLocked(r.t)
+			}
+		}
 		finishing := len(pend) == 0
 		if finishing {
 			r.t.finished = true
@@ -309,5 +327,14 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		return
 	}
 	r.k.flushShellWake()
+	if !r.k.AllowFork {
+		// A run that failed leaves anything still queued unread; the sink
+		// that sent it is told, so it can answer the message itself.
+		dropped := r.k.closeInterject(r.t, true)
+		r.t.mu.Lock()
+		replyTo := r.t.replyTo
+		r.t.mu.Unlock()
+		r.t.finishSink(Outcome{Err: err, ReplyTo: replyTo, Unread: dropped})
+	}
 	done <- turnResult{produced: produced, err: err}
 }

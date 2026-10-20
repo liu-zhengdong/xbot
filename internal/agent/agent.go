@@ -86,6 +86,13 @@ type Options struct {
 	// its own user message, not appended to the assistant line. The caller
 	// must not continue forever.
 	OnIdle func(msg provider.Message) (remind string, cont bool)
+	// Preempt hands the caller a cancel for the model call about to go out,
+	// so news that must be read first can stop it; the returned func runs
+	// when the call is over. After a call stopped that way, Preempted returns
+	// the messages to add, and the same step is sent again with them. Nil
+	// leaves every call to run to its end.
+	Preempt   func(stop context.CancelFunc) (over func())
+	Preempted func() []provider.Message
 }
 
 // Run calls the model until it stops requesting tools or the step limit is hit.
@@ -125,7 +132,29 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if opt.OnStep != nil {
 			opt.OnStep()
 		}
-		msg, err := p.Chat(ctx, provider.Request{Messages: convo, Tools: defs}, opt.OnDelta)
+		var msg provider.Message
+		for {
+			callCtx, stop := context.WithCancel(ctx)
+			over := func() {}
+			if opt.Preempt != nil {
+				over = opt.Preempt(stop)
+			}
+			msg, err = p.Chat(callCtx, provider.Request{Messages: convo, Tools: defs}, opt.OnDelta)
+			over()
+			// A call that finished before the stop landed keeps its answer;
+			// the news is read at the next boundary instead.
+			stopped := err != nil && callCtx.Err() != nil && ctx.Err() == nil
+			stop()
+			if stopped && opt.Preempted != nil {
+				// The call was stopped for something newer, not by the run's
+				// own context. Whatever it streamed is dropped with it.
+				if extra := opt.Preempted(); len(extra) > 0 {
+					convo, produced = addMessages(convo, produced, extra, &images, opt.OnMessage)
+					continue
+				}
+			}
+			break
+		}
 		if err != nil {
 			return produced, err
 		}
@@ -189,26 +218,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			if err != nil {
 				return produced, err
 			}
-			for _, m := range extra {
-				// A message absorbed mid-turn can carry pictures of its own. They
-				// go through the same per-turn allowance a tool's pictures do, so
-				// the request never grows past it.
-				//
-				// The text is not touched here. The kernel put the note naming
-				// these pictures into the message before handing it over, and the
-				// note already says the picture may need opening by path; adding a
-				// second one would edit a line the transcript is about to store,
-				// and the stored text could no longer be cleaned back to the
-				// owner's own words.
-				if len(m.Images) > 0 {
-					m.Images, _ = images.take(m.Images)
-				}
-				convo = append(convo, m)
-				produced = append(produced, m)
-				if opt.OnMessage != nil {
-					opt.OnMessage(m)
-				}
-			}
+			convo, produced = addMessages(convo, produced, extra, &images, opt.OnMessage)
 		}
 		if opt.Guard != nil {
 			remind, stop, reason := opt.Guard(step, stepMsgs)
@@ -533,4 +543,30 @@ func finish(opt Options, name, out string) string {
 		opt.OnResult(name, out)
 	}
 	return out
+}
+
+// addMessages appends messages that arrived during the run (absorbed or
+// interjected) to the conversation and to what the run produced.
+func addMessages(convo, produced, extra []provider.Message, images *imageBudget, onMessage func(provider.Message)) ([]provider.Message, []provider.Message) {
+	for _, m := range extra {
+		// A message absorbed mid-turn can carry pictures of its own. They
+		// go through the same per-turn allowance a tool's pictures do, so
+		// the request never grows past it.
+		//
+		// The text is not touched here. The kernel put the note naming
+		// these pictures into the message before handing it over, and the
+		// note already says the picture may need opening by path; adding a
+		// second one would edit a line the transcript is about to store,
+		// and the stored text could no longer be cleaned back to the
+		// owner's own words.
+		if len(m.Images) > 0 {
+			m.Images, _ = images.take(m.Images)
+		}
+		convo = append(convo, m)
+		produced = append(produced, m)
+		if onMessage != nil {
+			onMessage(m)
+		}
+	}
+	return convo, produced
 }

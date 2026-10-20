@@ -548,10 +548,14 @@ func (k *Kernel) foregroundCapped(t *turn) bool {
 	if maxTime == 0 {
 		maxTime = 20 * time.Second
 	}
-	if maxTools > 0 && t.tools >= maxTools {
+	if maxTools > 0 && t.tools-t.capBaseTools >= maxTools {
 		return true
 	}
-	return maxTime > 0 && k.now().Sub(t.started) >= maxTime
+	from := t.started
+	if !t.capFrom.IsZero() {
+		from = t.capFrom
+	}
+	return maxTime > 0 && k.now().Sub(from) >= maxTime
 }
 
 // capNotice is the main-line reply when a turn moves to the background because it

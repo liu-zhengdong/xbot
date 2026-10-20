@@ -151,7 +151,7 @@
 
 `links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`，并带 `deadline`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<主人填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
 
-锁被别人占着时（另一轮在跑），事件先放进 inbox，响应立刻以 200 开始事件流，不再回 202。正在跑的那一轮在下一步之间读到这条消息，一并回答；锁一空出来，这次请求发 `done`，`text` 是那一轮的回答。那一轮已经在写最后的回答、没读到这条时，这次请求拿到锁后自己回答它，照常流出 `delta`。页面断开或 serve 正在重启时，消息留在 inbox，由 serve 回答。只有 `Server.ForkTurns` 打开时，锁被别的进程占着才仍回 202 `{"status":"queued"}`。
+Bot 正在这个进程里跑一轮时，主人的消息直接插进那一轮（[ADR 0017](adr/0017-owner-words-go-straight-into-the-turn.md)），不进 inbox。响应立刻以 200 开始事件流：那一轮正在等模型就取消重发，正在跑工具就等它返回再接上；之后的 `delta`、`tool`、`result` 和 `done` 都流到这次请求。原来那条请求收到 `event: done`，`data: {"text":"","handed_off":true}` 后结束，界面在这次请求那边等回答。那一轮出错结束、还没读到这句话时，这次请求自己回答它。正在跑的一轮在另一个进程（终端）时，事件放进 inbox，请求保持打开，那一轮在下一步之间读到；锁空出来后发回那一轮的回答，没读到就自己回答。页面断开或 serve 正在重启时，消息留在 inbox，由 serve 回答。只有 `Server.ForkTurns` 打开时，锁被别的进程占着才仍回 202 `{"status":"queued"}`。
 
 ## Bot 状态
 

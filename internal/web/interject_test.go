@@ -54,7 +54,7 @@ func (m interjectModel) Chat(ctx context.Context, req provider.Request, onDelta 
 	}}}, nil
 }
 
-func interjectServer(t *testing.T, model provider.Provider, list ...tools.Tool) (*httptest.Server, *http.Cookie) {
+func interjectServer(t *testing.T, model provider.Provider, list ...tools.Tool) (*httptest.Server, *http.Cookie, *bot.Bot) {
 	t.Helper()
 	root := t.TempDir()
 	s := &Server{Root: root, Owner: "u1", PollInterval: 20 * time.Millisecond}
@@ -82,15 +82,15 @@ func interjectServer(t *testing.T, model provider.Provider, list ...tools.Tool) 
 	}
 	ui := httptest.NewServer(muxOf(s))
 	t.Cleanup(ui.Close)
-	return ui, loginCookie(t, ui.URL, tok)
+	return ui, loginCookie(t, ui.URL, tok), b
 }
 
-// An interjection sent while a turn runs must reach that turn at its next
-// step and come back on its own request, not as a 202 "queued" left for a
-// later serve pass.
-func TestInterjectionIsReadByTheRunningTurn(t *testing.T) {
+// An interjection sent while a tool runs goes straight into that turn, not
+// the inbox: the turn reads it as soon as the tool returns, and the answer
+// streams back on the interjecting request. The first request hands off.
+func TestInterjectionGoesStraightIntoTheTurn(t *testing.T) {
 	slow := &slowTool{started: make(chan struct{}), release: make(chan struct{})}
-	ui, cookie := interjectServer(t, interjectModel{}, slow)
+	ui, cookie, b := interjectServer(t, interjectModel{}, slow)
 
 	first := make(chan map[string]string, 1)
 	go func() {
@@ -106,7 +106,21 @@ func TestInterjectionIsReadByTheRunningTurn(t *testing.T) {
 	go func() {
 		second <- postJSON(t, ui.URL+"/api/bots/ada/messages", cookie, `{"text":"插一句：现在几点"}`)
 	}()
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case f := <-first:
+		if !strings.Contains(f["done"], `"handed_off":true`) {
+			t.Fatalf("first request did not hand off: %v", f)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("first request never handed off")
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(box.Pending()); n != 0 {
+		t.Fatalf("interjection went through the inbox: %d pending", n)
+	}
 	close(slow.release)
 	var res httpResult
 	select {
@@ -120,22 +134,36 @@ func TestInterjectionIsReadByTheRunningTurn(t *testing.T) {
 	if ev := parseSSE(t, res.Body); !strings.Contains(ev["done"], "答插话") {
 		t.Fatalf("interjection events %v", ev)
 	}
-	select {
-	case f := <-first:
-		if !strings.Contains(f["done"], "答插话") {
-			t.Fatalf("running turn did not read the interjection: %v", f)
+	// The owner's line sits after the tool result, where it went in, followed
+	// by the internal note that keeps the earlier request alive.
+	var order []string
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		switch {
+		case e.Message.Role == provider.RoleTool:
+			order = append(order, "tool")
+		case strings.Contains(e.Message.Content, "插一句"):
+			order = append(order, "owner")
+		case strings.Contains(e.Message.Content, "<owner_interjected>") && e.IsInternal():
+			order = append(order, "note")
+		case e.Message.Content == "答插话":
+			order = append(order, "answer")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("first request never ended")
+	}
+	if strings.Join(order, ",") != "tool,owner,note,answer" {
+		t.Fatalf("transcript order %v", order)
 	}
 }
 
-// When the running turn is already writing its last answer, it never reads
-// the interjection. The waiting request answers it right after, instead of
-// leaving it in the inbox.
-func TestInterjectionAfterTheLastStepIsAnsweredAtOnce(t *testing.T) {
+// While the model is answering, an interjection stops that call at once and
+// sends it again with the owner's words: no waiting for it to finish.
+func TestInterjectionStopsTheModelCall(t *testing.T) {
 	m := interjectModel{hold: make(chan struct{}), holding: make(chan struct{})}
-	ui, cookie := interjectServer(t, m)
+	ui, cookie, b := interjectServer(t, m)
+	defer close(m.hold)
 
 	first := make(chan map[string]string, 1)
 	go func() {
@@ -147,29 +175,29 @@ func TestInterjectionAfterTheLastStepIsAnsweredAtOnce(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first answer never started")
 	}
-	second := make(chan httpResult, 1)
-	go func() {
-		second <- postJSON(t, ui.URL+"/api/bots/ada/messages", cookie, `{"text":"插一句：现在几点"}`)
-	}()
-	time.Sleep(100 * time.Millisecond)
-	close(m.hold)
+	start := time.Now()
+	res := postJSON(t, ui.URL+"/api/bots/ada/messages", cookie, `{"text":"插一句：现在几点"}`)
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("interjection waited %v for the model call", took)
+	}
+	if ev := parseSSE(t, res.Body); res.StatusCode != http.StatusOK || !strings.Contains(ev["done"], "答插话") {
+		t.Fatalf("interjection %d %v", res.StatusCode, ev)
+	}
 	select {
 	case f := <-first:
-		if !strings.Contains(f["done"], "第一件答完") {
+		if !strings.Contains(f["done"], `"handed_off":true`) {
 			t.Fatalf("first events %v", f)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("first request never ended")
 	}
-	select {
-	case res := <-second:
-		if res.StatusCode != http.StatusOK {
-			t.Fatalf("interjection %d %s", res.StatusCode, res.Body)
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Message.Content == "第一件答完" {
+			t.Fatal("the stopped call's answer was recorded")
 		}
-		if ev := parseSSE(t, res.Body); !strings.Contains(ev["done"], "答插话") {
-			t.Fatalf("interjection events %v", ev)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("interjection never answered")
 	}
 }

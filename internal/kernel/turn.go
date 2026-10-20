@@ -46,6 +46,9 @@ type turn struct {
 	// earlier step is then no longer safe: that step may be gone.
 	shrunk atomic.Bool
 
+	// inter takes owner messages while the turn runs (interject.go).
+	inter interjectState
+
 	// Fork state. mu guards branch, finished, tools, replies, steps, and lastTool.
 	// branch is set once, when the turn moves to the background.
 	mu       sync.Mutex
@@ -60,8 +63,12 @@ type turn struct {
 	// capSteps counts the steps after that (see foregroundCap).
 	capped   bool
 	capSteps int
-	replies  int // assistant messages recorded on this turn, for the step count
-	lastTool string
+	// capBaseTools and capFrom are where the foreground's allowance starts:
+	// the turn's start, or the latest owner message taken in mid-turn.
+	capBaseTools int
+	capFrom      time.Time
+	replies      int // assistant messages recorded on this turn, for the step count
+	lastTool     string
 	// Status tracking for the bot status feature: when the last tool call
 	// started and ended, whether the turn waits on the owner, and a ring of the
 	// last stepRingCap steps.

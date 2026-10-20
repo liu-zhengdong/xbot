@@ -81,9 +81,12 @@ type Kernel struct {
 	OnDelta    func(string)
 	OnTool     func(name, summary string)
 	OnResult   func(name, output string)
-	Selector   provider.ModelSelector
-	Now        func() time.Time
-	Extractor  Extractor
+	// OnHandoff runs when a newer owner message takes over the running
+	// turn's output (Interject); the caller can end its own stream.
+	OnHandoff func()
+	Selector  provider.ModelSelector
+	Now       func() time.Time
+	Extractor Extractor
 	// Redact overrides bot.RedactText for text this kernel returns, records, or
 	// streams from a tool. Nil uses the process replacer.
 	Redact func(string) string
@@ -233,6 +236,21 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.turnMu.Lock()
 	k.turn = t
 	k.turnMu.Unlock()
+	// The owner can speak into this turn from the moment it exists, so the
+	// time spent on setup (compaction, memory) is not a window where a message
+	// misses it. A message that arrives before the first model call stops
+	// that call before it leaves. A return before the model loop leaves such
+	// a message unread, and its sender answers it.
+	first := &Sink{OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnHandoff: k.OnHandoff}
+	if ev.Source == link.NameTimer {
+		first.OnDelta = nil
+	}
+	k.openInterject(t, first)
+	defer func() {
+		if unread := k.closeInterject(t, true); len(unread) > 0 {
+			t.finishSink(Outcome{Unread: unread})
+		}
+	}()
 	// A forked turn still belongs to its background goroutine. All other
 	// returns, including setup/repair errors, end this foreground turn.
 	defer func() {
@@ -510,44 +528,11 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		return nil, err
 	}
 	var out []provider.Message
-	owners := k.Bot.Config().Owners
 	for _, ev := range k.Inbox.Pending() {
 		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
-		raw := link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, owners))
-		content := raw
-		if ev.ReplyTo > 0 {
-			if q := k.quotePrefix(ev.ReplyTo); q != "" {
-				content = q + "\n\n" + raw
-			}
-		}
-		// An absorbed message is answered by this very turn, so its pictures
-		// travel with it now. The names ride along for the transcript line: the
-		// note naming them is added when the line is assembled, not here, so the
-		// stored text stays the owner's words and is not noted twice.
-		msg := provider.Message{
-			Role:    provider.RoleUser,
-			Content: content,
-			ReplyTo: ev.ReplyTo,
-		}
-		if len(ev.Images) > 0 {
-			msg.ImageNames = ev.Images
-			// The note always goes in, not only when a picture is left out: the
-			// agent may still trim to the turn's allowance, and a picture that
-			// fell to the cap needs the path to be found again. The note is
-			// removed again before the line is stored (recordTurn), so the
-			// transcript keeps the owner's words and the assembled context adds
-			// it back exactly once.
-			// The note always goes in, not only when a picture is left out: the
-			// agent may still trim to the turn's allowance, and a picture that
-			// fell to the cap needs the path to be found again. The note is
-			// removed again before the line is stored (recordTurn), so the
-			// transcript keeps the owner's words and the assembled context adds
-			// it back exactly once.
-			msg.Content = k.withPastedNote(msg.Content, ev.Images)
-			msg.Images = k.pastedImages(ev.Images)
-		}
+		msg := k.eventMessage(ev)
 		out = append(out, msg)
 		if err := k.Inbox.Ack(ev.ID); err != nil {
 			return nil, err

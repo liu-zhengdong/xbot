@@ -848,9 +848,25 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusServiceUnavailable, "restarting")
 		return
 	}
-	defer s.EndTurn()
+	// Cleanups run when this request is done with the turn. A request whose
+	// turn was handed to a newer message returns early and leaves them to
+	// run when the turn ends.
+	var cleanups []func()
+	later := func(f func()) { cleanups = append(cleanups, f) }
+	cleanup := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	}
+	detached := false
+	defer func() {
+		if !detached {
+			cleanup()
+		}
+	}()
+	later(s.EndTurn)
 	s.enterTab(s.owner)
-	defer s.leaveTab(s.owner)
+	later(func() { s.leaveTab(s.owner) })
 	var in struct {
 		Text    string   `json:"text"`
 		ReplyTo *int     `json:"reply_to"`
@@ -887,6 +903,14 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	ev := link.WebEvent(s.owner, text, time.Now())
 	ev.ReplyTo = replyTo
 	ev.Images = images
+	if !s.ForkTurns {
+		// The owner's word goes straight into a running turn (ADR 0017).
+		// When the turn took it but ended on an error before reading it, the
+		// message was not recorded, and this request answers it below.
+		if answered, _ := s.interject(w, r, b, ev); answered {
+			return
+		}
+	}
 	var (
 		shared bool
 		ok     bool
@@ -899,27 +923,28 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		lock, ok, err = b.TryLockHandle()
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		streamErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !ok {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
+			streamErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if err := box.Post(ev); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
+			streamErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if s.ForkTurns {
 			writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
 			return
 		}
-		// The owner's word comes first (ADR 0016). The message is in the inbox,
-		// so the running turn reads it at its next step boundary. This request
-		// stays open: once the lock is free it reports that turn's answer, or
-		// answers the message itself when the turn ended before reading it.
+		// The running turn is in another process (a terminal chat), out of
+		// reach of Interject. The message waits in the inbox, which that turn
+		// reads at its next step boundary. This request stays open: once the
+		// lock is free it reports that turn's answer, or answers the message
+		// itself when the turn ended before reading it.
 		startStream(w)
 		if lock = s.waitHandle(r.Context(), b); lock == nil {
 			// The page went away or serve is restarting: the message stays in
@@ -930,16 +955,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	k, gate, err := s.kernel(b)
 	if s.ForkTurns {
-		defer s.releaseHandle(b, k)
+		later(func() { s.releaseHandle(b, k) })
 	} else {
-		defer lock.Release()
+		later(func() { _ = lock.Release() })
 	}
 	if err != nil {
-		if waited != nil {
-			sendEvent(w, "error", map[string]string{"error": err.Error()})
-			return
-		}
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		streamErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	box := waited
@@ -962,10 +983,10 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	startStream(w)
 	send := func(event string, v any) { sendEvent(w, event, v) }
 	gate.Lock()
-	defer gate.Unlock()
+	later(gate.Unlock)
 	k.Bot = b
 	if box != nil {
-		defer func() { _ = box.Ack(ev.ID) }()
+		later(func() { _ = box.Ack(ev.ID) })
 		if absorbed, text, bg, failed := s.absorbedReply(b, box, ev.ID, text); absorbed {
 			// The running turn took the message in before it could fork.
 			switch {
@@ -983,41 +1004,51 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	for _, bg := range k.Backgrounds() {
 		before[bg.ID] = true
 	}
-	var seg strings.Builder
-	sent := 0
-	var writeMu sync.Mutex
-	sendLocked := func(event string, v any) {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		send(event, v)
-	}
-	k.OnDelta = func(t string) {
-		seg.WriteString(t)
-		if bot.SilentPrefix(seg.String()) {
-			return
-		}
-		rest := seg.String()[sent:]
-		sent = seg.Len()
-		if rest != "" {
-			sendLocked("delta", map[string]string{"text": rest})
-		}
-	}
-	k.OnTool = func(name, summary string) {
-		// Text before a tool call is status. The final done text is only the reply after the last tool.
-		seg.Reset()
-		sent = 0
-		sendLocked("tool", map[string]string{"name": name, "summary": summary})
-	}
-	k.OnResult = func(name, output string) {
-		sendLocked("result", map[string]string{"name": name, "output": clip(output, 4000)})
-	}
+	rs := &replyStream{w: w}
+	sendLocked := rs.send
+	k.OnDelta, k.OnTool, k.OnResult = rs.delta, rs.tool, rs.result
 	prevApprove := k.Approve
 	k.Approve = s.webApprove(b, k, sendLocked)
-	err = k.Handle(r.Context(), ev)
-	k.Approve = prevApprove
-	k.OnDelta, k.OnTool, k.OnResult = nil, nil, nil
+	// The turn runs on its own context: leaving the page cancels it, unless a
+	// newer message took it over first, and that message's request owns it now.
+	runCtx, cancelRun := context.WithCancel(context.WithoutCancel(r.Context()))
+	stopWatch := context.AfterFunc(r.Context(), cancelRun)
+	handoff := make(chan struct{})
+	var once sync.Once
+	k.OnHandoff = func() {
+		once.Do(func() {
+			stopWatch()
+			close(handoff)
+		})
+	}
+	later(func() {
+		k.Approve = prevApprove
+		k.OnDelta, k.OnTool, k.OnResult, k.OnHandoff = nil, nil, nil, nil
+		stopWatch()
+		cancelRun()
+	})
+	handled := make(chan error, 1)
+	go func() { handled <- k.Handle(runCtx, ev) }()
+	select {
+	case err = <-handled:
+	case <-handoff:
+		// A newer message took this turn's output; its request has the
+		// answer. The locks stay held until the turn ends.
+		detached = true
+		rs.send("done", doneBody{HandedOff: true})
+		rs.close()
+		go func() {
+			<-handled
+			cleanup()
+		}()
+		return
+	}
 	if err != nil {
 		send("error", map[string]string{"error": err.Error()})
+		return
+	}
+	if k.HandedOff() {
+		send("done", doneBody{HandedOff: true})
 		return
 	}
 	for _, bg := range k.Backgrounds() {
@@ -1027,11 +1058,121 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	reply := seg.String()
-	if bot.SilentText(reply) {
-		reply = ""
+	send("done", doneBody{Text: rs.reply(), ReplyTo: k.ReplySeq()})
+}
+
+// interject hands ev to the bot's running turn in this process and streams
+// that turn's answer back on this request. answered is false when no turn
+// took it; unread is set when the turn took it but ended on an error before
+// reading it, and the caller then answers it itself.
+func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, ev link.Event) (answered, unread bool) {
+	rs := &replyStream{w: w}
+	handoff := make(chan struct{})
+	var once sync.Once
+	sink := &kernel.Sink{
+		OnDelta: rs.delta, OnTool: rs.tool, OnResult: rs.result,
+		OnHandoff: func() { once.Do(func() { close(handoff) }) },
+		Done:      make(chan kernel.Outcome, 1),
 	}
-	send("done", doneBody{Text: reply, ReplyTo: k.ReplySeq()})
+	// The stream starts before the turn can write to it.
+	rs.mu.Lock()
+	if !kernel.Interject(b, ev, sink) {
+		rs.mu.Unlock()
+		return false, false
+	}
+	startStream(w)
+	rs.mu.Unlock()
+	// The page leaving does not stop the turn: the answer is on the
+	// transcript. Nothing is written here after this request returns.
+	defer rs.close()
+	select {
+	case <-r.Context().Done():
+		return true, false
+	case <-handoff:
+		rs.send("done", doneBody{HandedOff: true})
+		return true, false
+	case out := <-sink.Done:
+		switch {
+		case len(out.Unread) > 0:
+			return false, true
+		case out.Err != nil:
+			rs.send("error", map[string]string{"error": out.Err.Error()})
+		default:
+			rs.send("done", doneBody{Text: rs.reply(), ReplyTo: out.ReplyTo})
+		}
+		return true, false
+	}
+}
+
+// replyStream writes one request's live answer as server-sent events. Text
+// before a tool call is status; reply is only what came after the last tool.
+type replyStream struct {
+	w      http.ResponseWriter
+	mu     sync.Mutex
+	seg    strings.Builder
+	sent   int
+	closed bool
+}
+
+func (rs *replyStream) send(event string, v any) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if !rs.closed {
+		sendEvent(rs.w, event, v)
+	}
+}
+
+func (rs *replyStream) delta(t string) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	rs.seg.WriteString(t)
+	if rs.closed || bot.SilentPrefix(rs.seg.String()) {
+		return
+	}
+	rest := rs.seg.String()[rs.sent:]
+	rs.sent = rs.seg.Len()
+	if rest != "" {
+		sendEvent(rs.w, "delta", map[string]string{"text": rest})
+	}
+}
+
+func (rs *replyStream) tool(name, summary string) {
+	rs.mu.Lock()
+	rs.seg.Reset()
+	rs.sent = 0
+	rs.mu.Unlock()
+	rs.send("tool", map[string]string{"name": name, "summary": summary})
+}
+
+func (rs *replyStream) result(name, output string) {
+	rs.send("result", map[string]string{"name": name, "output": clip(output, 4000)})
+}
+
+func (rs *replyStream) reply() string {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	reply := rs.seg.String()
+	if bot.SilentText(reply) {
+		return ""
+	}
+	return reply
+}
+
+// close stops all later writes, for a request that has returned.
+func (rs *replyStream) close() {
+	rs.mu.Lock()
+	rs.closed = true
+	rs.mu.Unlock()
+}
+
+// streamErr reports err as an error event once the stream has started, and
+// as a plain error response before that.
+func streamErr(w http.ResponseWriter, code int, msg string) {
+	if w.Header().Get("Content-Type") == "text/event-stream" {
+		sendEvent(w, "error", map[string]string{"error": msg})
+		return
+	}
+	writeErr(w, code, msg)
 }
 
 // startStream sends the event-stream headers now, so the page knows the
@@ -1089,6 +1230,9 @@ type doneBody struct {
 	ReplyTo int    `json:"reply_to,omitempty"`
 	// Background is the bg_ id when this request's turn moved to the background.
 	Background string `json:"background,omitempty"`
+	// HandedOff is set when a newer owner message took over this turn; the
+	// answer arrives on that message's request.
+	HandedOff bool `json:"handed_off,omitempty"`
 }
 
 func (s *Server) steer(w http.ResponseWriter, r *http.Request) {
