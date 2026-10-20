@@ -5,6 +5,7 @@
   --x-win:#f3f3f5;        /* 窗口底、侧栏 */
   --x-card:#ffffff;       /* 主卡片（对话区） */
   --x-panel:#fafafa;      /* 信息面板，和对话区同卡，靠底色分开 */
+  --x-panel-card:#ffffff; /* 面板里的卡片：任务卡、例程 */
   --x-fill-1:#f5f5f7;     /* 卡片内的块：任务卡、命令框、斑马行 */
   --x-fill-2:#ededf0;     /* 次级按钮、标签、悬停 */
   --x-fill-3:#e4e4e8;     /* 选中、按下 */
@@ -46,8 +47,8 @@
   color-scheme:light;
 }
 html[data-theme="dark"]{
-  --x-win:#0f0f11; --x-card:#18181b; --x-panel:#1c1c20;
-  --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a; --x-zebra:#1f1f23;
+  --x-win:#0f0f11; --x-card:#18181b; --x-panel:#1c1c20; --x-panel-card:#24242a;
+  --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a; --x-zebra:#222226;
   --x-bubble:#2a2a2e; --x-input:#252528; --x-code:#2a2a2f;
   --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:#6f6f78; --x-ph:#6f6f75;
   --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;

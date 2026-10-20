@@ -25,6 +25,15 @@ func NotifyAway(title, body string) (shown bool, err error) {
 	return true, n.Show()
 }
 
+// OpenPath opens a file or directory with the default application. It is only
+// available once the app loop is running, like native notifications.
+func OpenPath(path string) error {
+	if !running.Load() {
+		return errors.New("appshell: application is not ready")
+	}
+	return mygo.Shell.OpenPath(path)
+}
+
 // bringForward restores, shows and focuses our window. Windows refuses
 // SetForegroundWindow from a process the user is not interacting with, so keep
 // asking for a moment after the click, without taking the main loop thread.

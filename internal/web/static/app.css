@@ -90,7 +90,7 @@
      Latin falls through to the design stack in --x-font. */
   --font: "XBot SC", var(--x-font);
   --mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-  --side: 260px;
+  --side: 280px;
   --top-h: 56px;
   color-scheme: light;
 }
@@ -210,7 +210,7 @@ button:disabled { cursor: default; }
    860px is the reading measure now that the panel no longer takes a column;
    the column keeps this width while the drawer is open, so opening it never
    reflows the conversation. */
-.top-inner, .thread-inner, .composer { width: min(860px, 100% - 64px); }
+.top-inner, .thread-inner, .composer { width: min(680px, 100% - 64px); }
 
 .top-inner {
   display: flex; align-items: center; gap: 2px;
@@ -564,9 +564,9 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .status-dot.off { background: var(--faint); }
 
 .unread {
-  display: block; width: 8px; height: 8px; border-radius: 999px; background: var(--accent);
-  position: absolute; top: 1px; right: 1px;
-  box-shadow: 0 0 0 2px var(--sidebar);
+  display: block; width: 8px; height: 8px; border-radius: 999px; background: var(--x-text);
+  position: absolute; top: 5px; right: 5px;
+  box-shadow: 0 0 0 2px var(--x-win);
 }
 
 .item.active .unread, .pin.active .unread { box-shadow: 0 0 0 2px var(--selected); }
@@ -1274,6 +1274,8 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 /* Info panel: a drawer over the card, never a column beside it (#243). Closed
    it sits off the right edge with no layout box; open it slides in over the
    conversation, so the thread keeps its column and never reflows. */
+.chat { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
 .panel {
   position: absolute; top: 0; bottom: 0; right: 0;
   width: 340px; min-width: 0; max-width: min(340px, calc(100% - 16px));
@@ -1283,12 +1285,12 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   display: flex; flex-direction: column; min-height: 0;
   transform: translateX(calc(100% + 16px));
   visibility: hidden;
-  transition: transform 220ms cubic-bezier(0.2, 0.75, 0.3, 1), visibility 0s linear 220ms;
+  transition: transform 180ms cubic-bezier(0.2, 0.75, 0.3, 1), visibility 0s linear 180ms;
 }
 
 .panel.open {
   transform: none; visibility: visible;
-  transition: transform 220ms cubic-bezier(0.2, 0.75, 0.3, 1), visibility 0s;
+  transition: transform 180ms cubic-bezier(0.2, 0.75, 0.3, 1), visibility 0s;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1317,7 +1319,42 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .sheet-handle { display: none; }
 
+.panel-head { flex: none; background: var(--panel); }
+
+.panel-ident { display: flex; align-items: center; gap: 10px; padding: 2px 16px 10px; text-align: left; }
+
+.panel-ident .avatar { width: 48px; height: 48px; flex: none; }
+
+.panel-ident .who { min-width: 0; }
+
+.panel-ident .name { font-size: 15px; font-weight: 620; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.panel-ident .sub { margin-top: 2px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.panel-tabs { padding: 0 12px 8px; }
+
 .panel-body { overflow: auto; padding: 0 0 24px; flex: 1; min-height: 0; }
+
+@media (min-width: 960px) {
+  .main { display: flex; flex-direction: row; align-items: stretch; }
+  .panel {
+    position: static; flex: 0 0 384px; width: 384px; max-width: none;
+    transform: none; visibility: visible; border-radius: 0; box-shadow: none;
+    background: var(--x-panel); transition: none;
+  }
+  .panel:not(.open) { display: none; }
+  .panel.open { transform: none; visibility: visible; }
+  .panel-scrim { display: none !important; }
+  .sheet-handle { display: none; }
+}
+
+.toast {
+  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
+  background: var(--x-primary); color: var(--x-on-primary);
+  border-radius: 12px; padding: 10px 14px; font-size: 13.5px;
+  box-shadow: var(--x-shadow-pop); z-index: 80; max-width: 80vw;
+}
+
 
 .hero {
   display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -1625,7 +1662,7 @@ html[data-theme="dark"] {
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
 .task, .lib-card, .routine {
-  background: var(--card); border: 0; border-radius: 12px; padding: 12px 14px; margin-top: 8px;
+  background: var(--x-panel-card); border: 0; border-radius: 12px; padding: 12px 14px; margin-top: 8px;
 }
 
 .task .task-top, .routine { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -2197,7 +2234,6 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 
 /* Sidebar width: 260px, 240px from 768 to 1100 wide (the list no longer folds
    at 1024). Pinned bots show their name under the face. */
-@media (min-width: 768px) and (max-width: 1100px) { :root { --side: 240px; } }
 .pin { width: 64px; height: auto; padding: 6px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 5px; border-radius: 14px; }
 .pin.add .plus-face { border-radius: 22px; }
 /* In the column the face's percentage height did not resolve (44x33). */

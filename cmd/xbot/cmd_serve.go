@@ -487,6 +487,10 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		},
 		Updater: updater,
 	}
+	if cfg.App {
+		// Only the desktop app can open a folder in the file manager.
+		ui.OpenPath = appshell.OpenPath
+	}
 	token, _, err := ui.EnsureToken()
 	if err != nil {
 		return err

@@ -125,6 +125,7 @@ try {
   <div id="backdrop" class="backdrop" hidden></div>
 
   <main class="main">
+   <div class="chat">
     <header class="top">
       <div class="top-inner">
         <button id="menu" class="icon-btn mobile-only" type="button" aria-label="列表" data-tip="列表">
@@ -145,12 +146,6 @@ try {
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
           <span class="update-label">更新</span>
         </button>
-        <!-- In the desktop app, app.js moves #bell into #appbar-slot. -->
-        <button id="bell" class="icon-btn" type="button" aria-label="通知" data-tip="通知">
-          <svg class="icon" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
-          <i id="bell-dot" class="dot" hidden></i>
-        </button>
-        <div id="notes" class="notes" hidden></div>
         <!-- The one panel control: it opens and closes the info panel, and the
              bot's actions now sit at the top of that panel. -->
         <button id="info" class="icon-btn" type="button" aria-label="详情" data-tip="详情" aria-expanded="false">
@@ -183,19 +178,22 @@ try {
         </div>
       </form>
     </div>
+   </div>
     <div id="panel-scrim" class="panel-scrim" hidden></div>
     <aside id="panel" class="panel" aria-label="详情">
       <div class="sheet-handle" aria-hidden="true"></div>
       <div class="panel-bar">
         <!-- The header's former "···" actions, filled in by syncPanelChrome(). -->
         <div id="panel-actions" class="panel-actions" role="toolbar" aria-label="Bot 操作" hidden></div>
-        <button id="panel-close" class="ghost" type="button" aria-label="关闭" data-tip="关闭">
-          <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
+      </div>
+      <div id="panel-head" class="panel-head">
+        <div id="panel-ident" class="panel-ident" hidden></div>
+        <div id="panel-tabs" class="panel-tabs"></div>
       </div>
       <div id="panel-body" class="panel-body"></div>
     </aside>
   </main>
+  <div id="toast" class="toast" role="status" hidden></div>
 
 </div>
 

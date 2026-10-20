@@ -33,6 +33,7 @@ import (
 	"xbot/internal/remote"
 	"xbot/internal/upgrade"
 	"xbot/internal/version"
+	"xbot/internal/work"
 )
 
 //go:embed static
@@ -52,6 +53,10 @@ type Server struct {
 	// App marks the desktop app's serve. Its only way in is the launch code
 	// minted at start, so logging out would lock the owner out until a relaunch.
 	App bool
+
+	// OpenPath opens a directory in the desktop file manager. Only the desktop
+	// app supplies it; a plain serve leaves it nil and the route stays 404.
+	OpenPath func(string) error
 
 	// AppTheme applies the page's theme to the desktop window's native buttons.
 	// Nil accepts the theme and changes nothing; the app sets it before serving.
@@ -166,6 +171,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/avatar", s.postAvatar)
 	mux.HandleFunc("DELETE /api/bots/{name}/avatar", s.deleteAvatar)
 	mux.HandleFunc("GET /api/bots/{name}/template", s.exportTemplate)
+	mux.HandleFunc("POST /api/bots/{name}/open-workdir", s.openWorkdir)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
@@ -615,6 +621,37 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"group":  b.Config().Group,
 		"memory": mem, "routines": routines, "agents": agents,
 	})
+}
+
+// openWorkdir opens the bot's working directory in the desktop file manager.
+// Browsers have no such action: outside the app the route answers 404.
+func (s *Server) openWorkdir(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	b, err := s.owned(r.PathValue("name"))
+	if err != nil {
+		writeMissing(w, err)
+		return
+	}
+	if !s.App {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.OpenPath == nil {
+		writeErr(w, http.StatusInternalServerError, "open workdir is not configured")
+		return
+	}
+	dir, _, err := work.Open(s.Root, b.Name())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.OpenPath(dir); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // agentRank puts the work an owner should see first at the top of the panel.

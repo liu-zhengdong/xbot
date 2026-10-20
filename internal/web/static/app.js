@@ -9,9 +9,6 @@
     root.classList.add(platform === "darwin" ? "os-mac" : platform === "linux" ? "os-linux" : "os-win");
     if (shell) {
       document.getElementById("appbar").hidden = false;
-      // Move the live nodes, so existing listeners and ids keep working.
-      document.getElementById("appbar-slot").appendChild(document.getElementById("bell"));
-      shell.appendChild(document.getElementById("notes"));
     }
   }
   const $ = (id) => document.getElementById(id);
@@ -19,11 +16,9 @@
   const sidebar = $("sidebar");
   const backdrop = $("backdrop");
   const thread = $("thread");
-  const notesEl = $("notes");
   const input = $("input");
   const titleEl = $("title");
   const subtitle = $("subtitle");
-  const bellDot = $("bell-dot");
   const updateBtn = $("update");
   const panel = $("panel");
   const panelBody = $("panel-body");
@@ -109,16 +104,6 @@
     if (inApp) {
       api("/api/app/theme", { method: "POST", body: { theme: dark ? "dark" : "light" } }).catch(() => {});
     }
-  }
-
-  // The note list opens from the bell, so it must stay inside the window below it.
-  function fitNotes() {
-    const r = $("bell").getBoundingClientRect();
-    const left = Math.max(8, Math.min(r.right - notesEl.offsetWidth, window.innerWidth - notesEl.offsetWidth - 8));
-    notesEl.style.left = left + "px";
-    notesEl.style.right = "auto";
-    notesEl.style.top = Math.round(r.bottom + 6) + "px";
-    notesEl.style.maxHeight = Math.max(120, window.innerHeight - r.bottom - 14) + "px";
   }
 
   function initTheme() {
@@ -614,7 +599,7 @@
   }
 
   function paintRailStatus() {
-    document.querySelectorAll("#roster .item[data-bot], #pin-row button[data-bot]").forEach((row) => {
+    document.querySelectorAll("#roster .item[data-bot]").forEach((row) => {
       const name = row.dataset.bot;
       const kind = (stStatus.map[name] || {}).state || "idle";
       if (row.dataset.railState === kind) return;
@@ -1063,6 +1048,8 @@
     sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
     terminal: '<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>',
     copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+    "folder-open": '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m6 14 1.5-3h13l-1.5 3"/>',
     chevron: '<path d="m9 18 6-6-6-6"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     chevronLeft: '<path d="m15 18-6-6 6-6"/>',
@@ -2877,7 +2864,13 @@
     document.body.append(menu);
     menu.hidden = false;
     menu.style.position = "fixed";
+    menu.style.right = "auto";
+    menu.style.bottom = "auto";
+    menu.style.left = "0";
+    menu.style.top = "0";
     menu.style.zIndex = "45";
+    // Measure only after the menu is out of the base .pop box, which spans
+    // left:0/right:0 and would otherwise report the page width.
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
     const r = anchor.getBoundingClientRect();
@@ -2894,7 +2887,10 @@
 
   function botRow(b) {
     const d = stDesc(b.name);
-    const btn = listButton(b.name, d.node, state.sel && state.sel.type === "bot" && state.sel.id === b.name, !!b.unread, paintOfBot(b), !!b.primary);
+    const active = state.sel && state.sel.type === "bot" && state.sel.id === b.name;
+    // A dot for a new message or an unread note; the open bot never shows one.
+    const unread = !active && (!!b.unread || (b.notes || 0) > 0);
+    const btn = listButton(b.name, d.node, active, unread, paintOfBot(b), !!b.primary);
     btn.dataset.bot = b.name;
     btn.dataset.stsig = d.sig;
     btn.classList.toggle("off", d.off);
@@ -2995,7 +2991,8 @@
       setTip(btn, b.name !== niceName(b.name) ? b.name : "");
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
-      if (b.unread) av.append(el("i", "unread"));
+      const pinActive = state.sel && state.sel.type === "bot" && state.sel.id === b.name;
+      if (!pinActive && (!!b.unread || (b.notes || 0) > 0)) av.append(el("i", "unread"));
       // A pinned bot shows its name under the face; the primary bot keeps its pin.
       const label = el("span", "pin-name");
       label.append(el("span", "pin-label", niceName(b.name)));
@@ -3101,41 +3098,6 @@
     menu.querySelector("button").focus();
   }
 
-  function renderNotes() {
-    bellDot.hidden = state.notes.length === 0;
-    if (!state.notes.length) {
-      notesEl.hidden = true;
-      $("bell").setAttribute("aria-expanded", "false");
-      notesEl.replaceChildren();
-      return;
-    }
-    const open = !notesEl.hidden;
-    notesEl.replaceChildren();
-    const header = el("div", "notes-header");
-    const readAll = el("button", "secondary notes-read-all", "全部已读");
-    readAll.type = "button";
-    readAll.addEventListener("click", async () => {
-      readAll.disabled = true;
-      try { await markNotesRead(state.notes.slice()); }
-      catch (e) { setStatus("通知未能标为已读，请重试。", true); }
-      finally { readAll.disabled = false; }
-    });
-    header.append(el("b", "", "通知"), readAll);
-    notesEl.append(header);
-    for (const n of state.notes) {
-      const btn = el("button", "note");
-      btn.type = "button";
-      const left = document.createElement("span");
-      left.append(el("b", "", niceName(n.bot)), document.createTextNode("  " + plainText(n.text)));
-      setTip(btn, n.bot || "");
-      btn.append(left, el("span", "meta", when(n.time)));
-      btn.addEventListener("click", () => openNote(n));
-      notesEl.append(btn);
-    }
-    notesEl.hidden = !open;
-    $("bell").setAttribute("aria-expanded", String(open));
-  }
-
   async function markNotesRead(notes) {
     const byBot = new Map();
     for (const n of notes) {
@@ -3153,12 +3115,6 @@
   async function readBotNotes(name) {
     const data = await api("/api/notes");
     await markNotesRead((data.notes || []).filter((n) => n.bot === name));
-  }
-
-  async function openNote(n) {
-    notesEl.hidden = true;
-    $("bell").setAttribute("aria-expanded", "false");
-    if (n.bot) await selectBot(n.bot);
   }
 
   // The header repeats the rail's square bot avatar (one character, or the
@@ -3693,41 +3649,143 @@
   // closePanelMenu removes the open submenu. placeMenu moves it to <body> while
   // open, so it is no longer a descendant of #panel-actions; selecting only
   // inside the row would leave it on screen, still acting on the old bot.
+  let panelMore = null;
+
+  function closePanelMore() {
+    if (panelMore) {
+      panelMore.remove();
+      panelMore = null;
+    }
+    const more = $("panel-more");
+    if (more) {
+      more.classList.remove("on");
+      more.setAttribute("aria-expanded", "false");
+    }
+  }
+
   function closePanelMenu() {
+    closePanelMore();
     document.querySelectorAll(".menu-sub").forEach((sub) => {
       sub.hidden = true;
       sub.remove();
     });
-    document.querySelectorAll(".menu-move > .panel-act").forEach((btn) => {
+    document.querySelectorAll(".menu-move > .menu-row").forEach((btn) => {
       btn.setAttribute("aria-expanded", "false");
     });
   }
 
+  // The panel top row: edit and more. Everything else moved into the menu.
   function syncPanelChrome() {
     const bot = state.sel && state.sel.type === "bot";
-    const data = state.panelData || {};
     const row = $("panel-actions");
     closePanelMenu();
     row.replaceChildren();
     row.hidden = !bot;
     if (!bot) return;
-    const pinned = !!data.pinned;
-    const current = (state.bots.find((b) => b.name === state.sel.id) || {}).group || "";
-    row.append(menuRow("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned)));
-    row.append(menuRow("copy", "复刻", () => openFork(state.sel.id)));
-    row.append(menuRow("pencil", "编辑资料", () => openProfile(data)));
-    row.append(moveMenu(state.sel.id, current));
-    const exportBtn = menuRow("download", "导出对话", () => openExport());
-    exportBtn.id = "export-chat";
-    row.append(exportBtn);
-    row.append(menuRow("trash", "删除", () => confirmDelete(state.sel.id), true));
+    const edit = panelAct("pencil", "编辑资料");
+    edit.addEventListener("click", () => openProfile(state.panelData || {}));
+    row.append(edit);
+    const more = panelAct("ellipsis", "更多");
+    more.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openPanelMore(more);
+    });
+    more.id = "panel-more";
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    row.append(more);
   }
 
+  function currentGroup(name) {
+    return (state.bots.find((b) => b.name === name) || {}).group || "";
+  }
+
+  function openPanelMore(anchor) {
+    const data = state.panelData || {};
+    if (!state.sel) return;
+    const pinned = !!data.pinned;
+    const menu = el("div", "pop");
+    const item = (ic, text, fn, opts = {}) => {
+      const row = el("button", "menu-row" + (opts.danger ? " danger" : ""));
+      row.type = "button";
+      row.append(icon(ic), el("span", "", text));
+      row.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closePops();
+        fn();
+      });
+      menu.append(row);
+      return row;
+    };
+    item("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned));
+    menu.append(moveMenu(state.sel.id, currentGroup(state.sel.id)));
+    item("copy", "复刻", () => openFork(state.sel.id));
+    item("clipboard", "复制 Bot ID", () => copyBotID(state.sel.id));
+    if (state.app) item("folder-open", "打开工作目录", () => openWorkdir(state.sel.id));
+    item("download", "导出对话", () => openExport());
+    menu.append(el("div", "mgap"));
+    item("trash", "删除 Bot", () => confirmDelete(state.sel.id), { danger: true });
+    anchor.classList.add("on");
+    anchor.setAttribute("aria-expanded", "true");
+    placeMenu(anchor, menu, "below");
+    panelMore = menu;
+  }
+
+  // The Clipboard API can be missing or refused (older engines, no
+  // permission); the selection fallback still copies on a click.
+  function legacyCopy(text) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function copyBotID(name) {
+    const done = () => showToast("已复制 " + name);
+    const failed = () => setStatus("复制失败，请手动选择名字。", true);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(name).then(done, () => (legacyCopy(name) ? done() : failed()));
+      return;
+    }
+    legacyCopy(name) ? done() : failed();
+  }
+
+  async function openWorkdir(name) {
+    try {
+      await api("/api/bots/" + encodeURIComponent(name) + "/open-workdir", { method: "POST" });
+    } catch (e) {
+      setStatus(visibleError(e), true);
+    }
+  }
+
+  let toastTimer = 0;
+  function showToast(text) {
+    const box = $("toast");
+    box.textContent = text;
+    box.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { box.hidden = true; }, 3000);
+  }
+
+  // 移到分组 is a full menu row: icon, label, the current group on the right,
+  // and the existing sub menu.
   function moveMenu(botName, current) {
     const wrap = el("div", "menu-move");
-    const btn = panelAct("folder", "移到分组");
-    btn.setAttribute("aria-expanded", "false");
+    const btn = el("button", "menu-row");
+    btn.type = "button";
     btn.setAttribute("aria-haspopup", "menu");
+    btn.setAttribute("aria-expanded", "false");
+    btn.append(icon("folder"), el("span", "", "移到分组"), el("span", "mark", current || "未分组"), icon("chevron"));
     const sub = el("div", "pop menu-sub");
     sub.hidden = true;
     const folders = state.folders.length ? state.folders : [{ name: "未分组", ungrouped: true }];
@@ -3740,7 +3798,7 @@
       if (here) item.append(icon("check", "mark"));
       item.addEventListener("click", async (ev) => {
         ev.stopPropagation();
-        closePanelMenu();
+        closePops();
         if (here) return;
         try {
           await api("/api/bots/" + encodeURIComponent(botName), { method: "PATCH", body: { group: group } });
@@ -3757,17 +3815,19 @@
     create.append(icon("plus"), el("span", "", "新建分组"));
     create.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      closePanelMenu();
+      closePops();
       openNewFolder(botName);
     });
     sub.append(create);
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const open = sub.hidden;
-      closePanelMenu();
       if (open) {
         btn.setAttribute("aria-expanded", "true");
         placeMenu(btn, sub, "below");
+      } else {
+        sub.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
       }
     });
     wrap.append(btn, sub);
@@ -3845,15 +3905,33 @@
     }, "删除");
   }
 
+  // The fixed head of the panel: 48 avatar, name and the Bot's one-line
+  // identity, then the tabs. Only the tab body scrolls.
+  function renderPanelHead(name, paint, sub) {
+    const ident = $("panel-ident");
+    ident.replaceChildren();
+    ident.hidden = false;
+    ident.append(avatar(name, paint, "lg"));
+    const who = el("div", "who");
+    who.append(el("div", "name", niceName(name) || "Bot"));
+    if (sub) who.append(el("div", "sub", sub));
+    ident.append(who);
+    const tabs = $("panel-tabs");
+    tabs.replaceChildren(tabBar());
+    tabs.hidden = false;
+  }
+
   function paintPanel() {
     panelBody.replaceChildren();
     if (!state.sel) {
+      $("panel-ident").hidden = true;
+      $("panel-tabs").replaceChildren();
       syncPanelChrome();
       return;
     }
     if (state.sel.type === "group") {
       const g = state.groups.find((x) => x.id === state.sel.id) || { name: state.sel.id, members: [] };
-      panelBody.append(hero(g.name || g.id, (g.members || []).join(" · "), null), tabBar());
+      renderPanelHead(g.name || g.id, null, (g.members || []).length + " 个成员");
       const body = el("div", "tab-body");
       if (state.tab === "library") {
         body.append(el("p", "hint", "还没有记住任何事。对它说「记住……」就会出现在这里"));
@@ -3873,16 +3951,8 @@
       return;
     }
     const data = state.panelData || { name: state.sel.id };
-    const desc = data.description || "";
-    const heroBox = hero(data.name || state.sel.id, desc, paintOfBot(data), {
-      on: !!data.pinned,
-      toggle: () => togglePin(state.sel.id, !data.pinned),
-    });
-    if (data.primary) {
-      // The hero already has the 置顶 pin toggle; say 主 Bot in words here.
-      heroBox.querySelector(".hero-name").append(el("span", "primary-label", "主 Bot"));
-    }
-    panelBody.append(heroBox, tabBar());
+    const sub = (data.primary ? "主 Bot · " : "") + (data.model || "未绑定模型");
+    renderPanelHead(data.name || state.sel.id, paintOfBot(data), sub);
     syncPanelChrome();
     const body = el("div", "tab-body");
     if (state.tab === "library") body.append(libraryView(data));
@@ -4952,7 +5022,6 @@
     }
     state.knownNotes = notes.map((n) => n.id);
     state.notes = notes;
-    renderNotes();
   }
 
   function pushNote(title, body, tag) {
@@ -5835,11 +5904,14 @@
     closePanelMenu();
     closeFolderMenus();
     closeToolPop();
-    notesEl.hidden = true;
-    $("bell").setAttribute("aria-expanded", "false");
   }
 
-  document.addEventListener("click", () => { if (authenticated && subtitleError) setStatus(""); }, true);
+  document.addEventListener("click", (ev) => {
+    if (panelMore && !panelMore.contains(ev.target) && !(ev.target.closest && ev.target.closest("#panel-more"))) {
+      closePanelMore();
+    }
+    if (authenticated && subtitleError) setStatus("");
+  }, true);
   document.addEventListener("submit", () => { if (authenticated && subtitleError) setStatus(""); }, true);
 
   $("login-form").addEventListener("submit", async (ev) => {
@@ -5954,22 +6026,32 @@
     loadPeer(peer.cursor).finally(() => { if (state.peer) state.peer.loading = false; });
   });
 
-  $("info").addEventListener("click", async () => {
-    const open = panel.classList.toggle("open");
-    rememberPanel(open);
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
+  function panelOpen(open) {
+    panel.classList.toggle("open", open);
+    $("info").classList.toggle("on", open);
     $("info").setAttribute("aria-expanded", open ? "true" : "false");
-    if (open && window.innerWidth < 768) sidebar.classList.remove("open");
+    setTip($("info"), (open ? "收起面板" : "展开面板") + (isMac ? "  ⌘\\" : "  Ctrl+\\"));
     syncBackdrop();
+  }
+
+  $("info").addEventListener("click", async () => {
+    const open = !panel.classList.contains("open");
+    rememberPanel(open);
+    panelOpen(open);
+    if (open && window.innerWidth < 768) sidebar.classList.remove("open");
     if (open) {
       try { await loadPanel(); } catch (e) { setStatus(visibleError(e), true); }
     }
   });
 
-  $("panel-close").addEventListener("click", () => {
-    rememberPanel(false);
-    panel.classList.remove("open");
-    $("info").setAttribute("aria-expanded", "false");
-    syncBackdrop();
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "\\" || !(ev.metaKey || ev.ctrlKey) || ev.altKey || ev.shiftKey) return;
+    ev.preventDefault();
+    const open = !panel.classList.contains("open");
+    rememberPanel(open);
+    panelOpen(open);
+    if (open) loadPanel().catch(() => {});
   });
 
   // The remote conversation is a full panel at z-index 12; this drawer sits at
@@ -5977,23 +6059,8 @@
   window.addEventListener("xbot:remote-open", () => {
     if (!panel.classList.contains("open")) return;
     rememberPanel(false);
-    panel.classList.remove("open");
-    $("info").setAttribute("aria-expanded", "false");
-    syncBackdrop();
+    panelOpen(false);
   });
-
-  $("bell").addEventListener("click", async (ev) => {
-    ev.stopPropagation();
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      try { await Notification.requestPermission(); } catch (e) {}
-    }
-    if (!state.notes.length) return;
-    hideTip();
-    notesEl.hidden = !notesEl.hidden;
-    $("bell").setAttribute("aria-expanded", String(!notesEl.hidden));
-    if (!notesEl.hidden && inApp) fitNotes();
-  });
-  window.addEventListener("resize", () => { if (inApp && !notesEl.hidden) fitNotes(); });
 
   // 连接应用 is a row of the 我 menu; its list opens beside the menu.
   $("account-connect").prepend(icon("link"));
@@ -6161,8 +6228,6 @@
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) {
-      notesEl.hidden = true;
-      $("bell").setAttribute("aria-expanded", "false");
     }
   });
 
@@ -6215,8 +6280,7 @@
     // (#243); there is no longer a width where it can stay open harmlessly.
     if (panel.classList.contains("open")) {
       rememberPanel(false);
-      panel.classList.remove("open");
-      $("info").setAttribute("aria-expanded", "false");
+      panelOpen(false);
     }
     sidebar.classList.remove("open");
     syncBackdrop();
@@ -6314,6 +6378,8 @@
     syncSidebar();
     syncPanelDefault();
     syncBackdrop();
+    // 收起列表 appears or disappears at 768; re-mark the open menu's rows.
+    if (!$("account-menu").hidden) markZebra($("account-menu"));
   });
 
   async function boot() {
@@ -6347,9 +6413,7 @@
     // an explicit "true" from a previous session opens it again.
     const wide = preference === "true";
     const was = panel.classList.contains("open");
-    panel.classList.toggle("open", wide);
-    $("info").setAttribute("aria-expanded", wide ? "true" : "false");
-    syncBackdrop();
+    panelOpen(wide);
     if (wide && !was) loadPanel().catch(() => {});
   }
 
@@ -6416,6 +6480,7 @@
     state.owner = (data && data.owner) || "";
     state.ownerName = (data && data.owner_name) || "";
     state.version = (data && data.version) || "";
+    state.app = !!data.app;
     // The desktop app has no login page to come back to: no 退出 there.
     $("logout").hidden = !!data.app;
     if (data.needs_key) await showSetup(data.key_host || "");

@@ -100,6 +100,8 @@
 
 `DELETE /api/bots/{name}/avatar` 回到按种子画的头像，种子是上传前那个。200 `{"name","avatar":"generated","avatar_seed"}`。
 
+`POST /api/bots/{name}/open-workdir` 只在桌面版存在：让系统文件管理器打开这个 Bot 的工作目录。成功 200 `{"status":"ok"}`。浏览器里（`/api/session` 没有 `app:true`）是 404；桌面版里调用文件管理器失败是 500，正文是原因。要登录；不是这个 owner 的 Bot 是 404。
+
 `GET /api/bots/{name}/template` 下载 JSON，`Content-Disposition: attachment`。模板含档案、persona、例程、`avatar_seed` 和可选的 base64 头像。自定义头像的模板同时带图和种子。不含记忆、transcript、webhook、watch、provider、owner、置顶。
 
 `POST /api/bots/import` 的 body 就是这份模板，可以另带一个不同的 `name`。模板里的合法 `avatar_seed` 跟着模板走，即使改了名字；种子不合法就忽略，用新名字当种子。之后有 base64 头像就照样导入。成功 200 `{"name"}`。这是目录里第一个 Bot 时成为主 Bot。导入失败会删掉新建的目录。
