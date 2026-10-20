@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -591,6 +592,11 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
 		})
 	}
+	// Live work first: running, awaiting, queued, then finished. Directory
+	// order decides within a rank, so the list does not jump around.
+	sort.SliceStable(agents, func(i, j int) bool {
+		return agentRank(agents[i]["status"].(string)) < agentRank(agents[j]["status"].(string))
+	})
 	primary, _ := bot.Primary(s.Root)
 	url, bg, ink, initial := paintBot(b)
 	avatar, seed := b.AvatarState()
@@ -609,6 +615,20 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"group":  b.Config().Group,
 		"memory": mem, "routines": routines, "agents": agents,
 	})
+}
+
+// agentRank puts the work an owner should see first at the top of the panel.
+func agentRank(status string) int {
+	switch status {
+	case "running":
+		return 0
+	case "awaiting":
+		return 1
+	case "queued":
+		return 2
+	default:
+		return 3
+	}
 }
 
 // runningModel is the provider and model this bot will call.

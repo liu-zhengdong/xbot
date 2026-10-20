@@ -2857,6 +2857,22 @@
     });
   }
 
+  // Zebra rows in a menu: only visible buttons count, so hidden entries
+  // (收起列表 on the web, 退出 in the app) do not shift the stripes.
+  function markZebra(box) {
+    if (!box) return;
+    const groups = new Map();
+    for (const btn of box.querySelectorAll("button")) {
+      if (btn.offsetParent === null) continue;
+      const parent = btn.parentElement;
+      if (!groups.has(parent)) groups.set(parent, []);
+      groups.get(parent).push(btn);
+    }
+    for (const list of groups.values()) {
+      list.forEach((btn, i) => btn.classList.toggle("zebra", i % 2 === 1));
+    }
+  }
+
   function placeMenu(anchor, menu, side) {
     document.body.append(menu);
     menu.hidden = false;
@@ -2873,6 +2889,7 @@
     menu.style.top = top + "px";
     menu.style.right = "auto";
     menu.style.bottom = "auto";
+    markZebra(menu);
   }
 
   function botRow(b) {
@@ -5890,6 +5907,7 @@
     const open = $("account-menu").hidden;
     closePops();
     $("account-menu").hidden = !open;
+    markZebra($("account-menu"));
     $("account").setAttribute("aria-expanded", open ? "true" : "false");
   });
   $("collapse").addEventListener("click", () => {

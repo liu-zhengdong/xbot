@@ -84,7 +84,7 @@
   --scroll: #d4d4d8;
   --eye: #3a342f;
   --composer: #f3f3f5;
-  --panel: #f6f6f8;
+  --panel: var(--x-panel);
   /* The bundled Noto Sans SC subset ("XBot SC") stays first so Chinese keeps
      the face the interface shipped with; its unicode-range covers CJK only, so
      Latin falls through to the design stack in --x-font. */
@@ -113,7 +113,6 @@ html[data-theme="dark"] {
   --scroll: #3a3a40;
   --eye: #241f1c;
   --composer: #252528;
-  --panel: #222226;
   color-scheme: dark;
 }
 
@@ -1547,9 +1546,11 @@ html[data-theme="dark"] {
    after it with the same specificity, so they still win. */
 .trace-row:nth-of-type(even) { background: var(--x-zebra); }
 
-.trace-row:hover, .trace-row.open { background: var(--fill); }
+.trace-row:hover { background: var(--x-fill-2); }
 
-.trace-row:active { background: var(--fill-hover); }
+.trace-row.open { background: var(--x-fill-3); }
+
+.trace-row:active { background: var(--x-fill-3); }
 
 .trace-time {
   flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
@@ -1593,7 +1594,9 @@ html[data-theme="dark"] {
 
 .section p { margin: 0; font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
 
-.kv { padding: 14px 0; }
+.kv { padding: 14px 10px; margin: 0 -10px; border-radius: 8px; }
+
+.kv:nth-of-type(even) { background: var(--x-zebra); }
 
 .kv .k { font-size: 12px; color: var(--muted); line-height: 1.4; }
 
@@ -1638,6 +1641,8 @@ html[data-theme="dark"] {
 .task .secondary, .routine .meta { margin: 0; }
 .routine { align-items: center; }
 .routine .meta { font-family: var(--font); font-variant-numeric: tabular-nums; }
+
+.lib-card:nth-of-type(even) { background: var(--x-zebra); }
 
 .lib-card .k { font-size: 12px; color: var(--faint); }
 
@@ -1827,6 +1832,8 @@ html[data-theme="dark"] {
   display: flex; align-items: center; justify-content: flex-start; gap: 8px;
   font-size: 14px; color: var(--text); text-align: left;
 }
+
+.pop button.zebra { background: var(--x-zebra); }
 
 .pop .menu-row span { flex: none; text-align: left; }
 
@@ -2151,9 +2158,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .routine-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; }
 .routine-source { margin-top: 10px; font-size: 12px; color: var(--faint); }
 .routine-silent { color: var(--faint); }
-/* Task lists use surfaces rather than dividing lines. */
-.task { background: transparent; border-radius: 0; margin-top: 0; }
-.task:nth-of-type(even), .recent-task:nth-of-type(even) { background: var(--x-zebra); }
+.recent-task:nth-of-type(even) { background: var(--x-zebra); }
 .task .task-top { justify-content: flex-start; align-items: center; font-size: 12px; }
 .recent-toggle { display: flex; align-items: center; gap: 8px; }
 .recent-tasks { margin-top: 8px; }
