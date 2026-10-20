@@ -186,8 +186,8 @@ func TestLongRunJourney(t *testing.T) {
 	// conversation added: every turn resends the whole context, which is what
 	// makes a long run expensive and a cheap pass worth having.
 	cost := measureCompactCost(model.allCalls())
-	t.Logf("criterion 4: compaction spent %d tokens of %d in the run (%d summarizer calls of %d calls), %.3f%%; limit %.1f%%",
-		cost.compact, cost.total, cost.compactCalls, cost.calls, cost.ratio()*100, journeyCompactShareLimit*100)
+	t.Logf("criterion 4: compaction spent %d tokens of %d in the run (%d compaction calls, summary and extraction, of %d calls), %.3f%%; limit %.1f%%",
+		cost.overhead, cost.total, cost.overheadCalls, cost.calls, cost.ratio()*100, journeyCompactShareLimit*100)
 	if cost.ratio() > journeyCompactShareLimit {
 		t.Errorf("criterion 4: compaction spent %.3f%% of the run's model tokens, over the %.1f%% limit",
 			cost.ratio()*100, journeyCompactShareLimit*100)
@@ -1167,16 +1167,19 @@ func factSeq(t *testing.T, b *bot.Bot) int {
 	return 0
 }
 
-// compactCost is the compaction share of the run's model tokens.
+// compactCost is the compaction share of the run's model tokens. Both calls a
+// pass makes count: the summary and the fact extraction beside it. Counting
+// only the summary would let a pass that moves cost into extraction look
+// cheaper than it is.
 type compactCost struct {
-	compact, total, compactCalls, calls int
+	overhead, total, overheadCalls, calls int
 }
 
 func (c compactCost) ratio() float64 {
 	if c.total == 0 {
 		return 0
 	}
-	return float64(c.compact) / float64(c.total)
+	return float64(c.overhead) / float64(c.total)
 }
 
 // measureCompactCost sums prompt and completion tokens. A turn resends the whole
@@ -1188,9 +1191,9 @@ func measureCompactCost(all []journeyCall) compactCost {
 		n := call.prompt + call.completion
 		c.total += n
 		c.calls++
-		if call.compact {
-			c.compact += n
-			c.compactCalls++
+		if call.compact || call.extract {
+			c.overhead += n
+			c.overheadCalls++
 		}
 	}
 	return c
@@ -1216,5 +1219,23 @@ func TestRecoveryRatioRejectsNoCache(t *testing.T) {
 	worst, at, err := recoveryRatio(0.5, after)
 	if err != nil || worst != 0.5 || at != 1 {
 		t.Fatalf("recovery = %v at P+%d (%v), want 0.5 at P+1", worst, at, err)
+	}
+}
+
+// A compaction pass makes two model calls, the summary and the extraction.
+// The cost share counts both, so a pass that spends its budget on extraction
+// cannot look cheaper than it is.
+func TestCompactCostCountsExtraction(t *testing.T) {
+	cost := measureCompactCost([]journeyCall{
+		{prompt: 100, compact: true},
+		{prompt: 100, extract: true},
+		{prompt: 800},
+	})
+	if cost.overhead != 200 || cost.overheadCalls != 2 {
+		t.Fatalf("compaction cost = %d tokens in %d calls, want 200 in 2 (summary plus extraction)",
+			cost.overhead, cost.overheadCalls)
+	}
+	if cost.total != 1000 || cost.ratio() != 0.2 {
+		t.Fatalf("total %d, ratio %v; want 1000 and 0.2", cost.total, cost.ratio())
 	}
 }
