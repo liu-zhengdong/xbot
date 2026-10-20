@@ -34,6 +34,7 @@ import (
 	"xbot/internal/person"
 	"xbot/internal/provider"
 	"xbot/internal/remote"
+	"xbot/internal/review"
 	"xbot/internal/serve"
 	"xbot/internal/skill"
 	"xbot/internal/tunnel"
@@ -149,6 +150,8 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		// The foreground understands and hands out work; typed subagents do
 		// it (ADR 0016).
 		Dispatch: true,
+		// No permission cards unless the owner turned them on (ADR 0019).
+		Permissive: !review.ConfirmTable(root),
 		// Foreground limits come from the role unless the bot overrode them.
 		ForegroundMaxTools: work.ForegroundMaxTools,
 		ForegroundMaxTime:  work.ForegroundMaxTime,

@@ -88,6 +88,7 @@ Usage:
   xbot [--root DIR] remote remove <name>
   xbot [--root DIR] gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]
   xbot [--root DIR] person unlink [--force] <link:id>
+  xbot [--root DIR] permissions [on|off]   (off by default: no confirmation cards)
   xbot [--root DIR] machine list
   xbot [--root DIR] machine set <name> allow|ask|off
   xbot [--root DIR] desktop screenshot
@@ -242,6 +243,8 @@ func run(argv []string) error {
 		return cmdVersion()
 	case "upgrade":
 		return cmdUpgrade(root, rest[1:])
+	case "permissions":
+		return cmdPermissions(root, rest[1:])
 	case "machine":
 		return cmdMachine(root, rest[1:])
 	case "desktop":

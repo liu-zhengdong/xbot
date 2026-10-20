@@ -81,6 +81,10 @@ type Kernel struct {
 	OnDelta    func(string)
 	OnTool     func(name, summary string)
 	OnResult   func(name, output string)
+	// Permissive turns the permission table's cards off (ADR 0019,
+	// review.ConfirmTable): only an explicit machine setting, the vault, a
+	// turn from outside touching memory, and the links card still ask.
+	Permissive bool
 	// OnHandoff runs when a newer owner message takes over the running
 	// turn's output (Interject); the caller can end its own stream.
 	OnHandoff func()
@@ -578,6 +582,9 @@ func (k *Kernel) rulesText() (string, error) {
 		if !strings.Contains(rules, r) {
 			rules += "\n\n" + r
 		}
+	}
+	if k.Permissive {
+		rules = strings.Replace(rules, ActionRule, OwnAskActionRule, 1)
 	}
 	if k.dispatching() && !strings.Contains(rules, DispatchRule) {
 		rules += "\n\n" + DispatchRule

@@ -181,6 +181,13 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, summary + " (untrusted turn: memory access)", nil
 		}
 	}
+	// The owner turned the table's cards off (ADR 0019): the checks above
+	// stay (an explicit machine setting, the vault, a turn from outside
+	// touching memory), and so does the links card, which is where the
+	// owner types a connector's keys.
+	if k != nil && k.Permissive && name != "links" {
+		return false, summary, nil
+	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
 		// write_file and edit_file are a self-edit only when the resolved path
 		// is this bot's own persona or profile file.
