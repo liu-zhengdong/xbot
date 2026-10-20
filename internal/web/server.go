@@ -111,7 +111,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 			if err == nil && mediaType == "text/html" && params["q"] != "0" {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				w.WriteHeader(http.StatusNotFound)
-				fmt.Fprint(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>没有这个页面 · XBot</title><link rel="stylesheet" href="/app.css"><body><main class="gate"><div class="gate-card"><h1>没有这个页面</h1><a class="secondary not-found-back" href="/">回到对话</a></div></main></body></html>`)
+				fmt.Fprint(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>没有这个页面 · XBot</title><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/app.css"><body><main class="gate"><div class="gate-card"><h1>没有这个页面</h1><a class="secondary not-found-back" href="/">回到对话</a></div></main></body></html>`)
 				return
 			}
 		}

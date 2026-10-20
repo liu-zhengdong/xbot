@@ -41,6 +41,8 @@
   --bg: #ffffff;
   /* Aliases onto the design tokens in tokens.css (M1). Selectors keep using
      these names; M2 removes --border and the separators that use it. */
+  --base: var(--x-win);
+  --bg: var(--x-card);
   --sidebar: var(--x-win);
   --card: var(--x-card);
   --cardx: var(--x-panel);
