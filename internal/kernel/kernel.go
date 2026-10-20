@@ -585,6 +585,9 @@ func (k *Kernel) rulesText() (string, error) {
 	}
 	if k.Permissive {
 		rules = strings.Replace(rules, ActionRule, OwnAskActionRule, 1)
+		if !strings.Contains(rules, EventMemoryRule) {
+			rules += "\n\n" + EventMemoryRule
+		}
 	}
 	if k.dispatching() && !strings.Contains(rules, DispatchRule) {
 		rules += "\n\n" + DispatchRule

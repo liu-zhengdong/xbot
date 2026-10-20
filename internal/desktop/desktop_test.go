@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"xbot/internal/permissions"
 )
 
 type fake struct {
@@ -41,6 +42,10 @@ func (f *fake) Idle(context.Context) (time.Duration, bool) {
 
 func TestPerformSwitchAndIdle(t *testing.T) {
 	root := t.TempDir()
+	// The machine switch applies only with permission checks on.
+	if err := permissions.Set(root, true); err != nil {
+		t.Fatal(err)
+	}
 	f := &fake{idle: 10 * time.Second, idleOK: true}
 	path, err := Perform(context.Background(), root, f, Action{Name: "screenshot"}, false)
 	if err != nil || !strings.HasPrefix(path, filepath.Join(root, "desktop")) {
@@ -78,6 +83,10 @@ func TestPerformSwitchAndIdle(t *testing.T) {
 // still refuses when this machine is off.
 func TestToolConfirm(t *testing.T) {
 	root := t.TempDir()
+	// The machine switch applies only with permission checks on.
+	if err := permissions.Set(root, true); err != nil {
+		t.Fatal(err)
+	}
 	l := Open(root)
 	l.Driver = &fake{idle: time.Minute, idleOK: true}
 	need, _, err := (shotTool{l}).Confirm(nil)

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"xbot/internal/permissions"
 )
 
 func TestCheckURLAndLoopback(t *testing.T) {
@@ -91,7 +92,12 @@ func TestConfirmAsk(t *testing.T) {
 	}
 }
 
+// writeMode sets this machine's mode and turns permission checks on, which
+// the machine switch needs to apply (ADR 0019).
 func writeMode(root, mode string) error {
+	if err := permissions.Set(root, true); err != nil {
+		return err
+	}
 	return os.WriteFile(root+"/machines.json", []byte(`{"machines":{"local":"`+mode+`"}}`+"\n"), 0600)
 }
 

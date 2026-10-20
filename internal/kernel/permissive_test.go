@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"xbot/internal/link"
+	"xbot/internal/machine"
+	"xbot/internal/permissions"
 	"xbot/internal/review"
 )
 
@@ -56,27 +58,60 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
 		t.Error("the links card was dropped")
 	}
+	// The machine switch and the guard on outside turns are off too.
 	k.Machine = func() (string, error) { return "ask", nil }
+	if needsCard(t, k, "shell", `{"command":"ls"}`) {
+		t.Error("machine ask still asked with permissions off")
+	}
+	k.Permissive = false
 	if !needsCard(t, k, "shell", `{"command":"ls"}`) {
-		t.Error("machine ask was ignored")
+		t.Error("machine ask was ignored with permissions on")
+	}
+	k.Permissive = true
+	k.Machine = nil
+	k.ensureTurn().turnTrusted = false
+	if needsCard(t, k, "shell", `{"command":"echo x >> memory/memory.md"}`) {
+		t.Error("a turn from outside still asks to touch memory")
+	}
+	k.Permissive = false
+	if !needsCard(t, k, "shell", `{"command":"echo x >> memory/memory.md"}`) {
+		t.Error("with permissions on, a turn from outside touching memory must ask")
+	}
+}
+
+// With permission checks off, a stored machine mode reads as allow; turning
+// them on brings it back.
+func TestMachineSwitchFollowsPermissions(t *testing.T) {
+	root := t.TempDir()
+	if err := machine.Set(root, machine.Local, machine.Off); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := machine.Get(root, machine.Local); mode != machine.Allow {
+		t.Fatalf("mode %q with permissions off", mode)
+	}
+	if err := permissions.Set(root, true); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := machine.Get(root, machine.Local); mode != machine.Off {
+		t.Fatalf("mode %q with permissions on", mode)
 	}
 }
 
 func TestConfirmTableSwitch(t *testing.T) {
 	root := t.TempDir()
-	if review.ConfirmTable(root) {
+	if permissions.On(root) {
 		t.Fatal("cards on without a setting")
 	}
-	if err := review.SetConfirmTable(root, true); err != nil {
+	if err := permissions.Set(root, true); err != nil {
 		t.Fatal(err)
 	}
-	if !review.ConfirmTable(root) {
+	if !permissions.On(root) {
 		t.Fatal("on did not stick")
 	}
-	if err := review.SetConfirmTable(root, false); err != nil {
+	if err := permissions.Set(root, false); err != nil {
 		t.Fatal(err)
 	}
-	if review.ConfirmTable(root) {
+	if permissions.On(root) {
 		t.Fatal("off did not stick")
 	}
 }
@@ -92,8 +127,11 @@ func TestPermissiveRuleDropsTheSecondQuestion(t *testing.T) {
 	if !strings.Contains(rules, OwnAskActionRule) || strings.Contains(rules, ActionRule) {
 		t.Fatal("cards off: the rule still asks before named steps")
 	}
+	if !strings.Contains(rules, EventMemoryRule) {
+		t.Fatal("cards off: events are not told they may change memory")
+	}
 	k.Permissive = false
-	if rules, _ = k.rulesText(); !strings.Contains(rules, ActionRule) {
-		t.Fatal("cards on: the ask-first rule is gone")
+	if rules, _ = k.rulesText(); !strings.Contains(rules, ActionRule) || strings.Contains(rules, EventMemoryRule) {
+		t.Fatal("cards on: the rules changed")
 	}
 }

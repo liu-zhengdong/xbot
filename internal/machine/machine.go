@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"xbot/internal/permissions"
 
 	"xbot/internal/fsutil"
 )
@@ -34,11 +35,16 @@ type file struct {
 // Path is <root>/machines.json.
 func Path(root string) string { return filepath.Join(root, "machines.json") }
 
-// Get returns the effective mode. An unset machine is allow.
+// Get returns the effective mode. An unset machine is allow, and so is every
+// machine while the install's permission checks are off (ADR 0019): the
+// stored mode is kept and applies again once they are turned on.
 func Get(root, name string) (string, error) {
 	name, err := clean(name)
 	if err != nil {
 		return "", err
+	}
+	if !permissions.On(root) {
+		return Allow, nil
 	}
 	modes, err := load(root)
 	if err != nil {

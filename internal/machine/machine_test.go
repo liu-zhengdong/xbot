@@ -3,10 +3,15 @@ package machine
 import (
 	"os"
 	"testing"
+	"xbot/internal/permissions"
 )
 
 func TestDefaultAllowAndSet(t *testing.T) {
 	root := t.TempDir()
+	// The machine switch applies only with permission checks on.
+	if err := permissions.Set(root, true); err != nil {
+		t.Fatal(err)
+	}
 	mode, err := Get(root, Local)
 	if err != nil || mode != Allow {
 		t.Fatalf("%s %v", mode, err)

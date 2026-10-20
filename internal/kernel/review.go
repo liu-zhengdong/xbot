@@ -139,7 +139,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	// The machine switch is orthogonal to the class: it applies to every tool
 	// that touches this machine. off refuses, ask confirms each action, and
 	// allow falls through to the table.
-	if review.MachineTouching(name) {
+	if review.MachineTouching(name) && !k.permissive() {
 		mode, err := k.machineMode()
 		if err != nil {
 			return false, "", err
@@ -156,12 +156,15 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	if k.protectedCall(ctx, tool, args) {
 		return true, summary + review.ProtectedSuffix, nil
 	}
-	if isFileEdit(name) && !k.turnFor(ctx).turnTrusted {
+	// A turn from outside (a webhook, another bot) touching memory asks only
+	// while permission checks are on: with them off, such an event may
+	// change memory like the owner can (ADR 0019).
+	if isFileEdit(name) && !k.permissive() && !k.turnFor(ctx).turnTrusted {
 		if _, dir, _, _ := k.memoryCall(ctx, tool, args); dir != "" {
 			return true, summary + " (untrusted turn: memory write)", nil
 		}
 	}
-	if name == "shell" && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellIsReadOnly(args) {
+	if name == "shell" && !k.permissive() && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellIsReadOnly(args) {
 		root := k.Bot.Root
 		memoryDirs := []string{filepath.Join(root, "bots", k.Bot.Name(), "memory")}
 		if person := k.memoryPersonOf(k.turnFor(ctx)); person != "" {
@@ -185,7 +188,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	// stay (an explicit machine setting, the vault, a turn from outside
 	// touching memory), and so does the links card, which is where the
 	// owner types a connector's keys.
-	if k != nil && k.Permissive && name != "links" {
+	if k.permissive() && name != "links" {
 		return false, summary, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
@@ -269,6 +272,8 @@ func (k *Kernel) protectedSummary(ctx context.Context, tool tools.Tool, args jso
 	}
 	return summary + review.ProtectedSuffix
 }
+
+func (k *Kernel) permissive() bool { return k != nil && k.Permissive }
 
 // machineMode reads the local machine switch. A nil kernel or bot is allow, so
 // unit tests and older processes keep the table behavior.

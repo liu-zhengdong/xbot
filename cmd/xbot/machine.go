@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"xbot/internal/machine"
-	"xbot/internal/review"
+	"xbot/internal/permissions"
 )
 
 func cmdMachine(root string, args []string) error {
@@ -53,24 +53,27 @@ func cmdMachineSet(root string, args []string) error {
 		return err
 	}
 	fmt.Printf("%s\t%s\n", args[0], args[1])
+	if !permissions.On(root) {
+		fmt.Println("note: permissions are off, so machine modes are ignored; `xbot permissions on` applies them")
+	}
 	return nil
 }
 
 // cmdPermissions shows or sets whether the permission table asks the owner
-// (ADR 0019). Off, the default, asks only for the links card, the vault, an
-// outside event touching memory, and a machine set to ask.
+// (ADR 0019). Off, the default, asks only for the links card and the vault;
+// machine modes and the guard on outside turns touching memory are off too.
 func cmdPermissions(root string, args []string) error {
 	switch {
 	case len(args) == 0:
 	case len(args) == 1 && (args[0] == "on" || args[0] == "off"):
-		if err := review.SetConfirmTable(root, args[0] == "on"); err != nil {
+		if err := permissions.Set(root, args[0] == "on"); err != nil {
 			return err
 		}
 	default:
 		return errors.New("usage: xbot permissions [on|off]")
 	}
 	state := "off"
-	if review.ConfirmTable(root) {
+	if permissions.On(root) {
 		state = "on"
 	}
 	fmt.Printf("permissions\t%s\n", state)
