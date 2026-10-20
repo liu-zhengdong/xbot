@@ -40,7 +40,7 @@
   --base: #f3f3f5;
   --bg: #ffffff;
   /* Aliases onto the design tokens in tokens.css (M1). Selectors keep using
-     these names; M2 removes --border and the separators that use it. */
+     these names; separators are surfaces or spacing, never lines. */
   --base: var(--x-win);
   --bg: var(--x-card);
   --sidebar: var(--x-win);
@@ -49,7 +49,6 @@
   --row-hover: var(--x-fill-3);
   --fill: var(--x-fill-2);
   --fill-hover: var(--x-fill-3);
-  --border: transparent;
   --hover: var(--x-fill-2);
   --selected: var(--x-fill-3);
   --text: var(--x-text);
@@ -99,7 +98,6 @@
 /* Dark surfaces and colors come from tokens.css; only the names this file
    still owns stay here. */
 html[data-theme="dark"] {
-  --border: transparent;
   --accent: #f2f2f2;
   --accent-soft: #f2f2f2;
   --accent-ink: #f2f2f2;
@@ -1544,6 +1542,11 @@ html[data-theme="dark"] {
   color: inherit; text-align: left;
 }
 
+/* Zebra counts only the row buttons: an expanded body is a sibling div, so
+   nth-of-type leaves the stripes where they were. Hover/open/active come
+   after it with the same specificity, so they still win. */
+.trace-row:nth-of-type(even) { background: var(--x-zebra); }
+
 .trace-row:hover, .trace-row.open { background: var(--fill); }
 
 .trace-row:active { background: var(--fill-hover); }
@@ -2150,7 +2153,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .routine-silent { color: var(--faint); }
 /* Task lists use surfaces rather than dividing lines. */
 .task { background: transparent; border-radius: 0; margin-top: 0; }
-.task:nth-of-type(even), .recent-task:nth-of-type(even) { background: var(--card); }
+.task:nth-of-type(even), .recent-task:nth-of-type(even) { background: var(--x-zebra); }
 .task .task-top { justify-content: flex-start; align-items: center; font-size: 12px; }
 .recent-toggle { display: flex; align-items: center; gap: 8px; }
 .recent-tasks { margin-top: 8px; }
