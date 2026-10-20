@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -214,17 +215,45 @@ func (s *Stub) handle(w http.ResponseWriter, r *http.Request) {
 
 // subagent answers the task it was given. SMOKE_LONG_TASK parks on the long
 // gate; only the test's Release may finish it, so a cancelled or restarted
-// call cannot produce LONG_RESULT_42 by accident.
+// call cannot produce LONG_RESULT_42 by accident. A task that asks for a
+// directory listing and summary.txt runs shell then write_file.
 func (s *Stub) subagent(w http.ResponseWriter, r *http.Request, req stubRequest) {
-	if strings.Contains(lastUser(req), "SMOKE_LONG_TASK") {
+	text := lastUser(req)
+	switch {
+	case strings.Contains(text, "SMOKE_LONG_TASK"):
 		s.Enter("long")
 		if reason := s.hold(r.Context(), "long"); reason != gateReleased {
 			return
 		}
 		streamText(w, []string{"LONG_RESULT_42"})
+	case strings.Contains(text, "列出文件") && strings.Contains(text, "summary.txt"):
+		s.listAndSummarize(w, req, text)
+	default:
+		streamText(w, []string{"ok"})
+	}
+}
+
+// listAndSummarize is the dev subagent's script: shell ls, write summary.txt,
+// then report where it wrote.
+func (s *Stub) listAndSummarize(w http.ResponseWriter, req stubRequest, task string) {
+	dir := firstAbsPath(task)
+	if dir == "" {
+		streamText(w, []string{"ok"})
 		return
 	}
-	streamText(w, []string{"ok"})
+	sawShell, sawWrite, shellOut := toolProgress(req)
+	summary := filepath.Join(dir, "summary.txt")
+	switch {
+	case !sawShell:
+		streamTool(w, "call_ls", "shell", argsJSON(map[string]string{"command": "ls -1 " + shellQuote(dir)}))
+	case !sawWrite:
+		streamTool(w, "call_write", "write_file", argsJSON(map[string]string{
+			"path":    summary,
+			"content": "files:\n" + commandOutput(shellOut),
+		}))
+	default:
+		streamText(w, []string{"wrote " + summary})
+	}
 }
 
 // foreground answers the owner's line. A turn interrupted by a newer owner
@@ -232,6 +261,16 @@ func (s *Stub) subagent(w http.ResponseWriter, r *http.Request, req stubRequest)
 func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubRequest) {
 	all, text := joined(req), lastUser(req)
 	switch {
+	case strings.Contains(text, "wrote ") && strings.Contains(text, "summary.txt"):
+		streamText(w, []string{"我列出了目录里的文件，写好了 " + summaryPath(text)})
+	case strings.Contains(text, "SMOKE_DO"):
+		if !sawTool(req, "dispatch") {
+			dir := afterMarker(text, "dir=")
+			task := "在 " + dir + " 列出文件，写 summary.txt，第一行 files:，后面每行一个文件名"
+			streamTool(w, "call_dispatch", "dispatch", argsJSON(map[string]string{"type": "dev", "task": task}))
+			return
+		}
+		streamText(w, []string{"交给子代理了"})
 	case strings.Contains(all, "SMOKE_SLOW") && strings.Contains(all, "SMOKE_ASIDE_2"):
 		streamText(w, []string{"先答插话"})
 	case strings.Contains(text, "SMOKE_SLOW"):
@@ -341,6 +380,99 @@ func sawTool(req stubRequest, name string) bool {
 		}
 	}
 	return saw
+}
+
+// toolProgress is the subagent's step count and the shell output it needs for
+// the write. Only tool messages between the shell call and the write count.
+func toolProgress(req stubRequest) (sawShell, sawWrite bool, shellOut string) {
+	for _, m := range req.Messages {
+		for _, raw := range m.ToolCalls {
+			var tc struct {
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			}
+			if json.Unmarshal(raw, &tc) != nil {
+				continue
+			}
+			switch tc.Function.Name {
+			case "shell":
+				sawShell = true
+			case "write_file":
+				sawWrite = true
+			}
+		}
+		if m.Role == "tool" && sawShell && !sawWrite {
+			shellOut = m.Content
+		}
+	}
+	return sawShell, sawWrite, shellOut
+}
+
+// commandOutput turns the shell tool's result into the command's own output.
+// The tool prepends "exit N", adds a "cwd: ..." line and trims the trailing
+// newline; the listing keeps its own line ending so the file matches ls -1.
+func commandOutput(out string) string {
+	var kept []string
+	for i, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "cwd: ") {
+			continue
+		}
+		if i == 0 && exitLine.MatchString(line) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	s := strings.Join(kept, "\n")
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return s
+}
+
+var exitLine = regexp.MustCompile(`^exit \d+$`)
+
+// firstAbsPath is the first absolute path in the task text.
+func firstAbsPath(text string) string {
+	m := regexp.MustCompile(`(?:^|[\s，])(/[^\s，]+)`).FindStringSubmatch(text)
+	if len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
+// summaryPath is the absolute summary.txt path in a subagent report.
+func summaryPath(text string) string {
+	m := regexp.MustCompile(`(/[^\s，]*/summary\.txt)`).FindStringSubmatch(text)
+	if len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
+// afterMarker is the text after mark, up to the next space.
+func afterMarker(text, mark string) string {
+	i := strings.Index(text, mark)
+	if i < 0 {
+		return ""
+	}
+	fields := strings.Fields(text[i+len(mark):])
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func argsJSON(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(raw)
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // startSSE writes the headers of a streaming answer.

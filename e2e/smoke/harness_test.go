@@ -419,19 +419,30 @@ func (st *Stream) run() {
 
 // Row is one transcript line as GET /api/bots/{name}/transcript returns it.
 type Row struct {
-	Seq      int    `json:"seq"`
-	Role     string `json:"role"`
-	Content  string `json:"content"`
-	Name     string `json:"name"`
-	Time     string `json:"time"`
-	ReplyTo  *int   `json:"reply_to,omitempty"`
-	Branch   string `json:"branch,omitempty"`
-	Kind     string `json:"kind,omitempty"`
-	From     string `json:"from,omitempty"`
-	Task     string `json:"task,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Steps    int    `json:"steps,omitempty"`
-	Internal bool   `json:"internal,omitempty"`
+	Seq       int           `json:"seq"`
+	Role      string        `json:"role"`
+	Content   string        `json:"content"`
+	Name      string        `json:"name"`
+	Time      string        `json:"time"`
+	ToolCalls []RowToolCall `json:"tool_calls,omitempty"`
+	ReplyTo   *int          `json:"reply_to,omitempty"`
+	Branch    string        `json:"branch,omitempty"`
+	Kind      string        `json:"kind,omitempty"`
+	From      string        `json:"from,omitempty"`
+	Task      string        `json:"task,omitempty"`
+	Status    string        `json:"status,omitempty"`
+	Steps     int           `json:"steps,omitempty"`
+	Internal  bool          `json:"internal,omitempty"`
+}
+
+// RowToolCall is one tool call on an assistant row.
+type RowToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 // Transcript reads the append-only transcript.

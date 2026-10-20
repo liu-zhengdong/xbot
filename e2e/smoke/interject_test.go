@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TestInterjectMidTask is the smoke case for FOCUS.md 「忙时插话」 (spec in
+// TestInterjectMidTask is the smoke case for 「忙时插话」 (journey and spec in
 // docs/dev/smoke.md). It covers both halves:
 //
 // A: a subagent is running a long task and the owner says something else.
