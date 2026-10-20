@@ -625,17 +625,38 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "让子代理通知我构建过了", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	// The subagent runs on its own goroutine; let it finish before the test's
-	// temp dir goes away.
-	metas, _ := filepath.Glob(filepath.Join(b.Root, "bots", b.Name(), "agents", "sa_*", "meta.json"))
+	// The subagent runs on its own goroutine and writes meta.json only once it
+	// has started, so look for the file inside the wait, not before it. Return
+	// only after the subagent reached a terminal state; the test's temp dir is
+	// about to be removed underneath it.
+	pattern := filepath.Join(b.Root, "bots", b.Name(), "agents", "sa_*", "meta.json")
 	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) && len(metas) == 1 {
-		raw, _ := os.ReadFile(metas[0])
-		var meta exec.Meta
-		if json.Unmarshal(raw, &meta) == nil && meta.Status == "done" {
+	status := ""
+	for {
+		metas, _ := filepath.Glob(pattern)
+		for _, path := range metas {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			var meta exec.Meta
+			if json.Unmarshal(raw, &meta) != nil {
+				continue
+			}
+			if meta.Status == "done" || meta.Status == "failed" || meta.Status == "cancelled" {
+				status = meta.Status
+			}
+		}
+		if status != "" {
 			break
 		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the subagent did not finish within 5s: no terminal meta.json under %s", pattern)
+		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if status != "done" {
+		t.Fatalf("the subagent ended as %s, want done", status)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
