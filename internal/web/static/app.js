@@ -2970,7 +2970,7 @@
   function renderLists() {
     const collapsed = folderStore();
     const sig = JSON.stringify({
-      bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, b.group || "", b.description, lineForBot(b)]),
+      bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, (b.notes || 0) > 0, b.group || "", b.description, lineForBot(b)]),
       folders: state.folders.map((f) => [f.name, f.count, !!f.ungrouped, (f.bots || []).join("\n"), !!collapsed[f.name]]),
       groups: state.groups.map((g) => [g.id, g.name, lineForGroup(g)]),
       others: (state.others || []).map((o) => [(o && o.bot) || "", (o && o.name) || ""]),
@@ -3650,8 +3650,21 @@
   // open, so it is no longer a descendant of #panel-actions; selecting only
   // inside the row would leave it on screen, still acting on the old bot.
   let panelMore = null;
+  let panelSub = null;
+  let chromeBot = "";
+
+  function closePanelSub() {
+    if (!panelSub) return;
+    panelSub.hidden = true;
+    panelSub.remove();
+    panelSub = null;
+    document.querySelectorAll(".menu-move > .menu-row").forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
 
   function closePanelMore() {
+    panelSub = null;
     if (panelMore) {
       panelMore.remove();
       panelMore = null;
@@ -3677,10 +3690,13 @@
   // The panel top row: edit and more. Everything else moved into the menu.
   function syncPanelChrome() {
     const bot = state.sel && state.sel.type === "bot";
+    // A repaint for the same bot (polling, status) must not close an open menu.
+    if (bot && panelMore && chromeBot === state.sel.id) return;
     const row = $("panel-actions");
     closePanelMenu();
     row.replaceChildren();
     row.hidden = !bot;
+    chromeBot = bot ? state.sel.id : "";
     if (!bot) return;
     const edit = panelAct("pencil", "编辑资料");
     edit.addEventListener("click", () => openProfile(state.panelData || {}));
@@ -3703,6 +3719,9 @@
   function openPanelMore(anchor) {
     const data = state.panelData || {};
     if (!state.sel) return;
+    // A second click on 更多 closes the menu instead of stacking another one.
+    if (panelMore && anchor.classList.contains("on")) { closePanelMore(); return; }
+    closePanelMore();
     const pinned = !!data.pinned;
     const menu = el("div", "pop");
     const item = (ic, text, fn, opts = {}) => {
@@ -3825,9 +3844,11 @@
       if (open) {
         btn.setAttribute("aria-expanded", "true");
         placeMenu(btn, sub, "below");
+        panelSub = sub;
       } else {
         sub.hidden = true;
         btn.setAttribute("aria-expanded", "false");
+        if (panelSub === sub) panelSub = null;
       }
     });
     wrap.append(btn, sub);
@@ -4966,7 +4987,7 @@
     // The panel is a drawer over the card at every width (#243), so it always
     // covers part of the conversation: narrow windows get a scrim to click
     // away, wide ones keep the thread readable and close with 详情 or Escape.
-    $("panel-scrim").hidden = !(window.innerWidth <= 1100 && panel.classList.contains("open") && !drawer);
+    $("panel-scrim").hidden = !(window.innerWidth < 960 && panel.classList.contains("open") && !drawer);
   }
 
   async function refreshLists() {
@@ -5907,7 +5928,8 @@
   }
 
   document.addEventListener("click", (ev) => {
-    if (panelMore && !panelMore.contains(ev.target) && !(ev.target.closest && ev.target.closest("#panel-more"))) {
+    const inSub = panelSub && panelSub.contains(ev.target);
+    if (panelMore && !inSub && !panelMore.contains(ev.target) && !(ev.target.closest && ev.target.closest("#panel-more"))) {
       closePanelMore();
     }
     if (authenticated && subtitleError) setStatus("");
@@ -5995,7 +6017,11 @@
     state.panelTouched = true;
     try { localStorage.setItem("xbot-panel-open", String(open)); } catch (e) {}
   }
-  $("panel-scrim").addEventListener("click", () => $("panel-close").click());
+  $("panel-scrim").addEventListener("click", () => {
+    closePops();
+    rememberPanel(false);
+    panelOpen(false);
+  });
 
   $("menu").addEventListener("click", () => {
     sidebar.classList.add("open");
@@ -6267,19 +6293,30 @@
     input.focus();
   });
 
+  // Escape consumes one layer per press, topmost first. Device and pairing
+  // layers have their own handlers and must see the key before this one.
+  function deviceLayerOpen() {
+    for (const id of ["devices-modal", "devices-drawer"]) {
+      const layer = $(id);
+      if (layer && layer.firstChild) return true;
+    }
+    return false;
+  }
+
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
-    closeAccount();
+    if (deviceLayerOpen()) return;
     hideTip();
+    if (panelSub && !panelSub.hidden) { closePanelSub(); return; }
+    if (panelMore) { closePanelMore(); return; }
     if (!lightbox.hidden) { closeShots(); return; }
     if (!modal.hidden) { closeModal(); return; }
     if (stpState.open) { closeStp(); return; }
     if (state.replyTo) { clearQuote(); return; }
-    closePops();
-    // Escape closes the drawer at every width now that it covers the thread
-    // (#243); there is no longer a width where it can stay open harmlessly.
+    if (!$("account-menu").hidden || !$("connect-pop").hidden) { closePops(); return; }
     if (panel.classList.contains("open")) {
       rememberPanel(false);
+      closePops();
       panelOpen(false);
     }
     sidebar.classList.remove("open");
