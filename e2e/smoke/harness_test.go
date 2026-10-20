@@ -263,47 +263,103 @@ type ToolEvent struct {
 
 // Reply is one POST /api/bots/{name}/messages request and its SSE stream.
 type Reply struct {
-	Sent   time.Time
-	Deltas []Delta
-	Tools  []ToolEvent
-	Done   string
-	Error  string
-	Status int
+	Sent      time.Time
+	Deltas    []Delta
+	Tools     []ToolEvent
+	Done      string
+	HandedOff bool
+	Error     string
+	Status    int
 }
 
-// Send posts a message and reads the whole event stream.
+// Stream is one message request still in flight.
+type Stream struct {
+	s    *Server
+	bot  string
+	text string
+
+	reply     *Reply
+	done      chan struct{}
+	failure   string
+	approvals int
+	sawDone   bool
+}
+
+// BeginSend posts a message and reads its stream in the background, for a
+// test that must keep talking while the turn is still running.
+func (s *Server) BeginSend(bot, text string) *Stream {
+	st := &Stream{
+		s:     s,
+		bot:   bot,
+		text:  text,
+		reply: &Reply{Sent: time.Now()},
+		done:  make(chan struct{}),
+	}
+	go st.run()
+	return st
+}
+
+// Wait blocks until the stream ends and fails on anything but a complete,
+// error-free answer.
+func (st *Stream) Wait() *Reply {
+	<-st.done
+	s := st.s
+	if st.failure != "" {
+		s.t.Fatalf("%s", st.failure)
+	}
+	if st.approvals > 0 {
+		s.t.Fatalf("message %q raised %d approval event(s); the smoke script has none", st.text, st.approvals)
+	}
+	if st.reply.Error != "" {
+		s.t.Fatalf("message %q: stream error: %s", st.text, st.reply.Error)
+	}
+	if !st.sawDone {
+		s.t.Fatalf("message %q: stream ended without a done event", st.text)
+	}
+	return st.reply
+}
+
+// Send posts a message and waits for the whole event stream.
 func (s *Server) Send(bot, text string) *Reply {
 	s.t.Helper()
-	raw, err := json.Marshal(map[string]string{"text": text})
+	return s.BeginSend(bot, text).Wait()
+}
+
+func (st *Stream) run() {
+	defer close(st.done)
+	s := st.s
+	raw, err := json.Marshal(map[string]string{"text": st.text})
 	if err != nil {
-		s.t.Fatalf("marshal message: %v", err)
+		st.failure = fmt.Sprintf("marshal message: %v", err)
+		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		s.URL+"/api/bots/"+url.PathEscape(bot)+"/messages", bytes.NewReader(raw))
+		s.URL+"/api/bots/"+url.PathEscape(st.bot)+"/messages", bytes.NewReader(raw))
 	if err != nil {
-		s.t.Fatalf("POST message: %v", err)
+		st.failure = fmt.Sprintf("POST message %q: %v", st.text, err)
+		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 
-	reply := &Reply{Sent: time.Now()}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		s.t.Fatalf("POST message %q: %v\nstderr:\n%s", text, err, s.Stderr())
+		st.failure = fmt.Sprintf("POST message %q: %v\nstderr:\n%s", st.text, err, s.Stderr())
+		return
 	}
 	defer resp.Body.Close()
-	reply.Status = resp.StatusCode
+	st.reply.Status = resp.StatusCode
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		s.t.Fatalf("POST message %q: %d %s", text, resp.StatusCode, body)
+		st.failure = fmt.Sprintf("POST message %q: %d %s", st.text, resp.StatusCode, body)
+		return
 	}
 
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	var event string
-	done, approvals := false, 0
 	for sc.Scan() {
 		line := sc.Text()
 		switch {
@@ -319,7 +375,7 @@ func (s *Server) Send(bot, text string) *Reply {
 					Text string `json:"text"`
 				}
 				if err := json.Unmarshal([]byte(data), &d); err == nil {
-					reply.Deltas = append(reply.Deltas, Delta{At: time.Now(), Text: d.Text})
+					st.reply.Deltas = append(st.reply.Deltas, Delta{At: time.Now(), Text: d.Text})
 				}
 			case "tool":
 				var d struct {
@@ -327,41 +383,33 @@ func (s *Server) Send(bot, text string) *Reply {
 					Summary string `json:"summary"`
 				}
 				if err := json.Unmarshal([]byte(data), &d); err == nil {
-					reply.Tools = append(reply.Tools, ToolEvent{Name: d.Name, Summary: d.Summary})
+					st.reply.Tools = append(st.reply.Tools, ToolEvent{Name: d.Name, Summary: d.Summary})
 				}
 			case "approval":
-				approvals++
+				st.approvals++
 			case "done":
 				var d struct {
-					Text string `json:"text"`
+					Text      string `json:"text"`
+					HandedOff bool   `json:"handed_off"`
 				}
 				if err := json.Unmarshal([]byte(data), &d); err == nil {
-					reply.Done = d.Text
+					st.reply.Done = d.Text
+					st.reply.HandedOff = d.HandedOff
 				}
-				done = true
+				st.sawDone = true
 			case "error":
 				var d struct {
 					Error string `json:"error"`
 				}
 				if err := json.Unmarshal([]byte(data), &d); err == nil {
-					reply.Error = d.Error
+					st.reply.Error = d.Error
 				}
 			}
 		}
 	}
 	if err := sc.Err(); err != nil {
-		s.t.Fatalf("read stream for %q: %v", text, err)
+		st.failure = fmt.Sprintf("read stream for %q: %v", st.text, err)
 	}
-	if approvals > 0 {
-		s.t.Fatalf("message %q raised %d approval event(s); the smoke script has none", text, approvals)
-	}
-	if reply.Error != "" {
-		s.t.Fatalf("message %q: stream error: %s", text, reply.Error)
-	}
-	if !done {
-		s.t.Fatalf("message %q: stream ended without a done event", text)
-	}
-	return reply
 }
 
 // Row is one transcript line as GET /api/bots/{name}/transcript returns it.
@@ -398,6 +446,34 @@ func (s *Server) Transcript(bot string) []Row {
 		out.Messages = []Row{}
 	}
 	return out.Messages
+}
+
+// Agent is one subagent record from GET /api/bots/{name}.
+type Agent struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Task   string `json:"task"`
+	Mode   string `json:"mode"`
+	Steps  int    `json:"steps"`
+}
+
+// Agents reads the panel's subagent list, the data the 任务 panel draws.
+func (s *Server) Agents(bot string) []Agent {
+	s.t.Helper()
+	status, body := s.do(http.MethodGet, "/api/bots/"+url.PathEscape(bot), nil)
+	if status != http.StatusOK {
+		s.t.Fatalf("panel of %s: %d %s", bot, status, body)
+	}
+	var out struct {
+		Agents []Agent `json:"agents"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		s.t.Fatalf("panel of %s: %v", bot, err)
+	}
+	if out.Agents == nil {
+		out.Agents = []Agent{}
+	}
+	return out.Agents
 }
 
 // WaitFor polls cond until it is true. On timeout it reports what cond last saw.

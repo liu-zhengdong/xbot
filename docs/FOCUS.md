@@ -98,7 +98,7 @@
 - 长任务没有被打断，也没有重跑；「任务」面板显示它在后台进行中。
 - 长任务的结果报告在对话里只出现一次。
 
-**冒烟用例**：已出规格、待实现，见 [dev/smoke.md](dev/smoke.md)「忙时插话」
+**冒烟用例**：`e2e/smoke/interject_test.go` 的 `TestInterjectMidTask`（`go test -tags smoke ./e2e/smoke/`）
 **级别**：待验收
 
 ### 主动唤醒

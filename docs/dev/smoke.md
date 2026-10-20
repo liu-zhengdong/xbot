@@ -146,11 +146,10 @@
 
 ## 还没做的
 
-框架（`e2e/smoke/harness_test.go`、`stub_test.go`，build tag `smoke`）和「网页对话」（`e2e/smoke/webchat_test.go` 的 `TestWebChat`）已实现（2026-10-20）。下面是剩余实现项和核对项：
+框架（`e2e/smoke/harness_test.go`、`stub_test.go`，build tag `smoke`）、「网页对话」（`e2e/smoke/webchat_test.go` 的 `TestWebChat`）和「忙时插话」（`e2e/smoke/interject_test.go` 的 `TestInterjectMidTask`）已实现（2026-10-20）。下面是剩余实现项和核对项：
 
-- **其余 5 条用例**，按忙时插话 → 动手做事 → 记住事情 → 主动唤醒 → Bot 之间协作的顺序写。
+- **其余 4 条用例**，按动手做事 → 记住事情 → 主动唤醒 → Bot 之间协作的顺序写。
 - **假时钟**：`clock.Now()` 加 `XBOT_FAKE_CLOCK_FILE`，替换上面列的几处。不加的退路是停机时把数据目录里的 `timer-watermark` 改早，但那是改内部文件，不推荐。
-- **核对子代理的识别点**：派活出来的子代理系统提示开头是不是 `exec.SubPersona`；不是就找一个稳定的开头，替身按它认。
 - **核对默认 Link**：`POST /api/bots` 建出来的 Bot 是否带 web、peers、agents、timer，缺的在用例里补装。
 - **免打扰汇总的放出时机**：拨钟之后什么时候放出，以实现为准，用例的等待时间按它定。
 - **已知缺口，不在本文测**：前台跑慢工具时插话超过 3 秒；轨迹里看不到子代理用的工具；`xbot chat` 打开时不回放最近几轮。都在[候选清单](../CANDIDATES.md)。
