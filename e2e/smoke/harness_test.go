@@ -593,6 +593,34 @@ func (s *Server) Memory(bot string) []MemoryFact {
 	return out.Memory
 }
 
+// PeerMessage is one direct message between two bots.
+type PeerMessage struct {
+	ID   string `json:"id"`
+	Seq  int    `json:"seq"`
+	From string `json:"from"`
+	To   string `json:"to"`
+	Text string `json:"text"`
+}
+
+// PeerMessages reads the private thread between two local bots.
+func (s *Server) PeerMessages(a, b string) []PeerMessage {
+	s.t.Helper()
+	status, body := s.do(http.MethodGet, "/api/bots/"+url.PathEscape(a)+"/peers/"+url.PathEscape(b)+"/messages", nil)
+	if status != http.StatusOK {
+		s.t.Fatalf("peer messages %s/%s: %d %s", a, b, status, body)
+	}
+	var out struct {
+		Messages []PeerMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		s.t.Fatalf("peer messages %s/%s: %v", a, b, err)
+	}
+	if out.Messages == nil {
+		out.Messages = []PeerMessage{}
+	}
+	return out.Messages
+}
+
 // Note is one unread note from GET /api/notes.
 type Note struct {
 	ID   string `json:"id"`

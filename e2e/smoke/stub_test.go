@@ -104,6 +104,16 @@ func (s *Stub) Missed() int {
 	return s.missed
 }
 
+// lineWith is the first line of text that carries marker.
+func lineWith(text, marker string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, marker) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return marker
+}
+
 // Requests returns a copy of the calls seen so far.
 func (s *Stub) Requests() []StubRequest {
 	s.mu.Lock()
@@ -284,6 +294,36 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 		s.missed++
 		s.mu.Unlock()
 		streamText(w, []string{"SILENT"})
+	case strings.Contains(text, "B_OPINION_77"):
+		streamText(w, []string{"B 的意见是：" + lineWith(text, "B_OPINION_77")})
+	case strings.Contains(text, "SMOKE_ASK_B"):
+		if !sawTool(req, "message_bot") {
+			streamTool(w, "call_ask", "message_bot", argsJSON(map[string]string{
+				"bot": "bob", "text": "SMOKE_Q 你怎么看方案 X",
+			}))
+			return
+		}
+		streamText(w, []string{"已经问 B 了"})
+	case strings.Contains(text, "SMOKE_Q"):
+		if !sawTool(req, "message_bot") {
+			streamTool(w, "call_reply", "message_bot", argsJSON(map[string]string{
+				"bot": "ada", "text": "B_OPINION_77：建议先做 X",
+			}))
+			return
+		}
+		streamText(w, []string{"sent"})
+	case strings.Contains(text, "SMOKE_LOOP"):
+		if !sawTool(req, "message_bot") {
+			other := "bob"
+			if botName(joined(req)) == "bob" {
+				other = "ada"
+			}
+			streamTool(w, "call_loop", "message_bot", argsJSON(map[string]string{
+				"bot": other, "text": "SMOKE_LOOP",
+			}))
+			return
+		}
+		streamText(w, []string{"sent"})
 	case strings.Contains(text, "SMOKE_ROUTINE"):
 		if !sawTool(req, "routine_create") {
 			f := strings.Fields(text)
