@@ -1,0 +1,66 @@
+/* XBot 视觉规范 v1 · 方向 A「白纸」+ 深色（B 式明度分层）
+   用法：html[data-theme="dark"] 切深色；所有组件只引用这些变量。 */
+:root{
+  /* 表面：窗口灰 → 卡片白 → 面板 → 填充三档（靠明度分层，不画线） */
+  --x-win:#f3f3f5;        /* 窗口底、侧栏 */
+  --x-card:#ffffff;       /* 主卡片（对话区） */
+  --x-panel:#fafafa;      /* 信息面板，和对话区同卡，靠底色分开 */
+  --x-fill-1:#f5f5f7;     /* 卡片内的块：任务卡、命令框、斑马行 */
+  --x-fill-2:#ededf0;     /* 次级按钮、标签、悬停 */
+  --x-fill-3:#e4e4e8;     /* 选中、按下 */
+  --x-zebra:#f4f4f6;
+  --x-bubble:#f0f0f2;     /* 主人气泡 */
+  --x-input:#f3f3f5;      /* 输入框 */
+  --x-code:#f1f1f3;
+  /* 文字四档 */
+  --x-text:#18181b; --x-text-2:#3f3f46; --x-muted:#6b6b70; --x-faint:#9a9aa0; --x-ph:#a6a6ac;
+  /* 主操作：黑底白字（深色反过来） */
+  --x-primary:#18181b; --x-primary-hover:#33333a; --x-on-primary:#ffffff;
+  --x-disabled:#e2e2e6; --x-on-disabled:#a6a6ac;
+  /* 含义色：只有这几种 */
+  --x-danger:#c93a2b; --x-danger-bg:#fbeaea; /* 只给错误、删除、失败 */
+  --x-caption-close:#c42b1c; /* 只给 Windows 关闭按钮悬停（系统惯例） */
+  --x-online:#2f9e5b;                         /* 只给「在线」小圆点 */
+  /* 子代理类型标签（低饱和，同一族明度） */
+  --x-type-dev:#4f7d69;  --x-type-dev-bg:#e5efe9;   /* 开发 · 墨绿 */
+  --x-type-res:#5c7a9c;  --x-type-res-bg:#e6edf5;   /* 调研 · 雾蓝 */
+  --x-type-gen:#7a7268;  --x-type-gen-bg:#efece7;   /* 通用 · 暖灰 */
+  --x-type-own:#766d96;  --x-type-own-bg:#ecebf3;   /* 自定义 · 紫灰 */
+  /* 上下文用量分段（沿用 atlas 现有 --ctx-*） */
+  --x-ctx-turn:#3b82f6; --x-ctx-hist:#8fb4f5; --x-ctx-block:#14a37f; --x-ctx-mem:#d4882b;
+  --x-ctx-sys:#a3a3aa; --x-ctx-env:#c7c7cd; --x-ctx-tools:#b9b9c0; --x-ctx-free:#e7e7eb;
+  /* 头像容器 */
+  --x-avatar-bg:#e4e4e7;
+  /* 阴影：只给浮层（菜单、抽屉、弹窗、提示） */
+  --x-shadow-pop:0 8px 30px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
+  --x-scrim:rgba(24,24,27,.28);
+  /* 字体 */
+  --x-font:"Segoe UI","Noto Sans SC","PingFang SC",sans-serif;
+  --x-mono:"JetBrains Mono","SF Mono",Consolas,"Noto Sans Mono",monospace;
+  /* 字号 */
+  --x-fs-cap:11.5px; --x-fs-sm:12.5px; --x-fs-ui:13.5px; --x-fs-body:15px; --x-fs-title:17px; --x-fs-greet:19px; --x-fs-h:24px;
+  /* 间距（4 的倍数为主，6/10 用于紧凑行） */
+  --x-s1:4px; --x-s2:6px; --x-s3:8px; --x-s4:10px; --x-s5:12px; --x-s6:16px; --x-s7:20px; --x-s8:24px; --x-s9:32px;
+  /* 圆角 */
+  --x-r-xs:6px; --x-r-sm:8px; --x-r-card:12px; --x-r-bubble:18px; --x-r-input:24px; --x-r-pill:999px;
+  color-scheme:light;
+}
+html[data-theme="dark"]{
+  --x-win:#0f0f11; --x-card:#18181b; --x-panel:#1c1c20;
+  --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a; --x-zebra:#1f1f23;
+  --x-bubble:#2a2a2e; --x-input:#252528; --x-code:#2a2a2f;
+  --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:#6f6f78; --x-ph:#6f6f75;
+  --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;
+  --x-disabled:rgba(255,255,255,.08); --x-on-disabled:#6f6f75;
+  --x-danger:#f97066; --x-danger-bg:rgba(249,112,102,.12); --x-online:#3fb27f;
+  --x-type-dev:#8fbfa8; --x-type-dev-bg:#21302a;
+  --x-type-res:#9db6d4; --x-type-res-bg:#222b37;
+  --x-type-gen:#c2b8aa; --x-type-gen-bg:#2e2b27;
+  --x-type-own:#b3a9d6; --x-type-own-bg:#2a2836;
+  --x-ctx-turn:#4c8df6; --x-ctx-hist:#2f5ea8; --x-ctx-block:#1fb08a; --x-ctx-mem:#e0912f;
+  --x-ctx-sys:#a8a8b0; --x-ctx-env:#6b6b73; --x-ctx-tools:#55555c; --x-ctx-free:#2c2c30;
+  --x-avatar-bg:#a8a8ad;
+  --x-shadow-pop:0 10px 34px rgba(0,0,0,.5);
+  --x-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}

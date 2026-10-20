@@ -39,98 +39,77 @@
 :root {
   --base: #f3f3f5;
   --bg: #ffffff;
-  --sidebar: #f3f3f5;
-  --card: #ffffff;
-  --cardx: #eaeaed;
-  --row-hover: #dfdfe3;
-  --fill: #dcdce0;
-  --fill-hover: #d0d0d5;
+  /* Aliases onto the design tokens in tokens.css (M1). Selectors keep using
+     these names; M2 removes --border and the separators that use it. */
+  --sidebar: var(--x-win);
+  --card: var(--x-card);
+  --cardx: var(--x-panel);
+  --row-hover: var(--x-fill-3);
+  --fill: var(--x-fill-2);
+  --fill-hover: var(--x-fill-3);
   --border: transparent;
-  --hover: #ededef;
-  --selected: #e6e6ea;
-  --text: #1a1a1a;
-  --muted: #6b6b70;
-  --faint: #9a9aa0;
+  --hover: var(--x-fill-2);
+  --selected: var(--x-fill-3);
+  --text: var(--x-text);
+  --muted: var(--x-muted);
+  --faint: var(--x-faint);
   --accent: #111111;
   --accent-soft: #111111;
   --accent-ink: #111111;
-  --primary: #111111;
-  --primary-hover: #333333;
-  --primary-text: #ffffff;
+  --primary: var(--x-primary);
+  --primary-hover: var(--x-primary-hover);
+  --primary-text: var(--x-on-primary);
   --badge-bg: #d6d6db;
   --badge-ink: #111111;
-  --bot-bubble: #f2f2f4;
-  --user-bubble: #f0f0f2;
-  --send: #111111;
-  --send-ink: #ffffff;
-  --send-off: #e2e2e6;
-  --send-off-ink: #a6a6ac;
-  --code: #f6f6f7;
-  --inline: #f3f3f5;
-  --chip: #f7f7f8;
+  --bot-bubble: var(--x-bubble);
+  --user-bubble: var(--x-bubble);
+  --send: var(--x-primary);
+  --send-ink: var(--x-on-primary);
+  --send-off: var(--x-disabled);
+  --send-off-ink: var(--x-on-disabled);
+  --code: var(--x-code);
+  --inline: var(--x-fill-1);
+  --chip: var(--x-fill-1);
   --ring: rgba(0, 0, 0, 0.28);
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow: var(--x-shadow-pop);
   --ok-bg: #ececef;
   --ok: #111111;
   --info-bg: #ececef;
   --info: #55555c;
   --warn-bg: #ececef;
   --warn: #55555c;
-  --err-bg: #fbeaea;
-  --err: #b23a3a;
+  --err-bg: var(--x-danger-bg);
+  --err: var(--x-danger);
   --scroll: #d4d4d8;
   --eye: #3a342f;
   --composer: #f3f3f5;
   --panel: #f6f6f8;
-  --font: "Mona Sans VF", "XBot SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  /* The bundled Noto Sans SC subset ("XBot SC") stays first so Chinese keeps
+     the face the interface shipped with; its unicode-range covers CJK only, so
+     Latin falls through to the design stack in --x-font. */
+  --font: "XBot SC", var(--x-font);
   --mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   --side: 260px;
   --top-h: 56px;
   color-scheme: light;
 }
 
+/* Dark surfaces and colors come from tokens.css; only the names this file
+   still owns stay here. */
 html[data-theme="dark"] {
-  --base: #141416;
-  --bg: #1c1c1f;
-  --sidebar: #141416;
-  --card: #2a2a2e;
-  --cardx: #313136;
-  --row-hover: rgba(255, 255, 255, 0.06);
-  --fill: rgba(255, 255, 255, 0.09);
-  --fill-hover: rgba(255, 255, 255, 0.15);
   --border: transparent;
-  --hover: rgba(255, 255, 255, 0.06);
-  --selected: rgba(255, 255, 255, 0.1);
-  --text: #ededef;
-  --muted: #a0a0a6;
-  --faint: #8b8b92;
   --accent: #f2f2f2;
   --accent-soft: #f2f2f2;
   --accent-ink: #f2f2f2;
-  --primary: #f2f2f2;
-  --primary-hover: #d8d8d8;
-  --primary-text: #111111;
   --badge-bg: rgba(255, 255, 255, 0.12);
   --badge-ink: #ffffff;
-  --bot-bubble: #2a2a2e;
-  --user-bubble: #2a2a2e;
-  --send: #f2f2f2;
-  --send-ink: #111111;
-  --send-off: rgba(255, 255, 255, 0.08);
-  --send-off-ink: #6f6f75;
-  --code: #18181b;
-  --inline: rgba(255, 255, 255, 0.08);
-  --chip: rgba(255, 255, 255, 0.08);
   --ring: rgba(255, 255, 255, 0.35);
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   --ok-bg: rgba(255, 255, 255, 0.1);
   --ok: #f2f2f2;
   --info-bg: rgba(255, 255, 255, 0.1);
   --info: #c6c6cc;
   --warn-bg: rgba(255, 255, 255, 0.1);
   --warn: #c6c6cc;
-  --err-bg: #3a2222;
-  --err: #e3a0a0;
   --scroll: #3a3a40;
   --eye: #241f1c;
   --composer: #252528;
@@ -1411,25 +1390,17 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
    The two blues are the conversation (this turn, earlier turns), so the part
    that grows reads as one family. */
 :root {
-  --ctx-turn: #3b82f6;
-  --ctx-hist: #8fb4f5;
-  --ctx-block: #14a37f;
-  --ctx-sys: #a3a3aa;
-  --ctx-mem: #d4882b;
-  --ctx-env: #c7c7cd;
-  --ctx-tools: #b9b9c0;
-  --ctx-free: #e7e7eb;
+  --ctx-turn: var(--x-ctx-turn);
+  --ctx-hist: var(--x-ctx-hist);
+  --ctx-block: var(--x-ctx-block);
+  --ctx-sys: var(--x-ctx-sys);
+  --ctx-mem: var(--x-ctx-mem);
+  --ctx-env: var(--x-ctx-env);
+  --ctx-tools: var(--x-ctx-tools);
+  --ctx-free: var(--x-ctx-free);
   --ctx-bad: #c4320a;
 }
 html[data-theme="dark"] {
-  --ctx-turn: #4c8df6;
-  --ctx-hist: #2f5ea8;
-  --ctx-block: #1fb08a;
-  --ctx-sys: #a8a8b0;
-  --ctx-mem: #e0912f;
-  --ctx-env: #6b6b73;
-  --ctx-tools: #55555c;
-  --ctx-free: #2c2c30;
   --ctx-bad: #f97066;
 }
 
@@ -2333,6 +2304,10 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 
 /* macOS: traffic lights sit above the rail; the wordmark starts at the card's
    left content padding (rail 72 + 16) and the bell keeps 12px from the edge. */
+/* Windows: the system UI face is Segoe UI Variable; the bundled CJK subset
+   still leads so Chinese keeps the same face as on other systems. */
+.in-app.os-win { --font: "XBot SC", "Segoe UI Variable", var(--x-font); }
+
 .in-app.os-mac { --strip-reserve: 0px; }
 
 .in-app.os-mac .appbar { padding-right: 12px; }

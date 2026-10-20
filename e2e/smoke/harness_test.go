@@ -635,7 +635,8 @@ type Note struct {
 	Time string `json:"time"`
 }
 
-// Notes reads the unread notes, what the bell shows.
+// Notes reads the unread notes; the sidebar avatar of that bot shows them as an
+// unread dot.
 func (s *Server) Notes() []Note {
 	s.t.Helper()
 	status, body := s.do(http.MethodGet, "/api/notes", nil)

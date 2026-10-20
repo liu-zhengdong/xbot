@@ -9,7 +9,7 @@ import (
 )
 
 // TestWakeUp is the smoke case for 「主动唤醒」 (journey and spec in
-// docs/dev/smoke.md). Four parts:
+// docs/guard/六条基本旅程.md). Four parts:
 //
 //   - a routine fires on time and raises one note;
 //   - a routine with nothing to say stays silent;
@@ -17,8 +17,9 @@ import (
 //   - after a restart a fired slot is not run again and the missed slots are
 //     summarized once.
 //
-// Not covered: how the clock row and the bell are drawn; only the data the
-// interface reads is checked. The webhook entry is out of scope.
+// Not covered: how the clock row and the unread dot on the bot's sidebar
+// avatar are drawn; only the data the interface reads is checked. The webhook
+// entry is out of scope.
 func TestWakeUp(t *testing.T) {
 	stub := StartStub(t)
 

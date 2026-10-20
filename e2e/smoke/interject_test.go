@@ -11,7 +11,7 @@ import (
 )
 
 // TestInterjectMidTask is the smoke case for 「忙时插话」 (journey and spec in
-// docs/dev/smoke.md). It covers both halves:
+// docs/guard/六条基本旅程.md). It covers both halves:
 //
 // A: a subagent is running a long task and the owner says something else.
 // B: the foreground is waiting on the model and the owner says something else.

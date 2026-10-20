@@ -11,7 +11,7 @@ import (
 )
 
 // TestBotCollaboration is the smoke case for 「Bot 之间协作」 (journey and spec
-// in docs/dev/smoke.md): ada asks bob a question, bob answers, ada brings the
+// in docs/guard/六条基本旅程.md): ada asks bob a question, bob answers, ada brings the
 // opinion into its reply to the owner; a runaway loop stops at the hop limit.
 //
 // Not covered: whether bob's words are treated as data rather than orders. That

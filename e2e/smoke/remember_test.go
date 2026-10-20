@@ -9,7 +9,7 @@ import (
 )
 
 // TestRemember is the smoke case for 「记住事情」 (journey and spec in
-// docs/dev/smoke.md): the owner tells ada something about themselves, serve
+// docs/guard/六条基本旅程.md): the owner tells ada something about themselves, serve
 // restarts, ada and bob both answer from it, the panel shows it, and a
 // correction reaches the model after the old fact.
 //

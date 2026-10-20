@@ -12,7 +12,7 @@ import (
 )
 
 // TestWebChat is the smoke case for 「网页对话」 (journey and spec in
-// docs/dev/smoke.md). It logs in, sends two messages, reads the transcript
+// docs/guard/六条基本旅程.md). It logs in, sends two messages, reads the transcript
 // twice as a refresh would, then opens `xbot chat` on the same bot and checks
 // that both directions of the shared conversation show up.
 //

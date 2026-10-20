@@ -12,7 +12,7 @@ import (
 )
 
 // TestDoThings is the smoke case for 「动手做事」 (journey and spec in
-// docs/dev/smoke.md). The foreground dispatches a dev subagent; the subagent
+// docs/guard/六条基本旅程.md). The foreground dispatches a dev subagent; the subagent
 // lists a directory with shell and writes summary.txt; the owner reads the
 // report and the file on disk.
 //
