@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/clock"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 )
@@ -181,7 +182,7 @@ func (k *Kernel) now() time.Time {
 	if k.Now != nil {
 		return k.Now().UTC()
 	}
-	return time.Now().UTC()
+	return clock.Now().UTC()
 }
 
 // localStamp is the owner's clock to the minute, for the environment block only.

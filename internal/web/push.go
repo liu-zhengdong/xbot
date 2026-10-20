@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/clock"
 	"xbot/internal/notify"
 )
 
@@ -92,7 +93,7 @@ func (s *Server) pushClient() *http.Client {
 
 func (s *Server) onNote(botName string, n notify.Note) {
 	b, err := bot.Load(s.Root, botName)
-	if err != nil || b.InQuietAt(time.Now()) {
+	if err != nil || b.InQuietAt(clock.Now()) {
 		return
 	}
 	batch := notify.IsBatch(n)

@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -87,11 +88,13 @@ type Server struct {
 	URL   string
 	Token string
 
-	env     []string
-	cmd     *exec.Cmd
-	client  *http.Client
-	exited  chan struct{}
-	waitErr error
+	env       []string
+	clockFile string
+	clock     time.Duration
+	cmd       *exec.Cmd
+	client    *http.Client
+	exited    chan struct{}
+	waitErr   error
 
 	mu     sync.Mutex
 	stderr strings.Builder
@@ -111,12 +114,19 @@ func Start(t *testing.T, stub *Stub) *Server {
 		exited: make(chan struct{}),
 	}
 	t.Logf("data root: %s", s.Root)
+	// Every server reads its clock shift from this file; zero is real time,
+	// so tests that do not move it see the normal clock.
+	s.clockFile = filepath.Join(base, "clock")
+	if err := os.WriteFile(s.clockFile, []byte("0"), 0600); err != nil {
+		t.Fatalf("clock file: %v", err)
+	}
 	s.env = envWith(os.Environ(),
 		"HOME="+base,
 		"XBOT_BASE_URL="+stub.BaseURL(),
 		"XBOT_API_KEY=smoke",
 		"XBOT_MODEL=smoke",
 		"XBOT_AUTO_UPGRADE=0",
+		"XBOT_FAKE_CLOCK_FILE="+s.clockFile,
 	)
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -173,6 +183,26 @@ func (s *Server) Restart() {
 	s.Stop()
 	s.launch()
 	s.Login()
+}
+
+// Advance moves this server's clock forward by d. serve rereads the offset
+// file on every clock call, so the change applies to the running process.
+func (s *Server) Advance(d time.Duration) {
+	s.t.Helper()
+	s.clock += d
+	raw := []byte(strconv.FormatInt(int64(s.clock/time.Second), 10))
+	if err := os.WriteFile(s.clockFile, raw, 0600); err != nil {
+		s.t.Fatalf("clock file: %v", err)
+	}
+}
+
+// PatchBot changes profile fields with PATCH /api/bots/{name}.
+func (s *Server) PatchBot(bot string, fields map[string]any) {
+	s.t.Helper()
+	status, body := s.do(http.MethodPatch, "/api/bots/"+url.PathEscape(bot), fields)
+	if status != http.StatusOK {
+		s.t.Fatalf("patch %s: %d %s", bot, status, body)
+	}
 }
 
 func (s *Server) scanStderr(r io.Reader, listen, token chan<- string) {
@@ -561,6 +591,33 @@ func (s *Server) Memory(bot string) []MemoryFact {
 		out.Memory = []MemoryFact{}
 	}
 	return out.Memory
+}
+
+// Note is one unread note from GET /api/notes.
+type Note struct {
+	ID   string `json:"id"`
+	Bot  string `json:"bot"`
+	Text string `json:"text"`
+	Time string `json:"time"`
+}
+
+// Notes reads the unread notes, what the bell shows.
+func (s *Server) Notes() []Note {
+	s.t.Helper()
+	status, body := s.do(http.MethodGet, "/api/notes", nil)
+	if status != http.StatusOK {
+		s.t.Fatalf("notes: %d %s", status, body)
+	}
+	var out struct {
+		Notes []Note `json:"notes"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		s.t.Fatalf("notes: %v", err)
+	}
+	if out.Notes == nil {
+		out.Notes = []Note{}
+	}
+	return out.Notes
 }
 
 // WaitFor polls cond until it is true. On timeout it reports what cond last saw.

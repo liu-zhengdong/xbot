@@ -20,6 +20,7 @@ import (
 	"xbot/internal/appshell"
 	"xbot/internal/bot"
 	"xbot/internal/browser"
+	"xbot/internal/clock"
 	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/config"
@@ -513,7 +514,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	migrateServeRoutines(root)
 	// One synchronous check before the server and the bot pass start, so a
 	// notice for slots missed while down is computed before anything runs them.
-	if err := deliverTimers(root, time.Now()); err != nil {
+	if err := deliverTimers(root, clock.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "xbot: routines:", err)
 	}
 	if ln == nil {
@@ -613,7 +614,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		tick := time.NewTicker(serve.TimerEvery)
 		defer tick.Stop()
 		for {
-			if err := deliverTimers(root, time.Now()); err != nil {
+			if err := deliverTimers(root, clock.Now()); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot: routines:", err)
 			}
 			select {
@@ -679,7 +680,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		default:
 		}
 		startEmitters(ctx, root, seen)
-		err := serve.Pass(ctx, root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
+		err := serve.Pass(ctx, root, clock.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
 			return newServeKernel(root, b)
 		})
 		if err != nil {

@@ -56,9 +56,10 @@ type Stub struct {
 	srv    *httptest.Server
 	closed chan struct{}
 
-	mu    sync.Mutex
-	reqs  []StubRequest
-	gates map[string]*gate
+	mu     sync.Mutex
+	reqs   []StubRequest
+	gates  map[string]*gate
+	missed int
 }
 
 type gate struct {
@@ -95,6 +96,13 @@ func StartStub(t *testing.T) *Stub {
 
 // BaseURL is what XBOT_BASE_URL points at.
 func (s *Stub) BaseURL() string { return s.srv.URL + "/v1" }
+
+// Missed is how many missed-routine summaries the stub answered.
+func (s *Stub) Missed() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.missed
+}
 
 // Requests returns a copy of the calls seen so far.
 func (s *Stub) Requests() []StubRequest {
@@ -261,6 +269,47 @@ func (s *Stub) listAndSummarize(w http.ResponseWriter, req stubRequest, task str
 func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubRequest) {
 	all, text := joined(req), lastUser(req)
 	switch {
+	case strings.Contains(text, "<routine"):
+		if strings.Contains(text, "SMOKE_FIRE_NEWS") {
+			if !sawTool(req, "notify_owner") {
+				streamTool(w, "call_notify", "notify_owner", argsJSON(map[string]string{"text": "NOTE_NEWS"}))
+				return
+			}
+			streamText(w, []string{"noted"})
+			return
+		}
+		streamText(w, []string{"SILENT"})
+	case strings.Contains(text, "Missed routine times"):
+		s.mu.Lock()
+		s.missed++
+		s.mu.Unlock()
+		streamText(w, []string{"SILENT"})
+	case strings.Contains(text, "SMOKE_ROUTINE"):
+		if !sawTool(req, "routine_create") {
+			f := strings.Fields(text)
+			if len(f) < 3 {
+				streamText(w, []string{"bad cue"})
+				return
+			}
+			streamTool(w, "call_routine", "routine_create", argsJSON(map[string]string{
+				"name": "smoke-" + f[1], "prompt": "SMOKE_FIRE_" + f[1], "at": f[2],
+			}))
+			return
+		}
+		streamText(w, []string{"定好了"})
+	case strings.Contains(text, "SMOKE_CRON"):
+		if !sawTool(req, "routine_create") {
+			f := strings.Fields(text)
+			if len(f) < 2 {
+				streamText(w, []string{"bad cue"})
+				return
+			}
+			streamTool(w, "call_routine", "routine_create", argsJSON(map[string]string{
+				"name": "smoke-" + f[1], "prompt": "SMOKE_FIRE_" + f[1], "cron": "*/5 * * * *",
+			}))
+			return
+		}
+		streamText(w, []string{"定好了"})
 	case strings.Contains(text, "wrote ") && strings.Contains(text, "summary.txt"):
 		streamText(w, []string{"我列出了目录里的文件，写好了 " + summaryPath(text)})
 	case strings.Contains(text, "SMOKE_DO"):
