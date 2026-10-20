@@ -50,7 +50,7 @@
 - 刷新后，刚才的一问一答都在，顺序不变，没有重复或丢失。
 - 终端里看到的是同一条对话，从终端接着说的话，网页上也能看到。
 
-**冒烟用例**：已出规格、待实现，见 [dev/smoke.md](dev/smoke.md)「网页对话」
+**冒烟用例**：`e2e/smoke/webchat_test.go` 的 `TestWebChat`（`go test -tags smoke ./e2e/smoke/`）
 **级别**：待验收
 
 ### 记住事情

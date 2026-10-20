@@ -10,7 +10,7 @@
 
 放在 `e2e/smoke/`，单独一个 package，和进程内的集成测试分开。
 
-**harness.go：起进程、登录、发消息、读结果**
+**harness_test.go：起进程、登录、发消息、读结果**
 
 - `TestMain` 里 `go build -o <临时目录>/xbot ./cmd/xbot`，整包只构建一次。
 - `Start(t, opts)`：每条用例一个新数据目录作 `--root`，`HOME` 指到它的上一级，不碰主人的 `~/.xbot`；失败时保留目录并打出路径。环境变量 `XBOT_BASE_URL=<替身>/v1`、`XBOT_API_KEY=smoke`、`XBOT_MODEL=smoke`、`XBOT_AUTO_UPGRADE=0`。命令 `xbot --root <dir> serve --http 127.0.0.1:0 --no-auto-upgrade`，`--interval` 用默认值，和主人实际用的一样。从 stderr 读 `listening on http://…` 和 `登录码（login token）: …` 两行，15 秒读不到就失败并打出 stderr。
@@ -23,7 +23,7 @@
 - `Chat(bot)`：起 `xbot --root <dir> chat <bot>`，stdin 用管道，收 stdout；`Say` 写一行，`Quit` 写 `exit`。
 - `Stop()`：SIGTERM，超时再 kill。
 
-**stub.go：模型替身**
+**stub_test.go：模型替身**
 
 - `httptest` 服务接 `/v1/chat/completions`，回 SSE；写法抄 `internal/mockopenai`。文字可以分段、段间可设间隔；首包固定延迟 300 毫秒，模拟真实模型。
 - 按系统消息认调用方：以 `Summarize the conversation so it can continue` 开头的是压缩；子代理按它的固定开头认（**实现时核对**：预计是 `exec.SubPersona` 那句 `You are a subagent working for the main bot.`，没确认派活出来的子代理是否也用它）；带 `BOTNAME=` 的分清是哪个 Bot；其余是前台。认不出的调用（例如记忆抽取）一律回 `ok`。
@@ -146,10 +146,9 @@
 
 ## 还没做的
 
-全部没做，下面是实现时的顺序和核对项：
+框架（`e2e/smoke/harness_test.go`、`stub_test.go`，build tag `smoke`）和「网页对话」（`e2e/smoke/webchat_test.go` 的 `TestWebChat`）已实现（2026-10-20）。下面是剩余实现项和核对项：
 
-- **框架**：`e2e/smoke/harness.go`、`stub.go`，build tag `smoke`。
-- **6 条用例**，按网页对话 → 忙时插话 → 动手做事 → 记住事情 → 主动唤醒 → Bot 之间协作的顺序写。
+- **其余 5 条用例**，按忙时插话 → 动手做事 → 记住事情 → 主动唤醒 → Bot 之间协作的顺序写。
 - **假时钟**：`clock.Now()` 加 `XBOT_FAKE_CLOCK_FILE`，替换上面列的几处。不加的退路是停机时把数据目录里的 `timer-watermark` 改早，但那是改内部文件，不推荐。
 - **核对子代理的识别点**：派活出来的子代理系统提示开头是不是 `exec.SubPersona`；不是就找一个稳定的开头，替身按它认。
 - **核对默认 Link**：`POST /api/bots` 建出来的 Bot 是否带 web、peers、agents、timer，缺的在用例里补装。
