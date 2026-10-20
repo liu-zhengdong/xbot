@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"xbot/internal/bot"
 
@@ -103,6 +104,38 @@ func (k *Kernel) subApprove() agent.Approver {
 
 func (k *Kernel) subTools() []tools.Tool {
 	return k.toolsForScope(k.allocScope(context.Background()))
+}
+
+// handingOut names the tools that hand work to another agent. They are never in
+// a subagent's set: a subagent does not dispatch (ADR 0016), so it cannot
+// recurse through either the typed dispatch or the older spawn.
+var handingOut = map[string]bool{"dispatch": true, "spawn": true}
+
+// subagentBase is a subagent's tool set before its type filters it: the whole
+// mounted directory minus the tools that hand work out, so a tool the
+// foreground hides still has a way in. The scope's shell and file tools win
+// over any link copy of the same name, which keeps the subagent's own cwd and
+// the memory guard.
+func (k *Kernel) subagentBase(id string) []tools.Tool {
+	scoped := k.toolsForScope(id)
+	list := append([]tools.Tool{}, scoped...)
+	seen := make(map[string]bool, len(scoped))
+	for _, t := range scoped {
+		seen[t.Name()] = true
+	}
+	mounted, err := k.mountedTools()
+	if err != nil {
+		return list
+	}
+	for _, t := range mounted {
+		if handingOut[t.Name()] || seen[t.Name()] {
+			continue
+		}
+		seen[t.Name()] = true
+		list = append(list, t)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
+	return list
 }
 
 // allocScope copies the cwd of ctx into a new scope. Each subTools call gets

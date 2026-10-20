@@ -140,10 +140,11 @@ func (k *Kernel) dispatchMemory(ctx context.Context) string {
 	return strings.TrimSpace(mem)
 }
 
-// toolsFor is the tool set of one subagent: the scope's set, filtered by its
-// type. A request without a type (a plain spawn) gets the whole set.
+// toolsFor is the tool set of one subagent: the whole mounted directory,
+// filtered by its type. A request without a type (a plain spawn) gets the
+// whole set.
 func (k *Kernel) toolsFor(req exec.StartRequest) []tools.Tool {
-	base := k.toolsForScope(req.ID)
+	base := k.subagentBase(req.ID)
 	if req.Type == "" {
 		return base
 	}

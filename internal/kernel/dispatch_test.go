@@ -12,7 +12,10 @@ import (
 
 	"xbot/internal/agenttype"
 	"xbot/internal/bot"
+	"xbot/internal/browser"
+	"xbot/internal/code"
 	"xbot/internal/compact"
+	"xbot/internal/desktop"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
@@ -20,6 +23,7 @@ import (
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
+	"xbot/internal/vault"
 )
 
 // roleModel answers the foreground and its subagents from separate scripts.
@@ -425,6 +429,74 @@ func TestForegroundNeverOffersWorkTools(t *testing.T) {
 	for _, hidden := range []string{"send_email", "delete_file", "mcp_srv_post", "http_request", "spawn"} {
 		if seen[hidden] {
 			t.Errorf("foreground offers %s", hidden)
+		}
+	}
+}
+
+// Guard: whatever the foreground hides from itself while dispatching, a
+// subagent reaches, or the work has no way in. The general type takes the whole
+// mounted directory minus the tools that hand work out; a narrower type still
+// narrows it, and no subagent can hand work out again (ADR 0016).
+func TestSubagentReachesWhatTheForegroundHides(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents,
+		link.NameCoding, link.NameDesktop, link.NameBrowser)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := bot.Dir(b.Root, b.Name())
+	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{
+		Bot: b, Provider: &roleModel{}, Memory: memory.NopStore{}, Inbox: box, MaxSteps: 8,
+		Dispatch: true, WorkDir: t.TempDir(), Vault: store,
+		Links: []link.Link{
+			link.Terminal{}, link.NewToolsLinkAt(dir, ""), link.Agents{}, link.Memory{}, link.Context{},
+			link.NewConnector(dir, b.SecretPath(), link.NameTelegram),
+			code.Open(dir, b.InboxPath()), desktop.Open(b.Root), browser.Open(b.Root),
+			workLink{}, fakeMCPLink{},
+		},
+	}
+	mounted, err := k.mountedTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	namesOf := func(list []tools.Tool) []string {
+		var out []string
+		for _, tl := range list {
+			out = append(out, tl.Name())
+		}
+		return out
+	}
+	general := namesOf(k.toolsFor(exec.StartRequest{ID: "sa_0123456789", Type: "general"}))
+	for _, tl := range mounted {
+		if handingOut[tl.Name()] {
+			continue
+		}
+		if !contains(general, tl.Name()) {
+			t.Errorf("general subagent cannot reach %s, so a tool the foreground hides has no way in", tl.Name())
+		}
+	}
+	for _, never := range []string{"dispatch", "spawn"} {
+		if contains(general, never) {
+			t.Errorf("subagent offers %s; it could hand work out again", never)
+		}
+	}
+	research := namesOf(k.toolsFor(exec.StartRequest{ID: "sa_0123456789", Type: "research"}))
+	for _, never := range []string{"write_file", "send_email", "delete_file", "mcp_srv_post",
+		"code_start", "desktop_click", "browser_open", "http_request"} {
+		if contains(research, never) {
+			t.Errorf("research subagent offers %s", never)
+		}
+	}
+	for _, want := range []string{"read_file", "shell", "web_search", "web_fetch", "view_image"} {
+		if !contains(research, want) {
+			t.Errorf("research subagent lacks %s: %v", want, research)
 		}
 	}
 }

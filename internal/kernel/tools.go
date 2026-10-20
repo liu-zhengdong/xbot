@@ -21,6 +21,20 @@ import (
 )
 
 func (k *Kernel) modelTools() ([]tools.Tool, error) {
+	list, err := k.mountedTools()
+	if err != nil {
+		return nil, err
+	}
+	list = k.foregroundTools(list)
+	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
+	return k.reviewedTools(list), nil
+}
+
+// mountedTools is the whole tool directory the bot has mounted: the tools the
+// granted links offer plus the ones the kernel adds. The foreground narrows it
+// (foregroundTools); a subagent gets it too, minus the tools that hand work out
+// (subagentBase), so a tool only the foreground hides still has a way in.
+func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	k.attachShell()
 	links := k.snapshotLinks()
 	var active []link.Link
@@ -66,9 +80,7 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 		list = append(list, shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k})
 	}
 	list = k.modelAgentTools(list)
-	list = k.foregroundTools(list)
-	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
-	return k.reviewedTools(list), nil
+	return list, nil
 }
 
 // selfEditGuard reports whether path is one of this bot's own persona or
