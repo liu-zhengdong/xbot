@@ -6,6 +6,7 @@ package review
 import (
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -628,11 +629,29 @@ func IsFileTool(tool string) bool {
 
 // ShellIsReadOnly reports a shell command made only of plain read commands: no
 // redirection, no chaining, and a first word from a short list (plus git status, log, diff, show).
+//
+// A chain (&&, ||, ;, |) is read-only when every part is: `pwd && ls -la`
+// is two reads. Redirects, substitution, variables, and a lone & (run in the
+// background) never are.
 func ShellIsReadOnly(args json.RawMessage) bool {
 	cmd := strings.TrimSpace(shellCommand(args))
-	if cmd == "" || strings.ContainsAny(cmd, ">;&|`$(") {
+	if cmd == "" || strings.ContainsAny(cmd, ">`$(\n") {
 		return false
 	}
+	if strings.Contains(strings.ReplaceAll(cmd, "&&", ""), "&") {
+		return false
+	}
+	for _, part := range shellChain.Split(cmd, -1) {
+		if !readOnlyPart(strings.TrimSpace(part)) {
+			return false
+		}
+	}
+	return true
+}
+
+var shellChain = regexp.MustCompile(`&&|\|\||;|\|`)
+
+func readOnlyPart(cmd string) bool {
 	w := shellWords(cmd)
 	if len(w) == 0 {
 		return false

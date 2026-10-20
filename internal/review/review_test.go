@@ -271,3 +271,20 @@ func TestGitSecondCommandSeen(t *testing.T) {
 		}
 	}
 }
+
+func TestShellIsReadOnlyChains(t *testing.T) {
+	args := func(cmd string) json.RawMessage {
+		raw, _ := json.Marshal(map[string]string{"command": cmd})
+		return raw
+	}
+	for _, cmd := range []string{"ls", "pwd && ls -la", "ls | head -5", "cat a; wc -l a", "git status && git diff", "ls || echo none"} {
+		if !ShellIsReadOnly(args(cmd)) {
+			t.Errorf("%q: want read-only", cmd)
+		}
+	}
+	for _, cmd := range []string{"ls && rm x", "ls > out", "ls &", "echo $HOME", "cat $(which ls)", "ls | xargs rm", "ls\nrm x", "ls &&", "git status; git clean -fd", "cat `x`"} {
+		if ShellIsReadOnly(args(cmd)) {
+			t.Errorf("%q: want not read-only", cmd)
+		}
+	}
+}

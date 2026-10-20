@@ -290,6 +290,35 @@ func TestForegroundCannotDoTheWork(t *testing.T) {
 	}
 }
 
+// The owner is never shown a card for a call the foreground refuses: with
+// every command asking (machine "ask"), a write is refused before a card,
+// and a chain of reads is let through to its card.
+func TestForegroundRefusesBeforeTheCard(t *testing.T) {
+	m := &roleModel{}
+	k, _, _ := dispatchKernel(t, m)
+	k.Machine = func() (string, error) { return "ask", nil }
+	var asked []string
+	k.Approve = func(_ context.Context, tool, summary string) (bool, error) {
+		asked = append(asked, summary)
+		return true, nil
+	}
+	m.fore = []provider.Message{
+		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
+		toolCall("s2", "shell", mustArgs(t, map[string]any{"command": "pwd && ls -la"})),
+		{Role: provider.RoleAssistant, Content: "done"},
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	got := bodies(t, k)
+	if len(got) != 2 || !strings.Contains(got[0], "hand it to a subagent with dispatch") || strings.Contains(got[1], "dispatch") {
+		t.Fatalf("results %q", got)
+	}
+	if len(asked) != 1 || !strings.Contains(asked[0], "pwd && ls -la") {
+		t.Fatalf("cards %q; want only the chain of reads", asked)
+	}
+}
+
 // Without dispatch the foreground keeps every tool and no dispatch rule.
 func TestForegroundUnchangedWithoutDispatch(t *testing.T) {
 	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
