@@ -364,6 +364,10 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			return err
 		}
 	}
+	// The opening message is on the transcript, so this turn now owns this
+	// ctx. The synchronous compaction below may summarize and extract, and
+	// those calls belong to the turn that started them.
+	ctx = withTurnSeq(ctx, seq)
 	st, _, err = k.applyReadyJob(st)
 	if err != nil {
 		return err

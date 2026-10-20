@@ -9,6 +9,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/link"
+	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
@@ -127,5 +128,59 @@ func TestExtractorUsageIsRecorded(t *testing.T) {
 	}
 	if got == nil || got.Prompt != 40 || got.Turn != 9 {
 		t.Fatalf("extract usage %+v, want prompt 40 in turn 9", got)
+	}
+}
+
+// A turn that opens over the hard ceiling compacts inside Handle, before the
+// turn value is installed. Those summary and extraction calls now carry the
+// opening message's seq instead of 0, so an in-turn compaction can be told
+// from a background job by its cost.
+func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	seedMarked(t, b, 6, 4000)
+	k := &Kernel{
+		Bot: b, Provider: usageModel{}, Memory: memory.NopStore{}, MaxSteps: 2,
+		Links:     []link.Link{link.Terminal{}},
+		Compactor: compact.LLM{P: usageModel{}},
+		Extractor: LLMExtractor{P: factModel{}},
+		Budget:    compact.Budget{Ceiling: 1, KeepTail: 1},
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened := 0
+	for i, e := range entries {
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, "hello") {
+			opened = i + 1
+		}
+	}
+	if opened == 0 {
+		t.Fatal("the opening message is not on the transcript")
+	}
+	traces, err := b.Traces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var comp, ext *bot.Trace
+	for i := range traces {
+		if traces[i].Kind != bot.TraceUsage {
+			continue
+		}
+		switch traces[i].Call {
+		case bot.TraceCallCompact:
+			comp = &traces[i]
+		case bot.TraceCallExtract:
+			ext = &traces[i]
+		}
+	}
+	if comp == nil || ext == nil {
+		t.Fatalf("opening compaction traces: compact %+v, extract %+v; want both", comp, ext)
+	}
+	if comp.Turn != opened || ext.Turn != opened {
+		t.Fatalf("opening compaction ran as compact turn %d / extract turn %d, want the opening seq %d", comp.Turn, ext.Turn, opened)
 	}
 }

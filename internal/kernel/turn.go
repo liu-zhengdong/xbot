@@ -226,6 +226,16 @@ func (k *Kernel) ensureTurn() *turn {
 
 type turnKey struct{}
 
+// turnSeqKey carries the opening seq of the turn before the turn value itself
+// exists. Handle appends the message and knows its seq before it runs the
+// synchronous auto-compact, which may summarize and extract; those side calls
+// must still be counted against this turn.
+type turnSeqKey struct{}
+
+func withTurnSeq(ctx context.Context, seq int) context.Context {
+	return context.WithValue(ctx, turnSeqKey{}, seq)
+}
+
 // BranchOf returns the background branch id of the turn stored in ctx, or "" when
 // ctx carries no turn or the turn is still on the main line. It reads the turn's
 // branch under t.mu, so a fork that starts mid-call is seen.
@@ -259,6 +269,9 @@ func (k *Kernel) turnFor(ctx context.Context) *turn {
 func turnSeqOf(ctx context.Context) int {
 	if ctx == nil {
 		return 0
+	}
+	if seq, ok := ctx.Value(turnSeqKey{}).(int); ok {
+		return seq
 	}
 	t, ok := ctx.Value(turnKey{}).(*turn)
 	if !ok || t == nil {
