@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -310,9 +311,30 @@ func TestLongRunJourney(t *testing.T) {
 		}
 	}
 	use := readJourneyUsage(t, b, turns)
-	if !use.cacheReported {
-		t.Logf("criterion 3: not applicable, the model never reported a cache field")
+	// This double reports a cache field on every reply, so a run with a reply
+	// whose record has no field means the usage record dropped it, not that the
+	// provider has none. The recovery and cost checks below rest on that field.
+	if !journeyDoubleReportsCache {
+		t.Logf("criterion 3: not applicable, the model reports no cache field")
 		return
+	}
+	missing := 0
+	for _, c := range use.calls {
+		if !c.compact && !c.cacheReported {
+			missing++
+		}
+	}
+	if missing > 0 {
+		t.Fatalf("criterion 3: the model reports a cache field on every call, but %d of %d chat usage records carry none; the record is losing the field",
+			missing, len(use.calls))
+	}
+	compactCalls, extractCalls := model.countSides()
+	if use.compactRecords != compactCalls || use.extractRecords != extractCalls {
+		t.Fatalf("criterion 3: the trace holds %d compact and %d extract usage records, but the model made %d and %d such calls; a summary or extraction call went unrecorded",
+			use.compactRecords, use.extractRecords, compactCalls, extractCalls)
+	}
+	if use.compactRecords == 0 {
+		t.Fatalf("criterion 3: the trace holds no summary usage record, so the compaction cost below would be zero by default")
 	}
 	var pTurns []int
 	for i := 1; i < len(cycles); i++ {
@@ -363,12 +385,12 @@ func checkRecovery(t *testing.T, turns []turnUse, pTurns []int) {
 		if i+1 < len(pTurns) {
 			end = pTurns[i+1] - 1
 		}
-		worst, at := 1.0, 0
-		for j := p; j < end; j++ { // turns[j] is turn j+1, so this starts at P+1
-			if r := turns[j].rate() / median; r < worst {
-				worst, at = r, j+1
-			}
+		worst, at, err := recoveryRatio(median, turns[p:end]) // turns[p] is turn P+1
+		if err != nil {
+			t.Errorf("criterion 3: pass %d (P = turn %d): %v", i+1, p, err)
+			continue
 		}
+		at += p
 		t.Logf("criterion 3 recovery, pass %d (P = turn %d): median rate before %.3f, rate at P %.3f, P+1 %.3f; worst after P %.3f of the median (turn %d)",
 			i+1, p, median, turns[p-1].rate(), turns[min(p, len(turns)-1)].rate(), worst, at)
 		if worst < journeyRecovery {
@@ -376,6 +398,27 @@ func checkRecovery(t *testing.T, turns []turnUse, pTurns []int) {
 				p, at, worst*100, journeyRecovery*100)
 		}
 	}
+}
+
+// recoveryRatio compares the hit rate of the turns after a pass with the median
+// before it. A zero median means no cache was established, so there is nothing
+// to recover; that, like a non-finite ratio, is an error rather than a check
+// that passes by arithmetic accident.
+func recoveryRatio(median float64, after []turnUse) (float64, int, error) {
+	if median <= 0 {
+		return 0, 0, fmt.Errorf("the median hit rate before it is %.3f, so there is no cache to recover", median)
+	}
+	worst, at := 1.0, 0
+	for j, u := range after {
+		r := u.rate() / median
+		if math.IsNaN(r) || math.IsInf(r, 0) {
+			return 0, 0, fmt.Errorf("the recovery ratio at P+%d is %v, so the check cannot judge it", j+1, r)
+		}
+		if r < worst {
+			worst, at = r, j+1
+		}
+	}
+	return worst, at, nil
 }
 
 func medianOf(xs []float64) float64 {
@@ -405,14 +448,19 @@ type journeyUsage struct {
 	turns []turnUse
 	// calls are every usage record with the test turn it falls in; a summary
 	// call is put in the turn whose records it sits among.
-	calls         []usageCall
-	cacheReported bool
+	calls []usageCall
+	// compactRecords and extractRecords are how many summary and extraction
+	// usage records the trace holds, to check none was dropped.
+	compactRecords, extractRecords int
 }
 
 type usageCall struct {
 	turn           int
 	prompt, cached int
 	compact        bool
+	// cacheReported is the usage record's own cache flag, kept so the test can
+	// check the double's every-reply report came through.
+	cacheReported bool
 }
 
 func (u journeyUsage) sum(span int, f func(usageCall) int) int {
@@ -462,10 +510,12 @@ func readJourneyUsage(t *testing.T, b *bot.Bot, n int) journeyUsage {
 		if tr.Kind != bot.TraceUsage || tr.Branch != "" {
 			continue
 		}
-		if tr.CacheReported {
-			u.cacheReported = true
-		}
-		if tr.Call == bot.TraceCallCompact {
+		if tr.Call == bot.TraceCallCompact || tr.Call == bot.TraceCallExtract {
+			if tr.Call == bot.TraceCallCompact {
+				u.compactRecords++
+			} else {
+				u.extractRecords++
+			}
 			u.calls = append(u.calls, usageCall{turn: max(cur, 1), prompt: tr.Prompt, cached: tr.Cached, compact: true})
 			continue
 		}
@@ -484,7 +534,7 @@ func readJourneyUsage(t *testing.T, b *bot.Bot, n int) journeyUsage {
 		u.turns[at-1].prompt += tr.Prompt
 		u.turns[at-1].cached += tr.Cached
 		u.turns[at-1].largest = max(u.turns[at-1].largest, tr.Prompt)
-		u.calls = append(u.calls, usageCall{turn: at, prompt: tr.Prompt, cached: tr.Cached})
+		u.calls = append(u.calls, usageCall{turn: at, prompt: tr.Prompt, cached: tr.Cached, cacheReported: tr.CacheReported})
 	}
 	if len(u.turns) != n {
 		t.Fatalf("the trace grouped into %d turns, the test drove %d", len(u.turns), n)
@@ -551,9 +601,11 @@ const (
 	// journeyHitWeight is what a cached token costs against a missed one.
 	journeyHitWeight = 0.1
 	// journeyCostK bounds the weighted cost against the no-compaction
-	// baseline. Zero until the owner sets it from a first measurement: the
-	// ratio is logged, not asserted.
-	journeyCostK = 0.0
+	// baseline. The journey must not cost more than the run it replaces.
+	journeyCostK = 1.0
+	// journeyDoubleReportsCache is what this file's scripted model does: every
+	// reply carries a cache field. A drop in the trace is a record bug.
+	journeyDoubleReportsCache = true
 	// journeyCompactShareLimit is the point 4 limit, as a share of all tokens.
 	journeyCompactShareLimit = 0.02
 	// journeyRecall asks the bot for the first turn's fact.
@@ -595,6 +647,7 @@ func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journ
 	}
 	if compaction {
 		k.Compactor = compact.LLM{P: model}
+		k.Extractor = kernel.LLMExtractor{P: model}
 		return k, b, model
 	}
 	reg := `{"providers":[{"name":"sim","base_url":"http://127.0.0.1:1/v1","api_key_env":"XBOT_API_KEY","models":[{"name":"sim-big","context":20000000}]}]}`
@@ -650,6 +703,7 @@ type journeyModel struct {
 type journeyCall struct {
 	turn       int
 	compact    bool
+	extract    bool
 	prompt     int
 	completion int
 	request    []provider.Message
@@ -658,6 +712,9 @@ type journeyCall struct {
 // summarizerInstruction starts compact.LLM's system message. A call carrying it
 // is a compaction, not a chat turn.
 const summarizerInstruction = "Summarize the conversation so it can continue"
+
+// extractInstructionPrefix starts kernel's fact-extraction system message.
+const extractInstructionPrefix = "Extract durable facts and decisions from the turns"
 
 var keepMarker = regexp.MustCompile(`KEEP:[A-Z0-9-]+`)
 
@@ -690,6 +747,20 @@ func (m *journeyModel) callsFrom(i int) []journeyCall {
 	return append([]journeyCall(nil), m.calls[i:]...)
 }
 
+// countSides is how many summary and fact-extraction calls the model made, so
+// the test can check that every one of them reached the usage trace.
+func (m *journeyModel) countSides() (compact, extract int) {
+	for _, c := range m.allCalls() {
+		if c.compact {
+			compact++
+		}
+		if c.extract {
+			extract++
+		}
+	}
+	return compact, extract
+}
+
 func (m *journeyModel) allCalls() []journeyCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -700,7 +771,7 @@ func (m *journeyModel) allCalls() []journeyCall {
 func (m *journeyModel) chatCalls() []journeyCall {
 	var out []journeyCall
 	for _, c := range m.allCalls() {
-		if !c.compact {
+		if !c.compact && !c.extract {
 			out = append(out, c)
 		}
 	}
@@ -713,15 +784,25 @@ func (m *journeyModel) Chat(_ context.Context, req provider.Request, _ func(stri
 	m.seq++
 	call := journeyCall{turn: m.turn, prompt: compact.EstimateMessages(req.Messages), request: req.Messages}
 	for _, msg := range req.Messages {
-		if msg.Role == provider.RoleSystem && strings.HasPrefix(msg.Content, summarizerInstruction) {
+		if msg.Role != provider.RoleSystem {
+			continue
+		}
+		if strings.HasPrefix(msg.Content, summarizerInstruction) {
 			call.compact = true
+			break
+		}
+		if strings.HasPrefix(msg.Content, extractInstructionPrefix) {
+			call.extract = true
 			break
 		}
 	}
 	var reply provider.Message
-	if call.compact {
+	switch {
+	case call.compact:
 		reply = provider.Message{Role: provider.RoleAssistant, Content: summarizeScript(strings.Join(messageContents(req.Messages), "\n"))}
-	} else {
+	case call.extract:
+		reply = provider.Message{Role: provider.RoleAssistant, Content: "[]"}
+	default:
 		reply = m.answer(req)
 	}
 	call.completion = compact.EstimateMessage(reply)
@@ -1122,4 +1203,18 @@ func clip(s string) string {
 		return s[:160] + "..."
 	}
 	return s
+}
+
+// A run with no cache to recover from must fail the recovery rule. The old
+// arithmetic made 0/0 a NaN, which never beat the worst ratio, so the check
+// passed and the whole recovery result was reported as fine.
+func TestRecoveryRatioRejectsNoCache(t *testing.T) {
+	after := []turnUse{{prompt: 100, cached: 25}, {prompt: 100, cached: 30}}
+	if _, _, err := recoveryRatio(0, after); err == nil {
+		t.Fatal("recovery against a zero median returned no error")
+	}
+	worst, at, err := recoveryRatio(0.5, after)
+	if err != nil || worst != 0.5 || at != 1 {
+		t.Fatalf("recovery = %v at P+%d (%v), want 0.5 at P+1", worst, at, err)
+	}
 }
