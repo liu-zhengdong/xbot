@@ -38,8 +38,11 @@ type job struct {
 	resource      string
 	provider      provider.Provider
 	tools         []tools.Tool
-	approve       agent.Approver
-	parent        *Local
+	// refreshTools rebuilds the set before each step: a subagent that loads a
+	// lazy link mid-task must be able to call what it just unlocked.
+	refreshTools func() []tools.Tool
+	approve      agent.Approver
+	parent       *Local
 
 	mu         sync.Mutex
 	stepCancel context.CancelFunc
@@ -86,6 +89,9 @@ func runLoop(j *job) {
 			}
 			j.finish(statusFailed, EvFailed, "max steps reached")
 			return
+		}
+		if j.refreshTools != nil {
+			j.tools = j.refreshTools()
 		}
 		stepCtx, stepCancel := context.WithCancel(ctx)
 		j.mu.Lock()

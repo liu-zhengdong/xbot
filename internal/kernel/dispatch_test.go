@@ -589,3 +589,65 @@ func TestWriteResource(t *testing.T) {
 		t.Fatalf("research got a resource: %q", got)
 	}
 }
+
+// A subagent that loads a lazy link mid-task then calls it: the executor
+// rebuilds the tool set every step, so the tool the subagent just unlocked is
+// really in its next request, not only in the returned name list.
+func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
+	m := &roleModel{
+		fore: []provider.Message{
+			assistantCall("d1", "", "dispatch", `{"type":"general","task":"tell the owner the build passed"}`),
+			{Role: provider.RoleAssistant, Content: "好。"},
+		},
+		sub: []provider.Message{
+			assistantCall("s1", "", "links", `{"action":"load","id":"telegram"}`),
+			assistantCall("s2", "", "telegram_send", `{"to":"u1","body":"the build passed"}`),
+			{Role: provider.RoleAssistant, Content: "Done\nnone"},
+		},
+	}
+	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents, link.NameTelegram)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := bot.Dir(b.Root, b.Name())
+	k := &Kernel{
+		Bot: b, Provider: m, Memory: memory.NopStore{}, Inbox: box, MaxSteps: 8,
+		Dispatch: true, WorkDir: t.TempDir(),
+		Links: []link.Link{
+			link.Terminal{}, link.NewToolsLinkAt(dir, ""), link.Agents{},
+			link.NewConnector(dir, b.SecretPath(), link.NameTelegram),
+		},
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "让子代理通知我构建过了", time.Unix(9, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	// The subagent runs on its own goroutine; let it finish before the test's
+	// temp dir goes away.
+	metas, _ := filepath.Glob(filepath.Join(b.Root, "bots", b.Name(), "agents", "sa_*", "meta.json"))
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && len(metas) == 1 {
+		raw, _ := os.ReadFile(metas[0])
+		var meta exec.Meta
+		if json.Unmarshal(raw, &meta) == nil && meta.Status == "done" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.subReq) < 2 {
+		t.Fatalf("subagent made %d requests, want the load step and the send step", len(m.subReq))
+	}
+	first := toolNamesOf(m.subReq[0].Tools)
+	if contains(first, "telegram_send") {
+		t.Fatalf("the lazy link was mounted before the subagent loaded it: %v", first)
+	}
+	second := toolNamesOf(m.subReq[1].Tools)
+	if !contains(second, "telegram_send") {
+		t.Fatalf("after links(load telegram) the next step still cannot call telegram_send: %v", second)
+	}
+}

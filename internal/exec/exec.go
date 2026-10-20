@@ -170,6 +170,18 @@ func (l *Local) Events() <-chan Event {
 	return l.events
 }
 
+// listTools builds one subagent's tool set for the request. ToolsFor wins over
+// ToolSet because it sees the whole request, so the set can follow the type.
+func (l *Local) listTools(req StartRequest) []tools.Tool {
+	if l.ToolsFor != nil {
+		return l.ToolsFor(req)
+	}
+	if l.ToolSet != nil {
+		return l.ToolSet(req.ID, req.Dir)
+	}
+	return nil
+}
+
 // Start launches a subagent. It returns when the goroutine is running, not when the task finishes.
 func (l *Local) Start(ctx context.Context, req StartRequest) error {
 	l.prepare()
@@ -194,12 +206,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 			timeout = want
 		}
 	}
-	var list []tools.Tool
-	if l.ToolsFor != nil {
-		list = l.ToolsFor(req)
-	} else if l.ToolSet != nil {
-		list = l.ToolSet(req.ID, req.Dir)
-	}
+	list := l.listTools(req)
 	j := &job{
 		id:            req.ID,
 		task:          req.Task,
@@ -214,6 +221,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 		resource:      req.Resource,
 		provider:      p,
 		tools:         list,
+		refreshTools:  func() []tools.Tool { return l.listTools(req) },
 		approve:       l.Approve,
 		parent:        l,
 		ctrl:          make(chan Control, 16),
