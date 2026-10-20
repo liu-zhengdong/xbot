@@ -51,6 +51,7 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 			}
 		}
 	}
+	problems = append(problems, gradeDispatch(c.Checks.Dispatch, obs.Tools)...)
 	asst := strings.TrimSpace(obs.Assistant)
 	if c.Checks.Silent && asst != "SILENT" {
 		problems = append(problems, "expected no message")

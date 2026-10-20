@@ -1,0 +1,20 @@
+name: dispatch-research
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 6
+dispatch: true
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    帮我查一下 Go 1.23 的 range-over-func 迭代器（iter 包）到底怎么用，有哪些坑，要附上出处。
+checks:
+  dispatch:
+    type: research
+    task_mentions: ["1.23", "iter|迭代器|range-over-func|range over func", "出处|来源|source|link|链接|引用"]

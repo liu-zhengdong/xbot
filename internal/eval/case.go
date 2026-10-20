@@ -34,10 +34,14 @@ type Case struct {
 	// Memory mounts the memory tools and a real file store for this case.
 	Memory bool `yaml:"memory"`
 	// Role is the bot working role, chat or dev. Empty stays chat.
-	Role   string `yaml:"role"`
-	Wake   Wake   `yaml:"wake"`
-	Setup  Setup  `yaml:"setup"`
-	Checks Checks `yaml:"checks"`
+	Role string `yaml:"role"`
+	// Dispatch runs the bot as a dispatching foreground (ADR 0016). The
+	// dispatch is recorded, not run, and the case has no shell, so it needs
+	// no jail.
+	Dispatch bool   `yaml:"dispatch"`
+	Wake     Wake   `yaml:"wake"`
+	Setup    Setup  `yaml:"setup"`
+	Checks   Checks `yaml:"checks"`
 }
 
 // Wake is the input. Kind is user, routine, or resume.
@@ -93,6 +97,18 @@ type Checks struct {
 	Files               []FileCheck         `yaml:"files"`
 	AnyFiles            []FileCheck         `yaml:"any_files"`
 	Memory              []MemoryCheck       `yaml:"memory"`
+	Dispatch            *DispatchCheck      `yaml:"dispatch"`
+}
+
+// DispatchCheck grades what a dispatching foreground handed out.
+type DispatchCheck struct {
+	// Type is the subagent type the work should go to.
+	Type string `yaml:"type"`
+	// TaskMentions must each appear in the task, case-insensitively; "a|b"
+	// accepts either.
+	TaskMentions []string `yaml:"task_mentions"`
+	// None says the request needs no subagent at all.
+	None bool `yaml:"none"`
 }
 
 // MemoryCheck is one fact that must or must not be stored after the run.
@@ -223,7 +239,7 @@ func loadDir(dir string) ([]Case, string, error) {
 }
 
 func embeddedSuite(suite string) bool {
-	return suite == "proactivity" || suite == "proactivity-holdout"
+	return suite == "proactivity" || suite == "proactivity-holdout" || suite == "dispatch"
 }
 
 func loadFS(fsys fs.FS, suite, label string) ([]Case, string, error) {

@@ -35,6 +35,7 @@ type job struct {
 	timeout       time.Duration
 	progressEvery time.Duration
 	dir           string
+	resource      string
 	provider      provider.Provider
 	tools         []tools.Tool
 	approve       agent.Approver

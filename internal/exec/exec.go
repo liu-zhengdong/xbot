@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -33,6 +34,7 @@ const (
 	EvDone     = "done"
 	EvFailed   = "failed"
 
+	statusQueued    = "queued"
 	statusRunning   = "running"
 	statusDone      = "done"
 	statusFailed    = "failed"
@@ -87,6 +89,10 @@ type StartRequest struct {
 	Type string `json:"type,omitempty"`
 	// Persona replaces SubPersona as a brief subagent's system prompt.
 	Persona string `json:"persona,omitempty"`
+	// Resource is what this subagent writes (a repo or a directory). Two
+	// with the same resource never run at once: the later one waits,
+	// status queued, until the earlier ends. Empty never waits.
+	Resource string `json:"resource,omitempty"`
 }
 
 // Control is a message to a running subagent.
@@ -127,6 +133,7 @@ type Local struct {
 	Wrap     func(req StartRequest, p provider.Provider, pre int) provider.Provider
 	mu       sync.Mutex
 	jobs     map[string]*job
+	waiting  []*job // queued behind a job on the same resource, oldest first
 	events   chan Event
 	limits   Limits
 	prepared bool
@@ -204,35 +211,87 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 		timeout:       timeout,
 		progressEvery: l.limits.ProgressEvery,
 		dir:           req.Dir,
+		resource:      req.Resource,
 		provider:      p,
 		tools:         list,
 		approve:       l.Approve,
 		parent:        l,
 		ctrl:          make(chan Control, 16),
 	}
-	l.mu.Lock()
-	if len(l.jobs) >= l.limits.MaxConcurrent {
-		l.mu.Unlock()
-		return fmt.Errorf("exec: max concurrent subagents (%d)", l.limits.MaxConcurrent)
-	}
-	if _, ok := l.jobs[req.ID]; ok {
-		l.mu.Unlock()
-		return fmt.Errorf("exec: %s is already running", req.ID)
-	}
-	l.jobs[req.ID] = j
-	l.mu.Unlock()
 	if l.Wrap != nil {
 		j.provider = l.Wrap(req, j.provider, len(initialMessages(j)))
 	}
-	go func() {
-		defer func() {
-			l.mu.Lock()
-			delete(l.jobs, j.id)
-			l.mu.Unlock()
-		}()
-		runLoop(j)
-	}()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.jobs[req.ID]; ok || l.waitingIndex(req.ID) >= 0 {
+		return fmt.Errorf("exec: %s is already running", req.ID)
+	}
+	if l.busyLocked(j.resource) {
+		if len(l.waiting) >= maxWaiting {
+			return fmt.Errorf("exec: %d subagents already queued", maxWaiting)
+		}
+		// The record exists from the start, so read_subagent and the
+		// status list show it as queued.
+		if err := os.MkdirAll(j.dir, 0700); err != nil {
+			return err
+		}
+		_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind})
+		l.waiting = append(l.waiting, j)
+		return nil
+	}
+	if len(l.jobs) >= l.limits.MaxConcurrent {
+		return fmt.Errorf("exec: max concurrent subagents (%d)", l.limits.MaxConcurrent)
+	}
+	l.launchLocked(j)
 	return nil
+}
+
+// maxWaiting caps the queue behind busy resources.
+const maxWaiting = 8
+
+// busyLocked reports whether a running job holds res. l.mu must be held.
+func (l *Local) busyLocked(res string) bool {
+	if res == "" {
+		return false
+	}
+	for _, other := range l.jobs {
+		if other.resource == res {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *Local) waitingIndex(id string) int {
+	for i, w := range l.waiting {
+		if w.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// launchLocked starts j. When it ends, the oldest waiting job whose
+// resource is free starts in its place. l.mu must be held.
+func (l *Local) launchLocked(j *job) {
+	l.jobs[j.id] = j
+	go func() {
+		runLoop(j)
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		delete(l.jobs, j.id)
+		for i, w := range l.waiting {
+			if len(l.jobs) >= l.limits.MaxConcurrent {
+				return
+			}
+			if l.busyLocked(w.resource) {
+				continue
+			}
+			l.waiting = append(l.waiting[:i], l.waiting[i+1:]...)
+			l.launchLocked(w)
+			return
+		}
+	}()
 }
 
 // Control delivers steer, queue, interrupt, or cancel.
@@ -247,6 +306,19 @@ func (l *Local) Control(ctx context.Context, id string, c Control) error {
 	}
 	l.mu.Lock()
 	j := l.jobs[id]
+	if j == nil {
+		if i := l.waitingIndex(id); i >= 0 {
+			w := l.waiting[i]
+			if c.Kind == KindCancel {
+				// It never started: nothing to stop, only the queue entry.
+				l.waiting = append(l.waiting[:i], l.waiting[i+1:]...)
+				l.mu.Unlock()
+				w.finish(statusCancelled, EvFailed, "cancelled before it started")
+				return nil
+			}
+			j = w
+		}
+	}
 	l.mu.Unlock()
 	if j == nil {
 		return fmt.Errorf("exec: %s is not running", id)

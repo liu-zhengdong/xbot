@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -83,6 +85,7 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 	if mem := k.dispatchMemory(ctx); mem != "" {
 		persona += "\n\nWhat is known about the people you work for and about this bot (a read-only snapshot of memory):\n" + mem
 	}
+	cwd := k.cwdFor(ctx)
 	k.adoptScope(ctx, id)
 	req := exec.StartRequest{
 		ID:         id,
@@ -93,12 +96,34 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 		Type:       ty.Name,
 		Persona:    persona,
 		TimeoutSec: int(ty.Budget / time.Second),
+		Resource:   writeResource(ty, cwd),
 	}
 	if err := k.ensureExec().Start(ctx, req); err != nil {
 		k.dropScope(id)
 		return "", err
 	}
 	return fmt.Sprintf("dispatched %s as %s (budget %s). Its result arrives as an event; tell the owner it has started, and do not do the task yourself.", id, ty.Name, ty.Budget), nil
+}
+
+// writeResource is what a subagent of type ty may write when it starts in
+// cwd: the git checkout around cwd, or cwd itself. Two subagents with the
+// same resource queue (exec.Local); one that cannot write has none.
+func writeResource(ty agenttype.Type, cwd string) string {
+	if !ty.Allows("write_file") && !ty.Allows("edit_file") && !ty.Allows("shell") {
+		return ""
+	}
+	if cwd == "" {
+		return ""
+	}
+	for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return "repo:" + dir
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
+	}
+	return "dir:" + filepath.Clean(cwd)
 }
 
 // dispatchMemory is the memory snapshot of this turn's view, or empty.

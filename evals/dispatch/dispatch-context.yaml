@@ -1,0 +1,31 @@
+name: dispatch-context
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 6
+dispatch: true
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    就按刚才说的那个博客，把首页标题改成「慢慢写」，改完本地构建一下看看有没有报错。
+setup:
+  transcript:
+    - role: user
+      content: 我的博客在工作目录下的 blog/ 里，是 Hugo 站点，标题写在 blog/hugo.toml 的 title 里；本地构建用 `hugo --minify`。
+    - role: assistant
+      content: 记下了：blog/ 是 Hugo 站点，标题在 blog/hugo.toml，构建命令是 hugo --minify。
+  files:
+    - path: blog/hugo.toml
+      text: |
+        baseURL = "https://example.com/"
+        title = "随手记"
+checks:
+  dispatch:
+    type: dev
+    task_mentions: ["blog", "hugo.toml", "慢慢写", "hugo --minify|构建|build"]

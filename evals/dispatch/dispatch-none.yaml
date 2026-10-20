@@ -1,0 +1,21 @@
+name: dispatch-none
+axis: willingness
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 4
+dispatch: true
+now: "2026-10-20T09:30:00+08:00"
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    1 公里等于多少米？一句话回答就行。
+checks:
+  dispatch:
+    none: true
+  assistant_contains: ["1000"]

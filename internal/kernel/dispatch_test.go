@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/agenttype"
 	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/exec"
@@ -17,6 +18,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
+	"xbot/internal/review"
 	"xbot/internal/tools"
 )
 
@@ -380,5 +382,138 @@ func TestForegroundLimitHandsTheRestOut(t *testing.T) {
 	}
 	if !stopped {
 		t.Fatal("the foreground kept working past the grace calls")
+	}
+}
+
+// workLink offers tools in every work class, as a connector, an MCP server,
+// or a later link might.
+type workLink struct{}
+
+func (workLink) Name() string { return "worklink" }
+func (workLink) Tools() []tools.Tool {
+	return []tools.Tool{namedTool{"send_email"}, namedTool{"delete_file"}, namedTool{"mcp_srv_post"}, hintTool{ro: true}}
+}
+
+// Guard: whatever links a bot has, the foreground in no turn is offered a
+// tool that writes, runs commands, sends out, or deletes, except the few it
+// keeps on purpose (foregroundKept), whose limits are checked at run time.
+func TestForegroundNeverOffersWorkTools(t *testing.T) {
+	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	k, _, _ := dispatchKernel(t, m)
+	k.Links = append(k.Links, link.Memory{}, link.Persona{}, link.Context{}, link.Peers{}, link.Skills{}, link.Web{}, workLink{})
+	list, err := k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, tl := range list {
+		name := tl.Name()
+		seen[name] = true
+		if _, kept := foregroundKept[name]; kept || name == "mcp_srv_lookup" {
+			// mcp_srv_lookup declares itself read-only.
+			continue
+		}
+		if workClass(review.ClassOf(name)) {
+			t.Errorf("foreground offers %s (%s)", name, review.ClassOf(name))
+		}
+	}
+	for _, want := range []string{"dispatch", "steer", "read_file", "recall", "mcp_srv_lookup"} {
+		if !seen[want] {
+			t.Errorf("foreground lacks %s", want)
+		}
+	}
+	for _, hidden := range []string{"send_email", "delete_file", "mcp_srv_post", "http_request", "spawn"} {
+		if seen[hidden] {
+			t.Errorf("foreground offers %s", hidden)
+		}
+	}
+}
+
+// A dispatched subagent reaches the main line twice, handed out and handed
+// back: its progress stays in its own transcript.
+func TestDispatchProgressStaysOffTheMainLine(t *testing.T) {
+	k, _, box := dispatchKernel(t, &roleModel{})
+	ch := make(chan exec.Event, 4)
+	ch <- exec.Event{ID: "ag_p1", AgentID: "sa_00000001", Kind: exec.EvProgress, Text: "step 1"}
+	ch <- exec.Event{ID: "ag_p2", AgentID: "sa_00000001", Kind: exec.EvProgress, Text: "step 2"}
+	ch <- exec.Event{ID: "ag_d1", AgentID: "sa_00000001", Kind: exec.EvDone, Text: "**Changed**\n- a.go"}
+	close(ch)
+	k.forwardExec(ch)
+	if err := box.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	var kinds []string
+	for _, ev := range box.Pending() {
+		kinds = append(kinds, ev.Type)
+	}
+	if strings.Join(kinds, ",") != exec.EvDone {
+		t.Fatalf("inbox got %v, want only the result", kinds)
+	}
+}
+
+// A research and a dev subagent run side by side; a second dev in the same
+// directory waits for the first.
+func TestDevSubagentsOnOneDirectoryQueue(t *testing.T) {
+	m := &roleModel{hold: make(chan struct{})}
+	k, b, box := dispatchKernel(t, m)
+	ctx := context.Background()
+	var ids []string
+	for _, ty := range []string{"dev", "research", "dev"} {
+		out, err := k.dispatch(ctx, ty, "do it")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, strings.Fields(out)[1])
+	}
+	status := func(id string) string {
+		meta, _, _ := exec.ReadStatus(b.AgentDir(id))
+		return meta.Status
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for (status(ids[0]) != "running" || status(ids[1]) != "running") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if status(ids[0]) != "running" || status(ids[1]) != "running" || status(ids[2]) != "queued" {
+		t.Fatalf("statuses %s %s %s", status(ids[0]), status(ids[1]), status(ids[2]))
+	}
+	close(m.hold)
+	for time.Now().Before(deadline.Add(5 * time.Second)) {
+		_ = box.Reload()
+		done := 0
+		for _, ev := range box.Pending() {
+			if ev.Source == link.SourceSubagent && ev.Type == exec.EvDone {
+				done++
+			}
+		}
+		if done == 3 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("subagents did not all finish")
+}
+
+func TestWriteResource(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(repo, "pkg", "a")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	types := agenttype.Builtin()
+	dev, _ := agenttype.Find(types, "dev")
+	research, _ := agenttype.Find(types, "research")
+	if got := writeResource(dev, sub); got != "repo:"+repo {
+		t.Fatalf("dev in a checkout: %q", got)
+	}
+	// No checkout anywhere above it (test temp dirs sit inside this repo).
+	plain := "/no-such-xbot-dir/work"
+	if got := writeResource(dev, plain); got != "dir:"+plain {
+		t.Fatalf("dev in a plain dir: %q", got)
+	}
+	if got := writeResource(research, sub); got != "" {
+		t.Fatalf("research got a resource: %q", got)
 	}
 }

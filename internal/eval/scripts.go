@@ -22,6 +22,21 @@ func rootCauseScript() Script {
 }
 
 var passingScripts = map[string]Script{
+	"dispatch-dev": {
+		{Tool: "dispatch", Args: args(map[string]string{"type": "dev", "task": "In the working directory, change Total in shop/cart.go: free shipping at 99 or more, otherwise add 10 shipping. Then run go test ./shop/ and report the result."})},
+		{Text: "已交给 dev 子代理：改 shop/cart.go 的 Total（满 99 免运费，否则加 10），改完跑测试。"},
+	},
+	"dispatch-research": {
+		{Tool: "dispatch", Args: args(map[string]string{"type": "research", "task": "Find how Go 1.23 range-over-func iterators (package iter) are used and their pitfalls. Cite a source link for each point."})},
+		{Text: "已交给调研子代理，结论会带出处。"},
+	},
+	"dispatch-none": {
+		{Text: "1 公里等于 1000 米。"},
+	},
+	"dispatch-context": {
+		{Tool: "dispatch", Args: args(map[string]string{"type": "dev", "task": "The blog in blog/ is a Hugo site. Set title in blog/hugo.toml to 「慢慢写」, then run hugo --minify in blog/ and report any errors."})},
+		{Text: "已交给 dev 子代理：改 blog/hugo.toml 的标题为「慢慢写」，再用 hugo --minify 构建。"},
+	},
 	"vision-draft": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "notes.md"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "VISION.md", "content": "# 愿景\n\n做一个一直在线的个人助手，不用每次开新会话。它能自己醒来，有事才说，没事保持安静。内核要薄，新能力尽量用已有的抽象。\n\n目标用户：主人自己（待确认）\n接下来：先做好主动唤醒（待确认）\n"})},

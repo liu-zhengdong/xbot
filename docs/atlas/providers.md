@@ -20,6 +20,7 @@ verified: 2026-10-18 @ bc4d5e4
 - **工具调用 id**：有的网关回复里不带工具调用 id，客户端补一个本地 id，并带随机后缀，不同轮之间不会撞号。工具结果按 id 配给它之前最近的那次调用；以前同一个 id 跨轮重复，结果配错位置，严格网关回 400，dev Bot 每次唤醒都失败。
 - 预留一个选择模型的接口，以后做按任务自动选模型时再实现。
 - **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，系统提示和原来逐字节一样；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `## Model`。环境更新里看得到：没有时写 `overlay: none`，有时写 `provider/model`、内容哈希，以及 `<model_overlay>` 里的正文。正文超过 8KB 会截断。
+- **派活评测**：内置的 `dispatch` 套件（`xbot eval <model> --suite dispatch`）测派活的前台：该派哪种、任务说明写没写全（`checks.dispatch` 的 `type`、`task_mentions`，用 `|` 分隔可选说法），以及不该派的别派（`none`）。派出去的活只记录不执行（`recordExec`），用例里没有 shell，所以不用沙箱，macOS 上也能跑；前台可以读工作目录和自己的记忆。它不进认证名单。2026-10-20 deepseek-flash 跑 4 条 × 3 次全过（pass^3=1.00）。
 - **认证名单**：`xbot eval <provider/model>` 先跑内置的 `proactivity`，再跑 `proactivity-holdout`。两套里每一条都按多数通过，才把 `provider/model` 写进该数据根的 `certified.json`。只跑其中一套，或 `--suite` 指向一个目录，都不写。默认每条跑 3 次，通过次数多于失败次数才算这条通过，3 次里就是至少 2 次。有一条多数没过就不写。`fake/*` 不写。认证是定期做的：主人隔一段时间自己跑真模型评测，不作为合并条件，也不进 CI。测试和 CI 只用 `fake/scripted`，不调用真模型。`GET /api/models` 默认只列出已经配置、并且在这份名单里的模型；`?all=1` 才带上未认证的。`xbot provider list` 始终列出已配置的供应商；下面的模型默认只有认证过的，`--all` 才带上其余的，并标明未认证。一个供应商还没有认证模型时，这一行仍然打出来。`xbot bind` 绑定未认证模型要加 `--uncertified`。
 
 ## 主动性评测

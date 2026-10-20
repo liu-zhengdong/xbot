@@ -45,15 +45,51 @@ var foregroundHidden = map[string]bool{
 	"browser_click":  true,
 }
 
+// foregroundKept are the tools in a work class (below) that the foreground
+// keeps anyway, each for a reason of its own. Everything else in those
+// classes is hidden, including tools added later, so a new tool that writes
+// or sends never reaches the foreground by default.
+var foregroundKept = map[string]string{
+	"write_file":      "memory only (foregroundRefuses)",
+	"edit_file":       "memory only (foregroundRefuses)",
+	"shell":           "plain reads only (foregroundRefuses)",
+	"propose_persona": "the bot's own persona, like memory",
+	"propose_profile": "the bot's own profile, like memory",
+	"links":           "managing the link catalog the owner asks for",
+	"delete_bot":      "managing the owner's bots on request",
+}
+
+// workClass reports the review classes that do the work: changing files,
+// running commands, sending out, deleting.
+func workClass(c review.Class) bool {
+	switch c {
+	case review.Delete, review.ExternalSend, review.HTTP, review.Shell, review.SelfEdit:
+		return true
+	}
+	return false
+}
+
+func toolClass(t tools.Tool) review.Class {
+	if h, ok := t.(review.ReadOnlyHinter); ok {
+		return review.ClassOfMCP(t.Name(), h.ReadOnlyHint())
+	}
+	return review.ClassOf(t.Name())
+}
+
 func (k *Kernel) foregroundTools(list []tools.Tool) []tools.Tool {
 	if !k.dispatching() {
 		return list
 	}
 	out := list[:0:0]
 	for _, t := range list {
-		if !foregroundHidden[t.Name()] {
-			out = append(out, t)
+		name := t.Name()
+		if foregroundHidden[name] {
+			continue
 		}
+		if _, kept := foregroundKept[name]; !kept && workClass(toolClass(t)) {
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }

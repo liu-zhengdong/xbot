@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"xbot/internal/bot"
 
 	"xbot/internal/agent"
 	"xbot/internal/exec"
@@ -171,11 +172,17 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 		if k.Inbox == nil || ev.AgentID == "" || ev.Kind == "" {
 			continue
 		}
+		if k.Dispatch && ev.Kind == exec.EvProgress {
+			// With dispatch the main line records a subagent as two lines,
+			// handed out and handed back (ADR 0016); its progress stays in
+			// its own transcript, where read_subagent shows it.
+			continue
+		}
 		at := ev.At
 		if at.IsZero() {
 			at = k.now()
 		}
-		_ = k.Inbox.Post(link.Event{
+		err := k.Inbox.Post(link.Event{
 			ID:        ev.ID,
 			Source:    link.SourceSubagent,
 			Type:      ev.Kind,
@@ -184,6 +191,13 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 			Time:      at,
 			Untrusted: true,
 		})
+		if err == nil && k.Dispatch && k.Bot != nil {
+			// The result is the owner's to hear now, not on the next serve
+			// pass: wake the bot, as for a late card decision.
+			if v, ok := wakers.Load(k.Bot.Root); ok {
+				v.(func(*bot.Bot))(k.Bot)
+			}
+		}
 	}
 }
 

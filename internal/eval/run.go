@@ -14,11 +14,13 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/exec"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 // certSuites are both required before a model is written to certified.json.
@@ -49,10 +51,10 @@ func Run(opt Options) (Report, error) {
 	if _, _, err := config.SplitModelID(opt.Model); err != nil {
 		return Report{}, err
 	}
-	if err := requireJail(); err != nil {
+	suites := opt.suiteList()
+	if err := jailFor(opt, suites); err != nil {
 		return Report{}, err
 	}
-	suites := opt.suiteList()
 	real, err := openReal(opt.Root, opt.Model)
 	if err != nil {
 		return Report{}, err
@@ -114,6 +116,22 @@ func Run(opt Options) (Report, error) {
 	}
 	rep.Certified = true
 	return writeReport(out, rep)
+}
+
+// jailFor requires the jail unless every case in suites runs without a shell.
+func jailFor(opt Options, suites []string) error {
+	for _, suite := range suites {
+		cases, _, err := LoadSuite(opt.CasesDir, suite)
+		if err != nil {
+			return err
+		}
+		for _, c := range cases {
+			if !c.Dispatch {
+				return requireJail()
+			}
+		}
+	}
+	return nil
 }
 
 func (opt Options) suiteList() []string {
@@ -222,9 +240,11 @@ func runCase(c Case, level string, script Script, real provider.Provider) CaseRe
 // runCaseFor binds the case bot to modelID so that model's prompt overlay applies.
 func runCaseFor(c Case, level string, script Script, real provider.Provider, modelID string) CaseResult {
 	res := CaseResult{Name: c.Name, Level: level, Grader: c.Grader, SpotCheck: c.Grader == "llm-judge"}
-	if err := requireJail(); err != nil {
-		res.Reason = err.Error()
-		return res
+	if !c.Dispatch {
+		if err := requireJail(); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
 	}
 	root, err := os.MkdirTemp("", "xbot-eval-")
 	if err != nil {
@@ -257,6 +277,9 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	grants := []string{link.NameTerminal, link.NameTools}
 	if c.Memory {
 		grants = append(grants, link.NameMemory)
+	}
+	if c.Dispatch {
+		grants = append(grants, link.NameAgents)
 	}
 	b, err := bot.Create(root, "ada", "Be brief.", grants)
 	if err != nil {
@@ -379,10 +402,18 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	if c.Memory {
 		list = memoryCaseTools(work, c.Network)
 	}
+	if c.Dispatch {
+		// The foreground reads, its memory folder included (it keeps
+		// memory); the work is recorded, not done.
+		list = []tools.Tool{fileTool{Tool: &tools.ReadFile{Root: work}, access: fileAccess{work: work, memory: true}}}
+	}
 	links := []link.Link{link.Terminal{}, sandboxLink{list: list}}
 	if c.Memory {
 		mem = memory.Open(root)
 		links = append(links, link.Memory{})
+	}
+	if c.Dispatch {
+		links = append(links, link.Agents{})
 	}
 	k := &kernel.Kernel{
 		Bot: b, Provider: model, Memory: mem, MaxSteps: steps,
@@ -390,6 +421,10 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		Links:   links,
 		Now:     func() time.Time { return when },
 		Approve: func(context.Context, string, string) (bool, error) { return allow, nil },
+	}
+	if c.Dispatch {
+		k.Dispatch = true
+		k.Exec = &recordExec{events: make(chan exec.Event)}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()

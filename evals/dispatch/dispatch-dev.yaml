@@ -1,0 +1,45 @@
+name: dispatch-dev
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 6
+dispatch: true
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    购物车的 Total 没算运费。改一下：满 99 元免运费，不满就加 10 元运费。改完跑一下测试确认。
+setup:
+  files:
+    - path: shop/cart.go
+      text: |
+        package shop
+
+        // Total sums the item prices.
+        func Total(prices []int) int {
+        	sum := 0
+        	for _, p := range prices {
+        		sum += p
+        	}
+        	return sum
+        }
+    - path: shop/cart_test.go
+      text: |
+        package shop
+
+        import "testing"
+
+        func TestTotal(t *testing.T) {
+        	if got := Total([]int{1, 2}); got != 3 {
+        		t.Fatal(got)
+        	}
+        }
+checks:
+  dispatch:
+    type: dev
+    task_mentions: ["cart.go|Total", "99", "10", "test|测试"]

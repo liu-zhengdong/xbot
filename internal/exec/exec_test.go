@@ -362,3 +362,59 @@ func subFile(t *testing.T, dir string) string {
 	b.WriteString(meta.Summary)
 	return b.String()
 }
+
+// Two subagents writing the same resource never run at once: the later one
+// waits, queued, and starts when the earlier ends. One with no resource (a
+// research subagent) runs beside them. A queued one can be cancelled.
+func TestSameResourceQueues(t *testing.T) {
+	block := make(chan struct{})
+	loc := NewLocal(Limits{MaxConcurrent: 3, Timeout: 10 * time.Second, ProgressEvery: -1})
+	loc.Prov = &blockProv{block: block}
+	ctx := context.Background()
+	dir := t.TempDir()
+	start := func(id, res string) {
+		t.Helper()
+		if err := loc.Start(ctx, StartRequest{ID: id, Task: "t", Mode: ModeBrief, Dir: dir + "/" + id, Resource: res}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status := func(id string) string {
+		meta, _, _ := ReadStatus(dir + "/" + id)
+		return meta.Status
+	}
+	start("sa_dev00001", "repo:/x")
+	start("sa_res00001", "")
+	start("sa_dev00002", "repo:/x")
+	start("sa_dev00003", "repo:/x")
+	deadline := time.Now().Add(2 * time.Second)
+	for status("sa_res00001") != statusRunning && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s := status("sa_res00001"); s != statusRunning {
+		t.Fatalf("research waited: %s", s)
+	}
+	if s := status("sa_dev00002"); s != statusQueued {
+		t.Fatalf("second dev on the same repo is %s, want queued", s)
+	}
+	if err := loc.Control(ctx, "sa_dev00003", Control{Kind: KindCancel}); err != nil {
+		t.Fatal(err)
+	}
+	if s := status("sa_dev00003"); s != statusCancelled {
+		t.Fatalf("cancelled queued job is %s", s)
+	}
+	close(block)
+	var order []string
+	deadline = time.Now().Add(5 * time.Second)
+	for len(order) < 4 && time.Now().Before(deadline) {
+		select {
+		case ev := <-loc.Events():
+			order = append(order, ev.AgentID+":"+ev.Kind)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	joined := strings.Join(order, " ")
+	first, second := strings.Index(joined, "sa_dev00001:done"), strings.Index(joined, "sa_dev00002:done")
+	if first < 0 || second < 0 || second < first || !strings.Contains(joined, "sa_dev00003:failed") {
+		t.Fatalf("events %v", order)
+	}
+}

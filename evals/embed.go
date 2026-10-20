@@ -3,7 +3,8 @@ package evals
 
 import "embed"
 
-// Files is the embedded suites: proactivity and proactivity-holdout.
+// Files is the embedded suites: proactivity, proactivity-holdout, and
+// dispatch.
 //
-//go:embed proactivity proactivity-holdout
+//go:embed proactivity proactivity-holdout dispatch
 var Files embed.FS
