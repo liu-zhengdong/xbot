@@ -26,19 +26,26 @@ func TestWakeUp(t *testing.T) {
 		srv := Start(t, stub)
 		srv.CreateBot("ada", "You are ada, the bot in the wake-up smoke test.")
 
-		at := time.Now().Add(30 * time.Second).UTC()
+		// The cue carries the time at second precision, so pin the expectation
+		// to the same second before sending it.
+		at := time.Now().Add(30 * time.Second).UTC().Truncate(time.Second)
 		if r := srv.Send("ada", "SMOKE_ROUTINE NEWS "+at.Format(time.RFC3339)); r.Done != "定好了" {
 			t.Fatalf("SMOKE_ROUTINE: done.text %q, want %q", r.Done, "定好了")
 		}
 
-		row := waitRoutineRow(t, srv, "ada", "SMOKE_FIRE_NEWS", 90*time.Second)
-		got, err := time.Parse(time.RFC3339Nano, row.Time)
-		if err != nil {
-			t.Fatalf("routine row time %q: %v", row.Time, err)
+		// Judge when the client actually saw the wake, not the event's own
+		// timestamp: an event posted on time but handled late still carries the
+		// early time.
+		row, seen := waitRoutineRowAt(t, srv, "ada", "SMOKE_FIRE_NEWS", 90*time.Second)
+		if seen.Before(at) {
+			t.Fatalf("the routine woke the bot %s before its time (旅程「主动唤醒」: 到点后 1 分钟内醒来): at %s, seen %s",
+				at.Sub(seen), at, seen)
 		}
-		if d := got.Sub(at); d > time.Minute || d < -time.Minute {
-			t.Fatalf("the clock row is %s away from the scheduled time (旅程「主动唤醒」: 到点后 1 分钟内醒来): row %s, at %s",
-				d, got, at)
+		if d := seen.Sub(at); d > time.Minute {
+			t.Fatalf("the routine woke the bot %s after its time, want within 1 minute (旅程「主动唤醒」: 到点后 1 分钟内醒来)", d)
+		}
+		if got, err := time.Parse(time.RFC3339Nano, row.Time); err == nil && got.Before(at) {
+			t.Fatalf("the event row is stamped %s, before its scheduled time %s", got, at)
 		}
 
 		WaitFor(t, 60*time.Second, "one NOTE_NEWS", func() (bool, string) {
@@ -125,11 +132,42 @@ func TestWakeUp(t *testing.T) {
 		srv.Advance(2 * time.Hour)
 		srv.Restart()
 
-		// Wait for the model to answer the summary: the row appears before the
-		// turn reaches the stub, so counting rows alone races the turn.
-		WaitFor(t, 90*time.Second, "the missed-routine summary to be answered", func() (bool, string) {
-			return stub.Missed() == 1, dumpRows(srv.Transcript("ada"))
+		// Wait for the summary turn to finish: the row is written before the
+		// model answers, and Missed() counts when the stub starts, so wait for
+		// the assistant reply after the summary row.
+		WaitFor(t, 90*time.Second, "the summary turn to finish", func() (bool, string) {
+			rows := srv.Transcript("ada")
+			return summaryRows(rows) == 1 && summaryAnswered(rows), dumpRows(rows)
 		})
+
+		// Watch one full serve interval after the restart, so a late backfill
+		// or a second summary has a chance to appear and fail the test.
+		deadline := time.Now().Add(servePassInterval + 5*time.Second)
+		for {
+			rows := srv.Transcript("ada")
+			if n := summaryRows(rows); n != 1 {
+				t.Fatalf("got %d missed-routine summaries, want exactly 1 (旅程「主动唤醒」: 停机期间错过的只汇总报一次):\n%s",
+					n, dumpRows(rows))
+			}
+			if n := stub.Missed(); n != 1 {
+				t.Fatalf("the model saw %d missed-routine summaries, want 1 (旅程「主动唤醒」: 只汇总报一次)", n)
+			}
+			for slot, n := range tickSlots(t, rows) {
+				if n > 1 {
+					t.Fatalf("slot %s ran %d times after the restart, want once (旅程「主动唤醒」: 重启后已经跑过的不重跑):\n%s",
+						slot, n, dumpRows(rows))
+				}
+			}
+			if len(tickSlots(t, rows)) > 2 {
+				t.Fatalf("the routine ran %d slots after the restart, want at most the current one (旅程「主动唤醒」: 没有补跑 24 次):\n%s",
+					len(tickSlots(t, rows)), dumpRows(rows))
+			}
+			if time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+
 		rows := srv.Transcript("ada")
 		// Two hours is a whole number of 5-minute slots, so the clock lands on
 		// a slot and that current slot may run once after the restart. What
@@ -184,6 +222,64 @@ func waitRoutineRow(t *testing.T, srv *Server, bot, marker string, d time.Durati
 		return false, dumpRows(rows)
 	})
 	return row
+}
+
+// waitRoutineRowAt also returns when the client first saw the row.
+func waitRoutineRowAt(t *testing.T, srv *Server, bot, marker string, d time.Duration) (Row, time.Time) {
+	t.Helper()
+	var row Row
+	var seen time.Time
+	WaitFor(t, d, "a routine clock row with "+marker, func() (bool, string) {
+		rows := srv.Transcript(bot)
+		for _, r := range rows {
+			// Link events are wrapped in <untrusted_event>, so the routine is
+			// matched inside the row, not at its start.
+			if r.Role == "user" && strings.Contains(r.Content, "<routine") && strings.Contains(r.Content, marker) {
+				if seen.IsZero() {
+					seen = time.Now()
+				}
+				row = r
+				return true, dumpRows(rows)
+			}
+		}
+		return false, dumpRows(rows)
+	})
+	return row, seen
+}
+
+// summaryAnswered reports an assistant reply after the summary row.
+func summaryAnswered(rows []Row) bool {
+	for i, r := range rows {
+		if r.Role != "user" || !strings.Contains(r.Content, "Missed routine times") {
+			continue
+		}
+		for _, later := range rows[i+1:] {
+			if later.Role == "assistant" && strings.TrimSpace(later.Content) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// summaryRows counts missed-routine summary rows.
+func summaryRows(rows []Row) int { return countUserRows(rows, "Missed routine times") }
+
+// tickSlots groups the routine rows by the minute they ran in.
+func tickSlots(t *testing.T, rows []Row) map[string]int {
+	t.Helper()
+	slots := map[string]int{}
+	for _, r := range rows {
+		if r.Role != "user" || !strings.Contains(r.Content, "SMOKE_FIRE_TICK") {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339Nano, r.Time)
+		if err != nil {
+			t.Fatalf("routine row time %q: %v", r.Time, err)
+		}
+		slots[at.UTC().Format("2006-01-02T15:04")]++
+	}
+	return slots
 }
 
 // countUserRows counts user rows whose text contains want.

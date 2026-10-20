@@ -191,7 +191,13 @@ func (s *Server) Advance(d time.Duration) {
 	s.t.Helper()
 	s.clock += d
 	raw := []byte(strconv.FormatInt(int64(s.clock/time.Second), 10))
-	if err := os.WriteFile(s.clockFile, raw, 0600); err != nil {
+	// Replace the file atomically: serve rereads it on every clock call, and a
+	// reader must never see a half-written offset.
+	tmp := s.clockFile + ".new"
+	if err := os.WriteFile(tmp, raw, 0600); err != nil {
+		s.t.Fatalf("clock file: %v", err)
+	}
+	if err := os.Rename(tmp, s.clockFile); err != nil {
 		s.t.Fatalf("clock file: %v", err)
 	}
 }
