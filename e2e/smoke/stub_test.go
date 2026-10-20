@@ -65,7 +65,18 @@ type gate struct {
 	release     chan struct{}
 	enteredOnce sync.Once
 	releaseOnce sync.Once
+
+	mu      sync.Mutex
+	outcome string
 }
+
+// How a call held on a gate ended.
+const (
+	gateReleased  = "released"
+	gateCancelled = "cancelled"
+	gateClosed    = "closed"
+	gateTimedOut  = "timed out"
+)
 
 // StartStub serves /v1/chat/completions until the test ends.
 func StartStub(t *testing.T) *Stub {
@@ -125,15 +136,37 @@ func (s *Stub) gateFor(name string) *gate {
 	return g
 }
 
-// hold blocks until Release, the caller gives up, or the test ends.
-func (s *Stub) hold(ctx context.Context, name string) {
+// hold blocks until Release, the caller gives up, or the test ends, and records
+// how the first call left the gate. Only Release counts as the test letting the
+// step finish; the other outcomes are evidence of a cancel, shutdown or hang.
+func (s *Stub) hold(ctx context.Context, name string) string {
 	g := s.gateFor(name)
+	reason := gateTimedOut
 	select {
 	case <-g.release:
+		reason = gateReleased
 	case <-ctx.Done():
+		reason = gateCancelled
 	case <-s.closed:
+		reason = gateClosed
 	case <-time.After(stubHoldLimit):
+		reason = gateTimedOut
 	}
+	g.mu.Lock()
+	if g.outcome == "" {
+		g.outcome = reason
+	}
+	g.mu.Unlock()
+	return reason
+}
+
+// Outcome says how the first call held on name ended: released, cancelled,
+// closed or timed out. Empty means no call has left that gate yet.
+func (s *Stub) Outcome(name string) string {
+	g := s.gateFor(name)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.outcome
 }
 
 type stubMessage struct {
@@ -180,11 +213,14 @@ func (s *Stub) handle(w http.ResponseWriter, r *http.Request) {
 }
 
 // subagent answers the task it was given. SMOKE_LONG_TASK parks on the long
-// gate until the test lets it finish.
+// gate; only the test's Release may finish it, so a cancelled or restarted
+// call cannot produce LONG_RESULT_42 by accident.
 func (s *Stub) subagent(w http.ResponseWriter, r *http.Request, req stubRequest) {
 	if strings.Contains(lastUser(req), "SMOKE_LONG_TASK") {
 		s.Enter("long")
-		s.hold(r.Context(), "long")
+		if reason := s.hold(r.Context(), "long"); reason != gateReleased {
+			return
+		}
 		streamText(w, []string{"LONG_RESULT_42"})
 		return
 	}
@@ -326,8 +362,9 @@ func streamText(w http.ResponseWriter, segments []string) {
 	flush(w)
 }
 
-// streamHold sends one piece, then waits on the gate. A cancelled request
-// ends the wait and nothing more is written; the kernel re-sends the turn.
+// streamHold sends one piece, then waits on the gate and records why the call
+// left it. A cancelled request ends the wait and nothing more is written; the
+// kernel re-sends the turn.
 func streamHold(w http.ResponseWriter, ctx context.Context, s *Stub, name, first string) {
 	startSSE(w)
 	writeChunk(w, first)

@@ -47,8 +47,17 @@ func TestInterjectMidTask(t *testing.T) {
 			before.ID, after.ID, dumpAgents(srv.Agents("ada")))
 	}
 
-	// Let the long task finish: its report reaches the conversation once.
+	// Let the long task finish. Only this explicit release may end the held
+	// call: a cancel or a timeout is evidence the task was cut short.
 	stub.Release("long")
+	WaitFor(t, 10*time.Second, "the long call to leave its gate", func() (bool, string) {
+		o := stub.Outcome("long")
+		return o != "", o
+	})
+	if o := stub.Outcome("long"); o != gateReleased {
+		t.Fatalf("the long subagent call ended as %q, want %q: only the test's release may finish it", o, gateReleased)
+	}
+
 	var reportAt int
 	WaitFor(t, 60*time.Second, "the long task report in the transcript", func() (bool, string) {
 		rows := srv.Transcript("ada")
@@ -59,7 +68,17 @@ func TestInterjectMidTask(t *testing.T) {
 		t.Fatalf("the transcript has %d assistant replies with LONG_RESULT_42, want exactly 1:\n%s",
 			reportAt, dumpRows(srv.Transcript("ada")))
 	}
-	// The long task started once: one subagent record carries that task.
+
+	// The task ran once: one subagent model call and one subagent record.
+	calls := 0
+	for _, r := range stub.Requests() {
+		if r.Caller == callerSubagent && strings.Contains(r.Body, "SMOKE_LONG_TASK") {
+			calls++
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("the stub saw %d subagent calls for SMOKE_LONG_TASK, want 1\n%s", calls, dumpRequests(stub))
+	}
 	agents := srv.Agents("ada")
 	started := 0
 	for _, a := range agents {
@@ -71,6 +90,13 @@ func TestInterjectMidTask(t *testing.T) {
 		t.Fatalf("the panel lists %d subagents tasked with SMOKE_LONG_TASK, want exactly 1:\n%s", started, dumpAgents(agents))
 	}
 
+	// Start B only once the report turn is over. A second delivery of the
+	// same report would have had to run before the bot is idle again.
+	WaitFor(t, 10*time.Second, "the bot to go idle after the report", func() (bool, string) {
+		st := srv.State("ada")
+		return st == "idle", st
+	})
+
 	// B. The foreground is waiting on the model. The newer owner line goes
 	// straight into that turn: the waiting call is cancelled and re-sent with
 	// both lines, and the answer streams to the newer request.
@@ -80,6 +106,16 @@ func TestInterjectMidTask(t *testing.T) {
 	})
 	aside2 := srv.Send("ada", "SMOKE_ASIDE_2")
 	checkFirstDelta(t, "SMOKE_ASIDE_2", aside2, "先答插话")
+
+	// The call the aside interrupted was cancelled and re-sent, not left to
+	// finish: that is the ADR 0017 path the timing above depends on.
+	WaitFor(t, 10*time.Second, "the held foreground call to end", func() (bool, string) {
+		o := stub.Outcome("fg")
+		return o != "", o
+	})
+	if o := stub.Outcome("fg"); o != gateCancelled {
+		t.Fatalf("the held foreground call ended as %q, want %q: the aside must cancel and re-send it", o, gateCancelled)
+	}
 
 	slowReply := slow.Wait()
 	if !slowReply.HandedOff {
@@ -98,6 +134,14 @@ func TestInterjectMidTask(t *testing.T) {
 	if both != 1 {
 		t.Fatalf("the stub saw %d foreground requests carrying both SMOKE_SLOW and SMOKE_ASIDE_2, want 1\n%s",
 			both, dumpRequests(stub))
+	}
+
+	// The whole B phase was the observation window for a second delivery of
+	// the long task report: another event would have run a turn by now.
+	final := srv.Transcript("ada")
+	if n := countRows(final, "assistant", "LONG_RESULT_42"); n != 1 {
+		t.Fatalf("after the aside turn the transcript has %d assistant replies with LONG_RESULT_42, want exactly 1:\n%s",
+			n, dumpRows(final))
 	}
 }
 

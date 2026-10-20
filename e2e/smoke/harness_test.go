@@ -476,6 +476,31 @@ func (s *Server) Agents(bot string) []Agent {
 	return out.Agents
 }
 
+// State reads the bot's state from GET /api/bots/status: idle, running,
+// awaiting or offline. An empty string means the bot is not listed.
+func (s *Server) State(bot string) string {
+	s.t.Helper()
+	status, body := s.do(http.MethodGet, "/api/bots/status", nil)
+	if status != http.StatusOK {
+		s.t.Fatalf("bot status: %d %s", status, body)
+	}
+	var out struct {
+		Bots []struct {
+			Bot   string `json:"bot"`
+			State string `json:"state"`
+		} `json:"bots"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		s.t.Fatalf("bot status: %v", err)
+	}
+	for _, b := range out.Bots {
+		if b.Bot == bot {
+			return b.State
+		}
+	}
+	return ""
+}
+
 // WaitFor polls cond until it is true. On timeout it reports what cond last saw.
 func WaitFor(t *testing.T, d time.Duration, what string, cond func() (bool, string)) {
 	t.Helper()
