@@ -32,6 +32,11 @@ const (
 	stopTimeout  = 10 * time.Second
 	sendTimeout  = 60 * time.Second
 
+	// servePassInterval mirrors the default --interval of xbot serve, which
+	// the harness leaves alone. An inbox event with no direct wake waits at
+	// most this long for the next pass.
+	servePassInterval = 15 * time.Second
+
 	listenPrefix     = "listening on "
 	loginTokenPrefix = "登录码（login token）: "
 )

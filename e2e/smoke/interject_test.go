@@ -90,12 +90,31 @@ func TestInterjectMidTask(t *testing.T) {
 		t.Fatalf("the panel lists %d subagents tasked with SMOKE_LONG_TASK, want exactly 1:\n%s", started, dumpAgents(agents))
 	}
 
-	// Start B only once the report turn is over. A second delivery of the
-	// same report would have had to run before the bot is idle again.
+	// Start B only once the report turn is over; idle says the current turn
+	// ended, not that later deliveries are done.
 	WaitFor(t, 10*time.Second, "the bot to go idle after the report", func() (bool, string) {
 		st := srv.State("ada")
 		return st == "idle", st
 	})
+
+	// A later delivery has no direct wake to skip the scheduler, so it waits
+	// at most one serve pass. Watch a full interval plus slack and fail the
+	// moment a second report appears, so a late duplicate cannot hide.
+	deadline := time.Now().Add(servePassInterval + 5*time.Second)
+	for {
+		rows := srv.Transcript("ada")
+		if n := countRows(rows, "assistant", "LONG_RESULT_42"); n > 1 {
+			t.Fatalf("the long task was reported %d times; a second delivery showed up after the first turn ended:\n%s",
+				n, dumpRows(rows))
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if n := countRows(srv.Transcript("ada"), "assistant", "LONG_RESULT_42"); n != 1 {
+		t.Fatalf("after watching a full serve interval the transcript has %d LONG_RESULT_42 replies, want exactly 1", n)
+	}
 
 	// B. The foreground is waiting on the model. The newer owner line goes
 	// straight into that turn: the waiting call is cancelled and re-sent with
@@ -136,8 +155,7 @@ func TestInterjectMidTask(t *testing.T) {
 			both, dumpRequests(stub))
 	}
 
-	// The whole B phase was the observation window for a second delivery of
-	// the long task report: another event would have run a turn by now.
+	// B ran two more turns; the report is still one.
 	final := srv.Transcript("ada")
 	if n := countRows(final, "assistant", "LONG_RESULT_42"); n != 1 {
 		t.Fatalf("after the aside turn the transcript has %d assistant replies with LONG_RESULT_42, want exactly 1:\n%s",
