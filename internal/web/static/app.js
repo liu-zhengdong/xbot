@@ -3664,7 +3664,7 @@
   }
 
   function closePanelMore() {
-    panelSub = null;
+    closePanelSub();
     if (panelMore) {
       panelMore.remove();
       panelMore = null;
