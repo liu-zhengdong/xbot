@@ -190,27 +190,33 @@ func contentJSON(m Message) (json.RawMessage, error) {
 // the call going out to its last byte, StreamIdleTimeout covers the gap between
 // two chunks. Either timeout is retried like unexpected EOF, HTTP 429, and HTTP
 // 5xx, twice, with backoff.
-// Deltas are delivered only after an attempt succeeds, so a retry does not repeat them.
+// Deltas go out as they arrive, so the first words of a long answer reach the
+// owner before the last is written. A failed attempt is retried only while
+// nothing has gone out yet; once text has been streamed, a retry would repeat
+// or contradict it, so the error is returned instead.
 func (c *Client) Chat(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
 	var last error
+	streamed := false
+	live := func(s string) {
+		if s != "" {
+			streamed = true
+		}
+		if onDelta != nil {
+			onDelta(s)
+		}
+	}
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			if err := c.pause(ctx, attempt); err != nil {
 				return Message{}, err
 			}
 		}
-		var deltas []string
-		msg, err := c.chatAttempt(ctx, req, func(s string) { deltas = append(deltas, s) })
+		msg, err := c.chatAttempt(ctx, req, live)
 		if err == nil {
-			if onDelta != nil {
-				for _, s := range deltas {
-					onDelta(s)
-				}
-			}
 			return msg, nil
 		}
 		last = err
-		if !retryable(err) {
+		if streamed || !retryable(err) {
 			return Message{}, err
 		}
 	}

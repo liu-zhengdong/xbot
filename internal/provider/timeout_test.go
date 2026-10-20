@@ -110,9 +110,9 @@ func TestChatRetriesStreamIdleTimeout(t *testing.T) {
 	release, hang := newStall()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if n.Add(1) == 1 {
+			// Headers, then silence: nothing has reached the owner yet.
 			hang(func() {
 				w.Header().Set("Content-Type", "text/event-stream")
-				_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"par"}}]}`+"\n\n")
 				w.(http.Flusher).Flush()
 			})(w, r)
 			return
@@ -133,14 +133,81 @@ func TestChatRetriesStreamIdleTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "pong" {
-		t.Fatalf("content %q; want only the successful attempt", msg.Content)
-	}
-	if got := strings.Join(deltas, ""); got != "pong" {
-		t.Fatalf("deltas %q; the stalled attempt must not deliver deltas", got)
+	if msg.Content != "pong" || strings.Join(deltas, "") != "pong" {
+		t.Fatalf("content %q deltas %q", msg.Content, deltas)
 	}
 	if n.Load() != 2 {
 		t.Fatalf("attempts %d, want 2", n.Load())
+	}
+}
+
+// Text that already reached the owner cannot be taken back, so a stream that
+// stalls after it is not retried: a second attempt would repeat it.
+func TestChatDoesNotRetryAfterTextWentOut(t *testing.T) {
+	var n atomic.Int32
+	release, hang := newStall()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n.Add(1)
+		hang(func() {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"par"}}]}`+"\n\n")
+			w.(http.Flusher).Flush()
+		})(w, r)
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	c := &Client{
+		BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client(),
+		retryWait: time.Millisecond, StreamIdleTimeout: 200 * time.Millisecond,
+	}
+	var deltas []string
+	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) {
+		deltas = append(deltas, s)
+	})
+	if !errors.Is(err, ErrStreamIdleTimeout) {
+		t.Fatalf("err %v", err)
+	}
+	if got := strings.Join(deltas, ""); got != "par" || n.Load() != 1 {
+		t.Fatalf("deltas %q attempts %d", got, n.Load())
+	}
+}
+
+// The first words go out while the model is still writing the rest.
+func TestChatStreamsBeforeTheAnswerEnds(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"first"}}]}`+"\n\n")
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":" rest"}}]}`+"\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client(), retryWait: time.Millisecond}
+	got := make(chan string, 4)
+	done := make(chan Message, 1)
+	go func() {
+		msg, _ := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) { got <- s })
+		done <- msg
+	}()
+	select {
+	case s := <-got:
+		if s != "first" {
+			t.Fatalf("first delta %q", s)
+		}
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("no delta before the answer ended")
+	}
+	close(release)
+	if msg := <-done; msg.Content != "first rest" {
+		t.Fatalf("content %q", msg.Content)
 	}
 }
 
