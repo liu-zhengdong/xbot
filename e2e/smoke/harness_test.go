@@ -123,6 +123,21 @@ func Start(t *testing.T, stub *Stub) *Server {
 		t.Fatalf("cookie jar: %v", err)
 	}
 	s.client = &http.Client{Jar: jar}
+	t.Cleanup(s.Stop)
+	s.launch()
+	s.Login()
+	return s
+}
+
+// launch starts one serve process on s.Root and waits for its two startup
+// lines. Start calls it once; Restart calls it again on the same data root.
+func (s *Server) launch() {
+	s.t.Helper()
+	s.exited = make(chan struct{})
+	s.mu.Lock()
+	s.stderr.Reset()
+	s.waitErr = nil
+	s.mu.Unlock()
 
 	s.cmd = exec.Command(xbotBinary,
 		"--root", s.Root, "serve",
@@ -133,16 +148,15 @@ func Start(t *testing.T, stub *Stub) *Server {
 	s.cmd.Stdout = io.Discard
 	stderr, err := s.cmd.StderrPipe()
 	if err != nil {
-		t.Fatalf("stderr pipe: %v", err)
+		s.t.Fatalf("stderr pipe: %v", err)
 	}
 	if err := s.cmd.Start(); err != nil {
-		t.Fatalf("start xbot serve: %v", err)
+		s.t.Fatalf("start xbot serve: %v", err)
 	}
 	go func() {
 		s.waitErr = s.cmd.Wait()
 		close(s.exited)
 	}()
-	t.Cleanup(s.Stop)
 
 	listen := make(chan string, 1)
 	token := make(chan string, 1)
@@ -150,8 +164,15 @@ func Start(t *testing.T, stub *Stub) *Server {
 
 	s.URL = s.await("listening", listen)
 	s.Token = s.await("login token", token)
+}
+
+// Restart stops serve, waits for it to exit, and starts it again on the same
+// data root, then logs in again.
+func (s *Server) Restart() {
+	s.t.Helper()
+	s.Stop()
+	s.launch()
 	s.Login()
-	return s
 }
 
 func (s *Server) scanStderr(r io.Reader, listen, token chan<- string) {
@@ -517,6 +538,31 @@ func (s *Server) State(bot string) string {
 	return ""
 }
 
+// MemoryFact is one entry from the panel's memory list.
+type MemoryFact struct {
+	Scope string `json:"scope"`
+	Text  string `json:"text"`
+}
+
+// Memory reads the panel's memory list, what 详情的「记忆」shows.
+func (s *Server) Memory(bot string) []MemoryFact {
+	s.t.Helper()
+	status, body := s.do(http.MethodGet, "/api/bots/"+url.PathEscape(bot), nil)
+	if status != http.StatusOK {
+		s.t.Fatalf("panel of %s: %d %s", bot, status, body)
+	}
+	var out struct {
+		Memory []MemoryFact `json:"memory"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		s.t.Fatalf("panel of %s: %v", bot, err)
+	}
+	if out.Memory == nil {
+		out.Memory = []MemoryFact{}
+	}
+	return out.Memory
+}
+
 // WaitFor polls cond until it is true. On timeout it reports what cond last saw.
 func WaitFor(t *testing.T, d time.Duration, what string, cond func() (bool, string)) {
 	t.Helper()
@@ -656,6 +702,9 @@ func (c *Chat) Stop() {
 // Stop sends SIGTERM and waits; a process still up after 10s is killed and the
 // test fails.
 func (s *Server) Stop() {
+	if s.cmd == nil || s.cmd.Process == nil {
+		return
+	}
 	select {
 	case <-s.exited:
 		return

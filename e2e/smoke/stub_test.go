@@ -271,6 +271,33 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 			return
 		}
 		streamText(w, []string{"交给子代理了"})
+	case strings.Contains(text, "SMOKE_REMEMBER"):
+		if !sawTool(req, "write_file") {
+			streamTool(w, "call_remember", "write_file", argsJSON(map[string]string{
+				"path":    memoryPath(req, "Person"),
+				"content": rememberLine,
+			}))
+			return
+		}
+		streamText(w, []string{"记住了"})
+	case strings.Contains(text, "SMOKE_CORRECT"):
+		// The file already exists, so the kernel asks for a read before the
+		// write; the stub reads it and then rewrites both lines.
+		switch {
+		case !sawTool(req, "read_file") && !sawTool(req, "write_file"):
+			streamTool(w, "call_read", "read_file", argsJSON(map[string]string{
+				"path": memoryPath(req, "Person"),
+			}))
+		case !sawTool(req, "write_file"):
+			streamTool(w, "call_correct", "write_file", argsJSON(map[string]string{
+				"path":    memoryPath(req, "Person"),
+				"content": rememberLine + "- (2026-10-20) 主人已不再对花生过敏 MARK_PEANUT_2\n",
+			}))
+		default:
+			streamText(w, []string{"改好了"})
+		}
+	case strings.Contains(text, "SMOKE_RECALL"):
+		streamText(w, []string{peanutLines(req)})
 	case strings.Contains(all, "SMOKE_SLOW") && strings.Contains(all, "SMOKE_ASIDE_2"):
 		streamText(w, []string{"先答插话"})
 	case strings.Contains(text, "SMOKE_SLOW"):
@@ -473,6 +500,54 @@ func argsJSON(v any) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// rememberLine is one memory fact line the stub writes to the person file.
+const rememberLine = "- (2026-10-20) 主人对花生过敏 MARK_PEANUT_1\n"
+
+// memoryPath is the memory file named by the snapshot heading
+// "### <Scope> — <path>; ...".
+func memoryPath(req stubRequest, scope string) string {
+	prefix := "### " + scope + " — "
+	for _, m := range req.Messages {
+		for _, line := range strings.Split(m.Content, "\n") {
+			if strings.HasPrefix(line, prefix) {
+				return strings.SplitN(strings.TrimPrefix(line, prefix), ";", 2)[0]
+			}
+		}
+	}
+	return ""
+}
+
+// peanutLines lists every request line that carries a marker, as a model
+// reading its context would; no marker means it does not know.
+func peanutLines(req stubRequest) string {
+	var lines []string
+	add := func(text string) {
+		for _, line := range strings.Split(text, "\n") {
+			if strings.Contains(line, "MARK_PEANUT_") {
+				lines = append(lines, strings.TrimSpace(line))
+			}
+		}
+	}
+	for _, m := range req.Messages {
+		add(m.Content)
+		// The model also sees the arguments of its own tool calls.
+		for _, raw := range m.ToolCalls {
+			var tc struct {
+				Function struct {
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			}
+			if json.Unmarshal(raw, &tc) == nil {
+				add(tc.Function.Arguments)
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return "不知道"
+	}
+	return strings.Join(lines, "\n")
 }
 
 // startSSE writes the headers of a streaming answer.
