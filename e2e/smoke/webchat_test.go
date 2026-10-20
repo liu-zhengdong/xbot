@@ -38,25 +38,28 @@ func TestWebChat(t *testing.T) {
 		t.Fatalf("two transcript reads differ:\nfirst:\n%s\nsecond:\n%s", dumpRows(refreshed), dumpRows(again))
 	}
 
-	q1 := findRows(refreshed, "user", "SMOKE_HELLO_1")
-	a1 := findRows(refreshed, "assistant", want1)
-	q2 := findRows(refreshed, "user", "SMOKE_HELLO_2")
-	a2 := findRows(refreshed, "assistant", want2)
+	checkSeqOrder(t, refreshed)
+	checkSeqOrder(t, again)
+
+	q1 := rowIndexes(refreshed, "user", "SMOKE_HELLO_1")
+	a1 := rowIndexes(refreshed, "assistant", want1)
+	q2 := rowIndexes(refreshed, "user", "SMOKE_HELLO_2")
+	a2 := rowIndexes(refreshed, "assistant", want2)
 	for _, want := range []struct {
-		what string
-		seqs []int
+		what    string
+		indexes []int
 	}{
 		{"question SMOKE_HELLO_1", q1},
 		{"answer to SMOKE_HELLO_1", a1},
 		{"question SMOKE_HELLO_2", q2},
 		{"answer to SMOKE_HELLO_2", a2},
 	} {
-		if len(want.seqs) != 1 {
-			t.Fatalf("%s appears %d times in the transcript, want once:\n%s", want.what, len(want.seqs), dumpRows(refreshed))
+		if len(want.indexes) != 1 {
+			t.Fatalf("%s appears %d times in the transcript, want once:\n%s", want.what, len(want.indexes), dumpRows(refreshed))
 		}
 	}
 	if !(q1[0] < a1[0] && a1[0] < q2[0] && q2[0] < a2[0]) {
-		t.Fatalf("transcript order is not q1 < a1 < q2 < a2: %v %v %v %v", q1[0], a1[0], q2[0], a2[0])
+		t.Fatalf("transcript rows are not q1 < a1 < q2 < a2: positions %v %v %v %v\n%s", q1[0], a1[0], q2[0], a2[0], dumpRows(refreshed))
 	}
 
 	// The terminal opens on the same bot. What it says next is the same
@@ -67,12 +70,13 @@ func TestWebChat(t *testing.T) {
 	var terminalQ, terminalA []int
 	WaitFor(t, 15*time.Second, "the terminal exchange in the web transcript", func() (bool, string) {
 		rows := srv.Transcript("ada")
-		terminalQ = findRows(rows, "user", "SMOKE_FROM_TERMINAL")
-		terminalA = findRows(rows, "assistant", "终端你好")
+		terminalQ = rowIndexes(rows, "user", "SMOKE_FROM_TERMINAL")
+		terminalA = rowIndexes(rows, "assistant", "终端你好")
 		return len(terminalQ) == 1 && len(terminalA) == 1, dumpRows(rows)
 	})
-	if terminalQ[0] <= a2[0] || terminalA[0] <= a2[0] {
-		t.Fatalf("terminal lines (seq %d, %d) are not after answer 2 (seq %d)", terminalQ[0], terminalA[0], a2[0])
+	if !(a2[0] < terminalQ[0] && terminalQ[0] < terminalA[0]) {
+		t.Fatalf("terminal rows are not after answer 2 and in order: answer 2 at %d, terminal q/a at %d/%d\n%s",
+			a2[0], terminalQ[0], terminalA[0], dumpRows(srv.Transcript("ada")))
 	}
 
 	// A message sent from the page while the terminal is open shows up in both.
@@ -82,9 +86,9 @@ func TestWebChat(t *testing.T) {
 	}
 	WaitFor(t, 15*time.Second, "the web exchange in the transcript", func() (bool, string) {
 		rows := srv.Transcript("ada")
-		q := findRows(rows, "user", "SMOKE_FROM_WEB_LATE")
-		a := findRows(rows, "assistant", "网页后话")
-		return len(q) == 1 && len(a) == 1 && q[0] > terminalA[0] && a[0] > q[0], dumpRows(rows)
+		q := rowIndexes(rows, "user", "SMOKE_FROM_WEB_LATE")
+		a := rowIndexes(rows, "assistant", "网页后话")
+		return len(q) == 1 && len(a) == 1 && terminalA[0] < q[0] && q[0] < a[0], dumpRows(rows)
 	})
 	WaitFor(t, 15*time.Second, "the web exchange in the terminal", func() (bool, string) {
 		out := term.Stdout()
@@ -94,24 +98,31 @@ func TestWebChat(t *testing.T) {
 }
 
 // checkStreamed asserts the timing and the shape of one streamed reply:
-// first delta under 3 seconds, at least three deltas spread over 300 ms, and
-// done.text equal to the segments joined.
+// the first non-empty delta under 3 seconds, at least three non-empty deltas
+// spread over 300 ms, and done.text equal to those segments joined. Empty
+// deltas do not count as the reply starting or as streaming.
 func checkStreamed(t *testing.T, label string, r *Reply, want string) {
 	t.Helper()
-	if len(r.Deltas) < 3 {
-		t.Fatalf("%s: got %d deltas, want at least 3", label, len(r.Deltas))
+	var body []Delta
+	for _, d := range r.Deltas {
+		if d.Text != "" {
+			body = append(body, d)
+		}
 	}
-	delay := r.Deltas[0].At.Sub(r.Sent)
+	if len(body) < 3 {
+		t.Fatalf("%s: got %d non-empty deltas, want at least 3", label, len(body))
+	}
+	delay := body[0].At.Sub(r.Sent)
 	t.Logf("%s: first delta after %d ms", label, delay.Milliseconds())
 	if delay >= 3*time.Second {
-		t.Fatalf("%s: first delta took %d ms, want under 3000 ms", label, delay.Milliseconds())
+		t.Fatalf("%s: first non-empty delta took %d ms, want under 3000 ms", label, delay.Milliseconds())
 	}
-	span := r.Deltas[len(r.Deltas)-1].At.Sub(r.Deltas[0].At)
+	span := body[len(body)-1].At.Sub(body[0].At)
 	if span < 300*time.Millisecond {
-		t.Fatalf("%s: first and last delta are %d ms apart, want at least 300 ms", label, span.Milliseconds())
+		t.Fatalf("%s: first and last non-empty delta are %d ms apart, want at least 300 ms", label, span.Milliseconds())
 	}
 	var streamed strings.Builder
-	for _, d := range r.Deltas {
+	for _, d := range body {
 		streamed.WriteString(d.Text)
 	}
 	if streamed.String() != want {
@@ -122,15 +133,28 @@ func checkStreamed(t *testing.T, label string, r *Reply, want string) {
 	}
 }
 
-// findRows returns the seq of every row with the role and the exact text.
-func findRows(rows []Row, role, want string) []int {
-	var seqs []int
-	for _, r := range rows {
+// rowIndexes returns the position in the returned array of every row with the
+// role and the exact text. The page draws rows in array order, so tests that
+// care about what the owner sees check positions, not just seq.
+func rowIndexes(rows []Row, role, want string) []int {
+	var out []int
+	for i, r := range rows {
 		if r.Role == role && strings.TrimSpace(r.Content) == want {
-			seqs = append(seqs, r.Seq)
+			out = append(out, i)
 		}
 	}
-	return seqs
+	return out
+}
+
+// checkSeqOrder requires the array itself to be in increasing seq order.
+func checkSeqOrder(t *testing.T, rows []Row) {
+	t.Helper()
+	for i := 1; i < len(rows); i++ {
+		if rows[i].Seq <= rows[i-1].Seq {
+			t.Fatalf("transcript rows are not in seq order at position %d: seq %d after %d\n%s",
+				i, rows[i].Seq, rows[i-1].Seq, dumpRows(rows))
+		}
+	}
 }
 
 func dumpRows(rows []Row) string {

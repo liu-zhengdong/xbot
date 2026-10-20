@@ -422,12 +422,13 @@ func WaitFor(t *testing.T, d time.Duration, what string, cond func() (bool, stri
 
 // Chat is one `xbot chat <bot>` process.
 type Chat struct {
-	t      *testing.T
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout lockedBuffer
-	stderr lockedBuffer
-	exited chan struct{}
+	t       *testing.T
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	stdout  lockedBuffer
+	stderr  lockedBuffer
+	exited  chan struct{}
+	waitErr error
 }
 
 type lockedBuffer struct {
@@ -472,7 +473,7 @@ func (s *Server) Chat(bot string) *Chat {
 	go func() { _, _ = io.Copy(&c.stdout, stdout) }()
 	go func() { _, _ = io.Copy(&c.stderr, stderr) }()
 	go func() {
-		_ = c.cmd.Wait()
+		c.waitErr = c.cmd.Wait()
 		close(c.exited)
 	}()
 	s.t.Cleanup(c.Stop)
@@ -493,13 +494,25 @@ func (c *Chat) Say(text string) {
 	}
 }
 
-// Quit ends the terminal with the documented exit word.
+// Quit ends the terminal with the documented exit word and requires a clean
+// exit. A terminal that died before quit, or crashed on the way out, is a
+// failure here rather than a pass.
 func (c *Chat) Quit() {
 	c.t.Helper()
-	_, _ = fmt.Fprintln(c.stdin, "exit")
+	select {
+	case <-c.exited:
+		c.t.Fatalf("xbot chat exited before quit: %v\nstdout:\n%s\nstderr:\n%s", c.waitErr, c.Stdout(), c.Stderr())
+	default:
+	}
+	if _, err := fmt.Fprintln(c.stdin, "exit"); err != nil {
+		c.t.Fatalf("chat: write exit: %v\nstdout:\n%s\nstderr:\n%s", err, c.Stdout(), c.Stderr())
+	}
 	_ = c.stdin.Close()
 	select {
 	case <-c.exited:
+		if c.waitErr != nil {
+			c.t.Fatalf("xbot chat exited with %v after exit\nstdout:\n%s\nstderr:\n%s", c.waitErr, c.Stdout(), c.Stderr())
+		}
 	case <-time.After(stopTimeout):
 		_ = c.cmd.Process.Kill()
 		<-c.exited
