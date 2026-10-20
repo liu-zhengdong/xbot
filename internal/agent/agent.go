@@ -4,6 +4,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -433,6 +434,12 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 			return opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
 		}()
 		if err != nil {
+			// An error that names its own tool result (a parked card) is
+			// shown as that, not as a failure.
+			var res interface{ ToolResult() string }
+			if errors.As(err, &res) {
+				return toolExec{text: finish(opt, t.Name(), res.ToolResult())}
+			}
 			return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
 		}
 		if !approved {

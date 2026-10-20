@@ -27,6 +27,7 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
+	"xbot/internal/proc"
 	"xbot/internal/provider"
 	"xbot/internal/remote"
 	"xbot/internal/upgrade"
@@ -1343,6 +1344,10 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 	if s.kernels == nil {
 		s.kernels = map[string]*kernel.Kernel{}
 		s.gate = map[string]*sync.Mutex{}
+		if !s.ForkTurns {
+			// A late decision on a parked card wakes the bot at once.
+			kernel.SetWaker(s.Root, s.wakeBot)
+		}
 	}
 	if s.gate[b.Name()] == nil {
 		s.gate[b.Name()] = &sync.Mutex{}
@@ -1449,4 +1454,25 @@ func (s *Server) cancelQueued(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": msg})
+}
+
+// wakeBot handles a bot's inbox now, for an owner decision posted outside any
+// turn. When the handle lock is taken, the turn holding it reads the inbox
+// at its next step, so there is nothing to do here.
+func (s *Server) wakeBot(b *bot.Bot) {
+	go func() {
+		lock, ok, err := b.TryLockHandle()
+		if err != nil || !ok {
+			return
+		}
+		defer lock.Release()
+		k, gate, err := s.kernel(b)
+		if err != nil {
+			return
+		}
+		gate.Lock()
+		defer gate.Unlock()
+		k.Bot = b
+		_ = proc.Drain(context.Background(), k)
+	}()
 }

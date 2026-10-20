@@ -64,6 +64,10 @@ type interjectState struct {
 	sink   *Sink
 	first  *Sink // the Handle caller's
 	handed bool  // the Handle caller's output was taken over
+	// park is closed when an owner message arrives, so a confirmation card
+	// being waited on parks (park.go). parked says it is closed.
+	park   chan struct{}
+	parked bool
 }
 
 // openInterject routes t's output to first and registers t for its bot. A
@@ -89,6 +93,7 @@ func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 	q := t.inter.queue
 	t.inter.queue = nil
 	if len(q) > 0 && !force {
+		t.inter.rearmLocked()
 		return q
 	}
 	if !t.inter.open {
@@ -123,6 +128,7 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 	if prev != nil && prev == t.inter.first {
 		t.inter.handed = true
 	}
+	t.inter.parkAllLocked()
 	stop := t.inter.stop
 	t.inter.mu.Unlock()
 	if prev != nil && prev.OnHandoff != nil {
@@ -150,6 +156,9 @@ func (t *turn) takeInterjected() []provider.Message {
 	defer t.inter.mu.Unlock()
 	q := t.inter.queue
 	t.inter.queue = nil
+	if len(q) > 0 {
+		t.inter.rearmLocked()
+	}
 	return q
 }
 

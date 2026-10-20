@@ -40,11 +40,14 @@ const (
 	NamePeers    = "peers"
 	// NameRemoteOwner is the owner typing in a chat on another paired device.
 	NameRemoteOwner = "remote-owner"
-	NameTelegram    = "telegram"
-	NameLark        = "lark"
-	NameCoding      = "coding-agent"
-	NameDesktop     = "desktop"
-	NameBrowser     = "browser"
+	// NameApproval carries the owner's late decision on a parked
+	// confirmation card. Its sender is the owner who decided.
+	NameApproval = "approval"
+	NameTelegram = "telegram"
+	NameLark     = "lark"
+	NameCoding   = "coding-agent"
+	NameDesktop  = "desktop"
+	NameBrowser  = "browser"
 
 	TypeMessage = "message"
 	TypeTimer   = "timer"
@@ -174,7 +177,7 @@ func (e Event) Validate() error {
 // remote-owner link. Any other source, including a timer wake or another bot,
 // stays untrusted.
 func OwnerTrusted(source, sender string, owners []string) bool {
-	if (source != NameTerminal && source != NameWeb && source != NameRemoteOwner) || sender == "" {
+	if (source != NameTerminal && source != NameWeb && source != NameRemoteOwner && source != NameApproval) || sender == "" {
 		return false
 	}
 	for _, id := range owners {

@@ -348,6 +348,10 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
 			Images:  ev.Images,
 		}
+		if ev.Source == link.NameApproval {
+			// The card already shows the decision; this line is for the model.
+			entry.Origin = bot.OriginInternal
+		}
 		if err := k.Bot.Append(entry); err != nil {
 			return err
 		}
@@ -453,6 +457,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 			}
 			return inner(ctx, tool, summary)
 		}
+	}
+	if !k.AllowFork {
+		// Even with nobody to ask, an owner's grant from a parked card lets
+		// that one call run.
+		approve = k.parkable(t, approve)
 	}
 	t.fromSeq = seq
 	// A turn that may fork runs on a context the caller's cancel reaches only until
