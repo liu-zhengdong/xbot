@@ -174,10 +174,10 @@ func (k *Kernel) handoff(ctx context.Context, role string) (string, error) {
 	}
 	focus := fmt.Sprintf("Handoff for role %q. Project background, key decisions, and context this role needs.", role)
 	var text string
-	if f, ok := k.compactor().(focusedCompactor); ok {
+	if f, ok := k.compactor(turnSeqOf(ctx)).(focusedCompactor); ok {
 		text, err = f.CompactFocus(ctx, prior.String(), focus, turns)
 	} else {
-		text, err = k.compactor().Compact(ctx, prior.String()+"\nFocus: "+focus, turns)
+		text, err = k.compactor(turnSeqOf(ctx)).Compact(ctx, prior.String()+"\nFocus: "+focus, turns)
 	}
 	if err != nil {
 		return "", err

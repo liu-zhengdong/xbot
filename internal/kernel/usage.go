@@ -135,8 +135,22 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 }
 
 // noteCompactUsage records one summary call's usage, tagged so a cost count
-// can include it. The conversation's own counts are not touched.
-func (k *Kernel) noteCompactUsage(req provider.Request, msg provider.Message) {
+// can include it. The conversation's own counts are not touched. turn is the
+// transcript seq of the message that opened the turn the summary belongs to,
+// or 0 for a summary a background job wrote on its own.
+func (k *Kernel) noteCompactUsage(turn int, req provider.Request, msg provider.Message) {
+	k.noteSideUsage(bot.TraceCallCompact, turn, req, msg)
+}
+
+// noteExtractUsage records one fact-extraction call's usage. It runs beside a
+// summary and is part of the same compaction cost, so it carries its own tag.
+func (k *Kernel) noteExtractUsage(turn int, req provider.Request, msg provider.Message) {
+	k.noteSideUsage(bot.TraceCallExtract, turn, req, msg)
+}
+
+// noteSideUsage logs the usage of a call that is not part of the conversation,
+// with the tag and turn that place it.
+func (k *Kernel) noteSideUsage(call string, turn int, req provider.Request, msg provider.Message) {
 	if k == nil || k.Bot == nil {
 		return
 	}
@@ -148,7 +162,8 @@ func (k *Kernel) noteCompactUsage(req provider.Request, msg provider.Message) {
 		Completion:    u.CompletionTokens,
 		Cached:        u.CachedTokens,
 		Estimated:     u.Estimated,
-		Call:          bot.TraceCallCompact,
+		Call:          call,
+		Turn:          turn,
 		CacheReported: u.CacheReported,
 	})
 }
@@ -168,13 +183,29 @@ func (p usageProvider) Chat(ctx context.Context, req provider.Request, onDelta f
 }
 
 // compactor is k.Compactor with its model calls' usage recorded. A compactor
-// that is not compact.LLM is returned as is: it has no calls to see.
-func (k *Kernel) compactor() compact.Compactor {
+// that is not compact.LLM is returned as is: it has no calls to see. turn is
+// the opening seq of the turn the summary belongs to, or 0 outside a turn.
+func (k *Kernel) compactor(turn int) compact.Compactor {
 	if l, ok := k.Compactor.(compact.LLM); ok && l.P != nil {
-		l.P = usageProvider{inner: l.P, note: k.noteCompactUsage}
+		l.P = usageProvider{inner: l.P, note: func(req provider.Request, msg provider.Message) {
+			k.noteCompactUsage(turn, req, msg)
+		}}
 		return l
 	}
 	return k.Compactor
+}
+
+// extractor is k.Extractor with its model calls' usage recorded. An extractor
+// that is not LLMExtractor is returned as is: it has no calls to see. turn is
+// the opening seq of the turn the facts belong to, or 0 outside a turn.
+func (k *Kernel) extractor(turn int) Extractor {
+	if e, ok := k.Extractor.(LLMExtractor); ok && e.P != nil {
+		e.Note = func(req provider.Request, msg provider.Message) {
+			k.noteExtractUsage(turn, req, msg)
+		}
+		return e
+	}
+	return k.Extractor
 }
 
 // Ratio bounds. The estimate is never trusted to be larger than the real count

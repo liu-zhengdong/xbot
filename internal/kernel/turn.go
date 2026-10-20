@@ -252,3 +252,19 @@ func (k *Kernel) turnFor(ctx context.Context) *turn {
 	}
 	return k.ensureTurn()
 }
+
+// turnSeqOf is the opening transcript seq of the turn that owns ctx, or 0 when
+// ctx carries no turn. Unlike turnFor it never falls back to the live turn, so
+// a background job running beside a turn stays outside it.
+func turnSeqOf(ctx context.Context) int {
+	if ctx == nil {
+		return 0
+	}
+	t, ok := ctx.Value(turnKey{}).(*turn)
+	if !ok || t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.fromSeq
+}

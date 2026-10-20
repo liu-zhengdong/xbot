@@ -709,7 +709,7 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 		msg.Content = k.withPastedNote(msg.Content, e.Images)
 		turns = append(turns, msg)
 	}
-	if f, ok := k.compactor().(focusedCompactor); ok {
+	if f, ok := k.compactor(turnSeqOf(ctx)).(focusedCompactor); ok {
 		return f.CompactFocus(ctx, prior.String(), focus, turns)
 	}
 	p := prior.String()
@@ -719,7 +719,7 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 		}
 		p += "Focus: " + focus
 	}
-	return k.compactor().Compact(ctx, p, turns)
+	return k.compactor(turnSeqOf(ctx)).Compact(ctx, p, turns)
 }
 
 type focusedCompactor interface {

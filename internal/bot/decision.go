@@ -85,6 +85,10 @@ type Trace struct {
 // TraceCallCompact marks the usage of a summary call.
 const TraceCallCompact = "compact"
 
+// TraceCallExtract marks the usage of a fact-extraction call, which runs beside
+// a summary and counts as part of the same compaction cost.
+const TraceCallExtract = "extract"
+
 // TracePath is the append-only trace for this bot.
 func (b *Bot) TracePath() string {
 	return filepath.Join(b.dir(), "trace.jsonl")

@@ -202,7 +202,7 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 		m.Images = nil
 		turns = append(turns, m)
 	}
-	text, err := k.compactor().Compact(ctx, f.summary, turns)
+	text, err := k.compactor(turnSeqOf(ctx)).Compact(ctx, f.summary, turns)
 	if err != nil {
 		return err
 	}
