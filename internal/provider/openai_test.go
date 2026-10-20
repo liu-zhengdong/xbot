@@ -208,3 +208,26 @@ func TestDecodeStreamMissingUsageIsNotReported(t *testing.T) {
 		t.Fatalf("usage %+v", msg.Usage)
 	}
 }
+
+// A cold cache reported as 0 and no cache figure at all both leave
+// CachedTokens at 0; CacheReported tells them apart.
+func TestDecodeStreamCacheFieldPresence(t *testing.T) {
+	for _, tc := range []struct {
+		usage string
+		want  bool
+	}{
+		{`{"prompt_tokens":10,"completion_tokens":1}`, false},
+		{`{"prompt_tokens":10,"completion_tokens":1,"prompt_cache_hit_tokens":0}`, true},
+		{`{"prompt_tokens":10,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":0}}`, true},
+		{`{"prompt_tokens":10,"completion_tokens":1,"prompt_tokens_details":{}}`, false},
+	} {
+		body := "data: {\"choices\":[],\"usage\":" + tc.usage + "}\n\ndata: [DONE]\n"
+		msg, err := decodeStream(strings.NewReader(body), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if msg.Usage.CacheReported != tc.want || msg.Usage.CachedTokens != 0 {
+			t.Errorf("%s: cache reported %v, want %v", tc.usage, msg.Usage.CacheReported, tc.want)
+		}
+	}
+}

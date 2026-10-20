@@ -52,6 +52,10 @@ type TokenUsage struct {
 	CachedTokens     int  `json:"cached_tokens,omitempty"`
 	Reported         bool `json:"-"`
 	Estimated        bool `json:"-"`
+	// CacheReported says the response carried a cache field at all. A
+	// provider that reports no cache figure and one that reports a cold 0
+	// both leave CachedTokens at 0; this tells them apart.
+	CacheReported bool `json:"-"`
 }
 
 // ToolCall is a model request to run a tool.

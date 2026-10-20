@@ -1,9 +1,14 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -35,10 +40,15 @@ import (
 //  2. Context stays inside the working set and does not grow with turns,
 //     measured as the prompt estimate of every chat request, the same unit the
 //     working set is declared in, cycle by cycle.
-//  3. Prefix cache across a pass: reported per pass below. The cached count is
-//     modelled by the scripted provider as the longest common prefix with the
-//     previous chat request, which is what a prefix cache hits; see
-//     journeyModel.Chat and the note at the measurement.
+//  3. Prefix cache across a pass, by the dev/context.md yardstick. The double
+//     reports usage as a standard prefix cache would (prefixCache: longest
+//     common prefix with any earlier request); the kernel's own usage records
+//     carry it into trace.jsonl, grouped by turn, and the test reads it from
+//     there. Recovery is asserted: from the turn after a pass to the next pass,
+//     every turn's hit rate is at least 90% of the median over the 5 turns
+//     before it. Cost is weighted (misses plus 0.1 of hits, summary calls
+//     included) against a second run of the same script with no compaction and
+//     a large window; the ratio K is logged until the owner sets it.
 //  4. Compaction cost: provider calls are classified (a call whose system
 //     message is the summarizer instruction is a compaction), and their prompt
 //     plus completion tokens are compared with every call's tokens in the run.
@@ -58,33 +68,7 @@ import (
 // capped so the test always ends.
 func TestLongRunJourney(t *testing.T) {
 	started := time.Now()
-	root := t.TempDir()
-	work := t.TempDir()
-	b, err := bot.Create(root, "longrun", "You are a long-run test bot.", []string{
-		link.NameTerminal, link.NameTools, link.NameContext, link.NameMemory,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	model := newJourneyModel()
-	k := &kernel.Kernel{
-		Bot:       b,
-		Provider:  model,
-		Memory:    memory.Open(root),
-		MaxSteps:  4,
-		Inbox:     box,
-		Links:     []link.Link{link.Terminal{}, link.NewToolsLinkAt(work, ""), link.Context{}, link.Memory{}},
-		Compactor: compact.LLM{P: model},
-		Approve:   func(context.Context, string, string) (bool, error) { return true, nil },
-		Budget:    kernel.BudgetFor(b.Config()),
-	}
+	k, b, model := newJourney(t, true)
 	// The journey is about the shipped lines, derived from the model, not a
 	// scaled-down budget.
 	if k.Budget != compact.DefaultBudget() {
@@ -101,10 +85,7 @@ func TestLongRunJourney(t *testing.T) {
 	// The loop runs until the journey's minimum and enough passes, then a few
 	// more turns so the last pass has a request on each side of it.
 	for i := 1; i <= journeyMaxTurns; i++ {
-		model.setTurn(i)
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", journeyTurnText(i), time.Now())); err != nil {
-			t.Fatalf("turn %d: %v", i, err)
-		}
+		driveTurn(t, k, model, i)
 		st, err := b.LoadState()
 		if err != nil {
 			t.Fatal(err)
@@ -113,10 +94,7 @@ func TestLongRunJourney(t *testing.T) {
 		turns = i
 		if i >= journeyMinTurns && countPasses(turnBlocks) >= journeyPasses {
 			for j := 1; j <= journeyAfterPass; j++ {
-				model.setTurn(i + j)
-				if err := k.Handle(context.Background(), link.TerminalEvent("u1", journeyTurnText(i+j), time.Now())); err != nil {
-					t.Fatalf("turn %d: %v", i+j, err)
-				}
+				driveTurn(t, k, model, i+j)
 				st, err := b.LoadState()
 				if err != nil {
 					t.Fatal(err)
@@ -310,31 +288,14 @@ func TestLongRunJourney(t *testing.T) {
 
 	// --- 3. prefix cache across a pass ------------------------------------
 	//
-	// NOT COVERED as worded: this setup has no cache-hit data.
-	//   - mockopenai's streams carry no usage object, so the real provider
-	//     client marks every call Estimated and reports cached 0.
-	//   - The bot's trace.jsonl only repeats those estimated counts.
-	//   - The scripted provider below could model a cache (longest common
-	//     prefix with the previous request), but a number this test invents for
-	//     itself is not evidence about the implementation, so nothing is
-	//     asserted on it. Missing data: a provider that reports
-	//     prompt_tokens_details.cached_tokens, or a trace that records it.
+	// Read from the bot's trace.jsonl, as written by the kernel's own usage
+	// records: the double reports what a standard prefix cache would hit
+	// (prefixCache), and the kernel is what decides whether its requests let
+	// it hit. Turns group the records by the seq of the message that opened
+	// them; summary calls are tagged compact.
 	//
-	// What IS covered here, from the requests the kernel really built: every
-	// message before the new block is the same message in the same order, so a
-	// real prefix cache still hits all of them. That is the property an
-	// incremental pass provides, and rewriting an old block (the behaviour this
-	// change replaced) breaks it at the first rewritten message.
-	//
-	// Also worth reporting: measured as cached over prompt with a shrinking
-	// request, the 5-point bound cannot be met by any implementation. The pass
-	// replaces a raw prefix of about 56k tokens with a summary block, so the
-	// request drops from about 70k to about 14k tokens, and the bytes that
-	// existed before are only the system message, memory, and the earlier
-	// blocks, about 1.5k. The best possible post-pass rate is then about 11%,
-	// so the fall is about 88 points whatever the code does. A countable bound
-	// needs a different denominator, for example cached tokens over the previous
-	// request's prompt.
+	// Byte check first, for locating a failure: every message before the new
+	// block is the same message in the same order.
 	passList := cachePasses(cycles)
 	if len(passList) == 0 {
 		t.Errorf("criterion 3: no pass had a chat request on both sides, so not even the retained prefix could be checked")
@@ -348,13 +309,187 @@ func TestLongRunJourney(t *testing.T) {
 				p.turn, p.sharedMsgs, p.keptMsgs)
 		}
 	}
-	if len(passList) > 0 {
-		p := passList[0]
-		t.Logf("criterion 3 arithmetic, from real request sizes: prompt %d -> %d tokens; only %d of the smaller request existed before, "+
-			"so any implementation scores at most %.1f%% after the pass",
-			p.prePrompt, p.postPrompt, p.sharedTokens, 100*float64(p.sharedTokens)/float64(p.postPrompt))
+	use := readJourneyUsage(t, b, turns)
+	if !use.cacheReported {
+		t.Logf("criterion 3: not applicable, the model never reported a cache field")
+		return
 	}
+	var pTurns []int
+	for i := 1; i < len(cycles); i++ {
+		pTurns = append(pTurns, cycles[i][0].turn)
+	}
+	checkRecovery(t, use.turns, pTurns)
 
+	// --- 3b. weighted cost against a run with no compaction --------------
+	baseK, baseB, baseModel := newJourney(t, false)
+	for i := 1; i <= turns; i++ {
+		driveTurn(t, baseK, baseModel, i)
+	}
+	base := readJourneyUsage(t, baseB, turns)
+	for i := 1; i < len(base.turns); i++ {
+		if base.turns[i].largest < base.turns[i-1].largest {
+			t.Fatalf("baseline invalid: turn %d's largest request was %d prompt tokens, under turn %d's %d; with no compaction and a large window the request should only grow",
+				i+1, base.turns[i].largest, i, base.turns[i-1].largest)
+		}
+	}
+	for _, span := range []int{journeyMinTurns, turns} {
+		got, ref := use.weighted(span), base.weighted(span)
+		k := got / ref
+		t.Logf("criterion 3 cost, first %d turns: weighted %.0f (miss %d, hit %d, compact %d) vs baseline %.0f (miss %d, hit %d): K = %.3f; pure-miss ratio %.2f",
+			span, got, use.miss(span), use.hit(span), use.compactPrompt(span), ref, base.miss(span), base.hit(span), k,
+			float64(use.miss(span))/float64(base.miss(span)))
+		if journeyCostK > 0 && span == turns && k > journeyCostK {
+			t.Errorf("criterion 3: weighted cost is %.3f times the no-compaction baseline, over K = %.2f", k, journeyCostK)
+		}
+	}
+}
+
+// checkRecovery asserts the recovery rule: from the turn after a pass to the
+// next pass, each turn's hit rate is at least journeyRecovery of the median
+// over the journeyRecoveryWindow turns before the pass. The pass turn itself
+// has no floor.
+func checkRecovery(t *testing.T, turns []turnUse, pTurns []int) {
+	t.Helper()
+	for i, p := range pTurns {
+		if p-1-journeyRecoveryWindow < 0 {
+			continue
+		}
+		var before []float64
+		for j := p - 1 - journeyRecoveryWindow; j < p-1; j++ {
+			before = append(before, turns[j].rate())
+		}
+		median := medianOf(before)
+		end := len(turns)
+		if i+1 < len(pTurns) {
+			end = pTurns[i+1] - 1
+		}
+		worst, at := 1.0, 0
+		for j := p; j < end; j++ { // turns[j] is turn j+1, so this starts at P+1
+			if r := turns[j].rate() / median; r < worst {
+				worst, at = r, j+1
+			}
+		}
+		t.Logf("criterion 3 recovery, pass %d (P = turn %d): median rate before %.3f, rate at P %.3f, P+1 %.3f; worst after P %.3f of the median (turn %d)",
+			i+1, p, median, turns[p-1].rate(), turns[min(p, len(turns)-1)].rate(), worst, at)
+		if worst < journeyRecovery {
+			t.Errorf("criterion 3: after the pass at turn %d the hit rate at turn %d is %.0f%% of the median before it, under %.0f%%",
+				p, at, worst*100, journeyRecovery*100)
+		}
+	}
+}
+
+func medianOf(xs []float64) float64 {
+	s := append([]float64(nil), xs...)
+	sort.Float64s(s)
+	if len(s) == 0 {
+		return 0
+	}
+	if len(s)%2 == 1 {
+		return s[len(s)/2]
+	}
+	return (s[len(s)/2-1] + s[len(s)/2]) / 2
+}
+
+// turnUse is one turn's chat calls, summed; largest is its largest request.
+type turnUse struct{ prompt, cached, largest int }
+
+func (u turnUse) rate() float64 {
+	if u.prompt == 0 {
+		return 0
+	}
+	return float64(u.cached) / float64(u.prompt)
+}
+
+// journeyUsage is the run as the trace recorded it.
+type journeyUsage struct {
+	turns []turnUse
+	// calls are every usage record with the test turn it falls in; a summary
+	// call is put in the turn whose records it sits among.
+	calls         []usageCall
+	cacheReported bool
+}
+
+type usageCall struct {
+	turn           int
+	prompt, cached int
+	compact        bool
+}
+
+func (u journeyUsage) sum(span int, f func(usageCall) int) int {
+	n := 0
+	for _, c := range u.calls {
+		if c.turn <= span {
+			n += f(c)
+		}
+	}
+	return n
+}
+
+func (u journeyUsage) miss(span int) int {
+	return u.sum(span, func(c usageCall) int { return c.prompt - c.cached })
+}
+
+func (u journeyUsage) hit(span int) int {
+	return u.sum(span, func(c usageCall) int { return c.cached })
+}
+
+func (u journeyUsage) compactPrompt(span int) int {
+	return u.sum(span, func(c usageCall) int {
+		if c.compact {
+			return c.prompt
+		}
+		return 0
+	})
+}
+
+// weighted is misses plus journeyHitWeight of hits, every call included.
+func (u journeyUsage) weighted(span int) float64 {
+	return float64(u.miss(span)) + journeyHitWeight*float64(u.hit(span))
+}
+
+// readJourneyUsage reads the trace of the first n test turns. Turn records
+// are grouped by their turn seq, in the order the turns ran.
+func readJourneyUsage(t *testing.T, b *bot.Bot, n int) journeyUsage {
+	t.Helper()
+	traces, err := b.Traces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var u journeyUsage
+	index := map[int]int{} // turn seq -> test turn
+	cur := 0
+	for _, tr := range traces {
+		if tr.Kind != bot.TraceUsage || tr.Branch != "" {
+			continue
+		}
+		if tr.CacheReported {
+			u.cacheReported = true
+		}
+		if tr.Call == bot.TraceCallCompact {
+			u.calls = append(u.calls, usageCall{turn: max(cur, 1), prompt: tr.Prompt, cached: tr.Cached, compact: true})
+			continue
+		}
+		at, ok := index[tr.Turn]
+		if !ok {
+			at = len(index) + 1
+			index[tr.Turn] = at
+		}
+		cur = at
+		if at > n {
+			continue
+		}
+		for len(u.turns) < at {
+			u.turns = append(u.turns, turnUse{})
+		}
+		u.turns[at-1].prompt += tr.Prompt
+		u.turns[at-1].cached += tr.Cached
+		u.turns[at-1].largest = max(u.turns[at-1].largest, tr.Prompt)
+		u.calls = append(u.calls, usageCall{turn: at, prompt: tr.Prompt, cached: tr.Cached})
+	}
+	if len(u.turns) != n {
+		t.Fatalf("the trace grouped into %d turns, the test drove %d", len(u.turns), n)
+	}
+	return u
 }
 
 // cachePass is one pass as the provider saw it.
@@ -408,18 +543,77 @@ const (
 	// journeyPromptSlack is how far over the working set a prompt may go: one
 	// turn's growth plus a tool pair and an environment update.
 	journeyPromptSlack = 5000
-	// journeyCacheDropLimit is the point 3 limit, as a share of the request.
-	journeyCacheDropLimit = 0.05
+	// journeyRecovery is the share of the pre-pass median hit rate every turn
+	// after a pass must reach, and journeyRecoveryWindow is how many turns
+	// before the pass the median is taken over.
+	journeyRecovery       = 0.90
+	journeyRecoveryWindow = 5
+	// journeyHitWeight is what a cached token costs against a missed one.
+	journeyHitWeight = 0.1
+	// journeyCostK bounds the weighted cost against the no-compaction
+	// baseline. Zero until the owner sets it from a first measurement: the
+	// ratio is logged, not asserted.
+	journeyCostK = 0.0
 	// journeyCompactShareLimit is the point 4 limit, as a share of all tokens.
 	journeyCompactShareLimit = 0.02
-	// journeyCacheSlack is how far under the arithmetic ceiling of a pass the
-	// post-pass hit rate may sit: it covers the estimate's per-message overhead.
-	journeyCacheSlack = 0.01
 	// journeyRecall asks the bot for the first turn's fact.
 	journeyRecall = "JOURNEY_RECALL"
 	// journeyTool makes a turn do tool work.
 	journeyTool = "JOURNEY_TOOL"
 )
+
+// newJourney builds the long-run bot. With compaction off it is the
+// baseline: no compactor, and the model registers a window large enough that
+// the context never reaches a line.
+func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journeyModel) {
+	t.Helper()
+	root := t.TempDir()
+	work := t.TempDir()
+	b, err := bot.Create(root, "longrun", "You are a long-run test bot.", []string{
+		link.NameTerminal, link.NameTools, link.NameContext, link.NameMemory,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := newJourneyModel()
+	k := &kernel.Kernel{
+		Bot:      b,
+		Provider: model,
+		Memory:   memory.Open(root),
+		MaxSteps: 4,
+		Inbox:    box,
+		Links:    []link.Link{link.Terminal{}, link.NewToolsLinkAt(work, ""), link.Context{}, link.Memory{}},
+		Approve:  func(context.Context, string, string) (bool, error) { return true, nil },
+		Budget:   kernel.BudgetFor(b.Config()),
+	}
+	if compaction {
+		k.Compactor = compact.LLM{P: model}
+		return k, b, model
+	}
+	reg := `{"providers":[{"name":"sim","base_url":"http://127.0.0.1:1/v1","api_key_env":"XBOT_API_KEY","models":[{"name":"sim-big","context":20000000}]}]}`
+	if err := os.WriteFile(filepath.Join(root, "providers.json"), []byte(reg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetBinding("sim", "sim-big"); err != nil {
+		t.Fatal(err)
+	}
+	return k, b, model
+}
+
+func driveTurn(t *testing.T, k *kernel.Kernel, model *journeyModel, i int) {
+	t.Helper()
+	model.setTurn(i)
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", journeyTurnText(i), time.Now())); err != nil {
+		t.Fatalf("turn %d: %v", i, err)
+	}
+}
 
 // journeyTurnText is one owner message. It is short on purpose: a real long
 // session grows by a few hundred tokens a turn, and that size against the
@@ -448,8 +642,8 @@ type journeyModel struct {
 	turn  int
 	from  int
 	to    int
-	prev  []provider.Message
 	calls []journeyCall
+	cache prefixCache
 }
 
 // journeyCall is one provider call as the test sees it.
@@ -528,14 +722,72 @@ func (m *journeyModel) Chat(_ context.Context, req provider.Request, _ func(stri
 	if call.compact {
 		reply = provider.Message{Role: provider.RoleAssistant, Content: summarizeScript(strings.Join(messageContents(req.Messages), "\n"))}
 	} else {
-		// No cache figure is reported. mockopenai sends no usage object and the
-		// provider client then marks the call estimated with cached 0, so a
-		// count the test made up itself would say nothing about the kernel.
 		reply = m.answer(req)
 	}
 	call.completion = compact.EstimateMessage(reply)
 	m.calls = append(m.calls, call)
+	// Usage as a provider with a prefix cache reports it. The rule is fixed
+	// here, not by the kernel: the bytes are the tool definitions and then the
+	// messages in order; the hit is the longest common prefix with any earlier
+	// request, at 4 bytes a token, rounded down to blocks of 64 tokens.
+	raw := requestBytes(req)
+	hit := m.cache.hit(raw) / 4 / 64 * 64
+	reply.Usage = provider.TokenUsage{
+		PromptTokens: (len(raw) + 3) / 4, CompletionTokens: call.completion, CachedTokens: hit,
+		Reported: true, CacheReported: true,
+	}
 	return reply, nil
+}
+
+// prefixCache is a provider's prefix cache: every request it has seen, of
+// which a hit is the longest common prefix. A request that is a prefix of a
+// newer one is dropped, since the newer one always matches at least as much.
+type prefixCache struct{ pool [][]byte }
+
+func (c *prefixCache) hit(b []byte) int {
+	best := 0
+	keep := c.pool[:0]
+	for _, p := range c.pool {
+		n := commonPrefix(p, b)
+		if n > best {
+			best = n
+		}
+		if n == len(p) {
+			continue
+		}
+		keep = append(keep, p)
+	}
+	c.pool = append(keep, b)
+	return best
+}
+
+func commonPrefix(a, b []byte) int {
+	n := min(len(a), len(b))
+	i := 0
+	for i+4096 <= n && bytes.Equal(a[i:i+4096], b[i:i+4096]) {
+		i += 4096
+	}
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
+}
+
+// requestBytes is the request as the cache sees it: tool definitions, then
+// each message's role, name, tool call id, content, and tool calls.
+func requestBytes(req provider.Request) []byte {
+	var b bytes.Buffer
+	defs, _ := json.Marshal(req.Tools)
+	b.Write(defs)
+	for _, m := range req.Messages {
+		b.WriteString("\x00" + m.Role + "\x00" + m.Name + "\x00" + m.ToolCallID + "\x00")
+		b.WriteString(m.Content)
+		if len(m.ToolCalls) > 0 {
+			calls, _ := json.Marshal(m.ToolCalls)
+			b.Write(calls)
+		}
+	}
+	return b.Bytes()
 }
 
 // answer is the script. The summarizer keeps markers, so a summary chain either

@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -82,6 +83,7 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 	window := k.contextWindow()
 	turnCompletion := 0
 	branch := ""
+	turnSeq := 0
 	if tr != nil {
 		tr.useMu.Lock()
 		tr.useCompletion += u.CompletionTokens
@@ -89,6 +91,7 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 		tr.useMu.Unlock()
 		tr.mu.Lock()
 		branch = tr.branch
+		turnSeq = tr.fromSeq
 		tr.mu.Unlock()
 	}
 	k.tokens.mu.Lock()
@@ -121,12 +124,57 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 		SessionCached:     snap.SessionCached,
 		Window:            snap.Window,
 		Estimated:         snap.Estimated,
+		Turn:              turnSeq,
+		CacheReported:     u.CacheReported,
 	}
 	if branch != "" {
 		rec.Prompt, rec.Completion, rec.Cached = u.PromptTokens, u.CompletionTokens, u.CachedTokens
 		rec.TurnCompletion, rec.Estimated, rec.Branch = turnCompletion, u.Estimated, branch
 	}
 	_ = k.Bot.LogUsage(rec)
+}
+
+// noteCompactUsage records one summary call's usage, tagged so a cost count
+// can include it. The conversation's own counts are not touched.
+func (k *Kernel) noteCompactUsage(req provider.Request, msg provider.Message) {
+	if k == nil || k.Bot == nil {
+		return
+	}
+	u := observedUsage(req, msg)
+	_ = k.Bot.LogUsage(bot.Trace{
+		Time:          k.now(),
+		Reason:        usageReason(u.Estimated),
+		Prompt:        u.PromptTokens,
+		Completion:    u.CompletionTokens,
+		Cached:        u.CachedTokens,
+		Estimated:     u.Estimated,
+		Call:          bot.TraceCallCompact,
+		CacheReported: u.CacheReported,
+	})
+}
+
+// usageProvider notes the usage of every call through it.
+type usageProvider struct {
+	inner provider.Provider
+	note  func(provider.Request, provider.Message)
+}
+
+func (p usageProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+	msg, err := p.inner.Chat(ctx, req, onDelta)
+	if err == nil {
+		p.note(req, msg)
+	}
+	return msg, err
+}
+
+// compactor is k.Compactor with its model calls' usage recorded. A compactor
+// that is not compact.LLM is returned as is: it has no calls to see.
+func (k *Kernel) compactor() compact.Compactor {
+	if l, ok := k.Compactor.(compact.LLM); ok && l.P != nil {
+		l.P = usageProvider{inner: l.P, note: k.noteCompactUsage}
+		return l
+	}
+	return k.Compactor
 }
 
 // Ratio bounds. The estimate is never trusted to be larger than the real count

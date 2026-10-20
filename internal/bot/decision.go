@@ -71,7 +71,19 @@ type Trace struct {
 	// Branch is set on a usage record from a background branch. Its counts
 	// are that call's own; the foreground's latest counts are not touched.
 	Branch string `json:"branch,omitempty"`
+	// Turn is the transcript seq of the message that opened the turn this
+	// call belongs to. Zero for a call outside a turn.
+	Turn int `json:"turn,omitempty"`
+	// Call names a call that is not part of the conversation: "compact" for
+	// a summary. Its counts are its own.
+	Call string `json:"call,omitempty"`
+	// CacheReported says the response carried a cache field, so Cached 0
+	// means a cold cache rather than no figure.
+	CacheReported bool `json:"cache_reported,omitempty"`
 }
+
+// TraceCallCompact marks the usage of a summary call.
+const TraceCallCompact = "compact"
 
 // TracePath is the append-only trace for this bot.
 func (b *Bot) TracePath() string {

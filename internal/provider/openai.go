@@ -456,24 +456,31 @@ type streamChunk struct {
 // prompt_tokens_details.cached_tokens, or from prompt_cache_hit_tokens when
 // that is what the endpoint sends. A present object is real; a missing one is not.
 type apiUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	PromptCacheHit   int `json:"prompt_cache_hit_tokens"`
+	PromptTokens     int  `json:"prompt_tokens"`
+	CompletionTokens int  `json:"completion_tokens"`
+	PromptCacheHit   *int `json:"prompt_cache_hit_tokens"`
 	PromptDetails    *struct {
-		CachedTokens int `json:"cached_tokens"`
+		CachedTokens *int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details,omitempty"`
 }
 
 func (u apiUsage) tokenUsage() TokenUsage {
-	cached := u.PromptCacheHit
-	if u.PromptDetails != nil && u.PromptDetails.CachedTokens > 0 {
-		cached = u.PromptDetails.CachedTokens
+	cached, present := 0, false
+	if u.PromptCacheHit != nil {
+		cached, present = *u.PromptCacheHit, true
+	}
+	if u.PromptDetails != nil && u.PromptDetails.CachedTokens != nil {
+		present = true
+		if *u.PromptDetails.CachedTokens > 0 {
+			cached = *u.PromptDetails.CachedTokens
+		}
 	}
 	return TokenUsage{
 		PromptTokens:     u.PromptTokens,
 		CompletionTokens: u.CompletionTokens,
 		CachedTokens:     cached,
 		Reported:         true,
+		CacheReported:    present,
 	}
 }
 
