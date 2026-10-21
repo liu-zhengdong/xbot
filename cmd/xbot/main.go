@@ -116,6 +116,7 @@ Environment:
   XBOT_VAULT_SOCKET  vault daemon unix socket; when set, secrets use the daemon
   XBOT_AUTO_UPGRADE  0 disables the periodic release check in serve
   XBOT_UPGRADE_URL   override the release endpoint (default the GitHub API)
+  XBOT_DEV_STATIC    development only: serve web files from this directory instead of the embedded copy
 
 A named provider stores the environment variable name, never the key itself.
 `

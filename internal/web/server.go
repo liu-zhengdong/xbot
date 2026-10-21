@@ -216,6 +216,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 }
 
 func (s *Server) static(name, contentType string) http.HandlerFunc {
+	if dir := os.Getenv(devStaticEnv); dir != "" {
+		return devStatic(dir, name, contentType)
+	}
 	body, err := staticFS.ReadFile(name)
 	sum := sha256.Sum256(body)
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`

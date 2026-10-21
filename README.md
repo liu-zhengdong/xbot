@@ -46,6 +46,18 @@ xbot upgrade --check
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
 
+开发时用 `scripts/xbot-dev` 一条命令把当前代码拉起来看（macOS）。`scripts/xbot-dev install` 把它链到 `~/.local/bin/xbot-dev`，之后：
+
+```bash
+xbot-dev start      # 编译当前代码，后台起 serve（127.0.0.1:8788），打开浏览器，登录码复制到剪贴板
+xbot-dev restart    # 拉了新提交或改了 Go 代码后，重新编译再起
+xbot-dev status     # 在不在跑、pid、跑的是哪个提交、工作区有没有未提交改动
+xbot-dev logs [-f]  # 看日志（登录码已遮掉）
+xbot-dev stop
+```
+
+dev 实例的数据在 `~/.xbot-dev`，第一次 start 时从 `~/.xbot` 整份拷过去，之后不再覆盖，跟装好的 XBot 互不影响；要重来就删掉这个目录。自动升级关掉。它设了 `XBOT_DEV_STATIC`，网页文件每次请求都从 `internal/web/static` 现读，只改前端时刷新浏览器就行。不设这个变量时照旧用编译进去的那份。编译产物、pid 和日志在 `~/.xbot-build/dev/`。
+
 ## 版本与升级
 
 `xbot version` 打印编译时注入的版本（默认 `dev`）。发布就是推一个 `v*` tag：`.github/workflows/release.yml` 自己打包（macOS 的 dmg/zip、Windows 的 setup.exe、Linux 的 tar.gz）并发 Release。细节见 [docs/atlas/release.md](docs/atlas/release.md)。

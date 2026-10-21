@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# xbot-dev: build the checkout and run it as a separate dev instance.
+#
+#   xbot-dev install            link this script to ~/.local/bin/xbot-dev
+#   xbot-dev start [--no-open]  build, start serve on 127.0.0.1:8788, open the page
+#   xbot-dev restart [--no-open]
+#   xbot-dev stop
+#   xbot-dev status
+#   xbot-dev logs [-f]
+#
+# Data lives in ~/.xbot-dev (copied once from ~/.xbot on first start, never
+# overwritten after). Web files are read from internal/web/static on every
+# request, so a front-end edit only needs a browser refresh.
+set -euo pipefail
+
+# Resolve the repo from the script's real path, so the ~/.local/bin link works.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+	dir="$(cd -P "$(dirname "$src")" && pwd)"
+	src="$(readlink "$src")"
+	case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+REPO="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+ADDR="${XBOT_DEV_ADDR:-127.0.0.1:8788}"
+DATA="${XBOT_DEV_DATA:-$HOME/.xbot-dev}"
+STATE="$HOME/.xbot-build/dev"
+BIN="$STATE/bin/xbot"
+PIDFILE="$STATE/serve.pid"
+LOG="$STATE/serve.log"
+INFO="$STATE/build-info"
+URL="http://$ADDR/"
+
+die() { echo "xbot-dev: $*" >&2; exit 1; }
+
+running_pid() {
+	[ -f "$PIDFILE" ] || return 1
+	local pid
+	pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+	[ -n "$pid" ] || return 1
+	kill -0 "$pid" 2>/dev/null || return 1
+	# Only our own binary counts; never touch an installed XBot.
+	ps -p "$pid" -o command= 2>/dev/null | grep -qF "$BIN" || return 1
+	echo "$pid"
+}
+
+dirty_mark() {
+	if [ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then echo "有未提交改动"; else echo "干净"; fi
+}
+
+build() {
+	mkdir -p "$STATE/bin"
+	local head
+	head="$(git -C "$REPO" rev-parse --short HEAD)"
+	echo "xbot-dev: 编译 $head ..."
+	(cd "$REPO" && go build -o "$BIN" ./cmd/xbot)
+	printf 'commit=%s\nworktree=%s\nbuilt=%s\n' "$head" "$(dirty_mark)" "$(date '+%Y-%m-%d %H:%M:%S')" >"$INFO"
+}
+
+seed_data() {
+	[ -e "$DATA" ] && return 0
+	if [ -d "$HOME/.xbot" ]; then
+		echo "xbot-dev: 第一次启动，从 ~/.xbot 拷一份到 ${DATA}（以后不再覆盖）"
+		mkdir -p "$DATA"
+		rsync -a --exclude '*.lock' --exclude 'app.log' "$HOME/.xbot/" "$DATA/"
+	else
+		mkdir -p "$DATA"
+	fi
+	chmod 700 "$DATA"
+}
+
+copy_token() {
+	local tok="$DATA/web-token.json"
+	[ -f "$tok" ] || return 0
+	if command -v pbcopy >/dev/null 2>&1 &&
+		python3 -c 'import json,sys; sys.stdout.write(json.load(open(sys.argv[1]))["token"])' "$tok" | pbcopy 2>/dev/null; then
+		echo "xbot-dev: 登录码已复制到剪贴板（要登录时粘贴即可；文件在 ${tok}）"
+	else
+		echo "xbot-dev: 登录码在 $tok"
+	fi
+}
+
+open_page() {
+	[ "${NO_OPEN:-0}" = 1 ] && return 0
+	copy_token
+	command -v open >/dev/null 2>&1 && open "$URL" || echo "xbot-dev: 打开 $URL"
+}
+
+launch() {
+	if pid="$(running_pid)"; then
+		echo "xbot-dev: 已经在跑（pid ${pid}）$URL"
+		open_page
+		return 0
+	fi
+	if lsof -nP -iTCP:"${ADDR##*:}" -sTCP:LISTEN >/dev/null 2>&1; then
+		die "端口 ${ADDR##*:} 被别的进程占着，先看 lsof -nP -iTCP:${ADDR##*:} -sTCP:LISTEN"
+	fi
+	build
+	seed_data
+	mkdir -p "$STATE"
+	rm -f "$PIDFILE"
+	echo "---- $(date '+%Y-%m-%d %H:%M:%S') start $(sed -n 's/^commit=//p' "$INFO") ----" >>"$LOG"
+	# The token line is masked before it reaches the log.
+	XBOT_DEV_STATIC="$REPO/internal/web/static" XBOT_AUTO_UPGRADE=0 \
+		BIN="$BIN" DATA="$DATA" ADDR="$ADDR" PIDFILE="$PIDFILE" LOG="$LOG" \
+		nohup bash -c '
+			{ "$BIN" --root "$DATA" serve --http "$ADDR" --no-auto-upgrade </dev/null & echo $! >"$PIDFILE"; wait; } 2>&1 |
+				awk "/login token/ { sub(/: .*/, \": <已隐藏>\") } { print; fflush() }" >>"$LOG"
+		' >/dev/null 2>&1 &
+	local i
+	for i in $(seq 1 60); do
+		if curl -fsS -o /dev/null "$URL" 2>/dev/null; then
+			echo "xbot-dev: 已启动（pid $(cat "$PIDFILE")）$URL"
+			open_page
+			return 0
+		fi
+		if [ -f "$PIDFILE" ] && ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+			tail -20 "$LOG" >&2
+			die "serve 退出了，日志在 $LOG"
+		fi
+		sleep 0.5
+	done
+	tail -20 "$LOG" >&2
+	die "30 秒内没起来，日志在 $LOG"
+}
+
+stop() {
+	local pid
+	if ! pid="$(running_pid)"; then
+		rm -f "$PIDFILE"
+		echo "xbot-dev: 没在跑"
+		return 0
+	fi
+	kill "$pid"
+	local i
+	for i in $(seq 1 40); do
+		kill -0 "$pid" 2>/dev/null || break
+		sleep 0.25
+	done
+	kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+	rm -f "$PIDFILE"
+	echo "xbot-dev: 已停止（pid ${pid}）"
+}
+
+status() {
+	local pid
+	if pid="$(running_pid)"; then
+		echo "状态: 在跑  pid $pid  $URL"
+	else
+		echo "状态: 没在跑"
+	fi
+	[ -f "$INFO" ] && echo "运行的构建: $(sed -n 's/^commit=//p' "$INFO")（编译时工作区$(sed -n 's/^worktree=//p' "$INFO")，$(sed -n 's/^built=//p' "$INFO")）"
+	echo "仓库当前: $(git -C "$REPO" rev-parse --short HEAD)（工作区$(dirty_mark)）"
+	echo "数据目录: $DATA"
+	echo "日志: $LOG"
+}
+
+install_link() {
+	mkdir -p "$HOME/.local/bin"
+	ln -sf "$REPO/scripts/xbot-dev" "$HOME/.local/bin/xbot-dev"
+	echo "xbot-dev: 已链接 ~/.local/bin/xbot-dev -> $REPO/scripts/xbot-dev"
+	case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "xbot-dev: ~/.local/bin 不在 PATH 里，记得加上" ;; esac
+}
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+for a in "$@"; do [ "$a" = --no-open ] && NO_OPEN=1; done
+case "$cmd" in
+install) install_link ;;
+start) launch ;;
+restart) stop && launch ;;
+stop) stop ;;
+status) status ;;
+logs)
+	[ -f "$LOG" ] || die "还没有日志"
+	if [ "${1:-}" = -f ]; then tail -n 50 -f "$LOG"; else tail -n 50 "$LOG"; fi
+	;;
+*)
+	sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+	[ -z "$cmd" ] || exit 2
+	;;
+esac
