@@ -58,3 +58,34 @@ func TestSlowToolNoticeRequiresAnOwnerInterjection(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+func TestFailedTaskKeepsItsOriginalErrorAcrossPolls(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	part := func(start, end string) string {
+		a, b := strings.Index(s, start), strings.Index(s, end)
+		if a < 0 || b <= a {
+			t.Fatal("task rendering functions not found")
+		}
+		return s[a:b]
+	}
+	script := `const assert=require('node:assert/strict');
+ const node=()=>({dataset:{},hidden:false,textContent:'',children:[],classList:{toggle(){},contains(){return true}},setAttribute(){},addEventListener(t,fn){this[t]=fn},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},querySelector(sel){return this.children.find(x=>sel==='button'&&x.tag==='button')||null},get childElementCount(){return this.children.length},firstElementChild:{replaceWith(){}}});
+ const el=(tag,cls,text)=>Object.assign(node(),{tag,textContent:text||''}), icon=()=>node(),spinIcon=icon;
+ const taskStatus=x=>x,when=x=>x,clip=x=>x,plainText=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=()=> '请求超时';
+ const elements=new Map([['.task-error',node()]]),card=node();card.querySelector=sel=>{if(!elements.has(sel))elements.set(sel,node());return elements.get(sel)};
+ ` + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskCard(", "  const routineChanges") + `
+ const ag={id:'w1',status:'failed',summary:'provider: context deadline exceeded',steps:3};
+ updateTaskCard(card,ag);
+ const detail=elements.get('.task-error');assert.equal(detail.hidden,false);assert.equal(detail.children.length,2);assert.equal(detail.children[1].textContent,ag.summary);
+ detail.children[0].click();assert.equal(detail.children[1].hidden,false);
+ const prior=detail.children[1];updateTaskCard(card,ag);assert.equal(detail.children[1],prior);assert.equal(prior.hidden,false);
+ updateTaskCard(card,{...ag,status:'running'});assert.equal(detail.hidden,true);assert.equal(detail.children.length,0);
+ `
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

@@ -204,6 +204,8 @@ type Remote struct {
 	Token   string
 	HTTP    *http.Client
 
+	// Active requests share their transcript directories with the loopback runner.
+	active sync.Map // agent id -> directory; finished events remove it
 	events chan Event
 	once   sync.Once
 	err    error
@@ -235,7 +237,32 @@ func (r *Remote) Start(ctx context.Context, req StartRequest) error {
 	if err := r.ensure(); err != nil {
 		return err
 	}
-	return r.post(ctx, "/v1/start", req)
+	_, already := r.active.LoadOrStore(req.ID, req.Dir)
+	if err := r.post(ctx, "/v1/start", req); err != nil {
+		if !already {
+			r.active.Delete(req.ID)
+		}
+		return err
+	}
+	return nil
+}
+
+// ActiveCount reads only live request metadata, never finished histories.
+// Queued requests enter the count when the runner promotes them to running.
+func (r *Remote) ActiveCount() int {
+	n := 0
+	r.active.Range(func(id, dir any) bool {
+		m, err := ReadMeta(dir.(string))
+		if err == nil {
+			if m.Status == statusRunning {
+				n++
+			} else if m.Status != statusQueued {
+				r.active.Delete(id)
+			}
+		}
+		return true
+	})
+	return n
 }
 
 // Control sends steer, queue, interrupt, or cancel.
@@ -284,6 +311,9 @@ func (r *Remote) read(body io.ReadCloser) {
 		var ev Event
 		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil {
 			continue
+		}
+		if ev.Kind == EvDone || ev.Kind == EvFailed {
+			r.active.Delete(ev.AgentID)
 		}
 		r.events <- ev
 	}

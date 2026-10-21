@@ -38,7 +38,7 @@ func (s *Server) unreadCompletions(b *bot.Bot, cursor int) int {
 			return nil
 		}
 		header, _, _ := strings.Cut(e.Message.Content, ">")
-		if strings.Contains(header, `type="done"`) || strings.Contains(header, `type="failed"`) {
+		if strings.Contains(header, `type="done"`) || strings.Contains(header, `type="failed"`) || strings.Contains(header, `type="fork_end"`) {
 			cached.count++
 		}
 		return nil

@@ -38,4 +38,9 @@ func TestCompletedUnreadTracksOwnerCursor(t *testing.T) {
 	if n := s.botStatuses()[0].CompletedUnread; n != 1 {
 		t.Fatalf("new result count: %d", n)
 	}
+	appendResult("fork_end", bot.OriginInternal)
+	if n := s.botStatuses()[0].CompletedUnread; n != 2 {
+		t.Fatalf("fork result not counted: %d", n)
+	}
+
 }

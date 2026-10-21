@@ -4804,7 +4804,7 @@
     const head = el("div", "ch"), ct = el("div", "ct");
     ct.append(el("b", "task-name"), el("span", "s2 task-title"));
     head.append(taskAvatar(ag, "xs"), ct, el("span", "task-state"));
-    detail.append(head, el("div", "now"), el("div", "res"));
+    detail.append(head, el("div", "now"), el("div", "res"), el("div", "task-error"));
     const close = el("button", "task-fold"); close.type = "button"; close.setAttribute("aria-label", "收起结果"); close.append(icon("chevronDown"));
     close.addEventListener("click", () => { card.classList.remove("expanded"); compact.setAttribute("aria-expanded", "false"); });
     head.append(close);
@@ -4847,6 +4847,15 @@
     const result = card.querySelector(".res");
     result.textContent = hot ? "" : ag.summary === "SILENT" ? "静默完成" : (ag.status === "failed" ? zhError(ag.summary || "") : plainText(displayText(ag.summary || ""))); result.hidden = !result.textContent;
     result.classList.toggle("failed", ag.status === "failed");
+    const rawError = card.querySelector(".task-error");
+    const raw = ag.status === "failed" ? ag.summary || "" : "";
+    if (rawError.dataset.raw !== raw) {
+      rawError.dataset.raw = raw; rawError.replaceChildren();
+      errorDetails(rawError, raw, result.textContent);
+      const toggle = rawError.querySelector("button");
+      if (toggle) toggle.textContent = "原始错误";
+    }
+    rawError.hidden = !rawError.childElementCount;
     card.querySelector(".ca").hidden = !hot;
     card.querySelector(".task-fold").hidden = hot;
   }
