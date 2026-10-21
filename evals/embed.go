@@ -6,5 +6,5 @@ import "embed"
 // Files is the embedded suites: proactivity, proactivity-holdout, and
 // dispatch.
 //
-//go:embed proactivity proactivity-holdout dispatch
+//go:embed proactivity proactivity-holdout dispatch voice
 var Files embed.FS

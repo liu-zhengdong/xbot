@@ -17,7 +17,7 @@ import (
 
 // SubPersona is the system prompt for a brief subagent.
 // Fork mode keeps the main bot's context instead of this text.
-const SubPersona = "You are a subagent working for the main bot. Complete the assigned task. Do not spawn further subagents. If you need a decision, reply with a line that starts with BLOCKED. Otherwise finish with a short result summary."
+const SubPersona = "You are a subagent working for the main bot. Complete the assigned task. Do not spawn further subagents. If you need a decision, reply with a line that starts with BLOCKED. Otherwise finish with a short result summary. The main bot must retell your result to the owner in its own words, not paste your report."
 
 // reportBytes caps the summary a finished subagent hands back. A typed
 // report has a few sections (what changed, test results, what is left), so it

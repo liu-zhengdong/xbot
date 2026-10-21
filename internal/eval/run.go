@@ -87,6 +87,8 @@ func Run(opt Options) (Report, error) {
 						Violations: append([]string{}, one.violations...),
 						Asked:      one.asked,
 						Transcript: one.Transcript,
+						Activity:   one.Activity,
+						Voice:      one.Voice,
 					})
 				}
 				agg := aggregate(c, level, runs)
@@ -126,7 +128,7 @@ func jailFor(opt Options, suites []string) error {
 			return err
 		}
 		for _, c := range cases {
-			if !c.Dispatch {
+			if !c.Dispatch && !c.FileOnly {
 				return requireJail()
 			}
 		}
@@ -240,7 +242,7 @@ func runCase(c Case, level string, script Script, real provider.Provider) CaseRe
 // runCaseFor binds the case bot to modelID so that model's prompt overlay applies.
 func runCaseFor(c Case, level string, script Script, real provider.Provider, modelID string) CaseResult {
 	res := CaseResult{Name: c.Name, Level: level, Grader: c.Grader, SpotCheck: c.Grader == "llm-judge"}
-	if !c.Dispatch {
+	if !c.Dispatch && !c.FileOnly {
 		if err := requireJail(); err != nil {
 			res.Reason = err.Error()
 			return res
@@ -402,6 +404,9 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	if c.Memory {
 		list = memoryCaseTools(work, c.Network)
 	}
+	if c.FileOnly {
+		list = caseTools(work, false)[1:]
+	}
 	if c.Dispatch {
 		// The foreground reads, its memory folder included (it keeps
 		// memory); the work is recorded, not done.
@@ -415,8 +420,10 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	if c.Dispatch {
 		links = append(links, link.Agents{})
 	}
+	meter := newActivity(work, model)
 	k := &kernel.Kernel{
-		Bot: b, Provider: model, Memory: mem, MaxSteps: steps,
+		Bot: b, Provider: meter, Memory: mem, MaxSteps: steps,
+		OnTool: meter.toolStart, OnResult: meter.toolEnd,
 		WorkDir: work,
 		Links:   links,
 		Now:     func() time.Time { return when },
@@ -434,8 +441,11 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	if obsErr != nil && runErr == nil {
 		runErr = obsErr
 	}
+	res.Activity = meter.result()
+	res.Voice = voiceReplies(obs.entries, meter.toolNames())
 	res.Transcript = formatTranscript(obs.entries)
 	problems, facts := grade(c, obs, seeded, work, before)
+	problems = append(problems, gradeVoice(c.Checks.Voice, res.Voice)...)
 	problems = append(problems, checkMemory(c, root, b.Name(), "owner")...)
 	obs.Files = facts
 	res.Tools = obs.Tools
@@ -544,6 +554,8 @@ func renderTask(text string, files []FileSeed) string {
 func wakeEvent(c Case, when time.Time) link.Event {
 	text := renderTask(c.Wake.Text, c.Setup.Files)
 	switch c.Wake.Kind {
+	case "subagent":
+		return link.NewEvent(link.SourceSubagent, "done", text, "sa_eval", when)
 	case "user":
 		return link.TerminalEvent("owner", text, when)
 	default:

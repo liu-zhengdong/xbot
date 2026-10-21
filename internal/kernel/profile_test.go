@@ -29,11 +29,11 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatalf("composed %q file %q", composed, file)
 	}
 	msgs, _ := Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if strings.Contains(msgs[0].Content, "Tone:") || strings.Contains(msgs[0].Content, "Proactivity:") {
+	if strings.Contains(msgs[0].Content, "Language:") || strings.Contains(msgs[0].Content, "Proactivity:") {
 		t.Fatal(msgs[0].Content)
 	}
-	tone := "warm and plain"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Tone: &tone}); err != nil {
+	language := "中文"
+	if err := b.ApplyProfile(bot.ProfileUpdate{Language: &language}); err != nil {
 		t.Fatal(err)
 	}
 	composed, err = b.ComposedPersona()
@@ -41,7 +41,7 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if !strings.Contains(msgs[0].Content, "Tone: warm and plain") || !strings.HasPrefix(msgs[0].Content, file) {
+	if !strings.Contains(msgs[0].Content, "Language: reply in 中文.") || !strings.HasPrefix(msgs[0].Content, file) {
 		t.Fatal(msgs[0].Content)
 	}
 }
@@ -58,15 +58,15 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
 		t.Fatal(err)
 	}
-	tone := "warm and plain"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Tone: &tone}); err != nil {
+	language := "中文"
+	if err := b.ApplyProfile(bot.ProfileUpdate{Language: &language}); err != nil {
 		t.Fatal(err)
 	}
 	now = t0.Add(5 * time.Minute)
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.reqs[1].Messages[0].Content, "Tone: warm and plain") {
+	if !strings.Contains(p.reqs[1].Messages[0].Content, "Language: reply in 中文.") {
 		t.Fatal(p.reqs[1].Messages[0].Content)
 	}
 	if !strings.Contains(p.reqs[1].Messages[0].Content, "Be brief.") {
@@ -85,13 +85,13 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	now := t0
 	call := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
 		ID: "c1", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"tone":"warm and plain"}`},
+		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"language":"中文"}`},
 	}}}
 	// A denied call cannot be retried with the same arguments. The later
 	// approval uses a different proposal.
 	call2 := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
 		ID: "c2", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"tone":"warm and plain","length":"short"}`},
+		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"language":"中文","description":"notes"}`},
 	}}}
 	p := &scripted{resps: []provider.Message{
 		call,
@@ -105,7 +105,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 		Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4,
 		Now: func() time.Time { return now },
 		Approve: func(_ context.Context, name, summary string) (bool, error) {
-			if name != "propose_profile" || !strings.Contains(summary, "warm and plain") {
+			if name != "propose_profile" || !strings.Contains(summary, "中文") {
 				t.Fatalf("confirm %s %s", name, summary)
 			}
 			return approved, nil
@@ -114,7 +114,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it", t0)); err != nil {
 		t.Fatal(err)
 	}
-	if b.StyleCopy().Tone != "" || b.Config().Proactivity != "" {
+	if b.StyleCopy().Language != "" || b.Config().Proactivity != "" {
 		t.Fatalf("denied profile applied: %+v", b.Config())
 	}
 	entries, err := b.Entries()
@@ -129,7 +129,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if b.StyleCopy().Tone != "warm and plain" || b.Config().Proactivity != "" {
+	if b.StyleCopy().Language != "中文" || b.Config().Proactivity != "" {
 		t.Fatalf("profile %+v %s", b.StyleCopy(), b.Config().Proactivity)
 	}
 	now = t0.Add(10 * time.Minute)
@@ -137,12 +137,12 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	prefix := p.reqs[len(p.reqs)-1].Messages[0].Content
-	if !strings.Contains(prefix, "Tone: warm and plain") || strings.Contains(prefix, "Proactivity:") {
+	if !strings.Contains(prefix, "Language: reply in 中文.") || strings.Contains(prefix, "Proactivity:") {
 		t.Fatal(prefix)
 	}
 	updates := envUpdates(t, b)
 	last := updates[len(updates)-1]
-	if !strings.Contains(last, "profile: updated") || strings.Contains(last, "warm and plain") {
+	if !strings.Contains(last, "profile: updated") || strings.Contains(last, "中文") {
 		t.Fatalf("env %s", last)
 	}
 }
@@ -313,4 +313,12 @@ func transcriptHas(entries []bot.Entry, text string) bool {
 		}
 	}
 	return false
+}
+
+func TestProfileRejectsRemovedStyleFields(t *testing.T) {
+	for _, field := range []string{"tone", "length", "emoji"} {
+		if _, _, _, err := parseProfileArgs(json.RawMessage(`{"` + field + `":"old"}`)); err == nil {
+			t.Fatalf("removed field %s accepted", field)
+		}
+	}
 }

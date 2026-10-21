@@ -39,9 +39,6 @@ func (s *Server) forgetKernel(name string) {
 type profileBody struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
-	Tone        *string `json:"tone"`
-	Length      *string `json:"length"`
-	Emoji       *string `json:"emoji"`
 	Language    *string `json:"language"`
 	// Proactivity is accepted from older clients and ignored.
 	Proactivity *string `json:"proactivity"`
@@ -80,8 +77,8 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	u := bot.ProfileUpdate{
-		Description: in.Description, Tone: in.Tone, Length: in.Length, Emoji: in.Emoji,
-		Language: in.Language, QuietStart: in.QuietStart, QuietEnd: in.QuietEnd,
+		Description: in.Description,
+		Language:    in.Language, QuietStart: in.QuietStart, QuietEnd: in.QuietEnd,
 		Timezone: in.Timezone,
 	}
 	if u != (bot.ProfileUpdate{}) {

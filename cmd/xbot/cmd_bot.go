@@ -305,9 +305,6 @@ func cmdProfileShow(root string, args []string) error {
 	}
 	fmt.Printf("name: %s\n", b.Name())
 	fmt.Printf("description: %s\n", b.Config().Description)
-	fmt.Printf("tone: %s\n", st.Tone)
-	fmt.Printf("length: %s\n", st.Length)
-	fmt.Printf("emoji: %s\n", st.Emoji)
 	fmt.Printf("language: %s\n", st.Language)
 	fmt.Printf("quiet: %s\n", quiet)
 	fmt.Printf("timezone: %s\n", b.Config().Timezone)
@@ -320,9 +317,6 @@ func cmdProfileShow(root string, args []string) error {
 type profileSetOpts struct {
 	Bot         string
 	Description string
-	Tone        string
-	Length      string
-	Emoji       string
 	Language    string
 	Quiet       string
 	Timezone    string
@@ -336,8 +330,8 @@ type profileSetOpts struct {
 
 func parseProfileSet(args []string) (profileSetOpts, error) {
 	ordered, err := reorderFlags(args, map[string]bool{
-		"description": true, "tone": true, "length": true, "emoji": true,
-		"language": true, "quiet": true, "timezone": true, "name": true,
+		"description": true,
+		"language":    true, "quiet": true, "timezone": true, "name": true,
 		"role": true, "foreground-max-tools": true, "foreground-max-time": true, "background-max-time": true,
 	})
 	if err != nil {
@@ -346,9 +340,6 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	desc := fs.String("description", "", "one-line description")
-	tone := fs.String("tone", "", "speaking tone")
-	length := fs.String("length", "", "short, medium, or long")
-	emoji := fs.String("emoji", "", "none, spare, or often")
 	lang := fs.String("language", "", "default reply language")
 	quiet := fs.String("quiet", "", "HH:MM-HH:MM, or off")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
@@ -364,7 +355,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 		return profileSetOpts{}, errors.New("usage: xbot profile set <name> [flags]")
 	}
 	opt := profileSetOpts{
-		Bot: fs.Arg(0), Description: *desc, Tone: *tone, Length: *length, Emoji: *emoji,
+		Bot: fs.Arg(0), Description: *desc,
 		Language: *lang, Quiet: *quiet, Timezone: *tz, Name: *name,
 		Role: *role, FgTools: *fgTools, FgTime: *fgTime, BgTime: *bgTime, Set: map[string]bool{},
 	}
@@ -388,18 +379,6 @@ func cmdProfileSet(root string, args []string) error {
 	if opt.Set["description"] {
 		s := opt.Description
 		u.Description = &s
-	}
-	if opt.Set["tone"] {
-		s := opt.Tone
-		u.Tone = &s
-	}
-	if opt.Set["length"] {
-		s := opt.Length
-		u.Length = &s
-	}
-	if opt.Set["emoji"] {
-		s := opt.Emoji
-		u.Emoji = &s
 	}
 	if opt.Set["language"] {
 		s := opt.Language

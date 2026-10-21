@@ -72,7 +72,7 @@
   "name":"ada",
   "persona":"全文",
   "description":"",
-  "style":{"length":"short","emoji":"none"},
+  "style":{"language":"中文"},
   "quiet_start":"22:00",
   "quiet_end":"07:00",
   "timezone":"Asia/Shanghai",
@@ -92,9 +92,9 @@
 }
 ```
 
-`style.length` 是 `short` | `medium` | `long`，空字符串表示没设。`style.emoji` 是 `none` | `spare` | `often`。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统。
+`style` 只保留 `language`。旧配置里的 `tone`、`length`、`emoji` 加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧模板里的这三个字段忽略。说话规则由内核统一提供，个人口味记在 Bot 记忆里。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统。
 
-`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`tone`（80）、`length`、`emoji`、`language`（40）、`quiet_start`、`quiet_end`、`timezone`、`persona`、`avatar_seed`。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
+`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`language`（40）、`quiet_start`、`quiet_end`、`timezone`、`persona`、`avatar_seed`。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
 
 `POST /api/bots/{name}/avatar` 是 `multipart/form-data`，字段名 `file`。只接受 PNG、JPEG、GIF、WebP，最大 1 MiB。成功 200 `{"name","avatar":"custom","avatar_seed"}`。`avatar_seed` 保持上传前的种子。之后列表和详情里的 `avatar_url` 指向 `GET /api/bots/{name}/avatar`，响应是图片字节，`Content-Type` 按图片内容定，带 `X-Content-Type-Options: nosniff`，`Cache-Control: private, no-cache`。生成的头像不经过这个接口，GET 只返回上传的图。
 

@@ -30,11 +30,11 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 	if err != nil || composed != file || b.ProfileText() != "" {
 		t.Fatalf("empty profile changed persona %q", composed)
 	}
-	tone, length, emoji, lang := "warm and plain", "short", "none", "中文"
+	lang := "中文"
 	start, end, utc := "22:00", "07:00", "UTC"
 	desc := "项目笔记"
 	if err := b.ApplyProfile(ProfileUpdate{
-		Description: &desc, Tone: &tone, Length: &length, Emoji: &emoji, Language: &lang,
+		Description: &desc, Language: &lang,
 		QuietStart: &start, QuietEnd: &end, Timezone: &utc,
 	}); err != nil {
 		t.Fatal(err)
@@ -42,9 +42,6 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 	text := b.ProfileText()
 	for _, want := range []string{
 		"About: 项目笔记",
-		"Tone: warm and plain",
-		"Reply length: short. A few sentences at most.",
-		"Emoji: do not use emoji.",
 		"Language: reply in 中文.",
 		"Quiet hours: 22:00–07:00 UTC. Notifications are held and sent as one batch when quiet hours end.",
 	} {
@@ -60,10 +57,10 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 		t.Fatalf("composed %q", composed)
 	}
 	cleared := ""
-	if err := b.ApplyProfile(ProfileUpdate{Tone: &cleared}); err != nil {
+	if err := b.ApplyProfile(ProfileUpdate{Language: &cleared}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(b.ProfileText(), "Tone:") {
+	if strings.Contains(b.ProfileText(), "Language:") {
 		t.Fatal(b.ProfileText())
 	}
 }
@@ -378,8 +375,8 @@ func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	tone := "warm"
-	if err := b.ApplyProfile(ProfileUpdate{Tone: &tone}); err != nil {
+	lang := "中文"
+	if err := b.ApplyProfile(ProfileUpdate{Language: &lang}); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.WritePersona("Keep the notes short."); err != nil {
@@ -424,7 +421,7 @@ func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 		}
 	}
 	persona, _ := next.ReadPersona()
-	if persona != "Keep the notes short." || !strings.Contains(next.ProfileText(), "Tone: warm") {
+	if persona != "Keep the notes short." || !strings.Contains(next.ProfileText(), "Language: reply in 中文.") {
 		t.Fatalf("persona %q profile %q", persona, next.ProfileText())
 	}
 	list, err := (&link.Timer{Dir: next.RoutineDir()}).List()

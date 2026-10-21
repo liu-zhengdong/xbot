@@ -267,7 +267,14 @@ func TestProfileAPI(t *testing.T) {
 		}
 		return res
 	}
-	patch := `{"description":"项目笔记","tone":"warm","length":"short","emoji":"none","language":"中文","proactivity":"quiet","quiet_start":"22:00","quiet_end":"07:00"}`
+	for _, field := range []string{"tone", "length", "emoji"} {
+		res := do(http.MethodPatch, "/api/bots/ada", strings.NewReader(`{"`+field+`":"old"}`), "application/json")
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("removed %s accepted: %d", field, res.StatusCode)
+		}
+	}
+	patch := `{"description":"项目笔记","language":"中文","proactivity":"quiet","quiet_start":"22:00","quiet_end":"07:00"}`
 	res := do(http.MethodPatch, "/api/bots/ada", strings.NewReader(patch), "application/json")
 	if res.StatusCode != 200 {
 		raw, _ := io.ReadAll(res.Body)
@@ -278,7 +285,7 @@ func TestProfileAPI(t *testing.T) {
 	raw, _ := io.ReadAll(res.Body)
 	res.Body.Close()
 	wantModel := config.FromEnv(os.Getenv).Model
-	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"tone":"warm"`)) || bytes.Contains(raw, []byte(`"proactivity"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) || !bytes.Contains(raw, []byte(`"model":"`+wantModel+`"`)) {
+	if res.StatusCode != 200 || !bytes.Contains(raw, []byte(`"language":"中文"`)) || bytes.Contains(raw, []byte(`"proactivity"`)) || !bytes.Contains(raw, []byte(`"quiet_start":"22:00"`)) || !bytes.Contains(raw, []byte(`"model":"`+wantModel+`"`)) {
 		t.Fatalf("panel %d %s", res.StatusCode, raw)
 	}
 	res = do(http.MethodGet, "/api/bots", nil, "")

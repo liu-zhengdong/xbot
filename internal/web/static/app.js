@@ -4375,8 +4375,6 @@
   function styleChips(data) {
     const style = data.style || {};
     const bits = [];
-    if (style.tone) bits.push(style.tone);
-    if (style.length) bits.push(style.length === "short" ? "短" : style.length === "long" ? "长" : style.length === "medium" ? "中" : style.length);
     if (style.language) bits.push(style.language);
     return dedupeChips(bits);
   }
@@ -4825,9 +4823,6 @@
     const name = textInput(data.name, 64);
     name.dataset.profileFocus = "true";
     const description = textInput(data.description, 160);
-    const tone = textInput(style.tone, 80);
-    const length = choice([["", "未设置"], ["short", "短"], ["medium", "中"], ["long", "长"]], style.length);
-    const emoji = choice([["", "未设置"], ["none", "不用"], ["spare", "少量"], ["often", "常用"]], style.emoji);
     const language = textInput(style.language, 40);
     const quietStart = textInput(data.quiet_start, 5);
     quietStart.type = "time";
@@ -4860,8 +4855,7 @@
     };
     wrap.append(
       section("基本", head, labeled("标识", name), labeled("简介", description)),
-      section("说话方式", labeled("语气", tone), labeled("回复长度", length),
-        labeled("表情", emoji), labeled("语言", language)),
+      section("说话方式", labeled("语言", language)),
       section("免打扰", labeled("开始", quietStart), labeled("结束", quietEnd)),
       section("人设", labeled("人设", persona)),
       err,
@@ -4873,9 +4867,6 @@
       const body = {
         name: name.value.trim(),
         description: description.value.trim(),
-        tone: tone.value.trim(),
-        length: length.value,
-        emoji: emoji.value,
         language: language.value.trim(),
         quiet_start: quietStart.value,
         quiet_end: quietEnd.value,

@@ -1,0 +1,18 @@
+name: plain-report
+grader: auto
+file_only: true
+max_steps: 6
+wake:
+  kind: subagent
+  text: |
+    w1 做完了，骨架建好了：backlog.md、README.md、projects/xbot.md 和 designs/ 都在 ~/.dev/，你现有的仓库一个没动。值得留意：w1 全局装了 tasks-axi@0.4.2，以后直接敲 tasks-axi list 就行。不想要的话说一声，我让它卸掉。
+    工作目录：{{workdir}}
+    文件：{{files}}
+checks:
+  transcript_not_silent: true
+  assistant_contains: ["骨架", "tasks-axi"]
+  voice:
+    max_paths: 0
+    max_internals: 0
+    max_code: 0
+    reference: 骨架建好了，你现有的仓库一个都没碰。我顺手全局装了 tasks-axi，以后直接用就行，不想要的话说一声我就卸掉。

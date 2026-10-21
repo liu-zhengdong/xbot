@@ -69,7 +69,30 @@ func (k *Kernel) ensureExec() exec.Executor {
 		}
 		go k.forwardExec(k.Exec.Events())
 	})
-	return k.Exec
+	return modelExecutor{Executor: k.Exec, k: k}
+}
+
+// modelExecutor adds the same model supplement to local and remote brief
+// workers. Forks already carry the main bot's complete system prompt.
+type modelExecutor struct {
+	exec.Executor
+	k *Kernel
+}
+
+func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) error {
+	if req.Mode != exec.ModeFork {
+		_, overlay, err := e.k.modelOverlay()
+		if err != nil {
+			return err
+		}
+		if overlay != "" {
+			if strings.TrimSpace(req.Persona) == "" {
+				req.Persona = exec.SubPersona
+			}
+			req.Persona += "\n\n## Model\n" + overlay
+		}
+	}
+	return e.Executor.Start(ctx, req)
 }
 
 func (k *Kernel) remote() (link.Runner, bool) {
@@ -194,6 +217,15 @@ func (m memoryGuarded) ConfirmContext(ctx context.Context, args json.RawMessage)
 
 func (m memoryGuarded) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	return reviewedTool{Tool: m.Tool, k: m.k}.guardMemory(ctx, args, false)
+}
+
+// subagentReportHint is kernel-authored context, outside the untrusted report.
+// It precedes both an opening event and a result absorbed by an active turn.
+func subagentReportHint(ev link.Event) (provider.Message, bool) {
+	if ev.Source != link.SourceSubagent {
+		return provider.Message{}, false
+	}
+	return provider.Message{Role: provider.RoleUser, Internal: true, Content: "<subagent_report>Retell the following result to the owner in your own words as your work; do not paste the report or expose internal labels.</subagent_report>"}, true
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {

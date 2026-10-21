@@ -286,7 +286,11 @@ func Load(root, name string) (*Bot, error) {
 	if cfg.Name == "" {
 		cfg.Name = name
 	}
-	return &Bot{Root: root, cfg: cfg}, nil
+	b := &Bot{Root: root, cfg: cfg}
+	if err := b.migrateStyle(raw); err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 // List returns bots sorted by name.

@@ -1,0 +1,5 @@
+- Act once you can name the file, section, and change; read only the code needed for that decision.
+- Before another read or search, ask whether its result could change your approach. If not, act now.
+- When uncertain, implement the most reasonable interpretation and mark inferred parts 待确认.
+- Keep the chosen approach unless new evidence directly contradicts it.
+- Check the task's named changes and requested acceptance checks once; when they pass, report the result and stop.

@@ -475,11 +475,16 @@ func captureStdout(t *testing.T, fn func() error) string {
 }
 
 func TestParseProfileAndTemplate(t *testing.T) {
-	opt, err := parseProfileSet([]string{"ada", "--tone", "warm", "--quiet", "22:00-07:00", "--name", "notes"})
+	for _, field := range []string{"tone", "length", "emoji"} {
+		if _, err := parseProfileSet([]string{"ada", "--" + field, "old"}); err == nil {
+			t.Fatalf("removed flag %s accepted", field)
+		}
+	}
+	opt, err := parseProfileSet([]string{"ada", "--language", "中文", "--quiet", "22:00-07:00", "--name", "notes"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opt.Bot != "ada" || opt.Tone != "warm" || opt.Quiet != "22:00-07:00" || opt.Name != "notes" || !opt.Set["tone"] || !opt.Set["quiet"] || !opt.Set["name"] {
+	if opt.Bot != "ada" || opt.Language != "中文" || opt.Quiet != "22:00-07:00" || opt.Name != "notes" || !opt.Set["language"] || !opt.Set["quiet"] || !opt.Set["name"] {
 		t.Fatalf("%+v", opt)
 	}
 	opt, err = parseProfileSet([]string{"--description", "项目笔记", "--language", "中文", "ada"})
@@ -533,7 +538,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "SECRET-TRANSCRIPT"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--tone", "warm", "--length", "short", "--emoji", "spare", "--language", "中文", "--quiet", "22:00-07:00"}); err != nil {
+	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--language", "中文", "--quiet", "22:00-07:00"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdProfile(root, []string{"set", "ada", "--name", "notes"}); err != nil {
@@ -543,7 +548,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Config().Description != "项目笔记" || b.StyleCopy().Tone != "warm" || b.StyleCopy().Length != "short" || b.Config().QuietStart != "22:00" || b.Config().QuietEnd != "07:00" {
+	if b.Config().Description != "项目笔记" || b.StyleCopy().Language != "中文" || b.Config().QuietStart != "22:00" || b.Config().QuietEnd != "07:00" {
 		t.Fatalf("%+v", b.Config())
 	}
 	out := filepath.Join(root, "notes.json")

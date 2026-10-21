@@ -21,11 +21,8 @@ import (
 	"xbot/internal/work"
 )
 
-// Style is how the bot speaks. Empty fields are left out of the prompt.
+// Style holds the reply language. Personal speaking preferences live in memory.
 type Style struct {
-	Tone     string `json:"tone,omitempty"`
-	Length   string `json:"length,omitempty"`
-	Emoji    string `json:"emoji,omitempty"`
 	Language string `json:"language,omitempty"`
 }
 
@@ -84,9 +81,6 @@ func callGenerator(name, description string) ([]byte, error) {
 // An empty string clears that field.
 type ProfileUpdate struct {
 	Description *string
-	Tone        *string
-	Length      *string
-	Emoji       *string
 	Language    *string
 	QuietStart  *string
 	QuietEnd    *string
@@ -113,27 +107,6 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 	st := Style{}
 	if cfg.Style != nil {
 		st = *cfg.Style
-	}
-	if u.Tone != nil {
-		t, err := limitText(*u.Tone, 80)
-		if err != nil {
-			return fmt.Errorf("bot: tone: %w", err)
-		}
-		st.Tone = t
-	}
-	if u.Length != nil {
-		v, err := oneOf(flat(*u.Length), "", "short", "medium", "long")
-		if err != nil {
-			return fmt.Errorf("bot: length: %w", err)
-		}
-		st.Length = v
-	}
-	if u.Emoji != nil {
-		v, err := oneOf(flat(*u.Emoji), "", "none", "spare", "often")
-		if err != nil {
-			return fmt.Errorf("bot: emoji: %w", err)
-		}
-		st.Emoji = v
 	}
 	if u.Language != nil {
 		v, err := limitText(*u.Language, 40)
@@ -227,25 +200,6 @@ func (b *Bot) ProfileText() string {
 		lines = append(lines, "About: "+d)
 	}
 	st := b.StyleCopy()
-	if st.Tone != "" {
-		lines = append(lines, "Tone: "+st.Tone)
-	}
-	switch st.Length {
-	case "short":
-		lines = append(lines, "Reply length: short. A few sentences at most.")
-	case "medium":
-		lines = append(lines, "Reply length: medium. A short paragraph unless the owner asks for more.")
-	case "long":
-		lines = append(lines, "Reply length: long. Explain fully when the topic needs it.")
-	}
-	switch st.Emoji {
-	case "none":
-		lines = append(lines, "Emoji: do not use emoji.")
-	case "spare":
-		lines = append(lines, "Emoji: use emoji sparingly.")
-	case "often":
-		lines = append(lines, "Emoji: emoji are welcome when they fit.")
-	}
 	if st.Language != "" {
 		lines = append(lines, "Language: reply in "+st.Language+".")
 	}
@@ -571,10 +525,10 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 			return fail(err)
 		}
 	}
-	desc, tone, length, emoji, lang := tpl.Description, tpl.Style.Tone, tpl.Style.Length, tpl.Style.Emoji, tpl.Style.Language
+	desc, lang := tpl.Description, tpl.Style.Language
 	qs, qe, tz := tpl.QuietStart, tpl.QuietEnd, tpl.Timezone
 	if err := b.ApplyProfile(ProfileUpdate{
-		Description: &desc, Tone: &tone, Length: &length, Emoji: &emoji, Language: &lang,
+		Description: &desc, Language: &lang,
 		QuietStart: &qs, QuietEnd: &qe, Timezone: &tz,
 	}); err != nil {
 		return fail(err)

@@ -1,0 +1,22 @@
+name: quick-fix
+grader: auto
+file_only: true
+max_steps: 10
+setup:
+  files:
+    - path: settings.json
+      text: '{"timeout_seconds": 15, "attempts": 2}'
+wake:
+  kind: user
+  text: |
+    请把 settings.json 的 timeout_seconds 从 15 改为 30，其他值保留。
+    只需要用文件工具读写，不运行命令、不建别的文件。改好后告诉我结果。
+    工作目录：{{workdir}}
+    文件：{{files}}
+checks:
+  files:
+    - path: settings.json
+      contains: '"timeout_seconds": 30'
+    - path: settings.json
+      contains: '"attempts": 2'
+  transcript_not_silent: true

@@ -38,7 +38,9 @@ type Case struct {
 	// Dispatch runs the bot as a dispatching foreground (ADR 0016). The
 	// dispatch is recorded, not run, and the case has no shell, so it needs
 	// no jail.
-	Dispatch bool   `yaml:"dispatch"`
+	Dispatch bool `yaml:"dispatch"`
+	// FileOnly offers only sandboxed file tools, with no shell or network.
+	FileOnly bool   `yaml:"file_only"`
 	Wake     Wake   `yaml:"wake"`
 	Setup    Setup  `yaml:"setup"`
 	Checks   Checks `yaml:"checks"`
@@ -97,6 +99,7 @@ type Checks struct {
 	Files               []FileCheck         `yaml:"files"`
 	AnyFiles            []FileCheck         `yaml:"any_files"`
 	Memory              []MemoryCheck       `yaml:"memory"`
+	Voice               *VoiceCheck         `yaml:"voice"`
 	Dispatch            *DispatchCheck      `yaml:"dispatch"`
 }
 
@@ -176,7 +179,7 @@ func (c Case) validate() error {
 		return fmt.Errorf("eval: %s: memory checks need memory: true", c.Name)
 	}
 	switch c.Wake.Kind {
-	case "user", "routine", "resume":
+	case "user", "routine", "resume", "subagent":
 	default:
 		return fmt.Errorf("eval: %s: wake %q", c.Name, c.Wake.Kind)
 	}
@@ -239,7 +242,7 @@ func loadDir(dir string) ([]Case, string, error) {
 }
 
 func embeddedSuite(suite string) bool {
-	return suite == "proactivity" || suite == "proactivity-holdout" || suite == "dispatch"
+	return suite == "proactivity" || suite == "proactivity-holdout" || suite == "dispatch" || suite == "voice"
 }
 
 func loadFS(fsys fs.FS, suite, label string) ([]Case, string, error) {

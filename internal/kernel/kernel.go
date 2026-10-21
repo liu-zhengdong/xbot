@@ -351,6 +351,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		}
 	}
 	if seq == 0 {
+		if hint, ok := subagentReportHint(ev); ok {
+			if err := k.Bot.Append(bot.Entry{Time: ev.Time, Origin: bot.OriginInternal, Message: hint}); err != nil {
+				return err
+			}
+		}
 		entry := bot.Entry{
 			Time:    ev.Time,
 			EventID: ev.ID,
@@ -557,6 +562,9 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 			continue
 		}
 		msg := k.eventMessage(ev)
+		if hint, ok := subagentReportHint(ev); ok {
+			out = append(out, hint)
+		}
 		out = append(out, msg)
 		if err := k.Inbox.Ack(ev.ID); err != nil {
 			return nil, err
@@ -588,6 +596,10 @@ func (k *Kernel) rulesText() (string, error) {
 	rules, err := k.Bot.ReadRules(DefaultRules())
 	if err != nil {
 		return rules, err
+	}
+	rules = strings.ReplaceAll(rules, legacyVerifyRule, VerifyRule)
+	if !strings.Contains(rules, VoiceRule) {
+		rules += "\n\n" + VoiceRule
 	}
 	for _, r := range safetyRules {
 		if !strings.Contains(rules, r) {
@@ -756,6 +768,13 @@ func (k *Kernel) modelOverlay() (string, string, error) {
 		return "", "", nil
 	}
 	cfg := k.Bot.Config()
+	if strings.TrimSpace(cfg.Provider) == "" {
+		// Unbound app bots use a concrete client from the environment. Match
+		// its actual model, rather than assuming the product default model.
+		if client, ok := k.Provider.(*provider.Client); ok && strings.Contains(strings.ToLower(client.Model), "deepseek") {
+			cfg.Provider, cfg.Model = "deepseek", client.Model
+		}
+	}
 	if strings.TrimSpace(cfg.Provider) == "" || strings.TrimSpace(cfg.Model) == "" {
 		return "", "", nil
 	}

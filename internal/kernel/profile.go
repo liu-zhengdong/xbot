@@ -60,15 +60,12 @@ type profileTool struct{ k *Kernel }
 
 func (profileTool) Name() string { return "propose_profile" }
 func (profileTool) Description() string {
-	return "Propose a profile change: name, description, speaking style, quiet hours, or timezone. It is saved only after the owner confirms, and applies on the next wake."
+	return "Propose a profile change: name, description, reply language, quiet hours, or timezone. It is saved only after the owner confirms, and applies on the next wake."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
 		"name":        stringProp("new bot name; letters, digits, _ and -"),
 		"description": stringProp("one-line description; empty clears it"),
-		"tone":        stringProp("speaking tone; empty clears it"),
-		"length":      stringProp("short, medium, long, or empty"),
-		"emoji":       stringProp("none, spare, often, or empty"),
 		"language":    stringProp("default reply language; empty clears it"),
 		"quiet_start": stringProp("quiet hours start HH:MM in the bot's timezone; set with quiet_end"),
 		"quiet_end":   stringProp("quiet hours end HH:MM in the bot's timezone; set with quiet_start"),
@@ -121,7 +118,7 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
 	}
 	known := []string{
-		"name", "description", "tone", "length", "emoji",
+		"name", "description",
 		"language", "quiet_start", "quiet_end", "timezone",
 	}
 	allowed := map[string]bool{}
@@ -152,15 +149,6 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 		case "description":
 			update.Description = &s
 			parts = append(parts, "description "+quote(s))
-		case "tone":
-			update.Tone = &s
-			parts = append(parts, "tone "+quote(s))
-		case "length":
-			update.Length = &s
-			parts = append(parts, "length "+quote(s))
-		case "emoji":
-			update.Emoji = &s
-			parts = append(parts, "emoji "+quote(s))
 		case "language":
 			update.Language = &s
 			parts = append(parts, "language "+quote(s))

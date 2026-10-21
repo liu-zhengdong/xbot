@@ -25,18 +25,20 @@ type Report struct {
 // CaseResult is one eval case.
 // Pass is the majority of Runs. Reason lists every run.
 type CaseResult struct {
-	Name           string      `json:"name"`
-	Level          string      `json:"level"`
-	Grader         string      `json:"grader"`
-	Axis           string      `json:"axis,omitempty"`
-	Ask            string      `json:"ask,omitempty"`
-	Pass           bool        `json:"pass"`
-	Reason         string      `json:"reason"`
-	SpotCheck      bool        `json:"spot_check,omitempty"`
-	Runs           []RunResult `json:"runs,omitempty"`
-	Tools          []ToolUse   `json:"tools,omitempty"`
-	Transcript     string      `json:"-"`
-	TranscriptFile string      `json:"transcript,omitempty"`
+	Activity       Activity     `json:"-"`
+	Voice          []VoiceStats `json:"-"`
+	Name           string       `json:"name"`
+	Level          string       `json:"level"`
+	Grader         string       `json:"grader"`
+	Axis           string       `json:"axis,omitempty"`
+	Ask            string       `json:"ask,omitempty"`
+	Pass           bool         `json:"pass"`
+	Reason         string       `json:"reason"`
+	SpotCheck      bool         `json:"spot_check,omitempty"`
+	Runs           []RunResult  `json:"runs,omitempty"`
+	Tools          []ToolUse    `json:"tools,omitempty"`
+	Transcript     string       `json:"-"`
+	TranscriptFile string       `json:"transcript,omitempty"`
 	// violations and asked are one run's facts, copied into its RunResult.
 	violations []string
 	asked      bool
@@ -44,13 +46,15 @@ type CaseResult struct {
 
 // RunResult is one execution of a case. Pass and Reason are that run alone.
 type RunResult struct {
-	Pass           bool      `json:"pass"`
-	Reason         string    `json:"reason"`
-	Tools          []ToolUse `json:"tools,omitempty"`
-	Violations     []string  `json:"violations"`
-	Asked          bool      `json:"asked,omitempty"`
-	Transcript     string    `json:"-"`
-	TranscriptFile string    `json:"transcript,omitempty"`
+	Activity       Activity     `json:"activity"`
+	Voice          []VoiceStats `json:"voice,omitempty"`
+	Pass           bool         `json:"pass"`
+	Reason         string       `json:"reason"`
+	Tools          []ToolUse    `json:"tools,omitempty"`
+	Violations     []string     `json:"violations"`
+	Asked          bool         `json:"asked,omitempty"`
+	Transcript     string       `json:"-"`
+	TranscriptFile string       `json:"transcript,omitempty"`
 }
 
 func writeReport(dir string, rep Report) (Report, error) {
@@ -115,6 +119,10 @@ func markdown(rep Report) string {
 	for _, c := range rep.Cases {
 		fmt.Fprintf(&b, "\n## %s (%s)\n\n%s\n", c.Name, c.Level, strings.TrimSpace(c.Reason))
 		for i, run := range c.Runs {
+			fmt.Fprintf(&b, "\nRun %d: steps=%d, tools before first write=%v\n", i+1, run.Activity.Steps, countText(run.Activity.ToolsBeforeFirstWrite))
+			for j, v := range run.Voice {
+				fmt.Fprintf(&b, "Reply %d (说话): paths=%d, internals=%d, code=%d\n", j+1, v.Paths, v.Internals, v.Code)
+			}
 			if run.TranscriptFile != "" {
 				fmt.Fprintf(&b, "\nRun %d transcript: %s\n", i+1, run.TranscriptFile)
 			}
