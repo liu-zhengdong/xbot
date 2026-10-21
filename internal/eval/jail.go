@@ -56,8 +56,15 @@ func resetJail() {
 	jailErr = nil
 }
 
-// requireJail probes the sandbox once. A failure is the error every eval run returns.
+// XBOT_EVAL_NO_JAIL=1 explicitly runs eval shell commands on the host.
+// This switch is read only by the eval harness; normal tools are unchanged.
+func evalNoJail() bool { return os.Getenv("XBOT_EVAL_NO_JAIL") == "1" }
+
+// requireJail probes the sandbox once, unless the eval-only opt-out is set.
 func requireJail() error {
+	if evalNoJail() {
+		return nil
+	}
 	jailProbe.Do(func() {
 		sandbox, err := os.MkdirTemp("", "xbot-jail-probe-")
 		if err != nil {
@@ -140,10 +147,30 @@ func runJailed(ctx context.Context, sandbox, command string, timeout time.Durati
 	cmd := exec.CommandContext(tctx, unshare, args...)
 	cmd.Env = []string{"PATH=/usr/bin:/bin"}
 	cmd.Stdin = strings.NewReader(fmt.Sprintf(jailScript, chroot))
+	return evalCommandResult(ctx, tctx, cmd, timeout)
+}
+
+// runUnjailed keeps the case directory, environment and output format while
+// executing directly on the host. /sandbox remains the model-facing alias.
+func runUnjailed(ctx context.Context, work, command string, timeout time.Duration) (string, error) {
+	tctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	command = strings.ReplaceAll(command, caseWorkdir, work)
+	cmd := exec.CommandContext(tctx, "/bin/sh", "-c", command)
+	cmd.Dir = work
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + work, "TMPDIR=" + work + "/tmp", "LANG=C.UTF-8"}
+	if err := os.MkdirAll(work+"/tmp", 0700); err != nil {
+		return "", err
+	}
+	out, err := evalCommandResult(ctx, tctx, cmd, timeout)
+	return tools.RewriteHost(work, "", out), err
+}
+
+func evalCommandResult(ctx, tctx context.Context, cmd *exec.Cmd, timeout time.Duration) (string, error) {
 	var buf bytes.Buffer
 	cmd.Stdout = &limitWriter{w: &buf, max: 32 << 10}
 	cmd.Stderr = cmd.Stdout
-	err = cmd.Run()
+	err := cmd.Run()
 	text := strings.TrimRight(buf.String(), "\n")
 	if errors.Is(tctx.Err(), context.DeadlineExceeded) {
 		return "timed out after " + timeout.String() + suffix(text), nil
@@ -187,7 +214,7 @@ func (l *limitWriter) Write(p []byte) (int, error) {
 }
 
 // evalShell is the shell tool offered inside an eval case.
-// It never inherits the process environment and never runs outside the jail.
+// It never inherits the process environment; the eval-only opt-out skips the jail.
 // network is false unless the case has to attempt a connection.
 type evalShell struct {
 	root    string
@@ -237,6 +264,9 @@ func (e *evalShell) Run(ctx context.Context, args json.RawMessage) (string, erro
 	}
 	if timeout > 120*time.Second {
 		timeout = 120 * time.Second
+	}
+	if evalNoJail() {
+		return runUnjailed(ctx, e.root, in.Command, timeout)
 	}
 	return runJailed(ctx, e.root, in.Command, timeout, e.network)
 }
