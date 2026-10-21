@@ -1,6 +1,11 @@
 /* XBot 视觉规范 v1 · 方向 A「白纸」+ 深色（B 式明度分层）
    用法：html[data-theme="dark"] 切深色；所有组件只引用这些变量。 */
 :root{
+  /* 弹出层：一次回弹；缩小动效模式只淡入淡出。 */
+  --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
+  --dur-pop:220ms; --dur-pop-close:120ms; --dur-press:120ms; --dur-motion-reduced:100ms;
+  --pop-scale-start:.92; --pop-scale-overshoot:.03; --press-scale:.97;
+
   /* 表面：窗口灰 → 卡片白 → 面板 → 填充三档（靠明度分层，不画线） */
   --x-win:#f3f3f5;        /* 窗口底、侧栏 */
   --x-card:#ffffff;       /* 主卡片（对话区） */

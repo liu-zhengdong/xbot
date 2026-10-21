@@ -67,7 +67,8 @@ func TestMessageMenuOmitsUnavailableReply(t *testing.T) {
 	a := strings.Index(s, "  function showMessageMenu(")
 	b := strings.Index(s[a:], `  thread.addEventListener("contextmenu"`)
 	script := `const assert=require('node:assert/strict');
- let shown, messageMenu, messageTarget, copyReceipt;
+ let shown, messageMenu, messageTarget, copyReceipt, messagePress;
+ const animateMessageMenu=()=>{};
  const classes={add(){},remove(){},contains(){return false}};
  function el(tag,cls,text){return {tag,text,children:[],style:{},classList:classes,
  offsetWidth:160,offsetHeight:76,setAttribute(){},addEventListener(){},
@@ -82,6 +83,31 @@ func TestMessageMenuOmitsUnavailableReply(t *testing.T) {
  assert.deepEqual(shown.children.map(b=>b.children[1].text),['复制']);
  showMessageMenu({bubble,message:{seq:7},text:'bot reply'},100,100,false);
  assert.deepEqual(shown.children.map(b=>b.children[1].text),['回复','复制']);
+ `
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+func TestPopoverSpringHasOnePeakAndReducedMotionOnlyFades(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	a := strings.Index(s, "  function popoverSpringFrames(")
+	b := strings.Index(s, "  function closeMessageMenu(")
+	script := `const assert=require('node:assert/strict');
+ const values={'--ease-spring':'cubic-bezier(0.34,1.56,0.64,1)','--dur-pop':'220ms','--dur-motion-reduced':'100ms','--pop-scale-start':'.92','--pop-scale-overshoot':'.03','--press-scale':'.97'};
+ const getComputedStyle=()=>({getPropertyValue:key=>values[key]});let reduced=false;const matchMedia=()=>({matches:reduced});
+ ` + s[a:b] + `
+ const frames=popoverSpringFrames(values['--ease-spring'],.92,.03),scales=frames.map(f=>Number(f.transform.slice(6,-1)));
+ assert.equal(scales[0],.92);assert.equal(scales.at(-1),1);assert.equal(Math.max(...scales),1.03);
+ const peak=scales.indexOf(1.03);for(let i=1;i<scales.length;i++){assert.ok(frames[i].offset>frames[i-1].offset);assert.ok(i<=peak?scales[i]>=scales[i-1]:scales[i]<=scales[i-1]);}
+ assert.equal(frames[0].opacity,0);assert.equal(frames.at(-1).opacity,1);
+ const calls=[],menu={animate:(f,o)=>calls.push({f,o})},bubble={animate:(f,o)=>calls.push({f,o})};
+ animateMessageMenu(menu,bubble);assert.equal(calls.length,2);assert.equal(calls[0].o.duration,220);assert.equal(calls[1].o.easing,values['--ease-spring']);
+ calls.length=0;reduced=true;animateMessageMenu(menu,bubble);assert.equal(calls.length,1);assert.equal(calls[0].o.duration,100);assert.deepEqual(calls[0].f,[{opacity:0},{opacity:1}]);
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

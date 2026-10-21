@@ -1868,13 +1868,47 @@
     return {left, top: above >= headerBottom + 8 ? above : rect.bottom + 8};
   }
 
+  // Sample the spring's timing once. Normalize its small overshoot so the
+  // requested .92 start and 3% peak can coexist with the shared Bezier curve.
+  function popoverSpringFrames(easing, start, overshoot) {
+    const [x1, y1, x2, y2] = easing.match(/[\d.]+/g).map(Number);
+    const cubic = (a, b, t) => 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3;
+    const samples = Array.from({length: 61}, (_, i) => ({offset: cubic(x1, x2, i / 60), progress: cubic(y1, y2, i / 60)}));
+    const peak = Math.max(...samples.map(s => s.progress));
+    return samples.map(({offset, progress}) => ({offset,
+      opacity: Math.min(1, Math.max(0, progress)),
+      transform: "scale(" + (progress <= 1 ? start + (1 - start) * progress : 1 + overshoot * (progress - 1) / (peak - 1)) + ")",
+    }));
+  }
+
+  function animateMessageMenu(menu, pressed) {
+    const style = getComputedStyle(menu), reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const duration = parseFloat(style.getPropertyValue(reduced ? "--dur-motion-reduced" : "--dur-pop"));
+    const easing = style.getPropertyValue("--ease-spring").trim();
+    const frames = reduced ? [{opacity: 0}, {opacity: 1}] : popoverSpringFrames(easing,
+      Number(style.getPropertyValue("--pop-scale-start")), Number(style.getPropertyValue("--pop-scale-overshoot")));
+    menu.animate(frames, {duration, fill: "both"});
+    if (pressed && !reduced) pressed.animate([{transform: "scale(" + style.getPropertyValue("--press-scale") + ")"}, {transform: "scale(1)"}], {duration, easing});
+  }
+
   function closeMessageMenu() {
-    messageMenu?.remove();
+    if (messageMenu) {
+      const menu = messageMenu, style = getComputedStyle(menu);
+      menu.style.transform = style.transform;
+      menu.style.setProperty("--leave-opacity", style.opacity);
+      for (const animation of menu.getAnimations()) animation.cancel();
+      menu.classList.replace("message-menu", "message-menu-leaving");
+      menu.setAttribute("aria-hidden", "true"); menu.inert = true;
+      menu.addEventListener("animationend", () => menu.remove(), {once: true});
+    }
     messageTarget?.classList.remove("message-target");
     messageTarget = null;
     document.documentElement.classList.remove("message-menu-open");
     messageMenu = null;
-    if (messagePress) clearTimeout(messagePress.timer);
+    if (messagePress) {
+      clearTimeout(messagePress.timer);
+      messagePress.bubble.classList.remove("message-press");
+    }
     messagePress = null;
   }
 
@@ -1890,6 +1924,7 @@
   }
 
   function showMessageMenu(data, x, y, mobile) {
+    const pressed = mobile && messagePress?.bubble;
     closePops();
     copyReceipt?.remove();
     const selection = window.getSelection();
@@ -1923,13 +1958,20 @@
       menu.append(button);
     }
     document.body.append(menu);
+    // Measure the resting box, then rebound the pressed portrait to it.
+    if (pressed) pressed.style.transition = "none";
     const r = data.bubble.getBoundingClientRect();
+    if (pressed) pressed.style.removeProperty("transition");
     const headerBottom = document.querySelector(".chat > .top")?.getBoundingClientRect().bottom || 0;
     const position = mobile
       ? mobileMessageMenuPosition(r, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight, data.bubble.closest(".msg").classList.contains("user"), headerBottom)
       : messageMenuPosition(x, y, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight);
     menu.style.left = position.left + "px";
     menu.style.top = position.top + "px";
+    menu.style.transformOrigin = mobile
+      ? (data.bubble.closest(".msg").classList.contains("user") ? "100% " : "0% ") + (position.top < r.top ? "100%" : "0%")
+      : Math.max(0, Math.min(menu.offsetWidth, x - position.left)) + "px " + Math.max(0, Math.min(menu.offsetHeight, y - position.top)) + "px";
+    animateMessageMenu(menu, pressed);
     messageMenu = menu;
     messageTarget = data.bubble;
     messageTarget.classList.add("message-target");
@@ -1948,13 +1990,14 @@
     const data = messageAt(ev.target);
     if (!data) return;
     closeMessageMenu();
-    messagePress = {x: ev.clientX, y: ev.clientY, timer: setTimeout(() => showMessageMenu(data, ev.clientX, ev.clientY, true), 500)};
+    data.bubble.classList.add("message-press");
+    messagePress = {bubble: data.bubble, x: ev.clientX, y: ev.clientY, timer: setTimeout(() => showMessageMenu(data, ev.clientX, ev.clientY, true), 500)};
   });
   thread.addEventListener("pointermove", (ev) => {
     if (messagePress && Math.hypot(ev.clientX - messagePress.x, ev.clientY - messagePress.y) > 8) closeMessageMenu();
   });
   for (const event of ["pointerup", "pointercancel"]) thread.addEventListener(event, () => {
-    if (messagePress) clearTimeout(messagePress.timer);
+    if (messagePress) { clearTimeout(messagePress.timer); messagePress.bubble.classList.remove("message-press"); }
     messagePress = null;
   });
   document.addEventListener("pointerdown", ev => {

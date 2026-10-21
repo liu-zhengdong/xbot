@@ -2431,7 +2431,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .thread-unavailable .btn.sec { border: 0; height: 32px; padding: 0 13px; border-radius: 8px; font-size: 13.5px; font-weight: 560; display: inline-flex; align-items: center; justify-content: center; line-height: 1; gap: 6px; background: var(--x-fill-2); color: var(--x-text); }
 .thread-unavailable .btn.sec:hover { background: var(--x-fill-3); }
 .thread-unavailable .btn.sec .icon { width: 15px; height: 15px; stroke-width: 1.8; }
-.message-menu { position: fixed; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-popover); box-shadow: var(--x-shadow-pop); }
+.message-menu, .message-menu-leaving { position: fixed; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-popover); box-shadow: var(--x-shadow-pop); }
 .message-menu > button.menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 13px; line-height: 32px; background: transparent; color: var(--x-text); }
 .message-menu > button:is(:hover, :focus-visible) { background: var(--x-popover-hover); outline: none; }
 .message-copy-receipt { width: max-content; position: fixed; z-index: 70; padding: 4px 10px; border-radius: 8px; background: var(--x-card); color: var(--x-muted); box-shadow: var(--x-shadow-pop); font-size: 12px; pointer-events: none; }
@@ -2513,3 +2513,14 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .tog::after { content: ""; width: 16px; height: 16px; position: absolute; top: 2px; left: 2px; border-radius: 99px; background: var(--x-card); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
 .tog.on { background: var(--x-primary); }
 .tog.on::after { left: 16px; background: var(--x-on-primary); }
+
+
+/* Only transform and opacity move; closed menus stop taking input at once. */
+.message-menu-leaving { pointer-events: none; animation: message-menu-out var(--dur-pop-close) ease-out both; }
+@keyframes message-menu-out { from { opacity: var(--leave-opacity); } to { opacity: 0; } }
+.msg :is(.bubble, .bot-bubble) { transition: transform var(--dur-press) ease-out; }
+.msg .message-press { transform: scale(var(--press-scale)); }
+@media (prefers-reduced-motion: reduce) {
+  .msg .message-press { transform: none; }
+  .message-menu-leaving { animation: message-menu-out var(--dur-motion-reduced) ease-out both !important; }
+}
