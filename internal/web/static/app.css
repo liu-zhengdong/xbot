@@ -2431,9 +2431,9 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .thread-unavailable .btn.sec { border: 0; height: 32px; padding: 0 13px; border-radius: 8px; font-size: 13.5px; font-weight: 560; display: inline-flex; align-items: center; justify-content: center; line-height: 1; gap: 6px; background: var(--x-fill-2); color: var(--x-text); }
 .thread-unavailable .btn.sec:hover { background: var(--x-fill-3); }
 .thread-unavailable .btn.sec .icon { width: 15px; height: 15px; stroke-width: 1.8; }
-.message-menu, .message-menu-leaving { position: fixed; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-popover); box-shadow: var(--x-shadow-pop); }
-.message-menu > button.menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 13px; line-height: 32px; background: transparent; color: var(--x-text); }
-.message-menu > button:is(:hover, :focus-visible) { background: var(--x-popover-hover); outline: none; }
+.message-menu-surface { position: fixed; visibility: hidden; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-popover); box-shadow: var(--x-shadow-pop); }
+.message-menu-surface > button.menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 13px; line-height: 32px; background: transparent; color: var(--x-text); }
+.message-menu-surface > button:is(:hover, :focus-visible) { background: var(--x-popover-hover); outline: none; }
 .message-copy-receipt { width: max-content; position: fixed; z-index: 70; padding: 4px 10px; border-radius: 8px; background: var(--x-card); color: var(--x-muted); box-shadow: var(--x-shadow-pop); font-size: 12px; pointer-events: none; }
 @media (hover: none) {
   .msg .ht { display: none; }
@@ -2526,3 +2526,10 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
   .msg .message-press { transform: none; }
   .message-menu-leaving { animation: message-menu-out var(--dur-motion-reduced) ease-out both !important; }
 }
+
+
+/* Layout survives opening and leaving; only a placed menu can paint. */
+.message-menu-surface.placed { visibility: visible; }
+.message-menu { opacity: 0; transform: scale(var(--pop-scale-start)); }
+.msg :is(.bubble, .bot-bubble) { transform-origin: center; }
+@media (prefers-reduced-motion: reduce) { .message-menu { transform: none; } }

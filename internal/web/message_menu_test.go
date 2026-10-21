@@ -58,31 +58,34 @@ func TestMessageMenuStaysInsideViewport(t *testing.T) {
 	}
 }
 
-func TestMessageMenuOmitsUnavailableReply(t *testing.T) {
+func TestMessageMenuOmitsUnavailableReplyAndKeepsItsSurface(t *testing.T) {
 	raw, err := staticFS.ReadFile("static/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(raw)
 	a := strings.Index(s, "  function showMessageMenu(")
-	b := strings.Index(s[a:], `  thread.addEventListener("contextmenu"`)
+	b := strings.Index(s[a:], `  thread.addEventListener("keydown"`)
 	script := `const assert=require('node:assert/strict');
  let shown, messageMenu, messageTarget, copyReceipt, messagePress;
- const animateMessageMenu=()=>{};
+ const animateMessageMenu=()=>{},animateBubbleTarget=()=>{};
  const classes={add(){},remove(){},contains(){return false}};
- function el(tag,cls,text){return {tag,text,children:[],style:{},classList:classes,
- offsetWidth:160,offsetHeight:76,setAttribute(){},addEventListener(){},
- append(...nodes){this.children.push(...nodes)},querySelector(){return {focus(){}}}}}
+ function el(tag,cls,text){const n={tag,text,children:[],style:{},classList:classes,
+ offsetWidth:160,offsetHeight:76,setAttribute(){},addEventListener(){},getAnimations(){return []},
+ append(...nodes){this.children.push(...nodes)},querySelector(){return {focus(){}}}};
+ const names=new Set(cls.split(' '));n.style.setProperty=()=>{};n.classList={add:c=>names.add(c),remove:c=>names.delete(c),contains:c=>names.has(c),replace(a,b){names.delete(a);names.add(b)},[Symbol.iterator]:()=>names[Symbol.iterator]()};return n;}
+ const getComputedStyle=()=>({transform:"matrix(1,0,0,1,0,0)",opacity:"1"});
  const icon=()=>({}),closePops=()=>{},window={getSelection:()=>null};
  const document={body:{append(node){shown=node}},querySelector:()=>null,documentElement:{classList:classes}};
  const innerWidth=1440,innerHeight=900;
  function messageMenuPosition(){return {left:100,top:100}}
  const bubble={getBoundingClientRect:()=>({left:100,top:100}),classList:classes};
- ` + s[a:a+b] + `
+ ` + s[strings.Index(s, "  function closeMessageMenu("):strings.Index(s, "  function bindMessageMenu(")] + s[a:a+b] + `
  showMessageMenu({bubble,message:{},text:'group reply'},100,100,false);
  assert.deepEqual(shown.children.map(b=>b.children[1].text),['复制']);
  showMessageMenu({bubble,message:{seq:7},text:'bot reply'},100,100,false);
  assert.deepEqual(shown.children.map(b=>b.children[1].text),['回复','复制']);
+ const layout=[...shown.classList].filter(c=>c!=='message-menu'&&c!=='placed');assert.ok(layout.length,'a persistent surface class must own layout');closeMessageMenu();for(const cls of layout)assert.ok(shown.classList.contains(cls),'leaving must retain '+cls);
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -96,7 +99,7 @@ func TestPopoverSpringHasOnePeakAndReducedMotionOnlyFades(t *testing.T) {
 	}
 	s := string(raw)
 	a := strings.Index(s, "  function popoverSpringFrames(")
-	b := strings.Index(s, "  function closeMessageMenu(")
+	b := strings.Index(s, "  const bubbleMotions =")
 	script := `const assert=require('node:assert/strict');
  const values={'--ease-spring':'cubic-bezier(0.34,1.56,0.64,1)','--dur-pop':'220ms','--dur-motion-reduced':'100ms','--pop-scale-start':'.92','--pop-scale-overshoot':'.03','--press-scale':'.97'};
  const getComputedStyle=()=>({getPropertyValue:key=>values[key]});let reduced=false;const matchMedia=()=>({matches:reduced});
@@ -106,8 +109,35 @@ func TestPopoverSpringHasOnePeakAndReducedMotionOnlyFades(t *testing.T) {
  const peak=scales.indexOf(1.03);for(let i=1;i<scales.length;i++){assert.ok(frames[i].offset>frames[i-1].offset);assert.ok(i<=peak?scales[i]>=scales[i-1]:scales[i]<=scales[i-1]);}
  assert.equal(frames[0].opacity,0);assert.equal(frames.at(-1).opacity,1);
  const calls=[],menu={animate:(f,o)=>calls.push({f,o})},bubble={animate:(f,o)=>calls.push({f,o})};
- animateMessageMenu(menu,bubble);assert.equal(calls.length,2);assert.equal(calls[0].o.duration,220);assert.equal(calls[1].o.easing,values['--ease-spring']);
- calls.length=0;reduced=true;animateMessageMenu(menu,bubble);assert.equal(calls.length,1);assert.equal(calls[0].o.duration,100);assert.deepEqual(calls[0].f,[{opacity:0},{opacity:1}]);
+ animateMessageMenu(menu);assert.equal(calls.length,1);assert.equal(calls[0].o.duration,220);
+ calls.length=0;reduced=true;animateMessageMenu(menu);assert.equal(calls.length,1);assert.equal(calls[0].o.duration,100);assert.deepEqual(calls[0].f,[{opacity:0},{opacity:1}]);
+ `
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+func TestBubbleTargetPressesThenSpringsOnce(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	a := strings.Index(s, "  function popoverSpringFrames(")
+	b := strings.Index(s, "  function animateMessageMenu(")
+	c := strings.Index(s, "  const bubbleMotions =")
+	d := strings.Index(s, "  function closeMessageMenu(")
+	script := `const assert=require('node:assert/strict');
+ const values={'--ease-spring':'cubic-bezier(0.34,1.56,0.64,1)','--dur-bubble-press':'90ms','--dur-bubble-spring':'300ms','--bubble-press-scale':'.96','--bubble-spring-overshoot':'.025','--press-scale':'.97'},style={getPropertyValue:k=>values[k]};
+ ` + s[a:b] + s[c:d] + `
+ const scale=f=>Number(f.transform.slice(6,-1)),desktop=bubbleTargetMotion(style,false);
+ assert.equal(desktop.duration,390);assert.equal(scale(desktop.frames[0]),1);assert.equal(scale(desktop.frames[1]),.96);assert.equal(desktop.frames[1].offset*390,90);
+ const scales=desktop.frames.map(scale),peak=scales.indexOf(Math.max(...scales));assert.equal(scales[peak],1.025);assert.equal(scales.at(-1),1);
+ for(let i=2;i<scales.length;i++)assert.ok(i<=peak?scales[i]>=scales[i-1]:scales[i]<=scales[i-1]);
+ const mobile=bubbleTargetMotion(style,true);assert.equal(mobile.duration,300);assert.equal(scale(mobile.frames[0]),.97);
+ let calls=0,cancels=0;const getComputedStyle=()=>style;let reduced=false;const matchMedia=()=>({matches:reduced});
+ const bubble={animate(){calls++;return{cancel(){cancels++}}}};animateBubbleTarget(bubble,false);assert.equal(calls,1);
+ reduced=true;animateBubbleTarget(bubble,false);assert.equal(calls,1);assert.equal(cancels,1);
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

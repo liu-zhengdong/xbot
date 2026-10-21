@@ -5,6 +5,8 @@
   --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
   --dur-pop:220ms; --dur-pop-close:120ms; --dur-press:120ms; --dur-motion-reduced:100ms;
   --pop-scale-start:.92; --pop-scale-overshoot:.03; --press-scale:.97;
+  --bubble-press-scale:.96; --bubble-spring-overshoot:.025;
+  --dur-bubble-press:90ms; --dur-bubble-spring:300ms;
 
   /* 表面：窗口灰 → 卡片白 → 面板 → 填充三档（靠明度分层，不画线） */
   --x-win:#f3f3f5;        /* 窗口底、侧栏 */

@@ -1884,14 +1884,32 @@
     }));
   }
 
-  function animateMessageMenu(menu, pressed) {
+  function animateMessageMenu(menu) {
     const style = getComputedStyle(menu), reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const duration = parseFloat(style.getPropertyValue(reduced ? "--dur-motion-reduced" : "--dur-pop"));
     const easing = style.getPropertyValue("--ease-spring").trim();
     const frames = reduced ? [{opacity: 0}, {opacity: 1}] : popoverSpringFrames(easing,
       Number(style.getPropertyValue("--pop-scale-start")), Number(style.getPropertyValue("--pop-scale-overshoot")));
     menu.animate(frames, {duration, fill: "both"});
-    if (pressed && !reduced) pressed.animate([{transform: "scale(" + style.getPropertyValue("--press-scale") + ")"}, {transform: "scale(1)"}], {duration, easing});
+  }
+
+  const bubbleMotions = new WeakMap();
+  function bubbleTargetMotion(style, mobile) {
+    const press = mobile ? 0 : parseFloat(style.getPropertyValue("--dur-bubble-press"));
+    const spring = parseFloat(style.getPropertyValue("--dur-bubble-spring"));
+    const duration = press + spring;
+    const from = Number(style.getPropertyValue(mobile ? "--press-scale" : "--bubble-press-scale"));
+    const frames = popoverSpringFrames(style.getPropertyValue("--ease-spring"), from,
+      Number(style.getPropertyValue("--bubble-spring-overshoot"))).map(f => ({offset: (press + f.offset * spring) / duration, transform: f.transform}));
+    if (press) frames.unshift({offset: 0, transform: "scale(1)", easing: "ease-out"});
+    return {frames, duration};
+  }
+
+  function animateBubbleTarget(bubble, mobile) {
+    bubbleMotions.get(bubble)?.cancel();
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const motion = bubbleTargetMotion(getComputedStyle(bubble), mobile);
+    bubbleMotions.set(bubble, bubble.animate(motion.frames, {duration: motion.duration}));
   }
 
   function closeMessageMenu() {
@@ -1917,6 +1935,7 @@
 
   function bindMessageMenu(row, m, text) {
     messageContents.set(row, {message: m, text});
+    row.tabIndex = 0;
   }
 
   function messageAt(target) {
@@ -1933,7 +1952,7 @@
     const selection = window.getSelection();
     const selected = selection && data.bubble.contains(selection.anchorNode) && data.bubble.contains(selection.focusNode) ? selection.toString() : "";
     if (mobile) selection?.removeAllRanges();
-    const menu = el("div", "message-menu");
+    const menu = el("div", "message-menu-surface message-menu");
     menu.setAttribute("role", "menu");
     menu.setAttribute("aria-label", "消息操作");
     const items = [
@@ -1974,14 +1993,26 @@
     menu.style.transformOrigin = mobile
       ? (data.bubble.closest(".msg").classList.contains("user") ? "100% " : "0% ") + (position.top < r.top ? "100%" : "0%")
       : Math.max(0, Math.min(menu.offsetWidth, x - position.left)) + "px " + Math.max(0, Math.min(menu.offsetHeight, y - position.top)) + "px";
-    animateMessageMenu(menu, pressed);
+    animateMessageMenu(menu);
+    menu.classList.add("placed");
     messageMenu = menu;
     messageTarget = data.bubble;
     messageTarget.classList.add("message-target");
+    animateBubbleTarget(messageTarget, mobile);
     document.documentElement.classList.add("message-menu-open");
     menu.querySelector("button:not(:disabled)")?.focus({preventScroll: true});
   }
 
+  thread.addEventListener("keydown", ev => {
+    if (ev.key !== "ContextMenu" && !(ev.key === "F10" && ev.shiftKey)) return;
+    if (ev.target.closest(".code-block, pre")) return;
+    const row = ev.target.closest(".msg"), data = row && messageContents.get(row);
+    const bubble = row?.querySelector(".bubble, .bot-bubble");
+    if (!data || !bubble) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const r = bubble.getBoundingClientRect();
+    showMessageMenu({bubble, ...data}, r.left + r.width / 2, r.top + r.height / 2, false);
+  });
   thread.addEventListener("contextmenu", (ev) => {
     const data = messageAt(ev.target);
     if (!data) return; // Code blocks keep the browser's own menu.
