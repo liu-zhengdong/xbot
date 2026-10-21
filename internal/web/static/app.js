@@ -1058,6 +1058,9 @@
     download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
     folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    "circle-check": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    "circle-x": '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>',
+    "circle-slash": '<circle cx="12" cy="12" r="10"/><path d="m4.929 4.929 14.142 14.142"/>',
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -4686,15 +4689,16 @@
     if (host.dataset.sig === sig) return;
     host.dataset.sig = sig;
     host.replaceChildren(document.createTextNode(hello + (state.ownerName ? "，" + state.ownerName : "") + "。"));
-    const line = (items, text) => {
+    const line = (items, number, label, tail) => {
       host.append(el("br"));
+      if (label === "个 Bot") host.append(el("span", "g", "有 "));
       const stack = el("span", "greet-stack");
       for (const st of items.slice(0, 3)) stack.append(avatar(st.bot, paintOf(st.bot), "xs"));
       if (items.length > 3) stack.append(el("span", "greet-more", "+" + (items.length - 3)));
-      host.append(stack, document.createTextNode(text));
+      host.append(stack, document.createTextNode(" " + number + " " + label), el("span", "g", tail));
     };
-    if (busy.length) line(busy, busy.length + " 个 Bot 在忙，");
-    if (done.length) line(done, done.reduce((n, st) => n + st.completed_unread, 0) + " 件事刚做完。");
+    if (busy.length) line(busy, busy.length, "个 Bot", " 在忙，");
+    if (done.length) line(done, done.reduce((n, st) => n + st.completed_unread, 0), "件事", "刚做完。");
     if (!busy.length && !done.length) { host.append(el("br"), el("span", "g", "有什么事，直接说就行。")); }
   }
 
@@ -4762,7 +4766,7 @@
   function taskCard(ag) {
     const card = el("div", "task-record"); card.dataset.agent = ag.id;
     const compact = el("button", "recent-task"); compact.type = "button";
-    compact.append(icon("check"), el("b", "recent-name"), el("span", "recent-title"), el("span", "recent-status"), icon("chevron"));
+    compact.append(icon("circle-check"), el("b", "recent-name"), el("span", "recent-title"), el("span", "recent-status"), icon("chevron"));
     const detail = el("div", "card tk");
     compact.addEventListener("click", () => { card.classList.add("expanded"); compact.setAttribute("aria-expanded", "true"); });
     card.append(compact, detail);
@@ -4770,7 +4774,7 @@
     ct.append(el("b", "task-name"), el("span", "s2 task-title"));
     head.append(taskAvatar(ag, "xs"), ct, el("span", "task-state"));
     detail.append(head, el("div", "now"), el("div", "res"));
-    const close = el("button", "task-fold", "收起"); close.type = "button";
+    const close = el("button", "task-fold"); close.type = "button"; close.setAttribute("aria-label", "收起结果"); close.append(icon("chevronDown"));
     close.addEventListener("click", () => { card.classList.remove("expanded"); compact.setAttribute("aria-expanded", "false"); });
     head.append(close);
     const controls = el("div", "ca");
@@ -4789,7 +4793,7 @@
     card.querySelector(".recent-name").textContent = ag.name || ag.id || "子代理";
     card.querySelector(".recent-title").textContent = clip(plainText(displayText(ag.task || "")), 80);
     const compact = card.querySelector(".recent-task");
-    if (compact.dataset.state !== ag.status) { compact.dataset.state = ag.status; compact.firstElementChild.replaceWith(icon(ag.status === "failed" ? "x" : ag.status === "cancelled" ? "stop" : "check")); }
+    if (compact.dataset.state !== ag.status) { compact.dataset.state = ag.status; compact.firstElementChild.replaceWith(icon(ag.status === "failed" ? "circle-x" : ["cancelled", "canceled", "interrupted"].includes(ag.status) ? "circle-slash" : "circle-check")); }
     card.querySelector(".recent-status").textContent = ag.finished_at ? when(ag.finished_at) : taskStatus(ag.status);
     card.querySelector(".recent-task").classList.toggle("failed", ag.status === "failed");
     card.querySelector(".recent-task").setAttribute("aria-expanded", String(card.classList.contains("expanded")));
@@ -4804,7 +4808,7 @@
     }
     let label = stateLabel.querySelector(".state-text");
     if (!label) { label = el("span", "state-text"); stateLabel.append(label); }
-    label.textContent = text;
+    label.textContent = text + (!hot && ag.finished_at ? " · " + when(ag.finished_at) : "");
     stateLabel.classList.toggle("failed", ag.status === "failed");
     const now = card.querySelector(".now");
     now.textContent = hot ? [ag.current_step, ag.steps ? "第 " + ag.steps + " 步" : "", elapsedWork(ag.started_at)].filter(Boolean).join(" · ") : "";
