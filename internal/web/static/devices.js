@@ -284,7 +284,7 @@
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
         <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div></section>`;
     const banner = gw && !up ? `<div class="g7-banner"><span class="g7-banner-ico">${svg("cloudOff", 18)}</span>
-        <span>连不上网关${sp(host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
+        <span>${sp("连不上网关" + host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
     let list;
     if (!devs.length) {

@@ -591,12 +591,12 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .sidebar.rail .text-btn { display: none; }
 
 /* Collapsed: 新建 first, then the pinned faces (no names), then the list. */
-.sidebar.rail .pin-row .pin { width: 52px; padding: 4px 0; }
+.sidebar.rail .pin-row > .pin { width: 52px; padding: 6px 0; }
 
 .sidebar.rail .pin-row .pin.add { order: -1; }
 
 .sidebar.rail .pin .avatar.pin,
-.sidebar.rail .pin .avatar.pin > svg { width: 36px; height: 36px; }
+.sidebar.rail .pin .avatar.pin > svg { width: 44px; height: 44px; }
 
 .sidebar.rail .pin-row { flex-direction: column; align-items: center; overflow: visible; padding-left: 8px; padding-right: 8px; }
 
@@ -643,7 +643,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .bubble-col { max-width: 72%; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .msg.user .bubble-col { align-items: flex-end; }
 .msg.bot .body { min-width: 0; max-width: 86%; display: flex; flex-direction: column; align-items: flex-start; }
-.bubble, .bot-bubble {
+.bubble, .bot-bubble.prose {
   border: 0; border-radius: 18px; padding: 9px 15px;
   overflow-wrap: anywhere; word-break: break-word;
   line-height: 1.6; font-size: 15px; font-weight: 400;
@@ -652,11 +652,12 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .bubble .prose, .bubble .prose p { color: inherit; white-space: pre-wrap; }
 .bot-bubble { background: var(--x-bot-bubble); color: var(--x-text); max-width: 100%; }
 .bot-bubble:empty { display: none; }
-.bot-bubble .prose { font: inherit; }
+.bubble .prose, .bot-bubble .prose { font: inherit; }
 .bot-bubble .prose p, .bot-bubble .prose ul { margin-bottom: 6px; }
 .bot-bubble .prose > :last-child { margin-bottom: 0; }
 .bot-bubble code { background: var(--x-card); }
 .bubble code, .bubble .code-block { background: var(--x-user-code); color: inherit; }
+.bubble .code-block code { background: transparent; }
 .bubble a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .bubble ::selection, .bubble::selection { background: var(--x-user-sel); color: inherit; }
 .msg .ht { position: absolute; bottom: 6px; left: calc(100% + 8px); font-size: 11px; color: var(--x-faint); font-variant-numeric: tabular-nums; white-space: nowrap; visibility: hidden; }
@@ -2435,7 +2436,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .bubble .prose code { background: var(--x-user-code); }
 .bot-bubble .prose code { background: var(--x-card); }
 @media (min-width: 768px) {
-  .sidebar.rail .pin-row .pin { height: 52px; border-radius: 12px; }
+  .sidebar.rail .pin-row > .pin { height: 56px; border-radius: 12px; }
   .sidebar.rail .avatar { overflow: visible; }
   .sidebar.rail .avatar > svg, .sidebar.rail .avatar > img { border-radius: 50%; overflow: hidden; }
 }

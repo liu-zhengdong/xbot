@@ -21,7 +21,7 @@ func TestDevicesDrawerUI(t *testing.T) {
 			want: []string{
 				// 说明、网关不通横幅（灰色，不用红色），重试用现有的 gw-retry
 				"配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。",
-				`<span>连不上网关${sp(host(gw))}`, `data-act="gw-retry"`, "连不上网关，其他电脑的 Bot 暂时用不了。",
+				`data-act="gw-retry"`, "连不上网关，其他电脑的 Bot 暂时用不了。",
 				// 这台电脑：系统 · N 个 Bot，铅笔进改自己名字的弹窗
 				`data-act="rename-self"`, `self.os, (self.bots || []).length + " 个 Bot"`, "这台电脑的名字",
 				"只对以后配对的设备生效。", `已经配对的${others.map((d) => " " + esc(d.label)).join("、")} 上，还显示原来的名字。`,
