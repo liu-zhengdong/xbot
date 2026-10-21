@@ -286,7 +286,10 @@ button:disabled { cursor: default; }
    they opened is showing. */
 .icon-btn.on, .ghost.on { background: var(--x-fill-2); color: var(--x-text); }
 
-#info { width: 34px; height: 34px; min-width: 34px; min-height: 34px; }
+.main > .ptog {
+  position: absolute; top: 12px; right: 12px; z-index: 6;
+  --app-region: no-drag; -webkit-app-region: no-drag;
+}
 
 .icon-btn:active:not(:disabled) { background: var(--selected); color: var(--text); }
 
@@ -383,7 +386,6 @@ html[data-theme="dark"] .field select {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  transition: width 240ms ease-out;
 }
 
 .sidebar.collapsed { width: 72px; }
@@ -1346,7 +1348,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   .panel {
     position: static; flex: 0 0 384px; width: 384px; max-width: none;
     transform: none; visibility: visible; border-radius: 0; box-shadow: none;
-    background: var(--x-panel); transition: none;
+    background: var(--x-panel); transition: none; z-index: auto;
   }
   .panel:not(.open) { display: none; }
   .panel.open { transform: none; visibility: visible; }
@@ -1414,7 +1416,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .tabs button {
   border: 0; background: transparent; color: var(--muted);
-  font-size: 13.5px; font-weight: 400; padding: 5px 11px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 400; line-height: 19px; padding: 5px 11px; border-radius: 999px;
   box-shadow: none; white-space: nowrap;
   transition: background 160ms ease-out, color 160ms ease-out;
 }
@@ -1425,7 +1427,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .tabs button.on { color: var(--x-text); font-weight: 600; background: var(--x-fill-3); box-shadow: none; }
 
-.tab-body { padding: 8px 16px 0; }
+.tab-body { padding: 8px 20px 0; }
 
 
 /* ---- 上下文检视 -------------------------------------------------------
@@ -1966,7 +1968,7 @@ html[data-theme="dark"] {
   .sidebar {
     position: fixed; inset: 0 auto 0 0; width: 80%; max-width: 320px; z-index: 30;
     transform: translateX(-105%);
-    transition: transform 240ms ease-out;
+    transition: transform 180ms ease-out;
     background: var(--sidebar);
     box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
   }
@@ -2000,7 +2002,7 @@ html[data-theme="dark"] {
     width: 100% !important; min-width: 0; max-width: none; height: 100%;
     z-index: 35; margin: 0; border-radius: 0; background: var(--panel);
     transform: translateY(100%); visibility: hidden;
-    transition: transform 240ms ease-out, visibility 0s linear 240ms;
+    transition: transform 180ms ease-out, visibility 0s linear 180ms;
     box-shadow: none;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
@@ -2009,7 +2011,7 @@ html[data-theme="dark"] {
     transform: none; flex: none; visibility: visible;
     width: 100% !important; min-width: 0; max-width: none;
     margin-left: 0; border-radius: 0; box-shadow: none;
-    transition: transform 240ms ease-out, visibility 0s;
+    transition: transform 180ms ease-out, visibility 0s;
   }
   .panel-bar { top: 0; }
   .hero { padding-top: 8px; }
@@ -2020,9 +2022,9 @@ html[data-theme="dark"] {
 
 .tip {
   position: fixed; z-index: 80; margin: 0; pointer-events: none;
-  max-width: 240px; padding: 4px 8px; border-radius: 8px;
-  background: var(--text); color: var(--bg);
-  font-size: 12px; font-weight: 500; line-height: 1.4;
+  max-width: 240px; padding: 7px 9px; border-radius: 7px;
+  background: var(--x-primary); color: var(--x-on-primary);
+  font-size: 12px; font-weight: 400; line-height: 1;
   white-space: normal;
 }
 
@@ -2324,73 +2326,33 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
     left: auto; right: 0; border-radius: 20px 0 0 0;
   }
 }
-/* Desktop app window (html.in-app): a 40px strip owns the title bar, and the
-   card starts right below it with 8px gutters right and bottom (the 8px
-   spacing scale). MyGo sets the --mygo-titlebar-* variables only there.
-   The strip's --strip-reserve keeps the native window buttons' area empty;
-   nothing in the browser UI matches .appbar, so the plain UI is unchanged. */
-.in-app {
-  --strip-h: var(--mygo-titlebar-height, 40px);
-  --strip-reserve: var(--mygo-titlebar-inset-right, 0px);
+/* Native controls float above the three columns; there is no title-bar row. */
+.side-drag { display: none; }
+.in-app .shell { padding: 0; }
+.in-app .main { margin: 8px 8px 8px 0; border-radius: 12px; }
+.in-app .sidebar { position: relative; padding-top: 46px; }
+.in-app .side-drag {
+  display: block; position: absolute; top: 0; left: 0; right: 0; height: 40px;
+  --app-region: drag; -webkit-app-region: drag;
+}
+.in-app .top, .in-app .panel-bar { --app-region: drag; -webkit-app-region: drag; }
+.in-app :is(button, a, input, textarea, select, [role="button"], .avatar, .item, .pin) {
+  --app-region: no-drag; -webkit-app-region: no-drag;
+}
+.in-app:is(.os-win, .os-linux) .main { margin: 0; border-radius: 12px 0 0 0; }
+.in-app:is(.os-win, .os-linux) .sidebar { padding-top: 22px; }
+.in-app:is(.os-win, .os-linux) .panel-bar { padding-top: 36px; }
+.in-app:is(.os-win, .os-linux) .profile-drawer { top: 32px; }
+.in-app.os-win { --font: "Segoe UI Variable", "Segoe UI", "XBot SC", var(--x-font); }
+.in-app:is(.os-win, .os-linux) .main > .ptog {
+  top: 2px; right: 144px; width: 28px; height: 28px;
+  min-width: 28px; min-height: 28px; border-radius: 6px;
 }
 
-.appbar {
-  position: absolute; top: 0; left: 0; right: 0; height: var(--strip-h);
-  z-index: 31; display: flex; align-items: center;
-  padding: 0 var(--strip-reserve) 0 0;
-  background: var(--base); --app-region: drag;
-}
-
-.appbar-gap { flex: 1; }
-
-.appbar-slot { display: flex; align-items: center; }
-
-.appbar-slot .icon-btn {
-  color: var(--muted); --app-region: no-drag;
-  transition: none;
-}
-
-.appbar-slot .icon-btn:hover { background: var(--hover); }
-
-.appbar-slot .dot { top: 7px; right: 7px; width: 6px; height: 6px; box-shadow: 0 0 0 2px var(--base); }
-
-/* Windows: the logo's centre sits on the rail centre (x=36), then the wordmark,
-   the version, and the bell 8px in front of the native buttons. */
-/* The XBot mark as a 16px square with the two points cut out, so the bar's
-   own color shows through in both themes. Never .icon (that adds a stroke). */
-.appbar-logo {
-  width: 16px; height: 16px; margin-left: 28px; flex: none;
-  display: block; color: var(--text);
-}
-
-.appbar-brand { margin-left: 8px; font-size: 13px; font-weight: 620; letter-spacing: 0.1px; }
-
-.appbar-ver { margin-left: 8px; font-size: 12px; font-weight: 450; color: var(--faint); }
-
-.appbar-slot .icon-btn { margin-left: 8px; }
-
-/* macOS: traffic lights sit above the rail; the wordmark starts at the card's
-   left content padding (rail 72 + 16) and the bell keeps 12px from the edge. */
-/* Windows: the system UI face is Segoe UI Variable; the bundled CJK subset
-   still leads so Chinese keeps the same face as on other systems. */
-.in-app.os-win { --font: "XBot SC", "Segoe UI Variable", var(--x-font); }
-
-.in-app.os-mac { --strip-reserve: 0px; }
-
-.in-app.os-mac .appbar { padding-right: 12px; }
-
-.in-app.os-mac .appbar-logo { display: none; }
-
-.in-app.os-mac .appbar-brand { margin-left: calc(72px + 16px); }
-
-.in-app.os-mac .appbar-slot .icon-btn { margin-left: 0; }
-
-.in-app .shell { padding: var(--strip-h) 8px 8px 0; }
-
-.in-app .main { border-radius: 12px; }
-
-/* The note list hangs from the bell in the strip; fitNotes() places it. */
-.in-app .notes { position: fixed; z-index: 40; }
+.account-about { gap: 10px; justify-content: flex-start; font-size: 13.5px; }
+.account-about .icon { width: 16px; height: 16px; flex: none; }
+.account-about .menu-count { margin-left: auto; color: var(--x-faint); font-size: 12.5px; }
+.panel-more .v.mono { font-family: var(--x-mono); overflow: hidden; text-overflow: ellipsis; }
 
 .not-found-back { display: inline-block; padding: 10px 16px; border-radius: 10px; text-decoration: none; text-align: center; }
 

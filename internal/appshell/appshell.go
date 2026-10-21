@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/egoist/mygo"
@@ -45,13 +46,17 @@ func Run(opts Options, ready func()) error {
 			// display, and saves them when the window closes or the app quits.
 			mygo.App.SetWindowStateStore(fileStore{opts.StatePath})
 		}
+		titleBarHeight := 32
+		if runtime.GOOS == "darwin" {
+			titleBarHeight = 40
+		}
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title: opts.Title, URL: opts.URL, Width: opts.Width, Height: opts.Height,
 			StateKey: stateKey, MinWidth: 900, MinHeight: 560,
 			// Follows the page's theme, so startup and resize never flash white.
-			BackgroundColor: "light-dark(#f3f3f5, #141416)",
-			TitleBarStyle:   mygo.TitleBarHidden, TitleBarHeight: 40,
-			TrafficLightPosition: &mygo.Point{X: 16, Y: 14},
+			BackgroundColor: "light-dark(#f3f3f5, #0f0f11)",
+			TitleBarStyle:   mygo.TitleBarHidden, TitleBarHeight: titleBarHeight,
+			TrafficLightPosition: &mygo.Point{X: 20, Y: 18},
 		})
 		win.Page().OnPageTitleUpdated(func(e *mygo.TitleEvent) { e.PreventDefault() })
 		origin, _ := url.Parse(opts.URL)

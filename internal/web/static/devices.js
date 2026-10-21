@@ -11,7 +11,7 @@
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     ellipsis: '<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>',
-    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
     unlink: '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path d="M8 2v3"/><path d="M2 8h3"/><path d="M16 22v-3"/><path d="M22 16h-3"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
     keyboard: '<rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 15.5h6"/>',
@@ -293,14 +293,12 @@
         <ul class="g7-can"><li>${svg("bot", 16)}<span>在这台电脑上和另一台电脑的 Bot 聊天，和本机的一样。</span></li>
           <li>${svg("swap", 16)}<span>两边的 Bot 能互发消息。</span></li>
           <li class="no">${svg("shield", 16)}<span>记忆和文件留在各自的电脑上。</span></li></ul>
-        ${pair ? `<div class="g7-options">
-          <button class="g7-option" type="button" data-act="add"><span class="g7-opt-ico">${svg("plus", 18)}</span><span><b>添加设备</b><small>在这台电脑上生成配对码，到另一台电脑上输入</small></span></button>
-          <button class="g7-option" type="button" data-act="join-open"><span class="g7-opt-ico">${svg("keyboard", 18)}</span><span><b>加入另一台设备</b><small>输入另一台电脑上显示的配对码</small></span></button></div>` : ""}</section>`;
+        </section>`;
     } else {
       list = `<section class="profile-section"><h3>已配对 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
           <p class="g7-fine">${sp(fineOnline)}</p></section>`;
     }
-    const foot = devs.length && pair ? `<div class="g7-foot"><button class="secondary" type="button" data-act="join-open">${svg("keyboard")}<span>加入另一台设备</span></button><button class="primary" type="button" data-act="add">${svg("plus")}<span>添加设备</span></button></div>` : "";
+    const foot = pair ? `<div class="g7-foot"><button class="secondary" type="button" data-act="join-open">${svg("keyboard")}<span>加入另一台设备</span></button><button class="primary" type="button" data-act="add">${svg("plus")}<span>添加设备</span></button></div>` : "";
     return `<div class="modal profile-drawer g7-drawer" data-g7-drawer><div class="modal-card profile-modal" role="dialog" aria-modal="true" aria-label="设备">
       <div class="g7-head"><h2>设备</h2><button class="ghost" type="button" aria-label="关闭" data-act="close-drawer">${svg("x")}</button></div>
       <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}

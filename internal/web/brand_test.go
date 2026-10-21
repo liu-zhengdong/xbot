@@ -45,7 +45,6 @@ func TestBrandMark(t *testing.T) {
 	for _, s := range []string{
 		`<link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
 		`<link rel="apple-touch-icon" href="/apple-touch-icon.png">`,
-		`<svg class="appbar-logo" viewBox="0 0 16 16" aria-hidden="true"><mask id="xb-appbar-cut">`,
 		`<svg viewBox="0 0 100 100"><path d="M16 20 L40 50 L16 80 M84 20 L60 50 L84 80"`,
 	} {
 		if !strings.Contains(html, s) {

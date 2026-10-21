@@ -7,9 +7,6 @@
     const platform = (window.mygo && window.mygo.platform) || "";
     root.classList.add("in-app");
     root.classList.add(platform === "darwin" ? "os-mac" : platform === "linux" ? "os-linux" : "os-win");
-    if (shell) {
-      document.getElementById("appbar").hidden = false;
-    }
   }
   const $ = (id) => document.getElementById(id);
   const login = $("login");
@@ -850,9 +847,7 @@
     $("login-notice").hidden = true;
     login.hidden = true;
     shell.hidden = false;
-    const ver = state.version;
-    $("appbar-ver").hidden = !ver;
-    $("appbar-ver").textContent = ver;
+    $("account-version").textContent = shortVersion(state.version);
   }
 
   // A newer version, downloaded in the background: one click installs it and
@@ -911,9 +906,7 @@
     }
   });
 
-  // shortVersion is how the title bar shows a version: no leading v, nothing
-  // after "+". /api/session applies the same rule, so comparing the two needs
-  // it on both sides.
+  // The account menu and restart check use the API's version display format.
   function shortVersion(v) {
     return String(v || "").trim().replace(/^v/, "").split("+")[0];
   }
@@ -1059,7 +1052,7 @@
     wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
-    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
     maximize: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3 13.5 10.5"/><path d="M3 21l7.5-7.5"/>',
     download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
@@ -1068,6 +1061,7 @@
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    "alarm-clock": '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/>',
     device: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle class="solid" cx="12" cy="8" r="1"/>',
     swap: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
@@ -1428,7 +1422,7 @@
       else openRoutines.delete(key);
     });
     const head = el("summary", "sysline");
-    head.append(icon("clock"), el("span", "", routine.label + (routine.time ? " · " + routine.time : "")));
+    head.append(icon("alarm-clock"), el("span", "", routine.time ? "定时 · " + routine.label + " " + routine.time : routine.label));
     const drawer = el("div", "routine-drawer");
     drawer.append(el("div", "routine-prompt", routine.prompt), el("div", "routine-source", "来源：定时"));
     row.append(head, drawer);
@@ -3732,7 +3726,8 @@
     item("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned));
     menu.append(moveMenu(state.sel.id, currentGroup(state.sel.id)));
     item("copy", "复刻", () => openFork(state.sel.id));
-    item("clipboard", "复制 Bot ID", () => copyBotID(state.sel.id));
+    const copy = item("clipboard", "复制 Bot ID", () => copyBotID(state.sel.id));
+    copy.append(el("span", "v mono", state.sel.id));
     if (state.app) item("folder-open", "打开工作目录", () => openWorkdir(state.sel.id));
     item("download", "导出对话", () => openExport());
     menu.append(el("div", "mgap"));
@@ -3985,10 +3980,10 @@
 
   function durText(ms) {
     const s = Math.max(1, Math.round(ms / 1000));
-    if (s < 60) return s + "秒";
+    if (s < 60) return s + " 秒";
     const m = Math.round(s / 60);
-    if (m < 60) return m + "分";
-    return Math.round(m / 60) + "小时";
+    if (m < 60) return m + " 分";
+    return Math.round(m / 60) + " 小时";
   }
 
   function argText(args) {
@@ -6201,13 +6196,13 @@
 
   function placeTip(host) {
     const text = host.getAttribute("data-tip");
-    if (!text || host.getAttribute("aria-expanded") === "true") { hideTip(); return; }
+    if (!text || (host.getAttribute("aria-expanded") === "true" && host !== $("info"))) { hideTip(); return; }
     tipEl.textContent = text;
     tipEl.hidden = false;
     const r = host.getBoundingClientRect();
     const tw = tipEl.offsetWidth;
     const th = tipEl.offsetHeight;
-    let left = r.left + (r.width / 2) - (tw / 2);
+    let left = host === $("info") ? r.right - tw : r.left + (r.width / 2) - (tw / 2);
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
     const right = host.dataset.tipPlacement === "right" && host.closest(".sidebar.collapsed");
     if (right) left = Math.max(8, Math.min(r.right + 8, window.innerWidth - tw - 8));
