@@ -151,4 +151,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 	if n := count(); n != 1 {
 		t.Fatalf("result reported %d times", n)
 	}
+	if n := s.botStatuses()[0].CompletedUnread; n != 1 {
+		t.Fatalf("delivered subagent result has %d unread completions, want 1", n)
+	}
 }

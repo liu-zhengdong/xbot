@@ -19,11 +19,18 @@ func TestCompletedUnreadTracksOwnerCursor(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	appendResult("done", bot.OriginInternal)
-	appendResult("progress", bot.OriginInternal)
 	appendResult("done", bot.OriginOwner)
+	if n := s.unreadCompletions(b, 0); n != 1 {
+		t.Fatalf("visible owner-origin completion count: %d, want 1", n)
+	}
+	appendResult("progress", bot.OriginOwner)
+	appendResult("done", bot.OriginInternal)
+	if n := s.unreadCompletions(b, 0); n != 1 {
+		t.Fatalf("progress or hidden internal result was counted: %d", n)
+	}
+	appendResult("done", "") // Visible history written before origin was recorded.
 	for i := 0; i < 2; i++ {
-		if n := s.unreadCompletions(b, 0); n != 1 {
+		if n := s.unreadCompletions(b, 0); n != 2 {
 			t.Fatalf("poll %d: %d completions", i, n)
 		}
 	}
@@ -34,11 +41,11 @@ func TestCompletedUnreadTracksOwnerCursor(t *testing.T) {
 	if n := s.botStatuses()[0].CompletedUnread; n != 0 {
 		t.Fatalf("viewed result still unread: %d", n)
 	}
-	appendResult("failed", bot.OriginInternal)
+	appendResult("failed", bot.OriginOwner)
 	if n := s.botStatuses()[0].CompletedUnread; n != 1 {
 		t.Fatalf("new result count: %d", n)
 	}
-	appendResult("fork_end", bot.OriginInternal)
+	appendResult("fork_end", bot.OriginOwner)
 	if n := s.botStatuses()[0].CompletedUnread; n != 2 {
 		t.Fatalf("fork result not counted: %d", n)
 	}

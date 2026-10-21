@@ -30,7 +30,9 @@ func (s *Server) unreadCompletions(b *bot.Bot, cursor int) int {
 		return cached.count
 	}
 	err = b.Walk(cached.through+1, total, func(_ int, e bot.Entry) error {
-		if e.Message.Role != provider.RoleUser || e.Origin == bot.OriginOwner {
+		// Delivered events are visible owner-origin rows; only model-only rows
+		// are excluded here. EventSource below identifies subagent reports.
+		if e.Message.Role != provider.RoleUser || e.Origin == bot.OriginInternal {
 			return nil
 		}
 		source, _, ok := peer.EventSource(e.Message.Content)
