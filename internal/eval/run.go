@@ -456,7 +456,11 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	res.asked = askedOwner(obs)
 	res.Reason = evidence(c, obs, problems)
 	if c.Grader == "llm-judge" && real != nil {
-		agreed, text, jerr := judge(ctx, real, c.Rubric, res.Transcript, judgeFacts(work))
+		facts := judgeFacts(work)
+		if c.Memory {
+			facts += judgeMemoryFacts(root, b.Name(), "owner")
+		}
+		agreed, text, jerr := judge(ctx, real, c.Rubric, res.Transcript, facts)
 		res.Reason = text
 		if jerr != nil {
 			res.Pass = false
@@ -509,6 +513,28 @@ func checkMemory(c Case, root, botName, personID string) []string {
 		}
 	}
 	return problems
+}
+
+// Give semantic graders the persisted scopes, not just the model's claim that
+// it remembered something. The eval root contains only this case's fixtures.
+func judgeMemoryFacts(root, botName, personID string) string {
+	store := memory.Open(root)
+	var b strings.Builder
+	for _, scope := range []memory.Scope{memory.ScopeBot, memory.ScopePerson} {
+		facts, err := store.Recall(context.Background(), memory.Query{Scope: scope, BotName: botName, PersonID: personID})
+		fmt.Fprintf(&b, "\nPersisted %s memory:\n", scope)
+		if err != nil {
+			fmt.Fprintf(&b, "read error: %v\n", err)
+			continue
+		}
+		if len(facts) == 0 {
+			b.WriteString("(empty)\n")
+		}
+		for _, f := range facts {
+			fmt.Fprintln(&b, f.Text)
+		}
+	}
+	return b.String()
 }
 
 func snapFiles(root string) map[string]bool {

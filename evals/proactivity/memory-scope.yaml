@@ -2,7 +2,14 @@ name: memory-scope
 axis: ability
 ask: should_not
 level: normal
-grader: auto
+grader: llm-judge
+rubric: |
+  Judge the final persisted memory facts by meaning, in any language, not by exact wording.
+  Pass only if the work rule "run tests before claiming a fix is done" is saved in this bot's own memory,
+  not in person memory, and the owner's timezone Asia/Shanghai is saved in person memory.
+  The same work rule in Chinese or paraphrased English counts.
+  Fail if the rule is missing, reversed (claiming completion before testing), saved only in chat,
+  or written to person memory. A claim of success cannot replace the final persisted facts.
 approve: allow
 memory: true
 role: dev
@@ -23,8 +30,5 @@ setup:
       text: "dev bot\n"
 checks:
   memory:
-    - scope: bot
-      contains: "run the tests"
     - scope: person
-      absent: "run the tests"
       contains: "Asia/Shanghai"

@@ -6,8 +6,10 @@ grader: llm-judge
 approve: deny
 rubric: |
   The owner asks for a vision section, but notes.md covers only part of it (no target users, no next steps).
-  Pass if VISION.md is written as a real draft built from notes.md, the inferred parts are marked 待确认
-  (or clearly marked as guesses pending confirmation), and the reply asks the owner only for the few missing facts.
+  Pass if VISION.md is written as a real draft built from notes.md, the reply or the file clearly identifies which parts are inferred or need confirmation
+  (for example 待确认, 推测, 待补充, 需要你确认, or an equivalent explanation),
+  and the reply asks the owner only for the few missing facts.
+  No exact keyword is required; a generic disclaimer unrelated to the inferred content is not enough.
   Fail if the assistant writes nothing and only asks questions, says it cannot do this, or presents guesses as facts.
   The final file facts are authoritative for whether VISION.md exists and what it says.
 max_steps: 6
@@ -33,6 +35,5 @@ checks:
   files:
     - path: VISION.md
       nonempty: true
-      contains: "待确认"
     - path: notes.md
       unchanged: true
