@@ -1457,7 +1457,7 @@
       else openRoutines.delete(key);
     });
     const head = el("summary", "sysline");
-    head.append(icon("alarm-clock"), el("span", "", routine.time ? "定时 · " + routine.label + " " + routine.time : routine.label));
+    head.append(icon("alarm-clock"), el("span", "", routine.time ? "定时 · " + routine.label + " · " + routine.time : routine.label));
     const drawer = el("div", "routine-drawer");
     drawer.append(el("div", "routine-prompt", routine.prompt), el("div", "routine-source", "来源：定时"));
     row.append(head, drawer);
@@ -4723,9 +4723,25 @@
     return title && title !== ag.id ? clip(title, 24) : taskTypeLabel(ag);
   }
 
+  function taskSelected(host) {
+    const selection = document.getSelection?.();
+    return selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(host);
+  }
+
+  function taskValue(host, text) {
+    text = String(text || "");
+    if (host.textContent !== text && !taskSelected(host)) host.textContent = text;
+  }
+
+  function taskProgress(ag) {
+    const text = String(ag.current_step || "").trim();
+    const title = taskTitle(ag).replace(/…$/, "");
+    return title && plainText(text).replace(/^在\s*/, "").startsWith(title) ? "" : text;
+  }
+
   function taskText(host, text) {
     text = String(text || "");
-    if (host.dataset.text === text) return;
+    if (host.dataset.text === text || taskSelected(host)) return;
     host.dataset.text = text;
     const parts = [...text.matchAll(/`([^`]+)`|((?:~\/|\/|[A-Za-z]:\\)[^\s，。·`]+)/g)];
     if (!parts.length) { host.textContent = text; return; }
@@ -4786,7 +4802,7 @@
     const started = agents.map(a => a.started_at).filter(t => Date.parse(t) > 0).sort()[0];
     if (agents.length === 1) {
       const ag = agents[0];
-      const name = el("b"), step = el("span", "work-step"); taskText(name, taskTitle(ag)); taskText(step, ag.current_step || "");
+      const name = el("b"), step = el("span", "work-step"); taskText(name, taskTitle(ag)); taskText(step, taskProgress(ag)); step.hidden = !taskProgress(ag);
       row.append(name, step, el("span", "sep", "·"), el("span", "", "第 " + Math.max(1, ag.steps || 0) + " 步"));
     } else { const many = el("span", "work-many"); many.append(el("b", "", agents.length + " 个子代理"), el("span", "", "在跑")); row.append(many); }
     if (started) { const duration = el("span", "el"); duration.dataset.workSince = started; duration.dataset.longest = agents.length > 1 ? "true" : ""; row.append(el("span", "sep", "·"), duration); }
@@ -4803,7 +4819,7 @@
   }
 
   function updateWorkTimes() {
-    for (const n of document.querySelectorAll("[data-work-since]")) n.textContent = (n.dataset.workPrefix || (n.dataset.longest ? "最久 " : "")) + elapsedWork(n.dataset.workSince);
+    for (const n of document.querySelectorAll("[data-work-since]")) taskText(n, (n.dataset.workPrefix || (n.dataset.longest ? "最久 " : "")) + elapsedWork(n.dataset.workSince));
     const inner = thread.querySelector(".thread-inner");
     const current = state.sel?.type === "bot" && !state.peer && stStatus.map[state.sel.id];
     const text = slowToolNotice(current, state.messages || [], state.pendingSends);
@@ -4842,7 +4858,8 @@
     head.append(taskAvatar(ag, "xs"), ct, el("span", "task-state"));
     detail.append(head, el("div", "now"), el("div", "res"), el("div", "task-error"));
     const info = el("details", "task-details");
-    info.append(el("summary", "", "任务详情"), el("p", "task-request"), el("code", "task-id"));
+    const infoTitle = el("summary", "", "任务详情"); infoTitle.append(icon("chevron"));
+    info.append(infoTitle, el("p", "task-request"), el("code", "task-id"));
     detail.append(info);
     const close = el("button", "task-fold"); close.type = "button"; close.setAttribute("aria-label", "收起结果"); close.append(icon("chevronDown"));
     close.addEventListener("click", () => { card.classList.remove("expanded"); compact.setAttribute("aria-expanded", "false"); });
@@ -4884,33 +4901,36 @@
     taskText(card.querySelector(".recent-name"), title);
     const compact = card.querySelector(".recent-task");
     if (compact.dataset.state !== ag.status) { compact.dataset.state = ag.status; compact.firstElementChild.replaceWith(icon(ag.type === "routine" ? "alarm-clock" : taskStatusIcon(ag))); }
-    card.querySelector(".recent-status").textContent = ag.finished_at ? when(ag.finished_at) : taskStatus(ag.status);
+    taskValue(card.querySelector(".recent-status"), ag.finished_at ? when(ag.finished_at) : taskStatus(ag.status));
     card.querySelector(".recent-task").classList.toggle("failed", ag.status === "failed");
     card.querySelector(".recent-task").setAttribute("aria-expanded", String(card.classList.contains("expanded")));
     taskText(card.querySelector(".task-name"), title);
     const type = card.querySelector(".task-type");
-    type.textContent = taskTypeLabel(ag); type.hidden = !ag.type || ag.type === "routine" || type.textContent === title;
+    taskValue(type, taskTypeLabel(ag)); type.hidden = !ag.type || ag.type === "routine" || type.textContent === title;
     type.className = "task-type ty type-" + ({__proto__:null,research:"res",dev:"dev",general:"gen"}[ag.type] || "own");
-    card.querySelector(".task-request").textContent = ag.task || "";
-    card.querySelector(".task-id").textContent = ag.id || "";
+    taskValue(card.querySelector(".task-request"), ag.task);
+    taskValue(card.querySelector(".task-id"), ag.id);
     const stateLabel = card.querySelector(".task-state");
     const running = ["running", "awaiting"].includes(ag.status);
     const text = running ? "在跑" : taskStatus(ag.status);
-    if (stateLabel.dataset.status !== ag.status) {
+    if (stateLabel.dataset.status !== ag.status && !taskSelected(stateLabel)) {
       stateLabel.dataset.status = ag.status; stateLabel.replaceChildren();
       if (["running", "awaiting"].includes(ag.status)) stateLabel.append(spinIcon(13));
       else stateLabel.append(icon(taskStatusIcon(ag)));
     }
     let label = stateLabel.querySelector(".state-text");
     if (!label) { label = el("span", "state-text"); stateLabel.append(label); }
-    if (running && Date.parse(ag.started_at) > 0) { label.dataset.workSince = ag.started_at; label.dataset.workPrefix = "在跑 · "; label.textContent = "在跑 · " + elapsedWork(ag.started_at); }
-    else { delete label.dataset.workSince; delete label.dataset.workPrefix; label.textContent = text + (!hot && ag.finished_at ? " · " + when(ag.finished_at) : ""); }
+    taskValue(label, text + (!hot && ag.finished_at ? " · " + when(ag.finished_at) : ""));
     stateLabel.classList.toggle("failed", ag.status === "failed");
     const now = card.querySelector(".now");
-    const stepText = hot ? [ag.current_step, ag.steps ? "第 " + ag.steps + " 步" : ""].filter(Boolean).join(" · ") : "";
+    let stepText = hot ? [taskProgress(ag), ag.steps ? "第 " + ag.steps + " 步" : ""].filter(Boolean).join(" · ") : "";
+    if (running && Date.parse(ag.started_at) > 0) {
+      now.dataset.workSince = ag.started_at; now.dataset.workPrefix = stepText ? stepText + " · " : "";
+      stepText = now.dataset.workPrefix + elapsedWork(ag.started_at);
+    } else { delete now.dataset.workSince; delete now.dataset.workPrefix; }
     taskText(now, stepText); now.hidden = !stepText;
     const result = card.querySelector(".res");
-    result.textContent = hot ? "" : ag.summary === "SILENT" ? "没什么要说的" : (ag.status === "failed" ? zhError(ag.summary || "") : plainText(displayText(ag.summary || ""))); result.hidden = !result.textContent;
+    taskValue(result, hot ? "" : ag.summary === "SILENT" ? "没什么要说的" : (ag.status === "failed" ? zhError(ag.summary || "") : plainText(displayText(ag.summary || "")))); result.hidden = !result.textContent;
     result.classList.toggle("failed", ag.status === "failed");
     const rawError = card.querySelector(".task-error");
     const raw = ag.status === "failed" ? ag.summary || "" : "";
@@ -4953,8 +4973,8 @@
 
   function updateRoutineCard(card, rt) {
     card.routine = rt;
-    card.querySelector(".routine-name").textContent = rt.name || "例程";
-    card.querySelector(".routine-time").textContent = rt.at ? when(rt.at) : cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : "");
+    taskValue(card.querySelector(".routine-name"), rt.name || "例程");
+    taskValue(card.querySelector(".routine-time"), rt.at ? when(rt.at) : cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : ""));
     if (routineChanges.has(rt.id)) return;
     const toggle = card.querySelector(".tog"), enabled = rt.enabled !== false;
     toggle.classList.toggle("on", enabled); toggle.setAttribute("aria-checked", String(enabled)); toggle.setAttribute("aria-label", (enabled ? "停用" : "启用") + "「" + (rt.name || "例程") + "」");
@@ -4980,7 +5000,7 @@
       let section = [...root.children].find(n => n.dataset.section === label);
       if (!section) { section = el("section", "task-section"); section.dataset.section = label; section.append(el("h4"), el("div", "task-items")); root.append(section); }
       section.hidden = emptyActive && ["进行中", "排队中"].includes(label);
-      section.querySelector("h4").textContent = label + " · " + items.length;
+      taskValue(section.querySelector("h4"), label + " · " + items.length);
       const list = section.querySelector(".task-items");
       let hint = list.querySelector(".pnone");
       if (items.length) hint?.remove();

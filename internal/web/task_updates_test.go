@@ -84,6 +84,7 @@ func TestTaskCardUsesTitleAndKeepsOriginalErrorAcrossPolls(t *testing.T) {
  assert.equal(elements.get('.task-name').textContent,'核对页面');assert.equal(elements.get('.recent-name').textContent,'核对页面');
  assert.equal(elements.get('.task-id').textContent,ag.id);
  assert.equal(taskTitle({...ag,task:'',type:'research'}),'调研');assert.equal(taskTitle({...ag,task:''}),'开发');
+ assert.equal(taskProgress({...ag,task:'建骨架',current_step:'在建骨架'}),'');assert.equal(taskProgress({...ag,task:'建骨架',current_step:'建骨架并测试'}),'');assert.equal(taskProgress({...ag,task:'建骨架',current_step:'运行测试'}),'运行测试');
  assert.equal(taskStatusIcon({status:'cancelled'}),'ban');assert.equal(taskStatusIcon({status:'done'}),'circle-check');assert.equal(taskStatusIcon({status:'failed'}),'x');
  assert.equal(taskTitle({id:ag.id}), '子代理');assert.equal(taskTitle({...ag,task:ag.id}), '开发');
  assert.equal(taskTitle({...ag,task:'😀'.repeat(25)+'\n这行不要显示'}),'😀'.repeat(24)+'…');
@@ -133,9 +134,9 @@ func TestRoutineFailureClearsOnRetryAndFades(t *testing.T) {
 	script := `const assert=require('node:assert/strict');
  const timers=new Map();let next=0,fail=true;const setTimeout=fn=>{timers.set(++next,fn);return next},clearTimeout=id=>timers.delete(id);
  function el(tag,cls,text=''){return {tag,cls,textContent:text,hidden:false,dataset:{},style:{},children:[],classList:{toggle(){}},setAttribute(){},append(...xs){this.children.push(...xs)},addEventListener(t,f){this[t]=f},getAnimations(){return []},animate(){return {finished:Promise.resolve()}},querySelector(sel){const match=n=>n.cls?.split(' ').includes(sel.slice(1))?n:n.children?.map(match).find(Boolean);return this.children.map(match).find(Boolean)}}}
- const icon=()=>el('svg','icon'),when=x=>x,cronText=()=> '每天 08:00';
+ const document={getSelection:()=>null};const icon=()=>el('svg','icon'),when=x=>x,cronText=()=> '每天 08:00';
  const api=async(path,opts)=>{if(fail)throw Error('offline');return {enabled:opts.body.enabled}};
- ` + s[a:b] + `
+ ` + s[strings.Index(s, "  function taskSelected("):strings.Index(s, "  function taskProgress(")] + s[a:b] + `
  (async()=>{const c=routineCard({name:'ada'},{id:'morning',enabled:true,cron:'0 8 * * *'}),toggle=c.querySelector('.tog'),notice=c.querySelector('.routine-error');
  await toggle.click();assert.equal(c.routine.enabled,true);assert.equal(notice.hidden,false);assert.match(notice.textContent,/恢复为开启/);
  fail=false;await toggle.click();assert.equal(c.routine.enabled,false);assert.equal(notice.hidden,true,'successful retry must clear the previous failure');assert.equal(timers.size,0);

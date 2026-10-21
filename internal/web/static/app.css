@@ -2504,7 +2504,10 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .task-record .recent-task > .icon { width: 14px; height: 14px; flex: none; }
 .task-record .recent-name { font-size: 12.5px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-details { margin-top: 8px; font-size: 11.5px; color: var(--x-faint); }
-.task-details > summary { cursor: pointer; }
+.task-details > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 3px; list-style: none; }
+.task-details > summary::-webkit-details-marker { display: none; }
+.task-details > summary .icon { width: 12px; height: 12px; }
+.task-details[open] > summary .icon { transform: rotate(90deg); }
 .task-details .task-request { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--x-muted); }
 .task-details .task-id { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 .task-record .recent-status { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
