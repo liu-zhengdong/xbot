@@ -144,7 +144,7 @@
 
 - `event: delta`，`data: {"text":"..."}`
 - `event: tool`，`data: {"name","summary"}`。`ask_user` 必填 question、options（2–6 项）、recommended（必须等于某个选项的完整字符串）；summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。
-- `event: approval`，`data: {"id","tool","summary","deadline"}`。`deadline` 是 RFC3339，这张卡停止接受决定的时刻，默认是发出后 24 小时。这个工具要主人确认才会跑。界面应立刻展示一张确认卡，写明工具名和 summary，并给出允许、拒绝两个按钮；倒计时读 `deadline`，没有这个字段就从卡片写入时间起算 24 小时。
+- `event: approval`，`data: {"id","tool","summary","deadline"}`。`deadline` 是 RFC3339，这张卡自动继续的时刻，默认是发出后 30 分钟，可由 `Server.ApprovalWait` 配置。到点没人确认就自动允许原调用并继续，追加 `auto_approved` 和灰字 notice。界面立刻展示确认卡和允许、拒绝按钮；倒计时只读 `deadline`，没有字段就不显示倒计时。
 - `event: result`，`data: {"name","output"}`，output 截到 4000 字
 - `event: done`，`data: {"text":"这一轮拼起来的正文","reply_to":2}`。`reply_to` 省略表示这条回复没有指向某一条用户消息。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。模型用来标记引用的 `reply_to:` 行不会出现在 `delta` 或 `done.text` 里。
 - `event: error`，`data: {"error":"..."}`
