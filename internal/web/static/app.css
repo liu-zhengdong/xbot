@@ -674,9 +674,6 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .msg.bot .who { margin-bottom: 6px; }
 .msg.bot .who > time { color: var(--x-faint); font-weight: 400; }
 
-/* Copy and reply actions stay outside the bubbles. */
-.msg.bot > .body > .meta-row > .meta { display: none; }
-
 .meta-row { display: flex; align-items: center; gap: 4px; height: 16px; }
 
 /* Actions and time sit beside the bubble, never in the next run's 6px gap. */
@@ -714,7 +711,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .copy svg { width: 16px; height: 16px; }
 
-.msg:hover .copy, .msg.reveal .copy, .copy:focus-visible,
+.msg:hover .copy, .copy:focus-visible,
 .code-block:hover .copy, .code-block:focus-within .copy { opacity: 1; }
 
 .copy:hover { background: var(--hover); color: var(--text); }
@@ -731,7 +728,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .reply svg { width: 16px; height: 16px; }
 
-.msg:hover .reply, .msg.reveal .reply, .reply:focus-visible { opacity: 1; }
+.msg:hover .reply, .reply:focus-visible { opacity: 1; }
 
 .reply:hover { background: var(--hover); color: var(--text); }
 
@@ -2458,27 +2455,51 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .ctxbar > span { white-space: nowrap; }
 .ctxbar .mono { font-family: var(--x-mono); }
 .ubar { flex: 1; min-width: 0; height: 6px; border-radius: 3px; background: var(--x-ctx-free); display: flex; overflow: hidden; position: relative; }
-.ubar i { display: block; height: 100%; flex: none; background: var(--c); }
+.ubar i { display: block; height: 100%; min-width: 2px; flex: none; background: var(--c); }
 .ubar .soft { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--x-text); opacity: .75; }
 .doodle { color: var(--x-text-2); opacity: .85; display: block; flex: none; max-width: 100%; }
 .empty { width: 100%; padding: 0 32px; }
 .empty h2 { line-height: normal; margin: 14px 0 0; }
 .empty p { margin-top: 6px; }
 .starter { line-height: normal; }
-.panel-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 36px 8px; }
+.panel-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 28px 8px 36px; }
 .panel-empty h3 { font-size: 15px; line-height: normal; font-weight: 640; margin: 14px 0 0; }
 .panel-empty p { font-size: 13px; color: var(--x-muted); margin: 6px 0 0; line-height: 1.6; }
 .thread-unavailable { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; }
-.thread-unavailable h3 { font-size: 18px; font-weight: 640; margin: 14px 0 0; }
-.thread-unavailable p { max-width: 420px; font-size: 14px; color: var(--x-muted); margin: 6px 0 20px; line-height: 1.6; }
+.thread-unavailable h3 { color: var(--x-text); font-size: 18px; font-weight: 640; margin: 14px 0 0; }
+.thread-unavailable p { max-width: 360px; text-wrap: balance; font-size: 14px; color: var(--x-muted); margin: 6px 0 20px; line-height: 1.6; }
 .bot-bubble .code-block { background: var(--x-card); }
 .in-app:is(.os-win, .os-linux) .side-drag { height: 22px; }
 @media (min-width: 768px) { .sidebar.rail .side-foot { padding-bottom: 0; } }
+/* Touch actions are opened by a tap, never by an emulated sticky hover. */
+.action-label { display: none; }
+.sidebar.rail .railnew .icon { width: 12px; height: 12px; }
+.bubble .code-head > span { font-size: 11px; opacity: .6; }
+.thread-unavailable .btn.sec { border: 0; height: 32px; padding: 0 13px; border-radius: 8px; font-size: 13.5px; font-weight: 560; display: inline-flex; align-items: center; justify-content: center; line-height: 1; gap: 6px; background: var(--x-fill-2); color: var(--x-text); }
+.thread-unavailable .btn.sec:hover { background: var(--x-fill-3); }
+.thread-unavailable .btn.sec .icon { width: 15px; height: 15px; stroke-width: 1.8; }
+@media (hover: none) {
+  .msg:not(.touch-open) > :is(.body, .bubble-col) > .meta-row { opacity: 0; pointer-events: none; }
+  .msg:not(.touch-open) .ht { visibility: hidden; }
+  .msg.touch-open > :is(.body, .bubble-col) > .meta-row { opacity: 1; pointer-events: auto; }
+  .msg.touch-open :is(.copy, .reply) { opacity: 1; }
+  .msg.touch-open .ht { visibility: visible; }
+}
 @media (max-width: 767px) {
+  .main, .in-app .shell > .main { margin: 0; border-radius: 0; }
+  .sidebar:not(.open) { box-shadow: none; }
   .msg.bot .body { max-width: 100%; }
-  /* With no side gutter, controls take their own space instead of covering text. */
-  .msg.bot > .body > .meta-row { position: static; display: none; align-self: flex-end; width: auto; height: 20px; margin-top: 4px; }
-  .msg.bot > .body > .ht { position: static; display: none; align-self: flex-end; }
-  .msg.bot:is(:hover, :focus-within) > .body > .meta-row { display: flex; }
-  .msg.bot:is(:hover, :focus-within) > .body > .ht { display: block; visibility: visible; }
+  .msg > :is(.body, .bubble-col) > .ht { display: none; }
+  .msg > :is(.body, .bubble-col) > .meta-row { position: static; display: none; justify-content: flex-start; align-self: flex-start; width: auto; height: 24px; line-height: 24px; margin-top: 4px; gap: 0; opacity: 1; pointer-events: auto; }
+  .msg > :is(.body, .bubble-col) > .meta-row > .meta { display: inline; opacity: 1; font-size: 12px; line-height: 24px; color: var(--x-faint); }
+  .msg .meta-row > .meta::after, .msg .meta-row > button + button::before { content: "·"; margin: 0 6px; color: var(--x-faint); }
+  .msg .meta-row > :is(.copy, .reply) { display: inline-flex; align-items: center; width: auto; height: 24px; padding: 0; font-size: 12px; line-height: 24px; opacity: 1; }
+  .msg .meta-row > button .icon { display: none; }
+  .msg .meta-row .action-label { display: inline; }
+}
+@media (max-width: 767px) and (hover: hover) {
+  .msg:is(:hover, :focus-within) > :is(.body, .bubble-col) > .meta-row { display: flex; }
+}
+@media (max-width: 767px) and (hover: none) {
+  .msg.touch-open > :is(.body, .bubble-col) > .meta-row { display: flex; }
 }

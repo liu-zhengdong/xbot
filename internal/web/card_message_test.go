@@ -35,11 +35,19 @@ func TestMissedRoutineShowsHumanExplanation(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	a := strings.Index(s, "  function routineOf(")
-	end := strings.Index(s[a+1:], "\n  function ")
-	script := `const assert=require('node:assert/strict');const unwrap=text=>({untrusted:true,source:'timer',text});const when=()=>'';` + s[a:a+1+end] + `
+	a := strings.Index(s, "  function missedTimes(")
+	if a < 0 {
+		t.Fatal("missing missed-time formatter")
+	}
+	end := strings.Index(s[a:], "\n  // Drawers the owner")
+	script := `const assert=require('node:assert/strict');const unwrap=text=>({untrusted:true,source:'timer',text});const when=()=>'';` + s[a:a+end] + `
  const text='Missed routine times from yesterday to today:\n- "secret-id" "检查测试": 2 missed (08:15, 08:30)\nThe computer was off or asleep. Decide whether anything is still worth doing now; reply with exactly SILENT.';
  const result=routineOf({role:'user',content:text});
+ assert.ok(result.prompt.includes('错过 2 次（08:15、08:30）'));
+ const now=new Date(2026,9,21,17);
+ assert.equal(missedTimes('2026-10-21 08:15, 2026-10-21 08:30',now),'今天 08:15、08:30');
+ assert.equal(missedTimes('2026-10-19 23:55, 2026-10-20 08:15, 2026-10-20 08:30, 2026-10-21 08:00, …',now),'10-19 23:55、昨天 08:15、08:30、今天 08:00、…');
+ assert.equal(missedTimes('2025-10-21 08:15',now),'10-21 08:15');
  assert.equal(result.label,'错过的定时 · 1 项');assert.ok(result.prompt.includes('检查测试 · 错过 2 次'));
  for(const raw of ['secret-id','SILENT','Decide whether','Missed routine times']) assert.ok(!result.prompt.includes(raw),raw);
  `
@@ -61,6 +69,37 @@ func TestGatewayTextSpacing(t *testing.T) {
  assert.equal(sp('连不上网关'+'xbot.babelgo.cn'),'连不上网关 xbot.babelgo.cn');
  assert.equal(sp('连不上网关'),'连不上网关');
  assert.equal(sp('等了3分钟，XBot已重连'),'等了 3 分钟，XBot 已重连');
+ `
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+func TestTouchMessageActionsOnlyOpenOneRow(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	a := strings.Index(s, "  const touchMessages =")
+	if a < 0 {
+		t.Fatal("missing touch message actions")
+	}
+	b := strings.Index(s[a:], "  document.addEventListener(\"click\"")
+	if a < 0 || b < 0 {
+		t.Fatal("missing touch message actions")
+	}
+	script := `const assert=require('node:assert/strict');const matchMedia=()=>({matches:true});
+ const row=()=>({open:false,classList:{add(){this.owner.open=true},remove(){this.owner.open=false}},querySelector(){return {}}});
+ const a=row(),b=row();a.classList.owner=a;b.classList.owner=b;
+ const target=(r,interactive=false)=>({closest(sel){return sel==='#thread .msg'?r:interactive?{}:null}});
+ ` + s[a:a+b] + `
+ toggleMessageActions(target(a));assert.equal(a.open,true);
+ toggleMessageActions(target(b));assert.equal(a.open,false);assert.equal(b.open,true);
+ toggleMessageActions(target(b));assert.equal(b.open,false);
+ toggleMessageActions(target(a));toggleMessageActions(target(null,true));assert.equal(a.open,false);
+ toggleMessageActions(target(a));toggleMessageActions(target(a,true));assert.equal(a.open,true);
+ closeMessageActions();assert.equal(a.open,false);
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

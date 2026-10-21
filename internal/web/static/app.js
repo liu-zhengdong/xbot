@@ -1072,6 +1072,9 @@
     swap: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
     arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
     imageUp: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 9 5-5 5 5"/><path d="M12 4v12"/>',
+    "refresh-cw": '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+    "file-text": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>',
+    chart: '<path d="M3 3v18h18M8 16v-4M13 16V8M18 16V5"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
     undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
   };
@@ -1394,6 +1397,22 @@
     return suppressed;
   }
 
+  function missedTimes(text, now = new Date()) {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    let previousDay = "";
+    return text.split(/,\s*/).map(value => {
+      const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(value);
+      if (!match) return value;
+      const day = match.slice(1, 4).join("-");
+      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      const label = date.toDateString() === now.toDateString() ? "今天" : date.toDateString() === yesterday.toDateString() ? "昨天" : match[2] + "-" + match[3];
+      const result = (day === previousDay ? "" : label + " ") + match[4];
+      previousDay = day;
+      return result;
+    }).join("、");
+  }
+
   function routineOf(m) {
     if (m.role !== "user") return null;
     const parsed = unwrap(m.content || "");
@@ -1405,7 +1424,7 @@
       const count = items.length + (more ? Number(more[1]) - 1 : 0);
       const lines = text.split("\n").filter(line => /^- /.test(line)).map(line => {
         const m = /^- "[^"]*" "(.*)": (\d+) missed \((.*)\)$/.exec(line);
-        if (m) return m[1] + " · 错过 " + m[2] + " 次（" + m[3] + "）";
+        if (m) return m[1] + " · 错过 " + m[2] + " 次（" + missedTimes(m[3]) + "）";
         const more = /^- … and (\d+) more routines/.exec(line);
         return more ? "另有 " + more[1] + " 项定时" : "其他定时";
       });
@@ -1708,10 +1727,10 @@
     const box = el("div", "starters");
     starterProfile(who).then((profile) => {
       if (!box.isConnected) return;
-      for (const text of starterPrompts(profile)) {
+      for (const [i, text] of starterPrompts(profile).entries()) {
         const btn = el("button", "starter");
         btn.type = "button"; // never a submit: it fills the composer only
-        btn.append(el("span", "", text), icon("arrowRight"));
+        btn.append(icon(["alarm-clock", "file-text", "chart"][i % 3]), el("span", "", text), icon("chevron"));
         btn.addEventListener("click", () => fillComposer(text));
         box.append(btn);
       }
@@ -1829,23 +1848,40 @@
     return card;
   }
 
-  function armCopy(row) {
-    let timer = 0;
-    row.addEventListener("pointerdown", () => {
-      timer = window.setTimeout(() => row.classList.add("reveal"), 420);
-    });
-    const stop = () => window.clearTimeout(timer);
-    row.addEventListener("pointerup", stop);
-    row.addEventListener("pointercancel", stop);
-    row.addEventListener("pointerleave", stop);
+  const touchMessages = matchMedia("(hover: none)");
+  let touchMessage = null;
+
+  function closeMessageActions() {
+    if (touchMessage) touchMessage.classList.remove("touch-open");
+    touchMessage = null;
   }
+
+  function toggleMessageActions(target) {
+    const row = target.closest("#thread .msg");
+    if (target.closest("button, a, input, textarea, select")) {
+      if (row !== touchMessage) closeMessageActions();
+      return;
+    }
+    const next = row && row.querySelector(".meta-row") ? row : null;
+    const wasOpen = next === touchMessage;
+    closeMessageActions();
+    if (next && !wasOpen) {
+      next.classList.add("touch-open");
+      touchMessage = next;
+    }
+  }
+
+  document.addEventListener("click", (ev) => {
+    if (touchMessages.matches) toggleMessageActions(ev.target);
+  }, true);
+  touchMessages.addEventListener("change", closeMessageActions);
 
   function copyBtn(text) {
     const btn = el("button", "copy");
     btn.type = "button";
     btn.setAttribute("aria-label", "复制");
     setTip(btn, "复制");
-    btn.append(icon("copy"));
+    btn.append(icon("copy"), el("span", "action-label", "复制"));
     btn.addEventListener("click", () => copyText(text || "", btn));
     return btn;
   }
@@ -2030,7 +2066,11 @@
 
   function addBubbleTime(row, time) {
     const body = row.querySelector(".bubble-col, .body");
-    if (body && time) body.append(el("span", "ht", clockTime(time)));
+    if (body && time) {
+      body.append(el("span", "ht", clockTime(time)));
+      const stamp = body.querySelector(".meta-row > .meta");
+      if (stamp) stamp.textContent = clockTime(time);
+    }
   }
 
   function timeDivider(previous, time, now = new Date()) {
@@ -2143,37 +2183,15 @@
   function replyBtn(m) {
     const btn = el("button", "reply");
     btn.type = "button";
-    btn.setAttribute("aria-label", "引用");
-    setTip(btn, "引用");
-    btn.append(icon("reply"));
+    btn.setAttribute("aria-label", "回复");
+    setTip(btn, "回复");
+    btn.append(icon("reply"), el("span", "action-label", "回复"));
     btn.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       armQuote(m.seq, previewText(m));
     });
     return btn;
-  }
-
-  function armTouchQuote(row, m) {
-    let timer = 0;
-    let armed = false;
-    row.addEventListener("pointerdown", (ev) => {
-      if (ev.pointerType === "mouse") return;
-      if (ev.target.closest && ev.target.closest("button, a, input, textarea")) return;
-      armed = false;
-      timer = window.setTimeout(() => {
-        armed = true;
-        row.classList.add("reveal");
-        armQuote(m.seq, previewText(m));
-      }, 480);
-    });
-    const stop = () => window.clearTimeout(timer);
-    row.addEventListener("pointerup", stop);
-    row.addEventListener("pointercancel", stop);
-    row.addEventListener("pointerleave", stop);
-    row.addEventListener("contextmenu", (ev) => {
-      if (armed) ev.preventDefault();
-    });
   }
 
   function userBubble(m, messages) {
@@ -2209,8 +2227,6 @@
     wrap.append(metaRow);
     row.append(wrap);
     addBubbleTime(row, m.time);
-    armCopy(row);
-    if (m.seq) armTouchQuote(row, m);
     return row;
   }
 
@@ -2242,8 +2258,6 @@
     body.append(metaRow);
     row.append(body);
     addBubbleTime(row, m.time);
-    armCopy(row);
-    if (m.seq) armTouchQuote(row, m);
     return { row: row, peers: peers };
   }
 
@@ -2450,7 +2464,6 @@
         if (row.classList.contains("cont")) markContinuation(row, m.time);
       }
       addBubbleTime(row, m.time);
-      armCopy(row);
       last = key;
       inner.append(row);
     }
@@ -3476,6 +3489,7 @@
   }
 
   function resetConversation() {
+    closeMessageActions();
     // Pasted pictures belong to the bot they were uploaded to.
     clearAttach();
     state.streaming = 0;
@@ -3507,7 +3521,8 @@
     state.sig = "";
     const box = el("div", "thread-unavailable");
     box.setAttribute("role", "status");
-    const retry = el("button", "secondary", "重试");
+    const retry = el("button", "btn sec");
+    retry.append(icon("refresh-cw"), document.createTextNode("重试"));
     retry.type = "button";
     retry.addEventListener("click", async () => {
       retry.disabled = true;
@@ -4183,7 +4198,7 @@
   function ctxK(n) {
     if (!n) return "0";
     if (n < 1000) return String(n);
-    return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+    return (n / 1000).toFixed(1).replace(/\.0$/, "") + "K";
   }
 
   // ctxSums folds a request's layers into the legend's bands. Summary blocks
@@ -4210,7 +4225,7 @@
     }
     const reqs = snap.requests || [];
     if (!reqs.length) {
-      wrap.append(panelEmpty("", "还没有快照", "这个 Bot 还没在本进程里发过请求。"));
+      wrap.append(panelEmpty("", "还没有快照", "发一句话，这里就会显示它这一轮读了哪些内容。"));
       return wrap;
     }
     const req = ctxReq(snap);
@@ -4411,7 +4426,7 @@
       tick.style.left = (snap.target * 100 / hard) + "%";
       band.append(tick);
     }
-    bar.append(label, band, el("span", "mono", ctxK(used).toUpperCase() + " / " + ctxK(hard).toUpperCase()));
+    bar.append(label, band, el("span", "mono", ctxK(used) + " / " + ctxK(hard)));
     bar.addEventListener("click", () => { state.tab = "context"; paintPanel(); });
     host.append(bar);
   }
@@ -5237,11 +5252,7 @@
     const dots = el("span", "typing-dots");
     dots.setAttribute("aria-label", "正在回复");
     for (let i = 0; i < 3; i++) dots.append(el("i", ""));
-    const live = el("div", "meta live-status");
-    const dot = el("i", "status-dot run");
-    setTip(dot, "正在回复");
-    live.append(dot);
-    body.append(prose, dots, live);
+    body.append(prose, dots);
     row.append(body);
     markLiveGroup(inner, row);
     addBubbleTime(row, now);

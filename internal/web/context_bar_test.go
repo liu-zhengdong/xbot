@@ -33,6 +33,7 @@ func TestContextBarUsesLatestSnapshot(t *testing.T) {
  const host=node('div');const $=()=>host,el=node,icon=()=>node('svg'),setTip=()=>{};
  const document={createTextNode:t=>t};const state={sel:{type:'bot'},tab:'details',ctxSnap:null};let paints=0;const paintPanel=()=>paints++;
  ` + block("  const CTX_BANDS =", "  function ctxReq(") + block("  function paintContextBar(", "  function styleChips(") + `
+ assert.equal(ctxK(27000),'27K');assert.equal(ctxK(128000),'128K');assert.equal(ctxK(1250),'1.3K');
  paintContextBar();assert.equal(host.hidden,true);assert.equal(host.children.length,0);
  state.ctxSnap={ceiling:100,target:50,requests:[{prompt:10},{prompt:30,tools:5,layers:[{key:'hist',tokens:20},{key:'turn',tokens:5}]}]};
  paintContextBar();assert.equal(host.hidden,false);const bar=host.children[0];assert.equal(bar.children[1].children[0].text,'30%');assert.equal(bar.children[3].text,'30 / 100');
