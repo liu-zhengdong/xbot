@@ -32,10 +32,10 @@ func TestObjectListsAndOneSentenceDigest(t *testing.T) {
 	if len(items[2].Objects) != 5 || !strings.Contains(items[2].Text, "等 5 个文件") || len(items[3].Objects) != 3 {
 		t.Fatalf("full object list missing: %+v", items)
 	}
-	if got := Line(items); got != "值得留意：删了 3 个文件，另有 3 项，详见任务" {
+	if got := Line(items); got != "值得留意：删了 3 个文件，另有 3 项，详见任务。" {
 		t.Fatal(got)
 	}
-	if got := Line(items[1:2]); got != "向 Slack 发了 1 条消息" {
+	if got := Line(items[1:2]); got != "值得留意：向 Slack 发了 1 条消息。" {
 		t.Fatal(got)
 	}
 	raw, _ := json.Marshal(items)
@@ -122,7 +122,7 @@ func TestOlderMetadataUsesTheSameOrderAndDropsTerminalPunctuation(t *testing.T) 
 	if len(items) != 2 || items[0].Kind != "delete" || items[1].Text != "全局安装了软件" {
 		t.Fatalf("old metadata not normalized: %+v", items)
 	}
-	if got := Line(items); got != "值得留意：删除了文件或记录，另有 1 项，详见任务" {
+	if got := Line(items); got != "值得留意：删除了文件或记录，另有 1 项，详见任务。" {
 		t.Fatal(got)
 	}
 }
@@ -134,5 +134,19 @@ func TestURLInstallDoesNotCallTheHostThePackage(t *testing.T) {
 	items := log.Items()
 	if len(items) != 1 || len(items[0].Objects) != 0 || items[0].Text != "全局安装了软件" || !items[0].Incomplete {
 		t.Fatalf("invented package name: %+v", items)
+	}
+}
+
+func TestTransportSummaryNeverCutsAFilename(t *testing.T) {
+	file := strings.Repeat("x", 120) + ".txt"
+	path := "~/.config/xbot/first/second/daily/" + file
+	if got := shortObject(path); !strings.HasPrefix(got, "~/.config/xbot/…/") || !strings.HasSuffix(got, file) {
+		t.Fatalf("path or filename lost: %s", got)
+	}
+}
+
+func TestSingleInstallDigestHasTheSamePrefixAndPunctuation(t *testing.T) {
+	if got := Line([]Item{{Kind: "global_install", Text: "全局安装了 ripgrep"}}); got != "值得留意：全局安装了 ripgrep。" {
+		t.Fatal(got)
 	}
 }

@@ -75,7 +75,7 @@ func TestTaskCardUsesTitleAndKeepsOriginalErrorAcrossPolls(t *testing.T) {
 	script := `const assert=require('node:assert/strict');
  const node=()=>({dataset:{},hidden:false,textContent:'',children:[],classList:{toggle(){},add(){},contains(){return true}},setAttribute(){},addEventListener(t,fn){this[t]=fn},append(...xs){this.children.push(...xs)},replaceChildren(...xs){this.children=xs},querySelector(sel){return this.children.find(x=>sel==='button'&&x.tag==='button')||null},get childElementCount(){return this.children.length},firstElementChild:{replaceWith(){}}});
  const el=(tag,cls,text)=>Object.assign(node(),{tag,textContent:text||''}), icon=()=>node(),spinIcon=icon;
- const document={createTextNode:text=>({textContent:text})};
+ const document={createTextNode:text=>({textContent:text})};const pathLabel=path=>el('span','compact-path',path);
  const taskStatus=x=>x,when=x=>x,plainText=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=()=> '请求超时';
  const elements=new Map([['.task-error',node()]]),card=node();card.querySelector=sel=>{if(sel==='.res'&&elements.get('.task-type')?.className?.split(' ').includes('res'))return elements.get('.task-type');if(!elements.has(sel))elements.set(sel,node());return elements.get(sel)};
  ` + part("  function clip(", "  function when(") + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskNotable(", "  function taskCard(") + part("  function updateTaskCard(", "  const routineChanges") + `

@@ -2568,8 +2568,9 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .task-notable .notable-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-notable .notable-text.has-path { display: flex; flex: 1; }
 .task-notable .notable-prefix { flex: none; white-space: pre; }
-.task-notable .notable-object { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-notable .path-tail { direction: rtl; text-align: left; }
+.compact-path { display: inline-block; min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; vertical-align: bottom; }
+.task-notable .has-path { overflow: visible; }
+.task-notable .has-path .compact-path { flex: 1; }
 .task-notable-details { margin-top: 8px; color: var(--x-muted); font-size: 12px; }
 .task-notable-details .notable-detail + .notable-detail { margin-top: 6px; }
 .task-notable-details ul { margin: 2px 0 0; padding-left: 18px; }

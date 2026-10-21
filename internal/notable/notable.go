@@ -127,7 +127,7 @@ func Line(items []Item) string {
 		return ""
 	}
 	if len(items) == 1 {
-		return items[0].Text
+		return "值得留意：" + items[0].Text + "。"
 	}
 	first := items[0]
 	text := first.Text
@@ -138,7 +138,7 @@ func Line(items []Item) string {
 		}
 		text = "删了 " + strconv.Itoa(len(first.Objects)) + " " + unit
 	}
-	return "值得留意：" + text + "，另有 " + strconv.Itoa(len(items)-1) + " 项，详见任务"
+	return "值得留意：" + text + "，另有 " + strconv.Itoa(len(items)-1) + " 项，详见任务。"
 }
 
 type key struct{}

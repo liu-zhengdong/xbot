@@ -1467,15 +1467,97 @@
     return row;
   }
 
+  // Both task rows and message bubbles use this priority order. The caller
+  // supplies its real font/available width; filenames are never shortened.
+  function compactPath(path, fits) {
+    if (fits(path)) return path;
+    const sep = path.includes("\\") && !path.includes("/") ? "\\" : "/";
+    let root = "", rest = path;
+    const drive = /^[A-Za-z]:[/\\]/.exec(path);
+    if (drive) { root = path.slice(0, 2) + sep; rest = path.slice(3); }
+    else if (/^~[/\\]/.test(path)) { root = "~" + sep; rest = path.slice(2); }
+    else if (/^[/\\]/.test(path)) { root = sep; rest = path.slice(1); }
+    const parts = rest.split(/[/\\]/).filter(Boolean), file = parts.at(-1) || path;
+    const candidate = (head, tail) => root + [...parts.slice(0, head), "…", ...parts.slice(-tail)].join(sep);
+    const choices = [];
+    if (parts.length > 4) choices.push(candidate(2, 2));
+    if (parts.length > 3) choices.push(candidate(2, 1));
+    if (parts.length > 2) choices.push(candidate(1, 1));
+    if (parts.length > 1) choices.push(candidate(0, 1));
+    return choices.find(fits) || file;
+  }
+
+  const pathLabels = new Set();
+  let pathFrame = 0, pathObserver, pathCanvas;
+  function queuePathLayout() {
+    if (pathFrame) return;
+    pathFrame = requestAnimationFrame(() => {
+      pathFrame = 0;
+      for (const label of pathLabels) {
+        if (!label.isConnected) { pathLabels.delete(label); continue; }
+        const style = getComputedStyle(label);
+        pathCanvas ||= document.createElement("canvas");
+        const ctx = pathCanvas.getContext("2d"); ctx.font = style.font;
+        const measure = text => ctx.measureText(text).width;
+        let width;
+        const card = label.closest(".notable-text.has-path");
+        if (card) width = card.clientWidth - card.querySelector(".notable-prefix").getBoundingClientRect().width;
+        else {
+          const row = label.closest(".msg"), bubble = label.closest(".bubble, .bot-bubble");
+          if (!row || !bubble) continue;
+          const column = bubble.closest(".bubble-col, .body"), max = column ? getComputedStyle(column).maxWidth : "100%";
+          const ratio = max.endsWith("%") ? parseFloat(max) / 100 : 1;
+          const bs = getComputedStyle(bubble);
+          width = row.clientWidth * ratio - parseFloat(bs.paddingLeft) - parseFloat(bs.paddingRight);
+          // Short notices should fit as a sentence. Long paragraphs can wrap
+          // naturally; do not reduce their paths merely because of other prose.
+          const para = label.closest("p");
+          if (para) {
+            const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+            let other = "", n;
+            while ((n = walker.nextNode())) if (!n.parentElement.closest(".compact-path")) other += n.textContent;
+            const spare = width - measure(other), count = para.querySelectorAll(".compact-path").length;
+            if (spare > width / 3) width = spare / count;
+          }
+        }
+        if (!(width > 0)) continue;
+        const next = compactPath(label.dataset.path, text => measure(text) <= width);
+        if (label.textContent !== next && !taskSelected(label)) label.textContent = next;
+      }
+    });
+  }
+
+  function pathLabel(path, tag = "span") {
+    const label = el(tag, "compact-path", path); label.dataset.path = path; label.title = path;
+    pathLabels.add(label); queuePathLayout();
+    if (!pathObserver && typeof ResizeObserver !== "undefined") {
+      pathObserver = new ResizeObserver(queuePathLayout);
+      for (const root of document.querySelectorAll(".chat, #panel")) pathObserver.observe(root);
+      document.fonts?.ready.then(queuePathLayout);
+    }
+    return label;
+  }
+
+  function appendPathText(parent, text) {
+    const paths = /(?<![^\s，。；：（("'])((?:~\/|\/|[A-Za-z]:\\)[^\s，。；、）)<>"'`]+)/g;
+    let last = 0;
+    for (const match of text.matchAll(paths)) {
+      if (match.index > last) parent.append(document.createTextNode(text.slice(last, match.index)));
+      parent.append(pathLabel(match[0])); last = match.index + match[0].length;
+    }
+    if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+  }
+
   function appendInline(parent, text) {
     const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
     let last = 0;
     let match;
     while ((match = re.exec(text))) {
-      if (match.index > last) parent.append(document.createTextNode(text.slice(last, match.index)));
+      if (match.index > last) appendPathText(parent, text.slice(last, match.index));
       const tok = match[0];
       if (tok.charAt(0) === "`") {
-        parent.append(el("code", "", tok.slice(1, -1)));
+        const code = tok.slice(1, -1);
+        parent.append(/^(?:~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(code) && !/\s--?/.test(code) ? pathLabel(code, "code") : el("code", "", code));
       } else if (tok.startsWith("**")) {
         parent.append(el("strong", "", tok.slice(2, -2)));
       } else if (tok.charAt(0) === "*") {
@@ -1495,7 +1577,7 @@
       }
       last = match.index + tok.length;
     }
-    if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+    if (last < text.length) appendPathText(parent, text.slice(last));
   }
 
   function appendBlocks(parent, text) {
@@ -4865,14 +4947,10 @@
     for (const item of items) {
       const row = el("div", "notable-row"), text = el("span", "notable-text", item.text);
       text.title = item.text;
-      // RTL clipping retains the end of long paths; the text itself remains
-      // selectable and the complete object list is in task details.
       if (["write_outside", "delete"].includes(item.kind) && item.objects?.length === 1 && /[/\\]/.test(item.objects[0])) {
         const prefix = item.kind === "write_outside" ? "写入了 " : "删除了 ";
         if (item.text.startsWith(prefix)) {
-          const path = el("span", "notable-object path-tail"), value = el("bdi", "", item.text.slice(prefix.length));
-          value.dir = "ltr"; path.append(value);
-          text.classList.add("has-path"); text.replaceChildren(el("span", "notable-prefix", prefix), path);
+          text.classList.add("has-path"); text.replaceChildren(el("span", "notable-prefix", prefix), pathLabel(item.objects[0]));
         }
       }
       row.append(icon(icons[item.kind]), text); host.append(row);
@@ -4889,7 +4967,7 @@
     const compact = el("button", "recent-task"); compact.type = "button";
     compact.append(icon("circle-check"), el("b", "recent-name"), el("span", "recent-status"), icon("chevron"));
     const detail = el("div", "card tk");
-    compact.addEventListener("click", () => { card.classList.add("expanded"); compact.setAttribute("aria-expanded", "true"); });
+    compact.addEventListener("click", () => { card.classList.add("expanded"); compact.setAttribute("aria-expanded", "true"); queuePathLayout(); });
     card.append(compact, detail);
     const head = el("div", "ch"), ct = el("div", "ct");
     const title = el("div", "task-heading"); title.append(el("b", "task-name"), el("span", "task-type ty")); ct.append(title);

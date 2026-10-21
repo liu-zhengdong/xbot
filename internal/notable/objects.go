@@ -152,7 +152,27 @@ func shortObject(s string) string {
 		return s
 	}
 	if strings.ContainsAny(s, "/\\") {
-		return string(r[:20]) + "…" + string(r[len(r)-75:])
+		// Transport summaries may elide directories, never pieces of a filename.
+		sep := "/"
+		if strings.Contains(s, "\\") && !strings.Contains(s, "/") {
+			sep = "\\"
+		}
+		parts := strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' })
+		if len(parts) <= 4 {
+			return s
+		}
+		root := ""
+		if strings.HasPrefix(s, sep) {
+			root = sep
+		}
+		if parts[0] == "~" || strings.HasSuffix(parts[0], ":") {
+			root += parts[0] + sep
+			parts = parts[1:]
+		}
+		if len(parts) <= 4 {
+			return s
+		}
+		return root + strings.Join(parts[:2], sep) + sep + "…" + sep + strings.Join(parts[len(parts)-2:], sep)
 	}
 	return string(r[:95]) + "…"
 }
