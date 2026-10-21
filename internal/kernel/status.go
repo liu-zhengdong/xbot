@@ -40,12 +40,14 @@ const (
 
 // BotStatus is one bot's derived state.
 type BotStatus struct {
-	Bot         string `json:"bot"`
-	State       string `json:"state"`
-	Tool        string `json:"tool,omitempty"`
-	Since       string `json:"since,omitempty"`
-	Backgrounds int    `json:"backgrounds,omitempty"`
-	LastMessage string `json:"last_message,omitempty"`
+	Bot             string `json:"bot"`
+	State           string `json:"state"`
+	Tool            string `json:"tool,omitempty"`
+	Since           string `json:"since,omitempty"`
+	Backgrounds     int    `json:"backgrounds,omitempty"`
+	Agents          int    `json:"agents,omitempty"`
+	CompletedUnread int    `json:"completed_unread,omitempty"`
+	LastMessage     string `json:"last_message,omitempty"`
 	// Todo is one line from the bot's task list, when it has open items.
 	// The steps ring does not carry the list; GET /api/bots/{name}/todos does.
 	Todo string `json:"todo,omitempty"`
@@ -234,6 +236,9 @@ func (k *Kernel) Status() BotStatus {
 	toolStart := t.lastToolStart
 	t.mu.Unlock()
 	st.Backgrounds = len(k.Backgrounds())
+	if active, ok := k.Exec.(interface{ ActiveCount() int }); ok {
+		st.Agents = active.ActiveCount()
+	}
 	st.Todo = TodoSummary(k.Bot)
 	if use, ok := k.tokenSnap(); ok {
 		st.Tokens = &use
@@ -247,7 +252,7 @@ func (k *Kernel) Status() BotStatus {
 			awaitingSince = now
 		}
 		st.Since = statusStamp(awaitingSince)
-	case active || bgs > 0:
+	case active || bgs > 0 || st.Agents > 0:
 		st.State = StateRunning
 		when := started
 		if !toolStart.IsZero() && toolStart.After(when) {

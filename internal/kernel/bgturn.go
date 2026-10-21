@@ -274,7 +274,7 @@ func (k *Kernel) writeForkMeta(t *turn, status string) {
 	}
 	raw, err := json.Marshal(map[string]any{
 		"id": t.branch, "mode": "fork-turn", "status": status, "task": t.task,
-		"from": t.fromSeq, "steps": t.replies, "started": t.started, "updated": k.now(),
+		"from": t.fromSeq, "steps": t.replies, "started": t.started, "updated": k.now(), "current_step": t.lastTool,
 	})
 	if err != nil {
 		return

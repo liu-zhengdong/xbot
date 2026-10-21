@@ -36,11 +36,14 @@ func (s *Server) botStatuses() []kernel.BotStatus {
 		holds[name] = true
 	}
 	s.mu.Unlock()
+	cursor, _ := s.readCursor()
 	now := time.Now()
 	out := make([]kernel.BotStatus, 0, len(cfgs))
 	for _, cfg := range cfgs {
 		if k := kernels[cfg.Name]; k != nil {
-			out = append(out, k.Status())
+			st := k.Status()
+			st.CompletedUnread = s.unreadCompletions(k.Bot, cursor[cfg.Name])
+			out = append(out, st)
 			continue
 		}
 		b, err := bot.Load(s.Root, cfg.Name)
@@ -48,6 +51,7 @@ func (s *Server) botStatuses() []kernel.BotStatus {
 			continue
 		}
 		st := kernel.IdleStatus(b, now)
+		st.CompletedUnread = s.unreadCompletions(b, cursor[cfg.Name])
 		if holds[cfg.Name] {
 			// Another process holds this bot. It may be running elsewhere.
 			st.State = kernel.StateRunning

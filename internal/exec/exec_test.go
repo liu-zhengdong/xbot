@@ -356,7 +356,7 @@ func subFile(t *testing.T, dir string) string {
 		b.WriteString(e.Message.Content)
 		b.WriteByte('\n')
 	}
-	meta, _ := readMeta(dir)
+	meta, _ := ReadMeta(dir)
 	b.WriteString(meta.Status)
 	b.WriteByte(' ')
 	b.WriteString(meta.Summary)

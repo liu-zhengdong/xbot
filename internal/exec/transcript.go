@@ -26,7 +26,10 @@ type Meta struct {
 	Mode    string `json:"mode"`
 	// Type is the subagent type it was dispatched as (ADR 0016), empty for a
 	// plain spawn.
-	Type string `json:"type,omitempty"`
+	Type        string    `json:"type,omitempty"`
+	StartedAt   time.Time `json:"started,omitempty"`
+	FinishedAt  time.Time `json:"finished_at,omitempty"`
+	CurrentStep string    `json:"current_step,omitempty"`
 }
 
 func transcriptPath(dir string) string { return filepath.Join(dir, "transcript.jsonl") }
@@ -43,7 +46,8 @@ func writeMeta(dir string, m Meta) error {
 	return fsutil.WriteAtomic(metaPath(dir), raw, 0600)
 }
 
-func readMeta(dir string) (Meta, error) {
+// ReadMeta reads only the bounded task status file, without its transcript.
+func ReadMeta(dir string) (Meta, error) {
 	raw, err := os.ReadFile(metaPath(dir))
 	if err != nil {
 		return Meta{}, err
@@ -83,7 +87,7 @@ func readEntries(dir string) ([]bot.Entry, error) {
 
 // ReadStatus returns the status file and how many transcript lines exist.
 func ReadStatus(dir string) (Meta, int, error) {
-	m, err := readMeta(dir)
+	m, err := ReadMeta(dir)
 	if err != nil {
 		return Meta{}, 0, err
 	}

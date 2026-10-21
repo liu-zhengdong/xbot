@@ -81,6 +81,7 @@ type Server struct {
 	mu        sync.Mutex
 	kernels   map[string]*kernel.Kernel
 	gate      map[string]*sync.Mutex
+	completed map[string]completionCount
 	holds     map[string]*handleHold
 	approvals map[string]*pendingApproval
 	// expired retains completed cards for one window: manual decisions return
@@ -174,6 +175,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/template", s.exportTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/open-workdir", s.openWorkdir)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
+	mux.HandleFunc("PATCH /api/bots/{name}/routines/{id}", s.patchRoutine)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
 	mux.HandleFunc("GET /api/links", s.listCatalog)
@@ -568,7 +570,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		if !e.IsDir() {
 			continue
 		}
-		meta, _, err := exec.ReadStatus(b.AgentDir(e.Name()))
+		meta, err := exec.ReadMeta(b.AgentDir(e.Name()))
 		if err != nil {
 			continue
 		}
@@ -593,7 +595,10 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 			status = "denied"
 		}
 		var finishedAt any
-		if meta.Status != "running" && meta.Status != "queued" {
+		if !meta.FinishedAt.IsZero() {
+			finishedAt = meta.FinishedAt
+		}
+		if finishedAt == nil && meta.Status != "running" && meta.Status != "queued" {
 			if info, err := os.Stat(filepath.Join(b.AgentDir(e.Name()), "meta.json")); err == nil {
 				finishedAt = info.ModTime().UTC()
 			}
@@ -601,6 +606,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, map[string]any{
 			"id": meta.ID, "status": status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
 			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
+			"started_at": meta.StartedAt, "current_step": meta.CurrentStep,
 		})
 	}
 	// Live work first: running, awaiting, queued, then finished. Directory

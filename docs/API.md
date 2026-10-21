@@ -359,3 +359,9 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 ## 设备
 
 `GET /api/devices` 返回已配对的设备列表：`{"self","gateway_ok","devices","pairing"}`，每台设备有 `id`、`label`、`name`、`bots`、`bot_avatars`、`seen`、`online` 等字段（`seen`、`added` 是时间，`unpaired`、`online` 是布尔值）。`bots` 照旧是另一台设备上 Bot 的名字数组。`bot_avatars` 是同一批 Bot 的头像，每个列出的 Bot 一项：`{"writer": {"avatar_seed": "writer#2"}, "coach": {"custom": true}}`。种子由对方随设备目录送来，没设种子时取 Bot 名字；`custom` 表示对方用的是上传的图片，图片不过网关，所以界面在能传图之前先画几何字形。对方版本较旧、没送种子时这一项是空的，界面画几何字形，不拿名字当种子（免得和本机同名 Bot 一张脸）。种子先在接收时校验一次，建视图时再校验一次，不合法的丢掉种子、保留 Bot。没有 Bot 时是 `{}`，从不是 `null`。
+
+### 例程启停
+
+`PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的主人。请求体仅含必填布尔字段 `enabled`，返回更新后的例程。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对或未知字段 400，写入失败 500。
+
+Bot 详情 `agents` 增加 `started_at`、`current_step`；`finished_at` 优先使用实际结束时刻。`GET /api/bots/status` 增加 `agents`（正在执行的子代理数，不含排队）和 `completed_unread`（主人尚未读到的子代理完成或失败汇报数，随既有 transcript 已读游标归零）。`backgrounds` 仍为分叉后台数量，不改含义。

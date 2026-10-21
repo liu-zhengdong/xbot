@@ -44,13 +44,15 @@ type job struct {
 	approve      agent.Approver
 	parent       *Local
 
-	mu         sync.Mutex
-	stepCancel context.CancelFunc
-	interrupt  string
-	cancelReq  bool
-	ctrl       chan Control
-	held       []Control
-	steps      int
+	mu          sync.Mutex
+	stepCancel  context.CancelFunc
+	interrupt   string
+	cancelReq   bool
+	ctrl        chan Control
+	held        []Control
+	steps       int
+	startedAt   time.Time
+	currentStep string
 }
 
 func runLoop(j *job) {
@@ -67,7 +69,8 @@ func runLoop(j *job) {
 			return
 		}
 	}
-	_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusRunning, Task: j.task, Mode: j.mode, Type: j.kind})
+	j.startedAt = time.Now().UTC()
+	j.writeStatus(statusRunning, "")
 	stepsLeft := j.maxSteps
 	var queued []string
 	var lastProgress time.Time
@@ -102,6 +105,15 @@ func runLoop(j *job) {
 			MaxSteps: 1,
 			OneRound: true,
 			Approve:  j.approve,
+			OnTool: func(name, summary string) {
+				j.mu.Lock()
+				j.currentStep = clipText(summary, 120)
+				if j.currentStep == "" {
+					j.currentStep = name
+				}
+				j.mu.Unlock()
+				j.writeStatus(statusRunning, "")
+			},
 			OnMessage: func(m provider.Message) {
 				if appendErr != nil {
 					return
@@ -156,7 +168,7 @@ func runLoop(j *job) {
 		}
 		j.steps++
 		stepsLeft--
-		_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusRunning, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps})
+		j.writeStatus(statusRunning, "")
 		stop, steered := j.drain(&msgs, &stepsLeft, &queued)
 		if stop {
 			j.finish(statusCancelled, EvFailed, "cancelled")
@@ -283,7 +295,7 @@ func (j *job) finish(status, kind, text string) {
 	if text == "" {
 		text = status
 	}
-	_ = writeMeta(j.dir, Meta{ID: j.id, Status: status, Summary: text, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps})
+	j.writeStatus(status, text)
 	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: text})
 }
 
@@ -360,4 +372,14 @@ func statusText(ctx context.Context) string {
 		return "timed out"
 	}
 	return "cancelled"
+}
+
+func (j *job) writeStatus(status, summary string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	meta := Meta{ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep}
+	if status != statusRunning && status != statusQueued {
+		meta.FinishedAt = time.Now().UTC()
+	}
+	_ = writeMeta(j.dir, meta)
 }

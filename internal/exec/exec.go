@@ -421,3 +421,10 @@ func newID(prefix string) string {
 	}
 	return prefix + hex.EncodeToString(b[:])
 }
+
+// ActiveCount is an in-memory snapshot; queued jobs do not count as running.
+func (l *Local) ActiveCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.jobs)
+}
