@@ -405,7 +405,7 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		list = memoryCaseTools(work, c.Network)
 	}
 	if c.FileOnly {
-		list = caseTools(work, false)[1:]
+		list = fileOnlyTools(caseTools(work, false))
 	}
 	if c.Dispatch {
 		// The foreground reads, its memory folder included (it keeps

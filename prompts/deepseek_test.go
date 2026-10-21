@@ -11,6 +11,11 @@ func TestDeepSeekExecutionOverlaysMatchRoutedModels(t *testing.T) {
 		if err != nil || !strings.Contains(text, "Act once") || !strings.Contains(text, "待确认") {
 			t.Fatalf("%s: %q %v", id, text, err)
 		}
+		for _, phrase := range []string{"copied production snapshot", "do not edit", "make that handoff now"} {
+			if !strings.Contains(text, phrase) {
+				t.Fatalf("%s lost boundary %q", id, phrase)
+			}
+		}
 		if len(strings.Split(text, "\n")) > 12 {
 			t.Fatalf("%s: longer than 12 lines", id)
 		}

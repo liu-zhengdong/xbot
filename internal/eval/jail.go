@@ -257,3 +257,14 @@ func caseTools(work string, network bool) []tools.Tool {
 		&tools.EditFile{Root: work, Sandbox: work},
 	}
 }
+
+// fileOnlyTools removes the shell by identity, independent of catalog order.
+func fileOnlyTools(list []tools.Tool) []tools.Tool {
+	out := make([]tools.Tool, 0, len(list))
+	for _, t := range list {
+		if t.Name() != "shell" {
+			out = append(out, t)
+		}
+	}
+	return out
+}

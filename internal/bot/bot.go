@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -313,7 +314,8 @@ func List(root string) ([]Config, error) {
 			continue
 		}
 		if err != nil {
-			return nil, err
+			log.Printf("bot: skip %q: %v", ent.Name(), err)
+			continue
 		}
 		out = append(out, b.Config())
 	}

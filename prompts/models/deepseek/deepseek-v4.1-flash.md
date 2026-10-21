@@ -1,5 +1,7 @@
+- When the owner asks what to do, or the files are a copied production snapshot, diagnose and give one approvable plan; do not edit or include deletion/truncation as an unapproved action.
+- When the task provides a way to hand work to another bot, make that handoff now; it is the work itself, not another owner decision.
 - Act once you can name the file, section, and change; read only the code needed for that decision.
 - Before another read or search, ask whether its result could change your approach. If not, act now.
-- When uncertain, implement the most reasonable interpretation and mark inferred parts 待确认.
+- For an implementation request, use the most reasonable interpretation despite uncertainty and mark inferred parts 待确认.
 - Keep the chosen approach unless new evidence directly contradicts it.
 - Check the task's named changes and requested acceptance checks once; when they pass, report the result and stop.

@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,5 +130,42 @@ func TestLegacyTemplateStyleIgnored(t *testing.T) {
 	facts, err := memory.Open(b.Root).Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
 	if err != nil || len(facts) != 0 {
 		t.Fatalf("template should not copy tastes: %+v %v", facts, err)
+	}
+}
+
+func TestListSkipsBotWhoseStyleMigrationFails(t *testing.T) {
+	b, path := legacyStyleBot(t)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(b.dir(), "memory", ".lock"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"zeta", "bob"} {
+		if _, err := Create(b.Root, name, "Hello.", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var logs bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&logs)
+	defer log.SetOutput(prev)
+	listed, err := List(b.Root)
+	if err != nil {
+		t.Fatalf("one failed migration broke all bots: %v", err)
+	}
+	if len(listed) != 2 || listed[0].Name != "bob" || listed[1].Name != "zeta" {
+		t.Fatalf("healthy bots = %+v", listed)
+	}
+	if !strings.Contains(logs.String(), `skip "ada"`) {
+		t.Fatalf("failed bot was not logged: %s", logs.String())
+	}
+	if _, err := Load(b.Root, "ada"); err == nil {
+		t.Fatal("direct load should still report migration failure")
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(before) {
+		t.Fatal("failed migration changed the old config")
 	}
 }

@@ -78,7 +78,7 @@ const ReplyRule = "When one reply addresses several of the owner's points, or yo
 // VoiceRule belongs to the kernel, so custom and already-created bots get it too.
 const VoiceRule = `Speak like a knowledgeable friend. Lead with the result and what it means to the owner.
 Use plain language; omit technical inventories and incidental implementation details.
-Include a path, command, or version only if the owner must use it in their next action; put that detail in code.
+Give a path only when the owner must personally open, copy, or type it for their very next action; otherwise omit it, including file inventories in completion reports. Apply the same test to commands and versions; format needed details as code.
 Keep worker labels, tool names, task IDs, internal fields, and delegation out of owner-facing replies; describe the work as "I".
 Retell tool and subagent results in your own words; never paste their reports.
 Write short replies as complete sentences in one natural paragraph, without lists, headings, or a closing recap.

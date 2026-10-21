@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"xbot/internal/tools"
 )
 
 const badVoice = "w1 做完了，骨架建好了：backlog.md、README.md、projects/xbot.md 和 designs/ 都在 ~/.dev/，你现有的仓库一个没动。值得留意：w1 全局装了 tasks-axi@0.4.2，以后直接敲 tasks-axi list 就行。不想要的话说一声，我让它卸掉。"
@@ -80,5 +81,20 @@ func TestVoiceCaseReferenceMatchesRequestedReply(t *testing.T) {
 func TestVoiceCountsUnicodeAndWindowsPaths(t *testing.T) {
 	if got := CountVoice("`~/项目/记录.md` 与 `C:\\work\\note.txt`", nil); got.Paths != 2 || got.Code != 2 {
 		t.Fatal(got)
+	}
+}
+
+func TestFileOnlyToolsExcludeShellRegardlessOfCatalogOrder(t *testing.T) {
+	all := caseTools(t.TempDir(), false)
+	for shift := 0; shift < len(all); shift++ {
+		list := append(append([]tools.Tool{}, all[shift:]...), all[:shift]...)
+		got := fileOnlyTools(list)
+		names := map[string]bool{}
+		for _, tool := range got {
+			names[tool.Name()] = true
+		}
+		if len(got) != 3 || names["shell"] || !names["read_file"] || !names["write_file"] || !names["edit_file"] {
+			t.Fatalf("catalog shift %d gave %v", shift, names)
+		}
 	}
 }
