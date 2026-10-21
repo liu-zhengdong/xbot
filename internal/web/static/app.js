@@ -52,7 +52,6 @@
     editOpen: false,
     messages: [],
     traceOpen: {},
-    recentTasksOpen: new Set(),
     traceOut: {},
     // The context panel's own UI state: which request is shown, which band or
     // message is open, and the snapshot itself (fetched per bot, never cached
@@ -219,11 +218,6 @@
     stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" stroke="none"/>',
     up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   };
-  function bgFrom() {
-    const d = el("div", "bg-from");
-    d.append(bgIcon(BG_LAYERS, 12), document.createTextNode("后台"));
-    return d;
-  }
   const bgState = { data: null, open: false, steerOpen: {}, steerDraft: {}, awaitingIDs: new Set(), timer: 0 };
   function bgBot() { return state.sel && state.sel.type === "bot" ? state.sel.id : ""; }
   async function bgRefresh() {
@@ -608,7 +602,7 @@
       const busy = kind === "running" || kind === "awaiting";
       setTip(av, niceName(name), "right");
       if (row.classList.contains("pin")) setTip(row, niceName(name), "right");
-      if (busy) {
+      if (busy && !row.classList.contains("pin")) {
         const dot = el("span", "rail-status " + kind);
         dot.setAttribute("aria-hidden", "true");
         dot.append(kind === "running" ? spinIcon(10) : icon("awaiting"));
@@ -643,6 +637,7 @@
     state.others = data && Array.isArray(data.others) ? data.others : null;
     renderLists();
     paintStatus();
+    await refreshWork();
     if (stpState.open) stpRefresh().catch(() => {});
   }
 
@@ -2278,7 +2273,6 @@
     if (m.time) row.dataset.time = String(m.time);
     row.dataset.sender = "user";
     const wrap = el("div", "bubble-col");
-    if (m.branch) wrap.append(bgFrom());
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
     const pulled = pullImages(parsed.text);
     const pasted = pastedURLs(state.sel, m.images);
@@ -2309,7 +2303,6 @@
     if (m.time) row.dataset.time = String(m.time);
     row.dataset.sender = "bot:" + (who || "");
     const body = el("div", "body");
-    if (m.branch) body.append(bgFrom());
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
     if (m.content) appendBotContent(body, displayText(m.content));
     const calls = m.tool_calls || [];
@@ -2358,6 +2351,7 @@
     let lastMsg = null;
     let lastRoutine = null;
     const relays = backgroundRelays(messages);
+    const wakeRuns = routineRuns(messages);
     const latestCard = {};
     const latestApproval = {};
     messages.forEach((m, i) => {
@@ -2367,7 +2361,7 @@
       if (appr) latestApproval[appr.id] = i;
     });
     messages.forEach((m, i) => {
-      if (skipMessage(m)) return;
+      if (skipMessage(m) || wakeRuns.hidden.has(i)) return;
       // Background turns have no cards in the chat; the header badge lists them.
       if (m.kind === "fork" || m.kind === "fork_end") return;
       const routine = routineOf(m);
@@ -2379,25 +2373,12 @@
         lastKey = "";
         return;
       }
-      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT") {
-        // Pair a quiet reply only with the wake of the same turn (branch).
-        if (lastRoutine && lastRoutine.dataset.branch === (m.branch || "")) {
-          if (!lastRoutine.querySelector(".routine-silent")) {
-            lastRoutine.querySelector("summary").append(el("span", "routine-silent", " · 没什么要说的"));
-          }
-        } else inner.append(systemLine("没什么要说的"));
-        any = true;
-        lastKey = "";
-        return;
-      }
-      // Invisible tool-only messages do not break the routine/result pair.
-      if (m.role === "user" || String(m.content || "").trim()) lastRoutine = null;
+      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT") return;
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;
         any = true;
         lastKey = "";
-        if (m.branch) inner.append(bgFrom());
         const approval = approvalHistoryCard(appr, m.time);
         approval.dataset.branch = m.branch || "";
         inner.append(approval);
@@ -3559,6 +3540,7 @@
     clearAttach();
     state.streaming = 0;
     state.pendingSends = [];
+    paintWorkStatus();
     state.replyErrors = [];
     state.firstRender = true;
     state.messages = [];
@@ -4080,6 +4062,11 @@
   }
 
   function paintPanel() {
+    const tasks = panelBody.querySelector(".task-view");
+    if (tasks && state.sel?.type === "bot" && state.tab === "computer" && tasks.dataset.bot === state.sel.id) {
+      syncTaskView(tasks, state.panelData || {name: state.sel.id});
+      paintContextBar(); syncPanelChrome(); return;
+    }
     panelBody.replaceChildren();
     paintContextBar();
     if (!state.sel) {
@@ -4615,113 +4602,237 @@
     return wrap;
   }
 
+  function elapsedWork(started, now = Date.now()) {
+    const at = Date.parse(started);
+    if (!Number.isFinite(at) || at <= 0) return "";
+    const seconds = Math.max(0, Math.floor((now - at) / 1000));
+    return seconds < 60 ? seconds + " 秒" : Math.floor(seconds / 60) + " 分" + (seconds % 60 ? " " + seconds % 60 + " 秒" : "");
+  }
+
+  function routineRuns(messages) {
+    const pending = new Map(), hidden = new Set(), recent = [];
+    messages.forEach((m, i) => {
+      const branch = m.branch || "";
+      if (m.role === "user") {
+        const rt = routineOf(m);
+        if (rt) pending.set(branch, {m, i, rt});
+        else if (!unwrap(m.content || "").untrusted && !m.internal) pending.delete(branch);
+      }
+      if (m.role !== "assistant" || !m.content || (m.tool_calls || []).length) return;
+      const wake = pending.get(branch);
+      if (!wake) return;
+      const silent = m.content.trim() === "SILENT";
+      if (silent) { hidden.add(wake.i); hidden.add(i); }
+      recent.push({id: "routine:" + (wake.m.seq || wake.i), name: "例程", task: wake.rt.label, status: "done", summary: silent ? "静默完成" : m.content, finished_at: m.time, started_at: wake.m.time});
+      pending.delete(branch);
+    });
+    return {hidden, recent};
+  }
+
+  function taskAvatar(ag, size = "") { return avatar(ag.name || ag.id || "子代理", null, size); }
+
+  function paintGreeting() {
+    const host = $("greeting");
+    if (!host) return;
+    const statuses = Object.values(stStatus.map);
+    const busy = statuses.filter(st => st.state === "running" || st.state === "awaiting");
+    const done = statuses.filter(st => st.completed_unread > 0);
+    const hour = new Date().getHours();
+    const hello = hour < 6 ? "夜深了" : hour < 12 ? "上午好" : hour < 18 ? "下午好" : "晚上好";
+    const sig = JSON.stringify([hello, state.ownerName, busy.map(s => s.bot), done.map(s => [s.bot, s.completed_unread])]);
+    if (host.dataset.sig === sig) return;
+    host.dataset.sig = sig;
+    host.replaceChildren(document.createTextNode(hello + (state.ownerName ? "，" + state.ownerName : "") + "。"));
+    const line = (items, text) => {
+      host.append(el("br"));
+      const stack = el("span", "greet-stack");
+      for (const st of items.slice(0, 3)) stack.append(avatar(st.bot, paintOf(st.bot), "xs"));
+      if (items.length > 3) stack.append(el("span", "greet-more", "+" + (items.length - 3)));
+      host.append(stack, document.createTextNode(text));
+    };
+    if (busy.length) line(busy, busy.length + " 个 Bot 在忙，");
+    if (done.length) line(done, done.reduce((n, st) => n + st.completed_unread, 0) + " 件事刚做完。");
+    if (!busy.length && !done.length) { host.append(el("br"), el("span", "g", "有什么事，直接说就行。")); }
+  }
+
+  function paintWorkStatus() {
+    const host = $("work-status");
+    const selected = state.sel?.type === "bot" && !state.peer;
+    const agents = selected && state.panelData?.name === state.sel.id ? (state.panelData.agents || []).filter(a => ["running", "awaiting"].includes(a.status)) : [];
+    const signature = JSON.stringify(agents.map(a => [a.id, a.name, a.task, a.steps, a.current_step, a.started_at]));
+    if (host.dataset.sig === signature) return;
+    host.dataset.sig = signature;
+    host.replaceChildren();
+    if (!agents.length) return;
+    const row = el("button", "wrow"); row.type = "button"; row.title = "打开任务";
+    row.addEventListener("click", () => { state.tab = "computer"; rememberPanel(true); panelOpen(true); paintPanel(); });
+    const stack = el("span", "work-stack");
+    for (const ag of agents.slice(0, 3)) stack.append(taskAvatar(ag, "xs"));
+    if (agents.length > 3) stack.append(el("span", "", "+" + (agents.length - 3)));
+    row.append(stack);
+    const started = agents.map(a => a.started_at).filter(t => Date.parse(t) > 0).sort()[0];
+    if (agents.length === 1) {
+      const ag = agents[0];
+      row.append(el("b", "", ag.name || ag.id || "子代理"), el("span", "work-step", ag.current_step || clip(plainText(ag.task || ""), 40)), el("span", "sep", "·"), el("span", "", "第 " + Math.max(1, ag.steps || 0) + " 步"));
+    } else row.append(el("b", "", agents.length + " 个子代理"), el("span", "", "在跑"));
+    if (started) { const duration = el("span", "el"); duration.dataset.workSince = started; duration.dataset.longest = agents.length > 1 ? "true" : ""; row.append(el("span", "sep", "·"), duration); }
+    row.append(icon("chevron")); host.append(row); updateWorkTimes();
+  }
+
+  function slowToolNotice(current, messages, pending, now = Date.now()) {
+    const since = Date.parse(current?.since);
+    if (!current?.tool || !Number.isFinite(since) || now - since < 3000) return "";
+    const interjected = pending.some(row => !row.keepFailed && Date.parse(row.dataset.time) > since) ||
+      messages.some(m => m.role === "user" && !m.internal && !unwrap(m.content || "").untrusted && Date.parse(m.time) > since);
+    if (!interjected) return "";
+    return "在等「" + current.tool + "」返回，已 " + elapsedWork(current.since, now) + "。你的话会接在它后面，返回后马上回你。";
+  }
+
+  function updateWorkTimes() {
+    for (const n of document.querySelectorAll("[data-work-since]")) n.textContent = (n.dataset.longest ? "最久 " : "") + elapsedWork(n.dataset.workSince);
+    const inner = thread.querySelector(".thread-inner");
+    const current = state.sel?.type === "bot" && !state.peer && stStatus.map[state.sel.id];
+    const text = slowToolNotice(current, state.messages || [], state.pendingSends);
+    let slow = inner?.querySelector(".slow-tool");
+    if (!text) { slow?.remove(); return; }
+    if (!inner) return;
+    if (!slow) { slow = el("div", "slow-tool"); slow.append(icon("clock"), el("span")); }
+    slow.querySelector("span").textContent = niceName(state.sel.id) + " " + text;
+    if (inner.lastElementChild !== slow) inner.append(slow);
+  }
+
+  async function refreshWork() {
+    paintGreeting();
+    const selection = state.sel;
+    if (!selection || selection.type !== "bot" || state.peer) { paintWorkStatus(); return; }
+    const data = await fetchBotProfile(selection.id);
+    if (state.sel !== selection) return;
+    const prior = state.panelData;
+    state.panelData = data;
+    paintWorkStatus();
+    const root = panelBody.querySelector(".task-view");
+    if (root && state.tab === "computer") syncTaskView(root, data);
+    else if (prior && state.tab === "details" && JSON.stringify(prior.routines) !== JSON.stringify(data.routines)) paintPanel();
+    updateWorkTimes();
+  }
+
+  function taskCard(ag) {
+    const card = el("div", "task-record"); card.dataset.agent = ag.id;
+    const compact = el("button", "recent-task"); compact.type = "button";
+    compact.append(icon("check"), el("b", "recent-name"), el("span", "recent-title"), el("span", "recent-status"), icon("chevron"));
+    const detail = el("div", "card tk");
+    compact.addEventListener("click", () => { card.classList.add("expanded"); compact.setAttribute("aria-expanded", "true"); });
+    card.append(compact, detail);
+    const head = el("div", "ch"), ct = el("div", "ct");
+    ct.append(el("b", "task-name"), el("span", "s2 task-title"));
+    head.append(taskAvatar(ag, "xs"), ct, el("span", "task-state"));
+    detail.append(head, el("div", "now"), el("div", "res"));
+    const close = el("button", "task-fold", "收起"); close.type = "button";
+    close.addEventListener("click", () => { card.classList.remove("expanded"); compact.setAttribute("aria-expanded", "false"); });
+    head.append(close);
+    const controls = el("div", "ca");
+    const field = el("input"); field.placeholder = "追加指示"; field.maxLength = 4000;
+    const steer = el("button", "secondary", "引导"); steer.type = "button";
+    steer.addEventListener("click", () => { if (field.value.trim()) controlAgent(ag.id, "steer", field.value); else field.focus(); });
+    const stop = el("button", "secondary", "停止"); stop.type = "button";
+    confirmTaskStop(stop, () => controlAgent(ag.id, "cancel", ""));
+    controls.append(field, steer, stop); detail.append(controls);
+    updateTaskCard(card, ag); return card;
+  }
+
+  function updateTaskCard(card, ag) {
+    const hot = ["running", "awaiting", "queued"].includes(ag.status);
+    card.classList.toggle("finished", !hot);
+    card.querySelector(".recent-name").textContent = ag.name || ag.id || "子代理";
+    card.querySelector(".recent-title").textContent = clip(plainText(displayText(ag.task || "")), 80);
+    const compact = card.querySelector(".recent-task");
+    if (compact.dataset.state !== ag.status) { compact.dataset.state = ag.status; compact.firstElementChild.replaceWith(icon(ag.status === "failed" ? "x" : ag.status === "cancelled" ? "stop" : "check")); }
+    card.querySelector(".recent-status").textContent = ag.finished_at ? when(ag.finished_at) : taskStatus(ag.status);
+    card.querySelector(".recent-task").classList.toggle("failed", ag.status === "failed");
+    card.querySelector(".recent-task").setAttribute("aria-expanded", String(card.classList.contains("expanded")));
+    card.querySelector(".task-name").textContent = ag.name || ag.id || "子代理";
+    card.querySelector(".task-title").textContent = clip(plainText(displayText(ag.task || "")), 140);
+    const stateLabel = card.querySelector(".task-state");
+    const text = ag.status === "awaiting" ? "进行中" : taskStatus(ag.status);
+    if (stateLabel.dataset.status !== ag.status) {
+      stateLabel.dataset.status = ag.status; stateLabel.replaceChildren();
+      if (["running", "awaiting"].includes(ag.status)) stateLabel.append(spinIcon(13));
+      else stateLabel.append(icon(ag.status === "failed" ? "x" : ag.status === "queued" ? "clock" : "check"));
+    }
+    let label = stateLabel.querySelector(".state-text");
+    if (!label) { label = el("span", "state-text"); stateLabel.append(label); }
+    label.textContent = text;
+    stateLabel.classList.toggle("failed", ag.status === "failed");
+    const now = card.querySelector(".now");
+    now.textContent = hot ? [ag.current_step, ag.steps ? "第 " + ag.steps + " 步" : "", elapsedWork(ag.started_at)].filter(Boolean).join(" · ") : "";
+    now.hidden = !now.textContent;
+    const result = card.querySelector(".res");
+    result.textContent = hot ? "" : ag.summary === "SILENT" ? "静默完成" : (ag.status === "failed" ? zhError(ag.summary || "") : plainText(displayText(ag.summary || ""))); result.hidden = !result.textContent;
+    result.classList.toggle("failed", ag.status === "failed");
+    card.querySelector(".ca").hidden = !hot;
+    card.querySelector(".task-fold").hidden = hot;
+  }
+
+  const routineChanges = new Set();
+  function routineCard(data, rt) {
+    const card = el("div", "routine task-routine"); card.dataset.routine = rt.id;
+    const copy = el("div", "ct"); copy.append(el("b", "routine-name"), el("span", "s2 routine-time"));
+    const toggle = el("button", "tog"); toggle.type = "button"; toggle.setAttribute("role", "switch");
+    toggle.addEventListener("click", async () => {
+      const before = card.routine.enabled !== false; const desired = !before;
+      routineChanges.add(rt.id); toggle.disabled = true; toggle.classList.toggle("on", desired); toggle.setAttribute("aria-checked", String(desired));
+      try {
+        const changed = await api("/api/bots/" + encodeURIComponent(data.name) + "/routines/" + encodeURIComponent(rt.id), {method: "PATCH", body: {enabled: desired}});
+        card.routine.enabled = changed.enabled;
+      } catch (e) { card.routine.enabled = before; setStatus(visibleError(e)); }
+      finally { routineChanges.delete(rt.id); toggle.disabled = false; updateRoutineCard(card, card.routine); }
+    });
+    card.append(icon("alarm-clock"), copy, toggle); updateRoutineCard(card, rt); return card;
+  }
+
+  function updateRoutineCard(card, rt) {
+    card.routine = rt;
+    card.querySelector(".routine-name").textContent = rt.name || "例程";
+    card.querySelector(".routine-time").textContent = rt.at ? when(rt.at) : cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : "");
+    if (routineChanges.has(rt.id)) return;
+    const toggle = card.querySelector(".tog"), enabled = rt.enabled !== false;
+    toggle.classList.toggle("on", enabled); toggle.setAttribute("aria-checked", String(enabled)); toggle.setAttribute("aria-label", (enabled ? "停用" : "启用") + "「" + (rt.name || "例程") + "」");
+  }
+
+  function syncTaskView(root, data) {
+    const agents = [...(data.agents || []), ...routineRuns(state.messages || []).recent];
+    const sections = [
+      ["进行中", agents.filter(a => ["running", "awaiting"].includes(a.status)), "agent"],
+      ["排队中", agents.filter(a => a.status === "queued"), "agent"],
+      ["最近结束", agents.filter(a => !["running", "awaiting", "queued"].includes(a.status)).sort((a,b) => Date.parse(b.finished_at || 0) - Date.parse(a.finished_at || 0)).slice(0,20), "agent"],
+      ["例程", data.routines || [], "routine"],
+    ];
+    if (!agents.length && !sections[3][1].length) { if (!root.querySelector(".panel-empty")) root.replaceChildren(panelEmpty("tasks", "没有任务", "让它「每天 8 点提醒我」，这里就会有一个例程。")); return; }
+    root.querySelector(".panel-empty")?.remove();
+    const cards = new Map([...root.querySelectorAll("[data-agent], [data-routine]")].map(n => [n.dataset.agent ? "agent:" + n.dataset.agent : "routine:" + n.dataset.routine, n]));
+    const keep = new Set();
+    for (const [label, items, kind] of sections) {
+      let section = [...root.children].find(n => n.dataset.section === label);
+      if (!section) { section = el("section", "task-section"); section.dataset.section = label; section.append(el("h4"), el("div", "task-items")); root.append(section); }
+      section.querySelector("h4").textContent = label + " · " + items.length;
+      const list = section.querySelector(".task-items");
+      let hint = list.querySelector(".pnone");
+      if (items.length) hint?.remove();
+      else if (!hint) list.append(el("div", "pnone", label === "进行中" ? "没有在跑的子代理。" : label === "排队中" ? "没有排队的任务。" : label === "例程" ? "还没有例程。" : "还没有结束的任务。"));
+      let next = list.firstElementChild;
+      for (const item of items) {
+        const key = kind + ":" + item.id; keep.add(key);
+        const card = cards.get(key) || (kind === "agent" ? taskCard(item) : routineCard(data, item));
+        if (kind === "agent") updateTaskCard(card, item); else updateRoutineCard(card, item);
+        if (card !== next) list.insertBefore(card, next);
+        next = card.nextElementSibling;
+      }
+    }
+    for (const [key, card] of cards) if (!keep.has(key)) card.remove();
+  }
+
   function computerView(data) {
-    const wrap = document.createDocumentFragment();
-    if (!(data.routines || []).length && !(data.agents || []).length) {
-      wrap.append(panelEmpty("tasks", "没有任务", "让它「每天 8 点提醒我」，这里就会有一个例程。"));
-      return wrap;
-    }
-    const routines = section("例程");
-    const list = data.routines || [];
-    if (!list.length) routines.append(el("p", "hint", "没有例程"));
-    for (const rt of list) {
-      const card = el("div", "routine");
-      card.title = String(rt.cron || "");
-      const meta = el("span", "meta", cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : ""));
-      if (rt.enabled === false) {
-        const dot = el("i", "status-dot off");
-        setTip(dot, "停用");
-        meta.append(document.createTextNode(" "), dot);
-      }
-      card.append(el("span", "", rt.name || rt.id), meta);
-      routines.append(card);
-    }
-    const tasks = section("进行中");
-    const agents = data.agents || [];
-    const running = agents.filter((ag) => ["running", "awaiting", "queued"].includes(ag.status));
-    const finished = agents.filter((ag) => ["done", "failed", "cancelled", "canceled", "interrupted", "denied", "declined"].includes(ag.status));
-    if (!running.length) tasks.append(el("p", "hint", "没有进行中的任务"));
-    for (const ag of running) {
-      const card = el("div", "task");
-      const top = el("div", "task-top");
-      const awaiting = taskAwaiting(ag, data.name);
-      if (awaiting) top.append(approvalTaskButton(data.name, ag.id));
-      else if (ag.status === "queued") top.append(el("span", "", "已排队"));
-      if (top.childNodes.length) card.append(top);
-      card.append(el("p", "task-text", clip(plainText(displayText(ag.task || ag.id)) || "子任务", 140)));
-      const row = el("div", "row");
-      const field = document.createElement("input");
-      field.placeholder = "消息";
-      field.maxLength = 4000;
-      const go = el("button", "secondary", "引导");
-      go.type = "button";
-      go.disabled = true;
-      field.addEventListener("input", () => { go.disabled = !field.value.trim(); });
-      go.addEventListener("click", () => controlAgent(ag.id, "steer", field.value));
-      const stop = el("button", "secondary", "停止");
-      stop.type = "button";
-      confirmTaskStop(stop, () => controlAgent(ag.id, "cancel", ""));
-      if (!awaiting) row.append(field, go);
-      row.append(stop);
-      card.append(row);
-      tasks.append(card);
-    }
-    wrap.append(routines, tasks);
-    if (finished.length) {
-      const recent = section("");
-      const toggle = el("button", "secondary recent-toggle");
-      toggle.type = "button";
-      const list = el("div", "recent-tasks");
-      const botName = data.name;
-      const sync = () => {
-        const open = state.recentTasksOpen.has(botName);
-        toggle.replaceChildren(icon(open ? "chevronDown" : "chevron"),
-          el("span", "", "最近结束 · " + finished.length));
-        toggle.setAttribute("aria-expanded", String(open));
-        list.hidden = !open;
-      };
-      toggle.addEventListener("click", () => {
-        if (state.recentTasksOpen.has(botName)) state.recentTasksOpen.delete(botName);
-        else state.recentTasksOpen.add(botName);
-        sync();
-      });
-      let openDetail = null;
-      for (const ag of finished) {
-        const row = el("button", "recent-task");
-        row.type = "button";
-        row.setAttribute("aria-expanded", "false");
-        row.append(el("span", "recent-title", clip(plainText(displayText(ag.task || ag.id)) || "子任务", 80)),
-          el("span", ag.status === "failed" ? "recent-status failed" : "recent-status",
-            taskStatus(ag.status)));
-        row.addEventListener("click", () => {
-          const wasOpen = openDetail && openDetail.row === row;
-          if (openDetail) {
-            openDetail.row.setAttribute("aria-expanded", "false");
-            openDetail.drawer.remove();
-            openDetail = null;
-          }
-          if (wasOpen) return;
-          const drawer = el("div", "routine-drawer recent-detail");
-          drawer.append(el("div", "routine-prompt", plainText(displayText(ag.task || ag.id)) || "子任务"),
-            el("div", "routine-source", "状态：" + (taskStatus(ag.status))));
-          if (ag.finished_at) drawer.append(el("div", "routine-source", "结束时间：" + new Date(ag.finished_at).toLocaleString("zh-CN")));
-          // Red only for an actual error text; a missing summary is just gray.
-          if (ag.summary) {
-            const shown = ag.status === "done" ? plainText(ag.summary) : zhError(ag.summary);
-            drawer.append(el("div", ag.status === "failed" ? "routine-prompt failed" : "routine-prompt", shown));
-            errorDetails(drawer, ag.summary, shown);
-          } else drawer.append(el("div", "routine-source", ag.status === "failed" ? "没有留下失败原因" : "没有留下结果摘要。"));
-          row.after(drawer);
-          row.setAttribute("aria-expanded", "true");
-          openDetail = { row, drawer };
-        });
-        list.append(row);
-      }
-      sync();
-      recent.append(toggle, list);
-      wrap.append(recent);
-    }
-    return wrap;
+    const root = el("div", "task-view"); root.dataset.bot = data.name; syncTaskView(root, data); return root;
   }
 
   async function loadModelCatalog() {
@@ -4749,6 +4860,7 @@
       state.panelData = data;
       state.ctxSnap = snap;
       paintPanel();
+      paintWorkStatus();
     } catch (e) {
       if (state.sel === selection && request === state.panelLoad) {
         panelBody.replaceChildren(el("div", "muted", "连不上 XBot"));
@@ -5266,6 +5378,7 @@
     state.pendingSends = state.pendingSends.filter((row) => !row.accepted || ((row.queued || row.keepFailed) && !queuedRecorded(row)));
     if (state.pendingSends.length) inner.querySelector(".empty")?.remove();
     inner.append(...state.pendingSends, ...state.replyErrors);
+    updateWorkTimes();
   }
 
   let sendStatus;
@@ -6071,6 +6184,8 @@
     $("connect-pop").hidden = true;
     $("account-connect").setAttribute("aria-expanded", "false");
   }
+
+  setInterval(updateWorkTimes, 1000);
 
   function closePops() {
     closeMessageMenu();

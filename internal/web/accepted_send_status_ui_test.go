@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -55,22 +54,5 @@ func TestAcceptedSendStatusRecovery(t *testing.T) {
 	}
 	if len(panel.Agents) != 1 || !panel.Agents[0].FinishedAt.Equal(ended) || panel.Agents[0].Summary != "provider: request timeout after 3m0s" {
 		t.Fatalf("failed task lost its last error or end time: %+v", panel)
-	}
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"function zhError(msg)", "function taskStatus(status)", "function errorDetails(host, raw, shown)",
-		"pending.keepFailed = true", "(row.queued || row.keepFailed) && !queuedRecorded(row)",
-		"pending.baseline = ownerSends(text)", `event === "queued"`, `payload.status === "queued"`,
-		"await readSSE(res, selection, prose, markQueued)", "没送到，原文还在输入框里",
-		`field.addEventListener("input", () => { go.disabled = !field.value.trim(); })`,
-		`clip(plainText(displayText(ag.task || ag.id)) || "子任务", 80)`, "没有留下失败原因",
-		"const raw = plainText(displayText(text));", "errorDetails(drawer, ag.summary, shown)",
-	} {
-		if !strings.Contains(string(raw), want) {
-			t.Errorf("missing send/status UI regression contract: %s", want)
-		}
 	}
 }

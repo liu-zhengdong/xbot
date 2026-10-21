@@ -33,7 +33,7 @@ func TestTaskDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	summary := strings.Repeat("错😀", 1100)
-	raw, err := json.Marshal(map[string]any{"id": "failed-task", "status": "failed", "task": "检查任务", "summary": summary})
+	raw, err := json.Marshal(map[string]any{"id": "failed-task", "status": "failed", "task": "检查任务", "summary": summary, "started": "2026-10-21T08:00:00Z", "finished_at": "2026-10-21T08:03:00Z", "current_step": "读取目录", "steps": 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,11 @@ func TestTaskDetails(t *testing.T) {
 	}
 	var panel struct {
 		Agents []struct {
-			Summary string `json:"summary"`
+			Summary     string `json:"summary"`
+			Started     string `json:"started_at"`
+			Finished    string `json:"finished_at"`
+			CurrentStep string `json:"current_step"`
+			Steps       int    `json:"steps"`
 		} `json:"agents"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &panel); err != nil {
@@ -58,18 +62,9 @@ func TestTaskDetails(t *testing.T) {
 	if len(panel.Agents) != 1 || panel.Agents[0].Summary != clip(summary, 2000) || !utf8.ValidString(panel.Agents[0].Summary) {
 		t.Fatal("task API must return a rune-clipped result or error summary")
 	}
-	for file, wants := range map[string][]string{
-		"static/app.js":  {`const row = el("button", "recent-task")`, `row.type = "button"`, `row.setAttribute("aria-expanded", "true")`, `openDetail.drawer.remove()`, `没有留下结果摘要。`, `if (ag.finished_at)`},
-		"static/app.css": {"position: sticky; top: 0; z-index: 3; background: var(--panel)", ".routine { align-items: center; }", ".routine .meta { font-family: var(--font); font-variant-numeric: tabular-nums; }", ".recent-detail .failed { color: var(--err); }"},
-	} {
-		raw, err := staticFS.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, want := range wants {
-			if !strings.Contains(string(raw), want) {
-				t.Errorf("%s missing %s", file, want)
-			}
-		}
+	ag := panel.Agents[0]
+	if ag.Started != "2026-10-21T08:00:00Z" || ag.Finished != "2026-10-21T08:03:00Z" || ag.CurrentStep != "读取目录" || ag.Steps != 3 {
+		t.Fatalf("task status fields: %+v", ag)
 	}
+
 }
