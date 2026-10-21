@@ -662,7 +662,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .bubble ::selection, .bubble::selection { background: var(--x-user-sel); color: inherit; }
 .msg .ht { position: absolute; bottom: 6px; left: calc(100% + 8px); font-size: 11px; color: var(--x-faint); font-variant-numeric: tabular-nums; white-space: nowrap; visibility: hidden; }
 .msg.user .ht { left: auto; right: calc(100% + 8px); }
-.msg:hover .ht { visibility: visible; }
+@media (hover: hover) { .msg:hover .ht { visibility: visible; } }
 .grpchat .msg.bot.cont > .body { margin-left: 32px; }
 .tdiv { display: flex; justify-content: center; margin-top: 24px; font-size: 11.5px; color: var(--x-faint); font-variant-numeric: tabular-nums; }
 .thread-inner > .tdiv + .msg { margin-top: 10px; }
@@ -674,33 +674,10 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .msg.bot .who { margin-bottom: 6px; }
 .msg.bot .who > time { color: var(--x-faint); font-weight: 400; }
 
-.meta-row { display: flex; align-items: center; gap: 4px; height: 16px; }
-
-/* Actions and time sit beside the bubble, never in the next run's 6px gap. */
+/* Message time is overlaid beside the bubble, never in the message flow. */
 .msg > .bubble-col, .msg > .body { position: relative; }
 .msg.bot .body { max-width: min(86%, 100% - 72px); }
-.msg > .bubble-col > .meta-row, .msg > .body > .meta-row {
-  position: absolute; bottom: 22px; left: calc(100% + 8px); width: 56px;
-  opacity: 0; pointer-events: none; margin: 0; padding: 0; border-radius: 8px;
-}
-.msg.user > .bubble-col > .meta-row { left: auto; right: calc(100% + 8px); }
-.msg:hover > .bubble-col > .meta-row, .msg:hover > .body > .meta-row,
-.msg:focus-within > .bubble-col > .meta-row, .msg:focus-within > .body > .meta-row { opacity: 1; pointer-events: auto; }
-.meta-row > .meta { display: none; }
-
 .thread-inner { padding-bottom: 20px; }
-
-.meta-row > .copy, .meta-row > .reply { margin: 0; flex: none; }
-
-.msg.user .meta-row { justify-content: flex-end; }
-
-.msg.user .meta { opacity: 0; transition: opacity 160ms ease-out; }
-
-.msg.user:hover .meta, .msg.user:focus-within .meta { opacity: 1; }
-
-.main.peer .msg.bot .meta { opacity: 0; transition: opacity 160ms ease-out; }
-
-.main.peer .msg.bot:hover .meta, .main.peer .msg.bot:focus-within .meta { opacity: 1; }
 
 .copy {
   border: 0; background: transparent; color: var(--faint);
@@ -711,28 +688,12 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .copy svg { width: 16px; height: 16px; }
 
-.msg:hover .copy, .copy:focus-visible,
+.copy:focus-visible,
 .code-block:hover .copy, .code-block:focus-within .copy { opacity: 1; }
 
 .copy:hover { background: var(--hover); color: var(--text); }
 
 .copy:active { background: var(--selected); color: var(--text); }
-
-.reply {
-  border: 0; background: transparent; color: var(--muted);
-  width: 28px; height: 28px; border-radius: 8px; padding: 0; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  opacity: 0;
-  transition: opacity 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
-}
-
-.reply svg { width: 16px; height: 16px; }
-
-.msg:hover .reply, .reply:focus-visible { opacity: 1; }
-
-.reply:hover { background: var(--hover); color: var(--text); }
-
-.reply:active { background: var(--selected); color: var(--text); }
 
 .quote-block {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1120,9 +1081,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .main.peer .dock { display: none; }
 
-.main.peer .msg.user .meta { opacity: 1; }
 
-.main.peer .msg.bot .meta { opacity: 1; }
 
 .composer {
   margin: 0 auto;
@@ -1997,7 +1956,6 @@ html[data-theme="dark"] {
   .panel-bar { top: 0; }
   .hero { padding-top: 8px; }
   .dock { padding: 12px 0; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
-  .msg.user .meta { opacity: 1; }
   .notes { right: 8px; top: 52px; }
 }
 
@@ -2038,7 +1996,6 @@ html[data-theme="dark"] {
 .text-btn:focus-visible,
 .sysline.link:focus-visible,
 .copy:focus-visible,
-.reply:focus-visible,
 .quote-block:focus-visible,
 .pin-mark:focus-visible,
 .folder-toggle:focus-visible,
@@ -2471,35 +2428,23 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .bot-bubble .code-block { background: var(--x-card); }
 .in-app:is(.os-win, .os-linux) .side-drag { height: 22px; }
 @media (min-width: 768px) { .sidebar.rail .side-foot { padding-bottom: 0; } }
-/* Touch actions are opened by a tap, never by an emulated sticky hover. */
-.action-label { display: none; }
+/* Context menus reuse the existing floating menu surface. */
 .sidebar.rail .railnew .icon { width: 12px; height: 12px; }
 .bubble .code-head > span { font-size: 11px; opacity: .6; }
 .thread-unavailable .btn.sec { border: 0; height: 32px; padding: 0 13px; border-radius: 8px; font-size: 13.5px; font-weight: 560; display: inline-flex; align-items: center; justify-content: center; line-height: 1; gap: 6px; background: var(--x-fill-2); color: var(--x-text); }
 .thread-unavailable .btn.sec:hover { background: var(--x-fill-3); }
 .thread-unavailable .btn.sec .icon { width: 15px; height: 15px; stroke-width: 1.8; }
+.message-menu { position: fixed; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-card); box-shadow: var(--x-shadow-pop); }
+.pop.message-menu button.menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 13px; line-height: 32px; background: transparent; color: var(--x-text); }
+.pop.message-menu button:is(:hover, :focus-visible) { background: var(--x-fill-2); outline: none; }
+.message-copy-receipt { position: fixed; z-index: 70; padding: 4px 10px; border-radius: 8px; background: var(--x-card); color: var(--x-muted); box-shadow: var(--x-shadow-pop); font-size: 12px; pointer-events: none; }
 @media (hover: none) {
-  .msg:not(.touch-open) > :is(.body, .bubble-col) > .meta-row { opacity: 0; pointer-events: none; }
-  .msg:not(.touch-open) .ht { visibility: hidden; }
-  .msg.touch-open > :is(.body, .bubble-col) > .meta-row { opacity: 1; pointer-events: auto; }
-  .msg.touch-open :is(.copy, .reply) { opacity: 1; }
-  .msg.touch-open .ht { visibility: visible; }
+  .msg .ht { display: none; }
+  #thread :is(.bubble, .bot-bubble) { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #thread .code-block { -webkit-touch-callout: default; -webkit-user-select: text; user-select: text; }
 }
 @media (max-width: 767px) {
   .main, .in-app .shell > .main { margin: 0; border-radius: 0; }
   .sidebar:not(.open) { box-shadow: none; }
   .msg.bot .body { max-width: 100%; }
-  .msg > :is(.body, .bubble-col) > .ht { display: none; }
-  .msg > :is(.body, .bubble-col) > .meta-row { position: static; display: none; justify-content: flex-start; align-self: flex-start; width: auto; height: 24px; line-height: 24px; margin-top: 4px; gap: 0; opacity: 1; pointer-events: auto; }
-  .msg > :is(.body, .bubble-col) > .meta-row > .meta { display: inline; opacity: 1; font-size: 12px; line-height: 24px; color: var(--x-faint); }
-  .msg .meta-row > .meta::after, .msg .meta-row > button + button::before { content: "·"; margin: 0 6px; color: var(--x-faint); }
-  .msg .meta-row > :is(.copy, .reply) { display: inline-flex; align-items: center; width: auto; height: 24px; padding: 0; font-size: 12px; line-height: 24px; opacity: 1; }
-  .msg .meta-row > button .icon { display: none; }
-  .msg .meta-row .action-label { display: inline; }
-}
-@media (max-width: 767px) and (hover: hover) {
-  .msg:is(:hover, :focus-within) > :is(.body, .bubble-col) > .meta-row { display: flex; }
-}
-@media (max-width: 767px) and (hover: none) {
-  .msg.touch-open > :is(.body, .bubble-col) > .meta-row { display: flex; }
 }

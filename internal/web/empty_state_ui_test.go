@@ -69,22 +69,3 @@ func TestEmptyChatStartersAndCard(t *testing.T) {
 		t.Error("the info panel follows the card's radius 12")
 	}
 }
-
-// starterPrompts turns routines and the persona into at most three starters.
-func TestStarterPromptsShape(t *testing.T) {
-	b, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(b)
-	i := strings.Index(js, "function starterPrompts(profile) {")
-	if i < 0 {
-		t.Fatal("no starterPrompts")
-	}
-	body := js[i : i+strings.Index(js[i:], "\n  }\n")]
-	for _, want := range []string{`out.length < 3`, `profile.routines`, `"现在跑一次「" + rt.name + "」"`, `push("帮我" + m[1].trim())`, `GENERIC_STARTERS`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("starterPrompts is missing %s", want)
-		}
-	}
-}

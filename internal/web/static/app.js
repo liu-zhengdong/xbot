@@ -1073,6 +1073,9 @@
     arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
     imageUp: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 9 5-5 5 5"/><path d="M12 4v12"/>',
     "refresh-cw": '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+    "book-open": '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3a6 6 0 0 1 6 4 6 6 0 0 1 6-4h3a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-4a5 5 0 0 0-5 3 5 5 0 0 0-5-3z"/>',
+    "message-circle-question": '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    "list-checks": '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
     "file-text": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>',
     chart: '<path d="M3 3v18h18M8 16v-4M13 16V8M18 16V5"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
@@ -1291,28 +1294,27 @@
     }
   });
 
-  function copyText(text, btn) {
-    const done = () => {
-      if (!btn) return;
-      btn.setAttribute("aria-label", "已复制");
-      setTimeout(() => btn.setAttribute("aria-label", "复制"), 1200);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(() => fallback());
-      return;
-    }
-    fallback();
-    function fallback() {
-      const ta = document.createElement("textarea");
+  async function copyText(text, btn) {
+    let copied = false;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch (e) {
+      const ta = el("textarea");
       ta.value = text;
-      ta.setAttribute("readonly", "");
       ta.style.position = "fixed";
       ta.style.left = "-9999px";
       document.body.append(ta);
       ta.select();
-      try { document.execCommand("copy"); done(); } catch (e) {}
+      try { copied = document.execCommand("copy"); } catch (e) {}
       ta.remove();
     }
+    if (copied && btn) {
+      btn.setAttribute("aria-label", "已复制");
+      setTimeout(() => btn.setAttribute("aria-label", "复制"), 1200);
+    }
+    return copied;
   }
 
   function unwrap(content) {
@@ -1674,23 +1676,27 @@
   // up to three starters made from its routines and persona. A starter only
   // fills the composer; sending still takes Enter or the send button.
   const EMPTY_LINE = "有什么事，直接说就行。";
-  const GENERIC_STARTERS = ["你能帮我做些什么？", "帮我整理今天要做的事", "把这段话总结成三点"];
+  const GENERIC_STARTERS = [
+    {text: "你能帮我做些什么？", icon: "message-circle-question"},
+    {text: "帮我整理今天要做的事", icon: "list-checks"},
+    {text: "把这段话总结成三点", icon: "book-open"},
+  ];
 
   function starterPrompts(profile) {
     const out = [];
-    const push = (text) => {
+    const push = (text, icon) => {
       text = String(text || "").replace(/\s+/g, " ").trim();
-      if (text && text.length <= 30 && !out.includes(text) && out.length < 3) out.push(text);
+      if (text && text.length <= 30 && !out.some(item => item.text === text) && out.length < 3) out.push({text, icon});
     };
     for (const rt of (profile && profile.routines) || []) {
-      if (rt && rt.enabled !== false && rt.name) push("现在跑一次「" + rt.name + "」");
+      if (rt && rt.enabled !== false && rt.name) push("现在跑一次「" + rt.name + "」", "alarm-clock");
     }
     // What the persona or description says the bot does, asked as a request:
     // 「负责整理日记」 becomes 「帮我整理日记」.
     const said = [profile && profile.persona, profile && profile.description].join("\n");
     const re = /(?:擅长|负责|专门|帮(?:主人|你|我|用户)?)([^，。,.；;：:！!？?\n「」]{2,14})/g;
-    for (let m; (m = re.exec(said)) && out.length < 3;) push("帮我" + m[1].trim());
-    for (const text of GENERIC_STARTERS) push(text);
+    for (let m; (m = re.exec(said)) && out.length < 3;) push("帮我" + m[1].trim(), /读|阅读|文章/.test(m[1]) ? "book-open" : "list-checks");
+    for (const item of GENERIC_STARTERS) push(item.text, item.icon);
     return out;
   }
 
@@ -1727,10 +1733,10 @@
     const box = el("div", "starters");
     starterProfile(who).then((profile) => {
       if (!box.isConnected) return;
-      for (const [i, text] of starterPrompts(profile).entries()) {
+      for (const {text, icon: glyph} of starterPrompts(profile)) {
         const btn = el("button", "starter");
         btn.type = "button"; // never a submit: it fills the composer only
-        btn.append(icon(["alarm-clock", "file-text", "chart"][i % 3]), el("span", "", text), icon("chevron"));
+        btn.append(icon(glyph), el("span", "", text), icon("chevron"));
         btn.addEventListener("click", () => fillComposer(text));
         box.append(btn);
       }
@@ -1848,43 +1854,113 @@
     return card;
   }
 
-  const touchMessages = matchMedia("(hover: none)");
-  let touchMessage = null;
+  const messageContents = new WeakMap();
+  let messageMenu = null;
+  let messagePress = null;
+  let copyReceipt = null;
 
-  function closeMessageActions() {
-    if (touchMessage) touchMessage.classList.remove("touch-open");
-    touchMessage = null;
+  function messageMenuPosition(x, y, width, height, viewportWidth, viewportHeight) {
+    return {
+      left: Math.max(8, Math.min(x + width > viewportWidth - 8 ? x - width : x, viewportWidth - width - 8)),
+      top: Math.max(8, Math.min(y + height > viewportHeight - 8 ? y - height : y, viewportHeight - height - 8)),
+    };
   }
 
-  function toggleMessageActions(target) {
-    const row = target.closest("#thread .msg");
-    if (target.closest("button, a, input, textarea, select")) {
-      if (row !== touchMessage) closeMessageActions();
-      return;
-    }
-    const next = row && row.querySelector(".meta-row") ? row : null;
-    const wasOpen = next === touchMessage;
-    closeMessageActions();
-    if (next && !wasOpen) {
-      next.classList.add("touch-open");
-      touchMessage = next;
-    }
+  function closeMessageMenu() {
+    messageMenu?.remove();
+    messageMenu = null;
+    if (messagePress) clearTimeout(messagePress.timer);
+    messagePress = null;
   }
 
-  document.addEventListener("click", (ev) => {
-    if (touchMessages.matches) toggleMessageActions(ev.target);
+  function bindMessageMenu(row, m, text) {
+    messageContents.set(row, {message: m, text});
+  }
+
+  function messageAt(target) {
+    if (target.closest(".code-block, pre")) return null;
+    const bubble = target.closest(".bubble, .bot-bubble");
+    const data = bubble && messageContents.get(bubble.closest(".msg"));
+    return data ? {bubble, ...data} : null;
+  }
+
+  function showMessageMenu(data, x, y, mobile) {
+    closePops();
+    copyReceipt?.remove();
+    const selection = window.getSelection();
+    const selected = selection && data.bubble.contains(selection.anchorNode) && data.bubble.contains(selection.focusNode) ? selection.toString() : "";
+    if (mobile) selection?.removeAllRanges();
+    const menu = el("div", "pop message-menu");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "消息操作");
+    const items = [
+      {label: "回复", glyph: "reply", run: () => armQuote(data.message.seq, previewText(data.message))},
+      {label: "复制", glyph: "copy", run: async () => {
+        if (!await copyText(selected || data.text)) { setStatus("复制失败，请再试一次"); return; }
+        if (!mobile) return;
+        const receipt = el("div", "message-copy-receipt", "已复制");
+        receipt.setAttribute("role", "status");
+        receipt.style.left = menu.style.left;
+        receipt.style.top = menu.style.top;
+        document.body.append(receipt);
+        copyReceipt = receipt;
+        setTimeout(() => { receipt.remove(); if (copyReceipt === receipt) copyReceipt = null; }, 1500);
+      }},
+    ];
+    for (const item of items) {
+      const button = el("button", "menu-row");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.disabled = item.label === "回复" && !data.message.seq;
+      button.append(icon(item.glyph), el("span", "", item.label));
+      button.addEventListener("click", () => { closeMessageMenu(); item.run(); });
+      menu.append(button);
+    }
+    document.body.append(menu);
+    const r = data.bubble.getBoundingClientRect();
+    const position = messageMenuPosition(mobile ? r.left : x, mobile ? r.top - menu.offsetHeight - 8 : y, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight);
+    menu.style.left = position.left + "px";
+    menu.style.top = position.top + "px";
+    messageMenu = menu;
+    menu.querySelector("button:not(:disabled)")?.focus({preventScroll: true});
+  }
+
+  thread.addEventListener("contextmenu", (ev) => {
+    const data = messageAt(ev.target);
+    if (!data) return; // Code blocks keep the browser's own menu.
+    ev.preventDefault();
+    if (!matchMedia("(hover: none)").matches) showMessageMenu(data, ev.clientX, ev.clientY, false);
+  });
+  thread.addEventListener("pointerdown", (ev) => {
+    if (ev.pointerType !== "touch" || !matchMedia("(hover: none)").matches) return;
+    const data = messageAt(ev.target);
+    if (!data) return;
+    closeMessageMenu();
+    messagePress = {x: ev.clientX, y: ev.clientY, timer: setTimeout(() => showMessageMenu(data, ev.clientX, ev.clientY, true), 500)};
+  });
+  thread.addEventListener("pointermove", (ev) => {
+    if (messagePress && Math.hypot(ev.clientX - messagePress.x, ev.clientY - messagePress.y) > 8) closeMessageMenu();
+  });
+  for (const event of ["pointerup", "pointercancel"]) thread.addEventListener(event, () => {
+    if (messagePress) clearTimeout(messagePress.timer);
+    messagePress = null;
+  });
+  document.addEventListener("pointerdown", ev => {
+    if (messageMenu && !messageMenu.contains(ev.target)) closeMessageMenu();
   }, true);
-  touchMessages.addEventListener("change", closeMessageActions);
-
-  function copyBtn(text) {
-    const btn = el("button", "copy");
-    btn.type = "button";
-    btn.setAttribute("aria-label", "复制");
-    setTip(btn, "复制");
-    btn.append(icon("copy"), el("span", "action-label", "复制"));
-    btn.addEventListener("click", () => copyText(text || "", btn));
-    return btn;
-  }
+  document.addEventListener("scroll", closeMessageMenu, true);
+  window.addEventListener("resize", closeMessageMenu);
+  document.addEventListener("keydown", ev => {
+    if (!messageMenu) return;
+    if (!["Escape", "ArrowDown", "ArrowUp", "Enter"].includes(ev.key)) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    if (ev.key === "Escape") { closeMessageMenu(); return; }
+    const buttons = [...messageMenu.querySelectorAll("button:not(:disabled)")];
+    const i = buttons.indexOf(document.activeElement);
+    if (ev.key === "Enter") { buttons[Math.max(0, i)]?.click(); return; }
+    buttons[(i + (ev.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+  }, true);
 
   function systemLine(text, who, peer) {
     const row = el(peer ? "button" : "div", "sysline" + (peer ? " link" : ""));
@@ -2068,8 +2144,6 @@
     const body = row.querySelector(".bubble-col, .body");
     if (body && time) {
       body.append(el("span", "ht", clockTime(time)));
-      const stamp = body.querySelector(".meta-row > .meta");
-      if (stamp) stamp.textContent = clockTime(time);
     }
   }
 
@@ -2180,20 +2254,6 @@
     window.setTimeout(() => row.classList.remove("quote-hit"), 1500);
   }
 
-  function replyBtn(m) {
-    const btn = el("button", "reply");
-    btn.type = "button";
-    btn.setAttribute("aria-label", "回复");
-    setTip(btn, "回复");
-    btn.append(icon("reply"), el("span", "action-label", "回复"));
-    btn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      armQuote(m.seq, previewText(m));
-    });
-    return btn;
-  }
-
   function userBubble(m, messages) {
     const parsed = unwrap(m.content || "");
     const row = el("div", "msg user");
@@ -2217,14 +2277,10 @@
       bubble.textContent = parsed.text;
       wrap.append(bubble);
     }
-    const metaRow = el("div", "meta-row");
     if (parsed.untrusted && parsed.source !== "timer" && !parsed.source.startsWith("bot:")) {
-      metaRow.append(el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信"));
+      wrap.append(el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信"));
     }
-    metaRow.append(el("span", "meta", when(m.time)));
-    if (m.seq) metaRow.append(replyBtn(m));
-    metaRow.append(copyBtn(parsed.text));
-    wrap.append(metaRow);
+    bindMessageMenu(row, m, parsed.text);
     row.append(wrap);
     addBubbleTime(row, m.time);
     return row;
@@ -2251,11 +2307,7 @@
         continue;
       }
     }
-    const metaRow = el("div", "meta-row");
-    metaRow.append(el("span", "meta", when(m.time)));
-    if (m.seq) metaRow.append(replyBtn(m));
-    metaRow.append(copyBtn(m.content || ""));
-    body.append(metaRow);
+    bindMessageMenu(row, m, m.content || "");
     row.append(body);
     addBubbleTime(row, m.time);
     return { row: row, peers: peers };
@@ -2442,9 +2494,7 @@
         }
         if (pulled.images.length) wrap.append(gallery(pulled.images));
         if (!pulled.text && !pulled.images.length) wrap.append(el("div", "bubble", text));
-        const metaRow = el("div", "meta-row");
-        metaRow.append(el("span", "meta", when(m.time)), copyBtn(text));
-        wrap.append(metaRow);
+        bindMessageMenu(row, m, text);
         row.append(wrap);
       } else {
         if (!row.classList.contains("cont")) row.append(avatar(m.sender || "B", paintOf(m.sender)));
@@ -2457,9 +2507,7 @@
           body.append(name);
         }
         appendBotContent(body, text);
-        const metaRow = el("div", "meta-row");
-        metaRow.append(el("span", "meta", when(m.time)), copyBtn(text));
-        body.append(metaRow);
+        bindMessageMenu(row, m, text);
         row.append(body);
         if (row.classList.contains("cont")) markContinuation(row, m.time);
       }
@@ -3489,7 +3537,7 @@
   }
 
   function resetConversation() {
-    closeMessageActions();
+    closeMessageMenu();
     // Pasted pictures belong to the bot they were uploaded to.
     clearAttach();
     state.streaming = 0;
@@ -6008,6 +6056,7 @@
   }
 
   function closePops() {
+    closeMessageMenu();
     closeAccount();
     closeConnect();
     closeNewMenu();

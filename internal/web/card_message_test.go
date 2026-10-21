@@ -74,34 +74,3 @@ func TestGatewayTextSpacing(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
-
-func TestTouchMessageActionsOnlyOpenOneRow(t *testing.T) {
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(raw)
-	a := strings.Index(s, "  const touchMessages =")
-	if a < 0 {
-		t.Fatal("missing touch message actions")
-	}
-	b := strings.Index(s[a:], "  document.addEventListener(\"click\"")
-	if a < 0 || b < 0 {
-		t.Fatal("missing touch message actions")
-	}
-	script := `const assert=require('node:assert/strict');const matchMedia=()=>({matches:true});
- const row=()=>({open:false,classList:{add(){this.owner.open=true},remove(){this.owner.open=false}},querySelector(){return {}}});
- const a=row(),b=row();a.classList.owner=a;b.classList.owner=b;
- const target=(r,interactive=false)=>({closest(sel){return sel==='#thread .msg'?r:interactive?{}:null}});
- ` + s[a:a+b] + `
- toggleMessageActions(target(a));assert.equal(a.open,true);
- toggleMessageActions(target(b));assert.equal(a.open,false);assert.equal(b.open,true);
- toggleMessageActions(target(b));assert.equal(b.open,false);
- toggleMessageActions(target(a));toggleMessageActions(target(null,true));assert.equal(a.open,false);
- toggleMessageActions(target(a));toggleMessageActions(target(a,true));assert.equal(a.open,true);
- closeMessageActions();assert.equal(a.open,false);
- `
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-}
