@@ -6,6 +6,7 @@
   const $main = document.querySelector(".main");
   if (!D || !$main) return;
   const { S, api, esc, fmtSeen, sideFaces } = D;
+  const { groupStart, clockTime, timeDivider } = window.XBotMessages;
 
   // ---- 图标（和 app.css .icon 同风格：24 网格、1.6 线宽） ----
   const I = {
@@ -205,7 +206,6 @@
   }
   // 正文一律当纯文本：先转义，再把换行变成 <br>。
   const lines = (t) => esc(String(t).replace(/\r\n?/g, "\n").replace(/\n+$/, "")).replace(/\n/g, "<br>");
-  const clock = (at) => { const t = new Date(at); return isNaN(t.getTime()) ? "" : String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); };
   // 主人这条下面的状态：本机还没发出、网关里等离线设备上线、设备在线但没回执、没发出去；其他不写。
   function stateOf(m) {
     if (m.role === "me" && (m.state === "failed" || V.failed.includes(m.text))) return "failed"; // 服务端存成 failed 的（502）重新打开也给「重试」
@@ -218,20 +218,23 @@
     : kind === "local" ? `<div class="rc-state">${svg("clock", 12)}<span>已排队 · 还在这台电脑上</span></div>`
     : kind === "waiting" ? `<div class="rc-state">${svg("clock", 12)}<span>已排队 · 等 ${esc(label())} 上线</span></div>`
     : kind === "noack" ? `<div class="rc-state">${svg("clock", 12)}<span>没收到 ${esc(label())} 的回执</span><span class="rc-hint">可以在「设备」里看看它的状态</span></div>` : "";
-  const owner = (text, kind) => `<div class="rc-u"><div class="bubble">${lines(text)}</div>${stateHTML(kind)}</div>`;
+  const owner = (text, kind, time, cont) => `<div class="rc-u msg user${cont ? " cont" : ""}"><div class="bubble-col"><div class="bubble">${lines(text)}</div>${time ? `<span class="ht">${clockTime(time)}</span>` : ""}${stateHTML(kind)}</div></div>`;
   function drawThread() {
     const items = [];
     if (V.loading && !V.list.length) items.push(`<div class="rc-empty">正在加载</div>`);
     else if (V.error && !V.list.length) items.push(`<div class="rc-empty"><p>${esc(V.error)}</p><button class="secondary" type="button" data-rc="reload">重试</button></div>`);
     else if (!V.list.length && !V.send) items.push(`<div class="rc-empty">还没有消息。写给 ${esc(V.bot)}，${online() ? "它会马上收到" : esc(label() + " 上线后会收到")}。</div>`);
-    let prevBot = false;
+    let previous = null;
+    let previousKey = "";
     for (const m of V.list) {
-      const kind = stateOf(m);
-      if (m.role === "me") { items.push(owner(m.text, kind)); prevBot = false; continue; }
-      // Bot 连着回的几条：第一条有头像、名字和时间，后面的紧跟着写（原型 66/67）。
-      if (prevBot) items.push(`<div class="rc-b cont"><div class="rc-bbody"><div class="rc-text">${lines(m.text)}</div></div></div>`);
-      else items.push(`<div class="rc-b">${sideFaces(V.bot, V.dev)}<div class="rc-bbody"><div class="who">${esc(V.bot)}<time>${clock(m.at)}</time></div><div class="rc-text">${lines(m.text)}</div></div></div>`);
-      prevBot = true;
+      const key = m.role === "me" ? "user" : "bot";
+      const cont = !groupStart(previous, m, previousKey, key);
+      const divider = timeDivider(previous?.at, m.at);
+      if (divider) items.push(`<div class="tdiv">${esc(divider)}</div>`);
+      if (m.role === "me") items.push(owner(m.text, stateOf(m), m.at, cont));
+      else items.push(`<div class="rc-b msg bot${cont ? " cont" : ""}"><div class="body"><div class="rc-text prose bot-bubble">${lines(m.text)}</div><span class="ht">${clockTime(m.at)}</span></div></div>`);
+      previous = m;
+      previousKey = key;
     }
     // 连不上 XBot 时没进记录的那句：留在原处给「重试」。
     for (const t of V.failed) if (!V.list.some((m) => m.role === "me" && m.text === t)) items.push(owner(t, "failed"));

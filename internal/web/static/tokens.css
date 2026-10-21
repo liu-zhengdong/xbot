@@ -10,7 +10,9 @@
   --x-fill-2:#ededf0;     /* 次级按钮、标签、悬停 */
   --x-fill-3:#e4e4e8;     /* 选中、按下 */
   --x-zebra:#f4f4f6;
-  --x-bubble:#f0f0f2;     /* 主人气泡 */
+  --x-user-bubble:#18181b; --x-user-bubble-text:#ffffff; /* 主人气泡：深底白字（同 primary） */
+  --x-user-code:rgba(255,255,255,.14); --x-user-sel:rgba(255,255,255,.28); /* 主人气泡里的代码块 / 选中 */
+  --x-bot-bubble:#f5f5f7; /* Bot 气泡（单聊），同 fill-1 */
   --x-input:#f3f3f5;      /* 输入框 */
   --x-code:#f1f1f3;
   /* 文字四档 */
@@ -49,7 +51,7 @@
 html[data-theme="dark"]{
   --x-win:#0f0f11; --x-card:#18181b; --x-panel:#1c1c20; --x-panel-card:#24242a;
   --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a; --x-zebra:#222226;
-  --x-bubble:#2a2a2e; --x-input:#252528; --x-code:#2a2a2f;
+  --x-user-bubble:#ececef; --x-user-bubble-text:#18181b; --x-user-code:rgba(24,24,27,.08); --x-user-sel:rgba(24,24,27,.16); --x-bot-bubble:#222226; --x-input:#252528; --x-code:#2a2a2f;
   --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:#6f6f78; --x-ph:#6f6f75;
   --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;
   --x-disabled:rgba(255,255,255,.08); --x-on-disabled:#6f6f75;

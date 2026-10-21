@@ -64,12 +64,14 @@ try {
 <div id="shell" class="shell" hidden>
   <aside id="sidebar" class="sidebar">
     <div class="side-drag" aria-hidden="true"></div>
+    <div id="side-grip" class="sgrip" aria-hidden="true"></div>
     <div class="side-scroll">
       <div id="pin-row" class="pin-row"></div>
       <nav id="roster" class="list" aria-label="Bot"></nav>
       <nav id="remote-roster" class="list g7-remote" aria-label="其他电脑上的 Bot" hidden></nav>
     </div>
     <div class="side-foot">
+      <button id="rail-new" class="railnew" type="button" aria-label="新建 Bot 或群组" data-tip="新建" data-tip-placement="right"></button>
       <!-- Only 我 at the bottom: the owner and this computer's name. 设备,
            连接应用, 外观 and 收起列表 are in its menu (device prototype v2, item 15). -->
       <div class="account-wrap">

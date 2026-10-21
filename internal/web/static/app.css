@@ -62,8 +62,8 @@
   --primary-text: var(--x-on-primary);
   --badge-bg: #d6d6db;
   --badge-ink: #111111;
-  --bot-bubble: var(--x-bubble);
-  --user-bubble: var(--x-bubble);
+  --bot-bubble: var(--x-bot-bubble);
+  --user-bubble: var(--x-user-bubble);
   --send: var(--x-primary);
   --send-ink: var(--x-on-primary);
   --send-off: var(--x-disabled);
@@ -90,7 +90,7 @@
      Latin falls through to the design stack in --x-font. */
   --font: "XBot SC", var(--x-font);
   --mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-  --side: 280px;
+  --side-w: 280px;
   --top-h: 56px;
   color-scheme: light;
 }
@@ -380,7 +380,7 @@ html[data-theme="dark"] .field select {
 /* Sidebar */
 
 .sidebar {
-  width: var(--side);
+  width: var(--side-w);
   flex: none;
   background: transparent;
   display: flex;
@@ -388,7 +388,7 @@ html[data-theme="dark"] .field select {
   min-height: 0;
 }
 
-.sidebar.collapsed { width: 72px; }
+.sidebar.rail { width: 72px; }
 
 .side-scroll { flex: 1; min-height: 0; overflow: auto; padding-bottom: 8px; }
 
@@ -581,38 +581,38 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .side-foot { margin-top: auto; padding: 6px 8px 10px; }
 
-.sidebar.collapsed .item .item-body,
-.sidebar.collapsed .group-label .label,
-.sidebar.collapsed .me-text,
-.sidebar.collapsed .me-chev,
-.sidebar.collapsed .pin-name,
-.sidebar.collapsed .badge,
-.sidebar.collapsed .text-btn { display: none; }
+.sidebar.rail .item .item-body,
+.sidebar.rail .group-label .label,
+.sidebar.rail .me-text,
+.sidebar.rail .me-chev,
+.sidebar.rail .pin-name,
+.sidebar.rail .badge,
+.sidebar.rail .text-btn { display: none; }
 
 /* Collapsed: 新建 first, then the pinned faces (no names), then the list. */
-.sidebar.collapsed .pin-row .pin { width: 52px; padding: 4px 0; }
+.sidebar.rail .pin-row .pin { width: 52px; padding: 4px 0; }
 
-.sidebar.collapsed .pin-row .pin.add { order: -1; }
+.sidebar.rail .pin-row .pin.add { order: -1; }
 
-.sidebar.collapsed .pin .avatar.pin,
-.sidebar.collapsed .pin .avatar.pin > svg { width: 36px; height: 36px; }
+.sidebar.rail .pin .avatar.pin,
+.sidebar.rail .pin .avatar.pin > svg { width: 36px; height: 36px; }
 
-.sidebar.collapsed .pin-row { flex-direction: column; align-items: center; overflow: visible; padding-left: 8px; padding-right: 8px; }
+.sidebar.rail .pin-row { flex-direction: column; align-items: center; overflow: visible; padding-left: 8px; padding-right: 8px; }
 
-.sidebar.collapsed .item { justify-content: center; padding: 4px; min-height: 48px; }
+.sidebar.rail .item { justify-content: center; padding: 4px; min-height: 48px; }
 
-.sidebar.collapsed .group-label { justify-content: center; padding-left: 0; padding-right: 0; }
+.sidebar.rail .group-label { justify-content: center; padding-left: 0; padding-right: 0; }
 
-.sidebar.collapsed .folder-more,
-.sidebar.collapsed .folder-name,
-.sidebar.collapsed .folder-count { display: none; }
+.sidebar.rail .folder-more,
+.sidebar.rail .folder-name,
+.sidebar.rail .folder-count { display: none; }
 
-.sidebar.collapsed .folder-toggle { justify-content: center; padding: 0; }
+.sidebar.rail .folder-toggle { justify-content: center; padding: 0; }
 
-.sidebar.collapsed .account-trigger { width: 52px; justify-content: center; padding: 8px 0; margin: 0 auto; }
+.sidebar.rail .account-trigger { width: 52px; justify-content: center; padding: 8px 0; margin: 0 auto; }
 
 
-.sidebar.collapsed .pop { left: 8px; right: auto; }
+.sidebar.rail .pop { left: 8px; right: auto; }
 
 /* Chat */
 
@@ -634,82 +634,64 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .thread-inner > :first-child { margin-top: auto; }
 
-/* Same sender, less than 5 minutes apart: 6px inside the group (overrides
-   :first-child when an older page starts inside a group). */
+/* One bubble per message; only group chats carry speaker headers. */
+.thread-inner > .msg { margin-top: 20px; }
 .thread-inner > .msg.cont { margin-top: 6px; }
-
-.msg.cont > .avatar { visibility: hidden; }
-
-.msg.cont > .body > .who { display: none; }
-
-.msg { display: flex; gap: 10px; align-items: flex-start; animation: rise 180ms ease-out; }
-
+.msg { display: flex; gap: 8px; align-items: flex-start; animation: rise 180ms ease-out; }
 .msg.user { justify-content: flex-end; }
-
 .bubble-col { max-width: 72%; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-
 .msg.user .bubble-col { align-items: flex-end; }
-
-.msg.bot .body { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
-
-/* The owner keeps a light-grey bubble; the bot writes straight on the card. */
-.bubble {
+.msg.bot .body { min-width: 0; max-width: 86%; display: flex; flex-direction: column; align-items: flex-start; }
+.bubble, .bot-bubble {
   border: 0; border-radius: 18px; padding: 9px 15px;
-  white-space: pre-wrap; word-break: break-word;
+  overflow-wrap: anywhere; word-break: break-word;
   line-height: 1.6; font-size: 15px; font-weight: 400;
-  color: var(--text); opacity: 1;
 }
-
-.msg.user .bubble { background: var(--user-bubble); }
-
-.bubble .prose, .bubble .prose p { color: var(--text); opacity: 1; }
-
-/* Bot reply: 15px on the card at line-height 1.7, no bubble. */
-.msg.bot .body > .bubble, .msg.bot .body > .prose { font-size: 15px; line-height: 1.7; }
-
-.bubble > .prose { font-size: inherit; line-height: inherit; }
-
-/* Without the bubble, the reply itself must wrap long URLs and identifiers. */
-.msg.bot .body > .prose { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
-
-.msg.bot .body > .bubble { background: transparent; border-radius: 0; padding: 0; max-width: 100%; }
+.bubble { background: var(--x-user-bubble); color: var(--x-user-bubble-text); }
+.bubble .prose, .bubble .prose p { color: inherit; }
+.bot-bubble { background: var(--x-bot-bubble); color: var(--x-text); max-width: 100%; }
+.bot-bubble:empty { display: none; }
+.bot-bubble .prose { font: inherit; }
+.bot-bubble .prose p, .bot-bubble .prose ul { margin-bottom: 6px; }
+.bot-bubble .prose > :last-child { margin-bottom: 0; }
+.bot-bubble code { background: var(--x-card); }
+.bubble code, .bubble .code-block { background: var(--x-user-code); color: inherit; }
+.bubble a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.bubble ::selection, .bubble::selection { background: var(--x-user-sel); color: inherit; }
+.msg .ht { position: absolute; bottom: 6px; left: calc(100% + 8px); font-size: 11px; color: var(--x-faint); font-variant-numeric: tabular-nums; white-space: nowrap; visibility: hidden; }
+.msg.user .ht { left: auto; right: calc(100% + 8px); }
+.msg:hover .ht { visibility: visible; }
+.grpchat .msg.bot.cont > .body { margin-left: 32px; }
+.tdiv { display: flex; justify-content: center; margin-top: 24px; font-size: 11.5px; color: var(--x-faint); font-variant-numeric: tabular-nums; }
+.thread-inner > .tdiv + .msg { margin-top: 10px; }
 
 .who { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 620; line-height: 1.3; color: var(--text); }
 
 .who > time { font-size: 12px; font-weight: 450; color: #9a9aa0; }
 
-html[data-theme="dark"] .who > time { color: var(--faint); }
+.msg.bot .who { margin-bottom: 6px; }
+.msg.bot .who > time { color: var(--x-faint); font-weight: 400; }
 
-/* A bot group's first reply carries its time in the name line; the rest of
-   the group reveal theirs on hover. */
-.msg.bot:not(.cont) > .body:has(> .who) > .meta-row > .meta { display: none; }
-
-.msg.bot.cont > .body > .meta-row > .meta { opacity: 0; transition: opacity 160ms ease-out; }
-
-.msg.bot.cont:hover > .body > .meta-row > .meta, .msg.bot.cont:focus-within > .body > .meta-row > .meta { opacity: 1; }
+/* Copy and reply actions stay outside the bubbles. */
+.msg.bot > .body > .meta-row > .meta { display: none; }
 
 .meta-row { display: flex; align-items: center; gap: 4px; height: 16px; }
 
-/* Time and actions hang below a message without adding to the 22px / 6px
-   rhythm between messages (the thread keeps room for the last one). */
+/* Actions and time sit beside the bubble, never in the next run's 6px gap. */
 .msg > .bubble-col, .msg > .body { position: relative; }
-
-.msg > .bubble-col > .meta-row, .msg > .body > .meta-row { position: absolute; top: 100%; margin-top: 2px; }
-
-/* Inside a group the next message starts 6px below, so the row floats over it
-   while its message is hovered instead of being covered by it. */
-.msg:hover > .bubble-col > .meta-row, .msg:hover > .body > .meta-row,
-.msg:focus-within > .bubble-col > .meta-row, .msg:focus-within > .body > .meta-row {
-  z-index: 3; background: var(--bg); border-radius: 8px; padding: 0 4px;
+.msg.bot .body { max-width: min(86%, 100% - 72px); }
+.msg > .bubble-col > .meta-row, .msg > .body > .meta-row {
+  position: absolute; bottom: 22px; left: calc(100% + 8px); width: 56px;
+  opacity: 0; pointer-events: none; margin: 0; padding: 0; border-radius: 8px;
 }
-
-.msg.user > .bubble-col > .meta-row { right: 0; }
-
-.msg.bot > .body > .meta-row { left: 0; }
+.msg.user > .bubble-col > .meta-row { left: auto; right: calc(100% + 8px); }
+.msg:hover > .bubble-col > .meta-row, .msg:hover > .body > .meta-row,
+.msg:focus-within > .bubble-col > .meta-row, .msg:focus-within > .body > .meta-row { opacity: 1; pointer-events: auto; }
+.meta-row > .meta { display: none; }
 
 .thread-inner { padding-bottom: 20px; }
 
-.meta-row > .copy, .meta-row > .reply { margin-top: -6px; margin-bottom: -6px; }
+.meta-row > .copy, .meta-row > .reply { margin: 0; flex: none; }
 
 .msg.user .meta-row { justify-content: flex-end; }
 
@@ -1973,27 +1955,27 @@ html[data-theme="dark"] {
     box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
   }
   .sidebar.open { transform: translateX(0); }
-  .sidebar.collapsed { width: 80%; max-width: 320px; }
-  .sidebar.collapsed .folder-more { display: inline-flex; }
-  .sidebar.collapsed .folder-name,
-  .sidebar.collapsed .folder-count { display: initial; }
-  .sidebar.collapsed .folder-toggle { justify-content: flex-start; padding: 0 2px 0 8px; }
-  .sidebar.collapsed .item .item-body,
-  .sidebar.collapsed .group-label .label,
-  .sidebar.collapsed .badge,
-  .sidebar.collapsed .text-btn { display: initial; }
-  .sidebar.collapsed .me-text, .sidebar.collapsed .pin-name { display: flex; }
-  .sidebar.collapsed .me-chev { display: block; }
-  .sidebar.collapsed .account-trigger { width: 100%; justify-content: flex-start; padding: 7px 10px; }
-  .sidebar.collapsed .pop { left: 0; right: 0; }
-  .sidebar.collapsed .item { justify-content: flex-start; padding: 8px 10px; min-height: 56px; }
-  .sidebar.collapsed .pin-row { flex-direction: row; overflow-x: auto; align-items: center; }
-  .sidebar.collapsed .pin-row .pin { width: 64px; padding: 6px 0 5px; }
-  .sidebar.collapsed .pin-row .pin.add { order: 0; }
-  .sidebar.collapsed .pin .avatar.pin,
-  .sidebar.collapsed .pin .avatar.pin > svg { width: 44px; height: 44px; }
-  .sidebar.collapsed .side-foot { align-items: stretch; }
-  .sidebar.collapsed .group-label { justify-content: space-between; }
+  .sidebar.rail { width: 80%; max-width: 320px; }
+  .sidebar.rail .folder-more { display: inline-flex; }
+  .sidebar.rail .folder-name,
+  .sidebar.rail .folder-count { display: initial; }
+  .sidebar.rail .folder-toggle { justify-content: flex-start; padding: 0 2px 0 8px; }
+  .sidebar.rail .item .item-body,
+  .sidebar.rail .group-label .label,
+  .sidebar.rail .badge,
+  .sidebar.rail .text-btn { display: initial; }
+  .sidebar.rail .me-text, .sidebar.rail .pin-name { display: flex; }
+  .sidebar.rail .me-chev { display: block; }
+  .sidebar.rail .account-trigger { width: 100%; justify-content: flex-start; padding: 7px 10px; }
+  .sidebar.rail .pop { left: 0; right: 0; }
+  .sidebar.rail .item { justify-content: flex-start; padding: 8px 10px; min-height: 56px; }
+  .sidebar.rail .pin-row { flex-direction: row; overflow-x: auto; align-items: center; }
+  .sidebar.rail .pin-row .pin { width: 64px; padding: 6px 0 5px; }
+  .sidebar.rail .pin-row .pin.add { order: 0; }
+  .sidebar.rail .pin .avatar.pin,
+  .sidebar.rail .pin .avatar.pin > svg { width: 44px; height: 44px; }
+  .sidebar.rail .side-foot { align-items: stretch; }
+  .sidebar.rail .group-label { justify-content: space-between; }
   /* Phones: the drawer becomes a full sheet rising from the bottom. It now
      starts at the viewport top, so it carries both safe-area insets itself;
      the top one keeps the action bar and 关闭 out of the status bar. */
@@ -2383,8 +2365,8 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
   align-items: center; justify-content: center; border-radius: 50%;
   background: var(--text); color: var(--base); pointer-events: none;
 }
-#pin-row .rail-status { display: flex; right: 7px; bottom: 7px; }
-.sidebar.collapsed #roster .rail-status { display: flex; right: 9px; bottom: 9px; }
+
+.sidebar.rail #roster .rail-status { display: flex; }
 .rail-status .icon, .rail-status .st-spin { width: 10px; height: 10px; }
 @media (prefers-reduced-motion: reduce) {
   .rail-status .st-spin { animation: none; }
@@ -2422,3 +2404,45 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
   background: var(--fill); color: var(--text);
 }
 .peer-close:hover, .peer-close:focus-visible { background: var(--selected); }
+
+/* Sidebar edge: visible only while hovered or dragged. */
+.sidebar { position: relative; }
+.sgrip { position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; cursor: col-resize; z-index: 8; touch-action: none; --app-region: no-drag; -webkit-app-region: no-drag; }
+.sgrip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; border-radius: 1px; background: var(--x-fill-3); opacity: 0; transition: opacity 120ms 150ms; }
+.sgrip:hover::after, body.resizing .sgrip::after { opacity: 1; }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
+.railnew { display: none; border: 0; padding: 0; }
+@media (min-width: 768px) {
+  .sidebar.rail { align-items: center; padding-bottom: 10px; }
+  .sidebar.rail .side-scroll { width: 100%; }
+  .sidebar.rail .pin-row { gap: 4px; padding: 0 0 4px; }
+  .sidebar.rail .pin.add, .sidebar.rail .greeting, .sidebar.rail .gateway-hint { display: none; }
+  .sidebar.rail .item { width: 52px; min-height: 52px; padding: 8px; margin: 0 auto 2px; border-radius: 12px; }
+  .sidebar.rail .folder-toggle, .sidebar.rail .group-label { height: 10px; min-height: 10px; padding: 0; overflow: hidden; font-size: 0; }
+  .sidebar.rail .folder-toggle > *, .sidebar.rail .group-label > * { display: none; }
+  .sidebar.rail .side-foot { width: 100%; display: flex; flex-direction: column; align-items: center; }
+  .sidebar.rail .railnew { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--x-fill-2); color: var(--x-muted); margin-top: 6px; }
+  .sidebar.rail .railnew:hover { background: var(--x-fill-3); }
+  .sidebar.rail .account-wrap { width: 52px; margin-top: 8px; }
+  .sidebar.rail .account-trigger { padding: 6px; }
+  .sidebar.rail .rail-status { display: flex; right: -3px; bottom: -3px; width: 16px; height: 16px; background: var(--x-win); color: var(--x-muted); }
+  .in-app:not(.os-win):not(.os-linux).has-rail .main { margin-left: 8px; }
+}
+@media (max-width: 767px) { .sgrip { display: none; } }
+@media (prefers-reduced-motion: reduce) { .sgrip::after { transition: none; } }
+
+.bubble .kw, .bubble .str, .bubble .cm, .bubble .code-head { color: inherit; }
+.bubble .prose code { background: var(--x-user-code); }
+.bot-bubble .prose code { background: var(--x-card); }
+@media (min-width: 768px) {
+  .sidebar.rail .pin-row .pin { height: 52px; border-radius: 12px; }
+  .sidebar.rail .avatar { overflow: visible; }
+  .sidebar.rail .avatar > svg, .sidebar.rail .avatar > img { border-radius: 50%; overflow: hidden; }
+}
+
+.bot-bubble.reply-error { margin: 0; padding: 9px 15px; color: var(--x-danger); font-size: 15px; }
+.msg.user .bubble :is(.kw, .str, .cm, .code-head) { color: inherit; }
+
+.sidebar.rail .avatar .unread { top: 1px; right: 0; }
+
+@media (min-width: 768px) { .sidebar.rail .folder-bots[hidden] { display: block !important; } }

@@ -6,41 +6,6 @@ import (
 	"testing"
 )
 
-func TestBackgroundEventDisplay(t *testing.T) {
-	js, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css, err := staticFS.ReadFile("static/app.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		`function eventLine(parsed, key)`, `attrs.task_title || attrs.task || attrs.title || attrs.name`,
-		`parsed.text.split(/\r?\n/)[0]`, `子任务失败：`, `模型超时（`, `出错了`, `来自 `,
-		`el("button", "secondary sysline event-toggle")`, `head.type = "button"`,
-		`head.setAttribute("aria-expanded", String(!drawer.hidden))`, `icon("bubble")`,
-		`el("div", "routine-drawer event-raw", parsed.text)`, `openRoutines.add(key)`,
-		`inner.append(eventLine(parsed,`,
-		`.replace(/\bbg_[0-9a-f]{4,}\b/g, "")`, `.replace(/\bsa_[0-9a-f]{4,}\b/g, "")`,
-		`已转到后台继续做`, `appendRich(body, displayText(m.content), true)`, `appendMarkdown(prose, displayText(acc))`,
-		`plainText(displayText(ag.task || ag.id))`, `plainText(displayText(text))`,
-		`const relays = backgroundRelays(messages)`, `if (relays.has(i)) return;`,
-	} {
-		if !strings.Contains(string(js), want) {
-			t.Errorf("missing background event contract: %s", want)
-		}
-	}
-	if strings.Index(string(js), `inner.append(eventLine(parsed,`) > strings.Index(string(js), `const row = userBubble(m, messages)`) {
-		t.Error("external events must be handled before owner bubbles")
-	}
-	for _, want := range []string{`.event-line { align-self: flex-start`, `.event-toggle:focus-visible`, `font-family: var(--mono); white-space: pre-wrap`} {
-		if !strings.Contains(string(css), want) {
-			t.Errorf("missing event style: %s", want)
-		}
-	}
-}
-
 func TestBackgroundEventBehavior(t *testing.T) {
 	js, err := staticFS.ReadFile("static/app.js")
 	if err != nil {

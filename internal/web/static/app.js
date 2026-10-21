@@ -596,7 +596,7 @@
   }
 
   function paintRailStatus() {
-    document.querySelectorAll("#roster .item[data-bot]").forEach((row) => {
+    document.querySelectorAll("#roster .item[data-bot], #pin-row .pin[data-bot]").forEach((row) => {
       const name = row.dataset.bot;
       const kind = (stStatus.map[name] || {}).state || "idle";
       if (row.dataset.railState === kind) return;
@@ -606,14 +606,13 @@
       const old = row.querySelector(".rail-status");
       if (old) old.remove();
       const busy = kind === "running" || kind === "awaiting";
-      const label = name + (busy ? kind === "awaiting" ? " · 等你确认" : " · 在跑" : "");
-      setTip(av, label, "right");
-      if (row.classList.contains("pin")) setTip(row, label, "right");
+      setTip(av, niceName(name), "right");
+      if (row.classList.contains("pin")) setTip(row, niceName(name), "right");
       if (busy) {
         const dot = el("span", "rail-status " + kind);
         dot.setAttribute("aria-hidden", "true");
         dot.append(kind === "running" ? spinIcon(10) : icon("awaiting"));
-        row.append(dot);
+        av.append(dot);
       }
     });
   }
@@ -964,7 +963,7 @@
     if (!t) return "";
     const d = new Date(t);
     if (Number.isNaN(d.getTime())) return "";
-    const hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    const hm = clockTime(t);
     const now = new Date();
     const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     const days = Math.round((start(now) - start(d)) / 86400000);
@@ -973,16 +972,21 @@
     return (d.getMonth() + 1) + "月" + d.getDate() + "日";
   }
 
-  // Message grouping (P1 / 5): one sender writing again in under five minutes
+  function clockTime(t) {
+    const d = new Date(t);
+    return !t || Number.isNaN(d.getTime()) ? "" : String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+
+  // One sender writing again within five minutes (including the boundary)
   // continues the group above it. Pure, so the same rule decides the name/time
   // header and the spacing for history, new pages and live appends.
   const GROUP_GAP_MS = 5 * 60 * 1000;
 
   function groupStart(prev, cur, prevKey, key) {
     if (!prev || prevKey !== key) return true;
-    const a = Date.parse(prev.time || prev.ts || "");
-    const b = Date.parse(cur.time || cur.ts || "");
-    return !Number.isFinite(a) || !Number.isFinite(b) || b - a >= GROUP_GAP_MS;
+    const a = Date.parse(prev.time || prev.ts || prev.at || "");
+    const b = Date.parse(cur.time || cur.ts || cur.at || "");
+    return !Number.isFinite(a) || !Number.isFinite(b) || b < a || b - a > GROUP_GAP_MS;
   }
 
   function cronText(cron, enabled) {
@@ -1249,7 +1253,8 @@
     };
   }
 
-  // devices.js renders other computers' bots from HTML strings.
+  // Device views share the same grouping rule and face renderer.
+  window.XBotMessages = { groupStart, clockTime, timeDivider };
   window.XBotFaces = {
     html: (name, seed, size) => avatar(name, { seed: seed || name }, size || "").outerHTML,
   };
@@ -1999,9 +2004,46 @@
     return null;
   }
 
-  // `plain`: the bot writes straight on the card (no bubble, no group meta
-  // collapse); the group view still draws other bots as bubbles.
-  function appendRich(parent, text, plain) {
+  function appendBotContent(parent, text) {
+    const bubble = el("div", "prose bot-bubble");
+    appendRich(bubble, text);
+    parent.append(bubble);
+  }
+
+  function addBubbleTime(row, time) {
+    const body = row.querySelector(".bubble-col, .body");
+    if (body && time) body.append(el("span", "ht", clockTime(time)));
+  }
+
+  function timeDivider(previous, time, now = new Date()) {
+    const current = new Date(time);
+    if (!Number.isFinite(current.getTime())) return "";
+    const prev = new Date(previous);
+    if (Number.isFinite(prev.getTime()) && prev.toDateString() === current.toDateString() && current - prev < 30 * 60000) return "";
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const day = current.toDateString() === now.toDateString() ? "今天" : current.toDateString() === yesterday.toDateString() ? "昨天" : current.getFullYear() + "/" + (current.getMonth() + 1) + "/" + current.getDate();
+    return day + " " + clockTime(time);
+  }
+
+  function addTimeDivider(inner, row, previous) {
+    if (inner.classList.contains("grpchat")) return;
+    const last = previous || Array.from(inner.querySelectorAll(".msg[data-time]")).at(-1)?.dataset.time;
+    const label = timeDivider(last, row.dataset.time);
+    if (label) inner.append(el("div", "tdiv", label));
+  }
+
+  function addTimeDividers(inner) {
+    if (inner.classList.contains("grpchat")) return;
+    let previous;
+    for (const row of inner.querySelectorAll(":scope > .msg[data-time]")) {
+      const label = timeDivider(previous, row.dataset.time);
+      if (label) row.before(el("div", "tdiv", label));
+      previous = row.dataset.time;
+    }
+  }
+
+  function appendRich(parent, text) {
     const src = String(text || "");
     const re = /```([^\n`]*)\n?([\s\S]*?)```/g;
     let last = 0;
@@ -2011,12 +2053,7 @@
       if (pulled.text) {
         const prose = el("div", "prose");
         appendMarkdown(prose, pulled.text);
-        if (plain) parent.append(prose);
-        else {
-          const bubble = el("div", "bubble");
-          bubble.append(prose);
-          parent.append(bubble);
-        }
+        parent.append(prose);
       }
       if (pulled.images.length) parent.append(gallery(pulled.images));
     };
@@ -2134,7 +2171,7 @@
     const pasted = pastedURLs(state.sel, m.images);
     if (pulled.text) {
       const bubble = el("div", "bubble");
-      bubble.textContent = pulled.text;
+      appendRich(bubble, pulled.text);
       wrap.append(bubble);
     }
     if (pulled.images.length) wrap.append(gallery(pulled.images));
@@ -2153,28 +2190,21 @@
     metaRow.append(copyBtn(parsed.text));
     wrap.append(metaRow);
     row.append(wrap);
+    addBubbleTime(row, m.time);
     armCopy(row);
     if (m.seq) armTouchQuote(row, m);
     return row;
   }
 
-  function botBubble(m, results, messages, index, who, showName) {
+  function botBubble(m, results, messages, index, who) {
     const row = el("div", "msg bot");
     if (m.seq) row.dataset.seq = String(m.seq);
     if (m.time) row.dataset.time = String(m.time);
     row.dataset.sender = "bot:" + (who || "");
-    row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
     if (m.branch) body.append(bgFrom());
-    if (showName) {
-      const name = el("div", "who");
-      name.append(el("span", "", niceName(who)));
-      if (m.time) name.append(el("time", "", when(m.time)));
-      if (who) setTip(name, who);
-      body.append(name);
-    }
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    if (m.content) appendRich(body, displayText(m.content), true);
+    if (m.content) appendBotContent(body, displayText(m.content));
     const calls = m.tool_calls || [];
     const peers = [];
     for (const call of calls) {
@@ -2194,6 +2224,7 @@
     metaRow.append(copyBtn(m.content || ""));
     body.append(metaRow);
     row.append(body);
+    addBubbleTime(row, m.time);
     armCopy(row);
     if (m.seq) armTouchQuote(row, m);
     return { row: row, peers: peers };
@@ -2318,14 +2349,14 @@
       any = true;
       const key = "bot:" + (who || "");
       const cont = !groupStart(lastMsg, m, lastKey, key);
-      lastKey = key;
-      lastMsg = m;
-      const built = botBubble(m, results, messages, i, who, !cont);
+      const built = botBubble(m, results, messages, i, who);
       const asks = (m.tool_calls || []).some((c) => toolSummary(c).name === "ask_user");
       if (m.content || asks) {
-        if (cont) built.row.classList.add("cont");
+        if (cont) markContinuation(built.row, m.time);
         inner.append(built.row);
-      } else lastKey = "";
+        lastKey = key;
+        lastMsg = m;
+      }
       for (const line of built.peers) {
         if (line.sent) addPeerEvent(inner, "sent", line.peer, m.time);
         else inner.append(systemLine(line.text, who, line.peer));
@@ -2333,6 +2364,7 @@
       }
     });
     if (!any) inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
+    addTimeDividers(inner);
     restoreSendFeedback(inner);
     thread.replaceChildren(inner);
     state.firstRender = false;
@@ -2340,7 +2372,7 @@
   }
 
   function renderGroup(messages, who) {
-    const inner = el("div", "thread-inner");
+    const inner = el("div", "thread-inner grpchat");
     const prevTop = thread.scrollTop;
     const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
@@ -2375,7 +2407,7 @@
         const pulled = pullImages(text);
         if (pulled.text) {
           const bubble = el("div", "bubble");
-          bubble.textContent = pulled.text;
+          appendRich(bubble, pulled.text);
           wrap.append(bubble);
         }
         if (pulled.images.length) wrap.append(gallery(pulled.images));
@@ -2385,7 +2417,7 @@
         wrap.append(metaRow);
         row.append(wrap);
       } else {
-        row.append(avatar(m.sender || "B", paintOf(m.sender)));
+        if (!row.classList.contains("cont")) row.append(avatar(m.sender || "B", paintOf(m.sender)));
         const body = el("div", "body");
         if (!row.classList.contains("cont")) {
           const name = el("div", "who");
@@ -2394,12 +2426,14 @@
           if (m.sender) setTip(name, m.sender);
           body.append(name);
         }
-        appendRich(body, text);
+        appendBotContent(body, text);
         const metaRow = el("div", "meta-row");
         metaRow.append(el("span", "meta", when(m.time)), copyBtn(text));
         body.append(metaRow);
         row.append(body);
+        if (row.classList.contains("cont")) markContinuation(row, m.time);
       }
+      addBubbleTime(row, m.time);
       armCopy(row);
       last = key;
       inner.append(row);
@@ -2975,7 +3009,7 @@
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
       btn.dataset.bot = b.name;
-      setTip(btn, b.name !== niceName(b.name) ? b.name : "");
+      setTip(btn, niceName(b.name), "right");
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
       const pinActive = state.sel && state.sel.type === "bot" && state.sel.id === b.name;
@@ -3236,7 +3270,7 @@
   // bubbles belong to the owner, who does not speak here. A bounce is a gray
   // event line.
   function renderPeer(list, peer) {
-    const inner = el("div", "thread-inner");
+    const inner = el("div", "thread-inner grpchat");
     const rows = (list || []).slice().sort(comparePeer);
     if (!rows.length) {
       const box = emptyState("", peer.remote ? "跨设备的往来还取不到。" : "没有消息");
@@ -3263,12 +3297,13 @@
       // The API splits bot@device (from_device is the device's label).
       const from = m.from_bot ? { bot: m.from_bot, device: m.from_device || "" } : splitPeer(m.from);
       const row = el("div", "msg bot peer-msg");
+      const key = "bot:" + from.bot + "@" + from.device;
+      row.dataset.sender = key;
       row.dataset.time = String(m.ts || "");
       if (m.id) row.dataset.id = String(m.id);
-      const cont = !groupStart(lastMsg, m, last, m.from || "");
-      if (cont) row.classList.add("cont");
+      const cont = !groupStart(lastMsg, m, last, key);
       lastMsg = m;
-      row.append(peerAvatar(from));
+      if (!cont) row.append(peerAvatar(from));
       const body = el("div", "body");
       if (!cont) {
         const who = el("div", "who");
@@ -3282,13 +3317,15 @@
         if (m.from) setTip(who, m.from);
         body.append(who);
       }
-      const text = el("div", "peer-text");
+      const text = el("div", "peer-text prose bot-bubble");
       text.textContent = m.text || "";
       body.append(text);
       row.append(body);
+      if (cont) markContinuation(row, m.ts);
+      addBubbleTime(row, m.ts);
       inner.append(row);
       if (!target && at && (Date.parse(m.ts || "") || 0) >= at) target = row;
-      last = m.from || "";
+      last = key;
     }
     thread.replaceChildren(inner);
     // The clicked run may predate the loaded page: loadPeer fetches older
@@ -5133,8 +5170,11 @@
     const last = lastRow(inner);
     // Tool and event lines between turns break a group, as they do on render.
     if (!last || !last.dataset.sender || groupStart({ time: last.dataset.time }, { time: row.dataset.time }, last.dataset.sender, row.dataset.sender)) return;
+    markContinuation(row, row.dataset.time);
+  }
+
+  function markContinuation(row, time) {
     row.classList.add("cont");
-    // A continuation never repeats the name line.
     row.querySelector(".who")?.remove();
   }
 
@@ -5148,16 +5188,8 @@
     const row = el("div", "msg bot live");
     row.dataset.sender = "bot:" + who;
     row.dataset.time = now;
-    row.append(avatar(who, paintOf(who)));
     const body = el("div", "body");
-    const shown = niceName(who);
-    if (shown) {
-      const name = el("div", "who");
-      name.append(el("span", "", shown), el("time", "", when(now)));
-      setTip(name, who);
-      body.append(name);
-    }
-    const prose = el("div", "prose");
+    const prose = el("div", "prose bot-bubble");
     const dots = el("span", "typing-dots");
     dots.setAttribute("aria-label", "正在回复");
     for (let i = 0; i < 3; i++) dots.append(el("i", ""));
@@ -5168,6 +5200,8 @@
     body.append(prose, dots, live);
     row.append(body);
     markLiveGroup(inner, row);
+    addBubbleTime(row, now);
+    addTimeDivider(inner, row);
     inner.append(row);
     thread.scrollTop = thread.scrollHeight;
     return prose;
@@ -5257,7 +5291,7 @@
     const body = el("div", "bubble-col");
     row.dataset.sender = "user";
     row.dataset.time = new Date().toISOString();
-    if (text) body.append(el("div", "bubble", text));
+    if (text) { const bubble = el("div", "bubble"); appendRich(bubble, text); body.append(bubble); }
     // The picture is already on the server by the time a send starts, so the
     // optimistic row points at it directly. Nothing local to revoke, and the
     // row after the repaint looks exactly the same.
@@ -5265,6 +5299,8 @@
     body.append(el("div", "send-state", "发送中"));
     row.append(body);
     markLiveGroup(inner, row);
+    addBubbleTime(row, row.dataset.time);
+    addTimeDivider(inner, row);
     inner.append(row);
     thread.scrollTop = thread.scrollHeight;
     state.pendingSends.push(row);
@@ -5382,8 +5418,12 @@
         }
         if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
         pending.keepFailed = true;
-        const error = el("div", "reply-error", "回复出错了：" + zhError(e.message));
-        errorDetails(error, e.message, zhError(e.message));
+        const error = el("div", "msg bot");
+        const errorBody = el("div", "body");
+        const errorText = el("div", "prose bot-bubble reply-error", "回复出错了：" + zhError(e.message));
+        errorDetails(errorText, e.message, zhError(e.message));
+        errorBody.append(errorText);
+        error.append(errorBody);
         live?.replaceWith(error);
         if (!live) thread.querySelector(".thread-inner")?.append(error);
         state.replyErrors.push(error);
@@ -5980,16 +6020,51 @@
     toggleTheme();
   });
 
-  let compactSidebarChoice = null;
-  let wideSidebarCollapsed = false;
-  function syncSidebar() {
-    // Only below 960 does the list fold into the rail on its own; at 1024 it
-    // stays a list, 240px wide (device prototype v2, item 13).
-    const compact = window.innerWidth >= 768 && window.innerWidth < 960;
-    const collapsed = compact ? compactSidebarChoice !== false : wideSidebarCollapsed;
-    sidebar.classList.toggle("collapsed", collapsed);
-    $("collapse").replaceChildren(icon("sidebar"), document.createTextNode(collapsed ? "展开列表" : "收起列表"));
+  const SIDE = { min: 240, max: 360, def: 280, snap: 200, rail: 72 };
+  function readSide() {
+    try {
+      const saved = JSON.parse(localStorage.getItem("xbot.side") || "{}");
+      return { w: Math.max(SIDE.min, Math.min(SIDE.max, Number(saved.w) || SIDE.def)), rail: !!saved.rail };
+    } catch (e) { return { w: SIDE.def, rail: false }; }
   }
+  let side = readSide();
+  function syncSidebar() {
+    const rail = window.innerWidth >= 768 && side.rail;
+    sidebar.classList.toggle("rail", rail);
+    document.documentElement.classList.toggle("has-rail", rail);
+    sidebar.style.setProperty("--side-w", (rail ? SIDE.rail : side.w) + "px");
+    $("collapse").replaceChildren(icon("sidebar"), document.createTextNode(rail ? "展开列表" : "收起列表"));
+  }
+  function saveSide() { localStorage.setItem("xbot.side", JSON.stringify(side)); }
+  const sideGrip = $("side-grip");
+  let sidePointer = null;
+  sideGrip.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    sidePointer = ev.pointerId;
+    sideGrip.setPointerCapture(ev.pointerId);
+    document.body.classList.add("resizing");
+    hideTip();
+    ev.preventDefault();
+  });
+  sideGrip.addEventListener("pointermove", (ev) => {
+    if (sidePointer !== ev.pointerId) return;
+    const x = ev.clientX - sidebar.getBoundingClientRect().left;
+    side = x < SIDE.snap ? { w: side.w, rail: true } : { w: Math.max(SIDE.min, Math.min(SIDE.max, x)), rail: false };
+    syncSidebar();
+  });
+  const endSideResize = (ev) => {
+    if (sidePointer !== ev.pointerId) return;
+    sidePointer = null;
+    document.body.classList.remove("resizing");
+    if (sideGrip.hasPointerCapture(ev.pointerId)) sideGrip.releasePointerCapture(ev.pointerId);
+    saveSide();
+  };
+  sideGrip.addEventListener("pointerup", endSideResize);
+  sideGrip.addEventListener("pointercancel", endSideResize);
+  sideGrip.addEventListener("lostpointercapture", endSideResize);
+  sideGrip.addEventListener("dblclick", () => { side = { w: SIDE.def, rail: false }; syncSidebar(); saveSide(); });
+  $("rail-new").append(icon("plus"));
+  $("rail-new").addEventListener("click", (ev) => { ev.stopPropagation(); toggleNewMenu($("rail-new")); });
   $("logout").prepend(icon("logout"));
   $("account").addEventListener("click", () => {
     const open = $("account-menu").hidden;
@@ -6000,9 +6075,8 @@
   $("collapse").addEventListener("click", () => {
     closeAccount();
     if (window.innerWidth < 768) { closeDrawer(); return; }
-    const collapsed = !sidebar.classList.contains("collapsed");
-    if (window.innerWidth < 960) compactSidebarChoice = collapsed;
-    else wideSidebarCollapsed = collapsed;
+    side.rail = !side.rail;
+    saveSide();
     syncSidebar();
   });
 
@@ -6204,7 +6278,7 @@
     const th = tipEl.offsetHeight;
     let left = host === $("info") ? r.right - tw : r.left + (r.width / 2) - (tw / 2);
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
-    const right = host.dataset.tipPlacement === "right" && host.closest(".sidebar.collapsed");
+    const right = host.dataset.tipPlacement === "right" && host.closest(".sidebar.rail");
     if (right) left = Math.max(8, Math.min(r.right + 8, window.innerWidth - tw - 8));
     let top = right ? Math.max(8, Math.min(r.top + (r.height - th) / 2, window.innerHeight - th - 8)) : r.bottom + 6;
     if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 6);
