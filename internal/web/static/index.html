@@ -149,7 +149,7 @@ try {
         <!-- The one panel control: it opens and closes the info panel, and the
              bot's actions now sit at the top of that panel. -->
         <button id="info" class="icon-btn" type="button" aria-label="详情" data-tip="详情" aria-expanded="false">
-          <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14"/></svg>
+          <svg class="icon" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
         </button>
       </div>
     </header>
@@ -178,6 +178,7 @@ try {
         </div>
       </form>
     </div>
+    <div id="toast" class="toast" role="status" hidden></div>
    </div>
     <div id="panel-scrim" class="panel-scrim" hidden></div>
     <aside id="panel" class="panel" aria-label="详情">
@@ -187,13 +188,12 @@ try {
         <div id="panel-actions" class="panel-actions" role="toolbar" aria-label="Bot 操作" hidden></div>
       </div>
       <div id="panel-head" class="panel-head">
-        <div id="panel-ident" class="panel-ident" hidden></div>
+        <div id="panel-ident" class="pid" hidden></div>
         <div id="panel-tabs" class="panel-tabs"></div>
       </div>
       <div id="panel-body" class="panel-body"></div>
     </aside>
   </main>
-  <div id="toast" class="toast" role="status" hidden></div>
 
 </div>
 

@@ -2844,22 +2844,6 @@
     });
   }
 
-  // Zebra rows in a menu: only visible buttons count, so hidden entries
-  // (收起列表 on the web, 退出 in the app) do not shift the stripes.
-  function markZebra(box) {
-    if (!box) return;
-    const groups = new Map();
-    for (const btn of box.querySelectorAll("button")) {
-      if (btn.offsetParent === null) continue;
-      const parent = btn.parentElement;
-      if (!groups.has(parent)) groups.set(parent, []);
-      groups.get(parent).push(btn);
-    }
-    for (const list of groups.values()) {
-      list.forEach((btn, i) => btn.classList.toggle("zebra", i % 2 === 1));
-    }
-  }
-
   function placeMenu(anchor, menu, side) {
     document.body.append(menu);
     menu.hidden = false;
@@ -2874,15 +2858,24 @@
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
     const r = anchor.getBoundingClientRect();
-    let left = side === "left" ? r.left - width - 6 : r.right - width;
-    if (left < 8) left = Math.min(window.innerWidth - width - 8, r.right + 6);
-    let top = side === "left" ? r.top - 6 : r.bottom + 4;
+    let left, top;
+    if (side === "panel") {
+      // Menus opened from the panel stay inside it: left edge on the action
+      // row's line, 220 wide, dropping from the button.
+      const p = $("panel").getBoundingClientRect();
+      left = p.left + 12;
+      top = r.bottom + 6;
+      if (left + width > p.right - 12) left = Math.max(8, p.right - 12 - width);
+    } else {
+      left = side === "left" ? r.left - width - 6 : r.right - width;
+      if (left < 8) left = Math.min(window.innerWidth - width - 8, r.right + 6);
+      top = side === "left" ? r.top - 6 : r.bottom + 4;
+    }
     if (top + height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - height - 8);
     menu.style.left = left + "px";
     menu.style.top = top + "px";
     menu.style.right = "auto";
     menu.style.bottom = "auto";
-    markZebra(menu);
   }
 
   function botRow(b) {
@@ -3723,7 +3716,7 @@
     if (panelMore && anchor.classList.contains("on")) { closePanelMore(); return; }
     closePanelMore();
     const pinned = !!data.pinned;
-    const menu = el("div", "pop");
+    const menu = el("div", "pop panel-more");
     const item = (ic, text, fn, opts = {}) => {
       const row = el("button", "menu-row" + (opts.danger ? " danger" : ""));
       row.type = "button";
@@ -3746,7 +3739,7 @@
     item("trash", "删除 Bot", () => confirmDelete(state.sel.id), { danger: true });
     anchor.classList.add("on");
     anchor.setAttribute("aria-expanded", "true");
-    placeMenu(anchor, menu, "below");
+    placeMenu(anchor, menu, "panel");
     panelMore = menu;
   }
 
@@ -3790,7 +3783,7 @@
   let toastTimer = 0;
   function showToast(text) {
     const box = $("toast");
-    box.textContent = text;
+    box.replaceChildren(icon("check"), el("span", "", text));
     box.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { box.hidden = true; }, 3000);
@@ -3804,7 +3797,9 @@
     btn.type = "button";
     btn.setAttribute("aria-haspopup", "menu");
     btn.setAttribute("aria-expanded", "false");
-    btn.append(icon("folder"), el("span", "", "移到分组"), el("span", "mark", current || "未分组"), icon("chevron"));
+    const now = el("span", "v");
+    now.append(el("span", "", current || "未分组"), icon("chevron"));
+    btn.append(icon("folder"), el("span", "", "移到分组"), now);
     const sub = el("div", "pop menu-sub");
     sub.hidden = true;
     const folders = state.folders.length ? state.folders : [{ name: "未分组", ungrouped: true }];
@@ -3926,16 +3921,20 @@
     }, "删除");
   }
 
-  // The fixed head of the panel: 48 avatar, name and the Bot's one-line
-  // identity, then the tabs. Only the tab body scrolls.
-  function renderPanelHead(name, paint, sub) {
+  // The fixed head has a name above its identity line. Only the body scrolls.
+  function renderPanelHead(name, paint, sub, pinned = false) {
     const ident = $("panel-ident");
     ident.replaceChildren();
     ident.hidden = false;
     ident.append(avatar(name, paint, "lg"));
-    const who = el("div", "who");
-    who.append(el("div", "name", niceName(name) || "Bot"));
-    if (sub) who.append(el("div", "sub", sub));
+    const who = el("div", "identity");
+    who.append(el("b", "", niceName(name) || "Bot"));
+    if (sub) {
+      const line = el("div", "sub");
+      if (pinned) line.append(icon("pin"));
+      line.append(el("span", "model", sub));
+      who.append(line);
+    }
     ident.append(who);
     const tabs = $("panel-tabs");
     tabs.replaceChildren(tabBar());
@@ -3973,7 +3972,7 @@
     }
     const data = state.panelData || { name: state.sel.id };
     const sub = (data.primary ? "主 Bot · " : "") + (data.model || "未绑定模型");
-    renderPanelHead(data.name || state.sel.id, paintOfBot(data), sub);
+    renderPanelHead(data.name || state.sel.id, paintOfBot(data), sub, data.pinned);
     syncPanelChrome();
     const body = el("div", "tab-body");
     if (state.tab === "library") body.append(libraryView(data));
@@ -6001,7 +6000,6 @@
     const open = $("account-menu").hidden;
     closePops();
     $("account-menu").hidden = !open;
-    markZebra($("account-menu"));
     $("account").setAttribute("aria-expanded", open ? "true" : "false");
   });
   $("collapse").addEventListener("click", () => {
@@ -6415,8 +6413,6 @@
     syncSidebar();
     syncPanelDefault();
     syncBackdrop();
-    // 收起列表 appears or disappears at 768; re-mark the open menu's rows.
-    if (!$("account-menu").hidden) markZebra($("account-menu"));
   });
 
   async function boot() {
