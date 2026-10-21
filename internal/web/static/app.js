@@ -191,118 +191,7 @@
     return data;
   }
 
-  // ---- Background tasks: header badge + popover (F5) ----
-  const BG_LAYERS = '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>';
-  function bgIcon(paths, size, extra) {
-    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    s.setAttribute("viewBox", "0 0 24 24");
-    s.setAttribute("width", size || 16);
-    s.setAttribute("height", size || 16);
-    s.setAttribute("fill", "none");
-    s.setAttribute("stroke", "currentColor");
-    s.setAttribute("stroke-width", "2");
-    s.setAttribute("stroke-linecap", "round");
-    s.setAttribute("stroke-linejoin", "round");
-    if (extra) s.setAttribute("class", extra);
-    s.innerHTML = paths;
-    return s;
-  }
-  const BG_ICONS = {
-    spin: '<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
-    queued: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 3.2"/>',
-    ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
-    err: '<path d="M6 6l12 12M18 6L6 18"/>',
-    pause: '<circle cx="12" cy="12" r="8.5"/><path d="M9.5 9v6M14.5 9v6"/>',
-    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    steer: '<path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M12 8.5v7M8.5 12h7"/>',
-    stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" stroke="none"/>',
-    up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
-  };
-  const bgState = { data: null, open: false, steerOpen: {}, steerDraft: {}, awaitingIDs: new Set(), timer: 0 };
-  function bgBot() { return state.sel && state.sel.type === "bot" ? state.sel.id : ""; }
-  async function bgRefresh() {
-    const name = bgBot();
-    const badge = document.getElementById("bg-badge");
-    if (!badge) return;
-    if (!name) { badge.hidden = true; bgClose(); return; }
-    let data;
-    try {
-      data = await api("/api/bots/" + encodeURIComponent(name) + "/backgrounds");
-    } catch (e) { return; }
-    if (bgBot() !== name) return;
-    if (bgState.name !== name) { bgState.steerOpen = {}; bgState.steerDraft = {}; bgState.awaitingIDs = new Set(); bgState.force = true; }
-    bgState.data = data;
-    bgState.name = name;
-    bgRender();
-  }
-  function bgTick() {
-    clearTimeout(bgState.timer);
-    bgState.timer = setTimeout(async () => {
-      if (!document.hidden) await bgRefresh();
-      bgTick();
-    }, 2000);
-  }
-  function bgClose() {
-    bgState.open = false;
-    const pop = document.getElementById("bg-pop");
-    if (pop) pop.hidden = true;
-    const dim = document.getElementById("bg-dim");
-    if (dim) dim.hidden = true;
-    const badge = document.getElementById("bg-badge");
-    if (badge) badge.classList.remove("on");
-  }
-  async function bgAct(path, method, body) {
-    bgState.force = true;
-    try { await api(path, { method: method, body: body }); } catch (e) { setStatus(visibleError(e), true); }
-    await bgRefresh();
-  }
-  function bgClock(t) {
-    const d = new Date(t);
-    if (isNaN(d)) return "";
-    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-  }
-  function bgRow(cls, icon, title, sub, acts) {
-    const li = el("li", "bg-pr " + cls);
-    const rt = el("div", "bg-rt");
-    const st = el("span", "bg-st");
-    st.append(bgIcon(BG_ICONS[icon], 16, icon === "spin" ? "bg-spin" : ""));
-    const tx = el("div", "bg-tx");
-    tx.append(el("div", "bg-tt", plainText(title)), el("div", "bg-sub", sub));
-    const a = el("span", "bg-acts");
-    (acts || []).forEach((b) => a.append(b));
-    rt.append(st, tx, a);
-    li.append(rt);
-    return li;
-  }
-  function bgBtn(icon, label, fn) {
-    const b = el("button", "bg-ib");
-    b.type = "button";
-    setTip(b, label);
-    b.setAttribute("aria-label", label);
-    b.append(bgIcon(BG_ICONS[icon], 15));
-    b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
-    return b;
-  }
-  // Match the pending card's branch; another task of this Bot may still run.
-  function taskAwaiting(task, name) {
-    if (task.status === "awaiting") return true;
-    if (!state.sel || state.sel.type !== "bot" || state.sel.id !== name) return false;
-    const latest = new Map();
-    for (const m of state.messages || []) {
-      const card = approvalCardOf(m.content);
-      if (card) latest.set(card.id, { card, branch: m.branch });
-    }
-    return Array.from(latest.values()).some(({ card, branch }) =>
-      card.state === "pending" && branch === task.id);
-  }
-
-  function approvalTaskButton(name, id) {
-    const button = el("button", "secondary task-awaiting", "等你确认");
-    button.type = "button";
-    button.addEventListener("click", () => { bgClose(); jumpToApproval(name, id); });
-    return button;
-  }
-
+  // Task cards require a second click before stopping a running task.
   function confirmTaskStop(button, action) {
     let until = 0;
     let timer = 0;
@@ -322,140 +211,6 @@
       button.textContent = "再点一次停止";
       timer = setTimeout(() => { until = 0; delete button.dataset.stopUntil; button.replaceChildren(...original); }, 3000);
     });
-  }
-
-  function bgRender() {
-    const d = bgState.data || {};
-    const running = d.backgrounds || [];
-    const queue = d.queue || [];
-    const finished = (d.finished || []).slice(0, 3);
-    const controls = d.controls || [];
-    const name = bgState.name || "";
-    if (name !== bgBot()) { bgClose(); return; }
-    const base = "/api/bots/" + encodeURIComponent(name);
-    const badge = document.getElementById("bg-badge");
-    badge.hidden = !running.length && !queue.length;
-    const awaitingIDs = new Set(running.filter((r) => taskAwaiting(r, name)).map((r) => r.id));
-    const awaitingChanged = awaitingIDs.size !== bgState.awaitingIDs.size ||
-      Array.from(awaitingIDs).some((id) => !bgState.awaitingIDs.has(id));
-    const waiting = awaitingIDs.size;
-    badge.querySelector(".bg-n").textContent = "后台 " + running.length + (waiting ? " · 等你确认" : "");
-    // An open popover stays open after the last task ends, so its result can be read.
-    const pop = document.getElementById("bg-pop");
-    if (!bgState.open) return;
-    // Do not rebuild under the owner's fingers: a poll would wipe a half-typed steer.
-    if (!awaitingChanged && Array.from(pop.querySelectorAll("[data-stop-until]")).some((b) => Number(b.dataset.stopUntil) > Date.now())) return;
-    const typing = pop.querySelector(".bg-addin input");
-    if (typing && (typing === document.activeElement || typing.value) && !bgState.force && !awaitingChanged) return;
-    pop.querySelectorAll(".bg-addin input").forEach((inp) => {
-      if (inp.dataset.bot === name) bgState.steerDraft[inp.dataset.task] = inp.value;
-    });
-    bgState.awaitingIDs = awaitingIDs;
-    bgState.force = false;
-    const taskOf = {};
-    running.forEach((r) => { taskOf[r.id] = r.task; });
-    const head = el("div", "bg-ph");
-    head.append(el("b", "", "后台任务"), el("span", "bg-cnt", running.length + " 运行 · " + queue.length + " 排队"));
-    head.append(bgBtn("err", "关闭", bgClose));
-    const list = el("ul", "bg-pl");
-    running.forEach((r) => {
-      const awaiting = awaitingIDs.has(r.id);
-      const stop = bgBtn("stop", "停止", () => {});
-      confirmTaskStop(stop, () => bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/cancel", "POST"));
-      const acts = [stop];
-      if (!awaiting) acts.unshift(bgBtn("steer", "追加指示", () => { bgState.steerOpen[r.id] = !bgState.steerOpen[r.id]; bgState.focusSteer = r.id; bgState.force = true; bgRender(); }));
-      const li = bgRow("run", awaiting ? "pause" : "spin", plainText(displayText(r.task || r.id)) || "后台任务",
-        awaiting ? "" : "第 " + (r.steps || 0) + " 步" + (r.last_tool ? " · " + r.last_tool : ""), acts);
-      if (awaiting) li.querySelector(".bg-sub").replaceWith(approvalTaskButton(name, r.id));
-      const steers = controls.filter((c) => c.background === r.id && c.kind === "steer");
-      if (steers.length) {
-        const ins = el("ul", "bg-ins");
-        steers.forEach((c) => {
-          const on = c.state === "applied";
-          const it = el("li", on ? "on" : "");
-          it.append(bgIcon(BG_ICONS[on ? "ok" : c.state === "dropped" ? "err" : "clock"], 13), el("span", "x", c.text), el("span", "r", on ? "已生效" : c.state === "dropped" ? "已丢弃" : "待生效"));
-          ins.append(it);
-        });
-        li.append(ins);
-      }
-      if (!awaiting && bgState.steerOpen[r.id]) {
-        const f = el("form", "bg-addin");
-        const inp = el("input");
-        inp.placeholder = "追加指示，下一步生效…";
-        inp.dataset.task = r.id;
-        inp.dataset.bot = name;
-        inp.value = bgState.steerDraft[r.id] || "";
-        inp.addEventListener("input", () => { bgState.steerDraft[r.id] = inp.value; });
-        const go = el("button", "bg-send");
-        go.type = "submit";
-        go.disabled = !inp.value.trim();
-        inp.addEventListener("input", () => { go.disabled = !inp.value.trim(); });
-        go.append(bgIcon(BG_ICONS.up, 14));
-        f.append(inp, go);
-        f.addEventListener("submit", (ev) => {
-          ev.preventDefault();
-          const t = inp.value.trim();
-          if (!t) return;
-          // A sent instruction is no longer a draft: clear it so polls resume.
-          delete bgState.steerDraft[r.id];
-          inp.value = "";
-          go.disabled = true;
-          bgAct(base + "/agents/" + encodeURIComponent(r.id) + "/steer", "POST", { text: t });
-        });
-        li.append(f);
-        if (bgState.focusSteer === r.id) { bgState.focusSteer = ""; setTimeout(() => inp.focus(), 0); }
-      }
-      list.append(li);
-    });
-    queue.forEach((q) => {
-      let sub = "等待空位 · 第 " + q.position + " 位";
-      if (q.reason === "conflict") sub = "等「" + (taskOf[q.background] || q.background) + "」释放 " + (q.name || "") + " · 第 " + q.position + " 位";
-      if (q.reason === "queue") sub = "排在「" + (taskOf[q.background] || q.background) + "」之后 · 第 " + q.position + " 位";
-      list.append(bgRow("q", "queued", q.text || q.id, sub, [
-        bgBtn("stop", "取消", () => bgAct(base + "/queue/" + encodeURIComponent(q.id), "DELETE")),
-      ]));
-    });
-    const parts = [head, list];
-    if (finished.length) {
-      const done = el("ul", "bg-pl");
-      finished.forEach((f) => {
-        const map = {
-          done: ["ok", "ok", "完成 · " + (f.steps || 0) + " 步" + (f.ended ? " · " + bgClock(f.ended) : "")],
-          failed: ["err", "err", "失败"],
-          cancelled: ["int", "pause", "已取消"],
-          interrupted: ["int", "pause", "已中断"],
-        }[f.status] || ["int", "pause", taskStatus(f.status)];
-        done.append(bgRow(map[0], map[1], plainText(displayText(f.task || f.id)) || "后台任务", map[2]));
-      });
-      parts.push(el("p", "bg-sec", "最近结束"), done);
-    }
-    pop.replaceChildren(...parts);
-  }
-  function bgSetup() {
-    const badge = document.getElementById("bg-badge");
-    if (!badge) return;
-    badge.prepend(bgIcon(BG_LAYERS, 12));
-    const dim = el("div", "bg-dim");
-    dim.id = "bg-dim";
-    dim.hidden = true;
-    const pop = el("div", "bg-pop");
-    pop.id = "bg-pop";
-    pop.hidden = true;
-    document.querySelector(".main").append(dim, pop);
-    badge.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      bgState.open = !bgState.open;
-      pop.hidden = !bgState.open;
-      dim.hidden = !bgState.open;
-      badge.classList.toggle("on", bgState.open);
-      bgState.force = true;
-      bgRender();
-    });
-    dim.addEventListener("click", bgClose);
-    document.addEventListener("click", (ev) => { if (bgState.open && !pop.contains(ev.target)) bgClose(); });
-    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && bgState.open) bgClose(); });
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) bgRefresh(); });
-    bgTick();
   }
 
   // ---- Bot status: sidebar second line + step-flow popover (bot-status prototype) ----
@@ -817,7 +572,6 @@
     closeDrawer();
     closeStp();
     closeShots();
-    bgClose();
     panel.classList.remove("open");
     $("panel-scrim").hidden = true;
     $("info").setAttribute("aria-expanded", "false");
@@ -5932,7 +5686,6 @@
       state.sig = "";
       clearQuote();
       settle();
-      bgRefresh();
       await loadThread();
       if (state.sel === selection && subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
@@ -7024,7 +6777,6 @@
   });
 
   async function boot() {
-    if (!bgState.ready) { bgState.ready = true; bgSetup(); }
     stpSetup();
     await refreshLists();
     await refreshStatus().catch(() => {});
