@@ -36,7 +36,7 @@ func TestTaskIDSelectionSurvivesTwoPolls(t *testing.T) {
  const el=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls||'';if(text)n.textContent=text;return n};
  const icon=()=>el('span'),spinIcon=icon,avatar=icon,plainText=x=>x,clip=(x,n)=>Array.from(x).slice(0,n).join(''),taskStatus=x=>x,when=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=x=>x;
  const confirmTaskStop=()=>{},errorDetails=()=>{},controlAgent=async()=>true;
- ` + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function taskCard(", "  const routineChanges") + `
+ ` + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function updateTaskNotable(", "  const routineChanges") + `
  const ag={id:'sa_0123456789abcdef',type:'dev',task:'核对页面',status:'running',steps:3},card=taskCard(ag);document.body.append(card);
  const info=card.querySelector('details');info.open=true;
  const id=card.querySelector('.task-id'),range=document.createRange();range.selectNodeContents(id);document.getSelection().addRange(range);

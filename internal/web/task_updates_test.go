@@ -78,7 +78,7 @@ func TestTaskCardUsesTitleAndKeepsOriginalErrorAcrossPolls(t *testing.T) {
  const document={createTextNode:text=>({textContent:text})};
  const taskStatus=x=>x,when=x=>x,plainText=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=()=> '请求超时';
  const elements=new Map([['.task-error',node()]]),card=node();card.querySelector=sel=>{if(sel==='.res'&&elements.get('.task-type')?.className?.split(' ').includes('res'))return elements.get('.task-type');if(!elements.has(sel))elements.set(sel,node());return elements.get(sel)};
- ` + part("  function clip(", "  function when(") + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskCard(", "  const routineChanges") + `
+ ` + part("  function clip(", "  function when(") + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskNotable(", "  function taskCard(") + part("  function updateTaskCard(", "  const routineChanges") + `
  const plain=node();taskText(plain,'研究/开发 3/5');assert.equal(plain.textContent,'研究/开发 3/5');assert.equal(plain.children.length,0);
  const ag={id:'sa_0123456789abcdef',type:'dev',task:'核对页面\n下一行是具体步骤',status:'failed',summary:'provider: context deadline exceeded',steps:3};
  updateTaskCard(card,ag);
@@ -96,7 +96,13 @@ func TestTaskCardUsesTitleAndKeepsOriginalErrorAcrossPolls(t *testing.T) {
  const prior=detail.children[1];updateTaskCard(card,ag);assert.equal(detail.children[1],prior);assert.equal(prior.hidden,false);
  updateTaskCard(card,{...ag,status:'running'});assert.equal(detail.hidden,true);assert.equal(detail.children.length,0);
  updateTaskCard(card,{...ag,type:'research',status:'done',summary:'调研完成'});assert.equal(elements.get('.task-type').textContent,'调研');assert.equal(elements.get('.res').textContent,'调研完成');
- updateTaskCard(card,{...ag,status:'done',notable:[{kind:'global_install',text:'全局安装了软件。'}]});assert.equal(elements.get('.task-notable').textContent,'值得留意：全局安装了软件。');assert.equal(elements.get('.task-notable').hidden,false);updateTaskCard(card,{...ag,status:'done'});assert.equal(elements.get('.task-notable').hidden,true);
+ updateTaskCard(card,{...ag,status:'done',notable:[{kind:'global_install',text:'全局安装了 ripgrep',objects:['ripgrep']}]});assert.equal(elements.get('.task-notable').children[0].textContent,'值得留意');assert.equal(elements.get('.task-notable').children[1].children[1].textContent,'全局安装了 ripgrep');assert.equal(elements.get('.task-notable').hidden,false);updateTaskCard(card,{...ag,status:'done'});assert.equal(elements.get('.task-notable').hidden,true);
+ const items=[{kind:'delete',text:'删除了 a.txt、b.txt 等 3 个文件',objects:['a.txt','b.txt','c.txt']},{kind:'external_message',text:'向 Slack 发了 1 条消息',objects:['Slack']},{kind:'write_outside',text:'写入了 ~/.zshrc',objects:['~/.zshrc']},{kind:'global_install',text:'全局安装了 ripgrep',objects:['ripgrep']}];
+ updateTaskNotable(card,items);const notes=elements.get('.task-notable'),full=elements.get('.task-notable-details');assert.equal(notes.children.length,5);assert.equal(full.children.length,4);assert.equal(full.children[0].children[1].children.length,3);assert.equal(full.children[0].children[1].children[2].textContent,'c.txt');
+ const first=notes.children[1];updateTaskNotable(card,items);assert.equal(notes.children[1],first,'unchanged polls must not rebuild the list');
+ document.getSelection=()=>({isCollapsed:false,rangeCount:1,getRangeAt:()=>({intersectsNode:n=>n===full})});updateTaskNotable(card,[]);assert.equal(notes.children[1],first,'selection in full object details must survive');
+ document.getSelection=()=>null;updateTaskNotable(card,[]);assert.equal(notes.hidden,true);assert.equal(full.hidden,true);
+
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

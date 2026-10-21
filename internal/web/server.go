@@ -26,6 +26,7 @@ import (
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/notable"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/proc"
@@ -610,7 +611,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, map[string]any{
 			"id": meta.ID, "type": meta.Type, "status": status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
 			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
-			"started_at": startedAt, "current_step": meta.CurrentStep, "notable": meta.Notable,
+			"started_at": startedAt, "current_step": meta.CurrentStep, "notable": notable.Ordered(meta.Notable),
 		})
 	}
 	// Live work first: running, awaiting, queued, then finished. Directory

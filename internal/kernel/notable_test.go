@@ -21,7 +21,7 @@ import (
 func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	hold := make(chan struct{})
 	model := &roleModel{hold: hold,
-		fore: []provider.Message{assistantCall("d", "", "dispatch", `{"type":"dev","task":"整理测试目录"}`), {Role: provider.RoleAssistant, Content: "交给子代理了。"}, {Role: provider.RoleAssistant, Content: "文件写好了。\n\n值得留意：在工作区以外写入了文件。"}},
+		fore: []provider.Message{assistantCall("d", "", "dispatch", `{"type":"dev","task":"整理测试目录"}`), {Role: provider.RoleAssistant, Content: "交给子代理了。"}},
 		sub:  []provider.Message{assistantCall("s1", "", "shell", `{"command":"cd sub"}`), assistantCall("s2", "", "write_file", `{"path":"out/result.txt","content":"ok"}`), {Role: provider.RoleAssistant, Content: "文件写好了。"}}}
 	k, b, box := dispatchKernel(t, model)
 	k.Permissive = true
@@ -47,6 +47,9 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	if len(meta.Notable) != 1 || meta.Notable[0].Kind != "write_outside" || !strings.Contains(ev.Content, notable.Line(meta.Notable)) {
 		t.Fatalf("meta/report: %+v / %s", meta.Notable, ev.Content)
 	}
+	model.mu.Lock()
+	model.fore = append(model.fore, provider.Message{Role: provider.RoleAssistant, Content: "文件写好了。\n\n" + notable.Line(meta.Notable)})
+	model.mu.Unlock()
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -66,12 +69,16 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ownerReply := false
 	for _, entry := range entries {
+		if entry.Message.Role == provider.RoleAssistant && entry.Message.Content == "文件写好了。\n\n"+notable.Line(meta.Notable) {
+			ownerReply = true
+		}
 		if strings.HasPrefix(entry.Message.Content, "<subagent_report>") && !entry.IsInternal() {
 			t.Fatal("notable hint exposed as owner transcript")
 		}
 	}
-	if !found || !hint {
+	if !found || !hint || !ownerReply {
 		t.Fatalf("owner reply did not receive kernel facts/hint: facts=%v hint=%v", found, hint)
 	}
 }

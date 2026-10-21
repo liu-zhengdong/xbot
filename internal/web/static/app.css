@@ -2561,4 +2561,16 @@ html[data-theme="dark"] .task-record { --task-control-fill: var(--x-popover-hove
 html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 
 /* The kernel owns the fixed notable list; the task view only displays it. */
-.task-record .task-notable { font-size: 13px; line-height: 1.65; color: var(--x-muted); margin-top: 4px; }
+.task-record .task-notable { display: grid; gap: 4px; color: var(--x-muted); margin-top: 8px; }
+.task-notable .notable-heading { font-size: 12px; line-height: 1.65; }
+.task-notable .notable-row { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; line-height: 1.65; }
+.task-notable .notable-row > .icon { width: 14px; height: 14px; flex: 0 0 14px; color: inherit; }
+.task-notable .notable-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-notable .notable-text.has-path { display: flex; flex: 1; }
+.task-notable .notable-prefix { flex: none; white-space: pre; }
+.task-notable .notable-object { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-notable .path-tail { direction: rtl; text-align: left; }
+.task-notable-details { margin-top: 8px; color: var(--x-muted); font-size: 12px; }
+.task-notable-details .notable-detail + .notable-detail { margin-top: 6px; }
+.task-notable-details ul { margin: 2px 0 0; padding-left: 18px; }
+.task-notable-details li { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -113,6 +113,9 @@ func TestNotableExecutionMetaAndReportStayTogether(t *testing.T) {
 			if len(meta.Notable) != 1 || meta.Notable[0].Kind != tc.kind || !strings.Contains(ev.Text, notable.Line(meta.Notable)) {
 				t.Fatalf("meta/report disagree: %+v / %s", meta.Notable, ev.Text)
 			}
+			if len(meta.Notable[0].Objects) == 0 {
+				t.Fatal("real execution lost its objects")
+			}
 			if strings.Contains(meta.Summary, "值得留意") {
 				t.Fatal("task summary duplicates separate notable line")
 			}

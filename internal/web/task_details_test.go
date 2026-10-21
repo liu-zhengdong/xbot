@@ -86,7 +86,7 @@ func TestTaskNotableAndUnstartedTime(t *testing.T) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"id":"sa_0000000000000001","status":"queued","notable":[{"kind":"global_install","text":"全局安装了软件。"}]}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"id":"sa_0000000000000001","status":"queued","notable":[{"kind":"global_install","text":"全局安装了 ripgrep","objects":["ripgrep"]}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	s := &Server{Root: root, Owner: "u1"}
@@ -100,14 +100,17 @@ func TestTaskNotableAndUnstartedTime(t *testing.T) {
 	muxOf(s).ServeHTTP(res, req)
 	var got struct {
 		Agents []struct {
-			Started *string                       `json:"started_at"`
-			Notable []struct{ Kind, Text string } `json:"notable"`
+			Started *string `json:"started_at"`
+			Notable []struct {
+				Kind, Text string
+				Objects    []string
+			} `json:"notable"`
 		}
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Agents) != 1 || got.Agents[0].Started != nil || len(got.Agents[0].Notable) != 1 || got.Agents[0].Notable[0].Kind != "global_install" {
+	if len(got.Agents) != 1 || got.Agents[0].Started != nil || len(got.Agents[0].Notable) != 1 || got.Agents[0].Notable[0].Kind != "global_install" || len(got.Agents[0].Notable[0].Objects) != 1 || got.Agents[0].Notable[0].Objects[0] != "ripgrep" {
 		t.Fatalf("task metadata: %s", res.Body.String())
 	}
 }

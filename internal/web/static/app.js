@@ -1052,6 +1052,10 @@
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+    "trash-2": '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/>',
+    package: '<path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7 12 12l8.7-5M12 22V12"/>',
+    "file-pen": '<path d="M12 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8l6 6v4M14 2v6h6M21.378 14.626a1 1 0 0 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4ZM22 2 11 13"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
     maximize: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3 13.5 10.5"/><path d="M3 21l7.5-7.5"/>',
     download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
@@ -4848,6 +4852,38 @@
     updateWorkTimes();
   }
 
+  function updateTaskNotable(card, items) {
+    const host = card.querySelector(".task-notable"), details = card.querySelector(".task-notable-details");
+    const sig = JSON.stringify(items);
+    if (host.dataset.notable === sig || taskSelected(host) || taskSelected(details)) return;
+    host.dataset.notable = sig; host.replaceChildren(); details.replaceChildren();
+    host.hidden = details.hidden = !items.length;
+    if (!items.length) return;
+    host.append(el("div", "notable-heading", "值得留意"));
+    const icons = {delete:"trash-2",external_message:"send",write_outside:"file-pen",global_install:"package"};
+    const labels = {delete:"删除",external_message:"外发消息",write_outside:"工作区外写入",global_install:"全局安装"};
+    for (const item of items) {
+      const row = el("div", "notable-row"), text = el("span", "notable-text", item.text);
+      text.title = item.text;
+      // RTL clipping retains the end of long paths; the text itself remains
+      // selectable and the complete object list is in task details.
+      if (["write_outside", "delete"].includes(item.kind) && item.objects?.length === 1 && /[/\\]/.test(item.objects[0])) {
+        const prefix = item.kind === "write_outside" ? "写入了 " : "删除了 ";
+        if (item.text.startsWith(prefix)) {
+          const path = el("span", "notable-object path-tail"), value = el("bdi", "", item.text.slice(prefix.length));
+          value.dir = "ltr"; path.append(value);
+          text.classList.add("has-path"); text.replaceChildren(el("span", "notable-prefix", prefix), path);
+        }
+      }
+      row.append(icon(icons[item.kind]), text); host.append(row);
+      const group = el("div", "notable-detail"); group.append(el("div", "", labels[item.kind]));
+      const list = el("ul");
+      for (const object of item.objects || []) list.append(el("li", "", object));
+      if (item.incomplete) list.append(el("li", "", "部分调用未提供对象，或对象明细超过记录上限"));
+      group.append(list); details.append(group);
+    }
+  }
+
   function taskCard(ag) {
     const card = el("div", "task-record"); card.dataset.agent = ag.id;
     const compact = el("button", "recent-task"); compact.type = "button";
@@ -4861,7 +4897,7 @@
     detail.append(head, el("div", "now"), el("div", "res"), el("div", "task-notable"), el("div", "task-error"));
     const info = el("details", "task-details"); info.hidden = ag.type === "routine";
     const infoTitle = el("summary", "", "任务详情"); infoTitle.append(icon("chevron"));
-    info.append(infoTitle, el("p", "task-request"), el("code", "task-id"));
+    info.append(infoTitle, el("p", "task-request"), el("code", "task-id"), el("div", "task-notable-details"));
     detail.append(info);
     const close = el("button", "task-fold"); close.type = "button"; close.setAttribute("aria-label", "收起结果"); close.append(icon("chevronDown"));
     close.addEventListener("click", () => { card.classList.remove("expanded"); compact.setAttribute("aria-expanded", "false"); });
@@ -4934,9 +4970,7 @@
     const result = card.querySelector(".res");
     taskValue(result, hot ? "" : ag.summary === "SILENT" ? "没什么要说的" : (ag.status === "failed" ? zhError(ag.summary || "") : plainText(displayText(ag.summary || "")))); result.hidden = !result.textContent;
     result.classList.toggle("failed", ag.status === "failed");
-    const note = card.querySelector(".task-notable");
-    const notes = !hot ? (ag.notable || []).map(item => item.text).filter(Boolean) : [];
-    taskValue(note, notes.length ? "值得留意：" + notes.join(" ") : ""); note.hidden = !notes.length;
+    updateTaskNotable(card, hot ? [] : (ag.notable || []));
     const rawError = card.querySelector(".task-error");
     const raw = ag.status === "failed" ? ag.summary || "" : "";
     if (rawError.dataset.raw !== raw) {

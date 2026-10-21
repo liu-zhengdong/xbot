@@ -237,7 +237,7 @@ func subagentReportHint(ev link.Event) (provider.Message, bool) {
 	if ev.Source != link.SourceSubagent {
 		return provider.Message{}, false
 	}
-	return provider.Message{Role: provider.RoleUser, Internal: true, Content: "<subagent_report>Retell the following result to the owner in your own words as your work; do not paste the report or expose internal labels. If the result includes a kernel-authored 值得留意 line, include those facts in your reply.</subagent_report>"}, true
+	return provider.Message{Role: provider.RoleUser, Internal: true, Content: "<subagent_report>Retell the following result to the owner in your own words as your work; do not paste the report or expose internal labels. If the result ends with a kernel-authored 值得留意 digest, include those facts using that exact one-sentence digest in your reply; do not expand it into a list.</subagent_report>"}, true
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {
