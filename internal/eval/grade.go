@@ -127,6 +127,9 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 	}
 	for _, f := range c.Checks.Files {
 		fact, prob := checkFile(f, seeded, work)
+		if f.Untouched && touchedFile(f.Path, obs.Tools, work) {
+			problems = append(problems, f.Path+" was written during the run")
+		}
 		facts = append(facts, fact)
 		if prob != "" {
 			problems = append(problems, prob)
@@ -149,6 +152,22 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 		}
 	}
 	return problems, facts
+}
+
+// File-tool records also reject an explicit write-then-restore. Shell changes
+// are checked from final file bytes, rather than guessed from command text.
+func touchedFile(path string, calls []ToolUse, work string) bool {
+	access := fileAccess{work: work}
+	target := access.logical(path)
+	for _, call := range calls {
+		switch call.Name {
+		case "write_file", "edit_file":
+			if access.logical(jsonString(call.Args, "path")) == target {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func checkFile(f FileCheck, seeded map[string]string, work string) (FileFact, string) {
@@ -179,6 +198,31 @@ func checkFile(f FileCheck, seeded map[string]string, work string) (FileFact, st
 	}
 	if f.Contains != "" && !strings.Contains(string(raw), f.Contains) {
 		return fact, f.Path + " missing " + f.Contains
+	}
+	if len(f.JSONFields) > 0 {
+		var obj map[string]any
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			return fact, f.Path + " is not a JSON object"
+		}
+		for path, want := range f.JSONFields {
+			var got any = obj
+			for _, key := range strings.Split(path, ".") {
+				current, ok := got.(map[string]any)
+				if !ok {
+					return fact, f.Path + " missing JSON field " + path
+				}
+				value, ok := current[key]
+				if !ok {
+					return fact, f.Path + " missing JSON field " + path
+				}
+				got = value
+			}
+			actual, _ := json.Marshal(got)
+			expected, _ := json.Marshal(want)
+			if string(actual) != string(expected) {
+				return fact, f.Path + " has wrong JSON field " + path
+			}
+		}
 	}
 	if f.Equals != "" && string(raw) != f.Equals {
 		return fact, f.Path + " has different contents"

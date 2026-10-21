@@ -126,11 +126,14 @@ type FileCheck struct {
 	Path      string `yaml:"path"`
 	Exists    *bool  `yaml:"exists"`
 	Unchanged bool   `yaml:"unchanged"`
+	Untouched bool   `yaml:"untouched"`
 	Nonempty  bool   `yaml:"nonempty"`
 	Contains  string `yaml:"contains"`
-	Equals    string `yaml:"equals"`
-	Font      bool   `yaml:"font"`
-	CopyOf    string `yaml:"copy_of"`
+	// JSONFields checks parsed config values by dotted object path, not formatting.
+	JSONFields map[string]any `yaml:"json_fields"`
+	Equals     string         `yaml:"equals"`
+	Font       bool           `yaml:"font"`
+	CopyOf     string         `yaml:"copy_of"`
 }
 
 func (c Case) levels() []string {
