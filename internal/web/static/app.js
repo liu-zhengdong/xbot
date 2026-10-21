@@ -1035,6 +1035,7 @@
   }
 
   const ICONS = {
+    gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
     spinner: '<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
     "users-plus": '<circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M19 13v6M16 16h6"/>',
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/>',
@@ -1402,7 +1403,13 @@
       const items = text.match(/^- /gm) || [];
       const more = /^- … and (\d+) more routines/m.exec(text);
       const count = items.length + (more ? Number(more[1]) - 1 : 0);
-      return { label: "错过的定时 · " + count + " 项", prompt: text };
+      const lines = text.split("\n").filter(line => /^- /.test(line)).map(line => {
+        const m = /^- "[^"]*" "(.*)": (\d+) missed \((.*)\)$/.exec(line);
+        if (m) return m[1] + " · 错过 " + m[2] + " 次（" + m[3] + "）";
+        const more = /^- … and (\d+) more routines/.exec(line);
+        return more ? "另有 " + more[1] + " 项定时" : "其他定时";
+      });
+      return { label: "错过的定时 · " + count + " 项", prompt: "电脑关机或休眠期间，这些定时没有运行。\n" + lines.join("\n") };
     }
     const routine = /^<routine\b([^>]*)>([\s\S]*?)<\/routine>/.exec(text);
     if (!routine) return null;
@@ -1712,8 +1719,27 @@
     return box;
   }
 
+  function doodle(name) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const wide = name === "devices" || name === "offline";
+    const height = name === "devices" ? 110 : 120;
+    for (const [k, v] of Object.entries({class: "doodle", width: wide ? 220 : 200, height, viewBox: "0 0 " + (wide ? 220 : 200) + " " + height, fill: "none", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true"})) svg.setAttribute(k, v);
+    const use = document.createElementNS(svg.namespaceURI, "use");
+    use.setAttribute("href", "#doodle-" + name);
+    svg.append(use);
+    return svg;
+  }
+
+  function panelEmpty(name, heading, text) {
+    const box = el("div", "panel-empty");
+    if (name) box.append(doodle(name));
+    box.append(el("h3", "", heading), el("p", "", text));
+    return box;
+  }
+
   function emptyState(heading, line, who, starters) {
     const box = el("div", "empty");
+    if (starters) box.append(doodle("chat"));
     if (who) box.append(avatar(who, paintOf(who), "lg"));
     box.append(el("h2", "", heading), el("p", "", line));
     if (starters && who) box.append(starterList(who));
@@ -2341,8 +2367,7 @@
       const key = "bot:" + (who || "");
       const cont = !groupStart(lastMsg, m, lastKey, key);
       const built = botBubble(m, results, messages, i, who);
-      const asks = (m.tool_calls || []).some((c) => toolSummary(c).name === "ask_user");
-      if (m.content || asks) {
+      if (m.content) {
         if (cont) markContinuation(built.row, m.time);
         inner.append(built.row);
         lastKey = key;
@@ -2618,7 +2643,7 @@
       const paint = () => {
         const left = deadlineMs - Date.now();
         if (left <= 0) { settle("auto_approved"); return; }
-        const label = approvalRemainText(left) + "后按允许继续";
+        const label = approvalRemainText(left) + (send ? "后照发" : "后按允许继续");
         if (timerText.textContent !== label) timerText.textContent = label;
       };
       paint();
@@ -3490,7 +3515,7 @@
       retry.disabled = false;
       if (panel.classList.contains("open")) await loadPanel();
     });
-    box.append(el("p", "", "连不上 XBot"), retry);
+    box.append(doodle("offline"), el("h3", "", "连不上 XBot"), el("p", "", "本机的 XBot 服务没有响应。它可能刚升级完还在重启，等几秒再试一次。"), retry);
     thread.replaceChildren(box);
   }
 
@@ -3530,7 +3555,7 @@
       if (state.sel === selection) setStatus("通知未能标为已读，请重试。", true);
     });
     await loadThread();
-    if (state.sel === selection && panel.classList.contains("open")) await loadPanel();
+    if (state.sel === selection && panel.classList.contains("open") && !state.panelData) await loadPanel();
   }
 
   async function selectGroup(id) {
@@ -3580,7 +3605,7 @@
         state.sig = sig;
         if (state.peer) return;
         renderMessages(messages, selection.id);
-        if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
+        if (panel.classList.contains("open")) await loadPanel();
         return;
       }
       const data = await api("/api/groups/" + encodeURIComponent(selection.id));
@@ -3976,6 +4001,7 @@
 
   function paintPanel() {
     panelBody.replaceChildren();
+    paintContextBar();
     if (!state.sel) {
       $("panel-ident").hidden = true;
       $("panel-tabs").replaceChildren();
@@ -4112,7 +4138,7 @@
     const wrap = document.createDocumentFragment();
     const turns = traceTurns(state.messages);
     if (!turns.length) {
-      wrap.append(el("p", "hint", "没有轨迹"));
+      wrap.append(panelEmpty("trace", "没有轨迹", "它每做一件事，都会在这里留下一行。"));
       return wrap;
     }
     const list = el("div", "trace");
@@ -4180,13 +4206,11 @@
     const snap = state.ctxSnap;
     if (snap === null) {
       wrap.append(el("p", "hint", "正在读取……"));
-      loadContext(data && data.name);
       return wrap;
     }
     const reqs = snap.requests || [];
     if (!reqs.length) {
-      wrap.append(el("p", "hint", "这个 Bot 还没在本进程里发过请求。"));
-      wrap.append(el("p", "hint hint-sub", "上下文只在每次唤醒时存在。在对话里说一句，或者等它自己醒来，这里就会出现这一轮实际发出去的内容。"));
+      wrap.append(panelEmpty("", "还没有快照", "这个 Bot 还没在本进程里发过请求。"));
       return wrap;
     }
     const req = ctxReq(snap);
@@ -4355,21 +4379,41 @@
     if (state.tab === "context") paintPanel();
   });
 
-  async function loadContext(name) {
-    if (!name) return;
-    const sel = state.sel;
-    const request = ++state.panelLoad;
-    try {
-      const snap = await api("/api/bots/" + encodeURIComponent(name) + "/context");
-      if (state.sel !== sel || request !== state.panelLoad) return;
-      state.ctxSnap = snap;
-      state.ctxStep = -1;
-      if (state.tab === "context") paintPanel();
-    } catch (e) {
-      if (state.sel !== sel || request !== state.panelLoad) return;
-      state.ctxSnap = { requests: [] };
-      if (state.tab === "context") paintPanel();
+  function paintContextBar() {
+    const host = $("ctxbar");
+    host.replaceChildren();
+    const snap = state.ctxSnap;
+    const req = snap?.requests?.at(-1);
+    host.hidden = !state.sel || state.sel.type !== "bot" || state.tab === "context" || !req || !(snap.ceiling > 0);
+    if (host.hidden) return;
+    const used = Math.max(0, req.prompt || 0), hard = snap.ceiling;
+    const bar = el("button", "ctxbar");
+    bar.type = "button";
+    bar.setAttribute("aria-label", "查看上下文");
+    setTip(bar, "上下文");
+    bar.append(icon("gauge"));
+    const label = el("span");
+    label.append(el("b", "", Math.round(used * 100 / hard) + "%"), document.createTextNode(" 已用"));
+    const band = el("div", "ubar");
+    const sums = ctxSums(req);
+    let room = 100;
+    for (const [key] of CTX_BANDS) {
+      if (!sums[key]) continue;
+      const seg = el("i", "ctx-c-" + key);
+      const pct = Math.min(room, Math.max(0, sums[key] * 100 / hard));
+      seg.style.width = pct + "%";
+      if (key === "tools") seg.style.marginLeft = "auto";
+      room -= pct;
+      band.append(seg);
     }
+    if (snap.target > 0 && snap.target < hard) {
+      const tick = el("span", "soft");
+      tick.style.left = (snap.target * 100 / hard) + "%";
+      band.append(tick);
+    }
+    bar.append(label, band, el("span", "mono", ctxK(used).toUpperCase() + " / " + ctxK(hard).toUpperCase()));
+    bar.addEventListener("click", () => { state.tab = "context"; paintPanel(); });
+    host.append(bar);
   }
 
   function styleChips(data) {
@@ -4482,7 +4526,7 @@
   function libraryView(data) {
     const wrap = document.createDocumentFragment();
     const facts = data.memory || [];
-    if (!facts.length) wrap.append(el("p", "hint", "还没有记住任何事。对它说「记住……」就会出现在这里"));
+    if (!facts.length) wrap.append(panelEmpty("memory", "还没有记忆", "聊着聊着，它会记下关于你的事和你们的约定。"));
     for (const f of facts) {
       const card = el("div", "lib-card");
       card.append(el("div", "k", scopeLabel(f.scope)), el("div", "v", f.text || ""));
@@ -4493,6 +4537,10 @@
 
   function computerView(data) {
     const wrap = document.createDocumentFragment();
+    if (!(data.routines || []).length && !(data.agents || []).length) {
+      wrap.append(panelEmpty("tasks", "没有任务", "让它「每天 8 点提醒我」，这里就会有一个例程。"));
+      return wrap;
+    }
     const routines = section("例程");
     const list = data.routines || [];
     if (!list.length) routines.append(el("p", "hint", "没有例程"));
@@ -4612,10 +4660,14 @@
     const selection = state.sel;
     const request = ++state.panelLoad;
     try {
-      const data = await fetchBotProfile(selection.id);
+      const [data, snap] = await Promise.all([
+        fetchBotProfile(selection.id),
+        api("/api/bots/" + encodeURIComponent(selection.id) + "/context").catch(() => ({ requests: [] })),
+      ]);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
+      state.ctxSnap = snap;
       paintPanel();
     } catch (e) {
       if (state.sel === selection && request === state.panelLoad) {

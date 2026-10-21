@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+	"xbot/internal/fsutil"
 
 	"xbot/internal/memory"
 )
@@ -167,5 +169,39 @@ func TestListSkipsBotWhoseStyleMigrationFails(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if string(after) != string(before) {
 		t.Fatal("failed migration changed the old config")
+	}
+}
+
+func TestSaveConfigSharesTheMigrationLock(t *testing.T) {
+	b, err := Create(t.TempDir(), "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := fsutil.Lock(filepath.Join(b.dir(), "config.json.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := false
+	defer func() {
+		if !released {
+			lock.Release()
+		}
+	}()
+	done := make(chan error, 1)
+	go func() { done <- b.SaveConfig() }()
+	select {
+	case err := <-done:
+		t.Fatalf("SaveConfig bypassed the migration lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	lock.Release()
+	released = true
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SaveConfig did not resume after migration released the lock")
 	}
 }

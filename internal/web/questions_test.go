@@ -101,13 +101,6 @@ func TestQuestionTimeoutChoosesRecommendedAndResumes(t *testing.T) {
 		}
 	}
 	waitTranscript(t, b, "继续：先搭骨架")
-	entriesForShot, _ := b.Entries()
-	for _, entry := range entriesForShot {
-		if card, ok := bot.ParseApprovalCard(entry.Message.Content); ok && card.Tool == "ask_user" {
-			raw, _ := json.Marshal(card)
-			t.Logf("CARD_SNAPSHOT %s", raw)
-		}
-	}
 	c := questionCard(t, b)
 	if c.State != bot.ApprovalAutoApproved || !strings.Contains(c.Notice, "没人选，按推荐选了 先搭骨架") {
 		t.Fatalf("card %+v", c)

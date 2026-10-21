@@ -30,6 +30,31 @@ try {
 <link rel="stylesheet" href="/remotechat.css">
 </head>
 <body>
+<svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs>
+<symbol id="doodle-chat" viewBox="0 0 200 120">
+<path d="M52 62c-.6 13 .4 22 2.6 27.5 9.6 3 20.4 3 30 .2 2.2-6 3-15 2.4-27.6-11.6 1.6-23.4 1.4-35-.1z"/><path d="M87.4 68c8.8-1.6 12.4 2.4 11.2 7.6-1 4.8-6 7-12.6 6"/>
+<path d="M60 54c-4-5 2.4-8-.6-13.6"/><path d="M70 52c-3.4-5.4 3-8.6 0-14.4"/><path d="M80 54c-3.6-4.6 2-7.6-.4-12"/>
+<path d="M40 94c18 5.2 46 5.4 66-.4"/><path d="M134 46l38-15.4-15.6 33-6.4-11.4z"/><path d="M150 52.2l22-21.6"/>
+<path d="M104 56c8-3 16-6.4 24-10" stroke-dasharray="1.5 5"/><circle cx="46" cy="100" r=".9" fill="currentColor" stroke="none"/><circle cx="54" cy="103" r=".9" fill="currentColor" stroke="none"/><circle cx="63" cy="101" r=".9" fill="currentColor" stroke="none"/><circle cx="72" cy="104" r=".9" fill="currentColor" stroke="none"/><circle cx="82" cy="101" r=".9" fill="currentColor" stroke="none"/><circle cx="92" cy="103" r=".9" fill="currentColor" stroke="none"/><circle cx="100" cy="100" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="doodle-memory" viewBox="0 0 200 120">
+<path d="M46 32c18-5 36-4 54 4.6v56c-17.6-8-35.4-9-54-4.4z"/><path d="M100 36.6c17-8.4 35-9.8 54-5v56c-18.6-4.4-36.6-3.2-54 5"/>
+<path d="M56 46c12-2 22-1.4 34 2.6M56 56c12-2 22-1.4 34 2.6M56 66c10-1.6 18-1 26 1.4" stroke-dasharray="2 4"/><path d="M110 48c12-4 22-4.6 34-3M110 58c12-4 22-4.6 34-3" stroke-dasharray="2 4"/>
+<path d="M132 30v24l5.4-4.4 5.4 4.2V29.4"/><circle cx="60" cy="100" r=".9" fill="currentColor" stroke="none"/><circle cx="70" cy="102" r=".9" fill="currentColor" stroke="none"/><circle cx="80" cy="100" r=".9" fill="currentColor" stroke="none"/><circle cx="90" cy="103" r=".9" fill="currentColor" stroke="none"/><circle cx="100" cy="101" r=".9" fill="currentColor" stroke="none"/><circle cx="110" cy="103" r=".9" fill="currentColor" stroke="none"/><circle cx="120" cy="100" r=".9" fill="currentColor" stroke="none"/><circle cx="130" cy="102" r=".9" fill="currentColor" stroke="none"/><circle cx="140" cy="100" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="doodle-trace" viewBox="0 0 200 120">
+<path d="M26 92c22-2 30-22 52-24s24 14 44 10 18-26 34-34" stroke-dasharray="1.5 6"/><circle cx="26" cy="92" r="3.4"/>
+<path d="M156 44V16.4"/><path d="M156 17c6 1.6 11 1 16.6 3.4-5 3.6-10.6 4.2-16.6 5.4"/><circle cx="150" cy="48" r=".9" fill="currentColor" stroke="none"/><circle cx="158" cy="49" r=".9" fill="currentColor" stroke="none"/><circle cx="164" cy="47" r=".9" fill="currentColor" stroke="none"/><circle cx="146" cy="50" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="doodle-tasks" viewBox="0 0 200 120">
+<path d="M100 36c15.6-.4 26 11 25.6 25.4-.4 14.6-11.4 25-26 24.6C85 85.6 74.4 75 74.6 60.4 74.8 46 85.4 36.4 100 36z"/><path d="M100 46v15l9 6"/>
+<path d="M80 36.4c-3.6-6 2.4-11.4 8.4-8.6M120 36.4c3.6-6-2.4-11.4-8.4-8.6"/><path d="M86 86l-5 8M114 86l5 8"/>
+<path d="M136 34h9l-9 10h9M150 22h6l-6 7h6"/><circle cx="78" cy="100" r=".9" fill="currentColor" stroke="none"/><circle cx="88" cy="102" r=".9" fill="currentColor" stroke="none"/><circle cx="98" cy="100" r=".9" fill="currentColor" stroke="none"/><circle cx="108" cy="102" r=".9" fill="currentColor" stroke="none"/><circle cx="118" cy="100" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="doodle-offline" viewBox="0 0 220 120">
+<path d="M14 66c18 2 32-1 46-6"/><path d="M60 50.4c8-.6 15-.4 21.4.4 2.4.4 3.4 2 3.4 4.6v9.4c0 2.6-1 4-3.4 4.4-6.6 1-13.6 1-21.4.4z"/><path d="M85 54h9M85 65h9"/>
+<path d="M130 48c7.6-.8 15.6-.6 23 .2 2.4.4 3.4 2 3.4 4.4v14c0 2.4-1 3.8-3.4 4.2-7.6.8-15.4.8-23 0z"/><path d="M137 55.6v3M137 63v3"/><path d="M156.4 60c20 1.4 34 4 50 1"/>
+<path d="M105 46l2-6M111 59h6M105 72l2 6" /><circle cx="40" cy="84" r=".9" fill="currentColor" stroke="none"/><circle cx="50" cy="86" r=".9" fill="currentColor" stroke="none"/><circle cx="60" cy="84" r=".9" fill="currentColor" stroke="none"/><circle cx="150" cy="86" r=".9" fill="currentColor" stroke="none"/><circle cx="160" cy="84" r=".9" fill="currentColor" stroke="none"/><circle cx="170" cy="86" r=".9" fill="currentColor" stroke="none"/><circle cx="180" cy="84" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="doodle-devices" viewBox="0 0 220 110">
+<path d="M30 40c14-.6 28-.6 42 0v30c-14 .6-28 .6-42 0z"/><path d="M22 76c19 1.4 39 1.4 58 0"/><path d="M148 40c14-.6 28-.6 42 0v30c-14 .6-28 .6-42 0z"/><path d="M140 76c19 1.4 39 1.4 58 0"/>
+<path d="M78 38c18-18 46-18 64 0" stroke-dasharray="1.5 6"/><path d="M106 26.4l3.4-3.4M114 26.4l-3.4-3.4"/><circle cx="40" cy="90" r=".9" fill="currentColor" stroke="none"/><circle cx="50" cy="92" r=".9" fill="currentColor" stroke="none"/><circle cx="60" cy="90" r=".9" fill="currentColor" stroke="none"/><circle cx="160" cy="92" r=".9" fill="currentColor" stroke="none"/><circle cx="170" cy="90" r=".9" fill="currentColor" stroke="none"/><circle cx="180" cy="92" r=".9" fill="currentColor" stroke="none"/></symbol>
+</defs></svg>
 <div id="login" class="gate">
   <form id="login-form" class="gate-card" novalidate>
     <div class="mark" aria-hidden="true">
@@ -181,6 +206,7 @@ try {
       </div>
       <div id="panel-head" class="panel-head">
         <div id="panel-ident" class="pid" hidden></div>
+        <div id="ctxbar" hidden></div>
         <div id="panel-tabs" class="panel-tabs"></div>
       </div>
       <div id="panel-body" class="panel-body"></div>

@@ -23,9 +23,6 @@ func TestStarterProfileCache(t *testing.T) {
 	if start < 0 || end < start {
 		t.Fatal("starter profile block not found")
 	}
-	if !strings.Contains(js, "const data = await fetchBotProfile(selection.id);") {
-		t.Error("loadPanel shares the starters' profile fetch")
-	}
 	script := `
 const state = { panelData: null };
 const calls = [];

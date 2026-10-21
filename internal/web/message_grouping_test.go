@@ -50,3 +50,27 @@ if (failures.length) throw new Error(failures.join("\n"));
 		t.Fatalf("message grouping behavior: %v\n%s", err, output)
 	}
 }
+
+func TestMessageTimeDividers(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	a := strings.Index(s, "  function timeDivider(")
+	b := strings.Index(s, "  function appendRich(")
+	script := `const assert=require('node:assert/strict');const clockTime=t=>new Date(t).toTimeString().slice(0,5);const el=(_,cls,text)=>({cls,text});` + s[a:b] + `
+ const now=new Date(2026,9,21,12),at=n=>new Date(2026,9,21,10,n).toISOString();
+ assert.equal(timeDivider(undefined,at(0),now),'今天 10:00');
+ assert.equal(timeDivider(at(0),at(29),now),'');
+ assert.equal(timeDivider(at(0),at(30),now),'今天 10:30');
+ assert.equal(timeDivider(new Date(2026,9,20,23,59),new Date(2026,9,21,0,0),now),'今天 00:00');
+ assert.equal(timeDivider(null,'invalid',now),'');
+ const make=group=>{const rows=[0,29,30,61].map(n=>({dataset:{time:at(n)},before(e){this.divider=e}}));return {classList:{contains:()=>group},querySelectorAll:()=>rows,rows}};
+ const inner=make(false);addTimeDividers(inner);assert.deepEqual(inner.rows.map(n=>!!n.divider),[true,false,false,true]);
+ const group=make(true);addTimeDividers(group);assert.ok(group.rows.every(n=>!n.divider));
+ `
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

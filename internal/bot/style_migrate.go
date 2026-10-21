@@ -108,6 +108,6 @@ func (b *Bot) migrateStyle(raw []byte) error {
 		if b.cfg.Style != nil && *b.cfg.Style == (Style{}) {
 			b.cfg.Style = nil
 		}
-		return b.SaveConfig()
+		return b.saveConfig()
 	})
 }

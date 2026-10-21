@@ -336,6 +336,11 @@ func (b *Bot) dir() string { return Dir(b.Root, b.cfg.Name) }
 
 // SaveConfig writes config.json.
 func (b *Bot) SaveConfig() error {
+	return fsutil.WithLock(filepath.Join(b.dir(), "config.json.lock"), b.saveConfig)
+}
+
+// saveConfig requires the config lock, shared with legacy style migration.
+func (b *Bot) saveConfig() error {
 	raw, err := fsutil.Marshal(b.cfg)
 	if err != nil {
 		return err

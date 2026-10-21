@@ -407,7 +407,7 @@ html[data-theme="dark"] .field select {
 
 .pin-row::-webkit-scrollbar { display: none; }
 
-.pin {
+.pin-row > .pin {
   width: 56px; height: 56px; flex: none;
   border: 0; background: transparent; border-radius: 16px;
   display: grid; place-items: center; padding: 0; color: var(--muted);
@@ -415,9 +415,9 @@ html[data-theme="dark"] .field select {
   transition: background 160ms ease-out;
 }
 
-.pin:hover { background: var(--hover); }
+.pin-row > .pin:hover { background: var(--hover); }
 
-.pin.active { background: var(--selected); }
+.pin-row > .pin.active { background: var(--selected); }
 
 .pin.add .plus-face {
   width: 44px; height: 44px; border-radius: 16px;
@@ -428,7 +428,7 @@ html[data-theme="dark"] .field select {
 
 .pin.add .plus-face .icon { width: 20px; height: 20px; }
 
-.pin:active { background: var(--selected); }
+.pin-row > .pin:active { background: var(--selected); }
 
 /* A bot avatar is a portrait, not a glyph: a round window onto it, like a photo. */
 .avatar { width: 36px; height: 36px; flex: none; display: block; position: relative; border-radius: 50%; overflow: hidden; background: #e4e4e7; }
@@ -1972,7 +1972,7 @@ html[data-theme="dark"] {
   .sidebar.rail .pop { left: 0; right: 0; }
   .sidebar.rail .item { justify-content: flex-start; padding: 8px 10px; min-height: 56px; }
   .sidebar.rail .pin-row { flex-direction: row; overflow-x: auto; align-items: center; }
-  .sidebar.rail .pin-row .pin { width: 64px; padding: 6px 0 5px; }
+  .sidebar.rail .pin-row > .pin { width: 64px; padding: 6px 0 5px; }
   .sidebar.rail .pin-row .pin.add { order: 0; }
   .sidebar.rail .pin .avatar.pin,
   .sidebar.rail .pin .avatar.pin > svg { width: 44px; height: 44px; }
@@ -2172,13 +2172,13 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 /* Loading and sending share the existing neutral bubble surfaces. */
 .thread-unavailable {
   min-height: 100%; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px; color: var(--muted);
+  align-items: center; justify-content: center; color: var(--muted);
 }
 .thread-skeleton { padding-top: 24px; }
 .skeleton-bubble { width: 46%; height: 56px; border-radius: 16px; background: var(--bot-bubble); }
 .skeleton-bubble:nth-child(2) { align-self: flex-end; width: 36%; background: var(--user-bubble); }
 .skeleton-bubble:nth-child(3) { width: 56%; height: 80px; }
-.msg.optimistic .bubble { opacity: .65; }
+
 .send-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: var(--faint); }
 .send-failed { color: var(--err); }
 .send-state .secondary { padding: 4px 10px; font-size: 12px; }
@@ -2241,7 +2241,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 
 /* Sidebar width: 260px, 240px from 768 to 1100 wide (the list no longer folds
    at 1024). Pinned bots show their name under the face. */
-.pin { width: 64px; height: auto; padding: 6px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 5px; border-radius: 14px; }
+.pin-row > .pin { width: 64px; height: auto; padding: 6px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 5px; border-radius: 14px; }
 .pin.add .plus-face { border-radius: 22px; }
 /* In the column the face's percentage height did not resolve (44x33). */
 .pin .avatar.pin { flex: none; }
@@ -2336,7 +2336,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .account-about { gap: 10px; justify-content: flex-start; font-size: 13.5px; }
 .account-about .icon { width: 16px; height: 16px; flex: none; }
 .account-about .menu-count { margin-left: auto; color: var(--x-faint); font-size: 12.5px; }
-.panel-more .v.mono { font-family: var(--x-mono); overflow: hidden; text-overflow: ellipsis; }
+.panel-more .v.mono { white-space: nowrap; font-family: var(--x-mono); overflow: hidden; text-overflow: ellipsis; }
 
 .not-found-back { display: inline-block; padding: 10px 16px; border-radius: 10px; text-decoration: none; text-align: center; }
 
@@ -2416,9 +2416,9 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 @media (min-width: 768px) {
   .sidebar.rail { align-items: center; padding-bottom: 10px; }
   .sidebar.rail .side-scroll { width: 100%; }
-  .sidebar.rail .pin-row { gap: 4px; padding: 0 0 4px; }
+  .sidebar.rail .pin-row { gap: 4px; padding: 0 0 14px; }
   .sidebar.rail .pin.add, .sidebar.rail .greeting, .sidebar.rail .gateway-hint { display: none; }
-  .sidebar.rail .item { width: 52px; min-height: 52px; padding: 8px; margin: 0 auto 2px; border-radius: 12px; }
+  .sidebar.rail .item { width: 52px; min-height: 56px; padding: 8px; margin: 0 auto 2px; border-radius: 12px; }
   .sidebar.rail .folder-toggle, .sidebar.rail .group-label { height: 10px; min-height: 10px; padding: 0; overflow: hidden; font-size: 0; }
   .sidebar.rail .folder-toggle > *, .sidebar.rail .group-label > * { display: none; }
   .sidebar.rail .side-foot { width: 100%; display: flex; flex-direction: column; align-items: center; }
@@ -2449,3 +2449,36 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 @media (min-width: 768px) { .sidebar.rail .folder-bots[hidden] { display: block !important; } }
 
 .opt-recommend { font-size: 12px; color: var(--x-muted); }
+
+/* M5: the latest request, not a zero-valued placeholder. */
+.ctxbar { line-height: normal; margin: 12px 16px 0; width: calc(100% - 32px); background: var(--x-fill-1); border: 0; border-radius: 10px; padding: 8px 12px; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--x-muted); cursor: pointer; }
+.ctxbar:hover { background: var(--x-fill-2); }
+.ctxbar b { color: var(--x-text); font-weight: 650; }
+.ctxbar > .icon { width: 14px; height: 14px; flex: none; }
+.ctxbar > span { white-space: nowrap; }
+.ctxbar .mono { font-family: var(--x-mono); }
+.ubar { flex: 1; min-width: 0; height: 6px; border-radius: 3px; background: var(--x-ctx-free); display: flex; overflow: hidden; position: relative; }
+.ubar i { display: block; height: 100%; flex: none; background: var(--c); }
+.ubar .soft { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--x-text); opacity: .75; }
+.doodle { color: var(--x-text-2); opacity: .85; display: block; flex: none; max-width: 100%; }
+.empty { width: 100%; padding: 0 32px; }
+.empty h2 { line-height: normal; margin: 14px 0 0; }
+.empty p { margin-top: 6px; }
+.starter { line-height: normal; }
+.panel-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 36px 8px; }
+.panel-empty h3 { font-size: 15px; line-height: normal; font-weight: 640; margin: 14px 0 0; }
+.panel-empty p { font-size: 13px; color: var(--x-muted); margin: 6px 0 0; line-height: 1.6; }
+.thread-unavailable { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; }
+.thread-unavailable h3 { font-size: 18px; font-weight: 640; margin: 14px 0 0; }
+.thread-unavailable p { max-width: 420px; font-size: 14px; color: var(--x-muted); margin: 6px 0 20px; line-height: 1.6; }
+.bot-bubble .code-block { background: var(--x-card); }
+.in-app:is(.os-win, .os-linux) .side-drag { height: 22px; }
+@media (min-width: 768px) { .sidebar.rail .side-foot { padding-bottom: 0; } }
+@media (max-width: 767px) {
+  .msg.bot .body { max-width: 100%; }
+  /* With no side gutter, controls take their own space instead of covering text. */
+  .msg.bot > .body > .meta-row { position: static; display: none; align-self: flex-end; width: auto; height: 20px; margin-top: 4px; }
+  .msg.bot > .body > .ht { position: static; display: none; align-self: flex-end; }
+  .msg.bot:is(:hover, :focus-within) > .body > .meta-row { display: flex; }
+  .msg.bot:is(:hover, :focus-within) > .body > .ht { display: block; visibility: visible; }
+}

@@ -288,7 +288,7 @@
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
     let list;
     if (!devs.length) {
-      list = `<section class="profile-section"><div class="g7-empty"><span class="g7-ico-box">${svg("devices", 26)}</span><h3>还没有配对的设备</h3>
+      list = `<section class="profile-section"><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有配对的设备</h3>
           <p>把你的另一台电脑配对进来，它上面的 Bot 会出现在侧栏里，点开就能聊天。</p></div>
         <ul class="g7-can"><li>${svg("bot", 16)}<span>在这台电脑上和另一台电脑的 Bot 聊天，和本机的一样。</span></li>
           <li>${svg("swap", 16)}<span>两边的 Bot 能互发消息。</span></li>

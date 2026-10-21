@@ -121,11 +121,11 @@ func ChooseQuestion(b *bot.Bot, id, choice string) error {
 	questionsMu.Lock()
 	q := questions[botKey(b)+"/"+id]
 	if q == nil {
+		questionsMu.Unlock()
 		// Completed choices remain on the append-only transcript even after
 		// the in-memory retention window, including across a restart.
 		entries, err := b.Entries()
 		if err != nil {
-			questionsMu.Unlock()
 			return err
 		}
 		for _, e := range entries {
@@ -135,7 +135,6 @@ func ChooseQuestion(b *bot.Bot, id, choice string) error {
 			}
 			question, options, recommended, err := parseAsk(json.RawMessage(c.Summary))
 			if err != nil {
-				questionsMu.Unlock()
 				return err
 			}
 			q = &ownerQuestion{b: b, id: id, question: question, options: options, recommended: recommended, done: true, automatic: c.State == bot.ApprovalAutoApproved}
@@ -143,6 +142,11 @@ func ChooseQuestion(b *bot.Bot, id, choice string) error {
 			if len(owners) > 0 {
 				q.sender = owners[0]
 			}
+		}
+		questionsMu.Lock()
+		// A concurrent request may have installed a live card while we read.
+		if live := questions[botKey(b)+"/"+id]; live != nil {
+			q = live
 		}
 		if q == nil {
 			questionsMu.Unlock()
@@ -213,17 +217,11 @@ func AnswerQuestions(b *bot.Bot, text string) {
 }
 
 func deliverQuestion(q *ownerQuestion, text string, fresh bool) {
-	if fresh {
-		AnswerQuestions(q.b, text)
-	}
 	if InterjectInternal(q.b, provider.Message{Role: provider.RoleUser, Content: text, Internal: !fresh}) {
 		return
 	}
-	source := link.NameApproval
-	if fresh {
-		source = link.NameWeb
-	}
-	ev := link.NewEvent(source, link.TypeMessage, text, q.sender, time.Now())
+	// Card choices, including late ones, answer only their own card.
+	ev := link.NewEvent(link.NameApproval, link.TypeMessage, text, q.sender, time.Now())
 	ev.SenderKind = link.KindPerson
 	ev.Untrusted = false
 	box, err := inbox.Open(q.b.InboxPath())
