@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -69,62 +68,54 @@ func approvalCardID(t *testing.T, ev sseEvent) string {
 	return card.ID
 }
 
-// TestApprovalWaitDefaultsTo24Hours pins the default window. A card is a request
-// to a person, and a 60 second window silently drops work whenever the owner is
-// away from the screen.
-func TestApprovalWaitDefaultsTo24Hours(t *testing.T) {
-	s := &Server{}
-	if got := s.approvalWait(); got != 24*time.Hour {
-		t.Fatalf("default approval wait %v, want 24h", got)
+func TestApprovalWaitDefaultsTo30Minutes(t *testing.T) {
+	if got := (&Server{}).approvalWait(); got != 30*time.Minute {
+		t.Fatalf("default wait %v", got)
 	}
 	if got := (&Server{ApprovalWait: 5 * time.Second}).approvalWait(); got != 5*time.Second {
-		t.Fatalf("explicit wait %v, want 5s", got)
+		t.Fatalf("explicit wait %v", got)
 	}
 }
 
-// TestWebApprovalTimeoutIsNoDecision checks that a card nobody answered is
-// recorded as no-decision and reported to the model as such, not as a refusal.
-func TestWebApprovalTimeoutIsNoDecision(t *testing.T) {
-	_, ui, cookie, b := newApprovalHarness(t, 300*time.Millisecond)
+func TestWebApprovalTimeoutAutomaticallyResumes(t *testing.T) {
+	_, ui, cookie, b := newApprovalHarness(t, 100*time.Millisecond)
 	stream := postSSE(t, ui.URL, cookie, "NEED_APPROVAL")
 	id := approvalCardID(t, waitEvent(t, stream, "approval"))
-	var results []string
+	ran := false
 	for ev := range stream {
-		if ev.name == "result" {
-			results = append(results, ev.data)
+		if ev.name == "result" && strings.Contains(ev.data, "exit 0") {
+			ran = true
 		}
 		if ev.name == "error" {
-			t.Fatalf("error event %s", ev.data)
+			t.Fatal(ev.data)
 		}
 	}
-	states := approvalStates(t, ui.URL, cookie, id)
-	want := []string{bot.ApprovalPending, bot.NoDecisionText(bot.ApprovalReasonExpired)}
-	if !reflect.DeepEqual(states, want) {
-		t.Fatalf("timeout states %v, want %v", states, want)
+	if !ran {
+		t.Fatal("timeout did not execute original tool")
 	}
-	if _, ok := bot.NoDecisionReason(states[len(states)-1]); !ok {
-		t.Fatalf("final state %q is not a no-decision state", states[len(states)-1])
-	}
-	joined := strings.Join(results, "\n")
-	if !strings.Contains(joined, "expired, no decision") {
-		t.Fatalf("tool result does not say no decision:\n%s", joined)
-	}
-	if strings.Contains(joined, "denied by user") {
-		t.Fatalf("timeout reported as a refusal:\n%s", joined)
+	if got := cardStates(t, b, id); !reflect.DeepEqual(got, []string{bot.ApprovalPending, bot.ApprovalAutoApproved}) {
+		t.Fatalf("states %v", got)
 	}
 	decisions, err := b.Decisions()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decisions) != 1 || decisions[0].State != bot.DecisionExpired {
+	if len(decisions) != 1 || decisions[0].State != bot.DecisionAllowed {
 		t.Fatalf("decisions %+v", decisions)
+	}
+	entries, _ := b.Entries()
+	found := false
+	for _, e := range entries {
+		if c, ok := bot.ParseApprovalCard(e.Message.Content); ok && c.ID == id && strings.Contains(c.Notice, "没人确认，已按允许执行") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing automatic-allow notice")
 	}
 }
 
-// TestWebApprovalSurvivesStreamDisconnect checks the decision reaches the wake
-// even when the request that showed the card is gone. It drives the approver
-// directly and abandons it first, so it asserts the contract rather than the
-// stream plumbing of the test client.
+// A disconnected stream must not discard its owner's decision.
 func TestWebApprovalSurvivesStreamDisconnect(t *testing.T) {
 	s := &Server{Root: t.TempDir(), ApprovalWait: 30 * time.Second}
 	b, err := bot.Create(s.Root, "ada", "persona", nil)
@@ -369,11 +360,7 @@ func TestWebApprovalForegroundToBackgroundKeepsCard(t *testing.T) {
 	}
 }
 
-// TestWebApprovalBackgroundHandoffExpires checks the other half of the
-// handoff: once the wake moves to the background and nobody ever decides, the
-// card must still expire on its own deadline. The waiting goroutine used to
-// block on the decision channel forever, so a card with a 24-hour window would
-// never record no_decision:expired.
+// The background handoff must retain its deadline and default to allow.
 func TestWebApprovalBackgroundHandoffExpires(t *testing.T) {
 	s := &Server{Root: t.TempDir(), ApprovalWait: 50 * time.Millisecond}
 	b, err := bot.Create(s.Root, "ada", "persona", nil)
@@ -416,18 +403,18 @@ func TestWebApprovalBackgroundHandoffExpires(t *testing.T) {
 	cancel()
 	select {
 	case out := <-answered:
-		if !errors.Is(out.err, kernel.ErrApprovalExpired) {
-			t.Fatalf("approver returned %v, want ErrApprovalExpired", out.err)
+		if out.err != nil {
+			t.Fatalf("approver returned %v, want nil", out.err)
 		}
-		if out.allowed {
-			t.Fatal("an undecided card was allowed")
+		if !out.allowed {
+			t.Fatal("the default allow was lost")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("approver never returned after the handoff; the card waited forever")
 	}
 	states := cardStates(t, b, id)
-	if len(states) != 2 || states[0] != bot.ApprovalPending || !strings.Contains(states[1], bot.ApprovalReasonExpired) {
-		t.Fatalf("card states %v, want pending then %s", states, bot.ApprovalReasonExpired)
+	if len(states) != 2 || states[0] != bot.ApprovalPending || states[1] != bot.ApprovalAutoApproved {
+		t.Fatalf("card states %v, want pending then %s", states, bot.ApprovalAutoApproved)
 	}
 }
 

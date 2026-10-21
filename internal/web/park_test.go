@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -56,11 +57,14 @@ func (parkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 	}
 }
 
-func parkServer(t *testing.T) (*httptest.Server, *http.Cookie, *bot.Bot, string) {
+func parkServer(t *testing.T, wait ...time.Duration) (*httptest.Server, *http.Cookie, *bot.Bot, string) {
 	t.Helper()
 	root := t.TempDir()
 	work := t.TempDir()
 	s := &Server{Root: root, Owner: "u1", PollInterval: 20 * time.Millisecond}
+	if len(wait) > 0 {
+		s.ApprovalWait = wait[0]
+	}
 	tok, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
@@ -198,5 +202,58 @@ func TestParkedCardDeclinedLater(t *testing.T) {
 	waitTranscript(t, b, "好的不做了")
 	if _, err := os.Stat(filepath.Join(work, "parked-dir")); err == nil {
 		t.Fatal("declined call ran")
+	}
+}
+
+func TestParkedApprovalTimeoutAllowsAndWakes(t *testing.T) {
+	ui, cookie, b, work := parkServer(t, 300*time.Millisecond)
+	stream := postSSE(t, ui.URL, cookie, "long task")
+	id := approvalCardID(t, waitEvent(t, stream, "approval"))
+	for ev := range postSSE(t, ui.URL, cookie, "顺便问一句") {
+		if ev.name == "error" {
+			t.Fatal(ev.data)
+		}
+	}
+	for range stream {
+	}
+	waitTranscript(t, b, "做完了")
+	if _, err := os.Stat(filepath.Join(work, "parked-dir")); err != nil {
+		t.Fatal(err)
+	}
+	if got := latestState(t, b, id); got != bot.ApprovalAutoApproved {
+		t.Fatalf("state %q", got)
+	}
+	if n := cardCount(t, b); n != 1 {
+		t.Fatalf("opened %d cards, want one", n)
+	}
+}
+
+func TestDisconnectedApprovalTimeoutResumes(t *testing.T) {
+	ui, cookie, b, work := parkServer(t, 200*time.Millisecond)
+	req, _ := http.NewRequest("POST", ui.URL+"/api/bots/ada/messages", strings.NewReader(`{"text":"long task"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan := bufio.NewScanner(res.Body)
+	seen := false
+	for scan.Scan() {
+		if scan.Text() == "event: approval" {
+			seen = true
+			break
+		}
+	}
+	res.Body.Close()
+	if !seen {
+		t.Fatal("no card before disconnect")
+	}
+	waitTranscript(t, b, "做完了")
+	if _, err := os.Stat(filepath.Join(work, "parked-dir")); err != nil {
+		t.Fatal(err)
+	}
+	if n := cardCount(t, b); n != 1 {
+		t.Fatalf("opened %d cards", n)
 	}
 }

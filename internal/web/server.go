@@ -71,7 +71,7 @@ type Server struct {
 	launchCodes map[string]time.Time
 	launchNow   func() time.Time
 
-	// ApprovalWait is how long an approval card waits. Zero uses 24 hours.
+	// ApprovalWait is how long permission and question cards wait. Zero uses 30 minutes.
 	ApprovalWait time.Duration
 
 	// PollInterval is how often a held handle lock checks whether its
@@ -83,8 +83,8 @@ type Server struct {
 	gate      map[string]*sync.Mutex
 	holds     map[string]*handleHold
 	approvals map[string]*pendingApproval
-	// expired keeps cards that timed out with no decision, so a late answer is
-	// told 410 rather than 404. Entries age out.
+	// expired retains completed cards for one window: manual decisions return
+	// 409 on repetition, automatic permission decisions return 410.
 	expired map[string]*pendingApproval
 
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
@@ -101,8 +101,9 @@ type Server struct {
 }
 
 type approvalDecision struct {
-	allow   bool
-	secrets map[string]string
+	allow     bool
+	automatic bool
+	secrets   map[string]string
 }
 
 // Register mounts the UI and /api routes.
@@ -192,6 +193,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/paste", s.postPaste)
 	mux.HandleFunc("GET /api/bots/{name}/paste/{image}", s.getPaste)
 	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
+	mux.HandleFunc("POST /api/bots/{name}/questions/{id}", s.chooseQuestion)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/steer", s.steer)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/queue", func(w http.ResponseWriter, r *http.Request) { s.control(w, r, "queue") })
@@ -1420,6 +1422,7 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		k.ApprovalWait = s.approvalWait()
 		k.AllowFork = s.ForkTurns
 		k.Statuses = statusSource{s}
 		if s.ForkTurns || k.Dispatch {

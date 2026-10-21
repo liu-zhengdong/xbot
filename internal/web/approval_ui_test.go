@@ -14,14 +14,11 @@ import (
 
 // TestApprovalCardCountdownFollowsServer pins the web card to the server's
 // wait. The page used to count down APPROVAL_WAIT_SECS = 60 and paint itself
-// expired while the server was still accepting a decision for 24 hours.
+// expired while the server was still accepting a decision.
 func TestApprovalCardCountdownFollowsServer(t *testing.T) {
 	js := servedAppJS(t, "")
 	if bytes.Contains(js, []byte("APPROVAL_WAIT_SECS = 60")) || bytes.Contains(js, []byte("Math.floor(left / 60)")) {
 		t.Fatal("approval card still counts down 60 seconds as minutes:seconds")
-	}
-	if !bytes.Contains(js, []byte("APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000")) {
-		t.Fatal("approval card does not fall back to the 24h server wait")
 	}
 	if !bytes.Contains(js, []byte("opt.deadline")) || !bytes.Contains(js, []byte("payload.deadline")) || !bytes.Contains(js, []byte("card.deadline")) {
 		t.Fatal("approval card does not read the server deadline")
@@ -29,9 +26,6 @@ func TestApprovalCardCountdownFollowsServer(t *testing.T) {
 	remain := funcBody(t, js, "function approvalRemainText")
 	if !bytes.Contains(remain, []byte("小时")) {
 		t.Fatal("long remaining time is not shown in hours")
-	}
-	if !bytes.Contains(js, []byte("e.status === 410")) || !bytes.Contains(js, []byte(`settle("expired")`)) {
-		t.Fatal("a 410 from the server does not show the card as expired")
 	}
 
 	const wait = 2 * time.Hour

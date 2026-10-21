@@ -61,7 +61,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 		list = append(list, compactTool{k}, historyTool{k}, expandTool{k})
 	}
 	if namedLink(links, link.NameWeb) {
-		list = append(list, askTool{})
+		list = append(list, askTool{k})
 	}
 	if namedLink(links, link.NamePeers) {
 		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}, botStatusTool{k})

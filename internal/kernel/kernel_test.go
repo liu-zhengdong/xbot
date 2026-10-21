@@ -530,7 +530,7 @@ func TestDefaultRulesDropIgnoredOffers(t *testing.T) {
 }
 
 func TestAskUserSummaryListsOptions(t *testing.T) {
-	_, summary, err := (askTool{}).Confirm(json.RawMessage(`{"question":"Ship it?","options":["yes","no"]}`))
+	_, summary, err := (askTool{}).Confirm(json.RawMessage(`{"question":"Ship it?","options":["yes","no"],"recommended":"yes"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

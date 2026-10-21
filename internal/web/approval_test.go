@@ -178,7 +178,7 @@ func approvalLabels(t *testing.T, base string, cookie *http.Cookie, id string) (
 	return "", ""
 }
 
-func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
+func TestWebApprovalTimeoutAutomaticallyAllows(t *testing.T) {
 	// ask mode makes every shell command need the owner, so this test can use a
 	// harmless mkdir to exercise the approval timeout on the web.
 	root := t.TempDir()
@@ -224,16 +224,18 @@ func TestWebApprovalTimeoutRecordsExpired(t *testing.T) {
 			t.Fatalf("error event %s", ev.data)
 		}
 	}
-	// A timeout is no decision at all: the owner never said no, so the card must
-	// not read as declined or as a plain expiry.
-	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.NoDecisionText(bot.ApprovalReasonExpired)}) {
+	// The deadline defaults to allow and the original command must run.
+	if _, err := os.Stat(filepath.Join(work, "approved-dir")); err != nil {
+		t.Fatal(err)
+	}
+	if states := approvalStates(t, ui.URL, cookie, card.ID); !reflect.DeepEqual(states, []string{bot.ApprovalPending, bot.ApprovalAutoApproved}) {
 		t.Fatalf("timeout states %v", states)
 	}
 	decisions, err := b.Decisions()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decisions) != 1 || decisions[0].State != bot.DecisionExpired || decisions[0].Tool != card.Tool {
+	if len(decisions) != 1 || decisions[0].State != bot.DecisionAllowed || decisions[0].Tool != card.Tool {
 		t.Fatalf("timeout decisions %+v", decisions)
 	}
 }

@@ -2447,3 +2447,5 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .sidebar.rail .avatar .unread { top: 1px; right: 0; }
 
 @media (min-width: 768px) { .sidebar.rail .folder-bots[hidden] { display: block !important; } }
+
+.opt-recommend { font-size: 12px; color: var(--x-muted); }

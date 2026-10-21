@@ -72,6 +72,8 @@ type Kernel struct {
 	Memory    memory.Store
 	Compactor compact.Compactor
 	Approve   agent.Approver
+	// ApprovalWait configures ask_user's deadline; zero uses bot.DefaultCardWait.
+	ApprovalWait time.Duration
 	// MaxSteps is a runaway guard, not a design limit: a turn ends when the
 	// model stops, when the breaker trips, or when the background budget is
 	// spent. Zero uses maxStepsGuard. Tests set it small to keep fixtures short.
@@ -219,9 +221,11 @@ func (k *Kernel) stepGuard() int {
 // Handle runs one event to a final assistant message, or returns the agent error.
 // A repeated event whose turn is already complete does not call the model again.
 func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
+
 	if err := ev.Validate(); err != nil {
 		return err
 	}
+
 	// Once per kernel lifetime, before repairTail: a branch left open by a crash
 	// gets its fork_end so the dangling call on it can be repaired on that branch.
 	k.recoverOnce.Do(k.RecoverInterrupted)
@@ -290,6 +294,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	seq, err := k.Bot.FindEvent(ev.ID)
 	if err != nil {
 		return err
+	}
+	if seq == 0 && ev.Source != link.NameApproval && link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners) {
+		AnswerQuestions(k.Bot, ev.Content)
 	}
 	if seq > 0 {
 		span, err := k.Bot.Slice(seq, n)

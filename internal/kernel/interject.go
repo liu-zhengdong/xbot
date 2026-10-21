@@ -115,6 +115,9 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 		return false
 	}
 	lt := v.(*liveTurn)
+	if link.OwnerTrusted(ev.Source, ev.Sender, b.Config().Owners) {
+		AnswerQuestions(b, ev.Content)
+	}
 	msg := lt.k.eventMessage(ev)
 	t := lt.t
 	t.inter.mu.Lock()

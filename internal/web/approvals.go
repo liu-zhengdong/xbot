@@ -17,13 +17,12 @@ import (
 	"xbot/internal/review"
 )
 
-// approvalWait is how long a card accepts a decision. The default is a full
-// day: the owner may be away, and a card that expires silently loses work.
+// approvalWait is the shared decision window for permission and question cards.
 func (s *Server) approvalWait() time.Duration {
 	if s.ApprovalWait > 0 {
 		return s.ApprovalWait
 	}
-	return 24 * time.Hour
+	return bot.DefaultCardWait
 }
 
 // pendingApproval is one card waiting for a decision. It outlives the request
@@ -39,7 +38,8 @@ type pendingApproval struct {
 	// late decision after the wait ended is dropped instead of panicking.
 	done chan approvalDecision
 	// decided guards against a second decision overwriting the first.
-	decided bool
+	decided   bool
+	automatic bool
 }
 
 // RegisterApproval publishes a card so a later request may decide it. It is
@@ -67,8 +67,7 @@ func (s *Server) DropApproval(botName, id string) {
 
 // webApprove shows one confirmation card in the stream and persists it in the
 // transcript, first as pending and then with the resolved state, so the card
-// survives the reply ending and a page reload. A timeout or cancelled wake
-// with no decision records an expired card, never a pending one.
+// survives the reply ending and a page reload. The deadline defaults to allow.
 func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)) func(context.Context, string, string) (bool, error) {
 	return func(ctx context.Context, tool, summary string) (bool, error) {
 		id := newApprovalID()
@@ -92,12 +91,18 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			if s.approvals[key] == card {
 				delete(s.approvals, key)
 			}
+			if card.decided {
+				s.rememberApprovalLocked(key, card)
+			}
 			s.mu.Unlock()
 		}()
 		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
 		deadline := card.deadline.Format(time.RFC3339)
 		appendCard := func(state string) {
 			text := bot.ApprovalCardText(id, tool, title, subtitle, summary, state)
+			if state == bot.ApprovalAutoApproved {
+				text = bot.ApprovalCardTextWithNotice(id, tool, title, subtitle, summary, state, bot.CardWaitText(card.wait)+"没人确认，已按允许执行")
+			}
 			if state == bot.ApprovalPending {
 				text = bot.ApprovalCardTextAt(id, tool, title, subtitle, summary, state, deadline)
 			}
@@ -115,81 +120,49 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 		send("approval", payload)
 		timer := time.NewTimer(card.wait)
 		defer timer.Stop()
-		// A wake that moves to the background cancels ctx while the card is
-		// still open. That must not decide anything: the card keeps waiting for
-		// the owner, and only its own deadline or a real decision ends it.
+		// Cards outlive a disconnected or parked wake. Only a decision or
+		// this timer ends the wait; both resume the original approval path.
+		var d approvalDecision
 		select {
-		case d := <-card.done:
-			if d.allow && k != nil && len(names) > 0 && len(d.secrets) > 0 {
-				k.StageSecrets(linkIDFromSummary(summary), filterSecrets(names, d.secrets))
-			}
-			state := bot.ApprovalDeclined
-			if d.allow {
-				state = bot.ApprovalApproved
-			}
-			appendCard(state)
-			return d.allow, nil
+		case d = <-card.done:
 		case <-timer.C:
-			s.retireExpired(key, card)
-			appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
-			return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
-		case <-ctx.Done():
-			// The wake moved to the background with the card still open. Keep
-			// waiting for the owner, but never past the card's own deadline:
-			// the same timer that would have fired in the foreground keeps
-			// running here, so an undecided card still expires instead of
-			// blocking this goroutine forever.
-			if !s.waitStillOpen(key, card) {
-				appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
-				return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
-			}
-			select {
-			case d, ok := <-card.done:
-				if !ok {
-					s.retireExpired(key, card)
-					appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
-					return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
-				}
-				return s.applyDecision(b, k, id, summary, names, d, appendCard)
-			case <-timer.C:
-				s.retireExpired(key, card)
-				appendCard(bot.NoDecisionText(bot.ApprovalReasonExpired))
-				return false, fmt.Errorf("%w: %s", kernel.ErrApprovalExpired, tool)
-			}
+			d = s.retireExpired(key, card)
 		}
+		return s.applyDecision(b, k, id, summary, names, d, appendCard)
 	}
 }
 
-// retireExpired records a card whose window passed with no decision, so a late
-// answer is told the card expired instead of looking like an unknown id. Note
-// the table is only written when a card actually times out: a card created with
-// a tiny wait would otherwise be filed as expired while it is still waiting.
-func (s *Server) retireExpired(key string, card *pendingApproval) {
+// retireExpired atomically chooses allow unless an owner decision already
+// won. Resolved timeout cards are retained for one shared decision window.
+func (s *Server) retireExpired(key string, card *pendingApproval) approvalDecision {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.expired == nil {
-		s.expired = map[string]*pendingApproval{}
+	select {
+	case d := <-card.done:
+		return d
+	default:
 	}
-	if len(s.expired) > 4096 {
-		cutoff := time.Now().Add(-24 * time.Hour)
-		for k, c := range s.expired {
-			if c.deadline.Before(cutoff) {
-				delete(s.expired, k)
-			}
-		}
-	}
-	s.expired[key] = card
+	card.decided = true
+	card.automatic = true
+	s.rememberApprovalLocked(key, card)
 	if s.approvals[key] == card {
 		delete(s.approvals, key)
 	}
+	return approvalDecision{allow: true, automatic: true}
 }
 
-// waitStillOpen reports the card is still the one registered, so a ctx
-// cancellation left it waiting rather than ending it.
-func (s *Server) waitStillOpen(key string, card *pendingApproval) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.approvals[key] == card && !card.decided
+// s.mu is held. Keep both manual and automatic outcomes for one window.
+func (s *Server) rememberApprovalLocked(key string, card *pendingApproval) {
+	if s.expired == nil {
+		s.expired = map[string]*pendingApproval{}
+	}
+	cutoff := time.Now().Add(-s.approvalWait())
+	for k, c := range s.expired {
+		if c.deadline.Before(cutoff) {
+			delete(s.expired, k)
+		}
+	}
+	s.expired[key] = card
 }
 
 // applyDecision records a decision that arrived after the waiting wake ended.
@@ -200,6 +173,9 @@ func (s *Server) applyDecision(b *bot.Bot, k *kernel.Kernel, id, summary string,
 	state := bot.ApprovalDeclined
 	if d.allow {
 		state = bot.ApprovalApproved
+	}
+	if d.automatic {
+		state = bot.ApprovalAutoApproved
 	}
 	appendCard(state)
 	return d.allow, nil
@@ -292,15 +268,15 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		writeErr(w, http.StatusNotFound, "no such approval")
 		return
+	case !live && card.automatic:
+		s.mu.Unlock()
+		writeErr(w, http.StatusGone, "approval expired")
+		return
 	case card.decided:
 		s.mu.Unlock()
 		writeErr(w, http.StatusConflict, "already decided")
 		return
-	case !live || time.Now().After(card.deadline):
-		// The wait already ended with no decision. The card is kept for a while
-		// so a late answer reports 410 instead of looking like an unknown id.
-		s.expired[key] = card
-		delete(s.approvals, key)
+	case !live || !time.Now().Before(card.deadline):
 		s.mu.Unlock()
 		writeErr(w, http.StatusGone, "approval expired")
 		return

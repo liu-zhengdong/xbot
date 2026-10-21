@@ -79,7 +79,7 @@ func TestApprovalDecisionPanel(t *testing.T) {
 		t.Errorf("missing tasks: %v", wants)
 	}
 	for file, fragments := range map[string][]string{
-		"static/app.js":  {"发到 ", "blockquote", "查看命令", "后自动取消", "，不会发送", "正在发送…", "正在处理…", "已过期，没有执行", "已发送", "没发", "已允许", "已拒绝", "ICONS.spinner"},
+		"static/app.js":  {"发到 ", "blockquote", "查看命令", "正在发送…", "正在处理…", "已过期，没有执行", "已发送", "没发", "已允许", "已拒绝", "ICONS.spinner"},
 		"static/app.css": {".approval-line.no .st { color: var(--muted); }", ".approval-chip[hidden]", ".approval-spinner { animation: none; }"},
 	} {
 		raw, err := staticFS.ReadFile(file)

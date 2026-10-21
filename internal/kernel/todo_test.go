@@ -478,7 +478,7 @@ func TestTodoQuestionAndApprovalSkipTheGate(t *testing.T) {
 		todoCall("t1", `{"items":[{"content":"ship","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
 			ID: "a1", Type: "function",
-			Function: provider.FunctionCall{Name: "ask_user", Arguments: `{"question":"Ship it?","options":["yes","no"]}`},
+			Function: provider.FunctionCall{Name: "ask_user", Arguments: `{"question":"Ship it?","options":["yes","no"],"recommended":"yes"}`},
 		}}},
 		{Role: provider.RoleAssistant, Content: "waiting for you"},
 		{Role: provider.RoleAssistant, Content: "should not run"},

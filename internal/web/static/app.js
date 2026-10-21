@@ -1918,7 +1918,7 @@
     return badge;
   }
 
-  function optionCards(info, picked, question) {
+  function optionCards(info, picked, question, choose = sendText, selected = null) {
     const card = el("div", "ask" + (picked != null ? " done" : ""));
     card.setAttribute("role", "radiogroup");
     if (question) card.setAttribute("aria-label", question);
@@ -1927,8 +1927,7 @@
     let chosen = -1;
     opts.forEach((raw, i) => {
       let label = String(raw);
-      let recommend = false;
-      if (label.startsWith("* ")) { recommend = true; label = label.slice(2); }
+      let recommend = label === info.args.recommended;
       if (picked != null && chosen < 0 && (picked === label || picked === String(raw))) chosen = i;
       rows.push({ label: label, recommend: recommend });
     });
@@ -1950,8 +1949,12 @@
       const li = el("li", "ask-opt" + (row.recommend ? " recommend" : ""));
       li.tabIndex = 0;
       li.setAttribute("role", "radio");
-      li.append(optionBadge(letter), el("span", "opt-t", row.label), el("span", "opt-kbd", letter));
-      li.addEventListener("click", () => sendText(row.label));
+      li.setAttribute("aria-checked", String(row.label === selected));
+      li.append(optionBadge(letter), el("span", "opt-t", row.label));
+      if (row.recommend) li.append(el("span", "opt-recommend", "推荐"));
+      if (row.label === selected) li.append(rawSvg(CHECK_PATH, 16, 2.4));
+      li.append(el("span", "opt-kbd", letter));
+      li.addEventListener("click", () => choose(row.label));
       list.append(li);
     });
     const other = el("li", "ask-opt other");
@@ -1983,7 +1986,7 @@
         const n = (i + (ev.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
         items[n].focus();
       } else if (ev.key === "Enter" || ev.key === " ") {
-        if (i >= 0) { ev.preventDefault(); sendText(rows[i].label); }
+        if (i >= 0) { ev.preventDefault(); choose(rows[i].label); }
       } else if (/^[a-zA-Z]$/.test(ev.key)) {
         const hit = items.find((x) => x.querySelector(".opt-badge").textContent === ev.key.toUpperCase());
         if (hit) hit.focus();
@@ -1991,17 +1994,6 @@
     });
     card.append(list);
     return card;
-  }
-
-  function laterUser(messages, index) {
-    for (let i = index + 1; i < messages.length; i++) {
-      if (messages[i].role !== "user") continue;
-      const text = unwrap(messages[i].content || "").text.trim();
-      // Card records share the user role; only a typed reply answers the card.
-      if (text.startsWith("<approval_card") || text.startsWith("<coding_card")) continue;
-      return text;
-    }
-    return null;
   }
 
   function appendBotContent(parent, text) {
@@ -2212,9 +2204,8 @@
       const phrase = peerPhrase(info.name, info.args, who);
       if (phrase) { peers.push(phrase); continue; }
       if (info.name === "ask_user") {
-        const q = info.args && info.args.question ? String(info.args.question) : "";
-        const shown = q && !(m.content || "").includes(q) ? q : "";
-        body.append(optionCards(info, laterUser(messages, index), shown));
+        // ask_user now persists its own decision card, rendered below.
+
         continue;
       }
     }
@@ -2489,17 +2480,13 @@
       title: tag.attrs.title || "",
       subtitle: tag.attrs.subtitle || "",
       deadline: tag.attrs.deadline || "",
+      notice: tag.attrs.notice || "",
       summary: body.slice(1, body.length - tail.length),
     };
   }
 
-  // Fallback when a card carries no deadline. Matches Server.approvalWait.
-  const APPROVAL_WAIT_MS = 24 * 60 * 60 * 1000;
-
-  // Absolute instant this card stops accepting a decision. The server sends
-  // deadline (RFC3339) on the live event and on the persisted card. A card
-  // written before that field existed counts 24 hours from its transcript time.
-  // wait === 0 means this card has no countdown (a node command).
+  // Only the server defines the decision window. Without a stamped
+  // deadline there is no client countdown (for example a node command).
   function approvalDeadlineMs(opt) {
     if (!opt || opt.wait === 0) return null;
     const raw = opt.deadline || opt.expires || opt.expiry;
@@ -2507,11 +2494,7 @@
       const t = typeof raw === "number" ? raw : Date.parse(raw);
       if (!Number.isNaN(t)) return t;
     }
-    if (opt.since) {
-      const t = Date.parse(opt.since);
-      if (!Number.isNaN(t)) return t + APPROVAL_WAIT_MS;
-    }
-    return Date.now() + APPROVAL_WAIT_MS;
+    return null;
   }
 
   // Long waits read as hours ("23 小时"), shorter ones as minutes or seconds.
@@ -2621,11 +2604,11 @@
       if (settled) return;
       settled = true;
       if (tick) window.clearInterval(tick);
-      card.replaceWith(approvalLine(title, summary, state, Date.now(), send));
+      card.replaceWith(state === "auto_approved" ? systemLine("已到等待时限，正在按允许继续") : approvalLine(title, summary, state, Date.now(), send));
     };
     const deadlineMs = approvalDeadlineMs(opt);
     if (deadlineMs != null && deadlineMs <= Date.now()) {
-      return approvalLine(title, summary, "expired", opt.since || Date.now(), send);
+      return systemLine("已到等待时限，正在按允许继续");
     }
     if (deadlineMs != null) {
       const timer = el("span", "approval-timer");
@@ -2634,8 +2617,8 @@
       timer.append(timerText);
       const paint = () => {
         const left = deadlineMs - Date.now();
-        if (left <= 0) { settle("expired"); return; }
-        const label = approvalRemainText(left) + "后自动取消" + (send ? "，不会发送" : "");
+        if (left <= 0) { settle("auto_approved"); return; }
+        const label = approvalRemainText(left) + "后按允许继续";
         if (timerText.textContent !== label) timerText.textContent = label;
       };
       paint();
@@ -2661,7 +2644,7 @@
         settle(ok ? "approved" : "declined");
       } catch (e) {
         if (e && e.status === 410) {
-          settle("expired");
+          settle("auto_approved");
           return;
         }
         clicked.textContent = original;
@@ -2685,6 +2668,24 @@
 
   function approvalHistoryCard(card, time) {
     const st = card.state || "pending";
+    if (card.tool === "ask_user") {
+      if (!["pending", "approved", "auto_approved"].includes(st)) return systemLine("提问已结束（服务已重启）");
+      const args = JSON.parse(card.summary);
+      const automatic = st === "auto_approved";
+      const box = el("div", "question-card");
+      const botName = state.sel && state.sel.id;
+      const choose = async (choice) => {
+        if (automatic) { sendText(choice); return; }
+        try {
+          await api("/api/bots/" + encodeURIComponent(botName) + "/questions/" + encodeURIComponent(card.id), {method:"POST",body:{choice}});
+          await loadThread();
+        } catch (err) { setStatus(visibleError(err), true); }
+      };
+      box.append(optionCards({args}, automatic ? null : (args.choice || null), args.question, choose, automatic ? args.choice : null));
+      if (card.notice) box.append(systemLine(card.notice));
+      return box;
+    }
+    if (st === "auto_approved") return systemLine(card.notice);
     if (st === "pending") {
       const payload = {
         tool: card.tool || "",

@@ -153,6 +153,9 @@ func (k *Kernel) parkable(t *turn, inner agent.Approver) agent.Approver {
 		case r := <-ch:
 			return r.ok, r.err
 		case <-park:
+		case <-ctx.Done():
+			// A closed page must not leave the approved call tied to its
+			// cancelled request. Resume it through the existing grant path.
 		}
 		b, sender, now := k.Bot, t.turnSender, k.now
 		go func() {
