@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -67,8 +68,8 @@ func TestStepsRingCapAndRedaction(t *testing.T) {
 	k.turn = turnObj
 	k.turnMu.Unlock()
 	for i := 0; i < stepRingCap+5; i++ {
-		k.beginStep(turnObj, "tool", "SECRET value "+strings.Repeat("x", 200))
-		k.endStep(turnObj, "tool", "ok")
+		k.beginStep(turnObj, "tool-call", "tool", "SECRET value "+strings.Repeat("x", 200))
+		k.endStep(turnObj, "tool-call", "ok")
 	}
 	steps := k.Steps(stepRingCap)
 	if len(steps) != stepRingCap {
@@ -93,14 +94,14 @@ func TestStepErrorState(t *testing.T) {
 	k.turnMu.Lock()
 	k.turn = turnObj
 	k.turnMu.Unlock()
-	k.beginStep(turnObj, "boom", "run it")
-	k.endStep(turnObj, "boom", "error: tool exploded")
+	k.beginStep(turnObj, "boom-call", "boom", "run it")
+	k.endStep(turnObj, "boom-call", "error: tool exploded")
 	steps := k.Steps(1)
 	if len(steps) != 1 || steps[0].State != StepError {
 		t.Fatalf("steps %+v", steps)
 	}
-	k.beginStep(turnObj, "shell", "curl")
-	k.endStep(turnObj, "shell", "exit 35\ncurl: (35) TLS connect error")
+	k.beginStep(turnObj, "shell-call", "shell", "curl")
+	k.endStep(turnObj, "shell-call", "exit 35\ncurl: (35) TLS connect error")
 	if steps := k.Steps(1); len(steps) != 1 || steps[0].State != StepError {
 		t.Fatalf("failed shell exit shown as %+v", steps)
 	}
@@ -110,8 +111,8 @@ func TestAwaitingState(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	turnObj := &turn{started: time.Now().UTC()}
-	k.beginStep(turnObj, "shell", "rm -rf x")
-	k.beginAwait(turnObj, "shell")
+	k.beginStep(turnObj, "shell-call", "shell", "rm -rf x")
+	k.beginAwait(turnObj, "shell-call")
 	k.turnMu.Lock()
 	k.turn = turnObj
 	k.turnMu.Unlock()
@@ -205,5 +206,84 @@ func TestBotStatusToolSameOwner(t *testing.T) {
 	}
 	if _, err := (botStatusTool{k}).Run(context.Background(), json.RawMessage(`{"bot":"zed"}`)); err == nil {
 		t.Fatal("other owner's bot visible")
+	}
+}
+
+func TestToolSummaryUsesOnlyTheRunningRedactedStep(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Redact: func(s string) string { return strings.ReplaceAll(s, "SECRET", "[secret]") }}
+	tr := &turn{started: time.Now()}
+	k.turn = tr
+	k.beginStep(tr, "shell-call", "shell", "curl SECRET")
+	if got := k.Status().ToolSummary; got != "curl [secret]" {
+		t.Fatalf("tool summary = %q", got)
+	}
+	k.endStep(tr, "shell-call", "ok")
+	if got := k.Status().ToolSummary; got != "" {
+		t.Fatalf("finished step summary still visible: %q", got)
+	}
+}
+
+func TestSlowToolSurvivesParallelCompletions(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
+	tr := &turn{started: time.Now().Add(-time.Minute)}
+	k.turn = tr
+	k.beginStep(tr, "shell-call", "shell", "sleep 5")
+	k.beginStep(tr, "read_file-call", "read_file", "config.json")
+	k.endStep(tr, "read_file-call", "ok")
+	if st := k.Status(); st.Tool != "shell" || st.ToolSummary != "sleep 5" {
+		t.Fatalf("quick parallel result hid slow call: %+v", st)
+	}
+}
+
+func TestSameNameCallsFinishByIDAndKeepTheirStartTime(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	now := time.Now().Truncate(time.Second)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Now: func() time.Time { return now }}
+	tr := &turn{started: now.Add(-time.Minute)}
+	k.turn = tr
+	k.beginStep(tr, "slow", "shell", "sleep 5")
+	since := k.Status().Since
+	now = now.Add(time.Second)
+	k.beginStep(tr, "fast", "shell", "echo done")
+	k.endStep(tr, "fast", "error: quick failure")
+	st := k.Status()
+	if st.ToolSummary != "sleep 5" || st.Since != since {
+		t.Fatalf("same-name result replaced live call: %+v", st)
+	}
+	steps := k.Steps(20)
+	if steps[0].State != StepRunning || steps[1].State != StepError {
+		t.Fatalf("steps = %+v", steps)
+	}
+	k.endStep(tr, "slow", "ok")
+	if st := k.Status(); st.Tool != "" || st.ToolSummary != "" {
+		t.Fatalf("finished tool still shown: %+v", st)
+	}
+}
+
+func TestLiveCallsSurviveTheStepHistoryLimit(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
+	tr := &turn{started: time.Now()}
+	k.turn = tr
+	for i := 0; i < stepRingCap+5; i++ {
+		k.beginStep(tr, fmt.Sprint(i), "shell", fmt.Sprint("call ", i))
+	}
+	if len(tr.steps) != stepRingCap+5 || len(k.Steps(100)) != stepRingCap {
+		t.Fatal("live calls dropped or public history unbounded")
+	}
+	for i := stepRingCap + 4; i > 0; i-- {
+		k.endStep(tr, fmt.Sprint(i), "ok")
+	}
+	if st := k.Status(); st.ToolSummary != "call 0" {
+		t.Fatalf("oldest live call lost: %+v", st)
+	}
+	if len(tr.steps) != stepRingCap {
+		t.Fatalf("finished history not trimmed: %d", len(tr.steps))
+	}
+	k.endStep(tr, "0", "ok")
+	if st := k.Status(); st.ToolSummary != "" {
+		t.Fatalf("finished call still running: %+v", st)
 	}
 }

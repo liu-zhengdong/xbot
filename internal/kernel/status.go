@@ -43,6 +43,7 @@ type BotStatus struct {
 	Bot             string `json:"bot"`
 	State           string `json:"state"`
 	Tool            string `json:"tool,omitempty"`
+	ToolSummary     string `json:"tool_summary,omitempty"`
 	Since           string `json:"since,omitempty"`
 	Backgrounds     int    `json:"backgrounds,omitempty"`
 	Agents          int    `json:"agents,omitempty"`
@@ -59,6 +60,7 @@ type BotStatus struct {
 // Step is one tool step in a turn, kept in a small ring for the web and the
 // bot_status tool.
 type Step struct {
+	callID  string    // private correlation key; never sent to the UI
 	Time    time.Time `json:"time"`
 	Tool    string    `json:"tool"`
 	Summary string    `json:"summary,omitempty"`
@@ -231,9 +233,16 @@ func (k *Kernel) Status() BotStatus {
 	active := !t.finished && !t.started.IsZero()
 	awaiting := t.awaiting
 	awaitingSince := t.awaitingSince
-	tool := t.lastTool
+	tool := ""
 	started := t.started
-	toolStart := t.lastToolStart
+	var toolStart time.Time
+	// Show the longest-running call, even when a later parallel call finished.
+	for _, step := range t.steps {
+		if active && (step.State == StepRunning || (awaiting && step.State == StepAwaiting)) {
+			tool, toolStart, st.ToolSummary = step.Tool, step.Time, step.Summary
+			break
+		}
+	}
 	t.mu.Unlock()
 	st.Backgrounds = len(k.Backgrounds())
 	if active, ok := k.Exec.(interface{ ActiveCount() int }); ok {
@@ -298,7 +307,7 @@ func (k *Kernel) Steps(n int) []Step {
 }
 
 // beginStep records a tool call starting, for the turn ring and the status.
-func (k *Kernel) beginStep(t *turn, name, summary string) {
+func (k *Kernel) beginStep(t *turn, id, name, summary string) {
 	if t == nil {
 		return
 	}
@@ -309,22 +318,13 @@ func (k *Kernel) beginStep(t *turn, name, summary string) {
 	t.lastTool = name
 	t.lastToolStart = k.now()
 	line := clipStatusPreview(oneStatusLine(redact(summary)), stepSummaryCap)
-	// Concurrent tool calls can interleave; pick the last step that is still
-	// running rather than trusting a stored index.
-	for i := range t.steps {
-		if t.steps[i].State == StepRunning {
-			t.steps[i].State = StepDone
-		}
-	}
-	t.steps = append(t.steps, Step{Time: t.lastToolStart, Tool: name, Summary: line, State: StepRunning})
-	if len(t.steps) > stepRingCap {
-		t.steps = append([]Step(nil), t.steps[len(t.steps)-stepRingCap:]...)
-	}
+	t.steps = append(t.steps, Step{callID: id, Time: t.lastToolStart, Tool: name, Summary: line, State: StepRunning})
+	t.steps = trimSteps(t.steps)
 }
 
 // endStep records a tool call finishing. output is the tool result, whose
 // "error:" prefix or non-zero "exit N" first line (shell) marks a failed step.
-func (k *Kernel) endStep(t *turn, name, output string) {
+func (k *Kernel) endStep(t *turn, id, output string) {
 	if t == nil {
 		return
 	}
@@ -336,15 +336,37 @@ func (k *Kernel) endStep(t *turn, name, output string) {
 	defer t.mu.Unlock()
 	t.lastToolEnd = k.now()
 	for i := len(t.steps) - 1; i >= 0; i-- {
-		if t.steps[i].Tool == name && (t.steps[i].State == StepRunning || t.steps[i].State == StepAwaiting) {
+		if t.steps[i].callID == id && (t.steps[i].State == StepRunning || t.steps[i].State == StepAwaiting) {
 			t.steps[i].State = state
+			t.steps = trimSteps(t.steps)
 			return
 		}
 	}
 }
 
+// trimSteps bounds finished history without discarding live calls. Storage is
+// bounded by max(stepRingCap, the number of concurrent calls); Steps still
+// exposes at most stepRingCap records.
+func trimSteps(steps []Step) []Step {
+	excess := len(steps) - stepRingCap
+	if excess <= 0 {
+		return steps
+	}
+	n := 0
+	for _, step := range steps {
+		if excess > 0 && (step.State == StepDone || step.State == StepError) {
+			excess--
+			continue
+		}
+		steps[n] = step
+		n++
+	}
+	clear(steps[n:])
+	return steps[:n]
+}
+
 // beginAwait marks that a turn is blocked on the owner's approval.
-func (k *Kernel) beginAwait(t *turn, tool string) {
+func (k *Kernel) beginAwait(t *turn, id string) {
 	if t == nil {
 		return
 	}
@@ -352,9 +374,8 @@ func (k *Kernel) beginAwait(t *turn, tool string) {
 	defer t.mu.Unlock()
 	t.awaiting = true
 	t.awaitingSince = k.now()
-	t.lastTool = tool
 	for i := len(t.steps) - 1; i >= 0; i-- {
-		if t.steps[i].Tool == tool && t.steps[i].State == StepRunning {
+		if t.steps[i].callID == id && t.steps[i].State == StepRunning {
 			t.steps[i].State = StepAwaiting
 			break
 		}

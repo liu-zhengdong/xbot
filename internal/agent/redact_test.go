@@ -32,7 +32,7 @@ func TestToolOutputIsRedacted(t *testing.T) {
 	var streamed string
 	got, err := Run(context.Background(), p, []tools.Tool{leakyTool{}}, nil, Options{
 		Redact:   func(s string) string { return strings.ReplaceAll(s, "tok-1", "[secret]") },
-		OnResult: func(name, out string) { streamed = out },
+		OnResult: func(_, name, out string) { streamed = out },
 	})
 	if err != nil {
 		t.Fatal(err)

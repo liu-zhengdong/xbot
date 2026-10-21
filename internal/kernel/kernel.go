@@ -456,7 +456,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	if approve != nil {
 		inner := approve
 		approve = func(ctx context.Context, tool, summary string) (bool, error) {
-			k.beginAwait(t, tool)
+			k.beginAwait(t, agent.ToolCallID(ctx))
 			defer k.endAwait(t)
 			return inner(ctx, tool, summary)
 		}

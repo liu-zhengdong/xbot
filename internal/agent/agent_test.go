@@ -773,3 +773,31 @@ func TestAbsorbedPicturesCountAgainstTheTurnCap(t *testing.T) {
 		t.Fatalf("the last request carried %d pictures, over the cap of %d", n, maxTurnImages)
 	}
 }
+
+func TestToolCallbacksKeepParallelCallIDs(t *testing.T) {
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{ID: "slow", Type: "function", Function: provider.FunctionCall{Name: "same", Arguments: "{}"}},
+		{ID: "fast", Type: "function", Function: provider.FunctionCall{Name: "same", Arguments: "{}"}},
+	}}}}
+	var mu sync.Mutex
+	starts, results, approvals := map[string]int{}, map[string]int{}, map[string]int{}
+	_, err := Run(context.Background(), p, []tools.Tool{&sleepTool{name: "same", confirm: true}}, nil, Options{
+		OneRound: true,
+		OnTool:   func(id, name, summary string) { mu.Lock(); defer mu.Unlock(); starts[id]++ },
+		OnResult: func(id, name, output string) { mu.Lock(); defer mu.Unlock(); results[id]++ },
+		Approve: func(ctx context.Context, name, summary string) (bool, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			approvals[ToolCallID(ctx)]++
+			return true, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"slow", "fast"} {
+		if starts[id] != 1 || results[id] != 1 || approvals[id] != 1 {
+			t.Fatalf("call %s: starts %v, results %v, approvals %v", id, starts, results, approvals)
+		}
+	}
+}

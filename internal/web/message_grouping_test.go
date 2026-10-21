@@ -69,6 +69,10 @@ func TestMessageTimeDividers(t *testing.T) {
  const make=group=>{const rows=[0,29,30,61].map(n=>({dataset:{time:at(n)},before(e){this.divider=e}}));return {classList:{contains:()=>group},querySelectorAll:()=>rows,rows}};
  const inner=make(false);addTimeDividers(inner);assert.deepEqual(inner.rows.map(n=>!!n.divider),[true,false,false,true]);
  const group=make(true);addTimeDividers(group);assert.ok(group.rows.every(n=>!n.divider));
+ const wake={dataset:{time:at(0),timed:'true'},before(e){this.divider=e}},answer={dataset:{time:at(1)},before(e){this.divider=e}};
+ const timed={classList:{contains:()=>false},querySelectorAll:()=>[wake,answer]};addTimeDividers(timed);assert.ok(!wake.divider);assert.ok(!answer.divider,'do not split the routine from its answer');
+ delete wake.dataset.timed;addTimeDividers(timed);assert.ok(wake.divider,'untimed routine needs its divider above the event');assert.ok(!answer.divider);
+
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

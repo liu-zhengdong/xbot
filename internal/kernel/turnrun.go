@@ -113,13 +113,13 @@ func (r *turnRun) delta(s string) {
 	}
 }
 
-func (r *turnRun) toolStart(name, summary string) {
+func (r *turnRun) toolStart(id, name, summary string) {
 	if name == "ask_user" {
 		r.t.mu.Lock()
 		r.t.askedOwner = true
 		r.t.mu.Unlock()
 	}
-	r.k.beginStep(r.t, name, summary)
+	r.k.beginStep(r.t, id, name, summary)
 	r.t.mu.Lock()
 	forked := r.t.branch != ""
 	r.t.mu.Unlock()
@@ -128,8 +128,8 @@ func (r *turnRun) toolStart(name, summary string) {
 	}
 }
 
-func (r *turnRun) toolEnd(name, output string) {
-	r.k.endStep(r.t, name, output)
+func (r *turnRun) toolEnd(id, name, output string) {
+	r.k.endStep(r.t, id, output)
 	if sk := r.t.sinkNow(); sk != nil && sk.OnResult != nil && !r.t.isForked() {
 		sk.OnResult(name, output)
 	}

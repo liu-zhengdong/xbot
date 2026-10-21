@@ -27,6 +27,13 @@ const (
 type Approver func(ctx context.Context, toolName, summary string) (bool, error)
 
 type toolArgsKey struct{}
+type toolCallIDKey struct{}
+
+// ToolCallID identifies the call whose approval is being decided.
+func ToolCallID(ctx context.Context) string {
+	id, _ := ctx.Value(toolCallIDKey{}).(string)
+	return id
+}
 
 // withToolArgs carries one tool call's raw arguments to the approver without
 // widening the Approver signature.
@@ -49,9 +56,10 @@ type Options struct {
 	Approve   Approver
 	OnDelta   func(string)
 	// OnTool and OnResult may run at the same time, once per call.
+	// id is the provider call ID, so same-name parallel calls can be paired.
 	// Callers that stream them (the terminal printer, the web SSE writer) must tolerate that.
-	OnTool    func(name, summary string)
-	OnResult  func(name, output string)
+	OnTool    func(id, name, summary string)
+	OnResult  func(id, name, output string)
 	OnMessage func(provider.Message)
 	// Redact masks known secret values in tool output before it is streamed or
 	// recorded. Nil leaves the output unchanged.
@@ -406,48 +414,48 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 				text = opt.Redact(text)
 			}
 			text, _ = clip.Bytes(text, opt.MaxResult)
-			res = toolExec{text: finish(opt, tc.Function.Name, text)}
+			res = toolExec{text: finish(opt, tc.ID, tc.Function.Name, text)}
 		}
 	}()
 	t, ok := byName[tc.Function.Name]
 	if !ok {
-		return toolExec{text: finish(opt, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))}
+		return toolExec{text: finish(opt, tc.ID, tc.Function.Name, fmt.Sprintf("error: unknown tool %q", tc.Function.Name))}
 	}
 	raw := json.RawMessage(tc.Function.Arguments)
 	if !json.Valid(raw) {
-		return toolExec{text: finish(opt, t.Name(), "error: tool arguments are not valid JSON")}
+		return toolExec{text: finish(opt, tc.ID, t.Name(), "error: tool arguments are not valid JSON")}
 	}
 	need, summary, err := tools.ConfirmCall(ctx, t, raw)
 	if err != nil {
-		return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
+		return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
 	}
 	if opt.OnTool != nil {
-		opt.OnTool(t.Name(), summary)
+		opt.OnTool(tc.ID, t.Name(), summary)
 	}
 	if need {
 		if opt.Approve == nil {
-			return toolExec{text: finish(opt, t.Name(), "not run: no approver available on this link")}
+			return toolExec{text: finish(opt, tc.ID, t.Name(), "not run: no approver available on this link")}
 		}
 		approved, err := func() (bool, error) {
 			approve.Lock()
 			defer approve.Unlock()
-			return opt.Approve(withToolArgs(ctx, raw), t.Name(), summary)
+			return opt.Approve(withToolArgs(context.WithValue(ctx, toolCallIDKey{}, tc.ID), raw), t.Name(), summary)
 		}()
 		if err != nil {
 			// An error that names its own tool result (a parked card) is
 			// shown as that, not as a failure.
 			var res interface{ ToolResult() string }
 			if errors.As(err, &res) {
-				return toolExec{text: finish(opt, t.Name(), res.ToolResult())}
+				return toolExec{text: finish(opt, tc.ID, t.Name(), res.ToolResult())}
 			}
-			return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
+			return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
 		}
 		if !approved {
-			return toolExec{text: finish(opt, t.Name(), "denied by user")}
+			return toolExec{text: finish(opt, tc.ID, t.Name(), "denied by user")}
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return toolExec{text: finish(opt, t.Name(), "error: "+err.Error())}
+		return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
 	}
 	ctx, sink := tools.WithImageSink(ctx)
 	out, err := t.Run(ctx, raw)
@@ -466,7 +474,7 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 		out = opt.Redact(out)
 	}
 	out, _ = clip.Bytes(out, opt.MaxResult)
-	return toolExec{text: finish(opt, t.Name(), out), images: images}
+	return toolExec{text: finish(opt, tc.ID, t.Name(), out), images: images}
 }
 
 type imageBudget struct {
@@ -545,9 +553,9 @@ func dropImages(msgs []provider.Message) (n, bytes int) {
 	return n, bytes
 }
 
-func finish(opt Options, name, out string) string {
+func finish(opt Options, id, name, out string) string {
 	if opt.OnResult != nil {
-		opt.OnResult(name, out)
+		opt.OnResult(id, name, out)
 	}
 	return out
 }

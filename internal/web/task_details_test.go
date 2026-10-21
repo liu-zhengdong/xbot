@@ -28,12 +28,12 @@ func TestTaskDetails(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	dir := b.AgentDir("failed-task")
+	dir := b.AgentDir("sa_0123456789abcdef")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	summary := strings.Repeat("错😀", 1100)
-	raw, err := json.Marshal(map[string]any{"id": "failed-task", "status": "failed", "task": "检查任务", "summary": summary, "started": "2026-10-21T08:00:00Z", "finished_at": "2026-10-21T08:03:00Z", "current_step": "读取目录", "steps": 3})
+	raw, err := json.Marshal(map[string]any{"id": "sa_0123456789abcdef", "type": "dev", "status": "failed", "task": "检查任务", "summary": summary, "started": "2026-10-21T08:00:00Z", "finished_at": "2026-10-21T08:03:00Z", "current_step": "读取目录", "steps": 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +49,7 @@ func TestTaskDetails(t *testing.T) {
 	}
 	var panel struct {
 		Agents []struct {
+			Type        string `json:"type"`
 			Summary     string `json:"summary"`
 			Started     string `json:"started_at"`
 			Finished    string `json:"finished_at"`
@@ -63,6 +64,9 @@ func TestTaskDetails(t *testing.T) {
 		t.Fatal("task API must return a rune-clipped result or error summary")
 	}
 	ag := panel.Agents[0]
+	if ag.Type != "dev" {
+		t.Fatalf("task type = %q, want dev", ag.Type)
+	}
 	if ag.Started != "2026-10-21T08:00:00Z" || ag.Finished != "2026-10-21T08:03:00Z" || ag.CurrentStep != "读取目录" || ag.Steps != 3 {
 		t.Fatalf("task status fields: %+v", ag)
 	}

@@ -2153,7 +2153,6 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .routine-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; }
 .routine-source { margin-top: 10px; font-size: 12px; color: var(--faint); }
 .routine-silent { color: var(--faint); }
-.recent-task:nth-of-type(even) { background: var(--x-zebra); }
 .task .task-top { justify-content: flex-start; align-items: center; font-size: 12px; }
 .recent-toggle { display: flex; align-items: center; gap: 8px; }
 .recent-tasks { margin-top: 8px; }
@@ -2459,7 +2458,7 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 
 
 /* M6: status and tasks share the selected bot's live metadata. */
-.greeting { font-size: var(--x-fs-greet); line-height: 1.75; font-weight: 600; padding: 10px 8px 16px; }
+.greeting { font-size: var(--x-fs-greet); line-height: 1.75; font-weight: 600; padding: 10px 20px 16px; }
 .greeting .g { color: var(--x-faint); font-weight: 500; }
 .greet-stack, .work-stack { display: inline-flex; align-items: center; vertical-align: -3px; margin: 0 2px; flex: none; }
 .greet-stack .avatar { width: 22px; height: 22px; margin-left: -5px; box-shadow: 0 0 0 2px var(--x-win); }
@@ -2470,12 +2469,12 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 #work-status { width: min(680px, 100% - 64px); margin: 0 auto; }
 .wrow { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 6px; margin: 0 0 6px; border: 0; border-radius: 99px; background: transparent; font-size: 12.5px; color: var(--x-muted); cursor: pointer; max-width: 100%; white-space: nowrap; }
 .wrow:hover { background: var(--x-fill-1); }
-.wrow b { color: var(--x-text-2); font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.wrow b { color: var(--x-text-2); font-weight: 600; min-width: 0; max-width: 24em; overflow: hidden; text-overflow: ellipsis; }
 .wrow .work-step { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .wrow .el { color: var(--x-faint); font-variant-numeric: tabular-nums; }
 .wrow .icon:last-child { width: 13px; height: 13px; color: var(--x-faint); flex: none; }
 .work-stack .avatar { width: 18px; height: 18px; margin-left: -4px; }
-.slow-tool { display: flex; align-items: flex-start; gap: 6px; margin-top: 20px; font-size: 12.5px; line-height: 1.6; color: var(--x-faint); }
+.slow-tool { display: flex; align-items: flex-start; gap: 6px; margin-top: 20px; font-size: 12.5px; line-height: 1.6; color: var(--x-muted); }
 .slow-tool > .icon { width: 13px; height: 13px; flex: none; margin-top: 3px; }
 .tab-body:has(> .task-view) { padding: 0 12px; }
 .task-section { padding: 10px 8px 4px; }
@@ -2484,29 +2483,34 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .task-record .ch { display: flex; align-items: center; gap: 10px; }
 .task-record .ch > .avatar { width: 24px; height: 24px; }
 .task-record .ct, .task-routine .ct { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.task-record .ct b { font-size: 13.5px; font-weight: 620; overflow: hidden; text-overflow: ellipsis; }
+.task-record .ct b { font-size: 13.5px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-record .ct .s2 { font-size: 12.5px; color: var(--x-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-state { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--x-muted); white-space: nowrap; }
 .task-state > .icon, .task-state > svg { width: 13px; height: 13px; }
 .task-record .now { font-size: 12.5px; color: var(--x-muted); margin-top: 8px; }
 .task-record .res { font-size: 13px; line-height: 1.65; margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-record .ca { display: flex; gap: 6px; margin-top: 10px; }
-.task-record .ca input { flex: 1; width: 0; min-width: 0; border: 0; border-radius: 6px; background: var(--x-fill-1); padding: 5px 8px; font-size: 12px; }
-.task-record .ca .secondary { background: var(--x-fill-1); font-size: 12px; padding: 4px 8px; }
+.task-record .steer-editor { display: flex; gap: 6px; margin-top: 8px; }
+.task-record .steer-editor[hidden] { display: none; }
+.task-record .steer-editor input { flex: 1; width: 0; min-width: 0; border: 0; border-radius: 6px; background: var(--task-control-fill); padding: 5px 8px; font-size: 12px; }
+.task-record .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: var(--task-control-fill); font-size: 12px; padding: 4px 8px; }
+.task-record .secondary[hidden] { display: none; }
+.task-record .secondary .icon { width: 14px; height: 14px; }
 .task-record .failed { color: var(--x-danger); }
 .task-fold { border: 0; background: transparent; color: var(--x-muted); font-size: 11.5px; padding: 0; }
 .task-fold .icon { width: 13px; height: 13px; transform: rotate(180deg); }
 .task-record:not(.finished) > .recent-task, .task-record.finished:not(.expanded) > .card, .task-record.expanded > .recent-task { display: none; }
 .task-record .recent-task { gap: 9px; min-height: 36px; padding: 6px 10px; }
 .task-record .recent-task > .icon { width: 14px; height: 14px; flex: none; }
-.task-record .recent-name { font-size: 12.5px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
-.task-record .recent-title { font-size: 12.5px; }
+.task-record .recent-name { font-size: 12.5px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-details { margin-top: 8px; font-size: 11.5px; color: var(--x-faint); }
+.task-details > summary { cursor: pointer; }
+.task-details .task-request { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--x-muted); }
+.task-details .task-id { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 .task-record .recent-status { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
-.task-record:nth-of-type(even) .recent-task { background: var(--x-zebra); }
 .task-record .recent-task:hover { background: var(--x-fill-2); }
-.pnone { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--x-faint); padding: 4px 10px 2px; }
-.task-routine.routine { display: flex; gap: 8px; background: transparent; border-radius: 8px; min-height: 36px; padding: 6px 10px; margin: 0; }
-.task-routine:nth-of-type(odd) { background: var(--x-zebra); }
+.pnone { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--x-faint); padding: 4px 0 2px; }
+.task-routine.routine { display: flex; flex-wrap: wrap; gap: 8px; background: transparent; border-radius: 8px; min-height: 36px; padding: 6px 10px; margin: 0; }
 .task-routine > .icon { width: 14px; height: 14px; color: var(--x-muted); }
 .task-routine .ct { flex-direction: row; align-items: center; gap: 8px; }
 .task-routine .ct b { font-size: 13px; font-weight: 600; }
@@ -2533,3 +2537,23 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .message-menu { opacity: 0; transform: scale(var(--pop-scale-start)); }
 .msg :is(.bubble, .bot-bubble) { transform-origin: center; }
 @media (prefers-reduced-motion: reduce) { .message-menu { transform: none; } }
+
+/* M6 design review: transient controls stay inside their own keyed card. */
+.work-many { display: inline-flex; gap: 0; }
+.task-text code { font-family: var(--mono); font-size: .92em; padding: 1px 4px; border-radius: 4px; background: var(--x-fill-1); }
+.task-record { --task-control-fill: var(--x-fill-1); }
+html[data-theme="dark"] .task-record { --task-control-fill: var(--x-popover-hover); }
+.task-record .ch > .icon { width: 20px; height: 20px; color: var(--x-muted); flex: none; }
+.task-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ty { font-size: 11px; font-weight: 600; border-radius: 5px; padding: 1px 6px; white-space: nowrap; line-height: 16px; flex: none; }
+.ty.type-dev { color: var(--x-type-dev); background: var(--x-type-dev-bg); }
+.ty.type-res { color: var(--x-type-res); background: var(--x-type-res-bg); }
+.ty.type-gen { color: var(--x-type-gen); background: var(--x-type-gen-bg); }
+.ty.type-own { color: var(--x-type-own); background: var(--x-type-own-bg); }
+.task-idle { font-size: 12.5px; color: var(--x-faint); padding: 10px 8px 4px; }
+.raw-error-toggle { display: inline-flex; align-items: center; gap: 3px; }
+.raw-error-toggle .icon { width: 12px; height: 12px; }
+.raw-error-toggle[aria-expanded="true"] .icon { transform: rotate(90deg); }
+.task-routine:hover { background: var(--x-fill-2); }
+.routine-error { flex-basis: 100%; font-size: 12px; color: var(--x-danger); }
+html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }

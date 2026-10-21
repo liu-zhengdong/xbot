@@ -88,11 +88,11 @@
   "primary":false,
   "memory":[{"scope":"person","text":"..."}],
   "routines":[{"id":"...","name":"...","cron":"7 * * * *","at":"","enabled":true}],
-  "agents":[{"id":"...","status":"running","task":"截到 140 字","mode":"brief","steps":1,"started_at":"RFC3339","current_step":"当前工具的一行摘要","finished_at":null}]
+  "agents":[{"id":"...","type":"dev","status":"running","task":"截到 140 字","mode":"brief","steps":1,"started_at":"RFC3339","current_step":"当前工具的一行摘要","finished_at":null}]
 }
 ```
 
-`style` 只保留 `language`。旧配置里的 `tone`、`length`、`emoji` 加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧模板里的这三个字段忽略。说话规则由内核统一提供，个人口味记在 Bot 记忆里。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统；`started_at` 是实际开始时间，`current_step` 是当前一步的一行摘要，`finished_at` 优先使用实际结束时刻。
+`style` 只保留 `language`。旧配置里的 `tone`、`length`、`emoji` 加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧模板里的这三个字段忽略。说话规则由内核统一提供，个人口味记在 Bot 记忆里。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统；`type` 为派发时的类型（如 `research`、`dev`），普通 spawn 为空，界面在没有任务标题时用它显示类型名；`started_at` 是实际开始时间，`current_step` 是当前一步的一行摘要，`finished_at` 优先使用实际结束时刻。
 
 `PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的主人。请求体仅含必填布尔字段 `enabled`，返回更新后的例程。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对或未知字段 400，写入失败 500。
 
@@ -166,7 +166,7 @@ Bot 正在这个进程里跑一轮时，主人的消息直接插进那一轮（[
 
 ## Bot 状态
 
-`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`since`（RFC3339，本机时区）、`backgrounds`（分叉后台数）、`agents`（正在执行的子代理数，不含排队）、`completed_unread`（主人尚未读到的子代理或分叉完成汇报数，随既有 transcript 已读游标归零）、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等主人确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
+`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`tool_summary`（当前仍在运行的工具步骤摘要，已脱敏，最多 120 字）、`since`（RFC3339，本机时区）、`backgrounds`（分叉后台数）、`agents`（正在执行的子代理数，不含排队）、`completed_unread`（主人尚未读到的子代理或分叉完成汇报数，随既有 transcript 已读游标归零）、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等主人确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
 
 `GET /api/bots/{name}/steps?n=20` 返回 `{"steps":[{"time","tool","summary","state"}]}`，是这个 Bot 当前这一轮的步骤环。`summary` 最多 120 个字符，写前过替换函数；`state` 是 `running`、`done`、`error` 或 `awaiting`。`n` 缺省 20，最多 20，小于 1 是 400 `{"error":"bad n"}`。不是这个 owner 的 Bot 是 404。远端 Bot 只给状态，不给步骤，空数组。
 

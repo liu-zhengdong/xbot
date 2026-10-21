@@ -105,7 +105,7 @@ func runLoop(j *job) {
 			MaxSteps: 1,
 			OneRound: true,
 			Approve:  j.approve,
-			OnTool: func(name, summary string) {
+			OnTool: func(_ string, name, summary string) {
 				j.mu.Lock()
 				j.currentStep = clipText(summary, 120)
 				if j.currentStep == "" {
