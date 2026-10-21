@@ -45,6 +45,12 @@ func TestMessageMenuStaysInsideViewport(t *testing.T) {
  assert.deepEqual(messageMenuPosition(1430,890,160,76,1440,900),{left:1270,top:814});
  assert.deepEqual(messageMenuPosition(370,895,160,76,375,900),{left:207,top:816});
  assert.deepEqual(messageMenuPosition(0,-70,160,76,375,900),{left:8,top:8});
+ const bubble={left:32,right:343,top:300,bottom:342};
+ assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,[],375,900,false),{left:32,top:216});
+ assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,[],375,900,true),{left:183,top:216});
+ const previous={left:32,right:343,top:220,bottom:290};
+ assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,[previous],375,900,false),{left:32,top:136});
+ assert.deepEqual(mobileMessageMenuPosition({...bubble,top:20,bottom:62},160,76,[],375,900,true),{left:183,top:70});
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

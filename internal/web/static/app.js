@@ -1856,6 +1856,7 @@
 
   const messageContents = new WeakMap();
   let messageMenu = null;
+  let messageTarget = null;
   let messagePress = null;
   let copyReceipt = null;
 
@@ -1866,8 +1867,29 @@
     };
   }
 
+  function mobileMessageMenuPosition(rect, width, height, others, viewportWidth, viewportHeight, right) {
+    const left = Math.max(8, Math.min(right ? rect.right - width : rect.left, viewportWidth - width - 8));
+    const hits = top => others.filter(r => r.left < left + width && r.right > left && r.top < top + height && r.bottom > top);
+    let top = rect.top - height - 8;
+    while (top >= 8) {
+      const overlap = hits(top);
+      if (!overlap.length) return {left, top};
+      top = Math.min(...overlap.map(r => r.top)) - height - 8;
+    }
+    top = rect.bottom + 8;
+    while (top + height <= viewportHeight - 8) {
+      const overlap = hits(top);
+      if (!overlap.length) return {left, top};
+      top = Math.max(...overlap.map(r => r.bottom)) + 8;
+    }
+    return messageMenuPosition(left, rect.top - height - 8, width, height, viewportWidth, viewportHeight);
+  }
+
   function closeMessageMenu() {
     messageMenu?.remove();
+    messageTarget?.classList.remove("message-target");
+    messageTarget = null;
+    document.documentElement.classList.remove("message-menu-open");
     messageMenu = null;
     if (messagePress) clearTimeout(messagePress.timer);
     messagePress = null;
@@ -1890,7 +1912,7 @@
     const selection = window.getSelection();
     const selected = selection && data.bubble.contains(selection.anchorNode) && data.bubble.contains(selection.focusNode) ? selection.toString() : "";
     if (mobile) selection?.removeAllRanges();
-    const menu = el("div", "pop message-menu");
+    const menu = el("div", "message-menu");
     menu.setAttribute("role", "menu");
     menu.setAttribute("aria-label", "消息操作");
     const items = [
@@ -1900,9 +1922,10 @@
         if (!mobile) return;
         const receipt = el("div", "message-copy-receipt", "已复制");
         receipt.setAttribute("role", "status");
-        receipt.style.left = menu.style.left;
-        receipt.style.top = menu.style.top;
         document.body.append(receipt);
+        const r = data.bubble.getBoundingClientRect();
+        receipt.style.left = Math.max(8, Math.min(r.left + (r.width - receipt.offsetWidth) / 2, innerWidth - receipt.offsetWidth - 8)) + "px";
+        receipt.style.top = Math.max(8, r.top - receipt.offsetHeight - 8) + "px";
         copyReceipt = receipt;
         setTimeout(() => { receipt.remove(); if (copyReceipt === receipt) copyReceipt = null; }, 1500);
       }},
@@ -1918,10 +1941,16 @@
     }
     document.body.append(menu);
     const r = data.bubble.getBoundingClientRect();
-    const position = messageMenuPosition(mobile ? r.left : x, mobile ? r.top - menu.offsetHeight - 8 : y, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight);
+    const others = [...thread.querySelectorAll(".bubble, .bot-bubble")].filter(n => n !== data.bubble).map(n => n.getBoundingClientRect());
+    const position = mobile
+      ? mobileMessageMenuPosition(r, menu.offsetWidth, menu.offsetHeight, others, innerWidth, innerHeight, data.bubble.closest(".msg").classList.contains("user"))
+      : messageMenuPosition(x, y, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight);
     menu.style.left = position.left + "px";
     menu.style.top = position.top + "px";
     messageMenu = menu;
+    messageTarget = data.bubble;
+    messageTarget.classList.add("message-target");
+    document.documentElement.classList.add("message-menu-open");
     menu.querySelector("button:not(:disabled)")?.focus({preventScroll: true});
   }
 

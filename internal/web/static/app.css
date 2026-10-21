@@ -2388,7 +2388,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 
 .bubble .kw, .bubble .str, .bubble .cm, .bubble .code-head { color: inherit; }
 .bubble .prose code { background: var(--x-user-code); }
-.bot-bubble .prose code { background: var(--x-card); }
+.bot-bubble .prose code { background: var(--x-bot-code); }
 @media (min-width: 768px) {
   .sidebar.rail .pin-row > .pin { height: 56px; border-radius: 12px; }
   .sidebar.rail .avatar { overflow: visible; }
@@ -2425,7 +2425,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .thread-unavailable { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; }
 .thread-unavailable h3 { color: var(--x-text); font-size: 18px; font-weight: 640; margin: 14px 0 0; }
 .thread-unavailable p { max-width: 360px; text-wrap: balance; font-size: 14px; color: var(--x-muted); margin: 6px 0 20px; line-height: 1.6; }
-.bot-bubble .code-block { background: var(--x-card); }
+.bot-bubble .code-block { background: var(--x-bot-code); }
 .in-app:is(.os-win, .os-linux) .side-drag { height: 22px; }
 @media (min-width: 768px) { .sidebar.rail .side-foot { padding-bottom: 0; } }
 /* Context menus reuse the existing floating menu surface. */
@@ -2434,10 +2434,10 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .thread-unavailable .btn.sec { border: 0; height: 32px; padding: 0 13px; border-radius: 8px; font-size: 13.5px; font-weight: 560; display: inline-flex; align-items: center; justify-content: center; line-height: 1; gap: 6px; background: var(--x-fill-2); color: var(--x-text); }
 .thread-unavailable .btn.sec:hover { background: var(--x-fill-3); }
 .thread-unavailable .btn.sec .icon { width: 15px; height: 15px; stroke-width: 1.8; }
-.message-menu { position: fixed; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-card); box-shadow: var(--x-shadow-pop); }
-.pop.message-menu button.menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 13px; line-height: 32px; background: transparent; color: var(--x-text); }
-.pop.message-menu button:is(:hover, :focus-visible) { background: var(--x-fill-2); outline: none; }
-.message-copy-receipt { position: fixed; z-index: 70; padding: 4px 10px; border-radius: 8px; background: var(--x-card); color: var(--x-muted); box-shadow: var(--x-shadow-pop); font-size: 12px; pointer-events: none; }
+.message-menu { position: fixed; z-index: 70; inset: auto; width: 160px; padding: 6px; border: 0; border-radius: 12px; background: var(--x-popover); box-shadow: var(--x-shadow-pop); }
+.message-menu > button.menu-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; font-size: 13px; line-height: 32px; background: transparent; color: var(--x-text); }
+.message-menu > button:is(:hover, :focus-visible) { background: var(--x-popover-hover); outline: none; }
+.message-copy-receipt { width: max-content; position: fixed; z-index: 70; padding: 4px 10px; border-radius: 8px; background: var(--x-card); color: var(--x-muted); box-shadow: var(--x-shadow-pop); font-size: 12px; pointer-events: none; }
 @media (hover: none) {
   .msg .ht { display: none; }
   #thread :is(.bubble, .bot-bubble) { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -2448,3 +2448,13 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   .sidebar:not(.open) { box-shadow: none; }
   .msg.bot .body { max-width: 100%; }
 }
+
+/* Message-only surfaces: no generic popover sizing or native text cursor. */
+.msg :is(.bubble, .bot-bubble) { cursor: default; }
+.msg :is(.bubble, .bot-bubble) a { cursor: pointer; }
+.msg :is(.code-block, pre, .code-block code) { cursor: text; }
+.bot-bubble.message-target { background: var(--x-fill-2); }
+.bubble.message-target { background: color-mix(in srgb, var(--x-user-bubble) 88%, black); }
+.message-menu-open .msg .ht { visibility: hidden; }
+.bubble .prose code, .bot-bubble .prose code { border: 0; border-radius: 4px; padding: 1px 4px; font-family: var(--mono); font-size: .9em; }
+.bot-bubble .code-block code { background: transparent; }

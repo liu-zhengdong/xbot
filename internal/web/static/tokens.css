@@ -35,6 +35,8 @@
   /* 头像容器 */
   --x-avatar-bg:#e4e4e7;
   /* 阴影：只给浮层（菜单、抽屉、弹窗、提示） */
+  --x-popover:#ffffff; --x-popover-hover:var(--x-fill-2);
+  --x-bot-code:rgba(24,24,27,.06);
   --x-shadow-pop:0 8px 30px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
   --x-scrim:rgba(24,24,27,.28);
   /* 字体 */
@@ -63,6 +65,8 @@ html[data-theme="dark"]{
   --x-ctx-turn:#4c8df6; --x-ctx-hist:#2f5ea8; --x-ctx-block:#1fb08a; --x-ctx-mem:#e0912f;
   --x-ctx-sys:#a8a8b0; --x-ctx-env:#6b6b73; --x-ctx-tools:#55555c; --x-ctx-free:#2c2c30;
   --x-avatar-bg:#a8a8ad;
+  --x-popover:#232327; --x-popover-hover:#303034;
+  --x-bot-code:rgba(255,255,255,.07);
   --x-shadow-pop:0 10px 34px rgba(0,0,0,.5);
   --x-scrim:rgba(0,0,0,.5);
   color-scheme:dark;
