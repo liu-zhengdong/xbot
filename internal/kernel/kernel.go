@@ -155,6 +155,7 @@ type Kernel struct {
 	startOnce   sync.Once
 	recoverOnce sync.Once
 	execOnce    sync.Once
+	execMu      sync.RWMutex
 	loadMu      sync.Mutex
 	loaded      map[string]bool
 	linksMu     sync.Mutex

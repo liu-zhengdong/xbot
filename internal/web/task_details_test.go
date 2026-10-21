@@ -72,3 +72,42 @@ func TestTaskDetails(t *testing.T) {
 	}
 
 }
+
+func TestTaskNotableAndUnstartedTime(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	dir := b.AgentDir("sa_0000000000000001")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"id":"sa_0000000000000001","status":"queued","notable":[{"kind":"global_install","text":"全局安装了软件。"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Root: root, Owner: "u1"}
+	token, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/bots/ada", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	res := httptest.NewRecorder()
+	muxOf(s).ServeHTTP(res, req)
+	var got struct {
+		Agents []struct {
+			Started *string                       `json:"started_at"`
+			Notable []struct{ Kind, Text string } `json:"notable"`
+		}
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Agents) != 1 || got.Agents[0].Started != nil || len(got.Agents[0].Notable) != 1 || got.Agents[0].Notable[0].Kind != "global_install" {
+		t.Fatalf("task metadata: %s", res.Body.String())
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"xbot/internal/fsutil"
+	"xbot/internal/notable"
 )
 
 const maxEditBytes = 2 << 20
@@ -124,6 +125,7 @@ func (e *EditFile) Run(ctx context.Context, args json.RawMessage) (string, error
 	if err := fsutil.WriteAtomic(path, []byte(updated), mode); err != nil {
 		return "", fmt.Errorf("edit_file: %s", RewriteHost(e.Sandbox, path, err.Error()))
 	}
+	notable.Wrote(ctx, path)
 	return fmt.Sprintf("updated %s", shown), nil
 }
 

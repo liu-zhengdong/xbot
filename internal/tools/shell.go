@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"xbot/internal/clip"
+	"xbot/internal/notable"
 )
 
 const (
@@ -265,6 +266,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if startDir != nil {
 		dir, notice = startDir(ctx)
 	}
+	env := s.commandEnv(in.Keys)
 	command := in.Command
 	var marker string
 	var ended string
@@ -299,7 +301,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			Timeout:    timeout,
 			MaxOutput:  s.maxOutput(),
 			Dir:        dir,
-			Env:        s.commandEnv(in.Keys),
+			Env:        env,
 			Background: in.RunInBackground,
 			CwdFile:    marker,
 			OnCwd: func(got string) {
@@ -313,7 +315,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			},
 		})
 	} else {
-		out, err = runCommand(ctx, command, timeout, s.maxOutput(), dir, s.commandEnv(in.Keys))
+		out, err = runCommand(ctx, command, timeout, s.maxOutput(), dir, env)
 		if marker != "" {
 			ended = readCwdFile(marker)
 			_ = os.Remove(marker)
@@ -332,6 +334,9 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		case ended = <-cwdCh:
 		default:
 		}
+	}
+	if strings.HasPrefix(out, "exit 0\n") || out == "exit 0" {
+		notable.Shell(ctx, in.Command, dir, env)
 	}
 	cwd := dir
 	if ended != "" && !strings.HasPrefix(out, "background ") {

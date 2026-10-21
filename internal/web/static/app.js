@@ -751,8 +751,7 @@
     if (!steps) cnt.textContent = "读取中…";
     else if (!steps.length) cnt.textContent = "本轮还没有步骤";
     else {
-      const st = stStatus.map[name];
-      const t0 = (st && tsOf(st.since)) || tsOf(steps[0].time) || Date.now();
+      const t0 = tsOf(steps[0].time) || Date.now();
       cnt.textContent = "第 " + steps.length + " 步 · " + stClock((Date.now() - t0) / 1000);
     }
     head.append(cnt);
@@ -4691,7 +4690,10 @@
     return seconds < 60 ? seconds + " 秒" : Math.floor(seconds / 60) + " 分" + (seconds % 60 ? " " + seconds % 60 + " 秒" : "");
   }
 
+  // Transcript snapshots are replaced, never edited in place.
+  const routineCache = new WeakMap();
   function routineRuns(messages) {
+    if (routineCache.has(messages)) return routineCache.get(messages);
     const pending = new Map(), hidden = new Set(), recent = [];
     messages.forEach((m, i) => {
       const branch = m.branch || "";
@@ -4708,7 +4710,7 @@
       recent.push({id: "routine:" + (wake.m.seq || wake.i), type: "routine", task: wake.rt.label, status: "done", summary: silent ? "没什么要说的" : m.content, finished_at: m.time, started_at: wake.m.time});
       pending.delete(branch);
     });
-    return {hidden, recent};
+    const result = {hidden, recent}; routineCache.set(messages, result); return result;
   }
 
   function taskTypeLabel(ag) {
@@ -4743,7 +4745,7 @@
     text = String(text || "");
     if (host.dataset.text === text || taskSelected(host)) return;
     host.dataset.text = text;
-    const parts = [...text.matchAll(/`([^`]+)`|((?:~\/|\/|[A-Za-z]:\\)[^\s，。·`]+)/g)];
+    const parts = [...text.matchAll(/`([^`]+)`|((?<![^\s，。；：（(])(?:~\/|\/|[A-Za-z]:\\)[^\s，。·`]+)/g)];
     if (!parts.length) { host.textContent = text; return; }
     host.classList.add("task-text"); host.replaceChildren();
     let at = 0;
@@ -4757,7 +4759,7 @@
     return ag.status === "queued" ? "clock" : "circle-check";
   }
 
-  function taskAvatar(ag, size = "") { return ag.type === "routine" ? icon("alarm-clock") : avatar(taskTitle(ag), null, size); }
+  function taskAvatar(ag, size = "") { return ag.type === "routine" ? icon("alarm-clock") : avatar(ag.id, null, size); }
 
   function paintGreeting() {
     const host = $("greeting");
@@ -4811,7 +4813,7 @@
 
   function slowToolNotice(current, messages, pending, now = Date.now()) {
     const since = Date.parse(current?.since);
-    if (!current?.tool || !current.tool_summary || !Number.isFinite(since) || now - since < 3000) return "";
+    if (current?.state !== "running" || !current.tool || !current.tool_summary || !Number.isFinite(since) || now - since < 3000) return "";
     const interjected = pending.some(row => !row.keepFailed && Date.parse(row.dataset.time) > since) ||
       messages.some(m => m.role === "user" && !m.internal && !unwrap(m.content || "").untrusted && Date.parse(m.time) > since);
     if (!interjected) return "";
@@ -4856,8 +4858,8 @@
     const head = el("div", "ch"), ct = el("div", "ct");
     const title = el("div", "task-heading"); title.append(el("b", "task-name"), el("span", "task-type ty")); ct.append(title);
     head.append(taskAvatar(ag, "xs"), ct, el("span", "task-state"));
-    detail.append(head, el("div", "now"), el("div", "res"), el("div", "task-error"));
-    const info = el("details", "task-details");
+    detail.append(head, el("div", "now"), el("div", "res"), el("div", "task-notable"), el("div", "task-error"));
+    const info = el("details", "task-details"); info.hidden = ag.type === "routine";
     const infoTitle = el("summary", "", "任务详情"); infoTitle.append(icon("chevron"));
     info.append(infoTitle, el("p", "task-request"), el("code", "task-id"));
     detail.append(info);
@@ -4932,6 +4934,9 @@
     const result = card.querySelector(".res");
     taskValue(result, hot ? "" : ag.summary === "SILENT" ? "没什么要说的" : (ag.status === "failed" ? zhError(ag.summary || "") : plainText(displayText(ag.summary || "")))); result.hidden = !result.textContent;
     result.classList.toggle("failed", ag.status === "failed");
+    const note = card.querySelector(".task-notable");
+    const notes = !hot ? (ag.notable || []).map(item => item.text).filter(Boolean) : [];
+    taskValue(note, notes.length ? "值得留意：" + notes.join(" ") : ""); note.hidden = !notes.length;
     const rawError = card.querySelector(".task-error");
     const raw = ag.status === "failed" ? ag.summary || "" : "";
     if (rawError.dataset.raw !== raw) {
@@ -4964,7 +4969,7 @@
         card.routine.enabled = before;
         notice.style.opacity = "1"; notice.hidden = false;
         notice.textContent = "没改成，已恢复为" + (before ? "开启。" : "关闭。");
-        card.failureTimer = setTimeout(() => { const a = notice.animate([{opacity:1},{opacity:0}], {duration:120,fill:"forwards"}); a.finished.then(() => { notice.hidden = true; }).catch(() => {}); }, 4000);
+        card.failureTimer = setTimeout(() => { if (matchMedia("(prefers-reduced-motion: reduce)").matches) { notice.hidden = true; return; } const a = notice.animate([{opacity:1},{opacity:0}], {duration:120,fill:"forwards"}); a.finished.then(() => { notice.hidden = true; }).catch(() => {}); }, 4000);
       }
       finally { routineChanges.delete(rt.id); toggle.disabled = false; updateRoutineCard(card, card.routine); }
     });

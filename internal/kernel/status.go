@@ -245,7 +245,7 @@ func (k *Kernel) Status() BotStatus {
 	}
 	t.mu.Unlock()
 	st.Backgrounds = len(k.Backgrounds())
-	if active, ok := k.Exec.(interface{ ActiveCount() int }); ok {
+	if active, ok := k.execSnapshot().(interface{ ActiveCount() int }); ok {
 		st.Agents = active.ActiveCount()
 	}
 	st.Todo = TodoSummary(k.Bot)

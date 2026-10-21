@@ -523,6 +523,10 @@ func (s *Server) Transcript(bot string) []Row {
 
 // Agent is one subagent record from GET /api/bots/{name}.
 type Agent struct {
+	Notable []struct {
+		Kind string `json:"kind"`
+		Text string `json:"text"`
+	} `json:"notable"`
 	ID     string `json:"id"`
 	Status string `json:"status"`
 	Task   string `json:"task"`

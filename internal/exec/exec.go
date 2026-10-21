@@ -84,7 +84,10 @@ type StartRequest struct {
 	MaxSteps   int                `json:"max_steps,omitempty"`
 	TimeoutSec int                `json:"timeout_sec,omitempty"`
 	Dir        string             `json:"dir"`
-	Model      Endpoint           `json:"model,omitempty"`
+	// Workspace is the Bot workspace boundary for completed-effect reporting.
+	// Dir remains the separate task-record directory; neither changes tool cwd.
+	Workspace string   `json:"workspace,omitempty"`
+	Model     Endpoint `json:"model,omitempty"`
 	// Type is the subagent type (ADR 0016); it is recorded in meta.json.
 	Type string `json:"type,omitempty"`
 	// Persona replaces SubPersona as a brief subagent's system prompt.
@@ -218,6 +221,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 		timeout:       timeout,
 		progressEvery: l.limits.ProgressEvery,
 		dir:           req.Dir,
+		workspace:     req.Workspace,
 		resource:      req.Resource,
 		provider:      p,
 		tools:         list,

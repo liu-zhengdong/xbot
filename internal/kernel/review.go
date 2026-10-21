@@ -33,6 +33,12 @@ type reviewedTool struct {
 	k *Kernel
 }
 
+// ReadOnlyHint preserves the MCP annotation through the review wrapper.
+func (t reviewedTool) ReadOnlyHint() bool {
+	hint, ok := t.Tool.(review.ReadOnlyHinter)
+	return ok && hint.ReadOnlyHint()
+}
+
 func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
 	return t.ConfirmContext(context.Background(), args)
 }

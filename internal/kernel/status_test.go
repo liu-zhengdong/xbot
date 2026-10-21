@@ -287,3 +287,16 @@ func TestLiveCallsSurviveTheStepHistoryLimit(t *testing.T) {
 		t.Fatalf("finished call still running: %+v", st)
 	}
 }
+
+func TestStatusDuringExecutorPublication(t *testing.T) {
+	k := &Kernel{Bot: testBot(t, link.NameTerminal), Memory: memory.NopStore{}}
+	done := make(chan struct{})
+	go func() { defer close(done); k.ensureExec() }()
+	for i := 0; i < 50; i++ {
+		k.Status()
+	}
+	<-done
+	if k.execSnapshot() == nil {
+		t.Fatal("executor was not published")
+	}
+}

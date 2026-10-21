@@ -92,7 +92,11 @@
 }
 ```
 
-`style` 只保留 `language`。旧配置里的 `tone`、`length`、`emoji` 加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧模板里的这三个字段忽略。说话规则由内核统一提供，个人口味记在 Bot 记忆里。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。`agents` 是子代理状态，不是一套独立的任务系统；`type` 为派发时的类型（如 `research`、`dev`），普通 spawn 为空，界面在没有任务标题时用它显示类型名；`started_at` 是实际开始时间，`current_step` 是当前一步的一行摘要，`finished_at` 优先使用实际结束时刻。
+`style` 只保留 `language`。旧配置里的 `tone`、`length`、`emoji` 加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧模板里的这三个字段忽略。说话规则由内核统一提供，个人口味记在 Bot 记忆里。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。
+
+`agents[].notable` 是已实际发生的「值得留意」清单（无条目时为空或省略）：`[{"kind":"global_install","text":"全局安装了软件。"}]`。`kind` 固定为 `global_install`、`write_outside`、`external_message`、`delete`；同一类每个任务只记一次，完成结果和交回 Bot 的报告使用同一份清单。普通工作区内读写不会产生条目。
+
+`agents` 是子代理状态，不是一套独立的任务系统；`type` 为派发时的类型（如 `research`、`dev`），普通 spawn 为空，界面在没有任务标题时用它显示类型名；`started_at` 是实际开始时间（尚未开始时为 `null`），`current_step` 是当前一步的一行摘要，`finished_at` 优先使用实际结束时刻。
 
 `PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的主人。请求体仅含必填布尔字段 `enabled`，返回更新后的例程。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对或未知字段 400，写入失败 500。
 

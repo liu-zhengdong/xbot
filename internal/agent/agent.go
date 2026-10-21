@@ -10,7 +10,9 @@ import (
 	"sync"
 
 	"xbot/internal/clip"
+	"xbot/internal/notable"
 	"xbot/internal/provider"
+	"xbot/internal/review"
 	"xbot/internal/tools"
 )
 
@@ -457,12 +459,18 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	if err := ctx.Err(); err != nil {
 		return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
 	}
+	ctx, commitEffects := notable.Capture(ctx)
 	ctx, sink := tools.WithImageSink(ctx)
 	out, err := t.Run(ctx, raw)
 	var images []provider.Image
 	if err != nil {
 		out = "error: " + err.Error()
 	} else {
+		hint, ok := t.(review.ReadOnlyHinter)
+		notable.Tool(ctx, t.Name(), raw, out, ok && hint.ReadOnlyHint())
+		if commitEffects != nil && !strings.HasPrefix(strings.TrimSpace(out), "error:") {
+			commitEffects()
+		}
 		for _, img := range sink.Take() {
 			images = append(images, provider.Image{MIME: img.MIME, Data: img.Data})
 		}

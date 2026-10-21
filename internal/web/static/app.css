@@ -2162,7 +2162,6 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .recent-task:focus-visible { outline: 2px solid var(--ring); }
 .recent-detail { margin: 4px 0 12px; }
 .recent-detail .failed { color: var(--err); }
-.recent-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .recent-status { flex-shrink: 0; color: var(--muted); }
 .recent-status.failed { color: var(--err); }
 /* Account actions remain reachable from the avatar rail. */
@@ -2543,7 +2542,7 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 
 /* M6 design review: transient controls stay inside their own keyed card. */
 .work-many { display: inline-flex; gap: 0; }
-.task-text code { font-family: var(--mono); font-size: .92em; padding: 1px 4px; border-radius: 4px; background: var(--x-fill-1); }
+.task-text code { font-family: var(--mono); font-size: .92em; padding: 1px 4px; border-radius: 4px; background: var(--task-control-fill, var(--x-fill-1)); }
 .task-record { --task-control-fill: var(--x-fill-1); }
 html[data-theme="dark"] .task-record { --task-control-fill: var(--x-popover-hover); }
 .task-record .ch > .icon { width: 20px; height: 20px; color: var(--x-muted); flex: none; }
@@ -2560,3 +2559,6 @@ html[data-theme="dark"] .task-record { --task-control-fill: var(--x-popover-hove
 .task-routine:hover { background: var(--x-fill-2); }
 .routine-error { flex-basis: 100%; font-size: 12px; color: var(--x-danger); }
 html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
+
+/* The kernel owns the fixed notable list; the task view only displays it. */
+.task-record .task-notable { font-size: 13px; line-height: 1.65; color: var(--x-muted); margin-top: 4px; }

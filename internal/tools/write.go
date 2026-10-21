@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"xbot/internal/fsutil"
+	"xbot/internal/notable"
 )
 
 const maxWriteBytes = 1 << 20
@@ -92,6 +93,7 @@ func (w *WriteFile) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if err := fsutil.WriteAtomic(path, []byte(in.Content), 0644); err != nil {
 		return "", fmt.Errorf("write_file: %s", RewriteHost(w.Sandbox, path, err.Error()))
 	}
+	notable.Wrote(ctx, path)
 	return fmt.Sprintf("wrote %d bytes to %s", len(in.Content), DisplayPath(w.Sandbox, path)), nil
 }
 

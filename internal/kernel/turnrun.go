@@ -7,6 +7,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/notable"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -259,7 +260,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
 		return r.k.fit(ctx, r.t, fit, req, overflow)
 	}
-	produced, err := agent.Run(r.t.runCtx, rp, r.list, r.assembled, opts)
+	produced, err := agent.Run(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), rp, r.list, r.assembled, opts)
 	var bg bool
 	for {
 		if err == nil {
@@ -307,7 +308,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			convo = append(convo, m)
 			produced = append(produced, m)
 		}
-		more, rerr := agent.Run(r.t.runCtx, rp, r.list, convo, opts)
+		more, rerr := agent.Run(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), rp, r.list, convo, opts)
 		produced = append(produced, more...)
 		err = rerr
 	}

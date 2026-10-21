@@ -19,7 +19,7 @@ func TestAskOnlyMessageDoesNotLeaveEmptyRow(t *testing.T) {
  const thread={scrollTop:0,scrollHeight:0,clientHeight:900,replaceChildren(inner){this.inner=inner}};
  const state={firstRender:true};const backgroundRelays=()=>new Set(),codingCardOf=()=>null,approvalCardOf=()=>null,skipMessage=()=>false,routineOf=()=>null,groupStart=()=>true,addTimeDividers=()=>{},restoreSendFeedback=()=>{};
  const botBubble=()=>({row:el('div','msg bot'),peers:[]});const toolSummary=()=>({name:'ask_user'});
- ` + s[strings.Index(s, "  function routineRuns("):strings.Index(s, "  function taskAvatar(")] + s[a:b] + `
+ ` + s[strings.Index(s, "  const routineCache"):strings.Index(s, "  function taskAvatar(")] + s[a:b] + `
  renderMessages([{role:'assistant',content:'',tool_calls:[{function:{name:'ask_user'}}]}],'ada');
  assert.equal(thread.inner.children.length,0,'ask-only assistant must not append an empty hoverable message row');
  renderMessages([{role:'assistant',content:'先做哪件事？'}],'ada');assert.equal(thread.inner.children.length,1);

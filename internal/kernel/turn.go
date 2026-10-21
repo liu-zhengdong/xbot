@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"xbot/internal/notable"
 	"xbot/internal/provider"
 )
 
@@ -14,6 +15,7 @@ import (
 // turn is running; curTurn then reports zero values, exactly like the
 // per-Kernel fields this replaced.
 type turn struct {
+	notable     notable.Log
 	turnSender  string
 	turnKind    string
 	turnHops    int

@@ -41,9 +41,10 @@ func (k *Kernel) listedSkill() bool {
 
 func (k *Kernel) ensureExec() exec.Executor {
 	k.execOnce.Do(func() {
-		if k.Exec == nil {
+		executor := k.execSnapshot()
+		if executor == nil {
 			if r, ok := k.remote(); ok {
-				k.Exec = exec.Dial(r.BaseURL, r.Token)
+				executor = exec.Dial(r.BaseURL, r.Token)
 			} else {
 				loc := exec.NewLocal(exec.Limits{})
 				if k.Dispatch {
@@ -64,12 +65,22 @@ func (k *Kernel) ensureExec() exec.Executor {
 					}
 					return k.toolsForScope(id)
 				}
-				k.Exec = loc
+				executor = loc
 			}
 		}
-		go k.forwardExec(k.Exec.Events())
+		k.execMu.Lock()
+		k.Exec = executor
+		k.execMu.Unlock()
+		go k.forwardExec(executor.Events())
 	})
-	return modelExecutor{Executor: k.Exec, k: k}
+	return modelExecutor{Executor: k.execSnapshot(), k: k}
+}
+
+// execSnapshot pairs status reads with ensureExec's publication.
+func (k *Kernel) execSnapshot() exec.Executor {
+	k.execMu.RLock()
+	defer k.execMu.RUnlock()
+	return k.Exec
 }
 
 // modelExecutor adds the same model supplement to local and remote brief
@@ -80,6 +91,7 @@ type modelExecutor struct {
 }
 
 func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) error {
+	req.Workspace = e.k.WorkDir
 	if req.Mode != exec.ModeFork {
 		_, overlay, err := e.k.modelOverlay()
 		if err != nil {
@@ -225,7 +237,7 @@ func subagentReportHint(ev link.Event) (provider.Message, bool) {
 	if ev.Source != link.SourceSubagent {
 		return provider.Message{}, false
 	}
-	return provider.Message{Role: provider.RoleUser, Internal: true, Content: "<subagent_report>Retell the following result to the owner in your own words as your work; do not paste the report or expose internal labels.</subagent_report>"}, true
+	return provider.Message{Role: provider.RoleUser, Internal: true, Content: "<subagent_report>Retell the following result to the owner in your own words as your work; do not paste the report or expose internal labels. If the result includes a kernel-authored 值得留意 line, include those facts in your reply.</subagent_report>"}, true
 }
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {
@@ -344,8 +356,8 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 }
 
 func (k *Kernel) needsEndpoint() bool {
-	if k.Exec != nil {
-		_, remote := k.Exec.(*exec.Remote)
+	if running := k.execSnapshot(); running != nil {
+		_, remote := running.(*exec.Remote)
 		return remote
 	}
 	_, ok := k.remote()

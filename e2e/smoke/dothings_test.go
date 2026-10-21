@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/work"
 )
 
 // TestDoThings is the smoke case for 「动手做事」 (journey and spec in
@@ -23,9 +25,12 @@ func TestDoThings(t *testing.T) {
 	srv := Start(t, stub)
 	srv.CreateBot("ada", "You are ada, the bot in the do-things smoke test.")
 
-	// The directory lives under the data root and is named by absolute path,
-	// so the task does not depend on the bot's default working directory.
-	dir := filepath.Join(srv.Root, "scratch")
+	// Keep the ordinary read/write case in the bot workspace, as the journey specifies.
+	workspace, _, err := work.Open(srv.Root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(workspace, "scratch")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatalf("make %s: %v", dir, err)
 	}
@@ -77,6 +82,14 @@ func TestDoThings(t *testing.T) {
 		}
 		return report != "", dumpRows(rows)
 	})
+	if strings.Contains(report, "值得留意") {
+		t.Fatalf("ordinary workspace write was reported as notable: %s", report)
+	}
+	for _, ag := range srv.Agents("ada") {
+		if len(ag.Notable) > 0 {
+			t.Fatalf("ordinary read/write task has notable effects: %+v", ag.Notable)
+		}
+	}
 	if !strings.Contains(report, dir) || !strings.Contains(report, "summary.txt") {
 		t.Fatalf("the final reply does not name the path and summary.txt (旅程「动手做事」: 说清做了什么、文件在哪): %q", report)
 	}

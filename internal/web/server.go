@@ -603,10 +603,14 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 				finishedAt = info.ModTime().UTC()
 			}
 		}
+		var startedAt any
+		if !meta.StartedAt.IsZero() {
+			startedAt = meta.StartedAt
+		}
 		agents = append(agents, map[string]any{
 			"id": meta.ID, "type": meta.Type, "status": status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
 			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
-			"started_at": meta.StartedAt, "current_step": meta.CurrentStep,
+			"started_at": startedAt, "current_step": meta.CurrentStep, "notable": meta.Notable,
 		})
 	}
 	// Live work first: running, awaiting, queued, then finished. Directory

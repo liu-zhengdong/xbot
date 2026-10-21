@@ -11,6 +11,7 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/clip"
+	"xbot/internal/notable"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -34,6 +35,8 @@ type job struct {
 	maxSteps      int
 	timeout       time.Duration
 	progressEvery time.Duration
+	workspace     string
+	notable       notable.Log
 	dir           string
 	resource      string
 	provider      provider.Provider
@@ -101,7 +104,7 @@ func runLoop(j *job) {
 		j.stepCancel = stepCancel
 		j.mu.Unlock()
 		var appendErr error
-		produced, err := agent.Run(stepCtx, j.provider, j.tools, msgs, agent.Options{
+		produced, err := agent.Run(notable.With(stepCtx, j.workspace, &j.notable), j.provider, j.tools, msgs, agent.Options{
 			MaxSteps: 1,
 			OneRound: true,
 			Approve:  j.approve,
@@ -296,6 +299,9 @@ func (j *job) finish(status, kind, text string) {
 		text = status
 	}
 	j.writeStatus(status, text)
+	if line := notable.Line(j.notable.Items()); line != "" {
+		text = clipText(text, reportBytes-len(line)-2) + "\n\n" + line
+	}
 	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: text})
 }
 
@@ -377,7 +383,7 @@ func statusText(ctx context.Context) string {
 func (j *job) writeStatus(status, summary string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	meta := Meta{ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep}
+	meta := Meta{ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep, Notable: j.notable.Items()}
 	if status != statusRunning && status != statusQueued {
 		meta.FinishedAt = time.Now().UTC()
 	}

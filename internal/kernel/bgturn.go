@@ -15,6 +15,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/notable"
 	"xbot/internal/provider"
 )
 
@@ -239,6 +240,9 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	if last := lastText(produced); last != "" {
 		text += "\n最后的回复：\n" + clipRunes(last, forkReplyRunes)
 	}
+	if line := notable.Line(t.notable.Items()); line != "" {
+		text += "\n\n" + line
+	}
 	_ = k.Inbox.Post(link.Event{
 		ID:        "ev_" + id + "_end",
 		Source:    link.SourceSubagent,
@@ -274,7 +278,8 @@ func (k *Kernel) writeForkMeta(t *turn, status string) {
 	}
 	raw, err := json.Marshal(map[string]any{
 		"id": t.branch, "mode": "fork-turn", "status": status, "task": t.task,
-		"from": t.fromSeq, "steps": t.replies, "started": t.started, "updated": k.now(), "current_step": t.lastTool,
+		"notable": t.notable.Items(),
+		"from":    t.fromSeq, "steps": t.replies, "started": t.started, "updated": k.now(), "current_step": t.lastTool,
 	})
 	if err != nil {
 		return

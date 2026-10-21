@@ -11,6 +11,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
+	"xbot/internal/notable"
 	"xbot/internal/provider"
 )
 
@@ -26,10 +27,11 @@ type Meta struct {
 	Mode    string `json:"mode"`
 	// Type is the subagent type it was dispatched as (ADR 0016), empty for a
 	// plain spawn.
-	Type        string    `json:"type,omitempty"`
-	StartedAt   time.Time `json:"started,omitempty"`
-	FinishedAt  time.Time `json:"finished_at,omitempty"`
-	CurrentStep string    `json:"current_step,omitempty"`
+	Type        string         `json:"type,omitempty"`
+	Notable     []notable.Item `json:"notable,omitempty"`
+	StartedAt   time.Time      `json:"started,omitempty"`
+	FinishedAt  time.Time      `json:"finished_at,omitempty"`
+	CurrentStep string         `json:"current_step,omitempty"`
 }
 
 func transcriptPath(dir string) string { return filepath.Join(dir, "transcript.jsonl") }
