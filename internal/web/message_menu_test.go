@@ -46,11 +46,42 @@ func TestMessageMenuStaysInsideViewport(t *testing.T) {
  assert.deepEqual(messageMenuPosition(370,895,160,76,375,900),{left:207,top:816});
  assert.deepEqual(messageMenuPosition(0,-70,160,76,375,900),{left:8,top:8});
  const bubble={left:32,right:343,top:300,bottom:342};
- assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,[],375,900,false),{left:32,top:216});
- assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,[],375,900,true),{left:183,top:216});
- const previous={left:32,right:343,top:220,bottom:290};
- assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,[previous],375,900,false),{left:32,top:136});
- assert.deepEqual(mobileMessageMenuPosition({...bubble,top:20,bottom:62},160,76,[],375,900,true),{left:183,top:70});
+ assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,375,900,false,64),{left:32,top:216});
+ assert.deepEqual(mobileMessageMenuPosition(bubble,160,76,375,900,true,64),{left:183,top:216});
+ // The menu stays beside its target even when that overlaps its neighbour.
+ assert.equal(mobileMessageMenuPosition(bubble,160,76,375,900,false,64).top,216);
+ assert.deepEqual(mobileMessageMenuPosition({...bubble,top:140,bottom:182},160,76,375,900,false,64),{left:32,top:190});
+ assert.deepEqual(mobileMessageMenuPosition({...bubble,top:90,bottom:132},160,76,375,900,true,64),{left:183,top:140});
+ `
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+func TestMessageMenuOmitsUnavailableReply(t *testing.T) {
+	raw, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	a := strings.Index(s, "  function showMessageMenu(")
+	b := strings.Index(s[a:], `  thread.addEventListener("contextmenu"`)
+	script := `const assert=require('node:assert/strict');
+ let shown, messageMenu, messageTarget, copyReceipt;
+ const classes={add(){},remove(){},contains(){return false}};
+ function el(tag,cls,text){return {tag,text,children:[],style:{},classList:classes,
+ offsetWidth:160,offsetHeight:76,setAttribute(){},addEventListener(){},
+ append(...nodes){this.children.push(...nodes)},querySelector(){return {focus(){}}}}}
+ const icon=()=>({}),closePops=()=>{},window={getSelection:()=>null};
+ const document={body:{append(node){shown=node}},querySelector:()=>null,documentElement:{classList:classes}};
+ const innerWidth=1440,innerHeight=900;
+ function messageMenuPosition(){return {left:100,top:100}}
+ const bubble={getBoundingClientRect:()=>({left:100,top:100}),classList:classes};
+ ` + s[a:a+b] + `
+ showMessageMenu({bubble,message:{},text:'group reply'},100,100,false);
+ assert.deepEqual(shown.children.map(b=>b.children[1].text),['复制']);
+ showMessageMenu({bubble,message:{seq:7},text:'bot reply'},100,100,false);
+ assert.deepEqual(shown.children.map(b=>b.children[1].text),['回复','复制']);
  `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

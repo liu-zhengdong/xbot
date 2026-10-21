@@ -1867,22 +1867,10 @@
     };
   }
 
-  function mobileMessageMenuPosition(rect, width, height, others, viewportWidth, viewportHeight, right) {
+  function mobileMessageMenuPosition(rect, width, height, viewportWidth, viewportHeight, right, headerBottom) {
     const left = Math.max(8, Math.min(right ? rect.right - width : rect.left, viewportWidth - width - 8));
-    const hits = top => others.filter(r => r.left < left + width && r.right > left && r.top < top + height && r.bottom > top);
-    let top = rect.top - height - 8;
-    while (top >= 8) {
-      const overlap = hits(top);
-      if (!overlap.length) return {left, top};
-      top = Math.min(...overlap.map(r => r.top)) - height - 8;
-    }
-    top = rect.bottom + 8;
-    while (top + height <= viewportHeight - 8) {
-      const overlap = hits(top);
-      if (!overlap.length) return {left, top};
-      top = Math.max(...overlap.map(r => r.bottom)) + 8;
-    }
-    return messageMenuPosition(left, rect.top - height - 8, width, height, viewportWidth, viewportHeight);
+    const above = rect.top - height - 8;
+    return {left, top: above >= headerBottom + 8 ? above : rect.bottom + 8};
   }
 
   function closeMessageMenu() {
@@ -1931,19 +1919,19 @@
       }},
     ];
     for (const item of items) {
+      if (item.label === "回复" && !data.message.seq) continue;
       const button = el("button", "menu-row");
       button.type = "button";
       button.setAttribute("role", "menuitem");
-      button.disabled = item.label === "回复" && !data.message.seq;
       button.append(icon(item.glyph), el("span", "", item.label));
       button.addEventListener("click", () => { closeMessageMenu(); item.run(); });
       menu.append(button);
     }
     document.body.append(menu);
     const r = data.bubble.getBoundingClientRect();
-    const others = [...thread.querySelectorAll(".bubble, .bot-bubble")].filter(n => n !== data.bubble).map(n => n.getBoundingClientRect());
+    const headerBottom = document.querySelector(".chat > .top")?.getBoundingClientRect().bottom || 0;
     const position = mobile
-      ? mobileMessageMenuPosition(r, menu.offsetWidth, menu.offsetHeight, others, innerWidth, innerHeight, data.bubble.closest(".msg").classList.contains("user"))
+      ? mobileMessageMenuPosition(r, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight, data.bubble.closest(".msg").classList.contains("user"), headerBottom)
       : messageMenuPosition(x, y, menu.offsetWidth, menu.offsetHeight, innerWidth, innerHeight);
     menu.style.left = position.left + "px";
     menu.style.top = position.top + "px";

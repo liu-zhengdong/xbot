@@ -2454,7 +2454,8 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .msg :is(.bubble, .bot-bubble) a { cursor: pointer; }
 .msg :is(.code-block, pre, .code-block code) { cursor: text; }
 .bot-bubble.message-target { background: var(--x-fill-2); }
-.bubble.message-target { background: color-mix(in srgb, var(--x-user-bubble) 88%, black); }
+.bubble.message-target { background: #3a3a3f; }
+html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, var(--x-user-bubble) 88%, black); }
 .message-menu-open .msg .ht { visibility: hidden; }
 .bubble .prose code, .bot-bubble .prose code { border: 0; border-radius: 4px; padding: 1px 4px; font-family: var(--mono); font-size: .9em; }
 .bot-bubble .code-block code { background: transparent; }
