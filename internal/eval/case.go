@@ -54,12 +54,22 @@ type Wake struct {
 
 // Setup is the sandbox before the wake.
 type Setup struct {
-	MemoryFiles []FileSeed `yaml:"memory_files"` // Paths relative to this bot's memory folder.
-	Files       []FileSeed `yaml:"files"`
-	Transcript  []MsgSeed  `yaml:"transcript"`
-	Symlinks    []Symlink  `yaml:"symlinks"`
+	Agents      []AgentSeed `yaml:"agents"`       // Existing tasks for dispatch decisions; never executed.
+	MemoryFiles []FileSeed  `yaml:"memory_files"` // Paths relative to this bot's memory folder.
+	Files       []FileSeed  `yaml:"files"`
+	Transcript  []MsgSeed   `yaml:"transcript"`
+	Symlinks    []Symlink   `yaml:"symlinks"`
 	// Sibling files are written next to work, outside the sandbox. Tests use them.
 	Sibling []FileSeed `yaml:"-"`
+}
+
+// AgentSeed is the real status fixture a foreground may inspect while deciding
+// whether to dispatch a new task or steer an existing one.
+type AgentSeed struct {
+	ID     string `yaml:"id"`
+	Task   string `yaml:"task"`
+	Type   string `yaml:"type"`
+	Status string `yaml:"status"`
 }
 
 // FileSeed is one file under the work directory.

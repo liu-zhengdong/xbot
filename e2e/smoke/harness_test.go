@@ -120,11 +120,27 @@ func Start(t *testing.T, stub *Stub) *Server {
 	if err := os.WriteFile(s.clockFile, []byte("0"), 0600); err != nil {
 		t.Fatalf("clock file: %v", err)
 	}
-	s.env = envWith(os.Environ(),
+	model := "smoke"
+	if stub.busy != nil && stub.busy.real != nil {
+		model = stub.busy.real.model
+	}
+	childEnv := os.Environ()
+	if stub.busy != nil && stub.busy.real != nil {
+		// Real credentials belong to the in-test proxy, never the serve/tool process.
+		var clean []string
+		for _, v := range childEnv {
+			k, _, _ := strings.Cut(v, "=")
+			if k != "XBOT_BUSY_API_KEY" && k != "XBOT_API_KEY" && k != "DEEPSEEK_API_KEY" {
+				clean = append(clean, v)
+			}
+		}
+		childEnv = clean
+	}
+	s.env = envWith(childEnv,
 		"HOME="+base,
 		"XBOT_BASE_URL="+stub.BaseURL(),
 		"XBOT_API_KEY=smoke",
-		"XBOT_MODEL=smoke",
+		"XBOT_MODEL="+model,
 		"XBOT_AUTO_UPGRADE=0",
 		"XBOT_FAKE_CLOCK_FILE="+s.clockFile,
 	)
@@ -319,19 +335,21 @@ type Delta struct {
 
 // ToolEvent is one tool event from the stream.
 type ToolEvent struct {
+	At      time.Time
 	Name    string
 	Summary string
 }
 
 // Reply is one POST /api/bots/{name}/messages request and its SSE stream.
 type Reply struct {
-	Sent      time.Time
-	Deltas    []Delta
-	Tools     []ToolEvent
-	Done      string
-	HandedOff bool
-	Error     string
-	Status    int
+	Sent         time.Time
+	FirstVisible time.Time
+	Deltas       []Delta
+	Tools        []ToolEvent
+	Done         string
+	HandedOff    bool
+	Error        string
+	Status       int
 }
 
 // Stream is one message request still in flight.
@@ -437,7 +455,11 @@ func (st *Stream) run() {
 					Text string `json:"text"`
 				}
 				if err := json.Unmarshal([]byte(data), &d); err == nil {
-					st.reply.Deltas = append(st.reply.Deltas, Delta{At: time.Now(), Text: d.Text})
+					now := time.Now()
+					if d.Text != "" && st.reply.FirstVisible.IsZero() {
+						st.reply.FirstVisible = now
+					}
+					st.reply.Deltas = append(st.reply.Deltas, Delta{At: now, Text: d.Text})
 				}
 			case "tool":
 				var d struct {
@@ -445,7 +467,11 @@ func (st *Stream) run() {
 					Summary string `json:"summary"`
 				}
 				if err := json.Unmarshal([]byte(data), &d); err == nil {
-					st.reply.Tools = append(st.reply.Tools, ToolEvent{Name: d.Name, Summary: d.Summary})
+					now := time.Now()
+					if d.Name != "" && st.reply.FirstVisible.IsZero() {
+						st.reply.FirstVisible = now
+					}
+					st.reply.Tools = append(st.reply.Tools, ToolEvent{At: now, Name: d.Name, Summary: d.Summary})
 				}
 			case "approval":
 				st.approvals++
@@ -476,20 +502,21 @@ func (st *Stream) run() {
 
 // Row is one transcript line as GET /api/bots/{name}/transcript returns it.
 type Row struct {
-	Seq       int           `json:"seq"`
-	Role      string        `json:"role"`
-	Content   string        `json:"content"`
-	Name      string        `json:"name"`
-	Time      string        `json:"time"`
-	ToolCalls []RowToolCall `json:"tool_calls,omitempty"`
-	ReplyTo   *int          `json:"reply_to,omitempty"`
-	Branch    string        `json:"branch,omitempty"`
-	Kind      string        `json:"kind,omitempty"`
-	From      string        `json:"from,omitempty"`
-	Task      string        `json:"task,omitempty"`
-	Status    string        `json:"status,omitempty"`
-	Steps     int           `json:"steps,omitempty"`
-	Internal  bool          `json:"internal,omitempty"`
+	Seq        int           `json:"seq"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	Name       string        `json:"name"`
+	Time       string        `json:"time"`
+	ToolCalls  []RowToolCall `json:"tool_calls,omitempty"`
+	ReplyTo    *int          `json:"reply_to,omitempty"`
+	Branch     string        `json:"branch,omitempty"`
+	Kind       string        `json:"kind,omitempty"`
+	From       string        `json:"from,omitempty"`
+	Task       string        `json:"task,omitempty"`
+	Status     string        `json:"status,omitempty"`
+	Steps      int           `json:"steps,omitempty"`
+	Internal   bool          `json:"internal,omitempty"`
 }
 
 // RowToolCall is one tool call on an assistant row.

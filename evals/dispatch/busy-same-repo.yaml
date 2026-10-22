@@ -1,0 +1,35 @@
+name: dispatch-busy-same-repo
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 2
+dispatch: true
+setup:
+  agents:
+    - id: sa_0123456789abcdef
+      task: 修好 shop/ 仓库里的测试，改完运行测试。
+      type: dev
+      status: running
+  transcript:
+    - role: user
+      content: 修好 shop/ 仓库里的测试，改完运行测试。
+    - role: assistant
+      content: 已派出开发任务 A，编号 sa_0123456789abcdef；正在修 shop/ 的测试，尚未返回结果。
+  files:
+    - path: shop/README.md
+      text: "# Shop\n测试命令还没写。\n"
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    再建另一项任务：给同一个 shop/ 仓库加一份独立的 docs/setup.md，写清本地安装和启动步骤。不改 A 手上的测试任务，也不打断它。
+checks:
+  forbid_tools: [steer, cancel, interrupt, spawn]
+  dispatch:
+    type: dev
+    task_mentions: ["shop", "docs/setup.md", "安装|install", "启动|start|run"]

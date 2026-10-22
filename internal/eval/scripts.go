@@ -28,6 +28,18 @@ var passingScripts = map[string]Script{
 		{Tool: "write_file", Args: args(map[string]string{"path": "automation.json", "content": `{"browser":{"download":false,"executable":"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"},"job":"smoke.js"}`})},
 		{Text: "自动化已改用系统浏览器，不再另行下载。自动更新我没关：那会错过安全更新；占空间的主要是旧版本和更新包缓存，更合适的是定期清理这些。如果你仍坚持，可以把 browser-update.json 的 automatic_updates 改为 false；我还没有改动或清理它们。"},
 	},
+	"dispatch-busy-new-task": {
+		{Tool: "dispatch", Args: args(map[string]string{"type": "research", "task": "Find the changes in Go 1.24 and cite source links."})},
+		{Text: "另外派了调研，原来的活接着做。"},
+	},
+	"dispatch-busy-steer": {
+		{Tool: "steer", Args: args(map[string]string{"id": "sa_0123456789abcdef", "text": "顺便把 shop/README.md 的测试命令改成 go test ./...。"})},
+		{Text: "已把补充交给原来的任务。"},
+	},
+	"dispatch-busy-same-repo": {
+		{Tool: "dispatch", Args: args(map[string]string{"type": "dev", "task": "In shop/, add docs/setup.md documenting local install and start steps. Keep A's test changes untouched."})},
+		{Text: "另一项任务已派出，由执行器安排同仓库的顺序。"},
+	},
 	"dispatch-dev": {
 		{Tool: "dispatch", Args: args(map[string]string{"type": "dev", "task": "In the working directory, change Total in shop/cart.go: free shipping at 99 or more, otherwise add 10 shipping. Then run go test ./shop/ and report the result."})},
 		{Text: "已交给 dev 子代理：改 shop/cart.go 的 Total（满 99 免运费，否则加 10），改完跑测试。"},

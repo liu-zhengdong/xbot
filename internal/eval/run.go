@@ -14,7 +14,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
-	"xbot/internal/exec"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -431,7 +430,12 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	}
 	if c.Dispatch {
 		k.Dispatch = true
-		k.Exec = &recordExec{events: make(chan exec.Event)}
+		recorded, err := seedDispatchAgents(b, c)
+		if err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		k.Exec = recorded
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()

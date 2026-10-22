@@ -1,0 +1,36 @@
+name: dispatch-busy-steer
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 2
+dispatch: true
+setup:
+  agents:
+    - id: sa_0123456789abcdef
+      task: 修好 shop/ 仓库里的测试，改完运行测试。
+      type: dev
+      status: running
+  files:
+    - path: shop/README.md
+      text: "# Shop\n测试命令：go test ./shop\n"
+  transcript:
+    - role: user
+      content: 修好 shop/ 仓库里的测试，改完运行测试。
+    - role: assistant
+      content: 已派出开发任务 A，编号 sa_0123456789abcdef；正在修 shop/ 的测试，尚未返回结果。
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    A 那个顺便把 shop/README.md 的测试命令也改成 go test ./...，跟它手上的修改一起做。
+checks:
+  forbid_tools: [dispatch, spawn, cancel, interrupt]
+  tool_result_contains:
+    steer: ["steer sa_0123456789abcdef"]
+  dispatch:
+    none: true

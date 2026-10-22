@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
+	"xbot/internal/bot"
 	"xbot/internal/exec"
 )
 
@@ -15,6 +19,7 @@ import (
 type recordExec struct {
 	mu     sync.Mutex
 	starts []exec.StartRequest
+	live   map[string]bool
 	events chan exec.Event
 }
 
@@ -22,10 +27,21 @@ func (r *recordExec) Start(_ context.Context, req exec.StartRequest) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.starts = append(r.starts, req)
+	if r.live == nil {
+		r.live = map[string]bool{}
+	}
+	r.live[req.ID] = true
 	return nil
 }
 
-func (r *recordExec) Control(context.Context, string, exec.Control) error { return nil }
+func (r *recordExec) Control(_ context.Context, id string, _ exec.Control) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.live[id] {
+		return fmt.Errorf("exec: unknown subagent %s", id)
+	}
+	return nil
+}
 
 func (r *recordExec) Events() <-chan exec.Event { return r.events }
 
@@ -79,4 +95,32 @@ func gradeDispatch(want *DispatchCheck, used []ToolUse) []string {
 		}
 	}
 	return problems
+}
+
+func seedDispatchAgents(b *bot.Bot, c Case) (*recordExec, error) {
+	r := &recordExec{events: make(chan exec.Event), live: map[string]bool{}}
+	if len(c.Setup.Agents) > 0 && !c.Dispatch {
+		return nil, fmt.Errorf("agents fixture requires dispatch: true")
+	}
+	for _, a := range c.Setup.Agents {
+		if !regexp.MustCompile(`^sa_[a-z0-9]{8,}$`).MatchString(a.ID) || a.Status != "running" {
+			return nil, fmt.Errorf("invalid running agent fixture")
+		}
+		if r.live[a.ID] {
+			return nil, fmt.Errorf("duplicate agent fixture %s", a.ID)
+		}
+		dir := b.AgentDir(a.ID)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(exec.Meta{ID: a.ID, Task: a.Task, Type: a.Type, Status: a.Status, Mode: exec.ModeBrief, Steps: 1})
+		if err != nil {
+			return nil, err
+		}
+		if err = os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0600); err != nil {
+			return nil, err
+		}
+		r.live[a.ID] = true
+	}
+	return r, nil
 }

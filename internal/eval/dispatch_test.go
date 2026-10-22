@@ -53,3 +53,71 @@ func TestGradeDispatch(t *testing.T) {
 		t.Fatalf("needless dispatch: %v", p)
 	}
 }
+
+// The new cases must reject changing/cancelling A for an unrelated B, and
+// dispatching a new agent for a modification that belongs to A.
+func TestBusyDispatchCasesRejectWrongActions(t *testing.T) {
+	cases, _, err := LoadSuite("", "dispatch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]Script{
+		"dispatch-busy-new-task": {
+			{Tool: "cancel", Args: `{"id":"sa_0123456789abcdef"}`},
+			{Tool: "dispatch", Args: `{"type":"research","task":"Go 1.24 changes with source links"}`},
+			{Text: "已派出调研。"},
+		},
+		"dispatch-busy-same-repo": {
+			{Tool: "steer", Args: `{"id":"sa_0123456789abcdef","text":"加 docs/setup.md"}`},
+			{Tool: "dispatch", Args: `{"type":"dev","task":"In shop add docs/setup.md with local install and start steps"}`},
+			{Text: "已派出另一项。"},
+		},
+		"dispatch-busy-steer": {
+			{Tool: "steer", Args: `{"id":"sa_0123456789abcdef","text":"README 改用 go test ./..."}`},
+			{Tool: "dispatch", Args: `{"type":"dev","task":"修改 shop/README.md"}`},
+			{Text: "追加后又起了一个。"},
+		},
+	}
+	n := 0
+	for _, c := range cases {
+		if script, ok := bad[c.Name]; ok {
+			n++
+			r := runCase(c, "normal", script, nil)
+			if r.Pass {
+				t.Errorf("%s accepted wrong action", c.Name)
+			}
+			// Removing just the relevant guard must make this otherwise
+			// correct dispatch/steer pass; a missing required action must
+			// not accidentally be what makes the negative test red.
+			cleared := c
+			cleared.Checks.ForbidTools = nil
+			if c.Name == "dispatch-busy-steer" {
+				cleared.Checks.Dispatch = nil
+			}
+			if unguarded := runCase(cleared, "normal", script, nil); !unguarded.Pass {
+				t.Errorf("%s negative fails for an unrelated reason: %s", c.Name, unguarded.Reason)
+			}
+		}
+	}
+	if n != 3 {
+		t.Fatalf("found %d busy cases, want 3", n)
+	}
+}
+
+func TestBusyDispatchSeedCanBeInspectedBeforeSteering(t *testing.T) {
+	cases, _, err := LoadSuite("", "dispatch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if c.Name == "dispatch-busy-steer" {
+			c.Checks.ToolResultContains["read_subagent"] = []string{"status: running", "id: sa_0123456789abcdef"}
+			r := runCase(c, "normal", Script{{Tool: "read_subagent", Args: `{"id":"sa_0123456789abcdef"}`}, {Tool: "steer", Args: `{"id":"sa_0123456789abcdef","text":"README 改用 go test ./..."}`}, {Text: "补充已交给原来的任务。"}}, nil)
+			if !r.Pass {
+				t.Fatalf("seed is not inspectable: %s\n%s", r.Reason, r.Transcript)
+			}
+			return
+		}
+	}
+	t.Fatal("missing steer case")
+}

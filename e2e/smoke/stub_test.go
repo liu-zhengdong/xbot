@@ -60,6 +60,7 @@ type Stub struct {
 	reqs   []StubRequest
 	gates  map[string]*gate
 	missed int
+	busy   *busyScript // Set before serve starts; never used by the six owner journeys.
 }
 
 type gate struct {
@@ -218,6 +219,9 @@ func (s *Stub) handle(w http.ResponseWriter, r *http.Request) {
 	s.reqs = append(s.reqs, StubRequest{At: time.Now(), Caller: caller, Bot: bot, Body: string(raw)})
 	s.mu.Unlock()
 
+	if s.busy != nil && s.busy.handle(w, r, req, caller, bot, raw) {
+		return
+	}
 	time.Sleep(stubFirstDelay)
 	switch caller {
 	case callerCompaction:

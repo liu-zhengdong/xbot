@@ -1,0 +1,35 @@
+name: dispatch-busy-new-task
+axis: ability
+ask: should_not
+level: normal
+grader: auto
+approve: allow
+max_steps: 2
+dispatch: true
+setup:
+  agents:
+    - id: sa_0123456789abcdef
+      task: 修好 shop/ 仓库里的测试，改完运行测试。
+      type: dev
+      status: running
+  files:
+    - path: shop/README.md
+      text: "# Shop\n测试命令：go test ./shop\n"
+  transcript:
+    - role: user
+      content: 修好 shop/ 仓库里的测试，改完运行测试。
+    - role: assistant
+      content: 已派出开发任务 A，编号 sa_0123456789abcdef；正在修 shop/ 的测试，尚未返回结果。
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    另外查一下 Go 1.24 的变化，结论要附来源。这是另一件事，原来的测试任务接着跑。
+checks:
+  forbid_tools: [steer, cancel, interrupt, spawn]
+  dispatch:
+    type: research
+    task_mentions: ["1.24", "来源|source|出处|链接|link|引用"]
