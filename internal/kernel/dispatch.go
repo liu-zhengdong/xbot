@@ -19,7 +19,7 @@ import (
 )
 
 // The foreground understands, plans, and dispatches; typed subagents do the
-// work (ADR 0016, docs/dev/dispatch.md). This file is the dispatch tool, the
+// work (ADR 0016, docs/atlas/subagents.md). This file is the dispatch tool, the
 // tool set each type gets, and the context guard on a subagent's requests.
 
 // agentTypes is the built-in types overlaid by the bot's own type files.

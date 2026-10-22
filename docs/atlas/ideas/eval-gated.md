@@ -25,4 +25,4 @@ guard: owner
 四维成绩单从下一版提示词开始出。主人的意思是，等数据能拉开差距、有说服力了，再把它当作对外的亮点来讲（2026-10-17）。
 
 ## 在仓库里体现在哪
-`evals/proactivity/` 和 `evals/proactivity-holdout/`，`xbot eval` 与认证名单（[模型供应商与评测](../providers.md)）；[候选清单](../../CANDIDATES.md)里的四维成绩单和收敛评测。
+`evals/proactivity/` 和 `evals/proactivity-holdout/`，`xbot eval` 与认证名单（[模型供应商与评测](../providers.md)）；候选清单（在主人的 Obsidian）里的四维成绩单和收敛评测。

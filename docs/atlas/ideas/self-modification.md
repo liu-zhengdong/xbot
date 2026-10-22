@@ -30,4 +30,4 @@ status: 候选，机制还没设计
 > 待确认：三层划分、「越往下门槛越高」和「已有雏形」这几段是 Bot 复刻整理的。哪一层允许 Bot 不经主人确认自己改、评测门由谁跑，主人还没定。
 
 ## 在仓库里体现在哪
-[候选清单](../../CANDIDATES.md)的「自进化」一条；[安全](../security.md)权限表里的 `self_edit` 类；[生态](../ecosystem.md)里的 `write_skill`；[LESSONS.md](../../../LESSONS.md) 的升级规则。
+候选清单（在主人的 Obsidian）的「自进化」一条；[安全](../security.md)权限表里的 `self_edit` 类；[生态](../ecosystem.md)里的 `write_skill`；[LESSONS.md](../../../LESSONS.md) 的升级规则。

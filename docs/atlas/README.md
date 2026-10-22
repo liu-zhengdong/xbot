@@ -19,7 +19,7 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 
 **现阶段优先级**：产品还没有用户，现阶段最重要的是把功能调通、调顺，然后再接安全。安全只留接口（一张权限表和它的守门测试、内核的统一审查入口、保险箱占位），不再加新的安全工作；挡住 Agent 干活的确认和拒写要收进一个默认放行的开关。见 [ADR 0013](../adr/0013-features-before-security.md)。
 
-主人希望 Bot 任何时候都能在几秒内回应，哪怕它正忙着长任务，这一点靠「插话时分叉」做到了。现在在做的是对照 Claude Code 内部机制调研定下的 8 步内核计划：提醒通道与熔断、文件新鲜度、待办清单、shell 后台化、环境感知、搜索与看图已经合入，接下来是子代理类型；权限规则按 ADR 0013 暂缓。同时三个 Bot 连续运行两周做验收，到 10-30 结束。再往后是开源网关、P2P 和跨用户通信。新想法先进 [候选清单](../CANDIDATES.md)，不当场开工；计划和进度见 [MILESTONES](../MILESTONES.md)。
+主人希望 Bot 任何时候都能在几秒内回应，哪怕它正忙着长任务，这一点靠「插话时分叉」做到了。现在在做的是对照 Claude Code 内部机制调研定下的 8 步内核计划：提醒通道与熔断、文件新鲜度、待办清单、shell 后台化、环境感知、搜索与看图已经合入，接下来是子代理类型；权限规则按 ADR 0013 暂缓。同时三个 Bot 连续运行两周做验收，到 10-30 结束。再往后是开源网关、P2P 和跨用户通信。新想法先进候选清单（在主人的 Obsidian，不在仓库），不当场开工；计划和进度见 [MILESTONES](../MILESTONES.md)。
 
 ## 思想地图
 上面「愿景与思想」讲的是想把 XBot 做成什么样；下面几篇讲主人做这件事的方法。改内核、改提示、改合并流程之前，先读对应的那一篇。
@@ -36,10 +36,11 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 ## 已有旅程
 主人用 XBot 做成的事，任何改动都不能让它们退化。这些旅程横跨好几块组成（一条旅程往往同时用到内核、记忆、界面），所以不拆进组成节点，集中放在一处：
 
-- 已经做好的在 `docs/guard/`，一条一个文件，写明步骤和「怎样算对」，配一条冒烟用例。
-- 功能已经在、日常在用，但还没跑到「端到端通过」的，先在 [FOCUS.md](../FOCUS.md) 的「待验收」里排队；2026-10-18 主人选定的 6 条（网页对话、记住事情、动手做事、忙时插话、主动唤醒、Bot 之间协作）都在那里。
+- 已经做好的在 `docs/guard/`，写明步骤和「怎样算对」，每条配一条冒烟用例：[长程运行](../guard/长程运行.md)，以及 2026-10-18 主人选定、2026-10-20 毕业的 6 条基础旅程（网页对话、忙时插话、动手做事、记住事情、主动唤醒、Bot 之间协作），合在 [六条基本旅程](../guard/六条基本旅程.md) 一个文件里。改界面要守的规矩在 [界面](../guard/界面.md)。
+- 还没跑到「端到端通过」的，写在正在做的那份 dev 设计里。
+- 已经做了、还没写成旅程的：启动与登录（目前包在「网页对话」里）、危险操作的确认卡、跨设备网关、桌面端、MCP 与连接应用、浏览器和桌面操作、头像与外观。同样不能弄坏，只是还没有冒烟用例；要补时按上面的格式写成旅程，带一条冒烟用例。
 
-正在开发的重点不在这两处，在 [FOCUS.md](../FOCUS.md)；还没开始的想法在 [候选清单](../CANDIDATES.md)。
+正在做的东西在 `docs/dev/`：有正在做的设计时才放 `docs/dev/`，里面有什么就是在做什么，做完就删，内容转进 atlas 和 `docs/guard/`。还没排上的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`，按 P1–P4 往下做）。
 
 ## 你需要知道的术语
 | 术语 | 白话解释 | 代码里叫 |
@@ -64,7 +65,7 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 | 生态 | 内置 Link、MCP、技能、连接器、编码代理 | 加 Link、改 MCP、技能或编码代理 | [ecosystem.md](ecosystem.md) |
 | 安全 | 保险箱、出站代理、权限表 | 加工具（必须在权限表归类）、改确认规则 | [security.md](security.md) |
 | 模型供应商与评测 | 供应商、模型提示、认证、主动性评测 | 改 `internal/provider`、`internal/eval`、`evals/` | [providers.md](providers.md) |
-| 网页界面 | 对话、轨迹、确认卡、侧边栏 | 改 `internal/web` 和静态界面 | [ui.md](ui.md) |
+| 网页界面 | 侧栏、对话、信息面板（任务、轨迹、上下文）、桌面窗口 | 改 `internal/web`、静态界面和桌面外壳 | [ui.md](ui.md)；改界面先读 [guard/界面.md](../guard/界面.md) |
 | 版本与自动升级 | 版本注入、tag 触发发布、检查与后台下载、装好重启、优雅重起 | 改 `internal/version`、`internal/upgrade`、`internal/web/update.go` | [release.md](release.md) |
 | 网关 | 开源信箱中继，连接主人自己的几台 XBot（G1–G6 已实现）。官方网关 `xbot.babelgo.cn` 跑在 Cloudflare Workers 上，也能用 Go 自建 | 做 M8、改 `gateway-worker/` | [gateway.md](gateway.md) |
 
@@ -96,15 +97,14 @@ flowchart LR
 | 文档 | 在哪 | 给谁 | 活的 / 冻结 | 谁维护 |
 |---|---|---|---|---|
 | 项目说明与构建 | [README.md](../../README.md) | 所有人 | 活的 | 主人 |
-| 当前重点 | [FOCUS.md](../FOCUS.md) | 主人、编码 Agent | 活的，重点最多 3 条，主人挑；待验收的旅程也排在这里 | 主人定重点和「怎样算对」，Agent 更新级别 |
-| 已做好的旅程 | `docs/guard/`（还没有，第一条旅程毕业时才建） | 主人、编码 Agent | 活的，步骤和「怎样算对」只有主人能改；冒烟用例和级别随测试同步 | Agent 同步，毕业要主人确认 |
+| 已做好的旅程 | [docs/guard/](../guard/)（[长程运行](../guard/长程运行.md)、[六条基本旅程](../guard/六条基本旅程.md)、[界面](../guard/界面.md)） | 主人、编码 Agent | 活的，步骤和「怎样算对」只有主人能改；冒烟用例和级别随测试同步 | Agent 同步，毕业要主人确认 |
 | Agent 入口 | [AGENTS.md](../../AGENTS.md) | 编码 Agent | 活的 | 主人 |
 | 里程碑与进度 | [MILESTONES.md](../MILESTONES.md) | 主人、开发者 | 活的，天天变 | Bot 复刻 |
 | 网页 HTTP 接口 | [API.md](../API.md) | 界面开发者 | 活的 | 开发者 |
-| 候选清单 | [CANDIDATES.md](../CANDIDATES.md) | 主人、Bot 复刻 | 活的，新想法先进这里，不当场开工 | Bot 复刻（周调研、每晚复盘时更新） |
+| 候选清单 | 主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`（不在仓库） | 主人、XBot 主管 | 活的，新想法先进这里，不当场开工；记了不用提交 | 主人、XBot 主管（周调研、每晚复盘的新想法也记这里） |
 | 调研笔记 | [docs/research/](../research/) | 开发者 | 写完即冻结，结论进候选清单或里程碑 | Bot 复刻 |
 | 教训 | [LESSONS.md](../../LESSONS.md) | 编码 Agent、Bot 复刻 | 活的，同一条出现 3 天升级成硬约束 | Bot 复刻 |
-| 开发态设计 | [docs/dev/](../dev/)（[长程运行的上下文](../dev/context.md)） | 主人、开发者 | 活的，写的是打算怎么做；落地后提炼进 atlas，然后删掉 | Bot 复刻 |
+| 正在做的设计 | `docs/dev/`（有正在做的设计时才放） | 主人、编码 Agent | 活的，只放正在做的那一件；做完就删，现状提炼进 atlas，旅程移进 `docs/guard/` | XBot 主管写，Agent 同步进度和级别；旅程的步骤和「怎样算对」主人定 |
 | 规格（旧） | [MEMORY-V2.md](../MEMORY-V2.md)（记忆 v2）、[GATEWAY.md](../GATEWAY.md)（网关与跨设备）、[SCORECARD.md](../SCORECARD.md)（评测成绩单） | 主人、开发者 | 定下来就冻结，落地后提炼进 atlas 和 ADR；新设计不再走这条路，改用 `docs/dev/` | Bot 复刻 |
 | 自建网关 | [gateway-selfhost.md](../gateway-selfhost.md) | 想自己跑网关的用户 | 活的 | 开发者 |
 | 决策记录 | [docs/adr/](../adr/) | 开发者、将来的主人 | 守护层，只追加 | 主人 |
@@ -116,7 +116,7 @@ flowchart LR
 ## 全局要求：性能与界面流畅
 - 链路不传大块数据：只传摘要或流式传输；每次节点调用上限 1 MiB，处处设大小上限。
 - 交互回复 p95 < 3 秒；本机进程间通信（IPC）额外开销 p95 < 5 毫秒；后台导致的变慢不超过 10%。
-- 界面：60fps；动画只动 transform/opacity，时长不超过 200 毫秒；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
+- 界面：60fps；动画只动 transform/opacity，普通过渡不超过 200 毫秒，弹性动画最长 300 毫秒（弹出用 `--dur-pop` 220 毫秒，气泡回弹 300 毫秒）；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
 - 每个里程碑验收都要报性能数字。
 
-ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻快照加差异](../adr/0008-memory-v2-dated-log-first.md)、[0009 每个记忆范围是一个文件夹，用普通文件工具编辑](../adr/0009-memory-as-folder.md)、[0010 跨设备靠开源信箱中继传 Bot 消息，不同步数据](../adr/0010-gateway-mailbox-relay.md)、[0011 官方网关跑在 Cloudflare Workers 上，客户端默认连它](../adr/0011-official-gateway-on-workers.md)、[0012 退役「节点」，多台电脑只靠网关配对](../adr/0012-retire-node.md)、[0013 现阶段先把功能调通调顺，安全只留接口](../adr/0013-features-before-security.md)、[0014 后台不做续段，也不再按步数限制](../adr/0014-no-background-segments.md)、[0015 上下文分两条线：软目标和硬上限，都从模型推出来](../adr/0015-soft-target-hard-ceiling.md)、[0016 前台只理解和派活，干活交给预制类型的子代理](../adr/0016-foreground-dispatches-typed-subagents.md)、[0017 主人的话直接插进正在跑的一轮，不进收件箱](../adr/0017-owner-words-go-straight-into-the-turn.md)、[0018 确认卡不挡主人说话：插话时挂起，决定稍后送达](../adr/0018-cards-never-block-the-owner.md)、[0019 默认不弹权限卡，主人自己控制](../adr/0019-no-permission-cards-by-default.md)。
+ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻快照加差异](../adr/0008-memory-v2-dated-log-first.md)、[0009 每个记忆范围是一个文件夹，用普通文件工具编辑](../adr/0009-memory-as-folder.md)、[0010 跨设备靠开源信箱中继传 Bot 消息，不同步数据](../adr/0010-gateway-mailbox-relay.md)、[0011 官方网关跑在 Cloudflare Workers 上，客户端默认连它](../adr/0011-official-gateway-on-workers.md)、[0012 退役「节点」，多台电脑只靠网关配对](../adr/0012-retire-node.md)、[0013 现阶段先把功能调通调顺，安全只留接口](../adr/0013-features-before-security.md)、[0014 后台不做续段，也不再按步数限制](../adr/0014-no-background-segments.md)、[0015 上下文分两条线：软目标和硬上限，都从模型推出来](../adr/0015-soft-target-hard-ceiling.md)、[0016 前台只理解和派活，干活交给预制类型的子代理](../adr/0016-foreground-dispatches-typed-subagents.md)、[0017 主人的话直接插进正在跑的一轮，不进收件箱](../adr/0017-owner-words-go-straight-into-the-turn.md)、[0018 确认卡不挡主人说话：插话时挂起，决定稍后送达](../adr/0018-cards-never-block-the-owner.md)、[0019 默认不弹权限卡，主人自己控制](../adr/0019-no-permission-cards-by-default.md)、[0021 环境流：一切会变的状态只追加差异，不改前缀](../adr/0021-env-stream.md)。

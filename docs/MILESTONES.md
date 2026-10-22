@@ -1,6 +1,6 @@
 # XBot 里程碑与进度
 
-> 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [FOCUS.md](FOCUS.md)**；还没开始的想法在[候选清单](CANDIDATES.md)。现行设计见 [atlas](atlas/README.md)，还没落地的设计见 [dev](dev/)。每日测试报告不进仓库。
+> 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
 ## 总表
 | 里程碑 | 内容 | 状态 |
@@ -21,7 +21,7 @@
 
 ## 8 步内核计划（2026-10-17 定）
 
-来自 [Claude Code 内部机制调研](research/claude-code-internals.md)，主人批准。文件检查点和回滚、hooks、规划模式不做（见 [候选清单](CANDIDATES.md)）。这里的 M1–M8 是这份计划的编号，和上面总表的里程碑不是一回事。
+来自 [Claude Code 内部机制调研](research/claude-code-internals.md)，主人批准。文件检查点和回滚、hooks、规划模式不做（见候选清单）。这里的 M1–M8 是这份计划的编号，和上面总表的里程碑不是一回事。
 
 | 步 | 内容 | 状态 |
 |---|---|---|
@@ -137,7 +137,7 @@
 评审修复后再跑：`gofmt -l` 无输出，`go vet ./...` 通过。`TMPDIR=/workspace/.test-tmp/m33-{1,2,3}` 跑 `go test -count=1 ./...` 三遍。第 1、3 遍全绿。第 2 遍只有 `internal/browser` 的 `TestReleaseTiedLeavesCLI` 失败（`tied chrome still running`，2 秒没等到进程退出）；单独再跑这条和 `TestStopChecksCommandLine` 通过。`TestStopChecksCommandLine`（issue #27）这三遍没有失败。`memory-scope` 的检查放宽成子串 `run the tests` 和 `Asia/Shanghai`。回归：`TestM33UntrustedDefaultScopeRememberIsAttributed`、`TestM33CorruptLegacyIndexDoesNotBreakOtherBots`、`TestMigrateCorruptOwnerStaysAndOtherBotWorks`、`TestMigrateLeavesNonOwnerInBackup`、`TestMigrateLogStaysWithinCap`、`TestForgetOnOverCapLogSucceeds`。Not run: 真模型评测，界面浏览器手点（网页只删了 bot-person 的读取和标签），`-race`，`go test -fuzz`，默认 `TMPDIR`。
 
 ## 记忆 v2（2026-10-17 定）
-规格见 [MEMORY-V2.md](MEMORY-V2.md)，决策见 [ADR 0008](adr/0008-memory-v2-dated-log-first.md)、[ADR 0009](adr/0009-memory-as-folder.md)。批 1–5 已落地；批 6、7 未做，排期见 [候选清单](CANDIDATES.md)。
+规格见 [MEMORY-V2.md](MEMORY-V2.md)，决策见 [ADR 0008](adr/0008-memory-v2-dated-log-first.md)、[ADR 0009](adr/0009-memory-as-folder.md)。批 1–5 已落地；批 6、7 未做，排期见候选清单。
 
 | 批 | 内容 | 状态 |
 |---|---|---|
@@ -150,7 +150,7 @@
 | 7 | 导入 Grok 导出、`xbot backup` | 未做 |
 
 ## 撤下的提示类改动（v0.3.0 → v0.4.0）
-v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），已撤回。重做的顺序在[候选清单](CANDIDATES.md)，不在这里排。
+v0.3.0 只发内核修复。下面三项提示类改动做完、过了 review，但都拉低了 DeepSeek 的 give-up 用例（向一个死端点 POST，应当如实报告做不到，最多 4 次工具调用），已撤回。重做的顺序在候选清单，不在这里排。
 
 - **模糊任务规则**（「一两句计划后同轮开工」）。加上后全量 eval 里 give-up 连续 0/3、1/3、1/3，三轮改措辞没稳住：模型在目标已写明的任务前先翻目录、补细节，超出工具上限。
 - **知识问题三档规则**，连同 knowledge-public / knowledge-project / knowledge-fresh 三条用例和 eval 的 `no_tool_calls` 检查。

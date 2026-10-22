@@ -41,7 +41,7 @@ import (
 //  2. Context stays inside the working set and does not grow with turns,
 //     measured as the prompt estimate of every chat request, the same unit the
 //     working set is declared in, cycle by cycle.
-//  3. Prefix cache across a pass, by the dev/context.md yardstick. The double
+//  3. Prefix cache across a pass, by the docs/atlas/context.md yardstick. The double
 //     reports usage as a standard prefix cache would (prefixCache: longest
 //     common prefix with any earlier request); the kernel's own usage records
 //     carry it into trace.jsonl, grouped by turn, and the test reads it from
