@@ -28,7 +28,12 @@ type parkModel struct{}
 const parkCall = `{"command":"mkdir parked-dir"}`
 
 func (parkModel) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	last := req.Messages[len(req.Messages)-1]
+	// Environment deltas are context, not a new owner/card decision.
+	at := len(req.Messages) - 1
+	for at > 0 && strings.HasPrefix(req.Messages[at].Content, "<environment_") {
+		at--
+	}
+	last := req.Messages[at]
 	say := func(text string) (provider.Message, error) {
 		if onDelta != nil {
 			onDelta(text)

@@ -11,11 +11,8 @@ import (
 
 // ResultText uses the task's existing directory. The report remains an ordinary
 // event; read_file can read the complete text in bounded ranges when necessary.
-func ResultText(dir, text string) (string, error) {
-	return resultText(dir, text, "")
-}
-
-func resultText(dir, text, tail string) (string, error) {
+// tail reserves the same bounded space for a kernel-authored notable digest.
+func ResultText(dir, text, tail string) (string, error) {
 	text = strings.TrimSpace(text)
 	if len(text) <= reportBytes {
 		return text, nil

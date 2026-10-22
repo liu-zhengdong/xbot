@@ -228,10 +228,11 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	if last := lastText(produced); last != "" {
 		text += "\n最后的回复：\n" + last
 	}
-	if line := notable.Line(t.notable.Items()); line != "" {
+	line := notable.Line(t.notable.Items())
+	if line != "" {
 		text += "\n\n" + line
 	}
-	report, err := exec.ResultText(k.Bot.AgentDir(id), text)
+	report, err := exec.ResultText(k.Bot.AgentDir(id), text, line)
 	if err != nil {
 		status = "failed"
 		report = "保存后台结果失败：" + err.Error()

@@ -33,6 +33,10 @@ func (k *Kernel) recoverTasks() error {
 		executor := k.execSnapshot()
 		if remote, ok := k.execSnapshot().(*exec.Remote); ok {
 			for _, id := range ids {
+				// Unreadable metadata is handled by Interrupt below, not by the transport.
+				if _, err := exec.ReadMeta(k.Bot.AgentDir(id)); err != nil {
+					continue
+				}
 				if err := remote.Restore(id, k.Bot.AgentDir(id)); err != nil {
 					return err
 				}
@@ -55,7 +59,12 @@ func (k *Kernel) recoverTasks() error {
 			}
 			m, err := exec.Interrupt(k.Bot.AgentDir(id))
 			if err != nil {
-				return err
+				if m.Status != bot.ForkInterrupted {
+					return err
+				}
+				// If the old directory is not writable, the original inbox still records
+				// the interruption once via its stable EventID; do not block other work.
+				m.Summary += "\n无法保存中断状态：" + err.Error()
 			}
 			if m.Status != bot.ForkInterrupted || k.Inbox == nil {
 				continue

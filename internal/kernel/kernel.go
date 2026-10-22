@@ -750,10 +750,11 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 	st.MemSeen, st.MemOwn = mem, nil
 	now := k.now()
 	next := bot.EnvRecord{
-		Hour:        now.Format("2006-01-02T15"),
-		Now:         k.localStamp(),
-		Sender:      st.Env.Sender,
-		SenderSeq:   st.Env.SenderSeq,
+		Hour:      now.Format("2006-01-02T15"),
+		Now:       k.localStamp(),
+		Sender:    st.Env.Sender,
+		SenderSeq: st.Env.SenderSeq,
+		Source:    st.Env.Source, PersonActive: st.Env.PersonActive, PersonSender: st.Env.PersonSender,
 		Person:      st.Env.Person,
 		PersonOwn:   st.Env.PersonOwn,
 		Tools:       toolNames(list),
@@ -814,18 +815,34 @@ func (k *Kernel) modelOverlay() (string, string, error) {
 }
 
 func (k *Kernel) ensureSnapshot(st bot.State) error {
-	if st.Env.At.IsZero() {
+	k.envMu.Lock()
+	defer k.envMu.Unlock()
+	fresh, err := k.Bot.LoadState()
+	if err != nil {
+		return err
+	}
+	if fresh.Env.At.IsZero() {
 		return nil
 	}
 	raw, err := k.Bot.Uncovered(st.Blocks)
 	if err != nil {
 		return err
 	}
-	if uncoveredHasEnv(raw) {
+	// A compacted person baseline must be made visible even if an unrelated
+	// environment update survived the compressed range.
+	needsPerson := fresh.Env.PersonActive && fresh.Env.PersonSender == ""
+	if uncoveredHasEnv(raw) && !needsPerson {
 		return nil
 	}
-	entry := bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: snapshotText(st.Env)}}
-	return k.Bot.Append(entry)
+	entry := bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: snapshotText(fresh.Env)}}
+	if err := k.Bot.Append(entry); err != nil {
+		return err
+	}
+	if needsPerson {
+		fresh.Env.PersonSender = fresh.Env.Sender
+		return k.Bot.SaveState(fresh)
+	}
+	return nil
 }
 
 func (k *Kernel) repairTail() error {
@@ -943,7 +960,7 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 	for _, c := range pending {
 		if c.person == "" {
 			st.MemOwn = append(st.MemOwn, c.lines...)
-		} else if c.person == st.Env.Sender {
+		} else if c.person == st.Env.PersonSender {
 			st.Env.PersonOwn = append(st.Env.PersonOwn, c.lines...)
 		}
 	}
@@ -952,19 +969,35 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 const memRenderVersion = 3
 
 // refreshMemSnap only refreshes the bot's snapshot when compaction changes the prefix.
-func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) {
+func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
+	// Compaction can remove the last visible person block. Keep its data but
+	// invalidate only the comparison identity so the next person re-establishes
+	// a full baseline. Use the same EnvRecord and publication lock.
+	k.envMu.Lock()
+	defer k.envMu.Unlock()
 	k.memWriteMu.Lock()
 	defer k.memWriteMu.Unlock()
 	mem, err := k.memoryText(ctx, "")
 	if err != nil {
-		return
+		return err
 	}
+	fresh, err := k.Bot.LoadState()
+	if err != nil {
+		return err
+	}
+	fresh.Env.PersonSender = ""
+	fresh.Env.PersonOwn = nil
+	if err := k.Bot.SaveState(fresh); err != nil {
+		return err
+	}
+	st.Env = fresh.Env
 	k.memOwnMu.Lock()
 	k.memOwn = nil
 	k.memOwnMu.Unlock()
 	st.MemRender = memRenderVersion
 	st.MemSnap, st.MemSeen, st.MemSnapSet = mem, mem, true
 	st.MemOwn = nil
+	return nil
 }
 
 // memSnapFor always returns this bot's one frozen snapshot, irrespective of sender.

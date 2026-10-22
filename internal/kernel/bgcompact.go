@@ -223,7 +223,9 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 		st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 			From: job.From, To: job.To, Text: job.Summary, Focus: "background", At: k.now(),
 		})
-		k.refreshMemSnap(context.Background(), &st)
+		if err := k.refreshMemSnap(context.Background(), &st); err != nil {
+			return st, false, err
+		}
 		if err := k.saveState(st); err != nil {
 			return st, false, err
 		}

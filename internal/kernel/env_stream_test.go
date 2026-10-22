@@ -356,7 +356,7 @@ func TestEnvStreamResultFileIsReadable(t *testing.T) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	report, err := exec.ResultText(dir, text)
+	report, err := exec.ResultText(dir, text, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,8 +26,14 @@ func (k *Kernel) saveState(st bot.State) error {
 	return k.Bot.SaveState(st)
 }
 
+// personEvent reuses the authenticated Event identity; a timer carrying an
+// owner's id is still a timer, not that person's new words.
+func personEvent(ev link.Event) bool {
+	return memory.ValidID(ev.Sender) && ev.SenderKind != link.KindBot && ev.SenderKind != link.KindGroup && (ev.SenderKind == link.KindPerson || ev.Source == link.NameTerminal || ev.Source == link.NameWeb || ev.Source == link.NameApproval || ev.Source == link.NameRemoteOwner)
+}
+
 func (k *Kernel) personText(ctx context.Context, ev link.Event) (string, error) {
-	if k.Memory == nil || !memory.ValidID(ev.Sender) || ev.SenderKind == link.KindBot || ev.SenderKind == link.KindGroup || !(ev.SenderKind == link.KindPerson || ev.Source == link.NameTerminal || ev.Source == link.NameWeb || ev.Source == link.NameApproval || ev.Source == link.NameRemoteOwner) {
+	if k.Memory == nil || !personEvent(ev) {
 		return "", nil
 	}
 	facts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: ev.Sender, Tier: memory.TierProfile})
@@ -45,13 +51,28 @@ func (k *Kernel) personText(ctx context.Context, ev link.Event) (string, error) 
 }
 
 func personChange(prev, next bot.EnvRecord) string {
-	if prev.Sender != next.Sender {
-		return fmt.Sprintf("sender: %s (input seq %d)\n<person_data sender=%q>\n%s\n</person_data>", next.Sender, next.SenderSeq, next.Sender, tools.NeutralizeUntrusted(next.Person))
+	if !next.PersonActive {
+		if !prev.PersonActive && prev.Source == next.Source && prev.Sender == next.Sender {
+			return ""
+		}
+		return fmt.Sprintf("source: %s; 无当前人物资料", next.Source)
 	}
-	if d := memoryDiff(prev.Person, next.Person, next.PersonOwn); d != "" {
-		return fmt.Sprintf("<person_data sender=%q>\n%s\n</person_data>", next.Sender, d)
+	label := ""
+	if !prev.PersonActive || prev.Source != next.Source || prev.Sender != next.Sender {
+		label = fmt.Sprintf("source: %s; sender: %s (input seq %d)", next.Source, next.Sender, next.SenderSeq)
 	}
-	return ""
+	// Non-person wakes retain the last real person's baseline, including its id.
+	// Only two versions belonging to the same real person can be diffed.
+	data := ""
+	if prev.PersonSender != next.PersonSender || prev.PersonSender == "" {
+		data = tools.NeutralizeUntrusted(next.Person)
+	} else {
+		data = memoryDiff(prev.Person, next.Person, next.PersonOwn)
+	}
+	if data != "" {
+		label = strings.TrimSpace(label + fmt.Sprintf("\n<person_data sender=%q>\n%s\n</person_data>", next.Sender, data))
+	}
+	return label
 }
 
 // receiveEnvironment runs while the Event still has its authenticated identity.
@@ -74,9 +95,15 @@ func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
 	}
 	k.drainMemOwn(&st)
 	prev := st.Env
-	st.Env.Sender, st.Env.SenderSeq, st.Env.Person = ev.Sender, seq, person
+	st.Env.Sender, st.Env.SenderSeq, st.Env.Source = ev.Sender, seq, ev.Source
+	st.Env.PersonActive = personEvent(ev)
+	if st.Env.PersonActive {
+		st.Env.Person, st.Env.PersonSender = person, ev.Sender
+	}
 	diff := personChange(prev, st.Env)
-	st.Env.PersonOwn = nil
+	if st.Env.PersonActive {
+		st.Env.PersonOwn = nil
+	}
 	if st.Env.At.IsZero() {
 		st.Env.At = k.now()
 	}

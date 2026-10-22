@@ -108,7 +108,7 @@ func baseline(e bot.EnvRecord) string {
 		body += "profile: " + e.Profile + "\n"
 	}
 	body += strings.Join(taskChanges(nil, e.Tasks), "\n") + "\n"
-	body += fmt.Sprintf("<person_data sender=%q>\n%s\n</person_data>\n", e.Sender, tools.NeutralizeUntrusted(e.Person))
+	body += personChange(bot.EnvRecord{}, e) + "\n"
 	body += overlayBlock(e) + "\n"
 	return "<environment_update>\n" + body + "</environment_update>"
 }
@@ -127,7 +127,7 @@ func snapshotText(e bot.EnvRecord) string {
 		body += "profile: " + e.Profile + "\n"
 	}
 	body += strings.Join(taskChanges(nil, e.Tasks), "\n") + "\n"
-	body += fmt.Sprintf("<person_data sender=%q>\n%s\n</person_data>\n", e.Sender, tools.NeutralizeUntrusted(e.Person))
+	body += personChange(bot.EnvRecord{}, e) + "\n"
 	body += overlayBlock(e) + "\n"
 	return "<environment_snapshot>\n" + body + "</environment_snapshot>"
 }
@@ -446,9 +446,12 @@ func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskE
 			}
 			continue
 		}
-		meta, _, err := exec.ReadStatus(k.Bot.AgentDir(old.ID))
-		if err != nil {
-			return nil, err
+		meta, err := exec.ReadMeta(k.Bot.AgentDir(old.ID))
+		if err != nil || ((meta.Status == "running" || meta.Status == "queued") && !tools.SameProcess(meta.PID, meta.ProcStart)) {
+			// Reuse recovery's process proof even if writing its terminal meta
+			// failed; a readable but stale "running" record is not live work.
+			meta.Status = bot.ForkInterrupted
+			meta.Blocked = false
 		}
 		old.Status = meta.Status
 		if meta.Blocked {

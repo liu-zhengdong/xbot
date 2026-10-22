@@ -315,7 +315,7 @@ func (j *job) finish(status, kind, text string) {
 	if line != "" {
 		text += "\n\n" + line
 	}
-	report, err := resultText(j.dir, text, line)
+	report, err := ResultText(j.dir, text, line)
 	if err != nil {
 		status, kind, report = statusFailed, EvFailed, "保存任务结果失败："+err.Error()
 		summary = report
