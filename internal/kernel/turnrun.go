@@ -177,6 +177,12 @@ func (r *turnRun) afterStep() ([]provider.Message, error) {
 }
 
 func (r *turnRun) onIdle(msg provider.Message) (string, bool) {
+	if r.delivery != "" && (strings.TrimSpace(msg.Content) == "" || strings.TrimSpace(msg.Content) == "SILENT") {
+		// No receipt: retain the event for the caller, rather than asking the
+		// same generation again until the step guard is exhausted.
+		r.delivery = ""
+		return "", false
+	}
 	if r.br.Stopped() {
 		return "", false
 	}

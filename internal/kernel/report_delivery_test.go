@@ -394,3 +394,18 @@ func TestEmptyOrFailedReportDoesNotSignReceipt(t *testing.T) {
 		}
 	}
 }
+
+func TestSilentReportDoesNotRegenerateUntilStepLimit(t *testing.T) {
+	for _, text := range []string{"", "SILENT"} {
+		b := testBot(t)
+		p := &scripted{resps: []provider.Message{{Content: text}, {Content: text}, {Content: text}, {Content: text}}}
+		k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
+		ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "result", "sa_a", time.Now())
+		if err := k.Handle(context.Background(), ev); err == nil {
+			t.Fatal("unreported result treated as success")
+		}
+		if p.i != 1 {
+			t.Fatalf("%q report regenerated %d times, want one attempt", text, p.i)
+		}
+	}
+}
