@@ -81,28 +81,33 @@ type TaskEnv struct {
 	Position int    `json:"position,omitempty"`
 }
 
+// PersonEnv is one person's last model-visible profile in the environment stream.
+type PersonEnv struct {
+	Text string   `json:"text,omitempty"`
+	Own  []string `json:"own,omitempty"`
+	Seen bool     `json:"seen,omitempty"`
+}
+
 type EnvRecord struct {
-	Tasks        []TaskEnv `json:"tasks,omitempty"`
-	Hour         string    `json:"hour,omitempty"`
-	Now          string    `json:"now,omitempty"`
-	Sender       string    `json:"sender,omitempty"`
-	SenderSeq    int       `json:"sender_seq,omitempty"`
-	Source       string    `json:"source,omitempty"`
-	PersonActive bool      `json:"person_active,omitempty"`
-	PersonSender string    `json:"person_sender,omitempty"` // owner of the retained Person baseline
-	Person       string    `json:"person,omitempty"`
-	PersonOwn    []string  `json:"person_own,omitempty"`
-	Tools        []string  `json:"tools,omitempty"`
-	Notes        int       `json:"notes,omitempty"`
-	Persona      string    `json:"persona,omitempty"`
-	Rules        string    `json:"rules,omitempty"`
-	Memory       string    `json:"memory,omitempty"`
-	Skills       string    `json:"skills,omitempty"`
-	Profile      string    `json:"profile,omitempty"`
-	OverlayKey   string    `json:"overlay_key,omitempty"`
-	OverlayHash  string    `json:"overlay_hash,omitempty"`
-	OverlayBody  string    `json:"overlay_body,omitempty"`
-	At           time.Time `json:"at,omitempty"`
+	Tasks        []TaskEnv            `json:"tasks,omitempty"`
+	Hour         string               `json:"hour,omitempty"`
+	Now          string               `json:"now,omitempty"`
+	Sender       string               `json:"sender,omitempty"`
+	SenderSeq    int                  `json:"sender_seq,omitempty"`
+	Source       string               `json:"source,omitempty"`
+	PersonActive bool                 `json:"person_active,omitempty"`
+	People       map[string]PersonEnv `json:"people,omitempty"`
+	Tools        []string             `json:"tools,omitempty"`
+	Notes        int                  `json:"notes,omitempty"`
+	Persona      string               `json:"persona,omitempty"`
+	Rules        string               `json:"rules,omitempty"`
+	Memory       string               `json:"memory,omitempty"`
+	Skills       string               `json:"skills,omitempty"`
+	Profile      string               `json:"profile,omitempty"`
+	OverlayKey   string               `json:"overlay_key,omitempty"`
+	OverlayHash  string               `json:"overlay_hash,omitempty"`
+	OverlayBody  string               `json:"overlay_body,omitempty"`
+	At           time.Time            `json:"at,omitempty"`
 }
 
 // SectionUsage is a rough token estimate for one wake, by context section.

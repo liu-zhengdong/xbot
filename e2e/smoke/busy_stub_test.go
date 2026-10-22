@@ -189,6 +189,18 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 			break
 		}
 	}
+	if bot == "s4" {
+		var tasks []string
+		for _, id := range owners {
+			if strings.Contains(id, "_B") {
+				tasks = append(tasks, id)
+			}
+		}
+		if len(tasks) == 5 {
+			text = "五项调研（" + strings.Join(tasks, "、") + "）均已受理，在跑或排队，有空位自动开始。"
+		}
+	}
+
 	streamText(w, []string{text})
 	return true
 }

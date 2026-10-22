@@ -754,9 +754,8 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 		Now:       k.localStamp(),
 		Sender:    st.Env.Sender,
 		SenderSeq: st.Env.SenderSeq,
-		Source:    st.Env.Source, PersonActive: st.Env.PersonActive, PersonSender: st.Env.PersonSender,
-		Person:      st.Env.Person,
-		PersonOwn:   st.Env.PersonOwn,
+		Source:    st.Env.Source, PersonActive: st.Env.PersonActive,
+		People:      st.Env.People,
 		Tools:       toolNames(list),
 		Notes:       k.pendingNotes(),
 		Persona:     shortHash(persona),
@@ -830,7 +829,8 @@ func (k *Kernel) ensureSnapshot(st bot.State) error {
 	}
 	// A compacted person baseline must be made visible even if an unrelated
 	// environment update survived the compressed range.
-	needsPerson := fresh.Env.PersonActive && fresh.Env.PersonSender == ""
+	person := fresh.Env.People[fresh.Env.Sender]
+	needsPerson := fresh.Env.PersonActive && !person.Seen
 	if uncoveredHasEnv(raw) && !needsPerson {
 		return nil
 	}
@@ -839,7 +839,8 @@ func (k *Kernel) ensureSnapshot(st bot.State) error {
 		return err
 	}
 	if needsPerson {
-		fresh.Env.PersonSender = fresh.Env.Sender
+		person.Seen = true
+		fresh.Env.People[fresh.Env.Sender] = person
 		return k.Bot.SaveState(fresh)
 	}
 	return nil
@@ -960,8 +961,9 @@ func (k *Kernel) drainMemOwn(st *bot.State) {
 	for _, c := range pending {
 		if c.person == "" {
 			st.MemOwn = append(st.MemOwn, c.lines...)
-		} else if c.person == st.Env.PersonSender {
-			st.Env.PersonOwn = append(st.Env.PersonOwn, c.lines...)
+		} else if person, ok := st.Env.People[c.person]; ok {
+			person.Own = append(person.Own, c.lines...)
+			st.Env.People[c.person] = person
 		}
 	}
 }
@@ -970,9 +972,9 @@ const memRenderVersion = 3
 
 // refreshMemSnap only refreshes the bot's snapshot when compaction changes the prefix.
 func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
-	// Compaction can remove the last visible person block. Keep its data but
-	// invalidate only the comparison identity so the next person re-establishes
-	// a full baseline. Use the same EnvRecord and publication lock.
+	// Compaction can remove any visible person block. Keep the data and
+	// invalidate the seen versions; each person re-establishes a full baseline
+	// on their next appearance, using the same EnvRecord and publication lock.
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
 	k.memWriteMu.Lock()
@@ -985,8 +987,10 @@ func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
 	if err != nil {
 		return err
 	}
-	fresh.Env.PersonSender = ""
-	fresh.Env.PersonOwn = nil
+	for id, person := range fresh.Env.People {
+		person.Seen, person.Own = false, nil
+		fresh.Env.People[id] = person
+	}
 	if err := k.Bot.SaveState(fresh); err != nil {
 		return err
 	}

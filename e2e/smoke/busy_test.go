@@ -8,12 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"xbot/internal/compact"
+	runner "xbot/internal/exec"
 	"xbot/internal/provider"
 )
 
@@ -25,22 +28,23 @@ var baselineGaps = map[string]string{
 }
 
 type busyMeasure struct {
-	Scenario       string    `json:"scenario"`
-	Task           string    `json:"task"`
-	DispatchMS     *float64  `json:"dispatch_ms"`
-	FirstVisibleMS *float64  `json:"first_visible_ms"`
-	InitialStatus  string    `json:"initial_status"`
-	Calls          int       `json:"foreground_calls"`
-	Prompt         int       `json:"prompt_tokens"`
-	Uncached       int       `json:"uncached_tokens"`
-	Completion     int       `json:"completion_tokens"`
-	Estimated      bool      `json:"estimated"`
-	AUnaffected    bool      `json:"a_unaffected"`
-	Reports        int       `json:"reports"`
-	Reply          string    `json:"reply"`
-	SentAt         time.Time `json:"sent_at"`
-	ResultMentions int       `json:"result_mentions"`
-	RequestBytes   int       `json:"foreground_request_bytes"`
+	Scenario        string    `json:"scenario"`
+	Task            string    `json:"task"`
+	DispatchMS      *float64  `json:"dispatch_ms"`
+	BatchDispatchMS *float64  `json:"batch_dispatch_ms,omitempty"`
+	FirstVisibleMS  *float64  `json:"first_visible_ms"`
+	InitialStatus   string    `json:"initial_status"`
+	Calls           int       `json:"foreground_calls"`
+	Prompt          int       `json:"prompt_tokens"`
+	Uncached        int       `json:"uncached_tokens"`
+	Completion      int       `json:"completion_tokens"`
+	Estimated       bool      `json:"estimated"`
+	AUnaffected     bool      `json:"a_unaffected"`
+	Reports         int       `json:"reports"`
+	Reply           string    `json:"reply"`
+	SentAt          time.Time `json:"sent_at"`
+	ResultMentions  int       `json:"result_mentions"`
+	RequestBytes    int       `json:"foreground_request_bytes"`
 }
 
 type busyRun struct {
@@ -154,8 +158,22 @@ func (b *busyRun) report(bot, id string) {
 	b.t.Errorf("%s: no assistant report carrying the verification value %s", id, busyCode(id))
 }
 
+// agents keeps the panel's status/id view, but matches identifiers against the
+// executor's existing full task record rather than the 140-rune UI preview.
+func (b *busyRun) agents(name string) []Agent {
+	list := b.srv.Agents(name)
+	for i := range list {
+		meta, err := runner.ReadMeta(filepath.Join(b.srv.Root, "bots", name, "agents", list[i].ID))
+		if err != nil {
+			b.t.Fatal(err)
+		}
+		list[i].Task = meta.Task
+	}
+	return list
+}
+
 func (b *busyRun) agent(bot, id string) (Agent, bool) {
-	for _, a := range b.srv.Agents(bot) {
+	for _, a := range b.agents(bot) {
 		if busyTaskID(a.Task) == id {
 			return a, true
 		}
@@ -180,7 +198,12 @@ func (b *busyRun) scenario(bot string) {
 		if bot == "s6" {
 			key = "s6/latency"
 		}
-		b.check(key, p.m.DispatchMS != nil && (*p.m.DispatchMS <= float64(b.dispatchLimit().Milliseconds())), fmt.Sprintf("record=%s status=%s", busyDelay(p.m.DispatchMS), p.m.InitialStatus))
+		delay, limit := p.m.DispatchMS, b.dispatchLimit()
+		if bot == "s4" {
+			p.m.BatchDispatchMS = busyBatchDelay(p.m.DispatchMS, p.m.SentAt, ps[len(ps)-1].m.SentAt)
+			delay, limit = p.m.BatchDispatchMS, 6*time.Second
+		}
+		b.check(key, delay != nil && *delay <= float64(limit.Milliseconds()), fmt.Sprintf("record=%s batch=%s status=%s", busyDelay(p.m.DispatchMS), busyDelay(p.m.BatchDispatchMS), p.m.InitialStatus))
 		if !b.real {
 			key := bot + "/visible"
 			b.check(key, p.m.FirstVisibleMS != nil && *p.m.FirstVisibleMS <= 3000, busyDelay(p.m.FirstVisibleMS))
@@ -188,6 +211,15 @@ func (b *busyRun) scenario(bot string) {
 		p.m.AUnaffected = p.m.AUnaffected && (bot == "s3" || b.stub.Outcome(aID) == "")
 		b.check(bot+"/A", p.m.AUnaffected, "A stopped before explicit release")
 	}
+	if bot == "s4" {
+		var tasks []string
+		for _, p := range ps {
+			tasks = append(tasks, p.m.Task)
+		}
+		last := ps[len(ps)-1]
+		b.check("s4/combined-confirmation", busyBatchConfirmation(last.m.Reply, tasks), "confirmation must cover all five B tasks with a consistent count: "+last.m.Reply)
+	}
+
 	if bot == "s2" {
 		r := aStream.Wait()
 		b.check(bot+"/handoff", r.HandedOff && b.stub.Outcome("model-s2") == gateCancelled, "old model stream was not cancelled and handed off")
@@ -227,6 +259,56 @@ func (b *busyRun) scenario(bot string) {
 	b.check(bot+"/A-call-count", b.subCalls(aID) == b.subCalls("BUSY_control_A"), fmt.Sprintf("A=%d control=%d", b.subCalls(aID), b.subCalls("BUSY_control_A")))
 	b.check(bot+"/A-outcome", b.stub.Outcome(aID) == gateReleased, b.stub.Outcome(aID))
 }
+
+// Keep the raw per-message latency; only the batch verdict starts at the last
+// arrival. A task already admitted before the last arrival has zero batch wait.
+func busyBatchDelay(raw *float64, sent, last time.Time) *float64 {
+	if raw == nil {
+		return nil
+	}
+	v := max(0, *raw-float64(last.Sub(sent))/float64(time.Millisecond))
+	return &v
+}
+
+// These fixtures identify the five requests as B1..B5. Accept explicit labels
+// or a range, and reject contradictory total counts (e.g. "四项...B1到B5").
+// Subset status counts such as "三项排队、两项在跑" are not total counts.
+func busyBatchConfirmation(text string, tasks []string) bool {
+	if !busyNormalText(text) || strings.TrimSpace(text) == "SILENT" {
+		return false
+	}
+	labels := map[string]bool{}
+	for _, label := range regexp.MustCompile(`B[1-5]\b`).FindAllString(text, -1) {
+		labels[label] = true
+	}
+	ranges := regexp.MustCompile(`B([1-5])\s*(?:到|至|–|—|-|~|～)\s*B?([1-5])`)
+	for _, r := range ranges.FindAllStringSubmatch(text, -1) {
+		first, _ := strconv.Atoi(r[1])
+		last, _ := strconv.Atoi(r[2])
+		for n := first; n <= last; n++ {
+			labels[fmt.Sprintf("B%d", n)] = true
+		}
+	}
+	for _, task := range tasks {
+		parts := strings.Split(task, "_")
+		if !labels[parts[len(parts)-1]] {
+			return false
+		}
+	}
+	counts := regexp.MustCompile(`(?:^|[。；\n]|共|一共|总共|这)([一二三四五六七八九十两0-9]+)\s*(?:项|个|条|份)(?:新)?(?:调研|任务)`)
+	digits := map[string]int{"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+	for _, c := range counts.FindAllStringSubmatch(text, -1) {
+		n, err := strconv.Atoi(c[1])
+		if err != nil {
+			n = digits[c[1]]
+		}
+		if n != len(tasks) {
+			return false
+		}
+	}
+	return true
+}
+
 func (b *busyRun) dispatchLimit() time.Duration {
 	if b.real {
 		return 6 * time.Second
@@ -288,6 +370,7 @@ func (b *busyRun) checkReports(final bool) {
 }
 func (b *busyRun) summarize() {
 	var latencies []float64
+	var batchLatencies []float64
 	for _, m := range b.measures {
 		rows := b.srv.Transcript(m.Scenario)
 		m.Reports = busyReportCount(rows, m.Task)
@@ -329,6 +412,9 @@ func (b *busyRun) summarize() {
 		if m.DispatchMS != nil {
 			latencies = append(latencies, *m.DispatchMS)
 		}
+		if m.BatchDispatchMS != nil {
+			batchLatencies = append(batchLatencies, *m.BatchDispatchMS)
+		}
 		raw, _ := json.Marshal(m)
 		b.t.Logf("BUSY_BASELINE %s", raw)
 	}
@@ -337,10 +423,15 @@ func (b *busyRun) summarize() {
 		i := (95*len(latencies)+99)/100 - 1
 		b.t.Logf("BUSY_P95 dispatched=%d/%d p95_ms=%.3f (missing records are failures, excluded from latency quantile)", len(latencies), len(b.measures), latencies[i])
 	}
+	if len(batchLatencies) > 0 {
+		sort.Float64s(batchLatencies)
+		i := (95*len(batchLatencies)+99)/100 - 1
+		b.t.Logf("BUSY_BATCH_P95 dispatched=%d/5 p95_ms=%.3f (since final message; raw per-message latency retained above)", len(batchLatencies), batchLatencies[i])
+	}
 	for bot, ids := range b.tasks {
 		rows := b.srv.Transcript(bot)
 		a := ids[0]
-		agents := b.srv.Agents(bot)
+		agents := b.agents(bot)
 		records := 0
 		for _, ag := range agents {
 			if busyTaskID(ag.Task) == a {
@@ -357,7 +448,7 @@ func (b *busyRun) summarize() {
 				b.t.Error(err)
 			} else {
 				for bot := range b.tasks {
-					agents, _ := json.MarshalIndent(b.srv.Agents(bot), "", "  ")
+					agents, _ := json.MarshalIndent(b.agents(bot), "", "  ")
 					if err := os.WriteFile(filepath.Join(dir, bot+"-agents.json"), agents, 0600); err != nil {
 						b.t.Error(err)
 					}
@@ -475,14 +566,18 @@ func (b *busyRun) sendTasks(bot string, a Agent) []busyPending {
 		m := &busyMeasure{Scenario: bot, Task: id, AUnaffected: true, Estimated: !b.real, SentAt: st.reply.Sent}
 		b.measures = append(b.measures, m)
 		b.tasks[bot] = append(b.tasks[bot], id)
-		ps = append(ps, busyPending{m, st, st.reply.Sent.Add(b.observationLimit(bot))})
+		deadline := st.reply.Sent.Add(b.observationLimit(bot))
+		if bot == "s4" && !b.real {
+			deadline = st.reply.Sent.Add(6500 * time.Millisecond)
+		}
+		ps = append(ps, busyPending{m, st, deadline})
 		// Poll all B records at 50 ms while preserving the 2s arrival cadence.
 		next := start.Add(time.Duration(i) * 2 * time.Second)
 		if i == total {
 			next = ps[len(ps)-1].deadline
 		}
 		for time.Now().Before(next) {
-			agents := b.srv.Agents(bot)
+			agents := b.agents(bot)
 			for _, p := range ps {
 				if p.m.DispatchMS != nil {
 					continue

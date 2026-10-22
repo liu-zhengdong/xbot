@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 
@@ -52,23 +53,24 @@ func (k *Kernel) personText(ctx context.Context, ev link.Event) (string, error) 
 
 func personChange(prev, next bot.EnvRecord) string {
 	if !next.PersonActive {
-		if !prev.PersonActive && prev.Source == next.Source && prev.Sender == next.Sender {
+		if prev.Source == next.Source {
 			return ""
 		}
-		return fmt.Sprintf("source: %s; 无当前人物资料", next.Source)
+		return fmt.Sprintf("source: %s", next.Source)
 	}
 	label := ""
 	if !prev.PersonActive || prev.Source != next.Source || prev.Sender != next.Sender {
 		label = fmt.Sprintf("source: %s; sender: %s (input seq %d)", next.Source, next.Sender, next.SenderSeq)
 	}
-	// Non-person wakes retain the last real person's baseline, including its id.
-	// Only two versions belonging to the same real person can be diffed.
+	// Each person is compared with their own last model-visible version.
+	before, after := prev.People[next.Sender], next.People[next.Sender]
 	data := ""
-	if prev.PersonSender != next.PersonSender || prev.PersonSender == "" {
-		data = tools.NeutralizeUntrusted(next.Person)
+	if !before.Seen {
+		data = tools.NeutralizeUntrusted(after.Text)
 	} else {
-		data = memoryDiff(prev.Person, next.Person, next.PersonOwn)
+		data = memoryDiff(before.Text, after.Text, before.Own)
 	}
+
 	if data != "" {
 		label = strings.TrimSpace(label + fmt.Sprintf("\n<person_data sender=%q>\n%s\n</person_data>", next.Sender, data))
 	}
@@ -98,12 +100,13 @@ func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
 	st.Env.Sender, st.Env.SenderSeq, st.Env.Source = ev.Sender, seq, ev.Source
 	st.Env.PersonActive = personEvent(ev)
 	if st.Env.PersonActive {
-		st.Env.Person, st.Env.PersonSender = person, ev.Sender
+		st.Env.People = maps.Clone(st.Env.People)
+		if st.Env.People == nil {
+			st.Env.People = map[string]bot.PersonEnv{}
+		}
+		st.Env.People[ev.Sender] = bot.PersonEnv{Text: person, Seen: true}
 	}
 	diff := personChange(prev, st.Env)
-	if st.Env.PersonActive {
-		st.Env.PersonOwn = nil
-	}
 	if st.Env.At.IsZero() {
 		st.Env.At = k.now()
 	}

@@ -52,11 +52,11 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if during.Env.Person != before.Env.Person || during.Env.Person == "" {
-				t.Fatalf("%s erased seen person: before=%q after=%q", source, before.Env.Person, during.Env.Person)
+			if during.Env.People["u1"].Text != before.Env.People["u1"].Text || during.Env.People["u1"].Text == "" {
+				t.Fatalf("%s erased seen person: before=%q after=%q", source, before.Env.People["u1"].Text, during.Env.People["u1"].Text)
 			}
 			snapshot := snapshotText(during.Env)
-			if !strings.Contains(snapshot, "无当前人物资料") || strings.Contains(snapshot, "PERSON_BASELINE_52") {
+			if strings.Contains(snapshot, "人物") || strings.Contains(snapshot, "person_data") || strings.Contains(snapshot, "PERSON_BASELINE_52") {
 				t.Fatalf("non-person snapshot borrowed a profile: %s", snapshot)
 			}
 			end, err := b.Count()
@@ -73,7 +73,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 					updates += row.Message.Content
 				}
 			}
-			if !strings.Contains(updates, "source: "+source+"; 无当前人物资料") || strings.Contains(updates, "person_data") {
+			if !strings.Contains(updates, "source: "+source) || strings.Contains(updates, "person_data") {
 				t.Fatalf("wrong source update: %s", updates)
 			}
 			if err := k.Handle(ctx, link.TerminalEvent("u1", "again", now)); err != nil {
@@ -83,7 +83,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if after.Env.Person != before.Env.Person {
+			if after.Env.People["u1"].Text != before.Env.People["u1"].Text {
 				t.Fatal("unchanged person baseline changed on return")
 			}
 			end, err = b.Count()
@@ -298,7 +298,7 @@ func TestPersonBaselineReappearsAfterNonPersonCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compacted.Env.Person != before.Env.Person {
+	if compacted.Env.People["u1"].Text != before.Env.People["u1"].Text {
 		t.Fatal("compaction erased retained profile")
 	}
 	if err := k.Handle(ctx, link.TerminalEvent("u1", "again", time.Now())); err != nil {

@@ -63,7 +63,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Env.Sender != "u1" || !strings.Contains(st.Env.Person, "PERSON_ONE") {
+	if st.Env.Sender != "u1" || !strings.Contains(st.Env.People["u1"].Text, "PERSON_ONE") {
 		t.Fatalf("person environment %+v", st.Env)
 	}
 	// Same-person edits change the stream without rewriting the Bot prefix.
@@ -79,7 +79,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Env.SenderSeq != seq || !strings.Contains(st.Env.Person, "PERSON_NEW") || st.MemSnap != oldSnap {
+	if st.Env.SenderSeq != seq || !strings.Contains(st.Env.People["u1"].Text, "PERSON_NEW") || st.MemSnap != oldSnap {
 		t.Fatal("missing updated person or lost bot snapshot")
 	}
 	data, err := b.Entries()

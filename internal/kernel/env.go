@@ -99,8 +99,8 @@ func baseline(e bot.EnvRecord) string {
 	if e.Now != "" {
 		body += "now: " + e.Now + "\n"
 	}
-	body += fmt.Sprintf("sender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
-		e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
+	body += fmt.Sprintf("tools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
+		strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
 	if e.Skills != "" {
 		body += "skills: " + e.Skills + "\n"
 	}
@@ -118,8 +118,8 @@ func snapshotText(e bot.EnvRecord) string {
 	if e.Now != "" {
 		body += "now: " + e.Now + "\n"
 	}
-	body += fmt.Sprintf("sender: %s\ntools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
-		e.Sender, strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
+	body += fmt.Sprintf("tools: %s\nnotes: %d\npersona: %s\nrules: %s\nmemory: %s\n",
+		strings.Join(e.Tools, ","), e.Notes, e.Persona, e.Rules, e.Memory)
 	if e.Skills != "" {
 		body += "skills: " + e.Skills + "\n"
 	}
