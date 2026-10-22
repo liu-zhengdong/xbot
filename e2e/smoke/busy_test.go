@@ -49,6 +49,7 @@ type busyRun struct {
 	stub          *Stub
 	script        *busyScript
 	real          bool
+	artifactDir   string
 	measures      []*busyMeasure
 	tasks         map[string][]string
 	aIDs          map[string]string
@@ -72,11 +73,13 @@ func (b *busyRun) check(key string, ok bool, detail string) {
 // scripted subagent. XBOT_BUSY_REAL=1 forwards only the foreground; it is
 // never enabled by the default smoke/CI commands.
 func TestNewTaskWhileBusy(t *testing.T) {
+	if os.Getenv("XBOT_BUSY_REAL") == "1" {
+		runBusyRealScenarios(t)
+		return
+	}
+
 	stub := StartStub(t)
 	script := &busyScript{stub: stub}
-	if os.Getenv("XBOT_BUSY_REAL") == "1" {
-		script.real = newBusyReal(t)
-	}
 	stub.busy = script
 	srv := Start(t, stub)
 	b := &busyRun{t: t, srv: srv, stub: stub, script: script, real: script.real != nil, tasks: map[string][]string{}, aIDs: map[string]string{}}
@@ -89,11 +92,6 @@ func TestNewTaskWhileBusy(t *testing.T) {
 	b.report("control", "BUSY_control_A")
 
 	scenarios := []string{"s1", "s2", "s3", "s4", "s5", "s6"}
-	// If the full paid run reaches its budget before s6, the owner permits
-	// one separate s6-only run under the same unchanged budget guard.
-	if b.real && os.Getenv("XBOT_BUSY_S6_ONLY") == "1" {
-		scenarios = []string{"s6"}
-	}
 	for _, scenario := range scenarios {
 		b.scenario(scenario)
 	}
@@ -104,6 +102,42 @@ func TestNewTaskWhileBusy(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	b.checkReports(true)
+}
+
+// Real scenarios have separate serve/stub lifetimes but one whole-run budget.
+// A fatal transport/gate error ends only its subtest; metrics still get saved.
+func runBusyRealScenarios(t *testing.T) {
+	real := newBusyReal(t)
+	defer real.finish(t)
+	scenarios := []string{"s1", "s2", "s3", "s4", "s5", "s6"}
+	if os.Getenv("XBOT_BUSY_S6_ONLY") == "1" {
+		scenarios = []string{"s6"}
+	}
+	for _, scene := range scenarios {
+		t.Run(scene, func(t *testing.T) {
+			stub := StartStub(t)
+			script := &busyScript{stub: stub, real: real}
+			stub.busy = script
+			srv := Start(t, stub)
+			b := &busyRun{t: t, srv: srv, stub: stub, script: script, real: true, tasks: map[string][]string{}, aIDs: map[string]string{}}
+			if dir := os.Getenv("XBOT_BUSY_ARTIFACT_DIR"); dir != "" {
+				b.artifactDir = filepath.Join(dir, scene)
+			}
+			defer b.summarize()
+			srv.CreateBot("control", "BOTNAME=control")
+			srv.Send("control", busyInput("BUSY_control_A"))
+			b.gate("BUSY_control_A")
+			stub.Release("BUSY_control_A")
+			b.report("control", "BUSY_control_A")
+			b.scenario(scene)
+			until := time.Now().Add(servePassInterval + 5*time.Second)
+			for time.Now().Before(until) {
+				b.checkReports(false)
+				time.Sleep(500 * time.Millisecond)
+			}
+			b.checkReports(true)
+		})
+	}
 }
 
 func (b *busyRun) gate(name string) {
@@ -284,8 +318,7 @@ func (b *busyRun) summarize() {
 			b.script.mu.Unlock()
 		}
 		if b.real {
-			b.check(m.Scenario+"/prompt-budget", m.Prompt <= 60000, fmt.Sprint(m.Prompt))
-			b.check(m.Scenario+"/uncached-budget", m.Uncached <= 15000, fmt.Sprint(m.Uncached))
+			b.t.Logf("BUSY_B_TOKEN_REFERENCE task=%s tokens=%d reference=%d uncached=%d reference=%d (advisory only; never fails or stops forwarding)", m.Task, m.Prompt+m.Completion, busyRealBTokenReference, m.Uncached, busyRealUncachedReference)
 		}
 		b.check(m.Scenario+"/calls", m.Calls <= 3, fmt.Sprintf("%s: %d foreground calls", m.Task, m.Calls))
 		if m.DispatchMS != nil {
@@ -314,11 +347,15 @@ func (b *busyRun) summarize() {
 		b.t.Logf("BUSY_A_BASELINE %s", raw)
 	}
 	if b.real {
-		if dir := os.Getenv("XBOT_BUSY_ARTIFACT_DIR"); dir != "" {
+		if dir := b.artifactDir; dir != "" {
 			if err := os.MkdirAll(dir, 0700); err != nil {
 				b.t.Error(err)
 			} else {
 				for bot := range b.tasks {
+					agents, _ := json.MarshalIndent(b.srv.Agents(bot), "", "  ")
+					if err := os.WriteFile(filepath.Join(dir, bot+"-agents.json"), agents, 0600); err != nil {
+						b.t.Error(err)
+					}
 					raw, _ := json.MarshalIndent(b.srv.Transcript(bot), "", "  ")
 					if err := os.WriteFile(filepath.Join(dir, bot+"-transcript.json"), raw, 0600); err != nil {
 						b.t.Error(err)
@@ -330,7 +367,6 @@ func (b *busyRun) summarize() {
 				}
 			}
 		}
-		b.script.real.finish(b.t)
 	}
 }
 

@@ -81,7 +81,7 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 		if bot == "s3" && len(owners) == 1 && strings.Contains(lastUser(req), "RESULT_BUSY_s3_A") {
 			hold = "relay-s3"
 		}
-		b.real.forward(w, r, req, raw, hold, b.stub)
+		b.real.forward(w, r, req, raw, hold, b.stub, bot)
 		return true
 	}
 	rw := &busyResponse{ResponseWriter: w}

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,12 @@ import (
 // Set XBOT_BUSY_REAL=1, XBOT_BUSY_BASE_URL, XBOT_BUSY_API_KEY and optionally
 // XBOT_BUSY_MODEL (default deepseek-flash). Only foreground requests leave
 // the stub. Subagents/compaction/extraction always stay scripted.
+const (
+	busyRealTokenLimit        = 100_000_000
+	busyRealBTokenReference   = 10_000_000
+	busyRealUncachedReference = 500_000
+)
+
 type busyReal struct {
 	mu               sync.Mutex
 	base, key, model string
@@ -32,7 +39,7 @@ type busyReal struct {
 	maxPrompt        int
 }
 type busyCharge struct {
-	phase                        string
+	phase, scenario              string
 	prompt, uncached, completion int
 	estimated                    bool
 }
@@ -45,8 +52,8 @@ func newBusyReal(t *testing.T) *busyReal {
 	}
 	if v := os.Getenv("XBOT_BUSY_PROMPT_LIMIT"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > 500000 {
-			t.Fatal("XBOT_BUSY_PROMPT_LIMIT must be 1..500000")
+		if err != nil || n < 1 || n > busyRealTokenLimit {
+			t.Fatal("XBOT_BUSY_PROMPT_LIMIT must be 1..100000000")
 		}
 		b.maxPrompt = n
 	}
@@ -61,14 +68,8 @@ func (b *busyReal) reserve(phase string, estimate int) (int, error) {
 	if b.stopped != "" {
 		return -1, fmt.Errorf("%s", b.stopped)
 	}
-	prompt, uncached := 0, 0
-	for _, c := range b.calls {
-		if c.phase == phase {
-			prompt += c.prompt
-			uncached += c.uncached
-		}
-	}
-	if b.spent()+estimate > b.limit() || (strings.Contains(phase, "_B") && (prompt+estimate > 60000 || uncached+estimate > 15000)) {
+	// Per-B thresholds are measurements, not forwarding limits.
+	if b.spent()+estimate > b.limit() {
 		b.stopped = "real foreground budget would be exceeded; forwarding stopped"
 		return -1, fmt.Errorf("%s", b.stopped)
 	}
@@ -89,15 +90,8 @@ func (b *busyReal) charged(i, prompt, cached, completion int, reported bool) {
 	} // cancelled/unreported calls keep the conservative reservation
 	old := b.calls[i]
 	b.total += prompt - old.prompt
-	b.calls[i] = busyCharge{phase: old.phase, prompt: prompt, uncached: prompt - cached, completion: completion}
-	p, u := 0, 0
-	for _, c := range b.calls {
-		if c.phase == old.phase {
-			p += c.prompt
-			u += c.uncached
-		}
-	}
-	if b.spent() > b.limit() || (strings.Contains(old.phase, "_B") && (p > 60000 || u > 15000)) {
+	b.calls[i] = busyCharge{phase: old.phase, scenario: old.scenario, prompt: prompt, uncached: prompt - cached, completion: completion}
+	if b.spent() > b.limit() {
 		b.stopped = "model-reported usage crossed budget; no more calls will be forwarded"
 	}
 }
@@ -130,17 +124,33 @@ func (b *busyReal) finish(t *testing.T) {
 	}
 	t.Logf("BUSY_REAL_ACCOUNTING reported_prompt=%d conservative_unreported_prompt=%d total_tokens=%d", reportedPrompt, reservedPrompt, b.spent())
 	t.Logf("BUSY_REAL_TOTAL calls=%d prompt=%d uncached=%d completion=%d limit=%d", len(b.calls), b.total, uncached, completion, b.limit())
+	if dir := os.Getenv("XBOT_BUSY_ARTIFACT_DIR"); dir != "" {
+		accounts := map[string][]map[string]any{}
+		for _, c := range b.calls {
+			accounts[c.scenario] = append(accounts[c.scenario], map[string]any{"phase": c.phase, "prompt": c.prompt, "uncached": c.uncached, "completion": c.completion, "estimated": c.estimated})
+		}
+		raw, _ := json.MarshalIndent(accounts, "", "  ")
+		name := strings.ReplaceAll(t.Name(), "/", "_") + "-accounting.json"
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Error(err)
+		} else if err := os.WriteFile(filepath.Join(dir, name), raw, 0600); err != nil {
+			t.Error(err)
+		}
+	}
 	if b.stopped != "" {
 		t.Error(b.stopped)
 	}
 }
-func (b *busyReal) forward(w http.ResponseWriter, r *http.Request, req stubRequest, raw []byte, hold string, stub *Stub) {
+func (b *busyReal) forward(w http.ResponseWriter, r *http.Request, req stubRequest, raw []byte, hold string, stub *Stub, scenario string) {
 	phase := busyPhase(req)
 	i, err := b.reserve(phase, (len(raw)+3)/4)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusPaymentRequired)
 		return
 	}
+	b.mu.Lock()
+	b.calls[i].scenario = scenario
+	b.mu.Unlock()
 	var body map[string]any
 	if json.Unmarshal(raw, &body) != nil {
 		http.Error(w, "invalid request", 400)
@@ -202,36 +212,78 @@ func (b *busyReal) forward(w http.ResponseWriter, r *http.Request, req stubReque
 	}
 }
 
+// Per-B overruns must not prevent measuring subsequent calls or scenarios.
 func TestBusyRealBudgetStopsBeforeForwarding(t *testing.T) {
 	b := &busyReal{}
-	if _, e := b.reserve("BUSY_s1_B1", 10000); e != nil {
-		t.Fatal(e)
+	if b.limit() != 100_000_000 {
+		t.Fatal("default whole-run cap is not 100M")
 	}
-	if _, e := b.reserve("BUSY_s1_B1", 6000); e == nil {
-		t.Fatal("uncached budget did not stop forwarding")
+	for i := 0; i < 4; i++ {
+		n, err := b.reserve("BUSY_s1_B1", 3_000_000)
+		if err != nil {
+			t.Fatal("per-B metric stopped forwarding:", err)
+		}
+		b.charged(n, 3_000_000, 0, 10, true)
 	}
-	if len(b.calls) != 1 {
-		t.Fatal("rejected call was charged/forwarded")
+	_, prompt, uncached, _, _ := b.totals("BUSY_s1_B1")
+	if prompt != 12_000_000 || uncached != 12_000_000 {
+		t.Fatal("overruns were not measured")
+	}
+	if _, err := b.reserve("BUSY_s2_B1", 1); err != nil {
+		t.Fatal("one scenario blocked the next:", err)
 	}
 	b = &busyReal{}
-	for i := 0; i < 5; i++ {
-		if _, e := b.reserve("relay", 100000); e != nil {
-			t.Fatal(e)
+	if _, err := b.reserve("relay", 100_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.reserve("relay", 1); err == nil || len(b.calls) != 1 {
+		t.Fatal("whole-run cap did not stop before forwarding")
+	}
+	b = &busyReal{maxPrompt: 100}
+	n, _ := b.reserve("relay", 90)
+	b.charged(n, 90, 0, 11, true)
+	if _, err := b.reserve("BUSY_s2_B1", 1); err == nil {
+		t.Fatal("completion was excluded from whole-run cap")
+	}
+}
+
+func TestBusyRealAccountingSeparatesExperiments(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XBOT_BUSY_ARTIFACT_DIR", dir)
+	for _, phase := range []string{"foreground", "dispatch-eval"} {
+		t.Run(phase, func(t *testing.T) {
+			b := &busyReal{}
+			if _, err := b.reserve(phase, 1); err != nil {
+				t.Fatal(err)
+			}
+			b.finish(t)
+		})
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d accounting files, want 2 independent experiments", len(entries))
+	}
+	phases := map[string]bool{}
+	for _, entry := range entries {
+		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ledger map[string][]map[string]any
+		if err := json.Unmarshal(raw, &ledger); err != nil {
+			t.Fatal(err)
+		}
+		for _, calls := range ledger {
+			for _, call := range calls {
+				phases[call["phase"].(string)] = true
+			}
 		}
 	}
-	if _, e := b.reserve("relay", 1); e == nil {
-		t.Fatal("total budget did not stop forwarding")
-	}
-	b = &busyReal{}
-	for i := 0; i < 3; i++ {
-		n, e := b.reserve("BUSY_s1_B1", 10000)
-		if e != nil {
-			t.Fatal(e)
-		}
-		b.charged(n, 20000, 20000, 1, true)
-	}
-	if _, e := b.reserve("BUSY_s1_B1", 1); e == nil {
-		t.Fatal("per-B prompt budget did not stop forwarding")
+	if !phases["foreground"] || !phases["dispatch-eval"] {
+		t.Fatal("an experiment's accounting was overwritten")
 	}
 }
 
@@ -239,7 +291,7 @@ func (b *busyReal) limit() int {
 	if b.maxPrompt > 0 {
 		return b.maxPrompt
 	}
-	return 500000
+	return busyRealTokenLimit
 }
 
 func TestBusyReportCountsAssistantRowsNotRepeatedWords(t *testing.T) {

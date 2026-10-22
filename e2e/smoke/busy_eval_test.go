@@ -38,7 +38,7 @@ func TestBusyDispatchRealDecisions(t *testing.T) {
 			http.Error(w, "request json", 400)
 			return
 		}
-		real.forward(w, r, req, raw, "", nil)
+		real.forward(w, r, req, raw, "", nil, "dispatch-eval")
 	}))
 	defer proxy.Close()
 	root := t.TempDir()
