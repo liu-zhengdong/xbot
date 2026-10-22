@@ -291,6 +291,9 @@ func (r *turnRun) takeOwner() []provider.Message {
 // Failed generation does not remove accepted words. Associate the failure with
 // each owner input using the ordinary transcript rather than an unread ledger.
 func (k *Kernel) replyToFailedInputs(t *turn) error {
+	t.mu.Lock()
+	replyThrough := t.replyInputThrough
+	t.mu.Unlock()
 	n, err := k.Bot.Count()
 	if err != nil {
 		return err
@@ -299,15 +302,9 @@ func (k *Kernel) replyToFailedInputs(t *turn) error {
 	if err != nil {
 		return err
 	}
-	answered := map[int]bool{}
-	for _, row := range rows {
-		if row.Message.Role == provider.RoleAssistant && row.ReplyTo > 0 {
-			answered[row.ReplyTo] = true
-		}
-	}
 	for i, row := range rows {
 		seq := t.fromSeq + i
-		if row.Message.Role != provider.RoleUser || row.IsInternal() || strings.HasPrefix(row.Message.Content, "<untrusted_event") || answered[seq] {
+		if seq <= replyThrough || row.Message.Role != provider.RoleUser || row.IsInternal() || row.IsForkMark() || strings.HasPrefix(row.Message.Content, "<untrusted_event") {
 			continue
 		}
 		if _, err := k.recordTurn(t, provider.Message{Role: provider.RoleAssistant, ReplyTo: seq, Content: "这一轮出错，后续要求还没处理完；已经执行的记录和你的原话都保留了。"}); err != nil {

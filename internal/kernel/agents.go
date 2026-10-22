@@ -340,10 +340,19 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 		}
 		req.Model = ep
 	}
-	if _, err := k.ensureExec().Start(ctx, req); err != nil {
+	live, err := k.ensureExec().Start(ctx, req)
+	if err != nil {
 		return "", err
 	}
-	return "started " + id, nil
+	return startReceipt(live), nil
+}
+
+// startReceipt is the executor's admission fact shared by spawn and dispatch.
+func startReceipt(task exec.Task) string {
+	if task.Status == "queued" {
+		return fmt.Sprintf("queued %s (position %d)", task.ID, task.Position)
+	}
+	return "started " + task.ID
 }
 
 func (k *Kernel) needsEndpoint() bool {
@@ -402,7 +411,7 @@ type spawnTool struct{ k *Kernel }
 
 func (spawnTool) Name() string { return "spawn" }
 func (spawnTool) Description() string {
-	return "Start a subagent for a long task. mode is brief (task only) or fork (copy of the current context). Returns when the subagent has started, not when it finishes."
+	return "Start a subagent for a long task. mode is brief (task only) or fork (copy of the current context). Returns started or queued with its position; queued work starts automatically when capacity is free, not when this call returns. Does not wait for completion."
 }
 func (spawnTool) Parameters() any {
 	return schema(map[string]any{

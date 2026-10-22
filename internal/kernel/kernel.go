@@ -249,7 +249,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	}
 	t.fromSeq = seq
 	defer func() {
-		if handleErr != nil && !k.AllowFork {
+		if handleErr != nil && !errors.Is(handleErr, context.Canceled) && !k.AllowFork {
 			handleErr = errors.Join(handleErr, k.replyToFailedInputs(t))
 		}
 	}()

@@ -39,6 +39,9 @@ type turnRun struct {
 	// output is not dropped; the error is returned once the run ends.
 	err         error
 	requestSeqs []int
+	// Request bounds for error reporting only. A late input may already be on
+	// the transcript without being in the completed answer's request.
+	sentThrough int
 }
 
 // turnResult is what the model loop hands back to Handle.
@@ -120,7 +123,7 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 		}
 	}
 	err = r.k.Bot.Walk(through+1, 0, func(seq int, e bot.Entry) error {
-		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Content) {
+		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Content) || e.IsForkMark() {
 			return nil
 		}
 		msg := e.Message
@@ -230,6 +233,12 @@ func (r *turnRun) onMessage(m provider.Message) {
 	}
 	if err := r.track(m); err != nil {
 		r.err = err
+		return
+	}
+	if text := finalAssistantText([]provider.Message{m}); text != "" && !bot.SilentText(text) {
+		r.t.mu.Lock()
+		r.t.replyInputThrough = max(r.t.replyInputThrough, r.sentThrough)
+		r.t.mu.Unlock()
 	}
 }
 
@@ -342,8 +351,14 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		// The snapshot is taken before the request leaves, so a call that times
 		// out or fails still shows what was sent. It clips the text, so the ring
 		// holds previews, not tool output.
-		onSend: func(req provider.Request) { r.k.noteContext(r.t, req) },
-		onUse:  func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
+		onSend: func(req provider.Request) {
+			r.sentThrough = 0
+			for _, msg := range req.Messages {
+				r.sentThrough = max(r.sentThrough, msg.Seq)
+			}
+			r.k.noteContext(r.t, req)
+		},
+		onUse: func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
 	}
 	fit := newTurnFit(len(r.assembled), r.seqAt)
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {

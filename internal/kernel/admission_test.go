@@ -143,3 +143,53 @@ func finishAdmissionJobs(t *testing.T, k *Kernel, hold chan struct{}) {
 }
 
 func admissionCount(k *Kernel) int { list, _ := k.execSnapshot().Tasks(); return len(list) }
+
+// Exercise the non-dispatch spawn entry with a real full executor, not a fake
+// receipt. Both entry points must expose that same executor admission fact.
+func TestSpawnReportsQueuedAdmission(t *testing.T) {
+	hold := make(chan struct{})
+	k, _, _ := dispatchKernel(t, &roleModel{hold: hold})
+	k.Dispatch = false
+	loc := exec.NewLocal(exec.Limits{MaxConcurrent: 3})
+	loc.Prov = &roleModel{hold: hold}
+	k.Exec = loc
+	defer finishAdmissionJobs(t, k, hold)
+	for i := 0; i < 4; i++ {
+		out, err := (spawnTool{k}).Run(context.Background(), []byte(`{"task":"held job","mode":"brief"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields := strings.Fields(out)
+		if len(fields) < 2 {
+			t.Fatal(out)
+		}
+		want := "started " + fields[1]
+		if i == 3 {
+			want = "queued " + fields[1] + " (position 1)"
+		}
+		if out != want {
+			t.Fatalf("spawn %d receipt %q, want %q", i, out, want)
+		}
+		tasks, _ := loc.Tasks()
+		matched := false
+		for _, task := range tasks {
+			if task.ID == fields[1] {
+				matched = true
+				if i == 3 && (task.Status != "queued" || task.Position != 1) {
+					t.Fatalf("queue fact=%+v", task)
+				}
+			}
+		}
+		if !matched {
+			t.Fatalf("no task for %s", out)
+		}
+	}
+	out, err := k.dispatch(context.Background(), "research", "also waiting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.Fields(out)
+	if len(fields) < 2 || !strings.HasPrefix(out, "queued "+fields[1]+" (position 2) as research") {
+		t.Fatalf("dispatch differs from spawn: %q", out)
+	}
+}

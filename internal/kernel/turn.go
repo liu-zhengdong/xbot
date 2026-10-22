@@ -54,6 +54,9 @@ type turn struct {
 	branch   string
 	finished bool
 	answered bool // a final answer is on the transcript; too late to fork
+	// Last input seen by a committed normal reply in this turn. Only used to
+	// avoid false failure notices, never persisted or used for result delivery.
+	replyInputThrough int
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
 	forkMu sync.Mutex

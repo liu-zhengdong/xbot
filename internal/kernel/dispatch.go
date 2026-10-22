@@ -104,10 +104,10 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 		return "", err
 	}
 	if live.Status == "queued" {
-		return fmt.Sprintf("queued %s as %s (position %d, budget %s). Tell the owner it is queued, not started. It starts automatically when a slot and its resource are free; do not do the task yourself.", id, ty.Name, live.Position, ty.Budget), nil
+		return fmt.Sprintf("%s as %s (budget %s). Tell the owner it is queued, not started. It starts automatically when a slot and its resource are free; do not do the task yourself.", startReceipt(live), ty.Name, ty.Budget), nil
 	}
 
-	return fmt.Sprintf("started %s as %s (budget %s). Its result arrives as an event; tell the owner it has started, and do not do the task yourself.", id, ty.Name, ty.Budget), nil
+	return fmt.Sprintf("%s as %s (budget %s). Its result arrives as an event; tell the owner it has started, and do not do the task yourself.", startReceipt(live), ty.Name, ty.Budget), nil
 }
 
 // writeResource is what a subagent of type ty may write when it starts in

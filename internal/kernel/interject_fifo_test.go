@@ -52,6 +52,11 @@ func (m *queuedOwnerModel) Chat(ctx context.Context, req provider.Request, _ fun
 		return provider.Message{}, ctx.Err()
 	case <-m.release:
 	}
+	// A cancelled scripted request has no completed answer. A real nil-error
+	// completion is tested separately at the post-Chat preemption boundary.
+	if err := ctx.Err(); err != nil {
+		return provider.Message{}, err
+	}
 	if m.fail {
 		return provider.Message{}, fmt.Errorf("model unavailable")
 	}
