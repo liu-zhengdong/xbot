@@ -97,7 +97,13 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 		if positioned {
 			seq = seqs[i]
 		}
-		items = append(items, item{seq: seq, msg: e.Message})
+		m := e.Message
+		m.Internal = e.IsInternal()
+		if e.Report {
+			m.ReportID = e.EventID
+		}
+		m.Reports = e.Reports
+		items = append(items, item{seq: seq, msg: m})
 	}
 	if positioned {
 		// Summaries sort before a raw line that starts at the same place; the
@@ -694,14 +700,18 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 		}
 	}
 	turns := make([]provider.Message, 0, len(entries))
-	for _, e := range entries {
+	projected, err := k.compactReportHistory(entries)
+	if err != nil {
+		return "", err
+	}
+	for i, e := range entries {
 		if code.IsCard(e.Message.Content) || bot.IsApprovalCard(e.Message.Content) {
 			continue
 		}
 		if e.IsForkMark() {
 			continue
 		}
-		msg := e.Message
+		msg := projected[i]
 		// A summary of an old range must say which pictures those lines carried;
 		// otherwise the range is summarized into words about a picture nobody can
 		// find any more.

@@ -33,6 +33,8 @@
 //	loadMu      which links are loaded
 //	compactMu   the auto-compaction job
 //	denyMu      tool calls the owner refused this turn
+//	reportMu    incremental result receipts; may take the bot store lock,
+//	            never a turn/exec lock (recordTurn releases the store first)
 //
 // The *Once fields (startOnce, recoverOnce, execOnce, shellOnce) never nest:
 // each body runs once and may take other locks freely, because nothing holds a
@@ -142,7 +144,9 @@ type Kernel struct {
 	// turn's own context carries the deadline (see backgroundBudget).
 	BackgroundMaxTime time.Duration
 
-	turnMu sync.Mutex
+	turnMu   sync.Mutex
+	reportMu sync.Mutex
+	reports  reportIndex
 	// memOwnMu guards memOwn: line changes of this bot's own memory writes
 	// from any turn, drained into State at the next wake (drainMemOwn).
 	memOwnMu sync.Mutex
@@ -221,11 +225,16 @@ func (k *Kernel) stepGuard() int {
 
 // Handle runs one event to a final assistant message, or returns the agent error.
 // A repeated event whose turn is already complete does not call the model again.
-func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
+func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 
 	if err := ev.Validate(); err != nil {
 		return err
 	}
+	defer func() {
+		if handleErr != nil && isResultEvent(ev) {
+			handleErr = errors.Join(ErrPendingResult, handleErr)
+		}
+	}()
 
 	// Once per kernel lifetime, before repairTail: a branch left open by a crash
 	// gets its fork_end so the dangling call on it can be repaired on that branch.
@@ -248,8 +257,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	// The owner can speak into this turn from the moment it exists, so the
 	// time spent on setup (compaction, memory) is not a window where a message
 	// misses it. A message that arrives before the first model call stops
-	// that call before it leaves. A return before the model loop leaves such
-	// a message unread, and its sender answers it.
+	// that call before it leaves. A return before the model loop records a
+	// failure for every accepted message; old handed-off streams cannot retry it.
 	first := &Sink{OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnHandoff: k.OnHandoff}
 	if ev.Source == link.NameTimer {
 		first.OnDelta = nil
@@ -257,7 +266,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 	k.openInterject(t, first)
 	defer func() {
 		if unread := k.closeInterject(t, true); len(unread) > 0 {
-			t.finishSink(Outcome{Unread: unread})
+			t.finishSink(Outcome{Err: k.failInterjections(t, unread)})
 		}
 	}()
 	// A forked turn still belongs to its background goroutine. All other
@@ -304,9 +313,9 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		if err != nil {
 			return err
 		}
-		if turnDone(span, 0) {
+		if (isResultEvent(ev) && reportDelivered(span, ev.ID)) || (!isResultEvent(ev) && turnDone(span, 0)) {
 			t.replyTo = lastReplyTo(span, 0)
-			if k.OnDelta != nil && ev.Source != link.NameTimer {
+			if k.OnDelta != nil && ev.Source != link.NameTimer && !isResultEvent(ev) {
 				if text := lastAssistant(span, 0); text != "" {
 					k.OnDelta(text)
 				}
@@ -364,6 +373,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		entry := bot.Entry{
 			Time:    ev.Time,
 			EventID: ev.ID,
+			Report:  isResultEvent(ev),
 			ReplyTo: ev.ReplyTo,
 			Origin:  bot.OriginOwner,
 			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
@@ -566,13 +576,24 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
+		if isResultEvent(ev) {
+			seq, err := k.Bot.FindEvent(ev.ID)
+			if err != nil {
+				return nil, err
+			}
+			if seq > 0 {
+				continue
+			} // Durable pending result; onIdle delivers it.
+		}
 		msg := k.eventMessage(ev)
 		if hint, ok := subagentReportHint(ev); ok {
 			out = append(out, hint)
 		}
 		out = append(out, msg)
-		if err := k.Inbox.Ack(ev.ID); err != nil {
-			return nil, err
+		if !isResultEvent(ev) {
+			if err := k.Inbox.Ack(ev.ID); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return out, nil

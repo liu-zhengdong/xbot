@@ -200,7 +200,7 @@ func (b *busyRun) scenario(bot string) {
 	}
 	if bot == "s5" {
 		b.check(bot+"/queued", ps[0].m.InitialStatus == "queued", "same-repository B was not queued")
-		b.check(bot+"/queue-notice", strings.Contains(ps[0].m.Reply, "排队"), ps[0].m.Reply)
+		b.check(bot+"/queue-receipt", busyQueuedReceipt(b.srv.Transcript(bot), ps[0].m.Task), "dispatch did not return queued with a queue position")
 	}
 	// Sample the context actually presented to the foreground, not code text.
 	for _, r := range b.stub.Requests() {
@@ -368,6 +368,29 @@ func (b *busyRun) summarize() {
 			}
 		}
 	}
+}
+
+// busyQueuedReceipt checks the executor acknowledgement associated with this
+// task, rather than requiring one particular Chinese phrase in the reply.
+func busyQueuedReceipt(rows []Row, task string) bool {
+	calls := map[string]bool{}
+	for _, row := range rows {
+		for _, tc := range row.ToolCalls {
+			if tc.Function.Name != "dispatch" {
+				continue
+			}
+			var args struct {
+				Task string `json:"task"`
+			}
+			if json.Unmarshal([]byte(tc.Function.Arguments), &args) == nil && strings.Contains(args.Task, task) {
+				calls[tc.ID] = true
+			}
+		}
+		if row.Role == "tool" && calls[row.ToolCallID] && strings.HasPrefix(row.Content, "queued ") && strings.Contains(row.Content, "position ") {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *busyRun) observationLimit(bot string) time.Duration {

@@ -99,7 +99,7 @@ func Run(ctx context.Context, cfg Config) error {
 				continue
 			}
 			handleErr := cfg.K.Handle(ctx, ev)
-			if cfg.K.Inbox != nil {
+			if cfg.K.Inbox != nil && !errors.Is(handleErr, kernel.ErrPendingResult) {
 				if err := cfg.K.Inbox.Ack(ev.ID); err != nil {
 					_ = lock.Release()
 					return err
@@ -111,6 +111,9 @@ func Run(ctx context.Context, cfg Config) error {
 			_ = lock.Release()
 			if handleErr != nil && errors.Is(handleErr, context.Canceled) {
 				return nil
+			}
+			if errors.Is(handleErr, kernel.ErrPendingResult) {
+				return handleErr
 			}
 			continue
 		}
@@ -202,7 +205,8 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 }
 
 // Drain handles every pending event. The caller must hold the handle lock.
-// A handle error is acked, then returned, so a poison event is not retried forever.
+// A handle error is acked, then returned, except a result whose delivery is
+// pending. That event must survive errors and restart until its reply commits.
 func Drain(ctx context.Context, k *kernel.Kernel) error {
 	if k == nil || k.Inbox == nil {
 		return nil
@@ -219,6 +223,9 @@ func Drain(ctx context.Context, k *kernel.Kernel) error {
 			return nil
 		}
 		handleErr := k.Handle(ctx, ev)
+		if errors.Is(handleErr, kernel.ErrPendingResult) {
+			return handleErr
+		}
 		if err := k.Inbox.Ack(ev.ID); err != nil {
 			return err
 		}

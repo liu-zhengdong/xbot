@@ -59,11 +59,20 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	if len(images) > 0 {
 		m.Content = stripPastedNote(m.Content, k.pastedNote(images))
 	}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), EventID: m.ReportID, Report: m.ReportID != "", Reports: m.Reports, ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
 	if err != nil {
 		return 0, err
 	}
 	t.lastRec = seq
+	// The reply and its receipt are one durable append. A crash before Ack
+	// replays the receipt, never the full result.
+	if k.Inbox != nil {
+		for _, id := range m.Reports {
+			if err := k.Inbox.Ack(id); err != nil {
+				return seq, err
+			}
+		}
+	}
 	return seq, nil
 }
 
@@ -100,8 +109,10 @@ type replyProvider struct {
 	accept func(int) bool
 	// onSend runs before the request goes out, so a call that fails or is
 	// cancelled still left the context it was about to send.
-	onSend func(provider.Request)
-	onUse  func(provider.Request, provider.Message)
+	onSend   func(provider.Request)
+	onUse    func(provider.Request, provider.Message)
+	prepare  func(provider.Request) (provider.Request, error)
+	complete func(provider.Request, provider.Message) (provider.Message, error)
 	// fit cuts a request to stay under the context lines (see fit.go).
 	// overflow says the provider rejected it as too long; the cut request is
 	// then sent once more.
@@ -125,6 +136,13 @@ func (s *replyProvider) send(ctx context.Context, req provider.Request, onDelta 
 }
 
 func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+	if s.prepare != nil {
+		var err error
+		req, err = s.prepare(req)
+		if err != nil {
+			return provider.Message{}, err
+		}
+	}
 	raw := req
 	if s.fit != nil {
 		req = s.fit(ctx, raw, false)
@@ -155,6 +173,9 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 				msg.ReplyTo = seq
 			}
 		}
+	}
+	if s.complete != nil {
+		return s.complete(req, msg)
 	}
 	return msg, nil
 }

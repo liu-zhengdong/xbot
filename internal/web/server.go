@@ -980,9 +980,9 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	ev.Images = images
 	if !s.ForkTurns {
 		// The owner's word goes straight into a running turn (ADR 0017).
-		// When the turn took it but ended on an error before reading it, the
-		// message was not recorded, and this request answers it below.
-		if answered, _ := s.interject(w, r, b, ev); answered {
+		// Accepted messages get either a reply or an explicit failed outcome
+		// on the transcript, including messages whose stream already handed off.
+		if s.interject(w, r, b, ev) {
 			return
 		}
 	}
@@ -1137,10 +1137,9 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // interject hands ev to the bot's running turn in this process and streams
-// that turn's answer back on this request. answered is false when no turn
-// took it; unread is set when the turn took it but ended on an error before
-// reading it, and the caller then answers it itself.
-func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, ev link.Event) (answered, unread bool) {
+// that turn's answer back on this request. False means no live turn accepted
+// it. The kernel records each accepted request's failed outcome on errors.
+func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, ev link.Event) bool {
 	rs := &replyStream{w: w}
 	handoff := make(chan struct{})
 	var once sync.Once
@@ -1153,7 +1152,7 @@ func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, e
 	rs.mu.Lock()
 	if !kernel.Interject(b, ev, sink) {
 		rs.mu.Unlock()
-		return false, false
+		return false
 	}
 	startStream(w)
 	rs.mu.Unlock()
@@ -1162,20 +1161,18 @@ func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, e
 	defer rs.close()
 	select {
 	case <-r.Context().Done():
-		return true, false
+		return true
 	case <-handoff:
 		rs.send("done", doneBody{HandedOff: true})
-		return true, false
+		return true
 	case out := <-sink.Done:
 		switch {
-		case len(out.Unread) > 0:
-			return false, true
 		case out.Err != nil:
 			rs.send("error", map[string]string{"error": out.Err.Error()})
 		default:
 			rs.send("done", doneBody{Text: rs.reply(), ReplyTo: out.ReplyTo})
 		}
-		return true, false
+		return true
 	}
 }
 

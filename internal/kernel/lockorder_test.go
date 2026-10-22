@@ -128,7 +128,7 @@ func TestKernelLockCountIsKnown(t *testing.T) {
 	structBody := body[start : start+end]
 	n := strings.Count(structBody, "sync.Mutex")
 	once := strings.Count(structBody, "sync.Once")
-	const wantMutex, wantOnce = 10, 4
+	const wantMutex, wantOnce = 11, 4
 	if n != wantMutex {
 		t.Errorf("Kernel has %s mutexes, want %d; update the package lock-order comment and this count", strconv.Itoa(n), wantMutex)
 	}

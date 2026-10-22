@@ -36,6 +36,10 @@ type Message struct {
 	// own Images field instead.
 	ImageNames []string `json:"-"`
 	Internal   bool     `json:"-"`
+	// ReportID identifies a kernel-delivered result; Reports binds a final
+	// reply to the results it delivered. Neither is supplied by the model.
+	ReportID string   `json:"-"`
+	Reports  []string `json:"-"`
 }
 
 // Image is one picture attached to a message. Data is the raw file bytes.

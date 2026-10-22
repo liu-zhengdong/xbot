@@ -182,6 +182,8 @@ const (
 type Entry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
+	Report  bool             `json:"report,omitempty"`
+	Reports []string         `json:"reports,omitempty"`
 	Message provider.Message `json:"message"`
 	Blob    string           `json:"blob,omitempty"`
 	ReplyTo int              `json:"reply_to,omitempty"`

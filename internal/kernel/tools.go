@@ -253,10 +253,19 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	case link.NameTerminal, link.NameWeb:
 		return nil
 	}
-	if k.alreadyNoted() {
-		return nil
+	var reports []string
+	for _, msg := range produced {
+		if msg.Role == provider.RoleAssistant && len(msg.Reports) > 0 && strings.TrimSpace(msg.Content) != "" {
+			reports = append(reports, strings.TrimSpace(msg.Content))
+		}
 	}
-	text := finalAssistantText(produced)
+	text := strings.Join(reports, "\n\n")
+	if len(reports) == 0 {
+		if k.alreadyNoted() {
+			return nil
+		}
+		text = finalAssistantText(produced)
+	}
 	if text == "" || text == "SILENT" {
 		return nil
 	}
