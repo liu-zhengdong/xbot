@@ -86,6 +86,28 @@ open_page() {
 	command -v open >/dev/null 2>&1 && open "$URL" || echo "xbot-dev: 打开 $URL"
 }
 
+# Read data-root credentials literally. Never source shell code or print values.
+load_env() {
+ [ -f "$DATA/env" ] || return 0
+ local line key value
+ while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%$'\r'}"
+  [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+  [[ "$line" = *=* ]] || continue
+  key="${line%%=*}"
+  key="${key#"${key%%[![:space:]]*}"}"
+  key="${key%"${key##*[![:space:]]}"}"
+  [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || continue
+  value="${line#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "$value" in
+   \"*\"|\'*\') value="${value:1:${#value}-2}" ;;
+  esac
+  if [ "${!key+x}" != x ]; then export "$key=$value"; fi
+ done < "$DATA/env"
+}
+
 launch() {
 	if pid="$(running_pid)"; then
 		echo "xbot-dev: 已经在跑（pid ${pid}）$URL"
@@ -97,6 +119,7 @@ launch() {
 	fi
 	build
 	seed_data
+	load_env
 	mkdir -p "$STATE"
 	rm -f "$PIDFILE"
 	echo "---- $(date '+%Y-%m-%d %H:%M:%S') start $(sed -n 's/^commit=//p' "$INFO") ----" >>"$LOG"

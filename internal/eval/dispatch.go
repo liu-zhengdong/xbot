@@ -19,11 +19,12 @@ import (
 type recordExec struct {
 	mu     sync.Mutex
 	starts []exec.StartRequest
+	seeded []exec.Task
 	live   map[string]bool
 	events chan exec.Event
 }
 
-func (r *recordExec) Start(_ context.Context, req exec.StartRequest) error {
+func (r *recordExec) Start(_ context.Context, req exec.StartRequest) (exec.Task, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.starts = append(r.starts, req)
@@ -31,7 +32,7 @@ func (r *recordExec) Start(_ context.Context, req exec.StartRequest) error {
 		r.live = map[string]bool{}
 	}
 	r.live[req.ID] = true
-	return nil
+	return exec.Task{ID: req.ID, Task: req.Task, Status: "running"}, nil
 }
 
 func (r *recordExec) Control(_ context.Context, id string, _ exec.Control) error {
@@ -44,6 +45,18 @@ func (r *recordExec) Control(_ context.Context, id string, _ exec.Control) error
 }
 
 func (r *recordExec) Events() <-chan exec.Event { return r.events }
+
+func (r *recordExec) Tasks() ([]exec.Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list := append([]exec.Task{}, r.seeded...)
+	for _, req := range r.starts {
+		if r.live[req.ID] {
+			list = append(list, exec.Task{ID: req.ID, Task: req.Task, Status: "running"})
+		}
+	}
+	return list, nil
+}
 
 // gradeDispatch checks the dispatch calls the foreground made.
 func gradeDispatch(want *DispatchCheck, used []ToolUse) []string {
@@ -121,6 +134,7 @@ func seedDispatchAgents(b *bot.Bot, c Case) (*recordExec, error) {
 			return nil, err
 		}
 		r.live[a.ID] = true
+		r.seeded = append(r.seeded, exec.Task{ID: a.ID, Task: a.Task, Status: a.Status})
 	}
 	return r, nil
 }

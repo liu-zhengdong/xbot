@@ -101,12 +101,9 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	resolved, _, err := config.Resolve(root, b.Config().Provider, b.Config().Model, config.Getenv)
+	resolved, err := resolveBotModel(root, b.Config())
 	if err != nil {
 		return nil, person.Person{}, err
-	}
-	if resolved.APIKey == "" {
-		return nil, person.Person{}, fmt.Errorf("%s is empty", resolved.KeyEnv)
 	}
 	client := &provider.Client{BaseURL: resolved.BaseURL, APIKey: resolved.APIKey, Model: resolved.Model, Thinking: resolved.Thinking}
 	// The kernel derives both context lines from the bound model on each use,
@@ -439,6 +436,31 @@ type serveConfig struct {
 	DeliverTimers func(root string, now time.Time) error
 }
 
+// resolveBotModel is shared by startup preflight and the actual kernel path.
+func resolveBotModel(root string, cfg bot.Config) (config.ModelConfig, error) {
+	model, _, err := config.Resolve(root, cfg.Provider, cfg.Model, config.Getenv)
+	if err != nil {
+		return config.ModelConfig{}, fmt.Errorf("bot %s: %w", cfg.Name, err)
+	}
+	if model.APIKey == "" {
+		return config.ModelConfig{}, fmt.Errorf("bot %s: %s is empty", cfg.Name, model.KeyEnv)
+	}
+	return model, nil
+}
+
+func checkServeModels(root string) error {
+	cfgs, err := bot.List(root)
+	if err != nil {
+		return err
+	}
+	for _, cfg := range cfgs {
+		if _, err := resolveBotModel(root, cfg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	lock, ok, err := fsutil.TryLock(filepath.Join(root, "serve.lock"))
 	if err != nil {
@@ -514,6 +536,13 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	}
 	if err := ensureSeed(root); err != nil {
 		return err
+	}
+	// The serve command has no key-entry screen: fail before accepting work.
+	// The desktop app must still reach its existing first-run key setup screen.
+	if !cfg.App {
+		if err := checkServeModels(root); err != nil {
+			return err
+		}
 	}
 	migrateServeRoutines(root)
 	// One synchronous check before the server and the bot pass start, so a

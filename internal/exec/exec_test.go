@@ -52,7 +52,7 @@ func TestQueueRunsAfterCurrent(t *testing.T) {
 	}()
 	dir := t.TempDir()
 	id := "sa_abcdef01"
-	if err := loc.Start(ctx, StartRequest{ID: id, Task: "first", Mode: ModeBrief, Dir: dir}); err != nil {
+	if _, err := loc.Start(ctx, StartRequest{ID: id, Task: "first", Mode: ModeBrief, Dir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(30 * time.Millisecond)
@@ -75,32 +75,48 @@ func TestQueueRunsAfterCurrent(t *testing.T) {
 	t.Fatal(subFile(t, dir))
 }
 
-func TestMaxConcurrent(t *testing.T) {
+func TestMaxConcurrentQueues(t *testing.T) {
 	block := make(chan struct{})
 	loc := NewLocal(Limits{MaxConcurrent: 2, Timeout: 10 * time.Second, ProgressEvery: -1})
 	loc.Prov = &blockProv{block: block}
 	ctx := context.Background()
+	var release sync.Once
+	defer func() {
+		release.Do(func() { close(block) })
+		until := time.Now().Add(3 * time.Second)
+		for taskCount(loc) > 0 && time.Now().Before(until) {
+			time.Sleep(time.Millisecond)
+		}
+	}()
 	dir := t.TempDir()
 	for _, id := range []string{"sa_aaaaaaaa", "sa_bbbbbbbb"} {
-		if err := loc.Start(ctx, StartRequest{ID: id, Task: "t", Mode: ModeBrief, Dir: dir + "/" + id}); err != nil {
+		if _, err := loc.Start(ctx, StartRequest{ID: id, Task: "t", Mode: ModeBrief, Dir: dir + "/" + id}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	err := loc.Start(ctx, StartRequest{ID: "sa_cccccccc", Task: "t", Mode: ModeBrief, Dir: dir + "/c"})
-	if err == nil || !strings.Contains(err.Error(), "max concurrent") {
+	_, err := loc.Start(ctx, StartRequest{ID: "sa_cccccccc", Task: "t", Mode: ModeBrief, Dir: dir + "/c"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	close(block)
+	tasks, _ := loc.Tasks()
+	if len(tasks) != 3 || tasks[2].ID != "sa_cccccccc" || tasks[2].Status != "queued" || tasks[2].Position != 1 {
+		t.Fatalf("tasks = %+v", tasks)
+	}
+	meta, err := ReadMeta(dir + "/c")
+	if err != nil || meta.Status != "queued" {
+		t.Fatalf("queued record = %+v, %v", meta, err)
+	}
+	release.Do(func() { close(block) })
 	got := 0
 	deadline := time.Now().Add(2 * time.Second)
-	for got < 2 && time.Now().Before(deadline) {
+	for got < 3 && time.Now().Before(deadline) {
 		select {
 		case <-loc.Events():
 			got++
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
-	if got != 2 {
+	if got != 3 {
 		t.Fatalf("jobs still running, events %d", got)
 	}
 }
@@ -203,7 +219,7 @@ func TestSubagentImageRoundDropsAfterReply(t *testing.T) {
 	}()
 	dir := t.TempDir()
 	id := "sa_imground1"
-	if err := loc.Start(ctx, StartRequest{ID: id, Task: "look", Mode: ModeBrief, Dir: dir}); err != nil {
+	if _, err := loc.Start(ctx, StartRequest{ID: id, Task: "look", Mode: ModeBrief, Dir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
@@ -305,7 +321,7 @@ func TestSubagentImageStreakKeepsNewest(t *testing.T) {
 	}()
 	dir := t.TempDir()
 	id := "sa_imgstreak"
-	if err := loc.Start(ctx, StartRequest{ID: id, Task: "look", Mode: ModeBrief, Dir: dir}); err != nil {
+	if _, err := loc.Start(ctx, StartRequest{ID: id, Task: "look", Mode: ModeBrief, Dir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -374,7 +390,7 @@ func TestSameResourceQueues(t *testing.T) {
 	dir := t.TempDir()
 	start := func(id, res string) {
 		t.Helper()
-		if err := loc.Start(ctx, StartRequest{ID: id, Task: "t", Mode: ModeBrief, Dir: dir + "/" + id, Resource: res}); err != nil {
+		if _, err := loc.Start(ctx, StartRequest{ID: id, Task: "t", Mode: ModeBrief, Dir: dir + "/" + id, Resource: res}); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -90,12 +90,12 @@ type modelExecutor struct {
 	k *Kernel
 }
 
-func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) error {
+func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) (exec.Task, error) {
 	req.Workspace = e.k.WorkDir
 	if req.Mode != exec.ModeFork {
 		_, overlay, err := e.k.modelOverlay()
 		if err != nil {
-			return err
+			return exec.Task{}, err
 		}
 		if overlay != "" {
 			if strings.TrimSpace(req.Persona) == "" {
@@ -349,7 +349,7 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 		}
 		req.Model = ep
 	}
-	if err := k.ensureExec().Start(ctx, req); err != nil {
+	if _, err := k.ensureExec().Start(ctx, req); err != nil {
 		return "", err
 	}
 	return "started " + id, nil

@@ -75,7 +75,7 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 	if b.real != nil && bot != "control" {
 		owners := busyOwners(req)
 		hold := ""
-		if bot == "s2" && len(owners) == 1 && strings.Contains(joined(req), "dispatched sa_") {
+		if bot == "s2" && len(owners) == 1 && strings.Contains(joined(req), "started sa_") {
 			hold = "model-s2"
 		}
 		if bot == "s3" && len(owners) == 1 && strings.Contains(lastUser(req), "RESULT_BUSY_s3_A") {
@@ -176,10 +176,13 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 		return true
 	}
 	// Follow the real tool result: do not invent a queue acknowledgement that
-	// dispatch itself did not return. That missing acknowledgement is a baseline gap.
+	// dispatch itself did not return. A queued acknowledgement must come from the executor.
 	text := "已派出，结果回来后转告。"
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		if req.Messages[i].Role == "tool" {
+			if strings.HasPrefix(req.Messages[i].Content, "queued ") {
+				text = "排队中，有空位后自动开始，结果回来后转告。"
+			}
 			if strings.Contains(req.Messages[i].Content, "error:") {
 				text = req.Messages[i].Content
 			}

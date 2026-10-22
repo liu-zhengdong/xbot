@@ -98,11 +98,16 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 		TimeoutSec: int(ty.Budget / time.Second),
 		Resource:   writeResource(ty, cwd),
 	}
-	if err := k.ensureExec().Start(ctx, req); err != nil {
+	live, err := k.ensureExec().Start(ctx, req)
+	if err != nil {
 		k.dropScope(id)
 		return "", err
 	}
-	return fmt.Sprintf("dispatched %s as %s (budget %s). Its result arrives as an event; tell the owner it has started, and do not do the task yourself.", id, ty.Name, ty.Budget), nil
+	if live.Status == "queued" {
+		return fmt.Sprintf("queued %s as %s (position %d, budget %s). Tell the owner it is queued, not started. It starts automatically when a slot and its resource are free; do not do the task yourself.", id, ty.Name, live.Position, ty.Budget), nil
+	}
+
+	return fmt.Sprintf("started %s as %s (budget %s). Its result arrives as an event; tell the owner it has started, and do not do the task yourself.", id, ty.Name, ty.Budget), nil
 }
 
 // writeResource is what a subagent of type ty may write when it starts in

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 const maxBody = 8 << 20
@@ -29,6 +30,10 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/start", s.start)
+	mux.HandleFunc("GET /v1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		list, _ := s.Local.Tasks()
+		writeJSON(w, http.StatusOK, list)
+	})
 	mux.HandleFunc("/v1/message", s.message)
 	mux.HandleFunc("/v1/events", s.events)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,11 +73,12 @@ func (s *Server) start(w http.ResponseWriter, r *http.Request) {
 	if err := decode(w, r, &req); err != nil {
 		return
 	}
-	if err := s.Local.Start(r.Context(), req); err != nil {
+	task, err := s.Local.Start(r.Context(), req)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"id": req.ID, "status": "started"})
+	writeJSON(w, http.StatusOK, task)
 }
 
 func (s *Server) message(w http.ResponseWriter, r *http.Request) {
@@ -233,18 +239,19 @@ func (r *Remote) Events() <-chan Event { return r.events }
 func (r *Remote) Close() { r.cancel() }
 
 // Start asks the runner to launch a subagent.
-func (r *Remote) Start(ctx context.Context, req StartRequest) error {
+func (r *Remote) Start(ctx context.Context, req StartRequest) (Task, error) {
 	if err := r.ensure(); err != nil {
-		return err
+		return Task{}, err
 	}
 	_, already := r.active.LoadOrStore(req.ID, req.Dir)
-	if err := r.post(ctx, "/v1/start", req); err != nil {
+	var task Task
+	if err := r.postResult(ctx, "/v1/start", req, &task); err != nil {
 		if !already {
 			r.active.Delete(req.ID)
 		}
-		return err
+		return Task{}, err
 	}
-	return nil
+	return task, nil
 }
 
 // ActiveCount reads only live request metadata, never finished histories.
@@ -263,6 +270,37 @@ func (r *Remote) ActiveCount() int {
 		return true
 	})
 	return n
+}
+
+// Tasks uses the runner's admission snapshot; reading meta files cannot tell
+// the current queue position. Keep only requests owned by this client.
+func (r *Remote) Tasks() ([]Task, error) {
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.BaseURL+"/v1/tasks", nil)
+	if err != nil {
+		return nil, err
+	}
+	r.authorize(req)
+	ctx, cancel := context.WithTimeout(req.Context(), 5*time.Second)
+	defer cancel()
+	resp, err := r.client().Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("runner: tasks %s", resp.Status)
+	}
+	var list []Task
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&list); err != nil {
+		return nil, err
+	}
+	out := list[:0]
+	for _, task := range list {
+		if _, ok := r.active.Load(task.ID); ok {
+			out = append(out, task)
+		}
+	}
+	return out, nil
 }
 
 // Control sends steer, queue, interrupt, or cancel.
@@ -320,6 +358,10 @@ func (r *Remote) read(body io.ReadCloser) {
 }
 
 func (r *Remote) post(ctx context.Context, path string, body any) error {
+	return r.postResult(ctx, path, body, nil)
+}
+
+func (r *Remote) postResult(ctx context.Context, path string, body, result any) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -338,6 +380,9 @@ func (r *Remote) post(ctx context.Context, path string, body any) error {
 	if resp.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return fmt.Errorf("runner: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	if result != nil {
+		return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result)
 	}
 	return nil
 }

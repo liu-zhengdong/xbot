@@ -345,7 +345,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) error {
 		return err
 	}
 	if seq == 0 && t.turnTrusted {
-		if note := backgroundNote(k.Backgrounds()); note != "" {
+		note, err := k.backgroundNote()
+		if err != nil {
+			return err
+		}
+		if note != "" {
 			if err := k.Bot.Append(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: note}}); err != nil {
 				return err
 			}

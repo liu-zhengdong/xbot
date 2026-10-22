@@ -85,7 +85,7 @@ func TestNotableExecutionMetaAndReportStayTogether(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			dir := t.TempDir()
-			if err := loc.Start(ctx, StartRequest{ID: "sa_0123456789abcdef", Task: "test", Mode: ModeBrief, Dir: dir, Workspace: work}); err != nil {
+			if _, err := loc.Start(ctx, StartRequest{ID: "sa_0123456789abcdef", Task: "test", Mode: ModeBrief, Dir: dir, Workspace: work}); err != nil {
 				t.Fatal(err)
 			}
 			var ev Event
@@ -137,7 +137,7 @@ func TestRemotePreservesWorkspaceAndNotable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	dir := t.TempDir()
-	if err := remote.Start(ctx, StartRequest{ID: "sa_0000000000000009", Mode: ModeBrief, Task: "write", Dir: dir, Workspace: work}); err != nil {
+	if _, err := remote.Start(ctx, StartRequest{ID: "sa_0000000000000009", Mode: ModeBrief, Task: "write", Dir: dir, Workspace: work}); err != nil {
 		t.Fatal(err)
 	}
 	for {

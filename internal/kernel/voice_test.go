@@ -95,7 +95,10 @@ type voiceExec struct {
 	req exec.StartRequest
 }
 
-func (e *voiceExec) Start(_ context.Context, req exec.StartRequest) error { e.req = req; return nil }
+func (e *voiceExec) Start(_ context.Context, req exec.StartRequest) (exec.Task, error) {
+	e.req = req
+	return exec.Task{ID: req.ID, Task: req.Task, Status: "running"}, nil
+}
 func TestBriefWorkersReceiveModelSupplement(t *testing.T) {
 	b := testBot(t)
 	if err := b.SetBinding("deepseek", "group/auto-deepseek-v4-1-flash"); err != nil {
@@ -105,7 +108,7 @@ func TestBriefWorkersReceiveModelSupplement(t *testing.T) {
 	sink := &voiceExec{}
 	e := modelExecutor{Executor: sink, k: k}
 	for _, mode := range []string{exec.ModeBrief, exec.ModeFork} {
-		if err := e.Start(context.Background(), exec.StartRequest{Mode: mode, Persona: "worker"}); err != nil {
+		if _, err := e.Start(context.Background(), exec.StartRequest{Mode: mode, Persona: "worker"}); err != nil {
 			t.Fatal(err)
 		}
 		has := strings.Contains(sink.req.Persona, "Act once")
@@ -114,3 +117,5 @@ func TestBriefWorkersReceiveModelSupplement(t *testing.T) {
 		}
 	}
 }
+
+func (e *voiceExec) Tasks() ([]exec.Task, error) { return nil, nil }

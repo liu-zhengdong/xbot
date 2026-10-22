@@ -119,11 +119,18 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 		AnswerQuestions(b, ev.Content)
 	}
 	msg := lt.k.eventMessage(ev)
+	note, err := lt.k.backgroundNote()
+	if err != nil {
+		return false
+	}
 	t := lt.t
 	t.inter.mu.Lock()
 	if !t.inter.open {
 		t.inter.mu.Unlock()
 		return false
+	}
+	if note != "" {
+		t.inter.queue = append(t.inter.queue, provider.Message{Role: provider.RoleUser, Content: note, Internal: true})
 	}
 	t.inter.queue = append(t.inter.queue, msg, interjectNote())
 	prev := t.inter.sink

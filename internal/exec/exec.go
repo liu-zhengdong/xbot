@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -116,9 +117,20 @@ type Event struct {
 
 // Executor starts subagents and controls them. Events is the stream back to main.
 type Executor interface {
-	Start(ctx context.Context, req StartRequest) error
+	Start(ctx context.Context, req StartRequest) (Task, error)
 	Control(ctx context.Context, id string, c Control) error
 	Events() <-chan Event
+	// Tasks returns only accepted running and queued work, in stable order.
+	Tasks() ([]Task, error)
+}
+
+// Task is a live executor snapshot. Position is 1-based in the waiting queue,
+// and zero for running work. The executor alone owns admission and ordering.
+type Task struct {
+	ID       string `json:"id"`
+	Task     string `json:"task"`
+	Status   string `json:"status"`
+	Position int    `json:"position,omitempty"`
 }
 
 // Local runs each subagent as a goroutine.
@@ -136,7 +148,7 @@ type Local struct {
 	Wrap     func(req StartRequest, p provider.Provider, pre int) provider.Provider
 	mu       sync.Mutex
 	jobs     map[string]*job
-	waiting  []*job // queued behind a job on the same resource, oldest first
+	waiting  []*job // capacity/resource waiters, oldest first
 	events   chan Event
 	limits   Limits
 	prepared bool
@@ -186,17 +198,17 @@ func (l *Local) listTools(req StartRequest) []tools.Tool {
 }
 
 // Start launches a subagent. It returns when the goroutine is running, not when the task finishes.
-func (l *Local) Start(ctx context.Context, req StartRequest) error {
+func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 	l.prepare()
 	if err := ctx.Err(); err != nil {
-		return err
+		return Task{}, err
 	}
 	if err := validateStart(req); err != nil {
-		return err
+		return Task{}, err
 	}
 	p, err := l.providerFor(req)
 	if err != nil {
-		return err
+		return Task{}, err
 	}
 	steps := req.MaxSteps
 	if steps <= 0 || steps > l.limits.MaxSteps {
@@ -236,29 +248,28 @@ func (l *Local) Start(ctx context.Context, req StartRequest) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if _, ok := l.jobs[req.ID]; ok || l.waitingIndex(req.ID) >= 0 {
-		return fmt.Errorf("exec: %s is already running", req.ID)
+		return Task{}, fmt.Errorf("exec: %s is already running", req.ID)
 	}
-	if l.busyLocked(j.resource) {
+	if l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent {
 		if len(l.waiting) >= maxWaiting {
-			return fmt.Errorf("exec: %d subagents already queued", maxWaiting)
+			return Task{}, fmt.Errorf("exec: %d subagents already queued", maxWaiting)
 		}
 		// The record exists from the start, so read_subagent and the
 		// status list show it as queued.
 		if err := os.MkdirAll(j.dir, 0700); err != nil {
-			return err
+			return Task{}, err
 		}
-		_ = writeMeta(j.dir, Meta{ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind})
+		if err := writeMeta(j.dir, Meta{ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind}); err != nil {
+			return Task{}, err
+		}
 		l.waiting = append(l.waiting, j)
-		return nil
-	}
-	if len(l.jobs) >= l.limits.MaxConcurrent {
-		return fmt.Errorf("exec: max concurrent subagents (%d)", l.limits.MaxConcurrent)
+		return Task{ID: j.id, Task: j.task, Status: statusQueued, Position: len(l.waiting)}, nil
 	}
 	l.launchLocked(j)
-	return nil
+	return Task{ID: j.id, Task: j.task, Status: statusRunning}, nil
 }
 
-// maxWaiting caps the queue behind busy resources.
+// maxWaiting caps the shared capacity/resource waiting queue.
 const maxWaiting = 8
 
 // busyLocked reports whether a running job holds res. l.mu must be held.
@@ -292,18 +303,44 @@ func (l *Local) launchLocked(j *job) {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		delete(l.jobs, j.id)
+		l.drainLocked()
+	}()
+}
+
+// drainLocked fills free slots with the oldest resource-eligible waiter.
+// A blocked resource never prevents independent work from using a free slot.
+func (l *Local) drainLocked() {
+	for len(l.jobs) < l.limits.MaxConcurrent {
+		next := -1
 		for i, w := range l.waiting {
-			if len(l.jobs) >= l.limits.MaxConcurrent {
-				return
+			if !l.busyLocked(w.resource) {
+				next = i
+				break
 			}
-			if l.busyLocked(w.resource) {
-				continue
-			}
-			l.waiting = append(l.waiting[:i], l.waiting[i+1:]...)
-			l.launchLocked(w)
+		}
+		if next < 0 {
 			return
 		}
-	}()
+		w := l.waiting[next]
+		l.waiting = append(l.waiting[:next], l.waiting[next+1:]...)
+		l.launchLocked(w)
+	}
+}
+
+// Tasks reads live admission state without scanning completed histories.
+func (l *Local) Tasks() ([]Task, error) {
+	l.prepare()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]Task, 0, len(l.jobs)+len(l.waiting))
+	for _, j := range l.jobs {
+		out = append(out, Task{ID: j.id, Task: j.task, Status: statusRunning})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	for i, j := range l.waiting {
+		out = append(out, Task{ID: j.id, Task: j.task, Status: statusQueued, Position: i + 1})
+	}
+	return out, nil
 }
 
 // Control delivers steer, queue, interrupt, or cancel.
