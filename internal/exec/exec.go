@@ -127,6 +127,7 @@ type Executor interface {
 // Task is a live executor snapshot. Position is 1-based in the waiting queue,
 // and zero for running work. The executor alone owns admission and ordering.
 type Task struct {
+	Blocked  bool   `json:"blocked,omitempty"`
 	ID       string `json:"id"`
 	Task     string `json:"task"`
 	Status   string `json:"status"`
@@ -259,14 +260,15 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 		if err := os.MkdirAll(j.dir, 0700); err != nil {
 			return Task{}, err
 		}
-		if err := writeMeta(j.dir, Meta{ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind}); err != nil {
+		pid, start := tools.CurrentProcess()
+		if err := writeMeta(j.dir, Meta{PID: pid, ProcStart: start, ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind}); err != nil {
 			return Task{}, err
 		}
 		l.waiting = append(l.waiting, j)
 		return Task{ID: j.id, Task: j.task, Status: statusQueued, Position: len(l.waiting)}, nil
 	}
 	l.launchLocked(j)
-	return Task{ID: j.id, Task: j.task, Status: statusRunning}, nil
+	return Task{ID: j.id, Task: j.task, Status: statusRunning, Blocked: j.isBlocked()}, nil
 }
 
 // maxWaiting caps the shared capacity/resource waiting queue.
@@ -334,7 +336,7 @@ func (l *Local) Tasks() ([]Task, error) {
 	defer l.mu.Unlock()
 	out := make([]Task, 0, len(l.jobs)+len(l.waiting))
 	for _, j := range l.jobs {
-		out = append(out, Task{ID: j.id, Task: j.task, Status: statusRunning})
+		out = append(out, Task{ID: j.id, Task: j.task, Status: statusRunning, Blocked: j.isBlocked()})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	for i, j := range l.waiting {

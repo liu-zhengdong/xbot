@@ -26,6 +26,7 @@ const SubPersona = "You are a subagent working for the main bot. Complete the as
 const reportBytes = 4096
 
 type job struct {
+	blocked       bool
 	id            string
 	task          string
 	mode          string
@@ -181,11 +182,19 @@ func runLoop(j *job) {
 		if len(last.ToolCalls) == 0 && last.Role != "" {
 			text := strings.TrimSpace(last.Content)
 			if strings.HasPrefix(text, "BLOCKED") {
+				j.mu.Lock()
+				j.blocked = true
+				j.mu.Unlock()
+				j.writeStatus(statusRunning, "")
 				j.parent.emit(Event{AgentID: j.id, Kind: EvBlocked, Text: clipText(text, 2048)})
 				if err := j.wait(ctx); err != nil {
 					j.finish(statusFromCtx(ctx), EvFailed, statusText(ctx))
 					return
 				}
+				j.mu.Lock()
+				j.blocked = false
+				j.mu.Unlock()
+				j.writeStatus(statusRunning, "")
 				continue
 			}
 			if steered {
@@ -294,15 +303,25 @@ func (j *job) appendUser(msgs *[]provider.Message, text string) error {
 }
 
 func (j *job) finish(status, kind, text string) {
-	text = clipText(strings.TrimSpace(text), reportBytes)
+	j.mu.Lock()
+	j.blocked = false
+	j.mu.Unlock()
+	text = strings.TrimSpace(text)
 	if text == "" {
 		text = status
 	}
-	j.writeStatus(status, text)
-	if line := notable.Line(j.notable.Items()); line != "" {
-		text = clipText(text, reportBytes-len(line)-2) + "\n\n" + line
+	summary := clipText(text, reportBytes)
+	line := notable.Line(j.notable.Items())
+	if line != "" {
+		text += "\n\n" + line
 	}
-	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: text})
+	report, err := resultText(j.dir, text, line)
+	if err != nil {
+		status, kind, report = statusFailed, EvFailed, "保存任务结果失败："+err.Error()
+		summary = report
+	}
+	j.writeStatus(status, summary)
+	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: report})
 }
 
 func initialMessages(j *job) []provider.Message {
@@ -383,7 +402,8 @@ func statusText(ctx context.Context) string {
 func (j *job) writeStatus(status, summary string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	meta := Meta{ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep, Notable: j.notable.Items()}
+	pid, start := tools.CurrentProcess()
+	meta := Meta{PID: pid, ProcStart: start, ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep, Notable: j.notable.Items(), Blocked: j.blocked}
 	if status != statusRunning && status != statusQueued {
 		meta.FinishedAt = time.Now().UTC()
 	}

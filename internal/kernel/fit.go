@@ -3,7 +3,9 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
@@ -196,13 +198,11 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 	turns := make([]provider.Message, 0, keep-start)
 	for i := start; i < keep; i++ {
 		m := msgs[i]
-		if seq, ok := f.omitted[i]; ok {
-			m = f.omittedResult(m, seq)
-		}
+		// Summarize the original facts, not the omission placeholders sent earlier.
 		m.Images = nil
 		turns = append(turns, m)
 	}
-	text, err := k.compactor(turnSeqOf(ctx)).Compact(ctx, f.summary, turns)
+	text, err := k.foldFacts(ctx, f.summary, turns)
 	if err != nil {
 		return err
 	}
@@ -214,6 +214,70 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 		f.from, f.to = 0, 0
 	}
 	return nil
+}
+
+// foldFacts uses the existing compactor in bounded batches. Restoring omitted
+// originals must not turn the summary call itself into an oversized request.
+func (k *Kernel) foldFacts(ctx context.Context, prior string, msgs []provider.Message) (string, error) {
+	limit := min(256<<10, max(16<<10, k.ceiling()*2))
+	// Half the batch is reserved for the previous 8 KiB summary, rules and JSON.
+	partLimit := limit / 2
+	var batch []provider.Message
+	size := 0
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		text, err := k.compactor(turnSeqOf(ctx)).Compact(ctx, strings.TrimSpace(prior+"\n"+summaryFacts), batch)
+		if err != nil {
+			return err
+		}
+		prior = text
+		batch = nil
+		size = 0
+		return nil
+	}
+	for _, msg := range msgs {
+		text := msg.Content
+		for _, tc := range msg.ToolCalls {
+			text += "\n tool " + tc.Function.Name + " " + tc.Function.Arguments
+		}
+		for len(text) > partLimit {
+			n := partLimit
+			for n > 0 && !utf8.RuneStart(text[n]) {
+				n--
+			}
+			part := provider.Message{Role: msg.Role, Content: text[:n]}
+			if size+len(part.Content) > partLimit {
+				if err := flush(); err != nil {
+					return "", err
+				}
+			}
+			batch = append(batch, part)
+			size += len(part.Content) + 64
+			text = text[n:]
+			if err := flush(); err != nil {
+				return "", err
+			}
+			msg.ToolCalls = nil
+		}
+		// Keep the original structured message when it did not require splitting.
+		if msg.ToolCalls == nil {
+			msg.Content = text
+		}
+		n := len(text) + 64
+		if size+n > partLimit {
+			if err := flush(); err != nil {
+				return "", err
+			}
+		}
+		batch = append(batch, msg)
+		size += n
+	}
+	if err := flush(); err != nil {
+		return "", err
+	}
+	return prior, nil
 }
 
 // fit returns req cut to fit. overflow says the provider already rejected it

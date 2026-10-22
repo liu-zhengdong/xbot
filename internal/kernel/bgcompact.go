@@ -224,7 +224,7 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 			From: job.From, To: job.To, Text: job.Summary, Focus: "background", At: k.now(),
 		})
 		k.refreshMemSnap(context.Background(), &st)
-		if err := k.Bot.SaveState(st); err != nil {
+		if err := k.saveState(st); err != nil {
 			return st, false, err
 		}
 		changed = true

@@ -40,7 +40,7 @@ func TestModelOverlayAppendsAfterRulesAndShowsInEnv(t *testing.T) {
 		t.Fatalf("overlay after links\n%s", sys)
 	}
 	updates := envUpdates(t, b)
-	if len(updates) == 0 || !strings.Contains(updates[0], "overlay: deepseek/deepseek-chat ") || !strings.Contains(updates[0], note) {
+	if len(updates) == 0 || !strings.Contains(strings.Join(updates, "\n"), "overlay: deepseek/deepseek-chat ") || !strings.Contains(strings.Join(updates, "\n"), note) {
 		t.Fatalf("env %v", updates)
 	}
 }
@@ -56,7 +56,7 @@ func TestUnboundBotShowsNoOverlay(t *testing.T) {
 		t.Fatal(p.reqs[0].Messages[0].Content)
 	}
 	updates := envUpdates(t, b)
-	if len(updates) == 0 || !strings.Contains(updates[0], "overlay: none") {
+	if len(updates) == 0 || strings.Contains(strings.Join(updates, "\n"), "<model_overlay>") {
 		t.Fatalf("env %v", updates)
 	}
 }

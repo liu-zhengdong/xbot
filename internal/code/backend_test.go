@@ -318,3 +318,27 @@ func newCodeServer(t *testing.T, svc *Service) string {
 	t.Cleanup(ui.Close)
 	return ui.URL
 }
+
+func TestRecoverKeepsQueuedAndPromotedBackendTasks(t *testing.T) {
+	l, work := testLink(t)
+	hold := newHold()
+	l.UseProvider(hold)
+	mustStart(t, l, work, 4, 30, "A")
+	<-hold.entered
+	b := strings.TrimPrefix(mustStart(t, l, work, 4, 30, "B"), "queued ")
+	fresh := Open(filepath.Dir(l.rec.Dir), l.inbox)
+	if err := fresh.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	m, err := l.rec.Get(b)
+	if err != nil || m.Status != StatusQueued || m.PID == 0 {
+		close(hold.release)
+		t.Fatalf("live queued interrupted: %+v %v", m, err)
+	}
+	close(hold.release)
+	waitCode(t, l, 2)
+	m, err = l.rec.Get(b)
+	if err != nil || m.Status != StatusDone || m.PID == 0 {
+		t.Fatalf("promoted task lost ownership: %+v %v", m, err)
+	}
+}

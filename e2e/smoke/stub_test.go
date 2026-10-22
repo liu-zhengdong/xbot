@@ -467,13 +467,12 @@ func joined(req stubRequest) string {
 	return b.String()
 }
 
-// lastUser is the newest user line. In a turn that took in a newer owner
-// message this is the kernel's internal note, so scripts that span both lines
-// look at the whole request instead.
+// lastUser ignores environment stream updates: they describe the surroundings,
+// not a new instruction for the scripted foreground model.
 func lastUser(req stubRequest) string {
 	out := ""
 	for _, m := range req.Messages {
-		if m.Role == "user" {
+		if m.Role == "user" && !strings.HasPrefix(m.Content, "<environment_") {
 			out = m.Content
 		}
 	}
@@ -485,7 +484,7 @@ func lastUser(req stubRequest) string {
 func sawTool(req stubRequest, name string) bool {
 	saw := false
 	for _, m := range req.Messages {
-		if m.Role == "user" {
+		if m.Role == "user" && !strings.HasPrefix(m.Content, "<environment_") {
 			saw = false
 		}
 		for _, raw := range m.ToolCalls {

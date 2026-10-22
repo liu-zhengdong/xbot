@@ -269,7 +269,7 @@ func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (
 		From: from, To: to, Text: text, Focus: focus, At: k.now(),
 	})
 	k.refreshMemSnap(ctx, &st)
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveState(st); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("compacted %d-%d", from, to), nil
@@ -543,7 +543,7 @@ func (k *Kernel) foldBlocks(ctx context.Context, st bot.State) (bot.State, error
 	st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 		From: first, To: last, Text: text, Focus: "folded", At: k.now(),
 	})
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveState(st); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -579,7 +579,7 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 		From: from, To: to, Text: text, Focus: "automatic", At: k.now(),
 	})
 	k.refreshMemSnap(ctx, &st)
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveState(st); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -682,10 +682,13 @@ func toolBoundary(entries []bot.Entry, base, from, to int) error {
 	return nil
 }
 
+const summaryFacts = "Preserve each task's identity, conclusion, key numbers, source sequence and result-file path; keep unfinished work, pending owner requests and decisions, actions already executed, and what the bot already told the owner. Preserve the latest environment values and identify whose person facts they are. Never replace results with only an already-reported label or confuse different tasks or people."
+
 func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bot.SummaryBlock, from, to int, focus string) (string, error) {
 	if k.Compactor == nil {
 		return "", errors.New("compact: context exceeded and no compactor is configured")
 	}
+	focus = strings.TrimSpace(focus + "\n" + summaryFacts)
 	var prior strings.Builder
 	for _, b := range blocks {
 		if b.From >= from && b.To <= to && !(b.From == from && b.To == to) {

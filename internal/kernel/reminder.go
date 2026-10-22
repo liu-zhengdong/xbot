@@ -26,7 +26,6 @@ import (
 const (
 	KindPendingApproval = "pending_approval"
 	KindLoop            = "loop"
-	KindBackgroundDone  = "background_done"
 	KindTodo            = "todo"
 	KindFileChange      = "file_change"
 	KindShellJob        = "shell_job"
@@ -564,11 +563,6 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		Trigger:  nil,
 	})
 	ch.Register(Kind{
-		Name:     KindBackgroundDone,
-		Cooldown: 0,
-		Trigger:  k.backgroundTrigger(),
-	})
-	ch.Register(Kind{
 		Name:     KindFileChange,
 		Cooldown: fileChangeCooldown,
 		MaxBytes: maxDiffBytes + 2048,
@@ -695,30 +689,6 @@ func (k *Kernel) pendingTrigger(ev link.Event) func(time.Time, []Reminder) strin
 			return ""
 		}
 		return pendingNote(k.openApprovals())
-	}
-}
-
-func (k *Kernel) backgroundTrigger() func(time.Time, []Reminder) string {
-	return func(_ time.Time, prev []Reminder) string {
-		var seen strings.Builder
-		for _, p := range prev {
-			seen.WriteString(p.Text)
-			seen.WriteByte('\n')
-		}
-		blob := seen.String()
-		k.bgMu.Lock()
-		defer k.bgMu.Unlock()
-		var lines []string
-		for _, bg := range k.finished {
-			if bg.ID == "" || bg.Status == "" || strings.Contains(blob, bg.ID) {
-				continue
-			}
-			lines = append(lines, "- "+bg.ID+"："+clipSummary(bg.Task, 80)+"（"+bg.Status+"）")
-		}
-		if len(lines) == 0 {
-			return ""
-		}
-		return "<background_done>\n后台任务已结束。转告主人，不要重做这些事：\n" + strings.Join(lines, "\n") + "\n</background_done>"
 	}
 }
 

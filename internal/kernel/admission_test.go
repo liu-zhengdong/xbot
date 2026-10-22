@@ -167,7 +167,10 @@ func TestSpawnReportsQueuedAdmission(t *testing.T) {
 		if i == 3 {
 			want = "queued " + fields[1] + " (position 1)"
 		}
-		if out != want {
+		if i == 3 && !strings.Contains(out, "Tell the owner it is queued, not started") {
+			t.Fatalf("spawn hides queued admission from owner: %q", out)
+		}
+		if !strings.HasPrefix(out, want) {
 			t.Fatalf("spawn %d receipt %q, want %q", i, out, want)
 		}
 		tasks, _ := loc.Tasks()
@@ -189,7 +192,7 @@ func TestSpawnReportsQueuedAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := strings.Fields(out)
-	if len(fields) < 2 || !strings.HasPrefix(out, "queued "+fields[1]+" (position 2) as research") {
+	if len(fields) < 2 || !strings.HasPrefix(out, "queued "+fields[1]+" (position 2) as research") || !strings.Contains(out, "Tell the owner it is queued, not started") {
 		t.Fatalf("dispatch differs from spawn: %q", out)
 	}
 }

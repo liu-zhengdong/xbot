@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -76,6 +77,10 @@ func (s *tokenState) snap() TokenUse {
 // a background branch adds to the session totals and is logged with its own
 // counts and branch, but does not replace them.
 func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message) {
+	k.noteCallUsage(tr, req, msg, nil)
+}
+
+func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Message, err error) {
 	if k == nil || k.Bot == nil {
 		return
 	}
@@ -112,7 +117,14 @@ func (k *Kernel) noteUsage(tr *turn, req provider.Request, msg provider.Message)
 	k.tokens.seen = true
 	snap := k.tokens.snap()
 	k.tokens.mu.Unlock()
+	status := "completed"
+	if errors.Is(err, context.Canceled) {
+		status = "cancelled"
+	} else if err != nil {
+		status = "failed"
+	}
 	rec := bot.Trace{
+		Status:            status,
 		Time:              k.now(),
 		Reason:            usageReason(u.Estimated),
 		Prompt:            snap.Prompt,

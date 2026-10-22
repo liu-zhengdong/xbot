@@ -88,11 +88,11 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("prefix changed within the hour\n%s\n%s", p.reqs[0].Messages[0].Content, p.reqs[1].Messages[0].Content)
 	}
 	updates := envUpdates(t, b)
-	if len(updates) != 2 {
+	if len(updates) != 3 {
 		t.Fatalf("env updates %+v", updates)
 	}
 	stamp := now.UTC().Truncate(time.Minute).Format(time.RFC3339) + " (UTC)"
-	if strings.Contains(updates[1], "time:") || !strings.Contains(updates[1], "now: "+stamp) {
+	if strings.Contains(updates[len(updates)-1], "time:") || !strings.Contains(updates[len(updates)-1], "now: "+stamp) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
@@ -107,7 +107,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatal(err)
 	}
 	updates = envUpdates(t, b)
-	if len(updates) != 3 {
+	if len(updates) != 4 {
 		t.Fatalf("updates after hour change: %d", len(updates))
 	}
 	last := updates[len(updates)-1]

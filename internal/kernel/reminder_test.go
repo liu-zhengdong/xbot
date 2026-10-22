@@ -132,7 +132,7 @@ func TestReminderPluginKinds(t *testing.T) {
 	}
 }
 
-func TestBackgroundDoneReminder(t *testing.T) {
+func TestNoDuplicateBackgroundDoneReminder(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestBackgroundDoneReminder(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := newestConversationMessage(p.reqs[0].Messages)
-	if !strings.Contains(last.Content, "status?") || !strings.Contains(last.Content, "<background_done>") || !strings.Contains(last.Content, "bg_abcd") {
+	if !strings.Contains(last.Content, "status?") || strings.Contains(last.Content, "<background_done>") {
 		t.Fatalf("completion not on the newest message: %q", last.Content)
 	}
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "again"})

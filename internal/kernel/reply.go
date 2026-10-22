@@ -109,9 +109,11 @@ type replyProvider struct {
 	accept func(int) bool
 	// onSend runs before the request goes out, so a call that fails or is
 	// cancelled still left the context it was about to send.
-	prepare func(provider.Request) (provider.Request, error)
-	onSend  func(provider.Request)
-	onUse   func(provider.Request, provider.Message)
+	prepare  func(provider.Request) (provider.Request, error)
+	onSend   func(provider.Request)
+	onUse    func(provider.Request, provider.Message)
+	onEnd    func(provider.Request, provider.Message, error)
+	validate func(provider.Request, provider.Message) error
 	// fit cuts a request to stay under the context lines (see fit.go).
 	// overflow says the provider rejected it as too long; the cut request is
 	// then sent once more.
@@ -124,7 +126,7 @@ func (s *replyProvider) send(ctx context.Context, req provider.Request, onDelta 
 	if s.onSend != nil {
 		s.onSend(req)
 	}
-	return s.inner.Chat(ctx, req, func(chunk string) {
+	msg, err := s.inner.Chat(ctx, req, func(chunk string) {
 		if onDelta == nil {
 			return
 		}
@@ -132,6 +134,10 @@ func (s *replyProvider) send(ctx context.Context, req provider.Request, onDelta 
 			onDelta(out)
 		}
 	})
+	if s.onEnd != nil {
+		s.onEnd(req, msg, err)
+	}
+	return msg, err
 }
 
 func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
@@ -156,6 +162,11 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 	}
 	if s.onUse != nil {
 		s.onUse(req, msg)
+	}
+	if s.validate != nil {
+		if err := s.validate(req, msg); err != nil {
+			return provider.Message{}, err
+		}
 	}
 	if len(msg.ToolCalls) == 0 && toolProtocolText(msg.Content) {
 		return provider.Message{}, errors.New("provider returned tool protocol as reply text")

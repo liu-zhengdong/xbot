@@ -166,6 +166,9 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		k.OnTool = pr.Tool
 		k.OnResult = pr.Result
 	}
+	if err := k.RecoverTasks(); err != nil {
+		return nil, person.Person{}, err
+	}
 	return k, who, nil
 }
 

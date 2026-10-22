@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	StatusQueued    = "queued"
-	StatusRunning   = "running"
-	StatusDone      = "done"
-	StatusFailed    = "failed"
-	StatusCancelled = "cancelled"
+	StatusQueued      = "queued"
+	StatusRunning     = "running"
+	StatusDone        = "done"
+	StatusFailed      = "failed"
+	StatusCancelled   = "cancelled"
+	StatusInterrupted = "interrupted"
 
 	KindSteer     = "steer"
 	KindQueue     = "queue"
@@ -39,6 +40,8 @@ const (
 
 // Task is one coding-agent record.
 type Task struct {
+	PID        int       `json:"pid,omitempty"`
+	ProcStart  int64     `json:"proc_start,omitempty"`
 	ID         string    `json:"id"`
 	WorkDir    string    `json:"work_dir"`
 	Repo       string    `json:"repo,omitempty"`
@@ -90,7 +93,7 @@ func (r *Record) Start(in Task) (Task, error) {
 			status = StatusQueued
 		}
 		out = Task{
-			ID: id, WorkDir: in.WorkDir, Repo: in.Repo,
+			ID: id, WorkDir: in.WorkDir, Repo: in.Repo, PID: in.PID, ProcStart: in.ProcStart,
 			MaxSteps: in.MaxSteps, TimeoutSec: in.TimeoutSec, Goal: in.Goal,
 			Status: status, Created: now, Updated: now,
 		}
@@ -351,7 +354,7 @@ func (r *Record) now() time.Time {
 }
 
 func terminal(status string) bool {
-	return status == StatusDone || status == StatusFailed || status == StatusCancelled
+	return status == StatusInterrupted || status == StatusDone || status == StatusFailed || status == StatusCancelled
 }
 
 func validate(in Task) error {

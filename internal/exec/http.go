@@ -397,3 +397,16 @@ func (r *Remote) client() *http.Client {
 	}
 	return http.DefaultClient
 }
+
+// Restore reattaches observation of an existing directory, never starts work.
+func (r *Remote) Restore(id, dir string) error {
+	m, err := ReadMeta(dir)
+	if err != nil {
+		return err
+	}
+	if m.Status != statusRunning && m.Status != statusQueued {
+		return nil
+	}
+	r.active.Store(id, dir)
+	return r.ensure()
+}

@@ -181,6 +181,16 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			opt.OnMessage(msg)
 		}
 		if len(msg.ToolCalls) == 0 {
+			if opt.AfterStep != nil && opt.Preempt != nil && step+1 < opt.MaxSteps {
+				extra, err := opt.AfterStep()
+				if err != nil {
+					return produced, err
+				}
+				if len(extra) > 0 {
+					convo, produced = addMessages(convo, produced, extra, &images, opt.OnMessage)
+					continue
+				}
+			}
 			if opt.OnIdle != nil && step+1 < opt.MaxSteps {
 				remind, cont := opt.OnIdle(msg)
 				if cont {

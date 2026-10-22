@@ -934,3 +934,21 @@ func envAssign(s string) bool {
 	r := rune(s[0])
 	return r == '_' || unicode.IsLetter(r)
 }
+
+// CurrentProcess reuses the shell job's process identity for task ownership.
+// Platforms without start ticks can only recognize this process instance.
+var selfProcessStart = func() int64 {
+	n := processStartTicks(os.Getpid())
+	if n == 0 {
+		return -time.Now().UnixNano()
+	}
+	return n
+}()
+
+func CurrentProcess() (int, int64) { return os.Getpid(), selfProcessStart }
+func SameProcess(pid int, start int64) bool {
+	if pid == os.Getpid() && start == selfProcessStart {
+		return true
+	}
+	return sameProcess(pid, start)
+}

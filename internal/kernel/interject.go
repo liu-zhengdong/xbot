@@ -107,16 +107,21 @@ func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 // Queue entries carry its sequence; replaying a model request never appends it again.
 func (k *Kernel) receive(ev link.Event) (int, error) {
 	seq, err := k.Bot.FindEvent(ev.ID)
-	if err != nil || seq > 0 {
-		return seq, err
+	if err != nil {
+		return 0, err
 	}
-	origin := bot.OriginOwner
-	if ev.Source == link.NameApproval {
-		origin = bot.OriginInternal
+	if seq == 0 {
+		origin := bot.OriginOwner
+		if ev.Source == link.NameApproval {
+			origin = bot.OriginInternal
+		}
+		seq, err = k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images,
+			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners))}})
+		if err != nil {
+			return 0, err
+		}
 	}
-	return k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo,
-		Origin: origin, Images: ev.Images, Message: provider.Message{Role: provider.RoleUser,
-			Content: link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners))}})
+	return seq, k.receiveEnvironment(ev, seq)
 }
 
 // Interject hands an owner message to the bot's running turn. It returns

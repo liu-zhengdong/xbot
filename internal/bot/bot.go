@@ -86,6 +86,9 @@ type EnvRecord struct {
 	Hour        string    `json:"hour,omitempty"`
 	Now         string    `json:"now,omitempty"`
 	Sender      string    `json:"sender,omitempty"`
+	SenderSeq   int       `json:"sender_seq,omitempty"`
+	Person      string    `json:"person,omitempty"`
+	PersonOwn   []string  `json:"person_own,omitempty"`
 	Tools       []string  `json:"tools,omitempty"`
 	Notes       int       `json:"notes,omitempty"`
 	Persona     string    `json:"persona,omitempty"`
@@ -131,13 +134,9 @@ type State struct {
 	MemSnapSet bool `json:"mem_snap_set,omitempty"`
 	// MemSeen is the memory text the model has seen (snapshot plus appended diffs).
 	MemSeen string `json:"mem_seen,omitempty"`
-	// MemPerson is the person the snapshot was rendered for; person-scope facts differ.
-	MemPerson string `json:"mem_person,omitempty"`
 	// MemOwn holds this bot's own memory line changes ("+line"/"-line") since
 	// MemSeen, left out of the next diff.
 	MemOwn []string `json:"mem_own,omitempty"`
-	// MemOther parks the views of other people seen in this session.
-	MemOther map[string]MemView `json:"mem_other,omitempty"`
 }
 
 // Fork marker kinds and end statuses.
@@ -740,12 +739,4 @@ func dropName(in []string, name string) []string {
 		}
 	}
 	return out
-}
-
-// MemView is standing memory as seen by one person's turns: the frozen snapshot,
-// what the model has seen since, and the bot's own changes not yet folded in.
-type MemView struct {
-	Snap string   `json:"snap"`
-	Seen string   `json:"seen"`
-	Own  []string `json:"own,omitempty"`
 }

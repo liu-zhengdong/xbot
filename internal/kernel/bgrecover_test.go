@@ -135,7 +135,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "收到"}}},
+	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "收到"}, {Role: provider.RoleAssistant, Content: "任务中断已报告"}}},
 		Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -218,7 +218,7 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "收到"}}},
+	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "收到"}, {Role: provider.RoleAssistant, Content: "任务中断已报告"}}},
 		Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {

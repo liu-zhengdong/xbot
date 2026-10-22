@@ -10,6 +10,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clock"
+	"xbot/internal/code"
 	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/tools"
@@ -57,8 +58,8 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 		return baseline(next)
 	}
 	lines := taskChanges(prev.Tasks, next.Tasks)
-	if prev.Sender != next.Sender {
-		lines = append(lines, "sender: "+next.Sender)
+	if d := personChange(prev, next); d != "" {
+		lines = append(lines, d)
 	}
 	if !sameStrings(prev.Tools, next.Tools) {
 		lines = append(lines, "tools: "+toolChange(prev.Tools, next.Tools))
@@ -107,6 +108,7 @@ func baseline(e bot.EnvRecord) string {
 		body += "profile: " + e.Profile + "\n"
 	}
 	body += strings.Join(taskChanges(nil, e.Tasks), "\n") + "\n"
+	body += fmt.Sprintf("<person_data sender=%q>\n%s\n</person_data>\n", e.Sender, tools.NeutralizeUntrusted(e.Person))
 	body += overlayBlock(e) + "\n"
 	return "<environment_update>\n" + body + "</environment_update>"
 }
@@ -125,6 +127,7 @@ func snapshotText(e bot.EnvRecord) string {
 		body += "profile: " + e.Profile + "\n"
 	}
 	body += strings.Join(taskChanges(nil, e.Tasks), "\n") + "\n"
+	body += fmt.Sprintf("<person_data sender=%q>\n%s\n</person_data>\n", e.Sender, tools.NeutralizeUntrusted(e.Person))
 	body += overlayBlock(e) + "\n"
 	return "<environment_snapshot>\n" + body + "</environment_snapshot>"
 }
@@ -397,8 +400,26 @@ func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskE
 			return nil, err
 		}
 		for _, task := range tasks {
-			out = append(out, bot.TaskEnv{ID: task.ID, Task: firstTaskLine(task.Task), Status: task.Status, Position: task.Position})
+			status := task.Status
+			if task.Blocked {
+				status = exec.EvBlocked
+			}
+			out = append(out, bot.TaskEnv{ID: task.ID, Task: firstTaskLine(task.Task), Status: status, Position: task.Position})
 			seen[task.ID] = true
+		}
+	}
+	for _, l := range k.snapshotLinks() {
+		if coding, ok := l.(*code.Link); ok {
+			tasks, err := coding.Record().List()
+			if err != nil {
+				return nil, err
+			}
+			for _, task := range tasks {
+				if task.Status == code.StatusRunning || task.Status == code.StatusQueued {
+					out = append(out, bot.TaskEnv{ID: task.ID, Task: firstTaskLine(task.Goal), Status: task.Status})
+					seen[task.ID] = true
+				}
+			}
 		}
 	}
 	for _, bg := range k.Backgrounds() {
@@ -408,18 +429,36 @@ func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskE
 		}
 	}
 	for _, old := range prev {
-		if seen[old.ID] || (old.Status != "running" && old.Status != "queued") {
+		if seen[old.ID] || (old.Status != "running" && old.Status != "queued" && old.Status != exec.EvBlocked) {
+			continue
+		}
+		if strings.HasPrefix(old.ID, "ca_") {
+			for _, l := range k.snapshotLinks() {
+				if coding, ok := l.(*code.Link); ok {
+					task, err := coding.Record().Get(old.ID)
+					if err != nil {
+						return nil, err
+					}
+					old.Status, old.Position = task.Status, 0
+					out = append(out, old)
+					seen[old.ID] = true
+				}
+			}
 			continue
 		}
 		meta, _, err := exec.ReadStatus(k.Bot.AgentDir(old.ID))
 		if err != nil {
 			return nil, err
 		}
-		if meta.Status != "running" && meta.Status != "queued" {
-			old.Status, old.Position = meta.Status, 0
-			out = append(out, old)
-			seen[old.ID] = true
+		old.Status = meta.Status
+		if meta.Blocked {
+			old.Status = exec.EvBlocked
 		}
+		if meta.Status != "queued" {
+			old.Position = 0
+		}
+		out = append(out, old)
+		seen[old.ID] = true
 	}
 	if ev.Source == link.SourceSubagent && !seen[ev.Sender] && (ev.Type == exec.EvDone || ev.Type == exec.EvFailed || ev.Type == exec.EvBlocked || ev.Type == "fork_end") {
 		out = append(out, bot.TaskEnv{ID: ev.Sender, Status: ev.Type})
@@ -447,7 +486,9 @@ func taskChanges(prev, next []bot.TaskEnv) []string {
 		if task.Position > 0 {
 			line += fmt.Sprintf("，排在第 %d 个", task.Position)
 		}
-		if task.Status != "running" && task.Status != "queued" {
+		if task.Status == exec.EvBlocked {
+			line += "；等主人决定"
+		} else if task.Status != "running" && task.Status != "queued" {
 			line += "；结果见任务回报"
 		}
 		lines = append(lines, line)

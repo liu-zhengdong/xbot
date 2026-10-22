@@ -56,6 +56,7 @@ const (
 // Trace is one append-only trace event. Reason is a stable code, never a secret.
 // The token fields are set only for kind usage.
 type Trace struct {
+	Status            string    `json:"status,omitempty"`
 	Time              time.Time `json:"time"`
 	Kind              string    `json:"kind"`
 	Reason            string    `json:"reason"`

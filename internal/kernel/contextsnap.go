@@ -1,7 +1,9 @@
 package kernel
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"sort"
 	"strconv"
@@ -49,6 +51,7 @@ type ContextLayer struct {
 
 // ContextRequest is one model call of the current wake.
 type ContextRequest struct {
+	Status string `json:"status"`
 	// Step counts model calls in the wake, starting at 1.
 	Step int    `json:"step"`
 	At   string `json:"at"`
@@ -204,7 +207,7 @@ func (k *Kernel) ContextSnapshot() ContextSnap {
 // row-level detail. step is the model call's position in the wake.
 func buildContextRequest(req provider.Request, step int, at string) (ContextRequest, *ContextDetail) {
 	defs := toolShares(req.Tools)
-	out := ContextRequest{Step: step, At: at}
+	out := ContextRequest{Step: step, At: at, Status: "running"}
 	for _, d := range defs {
 		out.Tools += d.Tokens
 	}
@@ -540,4 +543,23 @@ func cutNumber(s string) (int, string, bool) {
 		return 0, "", false
 	}
 	return n, s[q+1:], true
+}
+
+// endContext annotates the already-recorded request, including cancellations.
+func (k *Kernel) endContext(t *turn, err error) {
+	if t == nil || t.isForked() {
+		return
+	}
+	k.context.mu.Lock()
+	defer k.context.mu.Unlock()
+	if len(k.context.reqs) == 0 {
+		return
+	}
+	status := "completed"
+	if errors.Is(err, context.Canceled) {
+		status = "cancelled"
+	} else if err != nil {
+		status = "failed"
+	}
+	k.context.reqs[len(k.context.reqs)-1].Status = status
 }

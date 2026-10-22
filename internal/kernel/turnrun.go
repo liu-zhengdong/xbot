@@ -8,7 +8,6 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
-	"xbot/internal/link"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -82,22 +81,7 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 	if r.k.AllowFork {
 		return req, nil
 	}
-	st, err := r.k.Bot.LoadState()
-	if err != nil {
-		return req, err
-	}
-	next, err := r.k.taskEnvironment(st.Env.Tasks, link.Event{})
-	if err != nil {
-		return req, err
-	}
-	prev := st.Env
-	st.Env.Tasks = next
-	if diff := DiffEnv(prev, st.Env); diff != "" {
-		if err := r.k.Bot.Append(bot.Entry{Time: r.k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: diff}}); err != nil {
-			return req, err
-		}
-	}
-	if err := r.k.Bot.SaveState(st); err != nil {
+	if err := r.k.updateTaskEnvironment(); err != nil {
 		return req, err
 	}
 	var out []provider.Message
@@ -122,7 +106,7 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 			through = msg.Seq
 		}
 	}
-	err = r.k.Bot.Walk(through+1, 0, func(seq int, e bot.Entry) error {
+	err := r.k.Bot.Walk(through+1, 0, func(seq int, e bot.Entry) error {
 		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Content) || e.IsForkMark() {
 			return nil
 		}
@@ -358,7 +342,11 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			}
 			r.k.noteContext(r.t, req)
 		},
-		onUse: func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
+		onEnd: func(req provider.Request, msg provider.Message, err error) {
+			r.k.noteCallUsage(r.t, req, msg, err)
+			r.k.endContext(r.t, err)
+		},
+		validate: r.validateReply,
 	}
 	fit := newTurnFit(len(r.assembled), r.seqAt)
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {

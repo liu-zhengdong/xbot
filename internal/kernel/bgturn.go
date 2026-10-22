@@ -14,9 +14,11 @@ import (
 	"unicode/utf8"
 
 	"xbot/internal/bot"
+	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 const (
@@ -204,20 +206,6 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 			status = "cancelled"
 		}
 	}
-	_, _ = k.Bot.AppendForkEnd(id, status, steps)
-	k.writeForkMeta(t, status)
-	k.dropScope(id)
-	k.bgMu.Lock()
-	delete(k.bgs, id)
-	ended := k.now()
-	k.finished = append([]BackgroundInfo{{ID: id, Task: t.task, Steps: steps, Status: status, Ended: &ended}}, k.finished...)
-	if len(k.finished) > finishedCap {
-		k.finished = k.finished[:finishedCap]
-	}
-	k.bgMu.Unlock()
-	if k.Inbox == nil {
-		return
-	}
 	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 步。任务：%s", id, status, steps, t.task)
 	if runErr != nil {
 		text += "\n错误：" + clipRunes(runErr.Error(), 300)
@@ -238,16 +226,35 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 		text += "\n没来得及处理的控制：" + strings.Join(unread, "；")
 	}
 	if last := lastText(produced); last != "" {
-		text += "\n最后的回复：\n" + clipRunes(last, forkReplyRunes)
+		text += "\n最后的回复：\n" + last
 	}
 	if line := notable.Line(t.notable.Items()); line != "" {
 		text += "\n\n" + line
+	}
+	report, err := exec.ResultText(k.Bot.AgentDir(id), text)
+	if err != nil {
+		status = "failed"
+		report = "保存后台结果失败：" + err.Error()
+	}
+	_, _ = k.Bot.AppendForkEnd(id, status, steps)
+	k.writeForkMeta(t, status)
+	k.dropScope(id)
+	k.bgMu.Lock()
+	delete(k.bgs, id)
+	ended := k.now()
+	k.finished = append([]BackgroundInfo{{ID: id, Task: t.task, Steps: steps, Status: status, Ended: &ended}}, k.finished...)
+	if len(k.finished) > finishedCap {
+		k.finished = k.finished[:finishedCap]
+	}
+	k.bgMu.Unlock()
+	if k.Inbox == nil {
+		return
 	}
 	_ = k.Inbox.Post(link.Event{
 		ID:        "ev_" + id + "_end",
 		Source:    link.SourceSubagent,
 		Type:      "fork_end",
-		Content:   text,
+		Content:   report,
 		Sender:    id,
 		Time:      k.now(),
 		Untrusted: true,
@@ -259,8 +266,9 @@ func (k *Kernel) writeForkMeta(t *turn, status string) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
+	pid, start := tools.CurrentProcess()
 	raw, err := json.Marshal(map[string]any{
-		"id": t.branch, "mode": "fork-turn", "status": status, "task": t.task,
+		"pid": pid, "proc_start": start, "id": t.branch, "mode": "fork-turn", "status": status, "task": t.task,
 		"notable": t.notable.Items(),
 		"from":    t.fromSeq, "steps": t.replies, "started": t.started, "updated": k.now(), "current_step": t.lastTool,
 	})

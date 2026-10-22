@@ -138,7 +138,7 @@ func (k *Kernel) dispatchMemory(ctx context.Context) string {
 		return ""
 	}
 	st = migrate(st)
-	mem, err := k.memSnapFor(ctx, st, k.memViewKey(k.turnFor(ctx), st))
+	mem, err := k.memSnapFor(ctx, st, "")
 	if err != nil {
 		return ""
 	}

@@ -283,7 +283,7 @@ func TestMemorySeam(t *testing.T) {
 	if !strings.Contains(joined, "Lisbon") || strings.Contains(joined, "city: old") {
 		t.Fatalf("person fact: %s", joined)
 	}
-	if !strings.Contains(joined, "terse") || strings.Contains(joined, "emoji") {
+	if !strings.Contains(p.reqs[0].Messages[1].Content, "terse") || strings.Contains(p.reqs[0].Messages[1].Content, "emoji") {
 		t.Fatalf("work fact: %s", joined)
 	}
 	if strings.Contains(joined, "hidden") || !strings.Contains(joined, "zh") {

@@ -394,10 +394,13 @@ func TestMemoryViewPerPerson(t *testing.T) {
 	if len(p.reqs) != 3 {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
-	for _, m := range p.reqs[1].Messages {
-		if strings.Contains(m.Content, "owner lives in Hangzhou") {
-			t.Fatalf("owner fact reached another person's turn:\n%s", m.Content)
+	for _, req := range p.reqs {
+		if strings.Contains(req.Messages[1].Content, "owner lives in Hangzhou") {
+			t.Fatal("person fact in fixed prefix")
 		}
+	}
+	if !strings.Contains(messagesText(p.reqs[0].Messages), "owner lives in Hangzhou") {
+		t.Fatal("missing person environment")
 	}
 	if p.reqs[0].Messages[1].Content != p.reqs[2].Messages[1].Content {
 		t.Fatal("owner's snapshot not restored")
@@ -613,35 +616,17 @@ func TestMemoryDiffReportsOutsideRemovalOfOwnLine(t *testing.T) {
 	}
 }
 
-// TestMemoryViewCapKeepsOwner: past the cap one non-owner view goes, never the owner's.
-func TestMemoryViewCapKeepsOwner(t *testing.T) {
-	st := bot.State{}
-	switchMemView(&st, "u1", "owner view", []string{"u1"})
-	for i := 0; i < memViewCap+2; i++ {
-		switchMemView(&st, fmt.Sprintf("g%02d", i), "guest view", []string{"u1"})
-	}
-	if v, ok := st.MemOther["u1"]; !ok || v.Snap != "owner view" {
-		t.Fatalf("owner view dropped: %+v", st.MemOther)
-	}
-	if len(st.MemOther) > memViewCap {
-		t.Fatalf("parked %d views, cap %d", len(st.MemOther), memViewCap)
-	}
-}
-
-// TestMemSnapForPicksTurnView: a fork for a guest's turn gets the guest's view,
-// not the active owner view.
+// A brief worker uses the same frozen Bot snapshot regardless of sender.
 func TestMemSnapForPicksTurnView(t *testing.T) {
-	st := bot.State{MemSnapSet: true, MemPerson: "u1", MemSnap: "owner snap",
-		MemOther: map[string]bot.MemView{"": {Snap: "shared snap", Seen: "shared snap"}}}
+	st := bot.State{MemSnapSet: true, MemSnap: "bot snap"}
 	k := &Kernel{}
 	got, err := k.memSnapFor(context.Background(), st, "")
-	if err != nil || got != "shared snap" {
+	if err != nil || got != "bot snap" {
 		t.Fatalf("got %q %v", got, err)
 	}
 }
 
-// TestRefreshMemSnapKeepsActiveKey: a compaction run from another person's turn
-// re-renders the active view for its own key.
+// Compaction refreshes Bot memory without putting person facts into the prefix.
 func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	store := memory.Open(b.Root)
@@ -652,10 +637,10 @@ func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Memory: store, turn: &turn{turnSender: "u2", turnKind: link.KindPerson}}
-	st := bot.State{MemSnapSet: true, MemPerson: "u1", MemSnap: "old", MemSeen: "old"}
+	st := bot.State{MemSnapSet: true, MemSnap: "old", MemSeen: "old"}
 	k.refreshMemSnap(context.Background(), &st)
-	if st.MemPerson != "u1" || !strings.Contains(st.MemSnap, "owner lives in Hangzhou") {
-		t.Fatalf("refreshed for the wrong view: %q %q", st.MemPerson, st.MemSnap)
+	if strings.Contains(st.MemSnap, "owner lives in Hangzhou") {
+		t.Fatalf("refreshed for the wrong view: %q %q", "bot-only", st.MemSnap)
 	}
 }
 
@@ -741,18 +726,6 @@ func TestRefreshMemSnapClearsOwnQueue(t *testing.T) {
 }
 
 // TestMemoryViewCapKeepsTarget: switching to a parked view at the cap keeps it.
-func TestMemoryViewCapKeepsTarget(t *testing.T) {
-	st := bot.State{}
-	switchMemView(&st, "", "shared view", nil)
-	for i := 0; i < memViewCap; i++ {
-		switchMemView(&st, fmt.Sprintf("g%02d", i), "guest view", nil)
-	}
-	switchMemView(&st, "", "fresh live", nil)
-	if st.MemSnap != "shared view" {
-		t.Fatalf("target view evicted and rebuilt: %q", st.MemSnap)
-	}
-}
-
 func TestMemoryAcceptedProfilesDoNotClip(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	store := memory.Open(b.Root)
@@ -786,12 +759,12 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := "## Bot\n- rule: keep it small (written by dev)\n"
-	if err := b.SaveState(bot.State{MemSnapSet: true, MemSnap: old, MemSeen: old, MemOwn: []string{"+old"}, MemOther: map[string]bot.MemView{"u1": {Snap: old, Seen: old}}}); err != nil {
+	if err := b.SaveState(bot.State{MemSnapSet: true, MemSnap: old, MemSeen: old, MemOwn: []string{"+old"}}); err != nil {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
 	k := &Kernel{Bot: b, Memory: store, Provider: p, MaxSteps: 2}
-	fresh, err := k.memoryText(ctx, "u1")
+	fresh, err := k.memoryText(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +787,7 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.MemRender != memRenderVersion || len(st.MemOther) != 0 || len(st.MemOwn) != 0 {
+	if st.MemRender != memRenderVersion || len(st.MemOwn) != 0 {
 		t.Fatalf("old views survived: %+v", st)
 	}
 }

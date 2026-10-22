@@ -11,18 +11,21 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 // forkMetaFile is the on-disk shape Kernel.writeForkMeta writes for a background
 // turn. It is read back on recovery and rewritten with status interrupted.
 type forkMetaFile struct {
-	ID      string    `json:"id"`
-	Mode    string    `json:"mode"`
-	Status  string    `json:"status"`
-	Task    string    `json:"task"`
-	From    int       `json:"from"`
-	Steps   int       `json:"steps"`
-	Started time.Time `json:"started"`
+	PID       int       `json:"pid,omitempty"`
+	ProcStart int64     `json:"proc_start,omitempty"`
+	ID        string    `json:"id"`
+	Mode      string    `json:"mode"`
+	Status    string    `json:"status"`
+	Task      string    `json:"task"`
+	From      int       `json:"from"`
+	Steps     int       `json:"steps"`
+	Started   time.Time `json:"started"`
 }
 
 // RecoverInterrupted closes background branches the transcript left open when
@@ -78,6 +81,9 @@ func (k *Kernel) RecoverInterrupted() {
 			continue
 		}
 		meta := readForkMeta(k.Bot.AgentDir(id))
+		if tools.SameProcess(meta.PID, meta.ProcStart) {
+			continue
+		}
 		task := branches[id].Task
 		if meta.Task != "" {
 			task = meta.Task

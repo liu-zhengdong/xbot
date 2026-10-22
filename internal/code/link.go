@@ -73,6 +73,9 @@ func (l *Link) post(task Task) {
 		text = task.Goal
 	}
 	ev := link.NewEvent(link.NameCoding, task.Status, task.ID+"\n"+text, task.ID, task.Updated)
+	if task.Status == StatusInterrupted {
+		ev.ID = "ev_" + task.ID + "_interrupted"
+	}
 	_ = box.Post(ev)
 }
 
@@ -107,7 +110,12 @@ func (t startTool) Run(_ context.Context, args json.RawMessage) (string, error) 
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
+	pid, procStart := 0, int64(0)
+	if t.l.hasBackend() {
+		pid, procStart = tools.CurrentProcess()
+	}
 	task, err := t.l.rec.Start(Task{
+		PID: pid, ProcStart: procStart,
 		WorkDir: in.WorkDir, Repo: in.Repo, MaxSteps: in.MaxSteps,
 		TimeoutSec: in.TimeoutSec, Goal: in.Goal,
 	})

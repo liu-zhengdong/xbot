@@ -73,7 +73,6 @@ var Table = map[string]Class{
 	"notify_owner":   Normal,
 
 	// Context.
-	"compact":        Normal,
 	"recall_history": Readonly,
 	"expand":         Readonly,
 

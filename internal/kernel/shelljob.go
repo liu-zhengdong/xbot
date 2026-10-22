@@ -462,7 +462,7 @@ func (k *Kernel) flushShellWake() {
 		k.shellClaimed = map[string]bool{}
 	}
 	for _, job := range jobs.List() {
-		if !job.Local || job.Notified || job.Status == "" || job.Status == "running" {
+		if (!job.Local && job.Status != "lost") || job.Notified || job.Status == "" || job.Status == "running" {
 			continue
 		}
 		if k.shellClaimed[job.ID] {

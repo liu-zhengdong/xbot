@@ -286,7 +286,7 @@ func (k *Kernel) forkMessages(ctx context.Context) ([]provider.Message, error) {
 	st = migrate(st)
 	// The spawning turn's own view: a guest's background turn must not hand the
 	// owner's person facts to its subagent.
-	mem, err := k.memSnapFor(ctx, st, k.memViewKey(k.turnFor(ctx), st))
+	mem, err := k.memSnapFor(ctx, st, "")
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +344,11 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 	if err != nil {
 		return "", err
 	}
-	return startReceipt(live), nil
+	receipt := startReceipt(live)
+	if live.Status == "queued" {
+		receipt += ". Tell the owner it is queued, not started. It starts automatically when a slot and its resource are free; do not do the task yourself."
+	}
+	return receipt, nil
 }
 
 // startReceipt is the executor's admission fact shared by spawn and dispatch.
