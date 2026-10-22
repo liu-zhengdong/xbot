@@ -18,7 +18,7 @@ func TestProjectRepoFenceStaysClosed(t *testing.T) {
 	k.storeCwd(physicalDir(t, repo)) // e.g. a previous turn ran: git clone ... && cd cloned-repo
 	runTurn(t, k, now, "看一下这个项目的测试怎么跑", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
 	msgs := p.reqs[len(p.reqs)-1].Messages
-	last := msgs[len(msgs)-1]
+	last := newestConversationMessage(msgs)
 	t.Logf("role=%s content:\n%s", last.Role, last.Content)
 	lower := strings.ToLower(last.Content)
 	open := strings.Index(lower, "<project_instructions")

@@ -154,7 +154,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			over()
 			// A call that finished before the stop landed keeps its answer;
 			// the news is read at the next boundary instead.
-			stopped := err != nil && callCtx.Err() != nil && ctx.Err() == nil
+			stopped := callCtx.Err() != nil && ctx.Err() == nil
 			stop()
 			if stopped && opt.Preempted != nil {
 				// The call was stopped for something newer, not by the run's

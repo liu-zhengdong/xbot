@@ -2,7 +2,7 @@ package kernel
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"sync"
 
 	"xbot/internal/bot"
@@ -56,8 +56,7 @@ func botKey(b *bot.Bot) string {
 type interjectState struct {
 	mu     sync.Mutex
 	open   bool
-	queue  []*interjection
-	active *interjection
+	queue  []provider.Message
 	stop   context.CancelFunc // the model call in flight, or nil
 	sink   *Sink
 	first  *Sink // the Handle caller's
@@ -66,29 +65,6 @@ type interjectState struct {
 	// being waited on parks (park.go). parked says it is closed.
 	park   chan struct{}
 	parked bool
-}
-
-// An accepted message remains its own processing unit. Moving it into the
-// model context is not an acknowledgement that the model answered it.
-type interjection struct {
-	messages []provider.Message
-	owner    bool
-	seq      int // bound when the owner's line is recorded, for an explicit failure
-}
-
-// takeLocked starts only the oldest request. Later owner messages may take
-// over the output sink, but cannot interrupt this request before Run ends.
-func (s *interjectState) takeLocked() []provider.Message {
-	if s.active != nil || len(s.queue) == 0 {
-		return nil
-	}
-	s.active = s.queue[0]
-	s.queue[0] = nil
-	s.queue = s.queue[1:]
-	if len(s.queue) == 0 {
-		s.rearmLocked()
-	}
-	return s.active.messages
 }
 
 // openInterject routes t's output to first and registers t for its bot. A
@@ -107,65 +83,40 @@ func (k *Kernel) openInterject(t *turn, first *Sink) {
 
 // closeInterject ends interjection for t. Unless force is set, messages
 // still queued keep it open and are returned, for the caller to run another
-// segment with. With force the active and queued requests are returned for
-// explicit failure outcomes, and interjection closes.
-func (k *Kernel) closeInterject(t *turn, force bool) []*interjection {
+// segment with. With force it closes; those inputs are already durable.
+func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 	t.inter.mu.Lock()
 	defer t.inter.mu.Unlock()
-	if !force {
-		t.inter.active = nil // the previous Run produced its final response
-		if t.inter.takeLocked() != nil {
-			return []*interjection{t.inter.active}
-		}
-	}
-	var unfinished []*interjection
-	if force {
-		if t.inter.active != nil {
-			unfinished = append(unfinished, t.inter.active)
-		}
-		unfinished = append(unfinished, t.inter.queue...)
-	}
-	t.inter.active = nil
+	q := t.inter.queue
 	t.inter.queue = nil
-	if t.inter.open {
-		t.inter.open = false
-		if v, ok := liveTurns.Load(botKey(k.Bot)); ok && v.(*liveTurn).t == t {
-			liveTurns.Delete(botKey(k.Bot))
-		}
+	if len(q) > 0 && !force {
+		t.inter.rearmLocked()
+		return q
 	}
-	return unfinished
-}
-
-// Failed turns do not silently discard messages whose original streams have
-// already handed off. Keep each owner line and give it an explicit outcome;
-// never replay a partially executed request as if its tools had not run.
-func (k *Kernel) failInterjections(t *turn, list []*interjection) error {
-	if len(list) == 0 {
+	if !t.inter.open {
 		return nil
 	}
-	for _, item := range list {
-		seq := item.seq
-		if seq == 0 {
-			for _, msg := range item.messages {
-				if item.owner && (msg.Internal || msg.Role != provider.RoleUser) {
-					continue
-				}
-				var err error
-				seq, err = k.recordTurn(t, msg)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		replyTo := 0
-		if item.owner {
-			replyTo = seq
-		}
-		if _, err := k.recordTurn(t, provider.Message{Role: provider.RoleAssistant, ReplyTo: replyTo, Content: "这条消息还没处理完，这一轮出错结束了。"}); err != nil {
-			return err
-		}
+	t.inter.open = false
+	if v, ok := liveTurns.Load(botKey(k.Bot)); ok && v.(*liveTurn).t == t {
+		liveTurns.Delete(botKey(k.Bot))
 	}
-	return errors.New("本轮出错，插话未能全部处理完成")
+	return q
+}
+
+// receive appends a normal input once, before setup or model cancellation.
+// Queue entries carry its sequence; replaying a model request never appends it again.
+func (k *Kernel) receive(ev link.Event) (int, error) {
+	seq, err := k.Bot.FindEvent(ev.ID)
+	if err != nil || seq > 0 {
+		return seq, err
+	}
+	origin := bot.OriginOwner
+	if ev.Source == link.NameApproval {
+		origin = bot.OriginInternal
+	}
+	return k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo,
+		Origin: origin, Images: ev.Images, Message: provider.Message{Role: provider.RoleUser,
+			Content: link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners))}})
 }
 
 // Interject hands an owner message to the bot's running turn. It returns
@@ -181,22 +132,19 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 		AnswerQuestions(b, ev.Content)
 	}
 	msg := lt.k.eventMessage(ev)
-	note, err := lt.k.backgroundNote()
-	if err != nil {
-		return false
-	}
 	t := lt.t
 	t.inter.mu.Lock()
 	if !t.inter.open {
 		t.inter.mu.Unlock()
 		return false
 	}
-	var messages []provider.Message
-	if note != "" {
-		messages = append(messages, provider.Message{Role: provider.RoleUser, Content: note, Internal: true})
+	seq, err := lt.k.receive(ev)
+	if err != nil {
+		t.inter.mu.Unlock()
+		return false
 	}
-	messages = append(messages, msg, interjectNote())
-	t.inter.queue = append(t.inter.queue, &interjection{messages: messages, owner: true})
+	msg.Seq = seq
+	t.inter.queue = append(t.inter.queue, msg, interjectNote())
 	prev := t.inter.sink
 	t.inter.sink = sink
 	if prev != nil && prev == t.inter.first {
@@ -204,9 +152,6 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 	}
 	t.inter.parkAllLocked()
 	stop := t.inter.stop
-	if t.inter.active != nil {
-		stop = nil
-	}
 	t.inter.mu.Unlock()
 	if prev != nil && prev.OnHandoff != nil {
 		prev.OnHandoff()
@@ -221,7 +166,7 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 // the model reads the newest line as the whole request and drops what it was
 // doing (real DeepSeek, 2026-10-20: asked the time mid-task, it answered the
 // time and ended the turn).
-const interjectNoteText = "<owner_interjected>\nThe owner said this while you were in the middle of something. Answer it first. Then, unless it changes or cancels what you were doing, carry on and finish that too.\n</owner_interjected>"
+const interjectNoteText = "<owner_interjected>\nThe owner said this while you were in the middle of something. Address all outstanding owner requests in this conversation, including the new words. A newer message does not replace earlier unfinished requests unless the owner changes or cancels them. Keep already dispatched work running; do not dispatch it again.\n</owner_interjected>"
 
 func interjectNote() provider.Message {
 	return provider.Message{Role: provider.RoleUser, Content: interjectNoteText, Internal: true}
@@ -231,7 +176,12 @@ func interjectNote() provider.Message {
 func (t *turn) takeInterjected() []provider.Message {
 	t.inter.mu.Lock()
 	defer t.inter.mu.Unlock()
-	return t.inter.takeLocked()
+	q := t.inter.queue
+	t.inter.queue = nil
+	if len(q) > 0 {
+		t.inter.rearmLocked()
+	}
+	return q
 }
 
 // preempt records the cancel of the model call going out. A message already
@@ -239,7 +189,7 @@ func (t *turn) takeInterjected() []provider.Message {
 func (t *turn) preempt(stop context.CancelFunc) func() {
 	t.inter.mu.Lock()
 	t.inter.stop = stop
-	queued := len(t.inter.queue) > 0 && t.inter.active == nil
+	queued := len(t.inter.queue) > 0
 	t.inter.mu.Unlock()
 	if queued {
 		stop()
@@ -289,11 +239,9 @@ func (k *Kernel) eventMessage(ev link.Event) provider.Message {
 	// stored text stays the owner's words and is not noted twice.
 	msg := provider.Message{
 		Role:    provider.RoleUser,
+		EventID: ev.ID,
 		Content: content,
 		ReplyTo: ev.ReplyTo,
-	}
-	if isResultEvent(ev) {
-		msg.ReportID = ev.ID
 	}
 	if len(ev.Images) > 0 {
 		msg.ImageNames = ev.Images
@@ -333,10 +281,38 @@ func (k *Kernel) freshAllowanceLocked(t *turn) {
 func (r *turnRun) takeOwner() []provider.Message {
 	q := r.t.takeInterjected()
 	if len(q) > 0 {
-		r.delivery = "" // An owner's answer cannot sign for the interrupted report.
 		r.t.mu.Lock()
 		r.k.freshAllowanceLocked(r.t)
 		r.t.mu.Unlock()
 	}
 	return q
+}
+
+// Failed generation does not remove accepted words. Associate the failure with
+// each owner input using the ordinary transcript rather than an unread ledger.
+func (k *Kernel) replyToFailedInputs(t *turn) error {
+	n, err := k.Bot.Count()
+	if err != nil {
+		return err
+	}
+	rows, err := k.Bot.Slice(t.fromSeq, n)
+	if err != nil {
+		return err
+	}
+	answered := map[int]bool{}
+	for _, row := range rows {
+		if row.Message.Role == provider.RoleAssistant && row.ReplyTo > 0 {
+			answered[row.ReplyTo] = true
+		}
+	}
+	for i, row := range rows {
+		seq := t.fromSeq + i
+		if row.Message.Role != provider.RoleUser || row.IsInternal() || strings.HasPrefix(row.Message.Content, "<untrusted_event") || answered[seq] {
+			continue
+		}
+		if _, err := k.recordTurn(t, provider.Message{Role: provider.RoleAssistant, ReplyTo: seq, Content: "这一轮出错，后续要求还没处理完；已经执行的记录和你的原话都保留了。"}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -231,15 +231,6 @@ func (m memoryGuarded) Run(ctx context.Context, args json.RawMessage) (string, e
 	return reviewedTool{Tool: m.Tool, k: m.k}.guardMemory(ctx, args, false)
 }
 
-// subagentReportHint is kernel-authored context, outside the untrusted report.
-// It precedes both an opening event and a result absorbed by an active turn.
-func subagentReportHint(ev link.Event) (provider.Message, bool) {
-	if ev.Source != link.SourceSubagent {
-		return provider.Message{}, false
-	}
-	return provider.Message{Role: provider.RoleUser, Internal: true, Content: "<subagent_report>Retell the following result to the owner in your own words as your work; do not paste the report or expose internal labels. If the result ends with a kernel-authored 值得留意 digest, include those facts using that exact one-sentence digest in your reply; do not expand it into a list.</subagent_report>"}, true
-}
-
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 	for ev := range ch {
 		if ev.Kind == exec.EvDone || ev.Kind == exec.EvFailed {

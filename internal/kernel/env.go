@@ -10,6 +10,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clock"
+	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 )
@@ -55,7 +56,7 @@ func DiffEnv(prev, next bot.EnvRecord) string {
 	if prev.At.IsZero() {
 		return baseline(next)
 	}
-	var lines []string
+	lines := taskChanges(prev.Tasks, next.Tasks)
 	if prev.Sender != next.Sender {
 		lines = append(lines, "sender: "+next.Sender)
 	}
@@ -105,6 +106,7 @@ func baseline(e bot.EnvRecord) string {
 	if e.Profile != "" {
 		body += "profile: " + e.Profile + "\n"
 	}
+	body += strings.Join(taskChanges(nil, e.Tasks), "\n") + "\n"
 	body += overlayBlock(e) + "\n"
 	return "<environment_update>\n" + body + "</environment_update>"
 }
@@ -122,6 +124,7 @@ func snapshotText(e bot.EnvRecord) string {
 	if e.Profile != "" {
 		body += "profile: " + e.Profile + "\n"
 	}
+	body += strings.Join(taskChanges(nil, e.Tasks), "\n") + "\n"
 	body += overlayBlock(e) + "\n"
 	return "<environment_snapshot>\n" + body + "</environment_snapshot>"
 }
@@ -381,4 +384,73 @@ func multisetDiff(a, b []string) (added, removed []string) {
 		}
 	}
 	return added, removed
+}
+
+// taskEnvironment reads status from its existing owner, the executor. Terminal
+// changes are kept for one comparison; the full report remains in the dialogue.
+func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskEnv, error) {
+	var out []bot.TaskEnv
+	seen := map[string]bool{}
+	if e := k.execSnapshot(); e != nil {
+		tasks, err := e.Tasks()
+		if err != nil {
+			return nil, err
+		}
+		for _, task := range tasks {
+			out = append(out, bot.TaskEnv{ID: task.ID, Task: firstTaskLine(task.Task), Status: task.Status, Position: task.Position})
+			seen[task.ID] = true
+		}
+	}
+	for _, bg := range k.Backgrounds() {
+		if !seen[bg.ID] {
+			out = append(out, bot.TaskEnv{ID: bg.ID, Task: bg.Task, Status: "running"})
+			seen[bg.ID] = true
+		}
+	}
+	for _, old := range prev {
+		if seen[old.ID] || (old.Status != "running" && old.Status != "queued") {
+			continue
+		}
+		meta, _, err := exec.ReadStatus(k.Bot.AgentDir(old.ID))
+		if err != nil {
+			return nil, err
+		}
+		if meta.Status != "running" && meta.Status != "queued" {
+			old.Status, old.Position = meta.Status, 0
+			out = append(out, old)
+			seen[old.ID] = true
+		}
+	}
+	if ev.Source == link.SourceSubagent && !seen[ev.Sender] && (ev.Type == exec.EvDone || ev.Type == exec.EvFailed || ev.Type == exec.EvBlocked || ev.Type == "fork_end") {
+		out = append(out, bot.TaskEnv{ID: ev.Sender, Status: ev.Type})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func firstTaskLine(task string) string {
+	line, _, _ := strings.Cut(task, "\n")
+	return clipRunes(strings.TrimSpace(line), 256)
+}
+
+func taskChanges(prev, next []bot.TaskEnv) []string {
+	have := map[string]bot.TaskEnv{}
+	for _, task := range prev {
+		have[task.ID] = task
+	}
+	var lines []string
+	for _, task := range next {
+		if old, ok := have[task.ID]; ok && old == task {
+			continue
+		}
+		line := fmt.Sprintf("task: %s [%s]：%s", task.ID, task.Status, task.Task)
+		if task.Position > 0 {
+			line += fmt.Sprintf("，排在第 %d 个", task.Position)
+		}
+		if task.Status != "running" && task.Status != "queued" {
+			line += "；结果见任务回报"
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }

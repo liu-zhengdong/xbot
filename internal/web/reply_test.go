@@ -54,7 +54,7 @@ func TestReplyToRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	model := &replyProvider{content: "reply_to: 3\nback to you"}
+	model := &replyProvider{content: "reply_to: 2\nback to you"}
 	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: model, Memory: memory.NopStore{}, MaxSteps: 2}, nil
 	}
@@ -84,7 +84,7 @@ func TestReplyToRoundTrip(t *testing.T) {
 	if err := json.Unmarshal([]byte(done), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Text != "back to you" || body.ReplyTo != 3 || strings.Contains(done, "reply_to: 3") {
+	if body.Text != "back to you" || body.ReplyTo != 2 || strings.Contains(done, "reply_to: 2") {
 		t.Fatalf("done %+v raw %s", body, done)
 	}
 	if !strings.Contains(model.seen, "user is replying to your earlier message (seq 1): EARLIER-ANSWER") {
@@ -92,7 +92,7 @@ func TestReplyToRoundTrip(t *testing.T) {
 	}
 
 	tr := getAuth(t, ui.URL+"/api/bots/ada/transcript", cookie)
-	if !bytes.Contains(tr, []byte(`"reply_to":1`)) || !bytes.Contains(tr, []byte(`"reply_to":3`)) {
+	if !bytes.Contains(tr, []byte(`"reply_to":1`)) || !bytes.Contains(tr, []byte(`"reply_to":2`)) {
 		t.Fatalf("transcript %s", tr)
 	}
 	if !bytes.Contains(tr, []byte(`"content":"and this"`)) || bytes.Contains(tr, []byte("user is replying to your earlier message")) {
@@ -101,10 +101,10 @@ func TestReplyToRoundTrip(t *testing.T) {
 
 	md := getAuth(t, ui.URL+"/api/bots/ada/export?format=md", cookie)
 	js := getAuth(t, ui.URL+"/api/bots/ada/export?format=jsonl", cookie)
-	if !bytes.Contains(md, []byte("reply_to: 1")) || !bytes.Contains(md, []byte("reply_to: 3")) {
+	if !bytes.Contains(md, []byte("reply_to: 1")) || !bytes.Contains(md, []byte("reply_to: 2")) {
 		t.Fatalf("md\n%s", md)
 	}
-	if !bytes.Contains(js, []byte(`"reply_to":1`)) || !bytes.Contains(js, []byte(`"reply_to":3`)) {
+	if !bytes.Contains(js, []byte(`"reply_to":1`)) || !bytes.Contains(js, []byte(`"reply_to":2`)) {
 		t.Fatalf("jsonl\n%s", js)
 	}
 }

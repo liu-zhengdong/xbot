@@ -47,7 +47,7 @@ func TestEnsureExecQueuesAndReportsPosition(t *testing.T) {
 	}
 	var note string
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<background_tasks>") {
+		if strings.Contains(e.Message.Content, "<environment_update>") {
 			note = e.Message.Content
 		}
 	}
@@ -97,9 +97,22 @@ func TestInterjectedTaskGetsLiveBackgroundSnapshot(t *testing.T) {
 		t.Fatal("not interjected")
 	}
 	q := t0.takeInterjected()
-	if len(q) != 3 || !q[0].Internal || !strings.Contains(q[0].Content, "sa_aaaaaaaa [running]") || !strings.Contains(q[0].Content, "sa_bbbbbbbb [queued]") || q[1].Content != "another task" {
+	if len(q) != 2 || q[0].Seq == 0 || q[0].Content != "another task" {
 		t.Fatalf("messages %+v", q)
 	}
+	st, err := k.Bot.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err = k.syncEnv(st, link.TerminalEvent("u1", "another task", time.Now()), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := strings.Join(taskChanges(nil, st.Env.Tasks), "\n")
+	if !strings.Contains(note, "sa_aaaaaaaa [running]") || !strings.Contains(note, "sa_bbbbbbbb [queued]") {
+		t.Fatal(note)
+	}
+
 }
 
 func finishAdmissionJobs(t *testing.T, k *Kernel, hold chan struct{}) {

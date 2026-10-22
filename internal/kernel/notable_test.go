@@ -61,7 +61,7 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 		if strings.Contains(msg.Content, notable.Line(meta.Notable)) {
 			found = true
 		}
-		if strings.Contains(msg.Content, "<subagent_report>") && strings.Contains(msg.Content, "include those facts") {
+		if strings.Contains(msg.Content, VoiceRule) {
 			hint = true
 		}
 	}

@@ -232,7 +232,7 @@ func TestFileChangeReminder(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: "noted"},
 	)
 	last := p.reqs[len(p.reqs)-1].Messages
-	newest := last[len(last)-1].Content
+	newest := newestConversationMessage(last).Content
 	if !strings.Contains(newest, "again") || !strings.Contains(newest, "<file_change>") || !strings.Contains(newest, "+ beta") {
 		t.Fatalf("file change reminder: %q", newest)
 	}
@@ -250,16 +250,16 @@ func TestFileChangeReminder(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: "quiet"},
 	)
 	soon := p.reqs[len(p.reqs)-1].Messages
-	if strings.Contains(soon[len(soon)-1].Content, "<file_change>") {
-		t.Fatalf("cooldown did not hold: %q", soon[len(soon)-1].Content)
+	if strings.Contains(newestConversationMessage(soon).Content, "<file_change>") {
+		t.Fatalf("cooldown did not hold: %q", newestConversationMessage(soon).Content)
 	}
 	advance(now, fileChangeCooldown+time.Second)
 	runTurn(t, k, now, "later",
 		provider.Message{Role: provider.RoleAssistant, Content: "still"},
 	)
 	later := p.reqs[len(p.reqs)-1].Messages
-	if strings.Contains(later[len(later)-1].Content, "<file_change>") {
-		t.Fatalf("same change reminded twice: %q", later[len(later)-1].Content)
+	if strings.Contains(newestConversationMessage(later).Content, "<file_change>") {
+		t.Fatalf("same change reminded twice: %q", newestConversationMessage(later).Content)
 	}
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestFileChangeReminder(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: "saw gamma"},
 	)
 	third := p.reqs[len(p.reqs)-1].Messages
-	tip := third[len(third)-1].Content
+	tip := newestConversationMessage(third).Content
 	if !strings.Contains(tip, "<file_change>") || !strings.Contains(tip, "+ gamma") {
 		t.Fatalf("new change: %q", tip)
 	}
@@ -534,7 +534,7 @@ func TestSensitiveFileChangeOmitsDiff(t *testing.T) {
 				provider.Message{Role: provider.RoleAssistant, Content: "noted"},
 			)
 			last := p.reqs[len(p.reqs)-1].Messages
-			tip := last[len(last)-1].Content
+			tip := newestConversationMessage(last).Content
 			if !strings.Contains(tip, "<file_change>") || !strings.Contains(tip, "changed") {
 				t.Fatalf("missing change note: %q", tip)
 			}
@@ -567,7 +567,7 @@ func TestFileChangeWithholdsSecretLookingDiff(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: "noted"},
 	)
 	last := p.reqs[len(p.reqs)-1].Messages
-	tip := last[len(last)-1].Content
+	tip := newestConversationMessage(last).Content
 	if !strings.Contains(tip, "config.yaml changed") || !strings.Contains(tip, "diff not shown") {
 		t.Fatalf("missing change note: %q", tip)
 	}

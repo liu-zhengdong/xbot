@@ -25,9 +25,6 @@ type turn struct {
 	turnEvent   string
 	replyTo     int
 
-	notedMu sync.Mutex
-	noted   []string
-
 	// useMu guards the completion tokens counted for this turn. It is not t.mu.
 	useMu         sync.Mutex
 	useCompletion int

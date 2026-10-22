@@ -46,7 +46,7 @@ func (m *dispatchModel) Chat(ctx context.Context, req provider.Request, onDelta 
 	m.mu.Lock()
 	m.foreCalls++
 	m.mu.Unlock()
-	last := req.Messages[len(req.Messages)-1]
+	last := lastConversationInput(req.Messages)
 	switch {
 	case last.Role == provider.RoleTool:
 		return say("已派给 dev 子代理，做完告诉你。")

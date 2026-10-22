@@ -229,12 +229,9 @@ func InterjectInternal(b *bot.Bot, msg provider.Message) bool {
 		t.inter.mu.Unlock()
 		return false
 	}
-	t.inter.queue = append(t.inter.queue, &interjection{messages: []provider.Message{msg}})
+	t.inter.queue = append(t.inter.queue, msg)
 	t.inter.parkAllLocked()
 	stop := t.inter.stop
-	if t.inter.active != nil {
-		stop = nil
-	}
 	t.inter.mu.Unlock()
 	if stop != nil {
 		stop()

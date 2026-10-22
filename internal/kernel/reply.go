@@ -2,6 +2,8 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 
 	"xbot/internal/bot"
@@ -28,6 +30,13 @@ func (k *Kernel) record(m provider.Message) error {
 // recordTurn appends m for turn t, on t's branch once t has moved to the background.
 // The returned sequence is the line just written.
 func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
+	if m.Seq > 0 {
+		t.mu.Lock()
+		t.lastRec = m.Seq
+		t.mu.Unlock()
+		return m.Seq, nil
+	}
+
 	replyTo := m.ReplyTo
 	m.ReplyTo = 0
 	origin := bot.OriginOwner
@@ -59,20 +68,11 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	if len(images) > 0 {
 		m.Content = stripPastedNote(m.Content, k.pastedNote(images))
 	}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Message: k.scrubEntry(m), EventID: m.ReportID, Report: m.ReportID != "", Reports: m.Reports, ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
 	if err != nil {
 		return 0, err
 	}
 	t.lastRec = seq
-	// The reply and its receipt are one durable append. A crash before Ack
-	// replays the receipt, never the full result.
-	if k.Inbox != nil {
-		for _, id := range m.Reports {
-			if err := k.Inbox.Ack(id); err != nil {
-				return seq, err
-			}
-		}
-	}
 	return seq, nil
 }
 
@@ -109,10 +109,9 @@ type replyProvider struct {
 	accept func(int) bool
 	// onSend runs before the request goes out, so a call that fails or is
 	// cancelled still left the context it was about to send.
-	onSend   func(provider.Request)
-	onUse    func(provider.Request, provider.Message)
-	prepare  func(provider.Request) (provider.Request, error)
-	complete func(provider.Request, provider.Message) (provider.Message, error)
+	prepare func(provider.Request) (provider.Request, error)
+	onSend  func(provider.Request)
+	onUse   func(provider.Request, provider.Message)
 	// fit cuts a request to stay under the context lines (see fit.go).
 	// overflow says the provider rejected it as too long; the cut request is
 	// then sent once more.
@@ -158,6 +157,9 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 	if s.onUse != nil {
 		s.onUse(req, msg)
 	}
+	if len(msg.ToolCalls) == 0 && toolProtocolText(msg.Content) {
+		return provider.Message{}, errors.New("provider returned tool protocol as reply text")
+	}
 	if onDelta != nil {
 		if rest := s.hold.Flush(); rest != "" {
 			onDelta(rest)
@@ -173,9 +175,6 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 				msg.ReplyTo = seq
 			}
 		}
-	}
-	if s.complete != nil {
-		return s.complete(req, msg)
 	}
 	return msg, nil
 }
@@ -195,11 +194,14 @@ func (h *replyHold) Push(s string) string {
 	if !strings.Contains(cur, "\n") && pendingReply(cur) {
 		return ""
 	}
+	if _, rest, ok := bot.TakeReplyLine(cur); ok {
+		cur = rest
+	}
+	if protocolPrefix(cur) {
+		return ""
+	}
 	h.done = true
 	h.buf.Reset()
-	if _, rest, ok := bot.TakeReplyLine(cur); ok {
-		return rest
-	}
 	return cur
 }
 
@@ -232,4 +234,34 @@ func pendingReply(s string) bool {
 		}
 	}
 	return true
+}
+
+// A provider protocol packet is not a normal assistant answer. Mentions and
+// fenced examples remain ordinary text, including explanations of DSML.
+func toolProtocolText(text string) bool {
+	if _, rest, ok := bot.TakeReplyLine(text); ok {
+		text = rest
+	}
+	text = strings.TrimSpace(text)
+	if (strings.HasPrefix(text, "<｜DSML｜") || strings.HasPrefix(text, "<｜｜DSML｜")) && strings.Contains(text, "invoke") {
+		return true
+	}
+	var raw struct {
+		Tools []json.RawMessage `json:"tool_calls"`
+	}
+	return json.Unmarshal([]byte(text), &raw) == nil && len(raw.Tools) > 0
+}
+func protocolPrefix(text string) bool {
+	text = strings.TrimSpace(text)
+	// Buffer leading JSON until completion so pretty-printed tool packets cannot
+	// leak before the completed object can be classified.
+	if strings.HasPrefix(text, "{") {
+		return true
+	}
+	for _, prefix := range []string{"<｜｜DSML", "<｜DSML"} {
+		if text != "" && (strings.HasPrefix(prefix, text) || strings.HasPrefix(text, prefix)) {
+			return true
+		}
+	}
+	return false
 }

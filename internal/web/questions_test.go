@@ -21,7 +21,7 @@ import (
 type questionModel struct{}
 
 func (questionModel) Chat(_ context.Context, req provider.Request, delta func(string)) (provider.Message, error) {
-	last := req.Messages[len(req.Messages)-1]
+	last := lastConversationInput(req.Messages)
 	if last.Role == provider.RoleUser && last.Content == "ASK_TIMEOUT" {
 		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "ask", Type: "function", Function: provider.FunctionCall{Name: "ask_user", Arguments: `{"question":"先做哪一步？","options":["先搭骨架","先写文档"],"recommended":"先搭骨架"}`}}}}, nil
 	}
@@ -165,4 +165,13 @@ func TestQuestionTypedReplyStopsTimer(t *testing.T) {
 	if got := questionCard(t, b); got.State != bot.ApprovalApproved || got.Notice != "" {
 		t.Fatalf("typed reply %+v", got)
 	}
+}
+
+func lastConversationInput(messages []provider.Message) provider.Message {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if !strings.HasPrefix(messages[i].Content, "<environment_") {
+			return messages[i]
+		}
+	}
+	return provider.Message{}
 }

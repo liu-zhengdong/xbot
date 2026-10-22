@@ -134,8 +134,8 @@ func TestInterjectionGoesStraightIntoTheTurn(t *testing.T) {
 	if ev := parseSSE(t, res.Body); !strings.Contains(ev["done"], "答插话") {
 		t.Fatalf("interjection events %v", ev)
 	}
-	// The owner's line sits after the tool result, where it went in, followed
-	// by the internal note that keeps the earlier request alive.
+	// The owner is persisted while the tool is still running. Its result lands
+	// afterwards; the protocol adapter pairs it without moving transcript rows.
 	var order []string
 	entries, err := b.Entries()
 	if err != nil {
@@ -153,7 +153,7 @@ func TestInterjectionGoesStraightIntoTheTurn(t *testing.T) {
 			order = append(order, "answer")
 		}
 	}
-	if strings.Join(order, ",") != "tool,owner,note,answer" {
+	if strings.Join(order, ",") != "owner,tool,note,answer" {
 		t.Fatalf("transcript order %v", order)
 	}
 }

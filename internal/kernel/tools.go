@@ -201,7 +201,6 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
 			return "", err
 		}
-		t.k.markNoted(ctx, text)
 		return "held until quiet hours end", nil
 	}
 	n, err := t.k.releaseQuiet(ctx)
@@ -226,46 +225,36 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 		desk = notify.Desktop
 	}
 	_ = desk(ctx, k.Bot.Name(), text)
-	k.markNoted(ctx, text)
 	return nil
-}
-
-func (k *Kernel) markNoted(ctx context.Context, text string) {
-	t := k.turnFor(ctx)
-	t.notedMu.Lock()
-	t.noted = append(t.noted, strings.TrimSpace(text))
-	t.notedMu.Unlock()
-}
-
-func (k *Kernel) alreadyNoted() bool {
-	t := k.curTurn()
-	t.notedMu.Lock()
-	defer t.notedMu.Unlock()
-	return len(t.noted) > 0
 }
 
 // pushFindings delivers a non-empty final reply from an untrusted wake.
 // Owner chat on the terminal or web is not pushed. SILENT is not a finding.
-// A notify_owner that already delivered or held a note this turn is the note;
-// the trailing reply is not sent again. Quiet hours still hold the note.
+// A notify_owner covers its input through that point, so its trailing reply
+// is not sent again. A later incoming message can produce a new finding.
+// Quiet hours still hold the note.
 func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
 	switch k.curTurn().turnSource {
 	case link.NameTerminal, link.NameWeb:
 		return nil
 	}
-	var reports []string
+	var replies []string
+	covered := false
 	for _, msg := range produced {
-		if msg.Role == provider.RoleAssistant && len(msg.Reports) > 0 && strings.TrimSpace(msg.Content) != "" {
-			reports = append(reports, strings.TrimSpace(msg.Content))
+		// notify_owner covers the inputs it saw, not later arrivals. All ordering
+		// comes from the normal conversation; no per-result receipt is involved.
+		if msg.Role == provider.RoleTool && msg.Name == "notify_owner" && (strings.Contains(msg.Content, "notified the owner") || msg.Content == "held until quiet hours end") {
+			covered = true
+			replies = nil
+		}
+		if msg.Role == provider.RoleUser && msg.EventID != "" {
+			covered = false
+		}
+		if !covered && msg.Role == provider.RoleAssistant && len(msg.ToolCalls) == 0 && strings.TrimSpace(msg.Content) != "" && !bot.SilentText(msg.Content) {
+			replies = append(replies, strings.TrimSpace(msg.Content))
 		}
 	}
-	text := strings.Join(reports, "\n\n")
-	if len(reports) == 0 {
-		if k.alreadyNoted() {
-			return nil
-		}
-		text = finalAssistantText(produced)
-	}
+	text := strings.Join(replies, "\n\n")
 	if text == "" || text == "SILENT" {
 		return nil
 	}

@@ -155,11 +155,11 @@ func TestForegroundNoteListsBackgrounds(t *testing.T) {
 	}
 	var note string
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "后台任务正在执行") {
+		if strings.Contains(e.Message.Content, "<environment_update>") {
 			note = e.Message.Content
 		}
 	}
-	if !strings.Contains(note, "bg_a：整理日志，已跑 3 步，最近在用 shell") || !strings.Contains(note, "bg_b：写报告") {
+	if !strings.Contains(note, "bg_a [running]：整理日志") || !strings.Contains(note, "bg_b [running]：写报告") {
 		t.Fatalf("note %q", note)
 	}
 }

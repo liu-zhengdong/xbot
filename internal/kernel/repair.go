@@ -30,9 +30,9 @@ func unresolvedTail(entries []bot.Entry) ([]provider.ToolCall, error) {
 
 // unresolvedCalls returns unanswered tool calls in span (which starts at seq first)
 // and the branch of each. Several branches can each have an open call at their own end.
-// A call is repairable when no later row of its own branch, other than tool results and
-// markers, follows the assistant row that made it: the append-only log cannot insert a
-// result earlier in a branch than lines the branch has already written.
+// Incoming user/environment lines may follow an in-flight call. Repair appends
+// its tombstone; the existing provider adapter pairs results without rewriting
+// the transcript. A later assistant on that branch still indicates corruption.
 func unresolvedCalls(span []bot.Entry, first int) ([]provider.ToolCall, map[string]string, error) {
 	return unresolvedCallsExcept(span, first, nil)
 }
@@ -70,7 +70,7 @@ func unresolvedCallsExcept(span []bot.Entry, first int, live map[string]bool) ([
 			return nil, nil, errors.New("transcript: unanswered tool calls are not at the tail")
 		}
 		for _, r := range rows[i+1:] {
-			if r.Branch != branches[tc.ID] || r.Entry.IsForkMark() || r.Entry.Message.Role == provider.RoleTool {
+			if r.Branch != branches[tc.ID] || r.Entry.IsForkMark() || (r.Entry.Message.Role == provider.RoleTool || r.Entry.Message.Role == provider.RoleUser) {
 				continue
 			}
 			return nil, nil, errors.New("transcript: unanswered tool calls are not at the tail")
@@ -108,29 +108,36 @@ func indexEvent(entries []bot.Entry, eventID string) int {
 	return -1
 }
 
-// turnSpan returns the lines belonging to the turn opened at idx. The turn ends
-// at the next user line carrying a different event id. A fork mark does not end
-// it: the turn continues on a background branch, whose lines carry the branch
-// name, and its answer lands there. Reading past the mark is what lets a forked
-// turn be seen as finished.
+// turnSpan groups all inputs before the shared normal answer. A new EventID
+// alone is no boundary: input is durable even while the model/tool is busy.
+// An answered input (or a fork handoff) does end before the next wake.
 func turnSpan(entries []bot.Entry, idx int) []bot.Entry {
 	end := len(entries)
+	forked := false
 	for i := idx + 1; i < len(entries); i++ {
 		e := entries[i]
+		if e.IsForkMark() && e.Mark.Kind == bot.ForkKindStart {
+			forked = true
+		}
 		if e.Message.Role == provider.RoleUser && e.EventID != "" && e.EventID != entries[idx].EventID {
-			end = i
-			break
+			if done, _ := answered(entries[idx+1:i], ""); done || forked {
+				end = i
+				break
+			}
 		}
 	}
 	return entries[idx+1 : end]
 }
 
 // answered reports whether these lines end on a final assistant answer.
-func answered(entries []bot.Entry) (bool, string) {
+func answered(entries []bot.Entry, branch string) (bool, string) {
 	pending := map[string]bool{}
 	sawFinal := false
 	text := ""
 	for _, e := range entries {
+		if e.Branch != branch {
+			continue
+		}
 		m := e.Message
 		switch m.Role {
 		case provider.RoleAssistant:
@@ -163,7 +170,7 @@ func turnDone(entries []bot.Entry, idx int) bool {
 	if idx < 0 {
 		return false
 	}
-	if done, _ := answered(turnSpan(entries, idx)); done {
+	if done, _ := answered(turnSpan(entries, idx), ""); done {
 		return true
 	}
 	return forkedAndAnswered(entries, idx)
@@ -174,8 +181,11 @@ func turnDone(entries []bot.Entry, idx int) bool {
 // user line would attach the following turn's branch to this one, so an
 // unanswered request would inherit the next turn's answer.
 func forkBranch(entries []bot.Entry, idx int) (branch string, closed bool) {
-	span := turnSpan(entries, idx)
+	span := entries[idx+1:]
 	for _, e := range span {
+		if e.Message.Role == provider.RoleUser && e.EventID != "" && e.EventID != entries[idx].EventID {
+			break
+		}
 		if !e.IsForkMark() || e.Mark.Kind != bot.ForkKindStart {
 			continue
 		}
@@ -216,21 +226,21 @@ func forkedAndAnswered(entries []bot.Entry, idx int) bool {
 	if !closed {
 		return false
 	}
-	done, _ := answered(branchLines(entries, branch))
+	done, _ := answered(branchLines(entries, branch), branch)
 	return done
 }
 
 // lastAssistant is the newest final answer in the turn opened at idx, on the
 // main line or on the branch it forked into.
 func lastAssistant(entries []bot.Entry, idx int) string {
-	if _, text := answered(turnSpan(entries, idx)); text != "" {
+	if _, text := answered(turnSpan(entries, idx), ""); text != "" {
 		return text
 	}
 	branch, closed := forkBranch(entries, idx)
 	if !closed {
 		return ""
 	}
-	_, text := answered(branchLines(entries, branch))
+	_, text := answered(branchLines(entries, branch), branch)
 	return text
 }
 
@@ -284,15 +294,8 @@ func ReplyAfter(b *bot.Bot, ev link.Event) (text string, done bool, err error) {
 const absorbWindow = 400
 
 func lastReplyTo(entries []bot.Entry, idx int) int {
-	end := len(entries)
-	for i := idx + 1; i < len(entries); i++ {
-		if entries[i].Message.Role == provider.RoleUser && entries[i].EventID != "" && entries[i].EventID != entries[idx].EventID {
-			end = i
-			break
-		}
-	}
 	replyTo := 0
-	for _, e := range entries[idx+1 : end] {
+	for _, e := range turnSpan(entries, idx) {
 		if e.Message.Role == provider.RoleAssistant && len(e.Message.ToolCalls) == 0 {
 			replyTo = e.ReplyTo
 		}

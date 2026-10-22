@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,18 +14,35 @@ import (
 	"xbot/internal/provider"
 )
 
-// Like the real foreground, this model acts on the newest owner message.
+// The model reads all owner requests in the same conversation.
 // It deliberately cannot finish before all five interjections have arrived.
 type queuedOwnerModel struct {
 	started chan string
 	release chan struct{}
 	fail    bool
+	prefix  []provider.Message
+	t       *testing.T
 }
 
 func (m *queuedOwnerModel) Chat(ctx context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	if m.prefix == nil {
+		m.prefix = snapshotReq(req).Messages
+	} else if len(req.Messages) < len(m.prefix) || !reflect.DeepEqual(m.prefix, req.Messages[:len(m.prefix)]) {
+		m.t.Error("cancelled resend rewrote the committed prefix")
+	}
+	for _, want := range []string{"earlier owner words", "earlier normal answer", "result facts 731 and 42"} {
+		if !strings.Contains(messagesText(req.Messages), want) {
+			m.t.Errorf("resend lost %q", want)
+		}
+	}
+	seen := map[string]bool{}
 	latest := "opening"
 	for _, msg := range req.Messages {
 		if msg.Role == provider.RoleUser && strings.HasPrefix(msg.Content, "request-") {
+			if seen[msg.Content] {
+				m.t.Errorf("request repeated %q", msg.Content)
+			}
+			seen[msg.Content] = true
 			latest = msg.Content
 		}
 	}
@@ -37,7 +55,13 @@ func (m *queuedOwnerModel) Chat(ctx context.Context, req provider.Request, _ fun
 	if m.fail {
 		return provider.Message{}, fmt.Errorf("model unavailable")
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "handled " + latest}, nil
+	var replies []string
+	for _, msg := range req.Messages {
+		if msg.Role == provider.RoleUser && strings.HasPrefix(msg.Content, "request-") {
+			replies = append(replies, "handled "+msg.Content)
+		}
+	}
+	return provider.Message{Role: provider.RoleAssistant, Content: strings.Join(replies, "\n")}, nil
 }
 func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	t.Helper()
@@ -45,7 +69,12 @@ func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	model := &queuedOwnerModel{started: make(chan string, 20), release: make(chan struct{}), fail: fail}
+	for _, msg := range []provider.Message{{Role: provider.RoleUser, Content: "earlier owner words"}, {Role: provider.RoleAssistant, Content: "earlier normal answer"}, {Role: provider.RoleUser, Content: "result facts 731 and 42"}} {
+		if err := b.Append(bot.Entry{Time: time.Now(), Origin: bot.OriginOwner, Message: msg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	model := &queuedOwnerModel{t: t, started: make(chan string, 20), release: make(chan struct{}), fail: fail}
 	k := &Kernel{Bot: b, Provider: model, Memory: memory.NopStore{}, MaxSteps: 4}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -71,6 +100,21 @@ func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 			waitStarted("request-1")
 		}
 	}
+	before, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5; i++ {
+		n := 0
+		for _, e := range before {
+			if e.Message.Content == fmt.Sprintf("request-%d", i) {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("input %d not durably received before model completion: %d", i, n)
+		}
+	}
 	close(model.release)
 	select {
 	case err := <-done:
@@ -93,7 +137,7 @@ func TestFiveInterjectionsEachGetAnAnswer(t *testing.T) {
 		want := fmt.Sprintf("handled request-%d", i)
 		n := 0
 		for _, entry := range entries {
-			if entry.Message.Role == provider.RoleAssistant && entry.Message.Content == want {
+			if entry.Message.Role == provider.RoleAssistant && strings.Contains(entry.Message.Content, want) {
 				n++
 			}
 		}

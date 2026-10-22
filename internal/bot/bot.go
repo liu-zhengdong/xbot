@@ -74,7 +74,15 @@ type SummaryBlock struct {
 }
 
 // EnvRecord is the last environment snapshot. It is volatile context, not part of the stable prefix.
+type TaskEnv struct {
+	ID       string `json:"id"`
+	Task     string `json:"task"`
+	Status   string `json:"status"`
+	Position int    `json:"position,omitempty"`
+}
+
 type EnvRecord struct {
+	Tasks       []TaskEnv `json:"tasks,omitempty"`
 	Hour        string    `json:"hour,omitempty"`
 	Now         string    `json:"now,omitempty"`
 	Sender      string    `json:"sender,omitempty"`
@@ -182,8 +190,6 @@ const (
 type Entry struct {
 	Time    time.Time        `json:"time"`
 	EventID string           `json:"event_id,omitempty"`
-	Report  bool             `json:"report,omitempty"`
-	Reports []string         `json:"reports,omitempty"`
 	Message provider.Message `json:"message"`
 	Blob    string           `json:"blob,omitempty"`
 	ReplyTo int              `json:"reply_to,omitempty"`

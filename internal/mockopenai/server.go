@@ -79,7 +79,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	var sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer bool
 	var lastTool, lastUser string
 	for _, m := range req.Messages {
-		if m.Role == "user" {
+		if m.Role == "user" && !strings.HasPrefix(m.Content, "<environment_") {
 			lastUser = m.Content
 			lastTool = ""
 			sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer = false, false, false, false, false, false, false

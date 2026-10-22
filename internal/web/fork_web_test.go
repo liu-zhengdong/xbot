@@ -53,7 +53,7 @@ func (forkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 	last := req.Messages[len(req.Messages)-1]
 	var lastUser string
 	for _, m := range req.Messages {
-		if m.Role == provider.RoleUser {
+		if m.Role == provider.RoleUser && !strings.HasPrefix(m.Content, "<environment_") {
 			lastUser = m.Content
 		}
 	}

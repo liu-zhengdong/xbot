@@ -117,7 +117,7 @@ func TestPendingApprovalBackgroundAcceptsNextHandle(t *testing.T) {
 	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "broken", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "invalid intervening row"}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "invalid assistant after an unanswered tool"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "repair fails", time.Unix(40, 0))); err == nil || !strings.Contains(err.Error(), "unanswered tool calls are not at the tail") {

@@ -33,8 +33,6 @@
 //	loadMu      which links are loaded
 //	compactMu   the auto-compaction job
 //	denyMu      tool calls the owner refused this turn
-//	reportMu    incremental result receipts; may take the bot store lock,
-//	            never a turn/exec lock (recordTurn releases the store first)
 //
 // The *Once fields (startOnce, recoverOnce, execOnce, shellOnce) never nest:
 // each body runs once and may take other locks freely, because nothing holds a
@@ -144,9 +142,7 @@ type Kernel struct {
 	// turn's own context carries the deadline (see backgroundBudget).
 	BackgroundMaxTime time.Duration
 
-	turnMu   sync.Mutex
-	reportMu sync.Mutex
-	reports  reportIndex
+	turnMu sync.Mutex
 	// memOwnMu guards memOwn: line changes of this bot's own memory writes
 	// from any turn, drained into State at the next wake (drainMemOwn).
 	memOwnMu sync.Mutex
@@ -230,12 +226,15 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err := ev.Validate(); err != nil {
 		return err
 	}
-	defer func() {
-		if handleErr != nil && isResultEvent(ev) {
-			handleErr = errors.Join(ErrPendingResult, handleErr)
-		}
-	}()
 
+	existing, err := k.Bot.FindEvent(ev.ID)
+	if err != nil {
+		return err
+	}
+	seq, err := k.receive(ev)
+	if err != nil {
+		return err
+	}
 	// Once per kernel lifetime, before repairTail: a branch left open by a crash
 	// gets its fork_end so the dangling call on it can be repaired on that branch.
 	k.recoverOnce.Do(k.RecoverInterrupted)
@@ -248,6 +247,12 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		turnEvent:   ev.ID,
 		turnTrusted: link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
 	}
+	t.fromSeq = seq
+	defer func() {
+		if handleErr != nil && !k.AllowFork {
+			handleErr = errors.Join(handleErr, k.replyToFailedInputs(t))
+		}
+	}()
 	t.started = k.now()
 	t.task = clipRunes(strings.TrimSpace(ev.Content), forkTaskRunes)
 	t.forked = make(chan struct{})
@@ -257,8 +262,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// The owner can speak into this turn from the moment it exists, so the
 	// time spent on setup (compaction, memory) is not a window where a message
 	// misses it. A message that arrives before the first model call stops
-	// that call before it leaves. A return before the model loop records a
-	// failure for every accepted message; old handed-off streams cannot retry it.
+	// that call before it leaves. Setup failures leave the original words and
+	// a normal failure reply, even when their old stream has handed off.
 	first := &Sink{OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnHandoff: k.OnHandoff}
 	if ev.Source == link.NameTimer {
 		first.OnDelta = nil
@@ -266,7 +271,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	k.openInterject(t, first)
 	defer func() {
 		if unread := k.closeInterject(t, true); len(unread) > 0 {
-			t.finishSink(Outcome{Err: k.failInterjections(t, unread)})
+			t.finishSink(Outcome{Err: errors.New("这一轮出错，插话原文已保留")})
 		}
 	}()
 	// A forked turn still belongs to its background goroutine. All other
@@ -301,21 +306,17 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err != nil {
 		return err
 	}
-	seq, err := k.Bot.FindEvent(ev.ID)
-	if err != nil {
-		return err
-	}
-	if seq == 0 && ev.Source != link.NameApproval && link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners) {
+	if existing == 0 && ev.Source != link.NameApproval && link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners) {
 		AnswerQuestions(k.Bot, ev.Content)
 	}
-	if seq > 0 {
+	if existing > 0 {
 		span, err := k.Bot.Slice(seq, n)
 		if err != nil {
 			return err
 		}
-		if (isResultEvent(ev) && reportDelivered(span, ev.ID)) || (!isResultEvent(ev) && turnDone(span, 0)) {
+		if turnDone(span, 0) {
 			t.replyTo = lastReplyTo(span, 0)
-			if k.OnDelta != nil && ev.Source != link.NameTimer && !isResultEvent(ev) {
+			if k.OnDelta != nil && ev.Source != link.NameTimer {
 				if text := lastAssistant(span, 0); text != "" {
 					k.OnDelta(text)
 				}
@@ -353,44 +354,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err != nil {
 		return err
 	}
-	if seq == 0 && t.turnTrusted {
-		note, err := k.backgroundNote()
-		if err != nil {
-			return err
-		}
-		if note != "" {
-			if err := k.Bot.Append(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: note}}); err != nil {
-				return err
-			}
-		}
-	}
-	if seq == 0 {
-		if hint, ok := subagentReportHint(ev); ok {
-			if err := k.Bot.Append(bot.Entry{Time: ev.Time, Origin: bot.OriginInternal, Message: hint}); err != nil {
-				return err
-			}
-		}
-		entry := bot.Entry{
-			Time:    ev.Time,
-			EventID: ev.ID,
-			Report:  isResultEvent(ev),
-			ReplyTo: ev.ReplyTo,
-			Origin:  bot.OriginOwner,
-			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, t.turnTrusted)},
-			Images:  ev.Images,
-		}
-		if ev.Source == link.NameApproval {
-			// The card already shows the decision; this line is for the model.
-			entry.Origin = bot.OriginInternal
-		}
-		if err := k.Bot.Append(entry); err != nil {
-			return err
-		}
-		seq, err = k.Bot.Count()
-		if err != nil {
-			return err
-		}
-	}
 	// The opening message is on the transcript, so this turn now owns this
 	// ctx. The synchronous compaction below may summarize and extract, and
 	// those calls belong to the turn that started them.
@@ -414,10 +377,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// Reminders stick to the newest message. The sidecar replays them on the
 	// next wake so that message's bytes stay what the model already saw.
 	// Timer wakes skip the pending-card kind; the trigger returns empty.
-	seqNow, seqErr := k.newestReminderSeq(st.Blocks)
-	if seqErr != nil {
-		return seqErr
-	}
+	seqNow := seq
 	before := 0
 	if n := len(assembled); n > 0 {
 		before = compact.EstimateMessage(assembled[n-1])
@@ -427,7 +387,16 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	for _, m := range assembled {
 		t.projects.noteText(m.Content)
 	}
-	assembled, err = k.reminderKindsFor(ev, t).Bind(assembled, seqNow, k.now())
+	carrier := len(assembled) - 1
+	for i := range assembled {
+		if assembled[i].Seq == seqNow && !assembled[i].Internal {
+			carrier = i
+			break
+		}
+	}
+	bound, bindErr := k.reminderKindsFor(ev, t).Bind(assembled[:carrier+1], seqNow, k.now())
+	err = bindErr
+	assembled = append(bound, assembled[carrier+1:]...)
 	if err != nil {
 		return err
 	}
@@ -576,24 +545,15 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
-		if isResultEvent(ev) {
-			seq, err := k.Bot.FindEvent(ev.ID)
-			if err != nil {
-				return nil, err
-			}
-			if seq > 0 {
-				continue
-			} // Durable pending result; onIdle delivers it.
-		}
 		msg := k.eventMessage(ev)
-		if hint, ok := subagentReportHint(ev); ok {
-			out = append(out, hint)
+		seq, err := k.receive(ev)
+		if err != nil {
+			return nil, err
 		}
+		msg.Seq = seq
 		out = append(out, msg)
-		if !isResultEvent(ev) {
-			if err := k.Inbox.Ack(ev.ID); err != nil {
-				return nil, err
-			}
+		if err := k.Inbox.Ack(ev.ID); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -769,6 +729,10 @@ func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, er
 		OverlayHash: overlayHash,
 		OverlayBody: overlay,
 		At:          now,
+	}
+	next.Tasks, err = k.taskEnvironment(st.Env.Tasks, ev)
+	if err != nil {
+		return st, err
 	}
 	diff := DiffEnv(st.Env, next)
 	st.Env = next

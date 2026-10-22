@@ -54,39 +54,31 @@ func TestUnboundDeepSeekUsesActualOverlay(t *testing.T) {
 	}
 }
 
-func TestSubagentReportsReceiveInternalRetellHint(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "结果到了。"}}}
+func TestSubagentReportsUseNormalConversation(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools)
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "结果到了。"}, {Role: provider.RoleAssistant, Content: "记得这个结果。"}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
-	ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "w1 did the work", "sa_a", time.Now())
+	ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "A完成，验收值731010", "sa_a", time.Now())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, m := range p.reqs[0].Messages {
-		if strings.Contains(m.Content, "<subagent_report>") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("retell hint did not reach the main model")
-	}
-	entries, err := b.Entries()
-	if err != nil {
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "继续", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Message.Content, "<subagent_report>") && !e.IsInternal() {
-			t.Fatal("hint exposed to owner")
+	for i, req := range p.reqs {
+		if len(req.Tools) == 0 {
+			t.Fatalf("request %d lost ordinary tools", i)
 		}
-	}
-	// Absorbed reports use the same internal hint; ordinary events do not.
-	hint, ok := subagentReportHint(ev)
-	if !ok || !hint.Internal {
-		t.Fatal(hint)
-	}
-	if _, ok := subagentReportHint(link.TerminalEvent("u1", "hi", time.Now())); ok {
-		t.Fatal("owner message got a report hint")
+		var all strings.Builder
+		for _, msg := range req.Messages {
+			all.WriteString(msg.Content)
+		}
+		if !strings.Contains(all.String(), ev.Content) || strings.Contains(all.String(), "<reported_result>") || strings.Contains(all.String(), "<subagent_report>") {
+			t.Fatal(all.String())
+		}
+		if i == 1 && !strings.Contains(all.String(), "结果到了。") {
+			t.Fatal("prior normal reply missing")
+		}
 	}
 }
 

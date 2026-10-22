@@ -23,6 +23,9 @@ const (
 // the owner said. It stays off the provider request; the kernel copies it into
 // the transcript record's origin.
 type Message struct {
+	// Seq identifies a message already appended to the bot transcript. Runtime only.
+	Seq        int        `json:"-"`
+	EventID    string     `json:"-"`
 	Role       string     `json:"role"`
 	Content    string     `json:"content,omitempty"`
 	Name       string     `json:"name,omitempty"`
@@ -36,10 +39,6 @@ type Message struct {
 	// own Images field instead.
 	ImageNames []string `json:"-"`
 	Internal   bool     `json:"-"`
-	// ReportID identifies a kernel-delivered result; Reports binds a final
-	// reply to the results it delivered. Neither is supplied by the model.
-	ReportID string   `json:"-"`
-	Reports  []string `json:"-"`
 }
 
 // Image is one picture attached to a message. Data is the raw file bytes.

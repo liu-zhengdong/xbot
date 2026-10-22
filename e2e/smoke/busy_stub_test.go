@@ -41,7 +41,7 @@ func busyOwners(req stubRequest) []string {
 func busyPhase(req stubRequest) string {
 	phase := "other"
 	for _, m := range req.Messages {
-		if m.Role != "user" {
+		if m.Role != "user" || strings.HasPrefix(m.Content, "<environment_") {
 			continue
 		}
 		if strings.HasPrefix(m.Content, "<untrusted_event") {
@@ -146,7 +146,7 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 		streamHold(w, r.Context(), b.stub, "model-s2", "正在安排，")
 		return true
 	}
-	if bot == "s3" && strings.Contains(lastUser(req), "RESULT_BUSY_s3_A") && len(owners) == 1 {
+	if bot == "s3" && strings.Contains(all, "RESULT_BUSY_s3_A") && !reported["BUSY_s3_A"] && len(owners) == 1 {
 		streamHold(w, r.Context(), b.stub, "relay-s3", "")
 		return true
 	}

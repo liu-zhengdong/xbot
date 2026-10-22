@@ -61,7 +61,7 @@ func newest(t *testing.T, p *scripted) string {
 	if len(msgs) == 0 {
 		t.Fatal("empty request")
 	}
-	return msgs[len(msgs)-1].Content
+	return newestConversationMessage(msgs).Content
 }
 
 func projectBlock(s string) string {
@@ -786,4 +786,15 @@ func BenchmarkProjectText(b *testing.B) {
 			b.Fatal("empty")
 		}
 	}
+}
+
+// Inputs now persist before the wake's environment delta. Assertions about
+// project/reminder content select the newest conversation item, not the delta.
+func newestConversationMessage(msgs []provider.Message) provider.Message {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if !strings.HasPrefix(msgs[i].Content, "<environment_") {
+			return msgs[i]
+		}
+	}
+	return provider.Message{}
 }

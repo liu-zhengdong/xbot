@@ -255,6 +255,11 @@ func lastUserBody(body string) string {
 func (b *busyRun) checkReports(final bool) {
 	for bot, ids := range b.tasks {
 		rows := b.srv.Transcript(bot)
+		for _, row := range rows {
+			if row.Role == "assistant" && !busyNormalText(row.Content) {
+				b.t.Errorf("%s: tool protocol text is not a delivered report: %q", bot, row.Content)
+			}
+		}
 		for _, id := range ids {
 			n := busyReportCount(rows, id)
 			if n > 1 && b.duplicateSeen[id] != n {
@@ -433,10 +438,12 @@ func busyContextLists(raw, id string) bool {
 	_ = json.Unmarshal([]byte(raw), &req)
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		m := req.Messages[i]
-		_, rest, ok := strings.Cut(m.Content, "<background_tasks>")
+		_, rest, ok := strings.Cut(m.Content, "<environment_update>")
 		if ok {
-			part, _, _ := strings.Cut(rest, "</background_tasks>")
-			return strings.Contains(part, id)
+			part, _, _ := strings.Cut(rest, "</environment_update>")
+			if strings.Contains(part, id) {
+				return true
+			}
 		}
 	}
 	return false
@@ -609,4 +616,15 @@ func busyAStable(agents []Agent, id string, requireRunning bool) bool {
 		}
 	}
 	return false
+}
+
+// A marker inside serialized tool syntax does not prove a normal report.
+func busyNormalText(text string) bool {
+	if (strings.HasPrefix(strings.TrimSpace(text), "<｜DSML｜") || strings.HasPrefix(strings.TrimSpace(text), "<｜｜DSML｜")) && strings.Contains(text, "invoke") {
+		return false
+	}
+	var raw struct {
+		Tools []json.RawMessage `json:"tool_calls"`
+	}
+	return json.Unmarshal([]byte(strings.TrimSpace(text)), &raw) != nil || len(raw.Tools) == 0
 }

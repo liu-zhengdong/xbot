@@ -162,3 +162,44 @@ func TestModelSwitchSealsOpenCall(t *testing.T) {
 		t.Fatalf("switch=%v interrupt=%v", sawSwitch, sawInterrupt)
 	}
 }
+
+func TestCancelledToolWithPersistedInterjectionCanResume(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	p := &scripted{resps: []provider.Message{toolCall("hold", "hold", "{}"), {Role: provider.RoleAssistant, Content: "继续处理。"}}}
+	k := &Kernel{Bot: b, Provider: p, MaxSteps: 3, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}, oneToolLink{&cancelHold{entered: entered}}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	bmsg := link.TerminalEvent("u1", "B仍要处理", time.Now())
+	done := make(chan error, 1)
+	go func() { done <- k.Handle(ctx, link.TerminalEvent("u1", "A先做", time.Now())) }()
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("tool never started")
+	}
+	if !Interject(b, bmsg, &Sink{Done: make(chan Outcome, 1)}) {
+		t.Fatal("input not accepted")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "not at the tail") {
+			t.Fatalf("cancel=%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancel hung")
+	}
+	if open, err := b.OpenTools(); err != nil || len(open) != 0 {
+		t.Fatalf("open calls=%v err=%v", open, err)
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "继续", time.Now())); err != nil {
+		t.Fatalf("next input blocked: %v", err)
+	}
+	if !strings.Contains(messagesText(p.reqs[len(p.reqs)-1].Messages), bmsg.Content) {
+		t.Fatal("cancel discarded B")
+	}
+}

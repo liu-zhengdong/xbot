@@ -3,10 +3,12 @@ package kernel
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/link"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -35,11 +37,8 @@ type turnRun struct {
 	msgSeqs []int
 	// err is the first transcript error. The model loop keeps going so its
 	// output is not dropped; the error is returned once the run ends.
-	err error
-	// delivery is the one result this generation is dedicated to retelling.
-	// It is revoked by owner preemption; ordinary replies never sign receipts.
-	delivery        string
-	deliveryPayload string
+	err         error
+	requestSeqs []int
 }
 
 // turnResult is what the model loop hands back to Handle.
@@ -62,26 +61,106 @@ func (r *turnRun) track(m provider.Message) error {
 		return err
 	}
 	r.msgSeqs = append(r.msgSeqs, seq)
-	r.t.inter.mu.Lock()
-	if item := r.t.inter.active; item != nil && item.seq == 0 && m.Role == provider.RoleUser && (!item.owner || !m.Internal) {
-		item.seq = seq
-	}
-	r.t.inter.mu.Unlock()
 	return nil
 }
 
-// seqAt is the transcript sequence of the i-th message of this turn's
-// conversation (counting the assembled context), or 0. msgSeqs holds one
-// sequence per message the turn recorded, in the order the agent appended
-// them, so the two line up unless a write failed; the stored line is checked
-// so a shifted pairing names nothing rather than the wrong line. fit calls it
-// from the goroutine that records, so msgSeqs is not read while it grows.
+// seqAt maps the prepared request (including newly received words and environment
+// differences) to the transcript for the existing context-length fitter.
 func (r *turnRun) seqAt(i int) int {
-	j := i - len(r.assembled)
-	if j < 0 || j >= len(r.msgSeqs) {
+	if i < 0 || i >= len(r.requestSeqs) {
 		return 0
 	}
-	return r.msgSeqs[j]
+	return r.requestSeqs[i]
+}
+
+// requestContext keeps the live conversation (including transient skill/tool
+// bodies), and merges only newly persisted input/environment by transcript order.
+func (r *turnRun) requestContext(req provider.Request) (provider.Request, error) {
+	if r.k.AllowFork {
+		return req, nil
+	}
+	st, err := r.k.Bot.LoadState()
+	if err != nil {
+		return req, err
+	}
+	next, err := r.k.taskEnvironment(st.Env.Tasks, link.Event{})
+	if err != nil {
+		return req, err
+	}
+	prev := st.Env
+	st.Env.Tasks = next
+	if diff := DiffEnv(prev, st.Env); diff != "" {
+		if err := r.k.Bot.Append(bot.Entry{Time: r.k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: diff}}); err != nil {
+			return req, err
+		}
+	}
+	if err := r.k.Bot.SaveState(st); err != nil {
+		return req, err
+	}
+	var out []provider.Message
+	seen := map[int]bool{}
+	through := 0
+	for i, msg := range req.Messages {
+		if i < len(r.assembled) {
+			msg.Seq = r.assembled[i].Seq
+		} else if j := i - len(r.assembled); j < len(r.msgSeqs) {
+			msg.Seq = r.msgSeqs[j]
+		}
+		if msg.Seq > 0 {
+			if seen[msg.Seq] && i >= len(r.assembled) {
+				continue
+			}
+			seen[msg.Seq] = true
+		}
+		out = append(out, msg)
+	}
+	for _, msg := range r.assembled {
+		if msg.Seq > through {
+			through = msg.Seq
+		}
+	}
+	err = r.k.Bot.Walk(through+1, 0, func(seq int, e bot.Entry) error {
+		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Content) {
+			return nil
+		}
+		msg := e.Message
+		msg.Seq, msg.Internal = seq, e.IsInternal()
+		if e.ReplyTo > 0 {
+			if q := r.k.quotePrefix(e.ReplyTo); q != "" {
+				msg.Content = q + "\n\n" + msg.Content
+			}
+		}
+		msg.Content = r.k.withPastedNote(msg.Content, e.Images)
+		out = append(out, msg)
+		return nil
+	})
+	if err != nil {
+		return req, err
+	}
+	// Only sort the chronological tail; stable prefix and current reminders keep
+	// their original bytes. New inputs cannot move an earlier owner/assistant.
+	pre := len(r.assembled)
+	if pre > len(out) {
+		pre = len(out)
+	}
+	tail := out[pre:]
+	// Unknown-sequence summary instructions stay after the recorded messages.
+	sort.SliceStable(tail, func(i, j int) bool {
+		if tail[i].Seq == 0 {
+			return false
+		}
+		if tail[j].Seq == 0 {
+			return true
+		}
+		return tail[i].Seq < tail[j].Seq
+	})
+	out = strayToolResults(groupToolResults(out))
+	r.requestSeqs = make([]int, len(out))
+	for i := range out {
+		r.requestSeqs[i] = out[i].Seq
+	}
+	req.Messages = out
+	return req, nil
 }
 
 // options builds the agent callbacks for this run.
@@ -101,8 +180,6 @@ func (r *turnRun) options(approve agent.Approver) agent.Options {
 		AfterStep: r.afterStep,
 		Guard:     r.guardStep,
 		OnIdle:    r.onIdle,
-		OnCap:     func() { r.delivery = "" },
-		OnStop:    func(string) { r.delivery = "" },
 	}
 	// A timer wake has no one to stream to, until an owner message takes
 	// over its output.
@@ -177,17 +254,8 @@ func (r *turnRun) afterStep() ([]provider.Message, error) {
 }
 
 func (r *turnRun) onIdle(msg provider.Message) (string, bool) {
-	if r.delivery != "" && (strings.TrimSpace(msg.Content) == "" || strings.TrimSpace(msg.Content) == "SILENT") {
-		// No receipt: retain the event for the caller, rather than asking the
-		// same generation again until the step guard is exhausted.
-		r.delivery = ""
-		return "", false
-	}
 	if r.br.Stopped() {
 		return "", false
-	}
-	if next, ok := r.nextReport(); ok {
-		return next, true
 	}
 	// The gate is a new user message, recorded by onMessage. Binding it onto the
 	// assistant line would end the request on an assistant turn and make replay
@@ -267,33 +335,15 @@ func (j *textJoin) String() string { return j.b.String() }
 // drive runs the model loop for this turn and reports to done, or finishes the
 // background itself. It owns every write to r.err and r.msgSeqs during the run.
 func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
-	if pending, err := r.k.pendingReports(); err != nil {
-		r.fail(err)
-	} else if _, ok := pending[r.t.turnEvent]; ok {
-		r.delivery = r.t.turnEvent
-		present := false
-		for _, m := range r.assembled {
-			if m.ReportID == r.delivery {
-				present = true
-				break
-			}
-		}
-		if !present {
-			// The event may already be covered by a summary. Its canonical
-			// payload stays in the receipt index; materialize just this delivery.
-			r.assembled = append(r.assembled, provider.Message{Role: provider.RoleUser, Content: reportMarker(r.delivery), Internal: true})
-		}
-	}
 	rp := &replyProvider{
-		inner:  r.p,
-		accept: r.k.userReplyTarget,
+		inner:   r.p,
+		prepare: r.requestContext,
+		accept:  r.k.userReplyTarget,
 		// The snapshot is taken before the request leaves, so a call that times
 		// out or fails still shows what was sent. It clips the text, so the ring
 		// holds previews, not tool output.
-		onSend:   func(req provider.Request) { r.k.noteContext(r.t, req) },
-		onUse:    func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
-		prepare:  r.reportRequest,
-		complete: r.reportReply,
+		onSend: func(req provider.Request) { r.k.noteContext(r.t, req) },
+		onUse:  func(req provider.Request, msg provider.Message) { r.k.noteUsage(r.t, req, msg) },
 	}
 	fit := newTurnFit(len(r.assembled), r.seqAt)
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
@@ -324,8 +374,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		if len(pend) == 0 && !bg && !r.k.AllowFork && err == nil {
 			// The owner spoke as the model finished: answer in this turn.
 			// The lock order is t.mu, then t.inter.mu, the same everywhere.
-			if next := r.k.closeInterject(r.t, false); len(next) > 0 {
-				pend = next[0].messages
+			if pend = r.k.closeInterject(r.t, false); len(pend) > 0 {
 				r.k.freshAllowanceLocked(r.t)
 			}
 		}
@@ -335,18 +384,12 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		}
 		r.t.mu.Unlock()
 		if finishing {
-			if pending, e := r.k.pendingReports(); e != nil {
-				err = errors.Join(err, e)
-			} else if _, unreported := pending[r.t.turnEvent]; unreported {
-				err = errors.Join(err, errors.New("result delivery did not produce a committed reply"))
-			}
 			break
 		}
 		// Another run starts fresh: its own end decides whether the task is
 		// done. Reminders already recorded stay on the message they were bound
 		// to; they are not copied onto whatever line is newest.
 		r.br.ResetSegment()
-		r.delivery, r.deliveryPayload = "", ""
 		convo := append(append([]provider.Message(nil), r.assembled...), produced...)
 		r.fail(r.k.reminders().Apply(convo[len(r.assembled):], r.msgSeqs))
 		for _, m := range pend {
@@ -375,13 +418,15 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	}
 	r.k.flushShellWake()
 	if !r.k.AllowFork {
-		// A failed run gives each unfinished request an explicit outcome,
-		// including ones whose original streams have already handed off.
+		// A failed run leaves accepted words on the transcript and reports the
+		// error to the current sink. Handle appends their failure replies.
 		dropped := r.k.closeInterject(r.t, true)
 		r.t.mu.Lock()
 		replyTo := r.t.replyTo
 		r.t.mu.Unlock()
-		err = errors.Join(err, r.k.failInterjections(r.t, dropped))
+		if len(dropped) > 0 && err == nil {
+			err = errors.New("插话尚未处理完成；原话已保留")
+		}
 		r.t.finishSink(Outcome{Err: err, ReplyTo: replyTo})
 	}
 	done <- turnResult{produced: produced, err: err}

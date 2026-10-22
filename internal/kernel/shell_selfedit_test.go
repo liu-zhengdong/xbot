@@ -56,5 +56,5 @@ func TestShellSelfEditIsNotAnExternalChange(t *testing.T) {
 func newestReq(t *testing.T, p *scripted) string {
 	t.Helper()
 	msgs := p.reqs[len(p.reqs)-1].Messages
-	return msgs[len(msgs)-1].Content
+	return newestConversationMessage(msgs).Content
 }

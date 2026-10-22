@@ -254,51 +254,6 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	})
 }
 
-// backgroundNote combines forked turns and dispatched work from their owners.
-// It lives at the conversation tail, outside the cacheable system prefix.
-func (k *Kernel) backgroundNote() (string, error) {
-	note := backgroundNote(k.Backgrounds())
-	e := k.execSnapshot()
-	if e == nil {
-		return note, nil
-	}
-	tasks, err := e.Tasks()
-	if err != nil {
-		return "", err
-	}
-	if len(tasks) == 0 && note == "" {
-		return "<background_tasks>\nNo running or queued background tasks.\n</background_tasks>", nil
-	}
-	if note == "" {
-		note = "<background_tasks>\n后台任务正在执行（不要重复做这些事；要改它们用 steer/queue/interrupt/cancel）：\n</background_tasks>"
-	}
-	var lines strings.Builder
-	for _, task := range tasks {
-		fmt.Fprintf(&lines, "\n- %s [%s]：%s", task.ID, task.Status, task.Task)
-		if task.Position > 0 {
-			fmt.Fprintf(&lines, "，排在第 %d 个", task.Position)
-		}
-	}
-	return strings.Replace(note, "\n</background_tasks>", lines.String()+"\n</background_tasks>", 1), nil
-}
-
-// backgroundNote is the line the foreground sees before the owner's message.
-func backgroundNote(list []BackgroundInfo) string {
-	if len(list) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("<background_tasks>\n后台任务正在执行（不要重复做这些事；要改它们用 steer/queue/interrupt/cancel）：")
-	for _, bg := range list {
-		fmt.Fprintf(&b, "\n- %s：%s，已跑 %d 步", bg.ID, bg.Task, bg.Steps)
-		if bg.LastTool != "" {
-			fmt.Fprintf(&b, "，最近在用 %s", bg.LastTool)
-		}
-	}
-	b.WriteString("\n</background_tasks>")
-	return b.String()
-}
-
 func (k *Kernel) writeForkMeta(t *turn, status string) {
 	dir := filepath.Join(filepath.Dir(k.Bot.OutboxPath()), "agents", t.branch)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

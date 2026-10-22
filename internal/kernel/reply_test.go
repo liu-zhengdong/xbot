@@ -26,7 +26,7 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 	}
 	var seen []string
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "reply_to: 3\nnoted"},
+		{Role: provider.RoleAssistant, Content: "reply_to: 2\nnoted"},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4, OnDelta: func(s string) {
 		seen = append(seen, s)
@@ -36,7 +36,7 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if k.ReplySeq() != 3 {
+	if k.ReplySeq() != 2 {
 		t.Fatalf("reply seq %d", k.ReplySeq())
 	}
 	joined := strings.Join(seen, "")
@@ -81,7 +81,7 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 	if user == nil || user.ReplyTo != 1 || user.Message.Content != "and this" {
 		t.Fatalf("user entry %+v", user)
 	}
-	if asst == nil || asst.ReplyTo != 3 || strings.Contains(asst.Message.Content, "reply_to:") {
+	if asst == nil || asst.ReplyTo != 2 || strings.Contains(asst.Message.Content, "reply_to:") {
 		t.Fatalf("assistant %+v", asst)
 	}
 }
@@ -92,7 +92,7 @@ func TestReplyToIgnoresNonUserSeq(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "reply_to: 1\nstill here"},
+		{Role: provider.RoleAssistant, Content: "reply_to: 2\nstill here"},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2}
 	ev := link.TerminalEvent("u1", "hello", time.Unix(2, 0).UTC())

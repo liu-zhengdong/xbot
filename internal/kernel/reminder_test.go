@@ -77,7 +77,7 @@ func TestReminderCooldownAndReplay(t *testing.T) {
 	if err := k.Handle(context.Background(), ev3); err != nil {
 		t.Fatal(err)
 	}
-	last := p.reqs[2].Messages[len(p.reqs[2].Messages)-1]
+	last := newestConversationMessage(p.reqs[2].Messages)
 	if !strings.Contains(last.Content, "later") || !strings.Contains(last.Content, "<pending_approvals>") {
 		t.Fatalf("reminder after cooldown not on the newest message: %q", last.Content)
 	}
@@ -152,7 +152,7 @@ func TestBackgroundDoneReminder(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	last := p.reqs[0].Messages[len(p.reqs[0].Messages)-1]
+	last := newestConversationMessage(p.reqs[0].Messages)
 	if !strings.Contains(last.Content, "status?") || !strings.Contains(last.Content, "<background_done>") || !strings.Contains(last.Content, "bg_abcd") {
 		t.Fatalf("completion not on the newest message: %q", last.Content)
 	}
