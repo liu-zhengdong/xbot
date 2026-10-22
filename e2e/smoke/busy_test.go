@@ -40,7 +40,9 @@ type busyMeasure struct {
 	Completion      int       `json:"completion_tokens"`
 	Estimated       bool      `json:"estimated"`
 	AUnaffected     bool      `json:"a_unaffected"`
-	Reports         int       `json:"reports"`
+	ReportStatus    string    `json:"report_status"`
+	FirstReportSeq  int       `json:"first_report_seq"`
+	ReportRows      int       `json:"report_rows"`
 	Reply           string    `json:"reply"`
 	SentAt          time.Time `json:"sent_at"`
 	ResultMentions  int       `json:"result_mentions"`
@@ -48,16 +50,15 @@ type busyMeasure struct {
 }
 
 type busyRun struct {
-	t             *testing.T
-	srv           *Server
-	stub          *Stub
-	script        *busyScript
-	real          bool
-	artifactDir   string
-	measures      []*busyMeasure
-	tasks         map[string][]string
-	aIDs          map[string]string
-	duplicateSeen map[string]int
+	t           *testing.T
+	srv         *Server
+	stub        *Stub
+	script      *busyScript
+	real        bool
+	artifactDir string
+	measures    []*busyMeasure
+	tasks       map[string][]string
+	aIDs        map[string]string
 }
 
 func (b *busyRun) check(key string, ok bool, detail string) {
@@ -150,7 +151,7 @@ func (b *busyRun) gate(name string) {
 func (b *busyRun) report(bot, id string) {
 	until := time.Now().Add(20 * time.Second)
 	for time.Now().Before(until) {
-		if busyReportCount(b.srv.Transcript(bot), id) > 0 {
+		if busyReports(b.srv.Transcript(bot), []string{id})[0].First != nil {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -244,7 +245,8 @@ func (b *busyRun) scenario(bot string) {
 		}
 	}
 	for _, p := range ps {
-		b.check(bot+"/early-report", busyReportCount(b.srv.Transcript(bot), p.m.Task) == 0, "B reported a result before explicit subagent release")
+		e := busyReports(b.srv.Transcript(bot), []string{p.m.Task})[0]
+		b.check(bot+"/early-report", len(e.Mentions) == 0 && len(e.Premature) == 0, "B reported a result before explicit subagent release")
 	}
 	b.stub.Release(aID)
 	b.report(bot, aID)
@@ -342,28 +344,14 @@ func (b *busyRun) checkReports(final bool) {
 				b.t.Errorf("%s: tool protocol text is not a delivered report: %q", bot, row.Content)
 			}
 		}
-		for _, id := range ids {
-			n := busyReportCount(rows, id)
-			if n > 1 && b.duplicateSeen[id] != n {
-				if b.duplicateSeen == nil {
-					b.duplicateSeen = map[string]int{}
-				}
-				b.duplicateSeen[id] = n
-				b.t.Errorf("%s: %d reports, want 1", id, n)
-			}
-			if final {
-				b.check(bot+"/report-"+strings.TrimPrefix(id, "BUSY_"+bot+"_"), n == 1, fmt.Sprintf("%d reports", n))
-				for _, m := range b.measures {
-					if m.Task == id {
-						m.Reports = n
-						m.ResultMentions = 0
-						for _, row := range rows {
-							if row.Role == "assistant" {
-								m.ResultMentions += strings.Count(row.Content, busyCode(id))
-							}
-						}
-					}
-				}
+		if !final {
+			continue
+		}
+		for _, e := range busyReports(rows, ids) {
+			b.check(bot+"/report-"+strings.TrimPrefix(e.Task, "BUSY_"+bot+"_"), e.Status != "FAIL", fmt.Sprintf("result events=%d, first=%v, premature=%d", len(e.Results), e.First != nil, len(e.Premature)))
+			if e.Status == "REVIEW" {
+				raw, _ := json.Marshal(e)
+				b.t.Logf("BUSY_REPORT_REVIEW %s", raw)
 			}
 		}
 	}
@@ -373,13 +361,12 @@ func (b *busyRun) summarize() {
 	var batchLatencies []float64
 	for _, m := range b.measures {
 		rows := b.srv.Transcript(m.Scenario)
-		m.Reports = busyReportCount(rows, m.Task)
-		m.ResultMentions = 0
-		for _, row := range rows {
-			if row.Role == "assistant" {
-				m.ResultMentions += strings.Count(row.Content, busyCode(m.Task))
-			}
+		e := busyReports(rows, []string{m.Task})[0]
+		m.ReportStatus, m.ReportRows = e.Status, len(e.Mentions)
+		if e.First != nil {
+			m.FirstReportSeq = e.First.Seq
 		}
+		m.ResultMentions = e.occurrences()
 		for _, r := range b.stub.Requests() {
 			if r.Caller == callerForeground && busyPhaseFromBody(r.Body) == m.Task {
 				m.RequestBytes += len(r.Body)
@@ -439,7 +426,8 @@ func (b *busyRun) summarize() {
 			}
 		}
 		b.check(bot+"/A-records", records == 1 && busyAStable(agents, b.aIDs[bot], false), fmt.Sprintf("A records=%d, original id=%s", records, b.aIDs[bot]))
-		raw, _ := json.Marshal(map[string]any{"scenario": bot, "task": a, "agent_records": records, "model_calls": b.subCalls(a), "control_model_calls": b.subCalls("BUSY_control_A"), "outcome": b.stub.Outcome(a), "report_rows": busyReportCount(rows, a)})
+		e := busyReports(rows, []string{a})[0]
+		raw, _ := json.Marshal(map[string]any{"scenario": bot, "task": a, "agent_records": records, "model_calls": b.subCalls(a), "control_model_calls": b.subCalls("BUSY_control_A"), "outcome": b.stub.Outcome(a), "report_rows": len(e.Mentions), "report_status": e.Status})
 		b.t.Logf("BUSY_A_BASELINE %s", raw)
 	}
 	if b.real {
@@ -497,17 +485,6 @@ func (b *busyRun) observationLimit(bot string) time.Duration {
 		return 15 * time.Second
 	}
 	return 3500 * time.Millisecond
-}
-func busyReportCount(rows []Row, id string) int {
-	n := 0
-	for _, r := range rows {
-		if r.Role == "assistant" {
-			if strings.Contains(r.Content, busyCode(id)) {
-				n++
-			}
-		}
-	}
-	return n
 }
 
 func busyCapError(rows []Row, id string) bool {

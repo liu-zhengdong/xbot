@@ -294,19 +294,6 @@ func (b *busyReal) limit() int {
 	return busyRealTokenLimit
 }
 
-func TestBusyReportCountsAssistantRowsNotRepeatedWords(t *testing.T) {
-	id := "BUSY_s1_A"
-	code := busyCode(id)
-	rows := []Row{{Role: "user", Content: code}, {Role: "assistant", Content: code + " is the value; result " + code}}
-	if n := busyReportCount(rows, id); n != 1 {
-		t.Fatalf("one report row counted %d", n)
-	}
-	rows = append(rows, Row{Role: "assistant", Content: "again " + code})
-	if n := busyReportCount(rows, id); n != 2 {
-		t.Fatalf("second report row counted %d", n)
-	}
-}
-
 // Called while mu is held. Whole-run budgeting includes output tokens too.
 func (b *busyReal) spent() int {
 	n := b.total
