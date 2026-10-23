@@ -226,3 +226,16 @@ func TestBindingIdleRejectsRunningToolJob(t *testing.T) {
 		t.Fatal("running tool Job would lose its cancel handle")
 	}
 }
+
+func TestBindingToolsBudgetBeforeFirstFitWithoutHostedSearch(t *testing.T) {
+	b := testBot(t)
+	k := &Kernel{Bot: b, AllowFork: true, Provider: &provider.Client{}}
+	r := &turnRun{k: k, p: k.Provider}
+	_, err := r.requestContext(provider.Request{Tools: []provider.ToolDef{{Name: "fake", Description: "definition must be reserved before fit"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.context.tools == 0 {
+		t.Fatal("first fit would use a stale tool budget")
+	}
+}

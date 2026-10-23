@@ -338,6 +338,16 @@ func (m Message) MapText(f func(string) string) Message {
 
 // remapCitations edits request-local offsets, never shared transcript objects.
 func remapCitations(parts []ContentPart, old, new string) {
+	hasCitation := false
+	for _, p := range parts {
+		if p.Citation != nil {
+			hasCitation = true
+			break
+		}
+	}
+	if !hasCitation {
+		return
+	}
 	if old == new {
 		return
 	}
@@ -351,8 +361,8 @@ func remapCitations(parts []ContentPart, old, new string) {
 		end--
 		newEnd--
 	}
-	shift := func(pos int) int {
-		if pos <= start {
+	shift := func(pos int, exclusiveEnd bool) int {
+		if pos < start || (exclusiveEnd && pos == start) {
 			return pos
 		}
 		if pos >= end {
@@ -363,8 +373,8 @@ func remapCitations(parts []ContentPart, old, new string) {
 	for i := range parts {
 		if parts[i].Citation != nil {
 			c := *parts[i].Citation
-			c.Start = shift(c.Start)
-			c.End = shift(c.End)
+			c.Start = shift(c.Start, false)
+			c.End = shift(c.End, true)
 			parts[i].Citation = &c
 		}
 	}

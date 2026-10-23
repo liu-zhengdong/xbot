@@ -366,7 +366,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		}
 		return r.k.fit(ctx, r.t, fit, req, overflow)
 	}
-	produced, err := agent.Run(provider.WithPartObserver(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), r.part), rp, r.list, r.assembled, opts)
+	produced, err := agent.Run(r.modelContext(), rp, r.list, r.assembled, opts)
 	var bg bool
 	for {
 		if err == nil {
@@ -414,7 +414,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			convo = append(convo, m)
 			produced = append(produced, m)
 		}
-		more, rerr := agent.Run(provider.WithPartObserver(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), r.part), rp, r.list, convo, opts)
+		more, rerr := agent.Run(r.modelContext(), rp, r.list, convo, opts)
 		produced = append(produced, more...)
 		err = rerr
 	}
@@ -460,4 +460,12 @@ func (r *turnRun) part(p provider.ContentPart) {
 			sk.OnPart(p)
 		}
 	}
+}
+
+func (r *turnRun) modelContext() context.Context {
+	ctx := notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable)
+	if provider.HasHostedSearch(r.p) {
+		return provider.WithPartObserver(ctx, r.part)
+	}
+	return ctx
 }

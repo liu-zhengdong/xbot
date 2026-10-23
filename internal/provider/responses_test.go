@@ -247,3 +247,17 @@ func TestTextEditsMapCitationOffsetsWithoutChangingOriginal(t *testing.T) {
 		t.Fatal("edited shared transcript citation")
 	}
 }
+
+func TestCitationInsertionKeepsExclusiveEnd(t *testing.T) {
+	original := Message{Content: []ContentPart{{Type: PartText, Text: "abc"}, {Type: PartCitation, Citation: &Citation{Start: 0, End: 3}}}}
+	after := original
+	after.SetText("abc reminder")
+	if after.Content[1].Citation.End != 3 {
+		t.Fatalf("appended reminder became citation: %+v", after.Content[1].Citation)
+	}
+	before := original
+	before.SetText("prefixabc")
+	if before.Content[1].Citation.Start != 6 || before.Content[1].Citation.End != 9 {
+		t.Fatalf("prefix citation %+v", before.Content[1].Citation)
+	}
+}
