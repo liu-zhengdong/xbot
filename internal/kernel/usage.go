@@ -85,13 +85,14 @@ func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Mess
 		return
 	}
 	u := observedUsage(req, msg)
+	billed := u.Billable()
 	window := k.contextWindow()
 	turnCompletion := 0
 	branch := ""
 	turnSeq := 0
 	if tr != nil {
 		tr.useMu.Lock()
-		tr.useCompletion += u.CompletionTokens
+		tr.useCompletion += billed.CompletionTokens
 		turnCompletion = tr.useCompletion
 		tr.useMu.Unlock()
 		tr.mu.Lock()
@@ -100,8 +101,12 @@ func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Mess
 		tr.mu.Unlock()
 	}
 	k.tokens.mu.Lock()
-	if msg.Usage.Reported && u.PromptTokens > 0 {
-		k.tokens.ratio = calibrate(u.PromptTokens, compact.EstimateMessages(req.Messages)+estimateTools(req.ToolDefinitions()))
+	calibrationPrompt := u.PromptTokens
+	if u.InitialPromptTokens > 0 {
+		calibrationPrompt = u.InitialPromptTokens
+	}
+	if msg.Usage.Reported && calibrationPrompt > 0 {
+		k.tokens.ratio = calibrate(calibrationPrompt, compact.EstimateMessages(req.Messages)+estimateTools(req.ToolDefinitions()))
 	}
 	if branch == "" {
 		k.tokens.prompt = u.PromptTokens
@@ -110,9 +115,9 @@ func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Mess
 		k.tokens.estimated = u.Estimated
 		k.tokens.turnCompletion = turnCompletion
 	}
-	k.tokens.sessPrompt += u.PromptTokens
-	k.tokens.sessComp += u.CompletionTokens
-	k.tokens.sessCached += u.CachedTokens
+	k.tokens.sessPrompt += billed.PromptTokens
+	k.tokens.sessComp += billed.CompletionTokens
+	k.tokens.sessCached += billed.CachedTokens
 	k.tokens.window = window
 	k.tokens.seen = true
 	snap := k.tokens.snap()
@@ -173,12 +178,13 @@ func (k *Kernel) noteSideUsage(call string, turn int, req provider.Request, msg 
 		return
 	}
 	u := observedUsage(req, msg)
+	billed := u.Billable()
 	_ = k.Bot.LogUsage(bot.Trace{
 		Time:          k.now(),
 		Reason:        usageReason(u.Estimated),
-		Prompt:        u.PromptTokens,
-		Completion:    u.CompletionTokens,
-		Cached:        u.CachedTokens,
+		Prompt:        billed.PromptTokens,
+		Completion:    billed.CompletionTokens,
+		Cached:        billed.CachedTokens,
 		Estimated:     u.Estimated,
 		Call:          call,
 		Turn:          turn,

@@ -37,24 +37,21 @@ func ValidProtocol(protocol string) error {
 }
 
 func (m ModelSpec) HasHostedSearch(protocol string) bool {
-	if protocol != Responses {
+	if protocol != Responses && protocol != AnthropicMessages {
 		return false
 	}
 	if m.HostedSearch != nil {
 		return *m.HostedSearch
 	}
-	return m.Name == "gpt-5.5" || m.Name == "gpt-5.4"
+	return protocol == Responses && (m.Name == "gpt-5.5" || m.Name == "gpt-5.4")
 }
 
 func SupportedBinding(protocol string, m ModelSpec) error {
 	if err := ValidProtocol(protocol); err != nil {
 		return err
 	}
-	if protocol == AnthropicMessages {
-		return fmt.Errorf("providers: anthropic_messages is not implemented (batch 3)")
-	}
-	if m.HostedSearch != nil && *m.HostedSearch && protocol != Responses {
-		return fmt.Errorf("providers: hosted_web_search requires responses")
+	if m.HostedSearch != nil && *m.HostedSearch && protocol != Responses && protocol != AnthropicMessages {
+		return fmt.Errorf("providers: hosted_web_search requires responses or anthropic_messages")
 	}
 	return nil
 }

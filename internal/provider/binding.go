@@ -30,6 +30,8 @@ func New(m Endpoint) (Provider, error) {
 		return &c, nil
 	case ResponsesProtocol:
 		return &Responses{Client: c, WebSearch: m.HostedSearch}, nil
+	case AnthropicMessages:
+		return &Anthropic{Client: c, WebSearch: m.HostedSearch}, nil
 	default:
 		return nil, fmt.Errorf("provider: unsupported protocol %q", m.Protocol)
 	}
@@ -39,8 +41,13 @@ func HasHostedSearch(p Provider) bool {
 	if w, ok := p.(interface{ UnwrapProvider() Provider }); ok {
 		return HasHostedSearch(w.UnwrapProvider())
 	}
-	r, ok := p.(*Responses)
-	return ok && r.WebSearch
+	switch p := p.(type) {
+	case *Responses:
+		return p.WebSearch
+	case *Anthropic:
+		return p.WebSearch
+	}
+	return false
 }
 
 // EndpointOf keeps protocol/capabilities on the existing local runner path.
@@ -53,6 +60,10 @@ func EndpointOf(p Provider) (Endpoint, bool) {
 	case *Responses:
 		c = &p.Client
 		m.Protocol = ResponsesProtocol
+		m.HostedSearch = p.WebSearch
+	case *Anthropic:
+		c = &p.Client
+		m.Protocol = AnthropicMessages
 		m.HostedSearch = p.WebSearch
 	default:
 		return m, false

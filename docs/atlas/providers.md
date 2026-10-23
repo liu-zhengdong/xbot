@@ -2,11 +2,11 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-23 @ 25caf8f + 上下文去重
+verified: 2026-10-24 @ c938d1b + 多 Provider 批 3
 ---
 # 模型供应商与主动性评测
 
-> **30 秒版**：每个 Bot 绑定一个供应商和模型，按协议调用 Chat Completions 或 OpenAI Responses；hosted 搜索与本地搜索按绑定互斥。模型通过评测后才进认证名单。
+> **30 秒版**：每个 Bot 绑定一个供应商和模型，按协议调用 Chat Completions、OpenAI Responses 或 Anthropic Messages；hosted 搜索与本地搜索按绑定互斥。模型通过评测后才进认证名单。
 
 ## 边界
 负责：供应商配置、模型提示、认证名单、主动性评测。不负责：密钥的出站注入（见 [安全](security.md)）。
@@ -14,10 +14,11 @@ verified: 2026-10-23 @ 25caf8f + 上下文去重
 ## 怎么运转
 - 供应商边界读写有序消息内容块，格式与旧串兼容规则见 [上下文与 transcript](context.md)。Chat Completions 适配器把文本和工具块投影回 `content`、`tool_calls`、`tool_call_id`；流式响应按文本和调用首次出现的顺序组装成块。Responses 则回放自己的原始输出条目，外厂内容降成文字摘要；不改 transcript 旧行。
 
-- `providers.json` 的供应商有 `protocol`：`chat_completions`、`responses`、`anthropic_messages`。缺省时已知 `openai` 推断为 Responses，`anthropic` 推断为 Messages，其余保留 Completions；协议不从 URL 推断。Messages 尚未实现，绑定时明确报错。`xbot provider add --protocol responses` 可写协议。
-- 模型条目的 `hosted_web_search` 可覆盖搜索能力。Responses 下 `gpt-5.5` / `gpt-5.4` 缺省启用；其他模型须显式配置。支持 hosted 的绑定不向模型提供本地 `web_search`，`web_fetch` 及 SearchBackend 保留；换回无 hosted 的绑定便恢复本地搜索。hosted 搜索随模型请求运行，不走本地权限表，也不建 Jobs。摘要等不带工具的辅助调用不开搜索。
+- `providers.json` 的供应商有 `protocol`：`chat_completions`、`responses`、`anthropic_messages`。缺省时已知 `openai` 推断为 Responses，`anthropic` 推断为 Messages，其余保留 Completions；协议不从 URL 推断。Messages 已接入 Claude API key 绑定，请求发往配置端点下的 `/messages`。`xbot provider add --protocol responses` 可写协议。
+- 模型条目的 `hosted_web_search` 可覆盖搜索能力。Responses 下 `gpt-5.5` / `gpt-5.4` 缺省启用；Messages 使用 `web_search_20250305`，须显式配置 `hosted_web_search: true`。其他模型也须显式配置。支持 hosted 的绑定不向模型提供本地 `web_search`，`web_fetch` 及 SearchBackend 保留；换回无 hosted 的绑定便恢复本地搜索。hosted 搜索随模型请求运行，不走本地权限表，也不建 Jobs。摘要等不带工具的辅助调用不开搜索。
 - Responses 输出落入同一份内容块：`server_tool`、`citation`、`reasoning`，本地 function call 仍走原工具执行路径。厂商原始条目供同协议重放，网页只收步骤和引用，不暴露原始推理。流式步骤通过 SSE `part` 事件交给气泡，完成块按 transcript 重放。`trace.jsonl` 的 `hosted_calls` / `hosted_tool` 记录调用次数和名称。
 - 模型窗口和完整工具定义（含 hosted schema）一起计入上下文预算；可用工具集变化才追加环境差异。同绑定不重复公布。runner 端点保留协议及 hosted 能力。
+- Messages 复用同一份内容块。本地 `tool_use` / `tool_result` 沿用工具执行路径，图片嵌在对应工具结果中；不带工具定义的总结请求把工具历史转成文字。工具参数保留 JSON 数字精度；服务端搜索及结果只落内容块，调用块独占计次数，引用走既有网页投影。`thinking` / `redacted_thinking` 保留原始签名或密文，同协议回放；跨协议只发文字摘要。未知块即使来自同厂也降成文字摘要。`thinking` 沿用 `off` / `omit` 配置，不新增启用开关；启用状态下返回的签名可回放。服务端 `pause_turn` 在同一次超时预算内最多请求三次，超限明确报错；窗口占用保留最后一次请求用量，累计用量只进会话记账。图片按直连 API 的 base64 后 10 MB 单图限制处理，超限工具图片变为明确工具错误，用户图片在出网前报错。搜索结果按调用编号更新成功或失败状态，不重复计次；已发文字或 hosted 进度后不重试。
 - API key 只存环境变量名，不存明文。OAuth 只有禁用的“后做”占位。
 - 每个 Bot 绑定一个供应商和模型。模型条目可以带 `todo`（true 或 false）和 `todo_steps`。`todo` 缺省时，供应商或模型名含 deepseek 才打开待办提醒，其余关掉；`todo_steps` 缺省是 6。空绑定是 deepseek-flash，提醒开。`xbot provider add --todo on|off --todo-steps N` 写入这两个字段，省略时保留原来的值。密钥仍然只记环境变量名。
 - **思考开关**：DeepSeek 模型默认先思考，而开着思考带工具时，后续请求必须回传 `reasoning_content`，XBot 不回传。所以模型名含 deepseek（`deepseek-reasoner` 除外）的请求一律带 `"thinking":{"type":"disabled"}`。模型条目可写 `thinking`：`off` 对任何模型都带上，`omit` 不带；其他值在 `provider add` 和解析绑定时报错。`xbot provider add --thinking off|omit` 写入，省略时保留原值。`deepseek-chat` 是 2026-07-24 停用的旧名，实测仍路由到 deepseek-flash 非思考模式；模型提示 `deepseek-flash.md` 与 `deepseek-chat.md` 内容相同。

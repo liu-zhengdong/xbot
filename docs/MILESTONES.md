@@ -9,6 +9,13 @@
 - Apple M1 前缀组装基准 1000 次：3794 ns/op、12164 B/op、30 allocs/op。长程替身 455 轮通过，3 次压缩、prompt 峰值 64687、压缩成本 1.758%、缓存恢复通过，成本比 K=0.516（压缩对不压缩，非拆段对照）。未测真实供应商、线上 p95、IPC、后台变慢比例与主人日用。
 - 首轮目录测试因只读取第一条 system 失败，读取器改为读取全部连续 system，原技能隔离与停用检查保留。只读 `codex review --base c938d1b` 未发现明确可操作缺陷；其 kernel/provider 测试受沙箱限制，compact 测试通过。`go test -count=1 ./...`、`go test -count=3 ./internal/kernel ./internal/skill`、专项缓存测试、`go vet ./...` 通过；`gofmt -l .` 无输出。atlas audit 退出 0，仍报既有陈旧/未挂接文档及测试临时文件告警，未扩范围处理。完整门禁和提交证据见工作区 commit.md。未推送、未发版、未合 main。
 
+## 2026-10-24 多 Provider 批 3：Anthropic Messages（本地实现，未合入）
+
+- Claude API key 绑定接入 Messages，沿用内容块、协议槽位与既有工具执行路径。显式启用的 hosted 搜索与本地搜索互斥；签名、搜索结果与引用可同协议回放，未知块降成文字摘要。无 OAuth 接线，无静态界面或前缀组装改动。
+- 合成流与内核替身覆盖工具往返、GPT → Claude → GPT → DeepSeek 换绑、窗口和环境工具集更新、hosted 计次及 Jobs 隔离。单次 Claude 合成工具轮约 32 ms；未测真模型回复 p95、IPC p95 或后台变慢比例。
+- build、vet、gofmt 和 Provider/kernel 三次测试通过。默认全量曾通过，最后一轮 web 插话顺序用例失败；四包三次检查也有同一失败。六条旅程 smoke 中忙时插话、动手做事缺少最终报告，Responses 搜索和其余旅程通过。审阅发现的工具图片、无工具总结、参数精度、重定向凭据、图片限制、搜索状态及续请求用量问题均有修复前失败的回归证据。
+- 检查、审阅及提交证据见仓外 `~/.xbot-build/multi-provider/commit-b3.md`。未 push、未发版、未合 main；未做真钥或主人日用验收。
+
 ## 2026-10-23 上下文去重：overlay、todo 与完成事件（本地实现，未合入）
 
 - 验收 #1–#5 已落地。Overlay 正文只在固定前缀，环境差异和压缩快照只公布模型键与短哈希；todo 保留完整磁盘清单，回包只报变更项和条数；完成事件改为结果文件指针与短开头。create_bot 既有短回执和 persona 环境哈希保持，补齐真实请求回归。

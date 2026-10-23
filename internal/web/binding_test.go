@@ -55,8 +55,8 @@ func TestBindingAPIProtocolsPersistenceBusyAndPublicParts(t *testing.T) {
 		io.Copy(io.Discard, res.Body)
 		return res.StatusCode
 	}
-	if code := call(`{"provider":"anthropic","model":"claude-sonnet-4-5"}`); code != 400 {
-		t.Fatalf("unimplemented protocol accepted %d", code)
+	if code := call(`{"provider":"anthropic","model":"claude-sonnet-4-5"}`); code != 200 {
+		t.Fatalf("Messages binding rejected %d", code)
 	}
 	lock, err := b.LockHandle()
 	if err != nil {

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -28,8 +27,8 @@ func TestProtocolsAndModelCapabilities(t *testing.T) {
 	if err != nil || gpt.Protocol != Responses || !gpt.HostedSearch || !gpt.Vision {
 		t.Fatalf("gpt %+v %v", gpt, err)
 	}
-	if _, _, err := Resolve(root, "anthropic", "claude-sonnet-4-5", getenv); err == nil || !strings.Contains(err.Error(), "batch 3") {
-		t.Fatalf("messages accepted %v", err)
+	if claude, _, err := Resolve(root, "anthropic", "claude-sonnet-4-5", getenv); err != nil || claude.Protocol != AnthropicMessages || claude.HostedSearch {
+		t.Fatalf("messages binding %+v %v", claude, err)
 	}
 	if err := Add(root, Provider{Name: "bad", Protocol: "wrong", BaseURL: "http://localhost", APIKeyEnv: "FAKE"}, ModelSpec{Name: "fake", Context: 1}); err == nil {
 		t.Fatal("unknown protocol accepted")
@@ -41,5 +40,20 @@ func TestProtocolsAndModelCapabilities(t *testing.T) {
 	gpt, _, err = Resolve(root, "openai", "gpt-5.5", getenv)
 	if err != nil || gpt.HostedSearch {
 		t.Fatalf("override %+v %v", gpt, err)
+	}
+}
+
+func TestAnthropicExplicitHostedCapability(t *testing.T) {
+	on, off := true, false
+	for _, m := range []ModelSpec{{Name: "claude-sonnet-4-5"}, {Name: "claude-sonnet-4-5", HostedSearch: &on}, {Name: "claude-sonnet-4-5", HostedSearch: &off}} {
+		if err := SupportedBinding(AnthropicMessages, m); err != nil {
+			t.Fatal(err)
+		}
+		if m.HasHostedSearch(AnthropicMessages) != (m.HostedSearch != nil && *m.HostedSearch) {
+			t.Fatalf("implicit Claude hosted capability %+v", m)
+		}
+	}
+	if SupportedBinding(ChatCompletions, ModelSpec{HostedSearch: &on}) == nil {
+		t.Fatal("Completions accepted hosted")
 	}
 }

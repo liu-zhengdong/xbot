@@ -1,5 +1,5 @@
 // Package provider is the model boundary. Protocol adapters implement
-// Chat Completions and Responses; the agent depends on Provider, not a vendor SDK.
+// Chat Completions, Responses and Messages; the agent depends on Provider, not a vendor SDK.
 package provider
 
 import "context"
@@ -48,16 +48,37 @@ type Image struct {
 
 // TokenUsage is one completion's token count. Reported is true only when the
 // API sent a usage object. Estimated is set by the kernel when it had to guess.
+// TokenTotals counts billable tokens across one or more model requests.
+type TokenTotals struct {
+	PromptTokens     int
+	CompletionTokens int
+	CachedTokens     int
+}
+
 type TokenUsage struct {
-	PromptTokens     int  `json:"prompt_tokens,omitempty"`
-	CompletionTokens int  `json:"completion_tokens,omitempty"`
-	CachedTokens     int  `json:"cached_tokens,omitempty"`
-	Reported         bool `json:"-"`
-	Estimated        bool `json:"-"`
+	// Billed is the aggregate for adapters that internally continue a request.
+	// The ordinary counts remain the last request's context usage.
+	Billed *TokenTotals `json:"-"`
+	// InitialPromptTokens matches the original Request before internal
+	// continuations appended assistant blocks. It is used only for calibration.
+	InitialPromptTokens int  `json:"-"`
+	PromptTokens        int  `json:"prompt_tokens,omitempty"`
+	CompletionTokens    int  `json:"completion_tokens,omitempty"`
+	CachedTokens        int  `json:"cached_tokens,omitempty"`
+	Reported            bool `json:"-"`
+	Estimated           bool `json:"-"`
 	// CacheReported says the response carried a cache field at all. A
 	// provider that reports no cache figure and one that reports a cold 0
 	// both leave CachedTokens at 0; this tells them apart.
 	CacheReported bool `json:"-"`
+}
+
+// Billable keeps single-request providers on the same accounting path.
+func (u TokenUsage) Billable() TokenTotals {
+	if u.Billed != nil {
+		return *u.Billed
+	}
+	return TokenTotals{PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens, CachedTokens: u.CachedTokens}
 }
 
 // ToolCall is a model request to run a tool.
