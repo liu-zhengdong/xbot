@@ -80,6 +80,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 		list = append(list, shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k})
 	}
 	list = k.modelAgentTools(list)
+	list = k.bindingTools(list)
 	return list, nil
 }
 
@@ -533,4 +534,18 @@ func (t expandTool) Run(_ context.Context, args json.RawMessage) (string, error)
 		return "", err
 	}
 	return t.k.ExpandBot(in.Bot, in.From, in.To)
+}
+
+// bindingTools applies search exclusivity to both mounted and scoped tools.
+func (k *Kernel) bindingTools(list []tools.Tool) []tools.Tool {
+	if !provider.HasHostedSearch(k.boundProvider()) {
+		return list
+	}
+	out := list[:0]
+	for _, t := range list {
+		if t.Name() != "web_search" {
+			out = append(out, t)
+		}
+	}
+	return out
 }

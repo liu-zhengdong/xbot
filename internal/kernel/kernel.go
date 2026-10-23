@@ -79,6 +79,7 @@ type Kernel struct {
 	Budget     compact.Budget
 	SendPolicy link.SendPolicy
 	OnDelta    func(string)
+	OnPart     func(provider.ContentPart)
 	OnTool     func(name, summary string)
 	OnResult   func(name, output string)
 	// Permissive turns the permission table's cards off (ADR 0019,
@@ -264,7 +265,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// misses it. A message that arrives before the first model call stops
 	// that call before it leaves. Setup failures leave the original words and
 	// a normal failure reply, even when their old stream has handed off.
-	first := &Sink{OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnHandoff: k.OnHandoff}
+	first := &Sink{OnPart: k.OnPart, OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnHandoff: k.OnHandoff}
 	if ev.Source == link.NameTimer {
 		first.OnDelta = nil
 	}

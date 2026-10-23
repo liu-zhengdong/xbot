@@ -371,3 +371,11 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 ## 设备
 
 `GET /api/devices` 返回已配对的设备列表：`{"self","gateway_ok","devices","pairing"}`，每台设备有 `id`、`label`、`name`、`bots`、`bot_avatars`、`seen`、`online` 等字段（`seen`、`added` 是时间，`unpaired`、`online` 是布尔值）。`bots` 照旧是另一台设备上 Bot 的名字数组。`bot_avatars` 是同一批 Bot 的头像，每个列出的 Bot 一项：`{"writer": {"avatar_seed": "writer#2"}, "coach": {"custom": true}}`。种子由对方随设备目录送来，没设种子时取 Bot 名字；`custom` 表示对方用的是上传的图片，图片不过网关，所以界面在能传图之前先画几何字形。对方版本较旧、没送种子时这一项是空的，界面画几何字形，不拿名字当种子（免得和本机同名 Bot 一张脸）。种子先在接收时校验一次，建视图时再校验一次，不合法的丢掉种子、保留 Bot。没有 Bot 时是 `{}`，从不是 `null`。
+
+## 供应商与模型绑定
+
+`GET /api/providers` 返回 `{providers:[{name,protocol,api_key_env,key_configured,models}]}`。只返回环境变量名和配置状态，不返回密钥值。模型项含 `model`、`context`、`vision`、`hosted_web_search`、`available`；`available` 表示协议可执行。默认端点的 `name` 为空，未知窗口为 0。`GET /api/models` 也带协议和能力字段，原认证过滤不变。
+
+`PUT /api/bots/{name}/binding` 接收 `{provider,model}`，成功返回保存的二元绑定。二者为空时清除绑定。未知模型、协议或缺少密钥为 400；Bot 正在工作为 409。成功后下一轮重建内核，不重写 transcript。
+
+Transcript 消息保留原 `content` 字符串投影，另有可选 `parts` 数组，包含 `server_tool` 的 `hosted:{id,name,status,query}` 和 `citation:{url,title,start,end}`；位置按 Unicode 字符计数。网页不接收 `vendor_raw` 或 reasoning 数据。消息 SSE 增加 `part` 事件，承载临时 hosted 步骤；最终内容从 transcript 读取。

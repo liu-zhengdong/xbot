@@ -68,12 +68,15 @@ func (l Limits) norm() Limits {
 	return l
 }
 
-// Endpoint is an OpenAI-compatible model the runner should call.
+// Endpoint is the protocol and model the runner should call.
 // The API key crosses the localhost socket and is covered by the runner token.
 type Endpoint struct {
-	BaseURL string `json:"base_url"`
-	APIKey  string `json:"api_key"`
-	Model   string `json:"model"`
+	Protocol     string `json:"protocol,omitempty"`
+	HostedSearch bool   `json:"hosted_web_search,omitempty"`
+	Thinking     string `json:"thinking,omitempty"`
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	Model        string `json:"model"`
 }
 
 // StartRequest begins one subagent.
@@ -399,11 +402,8 @@ func (l *Local) providerFor(req StartRequest) (provider.Provider, error) {
 	if req.Model.BaseURL == "" || req.Model.APIKey == "" || req.Model.Model == "" {
 		return nil, errors.New("exec: model endpoint is incomplete")
 	}
-	return &provider.Client{
-		BaseURL: req.Model.BaseURL,
-		APIKey:  req.Model.APIKey,
-		Model:   req.Model.Model,
-	}, nil
+	return provider.New(provider.Endpoint{Protocol: req.Model.Protocol, HostedSearch: req.Model.HostedSearch,
+		BaseURL: req.Model.BaseURL, APIKey: req.Model.APIKey, Model: req.Model.Model, Thinking: req.Model.Thinking})
 }
 
 func (l *Local) emit(ev Event) {

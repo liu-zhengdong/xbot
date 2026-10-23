@@ -50,6 +50,10 @@ func SeesImages(name string, explicit *bool) bool {
 	if strings.Contains(n, "deepseek-chat") {
 		return false
 	}
+	switch n {
+	case "gpt-5.5", "gpt-5.4", "claude-sonnet-4-5", "claude-opus-4-6":
+		return true
+	}
 	return strings.Contains(n, "deepseek") && strings.Contains(n, "flash")
 }
 

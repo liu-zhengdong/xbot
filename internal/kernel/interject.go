@@ -20,6 +20,7 @@ import (
 // over: deltas, tool lines, and the end of the turn go to whoever spoke last.
 type Sink struct {
 	OnDelta  func(string)
+	OnPart   func(provider.ContentPart)
 	OnTool   func(name, summary string)
 	OnResult func(name, output string)
 	// OnHandoff runs once, when a newer owner message takes the output. The

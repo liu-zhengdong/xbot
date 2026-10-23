@@ -28,6 +28,7 @@ try {
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/devices.css">
 <link rel="stylesheet" href="/remotechat.css">
+<link rel="stylesheet" href="/providers.css">
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs>
@@ -211,6 +212,7 @@ try {
    <button type="button" data-set="perm"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>权限</span></button>
    <button type="button" data-set="devices"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg><span>设备</span></button>
    <button type="button" data-set="apps"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>连接应用</span></button>
+   <button type="button" data-set="providers"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg><span>模型与供应商</span></button>
    <button type="button" data-set="about"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>关于</span></button>
   </nav>
   <div class="setmain">
@@ -268,6 +270,7 @@ try {
     <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">免打扰时段不推送</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
     <div class="setsec"><h4>连接器</h4><div id="settings-connectors"></div><button id="settings-add-connector" class="approw setadd" type="button">添加连接器</button><p class="setfoot">装连接器时如果要填密钥，会单独弹出确认——不受「操作前先确认」开关影响。</p></div>
    </div>
+   <div class="setpane" data-spane="providers"><h2>模型与供应商</h2><div id="settings-providers"></div></div>
    <div class="setpane" data-spane="about">
     <h2>关于</h2>
     <div class="aboutlogo"><div class="mark">X</div><div><h3>XBot</h3><div class="v"><span data-settings-version></span></div></div></div>
@@ -280,6 +283,7 @@ try {
 </div>
 
 <script src="/vendor/xbot-avatar.min.js"></script>
+<script src="/providers.js"></script>
 <script src="/app.js"></script>
 <script src="/devices.js"></script>
 <script src="/pairing.js"></script>

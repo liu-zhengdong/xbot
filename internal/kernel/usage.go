@@ -101,7 +101,7 @@ func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Mess
 	}
 	k.tokens.mu.Lock()
 	if msg.Usage.Reported && u.PromptTokens > 0 {
-		k.tokens.ratio = calibrate(u.PromptTokens, compact.EstimateMessages(req.Messages)+estimateTools(req.Tools))
+		k.tokens.ratio = calibrate(u.PromptTokens, compact.EstimateMessages(req.Messages)+estimateTools(req.ToolDefinitions()))
 	}
 	if branch == "" {
 		k.tokens.prompt = u.PromptTokens
@@ -142,6 +142,12 @@ func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Mess
 	if branch != "" {
 		rec.Prompt, rec.Completion, rec.Cached = u.PromptTokens, u.CompletionTokens, u.CachedTokens
 		rec.TurnCompletion, rec.Estimated, rec.Branch = turnCompletion, u.Estimated, branch
+	}
+	for _, p := range msg.Content {
+		if p.Type == provider.PartHosted && p.Hosted != nil {
+			rec.HostedCalls++
+			rec.HostedTool = p.Hosted.Name
+		}
 	}
 	_ = k.Bot.LogUsage(rec)
 }

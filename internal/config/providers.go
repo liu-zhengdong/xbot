@@ -13,14 +13,16 @@ import (
 	"strings"
 
 	"xbot/internal/fsutil"
+	"xbot/internal/provider"
 )
 
 // envName is an environment variable name, never a secret.
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Provider is one OpenAI-compatible endpoint. The key is the name of an environment variable.
+// Provider is one protocol endpoint. The key is the name of an environment variable.
 type Provider struct {
 	Name      string      `json:"name"`
+	Protocol  string      `json:"protocol,omitempty"`
 	BaseURL   string      `json:"base_url"`
 	APIKeyEnv string      `json:"api_key_env"`
 	Models    []ModelSpec `json:"models"`
@@ -37,12 +39,13 @@ type Provider struct {
 // for the model id: deepseek-flash sees images; deepseek-chat and
 // deepseek-v4-pro do not. Other ids do not, until the spec says so.
 type ModelSpec struct {
-	Name      string `json:"name"`
-	Context   int    `json:"context"`
-	Todo      *bool  `json:"todo,omitempty"`
-	TodoSteps int    `json:"todo_steps,omitempty"`
-	Thinking  string `json:"thinking,omitempty"`
-	Vision    *bool  `json:"vision,omitempty"`
+	Name         string `json:"name"`
+	Context      int    `json:"context"`
+	Todo         *bool  `json:"todo,omitempty"`
+	TodoSteps    int    `json:"todo_steps,omitempty"`
+	Thinking     string `json:"thinking,omitempty"`
+	Vision       *bool  `json:"vision,omitempty"`
+	HostedSearch *bool  `json:"hosted_web_search,omitempty"`
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -138,6 +141,12 @@ func Add(root string, p Provider, model ModelSpec) error {
 		return Save(root, f)
 	}
 	cur := f.Providers[i]
+	if p.Protocol != "" {
+		if err := ValidProtocol(p.Protocol); err != nil {
+			return err
+		}
+		cur.Protocol = p.Protocol
+	}
 	if p.BaseURL != "" {
 		if err := checkProviderBase(p.BaseURL); err != nil {
 			return err
@@ -163,6 +172,9 @@ func Add(root string, p Provider, model ModelSpec) error {
 			}
 			if model.Vision == nil {
 				model.Vision = cur.Models[n].Vision
+			}
+			if model.HostedSearch == nil {
+				model.HostedSearch = cur.Models[n].HostedSearch
 			}
 			cur.Models[n] = model
 			replaced = true
@@ -256,6 +268,10 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	if err != nil {
 		return ModelConfig{}, 0, err
 	}
+	protocol := p.WireProtocol()
+	if err := SupportedBinding(protocol, model); err != nil {
+		return ModelConfig{}, 0, err
+	}
 	if err := validThinking(model.Thinking); err != nil {
 		return ModelConfig{}, 0, err
 	}
@@ -268,28 +284,26 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		return ModelConfig{}, 0, fmt.Errorf("providers: %s is empty", p.APIKeyEnv)
 	}
 	return ModelConfig{
-		APIKey:   key,
-		BaseURL:  strings.TrimRight(p.BaseURL, "/"),
-		Model:    model.Name,
-		KeyEnv:   p.APIKeyEnv,
-		Thinking: model.Thinking,
-		Vision:   model.SeesImages(),
+		Protocol:     protocol,
+		HostedSearch: model.HasHostedSearch(protocol),
+		APIKey:       key,
+		BaseURL:      strings.TrimRight(p.BaseURL, "/"),
+		Model:        model.Name,
+		KeyEnv:       p.APIKeyEnv,
+		Thinking:     model.Thinking,
+		Vision:       model.SeesImages(),
 	}, model.Context, nil
 }
 
 // ModelConfig is a resolved endpoint. KeyEnv is the variable name, not a place to store the key.
 // Thinking is the model spec's thinking switch, empty when unset.
 // Vision is whether this model understands images.
-type ModelConfig struct {
-	APIKey   string
-	BaseURL  string
-	Model    string
-	KeyEnv   string
-	Thinking string
-	Vision   bool
-}
+type ModelConfig = provider.Endpoint
 
 func validateProvider(p Provider, modelRequired bool) error {
+	if err := ValidProtocol(p.WireProtocol()); err != nil {
+		return err
+	}
 	if !nameOK(p.Name) {
 		return fmt.Errorf("providers: bad name %q", p.Name)
 	}

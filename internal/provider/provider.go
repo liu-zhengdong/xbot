@@ -1,6 +1,5 @@
-// Package provider is the model boundary. M1 speaks the OpenAI-compatible
-// Chat Completions API (tool calls included). The agent depends on Provider,
-// not on a vendor SDK.
+// Package provider is the model boundary. Protocol adapters implement
+// Chat Completions and Responses; the agent depends on Provider, not a vendor SDK.
 package provider
 
 import "context"
@@ -83,12 +82,22 @@ type ToolDef struct {
 
 // Request is one completion.
 type Request struct {
-	Messages []Message
-	Tools    []ToolDef
+	Messages     []Message
+	Tools        []ToolDef
+	HostedSearch bool
 }
 
 // Provider completes a turn. onDelta receives assistant text as it streams.
 // Tool-call arguments are not streamed to onDelta; they are returned on Message.
 type Provider interface {
 	Chat(ctx context.Context, req Request, onDelta func(string)) (Message, error)
+}
+
+// ToolDefinitions is the complete schema budget, including model-side search.
+// Hosted definitions are never added to the local executable tool directory.
+func (r Request) ToolDefinitions() []ToolDef {
+	if !r.HostedSearch {
+		return r.Tools
+	}
+	return append(append([]ToolDef(nil), r.Tools...), ToolDef{Name: "hosted:web_search", Parameters: map[string]any{"type": "web_search"}})
 }

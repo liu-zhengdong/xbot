@@ -155,7 +155,7 @@ func (k *Kernel) noteContext(t *turn, req provider.Request) {
 	if k == nil || t == nil {
 		return
 	}
-	tools := estimateTools(req.Tools)
+	tools := estimateTools(req.ToolDefinitions())
 	k.context.mu.Lock()
 	k.context.tools = tools
 	k.context.mu.Unlock()
@@ -206,7 +206,7 @@ func (k *Kernel) ContextSnapshot() ContextSnap {
 // buildContextRequest turns one sent request into its band totals and its
 // row-level detail. step is the model call's position in the wake.
 func buildContextRequest(req provider.Request, step int, at string) (ContextRequest, *ContextDetail) {
-	defs := toolShares(req.Tools)
+	defs := toolShares(req.ToolDefinitions())
 	out := ContextRequest{Step: step, At: at, Status: "running"}
 	for _, d := range defs {
 		out.Tools += d.Tokens

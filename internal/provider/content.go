@@ -12,6 +12,9 @@ const (
 	PartText       = "text"
 	PartToolCall   = "tool_call"
 	PartToolResult = "tool_result"
+	PartHosted     = "server_tool"
+	PartCitation   = "citation"
+	PartReasoning  = "reasoning"
 )
 
 // ContentPart is one ordered piece of a message, not a compaction SummaryBlock.
@@ -25,6 +28,22 @@ type ContentPart struct {
 	ToolCallID string          `json:"tool_call_id,omitempty"`
 	Vendor     string          `json:"vendor,omitempty"`
 	VendorRaw  json.RawMessage `json:"vendor_raw,omitempty"`
+	Hosted     *HostedStep     `json:"hosted,omitempty"`
+	Citation   *Citation       `json:"citation,omitempty"`
+}
+
+type HostedStep struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Query  string `json:"query,omitempty"`
+}
+
+type Citation struct {
+	URL   string `json:"url"`
+	Title string `json:"title"`
+	Start int    `json:"start"`
+	End   int    `json:"end"`
 }
 
 func TextContent(text string) []ContentPart {
@@ -264,6 +283,17 @@ func (m Message) MapText(f func(string) string) Message {
 	}
 	for i := range parts {
 		p := &parts[i]
+		if p.Hosted != nil {
+			h := *p.Hosted
+			h.Query = f(h.Query)
+			p.Hosted = &h
+		}
+		if p.Citation != nil {
+			c := *p.Citation
+			c.Title = f(c.Title)
+			c.URL = f(c.URL)
+			p.Citation = &c
+		}
 		if p.ToolCall != nil {
 			call := *p.ToolCall
 			call.Function.Arguments = f(call.Function.Arguments)

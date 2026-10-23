@@ -93,3 +93,5 @@ func countText(n *int) string {
 	}
 	return fmt.Sprint(*n)
 }
+
+func (a *activity) UnwrapProvider() provider.Provider { return a.Provider }

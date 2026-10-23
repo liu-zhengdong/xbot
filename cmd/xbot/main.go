@@ -100,7 +100,7 @@ Usage:
   xbot [--root DIR] browser snapshot
   xbot [--root DIR] browser click <selector>
   xbot [--root DIR] browser stop
-  xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--todo on|off] [--todo-steps N]
+  xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--protocol chat_completions|responses|anthropic_messages] [--hosted-web-search on|off] [--todo on|off] [--todo-steps N]
   xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
   xbot version

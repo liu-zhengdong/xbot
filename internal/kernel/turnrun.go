@@ -79,6 +79,10 @@ func (r *turnRun) seqAt(i int) int {
 // requestContext keeps the live conversation (including transient skill/tool
 // bodies), and merges only newly persisted input/environment by transcript order.
 func (r *turnRun) requestContext(req provider.Request) (provider.Request, error) {
+	req.HostedSearch = req.Tools != nil && provider.HasHostedSearch(r.p)
+	r.k.context.mu.Lock()
+	r.k.context.tools = estimateTools(req.ToolDefinitions())
+	r.k.context.mu.Unlock()
 	if r.k.AllowFork {
 		return req, nil
 	}
@@ -362,7 +366,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		}
 		return r.k.fit(ctx, r.t, fit, req, overflow)
 	}
-	produced, err := agent.Run(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), rp, r.list, r.assembled, opts)
+	produced, err := agent.Run(provider.WithPartObserver(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), r.part), rp, r.list, r.assembled, opts)
 	var bg bool
 	for {
 		if err == nil {
@@ -410,7 +414,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			convo = append(convo, m)
 			produced = append(produced, m)
 		}
-		more, rerr := agent.Run(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), rp, r.list, convo, opts)
+		more, rerr := agent.Run(provider.WithPartObserver(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), r.part), rp, r.list, convo, opts)
 		produced = append(produced, more...)
 		err = rerr
 	}
@@ -443,4 +447,17 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		r.t.finishSink(Outcome{Err: err, ReplyTo: replyTo})
 	}
 	done <- turnResult{produced: produced, err: err}
+}
+
+func (r *turnRun) part(p provider.ContentPart) {
+	if r.t.isForked() {
+		return
+	}
+	m := r.k.scrubEntry(provider.Message{Role: provider.RoleAssistant, Content: []provider.ContentPart{p}})
+	if sk := r.t.sinkNow(); sk != nil && sk.OnPart != nil {
+		for _, p := range m.Content {
+			p.VendorRaw = nil
+			sk.OnPart(p)
+		}
+	}
 }

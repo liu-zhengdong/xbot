@@ -195,6 +195,10 @@ func contentJSON(m Message) (json.RawMessage, error) {
 // nothing has gone out yet; once text has been streamed, a retry would repeat
 // or contradict it, so the error is returned instead.
 func (c *Client) Chat(ctx context.Context, req Request, onDelta func(string)) (Message, error) {
+	return c.complete(ctx, req, onDelta, c.chatAttempt)
+}
+
+func (c *Client) complete(ctx context.Context, req Request, onDelta func(string), attemptCall func(context.Context, Request, func(string)) (Message, error)) (Message, error) {
 	var last error
 	streamed := false
 	live := func(s string) {
@@ -211,7 +215,7 @@ func (c *Client) Chat(ctx context.Context, req Request, onDelta func(string)) (M
 				return Message{}, err
 			}
 		}
-		msg, err := c.chatAttempt(ctx, req, live)
+		msg, err := attemptCall(ctx, req, live)
 		if err == nil {
 			return msg, nil
 		}
@@ -314,6 +318,10 @@ func (rd *idleReader) Read(p []byte) (int, error) {
 
 func retryable(err error) bool {
 	if err == nil {
+		return false
+	}
+	var visible *visibleResponseError
+	if errors.As(err, &visible) {
 		return false
 	}
 	if errors.Is(err, ErrRequestTimeout) || errors.Is(err, ErrStreamIdleTimeout) {

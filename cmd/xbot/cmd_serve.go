@@ -105,7 +105,10 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	client := &provider.Client{BaseURL: resolved.BaseURL, APIKey: resolved.APIKey, Model: resolved.Model, Thinking: resolved.Thinking}
+	client, err := provider.New(resolved)
+	if err != nil {
+		return nil, person.Person{}, err
+	}
 	// The kernel derives both context lines from the bound model on each use,
 	// so a model change moves them; the budget only carries the tail floor.
 	budget := kernel.BudgetFor(b.Config())

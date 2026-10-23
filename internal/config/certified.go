@@ -21,11 +21,15 @@ type CertifiedFile struct {
 
 // ModelInfo is one configured model and whether it is on the certified list.
 type ModelInfo struct {
-	ID        string `json:"id"`
-	Provider  string `json:"provider"`
-	Model     string `json:"model"`
-	Context   int    `json:"context"`
-	Certified bool   `json:"certified"`
+	ID           string `json:"id"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	Context      int    `json:"context"`
+	Certified    bool   `json:"certified"`
+	Protocol     string `json:"protocol"`
+	Vision       bool   `json:"vision"`
+	HostedSearch bool   `json:"hosted_web_search"`
+	Available    bool   `json:"available"`
 }
 
 // CertifiedPath is the list under the data root.
@@ -135,6 +139,7 @@ func VisibleModels(root string, all bool) ([]ModelInfo, error) {
 				continue
 			}
 			out = append(out, ModelInfo{
+				Protocol: p.WireProtocol(), Vision: m.SeesImages(), HostedSearch: m.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), m) == nil,
 				ID: id, Provider: p.Name, Model: m.Name, Context: m.Context, Certified: ok,
 			})
 		}

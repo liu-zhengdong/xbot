@@ -235,13 +235,15 @@ func cmdProvider(root string, args []string) error {
 	case "add":
 		ordered, err := reorderFlags(args[1:], map[string]bool{
 			"base-url": true, "api-key-env": true, "model": true, "context": true,
-			"todo": true, "todo-steps": true, "thinking": true, "vision": true,
+			"todo": true, "todo-steps": true, "thinking": true, "vision": true, "protocol": true, "hosted-web-search": true,
 		})
 		if err != nil {
 			return err
 		}
 		fs := flag.NewFlagSet("provider add", flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
+		protocol := fs.String("protocol", "", "chat_completions, responses, or anthropic_messages")
+		hosted := fs.String("hosted-web-search", "", "hosted search: on or off")
 		base := fs.String("base-url", "", "OpenAI-compatible base URL")
 		keyEnv := fs.String("api-key-env", "", "environment variable that holds the API key")
 		model := fs.String("model", "", "model id")
@@ -254,7 +256,7 @@ func cmdProvider(root string, args []string) error {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--todo on|off] [--todo-steps N] [--thinking off|omit] [--vision on|off]")
+			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--protocol chat_completions|responses|anthropic_messages] [--hosted-web-search on|off] [--todo on|off] [--todo-steps N] [--thinking off|omit] [--vision on|off]")
 		}
 		spec := config.ModelSpec{Name: *model, Context: *contextLen, TodoSteps: *todoSteps, Thinking: strings.ToLower(strings.TrimSpace(*thinking))}
 		if prev, _, err := config.Lookup(root, fs.Arg(0), *model); err == nil {
@@ -290,8 +292,19 @@ func cmdProvider(root string, args []string) error {
 		default:
 			return errors.New("provider add: --vision must be on or off")
 		}
+		switch *hosted {
+		case "":
+		case "on":
+			v := true
+			spec.HostedSearch = &v
+		case "off":
+			v := false
+			spec.HostedSearch = &v
+		default:
+			return errors.New("provider add: --hosted-web-search must be on or off")
+		}
 		if err := config.Add(root, config.Provider{
-			Name: fs.Arg(0), BaseURL: *base, APIKeyEnv: *keyEnv,
+			Name: fs.Arg(0), Protocol: *protocol, BaseURL: *base, APIKeyEnv: *keyEnv,
 		}, spec); err != nil {
 			return err
 		}

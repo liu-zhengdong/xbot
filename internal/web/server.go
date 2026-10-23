@@ -161,6 +161,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/permissions", s.getPermissions)
 	mux.HandleFunc("PUT /api/permissions", s.putPermissions)
 	mux.HandleFunc("GET /api/models", s.listModels)
+	mux.HandleFunc("GET /api/providers", s.listProviders)
+	mux.HandleFunc("PUT /api/bots/{name}/binding", s.bindModel)
+	mux.HandleFunc("GET /providers.js", s.static("static/providers.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /providers.css", s.static("static/providers.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	s.registerStatusAPI(mux)
 	s.registerContextAPI(mux)
@@ -723,17 +727,18 @@ func (s *Server) profile(b *bot.Bot) []map[string]string {
 }
 
 type apiRow struct {
-	Seq        int                 `json:"seq"`
-	Role       string              `json:"role"`
-	Content    string              `json:"content,omitempty"`
-	Name       string              `json:"name,omitempty"`
-	Title      string              `json:"title,omitempty"`
-	Subtitle   string              `json:"subtitle,omitempty"`
-	ToolCalls  []provider.ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string              `json:"tool_call_id,omitempty"`
-	Time       time.Time           `json:"time"`
-	ReplyTo    int                 `json:"reply_to,omitempty"`
-	Branch     string              `json:"branch,omitempty"`
+	Seq        int                    `json:"seq"`
+	Role       string                 `json:"role"`
+	Content    string                 `json:"content,omitempty"`
+	Parts      []provider.ContentPart `json:"parts,omitempty"`
+	Name       string                 `json:"name,omitempty"`
+	Title      string                 `json:"title,omitempty"`
+	Subtitle   string                 `json:"subtitle,omitempty"`
+	ToolCalls  []provider.ToolCall    `json:"tool_calls,omitempty"`
+	ToolCallID string                 `json:"tool_call_id,omitempty"`
+	Time       time.Time              `json:"time"`
+	ReplyTo    int                    `json:"reply_to,omitempty"`
+	Branch     string                 `json:"branch,omitempty"`
 	// Internal marks a kernel note the owner did not say. The interface hides it.
 	Internal   bool           `json:"internal,omitempty"`
 	Kind       string         `json:"kind,omitempty"`
@@ -843,7 +848,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	var rows []apiRow
 	for i, e := range entries {
 		row := apiRow{
-			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
+			Parts: publicParts(e.Message), Seq: i + 1, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
 			ToolCalls: e.Message.Calls(), ToolCallID: e.Message.CallID(), Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
 			Images: e.Images,
@@ -1083,6 +1088,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	rs := &replyStream{w: w}
 	sendLocked := rs.send
+	k.OnPart = rs.part
 	k.OnDelta, k.OnTool, k.OnResult = rs.delta, rs.tool, rs.result
 	prevApprove := k.Approve
 	k.Approve = s.webApprove(b, k, sendLocked)
@@ -1100,6 +1106,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	later(func() {
 		k.Approve = prevApprove
+		k.OnPart = nil
 		k.OnDelta, k.OnTool, k.OnResult, k.OnHandoff = nil, nil, nil, nil
 		stopWatch()
 		cancelRun()
@@ -1146,7 +1153,7 @@ func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, e
 	handoff := make(chan struct{})
 	var once sync.Once
 	sink := &kernel.Sink{
-		OnDelta: rs.delta, OnTool: rs.tool, OnResult: rs.result,
+		OnPart: rs.part, OnDelta: rs.delta, OnTool: rs.tool, OnResult: rs.result,
 		OnHandoff: func() { once.Do(func() { close(handoff) }) },
 		Done:      make(chan kernel.Outcome, 1),
 	}
@@ -1550,3 +1557,17 @@ func (s *Server) wakeBot(b *bot.Bot) {
 		_ = proc.Drain(context.Background(), k)
 	}()
 }
+
+func publicParts(m provider.Message) []provider.ContentPart {
+	var out []provider.ContentPart
+	for _, p := range m.Content {
+		if p.Type != provider.PartHosted && p.Type != provider.PartCitation {
+			continue
+		}
+		p.VendorRaw = nil
+		out = append(out, p)
+	}
+	return out
+}
+
+func (rs *replyStream) part(p provider.ContentPart) { rs.send("part", p) }

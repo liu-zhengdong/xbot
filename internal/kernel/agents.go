@@ -234,7 +234,7 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	k.configureWeb(view)
 	k.configureWeb(fetch)
 	k.configureWeb(search)
-	return []tools.Tool{sh, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view}
+	return k.bindingTools([]tools.Tool{sh, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view})
 }
 
 // memoryGuarded runs a subagent's file edit through the memory guard. The
@@ -302,11 +302,11 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 
 func (k *Kernel) endpoint() (exec.Endpoint, error) {
 	p := k.boundProvider()
-	c, ok := p.(*provider.Client)
-	if !ok || c == nil {
+	c, ok := provider.EndpointOf(p)
+	if !ok {
 		return exec.Endpoint{}, errors.New("exec: provider has no remote endpoint")
 	}
-	return exec.Endpoint{BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}, nil
+	return exec.Endpoint{Protocol: c.Protocol, HostedSearch: c.HostedSearch, Thinking: c.Thinking, BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}, nil
 }
 
 func (k *Kernel) forkMessages(ctx context.Context) ([]provider.Message, error) {
@@ -618,4 +618,21 @@ func parseControl(args json.RawMessage) (string, string, error) {
 		return "", "", err
 	}
 	return in.ID, in.Text, nil
+}
+
+// CheckBindingIdle refuses to orphan accepted executor work when rebinding.
+func (k *Kernel) CheckBindingIdle() error {
+	if len(k.Backgrounds()) > 0 {
+		return errors.New("Bot 的后台任务仍在运行")
+	}
+	if e := k.execSnapshot(); e != nil {
+		tasks, err := e.Tasks()
+		if err != nil {
+			return err
+		}
+		if len(tasks) > 0 {
+			return errors.New("Bot 的子代理仍在运行或排队")
+		}
+	}
+	return nil
 }

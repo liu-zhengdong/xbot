@@ -298,7 +298,11 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	if err != nil {
 		return next, err
 	}
-	environmentSet(&next, "tools", toolNames(list))
+	names := toolNames(list)
+	if provider.HasHostedSearch(k.boundProvider()) {
+		names = append(names, "hosted:web_search")
+	}
+	environmentSet(&next, "tools", names)
 	environmentSet(&next, "notes", k.pendingNotes())
 	environmentSet(&next, "time", k.localStamp())
 	tasks, err := k.taskEnvironment(environmentTasks(prev), link.Event{})

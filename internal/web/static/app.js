@@ -2228,7 +2228,8 @@
     row.dataset.sender = "bot:" + (who || "");
     const body = el("div", "body");
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    if (m.content) appendBotContent(body, displayText(m.content));
+    if (m.content) appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
+ window.XBotProviders.decorate(body,m.parts);
     const calls = m.tool_calls || [];
     const peers = [];
     for (const call of calls) {
@@ -2356,7 +2357,7 @@
       const key = "bot:" + (who || "");
       const cont = !groupStart(lastMsg, m, lastKey, key);
       const built = botBubble(m, results, messages, i, who);
-      if (m.content) {
+      if (m.content || (m.parts || []).length) {
         if (cont) markContinuation(built.row, m.time);
         inner.append(built.row);
         lastKey = key;
@@ -4495,7 +4496,10 @@
     if (model) {
       const row = el("div", "kv");
       const value = el("div", "v");
-      value.append(document.createTextNode(model));
+      const change = el("button", "binding-model", model);
+ change.type="button";change.setAttribute("aria-haspopup","dialog");
+ change.addEventListener("click",()=>window.XBotProviders.open({api,data,opener:change,manage:()=>openSettings("providers"),onBound:async()=>{state.modelCatalog=null;await refreshLists();await loadPanel();}}));
+ value.append(change);
       if (modelCertified(data)) {
         const flag = el("span", "cert");
         flag.append(icon("check"), document.createTextNode("已认证"));
@@ -5539,7 +5543,9 @@
           prose.replaceChildren();
           appendMarkdown(prose, displayText(acc));
           thread.scrollTop = thread.scrollHeight;
-        } else if (event === "tool") {
+        } else if (event === "part") {
+ window.XBotProviders.progress(host,payload);
+ } else if (event === "tool") {
           const who = state.sel && state.sel.id;
           if (host) {
             setWorking(host, payload.name || "");
@@ -6483,7 +6489,9 @@
         $("settings-permissions").disabled = true;
         const data = await api("/api/permissions");
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
-      } else if (section === "devices") {
+      } else if (section === "providers") {
+ await window.XBotProviders.settings({api,host:$("settings-providers")});
+ } else if (section === "devices") {
         await window.xbotDevices.mount();
       } else if (section === "apps") {
         await Promise.all([loadSettingsApps(request), loadPush()]);
