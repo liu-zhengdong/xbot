@@ -271,7 +271,7 @@ func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (
 	if err := k.refreshMemSnap(ctx, &st); err != nil {
 		return "", err
 	}
-	if err := k.saveState(st); err != nil {
+	if err := k.Bot.SaveState(st); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("compacted %d-%d", from, to), nil
@@ -545,7 +545,7 @@ func (k *Kernel) foldBlocks(ctx context.Context, st bot.State) (bot.State, error
 	st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 		From: first, To: last, Text: text, Focus: "folded", At: k.now(),
 	})
-	if err := k.saveState(st); err != nil {
+	if err := k.Bot.SaveState(st); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -583,7 +583,7 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 	if err := k.refreshMemSnap(ctx, &st); err != nil {
 		return st, err
 	}
-	if err := k.saveState(st); err != nil {
+	if err := k.Bot.SaveState(st); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -733,13 +733,4 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 
 type focusedCompactor interface {
 	CompactFocus(ctx context.Context, prior, focus string, turns []provider.Message) (string, error)
-}
-
-func uncoveredHasEnv(entries []bot.Entry) bool {
-	for _, e := range entries {
-		if strings.HasPrefix(e.Message.Content, "<environment_") {
-			return true
-		}
-	}
-	return false
 }

@@ -171,30 +171,36 @@ func (f providerFunc) Chat(ctx context.Context, r provider.Request, d func(strin
 }
 
 func TestTaskEnvironmentOnlyAppendsDifferences(t *testing.T) {
-	now := time.Now()
 	a := bot.TaskEnv{ID: "sa_a", Task: "任务A", Status: "running"}
 	b := bot.TaskEnv{ID: "sa_b", Task: "任务B", Status: "queued", Position: 2}
-	prev := bot.EnvRecord{At: now, Tasks: []bot.TaskEnv{a, b}}
-	next := prev
-	if got := DiffEnv(prev, next); got != "" {
+	prev := environment{Fields: map[string]json.RawMessage{}}
+	environmentSet(&prev, "task:"+a.ID, a)
+	environmentSet(&prev, "task:"+b.ID, b)
+	if got := environmentDelta(prev, prev, "", ""); got != "" {
 		t.Fatal(got)
 	}
+	next := replayEnvironment([]provider.Message{{Role: provider.RoleUser, Internal: true, Content: environmentDelta(environment{Fields: map[string]json.RawMessage{}}, prev, "", "")}}, "")
 	b.Position = 1
-	next.Tasks = []bot.TaskEnv{a, b}
-	diff := DiffEnv(prev, next)
-	if strings.Contains(diff, "sa_a") || !strings.Contains(diff, "排在第 1 个") {
-		t.Fatalf("not a delta: %s", diff)
-	}
-	prev = next
-	a.Status = "done"
-	next.Tasks = []bot.TaskEnv{a, b}
-	diff = DiffEnv(prev, next)
-	if !strings.Contains(diff, "sa_a [done]") || strings.Contains(diff, "sa_b") {
+	environmentSet(&next, "task:"+b.ID, b)
+	diff := environmentDelta(prev, next, "", "")
+	if strings.Contains(diff, "sa_a") || !strings.Contains(diff, `"position":1`) {
 		t.Fatal(diff)
 	}
-	if DiffEnv(next, next) != "" {
-		t.Fatal("completion update repeated")
+	prev = next
+	next = environment{Fields: map[string]json.RawMessage{}}
+	for key, value := range prev.Fields {
+		next.Fields[key] = value
 	}
+	a.Status = "done"
+	environmentSet(&next, "task:"+a.ID, a)
+	diff = environmentDelta(prev, next, "", "")
+	if !strings.Contains(diff, `"status":"done"`) || strings.Contains(diff, "sa_b") {
+		t.Fatal(diff)
+	}
+	if environmentDelta(next, next, "", "") != "" {
+		t.Fatal("completion repeated")
+	}
+
 }
 
 func TestDSMLExplanationIsOrdinaryText(t *testing.T) {

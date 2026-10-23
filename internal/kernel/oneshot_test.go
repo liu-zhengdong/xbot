@@ -50,7 +50,7 @@ func TestOneShotAndLocalTime(t *testing.T) {
 			env += e.Message.Content + "\n"
 		}
 	}
-	want := "now: 2026-10-15T20:07:00+08:00 (Asia/Shanghai)"
+	want := `"time":"2026-10-15T20:07:00+08:00 (Asia/Shanghai)"`
 	if !strings.Contains(env, want) {
 		t.Fatalf("env missing local time:\n%s", env)
 	}

@@ -4,9 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+	"xbot/internal/mockopenai"
 	"xbot/internal/provider"
 )
 
@@ -156,14 +156,16 @@ func TestRootCauseStillNeedsCSSReference(t *testing.T) {
 type scopedCaptureJudge struct{ captureJudge }
 
 func (j *scopedCaptureJudge) Chat(ctx context.Context, req provider.Request, delta func(string)) (provider.Message, error) {
-	re := regexp.MustCompile(`### (Bot|Person) — ([^;\n]+)`)
 	for _, m := range req.Messages {
-		for _, match := range re.FindAllStringSubmatch(m.Content, -1) {
-			path := strings.TrimSpace(match[2])
+		for _, scope := range []string{"Bot", "Person"} {
+			path := mockopenai.MemoryPathInText(m.Content, scope)
+			if path == "" {
+				continue
+			}
 			if !strings.HasSuffix(path, "memory.md") {
 				path = filepath.Join(path, "memory.md")
 			}
-			marker := "{{" + strings.ToLower(match[1]) + "_memory}}"
+			marker := "{{" + strings.ToLower(scope) + "_memory}}"
 			for i := range j.fake.Steps {
 				j.fake.Steps[i].Args = strings.ReplaceAll(j.fake.Steps[i].Args, marker, path)
 			}

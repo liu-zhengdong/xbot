@@ -212,7 +212,12 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 	if comp.calls != 2 {
 		t.Fatalf("second pass did not run: calls %d", comp.calls)
 	}
-	second := comp.got
+	var second []provider.Message
+	for _, m := range comp.got {
+		if !strings.HasPrefix(m.Content, environmentOpen) {
+			second = append(second, m)
+		}
+	}
 	if len(second) != 1 {
 		t.Fatalf("second pass saw %d messages, want only the one the first block left out", len(second))
 	}
@@ -235,7 +240,7 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 	if active[0].From != 1 || active[0].To != covered || active[0].Text != firstText {
 		t.Fatalf("the first block was rewritten: %+v", active[0])
 	}
-	if active[1].From != covered+1 || active[1].To != 6 {
+	if active[1].From != covered+1 || active[1].To != 7 {
 		t.Fatalf("the second block does not continue where the first ends: %+v", active[1])
 	}
 }

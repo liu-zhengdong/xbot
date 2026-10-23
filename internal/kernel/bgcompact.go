@@ -197,9 +197,6 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 		return st, false, err
 	}
 	fresh = migrate(fresh)
-	if !fresh.Env.At.IsZero() {
-		st.Env = fresh.Env
-	}
 	st.Usage = fresh.Usage
 	st.Blocks = fresh.Blocks
 	changed := false
@@ -226,7 +223,7 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 		if err := k.refreshMemSnap(context.Background(), &st); err != nil {
 			return st, false, err
 		}
-		if err := k.saveState(st); err != nil {
+		if err := k.Bot.SaveState(st); err != nil {
 			return st, false, err
 		}
 		changed = true

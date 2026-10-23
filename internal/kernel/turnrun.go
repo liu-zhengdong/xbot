@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/compact"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -80,9 +81,6 @@ func (r *turnRun) seqAt(i int) int {
 func (r *turnRun) requestContext(req provider.Request) (provider.Request, error) {
 	if r.k.AllowFork {
 		return req, nil
-	}
-	if err := r.k.updateTaskEnvironment(); err != nil {
-		return req, err
 	}
 	var out []provider.Message
 	seen := map[int]bool{}
@@ -331,6 +329,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	rp := &replyProvider{
 		inner:   r.p,
 		prepare: r.requestContext,
+		finish:  r.finishEnvironment,
 		accept:  r.k.userReplyTarget,
 		// The snapshot is taken before the request leaves, so a call that times
 		// out or fails still shows what was sent. It clips the text, so the ring
@@ -350,6 +349,16 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	}
 	fit := newTurnFit(len(r.assembled), r.seqAt)
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
+		// Reserve the sampled replacement before fit, so a snapshot never bypasses H.
+		st, err := r.k.Bot.LoadState()
+		if err == nil && !r.k.AllowFork {
+			prev := replayEnvironment(req.Messages, st.MemSnap)
+			next, sampleErr := r.k.sampleEnvironment(prev)
+			if sampleErr == nil {
+				text := environmentDelta(prev, next, environmentBasis(st, req.Messages), st.MemSnap)
+				fit.reserve = r.k.scaled(compact.EstimateMessage(provider.Message{Role: provider.RoleUser, Content: text}))
+			}
+		}
 		return r.k.fit(ctx, r.t, fit, req, overflow)
 	}
 	produced, err := agent.Run(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable), rp, r.list, r.assembled, opts)

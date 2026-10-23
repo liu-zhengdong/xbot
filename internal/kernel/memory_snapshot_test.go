@@ -105,9 +105,6 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 	if !st.MemSnapSet || !strings.Contains(st.MemSnap, "fact before compaction") {
 		t.Fatalf("snapshot not refreshed after compaction: %q", st.MemSnap)
 	}
-	if st.MemSeen != st.MemSnap {
-		t.Fatalf("MemSeen %q != MemSnap %q", st.MemSeen, st.MemSnap)
-	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "second", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +228,7 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 		t.Fatal("msgs[1] changed after an outside memory write")
 	}
 	up := lastEnvUpdate(t, k)
-	if !strings.Contains(up, "memory changed since you last saw it") || !strings.Contains(up, "+ ") || !strings.Contains(up, "deploys freeze on fridays") {
+	if !strings.Contains(up, `"memory":{"add":`) || !strings.Contains(up, "deploys freeze on fridays") {
 		t.Fatalf("no memory diff in the update:\n%s", up)
 	}
 	if strings.Contains(up, "memory: updated") {
@@ -312,25 +309,29 @@ func TestMemoryDiffShowsPersonWriteByOtherBot(t *testing.T) {
 	}
 }
 
-// TestMemoryDiffCap: a long diff collapses to a count; equal texts give nothing.
+// Large updates keep the complete reversible changes, rather than a count.
 func TestMemoryDiffCap(t *testing.T) {
 	var a, b strings.Builder
 	for i := 0; i < 100; i++ {
-		fmt.Fprintf(&a, "- old fact number %03d with some padding text\n", i)
-		fmt.Fprintf(&b, "- new fact number %03d with some padding text\n", i)
+		fmt.Fprintf(&a, "- old fact %03d\n", i)
+		fmt.Fprintf(&b, "- new fact %03d\n", i)
 	}
-	got := memoryDiff(a.String(), b.String(), nil)
-	if got != "memory changed: 100 lines added, 100 removed (too long to show; use recall to read it)" {
-		t.Fatalf("got %q", got)
+	p := changedMemory(memoryFacts(a.String()), memoryFacts(b.String()))
+	if p == nil || len(p.Add) != 100 || len(p.Remove) != 100 {
+		t.Fatalf("lossy change: %+v", p)
 	}
-	if memoryDiff(a.String(), a.String(), nil) != "" {
-		t.Fatal("equal texts produced a diff")
+	text := encodeEnvironment(environmentMessage{Memory: p})
+	decoded, ok := decodeEnvironment(text)
+	if !ok || len(decoded.Memory.Add) != 100 || len(decoded.Memory.Remove) != 100 {
+		t.Fatal("not replayable")
 	}
-	if memoryDiff("x\n", "x\n\n\n", nil) != "" {
-		t.Fatal("blank-line change produced a diff")
+	if changedMemory(memoryFacts(a.String()), memoryFacts(a.String()+"\n\n")) != nil {
+		t.Fatal("blank lines changed memory")
 	}
-	if d := memoryDiff("a\nb\n", "a\n<b>\n", nil); !strings.Contains(d, "+ &lt;b&gt;") || !strings.Contains(d, "- b") {
-		t.Fatalf("diff not fenced or wrong: %q", d)
+	p = changedMemory(memoryFacts("a\nb\n"), memoryFacts("a\n<b>\n"))
+	decoded, ok = decodeEnvironment(encodeEnvironment(environmentMessage{Memory: p}))
+	if !ok || decoded.Memory.Add[0] != "<b>" || decoded.Memory.Remove[0] != "b" {
+		t.Fatal("escaping lost values")
 	}
 }
 
@@ -480,18 +481,16 @@ func TestMemoryDiffRecentLogOnlyNewEntries(t *testing.T) {
 		}
 		return b.String()
 	}
-	got := memoryDiff(render(2, 10, 10), render(3, 11, 11), nil)
-	if !strings.Contains(got, "+ [Recent log] - log entry 10") {
-		t.Fatalf("new entry missing: %q", got)
+	p := changedMemory(memoryFacts(render(2, 10, 10)), memoryFacts(render(3, 11, 11)))
+	if p == nil || len(p.Add) != 1 || !strings.Contains(p.Add[0], "log entry 10") || len(p.Remove) != 0 {
+		t.Fatalf("window shift reported as edit: %+v", p)
 	}
-	if strings.Contains(got, "log entry 02") || strings.Contains(got, "of 11") {
-		t.Fatalf("window shift or heading reported: %q", got)
-	}
+
 }
 
 // TestMemoryOwnWriteInForkedTurnSkipped: a file write made after the turn forked
 // is still the bot's own change; the next wake does not report it back.
-func TestMemoryOwnWriteInForkedTurnSkipped(t *testing.T) {
+func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 	k, g, box := forkKernel(t)
 	store := memory.Open(k.Bot.Root)
 	k.Memory = store
@@ -520,11 +519,17 @@ func TestMemoryOwnWriteInForkedTurnSkipped(t *testing.T) {
 	if err != nil || len(facts) != 1 {
 		t.Fatalf("facts %v %v", facts, err)
 	}
+	// Projected history includes branch tool results too. Its original
+	// canonical receipt is therefore the baseline, without a second ledger.
 	for _, up := range envUpdates(t, k.Bot) {
 		if strings.Contains(up, "written in the background") {
-			t.Fatalf("background own write reported back:\n%s", up)
+			t.Fatalf("own receipt repeated: %s", up)
 		}
 	}
+	if !strings.Contains(messagesText(p.reqs[len(p.reqs)-1].Messages), "written in the background") {
+		t.Fatal("receipt not visible in subsequent conversation")
+	}
+
 }
 
 // TestMemoryTimerWakeKeepsView: a timer wake keeps the owner's view, so msgs[1]
@@ -605,15 +610,18 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 // TestMemoryDiffReportsOutsideRemovalOfOwnLine: another writer removing a line
 // the bot itself added is still reported.
 func TestMemoryDiffReportsOutsideRemovalOfOwnLine(t *testing.T) {
-	old := "### Standing\n- a fact\n"
-	own := []string{"+[Standing] - bot added this"}
-	got := memoryDiff(old, old, own)
-	if !strings.Contains(got, "- [Standing] - bot added this") {
-		t.Fatalf("outside removal of an own line hidden: %q", got)
+	prefix := "### Standing\n- a fact\n"
+	receipt := encodeEnvironment(environmentMessage{Memory: changedMemory(memoryFacts(prefix), memoryFacts(prefix+"- bot added this\n"))})
+	msgs := []provider.Message{{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "own", Function: provider.FunctionCall{Name: "write_file"}}}}, {Role: provider.RoleTool, ToolCallID: "own", Content: "ok\n\n" + receipt}}
+	seen := replayEnvironment(msgs, prefix)
+	p := changedMemory(seen.Memory, memoryFacts(prefix))
+	if p == nil || len(p.Remove) != 1 || !strings.Contains(p.Remove[0], "bot added this") {
+		t.Fatalf("outside removal hidden: %+v", p)
 	}
-	if memoryDiff(old, old+"- bot added this\n", own) != "" {
-		t.Fatal("own line reported back")
+	if changedMemory(seen.Memory, memoryFacts(prefix+"- bot added this\n")) != nil {
+		t.Fatal("own write repeated")
 	}
+
 }
 
 // A brief worker uses the same frozen Bot snapshot regardless of sender.
@@ -637,7 +645,7 @@ func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Memory: store, turn: &turn{turnSender: "u2", turnKind: link.KindPerson}}
-	st := bot.State{MemSnapSet: true, MemSnap: "old", MemSeen: "old"}
+	st := bot.State{MemSnapSet: true, MemSnap: "old"}
 	k.refreshMemSnap(context.Background(), &st)
 	if strings.Contains(st.MemSnap, "owner lives in Hangzhou") {
 		t.Fatalf("refreshed for the wrong view: %q %q", "bot-only", st.MemSnap)
@@ -707,21 +715,23 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 		}
 	})
 	assertMemoryFileWrites(t, b, 1)
-	if up := lastEnvUpdate(t, k); !strings.Contains(up, "- [") || !strings.Contains(up, "short lived note") {
+	if up := lastEnvUpdate(t, k); !strings.Contains(up, `"remove":`) || !strings.Contains(up, "short lived note") {
 		t.Fatalf("undone own write not reported:\n%s", up)
 	}
 }
 
-// TestRefreshMemSnapClearsOwnQueue: a refreshed snapshot already holds pending
-// own writes, so they must not be applied again.
-func TestRefreshMemSnapClearsOwnQueue(t *testing.T) {
+// A refreshed prefix needs no repeated Bot memory in its full environment.
+func TestRefreshMemSnapNoRepeatedMemory(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
-	k.memOwn = []ownChange{{lines: []string{"+[Bot] - x"}}}
 	st := bot.State{MemSnapSet: true}
-	k.refreshMemSnap(context.Background(), &st)
-	if len(k.memOwn) != 0 {
-		t.Fatalf("own queue survived the refresh: %+v", k.memOwn)
+	if err := k.refreshMemSnap(context.Background(), &st); err != nil {
+		t.Fatal(err)
+	}
+	up := lastEnvUpdate(t, k)
+	p, ok := decodeEnvironment(up)
+	if !ok || p.Memory != nil {
+		t.Fatalf("repeated memory: %s", up)
 	}
 }
 
@@ -759,7 +769,7 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := "## Bot\n- rule: keep it small (written by dev)\n"
-	if err := b.SaveState(bot.State{MemSnapSet: true, MemSnap: old, MemSeen: old, MemOwn: []string{"+old"}}); err != nil {
+	if err := b.SaveState(bot.State{MemSnapSet: true, MemSnap: old}); err != nil {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
@@ -787,7 +797,7 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.MemRender != memRenderVersion || len(st.MemOwn) != 0 {
+	if st.MemRender != memRenderVersion {
 		t.Fatalf("old views survived: %+v", st)
 	}
 }

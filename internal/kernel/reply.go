@@ -110,6 +110,7 @@ type replyProvider struct {
 	// onSend runs before the request goes out, so a call that fails or is
 	// cancelled still left the context it was about to send.
 	prepare  func(provider.Request) (provider.Request, error)
+	finish   func(context.Context, provider.Request, provider.Request) (provider.Request, error)
 	onSend   func(provider.Request)
 	onUse    func(provider.Request, provider.Message)
 	onEnd    func(provider.Request, provider.Message, error)
@@ -152,9 +153,22 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 	if s.fit != nil {
 		req = s.fit(ctx, raw, false)
 	}
+	if s.finish != nil {
+		var err error
+		req, err = s.finish(ctx, raw, req)
+		if err != nil {
+			return provider.Message{}, err
+		}
+	}
 	msg, err := s.send(ctx, req, onDelta)
 	if err != nil && s.fit != nil && provider.IsContextOverflow(err) {
 		req = s.fit(ctx, raw, true)
+		if s.finish != nil {
+			req, err = s.finish(ctx, raw, req)
+			if err != nil {
+				return provider.Message{}, err
+			}
+		}
 		msg, err = s.send(ctx, req, onDelta)
 	}
 	if err != nil {

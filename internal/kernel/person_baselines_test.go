@@ -9,6 +9,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/provider"
 )
 
 func personBaselineFixture(t *testing.T) (*Kernel, memory.Store) {
@@ -53,21 +54,21 @@ func TestPersonBaselinesAlternateWithoutReplayingProfiles(t *testing.T) {
 	now := time.Unix(1000, 0)
 	receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice", now))
 	receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob", now))
-	// A restart must retain both baselines, using the existing State file.
+	// A restart replays both baselines from the effective conversation.
 	reloaded, err := bot.Load(k.Bot.Root, k.Bot.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	k = &Kernel{Bot: reloaded, Memory: store}
 	text := receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice again", now))
-	if strings.Contains(text, "person_data") || strings.Contains(text, "BASELINE") || !strings.Contains(text, "sender: u1") {
+	if strings.Contains(text, "person_data") || strings.Contains(text, "BASELINE") || !strings.Contains(text, `"sender":"u1"`) {
 		t.Fatalf("return replayed an unchanged profile: %s", text)
 	}
 	if err := store.Remember(context.Background(), memory.Fact{Scope: memory.ScopePerson, PersonID: "u2", Tier: memory.TierProfile, Key: "extra", Text: "BOB_CHANGED_92", WrittenBy: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	text = receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob changed", now))
-	if !strings.Contains(text, "+ [Person") || !strings.Contains(text, "BOB_CHANGED_92") || strings.Contains(text, "BASELINE") {
+	if !strings.Contains(text, `"person:u2"`) || !strings.Contains(text, "BOB_CHANGED_92") {
 		t.Fatalf("switch must diff against that person's prior version: %s", text)
 	}
 }
@@ -77,19 +78,18 @@ func TestPersonBaselineOwnChangesSurviveOtherSender(t *testing.T) {
 	now := time.Unix(1000, 0)
 	alice := link.TerminalEvent("u1", "alice", now)
 	receivePersonUpdates(t, k, alice)
-	before, err := k.personText(context.Background(), alice)
-	if err != nil {
-		t.Fatal(err)
-	}
+	done := k.beginOwnWrite(context.Background(), memory.ScopePerson, "u1")
 	if err := store.Remember(context.Background(), memory.Fact{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile, Key: "own", Text: "OWN_EDIT_64", WrittenBy: k.Bot.Name()}); err != nil {
 		t.Fatal(err)
 	}
-	after, err := k.personText(context.Background(), alice)
-	if err != nil {
+	receipt := done(true)
+	call := provider.ToolCall{ID: "own", Function: provider.FunctionCall{Name: "write_file"}}
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{call}}}); err != nil {
 		t.Fatal(err)
 	}
-	// The existing successful-write hook puts exactly these ownLines in memOwn.
-	k.memOwn = append(k.memOwn, ownChange{person: "u1", lines: ownLines(before, after)})
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, ToolCallID: "own", Content: "ok" + receipt}}); err != nil {
+		t.Fatal(err)
+	}
 	receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob", now))
 	text := receivePersonUpdates(t, k, alice)
 	if strings.Contains(text, "OWN_EDIT_64") || strings.Contains(text, "ALICE_BASELINE") {
@@ -103,7 +103,7 @@ func TestNonPersonSourceDoesNotMentionOrResetProfiles(t *testing.T) {
 	receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice", now))
 	ev := link.NewEvent(link.NameTimer, "wake", "timer", "u1", now)
 	text := receivePersonUpdates(t, k, ev)
-	if strings.TrimSpace(text) != "<environment_update>\nsource: timer\n</environment_update>" {
+	if !strings.Contains(text, `"source":{"name":"timer"`) || strings.Contains(text, "person:") {
 		t.Fatalf("non-person wake must mention only its source: %s", text)
 	}
 	ev = link.NewEvent(link.NameTimer, "wake", "another timer", "other-routing-id", now)
@@ -126,15 +126,16 @@ func TestPersonBaselinesCompactionRestoresEachPerson(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Follow the real compaction invalidation and save path. An unrelated
+	n, _ := k.Bot.Count()
+	st.Blocks = []bot.SummaryBlock{{From: 1, To: n, Text: "summary"}}
+	// Follow the real compaction publication and save path. An unrelated
 	// uncovered environment row must not suppress restoration of the current person.
 	if err := k.refreshMemSnap(context.Background(), &st); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.saveState(st); err != nil {
+	if err := k.Bot.SaveState(st); err != nil {
 		t.Fatal(err)
 	}
-	n, _ := k.Bot.Count()
 	if err := k.ensureSnapshot(st); err != nil {
 		t.Fatal(err)
 	}

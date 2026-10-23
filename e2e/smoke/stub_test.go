@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"xbot/internal/mockopenai"
 )
 
 // The stub waits before its first byte, as a real model does, and spaces text
@@ -600,12 +601,9 @@ const rememberLine = "- (2026-10-20) 主人对花生过敏 MARK_PEANUT_1\n"
 // memoryPath is the memory file named by the snapshot heading
 // "### <Scope> — <path>; ...".
 func memoryPath(req stubRequest, scope string) string {
-	prefix := "### " + scope + " — "
 	for _, m := range req.Messages {
-		for _, line := range strings.Split(m.Content, "\n") {
-			if strings.HasPrefix(line, prefix) {
-				return strings.SplitN(strings.TrimPrefix(line, prefix), ";", 2)[0]
-			}
+		if path := mockopenai.MemoryPathInText(m.Content, scope); path != "" {
+			return path
 		}
 	}
 	return ""

@@ -159,7 +159,7 @@ func TestForegroundNoteListsBackgrounds(t *testing.T) {
 			note = e.Message.Content
 		}
 	}
-	if !strings.Contains(note, "bg_a [running]：整理日志") || !strings.Contains(note, "bg_b [running]：写报告") {
+	if !strings.Contains(note, `"task":"整理日志","status":"running"`) || !strings.Contains(note, `"task":"写报告","status":"running"`) {
 		t.Fatalf("note %q", note)
 	}
 }

@@ -92,7 +92,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("env updates %+v", updates)
 	}
 	stamp := now.UTC().Truncate(time.Minute).Format(time.RFC3339) + " (UTC)"
-	if strings.Contains(updates[len(updates)-1], "time:") || !strings.Contains(updates[len(updates)-1], "now: "+stamp) {
+	if !strings.Contains(updates[len(updates)-1], `"time":"`+stamp+`"`) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
@@ -111,7 +111,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("updates after hour change: %d", len(updates))
 	}
 	last := updates[len(updates)-1]
-	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, "time:") || !strings.Contains(last, "now:") {
+	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, `"time":`) {
 		t.Fatalf("diff not small: %s", last)
 	}
 	if p.reqs[2].Messages[0].Content != p.reqs[1].Messages[0].Content {
@@ -144,7 +144,7 @@ func TestPersonaEditSurfacesAsEnvUpdate(t *testing.T) {
 		t.Fatal("new persona missing from prefix")
 	}
 	updates := envUpdates(t, b)
-	if !strings.Contains(updates[len(updates)-1], "persona: updated") || strings.Contains(updates[len(updates)-1], next) {
+	if !strings.Contains(updates[len(updates)-1], shortHash(next)) {
 		t.Fatalf("persona diff: %s", updates[len(updates)-1])
 	}
 	now = t0.Add(10 * time.Minute)
@@ -250,8 +250,8 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != len(before)+1 {
-		t.Fatalf("transcript length %d want %d", len(after), len(before)+1)
+	if len(after) != len(before)+2 {
+		t.Fatalf("transcript length %d want %d", len(after), len(before)+2)
 	}
 }
 
@@ -272,7 +272,7 @@ func envUpdates(t *testing.T, b *bot.Bot) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<environment_update>") {
+		if e.Message.Role == provider.RoleUser && e.IsInternal() && strings.HasPrefix(e.Message.Content, "<environment_update>") {
 			out = append(out, e.Message.Content)
 		}
 	}

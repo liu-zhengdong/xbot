@@ -52,11 +52,11 @@ func TestEnsureExecQueuesAndReportsPosition(t *testing.T) {
 		}
 	}
 	for _, task := range tasks {
-		if !strings.Contains(note, task.ID+" ["+task.Status+"]") {
+		if !strings.Contains(note, `"id":"`+task.ID+`"`) || !strings.Contains(note, `"status":"`+task.Status+`"`) {
 			t.Fatalf("missing %s %s in %s", task.ID, task.Status, note)
 		}
 	}
-	if !strings.Contains(note, "排在第 8 个") {
+	if !strings.Contains(note, `"position":8`) {
 		t.Fatal(note)
 	}
 }
@@ -108,9 +108,12 @@ func TestInterjectedTaskGetsLiveBackgroundSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note := strings.Join(taskChanges(nil, st.Env.Tasks), "\n")
-	if !strings.Contains(note, "sa_aaaaaaaa [running]") || !strings.Contains(note, "sa_bbbbbbbb [queued]") {
-		t.Fatal(note)
+	have := map[string]string{}
+	for _, task := range environmentTasks(testPublished(t, k)) {
+		have[task.ID] = task.Status
+	}
+	if have["sa_aaaaaaaa"] != "running" || have["sa_bbbbbbbb"] != "queued" {
+		t.Fatalf("wrong published states: %v", have)
 	}
 
 }

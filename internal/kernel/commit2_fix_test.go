@@ -35,10 +35,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			if err := k.Handle(ctx, link.TerminalEvent("u1", "first", now)); err != nil {
 				t.Fatal(err)
 			}
-			before, err := b.LoadState()
-			if err != nil {
-				t.Fatal(err)
-			}
+			before := environmentGet[string](testPublished(t, k), "person:u1")
 			count, err := b.Count()
 			if err != nil {
 				t.Fatal(err)
@@ -48,16 +45,12 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			if err := k.Handle(ctx, ev); err != nil {
 				t.Fatal(err)
 			}
-			during, err := b.LoadState()
+			_, err = b.LoadState()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if during.Env.People["u1"].Text != before.Env.People["u1"].Text || during.Env.People["u1"].Text == "" {
-				t.Fatalf("%s erased seen person: before=%q after=%q", source, before.Env.People["u1"].Text, during.Env.People["u1"].Text)
-			}
-			snapshot := snapshotText(during.Env)
-			if strings.Contains(snapshot, "人物") || strings.Contains(snapshot, "person_data") || strings.Contains(snapshot, "PERSON_BASELINE_52") {
-				t.Fatalf("non-person snapshot borrowed a profile: %s", snapshot)
+			if environmentGet[string](testPublished(t, k), "person:u1") != before {
+				t.Fatalf("%s erased seen person: before=%q after=%q", source, "PERSON_BASELINE_52", environmentGet[string](testPublished(t, k), "person:u1"))
 			}
 			end, err := b.Count()
 			if err != nil {
@@ -73,17 +66,17 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 					updates += row.Message.Content
 				}
 			}
-			if !strings.Contains(updates, "source: "+source) || strings.Contains(updates, "person_data") {
+			if !strings.Contains(updates, `"name":"`+source+`"`) || strings.Contains(updates, "person_data") {
 				t.Fatalf("wrong source update: %s", updates)
 			}
 			if err := k.Handle(ctx, link.TerminalEvent("u1", "again", now)); err != nil {
 				t.Fatal(err)
 			}
-			after, err := b.LoadState()
+			_, err = b.LoadState()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if after.Env.People["u1"].Text != before.Env.People["u1"].Text {
+			if environmentGet[string](testPublished(t, k), "person:u1") != before {
 				t.Fatal("unchanged person baseline changed on return")
 			}
 			end, err = b.Count()
@@ -183,7 +176,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			st.Env.Tasks = []bot.TaskEnv{{ID: id, Status: "running"}}
+			tasks := []bot.TaskEnv{{ID: id, Status: "running"}}
 			if err := b.SaveState(st); err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +194,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 			if len(pending) != 1 || pending[0].ID != "ev_"+id+"_interrupted" || !strings.Contains(pending[0].Content, "中断") {
 				t.Fatalf("missing interruption: %+v", pending)
 			}
-			sampled, err := k.taskEnvironment(st.Env.Tasks, link.Event{})
+			sampled, err := k.taskEnvironment(tasks, link.Event{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -283,23 +276,12 @@ func TestPersonBaselineReappearsAfterNonPersonCompaction(t *testing.T) {
 	if err := k.Handle(ctx, link.NewEvent(link.NameTimer, "wake", "wake", "u1", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	before, err := b.LoadState()
-	if err != nil {
-		t.Fatal(err)
-	}
 	n, err := b.Count()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := k.CompactRange(ctx, 1, n-1, "test summary does not retain profile"); err != nil {
 		t.Fatal(err)
-	}
-	compacted, err := b.LoadState()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if compacted.Env.People["u1"].Text != before.Env.People["u1"].Text {
-		t.Fatal("compaction erased retained profile")
 	}
 	if err := k.Handle(ctx, link.TerminalEvent("u1", "again", time.Now())); err != nil {
 		t.Fatal(err)

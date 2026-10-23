@@ -63,15 +63,15 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Env.Sender != "u1" || !strings.Contains(st.Env.People["u1"].Text, "PERSON_ONE") {
-		t.Fatalf("person environment %+v", st.Env)
+	if environmentGet[environmentSource](testPublished(t, k), "source").Sender != "u1" || !strings.Contains(environmentGet[string](testPublished(t, k), "person:u1"), "PERSON_ONE") {
+		t.Fatalf("person environment %+v", testPublished(t, k))
 	}
 	// Same-person edits change the stream without rewriting the Bot prefix.
 	if err := store.Remember(ctx, memory.Fact{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile, Key: "extra", Text: "PERSON_NEW", WrittenBy: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	oldSnap := st.MemSnap
-	seq, err := k.receive(link.TerminalEvent("u1", "another", time.Now()))
+	_, err = k.receive(link.TerminalEvent("u1", "another", time.Now()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Env.SenderSeq != seq || !strings.Contains(st.Env.People["u1"].Text, "PERSON_NEW") || st.MemSnap != oldSnap {
+	if !strings.Contains(environmentGet[string](testPublished(t, k), "person:u1"), "PERSON_NEW") || st.MemSnap != oldSnap {
 		t.Fatal("missing updated person or lost bot snapshot")
 	}
 	data, err := b.Entries()
@@ -381,7 +381,23 @@ func TestRecoveryDoesNotInterruptAnotherLiveKernel(t *testing.T) {
 	if _, err := loc.Start(context.Background(), exec.StartRequest{ID: id, Mode: exec.ModeBrief, Task: "held", Dir: b.AgentDir(id)}); err != nil {
 		t.Fatal(err)
 	}
-	defer close(hold)
+	defer func() {
+		close(hold)
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case ev := <-loc.Events():
+				// The terminal event follows the final transcript and meta writes.
+				if ev.AgentID == id && (ev.Kind == exec.EvDone || ev.Kind == exec.EvFailed) {
+					return
+				}
+			case <-deadline.C:
+				t.Error("live task did not finish before directory cleanup")
+				return
+			}
+		}
+	}()
 	end := time.Now().Add(time.Second)
 	for {
 		m, err := exec.ReadMeta(b.AgentDir(id))

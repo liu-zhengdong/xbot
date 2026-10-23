@@ -104,8 +104,15 @@ func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, er
 	case "read_file":
 		t.k.noteRead(ctx, t.Tool, args, out)
 	case "write_file", "edit_file":
+		body, receipt, after := bot.SplitEnvironmentReceipt(out)
+		if receipt != "" {
+			out = body
+		}
 		if t.k.noteWrite(ctx, t.Tool, args) {
 			out = appendNote(out, msgRefresh)
+		}
+		if receipt != "" {
+			out += "\n\n" + receipt + after
 		}
 	}
 	return out, nil

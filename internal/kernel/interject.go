@@ -106,6 +106,8 @@ func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 // receive appends a normal input once, before setup or model cancellation.
 // Queue entries carry its sequence; replaying a model request never appends it again.
 func (k *Kernel) receive(ev link.Event) (int, error) {
+	k.envMu.Lock()
+	defer k.envMu.Unlock()
 	seq, err := k.Bot.FindEvent(ev.ID)
 	if err != nil {
 		return 0, err

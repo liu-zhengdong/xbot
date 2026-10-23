@@ -34,7 +34,8 @@ import (
 // A request the provider rejects as too long is cut with all three and sent
 // once more.
 type turnFit struct {
-	mu sync.Mutex
+	mu      sync.Mutex
+	reserve int // next full environment, counted before fitting not after sending
 	// pre is the number of messages assembled at the turn's start. Everything
 	// from it on was produced by this turn. The agent only appends, so an
 	// index names the same message in every request of the turn.
@@ -297,7 +298,7 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 		// still a prefix of it, so this does not happen in practice).
 		return req
 	}
-	measure := func() int { return k.scaled(compact.EstimateMessages(f.view(msgs))) }
+	measure := func() int { return k.scaled(compact.EstimateMessages(f.view(msgs))) + f.reserve }
 	target, ceiling := k.target(), k.ceiling()
 	size := measure()
 	if size <= target && !overflow {

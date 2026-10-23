@@ -107,7 +107,13 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 		}
 	}
 	last := p.reqs[len(p.reqs)-1].Messages
-	if got := last[len(last)-1].Content; !strings.HasPrefix(got, "result 39 ") {
+	var latest string
+	for _, m := range last {
+		if m.Role == provider.RoleTool {
+			latest = m.Content
+		}
+	}
+	if got := latest; !strings.HasPrefix(got, "result 39 ") {
 		t.Fatalf("latest result was cut: %.40q", got)
 	}
 	tr := fitTraces(t, b)
@@ -191,7 +197,13 @@ func TestOverflowIsCutAndSentAgain(t *testing.T) {
 		t.Fatalf("the turn stopped after %d of %d replies", p.i, len(p.resps))
 	}
 	last := p.reqs[len(p.reqs)-1].Messages
-	if got := last[len(last)-1].Content; !strings.HasPrefix(got, "result 3 ") {
+	var latest string
+	for _, m := range last {
+		if m.Role == provider.RoleTool {
+			latest = m.Content
+		}
+	}
+	if got := latest; !strings.HasPrefix(got, "result 3 ") {
 		t.Fatalf("latest result was cut: %.40q", got)
 	}
 	if tr := fitTraces(t, b); tr["omit"]+tr["fold_turn"]+tr["omit_earlier"] == 0 {
@@ -345,7 +357,7 @@ func TestTurnSummaryNamesItsRange(t *testing.T) {
 	if got[0].Message.Role != provider.RoleAssistant || !strings.HasPrefix(got[0].Message.Content, "step 0 ") {
 		t.Fatalf("range starts at %+v, want the turn's first step", got[0].Message.Role)
 	}
-	if last := got[len(got)-1].Message; last.Role != provider.RoleTool {
-		t.Fatalf("range ends on %s, want a tool result", last.Role)
+	if last := got[len(got)-1]; last.Message.Role != provider.RoleTool && !last.IsInternal() {
+		t.Fatalf("range ends on %s, want a tool result", last.Message.Role)
 	}
 }

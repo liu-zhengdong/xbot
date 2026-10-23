@@ -84,10 +84,11 @@ func TestMemoryFreeWriteDoesNotRecordOutsideChange(t *testing.T) {
 	tool := memoryWriteHook{WriteFile: &tools.WriteFile{}, run: func() (string, error) {
 		return "", os.WriteFile(filepath.Join(dir, "memory.md"), []byte("- (2026-10-18) outside change\n"), 0600)
 	}}
-	if _, err := (reviewedTool{Tool: tool, k: k}).Run(context.Background(), args); err != nil {
+	out, err := (reviewedTool{Tool: tool, k: k}).Run(context.Background(), args)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(k.memOwn) != 0 {
+	if strings.Contains(out, environmentOpen) {
 		t.Fatal("free write swallowed an outside memory change")
 	}
 }
@@ -115,7 +116,7 @@ func TestMemoryRejectedWriteRestore(t *testing.T) {
 	}}
 	for _, fail := range []bool{false, true} {
 		failRestore = fail
-		_, err := (reviewedTool{Tool: tool, k: k}).Run(context.Background(), args)
+		out, err := (reviewedTool{Tool: tool, k: k}).Run(context.Background(), args)
 		if err == nil {
 			t.Fatal("bad log accepted")
 		}
@@ -126,7 +127,7 @@ func TestMemoryRejectedWriteRestore(t *testing.T) {
 		} else if _, err := os.Stat(log); !os.IsNotExist(err) {
 			t.Fatal("rejected log not removed")
 		}
-		if len(k.memOwn) != 0 {
+		if strings.Contains(out, environmentOpen) {
 			t.Fatal("rejected write swallowed an outside memory change")
 		}
 	}
@@ -214,11 +215,12 @@ func TestSubagentFileToolsUseMemoryGuard(t *testing.T) {
 		}
 		// A valid subagent write is not booked as the foreground's own change.
 		args, _ = json.Marshal(map[string]string{"path": filepath.Join(dir, "memory.md"), "content": "- (2026-10-18) from a subagent\n"})
-		if _, err := tool.Run(context.Background(), args); err != nil {
+		out, err := tool.Run(context.Background(), args)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if len(k.memOwn) != 0 {
-			t.Fatalf("subagent write recorded as own: %v", k.memOwn)
+		if strings.Contains(out, environmentOpen) {
+			t.Fatal("subagent write received a foreground receipt")
 		}
 		return
 	}

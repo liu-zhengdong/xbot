@@ -1096,8 +1096,15 @@ func spillBlob(dir string, e Entry, limit int64) Entry {
 	if err := writeSynced(path, []byte(e.Message.Content), 0600); err != nil {
 		return e
 	}
-	preview, _ := clip.Bytes(e.Message.Content, blobPreview)
+	body, receipt, after := e.Message.Content, "", ""
+	if e.Message.Role == provider.RoleTool && (e.Message.Name == "write_file" || e.Message.Name == "edit_file") {
+		body, receipt, after = SplitEnvironmentReceipt(body)
+	}
+	preview, _ := clip.Bytes(body, blobPreview)
 	e.Message.Content = preview
+	if receipt != "" {
+		e.Message.Content += "\n\n" + receipt + after
+	}
 	e.Blob = id
 	return e
 }

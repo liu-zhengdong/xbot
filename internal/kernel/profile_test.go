@@ -74,7 +74,7 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	}
 	updates := envUpdates(t, b)
 	last := updates[len(updates)-1]
-	if !strings.Contains(last, "profile: updated") || strings.Contains(last, "persona: updated") || strings.Contains(last, "Be brief") || strings.Contains(last, "warm") {
+	if !strings.Contains(last, `"profile":`) || strings.Contains(last, "persona: updated") || strings.Contains(last, "Be brief") || strings.Contains(last, "warm") {
 		t.Fatalf("profile diff: %s", last)
 	}
 }
@@ -141,8 +141,8 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 		t.Fatal(prefix)
 	}
 	updates := envUpdates(t, b)
-	last := updates[len(updates)-1]
-	if !strings.Contains(last, "profile: updated") || strings.Contains(last, "中文") {
+	last := strings.Join(updates, "\n")
+	if !strings.Contains(last, `"profile":`) || strings.Contains(last, "中文") {
 		t.Fatalf("env %s", last)
 	}
 }

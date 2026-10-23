@@ -19,13 +19,12 @@
 // is taken; they are listed here in the order the outer work runs, so a new
 // caller can see where it belongs:
 //
-//	envMu       environment publication (may take memWriteMu, then memOwnMu)
+//	envMu       environment publication and input append
 //	turnMu      the foreground turn pointer (Kernel.turn)
 //	bgMu        the background map (Kernel.bgs, finished)
 //	turn.mu     one turn's own state (branch, steps, tools, todo flags)
 //	forkMu      the fork decision against absorbing the inbox
 //	memWriteMu  a memory write against its own before/after read
-//	memOwnMu    this bot's own memory line changes
 //	todo.mu     the task list
 //	files.mu    read state for the freshness check
 //	shellMu     the background shell job set
@@ -143,10 +142,7 @@ type Kernel struct {
 
 	envMu  sync.Mutex // serializes environment comparison and publication
 	turnMu sync.Mutex
-	// memOwnMu guards memOwn: line changes of this bot's own memory writes
-	// from any turn, drained into State at the next wake (drainMemOwn).
-	memOwnMu sync.Mutex
-	memOwn   []ownChange
+
 	// memWriteMu serializes own memory writes with their before/after reads.
 	memWriteMu  sync.Mutex
 	bgMu        sync.Mutex
@@ -335,8 +331,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if key := k.boundModelKey(); key != "" {
 		st.BoundModel = key
 	}
-	// memWriteMu keeps a background turn's own write from landing between this
-	// read and the drain, which would report it as removed.
+	// Serialize prefix sampling with a tool's before/after memory read.
+	// Subsequent changes are replayed from its original tool receipt.
 	key := ""
 	k.memWriteMu.Lock()
 	memText, err := k.memoryText(ctx, key)
@@ -346,12 +342,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	}
 	if st.MemRender != memRenderVersion {
 		st.MemSnapSet = false
-		st.MemSnap, st.MemSeen = "", ""
-		st.MemOwn = nil
+		st.MemSnap = ""
 		st.MemRender = memRenderVersion
 	}
 	if !st.MemSnapSet {
-		st.MemSnap, st.MemSeen, st.MemSnapSet = memText, memText, true
+		st.MemSnap, st.MemSnapSet = memText, true
 	}
 	k.memWriteMu.Unlock()
 	st, err = k.syncEnv(st, ev, memText)
@@ -422,7 +417,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		}
 	}
 	st.Usage = usage
-	if err := k.saveState(st); err != nil {
+	if err := k.Bot.SaveState(st); err != nil {
 		return err
 	}
 	p, err := k.providerFor(ctx)
@@ -695,102 +690,6 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	return msgs, usage, nil
 }
 
-func (k *Kernel) syncEnv(st bot.State, ev link.Event, mem string) (bot.State, error) {
-	k.envMu.Lock()
-	defer k.envMu.Unlock()
-	fresh, err := k.Bot.LoadState()
-	if err != nil {
-		return st, err
-	}
-	st.Env = fresh.Env
-	if st.MemRender == fresh.MemRender {
-		st.MemOwn = append([]string(nil), fresh.MemOwn...)
-	}
-	k.drainMemOwn(&st)
-	persona, err := k.Bot.ReadPersona()
-	if err != nil {
-		return st, err
-	}
-	rules, err := k.rulesText()
-	if err != nil {
-		return st, err
-	}
-	list, err := k.modelTools()
-	if err != nil {
-		return st, err
-	}
-	skills, err := k.skillLines()
-	if err != nil {
-		return st, err
-	}
-	skillHash := ""
-	if len(skills) > 0 {
-		skillHash = shortHash(strings.Join(skills, "\n"))
-	}
-	profile := k.Bot.ProfileText()
-	profileHash := ""
-	if profile != "" {
-		profileHash = shortHash(profile)
-	}
-	overlayKey, overlay, err := k.modelOverlay()
-	if err != nil {
-		return st, err
-	}
-	overlayHash := ""
-	if overlay != "" {
-		overlayHash = shortHash(overlay)
-	}
-	// The memory snapshot in msgs[1] stays frozen; what changed since the bot last
-	// saw memory is appended here as a diff, minus the bot's own changes (MemOwn).
-	memBlock := ""
-	// Own changes count even when live equals MemSeen: someone may have undone them.
-	if st.MemSnapSet && (mem != st.MemSeen || len(st.MemOwn) > 0) {
-		memBlock = memoryDiff(st.MemSeen, mem, st.MemOwn)
-	}
-	st.MemSeen, st.MemOwn = mem, nil
-	now := k.now()
-	next := bot.EnvRecord{
-		Hour:      now.Format("2006-01-02T15"),
-		Now:       k.localStamp(),
-		Sender:    st.Env.Sender,
-		SenderSeq: st.Env.SenderSeq,
-		Source:    st.Env.Source, PersonActive: st.Env.PersonActive,
-		People:      st.Env.People,
-		Tools:       toolNames(list),
-		Notes:       k.pendingNotes(),
-		Persona:     shortHash(persona),
-		Rules:       shortHash(rules),
-		Memory:      shortHash(st.MemSeen),
-		Skills:      skillHash,
-		Profile:     profileHash,
-		OverlayKey:  overlayKey,
-		OverlayHash: overlayHash,
-		OverlayBody: overlay,
-		At:          now,
-	}
-	next.Tasks, err = k.taskEnvironment(st.Env.Tasks, ev)
-	if err != nil {
-		return st, err
-	}
-	diff := DiffEnv(st.Env, next)
-	st.Env = next
-	if memBlock != "" {
-		if diff == "" {
-			diff = "<environment_update>\n" + memBlock + "\n</environment_update>"
-		} else {
-			diff = strings.TrimSuffix(diff, "</environment_update>") + memBlock + "\n</environment_update>"
-		}
-	}
-	if diff == "" {
-		return st, k.Bot.SaveState(st)
-	}
-	entry := bot.Entry{Time: now, Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: diff}}
-	if err := k.Bot.Append(entry); err != nil {
-		return st, err
-	}
-	return st, k.Bot.SaveState(st)
-}
-
 func (k *Kernel) modelOverlay() (string, string, error) {
 	if k == nil || k.Bot == nil {
 		return "", "", nil
@@ -811,39 +710,6 @@ func (k *Kernel) modelOverlay() (string, string, error) {
 		return "", text, err
 	}
 	return cfg.Provider + "/" + cfg.Model, text, nil
-}
-
-func (k *Kernel) ensureSnapshot(st bot.State) error {
-	k.envMu.Lock()
-	defer k.envMu.Unlock()
-	fresh, err := k.Bot.LoadState()
-	if err != nil {
-		return err
-	}
-	if fresh.Env.At.IsZero() {
-		return nil
-	}
-	raw, err := k.Bot.Uncovered(st.Blocks)
-	if err != nil {
-		return err
-	}
-	// A compacted person baseline must be made visible even if an unrelated
-	// environment update survived the compressed range.
-	person := fresh.Env.People[fresh.Env.Sender]
-	needsPerson := fresh.Env.PersonActive && !person.Seen
-	if uncoveredHasEnv(raw) && !needsPerson {
-		return nil
-	}
-	entry := bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: snapshotText(fresh.Env)}}
-	if err := k.Bot.Append(entry); err != nil {
-		return err
-	}
-	if needsPerson {
-		person.Seen = true
-		fresh.Env.People[fresh.Env.Sender] = person
-		return k.Bot.SaveState(fresh)
-	}
-	return nil
 }
 
 func (k *Kernel) repairTail() error {
@@ -904,104 +770,29 @@ func (k *Kernel) ownerPerson() string {
 	return ""
 }
 
-// ownChange is one own write's line changes. person is the view it belongs to
-// for a person-scope write, or "" for a bot-scope write, which every view shares.
-type ownChange struct {
-	person string
-	lines  []string
-}
-
-// beginOwnWrite starts recording one own memory write. It holds memWriteMu
-// until the returned func runs after the write, so parallel tool calls cannot
-// mix their before/after texts. A bot-scope write is measured on the bot-only
-// rendering, so it can never carry person lines into another person's view.
-// A failed read records nothing; the write then shows as a diff, which is safe.
-func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID ...string) func(...bool) {
-	k.memWriteMu.Lock()
-	key := ""
-	if scope == memory.ScopePerson {
-		key = k.memoryPersonOf(k.turnFor(ctx))
-		if len(personID) > 0 {
-			key = personID[0]
-		}
-	}
-	before, err := k.memoryText(ctx, key)
-	return func(record ...bool) {
-		defer k.memWriteMu.Unlock()
-		if err != nil || (len(record) > 0 && !record[0]) {
-			return
-		}
-		after, err := k.memoryText(ctx, key)
-		if err != nil {
-			return
-		}
-		c := ownChange{person: key, lines: ownLines(before, after)}
-		if len(c.lines) == 0 {
-			return
-		}
-		k.memOwnMu.Lock()
-		k.memOwn = append(k.memOwn, c)
-		if len(k.memOwn) > memOwnCap {
-			k.memOwn = k.memOwn[len(k.memOwn)-memOwnCap:]
-		}
-		k.memOwnMu.Unlock()
-	}
-}
-
-// memOwnCap bounds the own writes waiting for the next wake.
-const memOwnCap = 200
-
-// drainMemOwn moves pending own changes into every view they apply to: bot-scope
-// changes go to all views, person-scope changes only to that person's view.
-func (k *Kernel) drainMemOwn(st *bot.State) {
-	k.memOwnMu.Lock()
-	pending := k.memOwn
-	k.memOwn = nil
-	k.memOwnMu.Unlock()
-	for _, c := range pending {
-		if c.person == "" {
-			st.MemOwn = append(st.MemOwn, c.lines...)
-		} else if person, ok := st.Env.People[c.person]; ok {
-			person.Own = append(person.Own, c.lines...)
-			st.Env.People[c.person] = person
-		}
-	}
-}
-
 const memRenderVersion = 3
 
-// refreshMemSnap only refreshes the bot's snapshot when compaction changes the prefix.
+// refreshMemSnap publishes the replacement environment before making its covered
+// range effective. A crash on either side leaves a replayable conversation;
+// there is no second state file to synchronize with it.
 func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
-	// Compaction can remove any visible person block. Keep the data and
-	// invalidate the seen versions; each person re-establishes a full baseline
-	// on their next appearance, using the same EnvRecord and publication lock.
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
-	k.memWriteMu.Lock()
-	defer k.memWriteMu.Unlock()
+	previous, err := k.Bot.LoadState()
+	if err != nil {
+		return err
+	}
+	old, err := k.visibleEnvironment(previous)
+	if err != nil {
+		return err
+	}
 	mem, err := k.memoryText(ctx, "")
 	if err != nil {
 		return err
 	}
-	fresh, err := k.Bot.LoadState()
-	if err != nil {
-		return err
-	}
-	for id, person := range fresh.Env.People {
-		person.Seen, person.Own = false, nil
-		fresh.Env.People[id] = person
-	}
-	if err := k.Bot.SaveState(fresh); err != nil {
-		return err
-	}
-	st.Env = fresh.Env
-	k.memOwnMu.Lock()
-	k.memOwn = nil
-	k.memOwnMu.Unlock()
-	st.MemRender = memRenderVersion
-	st.MemSnap, st.MemSeen, st.MemSnapSet = mem, mem, true
-	st.MemOwn = nil
-	return nil
+	st.MemRender, st.MemSnap, st.MemSnapSet = memRenderVersion, mem, true
+	_, err = k.publishEnvironment(*st, old, true, environmentBasis(*st, nil))
+	return err
 }
 
 // memSnapFor always returns this bot's one frozen snapshot, irrespective of sender.

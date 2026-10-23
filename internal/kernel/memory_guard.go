@@ -127,7 +127,7 @@ func (t reviewedTool) guardMemory(ctx context.Context, args json.RawMessage, tra
 	if own && tracked && track {
 		done := t.k.beginOwnWrite(ctx, scope, filepath.Base(filepath.Dir(dir)))
 		// Other processes can still write between these snapshots and the folder lock.
-		defer func() { done(err == nil) }()
+		defer func() { out += done(err == nil) }()
 	}
 	err = fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
 		if err := memorySymlinks(dir, path); err != nil {

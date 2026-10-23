@@ -470,12 +470,9 @@ func memoryWriteArgs(req incoming, scope, text string) string {
 }
 
 func memoryPath(req incoming, scope string) string {
-	prefix := "### " + scope + " — "
 	for _, m := range req.Messages {
-		for _, line := range strings.Split(m.Content, "\n") {
-			if strings.HasPrefix(line, prefix) {
-				return strings.SplitN(strings.TrimPrefix(line, prefix), ";", 2)[0]
-			}
+		if path := MemoryPathInText(m.Content, scope); path != "" {
+			return path
 		}
 	}
 	return ""

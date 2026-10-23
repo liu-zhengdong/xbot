@@ -40,7 +40,7 @@ func TestModelOverlayAppendsAfterRulesAndShowsInEnv(t *testing.T) {
 		t.Fatalf("overlay after links\n%s", sys)
 	}
 	updates := envUpdates(t, b)
-	if len(updates) == 0 || !strings.Contains(strings.Join(updates, "\n"), "overlay: deepseek/deepseek-chat ") || !strings.Contains(strings.Join(updates, "\n"), note) {
+	if len(updates) == 0 || !strings.Contains(strings.Join(updates, "\n"), `"overlay":`) || !strings.Contains(strings.Join(updates, "\n"), note) {
 		t.Fatalf("env %v", updates)
 	}
 }

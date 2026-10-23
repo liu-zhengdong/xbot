@@ -73,41 +73,12 @@ type SummaryBlock struct {
 	At    time.Time `json:"at,omitempty"`
 }
 
-// EnvRecord is the last environment snapshot. It is volatile context, not part of the stable prefix.
+// TaskEnv is a sampled executor task, published in the conversation environment.
 type TaskEnv struct {
 	ID       string `json:"id"`
 	Task     string `json:"task"`
 	Status   string `json:"status"`
 	Position int    `json:"position,omitempty"`
-}
-
-// PersonEnv is one person's last model-visible profile in the environment stream.
-type PersonEnv struct {
-	Text string   `json:"text,omitempty"`
-	Own  []string `json:"own,omitempty"`
-	Seen bool     `json:"seen,omitempty"`
-}
-
-type EnvRecord struct {
-	Tasks        []TaskEnv            `json:"tasks,omitempty"`
-	Hour         string               `json:"hour,omitempty"`
-	Now          string               `json:"now,omitempty"`
-	Sender       string               `json:"sender,omitempty"`
-	SenderSeq    int                  `json:"sender_seq,omitempty"`
-	Source       string               `json:"source,omitempty"`
-	PersonActive bool                 `json:"person_active,omitempty"`
-	People       map[string]PersonEnv `json:"people,omitempty"`
-	Tools        []string             `json:"tools,omitempty"`
-	Notes        int                  `json:"notes,omitempty"`
-	Persona      string               `json:"persona,omitempty"`
-	Rules        string               `json:"rules,omitempty"`
-	Memory       string               `json:"memory,omitempty"`
-	Skills       string               `json:"skills,omitempty"`
-	Profile      string               `json:"profile,omitempty"`
-	OverlayKey   string               `json:"overlay_key,omitempty"`
-	OverlayHash  string               `json:"overlay_hash,omitempty"`
-	OverlayBody  string               `json:"overlay_body,omitempty"`
-	At           time.Time            `json:"at,omitempty"`
 }
 
 // SectionUsage is a rough token estimate for one wake, by context section.
@@ -121,13 +92,12 @@ type SectionUsage struct {
 // Total sums the four sections.
 func (u SectionUsage) Total() int { return u.Stable + u.Memory + u.Env + u.History }
 
-// State holds compaction blocks and the last environment snapshot.
+// State holds compaction blocks and the fixed memory prefix.
 // Summary and Covered are the legacy single-summary cursor.
 type State struct {
 	Summary string         `json:"summary,omitempty"`
 	Covered int            `json:"covered,omitempty"`
 	Blocks  []SummaryBlock `json:"blocks,omitempty"`
-	Env     EnvRecord      `json:"env,omitempty"`
 	Usage   SectionUsage   `json:"usage,omitempty"`
 	// BoundModel is provider/model at the last wake. A change with an open
 	// tool call is a model switch: the kernel closes the call with a tombstone
@@ -140,11 +110,6 @@ type State struct {
 	MemSnap string `json:"mem_snap,omitempty"`
 	// MemSnapSet distinguishes an empty snapshot from no snapshot yet.
 	MemSnapSet bool `json:"mem_snap_set,omitempty"`
-	// MemSeen is the memory text the model has seen (snapshot plus appended diffs).
-	MemSeen string `json:"mem_seen,omitempty"`
-	// MemOwn holds this bot's own memory line changes ("+line"/"-line") since
-	// MemSeen, left out of the next diff.
-	MemOwn []string `json:"mem_own,omitempty"`
 }
 
 // Fork marker kinds and end statuses.
