@@ -1,4 +1,4 @@
-/* G7 设备：账户菜单第一项「设备」打开右侧抽屉，列出这台电脑和配对的设备。
+/* G7 设备：设置浮层的设备页，列出这台电脑和配对的设备。
    只经 /api/devices* 和本机 serve 通信。配对码的弹窗在 pairing.js，通过 window.xbotDevices 挂进来。 */
 (function () {
   "use strict";
@@ -115,7 +115,11 @@
     await refresh();
     render();
   }
-  function unmount() { S.embedded = false; S.view = null; render(); }
+  function unmount() {
+    S.embedded = false;
+    if (["add", "join", "confirm", "waiting"].includes(S.view) && D.closePair) D.closePair();
+    else { S.view = null; render(); }
+  }
   function closeModal() { S.view = null; S.fieldErr = ""; render(); }
 
   const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
@@ -274,7 +278,6 @@
   function viewDevices() {
     const data = S.data || { self: {}, devices: [] };
     const self = data.self || {}, devs = data.devices || [], gw = self.gateway, up = !!data.gateway_ok;
-    const pair = !!D.acts.add; // pairing.js adds 添加设备 and 加入另一台设备
     const selfCard = `<section class="profile-section"><h3>这台电脑</h3>
       <div class="g7-device g7-self"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
@@ -294,16 +297,18 @@
       list = `<section class="profile-section"><h3>已配对 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
           <p class="g7-fine">${sp(fineOnline)}</p></section>`;
     }
-    const foot = pair ? `<div class="g7-foot"><button class="secondary" type="button" data-act="join-open">${svg("keyboard")}<span>加入另一台设备</span></button><button class="primary" type="button" data-act="add">${svg("plus")}<span>添加设备</span></button></div>` : "";
-    return `      <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}
+    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
+      <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}
       <div class="g7-body">${selfCard}${list}
-        <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>${foot}`;
+        <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>`;
   }
 
   function render() {
     ensureHosts();
     const focusId = document.activeElement && document.activeElement.id;
     const sel = document.activeElement && "selectionStart" in document.activeElement ? document.activeElement.selectionStart : null;
+    const selEnd = sel != null ? document.activeElement.selectionEnd : null;
+    const selDir = sel != null ? document.activeElement.selectionDirection : null;
     const wasView = lastView;
     devicesEl.innerHTML = S.embedded ? viewDevices() : "";
     const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm }, D.views)[S.view];
@@ -312,7 +317,7 @@
     lastView = S.view || "";
     const f = focusId && document.getElementById(focusId) || (S.menuFor && devicesEl.querySelector(`[data-act="row-menu"][data-id="${CSS.escape(S.menuFor)}"]`));
     const inside = document.activeElement === document.body || (devicesEl.contains(document.activeElement) || modalEl.contains(document.activeElement));
-    if (f && !f.disabled) { f.focus(); if (sel != null && f.setSelectionRange) try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {} }
+    if (f && !f.disabled) { f.focus(); if (sel != null && f.setSelectionRange) try { f.setSelectionRange(sel, selEnd, selDir); } catch (e) {} }
     else if (V && (S.view !== wasView || !inside)) { const first = modalEl.querySelector("input:not([disabled])") || modalEl.querySelector(FOCUSABLE); if (first) first.focus(); }
   }
 
@@ -321,7 +326,7 @@
     const data = S.data || {};
     switch (name) {
       case "close": closeModal(); break;
-      case "to-drawer": S.view = null; await openDevices(); break;
+      case "to-drawer": if (D.closePair) await D.closePair(); else closeModal(); await openDevices(); break;
       case "row-menu": S.menuFor = S.menuFor === el.dataset.id ? "" : el.dataset.id; render(); break;
       case "rename": case "ask-unpair": {
         const d = (data.devices || []).find((x) => x.id === el.dataset.id);

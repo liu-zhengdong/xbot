@@ -2561,13 +2561,13 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setpage .icon{width:16px;height:16px}.setclose svg{width:18px;height:18px}
 .setnav button:focus-visible,.setpage button:focus-visible,.setselect:focus-visible{outline:2px solid var(--x-muted);outline-offset:2px}
 .setpage [hidden]{display:none!important}.setpage .setnav button.on{background:var(--x-fill-3)}
-.setdev .g7-lead,.setdev .g7-banner{margin:0 0 14px}.setdev .g7-body{overflow:visible;padding:0}.setdev .g7-foot{padding:18px 0 0}
+.setdev .g7-lead,.setdev .g7-banner{margin:0 0 14px}.setdev .g7-body{overflow:visible;padding:0}
 .setdev .g7-self{margin-top:0}.setdev .profile-section h3{font-size:12px;color:var(--x-faint);font-weight:600;margin:0 0 8px}
 .setdev .profile-section+.profile-section{margin-top:22px}.setdev .g7-dev-name{font-size:14px;font-weight:600}
 .setdev .g7-device,.setdev .g7-dev-card{margin-top:8px}.setdev .g7-self{margin-top:0}.setdev .g7-caps,.setdev .g7-meta,.setdev .g7-bots{margin-left:0}
-.setdev .g7-flat{margin-top:0}.setdev .g7-foot .primary,.setdev .g7-foot .secondary{height:32px;min-height:32px;font-size:13px;padding:0 13px}
+.setdev .g7-flat{margin-top:0}
 .setdev .g7-switch{width:34px}.setdev .g7-switch[aria-checked="true"]::after{transform:translateX(14px)}
-@media(max-width:600px){.setnav{width:124px;padding:10px 6px}.setnav button{padding:0 8px;gap:6px;font-size:12px}.setcnt{padding:20px 16px 28px}.setpane>h2{padding-right:28px}.setrow{padding:10px;gap:8px;flex-wrap:wrap}.setselect{min-width:110px}.setpage{height:85vh}.setdev .g7-foot{flex-wrap:wrap}.approw{flex-wrap:wrap}}
+@media(max-width:600px){.setnav{width:124px;padding:10px 6px}.setnav button{padding:0 8px;gap:6px;font-size:12px}.setcnt{padding:20px 16px 28px}.setpane>h2{padding-right:28px}.setrow{padding:10px;gap:8px;flex-wrap:wrap}.setselect{min-width:110px}.setpage{height:85vh}.approw{flex-wrap:wrap}}
 
 
 .setpage:focus{outline:none}

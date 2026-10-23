@@ -31,28 +31,12 @@
 .g7-timer { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .g7-sm { min-height: 32px !important; padding: 0 12px !important; font-size: 13px !important; display: inline-flex; align-items: center; gap: 6px; }
 .g7-sm .icon { width: 14px; height: 14px; }
-.g7-allow-note {
-  display: flex; gap: 10px; align-items: flex-start; margin-top: 16px;
-  padding: 12px 14px; border-radius: 12px; background: var(--hover);
-}
-.g7-allow-note .icon { margin-top: 3px; color: var(--muted); }
-.g7-allow-note p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
 .g7-wait { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .g7-spin { animation: g7spin 0.9s linear infinite; }
 @keyframes g7spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .g7-spin { animation: none; } }
 
-/* 输入配对码 */
-.g7-code-field { margin: 20px 0 8px; }
-.g7-code-field input {
-  min-height: 56px; text-align: center; font-size: 24px; font-weight: 560;
-  letter-spacing: 0.12em; font-variant-numeric: tabular-nums; border-radius: 12px; text-transform: uppercase;
-}
-.g7-code-field input::placeholder { color: var(--faint); font-weight: 400; letter-spacing: 0.12em; }
-.g7-code-field input { color: var(--text); }
-.g7-code-field input:disabled { color: var(--muted); }
 .g7-card .primary:disabled { opacity: 0.4; cursor: default; }
-.g7-code-field.is-bad input { background: var(--err-bg); }
 .g7-hint { margin: 0; min-height: 22px; font-size: 13px; color: var(--muted); text-align: center; }
 .g7-info { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text); }
 .g7-msg { text-align: center; margin: 0; }
@@ -80,8 +64,6 @@
 .g7-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 24px 20px; }
 .g7-body .profile-section + .profile-section { margin-top: 20px; }
 .g7-body .profile-section h3 { margin-bottom: 8px; }
-.g7-foot { display: flex; gap: 8px; justify-content: space-between; padding: 14px 24px 18px; flex: none; }
-.g7-foot button { display: inline-flex; align-items: center; gap: 6px; }
 .g7-fine { margin: 8px 2px 0; font-size: 12px; line-height: 1.6; color: var(--faint); }
 .g7-muted { color: var(--muted); }
 .g7-inline-err { margin: 6px 4px 0; font-size: 12px; }
@@ -161,7 +143,6 @@ span.g7-switch { margin-top: 2px; opacity: 0.55; cursor: default; }
 /* 矮窗口：弹窗内容收紧 */
 @media (max-height: 640px) {
   .g7-code { margin: 12px 0 8px; }
-  .g7-allow-note { margin-top: 12px; }
   .g7-h3 { margin-top: 14px; }
   .g7-device { margin-top: 12px; }
   .g7-card { padding: 20px; }
@@ -182,6 +163,28 @@ span.g7-switch { margin-top: 2px; opacity: 0.55; cursor: default; }
 .g7-gw-down .spacer { flex: 1; }
 .g7-field-err { margin: 6px 0 0; font-size: 13px; }
 .g7-layer:empty { display: none; }
+
+/* 设置设备页唯一入口；配对嵌层共用现有模态与 code/join 流程。 */
+.setdev .sethd { display: flex; align-items: center; justify-content: space-between; gap: var(--x-s3); margin: var(--x-s1) 0 var(--x-s8); }
+.setdev .sethd h2 { margin: 0; font-size: var(--x-fs-title); font-weight: 650; }
+.setdev .sethd .primary { display: inline-flex; align-items: center; gap: var(--x-s2); min-height: var(--x-s9); padding: var(--x-s2) var(--x-s5); font-size: var(--x-fs-sm); }
+.g7-pair .g7-card { width: min(480px, 100%); padding: var(--x-s8); }
+.g7-pair .g7-lead { margin: 0; font-size: var(--x-fs-ui); }
+.g7-pair-label { margin: var(--x-s8) 0 var(--x-s3); font-size: var(--x-fs-sm); font-weight: 600; }
+.g7-pair .g7-code { width: 100%; padding: var(--x-s1); margin: 0 0 var(--x-s3); border: 0; border-radius: var(--x-r-card); background: var(--x-fill-1); gap: var(--x-s4); }
+.g7-pair .g7-group { flex: 1; justify-content: center; min-width: 0; padding: var(--x-s4) var(--x-s2); background: var(--x-fill-3); }
+.g7-pair .g7-group i { width: auto; flex: 1; font-size: var(--x-fs-h); }
+.g7-pair .g7-code:hover, .g7-pair .g7-code.is-done { background: var(--x-fill-3); }
+.g7-code-meta .spacer { flex: 1; }
+.g7-copy-status { font-size: var(--x-fs-sm); color: var(--x-muted); }
+.g7-or { margin-top: var(--x-s8); text-align: center; color: var(--x-faint); font-size: var(--x-fs-sm); }
+.g7-pair .g7-or + .g7-pair-label { margin-top: var(--x-s6); }
+.g7-pair-field { margin: 0; }
+.g7-pair-field input { min-height: var(--x-s9); padding: var(--x-s5); font-size: var(--x-fs-ui); color: var(--x-text); }
+.g7-pair-field.is-bad input { background: var(--x-danger-bg); }
+.g7-pair .g7-fine { margin: var(--x-s3) 0 0; font-size: var(--x-fs-sm); color: var(--x-muted); }
+.g7-pair .g7-gw { margin-top: var(--x-s3); display: flex; align-items: center; gap: var(--x-s2); font-size: var(--x-fs-sm); color: var(--x-muted); }
+.g7-pair .g7-msg { margin-top: var(--x-s3); text-align: left; }
 
 /* 侧栏：其他电脑上的 Bot，按设备分组（v2 原型 side-full / side-gw-down） */
 .g7-remote { margin-top: 4px; }
