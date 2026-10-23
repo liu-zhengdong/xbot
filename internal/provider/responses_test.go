@@ -215,3 +215,35 @@ func TestResponsesToolImageRole(t *testing.T) {
 		t.Fatalf("Responses image role %q", image.Role)
 	}
 }
+
+func TestResponsesStreamErrorsRetainRetryAndOverflowClassification(t *testing.T) {
+	for _, code := range []string{"server_error", "rate_limit_exceeded", "context_length_exceeded"} {
+		t.Run(code, func(t *testing.T) {
+			body := `data: {"type":"response.failed","response":{"error":{"code":"` + code + `","message":"request failed"}}}`
+			_, err := readResponses(context.Background(), strings.NewReader(body), nil)
+			if code == "context_length_exceeded" {
+				if !IsContextOverflow(err) {
+					t.Fatalf("lost overflow: %v", err)
+				}
+			} else if !retryable(err) {
+				t.Fatalf("lost retry classification: %v", err)
+			}
+		})
+	}
+	_, err := readResponses(context.Background(), strings.NewReader(`data: {"type":"error","code":"rate_limit_exceeded","message":"retry"}`), nil)
+	if !retryable(err) {
+		t.Fatalf("top-level error lost: %v", err)
+	}
+}
+
+func TestTextEditsMapCitationOffsetsWithoutChangingOriginal(t *testing.T) {
+	original := Message{Content: []ContentPart{{Type: PartText, Text: "reply_to: 7\n一。二。"}, {Type: PartCitation, Citation: &Citation{Start: 12, End: 14}}, {Type: PartCitation, Citation: &Citation{Start: 14, End: 16}}}}
+	edited := original
+	edited.SetText("一。二。")
+	if edited.Content[1].Citation.Start != 0 || edited.Content[1].Citation.End != 2 || edited.Content[2].Citation.End != 4 {
+		t.Fatalf("offsets %+v %+v", edited.Content[1].Citation, edited.Content[2].Citation)
+	}
+	if original.Content[1].Citation.Start != 12 {
+		t.Fatal("edited shared transcript citation")
+	}
+}

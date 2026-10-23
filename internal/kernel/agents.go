@@ -622,6 +622,13 @@ func parseControl(args json.RawMessage) (string, string, error) {
 
 // CheckBindingIdle refuses to orphan accepted executor work when rebinding.
 func (k *Kernel) CheckBindingIdle() error {
+	if jobs := k.shellJobs(); jobs != nil {
+		for _, job := range jobs.List() {
+			if job.Status == "running" {
+				return errors.New("Bot 的工具任务仍在运行")
+			}
+		}
+	}
 	if len(k.Backgrounds()) > 0 {
 		return errors.New("Bot 的后台任务仍在运行")
 	}

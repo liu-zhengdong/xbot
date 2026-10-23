@@ -185,7 +185,12 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]")}
 	}
-	return readResponses(ctx, &idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, delta)
+	msg, err := readResponses(ctx, &idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, delta)
+	var status *statusError
+	if errors.As(err, &status) {
+		return msg, &statusError{code: status.code, body: strings.ReplaceAll(status.body, c.APIKey, "[secret]")}
+	}
+	return msg, err
 }
 
 type responseItem struct {
@@ -278,12 +283,16 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			continue
 		}
 		var ev struct {
-			Type     string          `json:"type"`
-			Delta    string          `json:"delta"`
-			Item     json.RawMessage `json:"item"`
-			ItemID   string          `json:"item_id"`
-			Response struct {
+			Type         string           `json:"type"`
+			Code         string           `json:"code"`
+			ErrorMessage string           `json:"message"`
+			Error        *responseFailure `json:"error"`
+			Delta        string           `json:"delta"`
+			Item         json.RawMessage  `json:"item"`
+			ItemID       string           `json:"item_id"`
+			Response     struct {
 				Status string            `json:"status"`
+				Error  *responseFailure  `json:"error"`
 				Output []json.RawMessage `json:"output"`
 				Usage  *struct {
 					Input   int `json:"input_tokens"`
@@ -351,8 +360,20 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				}
 			}
 			return msg, nil
-		case "error", "response.failed", "response.incomplete":
-			return Message{}, errors.New("responses: " + ev.Type)
+		case "error", "response.failed":
+			failure := ev.Error
+			if failure == nil {
+				failure = ev.Response.Error
+			}
+			if failure == nil && ev.Code != "" {
+				failure = &responseFailure{Code: ev.Code, Message: ev.ErrorMessage}
+			}
+			if failure == nil {
+				return Message{}, errors.New("responses: " + ev.Type)
+			}
+			return Message{}, failure.err()
+		case "response.incomplete":
+			return Message{}, errors.New("responses: response.incomplete")
 		}
 	}
 	if err := scan.Err(); err != nil {
@@ -364,3 +385,21 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 type visibleResponseError struct{ error }
 
 func (e *visibleResponseError) Unwrap() error { return e.error }
+
+type responseFailure struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (f responseFailure) err() error {
+	status := http.StatusBadRequest
+	switch f.Code {
+	case "server_error":
+		status = 500
+	case "rate_limit_exceeded":
+		status = 429
+	case "invalid_api_key":
+		status = 401
+	}
+	return &statusError{code: status, body: "responses: " + f.Code + ": " + f.Message}
+}

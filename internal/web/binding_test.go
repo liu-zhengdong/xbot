@@ -131,3 +131,26 @@ func TestBindingPreservesRunningAndQueuedExecutor(t *testing.T) {
 		}
 	}
 }
+
+func TestKernelRebuildReadsCurrentBindingAfterStaleProfile(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetBinding("openai", "gpt-5.5"); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Root: root, NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) { return &kernel.Kernel{Bot: b}, nil }}
+	k, _, err := s.kernel(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.Bot.Config().Provider != "openai" || k.Bot.Config().Model != "gpt-5.5" {
+		t.Fatalf("stale binding cached: %+v", k.Bot.Config())
+	}
+}

@@ -212,3 +212,17 @@ func TestHostedSearchToolFreeSummary(t *testing.T) {
 		t.Fatalf("normal tool round missing hosted search: %+v %v", req, err)
 	}
 }
+
+func TestBindingIdleRejectsRunningToolJob(t *testing.T) {
+	b := testBot(t)
+	k := &Kernel{Bot: b}
+	jobs := k.shellJobs()
+	jobs.OnDone = nil
+	defer jobs.Shutdown()
+	started := make(chan struct{})
+	jobs.RunCall(context.Background(), tools.CallRequest{Name: "web_fetch", Background: true, Run: func(ctx context.Context) tools.CallResult { close(started); <-ctx.Done(); return tools.CallResult{} }})
+	<-started
+	if err := k.CheckBindingIdle(); err == nil {
+		t.Fatal("running tool Job would lose its cancel handle")
+	}
+}

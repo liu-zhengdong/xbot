@@ -1434,7 +1434,13 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 	}
 	k := s.kernels[b.Name()]
 	if k == nil {
-		var err error
+		// A profile may have been read before a concurrent binding update.
+		// Refresh under the same mutex that removes the previous cache entry.
+		fresh, err := bot.Load(b.Root, b.Name())
+		if err != nil {
+			return nil, nil, err
+		}
+		*b = *fresh
 		k, err = s.NewKernel(b)
 		if err != nil {
 			return nil, nil, err

@@ -176,6 +176,7 @@ func (m *Message) SetText(text string) {
 	if !inserted {
 		parts = append(TextContent(replacement), parts...)
 	}
+	remapCitations(parts, old, text)
 	m.Content = parts
 }
 
@@ -330,6 +331,41 @@ func (m Message) MapText(f func(string) string) Message {
 			}
 		}
 	}
+	remapCitations(parts, m.Text(), (Message{Content: parts}).Text())
 	m.Content = parts
 	return m
+}
+
+// remapCitations edits request-local offsets, never shared transcript objects.
+func remapCitations(parts []ContentPart, old, new string) {
+	if old == new {
+		return
+	}
+	a, b := []rune(old), []rune(new)
+	start := 0
+	for start < len(a) && start < len(b) && a[start] == b[start] {
+		start++
+	}
+	end, newEnd := len(a), len(b)
+	for end > start && newEnd > start && a[end-1] == b[newEnd-1] {
+		end--
+		newEnd--
+	}
+	shift := func(pos int) int {
+		if pos <= start {
+			return pos
+		}
+		if pos >= end {
+			return pos + newEnd - end
+		}
+		return start + min(pos-start, newEnd-start)
+	}
+	for i := range parts {
+		if parts[i].Citation != nil {
+			c := *parts[i].Citation
+			c.Start = shift(c.Start)
+			c.End = shift(c.End)
+			parts[i].Citation = &c
+		}
+	}
 }
