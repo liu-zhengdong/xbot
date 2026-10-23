@@ -28,8 +28,6 @@ func StablePrefix(persona, rules, overlay string, links []string) string {
 	if rules == "" {
 		rules = KernelRules()
 	}
-	names := append([]string(nil), links...)
-	sort.Strings(names)
 	var b strings.Builder
 	b.WriteString(persona)
 	b.WriteString("\n\n")
@@ -38,8 +36,18 @@ func StablePrefix(persona, rules, overlay string, links []string) string {
 		b.WriteString("\n\n## Model\n")
 		b.WriteString(overlay)
 	}
+	if block := linksPrefix(links); block != "" {
+		b.WriteString("\n\n" + block)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func linksPrefix(links []string) string {
+	names := append([]string(nil), links...)
+	sort.Strings(names)
+	var b strings.Builder
 	if len(names) > 0 {
-		b.WriteString("\n\n## Links\n")
+		b.WriteString("## Links\n")
 		for _, name := range names {
 			fmt.Fprintf(&b, "- %s: %s\n", name, link.Blurb(name))
 		}

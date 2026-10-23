@@ -166,9 +166,13 @@ func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
 }
 
 func account(in Input, hist []provider.Message) ([]provider.Message, bot.SectionUsage) {
-	sys := provider.Message{Role: provider.RoleSystem, Content: provider.TextContent(prefixWithSkills(in.Persona, in.Rules, in.Overlay, in.Links, in.Skills, in.Installed))}
-	msgs := []provider.Message{sys}
-	usage := bot.SectionUsage{Stable: compact.EstimateMessage(sys)}
+	var msgs []provider.Message
+	var usage bot.SectionUsage
+	for _, text := range prefixWithSkills(in.Persona, in.Rules, in.Overlay, in.Links, in.Skills, in.Installed) {
+		msg := provider.Message{Role: provider.RoleSystem, Content: provider.TextContent(text)}
+		msgs = append(msgs, msg)
+		usage.Stable += compact.EstimateMessage(msg)
+	}
 	if mem := wrapMemory(in.Memory); mem != "" {
 		mm := provider.Message{Role: provider.RoleUser, Content: provider.TextContent(mem)}
 		msgs = append(msgs, mm)
@@ -186,16 +190,24 @@ func account(in Input, hist []provider.Message) ([]provider.Message, bot.Section
 	return msgs, usage
 }
 
-func prefixWithSkills(persona, rules, overlay string, links, skills []string, installed string) string {
-	text := StablePrefix(persona, rules, overlay, links)
-	if installed != "" {
-		text += "\n\n" + installed
+// prefixWithSkills orders independently changing segments from stable to volatile.
+// Empty catalogues add no message; memory and environment remain outside them.
+func prefixWithSkills(persona, rules, overlay string, links, skills []string, installed string) []string {
+	segments := []string{StablePrefix(persona, rules, overlay, nil)}
+	if block := linksPrefix(links); block != "" {
+		segments = append(segments, block)
 	}
-	block := skill.FormatPrompt(skills)
-	if block == "" {
-		return text
+	catalogue := installed
+	if block := skill.FormatPrompt(skills); block != "" {
+		if catalogue != "" {
+			catalogue += "\n\n"
+		}
+		catalogue += block
 	}
-	return text + "\n\n" + block
+	if catalogue != "" {
+		segments = append(segments, catalogue)
+	}
+	return segments
 }
 
 func (k *Kernel) skillLines() ([]string, error) {

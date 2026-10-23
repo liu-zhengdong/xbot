@@ -382,7 +382,14 @@ func systemOf(t *testing.T, k *Kernel) string {
 	if len(msgs) == 0 || msgs[0].Role != provider.RoleSystem {
 		t.Fatalf("system %+v", msgs)
 	}
-	return msgs[0].Text()
+	var parts []string
+	for _, msg := range msgs {
+		if msg.Role != provider.RoleSystem {
+			break
+		}
+		parts = append(parts, msg.Text())
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func installedBody(text string) []string {
