@@ -296,7 +296,15 @@ func (k *Kernel) protectedSummary(ctx context.Context, tool tools.Tool, args jso
 	return summary + review.ProtectedSuffix
 }
 
-func (k *Kernel) permissive() bool { return k != nil && k.Permissive }
+func (k *Kernel) permissive() bool {
+	if k == nil {
+		return false
+	}
+	if k.PermissionsOn != nil {
+		return !k.PermissionsOn()
+	}
+	return k.Permissive
+}
 
 // machineMode reads the local machine switch. A nil kernel or bot is allow, so
 // unit tests and older processes keep the table behavior.

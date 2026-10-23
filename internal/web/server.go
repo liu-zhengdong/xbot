@@ -158,6 +158,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 	mux.HandleFunc("POST /api/app/theme", s.appTheme)
 
+	mux.HandleFunc("GET /api/permissions", s.getPermissions)
+	mux.HandleFunc("PUT /api/permissions", s.putPermissions)
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	s.registerStatusAPI(mux)

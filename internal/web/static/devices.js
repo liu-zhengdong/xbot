@@ -47,10 +47,10 @@
   let authed = false; // Before login (the login page) a 401 is normal: never reload then.
   function sessionExpired() {
     if (!authed) { const err = new Error("未登录"); err.status = 401; throw err; }
-    S.drawer = false; S.view = null; S.menuFor = ""; S.target = null; S.fieldErr = ""; S.busy = false;
-    if (drawerEl) { try { drawerEl.remove(); } catch (e) { drawerEl.innerHTML = ""; } }
+    S.embedded = false; S.view = null; S.menuFor = ""; S.target = null; S.fieldErr = ""; S.busy = false;
+    if (devicesEl) devicesEl.replaceChildren();
     if (modalEl) { try { modalEl.remove(); } catch (e) { modalEl.innerHTML = ""; } }
-    drawerEl = modalEl = null;
+    devicesEl = modalEl = null;
     location.reload();
     const err = new Error("登录已过期");
     err.status = 401;
@@ -78,33 +78,29 @@
     data: null,            // GET /api/devices
     pairing: { a: {}, b: {} },
     view: null,            // drawer 之上的弹窗
-    drawer: false,
+    embedded: false,
     code: "",              // A 最近一次显示的码，用于确认框副行
     peer: null,            // B 端最近看到的对方 {name, os, bots}
     joinVal: "", gwOpen: false, gwVal: "", fieldErr: "", checking: false,
     menuFor: "", target: null, selfGwEdit: false, selfGwErr: "", busy: false,
   };
-  let drawerEl = null, modalEl = null, lastView = "", opener = null;
+  let devicesEl = null, modalEl = null, lastView = "";
   // 挂给 pairing.js 的句柄（最后填上 views/acts 等）。
   const D = window.xbotDevices = {};
 
   function ensureHosts() {
-    if (drawerEl) return;
-    drawerEl = document.createElement("div"); drawerEl.className = "g7-layer"; drawerEl.id = "devices-drawer";
+    devicesEl = document.getElementById("settings-devices");
+    if (modalEl) return;
     modalEl = document.createElement("div"); modalEl.className = "g7-layer"; modalEl.id = "devices-modal";
-    document.body.append(drawerEl, modalEl);
+    document.body.append(modalEl);
   }
 
   async function refresh() {
     try { S.data = await api("GET", "/api/devices"); S.pairing = S.data.pairing; window.dispatchEvent(new Event("xbot:devices")); } catch (e) { /* 离线时保留旧数据 */ }
-    paintCount();
+    paintComputerName();
     paintSidebar();
   }
-  function paintCount() {
-    const el = document.getElementById("account-devices-count");
-    if (!el) return;
-    const n = S.data && S.data.devices ? S.data.devices.length : 0;
-    el.textContent = n ? String(n) : "";
+  function paintComputerName() {
     // This computer's name under 我 at the bottom of the sidebar.
     const me = document.getElementById("me-device");
     const self = (S.data && S.data.self) || {};
@@ -112,28 +108,28 @@
   }
 
   // ---- 打开、关闭 ----
-  async function openDrawer() {
+  function openDevices() { return window.XBotSettings.open("devices"); }
+  async function mount() {
     ensureHosts();
-    if (!S.drawer) opener = document.activeElement;
-    S.drawer = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
+    S.embedded = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
     await refresh();
     render();
   }
-  function closeDrawer() { S.drawer = false; S.view = null; render(); }
+  function unmount() { S.embedded = false; S.view = null; render(); }
   function closeModal() { S.view = null; S.fieldErr = ""; render(); }
 
   const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
-  // 顶层设备层 = 有弹窗时弹窗，否则抽屉；Tab/Shift+Tab 在层内循环，Escape 关掉这一层
+  // 配对弹窗管理自己的焦点与 Escape；设备内容由设置浮层承载。
   function trap(ev) {
-    const top = modalEl && modalEl.firstChild ? "modal" : drawerEl && drawerEl.firstChild ? "drawer" : "";
+    const top = modalEl && modalEl.firstChild ? "modal" : "";
     if (!top) return false;
     if (ev.key === "Escape") {
       if (top === "modal" && S.view !== "rename" && S.view !== "unpair" && S.view !== "gw-confirm") return false; // pairing.js owns its modals' Escape (it cancels codes)
-      top === "modal" ? closeModal() : closeDrawer();
+      closeModal();
       return true;
     }
     if (ev.key !== "Tab") return false;
-    const layer = top === "modal" ? modalEl : drawerEl;
+    const layer = modalEl;
     const items = Array.from(layer.querySelectorAll(FOCUSABLE));
     if (!items.length) return false;
     const i = items.indexOf(ev.target);
@@ -247,7 +243,7 @@
   };
   function capability(d) {
     const on = d.bot_messaging !== false, err = S.bmErrMsg && S.bmErr === d.id ? S.bmErrMsg : ""; // 关掉时行也变淡，错误照常显示
-    return `<div class="g7-caps${on ? "" : " is-off"}"><div class="g7-cap"><span class="g7-cap-t"><b>Bot 互发消息</b><small>两边的 Bot 能互相发消息</small></span>
+    return `<div class="g7-caps${on ? "" : " is-off"}"><div class="g7-cap"><span class="g7-cap-t"><b>Bot 互发消息</b></span>
       <button class="g7-switch" id="g7-bm-${esc(d.id)}" type="button" role="switch" aria-checked="${on}" aria-label="Bot 互发消息" data-act="bm-toggle" data-id="${esc(d.id)}"></button></div>
       ${err ? `<p class="error g7-inline-err">${esc(err)}</p>` : ""}</div>`;
   }
@@ -273,9 +269,9 @@
       <div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(d.label)}</div>${statusLine(d, up)}</div>
         <div class="g7-more-wrap"><button class="ghost${open ? " is-on" : ""}" type="button" aria-label="更多" aria-expanded="${open}" data-act="row-menu" data-id="${esc(d.id)}">${svg("ellipsis")}</button>${menu}</div></div>
-      ${bots}${meta}${caps}</div>`;
+      ${bots}<div class="g7-details">${meta}${caps}</div></div>`;
   }
-  function viewDrawer() {
+  function viewDevices() {
     const data = S.data || { self: {}, devices: [] };
     const self = data.self || {}, devs = data.devices || [], gw = self.gateway, up = !!data.gateway_ok;
     const pair = !!D.acts.add; // pairing.js adds 添加设备 and 加入另一台设备
@@ -299,40 +295,33 @@
           <p class="g7-fine">${sp(fineOnline)}</p></section>`;
     }
     const foot = pair ? `<div class="g7-foot"><button class="secondary" type="button" data-act="join-open">${svg("keyboard")}<span>加入另一台设备</span></button><button class="primary" type="button" data-act="add">${svg("plus")}<span>添加设备</span></button></div>` : "";
-    return `<div class="modal profile-drawer g7-drawer" data-g7-drawer><div class="modal-card profile-modal" role="dialog" aria-modal="true" aria-label="设备">
-      <div class="g7-head"><h2>设备</h2><button class="ghost" type="button" aria-label="关闭" data-act="close-drawer">${svg("x")}</button></div>
-      <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}
+    return `      <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}
       <div class="g7-body">${selfCard}${list}
-        <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>${foot}</div></div>`;
+        <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>${foot}`;
   }
 
   function render() {
     ensureHosts();
     const focusId = document.activeElement && document.activeElement.id;
     const sel = document.activeElement && "selectionStart" in document.activeElement ? document.activeElement.selectionStart : null;
-    const wasDrawer = !!drawerEl.firstChild, wasView = lastView;
-    drawerEl.innerHTML = S.drawer ? viewDrawer() : "";
-    if (wasDrawer && S.drawer) drawerEl.querySelector(".profile-modal").style.animation = "none";
+    const wasView = lastView;
+    devicesEl.innerHTML = S.embedded ? viewDevices() : "";
     const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm }, D.views)[S.view];
     modalEl.innerHTML = V ? V() : "";
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
     lastView = S.view || "";
-    const f = focusId && document.getElementById(focusId) || (S.menuFor && drawerEl.querySelector(`[data-act="row-menu"][data-id="${CSS.escape(S.menuFor)}"]`));
-    const inside = document.activeElement === document.body || (drawerEl.contains(document.activeElement) || modalEl.contains(document.activeElement));
+    const f = focusId && document.getElementById(focusId) || (S.menuFor && devicesEl.querySelector(`[data-act="row-menu"][data-id="${CSS.escape(S.menuFor)}"]`));
+    const inside = document.activeElement === document.body || (devicesEl.contains(document.activeElement) || modalEl.contains(document.activeElement));
     if (f && !f.disabled) { f.focus(); if (sel != null && f.setSelectionRange) try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {} }
     else if (V && (S.view !== wasView || !inside)) { const first = modalEl.querySelector("input:not([disabled])") || modalEl.querySelector(FOCUSABLE); if (first) first.focus(); }
-    else if (!inside) { const first = (V ? modalEl : drawerEl).querySelector(V ? ".modal-card button" : ".profile-modal button"); if (first) first.focus(); }
-    if (!S.drawer && opener && opener.focus && document.contains(opener)) opener.focus();
-    if (!S.drawer) opener = null;
   }
 
   // ---- 事件 ----
   async function act(name, el) {
     const data = S.data || {};
     switch (name) {
-      case "close-drawer": closeDrawer(); break;
       case "close": closeModal(); break;
-      case "to-drawer": S.view = null; await openDrawer(); break;
+      case "to-drawer": S.view = null; await openDevices(); break;
       case "row-menu": S.menuFor = S.menuFor === el.dataset.id ? "" : el.dataset.id; render(); break;
       case "rename": case "ask-unpair": {
         const d = (data.devices || []).find((x) => x.id === el.dataset.id);
@@ -393,15 +382,13 @@
 
   document.addEventListener("click", (ev) => {
     const t = ev.target.closest("[data-act]");
-    if (t && (drawerEl && drawerEl.contains(t) || modalEl && modalEl.contains(t))) { ev.preventDefault(); act(t.dataset.act, t); return; }
-    if (S.menuFor && drawerEl && drawerEl.contains(ev.target) && !ev.target.closest(".g7-row-menu")) { S.menuFor = ""; render(); }
-    // 点遮罩关闭抽屉（弹窗不随手关，免得丢掉正在进行的配对）
-    if (drawerEl && ev.target.matches && ev.target.matches("[data-g7-drawer]") && !S.view) closeDrawer();
+    if (t && (devicesEl && devicesEl.contains(t) || modalEl && modalEl.contains(t))) { ev.preventDefault(); act(t.dataset.act, t); return; }
+    if (S.menuFor && devicesEl && devicesEl.contains(ev.target) && !ev.target.closest(".g7-row-menu")) { S.menuFor = ""; render(); }
   });
   document.addEventListener("input", (ev) => {
     if (ev.target.id === "g7-self-gw") {
       S.gwVal = ev.target.value;
-      const save = drawerEl.querySelector('[data-act="self-gw-save"]');
+      const save = devicesEl.querySelector('[data-act="self-gw-save"]');
       if (save && !S.checking) save.disabled = !S.gwVal.trim();
     } else if (D.onInput) D.onInput(ev.target);
   });
@@ -409,7 +396,7 @@
     if (ev.key === "Enter" && ev.target.id === "g7-self-gw") { ev.preventDefault(); act("self-gw-save", ev.target); }
     if (ev.key === "Enter" && ev.target.id === "g7-name") { ev.preventDefault(); act("save-name", ev.target); }
     if (D.onKey && D.onKey(ev)) return;
-    if (drawerEl && (drawerEl.firstChild || modalEl.firstChild)) trap(ev);
+    if (devicesEl && (devicesEl.firstChild || modalEl.firstChild)) trap(ev);
   });
 
   // 倒计时只改文字，不重画
@@ -418,23 +405,6 @@
     modalEl.querySelectorAll("[data-left]").forEach((el) => { el.textContent = left(el.dataset.left, Number(el.dataset.minus || 0)); });
   }, 1000);
 
-  function bindMenu() {
-    const btn = document.getElementById("account-devices");
-    if (!btn) return;
-    btn.insertAdjacentHTML("afterbegin", svg("devices"));
-    btn.addEventListener("click", () => {
-      const menu = document.getElementById("account-menu");
-      if (menu) menu.hidden = true;
-      const pop = document.getElementById("connect-pop");
-      if (pop) pop.hidden = true;
-      const acct = document.getElementById("account");
-      if (acct) acct.setAttribute("aria-expanded", "false");
-      opener = btn;
-      openDrawer();
-    });
-    const acct = document.getElementById("account");
-    if (acct) acct.addEventListener("click", () => { refresh(); });
-  }
   // ---- 侧栏：其他电脑上的 Bot，按设备分组（v2 原型 side-full、side-gw-down、rail-devices）----
   // 组头（label）也是一行按钮：不做折叠，所以设备和 Bot 行都放进 #roster（本机行下面），app.js 重画本机行时不会冲掉；
   // 网关不通时只在分组上方放一条提示、整体变淡，不给每台标离线；离线的设备变淡，但行照样能点开远端对话。
@@ -507,8 +477,7 @@
   Object.defineProperty(D, "chat", { get: () => window.xbotRemoteChat || null, set: () => false });
   setInterval(() => { if (!document.hidden) refresh(); }, 30000);
 
-  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDrawer, closeModal, sideFaces: face });
+  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face });
   D.views = {}; D.acts = {}; D.onInput = null; D.onKey = null; // pairing.js 接着往这三个上面挂
-  bindMenu();
   refresh();
 })();

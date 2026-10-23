@@ -85,6 +85,8 @@ type Kernel struct {
 	// review.ConfirmTable): only an explicit machine setting, the vault, a
 	// turn from outside touching memory, and the links card still ask.
 	Permissive bool
+	// PermissionsOn reads the install-wide switch live. Nil uses Permissive.
+	PermissionsOn func() bool
 	// OnHandoff runs when a newer owner message takes over the running
 	// turn's output (Interject); the caller can end its own stream.
 	OnHandoff func()
@@ -604,7 +606,7 @@ func (k *Kernel) rulesText() (string, error) {
 			rules += "\n\n" + r
 		}
 	}
-	if k.Permissive {
+	if k.permissive() {
 		rules = strings.Replace(rules, ActionRule, OwnAskActionRule, 1)
 		if !strings.Contains(rules, EventMemoryRule) {
 			rules += "\n\n" + EventMemoryRule

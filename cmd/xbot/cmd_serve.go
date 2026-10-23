@@ -149,7 +149,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		// it (ADR 0016).
 		Dispatch: true,
 		// No permission cards unless the owner turned them on (ADR 0019).
-		Permissive: !permissions.On(root),
+		PermissionsOn: func() bool { return permissions.On(root) },
 		// Foreground limits come from the role unless the bot overrode them.
 		ForegroundMaxTools: work.ForegroundMaxTools,
 		ForegroundMaxTime:  work.ForegroundMaxTime,

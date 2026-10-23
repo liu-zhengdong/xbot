@@ -16,13 +16,10 @@ func TestProfileDrawer(t *testing.T) {
 			`name.dataset.profileFocus = "true";`,
 			`modalFields.querySelector("[data-profile-focus]").focus();`,
 			`target.focus({ preventScroll: true });`,
-			`ev.key !== "Tab" || !modal.classList.contains("profile-drawer")`,
 			`section("基本", head, labeled("标识", name), labeled("简介", description))`,
 			`section("说话方式",`, `section("免打扰",`, `section("人设",`,
 			`if (!modal.hidden) { closeModal(); return; }`,
 			`if (ev.target === modal) closeModal();`,
-			`authenticated = false;
-    closeModal();`,
 		},
 		"static/app.css": {
 			`.modal.profile-drawer { padding: 0; place-items: stretch end; }`,

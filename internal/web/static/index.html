@@ -98,8 +98,7 @@ try {
     </div>
     <div class="side-foot">
       <button id="rail-new" class="railnew" type="button" aria-label="新建 Bot 或群组" data-tip="新建" data-tip-placement="right"></button>
-      <!-- Only 我 at the bottom: the owner and this computer's name. 设备,
-           连接应用, 外观 and 收起列表 are in its menu (device prototype v2, item 15). -->
+      <!-- Account actions and the unified settings dialog. -->
       <div class="account-wrap">
         <button id="account" class="account-trigger" type="button" aria-label="我" aria-expanded="false" aria-controls="account-menu">
           <span id="me-avatar"></span>
@@ -107,40 +106,12 @@ try {
           <svg class="icon me-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
         </button>
         <div id="account-menu" class="pop account-menu" hidden>
-          <button id="account-devices" type="button">设备<span id="account-devices-count" class="menu-count"></span></button>
-          <button id="account-connect" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="connect-pop">连接应用</button>
-          <button id="account-theme" type="button">外观</button>
+          <button id="account-settings" type="button" aria-haspopup="dialog">设置</button>
+          <div class="mgap"></div>
           <button id="collapse" class="desk-only" type="button">收起列表</button>
           <button id="logout" type="button">退出</button>
-          <div class="pop-row account-about"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>关于 XBot</span><span id="account-version" class="menu-count"></span></div>
-        </div>
-        <div id="connect-pop" class="pop connect-pop" hidden>
-          <div class="connect-row">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/></svg>
-            <span class="name">终端</span>
-            <span class="status"><i class="status-dot ok"></i>已启用</span>
-          </div>
-          <div class="connect-row">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-            <span class="name">浏览器</span>
-            <span class="status"><i class="status-dot off"></i>未连接</span>
-          </div>
-          <div class="connect-row">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-            <span class="name">桌面</span>
-            <span class="status"><i class="status-dot off"></i>未连接</span>
-          </div>
-          <div class="connect-row">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a6 6 0 0 1-12 0V8Z"/></svg>
-            <span class="name">MCP</span>
-            <span class="status"><i class="status-dot off"></i>未连接</span>
-          </div>
-          <button id="phone-push" class="connect-row" type="button" role="switch" aria-checked="false" aria-label="手机推送">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
-            <span class="name">手机推送</span>
-            <span class="switch" aria-hidden="true"></span>
-          </button>
-          <p id="phone-push-hint" class="push-hint" hidden>免打扰时段不推送</p>
+          <div class="mgap"></div>
+          <button id="account-about" class="account-about" type="button" aria-haspopup="dialog"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>关于 XBot</span><span id="account-version" class="menu-count"></span></button>
         </div>
       </div>
     </div>
@@ -232,6 +203,82 @@ try {
   </form>
 </div>
 <div id="lightbox" class="lightbox" hidden></div>
+<div class="setscrim" id="setscrim" hidden></div>
+<div class="setpage" id="setpage" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="设置">
+ <div class="setbody">
+  <nav class="setnav">
+   <button type="button" data-set="general"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg><span>通用</span></button>
+   <button type="button" data-set="perm"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>权限</span></button>
+   <button type="button" data-set="devices"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg><span>设备</span></button>
+   <button type="button" data-set="apps"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>连接应用</span></button>
+   <button type="button" data-set="about"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>关于</span></button>
+  </nav>
+  <div class="setmain">
+   <button id="settings-close" class="icon-btn setclose" type="button" aria-label="关闭设置"><svg class="ic " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+   <div class="setcnt"><p id="settings-error" class="bad" role="alert" hidden></p>
+   <div class="setpane" data-spane="general">
+    <h2>通用</h2>
+    <div class="setsec" style="margin-top:0">
+     <h4>外观</h4>
+     <div class="setrows">
+      <div class="setrow">
+       <div class="tx"><b>主题</b></div>
+       <select class="setselect" id="settings-theme" aria-label="主题">
+        <option value="light" selected>浅色</option>
+        <option value="dark">深色</option>
+        <option value="system">跟随系统</option>
+       </select>
+      </div>
+     </div>
+    </div>
+   </div>
+   <div class="setpane" data-spane="perm">
+    <h2>权限</h2>
+    <div class="setsec" style="margin-top:0">
+     <div class="setrows">
+      <div class="setrow">
+       <div class="tx"><b>操作前先确认</b><div class="hint" data-perm-hint>Bot 删除、对外发消息等会直接做，做完在对话里告诉你。</div></div>
+       <button class="tog" id="settings-permissions" type="button" role="switch" aria-checked="false" aria-label="操作前先确认" disabled></button>
+      </div>
+     </div>
+    </div>
+    <div class="setsec" data-perm-on hidden>
+     <h4>会确认的操作</h4>
+     <div class="setlist">
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2"/></svg><span>删除文件或 Bot</span></div>
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>对外发送消息</span></div>
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg><span>非读取的网络请求（带密钥或改数据）</span></div>
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>改自己的人设或资料</span></div>
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span>尚未归类的工具、MCP 工具</span></div>
+     </div>
+    </div>
+    <div class="setsec">
+     <h4>始终会问的</h4>
+     <div class="setlist">
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg><span>装连接器时填写密钥</span></div>
+      <div class="li"><svg class="ic " width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>触到保险箱或密钥文件</span></div>
+     </div>
+    </div>
+    <p class="setfoot">命令行同样生效：<code>xbot permissions on|off</code></p>
+   </div>
+   <div class="setpane setdev" data-spane="devices"><h2>设备</h2><div id="settings-devices"></div></div>
+   <div class="setpane" data-spane="apps">
+    <h2>连接应用</h2><p class="setlead" id="settings-apps-bot"></p>
+    <div class="setsec"><h4>通道</h4><div id="settings-channels"></div></div>
+    <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">免打扰时段不推送</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
+    <div class="setsec"><h4>连接器</h4><div id="settings-connectors"></div><button id="settings-add-connector" class="approw setadd" type="button">添加连接器</button><p class="setfoot">装连接器时如果要填密钥，会单独弹出确认——不受「操作前先确认」开关影响。</p></div>
+   </div>
+   <div class="setpane" data-spane="about">
+    <h2>关于</h2>
+    <div class="aboutlogo"><div class="mark">X</div><div><h3>XBot</h3><div class="v"><span data-settings-version></span></div></div></div>
+    <div class="kvrow"><span class="k">版本</span><span class="v"><span data-settings-version></span></span><button id="settings-copy-version" type="button" class="btn ghost sm"><svg class="ic " width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>复制</button></div>
+    <p class="setfoot">版本号与账号菜单「关于 XBot」右侧灰字一致。</p>
+   </div>
+   </div>
+  </div>
+ </div>
+</div>
+
 <script src="/vendor/xbot-avatar.min.js"></script>
 <script src="/app.js"></script>
 <script src="/devices.js"></script>

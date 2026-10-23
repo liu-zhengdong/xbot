@@ -135,3 +135,36 @@ func TestPermissiveRuleDropsTheSecondQuestion(t *testing.T) {
 		t.Fatal("cards on: the rules changed")
 	}
 }
+
+// A live kernel, including an already-created subagent approver, reads the same
+// permissions.json that the Web API and CLI write.
+func TestLivePermissionSwitch(t *testing.T) {
+	b := testBot(t, link.NameTools)
+	k := &Kernel{Bot: b, PermissionsOn: func() bool { return permissions.On(b.Root) }}
+	k.ensureTurn().turnTrusted = true
+	asked := 0
+	k.BackgroundApprove = func(context.Context, string, string) (bool, error) { asked++; return true, nil }
+	approve := k.subApprover()
+	check := func(on bool) {
+		t.Helper()
+		if got := needsCard(t, k, "delete_file", `{"path":"a.txt"}`); got != on {
+			t.Fatalf("delete needsCard=%v, on=%v", got, on)
+		}
+		before := asked
+		if _, err := approve(context.Background(), "delete_file", "delete a.txt"); err != nil {
+			t.Fatal(err)
+		}
+		if (asked > before) != on {
+			t.Fatalf("subagent asked=%d, on=%v", asked-before, on)
+		}
+	}
+	check(false)
+	if err := permissions.Set(b.Root, true); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	if err := permissions.Set(b.Root, false); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+}

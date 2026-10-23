@@ -88,28 +88,24 @@
   const THEME_MOON = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
   const THEME_SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
 
-  function applyTheme(theme) {
-    const dark = theme === "dark";
-    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    const meta = $("theme-color");
-    if (meta) meta.setAttribute("content", dark ? "#161618" : "#ffffff");
-    const accountTheme = $("account-theme");
-    if (accountTheme) accountTheme.replaceChildren(icon(dark ? "sun" : "moon"), document.createTextNode("外观"), el("span", "menu-count", dark ? "深色" : "浅色"));
-    try { localStorage.setItem("xbot-theme", dark ? "dark" : "light"); } catch (e) {}
-    // The desktop window's native buttons follow XBot's own theme, not the OS's.
-    if (inApp) {
-      api("/api/app/theme", { method: "POST", body: { theme: dark ? "dark" : "light" } }).catch(() => {});
-    }
+  let themeMode = "system";
+  const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+  function applyTheme(mode) {
+    themeMode = ["light", "dark", "system"].includes(mode) ? mode : "system";
+    const theme = themeMode === "system" ? (systemTheme.matches ? "dark" : "light") : themeMode;
+    document.documentElement.setAttribute("data-theme", theme);
+    $("theme-color")?.setAttribute("content", theme === "dark" ? "#161618" : "#ffffff");
+    $("settings-theme").value = themeMode;
+    try { localStorage.setItem("xbot-theme", themeMode); } catch (e) {}
+    if (inApp) api("/api/app/theme", { method: "POST", body: { theme } }).catch(() => {});
   }
 
   function initTheme() {
-    let theme = "light";
-    try { theme = localStorage.getItem("xbot-theme") || ""; } catch (e) {}
-    if (theme !== "light" && theme !== "dark") {
-      theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-    applyTheme(theme);
+    let mode = "system";
+    try { mode = localStorage.getItem("xbot-theme") || "system"; } catch (e) {}
+    applyTheme(mode);
   }
+  systemTheme.addEventListener("change", () => { if (themeMode === "system") applyTheme("system"); });
 
   let authenticated = false;
 
@@ -567,6 +563,7 @@
       try { sessionStorage.setItem("xbot-selected-bot", state.sel.id); } catch (e) {}
     }
     authenticated = false;
+    closeSettings(false);
     closeModal();
     closePops();
     closeDrawer();
@@ -783,6 +780,11 @@
   }
 
   const ICONS = {
+    plug: '<path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8Z"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>',
+    monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    phone: '<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>',
+    settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
     gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
     spinner: '<circle cx="12" cy="12" r="8.5" opacity=".22"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/>',
     "users-plus": '<circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M19 13v6M16 16h6"/>',
@@ -5780,6 +5782,7 @@
     modalError.hidden = true;
     modalError.textContent = "";
     modalForm.onsubmit = null;
+    if (!$("setpage").hidden) $("setpage").querySelector(`[data-set="${settingsSection}"]`).focus();
     $("modal-ok").hidden = false;
     $("modal-ok").className = "primary";
     $("modal-cancel").textContent = "取消";
@@ -6235,12 +6238,6 @@
   function closeAccount() {
     $("account-menu").hidden = true;
     $("account").setAttribute("aria-expanded", "false");
-    closeConnect(); // its list never outlives the 我 menu
-  }
-
-  function closeConnect() {
-    $("connect-pop").hidden = true;
-    $("account-connect").setAttribute("aria-expanded", "false");
   }
 
   setInterval(updateWorkTimes, 1000);
@@ -6248,7 +6245,6 @@
   function closePops() {
     closeMessageMenu();
     closeAccount();
-    closeConnect();
     closeNewMenu();
     closePanelMenu();
     closeFolderMenus();
@@ -6285,6 +6281,10 @@
       if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里登录码那一行" : "登录失败，稍后再试");
       state.owner = data.owner || "";
       state.ownerName = data.owner_name || "";
+      const session = await api("/api/session");
+      state.version = session.version || "";
+      state.app = !!session.app;
+      $("logout").hidden = state.app;
       renderMe();
       showApp();
       await boot();
@@ -6303,15 +6303,6 @@
     state.listSig = "";
     try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
     showLogin();
-  });
-
-  function toggleTheme() {
-    const dark = document.documentElement.getAttribute("data-theme") === "dark";
-    applyTheme(dark ? "light" : "dark");
-  }
-  $("account-theme").addEventListener("click", () => {
-    closeAccount();
-    toggleTheme();
   });
 
   const SIDE = { min: 240, max: 360, def: 280, snap: 200, rail: 72 };
@@ -6433,6 +6424,7 @@
   });
 
   document.addEventListener("keydown", (ev) => {
+    if (!$("setpage").hidden) return;
     if (ev.key !== "\\" || !(ev.metaKey || ev.ctrlKey) || ev.altKey || ev.shiftKey) return;
     ev.preventDefault();
     const open = !panel.classList.contains("open");
@@ -6449,25 +6441,156 @@
     panelOpen(false);
   });
 
-  // 连接应用 is a row of the 我 menu; its list opens beside the menu.
-  $("account-connect").prepend(icon("link"));
-  $("account-connect").append(icon("chevron", "mark"));
-  $("account-connect").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const pop = $("connect-pop");
-    const open = pop.hidden;
-    pop.hidden = !open;
-    $("account-connect").setAttribute("aria-expanded", open ? "true" : "false");
-    if (!open) return;
-    // Beside the menu, bottoms aligned; on a phone, above it.
-    const m = $("account-menu").getBoundingClientRect();
-    const side = window.innerWidth >= 768 && m.right + 8 + pop.offsetWidth <= window.innerWidth - 8;
-    pop.style.left = (side ? m.right + 8 : m.left) + "px";
-    pop.style.bottom = (side ? window.innerHeight - m.bottom : window.innerHeight - m.top + 8) + "px";
-    pop.style.top = "auto";
-    pop.style.maxHeight = Math.max(120, (side ? m.bottom : m.top - 8) - 8) + "px"; // scrolls on short screens
-    loadPush().catch(() => {});
+  let settingsOpener = null;
+  let settingsSection = "general";
+  let settingsRequest = 0;
+  function settingsError(err) {
+    const node = $("settings-error");
+    node.textContent = err ? visibleError(err) : "";
+    node.hidden = !err;
+  }
+  function closeSettings(restore = true) {
+    ++settingsRequest;
+    $("setpage").hidden = $("setscrim").hidden = true;
+    window.xbotDevices?.unmount();
+    shell.inert = false;
+    if (restore) (settingsOpener?.isConnected && !settingsOpener.hidden ? settingsOpener : $("account")).focus({ preventScroll: true });
+    settingsOpener = null;
+  }
+  async function openSettings(section = "general") {
+    const page = $("setpage");
+    const opening = page.hidden;
+    if (opening) settingsOpener = document.activeElement?.closest("#account-menu") ? $("account") : document.activeElement;
+    closePops();
+    hideTip();
+    page.hidden = $("setscrim").hidden = false;
+    shell.inert = true;
+    settingsSection = section;
+    const request = ++settingsRequest;
+    settingsError(null);
+    for (const tab of page.querySelectorAll("[data-set]")) {
+      const on = tab.dataset.set === section;
+      tab.classList.toggle("on", on);
+      tab.setAttribute("aria-current", on ? "page" : "false");
+    }
+    for (const pane of page.querySelectorAll("[data-spane]")) pane.hidden = pane.dataset.spane !== section;
+    if (section !== "devices") window.xbotDevices?.unmount();
+    $("settings-theme").value = themeMode;
+    for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
+    if (opening) page.focus({ preventScroll: true });
+    try {
+      if (section === "perm") {
+        $("settings-permissions").disabled = true;
+        const data = await api("/api/permissions");
+        if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
+      } else if (section === "devices") {
+        await window.xbotDevices.mount();
+      } else if (section === "apps") {
+        await Promise.all([loadSettingsApps(request), loadPush()]);
+      }
+    } catch (err) { if (request === settingsRequest) settingsError(err); }
+  }
+  window.XBotSettings = { open: openSettings, close: closeSettings, isOpen: () => !$("setpage").hidden };
+  function paintPermissions(data) {
+    const on = data.confirm === "table";
+    const btn = $("settings-permissions");
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-checked", String(on));
+    document.querySelector("[data-perm-on]").hidden = !on;
+    document.querySelector("[data-perm-hint]").textContent = on
+      ? "下面几类会先弹出确认卡，你点了才继续。"
+      : "Bot 删除、对外发消息等会直接做，做完在对话里告诉你。";
+  }
+  $("settings-permissions").addEventListener("click", async () => {
+    const btn = $("settings-permissions");
+    const confirm = btn.getAttribute("aria-checked") === "true" ? "off" : "table";
+    btn.disabled = true;
+    settingsError(null);
+    try { paintPermissions(await api("/api/permissions", { method: "PUT", body: { confirm } })); }
+    catch (err) { settingsError(err); }
+    finally { btn.disabled = false; }
   });
+  $("settings-theme").addEventListener("change", (ev) => applyTheme(ev.target.value));
+  $("account-settings").prepend(icon("settings"));
+  $("account-settings").addEventListener("click", () => openSettings());
+  $("account-about").addEventListener("click", () => openSettings("about"));
+  $("settings-close").addEventListener("click", () => closeSettings());
+  $("setscrim").addEventListener("click", () => { if (!deviceLayerOpen() && modal.hidden) closeSettings(); });
+  $("setpage").addEventListener("click", (ev) => {
+    const tab = ev.target.closest("[data-set]");
+    if (tab) openSettings(tab.dataset.set);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if ($("setpage").hidden || deviceLayerOpen() || !modal.hidden) return;
+    if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); closeSettings(); }
+    else if (ev.key === "Tab") {
+      const items = [...$("setpage").querySelectorAll('button:not(:disabled),select,a[href],input')].filter(n => n.getClientRects().length);
+      const first = items[0], last = items.at(-1);
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    }
+  });
+  $("settings-copy-version").addEventListener("click", (ev) => copyText(state.version || "dev", ev.currentTarget));
+  $("push-icon").append(icon("phone"));
+
+  function settingsAppRow(name, glyph, status, on, action, run) {
+    const row = el("div", "approw");
+    const wrap = el("span", "icwrap"); wrap.append(icon(glyph));
+    const text = el("div", "tx");
+    const st = el("div", "st");
+    if (status) st.append(el("i", "sdot " + (on ? "ok" : "off")), document.createTextNode(status));
+    text.append(el("b", "", name), st); row.append(wrap, text);
+    if (action) {
+      const btn = el("button", "btn sec sm", action); btn.type = "button";
+      btn.addEventListener("click", async () => { btn.disabled = true; settingsError(null); try { await run(); } catch (err) { settingsError(err); } finally { btn.disabled = false; } });
+      row.append(btn);
+    }
+    return row;
+  }
+  async function loadSettingsApps(request) {
+    // Links and MCP belong to a Bot; keep that scope explicit in account settings.
+    const name = state.sel?.type === "bot" ? state.sel.id : state.bots[0]?.name;
+    $("settings-apps-bot").textContent = name ? "管理 " + niceName(name) + " 的连接应用。" : "先新建一个 Bot，再为它连接应用。";
+    const channels = $("settings-channels"), connectors = $("settings-connectors");
+    channels.replaceChildren(); connectors.replaceChildren();
+    $("settings-add-connector").disabled = !name;
+    if (!name) return;
+    const base = "/api/bots/" + encodeURIComponent(name);
+    const [catalog, mcp] = await Promise.all([api(base + "/links"), api(base + "/mcp")]);
+    if (request !== settingsRequest) return;
+    const refresh = () => loadSettingsApps(settingsRequest);
+    const change = async (id, on) => { await api(base + "/links" + (on ? "" : "/" + encodeURIComponent(id)), { method: on ? "POST" : "DELETE", ...(on ? { body: { id } } : {}) }); await refresh(); };
+    channels.append(settingsAppRow("终端", "terminal", "已启用", true));
+    for (const [id, glyph] of [["browser", "globe"], ["desktop", "monitor"]]) {
+      const entry = catalog.links.find(e => e.id === id);
+      channels.append(settingsAppRow(entry.title, glyph, entry.installed ? "已启用" : "未连接", entry.installed, entry.installed ? "断开" : "连接", () => change(id, !entry.installed)));
+    }
+    channels.append(settingsAppRow("MCP", "plug", mcp.servers.length ? mcp.servers.length + " 台服务器" : "未连接", mcp.servers.length > 0, "添加服务器", () => {
+      openModal("添加 MCP 服务器", [
+        { name: "name", label: "名字" }, { name: "command", label: "启动命令", maxLength: 1024 },
+        { name: "args", label: "参数（每行一个）", multiline: true }, { name: "secret_envs", label: "密钥环境变量名（每行一个）", multiline: true },
+      ], async v => { await api(base + "/mcp", { method: "POST", body: { name: v.name, command: v.command, args: v.args.split("\n").filter(Boolean), secret_envs: v.secret_envs.split("\n").filter(Boolean) } }); await refresh(); }, "添加");
+    }));
+    for (const server of mcp.servers) channels.append(settingsAppRow(server.name, "plug", "已登记", true, "移除", async () => { await api(base + "/mcp/" + encodeURIComponent(server.name), { method: "DELETE" }); await refresh(); }));
+    const entries = catalog.links.filter(e => !["browser", "desktop", "mcp"].includes(e.id));
+    const installed = entries.filter(e => e.installed);
+    for (const entry of installed) connectors.append(settingsAppRow(entry.title, "wrench", "已安装", true, "移除", () => change(entry.id, false)));
+    if (!installed.length) connectors.append(el("p", "setlead", "还没有安装连接器。"));
+    $("settings-add-connector").onclick = () => {
+      const available = entries.filter(e => e.available && !e.installed);
+      if (!available.length) return;
+      openModal("添加连接器", [{ name: "id", label: "连接器", type: "choice", options: available.map(e => [e.id, e.title]) }], async v => {
+        const entry = available.find(e => e.id === v.id);
+        if (entry.secrets.length) {
+          closeSettings(false);
+          window.xbotRemoteChat?.close();
+          await selectBot(name);
+          sendText("请帮我安装 " + entry.title + " 连接器，需要的密钥请用确认卡让我填写。");
+        } else await change(v.id, true);
+      }, "添加");
+    };
+    $("settings-add-connector").disabled = entries.every(e => !e.available || e.installed);
+  }
 
   function urlBase64ToUint8Array(s) {
     const pad = "=".repeat((4 - (s.length % 4)) % 4);
@@ -6484,12 +6607,13 @@
     const hint = $("phone-push-hint");
     const on = !!(data && data.subscribed);
     if (btn) {
+      btn.classList.toggle("on", on);
       btn.setAttribute("aria-checked", on ? "true" : "false");
       btn.setAttribute("aria-label", on ? "关闭手机推送" : "开启手机推送");
     }
     if (hint) {
       hint.classList.remove("bad");
-      hint.hidden = !on;
+      hint.hidden = false;
       hint.textContent = "免打扰时段不推送";
     }
   }
@@ -6609,7 +6733,6 @@
 
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".account-wrap")) closeAccount();
-    if (!ev.target.closest(".account-wrap")) closeConnect();
     if (!ev.target.closest(".new-menu")) closeNewMenu();
     if (!ev.target.closest(".panel-actions") && !ev.target.closest(".menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
@@ -6657,7 +6780,7 @@
   // Escape consumes one layer per press, topmost first. Device and pairing
   // layers have their own handlers and must see the key before this one.
   function deviceLayerOpen() {
-    for (const id of ["devices-modal", "devices-drawer"]) {
+    for (const id of ["devices-modal"]) {
       const layer = $(id);
       if (layer && layer.firstChild) return true;
     }
@@ -6667,6 +6790,7 @@
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
     if (deviceLayerOpen()) return;
+    if (!$("setpage").hidden && modal.hidden) return;
     hideTip();
     if (panelSub && !panelSub.hidden) { closePanelSub(); return; }
     if (panelMore) { closePanelMore(); return; }
@@ -6674,7 +6798,7 @@
     if (!modal.hidden) { closeModal(); return; }
     if (stpState.open) { closeStp(); return; }
     if (state.replyTo) { clearQuote(); return; }
-    if (!$("account-menu").hidden || !$("connect-pop").hidden) { closePops(); return; }
+    if (!$("account-menu").hidden) { closePops(); return; }
     if (panel.classList.contains("open")) {
       rememberPanel(false);
       closePops();
@@ -6685,7 +6809,7 @@
   });
 
   modal.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Tab" || !modal.classList.contains("profile-drawer")) return;
+    if (ev.key !== "Tab") return;
     const controls = [...modalForm.querySelectorAll("button, input, select, textarea")]
       .filter((node) => !node.disabled && node.getClientRects().length);
     const first = controls[0];
@@ -6838,6 +6962,7 @@
   // First run of the desktop app: ask for the model key, test it, save it.
   function showSetup(host) {
     login.hidden = true;
+    closeSettings(false);
     shell.hidden = true;
     $("setup").hidden = false;
     if (host) $("setup-host").textContent = host;

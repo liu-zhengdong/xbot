@@ -286,7 +286,7 @@
     // 只在 #roster / #pin-row 里点（本机 Bot、群组、新建）才关；账号菜单和设备抽屉照常盖在上面。
     if (ev.target.closest("#roster .item, #roster .folder-toggle, #pin-row button, #back")) close();
   }, true);
-  window.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && isOpen() && !S.drawer && !S.view) close(); });
+  window.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && isOpen() && !window.XBotSettings?.isOpen() && !S.view) close(); });
 
   // ---- 每 5 秒拉一次记录（打开且页面可见时）；切回页面立刻拉 ----
   async function poll() {

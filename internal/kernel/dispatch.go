@@ -188,16 +188,15 @@ func (s readOnlyShell) Run(ctx context.Context, args json.RawMessage) (string, e
 // ask without a live request (the web card), and otherwise falls back to the
 // background switch.
 func (k *Kernel) subApprover() agent.Approver {
-	if k.Permissive {
-		// No cards (ADR 0019): a subagent's calls run like the owner's own.
-		return func(context.Context, string, string) (bool, error) { return true, nil }
-	}
-	if k.BackgroundApprove != nil {
-		return func(ctx context.Context, tool, summary string) (bool, error) {
+	return func(ctx context.Context, tool, summary string) (bool, error) {
+		if k.permissive() {
+			return true, nil
+		}
+		if k.BackgroundApprove != nil {
 			return k.trackApprove(k.BackgroundApprove)(ctx, tool, summary)
 		}
+		return k.subApprove()(ctx, tool, summary)
 	}
-	return k.subApprove()
 }
 
 // fitProvider keeps one subagent's requests under the context lines, the way

@@ -23,6 +23,12 @@
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 
+## 权限总开关
+
+`GET /api/permissions` 要登录，返回 `{"confirm":"off"}` 或 `{"confirm":"table"}`。缺失、不可读或损坏的 `permissions.json` 都按关处理。
+
+`PUT /api/permissions` 要登录，正文为 `{"confirm":"off|table"}`，成功返回当前值；未知字段、非法值、多份 JSON 对象为 400。它与 `xbot permissions on|off` 共用 `internal/permissions` 和数据根的 `permissions.json`，运行中的 Bot 在下一次权限判断时读取新值。权限分类不变。
+
 ## Bot 列表与创建
 
 `GET /api/bots` 返回当前 owner 的 Bot。顺序是置顶在前，组内按名字。主 Bot 会被 `SetPrimary` 置顶，所以通常排在置顶组里。

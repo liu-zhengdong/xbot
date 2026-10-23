@@ -3,7 +3,6 @@
 
 /* 账户菜单：「设备」放第一项，右侧是已配对数量 */
 .account-menu { min-width: 180px; }
-#account-devices .menu-count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 
 /* 弹窗通用 */
 .g7-card { width: min(460px, 100%); }
@@ -77,9 +76,6 @@
 
 /* 设备抽屉（v2）：440px，上到下是说明、网关不通横幅、这台电脑、已配对、连接、底部按钮。
    卡片和设置接 --x-fill-1，里面的 Bot 药丸、地址、能力行用 --bg。不加边框。 */
-.g7-drawer .profile-modal { width: 440px; max-width: 100%; border-radius: 12px 0 0 0; padding: 0; }
-.g7-head { display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 12px 0 24px; flex: none; }
-.g7-head h2 { margin: 0 !important; font-size: 16px !important; font-weight: 640 !important; }
 .g7-lead { margin: 0 24px; font-size: 13px; line-height: 1.6; color: var(--muted); flex: none; }
 .g7-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 24px 20px; }
 .g7-body .profile-section + .profile-section { margin-top: 20px; }
@@ -97,7 +93,6 @@
 .g7-banner-ico { display: grid; color: var(--muted); flex: none; }
 /* 设备卡 */
 .g7-device { display: flex; align-items: center; gap: 12px; padding: 10px 8px 10px 14px; border-radius: 12px; background: var(--x-fill-1); }
-.g7-drawer .g7-device { margin-top: 0; }
 .g7-dev-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--text); }
 .g7-dev-main { flex: 1; min-width: 0; }
 .g7-dev-name { font-size: 15px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
