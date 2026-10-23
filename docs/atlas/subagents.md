@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-10-23
+verified: 2026-10-23 @ 5137c78
 ---
 # 后台工作与子代理
 

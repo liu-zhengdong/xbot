@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-23
+verified: 2026-10-23 @ 5137c78
 ---
 # 模型供应商与主动性评测
 

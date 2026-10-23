@@ -249,3 +249,11 @@ Bot 复刻会在自己的电脑上长期运行 XBot，像真实用户一样使�
 性能（Apple M1）：100 个 256 字节文本块，JSON 读取与 Completions 投影约 0.758 ms/op；4096 个小增量共 64 KiB 的流式组装约 2.377 ms/op。均为本地基准，不代表真实模型或 IPC p95。
 
 级别：本地提交、假模型端到端通过；未合入 main，未 push，主人日用未验证。Not run: Linux CI、真实模型认证、浏览器视觉检查、全量 race。完整命令、失败记录、文件清单与提交号见 `~/.xbot-build/multi-provider/commit-b1.md`。本批未实现后续协议、hosted 或 UI。
+
+## 多 Provider 批 2（2026-10-23，本地分支）
+
+`feature/multi-provider-b2` 已实现 Responses、模型能力解析、按绑定互斥搜索，以及最小换绑定和 hosted 引用界面。现状见 [供应商](atlas/providers.md) 与 [界面](atlas/ui.md)。实现提交 `acb0af0`，换绑任务保护、流错误分类和引用修复 `0c4897d`；后续收尾提交见分支记录。未合入 main，未 push，未发版。
+
+假模型端到端通过：Completions 六条基础旅程与既有 smoke 共 362.116 秒；Responses 专项覆盖原生请求、内容块、引用、Jobs 边界和换回 Completions，修复后再次通过。Chrome 已走换绑、搜索进行中/完成、引用列表、能力表和 OAuth 禁用态。没有真模型或真实 GPT 账号录制验收，没有主人日用验收。
+
+最终全量检查未通过：状态接口 p95 7.170792 ms，超过 5 ms 门槛，其余包通过。web 包独立三轮通过；状态接口 p95 为 1.050625 / 2.885416 / 1.567959 ms（每轮 500 次）。忙时替身链路 p95 382.269 ms，批量消息 p95 371.717 ms。期间还出现过插话重复回复、临时目录清理及 Chrome watchdog 失败，根因未确认；失败记录与最终命令结果保留在仓外 `~/.xbot-build/multi-provider/commit-b2.md` 和 `b2-evidence/`。未测真实模型延迟、IPC 额外开销、后台变慢比例或 FPS。
