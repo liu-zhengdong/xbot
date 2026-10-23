@@ -2,6 +2,14 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-24 多 Provider 批 4：OAuth（本地实现，未合入，验收未全过）
+
+- OpenRouter PKCE 换取可重新授权轮换的 key，复用 Completions；ChatGPT 官方 Sign in with ChatGPT 动态注册、身份与 scope 校验、自动刷新，复用 Responses。令牌原子保存在现有 vault 的共享命名空间，本地和 daemon 都用原域名校验及注入。共享命名空间采用 Bot 名称不允许的前缀，避免 Bot 删除或改名影响密钥。API key 绑定保留；没有 Claude 订阅 OAuth 入口。
+- 假授权服务验证 PKCE、nonce/签名/scope 拒绝、令牌加密与重启、并发单次轮换、上游实际 Bearer、重新登录保留模型配置；真实 Unix socket daemon 通过。模型正文中的工具占位示例不替换；编码折行与重复前缀缓冲边界脱敏均有修复前失败证据。桌面登录用系统浏览器，返回空句柄仍持续查询状态，脚本化宿主回归通过；未做原生窗口实机登录。
+- 两条 OAuth 绑定各跑完整六旅程：5/6，分别 312.934 s、313.409 s。动手做事已产出文件并报告完整路径，但守护用例仍要求完成事件内联 summary.txt，当前事件只含 result.txt 指针；纯 key 同一断言失败。没有改旅程、断言或内核事件来换绿。替身沿既有 mockopenai 做法读取子代理结果，插话旅程通过。
+- ChatGPT 替身网页首字 350/333 ms，插话 320/322 ms。带长身份令牌的 race 流式测试本地/daemon 首段约 9.0/9.7 ms；未测线上 p95、IPC 额外开销 p95、后台变慢比例或真人账号。API key Responses 搜索与换回 Completions 专项通过。
+- 全量 Go 测试、相关五包三遍、vet、build、gofmt、atlas audit 有本次通过记录；较早一轮 web 插话顺序测试偶发失败，保留日志，未扩范围修内核。三轮 `codex review --base 2052ee1` 的实际问题当次处理并补回归。完整命令、限制、提交与审阅证据在仓外 `~/.xbot-build/multi-provider/commit-b4.md`。未 push、未发版、未合 main；整批与主人日用验收均未通过。
+
 ## 2026-10-23 上下文 A″：缓存前缀分段（本地实现）
 
 - S0（人设、跟版 KernelRules、自有补充、overlay）、S1（Links）、S2（installed 与技能目录）用连续 system 消息组装；空目录省略，记忆与环境位置仍在后面。复用 A′ 规则入口、既有目录渲染与安全包裹，不改 Provider。

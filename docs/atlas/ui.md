@@ -2,14 +2,14 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/]
-verified: 2026-10-23 @ 5137c78
+verified: 2026-10-24 @ 2052ee1 + OAuth 登录行接线
 ---
 # 网页界面
 
 > **30 秒版**：网页和桌面版用同一套界面：左边侧栏列出 Bot，中间是对话，右边是信息面板。对话里只有主人和 Bot 说的话，工具调用、子代理任务和上下文用量都放在面板里。整体是黑白灰，靠底色深浅分层、不画线，颜色只留给错误、在线和子代理类型。以后改界面要守的规矩在 [guard/界面.md](../guard/界面.md)。
 
 - 详情中的模型行打开换绑定浮层，按 Completions / Responses / Messages 分组，读取运行时能力表。Messages 选项禁用；Bot 有前台、分叉后台或运行/排队子代理时换绑返回清晰错误，不取消已有任务。换绑保存后下一轮重建内核。
-- 设置浮层增加“模型与供应商”：协议、密钥状态、模型能力表；“用 ChatGPT 登录（后做）”禁用。hosted 步骤、正文引用角标和来源列表显示在对话气泡内，不画任务卡。
+- 设置浮层的“模型与供应商”显示协议、密钥或登录状态、模型能力表。“用 ChatGPT 登录”和“用 OpenRouter 登录”打开授权窗口；登录完成后更新供应商列表，模型绑定入口不变。登录须在运行 XBot 的电脑上完成，协议和凭证行为见 [供应商](providers.md)。hosted 步骤、正文引用角标和来源列表显示在对话气泡内，不画任务卡。
 
 ## 边界
 负责：网页界面（`internal/web/static`）的组成和展示规则，以及桌面窗口外壳（`internal/appshell`）。接口见 [API.md](../API.md)。「值得留意」清单由内核整理（`internal/notable`，见 [subagents.md](subagents.md)），界面只管显示。

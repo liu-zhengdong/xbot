@@ -1,8 +1,8 @@
 ---
 kind: part
 parent: README.md
-code: [internal/provider/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-24 @ c938d1b + 多 Provider 批 3
+code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
+verified: 2026-10-24 @ 2052ee1 + 多 Provider 批 4
 ---
 # 模型供应商与主动性评测
 
@@ -19,7 +19,10 @@ verified: 2026-10-24 @ c938d1b + 多 Provider 批 3
 - Responses 输出落入同一份内容块：`server_tool`、`citation`、`reasoning`，本地 function call 仍走原工具执行路径。厂商原始条目供同协议重放，网页只收步骤和引用，不暴露原始推理。流式步骤通过 SSE `part` 事件交给气泡，完成块按 transcript 重放。`trace.jsonl` 的 `hosted_calls` / `hosted_tool` 记录调用次数和名称。
 - 模型窗口和完整工具定义（含 hosted schema）一起计入上下文预算；可用工具集变化才追加环境差异。同绑定不重复公布。runner 端点保留协议及 hosted 能力。
 - Messages 复用同一份内容块。本地 `tool_use` / `tool_result` 沿用工具执行路径，图片嵌在对应工具结果中；不带工具定义的总结请求把工具历史转成文字。工具参数保留 JSON 数字精度；服务端搜索及结果只落内容块，调用块独占计次数，引用走既有网页投影。`thinking` / `redacted_thinking` 保留原始签名或密文，同协议回放；跨协议只发文字摘要。未知块即使来自同厂也降成文字摘要。`thinking` 沿用 `off` / `omit` 配置，不新增启用开关；启用状态下返回的签名可回放。服务端 `pause_turn` 在同一次超时预算内最多请求三次，超限明确报错；窗口占用保留最后一次请求用量，累计用量只进会话记账。图片按直连 API 的 base64 后 10 MB 单图限制处理，超限工具图片变为明确工具错误，用户图片在出网前报错。搜索结果按调用编号更新成功或失败状态，不重复计次；已发文字或 hosted 进度后不重试。
-- API key 只存环境变量名，不存明文。OAuth 只有禁用的“后做”占位。
+- API key 只存环境变量名，不存明文。供应商也可用 `oauth: openrouter` 或 `oauth: chatgpt`，此时不填 `api_key_env`。设置里的登录按钮启动 PKCE；回调只监听运行 XBot 的电脑上的 `127.0.0.1`，十分钟过期。完成登录后，仍从 Bot 的模型行选择供应商和模型，旧 key 绑定不变。
+- OpenRouter 授权换取用户控制的 API key，复用 Completions；没有自动刷新协议，撤销或到期后重新登录可轮换凭证。ChatGPT 使用官方 Sign in with ChatGPT 动态注册，校验身份令牌签名、签发方、客户端、有效期与 nonce，并要求 ChatGPT 使用权限；从账号目录读取可用模型，复用现有 Responses（流式、`store: false`）。支持的模型以账号授权为准，不把订阅令牌当成普通 API key。
+- OAuth 凭证存在现有 vault 的共享命名空间 `_provider_accounts`；本地密文在 `<root>/vault/_provider_accounts/`，密钥沿用 `<root>/keys/vault/`；配置 daemon 时同样走它。访问、刷新、身份令牌和过期时间作为一条加密记录原子保存。临近过期时在 vault 内刷新，跨进程文件锁串行化轮换；registry 和 API 只见凭证名字或状态。模型请求只在鉴权头注入，正文中的工具占位示例不替换；域名校验和脱敏仍由 vault 负责。
+- 本机子代理共用已绑定的 Provider。独立 runner 暂不转交 OAuth 凭证；账号切换、远程浏览器登录和精细账号管理未提供。Claude 订阅第三方 OAuth 存在封号风险，本产品不提供按钮、菜单或可用 API 入口。
 - 每个 Bot 绑定一个供应商和模型。模型条目可以带 `todo`（true 或 false）和 `todo_steps`。`todo` 缺省时，供应商或模型名含 deepseek 才打开待办提醒，其余关掉；`todo_steps` 缺省是 6。空绑定是 deepseek-flash，提醒开。`xbot provider add --todo on|off --todo-steps N` 写入这两个字段，省略时保留原来的值。密钥仍然只记环境变量名。
 - **思考开关**：DeepSeek 模型默认先思考，而开着思考带工具时，后续请求必须回传 `reasoning_content`，XBot 不回传。所以模型名含 deepseek（`deepseek-reasoner` 除外）的请求一律带 `"thinking":{"type":"disabled"}`。模型条目可写 `thinking`：`off` 对任何模型都带上，`omit` 不带；其他值在 `provider add` 和解析绑定时报错。`xbot provider add --thinking off|omit` 写入，省略时保留原值。`deepseek-chat` 是 2026-07-24 停用的旧名，实测仍路由到 deepseek-flash 非思考模式；模型提示 `deepseek-flash.md` 与 `deepseek-chat.md` 内容相同。
 - **看图**：按模型，不按供应商一刀切。`deepseek-flash` 能看图，`deepseek-chat` 和 `deepseek-v4-pro` 不能。模型条目的 `vision` 为 true 或 false 时以它为准，缺省按模型名判断；`gpt-5.5`、`gpt-5.4`、`claude-sonnet-4-5`、`claude-opus-4-6` 也标记可看图。没绑定供应商时跟 `XBOT_MODEL`（没设就是 deepseek-flash，能看）。`xbot provider add --vision on|off` 写入，省略时保留原值。能看的请求把图片放在消息的 `content` 数组里，一块是 `text`，一块是 `image_url` 的 data URL。同一轮只保留最新一批，旧的不再重发；最新一批会留到后续工具步骤和最后回复，仍受 4 张、合计 10 MiB 限制。上下文估算按大约 4 字节一个 token 把图片字节算进去。transcript 不写字节，这一轮结束才清掉，下一轮没有。不能看的模型不会收到这种数组：`view_image` 先返回工具错误。

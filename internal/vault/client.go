@@ -79,6 +79,9 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 	header.Set(headerBot, c.bot)
 	header.Set(headerMethod, req.Method)
 	header.Set(headerURL, target)
+	if model, _ := req.Context().Value(oauthModelKey{}).(bool); model {
+		header.Set(headerOAuthModel, "1")
+	}
 	if req.Host != "" {
 		header.Set(headerHost, req.Host)
 	}

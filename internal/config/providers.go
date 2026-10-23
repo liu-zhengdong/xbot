@@ -2,9 +2,11 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -14,6 +16,7 @@ import (
 
 	"xbot/internal/fsutil"
 	"xbot/internal/provider"
+	"xbot/internal/vault"
 )
 
 // envName is an environment variable name, never a secret.
@@ -25,6 +28,7 @@ type Provider struct {
 	Protocol  string      `json:"protocol,omitempty"`
 	BaseURL   string      `json:"base_url"`
 	APIKeyEnv string      `json:"api_key_env"`
+	OAuth     string      `json:"oauth,omitempty"`
 	Models    []ModelSpec `json:"models"`
 }
 
@@ -155,6 +159,11 @@ func Add(root string, p Provider, model ModelSpec) error {
 	}
 	if p.APIKeyEnv != "" {
 		cur.APIKeyEnv = p.APIKeyEnv
+		cur.OAuth = ""
+	}
+	if p.OAuth != "" {
+		cur.OAuth = p.OAuth
+		cur.APIKeyEnv = ""
 	}
 	replaced := false
 	for n := range cur.Models {
@@ -280,6 +289,25 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		return ModelConfig{}, 0, err
 	}
 	key := strings.TrimSpace(getenv(p.APIKeyEnv))
+	var oauthHTTP *http.Client
+	if p.OAuth != "" {
+		if err := validateOAuth(p); err != nil {
+			return ModelConfig{}, 0, err
+		}
+		backend, err := OAuthVault(root)
+		if err != nil {
+			return ModelConfig{}, 0, err
+		}
+		info, err := vault.OAuthMetadata(context.Background(), backend, p.OAuth)
+		if err != nil {
+			return ModelConfig{}, 0, err
+		}
+		if !info.Configured {
+			return ModelConfig{}, 0, fmt.Errorf("providers: %s login required", p.OAuth)
+		}
+		key = "{{secret:" + p.OAuth + "}}"
+		oauthHTTP = &http.Client{Transport: vault.OAuthTransport(backend, p.OAuth), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	}
 	if key == "" {
 		return ModelConfig{}, 0, fmt.Errorf("providers: %s is empty", p.APIKeyEnv)
 	}
@@ -292,6 +320,7 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		KeyEnv:       p.APIKeyEnv,
 		Thinking:     model.Thinking,
 		Vision:       model.SeesImages(),
+		HTTPClient:   oauthHTTP,
 	}, model.Context, nil
 }
 
@@ -313,7 +342,11 @@ func validateProvider(p Provider, modelRequired bool) error {
 	if err := checkProviderBase(p.BaseURL); err != nil {
 		return err
 	}
-	if !envName.MatchString(p.APIKeyEnv) {
+	if p.OAuth != "" {
+		if err := validateOAuth(p); err != nil {
+			return err
+		}
+	} else if !envName.MatchString(p.APIKeyEnv) {
 		return fmt.Errorf("providers: api_key_env must be an environment variable name, got %q", p.APIKeyEnv)
 	}
 	if modelRequired && len(p.Models) == 0 {

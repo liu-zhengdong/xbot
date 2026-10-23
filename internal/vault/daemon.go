@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -19,12 +20,13 @@ import (
 // Wire protocol constants. The daemon speaks HTTP/1.1 over a unix socket.
 // Control data travels in small headers; bodies are streamed.
 const (
-	headerBot     = "X-Vault-Bot"
-	headerMethod  = "X-Vault-Method"
-	headerURL     = "X-Vault-URL"
-	headerHost    = "X-Vault-Host"
-	headerStatus  = "X-Vault-Status"
-	headerHPrefix = "X-Vault-H-"
+	headerBot        = "X-Vault-Bot"
+	headerMethod     = "X-Vault-Method"
+	headerURL        = "X-Vault-URL"
+	headerHost       = "X-Vault-Host"
+	headerStatus     = "X-Vault-Status"
+	headerHPrefix    = "X-Vault-H-"
+	headerOAuthModel = "X-Vault-OAuth-Model"
 
 	// maxSetBody caps a /v1/set body.
 	maxSetBody = 64 << 10
@@ -89,6 +91,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("/v1/set", s.handleSet)
 	mux.HandleFunc("/v1/rm", s.handleRm)
 	mux.HandleFunc("/v1/forward", s.handleForward)
+	mux.HandleFunc("/v1/oauth/set", s.handleOAuth)
+	mux.HandleFunc("/v1/oauth/ensure", s.handleOAuth)
+	mux.HandleFunc("/v1/oauth/info", s.handleOAuth)
 	return mux
 }
 
@@ -265,8 +270,19 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) {
 			header.Add(real, v)
 		}
 	}
+	oauth := false
+	if auth := header.Get("Authorization"); strings.HasPrefix(auth, "Bearer {{secret:") && strings.HasSuffix(auth, "}}") {
+		name := strings.TrimSuffix(strings.TrimPrefix(auth, "Bearer {{secret:"), "}}")
+		if sec, ok := st.Lookup(name); ok {
+			if _, ok := oauthValue(sec.Value); ok {
+				oauth = true
+				st = st.snapshot()
+			}
+		}
+	}
 	// Decide the body mode. Only a placeholder-bearing body is buffered.
-	buf, rest, hasPH, tooBig, err := readForwardBody(r.Body)
+	headerOnly := oauth && r.Header.Get(headerOAuthModel) == "1"
+	buf, rest, hasPH, tooBig, err := readForwardBodyMode(r.Body, headerOnly)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -294,7 +310,7 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) {
 		target.ContentLength = int64(len(buf))
 	}
 	var out *http.Request
-	if hasPH || rest == nil {
+	if !headerOnly && (hasPH || rest == nil) {
 		out, err = st.Inject(target)
 	} else {
 		out, err = st.InjectStream(target, buf)
@@ -322,6 +338,11 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusOK)
+	if oauth {
+		reader := &oauthBody{source: resp.Body, reader: bufio.NewReaderSize(io.LimitReader(resp.Body, maxForwardResp), 64<<10), store: st}
+		_, _ = io.Copy(oauthFlushWriter{w}, reader)
+		return
+	}
 	stream := newRedactStream(w, st, maxForwardResp)
 	if flusher, ok := w.(http.Flusher); ok {
 		stream.flushNow = flusher.Flush
@@ -338,6 +359,17 @@ func (s *Server) handleForward(w http.ResponseWriter, r *http.Request) {
 // A placeholder that begins past maxForwardBody is not detected and travels
 // literally; callers keep placeholders well inside the first 1 MiB.
 func readForwardBody(body io.Reader) (buf []byte, rest io.Reader, hasPH, tooBig bool, err error) {
+	return readForwardBodyMode(body, false)
+}
+
+func restOrEmpty(r io.Reader) io.Reader {
+	if r == nil {
+		return strings.NewReader("")
+	}
+	return r
+}
+
+func readForwardBodyMode(body io.Reader, headerOnly bool) (buf []byte, rest io.Reader, hasPH, tooBig bool, err error) {
 	if body == nil {
 		return nil, nil, false, false, nil
 	}
@@ -347,7 +379,7 @@ func readForwardBody(body io.Reader) (buf []byte, rest io.Reader, hasPH, tooBig 
 	if err != nil {
 		return nil, nil, false, false, err
 	}
-	hasPH = bytes.Contains(head, []byte(placeholderLead))
+	hasPH = !headerOnly && bytes.Contains(head, []byte(placeholderLead))
 	if len(head) > maxForwardBody {
 		if hasPH {
 			return nil, nil, true, true, nil

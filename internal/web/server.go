@@ -31,6 +31,7 @@ import (
 	"xbot/internal/peer"
 	"xbot/internal/proc"
 	"xbot/internal/provider"
+	"xbot/internal/providerauth"
 	"xbot/internal/remote"
 	"xbot/internal/upgrade"
 	"xbot/internal/version"
@@ -91,6 +92,7 @@ type Server struct {
 
 	// pushHTTP sends Web Push. Tests replace it. Nil uses a short timeout.
 	pushHTTP *http.Client
+	oauth    *providerauth.Manager
 	// setupMu serializes the desktop first-run key setup.
 	setupMu sync.Mutex
 	tabs    map[string]*tabState
@@ -162,6 +164,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/permissions", s.putPermissions)
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/providers", s.listProviders)
+	mux.HandleFunc("POST /api/providers/oauth/{kind}/start", s.oauthStart)
+	mux.HandleFunc("GET /api/providers/oauth/{kind}/status", s.oauthStatus)
 	mux.HandleFunc("PUT /api/bots/{name}/binding", s.bindModel)
 	mux.HandleFunc("GET /providers.js", s.static("static/providers.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /providers.css", s.static("static/providers.css", "text/css; charset=utf-8"))

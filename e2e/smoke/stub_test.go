@@ -62,6 +62,7 @@ type Stub struct {
 	gates  map[string]*gate
 	missed int
 	busy   *busyScript // Set before serve starts; never used by the six owner journeys.
+	oauth  *smokeOAuth
 }
 
 type gate struct {
@@ -87,7 +88,9 @@ func StartStub(t *testing.T) *Stub {
 	t.Helper()
 	s := &Stub{closed: make(chan struct{}), gates: map[string]*gate{}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/chat/completions", s.handle)
+	mux.HandleFunc("/v1/chat/completions", s.oauthModel)
+	mux.HandleFunc("/v1/responses", s.oauthModel)
+	mux.HandleFunc("/v1/oauth/token", s.oauthRefresh)
 	s.srv = httptest.NewServer(mux)
 	t.Cleanup(func() {
 		close(s.closed)
@@ -283,6 +286,21 @@ func (s *Stub) listAndSummarize(w http.ResponseWriter, req stubRequest, task str
 // message is re-sent with both lines, so that case looks at the whole request.
 func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubRequest) {
 	all, text := joined(req), lastUser(req)
+	// Completion events now carry a result pointer. Follow it through the
+	// existing tool, as mockopenai does, before answering about the result.
+	if strings.Contains(text, `source="subagent"`) && strings.Contains(text, "[结论全文：") {
+		if !sawTool(req, "read_subagent") {
+			_, sender, _ := strings.Cut(text, `sender="`)
+			id, _, _ := strings.Cut(sender, `"`)
+			streamTool(w, "call_read_sub", "read_subagent", argsJSON(map[string]string{"id": id}))
+			return
+		}
+		for _, m := range req.Messages {
+			if m.Role == "tool" {
+				text = m.Content
+			}
+		}
+	}
 	switch {
 	case strings.Contains(text, "<routine"):
 		if strings.Contains(text, "SMOKE_FIRE_NEWS") {

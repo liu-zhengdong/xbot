@@ -452,6 +452,15 @@ const minPartialMask = 8
 // URL percent-escapes, and its base64 forms (a common way servers echo a
 // credential).
 func redactForms(value string) []string {
+	if c, ok := oauthValue(value); ok {
+		forms := []string{value}
+		for _, token := range []string{c.AccessToken, c.RefreshToken, c.IDToken} {
+			if token != "" {
+				forms = append(forms, redactForms(token)...)
+			}
+		}
+		return forms
+	}
 	forms := []string{value}
 	if len(value) < minEncodedValue {
 		return forms

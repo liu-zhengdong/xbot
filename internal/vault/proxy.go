@@ -46,7 +46,22 @@ func (p *Proxy) RoundTrip(req *http.Request) (*http.Response, error) {
 	if p == nil || p.Store == nil {
 		return base.RoundTrip(req)
 	}
-	out, err := p.Store.Inject(req)
+	var out *http.Request
+	var err error
+	if headerOnly, _ := req.Context().Value(oauthModelKey{}).(bool); headerOnly {
+		// A model request describes tools whose schemas may contain literal
+		// {{secret:NAME}} examples. Only its bearer header is an injection site.
+		var head []byte
+		var rest io.Reader
+		head, rest, _, _, err = readForwardBodyMode(req.Body, true)
+		if err == nil {
+			clone := req.Clone(req.Context())
+			clone.Body = io.NopCloser(io.MultiReader(bytes.NewReader(head), restOrEmpty(rest)))
+			out, err = p.Store.InjectStream(clone, head)
+		}
+	} else {
+		out, err = p.Store.Inject(req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -262,6 +277,9 @@ func (s *Store) apply(text string) string {
 				return match
 			}
 			if sec, ok := s.Lookup(sub[1]); ok {
+				if c, ok := oauthValue(sec.Value); ok {
+					return c.AccessToken
+				}
 				return sec.Value
 			}
 			return match

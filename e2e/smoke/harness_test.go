@@ -149,6 +149,7 @@ func Start(t *testing.T, stub *Stub) *Server {
 		t.Fatalf("cookie jar: %v", err)
 	}
 	s.client = &http.Client{Jar: jar}
+	s.prepareOAuth(stub)
 	t.Cleanup(s.Stop)
 	s.launch()
 	s.Login()
@@ -293,6 +294,12 @@ func (s *Server) CreateBot(name, persona string) {
 	status, body := s.do(http.MethodPost, "/api/bots", map[string]string{"name": name, "persona": persona})
 	if status != http.StatusOK {
 		s.t.Fatalf("create bot %s: %d %s", name, status, body)
+	}
+	if kind := os.Getenv("XBOT_SMOKE_OAUTH"); kind != "" {
+		status, body = s.do("PUT", "/api/bots/"+url.PathEscape(name)+"/binding", map[string]string{"provider": kind, "model": "smoke"})
+		if status != 200 {
+			s.t.Fatalf("OAuth bind %s: %d %s", name, status, body)
+		}
 	}
 }
 

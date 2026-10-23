@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"xbot/internal/config"
+	"xbot/internal/vault"
 )
 
 func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
@@ -26,6 +27,8 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 		Protocol      string             `json:"protocol"`
 		KeyEnv        string             `json:"api_key_env"`
 		KeyConfigured bool               `json:"key_configured"`
+		OAuth         string             `json:"oauth,omitempty"`
+		OAuthError    string             `json:"auth_error,omitempty"`
 		Models        []config.ModelInfo `json:"models"`
 	}
 	out := []item{}
@@ -33,6 +36,20 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	out = append(out, item{Name: "", Protocol: config.ChatCompletions, KeyEnv: "XBOT_API_KEY", KeyConfigured: strings.TrimSpace(m.APIKey) != "", Models: []config.ModelInfo{{ID: "/" + m.Model, Model: m.Model, Protocol: config.ChatCompletions, Context: 0, Vision: config.SeesImages(m.Model, nil), Available: true}}})
 	for _, p := range f.Providers {
 		row := item{Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
+		if p.OAuth != "" {
+			row.OAuth = p.OAuth
+			backend, err := config.OAuthVault(s.Root)
+			if err != nil {
+				row.OAuthError = "保险箱不可用"
+			} else {
+				info, err := vault.OAuthMetadata(r.Context(), backend, p.OAuth)
+				if err != nil {
+					row.OAuthError = "保险箱不可用"
+				} else {
+					row.KeyConfigured = info.Configured
+				}
+			}
+		}
 		for _, m := range models {
 			if m.Provider == p.Name {
 				row.Models = append(row.Models, m)

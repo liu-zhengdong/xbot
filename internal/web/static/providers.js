@@ -44,7 +44,7 @@
     host.append(list);
   }
   async function settings({ api, host }) {
-    const data = await api("/api/providers");
+    let data = await api("/api/providers");
     host.replaceChildren();
     const list = node("div", "provider-list"); host.append(list);
     function capability(p) {
@@ -59,12 +59,43 @@
       for (const p of data.providers) {
         const row = button("", "provider-row", () => capability(p));
         const info = node("span"); info.append(node("strong", "", pname(p)));
-        const meta = node("span", "provider-meta"); meta.append(badge(p.protocol), node("span", "", (p.key_configured ? "密钥已配置" : "密钥未配置") + " · " + p.models.length + " 个模型"));
+        const meta = node("span", "provider-meta"); meta.append(badge(p.protocol), node("span", "", (p.oauth ? (p.auth_error || (p.key_configured ? "已登录" : "请重新登录")) : (p.key_configured ? "密钥已配置" : "密钥未配置")) + " · " + p.models.length + " 个模型"));
         if (p.models.some(m => m.hosted_web_search)) meta.append(node("span", "provider-hosted", "hosted 搜索"));
         info.append(meta);row.append(info, node("span", "", "查看能力"));list.append(row);
       }
       host.append(node("h4", "provider-heading", "登录方式"));
-      const oauth = button("用 ChatGPT 登录（后做）", "provider-row provider-oauth");oauth.disabled = true;host.append(oauth);
+      const status = node("p", "provider-meta"); status.setAttribute("role", "status");
+      const loginButtons = [];
+      for (const [kind, label] of [["chatgpt", "用 ChatGPT 登录"], ["openrouter", "用 OpenRouter 登录"]]) {
+        const oauth = button(label, "provider-row provider-oauth", async () => {
+          const inApp = document.documentElement.classList.contains("in-app");
+          const popup = inApp ? null : window.open("about:blank", "_blank");
+          if (!inApp && !popup) { status.textContent = "请允许打开登录窗口后重试。"; return; }
+          if (popup) popup.opener = null;
+          loginButtons.forEach(b => b.disabled = true);
+          try {
+            const {url} = await api(`/api/providers/oauth/${kind}/start`, {method:"POST", body:{}});
+            if (inApp) {
+              // MyGo opens http(s) URLs in the system browser and returns no handle.
+              window.open(url, "_blank", "noopener");
+              const reopen = node("a", "", "重新打开登录页面");
+              reopen.href = url; reopen.target = "_blank"; reopen.rel = "noopener noreferrer";
+              status.replaceChildren(node("span", "", "请在系统浏览器完成登录。"), reopen);
+            } else { popup.location.href = url; status.textContent = "请在新窗口完成登录。"; }
+            const deadline = Date.now() + 10 * 60 * 1000;
+            while (Date.now() < deadline && status.isConnected && !host.closest("[hidden]")) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              const result = await api(`/api/providers/oauth/${kind}/status`);
+              if (result.state === "succeeded") { data = await api("/api/providers"); paint(); return; }
+              if (result.state === "failed") throw new Error(result.error);
+              if (popup?.closed) { status.textContent = "登录窗口已关闭。可重新打开，继续本次登录。"; return; }
+            }
+          } catch (err) { status.textContent = err.message || String(err); }
+          finally { loginButtons.forEach(b => b.disabled = false); }
+        });
+        loginButtons.push(oauth); host.append(oauth);
+      }
+      host.append(status, node("p", "provider-meta", "请在运行 XBot 的电脑上登录。ChatGPT 使用账号可用模型；OpenRouter 使用其账户余额。登录后，在 Bot 的模型行选择绑定。"));
     }
     paint();
   }
@@ -103,7 +134,7 @@
           for (const m of p.models) {
             const b = button("", "binding-option", () => choose(p,m,b));b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
             b.append(node("strong", "", m.model));const meta = node("span", "provider-meta");meta.append(badge(protocol),node("span", "", detail(m)));b.append(meta);
-            if (!m.available || !p.key_configured) {b.disabled = true;b.append(node("small", "", !m.available ? "该协议后做" : "请先配置 " + p.api_key_env));}
+            if (!m.available || !p.key_configured) {b.disabled = true;b.append(node("small", "", !m.available ? "该协议后做" : p.oauth ? "请先重新登录" : "请先配置 " + p.api_key_env));}
             options.push(b);group.append(b);
             if (p.name === (data.provider || "") && m.model === data.model && !b.disabled) choose(p,m,b);
           }
