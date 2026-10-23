@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-10-23 @ 5137c78
+verified: 2026-10-23 @ 25caf8f + 上下文去重
 ---
 # 后台工作与子代理
 
@@ -13,7 +13,7 @@ verified: 2026-10-23 @ 5137c78
 
 ## 怎么运转
 - **前台只派活**（[ADR 0016](../adr/0016-foreground-dispatches-typed-subagents.md)，`Kernel.Dispatch`，`serve` 和 `chat` 打开，Bot 要有 agents link）：前台用 `dispatch(type, task)` 把活交给一种预制子代理，自己不动手。前台看不到只用来干活的工具（`spawn`、`http_request`、`code_*` 的启动和控制、desktop/browser 的操作、`write_skill`）；`write_file`/`edit_file` 只能改记忆文件夹，`shell` 只放行纯读命令（`review.ShellIsReadOnly`：`ls`、`cat`、`git status` 这类；用 `&&`、`||`、`;`、`|` 串起来时每一段都得是纯读，重定向、`$`、反引号、单个 `&` 都不算），别的回「交给子代理」。判断在 `reviewedTool` 的确认之前就做，不会先弹卡再拒（`foreground.go`）。规则里多一条 `DispatchRule`。到了前台上限（工作角色给的次数或秒数）提醒一次「把剩下的派出去」，之后只剩 `dispatch` 和子代理控制，再走 2 步还没收尾就停（`foreground_limit`）。
-- **子代理类型**（`internal/agenttype`）：一个类型是工具白名单、提示片段、墙钟预算和交回格式。内置 `research`（20 分钟；读文件、只读 shell、搜索、读网页、看图，不能写）、`dev`（2 小时；读写文件、shell、搜索、看图）、`general`（45 分钟；全部）。`bots/<name>/agents/types/<name>.md` 覆盖同名内置或新增一种（头部 `when`、`tools`、`budget`、`report`，正文是提示片段），解析不了的文件跳过。子代理的工具从整个挂载目录出发（`subagentBase`：`toolsForScope` 打底，再补上被前台藏起来的那批，去掉 `dispatch`、`spawn` 防递归），类型白名单在目录之内过滤；执行器每一步都按这个请求重建一次工具集（`Local.refreshTools`），所以子代理中途 `links load` 出来的工具下一步就能调用，不是启动时的快照；所以 `telegram_send`、`lark_send` 和可写的 MCP 工具在子代理这里仍有入口，不会随前台隐藏一起断掉。子代理的系统提示是子代理规则、类型提示、交回格式和 Bot 自己的固定记忆快照；任务说明是第一条消息；工具集里永远没有 `dispatch`。墙钟预算按类型，步数只有防呆上限 1000，最多 3 个同时跑、8 个等待；派活与 spawn 回执共用真实 `started/queued` 和排位，并明确让前台告知排队。短结果完整交回，超过 4096 字节的全文写入任务已有目录 `result.txt`，普通回报给开头和路径，前台用 `read_file` 读，写失败就报失败；`meta.json` 记 `type`。子代理的请求和前台一样过两条线（`fitProvider`），被省略的结果提示「再读一次或再跑一次」。确认在网页上变成卡片（`BackgroundApprove`），没有时按 `AllowBackground`。
+- **子代理类型**（`internal/agenttype`）：一个类型是工具白名单、提示片段、墙钟预算和交回格式。内置 `research`（20 分钟；读文件、只读 shell、搜索、读网页、看图，不能写）、`dev`（2 小时；读写文件、shell、搜索、看图）、`general`（45 分钟；全部）。`bots/<name>/agents/types/<name>.md` 覆盖同名内置或新增一种（头部 `when`、`tools`、`budget`、`report`，正文是提示片段），解析不了的文件跳过。子代理的工具从整个挂载目录出发（`subagentBase`：`toolsForScope` 打底，再补上被前台藏起来的那批，去掉 `dispatch`、`spawn` 防递归），类型白名单在目录之内过滤；执行器每一步都按这个请求重建一次工具集（`Local.refreshTools`），所以子代理中途 `links load` 出来的工具下一步就能调用，不是启动时的快照；所以 `telegram_send`、`lark_send` 和可写的 MCP 工具在子代理这里仍有入口，不会随前台隐藏一起断掉。子代理的系统提示是子代理规则、类型提示、交回格式和 Bot 自己的固定记忆快照；任务说明是第一条消息；工具集里永远没有 `dispatch`。墙钟预算按类型，步数只有防呆上限 1000，最多 3 个同时跑、8 个等待；派活与 spawn 回执共用真实 `started/queued` 和排位，并明确让前台告知排队。完成结论全文写入任务已有目录 `result.txt`，普通回报只给 id、状态、步数和路径；超过 256 字节时附最多 256 字节的开头，短结论只给指针，前台用 `read_file` 读，写失败就报失败；`meta.json` 记 `type`。子代理的请求和前台一样过两条线（`fitProvider`），被省略的结果提示「再读一次或再跑一次」。确认在网页上变成卡片（`BackgroundApprove`），没有时按 `AllowBackground`。
 - **前台的工具按类别限死**（`foreground.go`）：删除、对外发送、HTTP、shell、写文件这几类工具前台一律看不到，以后新加的也一样；只有 `foregroundKept` 里写明理由的几个留着（`write_file`/`edit_file` 只能改记忆，`shell` 只能纯读，`propose_persona`/`propose_profile`，`links`，`delete_bot`）。守门测试 `TestForegroundNeverOffersWorkTools` 挂上各种 link 和假的发送、删除、MCP 工具后核对。
 - **主线只记派出和交回**：子代理的 `progress` 事件不进主线收件箱，只留在它自己的 transcript；`done`/`failed`/`blocked` 照旧投进来。投进来之后经 `kernel.SetWaker` 当场叫醒 Bot（网页注册），不等 serve 下一轮，前台以完整工具集正常思考和回复。结果与已经说过的回复都保留在同一条对话串，没有单独签收标记或短引用。前台提示只讲新回来的结果，汇总不重列旧细节；有疑问先说明并问主人，不私派核验或重复调研。
 - **需要主人决定**：子代理按原 `BLOCKED:` 回报前台，前台正常问主人，再用 `steer` 把决定交回原任务；元数据和环境流保持等待状态直到恢复。任务环境直接采样执行器，在有效对话中回放已公布值，只追加状态或排位变化；压缩后快照恢复完整任务说明与当前状态，不另存后台清单。阻塞说明沿现有 2048 字节上限，等待仍计入原墙钟预算。

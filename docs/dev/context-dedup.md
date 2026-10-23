@@ -84,3 +84,8 @@
 5. atlas 与本文件勾对；可选真机长对话抽样。
 
 **启动时机**：`feature/multi-provider-b1` 经复审合入本地 `main` 之后，再开 `feature/context-dedup` worktree（可从当时 main HEAD 拉）。在此之前只合本文档。
+
+## 还没做的
+
+- 本批 #1–#5 的本地实现和假模型证据见 [MILESTONES](../MILESTONES.md)。本次要求优先于旧句「短结果可整段」：完成事件统一给结论指针，短结果不复制全文。
+- 可选真模型长对话抽样、主人日用验收尚未进行。本批不推送、不发版、不合 main、不重启 8788。

@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,56 @@ import (
 	"xbot/internal/notable"
 	"xbot/internal/provider"
 )
+
+func TestCompletionReportsReferenceShortAndMediumConclusions(t *testing.T) {
+	for _, text := range []string{"SHORT_CONCLUSION_42", strings.Repeat("结论细节。", 90) + "FINAL_NUMBER_42"} {
+		t.Run(fmt.Sprint(len(text)), func(t *testing.T) {
+			dir := t.TempDir()
+			loc := NewLocal(Limits{})
+			j := &job{id: "sa_0123456789abcdef", dir: dir, parent: loc, steps: 3}
+			j.finish(statusDone, EvDone, text)
+			ev := <-loc.Events()
+			path := filepath.Join(dir, "result.txt")
+			if strings.Contains(ev.Text, text) || !strings.Contains(ev.Text, path) || !strings.Contains(ev.Text, "done，3 步") || !strings.Contains(ev.Text, j.id) {
+				t.Fatalf("completion duplicated conclusion: %s", ev.Text)
+			}
+			if raw, err := os.ReadFile(path); err != nil || string(raw) != text {
+				t.Fatalf("lost full conclusion: %s %v", raw, err)
+			}
+			t.Logf("subagent body=%d completion=%d bytes\n%s", len(text), len(ev.Text), ev.Text)
+		})
+	}
+}
+
+func TestShortNotableConclusionIsNotRepeated(t *testing.T) {
+	dir := t.TempDir()
+	loc := NewLocal(Limits{})
+	j := &job{id: "sa_0123456789abcdef", dir: dir, parent: loc}
+	ctx := notable.With(context.Background(), "/work", &j.notable)
+	notable.Wrote(ctx, "/outside/"+strings.Repeat("a", 150)+".txt")
+	body := strings.Repeat("short fact ", 18) + "END_42"
+	line := notable.Line(j.notable.Items())
+	for _, fail := range []bool{false, true} {
+		if fail {
+			if err := os.Remove(filepath.Join(dir, "result.txt")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(filepath.Join(dir, "result.txt"), 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		j.finish(statusDone, EvDone, body)
+		ev := <-loc.Events()
+		if strings.Contains(ev.Text, body) || !strings.HasSuffix(ev.Text, line) || (fail && ev.Kind != EvFailed) {
+			t.Fatalf("short conclusion or notable digest lost: %s", ev.Text)
+		}
+		if !fail {
+			if raw, err := os.ReadFile(filepath.Join(dir, "result.txt")); err != nil || string(raw) != body+"\n\n"+line {
+				t.Fatalf("full result not stored: %s %v", raw, err)
+			}
+		}
+	}
+}
 
 func TestLongResultStoredWithoutTruncation(t *testing.T) {
 	dir := t.TempDir()

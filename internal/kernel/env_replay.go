@@ -284,7 +284,12 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		case "profile":
 			v = k.Bot.ProfileText()
 		case "overlay":
-			_, v, err = k.modelOverlay()
+			var key, text string
+			key, text, err = k.modelOverlay()
+			v = "none"
+			if text != "" {
+				v = key + " " + shortHash(text)
+			}
 		}
 		if err != nil {
 			return next, err

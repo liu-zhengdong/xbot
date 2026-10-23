@@ -9,11 +9,35 @@ import (
 	"xbot/internal/fsutil"
 )
 
-// ResultText uses the task's existing directory. The report remains an ordinary
-// event; read_file can read the complete text in bounded ranges when necessary.
-// tail reserves the same bounded space for a kernel-authored notable digest.
+const resultPreviewBytes = 256
+
+// ResultText stores the conclusion in the task's existing directory. Completion
+// events carry a pointer, never a second full copy, even for short conclusions.
+// Tool jobs keep their existing output policy through ResultTextAt.
 func ResultText(dir, text, tail string) (string, error) {
-	return ResultTextAt(filepath.Join(dir, "result.txt"), text, tail)
+	path := filepath.Join(dir, "result.txt")
+	text = strings.TrimSpace(text)
+	full := text
+	if tail != "" {
+		full += "\n\n" + tail
+	}
+	if err := fsutil.WriteAtomic(path, []byte(full), 0600); err != nil {
+		return "", err
+	}
+	report := fmt.Sprintf("[结论全文：%s；用 read_file 分段读取]", path)
+	if tail != "" {
+		report += "\n\n" + tail
+	}
+	if len(report) >= reportBytes {
+		return "", fmt.Errorf("result path exceeds report size limit")
+	}
+	// A short result is already a summary. Repeating it would still duplicate
+	// the entire conclusion, so only longer results get a bounded opening.
+	if len(text) > resultPreviewBytes && len(report)+2+resultPreviewBytes <= reportBytes {
+		preview, _ := clip.Bytes(text, resultPreviewBytes)
+		report = preview + "\n\n" + report
+	}
+	return report, nil
 }
 
 // ResultTextAt shares the same bounded preview with an existing tool-job output.

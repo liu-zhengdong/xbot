@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -314,15 +315,19 @@ func (j *job) finish(status, kind, text string) {
 	}
 	summary := clipText(text, reportBytes)
 	line := notable.Line(j.notable.Items())
-	if line != "" {
-		text += "\n\n" + line
-	}
 	report, err := ResultText(j.dir, text, line)
 	if err != nil {
 		status, kind, report = statusFailed, EvFailed, "保存任务结果失败："+err.Error()
 		summary = report
+		if line != "" {
+			report += "\n\n" + line
+		}
 	}
 	j.writeStatus(status, summary)
+	j.mu.Lock()
+	steps := j.steps
+	j.mu.Unlock()
+	report = fmt.Sprintf("任务 %s 结束：%s，%d 步。\n", j.id, status, steps) + report
 	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: report})
 }
 

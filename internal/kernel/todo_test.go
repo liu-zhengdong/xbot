@@ -158,11 +158,11 @@ func TestTodoReminderDiffCooldownAndNotAfterUpdate(t *testing.T) {
 		t.Fatal("reminder fired on the step right after the update")
 	}
 	first := lastContent(p.reqs[3])
-	if !strings.Contains(first, "<todo_reminder>") || !strings.Contains(first, "write the tests") || !strings.Contains(first, "update the docs") {
+	if !strings.Contains(first, "<todo_reminder>") || !strings.Contains(first, "[in_progress] t1") || !strings.Contains(first, "[pending] t2") {
 		t.Fatalf("first reminder missing open items: %s", first)
 	}
-	if strings.Contains(first, "already finished") {
-		t.Fatal("first reminder repeated a finished item")
+	if strings.Contains(first, "already finished") || strings.Contains(first, "write the tests") || strings.Contains(first, "update the docs") {
+		t.Fatal("first reminder repeated task content")
 	}
 	if strings.Contains(lastContent(p.reqs[6]), "in_progress -> done") {
 		t.Fatal("cooldown did not hold the diff back")
@@ -534,7 +534,7 @@ func TestTodoStepCountStaysInMemory(t *testing.T) {
 		t.Fatalf("counting steps rewrote todos.json\n%s\n%s", raw, raw2)
 	}
 	text := k.todoNote(time.Unix(60, 0).UTC(), nil)
-	if !strings.Contains(text, "<todo_reminder>") || !strings.Contains(text, "write the tests") {
+	if !strings.Contains(text, "<todo_reminder>") || !strings.Contains(text, "[pending] t1") || strings.Contains(text, "write the tests") {
 		t.Fatalf("in-memory count did not remind: %s", text)
 	}
 }

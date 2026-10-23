@@ -117,8 +117,12 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 	}
 	close(m.hold)
 	ev := waitEvent(t, box, exec.EvDone)
-	if !strings.Contains(ev.Content, "Sources") {
+	path := filepath.Join(b.AgentDir(ev.Sender), "result.txt")
+	if strings.Contains(ev.Content, "Sources") || !strings.Contains(ev.Content, path) {
 		t.Fatalf("event %q", ev.Content)
+	}
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != "Findings\nAugust\n\nSources\ngo.dev\n\nNot found\nnone" {
+		t.Fatalf("lost research report: %s %v", raw, err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -353,6 +353,9 @@ func (k *Kernel) todoNote(now time.Time, prev []Reminder) string {
 	if text == "" {
 		return ""
 	}
+	if len(f.Reminded) == 0 {
+		text = strings.Replace(text, "</todo_reminder>", "Full list: "+k.todoPath()+"\n</todo_reminder>", 1)
+	}
 	f.Reminded = append([]TodoItem(nil), f.Items...)
 	k.todo.file = f
 	if err := k.saveTodo(f); err != nil {
@@ -385,14 +388,25 @@ func todoDiffText(cur, prev []TodoItem) string {
 	if len(prev) == 0 {
 		for _, it := range cur {
 			if todoOpen(it.Status) {
-				lines = append(lines, fmt.Sprintf("- [%s] %s", it.Status, it.Content))
+				lines = append(lines, fmt.Sprintf("- [%s] %s", it.Status, it.ID))
 			}
 		}
 		if len(lines) == 0 {
 			return ""
 		}
-		return "<todo_reminder>\nTask list:\n" + strings.Join(lines, "\n") + "\n</todo_reminder>"
+		return "<todo_reminder>\n" + todoCounts(cur) + "\nUnchanged open items (see the task list for content):\n" + strings.Join(lines, "\n") + "\n</todo_reminder>"
 	}
+	lines = todoChanges(cur, prev)
+	if len(lines) == 0 {
+		return ""
+	}
+	return "<todo_reminder>\n" + todoCounts(cur) + "\nTask list changes since the last reminder:\n" + strings.Join(lines, "\n") + "\n</todo_reminder>"
+}
+
+// todoChanges is shared by write receipts and reminders. The complete list
+// remains on disk; only added, changed and removed items are rendered here.
+func todoChanges(cur, prev []TodoItem) []string {
+	var lines []string
 	prevBy := make(map[string]TodoItem, len(prev))
 	for _, it := range prev {
 		prevBy[it.ID] = it
@@ -402,22 +416,26 @@ func todoDiffText(cur, prev []TodoItem) string {
 		curBy[it.ID] = it
 		old, ok := prevBy[it.ID]
 		if !ok {
-			lines = append(lines, fmt.Sprintf("- added [%s] %s", it.Status, it.Content))
+			lines = append(lines, fmt.Sprintf("- added [%s] %s %s%s", it.Status, it.ID, it.Content, todoReason(it)))
 			continue
 		}
 		if old.Status != it.Status || old.Content != it.Content || old.Reason != it.Reason {
-			lines = append(lines, fmt.Sprintf("- %s: %s -> %s", it.Content, old.Status, it.Status))
+			lines = append(lines, fmt.Sprintf("- %s %s: %s -> %s%s", it.ID, it.Content, old.Status, it.Status, todoReason(it)))
 		}
 	}
 	for _, it := range prev {
 		if _, ok := curBy[it.ID]; !ok {
-			lines = append(lines, "- removed "+it.Content)
+			lines = append(lines, fmt.Sprintf("- removed [%s] %s %s", it.Status, it.ID, it.Content))
 		}
 	}
-	if len(lines) == 0 {
-		return ""
+	return lines
+}
+
+func todoReason(it TodoItem) string {
+	if it.Reason != "" {
+		return " (" + it.Reason + ")"
 	}
-	return "<todo_reminder>\nTask list changes since the last reminder:\n" + strings.Join(lines, "\n") + "\n</todo_reminder>"
+	return ""
 }
 
 func todoOpen(status string) bool {
@@ -619,6 +637,7 @@ func (t todoTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	previous := f.Items
 	if len(f.Items) > 0 && !sameTodoTask(f.Items, items) {
 		if err := t.k.appendTodoArchive(f.Items); err != nil {
 			return "", err
@@ -639,16 +658,16 @@ func (t todoTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 	// Fresh immediately, before noteTodoStep advances the counter, so a
 	// reminder cannot land in the gap after this write.
 	f.UpdatedStep = f.Step
-	t.k.todo.file = f
 	if err := t.k.saveTodo(f); err != nil {
 		return "", err
 	}
+	t.k.todo.file = f
 	if turn := t.k.liveTurn(); turn != nil {
 		turn.mu.Lock()
 		turn.todoTouched = true
 		turn.mu.Unlock()
 	}
-	return formatTodoResult(items), nil
+	return formatTodoResult(items, previous), nil
 }
 
 func todoHasOpen(items []TodoItem) bool {
@@ -758,7 +777,7 @@ func parseTodoItems(args json.RawMessage, redact func(string) string) ([]TodoIte
 	return out, nil
 }
 
-func formatTodoResult(items []TodoItem) string {
+func todoCounts(items []TodoItem) string {
 	var pending, progress, done, dropped int
 	for _, it := range items {
 		switch it.Status {
@@ -772,13 +791,13 @@ func formatTodoResult(items []TodoItem) string {
 			dropped++
 		}
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "todo: %d items (%d in_progress, %d pending, %d done, %d dropped)", len(items), progress, pending, done, dropped)
-	for _, it := range items {
-		fmt.Fprintf(&b, "\n- [%s] %s %s", it.Status, it.ID, it.Content)
-		if it.Reason != "" {
-			fmt.Fprintf(&b, " (%s)", it.Reason)
-		}
+	return fmt.Sprintf("todo: %d items (%d in_progress, %d pending, %d done, %d dropped)", len(items), progress, pending, done, dropped)
+}
+
+func formatTodoResult(items, previous []TodoItem) string {
+	text := todoCounts(items)
+	if changes := todoChanges(items, previous); len(changes) > 0 {
+		return text + "\n" + strings.Join(changes, "\n")
 	}
-	return b.String()
+	return text + "\nNo changes."
 }

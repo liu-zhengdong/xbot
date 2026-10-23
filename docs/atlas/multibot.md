@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-21 @ b03ea4a
+verified: 2026-10-23 @ 25caf8f + 上下文去重
 ---
 # 多 Bot
 
@@ -15,6 +15,7 @@ verified: 2026-10-21 @ b03ea4a
 - **主 Bot**：首次运行时自动创建，承接没有指定 Bot 的输入。主 Bot 不能直接删除，要先把主 Bot 身份转给别的 Bot；系统里永远至少有一个 Bot。
 - **置顶**：任何 Bot 都可以置顶，主 Bot 默认置顶。
 - **侧边栏分组**：每个 Bot 的档案有一个可选的 `group`。主人另外有一份分组顺序，没有拖拽排序。侧边栏按这份顺序显示可折叠的分组，每组带上 Bot 数量；`group` 为空，或不在这份顺序里的，归到最后的「未分组」。可以新建、改名、删除分组。删除分组只把里面的 Bot 挪到未分组，不删除 Bot。「未分组」不是一个可以新建或删除的分组。分组不进模板。这和 Bot 之间的聊天群不是一回事：聊天群仍用 `g_` 开头的 id，有自己的消息记录。
+- **创建 Bot**：`create_bot` 把角色正文写进新 Bot 的人设，成功只返回 `created <name>`。新 Bot 的正文进入自己的固定前缀；紧随的环境消息只公布人设短哈希。
 - **Fork Bot**：原 Bot 写一份交接摘要作为新 Bot 的初始记忆；新 Bot 有自己的职责，对话流从零开始；两个 Bot 自动互相认识；可以选择同时建一个项目群。
 - **Bot 之间通信**：同一用户的 Bot 默认互相可见，可以互发消息、建群。群有自己的记录，群里的消息分发到每个成员的收件箱。设有防循环的限制（跳数上限、频率上限）。`message_bot` 的目标写成 `bot@设备` 时，经网关发给主人另一台配对设备上的 Bot，规则见 [网关](gateway.md)。
 - **Bot 之间的私聊记录**：Bot 发给另一个 Bot 的消息全部留存，不分成临时和永久两类。正文先进收件 Bot 的收件箱，处理之后留在收件 Bot 的 transcript 里，不另建一份会话。因此这些话一直能被搜索、导出，也能被 `recall_history` 看见。主人跟某个 Bot 聊天时，对方 Bot 发来的内容仍只显示成一行淡淡的提示。要按时间翻看两边的原文，用只读接口 `GET /api/bots/{a}/peers/{b}/messages`，而且这个人必须同时是两个 Bot 的 owner。群里的消息不走这个接口。`{b}` 也可以是另一台配对设备上的 `bot@设备`：只读本机这一半，收到的取自 `bot:bot@设备` 事件，发出的取自 `message_bot` 调用和工具结果（`status` 为 sent/queued/failed），退回通知是 `kind: "bounce"` 的一行；每行都拆出 `from_bot`/`from_device`/`to_bot`/`to_device`，客户端不解析 `bot@设备`。以后可以单独压缩这类来回；现在不压，它们跟这份 transcript 里的其他行走同一套摘要。

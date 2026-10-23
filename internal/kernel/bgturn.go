@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"xbot/internal/bot"
+	"xbot/internal/clip"
 	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/notable"
@@ -206,12 +207,13 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 			status = "cancelled"
 		}
 	}
-	text := fmt.Sprintf("后台任务 %s 结束：%s，%d 步。任务：%s", id, status, steps, t.task)
+	heading := fmt.Sprintf("后台任务 %s 结束：%s，%d 步。", id, status, steps)
+	details := ""
 	if runErr != nil {
-		text += "\n错误：" + clipRunes(runErr.Error(), 300)
+		details += "\n错误：" + clipRunes(runErr.Error(), 300)
 	}
 	if stopReason != "" {
-		text += "\n卡在这里：" + stopReason + "。要我接着做，回一句「继续」就行。"
+		details += "\n卡在这里：" + stopReason + "。要我接着做，回一句「继续」就行。"
 	}
 	t.mu.Lock()
 	var unread []string
@@ -223,19 +225,25 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	}
 	t.mu.Unlock()
 	if len(unread) > 0 {
-		text += "\n没来得及处理的控制：" + strings.Join(unread, "；")
-	}
-	if last := lastText(produced); last != "" {
-		text += "\n最后的回复：\n" + last
+		details += "\n没来得及处理的控制：" + strings.Join(unread, "；")
 	}
 	line := notable.Line(t.notable.Items())
-	if line != "" {
-		text += "\n\n" + line
+	full := heading + details
+	if last := lastText(produced); last != "" {
+		full += "\n最后的回复：\n" + last
 	}
-	report, err := exec.ResultText(k.Bot.AgentDir(id), text, line)
+	// The same result file owns both the complete conclusion and control
+	// diagnostics. Only bounded excerpts enter the main-line event.
+	brief, _ := clip.Bytes(details, 512)
+	report, err := exec.ResultText(k.Bot.AgentDir(id), full, line)
+	text := heading + brief + "\n" + report
+	if err == nil {
+		text, err = exec.PreviewResult(filepath.Join(k.Bot.AgentDir(id), "result.txt"), text, line)
+	}
 	if err != nil {
 		status = "failed"
-		report = "保存后台结果失败：" + err.Error()
+		text = fmt.Sprintf("后台任务 %s 结束：%s，%d 步。%s\n保存后台结果失败：%s\n%s", id, status, steps, brief, err, line)
+		text, _ = clip.Bytes(text, 4096)
 	}
 	_, _ = k.Bot.AppendForkEnd(id, status, steps)
 	k.writeForkMeta(t, status)
@@ -255,7 +263,7 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 		ID:        "ev_" + id + "_end",
 		Source:    link.SourceSubagent,
 		Type:      "fork_end",
-		Content:   report,
+		Content:   text,
 		Sender:    id,
 		Time:      k.now(),
 		Untrusted: true,

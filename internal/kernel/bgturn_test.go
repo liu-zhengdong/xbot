@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -93,8 +95,12 @@ func TestOwnerMessageForksRunningTurn(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if end.ID == "" || !strings.Contains(end.Content, "done") || !strings.Contains(end.Content, "后台做完了") || end.Sender != id {
+	path := filepath.Join(k.Bot.AgentDir(id), "result.txt")
+	if end.ID == "" || !strings.Contains(end.Content, "done") || strings.Contains(end.Content, "后台做完了") || !strings.Contains(end.Content, path) || end.Sender != id {
 		t.Fatalf("completion event %+v", end)
+	}
+	if raw, err := os.ReadFile(path); err != nil || !strings.HasSuffix(string(raw), "最后的回复：\n后台做完了") {
+		t.Fatalf("unreadable conclusion: %s %v", raw, err)
 	}
 	if len(k.Backgrounds()) != 0 {
 		t.Fatal("background still registered")

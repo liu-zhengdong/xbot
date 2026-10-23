@@ -76,13 +76,14 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]string{"message": err.Error()}})
 		return
 	}
-	var sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer bool
+	var sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer, sawReadSub bool
 	var lastTool, lastUser string
 	for _, m := range req.Messages {
 		if m.Role == "user" && !strings.HasPrefix(m.Content, "<environment_") {
 			lastUser = m.Content
 			lastTool = ""
 			sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer = false, false, false, false, false, false, false
+			sawReadSub = false
 		}
 		if m.Role == "tool" {
 			lastTool = m.Content
@@ -102,6 +103,8 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 				sawSpawn = true
 			case "message_bot":
 				sawPeer = true
+			case "read_subagent":
+				sawReadSub = true
 			}
 		}
 	}
@@ -205,10 +208,18 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "REMEMBER_TASK"):
 		writeText(w, "subagent finished\n")
 		return
-	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished") && !sawMemoryWrite:
+	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, `type="done"`) && !sawReadSub:
+		// Completion reports carry a pointer. Follow the task id with the
+		// existing agents tool before using its conclusion in the script.
+		_, sender, _ := strings.Cut(lastUser, `sender="`)
+		id, _, _ := strings.Cut(sender, `"`)
+		args, _ := json.Marshal(map[string]string{"id": id})
+		writeTool(w, "call_read_sub", "read_subagent", string(args))
+		return
+	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(all, "subagent finished") && !sawMemoryWrite:
 		writeTool(w, "call_rem_sub", "write_file", memoryWriteArgs(req, "Person", "owner likes water"))
 		return
-	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, "subagent finished"):
+	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(all, "subagent finished"):
 		writeText(w, "remembered\n")
 		return
 	case strings.Contains(lastUser, "SPAWN_BRIEF") && !sawSpawn:
@@ -223,7 +234,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(all, "INTERRUPT_NOW"):
 		writeText(w, "restarted after interrupt\n")
 		return
-	case strings.Contains(lastUser, "long task done"):
+	case strings.Contains(lastUser, "long task done") || (sawReadSub && strings.Contains(all, "long task done")):
 		writeText(w, "saw subagent done\n")
 		return
 	case strings.Contains(lastUser, "LONG_TASK") && script != nil:
