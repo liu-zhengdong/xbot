@@ -401,10 +401,6 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := b.WriteRules(kernel.DefaultRules()); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	if _, err := bot.Primary(s.Root); errors.Is(err, bot.ErrNoPrimary) || errors.Is(err, bot.ErrNotFound) {
 		all, err := bot.List(s.Root)
 		if err != nil {

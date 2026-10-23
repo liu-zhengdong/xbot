@@ -51,9 +51,6 @@ func (t createBotTool) Run(_ context.Context, args json.RawMessage) (string, err
 			return "", err
 		}
 	}
-	if err := b.WriteRules(DefaultRules()); err != nil {
-		return "", err
-	}
 	return "created " + b.Name(), nil
 }
 

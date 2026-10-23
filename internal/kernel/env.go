@@ -26,7 +26,7 @@ func StablePrefix(persona, rules, overlay string, links []string) string {
 	}
 	rules = strings.TrimSpace(rules)
 	if rules == "" {
-		rules = DefaultRules()
+		rules = KernelRules()
 	}
 	names := append([]string(nil), links...)
 	sort.Strings(names)

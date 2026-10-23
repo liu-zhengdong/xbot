@@ -94,7 +94,7 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 	if err := k.Bot.GrantLink(link.NamePeers); err != nil {
 		return ForkResult{}, err
 	}
-	rules, err := k.Bot.ReadRules(DefaultRules())
+	rules, err := k.botRules()
 	if err != nil {
 		return ForkResult{}, err
 	}

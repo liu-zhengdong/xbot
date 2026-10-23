@@ -70,9 +70,6 @@ func cmdNew(root string, args []string) error {
 			return err
 		}
 	}
-	if err := b.WriteRules(kernel.DefaultRules()); err != nil {
-		return err
-	}
 	ext, display, err := link.Account()
 	if err != nil {
 		return err
@@ -106,14 +103,8 @@ func ensureSeed(root string) error {
 	if err != nil {
 		return err
 	}
-	b, created, err := bot.EnsurePrimary(root, bot.Seed{Persona: bot.DefaultPersona, Links: defaultLinks, Owner: who.ID})
-	if err != nil {
-		return err
-	}
-	if !created {
-		return nil
-	}
-	return b.WriteRules(kernel.DefaultRules())
+	_, _, err = bot.EnsurePrimary(root, bot.Seed{Persona: bot.DefaultPersona, Links: defaultLinks, Owner: who.ID})
+	return err
 }
 
 type forkOpts struct {
@@ -680,9 +671,6 @@ func cmdTemplateImport(root string, args []string) error {
 	}
 	b, err := bot.ImportTemplate(root, tpl, defaultLinks, who.ID)
 	if err != nil {
-		return err
-	}
-	if err := b.WriteRules(kernel.DefaultRules()); err != nil {
 		return err
 	}
 	if len(existing) == 0 {

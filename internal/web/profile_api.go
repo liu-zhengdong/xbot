@@ -231,10 +231,6 @@ func (s *Server) importTemplate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := b.WriteRules(kernel.DefaultRules()); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	if err := s.adoptCreated(b.Name(), existing, links); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

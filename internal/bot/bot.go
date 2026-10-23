@@ -599,6 +599,26 @@ func (b *Bot) ReadRules(fallback string) (string, error) {
 	return readText(b.RulesPath(), fallback, fallback)
 }
 
+// MigrateRules serializes normalization with other rules writers. Missing files stay missing.
+func (b *Bot) MigrateRules(normalize func(string) string) (string, error) {
+	var result string
+	err := fsutil.WithLock(b.RulesPath()+".lock", func() error {
+		raw, err := os.ReadFile(b.RulesPath())
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		result = normalize(string(raw))
+		if result == strings.TrimSpace(string(raw)) {
+			return nil
+		}
+		return fsutil.WriteAtomic(b.RulesPath(), []byte(result+"\n"), 0600)
+	})
+	return result, err
+}
+
 // WritePersona replaces persona.md. The transcript is not rewritten.
 func (b *Bot) WritePersona(text string) error {
 	text = strings.TrimSpace(text)
@@ -614,13 +634,12 @@ func (b *Bot) WritePersona(text string) error {
 // WriteRules replaces rules.md.
 func (b *Bot) WriteRules(text string) error {
 	text = strings.TrimSpace(text)
-	if text == "" {
-		return errors.New("bot: empty rules")
-	}
 	if len(text) > 32<<10 {
 		return errors.New("bot: rules too long")
 	}
-	return fsutil.WriteAtomic(b.RulesPath(), []byte(text+"\n"), 0600)
+	return fsutil.WithLock(b.RulesPath()+".lock", func() error {
+		return fsutil.WriteAtomic(b.RulesPath(), []byte(text+"\n"), 0600)
+	})
 }
 
 func readText(path, fallback, def string) (string, error) {

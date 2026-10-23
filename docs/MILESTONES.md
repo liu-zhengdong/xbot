@@ -2,6 +2,13 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-23 上下文 A′：规则随版本组装（本地提交，未推送）
+
+- 当前 `KernelRules` 每次从二进制组装，`rules.md` 只留可映射的 Bot 补充；创建、导入不复制默认规则，fork 继承补充。迁移不提示、不保留历史目录。范围与异议见 [短计划](../plan.md)。
+- 新增升级回归通过；回退旧 `kernel.go` 后同一回归失败。实际组装前缀 5635 字节，包含当前 Silence 的 routine fallback 与中文补充。并发迁移、重复迁移和空补充均覆盖。复审发现并修复 CRLF 段落、旧重试残句及 CLI 创建遗漏；新增初始化回归在旧 CLI 上失败。
+- `gofmt -l .` 无输出，`go vet ./...` 与 `go test -count=1 ./...` 通过（包含 e2e）。`go test -count=3 ./internal/kernel ./internal/bot ./internal/web`：kernel/bot 通过；web 出现状态接口 p95 6.058ms 与插话多一条 answer 的失败。只复跑这两项各三次均通过，状态接口 p95 1.002–1.163ms；修复迁移边界后，完整三次包测试 kernel/bot/web 均通过，命令行包 `go test -count=3 ./cmd/xbot` 也通过。
+- atlas audit 有既有的文档大小、陈旧基准、未挂接文档等告警，未扩大范围清理。最终只读 `codex review --base 6ff19e6` 未发现明确可操作缺陷。未跑真实模型 Silence 六次对照、线上升级、Linux CI 和主人日用验收；不宣称端到端升级已通过。
+
 ## 总表
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
