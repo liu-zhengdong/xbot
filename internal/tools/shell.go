@@ -192,6 +192,13 @@ func NewShell() *Shell {
 }
 
 func (s *Shell) Name() string { return "shell" }
+func (s *Shell) WaitPolicy(args json.RawMessage) (time.Duration, bool) {
+	in, err := parseShellArgs(args)
+	if err != nil {
+		return DefaultToolWait, false
+	}
+	return s.duration(in.TimeoutSeconds), in.RunInBackground
+}
 
 func (s *Shell) timeoutLabel() (def, max int) {
 	d := defaultShellTimeout
@@ -213,13 +220,16 @@ func (s *Shell) Description() string {
 		persist = " The working directory persists across calls for this bot. Each result includes a cwd line. A directory that is missing or outside the workspace falls back to the workspace."
 	}
 	if s != nil && s.Jobs != nil {
-		return fmt.Sprintf("Run a shell command. stdout and stderr are combined. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. If the command is still running at the timeout, it moves to the background and is not killed; the result is a job id and an output file path. Pass run_in_background true to background it immediately (a long build, a server, or anything that should outlive this call). Read output with shell_output (offset or tail), check shell_status, and stop it with shell_cancel. Do not poll a job in a tight loop; a completion reminder arrives at the next turn boundary. sleep and obvious polling loops are not auto-backgrounded. Provider API keys stay out of the environment unless keys is true, which the owner must approve.%s", def, max, persist)
+		return "Run a shell command; stdout and stderr are combined. The foreground waits at most 2 seconds for any tool. timeout_seconds can shorten this wait, never extend it. A running call moves to the background and is not killed. run_in_background returns immediately. shell_output reads output (offset or tail), shell_status checks status, shell_cancel requests cancellation. A normal completion message arrives; do not poll in a tight loop. Provider keys stay out unless keys is true and approved." + persist
 	}
 	return fmt.Sprintf("Run a shell command. stdout and stderr are combined and truncated. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends.%s", def, max, persist)
 }
 
 func (s *Shell) Parameters() any {
 	def, max := s.timeoutLabel()
+	if s.Jobs != nil {
+		def, max = 2, 2
+	}
 	props := map[string]any{
 		"command":         stringProp("Shell command to run"),
 		"timeout_seconds": intProp(fmt.Sprintf("Timeout in seconds (default %d, max %d)", def, max)),
@@ -291,10 +301,9 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		command = wrapShellCwd(dir, in.Command, marker)
 		cwdCh = make(chan string, 1)
 	}
-	// A job directory keeps the process across the timeout. sleep and obvious
-	// polling loops stay in the foreground so the breaker can see the loop.
+	// The shared Jobs runner owns the wait for every command.
 	var out string
-	if s.Jobs != nil && (in.RunInBackground || !skipAutoBackground(in.Command)) {
+	if s.Jobs != nil {
 		out, err = s.Jobs.Run(ctx, RunRequest{
 			Command:    in.Command,
 			Exec:       command,

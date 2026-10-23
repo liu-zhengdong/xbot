@@ -13,15 +13,14 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
+	"xbot/internal/notable"
 )
 
 const (
-	// maxShellJobs is how many commands one bot may have in flight. A foreground
-	// command counts until it exits or moves to the background.
+	// maxShellJobs bounds actual running tool calls, foreground and background.
 	maxShellJobs = 32
 	// defaultJobBytes is the tail kept in a background job's output file.
 	defaultJobBytes = 256 << 10
@@ -35,10 +34,16 @@ const (
 	maxJobAge = 7 * 24 * time.Hour
 )
 
-// Job is one shell command tracked for this process. Status is running, done,
+// Job is one tool call tracked for this process. Status is running, done,
 // cancelled, or lost. lost means a new process found the record still running
 // and did not try to signal the old pid.
 type Job struct {
+	Background bool           `json:"background,omitempty"`
+	Notable    []notable.Item `json:"notable,omitempty"`
+	Tool       string         `json:"tool,omitempty"`
+	Result     string         `json:"result,omitempty"`
+	Images     []string       `json:"images,omitempty"`
+
 	ID        string    `json:"id"`
 	Command   string    `json:"command"`
 	Status    string    `json:"status"`
@@ -67,6 +72,7 @@ type Job struct {
 // when the process exits; OnCwd receives the directory a foreground command
 // finished in, before Run returns.
 type RunRequest struct {
+	onStart    func()
 	Command    string
 	Exec       string
 	Timeout    time.Duration
@@ -78,7 +84,7 @@ type RunRequest struct {
 	OnCwd      func(string)
 }
 
-// Jobs tracks shell commands for one bot directory. The same value lives for
+// Jobs tracks tool calls for one bot directory. The same value lives for
 // the serve process, so a job started in one turn is still there on the next.
 // A new Jobs on the same directory, after Load, marks anything still running
 // as lost and does not signal its pid.
@@ -99,21 +105,19 @@ type Jobs struct {
 }
 
 type live struct {
-	mu       sync.Mutex
-	job      Job
-	cmd      *exec.Cmd
-	w        *jobWriter
-	done     chan struct{}
-	detached bool
-	killed   bool
-	finished bool
-	waitErr  error
-	cwdFile  string
-	onCwd    func(string)
-	// claimCwd is set when finish still owns the session directory. Run's
-	// timeout path waits for done instead of detaching once this is set, so
-	// onCwd cannot run after Run has returned.
-	claimCwd bool
+	finalize                   func(Job, CallResult) (Job, error)
+	mu                         sync.Mutex
+	job                        Job
+	cmd                        *exec.Cmd
+	w                          *jobWriter
+	done                       chan struct{}
+	detached, killed, finished bool
+	cancel                     context.CancelFunc
+	result                     CallResult
+	onDone                     func(Job)
+	onCwd                      func(string)
+	finalCwd                   string
+	cleanup                    func()
 }
 
 // NewJobs records jobs under dir. Call Load before Run so a restarted process
@@ -180,7 +184,8 @@ func (j *Jobs) Load() error {
 			continue
 		}
 		if job.Status == "running" {
-			if sameProcess(job.PID, job.ProcStart) {
+			if SameProcess(job.PID, job.ProcStart) {
+				j.jobs[id] = &live{job: job, done: closedChan()}
 				continue
 			}
 			job.Status = "lost"
@@ -193,64 +198,44 @@ func (j *Jobs) Load() error {
 		j.jobs[id] = &live{job: job, done: closedChan()}
 	}
 	j.mu.Unlock()
-	j.prune()
+	j.prune(nil)
 	return nil
 }
 
 // Run starts command. Background returns as soon as the process is running.
-// Otherwise it waits for Timeout. On timeout a command that is not an obvious
-// sleep or poll is left running and the result names the job; the process is
-// not killed. ctx ending before that still kills the process.
+// Otherwise the common call runner owns the wait, capped at two seconds.
+// After a background receipt the process no longer follows the parent context.
 func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
-	if j == nil || j.Dir == "" {
-		return "", errors.New("shell: no job directory")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	timeout := req.Timeout
-	if timeout <= 0 {
-		timeout = defaultShellTimeout
-	}
-	lv, err := j.start(req, req.Background)
-	if err != nil {
-		return "", err
-	}
-	if req.Background {
-		return formatBackground(lv.snapshot(), "started in background"), nil
-	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case <-lv.done:
-		return j.finishForeground(lv, req.MaxOutput, "")
-	case <-ctx.Done():
-		j.kill(lv)
-		<-lv.done
-		j.remove(lv)
-		return "", ctx.Err()
-	case <-timer.C:
+	if lv, ok := ctx.Value(callKey{}).(*live); ok {
+		out, err := j.runProcess(ctx, lv, req)
 		lv.mu.Lock()
-		if lv.finished || lv.claimCwd {
-			lv.mu.Unlock()
-			<-lv.done
-			return j.finishForeground(lv, req.MaxOutput, "")
-		}
-		if skipAutoBackground(req.Command) {
-			lv.mu.Unlock()
-			j.kill(lv)
-			<-lv.done
-			return j.finishForeground(lv, req.MaxOutput, "timed out after "+timeout.String())
-		}
-		lv.detached = true
-		lv.job.TimedOut = true
-		id, path, cwd := lv.job.ID, lv.job.Output, lv.job.Cwd
+		cb, dir := lv.onCwd, lv.finalCwd
+		lv.onCwd = nil
 		lv.mu.Unlock()
-		if err := j.publish(lv); err != nil {
-			return "", err
+		if cb != nil && dir != "" {
+			cb(dir)
 		}
-		return formatBackground(Job{ID: id, Output: path, Cwd: cwd}, "still running after "+timeout.String()+"; not killed"), nil
+		return out, err
 	}
+	ready := make(chan struct{})
+	var once sync.Once
+	req.onStart = func() { once.Do(func() { close(ready) }) }
+	res := j.RunCall(ctx, CallRequest{Name: "shell", Command: req.Command, Dir: req.Dir, Wait: req.Timeout, Background: req.Background,
+		Run: func(ctx context.Context) CallResult {
+			lv := ctx.Value(callKey{}).(*live)
+			defer req.onStart()
+			out, err := j.runProcess(ctx, lv, req)
+			return CallResult{Text: out, Err: err}
+		}})
+	if res.Job != nil {
+		if lv := j.get(res.Job.ID); lv != nil {
+			select {
+			case <-ready:
+			case <-lv.done:
+			}
+		}
+	}
+	return res.Text, res.Err
 }
 
 // Output reads a job's output. offset is a byte offset into the redacted
@@ -262,9 +247,9 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	if lv == nil {
 		return "", fmt.Errorf("shell: no such job %s", id)
 	}
-	job := lv.snapshot()
+	job := j.freshen(lv)
 	var written, discarded, held int
-	if lv.w != nil {
+	if lv.w != nil && (job.Tool == "shell" || job.Status == "running") {
 		_ = lv.w.Flush()
 		written, discarded = lv.w.span()
 		held = lv.w.held()
@@ -343,28 +328,42 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	return strings.TrimRight(b.String(), "\n"), nil
 }
 
-// MarkNotified records that this job was put on the reminder channel or woken.
-// A later process will not announce it again.
-func (j *Jobs) MarkNotified(id string) {
+// Deliver serializes transport acknowledgement with the existing metadata
+// writer. An inbox can deduplicate the stable id after a crash between send
+// and acknowledgement; a failed send leaves Notified false for the next flush.
+func (j *Jobs) Deliver(id string, send func(Job, CallResult) error) error {
 	lv := j.get(id)
 	if lv == nil {
-		return
+		return fmt.Errorf("tool job: no such job %s", id)
 	}
 	j.metaMu.Lock()
 	defer j.metaMu.Unlock()
 	lv.mu.Lock()
-	if lv.job.Notified {
-		lv.mu.Unlock()
-		return
+	job, res := lv.job, lv.result
+	if !job.Local {
+		if disk, err := j.readMeta(id); err == nil {
+			job = disk
+			lv.job = disk
+		}
 	}
-	lv.job.Notified = true
-	job := lv.job
 	lv.mu.Unlock()
-	_ = j.writeMeta(job)
+	if job.Notified || job.Status == "running" {
+		return nil
+	}
+	if err := send(job, res); err != nil {
+		return err
+	}
+	lv.mu.Lock()
+	lv.job.Notified = true
+	lv.result.Images = nil
+	job = lv.job
+	lv.mu.Unlock()
+	return j.writeMeta(job)
 }
 
-// Shutdown kills every process group this Jobs value still owns. It does not
-// signal a job that was only loaded from disk.
+// Shutdown cancels and joins every call this Jobs value owns. Shell adapters
+// kill their process group; other tools must actually return before this ends.
+// A job loaded from another execution process is never signalled.
 func (j *Jobs) Shutdown() {
 	if j == nil {
 		return
@@ -372,14 +371,13 @@ func (j *Jobs) Shutdown() {
 	j.mu.Lock()
 	var owned []*live
 	for _, lv := range j.jobs {
-		job := lv.snapshot()
-		if job.Local && job.Status == "running" && lv.cmd != nil && lv.cmd.Process != nil {
+		if job := lv.snapshot(); job.Local {
 			owned = append(owned, lv)
 		}
 	}
 	j.mu.Unlock()
 	for _, lv := range owned {
-		j.kill(lv)
+		_, _ = j.Cancel(lv.snapshot().ID)
 	}
 	for _, lv := range owned {
 		<-lv.done
@@ -418,6 +416,14 @@ func (j *Jobs) List() []Job {
 // freshen fills Bytes and Held from the writer while the job is still running.
 func (j *Jobs) freshen(lv *live) Job {
 	job := lv.snapshot()
+	if !job.Local && lv != nil {
+		if disk, err := j.readMeta(job.ID); err == nil {
+			lv.mu.Lock()
+			lv.job = disk
+			lv.mu.Unlock()
+			return disk
+		}
+	}
 	if lv == nil || lv.w == nil || job.Status != "running" {
 		return job
 	}
@@ -431,252 +437,42 @@ func (j *Jobs) freshen(lv *live) Job {
 	return job
 }
 
-// Cancel kills the job's process group. A job that is not running is reported
-// as it is. A lost job has no process in this serve, so it is not signalled.
+// Cancel requests the owned call to stop. Shell adapters kill the process
+// group; a noncooperative tool remains running until it really returns.
 func (j *Jobs) Cancel(id string) (string, error) {
 	lv := j.get(id)
 	if lv == nil {
 		return "", fmt.Errorf("shell: no such job %s", id)
 	}
-	job := lv.snapshot()
-	if job.Status != "running" {
-		// A job that has just exited may still be writing its record and
-		// running OnDone. A loaded job's done is already closed.
+	_ = j.freshen(lv)
+	lv.mu.Lock()
+	if lv.finished || lv.job.Status != "running" {
+		status := lv.job.Status
+		lv.mu.Unlock()
 		<-lv.done
-		return "status " + job.Status, nil
+		return "status " + status, nil
 	}
-	if lv.cmd == nil || lv.cmd.Process == nil {
-		return "status " + job.Status, nil
-	}
-	j.kill(lv)
-	<-lv.done
-	return "cancelled " + id, nil
-}
-
-func (j *Jobs) start(req RunRequest, detach bool) (*live, error) {
-	if err := os.MkdirAll(j.Dir, 0700); err != nil {
-		return nil, err
-	}
-	j.mu.Lock()
-	if j.jobs == nil {
-		j.jobs = map[string]*live{}
-	}
-	if j.countLocked() >= maxShellJobs {
-		j.mu.Unlock()
-		return nil, errors.New("shell: too many background jobs")
-	}
-	id, err := newJobID(j.jobs)
-	if err != nil {
-		j.mu.Unlock()
-		return nil, err
-	}
-	path := filepath.Join(j.Dir, id+".log")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0600)
-	if err != nil {
-		j.mu.Unlock()
-		return nil, err
-	}
-	w := newJobWriter(f, j.outputCap(), j.redact)
-	w.forms = j.Forms
-	script := req.Exec
-	if script == "" {
-		script = req.Command
-	}
-	cmd := exec.Command("sh", "-c", script)
-	setGroup(cmd)
-	if req.Dir != "" {
-		cmd.Dir = req.Dir
-	}
-	if req.Env != nil {
-		cmd.Env = req.Env
-	}
-	cmd.Stdout = w
-	cmd.Stderr = w
-	lv := &live{
-		job: Job{
-			ID:      id,
-			Command: clipCommand(j.redact(req.Command)),
-			Status:  "running",
-			Output:  path,
-			Started: j.now(),
-			Cwd:     req.Dir,
-		},
-		cwdFile:  req.CwdFile,
-		onCwd:    req.OnCwd,
-		cmd:      cmd,
-		w:        w,
-		done:     make(chan struct{}),
-		detached: detach,
-	}
-	lv.job.Local = true
-	j.jobs[id] = lv
-	j.mu.Unlock()
-	if err := cmd.Start(); err != nil {
-		_ = w.Close()
-		j.remove(lv)
-		return nil, fmt.Errorf("shell: %w", err)
-	}
-	lv.mu.Lock()
-	lv.job.PID = cmd.Process.Pid
-	lv.job.ProcStart = processStartTicks(cmd.Process.Pid)
-	lv.mu.Unlock()
-	go func() {
-		err := cmd.Wait()
-		_ = w.Close()
-		j.finish(lv, err)
-	}()
-	if err := j.publish(lv); err != nil {
-		j.kill(lv)
-		<-lv.done
-		j.remove(lv)
-		return nil, err
-	}
-	return lv, nil
-}
-
-// publish writes the current record. A finish that already recorded a terminal
-// status is left as it is, so a late "running" write cannot clobber it.
-func (j *Jobs) publish(lv *live) error {
-	j.metaMu.Lock()
-	defer j.metaMu.Unlock()
-	job := lv.snapshot()
-	if job.Status != "running" {
-		return nil
-	}
-	return j.writeMeta(job)
-}
-
-func (j *Jobs) finish(lv *live, waitErr error) {
-	lv.mu.Lock()
-	if lv.finished {
+	cancel := lv.cancel
+	if cancel == nil {
 		lv.mu.Unlock()
-		return
-	}
-	cwdFile := lv.cwdFile
-	onCwd := lv.onCwd
-	report := !lv.detached
-	if report {
-		lv.claimCwd = true
-	} else {
-		onCwd = nil
-	}
-	lv.mu.Unlock()
-	var ended string
-	if cwdFile != "" {
-		if report {
-			ended = readCwdFile(cwdFile)
-		}
-		_ = os.Remove(cwdFile)
-	}
-	j.metaMu.Lock()
-	lv.mu.Lock()
-	if lv.finished {
-		lv.mu.Unlock()
-		j.metaMu.Unlock()
-		return
-	}
-	// Timeout sets detached only while claimCwd is still false. If it won,
-	// this exit must not move the session directory.
-	if lv.detached {
-		report = false
-		onCwd = nil
-		ended = ""
-	}
-	lv.finished = true
-	lv.waitErr = waitErr
-	detached := lv.detached
-	if lv.killed {
-		lv.job.Status = "cancelled"
-	} else {
-		lv.job.Status = "done"
-	}
-	lv.job.ExitCode = exitCode(waitErr)
-	lv.job.Ended = j.now()
-	if lv.w != nil {
-		written, dropped := lv.w.span()
-		lv.job.Bytes = written
-		lv.job.Dropped = dropped
-	}
-	job := lv.job
-	lv.mu.Unlock()
-	err := j.writeMeta(job)
-	if report && ended != "" && onCwd != nil {
-		onCwd(ended)
-	}
-	j.metaMu.Unlock()
-	// done closes after OnDone and prune, so Cancel and Shutdown return only
-	// once this job has stopped writing: OnDone may post a wake and mark the
-	// record notified.
-	defer close(lv.done)
-	if err != nil {
-		return
-	}
-	if detached && j.OnDone != nil {
-		j.OnDone(job)
-	}
-	j.prune()
-}
-
-func (j *Jobs) finishForeground(lv *live, maxOut int, status string) (string, error) {
-	if status == "" {
-		lv.mu.Lock()
-		err := lv.waitErr
-		code := lv.job.ExitCode
-		lv.mu.Unlock()
-		var exit *exec.ExitError
-		if err != nil && !errors.As(err, &exit) {
-			j.remove(lv)
-			return "", fmt.Errorf("shell: %w", err)
-		}
-		if code == 0 {
-			status = "exit 0"
-		} else {
-			status = fmt.Sprintf("exit %d", code)
-		}
-	}
-	text, truncated := j.readCapped(lv, maxOut)
-	j.remove(lv)
-	return formatShell(status, text, truncated), nil
-}
-
-func (j *Jobs) readCapped(lv *live, maxOut int) (string, bool) {
-	if lv.w != nil {
-		_ = lv.w.Flush()
-	}
-	body, err := os.ReadFile(lv.snapshot().Output)
-	if err != nil {
-		return "", false
-	}
-	text := clip.Valid(string(body))
-	truncated := false
-	if maxOut <= 0 {
-		maxOut = maxShellOutput
-	}
-	if len(text) > maxOut {
-		text = text[:maxOut]
-		truncated = true
-	}
-	return strings.TrimRight(text, "\n"), truncated
-}
-
-func (j *Jobs) kill(lv *live) {
-	if lv == nil {
-		return
-	}
-	lv.mu.Lock()
-	if lv.finished || lv.cmd == nil || lv.cmd.Process == nil {
-		lv.mu.Unlock()
-		return
+		return "", ErrForeignJob
 	}
 	lv.killed = true
-	cmd := lv.cmd
 	lv.mu.Unlock()
-	_ = killProcess(cmd)
+	if cancel != nil {
+		cancel()
+	}
+	select {
+	case <-lv.done:
+		return "cancelled " + id, nil
+	case <-time.After(250 * time.Millisecond):
+		return "cancellation requested " + id, nil
+	}
 }
 
 // prune drops finished jobs older than maxJobAge and, past that, the oldest
 // finished jobs until maxKeptJobs remain. Running jobs stay.
-func (j *Jobs) prune() {
+func (j *Jobs) prune(settled *live) {
 	if j == nil {
 		return
 	}
@@ -690,6 +486,17 @@ func (j *Jobs) prune() {
 	var done []item
 	for id, lv := range j.jobs {
 		job := lv.snapshot()
+		if job.Local && !job.Background {
+			continue
+		}
+		if lv != settled {
+			select {
+			case <-lv.done:
+			default:
+				continue
+			}
+		}
+
 		if job.Status == "" || job.Status == "running" {
 			continue
 		}
@@ -747,7 +554,14 @@ func (j *Jobs) get(id string) *live {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.jobs[id]
+	lv := j.jobs[id]
+	if lv == nil {
+		if job, err := j.readMeta(id); err == nil {
+			lv = &live{job: job, done: closedChan()}
+			j.jobs[id] = lv
+		}
+	}
+	return lv
 }
 
 func (j *Jobs) countLocked() int {
@@ -882,59 +696,6 @@ func closedChan() chan struct{} {
 	return ch
 }
 
-// skipAutoBackground reports commands that are just waiting or polling.
-// Those stay in the foreground so a repeated call trips the breaker instead
-// of hiding behind a background job. An explicit run_in_background still starts.
-func skipAutoBackground(command string) bool {
-	s := strings.TrimSpace(command)
-	for {
-		field := s
-		if i := strings.IndexAny(s, " \t\n"); i >= 0 {
-			field = s[:i]
-		}
-		if !envAssign(field) {
-			break
-		}
-		s = strings.TrimSpace(s[len(field):])
-	}
-	if s == "" {
-		return false
-	}
-	field := s
-	if i := strings.IndexAny(s, " \t\n;&|"); i >= 0 {
-		field = s[:i]
-	}
-	switch filepath.Base(field) {
-	case "sleep", "watch":
-		return true
-	}
-	head := field
-	if strings.HasPrefix(s, "while ") || strings.HasPrefix(s, "while\t") || strings.HasPrefix(s, "until ") || strings.HasPrefix(s, "until\t") {
-		head = strings.Fields(s)[0]
-	}
-	if (head == "while" || head == "until") && strings.Contains(s, "sleep") {
-		return true
-	}
-	return false
-}
-
-func envAssign(s string) bool {
-	if s == "" || s[0] == '=' {
-		return false
-	}
-	i := strings.IndexByte(s, '=')
-	if i <= 0 {
-		return false
-	}
-	for _, r := range s[:i] {
-		if r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	r := rune(s[0])
-	return r == '_' || unicode.IsLetter(r)
-}
-
 // CurrentProcess reuses the shell job's process identity for task ownership.
 // Platforms without start ticks can only recognize this process instance.
 var selfProcessStart = func() int64 {
@@ -952,3 +713,5 @@ func SameProcess(pid int, start int64) bool {
 	}
 	return sameProcess(pid, start)
 }
+
+var ErrForeignJob = errors.New("tool job belongs to another execution process")

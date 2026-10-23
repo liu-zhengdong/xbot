@@ -68,59 +68,39 @@ func (t reviewedTool) ConfirmContext(ctx context.Context, args json.RawMessage) 
 // write to something a running background has written is queued behind that
 // background instead of running beside it.
 func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	p, err := t.PrepareRun(ctx, args)
+	if err != nil {
+		return "", err
+	}
+	if p.Run == nil {
+		return p.Text, nil
+	}
+	return p.Run(ctx)
+}
+func (t reviewedTool) WaitPolicy(args json.RawMessage) (time.Duration, bool) {
+	return tools.CallWait(t.Tool, args)
+}
+
+func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (tools.PreparedRun, error) {
 	name := t.Name()
 	if err := t.k.foregroundRefuses(ctx, t.Tool, args); err != nil {
-		return "", err
+		return tools.PreparedRun{}, err
 	}
 	if name == "read_file" {
 		if s, ok := t.k.unchangedReceipt(ctx, t.Tool, args); ok {
-			return s, nil
+			return tools.PreparedRun{Text: s}, nil
 		}
 	}
 	if isFileEdit(name) {
 		if path, dir, _, _ := t.k.memoryCall(ctx, t.Tool, args); dir != "" {
 			if err := memorySymlinks(dir, path); err != nil {
-				return "", err
+				return tools.PreparedRun{}, err
 			}
 		}
 		if err := t.k.rejectUnreadOrStale(ctx, t.Tool, args); err != nil {
-			return "", err
+			return tools.PreparedRun{}, err
 		}
 	}
-	start := time.Now()
-	out, ran, err := t.execute(ctx, args)
-	if err != nil || !ran {
-		return out, err
-	}
-	switch name {
-	case "shell":
-		// A command moved to the background may still be writing; its
-		// changes are reported as usual.
-		if !strings.HasPrefix(out, "background ") {
-			if changed := t.k.noteShellWrites(ctx, start, time.Now()); len(changed) > 0 {
-				out = appendNote(out, "files you had read were changed by this command (records refreshed; read them again to see the new bytes): "+strings.Join(changed, ", "))
-			}
-		}
-	case "read_file":
-		t.k.noteRead(ctx, t.Tool, args, out)
-	case "write_file", "edit_file":
-		body, receipt, after := bot.SplitEnvironmentReceipt(out)
-		if receipt != "" {
-			out = body
-		}
-		if t.k.noteWrite(ctx, t.Tool, args) {
-			out = appendNote(out, msgRefresh)
-		}
-		if receipt != "" {
-			out += "\n\n" + receipt + after
-		}
-	}
-	return out, nil
-}
-
-// execute runs the tool, or queues it behind a conflicting background.
-// ran is false when the call was queued and did not touch the file.
-func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	k := t.k
 	base := k.WorkDir
 	if dir := k.cwdFor(ctx); dir != "" {
@@ -132,18 +112,48 @@ func (t reviewedTool) execute(ctx context.Context, args json.RawMessage) (string
 			if bg := k.conflictingBackground(cur, res); bg != nil {
 				_, summary, _ := tools.ConfirmCall(ctx, t.Tool, args)
 				if k.QueueFull() {
-					return fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res), false, nil
+					return tools.PreparedRun{Text: fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res)}, nil
 				}
 				c := &Control{ID: fmt.Sprintf("q%d", ctrlSeq.Add(1)), Kind: "conflict", Resource: res, Text: t.Tool.Name() + " " + summary}
 				if bg.queueCtrl(c) {
-					return fmt.Sprintf("已排到后台 %s 之后（队列 %s）：它正在动 %s，做完当前的事会接着做这一步。", c.Background, c.ID, res), false, nil
+					return tools.PreparedRun{Text: fmt.Sprintf("已排到后台 %s 之后（队列 %s）：它正在动 %s，做完当前的事会接着做这一步。", c.Background, c.ID, res)}, nil
 				}
 			}
 		}
 		cur.addResource(res)
 	}
-	out, err := t.runMemoryGuard(ctx, args)
-	return out, true, err
+
+	return tools.PreparedRun{Run: func(ctx context.Context) (string, error) {
+		start := time.Now()
+		out, err := t.runMemoryGuard(ctx, args)
+		if err != nil {
+			return out, err
+		}
+		switch name {
+		case "shell":
+			// A command moved to the background may still be writing; its
+			// changes are reported as usual.
+			if !strings.HasPrefix(out, "background ") {
+				if changed := t.k.noteShellWrites(ctx, start, time.Now()); len(changed) > 0 {
+					out = appendNote(out, "files you had read were changed by this command (records refreshed; read them again to see the new bytes): "+strings.Join(changed, ", "))
+				}
+			}
+		case "read_file":
+			t.k.noteRead(ctx, t.Tool, args, out)
+		case "write_file", "edit_file":
+			body, receipt, after := bot.SplitEnvironmentReceipt(out)
+			if receipt != "" {
+				out = body
+			}
+			if t.k.noteWrite(ctx, t.Tool, args) {
+				out = appendNote(out, msgRefresh)
+			}
+			if receipt != "" {
+				out += "\n\n" + receipt + after
+			}
+		}
+		return out, nil
+	}}, nil
 }
 
 // reviewCall returns whether the owner must confirm this concrete call.

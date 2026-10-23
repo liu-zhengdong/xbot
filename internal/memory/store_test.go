@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,36 @@ import (
 
 	"xbot/internal/fsutil"
 )
+
+func TestTryRecallKeepsFolderCommitBoundaryWithoutWaiting(t *testing.T) {
+	s := Open(t.TempDir())
+	ctx := context.Background()
+	q := Query{Scope: ScopeBot, BotName: "ada", Tier: TierProfile}
+	if err := s.Remember(ctx, Fact{Scope: ScopeBot, BotName: "ada", Tier: TierProfile, Text: "stable fact", Time: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := s.dir(q.Scope, q.BotName, q.PersonID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := fsutil.Lock(filepath.Join(dir, ".lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	start := time.Now()
+	if _, err := s.TryRecall(ctx, q); !errors.Is(err, ErrBusy) {
+		t.Fatalf("during commit: %v", err)
+	}
+	if time.Since(start) > 100*time.Millisecond {
+		t.Fatal("waited for writer")
+	}
+	lock.Release()
+	facts, err := s.TryRecall(ctx, q)
+	if err != nil || len(facts) != 1 || facts[0].Text != "stable fact" {
+		t.Fatalf("after commit: %+v %v", facts, err)
+	}
+}
 
 func TestPersonFactIsSharedBotFactIsNot(t *testing.T) {
 	root := t.TempDir()

@@ -54,6 +54,10 @@ func (k *Kernel) ensureExec() exec.Executor {
 					loc.ToolsFor = k.toolsFor
 					loc.Wrap = k.wrapSub
 				}
+				loc.RunTool = func(req exec.StartRequest, ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
+					ctx = context.WithValue(ctx, cwdScopeKey{}, req.ID)
+					return k.runToolCall(ctx, t, args, run)
+				}
 				loc.Prov = k.boundProvider()
 				loc.Approve = k.subApprove()
 				if k.Dispatch {
@@ -92,6 +96,9 @@ type modelExecutor struct {
 
 func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) (exec.Task, error) {
 	req.Workspace = e.k.WorkDir
+	if jobs := e.k.shellJobs(); jobs != nil {
+		req.JobDir = jobs.Dir
+	}
 	if req.Mode != exec.ModeFork {
 		_, overlay, err := e.k.modelOverlay()
 		if err != nil {
@@ -193,11 +200,26 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	sh.Shared = k.SharedDir
 	sh.BindJobs(k.shellJobs())
 	sh.BindSession(
-		func(context.Context) (string, string) { return k.shellStartScope(scope) },
-		func(_ context.Context, dir string) (string, string) { return k.shellAfterScope(scope, dir) },
+		func(ctx context.Context) (string, string) {
+			if tools.CallID(ctx) != "" {
+				return k.shellStartDir(ctx)
+			}
+			return k.shellStartScope(scope)
+		},
+		func(ctx context.Context, dir string) (string, string) {
+			if tools.CallID(ctx) != "" {
+				return k.shellAfterDir(ctx, dir)
+			}
+			return k.shellAfterScope(scope, dir)
+		},
 	)
 	sh.SetMarkerDir(k.shellMarkerDir())
-	root := func(context.Context) string { return k.cwdScope(scope) }
+	root := func(ctx context.Context) string {
+		if tools.CallID(ctx) != "" {
+			return k.cwdFor(ctx)
+		}
+		return k.cwdScope(scope)
+	}
 	read := &tools.ReadFile{Root: k.WorkDir}
 	write := &tools.WriteFile{Root: k.WorkDir}
 	edit := &tools.EditFile{Root: k.WorkDir}
@@ -233,6 +255,15 @@ func (m memoryGuarded) Run(ctx context.Context, args json.RawMessage) (string, e
 
 func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 	for ev := range ch {
+		if ev.Kind == tools.JobEventType {
+			jobs := k.shellJobs()
+			id := strings.TrimPrefix(ev.ID, "shelljob_")
+			if job, err := jobs.Status(id); err == nil {
+				k.onToolDone(job)
+			}
+			continue
+		}
+
 		if ev.Kind == exec.EvDone || ev.Kind == exec.EvFailed {
 			// A subagent's tools use its id as their cwd scope.
 			k.dropScope(ev.AgentID)

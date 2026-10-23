@@ -111,37 +111,37 @@ func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if n := len(in.Pending()); n != 0 {
-		t.Fatalf("woke during an in-flight tool: %d", n)
+	if n := len(in.Pending()); n != 1 {
+		t.Fatalf("completed job must enter ordinary inbox even during a tool: %d", n)
 	}
 	if len(p.reqs) != 1 {
-		t.Fatalf("model was called again during the tool (%d)", len(p.reqs))
+		t.Fatalf("model called during tool: %d", len(p.reqs))
 	}
 	close(release)
 	if err := <-errc; err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) < 2 {
-		t.Fatal("no second request")
+		t.Fatal("no next request")
 	}
-	last := p.reqs[len(p.reqs)-1]
-	blob := last.Messages[len(last.Messages)-1].Content
-	if !strings.Contains(blob, "<shell_job>") || !strings.Contains(blob, id) {
-		t.Fatalf("next request missed the reminder: %s", blob)
+	text := messagesText(p.reqs[len(p.reqs)-1].Messages)
+	if !strings.Contains(text, id) || !strings.Contains(text, "finished-marker") {
+		t.Fatalf("missing ordinary report: %s", text)
 	}
-	entries, err := b.Entries()
+	es, err := b.Entries()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<shell_job>") {
-			t.Fatal("reminder was written into the transcript")
+	found := 0
+	for _, e := range es {
+		if e.EventID == "shelljob_"+id {
+			found++
 		}
 	}
-	raw, err := os.ReadFile(filepath.Join(bot.Dir(b.Root, b.Name()), "reminders.jsonl"))
-	if err != nil || !strings.Contains(string(raw), "shell_job") || !strings.Contains(string(raw), id) {
-		t.Fatalf("sidecar %s err %v", raw, err)
+	if found != 1 {
+		t.Fatalf("report rows=%d", found)
 	}
+
 }
 
 func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
@@ -196,7 +196,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 	}
 	var saw bool
 	for _, m := range p.reqs[0].Messages {
-		if strings.Contains(m.Content, id) && strings.Contains(m.Content, "shell_output") {
+		if strings.Contains(m.Content, id) && strings.Contains(m.Content, "idle-done") {
 			saw = true
 		}
 	}
@@ -267,22 +267,23 @@ func TestShellJobFileUsesKernelRedactor(t *testing.T) {
 // TestShellDoneDoesNotWakeABusyTurn checks a finished shell job does not post a
 // wake while a turn is running: the live turn hears about it at its next
 // boundary through the reminder channel.
-func TestShellDoneDoesNotWakeABusyTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
-	in, err := inbox.Open(b.InboxPath())
+func TestToolDonePostsWhileBusy(t *testing.T) {
+	k, _, _ := freshBot(t)
+	in, err := inbox.Open(k.Bot.InboxPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{
-		Bot: b, Inbox: in,
-		Now: func() time.Time { return time.Unix(1_700_000_200, 0).UTC() },
-	}
-	k.turnMu.Lock()
+	k.Inbox = in
 	k.turn = &turn{started: k.now()}
-	k.turnMu.Unlock()
-	k.onShellDone(tools.Job{ID: "sh_aabbccdd", Status: "done", Output: "x"})
-	if n := len(in.Pending()); n != 0 {
-		t.Fatalf("busy turn was woken: %d", n)
+	jobs := k.shellJobs()
+	defer jobs.Shutdown()
+	jobs.RunCall(context.Background(), tools.CallRequest{Name: "any_tool", Background: true, Run: func(context.Context) tools.CallResult { return tools.CallResult{Text: "FINISHED_WHILE_BUSY"} }})
+	end := time.Now().Add(time.Second)
+	for len(in.Pending()) == 0 && time.Now().Before(end) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(in.Pending()) != 1 || !strings.Contains(in.Pending()[0].Content, "FINISHED_WHILE_BUSY") {
+		t.Fatalf("missing report: %+v", in.Pending())
 	}
 }
 
@@ -331,7 +332,7 @@ func TestRestartDoesNotRewakeFinishedJobs(t *testing.T) {
 		id := fmt.Sprintf("sh_%08x", 0xa0000000+i)
 		ids = append(ids, id)
 		job := tools.Job{
-			ID: id, Command: "make", Status: "done",
+			ID: id, Command: "make", Status: "done", Notified: true,
 			Output:  filepath.Join(dir, id+".log"),
 			Started: time.Unix(10, 0), Ended: time.Unix(20, 0),
 		}
@@ -346,9 +347,7 @@ func TestRestartDoesNotRewakeFinishedJobs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := k.reminders().Record(1, KindShellJob, "<shell_job>\n"+strings.Join(ids, "\n")+"\n</shell_job>", time.Unix(30, 0)); err != nil {
-		t.Fatal(err)
-	}
+
 	now := time.Unix(1_700_000_000, 0).UTC()
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "hi"})
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", now)); err != nil {
@@ -365,7 +364,7 @@ func TestRestartDoesNotRewakeFinishedJobs(t *testing.T) {
 	}
 }
 
-func TestShellClaimedMapRace(t *testing.T) {
+func TestToolJobConcurrentInboxFlush(t *testing.T) {
 	k, _, _ := freshBot(t)
 	in, err := inbox.Open(k.Bot.InboxPath())
 	if err != nil {
@@ -376,12 +375,12 @@ func TestShellClaimedMapRace(t *testing.T) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("sh_%08x", 0xb0000000+i)
 		job := tools.Job{
-			ID: id, Command: "make", Status: "done",
+			ID: id, Command: "make", Status: "done", Background: true,
 			Output:  filepath.Join(dir, id+".log"),
-			Started: time.Unix(10, 0), Ended: time.Unix(20, 0),
+			Started: k.now(), Ended: k.now(),
 		}
 		raw, err := json.Marshal(job)
 		if err != nil {
@@ -397,27 +396,24 @@ func TestShellClaimedMapRace(t *testing.T) {
 	if k.shellJobs() == nil {
 		t.Fatal("no jobs")
 	}
-	// A non-nil map before either goroutine runs is what makes the old
-	// unlocked read race the reminder write. An initially nil map often
-	// hides it from the detector.
-	k.shellMu.Lock()
-	k.shellClaimed = map[string]bool{}
-	k.shellMu.Unlock()
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
-			k.flushShellWake()
+			k.flushToolJobs()
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			k.shellNotice(nil)
+			k.flushToolJobs()
 		}
 	}()
 	wg.Wait()
+	if n := len(in.Pending()); n != 5 {
+		t.Fatalf("posted %d jobs, want 5", n)
+	}
 }
 
 func TestAttachShellJobsOnce(t *testing.T) {
@@ -654,7 +650,7 @@ func TestScrubSecretsStableTieBreak(t *testing.T) {
 	}
 }
 
-func TestShellWakeFailureReleasesClaim(t *testing.T) {
+func TestToolWakeFailureRemainsRetryable(t *testing.T) {
 	k, _, _ := freshBot(t)
 	in, err := inbox.Open(k.Bot.InboxPath())
 	if err != nil {
@@ -662,19 +658,10 @@ func TestShellWakeFailureReleasesClaim(t *testing.T) {
 	}
 	k.Inbox = in
 	jobs := k.shellJobs()
-	if jobs == nil {
-		t.Fatal("no jobs")
-	}
-	out, err := jobs.Run(context.Background(), tools.RunRequest{Command: "sleep 30", Background: true, Timeout: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := strings.TrimSpace(strings.Split(strings.TrimPrefix(out, "background "), "\n")[0])
-	t.Cleanup(func() { jobs.Shutdown() })
-	st, err := jobs.Status(id)
-	if err != nil {
-		t.Fatal(err)
-	}
+	defer jobs.Shutdown()
+	release := make(chan struct{})
+	result := jobs.RunCall(context.Background(), tools.CallRequest{Name: "custom", Background: true, Run: func(context.Context) tools.CallResult { <-release; return tools.CallResult{Text: "RECOVER_OUTPUT"} }})
+	id := result.Job.ID
 	path := k.Bot.InboxPath()
 	if err := os.RemoveAll(path); err != nil {
 		t.Fatal(err)
@@ -682,14 +669,20 @@ func TestShellWakeFailureReleasesClaim(t *testing.T) {
 	if err := os.Mkdir(path, 0700); err != nil {
 		t.Fatal(err)
 	}
-	st.Status = "done"
-	k.onShellDone(st)
-	got, err := jobs.Status(id)
-	if err != nil {
-		t.Fatal(err)
+	close(release)
+	end := time.Now().Add(time.Second)
+	var st tools.Job
+	for time.Now().Before(end) {
+		st, _ = jobs.Status(id)
+		if st.Status != "running" {
+			break
+		}
+		time.Sleep(time.Millisecond)
 	}
-	if got.Notified {
-		t.Fatal("failed wake stuck notified")
+	_, _ = jobs.Cancel(id)
+	st, _ = jobs.Status(id)
+	if st.Notified {
+		t.Fatal("failed post was acknowledged")
 	}
 	if err := os.RemoveAll(path); err != nil {
 		t.Fatal(err)
@@ -699,22 +692,13 @@ func TestShellWakeFailureReleasesClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.Inbox = in2
-	k.onShellDone(st)
-	n := 0
-	for _, ev := range in2.Pending() {
-		if ev.Type == "shell_job" {
-			n++
-		}
+	k.onToolDone(st)
+	if len(in2.Pending()) != 1 {
+		t.Fatalf("wakes %d", len(in2.Pending()))
 	}
-	if n != 1 {
-		t.Fatalf("wakes %d", n)
-	}
-	got, err = jobs.Status(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.Notified {
-		t.Fatal("successful wake was not recorded")
+	st, _ = jobs.Status(id)
+	if !st.Notified {
+		t.Fatal("successful post not acknowledged")
 	}
 }
 

@@ -271,7 +271,7 @@ func (k *Kernel) unchangedReceipt(ctx context.Context, tool tools.Tool, args jso
 		copy = *rec
 	}
 	k.files.mu.Unlock()
-	if rec == nil || !copy.full || copy.turn == nil || copy.turn != k.turnFor(ctx) || copy.turn.shrunk.Load() {
+	if rec == nil || !copy.full || copy.turn == nil || copy.turn != k.callTurn(ctx) || copy.turn.shrunk.Load() {
 		return "", false
 	}
 	snap, okMatch, err := freshEnough(&copy, path)
@@ -351,7 +351,7 @@ func (k *Kernel) noteRead(ctx context.Context, tool tools.Tool, args json.RawMes
 	if in.Offset > 1 {
 		full = false
 	}
-	k.storeFile(path, snap, k.currentStep(ctx), full, modelPath(tool, path), k.turnFor(ctx))
+	k.storeFile(path, snap, k.currentStep(ctx), full, modelPath(tool, path), k.callTurn(ctx))
 }
 
 // noteWrite refreshes the record from the bytes just written so the model
@@ -380,7 +380,7 @@ func (k *Kernel) noteWrite(ctx context.Context, tool tools.Tool, args json.RawMe
 		}
 		k.files.mu.Unlock()
 	}
-	k.storeFile(path, snap, k.currentStep(ctx), full, modelPath(tool, path), k.turnFor(ctx))
+	k.storeFile(path, snap, k.currentStep(ctx), full, modelPath(tool, path), k.callTurn(ctx))
 	return true
 }
 
@@ -434,7 +434,7 @@ func (k *Kernel) noteShellWrites(ctx context.Context, start, end time.Time) []st
 			continue
 		}
 		label := it.rec.label
-		k.storeFile(it.path, snap, k.currentStep(ctx), false, label, k.turnFor(ctx))
+		k.storeFile(it.path, snap, k.currentStep(ctx), false, label, k.callTurn(ctx))
 		if label == "" {
 			label = it.path
 		}
@@ -499,7 +499,7 @@ func (k *Kernel) currentStep(ctx context.Context) int {
 	if k == nil {
 		return 0
 	}
-	t := k.turnFor(ctx)
+	t := k.callTurn(ctx)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.tools

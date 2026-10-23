@@ -30,6 +30,9 @@ type Approver func(ctx context.Context, toolName, summary string) (bool, error)
 
 type toolArgsKey struct{}
 type toolCallIDKey struct{}
+type toolSummaryKey struct{}
+
+func ToolSummary(ctx context.Context) string { s, _ := ctx.Value(toolSummaryKey{}).(string); return s }
 
 // ToolCallID identifies the call whose approval is being decided.
 func ToolCallID(ctx context.Context) string {
@@ -53,6 +56,10 @@ func ToolArgs(ctx context.Context) json.RawMessage {
 
 // Options controls one agent run.
 type Options struct {
+	// ToolBatch scopes an interjection signal to exactly this batch, including
+	// calls that are still being approved or have not registered their job yet.
+	ToolBatch func(context.Context) (context.Context, func())
+	RunTool   func(context.Context, tools.Tool, json.RawMessage, func(context.Context) tools.CallResult) tools.CallResult
 	MaxSteps  int
 	MaxResult int
 	Approve   Approver
@@ -382,6 +389,11 @@ type toolExec struct {
 // The approval lock is held only around Approve, so a prompt does not stall the others.
 
 func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []provider.ToolCall, opt Options, budget *imageBudget) ([]provider.Message, bool) {
+	if opt.ToolBatch != nil {
+		var done func()
+		ctx, done = opt.ToolBatch(ctx)
+		defer done()
+	}
 	out := make([]toolExec, len(calls))
 	var approve sync.Mutex
 	var wg sync.WaitGroup
@@ -469,30 +481,71 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	if err := ctx.Err(); err != nil {
 		return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
 	}
-	ctx, commitEffects := notable.Capture(ctx)
-	ctx, sink := tools.WithImageSink(ctx)
-	out, err := t.Run(ctx, raw)
-	var images []provider.Image
-	if err != nil {
-		out = "error: " + err.Error()
+	ctx = withToolArgs(context.WithValue(ctx, toolCallIDKey{}, tc.ID), raw)
+	ctx = context.WithValue(ctx, toolSummaryKey{}, summary)
+	run := func(ctx context.Context) (string, error) { return t.Run(ctx, raw) }
+	if prep, ok := t.(interface {
+		PrepareRun(context.Context, json.RawMessage) (tools.PreparedRun, error)
+	}); ok {
+		p, err := prep.PrepareRun(ctx, raw)
+		if err != nil {
+			return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
+		}
+		if p.Run == nil {
+			return toolExec{text: finish(opt, tc.ID, t.Name(), p.Text)}
+		}
+		run = p.Run
+	}
+	invoke := func(ctx context.Context) (res tools.CallResult) {
+		defer func() {
+			if p := recover(); p != nil {
+				res = tools.CallResult{Text: fmt.Sprintf("error: tool panic: %v", p)}
+				if opt.Redact != nil {
+					res.Text = opt.Redact(res.Text)
+				}
+				res.Text, _ = clip.Bytes(res.Text, opt.MaxResult)
+			}
+		}()
+		ctx, commit := notable.Capture(ctx)
+		ctx, sink := tools.WithImageSink(ctx)
+		out, err := run(ctx)
+		if err != nil {
+			out = "error: " + err.Error()
+		} else {
+			hint, ok := t.(review.ReadOnlyHinter)
+			notable.Tool(ctx, t.Name(), raw, out, ok && hint.ReadOnlyHint())
+			if commit != nil && !strings.HasPrefix(strings.TrimSpace(out), "error:") {
+				commit()
+				res.Notable = notable.Items(ctx)
+			}
+			res.Images = sink.Take()
+		}
+		if strings.TrimSpace(out) == "" {
+			out = "(empty)"
+		}
+		if opt.Redact != nil {
+			out = opt.Redact(out)
+		}
+		res.Text, _ = clip.Bytes(out, opt.MaxResult)
+		return res
+	}
+	var result tools.CallResult
+	if opt.RunTool != nil {
+		result = opt.RunTool(ctx, t, raw, invoke)
 	} else {
-		hint, ok := t.(review.ReadOnlyHinter)
-		notable.Tool(ctx, t.Name(), raw, out, ok && hint.ReadOnlyHint())
-		if commitEffects != nil && !strings.HasPrefix(strings.TrimSpace(out), "error:") {
-			commitEffects()
+		result = invoke(ctx)
+	}
+	if result.Err != nil {
+		result.Text = "error: " + result.Err.Error()
+		if opt.Redact != nil {
+			result.Text = opt.Redact(result.Text)
 		}
-		for _, img := range sink.Take() {
-			images = append(images, provider.Image{MIME: img.MIME, Data: img.Data})
-		}
 	}
-	if strings.TrimSpace(out) == "" {
-		out = "(empty)"
+	var images []provider.Image
+	for _, img := range result.Images {
+		images = append(images, provider.Image{MIME: img.MIME, Data: img.Data})
 	}
-	if opt.Redact != nil {
-		out = opt.Redact(out)
-	}
-	out, _ = clip.Bytes(out, opt.MaxResult)
-	return toolExec{text: finish(opt, tc.ID, t.Name(), out), images: images}
+	return toolExec{text: finish(opt, tc.ID, t.Name(), result.Text), images: images}
 }
 
 type imageBudget struct {

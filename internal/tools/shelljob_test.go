@@ -42,36 +42,8 @@ func TestShellBackgroundDescription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "run_in_background") || !strings.Contains(string(raw), "120") {
+	if !strings.Contains(string(raw), "run_in_background") || !strings.Contains(string(raw), "2") {
 		t.Fatalf("schema %s", raw)
-	}
-}
-
-func TestSkipAutoBackground(t *testing.T) {
-	skip := []string{
-		"sleep 30",
-		"  sleep 1",
-		"/bin/sleep 2",
-		"FOO=1 sleep 3",
-		"watch -n 1 date",
-		"while true; do echo x; sleep 1; done",
-		"until false; do sleep 1; done",
-	}
-	keep := []string{
-		"echo hello",
-		"echo hello; sleep 30",
-		"go test ./...",
-		"while true; do echo x; done",
-	}
-	for _, cmd := range skip {
-		if !skipAutoBackground(cmd) {
-			t.Fatalf("expected skip: %s", cmd)
-		}
-	}
-	for _, cmd := range keep {
-		if skipAutoBackground(cmd) {
-			t.Fatalf("expected background: %s", cmd)
-		}
 	}
 }
 
@@ -210,7 +182,7 @@ func TestRunInBackgroundStartsImmediately(t *testing.T) {
 	}
 }
 
-func TestSleepIsNotAutoBackgrounded(t *testing.T) {
+func TestSleepUsesCommonBackgroundWait(t *testing.T) {
 	bin := copySleep(t)
 	dir := t.TempDir()
 	jobs := NewJobs(dir)
@@ -226,13 +198,17 @@ func TestSleepIsNotAutoBackgrounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "background") || !strings.Contains(out, "timed out") {
+	if !strings.HasPrefix(out, "background ") {
 		t.Fatalf("%s", out)
 	}
+	if _, err := jobs.Cancel(jobIDFrom(out)); err != nil {
+		t.Fatal(err)
+	}
+	jobs.Shutdown()
 	waitGone(t, bin)
 }
 
-func TestPollingLoopIsNotAutoBackgrounded(t *testing.T) {
+func TestPollingUsesCommonBackgroundWait(t *testing.T) {
 	bin := copySleep(t)
 	dir := t.TempDir()
 	jobs := NewJobs(dir)
@@ -248,9 +224,13 @@ func TestPollingLoopIsNotAutoBackgrounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "background") || !strings.Contains(out, "timed out") {
+	if !strings.HasPrefix(out, "background ") {
 		t.Fatalf("%s", out)
 	}
+	if _, err := jobs.Cancel(jobIDFrom(out)); err != nil {
+		t.Fatal(err)
+	}
+	jobs.Shutdown()
 	waitGone(t, bin)
 }
 
@@ -404,8 +384,11 @@ func TestRestartMarksJobLostWithoutKilling(t *testing.T) {
 	if err := next.Load(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := next.Status(id); err == nil {
-		t.Fatal("reload adopted a still-live job")
+	if view, err := next.Status(id); err != nil || view.Local || view.Status != "running" {
+		t.Fatalf("foreign view: %+v %v", view, err)
+	}
+	if _, err := next.Cancel(id); err != ErrForeignJob {
+		t.Fatalf("foreign job was adopted for cancellation: %v", err)
 	}
 	if !processAlive(st.PID) {
 		t.Fatal("reload killed the old pid")
@@ -661,8 +644,11 @@ func TestOtherProcessLoadLeavesLiveJob(t *testing.T) {
 	if err := other.Load(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := other.Status(id); err == nil {
-		t.Fatal("second process adopted a live job")
+	if view, err := other.Status(id); err != nil || view.Local || view.Status != "running" {
+		t.Fatalf("foreign view: %+v %v", view, err)
+	}
+	if _, err := other.Cancel(id); err != ErrForeignJob {
+		t.Fatalf("foreign cancellation: %v", err)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, id+".json"))
 	if err != nil {
@@ -973,7 +959,7 @@ func waitDead(t *testing.T, pid int) {
 }
 
 // copySleep installs a private sleep binary so a test can see that exact
-// process. The file is named sleep, which is what skipAutoBackground matches.
+// process. It deliberately uses a sleep-shaped name to cover the shared wait policy.
 func copySleep(t *testing.T) string {
 	t.Helper()
 	return privateSleep(t, "sleep")

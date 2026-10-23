@@ -27,7 +27,7 @@
 //	memWriteMu  a memory write against its own before/after read
 //	todo.mu     the task list
 //	files.mu    read state for the freshness check
-//	shellMu     the background shell job set
+//	shellMu     the tool job set
 //	secretMu    staged secrets for one turn
 //	linksMu     mounted links and their grants
 //	loadMu      which links are loaded
@@ -181,10 +181,9 @@ type Kernel struct {
 
 	// shell jobs live for this kernel, which is the serve process. A new kernel
 	// loads the same directory and marks anything still running as lost.
-	shellOnce    sync.Once
-	shell        *tools.Jobs
-	shellMu      sync.Mutex
-	shellClaimed map[string]bool
+	shellOnce sync.Once
+	shell     *tools.Jobs
+	shellMu   sync.Mutex
 	// forms cache: redactable vault forms, invalidated when a vault generation
 	// changes. Staged secrets are read on each call; they are few and short.
 	formsOK   bool
@@ -331,25 +330,19 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if key := k.boundModelKey(); key != "" {
 		st.BoundModel = key
 	}
-	// Serialize prefix sampling with a tool's before/after memory read.
-	// Subsequent changes are replayed from its original tool receipt.
-	key := ""
-	k.memWriteMu.Lock()
-	memText, err := k.memoryText(ctx, key)
-	if err != nil {
-		k.memWriteMu.Unlock()
-		return err
-	}
+	// The existing prefix is already the committed snapshot. Do not wait for
+	// a background writer merely to read and discard a newer version.
 	if st.MemRender != memRenderVersion {
-		st.MemSnapSet = false
-		st.MemSnap = ""
-		st.MemRender = memRenderVersion
+		st.MemSnapSet, st.MemSnap, st.MemRender = false, "", memRenderVersion
 	}
 	if !st.MemSnapSet {
+		memText, err := k.memoryText(context.WithValue(ctx, publishedMemoryRead{}, true), "")
+		if err != nil {
+			return err
+		}
 		st.MemSnap, st.MemSnapSet = memText, true
 	}
-	k.memWriteMu.Unlock()
-	st, err = k.syncEnv(st, ev, memText)
+	st, err = k.syncEnv(st, ev, st.MemSnap)
 	if err != nil {
 		return err
 	}
@@ -786,7 +779,10 @@ func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
 	if err != nil {
 		return err
 	}
-	mem, err := k.memoryText(ctx, "")
+	mem, err := k.memoryText(context.WithValue(ctx, publishedMemoryRead{}, true), "")
+	if errors.Is(err, memory.ErrBusy) && st.MemSnapSet {
+		mem, err = st.MemSnap, nil
+	}
 	if err != nil {
 		return err
 	}
@@ -830,7 +826,7 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	}
 	if counter, ok := k.Memory.(interface {
 		LogCount(memory.Scope, string, string) (int, error)
-	}); ok {
+	}); ok && ctx.Value(publishedMemoryRead{}) == nil {
 		total, err := counter.LogCount(memory.ScopeBot, k.Bot.Name(), "")
 		if err != nil {
 			return "", err
@@ -852,16 +848,16 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 	// External senders such as webhook:github are not person ids. Bot memory still loads.
 	if memory.ValidID(personID) {
 		var err error
-		personFacts, err = k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
+		personFacts, err = k.recallMemory(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: personID, Tier: memory.TierProfile})
 		if err != nil {
 			return nil, nil, err
 		}
 	}
-	botFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierProfile})
+	botFacts, err := k.recallMemory(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierProfile})
 	if err != nil {
 		return nil, nil, err
 	}
-	logFacts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierLog})
+	logFacts, err := k.recallMemory(ctx, memory.Query{Scope: memory.ScopeBot, BotName: botName, Tier: memory.TierLog})
 	if err != nil {
 		return nil, nil, err
 	}

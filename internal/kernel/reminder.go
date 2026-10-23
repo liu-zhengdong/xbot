@@ -28,7 +28,6 @@ const (
 	KindLoop            = "loop"
 	KindTodo            = "todo"
 	KindFileChange      = "file_change"
-	KindShellJob        = "shell_job"
 
 	pendingCooldown = 10 * time.Minute
 	loopCooldown    = time.Minute
@@ -581,10 +580,6 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		Name:     KindTodo,
 		Cooldown: todoCooldown,
 		Trigger:  k.todoTrigger(),
-	})
-	ch.Register(Kind{
-		Name:    KindShellJob,
-		Trigger: k.shellTrigger(),
 	})
 	return ch
 }

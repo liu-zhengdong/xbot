@@ -151,6 +151,8 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 // options builds the agent callbacks for this run.
 func (r *turnRun) options(approve agent.Approver) agent.Options {
 	opts := agent.Options{
+		ToolBatch: r.t.toolBatch,
+		RunTool:   r.k.runToolCall,
 		MaxSteps:  r.k.stepGuard(),
 		Approve:   approve,
 		OnDelta:   r.delta,
@@ -284,7 +286,6 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 	// tool results, so it does not land in the middle of a call. Project
 	// instructions and context usage use the same boundary: they show up on the
 	// next model call, not in the middle of one.
-	join.add(r.recordReminder(KindShellJob, r.k.shellNotice(r.k.shellPrev())))
 	join.add(r.k.stepBoundaryNotes(r.t))
 	capRemind, capStop := r.k.foregroundCap(r.t)
 	join.add(capRemind)
@@ -424,11 +425,11 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	}
 	if bg {
 		r.k.finishBackground(r.t, produced, err)
-		r.k.flushShellWake()
+		r.k.flushToolJobs()
 		r.t.cancelRun()
 		return
 	}
-	r.k.flushShellWake()
+	r.k.flushToolJobs()
 	if !r.k.AllowFork {
 		// A failed run leaves accepted words on the transcript and reports the
 		// error to the current sink. Handle appends their failure replies.

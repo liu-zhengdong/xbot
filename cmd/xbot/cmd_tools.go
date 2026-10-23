@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"xbot/internal/code"
 	"xbot/internal/config"
@@ -45,9 +47,45 @@ func cmdRunner(args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "runner listening on %s\n", *addr)
 	loc := exec.NewLocal(exec.Limits{})
+	var jobMu sync.Mutex
+	registry := map[string]*tools.Jobs{}
+	loc.JobsFor = func(req exec.StartRequest) (*tools.Jobs, error) {
+		dir := req.JobDir
+		if dir == "" {
+			dir = filepath.Join(req.Dir, "shell-jobs")
+		}
+		jobMu.Lock()
+		defer jobMu.Unlock()
+		if jobs := registry[dir]; jobs != nil {
+			return jobs, nil
+		}
+		jobs := tools.NewJobs(dir)
+		if err := jobs.Load(); err != nil {
+			return nil, err
+		}
+		registry[dir] = jobs
+		return jobs, nil
+	}
+	defer func() {
+		jobMu.Lock()
+		list := make([]*tools.Jobs, 0, len(registry))
+		for _, jobs := range registry {
+			list = append(list, jobs)
+		}
+		jobMu.Unlock()
+		for _, jobs := range list {
+			jobs.Shutdown()
+		}
+	}()
+
 	loc.Approve = func(context.Context, string, string) (bool, error) { return *yes, nil }
-	loc.ToolSet = func(string, string) []tools.Tool {
-		return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
+	loc.ToolsFor = func(req exec.StartRequest) []tools.Tool {
+		sh := tools.NewShell()
+		sh.Dir = req.Workspace
+		if jobs, err := loc.JobsFor(req); err == nil {
+			sh.BindJobs(jobs)
+		}
+		return []tools.Tool{sh, &tools.ReadFile{Root: req.Workspace}, &tools.WriteFile{Root: req.Workspace}, &tools.EditFile{Root: req.Workspace}}
 	}
 	return exec.ListenCode(*addr, tok, loc, code.NewService())
 }

@@ -173,6 +173,14 @@ func Capture(ctx context.Context) (context.Context, func()) {
 }
 
 func from(ctx context.Context) scope { s, _ := ctx.Value(key{}).(scope); return s }
+
+// Items reads the same per-call facts that Capture commits after success.
+func Items(ctx context.Context) []Item {
+	if s := from(ctx); s.log != nil {
+		return s.log.Items()
+	}
+	return nil
+}
 func record(ctx context.Context, kind string, objects ...string) {
 	if s := from(ctx); s.log != nil {
 		s.log.merge(Item{Kind: kind, Objects: objects, Calls: 1, Incomplete: len(objects) == 0})

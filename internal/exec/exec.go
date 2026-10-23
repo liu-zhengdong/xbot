@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -77,6 +78,7 @@ type Endpoint struct {
 
 // StartRequest begins one subagent.
 type StartRequest struct {
+	JobDir     string             `json:"job_dir,omitempty"`
 	ID         string             `json:"id"`
 	Bot        string             `json:"bot,omitempty"`
 	Task       string             `json:"task"`
@@ -101,13 +103,15 @@ type StartRequest struct {
 
 // Control is a message to a running subagent.
 type Control struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind"`
-	Text string `json:"text,omitempty"`
+	JobDir string `json:"job_dir,omitempty"`
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Text   string `json:"text,omitempty"`
 }
 
 // Event is something the subagent reports to the main inbox.
 type Event struct {
+	Images  []string  `json:"images,omitempty"`
 	ID      string    `json:"id"`
 	AgentID string    `json:"agent_id"`
 	Kind    string    `json:"kind"`
@@ -136,6 +140,8 @@ type Task struct {
 
 // Local runs each subagent as a goroutine.
 type Local struct {
+	RunTool func(StartRequest, context.Context, tools.Tool, json.RawMessage, func(context.Context) tools.CallResult) tools.CallResult
+	JobsFor func(StartRequest) (*tools.Jobs, error)
 	Limits  Limits
 	Prov    provider.Provider
 	Approve agent.Approver
@@ -224,6 +230,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 	}
 	list := l.listTools(req)
 	j := &job{
+		request:       req,
 		id:            req.ID,
 		task:          req.Task,
 		mode:          req.Mode,
@@ -347,6 +354,14 @@ func (l *Local) Tasks() ([]Task, error) {
 
 // Control delivers steer, queue, interrupt, or cancel.
 func (l *Local) Control(ctx context.Context, id string, c Control) error {
+	if strings.HasPrefix(id, "sh_") && c.JobDir != "" && l.JobsFor != nil {
+		jobs, err := l.JobsFor(StartRequest{JobDir: c.JobDir})
+		if err != nil {
+			return err
+		}
+		_, err = jobs.Cancel(id)
+		return err
+	}
 	l.prepare()
 	if err := ctx.Err(); err != nil {
 		return err

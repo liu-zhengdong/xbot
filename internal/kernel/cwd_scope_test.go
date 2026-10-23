@@ -115,7 +115,8 @@ func TestReviewFileConflictUsesCallerCwd(t *testing.T) {
 	write.BindRoot(k.cwdFor)
 	rt := reviewedTool{Tool: write, k: k}
 	ctx := context.WithValue(context.Background(), turnKey{}, &turn{})
-	out, ran, err := rt.execute(ctx, json.RawMessage(`{"path":"notes.md","content":"x\n"}`))
+	prepared, err := rt.PrepareRun(ctx, json.RawMessage(`{"path":"notes.md","content":"x\n"}`))
+	out, ran := prepared.Text, prepared.Run != nil
 	if err != nil {
 		t.Fatal(err)
 	}

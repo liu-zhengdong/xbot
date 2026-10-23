@@ -26,6 +26,7 @@ const SubPersona = "You are a subagent working for the main bot. Complete the as
 const reportBytes = 4096
 
 type job struct {
+	request       StartRequest
 	blocked       bool
 	id            string
 	task          string
@@ -107,6 +108,7 @@ func runLoop(j *job) {
 		var appendErr error
 		produced, err := agent.Run(notable.With(stepCtx, j.workspace, &j.notable), j.provider, j.tools, msgs, agent.Options{
 			MaxSteps: 1,
+			RunTool:  j.runToolCall,
 			OneRound: true,
 			Approve:  j.approve,
 			OnTool: func(_ string, name, summary string) {

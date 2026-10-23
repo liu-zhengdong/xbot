@@ -59,8 +59,15 @@ func (s *FileStore) Remember(_ context.Context, fact Fact) error {
 	})
 }
 
+// ErrBusy means a scope is committing a write; callers may keep their already published view.
+var ErrBusy = errors.New("memory scope is committing")
+
 // Recall loads the scope and, when Text is set, ranks it with BM25.
-func (s *FileStore) Recall(_ context.Context, q Query) ([]Fact, error) {
+func (s *FileStore) Recall(_ context.Context, q Query) ([]Fact, error) { return s.recall(q, true) }
+
+// TryRecall reuses the same folder lock and parser without waiting for a writer.
+func (s *FileStore) TryRecall(_ context.Context, q Query) ([]Fact, error) { return s.recall(q, false) }
+func (s *FileStore) recall(q Query, wait bool) ([]Fact, error) {
 	if err := Migrate(s.Root); err != nil {
 		return nil, err
 	}
@@ -68,12 +75,21 @@ func (s *FileStore) Recall(_ context.Context, q Query) ([]Fact, error) {
 	if err != nil {
 		return nil, err
 	}
-	var facts []Fact
-	err = fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
-		var err error
-		facts, err = loadQuery(dir, q)
-		return err
-	})
+	var lock *fsutil.FileLock
+	if wait {
+		lock, err = fsutil.Lock(filepath.Join(dir, ".lock"))
+	} else {
+		var ok bool
+		lock, ok, err = fsutil.TryLock(filepath.Join(dir, ".lock"))
+		if err == nil && !ok {
+			return nil, ErrBusy
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer lock.Release()
+	facts, err := loadQuery(dir, q)
 	if err != nil {
 		return nil, err
 	}

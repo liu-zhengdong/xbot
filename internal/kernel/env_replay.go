@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -264,7 +265,7 @@ func (k *Kernel) appendEnvironment(text string) (provider.Message, error) {
 // The incoming event's identity is already in the conversation; it is not
 // re-applied from an older turn when a newer person's input has arrived.
 func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
-	next := environment{Fields: map[string]json.RawMessage{}}
+	next := environment{Fields: map[string]json.RawMessage{}, Memory: append([]string(nil), prev.Memory...)}
 	for key, value := range prev.Fields {
 		next.Fields[key] = value
 	}
@@ -312,14 +313,20 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	for _, task := range tasks {
 		environmentSet(&next, "task:"+task.ID, task)
 	}
+	ctx := context.WithValue(context.Background(), publishedMemoryRead{}, true)
 	if id := environmentGet[environmentSource](next, "source").Sender; id != "" {
-		text, err := k.personText(context.Background(), link.Event{Sender: id, SenderKind: link.KindPerson})
-		if err != nil {
+		text, err := k.personText(ctx, link.Event{Sender: id, SenderKind: link.KindPerson})
+		if err != nil && !errors.Is(err, memory.ErrBusy) {
 			return next, err
 		}
-		environmentSet(&next, "person:"+id, text)
+		if err == nil {
+			environmentSet(&next, "person:"+id, text)
+		}
 	}
-	text, err := k.memoryText(context.Background(), "")
+	text, err := k.memoryText(ctx, "")
+	if errors.Is(err, memory.ErrBusy) {
+		return next, nil
+	}
 	if err != nil {
 		return next, err
 	}
@@ -371,11 +378,14 @@ func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
 	}
 	environmentSet(&next, "source", source)
 	if personEvent(ev) {
-		text, err := k.personText(context.Background(), ev)
-		if err != nil {
+		ctx := context.WithValue(context.Background(), publishedMemoryRead{}, true)
+		text, err := k.personText(ctx, ev)
+		if err != nil && !errors.Is(err, memory.ErrBusy) {
 			return err
 		}
-		environmentSet(&next, "person:"+ev.Sender, text)
+		if err == nil {
+			environmentSet(&next, "person:"+ev.Sender, text)
+		}
 	}
 	_, err = k.appendEnvironment(environmentDelta(prev, next, "", st.MemSnap))
 	return err
@@ -514,4 +524,23 @@ func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Re
 
 	}
 	return fitted, nil
+}
+
+// No second memory snapshot is stored: a busy scope keeps the last valid
+// publication in the effective conversation until its actual commit finishes.
+type publishedMemoryRead struct{}
+
+func (k *Kernel) recallMemory(ctx context.Context, q memory.Query) ([]memory.Fact, error) {
+	if ctx.Value(publishedMemoryRead{}) != nil {
+		if store, ok := k.Memory.(interface {
+			TryRecall(context.Context, memory.Query) ([]memory.Fact, error)
+		}); ok {
+			return store.TryRecall(ctx, q)
+		}
+		if !k.memWriteMu.TryLock() {
+			return nil, memory.ErrBusy
+		}
+		defer k.memWriteMu.Unlock()
+	}
+	return k.Memory.Recall(ctx, q)
 }

@@ -18,7 +18,7 @@ func (k *Kernel) personText(ctx context.Context, ev link.Event) (string, error) 
 	if k.Memory == nil || !personEvent(ev) {
 		return "", nil
 	}
-	facts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: ev.Sender, Tier: memory.TierProfile})
+	facts, err := k.recallMemory(ctx, memory.Query{Scope: memory.ScopePerson, PersonID: ev.Sender, Tier: memory.TierProfile})
 	if err != nil {
 		return "", err
 	}

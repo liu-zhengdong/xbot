@@ -83,6 +83,6 @@ func (k *Kernel) recoverTasks() error {
 	}
 	// Load and report lost shell jobs through their existing wake path.
 	k.attachShellJobs()
-	k.flushShellWake()
+	k.flushToolJobs()
 	return nil
 }

@@ -3,14 +3,15 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
@@ -30,7 +31,7 @@ func (k *Kernel) shellJobs() *tools.Jobs {
 		}
 		j.Forms = k.shellForms
 		j.Now = k.now
-		j.OnDone = k.onShellDone
+		j.OnDone = k.onToolDone
 		if err := j.Load(); err == nil {
 			k.shellMu.Lock()
 			k.shell = j
@@ -254,28 +255,6 @@ func (k *Kernel) vision() (string, bool) {
 	return model, config.SeesImages(model, nil)
 }
 
-func (k *Kernel) onShellDone(job tools.Job) {
-	if job.Status == "" || job.Status == "running" {
-		return
-	}
-	// A live turn hears about the job at its next boundary. Waking now would
-	// be absorbed between steps only after the current tool returns, and the
-	// reminder channel is the path that boundary already uses.
-	if k.turnBusy() {
-		return
-	}
-	if !k.claimShell(job.ID) {
-		return
-	}
-	if err := k.postShellWake(job); err != nil {
-		k.unclaimShell(job.ID)
-		return
-	}
-	if jobs := k.liveShell(); jobs != nil {
-		jobs.MarkNotified(job.ID)
-	}
-}
-
 // shellForms lists every string the job redactor replaces: vault literals and
 // their JSON, URL, and base64 forms, staged secret literals, and held API
 // key values of at least 8 bytes. The writer holds a suffix of pending output
@@ -389,208 +368,11 @@ func vaultFormGen(k *Kernel) uint64 {
 	return 0
 }
 
-// claimShell marks id as delivered for this process. The caller must not also
-// put the same id on the reminder channel.
-func (k *Kernel) claimShell(id string) bool {
-	if id == "" {
-		return false
-	}
-	k.shellMu.Lock()
-	defer k.shellMu.Unlock()
-	if k.shellClaimed == nil {
-		k.shellClaimed = map[string]bool{}
-	}
-	if k.shellClaimed[id] {
-		return false
-	}
-	k.shellClaimed[id] = true
-	return true
-}
-
-func (k *Kernel) liveShell() *tools.Jobs {
-	if k == nil {
-		return nil
-	}
-	k.shellMu.Lock()
-	defer k.shellMu.Unlock()
-	return k.shell
-}
-
-func (k *Kernel) unclaimShell(id string) {
-	if k == nil || id == "" {
-		return
-	}
-	k.shellMu.Lock()
-	defer k.shellMu.Unlock()
-	delete(k.shellClaimed, id)
-}
-
-func (k *Kernel) postShellWake(job tools.Job) error {
-	if k == nil || k.Inbox == nil || job.ID == "" {
-		return nil
-	}
-	return k.Inbox.Post(link.Event{
-		ID:        "shelljob_" + job.ID,
-		Source:    "shell",
-		Type:      "shell_job",
-		Content:   "后台命令 " + job.ID + " 已结束（" + job.Status + "）。输出 " + job.Output + "。用 shell_output 读，不要紧循环轮询。",
-		Sender:    "shell",
-		Time:      k.now(),
-		Untrusted: true,
-	})
-}
-
-// flushShellWake posts an inbox event for a finished job the turn did not
-// already put on the reminder channel. It does not start a background segment.
-func (k *Kernel) flushShellWake() {
-	if k == nil || k.turnBusy() || k.Inbox == nil {
-		return
-	}
-	k.shellMu.Lock()
-	jobs := k.shell
-	k.shellMu.Unlock()
-	if jobs == nil {
-		return
-	}
-	// Only jobs this process finished are woken. Loaded history, including jobs
-	// a previous serve already reported, is not a wake. The claim happens
-	// before the post, under the same lock the reminder path uses, so the two
-	// cannot both fire.
-	var wake []tools.Job
-	k.shellMu.Lock()
-	if k.shellClaimed == nil {
-		k.shellClaimed = map[string]bool{}
-	}
-	for _, job := range jobs.List() {
-		if (!job.Local && job.Status != "lost") || job.Notified || job.Status == "" || job.Status == "running" {
-			continue
-		}
-		if k.shellClaimed[job.ID] {
-			continue
-		}
-		k.shellClaimed[job.ID] = true
-		wake = append(wake, job)
-	}
-	k.shellMu.Unlock()
-	for _, job := range wake {
-		if err := k.postShellWake(job); err != nil {
-			k.unclaimShell(job.ID)
-			continue
-		}
-		jobs.MarkNotified(job.ID)
-	}
-}
-
-func (k *Kernel) turnBusy() bool {
-	if k == nil {
-		return false
-	}
-	k.turnMu.Lock()
-	t := k.turn
-	k.turnMu.Unlock()
-	if turnRunning(t) {
-		return true
-	}
-	k.bgMu.Lock()
-	defer k.bgMu.Unlock()
-	for _, bg := range k.bgs {
-		if turnRunning(bg) {
-			return true
-		}
-	}
-	return false
-}
-
-func turnRunning(t *turn) bool {
-	if t == nil {
-		return false
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return !t.finished && !t.started.IsZero()
-}
-
-func (k *Kernel) shellTrigger() func(time.Time, []Reminder) string {
-	return func(_ time.Time, prev []Reminder) string {
-		return k.shellNotice(prev)
-	}
-}
-
-func (k *Kernel) shellPrev() []Reminder {
-	all, err := k.reminders().log.all()
-	if err != nil {
-		return nil
-	}
-	var prev []Reminder
-	for _, n := range all {
-		if n.Kind == KindShellJob {
-			prev = append(prev, n)
-		}
-	}
-	return prev
-}
-
-// shellNotice is the completion reminder. It claims each job it includes so a
-// second boundary in the same turn does not send it again. Jobs already named
-// in prev were sent by an earlier turn.
-func (k *Kernel) shellNotice(prev []Reminder) string {
-	jobs := k.shellJobs()
-	if jobs == nil {
-		return ""
-	}
-	var seen strings.Builder
-	for _, p := range prev {
-		seen.WriteString(p.Text)
-		seen.WriteByte('\n')
-	}
-	blob := seen.String()
-	k.shellMu.Lock()
-	if k.shellClaimed == nil {
-		k.shellClaimed = map[string]bool{}
-	}
-	var lines []string
-	var mark []string
-	for _, job := range jobs.List() {
-		if job.ID == "" || job.Status == "" || job.Status == "running" {
-			continue
-		}
-		if job.Notified || k.shellClaimed[job.ID] || strings.Contains(blob, job.ID) {
-			if strings.Contains(blob, job.ID) && !job.Notified {
-				k.shellClaimed[job.ID] = true
-				mark = append(mark, job.ID)
-			}
-			continue
-		}
-		if len(lines) >= 8 {
-			break
-		}
-		k.shellClaimed[job.ID] = true
-		mark = append(mark, job.ID)
-		lines = append(lines, shellJobLine(job))
-	}
-	k.shellMu.Unlock()
-	for _, id := range mark {
-		jobs.MarkNotified(id)
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return "<shell_job>\n后台命令已结束。用 shell_output 看输出，不要紧循环轮询。\n" + strings.Join(lines, "\n") + "\n</shell_job>"
-}
-
-func shellJobLine(job tools.Job) string {
-	extra := ""
-	if job.Status == "done" {
-		extra = fmt.Sprintf("，exit %d", job.ExitCode)
-	}
-	return "- " + job.ID + "：" + job.Status + extra + "，输出 " + job.Output
-}
-
 type shellOutputTool struct{ k *Kernel }
 
 func (shellOutputTool) Name() string { return "shell_output" }
 func (shellOutputTool) Description() string {
-	return "Read a background shell job's output. offset is a byte position in the whole stream, not the retained file; the result names next_offset and says when earlier bytes were dropped. When bytes are still buffered because they might begin a secret, the result includes held_bytes. Pass tail to take the last N lines. Do not poll in a tight loop; wait for the completion reminder, then read."
+	return "Read a background tool job's output. offset is a byte position in the whole stream, not the retained file; the result names next_offset and says when earlier bytes were dropped. When bytes are still buffered because they might begin a secret, the result includes held_bytes. Pass tail to take the last N lines. Do not poll in a tight loop; wait for its normal completion message, then read."
 }
 func (shellOutputTool) Parameters() any {
 	return schema(map[string]any{
@@ -620,7 +402,7 @@ type shellStatusTool struct{ k *Kernel }
 
 func (shellStatusTool) Name() string { return "shell_status" }
 func (shellStatusTool) Description() string {
-	return "Report one background shell job, or list them when id is omitted. Status is running, done, cancelled, or lost. lost means this serve process restarted and is not tracking the process anymore. When bytes are still buffered because they might begin a secret, the result includes held_bytes."
+	return "Report one background tool job, or list them when id is omitted. Status is running, done, failed, cancelled, or lost. lost means this serve process restarted and is not tracking the process anymore. When bytes are still buffered because they might begin a secret, the result includes held_bytes."
 }
 func (shellStatusTool) Parameters() any {
 	return schema(map[string]any{
@@ -645,7 +427,7 @@ func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, e
 	if id == "" {
 		list := jobs.List()
 		if len(list) == 0 {
-			return "no background shell jobs", nil
+			return "no background tool jobs", nil
 		}
 		var b strings.Builder
 		for i, job := range list {
@@ -688,7 +470,7 @@ type shellCancelTool struct{ k *Kernel }
 
 func (shellCancelTool) Name() string { return "shell_cancel" }
 func (shellCancelTool) Description() string {
-	return "Stop a background shell job by killing its process group. Use this when the command should not keep running."
+	return "Request cancellation of a background tool job. Shell jobs kill their process group; other tools stay running until they return."
 }
 func (shellCancelTool) Parameters() any {
 	return schema(map[string]any{
@@ -716,7 +498,17 @@ func (t shellCancelTool) Run(_ context.Context, args json.RawMessage) (string, e
 	if jobs == nil {
 		return "", errNoShellJobs
 	}
-	return jobs.Cancel(strings.TrimSpace(in.ID))
+	id := strings.TrimSpace(in.ID)
+	out, err := jobs.Cancel(id)
+	if errors.Is(err, tools.ErrForeignJob) {
+		if remote, ok := t.k.execSnapshot().(*exec.Remote); ok {
+			err = remote.CancelToolJob(context.Background(), jobs.Dir, id)
+			if err == nil {
+				out = "cancellation requested " + id
+			}
+		}
+	}
+	return out, err
 }
 
 var errNoShellJobs = errShell("shell: background jobs are not available")

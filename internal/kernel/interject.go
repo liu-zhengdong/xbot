@@ -8,6 +8,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 // Owner words go straight into the running turn (ADR 0017). A main-line turn
@@ -54,13 +55,14 @@ func botKey(b *bot.Bot) string {
 
 // interjectState is the part of a turn that takes owner messages.
 type interjectState struct {
-	mu     sync.Mutex
-	open   bool
-	queue  []provider.Message
-	stop   context.CancelFunc // the model call in flight, or nil
-	sink   *Sink
-	first  *Sink // the Handle caller's
-	handed bool  // the Handle caller's output was taken over
+	mu       sync.Mutex
+	open     bool
+	queue    []provider.Message
+	stop     context.CancelFunc // the model call in flight, or nil
+	toolWait chan struct{}      // current batch wait signal, never a call queue
+	sink     *Sink
+	first    *Sink // the Handle caller's
+	handed   bool  // the Handle caller's output was taken over
 	// park is closed when an owner message arrives, so a confirmation card
 	// being waited on parks (park.go). parked says it is closed.
 	park   chan struct{}
@@ -158,6 +160,10 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 		t.inter.handed = true
 	}
 	t.inter.parkAllLocked()
+	if t.inter.toolWait != nil {
+		close(t.inter.toolWait)
+		t.inter.toolWait = nil
+	}
 	stop := t.inter.stop
 	t.inter.mu.Unlock()
 	if prev != nil && prev.OnHandoff != nil {
@@ -204,6 +210,24 @@ func (t *turn) preempt(stop context.CancelFunc) func() {
 	return func() {
 		t.inter.mu.Lock()
 		t.inter.stop = nil
+		t.inter.mu.Unlock()
+	}
+}
+
+func (t *turn) toolBatch(ctx context.Context) (context.Context, func()) {
+	t.inter.mu.Lock()
+	signal := make(chan struct{})
+	if len(t.inter.queue) > 0 {
+		close(signal)
+	} else {
+		t.inter.toolWait = signal
+	}
+	t.inter.mu.Unlock()
+	return tools.WithWaitSignal(ctx, signal), func() {
+		t.inter.mu.Lock()
+		if t.inter.toolWait == signal {
+			t.inter.toolWait = nil
+		}
 		t.inter.mu.Unlock()
 	}
 }

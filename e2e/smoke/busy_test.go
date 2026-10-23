@@ -20,12 +20,9 @@ import (
 	"xbot/internal/provider"
 )
 
-// M2 fixes admission, queue acknowledgements and context lists. Only the
-// explicitly deferred ADR0017 slow-tool latency remains non-fatal.
-var baselineGaps = map[string]string{
-	"s6/latency": "ADR0017 waits for a running read-only tool; baseline only",
-	"s6/visible": "ADR0017 waits for a running read-only tool; baseline only",
-}
+// C1 gives running tools the same early background handoff; all six
+// scenarios now use the ordinary latency and visibility gates.
+var baselineGaps = map[string]string{}
 
 type busyMeasure struct {
 	Scenario        string    `json:"scenario"`
