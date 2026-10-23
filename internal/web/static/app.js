@@ -2042,7 +2042,9 @@
     };
     send.addEventListener("click", submit);
     field.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") { ev.preventDefault(); submit(); }
+      if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
+      ev.preventDefault();
+      submit();
     });
     field.addEventListener("input", () => other.classList.toggle("typing", !!field.value.trim()));
     other.append(optionBadge("", true), field, send);
@@ -6757,10 +6759,9 @@
   });
 
   input.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !ev.shiftKey) {
-      ev.preventDefault();
-      composer.requestSubmit();
-    }
+    if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;
+    ev.preventDefault();
+    composer.requestSubmit();
   });
 
   input.addEventListener("input", () => {
