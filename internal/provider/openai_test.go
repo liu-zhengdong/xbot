@@ -26,13 +26,13 @@ func TestDecodeStreamTextAndSplitToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "Hello" || strings.Join(deltas, "") != "Hello" {
-		t.Fatalf("content %q deltas %v", msg.Content, deltas)
+	if msg.Text() != "Hello" || strings.Join(deltas, "") != "Hello" {
+		t.Fatalf("content %q deltas %v", msg.Text(), deltas)
 	}
-	if len(msg.ToolCalls) != 1 {
-		t.Fatalf("calls %+v", msg.ToolCalls)
+	if len(msg.Calls()) != 1 {
+		t.Fatalf("calls %+v", msg.Calls())
 	}
-	tc := msg.ToolCalls[0]
+	tc := msg.Calls()[0]
 	if tc.ID != "call_1" || tc.Function.Name != "shell" || tc.Function.Arguments != `{"command":"ls"}` {
 		t.Fatalf("%+v", tc)
 	}
@@ -70,13 +70,13 @@ func TestChatHTTP(t *testing.T) {
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL, APIKey: "secret", Model: "mock", HTTPClient: srv.Client()}
 	msg, err := c.Chat(context.Background(), Request{
-		Messages: []Message{{Role: RoleUser, Content: "ping"}},
+		Messages: []Message{{Role: RoleUser, Content: TextContent("ping")}},
 		Tools:    []ToolDef{{Name: "shell", Description: "run", Parameters: map[string]any{"type": "object"}}},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "pong" || !sawAuth || !sawStream || !sawTool {
+	if msg.Text() != "pong" || !sawAuth || !sawStream || !sawTool {
 		t.Fatalf("msg=%+v auth=%v stream=%v tool=%v", msg, sawAuth, sawStream, sawTool)
 	}
 }
@@ -118,14 +118,14 @@ func TestChatRetriesEOFAndServerErrors(t *testing.T) {
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client(), retryWait: time.Millisecond}
 	var deltas []string
-	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) {
+	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, func(s string) {
 		deltas = append(deltas, s)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "pong" || strings.Join(deltas, "") != "pong" || n != 3 {
-		t.Fatalf("msg %q deltas %v calls %d", msg.Content, deltas, n)
+	if msg.Text() != "pong" || strings.Join(deltas, "") != "pong" || n != 3 {
+		t.Fatalf("msg %q deltas %v calls %d", msg.Text(), deltas, n)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestChatDoesNotRetryClientErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client(), retryWait: time.Millisecond}
-	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil)
+	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, nil)
 	if err == nil || !strings.Contains(err.Error(), "401") || n != 1 {
 		t.Fatalf("err=%v calls=%d", err, n)
 	}
@@ -149,7 +149,7 @@ func TestChatHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL, APIKey: "x", Model: "m", HTTPClient: srv.Client()}
-	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil)
+	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, nil)
 	if err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatal(err)
 	}
@@ -166,8 +166,8 @@ func TestDecodeStreamUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "ok" {
-		t.Fatalf("content %q", msg.Content)
+	if msg.Text() != "ok" {
+		t.Fatalf("content %q", msg.Text())
 	}
 	u := msg.Usage
 	if !u.Reported || u.Estimated || u.PromptTokens != 800 || u.CompletionTokens != 12 || u.CachedTokens != 40 {

@@ -16,18 +16,14 @@ import (
 )
 
 func assistantCall(id, text, name, args string) provider.Message {
-	return provider.Message{
-		Role:    provider.RoleAssistant,
-		Content: text,
-		ToolCalls: []provider.ToolCall{{
-			ID: id, Type: "function",
-			Function: provider.FunctionCall{Name: name, Arguments: args},
-		}},
-	}
+	return provider.Message{Role: provider.RoleAssistant, Content: append(provider.TextContent(text), provider.ToolContent([]provider.ToolCall{{
+		ID: id, Type: "function",
+		Function: provider.FunctionCall{Name: name, Arguments: args},
+	}})...)}
 }
 
 func toolResult(id, name, content string) provider.Message {
-	return provider.Message{Role: provider.RoleTool, ToolCallID: id, Name: name, Content: content}
+	return provider.Message{Role: provider.RoleTool, Name: name, Content: provider.ToolResult(id, content)}
 }
 
 func TestBreakerTripsTwice(t *testing.T) {
@@ -150,7 +146,7 @@ func TestBreakerStopWritesTrace(t *testing.T) {
 		assistantCall("c1", "same words", "echo", `{"n":"1"}`),
 		assistantCall("c2", "same words", "echo", `{"n":"2"}`),
 		assistantCall("c3", "same words", "echo", `{"n":"3"}`),
-		{Role: provider.RoleAssistant, Content: "I stopped because the reply repeated."},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("I stopped because the reply repeated.")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
@@ -166,7 +162,7 @@ func TestBreakerStopWritesTrace(t *testing.T) {
 	// The reminder is attached before the third model call.
 	saw := false
 	for _, m := range p.reqs[2].Messages {
-		if strings.Contains(m.Content, "<system-reminder>") && strings.Contains(m.Content, StopRepeatedOutput) {
+		if strings.Contains(m.Text(), "<system-reminder>") && strings.Contains(m.Text(), StopRepeatedOutput) {
 			saw = true
 		}
 	}
@@ -179,7 +175,7 @@ func TestBreakerStopWritesTrace(t *testing.T) {
 	}
 	var note bool
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<stop_reason>"+StopRepeatedOutput+"</stop_reason>") {
+		if strings.Contains(e.Message.Text(), "<stop_reason>"+StopRepeatedOutput+"</stop_reason>") {
 			note = true
 		}
 	}

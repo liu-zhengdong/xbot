@@ -53,8 +53,8 @@ func forkKernel(t *testing.T) (*Kernel, *gateTool, *inbox.Inbox) {
 	}
 	g := &gateTool{box: box, release: make(chan struct{})}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, Content: "后台做完了"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("后台做完了")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -109,7 +109,7 @@ func TestOwnerMessageForksRunningTurn(t *testing.T) {
 			sawStart = sawStart || e.Mark.Kind == bot.ForkKindStart
 			sawEnd = sawEnd || e.Mark.Kind == bot.ForkKindEnd
 		}
-		if e.Branch == id && e.Message.Content == "后台做完了" {
+		if e.Branch == id && e.Message.Text() == "后台做完了" {
 			sawTagged = true
 		}
 	}
@@ -137,7 +137,7 @@ func TestForkRespectsCap(t *testing.T) {
 
 func TestForegroundNoteListsBackgrounds(t *testing.T) {
 	k, _, box := forkKernel(t)
-	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "好"}}}
+	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好")}}}
 	k.bgs = map[string]*turn{
 		"bg_a": {branch: "bg_a", task: "整理日志", replies: 3, lastTool: "shell"},
 		"bg_b": {branch: "bg_b", task: "写报告", replies: 1},
@@ -155,8 +155,8 @@ func TestForegroundNoteListsBackgrounds(t *testing.T) {
 	}
 	var note string
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<environment_update>") {
-			note = e.Message.Content
+		if strings.Contains(e.Message.Text(), "<environment_update>") {
+			note = e.Message.Text()
 		}
 	}
 	if !strings.Contains(note, `"task":"整理日志","status":"running"`) || !strings.Contains(note, `"task":"写报告","status":"running"`) {

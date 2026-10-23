@@ -116,11 +116,11 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 func (f *turnFit) omittedResult(m provider.Message, seq int) provider.Message {
 	n := compact.EstimateMessage(m)
 	if seq > 0 {
-		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. Call expand with from=%d to=%d to read it as it was; do not run the call again for that.]", n, seq, seq, seq)
+		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. Call expand with from=%d to=%d to read it as it was; do not run the call again for that.]", n, seq, seq, seq))
 	} else if f.noSeq != "" {
-		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. %s]", n, f.noSeq)
+		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. %s]", n, f.noSeq))
 	} else {
-		m.Content = fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: find it with recall_history, then expand.]", n)
+		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: find it with recall_history, then expand.]", n))
 	}
 	m.Images = nil
 	return m
@@ -131,11 +131,7 @@ func turnSummary(text string, from, to int) provider.Message {
 	if from > 0 && to >= from {
 		where = fmt.Sprintf(" from=\"%d\" to=\"%d\"", from, to)
 	}
-	return provider.Message{
-		Role:     provider.RoleUser,
-		Internal: true,
-		Content:  "<turn_progress" + where + ">\nThe earlier steps of this turn were summarized to keep the request inside the context window. The transcript keeps them whole: expand the range to read them. The steps after this note are verbatim.\n\n" + text + "\n</turn_progress>",
-	}
+	return provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent("<turn_progress" + where + ">\nThe earlier steps of this turn were summarized to keep the request inside the context window. The transcript keeps them whole: expand the range to read them. The steps after this note are verbatim.\n\n" + text + "\n</turn_progress>")}
 }
 
 // latestStep is the index of the newest assistant message at or after from:
@@ -183,7 +179,7 @@ func (k *Kernel) lineSeq(f *turnFit, msgs []provider.Message, i int) int {
 	if err != nil || len(got) != 1 {
 		return 0
 	}
-	if e := got[0].Message; e.Role != msgs[i].Role || e.ToolCallID != msgs[i].ToolCallID {
+	if e := got[0].Message; e.Role != msgs[i].Role || e.CallID() != msgs[i].CallID() {
 		return 0
 	}
 	return seq
@@ -239,8 +235,9 @@ func (k *Kernel) foldFacts(ctx context.Context, prior string, msgs []provider.Me
 		return nil
 	}
 	for _, msg := range msgs {
-		text := msg.Content
-		for _, tc := range msg.ToolCalls {
+		text := msg.PortableText()
+		split := false
+		for _, tc := range msg.Calls() {
 			text += "\n tool " + tc.Function.Name + " " + tc.Function.Arguments
 		}
 		for len(text) > partLimit {
@@ -248,23 +245,24 @@ func (k *Kernel) foldFacts(ctx context.Context, prior string, msgs []provider.Me
 			for n > 0 && !utf8.RuneStart(text[n]) {
 				n--
 			}
-			part := provider.Message{Role: msg.Role, Content: text[:n]}
-			if size+len(part.Content) > partLimit {
+			part := provider.Message{Role: msg.Role, Content: provider.TextContent(text[:n])}
+			if size+len(part.Text()) > partLimit {
 				if err := flush(); err != nil {
 					return "", err
 				}
 			}
 			batch = append(batch, part)
-			size += len(part.Content) + 64
+			size += len(part.Text()) + 64
 			text = text[n:]
 			if err := flush(); err != nil {
 				return "", err
 			}
-			msg.ToolCalls = nil
+			split = true
 		}
-		// Keep the original structured message when it did not require splitting.
-		if msg.ToolCalls == nil {
-			msg.Content = text
+		// Batches are portable text once split; keeping opaque parts here
+		// would send their full summaries again alongside the remainder.
+		if split {
+			msg.Content = provider.TextContent(text)
 		}
 		n := len(text) + 64
 		if size+n > partLimit {

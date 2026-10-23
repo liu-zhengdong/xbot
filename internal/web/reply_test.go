@@ -26,12 +26,12 @@ type replyProvider struct {
 
 func (p *replyProvider) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	for _, m := range req.Messages {
-		p.seen += m.Content + "\n"
+		p.seen += m.Text() + "\n"
 	}
 	if onDelta != nil && p.content != "" {
 		onDelta(p.content)
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: p.content}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(p.content)}, nil
 }
 
 func TestReplyToRoundTrip(t *testing.T) {
@@ -50,7 +50,7 @@ func TestReplyToRoundTrip(t *testing.T) {
 	}
 	if err := b.Append(bot.Entry{
 		Time:    time.Unix(1, 0).UTC(),
-		Message: provider.Message{Role: provider.RoleAssistant, Content: "EARLIER-ANSWER"},
+		Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("EARLIER-ANSWER")},
 	}); err != nil {
 		t.Fatal(err)
 	}

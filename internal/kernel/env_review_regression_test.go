@@ -39,10 +39,10 @@ func TestEnvironmentReceiptSurvivesBlobAndExternalUndo(t *testing.T) {
 	if len(out) <= 4096 {
 		t.Fatal("test did not spill a large result")
 	}
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{call}}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, Name: "write_file", ToolCallID: call.ID, Content: out}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, Name: "write_file", Content: provider.ToolResult(call.ID, out)}}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := k.Bot.Entries()
@@ -90,8 +90,8 @@ func TestEnvironmentReceiptSurvivesAttachedReminder(t *testing.T) {
 	p := environmentMessage{Memory: &memoryChange{Add: []string{"[Bot] ORIGINAL_WRITE"}}}
 	receipt := encodeEnvironment(p)
 	messages := []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "write", Function: provider.FunctionCall{Name: "write_file"}}}},
-		{Role: provider.RoleTool, Name: "write_file", ToolCallID: "write", Content: "wrote\n\n" + receipt},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "write", Function: provider.FunctionCall{Name: "write_file"}}})},
+		{Role: provider.RoleTool, Name: "write_file", Content: provider.ToolResult("write", "wrote\n\n"+receipt)},
 	}
 	messages = agent.AttachReminder(messages, "Keep the current todo in mind.")
 	seen := replayEnvironment(messages, "")

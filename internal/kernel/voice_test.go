@@ -19,21 +19,21 @@ func TestVoiceAppliesToExistingCustomBot(t *testing.T) {
 	if err := b.WriteRules("Saved custom rules.\n" + legacyVerifyRule); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "好。"}, {Role: provider.RoleAssistant, Content: "好。"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("好。")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	for _, text := range []string{"hi", "again"} {
 		if err := k.Handle(context.Background(), link.TerminalEvent("u1", text, time.Now())); err != nil {
 			t.Fatal(err)
 		}
 	}
-	first := p.reqs[0].Messages[0].Content
+	first := p.reqs[0].Messages[0].Text()
 	if !strings.Contains(first, VoiceRule) || !strings.Contains(first, VerifyRule) || strings.Contains(first, legacyVerifyRule) || !strings.Contains(first, "A custom expert.") {
 		t.Fatal(first)
 	}
 	if len(strings.Split(VoiceRule, "\n")) > 8 {
 		t.Fatal("voice rule grew beyond 8 lines")
 	}
-	if p.reqs[1].Messages[0].Content != first {
+	if p.reqs[1].Messages[0].Text() != first {
 		t.Fatal("voice rules changed the stable prefix between turns")
 	}
 }
@@ -56,7 +56,7 @@ func TestUnboundDeepSeekUsesActualOverlay(t *testing.T) {
 
 func TestSubagentReportsUseNormalConversation(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "结果到了。"}, {Role: provider.RoleAssistant, Content: "记得这个结果。"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("结果到了。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("记得这个结果。")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "A完成，验收值731010", "sa_a", time.Now())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -71,7 +71,7 @@ func TestSubagentReportsUseNormalConversation(t *testing.T) {
 		}
 		var all strings.Builder
 		for _, msg := range req.Messages {
-			all.WriteString(msg.Content)
+			all.WriteString(msg.Text())
 		}
 		if !strings.Contains(all.String(), ev.Content) || strings.Contains(all.String(), "<reported_result>") || strings.Contains(all.String(), "<subagent_report>") {
 			t.Fatal(all.String())

@@ -263,9 +263,9 @@ func splitLayers(msgs []provider.Message) ([]ContextLayer, *ContextDetail) {
 		kind := classifyMessage(m, i)
 		est := compact.EstimateMessage(m)
 		if kind == kindBlock {
-			from, to := summaryRange(m.Content)
+			from, to := summaryRange(m.Text())
 			layers = append(layers, ContextLayer{Key: keyBlock, Label: "摘要块", Tokens: est, From: from, To: to})
-			detail.Blocks = append(detail.Blocks, ContextBlock{From: from, To: to, Tokens: est, Preview: clipText(blockBody(m.Content), contextPreviewRunes)})
+			detail.Blocks = append(detail.Blocks, ContextBlock{From: from, To: to, Tokens: est, Preview: clipText(blockBody(m.Text()), contextPreviewRunes)})
 			continue
 		}
 		if kind == kindHist && start >= 0 && i >= start {
@@ -324,29 +324,29 @@ func turnStart(msgs []provider.Message) int {
 // panel shows a call and what came back as one row.
 func addStep(steps []ContextStep, callAt map[string]int, m provider.Message, est int) []ContextStep {
 	switch {
-	case m.Role == provider.RoleAssistant && len(m.ToolCalls) > 0:
-		share := est / len(m.ToolCalls)
-		for _, tc := range m.ToolCalls {
+	case m.Role == provider.RoleAssistant && len(m.Calls()) > 0:
+		share := est / len(m.Calls())
+		for _, tc := range m.Calls() {
 			callAt[tc.ID] = len(steps)
 			steps = append(steps, ContextStep{Tool: tc.Function.Name, What: whatOf(tc.Function.Arguments), Tokens: share})
 		}
-		if text := strings.TrimSpace(m.Content); text != "" {
+		if text := strings.TrimSpace(m.Text()); text != "" {
 			steps = append(steps, ContextStep{What: firstLine(text), Preview: clipText(text, contextPreviewRunes)})
 		}
 	case m.Role == provider.RoleTool:
-		i, ok := callAt[m.ToolCallID]
+		i, ok := callAt[m.CallID()]
 		if !ok {
 			steps = append(steps, ContextStep{Tool: m.Name})
 			i = len(steps) - 1
 		}
 		steps[i].Tokens += est
-		steps[i].Fail = failed(m.Content)
-		steps[i].Preview = clipText(m.Content, contextPreviewRunes)
+		steps[i].Fail = failed(m.Text())
+		steps[i].Preview = clipText(m.Text(), contextPreviewRunes)
 		if steps[i].What == "" {
-			steps[i].What = firstLine(m.Content)
+			steps[i].What = firstLine(m.Text())
 		}
 	default:
-		text := strings.TrimSpace(m.Content)
+		text := strings.TrimSpace(m.Text())
 		steps = append(steps, ContextStep{What: firstLine(text), Tokens: est, Preview: clipText(text, contextPreviewRunes)})
 	}
 	return steps
@@ -399,7 +399,7 @@ func askOf(m provider.Message) string {
 	if m.Role != provider.RoleUser {
 		return ""
 	}
-	return firstLine(m.Content)
+	return firstLine(m.Text())
 }
 
 // blockBody drops the summary wrapper's opening tag, so the preview starts at
@@ -496,11 +496,11 @@ func classifyMessage(m provider.Message, i int) string {
 		return kindSys
 	}
 	switch {
-	case strings.HasPrefix(m.Content, "<summary from="):
+	case strings.HasPrefix(m.Text(), "<summary from="):
 		return kindBlock
-	case strings.HasPrefix(m.Content, "<environment_"):
+	case strings.HasPrefix(m.Text(), "<environment_"):
 		return kindEnv
-	case strings.HasPrefix(m.Content, "<memory>"):
+	case strings.HasPrefix(m.Text(), "<memory>"):
 		return kindMemory
 	}
 	return kindHist

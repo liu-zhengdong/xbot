@@ -19,12 +19,12 @@ func TestExportMarkdownAndJSONL(t *testing.T) {
 	}
 	when := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	rows := []Entry{
-		{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: "hello seq one"}},
-		{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello seq one")}},
+		{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
-		}}}},
-		{Time: when.Add(2 * time.Minute), Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: "TOOL-RESULT"}},
-		{Time: when.Add(3 * time.Minute), Message: provider.Message{Role: provider.RoleAssistant, Content: "done seq four"}},
+		}})}},
+		{Time: when.Add(2 * time.Minute), Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "TOOL-RESULT")}},
+		{Time: when.Add(3 * time.Minute), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done seq four")}},
 	}
 	for _, e := range rows {
 		if err := b.Append(e); err != nil {
@@ -88,7 +88,7 @@ func TestExportMarkdownAndJSONL(t *testing.T) {
 		if err := json.Unmarshal(line, &entry); err != nil {
 			t.Fatal(err)
 		}
-		if entry.Message.Content != row.Message.Content || entry.Message.Role != row.Message.Role {
+		if entry.Message.Text() != row.Message.Text() || entry.Message.Role != row.Message.Role {
 			t.Fatalf("reimport %+v vs %+v", entry.Message, row.Message)
 		}
 		seqs[row.Seq] = row.Message
@@ -99,10 +99,10 @@ func TestExportMarkdownAndJSONL(t *testing.T) {
 	if !sawSummary {
 		t.Fatal("jsonl summary missing")
 	}
-	if len(seqs) != 4 || seqs[1].Content != "hello seq one" || seqs[4].Content != "done seq four" {
+	if len(seqs) != 4 || seqs[1].Text() != "hello seq one" || seqs[4].Text() != "done seq four" {
 		t.Fatalf("seqs %+v", seqs)
 	}
-	if seqs[2].ToolCalls == nil || seqs[2].ToolCalls[0].Function.Name != "shell" || seqs[3].Content != "TOOL-RESULT" {
+	if seqs[2].Calls() == nil || seqs[2].Calls()[0].Function.Name != "shell" || seqs[3].Text() != "TOOL-RESULT" {
 		t.Fatalf("tool rows %+v %+v", seqs[2], seqs[3])
 	}
 	quiet, err := ExportTranscript(b, TranscriptExport{Format: "jsonl"})
@@ -120,7 +120,7 @@ func TestExportMarkdownAndJSONL(t *testing.T) {
 			continue
 		}
 		quietSeq[row.Seq] = true
-		if len(row.Message.ToolCalls) != 0 || row.Message.Role == provider.RoleTool {
+		if len(row.Message.Calls()) != 0 || row.Message.Role == provider.RoleTool {
 			t.Fatalf("tools kept %+v", row)
 		}
 	}
@@ -138,7 +138,7 @@ func TestExportRedacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Time: time.Unix(10, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: "see SECRET-VALUE"}}); err != nil {
+	if err := b.Append(Entry{Time: time.Unix(10, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("see SECRET-VALUE")}}); err != nil {
 		t.Fatal(err)
 	}
 	redact := func(s string) string { return strings.ReplaceAll(s, "SECRET-VALUE", "[redacted]") }

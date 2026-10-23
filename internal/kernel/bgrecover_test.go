@@ -117,16 +117,16 @@ func forkEndCount(t *testing.T, b *bot.Bot, id string) int {
 func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	if err := b.Append(bot.Entry{EventID: "u0", Time: time.Unix(1, 0).UTC(),
-		Message: provider.Message{Role: provider.RoleUser, Content: "做个长任务"}}); err != nil {
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("做个长任务")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendFork("bg_7", 1, "整理日志"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: "bg_7", Message: provider.Message{Role: provider.RoleAssistant, Content: "第一步"}}); err != nil {
+	if err := b.Append(bot.Entry{Branch: "bg_7", Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第一步")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: "bg_7", Message: provider.Message{Role: provider.RoleAssistant, Content: "第二步"}}); err != nil {
+	if err := b.Append(bot.Entry{Branch: "bg_7", Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第二步")}}); err != nil {
 		t.Fatal(err)
 	}
 	writeRunningMeta(t, b, "bg_7", "整理日志", 9)
@@ -135,7 +135,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "收到"}, {Role: provider.RoleAssistant, Content: "任务中断已报告"}}},
+	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("收到")}, {Role: provider.RoleAssistant, Content: provider.TextContent("任务中断已报告")}}},
 		Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -183,7 +183,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k2 := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "好"}}},
+	k2 := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好")}}},
 		Inbox: box2, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev2 := link.TerminalEvent("u1", "再问", time.Unix(11, 0).UTC())
 	if err := k2.Handle(context.Background(), ev2); err != nil {
@@ -202,10 +202,10 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	if err := b.Append(bot.Entry{EventID: "u0", Time: time.Unix(1, 0).UTC(),
-		Message: provider.Message{Role: provider.RoleUser, Content: "做个长任务"}}); err != nil {
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("做个长任务")}}); err != nil {
 		t.Fatal(err)
 	}
-	callRow := bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: call("c1")}}
+	callRow := bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent(call("c1"))}}
 	if err := b.Append(callRow); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "收到"}, {Role: provider.RoleAssistant, Content: "任务中断已报告"}}},
+	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("收到")}, {Role: provider.RoleAssistant, Content: provider.TextContent("任务中断已报告")}}},
 		Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -230,13 +230,13 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 	}
 	toolSeq, endSeq := 0, 0
 	for i, e := range entries {
-		if e.Message.Role == provider.RoleTool && e.Message.ToolCallID == "c1" {
+		if e.Message.Role == provider.RoleTool && e.Message.CallID() == "c1" {
 			toolSeq = i + 1
 			if e.Branch != "bg_7" {
 				t.Fatalf("placeholder branch %q", e.Branch)
 			}
-			if !strings.Contains(e.Message.Content, "interrupted") {
-				t.Fatalf("placeholder content %q", e.Message.Content)
+			if !strings.Contains(e.Message.Text(), "interrupted") {
+				t.Fatalf("placeholder content %q", e.Message.Text())
 			}
 		}
 		if e.Mark != nil && e.Mark.Kind == bot.ForkKindEnd && e.Mark.Branch == "bg_7" {
@@ -253,13 +253,13 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 func TestRecoverSkipsLiveBackground(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	if err := b.Append(bot.Entry{EventID: "u0", Time: time.Unix(1, 0).UTC(),
-		Message: provider.Message{Role: provider.RoleUser, Content: "做个长任务"}}); err != nil {
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("做个长任务")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendFork("bg_live", 1, "正在跑"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: "bg_live", Message: provider.Message{Role: provider.RoleAssistant, Content: "一步"}}); err != nil {
+	if err := b.Append(bot.Entry{Branch: "bg_live", Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("一步")}}); err != nil {
 		t.Fatal(err)
 	}
 	box, err := inbox.Open(b.InboxPath())
@@ -312,8 +312,8 @@ func TestCancelBackgroundWritesForkEnd(t *testing.T) {
 	}
 	h := &holdTool{started: make(chan struct{})}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "hold", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, Content: "后台完成"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "hold", Arguments: "{}"}}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("后台完成")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}, holdLink{h}}, AllowFork: true}

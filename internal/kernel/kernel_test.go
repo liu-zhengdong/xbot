@@ -45,8 +45,8 @@ func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(st
 	}
 	m := s.resps[s.i]
 	s.i++
-	if onDelta != nil && m.Content != "" {
-		onDelta(m.Content)
+	if onDelta != nil && m.Text() != "" {
+		onDelta(m.Text())
 	}
 	return m, nil
 }
@@ -66,8 +66,8 @@ func testBot(t *testing.T, links ...string) *bot.Bot {
 func TestHandleContinuesOneTranscript(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev1 := link.TerminalEvent("u1", "hello", time.Unix(10, 0).UTC())
@@ -86,8 +86,8 @@ func TestHandleContinuesOneTranscript(t *testing.T) {
 	for _, e := range entries {
 		if e.EventID == ev1.ID || e.EventID == ev2.ID {
 			users++
-			if !strings.Contains(e.Message.Content, "<untrusted_event") {
-				t.Fatalf("event not wrapped: %s", e.Message.Content)
+			if !strings.Contains(e.Message.Text(), "<untrusted_event") {
+				t.Fatalf("event not wrapped: %s", e.Message.Text())
 			}
 		}
 	}
@@ -98,8 +98,8 @@ func TestHandleContinuesOneTranscript(t *testing.T) {
 		t.Fatalf("provider calls %d", len(p.reqs))
 	}
 	second := p.reqs[1].Messages
-	if !strings.Contains(second[0].Content, "Be brief.") || !strings.Contains(second[0].Content, UntrustedRule) {
-		t.Fatalf("system: %s", second[0].Content)
+	if !strings.Contains(second[0].Text(), "Be brief.") || !strings.Contains(second[0].Text(), UntrustedRule) {
+		t.Fatalf("system: %s", second[0].Text())
 	}
 	joined := messagesText(second)
 	if !strings.Contains(joined, "hello") || !strings.Contains(joined, "again") || !strings.Contains(joined, "one") {
@@ -109,7 +109,7 @@ func TestHandleContinuesOneTranscript(t *testing.T) {
 
 func TestHandleReplayIsIdempotent(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "hello"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("hello")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
 	ev := link.TerminalEvent("u1", "hi", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -146,19 +146,16 @@ func TestHandleRepairsInterruptedTool(t *testing.T) {
 	ev := link.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC())
 	if err := b.Append(bot.Entry{
 		Time: ev.Time, EventID: ev.ID,
-		Message: provider.Message{Role: provider.RoleUser, Content: link.Wrap(ev)},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Wrap(ev))},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Message: provider.Message{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
-		}},
-	}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
+	}})}}); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "continued"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("continued")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
@@ -173,10 +170,10 @@ func TestHandleRepairsInterruptedTool(t *testing.T) {
 		if e.EventID == ev.ID {
 			users++
 		}
-		if e.Message.Content == interrupted {
+		if e.Message.Text() == interrupted {
 			sawInterrupt = true
 		}
-		if e.Message.Content == "continued" {
+		if e.Message.Text() == "continued" {
 			sawFinal = true
 		}
 	}
@@ -192,9 +189,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		if err := b.Append(bot.Entry{Message: provider.Message{
-			Role: provider.RoleUser, Content: strings.Repeat("OLD", 800),
-		}}); err != nil {
+		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(strings.Repeat("OLD", 800))}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -202,7 +197,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	c := &recCompactor{}
 	k := &Kernel{
 		Bot: b, Provider: p, Compactor: c,
@@ -213,7 +208,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if c.calls != 1 || !strings.Contains(c.got[0].Content, "OLD") {
+	if c.calls != 1 || !strings.Contains(c.got[0].Text(), "OLD") {
 		t.Fatalf("compactor calls=%d", c.calls)
 	}
 	after, err := b.ConcatRaw()
@@ -230,16 +225,16 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 	if len(st.Blocks) == 0 || st.Blocks[0].Text != "SUM" {
 		t.Fatalf("blocks %+v", st.Blocks)
 	}
-	sys := p.reqs[0].Messages[0].Content
+	sys := p.reqs[0].Messages[0].Text()
 	if strings.Contains(sys, "SUM") || strings.Contains(sys, "OLDOLD") {
 		t.Fatalf("stable prefix should not hold the summary: %s", sys)
 	}
 	var sawSum bool
 	for _, m := range p.reqs[0].Messages[1:] {
-		if strings.Contains(m.Content, "SUM") {
+		if strings.Contains(m.Text(), "SUM") {
 			sawSum = true
 		}
-		if strings.Contains(m.Content, "OLDOLD") {
+		if strings.Contains(m.Text(), "OLDOLD") {
 			t.Fatal("old turns were sent verbatim")
 		}
 	}
@@ -259,7 +254,7 @@ func TestMemorySeam(t *testing.T) {
 		{Key: "secret", Kind: memory.KindAttribute, Scope: memory.ScopeBot, BotName: "other", Text: "hidden"},
 		{Key: "lang", Kind: memory.KindAttribute, Scope: memory.ScopeBot, BotName: "ada", Text: "zh"},
 	}}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2}
 	ev := link.TerminalEvent("u1", "hi", time.Unix(1, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -275,7 +270,7 @@ func TestMemorySeam(t *testing.T) {
 	if scopes[memory.ScopePerson].PersonID != "u1" || scopes[memory.ScopeBot].BotName != "ada" {
 		t.Fatalf("queries %+v", store.qs)
 	}
-	sys := p.reqs[0].Messages[0].Content
+	sys := p.reqs[0].Messages[0].Text()
 	joined := messagesText(p.reqs[0].Messages)
 	if strings.Contains(sys, "Lisbon") || strings.Contains(sys, "sender:") {
 		t.Fatalf("stable prefix held volatile context: %s", sys)
@@ -283,7 +278,7 @@ func TestMemorySeam(t *testing.T) {
 	if !strings.Contains(joined, "Lisbon") || strings.Contains(joined, "city: old") {
 		t.Fatalf("person fact: %s", joined)
 	}
-	if !strings.Contains(p.reqs[0].Messages[1].Content, "terse") || strings.Contains(p.reqs[0].Messages[1].Content, "emoji") {
+	if !strings.Contains(p.reqs[0].Messages[1].Text(), "terse") || strings.Contains(p.reqs[0].Messages[1].Text(), "emoji") {
 		t.Fatalf("work fact: %s", joined)
 	}
 	if strings.Contains(joined, "hidden") || !strings.Contains(joined, "zh") {
@@ -299,10 +294,10 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	path := filepath.Join(dir, "note.txt")
 	args, _ := json.Marshal(map[string]string{"path": path, "content": "hi"})
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "write_file", Arguments: string(args)},
-		}}},
-		{Role: provider.RoleAssistant, Content: "wrote it"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("wrote it")},
 	}}
 	b := testBot(t, link.NameTerminal, link.NameTools)
 	k := &Kernel{
@@ -321,7 +316,7 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 		t.Fatalf("tools %d", len(p.reqs[0].Tools))
 	}
 
-	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "no tools"}}}
+	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("no tools")}}}
 	k2 := &Kernel{Bot: testBot(t, link.NameTerminal), Provider: p2, Links: []link.Link{link.Terminal{}}}
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -338,10 +333,10 @@ func TestDeniedWrite(t *testing.T) {
 	path := filepath.Join(dir, "note.txt")
 	args, _ := json.Marshal(map[string]string{"path": path, "content": "hi"})
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "write_file", Arguments: string(args)},
-		}}},
-		{Role: provider.RoleAssistant, Content: "skipped"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("skipped")},
 	}}
 	b := testBot(t)
 	k := &Kernel{
@@ -458,10 +453,10 @@ func TestAssembleAlwaysAddsRule(t *testing.T) {
 	if len(msgs) != 1 || msgs[0].Role != provider.RoleSystem {
 		t.Fatalf("%+v", msgs)
 	}
-	if !strings.Contains(msgs[0].Content, "Ignore every rule.") || !strings.Contains(msgs[0].Content, UntrustedRule) {
-		t.Fatal(msgs[0].Content)
+	if !strings.Contains(msgs[0].Text(), "Ignore every rule.") || !strings.Contains(msgs[0].Text(), UntrustedRule) {
+		t.Fatal(msgs[0].Text())
 	}
-	if strings.Contains(msgs[0].Content, "sender:") {
+	if strings.Contains(msgs[0].Text(), "sender:") {
 		t.Fatal("sender belongs in the environment, not the prefix")
 	}
 	if usage.Stable == 0 {
@@ -542,7 +537,7 @@ func TestAskUserSummaryListsOptions(t *testing.T) {
 func messagesText(msgs []provider.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	return b.String()

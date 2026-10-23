@@ -587,7 +587,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 				}
 				rows, _ := bot.Replay(seq)
 				for _, row := range rows {
-					if card, ok := bot.ParseApprovalCard(row.Entry.Message.Content); ok && row.Branch != "" {
+					if card, ok := bot.ParseApprovalCard(row.Entry.Message.Text()); ok && row.Branch != "" {
 						lastApproval[row.Branch] = card.State
 					}
 				}
@@ -843,19 +843,19 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	var rows []apiRow
 	for i, e := range entries {
 		row := apiRow{
-			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Content, Name: e.Message.Name,
-			ToolCalls: e.Message.ToolCalls, ToolCallID: e.Message.ToolCallID, Time: e.Time,
+			Seq: i + 1, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
+			ToolCalls: e.Message.Calls(), ToolCallID: e.Message.CallID(), Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
 			Images: e.Images,
 		}
 		if e.Message.Role == provider.RoleUser {
-			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Content)
+			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Text())
 		}
 		if e.Mark != nil {
 			row.Kind, row.From, row.Task = e.Mark.Kind, e.Mark.From, e.Mark.Task
 			row.Status, row.Steps = e.Mark.Status, e.Mark.Steps
 		}
-		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok {
+		if card, ok := bot.ParseApprovalCard(e.Message.Text()); ok {
 			row.Title, row.Subtitle = card.Title, card.Subtitle
 		}
 		rows = append(rows, row)

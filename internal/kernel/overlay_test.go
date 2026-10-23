@@ -25,12 +25,12 @@ func TestModelOverlayAppendsAfterRulesAndShowsInEnv(t *testing.T) {
 	if err := os.WriteFile(path, []byte(note+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, Now: func() time.Time { return time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC) }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC))); err != nil {
 		t.Fatal(err)
 	}
-	sys := p.reqs[0].Messages[0].Content
+	sys := p.reqs[0].Messages[0].Text()
 	rulesAt := strings.Index(sys, "Answer in the owner's language")
 	noteAt := strings.Index(sys, "## Model\n"+note)
 	if rulesAt < 0 || noteAt < 0 || rulesAt > noteAt {
@@ -47,13 +47,13 @@ func TestModelOverlayAppendsAfterRulesAndShowsInEnv(t *testing.T) {
 
 func TestUnboundBotShowsNoOverlay(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, Now: func() time.Time { return time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC) }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC))); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(p.reqs[0].Messages[0].Content, "## Model") {
-		t.Fatal(p.reqs[0].Messages[0].Content)
+	if strings.Contains(p.reqs[0].Messages[0].Text(), "## Model") {
+		t.Fatal(p.reqs[0].Messages[0].Text())
 	}
 	updates := envUpdates(t, b)
 	if len(updates) == 0 || strings.Contains(strings.Join(updates, "\n"), "<model_overlay>") {

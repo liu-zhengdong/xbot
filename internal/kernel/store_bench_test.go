@@ -45,7 +45,7 @@ func TestMillionEntryStore(t *testing.T) {
 		}
 		content := bld.String()
 		t0 := time.Now()
-		err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: content}})
+		err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)}})
 		d := time.Since(t0)
 		if err != nil {
 			t.Fatal(err)

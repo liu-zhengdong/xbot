@@ -30,7 +30,7 @@ const parkCall = `{"command":"mkdir parked-dir"}`
 func (parkModel) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	// Environment deltas are context, not a new owner/card decision.
 	at := len(req.Messages) - 1
-	for at > 0 && strings.HasPrefix(req.Messages[at].Content, "<environment_") {
+	for at > 0 && strings.HasPrefix(req.Messages[at].Text(), "<environment_") {
 		at--
 	}
 	last := req.Messages[at]
@@ -38,22 +38,22 @@ func (parkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 		if onDelta != nil {
 			onDelta(text)
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: text}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
 	}
 	call := func() (provider.Message, error) {
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c" + time.Now().Format("150405.000000"), Type: "function",
 			Function: provider.FunctionCall{Name: "shell", Arguments: parkCall},
-		}}}, nil
+		}})}, nil
 	}
 	switch {
-	case strings.Contains(last.Content, "<owner_interjected>"):
+	case strings.Contains(last.Text(), "<owner_interjected>"):
 		return say("答插话")
-	case strings.Contains(last.Content, "<approval_decided>") && strings.Contains(last.Content, "approved"):
+	case strings.Contains(last.Text(), "<approval_decided>") && strings.Contains(last.Text(), "approved"):
 		return call()
-	case strings.Contains(last.Content, "<approval_decided>"):
+	case strings.Contains(last.Text(), "<approval_decided>"):
 		return say("好的不做了")
-	case last.Role == provider.RoleTool && strings.Contains(last.Content, "exit 0"):
+	case last.Role == provider.RoleTool && strings.Contains(last.Text(), "exit 0"):
 		return say("做完了")
 	case last.Role == provider.RoleTool:
 		return say("等你确认")
@@ -115,7 +115,7 @@ func waitTranscript(t *testing.T, b *bot.Bot, text string) {
 		}
 		found := false
 		for _, e := range entries {
-			if strings.Contains(e.Message.Content, text) {
+			if strings.Contains(e.Message.Text(), text) {
 				found = true
 			}
 		}
@@ -127,7 +127,7 @@ func waitTranscript(t *testing.T, b *bot.Bot, text string) {
 		}
 		if time.Now().After(deadline) {
 			for _, e := range entries {
-				t.Logf("%s %q %v", e.Message.Role, clip(e.Message.Content, 160), e.Message.ToolCalls)
+				t.Logf("%s %q %v", e.Message.Role, clip(e.Message.Text(), 160), e.Message.Calls())
 			}
 			t.Fatalf("transcript never had %q", text)
 		}
@@ -143,7 +143,7 @@ func cardCount(t *testing.T, b *bot.Bot) int {
 	}
 	ids := map[string]bool{}
 	for _, e := range entries {
-		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok {
+		if card, ok := bot.ParseApprovalCard(e.Message.Text()); ok {
 			ids[card.ID] = true
 		}
 	}

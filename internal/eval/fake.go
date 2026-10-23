@@ -32,22 +32,19 @@ func (f *Fake) Chat(_ context.Context, _ provider.Request, onDelta func(string))
 	st := f.Steps[f.i]
 	f.i++
 	if st.Tool != "" {
-		return provider.Message{
-			Role: provider.RoleAssistant,
-			ToolCalls: []provider.ToolCall{{
-				ID:   fmt.Sprintf("c%d", f.i),
-				Type: "function",
-				Function: provider.FunctionCall{
-					Name:      st.Tool,
-					Arguments: st.Args,
-				},
-			}},
-		}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+			ID:   fmt.Sprintf("c%d", f.i),
+			Type: "function",
+			Function: provider.FunctionCall{
+				Name:      st.Tool,
+				Arguments: st.Args,
+			},
+		}})}, nil
 	}
 	if onDelta != nil && st.Text != "" {
 		onDelta(st.Text)
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: st.Text}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(st.Text)}, nil
 }
 
 func args(v any) string {

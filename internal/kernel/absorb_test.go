@@ -44,10 +44,10 @@ func TestInboxEventArrivesBeforeTheNextStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "poke", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "saw it"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("saw it")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -66,7 +66,7 @@ func TestInboxEventArrivesBeforeTheNextStep(t *testing.T) {
 	}
 	var step2 string
 	for _, m := range p.reqs[1].Messages {
-		step2 += m.Content + "\n"
+		step2 += m.Text() + "\n"
 	}
 	if !strings.Contains(step2, "REPLY_LANDED") {
 		t.Fatalf("step 2 missed the event:\n%s", step2)
@@ -80,10 +80,10 @@ func TestInboxEventArrivesBeforeTheNextStep(t *testing.T) {
 	}
 	landed, answered := -1, -1
 	for i, e := range entries {
-		if strings.Contains(e.Message.Content, "REPLY_LANDED") {
+		if strings.Contains(e.Message.Text(), "REPLY_LANDED") {
 			landed = i
 		}
-		if e.Message.Content == "saw it" {
+		if e.Message.Text() == "saw it" {
 			answered = i
 		}
 	}

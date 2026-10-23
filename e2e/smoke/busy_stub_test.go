@@ -106,8 +106,8 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 			}
 			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &c) == nil {
 				for _, x := range c.Choices {
-					msg.Content += x.Delta.Content
-					msg.ToolCalls = append(msg.ToolCalls, x.Delta.Tools...)
+					msg.SetText(msg.Text() + x.Delta.Content)
+					msg.SetCalls(append(msg.Calls(), x.Delta.Tools...))
 				}
 			}
 		}

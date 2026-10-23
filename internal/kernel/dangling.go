@@ -16,12 +16,7 @@ const (
 // DanglingResult is the tombstone for a tool call that will never return.
 // Interrupt keeps the historical wording; cancel and model switch say which.
 func DanglingResult(tc provider.ToolCall, reason string) provider.Message {
-	return provider.Message{
-		Role:       provider.RoleTool,
-		ToolCallID: tc.ID,
-		Name:       tc.Function.Name,
-		Content:    danglingText(reason),
-	}
+	return provider.Message{Role: provider.RoleTool, Name: tc.Function.Name, Content: provider.ToolResult(tc.ID, danglingText(reason))}
 }
 
 func danglingText(reason string) string {

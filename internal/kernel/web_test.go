@@ -39,7 +39,7 @@ func TestWebSearchAndFetchStayOffTheNetwork(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		toolCall("c1", "web_search", `{"query":"xbot","n":1}`),
 		toolCall("c2", "web_fetch", `{"url":"https://example.com/a"}`),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -70,7 +70,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{
 		toolCall("c1", "view_image", `{"path":"a.png"}`),
-		{Role: provider.RoleAssistant, Content: "cannot see"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("cannot see")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
@@ -98,7 +98,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 	}
 	p = &scripted{resps: []provider.Message{
 		toolCall("c1", "view_image", `{"path":"a.png"}`),
-		{Role: provider.RoleAssistant, Content: "saw it"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("saw it")},
 	}}
 	k = &Kernel{
 		Bot: flash, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
@@ -133,7 +133,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 	}
 	p = &scripted{resps: []provider.Message{
 		toolCall("c1", "view_image", `{"path":"a.png"}`),
-		{Role: provider.RoleAssistant, Content: "nope"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("nope")},
 	}}
 	k = &Kernel{
 		Bot: flash, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
@@ -174,7 +174,7 @@ func TestTrustedCIDRReachesFetchGuard(t *testing.T) {
 	}
 	dir := t.TempDir()
 	tl := link.NewToolsLinkAt(dir, "")
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
 		Links: []link.Link{link.Terminal{}, tl},
@@ -211,7 +211,7 @@ func TestConfigureWebHoldsSearchKeyAddedLater(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
 		Links: []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")},
@@ -240,7 +240,7 @@ func TestProviderSearchKeyRejectsOtherHost(t *testing.T) {
 	dir := t.TempDir()
 	p := &scripted{resps: []provider.Message{
 		toolCall("c1", "web_search", `{"query":"q"}`),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
@@ -273,7 +273,7 @@ func TestHeldSearchKeyIsRedactedInResults(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{
 		toolCall("c1", "web_search", `{"query":"q"}`),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 3,
@@ -303,7 +303,7 @@ func toolNamed(t *testing.T, b *bot.Bot, name string, last bool) string {
 		}
 		for _, e := range entries {
 			if e.Message.Name == name {
-				return e.Message.Content
+				return e.Message.Text()
 			}
 		}
 		t.Fatalf("no %s result", name)
@@ -321,7 +321,7 @@ func toolNamedBlob(t *testing.T, b *bot.Bot, name string) (string, string) {
 	var found bool
 	for _, e := range entries {
 		if e.Message.Name == name {
-			text = e.Message.Content
+			text = e.Message.Text()
 			blob = e.Blob
 			found = true
 		}

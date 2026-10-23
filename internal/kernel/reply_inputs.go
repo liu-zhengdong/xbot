@@ -12,7 +12,7 @@ import (
 // The current wake's new inputs determine whether silence is meaningful. Older,
 // already answered owner messages in the history do not make timer wakes chatty.
 func (r *turnRun) validateReply(_ provider.Request, msg provider.Message) error {
-	if len(msg.ToolCalls) > 0 || strings.TrimSpace(msg.Content) != "SILENT" {
+	if len(msg.Calls()) > 0 || strings.TrimSpace(msg.Text()) != "SILENT" {
 		return nil
 	}
 	required := false
@@ -20,7 +20,7 @@ func (r *turnRun) validateReply(_ provider.Request, msg provider.Message) error 
 		if e.Branch != "" || e.IsInternal() || e.EventID == "" || e.Message.Role != provider.RoleUser {
 			return nil
 		}
-		text := strings.TrimSpace(e.Message.Content)
+		text := strings.TrimSpace(e.Message.Text())
 		if !strings.HasPrefix(text, link.UntrustedEventPrefix) || strings.Contains(strings.SplitN(text, "\n", 2)[0], `source="subagent"`) || strings.Contains(strings.SplitN(text, "\n", 2)[0], `source="coding-agent"`) {
 			required = true
 		}

@@ -243,15 +243,15 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	for _, msg := range produced {
 		// notify_owner covers the inputs it saw, not later arrivals. All ordering
 		// comes from the normal conversation; no per-result receipt is involved.
-		if msg.Role == provider.RoleTool && msg.Name == "notify_owner" && (strings.Contains(msg.Content, "notified the owner") || msg.Content == "held until quiet hours end") {
+		if msg.Role == provider.RoleTool && msg.Name == "notify_owner" && (strings.Contains(msg.Text(), "notified the owner") || msg.Text() == "held until quiet hours end") {
 			covered = true
 			replies = nil
 		}
 		if msg.Role == provider.RoleUser && msg.EventID != "" {
 			covered = false
 		}
-		if !covered && msg.Role == provider.RoleAssistant && len(msg.ToolCalls) == 0 && strings.TrimSpace(msg.Content) != "" && !bot.SilentText(msg.Content) {
-			replies = append(replies, strings.TrimSpace(msg.Content))
+		if !covered && msg.Role == provider.RoleAssistant && len(msg.Calls()) == 0 && strings.TrimSpace(msg.Text()) != "" && !bot.SilentText(msg.Text()) {
+			replies = append(replies, strings.TrimSpace(msg.Text()))
 		}
 	}
 	text := strings.Join(replies, "\n\n")
@@ -273,10 +273,10 @@ func finalAssistantText(msgs []provider.Message) string {
 		if m.Role != provider.RoleAssistant {
 			continue
 		}
-		if len(m.ToolCalls) > 0 {
+		if len(m.Calls()) > 0 {
 			return ""
 		}
-		return strings.TrimSpace(m.Content)
+		return strings.TrimSpace(m.Text())
 	}
 	return ""
 }

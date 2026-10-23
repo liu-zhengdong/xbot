@@ -185,7 +185,7 @@ func deliverDecision(b *bot.Bot, sender, tool string, args json.RawMessage, summ
 		addGrant(b, tool, args, now)
 	}
 	text := decisionText(tool, summary, ok)
-	if InterjectInternal(b, provider.Message{Role: provider.RoleUser, Content: text, Internal: true}) {
+	if InterjectInternal(b, provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(text)}) {
 		return
 	}
 	box, oerr := inbox.Open(b.InboxPath())

@@ -24,13 +24,13 @@ func TestProjectSetOutsideContextIsSentAgain(t *testing.T) {
 	if err := k.reminders().Record(99_999, KindProject, k.reminders().log.prepare(note), *now); err != nil {
 		t.Fatal(err)
 	}
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	if !strings.Contains(newest(t, p), "FROM-ROOT") {
 		t.Fatalf("instructions missing: %q", newest(t, p))
 	}
 	// Once it is in the context, the next turn does not send it again.
 	advance(now, time.Second)
-	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: "still"})
+	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("still")})
 	if projectBlock(newest(t, p)) != "" {
 		t.Fatalf("sent twice: %q", newest(t, p))
 	}

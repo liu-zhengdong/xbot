@@ -510,13 +510,13 @@ type captureJudge struct {
 }
 
 func (c *captureJudge) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	if len(req.Messages) == 1 && strings.Contains(req.Messages[0].Content, "Grade this bot run") {
-		c.prompt = req.Messages[0].Content
+	if len(req.Messages) == 1 && strings.Contains(req.Messages[0].Text(), "Grade this bot run") {
+		c.prompt = req.Messages[0].Text()
 		v := c.verdict
 		if v == "" {
 			v = `{"pass":true,"reason":"font copied and referenced"}`
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: v}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(v)}, nil
 	}
 	return c.fake.Chat(ctx, req, onDelta)
 }
@@ -686,7 +686,7 @@ type toolListProvider struct {
 
 func (p *toolListProvider) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	p.req = req
-	return provider.Message{Role: provider.RoleAssistant, Content: "ok"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}, nil
 }
 
 // The eval jail link is named tools, but its shell has no job table. The model

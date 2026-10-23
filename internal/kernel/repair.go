@@ -54,7 +54,7 @@ func unresolvedCallsExcept(span []bot.Entry, first int, live map[string]bool) ([
 		if r.Entry.IsForkMark() || r.Entry.Message.Role != provider.RoleAssistant {
 			continue
 		}
-		for _, tc := range r.Entry.Message.ToolCalls {
+		for _, tc := range r.Entry.Message.Calls() {
 			at[tc.ID] = i
 			branches[tc.ID] = r.Branch
 		}
@@ -83,11 +83,11 @@ func missingResults(msgs []provider.Message) []provider.ToolCall {
 	answered := map[string]bool{}
 	var calls []provider.ToolCall
 	for _, m := range msgs {
-		if m.Role == provider.RoleTool && m.ToolCallID != "" {
-			answered[m.ToolCallID] = true
+		if m.Role == provider.RoleTool && m.CallID() != "" {
+			answered[m.CallID()] = true
 		}
 		if m.Role == provider.RoleAssistant {
-			calls = append(calls, m.ToolCalls...)
+			calls = append(calls, m.Calls()...)
 		}
 	}
 	var missing []provider.ToolCall
@@ -141,19 +141,19 @@ func answered(entries []bot.Entry, branch string) (bool, string) {
 		m := e.Message
 		switch m.Role {
 		case provider.RoleAssistant:
-			if len(m.ToolCalls) == 0 && len(pending) == 0 {
+			if len(m.Calls()) == 0 && len(pending) == 0 {
 				sawFinal = true
-				if m.Content != "" {
-					text = m.Content
+				if m.Text() != "" {
+					text = m.Text()
 				}
 				continue
 			}
 			sawFinal = false
-			for _, tc := range m.ToolCalls {
+			for _, tc := range m.Calls() {
 				pending[tc.ID] = true
 			}
 		case provider.RoleTool:
-			delete(pending, m.ToolCallID)
+			delete(pending, m.CallID())
 		}
 	}
 	if len(pending) > 0 {
@@ -274,7 +274,7 @@ func ReplyAfter(b *bot.Bot, ev link.Event) (text string, done bool, err error) {
 	}
 	want := link.Render(ev, true)
 	for i, e := range span {
-		if e.Message.Role != provider.RoleUser || e.EventID != "" || e.Time.Before(ev.Time.Add(-2*time.Second)) || !strings.Contains(e.Message.Content, want) {
+		if e.Message.Role != provider.RoleUser || e.EventID != "" || e.Time.Before(ev.Time.Add(-2*time.Second)) || !strings.Contains(e.Message.Text(), want) {
 			continue
 		}
 		for j := i - 1; j >= 0; j-- {
@@ -296,7 +296,7 @@ const absorbWindow = 400
 func lastReplyTo(entries []bot.Entry, idx int) int {
 	replyTo := 0
 	for _, e := range turnSpan(entries, idx) {
-		if e.Message.Role == provider.RoleAssistant && len(e.Message.ToolCalls) == 0 {
+		if e.Message.Role == provider.RoleAssistant && len(e.Message.Calls()) == 0 {
 			replyTo = e.ReplyTo
 		}
 	}

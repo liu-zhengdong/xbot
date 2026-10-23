@@ -26,7 +26,7 @@ func TestConcurrentAppendUniqueSeqs(t *testing.T) {
 			branch := fmt.Sprintf("bg_%d", w+1)
 			for i := 0; i < per; i++ {
 				e := Entry{
-					Message: provider.Message{Role: provider.RoleAssistant, Content: fmt.Sprintf("%s-%d", branch, i)},
+					Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(fmt.Sprintf("%s-%d", branch, i))},
 					Branch:  branch,
 				}
 				seq, err := b.appendSeq(e)
@@ -79,8 +79,8 @@ func TestConcurrentAppendUniqueSeqs(t *testing.T) {
 	next := map[string]int{}
 	for _, e := range entries {
 		want := fmt.Sprintf("%s-%d", e.Branch, next[e.Branch])
-		if e.Message.Content != want {
-			t.Fatalf("branch %s got %q want %q", e.Branch, e.Message.Content, want)
+		if e.Message.Text() != want {
+			t.Fatalf("branch %s got %q want %q", e.Branch, e.Message.Text(), want)
 		}
 		next[e.Branch]++
 	}
@@ -101,7 +101,7 @@ func TestConcurrentAppendUniqueSeqs(t *testing.T) {
 		t.Fatalf("reopen entries %d vs %d", len(again), len(entries))
 	}
 	for i := range entries {
-		if entries[i].Message.Content != again[i].Message.Content || entries[i].Branch != again[i].Branch {
+		if entries[i].Message.Text() != again[i].Message.Text() || entries[i].Branch != again[i].Branch {
 			t.Fatalf("reopen row %d %+v vs %+v", i, entries[i], again[i])
 		}
 	}

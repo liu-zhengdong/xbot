@@ -37,16 +37,12 @@ func (p *bgControlProvider) Chat(_ context.Context, req provider.Request, _ func
 		p.steer()
 	}
 	if p.calls > 1 || len(req.Tools) == 0 {
-		return provider.Message{Role: provider.RoleAssistant, Content: "这一段做完"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("这一段做完")}, nil
 	}
-	return provider.Message{
-		Role:    provider.RoleAssistant,
-		Content: "step " + strings.Repeat("x", 100),
-		ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function",
-			Function: provider.FunctionCall{Name: "wait", Arguments: `{"n":1}`},
-		}},
-	}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: append(provider.TextContent("step "+strings.Repeat("x", 100)), provider.ToolContent([]provider.ToolCall{{
+		ID: "c1", Type: "function",
+		Function: provider.FunctionCall{Name: "wait", Arguments: `{"n":1}`},
+	}})...)}, nil
 }
 
 // blockingTool blocks until it is released, which is what keeps the turn on the
@@ -87,7 +83,7 @@ func requestsWithControl(p *bgControlProvider) []int {
 	var idx []int
 	for i, r := range p.reqs {
 		for _, m := range r.Messages {
-			if m.Role == provider.RoleUser && strings.Contains(m.Content, ctrlText) {
+			if m.Role == provider.RoleUser && strings.Contains(m.Text(), ctrlText) {
 				idx = append(idx, i)
 				break
 			}

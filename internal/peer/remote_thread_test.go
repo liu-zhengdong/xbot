@@ -74,9 +74,9 @@ func appendRemoteCall(t *testing.T, b *bot.Bot, id, addr, text, result string, a
 	}
 	if err := b.Append(bot.Entry{
 		Time: at,
-		Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: id, Type: "function", Function: provider.FunctionCall{Name: "message_bot", Arguments: string(args)},
-		}}},
+		}})},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func appendRemoteCall(t *testing.T, b *bot.Bot, id, addr, text, result string, a
 	}
 	if err := b.Append(bot.Entry{
 		Time:    at,
-		Message: provider.Message{Role: provider.RoleTool, ToolCallID: id, Content: result},
+		Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(id, result)},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestRemoteConversationTwoCallsOneEntry(t *testing.T) {
 		return provider.ToolCall{ID: id, Type: "function", Function: provider.FunctionCall{Name: "message_bot", Arguments: `{"bot":"writer@MacBook","text":"` + text + `"}`}}
 	}
 	at := time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
-	if err := a.Append(bot.Entry{Time: at, Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{call("c1", "one"), call("c2", "two")}}}); err != nil {
+	if err := a.Append(bot.Entry{Time: at, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call("c1", "one"), call("c2", "two")})}}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := RemoteConversation(a, "writer@MacBook")

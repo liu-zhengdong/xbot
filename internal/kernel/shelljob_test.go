@@ -26,7 +26,7 @@ func TestShellJobSurvivesTurns(t *testing.T) {
 	args := mustArgs(t, map[string]any{"command": "sleep 30", "run_in_background": true})
 	runTurn(t, k, now, "start it",
 		toolCall("c1", "shell", args),
-		provider.Message{Role: provider.RoleAssistant, Content: "started"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("started")},
 	)
 	got := bodies(t, k)
 	if len(got) != 1 || !strings.Contains(got[0], "background sh_") {
@@ -44,7 +44,7 @@ func TestShellJobSurvivesTurns(t *testing.T) {
 	p.i = 0
 	runTurn(t, k, now, "status",
 		toolCall("c2", "shell_status", statusArgs),
-		provider.Message{Role: provider.RoleAssistant, Content: "still going"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("still going")},
 	)
 	got = bodies(t, k)
 	if len(got) < 2 || !strings.Contains(got[len(got)-1], "running") {
@@ -79,7 +79,7 @@ func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
 	}
 	p.resps = []provider.Message{
 		toolCall("h1", "hold", "{}"),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}
 	errc := make(chan error, 1)
 	go func() {
@@ -155,7 +155,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 		toolCall("s2", "shell", `{"command":"echo poll-x"}`),
 		toolCall("s3", "shell", `{"command":"echo poll-x"}`),
 		toolCall("s4", "shell", `{"command":"echo poll-x"}`),
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: in, Memory: memory.NopStore{}, MaxSteps: 8,
@@ -196,7 +196,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 	}
 	var saw bool
 	for _, m := range p.reqs[0].Messages {
-		if strings.Contains(m.Content, id) && strings.Contains(m.Content, "idle-done") {
+		if strings.Contains(m.Text(), id) && strings.Contains(m.Text(), "idle-done") {
 			saw = true
 		}
 	}
@@ -209,7 +209,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<stop_reason>"+StopSameToolArgs+"</stop_reason>") {
+		if strings.Contains(e.Message.Text(), "<stop_reason>"+StopSameToolArgs+"</stop_reason>") {
 			stopped = true
 		}
 	}
@@ -349,7 +349,7 @@ func TestRestartDoesNotRewakeFinishedJobs(t *testing.T) {
 	}
 
 	now := time.Unix(1_700_000_000, 0).UTC()
-	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "hi"})
+	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("hi")})
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", now)); err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +458,7 @@ func (plainShellLink) Tools() []tools.Tool {
 func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
 	k, p, _ := freshBot(t)
 	k.Links = []link.Link{link.Terminal{}, plainShellLink{}}
-	p.resps = []provider.Message{{Role: provider.RoleAssistant, Content: "hi"}}
+	p.resps = []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("hi")}}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(1_700_000_500, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}

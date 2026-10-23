@@ -37,7 +37,7 @@ func TestConversationReadsBothTranscripts(t *testing.T) {
 	appendDirect(t, bob, "ev_a1", "ada", "ada-1\nsecond", t0.Add(time.Minute))
 	if err := bob.Append(bot.Entry{
 		Time:    t0.Add(time.Minute),
-		Message: provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+		Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func appendUser(t *testing.T, b *bot.Bot, id, content string, at time.Time) {
 	if err := b.Append(bot.Entry{
 		Time:    at,
 		EventID: id,
-		Message: provider.Message{Role: provider.RoleUser, Content: content},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)},
 	}); err != nil {
 		t.Fatal(err)
 	}

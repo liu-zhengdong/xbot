@@ -22,17 +22,17 @@ type questionModel struct{}
 
 func (questionModel) Chat(_ context.Context, req provider.Request, delta func(string)) (provider.Message, error) {
 	last := lastConversationInput(req.Messages)
-	if last.Role == provider.RoleUser && last.Content == "ASK_TIMEOUT" {
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "ask", Type: "function", Function: provider.FunctionCall{Name: "ask_user", Arguments: `{"question":"先做哪一步？","options":["先搭骨架","先写文档"],"recommended":"先搭骨架"}`}}}}, nil
+	if last.Role == provider.RoleUser && last.Text() == "ASK_TIMEOUT" {
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "ask", Type: "function", Function: provider.FunctionCall{Name: "ask_user", Arguments: `{"question":"先做哪一步？","options":["先搭骨架","先写文档"],"recommended":"先搭骨架"}`}}})}, nil
 	}
-	text := "继续：" + last.Content
+	text := "继续：" + last.Text()
 	if last.Role == provider.RoleTool {
 		text = "等你选择。"
 	}
 	if delta != nil {
 		delta(text)
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: text}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
 }
 func questionServer(t *testing.T, wait time.Duration) (*Server, *httptest.Server, *http.Cookie, *bot.Bot) {
 	t.Helper()
@@ -69,7 +69,7 @@ func questionCard(t *testing.T, b *bot.Bot) bot.ApprovalCard {
 	}
 	var card bot.ApprovalCard
 	for _, e := range entries {
-		if c, ok := bot.ParseApprovalCard(e.Message.Content); ok && c.Tool == "ask_user" {
+		if c, ok := bot.ParseApprovalCard(e.Message.Text()); ok && c.Tool == "ask_user" {
 			card = c
 		}
 	}
@@ -150,7 +150,7 @@ func TestQuestionOwnerChoosesBeforeDeadline(t *testing.T) {
 	}
 	entries, _ := b.Entries()
 	for _, e := range entries {
-		if e.Message.Content == "继续：先搭骨架" {
+		if e.Message.Text() == "继续：先搭骨架" {
 			t.Fatal("timer resumed after owner chose")
 		}
 	}
@@ -169,7 +169,7 @@ func TestQuestionTypedReplyStopsTimer(t *testing.T) {
 
 func lastConversationInput(messages []provider.Message) provider.Message {
 	for i := len(messages) - 1; i >= 0; i-- {
-		if !strings.HasPrefix(messages[i].Content, "<environment_") {
+		if !strings.HasPrefix(messages[i].Text(), "<environment_") {
 			return messages[i]
 		}
 	}

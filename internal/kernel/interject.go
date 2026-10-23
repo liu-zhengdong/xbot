@@ -120,7 +120,7 @@ func (k *Kernel) receive(ev link.Event) (int, error) {
 			origin = bot.OriginInternal
 		}
 		seq, err = k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images,
-			Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners))}})
+			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)))}})
 		if err != nil {
 			return 0, err
 		}
@@ -182,7 +182,7 @@ func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
 const interjectNoteText = "<owner_interjected>\nThe owner said this while you were in the middle of something. Address all outstanding owner requests in this conversation, including the new words. A newer message does not replace earlier unfinished requests unless the owner changes or cancels them. Keep already dispatched work running; do not dispatch it again.\n</owner_interjected>"
 
 func interjectNote() provider.Message {
-	return provider.Message{Role: provider.RoleUser, Content: interjectNoteText, Internal: true}
+	return provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(interjectNoteText)}
 }
 
 // takeInterjected returns the queued owner messages, oldest first.
@@ -268,12 +268,7 @@ func (k *Kernel) eventMessage(ev link.Event) provider.Message {
 	// travel with it now. The names ride along for the transcript line: the
 	// note naming them is added when the line is assembled, not here, so the
 	// stored text stays the owner's words and is not noted twice.
-	msg := provider.Message{
-		Role:    provider.RoleUser,
-		EventID: ev.ID,
-		Content: content,
-		ReplyTo: ev.ReplyTo,
-	}
+	msg := provider.Message{Role: provider.RoleUser, EventID: ev.ID, ReplyTo: ev.ReplyTo, Content: provider.TextContent(content)}
 	if len(ev.Images) > 0 {
 		msg.ImageNames = ev.Images
 		// The note always goes in, not only when a picture is left out: the
@@ -282,7 +277,7 @@ func (k *Kernel) eventMessage(ev link.Event) provider.Message {
 		// removed again before the line is stored (recordTurn), so the
 		// transcript keeps the owner's words and the assembled context adds
 		// it back exactly once.
-		msg.Content = k.withPastedNote(msg.Content, ev.Images)
+		msg.SetText(k.withPastedNote(msg.Text(), ev.Images))
 		msg.Images = k.pastedImages(ev.Images)
 	}
 	return msg
@@ -335,10 +330,10 @@ func (k *Kernel) replyToFailedInputs(t *turn) error {
 	}
 	for i, row := range rows {
 		seq := t.fromSeq + i
-		if seq <= replyThrough || row.Message.Role != provider.RoleUser || row.IsInternal() || row.IsForkMark() || strings.HasPrefix(row.Message.Content, "<untrusted_event") {
+		if seq <= replyThrough || row.Message.Role != provider.RoleUser || row.IsInternal() || row.IsForkMark() || strings.HasPrefix(row.Message.Text(), "<untrusted_event") {
 			continue
 		}
-		if _, err := k.recordTurn(t, provider.Message{Role: provider.RoleAssistant, ReplyTo: seq, Content: "这一轮出错，后续要求还没处理完；已经执行的记录和你的原话都保留了。"}); err != nil {
+		if _, err := k.recordTurn(t, provider.Message{Role: provider.RoleAssistant, ReplyTo: seq, Content: provider.TextContent("这一轮出错，后续要求还没处理完；已经执行的记录和你的原话都保留了。")}); err != nil {
 			return err
 		}
 	}

@@ -106,7 +106,7 @@ func ExportTo(w io.Writer, b *Bot, opt TranscriptExport) error {
 		blocks = append(blocks, block)
 	}
 	if format == "jsonl" {
-		return exportJSONLTo(b, blocks, from, to, opt.Tools, write)
+		return exportJSONLTo(b, blocks, from, to, opt.Tools, write, redact)
 	}
 	if err := write(fmt.Sprintf("# %s\n", b.Name())); err != nil {
 		return err
@@ -164,7 +164,7 @@ func exportBounds(n int, opt TranscriptExport) (string, int, int, error) {
 	return format, from, to, nil
 }
 
-func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, write func(string) error) error {
+func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, write func(string) error, redact func(string) string) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(true)
@@ -194,7 +194,7 @@ func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, writ
 		if !ok {
 			return nil
 		}
-		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg, ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark, Images: e.Images})
+		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg.MapText(redact), ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark, Images: e.Images})
 	})
 }
 
@@ -226,9 +226,9 @@ func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch st
 		fmt.Fprintf(&b, "reply_to: %d\n", replyTo)
 	}
 	b.WriteByte('\n')
-	if msg.Content != "" {
-		b.WriteString(msg.Content)
-		if !strings.HasSuffix(msg.Content, "\n") {
+	if msg.PortableText() != "" {
+		b.WriteString(msg.PortableText())
+		if !strings.HasSuffix(msg.PortableText(), "\n") {
 			b.WriteByte('\n')
 		}
 	}
@@ -242,7 +242,7 @@ func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch st
 		fmt.Fprintf(&b, "image: paste/%s\n", name)
 	}
 	if tools {
-		for _, tc := range msg.ToolCalls {
+		for _, tc := range msg.Calls() {
 			fmt.Fprintf(&b, "tool %s %s\n", tc.Function.Name, tc.Function.Arguments)
 		}
 	}
@@ -262,10 +262,10 @@ func visibleMessage(m provider.Message, tools bool) (provider.Message, bool) {
 		if m.Role == provider.RoleTool {
 			return provider.Message{}, false
 		}
-		if strings.TrimSpace(m.Content) == "" && len(m.ToolCalls) > 0 {
+		if strings.TrimSpace(m.PortableText()) == "" && len(m.Calls()) > 0 {
 			return provider.Message{}, false
 		}
-		m.ToolCalls = nil
+		m.SetCalls(nil)
 		return m, true
 	}
 	return m, true

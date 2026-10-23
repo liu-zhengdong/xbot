@@ -23,8 +23,8 @@ func TestReminderCooldownAndReplay(t *testing.T) {
 	appendCard(t, b, "card-1", "shell", "mkdir a", bot.ApprovalPending, t0.Add(-time.Minute))
 	now := t0
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "first"},
-		{Role: provider.RoleAssistant, Content: "second"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("first")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("second")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -43,15 +43,15 @@ func TestReminderCooldownAndReplay(t *testing.T) {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
 	second := p.reqs[1].Messages
-	if second[0].Content != p.reqs[0].Messages[0].Content {
+	if second[0].Text() != p.reqs[0].Messages[0].Text() {
 		t.Fatal("system prefix changed between turns")
 	}
 	var replayed, fresh int
 	for _, m := range second {
-		if strings.Contains(m.Content, "hello") && strings.Contains(m.Content, "<pending_approvals>") {
+		if strings.Contains(m.Text(), "hello") && strings.Contains(m.Text(), "<pending_approvals>") {
 			replayed++
 		}
-		if strings.Contains(m.Content, "again") && strings.Contains(m.Content, "<pending_approvals>") {
+		if strings.Contains(m.Text(), "again") && strings.Contains(m.Text(), "<pending_approvals>") {
 			fresh++
 		}
 	}
@@ -66,20 +66,20 @@ func TestReminderCooldownAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<pending_approvals>") {
+		if strings.Contains(e.Message.Text(), "<pending_approvals>") {
 			t.Fatal("sidecar reminder was written into the transcript")
 		}
 	}
 	// Past the cooldown the same open card may fire again, on the newest message only.
 	now = t0.Add(pendingCooldown + time.Second)
-	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "third"})
+	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("third")})
 	ev3 := link.TerminalEvent("u1", "later", now)
 	if err := k.Handle(context.Background(), ev3); err != nil {
 		t.Fatal(err)
 	}
 	last := newestConversationMessage(p.reqs[2].Messages)
-	if !strings.Contains(last.Content, "later") || !strings.Contains(last.Content, "<pending_approvals>") {
-		t.Fatalf("reminder after cooldown not on the newest message: %q", last.Content)
+	if !strings.Contains(last.Text(), "later") || !strings.Contains(last.Text(), "<pending_approvals>") {
+		t.Fatalf("reminder after cooldown not on the newest message: %q", last.Text())
 	}
 }
 
@@ -108,19 +108,19 @@ func TestReminderPluginKinds(t *testing.T) {
 		t.Fatalf("due %v %v", due, err)
 	}
 	msgs := []provider.Message{
-		{Role: provider.RoleSystem, Content: "prefix"},
-		{Role: provider.RoleUser, Content: "older"},
-		{Role: provider.RoleUser, Content: "newest"},
+		{Role: provider.RoleSystem, Content: provider.TextContent("prefix")},
+		{Role: provider.RoleUser, Content: provider.TextContent("older")},
+		{Role: provider.RoleUser, Content: provider.TextContent("newest")},
 	}
 	out, err := ch.Bind(msgs, 3, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out[0].Content != "prefix" || out[1].Content != "older" {
+	if out[0].Text() != "prefix" || out[1].Text() != "older" {
 		t.Fatal("attach rewrote history")
 	}
-	if !strings.Contains(out[2].Content, "newest") || !strings.Contains(out[2].Content, "<todo>") || !strings.Contains(out[2].Content, "<file_change>") {
-		t.Fatalf("newest %q", out[2].Content)
+	if !strings.Contains(out[2].Text(), "newest") || !strings.Contains(out[2].Text(), "<todo>") || !strings.Contains(out[2].Text(), "<file_change>") {
+		t.Fatalf("newest %q", out[2].Text())
 	}
 	again, err := ch.Due(now.Add(time.Second))
 	if err != nil || len(again) != 0 {
@@ -139,7 +139,7 @@ func TestNoDuplicateBackgroundDoneReminder(t *testing.T) {
 	}
 	now := time.Unix(8000, 0).UTC()
 	ended := now.Add(-time.Second)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "told"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("told")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
 		Links: []link.Link{link.Terminal{}},
@@ -153,17 +153,17 @@ func TestNoDuplicateBackgroundDoneReminder(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := newestConversationMessage(p.reqs[0].Messages)
-	if !strings.Contains(last.Content, "status?") || strings.Contains(last.Content, "<background_done>") {
-		t.Fatalf("completion not on the newest message: %q", last.Content)
+	if !strings.Contains(last.Text(), "status?") || strings.Contains(last.Text(), "<background_done>") {
+		t.Fatalf("completion not on the newest message: %q", last.Text())
 	}
-	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "again"})
+	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("again")})
 	ev2 := link.TerminalEvent("u1", "and now?", now.Add(time.Second))
 	if err := k.Handle(context.Background(), ev2); err != nil {
 		t.Fatal(err)
 	}
 	var fresh int
 	for _, m := range p.reqs[1].Messages {
-		if strings.Contains(m.Content, "and now?") && strings.Contains(m.Content, "<background_done>") {
+		if strings.Contains(m.Text(), "and now?") && strings.Contains(m.Text(), "<background_done>") {
 			fresh++
 		}
 	}
@@ -190,7 +190,7 @@ func TestPendingReminderRedactsSecrets(t *testing.T) {
 	}
 	now := time.Unix(3000, 0).UTC()
 	appendCard(t, b, "card-1", "shell", "mkdir "+secret, bot.ApprovalPending, now.Add(-time.Minute))
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}},
@@ -211,10 +211,10 @@ func TestPendingReminderRedactsSecrets(t *testing.T) {
 	}
 	var saw bool
 	for _, m := range p.reqs[0].Messages {
-		if strings.Contains(m.Content, secret) {
-			t.Fatalf("model saw the secret: %q", m.Content)
+		if strings.Contains(m.Text(), secret) {
+			t.Fatalf("model saw the secret: %q", m.Text())
 		}
-		if strings.Contains(m.Content, "[secret]") && strings.Contains(m.Content, "<pending_approvals>") {
+		if strings.Contains(m.Text(), "[secret]") && strings.Contains(m.Text(), "<pending_approvals>") {
 			saw = true
 		}
 	}
@@ -277,8 +277,8 @@ func BenchmarkReminderBind(b *testing.B) {
 		Trigger: func(time.Time, []Reminder) string { return "<todo>one item</todo>" },
 	})
 	msgs := []provider.Message{
-		{Role: provider.RoleSystem, Content: strings.Repeat("s", 4096)},
-		{Role: provider.RoleUser, Content: "hello"},
+		{Role: provider.RoleSystem, Content: provider.TextContent(strings.Repeat("s", 4096))},
+		{Role: provider.RoleUser, Content: provider.TextContent("hello")},
 	}
 	now := time.Unix(1, 0).UTC()
 	b.ReportAllocs()

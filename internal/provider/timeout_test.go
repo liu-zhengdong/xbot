@@ -56,14 +56,14 @@ func TestChatRetriesWholeRequestTimeout(t *testing.T) {
 		retryWait: time.Millisecond, RequestTimeout: 200 * time.Millisecond,
 	}
 	var deltas []string
-	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) {
+	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, func(s string) {
 		deltas = append(deltas, s)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "pong" || strings.Join(deltas, "") != "pong" {
-		t.Fatalf("msg %q deltas %v", msg.Content, deltas)
+	if msg.Text() != "pong" || strings.Join(deltas, "") != "pong" {
+		t.Fatalf("msg %q deltas %v", msg.Text(), deltas)
 	}
 	if n.Load() != 2 {
 		t.Fatalf("attempts %d, want the hung request retried once", n.Load())
@@ -86,7 +86,7 @@ func TestChatRequestTimeoutIsTheFinalError(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil)
+		_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, nil)
 		done <- err
 	}()
 	select {
@@ -127,14 +127,14 @@ func TestChatRetriesStreamIdleTimeout(t *testing.T) {
 		retryWait: time.Millisecond, StreamIdleTimeout: 200 * time.Millisecond,
 	}
 	var deltas []string
-	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) {
+	msg, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, func(s string) {
 		deltas = append(deltas, s)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg.Content != "pong" || strings.Join(deltas, "") != "pong" {
-		t.Fatalf("content %q deltas %q", msg.Content, deltas)
+	if msg.Text() != "pong" || strings.Join(deltas, "") != "pong" {
+		t.Fatalf("content %q deltas %q", msg.Text(), deltas)
 	}
 	if n.Load() != 2 {
 		t.Fatalf("attempts %d, want 2", n.Load())
@@ -162,7 +162,7 @@ func TestChatDoesNotRetryAfterTextWentOut(t *testing.T) {
 		retryWait: time.Millisecond, StreamIdleTimeout: 200 * time.Millisecond,
 	}
 	var deltas []string
-	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) {
+	_, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, func(s string) {
 		deltas = append(deltas, s)
 	})
 	if !errors.Is(err, ErrStreamIdleTimeout) {
@@ -193,7 +193,7 @@ func TestChatStreamsBeforeTheAnswerEnds(t *testing.T) {
 	got := make(chan string, 4)
 	done := make(chan Message, 1)
 	go func() {
-		msg, _ := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, func(s string) { got <- s })
+		msg, _ := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, func(s string) { got <- s })
 		done <- msg
 	}()
 	select {
@@ -206,8 +206,8 @@ func TestChatStreamsBeforeTheAnswerEnds(t *testing.T) {
 		t.Fatal("no delta before the answer ended")
 	}
 	close(release)
-	if msg := <-done; msg.Content != "first rest" {
-		t.Fatalf("content %q", msg.Content)
+	if msg := <-done; msg.Text() != "first rest" {
+		t.Fatalf("content %q", msg.Text())
 	}
 }
 

@@ -310,7 +310,7 @@ func stepUpdatedTodo(msgs []provider.Message) bool {
 		if m.Role != provider.RoleTool || m.Name != "todo" {
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(m.Content), "error:") {
+		if strings.HasPrefix(strings.TrimSpace(m.Text()), "error:") {
 			continue
 		}
 		return true
@@ -485,7 +485,7 @@ func (k *Kernel) todoGate(t *turn, msg provider.Message) (string, bool) {
 // Only the last sentence of the last line counts, so a "?" inside a URL or
 // a code span earlier in the reply does not suppress the gate.
 func asksOwner(msg provider.Message) bool {
-	line := lastNonEmptyLine(msg.Content)
+	line := lastNonEmptyLine(msg.Text())
 	if line == "" {
 		return false
 	}

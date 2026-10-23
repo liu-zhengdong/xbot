@@ -60,9 +60,9 @@ func TestExportIncludesReplyTo(t *testing.T) {
 	}
 	when := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	rows := []Entry{
-		{Time: when, Message: provider.Message{Role: provider.RoleAssistant, Content: "earlier"}},
-		{Time: when.Add(time.Minute), ReplyTo: 1, Message: provider.Message{Role: provider.RoleUser, Content: "and this"}},
-		{Time: when.Add(2 * time.Minute), ReplyTo: 2, Message: provider.Message{Role: provider.RoleAssistant, Content: "back"}},
+		{Time: when, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("earlier")}},
+		{Time: when.Add(time.Minute), ReplyTo: 1, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("and this")}},
+		{Time: when.Add(2 * time.Minute), ReplyTo: 2, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("back")}},
 	}
 	for _, e := range rows {
 		if err := b.Append(e); err != nil {

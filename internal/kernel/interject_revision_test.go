@@ -15,10 +15,10 @@ import (
 
 func TestFailureReplyOnlyNamesUnansweredInputs(t *testing.T) {
 	owner := func(id, text string) bot.Entry {
-		return bot.Entry{EventID: id, Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: text}}
+		return bot.Entry{EventID: id, Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}}
 	}
 	answer := func(text string) bot.Entry {
-		return bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleAssistant, Content: text}}
+		return bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}}
 	}
 	quoted := answer("first done")
 	quoted.ReplyTo = 1
@@ -31,7 +31,7 @@ func TestFailureReplyOnlyNamesUnansweredInputs(t *testing.T) {
 		{"explicit quote", []bot.Entry{quoted}, 0},
 		{"empty is not an answer", []bot.Entry{answer("")}, 1},
 		{"silent is not an answer", []bot.Entry{answer("SILENT")}, 1},
-		{"only tool work", []bot.Entry{{Message: toolCall("read", "read_file", "{}")}, {Message: provider.Message{Role: provider.RoleTool, ToolCallID: "read", Content: "data"}}}, 1},
+		{"only tool work", []bot.Entry{{Message: toolCall("read", "read_file", "{}")}, {Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("read", "data")}}}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			b := testBot(t)
@@ -62,7 +62,7 @@ func TestFailureReplyOnlyNamesUnansweredInputs(t *testing.T) {
 			}
 			failures := map[int]int{}
 			for _, row := range got {
-				if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Content, "还没处理完") {
+				if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Text(), "还没处理完") {
 					failures[row.ReplyTo]++
 				}
 			}
@@ -105,7 +105,7 @@ func TestCancelledHandleDoesNotInventFailureReply(t *testing.T) {
 				if row.EventID == ev.ID {
 					inputs++
 				}
-				if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Content, "还没处理完") {
+				if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Text(), "还没处理完") {
 					failures++
 				}
 			}
@@ -136,7 +136,7 @@ func TestLateInputDoesNotBorrowCompletedRequestsAnswer(t *testing.T) {
 			if !Interject(b, late, &Sink{Done: make(chan Outcome, 1)}) {
 				t.Fatal("late input not accepted")
 			}
-			return provider.Message{Role: provider.RoleAssistant, Content: "A completed normally"}, nil
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("A completed normally")}, nil
 		}
 		text := messagesText(req.Messages)
 		if !strings.Contains(text, late.Content) || !strings.Contains(text, "A completed normally") {
@@ -156,13 +156,13 @@ func TestLateInputDoesNotBorrowCompletedRequestsAnswer(t *testing.T) {
 		if row.EventID == late.ID {
 			bseq = i + 1
 		}
-		if row.Message.Content == "A opening input" {
+		if row.Message.Text() == "A opening input" {
 			aseq = i + 1
 		}
-		if row.Message.Content == "A completed normally" {
+		if row.Message.Text() == "A completed normally" {
 			answerSeq = i + 1
 		}
-		if strings.Contains(row.Message.Content, "还没处理完") {
+		if strings.Contains(row.Message.Text(), "还没处理完") {
 			failures[row.ReplyTo]++
 		}
 	}

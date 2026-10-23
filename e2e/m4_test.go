@@ -279,7 +279,7 @@ func joinedEntries(t *testing.T, b *bot.Bot) string {
 	}
 	var buf strings.Builder
 	for _, e := range ents {
-		buf.WriteString(e.Message.Content)
+		buf.WriteString(e.Message.Text())
 		buf.WriteByte('\n')
 	}
 	return buf.String()

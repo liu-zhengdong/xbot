@@ -379,7 +379,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// The project trigger asks whether a set is already in this context:
 	// replayed reminders are in assembled, and Bind adds any new one.
 	for _, m := range assembled {
-		t.projects.noteText(m.Content)
+		t.projects.noteText(m.Text())
 	}
 	carrier := len(assembled) - 1
 	for i := range assembled {
@@ -404,7 +404,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		usage.History += added
 	}
 	if n := len(assembled); n > 0 {
-		t.projects.noteText(assembled[n-1].Content)
+		t.projects.noteText(assembled[n-1].Text())
 	}
 	if n := len(assembled); n > 0 {
 		if delta := compact.EstimateMessage(assembled[n-1]) - before; delta > 0 {
@@ -511,7 +511,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 			t.mu.Unlock()
 			if capped {
 				note := capNotice(id)
-				if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleAssistant, Content: note}}); err != nil {
+				if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(note)}}); err != nil {
 					return err
 				}
 				if onDelta != nil {
@@ -659,12 +659,12 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		e := ln.Entry
 		if e.ReplyTo > 0 && e.Message.Role == provider.RoleUser {
 			if q := k.quotePrefix(e.ReplyTo); q != "" {
-				e.Message.Content = q + "\n\n" + e.Message.Content
+				e.Message.SetText(q + "\n\n" + e.Message.Text())
 			}
 		}
 		// A pasted picture is named here, on the line that carried it. Only the
 		// turn answering that line gets the bytes; see attachEventImages.
-		e.Message.Content = k.withPastedNote(e.Message.Content, e.Images)
+		e.Message.SetText(k.withPastedNote(e.Message.Text(), e.Images))
 		raw = append(raw, e)
 		seqs = append(seqs, ln.Seq)
 	}

@@ -92,11 +92,11 @@ func TestKernelReviewForcesAndLogsAllowed(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	var ran bool
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
 			Function: provider.FunctionCall{Name: "delete_file", Arguments: `{"path":"notes.txt"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	var gotTool, gotSummary string
 	k := &Kernel{
@@ -137,11 +137,11 @@ func TestKernelReviewLogsDeclined(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	var ran bool
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
 			Function: provider.FunctionCall{Name: "delete_file", Arguments: `{"path":"notes.txt"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, MaxSteps: 4,
@@ -168,11 +168,11 @@ func TestKernelReadOnlyDoesNotAsk(t *testing.T) {
 	}
 	b := testBot(t, link.NameTerminal, link.NameTools)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
 			Function: provider.FunctionCall{Name: "read_file", Arguments: `{"path":"notes.txt"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "read"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("read")},
 	}}
 	asked := 0
 	k := &Kernel{

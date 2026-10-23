@@ -287,8 +287,8 @@ func newBranchID() string {
 
 func lastText(msgs []provider.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == provider.RoleAssistant && len(msgs[i].ToolCalls) == 0 && msgs[i].Content != "" {
-			return msgs[i].Content
+		if msgs[i].Role == provider.RoleAssistant && len(msgs[i].Calls()) == 0 && msgs[i].Text() != "" {
+			return msgs[i].Text()
 		}
 	}
 	return ""

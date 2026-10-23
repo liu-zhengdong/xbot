@@ -181,8 +181,8 @@ func runLoop(j *job) {
 			return
 		}
 		last := lastAssistant(produced)
-		if len(last.ToolCalls) == 0 && last.Role != "" {
-			text := strings.TrimSpace(last.Content)
+		if len(last.Calls()) == 0 && last.Role != "" {
+			text := strings.TrimSpace(last.Text())
 			if strings.HasPrefix(text, "BLOCKED") {
 				j.mu.Lock()
 				j.blocked = true
@@ -296,7 +296,7 @@ func (j *job) applyOne(c Control, msgs *[]provider.Message, stepsLeft *int, queu
 }
 
 func (j *job) appendUser(msgs *[]provider.Message, text string) error {
-	m := provider.Message{Role: provider.RoleUser, Content: text}
+	m := provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}
 	if err := appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func (j *job) finish(status, kind, text string) {
 }
 
 func initialMessages(j *job) []provider.Message {
-	task := provider.Message{Role: provider.RoleUser, Content: "Task:\n" + j.task}
+	task := provider.Message{Role: provider.RoleUser, Content: provider.TextContent("Task:\n" + j.task)}
 	if j.mode == ModeFork && len(j.fork) > 0 {
 		return append(copyMessages(j.fork), task)
 	}
@@ -336,14 +336,14 @@ func initialMessages(j *job) []provider.Message {
 		persona = j.persona
 	}
 	return []provider.Message{
-		{Role: provider.RoleSystem, Content: persona},
-		{Role: provider.RoleUser, Content: j.task},
+		{Role: provider.RoleSystem, Content: provider.TextContent(persona)},
+		{Role: provider.RoleUser, Content: provider.TextContent(j.task)},
 	}
 }
 
 func replyClosed(msgs []provider.Message) bool {
 	last := lastAssistant(msgs)
-	return last.Role != "" && len(last.ToolCalls) == 0
+	return last.Role != "" && len(last.Calls()) == 0
 }
 
 func dropImages(msgs []provider.Message) {
@@ -371,12 +371,12 @@ func lastAssistant(msgs []provider.Message) provider.Message {
 }
 
 func progressText(msgs []provider.Message) string {
-	if m := lastAssistant(msgs); strings.TrimSpace(m.Content) != "" {
-		return clipText(m.Content, 240)
+	if m := lastAssistant(msgs); strings.TrimSpace(m.Text()) != "" {
+		return clipText(m.Text(), 240)
 	}
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == provider.RoleTool && strings.TrimSpace(msgs[i].Content) != "" {
-			return clipText(msgs[i].Name+": "+msgs[i].Content, 240)
+		if msgs[i].Role == provider.RoleTool && strings.TrimSpace(msgs[i].Text()) != "" {
+			return clipText(msgs[i].Name+": "+msgs[i].Text(), 240)
 		}
 	}
 	return "working"

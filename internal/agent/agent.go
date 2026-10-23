@@ -187,7 +187,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 		if opt.OnMessage != nil {
 			opt.OnMessage(msg)
 		}
-		if len(msg.ToolCalls) == 0 {
+		if len(msg.Calls()) == 0 {
 			if opt.AfterStep != nil && opt.Preempt != nil && step+1 < opt.MaxSteps {
 				extra, err := opt.AfterStep()
 				if err != nil {
@@ -202,7 +202,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 				remind, cont := opt.OnIdle(msg)
 				if cont {
 					if remind != "" {
-						note := provider.Message{Role: provider.RoleUser, Content: strings.TrimSpace(remind), Internal: true}
+						note := provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(strings.TrimSpace(remind))}
 						convo = append(convo, note)
 						produced = append(produced, note)
 						if opt.OnMessage != nil {
@@ -218,7 +218,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			return produced, nil
 		}
 		stepMsgs := []provider.Message{msg}
-		results, aborted := runToolCalls(ctx, byName, msg.ToolCalls, opt, &images)
+		results, aborted := runToolCalls(ctx, byName, msg.Calls(), opt, &images)
 		convoBase := len(convo)
 		producedBase := len(produced)
 		for _, tm := range results {
@@ -294,13 +294,13 @@ func AttachReminder(msgs []provider.Message, text string) []provider.Message {
 	}
 	out := append([]provider.Message(nil), msgs...)
 	if len(out) == 0 || out[len(out)-1].Role == provider.RoleSystem {
-		return append(out, provider.Message{Role: provider.RoleUser, Content: text})
+		return append(out, provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)})
 	}
 	last := out[len(out)-1]
-	if last.Content == "" {
-		last.Content = text
+	if last.Text() == "" {
+		last.SetText(text)
 	} else {
-		last.Content += "\n\n" + text
+		last.SetText(last.Text() + "\n\n" + text)
 	}
 	out[len(out)-1] = last
 	return out
@@ -315,7 +315,7 @@ func stopForReason(ctx context.Context, p provider.Provider, convo, produced []p
 	if opt.OnStop != nil && reason != "" {
 		opt.OnStop(reason)
 	}
-	note := provider.Message{Role: provider.RoleUser, Content: StopNote(reason), Internal: true}
+	note := provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(StopNote(reason))}
 	convo = append(convo, note)
 	produced = append(produced, note)
 	if opt.OnMessage != nil {
@@ -328,11 +328,11 @@ func stopForReason(ctx context.Context, p provider.Provider, convo, produced []p
 	if msg.Role == "" {
 		msg.Role = provider.RoleAssistant
 	}
-	msg.ToolCalls = nil
-	if strings.TrimSpace(msg.Content) == "" {
-		msg.Content = "Stopped (" + reason + ") before the task finished."
+	msg.SetCalls(nil)
+	if strings.TrimSpace(msg.Text()) == "" {
+		msg.SetText("Stopped (" + reason + ") before the task finished.")
 		if opt.OnDelta != nil {
-			opt.OnDelta(msg.Content)
+			opt.OnDelta(msg.Text())
 		}
 	}
 	produced = append(produced, msg)
@@ -358,7 +358,7 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 		return produced, err
 	}
 	note := fmt.Sprintf("Stop. The step cap (%d) is reached. Do not call tools. Summarize what was done, what is still pending, and why you stopped.", opt.MaxSteps)
-	convo = append(convo, provider.Message{Role: provider.RoleUser, Content: note, Internal: true})
+	convo = append(convo, provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(note)})
 	msg, err := p.Chat(ctx, provider.Request{Messages: convo}, opt.OnDelta)
 	if err != nil {
 		return produced, fmt.Errorf("agent: max steps (%d) reached: %w", opt.MaxSteps, err)
@@ -366,11 +366,11 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 	if msg.Role == "" {
 		msg.Role = provider.RoleAssistant
 	}
-	msg.ToolCalls = nil
-	if strings.TrimSpace(msg.Content) == "" {
-		msg.Content = fmt.Sprintf("Stopped after %d steps, before the task finished. The last response still requested tools, so they were not run.", opt.MaxSteps)
+	msg.SetCalls(nil)
+	if strings.TrimSpace(msg.Text()) == "" {
+		msg.SetText(fmt.Sprintf("Stopped after %d steps, before the task finished. The last response still requested tools, so they were not run.", opt.MaxSteps))
 		if opt.OnDelta != nil {
-			opt.OnDelta(msg.Content)
+			opt.OnDelta(msg.Text())
 		}
 	}
 	produced = append(produced, msg)
@@ -419,13 +419,7 @@ func runToolCalls(ctx context.Context, byName map[string]tools.Tool, calls []pro
 			}
 			text += note
 		}
-		msgs = append(msgs, provider.Message{
-			Role:       provider.RoleTool,
-			ToolCallID: tc.ID,
-			Name:       tc.Function.Name,
-			Content:    text,
-			Images:     imgs,
-		})
+		msgs = append(msgs, provider.Message{Role: provider.RoleTool, Name: tc.Function.Name, Images: imgs, Content: provider.ToolResult(tc.ID, text)})
 	}
 	return msgs, aborted && len(msgs) < len(calls)
 }

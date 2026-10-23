@@ -35,7 +35,7 @@ func TestLinksInstallRequiresApproval(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		linksCall("install", "webhook"),
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	var gotTool, gotSummary string
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(_ context.Context, tool, summary string) (bool, error) {
@@ -61,7 +61,7 @@ func TestLinksInstallAllowGrants(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		linksCall("install", "webhook"),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
 		return true, nil
@@ -82,7 +82,7 @@ func TestLinksInstallHidesSecrets(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		linksCall("install", "telegram"),
-		{Role: provider.RoleAssistant, Content: "nope"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("nope")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
 	k.Approve = func(context.Context, string, string) (bool, error) {
@@ -116,7 +116,7 @@ func TestLinksInstallWaitsForSecretFill(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		linksCall("install", "telegram"),
-		{Role: provider.RoleAssistant, Content: "nope"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("nope")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
 		return true, nil
@@ -143,7 +143,7 @@ func TestLinksRemoveRequiresApproval(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{
 		linksCall("remove", "webhook"),
-		{Role: provider.RoleAssistant, Content: "gone"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("gone")},
 	}}
 	asked := false
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
@@ -206,7 +206,7 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameSkills)
 	p := &scripted{resps: []provider.Message{
 		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, Content: "loaded"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("loaded")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, MaxSteps: 4,
@@ -229,10 +229,10 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 			t.Fatal(def.Description)
 		}
 	}
-	if strings.Contains(p.reqs[0].Messages[0].Content, "Read the body of a shared skill") || strings.Contains(p.reqs[1].Messages[0].Content, "Skill slug") {
+	if strings.Contains(p.reqs[0].Messages[0].Text(), "Read the body of a shared skill") || strings.Contains(p.reqs[1].Messages[0].Text(), "Skill slug") {
 		t.Fatal("schema leaked into the system prompt")
 	}
-	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "next"}}}
+	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}}
 	k.Provider = p2
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -368,9 +368,9 @@ func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 
 func linksCall(action, id string) provider.Message {
 	args := `{"action":"` + action + `","id":"` + id + `"}`
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "links", Arguments: args},
-	}}}
+	}})}
 }
 
 func systemOf(t *testing.T, k *Kernel) string {
@@ -382,7 +382,7 @@ func systemOf(t *testing.T, k *Kernel) string {
 	if len(msgs) == 0 || msgs[0].Role != provider.RoleSystem {
 		t.Fatalf("system %+v", msgs)
 	}
-	return msgs[0].Content
+	return msgs[0].Text()
 }
 
 func installedBody(text string) []string {
@@ -410,7 +410,7 @@ func transcriptText(t *testing.T, b *bot.Bot) string {
 	}
 	var bld strings.Builder
 	for _, e := range entries {
-		bld.WriteString(e.Message.Content)
+		bld.WriteString(e.Message.Text())
 		bld.WriteByte('\n')
 	}
 	return bld.String()

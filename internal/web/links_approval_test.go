@@ -33,11 +33,11 @@ func TestLinksApprovalCarriesSecretNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &turnProvider{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
 			Function: provider.FunctionCall{Name: "links", Arguments: `{"action":"install","id":"telegram"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: p, MaxSteps: 4, Links: []link.Link{link.Terminal{}}}, nil
@@ -86,7 +86,7 @@ func TestLinksApprovalCarriesSecretNames(t *testing.T) {
 	}
 	var joined strings.Builder
 	for _, e := range entries {
-		joined.WriteString(e.Message.Content)
+		joined.WriteString(e.Message.Text())
 		joined.WriteByte('\n')
 	}
 	if strings.Contains(joined.String(), secret) {
@@ -116,8 +116,8 @@ func (s *turnProvider) Chat(_ context.Context, _ provider.Request, onDelta func(
 	}
 	m := s.resps[s.i]
 	s.i++
-	if onDelta != nil && m.Content != "" {
-		onDelta(m.Content)
+	if onDelta != nil && m.Text() != "" {
+		onDelta(m.Text())
 	}
 	return m, nil
 }

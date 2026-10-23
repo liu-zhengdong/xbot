@@ -24,7 +24,7 @@ func requestThinking(t *testing.T, c *Client) map[string]any {
 	}))
 	defer srv.Close()
 	c.BaseURL, c.APIKey, c.HTTPClient = srv.URL, "k", srv.Client()
-	if _, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}, nil); err != nil {
+	if _, err := c.Chat(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: TextContent("hi")}}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	th, ok := body["thinking"]

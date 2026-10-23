@@ -19,13 +19,13 @@ type admissionProvider struct {
 }
 
 func (p *admissionProvider) Chat(ctx context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
-	p.entered <- req.Messages[len(req.Messages)-1].Content
+	p.entered <- req.Messages[len(req.Messages)-1].Text()
 	select {
 	case <-ctx.Done():
 		return provider.Message{}, ctx.Err()
 	case <-p.release:
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "done"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
 }
 func TestAdmissionQueueBoundAndFIFO(t *testing.T) {
 	p := &admissionProvider{make(chan string, 16), make(chan struct{}, 16)}

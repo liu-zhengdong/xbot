@@ -188,7 +188,7 @@ func (e Entry) IsInternal() bool {
 	if e.Message.Role != provider.RoleUser {
 		return false
 	}
-	return hasInternalPrefix(e.Message.Content)
+	return hasInternalPrefix(e.Message.Text())
 }
 
 // internalPrefixes are the openings of kernel notes written before the origin

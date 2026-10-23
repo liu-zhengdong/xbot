@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-18 @ bc4d5e4
+verified: 2026-10-23 @ 860eaf3 + 多 Provider 批 1
 ---
 # 模型供应商与主动性评测
 
@@ -12,6 +12,8 @@ verified: 2026-10-18 @ bc4d5e4
 负责：供应商配置、模型提示、认证名单、主动性评测。不负责：密钥的出站注入（见 [安全](security.md)）。
 
 ## 怎么运转
+- 供应商边界读写有序消息内容块，格式与旧串兼容规则见 [上下文与 transcript](context.md)。Chat Completions 适配器把文本和工具块投影回 `content`、`tool_calls`、`tool_call_id`；流式响应按文本和调用首次出现的顺序组装成块。对外协议仍是 Chat Completions，本地搜索与权限规则沿用现状。
+
 - 用户配置多个兼容 OpenAI 接口的供应商；API key 只存环境变量的名字。
 - 每个 Bot 绑定一个供应商和模型。模型条目可以带 `todo`（true 或 false）和 `todo_steps`。`todo` 缺省时，供应商或模型名含 deepseek 才打开待办提醒，其余关掉；`todo_steps` 缺省是 6。空绑定是 deepseek-flash，提醒开。`xbot provider add --todo on|off --todo-steps N` 写入这两个字段，省略时保留原来的值。密钥仍然只记环境变量名。
 - **思考开关**：DeepSeek 模型默认先思考，而开着思考带工具时，后续请求必须回传 `reasoning_content`，XBot 不回传。所以模型名含 deepseek（`deepseek-reasoner` 除外）的请求一律带 `"thinking":{"type":"disabled"}`。模型条目可写 `thinking`：`off` 对任何模型都带上，`omit` 不带；其他值在 `provider add` 和解析绑定时报错。`xbot provider add --thinking off|omit` 写入，省略时保留原值。`deepseek-chat` 是 2026-07-24 停用的旧名，实测仍路由到 deepseek-flash 非思考模式；模型提示 `deepseek-flash.md` 与 `deepseek-chat.md` 内容相同。

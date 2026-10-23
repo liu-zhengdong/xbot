@@ -46,13 +46,13 @@ func (l LLM) Compact(ctx context.Context, prior string, turns []provider.Message
 	}
 	b.WriteString("</transcript>\n")
 	out, err := l.P.Chat(ctx, provider.Request{Messages: []provider.Message{
-		{Role: provider.RoleSystem, Content: instruction},
-		{Role: provider.RoleUser, Content: b.String()},
+		{Role: provider.RoleSystem, Content: provider.TextContent(instruction)},
+		{Role: provider.RoleUser, Content: provider.TextContent(b.String())},
 	}}, nil)
 	if err != nil {
 		return "", err
 	}
-	text := strings.TrimSpace(out.Content)
+	text := strings.TrimSpace(out.Text())
 	if text == "" {
 		return "", errors.New("compact: empty summary")
 	}
@@ -72,8 +72,8 @@ func fenceData(s string) string {
 
 func render(m provider.Message) string {
 	var b strings.Builder
-	b.WriteString(m.Content)
-	for _, tc := range m.ToolCalls {
+	b.WriteString(m.PortableText())
+	for _, tc := range m.Calls() {
 		fmt.Fprintf(&b, " tool %s %s", tc.Function.Name, tc.Function.Arguments)
 	}
 	return b.String()

@@ -146,7 +146,7 @@ func (s *Server) absorbedReply(b *bot.Bot, box *inbox.Inbox, id, text string) (a
 	at := -1
 	for i := len(rows) - 1; i >= 0; i-- {
 		m := rows[i].Entry.Message
-		if m.Role == provider.RoleUser && !rows[i].Entry.IsForkMark() && strings.Contains(m.Content, text) {
+		if m.Role == provider.RoleUser && !rows[i].Entry.IsForkMark() && strings.Contains(m.Text(), text) {
 			at = i
 			break
 		}
@@ -159,11 +159,11 @@ func (s *Server) absorbedReply(b *bot.Bot, box *inbox.Inbox, id, text string) (a
 	}
 	for _, r := range rows[at+1:] {
 		m := r.Entry.Message
-		if r.Branch == "" && !r.Entry.IsForkMark() && m.Role == provider.RoleAssistant && len(m.ToolCalls) == 0 && m.Content != "" {
-			if bot.SilentText(m.Content) {
+		if r.Branch == "" && !r.Entry.IsForkMark() && m.Role == provider.RoleAssistant && len(m.Calls()) == 0 && m.Text() != "" {
+			if bot.SilentText(m.Text()) {
 				return true, "", "", false
 			}
-			return true, m.Content, "", false
+			return true, m.Text(), "", false
 		}
 	}
 	return true, "", "", true

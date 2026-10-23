@@ -36,7 +36,7 @@ func TestTranscriptSourceFields(t *testing.T) {
 	now := time.Now()
 	user := func(id, content string) {
 		t.Helper()
-		if err := b.Append(bot.Entry{Time: now, EventID: id, Message: provider.Message{Role: provider.RoleUser, Content: content}}); err != nil {
+		if err := b.Append(bot.Entry{Time: now, EventID: id, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -47,7 +47,7 @@ func TestTranscriptSourceFields(t *testing.T) {
 	user("ev_local", "typed here")
 	user("ev_bob", wrapped("bot:bob", "bob"))
 	user("ev_writer", wrapped("bot:writer@MacBook", "writer@MacBook"))
-	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleAssistant, Content: wrapped("bot:bob", "bob")}}); err != nil {
+	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(wrapped("bot:bob", "bob"))}}); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "remote", "devices.json")

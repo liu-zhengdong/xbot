@@ -35,11 +35,11 @@ func (s *Server) unreadCompletions(b *bot.Bot, cursor int) int {
 		if e.Message.Role != provider.RoleUser || e.Origin == bot.OriginInternal {
 			return nil
 		}
-		source, _, ok := peer.EventSource(e.Message.Content)
+		source, _, ok := peer.EventSource(e.Message.Text())
 		if !ok || source != "subagent" {
 			return nil
 		}
-		header, _, _ := strings.Cut(e.Message.Content, ">")
+		header, _, _ := strings.Cut(e.Message.Text(), ">")
 		if strings.Contains(header, `type="done"`) || strings.Contains(header, `type="failed"`) || strings.Contains(header, `type="fork_end"`) {
 			cached.count++
 		}

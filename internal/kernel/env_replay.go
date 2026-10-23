@@ -168,12 +168,12 @@ func replayEnvironment(msgs []provider.Message, prefix string) environment {
 	e := environment{Fields: map[string]json.RawMessage{}, Memory: append([]string(nil), seed...)}
 	calls := map[string]string{}
 	for _, m := range msgs {
-		for _, tc := range m.ToolCalls {
+		for _, tc := range m.Calls() {
 			calls[tc.ID] = tc.Function.Name
 		}
-		text := m.Content
+		text := m.Text()
 		if m.Role == provider.RoleTool {
-			name := calls[m.ToolCallID]
+			name := calls[m.CallID()]
 			if name != "write_file" && name != "edit_file" {
 				continue
 			}
@@ -221,8 +221,8 @@ func environmentBasis(st bot.State, msgs []provider.Message) string {
 		parts = append(parts, fmt.Sprintf("%d:%d", b.From, b.To))
 	}
 	for _, m := range msgs {
-		if m.Internal && strings.HasPrefix(m.Content, "<turn_progress") {
-			first, _, _ := strings.Cut(m.Content, "\n")
+		if m.Internal && strings.HasPrefix(m.Text(), "<turn_progress") {
+			first, _, _ := strings.Cut(m.Text(), "\n")
 			parts = append(parts, first)
 		}
 	}
@@ -255,8 +255,8 @@ func (k *Kernel) appendEnvironment(text string) (provider.Message, error) {
 	if text == "" {
 		return provider.Message{}, nil
 	}
-	m := provider.Message{Role: provider.RoleUser, Internal: true, Content: text}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: m.Role, Content: m.Content}})
+	m := provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(text)}
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: m.Role, Content: provider.TextContent(m.Text())}})
 	m.Seq = seq
 	return m, err
 }
@@ -516,7 +516,7 @@ func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Re
 	if err != nil {
 		return fitted, err
 	}
-	if m.Content != "" {
+	if m.Text() != "" {
 		fitted.Messages = append(fitted.Messages, m)
 		// The full replacement was reserved by fit before any cut. Like the
 		// existing fitter, keep the latest tool step intact even when that

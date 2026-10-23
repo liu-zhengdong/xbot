@@ -40,7 +40,7 @@ func TestLocalModelStepCapIsTheTasks(t *testing.T) {
 func TestLocalModelDoneSteerAndCancel(t *testing.T) {
 	l, work := testLink(t)
 	p := &scriptProvider{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "patched the parser"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("patched the parser")},
 	}}
 	l.UseProvider(p)
 	mustStart(t, l, work, 4, 30, "fix the parser")
@@ -101,7 +101,7 @@ func TestCommandAndRunnerBackends(t *testing.T) {
 
 	svc := NewService()
 	svc.Provider = &scriptProvider{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "from the runner"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("from the runner")},
 	}}
 	ui := newCodeServer(t, svc)
 	l2, work2 := testLink(t)
@@ -168,7 +168,7 @@ func (s *scriptProvider) second() string {
 	}
 	var b strings.Builder
 	for _, m := range s.reqs[1].Messages {
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	return b.String()
@@ -184,9 +184,9 @@ func (p *countingProvider) Chat(_ context.Context, _ provider.Request, _ func(st
 	p.n++
 	p.mu.Unlock()
 	args, _ := json.Marshal(map[string]string{"path": "missing.txt"})
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: string(args)},
-	}}}, nil
+	}})}, nil
 }
 
 func (p *countingProvider) calls() int {
@@ -218,11 +218,11 @@ func (h *holdProvider) Chat(_ context.Context, req provider.Request, _ func(stri
 		h.once.Do(func() { close(h.entered) })
 		<-h.release
 		args, _ := json.Marshal(map[string]string{"path": "missing.txt"})
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: string(args)},
-		}}}, nil
+		}})}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "steered"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("steered")}, nil
 }
 
 func (h *holdProvider) second() string {
@@ -233,7 +233,7 @@ func (h *holdProvider) second() string {
 	}
 	var b strings.Builder
 	for _, m := range h.reqs[1].Messages {
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	return b.String()

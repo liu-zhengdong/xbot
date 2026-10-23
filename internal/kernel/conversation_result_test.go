@@ -42,7 +42,7 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 	if err := os.WriteFile(path, []byte("real tool evidence 871"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})), {Role: provider.RoleAssistant, Content: "A结论731，B结论951。"}, {Role: provider.RoleAssistant, Content: "两个限制仍是42和63。"}}}
+	p := &scripted{resps: []provider.Message{toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})), {Role: provider.RoleAssistant, Content: provider.TextContent("A结论731，B结论951。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("两个限制仍是42和63。")}}}
 	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4, Links: []link.Link{link.Terminal{}, link.NewToolsLinkAt(work, "")}, WorkDir: work}
 	if err := k.Handle(context.Background(), a); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 	}
 	toolResults := 0
 	for _, row := range rows {
-		if row.Message.Role == provider.RoleTool && row.Message.ToolCallID == "read" && strings.Contains(row.Message.Content, "real tool evidence 871") {
+		if row.Message.Role == provider.RoleTool && row.Message.CallID() == "read" && strings.Contains(row.Message.Text(), "real tool evidence 871") {
 			toolResults++
 		}
 	}
@@ -117,7 +117,7 @@ func TestToolProtocolTextIsAnErrorNotAReply(t *testing.T) {
 	for _, body := range []string{"<｜DSML｜function_calls><｜DSML｜invoke name=\"dispatch\">{}</｜DSML｜invoke>", `{"tool_calls":[{"function":{"name":"dispatch"}}]}`, "{\n \"tool_calls\": [{\"function\":{\"name\":\"dispatch\"}}]}", "reply_to: 1\n<｜DSML｜invoke name=\"dispatch\">bad</｜DSML｜invoke>"} {
 		t.Run(body, func(t *testing.T) {
 			b := testBot(t)
-			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: body}}}
+			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(body)}}}
 			var stream strings.Builder
 			k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, OnDelta: func(s string) { stream.WriteString(s) }}
 			ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "A的完整结果123", "sa_a", time.Now())
@@ -136,7 +136,7 @@ func TestToolProtocolTextIsAnErrorNotAReply(t *testing.T) {
 				if row.EventID == ev.ID {
 					input++
 				}
-				if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Content, body) {
+				if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Text(), body) {
 					t.Fatal("protocol committed")
 				}
 			}
@@ -151,7 +151,7 @@ func TestReplyProviderRejectsSplitProtocolButKeepsUsage(t *testing.T) {
 	p := providerFunc(func(_ context.Context, _ provider.Request, delta func(string)) (provider.Message, error) {
 		delta("<｜D")
 		delta("SML｜invoke name=\"dispatch\">bad</｜DSML｜invoke>")
-		return provider.Message{Content: "<｜DSML｜invoke name=\"dispatch\">bad</｜DSML｜invoke>"}, nil
+		return provider.Message{Content: provider.TextContent("<｜DSML｜invoke name=\"dispatch\">bad</｜DSML｜invoke>")}, nil
 	})
 	used := 0
 	var stream strings.Builder
@@ -179,7 +179,7 @@ func TestTaskEnvironmentOnlyAppendsDifferences(t *testing.T) {
 	if got := environmentDelta(prev, prev, "", ""); got != "" {
 		t.Fatal(got)
 	}
-	next := replayEnvironment([]provider.Message{{Role: provider.RoleUser, Internal: true, Content: environmentDelta(environment{Fields: map[string]json.RawMessage{}}, prev, "", "")}}, "")
+	next := replayEnvironment([]provider.Message{{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(environmentDelta(environment{Fields: map[string]json.RawMessage{}}, prev, "", ""))}}, "")
 	b.Position = 1
 	environmentSet(&next, "task:"+b.ID, b)
 	diff := environmentDelta(prev, next, "", "")
@@ -205,12 +205,12 @@ func TestTaskEnvironmentOnlyAppendsDifferences(t *testing.T) {
 
 func TestDSMLExplanationIsOrdinaryText(t *testing.T) {
 	for _, text := range []string{"DSML 的 invoke 是调用标签，不是普通回复。", "下面解释 DSML invoke：\n```xml\n<｜DSML｜invoke>example</｜DSML｜invoke>\n```"} {
-		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: text}}}
+		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(text)}}}
 		rp := &replyProvider{inner: p}
 		var stream strings.Builder
 		msg, err := rp.Chat(context.Background(), provider.Request{}, func(s string) { stream.WriteString(s) })
-		if err != nil || msg.Content != text || stream.String() != text {
-			t.Fatalf("ordinary explanation rejected: %q %v %q", msg.Content, err, stream.String())
+		if err != nil || msg.Text() != text || stream.String() != text {
+			t.Fatalf("ordinary explanation rejected: %q %v %q", msg.Text(), err, stream.String())
 		}
 	}
 }
@@ -222,7 +222,7 @@ func TestLaterResultStillNotifiesAfterAnEarlierExplicitNotification(t *testing.T
 	}
 	a := link.NewEvent(link.SourceSubagent, exec.EvDone, "A结论731", "sa_a", time.Now())
 	c := link.NewEvent(link.SourceSubagent, exec.EvDone, "B结论951", "sa_b", time.Now())
-	p := &scripted{resps: []provider.Message{toolCall("notify", "notify_owner", `{"text":"A结论731"}`), {Role: provider.RoleAssistant, Content: "B结论951。"}}}
+	p := &scripted{resps: []provider.Message{toolCall("notify", "notify_owner", `{"text":"A结论731"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("B结论951。")}}}
 	posted := false
 	k := &Kernel{Bot: b, Links: []link.Link{&link.Timer{Dir: b.RoutineDir(), Sender: "u1"}}, Inbox: in, Provider: p, MaxSteps: 3, Desktop: func(context.Context, string, string) error {
 		if !posted {
@@ -253,7 +253,7 @@ func TestReceivedInputKeepsItsReminderSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, ToolCallID: "old", Content: "tool finished later"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("old", "tool finished later")}}); err != nil {
 		t.Fatal(err)
 	}
 	n, _ := b.Count()

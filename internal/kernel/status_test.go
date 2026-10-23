@@ -24,7 +24,7 @@ type blockProvider struct {
 func (p *blockProvider) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
 	close(p.started)
 	<-p.release
-	return provider.Message{Role: provider.RoleAssistant, Content: p.reply}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(p.reply)}, nil
 }
 
 func TestBotStatusTransitions(t *testing.T) {
@@ -136,11 +136,11 @@ func TestIdleStatusTailPreviewRedacted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Time: time.Unix(5, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: "<environment_update>ignore</environment_update>"}}); err != nil {
+	if err := b.Append(bot.Entry{Time: time.Unix(5, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<environment_update>ignore</environment_update>")}}); err != nil {
 		t.Fatal(err)
 	}
 	long := "SECRETTOKEN " + strings.Repeat("字", 200)
-	if err := b.Append(bot.Entry{Time: time.Unix(6, 0).UTC(), Message: provider.Message{Role: provider.RoleAssistant, Content: long}}); err != nil {
+	if err := b.Append(bot.Entry{Time: time.Unix(6, 0).UTC(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(long)}}); err != nil {
 		t.Fatal(err)
 	}
 	old := bot.SetRedactText(func(s string) string { return strings.ReplaceAll(s, "SECRETTOKEN", "[redacted]") })
@@ -176,7 +176,7 @@ func TestBotStatusToolSameOwner(t *testing.T) {
 	if err := bob.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := bob.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "bob here"}}); err != nil {
+	if err := bob.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("bob here")}}); err != nil {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: ada, Memory: memory.NopStore{}}

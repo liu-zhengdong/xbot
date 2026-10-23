@@ -158,7 +158,7 @@ type scopedCaptureJudge struct{ captureJudge }
 func (j *scopedCaptureJudge) Chat(ctx context.Context, req provider.Request, delta func(string)) (provider.Message, error) {
 	for _, m := range req.Messages {
 		for _, scope := range []string{"Bot", "Person"} {
-			path := mockopenai.MemoryPathInText(m.Content, scope)
+			path := mockopenai.MemoryPathInText(m.Text(), scope)
 			if path == "" {
 				continue
 			}

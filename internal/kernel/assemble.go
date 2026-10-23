@@ -164,18 +164,18 @@ func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
 }
 
 func account(in Input, hist []provider.Message) ([]provider.Message, bot.SectionUsage) {
-	sys := provider.Message{Role: provider.RoleSystem, Content: prefixWithSkills(in.Persona, in.Rules, in.Overlay, in.Links, in.Skills, in.Installed)}
+	sys := provider.Message{Role: provider.RoleSystem, Content: provider.TextContent(prefixWithSkills(in.Persona, in.Rules, in.Overlay, in.Links, in.Skills, in.Installed))}
 	msgs := []provider.Message{sys}
 	usage := bot.SectionUsage{Stable: compact.EstimateMessage(sys)}
 	if mem := wrapMemory(in.Memory); mem != "" {
-		mm := provider.Message{Role: provider.RoleUser, Content: mem}
+		mm := provider.Message{Role: provider.RoleUser, Content: provider.TextContent(mem)}
 		msgs = append(msgs, mm)
 		usage.Memory = compact.EstimateMessage(mm)
 	}
 	for _, m := range hist {
 		msgs = append(msgs, m)
 		est := compact.EstimateMessage(m)
-		if strings.HasPrefix(m.Content, "<environment_") {
+		if strings.HasPrefix(m.Text(), "<environment_") {
 			usage.Env += est
 		} else {
 			usage.History += est

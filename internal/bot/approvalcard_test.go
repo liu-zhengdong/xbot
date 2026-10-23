@@ -122,11 +122,11 @@ func TestUnicodeNameRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loaded.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: "你好"}}); err != nil {
+	if err := loaded.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("你好")}}); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := loaded.Entries()
-	if err != nil || len(entries) != 1 || entries[0].Message.Content != "你好" {
+	if err != nil || len(entries) != 1 || entries[0].Message.Text() != "你好" {
 		t.Fatalf("%v %v", entries, err)
 	}
 	list, err := List(root)

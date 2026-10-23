@@ -106,7 +106,7 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			if state == bot.ApprovalPending {
 				text = bot.ApprovalCardTextAt(id, tool, title, subtitle, summary, state, deadline)
 			}
-			_ = b.Append(bot.Entry{Branch: kernel.BranchOf(ctx), Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: text}})
+			_ = b.Append(bot.Entry{Branch: kernel.BranchOf(ctx), Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
 		}
 		appendCard(bot.ApprovalPending)
 		payload := map[string]any{

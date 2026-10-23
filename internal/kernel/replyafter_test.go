@@ -22,7 +22,7 @@ func TestRemoteOwnerLineIsTrusted(t *testing.T) {
 		}
 	}
 	must(b.SetOwners([]string{"u1"}))
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "answered"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("answered")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4}
 	ev := link.RemoteOwnerEvent("u1", "please check the build", time.Unix(10, 0).UTC())
 	must(k.Handle(context.Background(), ev))
@@ -31,7 +31,7 @@ func TestRemoteOwnerLineIsTrusted(t *testing.T) {
 	}
 	var raw bool
 	for _, m := range p.reqs[0].Messages {
-		if m.Role == provider.RoleUser && m.Content == "please check the build" {
+		if m.Role == provider.RoleUser && m.Text() == "please check the build" {
 			raw = true
 		}
 	}
@@ -47,27 +47,27 @@ func TestRemoteOwnerLineIsTrusted(t *testing.T) {
 func TestReplyAfter(t *testing.T) {
 	b := testBot(t, link.NameRemoteOwner)
 	ev := link.RemoteOwnerEvent("u1", "how is the build?", time.Unix(10, 0).UTC())
-	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(ev.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	// A turn that started but has only tool work so far is not done.
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1"}}}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1"}})}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, done, err := ReplyAfter(b, ev); err != nil || done {
 		t.Fatalf("a turn with an open tool call is not done: done=%v err=%v", done, err)
 	}
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: "ok"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "ok")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, done, err := ReplyAfter(b, ev); err != nil || done {
 		t.Fatalf("a turn without a final line is not done: done=%v err=%v", done, err)
 	}
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "green"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("green")}}); err != nil {
 		t.Fatal(err)
 	}
 	// A later turn belongs to someone else and does not change this answer.
-	if err := b.Append(bot.Entry{EventID: "other", Message: provider.Message{Role: provider.RoleUser, Content: "hi"}}); err != nil {
+	if err := b.Append(bot.Entry{EventID: "other", Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hi")}}); err != nil {
 		t.Fatal(err)
 	}
 	text, done, err := ReplyAfter(b, ev)
@@ -86,10 +86,10 @@ func TestReplyAfterAbsorbed(t *testing.T) {
 	at := time.Unix(100, 0).UTC()
 	ev := link.RemoteOwnerEvent("u1", "also check the docs", at)
 	for _, e := range []bot.Entry{
-		{Time: at, EventID: "first", Message: provider.Message{Role: provider.RoleUser, Content: "check the build"}},
-		{Time: at, Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1"}}}},
-		{Time: at, Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: "ok"}},
-		{Time: at.Add(time.Second), Message: provider.Message{Role: provider.RoleUser, Content: link.Render(ev, true)}},
+		{Time: at, EventID: "first", Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("check the build")}},
+		{Time: at, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1"}})}},
+		{Time: at, Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "ok")}},
+		{Time: at.Add(time.Second), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(ev, true))}},
 	} {
 		if err := b.Append(e); err != nil {
 			t.Fatal(err)
@@ -98,7 +98,7 @@ func TestReplyAfterAbsorbed(t *testing.T) {
 	if _, done, err := ReplyAfter(b, ev); err != nil || done {
 		t.Fatalf("the running turn is not done: done=%v err=%v", done, err)
 	}
-	if err := b.Append(bot.Entry{Time: at.Add(2 * time.Second), Message: provider.Message{Role: provider.RoleAssistant, Content: "build and docs are fine"}}); err != nil {
+	if err := b.Append(bot.Entry{Time: at.Add(2 * time.Second), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("build and docs are fine")}}); err != nil {
 		t.Fatal(err)
 	}
 	text, done, err := ReplyAfter(b, ev)
@@ -119,7 +119,7 @@ func TestReplyAfterAbsorbed(t *testing.T) {
 func TestReplyAfterReadsAnswerAfterFork(t *testing.T) {
 	b := testBot(t, link.NameRemoteOwner)
 	ev := link.RemoteOwnerEvent("u1", "run the long build", time.Unix(10, 0).UTC())
-	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(ev.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	branch := "bg_test1"
@@ -128,10 +128,10 @@ func TestReplyAfterReadsAnswerAfterFork(t *testing.T) {
 	}
 	// The owner speaks again while the branch keeps running.
 	next := link.RemoteOwnerEvent("u1", "any progress?", time.Unix(20, 0).UTC())
-	if err := b.Append(bot.Entry{Time: next.Time, EventID: next.ID, Message: provider.Message{Role: provider.RoleUser, Content: next.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: next.Time, EventID: next.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(next.Content)}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: "the build passed"}}); err != nil {
+	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("the build passed")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 1); err != nil {
@@ -154,7 +154,7 @@ func TestReplyAfterReadsAnswerAfterFork(t *testing.T) {
 func TestReplyAfterForkWithoutAnswerStaysUnfinished(t *testing.T) {
 	b := testBot(t, link.NameRemoteOwner)
 	ev := link.RemoteOwnerEvent("u1", "run the long build", time.Unix(10, 0).UTC())
-	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(ev.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	branch := "bg_test2"
@@ -175,19 +175,19 @@ func TestReplyAfterForkWithoutAnswerStaysUnfinished(t *testing.T) {
 func TestReplyAfterDoesNotBorrowNextTurnsBranch(t *testing.T) {
 	b := testBot(t, link.NameRemoteOwner)
 	first := link.RemoteOwnerEvent("u1", "first request", time.Unix(10, 0).UTC())
-	if err := b.Append(bot.Entry{Time: first.Time, EventID: first.ID, Message: provider.Message{Role: provider.RoleUser, Content: first.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: first.Time, EventID: first.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(first.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	// A produced no final line (for example the model errored out).
 	second := link.RemoteOwnerEvent("u1", "second request", time.Unix(20, 0).UTC())
-	if err := b.Append(bot.Entry{Time: second.Time, EventID: second.ID, Message: provider.Message{Role: provider.RoleUser, Content: second.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: second.Time, EventID: second.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(second.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	branch := "bg_test3"
 	if _, err := b.AppendFork(branch, 2, "second request"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: "second answer"}}); err != nil {
+	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("second answer")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 1); err != nil {
@@ -207,14 +207,14 @@ func TestReplyAfterDoesNotBorrowNextTurnsBranch(t *testing.T) {
 func TestReplyAfterForkInsideOwnTurn(t *testing.T) {
 	b := testBot(t, link.NameRemoteOwner)
 	ev := link.RemoteOwnerEvent("u1", "run it", time.Unix(10, 0).UTC())
-	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: ev.Content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: ev.Time, EventID: ev.ID, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(ev.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	branch := "bg_test4"
 	if _, err := b.AppendFork(branch, 1, "run it"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: "done on the branch"}}); err != nil {
+	if err := b.Append(bot.Entry{Branch: branch, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done on the branch")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 1); err != nil {

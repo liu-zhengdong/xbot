@@ -48,7 +48,7 @@ func (q *ownerQuestion) append(state string) error {
 	if q.automatic {
 		text = bot.ApprovalCardTextWithNotice(q.id, "ask_user", q.question, "", string(raw), state, bot.CardWaitText(q.wait)+"没人选，按推荐选了 "+q.choice)
 	}
-	return q.b.Append(bot.Entry{Branch: q.branch, Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: text}})
+	return q.b.Append(bot.Entry{Branch: q.branch, Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
 }
 
 func (k *Kernel) askOwner(ctx context.Context, question string, options []string, recommended string) error {
@@ -129,7 +129,7 @@ func ChooseQuestion(b *bot.Bot, id, choice string) error {
 			return err
 		}
 		for _, e := range entries {
-			c, ok := bot.ParseApprovalCard(e.Message.Content)
+			c, ok := bot.ParseApprovalCard(e.Message.Text())
 			if !ok || c.ID != id || c.Tool != "ask_user" {
 				continue
 			}
@@ -217,7 +217,7 @@ func AnswerQuestions(b *bot.Bot, text string) {
 }
 
 func deliverQuestion(q *ownerQuestion, text string, fresh bool) {
-	if InterjectInternal(q.b, provider.Message{Role: provider.RoleUser, Content: text, Internal: !fresh}) {
+	if InterjectInternal(q.b, provider.Message{Role: provider.RoleUser, Internal: !fresh, Content: provider.TextContent(text)}) {
 		return
 	}
 	// Card choices, including late ones, answer only their own card.

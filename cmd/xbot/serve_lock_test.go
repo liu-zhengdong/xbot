@@ -27,7 +27,7 @@ func TestRunServeRootLockedPreservesApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	card := bot.ApprovalCardText("live", "shell", "run", "local", "mkdir a", bot.ApprovalPending)
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: card}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(card)}}); err != nil {
 		t.Fatal(err)
 	}
 	lock, ok, err := fsutil.TryLock(filepath.Join(root, "serve.lock"))
@@ -45,7 +45,7 @@ func TestRunServeRootLockedPreservesApproval(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if len(entries) != 1 || entries[0].Message.Content != card {
+	if len(entries) != 1 || entries[0].Message.Text() != card {
 		t.Errorf("live approval transcript changed: got %d entries, want unchanged pending card", len(entries))
 	}
 	if err == nil || err.Error() != "xbot serve is already running for this data root" {

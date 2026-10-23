@@ -26,7 +26,7 @@ func TestOnStepCountsEveryModelCall(t *testing.T) {
 		t.Fatalf("model calls %d, want 2 steps plus the summary", len(p.reqs))
 	}
 
-	sp := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "done"}}}
+	sp := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("done")}}}
 	steps = 0
 	if _, err := Run(context.Background(), sp, nil, nil, Options{MaxSteps: 4, OnStep: func() { steps++ }}); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestOnCapMarksTheStepLimit(t *testing.T) {
 	if capped != 1 {
 		t.Fatalf("OnCap ran %d times at the step limit, want 1", capped)
 	}
-	if last := got[len(got)-1]; last.Role != provider.RoleAssistant || len(last.ToolCalls) != 0 {
+	if last := got[len(got)-1]; last.Role != provider.RoleAssistant || len(last.Calls()) != 0 {
 		t.Fatalf("the closing summary changed: %+v", last)
 	}
 
@@ -68,7 +68,7 @@ func TestOnCapMarksTheStepLimit(t *testing.T) {
 	}
 
 	// A plain answer never reaches the cap.
-	sp := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "done"}}}
+	sp := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("done")}}}
 	capped = 0
 	if _, err := Run(context.Background(), sp, nil, nil, Options{MaxSteps: 4, OnCap: func() { capped++ }}); err != nil {
 		t.Fatal(err)

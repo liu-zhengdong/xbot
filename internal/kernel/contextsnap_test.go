@@ -19,8 +19,8 @@ func TestSummaryRange(t *testing.T) {
 		in       string
 		from, to int
 	}{
-		{summaryMessage(bot.SummaryBlock{From: 1, To: 2, Text: "x"}).Content, 1, 2},
-		{summaryMessage(bot.SummaryBlock{From: 39, To: 71, Text: "y"}).Content, 39, 71},
+		{summaryMessage(bot.SummaryBlock{From: 1, To: 2, Text: "x"}).Text(), 1, 2},
+		{summaryMessage(bot.SummaryBlock{From: 39, To: 71, Text: "y"}).Text(), 39, 71},
 		// A malformed wrapper is not guessed at.
 		{"<summary from=\"5\">z", 5, 0},
 		{"<summary>", 0, 0},
@@ -40,14 +40,14 @@ func TestSummaryRange(t *testing.T) {
 func TestSplitLayersBands(t *testing.T) {
 	block := summaryMessage(bot.SummaryBlock{From: 3, To: 9, Text: "summarised"})
 	msgs := []provider.Message{
-		{Role: provider.RoleSystem, Content: "persona and rules"},
-		{Role: provider.RoleUser, Content: "<memory>\nbot facts\n</memory>"},
+		{Role: provider.RoleSystem, Content: provider.TextContent("persona and rules")},
+		{Role: provider.RoleUser, Content: provider.TextContent("<memory>\nbot facts\n</memory>")},
 		block,
-		{Role: provider.RoleUser, Content: "earlier ask"},
-		{Role: provider.RoleAssistant, Content: "earlier answer"},
-		{Role: provider.RoleUser, Content: "<environment_update>\nnow: x\n</environment_update>"},
-		{Role: provider.RoleUser, Content: "owner said something"},
-		{Role: provider.RoleAssistant, Content: "bot said something"},
+		{Role: provider.RoleUser, Content: provider.TextContent("earlier ask")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("earlier answer")},
+		{Role: provider.RoleUser, Content: provider.TextContent("<environment_update>\nnow: x\n</environment_update>")},
+		{Role: provider.RoleUser, Content: provider.TextContent("owner said something")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("bot said something")},
 	}
 	layers, detail := splitLayers(msgs)
 	want := []string{keySys, keyMem, keyBlock, keyHist, keyEnv, keyTurn}
@@ -84,16 +84,16 @@ func TestTurnStepsPairCallsAndResults(t *testing.T) {
 		return provider.ToolCall{ID: id, Type: "function", Function: provider.FunctionCall{Name: name, Arguments: args}}
 	}
 	msgs := []provider.Message{
-		{Role: provider.RoleSystem, Content: "p"},
-		{Role: provider.RoleUser, Content: "fix the stamps"},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{Role: provider.RoleSystem, Content: provider.TextContent("p")},
+		{Role: provider.RoleUser, Content: provider.TextContent("fix the stamps")},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 			call("a", "read_file", `{"path":"docs/atlas/kernel.md","lines":"1-8"}`),
 			call("b", "shell", `{"command":"go test ./... sk-secret"}`),
-		}},
-		{Role: provider.RoleTool, ToolCallID: "b", Name: "shell", Content: "exit 1\n--- FAIL: TestX"},
-		{Role: provider.RoleTool, ToolCallID: "a", Name: "read_file", Content: "verified: 2026-10-17"},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{call("c", "web_search", `{"query":"q"}`)}},
-		{Role: provider.RoleTool, ToolCallID: "c", Name: "web_search", Content: "error: web_search: blocked"},
+		})},
+		{Role: provider.RoleTool, Name: "shell", Content: provider.ToolResult("b", "exit 1\n--- FAIL: TestX")},
+		{Role: provider.RoleTool, Name: "read_file", Content: provider.ToolResult("a", "verified: 2026-10-17")},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call("c", "web_search", `{"query":"q"}`)})},
+		{Role: provider.RoleTool, Name: "web_search", Content: provider.ToolResult("c", "error: web_search: blocked")},
 	}
 	_, detail := splitLayers(msgs)
 	if len(detail.Steps) != 3 {
@@ -137,18 +137,18 @@ func TestShortPathsKeepsTheFileName(t *testing.T) {
 // first 120 messages were kept, so in a long session the current turn, which
 // is at the end, was the part that got cut.
 func TestLongHistoryKeepsCurrentTurn(t *testing.T) {
-	msgs := []provider.Message{{Role: provider.RoleSystem, Content: "p"}}
+	msgs := []provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent("p")}}
 	for i := 0; i < 200; i++ {
 		msgs = append(msgs,
-			provider.Message{Role: provider.RoleUser, Content: "ask " + strconv.Itoa(i)},
-			provider.Message{Role: provider.RoleAssistant, Content: "answer"})
+			provider.Message{Role: provider.RoleUser, Content: provider.TextContent("ask " + strconv.Itoa(i))},
+			provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("answer")})
 	}
-	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: "now"})
+	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: provider.TextContent("now")})
 	for i := 0; i < contextStepCap+5; i++ {
 		id := strconv.Itoa(i)
 		msgs = append(msgs,
-			provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: id, Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"step ` + id + `"}`}}}},
-			provider.Message{Role: provider.RoleTool, ToolCallID: id, Name: "shell", Content: "exit 0"})
+			provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: id, Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"step ` + id + `"}`}}})},
+			provider.Message{Role: provider.RoleTool, Name: "shell", Content: provider.ToolResult(id, "exit 0")})
 	}
 	req, detail := buildContextRequest(provider.Request{Messages: msgs}, 1, "")
 	if len(detail.Steps) != contextStepCap || detail.SkippedSteps != 5 {
@@ -173,13 +173,13 @@ func TestLongHistoryKeepsCurrentTurn(t *testing.T) {
 func TestContextRingKeepsTenAndNewestDetail(t *testing.T) {
 	k := &Kernel{}
 	t0 := &turn{}
-	msgs := []provider.Message{{Role: provider.RoleSystem, Content: "p"}, {Role: provider.RoleUser, Content: "go"}}
+	msgs := []provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent("p")}, {Role: provider.RoleUser, Content: provider.TextContent("go")}}
 	for i := 0; i < 13; i++ {
 		id := strconv.Itoa(i)
 		k.noteContext(t0, provider.Request{Messages: msgs})
 		msgs = append(msgs,
-			provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: id, Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"c"}`}}}},
-			provider.Message{Role: provider.RoleTool, ToolCallID: id, Name: "shell", Content: "exit 0"})
+			provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: id, Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"c"}`}}})},
+			provider.Message{Role: provider.RoleTool, Name: "shell", Content: provider.ToolResult(id, "exit 0")})
 	}
 	k.context.mu.Lock()
 	reqs, detail := k.context.reqs, k.context.detail
@@ -224,8 +224,8 @@ func TestContextSnapshotKeptWhenTheCallFails(t *testing.T) {
 		onSend: func(req provider.Request) { k.noteContext(t0, req) },
 	}
 	req := provider.Request{Messages: []provider.Message{
-		{Role: provider.RoleSystem, Content: "persona"},
-		{Role: provider.RoleUser, Content: "hello"},
+		{Role: provider.RoleSystem, Content: provider.TextContent("persona")},
+		{Role: provider.RoleUser, Content: provider.TextContent("hello")},
 	}}
 	if _, err := rp.Chat(context.Background(), req, nil); err == nil {
 		t.Fatal("the fake provider should have failed")

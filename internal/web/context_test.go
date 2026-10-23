@@ -33,25 +33,17 @@ func (m *ctxModel) Chat(_ context.Context, _ provider.Request, onDelta func(stri
 	n := m.n
 	m.mu.Unlock()
 	if n == 1 {
-		return provider.Message{
-			Role: provider.RoleAssistant,
-			ToolCalls: []provider.ToolCall{{
-				ID:       "c1",
-				Type:     "function",
-				Function: provider.FunctionCall{Name: "ctxprobe", Arguments: `{"q":"x"}`},
-			}},
-			Usage: provider.TokenUsage{PromptTokens: 4242, CompletionTokens: 7, Reported: true},
-		}, nil
+		return provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{PromptTokens: 4242, CompletionTokens: 7, Reported: true}, Content: provider.ToolContent([]provider.ToolCall{{
+			ID:       "c1",
+			Type:     "function",
+			Function: provider.FunctionCall{Name: "ctxprobe", Arguments: `{"q":"x"}`},
+		}})}, nil
 	}
 	text := "done"
 	if onDelta != nil {
 		onDelta(text)
 	}
-	return provider.Message{
-		Role:    provider.RoleAssistant,
-		Content: text,
-		Usage:   provider.TokenUsage{PromptTokens: 4500, CompletionTokens: 2, Reported: true},
-	}, nil
+	return provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{PromptTokens: 4500, CompletionTokens: 2, Reported: true}, Content: provider.TextContent(text)}, nil
 }
 
 // ctxLink exposes one tool so a turn has a real tool result to inspect.

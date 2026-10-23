@@ -19,7 +19,7 @@ func TestRecallResultRequired(t *testing.T) {
 	}
 	obs := Observation{Assistant: "violet-orbit-73 projects/x.md", Tools: []ToolUse{{Name: "recall"}}}
 	for _, result := range []string{"no matches", "violet-orbit-73", "bot:projects/x.md:1", "violet-orbit-73 bot:projects/x.md:1"} {
-		obs.entries = []bot.Entry{{Message: provider.Message{Role: "tool", Name: "recall", Content: result}}}
+		obs.entries = []bot.Entry{{Message: provider.Message{Role: "tool", Name: "recall", Content: provider.TextContent(result)}}}
 		problems, _ := grade(c, obs, nil, t.TempDir(), nil)
 		wantPass := result == "violet-orbit-73 bot:projects/x.md:1"
 		if (len(problems) == 0) != wantPass {

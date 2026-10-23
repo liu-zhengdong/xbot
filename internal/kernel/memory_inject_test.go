@@ -81,8 +81,8 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	msgs, _ := Assemble(Input{Persona: "Be brief.", Rules: DefaultRules(), Memory: body})
 	var mem string
 	for _, m := range msgs {
-		if m.Role == provider.RoleUser && strings.HasPrefix(m.Content, "<memory>") {
-			mem = m.Content
+		if m.Role == provider.RoleUser && strings.HasPrefix(m.Text(), "<memory>") {
+			mem = m.Text()
 		}
 	}
 	if mem == "" || !strings.Contains(mem, marker) || strings.Contains(mem, "memory clipped") {
@@ -104,7 +104,7 @@ func TestExtractOmittedScopeWritesBot(t *testing.T) {
 	k.ensureTurn().turnTrusted = true
 	k.ensureTurn().turnSender = "u1"
 	k.extractInto(context.Background(), []bot.Entry{{
-		Message: provider.Message{Role: provider.RoleUser, Content: "remember the rule and my timezone"},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("remember the rule and my timezone")},
 	}}, "")
 	botFacts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
 	if err != nil {

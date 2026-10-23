@@ -64,7 +64,7 @@ func (p *blockedResultProvider) Chat(_ context.Context, _ provider.Request, _ fu
 	if p.calls > 1 {
 		text = "完成42"
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: text}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
 }
 func TestBlockedStatePersistsUntilSteered(t *testing.T) {
 	dir := t.TempDir()

@@ -29,8 +29,8 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatalf("composed %q file %q", composed, file)
 	}
 	msgs, _ := Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if strings.Contains(msgs[0].Content, "Language:") || strings.Contains(msgs[0].Content, "Proactivity:") {
-		t.Fatal(msgs[0].Content)
+	if strings.Contains(msgs[0].Text(), "Language:") || strings.Contains(msgs[0].Text(), "Proactivity:") {
+		t.Fatal(msgs[0].Text())
 	}
 	language := "中文"
 	if err := b.ApplyProfile(bot.ProfileUpdate{Language: &language}); err != nil {
@@ -41,8 +41,8 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if !strings.Contains(msgs[0].Content, "Language: reply in 中文.") || !strings.HasPrefix(msgs[0].Content, file) {
-		t.Fatal(msgs[0].Content)
+	if !strings.Contains(msgs[0].Text(), "Language: reply in 中文.") || !strings.HasPrefix(msgs[0].Text(), file) {
+		t.Fatal(msgs[0].Text())
 	}
 }
 
@@ -51,8 +51,8 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	now := t0
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, Now: func() time.Time { return now }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
@@ -66,10 +66,10 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.reqs[1].Messages[0].Content, "Language: reply in 中文.") {
-		t.Fatal(p.reqs[1].Messages[0].Content)
+	if !strings.Contains(p.reqs[1].Messages[0].Text(), "Language: reply in 中文.") {
+		t.Fatal(p.reqs[1].Messages[0].Text())
 	}
-	if !strings.Contains(p.reqs[1].Messages[0].Content, "Be brief.") {
+	if !strings.Contains(p.reqs[1].Messages[0].Text(), "Be brief.") {
 		t.Fatal("persona missing")
 	}
 	updates := envUpdates(t, b)
@@ -83,22 +83,22 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NamePersona)
 	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	now := t0
-	call := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function",
 		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"language":"中文"}`},
-	}}}
+	}})}
 	// A denied call cannot be retried with the same arguments. The later
 	// approval uses a different proposal.
-	call2 := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	call2 := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c2", Type: "function",
 		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"language":"中文","description":"notes"}`},
-	}}}
+	}})}
 	p := &scripted{resps: []provider.Message{
 		call,
-		{Role: provider.RoleAssistant, Content: "denied-done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("denied-done")},
 		call2,
-		{Role: provider.RoleAssistant, Content: "saved"},
-		{Role: provider.RoleAssistant, Content: "next"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("saved")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("next")},
 	}}
 	approved := false
 	k := &Kernel{
@@ -136,7 +136,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "third", t0.Add(2*time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	prefix := p.reqs[len(p.reqs)-1].Messages[0].Content
+	prefix := p.reqs[len(p.reqs)-1].Messages[0].Text()
 	if !strings.Contains(prefix, "Language: reply in 中文.") || strings.Contains(prefix, "Proactivity:") {
 		t.Fatal(prefix)
 	}
@@ -308,7 +308,7 @@ func TestNotifyHeldAtShanghaiEvening(t *testing.T) {
 
 func transcriptHas(entries []bot.Entry, text string) bool {
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, text) {
+		if strings.Contains(e.Message.Text(), text) {
 			return true
 		}
 	}

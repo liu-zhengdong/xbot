@@ -24,10 +24,10 @@ func (leakyTool) Run(context.Context, json.RawMessage) (string, error) {
 
 func TestToolOutputIsRedacted(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "leak", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	var streamed string
 	got, err := Run(context.Background(), p, []tools.Tool{leakyTool{}}, nil, Options{
@@ -40,8 +40,8 @@ func TestToolOutputIsRedacted(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("%+v", got)
 	}
-	if strings.Contains(got[1].Content, "tok-1") || !strings.Contains(got[1].Content, "[secret]") {
-		t.Fatalf("transcript message not redacted: %q", got[1].Content)
+	if strings.Contains(got[1].Text(), "tok-1") || !strings.Contains(got[1].Text(), "[secret]") {
+		t.Fatalf("transcript message not redacted: %q", got[1].Text())
 	}
 	if strings.Contains(streamed, "tok-1") || !strings.Contains(streamed, "[secret]") {
 		t.Fatalf("streamed result not redacted: %q", streamed)

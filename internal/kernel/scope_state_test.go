@@ -16,10 +16,7 @@ func TestBackgroundUsageKeepsForegroundCount(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Now: func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }}
 	call := func(tr *turn, prompt int) {
-		k.noteUsage(tr, provider.Request{}, provider.Message{
-			Role:  provider.RoleAssistant,
-			Usage: provider.TokenUsage{PromptTokens: prompt, CompletionTokens: 10, Reported: true},
-		})
+		k.noteUsage(tr, provider.Request{}, provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{PromptTokens: prompt, CompletionTokens: 10, Reported: true}})
 	}
 	call(&turn{}, 90_000)
 	call(&turn{branch: "bg_1"}, 1_000)

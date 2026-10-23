@@ -123,7 +123,7 @@ func TestMemoryFileOwnEditNoDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"path": path, "old_string": "original", "new_string": "own edited fact"})
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "one"}, {Role: provider.RoleAssistant, Content: "two"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("two")}}}
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root), Provider: p, MaxSteps: 2}
 	memDiffRun(t, k, 2, func(i int) {
 		if i != 0 {

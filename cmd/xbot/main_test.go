@@ -163,7 +163,7 @@ func TestRelativeRootSpawn(t *testing.T) {
 	}
 	var joined string
 	for _, e := range entries {
-		joined += e.Message.Content + "\n"
+		joined += e.Message.Text() + "\n"
 	}
 	if strings.Contains(joined, "dir must be absolute") || !strings.Contains(joined, "started ") {
 		t.Fatalf("spawn:\n%s", joined)
@@ -298,10 +298,10 @@ func TestExportCommandRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	when := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
-	if err := b.Append(bot.Entry{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: "seq-one"}}); err != nil {
+	if err := b.Append(bot.Entry{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("seq-one")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleTool, Content: "TOOL-RESULT"}}); err != nil {
+	if err := b.Append(bot.Entry{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleTool, Content: provider.TextContent("TOOL-RESULT")}}); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(root, "ada.jsonl")
@@ -535,7 +535,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "SECRET-TRANSCRIPT"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("SECRET-TRANSCRIPT")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--language", "中文", "--quiet", "22:00-07:00"}); err != nil {

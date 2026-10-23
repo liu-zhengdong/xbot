@@ -181,10 +181,10 @@ func readTail(b *bot.Bot) (string, time.Time) {
 		if role != provider.RoleAssistant && role != provider.RoleUser {
 			continue
 		}
-		content := e.Message.Content
+		content := e.Message.Text()
 		if strings.TrimSpace(content) == "" && e.Blob != "" {
 			if h, err := b.HydrateLimit(e, tailHydrate); err == nil {
-				content = h.Message.Content
+				content = h.Message.Text()
 			}
 		}
 		content = strings.TrimSpace(oneStatusLine(content))

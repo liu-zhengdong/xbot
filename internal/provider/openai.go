@@ -151,7 +151,7 @@ func wireMessages(in []Message) ([]wireMessage, error) {
 
 func toWire(m Message) (wireMessage, error) {
 	w := wireMessage{
-		Role: m.Role, Name: m.Name, ToolCalls: m.ToolCalls, ToolCallID: m.ToolCallID,
+		Role: m.Role, Name: m.Name, ToolCalls: m.Calls(), ToolCallID: m.CallID(),
 	}
 	raw, err := contentJSON(m)
 	if err != nil {
@@ -163,14 +163,14 @@ func toWire(m Message) (wireMessage, error) {
 
 func contentJSON(m Message) (json.RawMessage, error) {
 	if len(m.Images) == 0 {
-		if m.Content == "" {
+		if m.PortableText() == "" {
 			return nil, nil
 		}
-		return json.Marshal(m.Content)
+		return json.Marshal(m.PortableText())
 	}
 	parts := make([]any, 0, 1+len(m.Images))
-	if m.Content != "" {
-		parts = append(parts, textPart{Type: "text", Text: m.Content})
+	if m.PortableText() != "" {
+		parts = append(parts, textPart{Type: "text", Text: m.PortableText()})
 	}
 	for _, img := range m.Images {
 		mime := img.MIME
@@ -413,7 +413,7 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	if msg.Role == "" {
 		msg.Role = RoleAssistant
 	}
-	if msg.Content == "" && len(msg.ToolCalls) == 0 {
+	if msg.Text() == "" && len(msg.Calls()) == 0 {
 		return Message{}, errors.New("provider: empty completion")
 	}
 	return msg, nil
@@ -486,13 +486,21 @@ func (u apiUsage) tokenUsage() TokenUsage {
 
 type toolBuf struct {
 	id, name, typ string
+	part          int
 	args          strings.Builder
 }
 
 func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	var content strings.Builder
+	var parts []ContentPart
+	var text strings.Builder
+	flushText := func() {
+		if text.Len() > 0 {
+			parts = append(parts, ContentPart{Type: PartText, Text: text.String()})
+			text = strings.Builder{}
+		}
+	}
 	role := RoleAssistant
 	tools := map[int]*toolBuf{}
 	var order []int
@@ -527,7 +535,7 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 			role = d.Role
 		}
 		if d.Content != "" {
-			content.WriteString(d.Content)
+			text.WriteString(d.Content)
 			if onDelta != nil {
 				onDelta(d.Content)
 			}
@@ -535,7 +543,9 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		for _, tc := range d.ToolCalls {
 			buf, ok := tools[tc.Index]
 			if !ok {
-				buf = &toolBuf{}
+				flushText()
+				buf = &toolBuf{part: len(parts)}
+				parts = append(parts, ContentPart{Type: PartToolCall})
 				tools[tc.Index] = buf
 				order = append(order, tc.Index)
 			}
@@ -556,7 +566,8 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 	if err := sc.Err(); err != nil {
 		return Message{}, err
 	}
-	msg := Message{Role: role, Content: content.String(), Usage: usage}
+	flushText()
+	msg := Message{Role: role, Usage: usage, Content: parts}
 	for i, idx := range order {
 		buf := tools[idx]
 		id := buf.id
@@ -567,14 +578,14 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		if typ == "" {
 			typ = "function"
 		}
-		msg.ToolCalls = append(msg.ToolCalls, ToolCall{
+		msg.Content[buf.part].ToolCall = &ToolCall{
 			ID:   id,
 			Type: typ,
 			Function: FunctionCall{
 				Name:      buf.name,
 				Arguments: buf.args.String(),
 			},
-		})
+		}
 	}
 	return msg, nil
 }

@@ -106,7 +106,7 @@ func TestWebApprovalTimeoutAutomaticallyResumes(t *testing.T) {
 	entries, _ := b.Entries()
 	found := false
 	for _, e := range entries {
-		if c, ok := bot.ParseApprovalCard(e.Message.Content); ok && c.ID == id && strings.Contains(c.Notice, "没人确认，已按允许执行") {
+		if c, ok := bot.ParseApprovalCard(e.Message.Text()); ok && c.ID == id && strings.Contains(c.Notice, "没人确认，已按允许执行") {
 			found = true
 		}
 	}
@@ -219,7 +219,7 @@ func TestResolveOrphanApprovalsRecordsRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	orphan := bot.ApprovalCardText("orphan", "shell", "运行命令", "在本机上执行", "mkdir a", bot.ApprovalPending)
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: orphan}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(orphan)}}); err != nil {
 		t.Fatal(err)
 	}
 	answered := []string{
@@ -227,7 +227,7 @@ func TestResolveOrphanApprovalsRecordsRestart(t *testing.T) {
 		bot.ApprovalCardText("answered", "shell", "运行命令", "在本机上执行", "mkdir b", bot.ApprovalApproved),
 	}
 	for _, text := range answered {
-		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: text}}); err != nil {
+		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -258,7 +258,7 @@ func latestState(t *testing.T, b *bot.Bot, id string) string {
 	}
 	state := ""
 	for _, e := range entries {
-		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok && card.ID == id {
+		if card, ok := bot.ParseApprovalCard(e.Message.Text()); ok && card.ID == id {
 			state = card.State
 		}
 	}
@@ -427,7 +427,7 @@ func cardStates(t *testing.T, b *bot.Bot, id string) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if card, ok := bot.ParseApprovalCard(e.Message.Content); ok && card.ID == id {
+		if card, ok := bot.ParseApprovalCard(e.Message.Text()); ok && card.ID == id {
 			out = append(out, card.State)
 		}
 	}

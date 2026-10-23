@@ -53,7 +53,7 @@ func longTurn(steps, talk int) []provider.Message {
 		text += strings.Repeat("z", talk)
 		out = append(out, assistantCall(fmt.Sprintf("c%d", i), text, "big", fmt.Sprintf(`{"n":"%d"}`, i)))
 	}
-	return append(out, provider.Message{Role: provider.RoleAssistant, Content: "done"})
+	return append(out, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 }
 
 func fitKernel(t *testing.T, p provider.Provider, comp compact.Compactor, b compact.Budget, size int) (*Kernel, *bot.Bot) {
@@ -110,7 +110,7 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 	var latest string
 	for _, m := range last {
 		if m.Role == provider.RoleTool {
-			latest = m.Content
+			latest = m.Text()
 		}
 	}
 	if got := latest; !strings.HasPrefix(got, "result 39 ") {
@@ -151,12 +151,12 @@ func TestLeftOutResultsStayOut(t *testing.T) {
 			if m.Role != provider.RoleTool {
 				continue
 			}
-			out := strings.HasPrefix(m.Content, "[result left out")
-			if !out && shown[m.ToolCallID] {
-				t.Fatalf("request %d shows %s again after leaving it out", i, m.ToolCallID)
+			out := strings.HasPrefix(m.Text(), "[result left out")
+			if !out && shown[m.CallID()] {
+				t.Fatalf("request %d shows %s again after leaving it out", i, m.CallID())
 			}
 			if out {
-				shown[m.ToolCallID] = true
+				shown[m.CallID()] = true
 			}
 		}
 	}
@@ -200,7 +200,7 @@ func TestOverflowIsCutAndSentAgain(t *testing.T) {
 	var latest string
 	for _, m := range last {
 		if m.Role == provider.RoleTool {
-			latest = m.Content
+			latest = m.Text()
 		}
 	}
 	if got := latest; !strings.HasPrefix(got, "result 3 ") {
@@ -235,14 +235,14 @@ func TestOtherErrorsAreNotRetriedAsOverflow(t *testing.T) {
 func TestReportedUsageCalibratesTheEstimate(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTerminal)}
 	text := strings.Repeat("上下文", 1000)
-	req := provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: text}}}
+	req := provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent(text)}}}
 	est := compact.EstimateMessages(req.Messages)
-	k.noteUsage(nil, req, provider.Message{Role: provider.RoleAssistant, Content: "ok", Usage: provider.TokenUsage{Reported: true, PromptTokens: est * 4 / 3}})
+	k.noteUsage(nil, req, provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{Reported: true, PromptTokens: est * 4 / 3}, Content: provider.TextContent("ok")})
 	if got := k.scaled(est); got < est*13/10 || got > est*4/3+1 {
 		t.Fatalf("scaled %d from %d", got, est)
 	}
 	// An estimate above the real count is not trusted downwards.
-	k.noteUsage(nil, req, provider.Message{Role: provider.RoleAssistant, Content: "ok", Usage: provider.TokenUsage{Reported: true, PromptTokens: est / 2}})
+	k.noteUsage(nil, req, provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{Reported: true, PromptTokens: est / 2}, Content: provider.TextContent("ok")})
 	if got := k.scaled(est); got != est {
 		t.Fatalf("scaled %d, want %d", got, est)
 	}
@@ -284,20 +284,20 @@ func (m *readerModel) Chat(_ context.Context, req provider.Request, _ func(strin
 	m.reqs = append(m.reqs, snapshotReq(req))
 	last := req.Messages[len(req.Messages)-1]
 	if last.Role == provider.RoleTool && last.Name == "expand" {
-		m.expanded = last.Content
-		return provider.Message{Role: provider.RoleAssistant, Content: "done"}, nil
+		m.expanded = last.Text()
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
 	}
 	if m.i < m.steps {
 		m.i++
 		return assistantCall(fmt.Sprintf("c%d", m.i), fmt.Sprintf("reading part %d", m.i), "big", fmt.Sprintf(`{"n":"%d"}`, m.i-1)), nil
 	}
 	for _, msg := range req.Messages {
-		if msg.ToolCallID != "c1" {
+		if msg.CallID() != "c1" {
 			continue
 		}
-		g := leftOutSeq.FindStringSubmatch(msg.Content)
+		g := leftOutSeq.FindStringSubmatch(msg.Text())
 		if g == nil {
-			return provider.Message{Role: provider.RoleAssistant, Content: "the first result is not left out with a seq: " + msg.Content}, nil
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("the first result is not left out with a seq: " + msg.Text())}, nil
 		}
 		return assistantCall("x1", "", "expand", fmt.Sprintf(`{"from":%s,"to":%s}`, g[2], g[3])), nil
 	}
@@ -341,7 +341,7 @@ func TestTurnSummaryNamesItsRange(t *testing.T) {
 	var from, to int
 	for _, req := range p.reqs {
 		for _, msg := range req.Messages {
-			if g := re.FindStringSubmatch(msg.Content); g != nil {
+			if g := re.FindStringSubmatch(msg.Text()); g != nil {
 				from, _ = strconv.Atoi(g[1])
 				to, _ = strconv.Atoi(g[2])
 			}
@@ -354,7 +354,7 @@ func TestTurnSummaryNamesItsRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].Message.Role != provider.RoleAssistant || !strings.HasPrefix(got[0].Message.Content, "step 0 ") {
+	if got[0].Message.Role != provider.RoleAssistant || !strings.HasPrefix(got[0].Message.Text(), "step 0 ") {
 		t.Fatalf("range starts at %+v, want the turn's first step", got[0].Message.Role)
 	}
 	if last := got[len(got)-1]; last.Message.Role != provider.RoleTool && !last.IsInternal() {

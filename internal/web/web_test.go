@@ -59,7 +59,7 @@ func TestTranscriptEscapesHTML(t *testing.T) {
 	}
 	if err := b.Append(bot.Entry{
 		Time:    time.Now(),
-		Message: provider.Message{Role: provider.RoleUser, Content: `<script>alert(1)</script>`},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(`<script>alert(1)</script>`)},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestForkBotAPI(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleUser, Content: "SECRET-DECISION"}}); err != nil {
+	if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("SECRET-DECISION")}}); err != nil {
 		t.Fatal(err)
 	}
 	mem := memory.Open(root)
@@ -519,10 +519,10 @@ func TestExportAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	when := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
-	if err := ada.Append(bot.Entry{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: "hello export"}}); err != nil {
+	if err := ada.Append(bot.Entry{Time: when, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello export")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ada.Append(bot.Entry{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: "TOOL-RESULT"}}); err != nil {
+	if err := ada.Append(bot.Entry{Time: when.Add(time.Minute), Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "TOOL-RESULT")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ada.SaveState(bot.State{Blocks: []bot.SummaryBlock{{From: 1, To: 1, Text: "SUMMARY-TEXT"}}}); err != nil {
@@ -585,7 +585,7 @@ func TestExportAPI(t *testing.T) {
 		if err := json.Unmarshal(line, &entry); err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(line, []byte(`"seq":1`)) && entry.Message.Content != "hello export" {
+		if bytes.Contains(line, []byte(`"seq":1`)) && entry.Message.Text() != "hello export" {
 			t.Fatalf("round trip %s", line)
 		}
 	}

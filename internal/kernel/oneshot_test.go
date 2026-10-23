@@ -20,7 +20,7 @@ func TestOneShotAndLocalTime(t *testing.T) {
 	}
 	now := time.Date(2026, 10, 15, 12, 7, 40, 0, time.UTC)
 	tm := &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Links: []link.Link{link.Terminal{}, tm},
 		Now: func() time.Time { return now }, MaxSteps: 2,
@@ -46,15 +46,15 @@ func TestOneShotAndLocalTime(t *testing.T) {
 	}
 	var env string
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<environment_") {
-			env += e.Message.Content + "\n"
+		if strings.Contains(e.Message.Text(), "<environment_") {
+			env += e.Message.Text() + "\n"
 		}
 	}
 	want := `"time":"2026-10-15T20:07:00+08:00 (Asia/Shanghai)"`
 	if !strings.Contains(env, want) {
 		t.Fatalf("env missing local time:\n%s", env)
 	}
-	if len(p.reqs) == 0 || strings.Contains(p.reqs[0].Messages[0].Content, "Asia/Shanghai") {
+	if len(p.reqs) == 0 || strings.Contains(p.reqs[0].Messages[0].Text(), "Asia/Shanghai") {
 		t.Fatal("local time leaked into the stable prefix")
 	}
 	var posted []link.Event

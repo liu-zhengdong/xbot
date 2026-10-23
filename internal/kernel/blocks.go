@@ -84,10 +84,10 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 	}
 	positioned := len(seqs) == len(uncovered)
 	for i, e := range uncovered {
-		if code.IsCard(e.Message.Content) {
+		if code.IsCard(e.Message.Text()) {
 			continue
 		}
-		if bot.IsApprovalCard(e.Message.Content) {
+		if bot.IsApprovalCard(e.Message.Text()) {
 			continue
 		}
 		if e.IsForkMark() {
@@ -128,7 +128,7 @@ func groupToolResults(msgs []provider.Message) []provider.Message {
 	moved := make([]bool, len(msgs))
 	for i, m := range msgs {
 		if m.Role == provider.RoleAssistant {
-			for _, tc := range m.ToolCalls {
+			for _, tc := range m.Calls() {
 				if tc.ID != "" {
 					owner[tc.ID] = i
 				}
@@ -138,10 +138,10 @@ func groupToolResults(msgs []provider.Message) []provider.Message {
 		if m.Role != provider.RoleTool {
 			continue
 		}
-		if at, ok := owner[m.ToolCallID]; ok {
+		if at, ok := owner[m.CallID()]; ok {
 			results[at] = append(results[at], m)
 			moved[i] = true
-			delete(owner, m.ToolCallID)
+			delete(owner, m.CallID())
 		}
 	}
 	if len(results) == 0 {
@@ -167,8 +167,8 @@ func groupToolResults(msgs []provider.Message) []provider.Message {
 func strayToolResults(msgs []provider.Message) []provider.Message {
 	answered := map[string]bool{}
 	for _, m := range msgs {
-		if m.Role == provider.RoleTool && m.ToolCallID != "" {
-			answered[m.ToolCallID] = true
+		if m.Role == provider.RoleTool && m.CallID() != "" {
+			answered[m.CallID()] = true
 		}
 	}
 	need := false
@@ -176,7 +176,7 @@ func strayToolResults(msgs []provider.Message) []provider.Message {
 		if m.Role != provider.RoleAssistant {
 			continue
 		}
-		for _, tc := range m.ToolCalls {
+		for _, tc := range m.Calls() {
 			if !answered[tc.ID] {
 				need = true
 				break
@@ -195,25 +195,18 @@ func strayToolResults(msgs []provider.Message) []provider.Message {
 		if m.Role != provider.RoleAssistant {
 			continue
 		}
-		for _, tc := range m.ToolCalls {
+		for _, tc := range m.Calls() {
 			if answered[tc.ID] {
 				continue
 			}
-			out = append(out, provider.Message{
-				Role:       provider.RoleTool,
-				ToolCallID: tc.ID,
-				Content:    "(" + tc.Function.Name + ": no result in this context yet)",
-			})
+			out = append(out, provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(tc.ID, "("+tc.Function.Name+": no result in this context yet)")})
 		}
 	}
 	return out
 }
 
 func summaryMessage(b bot.SummaryBlock) provider.Message {
-	return provider.Message{
-		Role:    provider.RoleUser,
-		Content: fmt.Sprintf("<summary from=\"%d\" to=\"%d\">\n%s\n</summary>", b.From, b.To, strings.TrimSpace(b.Text)),
-	}
+	return provider.Message{Role: provider.RoleUser, Content: provider.TextContent(fmt.Sprintf("<summary from=\"%d\" to=\"%d\">\n%s\n</summary>", b.From, b.To, strings.TrimSpace(b.Text)))}
 }
 
 func coverage(n int, active []bot.SummaryBlock) []bool {
@@ -650,7 +643,7 @@ func toolBoundary(entries []bot.Entry, base, from, to int) error {
 		seq := base + i
 		m := e.Message
 		if m.Role == provider.RoleAssistant {
-			for _, tc := range m.ToolCalls {
+			for _, tc := range m.Calls() {
 				if tc.ID == "" {
 					continue
 				}
@@ -659,11 +652,11 @@ func toolBoundary(entries []bot.Entry, base, from, to int) error {
 				}
 			}
 		}
-		if m.Role == provider.RoleTool && m.ToolCallID != "" {
+		if m.Role == provider.RoleTool && m.CallID() != "" {
 			results = append(results, struct {
 				id  string
 				seq int
-			}{m.ToolCallID, seq})
+			}{m.CallID(), seq})
 		}
 	}
 	in := func(s int) bool { return s >= from && s <= to }
@@ -704,7 +697,7 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 	}
 	turns := make([]provider.Message, 0, len(entries))
 	for _, e := range entries {
-		if code.IsCard(e.Message.Content) || bot.IsApprovalCard(e.Message.Content) {
+		if code.IsCard(e.Message.Text()) || bot.IsApprovalCard(e.Message.Text()) {
 			continue
 		}
 		if e.IsForkMark() {
@@ -715,7 +708,7 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 		// otherwise the range is summarized into words about a picture nobody can
 		// find any more.
 
-		msg.Content = k.withPastedNote(msg.Content, e.Images)
+		msg.SetText(k.withPastedNote(msg.Text(), e.Images))
 		turns = append(turns, msg)
 	}
 	if f, ok := k.compactor(turnSeqOf(ctx)).(focusedCompactor); ok {

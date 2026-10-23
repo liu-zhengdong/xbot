@@ -19,10 +19,10 @@ func TestDanglingReasonsShareOneFunction(t *testing.T) {
 	got := map[string]string{}
 	for _, reason := range []string{DangleInterrupt, DangleCancel, DangleSwitch} {
 		msg := DanglingResult(tc, reason)
-		if msg.Role != provider.RoleTool || msg.ToolCallID != tc.ID || msg.Name != "shell" || msg.Content == "" {
+		if msg.Role != provider.RoleTool || msg.CallID() != tc.ID || msg.Name != "shell" || msg.Text() == "" {
 			t.Fatalf("%s %+v", reason, msg)
 		}
-		got[reason] = msg.Content
+		got[reason] = msg.Text()
 	}
 	if got[DangleInterrupt] != interrupted {
 		t.Fatalf("interrupt text %q", got[DangleInterrupt])
@@ -56,12 +56,9 @@ func TestCancelSealsOpenCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	entered := make(chan struct{})
-	p := &scripted{resps: []provider.Message{{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "hold", Arguments: `{}`},
-		}},
-	}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "hold", Arguments: `{}`},
+	}})}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}, oneToolLink{&cancelHold{entered: entered}}},
@@ -76,19 +73,19 @@ func TestCancelSealsOpenCall(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v", err)
 	}
-	want := DanglingResult(provider.ToolCall{ID: "c1", Function: provider.FunctionCall{Name: "hold"}}, DangleCancel).Content
+	want := DanglingResult(provider.ToolCall{ID: "c1", Function: provider.FunctionCall{Name: "hold"}}, DangleCancel).Text()
 	entries, err := b.Entries()
 	if err != nil {
 		t.Fatal(err)
 	}
 	n := 0
 	for _, e := range entries {
-		if e.Message.ToolCallID != "c1" {
+		if e.Message.CallID() != "c1" {
 			continue
 		}
 		n++
-		if e.Message.Content != want {
-			t.Fatalf("content %q", e.Message.Content)
+		if e.Message.Text() != want {
+			t.Fatalf("content %q", e.Message.Text())
 		}
 	}
 	if n != 1 {
@@ -100,7 +97,7 @@ func TestCancelSealsOpenCall(t *testing.T) {
 	entries, _ = b.Entries()
 	n = 0
 	for _, e := range entries {
-		if e.Message.ToolCallID == "c1" {
+		if e.Message.CallID() == "c1" {
 			n++
 		}
 	}
@@ -125,22 +122,19 @@ func TestModelSwitchSealsOpenCall(t *testing.T) {
 	ev := link.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC())
 	if err := b.Append(bot.Entry{
 		Time: ev.Time, EventID: ev.ID,
-		Message: provider.Message{Role: provider.RoleUser, Content: "do it"},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("do it")},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Message: provider.Message{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
-		}},
-	}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
+	}})}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.SetBinding("new", "model"); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "continued"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("continued")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4}
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
@@ -151,10 +145,10 @@ func TestModelSwitchSealsOpenCall(t *testing.T) {
 	}
 	var sawSwitch, sawInterrupt bool
 	for _, e := range entries {
-		if e.Message.Content == DanglingResult(provider.ToolCall{}, DangleSwitch).Content {
+		if e.Message.Text() == DanglingResult(provider.ToolCall{}, DangleSwitch).Text() {
 			sawSwitch = true
 		}
-		if e.Message.Content == interrupted {
+		if e.Message.Text() == interrupted {
 			sawInterrupt = true
 		}
 	}
@@ -169,7 +163,7 @@ func TestCancelledToolWithPersistedInterjectionCanResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	entered := make(chan struct{})
-	p := &scripted{resps: []provider.Message{toolCall("hold", "hold", "{}"), {Role: provider.RoleAssistant, Content: "继续处理。"}}}
+	p := &scripted{resps: []provider.Message{toolCall("hold", "hold", "{}"), {Role: provider.RoleAssistant, Content: provider.TextContent("继续处理。")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 3, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}, oneToolLink{&cancelHold{entered: entered}}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

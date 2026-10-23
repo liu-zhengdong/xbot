@@ -102,8 +102,8 @@ func EstimateMessages(msgs []provider.Message) int {
 // EstimateMessage estimates one message. Image bytes count at the same rough
 // rate as text, about 4 bytes per token, so a picture is not free.
 func EstimateMessage(m provider.Message) int {
-	n := 4 + Estimate(m.Content) + Estimate(m.Name)
-	for _, tc := range m.ToolCalls {
+	n := 4 + Estimate(m.PortableText()) + Estimate(m.Name)
+	for _, tc := range m.Calls() {
 		n += 4 + Estimate(tc.Function.Name) + Estimate(tc.Function.Arguments)
 	}
 	for _, img := range m.Images {

@@ -21,7 +21,7 @@ import (
 func envBaselineKernel(t *testing.T) (*Kernel, *scripted) {
 	t.Helper()
 	k, store := personBaselineFixture(t)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "one"}, {Role: provider.RoleAssistant, Content: "two"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("two")}}}
 	k.Memory, k.Provider, k.MaxSteps, k.Now = store, p, 2, func() time.Time { return time.Unix(1000, 0) }
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestEnvironmentCompressionRestoresFullDespiteUnrelatedUpdate(t *testing.T) 
 	}
 	n, _ := k.Bot.Count()
 	// Retain a kernel update unrelated to the removed person/task baseline.
-	if err := k.Bot.Append(bot.Entry{Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: "<environment_update>\nnow: later\n</environment_update>"}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<environment_update>\nnow: later\n</environment_update>")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := k.CompactRange(context.Background(), 1, n, "summary without person or task"); err != nil {
@@ -116,10 +116,10 @@ func TestEnvironmentCompressionRestoresFullDespiteUnrelatedUpdate(t *testing.T) 
 	}
 	found := 0
 	for _, e := range visible {
-		if publishedSnapshot(e.Message.Content) {
+		if publishedSnapshot(e.Message.Text()) {
 			found++
-			if !strings.Contains(e.Message.Content, "ALICE_BASELINE_83") || !strings.Contains(e.Message.Content, "UNFINISHED_TASK") {
-				t.Fatalf("snapshot incomplete: %s", e.Message.Content)
+			if !strings.Contains(e.Message.Text(), "ALICE_BASELINE_83") || !strings.Contains(e.Message.Text(), "UNFINISHED_TASK") {
+				t.Fatalf("snapshot incomplete: %s", e.Message.Text())
 			}
 		}
 	}
@@ -150,10 +150,10 @@ func TestEnvironmentInlineFoldRestoresLiveSnapshot(t *testing.T) {
 	for _, req := range p.reqs {
 		hasFold, hasSnapshot := false, false
 		for _, m := range req.Messages {
-			if strings.HasPrefix(m.Content, "<turn_progress") {
+			if strings.HasPrefix(m.Text(), "<turn_progress") {
 				hasFold = true
 			}
-			if publishedSnapshot(m.Content) && strings.Contains(m.Content, "PERSON_IN_FOLD_49") && strings.Contains(m.Content, "LIVE_AFTER_FOLD") {
+			if publishedSnapshot(m.Text()) && strings.Contains(m.Text(), "PERSON_IN_FOLD_49") && strings.Contains(m.Text(), "LIVE_AFTER_FOLD") {
 				hasSnapshot = true
 			}
 		}
@@ -188,7 +188,7 @@ func TestEnvironmentLargeMemoryChangeRemainsReplayable(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "see old", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
-	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: "three"})
+	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("three")})
 	oldText, err := k.memoryText(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -257,7 +257,7 @@ func TestEnvironmentRestartDoesNotRepeatRunningOrQueuedTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.Now = func() time.Time { return time.Unix(1000, 0) }
-	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "status ready"}}}
+	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("status ready")}}}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "status", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
@@ -291,8 +291,8 @@ func TestEnvironmentRestartDoesNotRepeatRunningOrQueuedTasks(t *testing.T) {
 	}
 	var updates strings.Builder
 	for _, row := range rows {
-		if strings.HasPrefix(row.Message.Content, "<environment_update>") {
-			updates.WriteString(row.Message.Content)
+		if strings.HasPrefix(row.Message.Text(), "<environment_update>") {
+			updates.WriteString(row.Message.Text())
 		}
 	}
 	for _, task := range tasks {

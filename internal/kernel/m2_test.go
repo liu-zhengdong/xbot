@@ -19,8 +19,8 @@ func TestOwnerTerminalIsNotWrapped(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "ok"},
-		{Role: provider.RoleAssistant, Content: "no"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("ok")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	ev := link.TerminalEvent("u1", "ship it", time.Unix(10, 0).UTC())
@@ -37,8 +37,8 @@ func TestOwnerTerminalIsNotWrapped(t *testing.T) {
 			continue
 		}
 		saw = true
-		if strings.Contains(e.Message.Content, "<untrusted_event") || e.Message.Content != "ship it" {
-			t.Fatalf("owner text: %s", e.Message.Content)
+		if strings.Contains(e.Message.Text(), "<untrusted_event") || e.Message.Text() != "ship it" {
+			t.Fatalf("owner text: %s", e.Message.Text())
 		}
 	}
 	if !saw {
@@ -53,8 +53,8 @@ func TestOwnerTerminalIsNotWrapped(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.EventID == other.ID && !strings.Contains(e.Message.Content, "<untrusted_event") {
-			t.Fatalf("non-owner was trusted: %s", e.Message.Content)
+		if e.EventID == other.ID && !strings.Contains(e.Message.Text(), "<untrusted_event") {
+			t.Fatalf("non-owner was trusted: %s", e.Message.Text())
 		}
 	}
 }
@@ -68,9 +68,9 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	t0 := time.Date(2026, 10, 15, 8, 10, 0, 0, time.UTC)
 	now := t0
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
-		{Role: provider.RoleAssistant, Content: "three"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("three")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, MaxSteps: 2,
@@ -84,8 +84,8 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if p.reqs[0].Messages[0].Content != p.reqs[1].Messages[0].Content {
-		t.Fatalf("prefix changed within the hour\n%s\n%s", p.reqs[0].Messages[0].Content, p.reqs[1].Messages[0].Content)
+	if p.reqs[0].Messages[0].Text() != p.reqs[1].Messages[0].Text() {
+		t.Fatalf("prefix changed within the hour\n%s\n%s", p.reqs[0].Messages[0].Text(), p.reqs[1].Messages[0].Text())
 	}
 	updates := envUpdates(t, b)
 	if len(updates) != 3 {
@@ -114,7 +114,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, `"time":`) {
 		t.Fatalf("diff not small: %s", last)
 	}
-	if p.reqs[2].Messages[0].Content != p.reqs[1].Messages[0].Content {
+	if p.reqs[2].Messages[0].Text() != p.reqs[1].Messages[0].Text() {
 		t.Fatal("hour change rewrote the stable prefix")
 	}
 }
@@ -124,9 +124,9 @@ func TestPersonaEditSurfacesAsEnvUpdate(t *testing.T) {
 	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	now := t0
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
-		{Role: provider.RoleAssistant, Content: "three"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("three")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, Now: func() time.Time { return now }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
@@ -140,7 +140,7 @@ func TestPersonaEditSurfacesAsEnvUpdate(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.reqs[1].Messages[0].Content, next) {
+	if !strings.Contains(p.reqs[1].Messages[0].Text(), next) {
 		t.Fatal("new persona missing from prefix")
 	}
 	updates := envUpdates(t, b)
@@ -151,7 +151,7 @@ func TestPersonaEditSurfacesAsEnvUpdate(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "third", t0.Add(2*time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if p.reqs[2].Messages[0].Content != p.reqs[1].Messages[0].Content {
+	if p.reqs[2].Messages[0].Text() != p.reqs[1].Messages[0].Text() {
 		t.Fatal("prefix should stay stable after the persona update")
 	}
 }
@@ -159,13 +159,13 @@ func TestPersonaEditSurfacesAsEnvUpdate(t *testing.T) {
 func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameContext)
 	msgs := []bot.Entry{
-		{Message: provider.Message{Role: provider.RoleUser, Content: "the secret code is purple finch"}},
-		{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("the secret code is purple finch")}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
-		}}}},
-		{Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: "a.txt"}},
-		{Message: provider.Message{Role: provider.RoleAssistant, Content: "listed"}},
-		{Message: provider.Message{Role: provider.RoleUser, Content: "RECENT tail"}},
+		}})}},
+		{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "a.txt")}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("listed")}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("RECENT tail")}},
 	}
 	for _, e := range msgs {
 		if err := b.Append(e); err != nil {
@@ -203,14 +203,14 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 		Blocks:  st.Blocks,
 		Entries: entries,
 	})
-	if view[0].Role != provider.RoleSystem || strings.Contains(view[0].Content, "purple finch") || strings.Contains(view[0].Content, "Lisbon") {
-		t.Fatalf("prefix: %s", view[0].Content)
+	if view[0].Role != provider.RoleSystem || strings.Contains(view[0].Text(), "purple finch") || strings.Contains(view[0].Text(), "Lisbon") {
+		t.Fatalf("prefix: %s", view[0].Text())
 	}
-	if !strings.HasPrefix(view[1].Content, "<memory>") || !strings.Contains(view[1].Content, "Lisbon") {
-		t.Fatalf("memory section: %s", view[1].Content)
+	if !strings.HasPrefix(view[1].Text(), "<memory>") || !strings.Contains(view[1].Text(), "Lisbon") {
+		t.Fatalf("memory section: %s", view[1].Text())
 	}
-	if !strings.Contains(view[2].Content, "<summary") || !strings.Contains(view[2].Content, "SUM") {
-		t.Fatalf("summary: %s", view[2].Content)
+	if !strings.Contains(view[2].Text(), "<summary") || !strings.Contains(view[2].Text(), "SUM") {
+		t.Fatalf("summary: %s", view[2].Text())
 	}
 	raw := messagesText(view[3:])
 	if strings.Contains(raw, "purple finch") || !strings.Contains(raw, "RECENT tail") {
@@ -232,7 +232,7 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 		t.Fatal("merge of the same range should fail")
 	}
 	// A coarser range is blocked by the raw tail, so append a message and merge 1-4 with nothing new inside the protected tail.
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "later"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("later")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := k.CompactRange(context.Background(), 1, 5, "coarser"); err != nil {
@@ -272,8 +272,8 @@ func envUpdates(t *testing.T, b *bot.Bot) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if e.Message.Role == provider.RoleUser && e.IsInternal() && strings.HasPrefix(e.Message.Content, "<environment_update>") {
-			out = append(out, e.Message.Content)
+		if e.Message.Role == provider.RoleUser && e.IsInternal() && strings.HasPrefix(e.Message.Text(), "<environment_update>") {
+			out = append(out, e.Message.Text())
 		}
 	}
 	return out

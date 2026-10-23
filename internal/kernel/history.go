@@ -52,7 +52,7 @@ func (k *Kernel) RecallHistoryBot(query, name string) (string, error) {
 		if e.IsForkMark() {
 			continue
 		}
-		snip := oneLine(e.Message.Content)
+		snip := oneLine(e.Message.Text())
 		if snip == "" {
 			snip = oneLine(toolBlob(e.Message))
 		}
@@ -95,8 +95,8 @@ func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, k.withPastedNoteIn(target, e.Message.Content, e.Images))
-		if blob := toolBlob(e.Message); blob != "" && e.Message.Content == "" {
+		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, k.withPastedNoteIn(target, e.Message.Text(), e.Images))
+		if blob := toolBlob(e.Message); blob != "" && e.Message.Text() == "" {
 			b.WriteString(blob)
 			b.WriteByte('\n')
 		}
@@ -157,7 +157,7 @@ func (k *Kernel) presentHistory(body, botName string, foreign bool, cap int) str
 
 func toolBlob(m provider.Message) string {
 	var b strings.Builder
-	for _, tc := range m.ToolCalls {
+	for _, tc := range m.Calls() {
 		fmt.Fprintf(&b, "%s %s ", tc.Function.Name, tc.Function.Arguments)
 	}
 	return strings.TrimSpace(b.String())

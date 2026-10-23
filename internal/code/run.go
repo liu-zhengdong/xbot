@@ -209,8 +209,8 @@ func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task,
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.TimeoutSec)*time.Second)
 	defer cancel()
 	msgs := []provider.Message{
-		{Role: provider.RoleSystem, Content: codingPersona},
-		{Role: provider.RoleUser, Content: taskText(task)},
+		{Role: provider.RoleSystem, Content: provider.TextContent(codingPersona)},
+		{Role: provider.RoleUser, Content: provider.TextContent(taskText(task))},
 	}
 	seen := 0
 	var last string
@@ -221,7 +221,7 @@ func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task,
 		if notes != nil {
 			batch := notes()
 			if len(batch) > seen {
-				msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: renderNotes(batch[seen:])})
+				msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: provider.TextContent(renderNotes(batch[seen:]))})
 				seen = len(batch)
 			}
 		}
@@ -301,8 +301,8 @@ func renderNotes(notes []Note) string {
 
 func lastText(msgs []provider.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == provider.RoleAssistant && strings.TrimSpace(msgs[i].Content) != "" {
-			return strings.TrimSpace(msgs[i].Content)
+		if msgs[i].Role == provider.RoleAssistant && strings.TrimSpace(msgs[i].Text()) != "" {
+			return strings.TrimSpace(msgs[i].Text())
 		}
 	}
 	return ""
@@ -310,7 +310,7 @@ func lastText(msgs []provider.Message) string {
 
 func calledTool(msgs []provider.Message) bool {
 	for _, m := range msgs {
-		if m.Role == provider.RoleAssistant && len(m.ToolCalls) > 0 {
+		if m.Role == provider.RoleAssistant && len(m.Calls()) > 0 {
 			return true
 		}
 	}

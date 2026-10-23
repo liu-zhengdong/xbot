@@ -34,10 +34,10 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	if err := src.GrantWatch("notes"); err != nil {
 		t.Fatal(err)
 	}
-	if err := src.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleUser, Content: "hello"}}); err != nil {
+	if err := src.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := src.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "SECRET-DECISION ship friday"}}); err != nil {
+	if err := src.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SECRET-DECISION ship friday")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := src.SaveState(bot.State{Blocks: []bot.SummaryBlock{{From: 1, To: 1, Text: "greeting"}}}); err != nil {
@@ -86,7 +86,7 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	}
 	sawSecret := false
 	for _, m := range comp.turns {
-		if strings.Contains(m.Content, "SECRET-DECISION") {
+		if strings.Contains(m.Text(), "SECRET-DECISION") {
 			sawSecret = true
 		}
 	}
@@ -123,7 +123,7 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(srcEntries) != 2 || !strings.Contains(srcEntries[1].Message.Content, "SECRET-DECISION") {
+	if len(srcEntries) != 2 || !strings.Contains(srcEntries[1].Message.Text(), "SECRET-DECISION") {
 		t.Fatalf("source transcript changed: %+v", srcEntries)
 	}
 	srcState, err := src.LoadState()

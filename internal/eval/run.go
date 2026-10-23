@@ -334,7 +334,7 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	for i, m := range c.Setup.Transcript {
 		if err := b.Append(bot.Entry{
 			Time:    base.Add(time.Duration(i) * time.Minute),
-			Message: provider.Message{Role: m.Role, Content: m.Content},
+			Message: provider.Message{Role: m.Role, Content: provider.TextContent(m.Content)},
 		}); err != nil {
 			res.Reason = err.Error()
 			return res
@@ -602,11 +602,11 @@ func observe(b *bot.Bot) (Observation, error) {
 	var obs Observation
 	obs.entries = entries
 	for _, e := range entries {
-		for _, tc := range e.Message.ToolCalls {
+		for _, tc := range e.Message.Calls() {
 			obs.Tools = append(obs.Tools, ToolUse{Name: tc.Function.Name, Args: tc.Function.Arguments})
 		}
-		if e.Message.Role == provider.RoleAssistant && len(e.Message.ToolCalls) == 0 && strings.TrimSpace(e.Message.Content) != "" {
-			obs.Assistant = e.Message.Content
+		if e.Message.Role == provider.RoleAssistant && len(e.Message.Calls()) == 0 && strings.TrimSpace(e.Message.Text()) != "" {
+			obs.Assistant = e.Message.Text()
 		}
 	}
 	notes, err := notify.Open(b.OutboxPath()).Unread()
@@ -671,8 +671,8 @@ func capTail(s string, n int) string {
 func formatTranscript(entries []bot.Entry) string {
 	var b strings.Builder
 	for i, e := range entries {
-		fmt.Fprintf(&b, "#%d %s\n%s\n", i+1, e.Message.Role, e.Message.Content)
-		for _, tc := range e.Message.ToolCalls {
+		fmt.Fprintf(&b, "#%d %s\n%s\n", i+1, e.Message.Role, e.Message.Text())
+		for _, tc := range e.Message.Calls() {
 			fmt.Fprintf(&b, "tool %s %s\n", tc.Function.Name, tc.Function.Arguments)
 		}
 		b.WriteByte('\n')
@@ -730,13 +730,11 @@ func judgeFacts(work string) string {
 
 func judge(ctx context.Context, p provider.Provider, rubric, transcript, facts string) (bool, string, error) {
 	prompt := "Grade this bot run. The transcript and the final file facts are both evidence. File facts win when they disagree with a claim in the transcript. Reply with JSON {\"pass\":true|false,\"reason\":\"...\"} and nothing else.\n\nRubric:\n" + strings.TrimSpace(rubric) + "\n\nFinal file facts:\n" + facts + "\nTranscript:\n" + capTail(transcript, judgeCap)
-	msg, err := p.Chat(ctx, provider.Request{Messages: []provider.Message{{
-		Role: provider.RoleUser, Content: prompt,
-	}}}, nil)
+	msg, err := p.Chat(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent(prompt)}}}, nil)
 	if err != nil {
 		return false, "", err
 	}
-	text := strings.TrimSpace(msg.Content)
+	text := strings.TrimSpace(msg.Text())
 	text = strings.TrimPrefix(text, "```json")
 	text = strings.TrimPrefix(text, "```")
 	text = strings.TrimSuffix(text, "```")
@@ -746,7 +744,7 @@ func judge(ctx context.Context, p provider.Provider, rubric, transcript, facts s
 		Reason string `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(text), &verdict); err != nil {
-		return false, msg.Content, fmt.Errorf("eval: judge reply is not JSON")
+		return false, msg.Text(), fmt.Errorf("eval: judge reply is not JSON")
 	}
 	if strings.TrimSpace(verdict.Reason) == "" {
 		verdict.Reason = text

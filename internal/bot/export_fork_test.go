@@ -18,13 +18,13 @@ func TestExportForkMarkdownAndJSONL(t *testing.T) {
 	if err := b.Append(mainRow("start")); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "forked work"}, Branch: "bg_7"}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("forked work")}, Branch: "bg_7"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendFork("bg_7", 1, "long job"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "after marker"}, Branch: "bg_7"}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("after marker")}, Branch: "bg_7"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendForkEnd("bg_7", ForkDone, 2); err != nil {

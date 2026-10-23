@@ -47,7 +47,7 @@ func TestC1BackgroundOutputImagesAndEffectsUseActualCompletion(t *testing.T) {
 	k, p := c1Fixture(t, slow)
 	var once sync.Once
 	defer func() { once.Do(func() { close(slow.release) }); _ = k.Close() }()
-	p.resps = []provider.Message{toolCall("rich", slow.Name(), "{}"), {Role: provider.RoleAssistant, Content: "已转到后台"}}
+	p.resps = []provider.Message{toolCall("rich", slow.Name(), "{}"), {Role: provider.RoleAssistant, Content: provider.TextContent("已转到后台")}}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "rich", time.Now())); err != nil {
 		t.Fatal(err)
 	}

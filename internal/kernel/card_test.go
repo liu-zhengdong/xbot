@@ -15,13 +15,13 @@ func TestCodingCardStaysOutOfModel(t *testing.T) {
 		Persona: "p",
 		Rules:   "r",
 		Entries: []bot.Entry{
-			{Message: provider.Message{Role: provider.RoleUser, Content: code.Card("ca_aa", "running", "diff --git")}},
-			{Message: provider.Message{Role: provider.RoleUser, Content: "hello"}},
+			{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(code.Card("ca_aa", "running", "diff --git"))}},
+			{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}},
 		},
 	})
 	var b strings.Builder
 	for _, m := range msgs {
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	text := b.String()
@@ -38,13 +38,13 @@ func TestApprovalCardStaysOutOfModel(t *testing.T) {
 		Persona: "p",
 		Rules:   "r",
 		Entries: []bot.Entry{
-			{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText("ab12", "shell", "", "", "mkdir approved-dir", bot.ApprovalApproved)}},
-			{Message: provider.Message{Role: provider.RoleUser, Content: "hello"}},
+			{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(bot.ApprovalCardText("ab12", "shell", "", "", "mkdir approved-dir", bot.ApprovalApproved))}},
+			{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}},
 		},
 	})
 	var b strings.Builder
 	for _, m := range msgs {
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	text := b.String()
@@ -68,14 +68,14 @@ func TestCardsStayOutOfCompaction(t *testing.T) {
 	rec := &recordCompactor{}
 	k := &Kernel{Compactor: rec}
 	entries := []bot.Entry{
-		{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText("ab12", "shell", "", "", "mkdir x", bot.ApprovalApproved)}},
-		{Message: provider.Message{Role: provider.RoleAssistant, Content: code.Card("ca_aa", "done", "diff --git")}},
-		{Message: provider.Message{Role: provider.RoleUser, Content: "real turn"}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(bot.ApprovalCardText("ab12", "shell", "", "", "mkdir x", bot.ApprovalApproved))}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(code.Card("ca_aa", "done", "diff --git"))}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("real turn")}},
 	}
 	if _, err := k.summarize(context.Background(), entries, nil, 1, len(entries), "focus"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.last) != 1 || rec.last[0].Content != "real turn" {
+	if len(rec.last) != 1 || rec.last[0].Text() != "real turn" {
 		t.Fatalf("compactor saw %+v", rec.last)
 	}
 }

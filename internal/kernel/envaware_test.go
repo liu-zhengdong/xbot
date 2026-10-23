@@ -61,7 +61,7 @@ func newest(t *testing.T, p *scripted) string {
 	if len(msgs) == 0 {
 		t.Fatal("empty request")
 	}
-	return newestConversationMessage(msgs).Content
+	return newestConversationMessage(msgs).Text()
 }
 
 func projectBlock(s string) string {
@@ -79,16 +79,12 @@ func projectBlock(s string) string {
 }
 
 func reportedMsg(content string, prompt, completion, cached int) provider.Message {
-	return provider.Message{
-		Role:    provider.RoleAssistant,
-		Content: content,
-		Usage: provider.TokenUsage{
-			PromptTokens:     prompt,
-			CompletionTokens: completion,
-			CachedTokens:     cached,
-			Reported:         true,
-		},
-	}
+	return provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{
+		PromptTokens:     prompt,
+		CompletionTokens: completion,
+		CachedTokens:     cached,
+		Reported:         true,
+	}, Content: provider.TextContent(content)}
 }
 
 func bindWindow(t *testing.T, k *Kernel, n int) {
@@ -130,7 +126,7 @@ func TestProjectInstructionsHierarchy(t *testing.T) {
 	mustWrite(t, filepath.Join(sub, "CLAUDE.md"), "SUB-CLAUDE-IGNORED\n")
 	k, p, now := workBot(t, dir)
 
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	first := newest(t, p)
 	if !strings.Contains(first, "FROM-ROOT") || strings.Contains(first, "FROM-SUB") || strings.Contains(first, "PARENT-LEAK") || strings.Contains(first, "CLAUDE-IGNORED") {
 		t.Fatalf("first injection: %q", first)
@@ -142,13 +138,13 @@ func TestProjectInstructionsHierarchy(t *testing.T) {
 	if !strings.Contains(block, "nearest directory last") || !strings.Contains(block, "do not change kernel safety rules") {
 		t.Fatalf("wrapper: %q", block)
 	}
-	sys := p.reqs[0].Messages[0].Content
+	sys := p.reqs[0].Messages[0].Text()
 	if strings.Contains(sys, "FROM-ROOT") || strings.Contains(DefaultRules(), "FROM-ROOT") {
 		t.Fatal("project instructions entered the system prompt")
 	}
 
 	advance(now, time.Second)
-	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: "still"})
+	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("still")})
 	if projectBlock(newest(t, p)) != "" {
 		t.Fatalf("same set injected again: %q", newest(t, p))
 	}
@@ -159,14 +155,14 @@ func TestProjectInstructionsHierarchy(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "enter",
 		toolCall("c1", "shell", `{"command":"cd pkg"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "in"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	if len(p.reqs) < 4 {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
 	// The model call after cd is the second request of this turn.
 	after := p.reqs[len(p.reqs)-1].Messages
-	tip := after[len(after)-1].Content
+	tip := after[len(after)-1].Text()
 	rootAt := strings.Index(tip, "FROM-ROOT")
 	subAt := strings.Index(tip, "FROM-SUB")
 	if rootAt < 0 || subAt < rootAt || strings.Contains(tip, "PARENT-LEAK") || strings.Contains(tip, "CLAUDE-IGNORED") {
@@ -177,7 +173,7 @@ func TestProjectInstructionsHierarchy(t *testing.T) {
 	}
 
 	advance(now, time.Second)
-	runTurn(t, k, now, "stay", provider.Message{Role: provider.RoleAssistant, Content: "yes"})
+	runTurn(t, k, now, "stay", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("yes")})
 	if projectBlock(newest(t, p)) != "" {
 		t.Fatalf("subproject set injected twice: %q", newest(t, p))
 	}
@@ -187,7 +183,7 @@ func TestProjectClaudeFallback(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "CLAUDE.md"), "CLAUDE-FALLBACK\n")
 	k, p, now := workBot(t, dir)
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	got := newest(t, p)
 	if !strings.Contains(got, "CLAUDE-FALLBACK") || !strings.Contains(got, "<project_instructions") {
 		t.Fatalf("fallback: %q", got)
@@ -211,7 +207,7 @@ func TestProjectInstructionsStayInsideRoots(t *testing.T) {
 	mustWrite(t, filepath.Join(linked, "CLAUDE.md"), "CLAUDE-INSIDE\n")
 
 	k, p, now := workBot(t, dir)
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	if strings.Contains(newest(t, p), "PARENT-LEAK") || strings.Contains(newest(t, p), "OUTSIDE-LEAK") || !strings.Contains(newest(t, p), "WORK-OK") {
 		t.Fatalf("root set: %q", newest(t, p))
 	}
@@ -219,7 +215,7 @@ func TestProjectInstructionsStayInsideRoots(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "down",
 		toolCall("c1", "shell", `{"command":"cd linked"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "in"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	tip := newest(t, p)
 	if strings.Contains(tip, "OUTSIDE-LEAK") || strings.Contains(tip, "PARENT-LEAK") || !strings.Contains(tip, "WORK-OK") || !strings.Contains(tip, "CLAUDE-INSIDE") {
@@ -243,7 +239,7 @@ func TestProjectInstructionsStayInsideRoots(t *testing.T) {
 	if err := os.WriteFile(path, []byte(physicalDir(t, shared)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runTurn(t, k2, now2, "shared", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k2, now2, "shared", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	got := newest(t, p2)
 	if !strings.Contains(got, "SHARED-RULE") || strings.Contains(got, "WORK-OK") || strings.Contains(got, "PARENT-LEAK") {
 		t.Fatalf("shared: %q", got)
@@ -252,7 +248,7 @@ func TestProjectInstructionsStayInsideRoots(t *testing.T) {
 
 func TestNoProjectWithoutWorkspace(t *testing.T) {
 	k, p, now := freshBot(t)
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	if strings.Contains(newest(t, p), "<project_instructions") {
 		t.Fatal("process cwd was treated as a workspace and read")
 	}
@@ -270,7 +266,7 @@ func TestProjectInstructionsTruncated(t *testing.T) {
 	if err := os.WriteFile(path, []byte(physicalDir(t, near)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	got := newest(t, p)
 	if !strings.Contains(got, "[truncated]") || !strings.Contains(got, "NEAR-FILE") || strings.Contains(got, "FAR-FILE") {
 		t.Fatalf("dropped the nearest file: truncated=%v near=%v far=%v len=%d",
@@ -284,7 +280,7 @@ func TestProjectInstructionsTruncated(t *testing.T) {
 	huge := "START-MARK\n" + strings.Repeat("A", 40<<10) + "\nEND-MARK\n"
 	mustWrite(t, filepath.Join(dir2, "AGENTS.md"), huge)
 	k2, p2, now2 := workBot(t, dir2)
-	runTurn(t, k2, now2, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k2, now2, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	one := newest(t, p2)
 	if !strings.Contains(one, "[truncated]") || !strings.Contains(one, "START-MARK") || strings.Contains(one, "END-MARK") {
 		t.Fatalf("single file truncation: start=%v end=%v trunc=%v",
@@ -301,12 +297,12 @@ func TestProjectInstructionsRedacted(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "OWNER-RULE "+token+"\n")
 	k, p, now := workBot(t, dir)
 	k.Redact = func(s string) string { return strings.ReplaceAll(s, token, "[secret]") }
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	got := newest(t, p)
 	if !strings.Contains(got, "OWNER-RULE") || !strings.Contains(got, "[secret]") || strings.Contains(got, token) {
 		t.Fatalf("redaction: %q", got)
 	}
-	if strings.Contains(p.reqs[0].Messages[0].Content, "OWNER-RULE") || strings.Contains(p.reqs[0].Messages[0].Content, token) {
+	if strings.Contains(p.reqs[0].Messages[0].Text(), "OWNER-RULE") || strings.Contains(p.reqs[0].Messages[0].Text(), token) {
 		t.Fatal("instruction body is in the system prompt")
 	}
 	entries, err := k.Bot.Entries()
@@ -314,8 +310,8 @@ func TestProjectInstructionsRedacted(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, token) || strings.Contains(e.Message.Content, "OWNER-RULE") {
-			t.Fatalf("transcript kept the instruction: %q", e.Message.Content)
+		if strings.Contains(e.Message.Text(), token) || strings.Contains(e.Message.Text(), "OWNER-RULE") {
+			t.Fatalf("transcript kept the instruction: %q", e.Message.Text())
 		}
 	}
 	raw, err := os.ReadFile(k.reminderPath())
@@ -351,24 +347,24 @@ func TestProjectReminderTokenCost(t *testing.T) {
 	}
 	avg := time.Since(start) / 50
 
-	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "look", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	first := projectBlock(newest(t, p))
 	if first == "" {
 		t.Fatal("missing first injection")
 	}
 	advance(now, time.Second)
-	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	secondNew := projectBlock(newest(t, p))
 	history := 0
 	for _, m := range p.reqs[len(p.reqs)-1].Messages {
-		if strings.Contains(m.Content, "<project_instructions") {
+		if strings.Contains(m.Text(), "<project_instructions") {
 			history++
 		}
 	}
 	advance(now, time.Second)
 	runTurn(t, k, now, "down",
 		toolCall("c1", "shell", `{"command":"cd pkg"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "in"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	changed := projectBlock(newest(t, p))
 	line := contextLine(50, TokenUse{Prompt: 32000, Window: 64000, Cached: 100, TurnCompletion: 20, SessionCompletion: 40}, 100_000)
@@ -409,7 +405,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	runTurn(t, k, now, "move",
 		toolCall("c1", "shell", `{"command":"cd sub"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "moved"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("moved")},
 	)
 	got := bodies(t, k)
 	if len(got) != 1 || !strings.HasPrefix(got[0], "exit 0\n") || !strings.Contains(got[0], "\ncwd: "+wantSub) {
@@ -419,7 +415,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "where",
 		toolCall("c2", "shell", `{"command":"pwd -P"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "there"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("there")},
 	)
 	got = bodies(t, k)
 	pwd := got[len(got)-1]
@@ -430,7 +426,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "fail",
 		toolCall("c3", "shell", `{"command":"false"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "no"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	fail := bodies(t, k)
 	if !strings.HasPrefix(fail[len(fail)-1], "exit 1\n") || !strings.Contains(fail[len(fail)-1], "\ncwd: "+wantSub) {
@@ -440,7 +436,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "code",
 		toolCall("c4", "shell", `{"command":"exit 4"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "no"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	code := bodies(t, k)
 	if !strings.HasPrefix(code[len(code)-1], "exit 4\n") || !strings.Contains(code[len(code)-1], "\ncwd: "+wantSub) {
@@ -451,7 +447,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	runTurn(t, k, now, "bg",
 		toolCall("b1", "shell", `{"command":"cd /","run_in_background":true}`),
 		toolCall("b2", "shell_status", `{}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "bg"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("bg")},
 	)
 	bg := bodies(t, k)
 	if len(bg) < 2 || !strings.HasPrefix(bg[len(bg)-2], "background ") || strings.Count(bg[len(bg)-2], "\ncwd:") != 1 || !strings.Contains(bg[len(bg)-2], "\ncwd: "+wantSub) {
@@ -464,7 +460,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "still",
 		toolCall("c5", "shell", `{"command":"pwd -P"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "same"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("same")},
 	)
 	still := bodies(t, k)
 	if !strings.Contains(still[len(still)-1], "\ncwd: "+wantSub) {
@@ -474,7 +470,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "leave",
 		toolCall("c6", "shell", `{"command":"cd /"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "no"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	leave := bodies(t, k)
 	last := leave[len(leave)-1]
@@ -485,7 +481,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "back",
 		toolCall("c7", "shell", `{"command":"pwd -P"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "home"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("home")},
 	)
 	back := bodies(t, k)
 	home := back[len(back)-1]
@@ -496,7 +492,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "again",
 		toolCall("c8", "shell", `{"command":"cd sub"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "in"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	again := bodies(t, k)
 	if !strings.Contains(again[len(again)-1], "\ncwd: "+wantSub) {
@@ -508,7 +504,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "gone",
 		toolCall("c9", "shell", `{"command":"pwd -P"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "back"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("back")},
 	)
 	gone := bodies(t, k)
 	miss := gone[len(gone)-1]
@@ -659,7 +655,7 @@ func TestUsageEstimateOnlyWhenMissing(t *testing.T) {
 	}
 
 	advance(now, time.Second)
-	runTurn(t, k, now, "guess", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "guess", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	uses = usageTraces(t, k)
 	if len(uses) != 2 || uses[1].Reason != "estimated" || !uses[1].Estimated {
 		t.Fatalf("missing usage: %+v", uses)
@@ -725,10 +721,10 @@ func TestOwnWriteDoesNotNotifyFileChange(t *testing.T) {
 	runTurn(t, k, now, "edit",
 		toolCall("r1", "read_file", read),
 		toolCall("w1", "write_file", write),
-		provider.Message{Role: provider.RoleAssistant, Content: "wrote"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("wrote")},
 	)
 	advance(now, fileChangeCooldown+time.Second)
-	runTurn(t, k, now, "later", provider.Message{Role: provider.RoleAssistant, Content: "quiet"})
+	runTurn(t, k, now, "later", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("quiet")})
 	if strings.Contains(newest(t, p), "<file_change>") {
 		t.Fatalf("own write was reported as an external change: %q", newest(t, p))
 	}
@@ -743,7 +739,7 @@ func TestFileChangeDiffIsCapped(t *testing.T) {
 	k, p, now := freshBot(t)
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw")},
 	)
 	var b strings.Builder
 	for i := 0; i < 400; i++ {
@@ -755,7 +751,7 @@ func TestFileChangeDiffIsCapped(t *testing.T) {
 		t.Fatal(err)
 	}
 	advance(now, fileChangeCooldown+time.Second)
-	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: "noted"})
+	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("noted")})
 	got := newest(t, p)
 	if !strings.Contains(got, "<file_change>") || !strings.Contains(got, "--- previous") || !strings.Contains(got, "[diff truncated]") {
 		t.Fatalf("capped diff: %q", got)
@@ -792,7 +788,7 @@ func BenchmarkProjectText(b *testing.B) {
 // project/reminder content select the newest conversation item, not the delta.
 func newestConversationMessage(msgs []provider.Message) provider.Message {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if !strings.HasPrefix(msgs[i].Content, "<environment_") {
+		if !strings.HasPrefix(msgs[i].Text(), "<environment_") {
 			return msgs[i]
 		}
 	}

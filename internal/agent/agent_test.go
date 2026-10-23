@@ -39,8 +39,8 @@ func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(st
 	}
 	m := s.resps[s.i]
 	s.i++
-	if onDelta != nil && m.Content != "" {
-		onDelta(m.Content)
+	if onDelta != nil && m.Text() != "" {
+		onDelta(m.Text())
 	}
 	return m, nil
 }
@@ -62,15 +62,15 @@ func (e *echoTool) Run(context.Context, json.RawMessage) (string, error) {
 }
 
 func TestRunFinalAnswer(t *testing.T) {
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "Hello"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("Hello")}}}
 	var deltas []string
-	got, err := Run(context.Background(), p, nil, []provider.Message{{Role: provider.RoleUser, Content: "hi"}}, Options{
+	got, err := Run(context.Background(), p, nil, []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("hi")}}, Options{
 		OnDelta: func(s string) { deltas = append(deltas, s) },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Content != "Hello" {
+	if len(got) != 1 || got[0].Text() != "Hello" {
 		t.Fatalf("%+v", got)
 	}
 	if strings.Join(deltas, "") != "Hello" {
@@ -81,25 +81,25 @@ func TestRunFinalAnswer(t *testing.T) {
 func TestRunToolThenAnswer(t *testing.T) {
 	tool := &echoTool{}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
-	got, err := Run(context.Background(), p, []tools.Tool{tool}, []provider.Message{{Role: provider.RoleUser, Content: "go"}}, Options{})
+	got, err := Run(context.Background(), p, []tools.Tool{tool}, []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("go")}}, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !tool.ran {
 		t.Fatal("tool did not run")
 	}
-	if len(got) != 3 || got[1].Role != provider.RoleTool || got[1].Content != "echoed" || got[2].Content != "done" {
+	if len(got) != 3 || got[1].Role != provider.RoleTool || got[1].Text() != "echoed" || got[2].Text() != "done" {
 		t.Fatalf("%+v", got)
 	}
 	if len(p.reqs) != 2 {
 		t.Fatalf("calls %d", len(p.reqs))
 	}
-	if p.reqs[1].Messages[len(p.reqs[1].Messages)-1].Content != "echoed" {
+	if p.reqs[1].Messages[len(p.reqs[1].Messages)-1].Text() != "echoed" {
 		t.Fatal("tool result was not sent back")
 	}
 }
@@ -107,10 +107,10 @@ func TestRunToolThenAnswer(t *testing.T) {
 func TestRunDeniedSkipsTool(t *testing.T) {
 	tool := &echoTool{confirm: true}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{
 		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
@@ -121,7 +121,7 @@ func TestRunDeniedSkipsTool(t *testing.T) {
 	if tool.ran {
 		t.Fatal("tool ran after denial")
 	}
-	if got[1].Content != "denied by user" || got[2].Content != "stopped" {
+	if got[1].Text() != "denied by user" || got[2].Text() != "stopped" {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -129,10 +129,10 @@ func TestRunDeniedSkipsTool(t *testing.T) {
 func TestRunWithoutApproverDoesNotBlameTheUser(t *testing.T) {
 	tool := &echoTool{confirm: true}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{})
 	if err != nil {
@@ -141,7 +141,7 @@ func TestRunWithoutApproverDoesNotBlameTheUser(t *testing.T) {
 	if tool.ran {
 		t.Fatal("tool ran without an approver")
 	}
-	if strings.Contains(got[1].Content, "user") || !strings.Contains(got[1].Content, "no approver") {
+	if strings.Contains(got[1].Text(), "user") || !strings.Contains(got[1].Text(), "no approver") {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -149,32 +149,32 @@ func TestRunWithoutApproverDoesNotBlameTheUser(t *testing.T) {
 func TestRunToolErrorContinues(t *testing.T) {
 	tool := &failTool{}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "fail", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "recovered"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("recovered")},
 	}}
 	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(got[1].Content, "error:") || got[2].Content != "recovered" {
+	if !strings.HasPrefix(got[1].Text(), "error:") || got[2].Text() != "recovered" {
 		t.Fatalf("%+v", got)
 	}
 }
 
 func TestRunUnknownTool(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "nope", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "ok"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("ok")},
 	}}
 	got, err := Run(context.Background(), p, nil, nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got[1].Content, "unknown tool") {
+	if !strings.Contains(got[1].Text(), "unknown tool") {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -185,9 +185,9 @@ type alwaysTools struct {
 
 func (a *alwaysTools) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	a.reqs = append(a.reqs, req)
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-	}}}, nil
+	}})}, nil
 }
 
 func TestRunMaxSteps(t *testing.T) {
@@ -200,7 +200,7 @@ func TestRunMaxSteps(t *testing.T) {
 		t.Fatalf("summary request %+v", p.reqs)
 	}
 	last := got[len(got)-1]
-	if last.Role != provider.RoleAssistant || strings.TrimSpace(last.Content) == "" || len(last.ToolCalls) != 0 {
+	if last.Role != provider.RoleAssistant || strings.TrimSpace(last.Text()) == "" || len(last.Calls()) != 0 {
 		t.Fatalf("final %+v", last)
 	}
 }
@@ -214,17 +214,17 @@ func TestRunDuplicateTool(t *testing.T) {
 
 func TestRunToolsInOrder(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
 			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
-		}},
-		{Role: provider.RoleAssistant, Content: "ok"},
+		})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("ok")},
 	}}
 	got, err := Run(context.Background(), p, []tools.Tool{&sleepTool{name: "a"}, &sleepTool{name: "b"}}, nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[1].ToolCallID != "1" || got[1].Content != "a" || got[2].ToolCallID != "2" || got[2].Content != "b" {
+	if got[1].CallID() != "1" || got[1].Text() != "a" || got[2].CallID() != "2" || got[2].Text() != "b" {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -274,14 +274,11 @@ func (s *sleepTool) Run(ctx context.Context, _ json.RawMessage) (string, error) 
 
 func TestParallelToolsBeatSerialTime(t *testing.T) {
 	const d = 200 * time.Millisecond
-	p := &scripted{resps: []provider.Message{{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{
-			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
-			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
-			{ID: "3", Type: "function", Function: provider.FunctionCall{Name: "c", Arguments: "{}"}},
-		},
-	}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
+		{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
+		{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
+		{ID: "3", Type: "function", Function: provider.FunctionCall{Name: "c", Arguments: "{}"}},
+	})}}}
 	start := time.Now()
 	got, err := Run(context.Background(), p, []tools.Tool{
 		&sleepTool{name: "a", d: d},
@@ -295,7 +292,7 @@ func TestParallelToolsBeatSerialTime(t *testing.T) {
 	if elapsed >= 2*d {
 		t.Fatalf("parallel took %s; serial would be %s", elapsed, 3*d)
 	}
-	if got[1].Content != "a" || got[2].Content != "b" || got[3].Content != "c" {
+	if got[1].Text() != "a" || got[2].Text() != "b" || got[3].Text() != "c" {
 		t.Fatalf("order %+v", got)
 	}
 }
@@ -309,11 +306,11 @@ func TestToolResultsStayInCallOrder(t *testing.T) {
 		mu.Unlock()
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "slow", Arguments: "{}"}},
 			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "fast", Arguments: "{}"}},
-		}},
-		{Role: provider.RoleAssistant, Content: "ok"},
+		})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("ok")},
 	}}
 	got, err := Run(context.Background(), p, []tools.Tool{
 		&sleepTool{name: "slow", d: 150 * time.Millisecond, onDone: mark},
@@ -325,11 +322,11 @@ func TestToolResultsStayInCallOrder(t *testing.T) {
 	if strings.Join(finished, ",") != "fast,slow" {
 		t.Fatalf("finish order %v", finished)
 	}
-	if got[1].ToolCallID != "1" || got[1].Content != "slow" || got[2].ToolCallID != "2" || got[2].Content != "fast" {
+	if got[1].CallID() != "1" || got[1].Text() != "slow" || got[2].CallID() != "2" || got[2].Text() != "fast" {
 		t.Fatalf("transcript %+v", got[1:3])
 	}
 	msgs := p.reqs[1].Messages
-	if msgs[len(msgs)-2].Content != "slow" || msgs[len(msgs)-1].Content != "fast" {
+	if msgs[len(msgs)-2].Text() != "slow" || msgs[len(msgs)-1].Text() != "fast" {
 		t.Fatalf("next request %+v", msgs[len(msgs)-2:])
 	}
 }
@@ -347,14 +344,11 @@ func TestApprovalsAreSerialized(t *testing.T) {
 			return active
 		},
 	}
-	p := &scripted{resps: []provider.Message{{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{
-			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "ask-a", Arguments: "{}"}},
-			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "free", Arguments: "{}"}},
-			{ID: "3", Type: "function", Function: provider.FunctionCall{Name: "ask-b", Arguments: "{}"}},
-		},
-	}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
+		{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "ask-a", Arguments: "{}"}},
+		{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "free", Arguments: "{}"}},
+		{ID: "3", Type: "function", Function: provider.FunctionCall{Name: "ask-b", Arguments: "{}"}},
+	})}}}
 	got, err := Run(context.Background(), p, []tools.Tool{
 		&sleepTool{name: "ask-a", confirm: true},
 		free,
@@ -382,10 +376,10 @@ func TestApprovalsAreSerialized(t *testing.T) {
 	if maxActive != 1 {
 		t.Fatalf("approvals in flight %d", maxActive)
 	}
-	if !free.saw || got[2].Content != "free" {
+	if !free.saw || got[2].Text() != "free" {
 		t.Fatalf("free tool %+v saw %v", got[2], free.saw)
 	}
-	if got[1].ToolCallID != "1" || got[3].ToolCallID != "3" {
+	if got[1].CallID() != "1" || got[3].CallID() != "3" {
 		t.Fatalf("order %+v", got)
 	}
 }
@@ -426,13 +420,10 @@ func TestCancelStopsInFlightTools(t *testing.T) {
 		<-entered
 		cancel()
 	}()
-	p := &scripted{resps: []provider.Message{{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{
-			{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
-			{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
-		},
-	}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
+		{ID: "1", Type: "function", Function: provider.FunctionCall{Name: "a", Arguments: "{}"}},
+		{ID: "2", Type: "function", Function: provider.FunctionCall{Name: "b", Arguments: "{}"}},
+	})}}}
 	start := time.Now()
 	got, err := Run(ctx, p, []tools.Tool{
 		&sleepTool{name: "a", d: 5 * time.Second, entered: entered},
@@ -447,7 +438,7 @@ func TestCancelStopsInFlightTools(t *testing.T) {
 	}
 	// Cancelled calls stay open so the kernel can seal them once. The assistant
 	// request is kept; the fake "error: context canceled" results are not.
-	if len(got) != 1 || len(got[0].ToolCalls) != 2 {
+	if len(got) != 1 || len(got[0].Calls()) != 2 {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -455,17 +446,17 @@ func TestCancelStopsInFlightTools(t *testing.T) {
 func TestGuardRemindsThenStops(t *testing.T) {
 	tool := &echoTool{}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: `{"n":"1"}`},
-		}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: `{"n":"2"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "summarized"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("summarized")},
 	}}
 	var stops []string
 	got, err := Run(context.Background(), p, []tools.Tool{tool}, []provider.Message{
-		{Role: provider.RoleUser, Content: "go"},
+		{Role: provider.RoleUser, Content: provider.TextContent("go")},
 	}, Options{
 		Guard: func(step int, _ []provider.Message) (string, bool, string) {
 			if step == 0 {
@@ -485,18 +476,18 @@ func TestGuardRemindsThenStops(t *testing.T) {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
 	last := p.reqs[1].Messages[len(p.reqs[1].Messages)-1]
-	if !strings.Contains(last.Content, "loop warning") {
-		t.Fatalf("reminder not on the newest message: %q", last.Content)
+	if !strings.Contains(last.Text(), "loop warning") {
+		t.Fatalf("reminder not on the newest message: %q", last.Text())
 	}
-	if strings.Contains(p.reqs[1].Messages[0].Content, "loop warning") {
+	if strings.Contains(p.reqs[1].Messages[0].Text(), "loop warning") {
 		t.Fatal("reminder rewrote an earlier message")
 	}
 	var sawReason, sawSummary bool
 	for _, m := range got {
-		if strings.Contains(m.Content, "<stop_reason>repeated_output</stop_reason>") {
+		if strings.Contains(m.Text(), "<stop_reason>repeated_output</stop_reason>") {
 			sawReason = true
 		}
-		if m.Content == "summarized" {
+		if m.Text() == "summarized" {
 			sawSummary = true
 		}
 	}
@@ -517,16 +508,16 @@ func (panicTool) Run(context.Context, json.RawMessage) (string, error) {
 
 func TestToolPanicBecomesError(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "boom", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "still here"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("still here")},
 	}}
 	got, err := Run(context.Background(), p, []tools.Tool{panicTool{}}, nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) < 2 || !strings.Contains(got[1].Content, "error: tool panic: hostile page") {
+	if len(got) < 2 || !strings.Contains(got[1].Text(), "error: tool panic: hostile page") {
 		t.Fatalf("%+v", got)
 	}
 }
@@ -557,13 +548,13 @@ func (im imageTool) Run(ctx context.Context, _ json.RawMessage) (string, error) 
 
 func TestImageStaysUntilTheTurnEnds(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "echo", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	_, err := Run(context.Background(), p, []tools.Tool{imageTool{}, &echoTool{}}, nil, Options{})
 	if err != nil {
@@ -576,8 +567,8 @@ func TestImageStaysUntilTheTurnEnds(t *testing.T) {
 		var n int
 		for _, m := range req.Messages {
 			n += len(m.Images)
-			if strings.Contains(m.Content, "[image omitted after the previous step]") {
-				t.Fatalf("request %d told the model the image was gone: %q", i+1, m.Content)
+			if strings.Contains(m.Text(), "[image omitted after the previous step]") {
+				t.Fatalf("request %d told the model the image was gone: %q", i+1, m.Text())
 			}
 		}
 		if n != 1 {
@@ -600,13 +591,13 @@ func (im *seqImage) Run(ctx context.Context, _ json.RawMessage) (string, error) 
 
 func TestNewestImageSetReplacesOlder(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	_, err := Run(context.Background(), p, []tools.Tool{&seqImage{}}, nil, Options{})
 	if err != nil {
@@ -628,10 +619,10 @@ func TestNewestImageSetReplacesOlder(t *testing.T) {
 
 func TestImageTurnCap(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	_, err := Run(context.Background(), p, []tools.Tool{imageTool{n: 5, size: 8}}, nil, Options{})
 	if err != nil {
@@ -641,7 +632,7 @@ func TestImageTurnCap(t *testing.T) {
 	var sawNote bool
 	for _, m := range p.reqs[1].Messages {
 		n += len(m.Images)
-		if strings.Contains(m.Content, "[image omitted: turn image cap]") {
+		if strings.Contains(m.Text(), "[image omitted: turn image cap]") {
 			sawNote = true
 		}
 	}
@@ -662,11 +653,11 @@ func (approvePanicTool) Run(context.Context, json.RawMessage) (string, error) {
 
 func TestApprovePanicDoesNotDeadlock(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 			{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "needs", Arguments: "{}"}},
 			{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "needs", Arguments: "{}"}},
-		}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	done := make(chan struct{})
 	var got []provider.Message
@@ -689,7 +680,7 @@ func TestApprovePanicDoesNotDeadlock(t *testing.T) {
 	}
 	var panics int
 	for _, m := range got {
-		if strings.Contains(m.Content, "error: tool panic:") {
+		if strings.Contains(m.Text(), "error: tool panic:") {
 			panics++
 		}
 	}
@@ -701,10 +692,10 @@ func TestApprovePanicDoesNotDeadlock(t *testing.T) {
 func TestToolPanicIsRedactedAndClipped(t *testing.T) {
 	secret := "sk-secret-value"
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "boom", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "still here"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("still here")},
 	}}
 	tool := panicTextTool{text: secret + " " + strings.Repeat("x", 8000)}
 	got, err := Run(context.Background(), p, []tools.Tool{tool}, nil, Options{
@@ -716,11 +707,11 @@ func TestToolPanicIsRedactedAndClipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) < 2 || strings.Contains(got[1].Content, secret) || !strings.Contains(got[1].Content, "[secret]") {
+	if len(got) < 2 || strings.Contains(got[1].Text(), secret) || !strings.Contains(got[1].Text(), "[secret]") {
 		t.Fatalf("%+v", got)
 	}
-	if len(got[1].Content) > 128 {
-		t.Fatalf("panic text len %d", len(got[1].Content))
+	if len(got[1].Text()) > 128 {
+		t.Fatalf("panic text len %d", len(got[1].Text()))
 	}
 }
 
@@ -740,10 +731,10 @@ func (p panicTextTool) Run(context.Context, json.RawMessage) (string, error) {
 // fifth must not reach the next request as five.
 func TestAbsorbedPicturesCountAgainstTheTurnCap(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	var absorbed bool
 	opt := Options{AfterStep: func() ([]provider.Message, error) {
@@ -751,11 +742,7 @@ func TestAbsorbedPicturesCountAgainstTheTurnCap(t *testing.T) {
 			return nil, nil
 		}
 		absorbed = true
-		return []provider.Message{{
-			Role:    provider.RoleUser,
-			Content: "看这张",
-			Images:  []provider.Image{{MIME: "image/png", Data: []byte{9}}},
-		}}, nil
+		return []provider.Message{{Role: provider.RoleUser, Images: []provider.Image{{MIME: "image/png", Data: []byte{9}}}, Content: provider.TextContent("看这张")}}, nil
 	}}
 	// Four pictures from the tool use up the turn's allowance.
 	_, err := Run(context.Background(), p, []tools.Tool{imageTool{n: 4, size: 8}}, nil, opt)
@@ -775,10 +762,10 @@ func TestAbsorbedPicturesCountAgainstTheTurnCap(t *testing.T) {
 }
 
 func TestToolCallbacksKeepParallelCallIDs(t *testing.T) {
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 		{ID: "slow", Type: "function", Function: provider.FunctionCall{Name: "same", Arguments: "{}"}},
 		{ID: "fast", Type: "function", Function: provider.FunctionCall{Name: "same", Arguments: "{}"}},
-	}}}}
+	})}}}
 	var mu sync.Mutex
 	starts, results, approvals := map[string]int{}, map[string]int{}, map[string]int{}
 	_, err := Run(context.Background(), p, []tools.Tool{&sleepTool{name: "same", confirm: true}}, nil, Options{

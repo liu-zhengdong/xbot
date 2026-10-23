@@ -24,7 +24,7 @@ func (k *Kernel) openApprovals() []PendingApproval {
 	seen := map[string]int{}
 	var list []open
 	for _, e := range entries {
-		card, ok := bot.ParseApprovalCard(e.Message.Content)
+		card, ok := bot.ParseApprovalCard(e.Message.Text())
 		if !ok {
 			continue
 		}

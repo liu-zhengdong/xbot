@@ -17,7 +17,7 @@ import (
 func appendCard(t *testing.T, b *bot.Bot, id, tool, summary, state string, at time.Time) {
 	t.Helper()
 	content := bot.ApprovalCardText(id, tool, "运行命令", "在本机上执行", summary, state)
-	if err := b.Append(bot.Entry{Time: at, Message: provider.Message{Role: provider.RoleUser, Content: content}}); err != nil {
+	if err := b.Append(bot.Entry{Time: at, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -32,7 +32,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 	}
 	now := time.Unix(1000, 0).UTC()
 	appendCard(t, b, "card-1", "shell", "mkdir approved-dir", bot.ApprovalPending, now.Add(-90*time.Second))
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}},
@@ -49,7 +49,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 	var hits int
 	var carrier provider.Message
 	for _, m := range msgs {
-		if strings.Contains(m.Content, "<pending_approvals>") {
+		if strings.Contains(m.Text(), "<pending_approvals>") {
 			hits++
 			carrier = m
 		}
@@ -57,18 +57,18 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 	if hits != 1 {
 		t.Fatalf("reminder messages %d, want 1 on the newest message", hits)
 	}
-	if !strings.Contains(carrier.Content, "hello") {
-		t.Fatalf("reminder was not appended to the owner message: %q", carrier.Content)
+	if !strings.Contains(carrier.Text(), "hello") {
+		t.Fatalf("reminder was not appended to the owner message: %q", carrier.Text())
 	}
-	if strings.HasPrefix(strings.TrimSpace(carrier.Content), "<pending_approvals>") {
+	if strings.HasPrefix(strings.TrimSpace(carrier.Text()), "<pending_approvals>") {
 		t.Fatal("reminder replaced the newest message instead of appending")
 	}
 	for _, want := range []string{"shell", "mkdir approved-dir", "1m", "</pending_approvals>"} {
-		if !strings.Contains(carrier.Content, want) {
-			t.Fatalf("note %q missing %q", carrier.Content, want)
+		if !strings.Contains(carrier.Text(), want) {
+			t.Fatalf("note %q missing %q", carrier.Text(), want)
 		}
 	}
-	if strings.Contains(msgs[0].Content, "<pending_approvals>") {
+	if strings.Contains(msgs[0].Text(), "<pending_approvals>") {
 		t.Fatal("pending note was folded into the system prefix")
 	}
 	entries, err := b.Entries()
@@ -76,7 +76,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, "hello") && strings.Contains(e.Message.Content, "<pending_approvals>") {
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Text(), "hello") && strings.Contains(e.Message.Text(), "<pending_approvals>") {
 			t.Fatal("reminder was written into the transcript body")
 		}
 	}
@@ -126,22 +126,22 @@ func TestPendingApprovalNoteOmitsWhenNothingIsOpen(t *testing.T) {
 // must ride with the history, not sit in the system prefix.
 func TestPendingApprovalNoteIsNotInTheStablePrefix(t *testing.T) {
 	list := []PendingApproval{{Tool: "shell", Summary: "运行命令 mkdir a", Age: 2 * time.Minute}}
-	hist := []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: "hello"}}}
+	hist := []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}}}
 	msgs, _ := Assemble(Input{Persona: "p", Rules: "r", Entries: hist})
 	if len(msgs) == 0 {
 		t.Fatal("no messages")
 	}
-	prefix := msgs[0].Content
+	prefix := msgs[0].Text()
 	before := append([]provider.Message(nil), msgs...)
 	msgs = agent.AttachReminder(msgs, pendingNote(list))
-	if msgs[0].Content != prefix || strings.Contains(msgs[0].Content, "<pending_approvals>") {
+	if msgs[0].Text() != prefix || strings.Contains(msgs[0].Text(), "<pending_approvals>") {
 		t.Fatal("pending note was folded into the system prefix")
 	}
-	if before[len(before)-1].Content == msgs[len(msgs)-1].Content {
+	if before[len(before)-1].Text() == msgs[len(msgs)-1].Text() {
 		t.Fatal("note was not appended to the newest message")
 	}
 	last := msgs[len(msgs)-1]
-	if !strings.HasPrefix(last.Content, "hello") || !strings.Contains(last.Content, "<pending_approvals>") || last.Role != provider.RoleUser {
+	if !strings.HasPrefix(last.Text(), "hello") || !strings.Contains(last.Text(), "<pending_approvals>") || last.Role != provider.RoleUser {
 		t.Fatalf("note not appended to the newest message: %+v", last)
 	}
 	if len(msgs) != len(before) {
@@ -175,7 +175,7 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 	hasNote := func(reqs []provider.Request) bool {
 		for _, r := range reqs {
 			for _, m := range r.Messages {
-				if strings.Contains(m.Content, "<pending_approvals>") {
+				if strings.Contains(m.Text(), "<pending_approvals>") {
 					return true
 				}
 			}
@@ -186,7 +186,7 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 		t.Helper()
 		b := testBot(t, link.NameTerminal)
 		appendCard(t, b, "card-1", "shell", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
-		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 		k := &Kernel{
 			Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
 			Links: []link.Link{link.Terminal{}, &link.Timer{}},

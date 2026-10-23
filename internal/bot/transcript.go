@@ -529,7 +529,7 @@ func (s *segStore) index(seq, start int, off int64, n int, e Entry, body string)
 		return err
 	}
 	if e.Message.Role == provider.RoleAssistant {
-		for _, tc := range e.Message.ToolCalls {
+		for _, tc := range e.Message.Calls() {
 			if tc.ID == "" {
 				continue
 			}
@@ -539,8 +539,8 @@ func (s *segStore) index(seq, start int, off int64, n int, e Entry, body string)
 			}
 		}
 	}
-	if e.Message.Role == provider.RoleTool && e.Message.ToolCallID != "" {
-		if _, err := tx.Exec(`DELETE FROM open_tools WHERE id=?`, e.Message.ToolCallID); err != nil {
+	if e.Message.Role == provider.RoleTool && e.Message.CallID() != "" {
+		if _, err := tx.Exec(`DELETE FROM open_tools WHERE id=?`, e.Message.CallID()); err != nil {
 			return err
 		}
 	}
@@ -958,8 +958,8 @@ func (b *Bot) Hydrate(e Entry) (Entry, error) {
 // Inline content longer than a positive limit is cut to that many bytes.
 func (b *Bot) HydrateLimit(e Entry, limit int) (Entry, error) {
 	if e.Blob == "" {
-		if limit > 0 && len(e.Message.Content) > limit {
-			e.Message.Content = e.Message.Content[:limit]
+		if limit > 0 && len(e.Message.Text()) > limit {
+			e.Message.SetText(e.Message.Text()[:limit])
 		}
 		return e, nil
 	}
@@ -982,7 +982,7 @@ func (b *Bot) HydrateLimit(e Entry, limit int) (Entry, error) {
 			return e, err
 		}
 	}
-	e.Message.Content = string(raw)
+	e.Message.SetText(string(raw))
 	return e, nil
 }
 
@@ -1085,7 +1085,7 @@ func spillBlob(dir string, e Entry, limit int64) Entry {
 	if e.Message.Role != provider.RoleTool || e.Blob != "" {
 		return e
 	}
-	if int64(len(e.Message.Content)) <= limit {
+	if int64(len(e.Message.Text())) <= limit {
 		return e
 	}
 	id, err := newBlobID()
@@ -1093,17 +1093,17 @@ func spillBlob(dir string, e Entry, limit int64) Entry {
 		return e
 	}
 	path := filepath.Join(dir, "blobs", id)
-	if err := writeSynced(path, []byte(e.Message.Content), 0600); err != nil {
+	if err := writeSynced(path, []byte(e.Message.Text()), 0600); err != nil {
 		return e
 	}
-	body, receipt, after := e.Message.Content, "", ""
+	body, receipt, after := e.Message.Text(), "", ""
 	if e.Message.Role == provider.RoleTool && (e.Message.Name == "write_file" || e.Message.Name == "edit_file") {
 		body, receipt, after = SplitEnvironmentReceipt(body)
 	}
 	preview, _ := clip.Bytes(body, blobPreview)
-	e.Message.Content = preview
+	e.Message.SetText(preview)
 	if receipt != "" {
-		e.Message.Content += "\n\n" + receipt + after
+		e.Message.SetText(e.Message.Text() + "\n\n" + receipt + after)
 	}
 	e.Blob = id
 	return e
@@ -1118,7 +1118,7 @@ func (s *segStore) indexBody(e Entry) string {
 		return ftsBody(e)
 	}
 	full := e
-	full.Message.Content = string(raw)
+	full.Message.SetText(string(raw))
 	return ftsBody(full)
 }
 
@@ -1156,8 +1156,8 @@ func ftsBody(e Entry) string {
 	var b strings.Builder
 	b.WriteString(e.Message.Role)
 	b.WriteByte(' ')
-	b.WriteString(e.Message.Content)
-	for _, tc := range e.Message.ToolCalls {
+	b.WriteString(e.Message.PortableText())
+	for _, tc := range e.Message.Calls() {
 		b.WriteByte(' ')
 		b.WriteString(tc.Function.Name)
 		b.WriteByte(' ')

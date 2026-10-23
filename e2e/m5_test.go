@@ -455,8 +455,8 @@ func rawUser(t *testing.T, b *bot.Bot, marker string) string {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, marker) {
-			return e.Message.Content
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Text(), marker) {
+			return e.Message.Text()
 		}
 	}
 	t.Fatalf("missing user %s", marker)

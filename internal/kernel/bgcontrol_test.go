@@ -143,7 +143,7 @@ func TestBackgroundSteerAppliedAfterStep(t *testing.T) {
 	last := p.reqs[len(p.reqs)-1].Messages
 	var steered bool
 	for _, m := range last {
-		steered = steered || (m.Role == provider.RoleUser && m.Content == "[主人的补充] 用中文写")
+		steered = steered || (m.Role == provider.RoleUser && m.Text() == "[主人的补充] 用中文写")
 	}
 	if !steered {
 		t.Fatal("steer was not given to the next model step")
@@ -213,9 +213,9 @@ func TestBackgroundConfirmationGoesToOwner(t *testing.T) {
 	w := &confirmWrite{}
 	k.Links = append(k.Links, gateLinkOf(w))
 	k.Provider = &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, Content: "做完"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("做完")},
 	}}
 	asked := make(chan string, 1)
 	k.BackgroundApprove = func(_ context.Context, tool, summary string) (bool, error) {

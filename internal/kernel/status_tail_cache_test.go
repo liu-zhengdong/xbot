@@ -20,7 +20,7 @@ func tailBot(t *testing.T) *bot.Bot {
 
 func say(t *testing.T, b *bot.Bot, role, text string) {
 	t.Helper()
-	if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: role, Content: text}}); err != nil {
+	if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: role, Content: provider.TextContent(text)}}); err != nil {
 		t.Fatal(err)
 	}
 }

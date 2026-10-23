@@ -25,7 +25,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	mem := &factMem{}
 	comp := &gateCompactor{release: make(chan struct{}), entered: make(chan struct{})}
 	k := &Kernel{
-		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}},
+		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}},
 		Compactor: comp, Memory: mem, Extractor: stubExtract{facts: []memory.Fact{{
 			Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "kept from the old range",
 		}}},
@@ -66,7 +66,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	}
 
 	k2 := &Kernel{
-		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "still"}}},
+		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("still")}}},
 		Compactor: comp, Memory: mem, Extractor: k.Extractor, Budget: k.Budget, MaxSteps: 2,
 	}
 	done2 := make(chan error, 1)
@@ -102,13 +102,13 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 		t.Fatalf("facts %d, want the background extraction", mem.count())
 	}
 	for _, turn := range comp.snapshot() {
-		if strings.Contains(turn.Content, "LATE") || strings.Contains(turn.Content, "DURING") {
-			t.Fatalf("range included a message that arrived with the job: %s", turn.Content)
+		if strings.Contains(turn.Text(), "LATE") || strings.Contains(turn.Text(), "DURING") {
+			t.Fatalf("range included a message that arrived with the job: %s", turn.Text())
 		}
 	}
 
 	k3 := &Kernel{
-		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "next"}}},
+		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}},
 		Compactor: comp, Memory: mem, Extractor: k.Extractor, Budget: k.Budget, MaxSteps: 2,
 	}
 	if err := k3.Handle(context.Background(), link.TerminalEvent("u1", "AFTER", time.Unix(32, 0).UTC())); err != nil {
@@ -127,9 +127,9 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, e := range entries {
-		if strings.Contains(e.Message.Content, "DURING") || strings.Contains(e.Message.Content, "AFTER") || strings.Contains(e.Message.Content, "LATE") {
+		if strings.Contains(e.Message.Text(), "DURING") || strings.Contains(e.Message.Text(), "AFTER") || strings.Contains(e.Message.Text(), "LATE") {
 			if active[0].To >= i+1 {
-				t.Fatalf("summary %d-%d covers later message %d %q", active[0].From, active[0].To, i+1, e.Message.Content)
+				t.Fatalf("summary %d-%d covers later message %d %q", active[0].From, active[0].To, i+1, e.Message.Text())
 			}
 		}
 	}
@@ -192,7 +192,7 @@ func TestBackgroundSwapOnlyBetweenTurns(t *testing.T) {
 func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	for i := 0; i < 5; i++ {
-		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "old line"}}); err != nil {
+		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("old line")}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -208,9 +208,9 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 	comp := &flakyCompactor{fail: 1}
 	k := &Kernel{
 		Bot: b, Provider: &scripted{resps: []provider.Message{
-			{Role: provider.RoleAssistant, Content: "one"},
-			{Role: provider.RoleAssistant, Content: "two"},
-			{Role: provider.RoleAssistant, Content: "three"},
+			{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+			{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
+			{Role: provider.RoleAssistant, Content: provider.TextContent("three")},
 		}},
 		Compactor: comp, Memory: mem,
 		Extractor: stubExtract{facts: []memory.Fact{{Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "durable"}}},
@@ -290,7 +290,7 @@ func TestHardCompactStaysSynchronous(t *testing.T) {
 	seedHistory(t, b, 3, 2000)
 	comp := &delayCompactor{d: 200 * time.Millisecond}
 	k := &Kernel{
-		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}},
+		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}},
 		Compactor: comp, Budget: compact.Budget{Ceiling: 40, KeepTail: 1}, MaxSteps: 2,
 	}
 	start := time.Now()
@@ -323,7 +323,7 @@ func seedHistory(t *testing.T, b *bot.Bot, n, size int) {
 	t.Helper()
 	body := strings.Repeat("x", size)
 	for i := 0; i < n; i++ {
-		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: body}}); err != nil {
+		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(body)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -517,7 +517,7 @@ type holdChat struct {
 func (h *holdChat) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
 	h.once.Do(func() { close(h.entered) })
 	<-h.release
-	return provider.Message{Role: provider.RoleAssistant, Content: "ok"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}, nil
 }
 
 type stubExtract struct{ facts []memory.Fact }

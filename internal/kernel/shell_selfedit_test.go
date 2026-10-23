@@ -27,19 +27,19 @@ func TestShellSelfEditIsNotAnExternalChange(t *testing.T) {
 	runTurn(t, k, now, "edit",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
 		toolCall("s1", "shell", mustArgs(t, map[string]string{"command": "printf 'new\\n' > note.txt"})),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	var shellOut string
 	for _, m := range p.reqs[len(p.reqs)-1].Messages {
-		if m.Role == provider.RoleTool && m.ToolCallID == "s1" {
-			shellOut = m.Content
+		if m.Role == provider.RoleTool && m.CallID() == "s1" {
+			shellOut = m.Text()
 		}
 	}
 	if !strings.Contains(shellOut, "changed by this command") || !strings.Contains(shellOut, "note.txt") {
 		t.Fatalf("shell result: %q", shellOut)
 	}
 	advance(now, fileChangeCooldown+time.Second)
-	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	if tip := newestReq(t, p); strings.Contains(tip, "<file_change>") {
 		t.Fatalf("own shell edit reported as external: %q", tip)
 	}
@@ -47,7 +47,7 @@ func TestShellSelfEditIsNotAnExternalChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	advance(now, fileChangeCooldown+time.Second)
-	runTurn(t, k, now, "third", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "third", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	if tip := newestReq(t, p); !strings.Contains(tip, "<file_change>") || !strings.Contains(tip, "note.txt changed") {
 		t.Fatalf("outside edit not reported: %q", tip)
 	}
@@ -56,5 +56,5 @@ func TestShellSelfEditIsNotAnExternalChange(t *testing.T) {
 func newestReq(t *testing.T, p *scripted) string {
 	t.Helper()
 	msgs := p.reqs[len(p.reqs)-1].Messages
-	return newestConversationMessage(msgs).Content
+	return newestConversationMessage(msgs).Text()
 }

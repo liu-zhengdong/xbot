@@ -33,7 +33,7 @@ func TestCreateLoadAppend(t *testing.T) {
 	if err := loaded.Append(Entry{
 		Time:    time.Unix(1, 0).UTC(),
 		EventID: "ev1",
-		Message: provider.Message{Role: provider.RoleUser, Content: "hi"},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hi")},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +41,14 @@ func TestCreateLoadAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Message.Content != "hi" {
+	if len(entries) != 1 || entries[0].Message.Text() != "hi" {
 		t.Fatalf("%+v", entries)
 	}
 	raw, err := loaded.ConcatRaw()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loaded.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "yo"}}); err != nil {
+	if err := loaded.Append(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("yo")}}); err != nil {
 		t.Fatal(err)
 	}
 	raw2, err := loaded.ConcatRaw()

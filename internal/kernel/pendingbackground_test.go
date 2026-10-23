@@ -16,9 +16,9 @@ func TestPendingApprovalBackgroundAcceptsNextHandle(t *testing.T) {
 	w := &confirmWrite{}
 	k.Links = append(k.Links, gateLinkOf(w))
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "pending-send", Type: "function", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, Content: "new message answered"},
-		{Role: provider.RoleAssistant, Content: "background completed"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "pending-send", Type: "function", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("new message answered")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("background completed")},
 	}}
 	k.Provider = p
 	k.ForegroundMaxTime = 100 * time.Millisecond
@@ -67,10 +67,10 @@ func TestPendingApprovalBackgroundAcceptsNextHandle(t *testing.T) {
 	}
 	found := false
 	for _, e := range entries {
-		if e.EventID == next.ID && strings.Contains(e.Message.Content, next.Content) && e.Branch == "" {
+		if e.EventID == next.ID && strings.Contains(e.Message.Text(), next.Content) && e.Branch == "" {
 			found = true
 		}
-		if e.Message.ToolCallID == "pending-send" {
+		if e.Message.CallID() == "pending-send" {
 			t.Fatal("live call was closed before approval")
 		}
 	}
@@ -99,11 +99,11 @@ func TestPendingApprovalBackgroundAcceptsNextHandle(t *testing.T) {
 			if m.Role != provider.RoleTool && len(pending) != 0 {
 				t.Fatalf("model call %d has intervening %s before results: %v", i, m.Role, pending)
 			}
-			for _, tc := range m.ToolCalls {
+			for _, tc := range m.Calls() {
 				pending[tc.ID] = true
 			}
 			if m.Role == provider.RoleTool {
-				delete(pending, m.ToolCallID)
+				delete(pending, m.CallID())
 			}
 		}
 		if len(pending) != 0 {
@@ -114,10 +114,10 @@ func TestPendingApprovalBackgroundAcceptsNextHandle(t *testing.T) {
 		t.Fatalf("model calls: %d", len(p.reqs))
 	}
 	// Exercise the early repair error return, before the agent loop starts.
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "broken", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}}}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "broken", Function: provider.FunctionCall{Name: "send_email", Arguments: "{}"}}})}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "invalid assistant after an unanswered tool"}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("invalid assistant after an unanswered tool")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "repair fails", time.Unix(40, 0))); err == nil || !strings.Contains(err.Error(), "unanswered tool calls are not at the tail") {

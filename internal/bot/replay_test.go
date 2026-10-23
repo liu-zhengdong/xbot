@@ -16,11 +16,11 @@ func replayEntries(entries ...Entry) []SeqEntry {
 }
 
 func branchRow(content, branch string) Entry {
-	return Entry{Message: provider.Message{Role: provider.RoleUser, Content: content}, Branch: branch}
+	return Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)}, Branch: branch}
 }
 
 func mainRow(content string) Entry {
-	return Entry{Message: provider.Message{Role: provider.RoleUser, Content: content}}
+	return Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)}}
 }
 
 func forkRow(branch string, from int, task string) Entry {
@@ -110,7 +110,7 @@ func TestReplayInterleavedMainAndBranch(t *testing.T) {
 }
 
 func TestReplayKeepsEntryPayload(t *testing.T) {
-	in := Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: "hi"}, Branch: "bg_9"}
+	in := Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("hi")}, Branch: "bg_9"}
 	rows, _ := Replay([]SeqEntry{{Seq: 4, Entry: in}})
 	if !reflect.DeepEqual(rows[0].Entry, in) || rows[0].Seq != 4 || rows[0].Branch != "bg_9" {
 		t.Fatalf("row %+v", rows[0])

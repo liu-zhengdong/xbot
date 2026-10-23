@@ -41,7 +41,7 @@ func TestPeerMessages(t *testing.T) {
 	appendWebDirect(t, bob, "ev_a1", "ada", "ada-1\nsecond", t0.Add(time.Minute))
 	if err := bob.Append(bot.Entry{
 		Time:    t0.Add(time.Minute),
-		Message: provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+		Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -316,15 +316,15 @@ func appendWebCall(t *testing.T, b *bot.Bot, id, addr, result string, at time.Ti
 	}
 	if err := b.Append(bot.Entry{
 		Time: at,
-		Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: id, Type: "function", Function: provider.FunctionCall{Name: "message_bot", Arguments: string(args)},
-		}}},
+		}})},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Append(bot.Entry{
 		Time:    at,
-		Message: provider.Message{Role: provider.RoleTool, ToolCallID: id, Content: result},
+		Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(id, result)},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func appendWebUser(t *testing.T, b *bot.Bot, id, content string, at time.Time) {
 	if err := b.Append(bot.Entry{
 		Time:    at,
 		EventID: id,
-		Message: provider.Message{Role: provider.RoleUser, Content: content},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(content)},
 	}); err != nil {
 		t.Fatal(err)
 	}

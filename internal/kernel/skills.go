@@ -174,14 +174,14 @@ func redactSkillRead(m provider.Message) provider.Message {
 		return m
 	}
 	slug := ""
-	if rest, ok := strings.CutPrefix(m.Content, "skill: "); ok {
+	if rest, ok := strings.CutPrefix(m.Text(), "skill: "); ok {
 		slug, _, _ = strings.Cut(rest, "\n")
 		slug = strings.TrimSpace(slug)
 	}
 	if slug == "" {
 		slug = "skill"
 	}
-	m.Content = "read skill " + slug
+	m.SetText("read skill " + slug)
 	return m
 }
 

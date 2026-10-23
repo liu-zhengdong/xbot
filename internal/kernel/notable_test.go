@@ -21,8 +21,8 @@ import (
 func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	hold := make(chan struct{})
 	model := &roleModel{hold: hold,
-		fore: []provider.Message{assistantCall("d", "", "dispatch", `{"type":"dev","task":"整理测试目录"}`), {Role: provider.RoleAssistant, Content: "交给子代理了。"}},
-		sub:  []provider.Message{assistantCall("s1", "", "shell", `{"command":"cd sub"}`), assistantCall("s2", "", "write_file", `{"path":"out/result.txt","content":"ok"}`), {Role: provider.RoleAssistant, Content: "文件写好了。"}}}
+		fore: []provider.Message{assistantCall("d", "", "dispatch", `{"type":"dev","task":"整理测试目录"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("交给子代理了。")}},
+		sub:  []provider.Message{assistantCall("s1", "", "shell", `{"command":"cd sub"}`), assistantCall("s2", "", "write_file", `{"path":"out/result.txt","content":"ok"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("文件写好了。")}}}
 	k, b, box := dispatchKernel(t, model)
 	k.Permissive = true
 	outside := t.TempDir()
@@ -48,7 +48,7 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 		t.Fatalf("meta/report: %+v / %s", meta.Notable, ev.Content)
 	}
 	model.mu.Lock()
-	model.fore = append(model.fore, provider.Message{Role: provider.RoleAssistant, Content: "文件写好了。\n\n" + notable.Line(meta.Notable)})
+	model.fore = append(model.fore, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("文件写好了。\n\n" + notable.Line(meta.Notable))})
 	model.mu.Unlock()
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
@@ -58,10 +58,10 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	req := model.foreReq[len(model.foreReq)-1]
 	found, hint := false, false
 	for _, msg := range req.Messages {
-		if strings.Contains(msg.Content, notable.Line(meta.Notable)) {
+		if strings.Contains(msg.Text(), notable.Line(meta.Notable)) {
 			found = true
 		}
-		if strings.Contains(msg.Content, VoiceRule) {
+		if strings.Contains(msg.Text(), VoiceRule) {
 			hint = true
 		}
 	}
@@ -71,10 +71,10 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	}
 	ownerReply := false
 	for _, entry := range entries {
-		if entry.Message.Role == provider.RoleAssistant && entry.Message.Content == "文件写好了。\n\n"+notable.Line(meta.Notable) {
+		if entry.Message.Role == provider.RoleAssistant && entry.Message.Text() == "文件写好了。\n\n"+notable.Line(meta.Notable) {
 			ownerReply = true
 		}
-		if strings.HasPrefix(entry.Message.Content, "<subagent_report>") && !entry.IsInternal() {
+		if strings.HasPrefix(entry.Message.Text(), "<subagent_report>") && !entry.IsInternal() {
 			t.Fatal("notable hint exposed as owner transcript")
 		}
 	}
@@ -123,7 +123,7 @@ func TestRolledBackMemoryWriteIsNotNotable(t *testing.T) {
 	if err != nil || string(restored) != old {
 		t.Fatalf("memory write not rolled back: %q %v", restored, err)
 	}
-	if len(out) < 2 || !strings.HasPrefix(out[1].Content, "error:") {
+	if len(out) < 2 || !strings.HasPrefix(out[1].Text(), "error:") {
 		t.Fatalf("guard did not reject the write: %+v", out)
 	}
 	if len(log.Items()) != 0 {

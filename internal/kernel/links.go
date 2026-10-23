@@ -409,7 +409,7 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 		if k.Bot != nil {
 			b := k.Bot
 			l.UseTranscript(func(text string) error {
-				return b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: text}})
+				return b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
 			})
 		}
 		if cmd := code.ResolveCommand(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {
@@ -601,28 +601,10 @@ func (k *Kernel) redactor() func(string) string {
 func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
 	m = redactSkillRead(m)
 	redact := k.redactor()
-	m.Content = redact(m.Content)
-	if len(m.ToolCalls) > 0 {
-		calls := append([]provider.ToolCall(nil), m.ToolCalls...)
-		for i := range calls {
-			calls[i].Function.Arguments = redact(calls[i].Function.Arguments)
-		}
-		m.ToolCalls = calls
-	}
 	values := k.secretValues()
-	if len(values) == 0 {
-		return m
-	}
-	m.Content = scrubSecrets(m.Content, values)
-	if len(m.ToolCalls) == 0 {
-		return m
-	}
-	calls := append([]provider.ToolCall(nil), m.ToolCalls...)
-	for i := range calls {
-		calls[i].Function.Arguments = scrubSecrets(calls[i].Function.Arguments, values)
-	}
-	m.ToolCalls = calls
-	return m
+	return m.MapText(func(text string) string {
+		return scrubSecrets(redact(text), values)
+	})
 }
 
 func lazyUntilLoad(name string) bool {

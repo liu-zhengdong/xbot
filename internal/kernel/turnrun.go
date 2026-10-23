@@ -105,17 +105,17 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 		}
 	}
 	err := r.k.Bot.Walk(through+1, 0, func(seq int, e bot.Entry) error {
-		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Content) || e.IsForkMark() {
+		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Text()) || e.IsForkMark() {
 			return nil
 		}
 		msg := e.Message
 		msg.Seq, msg.Internal = seq, e.IsInternal()
 		if e.ReplyTo > 0 {
 			if q := r.k.quotePrefix(e.ReplyTo); q != "" {
-				msg.Content = q + "\n\n" + msg.Content
+				msg.SetText(q + "\n\n" + msg.Text())
 			}
 		}
-		msg.Content = r.k.withPastedNote(msg.Content, e.Images)
+		msg.SetText(r.k.withPastedNote(msg.Text(), e.Images))
 		out = append(out, msg)
 		return nil
 	})
@@ -357,7 +357,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			next, sampleErr := r.k.sampleEnvironment(prev)
 			if sampleErr == nil {
 				text := environmentDelta(prev, next, environmentBasis(st, req.Messages), st.MemSnap)
-				fit.reserve = r.k.scaled(compact.EstimateMessage(provider.Message{Role: provider.RoleUser, Content: text}))
+				fit.reserve = r.k.scaled(compact.EstimateMessage(provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}))
 			}
 		}
 		return r.k.fit(ctx, r.t, fit, req, overflow)

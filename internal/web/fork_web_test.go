@@ -53,8 +53,8 @@ func (forkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 	last := req.Messages[len(req.Messages)-1]
 	var lastUser string
 	for _, m := range req.Messages {
-		if m.Role == provider.RoleUser && !strings.HasPrefix(m.Content, "<environment_") {
-			lastUser = m.Content
+		if m.Role == provider.RoleUser && !strings.HasPrefix(m.Text(), "<environment_") {
+			lastUser = m.Text()
 		}
 	}
 	switch {
@@ -62,13 +62,13 @@ func (forkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 		if onDelta != nil {
 			onDelta("前台回答")
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: "前台回答"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("前台回答")}, nil
 	case last.Role == provider.RoleTool:
-		return provider.Message{Role: provider.RoleAssistant, Content: "后台完成"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("后台完成")}, nil
 	default:
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "slow", Arguments: "{}"},
-		}}}, nil
+		}})}, nil
 	}
 }
 
@@ -163,10 +163,10 @@ func TestWebInterruptForksAndAnswersFast(t *testing.T) {
 		if e.Mark != nil && e.Mark.Kind == bot.ForkKindEnd && e.Mark.Status == "done" {
 			sawEnd = true
 		}
-		if strings.Contains(e.Message.Content, "interrupted before the tool returned") {
+		if strings.Contains(e.Message.Text(), "interrupted before the tool returned") {
 			t.Fatal("the foreground repaired a call the background still had in flight")
 		}
-		if e.Branch != "" && e.Message.Content == "后台完成" {
+		if e.Branch != "" && e.Message.Text() == "后台完成" {
 			sawBG = true
 		}
 	}

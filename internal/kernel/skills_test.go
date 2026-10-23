@@ -113,10 +113,10 @@ func TestSkillReadDoesNotPersist(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{
 		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"id":"ship"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := skillKernel(ada)
 	k.Provider = p
@@ -127,7 +127,7 @@ func TestSkillReadDoesNotPersist(t *testing.T) {
 	if len(p.reqs) < 3 {
 		t.Fatalf("calls %d", len(p.reqs))
 	}
-	if strings.Contains(p.reqs[0].Messages[0].Content, "SECRET_BODY") {
+	if strings.Contains(p.reqs[0].Messages[0].Text(), "SECRET_BODY") {
 		t.Fatal("body in the system prompt")
 	}
 	if !strings.Contains(messagesText(p.reqs[2].Messages), "SECRET_BODY") {
@@ -139,7 +139,7 @@ func TestSkillReadDoesNotPersist(t *testing.T) {
 	if !strings.Contains(transcriptText(t, ada), "read skill ship") {
 		t.Fatal(transcriptText(t, ada))
 	}
-	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "next"}}}
+	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}}
 	k.Provider = p2
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -159,10 +159,10 @@ func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
 	args := `{"slug":"ship","description":"Pack a release","body":"SECRET_BODY"}`
 	p := &scripted{resps: []provider.Message{
 		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "write_skill", Arguments: args},
-		}}},
-		{Role: provider.RoleAssistant, Content: "wrote"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("wrote")},
 	}}
 	k := skillKernel(ada)
 	k.Provider = p
@@ -207,10 +207,10 @@ func TestReadSkillWithoutLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"id":"ship"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "done"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := skillKernel(ada)
 	k.Provider = p

@@ -66,7 +66,7 @@ func collectDirect(self *bot.Bot, peerName string, out *[]Direct) error {
 		if e.Message.Role != provider.RoleUser || e.EventID == "" {
 			return nil
 		}
-		from, text, ok := directText(e.Message.Content, peerName)
+		from, text, ok := directText(e.Message.Text(), peerName)
 		if !ok {
 			return nil
 		}

@@ -28,16 +28,16 @@ func TestTranscriptForkFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleUser, Content: "start"}}); err != nil {
+	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleAssistant, Content: "forked work"}, Branch: "bg_7"}); err != nil {
+	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("forked work")}, Branch: "bg_7"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendFork("bg_7", 1, "long job"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleAssistant, Content: "after marker"}, Branch: "bg_7"}); err != nil {
+	if err := b.Append(bot.Entry{Time: now, Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("after marker")}, Branch: "bg_7"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendForkEnd("bg_7", bot.ForkDone, 2); err != nil {

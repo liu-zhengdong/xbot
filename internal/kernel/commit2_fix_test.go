@@ -29,7 +29,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			if err := store.Remember(ctx, memory.Fact{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile, Key: "home", Text: "PERSON_BASELINE_52", WrittenBy: "u1"}); err != nil {
 				t.Fatal(err)
 			}
-			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "one"}, {Role: provider.RoleAssistant, Content: "wake"}, {Role: provider.RoleAssistant, Content: "back"}}}
+			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("wake")}, {Role: provider.RoleAssistant, Content: provider.TextContent("back")}}}
 			now := time.Unix(1000, 0)
 			k := &Kernel{Bot: b, Memory: store, Provider: p, MaxSteps: 2, Now: func() time.Time { return now }}
 			if err := k.Handle(ctx, link.TerminalEvent("u1", "first", now)); err != nil {
@@ -62,8 +62,8 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			}
 			var updates string
 			for _, row := range rows {
-				if strings.HasPrefix(row.Message.Content, "<environment_") {
-					updates += row.Message.Content
+				if strings.HasPrefix(row.Message.Text(), "<environment_") {
+					updates += row.Message.Text()
 				}
 			}
 			if !strings.Contains(updates, `"name":"`+source+`"`) || strings.Contains(updates, "person_data") {
@@ -88,13 +88,13 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, row := range rows {
-				text := row.Message.Content
+				text := row.Message.Text()
 				if strings.Contains(text, "- [Person]") || strings.Contains(text, "+ [Person]") || strings.Contains(text, "PERSON_BASELINE_52") {
 					t.Fatalf("unchanged profile re-emitted: %s", text)
 				}
 			}
 			for _, req := range p.reqs {
-				if req.Messages[1].Content != p.reqs[0].Messages[1].Content {
+				if req.Messages[1].Text() != p.reqs[0].Messages[1].Text() {
 					t.Fatal("fixed prefix changed")
 				}
 			}
@@ -104,7 +104,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 
 func TestForkLongReportKeepsNotableDigest(t *testing.T) {
 	b := testBot(t)
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "start"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
 		t.Fatal(err)
 	}
 	id := "bg_notable_result"
@@ -120,7 +120,7 @@ func TestForkLongReportKeepsNotableDigest(t *testing.T) {
 	notable.Wrote(ctx, "/outside/notable-file.txt")
 	want := notable.Line(turn.notable.Items())
 	k := &Kernel{Bot: b, Inbox: box}
-	k.finishBackground(turn, []provider.Message{{Role: provider.RoleAssistant, Content: strings.Repeat("long fact ", 1000) + "FULL_RESULT_TAIL_98"}}, nil)
+	k.finishBackground(turn, []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(strings.Repeat("long fact ", 1000) + "FULL_RESULT_TAIL_98")}}, nil)
 	pending := box.Pending()
 	if len(pending) != 1 {
 		t.Fatalf("reports=%d", len(pending))
@@ -216,7 +216,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 				t.Fatal("restart duplicated interruption")
 			}
 			// The bot remains usable, even if the broken old directory cannot be saved.
-			k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "still available"}, {Role: provider.RoleAssistant, Content: "interruption noted"}}}
+			k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("still available")}, {Role: provider.RoleAssistant, Content: provider.TextContent("interruption noted")}}}
 			k.MaxSteps = 3
 			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
 				t.Fatal(err)
@@ -226,7 +226,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, row := range rows {
-				if strings.HasPrefix(row.Message.Content, "<environment_") && strings.Contains(row.Message.Content, id+" [running]") {
+				if strings.HasPrefix(row.Message.Text(), "<environment_") && strings.Contains(row.Message.Text(), id+" [running]") {
 					t.Fatal("environment revived interrupted task from stale metadata")
 				}
 			}
@@ -267,7 +267,7 @@ func TestPersonBaselineReappearsAfterNonPersonCompaction(t *testing.T) {
 	if err := store.Remember(ctx, memory.Fact{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile, Key: "home", Text: "PERSON_AFTER_COMPACTION_18", WrittenBy: "u1"}); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "one"}, {Role: provider.RoleAssistant, Content: "wake"}, {Role: provider.RoleAssistant, Content: "back"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("wake")}, {Role: provider.RoleAssistant, Content: provider.TextContent("back")}}}
 	k := &Kernel{Bot: b, Memory: store, Provider: p, Compactor: &recCompactor{}, MaxSteps: 2}
 	k.Budget.KeepTail = 1
 	if err := k.Handle(ctx, link.TerminalEvent("u1", "first", time.Now())); err != nil {

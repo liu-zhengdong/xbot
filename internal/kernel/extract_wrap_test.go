@@ -20,7 +20,7 @@ func TestCollectFactsMarksWrappedUntrustedEvent(t *testing.T) {
 	}
 	ev := link.Event{Source: "webhook", Type: "post", Sender: "hook", Content: "ship it", Time: time.Unix(5, 0).UTC()}
 	facts := k.collectFacts(context.Background(), []bot.Entry{{
-		Message: provider.Message{Role: provider.RoleUser, Content: link.Wrap(ev)},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Wrap(ev))},
 	}}, "", "u1", true)
 	if len(facts) != 1 {
 		t.Fatalf("%+v", facts)

@@ -17,13 +17,10 @@ import (
 )
 
 func toolCall(id, name, args string) provider.Message {
-	return provider.Message{
-		Role: provider.RoleAssistant,
-		ToolCalls: []provider.ToolCall{{
-			ID: id, Type: "function",
-			Function: provider.FunctionCall{Name: name, Arguments: args},
-		}},
-	}
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+		ID: id, Type: "function",
+		Function: provider.FunctionCall{Name: name, Arguments: args},
+	}})}
 }
 
 func mustArgs(t *testing.T, v any) string {
@@ -71,7 +68,7 @@ func bodies(t *testing.T, k *Kernel) []string {
 	var out []string
 	for _, e := range entries {
 		if e.Message.Role == provider.RoleTool {
-			out = append(out, e.Message.Content)
+			out = append(out, e.Message.Text())
 		}
 	}
 	return out
@@ -90,7 +87,7 @@ func TestUnreadWriteIsRefused(t *testing.T) {
 		toolCall("w1", "write_file", write),
 		toolCall("r1", "read_file", read),
 		toolCall("w2", "write_file", write),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	if len(got) != 3 {
@@ -118,7 +115,7 @@ func TestStaleWriteIsRefused(t *testing.T) {
 	read := mustArgs(t, map[string]string{"path": path})
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", read),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw it"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw it")},
 	)
 	if err := os.WriteFile(path, []byte("external\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -127,7 +124,7 @@ func TestStaleWriteIsRefused(t *testing.T) {
 	write := mustArgs(t, map[string]string{"path": path, "content": "beta\n"})
 	runTurn(t, k, now, "overwrite",
 		toolCall("w1", "write_file", write),
-		provider.Message{Role: provider.RoleAssistant, Content: "stopped"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	)
 	got := bodies(t, k)
 	last := got[len(got)-1]
@@ -154,7 +151,7 @@ func TestOwnWriteRefreshesRecord(t *testing.T) {
 		toolCall("r1", "read_file", read),
 		toolCall("w1", "write_file", write),
 		toolCall("e1", "edit_file", edit),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	if len(got) != 3 {
@@ -188,7 +185,7 @@ func TestUnchangedReadIsReceipt(t *testing.T) {
 		toolCall("r2", "read_file", plain),
 		toolCall("r3", "read_file", force),
 		toolCall("r4", "read_file", span),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	if len(got) != 4 {
@@ -222,17 +219,17 @@ func TestFileChangeReminder(t *testing.T) {
 	read := mustArgs(t, map[string]string{"path": path})
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", read),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw alpha"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw alpha")},
 	)
 	if err := os.WriteFile(path, []byte("alpha\nbeta\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	advance(now, fileChangeCooldown+time.Second)
 	runTurn(t, k, now, "again",
-		provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
 	)
 	last := p.reqs[len(p.reqs)-1].Messages
-	newest := newestConversationMessage(last).Content
+	newest := newestConversationMessage(last).Text()
 	if !strings.Contains(newest, "again") || !strings.Contains(newest, "<file_change>") || !strings.Contains(newest, "+ beta") {
 		t.Fatalf("file change reminder: %q", newest)
 	}
@@ -241,35 +238,35 @@ func TestFileChangeReminder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<file_change>") {
+		if strings.Contains(e.Message.Text(), "<file_change>") {
 			t.Fatal("file change reminder was written into the transcript")
 		}
 	}
 	advance(now, time.Second)
 	runTurn(t, k, now, "soon",
-		provider.Message{Role: provider.RoleAssistant, Content: "quiet"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("quiet")},
 	)
 	soon := p.reqs[len(p.reqs)-1].Messages
-	if strings.Contains(newestConversationMessage(soon).Content, "<file_change>") {
-		t.Fatalf("cooldown did not hold: %q", newestConversationMessage(soon).Content)
+	if strings.Contains(newestConversationMessage(soon).Text(), "<file_change>") {
+		t.Fatalf("cooldown did not hold: %q", newestConversationMessage(soon).Text())
 	}
 	advance(now, fileChangeCooldown+time.Second)
 	runTurn(t, k, now, "later",
-		provider.Message{Role: provider.RoleAssistant, Content: "still"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("still")},
 	)
 	later := p.reqs[len(p.reqs)-1].Messages
-	if strings.Contains(newestConversationMessage(later).Content, "<file_change>") {
-		t.Fatalf("same change reminded twice: %q", newestConversationMessage(later).Content)
+	if strings.Contains(newestConversationMessage(later).Text(), "<file_change>") {
+		t.Fatalf("same change reminded twice: %q", newestConversationMessage(later).Text())
 	}
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	advance(now, fileChangeCooldown+time.Second)
 	runTurn(t, k, now, "third change",
-		provider.Message{Role: provider.RoleAssistant, Content: "saw gamma"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw gamma")},
 	)
 	third := p.reqs[len(p.reqs)-1].Messages
-	tip := newestConversationMessage(third).Content
+	tip := newestConversationMessage(third).Text()
 	if !strings.Contains(tip, "<file_change>") || !strings.Contains(tip, "+ gamma") {
 		t.Fatalf("new change: %q", tip)
 	}
@@ -289,7 +286,7 @@ func TestDeniedArgsAreNotRetried(t *testing.T) {
 		toolCall("s1", "shell", first),
 		toolCall("s2", "shell", same),
 		toolCall("s3", "shell", other),
-		provider.Message{Role: provider.RoleAssistant, Content: "stopped"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	)
 	if asked != 2 {
 		t.Fatalf("approver called %d times, want 2", asked)
@@ -319,13 +316,13 @@ func TestFileStateIsPerBot(t *testing.T) {
 	read := mustArgs(t, map[string]string{"path": path})
 	runTurn(t, k1, now1, "look",
 		toolCall("r1", "read_file", read),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw it"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw it")},
 	)
 	k2, _, now2 := freshBot(t)
 	write := mustArgs(t, map[string]string{"path": path, "content": "beta\n"})
 	runTurn(t, k2, now2, "overwrite",
 		toolCall("w1", "write_file", write),
-		provider.Message{Role: provider.RoleAssistant, Content: "no"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	got := bodies(t, k2)
 	if len(got) != 1 || !strings.Contains(got[0], msgNotRead) {
@@ -347,7 +344,7 @@ func TestMtimeJitterDoesNotBlockWrite(t *testing.T) {
 	read := mustArgs(t, map[string]string{"path": path})
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", read),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw it"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw it")},
 	)
 	later := now.Add(2 * time.Hour)
 	if err := os.Chtimes(path, later, later); err != nil {
@@ -357,7 +354,7 @@ func TestMtimeJitterDoesNotBlockWrite(t *testing.T) {
 	write := mustArgs(t, map[string]string{"path": path, "content": "beta\n"})
 	runTurn(t, k, now, "rewrite",
 		toolCall("w1", "write_file", write),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	last := got[len(got)-1]
@@ -410,7 +407,7 @@ func TestRangedReadThenEditDoesNotReceipt(t *testing.T) {
 		toolCall("r1", "read_file", mustArgs(t, map[string]any{"path": path, "offset": 1, "limit": 1})),
 		toolCall("e1", "edit_file", mustArgs(t, map[string]any{"path": path, "old_string": "one", "new_string": "ONE"})),
 		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	if len(got) != 3 {
@@ -433,7 +430,7 @@ func TestWriteFileMarksFullAfterPartialRead(t *testing.T) {
 		toolCall("r1", "read_file", mustArgs(t, map[string]any{"path": path, "offset": 1, "limit": 1})),
 		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": path, "content": "ONE\nTWO\nTHREE\n"})),
 		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	if len(got) != 3 {
@@ -458,7 +455,7 @@ func TestReceiptDoesNotCrossTurns(t *testing.T) {
 	k.Compactor = &recCompactor{}
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "seen"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("seen")},
 	)
 	n, err := k.Bot.Count()
 	if err != nil {
@@ -469,7 +466,7 @@ func TestReceiptDoesNotCrossTurns(t *testing.T) {
 	}
 	runTurn(t, k, now, "what is in the file?",
 		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "?"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("?")},
 	)
 	got := bodies(t, k)
 	last := got[len(got)-1]
@@ -495,12 +492,12 @@ func TestDenialClearsOnNextOwnerTurn(t *testing.T) {
 	call := `{"command":"rm -rf note.txt","timeout_seconds":1}`
 	runTurn(t, k, now, "delete",
 		toolCall("s1", "shell", call),
-		provider.Message{Role: provider.RoleAssistant, Content: "denied"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("denied")},
 	)
 	answer = true
 	runTurn(t, k, now, "ok I changed my mind, go ahead",
 		toolCall("s2", "shell", call),
-		provider.Message{Role: provider.RoleAssistant, Content: "?"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("?")},
 	)
 	got := bodies(t, k)
 	if asked < 2 {
@@ -524,17 +521,17 @@ func TestSensitiveFileChangeOmitsDiff(t *testing.T) {
 			k, p, now := freshBot(t)
 			runTurn(t, k, now, "look",
 				toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
-				provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+				provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw")},
 			)
 			if err := os.WriteFile(path, []byte("TOKEN="+secret+"\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			advance(now, fileChangeCooldown+time.Second)
 			runTurn(t, k, now, "again",
-				provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+				provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
 			)
 			last := p.reqs[len(p.reqs)-1].Messages
-			tip := newestConversationMessage(last).Content
+			tip := newestConversationMessage(last).Text()
 			if !strings.Contains(tip, "<file_change>") || !strings.Contains(tip, "changed") {
 				t.Fatalf("missing change note: %q", tip)
 			}
@@ -557,17 +554,17 @@ func TestFileChangeWithholdsSecretLookingDiff(t *testing.T) {
 	k, p, now := freshBot(t)
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw")},
 	)
 	if err := os.WriteFile(path, []byte("name: app\ngithub_token: "+token+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	advance(now, fileChangeCooldown+time.Second)
 	runTurn(t, k, now, "again",
-		provider.Message{Role: provider.RoleAssistant, Content: "noted"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
 	)
 	last := p.reqs[len(p.reqs)-1].Messages
-	tip := newestConversationMessage(last).Content
+	tip := newestConversationMessage(last).Text()
 	if !strings.Contains(tip, "config.yaml changed") || !strings.Contains(tip, "diff not shown") {
 		t.Fatalf("missing change note: %q", tip)
 	}
@@ -585,7 +582,7 @@ func TestSameSizeAndMtimeSkipsContentHash(t *testing.T) {
 	k, _, now := freshBot(t)
 	runTurn(t, k, now, "look",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
-		provider.Message{Role: provider.RoleAssistant, Content: "saw"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw")},
 	)
 	info, err := os.Stat(path)
 	if err != nil {
@@ -600,7 +597,7 @@ func TestSameSizeAndMtimeSkipsContentHash(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "overwrite",
 		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": path, "content": "gamma\n"})),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	got := bodies(t, k)
 	last := got[len(got)-1]
@@ -683,7 +680,7 @@ func TestReceiptNotAfterResultLeftOut(t *testing.T) {
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": a})),
 		toolCall("r2", "read_file", mustArgs(t, map[string]string{"path": b})),
 		toolCall("r3", "read_file", mustArgs(t, map[string]string{"path": a})),
-		provider.Message{Role: provider.RoleAssistant, Content: "seen"},
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("seen")},
 	)
 	got := bodies(t, k)
 	last := got[len(got)-1]

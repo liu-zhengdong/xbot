@@ -14,7 +14,7 @@ func TestCompletedUnreadTracksOwnerCursor(t *testing.T) {
 	b := bots[0]
 	appendResult := func(kind, origin string) {
 		t.Helper()
-		err := b.Append(bot.Entry{Time: time.Now(), Origin: origin, Message: provider.Message{Role: provider.RoleUser, Content: link.Render(link.Event{Source: link.SourceSubagent, Sender: "sa_done", Type: kind, Content: "完成", Untrusted: true}, false)}})
+		err := b.Append(bot.Entry{Time: time.Now(), Origin: origin, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(link.Event{Source: link.SourceSubagent, Sender: "sa_done", Type: kind, Content: "完成", Untrusted: true}, false))}})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -228,8 +228,8 @@ func TestLongRunJourney(t *testing.T) {
 	// happened to keep.
 	found := ""
 	for _, m := range first.request {
-		if strings.Contains(m.Content, journeyKeyFact) {
-			found = m.Content
+		if strings.Contains(m.Text(), journeyKeyFact) {
+			found = m.Text()
 			break
 		}
 	}
@@ -256,14 +256,14 @@ func TestLongRunJourney(t *testing.T) {
 	for _, c := range recall {
 		for _, m := range c.request {
 			if m.Role == provider.RoleAssistant {
-				for _, tc := range m.ToolCalls {
+				for _, tc := range m.Calls() {
 					if tc.Function.Name == "expand" {
 						expandArgs = tc.Function.Arguments
 					}
 				}
 			}
-			if m.Role == provider.RoleTool && strings.Contains(m.Content, "# seq ") {
-				expanded = m.Content
+			if m.Role == provider.RoleTool && strings.Contains(m.Text(), "# seq ") {
+				expanded = m.Text()
 			}
 		}
 	}
@@ -278,7 +278,7 @@ func TestLongRunJourney(t *testing.T) {
 		if want := fmt.Sprintf("# seq %d %s", seq, e.Message.Role); !strings.Contains(expanded, want) {
 			t.Errorf("criterion 5: expand output has no %q header", want)
 		}
-		if !strings.Contains(expanded, e.Message.Content) {
+		if !strings.Contains(expanded, e.Message.Text()) {
 			t.Errorf("criterion 5: expand output does not contain the original text of seq %d", seq)
 		}
 	}
@@ -787,11 +787,11 @@ func (m *journeyModel) Chat(_ context.Context, req provider.Request, _ func(stri
 		if msg.Role != provider.RoleSystem {
 			continue
 		}
-		if strings.HasPrefix(msg.Content, summarizerInstruction) {
+		if strings.HasPrefix(msg.Text(), summarizerInstruction) {
 			call.compact = true
 			break
 		}
-		if strings.HasPrefix(msg.Content, extractInstructionPrefix) {
+		if strings.HasPrefix(msg.Text(), extractInstructionPrefix) {
 			call.extract = true
 			break
 		}
@@ -799,9 +799,9 @@ func (m *journeyModel) Chat(_ context.Context, req provider.Request, _ func(stri
 	var reply provider.Message
 	switch {
 	case call.compact:
-		reply = provider.Message{Role: provider.RoleAssistant, Content: summarizeScript(strings.Join(messageContents(req.Messages), "\n"))}
+		reply = provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(summarizeScript(strings.Join(messageContents(req.Messages), "\n")))}
 	case call.extract:
-		reply = provider.Message{Role: provider.RoleAssistant, Content: "[]"}
+		reply = provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("[]")}
 	default:
 		reply = m.answer(req)
 	}
@@ -861,10 +861,10 @@ func requestBytes(req provider.Request) []byte {
 	defs, _ := json.Marshal(req.Tools)
 	b.Write(defs)
 	for _, m := range req.Messages {
-		b.WriteString("\x00" + m.Role + "\x00" + m.Name + "\x00" + m.ToolCallID + "\x00")
-		b.WriteString(m.Content)
-		if len(m.ToolCalls) > 0 {
-			calls, _ := json.Marshal(m.ToolCalls)
+		b.WriteString("\x00" + m.Role + "\x00" + m.Name + "\x00" + m.CallID() + "\x00")
+		b.WriteString(m.Text())
+		if len(m.Calls()) > 0 {
+			calls, _ := json.Marshal(m.Calls())
 			b.Write(calls)
 		}
 	}
@@ -911,13 +911,13 @@ func summarizeScript(data string) string {
 }
 
 func text(s string) provider.Message {
-	return provider.Message{Role: provider.RoleAssistant, Content: s}
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(s)}
 }
 
 func toolCall(id, name, args string) provider.Message {
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: id, Type: "function", Function: provider.FunctionCall{Name: name, Arguments: args},
-	}}}
+	}})}
 }
 
 // scanRequest reads a conversation the way a scripted model does: the newest
@@ -926,10 +926,10 @@ func toolCall(id, name, args string) provider.Message {
 func scanRequest(req provider.Request) (lastUser string, sawShell, sawExpand bool) {
 	for _, msg := range req.Messages {
 		if msg.Role == provider.RoleUser {
-			lastUser = msg.Content
+			lastUser = msg.Text()
 			sawShell, sawExpand = false, false
 		}
-		for _, tc := range msg.ToolCalls {
+		for _, tc := range msg.Calls() {
 			switch tc.Function.Name {
 			case "shell":
 				sawShell = true
@@ -951,7 +951,7 @@ func turnTag(s string) string {
 func messageContents(msgs []provider.Message) []string {
 	out := make([]string, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, m.Content)
+		out = append(out, m.Text())
 	}
 	return out
 }
@@ -959,24 +959,24 @@ func messageContents(msgs []provider.Message) []string {
 func lastAssistant(entries []bot.Entry) string {
 	out := ""
 	for _, e := range entries {
-		if e.Message.Role == provider.RoleAssistant && e.Message.Content != "" {
-			out = e.Message.Content
+		if e.Message.Role == provider.RoleAssistant && e.Message.Text() != "" {
+			out = e.Message.Text()
 		}
 	}
 	return out
 }
 
 func sameMessage(a, b provider.Message) bool {
-	if a.Role != b.Role || a.Content != b.Content || a.Name != b.Name || a.ToolCallID != b.ToolCallID {
+	if a.Role != b.Role || a.Text() != b.Text() || a.Name != b.Name || a.CallID() != b.CallID() {
 		return false
 	}
-	if len(a.ToolCalls) != len(b.ToolCalls) {
+	if len(a.Calls()) != len(b.Calls()) {
 		return false
 	}
-	for i := range a.ToolCalls {
-		if a.ToolCalls[i].ID != b.ToolCalls[i].ID ||
-			a.ToolCalls[i].Function.Name != b.ToolCalls[i].Function.Name ||
-			a.ToolCalls[i].Function.Arguments != b.ToolCalls[i].Function.Arguments {
+	for i := range a.Calls() {
+		if a.Calls()[i].ID != b.Calls()[i].ID ||
+			a.Calls()[i].Function.Name != b.Calls()[i].Function.Name ||
+			a.Calls()[i].Function.Arguments != b.Calls()[i].Function.Arguments {
 			return false
 		}
 	}
@@ -985,7 +985,7 @@ func sameMessage(a, b provider.Message) bool {
 
 // isSummary reports whether a message is a rendered summary block.
 func isSummary(m provider.Message) bool {
-	return m.Role == provider.RoleUser && strings.HasPrefix(m.Content, "<summary ")
+	return m.Role == provider.RoleUser && strings.HasPrefix(m.Text(), "<summary ")
 }
 
 // summaryHeader matches the range header a rendered block starts with.
@@ -999,7 +999,7 @@ func summarySig(msgs []provider.Message) string {
 		if !isSummary(m) {
 			continue
 		}
-		if h := summaryHeader.FindStringSubmatch(m.Content); h != nil {
+		if h := summaryHeader.FindStringSubmatch(m.Text()); h != nil {
 			fmt.Fprintf(&b, "%s-%s;", h[1], h[2])
 			continue
 		}
@@ -1159,7 +1159,7 @@ func factSeq(t *testing.T, b *bot.Bot) int {
 		t.Fatal(err)
 	}
 	for i, e := range entries {
-		if strings.Contains(e.Message.Content, journeyKeyFact) {
+		if strings.Contains(e.Message.Text(), journeyKeyFact) {
 			return i + 1
 		}
 	}

@@ -469,7 +469,7 @@ func mustEntries(t *testing.T, b *bot.Bot) []bot.Entry {
 func dump(entries []bot.Entry) string {
 	var b strings.Builder
 	for _, e := range entries {
-		fmt.Fprintf(&b, "%s %s\n", e.Message.Role, e.Message.Content)
+		fmt.Fprintf(&b, "%s %s\n", e.Message.Role, e.Message.Text())
 	}
 	return b.String()
 }

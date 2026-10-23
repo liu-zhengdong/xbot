@@ -63,8 +63,8 @@ func CountVoice(text string, toolNames []string) VoiceStats {
 func voiceReplies(entries []bot.Entry, names []string) []VoiceStats {
 	var out []VoiceStats
 	for _, e := range entries {
-		if e.Message.Role == provider.RoleAssistant && !e.IsInternal() && strings.TrimSpace(e.Message.Content) != "" {
-			out = append(out, CountVoice(e.Message.Content, names))
+		if e.Message.Role == provider.RoleAssistant && !e.IsInternal() && strings.TrimSpace(e.Message.Text()) != "" {
+			out = append(out, CountVoice(e.Message.Text(), names))
 		}
 	}
 	return out

@@ -95,7 +95,7 @@ func TestC1AllSlowToolsYieldAndReport(t *testing.T) {
 			}
 			k, p := c1Fixture(t, tool)
 			defer func() { once.Do(func() { close(slow.release) }); handles.Wait(); _ = k.Close() }()
-			p.resps = []provider.Message{toolCall("c1", tool.Name(), args), {Role: provider.RoleAssistant, Content: "已收到，查完告诉你"}}
+			p.resps = []provider.Message{toolCall("c1", tool.Name(), args), {Role: provider.RoleAssistant, Content: provider.TextContent("已收到，查完告诉你")}}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			start := time.Now()
@@ -123,10 +123,10 @@ func TestC1AllSlowToolsYieldAndReport(t *testing.T) {
 			}
 			count := 0
 			for _, row := range rows {
-				if row.Message.ToolCallID == "c1" {
+				if row.Message.CallID() == "c1" {
 					count++
-					if !strings.HasPrefix(row.Message.Content, "background sh_") {
-						t.Fatalf("not a background receipt: %s", row.Message.Content)
+					if !strings.HasPrefix(row.Message.Text(), "background sh_") {
+						t.Fatalf("not a background receipt: %s", row.Message.Text())
 					}
 				}
 			}
@@ -161,7 +161,7 @@ func TestC1InterjectionYieldsRegisteredOrUpcomingCall(t *testing.T) {
 			var release sync.Once
 			var handles sync.WaitGroup
 			defer func() { release.Do(func() { close(slow.release) }); handles.Wait(); _ = k.Close() }()
-			p.resps = []provider.Message{toolCall("slow", slow.Name(), "{}"), {Role: provider.RoleAssistant, Content: "原任务和新话都收到了"}}
+			p.resps = []provider.Message{toolCall("slow", slow.Name(), "{}"), {Role: provider.RoleAssistant, Content: provider.TextContent("原任务和新话都收到了")}}
 			toolStart := make(chan struct{})
 			register := make(chan struct{})
 			var reg sync.Once
@@ -200,10 +200,10 @@ func TestC1InterjectionYieldsRegisteredOrUpcomingCall(t *testing.T) {
 			}
 			inputs, results := 0, 0
 			for _, row := range rows {
-				if row.Message.Content == "second" {
+				if row.Message.Text() == "second" {
 					inputs++
 				}
-				if row.Message.ToolCallID == "slow" {
+				if row.Message.CallID() == "slow" {
 					results++
 				}
 			}
@@ -246,7 +246,7 @@ func TestC1MemoryWriteDoesNotBlockNewInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})), toolCall("write", "write_file", mustArgs(t, map[string]string{"path": path, "content": "INVALID_MEMORY_LINE"})), {Role: provider.RoleAssistant, Content: "新话收到了"}}}
+	p := &scripted{resps: []provider.Message{toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})), toolCall("write", "write_file", mustArgs(t, map[string]string{"path": path, "content": "INVALID_MEMORY_LINE"})), {Role: provider.RoleAssistant, Content: provider.TextContent("新话收到了")}}}
 	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.Open(b.Root), Permissive: true, WorkDir: t.TempDir(), MaxSteps: 5, Links: []link.Link{link.Terminal{}, c1Link{tool: w}, freshReadLink{}}}
 	var once sync.Once
 	var handles sync.WaitGroup
@@ -323,8 +323,8 @@ func TestC1BackgroundMemoryWriteDoesNotBlockNextTurn(t *testing.T) {
 	p := &scripted{resps: []provider.Message{
 		toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})),
 		toolCall("write", "write_file", mustArgs(t, map[string]string{"path": path, "content": "INVALID_MEMORY_LINE"})),
-		{Role: provider.RoleAssistant, Content: "写入在后台继续"},
-		{Role: provider.RoleAssistant, Content: "下一句话已收到"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("写入在后台继续")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("下一句话已收到")},
 	}}
 	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.Open(b.Root), Permissive: true, WorkDir: t.TempDir(), MaxSteps: 5, Links: []link.Link{link.Terminal{}, c1Link{tool: w}, freshReadLink{}}}
 	var once sync.Once
@@ -386,9 +386,9 @@ func TestC1MixedBatchKeepsOneOrderedResultPerCall(t *testing.T) {
 	var handles sync.WaitGroup
 	defer func() { once.Do(func() { close(a.release); close(b.release) }); handles.Wait(); _ = k.Close() }()
 	m := toolCall("fast", fast.Name(), "{}")
-	m.ToolCalls = append(m.ToolCalls, toolCall("fetch", "web_fetch", `{"url":"https://example.org/a"}`).ToolCalls...)
-	m.ToolCalls = append(m.ToolCalls, toolCall("search", "web_search", `{"query":"batch"}`).ToolCalls...)
-	p.resps = []provider.Message{m, {Role: provider.RoleAssistant, Content: "三项都收到了"}}
+	m.SetCalls(append(m.Calls(), toolCall("fetch", "web_fetch", `{"url":"https://example.org/a"}`).Calls()...))
+	m.SetCalls(append(m.Calls(), toolCall("search", "web_search", `{"query":"batch"}`).Calls()...))
+	p.resps = []provider.Message{m, {Role: provider.RoleAssistant, Content: provider.TextContent("三项都收到了")}}
 	done := make(chan error, 1)
 	handles.Add(1)
 	go func() {
@@ -415,7 +415,7 @@ func TestC1MixedBatchKeepsOneOrderedResultPerCall(t *testing.T) {
 	var ids []string
 	for _, row := range rows {
 		if row.Message.Role == provider.RoleTool {
-			ids = append(ids, row.Message.ToolCallID)
+			ids = append(ids, row.Message.CallID())
 		}
 	}
 	if strings.Join(ids, ",") != "fast,fetch,search" {

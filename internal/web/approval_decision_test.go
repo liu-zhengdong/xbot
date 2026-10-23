@@ -48,9 +48,9 @@ func TestApprovalDecisionPanel(t *testing.T) {
 		entries, _ := b.Entries()
 		from := len(entries) + 1
 		for _, e := range []bot.Entry{
-			{Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(tc.id, "shell", "对外发送", "在本机上执行", "curl https://example.invalid", bot.ApprovalPending)}},
+			{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(bot.ApprovalCardText(tc.id, "shell", "对外发送", "在本机上执行", "curl https://example.invalid", bot.ApprovalPending))}},
 			{Mark: &bot.ForkMark{Kind: "fork", Branch: tc.id, From: from}},
-			{Branch: tc.id, Message: provider.Message{Role: provider.RoleUser, Content: bot.ApprovalCardText(tc.id, "shell", "对外发送", "在本机上执行", "curl https://example.invalid", tc.state)}},
+			{Branch: tc.id, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(bot.ApprovalCardText(tc.id, "shell", "对外发送", "在本机上执行", "curl https://example.invalid", tc.state))}},
 		} {
 			if err := b.Append(e); err != nil {
 				t.Fatal(err)

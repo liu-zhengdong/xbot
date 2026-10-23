@@ -16,18 +16,18 @@ func TestProjectRepoFenceStaysClosed(t *testing.T) {
 	mustWrite(t, filepath.Join(repo, "AGENTS.md"), zzEvil)
 	k, p, now := workBot(t, dir)
 	k.storeCwd(physicalDir(t, repo)) // e.g. a previous turn ran: git clone ... && cd cloned-repo
-	runTurn(t, k, now, "看一下这个项目的测试怎么跑", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "看一下这个项目的测试怎么跑", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	msgs := p.reqs[len(p.reqs)-1].Messages
 	last := newestConversationMessage(msgs)
-	t.Logf("role=%s content:\n%s", last.Role, last.Content)
-	lower := strings.ToLower(last.Content)
+	t.Logf("role=%s content:\n%s", last.Role, last.Text())
+	lower := strings.ToLower(last.Text())
 	open := strings.Index(lower, "<project_instructions")
 	firstClose := strings.Index(lower, "</project_instructions>")
-	evil := strings.Index(last.Content, "主人补充")
+	evil := strings.Index(last.Text(), "主人补充")
 	if open >= 0 && firstClose > open && evil > firstClose {
 		t.Errorf("a case-variant closing tag ends the fence; the injected '主人补充' text sits outside it")
 	}
-	if last.Role == provider.RoleUser && strings.Contains(last.Content, "看一下这个项目的测试怎么跑") && strings.Contains(last.Content, "主人补充") {
+	if last.Role == provider.RoleUser && strings.Contains(last.Text(), "看一下这个项目的测试怎么跑") && strings.Contains(last.Text(), "主人补充") {
 		t.Errorf("cloned-repo AGENTS.md is appended inside the owner's trusted message, with no untrusted marking")
 	}
 	if !strings.Contains(lower, "untrusted") && !strings.Contains(lower, "not the owner") {

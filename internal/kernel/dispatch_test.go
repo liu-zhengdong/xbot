@@ -40,7 +40,7 @@ type roleModel struct {
 }
 
 func (m *roleModel) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
-	isSub := len(req.Messages) > 0 && strings.HasPrefix(req.Messages[0].Content, exec.SubPersona)
+	isSub := len(req.Messages) > 0 && strings.HasPrefix(req.Messages[0].Text(), exec.SubPersona)
 	if isSub && m.hold != nil {
 		<-m.hold
 	}
@@ -49,7 +49,7 @@ func (m *roleModel) Chat(_ context.Context, req provider.Request, _ func(string)
 	if isSub {
 		m.subReq = append(m.subReq, snapshotReq(req))
 		if len(m.sub) == 0 {
-			return provider.Message{Role: provider.RoleAssistant, Content: "Findings\nnone"}, nil
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("Findings\nnone")}, nil
 		}
 		msg := m.sub[0]
 		m.sub = m.sub[1:]
@@ -57,7 +57,7 @@ func (m *roleModel) Chat(_ context.Context, req provider.Request, _ func(string)
 	}
 	m.foreReq = append(m.foreReq, snapshotReq(req))
 	if len(m.fore) == 0 {
-		return provider.Message{Role: provider.RoleAssistant, Content: "ok"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}, nil
 	}
 	msg := m.fore[0]
 	m.fore = m.fore[1:]
@@ -106,9 +106,9 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 	m := &roleModel{
 		fore: []provider.Message{
 			assistantCall("d1", "", "dispatch", `{"type":"research","task":"find the release date of Go 1.30"}`),
-			{Role: provider.RoleAssistant, Content: "已派调研员去查。"},
+			{Role: provider.RoleAssistant, Content: provider.TextContent("已派调研员去查。")},
 		},
-		sub:  []provider.Message{{Role: provider.RoleAssistant, Content: "Findings\nAugust\n\nSources\ngo.dev\n\nNot found\nnone"}},
+		sub:  []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("Findings\nAugust\n\nSources\ngo.dev\n\nNot found\nnone")}},
 		hold: make(chan struct{}),
 	}
 	k, b, box := dispatchKernel(t, m)
@@ -136,13 +136,13 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 	if !contains(names, "shell") || !contains(names, "read_file") {
 		t.Fatalf("research subagent tools %v", names)
 	}
-	sys := sub.Messages[0].Content
+	sys := sub.Messages[0].Text()
 	for _, want := range []string{"You are a researcher.", "Findings, Sources, Not found"} {
 		if !strings.Contains(sys, want) {
 			t.Fatalf("system prompt lacks %q: %q", want, sys)
 		}
 	}
-	if got := sub.Messages[1].Content; got != "find the release date of Go 1.30" {
+	if got := sub.Messages[1].Text(); got != "find the release date of Go 1.30" {
 		t.Fatalf("task %q", got)
 	}
 	metas, _ := filepath.Glob(filepath.Join(b.Root, "bots", b.Name(), "agents", "sa_*", "meta.json"))
@@ -223,9 +223,9 @@ func TestReadOnlyShellRefusesWrites(t *testing.T) {
 // same way a turn's are.
 func TestSubagentRequestsAreFit(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTerminal), Budget: compact.Budget{Ceiling: 6000, KeepTail: 1}}
-	inner := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	inner := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	p := k.wrapSub(exec.StartRequest{}, inner, 2)
-	msgs := []provider.Message{{Role: provider.RoleSystem, Content: "sys"}, {Role: provider.RoleUser, Content: "task"}}
+	msgs := []provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent("sys")}, {Role: provider.RoleUser, Content: provider.TextContent("task")}}
 	for i := 0; i < 6; i++ {
 		id := string(rune('a' + i))
 		msgs = append(msgs, assistantCall(id, "step", "read_file", `{}`), toolResult(id, "read_file", strings.Repeat("x", 8000)))
@@ -237,8 +237,8 @@ func TestSubagentRequestsAreFit(t *testing.T) {
 	if n := compact.EstimateMessages(sent); n > 6000 {
 		t.Fatalf("sent %d tokens", n)
 	}
-	if !strings.Contains(sent[3].Content, "Read the file or run the call again") {
-		t.Fatalf("note %q", sent[3].Content)
+	if !strings.Contains(sent[3].Text(), "Read the file or run the call again") {
+		t.Fatalf("note %q", sent[3].Text())
 	}
 }
 
@@ -255,7 +255,7 @@ func TestForegroundCannotDoTheWork(t *testing.T) {
 		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
 		toolCall("s2", "shell", mustArgs(t, map[string]any{"command": "ls"})),
 		toolCall("m1", "write_file", mustArgs(t, map[string]string{"path": memFile, "content": "- likes tea\n"})),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -291,7 +291,7 @@ func TestForegroundCannotDoTheWork(t *testing.T) {
 			t.Fatalf("foreground offers %s", hidden)
 		}
 	}
-	if sys := m.foreReq[0].Messages[0].Content; !strings.Contains(sys, DispatchRule) {
+	if sys := m.foreReq[0].Messages[0].Text(); !strings.Contains(sys, DispatchRule) {
 		t.Fatal("the foreground's rules lack the dispatch rule")
 	}
 }
@@ -311,7 +311,7 @@ func TestForegroundRefusesBeforeTheCard(t *testing.T) {
 	m.fore = []provider.Message{
 		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
 		toolCall("s2", "shell", mustArgs(t, map[string]any{"command": "pwd && ls -la"})),
-		{Role: provider.RoleAssistant, Content: "done"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -327,7 +327,7 @@ func TestForegroundRefusesBeforeTheCard(t *testing.T) {
 
 // Without dispatch the foreground keeps every tool and no dispatch rule.
 func TestForegroundUnchangedWithoutDispatch(t *testing.T) {
-	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k, _, _ := dispatchKernel(t, m)
 	k.Dispatch = false
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(9, 0).UTC())); err != nil {
@@ -339,7 +339,7 @@ func TestForegroundUnchangedWithoutDispatch(t *testing.T) {
 	if !contains(names, "spawn") || contains(names, "dispatch") {
 		t.Fatalf("tools %v", names)
 	}
-	if strings.Contains(m.foreReq[0].Messages[0].Content, DispatchRule) {
+	if strings.Contains(m.foreReq[0].Messages[0].Text(), DispatchRule) {
 		t.Fatal("dispatch rule without dispatch")
 	}
 }
@@ -352,7 +352,7 @@ func TestForegroundLimitHandsTheRestOut(t *testing.T) {
 	}
 	m := &roleModel{fore: []provider.Message{
 		read("r1"), read("r2"), read("r3"), read("r4"), read("r5"), read("r6"),
-		{Role: provider.RoleAssistant, Content: "stopped"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	k, b, _ := dispatchKernel(t, m)
 	k.ForegroundMaxTools = 2
@@ -402,7 +402,7 @@ func (workLink) Tools() []tools.Tool {
 // tool that writes, runs commands, sends out, or deletes, except the few it
 // keeps on purpose (foregroundKept), whose limits are checked at run time.
 func TestForegroundNeverOffersWorkTools(t *testing.T) {
-	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k, _, _ := dispatchKernel(t, m)
 	k.Links = append(k.Links, link.Memory{}, link.Persona{}, link.Context{}, link.Peers{}, link.Skills{}, link.Web{}, workLink{})
 	list, err := k.modelTools()
@@ -597,12 +597,12 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 	m := &roleModel{
 		fore: []provider.Message{
 			assistantCall("d1", "", "dispatch", `{"type":"general","task":"tell the owner the build passed"}`),
-			{Role: provider.RoleAssistant, Content: "好。"},
+			{Role: provider.RoleAssistant, Content: provider.TextContent("好。")},
 		},
 		sub: []provider.Message{
 			assistantCall("s1", "", "links", `{"action":"load","id":"telegram"}`),
 			assistantCall("s2", "", "telegram_send", `{"to":"u1","body":"the build passed"}`),
-			{Role: provider.RoleAssistant, Content: "Done\nnone"},
+			{Role: provider.RoleAssistant, Content: provider.TextContent("Done\nnone")},
 		},
 	}
 	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents, link.NameTelegram)

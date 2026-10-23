@@ -78,7 +78,7 @@ func (b *Breaker) Observe(msgs []provider.Message) (remind string, stop bool, re
 }
 
 func (b *Breaker) seeAssistant(m provider.Message) {
-	text := strings.TrimSpace(m.Content)
+	text := strings.TrimSpace(m.Text())
 	if text != "" {
 		if b.hadAssistant && text == b.prevAssistant {
 			b.hit(StopRepeatedOutput, text)
@@ -86,7 +86,7 @@ func (b *Breaker) seeAssistant(m provider.Message) {
 		b.prevAssistant = text
 		b.hadAssistant = true
 	}
-	for _, tc := range m.ToolCalls {
+	for _, tc := range m.Calls() {
 		key := tc.Function.Name + "\n" + tc.Function.Arguments
 		if tc.ID != "" {
 			b.callArgs[tc.ID] = key
@@ -122,8 +122,8 @@ func (b *Breaker) seeFile(name, args string) {
 }
 
 func (b *Breaker) seeTool(m provider.Message) {
-	content := strings.TrimSpace(m.Content)
-	key := b.callArgs[m.ToolCallID]
+	content := strings.TrimSpace(m.Text())
+	key := b.callArgs[m.CallID()]
 	if key == "" {
 		key = m.Name
 	}

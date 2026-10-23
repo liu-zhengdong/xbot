@@ -158,7 +158,7 @@ func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provi
 		msgs = agent.AttachReminder(msgs, strings.Join(trusted, "\n\n"))
 	}
 	for _, text := range apart {
-		msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: text})
+		msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)})
 	}
 	if seq <= 0 {
 		return msgs, nil
@@ -207,7 +207,7 @@ func (c *Channel) Apply(msgs []provider.Message, seqs []int) error {
 		if len(texts) == 0 {
 			continue
 		}
-		msgs[i].Content = joinReminder(msgs[i].Content, strings.Join(texts, "\n\n"))
+		msgs[i].SetText(joinReminder(msgs[i].Text(), strings.Join(texts, "\n\n")))
 	}
 	return nil
 }
@@ -250,7 +250,7 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, e
 				join = append(join, text)
 			}
 			if len(join) > 0 {
-				e.Message.Content = joinReminder(e.Message.Content, strings.Join(join, "\n\n"))
+				e.Message.SetText(joinReminder(e.Message.Text(), strings.Join(join, "\n\n")))
 			}
 			out = append(out, e)
 			outSeqs = append(outSeqs, seqs[i])
@@ -258,7 +258,7 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, e
 				out = append(out, bot.Entry{
 					Time:    e.Time,
 					Origin:  bot.OriginInternal,
-					Message: provider.Message{Role: provider.RoleUser, Content: text},
+					Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)},
 				})
 				outSeqs = append(outSeqs, seqs[i])
 			}
@@ -692,7 +692,7 @@ func (k *Kernel) pendingTrigger(ev link.Event) func(time.Time, []Reminder) strin
 func newestSeq(lines []bot.SeqEntry) int {
 	for i := len(lines) - 1; i >= 0; i-- {
 		e := lines[i].Entry
-		if e.IsForkMark() || bot.IsApprovalCard(e.Message.Content) || code.IsCard(e.Message.Content) {
+		if e.IsForkMark() || bot.IsApprovalCard(e.Message.Text()) || code.IsCard(e.Message.Text()) {
 			continue
 		}
 		return lines[i].Seq

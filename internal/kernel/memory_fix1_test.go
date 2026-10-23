@@ -16,17 +16,17 @@ func TestMemoryWriteRuleWithSavedRules(t *testing.T) {
 	if err := b.WriteRules("Saved custom rules from before memory v2."); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root), Provider: p, MaxSteps: 2}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	msgs := p.reqs[0].Messages
-	if !strings.Contains(msgs[0].Content, "Saved custom rules") || !strings.Contains(msgs[0].Content, MemoryWriteRule) {
+	if !strings.Contains(msgs[0].Text(), "Saved custom rules") || !strings.Contains(msgs[0].Text(), MemoryWriteRule) {
 		t.Fatal("saved rules bot did not receive the write rule in its system prompt")
 	}
 	for _, msg := range msgs[1:] {
-		if strings.Contains(msg.Content, MemoryWriteRule) {
+		if strings.Contains(msg.Text(), MemoryWriteRule) {
 			t.Fatal("write rule must not sit inside the memory data block")
 		}
 	}
@@ -40,12 +40,12 @@ func TestSavedRulesGetMissingSafetyRules(t *testing.T) {
 	if err := b.WriteRules("Saved rules from an old version.\n\n" + UntrustedRule); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	sys := p.reqs[0].Messages[0].Content
+	sys := p.reqs[0].Messages[0].Text()
 	if !strings.Contains(sys, "Saved rules from an old version.") {
 		t.Fatal("saved rules dropped")
 	}

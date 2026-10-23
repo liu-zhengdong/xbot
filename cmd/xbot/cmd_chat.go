@@ -165,13 +165,13 @@ func showTranscriptSince(b *bot.Bot, seen *int) bool {
 	*seen = len(entries)
 	printed := false
 	for _, e := range fresh {
-		text := strings.TrimSpace(e.Message.Content)
+		text := strings.TrimSpace(e.Message.Text())
 		if text == "" || strings.Contains(text, "<environment_") || bot.SilentText(text) {
 			continue
 		}
 		switch e.Message.Role {
 		case provider.RoleUser, provider.RoleAssistant:
-			if len(e.Message.ToolCalls) > 0 {
+			if len(e.Message.Calls()) > 0 {
 				continue
 			}
 			fmt.Fprintln(os.Stdout, text)

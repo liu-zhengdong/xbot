@@ -68,15 +68,15 @@ func TestConnectorDeniedSendDoesNotPost(t *testing.T) {
 		return nil
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c0", Type: "function",
 			Function: provider.FunctionCall{Name: "links", Arguments: `{"action":"load","id":"telegram"}`},
-		}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
 			Function: provider.FunctionCall{Name: "telegram_send", Arguments: `{"to":"42","body":"hello"}`},
-		}}},
-		{Role: provider.RoleAssistant, Content: "kept the draft"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("kept the draft")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, MaxSteps: 4,

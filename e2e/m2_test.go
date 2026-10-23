@@ -48,7 +48,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	}
 	var ownerRaw bool
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "REMEMBER_PERSON") && !strings.Contains(e.Message.Content, "<untrusted_event") {
+		if strings.Contains(e.Message.Text(), "REMEMBER_PERSON") && !strings.Contains(e.Message.Text(), "<untrusted_event") {
 			ownerRaw = true
 		}
 	}
@@ -82,7 +82,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	}
 	joined := ""
 	for _, e := range bent {
-		joined += e.Message.Content + "\n"
+		joined += e.Message.Text() + "\n"
 	}
 	if !strings.Contains(joined, "Ada likes tea") || strings.Contains(joined, "secret handshake") {
 		t.Fatalf("bot B context:\n%s", joined)
@@ -134,10 +134,10 @@ func TestServeRoutineNotifyAndSilence(t *testing.T) {
 	}
 	var sawSilent bool
 	for _, e := range qent {
-		if strings.TrimSpace(e.Message.Content) == "SILENT" {
+		if strings.TrimSpace(e.Message.Text()) == "SILENT" {
 			sawSilent = true
 		}
-		if strings.Contains(e.Message.Content, "<routine>") && !strings.Contains(e.Message.Content, "<untrusted_event") {
+		if strings.Contains(e.Message.Text(), "<routine>") && !strings.Contains(e.Message.Text(), "<untrusted_event") {
 			t.Fatal("routine wake was trusted")
 		}
 	}

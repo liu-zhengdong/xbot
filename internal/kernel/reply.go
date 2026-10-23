@@ -45,15 +45,15 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	}
 	m.Internal = false
 	if m.Role == provider.RoleUser && replyTo > 0 {
-		if stripped, ok := bot.StripInjectedQuote(m.Content); ok {
-			m.Content = stripped
+		if stripped, ok := bot.StripInjectedQuote(m.Text()); ok {
+			m.SetText(stripped)
 		}
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if m.Role == provider.RoleAssistant {
 		t.replies++
-		if len(m.ToolCalls) == 0 {
+		if len(m.Calls()) == 0 {
 			t.replyTo = replyTo
 			t.answered = true
 		}
@@ -66,7 +66,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	// request. The line stores the owner's words; the note comes back when the
 	// line is assembled.
 	if len(images) > 0 {
-		m.Content = stripPastedNote(m.Content, k.pastedNote(images))
+		m.SetText(stripPastedNote(m.Text(), k.pastedNote(images)))
 	}
 	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
 	if err != nil {
@@ -84,7 +84,7 @@ func (k *Kernel) quotePrefix(seq int) string {
 	if err != nil || len(part) != 1 {
 		return ""
 	}
-	return bot.FormatQuote(seq, part[0].Message.Content)
+	return bot.FormatQuote(seq, part[0].Message.Text())
 }
 
 // userReplyTarget reports whether seq is a user utterance the bot may point at.
@@ -182,7 +182,7 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 			return provider.Message{}, err
 		}
 	}
-	if len(msg.ToolCalls) == 0 && toolProtocolText(msg.Content) {
+	if len(msg.Calls()) == 0 && toolProtocolText(msg.Text()) {
 		return provider.Message{}, errors.New("provider returned tool protocol as reply text")
 	}
 	if onDelta != nil {
@@ -193,9 +193,9 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 	if msg.Role == "" {
 		msg.Role = provider.RoleAssistant
 	}
-	if len(msg.ToolCalls) == 0 {
-		if seq, rest, ok := bot.TakeReplyLine(msg.Content); ok {
-			msg.Content = rest
+	if len(msg.Calls()) == 0 {
+		if seq, rest, ok := bot.TakeReplyLine(msg.Text()); ok {
+			msg.SetText(rest)
 			if s.accept != nil && s.accept(seq) {
 				msg.ReplyTo = seq
 			}

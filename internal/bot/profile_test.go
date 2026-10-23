@@ -366,7 +366,7 @@ func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: "SECRET-TRANSCRIPT"}}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("SECRET-TRANSCRIPT")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := memory.Open(root).Remember(context.Background(), memory.Fact{

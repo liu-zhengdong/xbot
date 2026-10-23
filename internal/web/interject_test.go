@@ -27,11 +27,11 @@ type interjectModel struct {
 
 func (m interjectModel) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	for _, msg := range req.Messages {
-		if msg.Role == provider.RoleUser && strings.Contains(msg.Content, "插一句") {
+		if msg.Role == provider.RoleUser && strings.Contains(msg.Text(), "插一句") {
 			if onDelta != nil {
 				onDelta("答插话")
 			}
-			return provider.Message{Role: provider.RoleAssistant, Content: "答插话"}, nil
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("答插话")}, nil
 		}
 	}
 	if m.hold != nil {
@@ -44,14 +44,14 @@ func (m interjectModel) Chat(ctx context.Context, req provider.Request, onDelta 
 		if onDelta != nil {
 			onDelta("第一件答完")
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: "第一件答完"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第一件答完")}, nil
 	}
 	if req.Messages[len(req.Messages)-1].Role == provider.RoleTool {
-		return provider.Message{Role: provider.RoleAssistant, Content: "第一件答完"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第一件答完")}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "slow", Arguments: "{}"},
-	}}}, nil
+	}})}, nil
 }
 
 func interjectServer(t *testing.T, model provider.Provider, list ...tools.Tool) (*httptest.Server, *http.Cookie, *bot.Bot) {
@@ -145,11 +145,11 @@ func TestInterjectionGoesStraightIntoTheTurn(t *testing.T) {
 		switch {
 		case e.Message.Role == provider.RoleTool:
 			order = append(order, "tool")
-		case strings.Contains(e.Message.Content, "插一句"):
+		case strings.Contains(e.Message.Text(), "插一句"):
 			order = append(order, "owner")
-		case strings.Contains(e.Message.Content, "<owner_interjected>") && e.IsInternal():
+		case strings.Contains(e.Message.Text(), "<owner_interjected>") && e.IsInternal():
 			order = append(order, "note")
-		case e.Message.Content == "答插话":
+		case e.Message.Text() == "答插话":
 			order = append(order, "answer")
 		}
 	}
@@ -196,7 +196,7 @@ func TestInterjectionStopsTheModelCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.Message.Content == "第一件答完" {
+		if e.Message.Text() == "第一件答完" {
 			t.Fatal("the stopped call's answer was recorded")
 		}
 	}

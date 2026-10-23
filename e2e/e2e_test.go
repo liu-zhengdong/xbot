@@ -70,7 +70,7 @@ func TestMultiStepAgainstMock(t *testing.T) {
 	for _, e := range entries {
 		if e.Message.Role == provider.RoleAssistant {
 			assistants++
-			if strings.Contains(e.Message.Content, "Summary written") {
+			if strings.Contains(e.Message.Text(), "Summary written") {
 				sawFinal = true
 			}
 		}

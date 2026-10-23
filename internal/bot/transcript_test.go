@@ -20,7 +20,7 @@ func TestSegmentRollBySizeAndDay(t *testing.T) {
 	day1 := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 	day2 := time.Date(2026, 10, 15, 1, 0, 0, 0, time.UTC)
 	for i := 0; i < 3; i++ {
-		if err := b.Append(Entry{Time: day1, Message: provider.Message{Role: provider.RoleUser, Content: strings.Repeat("a", 40)}}); err != nil {
+		if err := b.Append(Entry{Time: day1, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(strings.Repeat("a", 40))}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -52,7 +52,7 @@ func TestSegmentRollBySizeAndDay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Time: day2, Message: provider.Message{Role: provider.RoleUser, Content: "next day"}}); err != nil {
+	if err := b.Append(Entry{Time: day2, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("next day")}}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(sealed[0])
@@ -70,7 +70,7 @@ func TestSegmentRollBySizeAndDay(t *testing.T) {
 		t.Fatalf("day roll files %v", files)
 	}
 	got, err := b.Entries()
-	if err != nil || len(got) != 4 || got[3].Message.Content != "next day" {
+	if err != nil || len(got) != 4 || got[3].Message.Text() != "next day" {
 		t.Fatalf("%v %+v", err, got)
 	}
 }
@@ -90,7 +90,7 @@ func TestMigrateLegacyJSONL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Message.Content != "kept line" || got[0].EventID != "ev1" {
+	if len(got) != 1 || got[0].Message.Text() != "kept line" || got[0].EventID != "ev1" {
 		t.Fatalf("%+v", got)
 	}
 	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
@@ -114,7 +114,7 @@ func TestCrashMidAppendAndMidIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: "first line"}}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("first line")}}); err != nil {
 		t.Fatal(err)
 	}
 	files, err := b.SegmentFiles()
@@ -132,14 +132,14 @@ func TestCrashMidAppendAndMidIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	CloseStore(b)
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: "second line"}}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("second line")}}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := b.Entries()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].Message.Content != "first line" || got[1].Message.Content != "second line" {
+	if len(got) != 2 || got[0].Message.Text() != "first line" || got[1].Message.Text() != "second line" {
 		t.Fatalf("%+v", got)
 	}
 	raw, err := b.ConcatRaw()
@@ -150,7 +150,7 @@ func TestCrashMidAppendAndMidIndex(t *testing.T) {
 		t.Fatalf("partial line kept: %s", raw)
 	}
 
-	if err := b.appendSkipIndex(Entry{Message: provider.Message{Role: provider.RoleUser, Content: "indexed later"}}); err != nil {
+	if err := b.appendSkipIndex(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("indexed later")}}); err != nil {
 		t.Fatal(err)
 	}
 	CloseStore(b)
@@ -169,7 +169,7 @@ func TestCorruptIndexRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{EventID: "e", Message: provider.Message{Role: provider.RoleUser, Content: "durable text"}}); err != nil {
+	if err := b.Append(Entry{EventID: "e", Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("durable text")}}); err != nil {
 		t.Fatal(err)
 	}
 	CloseStore(b)
@@ -184,7 +184,7 @@ func TestCorruptIndexRebuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Message.Content != "durable text" {
+	if len(got) != 1 || got[0].Message.Text() != "durable text" {
 		t.Fatalf("%+v", got)
 	}
 	seqs, err := b.Search("durable", 2)
@@ -211,22 +211,22 @@ func TestBlobSpillAndUncovered(t *testing.T) {
 	}
 	b.SetBlobThreshold(32)
 	full := strings.Repeat("x", 600) + " BLOB-TAIL"
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleTool, ToolCallID: "c1", Content: full}}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", full)}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: "kept raw"}}); err != nil {
+	if err := b.Append(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("kept raw")}}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := b.Entries()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(got[0].Message.Content, "BLOB-TAIL") || got[0].Blob == "" {
+	if strings.Contains(got[0].Message.Text(), "BLOB-TAIL") || got[0].Blob == "" {
 		t.Fatalf("preview %+v", got[0])
 	}
 	hydrated, err := b.Hydrate(got[0])
-	if err != nil || hydrated.Message.Content != full {
-		t.Fatalf("%v %q", err, hydrated.Message.Content)
+	if err != nil || hydrated.Message.Text() != full {
+		t.Fatalf("%v %q", err, hydrated.Message.Text())
 	}
 	seqs, err := b.Search("BLOB-TAIL", 2)
 	if err != nil || len(seqs) != 1 || seqs[0] != 1 {
@@ -239,7 +239,7 @@ func TestBlobSpillAndUncovered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tail) != 1 || tail[0].Message.Content != "kept raw" {
+	if len(tail) != 1 || tail[0].Message.Text() != "kept raw" {
 		t.Fatalf("uncovered %+v", tail)
 	}
 }

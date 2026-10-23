@@ -21,28 +21,28 @@ func TestProjectFenceVariantsAndReplay(t *testing.T) {
 	mustWrite(t, filepath.Join(repo, "AGENTS.md"), evil)
 	k, p, now := workBot(t, dir)
 	k.storeCwd(physicalDir(t, repo))
-	runTurn(t, k, now, "hello", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "hello", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	msgs := p.reqs[len(p.reqs)-1].Messages
 	var proj provider.Message
 	for _, m := range msgs {
-		if strings.Contains(m.Content, `source="project"`) {
+		if strings.Contains(m.Text(), `source="project"`) {
 			proj = m
 		}
-		if m.Role == provider.RoleUser && strings.Contains(m.Content, "hello") && strings.Contains(m.Content, "OWNER-1") {
+		if m.Role == provider.RoleUser && strings.Contains(m.Text(), "hello") && strings.Contains(m.Text(), "OWNER-1") {
 			t.Errorf("repo text joined the owner's message")
 		}
 	}
-	closes := realProjectClose.FindAllStringIndex(proj.Content, -1)
+	closes := realProjectClose.FindAllStringIndex(proj.Text(), -1)
 	if len(closes) != 2 {
-		t.Errorf("unexpected close tags: %d\n%s", len(closes), proj.Content)
+		t.Errorf("unexpected close tags: %d\n%s", len(closes), proj.Text())
 	}
-	if i := strings.Index(proj.Content, "OWNER-4"); i < 0 || (len(closes) > 0 && i > closes[0][0]) {
+	if i := strings.Index(proj.Text(), "OWNER-4"); i < 0 || (len(closes) > 0 && i > closes[0][0]) {
 		t.Errorf("repo text sits after a real close tag")
 	}
 	*now = now.Add(time.Second)
-	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: "ok2"})
+	runTurn(t, k, now, "again", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok2")})
 	for _, m := range p.reqs[len(p.reqs)-1].Messages {
-		if m.Role == provider.RoleUser && (strings.Contains(m.Content, "hello") || strings.Contains(m.Content, "again")) && strings.Contains(m.Content, "OWNER-1") {
+		if m.Role == provider.RoleUser && (strings.Contains(m.Text(), "hello") || strings.Contains(m.Text(), "again")) && strings.Contains(m.Text(), "OWNER-1") {
 			t.Errorf("replayed project note joined an owner line")
 		}
 	}
@@ -56,7 +56,7 @@ func TestProjectRootCloneIsUntrusted(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, ".git", "config"), "[remote \"origin\"]\n\turl = https://github.com/someone/repo\n")
 	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "ROOT-CLONE-TEXT\n")
 	k, p, now := workBot(t, dir)
-	runTurn(t, k, now, "hi", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "hi", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	assertRepoProject(t, p.reqs[len(p.reqs)-1].Messages, "ROOT-CLONE-TEXT")
 }
 
@@ -65,7 +65,7 @@ func TestProjectGitFileRootIsUntrusted(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, ".git"), "gitdir: /somewhere/else\n")
 	mustWrite(t, filepath.Join(dir, "AGENTS.md"), "WORKTREE-TEXT\n")
 	k, p, now := workBot(t, dir)
-	runTurn(t, k, now, "hi", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "hi", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	assertRepoProject(t, p.reqs[len(p.reqs)-1].Messages, "WORKTREE-TEXT")
 }
 
@@ -76,7 +76,7 @@ func TestProjectSharedDirIsUntrusted(t *testing.T) {
 	k, p, now := workBot(t, dir)
 	k.SharedDir = shared
 	k.storeCwd(physicalDir(t, shared))
-	runTurn(t, k, now, "hi", provider.Message{Role: provider.RoleAssistant, Content: "ok"})
+	runTurn(t, k, now, "hi", provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")})
 	assertRepoProject(t, p.reqs[len(p.reqs)-1].Messages, "SHARED-UNTRUSTED")
 }
 
@@ -84,15 +84,15 @@ func assertRepoProject(t *testing.T, msgs []provider.Message, body string) {
 	t.Helper()
 	found := false
 	for _, m := range msgs {
-		if !strings.Contains(m.Content, body) {
+		if !strings.Contains(m.Text(), body) {
 			continue
 		}
 		found = true
-		if strings.Contains(m.Content, "placed by the owner") {
+		if strings.Contains(m.Text(), "placed by the owner") {
 			t.Errorf("%s is labeled owner-placed", body)
 		}
-		if !strings.Contains(m.Content, `source="project"`) || !strings.Contains(m.Content, "not the owner") {
-			t.Errorf("%s was not wrapped as repo-provided data:\n%s", body, m.Content)
+		if !strings.Contains(m.Text(), `source="project"`) || !strings.Contains(m.Text(), "not the owner") {
+			t.Errorf("%s was not wrapped as repo-provided data:\n%s", body, m.Text())
 		}
 	}
 	if !found {
@@ -118,13 +118,13 @@ func TestCwdSymlinkStaysInside(t *testing.T) {
 	runTurn(t, k, now, "go",
 		toolCall("c1", "shell", `{"command":"cd lnk"}`),
 		toolCall("c2", "write_file", `{"path":"x.txt","content":"x\n"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"})
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 	if _, err := os.Stat(filepath.Join(outside, "x.txt")); err == nil {
 		t.Errorf("relative write_file after cd into a symlink landed outside the workspace")
 	}
 	for _, r := range p.reqs {
 		for _, m := range r.Messages {
-			if strings.Contains(m.Content, "OUTSIDE") && strings.Contains(m.Content, "project_instructions") {
+			if strings.Contains(m.Text(), "OUTSIDE") && strings.Contains(m.Text(), "project_instructions") {
 				t.Errorf("AGENTS.md outside the workspace was loaded via symlinked cwd")
 			}
 		}
@@ -138,7 +138,7 @@ func TestFreshnessFollowsCwd(t *testing.T) {
 	runTurn(t, k, now, "go",
 		toolCall("c1", "shell", `{"command":"cd pkg"}`),
 		toolCall("c2", "read_file", `{"path":"a.txt"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "read"})
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("read")})
 	*now = now.Add(2 * time.Second)
 	if err := os.WriteFile(filepath.Join(dir, "pkg", "a.txt"), []byte("two-external\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -149,11 +149,11 @@ func TestFreshnessFollowsCwd(t *testing.T) {
 	}
 	runTurn(t, k, now, "write",
 		toolCall("c3", "write_file", `{"path":"a.txt","content":"mine\n"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "w"})
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("w")})
 	var res string
 	for _, m := range p.reqs[len(p.reqs)-1].Messages {
-		if m.ToolCallID == "c3" {
-			res = m.Content
+		if m.CallID() == "c3" {
+			res = m.Text()
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "pkg", "a.txt"))

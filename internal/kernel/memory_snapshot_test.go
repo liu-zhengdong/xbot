@@ -26,8 +26,8 @@ func TestMemorySnapshotPrefixStable(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	if err := store.Remember(context.Background(), memory.Fact{
 		Key: "early", Scope: memory.ScopeBot, Tier: memory.TierProfile,
@@ -58,12 +58,12 @@ func TestMemorySnapshotPrefixStable(t *testing.T) {
 		t.Fatalf("messages %d then %d", len(p.reqs[0].Messages), len(p.reqs[1].Messages))
 	}
 	for i := 0; i < 2; i++ {
-		if p.reqs[0].Messages[i].Content != p.reqs[1].Messages[i].Content {
+		if p.reqs[0].Messages[i].Text() != p.reqs[1].Messages[i].Text() {
 			t.Fatalf("msgs[%d] changed within the session\n%s\n---\n%s", i,
-				p.reqs[0].Messages[i].Content, p.reqs[1].Messages[i].Content)
+				p.reqs[0].Messages[i].Text(), p.reqs[1].Messages[i].Text())
 		}
 	}
-	if strings.Contains(p.reqs[1].Messages[1].Content, "written after the snapshot") {
+	if strings.Contains(p.reqs[1].Messages[1].Text(), "written after the snapshot") {
 		t.Fatal("a later write entered the frozen snapshot")
 	}
 }
@@ -78,8 +78,8 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store,
@@ -111,8 +111,8 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 	if len(p.reqs) != 2 || len(p.reqs[1].Messages) < 2 {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
-	if !strings.Contains(p.reqs[1].Messages[1].Content, "fact before compaction") {
-		t.Fatalf("next request used a stale snapshot\n%s", p.reqs[1].Messages[1].Content)
+	if !strings.Contains(p.reqs[1].Messages[1].Text(), "fact before compaction") {
+		t.Fatalf("next request used a stale snapshot\n%s", p.reqs[1].Messages[1].Text())
 	}
 }
 
@@ -206,8 +206,8 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	reqs := memDiffRun(t, k, 2, func(i int) {
@@ -224,7 +224,7 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 	if len(reqs) != 2 || len(reqs[1].Messages) < 2 {
 		t.Fatalf("requests %d", len(reqs))
 	}
-	if reqs[0].Messages[1].Content != reqs[1].Messages[1].Content {
+	if reqs[0].Messages[1].Text() != reqs[1].Messages[1].Text() {
 		t.Fatal("msgs[1] changed after an outside memory write")
 	}
 	up := lastEnvUpdate(t, k)
@@ -236,7 +236,7 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 	}
 	var all strings.Builder
 	for _, m := range reqs[1].Messages {
-		all.WriteString(m.Content)
+		all.WriteString(m.Text())
 	}
 	if n := strings.Count(all.String(), "deploys freeze on fridays"); n != 1 {
 		t.Fatalf("fact appears %d times in the request, want once (the diff)", n)
@@ -252,9 +252,9 @@ func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{memoryWriteCall(b, "c1", memory.ScopeBot, "owner prefers short replies")}},
-		{Role: provider.RoleAssistant, Content: "noted"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{memoryWriteCall(b, "c1", memory.ScopeBot, "owner prefers short replies")})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
@@ -275,7 +275,7 @@ func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
 			t.Fatalf("own write reported back:\n%s", up)
 		}
 	}
-	if reqs[0].Messages[1].Content != reqs[2].Messages[1].Content {
+	if reqs[0].Messages[1].Text() != reqs[2].Messages[1].Text() {
 		t.Fatal("msgs[1] changed after the bot's own file edit")
 	}
 }
@@ -289,8 +289,8 @@ func TestMemoryDiffShowsPersonWriteByOtherBot(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	memDiffRun(t, k, 2, func(i int) {
@@ -350,12 +350,12 @@ func TestMemoryDiffQuietWithoutChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	reqs := memDiffRun(t, k, 2, nil)
-	if len(reqs) != 2 || reqs[0].Messages[1].Content != reqs[1].Messages[1].Content {
+	if len(reqs) != 2 || reqs[0].Messages[1].Text() != reqs[1].Messages[1].Text() {
 		t.Fatal("msgs[1] changed without a memory change")
 	}
 	ups := envUpdates(t, b)
@@ -382,9 +382,9 @@ func TestMemoryViewPerPerson(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
-		{Role: provider.RoleAssistant, Content: "three"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("three")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	for i, who := range []string{"u1", "u2", "u1"} {
@@ -396,14 +396,14 @@ func TestMemoryViewPerPerson(t *testing.T) {
 		t.Fatalf("requests %d", len(p.reqs))
 	}
 	for _, req := range p.reqs {
-		if strings.Contains(req.Messages[1].Content, "owner lives in Hangzhou") {
+		if strings.Contains(req.Messages[1].Text(), "owner lives in Hangzhou") {
 			t.Fatal("person fact in fixed prefix")
 		}
 	}
 	if !strings.Contains(messagesText(p.reqs[0].Messages), "owner lives in Hangzhou") {
 		t.Fatal("missing person environment")
 	}
-	if p.reqs[0].Messages[1].Content != p.reqs[2].Messages[1].Content {
+	if p.reqs[0].Messages[1].Text() != p.reqs[2].Messages[1].Text() {
 		t.Fatal("owner's snapshot not restored")
 	}
 	for _, up := range envUpdates(t, b) {
@@ -440,10 +440,10 @@ func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
 	readArgs, _ := json.Marshal(map[string]string{"path": path})
 	editArgs, _ := json.Marshal(map[string]string{"path": path, "old_string": "outside edit mid turn", "new_string": "outside edit mid turn\n- (2026-10-17) own note from the bot"})
 	sp := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "read", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: string(readArgs)}}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "edit", Type: "function", Function: provider.FunctionCall{Name: "edit_file", Arguments: string(editArgs)}}}},
-		{Role: provider.RoleAssistant, Content: "noted"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "read", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: string(readArgs)}}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "edit", Type: "function", Function: provider.FunctionCall{Name: "edit_file", Arguments: string(editArgs)}}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	hp := &hookProvider{scripted: sp, hook: func() {
 		if err := store.Remember(context.Background(), memory.Fact{
@@ -496,10 +496,10 @@ func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 	k.Memory = store
 	k.Links = append(k.Links, link.Memory{}, link.NewToolsLinkAt(k.Bot.Root, ""))
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}}},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{memoryWriteCall(k.Bot, "c2", memory.ScopeBot, "written in the background")}},
-		{Role: provider.RoleAssistant, Content: "后台做完了"},
-		{Role: provider.RoleAssistant, Content: "next"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{memoryWriteCall(k.Bot, "c2", memory.ScopeBot, "written in the background")})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("后台做完了")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("next")},
 	}}
 	k.Provider = p
 	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
@@ -548,8 +548,8 @@ func TestMemoryTimerWakeKeepsView(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
@@ -558,7 +558,7 @@ func TestMemoryTimerWakeKeepsView(t *testing.T) {
 	if err := k.Handle(context.Background(), link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "timer", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Content != p.reqs[1].Messages[1].Content {
+	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Text() != p.reqs[1].Messages[1].Text() {
 		t.Fatal("timer wake changed msgs[1]")
 	}
 }
@@ -573,14 +573,14 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "hello u2"},
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{Role: provider.RoleAssistant, Content: provider.TextContent("hello u2")},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 			memoryWriteCall(b, "c1", memory.ScopeBot, "team uses go 1.24"),
 			memoryWriteCall(b, "c2", memory.ScopePerson, "owner birthday in may"),
-		}},
-		{Role: provider.RoleAssistant, Content: "noted"},
-		{Role: provider.RoleAssistant, Content: "owner again"},
-		{Role: provider.RoleAssistant, Content: "hello again"},
+		})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("owner again")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("hello again")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
@@ -602,7 +602,7 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 			t.Fatalf("own write reported to another view:\n%s", up)
 		}
 	}
-	if strings.Contains(p.reqs[4].Messages[1].Content, "owner birthday") {
+	if strings.Contains(p.reqs[4].Messages[1].Text(), "owner birthday") {
 		t.Fatal("owner person fact in the shared view")
 	}
 }
@@ -612,7 +612,7 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 func TestMemoryDiffReportsOutsideRemovalOfOwnLine(t *testing.T) {
 	prefix := "### Standing\n- a fact\n"
 	receipt := encodeEnvironment(environmentMessage{Memory: changedMemory(memoryFacts(prefix), memoryFacts(prefix+"- bot added this\n"))})
-	msgs := []provider.Message{{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "own", Function: provider.FunctionCall{Name: "write_file"}}}}, {Role: provider.RoleTool, ToolCallID: "own", Content: "ok\n\n" + receipt}}
+	msgs := []provider.Message{{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "own", Function: provider.FunctionCall{Name: "write_file"}}})}, {Role: provider.RoleTool, Content: provider.ToolResult("own", "ok\n\n"+receipt)}}
 	seen := replayEnvironment(msgs, prefix)
 	p := changedMemory(seen.Memory, memoryFacts(prefix))
 	if p == nil || len(p.Remove) != 1 || !strings.Contains(p.Remove[0], "bot added this") {
@@ -668,8 +668,8 @@ func TestMemorySubagentWakeKeepsView(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "one"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u2", "hi", t0)); err != nil {
@@ -678,10 +678,10 @@ func TestMemorySubagentWakeKeepsView(t *testing.T) {
 	if err := k.Handle(context.Background(), link.NewEvent(link.SourceSubagent, "fork_end", "done", "bg_1", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Content != p.reqs[1].Messages[1].Content {
+	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Text() != p.reqs[1].Messages[1].Text() {
 		t.Fatal("subagent wake changed msgs[1]")
 	}
-	if strings.Contains(p.reqs[1].Messages[1].Content, "owner lives in Hangzhou") {
+	if strings.Contains(p.reqs[1].Messages[1].Text(), "owner lives in Hangzhou") {
 		t.Fatal("owner fact in a guest's background wake")
 	}
 }
@@ -696,9 +696,9 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 	store := memory.Open(b.Root)
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{memoryWriteCall(b, "c1", memory.ScopeBot, "short lived note")}},
-		{Role: provider.RoleAssistant, Content: "noted"},
-		{Role: provider.RoleAssistant, Content: "two"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{memoryWriteCall(b, "c1", memory.ScopeBot, "short lived note")})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("noted")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
@@ -772,7 +772,7 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 	if err := b.SaveState(bot.State{MemSnapSet: true, MemSnap: old}); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "ok"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Memory: store, Provider: p, MaxSteps: 2}
 	fresh, err := k.memoryText(ctx, "")
 	if err != nil {
@@ -785,12 +785,12 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 		t.Fatal("missing request messages")
 	}
 	msgs := p.reqs[0].Messages
-	if msgs[1].Content != wrapMemory(fresh) {
-		t.Fatalf("snapshot = %q, want %q", msgs[1].Content, fresh)
+	if msgs[1].Text() != wrapMemory(fresh) {
+		t.Fatalf("snapshot = %q, want %q", msgs[1].Text(), fresh)
 	}
 	for _, msg := range msgs {
-		if strings.Contains(msg.Content, "<memory_diff>") || strings.Contains(msg.Content, "memory changed") {
-			t.Fatalf("upgrade emitted bogus diff: %s", msg.Content)
+		if strings.Contains(msg.Text(), "<memory_diff>") || strings.Contains(msg.Text(), "memory changed") {
+			t.Fatalf("upgrade emitted bogus diff: %s", msg.Text())
 		}
 	}
 	st, err := b.LoadState()
@@ -825,8 +825,8 @@ func assertMemoryFileWrites(t *testing.T, b *bot.Bot, want int) {
 		if m.Role != provider.RoleTool || !isFileEdit(m.Name) {
 			continue
 		}
-		if !strings.HasPrefix(m.Content, "wrote ") && !strings.HasPrefix(m.Content, "updated ") {
-			t.Fatalf("file write failed: %s", m.Content)
+		if !strings.HasPrefix(m.Text(), "wrote ") && !strings.HasPrefix(m.Text(), "updated ") {
+			t.Fatalf("file write failed: %s", m.Text())
 		}
 		wrote++
 	}

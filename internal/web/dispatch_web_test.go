@@ -33,15 +33,15 @@ func (m *dispatchModel) Chat(ctx context.Context, req provider.Request, onDelta 
 		if onDelta != nil {
 			onDelta(text)
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: text}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
 	}
-	if strings.HasPrefix(req.Messages[0].Content, exec.SubPersona) {
+	if strings.HasPrefix(req.Messages[0].Text(), exec.SubPersona) {
 		select {
 		case <-m.hold:
 		case <-ctx.Done():
 			return provider.Message{}, ctx.Err()
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: "**Changed**\n- a.go\n\n**Tests**\nok\n\n**Not done**\n- none"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("**Changed**\n- a.go\n\n**Tests**\nok\n\n**Not done**\n- none")}, nil
 	}
 	m.mu.Lock()
 	m.foreCalls++
@@ -50,15 +50,15 @@ func (m *dispatchModel) Chat(ctx context.Context, req provider.Request, onDelta 
 	switch {
 	case last.Role == provider.RoleTool:
 		return say("已派给 dev 子代理，做完告诉你。")
-	case strings.Contains(last.Content, `source="subagent"`) && strings.Contains(last.Content, `type="done"`):
+	case strings.Contains(last.Text(), `source="subagent"`) && strings.Contains(last.Text(), `type="done"`):
 		return say("开发任务做完了：改了 a.go，测试通过。")
-	case strings.Contains(last.Content, "十分钟"):
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	case strings.Contains(last.Text(), "十分钟"):
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "d1", Type: "function",
 			Function: provider.FunctionCall{Name: "dispatch", Arguments: `{"type":"dev","task":"在工作目录里重构 a.go，改完跑 go test，交回改了什么和测试结果。"}`},
-		}}}, nil
+		}})}, nil
 	default:
-		return say("答：" + last.Content)
+		return say("答：" + last.Text())
 	}
 }
 
@@ -135,7 +135,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 		}
 		n := 0
 		for _, e := range entries {
-			if e.Message.Role == provider.RoleAssistant && strings.Contains(e.Message.Content, report) {
+			if e.Message.Role == provider.RoleAssistant && strings.Contains(e.Message.Text(), report) {
 				n++
 			}
 		}

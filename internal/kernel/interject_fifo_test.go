@@ -38,12 +38,12 @@ func (m *queuedOwnerModel) Chat(ctx context.Context, req provider.Request, _ fun
 	seen := map[string]bool{}
 	latest := "opening"
 	for _, msg := range req.Messages {
-		if msg.Role == provider.RoleUser && strings.HasPrefix(msg.Content, "request-") {
-			if seen[msg.Content] {
-				m.t.Errorf("request repeated %q", msg.Content)
+		if msg.Role == provider.RoleUser && strings.HasPrefix(msg.Text(), "request-") {
+			if seen[msg.Text()] {
+				m.t.Errorf("request repeated %q", msg.Text())
 			}
-			seen[msg.Content] = true
-			latest = msg.Content
+			seen[msg.Text()] = true
+			latest = msg.Text()
 		}
 	}
 	m.started <- latest
@@ -62,11 +62,11 @@ func (m *queuedOwnerModel) Chat(ctx context.Context, req provider.Request, _ fun
 	}
 	var replies []string
 	for _, msg := range req.Messages {
-		if msg.Role == provider.RoleUser && strings.HasPrefix(msg.Content, "request-") {
-			replies = append(replies, "handled "+msg.Content)
+		if msg.Role == provider.RoleUser && strings.HasPrefix(msg.Text(), "request-") {
+			replies = append(replies, "handled "+msg.Text())
 		}
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: strings.Join(replies, "\n")}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(strings.Join(replies, "\n"))}, nil
 }
 func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	t.Helper()
@@ -74,7 +74,7 @@ func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, msg := range []provider.Message{{Role: provider.RoleUser, Content: "earlier owner words"}, {Role: provider.RoleAssistant, Content: "earlier normal answer"}, {Role: provider.RoleUser, Content: "result facts 731 and 42"}} {
+	for _, msg := range []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("earlier owner words")}, {Role: provider.RoleAssistant, Content: provider.TextContent("earlier normal answer")}, {Role: provider.RoleUser, Content: provider.TextContent("result facts 731 and 42")}} {
 		if err := b.Append(bot.Entry{Time: time.Now(), Origin: bot.OriginOwner, Message: msg}); err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	for i := 1; i <= 5; i++ {
 		n := 0
 		for _, e := range before {
-			if e.Message.Content == fmt.Sprintf("request-%d", i) {
+			if e.Message.Text() == fmt.Sprintf("request-%d", i) {
 				n++
 			}
 		}
@@ -142,7 +142,7 @@ func TestFiveInterjectionsEachGetAnAnswer(t *testing.T) {
 		want := fmt.Sprintf("handled request-%d", i)
 		n := 0
 		for _, entry := range entries {
-			if entry.Message.Role == provider.RoleAssistant && strings.Contains(entry.Message.Content, want) {
+			if entry.Message.Role == provider.RoleAssistant && strings.Contains(entry.Message.Text(), want) {
 				n++
 			}
 		}
@@ -158,13 +158,13 @@ func TestQueuedInterjectionsGetAnOutcomeWhenTurnErrors(t *testing.T) {
 		text := fmt.Sprintf("request-%d", i)
 		seq, users, replies := 0, 0, 0
 		for j, e := range entries {
-			if e.Message.Role == provider.RoleUser && e.Message.Content == text {
+			if e.Message.Role == provider.RoleUser && e.Message.Text() == text {
 				seq = j + 1
 				users++
 			}
 		}
 		for _, e := range entries {
-			if e.Message.Role == provider.RoleAssistant && e.ReplyTo == seq && strings.Contains(e.Message.Content, "还没处理完") {
+			if e.Message.Role == provider.RoleAssistant && e.ReplyTo == seq && strings.Contains(e.Message.Text(), "还没处理完") {
 				replies++
 			}
 		}

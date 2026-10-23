@@ -31,13 +31,13 @@ func (p *seqProv) Chat(ctx context.Context, req provider.Request, _ func(string)
 			return provider.Message{}, ctx.Err()
 		case <-p.hold:
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: "part A done"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("part A done")}, nil
 	}
-	last := req.Messages[len(req.Messages)-1].Content
+	last := req.Messages[len(req.Messages)-1].Text()
 	if strings.Contains(last, "PART_B") {
-		return provider.Message{Role: provider.RoleAssistant, Content: "part B done"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("part B done")}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "unexpected"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("unexpected")}, nil
 }
 
 func TestQueueRunsAfterCurrent(t *testing.T) {
@@ -128,7 +128,7 @@ func (p *blockProv) Chat(ctx context.Context, _ provider.Request, _ func(string)
 	case <-ctx.Done():
 		return provider.Message{}, ctx.Err()
 	case <-p.block:
-		return provider.Message{Role: provider.RoleAssistant, Content: "done"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
 	}
 }
 
@@ -197,11 +197,11 @@ func (p *imageRounds) Chat(_ context.Context, req provider.Request, _ func(strin
 	}
 	p.reqs = append(p.reqs, snap)
 	if n%2 == 0 {
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}}, nil
+		}})}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "saw"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw")}, nil
 }
 
 func TestSubagentImageRoundDropsAfterReply(t *testing.T) {
@@ -300,11 +300,11 @@ func (p *streakRounds) Chat(_ context.Context, req provider.Request, _ func(stri
 	}
 	p.reqs = append(p.reqs, snap)
 	if n < 5 {
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c", Type: "function", Function: provider.FunctionCall{Name: "view_image", Arguments: "{}"},
-		}}}, nil
+		}})}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "saw five"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("saw five")}, nil
 }
 
 func TestSubagentImageStreakKeepsNewest(t *testing.T) {
@@ -352,8 +352,8 @@ func TestSubagentImageStreakKeepsNewest(t *testing.T) {
 	}
 	for _, msgs := range p.reqs {
 		for _, m := range msgs {
-			if strings.Contains(m.Content, "image omitted: turn image cap") {
-				t.Fatalf("%s: %s", m.Role, m.Content)
+			if strings.Contains(m.Text(), "image omitted: turn image cap") {
+				t.Fatalf("%s: %s", m.Role, m.Text())
 			}
 		}
 	}
@@ -369,7 +369,7 @@ func subFile(t *testing.T, dir string) string {
 	for _, e := range entries {
 		b.WriteString(e.Message.Role)
 		b.WriteByte(' ')
-		b.WriteString(e.Message.Content)
+		b.WriteString(e.Message.Text())
 		b.WriteByte('\n')
 	}
 	meta, _ := ReadMeta(dir)

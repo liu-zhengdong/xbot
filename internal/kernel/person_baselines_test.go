@@ -39,8 +39,8 @@ func receivePersonUpdates(t *testing.T, k *Kernel, ev link.Event) string {
 	}
 	var text strings.Builder
 	if err := k.Bot.Walk(n+1, 0, func(_ int, e bot.Entry) error {
-		if strings.HasPrefix(e.Message.Content, "<environment_") {
-			text.WriteString(e.Message.Content)
+		if strings.HasPrefix(e.Message.Text(), "<environment_") {
+			text.WriteString(e.Message.Text())
 		}
 		return nil
 	}); err != nil {
@@ -84,10 +84,10 @@ func TestPersonBaselineOwnChangesSurviveOtherSender(t *testing.T) {
 	}
 	receipt := done(true)
 	call := provider.ToolCall{ID: "own", Function: provider.FunctionCall{Name: "write_file"}}
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{call}}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, ToolCallID: "own", Content: "ok" + receipt}}); err != nil {
+	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("own", "ok"+receipt)}}); err != nil {
 		t.Fatal(err)
 	}
 	receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob", now))
@@ -140,7 +140,7 @@ func TestPersonBaselinesCompactionRestoresEachPerson(t *testing.T) {
 		t.Fatal(err)
 	}
 	var snapshot string
-	if err := k.Bot.Walk(n+1, 0, func(_ int, e bot.Entry) error { snapshot += e.Message.Content; return nil }); err != nil {
+	if err := k.Bot.Walk(n+1, 0, func(_ int, e bot.Entry) error { snapshot += e.Message.Text(); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(snapshot, "BOB_BASELINE_47") || strings.Contains(snapshot, "ALICE_BASELINE_83") {

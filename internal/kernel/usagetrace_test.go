@@ -17,9 +17,9 @@ import (
 type usageModel struct{}
 
 func (usageModel) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
-	return provider.Message{Role: provider.RoleAssistant, Content: "ok", Usage: provider.TokenUsage{
+	return provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{
 		PromptTokens: 100, CompletionTokens: 5, CachedTokens: 0, Reported: true, CacheReported: true,
-	}}, nil
+	}, Content: provider.TextContent("ok")}, nil
 }
 
 // Each usage record says which turn it belongs to (the seq of the message
@@ -31,7 +31,7 @@ func TestUsageTraceCarriesTurnCacheFlagAndCompaction(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := k.compactor(turnSeqOf(context.Background())).Compact(context.Background(), "", []provider.Message{{Role: provider.RoleUser, Content: "old"}}); err != nil {
+	if _, err := k.compactor(turnSeqOf(context.Background())).Compact(context.Background(), "", []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("old")}}); err != nil {
 		t.Fatal(err)
 	}
 	traces, err := b.Traces()
@@ -44,7 +44,7 @@ func TestUsageTraceCarriesTurnCacheFlagAndCompaction(t *testing.T) {
 	}
 	userSeq := 0
 	for i, e := range entries {
-		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, "hello") {
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Text(), "hello") {
 			userSeq = i + 1
 		}
 	}
@@ -74,10 +74,10 @@ func TestSummaryUsageKeepsTheTurnItRanIn(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Provider: usageModel{}, Links: []link.Link{link.Terminal{}}, Compactor: compact.LLM{P: usageModel{}}}
 	inTurn := context.WithValue(context.Background(), turnKey{}, &turn{fromSeq: 7})
-	if _, err := k.compactor(turnSeqOf(inTurn)).Compact(inTurn, "", []provider.Message{{Role: provider.RoleUser, Content: "old"}}); err != nil {
+	if _, err := k.compactor(turnSeqOf(inTurn)).Compact(inTurn, "", []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("old")}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := k.compactor(turnSeqOf(context.Background())).Compact(context.Background(), "", []provider.Message{{Role: provider.RoleUser, Content: "old"}}); err != nil {
+	if _, err := k.compactor(turnSeqOf(context.Background())).Compact(context.Background(), "", []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("old")}}); err != nil {
 		t.Fatal(err)
 	}
 	traces, err := b.Traces()
@@ -104,9 +104,9 @@ func TestSummaryUsageKeepsTheTurnItRanIn(t *testing.T) {
 type factModel struct{}
 
 func (factModel) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
-	return provider.Message{Role: provider.RoleAssistant, Content: `{"facts":[]}`, Usage: provider.TokenUsage{
+	return provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{
 		PromptTokens: 40, CompletionTokens: 3, Reported: true,
-	}}, nil
+	}, Content: provider.TextContent(`{"facts":[]}`)}, nil
 }
 
 // The fact extractor's model call is recorded too, tagged extract and keeping
@@ -115,7 +115,7 @@ func TestExtractorUsageIsRecorded(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Provider: usageModel{}, Links: []link.Link{link.Terminal{}}, Extractor: LLMExtractor{P: factModel{}}}
 	inTurn := context.WithValue(context.Background(), turnKey{}, &turn{fromSeq: 9})
-	k.collectFacts(inTurn, []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: "hello"}}}, "", "", true)
+	k.collectFacts(inTurn, []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}}}, "", "", true)
 	traces, err := b.Traces()
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
 	}
 	opened := 0
 	for i, e := range entries {
-		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, "hello") {
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Text(), "hello") {
 			opened = i + 1
 		}
 	}

@@ -20,13 +20,13 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 	long := strings.Repeat("字", 300) + "TAILMARKER"
 	if err := b.Append(bot.Entry{
 		Time:    time.Unix(1, 0).UTC(),
-		Message: provider.Message{Role: provider.RoleAssistant, Content: long},
+		Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(long)},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	var seen []string
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "reply_to: 2\nnoted"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("reply_to: 2\nnoted")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4, OnDelta: func(s string) {
 		seen = append(seen, s)
@@ -74,14 +74,14 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 		if e.EventID == ev.ID {
 			user = e
 		}
-		if e.Message.Role == provider.RoleAssistant && e.Message.Content == "noted" {
+		if e.Message.Role == provider.RoleAssistant && e.Message.Text() == "noted" {
 			asst = e
 		}
 	}
-	if user == nil || user.ReplyTo != 1 || user.Message.Content != "and this" {
+	if user == nil || user.ReplyTo != 1 || user.Message.Text() != "and this" {
 		t.Fatalf("user entry %+v", user)
 	}
-	if asst == nil || asst.ReplyTo != 2 || strings.Contains(asst.Message.Content, "reply_to:") {
+	if asst == nil || asst.ReplyTo != 2 || strings.Contains(asst.Message.Text(), "reply_to:") {
 		t.Fatalf("assistant %+v", asst)
 	}
 }
@@ -92,7 +92,7 @@ func TestReplyToIgnoresNonUserSeq(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "reply_to: 2\nstill here"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("reply_to: 2\nstill here")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2}
 	ev := link.TerminalEvent("u1", "hello", time.Unix(2, 0).UTC())
@@ -107,7 +107,7 @@ func TestReplyToIgnoresNonUserSeq(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := entries[len(entries)-1]
-	if last.ReplyTo != 0 || last.Message.Content != "still here" {
+	if last.ReplyTo != 0 || last.Message.Text() != "still here" {
 		t.Fatalf("stored %+v", last)
 	}
 }

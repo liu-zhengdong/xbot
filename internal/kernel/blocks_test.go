@@ -13,13 +13,13 @@ import (
 )
 
 func callMsg(id, name string) provider.Message {
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: id, Type: "function", Function: provider.FunctionCall{Name: name, Arguments: "{}"},
-	}}}
+	}})}
 }
 
 func resultMsg(id string) provider.Message {
-	return provider.Message{Role: provider.RoleTool, ToolCallID: id, Content: "ok"}
+	return provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(id, "ok")}
 }
 
 // TestProjectFillsMissingToolResults is the regression for a foreground turn
@@ -29,16 +29,16 @@ func resultMsg(id string) provider.Message {
 func TestProjectFillsMissingToolResults(t *testing.T) {
 	entries := []bot.Entry{
 		{Message: callMsg("c1", "shell")},
-		{Message: provider.Message{Role: provider.RoleAssistant, Content: "继续做"}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("继续做")}},
 	}
 	msgs := project(entries, nil)
 	if len(msgs) != 3 {
 		t.Fatalf("messages %d, want 3 (call, placeholder result, answer): %+v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleTool || msgs[1].ToolCallID != "c1" {
+	if msgs[1].Role != provider.RoleTool || msgs[1].CallID() != "c1" {
 		t.Fatalf("the call was left unanswered: %+v", msgs)
 	}
-	if msgs[1].Content == "" {
+	if msgs[1].Text() == "" {
 		t.Fatal("the placeholder result is empty")
 	}
 }
@@ -48,7 +48,7 @@ func TestProjectFillsMissingToolResults(t *testing.T) {
 func TestProjectKeepsRealToolResults(t *testing.T) {
 	entries := []bot.Entry{
 		{Message: callMsg("c1", "shell")},
-		{Message: provider.Message{Role: provider.RoleAssistant, Content: "中间一行"}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("中间一行")}},
 		{Message: resultMsg("c1")},
 	}
 	msgs := project(entries, nil)
@@ -61,7 +61,7 @@ func TestProjectKeepsRealToolResults(t *testing.T) {
 	if tools != 1 {
 		t.Fatalf("tool messages %d, want only the real result: %+v", tools, msgs)
 	}
-	if msgs[1].Role != provider.RoleTool || msgs[1].ToolCallID != "c1" {
+	if msgs[1].Role != provider.RoleTool || msgs[1].CallID() != "c1" {
 		t.Fatalf("the real result did not follow its call: %+v", msgs)
 	}
 }
@@ -69,10 +69,10 @@ func TestProjectKeepsRealToolResults(t *testing.T) {
 // TestStrayToolResultsCountsEachCallOnce checks a second call in the same
 // message is filled in too, and that the projection is left alone otherwise.
 func TestStrayToolResultsCountsEachCallOnce(t *testing.T) {
-	two := provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+	two := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 		{ID: "c1", Function: provider.FunctionCall{Name: "shell"}},
 		{ID: "c2", Function: provider.FunctionCall{Name: "read_file"}},
-	}}
+	})}
 	got := strayToolResults([]provider.Message{two, resultMsg("c1")})
 	if len(got) != 3 {
 		t.Fatalf("messages %d, want 3: %+v", len(got), got)
@@ -82,7 +82,7 @@ func TestStrayToolResultsCountsEachCallOnce(t *testing.T) {
 		if m.Role != provider.RoleTool {
 			continue
 		}
-		switch m.ToolCallID {
+		switch m.CallID() {
 		case "c2":
 			filled++
 		case "c1":
@@ -97,7 +97,7 @@ func TestStrayToolResultsCountsEachCallOnce(t *testing.T) {
 	}
 
 	// Nothing is added when every call is answered.
-	plain := []provider.Message{{Role: provider.RoleAssistant, Content: "好了"}}
+	plain := []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好了")}}
 	if got := strayToolResults(plain); len(got) != 1 {
 		t.Fatalf("messages %d, want 1: %+v", len(got), got)
 	}
@@ -199,7 +199,7 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 
 	// One more message arrives. The next pass covers what the first left out,
 	// and the new message becomes the raw tail.
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: marker(7)}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(marker(7))}}); err != nil {
 		t.Fatal(err)
 	}
 	st, err = b.LoadState()
@@ -214,7 +214,7 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 	}
 	var second []provider.Message
 	for _, m := range comp.got {
-		if !strings.HasPrefix(m.Content, environmentOpen) {
+		if !strings.HasPrefix(m.Text(), environmentOpen) {
 			second = append(second, m)
 		}
 	}
@@ -222,11 +222,11 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 		t.Fatalf("second pass saw %d messages, want only the one the first block left out", len(second))
 	}
 	for _, e := range coveredEntries {
-		if second[0].Content == e.Message.Content {
+		if second[0].Text() == e.Message.Text() {
 			t.Fatalf("second pass re-read a message block 1-%d already covers", covered)
 		}
 	}
-	if head := head(second[0].Content); head != "msg-006" {
+	if head := head(second[0].Text()); head != "msg-006" {
 		t.Fatalf("second pass covered %q, want msg-006", head)
 	}
 	st, err = b.LoadState()
@@ -263,7 +263,7 @@ func seedMarked(t *testing.T, b *bot.Bot, n, size int) {
 	t.Helper()
 	for i := 1; i <= n; i++ {
 		body := fmt.Sprintf("msg-%03d-%s", i, strings.Repeat("x", size))
-		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: body}}); err != nil {
+		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(body)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -478,10 +478,10 @@ func TestProjectedKeepsSequenceOrderAcrossBlocks(t *testing.T) {
 		{From: 20, To: 30, Text: "newer"},
 	}
 	uncovered := []bot.Entry{
-		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-11"}},
-		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-12"}},
-		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-19"}},
-		{Message: provider.Message{Role: provider.RoleUser, Content: "raw-31"}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("raw-11")}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("raw-12")}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("raw-19")}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("raw-31")}},
 	}
 	seqs := []int{11, 12, 19, 31}
 	msgs := projected(blocks, uncovered, seqs)
@@ -490,16 +490,16 @@ func TestProjectedKeepsSequenceOrderAcrossBlocks(t *testing.T) {
 		t.Fatalf("messages %d, want %d: %+v", len(msgs), len(want), msgs)
 	}
 	// The gap lines belong between the two summaries, not after both.
-	if !strings.HasPrefix(msgs[0].Content, "<summary") {
-		t.Fatalf("first message is not the 1-10 summary: %q", head(msgs[0].Content))
+	if !strings.HasPrefix(msgs[0].Text(), "<summary") {
+		t.Fatalf("first message is not the 1-10 summary: %q", head(msgs[0].Text()))
 	}
-	if !strings.HasPrefix(msgs[1].Content, "raw-11") {
-		t.Fatalf("second message is %q, want raw-11 (the gap must stay in order)", head(msgs[1].Content))
+	if !strings.HasPrefix(msgs[1].Text(), "raw-11") {
+		t.Fatalf("second message is %q, want raw-11 (the gap must stay in order)", head(msgs[1].Text()))
 	}
-	if !strings.HasPrefix(msgs[4].Content, "<summary") {
-		t.Fatalf("fifth message is %q, want the 20-30 summary", head(msgs[4].Content))
+	if !strings.HasPrefix(msgs[4].Text(), "<summary") {
+		t.Fatalf("fifth message is %q, want the 20-30 summary", head(msgs[4].Text()))
 	}
-	if !strings.HasPrefix(msgs[5].Content, "raw-31") {
-		t.Fatalf("last message is %q, want raw-31", head(msgs[5].Content))
+	if !strings.HasPrefix(msgs[5].Text(), "raw-31") {
+		t.Fatalf("last message is %q, want raw-31", head(msgs[5].Text()))
 	}
 }

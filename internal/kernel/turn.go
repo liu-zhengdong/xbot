@@ -160,7 +160,7 @@ func (t *turn) takeCtrlLocked() []provider.Message {
 			c.State = "applied"
 			// A control is addressed to the background, not said in the owner's
 			// thread: the chat hides it and the task popover shows it.
-			out = append(out, provider.Message{Role: provider.RoleUser, Content: c.message(), Internal: true})
+			out = append(out, provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(c.message())})
 		}
 	}
 	return out

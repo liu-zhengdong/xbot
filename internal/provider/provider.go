@@ -12,7 +12,9 @@ const (
 	RoleTool      = "tool"
 )
 
-// Message is one chat message. Tool call arguments are a JSON string.
+// Message is one chat message whose ordered Content parts are the sole body.
+// Text, local calls and local results are projections of those parts.
+// Tool call arguments are a JSON string.
 // ReplyTo is a transcript sequence this message answers. It stays off the
 // provider request; the transcript record stores it.
 // Usage is the model-reported token count for this completion. It stays off
@@ -24,16 +26,14 @@ const (
 // the transcript record's origin.
 type Message struct {
 	// Seq identifies a message already appended to the bot transcript. Runtime only.
-	Seq        int        `json:"-"`
-	EventID    string     `json:"-"`
-	Role       string     `json:"role"`
-	Content    string     `json:"content,omitempty"`
-	Name       string     `json:"name,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ReplyTo    int        `json:"-"`
-	Usage      TokenUsage `json:"-"`
-	Images     []Image    `json:"-"`
+	Seq     int           `json:"-"`
+	EventID string        `json:"-"`
+	Role    string        `json:"role"`
+	Content []ContentPart `json:"content"`
+	Name    string        `json:"name,omitempty"`
+	ReplyTo int           `json:"-"`
+	Usage   TokenUsage    `json:"-"`
+	Images  []Image       `json:"-"`
 	// ImageNames are the workspace files Images came from. They stay off the
 	// request and off the message record; the transcript line keeps them in its
 	// own Images field instead.

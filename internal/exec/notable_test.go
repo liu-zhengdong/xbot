@@ -24,9 +24,9 @@ type effectsModel struct {
 func (p *effectsModel) Chat(_ context.Context, _ provider.Request, _ func(string)) (provider.Message, error) {
 	if !p.sent {
 		p.sent = true
-		return provider.Message{Role: provider.RoleAssistant, ToolCalls: p.calls}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent(p.calls)}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "处理好了。"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("处理好了。")}, nil
 }
 
 type removeEffectTool struct{}

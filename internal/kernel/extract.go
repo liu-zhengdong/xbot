@@ -42,12 +42,12 @@ func (e LLMExtractor) Extract(ctx context.Context, focus string, turns []provide
 		b.WriteString("[")
 		b.WriteString(m.Role)
 		b.WriteString("] ")
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	req := provider.Request{Messages: []provider.Message{
-		{Role: provider.RoleSystem, Content: extractInstruction},
-		{Role: provider.RoleUser, Content: b.String()},
+		{Role: provider.RoleSystem, Content: provider.TextContent(extractInstruction)},
+		{Role: provider.RoleUser, Content: provider.TextContent(b.String())},
 	}}
 	out, err := e.P.Chat(ctx, req, nil)
 	if err != nil {
@@ -56,7 +56,7 @@ func (e LLMExtractor) Extract(ctx context.Context, focus string, turns []provide
 	if e.Note != nil {
 		e.Note(req, out)
 	}
-	return parseFacts(out.Content)
+	return parseFacts(out.Text())
 }
 
 func parseFacts(raw string) ([]memory.Fact, error) {
@@ -108,17 +108,17 @@ func (k *Kernel) collectFacts(ctx context.Context, entries []bot.Entry, focus, s
 	turns := make([]provider.Message, 0, len(entries))
 	var joined strings.Builder
 	for _, e := range entries {
-		if code.IsCard(e.Message.Content) {
+		if code.IsCard(e.Message.Text()) {
 			continue
 		}
-		if bot.IsApprovalCard(e.Message.Content) {
+		if bot.IsApprovalCard(e.Message.Text()) {
 			continue
 		}
 		if e.IsForkMark() {
 			continue
 		}
 		turns = append(turns, e.Message)
-		joined.WriteString(e.Message.Content)
+		joined.WriteString(e.Message.Text())
 		joined.WriteByte('\n')
 	}
 	facts, err := k.extractor(turnSeqOf(ctx)).Extract(ctx, focus, turns)

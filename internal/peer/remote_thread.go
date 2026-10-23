@@ -32,8 +32,8 @@ func RemoteConversation(a *bot.Bot, addr string) ([]Direct, error) {
 	}
 	results := map[string]string{}
 	err := a.Walk(1, 0, func(_ int, e bot.Entry) error {
-		if e.Message.Role == provider.RoleTool && e.Message.ToolCallID != "" {
-			results[e.Message.ToolCallID] = e.Message.Content
+		if e.Message.Role == provider.RoleTool && e.Message.CallID() != "" {
+			results[e.Message.CallID()] = e.Message.Text()
 		}
 		return nil
 	})
@@ -57,7 +57,7 @@ func RemoteConversation(a *bot.Bot, addr string) ([]Direct, error) {
 func remoteRows(self, addr string, seq int, e bot.Entry, results map[string]string) []Direct {
 	at := e.Time.UTC()
 	if e.Message.Role == provider.RoleUser && e.EventID != "" {
-		source, typ, sender, body, ok := unwrapEvent(e.Message.Content)
+		source, typ, sender, body, ok := unwrapEvent(e.Message.Text())
 		if !ok {
 			return nil
 		}
@@ -75,7 +75,7 @@ func remoteRows(self, addr string, seq int, e bot.Entry, results map[string]stri
 		return nil
 	}
 	var out []Direct
-	for _, tc := range e.Message.ToolCalls {
+	for _, tc := range e.Message.Calls() {
 		if tc.Function.Name != "message_bot" || tc.ID == "" {
 			continue
 		}

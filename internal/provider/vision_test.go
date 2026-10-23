@@ -27,8 +27,8 @@ func TestVisionContentIsImageURLParts(t *testing.T) {
 	c := &Client{BaseURL: srv.URL, APIKey: "secret", Model: "deepseek-flash", HTTPClient: srv.Client()}
 	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 	_, err := c.Chat(context.Background(), Request{Messages: []Message{
-		{Role: RoleUser, Content: "ping"},
-		{Role: RoleTool, ToolCallID: "c1", Name: "view_image", Content: "path: a.png\nmime: image/png\nbytes: 8", Images: []Image{{MIME: "image/png", Data: png}}},
+		{Role: RoleUser, Content: TextContent("ping")},
+		{Role: RoleTool, Name: "view_image", Images: []Image{{MIME: "image/png", Data: png}}, Content: ToolResult("c1", "path: a.png\nmime: image/png\nbytes: 8")},
 	}}, nil)
 	if err != nil {
 		t.Fatal(err)

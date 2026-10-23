@@ -47,8 +47,8 @@ func TestEnsureExecQueuesAndReportsPosition(t *testing.T) {
 	}
 	var note string
 	for _, e := range entries {
-		if strings.Contains(e.Message.Content, "<environment_update>") {
-			note = e.Message.Content
+		if strings.Contains(e.Message.Text(), "<environment_update>") {
+			note = e.Message.Text()
 		}
 	}
 	for _, task := range tasks {
@@ -97,7 +97,7 @@ func TestInterjectedTaskGetsLiveBackgroundSnapshot(t *testing.T) {
 		t.Fatal("not interjected")
 	}
 	q := t0.takeInterjected()
-	if len(q) != 2 || q[0].Seq == 0 || q[0].Content != "another task" {
+	if len(q) != 2 || q[0].Seq == 0 || q[0].Text() != "another task" {
 		t.Fatalf("messages %+v", q)
 	}
 	st, err := k.Bot.LoadState()

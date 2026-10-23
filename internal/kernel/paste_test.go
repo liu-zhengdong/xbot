@@ -42,10 +42,10 @@ func TestAbsorbedMessageKeepsItsPictures(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "post_picture", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "看到了"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("看到了")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -75,15 +75,15 @@ func TestAbsorbedMessageKeepsItsPictures(t *testing.T) {
 	if !sawImage {
 		var dump strings.Builder
 		for i, m := range p.reqs[1].Messages {
-			fmt.Fprintf(&dump, "%d %s imgs=%d content=%q\n", i, m.Role, len(m.Images), m.Content)
+			fmt.Fprintf(&dump, "%d %s imgs=%d content=%q\n", i, m.Role, len(m.Images), m.Text())
 		}
 		t.Fatalf("the absorbed message reached the model without its picture:\n%s", dump.String())
 	}
 	// The stored line is the owner's own words: the note naming the picture is
 	// added when the line is assembled, so it is not written twice.
 	for _, e := range entriesFor(t, b) {
-		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Content, "paste/") {
-			t.Fatalf("the stored line already carries the note: %q", e.Message.Content)
+		if e.Message.Role == provider.RoleUser && strings.Contains(e.Message.Text(), "paste/") {
+			t.Fatalf("the stored line already carries the note: %q", e.Message.Text())
 		}
 	}
 	// And the transcript line names it, so a later turn can open it again.
@@ -172,10 +172,10 @@ func TestAbsorbedPicturesRespectVisionAndTheTurnCap(t *testing.T) {
 				t.Fatal(err)
 			}
 			p := &scripted{resps: []provider.Message{
-				{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+				{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 					ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "post_picture", Arguments: "{}"},
-				}}},
-				{Role: provider.RoleAssistant, Content: "好"},
+				}})},
+				{Role: provider.RoleAssistant, Content: provider.TextContent("好")},
 			}}
 			k := &Kernel{
 				Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -225,7 +225,7 @@ func TestPastedPictureSurvivesSummaryAndExpand(t *testing.T) {
 	if err := b.Append(bot.Entry{
 		Time:    time.Unix(10, 0).UTC(),
 		Origin:  bot.OriginOwner,
-		Message: provider.Message{Role: provider.RoleUser, Content: "看这个"},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("看这个")},
 		Images:  []string{id},
 	}); err != nil {
 		t.Fatal(err)
@@ -235,7 +235,7 @@ func TestPastedPictureSurvivesSummaryAndExpand(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		if err := b.Append(bot.Entry{
 			Time:    time.Unix(int64(20+i), 0).UTC(),
-			Message: provider.Message{Role: provider.RoleAssistant, Content: "看到啦"},
+			Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("看到啦")},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -267,7 +267,7 @@ type recordingCompactor struct {
 func (c *recordingCompactor) Compact(_ context.Context, prior string, turns []provider.Message) (string, error) {
 	var b strings.Builder
 	for _, m := range turns {
-		b.WriteString(m.Content)
+		b.WriteString(m.Text())
 		b.WriteByte('\n')
 	}
 	c.got = b.String()
@@ -292,21 +292,18 @@ func TestAbsorbedNoteIsNotStored(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: "好"},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("好")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2, WorkDir: dir,
 		Links: []link.Link{link.Terminal{}}}
 	// The absorbed message the way absorbInbox builds it.
-	if err := k.record(provider.Message{
-		Role: provider.RoleUser, Content: k.withPastedNote("看这个", []string{id}),
-		ImageNames: []string{id},
-	}); err != nil {
+	if err := k.record(provider.Message{Role: provider.RoleUser, ImageNames: []string{id}, Content: provider.TextContent(k.withPastedNote("看这个", []string{id}))}); err != nil {
 		t.Fatal(err)
 	}
 	var stored string
 	for _, e := range entriesFor(t, b) {
 		if e.Message.Role == provider.RoleUser {
-			stored = e.Message.Content
+			stored = e.Message.Text()
 		}
 	}
 	if strings.Contains(stored, "paste/") {
@@ -348,10 +345,10 @@ func TestAbsorbedPictureOverTheCapStillNamesItsPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "spend_images", Arguments: "{}"},
-		}}},
-		{Role: provider.RoleAssistant, Content: "看到了"},
+		}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("看到了")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4, WorkDir: dir,
 		Links: []link.Link{link.Terminal{}, imageSpendLink{}}}
@@ -367,7 +364,7 @@ func TestAbsorbedPictureOverTheCapStillNamesItsPath(t *testing.T) {
 	}
 	var sawPath bool
 	for _, m := range p.reqs[1].Messages {
-		if strings.Contains(m.Content, "paste/"+id) {
+		if strings.Contains(m.Text(), "paste/"+id) {
 			sawPath = true
 		}
 	}
@@ -465,7 +462,7 @@ func TestCrossBotExpandNamesThatBotsPictures(t *testing.T) {
 	if err := bb.Append(bot.Entry{
 		Time:    time.Unix(10, 0).UTC(),
 		Origin:  bot.OriginOwner,
-		Message: provider.Message{Role: provider.RoleUser, Content: "看这个"},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("看这个")},
 		Images:  []string{id},
 	}); err != nil {
 		t.Fatal(err)

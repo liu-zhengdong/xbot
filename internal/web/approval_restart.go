@@ -32,7 +32,7 @@ func ResolveOrphanApprovals(root, owner string) (int, error) {
 		latest := map[string]bot.ApprovalCard{}
 		order := []string{}
 		for _, e := range entries {
-			card, ok := bot.ParseApprovalCard(e.Message.Content)
+			card, ok := bot.ParseApprovalCard(e.Message.Text())
 			if !ok {
 				continue
 			}
@@ -55,7 +55,7 @@ func ResolveOrphanApprovals(root, owner string) (int, error) {
 
 // botCardMessage rewrites one card line with a new state.
 func botCardMessage(card bot.ApprovalCard, state string) provider.Message {
-	return provider.Message{Content: bot.ApprovalCardText(card.ID, card.Tool, card.Title, card.Subtitle, card.Summary, state)}
+	return provider.Message{Content: provider.TextContent(bot.ApprovalCardText(card.ID, card.Tool, card.Title, card.Subtitle, card.Summary, state))}
 }
 
 // ResolveRestartOrphans is the startup sweep for this server's owner. It runs

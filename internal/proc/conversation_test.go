@@ -23,16 +23,16 @@ type normalConversationModel struct {
 func (p *normalConversationModel) Chat(_ context.Context, r provider.Request, d func(string)) (provider.Message, error) {
 	p.calls++
 	if p.calls == 1 {
-		return provider.Message{Role: provider.RoleAssistant, Content: "<｜DSML｜invoke name=\"dispatch\">bad</｜DSML｜invoke>"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("<｜DSML｜invoke name=\"dispatch\">bad</｜DSML｜invoke>")}, nil
 	}
 	var all strings.Builder
 	for _, m := range r.Messages {
-		all.WriteString(m.Content + "\n")
+		all.WriteString(m.Text() + "\n")
 	}
 	if !strings.Contains(all.String(), "A的完整结果731") || !strings.Contains(all.String(), "继续问限制") {
 		p.t.Fatalf("conversation lost input: %s", all.String())
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: "结果731，限制仍然保留。"}, nil
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("结果731，限制仍然保留。")}, nil
 }
 func TestFailedResultDoesNotBlockNextOwnerMessage(t *testing.T) {
 	root := t.TempDir()
@@ -92,7 +92,7 @@ func TestFailedResultDoesNotBlockNextOwnerMessage(t *testing.T) {
 		}
 	}
 	for _, row := range rows {
-		if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Content, "DSML") {
+		if row.Message.Role == provider.RoleAssistant && strings.Contains(row.Message.Text(), "DSML") {
 			t.Fatal("protocol committed as a reply")
 		}
 	}

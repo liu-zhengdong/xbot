@@ -37,7 +37,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "one"}, {Role: provider.RoleAssistant, Content: "two"}, {Role: provider.RoleAssistant, Content: "report"}, {Role: provider.RoleAssistant, Content: "back"}}}
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("two")}, {Role: provider.RoleAssistant, Content: provider.TextContent("report")}, {Role: provider.RoleAssistant, Content: provider.TextContent("back")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2}
 	events := []link.Event{link.TerminalEvent("u1", "hello1", time.Now()), link.TerminalEvent("u2", "hello2", time.Now()), link.NewEvent(link.SourceSubagent, exec.EvDone, "RESULT_77", "sa_0123456789abcdef", time.Now()), link.TerminalEvent("u1", "hello3", time.Now())}
 	for _, e := range events {
@@ -45,12 +45,12 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	prefix := p.reqs[0].Messages[1].Content
+	prefix := p.reqs[0].Messages[1].Text()
 	if !strings.Contains(prefix, "BOT_FIXED") || strings.Contains(prefix, "PERSON_") {
 		t.Fatalf("wrong prefix %s", prefix)
 	}
 	for _, req := range p.reqs {
-		if req.Messages[1].Content != prefix {
+		if req.Messages[1].Text() != prefix {
 			t.Fatal("person switched fixed prefix")
 		}
 	}
@@ -86,19 +86,19 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(data[len(data)-1].Message.Content, "PERSON_NEW") {
+	if !strings.Contains(data[len(data)-1].Message.Text(), "PERSON_NEW") {
 		t.Fatal("person edit not appended")
 	}
 	reopened, err := bot.Load(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	after := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "after restart"}}}
+	after := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("after restart")}}}
 	restarted := &Kernel{Bot: reopened, Memory: store, Provider: after, MaxSteps: 2}
 	if err := restarted.Handle(ctx, link.TerminalEvent("u2", "restart and switch", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if after.reqs[0].Messages[1].Content != prefix || !strings.Contains(messagesText(after.reqs[0].Messages), "PERSON_TWO") {
+	if after.reqs[0].Messages[1].Text() != prefix || !strings.Contains(messagesText(after.reqs[0].Messages), "PERSON_TWO") {
 		t.Fatal("restart changed prefix or lost sender facts")
 	}
 
@@ -119,7 +119,7 @@ func TestEnvStreamInboxAfterNormalReply(t *testing.T) {
 			if err := box.Post(ev); err != nil {
 				t.Fatal(err)
 			}
-			return provider.Message{Role: provider.RoleAssistant, Content: "owner answered"}, nil
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("owner answered")}, nil
 		}
 		if !strings.Contains(messagesText(req.Messages), "RESULT_LAST_89") {
 			t.Fatal("normal answer boundary lost report")
@@ -128,7 +128,7 @@ func TestEnvStreamInboxAfterNormalReply(t *testing.T) {
 		if err != nil || seq == 0 {
 			t.Fatal("report acknowledged before persistence")
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: "result is 89"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("result is 89")}, nil
 	})
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestEnvStreamSilenceRules(t *testing.T) {
 			if source == link.NameTerminal {
 				ev = link.TerminalEvent("u1", "do something", time.Now())
 			}
-			k := &Kernel{Bot: b, MaxSteps: 2, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: "SILENT"}}}}
+			k := &Kernel{Bot: b, MaxSteps: 2, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}}
 			err := k.Handle(context.Background(), ev)
 			if source == link.NameTimer && err != nil {
 				t.Fatal(err)
@@ -256,7 +256,7 @@ func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
 				v := struct {
 					Role, Content, Call string
 					Calls               []provider.ToolCall
-				}{m.Role, m.Content, m.ToolCallID, m.ToolCalls}
+				}{m.Role, m.Text(), m.CallID(), m.Calls()}
 				raw, _ := json.Marshal(v)
 				out = append(out, string(raw))
 			}
@@ -267,20 +267,20 @@ func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
 		}
 		atCall, atResult, atB := -1, -1, -1
 		for i, m := range req.Messages {
-			if len(m.ToolCalls) > 0 {
+			if len(m.Calls()) > 0 {
 				atCall = i
 			}
 			if m.Role == provider.RoleTool {
 				atResult = i
 			}
-			if m.Content == later.Content {
+			if m.Text() == later.Content {
 				atB = i
 			}
 		}
 		if atResult != atCall+1 || atB <= atResult {
 			t.Fatalf("order call/result/B %d/%d/%d", atCall, atResult, atB)
 		}
-		return provider.Message{Role: provider.RoleAssistant, Content: "both handled"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("both handled")}, nil
 	})
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "A", time.Unix(10, 0))); err != nil {
 		t.Fatal(err)
@@ -442,9 +442,9 @@ func TestEnvStreamSummaryKeepsOriginalTaskFacts(t *testing.T) {
 	c := &factCompactor{}
 	k := &Kernel{Bot: b, Compactor: c}
 	msgs := []provider.Message{
-		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "fact", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: "{}"}}}},
-		{Role: provider.RoleTool, ToolCallID: "fact", Content: strings.Repeat("detail ", 600) + " TASK_A=42 TASK_B=91 /work/result.txt"},
-		{Role: provider.RoleAssistant, Content: "owner already told A"},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "fact", Type: "function", Function: provider.FunctionCall{Name: "read_file", Arguments: "{}"}}})},
+		{Role: provider.RoleTool, Content: provider.ToolResult("fact", strings.Repeat("detail ", 600)+" TASK_A=42 TASK_B=91 /work/result.txt")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("owner already told A")},
 	}
 	f := newTurnFit(0, nil)
 	f.omitted[1] = 0
@@ -464,7 +464,7 @@ func TestEnvStreamSummaryKeepsOriginalTaskFacts(t *testing.T) {
 
 func TestForkLongResultWriteFailureIsFailed(t *testing.T) {
 	b := testBot(t)
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: "start"}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
 		t.Fatal(err)
 	}
 	id := "bg_result_failure"
@@ -479,7 +479,7 @@ func TestForkLongResultWriteFailureIsFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Inbox: box}
-	k.finishBackground(&turn{branch: id, task: "long report", started: time.Now()}, []provider.Message{{Role: provider.RoleAssistant, Content: strings.Repeat("result", 1000)}}, nil)
+	k.finishBackground(&turn{branch: id, task: "long report", started: time.Now()}, []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(strings.Repeat("result", 1000))}}, nil)
 	status, _ := readMeta(t, b, id)
 	if status != "failed" {
 		t.Fatalf("saved result failed but task says %s", status)
@@ -511,9 +511,9 @@ func TestTurnFactSummaryUsesBoundedBatches(t *testing.T) {
 	k.Budget.Ceiling = 10000
 	var msgs []provider.Message
 	for i := 0; i < 12; i++ {
-		msgs = append(msgs, provider.Message{Role: provider.RoleTool, Content: strings.Repeat("detail ", 9000)})
+		msgs = append(msgs, provider.Message{Role: provider.RoleTool, Content: provider.TextContent(strings.Repeat("detail ", 9000))})
 	}
-	msgs[len(msgs)-1].Content += "LAST_FACT_77"
+	msgs[len(msgs)-1].SetText(msgs[len(msgs)-1].Text() + "LAST_FACT_77")
 	f := newTurnFit(0, nil)
 	if err := k.foldTurn(context.Background(), f, msgs, len(msgs)); err != nil {
 		t.Fatal(err)

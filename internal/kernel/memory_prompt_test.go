@@ -19,13 +19,13 @@ func TestMemoryBlockClosesAndNeutralizes(t *testing.T) {
 		Untrusted: true,
 	}}, nil)
 	msgs, _ := Assemble(Input{Persona: "Be brief.", Rules: DefaultRules(), Memory: body})
-	if !strings.Contains(msgs[0].Content, MemoryRule) {
+	if !strings.Contains(msgs[0].Text(), MemoryRule) {
 		t.Fatal("rules omit the memory rule")
 	}
 	var mem string
 	for _, m := range msgs {
-		if m.Role == provider.RoleUser && strings.HasPrefix(m.Content, "<memory>") {
-			mem = m.Content
+		if m.Role == provider.RoleUser && strings.HasPrefix(m.Text(), "<memory>") {
+			mem = m.Text()
 		}
 	}
 	if mem == "" {
@@ -91,8 +91,8 @@ func TestFenceEscapesEveryBracket(t *testing.T) {
 	msgs, _ := Assemble(Input{Persona: "Be brief.", Rules: DefaultRules(), Memory: body})
 	var mem string
 	for _, m := range msgs {
-		if m.Role == provider.RoleUser && strings.HasPrefix(m.Content, "<memory>") {
-			mem = m.Content
+		if m.Role == provider.RoleUser && strings.HasPrefix(m.Text(), "<memory>") {
+			mem = m.Text()
 		}
 	}
 	if strings.Count(mem, "</memory>") != 1 || !strings.HasSuffix(mem, "</memory>") {

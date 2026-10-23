@@ -42,7 +42,7 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 		for _, part := range parts {
 			found := false
 			for _, e := range obs.entries {
-				if e.Message.Role == "tool" && e.Message.Name == name && strings.Contains(e.Message.Content, part) {
+				if e.Message.Role == "tool" && e.Message.Name == name && strings.Contains(e.Message.Text(), part) {
 					found = true
 					break
 				}

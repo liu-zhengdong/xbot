@@ -31,17 +31,17 @@ func TestRequestContextSkipsForkMarkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &turnRun{k: k, assembled: []provider.Message{{Role: provider.RoleUser, Content: "opening", Seq: first}}}
+	r := &turnRun{k: k, assembled: []provider.Message{{Role: provider.RoleUser, Seq: first, Content: provider.TextContent("opening")}}}
 	req, err := r.requestContext(provider.Request{Messages: r.assembled})
 	if err != nil {
 		t.Fatal(err)
 	}
 	later := 0
 	for _, msg := range req.Messages {
-		if msg.Seq == start || msg.Seq == end || (msg.Role == provider.RoleUser && strings.TrimSpace(msg.Content) == "") {
+		if msg.Seq == start || msg.Seq == end || (msg.Role == provider.RoleUser && strings.TrimSpace(msg.Text()) == "") {
 			t.Fatalf("fork marker leaked: %+v", msg)
 		}
-		if msg.Content == "later words" {
+		if msg.Text() == "later words" {
 			later++
 		}
 	}

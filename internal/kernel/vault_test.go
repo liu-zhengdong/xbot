@@ -13,19 +13,15 @@ func TestScrubEntryUsesRedact(t *testing.T) {
 	k := &Kernel{Redact: func(s string) string {
 		return strings.ReplaceAll(s, "tok-value", "[secret]")
 	}}
-	out := k.scrubEntry(provider.Message{
-		Role:    provider.RoleTool,
-		Content: "result tok-value here",
-		ToolCalls: []provider.ToolCall{{
-			ID: "c1", Type: "function",
-			Function: provider.FunctionCall{Name: "http_request", Arguments: `{"url":"http://a.com/?t=tok-value"}`},
-		}},
-	})
-	if strings.Contains(out.Content, "tok-value") || !strings.Contains(out.Content, "[secret]") {
-		t.Fatalf("content not redacted: %q", out.Content)
+	out := k.scrubEntry(provider.Message{Role: provider.RoleTool, Content: append(provider.TextContent("result tok-value here"), provider.ToolContent([]provider.ToolCall{{
+		ID: "c1", Type: "function",
+		Function: provider.FunctionCall{Name: "http_request", Arguments: `{"url":"http://a.com/?t=tok-value"}`},
+	}})...)})
+	if strings.Contains(out.Text(), "tok-value") || !strings.Contains(out.Text(), "[secret]") {
+		t.Fatalf("content not redacted: %q", out.Text())
 	}
-	if strings.Contains(out.ToolCalls[0].Function.Arguments, "tok-value") {
-		t.Fatalf("arguments not redacted: %q", out.ToolCalls[0].Function.Arguments)
+	if strings.Contains(out.Calls()[0].Function.Arguments, "tok-value") {
+		t.Fatalf("arguments not redacted: %q", out.Calls()[0].Function.Arguments)
 	}
 }
 

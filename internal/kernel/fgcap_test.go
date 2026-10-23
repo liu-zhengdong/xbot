@@ -29,7 +29,7 @@ func (b *blockTool) Run(ctx context.Context, _ json.RawMessage) (string, error) 
 }
 
 func callBlock(id string) provider.Message {
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: id, Type: "function", Function: provider.FunctionCall{Name: "block", Arguments: "{}"}}}}
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: id, Type: "function", Function: provider.FunctionCall{Name: "block", Arguments: "{}"}}})}
 }
 
 func capKernel(t *testing.T, resps ...provider.Message) (*Kernel, *blockTool) {
@@ -43,7 +43,7 @@ func capKernel(t *testing.T, resps ...provider.Message) (*Kernel, *blockTool) {
 }
 
 func TestForegroundToolCapMovesTurnToBackground(t *testing.T) {
-	k, bt := capKernel(t, callBlock("c1"), callBlock("c2"), callBlock("c3"), provider.Message{Role: provider.RoleAssistant, Content: "全部做完"})
+	k, bt := capKernel(t, callBlock("c1"), callBlock("c2"), callBlock("c3"), provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("全部做完")})
 	close(bt.release)
 	k.ForegroundMaxTools = 2
 	var streamed strings.Builder
@@ -60,8 +60,8 @@ func TestForegroundToolCapMovesTurnToBackground(t *testing.T) {
 	entries, _ := k.Bot.Entries()
 	var notice, bgDone bool
 	for _, e := range entries {
-		notice = notice || (e.Branch == "" && strings.Contains(e.Message.Content, "已转到后台"))
-		bgDone = bgDone || (e.Branch != "" && e.Message.Content == "全部做完")
+		notice = notice || (e.Branch == "" && strings.Contains(e.Message.Text(), "已转到后台"))
+		bgDone = bgDone || (e.Branch != "" && e.Message.Text() == "全部做完")
 	}
 	if !notice || !bgDone {
 		t.Fatalf("notice %v background answer %v", notice, bgDone)
@@ -69,7 +69,7 @@ func TestForegroundToolCapMovesTurnToBackground(t *testing.T) {
 }
 
 func TestForegroundTimeCapMovesTurnToBackground(t *testing.T) {
-	k, bt := capKernel(t, callBlock("c1"), provider.Message{Role: provider.RoleAssistant, Content: "好了"})
+	k, bt := capKernel(t, callBlock("c1"), provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("好了")})
 	k.ForegroundMaxTime = 400 * time.Millisecond
 	ev := link.TerminalEvent("u1", "慢活", time.Unix(10, 0).UTC())
 	_ = k.Inbox.Post(ev)
@@ -102,7 +102,7 @@ func oneBackgroundID(t *testing.T, k *Kernel) string {
 }
 
 func TestForegroundCapWithSlotsFullStaysForeground(t *testing.T) {
-	k, bt := capKernel(t, callBlock("c1"), callBlock("c2"), provider.Message{Role: provider.RoleAssistant, Content: "前台做完"})
+	k, bt := capKernel(t, callBlock("c1"), callBlock("c2"), provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("前台做完")})
 	close(bt.release)
 	k.ForegroundMaxTools = 1
 	k.ForkCap = 1
@@ -116,7 +116,7 @@ func TestForegroundCapWithSlotsFullStaysForeground(t *testing.T) {
 		t.Fatalf("backgrounds %d", n)
 	}
 	entries, _ := k.Bot.Entries()
-	if last := entries[len(entries)-1]; last.Branch != "" || last.Message.Content != "前台做完" {
+	if last := entries[len(entries)-1]; last.Branch != "" || last.Message.Text() != "前台做完" {
 		t.Fatalf("last %+v", last)
 	}
 }

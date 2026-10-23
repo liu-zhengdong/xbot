@@ -38,7 +38,7 @@ func statusFixture(t *testing.T, n int) (*Server, string, []*bot.Bot) {
 		if err := b.SetOwners([]string{"u1"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "hello from " + b.Name()}}); err != nil {
+		if err := b.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("hello from " + b.Name())}}); err != nil {
 			t.Fatal(err)
 		}
 		bots = append(bots, b)
@@ -74,12 +74,12 @@ type stepProvider struct {
 func (p *stepProvider) Chat(_ context.Context, _ provider.Request, _ func(string)) (provider.Message, error) {
 	p.i++
 	if p.i > p.n {
-		return provider.Message{Role: provider.RoleAssistant, Content: "done"}, nil
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
 	}
 	args := fmt.Sprintf(`{"i":%d}`, p.i)
-	return provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{
 		{ID: fmt.Sprintf("c%d", p.i), Type: "function", Function: provider.FunctionCall{Name: "webstep", Arguments: args}},
-	}}, nil
+	})}, nil
 }
 
 func TestBotStatusEndpointShapeAndSize(t *testing.T) {
@@ -238,7 +238,7 @@ func BenchmarkBotStatusAPI5Bots(b *testing.B) {
 		if err := bb.SetOwners([]string{"u1"}); err != nil {
 			b.Fatal(err)
 		}
-		if err := bb.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: "hello"}}); err != nil {
+		if err := bb.Append(bot.Entry{Time: time.Now(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("hello")}}); err != nil {
 			b.Fatal(err)
 		}
 	}

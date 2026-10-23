@@ -37,7 +37,7 @@ func TestSubagentCwdDoesNotMoveParent(t *testing.T) {
 
 	runTurn(t, k, now, "write the notes",
 		toolCall("c1", "write_file", `{"path":"notes.md","content":"parent notes\n"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"})
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 	if _, err := os.Stat(filepath.Join(dir, "other-task", "notes.md")); err == nil {
 		t.Errorf("parent's write_file(notes.md) landed in the subagent's directory other-task/")
 	}
@@ -89,7 +89,7 @@ func TestBackgroundCwdDoesNotMoveForeground(t *testing.T) {
 
 	runTurn(t, k, now, "write the notes",
 		toolCall("c1", "write_file", `{"path":"notes.md","content":"foreground\n"}`),
-		provider.Message{Role: provider.RoleAssistant, Content: "done"})
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 	if _, err := os.Stat(filepath.Join(dir, "other", "notes.md")); err == nil {
 		t.Errorf("foreground write_file(notes.md) landed in the background directory other/")
 	}
