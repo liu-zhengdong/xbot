@@ -153,15 +153,25 @@ func TestProviderModelsRejectsMissingKeyAndUnsafeResponses(t *testing.T) {
 // A configured subscription uses the SIWC catalog, never an API-key catalog.
 func TestProviderModelsChatGPTSubscription(t *testing.T) {
 	calls := 0
+	names := []string{"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"}
+	models := []config.ModelSpec{{Name: "gpt-5.4", Context: 1000000}}
+	var rows []string
+	for _, name := range names {
+		// SIWC has no capability fields; existing configs have no overrides either.
+		rows = append(rows, fmt.Sprintf(`{"slug":%q,"visibility":"list","context_window":272000}`, name))
+		models = append(models, config.ModelSpec{Name: name, Context: 1000000})
+	}
+	// Also exercise a known model not yet stored in providers.json.
+	rows = append(rows, `{"slug":"gpt-5.6","visibility":"list","context_window":272000}`)
 	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer scripted-account-token" {
 			t.Error("wrong SIWC request")
 		}
-		fmt.Fprint(w, `{"models":[{"slug":"runtime-only","visibility":"list","context_window":272000},{"slug":"gpt-5.4","visibility":"list","context_window":128000},{"slug":"hidden","visibility":"hidden"},{"slug":"runtime-only","visibility":"list"}]}`)
+		fmt.Fprint(w, `{"models":[`+strings.Join(rows, ",")+`,{"slug":"runtime-only","visibility":"list","context_window":272000},{"slug":"gpt-5.4","visibility":"list","context_window":128000},{"slug":"hidden","visibility":"hidden"},{"slug":"runtime-only","visibility":"list"}]}`)
 	})
 	base := config.FromEnv(config.Getenv).BaseURL
-	err := config.SaveOAuthProvider(s.Root, config.Provider{Name: "account", OAuth: "chatgpt", Protocol: config.Responses, BaseURL: base, Models: []config.ModelSpec{{Name: "gpt-5.4", Context: 1000000}}})
+	err := config.SaveOAuthProvider(s.Root, config.Provider{Name: "account", OAuth: "chatgpt", Protocol: config.Responses, BaseURL: base, Models: models})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,17 +196,38 @@ func TestProviderModelsChatGPTSubscription(t *testing.T) {
 		Models []config.ModelInfo `json:"models"`
 	}
 	_ = json.Unmarshal(raw, &page)
-	if code != 200 || len(page.Models) != 2 || calls != 1 {
+	if code != 200 || len(page.Models) != len(names)+3 || calls != 1 {
 		t.Fatalf("SIWC catalog: %d %s calls=%d", code, raw, calls)
 	}
-	if page.Models[0].Model != "gpt-5.4" || page.Models[0].Context != 1000000 || !page.Models[0].HostedSearch || page.Models[1].Model != "runtime-only" || page.Models[1].Context != 272000 {
+	if page.Models[0].Model != "gpt-5.4" || page.Models[0].Context != 1000000 || !page.Models[0].HostedSearch {
 		t.Fatalf("SIWC capabilities: %s", raw)
+	}
+	for _, m := range page.Models {
+		if m.Model == "runtime-only" {
+			if m.Context != 272000 || m.Vision || m.HostedSearch {
+				t.Fatalf("unknown SIWC model: %+v", m)
+			}
+			continue
+		}
+		if m.Protocol != config.Responses || !m.Vision || !m.HostedSearch || !m.Available {
+			t.Errorf("SIWC model capabilities: %+v", m)
+		}
+		if m.Model == "gpt-5.6" {
+			if m.Context != 272000 {
+				t.Errorf("catalog-only model window: %d", m.Context)
+			}
+			continue
+		}
+		endpoint, _, err := config.Resolve(s.Root, "account", m.Model, config.Getenv)
+		if err != nil || !endpoint.Vision || !endpoint.HostedSearch || endpoint.Protocol != m.Protocol {
+			t.Errorf("SIWC runtime capability mismatch for %s: %v", m.Model, err)
+		}
 	}
 	if strings.Contains(string(raw), "scripted-account-token") {
 		t.Fatal("credential leaked")
 	}
 	saved, _ := config.Load(s.Root)
-	if len(saved.Providers[0].Models) != 1 {
+	if len(saved.Providers[0].Models) != len(models) {
 		t.Fatal("catalog changed registry")
 	}
 	info, err := vault.OAuthMetadata(context.Background(), backend, "chatgpt")

@@ -7,16 +7,28 @@ import (
 )
 
 func TestSeesImagesByModel(t *testing.T) {
-	yes := []string{"", "deepseek-flash", "group/auto-deepseek-v4-1-flash", "DeepSeek-Flash"}
-	no := []string{"deepseek-chat", "deepseek-v4-pro", "deepseek-reasoner", "gpt-4o", "mock"}
+	yes := []string{"", "deepseek-flash", "group/auto-deepseek-v4-1-flash", "DeepSeek-Flash",
+		"gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+		"gpt-6", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1", "gpt-6.1-sol",
+		"claude-sonnet-4-5", "claude-opus-4-6"}
+	no := []string{"deepseek-chat", "deepseek-v4-pro", "deepseek-reasoner", "gpt-4o", "mock",
+		"gpt-5.60", "gpt-6.10-sol", "gpt-60-sol", "gpt-6.2-sol", "gpt-6-unknown", "other/gpt-6-sol"}
 	for _, name := range yes {
 		if !SeesImages(name, nil) {
 			t.Errorf("%q should see images", name)
+		}
+		off := false
+		if SeesImages(name, &off) {
+			t.Errorf("%q ignored explicit vision off", name)
 		}
 	}
 	for _, name := range no {
 		if SeesImages(name, nil) {
 			t.Errorf("%q should not see images", name)
+		}
+		on := true
+		if !SeesImages(name, &on) {
+			t.Errorf("%q ignored explicit vision on", name)
 		}
 	}
 	on, off := true, false

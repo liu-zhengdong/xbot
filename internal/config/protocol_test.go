@@ -2,7 +2,54 @@ package config
 
 import (
 	"testing"
+
+	"xbot/internal/provider"
 )
+
+func TestOpenAIModelCapabilitiesResolve(t *testing.T) {
+	for _, name := range []string{"gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+		"gpt-6", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1", "gpt-6.1-sol"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			p := Provider{Name: "openai", Protocol: Responses, BaseURL: "http://localhost/v1", APIKeyEnv: "FAKE_GPT"}
+			on, off := true, false
+			for _, flag := range []*bool{nil, &off, &on} {
+				if err := Add(root, p, ModelSpec{Name: name, Context: 1000000, Vision: flag, HostedSearch: flag}); err != nil {
+					t.Fatal(err)
+				}
+				endpoint, _, err := Resolve(root, p.Name, name, func(string) string { return "fake" })
+				want := flag == nil || *flag
+				if err != nil || endpoint.Protocol != Responses || endpoint.Vision != want || endpoint.HostedSearch != want {
+					t.Fatalf("resolved capabilities: vision=%t hosted=%t err=%v; want %t", endpoint.Vision, endpoint.HostedSearch, err, want)
+				}
+				bound, err := provider.New(endpoint)
+				if err != nil || provider.HasHostedSearch(bound) != want {
+					t.Fatalf("bound hosted search: %v; want %t", err, want)
+				}
+			}
+			for _, protocol := range []string{ChatCompletions, AnthropicMessages} {
+				if (ModelSpec{Name: name}).HasHostedSearch(protocol) {
+					t.Errorf("implicit hosted search on %s", protocol)
+				}
+			}
+		})
+	}
+}
+
+func TestHostedSearchDefaultsAndOverrides(t *testing.T) {
+	on, off := true, false
+	for _, name := range []string{"deepseek-flash", "deepseek-chat", "deepseek-v4-pro", "claude-sonnet-4-5", "claude-opus-4-6",
+		"gpt-4o", "gpt-5.60", "gpt-6.10-sol", "gpt-60-sol", "gpt-6.2-sol", "gpt-6-unknown", "other/gpt-6-sol"} {
+		for _, protocol := range []string{Responses, AnthropicMessages, ChatCompletions} {
+			for _, flag := range []*bool{nil, &off, &on} {
+				want := protocol != ChatCompletions && flag != nil && *flag
+				if got := (ModelSpec{Name: name, HostedSearch: flag}).HasHostedSearch(protocol); got != want {
+					t.Errorf("%s %s explicit=%v: got %t want %t", name, protocol, flag, got, want)
+				}
+			}
+		}
+	}
+}
 
 func TestProtocolsAndModelCapabilities(t *testing.T) {
 	root := t.TempDir()

@@ -43,7 +43,19 @@ func (m ModelSpec) HasHostedSearch(protocol string) bool {
 	if m.HostedSearch != nil {
 		return *m.HostedSearch
 	}
-	return protocol == Responses && (m.Name == "gpt-5.5" || m.Name == "gpt-5.4")
+	return protocol == Responses && openAIImageAndSearch(m.Name)
+}
+
+// openAIImageAndSearch lists known OpenAI models with image input and Responses
+// web_search. Account catalogs supply membership, not these capabilities.
+func openAIImageAndSearch(name string) bool {
+	switch name {
+	case "gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra",
+		"gpt-6", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1", "gpt-6.1-sol":
+		return true
+	default:
+		return false
+	}
 }
 
 func SupportedBinding(protocol string, m ModelSpec) error {
