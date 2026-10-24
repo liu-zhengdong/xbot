@@ -125,13 +125,18 @@ func TestDoThings(t *testing.T) {
 		t.Fatalf("the final reply is not the report:\nlast:   %q\nreport: %q", lastAssistant, report)
 	}
 
-	// The trace: this turn dispatched work, and a subagent result carried the
-	// summary.txt path back.
+	// The trace: this turn dispatched work, then read the subagent's result.
+	// Completion events carry a result.txt pointer; the report above names
+	// summary.txt after the foreground follows that pointer via read_subagent.
 	dispatched := false
+	readResult := false
 	for _, r := range rows {
 		for _, tc := range r.ToolCalls {
 			if tc.Function.Name == "dispatch" {
 				dispatched = true
+			}
+			if tc.Function.Name == "read_subagent" {
+				readResult = true
 			}
 		}
 	}
@@ -140,12 +145,17 @@ func TestDoThings(t *testing.T) {
 	}
 	returned := false
 	for _, r := range rows {
-		if r.Role == "user" && strings.Contains(r.Content, "<untrusted_event") && strings.Contains(r.Content, summary) {
+		if r.Role == "user" && strings.Contains(r.Content, "<untrusted_event") &&
+			strings.Contains(r.Content, `source="subagent"`) &&
+			strings.Contains(r.Content, "[结论全文：") && strings.Contains(r.Content, "result.txt") {
 			returned = true
 		}
 	}
 	if !returned {
-		t.Fatalf("no subagent result row carries the summary.txt path (旅程「动手做事」: 子代理产出了文件):\n%s", dumpRows(rows))
+		t.Fatalf("no subagent completion event carries a result.txt pointer (旅程「动手做事」: 轨迹里能看到子代理交回结果):\n%s", dumpRows(rows))
+	}
+	if !readResult {
+		t.Fatalf("no assistant row calls read_subagent (旅程「动手做事」: 读取子代理结果后说清文件在哪):\n%s", dumpRows(rows))
 	}
 }
 
