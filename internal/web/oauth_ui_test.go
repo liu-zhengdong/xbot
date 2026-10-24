@@ -29,7 +29,7 @@ const api=async path=>{calls.push(path);if(path==='/api/providers')return {provi
 const result={models:[{model:'runtime-only',context:128000,vision:false,hosted_web_search:false}]};
 (async()=>{
  await window.XBotProviders.settings({api,host,isCurrent:()=>current});
- assert(find('button','constructor'));assert(find('button','__proto__'));assert(find('button','ChatGPT').disabled);assert(!calls.some(p=>p.includes('/oauth/')));
+ assert(find('button','constructor'));assert(find('button','__proto__'));assert(!find('button','ChatGPT').disabled);assert(!calls.some(p=>p.includes('/oauth/')));
  const input=find('input','');input.value='OpenAI';input.oninput();assert(!find('button','DeepSeek'));
  let request=find('button','OpenAI').onclick();assert(host.innerText.includes('正在拉取'));
  find('button','模型与供应商').onclick();assert.equal(find('input','').value,'OpenAI');

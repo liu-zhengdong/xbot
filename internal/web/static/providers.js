@@ -62,7 +62,7 @@
   async function settings({ api, host, isCurrent = () => true }) {
     const mount = {}; mounts.set(host, mount);
     const alive = () => mounts.get(host) === mount && isCurrent();
-    let data, query = "", selected = "", revision = 0;
+    let data, query = "", selected = "", revision = 0, loginRequest = null;
     const key = p => p.name ?? p.brand;
     function entries() {
       const rows = data.providers.filter(p => p.oauth !== "chatgpt").map(p => {
@@ -73,6 +73,65 @@
       for (const p of rows) if (p.name === "" && rows.some(other => other !== p && other.brand === p.brand)) p.title += "（默认）";
       const order = Object.keys(brands);
       return rows.sort((a, b) => (order.indexOf(a.brand) < 0 ? 99 : order.indexOf(a.brand)) - (order.indexOf(b.brand) < 0 ? 99 : order.indexOf(b.brand)));
+    }
+    function subscriptionEntry() {
+      const p = data.providers.find(p => p.oauth === "chatgpt");
+      return { ...p, name: p?.name || "chatgpt", oauth: "chatgpt", brand: "openai", title: "ChatGPT", protocol: "responses" };
+    }
+    async function login(note, control, done) {
+      if (!alive()) return;
+      const native = document.documentElement.classList.contains("in-app");
+      function openAuthorization(attempt) {
+        const popup = window.open(attempt.url, "_blank");
+        if (!native && !popup) throw Error("popup blocked");
+        if (popup) popup.opener = null;
+        attempt.popup = popup;
+      }
+      if (loginRequest && loginRequest.current()) {
+        if (loginRequest.url) {
+          try { openAuthorization(loginRequest); note.textContent = "等待登录，再点重开"; }
+          catch { note.textContent = "请允许弹窗后重试"; }
+        }
+        return;
+      }
+      const view = revision, current = () => alive() && view === revision;
+      const attempt = { current }; loginRequest = attempt;
+      control.disabled = true; note.textContent = "正在登录…";
+      try {
+        // Browsers need the click gesture; the native shell opens HTTPS externally.
+        if (!native) {
+          attempt.popup = window.open("about:blank", "_blank");
+          if (!attempt.popup) throw Error("popup blocked");
+          attempt.popup.opener = null;
+        }
+        const start = await api("/api/providers/oauth/chatgpt/start", { method: "POST" });
+        if (!current()) { attempt.popup?.close(); return; }
+        attempt.url = safeURL(start.url); if (!attempt.url) throw Error("invalid login URL");
+        if (native) openAuthorization(attempt);
+        else attempt.popup.location.replace(attempt.url);
+        control.disabled = false; note.textContent = "等待登录，再点重开";
+        const expires = Date.now() + 10 * 60 * 1000;
+        while (current() && Date.now() < expires) {
+          const status = await api("/api/providers/oauth/chatgpt/status");
+          if (!current()) return;
+          if (status.state === "succeeded") {
+            const fresh = await api("/api/providers");
+            if (!current()) return;
+            data = fresh;
+            if (!subscriptionEntry().key_configured) throw Error("login unavailable");
+            done(); return;
+          }
+          if (status.state !== "pending") throw Error("login failed");
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        if (current()) throw Error("login expired");
+      } catch {
+        if (attempt.popup && !attempt.popup.closed) attempt.popup.close();
+        if (current()) note.textContent = "登录未完成，请重试";
+      } finally {
+        if (current()) control.disabled = false;
+        if (loginRequest === attempt) loginRequest = null;
+      }
     }
     function state(message, retry) {
       const box = node("div", "provider-empty"); box.setAttribute("role", "status"); box.append(node("p", "", message));
@@ -88,8 +147,18 @@
       const tools = node("div", "provider-tools"), search = node("label", "provider-search"); search.append(lineIcon("search"));
       const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query; search.append(input); tools.append(search); host.append(tools);
       const subscription = section("订阅", "登录即可，无需密钥"), subgrid = node("div", "provider-grid");
-      const chatgpt = button("", "provider-card provider-subscription", null); chatgpt.disabled = true;
-      chatgpt.append(node("span", "provider-glyph provider-chatgpt-glyph"), node("strong", "", "ChatGPT"), node("span", "provider-later", "后做")); subgrid.append(chatgpt); subscription.append(subgrid);
+      const subnote = node("span", "provider-login-note"); subnote.setAttribute("role", "status");
+      const chatgpt = button("", "provider-card provider-subscription", () => {
+        const p = subscriptionEntry(); selected = key(p);
+        return p.key_configured ? capability(p) : login(subnote, chatgpt, updateSubscription);
+      });
+      function updateSubscription() {
+        chatgpt.replaceChildren(node("span", "provider-glyph provider-chatgpt-glyph"), node("strong", "", "ChatGPT"));
+        if (subscriptionEntry().key_configured) {
+          const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); chatgpt.append(dot);
+        } else { subnote.textContent = "登录"; chatgpt.append(subnote); }
+      }
+      updateSubscription(); subgrid.append(chatgpt); subscription.append(subgrid);
       const vendors = section("供应商", "模型厂商的 API"), grid = node("div", "provider-grid"); vendors.append(grid); host.append(subscription, vendors);
       function filter() {
         const term = query.trim().toLowerCase(); subscription.hidden = !"chatgpt".includes(term); grid.replaceChildren();
@@ -101,6 +170,7 @@
         if (!grid.children.length) grid.append(state("没有匹配的供应商"));
       }
       input.oninput = () => { query = input.value; filter(); }; filter();
+      if (!subscription.hidden && (focusKey === "chatgpt" || focusKey === key(subscriptionEntry()))) chatgpt.focus();
     }
     async function capability(p, refresh = false) {
       if (!alive()) return; const request = ++revision;
@@ -110,12 +180,18 @@
       const status = node("div", "provider-status"); info.append(title, status); heading.append(glyph(p.brand), info);
       const body = node("div", "provider-models"); host.replaceChildren(back, heading, body); heading.tabIndex = -1; heading.focus({preventScroll:true});
       function keyStatus() {
-        status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : "密钥未配置"));
+        status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : p.oauth ? "未登录" : "密钥未配置"));
+        if (p.oauth === "chatgpt") {
+          const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
+          const again = button("重新登录", "provider-back", () => login(note, again, () => capability(subscriptionEntry())));
+          status.append(again, note);
+        }
       }
       keyStatus(); body.append(state("正在拉取模型…"));
       try {
-        if (refresh) { data = await api("/api/providers"); if (!current()) return; p = entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
+        if (refresh) { data = await api("/api/providers"); if (!current()) return; p = p.oauth === "chatgpt" ? subscriptionEntry() : entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
         if (!p.key_configured) {
+          if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
           body.replaceChildren(state(p.api_key_env ? `请先配置 ${p.api_key_env}，再拉取模型。` : "请先通过 xbot provider add 配置供应商和密钥，再拉取模型。", () => capability(p, true))); return;
         }
         const result = await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
@@ -135,7 +211,7 @@
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
         body.append(rows);
-      } catch { if (current()) body.replaceChildren(state("拉取模型失败，请检查供应商配置和网络。", () => capability(p, true))); }
+      } catch { if (current()) body.replaceChildren(state(p.oauth === "chatgpt" ? "拉取模型失败，请重试或重新登录 ChatGPT。" : "拉取模型失败，请检查供应商配置和网络。", () => capability(p, true))); }
     }
     async function load() {
       host.replaceChildren(state("正在读取供应商…"));

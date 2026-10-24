@@ -68,8 +68,10 @@ const requestedState=new URLSearchParams(location.search).get('state')||'';
 const scene=requestedState.split('-')[0];
 localStorage.setItem('xbot-theme',requestedState.endsWith('-dark')?'dark':new URLSearchParams(location.search).get('theme')||'light');
 window.testErrors=[];window.addEventListener('error',e=>testErrors.push(e.message));window.addEventListener('unhandledrejection',e=>testErrors.push(String(e.reason)));
-const fixture={calls:[],fail:false,empty:false,large:false};
+const fixture={calls:[],fail:false,empty:false,large:false,oauthPolls:0};
+window.open=()=>({opener:null,closed:false,location:{replace(){}},close(){this.closed=true}});
 const providers=[{name:'',brand:'deepseek',protocol:'chat_completions',api_key_env:'XBOT_API_KEY',key_configured:true,models:[]},{name:'openai',protocol:'responses',api_key_env:'OPENAI_API_KEY',key_configured:true,models:[]},{name:'anthropic',protocol:'anthropic_messages',api_key_env:'ANTHROPIC_API_KEY',key_configured:true,models:[]}];
+if(['loggedin','chatgptdetail'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(path,opts={})=>{
  fixture.calls.push(path);
@@ -78,6 +80,13 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/notifications')return json({notifications:[]});
  if(path==='/api/groups')return json({groups:[],folders:[]});
  if(path==='/api/providers')return json({providers});
+ if(path==='/api/providers/oauth/chatgpt/start'){fixture.oauthPolls=0;return json({url:'https://auth.example/authorize'})}
+ if(path==='/api/providers/oauth/chatgpt/status'){
+  if(scene==='loginerror')return json({state:'failed',error:'private-upstream-body'});
+  if(scene==='pending'||fixture.oauthPolls++===0)return json({state:'pending'});
+  if(!providers.some(p=>p.oauth==='chatgpt'))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
+  return json({state:'succeeded'});
+ }
  if(String(path).startsWith('/api/providers/models?')){
   if(fixture.fail||scene==='error')return json({error:'upstream failed'},422);
   if(fixture.empty||scene==='empty')return json({models:[]});
@@ -97,21 +106,33 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  // Enter through the account menu, as in daily use.
  $('#account').click();$('#account-settings').click();await XBotSettings.open('providers');
  if(scene){
+  if(['pending','loginerror','chatgptdetail'].includes(scene))card('ChatGPT').click();
   if(['detail','error','empty','unconfigured'].includes(scene))card(scene==='unconfigured'?'OpenRouter':'OpenAI').click();
   if(scene==='search'){$('.provider-search input').value='OpenAI';$('.provider-search input').dispatchEvent(new Event('input'))}
   document.body.dataset.testResult='passed';return;
  }
- assert(card('ChatGPT').disabled,'subscription login enabled');
+ assert(!card('ChatGPT').disabled,'subscription login disabled');
  assert(document.querySelectorAll('.provider-card').length===5,'missing provider');
  const before=fixture.calls.length;card('OpenRouter').click();await waitFor(()=>$('.provider-empty'),'missing key state');assert(!fixture.calls.slice(before).some(p=>p.startsWith('/api/providers/models')),'unconfigured provider requested models');
  $('.provider-back').click();const input=$('.provider-search input');input.focus();input.value='OpenAI';input.dispatchEvent(new Event('input'));assert(document.activeElement===input,'search lost focus');
- assert(document.querySelectorAll('.provider-card:not(:disabled)').length===1,'search failed');card('OpenAI').click();await waitFor(()=>$('.provider-model-row'),'models missing');
+ assert(document.querySelectorAll('.provider-card:not(:disabled)').length===2,'search failed');card('OpenAI').click();await waitFor(()=>$('.provider-model-row'),'models missing');
  assert(document.querySelectorAll('.provider-model-row').length===2,'runtime models missing');assert(!$('#settings-providers table'),'obsolete table');
  $('.provider-back').click();assert($('.provider-search input').value==='OpenAI','search reset on return');
  fixture.fail=true;card('OpenAI').click();await waitFor(()=>$('.provider-empty button'),'missing retry');assert($('.provider-empty').textContent.includes('失败'),'failed list silent');
  fixture.fail=false;$('.provider-empty button').click();await waitFor(()=>$('.provider-model-row'),'retry did not recover');
  $('.provider-back').click();fixture.large=true;card('OpenAI').click();await waitFor(()=>document.querySelectorAll('.provider-model-row').length===2048,'large catalog missing');
- assert(!fixture.calls.some(p=>p.includes('/oauth/')),'OAuth started');assert(testErrors.length===0,testErrors.join(';'));
+ assert(!fixture.calls.some(p=>p.includes('/oauth/')),'OAuth started without subscription click');
+ $('.provider-back').click();$('.provider-search input').value='chatgpt';$('.provider-search input').dispatchEvent(new Event('input'));
+ assert(!$('.provider-section').hidden,'ChatGPT search hid subscription');
+ card('ChatGPT').click();assert(card('ChatGPT').disabled,'start request remained clickable');
+ await waitFor(()=>card('ChatGPT')?.querySelector('[aria-label="已登录"]'),'subscription did not sign in');
+ assert(fixture.calls.filter(p=>p.endsWith('/chatgpt/start')).length===1,'duplicate OAuth start');
+ assert(document.querySelectorAll('.provider-card').length===1,'duplicate ChatGPT vendor card');
+ card('ChatGPT').click();await waitFor(()=>$('.provider-model-row'),'subscription detail missing');
+ assert($('.provider-status').textContent.includes('已登录'),'subscription status missing');
+ assert($('.provider-status button').textContent==='重新登录','relogin missing');assert(!$('#settings-providers table'),'subscription uses table');
+ $('.provider-back').click();assert(document.activeElement===card('ChatGPT'),'subscription return lost focus');
+ assert(testErrors.length===0,testErrors.join(';'));
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `

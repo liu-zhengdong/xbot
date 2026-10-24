@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"net/url"
 	"xbot/internal/compact"
 	"xbot/internal/config"
+	"xbot/internal/vault"
 )
 
 func TestProviderModelsRuntimeCatalog(t *testing.T) {
@@ -147,16 +150,57 @@ func TestProviderModelsRejectsMissingKeyAndUnsafeResponses(t *testing.T) {
 	}
 }
 
-// ChatGPT is a subscription placeholder in this batch. Keep the new vendor
-// catalog API out of the existing subscription/OAuth path entirely.
-func TestProviderModelsDefersChatGPTSubscription(t *testing.T) {
-	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) { t.Error("subscription must not fetch a vendor catalog") })
-	err := config.SaveOAuthProvider(s.Root, config.Provider{Name: "account", OAuth: "chatgpt", Protocol: config.Responses, BaseURL: config.FromEnv(config.Getenv).BaseURL, Models: []config.ModelSpec{{Name: "account-model", Context: 128000}}})
+// A configured subscription uses the SIWC catalog, never an API-key catalog.
+func TestProviderModelsChatGPTSubscription(t *testing.T) {
+	calls := 0
+	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer scripted-account-token" {
+			t.Error("wrong SIWC request")
+		}
+		fmt.Fprint(w, `{"models":[{"slug":"runtime-only","visibility":"list","context_window":272000},{"slug":"gpt-5.4","visibility":"list","context_window":128000},{"slug":"hidden","visibility":"hidden"},{"slug":"runtime-only","visibility":"list"}]}`)
+	})
+	base := config.FromEnv(config.Getenv).BaseURL
+	err := config.SaveOAuthProvider(s.Root, config.Provider{Name: "account", OAuth: "chatgpt", Protocol: config.Responses, BaseURL: base, Models: []config.ModelSpec{{Name: "gpt-5.4", Context: 1000000}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	code, out := setupCall(t, srv, tok, "GET", "/api/providers/models?provider=account", "")
-	if code != 422 || !strings.Contains(fmt.Sprint(out["error"]), "后做") {
-		t.Fatalf("subscription boundary: %d %v", code, out)
+	if code != 422 || !strings.Contains(fmt.Sprint(out["error"]), "重新登录") || calls != 0 {
+		t.Fatalf("missing credential: %d %v calls=%d", code, out, calls)
+	}
+	backend, err := config.OAuthVault(s.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(base)
+	err = vault.SetOAuth(backend, "chatgpt", vault.OAuthCredential{AccessToken: "scripted-account-token", RefreshToken: "scripted-refresh", ExpiresAt: time.Now().Add(time.Hour)}, []string{u.Hostname()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	code, out = setupCall(t, srv, tok, "GET", "/api/providers/models?provider=account", "")
+	t.Logf("scripted SIWC catalog HTTP round trip: %s", time.Since(started))
+	raw, _ := json.Marshal(out)
+	var page struct {
+		Models []config.ModelInfo `json:"models"`
+	}
+	_ = json.Unmarshal(raw, &page)
+	if code != 200 || len(page.Models) != 2 || calls != 1 {
+		t.Fatalf("SIWC catalog: %d %s calls=%d", code, raw, calls)
+	}
+	if page.Models[0].Model != "gpt-5.4" || page.Models[0].Context != 1000000 || !page.Models[0].HostedSearch || page.Models[1].Model != "runtime-only" || page.Models[1].Context != 272000 {
+		t.Fatalf("SIWC capabilities: %s", raw)
+	}
+	if strings.Contains(string(raw), "scripted-account-token") {
+		t.Fatal("credential leaked")
+	}
+	saved, _ := config.Load(s.Root)
+	if len(saved.Providers[0].Models) != 1 {
+		t.Fatal("catalog changed registry")
+	}
+	info, err := vault.OAuthMetadata(context.Background(), backend, "chatgpt")
+	if err != nil || !info.Configured {
+		t.Fatal("catalog changed credential")
 	}
 }

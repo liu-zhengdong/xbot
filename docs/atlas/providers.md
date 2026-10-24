@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-24 @ 275f2d9 + 动态供应商模型名单
+verified: 2026-10-24 @ b62e46d + ChatGPT 订阅模型名单
 ---
 # 模型供应商与主动性评测
 
@@ -13,7 +13,7 @@ verified: 2026-10-24 @ 275f2d9 + 动态供应商模型名单
 
 ## 怎么运转
 
-- 设置详情只读取 API 供应商名单；新名单接口对 ChatGPT 订阅明确返回「后做」，不进入既有 SIWC 账号目录或授权路径。模型名单通过 `GET /api/providers/models?provider=<配置名>` 按需实时拉取，不写回配置。Completions / Responses 读取配置端点的 `/models`，用 Bearer 鉴权；Messages 用 `x-api-key` 与 `anthropic-version`，按 `has_more` / `last_id` 续页。能力仍复用 `ModelSpec` 的 vision、hosted 规则和窗口覆盖；未配置窗口使用 `compact.DefaultWindow`（128000），不从原型名单或 URL 推断能力。每次最多 15 秒、累计 1 MiB、2048 个模型，拒绝重定向、无效格式和分页循环；错误不透传上游响应或凭证。
+- 设置详情读取 API 供应商与 ChatGPT 订阅的实时名单。ChatGPT 登录和详情共用 SIWC 目录解析，读取 `models[].slug` 且只保留 `visibility: list`；未配置的模型窗口取目录中的 `context_window`，已有模型的能力与窗口覆盖保留。未登录时提示重新登录。模型名单通过 `GET /api/providers/models?provider=<配置名>` 按需实时拉取，不写回配置。Completions / Responses 读取配置端点的 `/models`，用 Bearer 鉴权；Messages 用 `x-api-key` 与 `anthropic-version`，按 `has_more` / `last_id` 续页。能力仍复用 `ModelSpec` 的 vision、hosted 规则和窗口覆盖；没有配置覆盖且目录未提供窗口时使用 `compact.DefaultWindow`（128000），不从原型名单或 URL 推断能力。每次最多 15 秒、累计 1 MiB、2048 个模型，拒绝重定向、无效格式和分页循环；错误不透传上游响应或凭证。
 - 供应商边界读写有序消息内容块，格式与旧串兼容规则见 [上下文与 transcript](context.md)。Chat Completions 适配器把文本和工具块投影回 `content`、`tool_calls`、`tool_call_id`；流式响应按文本和调用首次出现的顺序组装成块。Responses 则回放自己的原始输出条目，外厂内容降成文字摘要；不改 transcript 旧行。
 
 - `providers.json` 的供应商有 `protocol`：`chat_completions`、`responses`、`anthropic_messages`。缺省时已知 `openai` 推断为 Responses，`anthropic` 推断为 Messages，其余保留 Completions；协议不从 URL 推断。Messages 已接入 Claude API key 绑定，请求发往配置端点下的 `/messages`。`xbot provider add --protocol responses` 可写协议。
@@ -21,7 +21,7 @@ verified: 2026-10-24 @ 275f2d9 + 动态供应商模型名单
 - Responses 输出落入同一份内容块：`server_tool`、`citation`、`reasoning`，本地 function call 仍走原工具执行路径。厂商原始条目供同协议重放，网页只收步骤和引用，不暴露原始推理。流式步骤通过 SSE `part` 事件交给气泡，完成块按 transcript 重放。`trace.jsonl` 的 `hosted_calls` / `hosted_tool` 记录调用次数和名称。
 - 模型窗口和完整工具定义（含 hosted schema）一起计入上下文预算；可用工具集变化才追加环境差异。同绑定不重复公布。runner 端点保留协议及 hosted 能力。
 - Messages 复用同一份内容块。本地 `tool_use` / `tool_result` 沿用工具执行路径，图片嵌在对应工具结果中；不带工具定义的总结请求把工具历史转成文字。工具参数保留 JSON 数字精度；服务端搜索及结果只落内容块，调用块独占计次数，引用走既有网页投影。`thinking` / `redacted_thinking` 保留原始签名或密文，同协议回放；跨协议只发文字摘要。未知块即使来自同厂也降成文字摘要。`thinking` 沿用 `off` / `omit` 配置，不新增启用开关；启用状态下返回的签名可回放。服务端 `pause_turn` 在同一次超时预算内最多请求三次，超限明确报错；窗口占用保留最后一次请求用量，累计用量只进会话记账。图片按直连 API 的 base64 后 10 MB 单图限制处理，超限工具图片变为明确工具错误，用户图片在出网前报错。搜索结果按调用编号更新成功或失败状态，不重复计次；已发文字或 hosted 进度后不重试。
-- API key 只存环境变量名，不存明文。供应商也可用 `oauth: openrouter` 或 `oauth: chatgpt`，此时不填 `api_key_env`。OAuth HTTP 入口启动 PKCE（设置页现按 A-magpie 将 ChatGPT 登录标为「后做」，不提供授权按钮）；回调只监听运行 XBot 的电脑上的 `127.0.0.1`，十分钟过期。完成登录后，仍从 Bot 的模型行选择供应商和模型，旧 key 绑定不变。
+- API key 只存环境变量名，不存明文。供应商也可用 `oauth: openrouter` 或 `oauth: chatgpt`，此时不填 `api_key_env`。设置页订阅区的 ChatGPT 卡通过既有 OAuth HTTP 入口启动 PKCE，详情支持重新登录；OpenRouter 列表不增加登录入口；回调只监听运行 XBot 的电脑上的 `127.0.0.1`，十分钟过期。完成登录后，仍从 Bot 的模型行选择供应商和模型，旧 key 绑定不变。
 - OpenRouter 授权换取用户控制的 API key，复用 Completions；没有自动刷新协议，撤销或到期后重新登录可轮换凭证。ChatGPT 使用官方 Sign in with ChatGPT 动态注册，校验身份令牌签名、签发方、客户端、有效期与 nonce，并要求 ChatGPT 使用权限；从账号目录读取可用模型，复用现有 Responses（流式、`store: false`）。支持的模型以账号授权为准，不把订阅令牌当成普通 API key。
 - OAuth 凭证存在现有 vault 的共享命名空间 `_provider_accounts`；本地密文在 `<root>/vault/_provider_accounts/`，密钥沿用 `<root>/keys/vault/`；配置 daemon 时同样走它。访问、刷新、身份令牌和过期时间作为一条加密记录原子保存。临近过期时在 vault 内刷新，跨进程文件锁串行化轮换；registry 和 API 只见凭证名字或状态。模型请求只在鉴权头注入，正文中的工具占位示例不替换；域名校验和脱敏仍由 vault 负责。
 - 本机子代理共用已绑定的 Provider。独立 runner 暂不转交 OAuth 凭证；账号切换、远程浏览器登录和精细账号管理未提供。Claude 订阅第三方 OAuth 存在封号风险，本产品不提供按钮、菜单或可用 API 入口。

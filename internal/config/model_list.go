@@ -30,6 +30,17 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 		client.Transport = endpoint.HTTPClient.Transport
 	}
 	models := []ModelInfo{}
+	var accountModels []ModelSpec
+	if p.OAuth == "chatgpt" {
+		backend, err := OAuthVault(root)
+		if err != nil {
+			return nil, errors.New("请重新登录 ChatGPT")
+		}
+		accountModels, err = ChatGPTModels(ctx, backend, p.BaseURL)
+		if err != nil {
+			return nil, err
+		}
+	}
 	seen, cursors := map[string]bool{}, map[string]bool{}
 	remaining, cursor := int64(1<<20), ""
 	specs := make(map[string]ModelSpec, len(p.Models))
@@ -37,9 +48,20 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 		specs[spec.Name] = spec
 	}
 	for {
-		page, size, err := readCatalogPage(ctx, client, p, endpoint.APIKey, cursor, remaining)
-		if err != nil {
-			return nil, err
+		var page catalogPage
+		var size int64
+		if p.OAuth == "chatgpt" {
+			for _, spec := range accountModels {
+				page.Data = append(page.Data, catalogItem{ID: spec.Name})
+				if _, configured := specs[spec.Name]; !configured {
+					specs[spec.Name] = spec
+				}
+			}
+		} else {
+			page, size, err = readCatalogPage(ctx, client, p, endpoint.APIKey, cursor, remaining)
+			if err != nil {
+				return nil, err
+			}
 		}
 		remaining -= size
 		for _, item := range page.Data {
@@ -97,17 +119,15 @@ func catalogEndpoint(root, name string) (Provider, ModelConfig, error) {
 			return Provider{}, ModelConfig{}, errors.New("供应商尚未配置")
 		}
 		p = f.Providers[i]
-		// The settings subscription card is intentionally disabled. This endpoint
-		// lists API vendors only; existing SIWC authorization/catalog stays separate.
-		if p.OAuth == "chatgpt" {
-			return Provider{}, ModelConfig{}, errors.New("ChatGPT 订阅模型列表后做")
-		}
 		if len(p.Models) == 0 {
 			return Provider{}, ModelConfig{}, errors.New("供应商配置缺少模型")
 		}
 		endpoint, _, err = Resolve(root, name, p.Models[0].Name, Getenv)
 	}
 	if err != nil || strings.TrimSpace(endpoint.APIKey) == "" {
+		if p.OAuth == "chatgpt" {
+			return Provider{}, ModelConfig{}, errors.New("请重新登录 ChatGPT")
+		}
 		return Provider{}, ModelConfig{}, errors.New("请先配置供应商密钥或登录凭证")
 	}
 	if checkProviderBase(p.BaseURL) != nil || ValidProtocol(p.WireProtocol()) != nil {
@@ -116,12 +136,14 @@ func catalogEndpoint(root, name string) (Provider, ModelConfig, error) {
 	return p, endpoint, nil
 }
 
+type catalogItem struct {
+	ID string `json:"id"`
+}
+
 type catalogPage struct {
-	Data []struct {
-		ID string `json:"id"`
-	} `json:"data"`
-	HasMore bool   `json:"has_more"`
-	LastID  string `json:"last_id"`
+	Data    []catalogItem `json:"data"`
+	HasMore bool          `json:"has_more"`
+	LastID  string        `json:"last_id"`
 }
 
 func readCatalogPage(ctx context.Context, client *http.Client, p Provider, key, cursor string, remaining int64) (catalogPage, int64, error) {

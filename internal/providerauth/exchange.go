@@ -91,7 +91,7 @@ func (m *Manager) finish(ctx context.Context, a *attempt, code, issued string) e
 		return errors.New("无法保存授权凭证")
 	}
 	if a.kind == "chatgpt" {
-		p.Models, err = chatGPTModels(ctx, b, a.endpoints.API)
+		p.Models, err = config.ChatGPTModels(ctx, b, a.endpoints.API)
 		if err != nil {
 			return err
 		}
@@ -100,44 +100,4 @@ func (m *Manager) finish(ctx context.Context, a *attempt, code, issued string) e
 		return errors.New("无法保存供应商绑定，请检查同名配置")
 	}
 	return nil
-}
-
-func chatGPTModels(ctx context.Context, b vault.Backend, base string) ([]config.ModelSpec, error) {
-	// The SIWC account catalog uses models[].slug (unlike an API key catalog):
-	// https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
-	r, _ := http.NewRequestWithContext(ctx, "GET", base+"/models", nil)
-	r.Header.Set("Authorization", "Bearer {{secret:chatgpt}}")
-	h := &http.Client{Transport: vault.OAuthTransport(b, "chatgpt"), Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	res, err := h.Do(r)
-	if err != nil {
-		return nil, errors.New("读取 ChatGPT 模型列表失败，请重新登录")
-	}
-	defer res.Body.Close()
-	var catalog struct {
-		Models []struct {
-			Slug       string `json:"slug"`
-			Visibility string `json:"visibility"`
-			Context    int    `json:"context_window"`
-		} `json:"models"`
-	}
-	if res.StatusCode != 200 || json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&catalog) != nil {
-		return nil, errors.New("ChatGPT 模型列表不可用")
-	}
-	models := []config.ModelSpec{}
-	for _, m := range catalog.Models {
-		if m.Visibility != "list" || m.Slug == "" {
-			continue
-		}
-		if m.Context <= 0 {
-			m.Context = 128000
-		}
-		models = append(models, config.ModelSpec{Name: m.Slug, Context: m.Context})
-		if len(models) >= 256 {
-			break
-		}
-	}
-	if len(models) == 0 {
-		return nil, errors.New("账号没有可用模型")
-	}
-	return models, nil
 }
