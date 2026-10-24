@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"xbot/internal/config"
@@ -23,6 +24,7 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type item struct {
+		Brand         string             `json:"brand,omitempty"`
 		Name          string             `json:"name"`
 		Protocol      string             `json:"protocol"`
 		KeyEnv        string             `json:"api_key_env"`
@@ -33,7 +35,20 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []item{}
 	m := config.FromEnv(config.Getenv)
-	out = append(out, item{Name: "", Protocol: config.ChatCompletions, KeyEnv: "XBOT_API_KEY", KeyConfigured: strings.TrimSpace(m.APIKey) != "", Models: []config.ModelInfo{{ID: "/" + m.Model, Model: m.Model, Protocol: config.ChatCompletions, Context: 0, Vision: config.SeesImages(m.Model, nil), Available: true}}})
+	brand := ""
+	if u, err := url.Parse(m.BaseURL); err == nil {
+		switch u.Hostname() {
+		case "api.deepseek.com":
+			brand = "deepseek"
+		case "api.openai.com":
+			brand = "openai"
+		case "api.anthropic.com":
+			brand = "anthropic"
+		case "openrouter.ai":
+			brand = "openrouter"
+		}
+	}
+	out = append(out, item{Brand: brand, Name: "", Protocol: config.ChatCompletions, KeyEnv: "XBOT_API_KEY", KeyConfigured: strings.TrimSpace(m.APIKey) != "", Models: []config.ModelInfo{{ID: "/" + m.Model, Model: m.Model, Protocol: config.ChatCompletions, Context: 0, Vision: config.SeesImages(m.Model, nil), Available: true}}})
 	for _, p := range f.Providers {
 		row := item{Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
 		if p.OAuth != "" {

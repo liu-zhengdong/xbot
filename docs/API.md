@@ -374,7 +374,9 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 ## 供应商与模型绑定
 
-`GET /api/providers` 返回 `{providers:[{name,protocol,api_key_env,key_configured,models}]}`。只返回环境变量名和配置状态，不返回密钥值。模型项含 `model`、`context`、`vision`、`hosted_web_search`、`available`；`available` 表示协议可执行。默认端点的 `name` 为空，未知窗口为 0。`GET /api/models` 也带协议和能力字段，原认证过滤不变。
+`GET /api/providers` 返回 `{providers:[{name,protocol,api_key_env,key_configured,models}]}`。只返回环境变量名和配置状态，不返回密钥值。模型项含 `model`、`context`、`vision`、`hosted_web_search`、`available`；`available` 表示协议可执行。默认端点的 `name` 为空，`brand` 在能识别默认端点品牌时提供，仅供图标和名称展示，协议不变；未知窗口为 0。`GET /api/models` 也带协议和能力字段，原认证过滤不变。
+
+`GET /api/providers/models?provider=<配置名>`（需登录）实时拉取该供应商模型名单；空配置名表示默认端点；ChatGPT 订阅不属于此接口，本批返回 422「后做」。返回 `{models:[...]}`，字段同模型能力项。名单来自厂商，能力来自现有 ModelSpec 规则；未知窗口为仓内默认 128000。未配密钥、网络失败、非法或超限名单返回 422 短错误；成功但厂商无模型时返回空数组。该读取不会增加配置、认证或绑定。
 
 `PUT /api/bots/{name}/binding` 接收 `{provider,model}`，成功返回保存的二元绑定。二者为空时清除绑定。未知模型、协议或缺少密钥为 400；Bot 正在工作为 409。成功后下一轮重建内核，不重写 transcript。
 

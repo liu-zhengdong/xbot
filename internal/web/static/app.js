@@ -6490,7 +6490,7 @@
         const data = await api("/api/permissions");
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
       } else if (section === "providers") {
- await window.XBotProviders.settings({api,host:$("settings-providers")});
+ await window.XBotProviders.settings({api,host:$("settings-providers"),isCurrent:()=>request===settingsRequest});
  } else if (section === "devices") {
         await window.xbotDevices.mount();
       } else if (section === "apps") {

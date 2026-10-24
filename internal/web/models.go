@@ -22,3 +22,16 @@ func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
+
+// Catalog reads are explicit: opening a provider detail or retrying fetches once.
+func (s *Server) providerModels(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	models, err := config.ProviderModels(r.Context(), s.Root, r.URL.Query().Get("provider"))
+	if err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": models})
+}

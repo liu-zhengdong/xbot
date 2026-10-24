@@ -43,61 +43,106 @@
     for (const p of cs) { const c = p.citation, url = safeURL(c.url), li = node("li"), a = node("a", "", c.title || url); a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.append(node("small", "", new URL(url).hostname)); li.append(a); list.append(li); }
     host.append(list);
   }
-  async function settings({ api, host }) {
-    let data = await api("/api/providers");
-    host.replaceChildren();
-    const list = node("div", "provider-list"); host.append(list);
-    function capability(p) {
-      host.replaceChildren(button("返回供应商", "secondary", () => paint()), node("h3", "provider-heading", pname(p)), badge(p.protocol));
-      const table = node("table", "provider-table"), head = node("tr");
-      for (const t of ["模型", "厂商搜索", "看图", "窗口"]) head.append(node("th", "", t)); table.append(head);
-      for (const m of p.models) { const row = node("tr"); for (const t of [m.model, m.hosted_web_search ? "✓" : "—", m.vision ? "✓" : "—", m.context ? m.context.toLocaleString() : "—"]) row.append(node("td", "", t)); table.append(row); }
-      host.append(table);
+  const brands = Object.assign(Object.create(null), { deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic", openrouter: "OpenRouter" });
+  const mounts = new WeakMap();
+  function glyph(brand) {
+    if (!brands[brand]) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8");
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"); svg.append(path); svg.classList.add("provider-glyph"); svg.setAttribute("aria-hidden", "true"); return svg;
     }
-    function paint() {
-      host.replaceChildren();list.replaceChildren();host.append(list);
-      for (const p of data.providers) {
-        const row = button("", "provider-row", () => capability(p));
-        const info = node("span"); info.append(node("strong", "", pname(p)));
-        const meta = node("span", "provider-meta"); meta.append(badge(p.protocol), node("span", "", (p.oauth ? (p.auth_error || (p.key_configured ? "已登录" : "请重新登录")) : (p.key_configured ? "密钥已配置" : "密钥未配置")) + " · " + p.models.length + " 个模型"));
-        if (p.models.some(m => m.hosted_web_search)) meta.append(node("span", "provider-hosted", "hosted 搜索"));
-        info.append(meta);row.append(info, node("span", "", "查看能力"));list.append(row);
-      }
-      host.append(node("h4", "provider-heading", "登录方式"));
-      const status = node("p", "provider-meta"); status.setAttribute("role", "status");
-      const loginButtons = [];
-      for (const [kind, label] of [["chatgpt", "用 ChatGPT 登录"], ["openrouter", "用 OpenRouter 登录"]]) {
-        const oauth = button(label, "provider-row provider-oauth", async () => {
-          const inApp = document.documentElement.classList.contains("in-app");
-          const popup = inApp ? null : window.open("about:blank", "_blank");
-          if (!inApp && !popup) { status.textContent = "请允许打开登录窗口后重试。"; return; }
-          if (popup) popup.opener = null;
-          loginButtons.forEach(b => b.disabled = true);
-          try {
-            const {url} = await api(`/api/providers/oauth/${kind}/start`, {method:"POST", body:{}});
-            if (inApp) {
-              // MyGo opens http(s) URLs in the system browser and returns no handle.
-              window.open(url, "_blank", "noopener");
-              const reopen = node("a", "", "重新打开登录页面");
-              reopen.href = url; reopen.target = "_blank"; reopen.rel = "noopener noreferrer";
-              status.replaceChildren(node("span", "", "请在系统浏览器完成登录。"), reopen);
-            } else { popup.location.href = url; status.textContent = "请在新窗口完成登录。"; }
-            const deadline = Date.now() + 10 * 60 * 1000;
-            while (Date.now() < deadline && status.isConnected && !host.closest("[hidden]")) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              const result = await api(`/api/providers/oauth/${kind}/status`);
-              if (result.state === "succeeded") { data = await api("/api/providers"); paint(); return; }
-              if (result.state === "failed") throw new Error(result.error);
-              if (popup?.closed) { status.textContent = "登录窗口已关闭。可重新打开，继续本次登录。"; return; }
-            }
-          } catch (err) { status.textContent = err.message || String(err); }
-          finally { loginButtons.forEach(b => b.disabled = false); }
-        });
-        loginButtons.push(oauth); host.append(oauth);
-      }
-      host.append(status, node("p", "provider-meta", "请在运行 XBot 的电脑上登录。ChatGPT 使用账号可用模型；OpenRouter 使用其账户余额。登录后，在 Bot 的模型行选择绑定。"));
+    const img = node("img", "provider-glyph provider-glyph-" + brand); img.src = `/provider-icons/${brand}.svg`; img.alt = ""; return img;
+  }
+  function lineIcon(kind) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round"); svg.setAttribute("aria-hidden", "true");
+    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0" };
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
+  }
+  async function settings({ api, host, isCurrent = () => true }) {
+    const mount = {}; mounts.set(host, mount);
+    const alive = () => mounts.get(host) === mount && isCurrent();
+    let data, query = "", selected = "", revision = 0;
+    const key = p => p.name ?? p.brand;
+    function entries() {
+      const rows = data.providers.filter(p => p.oauth !== "chatgpt").map(p => {
+        const brand = p.brand || (brands[p.name.toLowerCase()] ? p.name.toLowerCase() : "");
+        return { ...p, brand, title: p.name && p.name.toLowerCase() !== brand ? p.name : brands[brand] || pname(p) };
+      });
+      for (const brand of Object.keys(brands)) if (!rows.some(p => p.brand === brand)) rows.push({ brand, title: brands[brand], key_configured: false, protocol: {openai:"responses",anthropic:"anthropic_messages"}[brand] || "chat_completions" });
+      for (const p of rows) if (p.name === "" && rows.some(other => other !== p && other.brand === p.brand)) p.title += "（默认）";
+      const order = Object.keys(brands);
+      return rows.sort((a, b) => (order.indexOf(a.brand) < 0 ? 99 : order.indexOf(a.brand)) - (order.indexOf(b.brand) < 0 ? 99 : order.indexOf(b.brand)));
     }
-    paint();
+    function state(message, retry) {
+      const box = node("div", "provider-empty"); box.setAttribute("role", "status"); box.append(node("p", "", message));
+      if (retry) box.append(button("重试", "btn", retry)); return box;
+    }
+    function section(title, subtitle) {
+      const part = node("section", "provider-section"), h = node("h3", "", title);
+      part.append(h, node("p", "provider-section-note", subtitle)); return part;
+    }
+    function paint(focusKey) {
+      if (!alive()) return; ++revision;
+      host.replaceChildren(node("h2", "provider-title", "模型与供应商"), node("p", "setlead", "管理密钥与可用模型。每个 Bot 绑定一对「供应商 + 模型」。"));
+      const tools = node("div", "provider-tools"), search = node("label", "provider-search"); search.append(lineIcon("search"));
+      const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query; search.append(input); tools.append(search); host.append(tools);
+      const subscription = section("订阅", "登录即可，无需密钥"), subgrid = node("div", "provider-grid");
+      const chatgpt = button("", "provider-card provider-subscription", null); chatgpt.disabled = true;
+      chatgpt.append(node("span", "provider-glyph provider-chatgpt-glyph"), node("strong", "", "ChatGPT"), node("span", "provider-later", "后做")); subgrid.append(chatgpt); subscription.append(subgrid);
+      const vendors = section("供应商", "模型厂商的 API"), grid = node("div", "provider-grid"); vendors.append(grid); host.append(subscription, vendors);
+      function filter() {
+        const term = query.trim().toLowerCase(); subscription.hidden = !"chatgpt".includes(term); grid.replaceChildren();
+        for (const p of entries().filter(p => p.title.toLowerCase().includes(term))) {
+          const card = button("", "provider-card", () => { selected = key(p); return capability(p); }); card.setAttribute("aria-current", String(selected === key(p))); card.append(glyph(p.brand), node("strong", "", p.title));
+          if (p.key_configured) { const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已配置"); card.append(dot); }
+          grid.append(card); if (focusKey === key(p)) { card.focus(); focusKey = undefined; }
+        }
+        if (!grid.children.length) grid.append(state("没有匹配的供应商"));
+      }
+      input.oninput = () => { query = input.value; filter(); }; filter();
+    }
+    async function capability(p, refresh = false) {
+      if (!alive()) return; const request = ++revision;
+      const current = () => alive() && request === revision;
+      const back = button("", "provider-back", () => paint(key(p))); back.append(lineIcon("back"), node("span", "", "模型与供应商"));
+      const heading = node("div", "provider-detail-heading"), info = node("div", "provider-detail-info"), title = node("div", "provider-detail-title"); title.append(node("h2", "", p.title), badge(p.protocol));
+      const status = node("div", "provider-status"); info.append(title, status); heading.append(glyph(p.brand), info);
+      const body = node("div", "provider-models"); host.replaceChildren(back, heading, body); heading.tabIndex = -1; heading.focus({preventScroll:true});
+      function keyStatus() {
+        status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : "密钥未配置"));
+      }
+      keyStatus(); body.append(state("正在拉取模型…"));
+      try {
+        if (refresh) { data = await api("/api/providers"); if (!current()) return; p = entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
+        if (!p.key_configured) {
+          body.replaceChildren(state(p.api_key_env ? `请先配置 ${p.api_key_env}，再拉取模型。` : "请先通过 xbot provider add 配置供应商和密钥，再拉取模型。", () => capability(p, true))); return;
+        }
+        const result = await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
+        if (!current()) return;
+        const models = result.models;
+        body.replaceChildren(node("h3", "provider-model-count", `模型 · ${models.length}`));
+        if (!models.length) { body.append(state("供应商未返回可用模型。", () => capability(p, true))); return; }
+        if (models.some(m => m.hosted_web_search)) status.append(node("span", "provider-search-note", "有 hosted 时本绑定不再挂本地 web_search"));
+        const rows = node("div", "provider-model-list");
+        for (const m of models) {
+          const row = node("div", "provider-model-row"), chips = node("div", "provider-chips");
+          for (const [kind, supported, label] of [["search", m.hosted_web_search, "hosted"], ["vision", m.vision, "vision"]]) {
+            const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); if (supported) chip.append(lineIcon(kind)); chip.append(node("span", "", (supported ? "" : "无 ") + label)); chips.append(chip);
+          }
+          const context = m.context >= 1000000 ? `${+(m.context / 1000000).toFixed(2)}M` : `${+(m.context / 1000).toFixed(1)}K`;
+          const windowChip = node("span", "provider-chip provider-window", context); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);
+          row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
+        }
+        body.append(rows);
+      } catch { if (current()) body.replaceChildren(state("拉取模型失败，请检查供应商配置和网络。", () => capability(p, true))); }
+    }
+    async function load() {
+      host.replaceChildren(state("正在读取供应商…"));
+      try { data = await api("/api/providers"); if (!alive()) return; selected = key(entries().find(p => p.key_configured) || entries()[0]); paint(); }
+      catch { if (alive()) host.replaceChildren(state("读取供应商失败。", load)); }
+    }
+    await load();
   }
   let activeDialog = null;
   async function open({ api, data, onBound, manage, opener }) {
