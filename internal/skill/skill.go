@@ -3,12 +3,14 @@
 package skill
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
@@ -226,39 +228,76 @@ func parse(raw string) (name, desc, body string) {
 // src may be a skill directory, a SKILL.md file, or a symlink to either.
 // The copy is a regular file. A valid directory name becomes the slug; otherwise the frontmatter name is used.
 func Import(root, owner, src string) (string, error) {
-	owner = strings.TrimSpace(owner)
-	if !ValidOwner(owner) {
-		return "", fmt.Errorf("skill: bad owner")
-	}
 	st, err := os.Stat(src)
 	if err != nil {
 		return "", err
 	}
 	file := src
-	slug := ""
+	dir := ""
 	if st.IsDir() {
 		file = filepath.Join(src, "SKILL.md")
-		slug = filepath.Base(src)
+		dir = filepath.Base(src)
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
 		return "", err
 	}
+	res, err := ImportData(root, owner, dir, raw, true)
+	return res.Slug, err
+}
+
+// ErrExists means the library already holds a skill with that slug and the import did not ask to overwrite.
+var ErrExists = errors.New("skill: already exists")
+
+// ErrNoMeta means SKILL.md has no name or description.
+var ErrNoMeta = errors.New("skill: SKILL.md needs name and description")
+
+// ErrBadSlug means neither the folder name nor the frontmatter name can be a skill directory name.
+var ErrBadSlug = errors.New("skill: bad slug")
+
+// Imported is what an import produced. Name is the human name, for messages.
+type Imported struct {
+	Slug string
+	Name string
+}
+
+// importMu makes the exists-check and the write one step, so two imports of the same name
+// cannot both pass the check. The write itself stays atomic for readers.
+var importMu sync.Mutex
+
+// ImportData is Import for a SKILL.md already in memory, with dir the name of the folder it came from.
+// Without overwrite an existing skill is left alone and ErrExists comes back with its name filled in.
+func ImportData(root, owner, dir string, raw []byte, overwrite bool) (Imported, error) {
+	owner = strings.TrimSpace(owner)
+	if !ValidOwner(owner) {
+		return Imported{}, fmt.Errorf("skill: bad owner")
+	}
 	name, desc, _ := parse(string(raw))
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(desc) == "" || !strings.HasPrefix(strings.TrimSpace(string(raw)), "---") {
-		return "", fmt.Errorf("skill: SKILL.md needs name and description")
+		return Imported{}, ErrNoMeta
 	}
+	slug := dir
 	if !ValidSlug(slug) {
 		slug = strings.TrimSpace(name)
 	}
 	if !ValidSlug(slug) {
-		return "", fmt.Errorf("skill: bad slug %q", slug)
+		return Imported{}, fmt.Errorf("%w %q", ErrBadSlug, slug)
 	}
+	res := Imported{Slug: slug, Name: strings.TrimSpace(name)}
 	dest := filepath.Join(OwnerDir(root, owner), slug, "SKILL.md")
-	if err := fsutil.WriteAtomic(dest, raw, 0600); err != nil {
-		return "", err
+	importMu.Lock()
+	defer importMu.Unlock()
+	if !overwrite {
+		if _, err := os.Stat(dest); err == nil {
+			return res, ErrExists
+		} else if !os.IsNotExist(err) {
+			return Imported{}, err
+		}
 	}
-	return slug, nil
+	if err := fsutil.WriteAtomic(dest, raw, 0600); err != nil {
+		return Imported{}, err
+	}
+	return res, nil
 }
 
 // Write creates or replaces one skill. The file mode is 0600.

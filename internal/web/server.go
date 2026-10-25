@@ -96,6 +96,7 @@ type Server struct {
 	// setupMu serializes the desktop first-run key setup.
 	setupMu     sync.Mutex
 	searchMu    sync.Mutex
+	skillMu     sync.Mutex // one on/off switch at a time: each loads and saves the bot config
 	searchProbe func(context.Context, string, string) error
 	tabs        map[string]*tabState
 
@@ -202,6 +203,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
 	mux.HandleFunc("GET /api/links", s.listCatalog)
 	mux.HandleFunc("GET /api/bots/{name}/links", s.listBotLinks)
+	mux.HandleFunc("GET /api/skills", s.listLibrary)
+	mux.HandleFunc("GET /api/skills/{slug}", s.readLibrarySkill)
+	mux.HandleFunc("POST /api/skills/import", s.importSkill)
+	mux.HandleFunc("GET /skills.js", s.static("static/skills.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /skills.css", s.static("static/skills.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/bots/{name}/skills", s.listSkills)
 	mux.HandleFunc("GET /api/bots/{name}/skills/{slug}", s.readSkill)
 	mux.HandleFunc("POST /api/bots/{name}/skills/{slug}/disable", s.disableSkill)
