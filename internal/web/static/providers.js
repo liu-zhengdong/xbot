@@ -43,7 +43,11 @@
     for (const p of cs) { const c = p.citation, url = safeURL(c.url), li = node("li"), a = node("a", "", c.title || url); a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.append(node("small", "", new URL(url).hostname)); li.append(a); list.append(li); }
     host.append(list);
   }
-  const brands = Object.assign(Object.create(null), { deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic", openrouter: "OpenRouter" });
+  const brands = Object.assign(Object.create(null), {
+    deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic", openrouter: "OpenRouter",
+    gemini: "Google Gemini", vertex: "Vertex AI", xai: "xAI", kimi: "Kimi", "kimi-code": "Kimi Code", zhipu: "Zhipu GLM", zai: "Z.ai",
+    minimax: "MiniMax", stepfun: "StepFun", mimo: "Xiaomi MiMo", qianfan: "Baidu Qianfan", tencent: "Tencent Cloud"
+  });
   const mounts = new WeakMap();
   function glyph(brand) {
     if (!brands[brand]) {
@@ -64,12 +68,13 @@
     const alive = () => mounts.get(host) === mount && isCurrent();
     let data, query = "", selected = "", revision = 0, loginRequest = null;
     const key = p => p.name ?? p.brand;
+    const vendorOf = brand => ((data && data.vendors) || []).find(v => v.brand === brand);
     function entries() {
       const rows = data.providers.filter(p => p.oauth !== "chatgpt").map(p => {
         const brand = p.brand || (brands[p.name.toLowerCase()] ? p.name.toLowerCase() : "");
         return { ...p, brand, title: p.name && p.name.toLowerCase() !== brand ? p.name : brands[brand] || pname(p) };
       });
-      for (const brand of Object.keys(brands)) if (!rows.some(p => p.brand === brand)) rows.push({ brand, title: brands[brand], key_configured: false, protocol: {openai:"responses",anthropic:"anthropic_messages"}[brand] || "chat_completions" });
+      for (const brand of Object.keys(brands)) if (!rows.some(p => p.brand === brand)) rows.push({ brand, title: brands[brand], key_configured: false, protocol: {openai:"responses",anthropic:"anthropic_messages"}[brand] || vendorOf(brand)?.protocol || "chat_completions" });
       for (const p of rows) if (p.name === "" && rows.some(other => other !== p && other.brand === p.brand)) p.title += "（默认）";
       const order = Object.keys(brands);
       return rows.sort((a, b) => (order.indexOf(a.brand) < 0 ? 99 : order.indexOf(a.brand)) - (order.indexOf(b.brand) < 0 ? 99 : order.indexOf(b.brand)));
@@ -172,6 +177,20 @@
       input.oninput = () => { query = input.value; filter(); }; filter();
       if (!subscription.hidden && (focusKey === "chatgpt" || focusKey === key(subscriptionEntry()))) chatgpt.focus();
     }
+    function keyForm(p, vendor, saved) {
+      const form = node("form", "provider-key"), input = node("input"), note = node("p", "provider-login-note");
+      input.type = "password"; input.autocomplete = "off"; input.spellcheck = false; input.placeholder = "粘贴密钥"; input.setAttribute("aria-label", `${vendor.title} 密钥`);
+      const save = button("保存密钥", "btn primary", () => {}); save.type = "submit"; note.setAttribute("role", "status");
+      form.append(node("p", "", "请先配置密钥，再拉取模型。"), input, save, note);
+      let saving = false;
+      form.onsubmit = async ev => {
+        ev.preventDefault(); const value = input.value.trim(); if (!value || saving) return;
+        saving = true; save.disabled = input.disabled = true; note.textContent = "正在保存…";
+        try { await api(`/api/providers/${encodeURIComponent(vendor.brand)}/key`, { method: "PUT", body: { key: value } }); input.value = ""; saved(); }
+        catch (err) { note.textContent = err.message || "保存失败，请重试"; save.disabled = input.disabled = false; saving = false; }
+      };
+      return form;
+    }
     async function capability(p, refresh = false) {
       if (!alive()) return; const request = ++revision;
       const current = () => alive() && request === revision;
@@ -192,14 +211,21 @@
         if (refresh) { data = await api("/api/providers"); if (!current()) return; p = p.oauth === "chatgpt" ? subscriptionEntry() : entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
-          body.replaceChildren(state(p.api_key_env ? `请先配置 ${p.api_key_env}，再拉取模型。` : "请先通过 xbot provider add 配置供应商和密钥，再拉取模型。", () => capability(p, true))); return;
+          const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
+          if (vendor && vendor.key_login) {
+            body.replaceChildren(state("这家供应商需要先登录 Google Cloud，暂时不能直接填密钥使用。"));
+            if (vendor.models.length) { body.append(node("h3", "provider-model-count", `默认模型 · ${vendor.models.length}`)); const rows = node("div", "provider-model-list"); for (const name of vendor.models) { const row = node("div", "provider-model-row"); row.append(node("strong", "provider-model-name", name)); rows.append(row); } body.append(rows); }
+            return;
+          }
+          if (vendor) { body.replaceChildren(keyForm(p, vendor, () => capability(p, true))); return; }
+          body.replaceChildren(state("请先配置密钥，再拉取模型。", () => capability(p, true))); return;
         }
         const result = await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
         if (!current()) return;
         const models = result.models;
         body.replaceChildren(node("h3", "provider-model-count", `模型 · ${models.length}`));
         if (!models.length) { body.append(state("供应商未返回可用模型。", () => capability(p, true))); return; }
-        if (models.some(m => m.hosted_web_search)) status.append(node("span", "provider-search-note", "有 hosted 时本绑定不再挂本地 web_search"));
+        if (models.some(m => m.hosted_web_search)) status.append(node("span", "provider-search-note", "已用厂商搜索，本绑定不再使用本地搜索"));
         const rows = node("div", "provider-model-list");
         for (const m of models) {
           const row = node("div", "provider-model-row"), chips = node("div", "provider-chips");
@@ -255,7 +281,7 @@
           for (const m of p.models) {
             const b = button("", "binding-option", () => choose(p,m,b));b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
             b.append(node("strong", "", m.model));const meta = node("span", "provider-meta");meta.append(badge(protocol),node("span", "", detail(m)));b.append(meta);
-            if (!m.available || !p.key_configured) {b.disabled = true;b.append(node("small", "", !m.available ? "该协议后做" : p.oauth ? "请先重新登录" : "请先配置 " + p.api_key_env));}
+            if (!m.available || !p.key_configured) {b.disabled = true;b.append(node("small", "", !m.available ? "该协议后做" : p.oauth ? "请先重新登录" : "请先配置密钥"));}
             options.push(b);group.append(b);
             if (p.name === (data.provider || "") && m.model === data.model && !b.disabled) choose(p,m,b);
           }

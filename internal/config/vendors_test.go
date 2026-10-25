@@ -1,0 +1,103 @@
+package config
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestVendorDefaultsAreValid(t *testing.T) {
+	want := []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent"}
+	if len(Vendors) != len(want) {
+		t.Fatalf("vendors: %d", len(Vendors))
+	}
+	seen := map[string]bool{}
+	for i, v := range Vendors {
+		if v.Brand != want[i] || seen[v.Brand] {
+			t.Fatalf("order/dup at %d: %s", i, v.Brand)
+		}
+		seen[v.Brand] = true
+		if v.Title == "" || len(v.Models) == 0 {
+			t.Fatalf("%s: missing title or models", v.Brand)
+		}
+		if v.KeyLogin {
+			continue
+		}
+		p := Provider{Name: v.Brand, Protocol: v.Protocol, BaseURL: v.BaseURL, APIKeyEnv: v.KeyEnv, Models: v.Models}
+		if err := validateProvider(p, true); err != nil {
+			t.Fatalf("%s: %v", v.Brand, err)
+		}
+		if !strings.HasPrefix(v.BaseURL, "https://") {
+			t.Fatalf("%s: base_url %q", v.Brand, v.BaseURL)
+		}
+		if got := BrandForBase(v.BaseURL); got != v.Brand {
+			t.Fatalf("%s: BrandForBase(%s)=%q", v.Brand, v.BaseURL, got)
+		}
+		for _, m := range v.Models {
+			if err := validateModel(m); err != nil {
+				t.Fatalf("%s: %v", v.Brand, err)
+			}
+		}
+	}
+	if !Vendors[1].KeyLogin || Vendors[1].BaseURL != "" {
+		t.Fatal("vertex must not pretend to have a key route")
+	}
+}
+
+func TestBrandForHostKeepsExistingFour(t *testing.T) {
+	for host, want := range map[string]string{
+		"api.deepseek.com": "deepseek", "api.openai.com": "openai", "api.anthropic.com": "anthropic", "openrouter.ai": "openrouter",
+		"token-plan-sgp.xiaomimimo.com": "mimo", "API.X.AI.": "xai", "evil.example": "", "": "", "xiaomimimo.com.evil.example": "",
+	} {
+		if got := BrandForHost(host); got != want {
+			t.Errorf("%q: %q, want %q", host, got, want)
+		}
+	}
+}
+
+func TestAddVendorIsIdempotentAndKeepsUserEntry(t *testing.T) {
+	root := t.TempDir()
+	p, err := AddVendor(root, "xai")
+	if err != nil || p.Name != "xai" || p.APIKeyEnv != "XAI_API_KEY" || p.BaseURL != "https://api.x.ai/v1" || p.WireProtocol() != ChatCompletions {
+		t.Fatalf("add: %+v %v", p, err)
+	}
+	if _, err := AddVendor(root, "xai"); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := Load(root)
+	if len(f.Providers) != 1 || len(f.Providers[0].Models) != 1 {
+		t.Fatalf("not idempotent: %+v", f)
+	}
+	// A second default model lands in the same entry, and a user's own entry wins.
+	if _, err := AddVendor(root, "tencent"); err != nil {
+		t.Fatal(err)
+	}
+	f, _ = Load(root)
+	if tc := f.Providers[indexOf(f.Providers, "tencent")]; len(tc.Models) != 2 {
+		t.Fatalf("models: %+v", tc.Models)
+	}
+	if err := Add(root, Provider{Name: "zai", Protocol: ChatCompletions, BaseURL: "https://proxy.example/v1", APIKeyEnv: "MY_ZAI_KEY"}, ModelSpec{Name: "mine", Context: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	p, err = AddVendor(root, "zai")
+	if err != nil || p.BaseURL != "https://proxy.example/v1" || p.APIKeyEnv != "MY_ZAI_KEY" {
+		t.Fatalf("overwrote user entry: %+v %v", p, err)
+	}
+	raw, _ := os.ReadFile(Path(root))
+	if strings.Contains(string(raw), "sk-") {
+		t.Fatal("secret-looking text in providers.json")
+	}
+}
+
+func TestAddVendorRefusesVertexAndUnknown(t *testing.T) {
+	root := t.TempDir()
+	if _, err := AddVendor(root, "vertex"); err != ErrNoKeyRoute {
+		t.Fatalf("vertex: %v", err)
+	}
+	if _, err := AddVendor(root, "nope"); err == nil {
+		t.Fatal("unknown brand accepted")
+	}
+	if _, err := os.Stat(Path(root)); err == nil {
+		t.Fatal("registry written for a refused vendor")
+	}
+}

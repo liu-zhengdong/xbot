@@ -72,6 +72,7 @@ const fixture={calls:[],fail:false,empty:false,large:false,oauthPolls:0};
 window.open=()=>({opener:null,closed:false,location:{replace(){}},close(){this.closed=true}});
 const providers=[{name:'',brand:'deepseek',protocol:'chat_completions',api_key_env:'XBOT_API_KEY',key_configured:true,models:[]},{name:'openai',protocol:'responses',api_key_env:'OPENAI_API_KEY',key_configured:true,models:[]},{name:'anthropic',protocol:'anthropic_messages',api_key_env:'ANTHROPIC_API_KEY',key_configured:true,models:[]}];
 if(['loggedin','chatgptdetail'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
+const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],['kimi','Kimi'],['kimi-code','Kimi Code'],['zhipu','Zhipu GLM'],['zai','Z.ai'],['minimax','MiniMax'],['stepfun','StepFun'],['mimo','Xiaomi MiMo'],['qianfan','Baidu Qianfan'],['tencent','Tencent Cloud']].map(([brand,title])=>({brand,title,protocol:'chat_completions',key_login:brand==='vertex',models:['m1','m2']}));
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(path,opts={})=>{
  fixture.calls.push(path);
@@ -79,7 +80,8 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/bots/status'||path==='/api/bots')return json({bots:[]});
  if(path==='/api/notifications')return json({notifications:[]});
  if(path==='/api/groups')return json({groups:[],folders:[]});
- if(path==='/api/providers')return json({providers});
+ if(path==='/api/providers')return json({providers,vendors});
+ if(path==='/api/providers/xai/key'){fixture.saves=(fixture.saves||0)+1;if(scene==='keyfail')return json({error:'这不像一个 API key'},400);providers.push({name:'xai',brand:'xai',protocol:'chat_completions',api_key_env:'XAI_API_KEY',key_configured:true,models:[]});return json({status:'ok',provider:'xai'})}
  if(path==='/api/providers/oauth/chatgpt/start'){fixture.oauthPolls=0;return json({url:'https://auth.example/authorize'})}
  if(path==='/api/providers/oauth/chatgpt/status'){
   if(scene==='loginerror')return json({state:'failed',error:'private-upstream-body'});
@@ -112,7 +114,15 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
   document.body.dataset.testResult='passed';return;
  }
  assert(!card('ChatGPT').disabled,'subscription login disabled');
- assert(document.querySelectorAll('.provider-card').length===5,'missing provider');
+ assert(document.querySelectorAll('.provider-card').length===17,'missing provider');
+ for(const t of ['Google Gemini','Vertex AI','xAI','Kimi Code','Zhipu GLM','Z.ai','MiniMax','StepFun','Xiaomi MiMo','Baidu Qianfan','Tencent Cloud'])assert(card(t),'missing '+t);
+ assert([...document.querySelectorAll('.provider-card img')].every(i=>/provider-icons\/[a-z-]+\.svg$/.test(i.getAttribute('src'))),'bad glyph');
+ card('Vertex AI').click();await waitFor(()=>$('.provider-empty'),'vertex state');assert(!$('.provider-key')&&$('.provider-empty').textContent.includes('Google Cloud'),'vertex shown as keyable');assert(document.querySelectorAll('.provider-model-row').length===2,'vertex default models');
+ $('.provider-back').click();
+ card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
+ const typed=$('.provider-key input');assert(typed.type==='password','key input visible');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
+ await waitFor(()=>$('.provider-model-row'),'models after key');assert(fixture.saves===1,'key saved once');assert($('.provider-status').textContent.includes('密钥已配置'),'status after key');
+ $('.provider-back').click();assert(card('xAI').querySelector('[aria-label="已配置"]'),'configured dot');
  const before=fixture.calls.length;card('OpenRouter').click();await waitFor(()=>$('.provider-empty'),'missing key state');assert(!fixture.calls.slice(before).some(p=>p.startsWith('/api/providers/models')),'unconfigured provider requested models');
  $('.provider-back').click();const input=$('.provider-search input');input.focus();input.value='OpenAI';input.dispatchEvent(new Event('input'));assert(document.activeElement===input,'search lost focus');
  assert(document.querySelectorAll('.provider-card:not(:disabled)').length===2,'search failed');card('OpenAI').click();await waitFor(()=>$('.provider-model-row'),'models missing');

@@ -98,7 +98,9 @@ type Server struct {
 	pushHTTP *http.Client
 	oauth    *providerauth.Manager
 	// setupMu serializes the desktop first-run key setup.
-	setupMu     sync.Mutex
+	setupMu sync.Mutex
+	// vendorMu serializes adding a built-in vendor and saving its key.
+	vendorMu    sync.Mutex
 	searchMu    sync.Mutex
 	skillMu     sync.Mutex // one on/off switch at a time: each loads and saves the bot config
 	searchProbe func(context.Context, string, string) error
@@ -177,12 +179,13 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/providers", s.listProviders)
 	mux.HandleFunc("GET /api/providers/models", s.providerModels)
+	mux.HandleFunc("PUT /api/providers/{brand}/key", s.putVendorKey)
 	mux.HandleFunc("POST /api/providers/oauth/{kind}/start", s.oauthStart)
 	mux.HandleFunc("GET /api/providers/oauth/{kind}/status", s.oauthStatus)
 	mux.HandleFunc("PUT /api/bots/{name}/binding", s.bindModel)
 	mux.HandleFunc("GET /providers.js", s.static("static/providers.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /providers.css", s.static("static/providers.css", "text/css; charset=utf-8"))
-	for _, brand := range []string{"deepseek", "openai", "anthropic", "openrouter"} {
+	for _, brand := range providerBrands() {
 		mux.HandleFunc("GET /provider-icons/"+brand+".svg", s.static("static/provider-icons/"+brand+".svg", "image/svg+xml"))
 	}
 	mux.HandleFunc("GET /api/bots", s.listBots)

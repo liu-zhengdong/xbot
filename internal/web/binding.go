@@ -2,12 +2,42 @@ package web
 
 import (
 	"net/http"
-	"net/url"
 	"strings"
 
 	"xbot/internal/config"
 	"xbot/internal/vault"
 )
+
+// providerBrands are the brand ids that have a grid icon.
+func providerBrands() []string {
+	out := []string{"deepseek", "openai", "anthropic", "openrouter"}
+	for _, v := range config.Vendors {
+		out = append(out, v.Brand)
+	}
+	return out
+}
+
+type vendorItem struct {
+	Brand    string   `json:"brand"`
+	Title    string   `json:"title"`
+	Protocol string   `json:"protocol"`
+	KeyLogin bool     `json:"key_login,omitempty"`
+	Models   []string `json:"models"`
+}
+
+// vendorList is the built-in vendor table the grid can add. It has no key env
+// name or URL: the page needs neither.
+func vendorList() []vendorItem {
+	out := make([]vendorItem, 0, len(config.Vendors))
+	for _, v := range config.Vendors {
+		names := make([]string, 0, len(v.Models))
+		for _, m := range v.Models {
+			names = append(names, m.Name)
+		}
+		out = append(out, vendorItem{Brand: v.Brand, Title: v.Title, Protocol: v.Protocol, KeyLogin: v.KeyLogin, Models: names})
+	}
+	return out
+}
 
 func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
@@ -35,22 +65,10 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []item{}
 	m := config.FromEnv(config.Getenv)
-	brand := ""
-	if u, err := url.Parse(m.BaseURL); err == nil {
-		switch u.Hostname() {
-		case "api.deepseek.com":
-			brand = "deepseek"
-		case "api.openai.com":
-			brand = "openai"
-		case "api.anthropic.com":
-			brand = "anthropic"
-		case "openrouter.ai":
-			brand = "openrouter"
-		}
-	}
+	brand := config.BrandForBase(m.BaseURL)
 	out = append(out, item{Brand: brand, Name: "", Protocol: config.ChatCompletions, KeyEnv: "XBOT_API_KEY", KeyConfigured: strings.TrimSpace(m.APIKey) != "", Models: []config.ModelInfo{{ID: "/" + m.Model, Model: m.Model, Protocol: config.ChatCompletions, Context: 0, Vision: config.SeesImages(m.Model, nil), Available: true}}})
 	for _, p := range f.Providers {
-		row := item{Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
+		row := item{Brand: config.BrandForBase(p.BaseURL), Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
 		if p.OAuth != "" {
 			row.OAuth = p.OAuth
 			backend, err := config.OAuthVault(s.Root)
@@ -72,7 +90,7 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, row)
 	}
-	writeJSON(w, 200, map[string]any{"providers": out})
+	writeJSON(w, 200, map[string]any{"providers": out, "vendors": vendorList()})
 }
 
 // Binding changes only while the bot's wake lock is free. Existing work keeps
