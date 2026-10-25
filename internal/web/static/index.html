@@ -29,6 +29,7 @@ try {
 <link rel="stylesheet" href="/devices.css">
 <link rel="stylesheet" href="/remotechat.css">
 <link rel="stylesheet" href="/providers.css">
+<link rel="stylesheet" href="/web-search.css">
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs>
@@ -210,6 +211,7 @@ try {
   <nav class="setnav">
    <button type="button" data-set="general"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg><span>通用</span></button>
    <button type="button" data-set="perm"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>权限</span></button>
+   <button type="button" data-set="search"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>网页搜索</span></button>
    <button type="button" data-set="devices"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg><span>设备</span></button>
    <button type="button" data-set="apps"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>连接应用</span></button>
    <button type="button" data-set="providers"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg><span>模型与供应商</span></button>
@@ -263,6 +265,7 @@ try {
     </div>
     <p class="setfoot">命令行同样生效：<code>xbot permissions on|off</code></p>
    </div>
+   <div class="setpane" data-spane="search"><div id="settings-search"></div></div>
    <div class="setpane setdev" data-spane="devices"><div id="settings-devices"></div></div>
    <div class="setpane" data-spane="apps">
     <h2>连接应用</h2><p class="setlead" id="settings-apps-bot"></p>
@@ -284,6 +287,7 @@ try {
 
 <script src="/vendor/xbot-avatar.min.js"></script>
 <script src="/providers.js"></script>
+<script src="/web-search.js"></script>
 <script src="/app.js"></script>
 <script src="/devices.js"></script>
 <script src="/pairing.js"></script>

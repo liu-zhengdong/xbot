@@ -166,21 +166,7 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 		if f.Backend != nil {
 			return
 		}
-		if baseErr := config.AllowSearchBase(root, cfg.Search); baseErr != nil {
-			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, baseErr })
-			return
-		}
-		key, keyErr := config.SearchKey(cfg.Search, config.Getenv)
-		if keyErr != nil {
-			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, keyErr })
-			return
-		}
-		b, berr := tools.NewSearch(cfg.Search.Backend, cfg.Search.BaseURL, key, trusted)
-		if berr != nil {
-			f.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) { return nil, berr })
-			return
-		}
-		f.Backend = b
+		f.Backend = configuredSearch{root: root}
 	case *tools.WebFetch:
 		if f.Store == nil {
 			f.Store = k.Vault

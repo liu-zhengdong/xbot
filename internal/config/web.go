@@ -17,8 +17,10 @@ import (
 // WebFile is ~/.xbot/web.json. It names search and fetch backends.
 // API keys are environment variable names, never values.
 type WebFile struct {
-	Search WebBackend `json:"search"`
-	Fetch  WebBackend `json:"fetch"`
+	Search        WebBackend `json:"search"`
+	Fetch         WebBackend `json:"fetch"`
+	SearchEnabled *bool      `json:"search_enabled,omitempty"`
+	SearchMode    string     `json:"search_mode,omitempty"`
 	// TrustedEgressCIDRs are prefixes a DNS answer may use even when the
 	// address is not a public unicast (for example 198.18.0.0/15 when the
 	// resolver rewrites every name). Literal IPs in URLs and redirects are
@@ -81,13 +83,13 @@ func SaveWeb(root string, f WebFile) error {
 }
 
 func applyWebEnv(f *WebFile, getenv func(string) string) {
-	if v := strings.TrimSpace(getenv("XBOT_SEARCH_BACKEND")); v != "" {
+	if v := strings.TrimSpace(getenv("XBOT_SEARCH_BACKEND")); v != "" && f.SearchEnabled == nil {
 		f.Search.Backend = v
 	}
-	if v := strings.TrimSpace(getenv("XBOT_SEARCH_BASE_URL")); v != "" {
+	if v := strings.TrimSpace(getenv("XBOT_SEARCH_BASE_URL")); v != "" && f.SearchEnabled == nil {
 		f.Search.BaseURL = v
 	}
-	if v := strings.TrimSpace(getenv("XBOT_SEARCH_API_KEY_ENV")); v != "" {
+	if v := strings.TrimSpace(getenv("XBOT_SEARCH_API_KEY_ENV")); v != "" && f.SearchEnabled == nil {
 		f.Search.APIKeyEnv = v
 	}
 	if v := strings.TrimSpace(getenv("XBOT_FETCH_BACKEND")); v != "" {
@@ -102,6 +104,9 @@ func applyWebEnv(f *WebFile, getenv func(string) string) {
 }
 
 func validateWeb(f WebFile) error {
+	if f.SearchMode != "" && f.SearchMode != "auto" && f.SearchMode != "local" {
+		return errors.New("web: invalid search mode")
+	}
 	if err := validateBackend("search", f.Search); err != nil {
 		return err
 	}

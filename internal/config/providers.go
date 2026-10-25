@@ -77,6 +77,11 @@ func KeyEnvNames(root string) []string {
 		seen[name] = true
 		names = append(names, name)
 	}
+	for _, p := range SearchProviders() {
+		if p.NeedsKey {
+			add(SearchSecretName(p.ID))
+		}
+	}
 	if f, err := Load(root); err == nil {
 		for _, p := range f.Providers {
 			add(p.APIKeyEnv)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/cron"
 	"xbot/internal/link"
 	"xbot/internal/notify"
@@ -538,7 +539,12 @@ func (t expandTool) Run(_ context.Context, args json.RawMessage) (string, error)
 
 // bindingTools applies search exclusivity to both mounted and scoped tools.
 func (k *Kernel) bindingTools(list []tools.Tool) []tools.Tool {
-	if !provider.HasHostedSearch(k.boundProvider()) {
+	root := ""
+	if k.Bot != nil {
+		root = k.Bot.Root
+	}
+	f, err := config.LoadWeb(root)
+	if err == nil && f.SearchOn() && !provider.HasHostedSearch(k.boundProvider()) {
 		return list
 	}
 	out := list[:0]

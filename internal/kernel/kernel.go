@@ -576,12 +576,13 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 
 func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	if k.Selector != nil {
-		return k.Selector.Select(ctx, provider.Hint{Bot: k.Bot.Name()})
+		p, err := k.Selector.Select(ctx, provider.Hint{Bot: k.Bot.Name()})
+		return k.searchProvider(p), err
 	}
 	if k.Provider == nil {
 		return nil, errors.New("kernel: no provider")
 	}
-	return k.Provider, nil
+	return k.searchProvider(k.Provider), nil
 }
 
 // rulesText injects this binary's rules, then the bot's own additions.

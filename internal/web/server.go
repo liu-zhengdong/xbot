@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -94,8 +95,10 @@ type Server struct {
 	pushHTTP *http.Client
 	oauth    *providerauth.Manager
 	// setupMu serializes the desktop first-run key setup.
-	setupMu sync.Mutex
-	tabs    map[string]*tabState
+	setupMu     sync.Mutex
+	searchMu    sync.Mutex
+	searchProbe func(context.Context, string, string, []netip.Prefix) error
+	tabs        map[string]*tabState
 
 	// drainMu guards foreground turn draining for a graceful restart. While
 	// draining is set no new turn starts; Drain waits for inflight to hit 0.
@@ -160,6 +163,11 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 	mux.HandleFunc("POST /api/app/theme", s.appTheme)
 
+	mux.HandleFunc("GET /api/web-search", s.getWebSearch)
+	mux.HandleFunc("PUT /api/web-search", s.putWebSearch)
+	mux.HandleFunc("POST /api/web-search/key", s.testWebSearchKey)
+	mux.HandleFunc("GET /web-search.js", s.static("static/web-search.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /web-search.css", s.static("static/web-search.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/permissions", s.getPermissions)
 	mux.HandleFunc("PUT /api/permissions", s.putPermissions)
 	mux.HandleFunc("GET /api/models", s.listModels)

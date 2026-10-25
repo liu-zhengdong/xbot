@@ -167,6 +167,7 @@
     const res = await apiFetch(path, {
       method: opt.method || "GET",
       credentials: "same-origin",
+      signal: opt.signal,
       headers: opt.body ? { "Content-Type": "application/json" } : undefined,
       body: opt.body ? JSON.stringify(opt.body) : undefined,
     });
@@ -6462,6 +6463,7 @@
   }
   function closeSettings(restore = true) {
     ++settingsRequest;
+    window.XBotWebSearch?.unmount();
     $("setpage").hidden = $("setscrim").hidden = true;
     window.xbotDevices?.unmount();
     shell.inert = false;
@@ -6486,6 +6488,7 @@
     }
     for (const pane of page.querySelectorAll("[data-spane]")) pane.hidden = pane.dataset.spane !== section;
     if (section !== "devices") window.xbotDevices?.unmount();
+    window.XBotWebSearch?.unmount();
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
     if (opening) page.focus({ preventScroll: true });
@@ -6494,6 +6497,8 @@
         $("settings-permissions").disabled = true;
         const data = await api("/api/permissions");
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
+      } else if (section === "search") {
+        await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
       } else if (section === "providers") {
  await window.XBotProviders.settings({api,host:$("settings-providers"),isCurrent:()=>request===settingsRequest});
  } else if (section === "devices") {

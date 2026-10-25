@@ -117,7 +117,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		if !ok {
 			continue
 		}
-		coding.UseProvider(client)
+		coding.UseProvider(kernel.WithSearchSettings(root, client))
 		if runner.URL != "" {
 			coding.UseRunner(runner.URL, runner.Token)
 		}

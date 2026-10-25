@@ -18,6 +18,10 @@ func EnvFile(root string) string { return filepath.Join(root, "env") }
 // missing file is created. The file is written atomically with mode 0600.
 // Nothing is set in the process, user or system environment.
 func SaveEnvKey(root, name, value string) error {
+	return fsutil.WithLock(EnvFile(root)+".lock", func() error { return saveEnvKey(root, name, value) })
+}
+
+func saveEnvKey(root, name, value string) error {
 	if !envName.MatchString(name) {
 		return fmt.Errorf("env: bad name %q", name)
 	}

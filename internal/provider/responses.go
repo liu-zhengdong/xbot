@@ -145,12 +145,12 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 	}
 	ts := []any{}
 	for _, t := range req.Tools {
-		if c.WebSearch && t.Name == "web_search" {
+		if c.WebSearch && hostedSearchAllowed(ctx) && t.Name == "web_search" {
 			return Message{}, errors.New("responses: hosted search cannot coexist with local web_search")
 		}
 		ts = append(ts, map[string]any{"type": "function", "name": t.Name, "description": t.Description, "parameters": t.Parameters, "strict": false})
 	}
-	if c.WebSearch && (req.HostedSearch || len(req.Tools) > 0) {
+	if c.WebSearch && hostedSearchAllowed(ctx) && (req.HostedSearch || len(req.Tools) > 0) {
 		ts = append(ts, map[string]any{"type": "web_search"})
 	}
 	body := map[string]any{"model": c.Model, "input": input, "tools": ts, "stream": true, "store": false, "include": []string{"reasoning.encrypted_content"}}

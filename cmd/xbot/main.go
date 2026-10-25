@@ -159,6 +159,9 @@ func run(argv []string) error {
 	}
 	keyNames := config.KeyEnvNames(root)
 	config.HoldKeys(keyNames)
+	if err := config.HoldSearchCredentials(root); err != nil {
+		return fmt.Errorf("载入搜索密钥失败：%w", err)
+	}
 	link.SetProviderKey(config.ProviderKey)
 	tools.UseKeyEnv(keyNames)
 	tools.SetKeyLookup(config.Held)

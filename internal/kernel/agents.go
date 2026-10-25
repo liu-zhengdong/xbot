@@ -126,12 +126,12 @@ func (k *Kernel) remote() (link.Runner, bool) {
 
 func (k *Kernel) boundProvider() provider.Provider {
 	if k.Provider != nil {
-		return k.Provider
+		return k.searchProvider(k.Provider)
 	}
 	if k.Selector != nil {
 		p, err := k.Selector.Select(context.Background(), provider.Hint{Bot: k.Bot.Name()})
 		if err == nil {
-			return p
+			return k.searchProvider(p)
 		}
 	}
 	return nil

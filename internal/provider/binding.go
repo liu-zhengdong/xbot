@@ -44,6 +44,9 @@ func New(m Endpoint) (Provider, error) {
 }
 
 func HasHostedSearch(p Provider) bool {
+	if p, ok := p.(interface{ HostedSearchEnabled() bool }); ok {
+		return p.HostedSearchEnabled()
+	}
 	if w, ok := p.(interface{ UnwrapProvider() Provider }); ok {
 		return HasHostedSearch(w.UnwrapProvider())
 	}
@@ -58,6 +61,11 @@ func HasHostedSearch(p Provider) bool {
 
 // EndpointOf keeps protocol/capabilities on the existing local runner path.
 func EndpointOf(p Provider) (Endpoint, bool) {
+	if w, ok := p.(interface{ UnwrapProvider() Provider }); ok {
+		m, valid := EndpointOf(w.UnwrapProvider())
+		m.HostedSearch = HasHostedSearch(p)
+		return m, valid
+	}
 	var c *Client
 	m := Endpoint{Protocol: ChatCompletions}
 	switch p := p.(type) {

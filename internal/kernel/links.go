@@ -390,7 +390,7 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 	case link.NameCoding:
 		l := code.Open(dir, k.Bot.InboxPath())
 		if k.Provider != nil {
-			l.UseProvider(k.Provider)
+			l.UseProvider(k.boundProvider())
 		}
 		wired := false
 		for _, existing := range k.Links {
