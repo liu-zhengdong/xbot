@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -22,14 +21,17 @@ const (
 )
 
 var (
-	errBlocked   = errors.New("refused: address is not public")
-	errRebind    = errors.New("refused: DNS changed to a non-public address")
+	errBlocked   = errors.New("refused: address is local to this machine")
+	errRebind    = errors.New("refused: DNS changed to a local address")
 	errRedirects = errors.New("too many redirects")
 )
 
-// Guard fetches one public http(s) URL. It resolves DNS before dialing, refuses
-// a second lookup that is no longer public, and checks again on every redirect.
-// ProxyFromEnvironment is not used: a proxy would skip the address check.
+// Guard fetches one http(s) URL. It resolves DNS before dialing, refuses an
+// answer that points at this machine or the cloud metadata service (see
+// Dialable), refuses a second lookup that changed to such an address, and
+// checks again on every redirect. Other addresses, including the fake IPs a
+// local proxy hands out, are dialed. ProxyFromEnvironment is not used: a proxy
+// would skip the address check.
 type Guard struct {
 	Timeout      time.Duration
 	MaxRedirects int
@@ -38,11 +40,6 @@ type Guard struct {
 	Lookup func(ctx context.Context, host string) ([]net.IP, error)
 	// Dial connects to an already-checked ip:port. Nil uses net.Dialer.
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
-	// Trusted is an explicit allow-list for DNS answers that are not public
-	// (for example 198.18.0.0/15 on a box whose resolver rewrites every name).
-	// Literal IPs in the request URL or in a redirect are never matched
-	// against Trusted.
-	Trusted []netip.Prefix
 }
 
 // FetchResult is a bounded response body. Truncated is set when the body hit MaxBytes.
@@ -55,13 +52,13 @@ type FetchResult struct {
 	Truncated   bool
 }
 
-// Fetch performs one public GET. Redirects are followed only while each hop
-// stays public, up to MaxRedirects.
+// Fetch performs one GET. Redirects are followed only while each hop stays
+// dialable, up to MaxRedirects.
 func (g *Guard) Fetch(ctx context.Context, raw string) (FetchResult, error) {
 	return g.do(ctx, http.MethodGet, raw, nil, nil, true)
 }
 
-// Post sends one public POST and does not follow redirects. A redirect would
+// Post sends one POST and does not follow redirects. A redirect would
 // move a credential header onto another host, so the caller sees the status
 // and stops.
 func (g *Guard) Post(ctx context.Context, raw string, body []byte, header http.Header) (FetchResult, error) {
@@ -197,11 +194,11 @@ func (g *Guard) dialContext(ctx context.Context, network, address string) (net.C
 	return d.DialContext(ctx, "tcp", target)
 }
 
-// resolve returns public addresses for host. A name is looked up twice; if the
-// second answer is not public, the call is a DNS rebind and is refused.
+// resolve returns dialable addresses for host. A name is looked up twice; if
+// the second answer points at this machine, the call is a DNS rebind and is refused.
 func (g *Guard) resolve(ctx context.Context, host string) ([]net.IP, error) {
 	if ip, ok := literalIP(host); ok {
-		if !PublicIP(ip) {
+		if !Dialable(ip) {
 			return nil, errBlocked
 		}
 		return []net.IP{ip}, nil
@@ -246,29 +243,12 @@ func (g *Guard) vetResolved(ips []net.IP) error {
 		return errBlocked
 	}
 	for _, ip := range ips {
-		if PublicIP(ip) || g.trusted(ip) {
+		if Dialable(ip) {
 			continue
 		}
 		return errBlocked
 	}
 	return nil
-}
-
-func (g *Guard) trusted(ip net.IP) bool {
-	if g == nil || len(g.Trusted) == 0 {
-		return false
-	}
-	addr, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return false
-	}
-	addr = addr.Unmap()
-	for _, p := range g.Trusted {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
 }
 
 func validateURL(raw string) error {

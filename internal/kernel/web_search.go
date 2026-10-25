@@ -78,15 +78,11 @@ func (s configuredSearch) Search(ctx context.Context, query string, n int) ([]to
 	if err := config.AllowSearchBase(s.root, backend); err != nil {
 		return nil, err
 	}
-	trusted, err := config.TrustedEgress(f)
-	if err != nil {
-		return nil, err
-	}
 
 	if id == "deepseek" && key == "" {
 		return nil, errors.New("请先在网页搜索设置里试一下 API 密钥")
 	}
-	b, err := tools.NewSearch(id, backend.BaseURL, key, trusted)
+	b, err := tools.NewSearch(id, backend.BaseURL, key)
 	if err != nil {
 		return nil, err
 	}

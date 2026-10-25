@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"os"
 	"strings"
 	"testing"
@@ -23,13 +22,7 @@ func TestWebSearchSettingsAPI(t *testing.T) {
 	}
 	mux := muxOf(s)
 	calls := 0
-	if err := config.SaveWeb(root, config.WebFile{TrustedEgressCIDRs: []string{"198.18.0.0/15"}}); err != nil {
-		t.Fatal(err)
-	}
-	s.searchProbe = func(ctx context.Context, id, key string, trusted []netip.Prefix) error {
-		if len(trusted) != 1 || trusted[0].String() != "198.18.0.0/15" {
-			t.Error("probe lost trusted egress", trusted)
-		}
+	s.searchProbe = func(ctx context.Context, id, key string) error {
 		calls++
 		if id != "deepseek" || key != "fake-valid-search-key" {
 			return errors.New("fake rejected: " + key)

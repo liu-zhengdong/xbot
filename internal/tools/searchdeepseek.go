@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/netip"
 	"regexp"
 	"strings"
 	"time"
@@ -33,27 +32,17 @@ var envVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // NewSearch builds the configured search backend.
 // An empty backend, "ddg", and "duckduckgo" use DuckDuckGo and ignore the key.
 // "deepseek" is the paid Search API: it runs only when selected. key must
-// already be the secret value. The value is not logged. trusted applies only
-// to DNS answers, never to literal IPs. The caller decides whether this key
-// may be sent to baseURL.
-func NewSearch(backend, baseURL, key string, trusted []netip.Prefix) (SearchBackend, error) {
+// already be the secret value. The value is not logged. The caller decides
+// whether this key may be sent to baseURL.
+func NewSearch(backend, baseURL, key string) (SearchBackend, error) {
 	switch strings.ToLower(strings.TrimSpace(backend)) {
 	case "", "ddg", "duckduckgo":
-		return DDG{Guard: guardWithTrusted(trusted)}, nil
+		return DDG{}, nil
 	case "deepseek":
 		if strings.TrimSpace(key) == "" {
 			return nil, errors.New("search: api key is empty")
 		}
-		g := guardWithTrusted(trusted)
-		if g == nil {
-			g = &Guard{}
-		}
-		if g.Timeout <= 0 {
-			g.Timeout = deepseekSearchTimeout
-		}
-		if g.MaxBytes <= 0 {
-			g.MaxBytes = 256 << 10
-		}
+		g := &Guard{Timeout: deepseekSearchTimeout, MaxBytes: 256 << 10}
 		return deepseekSearch{
 			BaseURL: strings.TrimSpace(baseURL),
 			Key:     key,
@@ -67,20 +56,13 @@ func NewSearch(backend, baseURL, key string, trusted []netip.Prefix) (SearchBack
 // NewFetcher builds the configured page fetcher. Only "http" is enabled.
 // Any other name, including a future paid backend, fails closed so it cannot
 // become the default by being selected accidentally.
-func NewFetcher(backend string, trusted []netip.Prefix) (Fetcher, error) {
+func NewFetcher(backend string) (Fetcher, error) {
 	switch strings.ToLower(strings.TrimSpace(backend)) {
 	case "", "http":
-		return HTTPFetch{Guard: guardWithTrusted(trusted)}, nil
+		return HTTPFetch{}, nil
 	default:
 		return nil, fmt.Errorf("fetch: backend %q is not enabled", backend)
 	}
-}
-
-func guardWithTrusted(trusted []netip.Prefix) *Guard {
-	if len(trusted) == 0 {
-		return nil
-	}
-	return &Guard{Trusted: append([]netip.Prefix(nil), trusted...)}
 }
 
 // EnvName reports whether s is an environment variable name, not a secret.

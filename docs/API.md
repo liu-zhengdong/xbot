@@ -29,7 +29,7 @@
 
 - `GET /api/web-search`：返回 `{enabled,mode,provider,providers:[{id,name,needs_key,key_configured}]}`。缺省开、自动、DuckDuckGo；只返回密钥是否存在，不返回值和配置路径。
 - `PUT /api/web-search`：完整提交 `{enabled:true,mode:"auto|local",provider:"ddg|deepseek|brave|tavily|serper|zhipu|exa|firecrawl|perplexity"}`，成功返回当前设置。全局共享，不重建 Bot 内核。新一轮对话和新远端任务使用新设置，运行中的远端任务保留启动快照。
-- `POST /api/web-search/key`：`{provider:"deepseek",key:"…"}`，空值表示重试本机已有密钥。DeepSeek 复用实际搜索路径探测，15 秒超时；沿用已配置的可信出口网段，只向固定官方地址发送。成功即保存，回 `{ok:true}`。无效或连不上回 422，不保存失败值；其它七家目前同样回探测失败。正文和错误不回显密钥。
+- `POST /api/web-search/key`：`{provider:"deepseek",key:"…"}`，空值表示重试本机已有密钥。DeepSeek 复用实际搜索路径探测，15 秒超时；经本机代理的假 IP 也能探测，只向固定官方地址发送。成功即保存，回 `{ok:true}`。无效或连不上回 422，不保存失败值；其它七家目前同样回探测失败。正文和错误不回显密钥。
 
 ## 权限总开关
 

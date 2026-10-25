@@ -160,30 +160,22 @@ func TestSearchKeyEnvIsHeldLikeProviderKeys(t *testing.T) {
 	}
 }
 
-func TestTrustedEgressCIDRs(t *testing.T) {
-	if err := SaveWeb(t.TempDir(), WebFile{TrustedEgressCIDRs: []string{"127.0.0.0/8"}}); err == nil {
-		t.Fatal("loopback cidr was accepted")
-	}
+func TestLegacyTrustedEgressIsIgnoredAndDropped(t *testing.T) {
 	root := t.TempDir()
-	if err := SaveWeb(root, WebFile{TrustedEgressCIDRs: []string{"198.18.0.0/15"}}); err != nil {
+	// An older web.json still loads; the value no longer matters.
+	if err := os.WriteFile(WebPath(root), []byte(`{"trusted_egress_cidrs":["198.18.0.0/15","127.0.0.0/8"],"fetch":{"backend":"http"}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	f, err := LoadWeb(root)
-	if err != nil {
+	if err != nil || len(f.TrustedEgressCIDRs) != 0 || f.Fetch.Backend != "http" {
+		t.Fatalf("%v %+v", err, f)
+	}
+	if err := SaveWeb(root, f); err != nil {
 		t.Fatal(err)
 	}
-	got, err := TrustedEgress(f)
-	if err != nil || len(got) != 1 || got[0].String() != "198.18.0.0/15" {
-		t.Fatalf("%v %+v", err, got)
-	}
-	for _, cidr := range []string{"::ffff:127.0.0.0/104", "::ffff:0:0/96", "::/0"} {
-		if _, err := TrustedEgress(WebFile{TrustedEgressCIDRs: []string{cidr}}); err == nil {
-			t.Fatalf("%s was accepted", cidr)
-		}
-	}
-	mapped, err := TrustedEgress(WebFile{TrustedEgressCIDRs: []string{"::ffff:198.18.0.0/112"}})
-	if err != nil || len(mapped) != 1 {
-		t.Fatalf("mapped benchmark range: %v %+v", err, mapped)
+	raw, err := os.ReadFile(WebPath(root))
+	if err != nil || strings.Contains(string(raw), "trusted_egress") {
+		t.Fatalf("legacy field survived a save: %v %s", err, raw)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/netip"
 	"path/filepath"
 	"strings"
 
@@ -144,10 +143,6 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 		root = k.Bot.Root
 	}
 	cfg, err := config.LoadWeb(root)
-	var trusted []netip.Prefix
-	if err == nil {
-		trusted, err = config.TrustedEgress(cfg)
-	}
 	switch f := t.(type) {
 	case *tools.WebSearch:
 		if f.Store == nil {
@@ -181,7 +176,7 @@ func (k *Kernel) configureWeb(t tools.Tool) {
 			f.Fetcher = failFetch{err}
 			return
 		}
-		ft, ferr := tools.NewFetcher(cfg.Fetch.Backend, trusted)
+		ft, ferr := tools.NewFetcher(cfg.Fetch.Backend)
 		if ferr != nil {
 			f.Fetcher = failFetch{ferr}
 			return

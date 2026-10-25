@@ -8,10 +8,14 @@ import (
 	"strings"
 )
 
-// PublicIP reports whether ip is a global unicast address a public fetch may
-// dial. Loopback, private, link-local (including cloud metadata), and the
-// other IANA special-purpose ranges are refused.
-func PublicIP(ip net.IP) bool {
+// Dialable reports whether a web fetch may dial ip. Only the addresses that
+// reach this machine itself or the cloud metadata service are refused:
+// loopback, unspecified (0.0.0.0/8 and ::), link-local (169.254.0.0/16 and
+// fe80::/10, which holds the metadata address) and multicast. Everything else
+// is allowed on purpose. A local proxy that rewrites every name into
+// 198.18.0.0/15 or another range must keep working, so private, shared and
+// benchmark space is not an error.
+func Dialable(ip net.IP) bool {
 	if len(ip) == 0 {
 		return false
 	}
@@ -20,51 +24,15 @@ func PublicIP(ip net.IP) bool {
 		return false
 	}
 	addr = addr.Unmap()
-	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() ||
-		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() || addr.IsUnspecified() {
+	if !addr.IsValid() || addr.IsLoopback() || addr.IsUnspecified() ||
+		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() {
 		return false
 	}
-	list := special6
-	if addr.Is4() {
-		list = special4
-	}
-	for _, p := range list {
-		if p.Contains(addr) {
-			return false
-		}
+	if addr.Is4() && addr.As4()[0] == 0 {
+		return false
 	}
 	return true
 }
-
-// IANA ranges IsGlobalUnicast and IsPrivate do not cover. Same set the push
-// client refuses, so a fetch cannot reach metadata or documentation space.
-var (
-	special4 = []netip.Prefix{
-		netip.MustParsePrefix("0.0.0.0/8"),
-		netip.MustParsePrefix("100.64.0.0/10"),
-		netip.MustParsePrefix("192.0.0.0/24"),
-		netip.MustParsePrefix("192.0.2.0/24"),
-		netip.MustParsePrefix("192.31.196.0/24"),
-		netip.MustParsePrefix("192.52.193.0/24"),
-		netip.MustParsePrefix("192.88.99.0/24"),
-		netip.MustParsePrefix("192.175.48.0/24"),
-		netip.MustParsePrefix("198.18.0.0/15"),
-		netip.MustParsePrefix("198.51.100.0/24"),
-		netip.MustParsePrefix("203.0.113.0/24"),
-		netip.MustParsePrefix("240.0.0.0/4"),
-	}
-	special6 = []netip.Prefix{
-		netip.MustParsePrefix("64:ff9b::/96"),
-		netip.MustParsePrefix("64:ff9b:1::/48"),
-		netip.MustParsePrefix("100::/64"),
-		netip.MustParsePrefix("2001::/32"),
-		netip.MustParsePrefix("2001:2::/48"),
-		netip.MustParsePrefix("2001:db8::/32"),
-		netip.MustParsePrefix("2001:10::/28"),
-		netip.MustParsePrefix("2001:20::/28"),
-		netip.MustParsePrefix("2002::/16"),
-	}
-)
 
 // literalIP parses a host that is already an address: dotted or colon form,
 // a decimal 32-bit integer, or a 0x hex integer. ok is false when host is a name.
@@ -105,13 +73,14 @@ func allDigits(s string) bool {
 	return true
 }
 
-// blockedName refuses hostnames that are not public destinations even before
-// DNS. A resolver that maps them to a public address is still not a page we fetch.
+// blockedName refuses hostnames that name this machine or the metadata service
+// even before DNS. Other names, including .local and .internal, are left to the
+// address check.
 func blockedName(host string) bool {
 	h := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
 	switch h {
 	case "localhost", "metadata", "metadata.google.internal", "metadata.google.com":
 		return true
 	}
-	return strings.HasSuffix(h, ".localhost") || strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".internal")
+	return strings.HasSuffix(h, ".localhost")
 }

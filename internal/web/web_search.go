@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/netip"
 	"strings"
 	"time"
 
@@ -128,16 +127,6 @@ func (s *Server) testWebSearchKey(w http.ResponseWriter, r *http.Request) {
 	}
 	// Serialize probes and commits. A cancelled or superseded UI request never
 	// writes its key, and failed probes leave the last usable credential intact.
-	f, err := config.LoadWeb(s.Root)
-	if err != nil {
-		writeErr(w, 500, "没能读取网页搜索设置")
-		return
-	}
-	trusted, err := config.TrustedEgress(f)
-	if err != nil {
-		writeErr(w, 500, "没能读取网页搜索设置")
-		return
-	}
 	s.searchMu.Lock()
 	defer s.searchMu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -146,7 +135,7 @@ func (s *Server) testWebSearchKey(w http.ResponseWriter, r *http.Request) {
 	if probe == nil {
 		probe = probeSearchKey
 	}
-	if err := probe(ctx, p.ID, key, trusted); err != nil || ctx.Err() != nil {
+	if err := probe(ctx, p.ID, key); err != nil || ctx.Err() != nil {
 		writeErr(w, 422, "密钥无效或连不上")
 		return
 	}
@@ -159,11 +148,11 @@ func (s *Server) testWebSearchKey(w http.ResponseWriter, r *http.Request) {
 
 // Only the official search endpoint receives the typed credential; request
 // bodies cannot supply a URL. The existing guarded search path bounds output.
-func probeSearchKey(ctx context.Context, id, key string, trusted []netip.Prefix) error {
+func probeSearchKey(ctx context.Context, id, key string) error {
 	if id != "deepseek" {
 		return errSearchUnavailable{}
 	}
-	b, err := tools.NewSearch(id, "", key, trusted)
+	b, err := tools.NewSearch(id, "", key)
 	if err != nil {
 		return err
 	}

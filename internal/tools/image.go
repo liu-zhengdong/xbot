@@ -41,7 +41,7 @@ type ViewImage struct {
 func (v *ViewImage) Name() string { return "view_image" }
 
 func (v *ViewImage) Description() string {
-	return "Show one local image or public http(s) image to a model that understands images. Pass path or url, not both. JPEG, PNG, GIF, and WebP only, up to 10 MiB. Images larger than 2048 px on a side are downscaled (WebP over that size is refused). Private addresses are refused. Models without vision return an error."
+	return "Show one local image or public http(s) image to a model that understands images. Pass path or url, not both. JPEG, PNG, GIF, and WebP only, up to 10 MiB. Images larger than 2048 px on a side are downscaled (WebP over that size is refused). Loopback and link-local addresses are refused. Models without vision return an error."
 }
 
 func (v *ViewImage) Parameters() any {

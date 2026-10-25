@@ -20,7 +20,6 @@ func TestWebSearchPreferencesAndCredentials(t *testing.T) {
 		t.Fatalf("legacy: %+v %v", f, err)
 	}
 	f.Fetch.Backend = "http"
-	f.TrustedEgressCIDRs = []string{"198.18.0.0/15"}
 	if err := SaveWeb(root, f); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +27,7 @@ func TestWebSearchPreferencesAndCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	f, err = LoadWeb(root)
-	if err != nil || f.SearchOn() || f.HostedSearchOn() || f.SearchProviderID() != "ddg" || f.Search.BaseURL != "https://search.example" || f.Fetch.Backend != "http" || len(f.TrustedEgressCIDRs) != 1 {
+	if err != nil || f.SearchOn() || f.HostedSearchOn() || f.SearchProviderID() != "ddg" || f.Search.BaseURL != "https://search.example" || f.Fetch.Backend != "http" {
 		t.Fatalf("saved: %+v %v", f, err)
 	}
 	if err := SetWebSearch(root, true, "auto", "deepseek"); err != nil {

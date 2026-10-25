@@ -334,3 +334,7 @@ Bot 复刻会在自己的电脑上长期运行 XBot，像真实用户一样使�
 设备页只留标题行的「+ 配对设备」，删除底部双按钮。配对同屏展示本机码和对方码输入，点码复制、图标换码，下一步空输入禁用；继续使用现有 code/join API。远端对话深链进入设置·设备。
 
 本地浏览器行为测试及 web 包三遍、全量 `go test -count=1 ./...`、`go build ./...`、`go vet ./...` 通过，`gofmt -l .` 无输出。浅色、深色三种状态已查看；网关响应和剪贴板使用替身，双机实配、性能数字和主人日用未测。级别：本地分支验收，未合入、未发布。证据在仓库外 `~/.xbot-build/devices-pair-ev/commit.md`。
+
+### 网页出站去掉地址白名单（2026-10-25）
+
+mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出站检查因「非公网」拒绝拨号，网页搜索「试一下」报「密钥无效或连不上」。现在只拒绝回环、未指定、链路本地（含云元数据）和组播，其余地址都拨；`trusted_egress_cidrs` 删除，旧字段读入忽略。取舍见 [ADR 0022](adr/0022-web-egress-floor.md)。假 IP 解析下 `web_fetch` 和 DeepSeek 搜索探测的回归在旧代码上失败（证据在仓库外 `~/.xbot-build/egress-guard/old-code-regression.txt`）。`internal/tools`、`internal/web`、`internal/config`、`internal/kernel` 通过。级别：本地分支验收，未合入、未发布。

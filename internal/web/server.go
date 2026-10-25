@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,7 +96,7 @@ type Server struct {
 	// setupMu serializes the desktop first-run key setup.
 	setupMu     sync.Mutex
 	searchMu    sync.Mutex
-	searchProbe func(context.Context, string, string, []netip.Prefix) error
+	searchProbe func(context.Context, string, string) error
 	tabs        map[string]*tabState
 
 	// drainMu guards foreground turn draining for a graceful restart. While

@@ -1,8 +1,8 @@
 ---
 kind: part
 parent: README.md
-code: [internal/vault/, internal/review/]
-verified: 2026-10-24 @ 2052ee1 + OAuth vault 接线
+code: [internal/vault/, internal/review/, internal/tools/guard.go]
+verified: 2026-10-25 @ ea2d75e + 网页出站去掉白名单
 ---
 # 安全：保险箱与权限表
 
@@ -15,7 +15,7 @@ verified: 2026-10-24 @ 2052ee1 + OAuth vault 接线
 
 ## 怎么运转
 - **工具环境**：shell 和文件工具仍可访问这台机器，主人本来就是为此授权的。进程读完供应商 API key（`XBOT_API_KEY` 和各 provider 的 `api_key_env`）后就把这些变量从进程环境里清掉，包括启动时留在 `/proc` 环境块里的那一份，只留在内存里。`web.json` 里搜索或抓取的 `api_key_env`，以及 `XBOT_SEARCH_API_KEY_ENV` / `XBOT_FETCH_API_KEY_ENV` 点名的变量，同样清掉。选了 DeepSeek 搜索又没写变量名时，`DEEPSEEK_API_KEY` 也清掉。这些名字在进程启动之后写进 `web.json` 的，下次配置网页工具时再清一次。没登记的变量（例如 `OPENAI_API_KEY`）仍留在环境里。命令参数 `keys` 为 true 时，这次调用从内存把登记过的 key 放回环境，并且要主人确认。
-- **网页出站**：`web_fetch` 和 `web_search` 只拨解析后的公网地址。字面 IP，包括重定向里的字面地址，落在私网、回环、链路本地、元数据或 `198.18.0.0/15` 时一律拒绝。有的部署把每个域名都解析进 `198.18.0.0/15`（例如解析器 `198.18.0.53`）。那种环境要在 `web.json` 里显式写 `"trusted_egress_cidrs": ["198.18.0.0/15"]`。这份名单只放行 DNS 解析出来的地址，不放行 URL 或重定向里写死的 IP。回环和链路本地（含云元数据）不能写进名单。IPv4 映射地址（例如 `::ffff:127.0.0.0/104`，以及比 `::ffff:0:0/96` 更宽、因而盖住全部映射地址的前缀）按里面的 IPv4 再对一遍，不能借这一层把回环放进来。
+- **网页出站**：`web_fetch`、`view_image` 的网址和 `web_search` 只做一道最小的地址检查（[ADR 0022](../adr/0022-web-egress-floor.md)）：DNS 解析出的地址，以及 URL、重定向里写死的 IP，落在回环、未指定（`0.0.0.0/8`、`::`）、链路本地（含云元数据 `169.254.169.254`）或组播时拒绝；域名 `localhost`、`*.localhost`、`metadata*` 直接拒绝；同一个名字再解析一次变成这类地址，按 DNS 改绑拒绝。私网、`100.64.0.0/10`、`198.18.0.0/15` 等其它地址都放行，所以本机代理（mihomo、Clash 的假 IP）不用配置。没有地址白名单；旧 `web.json` 里的 `trusted_egress_cidrs` 读进来后忽略，下次保存时丢掉。出站不走环境代理。POST（搜索密钥探测）不跟重定向，凭证头不会被带到别的主机。
 - **搜索密钥**：代码默认仍是不需要密钥的 DuckDuckGo。选 DeepSeek 时，没写 `api_key_env` 就用已经收进内存的 `DEEPSEEK_API_KEY`，不回落到 `XBOT_API_KEY`。现场只有 `XBOT_API_KEY` 时，在 `web.json` 写 `"api_key_env":"XBOT_API_KEY"` 显式复用，例如 `{"search":{"backend":"deepseek","api_key_env":"XBOT_API_KEY"}}`。另写了变量名时，那个名字和供应商密钥一样只留在内存里。供应商密钥（`DEEPSEEK_API_KEY`、`XBOT_API_KEY`，或 `providers.json` 里的 `api_key_env`）只能发往 `https://api.deepseek.com`。`providers.json` 读失败时也按供应商密钥处理，不放行别的主机。已经收进内存、但不在这份名单里的搜索密钥仍可以走别的 https 主机。`http` 一律拒绝。请求是 `POST /v1/tools/search`，密钥只出现在 `Authorization` 头里，错误、日志和工具结果里的真值换成 `[secret]`。`web.json` 和 `providers.json` 跟保险箱一样，读或改都要确认卡。`providers.json` 的 `base_url` 必须是 http(s) 绝对地址，不带用户信息、查询串和片段；明文 `http` 只允许本机（`localhost`、回环）和私网 IP，其余必须 `https`。`xbot provider add` 时检查一次，每次按绑定解析供应商时再检查一次，手改的文件也挡得住。
 - **保险箱**：Bot 只知道 key 的名字。内核的出站代理在请求发出时把 `{{secret:名字}}` 替换成真值，并且只允许发往绑定的域名。key 由内核注入到相关进程中，这些进程和 Bot 的 Shell 隔离。工具输出中出现真值会被脱敏。
 - **危险操作审核**：执行前审查命令本身。

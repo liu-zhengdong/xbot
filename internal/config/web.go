@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,11 +20,9 @@ type WebFile struct {
 	Fetch         WebBackend `json:"fetch"`
 	SearchEnabled *bool      `json:"search_enabled,omitempty"`
 	SearchMode    string     `json:"search_mode,omitempty"`
-	// TrustedEgressCIDRs are prefixes a DNS answer may use even when the
-	// address is not a public unicast (for example 198.18.0.0/15 when the
-	// resolver rewrites every name). Literal IPs in URLs and redirects are
-	// never allowed through this list. Loopback and link-local prefixes,
-	// including cloud metadata, are rejected.
+	// TrustedEgressCIDRs is accepted so an older web.json still loads. Web
+	// requests no longer need an address allow-list. The value is ignored
+	// and dropped on the next save.
 	TrustedEgressCIDRs []string `json:"trusted_egress_cidrs,omitempty"`
 }
 
@@ -63,6 +60,7 @@ func LoadWeb(root string) (WebFile, error) {
 			}
 		}
 	}
+	f.TrustedEgressCIDRs = nil
 	applyWebEnv(&f, os.Getenv)
 	if err := validateWeb(f); err != nil {
 		return WebFile{}, err
@@ -72,6 +70,7 @@ func LoadWeb(root string) (WebFile, error) {
 
 // SaveWeb writes the web backend file. Callers must not put secrets in it.
 func SaveWeb(root string, f WebFile) error {
+	f.TrustedEgressCIDRs = nil
 	if err := validateWeb(f); err != nil {
 		return err
 	}
@@ -110,11 +109,7 @@ func validateWeb(f WebFile) error {
 	if err := validateBackend("search", f.Search); err != nil {
 		return err
 	}
-	if err := validateBackend("fetch", f.Fetch); err != nil {
-		return err
-	}
-	_, err := TrustedEgress(f)
-	return err
+	return validateBackend("fetch", f.Fetch)
 }
 
 func validateBackend(kind string, b WebBackend) error {
@@ -229,84 +224,4 @@ func checkSearchBase(provider bool, base string) error {
 		return fmt.Errorf("web: a provider key is only sent to https://api.deepseek.com, not %s", u.Hostname())
 	}
 	return nil
-}
-
-// blockedEgress prefixes cannot be opted in. Loopback and link-local include
-// the cloud metadata address.
-var blockedEgress = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("127.0.0.0/8"),
-	netip.MustParsePrefix("169.254.0.0/16"),
-	netip.MustParsePrefix("::/128"),
-	netip.MustParsePrefix("::1/128"),
-	netip.MustParsePrefix("fe80::/10"),
-}
-
-// TrustedEgress parses trusted_egress_cidrs. An empty list is valid.
-func TrustedEgress(f WebFile) ([]netip.Prefix, error) {
-	if len(f.TrustedEgressCIDRs) == 0 {
-		return nil, nil
-	}
-	out := make([]netip.Prefix, 0, len(f.TrustedEgressCIDRs))
-	seen := map[string]bool{}
-	for _, raw := range f.TrustedEgressCIDRs {
-		p, err := netip.ParsePrefix(strings.TrimSpace(raw))
-		if err != nil {
-			return nil, fmt.Errorf("web: trusted_egress_cidrs %q: %w", raw, err)
-		}
-		p = p.Masked()
-		if bad, ok := overlapsBlocked(p); ok {
-			return nil, fmt.Errorf("web: trusted_egress_cidrs %s overlaps %s; loopback and link-local stay blocked", p, bad)
-		}
-		if seen[p.String()] {
-			continue
-		}
-		seen[p.String()] = true
-		out = append(out, p)
-	}
-	return out, nil
-}
-
-// overlapsBlocked compares a prefix with blocked ranges of the same family.
-// An IPv6 prefix that covers IPv4-mapped addresses (::ffff:0:0/96) is also
-// checked against the IPv4 ranges, so ::ffff:127.0.0.0/104 cannot opt in
-// loopback. Cross-family Overlaps is false, which is why the projection exists.
-func overlapsBlocked(p netip.Prefix) (netip.Prefix, bool) {
-	p = p.Masked()
-	for _, bad := range blockedEgress {
-		if p.Addr().BitLen() == bad.Addr().BitLen() && p.Overlaps(bad) {
-			return bad, true
-		}
-	}
-	if !p.Addr().Is6() {
-		return netip.Prefix{}, false
-	}
-	mapped := netip.MustParsePrefix("::ffff:0:0/96")
-	if !p.Overlaps(mapped) {
-		return netip.Prefix{}, false
-	}
-	v4, ok := projectMappedV4(p)
-	if !ok {
-		return netip.Prefix{}, false
-	}
-	for _, bad := range blockedEgress {
-		if bad.Addr().Is4() && v4.Overlaps(bad) {
-			return bad, true
-		}
-	}
-	return netip.Prefix{}, false
-}
-
-func projectMappedV4(p netip.Prefix) (netip.Prefix, bool) {
-	bits := p.Bits()
-	if bits < 96 {
-		return netip.MustParsePrefix("0.0.0.0/0"), true
-	}
-	ip := p.Addr().As16()
-	addr := netip.AddrFrom4([4]byte{ip[12], ip[13], ip[14], ip[15]})
-	v4bits := bits - 96
-	if v4bits > 32 {
-		return netip.Prefix{}, false
-	}
-	return netip.PrefixFrom(addr, v4bits).Masked(), true
 }

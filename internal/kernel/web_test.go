@@ -167,9 +167,9 @@ func TestUnboundVisionUsesEnvModel(t *testing.T) {
 	}
 }
 
-func TestTrustedCIDRReachesFetchGuard(t *testing.T) {
+func TestLegacyTrustedCIDRStillConfiguresFetch(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
-	if err := config.SaveWeb(b.Root, config.WebFile{TrustedEgressCIDRs: []string{"198.18.0.0/15"}}); err != nil {
+	if err := os.WriteFile(config.WebPath(b.Root), []byte(`{"trusted_egress_cidrs":["198.18.0.0/15"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
@@ -189,9 +189,8 @@ func TestTrustedCIDRReachesFetchGuard(t *testing.T) {
 		if !ok || f.Fetcher == nil {
 			continue
 		}
-		h, ok := f.Fetcher.(tools.HTTPFetch)
-		if !ok || h.Guard == nil || len(h.Guard.Trusted) != 1 || h.Guard.Trusted[0].String() != "198.18.0.0/15" {
-			t.Fatalf("fetch guard %#v", f.Fetcher)
+		if _, ok := f.Fetcher.(tools.HTTPFetch); !ok {
+			t.Fatalf("fetcher %#v", f.Fetcher)
 		}
 		saw = true
 	}

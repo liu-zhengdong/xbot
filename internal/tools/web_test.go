@@ -11,7 +11,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,27 +21,25 @@ import (
 	"xbot/internal/vault"
 )
 
-func TestPublicIPBlocksSpecialRanges(t *testing.T) {
-	blocked := []string{
-		"127.0.0.1", "::1", "10.1.2.3", "192.168.0.1", "172.16.0.1",
-		"169.254.169.254", "100.64.0.1", "0.0.0.0", "192.0.2.1",
-		"198.51.100.1", "203.0.113.1", "192.0.0.1", "198.18.0.1",
-		"255.255.255.255", "224.0.0.1", "fe80::1", "fd00::1",
-		"2001:db8::1", "::",
+func TestDialableRefusesLocalOnly(t *testing.T) {
+	refused := []string{
+		"127.0.0.1", "::1", "169.254.169.254", "0.0.0.0", "0.1.2.3", "::",
+		"224.0.0.1", "fe80::1", "::ffff:127.0.0.1", "::ffff:169.254.169.254",
 	}
-	for _, s := range blocked {
-		if PublicIP(net.ParseIP(s)) {
-			t.Errorf("%s was treated as public", s)
+	for _, s := range refused {
+		if Dialable(net.ParseIP(s)) {
+			t.Errorf("%s was dialable", s)
 		}
 	}
-	for _, s := range []string{"1.1.1.1", "8.8.8.8", "2001:4860:4860::8888"} {
-		if !PublicIP(net.ParseIP(s)) {
+	// Fake IPs from a local proxy, and ordinary private space, are not errors.
+	for _, s := range []string{"1.1.1.1", "8.8.8.8", "2001:4860:4860::8888", "198.18.0.5", "198.19.255.254", "28.0.0.7", "100.64.0.1", "10.1.2.3", "192.168.0.1", "fd00::1"} {
+		if !Dialable(net.ParseIP(s)) {
 			t.Errorf("%s was refused", s)
 		}
 	}
 }
 
-func TestFetchRefusesNonPublic(t *testing.T) {
+func TestFetchRefusesLocal(t *testing.T) {
 	g := &Guard{Timeout: time.Second}
 	for _, raw := range []string{
 		"http://127.0.0.1/",
@@ -50,7 +47,6 @@ func TestFetchRefusesNonPublic(t *testing.T) {
 		"http://0x7f000001/",
 		"http://[::1]/",
 		"http://169.254.169.254/latest/meta-data",
-		"http://10.1.2.3/",
 		"http://localhost/",
 		"http://metadata.google.internal/",
 		"http://user:pass@1.1.1.1/",
@@ -67,7 +63,7 @@ func TestFetchRedirectToPrivateAndRebind(t *testing.T) {
 		http.Redirect(w, r, "http://127.0.0.1/secret", http.StatusFound)
 	}))
 	_, err := g.Fetch(context.Background(), "http://example.com/start")
-	if err == nil || !strings.Contains(err.Error(), "not public") {
+	if err == nil || !strings.Contains(err.Error(), "local to this machine") {
 		t.Fatalf("redirect to loopback: %v", err)
 	}
 
@@ -197,20 +193,20 @@ func TestWebSearchFakeBackend(t *testing.T) {
 }
 
 func TestSearchBackendChoice(t *testing.T) {
-	b, err := NewSearch("", "", "", nil)
+	b, err := NewSearch("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := b.(DDG); !ok {
 		t.Fatalf("default backend %#v", b)
 	}
-	if _, err := NewSearch("deepseek", "", "", nil); err == nil {
+	if _, err := NewSearch("deepseek", "", ""); err == nil {
 		t.Fatal("deepseek without a key")
 	}
-	if _, err := NewFetcher("deepseek", nil); err == nil {
+	if _, err := NewFetcher("deepseek"); err == nil {
 		t.Fatal("paid fetch was enabled")
 	}
-	if _, err := NewFetcher("", nil); err != nil {
+	if _, err := NewFetcher(""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -321,7 +317,7 @@ func TestViewImageVisionAndBounds(t *testing.T) {
 
 func TestViewImageURLRefusesPrivate(t *testing.T) {
 	v := &ViewImage{Vision: true, Model: "deepseek-flash"}
-	if _, err := v.Run(context.Background(), []byte(`{"url":"http://127.0.0.1/a.png"}`)); err == nil || !strings.Contains(err.Error(), "not public") {
+	if _, err := v.Run(context.Background(), []byte(`{"url":"http://127.0.0.1/a.png"}`)); err == nil || !strings.Contains(err.Error(), "local to this machine") {
 		t.Fatal(err)
 	}
 }
@@ -461,55 +457,103 @@ func TestDDGNon200AndChallengeAreErrors(t *testing.T) {
 	}
 }
 
-func TestTrustedEgressAllowsResolvedBenchmarkRangeOnly(t *testing.T) {
+// fakeIPGuard resolves every name to a proxy's fake address and routes the
+// dial to a local test server, as a TUN-mode proxy would.
+func fakeIPGuard(t *testing.T, fake string, h http.Handler) *Guard {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/redir" {
-			http.Redirect(w, r, "http://198.18.0.5/secret", http.StatusFound)
-			return
-		}
-		_, _ = w.Write([]byte("ok"))
-	})}
+	srv := &http.Server{Handler: h}
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
-	prefix := netip.MustParsePrefix("198.18.0.0/15")
-	g := &Guard{
-		Timeout: time.Second,
-		Trusted: []netip.Prefix{prefix},
+	return &Guard{
+		Timeout: 2 * time.Second,
 		Lookup: func(context.Context, string) ([]net.IP, error) {
-			return []net.IP{net.ParseIP("198.18.0.5")}, nil
+			return []net.IP{net.ParseIP(fake)}, nil
 		},
 		Dial: func(_ context.Context, _, addr string) (net.Conn, error) {
 			host, _, err := net.SplitHostPort(addr)
-			if err != nil || host != "198.18.0.5" {
+			if err != nil || host != fake {
 				return nil, errors.New("dialed " + addr)
 			}
 			return net.Dial("tcp", ln.Addr().String())
 		},
 	}
+}
+
+func TestFakeIPAnswerIsDialed(t *testing.T) {
+	g := fakeIPGuard(t, "198.18.0.5", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
 	res, err := g.Fetch(context.Background(), "http://example.com/a")
 	if err != nil || string(res.Body) != "ok" {
-		t.Fatalf("resolved name: %v %q", err, res.Body)
+		t.Fatalf("fetch through fake ip: %v %q", err, res.Body)
 	}
-	if _, err := g.Fetch(context.Background(), "http://198.18.0.5/a"); err == nil || !strings.Contains(err.Error(), "not public") {
-		t.Fatalf("literal ip: %v", err)
-	}
-	if _, err := g.Fetch(context.Background(), "http://example.com/redir"); err == nil || !strings.Contains(err.Error(), "not public") {
-		t.Fatalf("redirect to literal: %v", err)
-	}
-	blocked := &Guard{
+}
+
+func TestFakeIPDoesNotOpenLoopbackRebind(t *testing.T) {
+	var lookups int
+	g := &Guard{
 		Timeout: time.Second,
-		Lookup:  g.Lookup,
+		Lookup: func(context.Context, string) ([]net.IP, error) {
+			lookups++
+			if lookups == 1 {
+				return []net.IP{net.ParseIP("198.18.0.5")}, nil
+			}
+			return []net.IP{net.ParseIP("127.0.0.1")}, nil
+		},
 		Dial: func(context.Context, string, string) (net.Conn, error) {
-			t.Fatal("untrusted range dialed")
+			t.Fatal("rebind dialed")
 			return nil, errors.New("dialed")
 		},
 	}
-	if _, err := blocked.Fetch(context.Background(), "http://example.com/a"); err == nil {
-		t.Fatal("198.18 was allowed without the opt-in")
+	if _, err := g.Fetch(context.Background(), "http://example.com/"); err == nil || !strings.Contains(err.Error(), "DNS changed") {
+		t.Fatalf("rebind: %v", err)
+	}
+}
+
+func TestFakeIPRedirectToMetadataIsRefused(t *testing.T) {
+	g := fakeIPGuard(t, "198.18.0.5", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://169.254.169.254/latest/meta-data", http.StatusFound)
+	}))
+	if _, err := g.Fetch(context.Background(), "http://example.com/a"); err == nil || !strings.Contains(err.Error(), "local to this machine") {
+		t.Fatalf("redirect to metadata: %v", err)
+	}
+}
+
+func TestDeepSeekSearchThroughFakeIP(t *testing.T) {
+	var gotAuth, gotPath string
+	g := fakeIPGuard(t, "198.18.0.5", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
+		_, _ = w.Write([]byte(`{"results":[{"title":"T","url":"https://news.example/a","snippet":"S"}]}`))
+	}))
+	b := deepseekSearch{BaseURL: "http://example.com", Key: "fake-search-key", Guard: g}
+	hits, err := b.Search(context.Background(), "XBot", 1)
+	if err != nil || len(hits) != 1 || hits[0].Title != "T" {
+		t.Fatalf("search through fake ip: %v %+v", err, hits)
+	}
+	if gotPath != "/v1/tools/search" || gotAuth != "Bearer fake-search-key" {
+		t.Fatalf("request %q %q", gotPath, gotAuth)
+	}
+}
+
+func TestPostDoesNotFollowRedirectWithCredential(t *testing.T) {
+	var hits int
+	var leaked bool
+	g := fakeIPGuard(t, "198.18.0.5", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.URL.Path == "/other" {
+			leaked = r.Header.Get("Authorization") != ""
+		}
+		http.Redirect(w, r, "http://other.example/other", http.StatusTemporaryRedirect)
+	}))
+	h := http.Header{}
+	h.Set("Authorization", "Bearer fake-search-key")
+	res, err := g.Post(context.Background(), "http://example.com/start", []byte(`{}`), h)
+	if err != nil || res.Status != http.StatusTemporaryRedirect || hits != 1 || leaked {
+		t.Fatalf("post followed redirect: status %d hits %d leaked %v err %v", res.Status, hits, leaked, err)
 	}
 }
 
@@ -646,11 +690,11 @@ func wideWebP(w, h int) []byte {
 	return b
 }
 
-func BenchmarkPublicIP(b *testing.B) {
+func BenchmarkDialable(b *testing.B) {
 	ip := net.ParseIP("1.1.1.1")
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if !PublicIP(ip) {
+		if !Dialable(ip) {
 			b.Fatal("refused")
 		}
 	}
