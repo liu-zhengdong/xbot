@@ -14,6 +14,9 @@ import (
 // names one. Installed apps are written to the owner-level files under the
 // root (apps.json, mcp.json), which every bot reads.
 
+// keyPerBotNote is shown on key-bearing apps, whose key is saved per Bot rather than shared.
+const keyPerBotNote = "密钥按 Bot 分别保存，只有填过密钥的 Bot 能用。"
+
 type appJSON struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
@@ -80,6 +83,10 @@ func (s *Server) appRows() ([]appJSON, error) {
 	for _, a := range apps {
 		known[a.ID] = true
 		row := appJSON{ID: a.ID, Title: a.Title, Summary: a.Summary, Category: a.Category, State: "available", Card: a.NeedsSecret}
+		if a.NeedsSecret {
+			// Honest about scope: the key lives with the Bot that took it, so only those Bots can use it.
+			row.Summary += keyPerBotNote
+		}
 		switch {
 		case a.Kind == link.AppSoon:
 			row.State = "soon"
