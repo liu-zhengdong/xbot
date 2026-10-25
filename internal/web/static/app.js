@@ -114,6 +114,7 @@
     const timeout = msg.match(/request timeout after (\d+)m/i);
     if (timeout) return "模型超时（" + timeout[1] + " 分钟）";
     for (const [pattern, text] of [
+      [/responses: empty response/i, EMPTY_REPLY],
       [/text is empty/i, "内容是空的"], [/unanswered tool calls/i, "有一张确认卡片还没处理"],
       [/cancelled|canceled/i, "已取消"], [/interrupted/i, "被中断"],
       [/context deadline exceeded|timeout/i, "超时"], [/connection refused|no such host/i, "连不上"],
@@ -1519,6 +1520,7 @@
   // up to three starters made from its routines and persona. A starter only
   // fills the composer; sending still takes Enter or the send button.
   const EMPTY_LINE = "有什么事，直接说就行。";
+  const EMPTY_REPLY = "这次没有收到回复，请再试一次。";
   const GENERIC_STARTERS = [
     {text: "你能帮我做些什么？", icon: "message-circle-question"},
     {text: "帮我整理今天要做的事", icon: "list-checks"},
@@ -2228,7 +2230,10 @@
     row.dataset.sender = "bot:" + (who || "");
     const body = el("div", "body");
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    if (m.content) appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
+    if (String(m.content || "").trim()) appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
+    else if (!(m.parts || []).length && !(m.tool_calls || []).length) {
+      appendBotContent(body, EMPTY_REPLY);
+    }
  window.XBotProviders.decorate(body,m.parts);
     const calls = m.tool_calls || [];
     const peers = [];
@@ -2357,7 +2362,7 @@
       const key = "bot:" + (who || "");
       const cont = !groupStart(lastMsg, m, lastKey, key);
       const built = botBubble(m, results, messages, i, who);
-      if (m.content || (m.parts || []).length) {
+      if (m.content || (m.parts || []).length || !(m.tool_calls || []).length) {
         if (cont) markContinuation(built.row, m.time);
         inner.append(built.row);
         lastKey = key;

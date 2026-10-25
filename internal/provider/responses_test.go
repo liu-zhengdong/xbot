@@ -23,6 +23,61 @@ data: {"type":"response.completed","response":{"status":"completed","output":[{"
 
 `
 
+func TestResponsesCompletedWithoutOutputRetainsStream(t *testing.T) {
+	for _, tail := range []string{`"output":[],`, ""} {
+		stream := `data: {"type":"response.output_text.delta","delta":"我是助手。"}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"我是助手。"}]}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","encrypted_content":"opaque"}}
+
+data: {"type":"response.completed","response":{"status":"completed",` + tail + `"usage":{"input_tokens":12,"output_tokens":4}}}
+
+`
+		msg, err := readResponses(context.Background(), strings.NewReader(stream), nil)
+		if err != nil || msg.Text() != "我是助手。" || len(msg.Content) != 2 || msg.Content[0].Type != PartReasoning || !msg.Usage.Reported {
+			t.Fatalf("lost completed items: %+v, %v", msg, err)
+		}
+		input, err := responseInput([]Message{msg})
+		if err != nil || len(input) != 2 || !strings.Contains(string(input[1]), `"id":"msg_1"`) {
+			t.Fatalf("native replay lost: %s %v", input, err)
+		}
+	}
+}
+
+func TestResponsesDeltaOnlyCompletionAndEmpty(t *testing.T) {
+	for _, text := range []string{"已经收到。", ""} {
+		stream := `data: {"type":"response.output_text.delta","delta":"` + text + `"}` + "\n\n" +
+			`data: {"type":"response.completed","response":{"status":"completed","output":[]}}` + "\n\n"
+		msg, err := readResponses(context.Background(), strings.NewReader(stream), nil)
+		if text == "" {
+			if err == nil {
+				t.Fatal("empty assistant accepted as a successful response")
+			}
+		} else if err != nil || msg.Text() != text {
+			t.Fatalf("streamed answer lost: %+v %v", msg, err)
+		}
+	}
+}
+
+func TestResponsesCompletedItemsKeepCallsAndBounds(t *testing.T) {
+	item := `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_fetch","arguments":"{}"}}` + "\n\n"
+	end := `data: {"type":"response.completed","response":{"status":"completed","output":[]}}` + "\n\n"
+	msg, err := readResponses(context.Background(), strings.NewReader(item+item+end), nil)
+	if err != nil || len(msg.Calls()) != 1 {
+		t.Fatalf("lost or duplicated local call: %+v %v", msg, err)
+	}
+	// Each event is below the scanner cap, but their retained sum is not.
+	var oversized strings.Builder
+	for i := 0; i < 3; i++ {
+		fmt.Fprintf(&oversized, "data: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":%q}]}}\n\n", i, strings.Repeat("x", 400<<10))
+	}
+	oversized.WriteString(end)
+	if _, err := readResponses(context.Background(), strings.NewReader(oversized.String()), nil); err == nil {
+		t.Fatal("unbounded retained output accepted")
+	}
+}
+
 func TestResponsesRecordedStreamAndNativeReplay(t *testing.T) {
 	var request map[string]json.RawMessage
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

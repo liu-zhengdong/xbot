@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-24 @ e012049 + ChatGPT 模型能力推断
+verified: 2026-10-25 @ d39a8d0 + Responses 流式结束组装
 ---
 # 模型供应商与主动性评测
 
@@ -18,7 +18,7 @@ verified: 2026-10-24 @ e012049 + ChatGPT 模型能力推断
 
 - `providers.json` 的供应商有 `protocol`：`chat_completions`、`responses`、`anthropic_messages`。缺省时已知 `openai` 推断为 Responses，`anthropic` 推断为 Messages，其余保留 Completions；协议不从 URL 推断。Messages 已接入 Claude API key 绑定，请求发往配置端点下的 `/messages`。`xbot provider add --protocol responses` 可写协议。
 - 模型条目的 `hosted_web_search` 可覆盖搜索能力。Responses 下 `gpt-5.4`、`gpt-5.5`、`gpt-5.6`（含 luna / sol / terra）、`gpt-6`（含 astra / luna / sol）、`gpt-6.1`（含 sol）缺省启用；Messages 使用 `web_search_20250305`，须显式配置 `hosted_web_search: true`。其他模型也须显式配置。支持 hosted 的绑定不向模型提供本地 `web_search`，`web_fetch` 及 SearchBackend 保留；换回无 hosted 的绑定便恢复本地搜索。hosted 搜索随模型请求运行，不走本地权限表，也不建 Jobs。摘要等不带工具的辅助调用不开搜索。
-- Responses 输出落入同一份内容块：`server_tool`、`citation`、`reasoning`，本地 function call 仍走原工具执行路径。厂商原始条目供同协议重放，网页只收步骤和引用，不暴露原始推理。流式步骤通过 SSE `part` 事件交给气泡，完成块按 transcript 重放。`trace.jsonl` 的 `hosted_calls` / `hosted_tool` 记录调用次数和名称。
+- Responses 输出落入同一份内容块：`server_tool`、`citation`、`reasoning`，本地 function call 仍走原工具执行路径。厂商原始条目供同协议重放，网页只收步骤和引用，不暴露原始推理。流式步骤通过 SSE `part` 事件交给气泡，完成块按 transcript 重放。完成事件没有输出条目时，按输出序号组装 `output_item.done` 中的完整条目；两处都没有条目时，保留已收到的文字增量。条目与增量各限 1 MiB，重复输出序号替换，不重复执行工具。没有正文且没有本地工具调用的完成响应报错，不落盘空助手回复。`trace.jsonl` 的 `hosted_calls` / `hosted_tool` 记录调用次数和名称。
 - 模型窗口和完整工具定义（含 hosted schema）一起计入上下文预算；可用工具集变化才追加环境差异。同绑定不重复公布。runner 端点保留协议及 hosted 能力。
 - Messages 复用同一份内容块。本地 `tool_use` / `tool_result` 沿用工具执行路径，图片嵌在对应工具结果中；不带工具定义的总结请求把工具历史转成文字。工具参数保留 JSON 数字精度；服务端搜索及结果只落内容块，调用块独占计次数，引用走既有网页投影。`thinking` / `redacted_thinking` 保留原始签名或密文，同协议回放；跨协议只发文字摘要。未知块即使来自同厂也降成文字摘要。`thinking` 沿用 `off` / `omit` 配置，不新增启用开关；启用状态下返回的签名可回放。服务端 `pause_turn` 在同一次超时预算内最多请求三次，超限明确报错；窗口占用保留最后一次请求用量，累计用量只进会话记账。图片按直连 API 的 base64 后 10 MB 单图限制处理，超限工具图片变为明确工具错误，用户图片在出网前报错。搜索结果按调用编号更新成功或失败状态，不重复计次；已发文字或 hosted 进度后不重试。
 - API key 只存环境变量名，不存明文。供应商也可用 `oauth: openrouter` 或 `oauth: chatgpt`，此时不填 `api_key_env`。设置页订阅区的 ChatGPT 卡通过既有 OAuth HTTP 入口启动 PKCE，详情支持重新登录；OpenRouter 列表不增加登录入口；回调只监听运行 XBot 的电脑上的 `127.0.0.1`，十分钟过期。完成登录后，仍从 Bot 的模型行选择供应商和模型，旧 key 绑定不变。

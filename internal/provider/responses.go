@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -273,6 +274,12 @@ func responseParts(raw json.RawMessage) ([]ContentPart, error) {
 func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Message, error) {
 	scan := bufio.NewScanner(r)
 	scan.Buffer(make([]byte, 4096), 1<<20)
+	// Some streams deliver full items only in output_item.done. The terminal
+	// response is not guaranteed to repeat them. Keep their wire order and raw
+	// payload for native replay, replacing repeated indices rather than appending.
+	items := map[int]json.RawMessage{}
+	itemBytes := 0
+	var streamed strings.Builder
 	for scan.Scan() {
 		line := scan.Text()
 		if !strings.HasPrefix(line, "data:") {
@@ -290,6 +297,7 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			Delta        string           `json:"delta"`
 			Item         json.RawMessage  `json:"item"`
 			ItemID       string           `json:"item_id"`
+			OutputIndex  int              `json:"output_index"`
 			Response     struct {
 				Status string            `json:"status"`
 				Error  *responseFailure  `json:"error"`
@@ -308,10 +316,27 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 		}
 		switch ev.Type {
 		case "response.output_text.delta", "response.refusal.delta":
+			if streamed.Len()+len(ev.Delta) > 1<<20 {
+				return Message{}, errors.New("responses: output exceeds 1 MiB")
+			}
+			streamed.WriteString(ev.Delta)
 			if delta != nil {
 				delta(ev.Delta)
 			}
 		case "response.output_item.added", "response.output_item.done":
+			if ev.Type == "response.output_item.done" {
+				if ev.OutputIndex < 0 {
+					return Message{}, errors.New("responses: invalid output index")
+				}
+				itemBytes += len(ev.Item) - len(items[ev.OutputIndex])
+				if itemBytes > 1<<20 {
+					return Message{}, errors.New("responses: output exceeds 1 MiB")
+				}
+				if _, err := responseParts(ev.Item); err != nil {
+					return Message{}, err
+				}
+				items[ev.OutputIndex] = ev.Item
+			}
 			if len(ev.Item) > 0 {
 				ps, err := responseParts(ev.Item)
 				if err == nil {
@@ -330,8 +355,19 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				return Message{}, errors.New("responses: response did not complete")
 			}
 			msg := Message{Role: RoleAssistant}
+			output := ev.Response.Output
+			if len(output) == 0 {
+				indices := make([]int, 0, len(items))
+				for i := range items {
+					indices = append(indices, i)
+				}
+				sort.Ints(indices)
+				for _, i := range indices {
+					output = append(output, items[i])
+				}
+			}
 			size, textOffset := 0, 0
-			for _, raw := range ev.Response.Output {
+			for _, raw := range output {
 				size += len(raw)
 				if size > 1<<20 {
 					return Message{}, errors.New("responses: output exceeds 1 MiB")
@@ -351,6 +387,12 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 					}
 				}
 				msg.Content = append(msg.Content, ps...)
+			}
+			if len(output) == 0 && streamed.Len() > 0 {
+				msg.Content = TextContent(streamed.String())
+			}
+			if strings.TrimSpace(msg.Text()) == "" && len(msg.Calls()) == 0 {
+				return Message{}, errors.New("responses: empty response")
 			}
 			if u := ev.Response.Usage; u != nil {
 				msg.Usage = TokenUsage{PromptTokens: u.Input, CompletionTokens: u.Output, Reported: true}
