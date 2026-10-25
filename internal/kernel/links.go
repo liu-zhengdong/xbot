@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -309,7 +310,59 @@ func (k *Kernel) syncGrantsLocked() {
 		kept = append(kept, mounted)
 		have[name] = true
 	}
-	k.Links = kept
+	k.Links = k.syncMCPLocked(kept)
+}
+
+// syncMCPLocked makes the mounted mcp links match the global and personal
+// mcp.json: a server the store added is mounted, one it removed is closed, and
+// one whose definition changed is replaced by a fresh instance. An unreadable
+// file leaves the mounted set as it is.
+func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
+	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+	if err != nil {
+		return links
+	}
+	want := make(map[string]link.MCPServer, len(servers))
+	for _, s := range servers {
+		want[s.Name] = s
+	}
+	out := make([]link.Link, 0, len(links)+len(servers))
+	have := map[string]bool{}
+	var stale []*link.MCP
+	for _, l := range links {
+		m, ok := l.(*link.MCP)
+		if !ok {
+			out = append(out, l)
+			continue
+		}
+		if s, ok := want[m.Spec.Name]; ok && sameMCPSpec(m.Spec, s) {
+			out = append(out, l)
+			have[m.Spec.Name] = true
+			continue
+		}
+		stale = append(stale, m)
+	}
+	for _, s := range servers {
+		if have[s.Name] {
+			continue
+		}
+		mk := k.newMCP
+		if mk == nil {
+			mk = func(s link.MCPServer) link.Link { return link.NewMCP(s) }
+		}
+		out = append(out, mk(s))
+	}
+	for _, m := range stale {
+		_ = m.Close()
+	}
+	return out
+}
+
+func sameMCPSpec(a, b link.MCPServer) bool {
+	a.Dial, b.Dial = nil, nil
+	a.Args, b.Args = append([]string{}, a.Args...), append([]string{}, b.Args...)
+	a.SecretEnvs, b.SecretEnvs = append([]string{}, a.SecretEnvs...), append([]string{}, b.SecretEnvs...)
+	return reflect.DeepEqual(a, b)
 }
 
 func catalogRuntime(name string) bool {

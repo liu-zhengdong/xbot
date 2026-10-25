@@ -1,15 +1,5 @@
 [
   {
-    "id": "filesystem",
-    "title": "文件系统",
-    "summary": "读写本机文件夹。本机自带，不在应用商店里单独安装。",
-    "transport": "stdio",
-    "command": "mcp-server-filesystem",
-    "args": [],
-    "secret_envs": [],
-    "hidden": true
-  },
-  {
     "id": "fetch",
     "title": "网页抓取",
     "summary": "打开网址，把网页内容读成文字。",

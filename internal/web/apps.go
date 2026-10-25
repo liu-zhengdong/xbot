@@ -18,9 +18,11 @@ import (
 const keyPerBotNote = "密钥按 Bot 分别保存，只有填过密钥的 Bot 能用。"
 
 type appJSON struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Summary  string `json:"summary"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+	// Scope is a limit on who can use the app, shown apart from the summary so it is never cut off.
+	Scope    string `json:"scope,omitempty"`
 	Category string `json:"category"`
 	// State is available, connected, or soon.
 	State string `json:"state"`
@@ -85,7 +87,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 		row := appJSON{ID: a.ID, Title: a.Title, Summary: a.Summary, Category: a.Category, State: "available", Card: a.NeedsSecret}
 		if a.NeedsSecret {
 			// Honest about scope: the key lives with the Bot that took it, so only those Bots can use it.
-			row.Summary += keyPerBotNote
+			row.Scope = keyPerBotNote
 		}
 		switch {
 		case a.Kind == link.AppSoon:

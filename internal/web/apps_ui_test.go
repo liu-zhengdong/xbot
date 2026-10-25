@@ -112,3 +112,70 @@ func TestAppsSurfaceHasNoEngineeringWords(t *testing.T) {
 		t.Fatalf("found only %d strings; the scan is broken", len(shown))
 	}
 }
+
+// A failed add or remove keeps its reason on screen after the redraw; a real new action or a trip to the
+// other page clears it. Every card and row carries its app icon, and the per-Bot limit is its own line.
+func TestAppsFailureStaysAndIconsShow(t *testing.T) {
+	source, err := staticFS.ReadFile("static/apps.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(string(source))
+	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
+ class Node{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;this.isConnected=true;this.innerHTML='';
+  this.classList={toggle:(n,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(n):s.delete(n);this.className=[...s].join(' ')}}}
+  append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){} addEventListener(){}}
+ const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t,children:[]})};
+ vm.runInNewContext(` + string(encoded) + `,{window,document});
+ const walk=(n,out=[])=>{out.push(n);(n.children||[]).forEach(c=>walk(c,out));return out};
+ const textOf=n=>walk(n).map(x=>x.textContent||'').join(' ');
+ const buttons=host=>walk(host).filter(n=>n.tag==='button');
+ const btn=(host,label)=>buttons(host).find(b=>b.textContent===label);
+ const cls=(host,c)=>walk(host).filter(n=>(n.className||'').split(' ').includes(c));
+ const long='看屏幕、点击、输入，帮你操作电脑上的软件。你在用电脑时它会让开，需要的时候再叫你。';
+ const note='密钥按 Bot 分别保存，只有填过密钥的 Bot 能用。';
+ (async()=>{
+  const rows=[
+   {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available'},
+   {id:'fetch',title:'网页抓取',summary:'抓网页。',category:'dev',state:'connected'},
+   {id:'telegram',title:'Telegram',summary:long,scope:note,category:'chat',state:'connected',card:true},
+   {id:'mine',title:'mine',summary:'自定义应用',category:'custom',state:'connected',custom:true}];
+  let fail=null;
+  const api=async(path,opt)=>{
+   if(path==='/api/apps'&&!opt)return {connected:3,apps:structuredClone(rows)};
+   if(fail)throw Object.assign(new Error('出错了，没有成功'),{status:400});
+   return {}};
+  const host=new Node('div');
+  await window.XBotApps.mount({api,host,isCurrent:()=>true});
+  const err=()=>walk(host).find(n=>n.attrs&&n.attrs.role==='alert'&&n.className==='sk-error');
+  // icons on every store card, apart from the text; the limit is its own line
+  const cards=cls(host,'ap-card');
+  assert.ok(cards.length>=2);
+  for(const c of cards){const ico=c.children.find(n=>n.className==='ico');assert.ok(ico&&ico.innerHTML.startsWith('<svg'),'card has an icon');assert.equal(ico.attrs['aria-hidden'],'true')}
+  walk(host).find(n=>n.dataset.chip==='chat').onclick();
+  const scope=cls(host,'ap-scope');assert.equal(scope.length,1);assert.equal(scope[0].textContent,note);
+  assert.ok(!cls(host,'hint').some(h=>h.textContent.includes('分别保存')),'the limit is not part of the summary');
+  // a failed add keeps its reason
+  fail=true;walk(host).find(n=>n.dataset.chip==='dev').onclick();
+  await btn(host,'添加').onclick();
+  assert.equal(err().hidden,false);assert.equal(err().textContent,'出错了，没有成功');
+  // going to the other page clears it
+  btn(host,'已连接 3 个').onclick();
+  assert.equal(err().hidden,true);
+  // connected rows carry icons and the limit; the lead no longer promises every Bot
+  for(const r of cls(host,'ap-row')){assert.ok(r.children.some(n=>n.className==='ico'&&n.innerHTML.startsWith('<svg')))}
+  assert.equal(cls(host,'ap-scope').length,1);
+  assert.ok(!textOf(host).includes('这些应用对所有 Bot 都能用'));assert.ok(textOf(host).includes('带说明的'));
+  // a failed remove keeps its reason too
+  await btn(host,'移除').onclick();
+  assert.equal(err().hidden,false);assert.equal(err().textContent,'出错了，没有成功');
+  // a new action clears the old reason first
+  fail=false;await btn(host,'移除').onclick();
+  assert.equal(err().hidden,true);
+  finished=true;
+ })().catch(e=>{console.error(e);process.exit(1)});`
+	cmd := exec.Command("node", "-e", script)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

@@ -159,6 +159,8 @@ type Kernel struct {
 	loadMu      sync.Mutex
 	loaded      map[string]bool
 	linksMu     sync.Mutex
+	// newMCP builds an mcp link for a server in mcp.json; tests replace it with a fake.
+	newMCP      func(link.MCPServer) link.Link
 	secretMu    sync.Mutex
 	secrets     map[string]map[string]string
 	compactMu   sync.Mutex

@@ -16,10 +16,15 @@
 .ap-card .tx{flex:1;min-width:0}
 .ap-card .tx b{display:block;font-size:var(--x-fs-ui);font-weight:560}
 .ap-card .tx .hint{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5;margin-top:2px}
+.ap-card .ico,.ap-row .ico{width:36px;height:36px;border-radius:10px;flex:none;display:grid;place-items:center;background:var(--x-card);overflow:hidden}
+.ap-card .ico svg,.ap-row .ico svg{width:20px;height:20px;display:block}
+.ap-scope{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5;margin-top:2px;white-space:normal;overflow-wrap:anywhere}
+.ap-row{cursor:default;align-items:flex-start}
+.ap-row .tx .hint{white-space:normal;overflow:visible;text-overflow:clip}
+.ap-row .btn{margin-left:auto;flex:none}
 .apps-settings .btn.ap-done,.apps-settings .btn.ap-soon{background:transparent;color:var(--x-muted)}
 .apps-settings .btn.ap-soon{opacity:.6}
 .ap-foot{margin-top:var(--x-s6)}
-.ap-row .btn{margin-left:auto}
 .ap-field{display:block;margin:0 0 var(--x-s5)}
 .ap-field>span{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);margin-bottom:var(--x-s2)}
 .ap-field input,.ap-field textarea{width:100%;box-sizing:border-box;border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:var(--x-fs-ui);padding:8px var(--x-s5)}

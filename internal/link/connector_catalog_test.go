@@ -19,10 +19,13 @@ func TestConnectorCatalogEnable(t *testing.T) {
 			t.Fatalf("secret value in catalog: %+v", c)
 		}
 	}
-	for _, id := range []string{"filesystem", "fetch", "localhttp"} {
+	for _, id := range []string{"fetch", "localhttp"} {
 		if !seen[id] {
 			t.Fatalf("missing %s in %v", id, seen)
 		}
+	}
+	if seen["filesystem"] {
+		t.Fatal("filesystem duplicates the built-in file tools and has no catalog entry")
 	}
 	path := filepath.Join(t.TempDir(), "mcp.json")
 	if err := EnableConnector(path, "localhttp"); err != nil {
@@ -48,5 +51,23 @@ func TestConnectorCatalogEnable(t *testing.T) {
 	}
 	if err := RemoveMCP(path, "localhttp"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// filesystem is gone from the catalog: no one-step install, and a hand-written entry in mcp.json still loads.
+func TestFilesystemConnectorIsGone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := EnableConnector(path, "filesystem"); err == nil {
+		t.Fatal("EnableConnector must reject filesystem")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("a rejected connector wrote mcp.json")
+	}
+	if err := AddMCP(path, MCPServer{Name: "filesystem", Command: "mcp-server-filesystem"}); err != nil {
+		t.Skipf("custom entry not accepted here: %v", err)
+	}
+	list, err := LoadMCP(path)
+	if err != nil || len(list) != 1 || list[0].Name != "filesystem" {
+		t.Fatalf("hand-written entry lost: %v %v", list, err)
 	}
 }

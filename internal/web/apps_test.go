@@ -204,10 +204,10 @@ func TestAppsKeyConnectorsNeverTakeKeysOverHTTP(t *testing.T) {
 	if err := ada.GrantLink(link.NameTelegram); err != nil {
 		t.Fatal(err)
 	}
-	if _, apps := e.list(); apps["telegram"].State != "connected" || !strings.Contains(apps["telegram"].Summary, keyPerBotNote) {
+	if _, apps := e.list(); apps["telegram"].State != "connected" || apps["telegram"].Scope != keyPerBotNote || strings.Contains(apps["telegram"].Summary, "分别保存") {
 		t.Fatalf("connected key app must say the key stays per Bot: %+v", apps["telegram"])
 	}
-	if _, apps := e.list(); strings.Contains(apps["fetch"].Summary, "按 Bot") || !strings.Contains(apps["lark"].Summary, keyPerBotNote) {
+	if _, apps := e.list(); apps["fetch"].Scope != "" || apps["lark"].Scope != keyPerBotNote {
 		t.Fatal("per-Bot note belongs on key apps only")
 	}
 	if code, raw := e.call("DELETE", "/api/apps/telegram", "", true); code != 200 {
