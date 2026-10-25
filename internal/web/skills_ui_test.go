@@ -2,7 +2,12 @@ package web
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -261,3 +266,55 @@ func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// The import checklist is a flex column with a height cap. Rows must keep their own height instead of
+// shrinking under their text, so a long description never runs into the next row's name. Measured in a
+// real headless browser; skipped where none is installed.
+func TestImportChecklistRowsDoNotOverlap(t *testing.T) {
+	chrome := ""
+	for _, c := range []string{"google-chrome", "chromium", "chromium-browser", "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"} {
+		if p, err := exec.LookPath(c); err == nil {
+			chrome = p
+			break
+		}
+	}
+	if chrome == "" {
+		t.Skip("no headless browser")
+	}
+	css, err := staticFS.ReadFile("static/skills.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := `<!doctype html><meta charset=utf-8><style>:root{--x-s5:12px;--x-fs-ui:15px;--x-fs-sm:13px}body{font:15px sans-serif;width:420px}` + string(css) + `</style>
+<div class=nestcard><div class=cklist id=l></div></div><pre id=out></pre><script>
+const long='使用代码化工具（以 Remotion 为核心）制作通用的动态视频、产品演示、架构演进、机制解释与数据图表动画。基于 React 逐帧数学插值，精确控制时间轴、虚拟镜头、状态重组、数据流动与导出渲染。';
+for(let i=0;i<8;i++){const r=document.createElement('button');r.className='ckrow';r.innerHTML='<span class=ck></span><span class=tx><b>name'+i+'</b><span class=hint>'+long+'</span></span>';l.append(r)}
+const rows=[...l.children];let bad=0;
+for(const r of rows){const b=r.querySelector('b').getBoundingClientRect(),h=r.querySelector('.hint').getBoundingClientRect(),rr=r.getBoundingClientRect();
+ if(h.bottom>rr.bottom+0.5||b.bottom>h.top+0.5)bad++;
+ const n=r.nextElementSibling;if(n&&n.getBoundingClientRect().top<rr.bottom-0.5)bad++;
+ if(h.height>2*13*1.5+1)bad++}
+out.textContent='RESULT:'+(bad?'bad'+bad:'ok')+':'+l.scrollHeight+'>'+l.clientHeight;
+</script>`
+	f := filepath.Join(t.TempDir(), "p.html")
+	if err := os.WriteFile(f, []byte(page), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--virtual-time-budget=2000", "--dump-dom", "file://"+f).CombinedOutput()
+	if err != nil {
+		t.Skipf("browser did not run: %v", err)
+	}
+	if !strings.Contains(string(out), "RESULT:ok:") {
+		i := strings.Index(string(out), "RESULT:")
+		t.Fatalf("rows overlap or overflow: %s", string(out)[max(i, 0):])
+	}
+	m := regexp.MustCompile(`RESULT:ok:(\d+)(?:>|&gt;)(\d+)`).FindStringSubmatch(string(out))
+	if m == nil {
+		t.Fatalf("no measurement: %s", out)
+	}
+	if full, shown := atoi(m[1]), atoi(m[2]); full <= shown {
+		t.Fatalf("list should scroll when rows exceed the cap: %d <= %d", full, shown)
+	}
+}
+
+func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
