@@ -66,10 +66,11 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   const importBtn=all.filter(n=>n.tag==='button'&&n.textContent==='导入')[0];importBtn.onclick({currentTarget:importBtn});
   const picker=find('sk-picker')[0];
   // source layer: four rows in order, and only a cancel button in the footer
-  const label=r=>r.children[0].children[0].textContent;
+  const label=r=>r.children[1].children[0].textContent;
   const lastBox=()=>find('srcrows').at(-1);
   const lastLayer=()=>find('nestcard').at(-1);
   assert.deepEqual(lastBox().children.map(label),['Agent','Codex','Claude','本机文件夹']);
+  assert.deepEqual(lastBox().children.map(r=>r.children[0].className),['bico sm ag','bico sm oa','bico sm an','bico sm fo'],'every source row leads with its glyph');
   assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消']);
   // an empty source says so and offers the way back, with no second folder button
   lastBox().children[1].onclick();await new Promise(r=>setImmediate(r));

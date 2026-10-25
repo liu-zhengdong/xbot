@@ -133,21 +133,23 @@
     const layerError = text => { if (layer) { layer.err.textContent = text; layer.err.hidden = !text; } };
 
     const SOURCES = [
-      ["agent", "Agent", "本机 Agent 技能库里的技能"],
-      ["codex", "Codex", "Codex 里的技能"],
-      ["claude", "Claude", "Claude 里的技能"],
+      ["agent", "Agent", "本机 Agent 技能库里的技能", "ag"],
+      ["codex", "Codex", "Codex 里的技能", "oa"],
+      ["claude", "Claude", "Claude 里的技能", "an"],
     ];
     const chev = () => { const c = node("span", "skchev"); c.setAttribute("aria-hidden", "true"); return c; };
-    const sourceRow = (title, hint, action) => {
-      const row = button("srcrow", "", action), tx = node("span", "tx");
+    // 来源 glyph：透明底单色，品牌标沿用 provider-icons，由 CSS 遮罩着色
+    const sourceRow = (title, hint, action, kind) => {
+      const row = button("srcrow", "", action), tx = node("span", "tx"), ico = node("span", "bico sm " + kind);
+      ico.setAttribute("aria-hidden", "true");
       tx.append(node("b", "", title), node("span", "hint", hint));
-      row.append(tx, chev()); return row;
+      row.append(ico, tx, chev()); return row;
     };
     // 嵌层 A：四行来源，底栏只有取消
     function openImport(opener) {
       status = ""; if (statusLine) { statusLine.textContent = ""; statusLine.hidden = true; }
-      const rows = SOURCES.map(([id, label, hint]) => sourceRow(label, hint, () => openSource(layer.opener, id, label)));
-      rows.push(sourceRow("本机文件夹", "自己挑一个文件夹导入", () => picker.click()));
+      const rows = SOURCES.map(([id, label, hint, kind]) => sourceRow(label, hint, () => openSource(layer.opener, id, label), kind));
+      rows.push(sourceRow("本机文件夹", "自己挑一个文件夹导入", () => picker.click(), "fo"));
       const box = node("div", "srcrows"); box.setAttribute("role", "list"); box.append(...rows);
       openLayer(opener, "从哪里导入", "把别处已有的技能拷进你的库。导入后所有 Bot 都能看见；是否启用再按 Bot 设。",
         [["btn sec", "取消", () => closeLayer()]], [box]);
