@@ -64,3 +64,48 @@ func TestSearchSelectionRefreshesCredentialStatusWithoutLosingDraft(t *testing.T
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// A stored key only proves it is stored. Neutral until this page has probed it,
+// and a known probe failure must survive closing and re-opening settings.
+func TestSearchStoredKeyIsNotVerifiedKey(t *testing.T) {
+	source, err := staticFS.ReadFile("static/web-search.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(string(source))
+	script := `const assert=require('node:assert/strict'),vm=require('node:vm');
+ const nodes=[];
+ class Node {
+  constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.value='';this.hidden=false;nodes.push(this);this.classList={toggle:(name,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(name):s.delete(name);this.className=[...s].join(' ')}}}
+  append(...nodes){this.children.push(...nodes)}
+  replaceChildren(...nodes){this.children=nodes}
+  setAttribute(k,v){this.attrs[k]=v}
+ }
+ const window={},document={createElement:tag=>new Node(tag)};
+ vm.runInNewContext(` + string(encoded) + `,{window,document,AbortController});
+ const providers=[{id:'ddg',name:'DuckDuckGo',needs_key:false,key_configured:false},{id:'deepseek',name:'DeepSeek',needs_key:true,key_configured:true}];
+ let probeOK=false;
+ const api=async(path,opt)=>{if(opt?.method==='POST'){if(!probeOK)throw new Error('fake rejected');return {ok:true}}return {enabled:true,mode:'auto',provider:'deepseek',providers:structuredClone(providers)}};
+ const open=async()=>{nodes.length=0;await window.XBotWebSearch.mount({api,host:new Node('div'),isCurrent:()=>true});
+  return {status:nodes.find(n=>n.attrs.role==='status'),meta:nodes.find(n=>n.className.startsWith('ws-meta')&&nodes.indexOf(n)>nodes.findIndex(x=>x.dataset.provider==='deepseek')),try:nodes.find(n=>n.className==='ws-try')}};
+ const ok=v=>v.status.className.includes('ok')||v.status.textContent==='密钥可用';
+ (async()=>{
+  // Old stored key never probed here: neutral, not green.
+  let v=await open();
+  assert.equal(ok(v),false,'unprobed stored key shown as verified');
+  assert.equal(v.meta.className.includes('ok'),false);assert.notEqual(v.meta.textContent,'可用');
+  assert.equal(Boolean(v.try.disabled),false,'stored key cannot be tried');
+  // Probe the stored key and fail; re-opening must not turn it green.
+  await v.try.onclick();
+  assert.ok(v.status.className.includes('bad'));
+  v=await open();
+  assert.equal(ok(v),false,'known failure restored as verified after re-open');
+  assert.ok(v.status.className.includes('bad'),'known failure was forgotten after re-open');
+  // A later success is remembered.
+  probeOK=true;await v.try.onclick();assert.ok(ok(v));
+  v=await open();assert.ok(ok(v),'verified key lost on re-open');
+ })().catch(e=>{console.error(e);process.exitCode=1});`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

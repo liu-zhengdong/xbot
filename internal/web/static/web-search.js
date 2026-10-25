@@ -1,5 +1,8 @@
 (() => {
   let teardown = () => {};
+  // Probe outcomes for the stored key, kept across re-opens. A stored key alone is "saved", never "ok".
+  const known = new Map();
+  const resting = p => p.key_configured ? known.get(p.id) || "saved" : "empty";
   const node = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls || ""; if (text != null) n.textContent = text; return n; };
   const button = (cls, text, action) => { const b = node("button", cls, text); b.type = "button"; b.onclick = action; return b; };
   async function mount({api, host, isCurrent}) {
@@ -31,7 +34,7 @@
     const providerSec = node("div", "setsec"); providerSec.append(node("h4", "", "本机用哪家"));
     const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "本机用哪家");
     for (const p of data.providers) {
-      const row = {p, status:p.key_configured ? "ok" : "empty", version:0, lastAttempt:null};
+      const row = {p, status:resting(p), version:0, lastAttempt:null};
       row.button = button("ws-provider", "", () => save({provider:p.id})); row.button.dataset.provider = p.id; row.button.setAttribute("role", "radio");
       const name = node("span", "ws-name", p.name); if (p.id === "ddg") name.append(node("span", "ws-tag", "默认"));
       row.meta = node("span", "ws-meta"); row.button.append(node("span", "ws-radio"), name, row.meta); list.append(row.button);
@@ -63,12 +66,12 @@
         r.button.classList.toggle("on",selected); r.button.setAttribute("aria-checked",String(selected)); r.button.disabled = saving;
         const ok = selected && r.status === "ok", bad = selected && r.status === "bad";
         r.meta.className = "ws-meta" + (ok ? " ok" : bad ? " bad" : "");
-        r.meta.textContent = ok ? "可用" : bad ? "密钥无效" : selected && r.status === "checking" ? "正在试…" : r.p.needs_key ? "要密钥" : "免密钥";
+        r.meta.textContent = ok ? "可用" : bad ? "密钥无效" : selected && r.status === "checking" ? "正在试…" : r.status === "saved" ? "已保存" : r.p.needs_key ? "要密钥" : "免密钥";
         if (!r.key) continue;
         r.key.hidden = !selected;
         r.try.disabled = r.status === "checking" || (!r.input.value.trim() && (!r.p.key_configured || r.edited));
         r.message.className = "ws-status" + (ok ? " ok" : bad ? " bad" : "");
-        r.message.textContent = ok ? "密钥可用" : bad ? "密钥无效或连不上" : r.status === "checking" ? "正在试…" : "只保存在本机，用于本机搜网页。";
+        r.message.textContent = ok ? "密钥可用" : bad ? "密钥无效或连不上" : r.status === "checking" ? "正在试…" : r.status === "saved" ? "已保存在本机，点「试一下」确认能用。" : "只保存在本机，用于本机搜网页。";
       }
     }
     async function save(patch) {
@@ -85,7 +88,7 @@
             r.p = p;
             if (changed && r.input && !r.edited && r.status !== "checking") {
               r.input.placeholder = p.key_configured ? "••••••••••••" : "粘贴 API 密钥";
-              r.status = p.key_configured ? "ok" : "empty";
+              r.status = resting(p);
             }
           }
         }
@@ -100,10 +103,10 @@
       try {
         await api("/api/web-search/key",{method:"POST",body:{provider:r.p.id,key},signal:controller.signal});
         if (current() && version === r.version) {
-          ++r.version; r.status = "ok"; r.p.key_configured = true; r.edited = false;
+          ++r.version; r.status = "ok"; known.set(r.p.id, "ok"); r.p.key_configured = true; r.edited = false;
           r.input.value = ""; r.input.placeholder = "••••••••••••"; r.lastAttempt = "";
         }
-      } catch { if (current() && version === r.version) r.status = "bad"; }
+      } catch { if (current() && version === r.version) { r.status = "bad"; if (!key) known.set(r.p.id, "bad"); } }
       finally { requests.delete(controller); if (current()) paint(); }
     }
     paint();
