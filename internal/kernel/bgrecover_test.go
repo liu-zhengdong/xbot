@@ -87,7 +87,7 @@ func inboxPosts(t *testing.T, path, id string) []link.Event {
 		if json.Unmarshal(sc.Bytes(), &rec) != nil {
 			continue
 		}
-		if rec.Op == "post" && rec.Event != nil && rec.Event.ID == id {
+		if rec.Op == "post" && rec.Event != nil && (id == "" || rec.Event.ID == id) {
 			out = append(out, *rec.Event)
 		}
 	}

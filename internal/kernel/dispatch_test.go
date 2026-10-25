@@ -662,6 +662,24 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 	if status != "done" {
 		t.Fatalf("the subagent ended as %s, want done", status)
 	}
+	// The foreground may already have acknowledged the terminal event. Wait
+	// for its durable post, then synchronize with Post via the inbox lock.
+	for {
+		done := false
+		for _, event := range inboxPosts(t, b.InboxPath(), "") {
+			done = done || event.Source == link.SourceSubagent && event.Type == exec.EvDone
+		}
+		if done {
+			if err := box.Reload(); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("subagent terminal event was not persisted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.subReq) < 2 {
