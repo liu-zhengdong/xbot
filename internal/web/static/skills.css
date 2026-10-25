@@ -67,3 +67,19 @@
 .nestcard .pick .hint{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);margin-top:2px;line-height:1.45}
 .nest-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--x-s3);margin-top:18px}
 @media(max-width:600px){.sksearch{width:132px}.skrow{padding-left:var(--x-s5)}.nestcard{padding:var(--x-s7)}}
+.nestcard .srcrows,.nestcard .cklist{display:flex;flex-direction:column;border-radius:12px;background:var(--x-fill-1);overflow:hidden;max-height:min(340px,52vh);overflow-y:auto}
+.nestcard .srcrow,.nestcard .ckrow{display:flex;gap:var(--x-s5);width:100%;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
+.nestcard .srcrow{align-items:center;min-height:52px;padding:12px 14px 12px 16px}
+.nestcard .ckrow{align-items:flex-start;min-height:52px;padding:12px 14px}
+.nestcard .srcrow:first-child,.nestcard .ckrow:first-child{border-top:0}
+.nestcard .srcrow:hover,.nestcard .ckrow:hover{background:var(--x-fill-2)}
+.nestcard .srcrow .tx,.nestcard .ckrow .tx{flex:1;min-width:0}
+.nestcard .srcrow b,.nestcard .ckrow b{display:block;font-size:var(--x-fs-ui);font-weight:560}
+.nestcard .srcrow .hint,.nestcard .ckrow .hint{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5;margin-top:2px}
+.nestcard .ck{width:18px;height:18px;border-radius:5px;flex:none;margin-top:2px;border:1.5px solid var(--x-fill-3);background:var(--x-card);position:relative}
+.nestcard .ck.on{background:var(--x-primary);border-color:var(--x-primary)}
+.nestcard .ck.on:after{content:"";position:absolute;left:5px;top:1px;width:4px;height:9px;border:solid var(--x-on-primary);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.nestcard .srcempty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 12px 20px}
+.nestcard .srcempty p{margin:0 0 16px;font-size:var(--x-fs-ui);line-height:1.6;color:var(--x-muted);max-width:280px}
+.nestcard .btn.linkish{background:none;height:auto;padding:0;text-decoration:underline;text-underline-offset:3px}
+.nestcard .btn.linkish:hover{background:none;color:var(--x-text-2)}

@@ -323,3 +323,117 @@ func TestSkillLibraryMarksSharedBotUnavailable(t *testing.T) {
 		t.Fatalf("bots listed: %+v", detail.Bots)
 	}
 }
+
+// The import list reads the owner's Agent, Codex and Claude skill libraries; the page only gets ids and words.
+func TestSkillSourcesListAndImport(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	s := &Server{Root: root, Owner: "u1", SkillHome: home}
+	tok, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(muxOf(s))
+	t.Cleanup(srv.Close)
+	call := func(method, path, body string, auth bool) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		if auth {
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		}
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(raw)
+	}
+	put := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(home, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v1 := "---\nname: 写周报\ndescription: one\n---\n\nBODY1\n"
+	v2 := "---\nname: 写周报\ndescription: two\n---\n\nBODY2\n"
+	put(".agents/skills/weekly/SKILL.md", v1)
+	put(".agents/skills/nested/deeper/SKILL.md", v1) // second level: not a skill folder
+	put(".codex/skills/weekly/SKILL.md", v2)
+	put(".agents/skills/notes.txt", "x")
+	secret := filepath.Join(home, "outside", "SKILL.md")
+	put("outside/SKILL.md", v1)
+
+	if code, _ := call(http.MethodGet, "/api/skills/sources/agent", "", false); code != http.StatusUnauthorized {
+		t.Fatalf("list needs login: %d", code)
+	}
+	code, raw := call(http.MethodGet, "/api/skills/sources/agent", "", true)
+	if code != http.StatusOK || !strings.Contains(raw, `"id":"weekly"`) || !strings.Contains(raw, "写周报") || strings.Contains(raw, "nested") {
+		t.Fatalf("agent list: %d %s", code, raw)
+	}
+	for _, leak := range []string{home, ".agents", "SKILL.md"} {
+		if strings.Contains(raw, leak) {
+			t.Fatalf("list leaks %q: %s", leak, raw)
+		}
+	}
+	if code, raw = call(http.MethodGet, "/api/skills/sources/claude", "", true); code != http.StatusOK || !strings.Contains(raw, `"skills":[]`) {
+		t.Fatalf("missing library is empty: %d %s", code, raw)
+	}
+	if code, _ = call(http.MethodGet, "/api/skills/sources/nowhere", "", true); code != http.StatusNotFound {
+		t.Fatalf("unknown source: %d", code)
+	}
+
+	post := func(source, id string, overwrite bool) (int, string) {
+		b, _ := json.Marshal(map[string]any{"source": source, "id": id, "overwrite": overwrite})
+		return call(http.MethodPost, "/api/skills/import", string(b), true)
+	}
+	if code, _ = call(http.MethodPost, "/api/skills/import", `{"source":"agent","id":"weekly"}`, false); code != http.StatusUnauthorized {
+		t.Fatalf("import needs login: %d", code)
+	}
+	if code, raw = post("agent", "weekly", false); code != http.StatusOK || !strings.Contains(raw, `"slug":"weekly"`) {
+		t.Fatalf("import from source: %d %s", code, raw)
+	}
+	lib := filepath.Join(skill.OwnerDir(root, "u1"), "weekly", "SKILL.md")
+	if got, _ := os.ReadFile(lib); !strings.Contains(string(got), "BODY1") {
+		t.Fatalf("not copied: %s", got)
+	}
+	code, raw = post("codex", "weekly", false)
+	if code != http.StatusConflict || !strings.Contains(raw, "库里已有同名技能，要覆盖吗？") || !strings.Contains(raw, `"conflict":true`) {
+		t.Fatalf("same name must ask: %d %s", code, raw)
+	}
+	if got, _ := os.ReadFile(lib); !strings.Contains(string(got), "BODY1") {
+		t.Fatalf("asking changed the library: %s", got)
+	}
+	if code, raw = post("codex", "weekly", true); code != http.StatusOK {
+		t.Fatalf("overwrite: %d %s", code, raw)
+	}
+	if got, _ := os.ReadFile(lib); !strings.Contains(string(got), "BODY2") {
+		t.Fatalf("overwrite did not replace: %s", got)
+	}
+	if code, raw = post("codex", "weekly", true); code != http.StatusOK {
+		t.Fatalf("overwrite twice: %d %s", code, raw)
+	}
+
+	for _, c := range []struct{ source, id string }{
+		{"agent", "../../outside"}, {"agent", "../outside"}, {"agent", "nested/deeper"},
+		{"agent", "/etc"}, {"agent", ".."}, {"agent", ""}, {"agent", "Weekly"},
+	} {
+		code, raw := post(c.source, c.id, true)
+		if code != http.StatusBadRequest || strings.Contains(raw, home) {
+			t.Fatalf("%q must be refused: %d %s", c.id, code, raw)
+		}
+	}
+	if code, _ = post("nowhere", "weekly", false); code != http.StatusNotFound {
+		t.Fatalf("unknown source: %d", code)
+	}
+	if code, _ = post("agent", "missing", false); code != http.StatusNotFound {
+		t.Fatalf("missing skill: %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(skill.OwnerDir(root, "u1"), "outside")); err == nil {
+		t.Fatalf("traversal imported %s", secret)
+	}
+}

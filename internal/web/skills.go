@@ -2,7 +2,9 @@ package web
 
 import (
 	"errors"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 
@@ -164,12 +166,21 @@ func (s *Server) importSkill(w http.ResponseWriter, r *http.Request) {
 		Folder    string `json:"folder"`
 		Content   string `json:"content"`
 		Overwrite bool   `json:"overwrite"`
+		Source    string `json:"source"`
+		ID        string `json:"id"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "没能读取这个文件夹，请换一个再试")
 		return
 	}
-	res, err := skill.ImportData(s.Root, s.owner, in.Folder, []byte(in.Content), in.Overwrite)
+	folder, raw := in.Folder, []byte(in.Content)
+	if in.Source != "" {
+		var ok bool
+		if folder, raw, ok = s.readSourceSkill(w, in.Source, in.ID); !ok {
+			return
+		}
+	}
+	res, err := skill.ImportData(s.Root, s.owner, folder, raw, in.Overwrite)
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, map[string]any{"slug": res.Slug, "name": res.Name})
@@ -182,4 +193,78 @@ func (s *Server) importSkill(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusInternalServerError, "没能导入，请再试一次")
 	}
+}
+
+// Where the owner's other tools keep skills, under the home directory. The page only ever sees the ids.
+var skillSources = map[string]string{
+	"agent":  filepath.Join(".agents", "skills"),
+	"codex":  filepath.Join(".codex", "skills"),
+	"claude": filepath.Join(".claude", "skills"),
+}
+
+// maxSourceSkill matches the cap on a SKILL.md the folder picker sends.
+const maxSourceSkill = 256 << 10
+
+func (s *Server) sourceRoot(source string) (string, bool) {
+	rel, ok := skillSources[source]
+	if !ok {
+		return "", false
+	}
+	home := s.SkillHome
+	if home == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
+			return "", false
+		}
+	}
+	return filepath.Join(home, rel), true
+}
+
+// listSourceSkills lists the skills one source holds: its first-level skill folders only, read-only.
+// A missing library is simply empty.
+func (s *Server) listSourceSkills(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	root, ok := s.sourceRoot(r.PathValue("id"))
+	if !ok {
+		writeErr(w, http.StatusNotFound, "没有这个来源")
+		return
+	}
+	infos, err := skill.List(root)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "没能读取技能")
+		return
+	}
+	out := make([]map[string]string, 0, len(infos))
+	for _, info := range infos {
+		out = append(out, map[string]string{"id": info.Slug, "name": info.Name, "description": info.Description})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"source": r.PathValue("id"), "skills": out})
+}
+
+// readSourceSkill loads one skill from a source library. id must be a plain skill folder name,
+// so nothing outside that source's first level can be named. On failure it has already answered.
+func (s *Server) readSourceSkill(w http.ResponseWriter, source, id string) (string, []byte, bool) {
+	root, ok := s.sourceRoot(source)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "没有这个来源")
+		return "", nil, false
+	}
+	if !skill.ValidSlug(id) {
+		writeErr(w, http.StatusBadRequest, "这条技能不能导入")
+		return "", nil, false
+	}
+	f, err := os.Open(filepath.Join(root, id, "SKILL.md"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "没有找到这个技能")
+		return "", nil, false
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, maxSourceSkill+1))
+	if err != nil || len(raw) > maxSourceSkill {
+		writeErr(w, http.StatusBadRequest, "技能说明太大了，导入不了")
+		return "", nil, false
+	}
+	return id, raw, true
 }

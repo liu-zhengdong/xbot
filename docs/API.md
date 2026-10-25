@@ -308,6 +308,8 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 还是 `skills` 这条 Link。库按登录的 owner 分开，文件在数据根的 `skills/<owner>/<slug>/SKILL.md`。导入用 `xbot skill import`，设置页用下面的库级接口。
 
+`GET /api/skills/sources/{id}`（`id` 为 `agent`｜`codex`｜`claude`，其余 404）列出本机该来源技能库的一级技能目录：`{"source","skills":[{"id","name","description"}]}`，只读，库不存在就是空；不返回路径。`POST /api/skills/import` 也接受 `{"source","id","overwrite"}`：`id` 必须是合法 slug（拒绝 `..`、斜杠和大写），服务端读该来源下 `<id>/SKILL.md`（最多 256 KiB）再走同一条导入，同名 409 与覆盖语义同上。来源根默认在当前用户 home 下（`.agents/skills`、`.codex/skills`、`.claude/skills`）。
+
 `GET /api/bots/{name}/skills` 要登录，而且这个人是该 Bot 的 owner。不是 owner 或 Bot 不存在是 404 `{"error":"not found"}`。未登录 401。返回这个 owner 的技能，每条带上这个 Bot 有没有停用它。没有技能时 `skills` 是空数组。停用的仍在列表里，这样界面可以再打开。
 
 ```json

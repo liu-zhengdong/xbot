@@ -48,6 +48,10 @@ type Server struct {
 	DefaultLinks []string
 	NewKernel    func(*bot.Bot) (*kernel.Kernel, error)
 
+	// SkillHome is the home directory whose Agent, Codex and Claude skill libraries
+	// the import list reads. Empty means the serving user's own home.
+	SkillHome string
+
 	// ForkTurns lets an owner message sent mid-turn move the running turn to the
 	// background and get its own answer at once. See docs/atlas/fork.md.
 	ForkTurns bool
@@ -206,6 +210,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/skills", s.listLibrary)
 	mux.HandleFunc("GET /api/skills/{slug}", s.readLibrarySkill)
 	mux.HandleFunc("POST /api/skills/import", s.importSkill)
+	mux.HandleFunc("GET /api/skills/sources/{id}", s.listSourceSkills)
 	mux.HandleFunc("GET /skills.js", s.static("static/skills.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /skills.css", s.static("static/skills.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/bots/{name}/skills", s.listSkills)

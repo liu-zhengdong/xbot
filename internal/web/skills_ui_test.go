@@ -28,7 +28,9 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   const api=async(path,opt)=>{calls.push([opt?.method||'GET',path,opt?.body]);
    if(path==='/api/skills')return {skills:structuredClone(library)};
    if(path==='/api/skills/weekly')return {slug:'weekly',name:'写周报',description:'整理周报',bots:[{name:'ada',enabled:true},{name:'bob',enabled:false}]};
-   if(path==='/api/skills/import'){if(exists&&!opt.body.overwrite){const e=new Error('库里已有同名技能，要覆盖吗？');e.status=409;throw e}return {slug:'weekly',name:'写周报'}}
+   if(path==='/api/skills/sources/agent')return {skills:[{id:'weekly',name:'写周报',description:'整理周报'},{id:'flight',name:'订机票',description:'比较航班'}]};
+   if(path==='/api/skills/sources/codex')return {skills:[]};
+   if(path==='/api/skills/import'){if(exists&&!opt.body.overwrite&&opt.body.id!=='flight'){const e=new Error('库里已有同名技能，要覆盖吗？');e.status=409;throw e}return {slug:'weekly',name:'写周报'}}
    if(path.startsWith('/api/bots/')){if(saveFails){const e=new Error('x');e.status=500;throw e}return {}}
    throw new Error('unexpected '+path)};
   const host=new Node('div');
@@ -50,15 +52,57 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   assert.deepEqual(calls.at(-1).slice(0,2),['POST','/api/bots/bob/skills/weekly/enable']);
   saveFails=true;await togs[0].onclick();assert.equal(togs[0].attrs['aria-checked'],'true','failed save must restore the switch');
   assert.equal(find('sk-error').some(n=>!n.hidden&&n.textContent),true);
-  // import: same name asks first, overwrite resends with consent, cancel does not
+  // folder import: same name asks first, overwrite resends with consent, cancel does not
   find('setback')[0].onclick();
   const importBtn=all.filter(n=>n.tag==='button'&&n.textContent==='导入')[0];importBtn.onclick({currentTarget:importBtn});
   const picker=find('sk-picker')[0];
+  // source layer: four rows in order, and only a cancel button in the footer
+  const label=r=>r.children[0].children[0].textContent;
+  const lastBox=()=>find('srcrows').at(-1);
+  const lastLayer=()=>find('nestcard').at(-1);
+  assert.deepEqual(lastBox().children.map(label),['Agent','Codex','Claude','本机文件夹']);
+  assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消']);
+  // an empty source says so and offers the way back, with no second folder button
+  lastBox().children[1].onclick();await new Promise(r=>setImmediate(r));
+  assert.deepEqual(calls.at(-1).slice(0,2),['GET','/api/skills/sources/codex']);
+  assert.equal(find('srcempty').at(-1).children[0].textContent,'这边还没有可导入的技能。');
+  assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消']);
+  find('srcempty').at(-1).children[1].onclick();
+  assert.deepEqual(lastBox().children.map(label),['Agent','Codex','Claude','本机文件夹']);
+  // a source lists tickable skills; the one main button stays off until something is ticked
+  lastBox().children[0].onclick();await new Promise(r=>setImmediate(r));
+  const ck=find('cklist').at(-1), go=find('nest-actions').at(-1).children[1];
+  assert.equal(go.textContent,'导入所选');assert.equal(go.disabled,true);
+  assert.deepEqual(ck.children.map(r=>r.children[1].children[0].textContent),['写周报','订机票']);
+  ck.children[0].onclick();assert.equal(go.disabled,false);assert.equal(ck.children[0].attrs['aria-pressed'],'true');
+  ck.children[0].onclick();assert.equal(go.disabled,true);
+  ck.children[0].onclick();ck.children[1].onclick();
+  // same name asks; cancel skips that one and the next still goes
+  const m0=calls.length;await go.onclick();
+  assert.deepEqual({...calls[m0][2]},{source:'agent',id:'weekly',overwrite:false});
+  await new Promise(r=>setImmediate(r));
+  assert.equal(all.filter(n=>n.tag==='button'&&n.textContent==='覆盖').length>=1,true);
+  all.filter(n=>n.tag==='button'&&n.textContent==='取消').at(-1).onclick();
+  await new Promise(r=>setImmediate(r));
+  assert.deepEqual({...calls[m0+1][2]},{source:'agent',id:'flight',overwrite:false});
+  await new Promise(r=>setImmediate(r));
+  assert.equal(find('sk-status').at(-1).textContent,'已导入「订机票」。');
+  // overwrite resends the same one with consent
+  const imp1=all.filter(n=>n.tag==='button'&&n.textContent==='导入')[0];imp1.onclick({currentTarget:imp1});
+  lastBox().children[0].onclick();await new Promise(r=>setImmediate(r));
+  find('cklist').at(-1).children[0].onclick();
+  const m1=calls.length;await find('nest-actions').at(-1).children[1].onclick();await new Promise(r=>setImmediate(r));
+  all.filter(n=>n.tag==='button'&&n.textContent==='覆盖').at(-1).onclick();await new Promise(r=>setImmediate(r));await new Promise(r=>setImmediate(r));
+  assert.equal(calls[m1+1][2].overwrite,true);assert.equal(calls[m1+1][2].source,'agent');
+  assert.equal(find('sk-status').at(-1).textContent,'已导入「写周报」。');
+  // the folder row opens the folder picker
+  const imp2=all.filter(n=>n.tag==='button'&&n.textContent==='导入')[0];imp2.onclick({currentTarget:imp2});
+  const before0=picker.clicked||0;lastBox().children[3].onclick();assert.equal(picker.clicked,before0+1);
   const file={webkitRelativePath:'weekly/SKILL.md',size:30,text:async()=>'---\nname: 写周报\ndescription: x\n---\n'};
   picker.files=[file];await picker.onchange();
   assert.deepEqual(calls.at(-1).slice(0,2),['POST','/api/skills/import']);assert.equal(calls.at(-1)[2].overwrite,false);assert.equal(calls.at(-1)[2].folder,'weekly');
   await new Promise(r=>setImmediate(r));
-  const confirm=all.filter(n=>n.tag==='button'&&n.textContent==='覆盖');assert.equal(confirm.length,1);
+  const confirm=all.filter(n=>n.tag==='button'&&n.textContent==='覆盖').slice(-1);assert.equal(confirm.length,1);
   const n0=calls.length;
   await confirm[0].onclick();
   assert.equal(calls[n0][2].overwrite,true);

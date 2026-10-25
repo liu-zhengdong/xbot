@@ -103,14 +103,15 @@
     // ---- 导入 / 同名覆盖 ----
     function closeLayer() {
       if (!layer) return;
-      const {opener} = layer; layer = null; layers.replaceChildren();
-      opener?.focus?.();
+      const {opener, onClose} = layer; layer = null; layers.replaceChildren();
+      opener?.focus?.(); onClose?.();
     }
     function openLayer(opener, title, lead, actions, extra) {
       if (layer) closeLayer();
       const root = node("div", "nestlayer"), card = node("div", "nestcard");
       card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", title);
       const buttons = actions.map(([cls, text, act]) => button(cls, text, act));
+      const rowButtons = (extra || []).flatMap(n => Array.from(n.children || []).filter(c => c.type === "button"));
       const bar = node("div", "nest-actions"); bar.append(...buttons);
       const err = node("p", "sk-error"); err.setAttribute("role", "alert"); err.hidden = true;
       card.append(node("h3", "", title), node("p", "lead", lead), ...(extra || []), err, bar);
@@ -119,24 +120,106 @@
         if (ev.key === "Escape") { ev.preventDefault?.(); ev.stopPropagation(); if (!importing) closeLayer(); }
         else if (ev.key === "Tab") {
           ev.stopPropagation();
-          const live = buttons.filter(b => !b.disabled), first = live[0], last = live.at(-1);
+          const live = [...rowButtons, ...buttons].filter(b => !b.disabled), first = live[0], last = live.at(-1);
           const here = document.activeElement;
           if (live.length && (ev.shiftKey ? here === first || !live.includes(here) : here === last || !live.includes(here))) { ev.preventDefault(); (ev.shiftKey ? last : first).focus?.(); }
         }
       };
-      layers.append(root); layer = {opener, err, buttons};
-      buttons.at(-1).focus?.();
+      layers.append(root); layer = {opener, err, buttons, onClose: null};
+      (buttons.at(-1).disabled ? rowButtons[0] || buttons[0] : buttons.at(-1)).focus?.();
       return layer;
     }
     const layerError = text => { if (layer) { layer.err.textContent = text; layer.err.hidden = !text; } };
 
+    const SOURCES = [
+      ["agent", "Agent", "本机 Agent 技能库里的技能"],
+      ["codex", "Codex", "Codex 里的技能"],
+      ["claude", "Claude", "Claude 里的技能"],
+    ];
+    const chev = () => { const c = node("span", "skchev"); c.setAttribute("aria-hidden", "true"); return c; };
+    const sourceRow = (title, hint, action) => {
+      const row = button("srcrow", "", action), tx = node("span", "tx");
+      tx.append(node("b", "", title), node("span", "hint", hint));
+      row.append(tx, chev()); return row;
+    };
+    // 嵌层 A：四行来源，底栏只有取消
     function openImport(opener) {
       status = ""; if (statusLine) { statusLine.textContent = ""; statusLine.hidden = true; }
-      const pick = button("pick", "", () => picker.click());
-      const tx = node("span", "tx"); tx.append(node("b", "", "选择技能文件夹…"), node("span", "hint", "文件夹里应有技能说明；导入后出现在列表里。"));
-      const icon = node("span", "icwrap"); icon.setAttribute("aria-hidden", "true"); pick.append(icon, tx);
-      openLayer(opener, "导入技能", "选择本机上的技能文件夹，拷进你的技能库。导入后所有 Bot 都能看见；是否启用再按 Bot 设。",
-        [["btn sec", "取消", () => closeLayer()], ["btn pri", "选择文件夹", () => picker.click()]], [pick]);
+      const rows = SOURCES.map(([id, label, hint]) => sourceRow(label, hint, () => openSource(layer.opener, id, label)));
+      rows.push(sourceRow("本机文件夹", "自己挑一个文件夹导入", () => picker.click()));
+      const box = node("div", "srcrows"); box.setAttribute("role", "list"); box.append(...rows);
+      openLayer(opener, "从哪里导入", "把别处已有的技能拷进你的库。导入后所有 Bot 都能看见；是否启用再按 Bot 设。",
+        [["btn sec", "取消", () => closeLayer()]], [box]);
+    }
+    // 嵌层 B：该来源下的技能，多选后「导入所选」；空源给「换个来源」
+    async function openSource(opener, id, label) {
+      const mine = layer;
+      let res;
+      try { res = await api("/api/skills/sources/" + encodeURIComponent(id)); }
+      catch (e) { if (current() && layer === mine) layerError(plain(e, "没能读取" + label + "的技能，请再试一次。")); return; }
+      if (!current() || layer !== mine) return;
+      const items = (res.skills || []).map(r => ({...r, on: false}));
+      const box = node("div", "cklist");
+      if (!items.length) {
+        const empty = node("div", "srcempty");
+        empty.append(node("p", "", "这边还没有可导入的技能。"), button("btn linkish", "换个来源", () => openImport(opener)));
+        box.className = ""; box.append(empty);
+        openLayer(opener, "从 " + label + " 导入", "", [["btn sec", "取消", () => closeLayer()]], [box]);
+        return;
+      }
+      box.setAttribute("role", "list");
+      let go;
+      const sync = () => { go.disabled = !items.some(r => r.on); };
+      for (const r of items) {
+        const row = button("ckrow", "", () => { r.on = !r.on; ck.classList.toggle("on", r.on); row.setAttribute("aria-pressed", String(r.on)); sync(); });
+        const ck = node("span", "ck"), tx = node("span", "tx");
+        ck.setAttribute("aria-hidden", "true"); row.setAttribute("aria-pressed", "false");
+        tx.append(node("b", "", r.name), node("span", "hint", r.description));
+        row.append(ck, tx); box.append(row);
+      }
+      const L = openLayer(opener, "从 " + label + " 导入", "勾选要拷进库的技能。",
+        [["btn sec", "取消", () => closeLayer()], ["btn pri", "导入所选", () => importPicked(id, items.filter(r => r.on))]], [box]);
+      go = L.buttons[1]; go.disabled = true;
+      box.children[0].focus?.();
+    }
+    // 逐条导入；遇到同名就问一下，取消只跳过这一条
+    function askOverwrite(opener, name) {
+      return new Promise(resolve => {
+        openLayer(opener, "库里已有同名技能", "要导入的「" + name + "」和库里已有的重名。覆盖后，用新的这份替换；各 Bot 的启用开关保持不变。",
+          [["btn sec", "取消", () => closeLayer()], ["btn pri", "覆盖", () => { resolve(true); closeLayer(); }]]);
+        layer.onClose = () => resolve(false);
+      });
+    }
+    async function importPicked(source, picked) {
+      if (importing || !layer || !current() || !picked.length) return;
+      const {opener} = layer, done = [];
+      let problem = null;
+      importing = true; layer.buttons.forEach(b => b.disabled = true); layerError("");
+      for (const r of picked) {
+        const body = {source, id: r.id, overwrite: false};
+        for (;;) {
+          try { await api("/api/skills/import", {method: "POST", body}); done.push(r.name); break; }
+          catch (e) {
+            if (!current()) { importing = false; return; }
+            if (e.status !== 409 || body.overwrite) { problem = e; break; }
+            importing = false;
+            const yes = await askOverwrite(opener, r.name);
+            if (!current()) return;
+            importing = true;
+            if (!yes) break;
+            body.overwrite = true;
+          }
+        }
+        if (problem) break;
+      }
+      importing = false;
+      if (!current()) return;
+      const msg = problem ? plain(problem, "没能导入，请再试一次。") : "";
+      if (!done.length && layer) { layer.buttons.forEach(b => b.disabled = false); if (problem) layerError(msg); return; }
+      if (layer) closeLayer();
+      if (done.length) status = done.length === 1 ? "已导入「" + done[0] + "」。" : "已导入 " + done.length + " 条技能。";
+      opener?.focus?.();
+      if (await load()) { showList(); if (msg) fail(msg); }
     }
     picker.onclick = () => { picker.value = ""; };
     picker.onchange = async () => {
@@ -150,9 +233,9 @@
       let content;
       try { content = await file.text(); } catch { return layerError("没能读取这个文件夹，请换一个再试。"); }
       if (!current() || layer !== mine) return;
-      send({folder, content, overwrite: false});
+      send({folder, content, overwrite: false}, nameOf(content));
     };
-    async function send(payload) {
+    async function send(payload, name) {
       if (importing || !layer || !current()) return;
       importing = true; layer.buttons.forEach(b => b.disabled = true); layerError("");
       let res = null, problem = null;
@@ -166,14 +249,14 @@
         if (await load()) showList();
         return;
       }
-      if (problem.status === 409) return conflict(payload);
+      if (problem.status === 409) return conflict(payload, name);
       layerError(plain(problem, "没能导入，请再试一次。"));
     }
-    function conflict(payload) {
-      const {opener} = layer, name = nameOf(payload.content);
+    function conflict(payload, name) {
+      const {opener} = layer;
       closeLayer();
       openLayer(opener, "库里已有同名技能", (name ? "要导入的「" + name + "」和库里已有的重名。" : "要导入的技能和库里已有的重名。") + "覆盖后，用新的这份替换；各 Bot 的启用开关保持不变。",
-        [["btn sec", "取消", () => closeLayer()], ["btn pri", "覆盖", () => send({...payload, overwrite: true})]]);
+        [["btn sec", "取消", () => closeLayer()], ["btn pri", "覆盖", () => send({...payload, overwrite: true}, name)]]);
     }
 
     if (!(await load())) return;
