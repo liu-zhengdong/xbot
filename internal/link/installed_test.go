@@ -16,7 +16,7 @@ func TestInstalledSectionOneLineEach(t *testing.T) {
 	if strings.Count(two, "\n") != strings.Count(one, "\n")+1 {
 		t.Fatalf("lines %q %q", one, two)
 	}
-	if !strings.Contains(two, "- webhook: ") || !strings.Contains(two, "- watch: ") {
+	if !strings.Contains(two, "webhook:") || !strings.Contains(two, "watch:") {
 		t.Fatal(two)
 	}
 	if strings.Contains(two, "inputSchema") || strings.Contains(two, "\"type\"") || strings.Contains(two, "parameters") {
@@ -34,7 +34,7 @@ func TestInstalledSectionCapsToIDs(t *testing.T) {
 	if strings.Contains(text, marker) {
 		t.Fatalf("summaries kept over cap: %s", text)
 	}
-	if strings.Count(text, "\n") < 39 || !strings.Contains(text, "- link") {
+	if strings.Count(text, "\n") < 39 || !strings.Contains(text, "link\n") {
 		t.Fatalf("ids missing: %s", text)
 	}
 }

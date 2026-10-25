@@ -202,7 +202,7 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 	}
 	var out []link.Link
 	seen := map[string]bool{}
-	for _, name := range b.Config().Links {
+	for _, name := range b.EffectiveLinks() {
 		if seen[name] {
 			continue
 		}
@@ -276,7 +276,7 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		}
 		out = append(out, link.Runner{BaseURL: runner.URL, Token: runner.Token})
 	}
-	servers, err := link.LoadMCP(b.MCPPath())
+	servers, err := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath())
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func startEmitters(ctx context.Context, root string, seen map[string]bool) {
 		if err != nil {
 			continue
 		}
-		servers, err := link.LoadMCP(b.MCPPath())
+		servers, err := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath())
 		if err != nil || len(servers) == 0 {
 			continue
 		}

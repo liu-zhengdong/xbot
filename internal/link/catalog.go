@@ -118,7 +118,7 @@ var catalog = []CatalogEntry{
 		Available: true, Grant: NameBrowser,
 	},
 	{
-		ID: "desktop", Title: "桌面", Kind: KindNative,
+		ID: "desktop", Title: "电脑操作", Kind: KindNative,
 		Capabilities: []string{"tools"}, Secrets: []string{},
 		Summary:   "截图、点击、输入、滚动、按键。主人正在用电脑时不抢鼠标。",
 		Keywords:  []string{"desktop", "screenshot", "click"},

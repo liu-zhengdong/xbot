@@ -1,0 +1,28 @@
+/* Apps store: the skills shell with a card grid. Selected chips use the neutral fill, never an accent. */
+.setpage:has([data-spane="apps"]:not([hidden])){height:min(760px,90vh)}
+.ap-head{justify-content:space-between;gap:var(--x-s4)}
+.ap-count{display:inline-flex;align-items:center;gap:var(--x-s2);border:0;background:transparent;font:inherit;font-size:var(--x-fs-ui);font-weight:560;color:var(--x-muted);cursor:pointer;padding:var(--x-s2) 0}
+.ap-count:hover{color:var(--x-text)}
+.ap-search{display:block;margin:0 0 var(--x-s4)}
+.ap-search .sksearch{width:100%;max-width:none}
+.ap-chips{display:flex;flex-wrap:wrap;gap:var(--x-s3);margin:0 0 var(--x-s6)}
+.ap-chip{border:0;border-radius:999px;height:28px;padding:0 var(--x-s5);font:inherit;font-size:var(--x-fs-sm);font-weight:560;background:transparent;color:var(--x-muted);cursor:pointer}
+.ap-chip:hover{background:var(--x-fill-1);color:var(--x-text)}
+.ap-chip.on{background:var(--x-fill-3);color:var(--x-text)}
+.ap-sec{margin:0 0 var(--x-s7)}
+.ap-sec h4{margin:0 0 var(--x-s4);font-size:var(--x-fs-sm);font-weight:600;color:var(--x-muted)}
+.ap-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--x-s4)}
+.ap-card{display:flex;align-items:center;gap:var(--x-s5);min-width:0;padding:var(--x-s5);border-radius:var(--x-r-card);background:var(--x-fill-1)}
+.ap-card .tx{flex:1;min-width:0}
+.ap-card .tx b{display:block;font-size:var(--x-fs-ui);font-weight:560}
+.ap-card .tx .hint{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5;margin-top:2px}
+.apps-settings .btn.ap-done,.apps-settings .btn.ap-soon{background:transparent;color:var(--x-muted)}
+.apps-settings .btn.ap-soon{opacity:.6}
+.ap-foot{margin-top:var(--x-s6)}
+.ap-row .btn{margin-left:auto}
+.ap-field{display:block;margin:0 0 var(--x-s5)}
+.ap-field>span{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);margin-bottom:var(--x-s2)}
+.ap-field input,.ap-field textarea{width:100%;box-sizing:border-box;border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:var(--x-fs-ui);padding:8px var(--x-s5)}
+.ap-field textarea{min-height:64px;resize:vertical}
+.ap-field input:focus-visible,.ap-field textarea:focus-visible{outline:2px solid var(--x-muted);outline-offset:2px}
+@media(max-width:640px){.ap-grid{grid-template-columns:1fr}}

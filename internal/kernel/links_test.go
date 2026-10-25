@@ -168,7 +168,7 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}, link.Skills{}}}
 	base := systemOf(t, k)
-	if strings.Contains(base, "## Installed") {
+	if strings.Contains(base, "## 连接器") {
 		t.Fatal(base)
 	}
 	if err := b.GrantLink(link.NameWebhook); err != nil {
@@ -176,7 +176,7 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 	}
 	one := systemOf(t, k)
 	lines := installedBody(one)
-	if len(lines) != 1 || !strings.HasPrefix(lines[0], "- webhook: ") {
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "webhook:") {
 		t.Fatalf("%q", lines)
 	}
 	if err := b.GrantLink(link.NameWatch); err != nil {
@@ -184,7 +184,7 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 	}
 	two := systemOf(t, k)
 	lines = installedBody(two)
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "- webhook: ") || !strings.HasPrefix(lines[1], "- watch: ") {
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "webhook:") || !strings.HasPrefix(lines[1], "watch:") {
 		t.Fatalf("%q", lines)
 	}
 	if strings.Count(two, "\n") != strings.Count(one, "\n")+1 {
@@ -393,7 +393,7 @@ func systemOf(t *testing.T, k *Kernel) string {
 }
 
 func installedBody(text string) []string {
-	const head = "## Installed\n"
+	const head = "## 连接器\n"
 	i := strings.Index(text, head)
 	if i < 0 {
 		return nil

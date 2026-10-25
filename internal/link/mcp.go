@@ -390,6 +390,31 @@ func LoadMCP(path string) ([]MCPServer, error) {
 	return out, err
 }
 
+// LoadMCPAll reads several lists and merges them by name. A later path wins, so a
+// bot's own entry overrides the owner-level one of the same name.
+func LoadMCPAll(paths ...string) ([]MCPServer, error) {
+	var out []MCPServer
+	at := map[string]int{}
+	for _, p := range paths {
+		list, err := LoadMCP(p)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range list {
+			if i, ok := at[s.Name]; ok {
+				out[i] = s
+				continue
+			}
+			at[s.Name] = len(out)
+			out = append(out, s)
+		}
+	}
+	if out == nil {
+		out = []MCPServer{}
+	}
+	return out, nil
+}
+
 // AddMCP appends one server. A duplicate name returns ErrMCPExists.
 func AddMCP(path string, s MCPServer) error {
 	s = normalizeServer(s)

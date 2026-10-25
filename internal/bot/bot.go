@@ -672,9 +672,9 @@ func (b *Bot) TryLockHandle() (*fsutil.FileLock, bool, error) {
 	return fsutil.TryLock(filepath.Join(b.dir(), "handle.lock"))
 }
 
-// Grants reports whether the bot config includes the link name.
+// Grants reports whether the link is granted to this bot or to every bot.
 func (b *Bot) Grants(name string) bool {
-	for _, n := range b.cfg.Links {
+	for _, n := range b.EffectiveLinks() {
 		if n == name {
 			return true
 		}

@@ -8,7 +8,8 @@ import (
 // InstalledCap is the byte budget for the installed-link block in the system prompt.
 const InstalledCap = 1024
 
-// InstalledRef is one installed link: a catalog id or mcp:<server>.
+// InstalledRef is one installed link. Name is what the prompt shows; the
+// model can pass it to links load.
 type InstalledRef struct {
 	ID      string
 	Summary string
@@ -29,7 +30,7 @@ func InstalledSection(refs []InstalledRef) string {
 
 func renderInstalled(refs []InstalledRef, summaries bool) string {
 	var b strings.Builder
-	b.WriteString("## Installed\n")
+	b.WriteString("## 连接器\n")
 	for _, r := range refs {
 		id := strings.TrimSpace(r.ID)
 		if id == "" {
@@ -38,11 +39,11 @@ func renderInstalled(refs []InstalledRef, summaries bool) string {
 		if summaries {
 			summary := oneLine(r.Summary)
 			if summary != "" {
-				fmt.Fprintf(&b, "- %s: %s\n", id, summary)
+				fmt.Fprintf(&b, "%s:%s\n", id, summary)
 				continue
 			}
 		}
-		fmt.Fprintf(&b, "- %s\n", id)
+		fmt.Fprintf(&b, "%s\n", id)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

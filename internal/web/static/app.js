@@ -6470,6 +6470,7 @@
     ++settingsRequest;
     window.XBotWebSearch?.unmount();
     window.XBotSkills?.unmount();
+    window.XBotApps?.unmount();
     window.xbotDevices?.unmount();
     settingsLevel = null;
     settingsError(null);
@@ -6516,6 +6517,7 @@
     if (section !== "devices") window.xbotDevices?.unmount();
     window.XBotWebSearch?.unmount();
     window.XBotSkills?.unmount();
+    window.XBotApps?.unmount();
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
     if (opening) page.focus({ preventScroll: true });
@@ -6535,7 +6537,9 @@
  } else if (section === "devices") {
         await window.xbotDevices.mount();
       } else if (section === "apps") {
-        await Promise.all([loadSettingsApps(request), loadPush()]);
+        await window.XBotApps.mount({api, host:$("settings-apps"), isCurrent:()=>request===settingsRequest, connect:connectApp});
+      } else if (section === "general") {
+        await loadPush();
       }
     } catch (err) { if (request === settingsRequest) settingsError(err); }
   }
@@ -6588,63 +6592,15 @@
   $("settings-copy-version").addEventListener("click", (ev) => copyText(state.version || "dev", ev.currentTarget));
   $("push-icon").append(icon("phone"));
 
-  function settingsAppRow(name, glyph, status, on, action, run) {
-    const row = el("div", "approw");
-    const wrap = el("span", "icwrap"); wrap.append(icon(glyph));
-    const text = el("div", "tx");
-    const st = el("div", "st");
-    if (status) st.append(el("i", "sdot " + (on ? "ok" : "off")), document.createTextNode(status));
-    text.append(el("b", "", name), st); row.append(wrap, text);
-    if (action) {
-      const btn = el("button", "btn sec sm", action); btn.type = "button";
-      btn.addEventListener("click", async () => { btn.disabled = true; settingsError(null); try { await run(); } catch (err) { settingsError(err); } finally { btn.disabled = false; } });
-      row.append(btn);
-    }
-    return row;
-  }
-  async function loadSettingsApps(request) {
-    // Links and MCP belong to a Bot; keep that scope explicit in account settings.
-    const name = state.sel?.type === "bot" ? state.sel.id : state.bots[0]?.name;
-    $("settings-apps-bot").textContent = name ? "管理 " + niceName(name) + " 的连接应用。" : "先新建一个 Bot，再为它连接应用。";
-    const channels = $("settings-channels"), connectors = $("settings-connectors");
-    channels.replaceChildren(); connectors.replaceChildren();
-    $("settings-add-connector").disabled = !name;
-    if (!name) return;
-    const base = "/api/bots/" + encodeURIComponent(name);
-    const [catalog, mcp] = await Promise.all([api(base + "/links"), api(base + "/mcp")]);
-    if (request !== settingsRequest) return;
-    const refresh = () => loadSettingsApps(settingsRequest);
-    const change = async (id, on) => { await api(base + "/links" + (on ? "" : "/" + encodeURIComponent(id)), { method: on ? "POST" : "DELETE", ...(on ? { body: { id } } : {}) }); await refresh(); };
-    channels.append(settingsAppRow("终端", "terminal", "已启用", true));
-    for (const [id, glyph] of [["browser", "globe"], ["desktop", "monitor"]]) {
-      const entry = catalog.links.find(e => e.id === id);
-      channels.append(settingsAppRow(entry.title, glyph, entry.installed ? "已启用" : "未连接", entry.installed, entry.installed ? "断开" : "连接", () => change(id, !entry.installed)));
-    }
-    channels.append(settingsAppRow("MCP", "plug", mcp.servers.length ? mcp.servers.length + " 台服务器" : "未连接", mcp.servers.length > 0, "添加服务器", () => {
-      openModal("添加 MCP 服务器", [
-        { name: "name", label: "名字" }, { name: "command", label: "启动命令", maxLength: 1024 },
-        { name: "args", label: "参数（每行一个）", multiline: true }, { name: "secret_envs", label: "密钥环境变量名（每行一个）", multiline: true },
-      ], async v => { await api(base + "/mcp", { method: "POST", body: { name: v.name, command: v.command, args: v.args.split("\n").filter(Boolean), secret_envs: v.secret_envs.split("\n").filter(Boolean) } }); await refresh(); }, "添加");
-    }));
-    for (const server of mcp.servers) channels.append(settingsAppRow(server.name, "plug", "已登记", true, "移除", async () => { await api(base + "/mcp/" + encodeURIComponent(server.name), { method: "DELETE" }); await refresh(); }));
-    const entries = catalog.links.filter(e => !["browser", "desktop", "mcp"].includes(e.id));
-    const installed = entries.filter(e => e.installed);
-    for (const entry of installed) connectors.append(settingsAppRow(entry.title, "wrench", "已安装", true, "移除", () => change(entry.id, false)));
-    if (!installed.length) connectors.append(el("p", "setlead", "还没有安装连接器。"));
-    $("settings-add-connector").onclick = () => {
-      const available = entries.filter(e => e.available && !e.installed);
-      if (!available.length) return;
-      openModal("添加连接器", [{ name: "id", label: "连接器", type: "choice", options: available.map(e => [e.id, e.title]) }], async v => {
-        const entry = available.find(e => e.id === v.id);
-        if (entry.secrets.length) {
-          closeSettings(false);
-          window.xbotRemoteChat?.close();
-          await selectBot(name);
-          sendText("请帮我安装 " + entry.title + " 连接器，需要的密钥请用确认卡让我填写。");
-        } else await change(v.id, true);
-      }, "添加");
-    };
-    $("settings-add-connector").disabled = entries.every(e => !e.available || e.installed);
+  // A connector that needs a key asks for it on a confirmation card in chat. The card needs some Bot to
+  // host it, so the owner's primary Bot (else the first) takes the request; the app itself stays global.
+  async function connectApp(app) {
+    const host = state.bots.find(b => b.primary) || state.bots[0];
+    if (!host) { settingsError(new Error("先新建一个 Bot，才能在对话里填写密钥。")); return; }
+    closeSettings(false);
+    window.xbotRemoteChat?.close();
+    await selectBot(host.name);
+    sendText("请帮我安装 " + app.title + " 连接器，需要的密钥请用确认卡让我填写。");
   }
 
   function urlBase64ToUint8Array(s) {

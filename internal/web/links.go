@@ -131,7 +131,7 @@ func dropSecrets(b *bot.Bot, e link.CatalogEntry) error {
 func catalogRows(b *bot.Bot) []linkJSON {
 	granted := map[string]bool{}
 	if b != nil {
-		for _, name := range b.Config().Links {
+		for _, name := range b.EffectiveLinks() {
 			granted[name] = true
 		}
 	}

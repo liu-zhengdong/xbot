@@ -31,6 +31,7 @@ try {
 <link rel="stylesheet" href="/providers.css">
 <link rel="stylesheet" href="/web-search.css">
 <link rel="stylesheet" href="/skills.css">
+<link rel="stylesheet" href="/apps.css">
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs>
@@ -243,6 +244,7 @@ try {
       </div>
      </div>
     </div>
+    <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">免打扰时段不推送</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
    </div>
    <div class="setpane" data-spane="perm">
     <h2>权限</h2>
@@ -276,12 +278,7 @@ try {
    <div class="setpane" data-spane="search"><div id="settings-search"></div></div>
    <div class="setpane" data-spane="skills"><div id="settings-skills"></div></div>
    <div class="setpane setdev" data-spane="devices"><div id="settings-devices"></div></div>
-   <div class="setpane" data-spane="apps">
-    <h2>连接应用</h2><p class="setlead" id="settings-apps-bot"></p>
-    <div class="setsec"><h4>通道</h4><div id="settings-channels"></div></div>
-    <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">免打扰时段不推送</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
-    <div class="setsec"><h4>连接器</h4><div id="settings-connectors"></div><button id="settings-add-connector" class="approw setadd" type="button">添加连接器</button><p class="setfoot">装连接器时如果要填密钥，会单独弹出确认——不受「操作前先确认」开关影响。</p></div>
-   </div>
+   <div class="setpane" data-spane="apps"><div id="settings-apps"></div></div>
    <div class="setpane" data-spane="providers"><div id="settings-providers"></div></div>
    <div class="setpane" data-spane="about">
     <h2>关于</h2>
@@ -298,6 +295,7 @@ try {
 <script src="/providers.js"></script>
 <script src="/web-search.js"></script>
 <script src="/skills.js"></script>
+<script src="/apps.js"></script>
 <script src="/app.js"></script>
 <script src="/devices.js"></script>
 <script src="/pairing.js"></script>

@@ -45,20 +45,22 @@ func TestConnectorSetupRevealsTheLocalChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, body, ok := strings.Cut(string(source), "        if (entry.secrets.length) {\n")
+	_, body, ok := strings.Cut(string(source), "  async function connectApp(app) {\n")
 	if !ok {
 		t.Fatal("missing connector setup path")
 	}
-	body, _, ok = strings.Cut(body, "        } else await change")
+	body, _, ok = strings.Cut(body, "\n  }\n")
 	if !ok {
 		t.Fatal("missing connector setup end")
 	}
 	encoded, _ := json.Marshal("return (async()=>{" + body + "})()")
 	script := `const assert=require('node:assert/strict');
- const setup=new Function('entry','name','closeSettings','window','selectBot','sendText',` + string(encoded) + `);
+ const setup=new Function('app','state','settingsError','closeSettings','window','selectBot','sendText',` + string(encoded) + `);
  (async()=>{for(const opened of [false,true]){
   let remote=opened,selected='',messages=[];const calls=[];
-  await setup({title:'Telegram'},'ada',restore=>{assert.equal(restore,false);calls.push('settings')},
+  // the key card is hosted by the primary Bot, not by whatever the sidebar has selected
+  const state={bots:[{name:'bob'},{name:'ada',primary:true}],sel:{type:'bot',id:'bob'}};
+  await setup({title:'Telegram'},state,e=>{throw e},restore=>{assert.equal(restore,false);calls.push('settings')},
     {xbotRemoteChat:{close(){remote=false;calls.push('remote')}}},async name=>{selected=name;calls.push('select')},
     text=>{assert.equal(remote,false,'remote chat still hides the local reply/card');assert.equal(selected,'ada');messages.push(text);calls.push('send')});
   assert.equal(messages.length,1);assert.ok(messages[0].includes('Telegram'));

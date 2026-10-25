@@ -64,7 +64,7 @@ func cmdLink(root string, args []string) error {
 		}
 		granted := map[string]bool{}
 		if b != nil {
-			for _, name := range b.Config().Links {
+			for _, name := range b.EffectiveLinks() {
 				granted[name] = true
 			}
 		}

@@ -95,7 +95,7 @@ func (t linksTool) Run(_ context.Context, args json.RawMessage) (string, error) 
 func (t linksTool) search(query string) string {
 	q := strings.ToLower(strings.TrimSpace(query))
 	granted := map[string]bool{}
-	for _, name := range t.k.Bot.Config().Links {
+	for _, name := range t.k.Bot.EffectiveLinks() {
 		granted[name] = true
 	}
 	var b strings.Builder
@@ -117,7 +117,7 @@ func (t linksTool) search(query string) string {
 		}
 		b.WriteByte('\n')
 	}
-	if servers, err := link.LoadMCP(t.k.Bot.MCPPath()); err == nil {
+	if servers, err := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath()); err == nil {
 		for _, s := range servers {
 			id := "mcp:" + s.Name
 			summary := link.Blurb(id)
@@ -192,9 +192,10 @@ func (t linksTool) load(id string) (string, error) {
 	if id == "" {
 		return "", fmt.Errorf("links: id is required")
 	}
+	id = link.ResolveApp(id)
 	if strings.HasPrefix(id, "mcp:") {
 		name := strings.TrimPrefix(id, "mcp:")
-		servers, err := link.LoadMCP(t.k.Bot.MCPPath())
+		servers, err := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
 		if err != nil {
 			return "", err
 		}
@@ -276,7 +277,7 @@ func (k *Kernel) snapshotLinks() []link.Link {
 
 func (k *Kernel) syncGrantsLocked() {
 	granted := map[string]bool{}
-	for _, name := range k.Bot.Config().Links {
+	for _, name := range k.Bot.EffectiveLinks() {
 		if catalogRuntime(name) {
 			granted[name] = true
 		}
@@ -297,7 +298,7 @@ func (k *Kernel) syncGrantsLocked() {
 		kept = append(kept, l)
 		have[name] = true
 	}
-	for _, name := range k.Bot.Config().Links {
+	for _, name := range k.Bot.EffectiveLinks() {
 		if !catalogRuntime(name) || have[name] {
 			continue
 		}
@@ -434,7 +435,7 @@ func (k *Kernel) installedSection() (string, error) {
 		return "", nil
 	}
 	granted := map[string]bool{}
-	for _, name := range k.Bot.Config().Links {
+	for _, name := range k.Bot.EffectiveLinks() {
 		granted[name] = true
 	}
 	var refs []link.InstalledRef
@@ -442,15 +443,23 @@ func (k *Kernel) installedSection() (string, error) {
 		if e.Grant == "" || !granted[e.Grant] {
 			continue
 		}
+		if a, ok := link.LookupApp(e.ID); ok {
+			refs = append(refs, link.InstalledRef{ID: a.Title, Summary: a.Summary})
+			continue
+		}
 		refs = append(refs, link.InstalledRef{ID: e.ID, Summary: e.Summary})
 	}
-	servers, err := link.LoadMCP(k.Bot.MCPPath())
+	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
 	if err != nil {
 		return "", err
 	}
 	sort.Slice(servers, func(i, j int) bool { return servers[i].Name < servers[j].Name })
 	for _, s := range servers {
 		id := "mcp:" + s.Name
+		if a, ok := link.LookupApp(s.Name); ok && a.Kind == link.AppServer {
+			refs = append(refs, link.InstalledRef{ID: a.Title, Summary: a.Summary})
+			continue
+		}
 		refs = append(refs, link.InstalledRef{ID: id, Summary: link.Blurb(id)})
 	}
 	return link.InstalledSection(refs), nil

@@ -2,27 +2,50 @@
   {
     "id": "filesystem",
     "title": "文件系统",
-    "summary": "stdio MCP。可执行文件 mcp-server-filesystem，由主人安装。密钥不写在目录里。",
+    "summary": "读写本机文件夹。本机自带，不在应用商店里单独安装。",
     "transport": "stdio",
     "command": "mcp-server-filesystem",
     "args": [],
-    "secret_envs": []
+    "secret_envs": [],
+    "hidden": true
   },
   {
     "id": "fetch",
-    "title": "抓取",
-    "summary": "stdio MCP。可执行文件 mcp-server-fetch。",
+    "title": "网页抓取",
+    "summary": "打开网址，把网页内容读成文字。",
+    "category": "dev",
     "transport": "stdio",
-    "command": "mcp-server-fetch",
-    "args": [],
+    "command": "uvx",
+    "args": ["mcp-server-fetch"],
+    "secret_envs": []
+  },
+  {
+    "id": "playwright",
+    "title": "Playwright",
+    "summary": "让 Bot 在独立浏览器里点击、填表、截图，适合测试网页。",
+    "category": "dev",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "secret_envs": []
+  },
+  {
+    "id": "context7",
+    "title": "Context7",
+    "summary": "查最新的开发库文档和示例代码。",
+    "category": "dev",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@upstash/context7-mcp"],
     "secret_envs": []
   },
   {
     "id": "localhttp",
-    "title": "本机 HTTP",
-    "summary": "Streamable HTTP MCP。默认地址可在装上之后改 mcp.json。MCP_TOKEN 只记名字。",
+    "title": "本机服务",
+    "summary": "连接本机上运行的一个服务。地址和口令需要自己准备，不在商店里展示。",
     "transport": "http",
     "url": "http://127.0.0.1:18779/mcp",
-    "secret_envs": ["MCP_TOKEN"]
+    "secret_envs": ["MCP_TOKEN"],
+    "hidden": true
   }
 ]

@@ -3,6 +3,7 @@ package link
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 
 	_ "embed"
 )
@@ -20,6 +21,9 @@ type CatalogItem struct {
 	Args       []string `json:"args,omitempty"`
 	URL        string   `json:"url,omitempty"`
 	SecretEnvs []string `json:"secret_envs,omitempty"`
+	// Category is the store chip (dev, ...). Hidden rows are not shown in the store.
+	Category string `json:"category,omitempty"`
+	Hidden   bool   `json:"hidden,omitempty"`
 }
 
 // Connectors reads the embedded catalog. It is not a hosted marketplace.
@@ -52,13 +56,16 @@ func LookupConnector(id string) (CatalogItem, error) {
 	return CatalogItem{}, ErrUnknown
 }
 
-// EnableConnector copies one catalog row into this bot's mcp.json.
+// EnableConnector copies one catalog row into the mcp.json at path. Run again, it changes nothing.
 func EnableConnector(path, id string) error {
 	c, err := LookupConnector(id)
 	if err != nil {
 		return err
 	}
-	return AddMCP(path, catalogServer(c))
+	if err := AddMCP(path, catalogServer(c)); err != nil && !errors.Is(err, ErrMCPExists) {
+		return err
+	}
+	return nil
 }
 
 func catalogServer(c CatalogItem) MCPServer {
