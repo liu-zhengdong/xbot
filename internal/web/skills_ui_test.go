@@ -6,6 +6,10 @@ import (
 	"testing"
 )
 
+// A script that stops early (an awaited promise that never settles lets node exit 0) must fail, so each
+// script sets finished at its last line and this hook turns a missing flag into a non-zero exit.
+const finishGuard = "let finished=false;process.on('exit',()=>{if(!finished){console.error('script did not reach its end');process.exitCode=1}});\n"
+
 // Behaviour of the settings page script against a fake DOM and a fake API: filtering, the same-name
 // question before overwriting, and an on/off switch that falls back when saving fails.
 func TestSkillsSettingsBehaviour(t *testing.T) {
@@ -14,11 +18,11 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(string(source))
-	script := `const assert=require('node:assert/strict'),vm=require('node:vm');
+	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
  const all=[];
  class Node{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;all.push(this);
   this.classList={toggle:(n,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(n):s.delete(n);this.className=[...s].join(' ')}}}
-  append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){} click(){this.clicked=(this.clicked||0)+1}}
+  append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){document.activeElement=this} click(){this.clicked=(this.clicked||0)+1}}
  const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t}),activeElement:null};
  vm.runInNewContext(` + string(encoded) + `,{window,document});
  const find=(cls,from=all)=>from.filter(n=>n.className.split(' ').includes(cls));
@@ -67,6 +71,12 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   assert.deepEqual(calls.at(-1).slice(0,2),['GET','/api/skills/sources/codex']);
   assert.equal(find('srcempty').at(-1).children[0].textContent,'这边还没有可导入的技能。');
   assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消']);
+  // keyboard: the way back is reachable both directions from the cancel button
+  {const back=find('srcempty').at(-1).children[1],cancel=find('nest-actions').at(-1).children[0],root=find('nestlayer').at(-1);
+   const tab=(shiftKey,from)=>{document.activeElement=from;let prevented=false;root.onkeydown({key:'Tab',shiftKey,stopPropagation(){},preventDefault(){prevented=true}});return {prevented,at:document.activeElement}};
+   let r=tab(false,cancel);assert.equal(r.prevented,true);assert.equal(r.at,back,'Tab from cancel wraps to the way back');
+   r=tab(true,back);assert.equal(r.prevented,true);assert.equal(r.at,cancel,'Shift+Tab from the way back wraps to cancel');
+   r=tab(true,cancel);assert.equal(r.prevented,false,'Shift+Tab from cancel moves to the way back by itself');}
   find('srcempty').at(-1).children[1].onclick();
   assert.deepEqual(lastBox().children.map(label),['Agent','Codex','Claude','本机文件夹']);
   // a source lists tickable skills; the one main button stays off until something is ticked
@@ -78,12 +88,12 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   ck.children[0].onclick();assert.equal(go.disabled,true);
   ck.children[0].onclick();ck.children[1].onclick();
   // same name asks; cancel skips that one and the next still goes
-  const m0=calls.length;await go.onclick();
-  assert.deepEqual({...calls[m0][2]},{source:'agent',id:'weekly',overwrite:false});
+  const m0=calls.length;const run0=go.onclick();
   await new Promise(r=>setImmediate(r));
+  assert.deepEqual({...calls[m0][2]},{source:'agent',id:'weekly',overwrite:false});
   assert.equal(all.filter(n=>n.tag==='button'&&n.textContent==='覆盖').length>=1,true);
   all.filter(n=>n.tag==='button'&&n.textContent==='取消').at(-1).onclick();
-  await new Promise(r=>setImmediate(r));
+  await run0;
   assert.deepEqual({...calls[m0+1][2]},{source:'agent',id:'flight',overwrite:false});
   await new Promise(r=>setImmediate(r));
   assert.equal(find('sk-status').at(-1).textContent,'已导入「订机票」。');
@@ -91,8 +101,8 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   const imp1=all.filter(n=>n.tag==='button'&&n.textContent==='导入')[0];imp1.onclick({currentTarget:imp1});
   lastBox().children[0].onclick();await new Promise(r=>setImmediate(r));
   find('cklist').at(-1).children[0].onclick();
-  const m1=calls.length;await find('nest-actions').at(-1).children[1].onclick();await new Promise(r=>setImmediate(r));
-  all.filter(n=>n.tag==='button'&&n.textContent==='覆盖').at(-1).onclick();await new Promise(r=>setImmediate(r));await new Promise(r=>setImmediate(r));
+  const m1=calls.length;const run1=find('nest-actions').at(-1).children[1].onclick();await new Promise(r=>setImmediate(r));
+  all.filter(n=>n.tag==='button'&&n.textContent==='覆盖').at(-1).onclick();await run1;
   assert.equal(calls[m1+1][2].overwrite,true);assert.equal(calls[m1+1][2].source,'agent');
   assert.equal(find('sk-status').at(-1).textContent,'已导入「写周报」。');
   // the folder row opens the folder picker
@@ -110,6 +120,7 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
   importBtn.onclick({currentTarget:importBtn});const before=calls.length;
   picker.files=[{webkitRelativePath:'x/readme.txt',size:1,text:async()=>''}];await picker.onchange();
   assert.equal(calls.length,before);
+ finished=true;
  })().catch(e=>{console.error(e);process.exitCode=1});`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -124,7 +135,7 @@ func TestSkillsSettingsReportsLevels(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(string(source))
-	script := `const assert=require('node:assert/strict'),vm=require('node:vm');
+	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
  const all=[];
  class Node{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;all.push(this);
   this.classList={toggle:()=>{}}}
@@ -139,6 +150,7 @@ func TestSkillsSettingsReportsLevels(t *testing.T) {
   all.find(n=>n.className==='skrow').onclick();await new Promise(r=>setImmediate(r));
   assert.equal(levels.length,2);assert.equal(levels[1].title,'写周报');assert.equal(levels[1].backLabel,'技能');
   levels[1].back();assert.equal(levels.length,3);assert.equal(levels[2],null);
+ finished=true;
  })().catch(e=>{console.error(e);process.exitCode=1});`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -153,7 +165,7 @@ func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(string(source))
-	script := `const assert=require('node:assert/strict'),vm=require('node:vm');
+	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
  const all=[];
  class Node{constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;all.push(this);
   this.classList={toggle:(n,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(n):s.delete(n);this.className=[...s].join(' ')}}}
@@ -212,7 +224,29 @@ func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {
    read.res('---\nname: x\n---\n');await pending;await tick();
    assert.equal(calls.includes('/api/skills/import'),false,'a read from a cancelled layer must not send');
   }
-  // 4. shared bots show a plain note and no switch
+  // 4. two source picks in a row: the earlier answer arriving first must not swallow the later pick
+  {
+   all.length=0;const gate={agent:defer(),claude:defer()};
+   const api=async p=>{if(p==='/api/skills')return {skills:library};return gate[p.split('/').pop()].p};
+   const host=new Node('div');await window.XBotSkills.mount({api,host,isCurrent:()=>true});
+   const btn=importBtn();btn.onclick({currentTarget:btn});
+   const rows=find('srcrows').at(-1).children;rows[0].onclick();rows[2].onclick();
+   gate.agent.res({skills:[{id:'a',name:'甲',description:'d'}]});await tick();
+   assert.equal(find('cklist').length,0,'the older answer must not draw');
+   gate.claude.res({skills:[{id:'c',name:'丙',description:'d'}]});await tick();
+   assert.equal(find('nestcard').at(-1).attrs['aria-label'],'从 Claude 导入');
+   // answered in the other order, the later pick still wins
+   all.length=0;const g2={agent:defer(),claude:defer()};
+   const api2=async p=>{if(p==='/api/skills')return {skills:library};return g2[p.split('/').pop()].p};
+   await window.XBotSkills.mount({api:api2,host:new Node('div'),isCurrent:()=>true});
+   const b2=importBtn();b2.onclick({currentTarget:b2});
+   const r2=find('srcrows').at(-1).children;r2[0].onclick();r2[2].onclick();
+   g2.claude.res({skills:[{id:'c',name:'丙',description:'d'}]});await tick();
+   g2.agent.res({skills:[{id:'a',name:'甲',description:'d'}]});await tick();
+   assert.equal(find('nestcard').at(-1).attrs['aria-label'],'从 Claude 导入');
+   assert.equal(find('cklist').length,1);
+  }
+  // 5. shared bots show a plain note and no switch
   {
    all.length=0;
    const api=async p=>p==='/api/skills'?{skills:library}:{slug:'a',name:'甲',description:'d',bots:[{name:'ada',enabled:true},{name:'team',enabled:false,shared:true}]};
@@ -221,6 +255,7 @@ func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {
    assert.equal(find('tog').length,1);
    assert.equal(all.some(n=>n.textContent==='多人共用的 Bot，暂不使用技能库'),true);
   }
+ finished=true;
  })().catch(e=>{console.error(e);process.exitCode=1});`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)

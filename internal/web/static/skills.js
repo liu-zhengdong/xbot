@@ -103,7 +103,7 @@
     // ---- 导入 / 同名覆盖 ----
     function closeLayer() {
       if (!layer) return;
-      const {opener, onClose} = layer; layer = null; layers.replaceChildren();
+      const {opener, onClose} = layer; layer = null; sourceSeq++; layers.replaceChildren();
       opener?.focus?.(); onClose?.();
     }
     function openLayer(opener, title, lead, actions, extra) {
@@ -111,7 +111,8 @@
       const root = node("div", "nestlayer"), card = node("div", "nestcard");
       card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", title);
       const buttons = actions.map(([cls, text, act]) => button(cls, text, act));
-      const rowButtons = (extra || []).flatMap(n => Array.from(n.children || []).filter(c => c.type === "button"));
+      const within = n => Array.from(n.children || []).flatMap(c => c.type === "button" ? [c] : within(c));
+      const rowButtons = (extra || []).flatMap(within);
       const bar = node("div", "nest-actions"); bar.append(...buttons);
       const err = node("p", "sk-error"); err.setAttribute("role", "alert"); err.hidden = true;
       card.append(node("h3", "", title), node("p", "lead", lead), ...(extra || []), err, bar);
@@ -152,12 +153,14 @@
         [["btn sec", "取消", () => closeLayer()]], [box]);
     }
     // 嵌层 B：该来源下的技能，多选后「导入所选」；空源给「换个来源」
+    let sourceSeq = 0; // only the latest source pick may draw; closing or replacing a layer bumps it too
     async function openSource(opener, id, label) {
-      const mine = layer;
+      const mine = layer, seq = ++sourceSeq;
+      const stale = () => !current() || layer !== mine || seq !== sourceSeq;
       let res;
       try { res = await api("/api/skills/sources/" + encodeURIComponent(id)); }
-      catch (e) { if (current() && layer === mine) layerError(plain(e, "没能读取" + label + "的技能，请再试一次。")); return; }
-      if (!current() || layer !== mine) return;
+      catch (e) { if (!stale()) layerError(plain(e, "没能读取" + label + "的技能，请再试一次。")); return; }
+      if (stale()) return;
       const items = (res.skills || []).map(r => ({...r, on: false}));
       const box = node("div", "cklist");
       if (!items.length) {
