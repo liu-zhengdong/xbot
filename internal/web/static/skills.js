@@ -135,7 +135,7 @@
     const SOURCES = [
       ["agent", "Agent", "本机 Agent 技能库里的技能", "ag"],
       ["codex", "Codex", "Codex 里的技能", "oa"],
-      ["claude", "Claude", "Claude 里的技能", "an"],
+      ["claude", "Claude", "Claude 里的技能", "cl"],
     ];
     const chev = () => { const c = node("span", "skchev"); c.setAttribute("aria-hidden", "true"); return c; };
     // 来源 glyph：透明底单色，品牌标沿用 provider-icons，由 CSS 遮罩着色
