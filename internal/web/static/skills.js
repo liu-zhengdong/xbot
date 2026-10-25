@@ -9,7 +9,7 @@
   const nameOf = text => { const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text); return head && NAME_LINE.exec(head[1])?.[1].replace(/^["']|["']$/g, "") || ""; };
   const ownText = row => (row.name + " " + row.description).toLowerCase();
 
-  async function mount({api, host, isCurrent}) {
+  async function mount({api, host, isCurrent, onLevel = () => {}}) {
     teardown();
     let alive = true, skills = [], query = "", detail = null, status = "", layer = null, importing = false, statusLine = null, nav = 0;
     const current = () => alive && isCurrent();
@@ -31,7 +31,7 @@
 
     // ---- 一层：列表 ----
     function showList() {
-      nav++; detail = null; fail("");
+      nav++; detail = null; fail(""); onLevel(null);
       const lead = node("p", "setlead", "技能库整台共用。是否启用，按每个 Bot 单独设。");
       const head = node("div", "sethd"); head.append(node("h2", "", "技能"));
       statusLine = node("p", "sk-status", status); statusLine.setAttribute("role", "status"); statusLine.hidden = !status;
@@ -76,7 +76,7 @@
       try { data = await api("/api/skills/" + encodeURIComponent(row.slug)); }
       catch (e) { if (latest()) fail(plain(e, "没能读取这条技能，请再试一次。")); return; }
       if (!latest()) return;
-      detail = data; status = "";
+      detail = data; status = ""; onLevel({title: data.name, backLabel: "技能", back: () => showList()});
       const back = button("setback", "", () => { showList(); }); back.append(node("span", "skback-chev"), document.createTextNode("技能"));
       const bots = node("div", "setrows");
       if (!data.bots.length) bots.append(node("div", "setrow", "还没有 Bot。"));

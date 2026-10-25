@@ -72,6 +72,35 @@ func TestSkillsSettingsBehaviour(t *testing.T) {
 	}
 }
 
+// The phone shell shows the open skill's name and a back link to the list in its own top bar, so the
+// page reports each level it enters and leaves.
+func TestSkillsSettingsReportsLevels(t *testing.T) {
+	source, err := staticFS.ReadFile("static/skills.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(string(source))
+	script := `const assert=require('node:assert/strict'),vm=require('node:vm');
+ const all=[];
+ class Node{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;all.push(this);
+  this.classList={toggle:()=>{}}}
+  append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){}}
+ const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t}),activeElement:null};
+ vm.runInNewContext(` + string(encoded) + `,{window,document});
+ (async()=>{
+  const api=async path=>path==='/api/skills'?{skills:[{slug:'weekly',name:'写周报',description:'x'}]}:{slug:'weekly',name:'写周报',description:'x',bots:[]};
+  const levels=[];
+  await window.XBotSkills.mount({api,host:new Node('div'),isCurrent:()=>true,onLevel:l=>levels.push(l)});
+  assert.deepEqual(levels,[null]);
+  all.find(n=>n.className==='skrow').onclick();await new Promise(r=>setImmediate(r));
+  assert.equal(levels.length,2);assert.equal(levels[1].title,'写周报');assert.equal(levels[1].backLabel,'技能');
+  levels[1].back();assert.equal(levels.length,3);assert.equal(levels[2],null);
+ })().catch(e=>{console.error(e);process.exitCode=1});`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
 // Late answers must not act: a skill read that comes back after a newer pick or the back button, and a
 // folder read that finishes after the settings were closed or the import layer was replaced.
 func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {

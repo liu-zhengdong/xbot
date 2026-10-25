@@ -208,8 +208,14 @@ try {
 <div id="lightbox" class="lightbox" hidden></div>
 <div class="setscrim" id="setscrim" hidden></div>
 <div class="setpage" id="setpage" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="设置">
+ <div class="setbar">
+  <button id="settings-back" class="setbarback" type="button" hidden><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span id="settings-back-label">设置</span></button>
+  <h2 id="settings-bar-title">设置</h2>
+  <button id="settings-close-m" class="icon-btn setbarclose" type="button" aria-label="关闭设置"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+ </div>
  <div class="setbody">
   <nav class="setnav">
+   <p class="setnavlead">整台 XBot 的共用选项。点开一项继续。</p>
    <button type="button" data-set="general"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg><span>通用</span></button>
    <button type="button" data-set="perm"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>权限</span></button>
    <button type="button" data-set="search"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>网页搜索</span></button>

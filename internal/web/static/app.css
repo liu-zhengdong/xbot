@@ -2567,7 +2567,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setdev .g7-device,.setdev .g7-dev-card{margin-top:8px}.setdev .g7-self{margin-top:0}.setdev .g7-caps,.setdev .g7-meta,.setdev .g7-bots{margin-left:0}
 .setdev .g7-flat{margin-top:0}
 .setdev .g7-switch{width:34px}.setdev .g7-switch[aria-checked="true"]::after{transform:translateX(14px)}
-@media(max-width:600px){.setnav{width:124px;padding:10px 6px}.setnav button{padding:0 8px;gap:6px;font-size:12px}.setcnt{padding:20px 16px 28px}.setpane>h2{padding-right:28px}.setrow{padding:10px;gap:8px;flex-wrap:wrap}.setselect{min-width:110px}.setpage{height:85vh}.approw{flex-wrap:wrap}}
+@media(max-width:600px){.setcnt{padding:20px 16px 28px}.setpane>h2{padding-right:28px}.setrow{padding:10px;gap:8px;flex-wrap:wrap}.setselect{min-width:110px}.approw{flex-wrap:wrap}}
 
 
 .setpage:focus{outline:none}
@@ -2592,3 +2592,30 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setdev .g7-lead{margin-bottom:6px}
 
 .setdev .status-dot.ok{background:var(--x-online)}
+
+/* Phone: no side nav. Home is one list; a pick pushes a full-width page (breakpoint from the approved prototype). */
+.setbar,.setnavlead{display:none}
+@media(max-width:640px){
+#setpage.setpage{left:0;top:0;transform:none;width:100%;height:100dvh;border-radius:0;box-shadow:none}
+.setbar{display:flex;align-items:center;gap:var(--x-s3);flex:none;min-height:56px;padding:var(--x-s3) var(--x-s4) var(--x-s3) var(--x-s6);background:var(--x-card)}
+.setbar>h2{flex:1;min-width:0;margin:0;font-size:var(--x-fs-title);font-weight:650;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setbarback{display:inline-flex;align-items:center;gap:var(--x-s2);flex:none;height:36px;padding:0 var(--x-s3) 0 var(--x-s2);margin-left:calc(var(--x-s2)*-1);border:0;border-radius:var(--x-r-sm);background:transparent;color:var(--x-muted);font:inherit;font-size:var(--x-fs-ui);cursor:pointer}
+.setbarback:hover{color:var(--x-text);background:var(--x-fill-2)}
+.setbarclose{flex:none;width:36px;height:36px}
+.setbody{flex-direction:column}
+.setclose{display:none}
+#setpage[data-nav="home"] .setmain,#setpage[data-nav="pane"] .setnav{display:none}
+.setnav{flex:1;width:auto;background:var(--x-card);padding:0 var(--x-s6) var(--x-s9)}
+.setnavlead{display:block;margin:0 0 var(--x-s4);font-size:var(--x-fs-ui);color:var(--x-muted);line-height:1.65}
+.setnav button{position:relative;height:56px;padding:0 var(--x-s5);gap:var(--x-s5);font-size:var(--x-fs-ui);font-weight:560;color:var(--x-text);border-radius:0;background:var(--x-fill-1)}
+.setnav button+button{border-top:1px solid var(--x-fill-2)}
+.setnav button:first-of-type{border-radius:var(--x-r-card) var(--x-r-card) 0 0}
+.setnav button:last-of-type{border-radius:0 0 var(--x-r-card) var(--x-r-card)}
+.setnav button:hover,.setnav button.on,.setpage .setnav button.on{background:var(--x-fill-1);font-weight:560}
+.setnav button:active{background:var(--x-fill-2)}
+.setnav button .ic{box-sizing:content-box;padding:6px;border-radius:8px;background:var(--x-card);color:var(--x-muted)}
+.setnav button:after{content:"";margin-left:auto;flex:none;width:16px;height:16px;background:var(--x-faint);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center/16px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center/16px no-repeat}
+.setcnt{padding:var(--x-s3) var(--x-s6) var(--x-s9)}
+/* The bar names the page and the back button leaves it, so the in-page title and back link would only repeat them. */
+#setpage .setpane>h2,#setpage .skills-settings .sethd,#setpage .web-search-settings>h2,#setpage .provider-title,#setpage .setdev .sethd>h2,#setpage .skills-settings .setback{display:none}
+}

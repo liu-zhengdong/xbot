@@ -6456,6 +6456,27 @@
   let settingsOpener = null;
   let settingsSection = "general";
   let settingsRequest = 0;
+  let settingsLevel = null;
+  const settingsNarrow = window.matchMedia("(max-width: 640px)");
+  function paintSettingsBar() {
+    const page = $("setpage"), home = page.dataset.nav === "home";
+    const tab = page.querySelector(`[data-set="${settingsSection}"]`);
+    $("settings-back").hidden = home;
+    $("settings-back-label").textContent = settingsLevel ? settingsLevel.backLabel : "设置";
+    $("settings-bar-title").textContent = home ? "设置" : settingsLevel ? settingsLevel.title : (tab?.textContent.trim() || "设置");
+  }
+  function showSettingsHome() {
+    const page = $("setpage");
+    ++settingsRequest;
+    window.XBotWebSearch?.unmount();
+    window.XBotSkills?.unmount();
+    window.xbotDevices?.unmount();
+    settingsLevel = null;
+    settingsError(null);
+    page.dataset.nav = "home";
+    paintSettingsBar();
+    page.querySelector(`[data-set="${settingsSection}"]`)?.focus({ preventScroll: true });
+  }
   function settingsError(err) {
     const node = $("settings-error");
     node.textContent = err ? visibleError(err) : "";
@@ -6466,12 +6487,13 @@
     window.XBotWebSearch?.unmount();
     window.XBotSkills?.unmount();
     $("setpage").hidden = $("setscrim").hidden = true;
+    settingsLevel = null;
     window.xbotDevices?.unmount();
     shell.inert = false;
     if (restore) (settingsOpener?.isConnected && !settingsOpener.hidden ? settingsOpener : $("account")).focus({ preventScroll: true });
     settingsOpener = null;
   }
-  async function openSettings(section = "general") {
+  async function openSettings(section = "general", { home = false } = {}) {
     const page = $("setpage");
     const opening = page.hidden;
     if (opening) settingsOpener = document.activeElement?.closest("#account-menu") ? $("account") : document.activeElement;
@@ -6481,6 +6503,9 @@
     shell.inert = true;
     settingsSection = section;
     const request = ++settingsRequest;
+    settingsLevel = null;
+    page.dataset.nav = home ? "home" : "pane";
+    paintSettingsBar();
     settingsError(null);
     for (const tab of page.querySelectorAll("[data-set]")) {
       const on = tab.dataset.set === section;
@@ -6494,6 +6519,8 @@
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
     if (opening) page.focus({ preventScroll: true });
+    else if (settingsNarrow.matches && !home) $("settings-back").focus({ preventScroll: true });
+    if (home) return;
     try {
       if (section === "perm") {
         $("settings-permissions").disabled = true;
@@ -6502,7 +6529,7 @@
       } else if (section === "search") {
         await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
       } else if (section === "skills") {
-        await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest});
+        await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "providers") {
  await window.XBotProviders.settings({api,host:$("settings-providers"),isCurrent:()=>request===settingsRequest});
  } else if (section === "devices") {
@@ -6534,9 +6561,15 @@
   });
   $("settings-theme").addEventListener("change", (ev) => applyTheme(ev.target.value));
   $("account-settings").prepend(icon("settings"));
-  $("account-settings").addEventListener("click", () => openSettings());
+  $("account-settings").addEventListener("click", () => openSettings("general", { home: settingsNarrow.matches }));
   $("account-about").addEventListener("click", () => openSettings("about"));
   $("settings-close").addEventListener("click", () => closeSettings());
+  $("settings-close-m").addEventListener("click", () => closeSettings());
+  $("settings-back").addEventListener("click", () => { if (settingsLevel) settingsLevel.back(); else showSettingsHome(); });
+  // Widening the window from the phone home leaves no list to pick from: land on the section the desktop layout shows.
+  settingsNarrow.addEventListener("change", (ev) => {
+    if (!ev.matches && !$("setpage").hidden && $("setpage").dataset.nav === "home") openSettings(settingsSection);
+  });
   $("setscrim").addEventListener("click", () => { if (!deviceLayerOpen() && modal.hidden) closeSettings(); });
   $("setpage").addEventListener("click", (ev) => {
     const tab = ev.target.closest("[data-set]");
