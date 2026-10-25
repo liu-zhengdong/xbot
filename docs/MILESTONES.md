@@ -338,3 +338,9 @@ Bot 复刻会在自己的电脑上长期运行 XBot，像真实用户一样使�
 ### 网页出站去掉地址白名单（2026-10-25）
 
 mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出站检查因「非公网」拒绝拨号，网页搜索「试一下」报「密钥无效或连不上」。现在只拒绝回环、未指定、链路本地（含云元数据）和组播，其余地址都拨；`trusted_egress_cidrs` 删除，旧字段读入忽略。取舍见 [ADR 0022](adr/0022-web-egress-floor.md)。假 IP 解析下 `web_fetch` 和 DeepSeek 搜索探测的回归在旧代码上失败（证据在仓库外 `~/.xbot-build/egress-guard/old-code-regression.txt`）。`internal/tools`、`internal/web`、`internal/config`、`internal/kernel` 通过。级别：本地分支验收，未合入、未发布。
+
+### 设置·技能（2026-10-25）
+
+设置浮层新增「技能」（网页搜索与设备之间）：一层是主人技能库清单，带搜索和唯一主按钮「导入」；二层按 Bot 开关，关只影响该 Bot。导入由浏览器选文件夹，同名先问再覆盖；新增库级 `GET /api/skills`、`GET /api/skills/{slug}`、`POST /api/skills/import`，开关复用每个 Bot 的 enable/disable。现状见 [界面](atlas/ui.md#技能设置)。
+
+本地 Chrome 走查了列表、搜索、无匹配、空态、二层开关、导入、同名覆盖/取消、错误和深浅色、窄屏；`go test` 覆盖库级接口、导入覆盖与并发同名。级别：本地分支验收，未合入、未发布，主人日用未测。证据在仓库外 `~/.xbot-build/skills-settings/`。

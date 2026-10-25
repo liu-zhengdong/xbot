@@ -306,7 +306,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 ## 用户技能
 
-还是 `skills` 这条 Link。库按登录的 owner 分开，文件在数据根的 `skills/<owner>/<slug>/SKILL.md`。这个接口不负责导入；导入用 `xbot skill import`。
+还是 `skills` 这条 Link。库按登录的 owner 分开，文件在数据根的 `skills/<owner>/<slug>/SKILL.md`。导入用 `xbot skill import`，设置页用下面的库级接口。
 
 `GET /api/bots/{name}/skills` 要登录，而且这个人是该 Bot 的 owner。不是 owner 或 Bot 不存在是 404 `{"error":"not found"}`。未登录 401。返回这个 owner 的技能，每条带上这个 Bot 有没有停用它。没有技能时 `skills` 是空数组。停用的仍在列表里，这样界面可以再打开。
 
@@ -324,6 +324,14 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 `POST /api/bots/{name}/skills/{slug}/disable` 无 body。成功 200 `{"slug":"ship","disabled":true}`。已经停用再停一次仍是 200。库里没有这个 slug 是 404。
 
 `POST /api/bots/{name}/skills/{slug}/enable` 无 body。成功 200 `{"slug":"ship","disabled":false}`。本来就开着再开一次仍是 200。没有这个 slug 是 404。
+
+设置页「技能」按整个库工作，只有开关按 Bot。三条库级接口都要登录，库是登录 owner 的那一份。
+
+`GET /api/skills` 返回 `{"skills":[{"slug","name","description"}]}`，按 slug 排序，没有时是空数组，不带正文，不带停用状态。
+
+`GET /api/skills/{slug}` 返回 `slug`、`name`、`description` 和 `bots:[{"name","enabled"}]`：这个 owner 名下每个 Bot 是否开着这条技能（默认开；顺序同 Bot 列表）。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
+
+`POST /api/skills/import` body `{"folder","content","overwrite"}`：`content` 是浏览器从用户选的文件夹里读出的 SKILL.md 文本（最多 1 MiB 的请求），`folder` 只是文件夹名，是合法 slug 就当技能目录名，否则取头里的 `name`，仍不合法就 400；请求里不出现本机路径，服务端也不据此读任何路径。成功 200 `{"slug","name"}`。库里已有同名且 `overwrite` 不是 true：409 `{"error":"库里已有同名技能，要覆盖吗？","conflict":true,"name":...}`，库不变。头里缺 `name` 或 `description` 是 400，文件夹名不能用也是 400，错误文字都是给用户看的中文。检查与写入在同一把锁里，并发导入同名只有一个成功，其余得到 409；覆盖不动各 Bot 的开关。
 
 停用名单在这个 Bot 的配置里，不在技能文件里。同一个 owner 的另一个 Bot 不受影响。别的 owner 的 Bot 走 `owned` 的 404，列不到这库。
 

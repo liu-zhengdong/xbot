@@ -6464,6 +6464,7 @@
   function closeSettings(restore = true) {
     ++settingsRequest;
     window.XBotWebSearch?.unmount();
+    window.XBotSkills?.unmount();
     $("setpage").hidden = $("setscrim").hidden = true;
     window.xbotDevices?.unmount();
     shell.inert = false;
@@ -6489,6 +6490,7 @@
     for (const pane of page.querySelectorAll("[data-spane]")) pane.hidden = pane.dataset.spane !== section;
     if (section !== "devices") window.xbotDevices?.unmount();
     window.XBotWebSearch?.unmount();
+    window.XBotSkills?.unmount();
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
     if (opening) page.focus({ preventScroll: true });
@@ -6499,6 +6501,8 @@
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
       } else if (section === "search") {
         await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
+      } else if (section === "skills") {
+        await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest});
       } else if (section === "providers") {
  await window.XBotProviders.settings({api,host:$("settings-providers"),isCurrent:()=>request===settingsRequest});
  } else if (section === "devices") {
