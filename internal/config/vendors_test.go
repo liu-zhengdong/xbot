@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -79,9 +80,12 @@ func TestAddVendorIsIdempotentAndKeepsUserEntry(t *testing.T) {
 	if err := Add(root, Provider{Name: "zai", Protocol: ChatCompletions, BaseURL: "https://proxy.example/v1", APIKeyEnv: "MY_ZAI_KEY"}, ModelSpec{Name: "mine", Context: 1000}); err != nil {
 		t.Fatal(err)
 	}
-	p, err = AddVendor(root, "zai")
-	if err != nil || p.BaseURL != "https://proxy.example/v1" || p.APIKeyEnv != "MY_ZAI_KEY" {
-		t.Fatalf("overwrote user entry: %+v %v", p, err)
+	if _, err = AddVendor(root, "zai"); !errors.Is(err, ErrVendorNameTaken) {
+		t.Fatalf("same-name entry on another endpoint accepted: %v", err)
+	}
+	f, _ = Load(root)
+	if z := f.Providers[indexOf(f.Providers, "zai")]; z.BaseURL != "https://proxy.example/v1" || z.APIKeyEnv != "MY_ZAI_KEY" {
+		t.Fatalf("overwrote user entry: %+v", z)
 	}
 	raw, _ := os.ReadFile(Path(root))
 	if strings.Contains(string(raw), "sk-") {
@@ -99,5 +103,41 @@ func TestAddVendorRefusesVertexAndUnknown(t *testing.T) {
 	}
 	if _, err := os.Stat(Path(root)); err == nil {
 		t.Fatal("registry written for a refused vendor")
+	}
+}
+
+func TestSyncVendorModelsRegistersServedAndDropsStaleSeeds(t *testing.T) {
+	root := t.TempDir()
+	if _, err := AddVendor(root, "xai"); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := Load(root)
+	seed := f.Providers[0].Models[0].Name
+	if err := SyncVendorModels(root, "xai", []string{"grok-5", "grok-5-mini"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Resolve(root, "xai", "grok-5", func(string) string { return "k-0123456789" }); err != nil {
+		t.Fatalf("served model not bindable: %v", err)
+	}
+	if _, _, err := Resolve(root, "xai", seed, func(string) string { return "k-0123456789" }); err == nil {
+		t.Fatalf("stale seed %q still bindable", seed)
+	}
+	// A bound seed stays; an empty catalog changes nothing.
+	if err := Add(root, Provider{Name: "xai"}, ModelSpec{Name: "grok-old", Context: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SyncVendorModels(root, "xai", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := SyncVendorModels(root, "xai", []string{"grok-5"}, func(m string) bool { return m == "grok-old" }); err != nil {
+		t.Fatal(err)
+	}
+	f, _ = Load(root)
+	names := map[string]bool{}
+	for _, m := range f.Providers[0].Models {
+		names[m.Name] = true
+	}
+	if !names["grok-old"] || !names["grok-5"] || !names["grok-5-mini"] {
+		t.Fatalf("models: %v", names)
 	}
 }

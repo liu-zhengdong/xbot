@@ -35,10 +35,10 @@ const result={models:[{model:'runtime-only',context:128000,vision:false,hosted_w
  find('button','模型与供应商').onclick();assert.equal(find('input','').value,'OpenAI');
  resolveList(result);await request;assert(!host.innerText.includes('runtime-only'),'late detail replaced list');
  request=find('button','OpenAI').onclick();resolveList(result);await request;
- assert(host.innerText.includes('runtime-only'));assert(!host.innerText.includes('local-only'));assert(host.innerText.includes('无 hosted'));assert(host.innerText.includes('无 vision'));
+ assert(host.innerText.includes('runtime-only'));assert(!host.innerText.includes('local-only'));assert(host.innerText.includes('无厂商搜索'));assert(host.innerText.includes('不能看图'));assert(!/hosted|vision|API_KEY|web\.json|providers\.json/.test(host.innerText),'engineering words in detail');
  assert(!walk(host).some(n=>n.tag==='table'));
  find('button','模型与供应商').onclick();fail=true;await find('button','OpenAI').onclick();assert(find('button','重试'));assert(!host.innerText.includes('private-upstream-body'));
- fail=false;request=find('button','重试').onclick();await Promise.resolve();await Promise.resolve();resolveList({models:[]});await request;assert(host.innerText.includes('未返回可用模型'));assert(find('button','重试'));
+ fail=false;request=find('button','重试').onclick();await Promise.resolve();await Promise.resolve();resolveList({models:[]});await request;assert(host.innerText.includes('未返回可用模型'));assert(!/hosted|vision/.test(host.innerText));assert(find('button','重试'));
  find('button','模型与供应商').onclick();provider.key_configured=false;await find('button','OpenAI').onclick();assert(host.innerText.includes('请先'));assert(find('button','重试'));
  provider.key_configured=true;request=find('button','重试').onclick();await Promise.resolve();await Promise.resolve();current=false;resolveList(result);await request;assert(!host.innerText.includes('runtime-only'),'closed settings received late reply');
 })().catch(e=>{console.error(e);process.exitCode=1});`

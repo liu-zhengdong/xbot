@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"xbot/internal/compact"
 )
 
 // Vendor is a built-in API-key vendor the settings grid can add with one key.
@@ -123,6 +125,85 @@ func BrandForBase(base string) string {
 // ErrNoKeyRoute is returned for a vendor that cannot be added with an API key.
 var ErrNoKeyRoute = errors.New("这家供应商暂不支持直接填密钥，需要先登录 Google Cloud")
 
+// ErrVendorNameTaken is returned when a different endpoint already uses the
+// vendor's name; the entry and its credentials stay as they are.
+var ErrVendorNameTaken = errors.New("已有一个同名的自定义供应商，地址或密钥与这家不同。没有改动它；请先改名或删除它，再保存密钥")
+
+// vendorOwns reports whether p is v's own registry entry: same endpoint and key variable.
+func vendorOwns(v Vendor, p Provider) bool {
+	return p.OAuth == "" && strings.TrimRight(p.BaseURL, "/") == v.BaseURL && p.APIKeyEnv == v.KeyEnv && p.WireProtocol() == v.Protocol
+}
+
+// CheckVendorEntry fails with ErrVendorNameTaken when the registry's entry under
+// the vendor's name belongs to another endpoint. A missing entry is fine.
+func CheckVendorEntry(root, brand string) error {
+	v, ok := VendorFor(brand)
+	if !ok {
+		return fmt.Errorf("providers: unknown vendor %q", brand)
+	}
+	f, err := Load(root)
+	if err != nil {
+		return err
+	}
+	if i := indexOf(f.Providers, v.Brand); i >= 0 && !vendorOwns(v, f.Providers[i]) {
+		return ErrVendorNameTaken
+	}
+	return nil
+}
+
+// SyncVendorModels makes the vendor's registry entry list the models its
+// endpoint really serves, so they can be chosen and bound. Models the endpoint
+// lacks are dropped only when they are untouched built-in seeds and keep(model)
+// is false (a bot is bound to them). An empty catalog changes nothing.
+func SyncVendorModels(root, brand string, served []string, keep func(model string) bool) error {
+	v, ok := VendorFor(brand)
+	if !ok || v.KeyLogin || len(served) == 0 {
+		return nil
+	}
+	f, err := Load(root)
+	if err != nil {
+		return err
+	}
+	i := indexOf(f.Providers, v.Brand)
+	if i < 0 || !vendorOwns(v, f.Providers[i]) {
+		return ErrVendorNameTaken
+	}
+	cur := f.Providers[i]
+	have := map[string]bool{}
+	for _, m := range cur.Models {
+		have[m.Name] = true
+	}
+	var kept []ModelSpec
+	for _, m := range cur.Models {
+		seed := false
+		for _, s := range v.Models {
+			seed = seed || (s.Name == m.Name && s == m)
+		}
+		live := containsName(served, m.Name)
+		if live || !seed || (keep != nil && keep(m.Name)) {
+			kept = append(kept, m)
+		}
+	}
+	for _, id := range served {
+		if !have[id] && len(kept) < 2048 {
+			kept = append(kept, ModelSpec{Name: id, Context: compact.DefaultWindow})
+			have[id] = true
+		}
+	}
+	cur.Models = kept
+	f.Providers[i] = cur
+	return Save(root, f)
+}
+
+func containsName(list []string, name string) bool {
+	for _, n := range list {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 // AddVendor registers a built-in vendor's defaults in providers.json. It never
 // overwrites an entry the user already has under the same name, and it is safe
 // to repeat. It writes no secret.
@@ -139,6 +220,10 @@ func AddVendor(root, brand string) (Provider, error) {
 		return Provider{}, err
 	}
 	if i := indexOf(f.Providers, v.Brand); i >= 0 {
+		// Only the vendor's own entry may take this vendor's key.
+		if !vendorOwns(v, f.Providers[i]) {
+			return Provider{}, ErrVendorNameTaken
+		}
 		return f.Providers[i], nil
 	}
 	for n, m := range v.Models {

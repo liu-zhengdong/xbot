@@ -81,7 +81,8 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/notifications')return json({notifications:[]});
  if(path==='/api/groups')return json({groups:[],folders:[]});
  if(path==='/api/providers')return json({providers,vendors});
- if(path==='/api/providers/xai/key'){fixture.saves=(fixture.saves||0)+1;if(scene==='keyfail')return json({error:'这不像一个 API key'},400);providers.push({name:'xai',brand:'xai',protocol:'chat_completions',api_key_env:'XAI_API_KEY',key_configured:true,models:[]});return json({status:'ok',provider:'xai'})}
+ const keyRoute=/^\/api\/providers\/([a-z-]+)\/key$/.exec(path);
+ if(keyRoute){const brand=keyRoute[1];fixture.saves=(fixture.saves||0)+1;if(scene==='keyfail')return json({error:'这不像一个 API key'},400);if(fixture.slowSave)await new Promise(r=>{fixture.releaseSave=r});providers.push({name:brand,brand,protocol:'chat_completions',api_key_env:brand.toUpperCase()+'_API_KEY',key_configured:true,models:[]});return json({status:'ok',provider:brand})}
  if(path==='/api/providers/oauth/chatgpt/start'){fixture.oauthPolls=0;return json({url:'https://auth.example/authorize'})}
  if(path==='/api/providers/oauth/chatgpt/status'){
   if(scene==='loginerror')return json({state:'failed',error:'private-upstream-body'});
@@ -89,7 +90,7 @@ window.fetch=async(path,opts={})=>{
   if(!providers.some(p=>p.oauth==='chatgpt'))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
   return json({state:'succeeded'});
  }
- if(String(path).startsWith('/api/providers/models?')){
+ if(String(path).startsWith('/api/providers/models?')||/^\/api\/providers\/[a-z-]+\/sync$/.test(path)){fixture.catalogCalls=(fixture.catalogCalls||[]).concat(path);
   if(fixture.fail||scene==='error')return json({error:'upstream failed'},422);
   if(fixture.empty||scene==='empty')return json({models:[]});
   if(fixture.large)return json({models:Array.from({length:2048},(_,i)=>({model:'runtime-'+i,context:128000,vision:false,hosted_web_search:false}))});
@@ -122,6 +123,20 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
  const typed=$('.provider-key input');assert(typed.type==='password','key input visible');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
  await waitFor(()=>$('.provider-model-row'),'models after key');assert(fixture.saves===1,'key saved once');assert($('.provider-status').textContent.includes('密钥已配置'),'status after key');
+ assert(fixture.catalogCalls.includes('/api/providers/xai/sync'),'fetched models were not registered');
+ const words=/API_KEY|providers\.json|web\.json|xbot provider|hosted|vision|\benv\b|backend/i;
+ assert(!words.test($('#settings-providers').textContent),'engineering words after save');assert(/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'plain wording missing');
+ // A configured vendor, and a failed fetch followed by a retry, stay free of engineering words too.
+ $('.provider-back').click();card('xAI').click();await waitFor(()=>$('.provider-model-row'),'configured detail');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
+ $('.provider-back').click();fixture.fail=true;card('xAI').click();await waitFor(()=>$('.provider-empty button'),'xai retry');assert(!words.test($('#settings-providers').textContent),'engineering words in failed state');
+ fixture.fail=false;$('.provider-empty button').click();await waitFor(()=>$('.provider-model-row'),'xai retry recovered');assert(!words.test($('#settings-providers').textContent),'engineering words after retry');
+ // A save that finishes late must not repaint over the page the person moved to.
+ $('.provider-back').click();card('MiniMax').click();await waitFor(()=>$('.provider-key input'),'minimax form');
+ $('.provider-key input').value='minimax-0123456789';fixture.slowSave=true;$('.provider-key').requestSubmit();await waitFor(()=>fixture.releaseSave,'slow save pending');
+ $('.provider-back').click();card('Kimi').click();await waitFor(()=>$('.provider-key input'),'kimi form');
+ const kimi=$('.provider-key input');kimi.value='kimi-typed-0123456789';fixture.slowSave=false;fixture.releaseSave();
+ await new Promise(r=>setTimeout(r,150));
+ assert($('.provider-key input')===kimi&&kimi.value==='kimi-typed-0123456789'&&$('.provider-detail-title h2').textContent==='Kimi','late save overwrote the new page');
  $('.provider-back').click();assert(card('xAI').querySelector('[aria-label="已配置"]'),'configured dot');
  const before=fixture.calls.length;card('OpenRouter').click();await waitFor(()=>$('.provider-empty'),'missing key state');assert(!fixture.calls.slice(before).some(p=>p.startsWith('/api/providers/models')),'unconfigured provider requested models');
  $('.provider-back').click();const input=$('.provider-search input');input.focus();input.value='OpenAI';input.dispatchEvent(new Event('input'));assert(document.activeElement===input,'search lost focus');

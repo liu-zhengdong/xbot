@@ -177,7 +177,7 @@
       input.oninput = () => { query = input.value; filter(); }; filter();
       if (!subscription.hidden && (focusKey === "chatgpt" || focusKey === key(subscriptionEntry()))) chatgpt.focus();
     }
-    function keyForm(p, vendor, saved) {
+    function keyForm(p, vendor, saved, current) {
       const form = node("form", "provider-key"), input = node("input"), note = node("p", "provider-login-note");
       input.type = "password"; input.autocomplete = "off"; input.spellcheck = false; input.placeholder = "粘贴密钥"; input.setAttribute("aria-label", `${vendor.title} 密钥`);
       const save = button("保存密钥", "btn primary", () => {}); save.type = "submit"; note.setAttribute("role", "status");
@@ -186,8 +186,8 @@
       form.onsubmit = async ev => {
         ev.preventDefault(); const value = input.value.trim(); if (!value || saving) return;
         saving = true; save.disabled = input.disabled = true; note.textContent = "正在保存…";
-        try { await api(`/api/providers/${encodeURIComponent(vendor.brand)}/key`, { method: "PUT", body: { key: value } }); input.value = ""; saved(); }
-        catch (err) { note.textContent = err.message || "保存失败，请重试"; save.disabled = input.disabled = false; saving = false; }
+        try { await api(`/api/providers/${encodeURIComponent(vendor.brand)}/key`, { method: "PUT", body: { key: value } }); if (!current()) return; input.value = ""; saved(); }
+        catch (err) { if (!current()) return; note.textContent = err.message || "保存失败，请重试"; save.disabled = input.disabled = false; saving = false; }
       };
       return form;
     }
@@ -217,10 +217,12 @@
             if (vendor.models.length) { body.append(node("h3", "provider-model-count", `默认模型 · ${vendor.models.length}`)); const rows = node("div", "provider-model-list"); for (const name of vendor.models) { const row = node("div", "provider-model-row"); row.append(node("strong", "provider-model-name", name)); rows.append(row); } body.append(rows); }
             return;
           }
-          if (vendor) { body.replaceChildren(keyForm(p, vendor, () => capability(p, true))); return; }
+          if (vendor) { body.replaceChildren(keyForm(p, vendor, () => capability(p, true), current)); return; }
           body.replaceChildren(state("请先配置密钥，再拉取模型。", () => capability(p, true))); return;
         }
-        const result = await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
+        // A vendor card's models are registered as they are fetched, so what the list shows can be chosen.
+        const own = p.name === p.brand && vendorOf(p.brand) && !vendorOf(p.brand).key_login;
+        const result = own ? await api(`/api/providers/${encodeURIComponent(p.brand)}/sync`, { method: "POST" }) : await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
         if (!current()) return;
         const models = result.models;
         body.replaceChildren(node("h3", "provider-model-count", `模型 · ${models.length}`));
@@ -229,8 +231,8 @@
         const rows = node("div", "provider-model-list");
         for (const m of models) {
           const row = node("div", "provider-model-row"), chips = node("div", "provider-chips");
-          for (const [kind, supported, label] of [["search", m.hosted_web_search, "hosted"], ["vision", m.vision, "vision"]]) {
-            const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); if (supported) chip.append(lineIcon(kind)); chip.append(node("span", "", (supported ? "" : "无 ") + label)); chips.append(chip);
+          for (const [kind, supported, label, none] of [["search", m.hosted_web_search, "厂商搜索", "无厂商搜索"], ["vision", m.vision, "看图", "不能看图"]]) {
+            const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); if (supported) chip.append(lineIcon(kind)); chip.append(node("span", "", supported ? label : none)); chips.append(chip);
           }
           const context = m.context >= 1000000 ? `${+(m.context / 1000000).toFixed(2)}M` : `${+(m.context / 1000).toFixed(1)}K`;
           const windowChip = node("span", "provider-chip provider-window", context); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);

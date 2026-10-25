@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/provider"
 )
 
 var newBrands = []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent"}
@@ -148,4 +151,122 @@ func mustReq(t *testing.T, method, url, body string) *http.Request {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// An existing entry that only shares the vendor's name must neither take the
+// vendor's key nor be sent it.
+func TestVendorKeyRefusesSameNameOtherEndpoint(t *testing.T) {
+	const oldKey, newKey = "minimax-old-key-0123456789", "xai-new-key-0123456789"
+	var seen []string
+	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization"))
+		fmt.Fprint(w, `{"data":[{"id":"m"}]}`)
+	})
+	t.Setenv("XAI_API_KEY", "")
+	os.Unsetenv("XAI_API_KEY")
+	t.Setenv("MM_KEY", oldKey)
+	if err := config.Add(s.Root, config.Provider{Name: "xai", Protocol: config.ChatCompletions, BaseURL: "https://api.minimax.io/v1", APIKeyEnv: "MM_KEY"}, config.ModelSpec{Name: "m", Context: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	// Point it at the scripted upstream so a leak would be visible.
+	f, _ := config.Load(s.Root)
+	f.Providers[0].BaseURL = os.Getenv("XBOT_BASE_URL")
+	if err := config.Save(s.Root, f); err != nil {
+		t.Fatal(err)
+	}
+	code, out := setupCall(t, srv, tok, "PUT", "/api/providers/xai/key", `{"key":"`+newKey+`"}`)
+	if code != 409 || strings.Contains(fmt.Sprint(out), newKey) {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	if code, _ := setupCall(t, srv, tok, "POST", "/api/providers/xai/sync", ""); code != 409 {
+		t.Fatalf("sync: %d", code)
+	}
+	env, _ := os.ReadFile(config.EnvFile(s.Root))
+	after, _ := config.Load(s.Root)
+	if strings.Contains(string(env), newKey) || os.Getenv("MM_KEY") != oldKey || len(after.Providers) != 1 || after.Providers[0].APIKeyEnv != "MM_KEY" || after.Providers[0].BaseURL != f.Providers[0].BaseURL {
+		t.Fatalf("existing entry changed: %+v env=%q", after, env)
+	}
+	for _, a := range seen {
+		if strings.Contains(a, newKey) {
+			t.Fatal("new key sent to the other endpoint")
+		}
+	}
+	if len(seen) != 0 {
+		t.Fatalf("upstream contacted %d times", len(seen))
+	}
+}
+
+// Save a key, fetch models beyond the seed, bind one, and chat with it.
+func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
+	const secret = "xai-test-secret-0123456789"
+	var auth, chatModel string
+	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			fmt.Fprint(w, `{"data":[{"id":"grok-5"},{"id":"grok-5-mini"}]}`)
+		case "/v1/chat/completions":
+			var in struct {
+				Model string `json:"model"`
+			}
+			json.NewDecoder(r.Body).Decode(&in)
+			auth, chatModel = r.Header.Get("Authorization"), in.Model
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"hello\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	t.Setenv("XAI_API_KEY", "")
+	os.Unsetenv("XAI_API_KEY")
+	t.Cleanup(config.ForgetKeys)
+	for i := range config.Vendors {
+		if config.Vendors[i].Brand == "xai" {
+			saved := config.Vendors[i].BaseURL
+			config.Vendors[i].BaseURL = os.Getenv("XBOT_BASE_URL")
+			t.Cleanup(func() { config.Vendors[i].BaseURL = saved })
+		}
+	}
+	b, err := bot.Create(s.Root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := setupCall(t, srv, tok, "PUT", "/api/providers/xai/key", `{"key":"`+secret+`"}`); code != 200 {
+		t.Fatalf("save: %d", code)
+	}
+	if code, _ := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-5"}`); code != 400 {
+		t.Fatalf("model outside the seed bound before it was fetched: %d", code)
+	}
+	if code, out := setupCall(t, srv, tok, "POST", "/api/providers/xai/sync", ""); code != 200 || len(out["models"].([]any)) != 2 {
+		t.Fatalf("sync: %d %v", code, out)
+	}
+	if code, out := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-5"}`); code != 200 {
+		t.Fatalf("bind fetched model: %d %v", code, out)
+	}
+	visible, _ := config.VisibleModels(s.Root, true)
+	found := false
+	for _, m := range visible {
+		found = found || m.Provider == "xai" && m.Model == "grok-5"
+	}
+	if !found {
+		t.Fatal("fetched model missing from the chat picker")
+	}
+	cfg, err := bot.Load(s.Root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep, _, err := config.Resolve(s.Root, cfg.Config().Provider, cfg.Config().Model, config.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := provider.New(provider.Endpoint{Protocol: config.ChatCompletions, APIKey: ep.APIKey, BaseURL: ep.BaseURL, Model: ep.Model})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, err := p.Chat(context.Background(), provider.Request{Messages: []provider.Message{{Role: "user", Content: provider.TextContent("hi")}}}, nil)
+	if err != nil || chatModel != "grok-5" || auth != "Bearer "+secret || !strings.Contains(fmt.Sprint(reply.Content), "hello") {
+		t.Fatalf("chat: %v model=%q auth=%q %v", err, chatModel, auth, reply)
+	}
 }

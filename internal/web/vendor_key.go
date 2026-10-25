@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"xbot/internal/bot"
 	"xbot/internal/config"
 )
 
@@ -37,6 +38,10 @@ func (s *Server) putVendorKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, err.Error())
 		return
 	}
+	if errors.Is(err, config.ErrVendorNameTaken) {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		if _, known := config.VendorFor(brand); !known {
 			writeErr(w, http.StatusNotFound, "没有这家供应商")
@@ -55,4 +60,50 @@ func (s *Server) putVendorKey(w http.ResponseWriter, r *http.Request) {
 	}
 	config.SetHeld(p.APIKeyEnv, key)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "provider": p.Name})
+}
+
+// syncVendorModels fetches the vendor's real catalog and registers it, so a
+// model the endpoint serves can be chosen and bound. Seed models the endpoint
+// lacks are dropped unless a bot is bound to them.
+func (s *Server) syncVendorModels(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	brand := r.PathValue("brand")
+	if _, known := config.VendorFor(brand); !known {
+		writeErr(w, http.StatusNotFound, "没有这家供应商")
+		return
+	}
+	s.vendorMu.Lock()
+	defer s.vendorMu.Unlock()
+	if err := config.CheckVendorEntry(s.Root, brand); errors.Is(err, config.ErrVendorNameTaken) {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	models, err := config.ProviderModels(r.Context(), s.Root, brand)
+	if err != nil {
+		writeErr(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	bound := map[string]bool{}
+	if bots, err := bot.List(s.Root); err == nil {
+		for _, c := range bots {
+			if c.Provider == brand {
+				bound[c.Model] = true
+			}
+		}
+	}
+	names := make([]string, 0, len(models))
+	for _, m := range models {
+		names = append(names, m.Model)
+	}
+	if err := config.SyncVendorModels(s.Root, brand, names, func(m string) bool { return bound[m] }); err != nil {
+		if errors.Is(err, config.ErrVendorNameTaken) {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, config.RedactHeld(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
