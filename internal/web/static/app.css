@@ -2604,6 +2604,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setbarclose{flex:none;width:36px;height:36px}
 .setbody{flex-direction:column}
 .setclose{display:none}
+.setmain{min-height:0}
 #setpage[data-nav="home"] .setmain,#setpage[data-nav="pane"] .setnav{display:none}
 .setnav{flex:1;width:auto;background:var(--x-card);padding:0 var(--x-s6) var(--x-s9)}
 .setnavlead{display:block;margin:0 0 var(--x-s4);font-size:var(--x-fs-ui);color:var(--x-muted);line-height:1.65}
