@@ -140,6 +140,12 @@ func (s *Server) readLibrarySkill(w http.ResponseWriter, r *http.Request) {
 	}
 	bots := []map[string]any{}
 	for _, cfg := range bot.Order(cfgs) {
+		// A bot with several owners never loads a personal library (the kernel needs a sole owner),
+		// so its switch would save and change nothing; say so instead of offering it.
+		if len(cfg.Owners) != 1 {
+			bots = append(bots, map[string]any{"name": cfg.Name, "enabled": false, "shared": true})
+			continue
+		}
 		bots = append(bots, map[string]any{"name": cfg.Name, "enabled": !slices.Contains(cfg.DisabledSkills, info.Slug)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

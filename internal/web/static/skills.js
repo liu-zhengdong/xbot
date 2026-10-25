@@ -11,9 +11,9 @@
 
   async function mount({api, host, isCurrent}) {
     teardown();
-    let alive = true, skills = [], query = "", detail = null, status = "", layer = null, importing = false, statusLine = null;
+    let alive = true, skills = [], query = "", detail = null, status = "", layer = null, importing = false, statusLine = null, nav = 0;
     const current = () => alive && isCurrent();
-    teardown = () => { alive = false; host.replaceChildren(); };
+    teardown = () => { alive = false; nav++; layer = null; host.replaceChildren(); };
     host.className = "skills-settings";
     const errorBox = node("p", "sk-error"); errorBox.setAttribute("role", "alert"); errorBox.hidden = true;
     const body = node("div", "sk-body");
@@ -31,7 +31,7 @@
 
     // ---- 一层：列表 ----
     function showList() {
-      detail = null; fail("");
+      nav++; detail = null; fail("");
       const lead = node("p", "setlead", "技能库整台共用。是否启用，按每个 Bot 单独设。");
       const head = node("div", "sethd"); head.append(node("h2", "", "技能"));
       statusLine = node("p", "sk-status", status); statusLine.setAttribute("role", "status"); statusLine.hidden = !status;
@@ -70,16 +70,19 @@
     // ---- 二层：单条技能 ----
     async function openDetail(row) {
       fail("");
+      // Only the latest pick may change the page: a newer pick, the back button and closing all bump nav.
+      const mine = ++nav, latest = () => current() && mine === nav;
       let data;
       try { data = await api("/api/skills/" + encodeURIComponent(row.slug)); }
-      catch (e) { if (current()) fail(plain(e, "没能读取这条技能，请再试一次。")); return; }
-      if (!current()) return;
+      catch (e) { if (latest()) fail(plain(e, "没能读取这条技能，请再试一次。")); return; }
+      if (!latest()) return;
       detail = data; status = "";
       const back = button("setback", "", () => { showList(); }); back.append(node("span", "skback-chev"), document.createTextNode("技能"));
       const bots = node("div", "setrows");
       if (!data.bots.length) bots.append(node("div", "setrow", "还没有 Bot。"));
       for (const b of data.bots) {
         const line = node("div", "setrow"), tx = node("div", "tx"); tx.append(node("b", "", b.name));
+        if (b.shared) { tx.append(node("span", "hint", "多人共用的 Bot，暂不使用技能库")); line.append(tx); bots.append(line); continue; }
         const tog = button("tog", "", () => flip(b, tog)); tog.setAttribute("role", "switch"); tog.setAttribute("aria-label", "在 " + b.name + " 里启用「" + data.name + "」");
         const paint = () => { tog.classList.toggle("on", b.enabled); tog.setAttribute("aria-checked", String(b.enabled)); tog.title = b.enabled ? "已启用" : "已停用"; };
         b.paint = paint; paint(); line.append(tx, tog); bots.append(line);
@@ -139,16 +142,18 @@
     picker.onchange = async () => {
       const files = [...(picker.files || [])]; picker.value = "";
       if (!files.length || !layer) return;
+      const mine = layer; // a read that outlives this import layer must not send into a later one
       const folder = (files[0].webkitRelativePath || "").split("/")[0];
       const file = files.find(f => f.webkitRelativePath === folder + "/SKILL.md");
       if (!file) return layerError("这个文件夹里没找到技能说明，请选择一个技能文件夹。");
       if (file.size > MAX_FILE) return layerError("技能说明太大了，导入不了。");
       let content;
       try { content = await file.text(); } catch { return layerError("没能读取这个文件夹，请换一个再试。"); }
+      if (!current() || layer !== mine) return;
       send({folder, content, overwrite: false});
     };
     async function send(payload) {
-      if (importing || !layer) return;
+      if (importing || !layer || !current()) return;
       importing = true; layer.buttons.forEach(b => b.disabled = true); layerError("");
       let res = null, problem = null;
       try { res = await api("/api/skills/import", {method: "POST", body: payload}); } catch (e) { problem = e; }

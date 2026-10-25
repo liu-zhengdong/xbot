@@ -278,3 +278,48 @@ func TestSkillImportAsksBeforeOverwriting(t *testing.T) {
 		t.Fatalf("unknown field: %d", code)
 	}
 }
+
+// A bot with several owners never loads a personal library, so the settings page must not offer it a switch.
+func TestSkillLibraryMarksSharedBotUnavailable(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	if err := skill.Write(root, "u1", "ship", "Pack a release", "x"); err != nil {
+		t.Fatal(err)
+	}
+	team, err := bot.Create(root, "team", "persona", []string{link.NameSkills})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := team.SetOwners([]string{"u1", "u2"}); err != nil {
+		t.Fatal(err)
+	}
+	code, raw := call(http.MethodGet, "/api/skills/ship", "", true)
+	if code != http.StatusOK {
+		t.Fatalf("detail %d %s", code, raw)
+	}
+	var detail struct {
+		Bots []struct {
+			Name            string
+			Enabled, Shared bool
+		}
+	}
+	if err := json.Unmarshal([]byte(raw), &detail); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, b := range detail.Bots {
+		seen[b.Name] = true
+		switch b.Name {
+		case "team":
+			if !b.Shared || b.Enabled {
+				t.Fatalf("shared bot must read as unavailable, not enabled: %+v", b)
+			}
+		case "ada", "bob":
+			if b.Shared || !b.Enabled {
+				t.Fatalf("sole-owner bot stays switchable: %+v", b)
+			}
+		}
+	}
+	if !seen["team"] || !seen["ada"] || !seen["bob"] {
+		t.Fatalf("bots listed: %+v", detail.Bots)
+	}
+}
