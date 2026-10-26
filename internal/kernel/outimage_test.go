@@ -526,3 +526,171 @@ func TestQueuedPastedIDIsStillValidated(t *testing.T) {
 		})
 	}
 }
+
+// TestContinuationCanAttachImages reproduces a real Handle/Interject journey:
+// the same turn has already replied, then a new tool call attaches to its next reply.
+func TestContinuationCanAttachImages(t *testing.T) {
+	k, dir, _ := outImageKernel(t)
+	defer k.Close()
+	if err := k.Bot.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), onePixelPNG(t), 0600); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	var firstTurn *turn
+	late := link.TerminalEvent("u1", "再把图给我", time.Now())
+	k.Provider = providerFunc(func(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+		calls++
+		switch calls {
+		case 1:
+			firstTurn = k.liveTurn()
+			if !Interject(k.Bot, late, &Sink{Done: make(chan Outcome, 1)}) {
+				t.Fatal("interjection was not accepted")
+			}
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第一句已答")}, nil
+		case 2:
+			if k.liveTurn() != firstTurn {
+				t.Fatal("continuation switched turn identity")
+			}
+			if !strings.Contains(messagesText(req.Messages), late.Content) {
+				t.Fatal("continuation lost new input")
+			}
+			return toolCall("new-picture", "notify_owner", `{"text":"新请求的图","images":["chart.png"]}`), nil
+		case 3:
+			for _, m := range req.Messages {
+				if m.Role == provider.RoleTool && m.Name == "notify_owner" {
+					t.Logf("fresh continuation tool result: %s", m.Text())
+				}
+			}
+			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("这是新请求的图")}, nil
+		default:
+			t.Fatalf("unexpected model call %d", calls)
+			return provider.Message{}, nil
+		}
+	})
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "先答一句", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("model calls=%d", calls)
+	}
+	id, err := work.PastedNameFor("image/png", onePixelPNG(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range entriesFor(t, k.Bot) {
+		if e.Message.Text() == "第一句已答" && len(e.Images) != 0 {
+			t.Errorf("first reply got continuation pictures: %v", e.Images)
+		}
+		if e.Message.Text() == "这是新请求的图" {
+			found = true
+			if !slices.Equal(e.Images, []string{id}) {
+				t.Errorf("new call in the continuation failed to attach its image: %v", e.Images)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("continuation final answer absent")
+	}
+	notes, err := notify.Open(k.Bot.OutboxPath()).Unread()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 1 || notes[0].Text != "新请求的图" {
+		t.Errorf("new call delivered %d notes, want 1", len(notes))
+	}
+}
+
+// A new call in a continuation succeeds while an older detached call on that
+// same turn remains stale. Clearing answered would accidentally revive it.
+func TestContinuationRejectsOldImageJob(t *testing.T) {
+	k, dir, _ := outImageKernel(t)
+	owner := &turn{}
+	k.turn = owner
+	oldPic, newPic := onePixelPNG(t), sizedPNG(t, 2, 1)
+	for name, data := range map[string][]byte{"old.png": oldPic, "new.png": newPic} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.WithValue(context.Background(), turnKey{}, owner)
+	signal := make(chan struct{})
+	jobCtx := tools.WithWaitSignal(ctx, signal)
+	started, release := make(chan struct{}), make(chan struct{})
+	finished, receipt := make(chan tools.CallResult, 1), make(chan tools.CallResult, 1)
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		_ = k.Close()
+	}()
+	oldArgs := json.RawMessage(`{"text":"old note","images":["old.png"]}`)
+	go func() {
+		receipt <- k.runToolCall(jobCtx, notifyTool{k}, oldArgs, func(callCtx context.Context) tools.CallResult {
+			close(started)
+			<-release
+			out, err := (notifyTool{k}).Run(callCtx, oldArgs)
+			result := tools.CallResult{Text: out, Err: err}
+			finished <- result
+			return result
+		})
+	}()
+	<-started
+	close(signal)
+	if got := <-receipt; got.Job == nil {
+		t.Fatalf("old call did not detach: %+v", got)
+	}
+	if _, err := k.recordTurn(owner, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("first reply")}); err != nil {
+		t.Fatal(err)
+	}
+	newArgs := json.RawMessage(`{"text":"new note","images":["new.png"]}`)
+	fresh := k.runToolCall(ctx, notifyTool{k}, newArgs, func(callCtx context.Context) tools.CallResult {
+		out, err := (notifyTool{k}).Run(callCtx, newArgs)
+		return tools.CallResult{Text: out, Err: err}
+	})
+	if fresh.Err != nil || fresh.Job != nil {
+		t.Fatalf("new call on the same turn: %+v", fresh)
+	}
+	close(release)
+	released = true
+	if got := <-finished; !errors.Is(got.Err, errReplySent) {
+		t.Fatalf("stale old call: %+v", got)
+	}
+	newID, err := work.PastedNameFor("image/png", newPic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(owner.outImages, []string{newID}) || owner.outBytes != len(newPic) {
+		t.Fatalf("old call changed continuation queue: %v / %d", owner.outImages, owner.outBytes)
+	}
+	files, err := os.ReadDir(work.PastedDirFor(dir))
+	if err != nil || len(files) != 1 || files[0].Name() != newID {
+		t.Fatalf("stale call wrote a picture: %v, %v", files, err)
+	}
+	notes, err := notify.Open(k.Bot.OutboxPath()).Unread()
+	if err != nil || len(notes) != 1 || notes[0].Text != "new note" {
+		t.Fatalf("notifications = %v, %v; want only the new call", notes, err)
+	}
+	if _, err := k.recordTurn(owner, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("continuation reply")}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entriesFor(t, k.Bot) {
+		if e.Message.Text() == "first reply" && len(e.Images) != 0 {
+			t.Fatalf("first reply images = %v", e.Images)
+		}
+		if e.Message.Text() == "continuation reply" {
+			found = true
+			if !slices.Equal(e.Images, []string{newID}) {
+				t.Fatalf("continuation images = %v", e.Images)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("continuation reply absent")
+	}
+}

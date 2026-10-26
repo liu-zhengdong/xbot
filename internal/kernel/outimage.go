@@ -31,7 +31,7 @@ type outPicture struct {
 	size int
 }
 
-// errReplySent refuses pictures for a turn whose reply is already written: a
+// errReplySent refuses pictures for a call whose reply is already written: a
 // call that finished late (a detached tool job) cannot put them in that bubble,
 // and putting them in whatever turn runs now would show them under an
 // unrelated reply.
@@ -50,6 +50,21 @@ func (k *Kernel) imageTurn(ctx context.Context) *turn {
 		}
 	}
 	return k.liveTurn()
+}
+
+// imageReplySentLocked checks the reply the call was issued for, rather than
+// whether this long-lived turn has ever answered. Calls without a captured
+// generation retain the conservative answered check. The caller holds t.mu.
+func (t *turn) imageReplySentLocked(ctx context.Context) bool {
+	if t.finished {
+		return true
+	}
+	if ctx != nil {
+		if gen, ok := ctx.Value(callReplyGenKey{}).(int); ok {
+			return gen != t.replyGen
+		}
+	}
+	return t.answered
 }
 
 // attachOutImages stores refs and queues them for the turn's reply line. It
@@ -81,7 +96,7 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 		return nil, errors.New("images: no reply to attach them to")
 	}
 	t.mu.Lock()
-	sent := t.answered || t.finished
+	sent := t.imageReplySentLocked(ctx)
 	queued, total := slices.Clone(t.outImages), t.outBytes
 	t.mu.Unlock()
 	if sent {
@@ -107,7 +122,7 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// The turn may have moved on while the files were read.
-	if t.answered || t.finished {
+	if t.imageReplySentLocked(ctx) {
 		return nil, errReplySent
 	}
 	queued, total = slices.Clone(t.outImages), t.outBytes

@@ -77,6 +77,9 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if m.Role == provider.RoleAssistant && len(m.Calls()) == 0 {
+		t.replyGen++
+	}
 	t.lastRec = seq
 	return seq, nil
 }
