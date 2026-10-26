@@ -296,8 +296,9 @@
         if (refresh) { data = await api("/api/providers"); if (!current()) return; p = p.oauth === "chatgpt" ? subscriptionEntry() : entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
         // An xAI vendor card leads with account login even when an old API key
         // is configured; OAuth is the primary path and the key folds away.
-        const vendorEarly = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
-        if (vendorEarly && vendorEarly.brand === "xai" && p.oauth !== "xai") { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
+        // The default endpoint has an empty name, so match on brand alone.
+        const vendorEarly = p.brand === "xai" && p.oauth !== "xai" && vendorOf("xai");
+        if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
           if (p.oauth === "xai") { body.replaceChildren(state("请重新登录 xAI，再拉取模型。")); return; }
@@ -340,8 +341,8 @@
         }
         // A key-only xAI vendor card that still fails points back at account
         // login; an OAuth binding keeps the re-login message above.
-        const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
-        if (vendor && vendor.brand === "xai" && p.oauth !== "xai") {
+        const vendor = p.brand === "xai" && p.oauth !== "xai" && vendorOf("xai");
+        if (vendor) {
           body.replaceChildren(state("拉取模型失败，可以登录 xAI 账号后再试。", () => capability(p, true)), xaiVendorBody(p, vendor, current));
           return;
         }
