@@ -61,15 +61,21 @@ func RenameBot(root, from, to string) error {
 
 type profileTool struct{ k *Kernel }
 
+type profileChanges struct {
+	profile    bot.ProfileUpdate
+	avatarSeed *string
+}
+
 func (profileTool) Name() string { return "propose_profile" }
 func (profileTool) Description() string {
-	return "Propose a profile change: name, description, or timezone. It is saved only after the owner confirms, and applies on the next wake."
+	return "Propose a change to this bot's profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), propose a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. It is saved only after the owner confirms, and applies on the next wake."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
 		"name":        stringProp("new bot name; letters, digits, _ and -"),
 		"description": stringProp("one-line description; empty clears it"),
 		"timezone":    stringProp("IANA timezone such as Asia/Shanghai; empty uses the machine zone"),
+		"avatar_seed": stringProp("generated avatar seed for this bot; propose a new seed for 换一批, conventionally 名字#n (e.g. XBot#3); 1–80 characters after trimming, no markup, quotes, ampersands, backticks or control characters; replaces any uploaded avatar"),
 	}, nil)
 }
 func (profileTool) Confirm(args json.RawMessage) (bool, string, error) {
@@ -84,8 +90,13 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 	if err != nil {
 		return "", err
 	}
-	if update != (bot.ProfileUpdate{}) {
-		if err := t.k.Bot.ApplyProfile(update); err != nil {
+	if update.profile != (bot.ProfileUpdate{}) {
+		if err := t.k.Bot.ApplyProfile(update.profile); err != nil {
+			return "", err
+		}
+	}
+	if update.avatarSeed != nil {
+		if err := t.k.Bot.SetAvatarSeed(*update.avatarSeed); err != nil {
 			return "", err
 		}
 	}
@@ -106,19 +117,19 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 	return "profile saved; it applies on the next wake", nil
 }
 
-func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string, error) {
+func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, error) {
 	if len(args) == 0 {
-		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
+		return nil, profileChanges{}, "", errors.New("profile: nothing to change")
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(args, &raw); err != nil {
-		return nil, bot.ProfileUpdate{}, "", err
+		return nil, profileChanges{}, "", err
 	}
 	if len(raw) == 0 {
-		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
+		return nil, profileChanges{}, "", errors.New("profile: nothing to change")
 	}
 	known := []string{
-		"name", "description", "timezone",
+		"name", "description", "timezone", "avatar_seed",
 	}
 	allowed := map[string]bool{}
 	for _, key := range known {
@@ -126,10 +137,10 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 	}
 	for key := range raw {
 		if !allowed[key] {
-			return nil, bot.ProfileUpdate{}, "", fmt.Errorf("profile: unknown field %q", key)
+			return nil, profileChanges{}, "", fmt.Errorf("profile: unknown field %q", key)
 		}
 	}
-	var update bot.ProfileUpdate
+	var update profileChanges
 	var name *string
 	var parts []string
 	for _, key := range known {
@@ -139,22 +150,29 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 		}
 		var s string
 		if err := json.Unmarshal(val, &s); err != nil {
-			return nil, bot.ProfileUpdate{}, "", fmt.Errorf("profile: %s must be a string", key)
+			return nil, profileChanges{}, "", fmt.Errorf("profile: %s must be a string", key)
 		}
 		switch key {
 		case "name":
 			name = &s
 			parts = append(parts, "name "+quote(s))
 		case "description":
-			update.Description = &s
+			update.profile.Description = &s
 			parts = append(parts, "description "+quote(s))
 		case "timezone":
-			update.Timezone = &s
+			update.profile.Timezone = &s
 			parts = append(parts, "timezone "+quote(s))
+		case "avatar_seed":
+			if !bot.ValidAvatarSeed(s) {
+				return nil, profileChanges{}, "", errors.New("profile: invalid avatar_seed")
+			}
+			s = strings.TrimSpace(s)
+			update.avatarSeed = &s
+			parts = append(parts, "avatar_seed "+quote(s))
 		}
 	}
-	if name == nil && update == (bot.ProfileUpdate{}) {
-		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
+	if name == nil && update == (profileChanges{}) {
+		return nil, profileChanges{}, "", errors.New("profile: nothing to change")
 	}
 	return name, update, "update profile: " + strings.Join(parts, ", "), nil
 }
