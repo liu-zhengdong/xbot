@@ -1,6 +1,15 @@
 # XBot 里程碑与进度
 
+
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
+
+## 2026-10-26 公网 UI 单源（分支实现，未合入）
+
+- 设备新增受限 `GET /api/ui/static/<path>`，只读内嵌 staticFS；保留 MIME / ETag / no-cache，补设备 tip 与 700 KiB 超限 413。pipe 保持 owner `/api/` 边界，复用 Do / AuthorizeOwner，仅扩展静态元数据白名单。
+- 配套账号分支删除业务 static 副本，保留 boot / bridge / scoped resource worker 与字体；完整页面、脚本、样式来自当前设备，切设备关闭旧 pipe、重载，无设备/离线/旧设备不支持时不回落旧壳。账号 API 仍在云上，sync 脚本退出业务 UI 发版路径。决策见 [ADR 0029](adr/0029-public-ui-single-source-via-pipe.md)，待公网验收项在 [开发设计](dev/public-ui-single-source.md)。
+- 相关 Go 包 `internal/web`、`internal/pipe` 单次测试及账号仓 `internal/account`、`internal/fsutil`、19 条 Node 测试、smoke-public 通过。新增出口测试在旧 xbot 归档上因路由缺失失败；新 bridge 行为测试在旧账号归档上失败。gofmt、相关包 vet、diff 检查通过；atlas audit 执行，既有陈旧、链接、映射提醒未顺手修改。
+- Chromium 使用真实 Go hub / owner API 与 scripted 模型，验证完整桌面/手机界面、发消息、原生图片、只改设备端后刷新、Mini → Laptop 切换、关于版本、无业务缓存、无设备重试、账号退出及 CSP。完整相关包运行时启动 207ms，20 次 Bot API 读取 p95 0.40ms；仅为本机 fixture，不代表公网启动/交互 p95、IPC 或 60fps。
+- 证据、浅深色截图及两仓提交信息写入 `~/.xbot-build/public-ui-single-source/encode-report.md`。未 push、未合 main、未起 8788；公网/设计师截图确认/主人日用仍待验，不称已合入或产品端到端通过。
 
 
 

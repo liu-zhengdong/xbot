@@ -7709,7 +7709,7 @@
   hold.append(emptyState("XBot", "登录之后，对话在这里继续。"));
   thread.replaceChildren(hold);
 
-  if ("serviceWorker" in navigator) {
+  if (!window.XBotPipe && "serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
 

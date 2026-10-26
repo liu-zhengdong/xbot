@@ -207,7 +207,7 @@
     const a = me && me.account;
     if (!a) { showLogin(); return; }
     // Wide windows are this computer's own window: straight to the main interface.
-    if (a.owner && wide()) { leave(); hooks.owner && hooks.owner(""); return; }
+    if (a.owner && (wide() || window.XBotPipe)) { leave(); hooks.owner && hooks.owner(""); return; }
     showDevices();
   }
 

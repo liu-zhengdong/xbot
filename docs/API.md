@@ -13,6 +13,12 @@
 - 不存在的 Bot，或这个登录用户不是 owner，统一 404 `{"error":"not found"}`。
 - 未登录 401 `{"error":"unauthorized"}`。
 
+## 设备静态壳
+
+`GET /api/ui/static/<path>` 要求主人认证（pipe 复用 `AuthorizeOwner`）。只读内嵌 `static/` 下的真实文件，扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。
+
+成功按资源类型返回正文、`ETag`、`Cache-Control: no-cache` 和 `X-Xbot-Tip`。If-None-Match 命中回 304 空正文；tip 为构建版本，未注入版本时为 `dev-<内嵌 UI 摘要>`。文件大于 pipe 的 700 KiB 正文预算回 413，不截断为成功；大字体由公网入口缓存。不受 `XBOT_DEV_STATIC` 覆盖。
+
 ## 登录
 
 `POST /api/login`，body `{"token":"..."}`。成功 200 `{"owner":"<id>"}` 并设置 cookie。token 不对是 401。
