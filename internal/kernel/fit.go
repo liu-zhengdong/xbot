@@ -370,9 +370,11 @@ func (k *Kernel) noteFit(t *turn, reason string) {
 	}
 }
 
-// omitPastResults runs only at cross-turn assembly. A later real input makes
-// earlier tool results eligible regardless of T/H. Seq points to the immutable
-// original (including blob-backed results); current-turn results stay whole.
+// omitPastResults runs only on the model-request assembly path (Kernel.assemble),
+// not on projected() itself — fork handoff and env replay keep original tool
+// results. A later real input makes earlier tool results eligible regardless of
+// T/H. Seq points to the immutable original (including blob-backed results);
+// current-turn results stay whole.
 func omitPastResults(msgs []provider.Message, blobs map[int]bool) []provider.Message {
 	boundary := 0
 	for _, m := range msgs {

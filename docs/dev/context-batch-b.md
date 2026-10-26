@@ -22,6 +22,9 @@
 
 **冒烟用例**：`e2e/longrun_test.go::TestLongRunJourney`（B9）；B1–B8 定向行为测试见交付报告。
 
+
+跨轮占位只在 `Kernel.assemble` 请求出口调用 `omitPastResults`，不进 `projected()`；fork handoff / 环境回放仍看原文（见 `TestBatchBForkHandoffKeepsPastToolBodies`）。
+
 ## 还没做的
 
 - 独立复审、合入 main、主人日用与真实供应商缓存/摘要质量对比；本批交付不声称这些已完成。

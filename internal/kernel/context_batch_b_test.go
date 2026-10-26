@@ -374,3 +374,63 @@ func (c *batchFactCompactor) Compact(ctx context.Context, prior string, turns []
 	}
 	return "detail was not read", err
 }
+
+func TestBatchBForkHandoffKeepsPastToolBodies(t *testing.T) {
+	b := testBot(t)
+	original := strings.Repeat("handoff-source-detail ", 240)
+	entries := []bot.Entry{
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("old input")}},
+		{Message: assistantCall("read", "", "read_file", `{}`)},
+		{Message: batchToolReply("read", original)},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("new input")}},
+	}
+	for _, e := range entries {
+		if err := b.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var saw []provider.Message
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Compactor: &handoffCaptureCompactor{fn: func(_ context.Context, _ string, turns []provider.Message) (string, error) {
+		saw = append([]provider.Message(nil), turns...)
+		return "handoff summary", nil
+	}}}
+	if _, err := k.handoff(context.Background(), "new role"); err != nil {
+		t.Fatal(err)
+	}
+	if len(saw) == 0 {
+		t.Fatal("compactor saw no turns")
+	}
+	joined := ""
+	for _, m := range saw {
+		joined += m.Text()
+	}
+	if !strings.Contains(joined, "handoff-source-detail") {
+		t.Fatalf("handoff source lost tool body: %.200s", joined)
+	}
+	if strings.Contains(joined, "result left out") || strings.Contains(joined, "expand with from=") {
+		t.Fatalf("handoff source still has expand placeholders: %.200s", joined)
+	}
+	msgs, _, err := k.assemble(bot.State{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundOmit := false
+	for _, m := range msgs {
+		if m.CallID() == "read" && strings.Contains(m.Text(), "expand with from=") {
+			foundOmit = true
+			break
+		}
+	}
+	if !foundOmit {
+		t.Fatal("assemble should still omit past large tool results")
+	}
+}
+
+type handoffCaptureCompactor struct {
+	fn func(context.Context, string, []provider.Message) (string, error)
+}
+
+func (c *handoffCaptureCompactor) Compact(ctx context.Context, prior string, turns []provider.Message) (string, error) {
+	return c.fn(ctx, prior, turns)
+}

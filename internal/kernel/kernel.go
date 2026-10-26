@@ -646,6 +646,12 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
+	blobs := map[int]bool{}
+	for i, e := range raw {
+		if e.Blob != "" {
+			blobs[seqs[i]] = true
+		}
+	}
 	msgs, usage := account(Input{
 		Persona:   persona,
 		Rules:     rules,
@@ -655,7 +661,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		Skills:    skills,
 		Installed: installed,
 		Overlay:   overlay,
-	}, projected(st.Blocks, raw, seqs))
+	}, omitPastResults(projected(st.Blocks, raw, seqs), blobs))
 	return msgs, usage, nil
 }
 

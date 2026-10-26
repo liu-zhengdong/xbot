@@ -83,7 +83,6 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 		items = append(items, item{seq: b.From, msg: summaryMessage(b)})
 	}
 	positioned := len(seqs) == len(uncovered)
-	blobs := map[int]bool{}
 	for i, e := range uncovered {
 		if code.IsCard(e.Message.Text()) {
 			continue
@@ -97,9 +96,6 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 		seq := 0
 		if positioned {
 			seq = seqs[i]
-			if e.Blob != "" {
-				blobs[seq] = true
-			}
 		}
 		m := e.Message
 		m.Seq, m.Internal = seq, e.IsInternal()
@@ -114,7 +110,7 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 	for _, it := range items {
 		msgs = append(msgs, it.msg)
 	}
-	return omitPastResults(strayToolResults(groupToolResults(msgs)), blobs)
+	return strayToolResults(groupToolResults(msgs))
 }
 
 // groupToolResults moves each tool result right after the assistant message
