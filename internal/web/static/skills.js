@@ -7,7 +7,13 @@
   // The server already speaks plainly; anything it did not word itself gets the fallback.
   const plain = (e, fallback) => e && e.status >= 400 && e.status < 500 && /[一-鿿]/.test(e.message || "") ? e.message : fallback;
   const nameOf = text => { const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text); return head && NAME_LINE.exec(head[1])?.[1].replace(/^["']|["']$/g, "") || ""; };
-  const ownText = row => (row.name + " " + row.description).toLowerCase();
+  const ownText = row => [row.name, row.description, row.slug].join(" ").toLowerCase();
+  const displayText = row => {
+    const slug = (row.slug || "").trim(), name = (row.name || "").trim(), description = (row.description || "").trim();
+    const title = name && name !== slug ? name : description && description !== slug ? description : slug;
+    const hint = [description, slug].find(text => text && text !== title) || "";
+    return {title, hint};
+  };
 
   async function mount({api, host, isCurrent, onLevel = () => {}}) {
     teardown();
@@ -32,12 +38,12 @@
     // ---- 一层：列表 ----
     function showList() {
       nav++; detail = null; fail(""); onLevel(null);
-      const lead = node("p", "setlead", "技能库整台共用。是否启用，按每个 Bot 单独设。");
+      const lead = node("p", "setlead", "本机 Bot 共享。是否启用，按每个 Bot 单独设。");
       const head = node("div", "sethd"); head.append(node("h2", "", "技能"));
       statusLine = node("p", "sk-status", status); statusLine.setAttribute("role", "status"); statusLine.hidden = !status;
       if (!skills.length) {
         const empty = node("div", "skempty"), art = node("span", "skempty-art"); art.setAttribute("aria-hidden", "true");
-        empty.append(art, node("h3", "", "还没有技能"), node("p", "", "从本机导入一份技能，所有 Bot 都能用；要不要开，再按 Bot 设。"), button("btn pri", "导入", ev => openImport(ev.currentTarget)));
+        empty.append(art, node("h3", "", "还没有技能"), node("p", "", "从本机导入一份技能，也可在对话里让 Bot 帮你装。"), button("btn pri", "导入", ev => openImport(ev.currentTarget)));
         body.replaceChildren(head, lead, statusLine, empty);
         return;
       }
@@ -50,12 +56,14 @@
       const none = node("div", "sknone"); none.setAttribute("aria-live", "polite");
       const clear = button("clearsrch", "清除搜索", () => { query = ""; search.value = ""; paint(); search.focus?.(); });
       none.append(node("p", "", "没有匹配的技能"), clear);
-      const foot = node("p", "setfoot", "点开一条，可给某个 Bot 打开或关掉。改完后下一轮对话生效。");
+      const foot = node("p", "setfoot", "点开一条，可给某个 Bot 打开或关掉。");
       function paint() {
         const q = query.trim().toLowerCase(), rows = q ? skills.filter(r => ownText(r).includes(q)) : skills;
         list.replaceChildren(...rows.map(r => {
           const row = button("skrow", "", () => openDetail(r)), tx = node("span", "tx");
-          tx.append(node("b", "", r.name), node("span", "hint", r.description));
+          const {title, hint} = displayText(r);
+          tx.append(node("b", "", title));
+          if (hint) tx.append(node("span", "hint", hint));
           const chev = node("span", "skchev"); chev.setAttribute("aria-hidden", "true");
           row.append(tx, chev); return row;
         }));
@@ -76,19 +84,20 @@
       try { data = await api("/api/skills/" + encodeURIComponent(row.slug)); }
       catch (e) { if (latest()) fail(plain(e, "没能读取这条技能，请再试一次。")); return; }
       if (!latest()) return;
-      detail = data; status = ""; onLevel({title: data.name, backLabel: "技能", back: () => showList()});
+      const {title, hint} = displayText(data);
+      detail = data; status = ""; onLevel({title, backLabel: "技能", back: () => showList()});
       const back = button("setback", "", () => { showList(); }); back.append(node("span", "skback-chev"), document.createTextNode("技能"));
       const bots = node("div", "setrows");
       if (!data.bots.length) bots.append(node("div", "setrow", "还没有 Bot。"));
       for (const b of data.bots) {
         const line = node("div", "setrow"), tx = node("div", "tx"); tx.append(node("b", "", b.name));
         if (b.shared) { tx.append(node("span", "hint", "多人共用的 Bot，暂不使用技能库")); line.append(tx); bots.append(line); continue; }
-        const tog = button("tog", "", () => flip(b, tog)); tog.setAttribute("role", "switch"); tog.setAttribute("aria-label", "在 " + b.name + " 里启用「" + data.name + "」");
+        const tog = button("tog", "", () => flip(b, tog)); tog.setAttribute("role", "switch"); tog.setAttribute("aria-label", "在 " + b.name + " 里启用「" + title + "」");
         const paint = () => { tog.classList.toggle("on", b.enabled); tog.setAttribute("aria-checked", String(b.enabled)); tog.title = b.enabled ? "已启用" : "已停用"; };
         b.paint = paint; paint(); line.append(tx, tog); bots.append(line);
       }
       const sec = node("div", "setsec"); sec.append(node("h4", "", "在这些 Bot 里启用"), bots);
-      body.replaceChildren(back, node("div", "skdetail-name", data.name), node("p", "skdetail-desc", data.description), sec,
+      body.replaceChildren(back, node("div", "skdetail-name", title), ...(hint ? [node("p", "skdetail-desc", hint)] : []), sec,
         node("p", "setfoot", "关掉只影响这一条技能、这一个 Bot。库里还在，别的 Bot 不受影响。"));
     }
     async function flip(b, tog) {
@@ -151,7 +160,7 @@
       const rows = SOURCES.map(([id, label, hint, kind]) => sourceRow(label, hint, () => openSource(layer.opener, id, label), kind));
       rows.push(sourceRow("本机文件夹", "自己挑一个文件夹导入", () => picker.click(), "fo"));
       const box = node("div", "srcrows"); box.setAttribute("role", "list"); box.append(...rows);
-      openLayer(opener, "从哪里导入", "把别处已有的技能拷进你的库。导入后所有 Bot 都能看见；是否启用再按 Bot 设。",
+      openLayer(opener, "从哪里导入", "把别处已有的技能拷进你的库。本机 Bot 共享。是否启用，按每个 Bot 单独设。",
         [["btn sec", "取消", () => closeLayer()]], [box]);
     }
     // 嵌层 B：该来源下的技能，多选后「导入所选」；空源给「换个来源」

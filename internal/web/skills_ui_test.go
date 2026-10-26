@@ -348,3 +348,69 @@ func TestSourceGlyphsAreBlossomAndClaudeStarburst(t *testing.T) {
 		t.Fatal("source row glyph must be a 44 box with a 28 mark")
 	}
 }
+
+// Exercise the rendered list and detail together, including the phone title and
+// accessible switch label. Metadata must remain text, even when it contains HTML.
+func TestSkillsDisplayNamesAndCopy(t *testing.T) {
+	source, err := staticFS.ReadFile("static/skills.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(string(source))
+	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
+ class Node {
+  constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.className='';this.textContent='';this.value='';this.classList={toggle(){}}}
+  append(...nodes){this.children.push(...nodes)} replaceChildren(...nodes){this.children=nodes}
+  setAttribute(k,v){this.attrs[k]=v} focus(){} set innerHTML(v){throw Error('metadata must use textContent')}
+ }
+ const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t})};
+ vm.runInNewContext(` + string(encoded) + `,{window,document});
+ const walk=n=>[n,...(n.children||[]).flatMap(walk)];
+ const find=(root,cls)=>walk(root).filter(n=>n.className?.split(' ').includes(cls));
+ const cases=[
+  [{slug:'weekly',name:'写周报',description:'整理周报'},'写周报','整理周报'],
+  [{slug:'note-capture',name:'note-capture',description:'我说记一下你就记笔记'},'我说记一下你就记笔记','note-capture'],
+  [{slug:'missing-name',description:'中文标题'},'中文标题','missing-name'],
+  [{slug:'blank',name:' ',description:' \n '},'blank',''],
+  [{slug:'same',name:'same',description:'same'},'same',''],
+  [{slug:'no-description',name:'no-description'},'no-description',''],
+  [{slug:'duplicate',name:'人读标题',description:'人读标题'},'人读标题','duplicate'],
+  [{slug:'named',name:'有名字',description:''},'有名字','named'],
+  [{slug:'markup',name:'markup',description:'<img src=x onerror=alert(1)>'},'<img src=x onerror=alert(1)>','markup'],
+  [{slug:'html-name',name:'<b>标题</b>',description:'<script>alert(1)</script>'},'<b>标题</b>','<script>alert(1)</script>'],
+ ];
+ (async()=>{
+  for(const [skill,title,hint] of cases){
+   const host=new Node('div'),levels=[],calls=[];
+   const api=async(path,opt)=>{calls.push([path,opt]);return path==='/api/skills'?{skills:[skill]}:{...skill,bots:[{name:'ada',enabled:true}]}};
+   await window.XBotSkills.mount({api,host,isCurrent:()=>true,onLevel:l=>levels.push(l)});
+   assert.equal(find(host,'setlead')[0].textContent,'本机 Bot 共享。是否启用，按每个 Bot 单独设。');
+   assert.equal(find(host,'setfoot')[0].textContent,'点开一条，可给某个 Bot 打开或关掉。');
+   const row=find(host,'skrow')[0];
+   assert.deepEqual(row.children[0].children.map(n=>n.textContent),hint?[title,hint]:[title]);
+   assert.equal(row.children[0].children[0].children.length,0,'title must be plain text');
+   const search=find(host,'sksearch')[0];search.value=skill.slug;search.oninput();
+   assert.equal(find(host,'skrow').length,1,'the displayed slug must remain searchable');
+   await row.onclick();
+   assert.equal(find(host,'skdetail-name')[0].textContent,title);
+   assert.deepEqual(find(host,'skdetail-desc').map(n=>n.textContent),hint?[hint]:[]);
+   assert.equal(levels.at(-1).title,title,'phone title must match the list');
+   const toggle=find(host,'tog')[0];
+   assert.equal(toggle.attrs['aria-label'],'在 ada 里启用「'+title+'」');
+   await toggle.onclick();
+   assert.equal(calls.at(-1)[0],'/api/bots/ada/skills/'+skill.slug+'/disable','display title must not replace the API slug');
+  }
+  const host=new Node('div');
+  await window.XBotSkills.mount({api:async()=>({skills:[]}),host,isCurrent:()=>true});
+  assert.equal(find(host,'skempty')[0].children[2].textContent,'从本机导入一份技能，也可在对话里让 Bot 帮你装。');
+  const imports=walk(host).filter(n=>n.tag==='button'&&n.textContent==='导入');
+  assert.equal(imports.length,1);
+  imports[0].onclick({currentTarget:imports[0]});
+  assert.equal(find(host,'lead')[0].textContent,'把别处已有的技能拷进你的库。本机 Bot 共享。是否启用，按每个 Bot 单独设。');
+  assert.equal(walk(host).some(n=>/整台共用|所有 Bot 都能|下一轮对话生效/.test(n.textContent)),false);
+  finished=true;
+ })().catch(e=>{console.error(e);process.exitCode=1});`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
