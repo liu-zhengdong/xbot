@@ -6545,7 +6545,7 @@
 
   function syncComposer() {
     const hasText = composerText(input).trim().length > 0;
-    input.classList.toggle("empty", !hasText);
+    input.classList.toggle("is-empty", !hasText);
     const ready = attachReady().length > 0;
     const canSend = hasText || ready;
     composer.classList.toggle("has-text", hasText);

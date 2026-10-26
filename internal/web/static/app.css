@@ -1210,7 +1210,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .composer.quoting .composer-input { padding: 2px 8px 4px; height: 28px; min-height: 28px; }
 
-.composer .composer-input.empty::before {
+.composer .composer-input.is-empty::before {
   content: attr(data-placeholder);
   color: var(--faint);
   pointer-events: none;
