@@ -17,6 +17,10 @@
   const backdrop = $("backdrop");
   const thread = $("thread");
   const input = $("input");
+  // The composer's last rendered text and its IME state; see the composer
+  // helpers further down for how they keep the draft plain and linkified.
+  let composerTextCache = "";
+  let composerComposing = false;
   const titleEl = $("title");
   const subtitle = $("subtitle");
   const updateBtn = $("update");
@@ -27,6 +31,11 @@
   const modalFields = $("modal-fields");
   const modalError = $("modal-error");
   const composer = $("composer");
+  // plaintext-only keeps paste and drop plain in Chrome, Safari and current
+  // Firefox; engines without it throw here and fall back to editable
+  // everything, where the paste handler and the re-render keep the draft plain.
+  try { document.createElement("div").contentEditable = "plaintext-only"; }
+  catch (e) { input.setAttribute("contenteditable", "true"); }
   const lightbox = $("lightbox");
 
   const state = {
@@ -1555,13 +1564,175 @@
     return out;
   }
 
-  function fillComposer(text) {
-    input.value = text;
+  // The composer keeps the textarea's contract (plain text only, Enter sends,
+  // Shift+Enter breaks a line, drafts and pasted pictures behave the same) but
+  // renders as a contenteditable so http(s) URLs in the draft become links.
+  const COMPOSER_MAX = 16000;
+  // The body is an ASCII whitelist, aligned with the bubble pattern but
+  // tighter: prose glued to the address (https://x.y这个) stops the link where
+  // the address really ends instead of swallowing the sentence.
+  const composerURL = /https?:\/\/[[A-Za-z0-9\-._~:?#@!$&()*+,;=%/\]]+/g;
+
+  // Only http(s) counts as an address: the href comes from parsing the text,
+  // so a javascript: or data: URL can never become a link.
+  function composerSafeHref(url) {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  // Trailing punctuation stays prose: a URL before ,.)… must not eat it.
+  function composerURLStop(url) {
+    while (url.length > 2 && /[.,;:!?)\]}]$/.test(url)) url = url.slice(0, -1);
+    return url;
+  }
+
+  function composerLinkNode(url, href) {
+    const a = document.createElement("a");
+    a.href = href;
+    a.textContent = url; // never innerHTML: the draft is untrusted text
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+  }
+
+  // The draft split into text nodes and links; anything that is not a usable
+  // http(s) address stays a plain text node.
+  function composerNodes(text) {
+    const out = [];
+    let last = 0;
+    for (const m of text.matchAll(composerURL)) {
+      const url = composerURLStop(m[0]);
+      if (!url) continue;
+      const start = m.index;
+      const end = start + m[0].length;
+      if (start > last) out.push(document.createTextNode(text.slice(last, start)));
+      const href = composerSafeHref(url);
+      if (href) {
+        out.push(composerLinkNode(url, href));
+        // Punctuation trimmed off the address stays prose.
+        if (url.length < m[0].length) out.push(document.createTextNode(m[0].slice(url.length)));
+      } else {
+        out.push(document.createTextNode(m[0]));
+      }
+      last = end;
+    }
+    if (last < text.length) out.push(document.createTextNode(text.slice(last)));
+    return out;
+  }
+
+  // The editor's plain text: <br> and block edges both count as a newline, so
+  // typing, Enter and paste all round-trip through the same string.
+  function composerText(root = input) {
+    let out = "";
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) { out += child.nodeValue; continue; }
+        if (child.nodeType !== 1) continue;
+        if (child.tagName === "BR") { out += "\n"; continue; }
+        walk(child);
+        if (child.tagName === "DIV" || child.tagName === "P") out += "\n";
+      }
+    };
+    walk(root);
+    return out;
+  }
+
+  function composerOffsetOf(root, node, offset) {
+    let total = 0;
+    const walk = (cur) => {
+      for (const child of cur.childNodes) {
+        if (child === node) {
+          if (node.nodeType === 3) total += offset;
+          return true;
+        }
+        if (child.nodeType === 3) total += child.nodeValue.length;
+        else if (child.nodeType === 1) {
+          if (child.tagName === "BR") total += 1;
+          else {
+            if (walk(child)) return true;
+            if (child.tagName === "DIV" || child.tagName === "P") total += 1;
+          }
+        }
+      }
+      return false;
+    };
+    walk(root);
+    return total;
+  }
+
+  // The caret as a plain-text offset, or null when it is outside the editor.
+  function composerCaret() {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    if (!input.contains(r.startContainer)) return null;
+    return composerOffsetOf(input, r.startContainer, r.startOffset);
+  }
+
+  function composerCaretTo(want) {
+    const sel = getSelection();
+    if (!sel) return;
+    let remaining = Math.max(0, want);
+    let spot = null;
+    let lastText = null;
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (spot) return;
+        if (child.nodeType === 3) {
+          lastText = child;
+          if (remaining <= child.nodeValue.length) { spot = [child, Math.max(0, remaining)]; return; }
+          remaining -= child.nodeValue.length;
+        } else if (child.nodeType === 1) {
+          if (child.tagName === "BR") { remaining -= 1; continue; }
+          walk(child);
+          if (!spot && (child.tagName === "DIV" || child.tagName === "P")) remaining -= 1;
+        }
+      }
+    };
+    walk(input);
+    const range = document.createRange();
+    if (spot) range.setStart(spot[0], spot[1]);
+    else if (lastText) range.setStart(lastText, lastText.nodeValue.length);
+    else range.setStart(input, 0);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function composerRefreshHeight() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
+  }
+
+  function renderComposer(text) {
+    // The maxlength of the old textarea lives here now: one cap, applied no
+    // matter how the words got in (typed, pasted, dropped, restored).
+    if (text.length > COMPOSER_MAX) text = text.slice(0, COMPOSER_MAX);
+    input.replaceChildren(...composerNodes(text));
+    composerTextCache = text;
+  }
+
+  // Rewrites the draft's DOM only when its text changed, keeping the caret at
+  // the same spot, so typing beside a link never jumps the cursor.
+  function refreshComposerLinks() {
+    if (composerComposing) return;
+    const text = composerText(input);
+    if (text === composerTextCache) return;
+    const caret = composerCaret();
+    renderComposer(text);
+    if (caret !== null) composerCaretTo(caret);
+  }
+
+  function fillComposer(text) {
+    renderComposer(String(text == null ? "" : text));
+    composerRefreshHeight();
     syncComposer();
     input.focus();
-    input.setSelectionRange(text.length, text.length);
+    composerCaretTo(Infinity);
   }
 
   // The profile behind the starters: the panel's when it is this bot's, else
@@ -3539,7 +3710,7 @@
       const draft = sessionStorage.getItem("xbot-draft:" + name);
       if (draft) {
         sessionStorage.removeItem("xbot-draft:" + name);
-        if (!input.value) input.value = draft;
+        if (!composerText(input)) renderComposer(draft);
         syncComposer();
       }
     } catch (e) {}
@@ -3573,7 +3744,7 @@
       const draft = sessionStorage.getItem("xbot-draft:group:" + id);
       if (draft) {
         sessionStorage.removeItem("xbot-draft:group:" + id);
-        if (!input.value) input.value = draft;
+        if (!composerText(input)) renderComposer(draft);
         syncComposer();
       }
     } catch (e) {}
@@ -5706,8 +5877,9 @@
       // send cleared the input, so the text is restored whether or not a
       // picture came with it, and the row says what the picture needs.
       const pictureNote = images.length ? "；图片要重新贴一次" : "";
-      if (!input.value.trim() && text) {
-        input.value = text;
+      if (!composerText(input).trim() && text) {
+        renderComposer(text);
+        composerRefreshHeight();
         marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
         announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
       } else if (!text && images.length) {
@@ -5718,9 +5890,12 @@
         const back = el("button", "secondary", "放回输入框");
         back.type = "button";
         back.addEventListener("click", () => {
-          input.value = input.value.trim() ? input.value.replace(/\s*$/, "\n") + text : text;
+          const cur = composerText(input);
+          renderComposer(cur.trim() ? cur.replace(/\s*$/, "\n") + text : text);
+          composerRefreshHeight();
           syncComposer();
           input.focus();
+          composerCaretTo(Infinity);
         });
         marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
         announceSend("没发出去，可以放回输入框" + (images.length ? "，图片要重新贴一次" : ""));
@@ -6199,7 +6374,8 @@
   }
 
   function syncComposer() {
-    const hasText = input.value.trim().length > 0;
+    const hasText = composerText(input).trim().length > 0;
+    input.classList.toggle("empty", !hasText);
     const ready = attachReady().length > 0;
     const canSend = hasText || ready;
     composer.classList.toggle("has-text", hasText);
@@ -6727,7 +6903,7 @@
 
   function setComposerPlaceholder(text) {
     state.placeholder = text;
-    if (!state.replyTo) input.placeholder = text;
+    if (!state.replyTo) input.dataset.placeholder = text;
   }
 
   function paintQuoteBar() {
@@ -6737,9 +6913,9 @@
     composer.classList.toggle("quoting", on);
     if (on) {
       $("quote-bar-text").textContent = quoteSnippet(state.replyTo.text);
-      input.placeholder = "回复…";
+      input.dataset.placeholder = "回复…";
     } else {
-      input.placeholder = state.placeholder || "写一条消息";
+      input.dataset.placeholder = state.placeholder || "写一条消息";
     }
   }
 
@@ -6813,12 +6989,12 @@
 
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();
-    const text = input.value;
+    const text = composerText(input);
     const images = attachReady().map((row) => row.id);
     if (attachBusy()) { attachNote("图片还在上传，等一下再发。"); return; }
     if ((!text.trim() && !images.length) || !state.sel) return;
-    input.value = "";
-    input.style.height = "auto";
+    renderComposer("");
+    composerRefreshHeight();
     clearAttach();
     syncComposer();
     sendText(text, null, images);
@@ -6826,12 +7002,34 @@
 
   // A screenshot pasted from the clipboard arrives here, not as text. The
   // browser gives the picture in clipboardData; anything else falls through to
-  // the textarea's own paste.
+  // the plain-text handler below.
   input.addEventListener("paste", (ev) => {
     const files = imagesFrom(ev.clipboardData);
     if (!files.length) return;
     ev.preventDefault();
     uploadAttach(files);
+  });
+
+  // Rich pastes stay plain: the draft is text, and the cap still applies via
+  // the re-render. insertText also keeps the native undo stack intact.
+  input.addEventListener("paste", (ev) => {
+    const text = ev.clipboardData ? ev.clipboardData.getData("text/plain") : "";
+    if (!text) return;
+    ev.preventDefault();
+    document.execCommand("insertText", false, text);
+  });
+
+  // A click on a highlighted URL opens the system browser through the same
+  // off-origin path as the bubble links (target=_blank + noopener; the desktop
+  // shell turns it into OpenExternal). The anchor sits inside the composer
+  // form, so the click is consumed here and can never become a submit.
+  input.addEventListener("click", (ev) => {
+    const link = ev.target && ev.target.closest ? ev.target.closest("a") : null;
+    if (!link || !input.contains(link)) return;
+    ev.preventDefault();
+    const href = link.getAttribute("href") || "";
+    if (!composerSafeHref(href)) return;
+    window.open(href, "_blank", "noopener");
   });
 
   // Dragging a file anywhere over the chat would otherwise make the browser
@@ -6872,9 +7070,15 @@
     composer.requestSubmit();
   });
 
+  input.addEventListener("compositionstart", () => { composerComposing = true; });
+  input.addEventListener("compositionend", () => {
+    composerComposing = false;
+    refreshComposerLinks();
+  });
+
   input.addEventListener("input", () => {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    composerRefreshHeight();
+    refreshComposerLinks();
     syncComposer();
   });
 

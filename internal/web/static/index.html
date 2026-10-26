@@ -170,7 +170,10 @@ try {
           <div id="attach-list" class="attach-list" aria-label="待发送的图片"></div>
           <p id="attach-note" class="attach-note" hidden></p>
         </div>
-        <textarea id="input" rows="1" placeholder="写一条消息" maxlength="16000"></textarea>
+        <!-- Plain text with one twist: http(s) URLs render as links. The
+             desktop shell opens off-origin navigations externally; the web
+             page opens them with target=_blank + noopener. -->
+        <div id="input" class="composer-input" role="textbox" aria-multiline="true" aria-label="写一条消息" contenteditable="plaintext-only" data-placeholder="写一条消息"></div>
         <div class="composer-actions">
           <button id="send" class="send secondary" disabled type="submit" aria-label="发送" data-tip="发送">
             <svg class="icon" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>

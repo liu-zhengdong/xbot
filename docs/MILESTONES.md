@@ -344,3 +344,9 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 设置浮层新增「技能」（网页搜索与设备之间）：一层是主人技能库清单，带搜索和唯一主按钮「导入」；二层按 Bot 开关，关只影响该 Bot。导入由浏览器选文件夹，同名先问再覆盖；新增库级 `GET /api/skills`、`GET /api/skills/{slug}`、`POST /api/skills/import`，开关复用每个 Bot 的 enable/disable。现状见 [界面](atlas/ui.md#技能设置)。
 
 本地 Chrome 走查了列表、搜索、无匹配、空态、二层开关、导入、同名覆盖/取消、错误和深浅色、窄屏；`go test` 覆盖库级接口、导入覆盖与并发同名。级别：本地分支验收，未合入、未发布，主人日用未测。证据在仓库外 `~/.xbot-build/skills-settings/`。
+
+### 输入框 URL 高亮可点（2026-10-26）
+
+对话输入框从 textarea 改为纯文本 contenteditable：草稿里的 `http(s)://` 地址就地高亮，点击走气泡链接同款 `target=_blank` + `noopener`（桌面壳复用离域导航 → OpenExternal），点击不触发发送；Enter 发送、Shift+Enter 换行、IME 选词回车不发送均保持。只认可解析为 http/https 的地址，尾随标点与紧贴中文不吞进链接，纯文本上限 16000 照旧，粘贴一律转纯文本，图片粘贴/拖拽流程不变。规格 [docs/dev/composer-url-links.md](dev/composer-url-links.md)，现状已提炼进 [界面](atlas/ui.md)。
+
+验证：node 纯函数单测（识别/协议白名单/尾标点/序列化/偏移）+ 点击不提交 form 的 node 单测 + headless Chrome 端到端（高亮、点击打开不发送、非 http(s) 不亮、Enter/Shift+Enter/IME、16000 上限）全过；`go test -count=1 ./...` 全过，web 包 `-count=3` 过，gofmt/vet 净。浅色/深色截图已在本地 Chrome 查看。级别：本地分支端到端通过，未合入 main、未 push，主人日用未验证。

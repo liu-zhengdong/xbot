@@ -1156,7 +1156,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .plus-wrap { grid-area: plus; }
 
-.composer textarea { grid-area: input; }
+.composer .composer-input { grid-area: input; }
 
 .composer-actions { grid-area: actions; display: flex; align-items: flex-end; padding-bottom: 8px; }
 
@@ -1186,15 +1186,26 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .quote-row .ghost svg { width: 16px; height: 16px; }
 
-.composer textarea {
-  width: 100%; min-width: 0; border: 0; resize: none; outline: none; background: transparent;
+/* The composer is a plain-text contenteditable: literal newlines render via
+   pre-wrap, and only http(s) URLs become links, styled like bubble links. */
+.composer .composer-input {
+  width: 100%; min-width: 0; border: 0; outline: none; background: transparent;
   margin: 0; padding: 16px 0; max-height: 140px;
   line-height: 20px; font-size: 15px; height: auto; min-height: 52px;
+  overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
 }
 
-.composer.quoting textarea { padding: 2px 8px 4px; height: 28px; min-height: 28px; }
+.composer.quoting .composer-input { padding: 2px 8px 4px; height: 28px; min-height: 28px; }
 
-.composer textarea::placeholder { color: var(--faint); }
+.composer .composer-input.empty::before {
+  content: attr(data-placeholder);
+  color: var(--faint);
+  pointer-events: none;
+}
+
+.composer .composer-input a {
+  color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
 
 .composer .send { margin: 0; flex: none; align-self: center; }
 

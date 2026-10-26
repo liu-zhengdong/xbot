@@ -105,7 +105,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
 const text=()=>$('#thread').textContent;
 const selected=name=>$('#title').textContent.includes(name)&&document.querySelector('[data-bot="'+name+'"].active')&&!$('#shell').hidden;
 const send=async value=>{
- const n=fixture.streams.length;$('#input').value=value;$('#input').dispatchEvent(new Event('input'));$('#composer').requestSubmit();
+ const n=fixture.streams.length;const box=$('#input');box.textContent=value;box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
  await waitFor(()=>fixture.streams.length>n&&$('#thread .live'),'send did not start');
  return fixture.streams.at(-1);
 };

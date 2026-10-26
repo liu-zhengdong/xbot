@@ -74,13 +74,8 @@ func TestComposerAcceptsPastedPictures(t *testing.T) {
 	}
 	// A failed send with a picture still restores the words, and says the
 	// picture has to be pasted again.
-	for _, want := range []string{
-		`const pictureNote = images.length ? "；图片要重新贴一次" : "";`,
-		`if (!input.value.trim() && text) {`,
-	} {
-		if !strings.Contains(js, want) {
-			t.Errorf("a failed send with a picture loses the words: %s", want)
-		}
+	if !strings.Contains(js, `const pictureNote = images.length ? "；图片要重新贴一次" : "";`) {
+		t.Error("a failed send with a picture loses the words")
 	}
 	// Dragging is accepted during dragenter/dragover, when only the item types
 	// are readable; reading files there returns nothing.

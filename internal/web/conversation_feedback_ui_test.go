@@ -44,7 +44,7 @@ func TestConversationLoadingAndSendFeedback(t *testing.T) {
 	if strings.Index(send, "optimisticMessage(text, images)") < 0 || strings.Index(send, "optimisticMessage(text, images)") > strings.Index(send, "await apiFetch(") || strings.Index(send, "liveBubble()") > strings.Index(send, "await apiFetch(") {
 		t.Fatal("user bubble and typing feedback must precede the network request")
 	}
-	for _, fragment := range []string{"发送中", "没发出去，原文还在输入框里", "input.value = text", "await loadThread()", "if (accepted)", "markSent();", "pending.accepted = true", "live?.remove()", "回复出错了"} {
+	for _, fragment := range []string{"发送中", "没发出去，原文还在输入框里", "await loadThread()", "if (accepted)", "markSent();", "pending.accepted = true", "live?.remove()", "回复出错了"} {
 		if !strings.Contains(send, fragment) {
 			t.Errorf("missing send feedback: %s", fragment)
 		}
