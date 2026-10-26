@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ 714cfbe + 工具组渐进披露
+verified: 2026-10-27 @ 65e5aa9 + tool-group-expand graduated
 ---
 # 内核：Link、Event、收件箱
 
@@ -37,7 +37,7 @@ verified: 2026-10-27 @ 714cfbe + 工具组渐进披露
 
 `expand_tool_group({"group":"bot_profile"})` 也接受展示名，返回成员完整定义。下一次模型请求由现有 `RefreshTools` 重建可调用目录，整组成员替换短入口，元工具一直可用。未展开时直接调用成员，以及与展开放在同一批里的成员调用，均返回 `unknown tool`。这只是能力发现，不是主线权限白名单；子代理仍沿用完整挂载目录和原有类型范围。
 
-展开态按当前 Bot 的 Kernel 实例保存在互斥保护的内存映射里：同一实例的后续步骤、插话和后续唤醒保留；重复展开无害；Kernel 重建、进程重启或另一个 Bot 从折叠态开始。不落盘、不从历史 schema 回包恢复，不与每轮清空的 Link `loaded` 混用。网页复用缓存 Kernel，绑定切换或改名等导致缓存重建时也重置；短命服务唤醒内核只覆盖该实例的请求。现有 Env Stream 从 `modelTools()` 采样 `tools`，列表变化才追加差异，固定前缀与旧 transcript 不改。权限分类见 [安全](security.md)。本批验收边界见 [设计](../dev/tool-group-expand.md)。
+展开态按当前 Bot 的 Kernel 实例保存在互斥保护的内存映射里：同一实例的后续步骤、插话和后续唤醒保留；重复展开无害；Kernel 重建、进程重启或另一个 Bot 从折叠态开始。不落盘、不从历史 schema 回包恢复，不与每轮清空的 Link `loaded` 混用。网页复用缓存 Kernel，绑定切换或改名等导致缓存重建时也重置；短命服务唤醒内核只覆盖该实例的请求。现有 Env Stream 从 `modelTools()` 采样 `tools`，列表变化才追加差异，固定前缀与旧 transcript 不改。权限分类见 [安全](security.md)。
 
 ## 轨迹路径与脚本回放
 

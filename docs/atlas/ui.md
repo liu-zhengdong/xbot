@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 714cfbe + Bot 资料工具命名前缀
+verified: 2026-10-27 @ 65e5aa9 + tool-group-expand graduated
 ---
 # 网页界面
 

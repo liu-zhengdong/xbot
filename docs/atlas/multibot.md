@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-27 @ pending-merge + tool-group-expand + routine-precheck
+verified: 2026-10-27 @ 65e5aa9 + tool-group-expand graduated
 ---
 # 多 Bot
 
