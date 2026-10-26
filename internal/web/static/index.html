@@ -32,6 +32,7 @@ try {
 <link rel="stylesheet" href="/web-search.css">
 <link rel="stylesheet" href="/skills.css">
 <link rel="stylesheet" href="/apps.css">
+<link rel="stylesheet" href="/account.css">
 </head>
 <body>
 <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs>
@@ -59,7 +60,7 @@ try {
 <path d="M30 40c14-.6 28-.6 42 0v30c-14 .6-28 .6-42 0z"/><path d="M22 76c19 1.4 39 1.4 58 0"/><path d="M148 40c14-.6 28-.6 42 0v30c-14 .6-28 .6-42 0z"/><path d="M140 76c19 1.4 39 1.4 58 0"/>
 <path d="M78 38c18-18 46-18 64 0" stroke-dasharray="1.5 6"/><path d="M106 26.4l3.4-3.4M114 26.4l-3.4-3.4"/><circle cx="40" cy="90" r=".9" fill="currentColor" stroke="none"/><circle cx="50" cy="92" r=".9" fill="currentColor" stroke="none"/><circle cx="60" cy="90" r=".9" fill="currentColor" stroke="none"/><circle cx="160" cy="92" r=".9" fill="currentColor" stroke="none"/><circle cx="170" cy="90" r=".9" fill="currentColor" stroke="none"/><circle cx="180" cy="92" r=".9" fill="currentColor" stroke="none"/></symbol>
 </defs></svg>
-<div id="login" class="gate">
+<div id="login" class="gate" hidden>
   <form id="login-form" class="gate-card" novalidate>
     <div class="mark" aria-hidden="true">
       <svg viewBox="0 0 100 100"><path d="M16 20 L40 50 L16 80 M84 20 L60 50 L84 80" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -75,6 +76,9 @@ try {
     <button class="primary" type="submit">进入</button>
   </form>
 </div>
+
+<!-- The account screens (sign in, sign up, check mail, my devices). The form above is the old install code, kept for #login-code only. -->
+<div id="acct" class="acct" hidden></div>
 
 <div id="setup" class="gate" hidden>
   <form id="setup-form" class="gate-card" novalidate>
@@ -113,7 +117,9 @@ try {
           <button id="account-settings" type="button" aria-haspopup="dialog">设置</button>
           <div class="mgap"></div>
           <button id="collapse" class="desk-only" type="button">收起列表</button>
-          <button id="logout" type="button">退出</button>
+          <button id="account-devices" type="button">我的设备</button>
+          <button id="account-gateway" type="button">账号 / 网关</button>
+          <button id="logout" type="button">退出登录</button>
           <div class="mgap"></div>
           <button id="account-about" class="account-about" type="button" aria-haspopup="dialog"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>关于 XBot</span><span id="account-version" class="menu-count"></span></button>
         </div>
@@ -296,6 +302,7 @@ try {
 <script src="/web-search.js"></script>
 <script src="/skills.js"></script>
 <script src="/apps.js"></script>
+<script src="/account.js"></script>
 <script src="/app.js"></script>
 <script src="/devices.js"></script>
 <script src="/pairing.js"></script>

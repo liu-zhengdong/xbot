@@ -1,0 +1,115 @@
+/* Account screens: sign in, sign up, check mail, my devices, account/gateway.
+   Phone: full-bleed single column. Wide: the designer's desktop stage, a centred
+   card on the window grey. No product mark on any of them. */
+.acct{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--x-card);color:var(--x-text);font-family:var(--x-font);-webkit-font-smoothing:antialiased;overflow:hidden}
+.acct[hidden]{display:none}
+.acct *{box-sizing:border-box}
+.acct button,.acct input{font:inherit;color:inherit}
+.acct button{border:0;background:none;cursor:pointer}
+.acct .ic{flex:none;display:block}
+.acct .sep{margin:0 .32em;opacity:.7}
+
+.acct .btn{height:44px;padding:0 18px;border-radius:12px;font-size:15px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;width:100%;transition:background-color .15s,opacity .15s}
+.acct .btn.pri{background:var(--x-primary);color:var(--x-on-primary)}
+.acct .btn.pri:hover{background:var(--x-primary-hover)}
+.acct .btn.sec{background:var(--x-fill-2);color:var(--x-text)}
+.acct .btn.sec:hover{background:var(--x-fill-3)}
+.acct .btn.ghost{background:transparent;color:var(--x-muted);height:40px}
+.acct .btn.ghost:hover{color:var(--x-text);background:var(--x-fill-1)}
+.acct .btn:disabled{opacity:.6;cursor:default}
+.acct .btn.oauth{background:var(--x-card);box-shadow:inset 0 0 0 1px var(--x-fill-3);color:var(--x-faint);font-weight:560;font-size:14px;justify-content:flex-start;padding:0 14px;gap:10px;cursor:not-allowed;opacity:.72}
+.acct .btn.oauth:disabled{opacity:.72}
+.acct .btn.oauth .soon{margin-left:auto;font-size:11px;font-weight:560;height:18px;padding:0 7px;border-radius:99px;background:var(--x-fill-2);color:var(--x-faint);display:inline-flex;align-items:center}
+.acct .btn.oauth .bico{width:22px;height:22px;display:grid;place-items:center;flex:none}
+.acct .btn.oauth .bico svg{width:18px;height:18px;display:block}
+
+.acct .link{font-size:13.5px;font-weight:520;color:var(--x-muted)}
+.acct .link:hover{color:var(--x-text-2);text-decoration:underline;text-underline-offset:3px}
+.acct .field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.acct .field label{font-size:12.5px;font-weight:560;color:var(--x-muted)}
+.acct .field input{height:44px;padding:0 14px;border:0;border-radius:12px;background:var(--x-fill-1);font-size:15px;color:var(--x-text);outline:none;box-shadow:inset 0 0 0 1px transparent}
+.acct .field input::placeholder{color:var(--x-ph)}
+.acct .field input:focus{background:var(--x-card);box-shadow:inset 0 0 0 1.5px var(--x-fill-3)}
+.acct .err{font-size:13px;color:var(--x-danger);line-height:1.5;margin:0 0 12px}
+.acct .note{font-size:13px;color:var(--x-muted);line-height:1.5;margin:10px 0 0;text-align:center}
+.acct .err[hidden],.acct .note[hidden]{display:none}
+.acct .divider{display:flex;align-items:center;gap:12px;margin:18px 0 14px;font-size:12px;color:var(--x-faint);font-weight:560}
+.acct .divider:before,.acct .divider:after{content:"";flex:1;height:1px;background:var(--x-fill-3)}
+.acct .oauth-stack{display:flex;flex-direction:column;gap:8px}
+
+/* screen body */
+.acct .stage{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto;-webkit-overflow-scrolling:touch}
+.acct .auth{flex:1;display:flex;flex-direction:column;padding:calc(22px + env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom));width:100%}
+.acct .auth h1{font-size:24px;font-weight:650;letter-spacing:-.02em;margin:0 0 8px}
+.acct .auth .lead{font-size:14px;color:var(--x-muted);line-height:1.55;margin:0 0 22px}
+.acct .auth .foot{margin-top:auto;padding-top:22px;text-align:center;font-size:13.5px;color:var(--x-muted)}
+.acct .auth .foot button{font-weight:560;color:var(--x-text)}
+.acct .auth .altlink{margin:10px 0 0;text-align:center}
+
+.acct .verify{align-items:center;text-align:center;padding-top:56px}
+.acct .verify .mail{width:64px;height:64px;border-radius:18px;background:var(--x-fill-1);display:grid;place-items:center;color:var(--x-text-2);margin-bottom:20px}
+.acct .verify h1{font-size:22px}
+.acct .verify .lead{max-width:300px}
+.acct .verify .email{font-weight:600;color:var(--x-text)}
+.acct .verify .actions{width:100%;margin-top:8px;display:flex;flex-direction:column;gap:8px}
+.acct .verify .fine{margin-top:28px;font-size:12px;color:var(--x-faint);line-height:1.55}
+.acct .verify .fine:hover{color:var(--x-muted)}
+.acct .codebox{width:100%;margin-top:16px;text-align:left}
+.acct .codebox[hidden]{display:none}
+.acct .codebox .field input{letter-spacing:.3em;font-variant-numeric:tabular-nums}
+
+/* devices + gateway */
+.acct .topbar{flex:none;display:flex;align-items:center;gap:8px;min-height:52px;padding:calc(10px + env(safe-area-inset-top)) 14px 8px 18px}
+.acct .topbar h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0;flex:1}
+.acct .topbar .acctmail{font-size:12px;color:var(--x-muted);margin-right:2px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:32px;padding:0 6px;border-radius:8px}
+.acct .topbar .acctmail:hover{background:var(--x-fill-2);color:var(--x-text)}
+.acct .ib{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--x-muted);flex:none}
+.acct .ib:hover{background:var(--x-fill-2);color:var(--x-text)}
+.acct .devcnt{padding:4px 18px calc(28px + env(safe-area-inset-bottom));width:100%}
+.acct .dcard{background:var(--x-fill-1);border-radius:14px;padding:14px 14px 12px;margin-bottom:12px}
+.acct .dcard .h{display:flex;align-items:center;gap:10px}
+.acct .dcard .dic{width:36px;height:36px;border-radius:10px;background:var(--x-card);display:grid;place-items:center;color:var(--x-muted);flex:none}
+.acct .dcard .h b{font-size:15px;font-weight:620;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct .dcard .meta{display:flex;align-items:center;gap:6px;margin:8px 0 4px 46px;font-size:12.5px;color:var(--x-muted)}
+.acct .dot{width:7px;height:7px;border-radius:50%;background:var(--x-faint);flex:none}
+.acct .dot.on{background:var(--x-online)}
+.acct .bots{margin:8px 0 0;border-radius:12px;background:var(--x-card);overflow:hidden}
+.acct .brow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--x-fill-2);width:100%;text-align:left}
+.acct .brow:first-child{border-top:0}
+.acct button.brow:hover,.acct button.brow:active{background:var(--x-fill-1)}
+.acct .brow .tx{flex:1;min-width:0}
+.acct .brow .tx b{font-size:13.5px;font-weight:560;display:block;color:var(--x-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct .brow .hint{display:block;font-size:12px;color:var(--x-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct .brow .chev{color:var(--x-faint)}
+.acct .av{width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:13px;font-weight:650;color:#fff;background:var(--x-avatar-bg);background-size:cover;background-position:center}
+.acct .devfoot{font-size:12px;color:var(--x-faint);line-height:1.55;margin-top:4px;padding:0 2px}
+.acct .empty{margin-top:48px;text-align:center;padding:0 12px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.acct .empty .icbox{width:56px;height:56px;border-radius:16px;background:var(--x-fill-1);display:grid;place-items:center;color:var(--x-muted);margin-bottom:4px}
+.acct .empty h2{font-size:17px;font-weight:650;margin:0}
+.acct .empty p{font-size:13.5px;color:var(--x-muted);line-height:1.6;max-width:280px;margin:0}
+.acct .statusline{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:12px;background:var(--x-fill-1);margin-bottom:14px;font-size:13.5px;color:var(--x-text-2)}
+.acct .grows{display:flex;flex-direction:column;border-radius:12px;background:var(--x-fill-1);overflow:hidden;margin-top:8px}
+.acct .grow{display:flex;align-items:center;gap:12px;min-height:52px;padding:12px 14px;border-top:1px solid var(--x-fill-2)}
+.acct .grow:first-child{border-top:0}
+.acct .grow .tx{flex:1;min-width:0}
+.acct .grow .tx b{font-size:13.5px;font-weight:560;display:block}
+.acct .grow .hint{font-size:12px;color:var(--x-muted);margin-top:2px;line-height:1.45;overflow-wrap:anywhere}
+.acct .grow .val{font-size:13px;color:var(--x-muted);flex:none}
+.acct .gfoot{font-size:12px;color:var(--x-faint);line-height:1.55;margin-top:14px}
+
+/* wide: the desktop stage — window grey, one centred card */
+@media (min-width:641px){
+  .acct{background:var(--x-win)}
+  .acct .stage{align-items:center;justify-content:center;padding:36px 40px}
+  .acct .card{width:100%;max-width:420px;background:var(--x-card);border-radius:16px;box-shadow:inset 0 0 0 1px var(--x-fill-3);margin:auto 0}
+  .acct .card .auth{padding:28px 28px 24px;flex:none}
+  .acct .card .auth h1{font-size:22px;margin-bottom:6px}
+  .acct .card .auth .lead{font-size:13.5px;margin-bottom:20px}
+  .acct .card .auth .foot{margin-top:18px;padding-top:0}
+  .acct .card .divider{margin:16px 0 12px}
+  .acct .card .verify{padding-top:36px}
+  .acct .card.wide{max-width:560px}
+  .acct .card .topbar{padding:14px 14px 8px 20px}
+  .acct .card .devcnt{padding:4px 20px 22px}
+}
+@media (prefers-reduced-motion:reduce){.acct .btn{transition:none}}

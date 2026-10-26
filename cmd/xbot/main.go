@@ -73,6 +73,7 @@ Usage:
   xbot [--root DIR] app [--port 8787]
   xbot [--root DIR] serve [--interval 15s] [--http 127.0.0.1:8787] [--tunnel cloudflare|tailscale] [--no-auto-upgrade]
   xbot [--root DIR] runner [--addr 127.0.0.1:18771] [--token TOKEN]
+  xbot account-api   (env: DATA_DIR, BASE_URL, ADDR, MAIL_MODE, MAIL_OUTBOX)
   xbot [--root DIR] webhook add <bot> <name> [--auth hmac|bearer] [--public-url URL]
   xbot [--root DIR] webhook list <bot>
   xbot [--root DIR] webhook remove <bot> <name>
@@ -255,6 +256,8 @@ func run(argv []string) error {
 		return cmdDesktop(root, rest[1:])
 	case "browser":
 		return cmdBrowser(root, rest[1:])
+	case "account-api":
+		return cmdAccountAPI(rest[1:])
 	default:
 		return fmt.Errorf("unknown command %q", rest[0])
 	}

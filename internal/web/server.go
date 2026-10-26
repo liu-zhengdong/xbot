@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"xbot/internal/account"
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
@@ -71,6 +72,11 @@ type Server struct {
 	// Updater answers the page's update panel and installs a downloaded
 	// version on the owner's click. Nil leaves the panel out.
 	Updater *upgrade.Updater
+
+	// Account is the hosted Account API. Nil runs the local stand-in under
+	// Root/account-api, whose mail is written to files instead of sent.
+	Account account.Client
+	acct    accountState
 
 	owner       string
 	token       string
@@ -162,6 +168,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /vendor/xbot-avatar.min.js", s.static("static/vendor/xbot-avatar.min.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /vendor/LICENSES.txt", s.static("static/vendor/LICENSES.txt", "text/plain; charset=utf-8"))
 
+	s.registerAccount(mux)
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("GET /app/launch", s.launch)
 	mux.HandleFunc("POST /api/logout", s.logout)

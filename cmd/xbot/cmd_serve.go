@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"xbot/internal/account"
 
 	"xbot/internal/appshell"
 	"xbot/internal/bot"
@@ -515,6 +516,10 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 			return newServeKernel(root, b)
 		},
 		Updater: updater,
+	}
+	if api := strings.TrimSpace(os.Getenv("XBOT_ACCOUNT_API")); api != "" {
+		// The hosted Account API; without it the local stand-in runs.
+		ui.Account = account.NewRemote(api)
 	}
 	if cfg.App {
 		// Only the desktop app can open a folder in the file manager.

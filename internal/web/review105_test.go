@@ -8,9 +8,10 @@ import (
 	"testing"
 )
 
-// TestDesktopAppKeepsItsSession pins issue #105 P2: the desktop app's only way
-// in is the launch code minted at start, so it never logs out and its UI never
-// offers 退出. A plain serve still logs out.
+// TestDesktopAppKeepsItsSession pins issue #105 P2: on the old install-code
+// path the desktop app's only way in is the launch code minted at start, so
+// /api/logout refuses there and that path's UI never offers 退出. A plain serve
+// still logs out. Accounts sign in again on their own, so they always may.
 func TestDesktopAppKeepsItsSession(t *testing.T) {
 	for _, app := range []bool{true, false} {
 		s := &Server{Root: t.TempDir(), Owner: "owner", App: app}
@@ -54,7 +55,7 @@ func TestDesktopAppKeepsItsSession(t *testing.T) {
 	}
 	js := string(data)
 	for _, want := range []string{
-		`$("logout").hidden = !!data.app;`,
+		`$("logout").hidden = legacyLogin && !!data.app;`,
 		// The other #105 web items ride along in the same file.
 		`if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) return;`,
 		`"xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id`,

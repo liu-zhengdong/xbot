@@ -71,6 +71,7 @@ const json=v=>new Response(JSON.stringify(v),{headers:{'Content-Type':'applicati
 const message=(role,content)=>({seq:++fixture.seq,role,content,time:new Date().toISOString()});
 fixture.seq=0;
 window.fetch=async(path,opts={})=>{
+ if(path==='/api/account/me')return json({account:{email:'zh***@example.com',owner:true,hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true}});
  if(path==='/api/session')return json({authed:true,owner:'owner',owner_name:'政东',version:'dev-test'});
  if(path==='/api/bots')return json({bots});
  if(path==='/api/groups')return json({groups:[],folders:[]});

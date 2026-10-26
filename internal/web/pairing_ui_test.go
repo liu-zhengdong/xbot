@@ -81,6 +81,7 @@ Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{fixtu
 window.fetch=async(path,opts={})=>{
  const method=opts.method||'GET',key=method+' '+path;
  fixture.calls.push({key,body:opts.body&&JSON.parse(opts.body)});
+ if(path==='/api/account/me')return json({account:{email:'zh***@example.com',owner:true,hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true}});
  if(path==='/api/session')return json({authed:true,owner:'owner',owner_name:'政东',version:'dev-test'});
  if(path==='/api/devices')return json({self:{name:'MacBook',os:'macOS',bots:['XBot'],gateway:'https://gateway.test'},gateway_ok:true,devices:fixture.devices,pairing:fixture.pairing});
  if(path==='/api/devices/pairing')return json({pairing:fixture.pairing});

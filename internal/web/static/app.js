@@ -10,6 +10,9 @@
   }
   const $ = (id) => document.getElementById(id);
   const login = $("login");
+  // The product way in is the account (account.js). #login-code keeps the old
+  // install-code form reachable for debugging; nothing in the product links to it.
+  const legacyLogin = location.hash === "#login-code";
   const sidebar = $("sidebar");
   const backdrop = $("backdrop");
   const thread = $("thread");
@@ -578,6 +581,12 @@
     ++state.threadLoad;
     ++state.panelLoad;
     setStatus("");
+    if (!legacyLogin) {
+      shell.hidden = true;
+      login.hidden = true;
+      window.XBotAccount.show("login", expired ? { note: "登录已过期，请重新登录" } : {});
+      return;
+    }
     const notice = $("login-notice");
     if (expired) notice.textContent = "登录已过期，重新输入登录码";
     notice.hidden = !notice.textContent;
@@ -6307,15 +6316,22 @@
     }
   });
 
-  $("logout").addEventListener("click", async () => {
-    closeAccount();
-    try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+  function forgetOwner() {
     state.sel = null;
     state.knownNotes = null;
     state.listSig = "";
     try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
+  }
+  $("logout").addEventListener("click", async () => {
+    closeAccount();
+    if (!legacyLogin) { await window.XBotAccount.signOut(); return; }
+    try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+    forgetOwner();
     showLogin();
   });
+  $("account-devices").addEventListener("click", () => { closeAccount(); window.XBotAccount.show("devices"); });
+  $("account-gateway").addEventListener("click", () => { closeAccount(); window.XBotAccount.show("gateway", { from: "app" }); });
+  $("account-devices").hidden = $("account-gateway").hidden = legacyLogin;
 
   const SIDE = { min: 240, max: 360, def: 280, snap: 200, rail: 72 };
   function readSide() {
@@ -7005,18 +7021,45 @@
     });
   }
 
-  api("/api/session").then(async (data) => {
+  // enterOwner opens the main interface for the owner: after an account sign-in,
+  // a tap on a Bot in 我的设备 (name), or coming back from an account screen (null).
+  let booted = false;
+  async function enterOwner(name) {
+    if (booted && authenticated) {
+      login.hidden = true;
+      shell.hidden = false;
+      if (name) await selectBot(name);
+      return;
+    }
+    if (name) { try { sessionStorage.setItem("xbot-selected-bot", name); } catch (e) {} }
+    await ownerSession(await api("/api/session"));
+  }
+  if (legacyLogin) api("/api/session").then(ownerSession).catch(() => showLogin());
+  else window.XBotAccount.boot({
+    owner: (name) => enterOwner(name).catch(() => showLogin()),
+    signedOut: () => {
+      forgetOwner();
+      authenticated = false;
+      booted = false;
+      closeSettings(false);
+      closeModal();
+      closePops();
+      shell.hidden = true;
+    },
+  }).catch(() => showLogin());
+  async function ownerSession(data) {
     if (!data || !data.authed) { showLogin(); return; }
+    booted = true;
     state.owner = (data && data.owner) || "";
     state.ownerName = (data && data.owner_name) || "";
     state.version = (data && data.version) || "";
     state.app = !!data.app;
-    // The desktop app has no login page to come back to: no 退出 there.
-    $("logout").hidden = !!data.app;
+    // The old desktop code path has no login page to come back to; accounts can always sign out.
+    $("logout").hidden = legacyLogin && !!data.app;
     if (data.needs_key) await showSetup(data.key_host || "");
     renderMe();
     showApp();
     await boot();
     startPoll();
-  }).catch(() => showLogin());
+  }
 })();

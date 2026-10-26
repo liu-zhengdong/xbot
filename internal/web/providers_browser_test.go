@@ -76,6 +76,7 @@ const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],[
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(path,opts={})=>{
  fixture.calls.push(path);
+ if(path==='/api/account/me')return json({account:{email:'zh***@example.com',owner:true,hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true}});
  if(path==='/api/session')return json({authed:true,owner:'owner',owner_name:'政东',version:'dev-test'});
  if(path==='/api/bots/status'||path==='/api/bots')return json({bots:[]});
  if(path==='/api/notifications')return json({notifications:[]});
