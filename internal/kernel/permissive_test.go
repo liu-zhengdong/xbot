@@ -38,7 +38,7 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
 	k.ensureTurn().turnTrusted = true
 	checked := 0
-	for _, tool := range []string{"mcp_x_send", "http_request", "delete_file", "propose_persona"} {
+	for _, tool := range []string{"mcp_x_send", "http_request", "delete_file", "bot_propose_persona"} {
 		if !review.NeedsOwner(tool, json.RawMessage(`{"method":"POST","url":"https://x"}`)) {
 			continue
 		}
@@ -59,7 +59,7 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 		t.Error("the links card was dropped")
 	}
 	for _, args := range []string{`{"avatar_seed":"XBot#3"}`, `{"description":"笔记助手"}`, `{"description":"笔记助手","avatar_seed":"XBot#3"}`} {
-		if needsCard(t, k, "update_profile", args) {
+		if needsCard(t, k, "bot_update_profile", args) {
 			t.Errorf("profile update %s asked with permissions off", args)
 		}
 	}

@@ -28,9 +28,9 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 		return "抓取网页", hostOf(jsonString(args, "url"))
 	case name == "web_search":
 		return "搜索网页", jsonString(args, "query")
-	case name == "propose_persona":
+	case name == "bot_propose_persona":
 		return "修改人设", ""
-	case name == "update_profile":
+	case name == "bot_update_profile":
 		return "修改档案", ""
 	case isConnectorSend(name):
 		return "发送消息到 " + connectorName(name), ""

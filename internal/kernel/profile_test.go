@@ -87,15 +87,16 @@ func TestUpdateProfileNeedsConfirmationPermissionsOn(t *testing.T) {
 	now := t0
 	call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function",
-		Function: provider.FunctionCall{Name: "update_profile", Arguments: `{"description":"中文笔记"}`},
+		Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: `{"description":"中文笔记"}`},
 	}})}
 	// A denied call cannot be retried with the same arguments. The later
 	// approval uses a different update.
 	call2 := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c2", Type: "function",
-		Function: provider.FunctionCall{Name: "update_profile", Arguments: `{"description":"中文笔记","timezone":"UTC"}`},
+		Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: `{"description":"中文笔记","timezone":"UTC"}`},
 	}})}
 	p := &scripted{resps: []provider.Message{
+		toolCall("expand-profile", "expand_tool_group", `{"group":"bot_profile"}`),
 		call,
 		{Role: provider.RoleAssistant, Content: provider.TextContent("denied-done")},
 		call2,
@@ -107,7 +108,7 @@ func TestUpdateProfileNeedsConfirmationPermissionsOn(t *testing.T) {
 		Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4,
 		Now: func() time.Time { return now },
 		Approve: func(_ context.Context, name, summary string) (bool, error) {
-			if name != "update_profile" || !strings.Contains(summary, "中文") {
+			if name != "bot_update_profile" || !strings.Contains(summary, "中文") {
 				t.Fatalf("confirm %s %s", name, summary)
 			}
 			return approved, nil
@@ -184,9 +185,10 @@ func testUpdateProfileAvatar(t *testing.T, permissive bool) {
 			}
 			otherBefore := profileAvatarFiles(t, other)
 			call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-				ID: "avatar", Type: "function", Function: provider.FunctionCall{Name: "update_profile", Arguments: tc.args},
+				ID: "avatar", Type: "function", Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: tc.args},
 			}})}
 			p := &scripted{resps: []provider.Message{
+				toolCall("expand-profile", "expand_tool_group", `{"group":"bot_profile"}`),
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done again")},
 			}}
@@ -194,7 +196,7 @@ func testUpdateProfileAvatar(t *testing.T, permissive bool) {
 			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive}
 			k.Approve = func(_ context.Context, name, summary string) (bool, error) {
 				confirms++
-				if name != "update_profile" || !strings.Contains(summary, `avatar_seed "Ada#2"`) {
+				if name != "bot_update_profile" || !strings.Contains(summary, `avatar_seed "Ada#2"`) {
 					t.Errorf("confirmation %s %s", name, summary)
 				}
 				if tc.description != "" && !strings.Contains(summary, `description "笔记助手"`) {
@@ -216,8 +218,8 @@ func testUpdateProfileAvatar(t *testing.T, permissive bool) {
 				t.Fatal(err)
 			}
 			t.Logf("scripted avatar turn: %s", time.Since(started))
-			if !hasDef(p.reqs[0].Tools, "update_profile") {
-				t.Fatal("update_profile missing from provider tool list")
+			if hasDef(p.reqs[0].Tools, "bot_update_profile") || !hasDef(p.reqs[1].Tools, "bot_update_profile") {
+				t.Fatal("bot_update_profile must appear only after expansion")
 			}
 			wantConfirms := 1
 			if permissive {
@@ -309,8 +311,9 @@ func testUpdateProfileAvatarRejectsInvalid(t *testing.T, permissive bool) {
 			}
 			before := profileAvatarFiles(t, b)
 			p := &scripted{resps: []provider.Message{
+				toolCall("expand-profile", "expand_tool_group", `{"group":"bot_profile"}`),
 				{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-					ID: "bad-avatar", Type: "function", Function: provider.FunctionCall{Name: "update_profile", Arguments: tc.args},
+					ID: "bad-avatar", Type: "function", Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: tc.args},
 				}})},
 				{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 			}}
@@ -359,7 +362,7 @@ func TestUpdateProfileAvatarSchema(t *testing.T) {
 	if len(schema.Properties) != 4 || schema.Properties["avatar_seed"].Type != "string" {
 		t.Fatalf("expected four profile fields including string avatar_seed: %s", raw)
 	}
-	if review.ClassOf("update_profile") != review.SelfEdit {
+	if review.ClassOf("bot_update_profile") != review.SelfEdit {
 		t.Fatal("profile avatar must remain SelfEdit")
 	}
 }

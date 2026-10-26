@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ e8342e6 + 下一版提示通用原则
+verified: 2026-10-27 @ 714cfbe + 工具组渐进披露
 ---
 # 内核：Link、Event、收件箱
 
@@ -30,6 +30,14 @@ verified: 2026-10-27 @ e8342e6 + 下一版提示通用原则
 有主人话或任务结果的一轮必须给正常回复，不能以 `SILENT` 吞掉；只有没有这些输入的定时唤醒才允许静默。环境与任务结果都是原有消息，不另建转告请求或签收机制。接收原话和公布该输入的环境共用原环境发布锁；请求发送前从有效对话回放基线并采样变化，不再保存独立已见状态（格式见 [上下文](context.md)）。
 
 输出截断的合并规则见 [供应商](providers.md#输出截断)。内核把 prepare、fit、环境公布和用量记账保留在每次实际请求上，输出截断不改变 overflow 的裁剪重试。逻辑回复拼接完成后才统一剥离 `reply_to`、校验 SILENT 和工具协议文本，并沿原助手记录入口追加一次；中间片段及续写指令不进 transcript。取消和插话沿原模型请求的 context；已正常完成的回复仍优先于迟到取消。
+
+## 工具组渐进披露
+
+`mountedTools` 保留全部已挂载能力；主 Agent 的 `modelTools` 将尚未展开的资料写工具换成组短入口。当前只有 `bot_profile`（「Bot资料编辑」）：`bot_update_profile` 改名字、简介、时区、头像，`bot_propose_persona` 改人设；其他常驻工具不变。短入口只带名称、摘要和协议要求的空参数对象，不带成员参数；直接调用短入口会明确提示使用 `expand_tool_group`。
+
+`expand_tool_group({"group":"bot_profile"})` 也接受展示名，返回成员完整定义。下一次模型请求由现有 `RefreshTools` 重建可调用目录，整组成员替换短入口，元工具一直可用。未展开时直接调用成员，以及与展开放在同一批里的成员调用，均返回 `unknown tool`。这只是能力发现，不是主线权限白名单；子代理仍沿用完整挂载目录和原有类型范围。
+
+展开态按当前 Bot 的 Kernel 实例保存在互斥保护的内存映射里：同一实例的后续步骤、插话和后续唤醒保留；重复展开无害；Kernel 重建、进程重启或另一个 Bot 从折叠态开始。不落盘、不从历史 schema 回包恢复，不与每轮清空的 Link `loaded` 混用。网页复用缓存 Kernel，绑定切换或改名等导致缓存重建时也重置；短命服务唤醒内核只覆盖该实例的请求。现有 Env Stream 从 `modelTools()` 采样 `tools`，列表变化才追加差异，固定前缀与旧 transcript 不改。权限分类见 [安全](security.md)。本批验收边界见 [设计](../dev/tool-group-expand.md)。
 
 ## 轨迹路径与脚本回放
 

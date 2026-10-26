@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 2d746e5 + persona-label-name（编辑资料名字标签）
+verified: 2026-10-27 @ 714cfbe + Bot 资料工具命名前缀
 ---
 # 网页界面
 
@@ -57,7 +57,7 @@ verified: 2026-10-27 @ 2d746e5 + persona-label-name（编辑资料名字标签�
 
 ### 资料即时刷新
 
-`update_profile` 的工具结果到达后异步刷新 Bot 列表，头像字段参与侧栏缓存签名；当前仍选中原 Bot 且不在往来视图时同步重绘顶栏。刷新不等待流式结束，慢请求不阻塞正文；切换 Bot 后迟到请求不恢复旧顶栏，读取失败不打断回复。
+`bot_update_profile` 的工具结果到达后异步刷新 Bot 列表，头像字段参与侧栏缓存签名；当前仍选中原 Bot 且不在往来视图时同步重绘顶栏。刷新不等待流式结束，慢请求不阻塞正文；切换 Bot 后迟到请求不恢复旧顶栏，读取失败不打断回复。
 
 ### 网页搜索设置
 

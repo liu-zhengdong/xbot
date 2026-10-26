@@ -6193,7 +6193,7 @@
             }
           }
           thread.scrollTop = thread.scrollHeight;
-        } else if (event === "result" && payload.name === "update_profile") {
+        } else if (event === "result" && payload.name === "bot_update_profile") {
           // The result arrives after persistence. Refresh faces even while the
           // streaming poll is paused, without holding up incoming text. The
           // selection guard keeps a delayed fetch from restoring an old header.
