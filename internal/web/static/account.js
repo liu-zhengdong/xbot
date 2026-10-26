@@ -238,6 +238,27 @@
     const cnt = el("div", "ac-devcnt");
     box.append(bar, cnt);
     mount(box, "ac-wide");
+    // 这台电脑还没绑到这个账号（登录走了隧道或当时账号未验证）：给真认领，
+    // POST /api/account/claim 在本机窗口直接绑（bindIfFree），拒绝时说原因。
+    if (a.unbound) {
+      const claim = el("div", "ac-claim");
+      const tx = el("div", "ac-claim-tx");
+      tx.append(el("b", "", "把这台电脑绑到账号？"), el("p", "", "绑定后，手机和其它入口也能看到这台电脑上的 Bot。"));
+      const err = errLine();
+      const go = el("button", "ac-btn ac-pri", "绑定这台电脑"); go.type = "button";
+      const skip = el("button", "ac-btn ac-ghost", "先不绑"); skip.type = "button";
+      const acts = el("div", "ac-actions"); acts.append(skip, go);
+      claim.append(tx, err, acts);
+      cnt.append(claim);
+      go.onclick = async () => {
+        showErr(err, ""); busy(go, true);
+        const r = await call("POST", "/api/account/claim");
+        busy(go, false);
+        if (r.ok && r.data.account && r.data.account.owner) { me = { account: r.data.account }; route(); return; }
+        showErr(err, r.ok ? "还没绑上，回这台电脑再试" : say(r.data, "没能绑定，稍后再试"));
+      };
+      skip.onclick = () => { claim.remove(); };
+    }
     const r = await call("GET", "/api/account/devices");
     if (view !== "devices") return;
     if (r.status === 401) { me = null; showLogin({ note: "登录已过期，请重新登录" }); return; }
@@ -339,5 +360,5 @@
     else showDevices();
   }
 
-  window.XBotAccount = { boot, show, signOut, active: () => !!root && !root.hidden };
+  window.XBotAccount = { boot, show, signOut, active: () => !!root && !root.hidden, state: () => (me && me.account) || null };
 })();

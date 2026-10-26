@@ -85,6 +85,12 @@
 .acct .ac-av{width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:13px;font-weight:650;color:#fff;background:var(--x-avatar-bg);background-size:cover;background-position:center}
 .acct .ac-devfoot{font-size:12px;color:var(--x-faint);line-height:1.55;margin-top:4px;padding:0 2px}
 .acct .ac-empty{margin-top:48px;text-align:center;padding:0 12px;display:flex;flex-direction:column;align-items:center;gap:10px}
+/* 认领本机（我的设备顶部）：真 POST /api/account/claim */
+.acct .ac-claim{background:var(--x-fill-1);border-radius:14px;padding:14px;margin-bottom:12px}
+.acct .ac-claim-tx b{font-size:15px;font-weight:620;display:block}
+.acct .ac-claim-tx p{font-size:13px;color:var(--x-muted);line-height:1.55;margin:4px 0 0}
+.acct .ac-claim .ac-actions{margin-top:12px;display:flex;gap:8px;justify-content:flex-end}
+.acct .ac-claim .ac-err{margin:8px 0 0}
 .acct .ac-empty .ac-icbox{width:56px;height:56px;border-radius:16px;background:var(--x-fill-1);display:grid;place-items:center;color:var(--x-muted);margin-bottom:4px}
 .acct .ac-empty h2{font-size:17px;font-weight:650;margin:0}
 .acct .ac-empty p{font-size:13.5px;color:var(--x-muted);line-height:1.6;max-width:280px;margin:0}

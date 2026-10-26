@@ -127,6 +127,47 @@ func forwarded(r *http.Request) bool {
 	return false
 }
 
+// accountClaim binds this install to the signed-in account: the real
+// bindIfFree, so the same owner proof as sign-in applies, and a device
+// report follows so the machine shows up in 我的设备 at once.
+func (s *Server) accountClaim(w http.ResponseWriter, r *http.Request) {
+	if !s.accountReady(w, r) {
+		return
+	}
+	session := accountSession(r)
+	if session == "" {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	me, err := s.acct.client.Me(r.Context(), session)
+	if errors.Is(err, account.ErrSession) {
+		clearAccountCookie(w)
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err != nil {
+		writeAccountErr(w, err)
+		return
+	}
+	b, err := s.bindIfFree(me.Key, me.Verified && s.ownerProof(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "account binding")
+		return
+	}
+	if b.Key != "" && b.Key != me.Key {
+		writeErr(w, http.StatusForbidden, "这台电脑已经绑在另一个账号上")
+		return
+	}
+	if !me.Verified || !s.ownerProof(r) {
+		writeErr(w, http.StatusForbidden, "要在这台电脑上登录，才能把它绑到账号")
+		return
+	}
+	view := s.accountViewFor(r, me, b)
+	s.setCookie(w, s.loginToken())
+	s.reportDevice(r.Context(), session, b, true)
+	writeJSON(w, http.StatusOK, map[string]any{"account": view, "bound": true})
+}
+
 func (s *Server) registerAccount(mux *http.ServeMux) {
 	if s.acct.client == nil {
 		if s.Account != nil {
@@ -149,6 +190,7 @@ func (s *Server) registerAccount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/poll", s.accountPoll)
 	mux.HandleFunc("GET /api/account/me", s.accountMe)
 	mux.HandleFunc("POST /api/account/logout", s.accountLogout)
+	mux.HandleFunc("POST /api/account/claim", s.accountClaim)
 	mux.HandleFunc("GET /api/account/devices", s.accountDevices)
 	mux.HandleFunc("GET /account.js", s.static("static/account.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /account.css", s.static("static/account.css", "text/css; charset=utf-8"))
@@ -336,6 +378,9 @@ type accountView struct {
 	GatewayOK bool `json:"gateway_ok"`
 	// App is the desktop app's page.
 	App bool `json:"app"`
+	// Unbound means this install is not bound to any account yet; the page
+	// may offer 把这台电脑绑到账号.
+	Unbound bool `json:"unbound"`
 }
 
 // signIn keeps the account session in a cookie and, for the account this
@@ -367,6 +412,7 @@ func (s *Server) accountViewFor(r *http.Request, me account.Me, b accountBinding
 		Email: me.Email, Owner: me.Verified && b.Key != "" && b.Key == me.Key,
 		Hosted: s.acct.client.Hosted(), Gateway: strings.TrimPrefix(strings.TrimPrefix(gw, "https://"), "http://"),
 		Official: gw == remote.DefaultGateway, GatewayOK: gatewayUp(r.Context(), gw, false), App: s.App,
+		Unbound: b.Key == "",
 	}
 }
 

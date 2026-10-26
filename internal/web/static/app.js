@@ -4915,24 +4915,20 @@
     if (!host) return;
     const statuses = Object.values(stStatus.map);
     const busy = statuses.filter(st => st.state === "running" || st.state === "awaiting");
-    const done = statuses.filter(st => st.completed_unread > 0);
     const hour = new Date().getHours();
     const hello = hour < 6 ? "夜深了" : hour < 12 ? "上午好" : hour < 18 ? "下午好" : "晚上好";
-    const sig = JSON.stringify([hello, state.ownerName, busy.map(s => s.bot), done.map(s => [s.bot, s.completed_unread])]);
+    const sig = JSON.stringify([hello, state.ownerName, busy.map(s => s.bot)]);
     if (host.dataset.sig === sig) return;
     host.dataset.sig = sig;
     host.replaceChildren(document.createTextNode(hello + (state.ownerName ? "，" + state.ownerName : "") + "。"));
-    const line = (items, number, label, tail) => {
-      host.append(el("br"));
-      if (label === "个 Bot") host.append(el("span", "g", "有 "));
+    // 状态只写「有 N 个 Bot 在忙」，有忙才出；不写已完成类状态。
+    if (busy.length) {
+      host.append(el("br"), el("span", "g", "有 "));
       const stack = el("span", "greet-stack");
-      for (const st of items.slice(0, 3)) stack.append(avatar(st.bot, paintOf(st.bot), "xs"));
-      if (items.length > 3) stack.append(el("span", "greet-more", "+" + (items.length - 3)));
-      host.append(stack, document.createTextNode(" " + number + " " + label), el("span", "g", tail));
-    };
-    if (busy.length) line(busy, busy.length, "个 Bot", " 在忙，");
-    if (done.length) line(done, done.reduce((n, st) => n + st.completed_unread, 0), "件事", "刚做完。");
-    if (!busy.length && !done.length) { host.append(el("br"), el("span", "g", "有什么事，直接说就行。")); }
+      for (const st of busy.slice(0, 3)) stack.append(avatar(st.bot, paintOf(st.bot), "xs"));
+      if (busy.length > 3) stack.append(el("span", "greet-more", "+" + (busy.length - 3)));
+      host.append(stack, document.createTextNode(" " + busy.length + " 个 Bot"), el("span", "g", " 在忙。"));
+    }
   }
 
   function paintWorkStatus() {
@@ -6607,11 +6603,13 @@
       const session = await api("/api/session");
       state.version = session.version || "";
       state.app = !!session.app;
+      syncDevicesSession(session);
       $("logout").hidden = state.app;
       renderMe();
       showApp();
       await boot();
       startPoll();
+      offerClaimOnce();
     } catch (e) {
       err.hidden = false;
       err.textContent = visibleError(e, "登录失败");
@@ -7419,6 +7417,17 @@
       shell.hidden = true;
     },
   }).catch(() => showLogin());
+  // 把 session 里的入口语境交给设备模块：官网入口（隧道/代理）底栏写账号设备数。
+  function syncDevicesSession(data) { if (window.xbotDevices) window.xbotDevices.setSession({ remote: !!data.remote }); }
+  // 本机还没绑到登录着的账号：开机后给一次「把这台电脑绑到账号」确认（shot 04b）。
+  function offerClaimOnce() {
+    if (legacyLogin) return;
+    const acct = window.XBotAccount && window.XBotAccount.state ? window.XBotAccount.state() : null;
+    if (!acct || !acct.unbound || !window.xbotDevices) return;
+    let said = false;
+    try { said = sessionStorage.getItem("xbot-claim-dismissed") === "1"; } catch (e) {}
+    if (!said) window.xbotDevices.offerClaim();
+  }
   async function ownerSession(data) {
     if (!data || !data.authed) { showLogin(); return; }
     booted = true;
@@ -7426,6 +7435,7 @@
     state.ownerName = (data && data.owner_name) || "";
     state.version = (data && data.version) || "";
     state.app = !!data.app;
+    syncDevicesSession(data);
     // The old desktop code path has no login page to come back to; accounts can always sign out.
     $("logout").hidden = legacyLogin && !!data.app;
     if (data.needs_key) await showSetup(data.key_host || "");
@@ -7433,5 +7443,6 @@
     showApp();
     await boot();
     startPoll();
+    offerClaimOnce();
   }
 })();

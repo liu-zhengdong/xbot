@@ -80,8 +80,12 @@
     view: null,            // drawer 之上的弹窗
     embedded: false,
     code: "",              // A 最近一次显示的码，用于确认框副行
-    peer: null,            // B 端最近看到的对方 {name, os, bots}
-    joinVal: "", gwOpen: false, gwVal: "", fieldErr: "", checking: false,
+    peer: null,            // 对方（请求方）{name, os, bots}
+    remote: false,         // 官网入口（session.remote）：底栏写账号设备数，不写本机名
+    acct: null,            // GET /api/account/me 的 account，用来出「把这台电脑绑到账号」
+    acctDevs: null,        // 官网入口底栏「已绑定 N 台设备」的 N
+    claimBusy: false, claimErr: "",
+    gwVal: "", fieldErr: "", checking: false,
     menuFor: "", target: null, selfGwEdit: false, selfGwErr: "", busy: false,
   };
   let devicesEl = null, modalEl = null, lastView = "";
@@ -97,14 +101,38 @@
 
   async function refresh() {
     try { S.data = await api("GET", "/api/devices"); S.pairing = S.data.pairing; window.dispatchEvent(new Event("xbot:devices")); } catch (e) { /* 离线时保留旧数据 */ }
-    paintComputerName();
+    if (S.remote) {
+      // 官网入口：底栏写账号名下有几台设备（真实账号列表，不是本机配对表）。
+      try { S.acctDevs = ((await api("GET", "/api/account/devices")) || { devices: [] }).devices.length; } catch (e) { /* 下次再试 */ }
+    }
+    paintFoot();
     paintSidebar();
   }
-  function paintComputerName() {
-    // This computer's name under 我 at the bottom of the sidebar.
+  // app.js 在拿到 /api/session 后调一次：这条入口是隧道/代理那头的官网。
+  function setSession(s) {
+    const was = S.remote;
+    S.remote = !!(s && s.remote);
+    if (S.remote && !was) refresh(); // 底栏要账号设备数，立即拉一次
+    else paintFoot();
+  }
+  function paintFoot() {
+    // 底栏「我」下面那行：本机写这台电脑的名字；官网入口写「已绑定 N 台设备」。
     const me = document.getElementById("me-device");
-    const self = (S.data && S.data.self) || {};
-    if (me) { me.textContent = self.name || self.label || ""; me.hidden = !me.textContent; }
+    if (!me) return;
+    if (S.remote) {
+      const n = S.acctDevs;
+      me.textContent = n == null ? "" : n ? "已绑定 " + n + " 台设备" : "还没有设备";
+    } else {
+      const self = (S.data && S.data.self) || {};
+      me.textContent = self.name || self.label || "";
+    }
+    me.hidden = !me.textContent;
+  }
+  // 账号状态只取一次（设置打开或认领弹窗要用 unbound）；401 之外的错都当没登录。
+  async function loadAcct() {
+    if (S.acct !== null) return S.acct;
+    try { const out = await api("GET", "/api/account/me"); S.acct = (out && out.account) || null; } catch (e) { S.acct = null; }
+    return S.acct;
   }
 
   // ---- 打开、关闭 ----
@@ -112,8 +140,18 @@
   async function mount() {
     ensureHosts();
     S.embedded = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
-    await refresh();
+    await Promise.all([refresh(), loadAcct()]);
     render();
+  }
+  // 「把这台电脑绑到账号？」（04b）：本机还没绑到登录着的账号时，app.js 开机后请一次。
+  async function offerClaim() {
+    const acct = await loadAcct();
+    if (!acct || !acct.unbound) return;
+    let said = false;
+    try { said = sessionStorage.getItem("xbot-claim-dismissed") === "1"; } catch (e) {}
+    if (said) return;
+    if (!S.data) await refresh();
+    S.claimErr = ""; S.view = "claim"; render();
   }
   function unmount() {
     S.embedded = false;
@@ -128,7 +166,8 @@
     const top = modalEl && modalEl.firstChild ? "modal" : "";
     if (!top) return false;
     if (ev.key === "Escape") {
-      if (top === "modal" && S.view !== "rename" && S.view !== "unpair" && S.view !== "gw-confirm") return false; // pairing.js owns its modals' Escape (it cancels codes)
+      if (top === "modal" && !["rename", "unpair", "gw-confirm", "claim"].includes(S.view)) return false; // pairing.js owns its modals' Escape (it cancels codes)
+      if (S.view === "claim") { try { sessionStorage.setItem("xbot-claim-dismissed", "1"); } catch (e) {} }
       closeModal();
       return true;
     }
@@ -181,11 +220,11 @@
   function viewUnpair() {
     const t = S.target || {};
     const n = (t.bots || []).length;
-    return modal(`<h2>解除和 ${esc(t.label)} 的配对？</h2>
+    return modal(`<h2>解除和 ${esc(t.label)} 的绑定？</h2>
       <p class="g7-lead">侧栏里「${esc(t.label)}」会消失，这里不能用它的 ${n} 个 Bot，两边的 Bot 也不能互发消息。</p>
-      <p class="g7-lead">会尽量通知 ${esc(t.label)}，它那边会显示「已解除配对」。通知没送到，这边也照样解除。想再连，重新配对就行。</p>
+      <p class="g7-lead">会尽量通知 ${esc(t.label)}，它那边会显示「已解除绑定」。通知没送到，这边也照样解除。想再连，重新绑定就行。</p>
       ${S.fieldErr ? `<p class="error g7-field-err">${esc(S.fieldErr)}</p>` : ""}
-      <div class="modal-actions"><button class="secondary" type="button" data-act="close">取消</button><button class="primary" type="button" data-act="unpair">解除配对</button></div>`, "g7-over");
+      <div class="modal-actions"><button class="secondary" type="button" data-act="close">取消</button><button class="primary" type="button" data-act="unpair">解除绑定</button></div>`, "g7-over");
   }
   function viewGwConfirm() {
     const devs = ((S.data && S.data.devices) || []).filter((d) => !d.unpaired);
@@ -198,8 +237,6 @@
   }
 
   // ---- 抽屉 ----
-  // 「在线」是网关按对方刚发的 Bot 列表判的，最多晚十几分钟。
-  const fineOnline = "「在线」指 16 分钟内收到过对方的 Bot 列表，所以状态可能晚十几分钟才变。关掉 XBot 的电脑会显示离线，发给它的消息在网关里最多等 7 天。";
   const official = "gateway.babelgo.cn:8443";
   // 网关地址只填官方或自建，三种错误：格式不对（400）、连不上新地址（502）、没填。
   function gwCheck(v, cur) {
@@ -216,7 +253,7 @@
     const cur = gw ? (host(gw) === official ? "官方 · " + official : "自建 · " + host(gw)) : "";
     if (!S.selfGwEdit) return `<div class="g7-set" id="gw-row"><span class="g7-set-ico">${svg("server", 20)}</span><div class="g7-set-main"><b>网关</b>
       <small>${gw ? sp(cur) : "还没设网关"}</small><small>消息端到端加密，网关只转交，看不到内容。</small></div>
-      <button class="text-btn g7-set-act" type="button" data-act="self-gw-edit">${gw ? "改" : "设置"}</button></div>`;
+      <button class="ghost" type="button" aria-label="改网关地址" data-act="self-gw-edit">${svg("pencil")}</button></div>`;
     const bad = !!S.selfGwErr;
     return `<div class="g7-set g7-set-edit" id="gw-row"><div class="g7-set-head"><span class="g7-set-ico">${svg("server", 20)}</span><div class="g7-set-main"><b>网关</b>
         <small>现在用：${gw ? sp(cur) : "还没设网关"}</small></div></div>
@@ -238,7 +275,7 @@
   const faceX = (n, id) => (window.XBotFaces ? D.sideFaces(n, id, "xs") : `<span class="avatar xs">${D.sideFaces(n, id)}</span>`);
   // 在线时写多久前联系过（「3 分钟前联系过」）；隔天或对方一整天都显得在线时，写日期。
   const statusLine = (d, up) => {
-    if (d.unpaired) return `<span class="g7-status">${svg("unlink", 13)}已解除配对 · 对方解除的</span>`;
+    if (d.unpaired) return `<span class="g7-status">${svg("unlink", 13)}已解除绑定 · 对方解除的</span>`;
     const seen = fmtSeen(d.seen);
     if (!seen) return `<span class="g7-status"><i class="status-dot off-ring"></i>还没收到它的 Bot 列表 · 几秒后会更新</span>`;
     if (!up) return `<span class="g7-status"><i class="status-dot off-ring"></i>连不上网关 · 最后联系 ${esc(seen)}</span>`;
@@ -259,11 +296,11 @@
         <div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
           <div class="g7-dev-main"><div class="g7-dev-name">${esc(d.label)}</div>${statusLine(d, up)}</div>
           <button class="secondary g7-sm" type="button" data-act="remove" data-id="${esc(d.id)}">${svg("x", 14)}<span>移除</span></button></div>
-        <div class="g7-meta">${esc(d.label)} 那边已经解除配对，这里不能再用它的 Bot，两边的 Bot 也不能互发消息。移除后，想再连就重新配对。</div></div>`;
+        <div class="g7-meta">${esc(d.label)} 那边已经解除绑定，这里不能再用它的 Bot，两边的 Bot 也不能互发消息。移除后，想再连就重新绑定。</div></div>`;
     }
     const menu = open ? `<div class="pop g7-row-menu">
         <button type="button" class="menu-row" data-act="rename" data-id="${esc(d.id)}">${svg("pencil")}<span>重命名</span></button>
-        <button type="button" class="menu-row" data-act="ask-unpair" data-id="${esc(d.id)}">${svg("unlink")}<span>解除配对</span></button></div>` : "";
+        <button type="button" class="menu-row" data-act="ask-unpair" data-id="${esc(d.id)}">${svg("unlink")}<span>解除绑定</span></button></div>` : "";
     const bots = (d.bots || []).length ? `<div class="g7-bots">${d.bots.map((b) => `<span class="g7-bot">${faceX(b, d.id)}<span>${esc(b)}</span></span>`).join("")}</div>` : "";
     const added = fmtSeen(d.added); // 今天 09:12 / 昨天 18:20 / 10月12日
     const date = !added ? "" : /^今天/.test(added) ? "今天" : added;
@@ -282,25 +319,39 @@
       <div class="g7-device g7-self"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
         <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div></section>`;
+    // 本机还没绑到登录着的账号：先给认领（主路径，shot 04b）。
+    const claim = S.acct && S.acct.unbound ? `<div class="g7-claim"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+      <div class="g7-claim-main"><b>把这台电脑绑到账号？</b><small>绑定后，手机和其它入口也能看到这台电脑上的 Bot。</small>
+      ${S.claimErr ? `<p class="error g7-inline-err">${esc(S.claimErr)}</p>` : ""}</div>
+      <button class="primary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></div>` : "";
     const banner = gw && !up ? `<div class="g7-banner"><span class="g7-banner-ico">${svg("cloudOff", 18)}</span>
         <span>${sp("连不上网关" + host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
     let list;
     if (!devs.length) {
-      list = `<section class="profile-section"><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有配对的设备</h3>
-          <p>把你的另一台电脑配对进来，它上面的 Bot 会出现在侧栏里，点开就能聊天。</p></div>
-        <ul class="g7-can"><li>${svg("bot", 16)}<span>在这台电脑上和另一台电脑的 Bot 聊天，和本机的一样。</span></li>
-          <li>${svg("swap", 16)}<span>两边的 Bot 能互发消息。</span></li>
-          <li class="no">${svg("shield", 16)}<span>记忆和文件留在各自的电脑上。</span></li></ul>
+      list = `<section class="profile-section"><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有设备</h3>
+          <p>到电脑上打开 XBot，用同一账号登录，并把这台电脑绑到账号。保持在线后，这里就能聊。</p></div>
         </section>`;
     } else {
-      list = `<section class="profile-section"><h3>已配对 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
-          <p class="g7-fine">${sp(fineOnline)}</p></section>`;
+      list = `<section class="profile-section"><h3>已绑 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
+          <p class="g7-fine">${sp("「在线」表示最近能连上该设备上的 XBot。官网入口不是设备，不会出现在此列表。")}</p></section>`;
     }
-    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
-      <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}
+    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>添加设备</span></button></div>
+      <div class="g7-lead">${sp("绑定后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${claim}${banner}
       <div class="g7-body">${selfCard}${list}
         <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>`;
+  }
+  // 认领确认（shot 04b）：POST /api/account/claim 是真绑定（bindIfFree + 上报账号）。
+  function viewClaim() {
+    const self = (S.data && S.data.self) || {};
+    return modal(`<h2>把这台电脑绑到账号？</h2>
+      <p class="g7-lead">绑定后，手机和其它入口也能看到这台电脑上的 Bot。</p>
+      <div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+        <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name || "这台电脑")}</div>
+        <div class="g7-dev-sub">${esc([self.os, "本机", "未绑定"].filter(Boolean).join(" · "))}</div></div></div>
+      ${S.claimErr ? `<p class="error g7-field-err">${esc(S.claimErr)}</p>` : ""}
+      <div class="modal-actions"><button class="secondary" type="button" data-act="claim-dismiss">先不绑</button><button class="primary" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></div>
+      <p class="g7-fine">或在其它已登录入口用短码添加（少用）。</p>`, "g7-claim-modal");
   }
 
   function render() {
@@ -311,7 +362,7 @@
     const selDir = sel != null ? document.activeElement.selectionDirection : null;
     const wasView = lastView;
     devicesEl.innerHTML = S.embedded ? viewDevices() : "";
-    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm }, D.views)[S.view];
+    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm, claim: viewClaim }, D.views)[S.view];
     modalEl.innerHTML = V ? V() : "";
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
     lastView = S.view || "";
@@ -381,6 +432,21 @@
       case "gw-retry":
         try { S.data = await api("GET", "/api/devices?retry=1"); } catch (e) {}
         paintSidebar(); render(); break;
+      case "claim": {
+        // 真绑定：服务端 bindIfFree + 上报账号（account.go 的 accountClaim）。
+        S.claimErr = ""; S.claimBusy = true; render();
+        try {
+          const out = await api("POST", "/api/account/claim");
+          S.acct = (out && out.account) || S.acct;
+          S.view = null;
+          await refresh();
+        } catch (e) { S.claimErr = e.message; }
+        S.claimBusy = false; render(); break;
+      }
+      case "claim-dismiss":
+        S.view = null;
+        try { sessionStorage.setItem("xbot-claim-dismissed", "1"); } catch (e) {}
+        render(); break;
       default: if (D.acts[name]) await D.acts[name](el);
     }
   }
@@ -455,7 +521,7 @@
     nav.innerHTML = !devs.length ? "" : (up ? "" : `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><button class="ghost" type="button" aria-label="重试" data-side="retry">${svg("refresh")}</button></div>`)
       + devs.map((d) => {
         const bots = d.bots || [], closed = !!folds[d.id];
-        const rows = bots.length ? bots.map((b) => row(d, b)).join("") : `<p class="g7-side-line">刚配对，几秒后会列出它的 Bot。</p>`;
+        const rows = bots.length ? bots.map((b) => row(d, b)).join("") : `<p class="g7-side-line">刚绑定，几秒后会列出它的 Bot。</p>`;
         return `<div class="g7-side-dev${!up || (bots.length && !d.online) ? " is-off" : ""}"><button class="g7-side-head" type="button" data-side="fold" data-id="${esc(d.id)}" aria-expanded="${closed ? "false" : "true"}">
           <span class="g7-side-name">${svg("laptop", 13)}<span>${esc(d.label)}</span></span>${status(d)}</button><div class="g7-side-bots"${closed ? " hidden" : ""}>${rows}</div></div>`;
       }).join("");
@@ -482,7 +548,7 @@
   Object.defineProperty(D, "chat", { get: () => window.xbotRemoteChat || null, set: () => false });
   setInterval(() => { if (!document.hidden) refresh(); }, 30000);
 
-  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face });
+  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face, setSession, offerClaim });
   D.views = {}; D.acts = {}; D.onInput = null; D.onKey = null; // pairing.js 接着往这三个上面挂
   refresh();
 })();

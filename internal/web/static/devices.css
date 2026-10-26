@@ -70,6 +70,11 @@
 .g7-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* 网关不通：灰底，不用红色（这是状态，不是这次操作的错误） */
 .g7-banner { display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--x-fill-1); font-size: 13px; line-height: 1.5; flex: none; }
+/* 认领本机（还没绑到登录着的账号时的主路径）；图标复用 .g7-dev-ico */
+.g7-claim { display: flex; align-items: center; gap: 12px; margin: 12px 20px 0; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--x-fill-1); flex: none; }
+.g7-claim-main { flex: 1; min-width: 0; }
+.g7-claim-main b { font-size: 14px; font-weight: 500; display: block; }
+.g7-claim-main small { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 2px; }
 .g7-banner > span:nth-child(2) { flex: 1; min-width: 0; }
 .g7-banner small { display: block; color: var(--muted); font-size: 12px; }
 .g7-banner-ico { display: grid; color: var(--muted); flex: none; }

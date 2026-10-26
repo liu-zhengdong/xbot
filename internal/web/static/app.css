@@ -396,7 +396,7 @@ html[data-theme="dark"] .field select {
 .pin-row {
   display: flex;
   gap: 2px;
-  padding: 16px 12px 4px;
+  padding: 8px 12px 4px;
   overflow-x: auto;
   position: sticky;
   top: 0;
@@ -2425,7 +2425,7 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 
 
 /* M6: status and tasks share the selected bot's live metadata. */
-.greeting { font-size: var(--x-fs-greet); line-height: 1.75; font-weight: 600; padding: 10px 20px 16px; }
+.greeting { font-size: var(--x-fs-greet); line-height: 1.75; font-weight: 600; padding: 10px 20px 8px; }
 .greeting .g { color: var(--x-faint); font-weight: 500; }
 .greet-stack, .work-stack { display: inline-flex; align-items: center; vertical-align: -3px; margin: 0 2px; flex: none; }
 .greet-stack .avatar { width: 22px; height: 22px; margin-left: -5px; box-shadow: 0 0 0 2px var(--x-win); }
