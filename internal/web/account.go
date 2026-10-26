@@ -354,7 +354,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 	}
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
-		s.setCookie(w, s.token)
+		s.setCookie(w, s.loginToken())
 		s.reportDevice(r.Context(), session, b, true)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": "done", "account": view})
@@ -398,7 +398,7 @@ func (s *Server) accountMe(w http.ResponseWriter, r *http.Request) {
 	}
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
-		s.setCookie(w, s.token)
+		s.setCookie(w, s.loginToken())
 		s.reportDevice(r.Context(), session, b, false)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"account": view, "app": s.App})

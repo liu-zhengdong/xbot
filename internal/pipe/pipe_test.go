@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,6 +76,9 @@ func newWorld(t *testing.T) *world {
 
 	root := t.TempDir()
 	ui := &web.Server{Root: root, Owner: "u1"}
+	if _, _, err := ui.EnsureToken(); err != nil { // serve does this at startup
+		t.Fatal(err)
+	}
 	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
 	if err != nil {
 		t.Fatal(err)
@@ -359,5 +363,113 @@ func TestWSRejectsOversizedMessage(t *testing.T) {
 	}
 	if err := <-srvDone; !errors.Is(err, errTooBig) {
 		t.Fatalf("oversized: %v", err)
+	}
+}
+
+// review1 P2: Dial and Get honour cancellation, not only deadlines. A
+// cancelled request ends the session so a late answer cannot be misread.
+func TestPipeContextCancellation(t *testing.T) {
+	w := newWorld(t)
+	owner := w.device.Handler
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	w.device.Handler = http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/slow" {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			return
+		}
+		owner.ServeHTTP(rw, r)
+	})
+	w.startDevice(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	gone, stop := context.WithCancel(ctx)
+	stop()
+	tk, err := NewTicket(ctx, w.hubURL, w.entrySes, "mini-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Dial(gone, w.hubURL, tk); !errors.Is(err, context.Canceled) {
+		t.Fatalf("dial with cancelled ctx: %v", err)
+	}
+	tk, err = NewTicket(ctx, w.hubURL, w.entrySes, "mini-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := Dial(ctx, w.hubURL, tk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	// Already cancelled: nothing is sent and the session stays usable.
+	if _, _, err := conn.Get(gone, "/api/bots/ada/transcript"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("get with cancelled ctx: %v", err)
+	}
+	if code, _, err := conn.Get(ctx, "/api/bots/ada/transcript"); err != nil || code != 200 {
+		t.Fatalf("after a cancelled get: %d %v", code, err)
+	}
+	// Cancelled while the device is still working: Get returns at once and
+	// the session is over.
+	mid, cancelMid := context.WithCancel(ctx)
+	time.AfterFunc(50*time.Millisecond, cancelMid)
+	start := time.Now()
+	if _, _, err := conn.Get(mid, "/api/slow"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("get cancelled midway: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("cancelled get took %s", d)
+	}
+	if _, _, err := conn.Get(ctx, "/api/bots/ada/transcript"); err == nil || !strings.Contains(err.Error(), "session ended") {
+		t.Fatalf("get after a cancelled one: %v", err)
+	}
+}
+
+// Dial waiting for a device that never joins gives up when ctx is cancelled.
+func TestPipeDialCancelledWhileWaiting(t *testing.T) {
+	w := newWorld(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	sb, err := dialWS(ctx, wsURL(w.hubURL), 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sb.Close()
+	if err := sendHello(sb, hello{Role: "standby", Session: w.devSes, DeviceID: "mini-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, err := readControl(sb); err != nil || m.T != "standby" {
+		t.Fatalf("standby: %v %v", m, err)
+	}
+	tk, err := NewTicket(ctx, w.hubURL, w.entrySes, "mini-1") // the device ignores it
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, cancelMid := context.WithCancel(ctx)
+	time.AfterFunc(50*time.Millisecond, cancelMid)
+	start := time.Now()
+	if _, err := Dial(mid, w.hubURL, tk); !errors.Is(err, context.Canceled) {
+		t.Fatalf("dial cancelled while waiting: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("cancelled dial took %s", d)
+	}
+}
+
+// A caller deadline shorter than the default write bound wins.
+func TestWSWriteDeadlineHonoursCaller(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	c := &wsConn{c: a, client: true, max: 1 << 20}
+	c.setDeadline(time.Now().Add(50 * time.Millisecond))
+	start := time.Now()
+	if err := c.WriteMessage(opBinary, []byte("x")); err == nil { // nobody reads b
+		t.Fatal("write did not time out")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("write waited %s", d)
 	}
 }

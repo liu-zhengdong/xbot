@@ -51,24 +51,41 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("pipe: %d %s", e.Status, e.Message) }
 
-// Conn is the entry's end of one session. Requests go one at a time.
+// Conn is the entry's end of one session. Requests go one at a time; a
+// failed or cancelled request ends the session, so a late answer can never
+// be read as the next request's.
 type Conn struct {
-	ws *wsConn
-	s  *sealer
-	mu sync.Mutex
-	n  int
+	ws     *wsConn
+	s      *sealer
+	mu     sync.Mutex
+	n      int
+	broken error
+}
+
+// withContext bounds c by ctx's deadline and closes it if ctx is cancelled
+// first. done reports whether the cancellation fired, and clears the bound.
+func withContext(ctx context.Context, c *wsConn) (done func() bool) {
+	dl, _ := ctx.Deadline()
+	c.setDeadline(dl)
+	stop := context.AfterFunc(ctx, func() { _ = c.c.Close() })
+	return func() bool {
+		fired := !stop()
+		c.setDeadline(time.Time{})
+		return fired
+	}
 }
 
 // Dial joins the ticket's session as the entry and completes the handshake
 // once the device is there.
 func Dial(ctx context.Context, hub string, t TicketOut) (*Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c, err := dialWS(ctx, wsURL(hub), MaxFrame)
 	if err != nil {
 		return nil, err
 	}
-	if dl, ok := ctx.Deadline(); ok {
-		_ = c.c.SetDeadline(dl)
-	}
+	done := withContext(ctx, c)
 	s, err := func() (*sealer, error) {
 		if err := sendHello(c, hello{Role: "entry", TicketID: t.ID, Secret: t.Secret}); err != nil {
 			return nil, err
@@ -78,11 +95,16 @@ func Dial(ctx context.Context, hub string, t TicketOut) (*Conn, error) {
 		}
 		return handshake(c, t.Secret, true)
 	}()
+	if done() && err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		c.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
-	_ = c.c.SetDeadline(time.Time{})
 	return &Conn{ws: c, s: s}, nil
 }
 
@@ -91,10 +113,29 @@ func Dial(ctx context.Context, hub string, t TicketOut) (*Conn, error) {
 func (c *Conn) Get(ctx context.Context, path string) (int, []byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if dl, ok := ctx.Deadline(); ok {
-		_ = c.ws.c.SetDeadline(dl)
-		defer c.ws.c.SetDeadline(time.Time{})
+	if c.broken != nil {
+		return 0, nil, c.broken
 	}
+	if err := ctx.Err(); err != nil {
+		return 0, nil, err
+	}
+	done := withContext(ctx, c.ws)
+	status, body, err := c.roundTrip(path)
+	if done() && err == nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		c.broken = fmt.Errorf("pipe: session ended: %w", err)
+		c.ws.Close()
+		return 0, nil, err
+	}
+	return status, body, nil
+}
+
+func (c *Conn) roundTrip(path string) (int, []byte, error) {
 	c.n++
 	id := strconv.Itoa(c.n)
 	msg, err := c.s.seal(frame{T: "req", ID: id, Method: http.MethodGet, Path: path})

@@ -42,6 +42,15 @@ type wsConn struct {
 	max    int
 	wmu    sync.Mutex
 	closed bool
+	limit  time.Time // caller's deadline; writes never wait past it
+}
+
+// setDeadline bounds reads and writes by t (zero clears it).
+func (w *wsConn) setDeadline(t time.Time) {
+	w.wmu.Lock()
+	w.limit = t
+	w.wmu.Unlock()
+	_ = w.c.SetReadDeadline(t)
 }
 
 func acceptKey(key string) string {
@@ -165,7 +174,11 @@ func (w *wsConn) writeFrame(op byte, payload []byte) error {
 		}
 		payload = masked
 	}
-	_ = w.c.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	dl := time.Now().Add(30 * time.Second)
+	if !w.limit.IsZero() && w.limit.Before(dl) {
+		dl = w.limit
+	}
+	_ = w.c.SetWriteDeadline(dl)
 	if _, err := w.c.Write(append(hdr, payload...)); err != nil {
 		return err
 	}

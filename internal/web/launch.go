@@ -24,7 +24,7 @@ func (s *Server) NewLaunchCode() (string, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.token == "" {
+	if s.loginToken() == "" {
 		return "", errors.New("web: login token is not initialized")
 	}
 	now := s.launchTime()
@@ -57,6 +57,6 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid launch code", http.StatusForbidden)
 		return
 	}
-	s.setCookie(w, s.token)
+	s.setCookie(w, s.loginToken())
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

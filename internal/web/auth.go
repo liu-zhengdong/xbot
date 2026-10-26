@@ -32,6 +32,8 @@ func (s *Server) tokenPath() string {
 // EnsureToken loads or creates the owner login token. The file is mode 0600.
 // Owner, when set before the first call, is stored instead of the terminal user.
 func (s *Server) EnsureToken() (string, bool, error) {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
 	raw, err := os.ReadFile(s.tokenPath())
 	if err == nil {
 		var f secretFile
@@ -78,18 +80,27 @@ func (s *Server) EnsureToken() (string, bool, error) {
 }
 
 func (s *Server) checkToken(got string) bool {
-	if s.token == "" || len(got) != len(s.token) {
+	token := s.loginToken()
+	if token == "" || len(got) != len(token) {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+// loginToken is the token EnsureToken loaded, or "" before it ran.
+func (s *Server) loginToken() string {
+	s.authMu.RLock()
+	defer s.authMu.RUnlock()
+	return s.token
 }
 
 // AuthorizeOwner adds the owner's session cookie to an in-process request,
 // for callers that already speak for the owner (the remote-console pipe).
+// It only reads the token EnsureToken loaded at startup.
 func (s *Server) AuthorizeOwner(r *http.Request) error {
-	token, _, err := s.EnsureToken()
-	if err != nil {
-		return err
+	token := s.loginToken()
+	if token == "" {
+		return errors.New("web: login token is not initialized")
 	}
 	r.AddCookie(&http.Cookie{Name: cookieName, Value: token})
 	return nil

@@ -78,6 +78,10 @@ type Server struct {
 	Account account.Client
 	acct    accountState
 
+	// owner and token are written only by EnsureToken, under authMu, before
+	// serving; checkToken and loginToken read them under authMu, so handlers
+	// that passed checkToken see them without further locking.
+	authMu      sync.RWMutex
 	owner       string
 	token       string
 	launchCodes map[string]time.Time
@@ -312,7 +316,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	s.setCookie(w, s.token)
+	s.setCookie(w, s.loginToken())
 	writeJSON(w, http.StatusOK, map[string]string{"owner": s.owner, "owner_name": s.ownerName()})
 }
 
