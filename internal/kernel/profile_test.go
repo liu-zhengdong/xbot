@@ -43,7 +43,7 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if !strings.Contains(msgs[0].Text(), "About: 项目笔记") || !strings.HasPrefix(msgs[0].Text(), "### 人设\n这段定义你是谁、口吻和关系分寸；下面是正文，照着演，不要复述本说明。\n"+file) {
+	if strings.Contains(msgs[0].Text(), "项目笔记") || !strings.HasPrefix(msgs[0].Text(), "### 人设\n这段定义你是谁、口吻和关系分寸；下面是正文，照着演，不要复述本说明。\n"+file) {
 		t.Fatal(msgs[0].Text())
 	}
 }
@@ -68,7 +68,7 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.reqs[1].Messages[0].Text(), "About: 项目笔记") {
+	if strings.Contains(p.reqs[1].Messages[0].Text(), "项目笔记") {
 		t.Fatal(p.reqs[1].Messages[0].Text())
 	}
 	if !strings.Contains(p.reqs[1].Messages[0].Text(), "Be brief.") {
@@ -139,7 +139,7 @@ func TestUpdateProfileNeedsConfirmationPermissionsOn(t *testing.T) {
 		t.Fatal(err)
 	}
 	prefix := p.reqs[len(p.reqs)-1].Messages[0].Text()
-	if !strings.Contains(prefix, "About: 中文笔记") || strings.Contains(prefix, "Proactivity:") {
+	if strings.Contains(prefix, "中文笔记") || strings.Contains(prefix, "Proactivity:") {
 		t.Fatal(prefix)
 	}
 	updates := envUpdates(t, b)

@@ -38,7 +38,7 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 		t.Fatal(text)
 	}
 	composed, err = b.ComposedPersona()
-	if err != nil || composed != file+"\n\nAbout: 项目笔记" {
+	if err != nil || composed != file {
 		t.Fatalf("composed %q", composed)
 	}
 }

@@ -121,7 +121,7 @@ func parseFork(args []string) (forkOpts, error) {
 	}
 	fs := flag.NewFlagSet("fork", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	role := fs.String("role", "", "persona and handoff focus for the new bot")
+	role := fs.String("role", "", "duties/persona (职责) and handoff focus for the new bot")
 	group := fs.String("group", "", "optional group name containing both bots")
 	if err := fs.Parse(ordered); err != nil {
 		return forkOpts{}, err
@@ -322,7 +322,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	desc := fs.String("description", "", "one-line description")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
 	name := fs.String("name", "", "new bot name")
-	role := fs.String("role", "", "chat or dev: picks the working defaults")
+	role := fs.String("role", "", "runtime preset (运行档位): chat or dev; not duties/persona")
 	bgTime := fs.Int("background-max-time", 0, "minutes one background task may work (0 keeps the role default)")
 	if err := fs.Parse(ordered); err != nil {
 		return profileSetOpts{}, err

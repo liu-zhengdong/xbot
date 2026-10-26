@@ -108,8 +108,13 @@ Usage:
   xbot [--root DIR] provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--protocol chat_completions|responses|anthropic_messages] [--hosted-web-search on|off] [--todo on|off] [--todo-steps N] [--thinking on|off|omit] [--reasoning-effort low|high|max]
   xbot [--root DIR] provider list [--all]
   xbot [--root DIR] provider remove <name> [--model NAME]
+  xbot manual [section]
   xbot version
   xbot [--root DIR] upgrade [--check]
+
+Terminology:
+  fork --role TEXT: duties/persona (职责) for the new bot.
+  profile set --role chat|dev: runtime preset (运行档位), not duties.
 
 Environment:
   XBOT_API_KEY    API key when a bot has no provider binding
@@ -149,6 +154,10 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	// The embedded reference needs no data root, credentials, or running service.
+	if len(rest) > 0 && rest[0] == "manual" {
+		return cmdManual(rest[1:], os.Stdout)
 	}
 	root, err = resolveRoot(root)
 	if err != nil {

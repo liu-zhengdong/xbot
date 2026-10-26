@@ -11,6 +11,13 @@
 - Chromium 使用真实 Go hub / owner API 与 scripted 模型，验证完整桌面/手机界面、发消息、原生图片、只改设备端后刷新、Mini → Laptop 切换、关于版本、无业务缓存、无设备重试、账号退出及 CSP。完整相关包运行时启动 207ms，20 次 Bot API 读取 p95 0.40ms；仅为本机 fixture，不代表公网启动/交互 p95、IPC 或 60fps。
 - 证据、浅深色截图及两仓提交信息写入 `~/.xbot-build/public-ui-single-source/encode-report.md`。未 push、未合 main、未起 8788；公网/设计师截图确认/主人日用仍待验，不称已合入或产品端到端通过。
 
+## 2026-10-26 上下文一批 · 批 C
+
+- 按 [落仓规格](dev/context-batch-c.md) 接入四项：合伙人导向对齐既有跟版规则；create_bot 用途不明先问、空职责拒绝但不加审批；七节机制手册 go:embed，模型按需 kernel_manual 与主人 CLI 同源；任务数和验收话术复用环境与结果证据。简介退出人设正文，工作档案复用记忆，人设卡/职责数据不迁移，CLI 区分运行档位与职责；无网页 UI 改动。
+- 新增三组外在行为正反脚本、创建澄清/直接创建、七节先读再答、五任务状态和无测试证据两案；脚本是验收夹具，不是真实模型改前改后分数。旧基线隔离归档上的空职责、简介注入、手册接线和规则约束回归均失败。已有长轮折叠频率门槛保持，缩短规则后连续十次通过。
+- 独立长程 450 轮、3 次压缩、峰值 64460 token，压缩开销 1.760%，缓存恢复最差为压缩前中位数的 97.6%，K=0.520。同一升级夹具前缀 6033→6716 字节；手册读取微基准 1036ns/op。真 CLI 七节同源与离线读取通过；其启动到结束延时见 `~/.xbot-build/context-batch-c/cli-smoke.json`，不代表模型回复/IPC/帧率。
+- 普通全仓 go test、六个相关包三遍复测、批 C 专项 race 三遍、vet/gofmt 通过，六条 guard 冒烟通过。扩展 smoke 另有忙时回报、OAuth 生图、Responses 恢复三项失败，均在 f16c9a6 隔离基线复现；全工具 configureWeb 既有 race 也有基线反证，本批未修这些模块。
+- Pi glm-5.3 review1 **PASS**；合入本地 main（未 push）。完整检查见 `~/.xbot-build/context-batch-c/encode-report.md` / `review1-report.md`。四维真实模型对照、C8 与手册面板后置；候选仍实现中待日用。
 
 
 ## 2026-10-26 Agent Todo streaming 热修

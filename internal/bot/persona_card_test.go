@@ -49,7 +49,7 @@ func TestPickedCardIsThePersona(t *testing.T) {
 	if err != nil || fresh.Config().PersonaCard != card.ID {
 		t.Fatalf("stale save dropped the pick: %+v %v", fresh.Config(), err)
 	}
-	if got, _ := fresh.ComposedPersona(); got != body+"\n\nAbout: notes" {
+	if got, _ := fresh.ComposedPersona(); got != body {
 		t.Fatalf("composed %q", got)
 	}
 	// Unbinding, or a card that is gone, goes back to persona.md.

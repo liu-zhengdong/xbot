@@ -134,8 +134,8 @@ func checkRange(name string, v, lo, hi int) error {
 	return nil
 }
 
-// ProfileText is the profile block appended to the persona.
-// An empty profile returns an empty string so the stable prefix stays unchanged.
+// ProfileText describes display metadata for the environment fingerprint only.
+// An empty profile returns an empty fingerprint input.
 func (b *Bot) ProfileText() string {
 	if d := flat(b.cfg.Description); d != "" {
 		return "About: " + d
@@ -143,18 +143,10 @@ func (b *Bot) ProfileText() string {
 	return ""
 }
 
-// ComposedPersona is the persona plus the profile block when one is set.
-// The persona is the picked card's body, or persona.md when no card is picked.
+// ComposedPersona returns the effective duties/persona. Display metadata such
+// as the description never becomes instructions or replaces the owner's text.
 func (b *Bot) ComposedPersona() (string, error) {
-	persona, err := b.PersonaText()
-	if err != nil {
-		return "", err
-	}
-	extra := b.ProfileText()
-	if extra == "" {
-		return persona, nil
-	}
-	return persona + "\n\n" + extra, nil
+	return b.PersonaText()
 }
 
 // AvatarColors is the fallback fill: a low-saturation color from the name, plus an optional initial.

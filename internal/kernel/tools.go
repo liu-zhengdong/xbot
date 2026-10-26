@@ -69,7 +69,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	if k.isPrimary() {
 		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
 	}
-	list = append(list, linksTool{k})
+	list = append(list, linksTool{k}, kernelManualTool{})
 	if k.todoToolOn() {
 		list = append(list, todoTool{k})
 	}

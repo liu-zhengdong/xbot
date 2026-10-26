@@ -715,7 +715,7 @@ func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
 		}
 	}
 	got := strings.Join(names, ",")
-	const want = "edit_file,links,read_file,shell,todo,write_file"
+	const want = "edit_file,kernel_manual,links,read_file,shell,todo,write_file"
 	if got != want {
 		t.Fatalf("tools %s", got)
 	}

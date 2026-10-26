@@ -75,3 +75,5 @@
 
 - **设置开关的浏览器断言限定所在面板，同时核对 class、aria、hidden 和计算样式。** 多个隐藏设置页共享 `.tog`，全局首个匹配可能是手机推送，不能据此判定当前生图开关。头像即时刷新还要把头像字段纳入列表缓存签名。守护：`TestImageGenSettingsBrowser`、`TestProfileRefreshWhileStreamingBrowser`。Seen 1×（2026-10-26）。
 - **省略工具结果必须保留同条结果的可回放环境回执。** 大结果可能已变成 512 字节 blob 预览，不能只按预览 token 判断；跨轮占位用 transcript seq，验证 expand 读回与回执回放。证据：`TestBatchBBlobOmissionKeepsReceiptAndExpand`。Seen 1×（2026-10-26）。
+
+- **跟版提示增补也要守原压缩频率门槛。** 常驻前缀多几百字可能跨过长轮折叠阈值；先合并/精简已有规则，不为文案增量放宽频率或硬上限断言。对照行为脚本只验证接线与验收谓词，不能当作真实模型改前改后成绩。证据：上下文批 C 的 `TestLongTurnStaysUnderTheCeiling` 与 `TestBatchCPartnerBehaviorComparison`。Seen 1×（2026-10-26）。

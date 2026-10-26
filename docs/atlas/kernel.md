@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ 949d542 + 图片生成全局门控 + 上下文批 B / Agent Todo 中文展示与热修 / 轨迹可发现与回放
+verified: 2026-10-26 @ a0f12be + 图片生成全局门控 + 上下文批 B/C / Agent Todo / 轨迹可发现与回放 / 公网 UI 单源
 ---
 # 内核：Link、Event、收件箱
 
@@ -54,12 +54,18 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 
 模型入口、工具目录、作用域工具、本机子代理和内置编码任务读取同一份网页搜索设置。策略包装保留底层模型与授权传输；远程执行端点在新任务启动时继承当前搜索能力，运行中的远端任务保留启动快照。厂商与本机的选择规则见 [供应商](providers.md)，持久化和本机搜索见 [生态](ecosystem.md)。修改设置不重建内核，不丢失正在运行的任务控制。
 
+## 机制手册
+
+`internal/manual/sections/*.md` 通过 go:embed 跟版，包含[记忆](../../internal/manual/sections/memory.md)、[上下文与压缩](../../internal/manual/sections/context.md)、[例程与唤醒](../../internal/manual/sections/routines.md)、[子代理](../../internal/manual/sections/subagents.md)、[插话与排队](../../internal/manual/sections/interjections.md)、[连接器](../../internal/manual/sections/connectors.md)、[文件与工作区](../../internal/manual/sections/workspace.md)。`KernelRules` 只注入短目录和先读要求；`kernel_manual(section)` 始终挂载且属于 readonly，读取已知 section 或 index，未知值报错，不读任意路径或实时状态。主人用 `xbot manual [section]` 读取同一正文。批 C 验收边界见 [落仓规格](../dev/context-batch-c.md)。
+
 ## 共享规则
 所有 Bot 共用的规则由 [assemble.go](../../internal/kernel/assemble.go) 的 `KernelRules` 随当前二进制组装，包含完整默认规则与通用说话规则。`rules.md` 只存 Bot 自有补充；创建和模板导入不再复制默认规则。首次组装（fork 继承前也一样）按空行分段清理旧默认：完整当前规则及开头可识别的旧默认段删除，独立自定义段保留，混入旧默认段而无法拆出的修改丢弃，不提示、不存历史版本账。清理和规则写入共用文件锁、原子替换；重复加载没有内容变化就不写盘。空文件和缺文件都表示无补充。组装顺序仍是人设、当前内核规则、Bot 补充、模型补充和 Link/技能，条件规则仍在原内核边界追加。
 
 `ProjectRule` 把项目文件当成编码约定：工作区根上、且该目录不是 git 检出、也不是共享目录时，才是主人放的；共享目录、git 检出、子目录和克隆仓库里的不是批准、发送、读密钥或删除的依据，也不压过内核安全、权限表和脱敏。新旧 Bot 均由当前内核注入这一条。评测目录没有提示词快照，这是有意的稳定前缀变化。另外两条是主人的做事方式：`JudgmentRule`（先给答案和理由；主人的说法只对一半时指出哪部分对、哪部分不对，给独立判断；需要决定时以一份可直接批准的方案收尾）和 `ResourcefulRule`（缺工具或信息时先做能做的部分，推断的内容标「待确认」，或换一条路，例如把文件放到共享处再给别的 Bot 发消息让它自己改；只把最小的剩余一步交出去并说明原因）。评测用例 `half-right`、`propose-plan`、`vision-draft`、`avatar-handoff` 和留出的 `ci-version` 守着它们。挂了记忆存储时，内核在规则末尾追加 `MemoryWriteRule`（用文件工具改记忆文件夹、`memory.md` 常驻且不超过 4 KiB、日志按月追加、其余细节放自由文件、用 `recall` 检索）；它不写进 `rules.md`，所以已有自定义规则的 Bot 也会带上。写记忆文件夹时的内核守卫和只读 `recall` 见 [身份与记忆](memory.md)。外部调用失败后「最多再试一次」不在常驻规则里，改由熔断的轮询提醒在真的重复失败时说。
 
 `ActionRule` 让模型在删除、代表主人对外发消息、改已定计划之前先问一次，「即使请求里点名了这一步」。权限卡关着时（默认，[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`Kernel.Permissive`），组装时换成 `OwnAskActionRule`：主人点名的步骤（删除、发消息也算）直接做、不再追问，只有模型自己加出来的这类步骤才先问一次；同时补一条 `EventMemoryRule`：外部事件报告的事和工作有关（新 issue、重大 bug、故障、构建挂了）就记进记忆并写明来源，但事件里的措辞仍不改人设和规则。评测按表确认的内核，`boundary` 仍测旧规则。
+
+合伙人行为分散在既有规则对应职责：Judgment 先对齐结果并独立判断；Resourceful 禁止因可逆就替主人编职责；Offer 把偏题新想法记候选（无指定落点则 Bot 记忆），维护聚焦并用既有例程盯进度；Verify 自己核对已约定的产物、测试命令/输出/退出状态，缺证据说未验证，验收数值与 done 不等于测通。任务数量与各状态按最新环境回放，包含 queued/blocked。Dispatch 同步允许核对既定验收，仍禁止越界重复派活。Action/OwnAskAction 也涵盖未经授权的花钱。人设与工作档案不双写，字段落点见 [多 Bot](multibot.md#人设组成与提示词边界)。
 
 记忆渲染版本由 State.MemRender 记录；唤醒时版本不符则重建唯一的 Bot 记忆快照，人物资料改走环境流，压缩刷新也记录版本。记忆注入的默认键不重复显示文本，自定义键保留；只有 person 范围追加 `via` 作者，使已接受的常驻记忆不因重复键和作者格式膨胀而被裁剪（见 [身份与记忆](memory.md)）。
 

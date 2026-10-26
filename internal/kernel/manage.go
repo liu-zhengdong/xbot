@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"xbot/internal/bot"
@@ -21,13 +22,13 @@ type createBotTool struct{ k *Kernel }
 
 func (createBotTool) Name() string { return "create_bot" }
 func (createBotTool) Description() string {
-	return "Create a bot with its own persona and an empty transcript. You keep the primary role. Person memory is already shared."
+	return "Create a bot with an agreed purpose/persona and an empty transcript. Do not call when its purpose or duties are unclear: first use ask_user (or a plain question) to establish its name, what it will do, and whether to create it now. Ask only for missing information. A clear purpose/persona and name, or explicit permission to choose the name, allow direct creation. Choosing a name does not authorize inventing duties. For ask_user, recommend deferring creation while purpose is unknown, never invent a default persona on timeout. You remain the primary bot; person memory is already shared."
 }
 func (createBotTool) Parameters() any {
 	return schema(map[string]any{
 		"name":    stringProp("new bot name"),
-		"persona": stringProp("persona; omit to use the default"),
-	}, []string{"name"})
+		"persona": stringProp("non-empty duties/persona grounded in the owner's stated purpose"),
+	}, []string{"name", "persona"})
 }
 func (createBotTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
 func (t createBotTool) Run(_ context.Context, args json.RawMessage) (string, error) {
@@ -40,6 +41,9 @@ func (t createBotTool) Run(_ context.Context, args json.RawMessage) (string, err
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(in.Persona) == "" {
+		return "", errors.New("create_bot: purpose/persona is required; ask the owner what this bot should do before creating it")
 	}
 	links := append([]string(nil), t.k.Bot.Config().Links...)
 	b, err := bot.Create(t.k.Bot.Root, strings.TrimSpace(in.Name), strings.TrimSpace(in.Persona), links)

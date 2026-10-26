@@ -72,6 +72,9 @@ var Table = map[string]Class{
 	"routine_pause":  Normal,
 	"notify_owner":   Normal,
 
+	// Built-in mechanism manual.
+	"kernel_manual": Readonly,
+
 	// Context.
 	"recall_history": Readonly,
 	"expand":         Readonly,
