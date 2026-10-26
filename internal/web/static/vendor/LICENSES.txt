@@ -40,3 +40,11 @@ The designer dedicated the Notionists artwork to the public domain under CC0
 1.0. No attribution is required; XBot credits it anyway. The DiceBear port is
 a remix of the original. XBot uses only a fixed subset of its parts
 (scripts/avatar/options.js).
+
+2. KaTeX 0.16.11 (MIT) and its fonts (SIL Open Font License 1.1)
+----------------------------------------------------------------
+
+Vendored unmodified in vendor/katex/ (katex.min.js, katex.min.css, fonts/*.woff2);
+the full license text ships in vendor/katex/LICENSE.
+
+Copyright (c) 2013-2020 Khan Academy and other contributors

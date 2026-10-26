@@ -171,6 +171,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	// Bot portraits are drawn in the browser by this bundle; no SVG is stored or served.
 	mux.HandleFunc("GET /vendor/xbot-avatar.min.js", s.static("static/vendor/xbot-avatar.min.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /vendor/LICENSES.txt", s.static("static/vendor/LICENSES.txt", "text/plain; charset=utf-8"))
+	mux.HandleFunc("GET /vendor/katex/katex.min.css", s.static("static/vendor/katex/katex.min.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /vendor/katex/katex.min.js", s.static("static/vendor/katex/katex.min.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /vendor/katex/fonts/{name}", s.katexFont)
 
 	s.registerAccount(mux)
 	mux.HandleFunc("POST /api/login", s.login)
@@ -307,6 +310,22 @@ func (s *Server) static(name, contentType string) http.HandlerFunc {
 		}
 		_, _ = w.Write(body)
 	}
+}
+
+// katexFont serves one vendored KaTeX font. Only names that really ship in
+// static/vendor/katex/fonts are accepted, so the route cannot read anything
+// else from the embedded FS.
+func (s *Server) katexFont(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !strings.HasSuffix(name, ".woff2") {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := staticFS.ReadFile("static/vendor/katex/fonts/" + name); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.static("static/vendor/katex/fonts/"+name, "font/woff2").ServeHTTP(w, r)
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {

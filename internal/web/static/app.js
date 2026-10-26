@@ -1314,6 +1314,24 @@
     return label;
   }
 
+  // One math formula as a span/div holding KaTeX's markup. KaTeX escapes the
+  // TeX source itself and its escaped output is the library's supported
+  // injection contract (no raw user HTML ever enters the tree any other way);
+  // on any failure the original source stays visible and the bubble survives.
+  function mathNode(tex, display) {
+    const src = (display ? "$$" : "$") + tex + (display ? "$$" : "$");
+    const box = document.createElement(display ? "div" : "span");
+    box.className = display ? "math-block" : "math-inline";
+    try {
+      if (!window.katex || typeof window.katex.renderToString !== "function") throw new Error("katex missing");
+      box.innerHTML = window.katex.renderToString(tex, { throwOnError: false, displayMode: !!display });
+    } catch (e) {
+      box.classList.add("math-raw");
+      box.textContent = src; // fallback: the words the model sent
+    }
+    return box;
+  }
+
   function appendPathText(parent, text) {
     const paths = /(?<![^\s，。；：（("'])((?:~\/|\/|[A-Za-z]:\\)[^\s，。；、）)<>"'`]+)/g;
     let last = 0;
@@ -1325,7 +1343,10 @@
   }
 
   function appendInline(parent, text) {
-    const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+    // Math needs its neighbors glued on: `$5 and $6` is prose (the closing
+    // side is a space), `$x^2$` is a formula. $$ pairs come first so a single
+    // $ never eats their opening.
+    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
     let last = 0;
     let match;
     while ((match = re.exec(text))) {
@@ -1334,6 +1355,10 @@
       if (tok.charAt(0) === "`") {
         const code = tok.slice(1, -1);
         parent.append(/^(?:~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(code) && !/\s--?/.test(code) ? pathLabel(code, "code") : el("code", "", code));
+      } else if (tok.startsWith("$$")) {
+        parent.append(mathNode(tok.slice(2, -2), false));
+      } else if (tok.charAt(0) === "$") {
+        parent.append(mathNode(tok.slice(1, -1), false));
       } else if (tok.startsWith("**")) {
         parent.append(el("strong", "", tok.slice(2, -2)));
       } else if (tok.charAt(0) === "*") {
@@ -1360,6 +1385,7 @@
     const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
     let para = [];
     let list = null;
+    let math = null; // lines gathered between $$ fences, or null outside one
     const flushPara = () => {
       if (!para.length) return;
       const p = document.createElement("p");
@@ -1372,7 +1398,36 @@
       parent.append(list);
       list = null;
     };
+    const flushMath = () => {
+      if (math === null) return;
+      parent.append(mathNode(math.join("\n").replace(/^\n+|\n+$/g, ""), true));
+      math = null;
+    };
     for (const line of lines) {
+      if (math !== null) {
+        const end = line.lastIndexOf("$$");
+        if (end < 0) { math.push(line); continue; }
+        math.push(line.slice(0, end));
+        flushMath();
+        const rest = line.slice(end + 2);
+        if (rest.trim()) para.push(rest);
+        continue;
+      }
+      const open = /^\s*\$\$(.*)$/.exec(line);
+      if (open) {
+        flushPara(); flushList();
+        const body = open[1];
+        const end = body.lastIndexOf("$$");
+        if (end >= 0) {
+          // $$x^2$$ closed on the opening line; trailing prose goes on as text.
+          if (body.slice(0, end).trim()) parent.append(mathNode(body.slice(0, end), true));
+          const rest = body.slice(end + 2);
+          if (rest.trim()) para.push(rest);
+        } else {
+          math = body.trim() ? [body] : [];
+        }
+        continue;
+      }
       const h = /^(#{1,3})\s+(.*)$/.exec(line);
       if (h) {
         flushPara(); flushList();
@@ -1397,6 +1452,7 @@
     }
     flushPara();
     flushList();
+    flushMath();
   }
 
   function highlight(codeEl, text, lang) {
@@ -1599,28 +1655,80 @@
     return a;
   }
 
-  // The draft split into text nodes and links; anything that is not a usable
-  // http(s) address stays a plain text node.
-  function composerNodes(text) {
-    const out = [];
+  // A colored span that keeps its source characters: draft Markdown is
+  // highlighted, never rendered into final layout (not WYSIWYG).
+  function composerSpan(cls, text) {
+    const s = document.createElement("span");
+    s.className = cls;
+    s.textContent = text; // never innerHTML: the draft is untrusted text
+    return s;
+  }
+
+  // Inline draft tokens, leftmost first: code spans, [text](url) links, bold,
+  // italic, then the bare composerURL addresses. Code spans win over URL
+  // inside backticks; math is a bubble-side thing and stays plain here.
+  const composerMD = new RegExp(
+    "(`[^`\\n]+`)" +
+    "|(\\[[^\\]\\n]*\\]\\(https?://[^\\s)\\n]+\\))" +
+    "|(\\*\\*[^*\\n]+\\*\\*)" +
+    "|(\\*[^*\\n]+\\*)" +
+    "|" + composerURL.source,
+  "g");
+
+  function composerInline(out, text) {
     let last = 0;
-    for (const m of text.matchAll(composerURL)) {
-      const url = composerURLStop(m[0]);
-      if (!url) continue;
-      const start = m.index;
-      const end = start + m[0].length;
-      if (start > last) out.push(document.createTextNode(text.slice(last, start)));
-      const href = composerSafeHref(url);
-      if (href) {
-        out.push(composerLinkNode(url, href));
-        // Punctuation trimmed off the address stays prose.
-        if (url.length < m[0].length) out.push(document.createTextNode(m[0].slice(url.length)));
-      } else {
-        out.push(document.createTextNode(m[0]));
+    for (const m of text.matchAll(composerMD)) {
+      if (m.index > last) out.push(document.createTextNode(text.slice(last, m.index)));
+      const tok = m[0];
+      if (m[1] != null) { // `code`
+        out.push(composerSpan("md-code", tok));
+      } else if (m[2] != null) { // [text](url)
+        const url = tok.slice(tok.indexOf("](") + 2, -1);
+        const href = composerSafeHref(url);
+        out.push(href ? composerLinkNode(tok, href) : document.createTextNode(tok));
+      } else if (m[3] != null) { // **bold**
+        out.push(composerSpan("md-bold", tok));
+      } else if (m[4] != null) { // *italic*
+        out.push(composerSpan("md-italic", tok));
+      } else { // bare http(s) address, same rules as before
+        const url = composerURLStop(tok);
+        if (!url) continue;
+        const href = composerSafeHref(url);
+        if (href) {
+          out.push(composerLinkNode(url, href));
+          // Punctuation trimmed off the address stays prose.
+          if (url.length < tok.length) out.push(document.createTextNode(tok.slice(url.length)));
+        } else {
+          out.push(document.createTextNode(tok));
+        }
       }
-      last = end;
+      last = m.index + tok.length;
     }
     if (last < text.length) out.push(document.createTextNode(text.slice(last)));
+  }
+
+  // The draft split into text nodes, links and colored spans. Line starts get
+  // their heading/list marker first (so `* item` is a list dot, not italic);
+  // anything that is not a usable http(s) address stays plain text.
+  function composerNodes(text) {
+    const out = [];
+    const lines = String(text).split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (i) out.push(document.createTextNode("\n"));
+      let rest = lines[i];
+      const h = /^#{1,3}(?=\s)/.exec(rest);
+      if (h) {
+        out.push(composerSpan("md-heading", h[0]));
+        rest = rest.slice(h[0].length);
+      } else {
+        const li = /^[-*](?=\s)/.exec(rest);
+        if (li) {
+          out.push(composerSpan("md-list", li[0]));
+          rest = rest.slice(li[0].length);
+        }
+      }
+      composerInline(out, rest);
+    }
     return out;
   }
 
