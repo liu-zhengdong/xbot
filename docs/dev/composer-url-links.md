@@ -21,7 +21,7 @@
 - Enter（非 Shift、非 IME composing）仍发送；点 URL / 点 `[text](url)` / 点高亮 span 不 `requestSubmit`。
 - 只动对话 composer + 消息渲染相关；设置浮层等其它输入区不动。
 - 安全：`href` 仅 http(s)；用户稿从不 innerHTML。16000 上限同旧 textarea 的 maxlength：超限的用户编辑（中间插字、选区替换、粘贴、拖入、整段替换）在编辑入口（refreshComposerLinks）整体拒绝并恢复光标，禁止事后截尾；程序化写入（发送清空、草稿恢复、失败回填）不截断。
-- 撤销/重做由页面自维护（composerHistory，每接受一步编辑一步；⌘/Ctrl+Z、⌘/Ctrl+Shift+Z、Ctrl+Y 与菜单撤销经 beforeinput 拦截）：每次 input 都全量 replaceChildren，原生撤销栈已失效；程序化写入重置基线，同旧 textarea 赋值。
+- 撤销/重做由页面自维护（composerHistory，每接受一步编辑一步；⌘/Ctrl+Z、⌘/Ctrl+Shift+Z、Ctrl+Y 与菜单撤销经 beforeinput 拦截；原生 execCommand undo/redo 只发不可取消的 input historyUndo/historyRedo，在 input 入口丢弃原生结果、改走自维护历史）：每次 input 都全量 replaceChildren，原生撤销栈已失效；程序化写入重置基线，同旧 textarea 赋值。
 - 不做：mailto、WYSIWYG 工具栏、改设置页、全量 CommonMark、化学式插件、`_斜_`。
 
 ## 还没做的

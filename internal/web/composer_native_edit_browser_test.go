@@ -55,6 +55,26 @@ const redo=()=>box.dispatchEvent(new KeyboardEvent('keydown',{key:'z',keyCode:90
  assert(box.textContent==='wow!','append after redo failed');
  undo();
  assert(box.textContent==='wow','undo after append wrong: '+JSON.stringify(box.textContent));
+ // The browser's own undo/redo commands skip beforeinput and land as
+ // uncancelable historyUndo/historyRedo input against retired nodes: they
+ // must replay our history too — the pre-fix page left "hello" after undo
+ // and redid it into "hellohellohello".
+ set('');
+ caretAt('end');
+ document.execCommand('insertText',false,'hello');
+ assert(box.textContent==='hello','native insertText failed before native undo');
+ document.execCommand('undo');
+ assert(box.textContent==='','native undo did not clear the typed text: '+JSON.stringify(box.textContent));
+ document.execCommand('redo');
+ assert(box.textContent==='hello','native redo wrong: '+JSON.stringify(box.textContent));
+ set('abcd');
+ caretAt('end');
+ document.execCommand('delete');
+ assert(box.textContent==='abc','native delete failed: '+JSON.stringify(box.textContent));
+ document.execCommand('undo');
+ assert(box.textContent==='abcd','native undo did not restore the deleted character: '+JSON.stringify(box.textContent));
+ document.execCommand('redo');
+ assert(box.textContent==='abc','native redo of the delete wrong: '+JSON.stringify(box.textContent));
  // R1: at the cap, inserting at the start is refused — the trailing Z, far
  // from the caret, survives.
  set('a'.repeat(15999)+'Z');

@@ -7272,7 +7272,22 @@
     refreshComposerLinks();
   });
 
-  input.addEventListener("input", () => {
+  input.addEventListener("input", (ev) => {
+    // A native undo/redo command (execCommand, some menus) skips beforeinput
+    // and arrives here already applied against nodes the re-renders retired:
+    // its result is wrong, so drop it and replay our own history instead.
+    if (!composerComposing && (ev.inputType === "historyUndo" || ev.inputType === "historyRedo")) {
+      const h = composerHistory, at = h.index;
+      if (ev.inputType === "historyUndo") composerUndo();
+      else composerRedo();
+      if (h.index === at) { // nothing to step to: just undo the native damage
+        renderComposer(composerTextCache);
+        composerRefreshHeight();
+        composerCaretTo(at >= 0 ? h.stack[at].caret : Infinity);
+        syncComposer();
+      }
+      return;
+    }
     composerRefreshHeight();
     refreshComposerLinks();
     syncComposer();
