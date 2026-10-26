@@ -768,13 +768,47 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .code-block pre { margin: 0; padding: 4px 12px 12px; overflow: auto; line-height: 1.6; }
 
-.kw { color: var(--accent); }
+/* Code syntax colors. The light palette sits on light code surfaces; dark
+   surfaces (bot bubble in dark theme, the owner bubble in light theme) get
+   the dark palette, so tokens stay visibly colored in every bubble. */
+.code-block {
+  --syn-kw: #a626a4; --syn-str: #50a14f; --syn-cm: #8e908c; --syn-num: #b76b01;
+  --syn-fn: #4078f2; --syn-lit: #0184bc;
+}
+html[data-theme="dark"] .code-block,
+html:not([data-theme="dark"]) .bubble .code-block {
+  --syn-kw: #c678dd; --syn-str: #98c379; --syn-cm: #8b929e; --syn-num: #d19a66;
+  --syn-fn: #61afef; --syn-lit: #56b6c2;
+}
+html[data-theme="dark"] .bubble .code-block {
+  --syn-kw: #a626a4; --syn-str: #50a14f; --syn-cm: #7c7e82; --syn-num: #b76b01;
+  --syn-fn: #4078f2; --syn-lit: #0184bc;
+}
+.code-block .kw { color: var(--syn-kw); }
+.code-block .str { color: var(--syn-str); }
+.code-block .cm { color: var(--syn-cm); font-style: italic; }
+.code-block .num { color: var(--syn-num); }
+.code-block .fn { color: var(--syn-fn); }
+.code-block .lit { color: var(--syn-lit); }
 
-.str { color: #6d5a3a; }
-
-html[data-theme="dark"] .str { color: #d2c09a; }
-
-.cm { color: var(--faint); }
+/* Markdown quotes and GFM tables inside message bubbles. Lines use the
+   text color at low strength, so both bubble fills get a visible rule. */
+.prose blockquote {
+  margin: 0 0 6px; padding: 0 0 0 10px;
+  border-left: 3px solid color-mix(in srgb, currentColor 28%, transparent);
+  color: color-mix(in srgb, currentColor 78%, transparent);
+}
+.prose blockquote:last-child { margin-bottom: 0; }
+.prose blockquote > :last-child { margin-bottom: 0; }
+.prose blockquote blockquote { margin-top: 2px; }
+.md-table { max-width: 100%; overflow-x: auto; margin: 2px 0 6px; }
+.md-table:last-child { margin-bottom: 0; }
+.md-table table { border-collapse: collapse; font-size: .93em; line-height: 1.5; white-space: normal; }
+.md-table :is(th, td) {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  padding: 4px 10px; text-align: left; vertical-align: top;
+}
+.md-table th { font-weight: 600; background: color-mix(in srgb, currentColor 6%, transparent); }
 
 .sysline {
   align-self: center; width: auto; max-width: min(100%, 520px);
@@ -2349,7 +2383,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 @media (max-width: 767px) { .sgrip { display: none; } }
 @media (prefers-reduced-motion: reduce) { .sgrip::after { transition: none; } }
 
-.bubble .kw, .bubble .str, .bubble .cm, .bubble .code-head { color: inherit; }
+.bubble .code-head { color: inherit; }
 .bubble .prose code { background: var(--x-user-code); }
 .bot-bubble .prose code { background: var(--x-bot-code); }
 @media (min-width: 768px) {
@@ -2359,7 +2393,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 }
 
 .bot-bubble.reply-error { margin: 0; padding: 9px 15px; color: var(--x-danger); font-size: 15px; }
-.msg.user .bubble :is(.kw, .str, .cm, .code-head) { color: inherit; }
+.msg.user .bubble .code-head { color: inherit; }
 
 .sidebar.rail .avatar .unread { top: 1px; right: 0; }
 
@@ -2422,6 +2456,8 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .message-menu-open .msg .ht { visibility: hidden; }
 .bubble .prose code, .bot-bubble .prose code { border: 0; border-radius: 4px; padding: 1px 4px; font-family: var(--mono); font-size: .9em; }
 .bot-bubble .code-block code { background: transparent; }
+/* Inline-code padding must not indent a fenced block's first line. */
+:is(.bubble, .bot-bubble) .code-block code { padding: 0; border-radius: 0; }
 
 
 /* M6: status and tasks share the selected bot's live metadata. */
