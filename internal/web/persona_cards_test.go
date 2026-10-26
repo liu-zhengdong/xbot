@@ -168,3 +168,35 @@ func TestPersonaCardSearchCoversWholeBody(t *testing.T) {
 		t.Fatalf("long query %d", code)
 	}
 }
+
+// A library opened for the first time lists the built-in cards from disk: they search, open and pick like any card.
+func TestPersonaCardListSeedsAnEmptyLibrary(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	var out struct {
+		Cards []struct{ ID, Name string }
+	}
+	code, raw := call("GET", "/api/persona-cards", "", true)
+	if err := json.Unmarshal([]byte(raw), &out); code != 200 || err != nil || len(out.Cards) != 3 {
+		t.Fatalf("list %d %s", code, raw)
+	}
+	for i, want := range []string{"碎嘴群友", "值班运维", "周末搭子"} {
+		if out.Cards[i].Name != want {
+			t.Fatalf("card %d %s", i, raw)
+		}
+	}
+	if disk, _ := personacard.List(root, "u1"); len(disk) != 3 {
+		t.Fatalf("not on disk: %+v", disk)
+	}
+	if code, raw = call("GET", "/api/persona-cards/"+out.Cards[0].ID, "", true); code != 200 || !strings.Contains(raw, "这个我接不上") {
+		t.Fatalf("open %d %s", code, raw)
+	}
+	if code, raw = call("GET", "/api/persona-cards?q=群友", "", true); !strings.Contains(raw, `"name":"碎嘴群友"`) || strings.Contains(raw, "值班运维") {
+		t.Fatalf("search %d %s", code, raw)
+	}
+	if code, raw = call("PUT", "/api/bots/ada/persona-card", `{"id":"`+out.Cards[1].ID+`"}`, true); code != 200 || !strings.Contains(raw, `"name":"值班运维"`) {
+		t.Fatalf("pick %d %s", code, raw)
+	}
+	if code, raw = call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != 3 {
+		t.Fatalf("second list %d %s", code, raw)
+	}
+}

@@ -95,6 +95,8 @@ func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
+	// A library opened for the first time starts with the built-in cards; a failed seed still lists.
+	_ = personacard.EnsureSeeds(s.Root, s.owner)
 	cards, err := personacard.List(s.Root, s.owner)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "没能读取人设卡")
