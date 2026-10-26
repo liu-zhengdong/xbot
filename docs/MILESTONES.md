@@ -4,6 +4,13 @@
 
 
 
+## 2026-10-26 Agent Todo streaming 热修（分支验证通过，待执行官核验）
+
+- 针对 `dfaa232` 设计师不 PASS 的四处：流式回复期间继续既有 3 秒 status 轮询；侧栏和 live 优先同一 `st.todo`，无摘要时 todo／shell 用「待办／后台命令」；未完成轨迹用「进度 n/m 项」；running 预览恢复后可点击打开中文待办步骤。不改账本、工具执行、模型默认或 Tasks。
+- `go test -count=1 ./internal/web/` 通过（30.797 秒，含本机 Chrome）；`go vet ./internal/web/`、JS 语法检查通过。`TestTodoBrowser`、`TestTodoStreamingBrowser`、`TestTodoLiveToolsBrowser` 均新绿；仅回退 app.js 至 `dfaa232` 后分别因 0/3 完成口吻、streaming 无 running 进度、live 裸 todo 而失败。流式测试还覆盖摘要连续变化、shell 事件不盖摘要、摘要消失后的工具人话兜底和两个轮询周期节点复用。
+- 1440×900、DPR 2 的浅深色前后截图（流中默认/悬停、步骤打开、轨迹折叠/展开）在 `~/.xbot-build/ui-shots/agent-todo-hotfix/`，日志和夹具在 `~/.xbot-build/agent-todo-hotfix/`。两次非虚拟时间 Chrome 采样：status 变化到进度可见为 2993/3004 ms，符合既有 3 秒轮询；不是模型回复、IPC、60fps 或线上 p95 验收。
+- 未改 kernel，未运行 kernel／全仓测试、三遍复测和全仓 vet；未启动 8788，未合并、未 push。真实入口旅程及设计师复验交执行官，尚未达到「已合入／端到端通过／主人日用通过」。
+
 ## 2026-10-26 Agent Todo 工具可见性（分支实现，待合入/验收）
 
 - 复用内核 `todo`、`todos.json` 和既有归档/提醒，将 TodoSummary 改为中文；侧栏显示待办进度，步骤弹层和轨迹使用「待办」及中文状态。轨迹成功回包才展示已保存条目，失败/未返回单独标明，原文折叠留在轨迹；全部完成归档后仍可看历史。未改模型默认开关、写盘锁或原子写路径，没有第二账本、Tasks 或对话任务卡。设计见 [agent-todo-tool](dev/agent-todo-tool.md)。

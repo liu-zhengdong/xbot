@@ -263,12 +263,12 @@
       if (summary) text.append(summary);
       else {
         text.append("在跑 ");
-        if (tool) text.append(el("code", "", tool));
+        if (tool) text.append(toolLabel(tool));
       }
       if (summary) line.title = summary;
       line.append(text);
       line.addEventListener("click", (ev) => { ev.stopPropagation(); toggleStp(name, line); });
-      sig += tool + summary;
+      sig += summary || tool;
     } else if (kind === "awaiting") {
       line.className = "preview st wait click";
       line.append(el("i", "wd"));
@@ -361,6 +361,11 @@
     });
     paintRailStatus();
     sortStatusRows();
+    if (state.sel && state.sel.type === "bot" && !state.peer) {
+      const st = stStatus.map[state.sel.id];
+      const host = thread.querySelector(".msg.live .body");
+      if (st && host && (st.todo || host.querySelector(".live-status"))) setWorking(host, st.tool || "");
+    }
   }
 
   function paintRailStatus() {
@@ -4750,7 +4755,7 @@
     if (call.hasResult) title = /^error:/.test(output) ? "待办 · 更新失败" : "待办 · 结果待核对";
     if (!receipt) return { title, lines: [] };
     const total = Number(receipt[1]), done = Number(receipt[4]), dropped = Number(receipt[5]);
-    title = total ? "待办 · 已完成 " + done + "/" + total + " 项" + (dropped ? " · 已放弃 " + dropped + " 项" : "") : "待办 · 已清空";
+    title = total ? "待办 · " + (done === total ? "已完成 " : "进度 ") + done + "/" + total + " 项" + (dropped ? " · 已放弃 " + dropped + " 项" : "") : "待办 · 已清空";
     const labels = { pending: "待办", in_progress: "进行中", done: "已完成", dropped: "已放弃" };
     const items = Array.isArray(call.args && call.args.items) ? call.args.items.slice(0, 20) : [];
     const lines = items.filter(it => it && typeof it.content === "string").map(it => {
@@ -6012,8 +6017,15 @@
     } catch (e) {}
   }
 
+  function toolLabel(name) {
+    return ({ todo: "待办", shell: "后台命令" })[name] || name;
+  }
+
   function setWorking(host, name) {
+    const st = state.sel && state.sel.type === "bot" && !state.peer && stStatus.map[state.sel.id];
+    const label = (st && st.todo) || toolLabel(name);
     let status = host.querySelector(".live-status");
+    if (status && status.textContent === label) return;
     if (!status) {
       status = el("div", "meta live-status");
       host.append(status);
@@ -6022,7 +6034,7 @@
     const dot = el("i", "status-dot run");
     setTip(dot, "正在处理");
     status.append(dot);
-    if (name) status.append(el("span", "working-name", name));
+    if (label) status.append(el("span", "working-name", label));
   }
 
   function approvalCard(payload) {
@@ -7705,8 +7717,9 @@
     if (startPoll.started) return;
     startPoll.started = true;
     setInterval(() => {
-      if (shell.hidden || state.streaming) return;
+      if (shell.hidden) return;
       if (!document.hidden) refreshStatus().catch(() => {});
+      if (state.streaming) return;
       if (!document.hidden) refreshUpdate().catch(() => {});
       refreshNotes().catch(() => {});
       refreshLists().catch(() => {});

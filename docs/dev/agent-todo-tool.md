@@ -40,6 +40,12 @@ coding harness（Claude Code / Codex 等）长活靠 Todo 清单。XBot 内核 M
 - 为做 Todo 改 compact / env stream / 技能导入。
 - 主人界面仍满屏 `in_progress` / 裸工具名 `todo`。
 
+## streaming 热修验收补充（2026-10-26）
+
+- 多步活的 SSE 仍打开时，侧栏必须通过既有 status 轮询显示 running 与 `st.todo` 进度，并能打开步骤弹层；不能只验证收尾后的轨迹。
+- live 行与侧栏优先同一进度摘要，工具事件不能盖掉摘要；无摘要时 todo／shell 用「待办／后台命令」。未完成清单的轨迹标题使用「进度 n/m 项」。
+- 浏览器回归：`TestTodoStreamingBrowser`、`TestTodoLiveToolsBrowser`、`TestTodoBrowser`；真实 8788 入口及设计师复验仍由执行官接手。
+
 ## 还没做的
 
 - 合入后由执行官在 8788 验收真实入口的三项待办旅程，随后由主人日用确认；本分支保留设计供验收，不迁入 guard。

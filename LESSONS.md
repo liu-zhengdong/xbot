@@ -4,7 +4,7 @@
 
 ## 教训
 - **构建短号与发布版本分开传。** 原因：`dev+tip` 会被显示版本函数剥掉后缀，关于页仍只有 dev；用同一短 HEAD 注入独立 Tip、写 build-info/xbot.tip，再验证 session 与复制内容。证据：TestSessionBuildTip、TestImggenDiscoverBrowser、test_xbot_dev.py 旧红新绿。Seen 1×（2026-10-26）
-
+- **进度展示必须在 SSE 尚未结束时验收。** 原因：只验收尾后的轨迹，会漏掉 streaming 整段暂停 status 轮询和 live 工具名盖住摘要；浏览器回归应保持流打开、跨两个轮询周期检查预览与节点复用。证据：2026-10-26 `dfaa232` 设计师不 PASS，`TestTodoStreamingBrowser` 在该基线因无 running 进度失败。Seen 1×（2026-10-26）
 - **工具名和描述必须对齐默认落盘行为。** 原因：更新资料却写成提议或等待确认，会让模型误判调用结果；不能为头像另加默认确认卡例外。证据：2026-10-26 主人确认 `update_profile` 默认直接落盘，permissions on 仍沿既有 SelfEdit 表；回归同时检查默认无卡和实际磁盘状态。Seen 1×（2026-10-26）
 - **响应式抽屉要验证每个断点的开关几何与实际触摸。** 原因：只读第一段 CSS 会漏掉窄屏 translateY 和桌面 display:none 覆盖；长按还要保证松手不选中别的 Bot。证据：`TestBotPanelBrowser` 在旧代码的 390/1440 档因关闭轴失败、820 档因厂头额外动作失败，浏览器触摸补验通过。Seen 1×（2026-10-26）
 - **区分 turn 曾经回答与某次调用的回复已经发出。** 原因：同 turn 插话续聊时 `answered` 保留为真，直接用它拒绝挂图会误伤新调用；清掉它又可能放过旧 Job。调用发起时捕获最终回复次数，并在读取前与提交前持锁比较。证据：`TestContinuationCanAttachImages` 旧红新绿、`TestContinuationRejectsOldImageJob` 新旧调用同 turn 并存。Seen 1×（2026-10-26）
