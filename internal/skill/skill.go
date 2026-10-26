@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -36,6 +37,7 @@ var (
 type Info struct {
 	Slug        string
 	Name        string
+	Title       string
 	Description string
 }
 
@@ -82,14 +84,14 @@ func List(dir string) ([]Info, error) {
 			}
 			return nil, err
 		}
-		name, desc, _ := parse(string(raw))
+		name, title, desc, _ := parse(string(raw))
 		if desc == "" {
 			desc = ent.Name()
 		}
 		if name == "" {
 			name = ent.Name()
 		}
-		out = append(out, Info{Slug: ent.Name(), Name: name, Description: desc})
+		out = append(out, Info{Slug: ent.Name(), Name: name, Title: title, Description: desc})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
 	return out, nil
@@ -183,7 +185,7 @@ func Read(dir, slug string) (string, error) {
 		}
 		return "", err
 	}
-	_, _, body := parse(string(raw))
+	_, _, _, body := parse(string(raw))
 	if body == "" {
 		body = strings.TrimSpace(string(raw))
 	}
@@ -191,11 +193,11 @@ func Read(dir, slug string) (string, error) {
 	return body, nil
 }
 
-func parse(raw string) (name, desc, body string) {
+func parse(raw string) (name, title, desc, body string) {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	lines := strings.Split(raw, "\n")
 	if len(lines) == 0 {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	if strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
@@ -206,22 +208,25 @@ func parse(raw string) (name, desc, body string) {
 				if n, ok := metaLine(ln, "name"); ok {
 					name = n
 				}
+				if t, ok := metaLine(ln, "title"); ok {
+					title = t
+				}
 				if d, ok := metaLine(ln, "description"); ok {
 					desc = d
 				}
 			}
-			return name, clipDesc(desc), strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
+			return name, title, clipDesc(desc), strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
 		}
 	}
 	if d, ok := metaLine(lines[0], "description"); ok {
-		return "", clipDesc(d), strings.TrimSpace(strings.Join(lines[1:], "\n"))
+		return "", "", clipDesc(d), strings.TrimSpace(strings.Join(lines[1:], "\n"))
 	}
 	for _, ln := range lines {
 		if strings.TrimSpace(ln) != "" {
-			return "", clipDesc(strings.TrimSpace(ln)), strings.TrimSpace(raw)
+			return "", "", clipDesc(strings.TrimSpace(ln)), strings.TrimSpace(raw)
 		}
 	}
-	return "", "", strings.TrimSpace(raw)
+	return "", "", "", strings.TrimSpace(raw)
 }
 
 // Import copies a skill into the owner's library.
@@ -272,7 +277,7 @@ func ImportData(root, owner, dir string, raw []byte, overwrite bool) (Imported, 
 	if !ValidOwner(owner) {
 		return Imported{}, fmt.Errorf("skill: bad owner")
 	}
-	name, desc, _ := parse(string(raw))
+	name, _, desc, _ := parse(string(raw))
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(desc) == "" || !strings.HasPrefix(strings.TrimSpace(string(raw)), "---") {
 		return Imported{}, ErrNoMeta
 	}
@@ -301,7 +306,8 @@ func ImportData(root, owner, dir string, raw []byte, overwrite bool) (Imported, 
 }
 
 // Write creates or replaces one skill. The file mode is 0600.
-func Write(root, owner, slug, description, body string) error {
+// title optionally supplies a short human-readable label; name stays the slug.
+func Write(root, owner, slug, description, body string, title ...string) error {
 	owner = strings.TrimSpace(owner)
 	slug = strings.TrimSpace(slug)
 	if !ValidOwner(owner) {
@@ -318,6 +324,9 @@ func Write(root, owner, slug, description, body string) error {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "name: %s\n", slug)
+	if len(title) > 0 && oneLine(title[0]) != "" {
+		fmt.Fprintf(&b, "title: %s\n", strconv.Quote(oneLine(title[0])))
+	}
 	fmt.Fprintf(&b, "description: %s\n", description)
 	b.WriteString("---\n\n")
 	if body != "" {
@@ -342,7 +351,7 @@ func Open(dir, slug string) (Info, string, error) {
 		}
 		return Info{}, "", err
 	}
-	name, desc, body := parse(string(raw))
+	name, title, desc, body := parse(string(raw))
 	if name == "" {
 		name = slug
 	}
@@ -352,7 +361,7 @@ func Open(dir, slug string) (Info, string, error) {
 	if body == "" {
 		body = strings.TrimSpace(string(raw))
 	}
-	return Info{Slug: slug, Name: name, Description: desc}, body, nil
+	return Info{Slug: slug, Name: name, Title: title, Description: desc}, body, nil
 }
 
 func metaLine(ln, key string) (string, bool) {
@@ -362,7 +371,13 @@ func metaLine(ln, key string) (string, bool) {
 	if !strings.HasPrefix(low, prefix) {
 		return "", false
 	}
-	return strings.TrimSpace(trim[len(prefix):]), true
+	value := strings.TrimSpace(trim[len(prefix):])
+	if decoded, err := strconv.Unquote(value); err == nil {
+		value = decoded
+	} else if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+		value = strings.ReplaceAll(value[1:len(value)-1], "''", "'")
+	}
+	return value, true
 }
 
 func clipDesc(s string) string {

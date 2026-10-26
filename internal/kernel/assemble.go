@@ -236,7 +236,7 @@ func (k *Kernel) skillInfos() ([]skill.Info, error) {
 		return nil, nil
 	}
 	disabled := map[string]bool{}
-	for _, slug := range k.Bot.Config().DisabledSkills {
+	for _, slug := range k.Bot.DisabledSkills() {
 		disabled[strings.TrimSpace(slug)] = true
 	}
 	infos, err := skill.List(filepath.Join(k.SkillsDir, owner))

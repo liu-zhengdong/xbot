@@ -2,8 +2,11 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -308,4 +311,164 @@ func skillKernel(b *bot.Bot) *Kernel {
 
 func skillPath(b *bot.Bot, slug string) string {
 	return skill.OwnerDir(b.Root, b.Config().Owners[0]) + "/" + slug + "/SKILL.md"
+}
+
+func TestSkillWriteTitleAndScope(t *testing.T) {
+	for _, tc := range []struct{ name, scope, target string }{
+		{"self", "self", "ada"}, {"named", "BoB", "bob"}, {"current-name", "ADA", "ada"}, {"omitted", "", ""}, {"blank", "  ", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ada := testBot(t, link.NameTerminal, link.NameSkills)
+			if err := ada.SetOwners([]string{"u1"}); err != nil {
+				t.Fatal(err)
+			}
+			bots := map[string]*bot.Bot{"ada": ada}
+			for _, name := range []string{"bob", "eve", "mix"} {
+				b, err := bot.Create(ada.Root, name, "persona", []string{link.NameSkills})
+				if err != nil {
+					t.Fatal(err)
+				}
+				owners := []string{"u1"}
+				if name == "eve" {
+					owners = []string{"u2"}
+				}
+				if name == "mix" {
+					owners = []string{"u1", "u2"}
+				}
+				if err := b.SetOwners(owners); err != nil {
+					t.Fatal(err)
+				}
+				bots[name] = b
+			}
+			// Keep running kernels alive before the write: scope must change effective access too.
+			running := map[string]*Kernel{}
+			for name, b := range bots {
+				running[name] = skillKernel(b)
+			}
+			args := map[string]string{"slug": "note-capture", "title": "记一下", "description": "A long description", "body": "Capture the note."}
+			if tc.name != "omitted" {
+				args["scope"] = tc.scope
+			}
+			raw, _ := json.Marshal(args)
+			p := &scripted{resps: []provider.Message{linksCall("load", "skills"), assistantCall("write", "", "write_skill", string(raw)), {Role: provider.RoleAssistant, Content: provider.TextContent("installed")}}}
+			k := running["ada"]
+			k.Provider = p
+			// Deliberately mentions only-for-you even when scope is omitted: the server must not infer it.
+			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "只给你用", time.Unix(1, 0))); err != nil {
+				t.Fatal(err)
+			}
+			info, body, err := skill.Open(skill.OwnerDir(ada.Root, "u1"), "note-capture")
+			if err != nil || info.Title != "记一下" || info.Name != "note-capture" || body != "Capture the note." {
+				t.Errorf("%+v %q %v", info, body, err)
+			}
+			for _, name := range []string{"ada", "bob"} {
+				want := tc.target == "" || name == tc.target
+				b, err := bot.Load(ada.Root, name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := !slices.Contains(b.Config().DisabledSkills, "note-capture"); got != want {
+					t.Fatalf("%s enabled=%v want=%v", name, got, want)
+				}
+				_, _, err = running[name].openSkill("note-capture")
+				if (err == nil) != want {
+					t.Fatalf("running %s: %v; want enabled=%v", name, err, want)
+				}
+				infos, err := running[name].skillInfos()
+				if err != nil || (len(infos) > 0) != want {
+					t.Fatalf("prompt %s: %+v %v", name, infos, err)
+				}
+			}
+			for _, name := range []string{"eve", "mix"} {
+				b, _ := bot.Load(ada.Root, name)
+				if len(b.Config().DisabledSkills) != 0 {
+					t.Fatalf("changed unrelated %s", name)
+				}
+				if _, _, err := running[name].openSkill("note-capture"); err == nil {
+					t.Fatalf("%s read personal library", name)
+				}
+			}
+			// Manual changes after install override the defaults, even in already-running kernels.
+			b, _ := bot.Load(ada.Root, "bob")
+			for _, disable := range []bool{true, false} {
+				if disable {
+					err = b.DisableSkill("note-capture")
+				} else {
+					err = b.EnableSkill("note-capture")
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _, err = running["bob"].openSkill("note-capture")
+				if (err != nil) != disable {
+					t.Fatalf("manual switch: disabled=%v err=%v", disable, err)
+				}
+			}
+		})
+	}
+}
+
+func TestSkillWriteRejectsInvalidScopeBeforeWrite(t *testing.T) {
+	ada := testBot(t, link.NameSkills)
+	if err := ada.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	eve, err := bot.Create(ada.Root, "eve", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eve.SetOwners([]string{"u2"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"missing", "eve", "../ada"} {
+		raw, _ := json.Marshal(map[string]string{"slug": "note-capture", "description": "description", "body": "body", "scope": scope})
+		if _, err := (writeSkillTool{k: skillKernel(ada)}).Run(context.Background(), raw); err == nil {
+			t.Fatalf("accepted %q", scope)
+		}
+		if _, err := os.Stat(skillPath(ada, "note-capture")); !os.IsNotExist(err) {
+			t.Fatalf("invalid scope wrote file: %v", err)
+		}
+	}
+}
+
+func TestSkillScopedWritesKeepFileAndSwitchesTogether(t *testing.T) {
+	ada := testBot(t, link.NameSkills)
+	if err := ada.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	bob, err := bot.Create(ada.Root, "bob", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bob.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.DisableSkill("note-capture"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		target := "ada"
+		if i%2 == 1 {
+			target = "bob"
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			raw, _ := json.Marshal(map[string]string{"slug": "note-capture", "description": "capture", "body": target, "scope": target})
+			if _, err := (writeSkillTool{k: skillKernel(ada)}).Run(context.Background(), raw); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	_, winner, err := skill.Open(skill.OwnerDir(ada.Root, "u1"), "note-capture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range []*bot.Bot{ada, bob} {
+		if enabled := !slices.Contains(b.DisabledSkills(), "note-capture"); enabled != (b.Name() == winner) {
+			t.Fatalf("file winner=%s, %s enabled=%v", winner, b.Name(), enabled)
+		}
+	}
 }

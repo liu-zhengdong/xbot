@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"xbot/internal/bot"
+	"xbot/internal/fsutil"
+	"xbot/internal/peer"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
 )
@@ -50,11 +53,13 @@ type writeSkillTool struct{ k *Kernel }
 
 func (writeSkillTool) Name() string { return "write_skill" }
 func (writeSkillTool) Description() string {
-	return "Create or replace a skill directly in this bot owner's local library at ~/.xbot/skills/<owner>/<slug>/SKILL.md."
+	return "Create or replace a skill directly in this bot owner's local library at ~/.xbot/skills/<owner>/<slug>/SKILL.md. Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all owner bots."
 }
 func (writeSkillTool) Parameters() any {
 	return schema(map[string]any{
 		"slug":        stringProp("Skill slug, lowercase letters, digits, and hyphens"),
+		"title":       stringProp("Optional short human-readable title, e.g. 记一下 (not a long description)"),
+		"scope":       stringProp("Optional: self for this bot only, or a local bot name (case-insensitive). Omitted/empty means all owner bots. Only set from the current request, never guess a restriction."),
 		"description": stringProp("One-line description shown in the prompt"),
 		"body":        stringProp("Markdown instructions, without the YAML frontmatter"),
 	}, []string{"slug", "description", "body"})
@@ -64,7 +69,7 @@ func (t writeSkillTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	if t.k == nil {
+	if t.k == nil || t.k.Bot == nil {
 		return false, "", fmt.Errorf("skill: no bot")
 	}
 	if _, err := t.k.skillOwner(); err != nil {
@@ -96,25 +101,48 @@ func (t writeSkillTool) Run(_ context.Context, args json.RawMessage) (string, er
 	if t.k.Bot == nil || t.k.Bot.Root == "" {
 		return "", fmt.Errorf("skill: no bot")
 	}
-	if err := skill.Write(t.k.Bot.Root, owner, in.Slug, in.Description, in.Body); err != nil {
+	bots, target, err := t.k.skillScope(owner, in.Scope)
+	if err != nil {
 		return "", err
+	}
+	// Serialize installs in this library, including across local processes: the
+	// winning file and its per-bot defaults must come from the same write.
+	lock, err := fsutil.Lock(filepath.Join(skill.OwnerDir(t.k.Bot.Root, owner), ".write.lock"))
+	if err != nil {
+		return "", err
+	}
+	defer lock.Release()
+	if err := skill.Write(t.k.Bot.Root, owner, in.Slug, in.Description, in.Body, in.Title); err != nil {
+		return "", err
+	}
+	// Apply only at write time; subsequent manual switches remain authoritative.
+	for _, b := range bots {
+		if target == "" || b.Name() == target {
+			err = b.EnableSkill(in.Slug)
+		} else {
+			err = b.DisableSkill(in.Slug)
+		}
+		if err != nil {
+			return "", fmt.Errorf("skill: file written but scope update incomplete: %w", err)
+		}
 	}
 	return "wrote skill " + in.Slug, nil
 }
 
-func decodeWriteSkill(args json.RawMessage) (struct {
+type writeSkillInput struct {
 	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	Scope       string `json:"scope"`
 	Description string `json:"description"`
 	Body        string `json:"body"`
-}, error) {
-	var in struct {
-		Slug        string `json:"slug"`
-		Description string `json:"description"`
-		Body        string `json:"body"`
-	}
+}
+
+func decodeWriteSkill(args json.RawMessage) (writeSkillInput, error) {
+	var in writeSkillInput
 	if err := json.Unmarshal(args, &in); err != nil {
 		return in, err
 	}
+	in.Scope = strings.TrimSpace(in.Scope)
 	in.Slug = strings.TrimSpace(in.Slug)
 	in.Description = strings.TrimSpace(in.Description)
 	if !skill.ValidSlug(in.Slug) {
@@ -124,6 +152,40 @@ func decodeWriteSkill(args json.RawMessage) (struct {
 		return in, fmt.Errorf("skill: description is required")
 	}
 	return in, nil
+}
+
+// Resolve only explicit scope against the current owner's usable local bots.
+// Invalid/ambiguous targets fail before writing the skill or any switch.
+func (k *Kernel) skillScope(owner, scope string) ([]*bot.Bot, string, error) {
+	cfgs, err := peer.OwnerBots(k.Bot.Root, owner)
+	if err != nil {
+		return nil, "", err
+	}
+	if strings.EqualFold(scope, "self") {
+		scope = k.Bot.Name()
+	}
+	var bots []*bot.Bot
+	target := ""
+	for _, cfg := range cfgs {
+		if len(cfg.Owners) != 1 {
+			continue
+		}
+		b, err := bot.Load(k.Bot.Root, cfg.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		bots = append(bots, b)
+		if scope != "" && strings.EqualFold(scope, cfg.Name) {
+			if target != "" {
+				return nil, "", fmt.Errorf("skill: ambiguous scope")
+			}
+			target = cfg.Name
+		}
+	}
+	if scope != "" && target == "" {
+		return nil, "", fmt.Errorf("skill: scope must name one of this owner's local bots")
+	}
+	return bots, target, nil
 }
 
 func (k *Kernel) skillOwner() (string, error) {
@@ -161,7 +223,7 @@ func (k *Kernel) openSkill(id string) (string, skill.Info, error) {
 	if found == nil {
 		return "", skill.Info{}, fmt.Errorf("skill: %s not found", id)
 	}
-	for _, slug := range k.Bot.Config().DisabledSkills {
+	for _, slug := range k.Bot.DisabledSkills() {
 		if strings.TrimSpace(slug) == found.Slug {
 			return "", skill.Info{}, fmt.Errorf("skill: disabled")
 		}

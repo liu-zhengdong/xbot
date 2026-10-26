@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-26 @ c580239 + update_profile 当面刷新回执
+verified: 2026-10-26 @ c580239 + update_profile 当面刷新回执；技能开关实时读取与配置锁内更新
 ---
 # 多 Bot
 
@@ -28,3 +28,7 @@ verified: 2026-10-26 @ c580239 + update_profile 当面刷新回执
 - **Bot 状态**：内核从当前这一轮直接推出状态，不调模型。`BotStatus` 有 `bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`（最近一个工具）、`since`（RFC3339，本机时区）、`backgrounds`、`last_message`（空闲时最近一条主人或助手消息，最多 80 个字符，写前过替换函数）、`todo`（有活动待办清单时的一行摘要，见 [内核](kernel.md)）、`node`（本机为空）、`stale_seconds`（只有缓存过的远端点掉线时才有）。`awaiting` 表示这一轮停在等主人确认的那一步。内核的每一轮还留一个最多 20 条的步骤环 `{time, tool, summary≤120 字符, state}`，`state` 是 `running`、`done`、`error` 或 `awaiting`。`GET /api/bots/status` 和 `GET /api/bots/{name}/steps` 见 [ui.md](ui.md)；Bot 之间用 `bot_status` 只读地看同一个主人的 Bot。没有活内核的 Bot 是 `idle`，`last_message` 只读 transcript 尾巴。状态接口会被轮询，所以尾巴的原文按 `TranscriptStamp`（最新分段的文件名、大小、mtime，不加锁、不开索引）缓存在进程里：任何进程追加都会让分段变大，签名一变就重读；缓存只存原文，脱敏在每次返回时做，之后加进保险箱的密钥照样被替换。5 个 Bot 时 `/api/bots/status` 的 p95 从 2–8ms 降到约 0.45ms（macOS 本机）。
 - **跨用户的状态可见性（M8）**：默认只看得到别的主人的 Bot 是「空闲 / 在忙 / 稍后回复」，看不到工具名、步骤或消息。要更细，得这个主人按联系人逐条开启，开启后也只给一行状态，永远不给步骤。对方主人写下的东西一律当不可信数据看。这条在 M8 实现。
 
+
+### 技能启停持久化
+
+`DisableSkill` / `EnableSkill` 在现有 config.json 文件锁内读取最新配置、修改 `disabled_skills`、原子保存，重复调用不增加条目。其它配置保存保留磁盘上的技能开关；内核列举与读取技能实时读取这份名单，因此已加载的 Bot 也会感知自装范围和设置页后续启停。

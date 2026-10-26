@@ -7,10 +7,10 @@
   // The server already speaks plainly; anything it did not word itself gets the fallback.
   const plain = (e, fallback) => e && e.status >= 400 && e.status < 500 && /[一-鿿]/.test(e.message || "") ? e.message : fallback;
   const nameOf = text => { const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text); return head && NAME_LINE.exec(head[1])?.[1].replace(/^["']|["']$/g, "") || ""; };
-  const ownText = row => [row.name, row.description, row.slug].join(" ").toLowerCase();
+  const ownText = row => [row.title, row.name, row.description, row.slug].join(" ").toLowerCase();
   const displayText = row => {
     const slug = (row.slug || "").trim(), name = (row.name || "").trim(), description = (row.description || "").trim();
-    const title = name && name !== slug ? name : description && description !== slug ? description : slug;
+    const title = (row.title || "").trim() || name || slug;
     const hint = [description, slug].find(text => text && text !== title) || "";
     return {title, hint};
   };
@@ -188,7 +188,8 @@
         const row = button("ckrow", "", () => { r.on = !r.on; ck.classList.toggle("on", r.on); row.setAttribute("aria-pressed", String(r.on)); sync(); });
         const ck = node("span", "ck"), tx = node("span", "tx");
         ck.setAttribute("aria-hidden", "true"); row.setAttribute("aria-pressed", "false");
-        tx.append(node("b", "", r.name), node("span", "hint", r.description));
+        const {title, hint} = displayText({...r, slug: r.id});
+        tx.append(node("b", "", title), node("span", "hint", hint));
         row.append(ck, tx); box.append(row);
       }
       const L = openLayer(opener, "从 " + label + " 导入", "勾选要拷进库的技能。",

@@ -504,3 +504,16 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 验证：全量 `go test -count=1 ./...`、`go vet ./...` 通过；config/web/kernel/link 相关单遍通过，修改到的 web/kernel/link 整包三遍通过。六条基础旅程 smoke 通过（280.203 秒）；本机 Chrome、脚本隔离构建回归、gofmt、diff 检查通过。绑家提示、气泡、xAI、头像与 tip 的回归均已验证旧代码失败。atlas audit 与基线对照无新增告警，已有告警保留。证据在 `~/.xbot-build/imggen-ux-hotfix/`，浅深色截图在 `~/.xbot-build/ui-shots/imggen-ux-hotfix*/`。
 
 性能：17,280 字节图片语法过滤，Node v24.22.1 预热后 200 次 p95 0.137 ms；fake 页面工具结果到头像更新为虚拟时钟 10 ms，不能当作真实响应 p95。级别：本地分支自动化与 scripted 基础旅程通过，未合 main、未 push、未重启 8788；真实账号生图、运行 tip 一致性、设计师本批截图验收、主人日用、真实模型/IPC p95、FPS 与后台减速未验证。后续边界（工作区可发现、交付话术、关于页 tip 展示等）见候选清单，不另留开发短记。
+
+
+### 技能主名与落库默认范围（2026-10-26，本地分支）
+
+`feature/skills-main-default` 按 [本批设计](dev/skills-title-and-scope-defaults.md) 落地：新技能的 `name` 保持 slug，`title` 为可选人读短名；解析、库/来源接口与列表/详情优先 title，旧 name/slug 降级，description 不再作主标题。`write_skill` 支持 title 与显式 scope：self/同 owner 本机单 owner Bot 名（忽略大小写）只开目标，省略/空全开；不扫描 transcript，设置页新导入继续全开，覆盖保留既有开关。
+
+范围默认复用 `EnableSkill` / `DisableSkill` 与 `disabled_skills`；同库自装串行，配置更新在原文件锁内读最新值并原子写入，其它配置保存不覆盖既有开关。已加载内核也读取持久化名单，安装后手动开关立即影响技能列举和读取。现状见生态、界面、多 Bot atlas；旧设计稿已删除，以 title/scope 真源保留后续验收。
+
+验证：skill/kernel/web/bot/link/review/cmd/xbot 七包单遍通过，最终 `go test -count=1 ./...` 46 个有测试包全过，`go vet ./...`、gofmt、diff 检查通过；kernel/bot 的范围并发、不同 slug 并发与旧配置保存专项 race 通过。新增/更新 title YAML 读写、旧文件兼容、API、DOM、scripted 工具调用、self/具名/省略/空 scope、非法与跨 owner scope、已加载内核手动开关、并发写入回归；c580239 隔离归档上回归按预期失败（只添加新字段/参数的编译适配，不改变旧行为）。本机 Chrome 真设置入口行为通过，浅深色列表/详情前后截图已保存。atlas audit 已跑，与同一 git 历史下基线相比无新增文档告警，既有告警保留。
+
+性能：本机持久化开关读取基准 10,314 ns/op（约 10.3 微秒/次，200 ms 基准窗口）；不是交互/IPC p95 或 FPS。证据与完整自检：`~/.xbot-build/skills-main-default/`；截图：`~/.xbot-build/ui-shots/skills-main-default/`。
+
+级别：本地功能分支提交待复审，scripted 内核/API 与本机浏览器通过；未合 main、未 push、未发版、未重启 8788。Not run: `-count=3`（任务要求）、smoke tag 六旅程、真模型当轮意图判断、8788 实服、设计师本批验收、主人日用、Linux CI、交互/IPC p95、FPS 和后台减速。

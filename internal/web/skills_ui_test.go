@@ -368,15 +368,19 @@ func TestSkillsDisplayNamesAndCopy(t *testing.T) {
  const walk=n=>[n,...(n.children||[]).flatMap(walk)];
  const find=(root,cls)=>walk(root).filter(n=>n.className?.split(' ').includes(cls));
  const cases=[
+  [{slug:'capture',name:'capture',title:'记一下',description:'记录很长的一段说明，保持标题简短'},'记一下','记录很长的一段说明，保持标题简短'],
+  [{slug:'legacy',name:'旧短名',title:'新短名',description:'说明'},'新短名','说明'],
+  [{slug:'blank-title',name:'blank-title',title:' ',description:'长说明'},'blank-title','长说明'],
+  [{slug:'unsafe-title',name:'unsafe-title',title:'<img src=x onerror=alert(1)>',description:'说明'},'<img src=x onerror=alert(1)>','说明'],
   [{slug:'weekly',name:'写周报',description:'整理周报'},'写周报','整理周报'],
-  [{slug:'note-capture',name:'note-capture',description:'我说记一下你就记笔记'},'我说记一下你就记笔记','note-capture'],
-  [{slug:'missing-name',description:'中文标题'},'中文标题','missing-name'],
+  [{slug:'note-capture',name:'note-capture',description:'我说记一下你就记笔记'},'note-capture','我说记一下你就记笔记'],
+  [{slug:'missing-name',description:'中文标题'},'missing-name','中文标题'],
   [{slug:'blank',name:' ',description:' \n '},'blank',''],
   [{slug:'same',name:'same',description:'same'},'same',''],
   [{slug:'no-description',name:'no-description'},'no-description',''],
   [{slug:'duplicate',name:'人读标题',description:'人读标题'},'人读标题','duplicate'],
   [{slug:'named',name:'有名字',description:''},'有名字','named'],
-  [{slug:'markup',name:'markup',description:'<img src=x onerror=alert(1)>'},'<img src=x onerror=alert(1)>','markup'],
+  [{slug:'markup',name:'markup',description:'<img src=x onerror=alert(1)>'},'markup','<img src=x onerror=alert(1)>'],
   [{slug:'html-name',name:'<b>标题</b>',description:'<script>alert(1)</script>'},'<b>标题</b>','<script>alert(1)</script>'],
  ];
  (async()=>{

@@ -16,6 +16,7 @@ import (
 type skillJSON struct {
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
+	Title       string `json:"title,omitempty"`
 	Description string `json:"description"`
 	Disabled    bool   `json:"disabled"`
 }
@@ -35,13 +36,13 @@ func (s *Server) listSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	disabled := map[string]bool{}
-	for _, slug := range b.Config().DisabledSkills {
+	for _, slug := range b.DisabledSkills() {
 		disabled[slug] = true
 	}
 	out := make([]skillJSON, 0, len(infos))
 	for _, info := range infos {
 		out = append(out, skillJSON{
-			Slug: info.Slug, Name: info.Name, Description: info.Description,
+			Slug: info.Slug, Name: info.Name, Title: info.Title, Description: info.Description,
 			Disabled: disabled[info.Slug],
 		})
 	}
@@ -62,7 +63,7 @@ func (s *Server) readSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"slug": info.Slug, "name": info.Name, "description": info.Description, "body": body,
+		"slug": info.Slug, "name": info.Name, "title": info.Title, "description": info.Description, "body": body,
 	})
 }
 
@@ -119,7 +120,7 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]string, 0, len(infos))
 	for _, info := range infos {
-		out = append(out, map[string]string{"slug": info.Slug, "name": info.Name, "description": info.Description})
+		out = append(out, map[string]string{"slug": info.Slug, "name": info.Name, "title": info.Title, "description": info.Description})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"skills": out})
 }
@@ -151,7 +152,7 @@ func (s *Server) readLibrarySkill(w http.ResponseWriter, r *http.Request) {
 		bots = append(bots, map[string]any{"name": cfg.Name, "enabled": !slices.Contains(cfg.DisabledSkills, info.Slug)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"slug": info.Slug, "name": info.Name, "description": info.Description, "bots": bots,
+		"slug": info.Slug, "name": info.Name, "title": info.Title, "description": info.Description, "bots": bots,
 	})
 }
 
@@ -238,7 +239,7 @@ func (s *Server) listSourceSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]string, 0, len(infos))
 	for _, info := range infos {
-		out = append(out, map[string]string{"id": info.Slug, "name": info.Name, "description": info.Description})
+		out = append(out, map[string]string{"id": info.Slug, "name": info.Name, "title": info.Title, "description": info.Description})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"source": r.PathValue("id"), "skills": out})
 }

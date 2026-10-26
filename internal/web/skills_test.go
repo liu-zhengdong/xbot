@@ -437,3 +437,54 @@ func TestSkillSourcesListAndImport(t *testing.T) {
 		t.Fatalf("traversal imported %s", secret)
 	}
 }
+
+func TestSkillTitleAPIAndImportDefaults(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	raw, _ := json.Marshal(map[string]string{"folder": "note-capture", "content": "---\nname: note-capture\ntitle: 记一下\ndescription: 很长的描述只应该作为说明\n---\nBODY"})
+	if code, body := call(http.MethodPost, "/api/skills/import", string(raw), true); code != http.StatusOK {
+		t.Fatalf("import %d %s", code, body)
+	}
+	for _, path := range []string{"/api/skills", "/api/skills/note-capture", "/api/bots/ada/skills", "/api/bots/ada/skills/note-capture"} {
+		code, body := call(http.MethodGet, path, "", true)
+		if code != http.StatusOK || !strings.Contains(body, `"title":"记一下"`) || !strings.Contains(body, `"name":"note-capture"`) {
+			t.Fatalf("%s: %d %s", path, code, body)
+		}
+	}
+	for _, name := range []string{"ada", "bob"} {
+		b, err := bot.Load(root, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(b.DisabledSkills()) != 0 {
+			t.Fatalf("import guessed scope for %s", name)
+		}
+	}
+	// Existing library detail and manual enable/disable endpoints expose the saved defaults.
+	ada, _ := bot.Load(root, "ada")
+	if err := ada.DisableSkill("note-capture"); err != nil {
+		t.Fatal(err)
+	}
+	for _, verb := range []string{"disable", "enable"} {
+		if code, body := call(http.MethodPost, "/api/bots/bob/skills/note-capture/"+verb, "", true); code != http.StatusOK {
+			t.Fatalf("switch %d %s", code, body)
+		}
+		code, body := call(http.MethodGet, "/api/skills/note-capture", "", true)
+		if code != http.StatusOK {
+			t.Fatal(body)
+		}
+		var detail struct {
+			Bots []struct {
+				Name    string
+				Enabled bool
+			}
+		}
+		if err := json.Unmarshal([]byte(body), &detail); err != nil {
+			t.Fatal(err)
+		}
+		for _, b := range detail.Bots {
+			if b.Enabled != (b.Name == "bob" && verb == "enable") {
+				t.Fatalf("%s: %s", verb, body)
+			}
+		}
+	}
+}

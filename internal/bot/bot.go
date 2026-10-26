@@ -211,7 +211,8 @@ type Bot struct {
 	cfg  Config
 	// cardSet means SetPersonaCard changed the binding. Other saves keep the
 	// binding on disk, so a bot loaded earlier cannot undo a newer pick.
-	cardSet bool
+	cardSet   bool
+	skillsSet bool
 }
 
 // Create makes ~/.xbot/bots/<name> with a config and an empty transcript.
@@ -320,6 +321,9 @@ func (b *Bot) SaveConfig() error {
 
 // saveConfig requires the config lock, shared with legacy style migration.
 func (b *Bot) saveConfig() error {
+	if !b.skillsSet {
+		b.cfg.DisabledSkills = b.DisabledSkills()
+	}
 	if !b.cardSet {
 		b.cfg.PersonaCard = b.boundCard()
 	}
@@ -331,6 +335,7 @@ func (b *Bot) saveConfig() error {
 		return err
 	}
 	b.cardSet = false
+	b.skillsSet = false
 	return nil
 }
 
@@ -507,26 +512,12 @@ func (b *Bot) GrantLink(name string) error {
 
 // DisableSkill adds slug to this bot's skill disable list.
 func (b *Bot) DisableSkill(slug string) error {
-	slug = strings.TrimSpace(slug)
-	if slug == "" || strings.ContainsAny(slug, "/\\") {
-		return errors.New("bot: bad skill")
-	}
-	b.cfg.DisabledSkills = addUnique(b.cfg.DisabledSkills, slug)
-	return b.SaveConfig()
+	return b.setSkillDisabled(slug, true)
 }
 
 // EnableSkill removes slug from this bot's skill disable list.
 func (b *Bot) EnableSkill(slug string) error {
-	slug = strings.TrimSpace(slug)
-	next := make([]string, 0, len(b.cfg.DisabledSkills))
-	for _, s := range b.cfg.DisabledSkills {
-		if s == slug {
-			continue
-		}
-		next = append(next, s)
-	}
-	b.cfg.DisabledSkills = next
-	return b.SaveConfig()
+	return b.setSkillDisabled(slug, false)
 }
 
 // RevokeLink removes a link name. A name that is not granted is left as it is.
