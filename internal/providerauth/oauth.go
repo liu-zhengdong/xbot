@@ -108,14 +108,8 @@ func (m *Manager) Begin(kind string) (Start, error) {
 	if err != nil {
 		return Start{}, err
 	}
-	f, err := config.Load(m.Root)
-	if err != nil {
+	if err := config.PrepareOAuthProvider(m.Root, kind); err != nil {
 		return Start{}, err
-	}
-	for _, p := range f.Providers {
-		if p.Name == kind && p.OAuth != kind {
-			return Start{}, errors.New("同名供应商已使用 API key，请先更名")
-		}
 	}
 	ln, err := net.Listen("tcp4", xaiListenAddr(m, kind))
 	if err != nil {
