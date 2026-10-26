@@ -93,8 +93,9 @@ func SaveOAuthProvider(root string, p Provider) error {
 				return fmt.Errorf("providers: %s already uses an API key; choose a different provider name", p.Name)
 			}
 			previous := f.Providers[i]
-			if p.OAuth == "openrouter" {
-				// OpenRouter sign-in supplies one initial model, not a catalog.
+			if p.OAuth == "openrouter" || p.OAuth == "xai" {
+				// OpenRouter supplies one initial model and the xAI seed list is not
+				// an account catalog either: keep models already chosen, add new ones.
 				models := append([]ModelSpec(nil), previous.Models...)
 				for _, m := range p.Models {
 					found := false

@@ -256,7 +256,9 @@
       const auth = xaiAuthControls(area, "登录 xAI", done, current);
       box.append(area);
       const alt = node("details", "provider-key-alt");
-      alt.append(node("summary", "", "用 API 密钥"), keyForm(p, vendor, () => capability(p, true), current, "没有账号时，也可以改用 API 密钥。"));
+      const fold = node("summary", "", "用 API 密钥");
+      fold.append(lineIcon("back"));
+      alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "没有账号时，也可以改用 API 密钥。"));
       box.append(alt);
       auth.sync();
       return box;
@@ -324,7 +326,17 @@
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
         body.append(rows);
-      } catch { if (current()) body.replaceChildren(state(p.oauth === "chatgpt" ? "拉取模型失败，请重试或重新登录 ChatGPT。" : "拉取模型失败，请检查供应商配置和网络。", () => capability(p, true))); }
+      } catch (err) {
+        if (!current()) return;
+        // A rejected refresh is a dead credential: say so instead of a network
+        // error, and point at the re-login button.
+        const message = err && err.message || "";
+        if (p.oauth && message.includes("重新登录")) {
+          body.replaceChildren(state(p.oauth === "chatgpt" ? "ChatGPT 登录凭证已失效，请重新登录。" : "登录凭证已失效，请点「重新登录」。", () => capability(p, true)));
+          return;
+        }
+        body.replaceChildren(state(p.oauth === "chatgpt" ? "拉取模型失败，请重试或重新登录 ChatGPT。" : "拉取模型失败，请检查供应商配置和网络。", () => capability(p, true)));
+      }
     }
     async function load() {
       host.replaceChildren(state("正在读取供应商…"));

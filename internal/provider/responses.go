@@ -200,6 +200,24 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 	return msg, err
 }
 
+// jsonQueryText picks a human-readable query out of JSON tool arguments, for
+// custom calls whose parameters arrive as a JSON string.
+func jsonQueryText(fields ...string) string {
+	for _, raw := range fields {
+		if raw == "" || !json.Valid([]byte(raw)) {
+			continue
+		}
+		var v map[string]any
+		if json.Unmarshal([]byte(raw), &v) != nil {
+			continue
+		}
+		if q, ok := v["query"].(string); ok && q != "" {
+			return q
+		}
+	}
+	return ""
+}
+
 type responseItem struct {
 	Type      string `json:"type"`
 	ID        string `json:"id"`
@@ -207,6 +225,7 @@ type responseItem struct {
 	CallID    string `json:"call_id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
+	Input     string `json:"input"`
 	Action    struct {
 		Query   string   `json:"query"`
 		Queries []string `json:"queries"`
@@ -273,6 +292,29 @@ func responseParts(raw json.RawMessage) ([]ContentPart, error) {
 		p.Type = PartHosted
 		p.Hosted = &HostedStep{ID: it.ID, Name: "code_interpreter", Status: it.Status}
 		p.Text = "[代码解释器: " + it.Status + "]"
+	case "custom_tool_call":
+		// xAI's X search surfaces as custom tool calls named after the real
+		// function (x_keyword_search and friends); the xs_ call-id prefix marks
+		// them (xAI docs, Tool Usage Details). Other custom calls stay unknown.
+		id := it.CallID
+		if id == "" {
+			id = it.ID
+		}
+		if strings.HasPrefix(id, "xs_") {
+			q := it.Action.Query
+			if q == "" {
+				q = strings.Join(it.Action.Queries, " · ")
+			}
+			if q == "" {
+				q = jsonQueryText(it.Arguments, it.Input)
+			}
+			p.Type = PartHosted
+			p.Hosted = &HostedStep{ID: id, Name: "x_search", Status: it.Status, Query: q}
+			p.Text = "[X 搜索: " + q + " · " + it.Status + "]"
+		} else {
+			p.Type = it.Type
+			p.Text = "[OpenAI " + it.Type + "]"
+		}
 	case "message":
 		p.Type = PartText
 		var cites []ContentPart

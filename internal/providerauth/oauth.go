@@ -64,6 +64,9 @@ type attempt struct {
 	expires                                                            time.Time
 	status                                                             Status
 	server                                                             *http.Server
+	// exchangeCancel aborts an in-flight token exchange; it is set and cleared
+	// under mu while the exchange itself runs without the lock.
+	exchangeCancel context.CancelFunc
 }
 type Status struct {
 	State string `json:"state"`
@@ -214,6 +217,9 @@ func (m *Manager) Cancel(kind string) error {
 	case "pending":
 		m.pending.status = Status{State: "cancelled"}
 		_ = m.pending.server.Close()
+		if m.pending.exchangeCancel != nil {
+			m.pending.exchangeCancel()
+		}
 	case "failed", "cancelled":
 		m.pending.status = Status{State: "idle"}
 		_ = m.pending.server.Close()
@@ -273,30 +279,49 @@ func (m *Manager) callback(a *attempt, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.pending != a || a.status.State != "pending" || time.Now().After(a.expires) || r.URL.Query().Get("state") != a.state {
+		m.mu.Unlock()
 		http.Error(w, "登录校验失败，请重试", 400)
 		return
 	}
 	if r.URL.Query().Get("error") != "" {
 		a.status = Status{State: "failed", Error: "授权未完成，请重试"}
+		m.mu.Unlock()
 		http.Error(w, a.status.Error, 400)
 		go closeCallback(a.server)
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" || len(code) > 4096 {
+		m.mu.Unlock()
 		http.Error(w, "缺少授权码", 400)
 		return
 	}
+	// The token exchange runs off the state lock so Cancel stays immediate;
+	// Cancel aborts its context, and the result is only committed while the
+	// attempt is still the pending one, so a cancelled login never stores.
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	err := m.finish(ctx, a, code, r.URL.Query().Get("client_id"))
-	if err != nil {
-		a.status = Status{State: "failed", Error: err.Error()}
-		http.Error(w, err.Error(), 400)
+	a.exchangeCancel = cancel
+	m.mu.Unlock()
+	credential, binding, exchangeErr := m.exchange(ctx, a, code, r.URL.Query().Get("client_id"))
+	m.mu.Lock()
+	a.exchangeCancel = nil
+	if a.status.State != "pending" || m.pending != a {
+		m.mu.Unlock()
+		http.Error(w, "登录已取消", 400)
+		return
+	}
+	if exchangeErr == nil {
+		exchangeErr = m.store(ctx, a, credential, binding)
+	}
+	if exchangeErr != nil {
+		a.status = Status{State: "failed", Error: exchangeErr.Error()}
+		m.mu.Unlock()
+		http.Error(w, exchangeErr.Error(), 400)
 	} else {
 		a.status = Status{State: "succeeded"}
+		m.mu.Unlock()
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.WriteString(w, "登录成功。请返回 XBot，在模型行选择此供应商。")
 	}

@@ -145,6 +145,19 @@ func (s *Store) ensureOAuth(ctx context.Context, name string) (info OAuthInfo, e
 	return
 }
 
+type refreshRejectedError struct{ code int }
+
+func (e refreshRejectedError) Error() string {
+	return fmt.Sprintf("vault: OAuth refresh rejected (%d); sign in again", e.code)
+}
+
+// IsRefreshRejected reports whether err is a refresh the provider refused:
+// the stored credential is dead and the account must sign in again.
+func IsRefreshRejected(err error) bool {
+	var r refreshRejectedError
+	return errors.As(err, &r)
+}
+
 func (s *Store) refreshOAuth(ctx context.Context, c *OAuthCredential, domains []string) error {
 	u, err := url.Parse(c.TokenURL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !HostAllowed(u.Hostname(), domains) || (u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1"))) {
@@ -169,7 +182,7 @@ func (s *Store) refreshOAuth(ctx context.Context, c *OAuthCredential, domains []
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("vault: OAuth refresh rejected (%d); sign in again", res.StatusCode)
+		return refreshRejectedError{code: res.StatusCode}
 	}
 	var token struct {
 		Access  string `json:"access_token"`

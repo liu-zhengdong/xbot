@@ -22,7 +22,7 @@ class Element {
  setAttribute(k,v){this.attrs[k]=v} focus(){} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
 }
 const host=new Element('main'),calls=[],timers=[],popups=[];
-let configured=false,resolveStatus,failStart=false,current=true;
+let configured=false,resolveStatus,failStart=false,current=true,expired=false;
 const window={open(url){assert(url==='about:blank'||url==='https://auth.example/authorize');const popup={closed:false,opener:{},location:{replace(url){popup.url=url}},close(){this.closed=true}};popups.push(popup);return popup}};
 const document={documentElement:{classList:{contains:()=>false}},createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag)};
 vm.runInNewContext(fs.readFileSync('static/providers.js','utf8'),{window,document,URL,WeakMap,encodeURIComponent,setTimeout:fn=>timers.push(fn)});
@@ -34,7 +34,7 @@ const api=async(path,opts={})=>{
  if(path==='/api/providers/oauth/xai/start'){if(failStart)throw Error('private-upstream-body');return {url:'https://auth.example/authorize'}}
  if(path==='/api/providers/oauth/xai/cancel')return {status:'cancelled'};
  if(path==='/api/providers/oauth/xai/status')return await new Promise(resolve=>resolveStatus=resolve);
- if(path==='/api/providers/models?provider=xai')return {models:[{model:'grok-4',context:256000,vision:false,hosted_web_search:true}]};
+ if(path==='/api/providers/models?provider=xai'){if(expired){const e=Error('登录凭证已失效，请重新登录');e.status=422;throw e}return {models:[{model:'grok-4',context:256000,vision:false,hosted_web_search:true}]}}
  throw Error('unexpected '+path);
 };
 const flush=async()=>{for(let i=0;i<8;i++)await Promise.resolve()};
@@ -69,6 +69,13 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  assert(calls.some(c=>c.path==='/api/providers/models?provider=xai'),'oauth catalog not pulled');
  assert(!calls.some(c=>c.path.endsWith('/xai/sync')),'oauth binding hit the vendor sync route');
  assert(!host.innerText.includes('private-upstream-body'));
+ // A rejected refresh surfaces as a re-login prompt, not a network error.
+ expired=true;
+ find('button','模型与供应商').onclick();
+ await find('button','xAI').onclick();await flush();
+ assert(host.innerText.includes('登录凭证已失效'),'relogin reason lost');
+ assert(find('button','重新登录'),'relogin button missing');
+ assert(!host.innerText.includes('检查供应商配置和网络'),'dead credential shown as a network problem');
  completed=true;
 })().catch(e=>{console.error(e);process.exitCode=1});`
 	if out, err := exec.Command(node, "-e", script).CombinedOutput(); err != nil {

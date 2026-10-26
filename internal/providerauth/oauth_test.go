@@ -35,7 +35,10 @@ type fakeAuth struct {
 	nonce, challenge, callback string
 	access, refresh, orKey     string
 	invalid                    string
-	refreshes, requests        atomic.Int32
+	// holdToken blocks the token endpoint until released; tokenSeen signals a
+	// token request is in flight. Both are nil in ordinary tests.
+	holdToken, tokenSeen chan struct{}
+	refreshes, requests  atomic.Int32
 }
 
 func newFakeAuth(t *testing.T) *fakeAuth {
@@ -107,6 +110,12 @@ func (f *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"key": f.orKey})
 	case "/token":
+		if f.tokenSeen != nil {
+			f.tokenSeen <- struct{}{}
+		}
+		if f.holdToken != nil {
+			<-f.holdToken
+		}
 		_ = r.ParseForm()
 		client := "issued-test-client"
 		if r.Form.Get("client_id") == xaiClientID {
@@ -466,5 +475,81 @@ func TestXAIOAuthFixedPortCancelAndFinish(t *testing.T) {
 	info, err := vault.OAuthMetadata(context.Background(), backend, "xai")
 	if err != nil || !info.Configured || !info.Refreshable || info.ClientID != xaiClientID {
 		t.Fatalf("metadata %+v %v", info, err)
+	}
+}
+
+func TestCancelDuringTokenExchange(t *testing.T) {
+	for _, kind := range []string{"xai", "chatgpt"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newFakeAuth(t)
+			f.holdToken = make(chan struct{})
+			f.tokenSeen = make(chan struct{})
+			root := t.TempDir()
+			m := &Manager{Root: root, Endpoints: map[string]Endpoints{kind: f.endpoints(kind)}}
+			t.Cleanup(m.Close)
+			start, err := m.Begin(kind)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The callback blocks inside the token exchange.
+			delivered := make(chan struct{})
+			go func() {
+				defer close(delivered)
+				u, _ := url.Parse(start.URL)
+				q := u.Query()
+				cb, _ := url.Parse(q.Get("redirect_uri"))
+				params := cb.Query()
+				params.Set("code", random())
+				params.Set("state", q.Get("state"))
+				params.Set("client_id", "issued-test-client")
+				cb.RawQuery = params.Encode()
+				res, err := http.Get(cb.String())
+				if err == nil {
+					io.Copy(io.Discard, res.Body)
+					res.Body.Close()
+				}
+			}()
+			<-f.tokenSeen
+			// Cancel must return promptly, not wait on the exchange lock. The
+			// release guard also unblocks the fake on early failure paths.
+			release := sync.OnceFunc(func() { close(f.holdToken) })
+			defer release()
+			cancelled := make(chan error, 1)
+			go func() { cancelled <- m.Cancel(kind) }()
+			select {
+			case err := <-cancelled:
+				if err != nil {
+					t.Fatalf("cancel: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("cancel blocked on the token exchange")
+			}
+			if m.Status(kind).State != "cancelled" {
+				t.Fatal("not cancelled")
+			}
+			// The upstream exchange eventually succeeds; a cancelled login
+			// must store neither credentials nor the provider binding.
+			release()
+			<-delivered
+			registry, err := config.Load(root)
+			if err != nil || len(registry.Providers) != 0 {
+				t.Fatalf("provider written after cancel: %+v (%v)", registry.Providers, err)
+			}
+			backend, err := config.OAuthVault(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := vault.OAuthMetadata(context.Background(), backend, kind)
+			if err != nil || info.Configured {
+				t.Fatalf("credential written after cancel: %+v (%v)", info, err)
+			}
+			if m.Status(kind).State != "cancelled" {
+				t.Fatalf("status after late exchange: %s", m.Status(kind).State)
+			}
+			// The login can restart immediately.
+			if _, err := m.Begin(kind); err != nil {
+				t.Fatalf("restart: %v", err)
+			}
+		})
 	}
 }

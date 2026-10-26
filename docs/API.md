@@ -427,8 +427,8 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `PUT /api/bots/{name}/binding` 接收 `{provider,model}`，成功返回保存的二元绑定。二者为空时清除绑定。未知模型、协议或缺少密钥为 400；Bot 正在工作为 409。成功后下一轮重建内核，不重写 transcript。
 
-OAuth 供应商额外返回 `oauth`（`openrouter` 或 `chatgpt`）；`key_configured` 此时表示 vault 中已保存凭证，不暴露令牌。保险箱不可用时该项带 `auth_error`，其他 key 供应商仍可列出和绑定。
+OAuth 供应商额外返回 `oauth`（`openrouter`、`chatgpt` 或 `xai`）；`key_configured` 此时表示 vault 中已保存凭证，不暴露令牌。保险箱不可用时该项带 `auth_error`，其他 key 供应商仍可列出和绑定。
 
-`POST /api/providers/oauth/{kind}/start`（需主人登录）返回 `{url}`，供浏览器打开授权窗口。只支持 `openrouter`、`chatgpt`；重复点击复用十分钟内的待完成尝试。`GET /api/providers/oauth/{kind}/status` 返回 `{state,error?}`，状态为 `idle`、`pending`、`succeeded` 或 `failed`，错误不含授权响应明文。设置页只在点击 ChatGPT 订阅卡或详情的「重新登录」时启动授权；轮询成功后刷新供应商列表。回调由短期 loopback listener 接收，不通过对话或 transcript 传递授权码。协议及凭证保存方式见 [供应商](atlas/providers.md)。
+`POST /api/providers/oauth/{kind}/start`（需主人登录）返回 `{url}`，供浏览器打开授权窗口。支持 `openrouter`、`chatgpt`、`xai`（xAI 用 Grok CLI 公共客户端 PKCE，回调固定监听 `127.0.0.1:56121/callback`，端口被占用时报人话错误）；重复点击复用十分钟内的待完成尝试；已有另一类登录进行中返回 400。`GET /api/providers/oauth/{kind}/status` 返回 `{state,error?}`，状态为 `idle`、`pending`、`succeeded`、`failed` 或 `cancelled`，错误不含授权响应明文。`POST /api/providers/oauth/{kind}/cancel`（同 start 鉴权）取消进行中的登录：关闭回调监听、状态置 `cancelled`，取消或失败后可立刻重新 start；无可取消时 409。设置页只在点击 ChatGPT 订阅卡或 xAI 登录按钮、或详情的「重新登录」时启动授权；轮询成功后刷新供应商列表。回调由短期 loopback listener 接收，不通过对话或 transcript 传递授权码。协议及凭证保存方式见 [供应商](atlas/providers.md)。
 
 Transcript 消息保留原 `content` 字符串投影，另有可选 `parts` 数组，包含 `server_tool` 的 `hosted:{id,name,status,query}` 和 `citation:{url,title,start,end}`；位置按 Unicode 字符计数。网页不接收 `vendor_raw` 或 reasoning 数据。消息 SSE 增加 `part` 事件，承载临时 hosted 步骤；最终内容从 transcript 读取。

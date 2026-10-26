@@ -19,7 +19,10 @@ func authHTTP() *http.Client {
 	return &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
-func (m *Manager) finish(ctx context.Context, a *attempt, code, issued string) error {
+// exchange trades the authorization code for tokens and builds the provider
+// binding without touching manager state or writing anything, so a Cancel
+// during the network round-trip cannot block or land a cancelled login.
+func (m *Manager) exchange(ctx context.Context, a *attempt, code, issued string) (vault.OAuthCredential, config.Provider, error) {
 	var c vault.OAuthCredential
 	var body io.Reader
 	contentType := "application/x-www-form-urlencoded"
@@ -33,26 +36,26 @@ func (m *Manager) finish(ctx context.Context, a *attempt, code, issued string) e
 	} else {
 		if a.clientID == "dynamic_agent_client" {
 			if issued == "" || issued == "dynamic_agent_client" {
-				return errors.New("注册未返回客户端编号")
+				return vault.OAuthCredential{}, config.Provider{}, errors.New("注册未返回客户端编号")
 			}
 			a.clientID = issued
 		} else if issued != "" && issued != a.clientID {
-			return errors.New("登录返回了不同的客户端编号")
+			return vault.OAuthCredential{}, config.Provider{}, errors.New("登录返回了不同的客户端编号")
 		}
 		body = strings.NewReader(url.Values{"grant_type": {"authorization_code"}, "client_id": {a.clientID}, "code": {code}, "code_verifier": {a.verifier}, "redirect_uri": {a.callback}, "resource": {"https://api.openai.com/v1"}}.Encode())
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", a.endpoints.Token, body)
 	if err != nil {
-		return errors.New("无法创建授权请求")
+		return vault.OAuthCredential{}, config.Provider{}, errors.New("无法创建授权请求")
 	}
 	req.Header.Set("Content-Type", contentType)
 	res, err := authHTTP().Do(req)
 	if err != nil {
-		return errors.New("授权服务连接失败，请重试")
+		return vault.OAuthCredential{}, config.Provider{}, errors.New("授权服务连接失败，请重试")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return fmt.Errorf("授权服务拒绝请求（%d），请重新登录", res.StatusCode)
+		return vault.OAuthCredential{}, config.Provider{}, fmt.Errorf("授权服务拒绝请求（%d），请重新登录", res.StatusCode)
 	}
 	var token struct {
 		Key     string `json:"key"`
@@ -64,42 +67,48 @@ func (m *Manager) finish(ctx context.Context, a *attempt, code, issued string) e
 		Scope   string `json:"scope"`
 	}
 	if json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&token) != nil {
-		return errors.New("授权响应格式错误")
+		return vault.OAuthCredential{}, config.Provider{}, errors.New("授权响应格式错误")
 	}
 	p := config.Provider{Name: a.kind, OAuth: a.kind, BaseURL: a.endpoints.API, Protocol: config.ChatCompletions, Models: []config.ModelSpec{{Name: "openai/gpt-5.4", Context: 128000}}}
 	c.AccessToken = token.Key
 	if a.kind == "chatgpt" {
 		if token.Access == "" || token.Refresh == "" || token.Expires <= 30 || !strings.EqualFold(token.Type, "Bearer") || !strings.Contains(" "+token.Scope+" ", " chatgpt.tokens.use.direct ") {
-			return errors.New("授权缺少 ChatGPT 使用权限或可刷新令牌")
+			return vault.OAuthCredential{}, config.Provider{}, errors.New("授权缺少 ChatGPT 使用权限或可刷新令牌")
 		}
 		sub, err := validateID(ctx, a, token.ID)
 		if err != nil {
-			return err
+			return vault.OAuthCredential{}, config.Provider{}, err
 		}
 		if a.subject != "" && sub != a.subject {
-			return errors.New("登录账号与当前绑定不同，暂不支持账号切换")
+			return vault.OAuthCredential{}, config.Provider{}, errors.New("登录账号与当前绑定不同，暂不支持账号切换")
 		}
 		c = vault.OAuthCredential{AccessToken: token.Access, RefreshToken: token.Refresh, IDToken: token.ID, ExpiresAt: time.Now().Add(time.Duration(token.Expires) * time.Second), TokenURL: a.endpoints.Token, ClientID: a.clientID, Resource: "https://api.openai.com/v1", Subject: sub, Scope: token.Scope}
 		p.Protocol = config.Responses
 	}
 	if a.kind == "xai" {
 		if token.Access == "" || token.Refresh == "" || token.Expires <= 30 || !strings.EqualFold(token.Type, "Bearer") {
-			return errors.New("xAI 授权缺少访问或刷新凭证，请重试")
+			return vault.OAuthCredential{}, config.Provider{}, errors.New("xAI 授权缺少访问或刷新凭证，请重试")
 		}
 		sub, err := xaiSubject(a, token.ID)
 		if err != nil {
-			return err
+			return vault.OAuthCredential{}, config.Provider{}, err
 		}
 		if a.subject != "" && sub != "" && sub != a.subject {
-			return errors.New("登录账号与当前绑定不同，暂不支持账号切换")
+			return vault.OAuthCredential{}, config.Provider{}, errors.New("登录账号与当前绑定不同，暂不支持账号切换")
 		}
 		c = vault.OAuthCredential{AccessToken: token.Access, RefreshToken: token.Refresh, IDToken: token.ID, ExpiresAt: time.Now().Add(time.Duration(token.Expires) * time.Second), TokenURL: a.endpoints.Token, ClientID: a.clientID, Subject: sub, Scope: token.Scope}
 		p.Protocol = config.Responses
 		p.Models = xaiSeedModels()
 	}
 	if c.AccessToken == "" {
-		return errors.New("授权响应缺少凭证")
+		return vault.OAuthCredential{}, config.Provider{}, errors.New("授权响应缺少凭证")
 	}
+	return c, p, nil
+}
+
+// store persists a finished exchange. The caller re-checks the attempt under
+// the manager lock first: a cancelled login never reaches this.
+func (m *Manager) store(ctx context.Context, a *attempt, c vault.OAuthCredential, p config.Provider) error {
 	b, err := config.OAuthVault(m.Root)
 	if err != nil {
 		return errors.New("无法打开保险箱")

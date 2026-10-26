@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xbot/internal/compact"
+	"xbot/internal/vault"
 )
 
 // ProviderModels asks the configured endpoint for its current catalog. Only
@@ -168,6 +169,11 @@ func readCatalogPage(ctx context.Context, client *http.Client, p Provider, key, 
 	}
 	res, err := client.Do(req)
 	if err != nil {
+		// A provider-rejected refresh is a dead credential, not a network
+		// hiccup; the settings page turns it into a re-login prompt.
+		if vault.IsRefreshRejected(err) {
+			return catalogPage{}, 0, errors.New("登录凭证已失效，请重新登录")
+		}
 		return catalogPage{}, 0, errors.New("拉取模型失败，请检查网络后重试")
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(res.Body, remaining+1))

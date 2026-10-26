@@ -419,3 +419,60 @@ data: {"type":"response.completed","response":{"status":"completed","output":[{"
 		t.Fatalf("portable summaries lost: %s", msg.PortableText())
 	}
 }
+
+func TestResponsesParsesRealXSearchCustomCalls(t *testing.T) {
+	// xAI's current X search output: custom_tool_call items named after the
+	// real function, distinguished by the xs_ call-id prefix.
+	stream := `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"xs_9","call_id":"xs_9","name":"x_keyword_search","status":"in_progress","input":"{\"query\":\"grok 4 发布\"}"}}
+
+data: {"type":"response.output_text.delta","delta":"搜到了。"}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"custom_tool_call","id":"xs_9","call_id":"xs_9","name":"x_keyword_search","status":"completed","input":"{\"query\":\"grok 4 发布\"}"}}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"type":"custom_tool_call","id":"ct_2","call_id":"ct_2","name":"spreadsheet_calc","status":"completed","input":"{}"}}
+
+data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"custom_tool_call","id":"xs_9","call_id":"xs_9","name":"x_keyword_search","status":"completed","input":"{\"query\":\"grok 4 发布\"}"},{"type":"custom_tool_call","id":"ct_2","call_id":"ct_2","name":"spreadsheet_calc","status":"completed","input":"{}"},{"type":"message","id":"m1","content":[{"type":"output_text","text":"答案"}]}]}}
+
+`
+	msg, err := readResponses(context.Background(), strings.NewReader(stream), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hosted []string
+	for _, p := range msg.Content {
+		if p.Type == PartHosted && p.Hosted != nil {
+			hosted = append(hosted, p.Hosted.Name+":"+p.Hosted.Status+":"+p.Hosted.ID)
+		}
+	}
+	if !reflect.DeepEqual(hosted, []string{"x_search:completed:xs_9"}) {
+		t.Fatalf("hosted steps %v", hosted)
+	}
+	if step := msg.Content[0]; step.Hosted == nil || step.Hosted.Query != "grok 4 发布" {
+		t.Fatalf("x_search query lost: %+v", msg.Content[0])
+	}
+	// A hosted X search never becomes a local tool call.
+	if len(msg.Calls()) != 0 {
+		t.Fatalf("custom call entered the local executor: %+v", msg.Calls())
+	}
+	// Other custom tools degrade to text, not fake hosted steps.
+	other := msg.Content[1]
+	if other.Type == PartHosted || other.Hosted != nil || !strings.Contains(other.Text, "custom_tool_call") {
+		t.Fatalf("other custom call misclassified: %+v", other)
+	}
+	if !strings.Contains(msg.PortableText(), "X 搜索") {
+		t.Fatalf("portable summary lost: %s", msg.PortableText())
+	}
+
+	// A failed X search stays a failed hosted step, never a success.
+	failed := `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"custom_tool_call","id":"xs_bad","call_id":"xs_bad","name":"x_keyword_search","status":"failed","input":"{\"query\":\"x\"}"},{"type":"message","id":"m1","content":[{"type":"output_text","text":"没搜到"}]}]}}
+
+`
+	msg, err = readResponses(context.Background(), strings.NewReader(failed), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := msg.Content[0]
+	if step.Type != PartHosted || step.Hosted == nil || step.Hosted.Status != "failed" || step.Hosted.Name != "x_search" {
+		t.Fatalf("failed x_search lost: %+v", step)
+	}
+}

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
-	"net/url"
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/vault"
@@ -233,5 +234,66 @@ func TestProviderModelsChatGPTSubscription(t *testing.T) {
 	info, err := vault.OAuthMetadata(context.Background(), backend, "chatgpt")
 	if err != nil || !info.Configured {
 		t.Fatal("catalog changed credential")
+	}
+}
+
+// TestProviderModelsRefreshRejectedAsksRelogin covers the xAI path where the
+// stored credential is near expiry and the provider refuses the refresh: the
+// catalog route must answer with a re-login error, not a network error, and
+// must not leak the upstream body or tokens.
+func TestProviderModelsRefreshRejectedAsksRelogin(t *testing.T) {
+	up := func(status int, body string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/token" {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(body))
+				return
+			}
+			http.NotFound(w, r)
+		}))
+	}
+	rejected := up(400, `{"error":"invalid_grant","refresh_token":"leaked-upstream-secret"}`)
+	defer rejected.Close()
+	for _, tc := range []struct {
+		name, tokenURL, want string
+		status               int
+	}{
+		{"rejected refresh asks for re-login", rejected.URL + "/token", "登录凭证已失效，请重新登录", 422},
+		{"network failure stays generic", "http://127.0.0.1:1/token", "拉取模型失败", 422},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
+				t.Error("catalog endpoint should not be reached")
+			})
+			base := config.FromEnv(config.Getenv).BaseURL
+			seed := config.Provider{Name: "xai", OAuth: "xai", Protocol: config.Responses, BaseURL: base, Models: []config.ModelSpec{{Name: "grok-4", Context: 256000}}}
+			if err := config.SaveOAuthProvider(s.Root, seed); err != nil {
+				t.Fatal(err)
+			}
+			backend, err := config.OAuthVault(s.Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			host := strings.TrimPrefix(base, "http://")
+			if i := strings.LastIndex(host, ":"); i >= 0 {
+				host = host[:i]
+			}
+			// Near expiry: the catalog fetch must refresh first.
+			err = vault.SetOAuth(backend, "xai", vault.OAuthCredential{AccessToken: "expired-access", RefreshToken: "expired-refresh", ExpiresAt: time.Now().Add(-time.Minute), TokenURL: tc.tokenURL, ClientID: "grok-cli-public"}, []string{host})
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, out := setupCall(t, srv, tok, "GET", "/api/providers/models?provider=xai", "")
+			if code != tc.status {
+				t.Fatalf("status %d", code)
+			}
+			msg, _ := out["error"].(string)
+			if !strings.Contains(msg, tc.want) {
+				t.Fatalf("error %q wants %q", msg, tc.want)
+			}
+			if strings.Contains(msg, "leaked-upstream-secret") || strings.Contains(msg, "invalid_grant") || strings.Contains(msg, "expired-refresh") {
+				t.Fatalf("upstream body or token leaked: %q", msg)
+			}
+		})
 	}
 }
