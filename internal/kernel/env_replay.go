@@ -274,7 +274,9 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		var err error
 		switch key {
 		case "persona":
-			v, err = k.Bot.PersonaText()
+			var label string
+			v, label, err = k.Bot.PersonaSource()
+			v = label + " " + shortHash(v)
 		case "rules":
 			v, err = k.rulesText()
 		case "skills":
@@ -294,7 +296,7 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		if err != nil {
 			return next, err
 		}
-		if key != "overlay" {
+		if key != "overlay" && key != "persona" {
 			v = shortHash(v)
 		}
 		environmentSet(&next, key, v)

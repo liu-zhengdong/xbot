@@ -33,11 +33,11 @@ func TestModelOverlayAppendsAfterRulesAndShowsInEnv(t *testing.T) {
 	}
 	sys := p.reqs[0].Messages[0].Text()
 	rulesAt := strings.Index(sys, "Answer in the owner's language")
-	noteAt := strings.Index(sys, "## Model\n"+note)
+	noteAt := strings.Index(sys, "### 模型补丁\n仅针对当前模型的额外约束。\n"+note)
 	if rulesAt < 0 || noteAt < 0 || rulesAt > noteAt {
 		t.Fatalf("overlay placement\n%s", sys)
 	}
-	if linksAt := strings.Index(sys, "## Links"); linksAt >= 0 && linksAt < noteAt {
+	if linksAt := strings.Index(sys, "### 能力框"); linksAt >= 0 && linksAt < noteAt {
 		t.Fatalf("overlay after links\n%s", sys)
 	}
 	updates := envUpdates(t, b)
@@ -53,7 +53,7 @@ func TestUnboundBotShowsNoOverlay(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC))); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(p.reqs[0].Messages[0].Text(), "## Model") {
+	if strings.Contains(p.reqs[0].Messages[0].Text(), "### 模型补丁") {
 		t.Fatal(p.reqs[0].Messages[0].Text())
 	}
 	updates := envUpdates(t, b)
@@ -91,7 +91,7 @@ func TestOverlayShortPublicationAcrossTurnsChangesAndCompression(t *testing.T) {
 			t.Fatal(err)
 		}
 		req := p.reqs[len(p.reqs)-1]
-		if body != "" && (strings.Count(messagesText(req.Messages), strings.TrimSpace(body)) != 1 || !strings.Contains(req.Messages[0].Text(), "## Model\n"+strings.TrimSpace(body))) {
+		if body != "" && (strings.Count(messagesText(req.Messages), strings.TrimSpace(body)) != 1 || !strings.Contains(req.Messages[0].Text(), "### 模型补丁\n仅针对当前模型的额外约束。\n"+strings.TrimSpace(body))) {
 			t.Fatal("overlay must occur exactly once, in the fixed prefix")
 		}
 		n := 0
@@ -138,7 +138,7 @@ func TestOverlayShortPublicationAcrossTurnsChangesAndCompression(t *testing.T) {
 	}
 	body = ""
 	wake("none", 5)
-	if strings.Contains(p.reqs[len(p.reqs)-1].Messages[0].Text(), "## Model") {
+	if strings.Contains(p.reqs[len(p.reqs)-1].Messages[0].Text(), "### 模型补丁") {
 		t.Fatal("removed overlay remains in prefix")
 	}
 	t.Logf("overlay body=%d bytes; initial environment=%s", len(strings.Repeat("OVERLAY_BODY_只在前缀。\n", 70)), envUpdates(t, b)[1])
