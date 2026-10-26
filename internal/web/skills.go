@@ -30,7 +30,7 @@ func (s *Server) listSkills(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	infos, err := skill.List(skill.OwnerDir(s.Root, s.owner))
+	infos, err := skill.List(skill.Dir(s.Root))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -57,7 +57,7 @@ func (s *Server) readSkill(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	info, body, err := skill.Open(skill.OwnerDir(s.Root, s.owner), r.PathValue("slug"))
+	info, body, err := skill.Open(skill.Dir(s.Root), r.PathValue("slug"))
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
@@ -85,7 +85,7 @@ func (s *Server) setSkill(w http.ResponseWriter, r *http.Request, disable bool) 
 		return
 	}
 	slug := r.PathValue("slug")
-	if _, _, err := skill.Open(filepath.Join(skill.Dir(s.Root), s.owner), slug); err != nil {
+	if _, _, err := skill.Open(skill.Dir(s.Root), slug); err != nil {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -107,13 +107,13 @@ func (s *Server) setSkill(w http.ResponseWriter, r *http.Request, disable bool) 
 	writeJSON(w, http.StatusOK, map[string]any{"slug": slug, "disabled": disable})
 }
 
-// The settings page works on the owner's whole library; only the on/off switches are per bot.
+// The settings page works on the local library; only the on/off switches are per bot.
 
 func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
-	infos, err := skill.List(skill.OwnerDir(s.Root, s.owner))
+	infos, err := skill.List(skill.Dir(s.Root))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "没能读取技能")
 		return
@@ -131,7 +131,7 @@ func (s *Server) readLibrarySkill(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
-	info, _, err := skill.Open(skill.OwnerDir(s.Root, s.owner), r.PathValue("slug"))
+	info, _, err := skill.Open(skill.Dir(s.Root), r.PathValue("slug"))
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "没有找到这个技能")
 		return
@@ -143,12 +143,6 @@ func (s *Server) readLibrarySkill(w http.ResponseWriter, r *http.Request) {
 	}
 	bots := []map[string]any{}
 	for _, cfg := range bot.Order(cfgs) {
-		// A bot with several owners never loads a personal library (the kernel needs a sole owner),
-		// so its switch would save and change nothing; say so instead of offering it.
-		if len(cfg.Owners) != 1 {
-			bots = append(bots, map[string]any{"name": cfg.Name, "enabled": false, "shared": true})
-			continue
-		}
 		bots = append(bots, map[string]any{"name": cfg.Name, "enabled": !slices.Contains(cfg.DisabledSkills, info.Slug)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -181,7 +175,7 @@ func (s *Server) importSkill(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	res, err := skill.ImportData(s.Root, s.owner, folder, raw, in.Overwrite)
+	res, err := skill.ImportData(s.Root, folder, raw, in.Overwrite)
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, map[string]any{"slug": res.Slug, "name": res.Name})

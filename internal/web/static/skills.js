@@ -91,7 +91,6 @@
       if (!data.bots.length) bots.append(node("div", "setrow", "还没有 Bot。"));
       for (const b of data.bots) {
         const line = node("div", "setrow"), tx = node("div", "tx"); tx.append(node("b", "", b.name));
-        if (b.shared) { tx.append(node("span", "hint", "多人共用的 Bot，暂不使用技能库")); line.append(tx); bots.append(line); continue; }
         const tog = button("tog", "", () => flip(b, tog)); tog.setAttribute("role", "switch"); tog.setAttribute("aria-label", "在 " + b.name + " 里启用「" + title + "」");
         const paint = () => { tog.classList.toggle("on", b.enabled); tog.setAttribute("aria-checked", String(b.enabled)); tog.title = b.enabled ? "已启用" : "已停用"; };
         b.paint = paint; paint(); line.append(tx, tog); bots.append(line);

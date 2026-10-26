@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/machine/, internal/tunnel/, internal/browser/, internal/desktop/]
-verified: 2026-10-18 @ 0eec2b1
+verified: 2026-10-27 @ 530d20f（skills-flat-no-owner：本机技能库扁平化）
 ---
 # 机器与设备
 
@@ -12,7 +12,7 @@ verified: 2026-10-18 @ 0eec2b1
 负责：工作机、主机、远程访问、机器开关、多台电脑的配对（在[网关](gateway.md)里）、浏览器和桌面。不负责：哪些动作要确认（见 [安全](security.md)）。
 
 ## 怎么运转
-- **工作机**：一个用户的多个 Bot 共用一台机器，包括装好的工具和登录状态；每个 Bot 有自己的工作目录，另有一个共享目录。技能按 owner 分开，不是全机共用。
+- **工作机**：一个用户的多个 Bot 共用一台机器，包括装好的工具和登录状态；每个 Bot 有自己的工作目录，另有一个共享目录。同一数据根下的本机 Bot 共用 `skills/<slug>/SKILL.md` 技能库，不按 owner 分柜；不同数据根互不影响，不做跨设备同步。
 - **主机**：Bot 住在用户选择的机器上（比如家里的 PC），数据不离开用户的设备。手机、Web、Slack 都只是入口。
 - **远程访问**：Cloudflare Tunnel、Tailscale 直连、自建中继，都可以选；它们只是不同的传输方式，内核不用关心。`xbot serve --tunnel cloudflare` 用本机的 `cloudflared` 把已经在听的 `--http` 公布出去。真实的 `cloudflared` 把地址打在 stderr，stdout 不关，所以两边一起读。stderr 打印 `public url`（`*.trycloudflare.com`）。`cloudflared` 单独一个进程组，父进程死掉时收到 `SIGKILL`，serve 被硬杀掉也不会留下公开隧道。拉起它的 goroutine 锁住操作系统线程，直到隧道关掉，避免线程先退出把 `SIGKILL` 提前打出去。`--tunnel tailscale` 跑 `tailscale ip -4`；`--http` 若是回环地址，就改绑到这个 tailnet 地址，别的绑定保持原样，`public url` 用 tailnet 地址加端口。二进制路径可用 `XBOT_CLOUDFLARED` 和 `XBOT_TAILSCALE`。跨设备的中继见[网关](gateway.md)。
 - **每台机器一个开关**：允许、每次询问、关闭，决定 Bot 能不能在这台机器上执行。**只在权限检查打开时生效**（`xbot permissions on`，[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）；默认关着，`machine.Get` 一律读成 `allow`，存下的值不动，`xbot machine set` 会提示这一点。下面写的是打开之后的行为。记在数据根的 `machines.json`（0600）。没写的机器是 `allow`，shell 只对删除和对外发送要确认（看集中分类器），其余命令直接跑。`ask` 让每条 shell 都要主人确认。`xbot machine set <name> allow|ask|off`，本机的名字是 `local`。`off` 直接拒绝，确认了也跑不了。`write_file`/`edit_file` 也跟这个开关：`allow` 普通写不弹卡，写自己的 persona/profile 仍确认，`ask` 每次问，`off` 拒绝。

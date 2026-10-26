@@ -46,17 +46,17 @@ func TestCatalogInstallNames(t *testing.T) {
 	}
 }
 
-func TestSkillsCatalogNamesLocalOwnerLibrary(t *testing.T) {
+func TestSkillsCatalogNamesLocalLibrary(t *testing.T) {
 	entry, ok := Lookup("skills")
 	if !ok {
 		t.Fatal("skills missing")
 	}
 	for name, text := range map[string]string{"catalog": entry.Summary, "grant": Blurb(NameSkills)} {
 		t.Run(name, func(t *testing.T) {
-			if !strings.Contains(text, "~/.xbot/skills/<owner>/") {
-				t.Errorf("missing local owner library path: %s", text)
+			if !strings.Contains(text, "~/.xbot/skills/") {
+				t.Errorf("missing local library path: %s", text)
 			}
-			for _, misleading := range []string{"共享", "shared", "magpie"} {
+			for _, misleading := range []string{"<owner>", "magpie"} {
 				if strings.Contains(strings.ToLower(text), misleading) {
 					t.Errorf("misleading library description: %s", text)
 				}

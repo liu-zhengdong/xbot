@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -232,15 +231,11 @@ func (k *Kernel) skillInfos() ([]skill.Info, error) {
 	if !k.Bot.Grants(link.NameSkills) && !k.hasLink(link.NameSkills) {
 		return nil, nil
 	}
-	owner, ok := k.soleOwner()
-	if !ok {
-		return nil, nil
-	}
 	disabled := map[string]bool{}
 	for _, slug := range k.Bot.DisabledSkills() {
 		disabled[strings.TrimSpace(slug)] = true
 	}
-	infos, err := skill.List(filepath.Join(k.SkillsDir, owner))
+	infos, err := skill.List(k.SkillsDir)
 	if err != nil || len(infos) == 0 {
 		return nil, err
 	}
@@ -252,21 +247,6 @@ func (k *Kernel) skillInfos() ([]skill.Info, error) {
 		out = append(out, info)
 	}
 	return out, nil
-}
-
-func (k *Kernel) soleOwner() (string, bool) {
-	if k == nil || k.Bot == nil {
-		return "", false
-	}
-	owners := k.Bot.Config().Owners
-	if len(owners) != 1 {
-		return "", false
-	}
-	owner := strings.TrimSpace(owners[0])
-	if !skill.ValidOwner(owner) {
-		return "", false
-	}
-	return owner, true
 }
 
 func clipMemory(s string) string {

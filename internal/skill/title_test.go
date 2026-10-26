@@ -14,10 +14,10 @@ func TestWriteTitleRoundTrip(t *testing.T) {
 	for _, title := range []string{"", "记一下", "记: 一下 # 私用", "\"记一下\"", "记一下\nname: injected"} {
 		t.Run(title, func(t *testing.T) {
 			root := t.TempDir()
-			if err := skill.Write(root, "owner", "note-capture", "A long description", "body", title); err != nil {
+			if err := skill.Write(root, "note-capture", "A long description", "body", title); err != nil {
 				t.Fatal(err)
 			}
-			raw, err := os.ReadFile(filepath.Join(skill.OwnerDir(root, "owner"), "note-capture", "SKILL.md"))
+			raw, err := os.ReadFile(filepath.Join(skill.Dir(root), "note-capture", "SKILL.md"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -29,11 +29,11 @@ func TestWriteTitleRoundTrip(t *testing.T) {
 			if meta["name"] != "note-capture" || meta["title"] != want {
 				t.Fatalf("metadata: %#v", meta)
 			}
-			info, body, err := skill.Open(skill.OwnerDir(root, "owner"), "note-capture")
+			info, body, err := skill.Open(skill.Dir(root), "note-capture")
 			if err != nil || info.Name != "note-capture" || info.Title != want || body != "body" {
 				t.Fatalf("open: %+v %q %v", info, body, err)
 			}
-			list, err := skill.List(skill.OwnerDir(root, "owner"))
+			list, err := skill.List(skill.Dir(root))
 			if err != nil || len(list) != 1 || list[0] != info {
 				t.Fatalf("list: %+v %v", list, err)
 			}
@@ -44,10 +44,10 @@ func TestWriteTitleRoundTrip(t *testing.T) {
 func TestImportTitleAndLegacyName(t *testing.T) {
 	for _, meta := range []string{"name: note-capture\ntitle: '记一下'", "name: 旧短名"} {
 		root := t.TempDir()
-		if _, err := skill.ImportData(root, "owner", "note-capture", []byte("---\n"+meta+"\ndescription: long description\n---\nbody"), false); err != nil {
+		if _, err := skill.ImportData(root, "note-capture", []byte("---\n"+meta+"\ndescription: long description\n---\nbody"), false); err != nil {
 			t.Fatal(err)
 		}
-		info, _, err := skill.Open(skill.OwnerDir(root, "owner"), "note-capture")
+		info, _, err := skill.Open(skill.Dir(root), "note-capture")
 		if err != nil {
 			t.Fatal(err)
 		}

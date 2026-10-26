@@ -58,7 +58,7 @@ func TestSkillSymlinkAndImport(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(real, "SKILL.md"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	lib := skill.OwnerDir(root, "u1")
+	lib := skill.Dir(root)
 	if err := os.MkdirAll(lib, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -78,11 +78,11 @@ func TestSkillSymlinkAndImport(t *testing.T) {
 	if err := os.Symlink(real, srcLink); err != nil {
 		t.Fatal(err)
 	}
-	slug, err := skill.Import(root, "u2", srcLink)
+	slug, err := skill.Import(root, srcLink)
 	if err != nil || slug != "ship" {
 		t.Fatalf("import %s %v", slug, err)
 	}
-	dest := filepath.Join(skill.OwnerDir(root, "u2"), "ship", "SKILL.md")
+	dest := filepath.Join(skill.Dir(root), "ship", "SKILL.md")
 	fi, err := os.Lstat(dest)
 	if err != nil {
 		t.Fatal(err)
@@ -126,22 +126,22 @@ func TestImportDataOverwriteNeedsConsent(t *testing.T) {
 	root := t.TempDir()
 	v1 := []byte("---\nname: 写周报\ndescription: first\n---\n\nONE\n")
 	v2 := []byte("---\nname: 写周报\ndescription: second\n---\n\nTWO\n")
-	got, err := skill.ImportData(root, "u1", "weekly", v1, false)
+	got, err := skill.ImportData(root, "weekly", v1, false)
 	if err != nil || got.Slug != "weekly" || got.Name != "写周报" {
 		t.Fatalf("first %+v %v", got, err)
 	}
-	got, err = skill.ImportData(root, "u1", "weekly", v2, false)
+	got, err = skill.ImportData(root, "weekly", v2, false)
 	if !errors.Is(err, skill.ErrExists) || got.Name != "写周报" {
 		t.Fatalf("same name must ask first: %+v %v", got, err)
 	}
-	raw, _ := os.ReadFile(filepath.Join(skill.OwnerDir(root, "u1"), "weekly", "SKILL.md"))
+	raw, _ := os.ReadFile(filepath.Join(skill.Dir(root), "weekly", "SKILL.md"))
 	if !strings.Contains(string(raw), "ONE") {
 		t.Fatalf("refused import changed the library: %s", raw)
 	}
-	if _, err := skill.ImportData(root, "u1", "weekly", v2, true); err != nil {
+	if _, err := skill.ImportData(root, "weekly", v2, true); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ = os.ReadFile(filepath.Join(skill.OwnerDir(root, "u1"), "weekly", "SKILL.md"))
+	raw, _ = os.ReadFile(filepath.Join(skill.Dir(root), "weekly", "SKILL.md"))
 	if !strings.Contains(string(raw), "TWO") {
 		t.Fatalf("overwrite did not replace: %s", raw)
 	}
@@ -150,18 +150,18 @@ func TestImportDataOverwriteNeedsConsent(t *testing.T) {
 func TestImportDataRejectsBadInput(t *testing.T) {
 	root := t.TempDir()
 	good := []byte("---\nname: ship\ndescription: Pack\n---\n\nbody\n")
-	if _, err := skill.ImportData(root, "u1", "weekly", []byte("no front matter\n"), false); !errors.Is(err, skill.ErrNoMeta) {
+	if _, err := skill.ImportData(root, "weekly", []byte("no front matter\n"), false); !errors.Is(err, skill.ErrNoMeta) {
 		t.Fatalf("no meta: %v", err)
 	}
 	// A folder name that is not a plain slug never reaches the filesystem; the frontmatter name is tried instead.
 	for _, dir := range []string{"../evil", "a/b", ".hidden", "UPPER", ""} {
-		got, err := skill.ImportData(root, "u1", dir, good, true)
+		got, err := skill.ImportData(root, dir, good, true)
 		if err != nil || got.Slug != "ship" {
 			t.Fatalf("dir %q: %+v %v", dir, got, err)
 		}
 	}
 	bad := []byte("---\nname: ../../escape\ndescription: x\n---\n")
-	if _, err := skill.ImportData(root, "u1", "../x", bad, true); !errors.Is(err, skill.ErrBadSlug) {
+	if _, err := skill.ImportData(root, "../x", bad, true); !errors.Is(err, skill.ErrBadSlug) {
 		t.Fatalf("bad slug: %v", err)
 	}
 	entries, _ := os.ReadDir(root)
@@ -182,7 +182,7 @@ func TestImportDataSameNameRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			switch _, err := skill.ImportData(root, "u1", "ship", raw, false); {
+			switch _, err := skill.ImportData(root, "ship", raw, false); {
 			case err == nil:
 				made.Add(1)
 			case errors.Is(err, skill.ErrExists):

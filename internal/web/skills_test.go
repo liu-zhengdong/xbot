@@ -12,6 +12,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/peer"
 	"xbot/internal/skill"
 )
 
@@ -43,7 +44,7 @@ func TestSkillAPIListReadDisable(t *testing.T) {
 	if err := eve.SetOwners([]string{"u2"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(root, "u1", "ship", "Pack a release", "SECRET_BODY"); err != nil {
+	if err := skill.Write(root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(muxOf(s))
@@ -148,15 +149,15 @@ func skillTestServer(t *testing.T) (root, tok string, call func(method, path, bo
 	return root, tok, call
 }
 
-func TestSkillLibraryListsOwnersSkillsWithPerBotState(t *testing.T) {
+func TestSkillLibraryListsLocalSkillsWithPerBotState(t *testing.T) {
 	root, _, call := skillTestServer(t)
 	if code, raw := call(http.MethodGet, "/api/skills", "", true); code != http.StatusOK || !strings.Contains(raw, `"skills":[]`) {
 		t.Fatalf("empty library %d %s", code, raw)
 	}
-	if err := skill.Write(root, "u1", "ship", "Pack a release", "SECRET_BODY"); err != nil {
+	if err := skill.Write(root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(root, "u2", "theirs", "Not yours", "x"); err != nil {
+	if err := skill.Write(root, "theirs", "Not yours", "x"); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []string{"/api/skills", "/api/skills/ship"} {
@@ -165,7 +166,7 @@ func TestSkillLibraryListsOwnersSkillsWithPerBotState(t *testing.T) {
 		}
 	}
 	code, raw := call(http.MethodGet, "/api/skills", "", true)
-	if code != http.StatusOK || !strings.Contains(raw, `"slug":"ship"`) || strings.Contains(raw, "theirs") || strings.Contains(raw, "SECRET_BODY") {
+	if code != http.StatusOK || !strings.Contains(raw, `"slug":"ship"`) || !strings.Contains(raw, "theirs") || strings.Contains(raw, "SECRET_BODY") {
 		t.Fatalf("list %d %s", code, raw)
 	}
 	var detail struct {
@@ -217,8 +218,8 @@ func TestSkillLibraryListsOwnersSkillsWithPerBotState(t *testing.T) {
 	if code != http.StatusNotFound || strings.Contains(raw, "slug") || strings.Contains(raw, "skill:") {
 		t.Fatalf("missing skill must read as plain not-found: %d %s", code, raw)
 	}
-	if code, _ := call(http.MethodGet, "/api/skills/theirs", "", true); code != http.StatusNotFound {
-		t.Fatalf("another owner's skill is not visible: %d", code)
+	if code, _ := call(http.MethodGet, "/api/skills/theirs", "", true); code != http.StatusOK {
+		t.Fatalf("local library skill should be visible: %d", code)
 	}
 }
 
@@ -241,14 +242,14 @@ func TestSkillImportAsksBeforeOverwriting(t *testing.T) {
 	if code != http.StatusConflict || !strings.Contains(raw, "库里已有同名技能，要覆盖吗？") || !strings.Contains(raw, `"conflict":true`) || !strings.Contains(raw, "写周报") {
 		t.Fatalf("same name must ask: %d %s", code, raw)
 	}
-	got, _ := os.ReadFile(filepath.Join(skill.OwnerDir(root, "u1"), "weekly", "SKILL.md"))
+	got, _ := os.ReadFile(filepath.Join(skill.Dir(root), "weekly", "SKILL.md"))
 	if !strings.Contains(string(got), "BODY1") {
 		t.Fatalf("asking changed the library: %s", got)
 	}
 	if code, raw = post("weekly", v2, true); code != http.StatusOK {
 		t.Fatalf("overwrite %d %s", code, raw)
 	}
-	got, _ = os.ReadFile(filepath.Join(skill.OwnerDir(root, "u1"), "weekly", "SKILL.md"))
+	got, _ = os.ReadFile(filepath.Join(skill.Dir(root), "weekly", "SKILL.md"))
 	if !strings.Contains(string(got), "BODY2") {
 		t.Fatalf("overwrite did not replace: %s", got)
 	}
@@ -279,10 +280,10 @@ func TestSkillImportAsksBeforeOverwriting(t *testing.T) {
 	}
 }
 
-// A bot with several owners never loads a personal library, so the settings page must not offer it a switch.
-func TestSkillLibraryMarksSharedBotUnavailable(t *testing.T) {
+// A bot with several owners uses the same library and has an ordinary switch.
+func TestSkillLibrarySharedBotSwitch(t *testing.T) {
 	root, _, call := skillTestServer(t)
-	if err := skill.Write(root, "u1", "ship", "Pack a release", "x"); err != nil {
+	if err := skill.Write(root, "ship", "Pack a release", "x"); err != nil {
 		t.Fatal(err)
 	}
 	team, err := bot.Create(root, "team", "persona", []string{link.NameSkills})
@@ -310,8 +311,8 @@ func TestSkillLibraryMarksSharedBotUnavailable(t *testing.T) {
 		seen[b.Name] = true
 		switch b.Name {
 		case "team":
-			if !b.Shared || b.Enabled {
-				t.Fatalf("shared bot must read as unavailable, not enabled: %+v", b)
+			if b.Shared || !b.Enabled {
+				t.Fatalf("shared bot must be switchable: %+v", b)
 			}
 		case "ada", "bob":
 			if b.Shared || !b.Enabled {
@@ -397,7 +398,7 @@ func TestSkillSourcesListAndImport(t *testing.T) {
 	if code, raw = post("agent", "weekly", false); code != http.StatusOK || !strings.Contains(raw, `"slug":"weekly"`) {
 		t.Fatalf("import from source: %d %s", code, raw)
 	}
-	lib := filepath.Join(skill.OwnerDir(root, "u1"), "weekly", "SKILL.md")
+	lib := filepath.Join(skill.Dir(root), "weekly", "SKILL.md")
 	if got, _ := os.ReadFile(lib); !strings.Contains(string(got), "BODY1") {
 		t.Fatalf("not copied: %s", got)
 	}
@@ -433,7 +434,7 @@ func TestSkillSourcesListAndImport(t *testing.T) {
 	if code, _ = post("agent", "missing", false); code != http.StatusNotFound {
 		t.Fatalf("missing skill: %d", code)
 	}
-	if _, err := os.Stat(filepath.Join(skill.OwnerDir(root, "u1"), "outside")); err == nil {
+	if _, err := os.Stat(filepath.Join(skill.Dir(root), "outside")); err == nil {
 		t.Fatalf("traversal imported %s", secret)
 	}
 }
@@ -486,5 +487,65 @@ func TestSkillTitleAPIAndImportDefaults(t *testing.T) {
 				t.Fatalf("%s: %s", verb, body)
 			}
 		}
+	}
+}
+
+func TestFlatSkillLibraryBoundsAndGroups(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	if err := skill.Write(root, "ship", "test", "body"); err != nil {
+		t.Fatal(err)
+	}
+	group, err := (&peer.Bus{Root: root}).CreateGroupForOwner("u1", "test", []string{"ada", "bob"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/groups/" + group.ID + "/skills", "/api/bots/" + group.ID + "/skills"} {
+		if code, raw := call(http.MethodGet, path, "", true); code != http.StatusNotFound || strings.Contains(raw, `"slug":"ship"`) {
+			t.Fatalf("group library: %d %s", code, raw)
+		}
+	}
+	if code, raw := call(http.MethodGet, "/api/skills/ship", "", true); code != http.StatusOK || strings.Contains(raw, group.ID) || strings.Contains(raw, "eve") {
+		t.Fatalf("unauthorized bot or group metadata: %d %s", code, raw)
+	}
+	// Existing request and local-source caps remain in force on the flat path.
+	payload, _ := json.Marshal(map[string]string{"folder": "huge", "content": "---\nname: huge\ndescription: test\n---\n" + strings.Repeat("x", 1<<20)})
+	if code, _ := call(http.MethodPost, "/api/skills/import", string(payload), true); code != http.StatusBadRequest {
+		t.Fatalf("oversized request: %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(skill.Dir(root), "huge")); !os.IsNotExist(err) {
+		t.Fatal("oversized import wrote a skill")
+	}
+	// Expanded migration ids must not admit paths or hidden entries.
+	for _, id := range []string{".hidden", "../ship", "ship__from_../../outside", strings.Repeat("a", 241)} {
+		if skill.ValidSlug(id) {
+			t.Fatalf("accepted unsafe id %q", id)
+		}
+	}
+}
+
+func TestWebRegistrationMigratesLegacySkills(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "skills", "u1", "legacy", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: legacy\ndescription: old\n---\nbody"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{Root: root, Owner: "u2"}
+	token, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := muxOf(s)
+	r := httptest.NewRequest(http.MethodGet, "/api/skills", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"slug":"legacy"`) {
+		t.Fatalf("migration/list: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "skills", "legacy", "SKILL.md")); err != nil {
+		t.Fatal(err)
 	}
 }

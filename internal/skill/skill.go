@@ -1,4 +1,4 @@
-// Package skill loads one owner's skills from ~/.xbot/skills/<owner>/<slug>/SKILL.md.
+// Package skill loads local skills from ~/.xbot/skills/<slug>/SKILL.md.
 // The stable prefix lists one line each. The body is read on demand.
 package skill
 
@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
@@ -29,7 +28,7 @@ const Precedence = "User skills override this bot's default habits."
 const ReadWith = "Call read_skill with id set to the skill id on each line."
 
 var (
-	slugRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+	slugRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}(?:__from_[A-Za-z0-9][A-Za-z0-9_-]{0,63})*(?:__[0-9]+)?$`)
 	ownerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 )
 
@@ -41,20 +40,15 @@ type Info struct {
 	Description string
 }
 
-// Dir is the skills root. Each owner has a subdirectory.
+// Dir is the local library shared by bots in this data root.
 func Dir(root string) string {
 	return filepath.Join(root, "skills")
 }
 
-// OwnerDir is one owner's library, skills/<owner>.
-func OwnerDir(root, owner string) string {
-	return filepath.Join(Dir(root), owner)
-}
-
 // ValidSlug reports whether slug can be a skill directory name.
-func ValidSlug(slug string) bool { return slugRe.MatchString(slug) }
+func ValidSlug(slug string) bool { return len(slug) <= 240 && slugRe.MatchString(slug) }
 
-// ValidOwner reports whether owner can be a library directory name.
+// ValidOwner reports whether owner can be a legacy library directory name.
 func ValidOwner(owner string) bool { return ownerRe.MatchString(owner) }
 
 // List returns descriptions sorted by slug. dir is the skills directory.
@@ -69,7 +63,7 @@ func List(dir string) ([]Info, error) {
 	}
 	var out []Info
 	for _, ent := range entries {
-		if !slugRe.MatchString(ent.Name()) {
+		if !ValidSlug(ent.Name()) {
 			continue
 		}
 		path := filepath.Join(dir, ent.Name())
@@ -175,7 +169,7 @@ func oneLine(s string) string {
 // Read returns the skill body. dir is the skills directory.
 // The description line is not repeated when it was split out; the markdown below it is the body.
 func Read(dir, slug string) (string, error) {
-	if !slugRe.MatchString(slug) {
+	if !ValidSlug(slug) {
 		return "", fmt.Errorf("skill: bad slug %q", slug)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, slug, "SKILL.md"))
@@ -229,10 +223,10 @@ func parse(raw string) (name, title, desc, body string) {
 	return "", "", "", strings.TrimSpace(raw)
 }
 
-// Import copies a skill into the owner's library.
+// Import copies a skill into the local library.
 // src may be a skill directory, a SKILL.md file, or a symlink to either.
 // The copy is a regular file. A valid directory name becomes the slug; otherwise the frontmatter name is used.
-func Import(root, owner, src string) (string, error) {
+func Import(root, src string) (string, error) {
 	st, err := os.Stat(src)
 	if err != nil {
 		return "", err
@@ -247,7 +241,7 @@ func Import(root, owner, src string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	res, err := ImportData(root, owner, dir, raw, true)
+	res, err := ImportData(root, dir, raw, true)
 	return res.Slug, err
 }
 
@@ -266,17 +260,9 @@ type Imported struct {
 	Name string
 }
 
-// importMu makes the exists-check and the write one step, so two imports of the same name
-// cannot both pass the check. The write itself stays atomic for readers.
-var importMu sync.Mutex
-
 // ImportData is Import for a SKILL.md already in memory, with dir the name of the folder it came from.
 // Without overwrite an existing skill is left alone and ErrExists comes back with its name filled in.
-func ImportData(root, owner, dir string, raw []byte, overwrite bool) (Imported, error) {
-	owner = strings.TrimSpace(owner)
-	if !ValidOwner(owner) {
-		return Imported{}, fmt.Errorf("skill: bad owner")
-	}
+func ImportData(root, dir string, raw []byte, overwrite bool) (Imported, error) {
 	name, _, desc, _ := parse(string(raw))
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(desc) == "" || !strings.HasPrefix(strings.TrimSpace(string(raw)), "---") {
 		return Imported{}, ErrNoMeta
@@ -289,9 +275,12 @@ func ImportData(root, owner, dir string, raw []byte, overwrite bool) (Imported, 
 		return Imported{}, fmt.Errorf("%w %q", ErrBadSlug, slug)
 	}
 	res := Imported{Slug: slug, Name: strings.TrimSpace(name)}
-	dest := filepath.Join(OwnerDir(root, owner), slug, "SKILL.md")
-	importMu.Lock()
-	defer importMu.Unlock()
+	dest := filepath.Join(Dir(root), slug, "SKILL.md")
+	lock, err := fsutil.Lock(filepath.Join(Dir(root), ".write.lock"))
+	if err != nil {
+		return Imported{}, err
+	}
+	defer lock.Release()
 	if !overwrite {
 		if _, err := os.Stat(dest); err == nil {
 			return res, ErrExists
@@ -307,12 +296,8 @@ func ImportData(root, owner, dir string, raw []byte, overwrite bool) (Imported, 
 
 // Write creates or replaces one skill. The file mode is 0600.
 // title optionally supplies a short human-readable label; name stays the slug.
-func Write(root, owner, slug, description, body string, title ...string) error {
-	owner = strings.TrimSpace(owner)
+func Write(root, slug, description, body string, title ...string) error {
 	slug = strings.TrimSpace(slug)
-	if !ValidOwner(owner) {
-		return fmt.Errorf("skill: bad owner")
-	}
 	if !ValidSlug(slug) {
 		return fmt.Errorf("skill: bad slug %q", slug)
 	}
@@ -335,13 +320,13 @@ func Write(root, owner, slug, description, body string, title ...string) error {
 			b.WriteByte('\n')
 		}
 	}
-	dest := filepath.Join(OwnerDir(root, owner), slug, "SKILL.md")
+	dest := filepath.Join(Dir(root), slug, "SKILL.md")
 	return fsutil.WriteAtomic(dest, []byte(b.String()), 0600)
 }
 
 // Open reads one skill's metadata and markdown body.
 func Open(dir, slug string) (Info, string, error) {
-	if !slugRe.MatchString(slug) {
+	if !ValidSlug(slug) {
 		return Info{}, "", fmt.Errorf("skill: bad slug %q", slug)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, slug, "SKILL.md"))

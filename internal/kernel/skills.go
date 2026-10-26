@@ -9,7 +9,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
-	"xbot/internal/peer"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
 )
@@ -18,7 +17,7 @@ type skillTool struct{ k *Kernel }
 
 func (skillTool) Name() string { return "read_skill" }
 func (skillTool) Description() string {
-	return "Read a skill from this bot owner's local library at ~/.xbot/skills/<owner>/. Pass id, the skill id from the Skills list. The text is for this turn only."
+	return "Read a skill from the local skill library at ~/.xbot/skills/. Pass id, the skill id from the Skills list. The text is for this turn only."
 }
 func (skillTool) Parameters() any {
 	return schema(map[string]any{
@@ -53,13 +52,13 @@ type writeSkillTool struct{ k *Kernel }
 
 func (writeSkillTool) Name() string { return "write_skill" }
 func (writeSkillTool) Description() string {
-	return "Create or replace a skill directly in this bot owner's local library at ~/.xbot/skills/<owner>/<slug>/SKILL.md. Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all owner bots."
+	return "Create or replace a skill directly in the local skill library at ~/.xbot/skills/<slug>/SKILL.md. Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all local bots."
 }
 func (writeSkillTool) Parameters() any {
 	return schema(map[string]any{
 		"slug":        stringProp("Skill slug, lowercase letters, digits, and hyphens"),
 		"title":       stringProp("Optional short human-readable title, e.g. 记一下 (not a long description)"),
-		"scope":       stringProp("Optional: self for this bot only, or a local bot name (case-insensitive). Omitted/empty means all owner bots. Only set from the current request, never guess a restriction."),
+		"scope":       stringProp("Optional: self for this bot only, or a local bot name (case-insensitive). Omitted/empty means all local bots. Only set from the current request, never guess a restriction."),
 		"description": stringProp("One-line description shown in the prompt"),
 		"body":        stringProp("Markdown instructions, without the YAML frontmatter"),
 	}, []string{"slug", "description", "body"})
@@ -72,8 +71,8 @@ func (t writeSkillTool) Confirm(args json.RawMessage) (bool, string, error) {
 	if t.k == nil || t.k.Bot == nil {
 		return false, "", fmt.Errorf("skill: no bot")
 	}
-	if _, err := t.k.skillOwner(); err != nil {
-		return false, "", err
+	if t.k.SkillsDir == "" {
+		return false, "", fmt.Errorf("skill: skills directory is not configured")
 	}
 	verb := "write"
 	if _, info, err := t.k.openSkill(in.Slug); err == nil && info.Slug != "" {
@@ -94,25 +93,21 @@ func (t writeSkillTool) Run(_ context.Context, args json.RawMessage) (string, er
 	if err != nil {
 		return "", err
 	}
-	owner, err := t.k.skillOwner()
-	if err != nil {
-		return "", err
-	}
-	if t.k.Bot == nil || t.k.Bot.Root == "" {
+	if t.k == nil || t.k.Bot == nil || t.k.Bot.Root == "" {
 		return "", fmt.Errorf("skill: no bot")
 	}
-	bots, target, err := t.k.skillScope(owner, in.Scope)
+	bots, target, err := t.k.skillScope(in.Scope)
 	if err != nil {
 		return "", err
 	}
 	// Serialize installs in this library, including across local processes: the
 	// winning file and its per-bot defaults must come from the same write.
-	lock, err := fsutil.Lock(filepath.Join(skill.OwnerDir(t.k.Bot.Root, owner), ".write.lock"))
+	lock, err := fsutil.Lock(filepath.Join(skill.Dir(t.k.Bot.Root), ".write.lock"))
 	if err != nil {
 		return "", err
 	}
 	defer lock.Release()
-	if err := skill.Write(t.k.Bot.Root, owner, in.Slug, in.Description, in.Body, in.Title); err != nil {
+	if err := skill.Write(t.k.Bot.Root, in.Slug, in.Description, in.Body, in.Title); err != nil {
 		return "", err
 	}
 	// Apply only at write time; subsequent manual switches remain authoritative.
@@ -154,10 +149,10 @@ func decodeWriteSkill(args json.RawMessage) (writeSkillInput, error) {
 	return in, nil
 }
 
-// Resolve only explicit scope against the current owner's usable local bots.
+// Resolve only explicit scope against the current data root's local bots.
 // Invalid/ambiguous targets fail before writing the skill or any switch.
-func (k *Kernel) skillScope(owner, scope string) ([]*bot.Bot, string, error) {
-	cfgs, err := peer.OwnerBots(k.Bot.Root, owner)
+func (k *Kernel) skillScope(scope string) ([]*bot.Bot, string, error) {
+	cfgs, err := bot.List(k.Bot.Root)
 	if err != nil {
 		return nil, "", err
 	}
@@ -167,9 +162,6 @@ func (k *Kernel) skillScope(owner, scope string) ([]*bot.Bot, string, error) {
 	var bots []*bot.Bot
 	target := ""
 	for _, cfg := range cfgs {
-		if len(cfg.Owners) != 1 {
-			continue
-		}
 		b, err := bot.Load(k.Bot.Root, cfg.Name)
 		if err != nil {
 			return nil, "", err
@@ -183,17 +175,9 @@ func (k *Kernel) skillScope(owner, scope string) ([]*bot.Bot, string, error) {
 		}
 	}
 	if scope != "" && target == "" {
-		return nil, "", fmt.Errorf("skill: scope must name one of this owner's local bots")
+		return nil, "", fmt.Errorf("skill: scope must name one of the local bots")
 	}
 	return bots, target, nil
-}
-
-func (k *Kernel) skillOwner() (string, error) {
-	owner, ok := k.soleOwner()
-	if !ok {
-		return "", fmt.Errorf("skill: no owner library")
-	}
-	return owner, nil
 }
 
 func (k *Kernel) openSkill(id string) (string, skill.Info, error) {
@@ -201,14 +185,13 @@ func (k *Kernel) openSkill(id string) (string, skill.Info, error) {
 	if id == "" {
 		return "", skill.Info{}, fmt.Errorf("skill: id is required")
 	}
-	owner, err := k.skillOwner()
-	if err != nil {
+	if k == nil || k.Bot == nil {
 		return "", skill.Info{}, fmt.Errorf("skill: %s not found", id)
 	}
 	if k.SkillsDir == "" {
 		return "", skill.Info{}, fmt.Errorf("skill: skills directory is not configured")
 	}
-	dir := filepath.Join(k.SkillsDir, owner)
+	dir := k.SkillsDir
 	infos, err := skill.List(dir)
 	if err != nil {
 		return "", skill.Info{}, err

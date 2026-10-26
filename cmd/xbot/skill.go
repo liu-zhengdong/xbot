@@ -13,8 +13,7 @@ func cmdSkill(root string, args []string) error {
 	if len(args) == 0 {
 		return errUsage
 	}
-	owner, err := terminalOwner(root)
-	if err != nil {
+	if err := skill.Migrate(root); err != nil {
 		return err
 	}
 	switch args[0] {
@@ -22,12 +21,12 @@ func cmdSkill(root string, args []string) error {
 		if len(args) != 1 {
 			return errUsage
 		}
-		return cmdSkillList(root, owner)
+		return cmdSkillList(root)
 	case "import":
 		if len(args) != 2 {
 			return errUsage
 		}
-		slug, err := skill.Import(root, owner, args[1])
+		slug, err := skill.Import(root, args[1])
 		if err != nil {
 			return err
 		}
@@ -37,24 +36,24 @@ func cmdSkill(root string, args []string) error {
 		if len(args) != 2 {
 			return errUsage
 		}
-		return cmdSkillShow(root, owner, args[1])
+		return cmdSkillShow(root, args[1])
 	case "disable":
 		if len(args) != 3 {
 			return errUsage
 		}
-		return cmdSkillSet(root, owner, args[1], args[2], true)
+		return cmdSkillSet(root, args[1], args[2], true)
 	case "enable":
 		if len(args) != 3 {
 			return errUsage
 		}
-		return cmdSkillSet(root, owner, args[1], args[2], false)
+		return cmdSkillSet(root, args[1], args[2], false)
 	default:
 		return errUsage
 	}
 }
 
-func cmdSkillList(root, owner string) error {
-	infos, err := skill.List(skill.OwnerDir(root, owner))
+func cmdSkillList(root string) error {
+	infos, err := skill.List(skill.Dir(root))
 	if err != nil {
 		return err
 	}
@@ -64,8 +63,11 @@ func cmdSkillList(root, owner string) error {
 	return nil
 }
 
-func cmdSkillShow(root, owner, slug string) error {
-	path := filepath.Join(skill.OwnerDir(root, owner), slug, "SKILL.md")
+func cmdSkillShow(root, slug string) error {
+	if !skill.ValidSlug(slug) {
+		return fmt.Errorf("skill: bad slug %q", slug)
+	}
+	path := filepath.Join(skill.Dir(root), slug, "SKILL.md")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -77,7 +79,7 @@ func cmdSkillShow(root, owner, slug string) error {
 	return nil
 }
 
-func cmdSkillSet(root, owner, name, slug string, disable bool) error {
+func cmdSkillSet(root, name, slug string, disable bool) error {
 	if !skill.ValidSlug(slug) {
 		return fmt.Errorf("skill: bad slug %q", slug)
 	}
@@ -85,10 +87,14 @@ func cmdSkillSet(root, owner, name, slug string, disable bool) error {
 	if err != nil {
 		return err
 	}
+	owner, err := terminalOwner(root)
+	if err != nil {
+		return err
+	}
 	if !botOwned(b, owner) {
 		return bot.ErrNotFound
 	}
-	if _, _, err := skill.Open(skill.OwnerDir(root, owner), slug); err != nil {
+	if _, _, err := skill.Open(skill.Dir(root), slug); err != nil {
 		return err
 	}
 	if disable {

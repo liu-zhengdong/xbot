@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-26 @ a0f12be + update_profile 当面刷新；技能开关实时读取；上下文批 C 人设边界
+verified: 2026-10-27 @ 530d20f（skills-flat-no-owner：本机技能库扁平化）
 ---
 # 多 Bot
 
@@ -44,7 +44,7 @@ verified: 2026-10-26 @ a0f12be + update_profile 当面刷新；技能开关实�
 | 职责/人设 | 已选 persona-cards/<owner>/<id>/card.md 正文，否则 bots/<name>/persona.md；主人定边界，Bot 沿既有修改入口改，少变 | 进入 S0 人设块；人设卡/创建入口。卡是引用，不另抄进记忆 |
 | 工作档案 | bots/<name>/memory/memory.md 和 log/YYYY-MM.md；Bot 对话中更新，常变 | 常驻事实与近期日志快照、后续环境差异；详情记忆。只记学到的现状、规则、决定，不复制或覆盖职责，无第三文件 |
 | 说话风格 | 有效人设正文；旧 style 已迁入 Bot 记忆 | 随所在块，不新增风格字段 |
-| 技能 | skills/<owner>/<slug>/SKILL.md；主人导入，Bot 可起草；config.disabled_skills 按 Bot 停用 | S2 目录，read_skill 按需正文；技能页 |
+| 技能 | skills/<slug>/SKILL.md；主人导入，Bot 可起草；config.disabled_skills 按 Bot 停用 | S2 目录，read_skill 按需正文；技能页 |
 | 连接器/工具 | config.links、MCP 配置/目录；主人授权 | Links 的 S1 及已装目录的 S2；工具 schema 按需，连接器页 |
 | 运行档位 | config.role = chat/dev；主人，少变 | 内核预算使用，不注入人设；CLI profile set --role 帮助称运行档位 |
 | 时区 | config.timezone；主人或 update_profile，少变 | 当前时间只在环境流；不拼人设 |

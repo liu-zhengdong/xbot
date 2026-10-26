@@ -339,11 +339,11 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 元数据可选 `title` 是人读短名，新写技能的 `name` 保持 slug；展示优先 title，再 name/slug，description 只作说明。
 
-还是 `skills` 这条 Link。库按登录的 owner 分开，文件在数据根的 `skills/<owner>/<slug>/SKILL.md`。导入用 `xbot skill import`，设置页用下面的库级接口。
+还是 `skills` 这条 Link。库由本数据根的本机 Bot 共享（含无 owner 和多 owner），文件在数据根的 `skills/<slug>/SKILL.md`。导入用 `xbot skill import`，设置页用下面的库级接口。
 
 `GET /api/skills/sources/{id}`（`id` 为 `agent`｜`codex`｜`claude`，其余 404）列出本机该来源技能库的一级技能目录：`{"source","skills":[{"id","name","title","description"}]}`，只读，库不存在就是空；不返回路径。`POST /api/skills/import` 也接受 `{"source","id","overwrite"}`：`id` 必须是合法 slug（拒绝 `..`、斜杠和大写），服务端读该来源下 `<id>/SKILL.md`（最多 256 KiB）再走同一条导入，同名 409 与覆盖语义同上。来源根默认在当前用户 home 下（`.agents/skills`、`.codex/skills`、`.claude/skills`）。
 
-`GET /api/bots/{name}/skills` 要登录，而且这个人是该 Bot 的 owner。不是 owner 或 Bot 不存在是 404 `{"error":"not found"}`。未登录 401。返回这个 owner 的技能，每条带上这个 Bot 有没有停用它。没有技能时 `skills` 是空数组。停用的仍在列表里，这样界面可以再打开。
+`GET /api/bots/{name}/skills` 要登录，而且这个人是该 Bot 的 owner。不是 owner 或 Bot 不存在是 404 `{"error":"not found"}`。未登录 401。返回本机技能库的技能，每条带上这个 Bot 有没有停用它。没有技能时 `skills` 是空数组。停用的仍在列表里，这样界面可以再打开。
 
 ```json
 {"skills":[{
@@ -354,27 +354,27 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 }]}
 ```
 
-`GET /api/bots/{name}/skills/{slug}` 读这一条。成功 200，有 `slug`、`name`、`title`、`description`、`body`。`body` 是 frontmatter 下面的 markdown，不含密钥以外的限制；这里没有密钥。这个 owner 的库里没有这个 slug 是 404 `{"error":"not found"}`。停用了也能读，读的是主人，不是模型。
+`GET /api/bots/{name}/skills/{slug}` 读这一条。成功 200，有 `slug`、`name`、`title`、`description`、`body`。`body` 是 frontmatter 下面的 markdown，不含密钥以外的限制；这里没有密钥。本机技能库里没有这个 slug 是 404 `{"error":"not found"}`。停用了也能读，读的是主人，不是模型。
 
 `POST /api/bots/{name}/skills/{slug}/disable` 无 body。成功 200 `{"slug":"ship","disabled":true}`。已经停用再停一次仍是 200。库里没有这个 slug 是 404。
 
 `POST /api/bots/{name}/skills/{slug}/enable` 无 body。成功 200 `{"slug":"ship","disabled":false}`。本来就开着再开一次仍是 200。没有这个 slug 是 404。
 
-设置页「技能」按整个库工作，只有开关按 Bot。三条库级接口都要登录，库是登录 owner 的那一份。
+设置页「技能」按整个库工作，只有开关按 Bot。三条库级接口都要登录，库是本数据根共享的那一份。
 
 `GET /api/skills` 返回 `{"skills":[{"slug","name","title","description"}]}`，按 slug 排序，没有时是空数组，不带正文，不带停用状态。
 
-`GET /api/skills/{slug}` 返回 `slug`、`name`、`title`、`description` 和 `bots:[{"name","enabled"}]`：这个 owner 名下每个 Bot 是否开着这条技能（默认开；顺序同 Bot 列表）。多个主人共用的 Bot 运行时不加载个人技能库，所以返回 `{"name","enabled":false,"shared":true}`，页面只写明「暂不使用技能库」、不给开关。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
+`GET /api/skills/{slug}` 返回 `slug`、`name`、`title`、`description` 和 `bots:[{"name","enabled"}]`：这个 owner 名下每个 Bot 是否开着这条技能（默认开；顺序同 Bot 列表）。多主人 Bot 同样返回真实启用状态和开关，不再返回 `shared`。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
 
 `POST /api/skills/import` body `{"folder","content","overwrite"}`：`content` 是浏览器从用户选的文件夹里读出的 SKILL.md 文本（最多 1 MiB 的请求），`folder` 只是文件夹名，是合法 slug 就当技能目录名，否则取头里的 `name`，仍不合法就 400；请求里不出现本机路径，服务端也不据此读任何路径。成功 200 `{"slug","name"}`。库里已有同名且 `overwrite` 不是 true：409 `{"error":"库里已有同名技能，要覆盖吗？","conflict":true,"name":...}`，库不变。头里缺 `name` 或 `description` 是 400，文件夹名不能用也是 400，错误文字都是给用户看的中文。检查与写入在同一把锁里，并发导入同名只有一个成功，其余得到 409；覆盖不动各 Bot 的开关。
 
-停用名单在这个 Bot 的配置里，不在技能文件里。同一个 owner 的另一个 Bot 不受影响。别的 owner 的 Bot 走 `owned` 的 404，列不到这库。
+停用名单在这个 Bot 的配置里，不在技能文件里。其他 Bot 不受影响。本机 Bot 运行时均可加载这份库；管理其它 Bot 的开关仍受 `owned` 保护，非 owner 请求该 Bot 的接口返回 404，不泄露其信息。聊天群不挂技能库。
 
-命令行：`xbot skill list`，`xbot skill import <path>`，`xbot skill show <slug>`，`xbot skill disable <bot> <slug>`，`xbot skill enable <bot> <slug>`。list、import、show 用当前终端用户。disable 和 enable 还要求这个 Bot 的 owner 里有这个人，否则是找不到。
+命令行：`xbot skill list`，`xbot skill import <path>`，`xbot skill show <slug>`，`xbot skill disable <bot> <slug>`，`xbot skill enable <bot> <slug>`。list、import、show 用当前数据根，不依赖终端 owner。disable 和 enable 还要求这个 Bot 的 owner 里有这个人，否则是找不到。
 
 ## 人设卡
 
-主人一份卡库，全部接口要登录，库是登录 owner 的那一份；`id` 给页面用来编辑和选用，界面不展示。
+主人一份卡库，全部接口要登录，库是本数据根共享的那一份；`id` 给页面用来编辑和选用，界面不展示。
 
 `GET /api/persona-cards` 返回 `{"cards":[{"id","name","preview","search","updated"}]}`，最近改过的在前。`preview` 是正文第一行非空文字，`search` 是正文前 1 KiB，供前端输入时即时过滤，不带全文。带 `?q=` 时只返回卡名或完整正文含这段文字（不分大小写，最多取 200 字）的卡，字段相同；页面以它为准。`GET /api/persona-cards/{id}` 返回 `id`、`name`、`body`、`updated` 和 `bots`（在用的 Bot 数）；id 不合法或没有这张是 404 `{"error":"没有找到这张人设卡"}`。
 

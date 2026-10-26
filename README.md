@@ -123,14 +123,14 @@ DeepSeek 的模型默认会先思考；XBot 对模型名含 deepseek 的请求�
 ~/.xbot/bots/<name>/agents/<id>/{transcript.jsonl,meta.json}
 ~/.xbot/work/<name>/
 ~/.xbot/work/shared/
-~/.xbot/skills/<owner>/<slug>/SKILL.md
+~/.xbot/skills/<slug>/SKILL.md
 ```
 
 Markdown 是给人改的。索引比 markdown 旧时会按 markdown 重建。
 
-`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`、`web`、`peers`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。每个 owner 有自己的技能库。恰好一个 owner 的 Bot 默认看见这个人的技能，一行一个名字和说明；正文用 `read_skill` 读，只在当前这一轮。这个 Bot 可以单独停用某一条。没有技能文件时，前缀和以前一样。
+`xbot new` 默认授予 `terminal`、`tools`、`timer`、`memory`、`persona`、`context`、`agents`、`skills`、`webhook`、`watch`、`web`、`peers`，并把当前终端用户记成 owner。shell 和相对路径的文件工具以 `~/.xbot/work/<bot>/` 为工作目录，共享目录在 `XBOT_SHARED`。每个数据根共用一份本机技能库。有技能授权的本机 Bot（含无 owner、多 owner）默认看见同一份技能，一行一个名字和说明；正文用 `read_skill` 读，只在当前这一轮。这个 Bot 可以单独停用某一条。没有技能文件时，前缀和以前一样。
 
-`xbot skill import <path>` 把一份 `SKILL.md` 拷进当前用户的库。`path` 可以是技能目录或文件，也可以是符号链接。`xbot skill list` 和 `xbot skill show <slug>` 看这个库。`xbot skill disable <bot> <slug>` 和 `xbot skill enable <bot> <slug>` 只改这个 Bot 的停用名单。
+`xbot skill import <path>` 把一份 `SKILL.md` 拷进本机技能库。`path` 可以是技能目录或文件，也可以是符号链接。`xbot skill list` 和 `xbot skill show <slug>` 看这个库。`xbot skill disable <bot> <slug>` 和 `xbot skill enable <bot> <slug>` 只改这个 Bot 的停用名单。
 
 ## 架构
 

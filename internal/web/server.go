@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -34,6 +35,7 @@ import (
 	"xbot/internal/provider"
 	"xbot/internal/providerauth"
 	"xbot/internal/remote"
+	"xbot/internal/skill"
 	"xbot/internal/upgrade"
 	"xbot/internal/version"
 	"xbot/internal/work"
@@ -131,6 +133,9 @@ type approvalDecision struct {
 
 // Register mounts the UI and /api routes.
 func (s *Server) Register(mux *http.ServeMux) {
+	if err := skill.Migrate(s.Root); err != nil {
+		log.Printf("skill migration: %v", err)
+	}
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			writeErr(w, http.StatusNotFound, "not found")

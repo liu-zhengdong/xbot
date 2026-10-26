@@ -70,6 +70,9 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	// Migrate always returns nil. A bad legacy directory is logged and left in
 	// place; it must not stop the kernel from opening.
 	_ = memory.Migrate(root)
+	if err := skill.Migrate(root); err != nil {
+		log.Printf("skill migration: %v", err)
+	}
 	if !b.Grants(link.NameTerminal) && pr != nil {
 		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
 	}

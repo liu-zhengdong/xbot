@@ -16,7 +16,7 @@ import (
 	"xbot/internal/skill"
 )
 
-func TestSkillOwnerIsolationAndDisable(t *testing.T) {
+func TestSkillLocalLibraryAndDisable(t *testing.T) {
 	ada := testBot(t, link.NameTerminal, link.NameSkills)
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
@@ -42,13 +42,13 @@ func TestSkillOwnerIsolationAndDisable(t *testing.T) {
 	if err := bob.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(ada.Root, "u1", "ship", "Pack a release", "SECRET_BODY"); err != nil {
+	if err := skill.Write(ada.Root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(ada.Root, "u1", "watch", "Watch files", "OTHER_BODY"); err != nil {
+	if err := skill.Write(ada.Root, "watch", "Watch files", "OTHER_BODY"); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(ada.Root, "u2", "eveonly", "Eve skill", "EVE_BODY"); err != nil {
+	if err := skill.Write(ada.Root, "eveonly", "Eve skill", "EVE_BODY"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,16 +75,20 @@ func TestSkillOwnerIsolationAndDisable(t *testing.T) {
 		t.Fatal(two)
 	}
 
-	eveText := systemOf(t, skillKernel(eve))
-	if strings.Contains(eveText, "ship") || strings.Contains(eveText, "SECRET_BODY") || strings.Contains(eveText, "watch") {
-		t.Fatal(eveText)
+	for _, b := range []*bot.Bot{eve, mix, bob} {
+		text := systemOf(t, skillKernel(b))
+		if !strings.Contains(text, "- ship: ") || !strings.Contains(text, "- watch: ") || !strings.Contains(text, "- eveonly: ") || strings.Contains(text, "SECRET_BODY") {
+			t.Fatal(text)
+		}
 	}
-	if !strings.Contains(eveText, "- eveonly: Eve skill") || strings.Contains(eveText, "EVE_BODY") {
-		t.Fatal(eveText)
+	if err := bob.SetOwners(nil); err != nil {
+		t.Fatal(err)
 	}
-	mixText := systemOf(t, skillKernel(mix))
-	if strings.Contains(mixText, "## Skills") || strings.Contains(mixText, "ship") || strings.Contains(mixText, "eveonly") {
-		t.Fatal(mixText)
+	if text := systemOf(t, skillKernel(bob)); !strings.Contains(text, "- ship: ") {
+		t.Fatal(text)
+	}
+	if _, _, err := skillKernel(bob).openSkill("ship"); err != nil {
+		t.Fatal(err)
 	}
 
 	if err := ada.DisableSkill("watch"); err != nil {
@@ -111,7 +115,7 @@ func TestSkillReadDoesNotPersist(t *testing.T) {
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(ada.Root, "u1", "ship", "Pack a release", "SECRET_BODY"); err != nil {
+	if err := skill.Write(ada.Root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
@@ -196,8 +200,8 @@ func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
 	if err := eve.SetOwners([]string{"u2"}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(systemOf(t, skillKernel(eve)), "SECRET_BODY") || strings.Contains(systemOf(t, skillKernel(eve)), "ship:") {
-		t.Fatal("other owner saw the new skill")
+	if strings.Contains(systemOf(t, skillKernel(eve)), "SECRET_BODY") || !strings.Contains(systemOf(t, skillKernel(eve)), "ship:") {
+		t.Fatal("local bot should see the new skill summary only")
 	}
 }
 
@@ -206,7 +210,7 @@ func TestReadSkillWithoutLoad(t *testing.T) {
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := skill.Write(ada.Root, "u1", "ship", "Pack a release", "SECRET_BODY"); err != nil {
+	if err := skill.Write(ada.Root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
@@ -274,25 +278,25 @@ func TestDispatchMainLineWritesLoadedSkill(t *testing.T) {
 			t.Errorf("loaded %s missing from the main line with Dispatch enabled", name)
 		}
 	}
-	info, body, err := skill.Open(skill.OwnerDir(ada.Root, "u1"), "ship")
+	info, body, err := skill.Open(skill.Dir(ada.Root), "ship")
 	if err != nil || info.Description != "Pack a release" || body != "Run the release checks." {
-		t.Fatalf("owner library write: info=%+v body=%q err=%v", info, body, err)
+		t.Fatalf("local library write: info=%+v body=%q err=%v", info, body, err)
 	}
 	if !strings.Contains(messagesText(p.reqs[3].Messages), "Run the release checks.") {
 		t.Fatal("main line could not read back the installed skill")
 	}
 }
 
-func TestSkillDescriptionsNameLocalOwnerLibrary(t *testing.T) {
+func TestSkillDescriptionsNameLocalLibrary(t *testing.T) {
 	for name, text := range map[string]string{
 		"read_skill":  (skillTool{}).Description(),
 		"write_skill": (writeSkillTool{}).Description(),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if !strings.Contains(text, "~/.xbot/skills/<owner>/") {
-				t.Errorf("missing local owner library path: %s", text)
+			if !strings.Contains(text, "~/.xbot/skills/") {
+				t.Errorf("missing local library path: %s", text)
 			}
-			for _, misleading := range []string{"shared", "magpie", "approve", "approval"} {
+			for _, misleading := range []string{"<owner>", "magpie", "approve", "approval"} {
 				if strings.Contains(strings.ToLower(text), misleading) {
 					t.Errorf("description contradicts local library / Normal policy: %s", text)
 				}
@@ -310,12 +314,12 @@ func skillKernel(b *bot.Bot) *Kernel {
 }
 
 func skillPath(b *bot.Bot, slug string) string {
-	return skill.OwnerDir(b.Root, b.Config().Owners[0]) + "/" + slug + "/SKILL.md"
+	return skill.Dir(b.Root) + "/" + slug + "/SKILL.md"
 }
 
 func TestSkillWriteTitleAndScope(t *testing.T) {
 	for _, tc := range []struct{ name, scope, target string }{
-		{"self", "self", "ada"}, {"named", "BoB", "bob"}, {"current-name", "ADA", "ada"}, {"omitted", "", ""}, {"blank", "  ", ""},
+		{"other-owner", "eve", "eve"}, {"no-owner", "orphan", "orphan"}, {"shared", "mix", "mix"}, {"self", "self", "ada"}, {"named", "BoB", "bob"}, {"current-name", "ADA", "ada"}, {"omitted", "", ""}, {"blank", "  ", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ada := testBot(t, link.NameTerminal, link.NameSkills)
@@ -323,12 +327,15 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			bots := map[string]*bot.Bot{"ada": ada}
-			for _, name := range []string{"bob", "eve", "mix"} {
+			for _, name := range []string{"bob", "eve", "mix", "orphan"} {
 				b, err := bot.Create(ada.Root, name, "persona", []string{link.NameSkills})
 				if err != nil {
 					t.Fatal(err)
 				}
 				owners := []string{"u1"}
+				if name == "orphan" {
+					owners = nil
+				}
 				if name == "eve" {
 					owners = []string{"u2"}
 				}
@@ -357,11 +364,11 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "只给你用", time.Unix(1, 0))); err != nil {
 				t.Fatal(err)
 			}
-			info, body, err := skill.Open(skill.OwnerDir(ada.Root, "u1"), "note-capture")
+			info, body, err := skill.Open(skill.Dir(ada.Root), "note-capture")
 			if err != nil || info.Title != "记一下" || info.Name != "note-capture" || body != "Capture the note." {
 				t.Errorf("%+v %q %v", info, body, err)
 			}
-			for _, name := range []string{"ada", "bob"} {
+			for name := range bots {
 				want := tc.target == "" || name == tc.target
 				b, err := bot.Load(ada.Root, name)
 				if err != nil {
@@ -377,15 +384,6 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 				infos, err := running[name].skillInfos()
 				if err != nil || (len(infos) > 0) != want {
 					t.Fatalf("prompt %s: %+v %v", name, infos, err)
-				}
-			}
-			for _, name := range []string{"eve", "mix"} {
-				b, _ := bot.Load(ada.Root, name)
-				if len(b.Config().DisabledSkills) != 0 {
-					t.Fatalf("changed unrelated %s", name)
-				}
-				if _, _, err := running[name].openSkill("note-capture"); err == nil {
-					t.Fatalf("%s read personal library", name)
 				}
 			}
 			// Manual changes after install override the defaults, even in already-running kernels.
@@ -420,7 +418,7 @@ func TestSkillWriteRejectsInvalidScopeBeforeWrite(t *testing.T) {
 	if err := eve.SetOwners([]string{"u2"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{"missing", "eve", "../ada"} {
+	for _, scope := range []string{"missing", "../ada"} {
 		raw, _ := json.Marshal(map[string]string{"slug": "note-capture", "description": "description", "body": "body", "scope": scope})
 		if _, err := (writeSkillTool{k: skillKernel(ada)}).Run(context.Background(), raw); err == nil {
 			t.Fatalf("accepted %q", scope)
@@ -462,7 +460,7 @@ func TestSkillScopedWritesKeepFileAndSwitchesTogether(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	_, winner, err := skill.Open(skill.OwnerDir(ada.Root, "u1"), "note-capture")
+	_, winner, err := skill.Open(skill.Dir(ada.Root), "note-capture")
 	if err != nil {
 		t.Fatal(err)
 	}

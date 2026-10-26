@@ -252,14 +252,14 @@ func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {
    assert.equal(find('nestcard').at(-1).attrs['aria-label'],'从 Claude 导入');
    assert.equal(find('cklist').length,1);
   }
-  // 5. shared bots show a plain note and no switch
+  // 5. multi-owner bots use the same ordinary switch as other local bots
   {
    all.length=0;
-   const api=async p=>p==='/api/skills'?{skills:library}:{slug:'a',name:'甲',description:'d',bots:[{name:'ada',enabled:true},{name:'team',enabled:false,shared:true}]};
+   const api=async p=>p==='/api/skills'?{skills:library}:{slug:'a',name:'甲',description:'d',bots:[{name:'ada',enabled:true},{name:'team',enabled:false}]};
    const host=new Node('div');await window.XBotSkills.mount({api,host,isCurrent:()=>true});
    find('skrow')[0].onclick();await tick();
-   assert.equal(find('tog').length,1);
-   assert.equal(all.some(n=>n.textContent==='多人共用的 Bot，暂不使用技能库'),true);
+   assert.equal(find('tog').length,2);
+   assert.equal(find('tog')[1].attrs['aria-checked'],'false');
   }
  finished=true;
  })().catch(e=>{console.error(e);process.exitCode=1});`

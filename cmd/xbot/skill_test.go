@@ -58,7 +58,7 @@ func TestSkillCLIImportDisable(t *testing.T) {
 	if err := cmdSkill(root, []string{"import", linkPath}); err != nil {
 		t.Fatal(err)
 	}
-	dest := filepath.Join(skill.OwnerDir(root, who.ID), "ship", "SKILL.md")
+	dest := filepath.Join(skill.Dir(root), "ship", "SKILL.md")
 	fi, err := os.Lstat(dest)
 	if err != nil {
 		t.Fatal(err)
@@ -101,5 +101,29 @@ func TestSkillCLIImportDisable(t *testing.T) {
 	}
 	if len(ada.Config().DisabledSkills) != 0 {
 		t.Fatalf("still disabled %#v", ada.Config().DisabledSkills)
+	}
+}
+
+func TestSkillCLIMigratesWithoutOwner(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "skills", "old-owner", "legacy", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: legacy\ndescription: old\n---\nbody"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, func() error { return cmdSkill(root, []string{"list"}) })
+	if !strings.Contains(out, "legacy") {
+		t.Fatal(out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "skills", "legacy", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "people")); !os.IsNotExist(err) {
+		t.Fatal("listing initialized a terminal owner")
+	}
+	if err := cmdSkill(root, []string{"show", "../escape"}); err == nil {
+		t.Fatal("show accepted path traversal")
 	}
 }
