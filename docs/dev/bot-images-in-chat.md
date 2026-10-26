@@ -34,7 +34,7 @@
 - 扩的是 `notify_owner`：新参数 `images`（pasted id 或工作区图片路径）。没有新工具。
 - 落盘：`internal/kernel/outimage.go`。路径经 `os.Root` 在 WorkDir/SharedDir 内读；类型/单张 10 MiB/长边 2048/每条回复 4 张、合计 10 MiB 沿用 `work.PastedMax*` 和 `tools.FitsModel`；先全部校验再写，拒绝时不留文件也不发通知；`work.PastedNameFor` 按内容哈希命名，重复挂同一张无害。
 - 挂到气泡：名字挂在本轮（`turn.outImages`），`recordTurn` 写最终回复（无 tool_calls 的助手行）时放进 `Entry.Images`。
-- 归属按调用身份：工具 Job 用 `callTurnKey` 里的原轮，普通调用用 `turnKey`，都没有才取当前轮。原轮的回复已写入（`answered`/`finished`）时整次调用拒绝，不发通知，结果里说明要从该出图的那条回复重新调用；不挂到别的轮。
+- 归属按调用身份：工具 Job 用 `callTurnKey` 里的原轮，普通调用用 `turnKey`，都没有才取当前轮。调用发起时同时捕获原轮已提交最终回复的次数；挂图前及落盘前在原轮锁内核对，次数已变或原轮 `finished` 时整次调用拒绝，不发通知，结果里说明要重新调用；不挂到别的轮。同 turn 插话续聊新发起的调用按当时次数挂到自己的下一条回复，不受粘滞的 `answered` 误拒；没有调用快照时仍按 `answered` 保守拒绝。
 - paste id 也按实际内容做 `SniffImage` + `FitsModel` 校验，扩展名须与内容一致。
 - 读取阶段就限额：引用先去重，超过 4 个不同引用直接拒，不读文件；每个文件先查单张大小及剩余 10 MiB 预算。放不进剩余额度的工作区路径，先限长流式计算内容 id；只有已排队或本批已验证的同 id 才允许继续读取校验而不再计新增额度，新图不整图加载。已排队 paste id 免新增额度，但仍按实际内容校验类型、像素及扩展名。
 - 之后各轮该行说明为「[发给主人的图] 路径」（`withLineNote`），不冒充主人的图。
