@@ -12,10 +12,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"xbot/internal/pipe/limits"
 )
 
 // MaxBody bounds each request and response body so its sealed, base64'd frame stays under MaxFrame.
-const MaxBody = 700 << 10
+const MaxBody = limits.MaxBody
 
 // Device answers bounded owner API requests for one signed-in device.
 type Device struct {
@@ -186,11 +188,15 @@ func (d *Device) answer(ctx context.Context, req frame) frame {
 	if len(req.CT) > 256 || strings.ContainsAny(req.CT, "\r\n") {
 		return fail(http.StatusBadRequest, "bad content type")
 	}
+	if len(req.INM) > 256 || strings.ContainsAny(req.INM, "\r\n") {
+		return fail(http.StatusBadRequest, "bad etag")
+	}
 	r, err := http.NewRequestWithContext(ctx, req.Method, u.RequestURI(), bytes.NewReader(req.Body))
 	if err != nil {
 		return fail(http.StatusBadRequest, "bad path")
 	}
 	r.Header.Set("Content-Type", req.CT)
+	r.Header.Set("If-None-Match", req.INM)
 	r.Host, r.RemoteAddr = "pipe.local", "pipe"
 	if d.Authorize != nil {
 		if err := d.Authorize(r); err != nil {
@@ -203,6 +209,10 @@ func (d *Device) answer(ctx context.Context, req frame) frame {
 		return fail(http.StatusRequestEntityTooLarge, "response too large for the pipe")
 	}
 	res.Status, res.Body, res.CT = cmpStatus(w.status), w.body.Bytes(), w.header.Get("Content-Type")
+	// Only static metadata crosses the wire; never cookies or arbitrary headers.
+	if strings.HasPrefix(u.Path, "/api/ui/static/") {
+		res.ETag, res.Tip, res.Cache = w.header.Get("ETag"), w.header.Get("X-Xbot-Tip"), w.header.Get("Cache-Control")
+	}
 	return res
 }
 

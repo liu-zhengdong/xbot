@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-26 @ 949d542（含 imggen-discover `e7da2c5` + imggen-ux-hotfix）+ 换绑上下文预检 @ b160417；面板·菜单·汉堡·rail·种子提示 / 技能文案与展示名 / 图片设置·工作区入口·短摘要·关于 tip·脚注 / 绑家提示·气泡剥片·流式头像；设计师 PASS（生图轨 B）；Agent Todo 中文展示与 streaming 热修待设计师复验；技能 title 优先（本机 Chrome 行为通过，设计师本批待验）
+verified: 2026-10-26 @ 3803f3d（技能主名+只给你用 / 祖先含 949d542 Todo streaming、imggen-discover、轨迹可发现）+ 公网 UI 单源合入（pipe `GET /api/ui/static`，云上业务壳不再权威）；+ 换绑上下文预检 @ b160417；面板·菜单·汉堡·rail·种子提示 / 技能文案与展示名 / 图片设置·工作区入口·短摘要·关于 tip·脚注 / 绑家提示·气泡剥片·流式头像；设计师 PASS（生图轨 B）；技能 title 优先与公网单源待设计师复验
 ---
 # 网页界面
 
@@ -28,6 +28,12 @@ verified: 2026-10-26 @ 949d542（含 imggen-discover `e7da2c5` + imggen-ux-hotfi
 **设计变量集中在一份文件。** `tokens.css` 单独加载、先于 `app.css`，组件只引用里面的变量（颜色、字号、间距、圆角、动效时长和曲线）。设计师以后改变量时整份替换，不用改组件。
 
 ## 怎么运转
+
+### 公网登录后的设备壳
+
+公网账号入口保留登录页、boot / bridge、仅控制 `/app/` 文档的资源 worker 和字体；业务 HTML、JS、CSS、图标通过当前配对设备的 `GET /api/ui/static/<path>` 读取内嵌 `staticFS`。同源浏览器资源请求由 worker 交回所属页面的现有加密 pipe，账号 API 继续在云上。没有云上业务壳副本或持久业务资源缓存。
+
+账号菜单可选择设备；切换会关闭原 pipe 并整页重载。未选择时取在线设备；明确选择的设备离线时显示原因和重试，不自动换设备、不回落旧壳。会话版本由设备静态响应的 `X-Xbot-Tip` 提供，纯 dev 构建用内嵌 UI 摘要区分。同步脚本不再是业务 UI 发版路径。协议、安全和体限见 [ADR 0029](../adr/0029-public-ui-single-source-via-pipe.md)、[API](../API.md#设备静态壳)。
 
 ### 统一设置浮层
 

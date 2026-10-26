@@ -25,6 +25,8 @@
 
 `xbot serve` 的主人账号登录/认领后，把账号会话存在 `<root>/account-session`（原子写、0600、勿入 git），经同一个 mux 和 `ui.AuthorizeOwner` 启动 `pipe.Device.Run`。重启会恢复待命；每分钟校验会话与绑定并上报在线设备，无需本机网页常开。新会话轮换时先取消并等旧待命及管道退出；登出或确定会话失效时删除文件并取消。临时账号网络故障不删会话；只取消 serve 不删，供重启恢复。Hub 默认 `https://pipe.babelgo.cn:8443`，`XBOT_PIPE_HUB` 可覆盖；日志前缀 `xbot: pipe:`。
 
-账号仓 `scripts/sync-app-from-xbot.sh` 把同款 static 同步到 `/app/`，改写静态资源路径并前置 bridge；不反代 8788。bridge 取账号 Bearer，选第一台在线设备，领票并用 Web Crypto 实现同一协议。公网 `/api/account/*` 由 bridge 适配到账号 API，其余 `/api/*` 进加密管道；原生图片加载通过 bridge 取回有限大小的 Blob，避免绕过 fetch 补丁；手机也直接进侧栏与对话主界面。无在线设备或连接失败时显示中文原因及重试。
+账号仓 `/app/` 只保留登录后的引导、bridge、资源 worker 与字体。业务壳从当前选中的配对设备 `GET /api/ui/static/<path>` 读取，依旧进入现有 Do / owner mux；资源 worker 仅把浏览器原生资源请求交给所属页面的 bridge，不另建网络通道、不缓存业务壳。切设备关闭旧 pipe 并重载；无设备、离线和旧设备不支持出口时显示说明及重试。`/api/account/*` 仍适配云上账号 API；同步脚本不再是业务 UI 发版路径，详见 [ADR 0029](adr/0029-public-ui-single-source-via-pipe.md)。
+
+静态请求帧可带 `inm`（If-None-Match，最多 256 字节且禁止换行）；静态响应帧可带 `etag`、`tip`、`cache`，分别对应 ETag、X-Xbot-Tip、Cache-Control。只回传这几个白名单字段，不转发 cookie。Go `Do` 既有返回签名保持不变，浏览器 bridge 读取可选元数据。
 
 部署见 [packaging/pipe/](../packaging/pipe/README.md)。

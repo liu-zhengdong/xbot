@@ -113,4 +113,8 @@ type frame struct {
 	Status int    `json:"status,omitempty"`
 	Body   []byte `json:"body,omitempty"`
 	CT     string `json:"ct,omitempty"`
+	ETag   string `json:"etag,omitempty"`
+	Tip    string `json:"tip,omitempty"`
+	Cache  string `json:"cache,omitempty"`
+	INM    string `json:"inm,omitempty"`
 }

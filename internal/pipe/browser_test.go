@@ -3,6 +3,7 @@ package pipe
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -11,7 +12,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"xbot/internal/account"
 	"xbot/internal/bot"
@@ -30,7 +33,7 @@ func (browserScripted) Chat(_ context.Context, _ provider.Request, delta func(st
 	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("管道测试回复")}, nil
 }
 
-// Optional cross-repo acceptance: real Chromium + synced UI + real Go crypto,
+// Optional cross-repo acceptance: real Chromium + device-sourced UI + real Go crypto,
 // account API and owner handlers, with a scripted provider (never a real model).
 func TestBrowserRemoteUI(t *testing.T) {
 	assets := os.Getenv("XBOT_PIPE_BROWSER_APP")
@@ -55,11 +58,59 @@ func TestBrowserRemoteUI(t *testing.T) {
 		}
 		original.ServeHTTP(out, r)
 	})
+
+	var generation atomic.Int32
+	generation.Store(1)
+	deviceHandler := w.device.Handler
+	withTip := func(label string) http.Handler {
+		return http.HandlerFunc(func(out http.ResponseWriter, r *http.Request) {
+			if !strings.HasPrefix(r.URL.Path, "/api/ui/static/") {
+				deviceHandler.ServeHTTP(out, r)
+				return
+			}
+			rr := httptest.NewRecorder()
+			deviceHandler.ServeHTTP(rr, r)
+			for k, vs := range rr.Header() {
+				out.Header()[k] = vs
+			}
+			tip := fmt.Sprintf("dev-%s-%d", label, generation.Load())
+			out.Header().Set("X-Xbot-Tip", tip)
+			body := rr.Body.String()
+			if r.URL.Path == "/api/ui/static/index.html" {
+				body = strings.Replace(body, "<title>XBot</title>", "<title>XBot</title><meta name=\"xbot-fixture\" content=\""+tip+"\">", 1)
+			}
+			out.WriteHeader(rr.Code)
+			_, _ = out.Write([]byte(body))
+		})
+	}
+	w.device.Handler = withTip("mini")
 	w.startDevice(t)
+	if err := w.hub.Accounts.(account.Remote).Report(context.Background(), w.devSes, "laptop-2", "Laptop", []string{"ada"}); err != nil {
+		t.Fatal(err)
+	}
+	laptop := &Device{Hub: w.hubURL, Session: w.devSes, DeviceID: "laptop-2", Handler: withTip("laptop"), Authorize: w.ui.AuthorizeOwner}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = laptop.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		w.hub.mu.Lock()
+		n := len(w.hub.standby)
+		w.hub.mu.Unlock()
+		if n == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("second device not ready")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	accountURL, _ := url.Parse(w.hub.Accounts.(account.Remote).Base)
 	proxy := httputil.NewSingleHostReverseProxy(accountURL)
 	site := http.NewServeMux()
 	site.Handle("/account/v1/", proxy)
+	site.HandleFunc("POST /test-advance", func(out http.ResponseWriter, _ *http.Request) { generation.Add(1); out.WriteHeader(204) })
 	site.HandleFunc("GET /test-session", func(out http.ResponseWriter, _ *http.Request) {
 		writeJSON(out, 200, map[string]string{"session": w.entrySes})
 	})

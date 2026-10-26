@@ -176,6 +176,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /vendor/katex/fonts/{name}", s.katexFont)
 
 	s.registerAccount(mux)
+	mux.HandleFunc("GET /api/ui/static/{path...}", s.uiStatic)
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("GET /app/launch", s.launch)
 	mux.HandleFunc("POST /api/logout", s.logout)
@@ -300,6 +301,10 @@ func (s *Server) static(name, contentType string) http.HandlerFunc {
 		return devStatic(dir, name, contentType)
 	}
 	body, err := staticFS.ReadFile(name)
+	return embeddedStatic(body, err, contentType)
+}
+
+func embeddedStatic(body []byte, err error, contentType string) http.HandlerFunc {
 	sum := sha256.Sum256(body)
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -105,3 +105,28 @@ func TestTicketCORS(t *testing.T) {
 		}
 	}
 }
+
+func TestStaticMetadataAndOwnerBoundary(t *testing.T) {
+	w := newWorld(t)
+	// Exercise the actual owner mux through the device answer/AuthorizeOwner path.
+	first := w.device.answer(context.Background(), frame{Method: "GET", Path: "/api/ui/static/app.js"})
+	if first.Status != 200 || first.ETag == "" || first.Tip == "" || first.Tip == "dev" || first.Cache != "no-cache" {
+		t.Fatalf("metadata: status=%d etag=%q tip=%q cache=%q", first.Status, first.ETag, first.Tip, first.Cache)
+	}
+	second := w.device.answer(context.Background(), frame{Method: "GET", Path: "/api/ui/static/app.js", INM: first.ETag})
+	if second.Status != 304 || len(second.Body) != 0 || second.Tip != first.Tip {
+		t.Fatal("conditional metadata lost")
+	}
+	large := w.device.answer(context.Background(), frame{Method: "GET", Path: "/api/ui/static/fonts/NotoSansSC-full.woff2"})
+	if large.Status != 413 || len(large.Body) > 1024 {
+		t.Fatal("large static must fail honestly")
+	}
+	for _, p := range []string{"/app.js", "https://example.com/api/ui/static/app.js", "//example.com/api/ui/static/app.js"} {
+		if res := w.device.answer(context.Background(), frame{Method: "GET", Path: p}); res.Status != 403 {
+			t.Fatalf("path %q: %d", p, res.Status)
+		}
+	}
+	if res := w.device.answer(context.Background(), frame{Method: "GET", Path: "/api/ui/static/app.js", INM: "bad\r\nx: y"}); res.Status != 400 {
+		t.Fatal("etag injection accepted")
+	}
+}
