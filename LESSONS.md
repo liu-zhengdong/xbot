@@ -72,3 +72,4 @@
 - **新增 CLI 有值参数，要同时登记参数重排表和 FlagSet。** `provider add --reasoning-effort low` 只加 FlagSet 时，重排把位置参数 `ds` 当成 effort 值；真实二进制回归才发现。守护：`e2e/smoke/thinking_test.go` 的 `TestThinkingEffortCLI`（覆盖 low/high/max、更新保留与拒绝 medium）。Seen 1×（2026-10-26）。
 
 - **设置开关的浏览器断言限定所在面板，同时核对 class、aria、hidden 和计算样式。** 多个隐藏设置页共享 `.tog`，全局首个匹配可能是手机推送，不能据此判定当前生图开关。头像即时刷新还要把头像字段纳入列表缓存签名。守护：`TestImageGenSettingsBrowser`、`TestProfileRefreshWhileStreamingBrowser`。Seen 1×（2026-10-26）。
+- **省略工具结果必须保留同条结果的可回放环境回执。** 大结果可能已变成 512 字节 blob 预览，不能只按预览 token 判断；跨轮占位用 transcript seq，验证 expand 读回与回执回放。证据：`TestBatchBBlobOmissionKeepsReceiptAndExpand`。Seen 1×（2026-10-26）。

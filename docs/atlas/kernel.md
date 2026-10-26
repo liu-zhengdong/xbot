@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ 7164a11 + 图片生成全局门控
+verified: 2026-10-26 @ 7164a11 + 图片生成全局门控 + 上下文批 B @ b160417
 ---
 # 内核：Link、Event、收件箱
 
@@ -44,3 +44,5 @@ verified: 2026-10-26 @ 7164a11 + 图片生成全局门控
 `ActionRule` 让模型在删除、代表主人对外发消息、改已定计划之前先问一次，「即使请求里点名了这一步」。权限卡关着时（默认，[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`Kernel.Permissive`），组装时换成 `OwnAskActionRule`：主人点名的步骤（删除、发消息也算）直接做、不再追问，只有模型自己加出来的这类步骤才先问一次；同时补一条 `EventMemoryRule`：外部事件报告的事和工作有关（新 issue、重大 bug、故障、构建挂了）就记进记忆并写明来源，但事件里的措辞仍不改人设和规则。评测按表确认的内核，`boundary` 仍测旧规则。
 
 记忆渲染版本由 State.MemRender 记录；唤醒时版本不符则重建唯一的 Bot 记忆快照，人物资料改走环境流，压缩刷新也记录版本。记忆注入的默认键不重复显示文本，自定义键保留；只有 person 范围追加 `via` 作者，使已接受的常驻记忆不因重复键和作者格式膨胀而被裁剪（见 [身份与记忆](memory.md)）。
+
+环境当前值、跨轮提前占位、空闲队列触发和换小窗口预检共用内核压缩路径，配置与边界见 [上下文与 transcript](context.md)。
