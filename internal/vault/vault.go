@@ -243,6 +243,32 @@ func (s *Store) Set(name, value string, domains []string) error {
 	})
 }
 
+// replaceIf stores value under name only while the stored value still equals
+// old, rereading disk under the cross-process lock first. It reports whether
+// it wrote: a secret removed or replaced since old was read stays as it is.
+func (s *Store) replaceIf(name, old, value string, domains []string) (bool, error) {
+	ds := normalizeDomains(domains)
+	if len(ds) == 0 {
+		return false, errors.New("vault: at least one domain is required")
+	}
+	replaced := false
+	err := s.withFileLock(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if err := s.reloadLocked(); err != nil {
+			return err
+		}
+		if cur, ok := s.secrets[name]; !ok || cur.Value != old {
+			return nil
+		}
+		s.secrets[name] = Secret{Name: name, Value: value, Domains: ds}
+		s.invalidateForms()
+		replaced = true
+		return s.saveLocked()
+	})
+	return replaced, err
+}
+
 // Remove deletes one secret. A missing name is success.
 func (s *Store) Remove(name string) error {
 	name = strings.TrimSpace(name)

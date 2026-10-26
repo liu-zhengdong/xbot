@@ -134,9 +134,16 @@ func (s *Store) ensureOAuth(ctx context.Context, name string) (info OAuthInfo, e
 			if err := s.refreshOAuth(ctx, &c, sec.Domains); err != nil {
 				return err
 			}
+			// The refresh ran off the secrets lock; a logout may have removed
+			// the credential meanwhile. Write back only over the value this
+			// refresh started from, so a late refresh never revives it.
 			raw, _ := json.Marshal(c)
-			if err := s.Set(name, string(raw), sec.Domains); err != nil {
+			replaced, err := s.replaceIf(name, sec.Value, string(raw), sec.Domains)
+			if err != nil {
 				return err
+			}
+			if !replaced {
+				return errors.New("vault: OAuth login required")
 			}
 		}
 		info = OAuthInfo{Configured: true, Refreshable: c.RefreshToken != "", ClientID: c.ClientID, Subject: c.Subject, ExpiresAt: c.ExpiresAt}
