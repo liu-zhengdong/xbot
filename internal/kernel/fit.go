@@ -3,6 +3,8 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -115,12 +117,16 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 // since.
 func (f *turnFit) omittedResult(m provider.Message, seq int) provider.Message {
 	n := compact.EstimateMessage(m)
+	_, receipt, _ := bot.SplitEnvironmentReceipt(m.Text())
 	if seq > 0 {
 		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. Call expand with from=%d to=%d to read it as it was; do not run the call again for that.]", n, seq, seq, seq))
 	} else if f.noSeq != "" {
 		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. %s]", n, f.noSeq))
 	} else {
 		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: find it with recall_history, then expand.]", n))
+	}
+	if receipt != "" {
+		m.SetText(m.Text() + "\n\n" + receipt)
 	}
 	m.Images = nil
 	return m
@@ -305,12 +311,30 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 	}
 	goal := target * 3 / 4
 	keep := latestStep(msgs, f.start())
+	// Opt-in: retain the facts before replacing a result with a pointer.
+	// A failed pre-omit attempt falls back to the existing path, without a
+	// second summary call for the same range in this request.
+	attempted := false
+	if enabled, _ := strconv.ParseBool(os.Getenv("XBOT_FIT_SUMMARY_BEFORE_OMIT")); enabled && k.Compactor != nil {
+		for i := f.start(); i < keep; i++ {
+			if _, omitted := f.omitted[i]; !omitted && msgs[i].Role == provider.RoleTool && compact.EstimateMessage(msgs[i]) >= omitMin {
+				attempted = true
+				if err := k.foldTurn(ctx, f, msgs, keep); err == nil {
+					k.noteFit(t, "fold_turn")
+				} else {
+					k.noteFit(t, "fold_turn_failed")
+				}
+				size = measure()
+				break
+			}
+		}
+	}
 	before := len(f.omitted)
 	size = k.omit(f, msgs, f.start(), keep, size, goal)
 	if len(f.omitted) > before {
 		k.noteFit(t, "omit")
 	}
-	if overflow || size > ceiling || (size > target && k.earlier(f, msgs, keep) >= target/turnFoldShare) {
+	if !attempted && (overflow || size > ceiling || (size > target && k.earlier(f, msgs, keep) >= target/turnFoldShare)) {
 		if keep > f.start() {
 			if err := k.foldTurn(ctx, f, msgs, keep); err == nil {
 				k.noteFit(t, "fold_turn")
@@ -344,4 +368,24 @@ func (k *Kernel) noteFit(t *turn, reason string) {
 	if k.Bot != nil {
 		_ = k.Bot.LogTrace(bot.TraceFit, reason, k.now())
 	}
+}
+
+// omitPastResults runs only at cross-turn assembly. A later real input makes
+// earlier tool results eligible regardless of T/H. Seq points to the immutable
+// original (including blob-backed results); current-turn results stay whole.
+func omitPastResults(msgs []provider.Message, blobs map[int]bool) []provider.Message {
+	boundary := 0
+	for _, m := range msgs {
+		if m.Role == provider.RoleUser && !m.Internal && m.Seq > boundary {
+			boundary = m.Seq
+		}
+	}
+	out := append([]provider.Message(nil), msgs...)
+	f := newTurnFit(0, nil)
+	for i, m := range out {
+		if m.Role == provider.RoleTool && m.Seq > 0 && m.Seq < boundary && (blobs[m.Seq] || compact.EstimateMessage(m) >= omitMin) {
+			out[i] = f.omittedResult(m, m.Seq)
+		}
+	}
+	return out
 }

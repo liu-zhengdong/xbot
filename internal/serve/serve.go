@@ -60,6 +60,9 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 			continue
 		}
 		err = proc.Drain(ctx, k)
+		if err == nil && ctx.Err() == nil {
+			k.MaybeIdleCompact(now)
+		}
 		_ = lock.Release()
 		_ = k.Close()
 		if err != nil && first == nil && !errors.Is(err, context.Canceled) {

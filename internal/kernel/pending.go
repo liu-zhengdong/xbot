@@ -1,51 +1,85 @@
 package kernel
 
 import (
+	"sort"
+	"sync"
 	"time"
 
 	"xbot/internal/bot"
 )
 
-// openApprovals lists the confirmation cards still waiting for the owner. Cards
-// live in the transcript, so the newest card for an id decides: a later card
-// with the same id carries the answer. The list is oldest first.
-func (k *Kernel) openApprovals() []PendingApproval {
+type pendingCard struct {
+	card bot.ApprovalCard
+	at   time.Time
+	seq  int
+}
+
+// approvals caches the live card projection, not the environment's published
+// baseline. It is rebuilt from the append-only transcript after a restart.
+// Incremental reads avoid rescanning all history before every model step.
+type approvalState struct {
+	mu      sync.Mutex
+	through int
+	open    map[string]pendingCard
+}
+
+func (k *Kernel) currentApprovals() ([]PendingApproval, error) {
 	if k == nil || k.Bot == nil {
-		return nil
+		return nil, nil
 	}
-	entries, err := k.Bot.Entries()
+	a := &k.approvals
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n, err := k.Bot.Count()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	type open struct {
-		card bot.ApprovalCard
-		at   time.Time
+	if a.open == nil || n < a.through {
+		a.open = map[string]pendingCard{}
+		a.through = 0
 	}
-	seen := map[string]int{}
-	var list []open
-	for _, e := range entries {
-		card, ok := bot.ParseApprovalCard(e.Message.Text())
-		if !ok {
-			continue
+	for a.through < n {
+		end := min(n, a.through+64)
+		entries, err := k.Bot.Slice(a.through+1, end)
+		if err != nil {
+			return nil, err
 		}
-		if i, dup := seen[card.ID]; dup {
-			list[i] = open{card: card, at: e.Time}
-			continue
+		for i, e := range entries {
+			card, ok := bot.ParseApprovalCard(e.Message.Text())
+			if !ok {
+				continue
+			}
+			if card.State != bot.ApprovalPending {
+				delete(a.open, card.ID)
+				continue
+			}
+			seq := a.through + 1 + i
+			if old, ok := a.open[card.ID]; ok {
+				seq = old.seq
+			}
+			a.open[card.ID] = pendingCard{card: card, at: e.Time, seq: seq}
 		}
-		seen[card.ID] = len(list)
-		list = append(list, open{card: card, at: e.Time})
+		a.through = end
 	}
-	now := k.now()
+	list := make([]pendingCard, 0, len(a.open))
+	for _, c := range a.open {
+		list = append(list, c)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].seq < list[j].seq })
 	var out []PendingApproval
-	for _, o := range list {
-		if o.card.State != bot.ApprovalPending {
-			continue
-		}
+	for _, c := range list {
 		age := time.Duration(0)
-		if !o.at.IsZero() {
-			age = now.Sub(o.at)
+		if !c.at.IsZero() {
+			age = k.now().Sub(c.at)
 		}
-		out = append(out, PendingApproval{Tool: o.card.Tool, Summary: o.card.Title + " " + o.card.Summary, Age: age})
+		out = append(out, PendingApproval{Tool: c.card.Tool, Summary: c.card.Title + " " + c.card.Summary, Age: age})
 	}
-	return out
+	return out, nil
+}
+
+// openApprovals lists waiting cards for the existing reminder. The environment
+// caller uses currentApprovals directly so an I/O failure cannot publish a clear.
+func (k *Kernel) openApprovals() []PendingApproval {
+	list, _ := k.currentApprovals()
+	return list
 }

@@ -54,12 +54,19 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 	if k == nil || k.Bot == nil || k.Compactor == nil {
 		return
 	}
+	k.startBackground(st, protectSeq, mem, k.target(), false)
+}
+
+func (k *Kernel) startBackground(st bot.State, protectSeq int, mem string, minimum int, idle bool) {
+	if k == nil || k.Bot == nil || k.Compactor == nil {
+		return
+	}
 	_, usage, err := k.assemble(st, mem)
 	if err != nil {
 		return
 	}
 	size := k.scaled(usage.Total())
-	if size > k.ceiling() {
+	if !idle && size > k.ceiling() {
 		return
 	}
 	unlock, err := k.lockJob(false)
@@ -78,11 +85,15 @@ func (k *Kernel) maybeStartBackground(st bot.State, protectSeq int, mem string) 
 		}
 		return
 	}
-	if size < k.target() {
+	if size < minimum {
 		unlock()
 		return
 	}
-	from, to, _, ok, err := k.compactPlan(st, protectSeq)
+	budget := k.tailBudget()
+	if idle {
+		budget = min(budget, minimum/tailShare)
+	}
+	from, to, _, ok, err := k.compactPlanBudget(st, protectSeq, budget)
 	if err != nil || !ok {
 		unlock()
 		return

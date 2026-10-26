@@ -83,6 +83,7 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 		items = append(items, item{seq: b.From, msg: summaryMessage(b)})
 	}
 	positioned := len(seqs) == len(uncovered)
+	blobs := map[int]bool{}
 	for i, e := range uncovered {
 		if code.IsCard(e.Message.Text()) {
 			continue
@@ -96,6 +97,9 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 		seq := 0
 		if positioned {
 			seq = seqs[i]
+			if e.Blob != "" {
+				blobs[seq] = true
+			}
 		}
 		m := e.Message
 		m.Seq, m.Internal = seq, e.IsInternal()
@@ -110,7 +114,7 @@ func projected(blocks []bot.SummaryBlock, uncovered []bot.Entry, seqs []int) []p
 	for _, it := range items {
 		msgs = append(msgs, it.msg)
 	}
-	return strayToolResults(groupToolResults(msgs))
+	return omitPastResults(strayToolResults(groupToolResults(msgs)), blobs)
 }
 
 // groupToolResults moves each tool result right after the assistant message
@@ -351,6 +355,10 @@ const tailPage = 64
 // least keepTail messages, then grows backwards while its estimated size stays
 // under tailBudget.
 func (k *Kernel) tailStart(n int) (int, error) {
+	return k.tailStartBudget(n, k.tailBudget())
+}
+
+func (k *Kernel) tailStartBudget(n, budget int) (int, error) {
 	if n < 1 {
 		return 1, nil
 	}
@@ -366,7 +374,6 @@ func (k *Kernel) tailStart(n int) (int, error) {
 	for _, e := range seed {
 		used += compact.EstimateMessage(e.Message)
 	}
-	budget := k.tailBudget()
 	for start > 1 && used < budget {
 		lo := start - tailPage
 		if lo < 1 {
@@ -417,12 +424,16 @@ func compactFrom(blocks []bot.SummaryBlock) int {
 // uncovered stretch, ending before the raw tail and before the current turn.
 // ok is false when nothing is left to cover.
 func (k *Kernel) compactPlan(st bot.State, protectSeq int) (from, to int, span []bot.Entry, ok bool, err error) {
+	return k.compactPlanBudget(st, protectSeq, k.tailBudget())
+}
+
+func (k *Kernel) compactPlanBudget(st bot.State, protectSeq, budget int) (from, to int, span []bot.Entry, ok bool, err error) {
 	n, err := k.Bot.Count()
 	if err != nil {
 		return 0, 0, nil, false, err
 	}
 	from = compactFrom(st.Blocks)
-	tail, err := k.tailStart(n)
+	tail, err := k.tailStartBudget(n, budget)
 	if err != nil {
 		return 0, 0, nil, false, err
 	}

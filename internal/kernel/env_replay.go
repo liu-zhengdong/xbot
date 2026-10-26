@@ -311,6 +311,17 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	}
 	environmentSet(&next, "tools", names)
 	environmentSet(&next, "notes", k.pendingNotes())
+	// A cleared card list must supersede old reminders in the visible history.
+	// Count is stable while waiting; elapsed age belongs only to the reminder.
+	cards, err := k.currentApprovals()
+	if err != nil {
+		return next, err
+	}
+	if n := len(cards); n > 0 {
+		environmentSet(&next, "pending_approvals", n)
+	} else {
+		delete(next.Fields, "pending_approvals")
+	}
 	environmentSet(&next, "time", k.localStamp())
 	tasks, err := k.taskEnvironment(environmentTasks(prev), link.Event{})
 	if err != nil {

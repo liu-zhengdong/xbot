@@ -5,8 +5,8 @@
 //
 // A Kernel lives for the whole serve process and is shared by the foreground
 // turn, background branches, the exec forwarder and MCP emitters. Most of its
-// locks guard one domain and are never held together. Only two functions hold
-// two locks at once, and both take them in the same direction:
+// locks guard one domain and are never held together. The background queue
+// functions that hold two locks take them in the same direction:
 //
 //	bgMu -> turn.mu          Queue, cancelQueued (bgturn.go)
 //
@@ -15,11 +15,13 @@
 // normal case, so the reverse order would deadlock a live bot rather than a
 // test.
 //
-// Every other lock is taken and released inside one function before the next
-// is taken; they are listed here in the order the outer work runs, so a new
+// Environment sampling may also take approvals.mu under envMu; the card
+// projection never takes envMu. Every other lock is taken and released before
+// the next is taken; they are listed here in the order the outer work runs, so a new
 // caller can see where it belongs:
 //
-//	envMu       environment publication and input append
+//	envMu       environment publication and input append (may sample approvals)
+//	approvals.mu live card projection; never acquires envMu
 //	turnMu      the foreground turn pointer (Kernel.turn)
 //	bgMu        the background map (Kernel.bgs, finished)
 //	turn.mu     one turn's own state (branch, steps, tools, todo flags)
@@ -138,8 +140,9 @@ type Kernel struct {
 	// turn's own context carries the deadline (see backgroundBudget).
 	BackgroundMaxTime time.Duration
 
-	envMu  sync.Mutex // serializes environment comparison and publication
-	turnMu sync.Mutex
+	approvals approvalState
+	envMu     sync.Mutex // serializes environment comparison and publication
+	turnMu    sync.Mutex
 
 	// memWriteMu serializes own memory writes with their before/after reads.
 	memWriteMu  sync.Mutex

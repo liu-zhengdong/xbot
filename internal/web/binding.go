@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"xbot/internal/config"
+	"xbot/internal/kernel"
 	"xbot/internal/vault"
 )
 
@@ -114,7 +115,8 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Provider = strings.TrimSpace(in.Provider)
 	in.Model = strings.TrimSpace(in.Model)
-	if _, _, err := config.Resolve(s.Root, in.Provider, in.Model, config.Getenv); err != nil {
+	_, window, err := config.Resolve(s.Root, in.Provider, in.Model, config.Getenv)
+	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
@@ -136,6 +138,22 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 409, err.Error())
 			return
 		}
+	}
+	checker := k
+	if checker == nil {
+		checker = &kernel.Kernel{Bot: b}
+		if s.NewKernel != nil && checker.BindingShrinksWindow(window) {
+			checker, err = s.NewKernel(b)
+			if err != nil {
+				writeErr(w, 500, err.Error())
+				return
+			}
+			defer checker.Close()
+		}
+	}
+	if err := checker.PrepareBinding(r.Context(), in.Provider, in.Model, window); err != nil {
+		writeErr(w, 409, err.Error())
+		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
