@@ -84,6 +84,17 @@ var mailLink = regexp.MustCompile(regexp.QuoteMeta(account.LinkPath) + `\?t=([0-
 var mailCode = regexp.MustCompile(`验证码：(\d{6})`)
 
 // lastMail is the newest file the stand-in mailer wrote.
+// claim answers 把这台电脑绑到账号？ with 绑定这台电脑: sign-in never binds by
+// itself, so a fresh install becomes the owner's only through this call.
+func (e *acctEnv) claim(c *http.Client, hdr map[string]string) map[string]any {
+	e.t.Helper()
+	code, out := e.do(c, "POST", "/api/account/claim", nil, hdr)
+	if code != 200 || out["bound"] != true || acct(out)["owner"] != true {
+		e.t.Fatalf("claim %d %v", code, out)
+	}
+	return out
+}
+
 func (e *acctEnv) lastMail() (string, string, string) {
 	e.t.Helper()
 	dir := filepath.Join(e.root, "account-api", "outbox")
@@ -145,10 +156,15 @@ func TestAccountSignUpOpensTheOwnerInterface(t *testing.T) {
 	}
 	const pass = "owner pass 123"
 	code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "zhengdong@example.com", "password": pass}, nil)
-	if code != 200 || out["state"] != "done" || acct(out)["owner"] != true || acct(out)["email"] != "zh***@example.com" || out["challenge"] != nil {
+	if code != 200 || out["state"] != "done" || acct(out)["owner"] != false || acct(out)["unbound"] != true || acct(out)["email"] != "zh***@example.com" || out["challenge"] != nil {
 		t.Fatalf("register %d %v", code, out)
 	}
 	e.noMail()
+	// Signing up does not bind: the page asks first, and 绑定这台电脑 binds.
+	if code, _ := e.do(c, "GET", "/api/bots", nil, nil); code != http.StatusUnauthorized {
+		t.Fatalf("owner interface before claim %d", code)
+	}
+	e.claim(c, nil)
 	if code, _ := e.do(c, "GET", "/api/bots", nil, nil); code != 200 {
 		t.Fatalf("owner interface %d", code)
 	}
@@ -214,9 +230,10 @@ func TestAccountBindingNeedsTheOwner(t *testing.T) {
 		t.Fatalf("stranger sees devices %v", devs)
 	}
 	desk := e.browser()
-	if out := signUp(desk, "owner@example.com", nil); acct(out)["owner"] != true {
-		t.Fatalf("owner on this computer %v", out)
+	if out := signUp(desk, "owner@example.com", nil); acct(out)["owner"] != false || acct(out)["unbound"] != true {
+		t.Fatalf("owner on this computer before claim %v", out)
 	}
+	e.claim(desk, nil)
 	// Now bound: the stranger signing in here gets nothing more.
 	other := e.browser()
 	code, out := e.do(other, "POST", "/api/account/login", map[string]string{"email": "stranger@example.com", "password": "password 12"}, nil)
@@ -240,9 +257,10 @@ func TestAccountBindingNeedsTheOwner(t *testing.T) {
 func TestAccountMailLinkAndCode(t *testing.T) {
 	e := newAcctEnv(t, true)
 	c := e.browser()
-	if st, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "a@example.com", "password": "password 12"}, nil); st != 200 || acct(out)["owner"] != true || acct(out)["app"] != true {
+	if st, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "a@example.com", "password": "password 12"}, nil); st != 200 || acct(out)["unbound"] != true || acct(out)["app"] != true {
 		t.Fatalf("register %d %v", st, out)
 	}
+	e.claim(c, nil)
 	// The desktop app may sign out of the account.
 	if st, _ := e.do(c, "POST", "/api/account/logout", nil, nil); st != 200 {
 		t.Fatalf("app logout %d", st)
@@ -330,9 +348,10 @@ func TestAccountWithHostedService(t *testing.T) {
 	t.Cleanup(srv.Close)
 	e := &acctEnv{t: t, s: s, srv: srv, root: root}
 	c := e.browser()
-	if st, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "h@example.com", "password": "password 12"}, nil); st != 200 || acct(out)["owner"] != true || acct(out)["hosted"] != true {
+	if st, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "h@example.com", "password": "password 12"}, nil); st != 200 || acct(out)["unbound"] != true || acct(out)["hosted"] != true {
 		t.Fatalf("register %d %v", st, out)
 	}
+	e.claim(c, nil)
 	if ents, _ := os.ReadDir(filepath.Join(data, "outbox")); len(ents) != 0 {
 		t.Fatalf("sign-up mailed %v", ents)
 	}
@@ -391,14 +410,18 @@ func TestAccountBindingRefusesForwardedRequests(t *testing.T) {
 		if st, _ := e.do(c, "GET", "/api/bots", nil, nil); st != http.StatusUnauthorized {
 			t.Fatalf("%v: owner session handed out %d", hdr, st)
 		}
+		if st, _ := e.do(c, "POST", "/api/account/claim", nil, hdr); st != http.StatusForbidden {
+			t.Fatalf("%v: claimed through a proxy %d", hdr, st)
+		}
 		if b, _ := e.s.readBinding(); b.Key != "" {
 			t.Fatalf("%v: binding written %+v", hdr, b)
 		}
-		// The same account straight from this computer binds.
+		// The same account straight from this computer binds once it claims.
 		d := e.browser()
-		if code, out := e.do(d, "POST", "/api/account/login", map[string]string{"email": "o@example.com", "password": "password 12"}, nil); code != 200 || acct(out)["owner"] != true {
+		if code, out := e.do(d, "POST", "/api/account/login", map[string]string{"email": "o@example.com", "password": "password 12"}, nil); code != 200 || acct(out)["unbound"] != true {
 			t.Fatalf("%v: direct login %d %v", hdr, code, out)
 		}
+		e.claim(d, nil)
 	}
 	// Holding the owner session already is proof enough, proxy or not.
 	e := newAcctEnv(t, false)
@@ -407,7 +430,8 @@ func TestAccountBindingRefusesForwardedRequests(t *testing.T) {
 		t.Fatal("install code")
 	}
 	hdr := map[string]string{"X-Forwarded-Proto": "https"}
-	if code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr); code != 200 || acct(out)["owner"] != true {
+	if code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr); code != 200 || acct(out)["unbound"] != true {
 		t.Fatalf("owner session through a proxy %d %v", code, out)
 	}
+	e.claim(c, hdr)
 }

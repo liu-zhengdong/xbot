@@ -238,14 +238,43 @@
     const cnt = el("div", "ac-devcnt");
     box.append(bar, cnt);
     mount(box, "ac-wide");
+    // 这台电脑还没绑到任何账号（登录从不静默绑定）：先问一次，
+    // POST /api/account/claim 在本机窗口真绑（bindIfFree），拒绝时说原因。
+    // 卡片跟着下面的列表一起渲染，列表到了也不会把它刷掉。
+    let claim = null;
+    if (a.unbound) {
+      claim = el("div", "ac-claim");
+      const tx = el("div", "ac-claim-tx");
+      tx.append(el("b", "", "把这台电脑绑到账号？"), el("p", "", "绑定后，手机和其它入口也能看到这台电脑上的 Bot。"));
+      const err = errLine();
+      const go = el("button", "ac-btn ac-pri", "绑定这台电脑"); go.type = "button";
+      const skip = el("button", "ac-btn ac-ghost", "先不绑"); skip.type = "button";
+      const acts = el("div", "ac-actions"); acts.append(skip, go);
+      claim.append(tx, err, acts);
+      go.onclick = async () => {
+        showErr(err, ""); busy(go, true);
+        const r = await call("POST", "/api/account/claim");
+        busy(go, false);
+        if (r.ok && r.data.account && r.data.account.owner) {
+          me = { account: r.data.account };
+          // 绑上了但账号那边还没登记：如实说，下一次打开会再报。
+          if (r.data.reported === false) { claim.replaceChildren(el("p", "", "已绑定这台电脑。设备列表暂时没更新，稍后会自动补上。")); setTimeout(route, 1600); return; }
+          route(); return;
+        }
+        showErr(err, r.ok ? "还没绑上，回这台电脑再试" : say(r.data, "没能绑定，稍后再试"));
+      };
+      skip.onclick = () => { claim.remove(); claim = null; };
+      cnt.append(claim);
+    }
+    const lead = () => (claim ? [claim] : []);
     const r = await call("GET", "/api/account/devices");
     if (view !== "devices") return;
     if (r.status === 401) { me = null; showLogin({ note: "登录已过期，请重新登录" }); return; }
     const list = (r.ok && r.data.devices) || [];
     if (!list.length) {
       const empty = el("div", "ac-empty");
-      empty.append(el("div", "ac-icbox", ICON.screen(24)), el("h2", "", "还没有设备"), el("p", "", "到电脑上打开 XBot，并保持在线。登录本账号后，那台设备会出现在这里。"));
-      cnt.replaceChildren(empty);
+      empty.append(el("div", "ac-icbox", ICON.screen(24)), el("h2", "", "还没有设备"), el("p", "", "到电脑上打开 XBot，用本账号登录并把那台电脑绑到账号，保持在线后它会出现在这里。"));
+      cnt.replaceChildren(...lead(), empty);
       return;
     }
     const cards = list.map((d) => {
@@ -262,7 +291,7 @@
       }
       return card;
     });
-    cnt.replaceChildren(...cards, el("p", "ac-devfoot", "手机只是入口。重活仍在电脑上的 Bot 里做。"));
+    cnt.replaceChildren(...lead(), ...cards, el("p", "ac-devfoot", "手机只是入口。重活仍在电脑上的 Bot 里做。"));
   }
 
   function botRow(b, open) {
@@ -339,5 +368,5 @@
     else showDevices();
   }
 
-  window.XBotAccount = { boot, show, signOut, active: () => !!root && !root.hidden };
+  window.XBotAccount = { boot, show, signOut, active: () => !!root && !root.hidden, state: () => (me && me.account) || null };
 })();

@@ -368,6 +368,10 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"authed": true, "owner": s.owner, "owner_name": s.ownerName(), "app": s.App, "version": displayVersion(version.Version)}
+	// Reached through a tunnel or proxy: the 官网 entry, not this machine's
+	// window. The sidebar stays the same; the bottom line names the account's
+	// devices instead of this computer.
+	out["remote"] = forwarded(r)
 	if s.needsKey() {
 		out["needs_key"] = true
 		out["key_host"] = keyHost()

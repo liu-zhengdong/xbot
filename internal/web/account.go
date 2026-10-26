@@ -127,6 +127,49 @@ func forwarded(r *http.Request) bool {
 	return false
 }
 
+// accountClaim binds this install to the signed-in account: the real
+// bindIfFree, so the same owner proof as sign-in applies, and a device
+// report follows so the machine shows up in 我的设备 at once.
+func (s *Server) accountClaim(w http.ResponseWriter, r *http.Request) {
+	if !s.accountReady(w, r) {
+		return
+	}
+	session := accountSession(r)
+	if session == "" {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	me, err := s.acct.client.Me(r.Context(), session)
+	if errors.Is(err, account.ErrSession) {
+		clearAccountCookie(w)
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err != nil {
+		writeAccountErr(w, err)
+		return
+	}
+	b, err := s.bindIfFree(me.Key, me.Verified && s.ownerProof(r))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "account binding")
+		return
+	}
+	if b.Key != "" && b.Key != me.Key {
+		writeErr(w, http.StatusForbidden, "这台电脑已经绑在另一个账号上")
+		return
+	}
+	if !me.Verified || !s.ownerProof(r) {
+		writeErr(w, http.StatusForbidden, "要在这台电脑上登录，才能把它绑到账号")
+		return
+	}
+	view := s.accountViewFor(r, me, b)
+	s.setCookie(w, s.loginToken())
+	// The binding is on disk either way; reported tells the page whether the
+	// account's device list has this computer yet.
+	reported := s.reportDevice(r.Context(), session, b, true) == nil
+	writeJSON(w, http.StatusOK, map[string]any{"account": view, "bound": true, "reported": reported})
+}
+
 func (s *Server) registerAccount(mux *http.ServeMux) {
 	if s.acct.client == nil {
 		if s.Account != nil {
@@ -149,6 +192,7 @@ func (s *Server) registerAccount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/poll", s.accountPoll)
 	mux.HandleFunc("GET /api/account/me", s.accountMe)
 	mux.HandleFunc("POST /api/account/logout", s.accountLogout)
+	mux.HandleFunc("POST /api/account/claim", s.accountClaim)
 	mux.HandleFunc("GET /api/account/devices", s.accountDevices)
 	mux.HandleFunc("GET /account.js", s.static("static/account.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /account.css", s.static("static/account.css", "text/css; charset=utf-8"))
@@ -336,10 +380,15 @@ type accountView struct {
 	GatewayOK bool `json:"gateway_ok"`
 	// App is the desktop app's page.
 	App bool `json:"app"`
+	// Unbound means this install is not bound to any account yet; the page
+	// may offer 把这台电脑绑到账号.
+	Unbound bool `json:"unbound"`
 }
 
 // signIn keeps the account session in a cookie and, for the account this
-// install belongs to, opens the owner session too.
+// install belongs to, opens the owner session too. It never binds: an unbound
+// install answers unbound, and the page asks 把这台电脑绑到账号？ before
+// POST /api/account/claim binds it.
 func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) {
 	me, err := s.acct.client.Me(r.Context(), session)
 	if err != nil {
@@ -347,7 +396,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 		return
 	}
 	setAccountCookie(w, session)
-	b, err := s.bindIfFree(me.Key, me.Verified && s.ownerProof(r))
+	b, err := s.bindIfFree(me.Key, false)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "account binding")
 		return
@@ -355,7 +404,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
 		s.setCookie(w, s.loginToken())
-		s.reportDevice(r.Context(), session, b, true)
+		_ = s.reportDevice(r.Context(), session, b, true)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": "done", "account": view})
 }
@@ -367,6 +416,7 @@ func (s *Server) accountViewFor(r *http.Request, me account.Me, b accountBinding
 		Email: me.Email, Owner: me.Verified && b.Key != "" && b.Key == me.Key,
 		Hosted: s.acct.client.Hosted(), Gateway: strings.TrimPrefix(strings.TrimPrefix(gw, "https://"), "http://"),
 		Official: gw == remote.DefaultGateway, GatewayOK: gatewayUp(r.Context(), gw, false), App: s.App,
+		Unbound: b.Key == "",
 	}
 }
 
@@ -399,7 +449,7 @@ func (s *Server) accountMe(w http.ResponseWriter, r *http.Request) {
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
 		s.setCookie(w, s.loginToken())
-		s.reportDevice(r.Context(), session, b, false)
+		_ = s.reportDevice(r.Context(), session, b, false)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"account": view, "app": s.App})
 }
@@ -420,20 +470,27 @@ func (s *Server) accountLogout(w http.ResponseWriter, r *http.Request) {
 
 // reportDevice tells the service this computer and its bots, at most once a
 // minute unless forced. Only bot names leave the machine.
-func (s *Server) reportDevice(ctx context.Context, session string, b accountBinding, force bool) {
+// A failed report clears the throttle, so the next page request tries again.
+func (s *Server) reportDevice(ctx context.Context, session string, b accountBinding, force bool) error {
 	s.acct.mu.Lock()
 	if !force && time.Since(s.acct.report) < time.Minute {
 		s.acct.mu.Unlock()
-		return
+		return nil
 	}
 	s.acct.report = time.Now()
 	s.acct.mu.Unlock()
 	if b.DeviceID == "" {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_ = s.acct.client.Report(ctx, session, b.DeviceID, s.selfDeviceName(), s.ownerBotNames())
+	err := s.acct.client.Report(ctx, session, b.DeviceID, s.selfDeviceName(), s.ownerBotNames())
+	if err != nil {
+		s.acct.mu.Lock()
+		s.acct.report = time.Time{}
+		s.acct.mu.Unlock()
+	}
+	return err
 }
 
 // selfDeviceName is the name this computer goes by in 设备; before any
@@ -497,7 +554,7 @@ func (s *Server) accountDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	owner := me.Verified && b.Key != "" && b.Key == me.Key
 	if owner {
-		s.reportDevice(r.Context(), session, b, false)
+		_ = s.reportDevice(r.Context(), session, b, false)
 	}
 	list, err := s.acct.client.Devices(r.Context(), session)
 	if err != nil {

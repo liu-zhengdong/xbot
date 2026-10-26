@@ -80,8 +80,13 @@
     view: null,            // drawer 之上的弹窗
     embedded: false,
     code: "",              // A 最近一次显示的码，用于确认框副行
-    peer: null,            // B 端最近看到的对方 {name, os, bots}
-    joinVal: "", gwOpen: false, gwVal: "", fieldErr: "", checking: false,
+    peer: null,            // 对方（请求方）{name, os, bots}
+    remote: false,         // 官网入口（session.remote）：底栏写账号设备数，不写本机名
+    acct: null,            // GET /api/account/me 的 account，用来出「把这台电脑绑到账号」
+    acctDevs: null,        // 官网入口底栏「已绑定 N 台设备」的 N
+    claimBusy: false, claimErr: "",
+    joinOpen: false, joinVal: "", joinErr: "", // 添加设备下半：输入对方的短码（次要）
+    gwVal: "", fieldErr: "", checking: false,
     menuFor: "", target: null, selfGwEdit: false, selfGwErr: "", busy: false,
   };
   let devicesEl = null, modalEl = null, lastView = "";
@@ -97,14 +102,38 @@
 
   async function refresh() {
     try { S.data = await api("GET", "/api/devices"); S.pairing = S.data.pairing; window.dispatchEvent(new Event("xbot:devices")); } catch (e) { /* 离线时保留旧数据 */ }
-    paintComputerName();
+    if (S.remote) {
+      // 官网入口：底栏写账号名下有几台设备（真实账号列表，不是本机配对表）。
+      try { S.acctDevs = ((await api("GET", "/api/account/devices")) || { devices: [] }).devices.length; } catch (e) { /* 下次再试 */ }
+    }
+    paintFoot();
     paintSidebar();
   }
-  function paintComputerName() {
-    // This computer's name under 我 at the bottom of the sidebar.
+  // app.js 在拿到 /api/session 后调一次：这条入口是隧道/代理那头的官网。
+  function setSession(s) {
+    const was = S.remote;
+    S.remote = !!(s && s.remote);
+    if (S.remote && !was) refresh(); // 底栏要账号设备数，立即拉一次
+    else paintFoot();
+  }
+  function paintFoot() {
+    // 底栏「我」下面那行：本机写这台电脑的名字；官网入口写「已绑定 N 台设备」。
     const me = document.getElementById("me-device");
-    const self = (S.data && S.data.self) || {};
-    if (me) { me.textContent = self.name || self.label || ""; me.hidden = !me.textContent; }
+    if (!me) return;
+    if (S.remote) {
+      const n = S.acctDevs;
+      me.textContent = n == null ? "" : n ? "已绑定 " + n + " 台设备" : "还没有设备";
+    } else {
+      const self = (S.data && S.data.self) || {};
+      me.textContent = self.name || self.label || "";
+    }
+    me.hidden = !me.textContent;
+  }
+  // 账号状态只取一次（设置打开或认领弹窗要用 unbound）；401 之外的错都当没登录。
+  async function loadAcct() {
+    if (S.acct !== null) return S.acct;
+    try { const out = await api("GET", "/api/account/me"); S.acct = (out && out.account) || null; } catch (e) { S.acct = null; }
+    return S.acct;
   }
 
   // ---- 打开、关闭 ----
@@ -112,8 +141,18 @@
   async function mount() {
     ensureHosts();
     S.embedded = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
-    await refresh();
+    await Promise.all([refresh(), loadAcct()]);
     render();
+  }
+  // 「把这台电脑绑到账号？」（04b）：本机还没绑到登录着的账号时，app.js 开机后请一次。
+  async function offerClaim() {
+    const acct = await loadAcct();
+    if (!acct || !acct.unbound) return;
+    let said = false;
+    try { said = sessionStorage.getItem("xbot-claim-dismissed") === "1"; } catch (e) {}
+    if (said) return;
+    if (!S.data) await refresh();
+    S.claimErr = ""; S.view = "claim"; render();
   }
   function unmount() {
     S.embedded = false;
@@ -128,7 +167,8 @@
     const top = modalEl && modalEl.firstChild ? "modal" : "";
     if (!top) return false;
     if (ev.key === "Escape") {
-      if (top === "modal" && S.view !== "rename" && S.view !== "unpair" && S.view !== "gw-confirm") return false; // pairing.js owns its modals' Escape (it cancels codes)
+      if (top === "modal" && !["rename", "unpair", "gw-confirm", "claim"].includes(S.view)) return false; // pairing.js owns its modals' Escape (it cancels codes)
+      if (S.view === "claim") { try { sessionStorage.setItem("xbot-claim-dismissed", "1"); } catch (e) {} }
       closeModal();
       return true;
     }
@@ -198,8 +238,6 @@
   }
 
   // ---- 抽屉 ----
-  // 「在线」是网关按对方刚发的 Bot 列表判的，最多晚十几分钟。
-  const fineOnline = "「在线」指 16 分钟内收到过对方的 Bot 列表，所以状态可能晚十几分钟才变。关掉 XBot 的电脑会显示离线，发给它的消息在网关里最多等 7 天。";
   const official = "gateway.babelgo.cn:8443";
   // 网关地址只填官方或自建，三种错误：格式不对（400）、连不上新地址（502）、没填。
   function gwCheck(v, cur) {
@@ -216,7 +254,7 @@
     const cur = gw ? (host(gw) === official ? "官方 · " + official : "自建 · " + host(gw)) : "";
     if (!S.selfGwEdit) return `<div class="g7-set" id="gw-row"><span class="g7-set-ico">${svg("server", 20)}</span><div class="g7-set-main"><b>网关</b>
       <small>${gw ? sp(cur) : "还没设网关"}</small><small>消息端到端加密，网关只转交，看不到内容。</small></div>
-      <button class="text-btn g7-set-act" type="button" data-act="self-gw-edit">${gw ? "改" : "设置"}</button></div>`;
+      <button class="ghost" type="button" aria-label="改网关地址" data-act="self-gw-edit">${svg("pencil")}</button></div>`;
     const bad = !!S.selfGwErr;
     return `<div class="g7-set g7-set-edit" id="gw-row"><div class="g7-set-head"><span class="g7-set-ico">${svg("server", 20)}</span><div class="g7-set-main"><b>网关</b>
         <small>现在用：${gw ? sp(cur) : "还没设网关"}</small></div></div>
@@ -282,25 +320,39 @@
       <div class="g7-device g7-self"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
         <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div></section>`;
+    // 本机还没绑到登录着的账号：先给认领（主路径，shot 04b）。
+    const claim = S.acct && S.acct.unbound ? `<div class="g7-claim"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+      <div class="g7-claim-main"><b>把这台电脑绑到账号？</b><small>绑定后，手机和其它入口也能看到这台电脑上的 Bot。</small>
+      ${S.claimErr ? `<p class="error g7-inline-err">${esc(S.claimErr)}</p>` : ""}</div>
+      <button class="primary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></div>` : "";
     const banner = gw && !up ? `<div class="g7-banner"><span class="g7-banner-ico">${svg("cloudOff", 18)}</span>
         <span>${sp("连不上网关" + host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
     let list;
     if (!devs.length) {
-      list = `<section class="profile-section"><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有配对的设备</h3>
-          <p>把你的另一台电脑配对进来，它上面的 Bot 会出现在侧栏里，点开就能聊天。</p></div>
-        <ul class="g7-can"><li>${svg("bot", 16)}<span>在这台电脑上和另一台电脑的 Bot 聊天，和本机的一样。</span></li>
-          <li>${svg("swap", 16)}<span>两边的 Bot 能互发消息。</span></li>
-          <li class="no">${svg("shield", 16)}<span>记忆和文件留在各自的电脑上。</span></li></ul>
+      list = `<section class="profile-section"><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有设备</h3>
+          <p>点「添加设备」，在另一台电脑上输入短码配对。配对后它的 Bot 会出现在左侧，那台电脑保持在线就能聊。</p></div>
         </section>`;
     } else {
       list = `<section class="profile-section"><h3>已配对 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
-          <p class="g7-fine">${sp(fineOnline)}</p></section>`;
+          <p class="g7-fine">${sp("这里列的是配对过的电脑。「在线」表示最近能连上该设备上的 XBot。官网入口不是设备，不会出现在此列表。")}</p></section>`;
     }
-    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
-      <div class="g7-lead">${sp("配对后，在这台电脑上就能和另一台电脑上的 Bot 聊天，两边的 Bot 也能互发消息。记忆和文件留在各自的电脑上。")}</div>${banner}
+    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>添加设备</span></button></div>
+      <div class="g7-lead">${sp("配对后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${claim}${banner}
       <div class="g7-body">${selfCard}${list}
         <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>`;
+  }
+  // 认领确认（shot 04b）：POST /api/account/claim 是真绑定（bindIfFree + 上报账号）。
+  function viewClaim() {
+    const self = (S.data && S.data.self) || {};
+    return modal(`<h2>把这台电脑绑到账号？</h2>
+      <p class="g7-lead">绑定后，手机和其它入口也能看到这台电脑上的 Bot。</p>
+      <div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+        <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name || "这台电脑")}</div>
+        <div class="g7-dev-sub">${esc([self.os, "本机", "未绑定"].filter(Boolean).join(" · "))}</div></div></div>
+      ${S.claimErr ? `<p class="error g7-field-err">${esc(S.claimErr)}</p>` : ""}
+      <div class="modal-actions"><button class="secondary" type="button" data-act="claim-dismiss">先不绑</button><button class="primary" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></div>
+      <p class="g7-fine">绑定只让这台电脑出现在账号的「我的设备」里；要在别的电脑上和这里的 Bot 聊天，还要在「设备」里用短码配对。</p>`, "g7-claim-modal");
   }
 
   function render() {
@@ -311,7 +363,7 @@
     const selDir = sel != null ? document.activeElement.selectionDirection : null;
     const wasView = lastView;
     devicesEl.innerHTML = S.embedded ? viewDevices() : "";
-    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm }, D.views)[S.view];
+    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm, claim: viewClaim }, D.views)[S.view];
     modalEl.innerHTML = V ? V() : "";
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
     lastView = S.view || "";
@@ -381,6 +433,21 @@
       case "gw-retry":
         try { S.data = await api("GET", "/api/devices?retry=1"); } catch (e) {}
         paintSidebar(); render(); break;
+      case "claim": {
+        // 真绑定：服务端 bindIfFree + 上报账号（account.go 的 accountClaim）。
+        S.claimErr = ""; S.claimBusy = true; render();
+        try {
+          const out = await api("POST", "/api/account/claim");
+          S.acct = (out && out.account) || S.acct;
+          S.view = null;
+          await refresh();
+        } catch (e) { S.claimErr = e.message; }
+        S.claimBusy = false; render(); break;
+      }
+      case "claim-dismiss":
+        S.view = null;
+        try { sessionStorage.setItem("xbot-claim-dismissed", "1"); } catch (e) {}
+        render(); break;
       default: if (D.acts[name]) await D.acts[name](el);
     }
   }
@@ -482,7 +549,7 @@
   Object.defineProperty(D, "chat", { get: () => window.xbotRemoteChat || null, set: () => false });
   setInterval(() => { if (!document.hidden) refresh(); }, 30000);
 
-  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face });
+  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face, setSession, offerClaim });
   D.views = {}; D.acts = {}; D.onInput = null; D.onKey = null; // pairing.js 接着往这三个上面挂
   refresh();
 })();
