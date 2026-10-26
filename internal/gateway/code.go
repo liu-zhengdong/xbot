@@ -238,6 +238,13 @@ func (s *Server) claimCode(r *http.Request, body []byte, caller string, pub ed25
 	if err := s.admitPendingLocked(pub, record.Owner); err != nil {
 		return 0, nil, err
 	}
+	if ok, err := exists(filepath.Join(s.Dir, "pending", caller)); err != nil {
+		return 0, nil, err
+	} else if ok {
+		if err := s.noteClaimLocked(caller, ip); err != nil {
+			return 0, nil, err
+		}
+	}
 	if !known {
 		record.Claims++
 		record.Claimers = append(record.Claimers, caller)
@@ -248,7 +255,7 @@ func (s *Server) claimCode(r *http.Request, body []byte, caller string, pub ed25
 	return 200, map[string]string{"install": record.Owner}, nil
 }
 
-// clientIP is the address failed lookups are counted against: RemoteAddr, or
+// clientIP is the address failed lookups and new installs are counted against: RemoteAddr, or
 // the last X-Forwarded-For entry behind a proxy; IPv6 by /64.
 func (s *Server) clientIP(r *http.Request) string {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)

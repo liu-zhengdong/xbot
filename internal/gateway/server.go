@@ -43,17 +43,28 @@ type Server struct {
 	Open       bool
 	// TrustForwarded trusts the last X-Forwarded-For address (set behind a proxy).
 	TrustForwarded bool
-	Now            func() time.Time
-	mu             sync.Mutex
-	waiters        map[string]*pollWaiter
-	limits         *limits // Optional test bounds.
-	totalBytes     int64
-	senderBytes    map[string]int64
-	counted        bool
+	// InstallCap overrides MaxInstalls when positive (the official gateway runs 1000).
+	InstallCap int
+	// DailyPerIP overrides DailyInstallsPerIP when positive; negative means no cap.
+	DailyPerIP  int
+	Now         func() time.Time
+	mu          sync.Mutex
+	waiters     map[string]*pollWaiter
+	limits      *limits // Optional test bounds.
+	totalBytes  int64
+	senderBytes map[string]int64
+	counted     bool
 
 	pendingSweep time.Time
 	codeFailures map[string][]time.Time
 	codeTries    []time.Time
+
+	// New installs per client IP for regDay (UTC), in memory like the code
+	// failures: a restart forgets them. claimIP remembers which IP claimed a
+	// code for each pending install, so its promotion counts there too.
+	regDay   string
+	regCount map[string]int
+	claimIP  map[string]string
 }
 
 type httpError struct {
@@ -158,11 +169,31 @@ func (s *Server) register(r *http.Request, _ []byte, _ string, pub ed25519.Publi
 			return 0, nil, httpError{401, "bad token"}
 		}
 	}
+	// Re-registering a known install is free; only new ones use the IP's day.
+	ip := s.clientIP(r)
+	if !ok && s.dailyFullLocked(ip) {
+		return 0, nil, httpError{429, "too many registrations"}
+	}
 	if err := s.admitLocked(pub); err != nil {
 		return 0, nil, err
 	}
+	if !ok {
+		s.regCount[ip]++
+	}
 	return 200, map[string]string{"status": "ok"}, nil
 }
+
+// dailyFullLocked reports whether ip has used today's (UTC) new installs,
+// starting a fresh day's counts when the date has moved on.
+func (s *Server) dailyFullLocked(ip string) bool {
+	if day := s.now().UTC().Format(time.DateOnly); day != s.regDay || s.regCount == nil {
+		s.regDay, s.regCount = day, make(map[string]int)
+	}
+	limit := cmp.Or(s.DailyPerIP, DailyInstallsPerIP)
+	return limit > 0 && s.regCount[ip] >= limit
+}
+
+func (s *Server) installCap() int { return cmp.Or(max(s.InstallCap, 0), MaxInstalls) }
 
 // admitLocked shares install capacity, eviction and last-seen updates across admission paths.
 func (s *Server) admitLocked(pub ed25519.PublicKey) error {
@@ -176,7 +207,7 @@ func (s *Server) admitLocked(pub ed25519.PublicKey) error {
 		if err != nil {
 			return err
 		}
-		if len(files) >= MaxInstalls {
+		if len(files) >= s.installCap() {
 			slices.SortFunc(files, func(a, b queueFile) int {
 				return a.info.ModTime().Compare(b.info.ModTime())
 			})
@@ -200,7 +231,7 @@ func (s *Server) admitLocked(pub ed25519.PublicKey) error {
 				files = files[:len(files)-1]
 				break
 			}
-			if len(files) >= MaxInstalls {
+			if len(files) >= s.installCap() {
 				return httpError{403, "too many installs"}
 			}
 		}

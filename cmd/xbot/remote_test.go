@@ -20,7 +20,7 @@ func TestRemoteCLI(t *testing.T) {
 		if err != nil || cfg.Gateway != "" || cfg.GatewayURL() != remote.DefaultGateway {
 			t.Fatalf("default config: %+v, %v", cfg, err)
 		}
-		if got := captureStdout(t, func() error { return cmdRemote(root, []string{"gateway"}) }); got != "https://xbot.babelgo.cn (default)\n" {
+		if got := captureStdout(t, func() error { return cmdRemote(root, []string{"gateway"}) }); got != "https://gateway.babelgo.cn:8443 (default)\n" {
 			t.Fatal(got)
 		}
 	}

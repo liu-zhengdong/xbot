@@ -187,7 +187,7 @@ func TestGateway(t *testing.T) {
 }
 
 func TestRegistrationEvictsIdleInstall(t *testing.T) {
-	s := &Server{Dir: t.TempDir(), Open: true}
+	s := &Server{Dir: t.TempDir(), Open: true, DailyPerIP: -1} // One test IP registers every install.
 	h := s.Handler()
 	hc := &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
 		w := httptest.NewRecorder()

@@ -22,7 +22,10 @@ import (
 	"xbot/internal/person"
 )
 
-const DefaultGateway = "https://xbot.babelgo.cn"
+// DefaultGateway is the official mailbox on Tencent Cloud (ADR 0024). The
+// Cloudflare Worker at https://xbot.babelgo.cn stays up as a fallback that a
+// user may set explicitly with `xbot remote gateway`.
+const DefaultGateway = "https://gateway.babelgo.cn:8443"
 
 type Device struct {
 	Name   string    `json:"name"`
@@ -125,7 +128,18 @@ func isOfficial(raw string) bool {
 	}
 	def, _ := url.Parse(DefaultGateway)
 	return strings.EqualFold(u.Scheme, def.Scheme) && strings.EqualFold(u.Hostname(), def.Hostname()) &&
-		(u.Port() == "" || u.Port() == "443") && strings.Trim(u.Path, "/") == "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+		portOf(u) == portOf(def) && strings.Trim(u.Path, "/") == "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+}
+
+// portOf is the URL's port, or the scheme's default when it has none.
+func portOf(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if strings.EqualFold(u.Scheme, "http") {
+		return "80"
+	}
+	return "443"
 }
 
 func (c Config) ByName(name string) (Device, bool) {

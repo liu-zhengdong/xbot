@@ -29,8 +29,10 @@ const (
 	AckTTL        = 10 * time.Minute
 	MaxWait       = 30 * time.Second
 	Skew          = 5 * time.Minute
-	MaxInstalls   = 64
+	MaxInstalls   = 64 // default install cap; Server.InstallCap overrides it
 	MaxAck        = 64
+	// DailyInstallsPerIP caps new installs per client IP per UTC day, like the Worker.
+	DailyInstallsPerIP = 30
 )
 
 // LoadOrCreateKey serializes reading or creating a seed with a filesystem lock.

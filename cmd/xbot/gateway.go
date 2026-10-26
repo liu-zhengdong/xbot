@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,7 +45,7 @@ func cmdGateway(root string, args []string) error {
 	if token == "" && !*open {
 		return errors.New("gateway: set XBOT_GATEWAY_TOKEN in the environment, or pass --open to allow unauthenticated registration")
 	}
-	srv := &gateway.Server{Dir: *dir, Token: token, Open: *open, TrustForwarded: *behindProxy}
+	srv := &gateway.Server{Dir: *dir, Token: token, Open: *open, TrustForwarded: *behindProxy, InstallCap: gatewayInstallCap()}
 	ctx, stop := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer stop()
 	ln, err := net.Listen("tcp", *addr)
@@ -76,4 +77,14 @@ func cmdGateway(root string, args []string) error {
 		return nil
 	}
 	return err
+}
+
+// gatewayInstallCap reads XBOT_GATEWAY_MAX_INSTALLS (the official gateway sets
+// 1000); anything but a positive integer keeps gateway.MaxInstalls.
+func gatewayInstallCap() int {
+	n, err := strconv.Atoi(strings.TrimSpace(os.Getenv("XBOT_GATEWAY_MAX_INSTALLS")))
+	if err != nil || n <= 0 {
+		return gateway.MaxInstalls
+	}
+	return n
 }

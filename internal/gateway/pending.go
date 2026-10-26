@@ -179,6 +179,37 @@ func (s *Server) admitCode(_ *http.Request, body []byte, caller string, _ ed2551
 	if p == nil || p.Owner != caller {
 		return 0, nil, httpError{404, "no such pending install"}
 	}
-	err = s.admitLocked(p.Pub)
-	return 200, map[string]string{"status": "ok"}, err
+	// Promotion counts against the claimant's daily new-install bucket, like
+	// open registration (the Worker does the same).
+	ip, claimed := s.claimIP[in.Install]
+	if claimed && s.dailyFullLocked(ip) {
+		return 0, nil, httpError{429, "too many registrations"}
+	}
+	if err := s.admitLocked(p.Pub); err != nil {
+		return 0, nil, err
+	}
+	if claimed {
+		s.regCount[ip]++
+		delete(s.claimIP, in.Install)
+	}
+	return 200, map[string]string{"status": "ok"}, nil
+}
+
+// noteClaimLocked records the claimant's IP for a pending install, dropping
+// entries whose pending install is gone so the map stays bounded.
+func (s *Server) noteClaimLocked(id, ip string) error {
+	if s.claimIP == nil {
+		s.claimIP = make(map[string]string)
+	}
+	if len(s.claimIP) >= 4*MaxPendingInstalls {
+		for k := range s.claimIP {
+			if ok, err := exists(filepath.Join(s.Dir, "pending", k)); err != nil {
+				return err
+			} else if !ok {
+				delete(s.claimIP, k)
+			}
+		}
+	}
+	s.claimIP[id] = ip
+	return nil
 }

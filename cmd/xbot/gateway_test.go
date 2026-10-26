@@ -20,3 +20,12 @@ func TestGatewayServeBehindProxyFlag(t *testing.T) {
 		t.Fatalf("behind-proxy flag was not accepted: %v", err)
 	}
 }
+
+func TestGatewayInstallCapFromEnv(t *testing.T) {
+	for env, want := range map[string]int{"1000": 1000, " 200 ": 200, "": 64, "0": 64, "-5": 64, "lots": 64} {
+		t.Setenv("XBOT_GATEWAY_MAX_INSTALLS", env)
+		if got := gatewayInstallCap(); got != want {
+			t.Errorf("%q: cap %d, want %d", env, got, want)
+		}
+	}
+}

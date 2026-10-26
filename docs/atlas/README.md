@@ -67,7 +67,7 @@ Bot 是全能的。授权给它的机器，它能做主人在终端里能做的�
 | 模型供应商与评测 | 供应商、模型提示、认证、主动性评测 | 改 `internal/provider`、`internal/eval`、`evals/` | [providers.md](providers.md) |
 | 网页界面 | 侧栏、对话、信息面板（任务、轨迹、上下文）、桌面窗口 | 改 `internal/web`、静态界面和桌面外壳 | [ui.md](ui.md)；改界面先读 [guard/界面.md](../guard/界面.md) |
 | 版本与自动升级 | 版本注入、tag 触发发布、检查与后台下载、装好重启、优雅重起 | 改 `internal/version`、`internal/upgrade`、`internal/web/update.go` | [release.md](release.md) |
-| 网关 | 开源信箱中继，连接主人自己的几台 XBot（G1–G6 已实现）。官方网关 `xbot.babelgo.cn` 跑在 Cloudflare Workers 上，也能用 Go 自建 | 做 M8、改 `gateway-worker/` | [gateway.md](gateway.md) |
+| 网关 | 开源信箱中继，连接主人自己的几台 XBot（G1–G6 已实现）。官方网关 `gateway.babelgo.cn:8443` 是腾讯云上的 Go 服务器（Cloudflare Workers 上的 `xbot.babelgo.cn` 留作备用），也能用 Go 自建 | 做 M8、改 `gateway-worker/` | [gateway.md](gateway.md) |
 
 ## 怎么配合
 ```mermaid

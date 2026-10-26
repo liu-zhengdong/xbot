@@ -234,9 +234,16 @@ func TestDefaultGatewayGetsNoToken(t *testing.T) {
 		t.Fatal("run would send the token to the default gateway")
 	}
 	// Older configs and other spellings of the official URL count as the default too.
-	for _, raw := range []string{"https://xbot.babelgo.cn", "https://XBOT.babelgo.cn:443/"} {
+	for _, raw := range []string{"https://gateway.babelgo.cn:8443", "https://GATEWAY.babelgo.cn:8443/"} {
 		mustRemote(t, update(a, func(c *Config) error { c.Gateway = raw; return nil }))
 		if cfg, _ := Load(a); cfg.Gateway != "" || cfg.GatewayToken("x") != "" {
+			t.Fatalf("%s: gateway %q", raw, cfg.Gateway)
+		}
+	}
+	// The Cloudflare fallback and the same host without its port are explicit choices.
+	for _, raw := range []string{"https://xbot.babelgo.cn", "https://gateway.babelgo.cn"} {
+		mustRemote(t, update(a, func(c *Config) error { c.Gateway = raw; return nil }))
+		if cfg, _ := Load(a); cfg.Gateway != raw {
 			t.Fatalf("%s: gateway %q", raw, cfg.Gateway)
 		}
 	}

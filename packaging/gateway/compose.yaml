@@ -1,0 +1,18 @@
+# Official mailbox gateway (https://gateway.babelgo.cn:8443) on one host.
+#   sudo mkdir -p /opt/xbot-gateway/data && sudo chown 10001:10001 /opt/xbot-gateway/data
+#   docker compose -f packaging/gateway/compose.yaml up -d --build
+# OpenResty terminates TLS on :8443 and proxies to 127.0.0.1:8791.
+# No secrets here: the official gateway runs --open and takes no token.
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: packaging/gateway/Dockerfile
+    image: xbot-gateway:latest
+    environment:
+      XBOT_GATEWAY_MAX_INSTALLS: "1000"
+    volumes:
+      - /opt/xbot-gateway/data:/data
+    ports:
+      - "127.0.0.1:8791:8790"
+    restart: unless-stopped

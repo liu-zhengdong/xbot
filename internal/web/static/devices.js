@@ -200,7 +200,7 @@
   // ---- 抽屉 ----
   // 「在线」是网关按对方刚发的 Bot 列表判的，最多晚十几分钟。
   const fineOnline = "「在线」指 16 分钟内收到过对方的 Bot 列表，所以状态可能晚十几分钟才变。关掉 XBot 的电脑会显示离线，发给它的消息在网关里最多等 7 天。";
-  const official = "xbot.babelgo.cn";
+  const official = "gateway.babelgo.cn:8443";
   // 网关地址只填官方或自建，三种错误：格式不对（400）、连不上新地址（502）、没填。
   function gwCheck(v, cur) {
     if (!v) return "请填网关地址";

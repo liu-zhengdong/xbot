@@ -1,6 +1,8 @@
 # 自建网关
 
-XBot 默认使用官方网关 https://xbot.babelgo.cn，无需设置。
+XBot 默认使用官方网关 https://gateway.babelgo.cn:8443（腾讯云上的 `xbot gateway serve`），无需设置。
+Cloudflare 上的旧官方网关 https://xbot.babelgo.cn 留作备用，要用它就 `xbot remote gateway https://xbot.babelgo.cn`。
+官方部署材料在 [packaging/gateway/](../packaging/gateway/README.md)。
 如果你想自己控制中继的部署位置、访问权限和运行资源，可以自建网关。
 网关只中继设备间的信封，不同步记忆或文件。
 
