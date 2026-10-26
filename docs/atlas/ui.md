@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-26 @ a02e3f3（Ultra 四块设计师 PASS：Agent Todo streaming、生图/头像不回退、技能主名+scope、多源导入；祖先含 3803f3d/949d542/e7da2c5；公网 UI 单源另路仍在逛）+ 换绑上下文预检 @ b160417；面板·菜单·汉堡·rail·种子提示 / 技能文案·title 优先·四源导入 / 图片设置·工作区入口·短摘要·关于 tip·脚注 / 绑家提示·气泡剥片·流式头像·Todo 侧栏与 live 人话
+verified: 2026-10-26 @ a02e3f3（Ultra 四块 + 公网 UI 单源设计师 PASS：设备侧与 pipe 薄引导壳；登录后主壳缺会话不挡；祖先含 3803f3d/949d542/e7da2c5）+ 换绑上下文预检 @ b160417；面板·菜单·汉堡·rail·种子提示 / 技能文案·title 优先·四源导入 / 公网单源设备壳 / 图片设置·工作区入口·短摘要·关于 tip·脚注 / 绑家提示·气泡剥片·流式头像·Todo 侧栏与 live 人话
 ---
 # 网页界面
 
@@ -33,7 +33,7 @@ verified: 2026-10-26 @ a02e3f3（Ultra 四块设计师 PASS：Agent Todo streami
 
 公网账号入口保留登录页、boot / bridge、仅控制 `/app/` 文档的资源 worker 和字体；业务 HTML、JS、CSS、图标通过当前配对设备的 `GET /api/ui/static/<path>` 读取内嵌 `staticFS`。同源浏览器资源请求由 worker 交回所属页面的现有加密 pipe，账号 API 继续在云上。没有云上业务壳副本或持久业务资源缓存。
 
-账号菜单可选择设备；切换会关闭原 pipe 并整页重载。未选择时取在线设备；明确选择的设备离线时显示原因和重试，不自动换设备、不回落旧壳。会话版本由设备静态响应的 `X-Xbot-Tip` 提供，纯 dev 构建用内嵌 UI 摘要区分。同步脚本不再是业务 UI 发版路径。协议、安全和体限见 [ADR 0029](../adr/0029-public-ui-single-source-via-pipe.md)、[API](../API.md#设备静态壳)。
+账号菜单可选择设备；切换会关闭原 pipe 并整页重载。未选择时取在线设备；明确选择的设备离线时显示原因和重试，不自动换设备、不回落旧壳。会话版本由设备静态响应的 `X-Xbot-Tip` 提供，纯 dev 构建用内嵌 UI 摘要区分。同步脚本不再是业务 UI 发版路径。协议、安全和体限见 [ADR 0029](../adr/0029-public-ui-single-source-via-pipe.md)、[API](../API.md#设备静态壳)。 设计师用户视角已 PASS（合入 tip `a02e3f3`）：公网 `/app/` 仅 pipe 薄引导（`boot.js` 200、`app.js` 404），业务壳经设备 `GET /api/ui/static`；本约定即 atlas 真源。登录后主壳缺会话不挡本条收口。
 
 ### 统一设置浮层
 
