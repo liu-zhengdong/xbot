@@ -18,11 +18,12 @@
 - 五 Bot 状态接口 500 样本 p95 1.205ms；本机 Chrome 30 次轨迹切换至下一帧 p95 浅色 19.7ms、深色 20.2ms。前者为测试 HTTP handler 耗时，后者为 scripted HTTP 页面交互耗时，不代表真模型回复、IPC、后台负载或 60fps 达标。证据：`~/.xbot-build/agent-todo-tool/`，截图：`~/.xbot-build/ui-shots/agent-todo-tool/`。
 - 按本批范围未跑全仓测试、`-count=3`、真模型或主人日用；未 push、未合 main、未重启日用服务。Atlas audit 已跑，既存提醒不在本批修；保留 dev 供执行官合入后在 8788 验收。
 
-## 2026-10-26 轨迹可发现与回放（分支实现，未合入）
+## 2026-10-26 轨迹可发现与回放
 
-- 环境流与 `xbot trace paths` 共用真实绝对路径 helper；`list` 逐行过滤已有遥测，`replay` 直接复用 `ExportTo(Tools:true)`，无新账本和 UI 改动。现状见 [kernel](atlas/kernel.md#轨迹路径与脚本回放)，待验收项见 [设计](dev/trace-discoverability.md)。
-- 全仓 `go test -count=1 ./...`、vet、gofmt 与六条 guard 旅程冒烟通过；fake HTTP 模型经真二进制收到路径，shell 结果落盘，CLI 时间筛选与 seq 4–5 工具回放通过。去掉环境注入的 overlay 上新增模型路径测试失败。详细检查、复测结果与自检在 `~/.xbot-build/trace-discoverability/encode-report.md`。
-- 本机并行测试负载下各 30 次 CLI 进程启动至结束：paths/list/replay p95 为 13.438/15.470/35.565ms；本次路径字段 JSON 483 字节，约 121 估算 token。长回合测试按实际路径长度补足环境及快照预算，仍检查原折叠频率与请求上限；生产压缩不变。未测线上响应、IPC、后台负载或真模型，未 push、未合 main、未日用验收。
+- 环境流与 `xbot trace paths` 共用真实绝对路径 helper；`list` 逐行过滤已有遥测，`replay` 直接复用 `ExportTo(Tools:true)`，无新账本和 UI 改动。约定见 [kernel](atlas/kernel.md#轨迹路径与脚本回放)。
+- 编码验证：全仓 `go test -count=1 ./...`、vet、gofmt 与六条 guard 旅程冒烟通过；fake HTTP 模型经真二进制收到路径，shell 结果落盘，CLI 时间筛选与 seq 4–5 工具回放通过。证据 `~/.xbot-build/trace-discoverability/encode-report.md`。
+- 已合本地 main（tip `f16c9a6`）；设计师用户视角 PASS；`docs/dev/trace-discoverability.md` 已毕业删除。未 push。
+- 本机并行测试负载下各 30 次 CLI 进程启动至结束：paths/list/replay p95 为 13.438/15.470/35.565ms；本次路径字段 JSON 483 字节，约 121 估算 token。长回合测试按实际路径长度补足环境及快照预算，仍检查原折叠频率与请求上限；生产压缩不变。未测线上响应、IPC、后台负载或真模型；未 push。
 
 ## 2026-10-26 生图工作区可发现与头像热修余量（分支实现，未合入）
 

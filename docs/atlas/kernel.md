@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ a5764e5 + 图片生成全局门控 + 上下文批 B / Agent Todo 中文展示 / 轨迹可发现与回放
+verified: 2026-10-26 @ 949d542 + 图片生成全局门控 + 上下文批 B / Agent Todo 中文展示与热修 / 轨迹可发现与回放
 ---
 # 内核：Link、Event、收件箱
 
@@ -44,7 +44,7 @@ verified: 2026-10-26 @ a5764e5 + 图片生成全局门控 + 上下文批 B / Age
 - `trace list [bot] [--since RFC3339] [--until RFC3339] [--kind KIND]` 将遥测按文件顺序逐行输出 JSONL。时间窗包含两端，支持时区偏移；缺文件为空结果，未知 kind 无匹配。只读打开时的文件大小，未换行的追加尾巴留给下次读取；单行上限 1 MiB，完整坏行报行号而不打印原文。
 - `trace replay [bot] [--from SEQ --to SEQ]` 将 Markdown 投影流式写 stdout，序号窗包含两端；from/to 必须成对，省略则全量。直接复用 `bot.ExportTo` 与 `TranscriptExport{Tools:true}`，还原工具 blob，沿用摘要、脱敏与公开边界，不输出 reasoning 或 vendor_raw，不执行历史工具。它回放主 Bot transcript，子代理全文按上述路径另读。
 
-list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务记录。加载仍可能触发既有配置或保险箱迁移；replay 的读取沿用原存储锁、旧格式迁移和派生索引维护，不能理解成底层文件系统绝对零写入。实现与待验收项见 [轨迹可发现与回放](../dev/trace-discoverability.md)。
+list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务记录。加载仍可能触发既有配置或保险箱迁移；replay 的读取沿用原存储锁、旧格式迁移和派生索引维护，不能理解成底层文件系统绝对零写入。设计师用户视角已 PASS（tip `f16c9a6`）；本约定即 atlas 真源。
 
 ## 厂商生图
 
