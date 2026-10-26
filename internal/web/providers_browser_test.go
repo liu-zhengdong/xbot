@@ -125,6 +125,7 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)},
 const waitFor=async(fn,msg)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.textContent.includes(name));
 const gap=(above,below)=>below.getBoundingClientRect().top-above.getBoundingClientRect().bottom;
+const fullWidth=()=>$('.provider-models').getBoundingClientRect().width;
 // xAI OAuth: log in, then a failed re-login from the header shows the error
 // card above its own buttons with a visible gap, and cancel returns to logged in.
 async function xaiLoggedIn(){
@@ -137,15 +138,15 @@ async function xaiLoggedIn(){
  assert($('.provider-auth-slot').getBoundingClientRect().height===0,'empty re-login slot takes space');
  fixture.xaiSucceed=false;$('.provider-status .provider-relink').click();
  await waitFor(()=>$('.provider-status').textContent.includes('等待登录')&&$('.provider-auth-slot .provider-btn-sec'),'xai re-login pending missing');
- fixture.xaiFail=true;await waitFor(()=>$('.provider-auth-slot .provider-auth-error').textContent.includes('登录未完成，请重试'),'xai re-login error card missing');
- const err=$('.provider-auth-slot .provider-auth-error'),again=$('.provider-auth-slot .provider-btn-pri');
- assert(again.textContent==='重新登录'&&gap(err,again)>=8,'xai re-login error card touches its button: '+gap(err,again));
+ fixture.xaiFail=true;await waitFor(()=>$('.provider-auth-slot .provider-auth-fail').textContent.includes('登录未完成，请重试'),'xai re-login failure line missing');
+ const err=$('.provider-auth-slot .provider-auth-fail'),again=$('.provider-auth-slot .provider-btn-pri');
+ assert(again.textContent==='重新登录'&&gap(err,again)>=8,'xai re-login failure line touches its button: '+gap(err,again));
  assert(gap(again,$('.provider-model-count'))>=8,'xai re-login buttons touch the model list');
  assert($('.provider-status').textContent.includes('登录未完成')&&!$('.provider-status .sdot.ok'),'xai re-login failed status row wrong');
  assert(!/登录 xAI登录未完成|重新登录登录未完成/.test($('#settings-providers').innerText),'xai re-login button and error glued together');
  const cancels=fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length;
  $('.provider-auth-slot .provider-btn-sec').click();
- await waitFor(()=>$('.provider-status').textContent.includes('已登录')&&!$('.provider-auth-slot .provider-auth-error').children.length,'xai cancel did not return to logged in');
+ await waitFor(()=>$('.provider-status').textContent.includes('已登录')&&!$('.provider-auth-slot .provider-auth-fail').textContent,'xai cancel did not return to logged in');
  assert(fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length===cancels+1,'xai cancel not sent');
  assert($('.provider-auth-slot').getBoundingClientRect().height===0,'cancelled re-login slot takes space');
  assert(testErrors.length===0,testErrors.join(';'));
@@ -171,6 +172,9 @@ async function xaiLoggedIn(){
  card('xAI').click();await waitFor(()=>btn('登录 xAI'),'xai login CTA missing');
  assert(!$('.provider-key-alt').open,'xai key form not folded');assert($('.provider-key input'),'xai key form missing');
  assert($('.provider-status').textContent.includes('未登录')&&!$('#settings-providers').textContent.includes('密钥已配置'),'xai header status is not OAuth');
+ // Full width: the login button fills the column and the state sits on the header's right edge.
+ assert($('.provider-models').getBoundingClientRect().width>=$('#settings-providers').getBoundingClientRect().width-2&&btn('登录 xAI').getBoundingClientRect().width>=fullWidth()-2,'xai login CTA does not fill the column');
+ assert($('.provider-detail-heading').getBoundingClientRect().right-$('.provider-status').getBoundingClientRect().right<2,'xai state not on the header right');
  assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
  btn('登录 xAI').click();await waitFor(()=>btn('取消')&&btn('再点重开'),'xai pending controls missing');
  assert(btn('等待登录…').disabled&&$('.provider-status').textContent.includes('等待登录'),'xai pending state missing');
@@ -181,13 +185,18 @@ async function xaiLoggedIn(){
  // A failed login keeps a readable error with cancel and re-login visible.
  btn('登录 xAI').click();await waitFor(()=>btn('再点重开'),'xai second login not pending');
  fixture.xaiFail=true;await waitFor(()=>btn('重新登录')&&$('.provider-auth .provider-btn-sec'),'xai retry after failure missing');
- assert($('.provider-auth-error').textContent.includes('登录未完成，请重试。可取消后重新登录。')&&$('.provider-auth-error').textContent.includes('授权未完成'),'xai error card missing');
- assert(!$('.provider-auth-error button')&&$('.provider-auth-error').getBoundingClientRect()&&gap($('.provider-auth-error'),btn('重新登录'))>=8,'xai error card touches the button');
+ // Flat failure: a short red line (the lead gives way), then both buttons on one full-width row.
+ const failLine=$('.provider-auth-fail');
+ assert(failLine.textContent==='登录未完成，请重试。'&&!$('.provider-auth-error')&&$('.provider-auth .provider-login-note').textContent.includes('授权未完成'),'xai flat failure missing');
+ assert(getComputedStyle(failLine).backgroundColor==='rgba(0, 0, 0, 0)'&&getComputedStyle($('.provider-xai-lead')).display==='none','xai failure is not flat');
+ const again=btn('重新登录'),stop=$('.provider-auth .provider-btn-sec');
+ assert(gap(failLine,again)>=8&&Math.abs(again.getBoundingClientRect().top-stop.getBoundingClientRect().top)<1,'xai failure layout wrong');
+ assert(stop.getBoundingClientRect().right-again.getBoundingClientRect().left>=fullWidth()-2,'xai failure buttons do not fill the column');
  assert(!/登录 xAI登录未完成|重新登录登录未完成/.test($('#settings-providers').innerText),'xai button and error glued together');
  assert($('.provider-status').textContent.includes('登录未完成')&&!$('.provider-status .sdot.ok'),'xai failed status row wrong');
  // Cancelling the failed login by clicking 取消 returns to 登录 xAI.
  $('.provider-auth .provider-btn-sec').click();
- await waitFor(()=>btn('登录 xAI')&&!$('.provider-auth-error').children.length,'xai failed cancel did not return to idle');
+ await waitFor(()=>btn('登录 xAI')&&!$('.provider-auth-fail').textContent,'xai failed cancel did not return to idle');
  assert(fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length===2,'xai failed cancel not sent');
  fixture.xaiFail=false;$('.provider-back').click();
  card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');

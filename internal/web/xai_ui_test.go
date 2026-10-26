@@ -22,7 +22,7 @@ class Element {
  setAttribute(k,v){this.attrs[k]=v} focus(){} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
 }
 const host=new Element('main'),calls=[],timers=[],popups=[];
-let configured=false,resolveStatus,failStart=false,current=true,expired=false;
+let configured=false,resolveStatus,failStart=false,current=true,expired=false,cancelFail=false;
 const window={open(url){assert(url==='about:blank'||url==='https://auth.example/authorize');const popup={closed:false,opener:{},location:{replace(url){popup.url=url}},close(){this.closed=true}};popups.push(popup);return popup}};
 const document={documentElement:{classList:{contains:()=>false}},createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag)};
 vm.runInNewContext(fs.readFileSync('static/providers.js','utf8'),{window,document,URL,WeakMap,encodeURIComponent,setTimeout:fn=>timers.push(fn)});
@@ -33,7 +33,7 @@ const api=async(path,opts={})=>{
  calls.push({path,opts});
  if(path==='/api/providers')return {providers:providers(),vendors:[{brand:'xai',title:'xAI',protocol:'chat_completions',models:['grok-4']}]};
  if(path==='/api/providers/oauth/xai/start'){if(failStart)throw Error('private-upstream-body');return {url:'https://auth.example/authorize'}}
- if(path==='/api/providers/oauth/xai/cancel')return {status:'cancelled'};
+ if(path==='/api/providers/oauth/xai/cancel'){if(cancelFail){const e=Error('暂时无法取消');e.status=409;throw e}return {status:'cancelled'}}
  if(path==='/api/providers/oauth/xai/status')return await new Promise(resolve=>resolveStatus=resolve);
  if(path==='/api/providers/models?provider=xai'){if(expired){const e=Error('登录凭证已失效，请重新登录');e.status=422;throw e}return {models:[{model:'grok-4',context:256000,vision:false,hosted_web_search:true}]}}
  throw Error('unexpected '+path);
@@ -69,15 +69,22 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  // A failed login: separate error card, then re-login and cancel as separate controls.
  const retry=find('button','登录 xAI').onclick();await flush();assert.equal(starts(),2);
  resolveStatus({state:'failed',error:'授权未完成，请重试'});await retry;await flush();
- const failCard=cls('provider-auth-error');
- assert(failCard&&failCard.innerText.includes('登录未完成，请重试。可取消后重新登录。'),'error card missing');
- assert(failCard.innerText.includes('授权未完成'),'server failure text missing');
- assert(!walk(failCard).some(n=>n.tag==='button'),'button inside the error card');
+ // Flat failure: one short red line, no tinted error card.
+ const failLine=cls('provider-auth-fail');
+ assert(failLine&&failLine.textContent==='登录未完成，请重试。'&&!failLine.children.length,'flat failure line missing');
+ assert(!walk(host).some(n=>/provider-auth-error/.test(String(n.className))),'tinted error card still rendered');
+ assert(host.innerText.includes('授权未完成'),'server failure text missing'); 
  const relogin=find('button','重新登录'),stop=find('button','取消');
  assert(relogin&&stop&&relogin!==stop&&relogin.textContent==='重新登录'&&stop.textContent==='取消','failed controls missing');
  assert(!find('button','登录 xAI'),'idle CTA kept next to the failure');
  assert(statusText().includes('登录未完成')&&!walk(cls('provider-status')).some(n=>String(n.className).includes('sdot ok')),'failed status row wrong');
  // Re-login succeeds; the OAuth binding pulls its catalog read-only.
+ // The same cancel error twice must leave 取消 clickable.
+ cancelFail=true;
+ for(let i=0;i<2;i++){const c=stop.onclick();await flush();await c}
+ assert.equal(stop.disabled,false,'cancel stuck disabled after a repeated error');
+ assert(host.innerText.includes('暂时无法取消'),'cancel error hidden');
+ cancelFail=false;
  const again=find('button','重新登录').onclick();await flush();assert.equal(starts(),3);
  configured=true;resolveStatus({state:'succeeded'});await again;await flush();
  assert(statusText().includes('已登录'),'logged-in status missing');
@@ -92,10 +99,10 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  const relink=walk(cls('provider-status')).find(n=>n.className==='provider-relink').onclick();await flush();assert.equal(starts(),4);
  assert(statusText().includes('等待登录'),'re-login pending status missing');
  resolveStatus({state:'failed',error:''});await relink;await flush();
- assert(cls('provider-auth-error').innerText.includes('登录未完成，请重试'),'re-login error card missing');
+ assert(cls('provider-auth-fail').textContent.includes('登录未完成，请重试'),'re-login failure line missing');
  assert(statusText().includes('登录未完成'),'re-login failed status missing');
  const back=find('button','取消').onclick();await flush();await back;
- assert(statusText().includes('已登录')&&!cls('provider-auth-error').children.length,'cancel did not return to logged in');
+ assert(statusText().includes('已登录')&&!cls('provider-auth-fail').textContent,'cancel did not return to logged in');
  // A rejected refresh surfaces as a re-login prompt, not a network error.
  expired=true;
  find('button','模型与供应商').onclick();

@@ -60,7 +60,7 @@
   function lineIcon(kind) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round"); svg.setAttribute("aria-hidden", "true");
-    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", alert: "M12 8v4M12 16h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0" };
+    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0" };
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
   }
   async function settings({ api, host, isCurrent = () => true }) {
@@ -206,13 +206,13 @@
       };
       return form;
     }
-    // xAI account login controls. The error card, the primary button and the
+    // xAI account login controls. The failure line, the primary button and the
     // secondary cancel are separate blocks so their text never runs together;
     // `status(state, go, cancel)` mirrors the OAuth state into the header row.
     // A null label means the binding is logged in: idle shows nothing here and
     // re-login lives in the header row.
     function xaiAuthControls(area, label, status, done, current) {
-      const error = node("div", "provider-auth-error"); error.setAttribute("role", "alert");
+      const fail = node("p", "provider-auth-fail"); fail.setAttribute("role", "alert");
       const actions = node("div", "provider-login-actions");
       const note = node("p", "provider-login-note"); note.setAttribute("role", "status");
       const go = () => login("xai", paint, done);
@@ -223,7 +223,8 @@
           loginRequest.stopped = true;
           if (loginRequest.popup && !loginRequest.popup.closed) loginRequest.popup.close();
         }
-        stop.disabled = true;
+        // A repeated cancel error must repaint, or 取消 stays disabled.
+        stop.disabled = true; shown = "";
         try { await api("/api/providers/oauth/xai/cancel", { method: "POST" }); }
         catch (err) { paint("error", err && err.status ? err.message : ""); return; }
         paint("cancelled", "");
@@ -234,14 +235,14 @@
         // Polling repaints every second; keep the same nodes so focus stays put.
         if (!current() || shown === state + "\n" + message) return; shown = state + "\n" + message;
         start.disabled = stop.disabled = reopen.disabled = false;
-        error.replaceChildren(); actions.replaceChildren(); note.textContent = "";
+        fail.textContent = ""; actions.replaceChildren(); note.textContent = "";
         if (state === "starting" || state === "pending") {
           start.textContent = "等待登录…"; start.disabled = true;
           actions.append(start); if (state === "pending") actions.append(stop, reopen);
           note.textContent = message; status("pending", go, cancel);
         } else if (state === "failed" || state === "error") {
-          error.append(lineIcon("alert"), node("span", "", "登录未完成，请重试。可取消后重新登录。"));
-          if (message) error.append(node("small", "", message));
+          // Flat: one short red line; a server reason goes on the quiet note below.
+          fail.textContent = "登录未完成，请重试。"; note.textContent = message;
           start.textContent = "重新登录"; actions.append(start, stop); status("failed", go, cancel);
         } else {
           start.textContent = label || "重新登录"; if (label) actions.append(start);
@@ -251,7 +252,7 @@
         }
       }
       paint("idle", "");
-      area.append(error, actions, note);
+      area.append(fail, actions, note);
       return {
         // A login may be pending or failed from an earlier view; show it once.
         sync: async () => {
@@ -285,7 +286,9 @@
       const current = () => alive() && request === revision;
       const back = button("", "provider-back", () => paint(key(p))); back.append(lineIcon("back"), node("span", "", "模型与供应商"));
       const heading = node("div", "provider-detail-heading"), info = node("div", "provider-detail-info"), title = node("div", "provider-detail-title"); title.append(node("h2", "", p.title), badge(p.protocol));
-      const status = node("div", "provider-status"); info.append(title, status); heading.append(glyph(p.brand), info);
+      // xAI puts its login state on the right of the header so the column fills.
+      const status = node("div", "provider-status"); heading.append(glyph(p.brand), info); info.append(title);
+      if (p.brand === "xai") { heading.className += " provider-detail-heading-aside"; heading.append(status); } else info.append(status);
       const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models"); host.replaceChildren(back, heading, auth, body); heading.tabIndex = -1; heading.focus({preventScroll:true});
       // xAI's header row reflects account login only; a saved API key shows
       // inside the folded key form, never here.
@@ -297,7 +300,7 @@
         else if (state === "logged") {
           status.replaceChildren(node("span", "sdot ok"), node("span", "provider-status-ok", "已登录"), button("重新登录", "provider-relink", go));
           if (hosted) status.append(node("span", "provider-search-note", "已用厂商搜索，本绑定不再使用本地搜索"));
-        } else status.replaceChildren(node("span", "sdot off"), node("span", "", "未登录"));
+        } else status.replaceChildren(node("span", "sdot idle"), node("span", "provider-status-idle", "未登录"));
       }
       function keyStatus() {
         if (p.brand === "xai") {
