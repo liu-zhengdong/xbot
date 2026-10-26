@@ -1,9 +1,13 @@
 package personacard
 
 import (
+	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -74,9 +78,9 @@ func TestEnsureSeedsLeavesAUsedLibraryUntouched(t *testing.T) {
 	emptied := OwnerDir(root, "u3")
 	c, _ := Create(root, "u3", "x", "y")
 	_ = Delete(root, "u3", c.ID)
-	before := map[string][]string{}
+	before := map[string]map[string]libraryEntry{}
 	for _, d := range []string{OwnerDir(root, "u1"), legacy, emptied, OwnerDir(root, "u4")} {
-		before[d] = names(t, d)
+		before[d] = snapshotLibrary(t, d)
 	}
 	for _, o := range []string{"u1", "u2", "u3", "u4"} {
 		if err := EnsureSeeds(root, o); err != nil {
@@ -84,7 +88,7 @@ func TestEnsureSeedsLeavesAUsedLibraryUntouched(t *testing.T) {
 		}
 	}
 	for d, want := range before {
-		if got := names(t, d); len(got) != len(want) {
+		if got := snapshotLibrary(t, d); !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s changed: %v -> %v", d, want, got)
 		}
 	}
@@ -191,14 +195,169 @@ func TestConcurrentEnsureSeedsSeedsOnce(t *testing.T) {
 	}
 }
 
-func names(t *testing.T, dir string) []string {
-	t.Helper()
-	var out []string
-	_ = filepath.Walk(dir, func(p string, _ os.FileInfo, err error) error {
-		if err == nil {
-			out = append(out, p)
+// A library from before the marker (cards, no .seeded, with or without .lock) lists with
+// no writes; once its owner deletes every card it stays empty.
+func TestLegacyLibraryEmptiedStaysEmpty(t *testing.T) {
+	// A fresh process has no library state in memory; the marker must suffice.
+	if root := os.Getenv("XBOT_TEST_EMPTIED_CARD_ROOT"); root != "" {
+		if err := EnsureSeeds(root, "u1"); err != nil {
+			t.Fatal(err)
 		}
+		if cards, err := List(root, "u1"); err != nil || len(cards) != 0 {
+			t.Fatalf("reopened library: %+v, %v", cards, err)
+		}
+		return
+	}
+	for _, withLock := range []bool{true, false} {
+		t.Run(map[bool]string{true: "with_lock", false: "without_lock"}[withLock], func(t *testing.T) {
+			root := t.TempDir()
+			dir := OwnerDir(root, "u1")
+			for _, id := range []string{"0123456789abcdef", "fedcba9876543210"} {
+				if err := os.MkdirAll(filepath.Join(dir, id), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, id, "card.md"), []byte("name: 旧卡"+id[:2]+"\n\n旧正文。\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if withLock {
+				if err := os.WriteFile(filepath.Join(dir, ".lock"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := snapshotLibrary(t, dir)
+			if err := EnsureSeeds(root, "u1"); err != nil {
+				t.Fatal(err)
+			}
+			if got := snapshotLibrary(t, dir); !reflect.DeepEqual(got, before) {
+				t.Fatalf("lock %v: list wrote %v -> %v", withLock, before, got)
+			}
+			cards, err := List(root, "u1")
+			if err != nil || len(cards) != 2 {
+				t.Fatalf("legacy cards: %+v, %v", cards, err)
+			}
+			for _, c := range cards {
+				if err := Delete(root, "u1", c.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := 0; i < 3; i++ {
+				if err := EnsureSeeds(root, "u1"); err != nil {
+					t.Fatal(err)
+				}
+				if left, err := List(root, "u1"); err != nil || len(left) != 0 {
+					t.Fatalf("lock %v: reseeded after deleting every old card: %+v, %v", withLock, left, err)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, seededFile)); err != nil {
+				t.Fatalf("deleting legacy cards did not persist history: %v", err)
+			}
+			bin, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, bin, "-test.run=^TestLegacyLibraryEmptiedStaysEmpty$", "-test.v")
+			cmd.Env = append(os.Environ(), "XBOT_TEST_EMPTIED_CARD_ROOT="+root)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("reopen in a new process: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+type libraryEntry struct {
+	Mode    os.FileMode
+	ModTime time.Time
+	Body    string
+}
+
+// Compare contents and mtimes as well as paths: equal file counts do not prove
+// that listing an existing library made no writes.
+func snapshotLibrary(t *testing.T, dir string) map[string]libraryEntry {
+	t.Helper()
+	out := map[string]libraryEntry{}
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		entry := libraryEntry{Mode: info.Mode(), ModTime: info.ModTime()}
+		if !info.IsDir() {
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			entry.Body = string(body)
+		}
+		out[path] = entry
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return out
+}
+
+func TestDeleteWithFailedCallbackKeepsLegacyCard(t *testing.T) {
+	root := t.TempDir()
+	c, err := Create(root, "u1", "旧卡", "旧正文。")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := OwnerDir(root, "u1")
+	if err := os.Remove(filepath.Join(dir, seededFile)); err != nil {
+		t.Fatal(err)
+	}
+	want := snapshotLibrary(t, dir)
+	denied := errors.New("still in use")
+	if err := DeleteWith(root, "u1", c.ID, func() error { return denied }); !errors.Is(err, denied) {
+		t.Fatalf("delete: %v", err)
+	}
+	if got := snapshotLibrary(t, dir); !reflect.DeepEqual(got, want) {
+		t.Fatalf("failed callback changed legacy library: %v -> %v", want, got)
+	}
+}
+
+func TestDeleteKeepsCardIfSeedMarkerCannotBeWritten(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows Chmod does not enforce directory write permissions")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory write permissions")
+	}
+	root := t.TempDir()
+	c, err := Create(root, "u1", "旧卡", "旧正文。")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := OwnerDir(root, "u1")
+	if err := os.Remove(filepath.Join(dir, seededFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+	if err := Delete(root, "u1", c.ID); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("delete without writable history: %v", err)
+	}
+	if _, err := Get(root, "u1", c.ID); err != nil {
+		t.Fatalf("card lost when history could not be persisted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, seededFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected history after failed write: %v", err)
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Delete(root, "u1", c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSeeds(root, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if cards, err := List(root, "u1"); err != nil || len(cards) != 0 {
+		t.Fatalf("reseeded after retrying delete: %+v, %v", cards, err)
+	}
 }

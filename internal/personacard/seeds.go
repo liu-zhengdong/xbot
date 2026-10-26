@@ -33,8 +33,8 @@ var Seeds = []Seed{
 }
 
 // seededFile marks a library that has had cards: a seed run finished, or a card was
-// created, imported or updated. Only it and cards decide; .lock is also made by failed
-// calls, so it says nothing about history.
+// created, imported, updated or deleted. Only it and cards decide; .lock is also
+// made by failed calls, so it says nothing about history.
 const seededFile = ".seeded"
 
 // beforeSeed lets tests pause a seed run before card i.

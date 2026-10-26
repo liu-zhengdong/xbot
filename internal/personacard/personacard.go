@@ -183,8 +183,9 @@ func Delete(root, owner, id string) error {
 }
 
 // DeleteWith runs before under the library lock with the card known to exist,
-// then removes the card unless before failed. Callers unbind bots in before,
-// so a concurrent pick (see With) cannot bind the card after the check.
+// then marks the library as used and removes the card unless before failed.
+// Callers unbind bots in before, so a concurrent pick (see With) cannot bind
+// the card after the check.
 func DeleteWith(root, owner, id string, before func() error) error {
 	if !ValidID(id) {
 		return ErrNotFound
@@ -200,6 +201,11 @@ func DeleteWith(root, owner, id string, before func() error) error {
 			if err := before(); err != nil {
 				return err
 			}
+		}
+		// The card existed, so the library has had cards: record it before the last
+		// one can go, or a library from before the marker would get the seeds again.
+		if err := markSeeded(dir); err != nil {
+			return err
 		}
 		return os.RemoveAll(filepath.Join(dir, id))
 	})

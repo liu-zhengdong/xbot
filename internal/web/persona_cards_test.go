@@ -253,3 +253,33 @@ func TestPersonaCardFailedPickStillSeeds(t *testing.T) {
 		t.Fatalf("list %d %s", code, raw)
 	}
 }
+
+// A library from before the marker: deleting its last card over the API, then listing
+// again (what the page does), must not bring the seeds in.
+func TestPersonaCardEmptiedLegacyLibraryStaysEmpty(t *testing.T) {
+	for _, withLock := range []bool{true, false} {
+		t.Run(map[bool]string{true: "with_lock", false: "without_lock"}[withLock], func(t *testing.T) {
+			root, _, call := skillTestServer(t)
+			dir := personacard.OwnerDir(root, "u1")
+			if err := fsutil.WriteAtomic(filepath.Join(dir, "0123456789abcdef", "card.md"), []byte("name: 旧卡\n\n旧正文。\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if withLock {
+				if err := os.WriteFile(filepath.Join(dir, ".lock"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Count(raw, `"id":`) != 1 {
+				t.Fatalf("list %d %s", code, raw)
+			}
+			if code, raw := call("DELETE", "/api/persona-cards/0123456789abcdef", "", true); code/100 != 2 {
+				t.Fatalf("delete %d %s", code, raw)
+			}
+			for i := 0; i < 2; i++ {
+				if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Contains(raw, `"id":`) {
+					t.Fatalf("list after delete %d %s", code, raw)
+				}
+			}
+		})
+	}
+}
