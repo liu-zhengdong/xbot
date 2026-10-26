@@ -3,6 +3,7 @@ package work
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -62,6 +63,36 @@ func PastedName(mime string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf[:]) + ext, nil
+}
+
+// PastedNameFor names a picture by its bytes, in the shape PastedName makes. A
+// bot that attaches the same file twice gets the same name, so storing it again
+// rewrites identical bytes instead of piling up copies.
+func PastedNameFor(mime string, data []byte) (string, error) {
+	ext := PastedExt(mime)
+	if ext == "" {
+		return "", ErrBadPastedID
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:16]) + ext, nil
+}
+
+// PastedNameForReader computes the same content name without keeping the
+// picture in memory. The stream is capped at the single-picture byte limit.
+func PastedNameForReader(mime string, r io.Reader) (string, error) {
+	ext := PastedExt(mime)
+	if ext == "" {
+		return "", ErrBadPastedID
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(r, PastedMaxBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if n > PastedMaxBytes {
+		return "", errors.New("work: pasted picture larger than 10 MiB")
+	}
+	return hex.EncodeToString(h.Sum(nil)[:16]) + ext, nil
 }
 
 // ValidPastedID reports whether id is the shape PastedName makes. The name

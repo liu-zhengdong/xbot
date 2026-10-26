@@ -16,6 +16,9 @@ import (
 // The ordinary turn value is frozen only for sender, permissions and routing.
 type callTurnKey struct{}
 
+// callReplyGenKey identifies the next reply when a tool call was issued.
+type callReplyGenKey struct{}
+
 func (k *Kernel) callTurn(ctx context.Context) *turn {
 	if t, ok := ctx.Value(callTurnKey{}).(*turn); ok {
 		return t
@@ -47,6 +50,7 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 	owner := k.turnFor(ctx)
 	owner.mu.Lock()
 	frozen := &turn{turnSender: owner.turnSender, turnKind: owner.turnKind, turnTrusted: owner.turnTrusted, turnSource: owner.turnSource, turnHops: owner.turnHops, turnChain: owner.turnChain, branch: owner.branch, fromSeq: owner.fromSeq}
+	replyGen := owner.replyGen
 	owner.mu.Unlock()
 	return jobs.RunCall(ctx, tools.CallRequest{Name: t.Name(), Command: summary, Dir: k.cwdFor(ctx), Wait: wait, Background: bg, Run: run, Finalize: func(job tools.Job, res tools.CallResult) (tools.Job, error) {
 		return exec.ToolJobReport(k.workspace(), job, res)
@@ -56,6 +60,7 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 			k.noteScope(id, k.readScope(parentScope))
 			ctx = context.WithValue(ctx, cwdScopeKey{}, id)
 			ctx = context.WithValue(ctx, callTurnKey{}, owner)
+			ctx = context.WithValue(ctx, callReplyGenKey{}, replyGen)
 			ctx = context.WithValue(ctx, turnKey{}, frozen)
 			return ctx, func() {
 				st, err := jobs.Status(id)

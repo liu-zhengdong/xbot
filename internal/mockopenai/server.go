@@ -148,6 +148,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "RECALL_PERSON"):
 		writeText(w, "recalled\n")
 		return
+	case strings.Contains(lastUser, "SHOW_PICTURE") && !sawNotify:
+		writeTool(w, "call_notify", "notify_owner", `{"text":"chart ready","images":["chart.png"]}`)
+		return
+	case strings.Contains(lastUser, "SHOW_PICTURE"):
+		writeText(w, "here is the chart\n")
+		return
 	case strings.Contains(lastUser, "DRINK_WATER") && !sawNotify:
 		writeTool(w, "call_notify", "notify_owner", `{"text":"drink water","importance":"low"}`)
 		return

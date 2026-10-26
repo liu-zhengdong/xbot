@@ -444,3 +444,44 @@ func TestPasteWorksBeforeTheBotHasRun(t *testing.T) {
 		t.Fatalf("the picture is not readable: %v", err)
 	}
 }
+
+// TestBotReplyPicturesReachTheChat: a reply line that carries pictures
+// (notify_owner images) is served with their names, and each name resolves
+// through the same paste endpoint the owner's pictures use.
+func TestBotReplyPicturesReachTheChat(t *testing.T) {
+	root, ui, cookie, _ := pasteTestServer(t, true)
+	defer ui.Close()
+	pic := pngBytes(t, 8, 8)
+	id, err := work.PastedNameFor("image/png", pic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.WritePasted(work.BotDir(root, "ada"), id, pic); err != nil {
+		t.Fatal(err)
+	}
+	b, err := bot.Load(root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("看图")}, Images: []string{id}}); err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Messages []apiRow `json:"messages"`
+	}
+	if err := json.Unmarshal(getAuth(t, ui.URL+"/api/bots/ada/transcript", cookie), &page); err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, row := range page.Messages {
+		if row.Role == provider.RoleAssistant && len(row.Images) == 1 && row.Images[0] == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("reply row does not name the picture: %+v", page.Messages)
+	}
+	if got := getAuth(t, ui.URL+"/api/bots/ada/paste/"+id, cookie); !bytes.Equal(got, pic) {
+		t.Fatalf("paste endpoint served %d bytes, want the picture", len(got))
+	}
+}

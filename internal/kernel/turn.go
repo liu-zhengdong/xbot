@@ -54,9 +54,16 @@ type turn struct {
 	branch   string
 	finished bool
 	answered bool // a final answer is on the transcript; too late to fork
+	// replyGen counts committed final replies. Image calls capture it when
+	// issued so a continuation can attach without reviving an older call.
+	replyGen int
 	// Last input seen by a committed normal reply in this turn. Only used to
 	// avoid false failure notices, never persisted or used for result delivery.
 	replyInputThrough int
+	// outImages are pictures notify_owner queued for this turn's reply line,
+	// and outBytes what they weigh (outimage.go).
+	outImages []string
+	outBytes  int
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
 	forkMu   sync.Mutex
