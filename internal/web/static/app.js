@@ -1926,20 +1926,18 @@
   function composerOffsetOf(root, node, offset) {
     let total = 0;
     const walk = (cur) => {
-      for (const child of cur.childNodes) {
-        if (child === node) {
-          if (node.nodeType === 3) total += offset;
-          return true;
-        }
-        if (child.nodeType === 3) total += child.nodeValue.length;
-        else if (child.nodeType === 1) {
-          if (child.tagName === "BR") total += 1;
-          else {
-            if (walk(child)) return true;
-            if (child.tagName === "DIV" || child.tagName === "P") total += 1;
-          }
-        }
+      if (cur.nodeType === 3) {
+        total += cur === node ? offset : cur.nodeValue.length;
+        return cur === node;
       }
+      // An element boundary (including root) counts children, not characters.
+      // Stop before that child; walking all of root used to mean "draft end".
+      for (let i = 0; i < cur.childNodes.length; i++) {
+        if (cur === node && i === offset) return true;
+        if (walk(cur.childNodes[i])) return true;
+      }
+      if (cur === node) return true;
+      if (cur !== root && (cur.tagName === "BR" || cur.tagName === "DIV" || cur.tagName === "P")) total++;
       return false;
     };
     walk(root);
@@ -1994,8 +1992,14 @@
   // existing characters whenever the edit landed before the end, so the old
   // textarea's maxlength lives at the edit entry instead (see below).
   function renderComposer(text) {
-    input.replaceChildren(...composerNodes(text));
+    const nodes = composerNodes(text);
+    const changed = nodes.length !== input.childNodes.length ||
+      nodes.some((node, i) => !node.isEqualNode(input.childNodes[i]));
+    // Ordinary typing already has the right DOM. Leave its native selection
+    // alone; only replace nodes when highlighting or normalization needs it.
+    if (changed) input.replaceChildren(...nodes);
     composerTextCache = text;
+    return changed;
   }
 
   // Programmatic draft writes (fill, restore, refill, send): like assigning
@@ -2055,8 +2059,7 @@
     }
     const before = composerTextCache;
     const caret = composerCaret();
-    renderComposer(text);
-    if (caret !== null) composerCaretTo(caret);
+    if (renderComposer(text) && caret !== null) composerCaretTo(caret);
     composerRecord(before, text, caret);
   }
 
