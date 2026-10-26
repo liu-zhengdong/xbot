@@ -1,12 +1,12 @@
 # XBot 里程碑与进度
 
-## 2026-10-27 生图同轮挂回复（功能分支交付）
+## 2026-10-27 生图同轮挂回复
 
 - hosted 生图保存后接入既有挂图通路；普通工具轨迹展示、成功/部分失败的真实回执和轮次归属见 [内核](atlas/kernel.md#厂商生图)、[供应商](atlas/providers.md)、[界面](atlas/ui.md#图片生成设置)。按主人纠正移除独立生图步骤块，保留原 gallery 与可选工作区菜单。
 - kernel 全包单次通过（41.609 秒），provider 全包通过；最终图片与长轮定向、定向 race、本机 Chrome 五项行为回归通过。ChatGPT/xAI scripted 冒烟跑真实 serve、HTTP 设置、OAuth 传输、保存与图片下载；不调真模型。新 kernel/UI 回归在 `77c0ee6` 归档分别因缺少挂图和仍有独立 hosted 块失败。
 - 全仓包分批单次执行：work 的 `TestShellUsesBotDir` 失败；web 原审批测试卡住后主动终止诊断，跳过该条继续跑其余用例，另四条 parked approval 用例失败。这五条 web 和一条 work 均在 `77c0ee6` 复现；其余包通过，本次未扩修审批/解释器测试。gofmt、vet、diff 检查通过，atlas audit 保留既有告警。
 - 本机 1024×1024 PNG（28,629 字节）保存＋挂图 100 次 p50 0.393 ms、p95 0.865 ms，最大 3.573 ms；仅小图文件链路，不是厂商耗时、IPC 或线上交互 p95。真实 serve 的两家 scripted 首个可见回复耗时和完整日志、浅深色截图见 `~/.xbot-build/imggen-attach-bubble/encode-report.md`。
-- 级别：分支编码和 scripted 冒烟/浏览器通过；未合 main、未 push、未发版、未做真实账号或主人日用验收。保留本批 dev 供执行官复审，未迁移 guard；未使用 `-count=3`。
+- 已合本地 main（功能 tip `b389806`）；复审 PASS（无 P1）；`docs/dev/imggen-attach-bubble.md` 已毕业删除；atlas kernel/providers/ui 覆盖同轮挂图与普通工具轨迹。未 push；无 UI 大改未喊设计师。未使用 `-count=3`。
 
 ## 2026-10-27 例程 create 重复键末位 null 回修（功能分支）
 

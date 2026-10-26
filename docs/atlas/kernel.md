@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ 77c0ee6 + imggen-attach-bubble
+verified: 2026-10-27 @ b389806 + imggen-attach-bubble graduated
 ---
 # 内核：Link、Event、收件箱
 

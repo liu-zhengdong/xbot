@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-27 @ 77c0ee6 + imggen-attach-bubble
+verified: 2026-10-27 @ b389806 + imggen-attach-bubble graduated
 ---
 # 模型供应商与主动性评测
 
