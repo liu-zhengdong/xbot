@@ -69,12 +69,14 @@ html[data-theme="dark"] .provider-glyph-openai{--provider-openai-filter:invert(1
 /* xAI detail: flat and full width. The header carries the OAuth state on its
    right; the failure is one short red line; nothing sits in a tinted card. */
 .sdot.wait{background:var(--x-pending)}.sdot.idle{background:var(--x-fill-3)}.provider-status-idle{color:var(--x-faint)}
-.provider-status-ok{color:var(--x-online);font-weight:560}.provider-status-wait{color:var(--x-text-2);font-weight:560}.provider-status-fail{color:var(--x-danger);font-weight:560}
+.provider-status-wait{color:var(--x-text-2);font-weight:560}.provider-status-fail{color:var(--x-danger);font-weight:560}
 .provider-relink{border:0;background:transparent;color:var(--x-muted);padding:0;margin-left:var(--x-s1);font:inherit;cursor:pointer}.provider-relink:hover{color:var(--x-text);text-decoration:underline}
 .provider-relink:focus-visible,.provider-btn-pri:focus-visible,.provider-btn-sec:focus-visible,.provider-btn-ghost:focus-visible{outline:2px solid var(--x-text-2);outline-offset:2px}
 .provider-detail-heading-aside{width:100%;margin-bottom:var(--x-s6)}.provider-detail-heading-aside .provider-detail-info{flex:1}
 .provider-detail-heading-aside .provider-status{flex:none;max-width:52%;margin-top:0;justify-content:flex-end;text-align:right;font-size:var(--x-fs-sm)}
-.provider-detail-heading-aside .provider-search-note{flex-basis:100%;color:var(--x-faint)}.provider-detail-heading-aside .provider-search-note::before{content:none}
+.provider-logout{display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:var(--x-r-sm);background:transparent;color:var(--x-muted);cursor:pointer}.provider-logout:hover{background:var(--x-fill-2);color:var(--x-text)}.provider-logout svg{width:18px;height:18px}.provider-logout:disabled{opacity:.55;cursor:default}
+.provider-logout:focus-visible{outline:2px solid var(--x-text-2);outline-offset:2px}
+.provider-hosted-hint{margin:0 0 var(--x-s3);font-size:var(--x-fs-sm);line-height:1.5;color:var(--x-faint)}
 .provider-xai{width:100%}.provider-xai-lead{width:100%;margin:0 0 var(--x-s5);font-size:var(--x-fs-ui);line-height:1.6;color:var(--x-muted)}
 .provider-xai:has(.provider-auth-fail:not(:empty)) .provider-xai-lead{display:none}
 /* The logged-in re-login slot lays out like the main login area; empty, it takes no space. */

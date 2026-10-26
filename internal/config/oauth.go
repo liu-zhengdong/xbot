@@ -125,3 +125,25 @@ func SaveOAuthProvider(root string, p Provider) error {
 		return Save(root, f)
 	})
 }
+
+// RemoveOAuthProvider deletes every binding that logs in with kind, under the
+// registry lock. Key bindings, even of the same brand, are left alone.
+func RemoveOAuthProvider(root, kind string) error {
+	return fsutil.WithLock(Path(root)+".lock", func() error {
+		f, err := Load(root)
+		if err != nil {
+			return err
+		}
+		kept := f.Providers[:0]
+		for _, p := range f.Providers {
+			if p.OAuth != kind {
+				kept = append(kept, p)
+			}
+		}
+		if len(kept) == len(f.Providers) {
+			return nil
+		}
+		f.Providers = kept
+		return Save(root, f)
+	})
+}

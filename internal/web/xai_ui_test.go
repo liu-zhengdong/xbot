@@ -22,7 +22,7 @@ class Element {
  setAttribute(k,v){this.attrs[k]=v} focus(){} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
 }
 const host=new Element('main'),calls=[],timers=[],popups=[];
-let configured=false,resolveStatus,failStart=false,current=true,expired=false,cancelFail=false;
+let configured=false,resolveStatus,failStart=false,current=true,expired=false,cancelFail=false,logoutFail=false;
 const window={open(url){assert(url==='about:blank'||url==='https://auth.example/authorize');const popup={closed:false,opener:{},location:{replace(url){popup.url=url}},close(){this.closed=true}};popups.push(popup);return popup}};
 const document={documentElement:{classList:{contains:()=>false}},createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag)};
 vm.runInNewContext(fs.readFileSync('static/providers.js','utf8'),{window,document,URL,WeakMap,encodeURIComponent,setTimeout:fn=>timers.push(fn)});
@@ -35,6 +35,7 @@ const api=async(path,opts={})=>{
  if(path==='/api/providers/oauth/xai/start'){if(failStart)throw Error('private-upstream-body');return {url:'https://auth.example/authorize'}}
  if(path==='/api/providers/oauth/xai/cancel'){if(cancelFail){const e=Error('暂时无法取消');e.status=409;throw e}return {status:'cancelled'}}
  if(path==='/api/providers/oauth/xai/status')return await new Promise(resolve=>resolveStatus=resolve);
+ if(path==='/api/providers/oauth/xai/logout'){if(logoutFail){const e=Error('无法删除授权凭证，请重试');e.status=500;throw e}configured=false;return {status:'logged_out'}}
  if(path==='/api/providers/models?provider=xai'){if(expired){const e=Error('登录凭证已失效，请重新登录');e.status=422;throw e}return {models:[{model:'grok-4',context:256000,vision:false,hosted_web_search:true}]}}
  throw Error('unexpected '+path);
 };
@@ -87,22 +88,16 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  cancelFail=false;
  const again=find('button','重新登录').onclick();await flush();assert.equal(starts(),3);
  configured=true;resolveStatus({state:'succeeded'});await again;await flush();
- assert(statusText().includes('已登录'),'logged-in status missing');
- assert(walk(cls('provider-status')).some(n=>n.tag==='button'&&n.className==='provider-relink'&&n.textContent==='重新登录'),'re-login link missing');
- assert(statusText().includes('已用厂商搜索'),'hosted note missing');
+ // Logged in: the header carries only the 退出登录 icon; no 已登录 / 重新登录 words anywhere.
+ const logoutBtn=()=>walk(cls('provider-status')).find(n=>n.className==='provider-logout');
+ assert(logoutBtn()&&logoutBtn().attrs['aria-label']==='退出登录'&&logoutBtn().title==='退出登录','logout icon missing');
+ assert(!host.innerText.includes('已登录')&&!host.innerText.includes('重新登录'),'logged-in detail shows 已登录 or 重新登录');
+ assert(cls('provider-hosted-hint')&&cls('provider-hosted-hint').textContent.includes('已用厂商搜索')&&!statusText().includes('厂商搜索'),'hosted note not above the models');
  assert(!find('button','登录 xAI'),'logged-in detail still shows the login CTA');
  assert(host.innerText.includes('grok-4'),'model list missing');
  assert(calls.some(c=>c.path==='/api/providers/models?provider=xai'),'oauth catalog not pulled');
  assert(!calls.some(c=>c.path.endsWith('/xai/sync')),'oauth binding hit the vendor sync route');
  assert(!host.innerText.includes('private-upstream-body'));
- // A failed re-login from the logged-in header shows the error card, and cancel returns to logged in.
- const relink=walk(cls('provider-status')).find(n=>n.className==='provider-relink').onclick();await flush();assert.equal(starts(),4);
- assert(statusText().includes('等待登录'),'re-login pending status missing');
- resolveStatus({state:'failed',error:''});await relink;await flush();
- assert(cls('provider-auth-fail').textContent.includes('登录未完成，请重试'),'re-login failure line missing');
- assert(statusText().includes('登录未完成'),'re-login failed status missing');
- const back=find('button','取消').onclick();await flush();await back;
- assert(statusText().includes('已登录')&&!cls('provider-auth-fail').textContent,'cancel did not return to logged in');
  // A rejected refresh surfaces as a re-login prompt, not a network error.
  expired=true;
  find('button','模型与供应商').onclick();
@@ -110,6 +105,18 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  assert(host.innerText.includes('登录凭证已失效'),'relogin reason lost');
  assert(find('button','重新登录'),'relogin button missing');
  assert(!host.innerText.includes('检查供应商配置和网络'),'dead credential shown as a network problem');
+ expired=false;
+ find('button','模型与供应商').onclick();
+ await find('button','xAI').onclick();await flush();assert(logoutBtn(),'logged-in detail missing');
+ // A failed logout says so and leaves the icon usable.
+ logoutFail=true;logoutBtn().onclick();await flush();
+ assert(statusText().includes('无法删除授权凭证')&&logoutBtn().disabled===false,'failed logout hidden or stuck');
+ assert(configured,'failed logout changed the binding');
+ // Logging out calls the API and redraws the not-logged-in page.
+ logoutFail=false;logoutBtn().onclick();await flush();await flush();
+ assert(calls.filter(c=>c.path==='/api/providers/oauth/xai/logout').length===2,'logout not sent');
+ assert(find('button','登录 xAI')&&statusText().includes('未登录'),'logout did not return to the login CTA');
+ assert(find('summary','用 API 密钥')&&!logoutBtn(),'logged-out page wrong');
  completed=true;
 })().catch(e=>{console.error(e);process.exitCode=1});`
 	if out, err := exec.Command(node, "-e", script).CombinedOutput(); err != nil {

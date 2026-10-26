@@ -102,7 +102,9 @@ window.fetch=async(path,opts={})=>{
   return json({state:'succeeded'});
  }
  if(path==='/api/providers/oauth/xai/start'){fixture.xaiStarts=(fixture.xaiStarts||0)+1;fixture.xaiCancelled=false;return json({url:'https://auth.example/authorize'})}
+ if(path==='/api/providers/oauth/xai/logout'){const i=providers.findIndex(p=>p.oauth==='xai');if(i>=0)providers.splice(i,1);fixture.xaiSucceed=false;fixture.xaiIdle=true;return json({status:'logged_out'})}
  if(path==='/api/providers/oauth/xai/status'){
+  if(fixture.xaiIdle)return json({state:'idle'});
   if(fixture.xaiCancelled)return json({state:'cancelled'});
   if(fixture.xaiSucceed){if(!providers.some(p=>p.oauth==='xai'))providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:true,models:[]});return json({state:'succeeded'})}
   if(fixture.xaiFail)return json({state:'failed',error:'授权未完成，请重试'});
@@ -126,29 +128,24 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<400;i++){if(fn())return;await new Pr
 const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.textContent.includes(name));
 const gap=(above,below)=>below.getBoundingClientRect().top-above.getBoundingClientRect().bottom;
 const fullWidth=()=>$('.provider-models').getBoundingClientRect().width;
-// xAI OAuth: log in, then a failed re-login from the header shows the error
-// card above its own buttons with a visible gap, and cancel returns to logged in.
+// xAI OAuth: log in; the header carries only the 退出登录 icon and the hosted
+// note sits above the models; clicking logout returns to the login page.
 async function xaiLoggedIn(){
  card('xAI').click();await waitFor(()=>btn('登录 xAI'),'xai login CTA missing');
  fixture.xaiSucceed=true;btn('登录 xAI').click();
- await waitFor(()=>$('.provider-status').textContent.includes('已登录')&&$('.provider-model-row'),'xai did not log in');
- assert($('.provider-status .sdot.ok')&&$('.provider-status .provider-relink').textContent==='重新登录','xai logged-in status row missing');
+ await waitFor(()=>$('.provider-status .provider-logout')&&$('.provider-model-row'),'xai did not log in');
+ const out=$('.provider-status .provider-logout');
+ assert(out&&out.getAttribute('aria-label')==='退出登录'&&out.title==='退出登录'&&!out.textContent.trim(),'xai logout icon missing');
+ assert($('.provider-detail-heading').getBoundingClientRect().right-out.getBoundingClientRect().right<2,'xai logout icon not on the header right');
+ assert(!/已登录|重新登录/.test($('#settings-providers').innerText),'xai logged-in page shows 已登录 or 重新登录');
  assert(!btn('登录 xAI')&&!$('.provider-status').textContent.includes('密钥已配置'),'xai logged-in detail kept login or key state');
+ assert(gap($('.provider-hosted-hint'),$('.provider-model-count'))>=0&&$('.provider-hosted-hint').textContent.includes('已用厂商搜索'),'xai hosted note not above the models');
  assert(/grok-4/.test($('.provider-models').textContent)&&/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'xai models missing');
  assert($('.provider-auth-slot').getBoundingClientRect().height===0,'empty re-login slot takes space');
- fixture.xaiSucceed=false;$('.provider-status .provider-relink').click();
- await waitFor(()=>$('.provider-status').textContent.includes('等待登录')&&$('.provider-auth-slot .provider-btn-sec'),'xai re-login pending missing');
- fixture.xaiFail=true;await waitFor(()=>$('.provider-auth-slot .provider-auth-fail').textContent.includes('登录未完成，请重试'),'xai re-login failure line missing');
- const err=$('.provider-auth-slot .provider-auth-fail'),again=$('.provider-auth-slot .provider-btn-pri');
- assert(again.textContent==='重新登录'&&gap(err,again)>=8,'xai re-login failure line touches its button: '+gap(err,again));
- assert(gap(again,$('.provider-model-count'))>=8,'xai re-login buttons touch the model list');
- assert($('.provider-status').textContent.includes('登录未完成')&&!$('.provider-status .sdot.ok'),'xai re-login failed status row wrong');
- assert(!/登录 xAI登录未完成|重新登录登录未完成/.test($('#settings-providers').innerText),'xai re-login button and error glued together');
- const cancels=fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length;
- $('.provider-auth-slot .provider-btn-sec').click();
- await waitFor(()=>$('.provider-status').textContent.includes('已登录')&&!$('.provider-auth-slot .provider-auth-fail').textContent,'xai cancel did not return to logged in');
- assert(fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length===cancels+1,'xai cancel not sent');
- assert($('.provider-auth-slot').getBoundingClientRect().height===0,'cancelled re-login slot takes space');
+ out.click();
+ await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('未登录'),'xai logout did not return to the login page');
+ assert(fixture.calls.includes('/api/providers/oauth/xai/logout'),'xai logout not sent');
+ assert($('.provider-key-alt')&&!$('.provider-key-alt').open&&!$('.provider-logout')&&btn('登录 xAI').getBoundingClientRect().width>=fullWidth()-2,'xai logged-out page wrong');
  assert(testErrors.length===0,testErrors.join(';'));
 }
 (async()=>{
