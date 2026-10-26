@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"xbot/internal/work"
 )
 
 // ImageGen turns on the vendor-hosted image_generation tool for one request.
@@ -38,9 +40,11 @@ const (
 	// maxImagesPerResponse caps how many pictures one response may write.
 	maxImagesPerResponse = 8
 	// imageStreamLine is the longest stream line accepted while image
-	// generation is mounted: a completed item carries the whole picture as
-	// base64. Other requests keep the 1 MiB line cap.
-	imageStreamLine = 32 << 20
+	// generation is mounted. response.completed may repeat all eight maximum
+	// images as base64: 4*ceil(bytes/3) per image, plus the existing 1 MiB
+	// stripped-output budget and 4 KiB for SSE/response framing. The scanner
+	// grows on demand; other requests keep the 1 MiB line cap.
+	imageStreamLine = maxImagesPerResponse*4*((work.GeneratedMaxBytes+2)/3) + (1 << 20) + (4 << 10)
 )
 
 // imageTool is the Responses tool entry. xAI picks its own Imagine model and
@@ -150,7 +154,7 @@ func (s *imageStore) write(result string) (string, string) {
 	}
 	// Reject before allocating decoded bytes; the workspace enforces the same
 	// 20 MiB decoded limit before writing.
-	if len(result) > base64.StdEncoding.EncodedLen(20<<20) {
+	if len(result) > base64.StdEncoding.EncodedLen(work.GeneratedMaxBytes) {
 		return "", "图片超过 20 MiB"
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(result))

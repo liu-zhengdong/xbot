@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-26 @ 9046089 + hosted 生图专项与 OAuth 冒烟
+verified: 2026-10-26 @ 0e5c217 + hosted 多图大事件回归
 ---
 # 模型供应商与主动性评测
 
@@ -18,7 +18,7 @@ verified: 2026-10-26 @ 9046089 + hosted 生图专项与 OAuth 冒烟
 
 - `providers.json` 的供应商有 `protocol`：`chat_completions`、`responses`、`anthropic_messages`。缺省时已知 `openai` 推断为 Responses，`anthropic` 推断为 Messages，其余保留 Completions；协议不从 URL 推断。Messages 已接入 Claude API key 绑定，请求发往配置端点下的 `/messages`。`xbot provider add --protocol responses` 可写协议。
 - 模型条目的 `hosted_web_search` 可覆盖搜索能力。Responses 下 `gpt-5.4`、`gpt-5.5`、`gpt-5.6`（含 luna / sol / terra）、`gpt-6`（含 astra / luna / sol）、`gpt-6.1`（含 sol）缺省启用；Messages 使用 `web_search_20250305`，须显式配置 `hosted_web_search: true`。其他模型也须显式配置；例外是 xAI Responses 绑定下的 `grok-*` 默认启用（OAuth 落盘也显式写 true）。xAI Responses 端点在 hosted 开启时除 `web_search` 外还挂厂商 `x_search` 与 `code_interpreter`：X 搜索的线上形态是按实际函数命名的 `custom_tool_call`（`xs_` 前缀 call id 区分）与 `x_search_call` 两种，都归同名 hosted 调用块，其他 custom 调用和未知厂商工具降级文字；Collections Search 不提供。全局网页搜索设置开启且为自动模式时，支持 hosted 的绑定不向模型提供本地 `web_search`，`web_fetch` 及 SearchBackend 保留；换回无 hosted 的绑定便恢复本地搜索。关闭网页搜索时两条搜索路径都关闭；总用本机时保留本机工具并抑制适配器的厂商搜索默认挂载。本机选择与密钥见 [生态](ecosystem.md)，设置交互见 [界面](ui.md#网页搜索设置)。hosted 搜索随模型请求运行，不走本地权限表，也不建 Jobs。摘要等不带工具的辅助调用不开搜索。
-- Responses 模型可在 `providers.json` 的 ModelSpec 显式开启 `hosted_image_generation`（默认关）；OpenAI 的 tool 级模型由 `image_generation_model` 指定，空值使用厂商默认；xAI 只挂开关，不发送 OpenAI 专属选项。内核每轮读取绑定配置并提供工作区保存入口，搜索关闭或强制本机搜索不影响生图；无本地工具的摘要等辅助请求不挂生图。复用现有 ChatGPT / xAI OAuth 与 Responses 传输。图片经 `os.Root` 独占写入 `work/<bot>/generated/<随机名>.<嗅探扩展>`，单图最多 20 MiB、每个响应最多 8 张、目录最多 500 项；计数与创建共用锁。允许生图的模型 SSE 单行最多 32 MiB，解析后只保留路径或错误摘要，相同调用在 done 和 completed 重复出现只保存一次。结果以 `server_tool` / `HostedStep{Name: image_generation}` 回报工作区相对路径，跨轮以文字回放；base64 不落 transcript，不自动写 `Images` 或挂进气泡。空结果、解码/保存失败和供应商拒权均诚实返回失败。
+- Responses 模型可在 `providers.json` 的 ModelSpec 显式开启 `hosted_image_generation`（默认关）；OpenAI 的 tool 级模型由 `image_generation_model` 指定，空值使用厂商默认；xAI 只挂开关，不发送 OpenAI 专属选项。内核每轮读取绑定配置并提供工作区保存入口，搜索关闭或强制本机搜索不影响生图；无本地工具的摘要等辅助请求不挂生图。复用现有 ChatGPT / xAI OAuth 与 Responses 传输。图片经 `os.Root` 独占写入 `work/<bot>/generated/<随机名>.<嗅探扩展>`，单图最多 20 MiB、每个响应最多 8 张、目录最多 500 项；计数与创建共用锁。允许生图的模型 SSE 单行上限按 8 张 × 单图 20 MiB 的 base64 体积，加 1 MiB 输出元数据和 4 KiB 事件封装计算（224748896 字节，约 214.34 MiB），可接收 completed 再带齐多图 result；未开启生图仍为 1 MiB，解析后只保留路径或错误摘要，相同调用在 done 和 completed 重复出现只保存一次。结果以 `server_tool` / `HostedStep{Name: image_generation}` 回报工作区相对路径，跨轮以文字回放；base64 不落 transcript，不自动写 `Images` 或挂进气泡。空结果、解码/保存失败和供应商拒权均诚实返回失败。
 - Responses 输出落入同一份内容块：`server_tool`、`citation`、`reasoning`，本地 function call 仍走原工具执行路径。厂商原始条目供同协议重放，网页只收步骤和引用，不暴露原始推理。流式步骤通过 SSE `part` 事件交给气泡，完成块按 transcript 重放。完成事件没有输出条目时，按输出序号组装 `output_item.done` 中的完整条目；两处都没有条目时，保留已收到的文字增量。解析后的条目与增量各限 1 MiB，重复输出序号替换，不重复执行工具。没有正文、本地工具调用或生图结果摘要的完成响应报错，不落盘空助手回复。`trace.jsonl` 的 `hosted_calls` / `hosted_tool` 记录调用次数和名称。
 - 模型窗口和完整工具定义（含 hosted schema）一起计入上下文预算；可用工具集变化才追加环境差异。同绑定不重复公布。runner 端点保留协议及 hosted 能力。
 - Messages 复用同一份内容块。本地 `tool_use` / `tool_result` 沿用工具执行路径，图片嵌在对应工具结果中；不带工具定义的总结请求把工具历史转成文字。工具参数保留 JSON 数字精度；服务端搜索及结果只落内容块，调用块独占计次数，引用走既有网页投影。`thinking` / `redacted_thinking` 保留原始签名或密文，同协议回放；跨协议只发文字摘要。未知块即使来自同厂也降成文字摘要。`thinking` 沿用 `off` / `omit` 配置，不新增启用开关；启用状态下返回的签名可回放。服务端 `pause_turn` 在同一次超时预算内最多请求三次，超限明确报错；窗口占用保留最后一次请求用量，累计用量只进会话记账。图片按直连 API 的 base64 后 10 MB 单图限制处理，超限工具图片变为明确工具错误，用户图片在出网前报错。搜索结果按调用编号更新成功或失败状态，不重复计次；已发文字或 hosted 进度后不重试。

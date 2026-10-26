@@ -2,6 +2,12 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 hosted 生图 P2：多图完成事件预算（分支回修，未合入）
+
+- SSE 生图行预算按既有 20 MiB/图 × 8 张的 base64，加有限输出元数据与事件封装计算，修复 completed 重复携带多张大图使整轮报 token too long、最终路径丢失的问题。单图/张数/落盘上限、未启用生图的 1 MiB 行限与清理后的 1 MiB 输出预算不变。
+- 新增两张各 13 MiB 的实际字节夹具，completed 行 36350890 字节；覆盖 done 已保存后重复 completed、仅 completed 两种路径，检查文件内容、去重、最终 Message 和模型回放中的相对路径。修前两场景分别在保存 2/0 张后报 token too long，修后均保存两张并保留路径。
+- 专项命令、耗时与提交见 `~/.xbot-build/hosted-image-gen/fix-p2-report.md`；本批不碰 shelljob、消息挂图或 gallery，不合 main、不 push，不再启动全量长测。
+
 ## 2026-10-26 厂商 hosted 生图（分支实现，替身端到端通过，未合入）
 
 - 沿用已有未提交实现，完成 Responses `image_generation` 的独立开关、OpenAI tool 级模型、xAI 默认 Imagine、工作区 `generated/` 落盘及相对路径回放。设置写入现有 ModelSpec；搜索关仍可生图。复用 OAuth/vault、PartHosted、BotDir，不新增本地工具，不改消息挂图或气泡 gallery，不自动写 transcript Images。
