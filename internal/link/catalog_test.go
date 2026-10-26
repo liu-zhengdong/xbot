@@ -2,6 +2,7 @@ package link
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,24 @@ func TestCatalogInstallNames(t *testing.T) {
 	}
 	if _, err := GrantName("node"); !errors.Is(err, ErrUnknown) {
 		t.Fatalf("retired node entry is still installable: %v", err)
+	}
+}
+
+func TestSkillsCatalogNamesLocalOwnerLibrary(t *testing.T) {
+	entry, ok := Lookup("skills")
+	if !ok {
+		t.Fatal("skills missing")
+	}
+	for name, text := range map[string]string{"catalog": entry.Summary, "grant": Blurb(NameSkills)} {
+		t.Run(name, func(t *testing.T) {
+			if !strings.Contains(text, "~/.xbot/skills/<owner>/") {
+				t.Errorf("missing local owner library path: %s", text)
+			}
+			for _, misleading := range []string{"共享", "shared", "magpie"} {
+				if strings.Contains(strings.ToLower(text), misleading) {
+					t.Errorf("misleading library description: %s", text)
+				}
+			}
+		})
 	}
 }

@@ -437,3 +437,11 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 修复 review1 P2-1：`ExportTo/visibleMessage` 共用公开投影，JSONL、Markdown 及 CLI 导出统一移除 reasoning 块、清空其余块的 VendorRaw；保留正文、公开步骤/引用和原工具开关，内部段文件与重启后同协议回放完整。现状见 [上下文](atlas/context.md#怎么运转)。
 
 三协议 × tools=0/1 × 两种格式的 HTTP 回归在旧实现上失败，修复后通过；Export/Thinking/Reasoning 相关五包专项三遍、bot/web 整包三遍、导出专项 race、三协议“导出后重启再续轮”冒烟及 vet 通过。全量仅既有 `TestInterjectionGoesStraightIntoTheTurn` 因重复回答失败，未修改该测试或调度逻辑；gofmt/diff 检查净，atlas audit 仍报既有文档告警。专项六次请求含读文件及四次导出检查累计 34.7–59.0 毫秒（scripted 上游，小样本，非真实模型或 IPC p95）。级别：本地分支修复、假模型专项端到端通过，未合 main、未 push、未重启 8788；报告见 `~/.xbot-build/thinking-enable/fix1-report.md`。
+
+### Bot 自装技能通路（2026-10-26，本地分支）
+
+`feature/bot-self-skill` 按 [开发设计](dev/bot-self-skill.md) 为内置 dev 类型加入 `read_skill` / `write_skill`；catalog、grant 和工具描述统一指向本 Bot 主人的本机技能库，删除 shared 和写盘前强制批准的误导。主线继续沿用 ADR 0028 与 skills lazy load，写入仍走 `review.Normal` 和原 `skill.Write`，未改权限、校验或落盘逻辑。现状同步到 [生态](atlas/ecosystem.md) 和 [子代理](atlas/subagents.md)。
+
+验证：新增 scripted 内核回归同时启用 Dispatch、agents grant 与权限检查，断言 load 前不可写、load 后主线包含读写工具，并实际写入测试 Bot Root 下的 owner 库再读回。文案、dev 白名单回归在 f22b708 旧源码覆盖下失败，主线可达回归在该基线已通过（此前 ADR 0028 已打通）。指定五包 `go test ./internal/kernel/ ./internal/link/ ./internal/agenttype/ ./internal/skill/ ./internal/review/`、`go test -count=1 ./...`、`go vet ./...`、gofmt 与 diff 检查通过；atlas audit 已跑，仓内其它文档告警未在本批扩改。证据：`~/.xbot-build/bot-self-skill/`。
+
+验证耗时：指定五包中的 kernel 为 34.261 秒，全量中的 kernel 为 48.838 秒；这是测试运行时间，不是产品性能数据。本批未测交互/IPC p95 或后台减速。级别：本地功能分支提交待复审；未合入 main、未 push，Bot 自装技能的真实入口端到端与主人日用待验。Not run: `-count=3`（按任务要求）、真模型/真实对话安装、Linux CI、性能专项。
