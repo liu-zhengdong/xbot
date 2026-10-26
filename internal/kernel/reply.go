@@ -62,10 +62,15 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	// the names are recorded on the line so a later turn can find them.
 	images := m.ImageNames
 	m.ImageNames = nil
+	// The final reply carries the pictures notify_owner queued, so the chat
+	// shows them in that bubble.
+	if m.Role == provider.RoleAssistant && len(m.Calls()) == 0 && len(t.outImages) > 0 {
+		images = append(images, t.takeOutImagesLocked()...)
+	}
 	// A note naming the pictures may have been added to reach the model in this
 	// request. The line stores the owner's words; the note comes back when the
 	// line is assembled.
-	if len(images) > 0 {
+	if len(images) > 0 && m.Role == provider.RoleUser {
 		m.SetText(stripPastedNote(m.Text(), k.pastedNote(images)))
 	}
 	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})

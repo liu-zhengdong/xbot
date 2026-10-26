@@ -2744,10 +2744,15 @@
     row.dataset.sender = "bot:" + (who || "");
     const body = el("div", "body");
     if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    if (String(m.content || "").trim()) appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
-    else if (!(m.parts || []).length && !(m.tool_calls || []).length) {
+    // Pictures the bot showed with notify_owner, stored in paste/ like the
+    // owner's own; the same gallery as userBubble.
+    const pasted = pastedURLs(state.sel, m.images);
+    const said = String(m.content || "").trim();
+    if (said && said !== "SILENT") appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
+    else if (!pasted.length && !(m.parts || []).length && !(m.tool_calls || []).length) {
       appendBotContent(body, EMPTY_REPLY);
     }
+    if (pasted.length) body.append(gallery(pasted));
  window.XBotProviders.decorate(body,m.parts);
     const calls = m.tool_calls || [];
     const peers = [];
@@ -2818,7 +2823,7 @@
         lastKey = "";
         return;
       }
-      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT") return;
+      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT" && !(m.images || []).length) return;
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;

@@ -207,6 +207,25 @@ func pastedPathIn(b *bot.Bot, name string) string {
 	return filepath.Join(work.BotDir(b.Root, b.Name()), work.PastedDir, name)
 }
 
+// withLineNote is withPastedNote for a transcript line of any role. A reply's
+// pictures are ones the bot showed the owner (notify_owner images), so they are
+// named as such, not as the owner's.
+func (k *Kernel) withLineNote(role, content string, names []string) string {
+	return k.withLineNoteIn(k.Bot, role, content, names)
+}
+
+// withLineNoteIn is withLineNote for a named bot's line.
+func (k *Kernel) withLineNoteIn(b *bot.Bot, role, content string, names []string) string {
+	if role != provider.RoleAssistant || len(names) == 0 {
+		return k.withPastedNoteIn(b, content, names)
+	}
+	paths := make([]string, len(names))
+	for i, name := range names {
+		paths[i] = pastedPathIn(b, name)
+	}
+	return joinNote(content, "[发给主人的图] "+strings.Join(paths, "、"))
+}
+
 // withPastedNoteIn is withPastedNote for another bot's line.
 func (k *Kernel) withPastedNoteIn(b *bot.Bot, content string, names []string) string {
 	return joinNote(content, k.pastedNoteIn(b, names))

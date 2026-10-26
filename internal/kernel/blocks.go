@@ -708,7 +708,7 @@ func (k *Kernel) summarize(ctx context.Context, entries []bot.Entry, blocks []bo
 		// otherwise the range is summarized into words about a picture nobody can
 		// find any more.
 
-		msg.SetText(k.withPastedNote(msg.Text(), e.Images))
+		msg.SetText(k.withLineNote(msg.Role, msg.Text(), e.Images))
 		turns = append(turns, msg)
 	}
 	if f, ok := k.compactor(turnSeqOf(ctx)).(focusedCompactor); ok {

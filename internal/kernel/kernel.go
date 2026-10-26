@@ -652,7 +652,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		}
 		// A pasted picture is named here, on the line that carried it. Only the
 		// turn answering that line gets the bytes; see attachEventImages.
-		e.Message.SetText(k.withPastedNote(e.Message.Text(), e.Images))
+		e.Message.SetText(k.withLineNote(e.Message.Role, e.Message.Text(), e.Images))
 		raw = append(raw, e)
 		seqs = append(seqs, ln.Seq)
 	}

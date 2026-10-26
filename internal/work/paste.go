@@ -3,6 +3,7 @@ package work
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -62,6 +63,18 @@ func PastedName(mime string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf[:]) + ext, nil
+}
+
+// PastedNameFor names a picture by its bytes, in the shape PastedName makes. A
+// bot that attaches the same file twice gets the same name, so storing it again
+// rewrites identical bytes instead of piling up copies.
+func PastedNameFor(mime string, data []byte) (string, error) {
+	ext := PastedExt(mime)
+	if ext == "" {
+		return "", ErrBadPastedID
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:16]) + ext, nil
 }
 
 // ValidPastedID reports whether id is the shape PastedName makes. The name

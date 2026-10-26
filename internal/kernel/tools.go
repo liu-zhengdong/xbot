@@ -178,19 +178,25 @@ type notifyTool struct{ k *Kernel }
 
 func (notifyTool) Name() string { return "notify_owner" }
 func (notifyTool) Description() string {
-	return "Leave a notification for the owner. importance is low, normal, or high. The note is delivered on any wake."
+	return "Leave a notification for the owner. importance is low, normal, or high. The note is delivered on any wake. images shows pictures in your reply bubble in the owner's chat: pasted image ids or workspace file paths, PNG, JPEG, GIF, or WebP, up to 4 and 10 MiB together per reply, at most 2048 px on a side. Use it to show a local picture; do not link one."
 }
 func (notifyTool) Parameters() any {
 	return schema(map[string]any{
 		"text":       stringProp("what the owner should see"),
 		"importance": stringProp("low, normal, or high; default normal"),
+		"images": map[string]any{
+			"type":        "array",
+			"items":       map[string]any{"type": "string"},
+			"description": "pasted image ids or workspace image paths to show in your reply",
+		},
 	}, []string{"text"})
 }
 func (notifyTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
 func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
-		Text       string `json:"text"`
-		Importance string `json:"importance"`
+		Text       string   `json:"text"`
+		Importance string   `json:"importance"`
+		Images     []string `json:"images"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -199,8 +205,17 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if text == "" {
 		return "", errors.New("notify: empty text")
 	}
+	// Pictures are checked and stored before the note goes out, so a refused
+	// picture does not leave a note that promises it.
+	images, err := t.k.attachOutImages(ctx, in.Images)
+	if err != nil {
+		return "", err
+	}
 	if err := deliverNote(ctx, t.k, text); err != nil {
 		return "", err
+	}
+	if len(images) > 0 {
+		return fmt.Sprintf("notified the owner; %d picture(s) will show in your reply bubble: %s", len(images), strings.Join(images, ", ")), nil
 	}
 	return "notified the owner", nil
 }
