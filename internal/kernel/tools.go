@@ -308,16 +308,27 @@ func routineAtInPast(at string, tm *link.Timer, now time.Time) (time.Time, bool)
 	return t, t.Before(now.Add(-link.OneShotWindow))
 }
 
+type routineCreateArgs struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Prompt   string  `json:"prompt"`
+	Cron     string  `json:"cron"`
+	At       string  `json:"at"`
+	Precheck *string `json:"precheck"`
+}
+
+// parseRoutineCreate is shared by review and persistence. In particular, a
+// trailing null clears a duplicate precheck value on both paths; decoding into
+// a string instead would retain the earlier, unreviewed command.
+func parseRoutineCreate(args json.RawMessage) (routineCreateArgs, error) {
+	var in routineCreateArgs
+	err := json.Unmarshal(args, &in)
+	return in, err
+}
+
 func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Prompt   string `json:"prompt"`
-		Cron     string `json:"cron"`
-		At       string `json:"at"`
-		Precheck string `json:"precheck"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
+	in, err := parseRoutineCreate(args)
+	if err != nil {
 		return "", err
 	}
 	tm, err := t.k.timer()
@@ -331,7 +342,10 @@ func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, err
 		}
 		in.ID = "r" + hex.EncodeToString(b[:])
 	}
-	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Precheck: in.Precheck, Enabled: true}
+	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Enabled: true}
+	if in.Precheck != nil {
+		r.Precheck = *in.Precheck
+	}
 	if r.Cron != "" {
 		r.Zone = "local"
 	}

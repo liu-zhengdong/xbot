@@ -16,6 +16,16 @@ import (
 // routinePrecheck includes the existing command when an update leaves it in
 // place, so re-enabling or rescheduling a check cannot bypass command review.
 func (k *Kernel) routinePrecheck(name string, args json.RawMessage) (string, error) {
+	if name == "routine_create" {
+		in, err := parseRoutineCreate(args)
+		if err != nil {
+			return "", err
+		}
+		if in.Precheck == nil {
+			return "", nil
+		}
+		return *in.Precheck, nil
+	}
 	var in struct {
 		ID       string  `json:"id"`
 		Precheck *string `json:"precheck"`

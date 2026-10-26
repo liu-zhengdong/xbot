@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 例程 create 重复键末位 null 回修（功能分支）
+
+- 审核与创建落盘共用 `parseRoutineCreate` 和 `Precheck *string`，消除 `914a2f8` 中“审核为空、string 落盘保留先前命令”的不一致；保护路径仍走原 reviewCall，未改 Confirm 决策、执行器、HTTP/update 或 P2。解析约定见 [安全](atlas/security.md)。
+- 正式 `TestRoutineCreatePrecheckDuplicateNull` 用真实 agent 审批、落盘与 Timer.Fire 覆盖九种输入；旧实现的末位 null 与大小写变体均实际执行了未批准 marker，修后不落命令、不执行。缺字段、null、空串、末位敏感命令需审批和单字段 true 保持一致。
+- kernel/link 全包 `go test -count=1` 通过（49.700 / 2.917 秒），web 例程单次通过（0.605 秒）；相关 vet、gofmt、diff 检查通过，atlas audit 已执行。未跑 count=3、race 或全仓；本改动不增加进程、网络或文件调用，未测生产 p95。
+- 证据：`~/.xbot-build/precheck/fix-p1-dupnull-report.md`。仅分支提交，待独立复审 PASS 后合入；未合 main、未 push、未起 8788，P2 串行等待/取消残余未改。
+
 ## 2026-10-27 例程前置检查 P1 审核回修（功能分支）
 
 - 有效 precheck 的创建/修改转回现有 shell 的 `Kernel.reviewCall`，更新省略字段也审保留的命令；保护路径使用执行时的进程 cwd。HTTP 修改复用同一判定，需确认时 403、整次不落盘。定时执行遇有效 machine ask/off/读取错误静默跳过并 Commit slot。约定见 [安全](atlas/security.md)，P2 串行等待/取消不传保留在 [设计](dev/routine-precheck.md)。

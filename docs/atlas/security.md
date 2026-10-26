@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-10-27 @ 59b41d1 + routine-precheck shell review
+verified: 2026-10-27 @ 914a2f8 + routine-create shared parser
 ---
 # 安全：保险箱与权限表
 
@@ -84,7 +84,7 @@ WantedBy=multi-user.target
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
 - **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。不含前置命令的 routine 创建、修改、暂停、删除，Bot 之间的 `message_bot`/`post_group`，写计划文件、写技能、编码任务都是 `normal`，不弹确认卡。
-- **例程前置命令同表审核**：`routine_create/update` 只把纯排期部分归 Normal；有效 `precheck` 非空时转成 `sh` 调用，沿原 `Kernel.reviewCall` 做机器开关、保护路径、不可信记忆写及命令分类审核。更新省略字段时也检查保留的命令，清空则没有待执行命令。确认摘要包含命令，决定与原 routine 工具调用一起走原审批记录；路径按实际进程 cwd 解析，不借用对话 shell 的 cwd。已登录主人的 HTTP 修改也用同一审核；需确认的命令返回 403，交给聊天工具走现有卡片，不新增 HTTP 审批机制。到点读取现有实时机器 gate 的有效模式，仅 allow 可无交互执行，ask/off/读取错误均静默跳过并 Commit slot；有效模式仍由现有 permissions 开关决定（ADR 0019）。
+- **例程前置命令同表审核**：`routine_create/update` 只把纯排期部分归 Normal；创建的审核与落盘共用 `parseRoutineCreate`，`precheck` 以 `*string` 解析：重复字段的末位 null 清除先前值，两边都视为无命令，不会落盘并执行先前字符串。有效 `precheck` 非空时转成 `sh` 调用，沿原 `Kernel.reviewCall` 做机器开关、保护路径、不可信记忆写及命令分类审核。更新省略字段时也检查保留的命令，清空则没有待执行命令。确认摘要包含命令，决定与原 routine 工具调用一起走原审批记录；路径按实际进程 cwd 解析，不借用对话 shell 的 cwd。已登录主人的 HTTP 修改也用同一审核；需确认的命令返回 403，交给聊天工具走现有卡片，不新增 HTTP 审批机制。到点读取现有实时机器 gate 的有效模式，仅 allow 可无交互执行，ask/off/读取错误均静默跳过并 Commit slot；有效模式仍由现有 permissions 开关决定（ADR 0019）。
 - **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。

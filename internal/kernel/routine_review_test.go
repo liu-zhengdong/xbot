@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,3 +154,76 @@ func TestRoutinePrecheckApprovalPreventsExecution(t *testing.T) {
 }
 
 func precheckQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
+
+func TestRoutineCreatePrecheckDuplicateNull(t *testing.T) {
+	for _, tc := range []struct {
+		name, fields, saved string
+		approvals           int
+	}{
+		{"missing", "", "", 0},
+		{"null", `,"precheck":null`, "", 0},
+		{"command_then_null", `,"precheck":%s,"precheck":null`, "", 0},
+		{"command_then_casefold_null", `,"precheck":%s,"Precheck":null`, "", 0},
+		{"command_then_empty", `,"precheck":%s,"precheck":""`, "", 0},
+		{"null_then_command", `,"precheck":null,"precheck":%s`, "", 1},
+		{"command_null_command", `,"precheck":%s,"precheck":null,"precheck":%[1]s`, "", 1},
+		{"single_sensitive_command", `,"precheck":%s`, "", 1},
+		{"single_true", `,"precheck":"true"`, "true", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := testBot(t, link.NameTimer)
+			tm := &link.Timer{Dir: b.RoutineDir()}
+			marker := filepath.Join(b.Root, "env") // Only a temporary fake protected path.
+			command := "printf marker > " + precheckQuote(marker)
+			k := &Kernel{Bot: b, Links: []link.Link{tm}, Permissive: true}
+			k.ensureTurn().turnTrusted = true
+			shellArgs, _ := json.Marshal(map[string]string{"description": "test protected command", "command": command})
+			if need, _, err := (reviewedTool{Tool: &tools.Shell{}, k: k}).Confirm(shellArgs); err != nil || !need {
+				t.Fatalf("reference shell must require approval: %v %v", need, err)
+			}
+			fields := tc.fields
+			if strings.Contains(fields, "%") {
+				quoted, _ := json.Marshal(command)
+				fields = fmt.Sprintf(fields, string(quoted))
+			}
+			args := `{"id":"check","name":"check","prompt":"p","cron":"0 * * * *"` + fields + `}`
+			p := &scripted{resps: []provider.Message{toolCall("create", "routine_create", args)}}
+			approvals := 0
+			_, err := agent.Run(context.Background(), p, []tools.Tool{reviewedTool{Tool: routineCreate{k}, k: k}}, nil, agent.Options{
+				OneRound: true,
+				Approve:  func(context.Context, string, string) (bool, error) { approvals++; return false, nil },
+			})
+			if err != nil || approvals != tc.approvals {
+				t.Fatalf("approvals=%d want=%d err=%v", approvals, tc.approvals, err)
+			}
+			r, loadErr := tm.Load("check")
+			if tc.approvals == 0 {
+				if loadErr != nil || r.Precheck != tc.saved {
+					t.Errorf("review skipped but saved precheck=%q, want %q: %v", r.Precheck, tc.saved, loadErr)
+				}
+			} else if !os.IsNotExist(loadErr) {
+				t.Errorf("denied command persisted: %+v %v", r, loadErr)
+			}
+			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
+			emitted := 0
+			for i := 0; i < 2; i++ {
+				if err := tm.Fire(now, func(link.Event) error { emitted++; return nil }); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Errorf("unapproved protected command executed: %v", err)
+			}
+			wantEmitted := 1 - tc.approvals
+			if emitted != wantEmitted {
+				t.Fatalf("emitted=%d, want=%d", emitted, wantEmitted)
+			}
+			if tc.approvals == 0 {
+				r, err := tm.Load("check")
+				if err != nil || r.LastSlot != "20261027T0800" {
+					t.Fatalf("ordinary/true slot not committed: %+v %v", r, err)
+				}
+			}
+		})
+	}
+}
