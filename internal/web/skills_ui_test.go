@@ -319,3 +319,32 @@ out.textContent='RESULT:'+(bad?'bad'+bad:'ok')+':'+l.scrollHeight+'>'+l.clientHe
 }
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
+
+func TestSourceGlyphsAreBlossomAndClaudeStarburst(t *testing.T) {
+	b, err := staticFS.ReadFile("static/skills.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(b)
+	var oa, ag string
+	for _, l := range strings.Split(css, "\n") {
+		if strings.HasPrefix(l, ".bico.oa{") {
+			oa = l
+		}
+		if strings.HasPrefix(l, ".bico.ag{") {
+			ag = l
+		}
+	}
+	if !strings.Contains(oa, "M11.248") || !strings.Contains(oa, "translate(-0.6189") || strings.Contains(oa, "openai.svg") {
+		t.Fatalf("codex glyph is not the 2025 Blossom: %.120s", oa)
+	}
+	if strings.Contains(css, "anthropic.svg") || !strings.Contains(css, `.bico.cl{--bico:url("provider-icons/claude.svg");background:#D97757}`) {
+		t.Fatal("claude row must use the Claude starburst, not the Anthropic A")
+	}
+	if !strings.Contains(ag, "M12 8V5") || strings.Contains(ag, "r='2.1'") {
+		t.Fatalf("agent glyph must be the bot outline, not the target: %.120s", ag)
+	}
+	if !strings.Contains(css, ".nestcard .srcrow .bico{width:44px;height:44px;-webkit-mask-size:28px 28px;mask-size:28px 28px}") {
+		t.Fatal("source row glyph must be a 44 box with a 28 mark")
+	}
+}
