@@ -150,6 +150,14 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 }
 
 func TestProposeProfileAvatarConfirmation(t *testing.T) {
+	testProposeProfileAvatarConfirmation(t, false)
+}
+
+func TestProposeProfileAvatarConfirmationPermissive(t *testing.T) {
+	testProposeProfileAvatarConfirmation(t, true)
+}
+
+func testProposeProfileAvatarConfirmation(t *testing.T, permissive bool) {
 	for _, tc := range []struct {
 		name, args, description, renamed string
 		allow                            bool
@@ -179,7 +187,7 @@ func TestProposeProfileAvatarConfirmation(t *testing.T) {
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done again")},
 			}}
 			confirms := 0
-			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4}
+			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive}
 			k.Approve = func(_ context.Context, name, summary string) (bool, error) {
 				confirms++
 				if name != "propose_profile" || !strings.Contains(summary, `avatar_seed "Ada#2"`) {
@@ -253,7 +261,73 @@ func TestProposeProfileAvatarConfirmation(t *testing.T) {
 	}
 }
 
+func TestProposeProfileAvatarNextProposalPermissive(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NamePersona)
+	if err := b.SetAvatarSeed("XBot#2"); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{}
+	k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: true}
+	for _, tc := range []struct {
+		message, args, seed string
+		card, allow         bool
+	}{
+		{"改简介", `{"description":"笔记助手"}`, "XBot#2", false, false},
+		{"换个头像", `{"avatar_seed":"XBot#3"}`, "XBot#2", true, false},
+		{"换一批", `{"avatar_seed":"XBot#4"}`, "XBot#4", true, true},
+	} {
+		t.Run(tc.message, func(t *testing.T) {
+			before := profileAvatarFiles(t, b)
+			confirms := 0
+			k.Approve = func(_ context.Context, name, summary string) (bool, error) {
+				confirms++
+				if name != "propose_profile" || !strings.Contains(summary, "avatar_seed") {
+					t.Errorf("unexpected confirmation: %s %s", name, summary)
+				}
+				if !reflect.DeepEqual(profileAvatarFiles(t, b), before) {
+					t.Error("proposal wrote before confirmation")
+				}
+				return tc.allow, nil
+			}
+			p.resps = append(p.resps,
+				provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+					ID: tc.message, Type: "function", Function: provider.FunctionCall{Name: "propose_profile", Arguments: tc.args},
+				}})},
+				provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
+			)
+			if err := k.Handle(context.Background(), link.TerminalEvent("u1", tc.message, time.Now())); err != nil {
+				t.Fatal(err)
+			}
+			wantConfirms := 0
+			if tc.card {
+				wantConfirms = 1
+			}
+			if confirms != wantConfirms {
+				t.Fatalf("confirmations %d, want %d", confirms, wantConfirms)
+			}
+			loaded, err := bot.Load(b.Root, b.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if avatar, seed := loaded.AvatarState(); avatar != bot.AvatarGenerated || seed != tc.seed || loaded.Config().Description != "笔记助手" {
+				t.Fatalf("persisted avatar=%s seed=%s description=%s", avatar, seed, loaded.Config().Description)
+			}
+			if tc.card && !tc.allow && !reflect.DeepEqual(profileAvatarFiles(t, b), before) {
+				t.Fatal("declined proposal wrote to disk")
+			}
+		})
+	}
+}
+
 func TestProposeProfileAvatarRejectsInvalid(t *testing.T) {
+	testProposeProfileAvatarRejectsInvalid(t, false)
+}
+
+func TestProposeProfileAvatarRejectsInvalidPermissive(t *testing.T) {
+	testProposeProfileAvatarRejectsInvalid(t, true)
+}
+
+func testProposeProfileAvatarRejectsInvalid(t *testing.T, permissive bool) {
 	cases := []struct{ name, args, want string }{
 		{"number", `{"avatar_seed":3}`, "must be a string"},
 		{"boolean", `{"avatar_seed":true}`, "must be a string"},
@@ -285,7 +359,7 @@ func TestProposeProfileAvatarRejectsInvalid(t *testing.T) {
 				{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 			}}
 			confirms := 0
-			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4,
+			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive,
 				Approve: func(context.Context, string, string) (bool, error) { confirms++; return true, nil },
 			}
 			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change avatar", time.Now())); err != nil {
