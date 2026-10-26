@@ -362,3 +362,50 @@ func TestAccountWithHostedService(t *testing.T) {
 		t.Fatal("serve mounted the link page although the service is hosted")
 	}
 }
+
+// Any forwarding header means the request came through a proxy or tunnel, so
+// it cannot claim an unbound install, even from a loopback address; a direct
+// local request, or one that already holds the owner session, still can.
+func TestAccountBindingRefusesForwardedRequests(t *testing.T) {
+	for _, hdr := range []map[string]string{
+		{"X-Forwarded-Proto": "https"},
+		{"X-Forwarded-Port": "443"},
+		{"X-Forwarded-Host": "xbot.example.com"},
+		{"Via": "1.1 proxy"},
+		{"Forwarded": "for=203.0.113.9"},
+	} {
+		e := newAcctEnv(t, false)
+		c := e.browser()
+		_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr)
+		_, tok, _ := e.lastMail()
+		e.click(tok)
+		code, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, hdr)
+		if code != 200 || acct(out)["owner"] != false {
+			t.Fatalf("%v: bound through a proxy %d %v", hdr, code, out)
+		}
+		if st, _ := e.do(c, "GET", "/api/bots", nil, nil); st != http.StatusUnauthorized {
+			t.Fatalf("%v: owner session handed out %d", hdr, st)
+		}
+		if b, _ := e.s.readBinding(); b.Key != "" {
+			t.Fatalf("%v: binding written %+v", hdr, b)
+		}
+		// The same account straight from this computer binds.
+		d := e.browser()
+		if code, out := e.do(d, "POST", "/api/account/login", map[string]string{"email": "o@example.com", "password": "password 12"}, nil); code != 200 || acct(out)["owner"] != true {
+			t.Fatalf("%v: direct login %d %v", hdr, code, out)
+		}
+	}
+	// Holding the owner session already is proof enough, proxy or not.
+	e := newAcctEnv(t, false)
+	c := e.browser()
+	if st, _ := e.do(c, "POST", "/api/login", map[string]string{"token": e.s.token}, nil); st != 200 {
+		t.Fatal("install code")
+	}
+	hdr := map[string]string{"X-Forwarded-Proto": "https"}
+	_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr)
+	_, tok, _ := e.lastMail()
+	e.click(tok)
+	if code, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, hdr); code != 200 || acct(out)["owner"] != true {
+		t.Fatalf("owner session through a proxy %d %v", code, out)
+	}
+}

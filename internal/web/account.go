@@ -100,10 +100,8 @@ func (s *Server) ownerProof(r *http.Request) bool {
 	if s.authenticated(r) {
 		return true
 	}
-	for _, h := range []string{"Cf-Connecting-Ip", "X-Forwarded-For", "X-Real-Ip", "Forwarded", "X-Forwarded-Host"} {
-		if r.Header.Get(h) != "" {
-			return false
-		}
+	if forwarded(r) {
+		return false
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -111,6 +109,22 @@ func (s *Server) ownerProof(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// forwarded reports any sign that a proxy or tunnel relayed the request: every
+// X-Forwarded-* header, Forwarded, Via, and the client-address headers that
+// tunnels and proxies add. Present at all, even empty, it counts.
+func forwarded(r *http.Request) bool {
+	for name := range r.Header {
+		if strings.HasPrefix(name, "X-Forwarded-") {
+			return true
+		}
+		switch name {
+		case "Forwarded", "Via", "X-Real-Ip", "Cf-Connecting-Ip", "Cf-Ray", "True-Client-Ip", "X-Client-Ip":
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) registerAccount(mux *http.ServeMux) {

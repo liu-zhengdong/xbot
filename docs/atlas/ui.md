@@ -118,7 +118,7 @@ Bot 名字保留原样的大小写（默认 Bot 叫 XBot），可以用的字符
 
 账号服务在 `internal/account`：`Store`（现为一个 0600 的 `accounts.json`）和 `Mailer`（现为把信写成文件的 `OutboxMailer`）两个接口；密码 PBKDF2-SHA256 60 万次；链接 token、验证码、会话都只存哈希；注册时的密码挂在这次验证上，邮箱确认后才成为账号的密码；验证 15 分钟有效、只能用一次，验证码错 5 次作废，「再发一次」30 秒内不重发，密码错 10 次锁 15 分钟；已存在和不存在的邮箱回同样的话，后者不发信。同一个 `Handler` 挂在 `/account/v1/`，可以单独跑成 `xbot account-api`（环境变量 `DATA_DIR`、`BASE_URL`、`ADDR`、`MAIL_MODE`、`MAIL_OUTBOX`），部署时只要这个二进制和数据目录。`xbot serve` 设了 `XBOT_ACCOUNT_API` 就调它；没设就在进程里跑一份替身，数据在 `<root>/account-api/`，信写到 `<root>/account-api/outbox/`，邮件链接指回本机地址，本机只挂链接页的 GET/POST。
 
-这台电脑归哪个账号记在 `<root>/account-binding.json`（只存账号的不透明 key 和本机设备 id，不存邮箱）。还没绑定时，第一个验证过的账号要从本机直连（回环地址且没有 `Cf-Connecting-Ip`、`X-Forwarded-*` 一类转发头）或已经带着主人会话登录，才能绑上；隧道进来的不行。绑定的账号登录时拿到原来的主人会话 cookie（`xbot_session`），其它账号拿不到。主人账号的会话每分钟向账号服务报一次本机名字和 Bot 名字，「我的设备」里本机这一行用本地的 Bot 列表和头像。
+这台电脑归哪个账号记在 `<root>/account-binding.json`（只存账号的不透明 key 和本机设备 id，不存邮箱）。还没绑定时，第一个验证过的账号要从本机直连（回环地址，且没有任何转发痕迹：所有 `X-Forwarded-*`、`Forwarded`、`Via`、`X-Real-Ip`、`Cf-Connecting-Ip`、`Cf-Ray`、`True-Client-Ip`、`X-Client-Ip`，有这个头就算，值空也算）或已经带着主人会话登录，才能绑上；隧道进来的不行。绑定的账号登录时拿到原来的主人会话 cookie（`xbot_session`），其它账号拿不到。主人账号的会话每分钟向账号服务报一次本机名字和 Bot 名字，「我的设备」里本机这一行用本地的 Bot 列表和头像。
 
 旧的登录码（`POST /api/login`、`GET /app/launch`、终端打印的 token）照旧可用、语义不变，但产品里不再出现：只有地址带 `#login-code` 时页面才显示原来的登录码表单，供调试和回归。API 会话过期时收起所有浮层回到账号登录屏，重新登录后恢复此前选择的 Bot；网络和服务端错误转成中文提示。未知 HTML 页面返回沿用应用样式的 404，API 保留 JSON 错误，其他请求保留纯文本 404。
 
