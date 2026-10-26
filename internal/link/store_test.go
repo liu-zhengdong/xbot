@@ -72,3 +72,27 @@ func TestResolveApp(t *testing.T) {
 		}
 	}
 }
+
+// A catalog row that names a key goes through the chat card; rows without one stay a one-click add.
+func TestStoreKeyRowsNeedSecret(t *testing.T) {
+	c, err := LookupConnector("context7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.SecretEnvs) != 1 || c.SecretEnvs[0] != "CONTEXT7_API_KEY" {
+		t.Fatalf("context7 keys %v", c.SecretEnvs)
+	}
+	apps, err := StoreApps()
+	if err != nil {
+		t.Fatal(err)
+	}
+	need := map[string]bool{}
+	for _, a := range apps {
+		need[a.ID] = a.NeedsSecret
+	}
+	for id, want := range map[string]bool{"context7": true, "telegram": true, "lark": true, "fetch": false, "playwright": false, "desktop": false, "browser": false} {
+		if need[id] != want {
+			t.Fatalf("%s NeedsSecret=%v, want %v", id, need[id], want)
+		}
+	}
+}

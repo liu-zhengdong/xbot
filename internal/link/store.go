@@ -44,7 +44,8 @@ func StoreApps() ([]App, error) {
 		if c.Hidden || c.Category == "" {
 			continue
 		}
-		apps = append(apps, App{ID: c.ID, Title: c.Title, Summary: c.Summary, Category: c.Category, Kind: AppServer})
+		// A row that names a key goes through the chat card like Telegram, never a one-click add.
+		apps = append(apps, App{ID: c.ID, Title: c.Title, Summary: c.Summary, Category: c.Category, Kind: AppServer, NeedsSecret: len(c.SecretEnvs) > 0})
 	}
 	apps = append(apps,
 		App{ID: "telegram", Title: "Telegram", Summary: "收到 Telegram 消息时叫醒 Bot；发出去之前先给你看草稿。", Category: CatChat, Kind: AppNative, Grant: NameTelegram, NeedsSecret: true},

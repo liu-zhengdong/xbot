@@ -261,3 +261,52 @@ func TestAppsRoutesNameNoBot(t *testing.T) {
 		}
 	}
 }
+
+// Context7 needs its key: the store hands it to the chat card, a click over HTTP
+// writes nothing, and an entry without the key never reads as connected.
+func TestAppsContext7NeedsKey(t *testing.T) {
+	e := newAppsEnv(t)
+	if _, apps := e.list(); !apps["context7"].Card || apps["context7"].State != "available" || apps["fetch"].Card || apps["playwright"].Card {
+		t.Fatalf("card flags %+v %+v %+v", apps["context7"], apps["fetch"], apps["playwright"])
+	}
+	for i := 0; i < 2; i++ { // a repeated click is the same refusal
+		code, raw := e.call("POST", "/api/apps", `{"id":"context7"}`, true)
+		if code != http.StatusConflict || !strings.Contains(string(raw), "secrets required") {
+			t.Fatalf("context7 install %d %s", code, raw)
+		}
+	}
+	if code, _ := e.call("POST", "/api/apps", `{"id":"context7","CONTEXT7_API_KEY":"ctx7sk-abc"}`, true); code != http.StatusBadRequest {
+		t.Fatalf("key in body %d", code)
+	}
+	if _, err := os.Stat(bot.GlobalMCPPath(e.root)); err == nil {
+		t.Fatal("context7 was written without its key")
+	}
+	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
+		t.Fatalf("after refusal %d %+v", n, apps["context7"])
+	}
+	// An entry left keyless by the old one-click add does not count as connected.
+	path := bot.GlobalMCPPath(e.root)
+	if err := link.AddMCP(path, link.MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
+		t.Fatalf("keyless entry shown %d %+v", n, apps["context7"])
+	}
+	if err := link.RemoveMCP(path, "context7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := link.EnableConnector(path, "context7"); err != nil {
+		t.Fatal(err)
+	}
+	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
+		t.Fatalf("keyed entry %d %+v", n, apps["context7"])
+	}
+	for i := 0; i < 2; i++ {
+		if code, raw := e.call("DELETE", "/api/apps/context7", "", true); code != 200 {
+			t.Fatalf("remove %d %s", code, raw)
+		}
+	}
+	if all, _ := link.LoadMCP(path); len(all) != 0 {
+		t.Fatalf("left %+v", all)
+	}
+}

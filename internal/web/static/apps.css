@@ -22,7 +22,7 @@
 .ap-row{cursor:default;align-items:flex-start}
 .ap-row .tx .hint{white-space:normal;overflow:visible;text-overflow:clip}
 .ap-row .btn{margin-left:auto;flex:none}
-.apps-settings .btn.ap-done,.apps-settings .btn.ap-soon{background:transparent;color:var(--x-muted)}
+.apps-settings .btn.ap-soon{background:transparent;color:var(--x-muted)}
 .apps-settings .btn.ap-soon{opacity:.6}
 .ap-foot{margin-top:var(--x-s6)}
 .ap-field{display:block;margin:0 0 var(--x-s5)}

@@ -43,7 +43,8 @@
 
     function label(a) {
       if (a.state === "soon") return ["即将支持", "btn ap-soon", true];
-      if (a.state === "connected") return [a.category === "local" || a.category === "chat" ? "已连接" : "已添加", "btn ap-done", true];
+      // A connected card can be taken back right here, the same as the row on the connected page.
+      if (a.state === "connected") return ["移除", "btn", false];
       return [a.category === "local" || a.category === "chat" ? "连接" : "添加", "btn pri", false];
     }
     async function add(a) {
@@ -68,7 +69,7 @@
       const c = node("div", "ap-card"), tx = node("div", "tx"), [text, cls, off] = label(a);
       tx.append(node("b", "", a.title), node("span", "hint", a.summary));
       if (a.scope) tx.append(node("span", "ap-scope", a.scope));
-      const b = button(cls, text, () => add(a)); b.disabled = off || busy.has(a.id);
+      const b = button(cls, text, () => a.state === "connected" ? remove(a) : add(a)); b.disabled = off || busy.has(a.id);
       c.append(icon(a), tx, b); return c;
     }
     function paint() { return view === "connected" ? showConnected() : showStore(); }

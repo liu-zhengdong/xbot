@@ -2515,14 +2515,15 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setpage{line-height:normal;display:flex;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,calc(100vw - 40px));height:min(680px,80vh);background:var(--x-card);border-radius:18px;box-shadow:var(--x-shadow-pop);z-index:41;flex-direction:column;overflow:hidden}
 
 .setbody{flex:1;display:flex;min-height:0;overflow:hidden}
-.setnav{width:168px;flex:none;background:var(--x-panel);padding:14px 10px 16px;overflow:auto}
+/* Each scrolling box carries its own corner, so the .setpage clip never cuts its scrollbar. */
+.setnav{width:168px;flex:none;background:var(--x-panel);padding:14px 10px 16px;overflow:auto;border-radius:18px 0 0 18px}
 .setnav button{display:flex;align-items:center;gap:9px;height:36px;padding:0 10px;border-radius:9px;font-size:13.5px;color:var(--x-muted);cursor:pointer}
 .setnav button:hover{background:var(--x-fill-2);color:var(--x-text)}
 .setnav button.on{background:var(--x-fill-3);color:var(--x-text);font-weight:600}
 .setnav button .ic{color:inherit;opacity:.9;flex:none}
-.setmain{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--x-card)}
+.setmain{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;background:var(--x-card);overflow:hidden;border-radius:0 18px 18px 0}
 .setclose{position:absolute;top:14px;right:14px;z-index:2;width:32px;height:32px}
-.setcnt{flex:1;min-width:0;overflow:auto;padding:18px 28px 36px;padding-right:48px}
+.setcnt{flex:1;min-width:0;overflow:auto;padding:18px 28px 36px;padding-right:48px;border-radius:0 18px 18px 0}
 .setpane{display:none;max-width:100%}
 .setpane:not([hidden]){display:block}
 .setpane>h2{font-size:18px;font-weight:650;margin:4px 0 20px;letter-spacing:-.01em}
@@ -2605,6 +2606,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setbody{flex-direction:column}
 .setclose{display:none}
 .setmain{min-height:0}
+.setnav,.setmain,.setcnt{border-radius:0}
 #setpage[data-nav="home"] .setmain,#setpage[data-nav="pane"] .setnav{display:none}
 .setnav{flex:1;width:auto;background:var(--x-card);padding:0 var(--x-s6) var(--x-s9)}
 .setnavlead{display:block;margin:0 0 var(--x-s4);font-size:var(--x-fs-ui);color:var(--x-muted);line-height:1.65}

@@ -27,7 +27,7 @@
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@upstash/context7-mcp"],
-    "secret_envs": []
+    "secret_envs": ["CONTEXT7_API_KEY"]
   },
   {
     "id": "localhttp",

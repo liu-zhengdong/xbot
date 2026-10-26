@@ -27,10 +27,12 @@ func TestAppsStoreBehaviour(t *testing.T) {
  const textOf=n=>walk(n).map(x=>x.textContent||'').join(' ');
  const buttons=host=>walk(host).filter(n=>n.tag==='button');
  const btn=(host,label)=>buttons(host).find(b=>b.textContent===label);
+ const cardBtn=(host,title)=>walk(host).find(n=>n.className==='ap-card'&&textOf(n).includes(title)).children.find(n=>n.tag==='button');
  const rows=[
   {id:'desktop',title:'电脑操作',summary:'看屏幕、点击。',category:'local',state:'available'},
   {id:'browser',title:'浏览器',summary:'打开网页。',category:'local',state:'connected'},
-  {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available'},
+  {id:'fetch',title:'网页抓取',summary:'读网页。',category:'dev',state:'available'},
+  {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available',card:true},
   {id:'telegram',title:'Telegram',summary:'收消息。',category:'chat',state:'available',card:true},
   {id:'gmail',title:'Gmail',summary:'邮件。',category:'work',state:'soon'},
   {id:'notes',title:'notes',summary:'自定义应用',category:'custom',state:'connected',custom:true}];
@@ -51,26 +53,37 @@ func TestAppsStoreBehaviour(t *testing.T) {
   assert.ok(textOf(host).includes('为你推荐'));
   assert.ok(!textOf(host).includes('notes'),'custom apps stay out of the grid');
   // buttons by state
-  assert.ok(btn(host,'已连接'));
+  // a connected card offers 移除 right in the store; nothing reads as a dead 已添加 or 已连接
+  const done=cardBtn(host,'浏览器');assert.equal(done.textContent,'移除');assert.equal(done.disabled,false);
+  assert.ok(!btn(host,'已添加')&&!btn(host,'已连接'));
   const soon=btn(host,'即将支持');assert.equal(soon.disabled,true);
   // chip filters
   walk(host).find(n=>n.dataset.chip==='dev').onclick();
   assert.ok(textOf(host).includes('Context7'));assert.ok(!textOf(host).includes('电脑操作'));
   // adding a plain app goes to the global route with no bot in sight
-  await btn(host,'添加').onclick();
-  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='POST')[0]),JSON.stringify(['POST','/api/apps',{id:'context7'}]));
-  assert.ok(buttons(host).some(b=>b.textContent==='已添加'));
+  await cardBtn(host,'网页抓取').onclick();
+  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='POST')[0]),JSON.stringify(['POST','/api/apps',{id:'fetch'}]));
+  assert.equal(cardBtn(host,'网页抓取').textContent,'移除');
+  // Context7 needs a key: its 添加 hands off to chat and never posts or turns connected
+  let before=calls.length;await cardBtn(host,'Context7').onclick();
+  assert.equal(connected.join(),'context7');assert.equal(calls.length,before);
+  assert.equal(cardBtn(host,'Context7').textContent,'添加');
   assert.ok(calls.every(c=>!c[1].includes('/api/bots/')),'store calls must not name a Bot');
   // a key connector hands off to chat instead of posting
   walk(host).find(n=>n.dataset.chip==='chat').onclick();
-  const before=calls.length;await btn(host,'连接').onclick();
-  assert.equal(connected.join(),'telegram');assert.equal(calls.length,before);
+  before=calls.length;await btn(host,'连接').onclick();
+  assert.equal(connected.join(),'context7,telegram');assert.equal(calls.length,before);
   // search with no match
   const search=walk(host).find(n=>n.tag==='input');search.value='zzz';search.oninput();
   assert.ok(textOf(host).includes('没有匹配的应用'));
   // connected list, remove, then the empty state
   btn(host,'已连接 3 个').onclick();
   assert.ok(textOf(host).includes('这些应用对所有 Bot 都能用'));assert.ok(textOf(host).includes('notes'));
+  // removing from a store card sends the same DELETE as the connected page
+  walk(host).find(n=>n.className==='setback').onclick();btn(host,'清除搜索').onclick();
+  await cardBtn(host,'浏览器').onclick();
+  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='DELETE')[0]),JSON.stringify(['DELETE','/api/apps/browser',undefined]));
+  assert.equal(cardBtn(host,'浏览器').textContent,'连接');
   for(const r of rows)if(r.state==='connected'&&!r.custom)r.state='available';
   rows.find(r=>r.id==='notes').state='available';
   await window.XBotApps.mount({api,host,isCurrent:()=>true});

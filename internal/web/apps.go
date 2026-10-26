@@ -76,9 +76,9 @@ func (s *Server) appRows() ([]appJSON, error) {
 			}
 		}
 	}
-	srv := map[string]bool{}
+	srv := map[string]link.MCPServer{}
 	for _, v := range servers {
-		srv[v.Name] = true
+		srv[v.Name] = v
 	}
 	rows := make([]appJSON, 0, len(apps)+len(servers))
 	known := map[string]bool{}
@@ -92,7 +92,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 		switch {
 		case a.Kind == link.AppSoon:
 			row.State = "soon"
-		case a.Kind == link.AppNative && have[a.Grant], a.Kind == link.AppServer && srv[a.ID]:
+		case a.Kind == link.AppNative && have[a.Grant], a.Kind == link.AppServer && serverReady(srv, a.ID):
 			row.State = "connected"
 		}
 		rows = append(rows, row)
@@ -104,6 +104,26 @@ func (s *Server) appRows() ([]appJSON, error) {
 		rows = append(rows, appJSON{ID: v.Name, Title: v.Name, Summary: "自定义应用", Category: "custom", State: "connected", Custom: true})
 	}
 	return rows, nil
+}
+
+// serverReady says a store server is really connected: its entry exists and,
+// for a key-bearing row, names every key the catalog asks for. An entry left
+// keyless by an older one-click add is not shown as connected.
+func serverReady(srv map[string]link.MCPServer, id string) bool {
+	v, ok := srv[id]
+	if !ok {
+		return false
+	}
+	c, err := link.LookupConnector(id)
+	if err != nil {
+		return true
+	}
+	for _, name := range c.SecretEnvs {
+		if !listHas(v.SecretEnvs, name) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) installApp(w http.ResponseWriter, r *http.Request) {
