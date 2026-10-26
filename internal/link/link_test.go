@@ -101,7 +101,7 @@ func TestToolsLinkNames(t *testing.T) {
 	for _, tool := range NewToolsLink().Tools() {
 		names[tool.Name()] = true
 	}
-	for _, want := range []string{"shell", "read_file", "write_file", "edit_file"} {
+	for _, want := range []string{"sh", "read_file", "write_file", "edit_file"} {
 		if !names[want] {
 			t.Fatalf("missing %s in %v", want, names)
 		}

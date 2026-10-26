@@ -276,9 +276,12 @@ func ctxOutcome(ctx context.Context) outcome {
 }
 
 func workTools(dir string) []tools.Tool {
-	sh := tools.NewShell()
-	sh.Dir = dir
-	return []tools.Tool{sh, &tools.ReadFile{Root: dir}, &tools.WriteFile{Root: dir}, &tools.EditFile{Root: dir}}
+	var list []tools.Tool
+	for _, sh := range tools.NewShells() {
+		sh.Dir = dir
+		list = append(list, sh)
+	}
+	return append(list, &tools.ReadFile{Root: dir}, &tools.WriteFile{Root: dir}, &tools.EditFile{Root: dir})
 }
 
 func taskText(task Task) string {

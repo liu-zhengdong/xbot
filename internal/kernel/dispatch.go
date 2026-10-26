@@ -130,7 +130,7 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 // cwd: the git checkout around cwd, or cwd itself. Two subagents with the
 // same resource queue (exec.Local); one that cannot write has none.
 func writeResource(ty agenttype.Type, cwd string) string {
-	if !ty.Allows("write_file") && !ty.Allows("edit_file") && !ty.Allows("shell") {
+	if !ty.Allows("write_file") && !ty.Allows("edit_file") && !ty.AllowsShell() {
 		return ""
 	}
 	if cwd == "" {
@@ -178,7 +178,7 @@ func (k *Kernel) toolsFor(req exec.StartRequest) []tools.Tool {
 		switch {
 		case ty.Allows(t.Name()):
 			out = append(out, t)
-		case t.Name() == "shell" && ty.Allows(agenttype.ShellReadOnly):
+		case review.IsShellTool(t.Name()) && ty.Allows(agenttype.ShellReadOnly):
 			out = append(out, readOnlyShell{t})
 		}
 	}
@@ -194,7 +194,7 @@ func (s readOnlyShell) Description() string {
 }
 
 func (s readOnlyShell) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	if !review.ShellIsReadOnly(args) {
+	if !review.ShellToolIsReadOnly(s.Name(), args) {
 		return "", errors.New("shell: this subagent may only run plain read commands; no redirection, chaining, or writes")
 	}
 	return s.Tool.Run(ctx, args)

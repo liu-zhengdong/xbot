@@ -14,6 +14,7 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
 	"xbot/internal/notable"
+	"xbot/internal/review"
 )
 
 const DefaultToolWait = 2 * time.Second
@@ -250,7 +251,7 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 	res.Err = nil
 	// Shell keeps its streamed log. Other tools publish their processed text
 	// to the same bounded output file, never another result store.
-	if job.Tool != "shell" {
+	if !review.IsShellTool(job.Tool) {
 		body, _ := clip.Bytes(text, j.outputCap())
 		job.Bytes = len(body)
 		if err := fsutil.WriteAtomic(job.Output, []byte(body), 0600); err != nil {
@@ -276,7 +277,7 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 	if !detached && onCwd != nil && ended != "" {
 		onCwd(ended)
 	}
-	if job.Tool == "shell" {
+	if review.IsShellTool(job.Tool) {
 		job.Bytes, job.Dropped = lv.w.span()
 	}
 	j.metaMu.Lock()
@@ -311,7 +312,11 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (string
 	if script == "" {
 		script = req.Command
 	}
-	cmd := exec.CommandContext(ctx, "sh", "-c", script)
+	in := req.Interpreter
+	if in.name == "" {
+		in = interpreter{name: "sh", path: "sh"}
+	}
+	cmd := in.command(ctx, script)
 	setGroup(cmd)
 	cmd.Cancel = func() error { return killProcess(cmd) }
 	cmd.Dir = req.Dir
@@ -327,6 +332,7 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (string
 	lv.mu.Lock()
 	lv.cmd = cmd
 	lv.job.Command = clipCommand(j.redact(req.Command))
+	lv.job.Description = clipCommand(j.redact(req.Description))
 	lv.job.PID = cmd.Process.Pid
 	lv.job.ProcStart = processStartTicks(cmd.Process.Pid)
 	lv.mu.Unlock()

@@ -65,21 +65,21 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	}
 	// The machine switch and the guard on outside turns are off too.
 	k.Machine = func() (string, error) { return "ask", nil }
-	if needsCard(t, k, "shell", `{"command":"ls"}`) {
+	if needsCard(t, k, "sh", `{"description":"Verify the scenario behavior","command":"ls"}`) {
 		t.Error("machine ask still asked with permissions off")
 	}
 	k.Permissive = false
-	if !needsCard(t, k, "shell", `{"command":"ls"}`) {
+	if !needsCard(t, k, "sh", `{"description":"Verify the scenario behavior","command":"ls"}`) {
 		t.Error("machine ask was ignored with permissions on")
 	}
 	k.Permissive = true
 	k.Machine = nil
 	k.ensureTurn().turnTrusted = false
-	if needsCard(t, k, "shell", `{"command":"echo x >> memory/memory.md"}`) {
+	if needsCard(t, k, "sh", `{"description":"Verify the scenario behavior","command":"echo x >> memory/memory.md"}`) {
 		t.Error("a turn from outside still asks to touch memory")
 	}
 	k.Permissive = false
-	if !needsCard(t, k, "shell", `{"command":"echo x >> memory/memory.md"}`) {
+	if !needsCard(t, k, "sh", `{"description":"Verify the scenario behavior","command":"echo x >> memory/memory.md"}`) {
 		t.Error("with permissions on, a turn from outside touching memory must ask")
 	}
 }

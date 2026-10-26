@@ -52,16 +52,16 @@ func TestVoiceSuiteUsesFakeAndRecordsActivity(t *testing.T) {
 func TestActivityDetectsFileChangesNotJustWriteToolNames(t *testing.T) {
 	root := t.TempDir()
 	a := newActivity(root, &Fake{Steps: Script{{Text: "done"}}})
-	a.toolStart("shell", "")
-	a.toolEnd("shell", "failed")
+	a.toolStart("sh", "")
+	a.toolEnd("sh", "failed")
 	if a.result().ToolsBeforeFirstWrite != nil {
 		t.Fatal("failed call counted as write")
 	}
-	a.toolStart("shell", "")
+	a.toolStart("sh", "")
 	if err := os.WriteFile(filepath.Join(root, "out"), []byte("new"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	a.toolEnd("shell", "exit 0")
+	a.toolEnd("sh", "exit 0")
 	if got := a.result().ToolsBeforeFirstWrite; got == nil || *got != 1 {
 		t.Fatal(got)
 	}
@@ -93,7 +93,7 @@ func TestFileOnlyToolsExcludeShellRegardlessOfCatalogOrder(t *testing.T) {
 		for _, tool := range got {
 			names[tool.Name()] = true
 		}
-		if len(got) != 3 || names["shell"] || !names["read_file"] || !names["write_file"] || !names["edit_file"] {
+		if len(got) != 3 || names["sh"] || !names["read_file"] || !names["write_file"] || !names["edit_file"] {
 			t.Fatalf("catalog shift %d gave %v", shift, names)
 		}
 	}

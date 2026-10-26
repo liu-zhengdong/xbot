@@ -13,14 +13,14 @@ import (
 
 func TestShellEchoAndExit(t *testing.T) {
 	sh := NewShell()
-	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"echo hello"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, "exit 0") || !strings.Contains(out, "hello") {
 		t.Fatalf("%q", out)
 	}
-	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"exit 3"}`))
+	out, err = sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"exit 3"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,18 +37,18 @@ func TestShellOmitsProviderKeysUnlessOptIn(t *testing.T) {
 	sh.KeyEnv = []string{"DEEPSEEK_API_KEY"}
 	// BSD printenv prints only the first named variable, so filter env instead.
 	const show = `env | grep -E '^(XBOT_API_KEY|DEEPSEEK_API_KEY|XBOT_KEEP_ME)=' || true`
-	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"`+show+`"}`))
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"`+show+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out, "sekret-xbot") || strings.Contains(out, "sekret-deep") || !strings.Contains(out, "kept-value") {
 		t.Fatalf("%q", out)
 	}
-	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"printenv XBOT_API_KEY","keys":true}`))
+	need, summary, err := sh.Confirm(json.RawMessage(`{"description":"Verify the scenario behavior","command":"printenv XBOT_API_KEY","keys":true}`))
 	if err != nil || need || !strings.Contains(summary, "with provider keys") {
 		t.Fatalf("need=%v summary=%q err=%v", need, summary, err)
 	}
-	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"`+show+`","keys":true}`))
+	out, err = sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"`+show+`","keys":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +70,14 @@ func TestShellOptInRestoresHeldKeys(t *testing.T) {
 		return "", false
 	})
 	sh := NewShell()
-	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY || true"}`))
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"printenv XBOT_API_KEY || true"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out, "sekret-held") {
 		t.Fatalf("default call saw the held key: %q", out)
 	}
-	out, err = sh.Run(context.Background(), json.RawMessage(`{"command":"printenv XBOT_API_KEY","keys":true}`))
+	out, err = sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"printenv XBOT_API_KEY","keys":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestShellRunRefusesMachineOff(t *testing.T) {
 	t.Cleanup(func() { SetMachineGate(nil) })
 	SetMachineGate(func() (string, error) { return "off", nil })
 	sh := NewShell()
-	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"echo no"}`)); err == nil || !strings.Contains(err.Error(), "off") {
+	if _, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"echo no"}`)); err == nil || !strings.Contains(err.Error(), "off") {
 		t.Fatal(err)
 	}
 }
@@ -100,15 +100,15 @@ func TestShellRunRefusesMachineOff(t *testing.T) {
 // Confirm never decides; it only builds the card summary.
 func TestShellConfirmOnlyBuildsSummary(t *testing.T) {
 	sh := NewShell()
-	need, summary, err := sh.Confirm(json.RawMessage(`{"command":"date"}`))
-	if err != nil || need || summary != "date" {
+	need, summary, err := sh.Confirm(json.RawMessage(`{"description":"Verify the scenario behavior","command":"date"}`))
+	if err != nil || need || summary != "Verify the scenario behavior\ndate" {
 		t.Fatalf("date need=%v summary=%q err=%v", need, summary, err)
 	}
-	need, summary, err = sh.Confirm(json.RawMessage(`{"command":"rm -rf /tmp/nope"}`))
-	if err != nil || need || summary != "rm -rf /tmp/nope" {
+	need, summary, err = sh.Confirm(json.RawMessage(`{"description":"Verify the scenario behavior","command":"rm -rf /tmp/nope"}`))
+	if err != nil || need || summary != "Verify the scenario behavior\nrm -rf /tmp/nope" {
 		t.Fatalf("confirm need=%v summary=%q err=%v", need, summary, err)
 	}
-	if _, err := sh.Run(context.Background(), json.RawMessage(`{"command":"  "}`)); err == nil {
+	if _, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"  "}`)); err == nil {
 		t.Fatal("expected empty command error")
 	}
 }
@@ -151,7 +151,7 @@ func TestWriteEditResolvedPath(t *testing.T) {
 func TestShellTimeoutKillsGroup(t *testing.T) {
 	marker := "xbottest-" + strings.ReplaceAll(t.Name(), "/", "-")
 	bin := privateSleep(t, marker)
-	raw, err := json.Marshal(map[string]string{"command": bin + " 30"})
+	raw, err := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": bin + " 30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestShellTimeoutKillsGroup(t *testing.T) {
 
 func TestShellTruncates(t *testing.T) {
 	sh := &Shell{MaxOutput: 64}
-	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"awk 'BEGIN{while(c++<100) print \"0123456789\"}'"}`))
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"awk 'BEGIN{while(c++<100) print \"0123456789\"}'"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

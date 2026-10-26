@@ -61,12 +61,12 @@ func TestNotableExecutionMetaAndReportStayTogether(t *testing.T) {
 		name, tool, raw, kind string
 		allow                 bool
 	}{
-		{"install", "shell", args(map[string]any{"command": installer + " i -g demo"}), "global_install", true},
+		{"install", "sh", args(map[string]any{"description": "Verify the scenario behavior", "command": installer + " i -g demo"}), "global_install", true},
 		{"outside", "write_file", args(map[string]any{"path": filepath.Join(outside, "new.txt"), "content": "ok"}), "write_outside", true},
 		{"send", "http_request", args(map[string]any{"url": service.URL, "method": "POST", "body": "hello"}), "external_message", true},
 		{"delete", "delete_file", args(map[string]any{"path": filepath.Join(outside, "delete.txt")}), "delete", true},
 		{"ordinary", "write_file", args(map[string]any{"path": "local.txt", "content": "ok"}), "", true},
-		{"shell failed", "shell", args(map[string]any{"command": "rm /path-that-does-not-exist-m7"}), "", true},
+		{"shell failed", "sh", args(map[string]any{"description": "Verify the scenario behavior", "command": "rm /path-that-does-not-exist-m7"}), "", true},
 		{"denied", "delete_file", args(map[string]any{"path": filepath.Join(outside, "delete.txt")}), "", false},
 	}
 	for _, tc := range cases {

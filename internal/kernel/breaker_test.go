@@ -75,12 +75,12 @@ func TestBreakerTripsTwice(t *testing.T) {
 		{
 			name: "denied approvals",
 			steps: [][]provider.Message{
-				{assistantCall("1", "a "+big, "shell", `{"command":"rm a"}`), toolResult("1", "shell", "denied by user")},
-				{assistantCall("2", "b "+big, "shell", `{"command":"rm b"}`), toolResult("2", "shell", "denied by user")},
-				{assistantCall("3", "c "+big, "shell", `{"command":"rm c"}`), toolResult("3", "shell", "denied by user")},
-				{assistantCall("4", "d "+big, "shell", `{"command":"rm d"}`), toolResult("4", "shell", "denied by user")},
-				{assistantCall("5", "e "+big, "shell", `{"command":"rm e"}`), toolResult("5", "shell", "denied by user")},
-				{assistantCall("6", "f "+big, "shell", `{"command":"rm f"}`), toolResult("6", "shell", "denied by user")},
+				{assistantCall("1", "a "+big, "sh", `{"description":"Verify the scenario behavior","command":"rm a"}`), toolResult("1", "sh", "denied by user")},
+				{assistantCall("2", "b "+big, "sh", `{"description":"Verify the scenario behavior","command":"rm b"}`), toolResult("2", "sh", "denied by user")},
+				{assistantCall("3", "c "+big, "sh", `{"description":"Verify the scenario behavior","command":"rm c"}`), toolResult("3", "sh", "denied by user")},
+				{assistantCall("4", "d "+big, "sh", `{"description":"Verify the scenario behavior","command":"rm d"}`), toolResult("4", "sh", "denied by user")},
+				{assistantCall("5", "e "+big, "sh", `{"description":"Verify the scenario behavior","command":"rm e"}`), toolResult("5", "sh", "denied by user")},
+				{assistantCall("6", "f "+big, "sh", `{"description":"Verify the scenario behavior","command":"rm f"}`), toolResult("6", "sh", "denied by user")},
 			},
 			reason: StopDeniedApprovals,
 		},
@@ -217,10 +217,10 @@ func TestToolStepsAreNotDiminishingReturns(t *testing.T) {
 }
 
 func shellCall(id, command, output string) []provider.Message {
-	args := `{"command":` + jsonString(command) + `}`
+	args := `{"description":"Verify the scenario behavior","command":` + jsonString(command) + `}`
 	return []provider.Message{
-		assistantCall(id, "run "+id+" "+command, "shell", args),
-		toolResult(id, "shell", output),
+		assistantCall(id, "run "+id+" "+command, "sh", args),
+		toolResult(id, "sh", output),
 	}
 }
 

@@ -64,7 +64,7 @@ func Builtin() []Type {
 		{
 			Name:    "dev",
 			When:    "Change code or files: read, edit, run commands and tests, use git.",
-			Tools:   []string{"read_file", "write_file", "edit_file", "shell", "web_fetch", "web_search", "view_image", "read_skill", "write_skill"},
+			Tools:   []string{"read_file", "write_file", "edit_file", "bash", "sh", "zsh", "powershell", "cmd", "git-bash", "web_fetch", "web_search", "view_image", "read_skill", "write_skill"},
 			Prompt:  "You are a developer. Read before you edit. Run the tests after a change. Stay inside the task: do not refactor or fix things you were not asked to.",
 			Budget:  2 * time.Hour,
 			Report:  []string{"Changed", "Tests", "Not done"},
@@ -229,4 +229,14 @@ func (t Type) Instructions(base string) string {
 		b.WriteString(". Write \"none\" under a section that has nothing.")
 	}
 	return b.String()
+}
+
+// AllowsShell reports whether this type can run any writable interpreter.
+func (t Type) AllowsShell() bool {
+	for _, name := range []string{"bash", "sh", "zsh", "powershell", "cmd", "git-bash"} {
+		if t.Allows(name) {
+			return true
+		}
+	}
+	return false
 }

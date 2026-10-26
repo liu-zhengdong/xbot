@@ -116,7 +116,7 @@ func TestCwdSymlinkStaysInside(t *testing.T) {
 	}
 	k, p, now := workBot(t, dir)
 	runTurn(t, k, now, "go",
-		toolCall("c1", "shell", `{"command":"cd lnk"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd lnk"}`),
 		toolCall("c2", "write_file", `{"path":"x.txt","content":"x\n"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 	if _, err := os.Stat(filepath.Join(outside, "x.txt")); err == nil {
@@ -136,7 +136,7 @@ func TestFreshnessFollowsCwd(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "pkg", "a.txt"), "one\n")
 	k, p, now := workBot(t, dir)
 	runTurn(t, k, now, "go",
-		toolCall("c1", "shell", `{"command":"cd pkg"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd pkg"}`),
 		toolCall("c2", "read_file", `{"path":"a.txt"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("read")})
 	*now = now.Add(2 * time.Second)

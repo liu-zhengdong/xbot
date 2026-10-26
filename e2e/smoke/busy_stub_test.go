@@ -151,7 +151,7 @@ func (b *busyScript) handle(w http.ResponseWriter, r *http.Request, req stubRequ
 		return true
 	}
 	if bot == "s6" && strings.Contains(all, "BUSY_SLOW_READ") && !busyHasTool(req, "call_busy_read") {
-		streamTool(w, "call_busy_read", "shell", argsJSON(map[string]string{"command": "cat " + shellQuote(b.slowPath)}))
+		streamTool(w, "call_busy_read", "sh", argsJSON(map[string]string{"description": "Exercise the journey step", "command": "cat " + shellQuote(b.slowPath)}))
 		return true
 	}
 	for _, id := range owners {

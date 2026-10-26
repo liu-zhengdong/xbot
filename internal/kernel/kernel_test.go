@@ -151,7 +151,7 @@ func TestHandleRepairsInterruptedTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
+		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "sh", Arguments: `{"description":"Verify the scenario behavior","command":"ls"}`},
 	}})}}); err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err != nil || string(got) != "hi" {
 		t.Fatalf("file %q err=%v", got, err)
 	}
-	if len(p.reqs[0].Tools) != 13 {
+	if len(p.reqs[0].Tools) != 12+len(tools.NewShells()) {
 		t.Fatalf("tools %d", len(p.reqs[0].Tools))
 	}
 

@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 func TestOwnerTerminalIsNotWrapped(t *testing.T) {
@@ -96,7 +98,12 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
-	if strings.Join(names, ",") != "edit_file,kernel_manual,links,read_file,shell,shell_cancel,shell_output,shell_status,todo,view_image,web_fetch,web_search,write_file" {
+	want := []string{"edit_file", "kernel_manual", "links", "read_file", "shell_cancel", "shell_output", "shell_status", "todo", "view_image", "web_fetch", "web_search", "write_file"}
+	for _, sh := range tools.NewShells() {
+		want = append(want, sh.Name())
+	}
+	sort.Strings(want)
+	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("tool order %v", names)
 	}
 	if strings.Join(names, ",") != strings.Join(toolNamesOf(p.reqs[1].Tools), ",") {
@@ -161,7 +168,7 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 	msgs := []bot.Entry{
 		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("the secret code is purple finch")}},
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "shell", Arguments: `{"command":"ls"}`},
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "sh", Arguments: `{"description":"Verify the scenario behavior","command":"ls"}`},
 		}})}},
 		{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "a.txt")}},
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("listed")}},

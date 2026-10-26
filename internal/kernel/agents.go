@@ -194,25 +194,28 @@ func (k *Kernel) allocScope(ctx context.Context) string {
 // from the parent at creation. Calls ignore the context's branch: the scope
 // id is the subagent, not whatever turn happens to be running the tool.
 func (k *Kernel) toolsForScope(scope string) []tools.Tool {
-	sh := tools.NewShell()
-	sh.Dir = k.WorkDir
-	sh.Shared = k.SharedDir
-	sh.BindJobs(k.shellJobs())
-	sh.BindSession(
-		func(ctx context.Context) (string, string) {
-			if tools.CallID(ctx) != "" {
-				return k.shellStartDir(ctx)
-			}
-			return k.shellStartScope(scope)
-		},
-		func(ctx context.Context, dir string) (string, string) {
-			if tools.CallID(ctx) != "" {
-				return k.shellAfterDir(ctx, dir)
-			}
-			return k.shellAfterScope(scope, dir)
-		},
-	)
-	sh.SetMarkerDir(k.shellMarkerDir())
+	var shells []tools.Tool
+	for _, sh := range tools.NewShells() {
+		sh.Dir = k.WorkDir
+		sh.Shared = k.SharedDir
+		sh.BindJobs(k.shellJobs())
+		sh.BindSession(
+			func(ctx context.Context) (string, string) {
+				if tools.CallID(ctx) != "" {
+					return k.shellStartDir(ctx)
+				}
+				return k.shellStartScope(scope)
+			},
+			func(ctx context.Context, dir string) (string, string) {
+				if tools.CallID(ctx) != "" {
+					return k.shellAfterDir(ctx, dir)
+				}
+				return k.shellAfterScope(scope, dir)
+			},
+		)
+		sh.SetMarkerDir(k.shellMarkerDir())
+		shells = append(shells, sh)
+	}
 	root := func(ctx context.Context) string {
 		if tools.CallID(ctx) != "" {
 			return k.cwdFor(ctx)
@@ -233,7 +236,7 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	k.configureWeb(view)
 	k.configureWeb(fetch)
 	k.configureWeb(search)
-	return k.bindingTools([]tools.Tool{sh, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view})
+	return k.bindingTools(append(shells, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view))
 }
 
 // memoryGuarded runs a subagent's file edit through the memory guard. The

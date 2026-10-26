@@ -352,7 +352,7 @@ func veto(tools []ToolUse, kinds []string, plan string) string {
 }
 
 func isDelete(t ToolUse) bool {
-	if t.Name == "shell" {
+	if review.IsShellTool(t.Name) {
 		return commandDeletes(shellCommand(t.Args))
 	}
 	return false
@@ -362,7 +362,7 @@ func isSend(t ToolUse) bool {
 	switch t.Name {
 	case "message_bot", "post_group":
 		return true
-	case "shell":
+	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
 		return commandSends(shellCommand(t.Args))
 	default:
 		return false
@@ -396,7 +396,7 @@ func shellCommand(args string) string { return jsonString(args, "command") }
 func outsidePath(tools []ToolUse, root string, memory bool) string {
 	root = filepath.Clean(root)
 	for _, t := range tools {
-		readMemory := memory && t.Name == "shell" && memoryShellReadOnly(t.Args)
+		readMemory := memory && review.IsShellTool(t.Name) && memoryShellReadOnly(t.Args)
 		for _, p := range toolPaths(t) {
 			if p == "" {
 				continue
@@ -463,7 +463,7 @@ func toolPaths(t ToolUse) []string {
 	switch t.Name {
 	case "read_file", "write_file", "edit_file":
 		return []string{jsonString(t.Args, "path")}
-	case "shell":
+	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
 		return shellTokens(shellCommand(t.Args))
 	default:
 		return nil

@@ -120,7 +120,7 @@ func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (too
 			return out, err
 		}
 		switch name {
-		case "shell":
+		case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
 			// A command moved to the background may still be writing; its
 			// changes are reported as usual.
 			if !strings.HasPrefix(out, "background ") {
@@ -177,7 +177,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, summary + " (untrusted turn: memory write)", nil
 		}
 	}
-	if name == "shell" && !k.permissive() && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellIsReadOnly(args) {
+	if review.IsShellTool(name) && !k.permissive() && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellToolIsReadOnly(name, args) {
 		root := k.Bot.Root
 		memoryDirs := []string{filepath.Join(root, "bots", k.Bot.Name(), "memory")}
 		if person := k.memoryPersonOf(k.turnFor(ctx)); person != "" {
@@ -256,14 +256,14 @@ func (k *Kernel) protectedPaths() []string {
 // touches a protected path.
 func (k *Kernel) protectedCall(ctx context.Context, tool tools.Tool, args json.RawMessage) bool {
 	name := tool.Name()
-	if !review.IsFileTool(name) && name != "shell" {
+	if !review.IsFileTool(name) && !review.IsShellTool(name) {
 		return false
 	}
 	protected := k.protectedPaths()
 	if len(protected) == 0 {
 		return false
 	}
-	if name == "shell" {
+	if review.IsShellTool(name) {
 		cmd, cwd := review.ShellInvocation(args)
 		if cwd == "" {
 			cwd = k.cwdFor(ctx)

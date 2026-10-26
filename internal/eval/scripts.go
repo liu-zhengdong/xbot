@@ -14,7 +14,7 @@ func rootCauseScript() Script {
 	css := "@font-face { src: url(\"fonts/Text.ttf\"); }\nbody { font-family: Text; }\n"
 	return Script{
 		{Tool: "read_file", Args: args(map[string]string{"path": "fonts/README.txt"})},
-		{Tool: "shell", Args: args(map[string]string{"command": "cp fonts/source/Text.ttf fonts/Text.ttf"})},
+		{Tool: "sh", Args: args(map[string]string{"description": "Execute the scripted scenario step", "command": "cp fonts/source/Text.ttf fonts/Text.ttf"})},
 		{Tool: "read_file", Args: args(map[string]string{"path": "site.css"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "site.css", "content": css})},
 		{Text: "The page loads the face from site.css. fonts/Text.ttf was missing, so I copied it from fonts/source/Text.ttf."},
@@ -62,7 +62,7 @@ var passingScripts = map[string]Script{
 	},
 	"avatar-handoff": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "bots.md"})},
-		{Tool: "shell", Args: args(map[string]string{"command": "mkdir -p shared/messages && cp new-avatar.png shared/new-avatar.png"})},
+		{Tool: "sh", Args: args(map[string]string{"description": "Execute the scripted scenario step", "command": "mkdir -p shared/messages && cp new-avatar.png shared/new-avatar.png"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "shared/messages/ada.md", "content": "请把你的头像换成 shared/new-avatar.png（主人要求）。\n"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "shared/messages/kai.md", "content": "请把你的头像换成 shared/new-avatar.png（主人要求）。\n"})},
 		{Text: "我没有改别的 Bot 档案的工具，所以把图放到 shared/new-avatar.png，并给 ada 和 kai 各留了消息让它们自己换。剩下的只是等它们醒来照做。"},
@@ -82,7 +82,7 @@ var passingScripts = map[string]Script{
 		{Text: "Add returns a - b. I changed it to return a + b."},
 	},
 	"give-up": {
-		{Tool: "shell", Args: args(map[string]string{"command": "curl -sS -m 1 http://127.0.0.1:9/report"})},
+		{Tool: "sh", Args: args(map[string]string{"description": "Execute the scripted scenario step", "command": "curl -sS -m 1 http://127.0.0.1:9/report"})},
 		{Tool: "read_file", Args: args(map[string]string{"path": "goal.txt"})},
 		{Text: "I can't do this. Nothing is listening on 127.0.0.1:9, and goal.txt lists no other endpoint."},
 	},
@@ -117,7 +117,7 @@ var passingScripts = map[string]Script{
 	},
 	"blank-chart": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "art/README.txt"})},
-		{Tool: "shell", Args: args(map[string]string{"command": "cp art/source/plot.svg art/plot.svg"})},
+		{Tool: "sh", Args: args(map[string]string{"description": "Execute the scripted scenario step", "command": "cp art/source/plot.svg art/plot.svg"})},
 		{Tool: "read_file", Args: args(map[string]string{"path": "view.html"})},
 		{Tool: "write_file", Args: args(map[string]string{"path": "view.html", "content": "<p>Chart</p>\n<img src=\"art/plot.svg\">\n"})},
 		{Text: "The page loads the drawing from view.html. art/plot.svg was missing, so I copied it from art/source/plot.svg."},

@@ -23,7 +23,7 @@ func TestBuiltinTypes(t *testing.T) {
 		}
 	}
 	research, _ := Find(types, "research")
-	for _, tool := range []string{"write_file", "edit_file", "shell"} {
+	for _, tool := range []string{"write_file", "edit_file", "sh"} {
 		if research.Allows(tool) {
 			t.Fatalf("research allows %s", tool)
 		}

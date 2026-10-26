@@ -43,7 +43,8 @@ const (
 // guard test fails when a registered tool has no entry.
 var Table = map[string]Class{
 	// Built-in tools link: shell and files.
-	"shell":        Shell,
+	"shell": Shell, // Historical records only; never registered.
+	"bash":  Shell, "sh": Shell, "zsh": Shell, "powershell": Shell, "cmd": Shell, "git-bash": Shell,
 	"shell_output": Readonly,
 	"shell_status": Readonly,
 	"shell_cancel": Normal,
@@ -215,7 +216,7 @@ func Known(tool string) bool {
 // deliberately excluded so the owner can always close a Chrome process.
 func MachineTouching(tool string) bool {
 	switch normalize(tool) {
-	case "shell", "read_file", "write_file", "edit_file", "view_image",
+	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash", "read_file", "write_file", "edit_file", "view_image",
 		"desktop_screenshot", "desktop_click", "desktop_type", "desktop_scroll", "desktop_key",
 		"browser_open", "browser_snapshot", "browser_click":
 		return true
@@ -249,7 +250,7 @@ func NeedsOwner(tool string, args json.RawMessage) bool {
 	case HTTP:
 		return httpNeedsOwner(args)
 	case Shell:
-		if name == "shell" && shellKeys(args) {
+		if IsShellTool(name) && shellKeys(args) {
 			return true
 		}
 		deletes, sends := ShellFlags(shellCommand(args))
@@ -292,10 +293,10 @@ func httpNeedsOwner(args json.RawMessage) bool {
 func ShellFlags(cmd string) (deletes, sends bool) {
 	words := shellWords(cmd)
 	for _, w := range words {
-		switch filepath.Base(w) {
-		case "rm", "unlink", "rmdir", "shred":
+		switch strings.ToLower(filepath.Base(w)) {
+		case "rm", "unlink", "rmdir", "shred", "del", "erase", "rd", "remove-item", "ri":
 			deletes = true
-		case "sendmail", "mail", "mailx", "nc", "ncat", "netcat":
+		case "sendmail", "mail", "mailx", "nc", "ncat", "netcat", "invoke-restmethod", "invoke-webrequest", "irm", "iwr", "send-mailmessage":
 			sends = true
 		}
 	}
@@ -587,8 +588,8 @@ func ResourceOf(name string, args json.RawMessage, workdir string) (string, bool
 			p = filepath.Join(workdir, p)
 		}
 		return "file:" + filepath.Clean(p), true
-	case "shell":
-		if ShellIsReadOnly(args) {
+	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
+		if ShellToolIsReadOnly(name, args) {
 			return "", false
 		}
 		dir := in.Cwd
@@ -982,4 +983,22 @@ func underOrEqual(path, base string) bool {
 		base += sep
 	}
 	return strings.HasPrefix(path, base)
+}
+
+// IsShellTool recognizes interpreter tools and historical shell records.
+func IsShellTool(name string) bool {
+	switch normalize(name) {
+	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
+		return true
+	}
+	return false
+}
+
+// ShellToolIsReadOnly uses the POSIX classifier only for POSIX interpreters.
+// cmd and PowerShell syntax must not inherit its read-only allowlist.
+func ShellToolIsReadOnly(name string, args json.RawMessage) bool {
+	if name == "powershell" || name == "cmd" {
+		return false
+	}
+	return ShellIsReadOnly(args)
 }

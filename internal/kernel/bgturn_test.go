@@ -145,7 +145,7 @@ func TestForegroundNoteListsBackgrounds(t *testing.T) {
 	k, _, box := forkKernel(t)
 	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好")}}}
 	k.bgs = map[string]*turn{
-		"bg_a": {branch: "bg_a", task: "整理日志", replies: 3, lastTool: "shell"},
+		"bg_a": {branch: "bg_a", task: "整理日志", replies: 3, lastTool: "sh"},
 		"bg_b": {branch: "bg_b", task: "写报告", replies: 1},
 	}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(30, 0).UTC())

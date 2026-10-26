@@ -247,7 +247,7 @@ func looseCall(name, args string) bool {
 	case "read_file", "list_secrets", "list_bots", "list_groups", "read_skill",
 		"recall", "recall_history", "read_subagent", "wait", "sleep", "poll":
 		return true
-	case "shell":
+	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
 		return looseShell(args)
 	default:
 		return false

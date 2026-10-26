@@ -15,18 +15,16 @@ func NewToolsLink() *ToolsLink {
 // NewToolsLinkAt aims shell and relative file paths at dir.
 // shared is exported to the shell as XBOT_SHARED when set.
 func NewToolsLinkAt(dir, shared string) *ToolsLink {
-	sh := tools.NewShell()
-	sh.Dir = dir
-	sh.Shared = shared
-	return &ToolsLink{list: []tools.Tool{
-		sh,
-		&tools.ReadFile{Root: dir},
-		&tools.WriteFile{Root: dir},
-		&tools.EditFile{Root: dir},
-		&tools.WebFetch{},
-		&tools.WebSearch{},
-		&tools.ViewImage{Root: dir},
-	}}
+	list := []tools.Tool{}
+	for _, sh := range tools.NewShells() {
+		sh.Dir = dir
+		sh.Shared = shared
+		list = append(list, sh)
+	}
+	return &ToolsLink{list: append(list,
+		&tools.ReadFile{Root: dir}, &tools.WriteFile{Root: dir}, &tools.EditFile{Root: dir},
+		&tools.WebFetch{}, &tools.WebSearch{}, &tools.ViewImage{Root: dir},
+	)}
 }
 
 func (t *ToolsLink) Name() string { return NameTools }

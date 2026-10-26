@@ -887,7 +887,7 @@ func (m *journeyModel) answer(req provider.Request) provider.Message {
 		}
 		return text("The key fact from the first turn is " + markers[0] + ".")
 	case strings.Contains(lastUser, journeyTool) && !sawShell:
-		return toolCall(id, "shell", `{"command":"printf journey-step"}`)
+		return toolCall(id, "sh", `{"description":"Exercise the journey step","command":"printf journey-step"}`)
 	}
 	return text("ack " + turnTag(lastUser))
 }
@@ -931,7 +931,7 @@ func scanRequest(req provider.Request) (lastUser string, sawShell, sawExpand boo
 		}
 		for _, tc := range msg.Calls() {
 			switch tc.Function.Name {
-			case "shell":
+			case "sh":
 				sawShell = true
 			case "expand":
 				sawExpand = true

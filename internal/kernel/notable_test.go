@@ -22,7 +22,7 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	hold := make(chan struct{})
 	model := &roleModel{hold: hold,
 		fore: []provider.Message{assistantCall("d", "", "dispatch", `{"type":"dev","task":"整理测试目录"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("交给子代理了。")}},
-		sub:  []provider.Message{assistantCall("s1", "", "shell", `{"command":"cd sub"}`), assistantCall("s2", "", "write_file", `{"path":"out/result.txt","content":"ok"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("文件写好了。")}}}
+		sub:  []provider.Message{assistantCall("s1", "", "sh", `{"description":"Verify the scenario behavior","command":"cd sub"}`), assistantCall("s2", "", "write_file", `{"path":"out/result.txt","content":"ok"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("文件写好了。")}}}
 	k, b, box := dispatchKernel(t, model)
 	k.Permissive = true
 	outside := t.TempDir()

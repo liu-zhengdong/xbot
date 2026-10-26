@@ -26,7 +26,7 @@ func TestShellSelfEditIsNotAnExternalChange(t *testing.T) {
 	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
 	runTurn(t, k, now, "edit",
 		toolCall("r1", "read_file", mustArgs(t, map[string]string{"path": path})),
-		toolCall("s1", "shell", mustArgs(t, map[string]string{"command": "printf 'new\\n' > note.txt"})),
+		toolCall("s1", "sh", mustArgs(t, map[string]string{"description": "Verify the scenario behavior", "command": "printf 'new\\n' > note.txt"})),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	)
 	var shellOut string

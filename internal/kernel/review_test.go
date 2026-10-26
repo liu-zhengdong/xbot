@@ -51,7 +51,8 @@ func TestUntrustedShellMemoryWriteRequiresApproval(t *testing.T) {
 	k := &Kernel{Bot: b}
 	k.ensureTurn().turnSender = "owner"
 	args, err := json.Marshal(map[string]string{
-		"command": "cd " + filepath.Dir(dir) + " && printf x >> memory/memory.md",
+		"description": "Verify memory protection",
+		"command":     "cd " + filepath.Dir(dir) + " && printf x >> memory/memory.md",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +62,7 @@ func TestUntrustedShellMemoryWriteRequiresApproval(t *testing.T) {
 	if err != nil || !need {
 		t.Fatalf("untrusted shell memory write: approval=%v err=%v, want approval=true", need, err)
 	}
-	read, _ := json.Marshal(map[string]string{"command": "cat " + filepath.Join(dir, "memory.md")})
+	read, _ := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": "cat " + filepath.Join(dir, "memory.md")})
 	if need, _, err := tool.Confirm(read); err != nil || need {
 		t.Fatalf("untrusted read-only shell: approval=%v err=%v, want approval=false", need, err)
 	}
@@ -374,7 +375,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 			t.Fatalf("tool %q answered need=true on its own; the table must decide", name)
 		}
 	}
-	for _, want := range []string{"shell", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
+	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
 		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open",
 		"create_bot", "delete_bot", "bot_status", "mcp_fake_echo"} {
 		if !seen[want] {

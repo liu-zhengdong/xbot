@@ -80,12 +80,15 @@ func cmdRunner(args []string) error {
 
 	loc.Approve = func(context.Context, string, string) (bool, error) { return *yes, nil }
 	loc.ToolsFor = func(req exec.StartRequest) []tools.Tool {
-		sh := tools.NewShell()
-		sh.Dir = req.Workspace
-		if jobs, err := loc.JobsFor(req); err == nil {
-			sh.BindJobs(jobs)
+		var list []tools.Tool
+		for _, sh := range tools.NewShells() {
+			sh.Dir = req.Workspace
+			if jobs, err := loc.JobsFor(req); err == nil {
+				sh.BindJobs(jobs)
+			}
+			list = append(list, sh)
 		}
-		return []tools.Tool{sh, &tools.ReadFile{Root: req.Workspace}, &tools.WriteFile{Root: req.Workspace}, &tools.EditFile{Root: req.Workspace}}
+		return append(list, &tools.ReadFile{Root: req.Workspace}, &tools.WriteFile{Root: req.Workspace}, &tools.EditFile{Root: req.Workspace})
 	}
 	return exec.ListenCode(*addr, tok, loc, code.NewService())
 }

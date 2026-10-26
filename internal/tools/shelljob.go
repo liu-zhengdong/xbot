@@ -17,6 +17,7 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
 	"xbot/internal/notable"
+	"xbot/internal/review"
 )
 
 const (
@@ -38,11 +39,12 @@ const (
 // cancelled, or lost. lost means a new process found the record still running
 // and did not try to signal the old pid.
 type Job struct {
-	Background bool           `json:"background,omitempty"`
-	Notable    []notable.Item `json:"notable,omitempty"`
-	Tool       string         `json:"tool,omitempty"`
-	Result     string         `json:"result,omitempty"`
-	Images     []string       `json:"images,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Background  bool           `json:"background,omitempty"`
+	Notable     []notable.Item `json:"notable,omitempty"`
+	Tool        string         `json:"tool,omitempty"`
+	Result      string         `json:"result,omitempty"`
+	Images      []string       `json:"images,omitempty"`
 
 	ID        string    `json:"id"`
 	Command   string    `json:"command"`
@@ -72,16 +74,19 @@ type Job struct {
 // when the process exits; OnCwd receives the directory a foreground command
 // finished in, before Run returns.
 type RunRequest struct {
-	onStart    func()
-	Command    string
-	Exec       string
-	Timeout    time.Duration
-	MaxOutput  int
-	Dir        string
-	Env        []string
-	Background bool
-	CwdFile    string
-	OnCwd      func(string)
+	Name        string
+	Interpreter interpreter
+	Description string
+	onStart     func()
+	Command     string
+	Exec        string
+	Timeout     time.Duration
+	MaxOutput   int
+	Dir         string
+	Env         []string
+	Background  bool
+	CwdFile     string
+	OnCwd       func(string)
 }
 
 // Jobs tracks tool calls for one bot directory. The same value lives for
@@ -217,10 +222,13 @@ func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		return out, err
 	}
+	if req.Name == "" {
+		req.Name = "sh"
+	}
 	ready := make(chan struct{})
 	var once sync.Once
 	req.onStart = func() { once.Do(func() { close(ready) }) }
-	res := j.RunCall(ctx, CallRequest{Name: "shell", Command: req.Command, Dir: req.Dir, Wait: req.Timeout, Background: req.Background,
+	res := j.RunCall(ctx, CallRequest{Name: req.Name, Command: req.Command, Dir: req.Dir, Wait: req.Timeout, Background: req.Background,
 		Run: func(ctx context.Context) CallResult {
 			lv := ctx.Value(callKey{}).(*live)
 			defer req.onStart()
@@ -249,7 +257,7 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	}
 	job := j.freshen(lv)
 	var written, discarded, held int
-	if lv.w != nil && (job.Tool == "shell" || job.Status == "running") {
+	if lv.w != nil && (review.IsShellTool(job.Tool) || job.Status == "running") {
 		_ = lv.w.Flush()
 		written, discarded = lv.w.span()
 		held = lv.w.held()

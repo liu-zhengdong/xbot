@@ -271,7 +271,7 @@ func (s *Stub) listAndSummarize(w http.ResponseWriter, req stubRequest, task str
 	summary := filepath.Join(dir, "summary.txt")
 	switch {
 	case !sawShell:
-		streamTool(w, "call_ls", "shell", argsJSON(map[string]string{"command": "ls -1 " + shellQuote(dir)}))
+		streamTool(w, "call_ls", "sh", argsJSON(map[string]string{"description": "Exercise the journey step", "command": "ls -1 " + shellQuote(dir)}))
 	case !sawWrite:
 		streamTool(w, "call_write", "write_file", argsJSON(map[string]string{
 			"path":    summary,
@@ -534,7 +534,7 @@ func toolProgress(req stubRequest) (sawShell, sawWrite bool, shellOut string) {
 				continue
 			}
 			switch tc.Function.Name {
-			case "shell":
+			case "sh":
 				sawShell = true
 			case "write_file":
 				sawWrite = true

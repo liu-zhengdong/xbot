@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"xbot/internal/review"
 	"xbot/internal/tools"
 )
 
@@ -241,6 +242,9 @@ func (e *evalShell) Confirm(args json.RawMessage) (bool, string, error) {
 }
 
 func (e *evalShell) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	if _, _, err := e.inner.Confirm(args); err != nil {
+		return "", err
+	}
 	var in struct {
 		Command        string `json:"command"`
 		TimeoutSeconds int    `json:"timeout_seconds"`
@@ -292,7 +296,7 @@ func caseTools(work string, network bool) []tools.Tool {
 func fileOnlyTools(list []tools.Tool) []tools.Tool {
 	out := make([]tools.Tool, 0, len(list))
 	for _, t := range list {
-		if t.Name() != "shell" {
+		if !review.IsShellTool(t.Name()) {
 			out = append(out, t)
 		}
 	}

@@ -154,7 +154,7 @@ func TestProjectInstructionsHierarchy(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "enter",
-		toolCall("c1", "shell", `{"command":"cd pkg"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd pkg"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	if len(p.reqs) < 4 {
@@ -214,7 +214,7 @@ func TestProjectInstructionsStayInsideRoots(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "down",
-		toolCall("c1", "shell", `{"command":"cd linked"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd linked"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	tip := newest(t, p)
@@ -363,7 +363,7 @@ func TestProjectReminderTokenCost(t *testing.T) {
 	}
 	advance(now, time.Second)
 	runTurn(t, k, now, "down",
-		toolCall("c1", "shell", `{"command":"cd pkg"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd pkg"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	changed := projectBlock(newest(t, p))
@@ -404,7 +404,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	})
 
 	runTurn(t, k, now, "move",
-		toolCall("c1", "shell", `{"command":"cd sub"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd sub"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("moved")},
 	)
 	got := bodies(t, k)
@@ -414,7 +414,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "where",
-		toolCall("c2", "shell", `{"command":"pwd -P"}`),
+		toolCall("c2", "sh", `{"description":"Verify the scenario behavior","command":"pwd -P"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("there")},
 	)
 	got = bodies(t, k)
@@ -425,7 +425,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "fail",
-		toolCall("c3", "shell", `{"command":"false"}`),
+		toolCall("c3", "sh", `{"description":"Verify the scenario behavior","command":"false"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	fail := bodies(t, k)
@@ -435,7 +435,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "code",
-		toolCall("c4", "shell", `{"command":"exit 4"}`),
+		toolCall("c4", "sh", `{"description":"Verify the scenario behavior","command":"exit 4"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	code := bodies(t, k)
@@ -445,7 +445,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "bg",
-		toolCall("b1", "shell", `{"command":"cd /","run_in_background":true}`),
+		toolCall("b1", "sh", `{"description":"Verify the scenario behavior","command":"cd /","run_in_background":true}`),
 		toolCall("b2", "shell_status", `{}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("bg")},
 	)
@@ -459,7 +459,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "still",
-		toolCall("c5", "shell", `{"command":"pwd -P"}`),
+		toolCall("c5", "sh", `{"description":"Verify the scenario behavior","command":"pwd -P"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("same")},
 	)
 	still := bodies(t, k)
@@ -469,7 +469,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "leave",
-		toolCall("c6", "shell", `{"command":"cd /"}`),
+		toolCall("c6", "sh", `{"description":"Verify the scenario behavior","command":"cd /"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("no")},
 	)
 	leave := bodies(t, k)
@@ -480,7 +480,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "back",
-		toolCall("c7", "shell", `{"command":"pwd -P"}`),
+		toolCall("c7", "sh", `{"description":"Verify the scenario behavior","command":"pwd -P"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("home")},
 	)
 	back := bodies(t, k)
@@ -491,7 +491,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 
 	advance(now, time.Second)
 	runTurn(t, k, now, "again",
-		toolCall("c8", "shell", `{"command":"cd sub"}`),
+		toolCall("c8", "sh", `{"description":"Verify the scenario behavior","command":"cd sub"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("in")},
 	)
 	again := bodies(t, k)
@@ -503,7 +503,7 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	}
 	advance(now, time.Second)
 	runTurn(t, k, now, "gone",
-		toolCall("c9", "shell", `{"command":"pwd -P"}`),
+		toolCall("c9", "sh", `{"description":"Verify the scenario behavior","command":"pwd -P"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("back")},
 	)
 	gone := bodies(t, k)
@@ -626,7 +626,7 @@ func TestUsageThresholds(t *testing.T) {
 func TestUsageAccumulatesWithinTurn(t *testing.T) {
 	k, _, now := freshBot(t)
 	bindWindow(t, k, 1000)
-	call := toolCall("c1", "shell", `{"command":"pwd -P"}`)
+	call := toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"pwd -P"}`)
 	call.Usage = provider.TokenUsage{PromptTokens: 100, CompletionTokens: 5, CachedTokens: 1, Reported: true}
 	final := reportedMsg("done", 120, 7, 2)
 	runTurn(t, k, now, "go", call, final)

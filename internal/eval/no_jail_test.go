@@ -19,7 +19,7 @@ func TestEvalNoJailRunsWithoutChroot(t *testing.T) {
 		t.Fatal(err)
 	}
 	work := t.TempDir()
-	out, err := newEvalShell(work, false).Run(context.Background(), []byte(`{"command":"printf 'done\\n' > /sandbox/result.txt; test -f \"$HOME/result.txt\" && test -z \"$EVAL_TEST_SECRET\" && cat /sandbox/result.txt"}`))
+	out, err := newEvalShell(work, false).Run(context.Background(), []byte(`{"description":"Verify the scenario behavior","command":"printf 'done\\n' > /sandbox/result.txt; test -f \"$HOME/result.txt\" && test -z \"$EVAL_TEST_SECRET\" && cat /sandbox/result.txt"}`))
 	if err != nil || out != "exit 0\ndone" {
 		t.Fatalf("shell: %q, %v", out, err)
 	}
@@ -29,7 +29,7 @@ func TestEvalNoJailRunsWithoutChroot(t *testing.T) {
 	}
 	// The same opt-out reaches the full case runner, not just direct shell calls.
 	res := runCase(mustCase(t, "resume"), "normal", Script{
-		{Tool: "shell", Args: `{"command":"printf 'DONE\\n' > /sandbox/out.txt"}`},
+		{Tool: "sh", Args: `{"description":"Verify the scenario behavior","command":"printf 'DONE\\n' > /sandbox/out.txt"}`},
 		{Text: "Done."},
 	}, nil)
 	if !res.Pass {

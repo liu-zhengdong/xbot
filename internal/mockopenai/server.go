@@ -90,7 +90,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		}
 		for _, tc := range m.ToolCalls {
 			switch tc.Function.Name {
-			case "shell":
+			case "sh":
 				sawShell = true
 			case "write_file":
 				sawWrite = true
@@ -249,15 +249,15 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "long task done\n")
 		return
 	case strings.Contains(lastUser, "STEER_TASK") && !sawShell:
-		writeTool(w, "call_prior", "shell", `{"command":"printf PRIOR_WORK"}`)
+		writeTool(w, "call_prior", "sh", `{"description":"Execute the scripted scenario step","command":"printf PRIOR_WORK"}`)
 		return
 	case strings.Contains(lastUser, "STEER_TASK") && sawShell && script != nil:
 		script.Enter("steer")
 		_ = script.Wait("steer", r.Context())
-		writeTool(w, "call_still", "shell", `{"command":"printf STILL_GOING"}`)
+		writeTool(w, "call_still", "sh", `{"description":"Execute the scripted scenario step","command":"printf STILL_GOING"}`)
 		return
 	case strings.Contains(lastUser, "INTERRUPT_TASK") && !sawShell:
-		writeTool(w, "call_step", "shell", `{"command":"printf PRIOR_STEP"}`)
+		writeTool(w, "call_step", "sh", `{"description":"Execute the scripted scenario step","command":"printf PRIOR_STEP"}`)
 		return
 	case strings.Contains(lastUser, "INTERRUPT_TASK") && script != nil:
 		script.Enter("intr")
@@ -292,7 +292,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "noted\n")
 		return
 	case strings.Contains(lastUser, "NEED_APPROVAL") && !sawShell:
-		writeTool(w, "call_mkdir", "shell", `{"command":"mkdir -p approved-dir"}`)
+		writeTool(w, "call_mkdir", "sh", `{"description":"Execute the scripted scenario step","command":"mkdir -p approved-dir"}`)
 		return
 	case strings.Contains(lastUser, "NEED_APPROVAL"):
 		writeText(w, "made the directory\n")
@@ -334,8 +334,8 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		if dir != "" {
 			cmd = "ls -1 " + shellQuote(dir)
 		}
-		args, _ := json.Marshal(map[string]string{"command": cmd})
-		writeTool(w, "call_ls", "shell", string(args))
+		args, _ := json.Marshal(map[string]string{"description": "Execute the scripted scenario step", "command": cmd})
+		writeTool(w, "call_ls", "sh", string(args))
 		return
 	}
 	if !sawWrite {

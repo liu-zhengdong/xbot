@@ -26,7 +26,7 @@ func TestSubagentCwdDoesNotMoveParent(t *testing.T) {
 	if sub == nil {
 		t.Fatal("subagent tool set has no shell")
 	}
-	args, _ := json.Marshal(map[string]string{"command": "cd other-task"})
+	args, _ := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": "cd other-task"})
 	if _, err := sub.Run(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestBackgroundCwdDoesNotMoveForeground(t *testing.T) {
 	}
 	var sh tools.Tool
 	for _, tl := range list {
-		if tl.Name() == "shell" {
+		if tl.Name() == "sh" {
 			sh = tl
 		}
 	}
@@ -68,7 +68,7 @@ func TestBackgroundCwdDoesNotMoveForeground(t *testing.T) {
 	k.adoptForeground(branch)
 	bg := &turn{branch: branch}
 	ctx := context.WithValue(context.Background(), turnKey{}, bg)
-	args, _ := json.Marshal(map[string]string{"command": "cd other"})
+	args, _ := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": "cd other"})
 	if _, err := sh.Run(ctx, args); err != nil {
 		t.Fatal(err)
 	}

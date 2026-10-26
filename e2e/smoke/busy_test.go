@@ -606,7 +606,7 @@ func (b *busyRun) slowRead(bot string) (*Stream, chan error) {
 		slow = b.srv.BeginSend(bot, "Use shell to run this plain read command: cat "+shellQuote(path)+". Do not use read_file. BUSY_SLOW_READ")
 		WaitFor(b.t, 20*time.Second, "foreground read-only shell running", func() (bool, string) {
 			status, raw := b.srv.do("GET", "/api/bots/status", nil)
-			return status == 200 && strings.Contains(string(raw), `"tool":"shell"`), string(raw)
+			return status == 200 && strings.Contains(string(raw), `"tool":"sh"`), string(raw)
 		})
 		writerDone = make(chan error, 1)
 		// Opening the writer unblocks the FIFO reader; withhold bytes and EOF for

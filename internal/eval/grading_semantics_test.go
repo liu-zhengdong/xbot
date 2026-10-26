@@ -107,7 +107,7 @@ func TestShellOwnMemoryReadException(t *testing.T) {
 		{"ls " + own, false, false},
 	} {
 		t.Run(tc.cmd, func(t *testing.T) {
-			problems, _ := grade(Case{Memory: tc.memory}, Observation{Tools: []ToolUse{{Name: "shell", Args: args(map[string]string{"command": tc.cmd})}}}, nil, work, nil)
+			problems, _ := grade(Case{Memory: tc.memory}, Observation{Tools: []ToolUse{{Name: "sh", Args: args(map[string]string{"description": "Verify the scenario behavior", "command": tc.cmd})}}}, nil, work, nil)
 			if (len(problems) == 0) != tc.pass {
 				t.Fatalf("pass=%v: %v", tc.pass, problems)
 			}
@@ -130,7 +130,7 @@ func TestHereDocDataIsNotAPathOperand(t *testing.T) {
 		{"compound-delimiter", "cat <<'END'foo\nbody\nENDfoo\ncat /etc/passwd", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			problems, _ := grade(Case{}, Observation{Tools: []ToolUse{{Name: "shell", Args: args(map[string]string{"command": tc.cmd})}}}, nil, t.TempDir(), nil)
+			problems, _ := grade(Case{}, Observation{Tools: []ToolUse{{Name: "sh", Args: args(map[string]string{"description": "Verify the scenario behavior", "command": tc.cmd})}}}, nil, t.TempDir(), nil)
 			if (len(problems) == 0) != tc.pass {
 				t.Fatalf("pass=%v: %v", tc.pass, problems)
 			}
@@ -142,7 +142,7 @@ func TestRootCauseStillNeedsCSSReference(t *testing.T) {
 	t.Setenv("XBOT_EVAL_NO_JAIL", "1")
 	c := mustCase(t, "root-cause")
 	judge := &captureJudge{fake: &Fake{Steps: Script{
-		{Tool: "shell", Args: `{"command":"mkdir -p fonts && cp fonts/source/Text.ttf fonts/Text.ttf"}`},
+		{Tool: "sh", Args: `{"description":"Verify the scenario behavior","command":"mkdir -p fonts && cp fonts/source/Text.ttf fonts/Text.ttf"}`},
 		{Text: "已修好，字体文件已复制。"},
 	}}, verdict: `{"pass":true,"reason":"font copied"}`}
 	res := runCase(c, "normal", nil, judge)

@@ -31,7 +31,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1000, 0).UTC()
-	appendCard(t, b, "card-1", "shell", "mkdir approved-dir", bot.ApprovalPending, now.Add(-90*time.Second))
+	appendCard(t, b, "card-1", "sh", "mkdir approved-dir", bot.ApprovalPending, now.Add(-90*time.Second))
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -63,7 +63,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 	if strings.HasPrefix(strings.TrimSpace(carrier.Text()), "<pending_approvals>") {
 		t.Fatal("reminder replaced the newest message instead of appending")
 	}
-	for _, want := range []string{"shell", "mkdir approved-dir", "1m", "</pending_approvals>"} {
+	for _, want := range []string{"sh", "mkdir approved-dir", "1m", "</pending_approvals>"} {
 		if !strings.Contains(carrier.Text(), want) {
 			t.Fatalf("note %q missing %q", carrier.Text(), want)
 		}
@@ -87,9 +87,9 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 func TestPendingApprovalReminderStopsAfterTheAnswer(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	now := time.Unix(1000, 0).UTC()
-	appendCard(t, b, "card-1", "shell", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
-	appendCard(t, b, "card-1", "shell", "mkdir a", bot.ApprovalApproved, now)
-	appendCard(t, b, "card-2", "shell", "mkdir b", bot.NoDecisionText(bot.ApprovalReasonExpired), now)
+	appendCard(t, b, "card-1", "sh", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
+	appendCard(t, b, "card-1", "sh", "mkdir a", bot.ApprovalApproved, now)
+	appendCard(t, b, "card-2", "sh", "mkdir b", bot.NoDecisionText(bot.ApprovalReasonExpired), now)
 	k := &Kernel{
 		Bot: b, Memory: memory.NopStore{}, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}},
@@ -125,7 +125,7 @@ func TestPendingApprovalNoteOmitsWhenNothingIsOpen(t *testing.T) {
 // TestPendingApprovalNoteIsNotInTheStablePrefix guards the prompt cache: the note
 // must ride with the history, not sit in the system prefix.
 func TestPendingApprovalNoteIsNotInTheStablePrefix(t *testing.T) {
-	list := []PendingApproval{{Tool: "shell", Summary: "运行命令 mkdir a", Age: 2 * time.Minute}}
+	list := []PendingApproval{{Tool: "sh", Summary: "运行命令 mkdir a", Age: 2 * time.Minute}}
 	hist := []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}}}
 	msgs, _ := Assemble(Input{Persona: "p", Rules: "r", Entries: hist})
 	if len(msgs) == 0 {
@@ -153,7 +153,7 @@ func TestPendingApprovalNoteIsNotInTheStablePrefix(t *testing.T) {
 // conversation: one line per card, no transcript replay.
 func TestPendingApprovalNoteTextIsShort(t *testing.T) {
 	list := []PendingApproval{
-		{Tool: "shell", Summary: strings.Repeat("long summary ", 40), Age: 3 * time.Hour},
+		{Tool: "sh", Summary: strings.Repeat("long summary ", 40), Age: 3 * time.Hour},
 	}
 	note := pendingNote(list)
 	if strings.Count(note, "\n") > 4 {
@@ -185,7 +185,7 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 	run := func(t *testing.T, ev link.Event) bool {
 		t.Helper()
 		b := testBot(t, link.NameTerminal)
-		appendCard(t, b, "card-1", "shell", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
+		appendCard(t, b, "card-1", "sh", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
 		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 		k := &Kernel{
 			Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -211,8 +211,8 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 func TestOpenApprovalsReadsLatestCardState(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	now := time.Unix(2000, 0).UTC()
-	appendCard(t, b, "c1", "shell", "mkdir a", bot.ApprovalPending, now.Add(-2*time.Minute))
-	appendCard(t, b, "c1", "shell", "mkdir a", bot.ApprovalDeclined, now.Add(-time.Minute))
+	appendCard(t, b, "c1", "sh", "mkdir a", bot.ApprovalPending, now.Add(-2*time.Minute))
+	appendCard(t, b, "c1", "sh", "mkdir a", bot.ApprovalDeclined, now.Add(-time.Minute))
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Now: func() time.Time { return now }}
 	if open := k.openApprovals(); len(open) != 0 {
 		t.Fatalf("declined card still open: %v", open)

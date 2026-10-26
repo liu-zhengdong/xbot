@@ -31,10 +31,10 @@ func TestShellCwdIsFreshWithoutSession(t *testing.T) {
 	sh := NewShell()
 	sh.Dir = dir
 	ctx := context.Background()
-	if _, err := sh.Run(ctx, json.RawMessage(`{"command":"cd sub"}`)); err != nil {
+	if _, err := sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"cd sub"}`)); err != nil {
 		t.Fatal(err)
 	}
-	out, err := sh.Run(ctx, json.RawMessage(`{"command":"pwd -P"}`))
+	out, err := sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"pwd -P"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,28 +78,28 @@ func TestShellCwdPersistsWhenBound(t *testing.T) {
 		t.Fatalf("description: %s", sh.Description())
 	}
 	ctx := context.Background()
-	out, err := sh.Run(ctx, json.RawMessage(`{"command":"cd sub"}`))
+	out, err := sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"cd sub"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(out, "exit 0\n") || !strings.Contains(out, "\ncwd: "+wantSub) {
 		t.Fatalf("cd result: %q", out)
 	}
-	out, err = sh.Run(ctx, json.RawMessage(`{"command":"pwd -P"}`))
+	out, err = sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"pwd -P"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, wantSub) || strings.TrimSpace(strings.TrimPrefix(strings.Split(out, "\n")[0], "exit ")) != "0" {
 		t.Fatalf("pwd: %q", out)
 	}
-	out, err = sh.Run(ctx, json.RawMessage(`{"command":"false"}`))
+	out, err = sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"false"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(out, "exit 1\n") || !strings.Contains(out, "\ncwd: "+wantSub) {
 		t.Fatalf("false: %q", out)
 	}
-	out, err = sh.Run(ctx, json.RawMessage(`{"command":"exit 4"}`))
+	out, err = sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"exit 4"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestShellCwdPersistsWhenBound(t *testing.T) {
 	if cur != wantSub {
 		t.Fatalf("session dir %q", cur)
 	}
-	out, err = sh.Run(ctx, json.RawMessage(`{"command":"cd /"}`))
+	out, err = sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"cd /"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestShellBackgroundRecordsStartCwd(t *testing.T) {
 		},
 	)
 	ctx := context.Background()
-	out, err := sh.Run(ctx, json.RawMessage(`{"command":"cd /","run_in_background":true}`))
+	out, err := sh.Run(ctx, json.RawMessage(`{"description":"Verify the scenario behavior","command":"cd /","run_in_background":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}

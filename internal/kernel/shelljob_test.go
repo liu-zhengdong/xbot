@@ -23,9 +23,9 @@ import (
 
 func TestShellJobSurvivesTurns(t *testing.T) {
 	k, p, now := freshBot(t)
-	args := mustArgs(t, map[string]any{"command": "sleep 30", "run_in_background": true})
+	args := mustArgs(t, map[string]any{"description": "Verify the scenario behavior", "command": "sleep 30", "run_in_background": true})
 	runTurn(t, k, now, "start it",
-		toolCall("c1", "shell", args),
+		toolCall("c1", "sh", args),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("started")},
 	)
 	got := bodies(t, k)
@@ -52,7 +52,7 @@ func TestShellJobSurvivesTurns(t *testing.T) {
 	}
 	desc := ""
 	for _, tool := range p.reqs[len(p.reqs)-1].Tools {
-		if tool.Name == "shell" {
+		if tool.Name == "sh" {
 			desc = tool.Description
 		}
 	}
@@ -151,10 +151,10 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		toolCall("s1", "shell", `{"command":"echo poll-x"}`),
-		toolCall("s2", "shell", `{"command":"echo poll-x"}`),
-		toolCall("s3", "shell", `{"command":"echo poll-x"}`),
-		toolCall("s4", "shell", `{"command":"echo poll-x"}`),
+		toolCall("s1", "sh", `{"description":"Verify the scenario behavior","command":"echo poll-x"}`),
+		toolCall("s2", "sh", `{"description":"Verify the scenario behavior","command":"echo poll-x"}`),
+		toolCall("s3", "sh", `{"description":"Verify the scenario behavior","command":"echo poll-x"}`),
+		toolCall("s4", "sh", `{"description":"Verify the scenario behavior","command":"echo poll-x"}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	k := &Kernel{
@@ -430,7 +430,7 @@ func TestAttachShellJobsOnce(t *testing.T) {
 		t.Fatal("no shell")
 	}
 	k.attachShellJobs()
-	args, _ := json.Marshal(map[string]any{"command": "true"})
+	args, _ := json.Marshal(map[string]any{"description": "Verify the scenario behavior", "command": "true"})
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -465,7 +465,7 @@ func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
 	var names []string
 	for _, tool := range p.reqs[0].Tools {
 		names = append(names, tool.Name)
-		if tool.Name == "shell" && strings.Contains(tool.Description, "run_in_background") {
+		if tool.Name == "sh" && strings.Contains(tool.Description, "run_in_background") {
 			t.Fatal("shell without a job table offers backgrounding")
 		}
 	}

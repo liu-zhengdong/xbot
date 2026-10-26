@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-10-26 @ f16c9a6 + 上下文批 C
+verified: 2026-10-27 @ 064f81f + shell-by-interpreter
 ---
 # 安全：保险箱与权限表
 
@@ -103,7 +103,7 @@ WantedBy=multi-user.target
 | `delete` | `delete_bot`、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
-| `shell` | `shell` | 删除或对外发送，`shell` 的 `keys:true`，或触及保险箱/密钥路径 |
+| `shell` | `bash`、`sh`、`zsh`、`powershell`、`cmd`、`git-bash` | 删除或对外发送，`keys:true`，或触及保险箱/密钥路径 |
 | `self_edit` | `propose_persona`、`update_profile`、`write_file`、`edit_file` | permissions on 时 persona/profile 自改；触及保险箱/密钥路径始终确认 |
 
 完成标准：
@@ -112,6 +112,8 @@ WantedBy=multi-user.target
 3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
 4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），时间带本地时区偏移，真值脱敏。
 
+
+所有解释器工具复用同一权限类别、机器开关、保护路径和写资源判断；`description` 只用于用途展示，不参与放行。cmd / PowerShell 不套用 POSIX 只读白名单。旧 `shell` 仅识别历史记录和事件来源，不作为可调用别名注册。
 
 ## 为什么这样设计
 确认曾散落在各工具里，范围不断被放宽，见 [ADR 0003](../adr/0003-one-permission-table.md)。

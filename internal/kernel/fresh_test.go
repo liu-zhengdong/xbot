@@ -279,13 +279,13 @@ func TestDeniedArgsAreNotRetried(t *testing.T) {
 		asked++
 		return false, nil
 	}
-	first := `{"command":"rm -rf note.txt","timeout_seconds":1}`
-	same := `{"timeout_seconds":1,"command":"rm -rf note.txt"}`
-	other := `{"command":"rm -rf other.txt","timeout_seconds":1}`
+	first := `{"description":"Verify the scenario behavior","command":"rm -rf note.txt","timeout_seconds":1}`
+	same := `{"description":"Verify the scenario behavior","timeout_seconds":1,"command":"rm -rf note.txt"}`
+	other := `{"description":"Verify the scenario behavior","command":"rm -rf other.txt","timeout_seconds":1}`
 	runTurn(t, k, now, "delete",
-		toolCall("s1", "shell", first),
-		toolCall("s2", "shell", same),
-		toolCall("s3", "shell", other),
+		toolCall("s1", "sh", first),
+		toolCall("s2", "sh", same),
+		toolCall("s3", "sh", other),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	)
 	if asked != 2 {
@@ -489,14 +489,14 @@ func TestDenialClearsOnNextOwnerTurn(t *testing.T) {
 		asked++
 		return answer, nil
 	}
-	call := `{"command":"rm -rf note.txt","timeout_seconds":1}`
+	call := `{"description":"Verify the scenario behavior","command":"rm -rf note.txt","timeout_seconds":1}`
 	runTurn(t, k, now, "delete",
-		toolCall("s1", "shell", call),
+		toolCall("s1", "sh", call),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("denied")},
 	)
 	answer = true
 	runTurn(t, k, now, "ok I changed my mind, go ahead",
-		toolCall("s2", "shell", call),
+		toolCall("s2", "sh", call),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("?")},
 	)
 	got := bodies(t, k)

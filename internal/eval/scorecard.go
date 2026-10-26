@@ -216,7 +216,7 @@ func askedBeforeWrite(tools []ToolUse) bool {
 		switch t.Name {
 		case "ask_user":
 			return true
-		case "shell", "write_file", "edit_file":
+		case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash", "write_file", "edit_file":
 			return false
 		}
 	}

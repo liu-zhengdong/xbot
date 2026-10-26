@@ -17,7 +17,7 @@ func TestCallWaitCanOnlyShortenCommonSlice(t *testing.T) {
 		seconds int
 		want    time.Duration
 	}{{0, DefaultToolWait}, {1, time.Second}, {10, DefaultToolWait}, {600, DefaultToolWait}} {
-		args, _ := json.Marshal(map[string]any{"command": "echo ok", "timeout_seconds": tc.seconds})
+		args, _ := json.Marshal(map[string]any{"description": "Verify the scenario behavior", "command": "echo ok", "timeout_seconds": tc.seconds})
 		got, bg := CallWait(s, args)
 		if got != tc.want || bg {
 			t.Fatalf("seconds=%d: wait=%s background=%v", tc.seconds, got, bg)

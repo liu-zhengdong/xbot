@@ -24,13 +24,14 @@ const (
 	maxCommandBytes     = 16 << 10
 )
 
-// Shell runs a command through sh -c.
+// Shell runs a command through its selected interpreter.
 // Dir is the working directory. Empty means the process working directory.
 // Shared, when set with Dir, is exported as XBOT_SHARED.
 // KeyEnv names extra provider API key variables to omit unless the call sets keys.
 // Jobs, when set, keeps a command that outlives the timeout. Without it the
 // command is killed at the timeout, which is what node and eval shells do.
 type Shell struct {
+	interpreter    interpreter
 	DefaultTimeout time.Duration
 	MaxTimeout     time.Duration
 	MaxOutput      int
@@ -182,16 +183,23 @@ func AddKeyEnv(names []string) {
 	}
 }
 
-// NewShell returns a shell tool with the default limits.
+// NewShell returns an explicit sh tool for the POSIX eval jail and low-level callers.
+// Product catalogs must use NewShells to register only installed interpreters.
 func NewShell() *Shell {
-	return &Shell{
-		DefaultTimeout: defaultShellTimeout,
-		MaxTimeout:     maxShellTimeout,
-		MaxOutput:      maxShellOutput,
+	for _, sh := range NewShells() {
+		if sh.Name() == "sh" {
+			return sh
+		}
 	}
+	return newInterpreterShell(interpreter{name: "sh", path: "sh", version: "版本未知"})
 }
 
-func (s *Shell) Name() string { return "shell" }
+func (s *Shell) Name() string {
+	if s.interpreter.name == "" {
+		return "sh"
+	}
+	return s.interpreter.name
+}
 func (s *Shell) WaitPolicy(args json.RawMessage) (time.Duration, bool) {
 	in, err := parseShellArgs(args)
 	if err != nil {
@@ -220,9 +228,9 @@ func (s *Shell) Description() string {
 		persist = " The working directory persists across calls for this bot. Each result includes a cwd line. A directory that is missing or outside the workspace falls back to the workspace."
 	}
 	if s != nil && s.Jobs != nil {
-		return "Run a shell command; stdout and stderr are combined. The foreground waits at most 2 seconds for any tool. timeout_seconds can shorten this wait, never extend it. A running call moves to the background and is not killed. run_in_background returns immediately. shell_output reads output (offset or tail), shell_status checks status, shell_cancel requests cancellation. A normal completion message arrives; do not poll in a tight loop. Provider keys stay out unless keys is true and approved." + persist
+		return s.interpreterDescription() + "Run a shell command; stdout and stderr are combined. The foreground waits at most 2 seconds for any tool. timeout_seconds can shorten this wait, never extend it. A running call moves to the background and is not killed. run_in_background returns immediately. shell_output reads output (offset or tail), shell_status checks status, shell_cancel requests cancellation. A normal completion message arrives; do not poll in a tight loop. Provider keys stay out unless keys is true and approved." + persist
 	}
-	return fmt.Sprintf("Run a shell command. stdout and stderr are combined and truncated. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends.%s", def, max, persist)
+	return s.interpreterDescription() + fmt.Sprintf("Run a shell command. stdout and stderr are combined and truncated. The default timeout is %d seconds and the maximum is %d; pass timeout_seconds to change it. The command stops at the timeout. Provider API keys are left out of the environment unless keys is true, which the owner must approve. The local machine switch can refuse the command, require approval for every command, or in allow mode ask the owner only for deletions and external sends.%s", def, max, persist)
 }
 
 func (s *Shell) Parameters() any {
@@ -231,6 +239,7 @@ func (s *Shell) Parameters() any {
 		def, max = 2, 2
 	}
 	props := map[string]any{
+		"description":     stringProp("Brief purpose of this command: explain why it is needed, not a repetition of the command"),
 		"command":         stringProp("Shell command to run"),
 		"timeout_seconds": intProp(fmt.Sprintf("Timeout in seconds (default %d, max %d)", def, max)),
 		"keys":            boolProp("Pass provider API keys through. The owner must approve."),
@@ -238,10 +247,11 @@ func (s *Shell) Parameters() any {
 	if s != nil && s.Jobs != nil {
 		props["run_in_background"] = boolProp("Start in the background immediately and return a job id. Do not use this to sleep or to poll.")
 	}
-	return objectSchema(props, []string{"command"})
+	return objectSchema(props, []string{"command", "description"})
 }
 
 type shellArgs struct {
+	Description     string `json:"description"`
 	Command         string `json:"command"`
 	TimeoutSeconds  int    `json:"timeout_seconds"`
 	Keys            bool   `json:"keys"`
@@ -256,9 +266,9 @@ func (s *Shell) Confirm(args json.RawMessage) (bool, string, error) {
 		return false, "", err
 	}
 	if in.Keys {
-		return false, in.Command + "\nwith provider keys", nil
+		return false, in.Description + "\n" + in.Command + "\nwith provider keys", nil
 	}
-	return false, in.Command, nil
+	return false, in.Description + "\n" + in.Command, nil
 }
 
 func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
@@ -298,21 +308,27 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		}
 		marker = f.Name()
 		f.Close()
-		command = wrapShellCwd(dir, in.Command, marker)
+		command = s.wrapCwd(dir, in.Command, marker)
+		if s.Name() == "cmd" {
+			env = append(env, "XBOT_CWD_MARKER="+marker)
+		}
 		cwdCh = make(chan string, 1)
 	}
 	// The shared Jobs runner owns the wait for every command.
 	var out string
 	if s.Jobs != nil {
 		out, err = s.Jobs.Run(ctx, RunRequest{
-			Command:    in.Command,
-			Exec:       command,
-			Timeout:    timeout,
-			MaxOutput:  s.maxOutput(),
-			Dir:        dir,
-			Env:        env,
-			Background: in.RunInBackground,
-			CwdFile:    marker,
+			Name:        s.Name(),
+			Interpreter: s.interpreter,
+			Description: in.Description,
+			Command:     in.Command,
+			Exec:        command,
+			Timeout:     timeout,
+			MaxOutput:   s.maxOutput(),
+			Dir:         dir,
+			Env:         env,
+			Background:  in.RunInBackground,
+			CwdFile:     marker,
 			OnCwd: func(got string) {
 				if cwdCh == nil || got == "" {
 					return
@@ -324,7 +340,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			},
 		})
 	} else {
-		out, err = runCommand(ctx, command, timeout, s.maxOutput(), dir, env)
+		out, err = runInterpreterCommand(ctx, s.interpreter, command, timeout, s.maxOutput(), dir, env)
 		if marker != "" {
 			ended = readCwdFile(marker)
 			_ = os.Remove(marker)
@@ -492,9 +508,19 @@ func (s *Shell) maxOutput() int {
 }
 
 func parseShellArgs(args json.RawMessage) (shellArgs, error) {
+	if len(args) > 128<<10 {
+		return shellArgs{}, errors.New("shell: arguments are too large")
+	}
 	var in shellArgs
 	if err := json.Unmarshal(args, &in); err != nil {
 		return shellArgs{}, fmt.Errorf("shell: %w", err)
+	}
+	in.Description = strings.TrimSpace(in.Description)
+	if in.Description == "" {
+		return shellArgs{}, errors.New("shell: description is required (explain the command purpose)")
+	}
+	if len(in.Description) > 1024 {
+		return shellArgs{}, errors.New("shell: description is too long")
 	}
 	in.Command = strings.TrimSpace(in.Command)
 	if in.Command == "" {
@@ -537,9 +563,13 @@ func (w *capWriter) String() (string, bool) {
 }
 
 func runCommand(ctx context.Context, command string, timeout time.Duration, maxOut int, dir string, env []string) (string, error) {
+	return runInterpreterCommand(ctx, interpreter{name: "sh", path: "sh"}, command, timeout, maxOut, dir, env)
+}
+
+func runInterpreterCommand(ctx context.Context, in interpreter, command string, timeout time.Duration, maxOut int, dir string, env []string) (string, error) {
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(tctx, "sh", "-c", command)
+	cmd := in.command(tctx, command)
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -593,9 +623,9 @@ func wrapShellCwd(start, command, marker string) string {
 		b.WriteString(shQuote(start))
 		b.WriteString(" || exit 97\n")
 	}
-	b.WriteString("trap 'pwd -P > ")
-	b.WriteString(shQuote(marker))
-	b.WriteString("' EXIT\n")
+	b.WriteString("trap ")
+	b.WriteString(shQuote("pwd -P > " + shQuote(marker)))
+	b.WriteString(" EXIT\n")
 	b.WriteString(command)
 	if !strings.HasSuffix(command, "\n") {
 		b.WriteByte('\n')

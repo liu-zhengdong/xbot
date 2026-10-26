@@ -111,7 +111,7 @@ func TestShellTimeoutMovesToBackground(t *testing.T) {
 	}
 	sh := &Shell{DefaultTimeout: 200 * time.Millisecond, MaxTimeout: 200 * time.Millisecond, MaxOutput: 1024, Jobs: jobs}
 	marker := "xbotbg" + strings.ReplaceAll(t.Name(), "/", "")
-	raw, err := json.Marshal(map[string]string{"command": "echo " + marker + "; sleep 30"})
+	raw, err := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": "echo " + marker + "; sleep 30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestRunInBackgroundStartsImmediately(t *testing.T) {
 	}
 	sh := NewShell()
 	sh.Jobs = jobs
-	raw, err := json.Marshal(map[string]any{"command": "sleep 30", "run_in_background": true})
+	raw, err := json.Marshal(map[string]any{"description": "Verify the scenario behavior", "command": "sleep 30", "run_in_background": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestSleepUsesCommonBackgroundWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh := &Shell{DefaultTimeout: 200 * time.Millisecond, MaxTimeout: 200 * time.Millisecond, Jobs: jobs}
-	raw, err := json.Marshal(map[string]string{"command": bin + " 30"})
+	raw, err := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": bin + " 30"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestPollingUsesCommonBackgroundWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh := &Shell{DefaultTimeout: 300 * time.Millisecond, MaxTimeout: 300 * time.Millisecond, Jobs: jobs}
-	raw, err := json.Marshal(map[string]string{"command": "while true; do " + bin + " 1; done"})
+	raw, err := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": "while true; do " + bin + " 1; done"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestForegroundEchoStillReturnsExit(t *testing.T) {
 	}
 	sh := NewShell()
 	sh.Jobs = jobs
-	out, err := sh.Run(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
+	out, err := sh.Run(context.Background(), json.RawMessage(`{"description":"Verify the scenario behavior","command":"echo hello"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

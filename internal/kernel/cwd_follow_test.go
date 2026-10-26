@@ -14,7 +14,7 @@ func TestCwdReadFollowsShell(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "pkg", "notes.txt"), "IN-PKG\n")
 	k, p, now := workBot(t, dir)
 	runTurn(t, k, now, "go",
-		toolCall("c1", "shell", `{"command":"cd pkg && cat notes.txt"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd pkg && cat notes.txt"}`),
 		toolCall("c2", "read_file", `{"path":"notes.txt"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 	var shellOut, readOut string
@@ -40,9 +40,9 @@ func TestCwdWriteFollowsShell(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "pkg", "go.mod"), "module pkg\n")
 	k, _, now := workBot(t, dir)
 	runTurn(t, k, now, "go",
-		toolCall("c1", "shell", `{"command":"cd pkg"}`),
+		toolCall("c1", "sh", `{"description":"Verify the scenario behavior","command":"cd pkg"}`),
 		toolCall("c2", "write_file", `{"path":"main.go","content":"package main\n"}`),
-		toolCall("c3", "shell", `{"command":"ls"}`),
+		toolCall("c3", "sh", `{"description":"Verify the scenario behavior","command":"ls"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")})
 	if _, err := os.Stat(filepath.Join(dir, "pkg", "main.go")); err != nil {
 		_, rootErr := os.Stat(filepath.Join(dir, "main.go"))

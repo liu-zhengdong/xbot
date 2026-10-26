@@ -136,7 +136,7 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 			t.Fatalf("research subagent has %s: %v", banned, names)
 		}
 	}
-	if !contains(names, "shell") || !contains(names, "read_file") {
+	if !contains(names, "sh") || !contains(names, "read_file") {
 		t.Fatalf("research subagent tools %v", names)
 	}
 	sys := sub.Messages[0].Text()
@@ -208,7 +208,7 @@ func TestReadOnlyShellRefusesWrites(t *testing.T) {
 	sh.Dir = dir
 	ro := readOnlyShell{sh}
 	for _, cmd := range []string{"echo hi > f.txt", "rm -rf x", "ls; rm x", "touch f"} {
-		args, _ := json.Marshal(map[string]any{"command": cmd})
+		args, _ := json.Marshal(map[string]any{"description": "Verify the scenario behavior", "command": cmd})
 		if _, err := ro.Run(context.Background(), args); err == nil {
 			t.Fatalf("%q ran", cmd)
 		}
@@ -216,7 +216,7 @@ func TestReadOnlyShellRefusesWrites(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "f.txt")); err == nil {
 		t.Fatal("the refused write happened")
 	}
-	args, _ := json.Marshal(map[string]any{"command": "ls"})
+	args, _ := json.Marshal(map[string]any{"description": "Verify the scenario behavior", "command": "ls"})
 	if _, err := ro.Run(context.Background(), args); err != nil {
 		t.Fatalf("ls refused: %v", err)
 	}
@@ -254,11 +254,11 @@ func TestMainLineDoesTheWork(t *testing.T) {
 	k, _, _ := dispatchKernel(t, m)
 	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
 	read := func(id string) provider.Message {
-		return toolCall(id, "shell", mustArgs(t, map[string]any{"command": "ls"}))
+		return toolCall(id, "sh", mustArgs(t, map[string]any{"description": "Verify the scenario behavior", "command": "ls"}))
 	}
 	m.fore = []provider.Message{
 		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": filepath.Join(k.WorkDir, "a.txt"), "content": "x"})),
-		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
+		toolCall("s1", "sh", mustArgs(t, map[string]any{"description": "Verify the scenario behavior", "command": "echo x > b.txt"})),
 		read("r1"), read("r2"), read("r3"), read("r4"),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}
@@ -285,7 +285,7 @@ func TestMainLineDoesTheWork(t *testing.T) {
 		t.Fatalf("requests %d", len(m.foreReq))
 	}
 	first := toolNamesOf(m.foreReq[0].Tools)
-	for _, want := range []string{"write_file", "edit_file", "shell", "dispatch"} {
+	for _, want := range []string{"write_file", "edit_file", "sh", "dispatch"} {
 		if !contains(first, want) {
 			t.Fatalf("main line lacks %s: %v", want, first)
 		}
@@ -399,7 +399,7 @@ func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
 	}
 	// code, desktop, and browser tools are lazy until loaded, for the main line
 	// and subagents alike; that is not a main-line limit.
-	for _, want := range []string{"dispatch", "write_file", "shell", "http_request", "send_email", "delete_file", "mcp_srv_post"} {
+	for _, want := range []string{"dispatch", "write_file", "sh", "http_request", "send_email", "delete_file", "mcp_srv_post"} {
 		if !contains(mainNames, want) {
 			t.Errorf("main line lacks %s", want)
 		}
@@ -425,7 +425,7 @@ func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
 			t.Errorf("research subagent offers %s", never)
 		}
 	}
-	for _, want := range []string{"read_file", "shell", "web_search", "web_fetch", "view_image"} {
+	for _, want := range []string{"read_file", "sh", "web_search", "web_fetch", "view_image"} {
 		if !contains(research, want) {
 			t.Errorf("research subagent lacks %s: %v", want, research)
 		}

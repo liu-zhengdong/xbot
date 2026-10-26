@@ -16,7 +16,7 @@ import (
 func CardText(tool string, args json.RawMessage, summary, machine string) (title, subtitle string) {
 	name := normalize(tool)
 	switch {
-	case name == "shell":
+	case IsShellTool(name):
 		return shellCardText(args, summary, machine)
 	case name == "http_request":
 		return httpCardText(args, summary)

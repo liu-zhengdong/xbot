@@ -134,37 +134,37 @@ func TestReviewCallProtectedShellAsksInAllowMode(t *testing.T) {
 	}{
 		{
 			name: "remote install key",
-			args: `{"command":"cat ` + filepath.Join(k.Bot.Root, "keys", "remote", "install.key") + `"}`,
+			args: `{"description":"Verify the scenario behavior","command":"cat ` + filepath.Join(k.Bot.Root, "keys", "remote", "install.key") + `"}`,
 			want: true,
 		},
 		{
 			name: "glob in bot dir",
-			args: `{"command":"cat vault/*","cwd":"` + botDir + `"}`,
+			args: `{"description":"Verify the scenario behavior","command":"cat vault/*","cwd":"` + botDir + `"}`,
 			want: true,
 		},
 		{
 			name: "absolute secrets file",
-			args: `{"command":"cat ` + filepath.Join(k.Bot.VaultDir(), "secrets.enc") + `"}`,
+			args: `{"description":"Verify the scenario behavior","command":"cat ` + filepath.Join(k.Bot.VaultDir(), "secrets.enc") + `"}`,
 			want: true,
 		},
 		{
 			name: "relative through work dir cwd",
-			args: `{"command":"cat ../../bots/ada/vault/*"}`,
+			args: `{"description":"Verify the scenario behavior","command":"cat ../../bots/ada/vault/*"}`,
 			want: true,
 		},
 		{
 			name: "key dir",
-			args: `{"command":"ls ` + filepath.Dir(k.Bot.VaultKeyPath()) + `"}`,
+			args: `{"description":"Verify the scenario behavior","command":"ls ` + filepath.Dir(k.Bot.VaultKeyPath()) + `"}`,
 			want: true,
 		},
 		{
 			name: "ordinary command",
-			args: `{"command":"ls -la"}`,
+			args: `{"description":"Verify the scenario behavior","command":"ls -la"}`,
 			want: false,
 		},
 		{
 			name: "ordinary file",
-			args: `{"command":"cat notes.txt"}`,
+			args: `{"description":"Verify the scenario behavior","command":"cat notes.txt"}`,
 			want: false,
 		},
 	}
@@ -193,7 +193,7 @@ func TestReviewCallLinkSecretsFileAsks(t *testing.T) {
 		t.Fatalf("read_file secrets.json need=%v err=%v", need, err)
 	}
 	sh := &tools.Shell{}
-	need, _, err = reviewedTool{Tool: sh, k: k}.Confirm(json.RawMessage(`{"command":"cat ../../bots/ada/secrets.json"}`))
+	need, _, err = reviewedTool{Tool: sh, k: k}.Confirm(json.RawMessage(`{"description":"Verify the scenario behavior","command":"cat ../../bots/ada/secrets.json"}`))
 	if err != nil || !need {
 		t.Fatalf("shell cat secrets.json need=%v err=%v", need, err)
 	}
@@ -234,7 +234,7 @@ func TestReviewCallRootEnvFileAsks(t *testing.T) {
 	if err != nil || !need {
 		t.Fatalf("read env need=%v err=%v", need, err)
 	}
-	need, _, err = reviewedTool{Tool: &tools.Shell{}, k: k}.Confirm(json.RawMessage(`{"command":"cat ../../env"}`))
+	need, _, err = reviewedTool{Tool: &tools.Shell{}, k: k}.Confirm(json.RawMessage(`{"description":"Verify the scenario behavior","command":"cat ../../env"}`))
 	if err != nil || !need {
 		t.Fatalf("shell cat env need=%v err=%v", need, err)
 	}
@@ -259,7 +259,7 @@ func TestReviewCallRemoteCLIWritesAsk(t *testing.T) {
 		`sh -c "xbot remote add evil AAAA"`:                        true,
 		"FOO=1 sudo xbot remote join code":                         true,
 	} {
-		args, _ := json.Marshal(map[string]string{"command": cmd})
+		args, _ := json.Marshal(map[string]string{"description": "Verify the scenario behavior", "command": cmd})
 		need, _, err := reviewedTool{Tool: sh, k: k}.Confirm(args)
 		if err != nil || need != want {
 			t.Errorf("%q need=%v err=%v, want %v", cmd, need, err, want)
