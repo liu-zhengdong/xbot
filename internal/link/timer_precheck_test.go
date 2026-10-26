@@ -9,8 +9,71 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/machine"
+	"xbot/internal/permissions"
 	"xbot/internal/tools"
 )
+
+func TestTimerPrecheckHonorsChangedMachinePolicy(t *testing.T) {
+	root := t.TempDir()
+	if err := permissions.Set(root, true); err != nil {
+		t.Fatal(err)
+	}
+	// This is the same live gate installed by cmd/xbot, not a cached mode.
+	tools.SetMachineGate(func() (string, error) { return machine.Get(root, machine.Local) })
+	t.Cleanup(func() { tools.SetMachineGate(nil) })
+	for _, mode := range []string{machine.Ask, machine.Off, "invalid-file"} {
+		t.Run(mode, func(t *testing.T) {
+			if err := machine.Set(root, machine.Local, machine.Allow); err != nil {
+				t.Fatal(err)
+			}
+			tm := &Timer{Dir: t.TempDir()}
+			marker := filepath.Join(t.TempDir(), "marker")
+			command := "printf marker > '" + strings.ReplaceAll(marker, "'", "'\"'\"'") + "'"
+			if err := tm.Save(Routine{ID: "check", Prompt: "p", Cron: "0 * * * *", Precheck: command, Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
+			posted := 0
+			emit := func(Event) error { posted++; return nil }
+			if err := tm.Fire(now, emit); err != nil {
+				t.Fatal(err)
+			}
+			if posted != 1 {
+				t.Fatal("allow did not emit")
+			}
+			if err := os.Remove(marker); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "invalid-file" {
+				if err := os.WriteFile(machine.Path(root), []byte("{"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := machine.Set(root, machine.Local, mode); err != nil {
+				t.Fatal(err)
+			}
+			// Ordinary routines still fire while checks are refused.
+			if err := tm.Save(Routine{ID: "plain", Prompt: "p", Cron: "0 * * * *", Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 2; i++ {
+				if err := (&Timer{Dir: tm.Dir}).Fire(now.Add(time.Hour), emit); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if posted != 2 {
+				t.Fatalf("refused check emitted or plain routine blocked: %d", posted)
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatalf("refused check ran: %v", err)
+			}
+			r, err := tm.Load("check")
+			if err != nil || r.LastSlot != "20261027T0900" {
+				t.Fatalf("refusal not committed: %+v %v", r, err)
+			}
+		})
+	}
+}
 
 func TestTimerPrecheck(t *testing.T) {
 	for _, tc := range []struct {

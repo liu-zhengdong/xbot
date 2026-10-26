@@ -13,7 +13,10 @@ const MaxPrecheckBytes = maxCommandBytes
 // timeout path. No Jobs, stdin, output retention, or completion notification.
 // Relative paths use the process working directory, as with an unbound Shell.
 func ShellPrecheck(ctx context.Context, command string) bool {
-	if len(command) > MaxPrecheckBytes || machineOff() != nil {
+	mode, err := localMachine()
+	// A scheduled check has no approver. Re-read the same live machine gate
+	// used by shell; an earlier approval cannot authorize a later ask/off mode.
+	if len(command) > MaxPrecheckBytes || err != nil || mode != "allow" {
 		return false
 	}
 	result, err := runCommand(ctx, command, 2*time.Second, 0, "", (&Shell{}).commandEnv(false))

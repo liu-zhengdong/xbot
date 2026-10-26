@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 )
@@ -39,6 +40,7 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var updated link.Routine
+	var reviewErr error
 	err = (&link.Timer{Dir: b.RoutineDir()}).Update(r.PathValue("id"), func(rt *link.Routine) error {
 		if body.Enabled != nil {
 			rt.Enabled = *body.Enabled
@@ -46,11 +48,17 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 		if body.Precheck != nil {
 			rt.Precheck = *body.Precheck
 		}
+		reviewErr = kernel.CheckRoutinePrecheck(r.Context(), b, rt.Precheck)
+		if reviewErr != nil {
+			return reviewErr
+		}
 		updated = *rt
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if reviewErr != nil {
+			writeErr(w, http.StatusForbidden, reviewErr.Error())
+		} else if errors.Is(err, os.ErrNotExist) {
 			writeErr(w, 404, "routine not found")
 		} else {
 			writeErr(w, 500, err.Error())

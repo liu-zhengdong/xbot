@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 例程前置检查 P1 审核回修（功能分支）
+
+- 有效 precheck 的创建/修改转回现有 shell 的 `Kernel.reviewCall`，更新省略字段也审保留的命令；保护路径使用执行时的进程 cwd。HTTP 修改复用同一判定，需确认时 403、整次不落盘。定时执行遇有效 machine ask/off/读取错误静默跳过并 Commit slot。约定见 [安全](atlas/security.md)，P2 串行等待/取消不传保留在 [设计](dev/routine-precheck.md)。
+- link/kernel/tools/review/proc/serve 全包 `-count=1` 通过；web 例程用例单次通过。新增敏感路径、机器 ask/off、permissions on 删除/外发、创建与修改拒绝/确认、实际 cwd、HTTP 拒绝写入、运行中策略变化用例，放回 `59b41d1` 归档均能检出旧绕过。未使用 `-count=3`。
+- link/tools/review 全包 race、web 例程与 kernel 例程/权限定向 race 通过；kernel 全包 race 报既有 configureWeb 竞争（四个子代理/环境用例），其中环境用例在 `59b41d1` 同样复现，未扩修。相关包 vet、gofmt、diff 通过，atlas audit 保留既有告警。完整证据 `~/.xbot-build/precheck/fix-p1-report.md`。
+- 100 次 Timer 微基准均值：缺字段 0.637 ms/op、true 4.436 ms/op、false 3.084 ms/op；仅本机文件/进程链路，不是交互或 IPC p95。P2 多条检查仍可能累计约 2×N 秒，生命周期取消问题本轮未改。
+- 仅分支提交，待独立复审；未合入 main、未启动 8788、未 push，未声明真入口或主人日用通过。
+
 ## 2026-10-27 例程免模型前置检查（功能分支编码交付）
 
 - `Routine.precheck` 使用可选 shell 命令字符串；三处日常投递入口共用检查，非零、超时、启动失败静默消费 slot，成功沿用原事件。工具及现有 HTTP 接口可读写，未增加 UI。执行边界与幂等约定见 [多 Bot](atlas/multibot.md)，剩余验收见 [设计](dev/routine-precheck.md)。

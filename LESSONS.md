@@ -3,6 +3,7 @@
 格式：一行规则；原因；证据（提交或问题）；出现次数「Seen N×」。同一条在 3 个不同日子出现，就升级进 [AGENTS.md](AGENTS.md) 的硬约束。
 
 ## 教训
+- **复用执行器不等于复用授权，嵌在排期参数里的命令也必须进入原命令审核。** 原因：例程 precheck 在 `59b41d1` 直接复用 runCommand，却把创建/修改仍当成 Normal，绕过保护路径和机器 ask；修复复用 Kernel.reviewCall，定时执行遇 ask/off 静默跳过。证据：`TestRoutinePrecheckUsesShellReview`、`TestTimerPrecheckHonorsChangedMachinePolicy` 旧红新绿。Seen 1×（2026-10-27）
 - **构建短号与发布版本分开传。** 原因：`dev+tip` 会被显示版本函数剥掉后缀，关于页仍只有 dev；用同一短 HEAD 注入独立 Tip、写 build-info/xbot.tip，再验证 session 与复制内容。证据：TestSessionBuildTip、TestImggenDiscoverBrowser、test_xbot_dev.py 旧红新绿。Seen 1×（2026-10-26）
 - **进度展示必须在 SSE 尚未结束时验收。** 原因：只验收尾后的轨迹，会漏掉 streaming 整段暂停 status 轮询和 live 工具名盖住摘要；浏览器回归应保持流打开、跨两个轮询周期检查预览与节点复用。证据：2026-10-26 `dfaa232` 设计师不 PASS，`TestTodoStreamingBrowser` 在该基线因无 running 进度失败。Seen 1×（2026-10-26）
 - **工具名和描述必须对齐默认落盘行为。** 原因：更新资料却写成提议或等待确认，会让模型误判调用结果；不能为头像另加默认确认卡例外。证据：2026-10-26 主人确认 `update_profile` 默认直接落盘，permissions on 仍沿既有 SelfEdit 表；回归同时检查默认无卡和实际磁盘状态。Seen 1×（2026-10-26）

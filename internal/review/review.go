@@ -65,7 +65,8 @@ var Table = map[string]Class{
 	"update_profile":  SelfEdit,
 
 	// Routines and the owner notification. A routine is the bot's own
-	// schedule, so deleting one is not a data deletion.
+	// schedule, so deleting one is not a data deletion. The kernel reviews a
+	// create/update's nonempty precheck separately as sh, using this same table.
 	"routine_create": Normal,
 	"routine_list":   Readonly,
 	"routine_update": Normal,
