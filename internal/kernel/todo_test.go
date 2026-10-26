@@ -127,6 +127,37 @@ func TestTodoWriteRulesAndDescription(t *testing.T) {
 	}
 }
 
+func TestTodoSummaryOwnerLanguage(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	tests := []struct {
+		name  string
+		items []TodoItem
+		want  string
+	}{
+		{"empty", nil, ""},
+		{"pending", []TodoItem{{Content: "查三处", Status: "pending"}}, "待办：还有 1 项"},
+		{"progress", []TodoItem{{Content: "查第二处", Status: "in_progress"}, {Content: "汇总", Status: "pending"}, {Content: "查第一处", Status: "done"}}, "进度：查第二处 · 还剩 1 项待办"},
+		{"last", []TodoItem{{Content: "汇总", Status: "in_progress"}}, "进度：汇总"},
+		{"closed", []TodoItem{{Status: "done"}, {Status: "dropped"}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := writeTodoFile(TodoPath(b), todoFile{Items: tt.items}); err != nil {
+				t.Fatal(err)
+			}
+			if got := TodoSummary(b); got != tt.want {
+				t.Fatalf("summary %q, want %q", got, tt.want)
+			}
+		})
+	}
+	if err := writeTodoFile(TodoPath(b), todoFile{Items: []TodoItem{{Content: strings.Repeat("查", 200), Status: "in_progress"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := TodoSummary(b); len([]rune(got)) != todoSummaryN || !strings.HasSuffix(got, "…") {
+		t.Fatalf("unbounded summary %q", got)
+	}
+}
+
 func TestTodoReminderDiffCooldownAndNotAfterUpdate(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	t0 := time.Unix(1_700_000_000, 0).UTC()

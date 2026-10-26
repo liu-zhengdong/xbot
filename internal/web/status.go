@@ -84,14 +84,14 @@ func (s *Server) botSteps(name string, n int) []kernel.Step {
 	return nil
 }
 
-// registerStatusAPI mounts the two read-only status routes.
+// registerStatusAPI mounts the read-only status routes.
 func (s *Server) registerStatusAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/status", s.botStatusAPI)
 	mux.HandleFunc("GET /api/bots/{name}/steps", s.botStepsAPI)
 	mux.HandleFunc("GET /api/bots/{name}/todos", s.botTodosAPI)
 }
 
-// botTodosAPI returns the bot's task list. The steps view does not render it.
+// botTodosAPI returns the bot's active list from the same file the tool and reminders use.
 func (s *Server) botTodosAPI(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return

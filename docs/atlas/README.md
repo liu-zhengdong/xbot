@@ -104,7 +104,7 @@ flowchart LR
 | 候选清单 | 主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`（不在仓库） | 主人、XBot 主管 | 活的，新想法先进这里，不当场开工；记了不用提交 | 主人、XBot 主管（周调研、每晚复盘的新想法也记这里） |
 | 调研笔记 | [docs/research/](../research/) | 开发者 | 写完即冻结，结论进候选清单或里程碑 | Bot 复刻 |
 | 教训 | [LESSONS.md](../../LESSONS.md) | 编码 Agent、Bot 复刻 | 活的，同一条出现 3 天升级成硬约束 | Bot 复刻 |
-| 正在做的设计 | [多 Provider](../dev/multi-provider.md)、`docs/dev/`（有正在做的设计时才放） | 主人、编码 Agent | 活的，只放正在做的那一件；做完就删，现状提炼进 atlas，旅程移进 `docs/guard/` | XBot 主管写，Agent 同步进度和级别；旅程的步骤和「怎样算对」主人定 |
+| 正在做的设计 | [多 Provider](../dev/multi-provider.md)、[Agent Todo 工具](../dev/agent-todo-tool.md)、`docs/dev/`（有正在做的设计时才放） | 主人、编码 Agent | 活的，只放正在做的那一件；做完就删，现状提炼进 atlas，旅程移进 `docs/guard/` | XBot 主管写，Agent 同步进度和级别；旅程的步骤和「怎样算对」主人定 |
 | 规格（旧） | [MEMORY-V2.md](../MEMORY-V2.md)（记忆 v2）、[GATEWAY.md](../GATEWAY.md)（网关与跨设备）、[SCORECARD.md](../SCORECARD.md)（评测成绩单） | 主人、开发者 | 定下来就冻结，落地后提炼进 atlas 和 ADR；新设计不再走这条路，改用 `docs/dev/` | Bot 复刻 |
 | 自建网关 | [gateway-selfhost.md](../gateway-selfhost.md) | 想自己跑网关的用户 | 活的 | 开发者 |
 | 决策记录 | [docs/adr/](../adr/) | 开发者、将来的主人 | 守护层，只追加 | 主人 |

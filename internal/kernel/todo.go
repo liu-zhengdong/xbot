@@ -580,12 +580,12 @@ func TodoSummary(b *bot.Bot) string {
 	}
 	var s string
 	if current != "" {
-		s = "in progress: " + current
+		s = "进度：" + current
 		if pending > 0 {
-			s += fmt.Sprintf(" · %d pending", pending)
+			s += fmt.Sprintf(" · 还剩 %d 项待办", pending)
 		}
 	} else {
-		s = fmt.Sprintf("%d pending", pending)
+		s = fmt.Sprintf("待办：还有 %d 项", pending)
 	}
 	s = bot.RedactText(s)
 	r := []rune(s)

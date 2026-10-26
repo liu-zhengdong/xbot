@@ -112,14 +112,20 @@ func TestBotStatusEndpointShapeAndSize(t *testing.T) {
 
 func TestBotTodosEndpoint(t *testing.T) {
 	s, tok, bots := statusFixture(t, 1)
-	raw, err := json.Marshal(map[string]any{
-		"items": []kernel.TodoItem{{ID: "t1", Content: "write the tests", Status: "in_progress"}},
-	})
-	if err != nil {
+	// Use the real mounted tool across model steps, then query the same disk
+	// list through HTTP without a live kernel (as after a process restart).
+	p := &turnProvider{resps: []provider.Message{
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "plan", Type: "function", Function: provider.FunctionCall{Name: "todo", Arguments: `{"items":[{"id":"a","content":"查第一处","status":"in_progress"},{"id":"b","content":"查第二处","status":"pending"},{"id":"c","content":"查第三处","status":"pending"}]}`}}})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "update", Type: "function", Function: provider.FunctionCall{Name: "todo", Arguments: `{"items":[{"id":"a","content":"查第一处","status":"done"},{"id":"b","content":"查第二处","status":"in_progress"},{"id":"c","content":"查第三处","status":"pending"}]}`}}})},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("继续吗？")},
+	}}
+	k := &kernel.Kernel{Bot: bots[0], Provider: p, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}, MaxSteps: 5}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "查三处", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(kernel.TodoPath(bots[0]), raw, 0600); err != nil {
-		t.Fatal(err)
+	raw, err := os.ReadFile(kernel.TodoPath(bots[0]))
+	if err != nil || !strings.Contains(string(raw), "查第二处") {
+		t.Fatalf("tool did not persist list: %s %v", raw, err)
 	}
 	ui := httptest.NewServer(muxOf(s))
 	defer ui.Close()
@@ -131,7 +137,7 @@ func TestBotTodosEndpoint(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Items) != 1 || payload.Items[0].Content != "write the tests" || payload.Items[0].Status != "in_progress" {
+	if len(payload.Items) != 3 || payload.Items[0].Status != "done" || payload.Items[1].Content != "查第二处" || payload.Items[1].Status != "in_progress" {
 		t.Fatalf("%+v", payload.Items)
 	}
 	statusBody := getAuth(t, ui.URL+"/api/bots/status", cookie)
@@ -141,7 +147,7 @@ func TestBotTodosEndpoint(t *testing.T) {
 	if err := json.Unmarshal(statusBody, &status); err != nil {
 		t.Fatal(err)
 	}
-	if len(status.Bots) != 1 || !strings.Contains(status.Bots[0].Todo, "write the tests") {
+	if len(status.Bots) != 1 || status.Bots[0].Todo != "进度：查第二处 · 还剩 1 项待办" {
 		t.Fatalf("status todo %+v", status.Bots)
 	}
 }

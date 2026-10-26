@@ -257,12 +257,17 @@
       line.className = "preview st run click";
       line.append(spinIcon(11));
       const text = el("span");
-      text.append("在跑 ");
       const tool = st && st.tool ? String(st.tool) : "";
-      if (tool) text.append(el("code", "", tool));
+      const summary = st.todo || (tool === "todo" ? "正在更新待办" : "");
+      if (summary) text.append(summary);
+      else {
+        text.append("在跑 ");
+        if (tool) text.append(el("code", "", tool));
+      }
+      if (summary) line.title = summary;
       line.append(text);
       line.addEventListener("click", (ev) => { ev.stopPropagation(); toggleStp(name, line); });
-      sig += tool;
+      sig += tool + summary;
     } else if (kind === "awaiting") {
       line.className = "preview st wait click";
       line.append(el("i", "wd"));
@@ -275,9 +280,10 @@
       sig += mins;
     } else {
       const bot = (state.bots || []).find((b) => b.name === name);
-      const text = realPreview(st && st.last_message) || (bot ? lineForBot(bot) : "") || "没有消息";
+      const text = (st && st.todo) || realPreview(st && st.last_message) || (bot ? lineForBot(bot) : "") || "没有消息";
       line.className = "preview";
       line.append(el("span", "", text));
+      if (st && st.todo) line.title = st.todo;
       sig += text;
     }
     return { sig: sig, node: line, off: kind === "offline" };
@@ -537,9 +543,9 @@
       si.append(run ? spinIcon(14) : rawSvg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 14, 2.4));
       const sx = el("div", "sx");
       const sl = el("div", "sl");
-      sl.append(el("b", "", String(step.tool || "tool")));
+      sl.append(el("b", "", step.tool === "todo" ? "待办" : String(step.tool || "tool")));
       // A "detail · result" summary splits into the mono chip and the gray line.
-      const sum = String(step.summary || "").trim();
+      const sum = step.tool === "todo" ? (step.state === "done" ? "待办已更新" : step.state === "error" ? "待办更新失败" : "正在更新待办") : String(step.summary || "").trim();
       const cut = sum.indexOf(" · ");
       const rest = cut > 0 ? sum.slice(cut + 3) : "";
       if (sum) sl.append(el("code", "", cut > 0 ? sum.slice(0, cut) : sum));
@@ -4683,6 +4689,7 @@
           name: info.name,
           args: info.args,
           output: result ? (result.content || "") : "",
+          hasResult: !!result,
           resultTime: result && result.time,
         });
       }
@@ -4697,7 +4704,7 @@
       turns.push({
         key: (state.sel ? state.sel.id : "") + ":" + (m.seq != null ? m.seq : (m.time || turns.length)),
         time: m.time,
-        names: calls.map((c) => c.name),
+        names: calls.map((c) => c.name === "todo" ? todoTrace(c).title : c.name),
         dur: start && end > start ? end - start : 0,
         calls: calls,
       });
@@ -4705,10 +4712,43 @@
     return turns;
   }
 
+  // A receipt confirms the write; arguments alone are only a proposed list.
+  // Keep the original call/result in the trace, never in the conversation.
+  function todoTrace(call) {
+    const output = String(call.output || "").trim();
+    const receipt = /^todo: (\d+) items \((\d+) in_progress, (\d+) pending, (\d+) done, (\d+) dropped\)/.exec(output);
+    let title = "待办 · 正在更新";
+    if (call.hasResult) title = /^error:/.test(output) ? "待办 · 更新失败" : "待办 · 结果待核对";
+    if (!receipt) return { title, lines: [] };
+    const total = Number(receipt[1]), done = Number(receipt[4]), dropped = Number(receipt[5]);
+    title = total ? "待办 · 已完成 " + done + "/" + total + " 项" + (dropped ? " · 已放弃 " + dropped + " 项" : "") : "待办 · 已清空";
+    const labels = { pending: "待办", in_progress: "进行中", done: "已完成", dropped: "已放弃" };
+    const items = Array.isArray(call.args && call.args.items) ? call.args.items.slice(0, 20) : [];
+    const lines = items.filter(it => it && typeof it.content === "string").map(it => {
+      const status = String(it.status || "").trim().toLowerCase();
+      const reason = status === "dropped" && typeof it.reason === "string" ? it.reason.trim() : "";
+      return (labels[status] || "状态待核对") + " · " + it.content.trim() + (reason ? "（" + reason + "）" : "");
+    });
+    return { title, lines };
+  }
+
   function traceBody(turn) {
     const box = el("div", "trace-body");
     turn.calls.forEach((call, i) => {
       const item = el("div", "trace-call");
+      if (call.name === "todo") {
+        const view = todoTrace(call);
+        item.append(el("div", "trace-call-name", view.title));
+        if (view.lines.length) item.append(el("pre", "trace-args", view.lines.join("\n")));
+        const raw = el("details");
+        raw.append(el("summary", "text-btn", "调用原文"));
+        const args = argText(call.args);
+        if (args) raw.append(el("pre", "trace-args", args));
+        if (call.output) raw.append(el("pre", "trace-out", call.output));
+        item.append(raw);
+        box.append(item);
+        return;
+      }
       item.append(el("div", "trace-call-name", call.name));
       const args = argText(call.args);
       if (args) item.append(el("pre", "trace-args", args));
@@ -5211,6 +5251,7 @@
     const interjected = pending.some(row => !row.keepFailed && Date.parse(row.dataset.time) > since) ||
       messages.some(m => m.role === "user" && !m.internal && !unwrap(m.content || "").untrusted && Date.parse(m.time) > since);
     if (!interjected) return "";
+    if (current.tool === "todo") return "正在更新待办，已 " + elapsedWork(current.since, now) + "。你的话会接在它后面，返回后马上回你。";
     return "在等 `" + String(current.tool_summary).replace(/`/g, "") + "` 返回，已 " + elapsedWork(current.since, now) + "。你的话会接在它后面，返回后马上回你。";
   }
 

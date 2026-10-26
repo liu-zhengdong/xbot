@@ -2,6 +2,14 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+
+## 2026-10-26 Agent Todo 工具可见性（分支实现，待合入/验收）
+
+- 复用内核 `todo`、`todos.json` 和既有归档/提醒，将 TodoSummary 改为中文；侧栏显示待办进度，步骤弹层和轨迹使用「待办」及中文状态。轨迹成功回包才展示已保存条目，失败/未返回单独标明，原文折叠留在轨迹；全部完成归档后仍可看历史。未改模型默认开关、写盘锁或原子写路径，没有第二账本、Tasks 或对话任务卡。设计见 [agent-todo-tool](dev/agent-todo-tool.md)。
+- kernel/web 的 `go test -count=1`、相关 vet、gofmt 和 diff 检查通过；新增摘要边界与浏览器行为测试，API 测试改为真实工具连续建三项/更新后读取同一磁盘账本。旧实现隔离归档上的摘要、API、浏览器三条回归均失败。浏览器验证成功/失败/未返回/放弃原因、原文折叠、归档清空预览和未变节点跨两次轮询保持；1440×900、DPR 2 浅深色截图经审美顾问复审通过。
+- 五 Bot 状态接口 500 样本 p95 1.205ms；本机 Chrome 30 次轨迹切换至下一帧 p95 浅色 19.7ms、深色 20.2ms。前者为测试 HTTP handler 耗时，后者为 scripted HTTP 页面交互耗时，不代表真模型回复、IPC、后台负载或 60fps 达标。证据：`~/.xbot-build/agent-todo-tool/`，截图：`~/.xbot-build/ui-shots/agent-todo-tool/`。
+- 按本批范围未跑全仓测试、`-count=3`、真模型或主人日用；未 push、未合 main、未重启日用服务。Atlas audit 已跑，既存提醒不在本批修；保留 dev 供执行官合入后在 8788 验收。
+
 ## 2026-10-26 图片生成设置（分支实现，待合入/验收）
 
 - 设置在人设卡后新增图片生成，复用网页搜索密度与 web.json 写锁；全局默认关，OpenAI / Grok 单选，账号状态只读现有 OAuth 元数据，未登录同浮层深链至 ChatGPT / xAI 详情。新轮固定配置，只有所选家的已登录 OAuth Responses 绑定挂生图；图片继续进 generated/，不挂气泡。设计与待验收项见 [image-gen-settings](dev/image-gen-settings.md)。
