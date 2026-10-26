@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 例程免模型前置检查（功能分支编码交付）
+
+- `Routine.precheck` 使用可选 shell 命令字符串；三处日常投递入口共用检查，非零、超时、启动失败静默消费 slot，成功沿用原事件。工具及现有 HTTP 接口可读写，未增加 UI。执行边界与幂等约定见 [多 Bot](atlas/multibot.md)，剩余验收见 [设计](dev/routine-precheck.md)。
+- link/kernel/tools/proc/serve 单次通过；link/tools/proc/serve 三遍通过，例程 HTTP 接口三遍通过，六个相关包的新增用例 race 通过。旧 tip `714cfbe` 归档反证：非零检查仍投递 1 个事件，新实现为 0 且 LastSlot 落盘。全仓 vet、gofmt、diff 检查通过。
+- 全仓测试未全绿：web 审批用例阻塞、work 旧 shell 测试缺 description，均在上述基线归档复现；首轮三遍 kernel 测试出现一次 shell 通知时序失败，专项基线 100 次未复现，当前 kernel 全包隔离三遍通过（118.894 秒）；保留首轮失败证据。atlas audit 的既有告警未扩展修复。
+- macOS/arm64，100 次 Timer.Fire 微基准：无检查 0.644 ms/op，true 3.602 ms/op，false 7.288 ms/op（含 slot 文件读写，测试并行期间采样）。这是局部均值，不是交互/IPC p95，也未验证生产后台变慢比例。超时用例在 5 秒断言范围内返回，执行预算为 2 秒。
+- 证据与报告：`~/.xbot-build/precheck/delivery-report.md`。本批仅分支提交；未合入 main、未起 8788、未 push；未做真模型、真入口端到端或主人日用验收，保留 dev 供父代理收尾。
+
 ## 2026-10-27 下一版提示词与配套用例（功能分支编码交付）
 
 - 按 SCORECARD 的 D1–D5 收拢共享原则，清空四份 DeepSeek overlay；S1–S3 去重，S4 不动。新增知识三档、模糊任务同轮开工、桌面端主动配套和中文开场六条开发用例；复用 eval/scorecard，增加零工具调用检查与带工具开场白的 fake 回放。现状见 [供应商](atlas/providers.md) 与 [内核](atlas/kernel.md)，未完成验收见 [设计](dev/next-prompt-scorecard.md)。

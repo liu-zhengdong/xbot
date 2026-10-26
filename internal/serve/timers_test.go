@@ -2,6 +2,7 @@ package serve
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,46 @@ func timerBot(t *testing.T) *bot.Bot {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestDeliverTimersPrecheckConcurrent(t *testing.T) {
+	for _, command := range []string{"", "true", "false"} {
+		t.Run(command, func(t *testing.T) {
+			b := timerBot(t)
+			root := filepath.Dir(filepath.Dir(filepath.Dir(b.RoutineDir())))
+			tm := &link.Timer{Dir: b.RoutineDir()}
+			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
+			if err := tm.Save(link.Routine{ID: "check", Prompt: "p", Cron: "0 * * * *", Precheck: command, Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			var wg sync.WaitGroup
+			for i := 0; i < 4; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if err := DeliverTimers(root, now); err != nil {
+						t.Error(err)
+					}
+				}()
+			}
+			wg.Wait()
+			in, err := inbox.Open(b.InboxPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if command == "false" {
+				want = 0
+			}
+			if got := len(in.Pending()); got != want {
+				t.Fatalf("inbox %d, want %d", got, want)
+			}
+			r, err := tm.Load("check")
+			if err != nil || r.LastSlot != "20261027T0800" {
+				t.Fatalf("slot: %+v %v", r, err)
+			}
+		})
+	}
 }
 
 func TestDeliverTimersPostsAndExpires(t *testing.T) {

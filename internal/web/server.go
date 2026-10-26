@@ -660,9 +660,13 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, rt := range list {
-		routines = append(routines, map[string]any{
+		routine := map[string]any{
 			"id": rt.ID, "name": rt.Name, "cron": rt.Cron, "at": rt.At, "enabled": rt.Enabled, "zone": rt.Zone,
-		})
+		}
+		if rt.Precheck != "" {
+			routine["precheck"] = rt.Precheck
+		}
+		routines = append(routines, routine)
 	}
 	agents := []map[string]any{}
 	var lastApproval map[string]string

@@ -23,6 +23,7 @@ type Routine struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Prompt   string `json:"prompt"`
+	Precheck string `json:"precheck,omitempty"`
 	Cron     string `json:"cron,omitempty"`
 	At       string `json:"at,omitempty"`
 	Enabled  bool   `json:"enabled"`
@@ -83,7 +84,7 @@ func (t *Timer) Run(ctx context.Context, emit func(Event) error) error {
 	tick := time.NewTicker(t.every())
 	defer tick.Stop()
 	for {
-		if err := t.Fire(time.Now(), emit); err != nil {
+		if err := t.fire(ctx, time.Now(), emit); err != nil {
 			return err
 		}
 		select {
@@ -174,19 +175,43 @@ func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
 
 // Fire posts due events and commits their slots.
 func (t *Timer) Fire(now time.Time, emit func(Event) error) error {
+	return t.fire(context.Background(), now, emit)
+}
+
+func (t *Timer) fire(ctx context.Context, now time.Time, emit func(Event) error) error {
 	evs, err := t.Due(now)
 	if err != nil {
 		return err
 	}
 	for _, ev := range evs {
-		if err := emit(ev); err != nil {
-			return err
-		}
-		if err := t.Commit(ev); err != nil {
+		if err := t.Deliver(ctx, ev, emit); err != nil {
 			return err
 		}
 	}
 	return t.Expire(now)
+}
+
+// Deliver checks a due event before posting it, then commits even a skipped
+// slot. All timer pollers share this path. Failed delivery still leaves the
+// slot uncommitted for retry, with the original stable event ID.
+func (t *Timer) Deliver(ctx context.Context, ev Event, emit func(Event) error) error {
+	id, slot, err := splitRoutineID(ev.ID)
+	if err != nil {
+		return err
+	}
+	r, err := t.Load(id)
+	if err != nil {
+		return err
+	}
+	if r.LastSlot == slot {
+		return nil
+	}
+	if strings.TrimSpace(r.Precheck) == "" || tools.ShellPrecheck(ctx, r.Precheck) {
+		if err := emit(ev); err != nil {
+			return err
+		}
+	}
+	return t.Commit(ev)
 }
 
 // Expire disables a one-shot whose window has passed without firing. It does
@@ -379,6 +404,9 @@ func (t *Timer) withLock(fn func() error) error {
 func (t *Timer) saveLocked(r Routine) error {
 	if !routineID.MatchString(r.ID) {
 		return fmt.Errorf("timer: bad id %q", r.ID)
+	}
+	if len(r.Precheck) > tools.MaxPrecheckBytes {
+		return fmt.Errorf("timer: precheck exceeds %d bytes", tools.MaxPrecheckBytes)
 	}
 	r.Prompt = strings.TrimSpace(r.Prompt)
 	if r.Prompt == "" {

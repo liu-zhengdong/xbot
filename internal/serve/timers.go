@@ -4,6 +4,7 @@
 package serve
 
 import (
+	"context"
 	"time"
 
 	"xbot/internal/bot"
@@ -95,10 +96,7 @@ func deliverBotTimers(b *bot.Bot, now time.Time) (err error) {
 		return err
 	}
 	for _, ev := range evs {
-		if err := in.Post(ev); err != nil {
-			return err
-		}
-		if err := tm.Commit(ev); err != nil {
+		if err := tm.Deliver(context.Background(), ev, in.Post); err != nil {
 			return err
 		}
 	}

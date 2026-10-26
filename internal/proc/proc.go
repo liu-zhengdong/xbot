@@ -185,10 +185,7 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 			return err
 		}
 		for _, ev := range evs {
-			if err := k.Inbox.Post(ev); err != nil {
-				return err
-			}
-			if err := tm.Commit(ev); err != nil {
+			if err := tm.Deliver(context.Background(), ev, k.Inbox.Post); err != nil {
 				return err
 			}
 		}

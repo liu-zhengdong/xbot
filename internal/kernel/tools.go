@@ -285,11 +285,12 @@ func (routineCreate) Description() string {
 }
 func (routineCreate) Parameters() any {
 	return schema(map[string]any{
-		"id":     stringProp("optional id"),
-		"name":   stringProp("short name"),
-		"prompt": stringProp("what to consider when the routine fires"),
-		"cron":   stringProp("5-field cron in local time, minimum gap 5 minutes. Omit when at is set"),
-		"at":     stringProp("RFC3339 one-shot time. Omit when cron is set"),
+		"id":       stringProp("optional id"),
+		"name":     stringProp("short name"),
+		"prompt":   stringProp("what to consider when the routine fires"),
+		"cron":     stringProp("5-field cron in local time, minimum gap 5 minutes. Omit when at is set"),
+		"at":       stringProp("RFC3339 one-shot time. Omit when cron is set"),
+		"precheck": stringProp("optional sh command, at most 16 KiB; runs non-interactively for at most 2 seconds in the process working directory. Only exit 0 wakes the model; failure silently consumes the slot. Empty disables the check"),
 	}, []string{"name", "prompt"})
 }
 func (routineCreate) Confirm(json.RawMessage) (bool, string, error) {
@@ -309,11 +310,12 @@ func routineAtInPast(at string, tm *link.Timer, now time.Time) (time.Time, bool)
 
 func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Prompt string `json:"prompt"`
-		Cron   string `json:"cron"`
-		At     string `json:"at"`
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Prompt   string `json:"prompt"`
+		Cron     string `json:"cron"`
+		At       string `json:"at"`
+		Precheck string `json:"precheck"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -329,7 +331,7 @@ func (t routineCreate) Run(_ context.Context, args json.RawMessage) (string, err
 		}
 		in.ID = "r" + hex.EncodeToString(b[:])
 	}
-	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Enabled: true}
+	r := link.Routine{ID: in.ID, Name: in.Name, Prompt: in.Prompt, Cron: in.Cron, At: in.At, Precheck: in.Precheck, Enabled: true}
 	if r.Cron != "" {
 		r.Zone = "local"
 	}
@@ -389,6 +391,9 @@ func (t routineList) Run(context.Context, json.RawMessage) (string, error) {
 			zone = "UTC"
 		}
 		fmt.Fprintf(&b, "- %s %q %s zone %s enabled %v\n", r.ID, r.Name, when, zone, r.Enabled)
+		if strings.TrimSpace(r.Precheck) != "" {
+			fmt.Fprintf(&b, "  precheck %q\n", r.Precheck)
+		}
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }
@@ -397,15 +402,16 @@ type routineUpdate struct{ k *Kernel }
 
 func (routineUpdate) Name() string { return "routine_update" }
 func (routineUpdate) Description() string {
-	return "Update a routine's name, prompt, cron, or enabled flag."
+	return "Update a routine's name, prompt, cron, precheck, or enabled flag."
 }
 func (routineUpdate) Parameters() any {
 	return schema(map[string]any{
-		"id":      stringProp("routine id"),
-		"name":    stringProp("optional name"),
-		"prompt":  stringProp("optional prompt"),
-		"cron":    stringProp("optional cron"),
-		"enabled": map[string]any{"type": "boolean", "description": "optional enabled flag"},
+		"id":       stringProp("routine id"),
+		"name":     stringProp("optional name"),
+		"prompt":   stringProp("optional prompt"),
+		"cron":     stringProp("optional cron"),
+		"enabled":  map[string]any{"type": "boolean", "description": "optional enabled flag"},
+		"precheck": stringProp("optional sh command (16 KiB, 2 second hard timeout, process working directory); only exit 0 wakes the model. Omit to keep; empty string removes the check"),
 	}, []string{"id"})
 }
 func (routineUpdate) Confirm(json.RawMessage) (bool, string, error) {
@@ -413,11 +419,12 @@ func (routineUpdate) Confirm(json.RawMessage) (bool, string, error) {
 }
 func (t routineUpdate) Run(_ context.Context, args json.RawMessage) (string, error) {
 	var in struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		Prompt  string `json:"prompt"`
-		Cron    string `json:"cron"`
-		Enabled *bool  `json:"enabled"`
+		ID       string  `json:"id"`
+		Name     string  `json:"name"`
+		Prompt   string  `json:"prompt"`
+		Cron     string  `json:"cron"`
+		Enabled  *bool   `json:"enabled"`
+		Precheck *string `json:"precheck"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -439,6 +446,9 @@ func (t routineUpdate) Run(_ context.Context, args json.RawMessage) (string, err
 		}
 		if in.Enabled != nil {
 			r.Enabled = *in.Enabled
+		}
+		if in.Precheck != nil {
+			r.Precheck = *in.Precheck
 		}
 		return nil
 	}); err != nil {

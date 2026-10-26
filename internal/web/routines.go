@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"xbot/internal/link"
+	"xbot/internal/tools"
 )
 
 func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
@@ -20,12 +21,17 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Enabled *bool `json:"enabled"`
+		Enabled  *bool   `json:"enabled"`
+		Precheck *string `json:"precheck"`
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10))
 	dec.DisallowUnknownFields()
-	if err = dec.Decode(&body); err != nil || body.Enabled == nil {
-		writeErr(w, 400, "enabled must be a boolean")
+	if err = dec.Decode(&body); err != nil || (body.Enabled == nil && body.Precheck == nil) {
+		writeErr(w, 400, "expected enabled boolean or precheck string")
+		return
+	}
+	if body.Precheck != nil && len(*body.Precheck) > tools.MaxPrecheckBytes {
+		writeErr(w, 400, "precheck exceeds 16 KiB")
 		return
 	}
 	if dec.Decode(&struct{}{}) != io.EOF {
@@ -33,7 +39,16 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var updated link.Routine
-	err = (&link.Timer{Dir: b.RoutineDir()}).Update(r.PathValue("id"), func(rt *link.Routine) error { rt.Enabled = *body.Enabled; updated = *rt; return nil })
+	err = (&link.Timer{Dir: b.RoutineDir()}).Update(r.PathValue("id"), func(rt *link.Routine) error {
+		if body.Enabled != nil {
+			rt.Enabled = *body.Enabled
+		}
+		if body.Precheck != nil {
+			rt.Precheck = *body.Precheck
+		}
+		updated = *rt
+		return nil
+	})
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			writeErr(w, 404, "routine not found")
