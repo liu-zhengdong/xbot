@@ -158,3 +158,23 @@ func TestLinksInstallStoreConnectorHidesKey(t *testing.T) {
 		t.Fatalf("model saw %d requests", len(p.reqs))
 	}
 }
+
+// A blank value in this Bot's store masks a non-blank environment value at
+// start, so search must not call it installed.
+func TestLinksSearchBlankStoreMasksEnvironment(t *testing.T) {
+	t.Setenv("CONTEXT7_API_KEY", "ctx7sk-env")
+	b := testBot(t, link.NameTerminal)
+	tool := linksTool{&Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}}
+	if err := link.EnableConnector(b.GlobalMCPPath(), "context7"); err != nil {
+		t.Fatal(err)
+	}
+	if out := tool.search("context7"); !strings.Contains(out, "context7\tinstalled") {
+		t.Fatalf("env key %q", out)
+	}
+	if err := link.WriteSecrets(b.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "   "}); err != nil {
+		t.Fatal(err)
+	}
+	if out := tool.search("context7"); !strings.Contains(out, "context7\tavailable") {
+		t.Fatalf("blank store plus env %q", out)
+	}
+}

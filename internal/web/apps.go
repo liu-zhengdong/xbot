@@ -3,7 +3,6 @@ package web
 import (
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 
 	"xbot/internal/bot"
@@ -109,11 +108,11 @@ func (s *Server) appRows() ([]appJSON, error) {
 }
 
 // serverReady says a store server is really connected: its entry exists and,
-// for a key-bearing row, names every key the catalog asks for and each key has
-// a value where the running server reads it. A name alone is not a key, so an
-// entry without a stored value, or one left keyless by an older one-click add,
-// is not shown as connected.
-func serverReady(srv map[string]link.MCPServer, id string, held func(string) bool) bool {
+// for a key-bearing row, names every key the catalog asks for, and some Bot of
+// the owner would start it with every key non-blank. A name alone is not a
+// key, so an entry without stored values, or one left keyless by an older
+// one-click add, is not shown as connected.
+func serverReady(srv map[string]link.MCPServer, id string, held func([]string) bool) bool {
 	v, ok := srv[id]
 	if !ok {
 		return false
@@ -122,38 +121,25 @@ func serverReady(srv map[string]link.MCPServer, id string, held func(string) boo
 	if err != nil {
 		return true
 	}
-	for _, name := range c.SecretEnvs {
-		if !listHas(v.SecretEnvs, name) || !held(name) {
-			return false
-		}
-	}
-	return true
+	return link.HasSecretEnvs(v, c.SecretEnvs) && held(c.SecretEnvs)
 }
 
-// ownerKeyHeld reports whether a key has a non-empty value where a spawned
-// server looks for it: a Bot's secrets file (links install puts it there),
-// then the process environment. Values are only tested, never returned.
-func (s *Server) ownerKeyHeld(cfgs []bot.Config) func(string) bool {
-	var files []map[string]string
-	loaded := false
-	return func(name string) bool {
-		if v, ok := os.LookupEnv(name); ok && strings.TrimSpace(v) != "" {
+// ownerKeyHeld asks, Bot by Bot, what that Bot's server would read at start:
+// the same lookup and blank rule as the spawn (its secrets file first, the
+// process environment only when the file has no value). Any one Bot with every
+// key non-blank is enough. Values are only tested, never returned.
+func (s *Server) ownerKeyHeld(cfgs []bot.Config) func([]string) bool {
+	return func(names []string) bool {
+		if len(names) == 0 {
 			return true
 		}
-		if !loaded {
-			loaded = true
-			for _, cfg := range cfgs {
-				b, err := bot.Load(s.Root, cfg.Name)
-				if err != nil {
-					continue
-				}
-				if m, err := link.ReadSecrets(b.SecretPath()); err == nil {
-					files = append(files, m)
-				}
+		for _, cfg := range cfgs {
+			b, err := bot.Load(s.Root, cfg.Name)
+			if err != nil {
+				continue
 			}
-		}
-		for _, m := range files {
-			if strings.TrimSpace(m[name]) != "" {
+			probe := link.MCPServer{SecretEnvs: names, Secret: link.SecretLookup(b.SecretPath())}
+			if probe.HasSecretValues(names) {
 				return true
 			}
 		}

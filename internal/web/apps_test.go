@@ -345,4 +345,33 @@ func TestAppsContext7KeyFromEnvironment(t *testing.T) {
 	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
 		t.Fatalf("env key %d %+v", n, apps["context7"])
 	}
+	// A blank stored value masks the environment at start (the Bot's store is
+	// read first), so with every Bot blank the store must not say connected.
+	var spawnSees []link.MCPServer
+	for _, name := range []string{"ada", "bob"} {
+		b, _ := bot.Load(e.root, name)
+		if err := link.WriteSecrets(b.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "   "}); err != nil {
+			t.Fatal(err)
+		}
+		spawnSees = append(spawnSees, link.MCPServer{Name: "context7", SecretEnvs: []string{"CONTEXT7_API_KEY"}, Secret: link.SecretLookup(b.SecretPath())})
+	}
+	for _, sv := range spawnSees {
+		if sv.HasSecretValues(sv.SecretEnvs) {
+			t.Fatal("a blank stored value should leave the server without a key")
+		}
+	}
+	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
+		t.Fatalf("blank store plus env shown %d %+v", n, apps["context7"])
+	}
+	// Once one Bot has no stored value, its server falls back to the environment.
+	bob, _ := bot.Load(e.root, "bob")
+	if err := link.DropSecrets(bob.SecretPath(), []string{"CONTEXT7_API_KEY"}); err != nil {
+		t.Fatal(err)
+	}
+	if !spawnSees[1].HasSecretValues(spawnSees[1].SecretEnvs) {
+		t.Fatal("bob's server should read the environment")
+	}
+	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
+		t.Fatalf("env fallback %d %+v", n, apps["context7"])
+	}
 }
