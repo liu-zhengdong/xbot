@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-26 @ 763d349（composer 改 contenteditable 及 URL 高亮）
+verified: 2026-10-26 @ 01e63f4（composer 改 contenteditable 及 URL 高亮）
 ---
 # 网页界面
 
