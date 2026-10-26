@@ -84,6 +84,17 @@ func (s *Server) checkToken(got string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1
 }
 
+// AuthorizeOwner adds the owner's session cookie to an in-process request,
+// for callers that already speak for the owner (the remote-console pipe).
+func (s *Server) AuthorizeOwner(r *http.Request) error {
+	token, _, err := s.EnsureToken()
+	if err != nil {
+		return err
+	}
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	return nil
+}
+
 func (s *Server) setCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,

@@ -88,6 +88,7 @@ Usage:
   xbot [--root DIR] remote list
   xbot [--root DIR] remote remove <name>
   xbot [--root DIR] gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]
+  xbot pipe serve [--addr 127.0.0.1:8792] [--public URL]   (env ACCOUNT_API)
   xbot [--root DIR] person unlink [--force] <link:id>
   xbot [--root DIR] permissions [on|off]   (off by default: no confirmation cards)
   xbot [--root DIR] machine list
@@ -240,6 +241,8 @@ func run(argv []string) error {
 		return cmdRemote(root, rest[1:])
 	case "gateway":
 		return cmdGateway(root, rest[1:])
+	case "pipe":
+		return cmdPipe(rest[1:])
 	case "person":
 		return cmdPerson(root, rest[1:])
 	case "sync":

@@ -1,0 +1,28 @@
+# Remote-console pipe hub (ADR 0024 batch 1) at https://pipe.babelgo.cn:8443,
+# on the same host as the account service and the mailbox gateway.
+#   docker compose -f packaging/pipe/compose.yaml up -d --build
+# It reuses the gateway image (the same xbot binary) with another command.
+# Tickets live in memory, so there is no data volume. No secrets here.
+services:
+  pipe:
+    build:
+      context: ../..
+      dockerfile: packaging/gateway/Dockerfile
+    image: xbot-gateway:latest
+    entrypoint: ["/usr/local/bin/xbot", "pipe", "serve"]
+    command: ["--addr", ":8792", "--public", "https://pipe.babelgo.cn:8443"]
+    environment:
+      # Where sessions and device lists are checked. The public address works
+      # from inside the container; the host's 127.0.0.1:8790 does not.
+      ACCOUNT_API: https://account.babelgo.cn:8443
+      # Browser origins allowed to open the WebSocket (comma separated); empty
+      # lets only non-browser clients in until the phone entry has a home.
+      PIPE_ORIGINS: ""
+    ports:
+      - "127.0.0.1:8792:8792"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8792/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped

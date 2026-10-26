@@ -1,8 +1,8 @@
 ---
 kind: part
 parent: README.md
-code: [internal/gateway/, internal/remote/, gateway-worker/]
-verified: 2026-10-19 @ e1822e8
+code: [internal/gateway/, internal/remote/, internal/pipe/, gateway-worker/]
+verified: 2026-10-26 @ a63cbb5
 ---
 # 网关（M8，G1–G6 已实现）
 
@@ -40,3 +40,5 @@ verified: 2026-10-19 @ e1822e8
 ### 主人远程控制台管道（ADR 0024）
 
 手机/异地桌面经账号登录后，与设备之间的交互式操作（切 Bot、翻阅历史、确认卡等）走**腾讯云中心网关**上的端到端加密实时管道；能局域网/Tailscale 直连则优先直连以省中心流量。信箱已迁到同一中心的 `gateway.babelgo.cn:8443`，CF `xbot.babelgo.cn` 留作备用，新产品面不扩 CF。详见 [ADR 0024](../adr/0024-remote-ops-fluent.md)。
+
+**批 1 穿刺已实现**（`internal/pipe`、`xbot pipe serve`，部署在 `pipe.babelgo.cn:8443`，材料在 [packaging/pipe/](../../packaging/pipe/README.md)）：账号会话领短时票（绑定账号下的设备、5 分钟、一次性），入口和设备各连中枢 WebSocket，中枢只转发不透明的二进制帧；双方用临时 X25519 + 票密钥派生 AES-GCM 会话密钥，入口经管道 `GET /api/bots/<bot>/transcript` 拉到设备上的权威 transcript 一页。两数据根测试里建立约 1 毫秒、拉一页约 1 毫秒，中枢日志只有票 id 前缀和字节数。设备端还没接进 `xbot serve`，只放行 `GET /api/`。协议见 [pipe.md](../pipe.md)。

@@ -29,3 +29,13 @@ func TestGatewayInstallCapFromEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestPipeServeNeedsAccountAPI(t *testing.T) {
+	t.Setenv("ACCOUNT_API", "")
+	if err := cmdPipe([]string{"serve", "--addr", "127.0.0.1:0"}); err == nil || !strings.Contains(err.Error(), "ACCOUNT_API") {
+		t.Fatalf("err = %v", err)
+	}
+	if err := cmdPipe(nil); err == nil || !strings.Contains(err.Error(), "usage") {
+		t.Fatalf("err = %v", err)
+	}
+}
