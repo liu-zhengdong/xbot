@@ -245,7 +245,8 @@
           start.textContent = "重新登录"; actions.append(start, stop); status("failed", go, cancel);
         } else {
           start.textContent = label || "重新登录"; if (label) actions.append(start);
-          if (state === "cancelled") note.textContent = "已取消登录，可重新开始";
+          // Logged in, cancel simply returns to the header row; no note.
+          if (state === "cancelled" && label) note.textContent = "已取消登录，可重新开始";
           status(label ? "idle" : "logged", go, cancel);
         }
       }

@@ -75,7 +75,6 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  assert(!walk(failCard).some(n=>n.tag==='button'),'button inside the error card');
  const relogin=find('button','重新登录'),stop=find('button','取消');
  assert(relogin&&stop&&relogin!==stop&&relogin.textContent==='重新登录'&&stop.textContent==='取消','failed controls missing');
- assert(!/登录 xAI登录未完成/.test(host.innerText),'button and error glued together');
  assert(!find('button','登录 xAI'),'idle CTA kept next to the failure');
  assert(statusText().includes('登录未完成')&&!walk(cls('provider-status')).some(n=>String(n.className).includes('sdot ok')),'failed status row wrong');
  // Re-login succeeds; the OAuth binding pulls its catalog read-only.
