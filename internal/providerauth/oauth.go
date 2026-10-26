@@ -26,12 +26,22 @@ import (
 
 type Endpoints struct{ Authorize, Token, API, Issuer, JWKS string }
 
+// xaiClientID is the Grok CLI public OAuth client. xAI has no third-party
+// developer console to register one; every open client uses this id.
+const xaiClientID = "b1a00492-073a-47ea-816f-4c329264a828"
+
+// xaiCallbackAddr is the fixed Grok CLI loopback redirect target. A dynamic
+// port would break the registered redirect_uri.
+const xaiCallbackAddr = "127.0.0.1:56121"
+
 func defaults(kind string) (Endpoints, error) {
 	switch kind {
 	case "openrouter":
 		return Endpoints{Authorize: "https://openrouter.ai/auth", Token: "https://openrouter.ai/api/v1/auth/keys", API: "https://openrouter.ai/api/v1"}, nil
 	case "chatgpt":
 		return Endpoints{Authorize: "https://auth.openai.com/api/accounts/authorize", Token: "https://auth.openai.com/api/accounts/oauth/token", API: "https://api.openai.com/v1", Issuer: "https://auth.openai.com", JWKS: "https://auth.openai.com/.well-known/jwks.json"}, nil
+	case "xai":
+		return Endpoints{Authorize: "https://auth.x.ai/oauth2/authorize", Token: "https://auth.x.ai/oauth2/token", API: "https://api.x.ai/v1", Issuer: "https://auth.x.ai", JWKS: "https://auth.x.ai/.well-known/jwks.json"}, nil
 	default:
 		return Endpoints{}, errors.New("不支持此登录方式")
 	}
@@ -41,8 +51,12 @@ type Manager struct {
 	Root string
 	// Endpoints is an in-process test seam, never supplied by the browser.
 	Endpoints map[string]Endpoints
-	mu        sync.Mutex
-	pending   *attempt
+	// CallbackPort is a test seam for xAI's fixed loopback port, so parallel
+	// test binaries do not fight over it. Zero uses the real port. Never
+	// supplied by the browser.
+	CallbackPort int
+	mu           sync.Mutex
+	pending      *attempt
 }
 type attempt struct {
 	kind, state, verifier, nonce, callback, clientID, subject, authURL string
@@ -100,12 +114,18 @@ func (m *Manager) Begin(kind string) (Start, error) {
 			return Start{}, errors.New("同名供应商已使用 API key，请先更名")
 		}
 	}
-	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	ln, err := net.Listen("tcp4", xaiListenAddr(m, kind))
 	if err != nil {
+		if kind == "xai" {
+			return Start{}, errors.New("本机 56121 端口被占用，请关闭占用进程后重试")
+		}
 		return Start{}, errors.New("无法打开本机登录回调")
 	}
 	a := &attempt{kind: kind, state: random(), verifier: random(), nonce: random(), clientID: info.ClientID, subject: info.Subject, endpoints: e, expires: time.Now().Add(10 * time.Minute), status: Status{State: "pending"}}
 	a.callback = "http://" + ln.Addr().String() + "/auth/callback"
+	if kind == "xai" {
+		a.callback = "http://" + ln.Addr().String() + "/callback"
+	}
 	q := url.Values{"state": {a.state}, "code_challenge_method": {"S256"}}
 	hash := sha256.Sum256([]byte(a.verifier))
 	q.Set("code_challenge", base64.RawURLEncoding.EncodeToString(hash[:]))
@@ -115,6 +135,17 @@ func (m *Manager) Begin(kind string) (Start, error) {
 		// A denial does not echo it, so bind state into the callback URL too.
 		a.callback += "?" + url.Values{"state": {a.state}}.Encode()
 		q.Set("callback_url", a.callback)
+	} else if kind == "xai" {
+		// The Grok CLI public client with a fixed loopback redirect. plan=generic
+		// is required or the loopback redirect is rejected; referrer is attribution.
+		a.clientID = xaiClientID
+		q.Set("client_id", a.clientID)
+		q.Set("response_type", "code")
+		q.Set("redirect_uri", a.callback)
+		q.Set("nonce", a.nonce)
+		q.Set("scope", "openid profile email offline_access grok-cli:access api:access")
+		q.Set("plan", "generic")
+		q.Set("referrer", "xbot")
 	} else {
 		host, err := hostID(m.Root)
 		if err != nil {
@@ -151,6 +182,16 @@ func (m *Manager) Begin(kind string) (Start, error) {
 	return Start{a.authURL}, nil
 }
 
+func xaiListenAddr(m *Manager, kind string) string {
+	if kind != "xai" {
+		return "127.0.0.1:0"
+	}
+	if m.CallbackPort > 0 {
+		return fmt.Sprintf("127.0.0.1:%d", m.CallbackPort)
+	}
+	return xaiCallbackAddr
+}
+
 func (m *Manager) Status(kind string) Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -158,6 +199,28 @@ func (m *Manager) Status(kind string) Status {
 		return Status{State: "idle"}
 	}
 	return m.pending.status
+}
+
+// Cancel stops a pending login for kind: the loopback listener closes and the
+// attempt can begin again immediately. A failed or cancelled attempt clears
+// back to idle. It returns a human-readable error when nothing is underway.
+func (m *Manager) Cancel(kind string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pending == nil || m.pending.kind != kind {
+		return errors.New("没有进行中的登录")
+	}
+	switch m.pending.status.State {
+	case "pending":
+		m.pending.status = Status{State: "cancelled"}
+		_ = m.pending.server.Close()
+	case "failed", "cancelled":
+		m.pending.status = Status{State: "idle"}
+		_ = m.pending.server.Close()
+	default:
+		return errors.New("没有进行中的登录")
+	}
+	return nil
 }
 
 // Close releases a pending listener when the hosting server shuts down.
@@ -203,7 +266,9 @@ func (m *Manager) callback(a *attempt, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'")
-	if r.Method != "GET" || r.URL.Path != "/auth/callback" {
+	// xAI registers /callback; the older kinds use /auth/callback. Both stay
+	// accepted so a unified path stays compatible; state still gates access.
+	if r.Method != "GET" || (r.URL.Path != "/auth/callback" && r.URL.Path != "/callback") {
 		http.NotFound(w, r)
 		return
 	}

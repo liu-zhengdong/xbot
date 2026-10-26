@@ -271,3 +271,42 @@ func TestOAuthRefusesUnboundRefreshEndpoint(t *testing.T) {
 		t.Fatal("encrypted credential missing")
 	}
 }
+
+func TestOAuthRefreshWithoutChatGPTScope(t *testing.T) {
+	root := t.TempDir()
+	s, _ := Open(filepath.Join(root, "vault"), filepath.Join(root, "key"))
+	var sawResource bool
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.URL.Path != "/token" {
+			http.NotFound(w, r)
+			return
+		}
+		_, sawResource = r.Form["resource"]
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fakeOAuthToken(), "refresh_token": fakeOAuthToken(), "expires_in": 3600, "token_type": "Bearer", "scope": "openid profile email offline_access grok-cli:access api:access"})
+	}))
+	defer up.Close()
+	// An xAI credential carries no resource and no ChatGPT scope; the refresh
+	// must neither send an empty resource field nor demand the ChatGPT scope.
+	host := strings.TrimPrefix(up.URL, "http://")
+	if i := strings.LastIndex(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	if err := SetOAuth(s, "xai", OAuthCredential{AccessToken: fakeOAuthToken(), RefreshToken: fakeOAuthToken(), ExpiresAt: time.Now().Add(-time.Minute), TokenURL: up.URL + "/token", ClientID: "grok-cli-public", Scope: "openid profile email offline_access grok-cli:access api:access"}, []string{host}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := EnsureOAuth(context.Background(), s, "xai")
+	if err != nil || !info.Configured || !info.Refreshable {
+		t.Fatalf("xai refresh rejected: %+v %v", info, err)
+	}
+	if sawResource {
+		t.Fatal("empty resource field sent to the token endpoint")
+	}
+	// A ChatGPT credential (marked by its resource) still enforces its scope.
+	if err := SetOAuth(s, "chatgpt", OAuthCredential{AccessToken: fakeOAuthToken(), RefreshToken: fakeOAuthToken(), ExpiresAt: time.Now().Add(-time.Minute), TokenURL: up.URL + "/token", ClientID: "issued", Resource: "https://api.openai.com/v1", Scope: "openid chatgpt.tokens.use.direct"}, []string{host}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureOAuth(context.Background(), s, "chatgpt"); err == nil || !strings.Contains(err.Error(), "ChatGPT plan scope") {
+		t.Fatalf("chatgpt scope dropped: %v", err)
+	}
+}

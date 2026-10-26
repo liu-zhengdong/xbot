@@ -50,6 +50,8 @@ func validateOAuth(p Provider) error {
 		protocol, base = ChatCompletions, "https://openrouter.ai/api/v1"
 	case "chatgpt":
 		protocol, base = Responses, "https://api.openai.com/v1"
+	case "xai":
+		protocol, base = Responses, "https://api.x.ai/v1"
 	default:
 		return fmt.Errorf("providers: unsupported OAuth provider %q", p.OAuth)
 	}

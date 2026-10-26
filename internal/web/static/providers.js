@@ -83,25 +83,26 @@
       const p = data.providers.find(p => p.oauth === "chatgpt");
       return { ...p, name: p?.name || "chatgpt", oauth: "chatgpt", brand: "openai", title: "ChatGPT", protocol: "responses" };
     }
-    async function login(note, control, done) {
+    async function login(kind, render, done) {
       if (!alive()) return;
       const native = document.documentElement.classList.contains("in-app");
+      const view = revision, current = () => alive() && view === revision;
+      const paint = (state, message) => { if (current()) render(state, message); };
       function openAuthorization(attempt) {
         const popup = window.open(attempt.url, "_blank");
         if (!native && !popup) throw Error("popup blocked");
         if (popup) popup.opener = null;
         attempt.popup = popup;
       }
-      if (loginRequest && loginRequest.current()) {
+      if (loginRequest && !loginRequest.stopped && loginRequest.current() && loginRequest.kind === kind) {
         if (loginRequest.url) {
-          try { openAuthorization(loginRequest); note.textContent = "等待登录，再点重开"; }
-          catch { note.textContent = "请允许弹窗后重试"; }
+          try { openAuthorization(loginRequest); paint("pending", ""); }
+          catch { paint("pending", "请允许弹窗后重试"); }
         }
         return;
       }
-      const view = revision, current = () => alive() && view === revision;
-      const attempt = { current }; loginRequest = attempt;
-      control.disabled = true; note.textContent = "正在登录…";
+      const attempt = { kind, current }; loginRequest = attempt;
+      paint("starting", "");
       try {
         // Browsers need the click gesture; the native shell opens HTTPS externally.
         if (!native) {
@@ -109,32 +110,37 @@
           if (!attempt.popup) throw Error("popup blocked");
           attempt.popup.opener = null;
         }
-        const start = await api("/api/providers/oauth/chatgpt/start", { method: "POST" });
-        if (!current()) { attempt.popup?.close(); return; }
+        const start = await api(`/api/providers/oauth/${kind}/start`, { method: "POST" });
+        if (!current() || attempt.stopped) { attempt.popup?.close(); return; }
         attempt.url = safeURL(start.url); if (!attempt.url) throw Error("invalid login URL");
         if (native) openAuthorization(attempt);
         else attempt.popup.location.replace(attempt.url);
-        control.disabled = false; note.textContent = "等待登录，再点重开";
+        paint("pending", "");
         const expires = Date.now() + 10 * 60 * 1000;
         while (current() && Date.now() < expires) {
-          const status = await api("/api/providers/oauth/chatgpt/status");
-          if (!current()) return;
+          if (attempt.stopped) return;
+          const status = await api(`/api/providers/oauth/${kind}/status`);
+          if (!current() || attempt.stopped) return;
           if (status.state === "succeeded") {
             const fresh = await api("/api/providers");
             if (!current()) return;
             data = fresh;
-            if (!subscriptionEntry().key_configured) throw Error("login unavailable");
+            const entry = kind === "chatgpt" ? subscriptionEntry() : (data.providers.find(row => row.oauth === kind) || {});
+            if (!entry.key_configured) throw Error("login unavailable");
             done(); return;
           }
-          if (status.state !== "pending") throw Error("login failed");
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          if (status.state === "pending") { paint("pending", ""); await new Promise(resolve => setTimeout(resolve, 1000)); continue; }
+          if (attempt.popup && !attempt.popup.closed) attempt.popup.close();
+          if (status.state === "cancelled") { paint("cancelled", ""); return; }
+          paint("failed", status.error || "");
+          return;
         }
-        if (current()) throw Error("login expired");
-      } catch {
+        if (current()) paint("failed", "登录已过期，请重试");
+      } catch (err) {
         if (attempt.popup && !attempt.popup.closed) attempt.popup.close();
-        if (current()) note.textContent = "登录未完成，请重试";
+        // Only server-written messages are shown; upstream bodies stay hidden.
+        paint("error", err && err.status ? err.message : "");
       } finally {
-        if (current()) control.disabled = false;
         if (loginRequest === attempt) loginRequest = null;
       }
     }
@@ -153,9 +159,15 @@
       const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query; search.append(input); tools.append(search); host.append(tools);
       const subscription = section("订阅", "登录即可，无需密钥"), subgrid = node("div", "provider-grid");
       const subnote = node("span", "provider-login-note"); subnote.setAttribute("role", "status");
+      function paintSubscription(state, message) {
+        chatgpt.disabled = state === "starting";
+        if (state === "starting") subnote.textContent = "正在登录…";
+        else if (state === "pending") subnote.textContent = message || "等待登录，再点重开";
+        else subnote.textContent = "登录未完成，请重试";
+      }
       const chatgpt = button("", "provider-card provider-subscription", () => {
         const p = subscriptionEntry(); selected = key(p);
-        return p.key_configured ? capability(p) : login(subnote, chatgpt, updateSubscription);
+        return p.key_configured ? capability(p) : login("chatgpt", paintSubscription, updateSubscription);
       });
       function updateSubscription() {
         chatgpt.replaceChildren(node("span", "provider-glyph provider-chatgpt-glyph"), node("strong", "", "ChatGPT"));
@@ -177,11 +189,11 @@
       input.oninput = () => { query = input.value; filter(); }; filter();
       if (!subscription.hidden && (focusKey === "chatgpt" || focusKey === key(subscriptionEntry()))) chatgpt.focus();
     }
-    function keyForm(p, vendor, saved, current) {
+    function keyForm(p, vendor, saved, current, lead) {
       const form = node("form", "provider-key"), input = node("input"), note = node("p", "provider-login-note");
       input.type = "password"; input.autocomplete = "off"; input.spellcheck = false; input.placeholder = "粘贴密钥"; input.setAttribute("aria-label", `${vendor.title} 密钥`);
       const save = button("保存密钥", "btn primary", () => {}); save.type = "submit"; note.setAttribute("role", "status");
-      form.append(node("p", "", "请先配置密钥，再拉取模型。"), input, save, note);
+      form.append(node("p", "", lead || "请先配置密钥，再拉取模型。"), input, save, note);
       let saving = false;
       form.onsubmit = async ev => {
         ev.preventDefault(); const value = input.value.trim(); if (!value || saving) return;
@@ -190,6 +202,64 @@
         catch (err) { if (!current()) return; note.textContent = err.message || "保存失败，请重试"; save.disabled = input.disabled = false; saving = false; }
       };
       return form;
+    }
+    // xAI account login controls: the primary login or re-login button, cancel
+    // and reopen while pending, a readable error with retry when it failed.
+    // The API-key form stays a secondary entry, never the main CTA.
+    function xaiAuthControls(host, primaryLabel, done, current) {
+      const actions = node("span", "provider-login-actions");
+      const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
+      const start = button(primaryLabel, "provider-back", () => login("xai", paint, done));
+      const reopen = button("重新打开", "provider-back", () => login("xai", paint, done));
+      const retry = button("重新登录", "provider-back", () => login("xai", paint, done));
+      const cancel = button("取消", "provider-back", async () => {
+        if (loginRequest && loginRequest.current() && loginRequest.kind === "xai") {
+          loginRequest.stopped = true;
+          if (loginRequest.popup && !loginRequest.popup.closed) loginRequest.popup.close();
+        }
+        cancel.disabled = true;
+        try { await api("/api/providers/oauth/xai/cancel", { method: "POST" }); }
+        catch (err) { paint("error", err && err.status ? err.message : ""); return; }
+        paint("cancelled", "");
+      });
+      function paint(state, message) {
+        if (!current()) return;
+        start.disabled = reopen.disabled = retry.disabled = cancel.disabled = false;
+        actions.replaceChildren();
+        if (state === "starting") { start.disabled = true; actions.append(start); note.textContent = "正在登录…"; }
+        else if (state === "pending") { actions.append(cancel, reopen); note.textContent = message || "等待登录，在浏览器里完成登录，或点重新打开"; }
+        else if (state === "failed") { actions.append(cancel, retry); note.textContent = message || "登录未完成，请重试"; }
+        else if (state === "cancelled") { actions.append(start); note.textContent = "已取消登录，可重新开始"; }
+        else { actions.append(start); note.textContent = message || "登录未完成，请重试"; }
+      }
+      paint("idle", "");
+      host.append(actions, note);
+      return {
+        paint,
+        // A login may be pending or failed from an earlier view; show it once.
+        sync: async () => {
+          try {
+            const status = await api("/api/providers/oauth/xai/status");
+            if (!current() || (loginRequest && loginRequest.current() && loginRequest.kind === "xai")) return;
+            if (status.state === "pending") paint("pending", "");
+            else if (status.state === "failed") paint("failed", status.error || "");
+          } catch {}
+        }
+      };
+    }
+    // The unconfigured xAI card leads with account login; the key form folds away.
+    function xaiVendorBody(p, vendor, current) {
+      const box = node("div", "provider-empty");
+      box.append(node("p", "", "登录 xAI 账号即可使用，无需 API 密钥。"));
+      const area = node("div", "provider-auth");
+      const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
+      const auth = xaiAuthControls(area, "登录 xAI", done, current);
+      box.append(area);
+      const alt = node("details", "provider-key-alt");
+      alt.append(node("summary", "", "用 API 密钥"), keyForm(p, vendor, () => capability(p, true), current, "没有账号时，也可以改用 API 密钥。"));
+      box.append(alt);
+      auth.sync();
+      return box;
     }
     async function capability(p, refresh = false) {
       if (!alive()) return; const request = ++revision;
@@ -202,8 +272,21 @@
         status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : p.oauth ? "未登录" : "密钥未配置"));
         if (p.oauth === "chatgpt") {
           const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
-          const again = button("重新登录", "provider-back", () => login(note, again, () => capability(subscriptionEntry())));
+          const again = button("重新登录", "provider-back", () => login("chatgpt", paint, () => capability(subscriptionEntry())));
+          function paint(state, message) {
+            again.disabled = state === "starting";
+            if (state === "starting") note.textContent = "正在登录…";
+            else if (state === "pending") note.textContent = message || "等待登录，再点重开";
+            else note.textContent = "登录未完成，请重试";
+          }
           status.append(again, note);
+        }
+        if (p.oauth === "xai") {
+          const area = node("span", "provider-status-auth");
+          const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
+          const auth = xaiAuthControls(area, "重新登录", done, current);
+          status.append(area);
+          auth.sync();
         }
       }
       keyStatus(); body.append(state("正在拉取模型…"));
@@ -211,17 +294,19 @@
         if (refresh) { data = await api("/api/providers"); if (!current()) return; p = p.oauth === "chatgpt" ? subscriptionEntry() : entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
+          if (p.oauth === "xai") { body.replaceChildren(state("请重新登录 xAI，再拉取模型。")); return; }
           const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
           if (vendor && vendor.key_login) {
             body.replaceChildren(state("这家供应商需要先登录 Google Cloud，暂时不能直接填密钥使用。"));
             if (vendor.models.length) { body.append(node("h3", "provider-model-count", `默认模型 · ${vendor.models.length}`)); const rows = node("div", "provider-model-list"); for (const name of vendor.models) { const row = node("div", "provider-model-row"); row.append(node("strong", "provider-model-name", name)); rows.append(row); } body.append(rows); }
             return;
           }
+          if (vendor && vendor.brand === "xai") { body.replaceChildren(xaiVendorBody(p, vendor, current)); return; }
           if (vendor) { body.replaceChildren(keyForm(p, vendor, () => capability(p, true), current)); return; }
           body.replaceChildren(state("请先配置密钥，再拉取模型。", () => capability(p, true))); return;
         }
-        // A vendor card's models are registered as they are fetched, so what the list shows can be chosen.
-        const own = p.name === p.brand && vendorOf(p.brand) && !vendorOf(p.brand).key_login;
+        // A vendor card's models are registered as they are fetched, so what the list shows can be chosen. OAuth bindings pull their catalog read-only.
+        const own = !p.oauth && p.name === p.brand && vendorOf(p.brand) && !vendorOf(p.brand).key_login;
         const result = own ? await api(`/api/providers/${encodeURIComponent(p.brand)}/sync`, { method: "POST" }) : await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
         if (!current()) return;
         const models = result.models;

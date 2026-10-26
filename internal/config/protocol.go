@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"xbot/internal/provider"
 )
 
@@ -43,7 +44,12 @@ func (m ModelSpec) HasHostedSearch(protocol string) bool {
 	if m.HostedSearch != nil {
 		return *m.HostedSearch
 	}
-	return protocol == Responses && openAIImageAndSearch(m.Name)
+	if protocol != Responses {
+		return false
+	}
+	// grok models on an xAI Responses endpoint ship hosted search by default;
+	// the OAuth binding also writes hosted_web_search: true explicitly.
+	return openAIImageAndSearch(m.Name) || strings.HasPrefix(m.Name, "grok")
 }
 
 // openAIImageAndSearch lists known OpenAI models with image input and Responses

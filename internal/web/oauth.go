@@ -6,6 +6,10 @@ import (
 	"xbot/internal/providerauth"
 )
 
+// oauthKinds are the OAuth providers the UI offers. Claude subscription OAuth
+// is deliberately absent: third-party subscription login risks account bans.
+var oauthKinds = map[string]bool{"openrouter": true, "chatgpt": true, "xai": true}
+
 func (s *Server) oauthManager() *providerauth.Manager {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -30,9 +34,26 @@ func (s *Server) oauthStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
-	if kind := r.PathValue("kind"); kind != "openrouter" && kind != "chatgpt" {
+	if !oauthKinds[r.PathValue("kind")] {
 		http.NotFound(w, r)
 		return
 	}
 	writeJSON(w, 200, s.oauthManager().Status(r.PathValue("kind")))
+}
+
+// oauthCancel stops a pending or failed login for the same owner who can
+// start one. Cancelling frees the loopback listener for an immediate retry.
+func (s *Server) oauthCancel(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	if !oauthKinds[r.PathValue("kind")] {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.oauthManager().Cancel(r.PathValue("kind")); err != nil {
+		writeErr(w, 409, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "cancelled"})
 }

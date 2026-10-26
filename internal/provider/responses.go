@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -152,6 +153,11 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 	}
 	if c.WebSearch && hostedSearchAllowed(ctx) && (req.HostedSearch || len(req.Tools) > 0) {
 		ts = append(ts, map[string]any{"type": "web_search"})
+		if xaiEndpoint(c.BaseURL) {
+			// xAI's Responses endpoint also offers these hosted tools; mounting
+			// them does not add local tools or permissions.
+			ts = append(ts, map[string]any{"type": "x_search"}, map[string]any{"type": "code_interpreter"})
+		}
 	}
 	body := map[string]any{"model": c.Model, "input": input, "tools": ts, "stream": true, "store": false, "include": []string{"reasoning.encrypted_content"}}
 	raw, err := json.Marshal(body)
@@ -221,6 +227,13 @@ type responseItem struct {
 	} `json:"content"`
 }
 
+// xaiEndpoint reports an xAI Responses endpoint, whose hosted tool set adds
+// x_search and code_interpreter to web_search.
+func xaiEndpoint(base string) bool {
+	u, err := url.Parse(strings.TrimSpace(base))
+	return err == nil && strings.EqualFold(u.Hostname(), "api.x.ai")
+}
+
 func responseParts(raw json.RawMessage) ([]ContentPart, error) {
 	var it responseItem
 	if err := json.Unmarshal(raw, &it); err != nil {
@@ -248,6 +261,18 @@ func responseParts(raw json.RawMessage) ([]ContentPart, error) {
 		}
 		p.Hosted = &HostedStep{ID: it.ID, Name: "web_search", Status: it.Status, Query: q}
 		p.Text = "[厂商搜索: " + q + " · " + it.Status + "]"
+	case "x_search_call":
+		p.Type = PartHosted
+		q := it.Action.Query
+		if q == "" {
+			q = strings.Join(it.Action.Queries, " · ")
+		}
+		p.Hosted = &HostedStep{ID: it.ID, Name: "x_search", Status: it.Status, Query: q}
+		p.Text = "[X 搜索: " + q + " · " + it.Status + "]"
+	case "code_interpreter_call":
+		p.Type = PartHosted
+		p.Hosted = &HostedStep{ID: it.ID, Name: "code_interpreter", Status: it.Status}
+		p.Text = "[代码解释器: " + it.Status + "]"
 	case "message":
 		p.Type = PartText
 		var cites []ContentPart
@@ -350,6 +375,10 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 		case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
 			status := strings.TrimPrefix(ev.Type, "response.web_search_call.")
 			emitPart(ctx, ContentPart{Type: PartHosted, Hosted: &HostedStep{ID: ev.ItemID, Name: "web_search", Status: status}})
+		default:
+			if tool, status, ok := hostedProgress(ev.Type); ok {
+				emitPart(ctx, ContentPart{Type: PartHosted, Hosted: &HostedStep{ID: ev.ItemID, Name: tool, Status: status}})
+			}
 		case "response.completed":
 			if ev.Response.Status != "completed" {
 				return Message{}, errors.New("responses: response did not complete")
@@ -425,6 +454,22 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 }
 
 type visibleResponseError struct{ error }
+
+// hostedProgress maps a hosted tool progress event to its tool name and
+// status. xAI adds x_search and code_interpreter to web_search; unknown tools
+// are not hosted calls and stay ignored.
+func hostedProgress(event string) (tool, status string, ok bool) {
+	if !strings.HasPrefix(event, "response.") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(event, "response.")
+	for _, name := range []string{"web_search_call", "x_search_call", "code_interpreter_call"} {
+		if strings.HasPrefix(rest, name+".") {
+			return strings.TrimSuffix(name, "_call"), strings.TrimPrefix(rest, name+"."), true
+		}
+	}
+	return "", "", false
+}
 
 func (e *visibleResponseError) Unwrap() error { return e.error }
 

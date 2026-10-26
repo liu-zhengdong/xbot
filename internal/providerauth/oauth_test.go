@@ -70,6 +70,8 @@ func (f *fakeAuth) signIn(m *Manager, kind string) string {
 	f.callback = q.Get("redirect_uri")
 	if kind == "openrouter" {
 		f.callback = q.Get("callback_url")
+	} else {
+		f.callback = q.Get("redirect_uri")
 	}
 	callback := f.callback
 	f.mu.Unlock()
@@ -77,7 +79,7 @@ func (f *fakeAuth) signIn(m *Manager, kind string) string {
 	params := cb.Query()
 	params.Set("code", random())
 	params.Set("client_id", "issued-test-client")
-	if kind == "chatgpt" {
+	if kind != "openrouter" {
 		params.Set("state", q.Get("state"))
 	}
 	cb.RawQuery = params.Encode()
@@ -106,8 +108,16 @@ func (f *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"key": f.orKey})
 	case "/token":
 		_ = r.ParseForm()
+		client := "issued-test-client"
+		if r.Form.Get("client_id") == xaiClientID {
+			client = xaiClientID
+		}
 		if r.Form.Get("grant_type") == "refresh_token" {
-			if r.Form.Get("refresh_token") != f.refresh || r.Form.Get("client_id") != "issued-test-client" || r.Form.Get("resource") != "https://api.openai.com/v1" {
+			resource := "https://api.openai.com/v1"
+			if client == xaiClientID {
+				resource = "" // xAI refreshes carry no resource at all
+			}
+			if r.Form.Get("refresh_token") != f.refresh || r.Form.Get("client_id") != client || r.Form.Get("resource") != resource {
 				http.Error(w, "invalid refresh", 400)
 				return
 			}
@@ -116,7 +126,7 @@ func (f *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
 			f.refresh = random()
 		} else {
 			digest := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
-			if base64.RawURLEncoding.EncodeToString(digest[:]) != f.challenge || r.Form.Get("redirect_uri") != f.callback || r.Form.Get("client_id") != "issued-test-client" {
+			if base64.RawURLEncoding.EncodeToString(digest[:]) != f.challenge || r.Form.Get("redirect_uri") != f.callback || r.Form.Get("client_id") != client {
 				http.Error(w, "invalid PKCE/client", 400)
 				return
 			}
@@ -135,6 +145,9 @@ func (f *fakeAuth) serve(w http.ResponseWriter, r *http.Request) {
 			sig[0] ^= 1
 		}
 		scope := "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
+		if client == xaiClientID {
+			scope = "openid profile email offline_access grok-cli:access api:access"
+		}
 		if f.invalid == "scope" {
 			scope = "openid"
 		}
@@ -302,5 +315,156 @@ func TestOAuthRejectsInvalidIdentityAndState(t *testing.T) {
 	}
 	if _, err := m.Begin("anthropic"); err == nil {
 		t.Fatal("Claude OAuth entry exposed")
+	}
+}
+
+// finishCode drives one authorization callback for an already-started attempt.
+func (f *fakeAuth) finishCode(m *Manager, start Start) string {
+	f.t.Helper()
+	u, _ := url.Parse(start.URL)
+	q := u.Query()
+	f.mu.Lock()
+	f.nonce = q.Get("nonce")
+	f.challenge = q.Get("code_challenge")
+	f.callback = q.Get("redirect_uri")
+	f.mu.Unlock()
+	cb, _ := url.Parse(q.Get("redirect_uri"))
+	params := cb.Query()
+	params.Set("code", random())
+	params.Set("state", q.Get("state"))
+	cb.RawQuery = params.Encode()
+	res, err := http.Get(cb.String())
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	return string(body)
+}
+
+func TestXAIOAuthFixedPortCancelAndFinish(t *testing.T) {
+	f := newFakeAuth(t)
+	root := t.TempDir()
+	m := &Manager{Root: root, Endpoints: map[string]Endpoints{"xai": f.endpoints("xai")}}
+	t.Cleanup(m.Close)
+	start, err := m.Begin("xai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, _ := url.Parse(start.URL)
+	params := q.Query()
+	// The Grok CLI public client with the fixed loopback redirect; plan=generic
+	// is required or the loopback redirect is rejected.
+	if params.Get("redirect_uri") != "http://127.0.0.1:56121/callback" {
+		t.Fatalf("redirect %s", params.Get("redirect_uri"))
+	}
+	if params.Get("client_id") != xaiClientID || params.Get("plan") != "generic" || params.Get("referrer") != "xbot" {
+		t.Fatalf("client %s plan %s referrer %s", params.Get("client_id"), params.Get("plan"), params.Get("referrer"))
+	}
+	if params.Get("response_type") != "code" || params.Get("scope") != "openid profile email offline_access grok-cli:access api:access" {
+		t.Fatalf("response_type %s scope %s", params.Get("response_type"), params.Get("scope"))
+	}
+	if params.Get("code_challenge_method") != "S256" || params.Get("code_challenge") == "" || params.Get("nonce") == "" || params.Get("state") == "" {
+		t.Fatal("missing PKCE, nonce or state")
+	}
+	if m.Status("xai").State != "pending" {
+		t.Fatal("not pending")
+	}
+	// The fixed port is single-occupancy: a second manager gets a human error.
+	other := &Manager{Root: t.TempDir()}
+	if _, err := other.Begin("xai"); err == nil || !strings.Contains(err.Error(), "56121") {
+		t.Fatalf("occupied port error: %v", err)
+	}
+	if _, err := m.Begin("chatgpt"); err == nil || !strings.Contains(err.Error(), "另一个登录") {
+		t.Fatalf("other-kind begin: %v", err)
+	}
+	// Cancel frees the listener and the same login can restart at once.
+	if err := m.Cancel("xai"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Status("xai").State != "cancelled" {
+		t.Fatal("not cancelled")
+	}
+	// Cancelling a cancelled attempt just clears it back to idle.
+	if err := m.Cancel("xai"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Status("xai").State != "idle" {
+		t.Fatal("cancelled state not cleared")
+	}
+	start, err = m.Begin("xai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A bad identity token fails with a readable error; cancel clears it.
+	f.invalid = "nonce"
+	if body := f.finishCode(m, start); strings.Contains(body, "登录成功") {
+		t.Fatal("accepted invalid xAI identity")
+	}
+	if m.Status("xai").State != "failed" {
+		t.Fatal("not failed")
+	}
+	if err := m.Cancel("xai"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Status("xai").State != "idle" {
+		t.Fatal("failed state not cleared")
+	}
+	// A clean sign-in binds Responses with hosted grok seeds and stores tokens.
+	f.invalid = ""
+	start, err = m.Begin("xai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := f.finishCode(m, start); !strings.Contains(body, "登录成功") {
+		t.Fatal(body)
+	}
+	registry, err := config.Load(root)
+	if err != nil || len(registry.Providers) != 1 {
+		t.Fatalf("registry %v", err)
+	}
+	p := registry.Providers[0]
+	if p.OAuth != "xai" || p.Protocol != config.Responses || p.BaseURL != f.srv.URL+"/v1" || p.APIKeyEnv != "" {
+		t.Fatalf("binding %+v", p)
+	}
+	if len(p.Models) == 0 {
+		t.Fatal("no seed models")
+	}
+	for _, model := range p.Models {
+		if model.HostedSearch == nil || !*model.HostedSearch {
+			t.Fatalf("seed model %s lacks hosted search", model.Name)
+		}
+	}
+	backend, err := config.OAuthVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Near-expiry refresh must not demand the ChatGPT scope or resource.
+	s := backend.(*vault.Store)
+	sec, _ := s.Lookup("xai")
+	var c vault.OAuthCredential
+	_ = json.Unmarshal([]byte(sec.Value), &c)
+	c.ExpiresAt = time.Now().Add(-time.Minute)
+	if err := vault.SetOAuth(backend, "xai", c, sec.Domains); err != nil {
+		t.Fatal(err)
+	}
+	ep, _, err := config.Resolve(root, "xai", p.Models[0].Name, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := provider.New(ep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := client.Chat(context.Background(), provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("hello")}}}, nil)
+	if err != nil || msg.Text() != "oauth-ok" {
+		t.Fatalf("chat %q %v", msg.Text(), err)
+	}
+	if f.refreshes.Load() != 1 {
+		t.Fatalf("refreshes %d", f.refreshes.Load())
+	}
+	info, err := vault.OAuthMetadata(context.Background(), backend, "xai")
+	if err != nil || !info.Configured || !info.Refreshable || info.ClientID != xaiClientID {
+		t.Fatalf("metadata %+v %v", info, err)
 	}
 }

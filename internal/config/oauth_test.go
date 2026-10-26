@@ -48,3 +48,41 @@ func TestOAuthReloginPreservesModelSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateOAuthXAI(t *testing.T) {
+	root := t.TempDir()
+	p := Provider{Name: "xai", OAuth: "xai", Protocol: Responses, BaseURL: "https://api.x.ai/v1", Models: []ModelSpec{{Name: "grok-4", Context: 256000}}}
+	if err := validateOAuth(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveOAuthProvider(root, p); err != nil {
+		t.Fatal(err)
+	}
+	// Loopback bases stay testable, like the other OAuth kinds.
+	loopback := p
+	loopback.BaseURL = "http://127.0.0.1:9/v1"
+	if err := validateOAuth(loopback); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []Provider{
+		{Name: "xai", OAuth: "xai", Protocol: ChatCompletions, BaseURL: "https://api.x.ai/v1"},
+		{Name: "xai", OAuth: "xai", Protocol: Responses, BaseURL: "https://api.x.ai/v1", APIKeyEnv: "XAI_API_KEY"},
+		{Name: "xai", OAuth: "xai", Protocol: Responses, BaseURL: "https://api.example.com/v1"},
+	} {
+		if err := validateOAuth(bad); err == nil {
+			t.Fatalf("accepted %+v", bad)
+		}
+	}
+	// grok models on a Responses endpoint default to hosted search; the API-key
+	// Completions path stays off unless configured.
+	if !(ModelSpec{Name: "grok-4"}).HasHostedSearch(Responses) {
+		t.Fatal("grok lacks default hosted search on responses")
+	}
+	if (ModelSpec{Name: "grok-4"}).HasHostedSearch(ChatCompletions) {
+		t.Fatal("grok hosted search leaked into completions")
+	}
+	off := false
+	if (ModelSpec{Name: "grok-4", HostedSearch: &off}).HasHostedSearch(Responses) {
+		t.Fatal("explicit override ignored")
+	}
+}

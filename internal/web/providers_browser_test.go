@@ -47,7 +47,7 @@ func TestProvidersSettingsBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=10000", "--dump-dom", (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html")}).String()).CombinedOutput()
+	out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html")}).String()).CombinedOutput()
 	if err != nil {
 		t.Fatalf("Chrome: %v\n%s", err, out)
 	}
@@ -91,6 +91,13 @@ window.fetch=async(path,opts={})=>{
   if(!providers.some(p=>p.oauth==='chatgpt'))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
   return json({state:'succeeded'});
  }
+ if(path==='/api/providers/oauth/xai/start'){fixture.xaiStarts=(fixture.xaiStarts||0)+1;fixture.xaiCancelled=false;return json({url:'https://auth.example/authorize'})}
+ if(path==='/api/providers/oauth/xai/status'){
+  if(fixture.xaiCancelled)return json({state:'cancelled'});
+  if(fixture.xaiFail)return json({state:'failed',error:'授权未完成，请重试'});
+  return json({state:'pending'});
+ }
+ if(path==='/api/providers/oauth/xai/cancel'){fixture.xaiCancelled=true;return json({status:'cancelled'})}
  if(String(path).startsWith('/api/providers/models?')||/^\/api\/providers\/[a-z-]+\/sync$/.test(path)){fixture.catalogCalls=(fixture.catalogCalls||[]).concat(path);
   if(fixture.fail||scene==='error')return json({error:'upstream failed'},422);
   if(fixture.empty||scene==='empty')return json({models:[]});
@@ -102,7 +109,7 @@ window.fetch=async(path,opts={})=>{
 `
 
 const providersDriver = `
-const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)},btn=text=>[...document.querySelectorAll('button')].find(b=>b.textContent===text);
 const waitFor=async(fn,msg)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.textContent.includes(name));
 (async()=>{
@@ -121,7 +128,16 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  assert([...document.querySelectorAll('.provider-card img')].every(i=>/provider-icons\/[a-z-]+\.svg$/.test(i.getAttribute('src'))),'bad glyph');
  card('Vertex AI').click();await waitFor(()=>$('.provider-empty'),'vertex state');assert(!$('.provider-key')&&$('.provider-empty').textContent.includes('Google Cloud'),'vertex shown as keyable');assert(document.querySelectorAll('.provider-model-row').length===2,'vertex default models');
  $('.provider-back').click();
- card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
+ // xAI leads with account login; the key form folds away as a secondary entry.
+ card('xAI').click();await waitFor(()=>btn('登录 xAI'),'xai login CTA missing');
+ assert(!$('.provider-key-alt').open,'xai key form not folded');assert($('.provider-key input'),'xai key form missing');
+ assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
+ btn('登录 xAI').click();await waitFor(()=>btn('取消')&&btn('重新打开'),'xai pending controls missing');
+ // A failed login keeps a readable error with cancel and re-login visible.
+ fixture.xaiFail=true;await waitFor(()=>btn('重新登录')&&btn('取消'),'xai retry after failure missing');
+ assert($('#settings-providers').textContent.includes('授权未完成'),'xai failure text missing');
+ fixture.xaiCancelled=true;fixture.xaiFail=false;$('.provider-back').click();
+ card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');
  const typed=$('.provider-key input');assert(typed.type==='password','key input visible');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
  await waitFor(()=>$('.provider-model-row'),'models after key');assert(fixture.saves===1,'key saved once');assert($('.provider-status').textContent.includes('密钥已配置'),'status after key');
  assert(fixture.catalogCalls.includes('/api/providers/xai/sync'),'fetched models were not registered');
@@ -147,7 +163,7 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  fixture.fail=true;card('OpenAI').click();await waitFor(()=>$('.provider-empty button'),'missing retry');assert($('.provider-empty').textContent.includes('失败'),'failed list silent');
  fixture.fail=false;$('.provider-empty button').click();await waitFor(()=>$('.provider-model-row'),'retry did not recover');
  $('.provider-back').click();fixture.large=true;card('OpenAI').click();await waitFor(()=>document.querySelectorAll('.provider-model-row').length===2048,'large catalog missing');
- assert(!fixture.calls.some(p=>p.includes('/oauth/')),'OAuth started without subscription click');
+ assert(fixture.xaiStarts===1,'unexpected xAI login starts');assert(!fixture.calls.some(p=>p.includes('/oauth/chatgpt/start')),'OAuth started without subscription click');
  $('.provider-back').click();$('.provider-search input').value='chatgpt';$('.provider-search input').dispatchEvent(new Event('input'));
  assert(!$('.provider-section').hidden,'ChatGPT search hid subscription');
  card('ChatGPT').click();assert(card('ChatGPT').disabled,'start request remained clickable');

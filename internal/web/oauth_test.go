@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -125,5 +126,92 @@ func TestOAuthWebRoutesBindingAndKeyIsolation(t *testing.T) {
 	}
 	if code, _ := call("PUT", "/api/bots/ada/binding", `{"provider":"key-only","model":"fake"}`, true); code != 200 {
 		t.Fatalf("OAuth failure blocked key binding: %d", code)
+	}
+}
+
+func TestOAuthCancelRoute(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	// The xAI loopback port is fixed in production; tests take an ephemeral one
+	// so parallel package binaries never fight over it.
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	m := &providerauth.Manager{Root: root, CallbackPort: port}
+	defer m.Close()
+	s := &Server{Root: root, Owner: "u1", oauth: m}
+	token, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ui := httptest.NewServer(muxOf(s))
+	defer ui.Close()
+	cookie := loginCookie(t, ui.URL, token)
+	call := func(method, path string, auth bool) (int, []byte) {
+		t.Helper()
+		req, _ := http.NewRequest(method, ui.URL+path, nil)
+		if auth {
+			req.AddCookie(cookie)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal("HTTP call failed")
+		}
+		defer res.Body.Close()
+		raw, _ := io.ReadAll(res.Body)
+		return res.StatusCode, raw
+	}
+	if code, _ := call("POST", "/api/providers/oauth/xai/cancel", false); code != 401 {
+		t.Fatalf("unauthenticated cancel %d", code)
+	}
+	if code, _ := call("POST", "/api/providers/oauth/anthropic/cancel", true); code != 404 {
+		t.Fatalf("Claude cancel %d", code)
+	}
+	if code, _ := call("POST", "/api/providers/oauth/openrouter/cancel", true); code != 409 {
+		t.Fatalf("idle cancel %d", code)
+	}
+	if code, raw := call("GET", "/api/providers/oauth/xai/status", true); code != 200 || !strings.Contains(string(raw), `"state":"idle"`) {
+		t.Fatalf("xai status %d %s", code, raw)
+	}
+	if code, raw := call("POST", "/api/providers/oauth/xai/start", true); code != 200 {
+		t.Fatalf("xai start %d %s", code, raw)
+	}
+	if code, raw := call("GET", "/api/providers/oauth/xai/status", true); code != 200 || !strings.Contains(string(raw), `"state":"pending"`) {
+		t.Fatalf("xai pending %d %s", code, raw)
+	}
+	if code, raw := call("POST", "/api/providers/oauth/chatgpt/start", true); code != 400 || !strings.Contains(string(raw), "另一个登录") {
+		t.Fatalf("cross-kind start %d %s", code, raw)
+	}
+	if code, raw := call("POST", "/api/providers/oauth/xai/cancel", true); code != 200 {
+		t.Fatalf("xai cancel %d %s", code, raw)
+	}
+	if code, raw := call("GET", "/api/providers/oauth/xai/status", true); code != 200 || !strings.Contains(string(raw), `"state":"cancelled"`) {
+		t.Fatalf("xai cancelled %d %s", code, raw)
+	}
+	// An immediate restart on the same port works after cancelling.
+	if code, _ := call("POST", "/api/providers/oauth/xai/start", true); code != 200 {
+		t.Fatalf("xai restart %d", code)
+	}
+	if code, _ := call("POST", "/api/providers/oauth/xai/cancel", true); code != 200 {
+		t.Fatal("second cancel")
+	}
+	// The cancel capability is shared with the other kinds.
+	if code, _ := call("POST", "/api/providers/oauth/chatgpt/start", true); code != 200 {
+		t.Fatal("chatgpt start")
+	}
+	if code, _ := call("POST", "/api/providers/oauth/chatgpt/cancel", true); code != 200 {
+		t.Fatal("chatgpt cancel")
+	}
+	if code, raw := call("GET", "/api/providers/oauth/chatgpt/status", true); code != 200 || !strings.Contains(string(raw), `"state":"cancelled"`) {
+		t.Fatalf("chatgpt cancelled %d %s", code, raw)
 	}
 }

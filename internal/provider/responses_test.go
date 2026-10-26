@@ -316,3 +316,106 @@ func TestCitationInsertionKeepsExclusiveEnd(t *testing.T) {
 		t.Fatalf("prefix citation %+v", before.Content[1].Citation)
 	}
 }
+
+type captureTransport struct {
+	bodies []map[string]any
+}
+
+func (c *captureTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	raw, _ := io.ReadAll(r.Body)
+	var body map[string]any
+	if json.Unmarshal(raw, &body) != nil {
+		return nil, fmt.Errorf("bad request body")
+	}
+	c.bodies = append(c.bodies, body)
+	sse := "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"m1\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n"
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(sse)), Header: http.Header{"Content-Type": []string{"text/event-stream"}}}, nil
+}
+
+func toolTypes(body map[string]any) []string {
+	var out []string
+	tools, _ := body["tools"].([]any)
+	for _, t := range tools {
+		if m, ok := t.(map[string]any); ok {
+			out = append(out, fmt.Sprint(m["type"]))
+		}
+	}
+	return out
+}
+
+func TestResponsesMountsXAIHostedTools(t *testing.T) {
+	cases := []struct {
+		name   string
+		base   string
+		hosted bool
+		want   []string
+	}{
+		{"xai mounted", "https://api.x.ai/v1", true, []string{"function", "web_search", "x_search", "code_interpreter"}},
+		{"xai hosted off", "https://api.x.ai/v1", false, []string{"function"}},
+		{"openai stays web_search only", "https://api.openai.com/v1", true, []string{"function", "web_search"}},
+		{"xai case-insensitive host", "https://API.X.AI/v1", true, []string{"function", "web_search", "x_search", "code_interpreter"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := &captureTransport{}
+			c := &Responses{Client: Client{BaseURL: tc.base, APIKey: "fake", Model: "grok-4", HTTPClient: &http.Client{Transport: tr}}, WebSearch: tc.hosted}
+			if _, err := c.Chat(context.Background(), Request{HostedSearch: tc.hosted, Tools: []ToolDef{{Name: "shell"}}}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if len(tr.bodies) != 1 {
+				t.Fatalf("requests %d", len(tr.bodies))
+			}
+			got := toolTypes(tr.bodies[0])
+			if !reflect.DeepEqual(got, tc.want) && !(len(got) == 0 && len(tc.want) == 0) {
+				t.Fatalf("tools %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResponsesParsesXAIHostedCalls(t *testing.T) {
+	for _, event := range []struct{ event, tool, status string }{
+		{"response.x_search_call.searching", "x_search", "searching"},
+		{"response.code_interpreter_call.in_progress", "code_interpreter", "in_progress"},
+		{"response.code_interpreter_call.completed", "code_interpreter", "completed"},
+		{"response.output_text.delta", "", ""},
+		{"response.file_search_call.in_progress", "", ""},
+	} {
+		tool, status, ok := hostedProgress(event.event)
+		if event.tool == "" && ok {
+			t.Fatalf("%s mistaken for a hosted call", event.event)
+		}
+		if event.tool != "" && (!ok || tool != event.tool || status != event.status) {
+			t.Fatalf("%s -> %s %s %v", event.event, tool, status, ok)
+		}
+	}
+	stream := `data: {"type":"response.x_search_call.searching","item_id":"xs_1"}
+
+data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"x_search_call","id":"xs_1","status":"completed","action":{"type":"x_search","query":"最新消息"}},{"type":"code_interpreter_call","id":"ci_1","status":"completed"},{"type":"collections_search_call","id":"cs_1","status":"completed"},{"type":"message","id":"m1","content":[{"type":"output_text","text":"答案"}]}]}}
+
+`
+	msg, err := readResponses(context.Background(), strings.NewReader(stream), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hosted []string
+	for _, p := range msg.Content {
+		if p.Type == PartHosted && p.Hosted != nil {
+			hosted = append(hosted, p.Hosted.Name+":"+p.Hosted.Status)
+		}
+	}
+	if !reflect.DeepEqual(hosted, []string{"x_search:completed", "code_interpreter:completed"}) {
+		t.Fatalf("hosted steps %v", hosted)
+	}
+	if first := msg.Content[0]; first.Hosted == nil || first.Hosted.Query != "最新消息" {
+		t.Fatalf("x_search query lost: %+v", msg.Content[0])
+	}
+	// Unknown hosted call types degrade to text, never a fake hosted step.
+	unknown := msg.Content[2]
+	if unknown.Type == PartHosted || !strings.Contains(unknown.Text, "collections_search_call") {
+		t.Fatalf("unknown call not degraded: %+v", unknown)
+	}
+	if !strings.Contains(msg.PortableText(), "X 搜索") || !strings.Contains(msg.PortableText(), "代码解释器") {
+		t.Fatalf("portable summaries lost: %s", msg.PortableText())
+	}
+}

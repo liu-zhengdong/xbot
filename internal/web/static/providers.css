@@ -66,6 +66,17 @@ html[data-theme="dark"] .provider-glyph-openai{--provider-openai-filter:invert(1
 .provider-chip.supported{color:var(--x-type-dev);background:var(--x-type-dev-bg)}.provider-chip.unsupported{color:var(--x-faint);border-color:var(--x-fill-3)}.provider-window{color:var(--x-type-res);background:var(--x-type-res-bg);font-family:var(--x-mono)}
 .provider-key{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:20px 0;color:var(--x-muted);font-size:13px}.provider-key p:first-child{flex-basis:100%;margin:0}.provider-key input{flex:1 1 220px;min-width:0;padding:9px 12px;border:1px solid var(--x-fill-2);border-radius:10px;background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:13px}.provider-key input:focus-visible{outline:2px solid var(--provider-accent);outline-offset:1px}.provider-key .provider-login-note{flex-basis:100%;margin:0}
 .provider-empty{grid-column:1/-1;padding:20px 0;color:var(--x-muted);font-size:13px;line-height:1.7}.provider-empty p{margin:0 0 10px;overflow-wrap:anywhere}
+.provider-auth{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:2px 0 14px}
+.provider-login-actions{display:inline-flex;flex-wrap:wrap;align-items:center;gap:10px}
+.provider-login-actions .provider-back{margin:0;font-size:13px}
+.provider-login-actions .provider-back:first-child{color:var(--x-text)}
+.provider-status-auth{display:inline-flex;flex-wrap:wrap;align-items:center;gap:10px}
+.provider-key-alt{grid-column:1/-1;border-top:1px solid var(--x-fill-3);margin-top:4px}
+.provider-key-alt summary{cursor:pointer;color:var(--x-muted);font-size:12px;padding:10px 0;list-style:none;user-select:none}
+.provider-key-alt summary::-webkit-details-marker{display:none}
+.provider-key-alt summary::after{content:"＋";margin-left:5px;color:var(--x-faint)}
+.provider-key-alt[open] summary::after{content:"−"}
+.provider-key-alt .provider-key{padding:6px 0 16px}
 @media(max-width:600px){.provider-model-row{align-items:flex-start;flex-direction:column;gap:10px}.provider-chips{justify-content:flex-start}.provider-card{gap:8px;padding:12px}.provider-detail-heading{gap:12px}}
 @media(prefers-reduced-motion:reduce){.provider-card{transition:none}.provider-card:active{transform:none}}
 @media(max-width:600px){

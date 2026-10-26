@@ -150,7 +150,11 @@ func (s *Store) refreshOAuth(ctx context.Context, c *OAuthCredential, domains []
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !HostAllowed(u.Hostname(), domains) || (u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1"))) {
 		return errors.New("vault: invalid OAuth token endpoint")
 	}
-	form := url.Values{"grant_type": {"refresh_token"}, "client_id": {c.ClientID}, "refresh_token": {c.RefreshToken}, "resource": {c.Resource}}
+	form := url.Values{"grant_type": {"refresh_token"}, "client_id": {c.ClientID}, "refresh_token": {c.RefreshToken}}
+	// Only ChatGPT credentials carry a resource; xAI must not receive an empty one.
+	if c.Resource != "" {
+		form.Set("resource", c.Resource)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	r, err := http.NewRequestWithContext(ctx, "POST", c.TokenURL, strings.NewReader(form.Encode()))
@@ -178,7 +182,9 @@ func (s *Store) refreshOAuth(ctx context.Context, c *OAuthCredential, domains []
 	if json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&token) != nil || token.Access == "" || token.Expires <= 30 || !strings.EqualFold(token.Type, "Bearer") {
 		return errors.New("vault: invalid OAuth refresh response")
 	}
-	if token.Scope != "" && !strings.Contains(" "+token.Scope+" ", " chatgpt.tokens.use.direct ") {
+	// The ChatGPT plan scope applies only to ChatGPT credentials (marked by
+	// their resource); xAI and OpenRouter refreshes must not fail on it.
+	if c.Resource == "https://api.openai.com/v1" && token.Scope != "" && !strings.Contains(" "+token.Scope+" ", " chatgpt.tokens.use.direct ") {
 		return errors.New("vault: ChatGPT plan scope missing")
 	}
 	c.AccessToken = token.Access
