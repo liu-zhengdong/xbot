@@ -5802,7 +5802,7 @@
       return group;
     };
     wrap.append(
-      section("基本", head, labeled("标识", name), labeled("简介", description)),
+      section("基本", head, labeled("名字", name), labeled("简介", description)),
       section("人设卡", pickLine, pickHint),
       err,
     );

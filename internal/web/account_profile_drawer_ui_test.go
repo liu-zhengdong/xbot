@@ -16,7 +16,6 @@ func TestProfileDrawer(t *testing.T) {
 			`name.dataset.profileFocus = "true";`,
 			`modalFields.querySelector("[data-profile-focus]").focus();`,
 			`target.focus({ preventScroll: true });`,
-			`section("基本", head, labeled("标识", name), labeled("简介", description))`,
 			`section("人设卡", pickLine, pickHint)`,
 			`window.XBotPersonaCards.pick({`,
 			`if (!modal.hidden) { closeModal(); return; }`,

@@ -3,6 +3,12 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-27 编辑资料名字标签（分支验证）
+
+- 编辑资料名字行由「标识」改为「名字」，复用原字段与保存逻辑；人设卡库、选用、导入和已删除字段保持原行为。当前用语见 [ui](atlas/ui.md)，复审与合入待办保留在 [设计](dev/persona-label-name.md)。
+- 全仓 `go test -count=1 ./...`、web 包 `-count=3`、全仓 vet、gofmt、JS 语法与 diff 检查通过；新增 Chrome 回归按可见标签编辑并保存名字和简介，旧产品代码因找不到「名字」输入框失败。atlas audit 已执行，既有文档告警详见交付报告。
+- 1440×900、DPR 2 的前后浅深色默认／选中截图在 `~/.xbot-build/ui-shots/persona-label-name/`；自检与日志在 `~/.xbot-build/persona-label-name/delivery-report.md`。产品 app.js 前后均 334719 字节，新增请求／轮询为 0；未测模型、IPC p95 或帧率。分支验证通过，未合入、未 push、未做设计师验收。
+
 ## 2026-10-26 公网 UI 单源
 
 - 设备新增受限 `GET /api/ui/static/<path>`，只读内嵌 staticFS；保留 MIME / ETag / no-cache，补设备 tip 与 700 KiB 超限 413。pipe 保持 owner `/api/` 边界，复用 Do / AuthorizeOwner，仅扩展静态元数据白名单。
