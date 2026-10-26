@@ -104,7 +104,7 @@ func TestAnthropicRecordedReplayProjectionAndEndpoint(t *testing.T) {
 	if strings.Contains(string(b), `"type":"future_block"`) {
 		t.Fatal("unknown native block replayed")
 	}
-	wire, err := toWire(stored)
+	wire, err := toWire(stored, false)
 	if err != nil {
 		t.Fatal(err)
 	}

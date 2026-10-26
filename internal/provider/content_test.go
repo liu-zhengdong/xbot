@@ -20,7 +20,7 @@ func TestLegacyContentBecomesReplayableParts(t *testing.T) {
 		if err := json.Unmarshal([]byte(raw), &m); err != nil {
 			t.Fatal(err)
 		}
-		before, err := toWire(m)
+		before, err := toWire(m, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +45,7 @@ func TestLegacyContentBecomesReplayableParts(t *testing.T) {
 		if err := json.Unmarshal(stored, &replay); err != nil {
 			t.Fatal(err)
 		}
-		after, err := toWire(replay)
+		after, err := toWire(replay, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func TestContentPartsKeepOrderAndOpaqueReplayData(t *testing.T) {
 	if !reflect.DeepEqual(m.Content, replay.Content) {
 		t.Fatalf("lost replay parts: %s", stored)
 	}
-	w, err := toWire(replay)
+	w, err := toWire(replay, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestDecodeStreamPreservesContentOrder(t *testing.T) {
 	if err := json.Unmarshal(stored, &replay); err != nil {
 		t.Fatal(err)
 	}
-	w, err := toWire(replay)
+	w, err := toWire(replay, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func BenchmarkContentReplay(b *testing.B) {
 		if err := json.Unmarshal(raw, &replay); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := toWire(replay); err != nil {
+		if _, err := toWire(replay, false); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -229,7 +229,7 @@ func TestContentRedactionAcrossTextParts(t *testing.T) {
 	if err := json.Unmarshal(raw, &replay); err != nil {
 		t.Fatal(err)
 	}
-	wire, err := toWire(replay)
+	wire, err := toWire(replay, false)
 	if err != nil {
 		t.Fatal(err)
 	}

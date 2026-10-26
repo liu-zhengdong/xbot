@@ -14,15 +14,16 @@ const (
 )
 
 type Endpoint struct {
-	Protocol     string
-	HostedSearch bool
-	APIKey       string
-	BaseURL      string
-	Model        string
-	KeyEnv       string
-	Thinking     string
-	Vision       bool
-	HTTPClient   *http.Client
+	Protocol        string
+	HostedSearch    bool
+	APIKey          string
+	BaseURL         string
+	Model           string
+	KeyEnv          string
+	Thinking        string
+	ReasoningEffort string
+	Vision          bool
+	HTTPClient      *http.Client
 }
 
 // New resolves protocol once at the model boundary, never from base_url.
@@ -30,7 +31,7 @@ func New(m Endpoint) (Provider, error) {
 	if strings.HasPrefix(m.APIKey, "{{secret:") && m.HTTPClient == nil {
 		return nil, fmt.Errorf("provider: OAuth requires the local vault transport; remote runners are not supported")
 	}
-	c := Client{BaseURL: m.BaseURL, APIKey: m.APIKey, Model: m.Model, Thinking: m.Thinking, HTTPClient: m.HTTPClient}
+	c := Client{BaseURL: m.BaseURL, APIKey: m.APIKey, Model: m.Model, Thinking: m.Thinking, ReasoningEffort: m.ReasoningEffort, HTTPClient: m.HTTPClient}
 	switch m.Protocol {
 	case "", ChatCompletions:
 		return &c, nil
@@ -86,6 +87,7 @@ func EndpointOf(p Provider) (Endpoint, bool) {
 		return m, false
 	}
 	m.BaseURL, m.APIKey, m.Model, m.Thinking = c.BaseURL, c.APIKey, c.Model, c.Thinking
+	m.ReasoningEffort = c.ReasoningEffort
 	m.HTTPClient = c.HTTPClient
 	return m, true
 }

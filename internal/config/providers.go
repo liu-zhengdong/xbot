@@ -37,8 +37,10 @@ type Provider struct {
 // provider or model name contains "deepseek", off otherwise.
 // TodoSteps is how many tool steps a list must sit unchanged before a reminder.
 // Zero means the default of 6.
-// Thinking is "off" (send thinking disabled), "omit" (send no thinking field),
-// or empty: off for DeepSeek model names, omit for the rest.
+// Thinking is "on" (send thinking enabled and replay the model's reasoning),
+// "off" (send thinking disabled), "omit" (send no thinking field), or empty:
+// on for DeepSeek model names, omit for the rest.
+// ReasoningEffort is low/high/max; empty defaults to low on thinking requests.
 // Vision, when set, is this model's image understanding. Nil uses the default
 // for the model id: deepseek-flash sees images; deepseek-chat and
 // deepseek-v4-pro do not. Other ids do not, until the spec says so.
@@ -47,13 +49,14 @@ type Provider struct {
 // ImageGenModel is the OpenAI tool-level image model; empty uses the vendor
 // default, and xAI ignores it.
 type ModelSpec struct {
-	Name         string `json:"name"`
-	Context      int    `json:"context"`
-	Todo         *bool  `json:"todo,omitempty"`
-	TodoSteps    int    `json:"todo_steps,omitempty"`
-	Thinking     string `json:"thinking,omitempty"`
-	Vision       *bool  `json:"vision,omitempty"`
-	HostedSearch *bool  `json:"hosted_web_search,omitempty"`
+	Name            string `json:"name"`
+	Context         int    `json:"context"`
+	Todo            *bool  `json:"todo,omitempty"`
+	TodoSteps       int    `json:"todo_steps,omitempty"`
+	Thinking        string `json:"thinking,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	Vision          *bool  `json:"vision,omitempty"`
+	HostedSearch    *bool  `json:"hosted_web_search,omitempty"`
 
 	HostedImageGen *bool  `json:"hosted_image_generation,omitempty"`
 	ImageGenModel  string `json:"image_generation_model,omitempty"`
@@ -190,6 +193,9 @@ func Add(root string, p Provider, model ModelSpec) error {
 			}
 			if model.Thinking == "" {
 				model.Thinking = cur.Models[n].Thinking
+			}
+			if model.ReasoningEffort == "" {
+				model.ReasoningEffort = cur.Models[n].ReasoningEffort
 			}
 			if model.Vision == nil {
 				model.Vision = cur.Models[n].Vision
@@ -333,6 +339,9 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	if err := validThinking(model.Thinking); err != nil {
 		return ModelConfig{}, 0, err
 	}
+	if err := validReasoningEffort(model.ReasoningEffort); err != nil {
+		return ModelConfig{}, 0, err
+	}
 	// The file may have been edited by hand; the key goes wherever base_url says.
 	if err := checkProviderBase(p.BaseURL); err != nil {
 		return ModelConfig{}, 0, err
@@ -361,15 +370,16 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		return ModelConfig{}, 0, fmt.Errorf("providers: %s is empty", p.APIKeyEnv)
 	}
 	return ModelConfig{
-		Protocol:     protocol,
-		HostedSearch: model.HasHostedSearch(protocol),
-		APIKey:       key,
-		BaseURL:      strings.TrimRight(p.BaseURL, "/"),
-		Model:        model.Name,
-		KeyEnv:       p.APIKeyEnv,
-		Thinking:     model.Thinking,
-		Vision:       model.SeesImages(),
-		HTTPClient:   oauthHTTP,
+		Protocol:        protocol,
+		HostedSearch:    model.HasHostedSearch(protocol),
+		APIKey:          key,
+		BaseURL:         strings.TrimRight(p.BaseURL, "/"),
+		Model:           model.Name,
+		KeyEnv:          p.APIKeyEnv,
+		Thinking:        model.Thinking,
+		ReasoningEffort: model.ReasoningEffort,
+		Vision:          model.SeesImages(),
+		HTTPClient:      oauthHTTP,
 	}, model.Context, nil
 }
 
@@ -455,15 +465,18 @@ func validateModel(m ModelSpec) error {
 	if m.TodoSteps < 0 {
 		return errors.New("providers: todo_steps must not be negative")
 	}
-	return validThinking(m.Thinking)
+	if err := validThinking(m.Thinking); err != nil {
+		return err
+	}
+	return validReasoningEffort(m.ReasoningEffort)
 }
 
 func validThinking(v string) error {
 	switch v {
-	case "", "off", "omit":
+	case "", "on", "off", "omit":
 		return nil
 	}
-	return fmt.Errorf("providers: thinking must be off or omit, got %q", v)
+	return fmt.Errorf("providers: thinking must be on, off or omit, got %q", v)
 }
 
 func nameOK(s string) bool {
@@ -487,4 +500,12 @@ func indexOf(list []Provider, name string) int {
 		}
 	}
 	return -1
+}
+
+func validReasoningEffort(v string) error {
+	switch v {
+	case "", "low", "high", "max":
+		return nil
+	}
+	return fmt.Errorf("providers: reasoning_effort must be low, high or max, got %q", v)
 }

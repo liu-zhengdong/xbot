@@ -395,3 +395,17 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 按 [ADR 0028](adr/0028-no-foreground-background-split.md) 整块删掉前台闸：`foreground.go` 全文（`foregroundHidden`/`foregroundKept`/`workClass`、`foregroundTools`/`foregroundRefuses`/`errForeground`、`foregroundCap`/`cappedTools`/`capTools`/`capNote`/`capGrace`/`<foreground_limit>`）、`StopForegroundLimit`、turn 的 `capped`/`capSteps`/`capBaseTools`/`capFrom`/`capFork`、`freshAllowanceLocked`；`AllowFork` 下「超前台上限自动转后台」（`foregroundCapped`/`capNotice`）一并删，插话分叉保留。`ForegroundMaxTools`/`ForegroundMaxTime` 从 Kernel、role 默认、`Config`、`ProfileUpdate`、`profile set` 参数里删除。`DispatchRule` 改写为「先回人再干活；短活自己干，长活 dispatch」，旧措辞留 `legacyDispatchRule` 只供迁移识别。
 
 验证：新测 `TestMainLineDoesTheWork`、`TestMainLineAndSubagentsReachTheMountedTools`、`TestLongTurnStaysOnMainLine` 在旧代码（71f1ac9）上均失败；`go test -count=1 ./...` 46 包全过，kernel/bot/cmd/xbot/eval `-count=3` 过，gofmt/vet 净。级别：已合入分支（未合 main、未推）。Not run：真模型 `evals/dispatch/*`（新规则下模型可能自己做短活，期望值需主人用真 DeepSeek 再认证）；浏览器手测。
+
+### 思考回传与启用（2026-10-26，本地分支）
+
+`feature/thinking-enable` 续接原未提交实现：Completions 保存并多轮回传 reasoning_content，DeepSeek 默认启用；显式 on 真启用 Anthropic thinking 预算与 Responses 原生 reasoning。默认思考档 low，配置和 CLI 支持 low/high/max，runner 保留档位。思考只在内部 transcript 保存、脱敏和回放，SSE/公开历史/气泡均不展示。现状见 [供应商](atlas/providers.md)，后续验收见 [开发设计](dev/thinking-enable.md)。
+
+最后一轮 `go test -count=1 ./...`、vet、build、gofmt 与 diff 检查通过；六条基础旅程加三协议思考专项 smoke 通过（283.327 秒），本机 Chrome、真实 CLI 档位校验和 provider 思考专项 race 通过。相关七包三遍已跑，web 插话重复回答与 kernel shell 通知时序存在失败，两者均在隔离的旧提交 9046089 上复现；首轮全量另有长程回忆失败，末轮通过，旧代码长程三遍通过，原因未完整闭环，未修改验收断言。atlas audit 仍报其它文档的既有告警。完整失败记录和复测见 `~/.xbot-build/thinking-enable/encode-report.md`。
+
+性能：三种协议六次真实进程回复含两次读文件工具，耗时 47.4–115.6 毫秒（scripted 上游）；ContentReplay 基准 0.156 毫秒/op。不是实际模型延迟或 IPC p95。级别：本地分支提交、假模型专项端到端通过；未合入 main、未 push，未重启 8788；真实账号、Linux CI、主人日用、全量 race、FPS 与后台减速未验证。
+
+### 思考回传 fix1：公开导出隔离（2026-10-26，本地分支）
+
+修复 review1 P2-1：`ExportTo/visibleMessage` 共用公开投影，JSONL、Markdown 及 CLI 导出统一移除 reasoning 块、清空其余块的 VendorRaw；保留正文、公开步骤/引用和原工具开关，内部段文件与重启后同协议回放完整。现状见 [上下文](atlas/context.md#怎么运转)。
+
+三协议 × tools=0/1 × 两种格式的 HTTP 回归在旧实现上失败，修复后通过；Export/Thinking/Reasoning 相关五包专项三遍、bot/web 整包三遍、导出专项 race、三协议“导出后重启再续轮”冒烟及 vet 通过。全量仅既有 `TestInterjectionGoesStraightIntoTheTurn` 因重复回答失败，未修改该测试或调度逻辑；gofmt/diff 检查净，atlas audit 仍报既有文档告警。专项六次请求含读文件及四次导出检查累计 34.7–59.0 毫秒（scripted 上游，小样本，非真实模型或 IPC p95）。级别：本地分支修复、假模型专项端到端通过，未合 main、未 push、未重启 8788；报告见 `~/.xbot-build/thinking-enable/fix1-report.md`。

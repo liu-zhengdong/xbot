@@ -305,7 +305,7 @@ func (k *Kernel) endpoint() (exec.Endpoint, error) {
 	if !ok {
 		return exec.Endpoint{}, errors.New("exec: provider has no remote endpoint")
 	}
-	return exec.Endpoint{Protocol: c.Protocol, HostedSearch: c.HostedSearch, Thinking: c.Thinking, BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}, nil
+	return exec.Endpoint{Protocol: c.Protocol, HostedSearch: c.HostedSearch, Thinking: c.Thinking, ReasoningEffort: c.ReasoningEffort, BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}, nil
 }
 
 func (k *Kernel) forkMessages(ctx context.Context) ([]provider.Message, error) {

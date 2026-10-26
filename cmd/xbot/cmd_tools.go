@@ -235,7 +235,7 @@ func cmdProvider(root string, args []string) error {
 	case "add":
 		ordered, err := reorderFlags(args[1:], map[string]bool{
 			"base-url": true, "api-key-env": true, "model": true, "context": true,
-			"todo": true, "todo-steps": true, "thinking": true, "vision": true, "protocol": true, "hosted-web-search": true,
+			"todo": true, "todo-steps": true, "thinking": true, "reasoning-effort": true, "vision": true, "protocol": true, "hosted-web-search": true,
 		})
 		if err != nil {
 			return err
@@ -250,15 +250,16 @@ func cmdProvider(root string, args []string) error {
 		contextLen := fs.Int("context", 0, "context length in tokens")
 		todoFlag := fs.String("todo", "", "todo reminders: on, off, or empty to keep the current setting")
 		todoSteps := fs.Int("todo-steps", 0, "tool steps without a todo update before a reminder; 0 keeps the default")
-		thinking := fs.String("thinking", "", "thinking field: off, omit, or empty to keep the current setting")
+		thinking := fs.String("thinking", "", "thinking field: on, off, omit, or empty to keep the current setting")
+		effort := fs.String("reasoning-effort", "", "reasoning effort: low (default), high, or max")
 		vision := fs.String("vision", "", "image understanding: on, off, or empty to keep the current setting")
 		if err := fs.Parse(ordered); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--protocol chat_completions|responses|anthropic_messages] [--hosted-web-search on|off] [--todo on|off] [--todo-steps N] [--thinking off|omit] [--vision on|off]")
+			return errors.New("usage: xbot provider add <name> --base-url URL --api-key-env VAR --model NAME --context N [--protocol chat_completions|responses|anthropic_messages] [--hosted-web-search on|off] [--todo on|off] [--todo-steps N] [--thinking on|off|omit] [--reasoning-effort low|high|max] [--vision on|off]")
 		}
-		spec := config.ModelSpec{Name: *model, Context: *contextLen, TodoSteps: *todoSteps, Thinking: strings.ToLower(strings.TrimSpace(*thinking))}
+		spec := config.ModelSpec{Name: *model, Context: *contextLen, TodoSteps: *todoSteps, Thinking: strings.ToLower(strings.TrimSpace(*thinking)), ReasoningEffort: strings.ToLower(strings.TrimSpace(*effort))}
 		if prev, _, err := config.Lookup(root, fs.Arg(0), *model); err == nil {
 			for _, m := range prev.Models {
 				if m.Name == *model {

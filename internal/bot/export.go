@@ -48,7 +48,8 @@ type exportSummary struct {
 	At    time.Time `json:"at,omitempty"`
 }
 
-// ExportTranscript renders md for a person or jsonl for re-import.
+// ExportTranscript renders public md or jsonl for re-import, without reasoning
+// or opaque vendor replay payloads. Internal transcript storage stays complete.
 // jsonl entry lines unmarshal into Entry; seq is extra and ignored on import.
 // Lines with kind "summary" are summary blocks, not transcript rows.
 // Each written piece passes through RedactText.
@@ -258,6 +259,18 @@ func forkMarkMD(seq int, m *ForkMark) string {
 }
 
 func visibleMessage(m provider.Message, tools bool) (provider.Message, bool) {
+	// Match the web transcript's publicParts boundary: reasoning is internal,
+	// and vendor payloads are for same-protocol replay, never user downloads.
+	// Copy parts before clearing fields so export cannot alter shared history.
+	parts := make([]provider.ContentPart, 0, len(m.Content))
+	for _, p := range m.Content {
+		if p.Type == provider.PartReasoning {
+			continue
+		}
+		p.VendorRaw = nil
+		parts = append(parts, p)
+	}
+	m.Content = parts
 	if !tools {
 		if m.Role == provider.RoleTool {
 			return provider.Message{}, false
