@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -30,6 +31,32 @@ func TestVendorIconsServed(t *testing.T) {
 		if res.StatusCode != 200 || res.Header.Get("Content-Type") != "image/svg+xml" {
 			t.Fatalf("%s: %d %s", b, res.StatusCode, res.Header.Get("Content-Type"))
 		}
+	}
+}
+
+// Claude 星芒只给技能导入来源行用，不是供应商品牌，路由单独注册。
+func TestSkillSourceClaudeIconServed(t *testing.T) {
+	_, srv, _ := setupServer(t, false, func(http.ResponseWriter, *http.Request) {})
+	for _, b := range providerBrands() {
+		if b == "claude" {
+			t.Fatal("claude must not be a provider brand")
+		}
+	}
+	raw, err := staticFS.ReadFile("static/provider-icons/claude.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := srv.Client().Get(srv.URL + "/provider-icons/claude.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "image/svg+xml" {
+		t.Fatalf("%d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	if string(body) != string(raw) || !strings.Contains(string(body), "<svg") || !strings.Contains(string(body), "<title>Claude</title>") || !strings.Contains(string(body), "M4.709 15.955") {
+		t.Fatalf("body is not the Claude starburst: %.80s", body)
 	}
 }
 

@@ -189,6 +189,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	for _, brand := range providerBrands() {
 		mux.HandleFunc("GET /provider-icons/"+brand+".svg", s.static("static/provider-icons/"+brand+".svg", "image/svg+xml"))
 	}
+	// 技能导入来源行的 Claude 星芒；不是供应商品牌，不进 providerBrands()。
+	mux.HandleFunc("GET /provider-icons/claude.svg", s.static("static/provider-icons/claude.svg", "image/svg+xml"))
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	s.registerStatusAPI(mux)
 	s.registerContextAPI(mux)
