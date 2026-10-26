@@ -189,7 +189,9 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
   await waitFor(()=>xbotDevices.S.view==='unpair','unbind confirm missing');
   $('#devices-modal [data-act="unpair"]').click();
   await waitFor(()=>clicks('DELETE /api/devices/desktop')===1,'unbind did not DELETE');
-  await waitFor(()=>!$('#settings-devices .g7-dev-card')&&document.getElementById('settings-devices').textContent.includes('还没有设备'),'unbound device stayed in the list');
+  await waitFor(()=>!$('#settings-devices .g7-dev-card')&&document.getElementById('settings-devices').textContent.includes('还没有其它设备'),'unbound device did not return to the other-device empty state');
+  assert($('#settings-devices .g7-self').closest('section').textContent.includes('这台电脑'),'unpair removed the local device card');
+  assert(!$('#settings-devices').textContent.includes('还没有设备'),'unpair empty state contradicts the local device card');
   await waitFor(()=>document.getElementById('remote-roster').hidden,'unbind left the sidebar group');
   document.body.dataset.testResult='passed';return;
  }
@@ -237,8 +239,11 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  assert(devices.querySelector('[data-act="self-gw-edit"]').getAttribute('aria-label')==='改网关地址','gateway pencil label');
  assert(!devices.querySelector('.g7-claim'),'claim banner without an unbound account');
  // 空态与侧栏。
- assert(devices.textContent.includes('还没有设备'),'empty copy');
+ assert(devices.querySelector('.g7-self').closest('section').textContent.includes('这台电脑'),'local device card missing in the empty state');
+ assert(devices.textContent.includes('还没有其它设备'),'other-device empty copy');
+ assert(!devices.textContent.includes('还没有设备'),'empty state contradicts the local device card');
  fixture.devices=[peerDevice];await xbotDevices.mount();
+ assert(devices.textContent.includes('已配对 · 1')&&!devices.querySelector('.g7-empty'),'paired list still shows an empty state');
  await waitFor(()=>document.querySelector('.g7-side-head'),'sidebar group missing');
  assert(document.querySelector('.g7-side-head').textContent.includes('台式机'),'sidebar group name');
  // 添加设备：说明为主、短码次要；复制、换一个、完成都真清理。
