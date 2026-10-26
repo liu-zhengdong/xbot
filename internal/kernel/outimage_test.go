@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -342,5 +343,186 @@ func TestRepeatedRefsAreReadOnce(t *testing.T) {
 	k.turn = &turn{outImages: []string{"x"}, outBytes: work.PastedMaxTotalBytes - 10}
 	if _, err := k.attachOutImages(context.Background(), []string{"chart.png"}); !errors.Is(err, errOverBudget) {
 		t.Fatalf("over budget: %v", err)
+	}
+}
+
+// TestQueuedDuplicateFitsBudget covers R4 with a complete, legal ~9.4 MiB PNG.
+// A duplicate consumes neither another slot nor any more of the reply budget,
+// and must not block the notification or the eventual reply's image.
+func TestQueuedDuplicateFitsBudget(t *testing.T) {
+	var buf bytes.Buffer
+	enc := png.Encoder{CompressionLevel: png.NoCompression}
+	if err := enc.Encode(&buf, image.NewNRGBA(image.Rect(0, 0, 1536, 1536))); err != nil {
+		t.Fatal(err)
+	}
+	data := buf.Bytes()
+	if len(data) <= work.PastedMaxTotalBytes/2 || len(data) > work.PastedMaxBytes {
+		t.Fatalf("bad fixture size: %d", len(data))
+	}
+	id, err := work.PastedNameFor("image/png", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"same-path", "paste-id", "path-aliases", "same-content", "same-content-next-call"} {
+		t.Run(kind, func(t *testing.T) {
+			k, dir, _ := outImageKernel(t)
+			k.turn = &turn{}
+			for _, name := range []string{"chart.png", "copy.png"} {
+				if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			call := func(refs []string) error {
+				args, err := json.Marshal(map[string]any{"text": "chart ready", "images": refs})
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = (notifyTool{k}).Run(context.Background(), args)
+				return err
+			}
+			wantNotes := 1
+			var err error
+			switch kind {
+			case "path-aliases":
+				err = call([]string{"chart.png", "./chart.png"})
+			case "same-content":
+				err = call([]string{"chart.png", "copy.png"})
+			default:
+				if err := call([]string{"chart.png"}); err != nil {
+					t.Fatal(err)
+				}
+				ref := "chart.png"
+				if kind == "paste-id" {
+					ref = id
+				} else if kind == "same-content-next-call" {
+					ref = "copy.png"
+				}
+				err = call([]string{ref})
+				wantNotes = 2
+			}
+			if err != nil {
+				t.Fatalf("duplicate of %d bytes refused: %v", len(data), err)
+			}
+			if !slices.Equal(k.turn.outImages, []string{id}) || k.turn.outBytes != len(data) {
+				t.Fatalf("queue = %v, bytes = %d", k.turn.outImages, k.turn.outBytes)
+			}
+			if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != wantNotes {
+				t.Fatalf("notifications = %v, %v; want %d", notes, err, wantNotes)
+			}
+			if _, err := k.recordTurn(k.turn, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("chart")}); err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, e := range entriesFor(t, k.Bot) {
+				if e.Message.Text() == "chart" {
+					found = true
+					if !slices.Equal(e.Images, []string{id}) {
+						t.Fatalf("reply images = %v", e.Images)
+					}
+				}
+			}
+			if !found || len(k.turn.outImages) != 0 || k.turn.outBytes != 0 {
+				t.Fatalf("reply recorded = %v; remaining queue = %v / %d", found, k.turn.outImages, k.turn.outBytes)
+			}
+		})
+	}
+}
+
+// TestNewOutImageOverBudgetIsNotLoaded guards R3 while fixing R4: a genuinely
+// new file that does not fit must not be loaded into a full byte slice, even
+// when it follows a duplicate. Rejection leaves the established queue and note
+// unchanged and does not store any part of the refused batch.
+func TestNewOutImageOverBudgetIsNotLoaded(t *testing.T) {
+	k, dir, _ := outImageKernel(t)
+	k.turn = &turn{}
+	data := append(onePixelPNG(t), make([]byte, 6<<20)...)
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	args := json.RawMessage(`{"text":"ready","images":["chart.png"]}`)
+	if _, err := (notifyTool{k}).Run(context.Background(), args); err != nil {
+		t.Fatal(err)
+	}
+	queued := slices.Clone(k.turn.outImages)
+	other := append(sizedPNG(t, 2, 1), make([]byte, 5<<20)...)
+	if err := os.WriteFile(filepath.Join(dir, "other.png"), other, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, refs := range [][]string{{"other.png"}, {"chart.png", "other.png"}} {
+		args, err := json.Marshal(map[string]any{"text": "too much", "images": refs})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Measure the new candidate alone; the repeated candidate is allowed
+		// its own bounded validation read, but adds nothing to the queue.
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		_, err = (notifyTool{k}).Run(context.Background(), args)
+		runtime.ReadMemStats(&after)
+		if !errors.Is(err, errOverBudget) {
+			t.Fatalf("new picture over budget: %v", err)
+		}
+		if len(refs) == 1 {
+			allocated := after.TotalAlloc - before.TotalAlloc
+			t.Logf("over-budget 5 MiB candidate allocated %d bytes", allocated)
+			if allocated > 1<<20 {
+				t.Fatalf("loaded over-budget picture: allocated %d bytes", allocated)
+			}
+		}
+	}
+	if !slices.Equal(k.turn.outImages, queued) || k.turn.outBytes != len(data) {
+		t.Fatalf("refusal changed queue: %v / %d", k.turn.outImages, k.turn.outBytes)
+	}
+	if files, err := os.ReadDir(work.PastedDirFor(dir)); err != nil || len(files) != 1 {
+		t.Fatalf("refusal wrote files: %v, %v", files, err)
+	}
+	if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != 1 {
+		t.Fatalf("refusal sent notes: %v, %v", notes, err)
+	}
+}
+
+// A queued id exempts only its budget, never the existing content checks.
+func TestQueuedPastedIDIsStillValidated(t *testing.T) {
+	var jpg bytes.Buffer
+	if err := jpeg.Encode(&jpg, image.NewNRGBA(image.Rect(0, 0, 1, 1)), nil); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"type":      []byte("not an image"),
+		"pixels":    sizedPNG(t, 2049, 1),
+		"extension": jpg.Bytes(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			k, dir, _ := outImageKernel(t)
+			k.turn = &turn{}
+			id, err := work.PastedName("image/png")
+			if err != nil {
+				t.Fatal(err)
+			}
+			pic := onePixelPNG(t)
+			if err := work.WritePasted(dir, id, pic); err != nil {
+				t.Fatal(err)
+			}
+			args, err := json.Marshal(map[string]any{"text": "ready", "images": []string{id}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := (notifyTool{k}).Run(context.Background(), args); err != nil {
+				t.Fatal(err)
+			}
+			if err := work.WritePasted(dir, id, data); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := (notifyTool{k}).Run(context.Background(), args); err == nil {
+				t.Fatal("queued id skipped content validation")
+			}
+			if !slices.Equal(k.turn.outImages, []string{id}) || k.turn.outBytes != len(pic) {
+				t.Fatalf("refusal changed queue: %v / %d", k.turn.outImages, k.turn.outBytes)
+			}
+			if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != 1 {
+				t.Fatalf("refusal sent notes: %v, %v", notes, err)
+			}
+		})
 	}
 }

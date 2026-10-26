@@ -77,6 +77,24 @@ func PastedNameFor(mime string, data []byte) (string, error) {
 	return hex.EncodeToString(sum[:16]) + ext, nil
 }
 
+// PastedNameForReader computes the same content name without keeping the
+// picture in memory. The stream is capped at the single-picture byte limit.
+func PastedNameForReader(mime string, r io.Reader) (string, error) {
+	ext := PastedExt(mime)
+	if ext == "" {
+		return "", ErrBadPastedID
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(r, PastedMaxBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if n > PastedMaxBytes {
+		return "", errors.New("work: pasted picture larger than 10 MiB")
+	}
+	return hex.EncodeToString(h.Sum(nil)[:16]) + ext, nil
+}
+
 // ValidPastedID reports whether id is the shape PastedName makes. The name
 // arrives in a request and becomes a path element, so the shape is checked
 // rather than the path joined: no separator, no dot but the known extension.

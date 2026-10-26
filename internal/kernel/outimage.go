@@ -59,7 +59,9 @@ func (k *Kernel) imageTurn(ctx context.Context) *turn {
 // The caps bind while reading, not after: at most PastedMaxPerMessage distinct
 // refs are read, a repeated ref is read once, and a file is refused by its size
 // before its bytes are loaded when it would push the reply past the byte cap.
-// What one call holds in memory is therefore bounded by that cap.
+// An over-budget path first gets a bounded streaming fingerprint: only a known
+// id may then be loaded for validation without consuming new budget. Kept new
+// pictures stay within the reply cap, plus at most one duplicate being checked.
 func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, error) {
 	var uniq []string
 	for _, ref := range refs {
@@ -88,7 +90,7 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 	dir := work.BotDir(k.Bot.Root, k.Bot.Name())
 	var pics []outPicture
 	for _, ref := range uniq {
-		p, err := k.outPicture(ctx, dir, ref, work.PastedMaxTotalBytes-total)
+		p, err := k.outPicture(ctx, dir, ref, work.PastedMaxTotalBytes-total, queued)
 		if err != nil {
 			return nil, fmt.Errorf("images: %s: %w", ref, err)
 		}
@@ -138,11 +140,11 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 
 var errOverBudget = errors.New("images: the pictures on one reply may weigh 10 MiB together")
 
-// outPicture checks one ref, reading at most budget bytes. A pasted id must
+// outPicture checks one ref, reading at most budget new bytes. A pasted id must
 // already be stored and is checked by its contents, the same as a path: paste/
 // is in the writable workspace, so its name alone proves nothing. Anything else
 // is a path, read from inside the bot's workspace roots.
-func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int) (outPicture, error) {
+func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int, queued []string) (outPicture, error) {
 	var data []byte
 	pasted := work.ValidPastedID(ref)
 	if pasted {
@@ -150,7 +152,7 @@ func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int) (o
 		if err != nil {
 			return outPicture{}, errors.New("no such pasted picture")
 		}
-		if size > budget {
+		if size > budget && !slices.Contains(queued, ref) {
 			return outPicture{}, errOverBudget
 		}
 		if data, err = work.ReadPasted(dir, ref); err != nil {
@@ -158,12 +160,9 @@ func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int) (o
 		}
 	} else {
 		var err error
-		if data, err = k.readWorkspaceFile(ctx, ref, budget); err != nil {
+		if data, err = k.readWorkspaceFile(ctx, ref, budget, queued); err != nil {
 			return outPicture{}, err
 		}
-	}
-	if len(data) > budget {
-		return outPicture{}, errOverBudget
 	}
 	mime := bot.SniffImage(data)
 	if len(data) == 0 || work.PastedExt(mime) == "" {
@@ -180,11 +179,17 @@ func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int) (o
 		if work.PastedExt(mime) != filepath.Ext(ref) {
 			return outPicture{}, errors.New("contents do not match the name")
 		}
+		if len(data) > budget && !slices.Contains(queued, ref) {
+			return outPicture{}, errOverBudget
+		}
 		return outPicture{id: ref, size: len(data)}, nil
 	}
 	id, err := work.PastedNameFor(mime, data)
 	if err != nil {
 		return outPicture{}, err
+	}
+	if len(data) > budget && !slices.Contains(queued, id) {
+		return outPicture{}, errOverBudget
 	}
 	return outPicture{id: id, data: data, size: len(data)}, nil
 }
@@ -192,7 +197,7 @@ func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int) (o
 // readWorkspaceFile reads a picture at path, relative to the calling context's
 // directory. The read goes through an os.Root on the workspace root that holds
 // it, so neither a ".." nor a link can reach outside.
-func (k *Kernel) readWorkspaceFile(ctx context.Context, path string, budget int) ([]byte, error) {
+func (k *Kernel) readWorkspaceFile(ctx context.Context, path string, budget int, queued []string) ([]byte, error) {
 	abs, err := tools.ResolveRoot(k.cwdFor(ctx), path)
 	if err != nil {
 		return nil, err
@@ -206,12 +211,12 @@ func (k *Kernel) readWorkspaceFile(ctx context.Context, path string, budget int)
 		if err != nil || !filepath.IsLocal(rel) {
 			continue
 		}
-		return readInRoot(real, rel, budget)
+		return readInRoot(real, rel, budget, queued)
 	}
 	return nil, errors.New("path is outside the workspace")
 }
 
-func readInRoot(root, rel string, budget int) ([]byte, error) {
+func readInRoot(root, rel string, budget int, queued []string) ([]byte, error) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
@@ -228,14 +233,43 @@ func readInRoot(root, rel string, budget int) ([]byte, error) {
 	if st.Size() > work.PastedMaxBytes {
 		return nil, errors.New("larger than 10 MiB")
 	}
-	if st.Size() > int64(budget) {
-		return nil, errOverBudget
-	}
 	f, err := r.Open(rel)
 	if err != nil {
 		return nil, errors.New("no such file")
 	}
 	defer f.Close()
+	// Recheck the handle actually read, not just the path before opening it.
+	st, err = f.Stat()
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	if st.Size() > work.PastedMaxBytes {
+		return nil, errors.New("larger than 10 MiB")
+	}
+	if st.Size() > int64(budget) {
+		if len(queued) == 0 {
+			return nil, errOverBudget
+		}
+		// Fingerprint with fixed-size buffers before allocating a full slice.
+		// A known name only exempts the byte budget: outPicture still checks
+		// the actual contents, pixels and extension, and recomputes the id.
+		var header [12]byte
+		n, err := io.ReadFull(f, header[:])
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+			return nil, err
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		id, err := work.PastedNameForReader(bot.SniffImage(header[:n]), f)
+		if err != nil || !slices.Contains(queued, id) {
+			return nil, errOverBudget
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		budget = work.PastedMaxBytes
+	}
 	data, err := io.ReadAll(io.LimitReader(f, int64(min(budget, work.PastedMaxBytes))+1))
 	if err != nil {
 		return nil, err
