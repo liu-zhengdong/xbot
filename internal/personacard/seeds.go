@@ -32,47 +32,82 @@ var Seeds = []Seed{
 别太卷，别一开口就任务清单。能一起摸鱼也能一起办正事。`},
 }
 
-// seededFile marks a library that got the seeds, so deleting them all does not bring them back.
+// seededFile marks a library that has had cards: a seed run finished, or a card was
+// created, imported or updated. Only it and cards decide; .lock is also made by failed
+// calls, so it says nothing about history.
 const seededFile = ".seeded"
 
-// EnsureSeeds writes Seeds into a library that has never been written to.
-// A library with the marker, any card, or a lock file (it was written before) is left alone
-// without a single write. The check is repeated under the library lock, so concurrent
-// callers seed once.
+// beforeSeed lets tests pause a seed run before card i.
+var beforeSeed func(i int)
+
+func has(dir, name string) bool {
+	_, err := os.Stat(filepath.Join(dir, name))
+	return err == nil
+}
+
+// markSeeded records that the library has had cards. Callers hold the library lock.
+func markSeeded(dir string) error {
+	if has(dir, seededFile) {
+		return nil
+	}
+	return fsutil.WriteAtomic(filepath.Join(dir, seededFile), nil, 0600)
+}
+
+// EnsureSeeds writes Seeds into a library that has never had a card, and returns once
+// the library is complete, so a list read after it sees all seeds or none of this run.
+// A marked library returns without touching the disk. Cards without a lock file were
+// never part of a seed run (a run takes the lock before its first card), so they also
+// return at once; otherwise the caller waits on the library lock and checks again,
+// which also waits out a run in another process. A failed run removes its cards.
 func EnsureSeeds(root, owner string) error {
 	if !ownerRe.MatchString(owner) {
 		return errors.New("personacard: bad owner")
 	}
 	dir := OwnerDir(root, owner)
-	for _, f := range []string{seededFile, ".lock"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
-			return nil
-		}
+	if has(dir, seededFile) {
+		return nil
 	}
-	if cards, err := list(dir); err != nil || len(cards) > 0 {
+	cards, err := list(dir)
+	if err != nil {
 		return err
 	}
+	if len(cards) > 0 && !has(dir, ".lock") {
+		return nil
+	}
 	return locked(root, owner, func(dir string) error {
-		if _, err := os.Stat(filepath.Join(dir, seededFile)); err == nil {
+		if has(dir, seededFile) {
 			return nil
 		}
 		if cards, err := list(dir); err != nil || len(cards) > 0 {
 			return err
 		}
-		// The list is newest first; step the times back so the seeds keep their order.
-		now := time.Now()
-		for i, s := range Seeds {
-			name, body, err := clean(s.Name, s.Body)
-			if err != nil {
-				return err
+		var ids []string
+		err := func() error {
+			// The list is newest first; step the times back so the seeds keep their order.
+			now := time.Now()
+			for i, s := range Seeds {
+				if beforeSeed != nil {
+					beforeSeed(i)
+				}
+				name, body, err := clean(s.Name, s.Body)
+				if err != nil {
+					return err
+				}
+				id := newID()
+				ids = append(ids, id)
+				if _, err := write(dir, id, name, body); err != nil {
+					return err
+				}
+				t := now.Add(-time.Duration(i) * time.Second)
+				_ = os.Chtimes(filepath.Join(dir, id, "card.md"), t, t)
 			}
-			c, err := write(dir, newID(), name, body)
-			if err != nil {
-				return err
+			return markSeeded(dir)
+		}()
+		if err != nil {
+			for _, id := range ids {
+				_ = os.RemoveAll(filepath.Join(dir, id))
 			}
-			t := now.Add(-time.Duration(i) * time.Second)
-			_ = os.Chtimes(filepath.Join(dir, c.ID, "card.md"), t, t)
 		}
-		return fsutil.WriteAtomic(filepath.Join(dir, seededFile), nil, 0600)
+		return err
 	})
 }

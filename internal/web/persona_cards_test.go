@@ -200,3 +200,56 @@ func TestPersonaCardListSeedsAnEmptyLibrary(t *testing.T) {
 		t.Fatalf("second list %d %s", code, raw)
 	}
 }
+
+// Another process holds the library lock in the middle of seeding (k seeds on disk).
+// A list must wait for it, not show an empty or partial library, and must not seed again.
+func TestPersonaCardListWaitsForASeedRunInAnotherProcess(t *testing.T) {
+	for k := 0; k < len(personacard.Seeds); k++ {
+		root, _, call := skillTestServer(t)
+		dir := personacard.OwnerDir(root, "u1")
+		seed := func(i int) {
+			id := strings.Repeat(string(rune('a'+i)), 16)
+			raw := "name: " + personacard.Seeds[i].Name + "\n\n" + personacard.Seeds[i].Body + "\n"
+			if err := fsutil.WriteAtomic(filepath.Join(dir, id, "card.md"), []byte(raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := make(chan string, 1)
+		err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+			for i := 0; i < k; i++ {
+				seed(i)
+			}
+			go func() { _, raw := call("GET", "/api/persona-cards", "", true); got <- raw }()
+			select {
+			case raw := <-got:
+				t.Fatalf("%d seeds written: listed %s while the run held the lock", k, raw)
+			case <-time.After(150 * time.Millisecond):
+			}
+			for i := k; i < len(personacard.Seeds); i++ {
+				seed(i)
+			}
+			return fsutil.WriteAtomic(filepath.Join(dir, ".seeded"), nil, 0600)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw := <-got; strings.Count(raw, `"id":`) != 3 || !strings.Contains(raw, "周末搭子") {
+			t.Fatalf("%d seeds written: %s", k, raw)
+		}
+	}
+}
+
+// A failed pick or delete of a missing card on a new library leaves a lock file behind;
+// the first list still gets the seeds.
+func TestPersonaCardFailedPickStillSeeds(t *testing.T) {
+	_, _, call := skillTestServer(t)
+	if code, _ := call("PUT", "/api/bots/ada/persona-card", `{"id":"0123456789abcdef"}`, true); code != 404 {
+		t.Fatalf("pick %d", code)
+	}
+	if code, _ := call("DELETE", "/api/persona-cards/0123456789abcdef", "", true); code != 404 {
+		t.Fatalf("delete %d", code)
+	}
+	if code, raw := call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != 3 {
+		t.Fatalf("list %d %s", code, raw)
+	}
+}

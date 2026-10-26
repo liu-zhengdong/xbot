@@ -50,41 +50,14 @@
 别太卷，别一开口就任务清单。能一起摸鱼也能一起办正事。
 ```
 
-## 实现底线
-
-- **不改**人设卡产品面 IA（侧栏顺序、空态「写一张/导入」、选用嵌层流程等）。
-- **不推**远程；不改 `CLAUDE.md` / `AGENTS.md` / lock，除非编译所必需。
-- 种子只在「库为空」时写一次；幂等：重复调用安全。
-- 复用 `personacard.Create` / 写锁 / owner 鉴权；勿另起一套存储或假列表。
-- 触发点优先：`List`（或 web `GET /api/persona-cards`）在返回前 ensure；也可在 serve 启动按 owner ensure——以「空库第一次打开就能看到」为准，选一条写清并测。
-- 假列表（前端写死三张、后端无盘）不算过。
-
-## 样例
-
-| 正 | 反 |
-|---|---|
-| 空库打开列表看到三张，点开正文对 | 每次启动再插三张（重复） |
-| 有卡库升级后仍不重复 | 覆盖用户改过的同名卡 |
-| 真落盘可编辑可选用 | 只在 UI 硬编码展示 |
-
-## 对照回顾（短）
-
-| 材料 | 关系 |
-|---|---|
-| `docs/dev/persona-cards.md` / atlas multibot·ui | **扩展**：空库种子；IA/CRUD 不变 |
-| ADR 0026 | **无冲突**：仍引用读卡 |
-| 候选 `人设卡-AstrBot内置集.md` | 本条落地；不改候选 priority |
-
-## 非目标
-
-AstrBot 全量人格搬运、商店、多卡叠加、改产品面空态文案、push origin。
-
 ## 实现
 
-- 触发点：web `GET /api/persona-cards`（设置·人设卡和资料抽屉选用嵌层共用）在 `List` 前调 `personacard.EnsureSeeds(root, owner)`；种子失败不挡列表。
-- `internal/personacard/seeds.go`：`Seeds` 是正文真源的代码副本。先无锁检查：owner 目录里有 `.seeded`、有 `.lock`（库写过）或有任意卡 → 直接返回，零写入。否则进库锁（同 `Create` 的 `locked`），再查一遍标记和卡，用同一个 `write` 写三张，`Chtimes` 依次退 1 秒保持顺序，最后写 `.seeded`。
-- 删光三张不会再补（标记在）；改过的卡不被覆盖（有卡就不写）；并发 List 只种一次（锁内复查）。
-- 部分失败：已写入的种子卡保留，因 `.lock` 已在，不再重试补齐；不影响已有卡。
+- 触发点：web `GET /api/persona-cards`（设置·人设卡和资料抽屉选用嵌层共用）在 `List` 前调 `personacard.EnsureSeeds(root, owner)`；它返回时库已完整，种子失败不挡列表。
+- 历史只认 `.seeded`：种完一轮、或 `Create` / `Import` / `Update` 成功写卡后写入。`.lock` 不算（失败的选用、改、删也会建它），所以失败操作不会让全新空库失去种子。
+- `internal/personacard/seeds.go` `EnsureSeeds`：有 `.seeded` → 返回，零写入；有卡且没有 `.lock` → 不可能在种（种子先拿锁再写卡），返回，零写入；其余进库锁（同 `Create` 的 `locked`，进程锁 + flock，跨进程也等），锁内复查标记和卡，用同一个 `write` 写三张，`Chtimes` 依次退 1 秒保持顺序，最后写 `.seeded`。
+- 并发首次列表：正在种时，后来的调用在库锁上等到种完再读，不会看到空库或半套。
+- 部分失败：这一轮写的卡全部删掉，不写标记，下次列表重试；不碰已有卡。
+- 旧版本留下的有卡库（无 `.seeded`）：零写入；若带 `.lock`，每次列表多拿一次库锁（只开文件不写），直到下一次成功写卡补上标记。
 
 ## 还没做的
 

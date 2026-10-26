@@ -138,8 +138,11 @@ func Create(root, owner, name, body string) (Card, error) {
 		if len(cards) >= MaxCards {
 			return ErrFull
 		}
-		c, err = write(dir, newID(), name, body)
-		return err
+		if c, err = write(dir, newID(), name, body); err != nil {
+			return err
+		}
+		_ = markSeeded(dir)
+		return nil
 	})
 	return c, err
 }
@@ -165,8 +168,11 @@ func Update(root, owner, id string, name, body *string) (Card, error) {
 		if n, b, err = clean(n, b); err != nil {
 			return err
 		}
-		c, err = write(dir, id, n, b)
-		return err
+		if c, err = write(dir, id, n, b); err != nil {
+			return err
+		}
+		_ = markSeeded(dir)
+		return nil
 	})
 	return c, err
 }
@@ -244,8 +250,11 @@ func Import(root, owner, filename, content string, confirm bool) (Card, error) {
 			}
 			name = nextFree(name, taken)
 		}
-		c, err = write(dir, newID(), name, body)
-		return err
+		if c, err = write(dir, newID(), name, body); err != nil {
+			return err
+		}
+		_ = markSeeded(dir)
+		return nil
 	})
 	return c, err
 }

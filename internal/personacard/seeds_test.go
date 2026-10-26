@@ -1,10 +1,12 @@
 package personacard
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestEnsureSeedsFillsAnEmptyLibraryOnce(t *testing.T) {
@@ -63,15 +65,20 @@ func TestEnsureSeedsLeavesAUsedLibraryUntouched(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(legacy, "0123456789abcdef", "card.md"), []byte("name: 旧卡\n\n旧正文。\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	// A library whose cards were all deleted before the seeds existed.
+	// A library from before the marker: cards and a lock file. Nothing may be written either.
+	if _, err := Create(root, "u4", "旧卡", "旧正文。"); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(filepath.Join(OwnerDir(root, "u4"), seededFile))
+	// A library whose cards were all deleted: the marker keeps the seeds out.
 	emptied := OwnerDir(root, "u3")
 	c, _ := Create(root, "u3", "x", "y")
 	_ = Delete(root, "u3", c.ID)
 	before := map[string][]string{}
-	for _, d := range []string{OwnerDir(root, "u1"), legacy, emptied} {
+	for _, d := range []string{OwnerDir(root, "u1"), legacy, emptied, OwnerDir(root, "u4")} {
 		before[d] = names(t, d)
 	}
-	for _, o := range []string{"u1", "u2", "u3"} {
+	for _, o := range []string{"u1", "u2", "u3", "u4"} {
 		if err := EnsureSeeds(root, o); err != nil {
 			t.Fatal(err)
 		}
@@ -86,6 +93,80 @@ func TestEnsureSeedsLeavesAUsedLibraryUntouched(t *testing.T) {
 	}
 	if cards, _ := List(root, "u2"); len(cards) != 1 || cards[0].Name != "旧卡" {
 		t.Fatalf("%+v", cards)
+	}
+	if cards, _ := List(root, "u3"); len(cards) != 0 {
+		t.Fatalf("emptied library reseeded: %+v", cards)
+	}
+}
+
+// A pick, edit or delete of a card that is not there takes the lock and fails;
+// the library has still never had a card and must get the seeds.
+func TestFailedCallsDoNotSkipSeeds(t *testing.T) {
+	root := t.TempDir()
+	missing, body := "0123456789abcdef", "x"
+	if err := With(root, "u1", missing, func(Card) error { return nil }); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := Update(root, "u1", missing, nil, &body); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if err := Delete(root, "u1", missing); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := Create(root, "u1", "x", "  "); !errors.Is(err, ErrEmpty) {
+		t.Fatal(err)
+	}
+	if err := EnsureSeeds(root, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if cards, _ := List(root, "u1"); len(cards) != len(Seeds) {
+		t.Fatalf("%d cards", len(cards))
+	}
+}
+
+// A caller that arrives while a seed run is paused before its first card or between
+// cards waits for the run, then lists every seed once.
+func TestEnsureSeedsWaitsForARunningSeed(t *testing.T) {
+	for pause := 0; pause < len(Seeds); pause++ {
+		root := t.TempDir()
+		paused, resume := make(chan struct{}), make(chan struct{})
+		beforeSeed = func(i int) {
+			if i == pause {
+				close(paused)
+				<-resume
+			}
+		}
+		first := make(chan error, 1)
+		go func() { first <- EnsureSeeds(root, "u1") }()
+		select {
+		case <-paused:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("pause %d: the seed run never reached card %d", pause, pause)
+		}
+		got := make(chan int, 1)
+		go func() {
+			if err := EnsureSeeds(root, "u1"); err != nil {
+				t.Error(err)
+			}
+			cards, _ := List(root, "u1")
+			got <- len(cards)
+		}()
+		select {
+		case n := <-got:
+			t.Fatalf("pause %d: listed %d cards while the seed run was paused", pause, n)
+		case <-time.After(100 * time.Millisecond):
+		}
+		close(resume)
+		if err := <-first; err != nil {
+			t.Fatal(err)
+		}
+		if n := <-got; n != len(Seeds) {
+			t.Fatalf("pause %d: listed %d cards", pause, n)
+		}
+		beforeSeed = nil
+		if cards, _ := List(root, "u1"); len(cards) != len(Seeds) {
+			t.Fatalf("pause %d: %d cards on disk", pause, len(cards))
+		}
 	}
 }
 
