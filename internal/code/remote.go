@@ -89,7 +89,7 @@ func (s *Service) start(w http.ResponseWriter, r *http.Request) {
 	p := s.Provider
 	if p == nil && req.Model.BaseURL != "" && req.Model.APIKey != "" && req.Model.Model != "" {
 		var err error
-		p, err = provider.New(provider.Endpoint{Protocol: req.Model.Protocol, HostedSearch: req.Model.HostedSearch, BaseURL: req.Model.BaseURL, APIKey: req.Model.APIKey, Model: req.Model.Model, Thinking: req.Model.Thinking})
+		p, err = provider.New(provider.Endpoint{Protocol: req.Model.Protocol, HostedSearch: req.Model.HostedSearch, BaseURL: req.Model.BaseURL, APIKey: req.Model.APIKey, Model: req.Model.Model, Thinking: req.Model.Thinking, ReasoningEffort: req.Model.ReasoningEffort})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

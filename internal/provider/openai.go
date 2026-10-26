@@ -34,13 +34,19 @@ type Client struct {
 	// than waiting forever. Zero uses defaultStreamIdleTimeout; a negative
 	// value turns the check off.
 	StreamIdleTimeout time.Duration
-	// Thinking is the per-model thinking switch: ThinkingOff sends
-	// {"thinking":{"type":"disabled"}}, ThinkingOmit sends nothing, and empty
-	// picks by model name (see thinkingFor).
+	// Thinking is the per-model thinking switch: ThinkingOn sends
+	// {"thinking":{"type":"enabled"}} and replays reasoning_content,
+	// ThinkingOff sends {"thinking":{"type":"disabled"}}, ThinkingOmit sends
+	// nothing, and empty picks by model name (see thinkingFor).
 	Thinking string
+	// ReasoningEffort defaults to low; supported configured levels are low/high/max.
+	ReasoningEffort string
 }
 
 const (
+	// ThinkingOn asks the endpoint to think and sends its reasoning back on
+	// later requests, as DeepSeek requires on tool turns.
+	ThinkingOn = "on"
 	// ThinkingOff asks the endpoint to skip its thinking phase.
 	ThinkingOff = "off"
 	// ThinkingOmit leaves the thinking field out of the request.
@@ -73,13 +79,14 @@ type apiTool struct {
 }
 
 type apiRequest struct {
-	Model         string         `json:"model"`
-	Messages      []wireMessage  `json:"messages"`
-	Tools         []apiTool      `json:"tools,omitempty"`
-	ToolChoice    string         `json:"tool_choice,omitempty"`
-	Stream        bool           `json:"stream"`
-	StreamOptions *streamOptions `json:"stream_options,omitempty"`
-	Thinking      *thinkingParam `json:"thinking,omitempty"`
+	Model           string         `json:"model"`
+	Messages        []wireMessage  `json:"messages"`
+	Tools           []apiTool      `json:"tools,omitempty"`
+	ToolChoice      string         `json:"tool_choice,omitempty"`
+	Stream          bool           `json:"stream"`
+	StreamOptions   *streamOptions `json:"stream_options,omitempty"`
+	Thinking        *thinkingParam `json:"thinking,omitempty"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
 }
 
 // wireMessage is the Chat Completions message. Content is a string when the
@@ -92,6 +99,9 @@ type wireMessage struct {
 	Name       string          `json:"name,omitempty"`
 	ToolCalls  []ToolCall      `json:"tool_calls,omitempty"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
+	// ReasoningContent replays the assistant's own reasoning while thinking
+	// is on. Nil leaves the field out, so other requests never carry it.
+	ReasoningContent *string `json:"reasoning_content,omitempty"`
 }
 
 type textPart struct {
@@ -113,14 +123,16 @@ type thinkingParam struct {
 }
 
 // thinkingFor returns the thinking field for one request, or nil to leave it
-// out. DeepSeek models think by default (deepseek-flash does, deepseek-chat did
-// not), and XBot does not send reasoning_content back on tool turns, which the
-// API requires while thinking is on. So any DeepSeek model gets thinking turned
-// off unless the model spec says omit. Other endpoints may reject the unknown
-// field, so they get nothing unless the spec says off. deepseek-reasoner is
-// the legacy thinking-only id and is left alone.
+// out. DeepSeek models think by default and require reasoning_content back on
+// tool turns, which XBot replays whenever the field says enabled. So any
+// DeepSeek model gets thinking turned on unless the model spec says off or
+// omit. Other endpoints may reject the unknown field, so they get nothing
+// unless the spec says on or off. deepseek-reasoner is the legacy
+// thinking-only id and is left alone.
 func thinkingFor(model, setting string) *thinkingParam {
 	switch setting {
+	case ThinkingOn:
+		return &thinkingParam{Type: "enabled"}
 	case ThinkingOff:
 		return &thinkingParam{Type: "disabled"}
 	case ThinkingOmit:
@@ -128,19 +140,61 @@ func thinkingFor(model, setting string) *thinkingParam {
 	}
 	m := strings.ToLower(model)
 	if strings.Contains(m, "deepseek") && !strings.Contains(m, "reasoner") {
-		return &thinkingParam{Type: "disabled"}
+		return &thinkingParam{Type: "enabled"}
 	}
 	return nil
+}
+
+// completionsReasoning is the VendorRaw of a Chat Completions reasoning part.
+type completionsReasoning struct {
+	ReasoningContent string `json:"reasoning_content"`
+}
+
+// reasoningPart keeps the full reasoning for replay in VendorRaw. Text is only
+// a marker: Text() leaves reasoning out, so it never reaches a bubble.
+func reasoningPart(text string) ContentPart {
+	raw, _ := json.Marshal(completionsReasoning{ReasoningContent: text})
+	return ContentPart{Type: PartReasoning, Vendor: ChatCompletions, VendorRaw: raw, Text: "[thinking]"}
+}
+
+// replayReasoning returns this message's own Completions reasoning, and
+// whether it has any.
+func replayReasoning(m Message) (string, bool) {
+	var out strings.Builder
+	found := false
+	for _, p := range m.Content {
+		if p.Type != PartReasoning || p.Vendor != ChatCompletions {
+			continue
+		}
+		var r completionsReasoning
+		if json.Unmarshal(p.VendorRaw, &r) == nil {
+			out.WriteString(r.ReasoningContent)
+			found = true
+		}
+	}
+	return out.String(), found
+}
+
+// reasoningEffort keeps unset model specs and environment-only bindings on low.
+func reasoningEffort(setting string) string {
+	if setting == "" {
+		return "low"
+	}
+	return setting
 }
 
 type streamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
 
-func wireMessages(in []Message) ([]wireMessage, error) {
+// wireMessages encodes the request. With thinking on, each assistant message
+// carries its own reasoning_content; one with tool calls but no recorded
+// reasoning (older history, another vendor) carries an empty one, because
+// DeepSeek rejects a tool turn without the field.
+func wireMessages(in []Message, thinking bool) ([]wireMessage, error) {
 	out := make([]wireMessage, len(in))
 	for i, m := range in {
-		w, err := toWire(m)
+		w, err := toWire(m, thinking)
 		if err != nil {
 			return nil, err
 		}
@@ -149,9 +203,17 @@ func wireMessages(in []Message) ([]wireMessage, error) {
 	return out, nil
 }
 
-func toWire(m Message) (wireMessage, error) {
+func toWire(m Message, thinking bool) (wireMessage, error) {
 	w := wireMessage{
 		Role: m.Role, Name: m.Name, ToolCalls: m.Calls(), ToolCallID: m.CallID(),
+	}
+	reasoning, found := replayReasoning(m)
+	if found {
+		// Our own reasoning goes in its field, never as a content marker.
+		m.Content = withoutCompletionsReasoning(m.Content)
+	}
+	if thinking && m.Role == RoleAssistant && (found || len(w.ToolCalls) > 0) {
+		w.ReasoningContent = &reasoning
 	}
 	raw, err := contentJSON(m)
 	if err != nil {
@@ -159,6 +221,16 @@ func toWire(m Message) (wireMessage, error) {
 	}
 	w.Content = raw
 	return w, nil
+}
+
+func withoutCompletionsReasoning(in []ContentPart) []ContentPart {
+	out := make([]ContentPart, 0, len(in))
+	for _, p := range in {
+		if p.Type != PartReasoning || p.Vendor != ChatCompletions {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func contentJSON(m Message) (json.RawMessage, error) {
@@ -362,7 +434,12 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	if strings.TrimSpace(c.BaseURL) == "" {
 		return Message{}, errors.New("provider: base URL is empty")
 	}
-	msgs, err := wireMessages(req.Messages)
+	thinking := thinkingFor(c.Model, c.Thinking)
+	// omit leaves the upstream default alone; DeepSeek still thinks by
+	// default (including the legacy reasoner) and needs its history replayed.
+	replay := thinking != nil && thinking.Type == "enabled" ||
+		thinking == nil && strings.Contains(strings.ToLower(c.Model), "deepseek")
+	msgs, err := wireMessages(req.Messages, replay)
 	if err != nil {
 		return Message{}, err
 	}
@@ -371,7 +448,10 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 		Messages:      msgs,
 		Stream:        true,
 		StreamOptions: &streamOptions{IncludeUsage: true},
-		Thinking:      thinkingFor(c.Model, c.Thinking),
+		Thinking:      thinking,
+	}
+	if replay {
+		body.ReasoningEffort = reasoningEffort(c.ReasoningEffort)
 	}
 	if len(req.Tools) > 0 {
 		body.ToolChoice = "auto"
@@ -444,9 +524,10 @@ type streamChunk struct {
 	} `json:"error,omitempty"`
 	Choices []struct {
 		Delta struct {
-			Role      string `json:"role"`
-			Content   string `json:"content"`
-			ToolCalls []struct {
+			Role             string `json:"role"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Type     string `json:"type"`
@@ -502,7 +583,7 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var parts []ContentPart
-	var text strings.Builder
+	var text, reasoning strings.Builder
 	flushText := func() {
 		if text.Len() > 0 {
 			parts = append(parts, ContentPart{Type: PartText, Text: text.String()})
@@ -542,6 +623,12 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		if d.Role != "" {
 			role = d.Role
 		}
+		// Reasoning is kept for replay only. It never goes to onDelta, so the
+		// owner's live stream shows the answer alone.
+		if reasoning.Len()+len(d.ReasoningContent) > 1<<20 {
+			return Message{}, errors.New("provider: reasoning exceeds 1 MiB")
+		}
+		reasoning.WriteString(d.ReasoningContent)
 		if d.Content != "" {
 			text.WriteString(d.Content)
 			if onDelta != nil {
@@ -575,6 +662,12 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		return Message{}, err
 	}
 	flushText()
+	if reasoning.Len() > 0 {
+		parts = append([]ContentPart{reasoningPart(reasoning.String())}, parts...)
+		for _, idx := range order {
+			tools[idx].part++
+		}
+	}
 	msg := Message{Role: role, Usage: usage, Content: parts}
 	for i, idx := range order {
 		buf := tools[idx]

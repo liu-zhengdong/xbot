@@ -446,15 +446,16 @@ func endpointOf(p provider.Provider) Endpoint {
 	if !ok {
 		return Endpoint{}
 	}
-	return Endpoint{Protocol: c.Protocol, HostedSearch: c.HostedSearch, Thinking: c.Thinking, BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}
+	return Endpoint{Protocol: c.Protocol, HostedSearch: c.HostedSearch, Thinking: c.Thinking, ReasoningEffort: c.ReasoningEffort, BaseURL: c.BaseURL, APIKey: c.APIKey, Model: c.Model}
 }
 
 // Endpoint is the protocol and model a remote runner should call.
 type Endpoint struct {
-	Protocol     string `json:"protocol,omitempty"`
-	HostedSearch bool   `json:"hosted_web_search,omitempty"`
-	Thinking     string `json:"thinking,omitempty"`
-	BaseURL      string `json:"base_url,omitempty"`
-	APIKey       string `json:"api_key,omitempty"`
-	Model        string `json:"model,omitempty"`
+	Protocol        string `json:"protocol,omitempty"`
+	HostedSearch    bool   `json:"hosted_web_search,omitempty"`
+	Thinking        string `json:"thinking,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	BaseURL         string `json:"base_url,omitempty"`
+	APIKey          string `json:"api_key,omitempty"`
+	Model           string `json:"model,omitempty"`
 }

@@ -160,6 +160,14 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 		}
 	}
 	body := map[string]any{"model": c.Model, "input": input, "tools": ts, "stream": true, "store": false, "include": []string{"reasoning.encrypted_content"}}
+	// Explicit settings use this protocol's native control. An unset/omit
+	// setting preserves the endpoint's default without adding unknown fields.
+	switch c.Thinking {
+	case ThinkingOn:
+		body["reasoning"] = map[string]any{"effort": reasoningEffort(c.ReasoningEffort)}
+	case ThinkingOff:
+		body["reasoning"] = map[string]any{"effort": "none"}
+	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return Message{}, err

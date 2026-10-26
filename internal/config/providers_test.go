@@ -158,8 +158,14 @@ func TestModelThinkingRoundTripAndValidation(t *testing.T) {
 	if got.Thinking != "omit" || n != 900000 {
 		t.Fatalf("%+v context %d", got, n)
 	}
-	if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-flash", Context: 1000, Thinking: "on"}); err == nil {
-		t.Fatal("thinking on should be rejected")
+	if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-flash", Context: 1000, Thinking: "yes"}); err == nil {
+		t.Fatal("thinking yes should be rejected")
+	}
+	if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-flash", Context: 1000, Thinking: "on"}); err != nil {
+		t.Fatalf("thinking on rejected: %v", err)
+	}
+	if got, _, err := Resolve(root, "deepseek", "deepseek-flash", env); err != nil || got.Thinking != "on" {
+		t.Fatalf("thinking on did not round-trip: %+v %v", got, err)
 	}
 	// A hand-edited bad value fails at resolve time rather than being guessed.
 	f, err := Load(root)
@@ -211,5 +217,40 @@ func TestProviderBaseURLChecked(t *testing.T) {
 	_, _, err := Resolve(root, "p", "m", func(string) string { return "key-value" })
 	if err == nil || !strings.Contains(err.Error(), "https") {
 		t.Fatalf("resolve of a hand-edited http base_url: %v", err)
+	}
+}
+
+func TestReasoningEffortRoundTripAndValidation(t *testing.T) {
+	root := t.TempDir()
+	p := Provider{Name: "deepseek", BaseURL: "https://api.deepseek.com", APIKeyEnv: "TEST_KEY"}
+	env := func(string) string { return "fake" }
+	for _, effort := range []string{"low", "high", "max"} {
+		if err := Add(root, p, ModelSpec{Name: "deepseek-flash", Context: 100000, Thinking: "on", ReasoningEffort: effort}); err != nil {
+			t.Fatal(err)
+		}
+		// An unrelated update preserves the explicit effort.
+		if err := Add(root, Provider{Name: "deepseek"}, ModelSpec{Name: "deepseek-flash", Context: 200000}); err != nil {
+			t.Fatal(err)
+		}
+		got, _, err := Resolve(root, "deepseek", "deepseek-flash", env)
+		if err != nil || got.ReasoningEffort != effort {
+			t.Fatalf("effort=%s got=%s err=%v", effort, got.ReasoningEffort, err)
+		}
+	}
+	for _, bad := range []string{"medium", "minimal", "xhigh", "ultra"} {
+		if err := Add(root, p, ModelSpec{Name: "deepseek-flash", Context: 1000, ReasoningEffort: bad}); err == nil {
+			t.Fatalf("accepted %s", bad)
+		}
+	}
+	f, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Providers[0].Models[0].ReasoningEffort = "medium"
+	if err := Save(root, f); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Resolve(root, "deepseek", "deepseek-flash", env); err == nil {
+		t.Fatal("hand-edited invalid effort accepted")
 	}
 }

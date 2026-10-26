@@ -272,12 +272,16 @@ func (c *Anthropic) messagesOnce(ctx context.Context, req Request, delta func(st
 	if err != nil {
 		return Message{}, err
 	}
-	body := map[string]any{"model": c.Model, "max_tokens": 8192, "system": system, "messages": messages, "stream": true}
+	body := map[string]any{"model": c.Model, "max_tokens": anthropicMaxTokens, "system": system, "messages": messages, "stream": true}
 	if len(ts) > 0 {
 		body["tools"] = ts
 	}
-	if c.Thinking == ThinkingOff {
+	switch c.Thinking {
+	case ThinkingOff:
 		body["thinking"] = map[string]any{"type": "disabled"}
+	case ThinkingOn:
+		// Signed thinking blocks are already replayed from VendorRaw.
+		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": anthropicThinkingBudget}
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -321,3 +325,9 @@ func (c *Anthropic) messagesOnce(ctx context.Context, req Request, delta func(st
 	}
 	return msg, err
 }
+
+const (
+	anthropicMaxTokens = 8192
+	// anthropicThinkingBudget must stay below anthropicMaxTokens.
+	anthropicThinkingBudget = 4096
+)

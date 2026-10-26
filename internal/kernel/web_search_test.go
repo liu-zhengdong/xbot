@@ -19,7 +19,7 @@ import (
 
 func TestGlobalSearchPolicyUpdatesExistingKernelAndExecutor(t *testing.T) {
 	b := testBot(t, link.NameTools)
-	k := &Kernel{Bot: b, Links: []link.Link{bindingSearchLink{}}, Provider: &provider.Responses{WebSearch: true}}
+	k := &Kernel{Bot: b, Links: []link.Link{bindingSearchLink{}}, Provider: &provider.Responses{Client: provider.Client{Thinking: provider.ThinkingOn, ReasoningEffort: "high"}, WebSearch: true}}
 	// This provider is cached by Local exactly like ensureExec; no reconstruction.
 	cached := k.boundProvider()
 	for _, step := range []struct {
@@ -52,7 +52,7 @@ func TestGlobalSearchPolicyUpdatesExistingKernelAndExecutor(t *testing.T) {
 			t.Fatal("scoped policy differs")
 		}
 		ep, err := k.endpoint()
-		if err != nil || ep.HostedSearch != step.hosted {
+		if err != nil || ep.HostedSearch != step.hosted || ep.Thinking != provider.ThinkingOn || ep.ReasoningEffort != "high" {
 			t.Fatalf("remote endpoint: %+v %v", ep, err)
 		}
 	}

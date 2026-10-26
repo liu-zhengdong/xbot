@@ -62,3 +62,4 @@
 - **远端目录只传合法 Bot 名；worker 通知按上次活动网关去重、满时覆盖旧值。** 避免脱敏器注册前泄密、远端自由文本注入，以及 A→B→A 漏通知或慢 worker 阻塞收信。证据：`TestDirectorySenderDecision`、`TestDirectoryIgnoresUnknownFields`、`TestNotifyDirectory`。Seen 1×（2026-10-18）
 
 - **按序列化字节数卡配额的测试要固定时间戳。** RFC3339Nano 会省略尾零，分别取当前时间会让信封长度不同，随机触发 507。证据：`TestGatewaySenderByteQuota` 修正前 300 次复跑中失败 24 次，改用同一时间戳。Seen 1×（2026-10-18）
+- **新增 CLI 有值参数，要同时登记参数重排表和 FlagSet。** `provider add --reasoning-effort low` 只加 FlagSet 时，重排把位置参数 `ds` 当成 effort 值；真实二进制回归才发现。守护：`e2e/smoke/thinking_test.go` 的 `TestThinkingEffortCLI`（覆盖 low/high/max、更新保留与拒绝 medium）。Seen 1×（2026-10-26）。

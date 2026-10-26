@@ -129,7 +129,7 @@ func TestResponsesRecordedStreamAndNativeReplay(t *testing.T) {
 	if len(input) != 3 || !strings.Contains(string(input[0]), `"encrypted_content":"opaque"`) || !strings.Contains(string(input[1]), `"web_search_call"`) || !strings.Contains(string(input[2]), `"annotations"`) {
 		t.Fatalf("native replay %s", input)
 	}
-	wire, err := toWire(stored)
+	wire, err := toWire(stored, false)
 	if err != nil {
 		t.Fatal(err)
 	}
