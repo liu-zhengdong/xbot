@@ -25,11 +25,12 @@
 - 已合本地 main（tip `f16c9a6`）；设计师用户视角 PASS；`docs/dev/trace-discoverability.md` 已毕业删除。未 push。
 - 本机并行测试负载下各 30 次 CLI 进程启动至结束：paths/list/replay p95 为 13.438/15.470/35.565ms；本次路径字段 JSON 483 字节，约 121 估算 token。长回合测试按实际路径长度补足环境及快照预算，仍检查原折叠频率与请求上限；生产压缩不变。未测线上响应、IPC、后台负载或真模型；未 push。
 
-## 2026-10-26 生图工作区可发现与头像热修余量（分支实现，未合入）
+## 2026-10-26 生图工作区可发现与头像热修余量
 
-- 生图步骤与 Bot 菜单可进入 generated 路径浮层；浏览器可见/可复制服务端路径，桌面复用 open-workdir 打开固定子目录，拒绝符号链接。状态主题最多 18 字符，完整 prompt 可点击展开。模型生成请求及保存回执明确工作区交付，头像回执说已换好，图片设置脚注压短。关于页显示并复制独立构建 Tip，xbot-dev 用同一短 HEAD 注入并写两份已有记录；未改账号菜单底栏结构。
-- 相关包单次完整测试通过：web 54.962s、kernel 58.954s、provider 1.557s、link 1.134s、work 1.008s；version 无测试文件。相关包 vet、构建元数据脚本测试通过；新回归在 c580239 旧实现上分别失败。Chrome 覆盖目录入口/复制/失败、prompt 展开、关于短号复制，原生图/头像/开关回归也随相关包通过。
-- 隔离 Chrome 1440×900、DPR 2，浅深色前后截图在 `~/.xbot-build/ui-shots/imggen-discover-hotfix/`。假 API 下点击目录入口到两帧后（各 30 次）p95：浅色 33.3ms、深色 33.7ms；不是模型/IPC/后台负载或 60fps 结论。编码报告在 `~/.xbot-build/imggen-discover-hotfix/encode-report.md`。未 push、合入、启动 8788；待设计师复核与真实账号日用验收。
+- 生图步骤与 Bot 菜单可进入 generated 路径浮层；浏览器可见/可复制服务端路径，桌面复用 open-workdir 打开固定子目录，拒绝符号链接。状态主题最多 18 字符，完整 prompt 可点击展开。模型生成请求及保存回执明确工作区交付，头像回执说已换好，图片设置脚注压短。关于页显示并复制独立构建 Tip，xbot-dev 用同一短 HEAD 注入并写两份已有记录；未改账号菜单底栏结构。约定见 [ui](atlas/ui.md#图片生成设置)。
+- 编码验证：相关包单次完整测试通过（web/kernel/provider/link/work）；Chrome 覆盖目录入口/复制/失败、prompt 展开、关于短号复制。证据 `~/.xbot-build/imggen-discover-hotfix/encode-report.md`。
+- 已合本地 main（tip `949d542`，本切片 `e7da2c5`）；设计师用户视角 PASS；`docs/dev/imggen-discover-hotfix.md` 已毕业删除。未 push。
+- 隔离 Chrome 1440×900、DPR 2，浅深色截图在 `~/.xbot-build/ui-shots/imggen-discover-hotfix/`。假 API 下点击目录入口到两帧后（各 30 次）p95：浅色 33.3ms、深色 33.7ms；不是模型/IPC/后台负载或 60fps 结论。未测线上响应、真模型日用；未 push。
 
 ## 2026-10-26 图片生成设置（分支实现，待合入/验收）
 
