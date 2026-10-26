@@ -14,9 +14,9 @@ import (
 //
 // A picture the model's vendor-hosted image_generation tool returns arrives as
 // base64 inside the response. The bytes go here, in the bot's own workspace,
-// and the conversation records only the relative path: the bot looks at the
-// files, keeps the good ones and hands them on itself. Nothing here reaches a
-// chat bubble or a transcript Images field.
+// and the conversation records only the relative path. This storage layer
+// does not deliver pictures; the kernel queues saved files through its existing
+// outgoing-image path for the final reply.
 const (
 	// GeneratedDir is the directory under the bot workspace holding them,
 	// apart from paste/ so owner uploads and model output never mix.

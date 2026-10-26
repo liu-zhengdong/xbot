@@ -454,6 +454,12 @@ func (r *turnRun) part(p provider.ContentPart) {
 
 func (r *turnRun) modelContext() context.Context {
 	ctx := notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable)
+	// Bind hosted delivery to this reply, including a continuation after an
+	// earlier reply. A late completion cannot attach to a later generation.
+	r.t.mu.Lock()
+	gen := r.t.replyGen
+	r.t.mu.Unlock()
+	ctx = context.WithValue(ctx, callReplyGenKey{}, gen)
 	if provider.HasHostedSearch(r.p) || provider.HasImageGen(ctx) {
 		return provider.WithPartObserver(ctx, r.part)
 	}

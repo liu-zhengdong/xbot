@@ -79,3 +79,5 @@
 - **省略工具结果必须保留同条结果的可回放环境回执。** 大结果可能已变成 512 字节 blob 预览，不能只按预览 token 判断；跨轮占位用 transcript seq，验证 expand 读回与回执回放。证据：`TestBatchBBlobOmissionKeepsReceiptAndExpand`。Seen 1×（2026-10-26）。
 
 - **跟版提示增补也要守原压缩频率门槛。** 常驻前缀多几百字可能跨过长轮折叠阈值；先合并/精简已有规则，不为文案增量放宽频率或硬上限断言。对照行为脚本只验证接线与验收谓词，不能当作真实模型改前改后成绩。证据：上下文批 C 的 `TestLongTurnStaysUnderTheCeiling` 与 `TestBatchCPartnerBehaviorComparison`。Seen 1×（2026-10-26）。
+
+- **保存成功与交付成功要分开回报。** hosted 生图先落工作区，再走同轮挂图；挂图超限时保留真实文件路径和失败原因，当前模型响应看不到的本机失败由程序追加到回复，不能只靠下一轮提示纠正。守护：`TestImageGenerationAttachmentFailureKeepsPathAndReceipt`、`TestHostedImageDeliveryLimitsAndIdempotency`。Seen 1×（2026-10-27）。

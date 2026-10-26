@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 
 	"xbot/internal/config"
@@ -12,7 +13,7 @@ import (
 // withImageGen snapshots the global preference and account at turn start.
 // Only the selected OAuth Responses binding can generate. Pictures land in
 // the bot workspace's generated/ directory; the conversation keeps only the
-// relative path, never the bytes, and nothing is attached to a bubble.
+// relative path, never the bytes. Delivery reuses the turn's outgoing images.
 func (k *Kernel) withImageGen(ctx context.Context) context.Context {
 	// Clear an inherited capability as well: a disabled global setting wins.
 	ctx = provider.WithImageGen(ctx, provider.ImageGen{})
@@ -48,6 +49,15 @@ func (k *Kernel) withImageGen(ctx context.Context) context.Context {
 	}
 	return provider.WithImageGen(ctx, provider.ImageGen{
 		Model: imageModel,
-		Save:  func(data []byte) (string, error) { return work.WriteGenerated(dir, data) },
+		Save: func(callCtx context.Context, data []byte) (string, error) {
+			path, err := work.WriteGenerated(dir, data)
+			if err != nil {
+				return "", err
+			}
+			// Generated paths are workspace-relative, independent of shell cwd.
+			// Keep the saved path even when delivery is refused.
+			_, err = k.attachOutImages(callCtx, []string{filepath.Join(dir, path)})
+			return path, err
+		},
 	})
 }

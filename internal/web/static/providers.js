@@ -7,38 +7,24 @@
   const pname = p => p.name || "默认端点";
   const detail = m => `${m.hosted_web_search ? "厂商搜索" : "本地搜索"} · ${m.vision ? "可看图" : "不看图"}${m.context ? " · " + m.context.toLocaleString() + " tokens" : ""}`;
   function safeURL(value) { try { const u = new URL(value); return ["http:", "https:"].includes(u.protocol) ? u.href : null; } catch { return null; } }
-  function step(part, openGenerated) {
+  function step(part) {
     const h = part.hosted;
     const running = !["completed", "failed"].includes(h.status);
     const n = node("div", "hs-step" + (running ? " running" : ""));
     n.dataset.hostedId = h.id;
     n.setAttribute("role", "status");
-    const image = h.name === "image_generation";
-    const verb = image ? (running ? "正在生图" : h.status === "failed" ? "生图失败" : "已生图") : (running ? "正在搜索" : h.status === "failed" ? "搜索失败" : "已搜索");
-    const query = String(h.query || ""), chars = Array.from(query.replace(/\s+/g, " ").trim());
-    const topic = image && chars.length > 18 ? chars.slice(0, 18).join("") + "…" : (image ? chars.join("") : query);
-    const saved = image && h.status === "completed";
-    const label = node("span", "", verb + (saved ? " · 存到工作区" : "") + (topic ? "「" + topic + "」" : ""));
+    const verb = running ? "正在搜索" : h.status === "failed" ? "搜索失败" : "已搜索";
+    const query = String(h.query || "");
+    const label = node("span", "", verb + (query ? "「" + query + "」" : ""));
     label.title = query;
-    n.append(node("span", "hs-dot"), label);
-    if (image && openGenerated) n.append(button("查看 generated/", "text-btn", openGenerated));
-    else n.append(node("small", "", image ? "厂商生图" : "厂商搜索 · 不进任务"));
-    if (image && query) {
-      const more = button("提示词", "text-btn", () => {
-        const old = n.querySelector(".hs-full-prompt");
-        if (old) old.remove(); else n.append(node("p", "hs-full-prompt", query));
-        more.setAttribute("aria-expanded", String(!old));
-      });
-      more.setAttribute("aria-expanded", "false");
-      n.append(more);
-    }
+    n.append(node("span", "hs-dot"), label, node("small", "", "厂商搜索 · 不进任务"));
     return n;
   }
-  function progress(host, part, openGenerated) {
-    if (!host || !part.hosted) return;
+  function progress(host, part) {
+    if (!host || !part.hosted || part.hosted.name === "image_generation") return;
     const old = [...host.querySelectorAll(".hs-step")].find(n => n.dataset.hostedId === part.hosted.id);
-    if (old) { if (!part.hosted.query) part = { ...part, hosted: { ...part.hosted, query: old._query || "" } }; const n = step(part, openGenerated); n._query = part.hosted.query; old.replaceWith(n); }
-    else { const n = step(part, openGenerated); n._query = part.hosted.query; host.prepend(n); }
+    if (old) { if (!part.hosted.query) part = { ...part, hosted: { ...part.hosted, query: old._query || "" } }; const n = step(part); n._query = part.hosted.query; old.replaceWith(n); }
+    else { const n = step(part); n._query = part.hosted.query; host.prepend(n); }
   }
   function citations(parts) { return (parts || []).filter(p => p.citation && safeURL(p.citation.url)); }
   function citedText(text, parts) {
@@ -48,9 +34,9 @@
     for (const m of marks) chars.splice(m.at, 0, m.text);
     return chars.join("");
   }
-  function decorate(host, parts, openGenerated) {
-    const hs = (parts || []).filter(p => p.hosted);
-    for (const p of hs.slice().reverse()) host.prepend(step(p, openGenerated));
+  function decorate(host, parts) {
+    const hs = (parts || []).filter(p => p.hosted && p.hosted.name !== "image_generation");
+    for (const p of hs.slice().reverse()) host.prepend(step(p));
     const cs = citations(parts); if (!cs.length) return;
     for (let i=0;i<cs.length;i++) {
       const url=safeURL(cs[i].citation.url);

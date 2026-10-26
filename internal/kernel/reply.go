@@ -62,7 +62,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	// the names are recorded on the line so a later turn can find them.
 	images := m.ImageNames
 	m.ImageNames = nil
-	// The final reply carries the pictures notify_owner queued, so the chat
+	// The final reply carries pictures queued by tools or hosted generation, so the chat
 	// shows them in that bubble.
 	if m.Role == provider.RoleAssistant && len(m.Calls()) == 0 && len(t.outImages) > 0 {
 		images = append(images, t.takeOutImagesLocked()...)

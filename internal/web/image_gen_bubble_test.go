@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// Use the real streaming and history renderers. Images remain workspace
-// artifacts; source examples and ordinary exclamation marks remain literal.
+// Use the real streaming and history renderers. Untrusted Markdown image
+// URLs stay filtered; validated Entry.Images are tested separately.
 func TestImageGenBubbleBrowser(t *testing.T) {
 	runPageInChrome(t, `
 const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};

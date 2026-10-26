@@ -2807,7 +2807,7 @@
       appendBotContent(body, EMPTY_REPLY);
     }
     if (pasted.length) body.append(gallery(pasted));
- window.XBotProviders.decorate(body,m.parts, who && !who.includes("@") ? () => openGenerated(who) : null);
+    window.XBotProviders.decorate(body, m.parts);
     const calls = m.tool_calls || [];
     const peers = [];
     for (const call of calls) {
@@ -2935,7 +2935,8 @@
       const key = "bot:" + (who || "");
       const cont = !groupStart(lastMsg, m, lastKey, key);
       const built = botBubble(m, results, messages, i, who);
-      if (m.content || (m.parts || []).length || !(m.tool_calls || []).length) {
+      const visibleParts = (m.parts || []).some(p => !p.hosted || p.hosted.name !== "image_generation");
+      if (m.content || visibleParts || (m.images || []).length || (!(m.tool_calls || []).length && !(m.parts || []).length)) {
         if (cont) markContinuation(built.row, m.time);
         inner.append(built.row);
         lastKey = key;
@@ -4713,9 +4714,9 @@
     }
     const turns = [];
     for (const m of messages || []) {
-      if (m.role !== "assistant" || !(m.tool_calls && m.tool_calls.length)) continue;
+      if (m.role !== "assistant") continue;
       const calls = [];
-      for (const call of m.tool_calls) {
+      for (const call of m.tool_calls || []) {
         const info = toolSummary(call);
         if (info.name === "ask_user") continue;
         const result = results[call.id || ""];
@@ -4726,6 +4727,13 @@
           hasResult: !!result,
           resultTime: result && result.time,
         });
+      }
+      // Hosted generation is projected onto the same trace calls as local
+      // tools; it stays a hosted protocol item and is never re-executed.
+      for (const part of m.parts || []) {
+        const h = part.hosted;
+        if (!h || h.name !== "image_generation") continue;
+        calls.push({ name: h.name, args: h.query ? { prompt: h.query } : {}, output: part.text || "", hasResult: ["completed", "failed"].includes(h.status), resultTime: m.time });
       }
       if (!calls.length) continue;
       const start = m.time ? new Date(m.time).getTime() : 0;
@@ -6018,7 +6026,7 @@
   }
 
   function toolLabel(name) {
-    return ({ todo: "待办", shell: "后台命令" })[name] || name;
+    return ({ todo: "待办", shell: "后台命令", image_generation: "生成图片" })[name] || name;
   }
 
   function setWorking(host, name) {
@@ -6180,8 +6188,10 @@
           appendMarkdown(prose, stripBotImages(displayText(acc)));
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "part") {
- window.XBotProviders.progress(host,payload, selection.type === "bot" ? () => openGenerated(selection.id) : null);
- } else if (event === "tool") {
+          if (payload.hosted?.name === "image_generation") {
+            if (host) setWorking(host, "image_generation");
+          } else window.XBotProviders.progress(host, payload);
+        } else if (event === "tool") {
           const who = state.sel && state.sel.id;
           if (host) {
             setWorking(host, payload.name || "");

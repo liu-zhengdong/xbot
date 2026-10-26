@@ -8,8 +8,15 @@ func TestImggenDiscoverBrowser(t *testing.T) {
 
 const imggenDiscoverFixture = `
 const prompt='very small simple black and white cat, '.repeat(15)+'猫😀';
-const generatedPart={type:'hosted',hosted:{id:'ig_1',name:'image_generation',status:'completed',query:prompt}};
-fixture.messages['2号小伙子']=[{...message('assistant','图已存到工作区。'),parts:[generatedPart]}];
+const generatedPart={type:'hosted',text:'已保存到工作区 generated/real.png；已挂本条回复。',hosted:{id:'ig_1',name:'image_generation',status:'completed',query:prompt}};
+const imageID='0123456789abcdef0123456789abcdef.png';
+fixture.messages['2号小伙子']=[{...message('assistant','图已挂本条回复，文件在 generated/real.png。'),parts:[generatedPart],images:[imageID]}];
+// HTTP is scripted in this file fixture, including the existing paste route.
+const imageSrc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
+Object.defineProperty(HTMLImageElement.prototype,'src',{...imageSrc,set(value){
+ if(String(value).includes('/paste/')){this.dataset.deliveryUrl=value;value='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6qS8AAAAASUVORK5CYII='}
+ imageSrc.set.call(this,value);
+}});
 fixture.generatedCalls=[];fixture.canOpen=false;fixture.generatedFail=false;fixture.openFail=false;
 fixture.generatedPath='/server/xbot/work/2号小伙子/generated';
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{fixture.copied=text}},configurable:true});
@@ -36,49 +43,64 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 const visible=n=>!!n&&n.getClientRects().length>0;
 const button=(host,text)=>[...host.querySelectorAll('button')].find(b=>b.textContent===text);
-const openGenerated=async()=>{button($('#thread .hs-step'),'查看 generated/').click();await waitFor(()=>visible($('#modal')),'generated modal missing')};
+const openGenerated=async()=>{
+ $('[data-bot="2号小伙子"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+ button($('.panel-more'),'查看生成的图片').click();await waitFor(()=>visible($('#modal')),'generated menu missing');
+};
 (async()=>{
- await waitFor(()=>$('#thread .hs-step')&&!$('#shell').hidden,'history not ready');
+ await waitFor(()=>$('#thread .gallery img')?.naturalWidth>0&&!$('#shell').hidden,'history image did not load');
+ assert(!$('#thread .hs-step'),'image generation has a dedicated hosted block');
+ assert(!$('#thread').textContent.includes('查看 generated/'),'directory used as delivery');
+ assert($('#thread .gallery img').dataset.deliveryUrl.endsWith('/paste/'+imageID),'gallery did not use existing paste route');
  const shot=new URLSearchParams(location.search).get('shot');
- if(shot){
-  if(shot==='generated')await openGenerated();
-  if(shot==='desktop'){fixture.canOpen=true;await openGenerated()}
-  if(shot==='prompt')button($('#thread .hs-step'),'提示词').click();
-  if(shot==='about')await XBotSettings.open('about');
-  document.body.dataset.testResult='passed';return;
- }
- const step=$('#thread .hs-step');
- assert(step.textContent.length<100&&!step.textContent.includes(prompt),'full prompt exposed by default');
- assert(step.textContent.includes('已生图 · 存到工作区'),'saved status missing');
- button(step,'提示词').click();assert(step.querySelector('.hs-full-prompt')?.textContent===prompt,'full prompt cannot be opened');
- button(step,'提示词').click();assert(!step.querySelector('.hs-full-prompt'),'prompt cannot be closed');
+ if(shot==='reply'){document.body.dataset.testResult='passed';return}
+ $('#info').click();await waitFor(()=>$('#panel [role=tab]'),'panel missing');
+ [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='轨迹').click();
+ await waitFor(()=>$('.trace-row'),'generation absent from ordinary trace');
+ $('.trace-row').click();
+ assert($('.trace-call-name').textContent==='image_generation','wrong trace call');
+ assert($('.trace-args').textContent.includes(prompt),'trace lost prompt');
+ assert($('.trace-out').textContent.includes('generated/real.png')&&$('.trace-out').textContent.includes('已挂本条回复'),'trace lost receipt');
+ assert(!$('#panel img[src*="paste"]'),'trace displayed an image');
+ if(shot==='trace'){document.body.dataset.testResult='passed';return}
+ // Preserve the optional workspace menu; it is no longer a reply step.
  await openGenerated();
  assert($('#modal input').readOnly&&$('#modal input').value===fixture.generatedPath,'server path is not visible');
  assert(!button($('#modal'),'打开目录'),'browser has fake desktop action');
  $('#modal-ok').click();await waitFor(()=>$('#modal').hidden,'copy did not close');
  assert(fixture.copied===fixture.generatedPath,'wrong copied path');
- assert(fixture.generatedCalls[0].includes(encodeURIComponent('2号小伙子')),'wrong bot path');
- // The persistent Bot menu works without a new generation.
- $('[data-bot="2号小伙子"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
- button($('.panel-more'),'查看生成的图片').click();await waitFor(()=>visible($('#modal')),'Bot menu entry failed');$('#modal-cancel').click();
  fixture.canOpen=true;await openGenerated();
  fixture.openFail=true;button($('#modal'),'打开目录').click();await waitFor(()=>visible($('#modal-error')),'desktop failure silent');
  fixture.openFail=false;button($('#modal'),'打开目录').click();await waitFor(()=>!button($('#modal'),'打开目录').disabled,'desktop call pending');
  assert(fixture.opened.endsWith('/open-workdir?folder=generated'),'desktop did not reuse endpoint');$('#modal-cancel').click();
- fixture.generatedFail=true;button($('#thread .hs-step'),'查看 generated/').click();await new Promise(r=>setTimeout(r,30));
- assert($('#modal').hidden,'failed lookup opened fake directory');fixture.generatedFail=false;
+ fixture.generatedFail=true;
+ $('[data-bot="2号小伙子"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+ button($('.panel-more'),'查看生成的图片').click();await new Promise(r=>setTimeout(r,30));
+ assert($('#modal').hidden,'failed lookup opened a fake directory');fixture.generatedFail=false;
  await XBotSettings.open('about');
  assert([...document.querySelectorAll('[data-settings-version]')].some(n=>visible(n)&&n.textContent==='dev · abc1234'),'about loses build tip');
  $('#settings-copy-version').click();await waitFor(()=>fixture.copied==='dev · abc1234','copy loses tip');XBotSettings.close();
- // Running/failed events must never claim a completed save.
- const host=document.createElement('div');document.body.append(host);
- for(const status of ['in_progress','failed']){
-  XBotProviders.progress(host,{hosted:{...generatedPart.hosted,status}},()=>{});
-  assert(!host.textContent.includes('存到工作区'),'unsaved status claims saved');
- }
- XBotProviders.progress(host,{hosted:{...generatedPart.hosted,status:'completed',query:''}},()=>{});
- button(host,'提示词').click();assert(host.querySelector('.hs-full-prompt').textContent===prompt,'stream update lost full prompt');host.remove();
- assert(!$('#thread img[src*="generated/"]'),'generated image leaked into chat');
+ // The running hosted event uses the same live status as a local tool. No
+ // picture appears until the final reply has an actual Images reference.
+ const box=$('#input');box.textContent='画猫并告诉我图在哪';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
+ await waitFor(()=>fixture.streams.length&&$('#thread .live'),'stream missing');
+ const stream=fixture.streams.at(-1);
+ emit(stream,'part',{hosted:{id:'ig_live',name:'image_generation',status:'in_progress'}});
+ await waitFor(()=>$('#thread .live .live-status')?.textContent.includes('生成图片'),'ordinary working status missing');
+ assert(!$('#thread .live .hs-step')&&!$('#thread .live .gallery'),'running generation rendered a special block or picture');
+ emit(stream,'part',{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}});
+ await new Promise(r=>setTimeout(r,20));
+ assert(!$('#thread .live .gallery'),'completion part alone displayed a picture');
+ fixture.messages[stream.bot].push({...message('assistant','图已挂本条回复。'),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}}],images:[imageID]});
+ emit(stream,'done',{text:'图已挂本条回复。'});stream.controller.close();
+ await waitFor(()=>!$('#thread .live')&&$('#thread').querySelectorAll('.gallery img').length===2,'final reply did not attach image');
+ assert(!$('#thread .hs-step'),'history restored dedicated image component');
+ // Failed delivery is just a textual tool receipt, never a gallery.
+ fixture.messages[stream.bot].push({...message('assistant','挂图失败，文件仍在 generated/large.png。'),parts:[{type:'hosted',text:'已保存到工作区 generated/large.png；挂图失败: 2049x1；文件仍保留。',hosted:{id:'ig_failed',name:'image_generation',status:'completed',query:'大图'}}]});
+ $('[data-bot="另一个Bot"]').click();await waitFor(()=>$('#title').textContent.includes('另一个Bot'),'switch failed');
+ $('[data-bot="2号小伙子"]').click();await waitFor(()=>$('#thread').textContent.includes('generated/large.png'),'history not restored');
+ assert($('#thread').querySelectorAll('.gallery').length===2,'failed delivery created gallery');
+ assert(!$('#thread .hs-step'),'failed delivery created special component');
  assert(testErrors.length===0,testErrors.join(';'));
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});

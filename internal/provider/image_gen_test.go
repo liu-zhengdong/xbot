@@ -48,7 +48,7 @@ func imageTools(body map[string]any) []map[string]any {
 }
 
 func TestResponsesMountsImageGeneration(t *testing.T) {
-	save := func([]byte) (string, error) { return "generated/x.png", nil }
+	save := func(context.Context, []byte) (string, error) { return "generated/x.png", nil }
 	cases := []struct {
 		name     string
 		base     string
@@ -81,7 +81,7 @@ func TestResponsesMountsImageGeneration(t *testing.T) {
 				t.Fatal(err)
 			}
 			input, _ := json.Marshal(tr.bodies[0]["input"])
-			if guided := strings.Contains(string(input), "禁止声称") && strings.Contains(string(input), "查看 generated/"); guided != (len(tc.want) > 0) {
+			if guided := strings.Contains(string(input), "自动挂到本轮最终回复气泡") && strings.Contains(string(input), "真实路径"); guided != (len(tc.want) > 0) {
 				t.Fatalf("image delivery guidance mounted=%v, tools=%v", guided, tc.want)
 			}
 			got := imageTools(tr.bodies[0])
@@ -120,7 +120,7 @@ func TestResponsesSavesImageGenerationCall(t *testing.T) {
 		t.Run(base, func(t *testing.T) {
 			tr := &sseTransport{stream: imageStream(b64)}
 			var saved [][]byte
-			ctx := WithImageGen(context.Background(), ImageGen{Model: "gpt-image-2.5-sunburst", Save: func(b []byte) (string, error) {
+			ctx := WithImageGen(context.Background(), ImageGen{Model: "gpt-image-2.5-sunburst", Save: func(_ context.Context, b []byte) (string, error) {
 				saved = append(saved, b)
 				return fmt.Sprintf("generated/%d.png", len(saved)), nil
 			}})
@@ -141,7 +141,7 @@ func TestResponsesSavesImageGenerationCall(t *testing.T) {
 			if !strings.Contains(first.Text, "generated/1.png") || len(first.VendorRaw) != 0 {
 				t.Fatalf("image part text %q raw %d", first.Text, len(first.VendorRaw))
 			}
-			if !strings.Contains(first.Text, "查看 generated/") || !strings.Contains(first.Text, "未附加聊天图片") {
+			if !strings.Contains(first.Text, "已挂本条回复") {
 				t.Fatalf("receipt lacks truthful delivery instructions: %q", first.Text)
 			}
 			// The bytes stay out of the record and out of the replayed request.
@@ -195,7 +195,7 @@ func TestResponsesImageGenerationFailuresAreHonest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			if tc.gen {
-				ctx = WithImageGen(ctx, ImageGen{Save: func([]byte) (string, error) {
+				ctx = WithImageGen(ctx, ImageGen{Save: func(context.Context, []byte) (string, error) {
 					if tc.save != nil {
 						return "", tc.save
 					}
@@ -227,7 +227,7 @@ func TestResponsesImageGenerationCapsPerResponse(t *testing.T) {
 		items = append(items, fmt.Sprintf(`{"type":"image_generation_call","id":"ig_%d","status":"completed","result":"%s"}`, i, b64))
 	}
 	n := 0
-	ctx := WithImageGen(context.Background(), ImageGen{Save: func([]byte) (string, error) {
+	ctx := WithImageGen(context.Background(), ImageGen{Save: func(context.Context, []byte) (string, error) {
 		n++
 		return fmt.Sprintf("generated/%d.png", n), nil
 	}})
@@ -295,12 +295,12 @@ data: {"type":"response.completed","response":{"status":"completed","output":[{"
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			saved := 0
-			ctx := WithImageGen(context.Background(), ImageGen{Save: func([]byte) (string, error) { saved++; return "generated/a.png", nil }})
+			ctx := WithImageGen(context.Background(), ImageGen{Save: func(context.Context, []byte) (string, error) { saved++; return "generated/a.png", nil }})
 			msg, err := readResponses(ctx, strings.NewReader(tc.stream), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if saved != tc.wantSaved || !strings.Contains(msg.PortableText(), tc.wantText) {
+			if saved != tc.wantSaved || !strings.Contains(msg.Text(), tc.wantText) {
 				t.Fatalf("saved=%d text=%s", saved, msg.PortableText())
 			}
 		})
@@ -316,12 +316,58 @@ func TestImageGenerationMissingIDsStillBounded(t *testing.T) {
 	}
 	stream := `data: {"type":"response.completed","response":{"status":"completed","output":[` + strings.Join(items, ",") + `]}}` + "\n\n"
 	saved := 0
-	ctx := WithImageGen(context.Background(), ImageGen{Save: func([]byte) (string, error) { saved++; return "generated/a.png", nil }})
+	ctx := WithImageGen(context.Background(), ImageGen{Save: func(context.Context, []byte) (string, error) { saved++; return "generated/a.png", nil }})
 	msg, err := readResponses(ctx, strings.NewReader(stream), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if saved != maxImagesPerResponse || !strings.Contains(msg.PortableText(), "单次回复最多保存") {
 		t.Fatalf("saved=%d text=%s", saved, msg.PortableText())
+	}
+}
+
+func TestImageGenerationAttachmentFailureKeepsPathAndReceipt(t *testing.T) {
+	calls := 0
+	type requestKey struct{}
+	ctx := context.WithValue(context.Background(), requestKey{}, "reply")
+	ctx = WithImageGen(ctx, ImageGen{Save: func(ctx context.Context, _ []byte) (string, error) {
+		calls++
+		if ctx.Value(requestKey{}) != "reply" {
+			t.Fatal("save lost the request context")
+		}
+		return "generated/real.png", errors.New("at most 4 pictures per reply")
+	}})
+	var receipts []string
+	ctx = WithPartObserver(ctx, func(p ContentPart) {
+		if strings.Contains(p.Text, "generated/real.png") {
+			receipts = append(receipts, p.Text)
+		}
+	})
+	msg, err := readResponses(ctx, strings.NewReader(imageStream(base64.StdEncoding.EncodeToString(fakePNG(64)))), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("save calls = %d", calls)
+	}
+	receipts = append(receipts, msg.Content[0].Text)
+	if !strings.Contains(msg.Text(), "挂图失败") || !strings.Contains(msg.Text(), "generated/real.png") {
+		t.Fatalf("failure hidden from reply: %s", msg.Text())
+	}
+	if len(receipts) < 3 {
+		t.Fatalf("missing done/completed receipts: %v", receipts)
+	}
+	for _, receipt := range receipts {
+		if !strings.Contains(receipt, "已保存到工作区 generated/real.png") || !strings.Contains(receipt, "挂图失败: at most 4 pictures per reply") || !strings.Contains(receipt, "文件仍保留") || strings.Contains(receipt, "已挂本条回复") || strings.Contains(receipt, "保存失败") {
+			t.Fatalf("dishonest receipt: %s", receipt)
+		}
+	}
+	input, err := responseInput([]Message{msg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(input)
+	if !strings.Contains(string(raw), "generated/real.png") || !strings.Contains(string(raw), "挂图失败") {
+		t.Fatalf("replay lost partial success: %s", raw)
 	}
 }

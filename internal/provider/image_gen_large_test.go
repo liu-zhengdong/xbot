@@ -33,7 +33,7 @@ func TestResponsesImageGenerationLargeCompleted(t *testing.T) {
 		t.Run(fmt.Sprintf("done_first=%t", doneFirst), func(t *testing.T) {
 			dir := t.TempDir()
 			var paths []string
-			ctx := WithImageGen(context.Background(), ImageGen{Save: func(data []byte) (string, error) {
+			ctx := WithImageGen(context.Background(), ImageGen{Save: func(_ context.Context, data []byte) (string, error) {
 				path, err := work.WriteGenerated(dir, data)
 				if err == nil {
 					paths = append(paths, path)
@@ -56,8 +56,8 @@ func TestResponsesImageGenerationLargeCompleted(t *testing.T) {
 			if err != nil {
 				t.Fatalf("completed line %d bytes, already saved %d images: %v", len(completed), len(paths), err)
 			}
-			if len(paths) != 2 || paths[0] == paths[1] || len(msg.Content) != 2 {
-				t.Fatalf("want two unique saves and final parts: paths=%v parts=%d", paths, len(msg.Content))
+			if len(paths) != 2 || paths[0] == paths[1] || len(msg.Content) != 3 {
+				t.Fatalf("want two unique saves, hosted parts and visible receipt: paths=%v parts=%d", paths, len(msg.Content))
 			}
 			files, err := os.ReadDir(filepath.Join(dir, work.GeneratedDir))
 			if err != nil || len(files) != 2 {
@@ -82,7 +82,7 @@ func TestResponsesImageGenerationLargeCompleted(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, path := range paths {
-				if !bytes.Contains(replay, []byte(path)) {
+				if !bytes.Contains(replay, []byte(path)) || !strings.Contains(msg.Text(), path) {
 					t.Fatalf("model replay lost %s", path)
 				}
 			}

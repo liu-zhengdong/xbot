@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ 65e5aa9 + tool-group-expand graduated
+verified: 2026-10-27 @ 77c0ee6 + imggen-attach-bubble
 ---
 # 内核：Link、Event、收件箱
 
@@ -59,7 +59,7 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 
 ## 厂商生图
 
-每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。仅开启、当前 Bot 绑定为所选家的 OAuth Responses 且现有保险箱登录态已配置时，模型调用上下文才提供 hosted 生图的工作区保存入口；开关关闭优先于旧模型标记，同一轮续段保留快照。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
+每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。仅开启、当前 Bot 绑定为所选家的 OAuth Responses 且现有保险箱登录态已配置时，模型调用上下文才提供 hosted 生图的工作区保存入口；开关关闭优先于旧模型标记，同一轮续段保留快照。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。文件先保存到 `generated/`，再以工作区绝对路径调用既有 `attachOutImages`，不受 shell 当前目录影响；沿既有工作区边界、类型/尺寸校验和每条回复 4 张 / 10 MiB / 长边 2048 上限，内容相同的图只挂一次。请求携带原 turn 与 reply generation，迟到结果不能挂到另一条回复，同一长轮的后续回复可正常挂图。最终回复沿既有队列写 `Entry.Images`，失败不污染队列，原文件仍保留。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
 
 主对话与本机子代理的模型调用另有一次 MCP schema 降级重试，独立于 overflow；停用范围、跨轮冷却和恢复边界见 [生态](ecosystem.md)。
 

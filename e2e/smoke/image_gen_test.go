@@ -115,6 +115,13 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 			}
 			setImage := func(enabled bool) {
 				t.Helper()
+				selected := "openai"
+				if kind == "xai" {
+					selected = "xai"
+				}
+				if code, raw := srv.do("PUT", "/api/image-gen", map[string]any{"enabled": enabled, "provider": selected}); code != 200 {
+					t.Fatalf("global image setting: %d %s", code, raw)
+				}
 				code, raw := srv.do("PUT", "/api/providers/models/image-generation", map[string]any{"provider": kind, "model": model, "enabled": enabled, "image_model": imageModel})
 				if code != 200 {
 					t.Fatalf("image setting: %d %s", code, raw)
@@ -125,7 +132,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 				}
 			}
 			setImage(true)
-			first := srv.Send("ada", "画一只猫，保存在工作区。")
+			first := srv.Send("ada", "画猫并告诉我图在哪。")
 			if len(first.Tools) != 0 {
 				t.Fatalf("hosted image ran as a local tool: %+v", first.Tools)
 			}
@@ -139,8 +146,9 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 			if err != nil || !bytes.Equal(actual, png) || !strings.HasSuffix(rel, ".png") {
 				t.Fatalf("generated image bytes/type mismatch: len=%d err=%v", len(actual), err)
 			}
-			if files, err := os.ReadDir(filepath.Join(work.BotDir(srv.Root, "ada"), "paste")); !os.IsNotExist(err) && (err != nil || len(files) != 0) {
-				t.Fatalf("hosted image reached paste/: files=%v err=%v", files, err)
+			id, _ := work.PastedNameFor("image/png", png)
+			if code, raw := srv.do("GET", "/api/bots/ada/paste/"+id, nil); code != 200 || !bytes.Equal(raw, png) {
+				t.Fatalf("attached image endpoint: %d, bytes=%d", code, len(raw))
 			}
 			setImage(false)
 			srv.Send("ada", "确认刚才生成的文件路径。")
@@ -150,22 +158,25 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 			var transcript struct {
 				Messages []struct {
 					Parts  []provider.ContentPart `json:"parts"`
-					Images []json.RawMessage      `json:"images"`
+					Images []string               `json:"images"`
 				} `json:"messages"`
 			}
 			if code != 200 || json.Unmarshal(raw, &transcript) != nil {
 				t.Fatalf("transcript: %d %s", code, raw)
 			}
-			foundPath, foundFailure := false, false
+			foundPath, foundFailure, attached := false, false, 0
 			for _, row := range transcript.Messages {
 				if len(row.Images) > 0 {
-					t.Fatal("hosted image automatically attached to transcript Images")
+					attached++
+					if attached != 1 || len(row.Images) != 1 || row.Images[0] != id {
+						t.Fatalf("wrong reply attachment: %v", row.Images)
+					}
 				}
 				for _, part := range row.Parts {
 					if part.Hosted == nil || part.Hosted.Name != "image_generation" {
 						continue
 					}
-					if part.Hosted.Status == "completed" && strings.Contains(part.Text, rel) {
+					if part.Hosted.Status == "completed" && strings.Contains(part.Text, rel) && strings.Contains(part.Text, "已挂本条回复") {
 						foundPath = true
 					}
 					if part.Hosted.Status == "failed" && strings.Contains(part.Text, "厂商生图失败") {
@@ -173,7 +184,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 					}
 				}
 			}
-			if !foundPath || !foundFailure || strings.Contains(string(raw), imageB64) || strings.Contains(string(raw), access) {
+			if attached != 1 || !foundPath || !foundFailure || strings.Contains(string(raw), imageB64) || strings.Contains(string(raw), access) {
 				t.Fatalf("transcript lost result/failure or leaked data: path=%v failure=%v", foundPath, foundFailure)
 			}
 			files, err = os.ReadDir(genDir)

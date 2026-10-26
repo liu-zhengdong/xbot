@@ -60,7 +60,7 @@ type turn struct {
 	// Last input seen by a committed normal reply in this turn. Only used to
 	// avoid false failure notices, never persisted or used for result delivery.
 	replyInputThrough int
-	// outImages are pictures notify_owner queued for this turn's reply line,
+	// outImages are pictures notify_owner or hosted generation queued for this turn's reply line,
 	// and outBytes what they weigh (outimage.go).
 	outImages []string
 	outBytes  int

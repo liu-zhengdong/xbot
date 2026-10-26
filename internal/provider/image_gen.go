@@ -18,10 +18,12 @@ import (
 //
 // Model is the OpenAI tool-level image model; empty uses the vendor default,
 // and xAI never receives it. Save stores one decoded picture and returns its
-// path relative to the bot workspace.
+// path relative to the bot workspace after queuing it for the current reply.
+// A nonempty path with an error means the file was saved but delivery failed.
+// The request context binds delivery to its originating turn and reply.
 type ImageGen struct {
 	Model string
-	Save  func(data []byte) (string, error)
+	Save  func(context.Context, []byte) (string, error)
 }
 
 type imageGenKey struct{}
@@ -61,6 +63,7 @@ func imageTool(base string, g ImageGen) map[string]any {
 // same item arrives in output_item.done and again in response.completed; the
 // second copy reuses the first path.
 type imageStore struct {
+	ctx   context.Context
 	gen   ImageGen
 	ok    bool
 	saved map[string]string
@@ -69,7 +72,7 @@ type imageStore struct {
 
 func newImageStore(ctx context.Context) *imageStore {
 	g, ok := imageGenFrom(ctx)
-	return &imageStore{gen: g, ok: ok, saved: map[string]string{}, fails: map[string]string{}}
+	return &imageStore{ctx: ctx, gen: g, ok: ok, saved: map[string]string{}, fails: map[string]string{}}
 }
 
 // strip replaces an image_generation_call's base64 result with the stored
@@ -113,7 +116,8 @@ func (s *imageStore) strip(raw json.RawMessage, index int, final bool) (json.Raw
 	if path != "" {
 		item["xbot_path"] = path
 		item["status"] = "completed"
-	} else {
+	}
+	if fail != "" {
 		item["xbot_error"] = fail
 	}
 	return json.Marshal(item)
@@ -122,7 +126,7 @@ func (s *imageStore) strip(raw json.RawMessage, index int, final bool) (json.Raw
 func (s *imageStore) save(id, result string) (string, string) {
 	if id != "" {
 		if p, ok := s.saved[id]; ok {
-			return p, ""
+			return p, s.fails[id]
 		}
 		if f, ok := s.fails[id]; ok {
 			return "", f
@@ -132,7 +136,8 @@ func (s *imageStore) save(id, result string) (string, string) {
 	if id != "" {
 		if path != "" {
 			s.saved[id] = path
-		} else {
+		}
+		if fail != "" {
 			s.fails[id] = fail
 		}
 	}
@@ -161,8 +166,11 @@ func (s *imageStore) write(result string) (string, string) {
 	if err != nil {
 		return "", "图片数据无法解码"
 	}
-	path, err := s.gen.Save(data)
+	path, err := s.gen.Save(s.ctx, data)
 	if err != nil {
+		if path != "" {
+			return path, "挂图失败: " + err.Error()
+		}
 		return "", "保存失败: " + err.Error()
 	}
 	return path, ""
@@ -193,8 +201,10 @@ func imageGenerationPart(raw json.RawMessage, p ContentPart) (ContentPart, error
 	p.VendorRaw = nil
 	p.Hosted = &HostedStep{ID: it.ID, Name: "image_generation", Status: it.Status, Query: q}
 	switch {
+	case it.Path != "" && it.Error != "":
+		p.Text = "[厂商生图: 已保存到工作区 " + it.Path + "；" + it.Error + "；文件仍保留。]"
 	case it.Path != "":
-		p.Text = "[厂商生图: 已保存到工作区 " + it.Path + "；请从生图步骤的「查看 generated/」或 Bot 菜单的「查看生成的图片」查找。这里只保存文件，未附加聊天图片；勿声称已在消息中展示。]"
+		p.Text = "[厂商生图: 已保存到工作区 " + it.Path + "；已挂本条回复。]"
 	case it.Error != "":
 		p.Hosted.Status = "failed"
 		p.Text = "[厂商生图失败: " + it.Error + "]"
@@ -213,7 +223,7 @@ func imageGenerationPart(raw json.RawMessage, p ContentPart) (ContentPart, error
 
 // imageDeliveryGuidance also applies to prose produced in the generating
 // response itself, before the model can see the saved-path receipt on replay.
-const imageDeliveryGuidance = "厂商生图的图片由 XBot 保存到工作区 generated/，不会自动附加到聊天。交付时指向生图步骤的「查看 generated/」或 Bot 菜单的「查看生成的图片」；只有保存成功才说已保存。禁止声称图片已在消息或气泡中显示。"
+const imageDeliveryGuidance = "厂商生图先由 XBot 保存到工作区 generated/，再自动挂到本轮最终回复气泡。交付以实际回执为准：成功时说明已挂本条回复；挂图失败时说明原因和文件仍保留。路径只引用回执给出的真实路径，不编造文件名；当前响应还未见回执时，不猜测保存或挂图结果，提示查看工具调用的回执。"
 
 // HasImageGen reports whether ctx mounts hosted image generation.
 func HasImageGen(ctx context.Context) bool {
