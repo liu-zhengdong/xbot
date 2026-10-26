@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ a0f12be + 图片生成全局门控 + 上下文批 B/C / Agent Todo / 轨迹可发现与回放 / 公网 UI 单源
+verified: 2026-10-27 @ 064f81f + MCP schema 降级
 ---
 # 内核：Link、Event、收件箱
 
@@ -49,6 +49,8 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 ## 厂商生图
 
 每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。仅开启、当前 Bot 绑定为所选家的 OAuth Responses 且现有保险箱登录态已配置时，模型调用上下文才提供 hosted 生图的工作区保存入口；开关关闭优先于旧模型标记，同一轮续段保留快照。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
+
+主对话与本机子代理的模型调用另有一次 MCP schema 降级重试，独立于 overflow；停用范围、跨轮冷却和恢复边界见 [生态](ecosystem.md)。
 
 ## 全局搜索策略
 

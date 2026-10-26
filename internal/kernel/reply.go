@@ -113,8 +113,9 @@ func (k *Kernel) userReplyTarget(seq int) bool {
 // replyProvider strips a leading reply_to line from assistant text before it
 // is stored or shown. The sequence stays on Message.ReplyTo.
 type replyProvider struct {
-	inner  provider.Provider
-	accept func(int) bool
+	inner        provider.Provider
+	schemaKernel *Kernel
+	accept       func(int) bool
 	// onSend runs before the request goes out, so a call that fails or is
 	// cancelled still left the context it was about to send.
 	prepare  func(provider.Request) (provider.Request, error)
@@ -168,7 +169,8 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 			return provider.Message{}, err
 		}
 	}
-	msg, err := s.send(ctx, req, onDelta)
+	schemaAttempt := &mcpSchemaAttempt{k: s.schemaKernel}
+	req, msg, err := schemaAttempt.chat(ctx, req, onDelta, s.send)
 	if err != nil && s.fit != nil && provider.IsContextOverflow(err) {
 		req = s.fit(ctx, raw, true)
 		if s.finish != nil {
@@ -177,7 +179,7 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 				return provider.Message{}, err
 			}
 		}
-		msg, err = s.send(ctx, req, onDelta)
+		req, msg, err = schemaAttempt.chat(ctx, req, onDelta, s.send)
 	}
 	if err != nil {
 		return provider.Message{}, err

@@ -225,9 +225,10 @@ type fitProvider struct {
 
 func (p *fitProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	raw := req
-	msg, err := p.inner.Chat(ctx, p.k.fit(ctx, nil, p.fit, raw, false), onDelta)
+	schemaAttempt := &mcpSchemaAttempt{k: p.k}
+	_, msg, err := schemaAttempt.chat(ctx, p.k.fit(ctx, nil, p.fit, raw, false), onDelta, p.inner.Chat)
 	if err != nil && provider.IsContextOverflow(err) {
-		msg, err = p.inner.Chat(ctx, p.k.fit(ctx, nil, p.fit, raw, true), onDelta)
+		_, msg, err = schemaAttempt.chat(ctx, p.k.fit(ctx, nil, p.fit, raw, true), onDelta, p.inner.Chat)
 	}
 	return msg, err
 }

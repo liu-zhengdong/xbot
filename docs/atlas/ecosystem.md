@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/link/, internal/skill/, internal/code/, internal/tools/]
-verified: 2026-10-27 @ 530d20f（skills-flat-no-owner：本机技能库扁平化）
+verified: 2026-10-27 @ 064f81f + MCP schema 降级
 ---
 # 生态：Link、MCP、技能、连接器、编码代理
 
@@ -23,6 +23,12 @@ verified: 2026-10-27 @ 530d20f（skills-flat-no-owner：本机技能库扁平化
 - **编码代理 Link**：和子代理分开。一个 Bot 可以同时留下多条编码任务，每条有自己的工作目录、仓库、步数上限和时间上限，不套用子代理的 16 步、10 分钟。记录在 `bots/<name>/code/<id>.json`，id 以 `ca_` 开头。同时只有一条是 `running`，再开始的进 `queued`。`code_start` 记录工作目录、目标和会改文件，然后启动；按权限表它是普通动作，不弹确认卡。Bot 可以补充（`code_steer`）、排队（`code_queue`）、打断（`code_interrupt`）、取消（`code_cancel`），并用 `code_show` 看记录。取消正在跑的那条时，队列里最早的一条变成 `running`。完成、失败或取消时向该 Bot 的收件箱投来源 `coding-agent` 的不可信事件。这些工具的 schema 要 `links load coding-agent` 之后才进当前这一轮。内核没有新的对象。后端三选一。`XBOT_CODE_AGENT` 是已有编码代理的可执行文件，优先用它。没设时在 PATH 里依次找 `cursor-agent`、`codex`、`claude`。`claude` 和 `cursor-agent` 加 `-p`，`codex` 加 `exec`，其它命令仍把目标当作唯一参数。子进程环境只有基础变量和这次任务的 `XBOT_CODE_*`，不带供应商密钥。标准输出和标准错误按行追加进该 Bot 的 transcript，每条包在 `<coding_card id status>` 里。对话里同一个 id 只显示最新的一张卡片。进程结束时再追加一张终态卡片，状态是 done、failed 或 cancelled。取消之后记录已经不是 running，这张卡片仍然要写，不能停在 running。这些卡片不进模型上下文，也不进记忆抽取。`code_show` 在任务还在跑时能看到已经流出来的输出。`code_cancel` 停掉进程，并杀掉它所在的进程组，避免子进程把管道占住。没有外部命令时，`xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner`。都没有时，用这个 Bot 绑定的模型在本进程里跑。步数和时间都用这条任务自己的上限。仓库非空且工作目录还没有 `.git` 时先克隆。这三个都没配时，仍然只写记录。
 
 正在验收的设计：[技能库去掉主人路径段](../dev/skills-flat-no-owner.md)。
+
+## MCP schema 降级
+
+主对话与本机子代理只对明确的 HTTP 400 工具 schema 错误降级，保留 overflow 原有切短重试，鉴权失败与普通 400 原样返回。错误点名当前请求的 MCP 工具时只摘掉它；没有名字时临时摘掉该请求全部 MCP 工具，不动内置工具。请求尾部追加可读说明（最多列 32 个名称），不复制上游错误正文、不改原 schema 或权限；原 `trace.jsonl` 记 `mcp_schema / tools_suspended`。同一次模型调用最多增加一次 schema 重试，已经流出文字或已取消时不重试；再次失败仍返回错误。
+
+进程内冷却缓存按 Bot 路径、绑定模型、工具名与 schema 哈希隔离，只存哈希和到期时间，最多 4096 条，满时淘汰最早到期项；短命内核与后续轮次复用。30 分钟后、schema 或绑定模型变化、进程重启后可重新尝试原定义。无法定位工具时可能暂时连同健康 MCP 工具一起停用；冷却期间重复 `links load` 不解除停用。待验收设计见 [MCP schema 被拒时降级](../dev/mcp-schema-fallback.md)。
 
 ## 坑
 - 跑着独立用户的保险箱守护进程（`xbot vaultd`）时 → 本进程拿不到连接器 token 的明文，没法校验入站签名 → Telegram 和飞书的 webhook 入站返回 401 并记一行日志，不放行也不做假校验。要收入站消息，暂时只能用本地同用户的保险箱。出站发送不受影响。

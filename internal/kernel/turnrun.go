@@ -323,10 +323,11 @@ func (j *textJoin) String() string { return j.b.String() }
 // background itself. It owns every write to r.err and r.msgSeqs during the run.
 func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	rp := &replyProvider{
-		inner:   r.p,
-		prepare: r.requestContext,
-		finish:  r.finishEnvironment,
-		accept:  r.k.userReplyTarget,
+		inner:        r.p,
+		schemaKernel: r.k,
+		prepare:      r.requestContext,
+		finish:       r.finishEnvironment,
+		accept:       r.k.userReplyTarget,
 		// The snapshot is taken before the request leaves, so a call that times
 		// out or fails still shows what was sent. It clips the text, so the ring
 		// holds previews, not tool output.

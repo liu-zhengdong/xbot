@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-27 @ 530d20f + 模型窗口目录刷新
+verified: 2026-10-27 @ 064f81f + MCP schema 错误分类
 ---
 # 模型供应商与主动性评测
 
@@ -36,6 +36,8 @@ verified: 2026-10-27 @ 530d20f + 模型窗口目录刷新
 - **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，整个模型补丁槽省略；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `### 模型补丁`，固定说明「仅针对当前模型的额外约束。」之后才放正文。正文只进入固定前缀 S0 的该槽，仍按加载器的 8KB 上限处理。环境更新只公布 `provider/model` 和 12 位内容哈希；没有正文时公布 `none`。内容或绑定变化才追加短更新；压缩后的完整环境快照也不带正文。
 - **派活评测**：内置的 `dispatch` 套件（`xbot eval <model> --suite dispatch`）测派活的前台：该派哪种、任务说明写没写全（`checks.dispatch` 的 `type`、`task_mentions`，用 `|` 分隔可选说法），以及不该派的别派（`none`）。派出去的活只记录不执行（`recordExec`），用例里没有 shell，所以不用沙箱，macOS 上也能跑；前台可以读工作目录和自己的记忆。它不进认证名单。2026-10-20 deepseek-flash 跑 4 条 × 3 次全过（pass^3=1.00）。
 - **认证名单**：`xbot eval <provider/model>` 先跑内置的 `proactivity`，再跑 `proactivity-holdout`。两套里每一条都按多数通过，才把 `provider/model` 写进该数据根的 `certified.json`。只跑其中一套，或 `--suite` 指向一个目录，都不写。默认每条跑 3 次，通过次数多于失败次数才算这条通过，3 次里就是至少 2 次。有一条多数没过就不写。`fake/*` 不写。认证是定期做的：主人隔一段时间自己跑真模型评测，不作为合并条件，也不进 CI。测试和 CI 只用 `fake/scripted`，不调用真模型。`GET /api/models` 默认只列出已经配置、并且在这份名单里的模型；`?all=1` 才带上未认证的。`xbot provider list` 始终列出已配置的供应商；下面的模型默认只有认证过的，`--all` 才带上其余的，并标明未认证。一个供应商还没有认证模型时，这一行仍然打出来。`xbot bind` 绑定未认证模型要加 `--uncertified`。
+
+工具 schema 错误由 `provider.ToolSchemaRejection` 分类：只认带 HTTP 400 状态的明确工具定义错误，JSON 错误只读 message/code，不从反射的输入里匹配；最多解析 64 KiB 错误正文。overflow 优先，401/403、普通请求错误、工具调用参数错误和输出 schema 错误不进此路径。MCP 的有界降级与恢复见 [生态](ecosystem.md)。
 
 ## 主动性评测
 评测看行为和结果，不看模型自己的汇报。依据是主人对通用智能的第一条：自己设定目标，被打断后继续同一件事，做不到时停下来说明原因。
