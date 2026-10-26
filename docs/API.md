@@ -15,9 +15,9 @@
 
 ## 设备静态壳
 
-`GET /api/ui/static/<path>` 要求主人认证（pipe 复用 `AuthorizeOwner`）。只读内嵌 `static/` 下的真实文件，扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。
+`GET /api/ui/static/<path>` 要求主人认证（pipe 复用 `AuthorizeOwner`）。与本机静态路由同源：设置 `XBOT_DEV_STATIC` 时只读该配置目录内的真实文件（拒绝符号链接越界），否则读内嵌 `static/`。扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。
 
-成功按资源类型返回正文、`ETag`、`Cache-Control: no-cache` 和 `X-Xbot-Tip`。If-None-Match 命中回 304 空正文；tip 为构建版本，未注入版本时为 `dev-<内嵌 UI 摘要>`。文件大于 pipe 的 700 KiB 正文预算回 413，不截断为成功；大字体由公网入口缓存。不受 `XBOT_DEV_STATIC` 覆盖。
+成功按资源类型返回正文、`ETag`、`Cache-Control: no-cache` 和 `X-Xbot-Tip`。If-None-Match 命中回 304 空正文；tip 为构建版本，未注入版本时为 `dev-<内嵌 UI 摘要>`。文件大于 pipe 的 700 KiB 正文预算回 413，不截断为成功；大字体由公网入口缓存。开发覆盖时 tip 为 `dev-static`、缓存为 `no-store`，仍有正文 ETag / 304；每次重读磁盘，缺文件不回落 embed，实际读取也受 700 KiB 上限约束。
 
 ## 登录
 

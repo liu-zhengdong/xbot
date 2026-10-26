@@ -3,9 +3,7 @@ package web
 
 import (
 	"context"
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,6 +77,10 @@ type Server struct {
 	// Root/account-api, whose mail is written to files instead of sent.
 	Account account.Client
 	acct    accountState
+
+	// Freeze the source once for both local routes and the owner pipe.
+	uiSourceOnce sync.Once
+	uiStaticDir  string
 
 	// owner and token are written only by EnsureToken, under authMu, before
 	// serving; checkToken and loginToken read them under authMu, so handlers
@@ -302,32 +304,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 }
 
 func (s *Server) static(name, contentType string) http.HandlerFunc {
-	if dir := os.Getenv(devStaticEnv); dir != "" {
-		return devStatic(dir, name, contentType)
-	}
-	body, err := staticFS.ReadFile(name)
-	return embeddedStatic(body, err, contentType)
-}
-
-func embeddedStatic(body []byte, err error, contentType string) http.HandlerFunc {
-	sum := sha256.Sum256(body)
-	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Cache-Control", "no-cache")
-		// no-cache still revalidates every load; the ETag turns that into a
-		// 304 instead of re-sending the 2 MB CJK font over a tunnel.
-		w.Header().Set("ETag", etag)
-		if r.Header.Get("If-None-Match") == etag {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		_, _ = w.Write(body)
-	}
+	return s.staticAsset(strings.TrimPrefix(name, "static/"), contentType, 0)
 }
 
 // katexFont serves one vendored KaTeX font. Only names that really ship in

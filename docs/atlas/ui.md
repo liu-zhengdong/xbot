@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 07d6592
+verified: 2026-10-27 @ 4524fd2
 ---
 # 网页界面
 
@@ -31,7 +31,7 @@ verified: 2026-10-27 @ 07d6592
 
 ### 公网登录后的设备壳
 
-公网账号入口保留登录页、boot / bridge、仅控制 `/app/` 文档的资源 worker 和字体；业务 HTML、JS、CSS、图标通过当前配对设备的 `GET /api/ui/static/<path>` 读取内嵌 `staticFS`。同源浏览器资源请求由 worker 交回所属页面的现有加密 pipe，账号 API 继续在云上。没有云上业务壳副本或持久业务资源缓存。
+公网账号入口保留登录页、boot / bridge、仅控制 `/app/` 文档的资源 worker 和字体；业务 HTML、JS、CSS、图标通过当前配对设备的 `GET /api/ui/static/<path>` 读取 serve 进程实际提供的 UI。本机路由与 pipe 共用解析：开启 `XBOT_DEV_STATIC` 时同读配置目录（每次请求重读，缺文件不回落 embed），关闭时同读内嵌 `staticFS`；开发覆盖时 `X-Xbot-Tip` 为 `dev-static`。同源浏览器资源请求由 worker 交回所属页面的现有加密 pipe，账号 API 继续在云上。没有云上业务壳副本或持久业务资源缓存。
 
 账号菜单可选择设备；切换会关闭原 pipe 并整页重载。未选择时取在线设备；明确选择的设备离线时显示原因和重试，不自动换设备、不回落旧壳。会话版本由设备静态响应的 `X-Xbot-Tip` 提供，纯 dev 构建用内嵌 UI 摘要区分。同步脚本不再是业务 UI 发版路径。协议、安全和体限见 [ADR 0029](../adr/0029-public-ui-single-source-via-pipe.md)、[API](../API.md#设备静态壳)。 设计师用户视角已 PASS（合入 tip `a02e3f3`）：公网 `/app/` 仅 pipe 薄引导（`boot.js` 200、`app.js` 404），业务壳经设备 `GET /api/ui/static`；本约定即 atlas 真源。登录后主壳缺会话不挡本条收口。
 

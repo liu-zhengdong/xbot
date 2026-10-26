@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"path"
-	"strings"
 	"sync"
 
 	"xbot/internal/pipe/limits"
@@ -41,37 +39,5 @@ func (s *Server) uiStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("path")
-	// ValidPath rejects absolute paths, empty segments and . / .. components.
-	// The embedded tree plus these asset types are the entire allowlist.
-	if !fs.ValidPath(name) || strings.ContainsAny(name, "\\%\x00") || name == "." {
-		http.NotFound(w, r)
-		return
-	}
-	ct := map[string]string{
-		".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-		".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
-		".woff2": "font/woff2", ".webmanifest": "application/manifest+json", ".txt": "text/plain; charset=utf-8",
-	}[path.Ext(name)]
-	if ct == "" {
-		http.NotFound(w, r)
-		return
-	}
-	f, err := staticFS.Open("static/" + name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("X-Xbot-Tip", embeddedUITip())
-	if info.Size() > limits.MaxBody {
-		writeErr(w, http.StatusRequestEntityTooLarge, "static asset exceeds pipe body limit")
-		return
-	}
-	body, err := staticFS.ReadFile("static/" + name)
-	embeddedStatic(body, err, ct)(w, r)
+	s.staticAsset(name, staticContentType(name), limits.MaxBody)(w, r)
 }
