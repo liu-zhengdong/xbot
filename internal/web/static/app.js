@@ -1414,7 +1414,8 @@
       parent.append(mathNode(math.join("\n").replace(/^\n+|\n+$/g, ""), true));
       math = null;
     };
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (math !== null) {
         // First closing $$ wins: the rest of the line is prose again and may
         // hold further formulas (lastIndexOf would swallow them into the TeX).
@@ -1443,6 +1444,34 @@
         }
         continue;
       }
+      // Quote: consecutive > lines become one block; one > level is peeled
+      // off and the rest renders through the same path, so >> nests and
+      // lists, inline marks and math work inside. No > reaches the text.
+      if (/^\s{0,3}>/.test(line)) {
+        flushPara(); flushList();
+        const inner = [];
+        while (i < lines.length && /^\s{0,3}>/.test(lines[i])) inner.push(lines[i++].replace(/^\s{0,3}> ?/, ""));
+        i--;
+        const quote = document.createElement("blockquote");
+        appendMarkdown(quote, inner.join("\n"));
+        parent.append(quote);
+        continue;
+      }
+      // GFM table: a header row with pipes directly over a |---| row. Cells
+      // go through appendInline, so links stay http(s) and text stays text.
+      if (line.indexOf("|") >= 0 && i + 1 < lines.length && tableAligns(lines[i + 1])) {
+        const head = tableCells(line), aligns = tableAligns(lines[i + 1]);
+        if (head.length === aligns.length) {
+          flushPara(); flushList();
+          const rows = [];
+          i += 2;
+          // A quote line ends the table even when it holds a pipe.
+          while (i < lines.length && lines[i].indexOf("|") >= 0 && lines[i].trim() && !/^\s{0,3}>/.test(lines[i])) rows.push(tableCells(lines[i++]));
+          i--;
+          parent.append(tableNode(head, aligns, rows));
+          continue;
+        }
+      }
       const h = /^(#{1,3})\s+(.*)$/.exec(line);
       if (h) {
         flushPara(); flushList();
@@ -1470,43 +1499,137 @@
     flushMath();
   }
 
+  // A row's cells: outer pipes dropped, split on | outside `code` spans,
+  // \| kept as a literal pipe.
+  function tableCells(line) {
+    let row = line.trim();
+    if (row.startsWith("|")) row = row.slice(1);
+    if (row.endsWith("|") && !row.endsWith("\\|")) row = row.slice(0, -1);
+    const cells = [];
+    let cur = "", tick = false;
+    for (let i = 0; i < row.length; i++) {
+      const ch = row.charAt(i);
+      if (ch === "\\" && row.charAt(i + 1) === "|") { cur += "|"; i++; continue; }
+      if (ch === "`") tick = !tick;
+      if (ch === "|" && !tick) { cells.push(cur.trim()); cur = ""; continue; }
+      cur += ch;
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+
+  // The |:---|---:| row's alignments, or null when the line is not one.
+  function tableAligns(line) {
+    if (line.indexOf("-") < 0 || !/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line)) return null;
+    if (line.indexOf("|") < 0) return null;
+    return tableCells(line).map((c) => c.endsWith(":") ? (c.startsWith(":") ? "center" : "right") : (c.startsWith(":") ? "left" : ""));
+  }
+
+  function tableNode(head, aligns, rows) {
+    const wrap = el("div", "md-table");
+    const table = document.createElement("table");
+    const thead = document.createElement("thead"), tbody = document.createElement("tbody");
+    const row = (cells, tag) => {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < aligns.length; c++) {
+        const cell = document.createElement(tag);
+        if (aligns[c]) cell.style.textAlign = aligns[c];
+        appendInline(cell, cells[c] || "");
+        tr.append(cell);
+      }
+      return tr;
+    };
+    thead.append(row(head, "th"));
+    for (const cells of rows) tbody.append(row(cells, "td"));
+    table.append(thead);
+    if (rows.length) table.append(tbody);
+    wrap.append(table);
+    return wrap;
+  }
+
+  // Per-language token rules for the code highlighter. Each profile names
+  // its keywords, literal words, line-comment openers, whether /* */ and
+  // triple-quoted strings exist, and which quotes may span lines.
+  const codeLangs = (() => {
+    const words = (s) => new Set(s.split(" "));
+    const cLike = { block: true, line: ["//"], multi: "" };
+    const p = {
+      go: { ...cLike, multi: "`", kw: words("break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var"), lit: words("true false nil iota string int int8 int16 int32 int64 uint uint8 uint16 uint32 uint64 uintptr float32 float64 bool byte rune error any make new len cap append copy delete panic recover close") },
+      js: { ...cLike, multi: "`", kw: words("async await break case catch class const continue debugger default delete do else export extends finally for from function if import in instanceof let new of return static super switch this throw try typeof var void while with yield as type interface enum implements private public protected readonly declare namespace keyof"), lit: words("true false null undefined NaN Infinity string number boolean any unknown never void object") },
+      py: { block: false, line: ["#"], triple: true, multi: "", kw: words("and as assert async await break class continue def del elif else except finally for from global if import in is lambda match case nonlocal not or pass raise return try while with yield"), lit: words("True False None self cls print len range int str float bool list dict set tuple") },
+      java: { ...cLike, kw: words("abstract assert break case catch class const continue default do else enum extends final finally for goto if implements import instanceof interface native new package private protected public return static strictfp super switch synchronized this throw throws transient try volatile while var record fun val when object override open data companion"), lit: words("true false null void int long short byte char boolean float double String") },
+      c: { ...cLike, kw: words("auto break case const constexpr continue default do else enum extern for goto if inline register return sizeof static struct switch typedef union volatile while class namespace using template typename public private protected virtual override new delete this throw try catch include define ifdef ifndef endif pragma"), lit: words("true false NULL nullptr void int long short char float double unsigned signed bool size_t auto std") },
+      rust: { ...cLike, kw: words("as async await break const continue crate dyn else enum extern fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait type unsafe use where while"), lit: words("true false None Some Ok Err i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str String Vec Option Result Box") },
+      sh: { block: false, line: ["#"], hashWord: true, multi: "\"'", kw: words("if then else elif fi for while until do done case esac in function return local export source alias unset set shift exit break continue select"), lit: words("echo cd ls cat grep sed awk git go npm pnpm make curl rm cp mv mkdir sudo printf read test true false") },
+      sql: { block: true, line: ["--"], multi: "", kw: words("select from where and or not insert into values update set delete create table drop alter add index primary key foreign references join left right inner outer full on as group by order having limit offset distinct union all case when then else end is in like between exists default unique view with returning begin commit rollback SELECT FROM WHERE AND OR NOT INSERT INTO VALUES UPDATE SET DELETE CREATE TABLE DROP ALTER ADD INDEX PRIMARY KEY FOREIGN REFERENCES JOIN LEFT RIGHT INNER OUTER FULL ON AS GROUP BY ORDER HAVING LIMIT OFFSET DISTINCT UNION ALL CASE WHEN THEN ELSE END IS IN LIKE BETWEEN EXISTS DEFAULT UNIQUE VIEW WITH RETURNING BEGIN COMMIT ROLLBACK"), lit: words("null true false NULL TRUE FALSE int integer text varchar boolean timestamp INT INTEGER TEXT VARCHAR BOOLEAN TIMESTAMP") },
+      json: { block: false, line: [], multi: "", kw: words(""), lit: words("true false null") },
+      yaml: { block: false, line: ["#"], multi: "", kw: words(""), lit: words("true false null yes no on off True False") },
+    };
+    const alias = { golang: "go", javascript: "js", jsx: "js", mjs: "js", cjs: "js", ts: "js", typescript: "js", tsx: "js", python: "py", python3: "py", py3: "py", kotlin: "java", kt: "java", scala: "java", cs: "java", csharp: "java", swift: "java", dart: "java", h: "c", cpp: "c", "c++": "c", cc: "c", hpp: "c", objc: "c", rs: "rust", bash: "sh", shell: "sh", zsh: "sh", console: "sh", jsonc: "json", json5: "json", yml: "yaml", toml: "yaml", ini: "yaml", postgres: "sql", postgresql: "sql", mysql: "sql", sqlite: "sql" };
+    return (lang) => {
+      const key = String(lang || "").trim().toLowerCase().split(/\s+/)[0];
+      return p[key] || p[alias[key]] || null;
+    };
+  })();
+
+  // Tokens become spans with textContent, never markup: the code stays the
+  // literal source, only colored. An unknown language stays plain text, and
+  // an unterminated quote on a single-line string is plain (streaming-safe).
   function highlight(codeEl, text, lang) {
-    const use = /go|js|ts|java|py/.test(lang || "");
-    if (!use) { codeEl.textContent = text; return; }
-    const kw = new Set(["func", "return", "if", "else", "package", "import", "const", "let", "var", "for", "type", "string", "error"]);
+    const L = codeLangs(lang);
+    if (!L) { codeEl.textContent = text; return; }
+    let plain = "";
+    const flush = () => { if (plain) { codeEl.append(document.createTextNode(plain)); plain = ""; } };
+    const span = (cls, v) => { flush(); codeEl.append(el("span", cls, v)); };
     let i = 0;
     while (i < text.length) {
       const ch = text.charAt(i);
+      if (L.block && text.startsWith("/*", i)) {
+        let j = text.indexOf("*/", i + 2);
+        j = j < 0 ? text.length : j + 2;
+        span("cm", text.slice(i, j)); i = j; continue;
+      }
+      const lc = L.line.find((m) => text.startsWith(m, i) && (!L.hashWord || i === 0 || /\s/.test(text.charAt(i - 1))));
+      if (lc) {
+        let j = text.indexOf("\n", i);
+        if (j < 0) j = text.length;
+        span("cm", text.slice(i, j)); i = j; continue;
+      }
+      if (L.triple && (text.startsWith('"""', i) || text.startsWith("'''", i))) {
+        const q = text.slice(i, i + 3);
+        let j = text.indexOf(q, i + 3);
+        j = j < 0 ? text.length : j + 3;
+        span("str", text.slice(i, j)); i = j; continue;
+      }
       if (ch === '"' || ch === "'" || ch === "`") {
+        const multi = L.multi.indexOf(ch) >= 0;
         let j = i + 1;
-        while (j < text.length && text.charAt(j) !== ch) {
+        while (j < text.length && text.charAt(j) !== ch && (multi || text.charAt(j) !== "\n")) {
           if (text.charAt(j) === "\\") j++;
           j++;
         }
-        if (j < text.length) j++;
-        codeEl.append(el("span", "str", text.slice(i, j)));
-        i = j;
-        continue;
+        if (j < text.length && text.charAt(j) === ch) {
+          span("str", text.slice(i, j + 1)); i = j + 1; continue;
+        }
+        plain += ch; i++; continue;
       }
-      if (text.startsWith("//", i) || (ch === "#" && (lang || "").indexOf("py") >= 0)) {
-        let j = text.indexOf("\n", i);
-        if (j < 0) j = text.length;
-        codeEl.append(el("span", "cm", text.slice(i, j)));
-        i = j;
-        continue;
+      if (/[0-9]/.test(ch) && !/[A-Za-z0-9_$]/.test(text.charAt(i - 1) || "")) {
+        const m = /^(?:0[xXbBoO][0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(text.slice(i, i + 64));
+        span("num", m[0]); i += m[0].length; continue;
       }
-      if (/[A-Za-z_]/.test(ch)) {
+      if (/[A-Za-z_$]/.test(ch)) {
         let j = i + 1;
-        while (j < text.length && /[A-Za-z0-9_]/.test(text.charAt(j))) j++;
+        while (j < text.length && /[A-Za-z0-9_$]/.test(text.charAt(j))) j++;
         const word = text.slice(i, j);
-        if (kw.has(word)) codeEl.append(el("span", "kw", word));
-        else codeEl.append(document.createTextNode(word));
-        i = j;
-        continue;
+        if (L.kw.has(word)) span("kw", word);
+        else if (L.lit.has(word)) span("lit", word);
+        else if (text.charAt(j) === "(") span("fn", word);
+        else plain += word;
+        i = j; continue;
       }
-      codeEl.append(document.createTextNode(ch));
-      i++;
+      plain += ch; i++;
     }
+    flush();
   }
 
   function codeBlock(lang, code) {
@@ -1525,7 +1648,43 @@
     return wrap;
   }
 
+  // Quotes are containers: a run of > lines outside a code fence is cut out
+  // before fences are split, so a fence written inside a quote is parsed
+  // after its > prefix is gone and stays inside the blockquote. A line holding
+  // an odd number of ``` opens or closes a fence, matching appendFenced's
+  // pairing; > lines inside a fence are code, not quotes. Likewise inside a
+  // $$ block (same open/close rules as appendBlocks) a leading > is TeX.
   function appendMarkdown(parent, text) {
+    const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    let buf = [], fence = false, math = false;
+    const flush = () => { if (buf.length) appendFenced(parent, buf.join("\n")); buf = []; };
+    for (let i = 0; i < lines.length; i++) {
+      // A line that opens, continues or closes a $$ block is TeX.
+      let tex = false;
+      if (!fence && math) {
+        tex = true;
+        if (lines[i].indexOf("$$") >= 0) math = false;
+      } else if (!fence) {
+        const open = /^\s*\$\$(.*)$/.exec(lines[i]);
+        if (open && open[1].indexOf("$$") < 0) math = true;
+      }
+      if (!fence && !tex && /^\s{0,3}>/.test(lines[i])) {
+        flush();
+        const inner = [];
+        while (i < lines.length && /^\s{0,3}>/.test(lines[i])) inner.push(lines[i++].replace(/^\s{0,3}> ?/, ""));
+        i--;
+        const quote = document.createElement("blockquote");
+        appendMarkdown(quote, inner.join("\n"));
+        parent.append(quote);
+        continue;
+      }
+      if ((lines[i].split("```").length - 1) % 2) fence = !fence;
+      buf.push(lines[i]);
+    }
+    flush();
+  }
+
+  function appendFenced(parent, text) {
     const src = String(text || "");
     const re = /```([^\n`]*)\n?([\s\S]*?)```/g;
     let last = 0;
