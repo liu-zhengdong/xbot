@@ -17,7 +17,8 @@ func TestProfileDrawer(t *testing.T) {
 			`modalFields.querySelector("[data-profile-focus]").focus();`,
 			`target.focus({ preventScroll: true });`,
 			`section("基本", head, labeled("标识", name), labeled("简介", description))`,
-			`section("说话方式",`, `section("免打扰",`, `section("人设",`,
+			`section("人设卡", pickLine, pickHint)`,
+			`window.XBotPersonaCards.pick({`,
 			`if (!modal.hidden) { closeModal(); return; }`,
 			`if (ev.target === modal) closeModal();`,
 		},
@@ -39,6 +40,46 @@ func TestProfileDrawer(t *testing.T) {
 		for _, want := range wants {
 			if !strings.Contains(string(data), want) {
 				t.Errorf("%s missing profile drawer contract: %s", file, want)
+			}
+		}
+	}
+}
+
+// The drawer is 基本 → 人设卡 → 保存. Speaking style and quiet hours are gone from the product,
+// and the drawer no longer edits the persona text or sends those fields.
+func TestProfileDrawerHasOnlyBasicsAndPersonaCard(t *testing.T) {
+	data, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(data)
+	start := strings.Index(src, "  function profileForm(data) {")
+	end := strings.Index(src, "  function openProfile(data) {")
+	if start < 0 || end < start {
+		t.Fatal("profileForm not found")
+	}
+	form := src[start:end]
+	basic := strings.Index(form, `section("基本",`)
+	card := strings.Index(form, `section("人设卡",`)
+	if basic < 0 || card < basic {
+		t.Fatalf("drawer order: 基本 %d, 人设卡 %d", basic, card)
+	}
+	if n := strings.Count(form, `section("`); n != 2 {
+		t.Fatalf("drawer has %d sections, want 基本 and 人设卡", n)
+	}
+	for _, gone := range []string{"说话方式", "免打扰", "language", "quiet_start", "quiet_end", "persona:", `labeled("人设"`} {
+		if strings.Contains(form, gone) {
+			t.Errorf("profile drawer still has %q", gone)
+		}
+	}
+	for _, file := range []string{"static/app.js", "static/index.html"} {
+		raw, err := staticFS.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, gone := range []string{"说话方式", "免打扰", "quiet_start", "quiet_end"} {
+			if strings.Contains(string(raw), gone) {
+				t.Errorf("%s still mentions %q", file, gone)
 			}
 		}
 	}

@@ -75,47 +75,6 @@ func TestWakeUp(t *testing.T) {
 		}
 	})
 
-	t.Run("quiet hours", func(t *testing.T) {
-		srv := Start(t, stub)
-		srv.CreateBot("ada", "You are ada, the bot in the wake-up smoke test.")
-
-		// Pin the zone so the window is computed against the clock the bot
-		// checks, instead of depending on the machine's fallback zone.
-		now := time.Now().UTC()
-		srv.PatchBot("ada", map[string]any{
-			"timezone":    "UTC",
-			"quiet_start": now.Add(-time.Hour).Format("15:04"),
-			"quiet_end":   now.Add(time.Hour).Format("15:04"),
-		})
-
-		at := now.Add(time.Minute).UTC()
-		if r := srv.Send("ada", "SMOKE_ROUTINE NEWS "+at.Format(time.RFC3339)); r.Done != "定好了" {
-			t.Fatalf("SMOKE_ROUTINE: done.text %q, want %q", r.Done, "定好了")
-		}
-		srv.Advance(2 * time.Minute)
-		waitRoutineRow(t, srv, "ada", "SMOKE_FIRE_NEWS", 90*time.Second)
-		// Wait for the turn to reach notify_owner: only then is the note held,
-		// and advancing the clock now cannot race the turn.
-		WaitFor(t, 60*time.Second, "the notify call to be held", func() (bool, string) {
-			rows := srv.Transcript("ada")
-			return countRows(rows, "tool", "held until quiet hours end") == 1, dumpRows(rows)
-		})
-		if n := countNotes(srv, "NOTE_NEWS"); n != 0 {
-			t.Fatalf("a note escaped quiet hours (旅程「主动唤醒」: 免打扰时段不推送):\n%s", dumpNotes(srv.Notes()))
-		}
-
-		// Past the window, the held note comes out once as a batch.
-		srv.Advance(3 * time.Hour)
-		WaitFor(t, 90*time.Second, "one quiet hours batch", func() (bool, string) {
-			return countBatch(srv) == 1, dumpNotes(srv.Notes())
-		})
-		batch := batchNotes(srv)
-		if len(batch) != 1 || !strings.Contains(batch[0].Text, "NOTE_NEWS") {
-			t.Fatalf("after quiet hours the batch is %v, want one note with NOTE_NEWS (旅程「主动唤醒」: 免打扰时段不推送):\n%s",
-				batch, dumpNotes(srv.Notes()))
-		}
-	})
-
 	t.Run("restart does not rerun", func(t *testing.T) {
 		srv := Start(t, stub)
 		srv.CreateBot("ada", "You are ada, the bot in the wake-up smoke test.")
@@ -302,18 +261,6 @@ func countNotes(srv *Server, want string) int {
 		}
 	}
 	return n
-}
-
-func countBatch(srv *Server) int { return len(batchNotes(srv)) }
-
-func batchNotes(srv *Server) []Note {
-	var out []Note
-	for _, note := range srv.Notes() {
-		if strings.HasPrefix(note.Text, "Quiet hours batch:") {
-			out = append(out, note)
-		}
-	}
-	return out
 }
 
 func dumpNotes(notes []Note) string {

@@ -32,7 +32,7 @@ type Person struct {
 	ID          string    `json:"id"`
 	DisplayName string    `json:"display_name"`
 	Accounts    []Account `json:"accounts"`
-	// Timezone is an IANA name. Quiet hours use it when the bot has none.
+	// Timezone is an IANA name.
 	Timezone string `json:"timezone,omitempty"`
 }
 

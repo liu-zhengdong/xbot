@@ -31,6 +31,7 @@ try {
 <link rel="stylesheet" href="/providers.css">
 <link rel="stylesheet" href="/web-search.css">
 <link rel="stylesheet" href="/skills.css">
+<link rel="stylesheet" href="/persona-cards.css">
 <link rel="stylesheet" href="/apps.css">
 <link rel="stylesheet" href="/account.css">
 </head>
@@ -227,6 +228,7 @@ try {
    <button type="button" data-set="perm"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg><span>权限</span></button>
    <button type="button" data-set="search"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>网页搜索</span></button>
    <button type="button" data-set="skills"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg><span>技能</span></button>
+   <button type="button" data-set="persona"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="16" x="3" y="4" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M6 16c.6-1.6 1.7-2.4 3-2.4s2.4.8 3 2.4"/><path d="M15 9h3"/><path d="M15 13h2"/></svg><span>人设卡</span></button>
    <button type="button" data-set="devices"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg><span>设备</span></button>
    <button type="button" data-set="apps"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>连接应用</span></button>
    <button type="button" data-set="providers"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg><span>模型与供应商</span></button>
@@ -250,7 +252,7 @@ try {
       </div>
      </div>
     </div>
-    <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">免打扰时段不推送</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
+    <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">Bot 有话找你时，推送到这台设备</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
    </div>
    <div class="setpane" data-spane="perm">
     <h2>权限</h2>
@@ -283,6 +285,7 @@ try {
    </div>
    <div class="setpane" data-spane="search"><div id="settings-search"></div></div>
    <div class="setpane" data-spane="skills"><div id="settings-skills"></div></div>
+   <div class="setpane" data-spane="persona"><div id="settings-persona"></div></div>
    <div class="setpane setdev" data-spane="devices"><div id="settings-devices"></div></div>
    <div class="setpane" data-spane="apps"><div id="settings-apps"></div></div>
    <div class="setpane" data-spane="providers"><div id="settings-providers"></div></div>
@@ -301,6 +304,7 @@ try {
 <script src="/providers.js"></script>
 <script src="/web-search.js"></script>
 <script src="/skills.js"></script>
+<script src="/persona-cards.js"></script>
 <script src="/apps.js"></script>
 <script src="/account.js"></script>
 <script src="/app.js"></script>

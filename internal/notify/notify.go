@@ -16,18 +16,16 @@ import (
 
 // Note is one notification waiting for the owner.
 type Note struct {
-	ID    string    `json:"id"`
-	Text  string    `json:"text"`
-	Time  time.Time `json:"time"`
-	Batch bool      `json:"batch,omitempty"`
+	ID   string    `json:"id"`
+	Text string    `json:"text"`
+	Time time.Time `json:"time"`
 }
 
 type record struct {
-	Op    string    `json:"op"`
-	ID    string    `json:"id,omitempty"`
-	Text  string    `json:"text,omitempty"`
-	Time  time.Time `json:"time,omitempty"`
-	Batch bool      `json:"batch,omitempty"`
+	Op   string    `json:"op"`
+	ID   string    `json:"id,omitempty"`
+	Text string    `json:"text,omitempty"`
+	Time time.Time `json:"time,omitempty"`
 }
 
 // Outbox is bots/<name>/outbox.jsonl.
@@ -40,24 +38,18 @@ func Open(path string) *Outbox { return &Outbox{path: path} }
 
 // Append stores one note and returns it.
 func (o *Outbox) Append(text string, at time.Time) (Note, error) {
-	return o.append(text, at, false)
+	return o.append(text, at)
 }
 
-// AppendBatch stores one quiet-hours batch. The batch flag is on the record,
-// not inferred from the text.
-func (o *Outbox) AppendBatch(text string, at time.Time) (Note, error) {
-	return o.append(text, at, true)
-}
-
-func (o *Outbox) append(text string, at time.Time, batch bool) (Note, error) {
+func (o *Outbox) append(text string, at time.Time) (Note, error) {
 	if text == "" {
 		return Note{}, errors.New("notify: empty note")
 	}
 	if at.IsZero() {
 		at = time.Now().UTC()
 	}
-	n := Note{ID: newID(), Text: text, Time: at.UTC(), Batch: batch}
-	err := fsutil.AppendJSONL(o.path, record{Op: "note", ID: n.ID, Text: n.Text, Time: n.Time, Batch: n.Batch})
+	n := Note{ID: newID(), Text: text, Time: at.UTC()}
+	err := fsutil.AppendJSONL(o.path, record{Op: "note", ID: n.ID, Text: n.Text, Time: n.Time})
 	if err != nil {
 		return n, err
 	}
@@ -83,7 +75,7 @@ func (o *Outbox) Unread() ([]Note, error) {
 			if _, ok := notes[rec.ID]; !ok {
 				order = append(order, rec.ID)
 			}
-			notes[rec.ID] = Note{ID: rec.ID, Text: rec.Text, Time: rec.Time, Batch: rec.Batch}
+			notes[rec.ID] = Note{ID: rec.ID, Text: rec.Text, Time: rec.Time}
 		case "read":
 			if rec.ID != "" {
 				read[rec.ID] = true

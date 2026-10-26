@@ -103,9 +103,7 @@
   "name":"ada",
   "persona":"全文",
   "description":"",
-  "style":{"language":"中文"},
-  "quiet_start":"22:00",
-  "quiet_end":"07:00",
+  "persona_card":{"id":"0123456789abcdef","name":"写作助手"},
   "timezone":"Asia/Shanghai",
   "avatar":"generated",
   "avatar_seed":"ada",
@@ -123,7 +121,7 @@
 }
 ```
 
-`style` 只保留 `language`。旧配置里的 `tone`、`length`、`emoji` 加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧模板里的这三个字段忽略。说话规则由内核统一提供，个人口味记在 Bot 记忆里。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。免打扰是 Bot 时区里的 `HH:MM`，窗口可以跨过午夜。没设时区时用唯一 owner 的时区，再没有就用本机时区。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示按这个顺序回退。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。
+`persona_card` 是选用的人设卡（没选或卡已删时是 `null`），`persona` 仍是 `persona.md` 全文。没有 `style` 和免打扰：旧配置里的 `style`（language、tone、length、emoji）加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧配置的 `quiet_start`/`quiet_end` 读进来丢掉；旧模板里的这些字段忽略。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示用本机时区。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。
 
 `agents[].notable` 是已实际发生的「值得留意」清单（无条目时为空或省略）：`[{"kind":"global_install","text":"全局安装了 ripgrep","objects":["ripgrep"]}]`。`kind` 固定为 `global_install`、`write_outside`、`external_message`、`delete`；按删除、外发、工作区外写入、全局安装排序，同一类每个任务合成一项。`text` 是不带句号的短句，超过两个对象只列前两个并写总数；`objects` 保留完整对象列表，放在任务详情。`calls` 是成功调用数，外发短句用它写消息数量；`unit` 是对象计数单位。`incomplete:true` 表示部分调用没有可靠对象字段，或对象明细达到单任务 64 KiB 上限，此时不声称完整数量。交回 Bot 的报告用同一份清单生成一句摘要：统一以「值得留意：」开头、句号结尾；一项直接写该项，多项写首项及其余项数，并提示详见任务。卡片行本身不加句号。普通工作区内读写不会产生条目。
 
@@ -131,7 +129,7 @@
 
 `PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的主人。请求体仅含必填布尔字段 `enabled`，返回更新后的例程。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对或未知字段 400，写入失败 500。
 
-`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`language`（40）、`quiet_start`、`quiet_end`、`timezone`、`persona`、`avatar_seed`。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
+`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`timezone`、`persona`、`avatar_seed`；`language`、`quiet_start`、`quiet_end` 已删除，带上是 400。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
 
 `POST /api/bots/{name}/avatar` 是 `multipart/form-data`，字段名 `file`。只接受 PNG、JPEG、GIF、WebP，最大 1 MiB。成功 200 `{"name","avatar":"custom","avatar_seed"}`。`avatar_seed` 保持上传前的种子。之后列表和详情里的 `avatar_url` 指向 `GET /api/bots/{name}/avatar`，响应是图片字节，`Content-Type` 按图片内容定，带 `X-Content-Type-Options: nosniff`，`Cache-Control: private, no-cache`。生成的头像不经过这个接口，GET 只返回上传的图。
 
@@ -213,7 +211,7 @@ Bot 正在这个进程里跑一轮时，主人的消息直接插进那一轮（[
 
 `POST /api/bots/{name}/agents/{id}/steer`，body `{"text":"..."}`。`POST /api/bots/{name}/agents/{id}/cancel` 可以没有 body。成功 200 `{"status":"<内核返回的一句>"}`。
 
-`GET /api/notes` 返回 `{"notes":[{"id","bot","text","time"}]}`，只含未读。`POST /api/notes/read`，body `{"bot":"ada","ids":["..."]}`，200 `{"status":"ok"}`。不可信来源（webhook、watch、其他 Bot、定时器）的最终回复如果不是空也不是 `SILENT`，也会出现在这里；免打扰暂存的不会出现。同一轮里 Bot 已经调用 `notify_owner` 时，不再把结尾那句回复再推一条。
+`GET /api/notes` 返回 `{"notes":[{"id","bot","text","time"}]}`，只含未读。`POST /api/notes/read`，body `{"bot":"ada","ids":["..."]}`，200 `{"status":"ok"}`。不可信来源（webhook、watch、其他 Bot、定时器）的最终回复如果不是空也不是 `SILENT`，也会出现在这里。同一轮里 Bot 已经调用 `notify_owner` 时，不再把结尾那句回复再推一条。
 
 `GET /api/groups` 同时返回侧边栏分组和聊天群。聊天群仍在 `groups`：`{"id","name","members","created"}`，`id` 形如 `g_` 加 8 位小写字母或数字，只含当前 owner 全部成员都拥有的群。侧边栏分组见下面的「侧边栏分组」。
 
@@ -355,6 +353,20 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 停用名单在这个 Bot 的配置里，不在技能文件里。同一个 owner 的另一个 Bot 不受影响。别的 owner 的 Bot 走 `owned` 的 404，列不到这库。
 
 命令行：`xbot skill list`，`xbot skill import <path>`，`xbot skill show <slug>`，`xbot skill disable <bot> <slug>`，`xbot skill enable <bot> <slug>`。list、import、show 用当前终端用户。disable 和 enable 还要求这个 Bot 的 owner 里有这个人，否则是找不到。
+
+## 人设卡
+
+主人一份卡库，全部接口要登录，库是登录 owner 的那一份；`id` 给页面用来编辑和选用，界面不展示。
+
+`GET /api/persona-cards` 返回 `{"cards":[{"id","name","preview","search","updated"}]}`，最近改过的在前。`preview` 是正文第一行非空文字，`search` 是正文前 1 KiB，供前端搜索，不带全文。`GET /api/persona-cards/{id}` 返回 `id`、`name`、`body`、`updated` 和 `bots`（在用的 Bot 数）；id 不合法或没有这张是 404 `{"error":"没有找到这张人设卡"}`。
+
+`POST /api/persona-cards` body `{"name","body"}` 新建，`PUT /api/persona-cards/{id}` 只改出现的字段；成功都返回整张卡。卡名去掉换行、最多 60 字，空名叫「未命名人设卡」；正文去掉首尾空白后不能为空（400「人设卡正文不能为空」），最多 32 KiB；库最多 200 张。
+
+`POST /api/persona-cards/import` body `{"filename","content","confirm"}`：总是新建，不覆盖。卡名取第一行不超过 60 字的非空行（去掉开头的 `#`），否则取文件名去掉扩展名；`filename` 只用来起名，服务端不读任何路径。请求最多 256 KiB。已有同名且 `confirm` 不是 true：409 `{"error":"库里已有同名人设卡","conflict":true,"name"}`，库不变；确认后新卡名加「 (2)」，已有就往上数。检查和写入在同一把锁里。
+
+`DELETE /api/persona-cards/{id}`：有 Bot 在用时 409 `{"error":"N 个 Bot 还在用这张人设卡","conflict":true,"bots":N}`；带 `?force=1` 先把这些 Bot 改回未选用再删，200 `{"deleted":true,"unbound":N}`。
+
+`PUT /api/bots/{name}/persona-card` body `{"id"}`，空字符串是未选用。成功 200 `{"name","persona_card":{"id","name"}|null}`；不是这个 owner 的 Bot 404，卡不存在 404，多人共用的 Bot 不能选用（400）。重复选同一张无副作用；和技能开关共用一把锁串行写配置。选用后下一轮固定前缀里的人设就是卡正文。
 
 ## 模型
 

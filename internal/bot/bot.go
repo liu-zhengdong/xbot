@@ -41,11 +41,11 @@ type Config struct {
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
 	AvatarSeed   string   `json:"avatar_seed,omitempty"`
-	Style        *Style   `json:"style,omitempty"`
+	// PersonaCard is the id of the owner's persona card this bot speaks from.
+	// Empty uses persona.md.
+	PersonaCard string `json:"persona_card,omitempty"`
 	// Proactivity is ignored. Old config files may still contain quiet, normal, or active.
 	Proactivity string `json:"proactivity,omitempty"`
-	QuietStart  string `json:"quiet_start,omitempty"`
-	QuietEnd    string `json:"quiet_end,omitempty"`
 	Timezone    string `json:"timezone,omitempty"`
 	// Role picks the working defaults: "chat" (default) for interactive use and
 	// "dev" for long engineering runs. It sets the foreground thresholds and the
@@ -213,6 +213,9 @@ func hasInternalPrefix(content string) bool {
 type Bot struct {
 	Root string
 	cfg  Config
+	// cardSet means SetPersonaCard changed the binding. Other saves keep the
+	// binding on disk, so a bot loaded earlier cannot undo a newer pick.
+	cardSet bool
 }
 
 // Create makes ~/.xbot/bots/<name> with a config and an empty transcript.
@@ -321,11 +324,18 @@ func (b *Bot) SaveConfig() error {
 
 // saveConfig requires the config lock, shared with legacy style migration.
 func (b *Bot) saveConfig() error {
+	if !b.cardSet {
+		b.cfg.PersonaCard = b.boundCard()
+	}
 	raw, err := fsutil.Marshal(b.cfg)
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteAtomic(filepath.Join(b.dir(), "config.json"), raw, 0600)
+	if err := fsutil.WriteAtomic(filepath.Join(b.dir(), "config.json"), raw, 0600); err != nil {
+		return err
+	}
+	b.cardSet = false
+	return nil
 }
 
 // SaveState writes the compaction cursor.
@@ -586,8 +596,8 @@ func (b *Bot) AgentTypesDir() string { return filepath.Join(b.dir(), "agents", "
 // OutboxPath is the notification log.
 func (b *Bot) OutboxPath() string { return filepath.Join(b.dir(), "outbox.jsonl") }
 
-// HeldPath stores notifications kept until quiet hours end.
-func (b *Bot) HeldPath() string { return filepath.Join(b.dir(), "held.json") }
+// LegacyHeldPath is where quiet hours used to keep notes. It is only read to deliver what was left there.
+func (b *Bot) LegacyHeldPath() string { return filepath.Join(b.dir(), "held.json") }
 
 // ReadPersona returns persona.md, or the config string when the file is missing.
 func (b *Bot) ReadPersona() (string, error) {

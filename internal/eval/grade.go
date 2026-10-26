@@ -33,7 +33,6 @@ type Observation struct {
 	Files     []FileFact  `json:"files,omitempty"`
 	Assistant string      `json:"-"`
 	Notes     int         `json:"notes"`
-	Held      int         `json:"held"`
 	entries   []bot.Entry `json:"-"`
 }
 
@@ -67,9 +66,6 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 	}
 	if c.Checks.Notes != nil && obs.Notes != *c.Checks.Notes {
 		problems = append(problems, fmt.Sprintf("notes %d, want %d", obs.Notes, *c.Checks.Notes))
-	}
-	if c.Checks.Held != nil && obs.Held != *c.Checks.Held {
-		problems = append(problems, fmt.Sprintf("held %d, want %d", obs.Held, *c.Checks.Held))
 	}
 	n := len(obs.Tools)
 	if c.Checks.MaxToolCalls > 0 && n > c.Checks.MaxToolCalls {

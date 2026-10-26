@@ -25,12 +25,10 @@ type Case struct {
 	// Ask says whether the model should ask the owner: should or should_not.
 	Ask string `yaml:"ask"`
 	// Network lets the jailed shell use the host network. Default is off.
-	Network    bool   `yaml:"network"`
-	Rubric     string `yaml:"rubric"`
-	MaxSteps   int    `yaml:"max_steps"`
-	Now        string `yaml:"now"`
-	QuietStart string `yaml:"quiet_start"`
-	QuietEnd   string `yaml:"quiet_end"`
+	Network  bool   `yaml:"network"`
+	Rubric   string `yaml:"rubric"`
+	MaxSteps int    `yaml:"max_steps"`
+	Now      string `yaml:"now"`
 	// Memory mounts the memory tools and a real file store for this case.
 	Memory bool `yaml:"memory"`
 	// Role is the bot working role, chat or dev. Empty stays chat.
@@ -99,7 +97,6 @@ type Checks struct {
 	TranscriptNotSilent bool                `yaml:"transcript_not_silent"`
 	AssistantContains   []string            `yaml:"assistant_contains"`
 	Notes               *int                `yaml:"notes"`
-	Held                *int                `yaml:"held"`
 	MaxToolCalls        int                 `yaml:"max_tool_calls"`
 	MinToolCalls        int                 `yaml:"min_tool_calls"`
 	ForbidRepeat        int                 `yaml:"forbid_repeat"`

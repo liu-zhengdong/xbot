@@ -6,8 +6,6 @@ grader: auto
 approve: deny
 max_steps: 4
 now: "2026-10-15T23:30:00Z"
-quiet_start: "22:00"
-quiet_end: "07:00"
 wake:
   kind: routine
   text: |
@@ -24,7 +22,6 @@ setup:
 checks:
   silent: true
   notes: 0
-  held: 0
   files:
     - path: status.txt
       unchanged: true

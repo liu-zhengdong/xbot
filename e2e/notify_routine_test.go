@@ -50,14 +50,15 @@ func TestRoutineLowImportanceReachesNotes(t *testing.T) {
 	}
 }
 
-func TestRoutineLowImportanceHeldThenReleased(t *testing.T) {
+// Quiet hours are gone: a routine at night notifies at once, and a note an
+// old quiet window left in held.json goes out on the next serve pass.
+func TestRoutineAtNightNotifiesAtOnce(t *testing.T) {
 	root := t.TempDir()
 	srv := httptest.NewServer(mockopenai.NewMux(t.TempDir()))
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	b := mustBot(t, root, "ada")
-	start, end, utc := "22:00", "07:00", "UTC"
-	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &utc}); err != nil {
+	if err := os.WriteFile(b.LegacyHeldPath(), []byte(`{"notes":["left from last night"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&link.Timer{Dir: b.RoutineDir(), Sender: "u1"}).Save(link.Routine{
@@ -70,21 +71,11 @@ func TestRoutineLowImportanceHeldThenReleased(t *testing.T) {
 		t.Fatal(err)
 	}
 	unread, err := notify.Open(b.OutboxPath()).Unread()
-	if err != nil || len(unread) != 0 {
-		t.Fatalf("outbox during quiet hours %+v %v", unread, err)
+	if err != nil || len(unread) != 2 || unread[0].Text != "left from last night" || !strings.Contains(unread[1].Text, "drink water") {
+		t.Fatalf("outbox at night %+v %v", unread, err)
 	}
-	heldRaw, err := os.ReadFile(b.HeldPath())
-	held := string(heldRaw)
-	if err != nil || !strings.Contains(held, "drink water") {
-		t.Fatalf("held %s %v", held, err)
-	}
-	morning := time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC)
-	if err := passAt(root, morning, client); err != nil {
-		t.Fatal(err)
-	}
-	unread, err = notify.Open(b.OutboxPath()).Unread()
-	if err != nil || len(unread) != 1 || !strings.Contains(unread[0].Text, "drink water") {
-		t.Fatalf("released %+v %v", unread, err)
+	if _, err := os.Stat(b.LegacyHeldPath()); !os.IsNotExist(err) {
+		t.Fatalf("held.json kept: %v", err)
 	}
 	body := notesJSON(t, root)
 	if !strings.Contains(body, "drink water") {

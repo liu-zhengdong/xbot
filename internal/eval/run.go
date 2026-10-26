@@ -316,10 +316,6 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		}
 	}
 	var up bot.ProfileUpdate
-	if c.QuietStart != "" || c.QuietEnd != "" {
-		start, end := c.QuietStart, c.QuietEnd
-		up.QuietStart, up.QuietEnd = &start, &end
-	}
 	if c.Role != "" {
 		role := c.Role
 		up.Role = &role
@@ -614,11 +610,6 @@ func observe(b *bot.Bot) (Observation, error) {
 		return obs, err
 	}
 	obs.Notes = len(notes)
-	held, err := notify.Held(b.HeldPath())
-	if err != nil {
-		return obs, err
-	}
-	obs.Held = len(held)
 	return obs, nil
 }
 
@@ -640,8 +631,8 @@ func evidence(c Case, obs Observation, problems []string) string {
 	for _, f := range obs.Files {
 		fmt.Fprintf(&b, " File %s exists=%v changed=%v.", f.Path, f.Exists, f.Changed)
 	}
-	if obs.Notes != 0 || obs.Held != 0 {
-		fmt.Fprintf(&b, " Notes %d, held %d.", obs.Notes, obs.Held)
+	if obs.Notes != 0 {
+		fmt.Fprintf(&b, " Notes %d.", obs.Notes)
 	}
 	if len(problems) == 0 {
 		b.WriteString(" Outcome: pass.")

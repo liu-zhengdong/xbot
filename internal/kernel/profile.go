@@ -14,27 +14,30 @@ import (
 	"xbot/internal/tools"
 )
 
-// ReleaseQuiet writes held notifications as one outbox note when now is outside quiet hours.
+// FlushLegacyHeld delivers notes that quiet hours left in held.json before
+// quiet hours were removed, each as an ordinary note, and removes the file.
 // desk may be nil; a nil desk uses the desktop notifier.
-func ReleaseQuiet(ctx context.Context, b *bot.Bot, now time.Time, desk func(context.Context, string, string) error) (int, error) {
+func FlushLegacyHeld(ctx context.Context, b *bot.Bot, now time.Time, desk func(context.Context, string, string) error) (int, error) {
 	if b == nil {
 		return 0, nil
-	}
-	if b.InQuietAt(now) {
-		return 0, nil
-	}
-	notes, err := notify.TakeHeld(b.HeldPath())
-	if err != nil || len(notes) == 0 {
-		return 0, err
-	}
-	text := notify.BatchBody(notes)
-	if _, err := notify.Open(b.OutboxPath()).AppendBatch(text, now); err != nil {
-		return 0, err
 	}
 	if desk == nil {
 		desk = notify.Desktop
 	}
-	_ = desk(ctx, b.Name(), text)
+	notes, err := notify.TakeLegacyHeld(b.LegacyHeldPath())
+	if err != nil || len(notes) == 0 {
+		return 0, err
+	}
+	out := notify.Open(b.OutboxPath())
+	for _, text := range notes {
+		if text = strings.TrimSpace(text); text == "" {
+			continue
+		}
+		if _, err := out.Append(text, now); err != nil {
+			return 0, err
+		}
+		_ = desk(ctx, b.Name(), text)
+	}
 	return len(notes), nil
 }
 
@@ -60,15 +63,12 @@ type profileTool struct{ k *Kernel }
 
 func (profileTool) Name() string { return "propose_profile" }
 func (profileTool) Description() string {
-	return "Propose a profile change: name, description, reply language, quiet hours, or timezone. It is saved only after the owner confirms, and applies on the next wake."
+	return "Propose a profile change: name, description, or timezone. It is saved only after the owner confirms, and applies on the next wake."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
 		"name":        stringProp("new bot name; letters, digits, _ and -"),
 		"description": stringProp("one-line description; empty clears it"),
-		"language":    stringProp("default reply language; empty clears it"),
-		"quiet_start": stringProp("quiet hours start HH:MM in the bot's timezone; set with quiet_end"),
-		"quiet_end":   stringProp("quiet hours end HH:MM in the bot's timezone; set with quiet_start"),
 		"timezone":    stringProp("IANA timezone such as Asia/Shanghai; empty uses the machine zone"),
 	}, nil)
 }
@@ -118,8 +118,7 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
 	}
 	known := []string{
-		"name", "description",
-		"language", "quiet_start", "quiet_end", "timezone",
+		"name", "description", "timezone",
 	}
 	allowed := map[string]bool{}
 	for _, key := range known {
@@ -149,15 +148,6 @@ func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string,
 		case "description":
 			update.Description = &s
 			parts = append(parts, "description "+quote(s))
-		case "language":
-			update.Language = &s
-			parts = append(parts, "language "+quote(s))
-		case "quiet_start":
-			update.QuietStart = &s
-			parts = append(parts, "quiet_start "+quote(s))
-		case "quiet_end":
-			update.QuietEnd = &s
-			parts = append(parts, "quiet_end "+quote(s))
 		case "timezone":
 			update.Timezone = &s
 			parts = append(parts, "timezone "+quote(s))

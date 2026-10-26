@@ -112,7 +112,7 @@ type Server struct {
 	// vendorMu serializes adding a built-in vendor and saving its key.
 	vendorMu    sync.Mutex
 	searchMu    sync.Mutex
-	skillMu     sync.Mutex // one on/off switch at a time: each loads and saves the bot config
+	skillMu     sync.Mutex // one skill switch or persona-card pick at a time: each loads and saves the bot config
 	searchProbe func(context.Context, string, string) error
 	tabs        map[string]*tabState
 
@@ -236,6 +236,15 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/skills/sources/{id}", s.listSourceSkills)
 	mux.HandleFunc("GET /skills.js", s.static("static/skills.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /skills.css", s.static("static/skills.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /api/persona-cards", s.listPersonaCards)
+	mux.HandleFunc("POST /api/persona-cards", s.createPersonaCard)
+	mux.HandleFunc("POST /api/persona-cards/import", s.importPersonaCard)
+	mux.HandleFunc("GET /api/persona-cards/{id}", s.readPersonaCard)
+	mux.HandleFunc("PUT /api/persona-cards/{id}", s.updatePersonaCard)
+	mux.HandleFunc("DELETE /api/persona-cards/{id}", s.deletePersonaCard)
+	mux.HandleFunc("PUT /api/bots/{name}/persona-card", s.pickPersonaCard)
+	mux.HandleFunc("GET /persona-cards.js", s.static("static/persona-cards.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /persona-cards.css", s.static("static/persona-cards.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/bots/{name}/skills", s.listSkills)
 	mux.HandleFunc("GET /api/bots/{name}/skills/{slug}", s.readSkill)
 	mux.HandleFunc("POST /api/bots/{name}/skills/{slug}/disable", s.disableSkill)
@@ -676,12 +685,10 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 	providerName, modelName := runningModel(s.Root, b)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": b.Name(), "persona": persona,
-		"description": b.Config().Description,
-		"style":       b.StyleCopy(),
-		"quiet_start": b.Config().QuietStart,
-		"quiet_end":   b.Config().QuietEnd,
-		"timezone":    b.Config().Timezone,
-		"avatar_url":  url, "avatar": avatar, "avatar_seed": seed,
+		"description":  b.Config().Description,
+		"persona_card": s.pickedCard(b),
+		"timezone":     b.Config().Timezone,
+		"avatar_url":   url, "avatar": avatar, "avatar_seed": seed,
 		"avatar_bg": bg, "avatar_ink": ink, "initial": initial,
 		"provider": providerName, "model": modelName,
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,

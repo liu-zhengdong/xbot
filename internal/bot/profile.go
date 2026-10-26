@@ -17,14 +17,8 @@ import (
 
 	"xbot/internal/fsutil"
 	"xbot/internal/link"
-	"xbot/internal/person"
 	"xbot/internal/work"
 )
-
-// Style holds the reply language. Personal speaking preferences live in memory.
-type Style struct {
-	Language string `json:"language,omitempty"`
-}
 
 const (
 	// AvatarCustom means bots/<name>/avatar holds an uploaded image.
@@ -81,9 +75,6 @@ func callGenerator(name, description string) ([]byte, error) {
 // An empty string clears that field.
 type ProfileUpdate struct {
 	Description *string
-	Language    *string
-	QuietStart  *string
-	QuietEnd    *string
 	Timezone    *string
 	// Role picks the working defaults (chat or dev). ForegroundMaxTools,
 	// ForegroundMaxTime, and BackgroundMaxTime override them: zero uses the role
@@ -104,33 +95,6 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		}
 		cfg.Description = d
 	}
-	st := Style{}
-	if cfg.Style != nil {
-		st = *cfg.Style
-	}
-	if u.Language != nil {
-		v, err := limitText(*u.Language, 40)
-		if err != nil {
-			return fmt.Errorf("bot: language: %w", err)
-		}
-		st.Language = v
-	}
-	if st == (Style{}) {
-		cfg.Style = nil
-	} else {
-		cfg.Style = &st
-	}
-	start, end := cfg.QuietStart, cfg.QuietEnd
-	if u.QuietStart != nil {
-		start = flat(*u.QuietStart)
-	}
-	if u.QuietEnd != nil {
-		end = flat(*u.QuietEnd)
-	}
-	if err := validateQuiet(start, end); err != nil {
-		return err
-	}
-	cfg.QuietStart, cfg.QuietEnd = start, end
 	if u.Timezone != nil {
 		v := flat(*u.Timezone)
 		if v != "" {
@@ -184,34 +148,19 @@ func checkRange(name string, v, lo, hi int) error {
 	return nil
 }
 
-// StyleCopy returns the speaking style, or a zero style when unset.
-func (b *Bot) StyleCopy() Style {
-	if b.cfg.Style == nil {
-		return Style{}
-	}
-	return *b.cfg.Style
-}
-
-// ProfileText is the speaking-style block appended to the persona.
+// ProfileText is the profile block appended to the persona.
 // An empty profile returns an empty string so the stable prefix stays unchanged.
 func (b *Bot) ProfileText() string {
-	var lines []string
 	if d := flat(b.cfg.Description); d != "" {
-		lines = append(lines, "About: "+d)
+		return "About: " + d
 	}
-	st := b.StyleCopy()
-	if st.Language != "" {
-		lines = append(lines, "Language: reply in "+st.Language+".")
-	}
-	if b.cfg.QuietStart != "" && b.cfg.QuietEnd != "" && b.cfg.QuietStart != b.cfg.QuietEnd {
-		lines = append(lines, fmt.Sprintf("Quiet hours: %s–%s %s. Notifications are held and sent as one batch when quiet hours end.", b.cfg.QuietStart, b.cfg.QuietEnd, b.QuietLocation().String()))
-	}
-	return strings.Join(lines, "\n")
+	return ""
 }
 
-// ComposedPersona is persona.md plus the profile block when one is set.
+// ComposedPersona is the persona plus the profile block when one is set.
+// The persona is the picked card's body, or persona.md when no card is picked.
 func (b *Bot) ComposedPersona() (string, error) {
-	persona, err := b.ReadPersona()
+	persona, err := b.personaText()
 	if err != nil {
 		return "", err
 	}
@@ -220,81 +169,6 @@ func (b *Bot) ComposedPersona() (string, error) {
 		return persona, nil
 	}
 	return persona + "\n\n" + extra, nil
-}
-
-// QuietLocation is the clock for quiet hours: the bot's IANA zone,
-// then the sole owner's zone, then the process local zone.
-func (b *Bot) QuietLocation() *time.Location {
-	if b != nil {
-		if loc, ok := loadZone(b.cfg.Timezone); ok {
-			return loc
-		}
-		if loc, ok := loadZone(b.ownerTimezone()); ok {
-			return loc
-		}
-	}
-	if time.Local != nil {
-		return time.Local
-	}
-	return time.UTC
-}
-
-func (b *Bot) ownerTimezone() string {
-	if b == nil || b.Root == "" {
-		return ""
-	}
-	owners := b.cfg.Owners
-	if len(owners) != 1 {
-		return ""
-	}
-	p, err := person.Load(b.Root, owners[0])
-	if err != nil {
-		return ""
-	}
-	return p.Timezone
-}
-
-func loadZone(name string) (*time.Location, bool) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, false
-	}
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		return nil, false
-	}
-	return loc, true
-}
-
-// InQuietAt reports whether now falls in this bot's quiet window.
-func (b *Bot) InQuietAt(now time.Time) bool {
-	if b == nil {
-		return false
-	}
-	return InQuiet(b.cfg.QuietStart, b.cfg.QuietEnd, now.In(b.QuietLocation()))
-}
-
-// InQuiet reports whether now falls in [start, end) on now's own clock.
-// An empty window, or equal endpoints, is off. A window may cross midnight.
-func InQuiet(start, end string, now time.Time) bool {
-	if start == "" || end == "" || start == end {
-		return false
-	}
-	sm, ok1 := parseHHMM(start)
-	em, ok2 := parseHHMM(end)
-	if !ok1 || !ok2 || sm == em {
-		return false
-	}
-	loc := now.Location()
-	if loc == nil {
-		loc = time.UTC
-	}
-	now = now.In(loc)
-	cur := now.Hour()*60 + now.Minute()
-	if sm < em {
-		return cur >= sm && cur < em
-	}
-	return cur >= sm || cur < em
 }
 
 // AvatarColors is the fallback fill: a low-saturation color from the name, plus an optional initial.
@@ -449,13 +323,13 @@ type Template struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Persona     string `json:"persona,omitempty"`
-	Style       Style  `json:"style,omitempty"`
-	// Proactivity is accepted on old templates and ignored.
-	Proactivity string `json:"proactivity,omitempty"`
-	QuietStart  string `json:"quiet_start,omitempty"`
-	QuietEnd    string `json:"quiet_end,omitempty"`
-	Timezone    string `json:"timezone,omitempty"`
-	AvatarMIME  string `json:"avatar_mime,omitempty"`
+	// Style, Proactivity and the quiet hours are accepted on old exported templates and ignored.
+	Style       json.RawMessage `json:"style,omitempty"`
+	Proactivity string          `json:"proactivity,omitempty"`
+	QuietStart  string          `json:"quiet_start,omitempty"`
+	QuietEnd    string          `json:"quiet_end,omitempty"`
+	Timezone    string          `json:"timezone,omitempty"`
+	AvatarMIME  string          `json:"avatar_mime,omitempty"`
 	// Avatar is the base64 upload; it is only set for a custom avatar.
 	Avatar     string `json:"avatar,omitempty"`
 	AvatarSeed string `json:"avatar_seed,omitempty"`
@@ -473,9 +347,6 @@ func ExportTemplate(b *Bot) (Template, error) {
 		Name:        b.Name(),
 		Description: b.cfg.Description,
 		Persona:     persona,
-		Style:       b.StyleCopy(),
-		QuietStart:  b.cfg.QuietStart,
-		QuietEnd:    b.cfg.QuietEnd,
 		Timezone:    b.cfg.Timezone,
 	}
 	_, tpl.AvatarSeed = b.AvatarState()
@@ -525,12 +396,8 @@ func ImportTemplate(root string, tpl Template, links []string, owner string) (*B
 			return fail(err)
 		}
 	}
-	desc, lang := tpl.Description, tpl.Style.Language
-	qs, qe, tz := tpl.QuietStart, tpl.QuietEnd, tpl.Timezone
-	if err := b.ApplyProfile(ProfileUpdate{
-		Description: &desc, Language: &lang,
-		QuietStart: &qs, QuietEnd: &qe, Timezone: &tz,
-	}); err != nil {
+	desc, tz := tpl.Description, tpl.Timezone
+	if err := b.ApplyProfile(ProfileUpdate{Description: &desc, Timezone: &tz}); err != nil {
 		return fail(err)
 	}
 	// The seed follows the template even when the name changed. A bad seed is
@@ -697,33 +564,6 @@ func moveWork(root, from, to string) error {
 		return err
 	}
 	return os.Rename(src, dst)
-}
-
-func validateQuiet(start, end string) error {
-	if start == "" && end == "" {
-		return nil
-	}
-	if start == "" || end == "" {
-		return errors.New("bot: quiet hours need both a start and an end")
-	}
-	if _, ok := parseHHMM(start); !ok {
-		return fmt.Errorf("bot: bad quiet start %q", start)
-	}
-	if _, ok := parseHHMM(end); !ok {
-		return fmt.Errorf("bot: bad quiet end %q", end)
-	}
-	if start == end {
-		return errors.New("bot: quiet hours start and end are the same")
-	}
-	return nil
-}
-
-func parseHHMM(s string) (int, bool) {
-	t, err := time.Parse("15:04", s)
-	if err != nil {
-		return 0, false
-	}
-	return t.Hour()*60 + t.Minute(), true
 }
 
 func flat(s string) string {

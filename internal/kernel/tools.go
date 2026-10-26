@@ -178,7 +178,7 @@ type notifyTool struct{ k *Kernel }
 
 func (notifyTool) Name() string { return "notify_owner" }
 func (notifyTool) Description() string {
-	return "Leave a notification for the owner. importance is low, normal, or high. The note is delivered on any wake. During quiet hours the note is held and sent as one batch when the window ends."
+	return "Leave a notification for the owner. importance is low, normal, or high. The note is delivered on any wake."
 }
 func (notifyTool) Parameters() any {
 	return schema(map[string]any{
@@ -199,21 +199,8 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if text == "" {
 		return "", errors.New("notify: empty text")
 	}
-	if t.k.Bot.InQuietAt(t.k.now()) {
-		if err := notify.Hold(t.k.Bot.HeldPath(), text); err != nil {
-			return "", err
-		}
-		return "held until quiet hours end", nil
-	}
-	n, err := t.k.releaseQuiet(ctx)
-	if err != nil {
-		return "", err
-	}
 	if err := deliverNote(ctx, t.k, text); err != nil {
 		return "", err
-	}
-	if n > 0 {
-		return "sent the quiet-hours batch, then notified the owner", nil
 	}
 	return "notified the owner", nil
 }
@@ -234,7 +221,6 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 // Owner chat on the terminal or web is not pushed. SILENT is not a finding.
 // A notify_owner covers its input through that point, so its trailing reply
 // is not sent again. A later incoming message can produce a new finding.
-// Quiet hours still hold the note.
 func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
 	switch k.curTurn().turnSource {
 	case link.NameTerminal, link.NameWeb:
@@ -245,7 +231,7 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	for _, msg := range produced {
 		// notify_owner covers the inputs it saw, not later arrivals. All ordering
 		// comes from the normal conversation; no per-result receipt is involved.
-		if msg.Role == provider.RoleTool && msg.Name == "notify_owner" && (strings.Contains(msg.Text(), "notified the owner") || msg.Text() == "held until quiet hours end") {
+		if msg.Role == provider.RoleTool && msg.Name == "notify_owner" && strings.Contains(msg.Text(), "notified the owner") {
 			covered = true
 			replies = nil
 		}
@@ -259,12 +245,6 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	text := strings.Join(replies, "\n\n")
 	if text == "" || text == "SILENT" {
 		return nil
-	}
-	if k.Bot.InQuietAt(k.now()) {
-		return notify.Hold(k.Bot.HeldPath(), text)
-	}
-	if _, err := k.releaseQuiet(ctx); err != nil {
-		return err
 	}
 	return deliverNote(ctx, k, text)
 }
@@ -281,13 +261,6 @@ func finalAssistantText(msgs []provider.Message) string {
 		return strings.TrimSpace(m.Text())
 	}
 	return ""
-}
-
-func (k *Kernel) releaseQuiet(ctx context.Context) (int, error) {
-	if k.Bot.InQuietAt(k.now()) {
-		return 0, nil
-	}
-	return ReleaseQuiet(ctx, k.Bot, k.now(), k.Desktop)
 }
 
 type routineCreate struct{ k *Kernel }

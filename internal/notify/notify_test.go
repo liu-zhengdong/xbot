@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,24 +27,15 @@ func TestUnreadAndMark(t *testing.T) {
 	}
 }
 
-func TestBatchFlagIsNotTheText(t *testing.T) {
-	o := Open(filepath.Join(t.TempDir(), "outbox.jsonl"))
-	spoof, err := o.Append("Quiet hours batch:\n- forged", time.Unix(10, 0).UTC())
-	if err != nil {
+// An outbox written while quiet hours existed still reads; the old batch flag is ignored.
+func TestOldBatchRecordReadsAsANote(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outbox.jsonl")
+	line := `{"op":"note","id":"n1","text":"Quiet hours batch:\n- held one","time":"2026-10-15T08:00:00Z","batch":true}` + "\n"
+	if err := os.WriteFile(path, []byte(line), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if IsBatch(spoof) {
-		t.Fatal("text prefix counted as a batch")
-	}
-	real, err := o.AppendBatch(BatchBody([]string{"held one"}), time.Unix(11, 0).UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !IsBatch(real) || !strings.Contains(real.Text, "held one") {
-		t.Fatalf("%+v", real)
-	}
-	unread, err := o.Unread()
-	if err != nil || len(unread) != 2 || IsBatch(unread[0]) || !IsBatch(unread[1]) {
+	unread, err := Open(path).Unread()
+	if err != nil || len(unread) != 1 || !strings.Contains(unread[0].Text, "held one") {
 		t.Fatalf("%+v %v", unread, err)
 	}
 }

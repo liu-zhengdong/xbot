@@ -290,9 +290,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	k.clearLoaded()
 	// A new wake sends a new context; the panel shows this wake, not the last.
 	k.resetContext()
-	if _, err := k.releaseQuiet(ctx); err != nil {
-		return err
-	}
 	// Swap a finished background summary on the way in and on the way out.
 	// Both run outside the model call, including when this event is a replay.
 	defer func() {

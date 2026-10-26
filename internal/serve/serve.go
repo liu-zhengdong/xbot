@@ -41,7 +41,7 @@ func Pass(ctx context.Context, root string, now time.Time, newK func(*bot.Bot) (
 			}
 			return err
 		}
-		if _, err := kernel.ReleaseQuiet(ctx, b, now, nil); err != nil && first == nil {
+		if _, err := kernel.FlushLegacyHeld(ctx, b, now, nil); err != nil && first == nil {
 			first = err
 		}
 		if err := proc.DeliverDue(k, now); err != nil && first == nil {

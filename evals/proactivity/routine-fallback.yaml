@@ -25,4 +25,3 @@ setup:
 checks:
   transcript_not_silent: true
   notes: 1
-  held: 0

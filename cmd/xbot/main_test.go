@@ -475,20 +475,20 @@ func captureStdout(t *testing.T, fn func() error) string {
 }
 
 func TestParseProfileAndTemplate(t *testing.T) {
-	for _, field := range []string{"tone", "length", "emoji"} {
+	for _, field := range []string{"tone", "length", "emoji", "language", "quiet"} {
 		if _, err := parseProfileSet([]string{"ada", "--" + field, "old"}); err == nil {
 			t.Fatalf("removed flag %s accepted", field)
 		}
 	}
-	opt, err := parseProfileSet([]string{"ada", "--language", "中文", "--quiet", "22:00-07:00", "--name", "notes"})
+	opt, err := parseProfileSet([]string{"ada", "--timezone", "UTC", "--name", "notes"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opt.Bot != "ada" || opt.Language != "中文" || opt.Quiet != "22:00-07:00" || opt.Name != "notes" || !opt.Set["language"] || !opt.Set["quiet"] || !opt.Set["name"] {
+	if opt.Bot != "ada" || opt.Timezone != "UTC" || opt.Name != "notes" || !opt.Set["timezone"] || !opt.Set["name"] {
 		t.Fatalf("%+v", opt)
 	}
-	opt, err = parseProfileSet([]string{"--description", "项目笔记", "--language", "中文", "ada"})
-	if err != nil || opt.Bot != "ada" || opt.Description != "项目笔记" || !opt.Set["language"] || opt.Set["tone"] {
+	opt, err = parseProfileSet([]string{"--description", "项目笔记", "ada"})
+	if err != nil || opt.Bot != "ada" || opt.Description != "项目笔记" || !opt.Set["description"] || opt.Set["tone"] {
 		t.Fatalf("%+v %v", opt, err)
 	}
 	if _, err := parseProfileSet([]string{"ada"}); err == nil {
@@ -538,7 +538,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("SECRET-TRANSCRIPT")}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--language", "中文", "--quiet", "22:00-07:00"}); err != nil {
+	if err := cmdProfile(root, []string{"set", "ada", "--description", "项目笔记", "--timezone", "UTC"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdProfile(root, []string{"set", "ada", "--name", "notes"}); err != nil {
@@ -548,7 +548,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Config().Description != "项目笔记" || b.StyleCopy().Language != "中文" || b.Config().QuietStart != "22:00" || b.Config().QuietEnd != "07:00" {
+	if b.Config().Description != "项目笔记" || b.Config().Timezone != "UTC" {
 		t.Fatalf("%+v", b.Config())
 	}
 	out := filepath.Join(root, "notes.json")
@@ -573,7 +573,7 @@ func TestProfileSetExportImport(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("entries %d %v", len(entries), err)
 	}
-	if copy.StyleCopy().Language != "中文" || !strings.Contains(mustPersona(t, copy), "Be brief.") {
+	if copy.Config().Description != "项目笔记" || !strings.Contains(mustPersona(t, copy), "Be brief.") {
 		t.Fatalf("%+v", copy.Config())
 	}
 }

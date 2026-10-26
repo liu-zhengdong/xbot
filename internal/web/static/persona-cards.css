@@ -1,0 +1,47 @@
+/* Persona cards reuse the skills settings shell (list, toolbar, layers); only the editor and the picker are new. */
+.setpage:has([data-spane="persona"]:not([hidden])){height:min(760px,90vh)}
+.persona-settings{--pc-plus:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");--pc-art:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 64' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='26' y='14' width='44' height='36' rx='4'/%3E%3Ccircle cx='40' cy='28' r='5'/%3E%3Cpath d='M32 42c1.5-4 4.5-6 8-6s6.5 2 8 6'/%3E%3Cpath d='M54 26h9M54 33h7'/%3E%3C/svg%3E")}
+.persona-settings .pc-art{-webkit-mask-image:var(--pc-art);mask-image:var(--pc-art)}
+.pc-emptyacts{display:flex;gap:var(--x-s3);justify-content:center}
+
+/* The new-card button is an icon only; import stays the one primary action. */
+.persona-settings .btn.pc-add{width:32px;padding:0}
+.pc-plus{width:16px;height:16px;background:currentColor;-webkit-mask:var(--pc-plus) center/16px no-repeat;mask:var(--pc-plus) center/16px no-repeat}
+
+/* Detail: an editable name and one block of text. */
+.pc-name{display:block;width:100%;box-sizing:border-box;height:36px;margin:2px 0 var(--x-s4);padding:0 var(--x-s4);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);font:inherit;font-size:17px;font-weight:650;letter-spacing:-.01em;color:var(--x-text)}
+.pc-body{display:block;width:100%;box-sizing:border-box;min-height:min(420px,48vh);resize:vertical;padding:var(--x-s5) var(--x-s6);border:0;border-radius:var(--x-r-card);background:var(--x-fill-1);font:inherit;font-size:var(--x-fs-ui);line-height:1.7;color:var(--x-text)}
+.pc-name::placeholder,.pc-body::placeholder{color:var(--x-ph)}
+.pc-name:focus,.pc-body:focus{background:var(--x-card);outline:2px solid var(--x-fill-3);outline-offset:0}
+.pc-foot{display:flex;align-items:center;gap:var(--x-s3);margin-top:var(--x-s5)}
+.pc-gap{flex:1}
+.persona-settings .btn.pc-del{background:transparent;color:var(--x-danger);padding:0 var(--x-s3)}
+.persona-settings .btn.pc-del:hover{background:var(--x-fill-1)}
+
+/* The picker opens over the profile drawer. */
+.nestlayer.pc-picklayer{z-index:60}
+/* Picker: a quiet single choice. The selected row is a neutral fill, the radio near black. */
+.nestcard.pc-pickcard .pc-pickwrap{margin:0 0 var(--x-s3)}
+.nestcard.pc-pickcard .sksearch{width:100%;max-width:none}
+.nestcard.pc-pickcard{--sk-search:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E")}
+.pc-picklist{display:flex;flex-direction:column;border-radius:12px;background:var(--x-fill-1);overflow-y:auto;max-height:min(320px,48vh)}
+.pc-pickrow{display:flex;align-items:flex-start;gap:var(--x-s5);width:100%;min-height:48px;padding:12px 14px;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer;flex:none}
+.pc-pickrow:first-child{border-top:0}
+.pc-pickrow:hover{background:var(--x-fill-2)}
+.pc-pickrow.on{background:var(--x-fill-3)}
+.pc-pickrow .tx{flex:1;min-width:0}
+.pc-pickrow b{display:block;font-size:var(--x-fs-ui);font-weight:560}
+.pc-pickrow .hint{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-radio{flex:none;width:16px;height:16px;margin-top:2px;border-radius:50%;border:1.5px solid var(--x-faint);box-sizing:border-box;background:var(--x-card)}
+.pc-pickrow.on .pc-radio{border:5px solid var(--x-text)}
+.pc-picknone{margin:var(--x-s4) 0 0;font-size:var(--x-fs-sm);color:var(--x-muted)}
+.nestcard .pc-manage{margin-top:var(--x-s5)}
+
+/* The profile drawer row that opens the picker. */
+.pc-pickline{display:flex;align-items:center;gap:var(--x-s4);width:100%;min-height:44px;padding:0 var(--x-s4) 0 var(--x-s5);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:var(--x-fs-ui);text-align:left;cursor:pointer}
+.pc-pickline:hover{background:var(--x-fill-2)}
+.pc-pickline .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-pickline .tx.unset{color:var(--x-muted)}
+.pc-pickline .skchev{--sk-chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")}
+.pc-pickhint{margin:var(--x-s2) 0 0;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5}
+@media (prefers-reduced-motion:reduce){.pc-pickrow,.pc-pickline{transition:none}}

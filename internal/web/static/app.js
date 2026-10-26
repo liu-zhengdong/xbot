@@ -4424,58 +4424,6 @@
     host.append(bar);
   }
 
-  function styleChips(data) {
-    const style = data.style || {};
-    const bits = [];
-    if (style.language) bits.push(style.language);
-    return dedupeChips(bits);
-  }
-
-  // Groups of labels that mean the same thing. A longer chip covers a shorter one in its group.
-  const CHIP_MEANINGS = [
-    ["短", "简短", "简洁", "精简", "简明", "short", "brief", "concise"],
-    ["长", "详细", "详尽", "long", "detailed"],
-    ["中", "适中", "中等", "medium"],
-  ];
-
-  function chipMeanings(text) {
-    const n = String(text || "").trim().toLowerCase();
-    const hit = [];
-    CHIP_MEANINGS.forEach((words, i) => {
-      for (const word of words) {
-        const key = word.toLowerCase();
-        if (n === key || (key.length >= 2 && n.includes(key))) {
-          hit.push(i);
-          break;
-        }
-      }
-    });
-    return hit;
-  }
-
-  function dedupeChips(bits) {
-    const kept = [];
-    const seen = new Set();
-    for (const bit of bits) {
-      const text = String(bit || "").trim();
-      const key = text.toLowerCase();
-      if (!text || seen.has(key)) continue;
-      seen.add(key);
-      kept.push(text);
-    }
-    return kept.filter((text, i) => {
-      const mine = chipMeanings(text);
-      if (!mine.length) return true;
-      return !kept.some((other, j) => {
-        if (i === j) return false;
-        const theirs = chipMeanings(other);
-        if (!mine.every((g) => theirs.includes(g))) return false;
-        if (other.length === text.length) return j < i;
-        return other.length > text.length;
-      });
-    });
-  }
-
   function modelLabel(data) {
     const model = String(data.model || "").trim();
     const provider = String(data.provider || "").trim();
@@ -4493,18 +4441,12 @@
 
   function detailsView(data) {
     const wrap = document.createDocumentFragment();
-    const bits = styleChips(data);
     const about = section("");
-    if (data.persona) {
+    if (data.persona_card) {
+      about.append(kv("人设卡", data.persona_card.name));
+    } else if (data.persona) {
       const block = el("div", "kv");
       block.append(el("div", "k", "人设"), el("p", "clamp v", data.persona));
-      about.append(block);
-    }
-    if (bits.length) {
-      const block = el("div", "kv");
-      const chips = el("div", "chips");
-      for (const bit of bits) chips.append(el("span", "chip", bit));
-      block.append(el("div", "k", "风格"), chips);
       about.append(block);
     }
     const model = modelLabel(data);
@@ -4523,7 +4465,6 @@
       row.append(el("div", "k", "模型"), value);
       about.append(row);
     }
-    if (data.quiet_start || data.quiet_end) about.append(kv("免打扰", (data.quiet_start || "") + " – " + (data.quiet_end || "")));
     wrap.append(about);
     return wrap;
   }
@@ -5143,18 +5084,32 @@
   function profileForm(data) {
     const wrap = document.createElement("div");
     const head = avatarSection(data.name);
-    const style = data.style || {};
     const name = textInput(data.name, 64);
     name.dataset.profileFocus = "true";
     const description = textInput(data.description, 160);
-    const language = textInput(style.language, 40);
-    const quietStart = textInput(data.quiet_start, 5);
-    quietStart.type = "time";
-    const quietEnd = textInput(data.quiet_end, 5);
-    quietEnd.type = "time";
-    const persona = document.createElement("textarea");
-    persona.value = data.persona || "";
-    persona.maxLength = 32000;
+    // The card is bound the moment the picker confirms; the drawer's save only covers the other fields.
+    const pickLine = el("button", "pc-pickline");
+    pickLine.type = "button";
+    pickLine.setAttribute("aria-haspopup", "dialog");
+    const paintPick = (card) => {
+      const label = el("span", card ? "tx" : "tx unset", card ? card.name : "未选用");
+      const chev = el("span", "skchev");
+      chev.setAttribute("aria-hidden", "true");
+      pickLine.replaceChildren(label, chev);
+      pickLine.setAttribute("aria-label", "人设卡：" + (card ? card.name : "未选用"));
+    };
+    paintPick(data.persona_card);
+    pickLine.addEventListener("click", async () => {
+      err.hidden = true;
+      try {
+        await window.XBotPersonaCards.pick({
+          api, botName: data.name, current: data.persona_card ? data.persona_card.id : "",
+          onPicked: (card) => { data.persona_card = card; paintPick(card); pickLine.focus(); loadPanel().catch(() => {}); },
+          manage: () => { closeModal(); openSettings("persona"); },
+        });
+      } catch (e) { showErr(e, "没能读取人设卡"); }
+    });
+    const pickHint = el("p", "pc-pickhint", "人设卡写明 Bot 是谁、怎么说话。改卡请去 设置 · 人设卡。");
     const err = el("p", "error", "");
     err.hidden = true;
     const save = $("modal-ok");
@@ -5179,9 +5134,7 @@
     };
     wrap.append(
       section("基本", head, labeled("标识", name), labeled("简介", description)),
-      section("说话方式", labeled("语言", language)),
-      section("免打扰", labeled("开始", quietStart), labeled("结束", quietEnd)),
-      section("人设", labeled("人设", persona)),
+      section("人设卡", pickLine, pickHint),
       err,
     );
     const showErr = (e, fallback) => { err.hidden = false; err.textContent = visibleError(e, fallback); };
@@ -5191,16 +5144,7 @@
       const body = {
         name: name.value.trim(),
         description: description.value.trim(),
-        language: language.value.trim(),
-        quiet_start: quietStart.value,
-        quiet_end: quietEnd.value,
-        persona: persona.value.trim(),
       };
-      if ((body.quiet_start === "") !== (body.quiet_end === "")) {
-        err.hidden = false;
-        err.textContent = "免打扰需要开始和结束，或都留空。";
-        return;
-      }
       try {
         const res = await api("/api/bots/" + encodeURIComponent(data.name), { method: "PATCH", body: body });
         closeModal();
@@ -6486,6 +6430,7 @@
     ++settingsRequest;
     window.XBotWebSearch?.unmount();
     window.XBotSkills?.unmount();
+    window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
     window.xbotDevices?.unmount();
     settingsLevel = null;
@@ -6503,6 +6448,7 @@
     ++settingsRequest;
     window.XBotWebSearch?.unmount();
     window.XBotSkills?.unmount();
+    window.XBotPersonaCards?.unmount();
     $("setpage").hidden = $("setscrim").hidden = true;
     settingsLevel = null;
     window.xbotDevices?.unmount();
@@ -6533,6 +6479,7 @@
     if (section !== "devices") window.xbotDevices?.unmount();
     window.XBotWebSearch?.unmount();
     window.XBotSkills?.unmount();
+    window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
@@ -6548,6 +6495,8 @@
         await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
       } else if (section === "skills") {
         await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
+      } else if (section === "persona") {
+        await window.XBotPersonaCards.mount({api, host:$("settings-persona"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "providers") {
  await window.XBotProviders.settings({api,host:$("settings-providers"),isCurrent:()=>request===settingsRequest});
  } else if (section === "devices") {
@@ -6641,7 +6590,7 @@
     if (hint) {
       hint.classList.remove("bad");
       hint.hidden = false;
-      hint.textContent = "免打扰时段不推送";
+      hint.textContent = "Bot 有话找你时，推送到这台设备";
     }
   }
 

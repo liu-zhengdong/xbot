@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestPushRoundTrip(t *testing.T) {
@@ -204,25 +203,6 @@ func TestDialControlRejectsPrivate(t *testing.T) {
 	}
 	if err := allow("tcp", "10.0.0.1:80", nil); err == nil {
 		t.Fatal("private dial allowed on loopback http")
-	}
-}
-
-func TestHoldDoesNotEmit(t *testing.T) {
-	root := t.TempDir()
-	n := 0
-	Bind(root, func(string, Note) { n++ })
-	t.Cleanup(func() { Bind(root, nil) })
-	if err := Hold(filepath.Join(root, "held.json"), "during quiet"); err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Fatalf("hold emitted %d", n)
-	}
-	if _, err := Open(filepath.Join(root, "bots", "ada", "outbox.jsonl")).Append("after", time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("append emitted %d", n)
 	}
 }
 

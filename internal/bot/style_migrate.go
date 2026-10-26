@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,41 +13,24 @@ import (
 	"xbot/internal/memory"
 )
 
-// UnmarshalJSON accepts just the language and three discarded legacy fields.
-// This also lets strict template decoding ignore those fields without accepting
-// misspelled or otherwise unknown fields.
-func (s *Style) UnmarshalJSON(raw []byte) error {
-	var v struct {
-		Language string `json:"language"`
-		Tone     string `json:"tone"`
-		Length   string `json:"length"`
-		Emoji    string `json:"emoji"`
-	}
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&v); err != nil {
-		return err
-	}
-	s.Language = v.Language
-	return nil
+// legacyStyle is the speaking style old configs kept. Bots no longer have one:
+// how a bot talks is written in its persona card. Loading an old config moves
+// whatever was set into the bot's memory once, then drops the field.
+type legacyStyle struct {
+	Language string `json:"language"`
+	Tone     string `json:"tone"`
+	Length   string `json:"length"`
+	Emoji    string `json:"emoji"`
 }
 
 func hasLegacyStyle(raw []byte) bool {
 	var cfg struct {
-		Style map[string]json.RawMessage `json:"style"`
+		Style json.RawMessage `json:"style"`
 	}
-	if json.Unmarshal(raw, &cfg) != nil {
-		return false
-	}
-	for _, k := range []string{"tone", "length", "emoji"} {
-		if _, ok := cfg.Style[k]; ok {
-			return true
-		}
-	}
-	return false
+	return json.Unmarshal(raw, &cfg) == nil && len(cfg.Style) > 0 && string(cfg.Style) != "null"
 }
 
-// migrateStyle commits memory first, then drops the old config fields. The
+// migrateStyle commits memory first, then drops the old config field. The
 // config lock serializes concurrent loads; exact-text deduplication also makes
 // retry after a failed config write harmless. No migration marker is needed.
 func (b *Bot) migrateStyle(raw []byte) error {
@@ -74,13 +56,13 @@ func (b *Bot) migrateStyle(raw []byte) error {
 			return nil
 		}
 		var old struct {
-			Style struct{ Tone, Length, Emoji string } `json:"style"`
+			Style legacyStyle `json:"style"`
 		}
 		if err := json.Unmarshal(raw, &old); err != nil {
 			return err
 		}
 		var parts []string
-		for _, v := range []struct{ name, value string }{{"语气", old.Style.Tone}, {"篇幅", old.Style.Length}, {"emoji", old.Style.Emoji}} {
+		for _, v := range []struct{ name, value string }{{"语言", old.Style.Language}, {"语气", old.Style.Tone}, {"篇幅", old.Style.Length}, {"emoji", old.Style.Emoji}} {
 			if value := strings.Join(strings.Fields(v.value), " "); value != "" {
 				parts = append(parts, v.name+" "+value)
 			}
@@ -104,9 +86,6 @@ func (b *Bot) migrateStyle(raw []byte) error {
 					return fmt.Errorf("bot: migrate speaking preference: %w", err)
 				}
 			}
-		}
-		if b.cfg.Style != nil && *b.cfg.Style == (Style{}) {
-			b.cfg.Style = nil
 		}
 		return b.saveConfig()
 	})

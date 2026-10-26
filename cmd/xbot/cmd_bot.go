@@ -281,14 +281,9 @@ func cmdProfileShow(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	st := b.StyleCopy()
 	persona, err := b.ReadPersona()
 	if err != nil {
 		return err
-	}
-	quiet := ""
-	if b.Config().QuietStart != "" || b.Config().QuietEnd != "" {
-		quiet = b.Config().QuietStart + "-" + b.Config().QuietEnd
 	}
 	avatar, seed := b.AvatarState()
 	if avatar == bot.AvatarGenerated {
@@ -296,8 +291,6 @@ func cmdProfileShow(root string, args []string) error {
 	}
 	fmt.Printf("name: %s\n", b.Name())
 	fmt.Printf("description: %s\n", b.Config().Description)
-	fmt.Printf("language: %s\n", st.Language)
-	fmt.Printf("quiet: %s\n", quiet)
 	fmt.Printf("timezone: %s\n", b.Config().Timezone)
 	fmt.Printf("group: %s\n", b.Config().Group)
 	fmt.Printf("avatar: %s\n", avatar)
@@ -308,8 +301,6 @@ func cmdProfileShow(root string, args []string) error {
 type profileSetOpts struct {
 	Bot         string
 	Description string
-	Language    string
-	Quiet       string
 	Timezone    string
 	Name        string
 	Role        string
@@ -322,7 +313,7 @@ type profileSetOpts struct {
 func parseProfileSet(args []string) (profileSetOpts, error) {
 	ordered, err := reorderFlags(args, map[string]bool{
 		"description": true,
-		"language":    true, "quiet": true, "timezone": true, "name": true,
+		"timezone":    true, "name": true,
 		"role": true, "foreground-max-tools": true, "foreground-max-time": true, "background-max-time": true,
 	})
 	if err != nil {
@@ -331,8 +322,6 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	desc := fs.String("description", "", "one-line description")
-	lang := fs.String("language", "", "default reply language")
-	quiet := fs.String("quiet", "", "HH:MM-HH:MM, or off")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
 	name := fs.String("name", "", "new bot name")
 	role := fs.String("role", "", "chat or dev: picks the working defaults")
@@ -347,7 +336,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	}
 	opt := profileSetOpts{
 		Bot: fs.Arg(0), Description: *desc,
-		Language: *lang, Quiet: *quiet, Timezone: *tz, Name: *name,
+		Timezone: *tz, Name: *name,
 		Role: *role, FgTools: *fgTools, FgTime: *fgTime, BgTime: *bgTime, Set: map[string]bool{},
 	}
 	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
@@ -370,18 +359,6 @@ func cmdProfileSet(root string, args []string) error {
 	if opt.Set["description"] {
 		s := opt.Description
 		u.Description = &s
-	}
-	if opt.Set["language"] {
-		s := opt.Language
-		u.Language = &s
-	}
-	if opt.Set["quiet"] {
-		start, end, err := splitQuiet(opt.Quiet)
-		if err != nil {
-			return err
-		}
-		u.QuietStart = &start
-		u.QuietEnd = &end
 	}
 	if opt.Set["timezone"] {
 		s := opt.Timezone
@@ -417,20 +394,6 @@ func cmdProfileSet(root string, args []string) error {
 	}
 	fmt.Printf("updated %s\n", name)
 	return nil
-}
-
-func splitQuiet(s string) (string, string, error) {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "off" || s == "-" {
-		return "", "", nil
-	}
-	s = strings.ReplaceAll(s, "–", "-")
-	s = strings.ReplaceAll(s, "—", "-")
-	start, end, ok := strings.Cut(s, "-")
-	if !ok {
-		return "", "", errors.New("quiet hours look like 22:00-07:00")
-	}
-	return strings.TrimSpace(start), strings.TrimSpace(end), nil
 }
 
 type avatarOpts struct {

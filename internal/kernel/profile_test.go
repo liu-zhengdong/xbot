@@ -29,11 +29,11 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatalf("composed %q file %q", composed, file)
 	}
 	msgs, _ := Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if strings.Contains(msgs[0].Text(), "Language:") || strings.Contains(msgs[0].Text(), "Proactivity:") {
+	if strings.Contains(msgs[0].Text(), "About:") || strings.Contains(msgs[0].Text(), "Proactivity:") {
 		t.Fatal(msgs[0].Text())
 	}
-	language := "中文"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Language: &language}); err != nil {
+	desc := "项目笔记"
+	if err := b.ApplyProfile(bot.ProfileUpdate{Description: &desc}); err != nil {
 		t.Fatal(err)
 	}
 	composed, err = b.ComposedPersona()
@@ -41,7 +41,7 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if !strings.Contains(msgs[0].Text(), "Language: reply in 中文.") || !strings.HasPrefix(msgs[0].Text(), file) {
+	if !strings.Contains(msgs[0].Text(), "About: 项目笔记") || !strings.HasPrefix(msgs[0].Text(), file) {
 		t.Fatal(msgs[0].Text())
 	}
 }
@@ -58,15 +58,15 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
 		t.Fatal(err)
 	}
-	language := "中文"
-	if err := b.ApplyProfile(bot.ProfileUpdate{Language: &language}); err != nil {
+	desc := "项目笔记"
+	if err := b.ApplyProfile(bot.ProfileUpdate{Description: &desc}); err != nil {
 		t.Fatal(err)
 	}
 	now = t0.Add(5 * time.Minute)
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.reqs[1].Messages[0].Text(), "Language: reply in 中文.") {
+	if !strings.Contains(p.reqs[1].Messages[0].Text(), "About: 项目笔记") {
 		t.Fatal(p.reqs[1].Messages[0].Text())
 	}
 	if !strings.Contains(p.reqs[1].Messages[0].Text(), "Be brief.") {
@@ -74,7 +74,7 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	}
 	updates := envUpdates(t, b)
 	last := updates[len(updates)-1]
-	if !strings.Contains(last, `"profile":`) || strings.Contains(last, "persona: updated") || strings.Contains(last, "Be brief") || strings.Contains(last, "warm") {
+	if !strings.Contains(last, `"profile":`) || strings.Contains(last, "persona: updated") || strings.Contains(last, "Be brief") || strings.Contains(last, "项目笔记") {
 		t.Fatalf("profile diff: %s", last)
 	}
 }
@@ -85,13 +85,13 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	now := t0
 	call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"language":"中文"}`},
+		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"description":"中文笔记"}`},
 	}})}
 	// A denied call cannot be retried with the same arguments. The later
 	// approval uses a different proposal.
 	call2 := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c2", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"language":"中文","description":"notes"}`},
+		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"description":"中文笔记","timezone":"UTC"}`},
 	}})}
 	p := &scripted{resps: []provider.Message{
 		call,
@@ -114,7 +114,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it", t0)); err != nil {
 		t.Fatal(err)
 	}
-	if b.StyleCopy().Language != "" || b.Config().Proactivity != "" {
+	if b.Config().Description != "" || b.Config().Proactivity != "" {
 		t.Fatalf("denied profile applied: %+v", b.Config())
 	}
 	entries, err := b.Entries()
@@ -129,15 +129,15 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
-	if b.StyleCopy().Language != "中文" || b.Config().Proactivity != "" {
-		t.Fatalf("profile %+v %s", b.StyleCopy(), b.Config().Proactivity)
+	if b.Config().Description != "中文笔记" || b.Config().Timezone != "UTC" || b.Config().Proactivity != "" {
+		t.Fatalf("profile %+v", b.Config())
 	}
 	now = t0.Add(10 * time.Minute)
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "third", t0.Add(2*time.Minute))); err != nil {
 		t.Fatal(err)
 	}
 	prefix := p.reqs[len(p.reqs)-1].Messages[0].Text()
-	if !strings.Contains(prefix, "Language: reply in 中文.") || strings.Contains(prefix, "Proactivity:") {
+	if !strings.Contains(prefix, "About: 中文笔记") || strings.Contains(prefix, "Proactivity:") {
 		t.Fatal(prefix)
 	}
 	updates := envUpdates(t, b)
@@ -147,68 +147,46 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	}
 }
 
-func TestNotifyThresholdAndQuietHours(t *testing.T) {
+// Quiet hours are gone: a note goes out at any hour, and notes an old
+// quiet window left in held.json are delivered one by one, once.
+func TestNotifyAlwaysDeliversAndFlushesLegacyHeld(t *testing.T) {
 	b := testBot(t)
-	start, end, utc := "22:00", "07:00", "UTC"
-	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &utc}); err != nil {
-		t.Fatal(err)
-	}
 	var desks []string
 	now := time.Date(2026, 10, 15, 23, 0, 0, 0, time.UTC)
 	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turn: &turn{turnSource: link.NameTimer}, Desktop: func(_ context.Context, _, body string) error {
 		desks = append(desks, body)
 		return nil
 	}}
-	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"ordinary","importance":"low"}`))
-	if err != nil || out != "held until quiet hours end" {
-		t.Fatalf("routine low %s %v", out, err)
+	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"late","importance":"low"}`))
+	if err != nil || out != "notified the owner" {
+		t.Fatalf("night note %s %v", out, err)
 	}
-	held, err := os.ReadFile(b.HeldPath())
-	if err != nil || !strings.Contains(string(held), "ordinary") {
-		t.Fatalf("held %s %v", held, err)
+	if len(desks) != 1 || desks[0] != "late" {
+		t.Fatalf("desks %v", desks)
 	}
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"urgent","importance":"high"}`))
-	if err != nil || out != "held until quiet hours end" {
-		t.Fatalf("%s %v", out, err)
+	if _, err := os.Stat(b.LegacyHeldPath()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("held.json written: %v", err)
 	}
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"also urgent","importance":"high"}`))
-	if err != nil || out != "held until quiet hours end" {
-		t.Fatalf("%s %v", out, err)
+
+	if err := os.WriteFile(b.LegacyHeldPath(), []byte(`{"notes":["kept one","kept two"]}`), 0600); err != nil {
+		t.Fatal(err)
 	}
-	if len(desks) != 0 {
-		t.Fatal(desks)
+	n, err := FlushLegacyHeld(context.Background(), b, now, k.Desktop)
+	if err != nil || n != 2 {
+		t.Fatalf("flush %d %v", n, err)
 	}
-	now = time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC)
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"morning","importance":"high"}`))
-	if err != nil || !strings.Contains(out, "quiet-hours batch") {
-		t.Fatalf("%s %v", out, err)
+	if n, err := FlushLegacyHeld(context.Background(), b, now, k.Desktop); err != nil || n != 0 {
+		t.Fatalf("second flush %d %v", n, err)
 	}
 	notes, err := notify.Open(b.OutboxPath()).Unread()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(notes) != 2 || !strings.Contains(notes[0].Text, "Quiet hours batch:") || !strings.Contains(notes[0].Text, "ordinary") || !strings.Contains(notes[0].Text, "urgent") || !strings.Contains(notes[0].Text, "also urgent") || notes[1].Text != "morning" {
+	if len(notes) != 3 || notes[0].Text != "late" || notes[1].Text != "kept one" || notes[2].Text != "kept two" {
 		t.Fatalf("%+v", notes)
 	}
-	if len(desks) != 2 || !strings.Contains(desks[0], "Quiet hours batch:") || desks[1] != "morning" {
+	if len(desks) != 3 {
 		t.Fatalf("desks %v", desks)
-	}
-
-	empty := ""
-	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &empty, QuietEnd: &empty}); err != nil {
-		t.Fatal(err)
-	}
-	k.turn.turnSource = link.NameWebhook
-	k.turn.turnTrusted = false
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"skip me","importance":"low"}`))
-	if err != nil || out != "notified the owner" {
-		t.Fatalf("untrusted low %s %v", out, err)
-	}
-	k.turn.turnSource = link.NameTerminal
-	k.turn.turnTrusted = true
-	out, err = (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"owner chat","importance":"low"}`))
-	if err != nil || out != "notified the owner" {
-		t.Fatalf("chat %s %v", out, err)
 	}
 }
 
@@ -288,24 +266,6 @@ func TestRenameUpdatesPrimaryWorkAndGroup(t *testing.T) {
 	}
 }
 
-func TestNotifyHeldAtShanghaiEvening(t *testing.T) {
-	b := testBot(t)
-	start, end, tz := "18:00", "23:59", "Asia/Shanghai"
-	if err := b.ApplyProfile(bot.ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &tz}); err != nil {
-		t.Fatal(err)
-	}
-	sh, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Date(2026, 10, 15, 18, 44, 0, 0, sh)
-	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turn: &turn{turnSource: link.NameTimer}}
-	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"evening"}`))
-	if err != nil || out != "held until quiet hours end" {
-		t.Fatalf("%s %v", out, err)
-	}
-}
-
 func transcriptHas(entries []bot.Entry, text string) bool {
 	for _, e := range entries {
 		if strings.Contains(e.Message.Text(), text) {
@@ -316,7 +276,7 @@ func transcriptHas(entries []bot.Entry, text string) bool {
 }
 
 func TestProfileRejectsRemovedStyleFields(t *testing.T) {
-	for _, field := range []string{"tone", "length", "emoji"} {
+	for _, field := range []string{"tone", "length", "emoji", "language", "quiet_start", "quiet_end"} {
 		if _, _, _, err := parseProfileArgs(json.RawMessage(`{"` + field + `":"old"}`)); err == nil {
 			t.Fatalf("removed field %s accepted", field)
 		}

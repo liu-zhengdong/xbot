@@ -56,7 +56,7 @@ func TestLegacyStyleBecomesOneBotMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, old := range []string{`"tone"`, `"length"`, `"emoji"`} {
+	for _, old := range []string{`"style"`, `"tone"`, `"length"`, `"emoji"`, `"language"`} {
 		if strings.Contains(string(raw), old) {
 			t.Fatalf("legacy field survived: %s", raw)
 		}
@@ -65,15 +65,12 @@ func TestLegacyStyleBecomesOneBotMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.StyleCopy().Language != "中文" {
-		t.Fatal(loaded.StyleCopy())
-	}
 	persona, _ := loaded.ReadPersona()
 	if persona != "Custom persona." {
 		t.Fatal(persona)
 	}
 	facts, err := memory.Open(b.Root).Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, Tier: memory.TierProfile, BotName: b.Name()})
-	if err != nil || len(facts) != 1 || facts[0].Text != "主人希望我说话：语气 亲切，篇幅 short，emoji spare。" {
+	if err != nil || len(facts) != 1 || facts[0].Text != "主人希望我说话：语言 中文，语气 亲切，篇幅 short，emoji spare。" {
 		t.Fatalf("%+v %v", facts, err)
 	}
 	again, _ := os.ReadFile(path)
@@ -126,8 +123,9 @@ func TestLegacyTemplateStyleIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.StyleCopy().Language != "中文" {
-		t.Fatal(b.StyleCopy())
+	raw, err := os.ReadFile(filepath.Join(b.dir(), "config.json"))
+	if err != nil || strings.Contains(string(raw), "style") {
+		t.Fatalf("template style reached the config: %s %v", raw, err)
 	}
 	facts, err := memory.Open(b.Root).Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
 	if err != nil || len(facts) != 0 {

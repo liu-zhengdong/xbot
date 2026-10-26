@@ -30,42 +30,22 @@ func TestProfileTextAndEmptyPrefix(t *testing.T) {
 	if err != nil || composed != file || b.ProfileText() != "" {
 		t.Fatalf("empty profile changed persona %q", composed)
 	}
-	lang := "中文"
-	start, end, utc := "22:00", "07:00", "UTC"
 	desc := "项目笔记"
-	if err := b.ApplyProfile(ProfileUpdate{
-		Description: &desc, Language: &lang,
-		QuietStart: &start, QuietEnd: &end, Timezone: &utc,
-	}); err != nil {
+	if err := b.ApplyProfile(ProfileUpdate{Description: &desc}); err != nil {
 		t.Fatal(err)
 	}
-	text := b.ProfileText()
-	for _, want := range []string{
-		"About: 项目笔记",
-		"Language: reply in 中文.",
-		"Quiet hours: 22:00–07:00 UTC. Notifications are held and sent as one batch when quiet hours end.",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("missing %q in %s", want, text)
-		}
-	}
-	if strings.Contains(text, "Proactivity:") {
+	if text := b.ProfileText(); text != "About: 项目笔记" {
 		t.Fatal(text)
 	}
 	composed, err = b.ComposedPersona()
-	if err != nil || !strings.HasPrefix(composed, file+"\n\n") {
+	if err != nil || composed != file+"\n\nAbout: 项目笔记" {
 		t.Fatalf("composed %q", composed)
-	}
-	cleared := ""
-	if err := b.ApplyProfile(ProfileUpdate{Language: &cleared}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(b.ProfileText(), "Language:") {
-		t.Fatal(b.ProfileText())
 	}
 }
 
-func TestLegacyProactivityIgnored(t *testing.T) {
+// Speaking style and quiet hours are gone. Old configs still load, nothing of
+// them reaches the prompt, and the next save drops the quiet hours.
+func TestLegacyProactivityAndQuietHoursIgnored(t *testing.T) {
 	root := t.TempDir()
 	if _, err := Create(root, "ada", "Be brief.", nil); err != nil {
 		t.Fatal(err)
@@ -97,77 +77,18 @@ func TestLegacyProactivityIgnored(t *testing.T) {
 	if loaded.Config().Proactivity != "quiet" {
 		t.Fatalf("stored field %q", loaded.Config().Proactivity)
 	}
-	if strings.Contains(loaded.ProfileText(), "Proactivity:") || !strings.Contains(loaded.ProfileText(), "Quiet hours:") {
+	if loaded.ProfileText() != "" {
 		t.Fatal(loaded.ProfileText())
 	}
-	night := time.Date(2026, 10, 15, 23, 0, 0, 0, time.UTC)
-	if !loaded.InQuietAt(night) {
-		t.Fatal("quiet hours")
+	if err := loaded.SaveConfig(); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestQuietWindow(t *testing.T) {
-	day := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
-	night := time.Date(2026, 10, 15, 23, 30, 0, 0, time.UTC)
-	early := time.Date(2026, 10, 16, 6, 59, 0, 0, time.UTC)
-	morning := time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC)
-	if InQuiet("22:00", "07:00", day) || !InQuiet("22:00", "07:00", night) || !InQuiet("22:00", "07:00", early) || InQuiet("22:00", "07:00", morning) {
-		t.Fatal("midnight window")
-	}
-	if !InQuiet("09:00", "17:00", day) || InQuiet("09:00", "17:00", night) {
-		t.Fatal("day window")
-	}
-	if InQuiet("", "", night) || InQuiet("09:00", "09:00", day) {
-		t.Fatal("disabled window")
-	}
-}
-
-func TestQuietHoursUseBotThenOwnerTimezone(t *testing.T) {
-	root := t.TempDir()
-	b, err := Create(root, "ada", "Be brief.", nil)
+	raw, err = os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sh, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		t.Fatal(err)
-	}
-	start, end, tz := "18:00", "23:59", "Asia/Shanghai"
-	if err := b.ApplyProfile(ProfileUpdate{QuietStart: &start, QuietEnd: &end, Timezone: &tz}); err != nil {
-		t.Fatal(err)
-	}
-	shanghai := time.Date(2026, 10, 15, 18, 44, 0, 0, sh)
-	if !b.InQuietAt(shanghai) || !b.InQuietAt(shanghai.UTC()) {
-		t.Fatal("18:44 Shanghai should be quiet")
-	}
-	utcEvening := time.Date(2026, 10, 15, 18, 44, 0, 0, time.UTC)
-	if b.InQuietAt(utcEvening) {
-		t.Fatal("18:44 UTC is 02:44 in Shanghai")
-	}
-	if !strings.Contains(b.ProfileText(), "Quiet hours: 18:00–23:59 Asia/Shanghai.") {
-		t.Fatal(b.ProfileText())
-	}
-
-	cleared := ""
-	if err := b.ApplyProfile(ProfileUpdate{Timezone: &cleared}); err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(root, "people", "u1")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	raw := []byte(`{"id":"u1","display_name":"U","timezone":"Asia/Shanghai"}`)
-	if err := os.WriteFile(filepath.Join(dir, "identity.json"), raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if !b.InQuietAt(shanghai.UTC()) {
-		t.Fatal("owner timezone should hold 18:44 Shanghai")
-	}
-	if b.QuietLocation().String() != "Asia/Shanghai" {
-		t.Fatal(b.QuietLocation())
+	if strings.Contains(string(raw), "quiet_start") || strings.Contains(string(raw), "quiet_end") {
+		t.Fatal(string(raw))
 	}
 }
 
@@ -375,8 +296,8 @@ func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lang := "中文"
-	if err := b.ApplyProfile(ProfileUpdate{Language: &lang}); err != nil {
+	desc := "项目笔记"
+	if err := b.ApplyProfile(ProfileUpdate{Description: &desc}); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.WritePersona("Keep the notes short."); err != nil {
@@ -421,7 +342,7 @@ func TestExportImportOmitsMemoryAndTranscript(t *testing.T) {
 		}
 	}
 	persona, _ := next.ReadPersona()
-	if persona != "Keep the notes short." || !strings.Contains(next.ProfileText(), "Language: reply in 中文.") {
+	if persona != "Keep the notes short." || next.ProfileText() != "About: 项目笔记" {
 		t.Fatalf("persona %q profile %q", persona, next.ProfileText())
 	}
 	list, err := (&link.Timer{Dir: next.RoutineDir()}).List()
