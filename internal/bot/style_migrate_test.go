@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -201,5 +203,50 @@ func TestSaveConfigSharesTheMigrationLock(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("SaveConfig did not resume after migration released the lock")
+	}
+}
+
+// A bot whose profile memory is nearly full used to vanish from the list on
+// upgrade: the old language setting could not be remembered, so Load failed.
+func TestLanguageOnlyStyleWithFullProfileStillLoads(t *testing.T) {
+	b, path := legacyStyleBot(t)
+	raw, _ := os.ReadFile(path)
+	var cfg map[string]any
+	_ = json.Unmarshal(raw, &cfg)
+	cfg["style"] = map[string]string{"language": "中文"}
+	raw, _ = json.Marshal(cfg)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
+	for i := 0; ; i++ {
+		err := store.Remember(context.Background(), memory.Fact{Key: fmt.Sprintf("k%d", i), Text: fmt.Sprintf("filler fact number %d %s", i, strings.Repeat("x", 40)), Scope: memory.ScopeBot, Tier: memory.TierProfile, BotName: b.Name(), WrittenBy: b.Name(), Time: time.Now().UTC()})
+		if errors.Is(err, memory.ErrProfileFull) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Load(b.Root, b.Name()); err != nil {
+		t.Fatalf("full profile blocked load: %v", err)
+	}
+	listed, err := List(b.Root)
+	if err != nil || len(listed) != 1 || listed[0].Name != "ada" {
+		t.Fatalf("listed = %+v %v", listed, err)
+	}
+	if after, _ := os.ReadFile(path); strings.Contains(string(after), `"style"`) {
+		t.Fatalf("style kept after a safe save: %s", after)
+	}
+	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, Tier: memory.TierLog, BotName: b.Name()})
+	want := "主人希望我说话：语言 中文。"
+	found := 0
+	for _, f := range facts {
+		if f.Text == want {
+			found++
+		}
+	}
+	if err != nil || found != 1 {
+		t.Fatalf("preference not in the log tier: %+v %v", facts, err)
 	}
 }

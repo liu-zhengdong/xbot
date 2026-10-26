@@ -18,6 +18,9 @@ import (
 // maxCardImport caps the Markdown file the page sends; the card body has its own, smaller cap.
 const maxCardImport = 256 << 10
 
+// maxCardQuery caps the server-side search text in runes.
+const maxCardQuery = 200
+
 // cardSearch is how much of the body the list carries for the page's search.
 const cardSearch = 1 << 10
 
@@ -97,8 +100,16 @@ func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "没能读取人设卡")
 		return
 	}
+	// q searches the name and the whole body; rows only carry the start of each body.
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	if len([]rune(q)) > maxCardQuery {
+		q = string([]rune(q)[:maxCardQuery])
+	}
 	out := make([]map[string]any, 0, len(cards))
 	for _, c := range cards {
+		if q != "" && !strings.Contains(strings.ToLower(c.Name+"\n"+c.Body), q) {
+			continue
+		}
 		out = append(out, map[string]any{
 			"id": c.ID, "name": c.Name, "preview": cardPreview(c.Body),
 			"search": clipUTF8(c.Body, cardSearch), "updated": c.Updated,
@@ -176,39 +187,45 @@ func (s *Server) deletePersonaCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if _, err := personacard.Get(s.Root, s.owner, id); err != nil {
-		cardErr(w, err)
-		return
-	}
 	force, _ := strconv.ParseBool(r.URL.Query().Get("force"))
 	s.skillMu.Lock()
 	defer s.skillMu.Unlock()
-	users, err := s.cardUsers(id)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "没能读取 Bot")
-		return
-	}
-	if len(users) > 0 && !force {
+	var users []string
+	var unbindErr string
+	errInUse := errors.New("in use")
+	err := personacard.DeleteWith(s.Root, s.owner, id, func() error {
+		var err error
+		if users, err = s.cardUsers(id); err != nil {
+			unbindErr = "没能读取 Bot"
+			return err
+		}
+		if len(users) > 0 && !force {
+			return errInUse
+		}
+		for _, name := range users {
+			b, err := s.owned(name)
+			if err != nil {
+				continue
+			}
+			if err := b.SetPersonaCard(""); err != nil {
+				unbindErr = "没能解除 " + name + " 的选用，请再试一次"
+				return err
+			}
+		}
+		return nil
+	})
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "unbound": len(users)})
+	case errors.Is(err, errInUse):
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error": strconv.Itoa(len(users)) + " 个 Bot 还在用这张人设卡", "conflict": true, "bots": len(users),
 		})
-		return
-	}
-	for _, name := range users {
-		b, err := s.owned(name)
-		if err != nil {
-			continue
-		}
-		if err := b.SetPersonaCard(""); err != nil {
-			writeErr(w, http.StatusInternalServerError, "没能解除 "+name+" 的选用，请再试一次")
-			return
-		}
-	}
-	if err := personacard.Delete(s.Root, s.owner, id); err != nil {
+	case unbindErr != "":
+		writeErr(w, http.StatusInternalServerError, unbindErr)
+	default:
 		cardErr(w, err)
-		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "unbound": len(users)})
 }
 
 // importPersonaCard makes a new card from a Markdown file the page read. It never overwrites:
@@ -252,15 +269,6 @@ func (s *Server) pickPersonaCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := strings.TrimSpace(in.ID)
-	var picked map[string]any
-	if id != "" {
-		c, err := personacard.Get(s.Root, s.owner, id)
-		if err != nil {
-			cardErr(w, err)
-			return
-		}
-		picked = map[string]any{"id": c.ID, "name": c.Name}
-	}
 	s.skillMu.Lock()
 	defer s.skillMu.Unlock()
 	b, err := s.owned(r.PathValue("name"))
@@ -268,13 +276,35 @@ func (s *Server) pickPersonaCard(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	if id != "" && len(b.Config().Owners) != 1 {
+	if id == "" {
+		if err := b.SetPersonaCard(""); err != nil {
+			writeErr(w, http.StatusBadRequest, "没能选用，请再试一次")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "persona_card": nil})
+		return
+	}
+	if len(b.Config().Owners) != 1 {
 		writeErr(w, http.StatusBadRequest, "多人共用的 Bot 暂不能选用人设卡")
 		return
 	}
-	if err := b.SetPersonaCard(id); err != nil {
+	// The binding is written under the library lock, so a delete either sees
+	// this bot as a user or runs first and makes the pick answer not found.
+	var picked map[string]any
+	var bindErr error
+	err = personacard.With(s.Root, s.owner, id, func(c personacard.Card) error {
+		if bindErr = b.SetPersonaCard(id); bindErr != nil {
+			return bindErr
+		}
+		picked = map[string]any{"id": c.ID, "name": c.Name}
+		return nil
+	})
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "persona_card": picked})
+	case bindErr != nil:
 		writeErr(w, http.StatusBadRequest, "没能选用，请再试一次")
-		return
+	default:
+		cardErr(w, err)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "persona_card": picked})
 }

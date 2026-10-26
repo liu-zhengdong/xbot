@@ -173,6 +173,13 @@ func Update(root, owner, id string, name, body *string) (Card, error) {
 
 // Delete removes a card. Unbinding the bots that use it is the caller's job.
 func Delete(root, owner, id string) error {
+	return DeleteWith(root, owner, id, nil)
+}
+
+// DeleteWith runs before under the library lock with the card known to exist,
+// then removes the card unless before failed. Callers unbind bots in before,
+// so a concurrent pick (see With) cannot bind the card after the check.
+func DeleteWith(root, owner, id string, before func() error) error {
 	if !ValidID(id) {
 		return ErrNotFound
 	}
@@ -183,7 +190,27 @@ func Delete(root, owner, id string) error {
 			}
 			return err
 		}
+		if before != nil {
+			if err := before(); err != nil {
+				return err
+			}
+		}
 		return os.RemoveAll(filepath.Join(dir, id))
+	})
+}
+
+// With runs fn under the library lock with the card known to exist, so the
+// card cannot be deleted between the check and what fn does with it.
+func With(root, owner, id string, fn func(Card) error) error {
+	if !ValidID(id) {
+		return ErrNotFound
+	}
+	return locked(root, owner, func(dir string) error {
+		c, err := read(dir, id)
+		if err != nil {
+			return err
+		}
+		return fn(c)
 	})
 }
 

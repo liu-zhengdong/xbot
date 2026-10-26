@@ -4915,6 +4915,8 @@
   }
 
   let profileReturnFocus = null;
+  // Bumped whenever the modal closes, so work an old profile drawer started can tell it is gone.
+  let profileDrawerGen = 0;
 
   const AVATAR_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
   const AVATAR_MAX = 1024 * 1024;
@@ -5082,6 +5084,7 @@
   }
 
   function profileForm(data) {
+    const drawerGen = profileDrawerGen;
     const wrap = document.createElement("div");
     const head = avatarSection(data.name);
     const name = textInput(data.name, 64);
@@ -5104,6 +5107,7 @@
       try {
         await window.XBotPersonaCards.pick({
           api, botName: data.name, current: data.persona_card ? data.persona_card.id : "",
+          alive: () => drawerGen === profileDrawerGen && !modal.hidden,
           onPicked: (card) => { data.persona_card = card; paintPick(card); pickLine.focus(); loadPanel().catch(() => {}); },
           manage: () => { closeModal(); openSettings("persona"); },
         });
@@ -5178,6 +5182,8 @@
 
   function openProfile(data) {
     if (!data || !data.name) return;
+    profileDrawerGen++;
+    window.XBotPersonaCards?.closePick?.();
     profileReturnFocus = document.activeElement;
     hideTip();
     $("modal-title").textContent = "编辑资料";
@@ -5729,6 +5735,8 @@
   }
 
   function closeModal() {
+    profileDrawerGen++;
+    window.XBotPersonaCards?.closePick?.();
     modal.hidden = true;
     modal.classList.remove("profile-drawer");
     modalForm.classList.remove("profile-modal");

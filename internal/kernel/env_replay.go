@@ -274,7 +274,7 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		var err error
 		switch key {
 		case "persona":
-			v, err = k.Bot.ReadPersona()
+			v, err = k.Bot.PersonaText()
 		case "rules":
 			v, err = k.rulesText()
 		case "skills":

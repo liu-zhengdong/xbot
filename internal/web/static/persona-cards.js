@@ -17,6 +17,22 @@
     }
     return String(filename || "").replace(/^.*[\\/]/, "").replace(/\.[^.]*$/, "");
   };
+  // Rows carry only the start of each body; the server searches the whole card.
+  // Typing filters at once on what the page has, then the server's answer for the
+  // same query replaces it. An older answer arriving late is dropped.
+  function searcher(api, onIds) {
+    let seq = 0, timer = null;
+    return q => {
+      const mine = ++seq; clearTimeout(timer);
+      q = q.trim(); if (!q) return onIds(null);
+      timer = setTimeout(async () => {
+        try {
+          const res = await api("/api/persona-cards?q=" + encodeURIComponent(q.slice(0, 200)));
+          if (mine === seq) onIds(new Set((res.cards || []).map(c => c.id)));
+        } catch {}
+      }, 120);
+    };
+  }
   const chev = () => { const c = node("span", "skchev"); c.setAttribute("aria-hidden", "true"); return c; };
 
   // A nested card over the page, with Escape to close and Tab kept inside. Card text is always textContent.
@@ -92,9 +108,11 @@
       toolbar.append(wrap, add, button("btn pri", "导入", ev => openImport(ev.currentTarget)));
       const list = node("div", "sklist");
       const none = node("div", "sknone"); none.setAttribute("aria-live", "polite");
-      none.append(node("p", "", "没有匹配的人设卡"), button("clearsrch", "清除搜索", () => { query = ""; search.value = ""; paint(); search.focus?.(); }));
+      none.append(node("p", "", "没有匹配的人设卡"), button("clearsrch", "清除搜索", () => { query = ""; search.value = ""; found = null; ask(""); paint(); search.focus?.(); }));
+      let found = null;
+      const ask = searcher(api, ids => { if (!current()) return; found = ids; paint(); });
       function paint() {
-        const q = query.trim().toLowerCase(), rows = q ? cards.filter(r => ownText(r).includes(q)) : cards;
+        const q = query.trim().toLowerCase(), rows = q ? cards.filter(r => found ? found.has(r.id) : ownText(r).includes(q)) : cards;
         list.replaceChildren(...rows.map(r => {
           const row = button("skrow", "", () => openDetail(r)), tx = node("span", "tx");
           tx.append(node("b", "", r.name), node("span", "hint", r.preview || ""));
@@ -103,8 +121,9 @@
         list.hidden = rows.length === 0;
         none.hidden = rows.length > 0;
       }
-      search.oninput = () => { query = search.value; paint(); };
+      search.oninput = () => { query = search.value; found = null; ask(query); paint(); };
       paint();
+      if (query.trim()) ask(query);
       body.replaceChildren(head, lead, statusLine, toolbar, list, none);
     }
 
@@ -218,12 +237,22 @@
   }
 
   // The profile drawer's picker: one card or none, bound as soon as it is confirmed.
-  async function pick({api, botName, current, onPicked, manage}) {
-    const parent = document.body;
+  // It belongs to the drawer that opened it: alive says whether that drawer is still
+  // showing the same bot, and closePick (called when the drawer closes) drops a picker
+  // that is open or still loading. While one is loading or open, another click does nothing.
+  let pickSeq = 0, pickLoading = false, pickLayer = null;
+  function closePick() { pickSeq++; pickLoading = false; pickLayer?.close(); pickLayer = null; }
+  async function pick({api, botName, current, onPicked, manage, alive = () => true}) {
+    if (pickLoading || pickLayer) return pickLayer;
+    const mine = ++pickSeq, live = () => mine === pickSeq && alive();
+    pickLoading = true;
     let cards;
     try { cards = (await api("/api/persona-cards")).cards || []; }
-    catch (e) { throw new Error(plain(e, "没能读取人设卡，请再试一次。")); }
-    let chosen = current || "", query = "";
+    catch (e) { if (mine === pickSeq) pickLoading = false; if (!live()) return null; throw new Error(plain(e, "没能读取人设卡，请再试一次。")); }
+    if (mine === pickSeq) pickLoading = false;
+    if (!live()) return null;
+    const parent = document.body;
+    let chosen = current || "", query = "", found = null;
     const search = node("input", "sksearch pc-picksearch"); search.type = "search"; search.placeholder = "搜索人设卡"; search.setAttribute("aria-label", "搜索人设卡"); search.autocomplete = "off";
     const wrap = node("div", "sksearchwrap pc-pickwrap"), glyph = node("span", "sksic"); glyph.setAttribute("aria-hidden", "true"); wrap.append(glyph, search);
     const list = node("div", "pc-picklist"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "人设卡");
@@ -232,7 +261,7 @@
     const rows = [{id: "", name: "未选用", preview: "用创建 Bot 时写的人设"}, ...cards];
     function paint() {
       const q = query.trim().toLowerCase();
-      const shown = rows.filter(r => !r.id || !q || ownText(r).includes(q));
+      const shown = rows.filter(r => !r.id || !q || (found ? found.has(r.id) : ownText(r).includes(q)));
       list.replaceChildren(...shown.map(r => {
         const on = r.id === chosen;
         const row = button("pc-pickrow" + (on ? " on" : ""), "", () => { chosen = r.id; paint(); });
@@ -243,29 +272,35 @@
       }));
       none.hidden = !(q && shown.length === 1);
     }
-    search.oninput = () => { query = search.value; paint(); };
+    const ask = searcher(api, ids => { if (L.closed) return; found = ids; paint(); });
+    search.oninput = () => { query = search.value; found = null; ask(query); paint(); };
     paint();
     const extra = cards.length ? [wrap, list, none, manageBtn] : [list, node("p", "pc-picknone", "卡库还是空的。"), manageBtn];
     const L = nest(parent, "选用人设卡", "选中后马上生效，这个 Bot 下一轮对话就按这张卡说话。", [
       ["btn", "取消", () => L.close()],
       ["btn pri", "选用", async () => {
-        if (L.busy) return;
+        if (L.busy || L.closed) return;
         L.busy = true; L.buttons.forEach(b => b.disabled = true); L.fail("");
         try {
           const res = await api("/api/bots/" + encodeURIComponent(botName) + "/persona-card", {method: "PUT", body: {id: chosen}});
-          L.busy = false; L.close();
+          L.busy = false;
+          if (L.closed || !alive()) return;
+          L.close();
           onPicked?.(res && res.persona_card || null);
         } catch (e) {
-          L.busy = false; L.buttons.forEach(b => b.disabled = false);
+          L.busy = false;
+          if (L.closed) return;
+          L.buttons.forEach(b => b.disabled = false);
           L.fail(plain(e, "没能选用，请再试一次。"));
         }
       }],
-    ], extra);
+    ], extra, () => { if (pickLayer === L) pickLayer = null; });
+    pickLayer = L;
     L.card.classList?.add?.("pc-pickcard");
     L.root.classList?.add?.("pc-picklayer");
     (cards.length ? search : L.buttons.at(-1)).focus?.();
     return L;
   }
 
-  window.XBotPersonaCards = {mount, unmount: () => teardown(), pick};
+  window.XBotPersonaCards = {mount, unmount: () => teardown(), pick, closePick};
 })();

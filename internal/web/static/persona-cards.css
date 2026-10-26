@@ -9,7 +9,7 @@
 .pc-plus{width:16px;height:16px;background:currentColor;-webkit-mask:var(--pc-plus) center/16px no-repeat;mask:var(--pc-plus) center/16px no-repeat}
 
 /* Detail: an editable name and one block of text. */
-.pc-name{display:block;width:100%;box-sizing:border-box;height:36px;margin:2px 0 var(--x-s4);padding:0 var(--x-s4);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);font:inherit;font-size:17px;font-weight:650;letter-spacing:-.01em;color:var(--x-text)}
+.pc-name{display:block;width:100%;box-sizing:border-box;height:36px;margin:2px 0 var(--x-s4);padding:0 var(--x-s4);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);font:inherit;font-size:var(--x-fs-title);font-weight:650;letter-spacing:-.01em;color:var(--x-text)}
 .pc-body{display:block;width:100%;box-sizing:border-box;min-height:min(420px,48vh);resize:vertical;padding:var(--x-s5) var(--x-s6);border:0;border-radius:var(--x-r-card);background:var(--x-fill-1);font:inherit;font-size:var(--x-fs-ui);line-height:1.7;color:var(--x-text)}
 .pc-name::placeholder,.pc-body::placeholder{color:var(--x-ph)}
 .pc-name:focus,.pc-body:focus{background:var(--x-card);outline:2px solid var(--x-fill-3);outline-offset:0}
@@ -24,9 +24,8 @@
 .nestcard.pc-pickcard .pc-pickwrap{margin:0 0 var(--x-s3)}
 .nestcard.pc-pickcard .sksearch{width:100%;max-width:none}
 .nestcard.pc-pickcard{--sk-search:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E")}
-.pc-picklist{display:flex;flex-direction:column;border-radius:12px;background:var(--x-fill-1);overflow-y:auto;max-height:min(320px,48vh)}
-.pc-pickrow{display:flex;align-items:flex-start;gap:var(--x-s5);width:100%;min-height:48px;padding:12px 14px;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer;flex:none}
-.pc-pickrow:first-child{border-top:0}
+.pc-picklist{display:flex;flex-direction:column;gap:var(--x-s1);padding:var(--x-s1);border-radius:var(--x-r-card);background:var(--x-fill-1);overflow-y:auto;max-height:min(320px,48vh)}
+.pc-pickrow{display:flex;align-items:flex-start;gap:var(--x-s5);width:100%;min-height:48px;padding:var(--x-s4) var(--x-s5);border:0;border-radius:var(--x-r-sm);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer;flex:none}
 .pc-pickrow:hover{background:var(--x-fill-2)}
 .pc-pickrow.on{background:var(--x-fill-3)}
 .pc-pickrow .tx{flex:1;min-width:0}

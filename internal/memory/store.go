@@ -62,6 +62,9 @@ func (s *FileStore) Remember(_ context.Context, fact Fact) error {
 // ErrBusy means a scope is committing a write; callers may keep their already published view.
 var ErrBusy = errors.New("memory scope is committing")
 
+// ErrProfileFull is wrapped by a profile write that would grow past the cap.
+var ErrProfileFull = errors.New("memory: profile tier is full")
+
 // Recall loads the scope and, when Text is set, ranks it with BM25.
 func (s *FileStore) Recall(_ context.Context, q Query) ([]Fact, error) { return s.recall(q, true) }
 
@@ -475,7 +478,7 @@ func writeNamed(dir, base string, facts []Fact, limit int, enforce, bypass, prof
 		}
 		if len(body) > cur {
 			if profile {
-				return fmt.Errorf("memory: profile tier is full (%d bytes, %d byte cap). Consolidate: merge facts, forget stale ones, or move details to the log tier", max(cur, 0), limit)
+				return fmt.Errorf("%w (%d bytes, %d byte cap). Consolidate: merge facts, forget stale ones, or move details to the log tier", ErrProfileFull, max(cur, 0), limit)
 			}
 			return fmt.Errorf("memory: %s tier exceeds %d bytes", base, limit)
 		}

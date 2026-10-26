@@ -2,10 +2,15 @@ package web
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/fsutil"
+	"xbot/internal/personacard"
 )
 
 func TestPersonaCardAPI(t *testing.T) {
@@ -92,5 +97,74 @@ func TestPersonaCardAPI(t *testing.T) {
 	}
 	if code, _ = call("PUT", "/api/bots/ada/persona-card", `{"id":""}`, true); code != 200 {
 		t.Fatalf("unbind %d", code)
+	}
+}
+
+// A pick that checked the card before a delete removed it must not bind the
+// dead id. The test plays the delete by holding the library lock (as another
+// process would) and removing the card while the pick waits.
+func TestPickWaitsForDeleteUnderLibraryLock(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	code, raw := call("POST", "/api/persona-cards", `{"name":"简洁","body":"先给结论。"}`, true)
+	if code != 200 {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	var card struct{ ID string }
+	_ = json.Unmarshal([]byte(raw), &card)
+	lock, err := fsutil.Lock(filepath.Join(personacard.OwnerDir(root, "u1"), ".lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan int, 1)
+	go func() {
+		code, _ := call("PUT", "/api/bots/ada/persona-card", `{"id":"`+card.ID+`"}`, true)
+		done <- code
+	}()
+	select {
+	case code := <-done:
+		lock.Release()
+		t.Fatalf("pick answered %d without the library lock", code)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := os.RemoveAll(filepath.Join(personacard.OwnerDir(root, "u1"), card.ID)); err != nil {
+		t.Fatal(err)
+	}
+	lock.Release()
+	if code := <-done; code != 404 {
+		t.Fatalf("pick of a deleted card answered %d", code)
+	}
+	b, err := bot.Load(root, "ada")
+	if err != nil || b.Config().PersonaCard != "" {
+		t.Fatalf("bound to a dead card: %q %v", b.Config().PersonaCard, err)
+	}
+}
+
+// The list carries only the start of each body; ?q= searches the whole card,
+// so a word past the first KiB of a long Chinese card is still found.
+func TestPersonaCardSearchCoversWholeBody(t *testing.T) {
+	_, _, call := skillTestServer(t)
+	body := strings.Repeat("中", 600) + "关键词Zebra"
+	payload, _ := json.Marshal(map[string]string{"name": "长卡", "body": body})
+	if code, raw := call("POST", "/api/persona-cards", string(payload), true); code != 200 {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	if code, raw := call("POST", "/api/persona-cards", `{"name":"短卡","body":"先给结论。"}`, true); code != 200 {
+		t.Fatalf("create %d %s", code, raw)
+	}
+	var out struct {
+		Cards []struct{ Name, Search string }
+	}
+	code, raw := call("GET", "/api/persona-cards?q=zebra", "", true)
+	if err := json.Unmarshal([]byte(raw), &out); code != 200 || err != nil || len(out.Cards) != 1 || out.Cards[0].Name != "长卡" {
+		t.Fatalf("search %d %s", code, raw)
+	}
+	if strings.Contains(out.Cards[0].Search, "Zebra") {
+		t.Fatal("test needs the word past the list's search text")
+	}
+	if code, raw = call("GET", "/api/persona-cards?q=短卡", "", true); !strings.Contains(raw, `"name":"短卡"`) || strings.Contains(raw, "长卡") {
+		t.Fatalf("name search %d %s", code, raw)
+	}
+	if code, _ = call("GET", "/api/persona-cards?q="+strings.Repeat("x", 5000), "", true); code != 200 {
+		t.Fatalf("long query %d", code)
 	}
 }

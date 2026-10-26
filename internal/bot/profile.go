@@ -160,7 +160,7 @@ func (b *Bot) ProfileText() string {
 // ComposedPersona is the persona plus the profile block when one is set.
 // The persona is the picked card's body, or persona.md when no card is picked.
 func (b *Bot) ComposedPersona() (string, error) {
-	persona, err := b.personaText()
+	persona, err := b.PersonaText()
 	if err != nil {
 		return "", err
 	}
@@ -338,8 +338,10 @@ type Template struct {
 }
 
 // ExportTemplate reads profile, persona, and routines. Memory and the transcript stay out.
+// The persona is the text in effect: a picked card's body is copied in, so the
+// template does not depend on this owner's card ids.
 func ExportTemplate(b *Bot) (Template, error) {
-	persona, err := b.ReadPersona()
+	persona, err := b.PersonaText()
 	if err != nil {
 		return Template{}, err
 	}

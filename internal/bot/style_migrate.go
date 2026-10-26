@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,6 +29,31 @@ func hasLegacyStyle(raw []byte) bool {
 		Style json.RawMessage `json:"style"`
 	}
 	return json.Unmarshal(raw, &cfg) == nil && len(cfg.Style) > 0 && string(cfg.Style) != "null"
+}
+
+// rememberPreference saves the old style as a profile fact. A full profile must
+// not keep the bot from loading, so the fact goes to the log tier instead,
+// where recall still finds it and the bot can fold it in when it consolidates.
+func rememberPreference(botName string, store memory.Store, text string) error {
+	ctx := context.Background()
+	for _, tier := range []memory.Tier{memory.TierProfile, memory.TierLog} {
+		facts, err := store.Recall(ctx, memory.Query{Scope: memory.ScopeBot, Tier: tier, BotName: botName})
+		if err != nil {
+			return err
+		}
+		for _, f := range facts {
+			if f.Text == text {
+				return nil
+			}
+		}
+	}
+	fact := memory.Fact{Key: "speaking-preference", Text: text, Scope: memory.ScopeBot, Tier: memory.TierProfile, BotName: botName, WrittenBy: botName, Time: time.Now().UTC()}
+	err := store.Remember(ctx, fact)
+	if errors.Is(err, memory.ErrProfileFull) {
+		fact.Tier = memory.TierLog
+		err = store.Remember(ctx, fact)
+	}
+	return err
 }
 
 // migrateStyle commits memory first, then drops the old config field. The
@@ -69,22 +95,8 @@ func (b *Bot) migrateStyle(raw []byte) error {
 		}
 		if len(parts) > 0 {
 			text := "主人希望我说话：" + strings.Join(parts, "，") + "。"
-			store := memory.Open(b.Root)
-			facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, Tier: memory.TierProfile, BotName: b.Name()})
-			if err != nil {
-				return err
-			}
-			exists := false
-			for _, f := range facts {
-				if f.Text == text {
-					exists = true
-					break
-				}
-			}
-			if !exists {
-				if err := store.Remember(context.Background(), memory.Fact{Key: "speaking-preference", Text: text, Scope: memory.ScopeBot, Tier: memory.TierProfile, BotName: b.Name(), WrittenBy: b.Name(), Time: time.Now().UTC()}); err != nil {
-					return fmt.Errorf("bot: migrate speaking preference: %w", err)
-				}
+			if err := rememberPreference(b.Name(), memory.Open(b.Root), text); err != nil {
+				return fmt.Errorf("bot: migrate speaking preference: %w", err)
 			}
 		}
 		return b.saveConfig()

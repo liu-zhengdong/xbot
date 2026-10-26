@@ -358,13 +358,13 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 主人一份卡库，全部接口要登录，库是登录 owner 的那一份；`id` 给页面用来编辑和选用，界面不展示。
 
-`GET /api/persona-cards` 返回 `{"cards":[{"id","name","preview","search","updated"}]}`，最近改过的在前。`preview` 是正文第一行非空文字，`search` 是正文前 1 KiB，供前端搜索，不带全文。`GET /api/persona-cards/{id}` 返回 `id`、`name`、`body`、`updated` 和 `bots`（在用的 Bot 数）；id 不合法或没有这张是 404 `{"error":"没有找到这张人设卡"}`。
+`GET /api/persona-cards` 返回 `{"cards":[{"id","name","preview","search","updated"}]}`，最近改过的在前。`preview` 是正文第一行非空文字，`search` 是正文前 1 KiB，供前端输入时即时过滤，不带全文。带 `?q=` 时只返回卡名或完整正文含这段文字（不分大小写，最多取 200 字）的卡，字段相同；页面以它为准。`GET /api/persona-cards/{id}` 返回 `id`、`name`、`body`、`updated` 和 `bots`（在用的 Bot 数）；id 不合法或没有这张是 404 `{"error":"没有找到这张人设卡"}`。
 
 `POST /api/persona-cards` body `{"name","body"}` 新建，`PUT /api/persona-cards/{id}` 只改出现的字段；成功都返回整张卡。卡名去掉换行、最多 60 字，空名叫「未命名人设卡」；正文去掉首尾空白后不能为空（400「人设卡正文不能为空」），最多 32 KiB；库最多 200 张。
 
 `POST /api/persona-cards/import` body `{"filename","content","confirm"}`：总是新建，不覆盖。卡名取第一行不超过 60 字的非空行（去掉开头的 `#`），否则取文件名去掉扩展名；`filename` 只用来起名，服务端不读任何路径。请求最多 256 KiB。已有同名且 `confirm` 不是 true：409 `{"error":"库里已有同名人设卡","conflict":true,"name"}`，库不变；确认后新卡名加「 (2)」，已有就往上数。检查和写入在同一把锁里。
 
-`DELETE /api/persona-cards/{id}`：有 Bot 在用时 409 `{"error":"N 个 Bot 还在用这张人设卡","conflict":true,"bots":N}`；带 `?force=1` 先把这些 Bot 改回未选用再删，200 `{"deleted":true,"unbound":N}`。
+`DELETE /api/persona-cards/{id}`：有 Bot 在用时 409 `{"error":"N 个 Bot 还在用这张人设卡","conflict":true,"bots":N}`；带 `?force=1` 先把这些 Bot 改回未选用再删，200 `{"deleted":true,"unbound":N}`。查在用、解绑和删除都在卡库锁里；`PUT /api/bots/{name}/persona-card` 也在这把锁里确认卡还在再写绑定，所以删卡后不会绑上已不存在的卡（404）。
 
 `PUT /api/bots/{name}/persona-card` body `{"id"}`，空字符串是未选用。成功 200 `{"name","persona_card":{"id","name"}|null}`；不是这个 owner 的 Bot 404，卡不存在 404，多人共用的 Bot 不能选用（400）。重复选同一张无副作用；和技能开关共用一把锁串行写配置。选用后下一轮固定前缀里的人设就是卡正文。
 

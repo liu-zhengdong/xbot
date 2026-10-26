@@ -22,10 +22,10 @@ func (b *Bot) SetPersonaCard(id string) error {
 	return b.SaveConfig()
 }
 
-// personaText is the picked card's body, or persona.md when no card is picked
+// PersonaText is the picked card's body, or persona.md when no card is picked
 // or the card is gone. The binding is read from disk because a long-running
 // kernel keeps the config it loaded, and the owner picks cards from the web.
-func (b *Bot) personaText() (string, error) {
+func (b *Bot) PersonaText() (string, error) {
 	id := b.boundCard()
 	if owners := b.cfg.Owners; id != "" && len(owners) == 1 && b.Root != "" {
 		if c, err := personacard.Get(b.Root, owners[0], id); err == nil {

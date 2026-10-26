@@ -69,3 +69,34 @@ func TestPickedCardIsThePersona(t *testing.T) {
 		t.Fatal("bad id accepted")
 	}
 }
+
+// A template carries the persona in effect, so another owner who imports it
+// gets the picked card's text without needing its id.
+func TestExportTemplateCarriesPickedCard(t *testing.T) {
+	root := t.TempDir()
+	b, err := Create(root, "ada", "legacy persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	card, err := personacard.Create(root, "u1", "简洁", "CURRENT CARD BODY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetPersonaCard(card.ID); err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := ExportTemplate(b)
+	if err != nil || tpl.Persona != "CURRENT CARD BODY" {
+		t.Fatalf("exported %q %v", tpl.Persona, err)
+	}
+	other, err := ImportTemplate(t.TempDir(), tpl, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := other.ComposedPersona(); got != "CURRENT CARD BODY" || other.Config().PersonaCard != "" {
+		t.Fatalf("imported %q card %q", got, other.Config().PersonaCard)
+	}
+}
