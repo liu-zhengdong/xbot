@@ -20,6 +20,7 @@ import (
 func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	const secret = "ctx7sk-test-value-123"
 	b := testBot(t, link.NameTerminal)
+	t.Setenv("CONTEXT7_API_KEY", "")
 	var mu sync.Mutex
 	var mounted []link.MCPServer
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
@@ -55,6 +56,19 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	}
 	if out := tool.search("context7"); !strings.Contains(out, "context7\tavailable") {
 		t.Fatalf("keyless entry reads installed %q", out)
+	}
+	// Declaring the name without a stored value is not installed either.
+	if err := link.EnableConnector(b.GlobalMCPPath(), "context7"); err != nil {
+		t.Fatal(err)
+	}
+	if out := tool.search("context7"); !strings.Contains(out, "context7\tavailable") {
+		t.Fatalf("name without a value reads installed %q", out)
+	}
+	if err := link.RemoveMCP(b.GlobalMCPPath(), "context7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+		t.Fatal(err)
 	}
 	k.StageSecrets("context7", map[string]string{"CONTEXT7_API_KEY": secret})
 	out, err = tool.install("mcp:context7")

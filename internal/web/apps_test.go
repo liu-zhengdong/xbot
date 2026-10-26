@@ -265,6 +265,7 @@ func TestAppsRoutesNameNoBot(t *testing.T) {
 // Context7 needs its key: the store hands it to the chat card, a click over HTTP
 // writes nothing, and an entry without the key never reads as connected.
 func TestAppsContext7NeedsKey(t *testing.T) {
+	t.Setenv("CONTEXT7_API_KEY", "") // the shell's own key must not make it look connected
 	e := newAppsEnv(t)
 	if _, apps := e.list(); !apps["context7"].Card || apps["context7"].State != "available" || apps["fetch"].Card || apps["playwright"].Card {
 		t.Fatalf("card flags %+v %+v %+v", apps["context7"], apps["fetch"], apps["playwright"])
@@ -298,12 +299,27 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	if err := link.EnableConnector(path, "context7"); err != nil {
 		t.Fatal(err)
 	}
+	// The entry names the key but nobody holds a value: not connected.
+	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
+		t.Fatalf("name without a value shown %d %+v", n, apps["context7"])
+	}
+	// An empty value is no key either.
+	ada, _ := bot.Load(e.root, "ada")
+	if err := link.WriteSecrets(ada.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "  "}); err != nil {
+		t.Fatal(err)
+	}
+	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
+		t.Fatalf("empty value shown %d %+v", n, apps["context7"])
+	}
+	// A Bot holding a real value (where links install puts it) makes it connected.
+	if err := link.WriteSecrets(ada.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "ctx7sk-abc"}); err != nil {
+		t.Fatal(err)
+	}
 	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
 		t.Fatalf("keyed entry %d %+v", n, apps["context7"])
 	}
-	ada, _ := bot.Load(e.root, "ada")
-	if err := link.WriteSecrets(ada.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "ctx7sk-abc"}); err != nil {
-		t.Fatal(err)
+	if code, raw := e.call("GET", "/api/apps", "", true); code != 200 || strings.Contains(string(raw), "ctx7sk-abc") {
+		t.Fatalf("key value in the list %d", code)
 	}
 	for i := 0; i < 2; i++ {
 		if code, raw := e.call("DELETE", "/api/apps/context7", "", true); code != 200 {
@@ -315,5 +331,18 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	}
 	if got, _ := link.ReadSecrets(ada.SecretPath()); got["CONTEXT7_API_KEY"] != "" {
 		t.Fatal("store remove left the key with the Bot")
+	}
+}
+
+// The process environment is the spawn fallback, so a non-empty value there
+// counts the same as a Bot's stored key.
+func TestAppsContext7KeyFromEnvironment(t *testing.T) {
+	t.Setenv("CONTEXT7_API_KEY", "ctx7sk-env")
+	e := newAppsEnv(t)
+	if err := link.EnableConnector(bot.GlobalMCPPath(e.root), "context7"); err != nil {
+		t.Fatal(err)
+	}
+	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
+		t.Fatalf("env key %d %+v", n, apps["context7"])
 	}
 }

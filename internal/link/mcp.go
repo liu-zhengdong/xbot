@@ -63,6 +63,21 @@ type MCPServer struct {
 	Secret     func(name string) (string, bool)                      `json:"-"`
 }
 
+// HasSecretValues says each name is declared and has a non-empty value where
+// the server will read it at start. A declared name alone is not a key.
+func (s MCPServer) HasSecretValues(names []string) bool {
+	if !HasSecretEnvs(s, names) {
+		return false
+	}
+	lookup := s.secretLookup()
+	for _, n := range names {
+		if v, ok := lookup(n); !ok || strings.TrimSpace(v) == "" {
+			return false
+		}
+	}
+	return true
+}
+
 // secretLookup reads a SecretEnvs value from Secret, then the process environment.
 func (s MCPServer) secretLookup() func(string) (string, bool) {
 	return func(name string) (string, bool) {

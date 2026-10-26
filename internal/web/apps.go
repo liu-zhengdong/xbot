@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 
 	"xbot/internal/bot"
@@ -76,6 +77,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 			}
 		}
 	}
+	keyHeld := s.ownerKeyHeld(cfgs)
 	srv := map[string]link.MCPServer{}
 	for _, v := range servers {
 		srv[v.Name] = v
@@ -92,7 +94,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 		switch {
 		case a.Kind == link.AppSoon:
 			row.State = "soon"
-		case a.Kind == link.AppNative && have[a.Grant], a.Kind == link.AppServer && serverReady(srv, a.ID):
+		case a.Kind == link.AppNative && have[a.Grant], a.Kind == link.AppServer && serverReady(srv, a.ID, keyHeld):
 			row.State = "connected"
 		}
 		rows = append(rows, row)
@@ -107,9 +109,11 @@ func (s *Server) appRows() ([]appJSON, error) {
 }
 
 // serverReady says a store server is really connected: its entry exists and,
-// for a key-bearing row, names every key the catalog asks for. An entry left
-// keyless by an older one-click add is not shown as connected.
-func serverReady(srv map[string]link.MCPServer, id string) bool {
+// for a key-bearing row, names every key the catalog asks for and each key has
+// a value where the running server reads it. A name alone is not a key, so an
+// entry without a stored value, or one left keyless by an older one-click add,
+// is not shown as connected.
+func serverReady(srv map[string]link.MCPServer, id string, held func(string) bool) bool {
 	v, ok := srv[id]
 	if !ok {
 		return false
@@ -119,11 +123,42 @@ func serverReady(srv map[string]link.MCPServer, id string) bool {
 		return true
 	}
 	for _, name := range c.SecretEnvs {
-		if !listHas(v.SecretEnvs, name) {
+		if !listHas(v.SecretEnvs, name) || !held(name) {
 			return false
 		}
 	}
 	return true
+}
+
+// ownerKeyHeld reports whether a key has a non-empty value where a spawned
+// server looks for it: a Bot's secrets file (links install puts it there),
+// then the process environment. Values are only tested, never returned.
+func (s *Server) ownerKeyHeld(cfgs []bot.Config) func(string) bool {
+	var files []map[string]string
+	loaded := false
+	return func(name string) bool {
+		if v, ok := os.LookupEnv(name); ok && strings.TrimSpace(v) != "" {
+			return true
+		}
+		if !loaded {
+			loaded = true
+			for _, cfg := range cfgs {
+				b, err := bot.Load(s.Root, cfg.Name)
+				if err != nil {
+					continue
+				}
+				if m, err := link.ReadSecrets(b.SecretPath()); err == nil {
+					files = append(files, m)
+				}
+			}
+		}
+		for _, m := range files {
+			if strings.TrimSpace(m[name]) != "" {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 func (s *Server) installApp(w http.ResponseWriter, r *http.Request) {

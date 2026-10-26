@@ -134,10 +134,11 @@ func (t linksTool) search(query string) string {
 			if q != "" && !strings.Contains(blob, q) {
 				continue
 			}
-			// Installed only once the entry carries every key the row names.
+			// Installed only once the entry names every key and each has a value.
 			state := "available"
 			for _, s := range servers {
-				if s.Name == c.ID && link.HasSecretEnvs(s, c.SecretEnvs) {
+				s.Secret = link.SecretLookup(t.k.Bot.SecretPath())
+				if s.Name == c.ID && s.HasSecretValues(c.SecretEnvs) {
 					state = "installed"
 				}
 			}
