@@ -208,7 +208,11 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]")}
 	}
-	msg, err := readResponses(ctx, &idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, delta)
+	reader, err := responseStream(&idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, res.Header.Get("Content-Type"), ResponsesProtocol)
+	if err != nil {
+		return Message{}, err
+	}
+	msg, err := readResponses(ctx, reader, delta)
 	var status *statusError
 	if errors.As(err, &status) {
 		return msg, &statusError{code: status.code, body: strings.ReplaceAll(status.body, c.APIKey, "[secret]")}
@@ -396,7 +400,10 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			ItemID       string           `json:"item_id"`
 			OutputIndex  int              `json:"output_index"`
 			Response     struct {
-				Status string            `json:"status"`
+				Status            string `json:"status"`
+				IncompleteDetails struct {
+					Reason string `json:"reason"`
+				} `json:"incomplete_details"`
 				Error  *responseFailure  `json:"error"`
 				Output []json.RawMessage `json:"output"`
 				Usage  *struct {
@@ -464,11 +471,15 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				}
 				emitPart(ctx, ContentPart{Type: PartHosted, Hosted: &HostedStep{ID: ev.ItemID, Name: tool, Status: status}})
 			}
-		case "response.completed":
-			if ev.Response.Status != "completed" {
+		case "response.completed", "response.incomplete":
+			truncated := ev.Type == "response.incomplete" && ev.Response.IncompleteDetails.Reason == "max_output_tokens"
+			if !truncated && (ev.Type != "response.completed" || ev.Response.Status != "completed") {
 				return Message{}, errors.New("responses: response did not complete")
 			}
 			msg := Message{Role: RoleAssistant}
+			if truncated {
+				msg.StopReason = "max_output_tokens"
+			}
 			output := ev.Response.Output
 			fromItems := len(output) == 0
 			if fromItems {
@@ -518,7 +529,7 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				msg.Content = TextContent(streamed.String())
 			}
 			// A reply that only generated a picture still says where it went.
-			if strings.TrimSpace(msg.Text()) == "" && len(msg.Calls()) == 0 && !generated {
+			if strings.TrimSpace(msg.Text()) == "" && len(msg.Calls()) == 0 && !generated && !msg.Truncated() {
 				return Message{}, errors.New("responses: empty response")
 			}
 			if u := ev.Response.Usage; u != nil {
@@ -541,8 +552,6 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				return Message{}, errors.New("responses: " + ev.Type)
 			}
 			return Message{}, failure.err()
-		case "response.incomplete":
-			return Message{}, errors.New("responses: response.incomplete")
 		}
 	}
 	if err := scan.Err(); err != nil {

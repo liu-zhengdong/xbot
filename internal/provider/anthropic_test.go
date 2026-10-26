@@ -143,7 +143,7 @@ func TestAnthropicLocalToolProjectionAndImages(t *testing.T) {
 }
 
 func TestAnthropicErrorsRetriesAndNoDuplicateHosted(t *testing.T) {
-	for _, stream := range []string{`data: {bad}`, `data: {"type":"message_stop"}`, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}`, strings.Replace(anthropicRecording, `"stop_reason":"end_turn"`, `"stop_reason":"max_tokens"`, 1), strings.Replace(anthropicRecording, `"index":0,"content_block"`, `"index":2,"content_block"`, 1)} {
+	for _, stream := range []string{`data: {bad}`, `data: {"type":"message_stop"}`, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}`, strings.Replace(anthropicRecording, `"index":0,"content_block"`, `"index":2,"content_block"`, 1)} {
 		if _, err := readAnthropic(context.Background(), strings.NewReader(stream), nil); err == nil {
 			t.Fatalf("broken stream accepted %s", stream)
 		}

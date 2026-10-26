@@ -157,7 +157,7 @@ func Run(ctx context.Context, p provider.Provider, list []tools.Tool, messages [
 			if opt.Preempt != nil {
 				over = opt.Preempt(stop)
 			}
-			msg, err = p.Chat(callCtx, provider.Request{Messages: convo, Tools: defs}, opt.OnDelta)
+			msg, err = provider.Complete(callCtx, p, provider.Request{Messages: convo, Tools: defs}, opt.OnDelta)
 			over()
 			// A call that finished before the stop landed keeps its answer;
 			// the news is read at the next boundary instead.
@@ -321,7 +321,7 @@ func stopForReason(ctx context.Context, p provider.Provider, convo, produced []p
 	if opt.OnMessage != nil {
 		opt.OnMessage(note)
 	}
-	msg, err := p.Chat(ctx, provider.Request{Messages: convo}, opt.OnDelta)
+	msg, err := provider.Complete(ctx, p, provider.Request{Messages: convo}, opt.OnDelta)
 	if err != nil {
 		return produced, fmt.Errorf("agent: stopped (%s): %w", reason, err)
 	}
@@ -359,7 +359,7 @@ func stopSummary(ctx context.Context, p provider.Provider, convo, produced []pro
 	}
 	note := fmt.Sprintf("Stop. The step cap (%d) is reached. Do not call tools. Summarize what was done, what is still pending, and why you stopped.", opt.MaxSteps)
 	convo = append(convo, provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(note)})
-	msg, err := p.Chat(ctx, provider.Request{Messages: convo}, opt.OnDelta)
+	msg, err := provider.Complete(ctx, p, provider.Request{Messages: convo}, opt.OnDelta)
 	if err != nil {
 		return produced, fmt.Errorf("agent: max steps (%d) reached: %w", opt.MaxSteps, err)
 	}

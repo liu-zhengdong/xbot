@@ -270,8 +270,9 @@ func readAnthropic(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			if !started || !finished || block != nil {
 				return Message{}, io.ErrUnexpectedEOF
 			}
+			msg.StopReason = stop
 			switch stop {
-			case "end_turn", "tool_use", "stop_sequence", "refusal":
+			case "end_turn", "tool_use", "stop_sequence", "refusal", "max_tokens":
 				return msg, nil
 			case "pause_turn":
 				return msg, &anthropicPause{}

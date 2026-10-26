@@ -494,14 +494,18 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	if idle > 0 {
 		stream = io.NopCloser(&idleReader{r: resp.Body, idle: idle, cancel: cancelStream})
 	}
-	msg, err := decodeStream(stream, onDelta)
+	reader, err := responseStream(stream, resp.Header.Get("Content-Type"), ChatCompletions)
+	if err != nil {
+		return Message{}, err
+	}
+	msg, err := decodeStream(reader, onDelta)
 	if err != nil {
 		return Message{}, err
 	}
 	if msg.Role == "" {
 		msg.Role = RoleAssistant
 	}
-	if msg.Text() == "" && len(msg.Calls()) == 0 {
+	if msg.Text() == "" && len(msg.Calls()) == 0 && !msg.Truncated() {
 		return Message{}, errors.New("provider: empty completion")
 	}
 	return msg, nil
@@ -523,7 +527,8 @@ type streamChunk struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 	Choices []struct {
-		Delta struct {
+		FinishReason string `json:"finish_reason"`
+		Delta        struct {
 			Role             string `json:"role"`
 			Content          string `json:"content"`
 			ReasoningContent string `json:"reasoning_content"`
@@ -594,6 +599,8 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 	tools := map[int]*toolBuf{}
 	var order []int
 	var usage TokenUsage
+	var stopReason string
+	size := 0
 	for sc.Scan() {
 		line := strings.TrimRight(sc.Text(), "\r")
 		if line == "" || strings.HasPrefix(line, ":") {
@@ -619,7 +626,17 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 		if len(chunk.Choices) == 0 {
 			continue
 		}
+		if reason := chunk.Choices[0].FinishReason; reason != "" {
+			stopReason = reason
+		}
 		d := chunk.Choices[0].Delta
+		size += len(d.Content)
+		for _, tc := range d.ToolCalls {
+			size += 64 + len(tc.ID) + len(tc.Function.Name) + len(tc.Function.Arguments)
+		}
+		if size > 1<<20 {
+			return Message{}, errors.New("provider: output exceeds 1 MiB")
+		}
 		if d.Role != "" {
 			role = d.Role
 		}
@@ -668,7 +685,7 @@ func decodeStream(r io.Reader, onDelta func(string)) (Message, error) {
 			tools[idx].part++
 		}
 	}
-	msg := Message{Role: role, Usage: usage, Content: parts}
+	msg := Message{Role: role, Usage: usage, Content: parts, StopReason: stopReason}
 	for i, idx := range order {
 		buf := tools[idx]
 		id := buf.id

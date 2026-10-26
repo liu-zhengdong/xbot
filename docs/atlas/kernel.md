@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ 064f81f + MCP schema 降级
+verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 MCP schema / Shell 解释器）
 ---
 # 内核：Link、Event、收件箱
 
@@ -28,6 +28,8 @@ verified: 2026-10-27 @ 064f81f + MCP schema 降级
 - **悬空工具调用**：中断、取消、切换模型都走 `DanglingResult`，给没返回的调用补一条占位结果，配对不会断。
 
 有主人话或任务结果的一轮必须给正常回复，不能以 `SILENT` 吞掉；只有没有这些输入的定时唤醒才允许静默。环境与任务结果都是原有消息，不另建转告请求或签收机制。接收原话和公布该输入的环境共用原环境发布锁；请求发送前从有效对话回放基线并采样变化，不再保存独立已见状态（格式见 [上下文](context.md)）。
+
+输出截断的合并规则见 [供应商](providers.md#输出截断)。内核把 prepare、fit、环境公布和用量记账保留在每次实际请求上，输出截断不改变 overflow 的裁剪重试。逻辑回复拼接完成后才统一剥离 `reply_to`、校验 SILENT 和工具协议文本，并沿原助手记录入口追加一次；中间片段及续写指令不进 transcript。取消和插话沿原模型请求的 context；已正常完成的回复仍优先于迟到取消。
 
 ## 轨迹路径与脚本回放
 

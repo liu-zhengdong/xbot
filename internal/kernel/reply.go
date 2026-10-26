@@ -127,30 +127,26 @@ type replyProvider struct {
 	// fit cuts a request to stay under the context lines (see fit.go).
 	// overflow says the provider rejected it as too long; the cut request is
 	// then sent once more.
-	fit  func(ctx context.Context, req provider.Request, overflow bool) provider.Request
-	hold replyHold
+	fit func(ctx context.Context, req provider.Request, overflow bool) provider.Request
 }
 
 func (s *replyProvider) send(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	s.hold = replyHold{}
 	if s.onSend != nil {
 		s.onSend(req)
 	}
-	msg, err := s.inner.Chat(ctx, req, func(chunk string) {
-		if onDelta == nil {
-			return
-		}
-		if out := s.hold.Push(chunk); out != "" {
-			onDelta(out)
-		}
-	})
+	msg, err := s.inner.Chat(ctx, req, onDelta)
 	if s.onEnd != nil {
 		s.onEnd(req, msg, err)
 	}
 	return msg, err
 }
 
-func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+// replyRequest keeps preparation, fitting and accounting per physical request.
+// Reply validation belongs to the assembled logical completion below.
+type replyRequest struct{ owner *replyProvider }
+
+func (p replyRequest) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+	s := p.owner
 	if s.prepare != nil {
 		var err error
 		req, err = s.prepare(req)
@@ -187,18 +183,13 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 	if s.onUse != nil {
 		s.onUse(req, msg)
 	}
-	if s.validate != nil {
-		if err := s.validate(req, msg); err != nil {
-			return provider.Message{}, err
-		}
-	}
-	if len(msg.Calls()) == 0 && toolProtocolText(msg.Text()) {
-		return provider.Message{}, errors.New("provider returned tool protocol as reply text")
-	}
-	if onDelta != nil {
-		if rest := s.hold.Flush(); rest != "" {
-			onDelta(rest)
-		}
+	return msg, nil
+}
+
+func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+	msg, err := provider.Complete(ctx, replyRequest{s}, req, nil)
+	if err != nil {
+		return provider.Message{}, err
 	}
 	if msg.Role == "" {
 		msg.Role = provider.RoleAssistant
@@ -211,64 +202,18 @@ func (s *replyProvider) Chat(ctx context.Context, req provider.Request, onDelta 
 			}
 		}
 	}
-	return msg, nil
-}
-
-// replyHold keeps a leading "reply_to:" line out of the live text stream.
-type replyHold struct {
-	buf  strings.Builder
-	done bool
-}
-
-func (h *replyHold) Push(s string) string {
-	if h.done {
-		return s
-	}
-	h.buf.WriteString(s)
-	cur := h.buf.String()
-	if !strings.Contains(cur, "\n") && pendingReply(cur) {
-		return ""
-	}
-	if _, rest, ok := bot.TakeReplyLine(cur); ok {
-		cur = rest
-	}
-	if protocolPrefix(cur) {
-		return ""
-	}
-	h.done = true
-	h.buf.Reset()
-	return cur
-}
-
-func (h *replyHold) Flush() string {
-	if h.done {
-		return ""
-	}
-	h.done = true
-	cur := h.buf.String()
-	h.buf.Reset()
-	if _, rest, ok := bot.TakeReplyLine(cur); ok {
-		return rest
-	}
-	return cur
-}
-
-func pendingReply(s string) bool {
-	t := strings.TrimLeft(s, " \t")
-	const marker = "reply_to:"
-	if strings.HasPrefix(marker, t) {
-		return true
-	}
-	if !strings.HasPrefix(t, marker) {
-		return false
-	}
-	rest := strings.TrimLeft(strings.TrimPrefix(t, marker), " \t")
-	for _, r := range rest {
-		if r < '0' || r > '9' {
-			return false
+	if s.validate != nil {
+		if err := s.validate(req, msg); err != nil {
+			return provider.Message{}, err
 		}
 	}
-	return true
+	if len(msg.Calls()) == 0 && toolProtocolText(msg.Text()) {
+		return provider.Message{}, errors.New("provider returned tool protocol as reply text")
+	}
+	if onDelta != nil && msg.Text() != "" {
+		onDelta(msg.Text())
+	}
+	return msg, nil
 }
 
 // A provider protocol packet is not a normal assistant answer. Mentions and
@@ -285,18 +230,4 @@ func toolProtocolText(text string) bool {
 		Tools []json.RawMessage `json:"tool_calls"`
 	}
 	return json.Unmarshal([]byte(text), &raw) == nil && len(raw.Tools) > 0
-}
-func protocolPrefix(text string) bool {
-	text = strings.TrimSpace(text)
-	// Buffer leading JSON until completion so pretty-printed tool packets cannot
-	// leak before the completed object can be classified.
-	if strings.HasPrefix(text, "{") {
-		return true
-	}
-	for _, prefix := range []string{"<｜｜DSML", "<｜DSML"} {
-		if text != "" && (strings.HasPrefix(prefix, text) || strings.HasPrefix(text, prefix)) {
-			return true
-		}
-	}
-	return false
 }

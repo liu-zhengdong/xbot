@@ -209,6 +209,7 @@ func (c *Anthropic) Chat(ctx context.Context, req Request, delta func(string)) (
 			var next Message
 			next, err = c.messagesOnce(ctx, r, d)
 			m.Role = RoleAssistant
+			m.StopReason = next.StopReason
 			offset := len([]rune(m.Text()))
 			for i := range next.Content {
 				if next.Content[i].Citation != nil {
@@ -318,7 +319,11 @@ func (c *Anthropic) messagesOnce(ctx context.Context, req Request, delta func(st
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]")}
 	}
-	msg, err := readAnthropic(ctx, &idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, delta)
+	reader, err := responseStream(&idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, res.Header.Get("Content-Type"), AnthropicMessages)
+	if err != nil {
+		return Message{}, err
+	}
+	msg, err := readAnthropic(ctx, reader, delta)
 	var status *statusError
 	if errors.As(err, &status) {
 		err = &statusError{code: status.code, body: strings.ReplaceAll(status.body, c.APIKey, "[secret]")}

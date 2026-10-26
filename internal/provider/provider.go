@@ -24,6 +24,8 @@ const (
 // the owner said. It stays off the provider request; the kernel copies it into
 // the transcript record's origin.
 type Message struct {
+	// StopReason is request-local metadata, never replayed or persisted.
+	StopReason string `json:"-"`
 	// Seq identifies a message already appended to the bot transcript. Runtime only.
 	Seq     int           `json:"-"`
 	EventID string        `json:"-"`
@@ -38,6 +40,11 @@ type Message struct {
 	// own Images field instead.
 	ImageNames []string `json:"-"`
 	Internal   bool     `json:"-"`
+}
+
+// Truncated distinguishes output limits from normal stops and context overflow.
+func (m Message) Truncated() bool {
+	return m.StopReason == "length" || m.StopReason == "max_tokens" || m.StopReason == "max_output_tokens"
 }
 
 // Image is one picture attached to a message. Data is the raw file bytes.

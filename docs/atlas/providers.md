@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-27 @ 064f81f + MCP schema 错误分类
+verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 MCP schema 错误分类）
 ---
 # 模型供应商与主动性评测
 
@@ -30,7 +30,7 @@ verified: 2026-10-27 @ 064f81f + MCP schema 错误分类
 - 每个 Bot 绑定一个供应商和模型。模型条目可以带 `todo`（true 或 false）和 `todo_steps`。`todo` 缺省时，供应商或模型名含 deepseek 才打开待办提醒，其余关掉；`todo_steps` 缺省是 6。空绑定是 deepseek-flash，提醒开。`xbot provider add --todo on|off --todo-steps N` 写入这两个字段，省略时保留原来的值。密钥仍然只记环境变量名。
 - **思考开关**：DeepSeek 开着思考带工具时，后续请求必须回传 `reasoning_content`。Chat Completions 流里的 `reasoning_content` 存成助手消息最前面的 `reasoning` 块（`vendor: chat_completions`，全文在 `vendor_raw`，`text` 只是 `[thinking]` 标记）；它不走流式增量，`Text()` 也不含它，所以气泡、SSE 和 transcript 接口都看不到，只留在内部 transcript（照常过脱敏）。启用思考时（含 DeepSeek 的 `omit`/旧 reasoner 默认），每条助手消息回传自己的 `reasoning_content`，没有记录的工具轮（旧历史、别的协议）回传空串；别的请求一律不带这个字段，也不把它当正文发。模型名含 deepseek（`deepseek-reasoner` 除外）默认 enabled。模型条目可写 `thinking`：`on` 对任何模型都发 enabled 并回传，`off` 发 disabled，`omit` 不带；其他值在 `provider add` 和解析绑定时报错。`xbot provider add --thinking on|off|omit` 写入，省略时保留原值。Completions 思考请求默认发 `reasoning_effort: low`；模型条目的 `reasoning_effort` 和 CLI `--reasoning-effort low|high|max` 可覆盖，Flash 只允许这三个真实档位，省略时保留原配置。Anthropic 不发送这个 Completions 字段。reasoning 流累计超过 1 MiB 明确报错，不截断后回传。配置沿绑定、子代理及编码 runner 端点传递。Responses 的 `on` 发原生 `reasoning.effort: low`（可由模型条目的 `reasoning_effort` 覆盖），`off` 发 `none`，空值和 `omit` 保持端点默认；推理条目照旧原样回放。`deepseek-chat` 是 2026-07-24 停用的旧名，实测仍路由到 deepseek-flash 非思考模式；模型提示 `deepseek-flash.md` 与 `deepseek-chat.md` 内容相同。
 - **看图**：按模型，不按供应商一刀切。`deepseek-flash` 能看图，`deepseek-chat` 和 `deepseek-v4-pro` 不能。模型条目的 `vision` 为 true 或 false 时以它为准，缺省按模型名判断；上述 OpenAI 默认名单与 `claude-sonnet-4-5`、`claude-opus-4-6` 也标记可看图。没绑定供应商时跟 `XBOT_MODEL`（没设就是 deepseek-flash，能看）。`xbot provider add --vision on|off` 写入，省略时保留原值。能看的请求把图片放在消息的 `content` 数组里，一块是 `text`，一块是 `image_url` 的 data URL。同一轮只保留最新一批，旧的不再重发；最新一批会留到后续工具步骤和最后回复，仍受 4 张、合计 10 MiB 限制。上下文估算按大约 4 字节一个 token 把图片字节算进去。transcript 不写字节，这一轮结束才清掉，下一轮没有。不能看的模型不会收到这种数组：`view_image` 先返回工具错误。
-- **每次请求都有时限**：一次尝试从发出到最后一个字节最多 3 分钟；流式回复里两块之间超过 90 秒没动静就切断（设成负数可以关掉这一条）。两种超时和意外 EOF、429、5xx 一样可以重试，最多再试两次，间隔递增。增量文字收到就交出去，长回答的第一句不等最后一句（2026-10-20 前要等整次尝试成功才一起交出，真实 DeepSeek 上第一句晚到 8 秒多）。还没交出任何文字或 hosted 步骤时失败照常重试；已经交出过文字再失败就不重试，直接返回错误，免得把半截回答重复或说成两样。之前出现过请求挂几分钟不报错的情况，这是对它的修复。流式请求带 `stream_options.include_usage`。响应里有 usage 对象就按原数记下 prompt、completion 和 cached（`prompt_tokens_details.cached_tokens`，否则 `prompt_cache_hit_tokens`），全是 0 也算报告过。没有这个对象时，内核才按大约 4 字一 token 估计，并在 `trace.jsonl` 里把 reason 写成 estimated。用量不进 transcript。超长不在重试之列：同一个请求再发还是会被拒。`provider.IsContextOverflow` 认 400 正文里的 `maximum context length`、`context_length_exceeded` 一类字样（DeepSeek 实测是前者，2026-10-19）和 413，由内核先切短请求再发一次（见 [context.md](context.md)）。
+- **每次请求都有时限**：一次尝试从发出到最后一个字节最多 3 分钟；流式回复里两块之间超过 90 秒没动静就切断（设成负数可以关掉这一条）。两种超时和意外 EOF、429、5xx 一样可以重试，最多再试两次，间隔递增。协议适配器把增量文字收到就交给调用方；Agent 的用户回复先经下述输出截断门收齐后才公开（2026-10-20 前要等整次尝试成功才一起交出，真实 DeepSeek 上第一句晚到 8 秒多）。还没交出任何文字或 hosted 步骤时失败照常重试；已经交出过文字再失败就不重试，直接返回错误，免得把半截回答重复或说成两样。之前出现过请求挂几分钟不报错的情况，这是对它的修复。流式请求带 `stream_options.include_usage`。响应里有 usage 对象就按原数记下 prompt、completion 和 cached（`prompt_tokens_details.cached_tokens`，否则 `prompt_cache_hit_tokens`），全是 0 也算报告过。没有这个对象时，内核才按大约 4 字一 token 估计，并在 `trace.jsonl` 里把 reason 写成 estimated。用量不进 transcript。超长不在重试之列：同一个请求再发还是会被拒。`provider.IsContextOverflow` 认 400 正文里的 `maximum context length`、`context_length_exceeded` 一类字样（DeepSeek 实测是前者，2026-10-19）和 413，由内核先切短请求再发一次（见 [context.md](context.md)）。
 - **工具调用 id**：有的网关回复里不带工具调用 id，客户端补一个本地 id，并带随机后缀，不同轮之间不会撞号。工具结果按 id 配给它之前最近的那次调用；以前同一个 id 跨轮重复，结果配错位置，严格网关回 400，dev Bot 每次唤醒都失败。
 - 预留一个选择模型的接口，以后做按任务自动选模型时再实现。
 - **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，整个模型补丁槽省略；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `### 模型补丁`，固定说明「仅针对当前模型的额外约束。」之后才放正文。正文只进入固定前缀 S0 的该槽，仍按加载器的 8KB 上限处理。环境更新只公布 `provider/model` 和 12 位内容哈希；没有正文时公布 `none`。内容或绑定变化才追加短更新；压缩后的完整环境快照也不带正文。
@@ -38,6 +38,14 @@ verified: 2026-10-27 @ 064f81f + MCP schema 错误分类
 - **认证名单**：`xbot eval <provider/model>` 先跑内置的 `proactivity`，再跑 `proactivity-holdout`。两套里每一条都按多数通过，才把 `provider/model` 写进该数据根的 `certified.json`。只跑其中一套，或 `--suite` 指向一个目录，都不写。默认每条跑 3 次，通过次数多于失败次数才算这条通过，3 次里就是至少 2 次。有一条多数没过就不写。`fake/*` 不写。认证是定期做的：主人隔一段时间自己跑真模型评测，不作为合并条件，也不进 CI。测试和 CI 只用 `fake/scripted`，不调用真模型。`GET /api/models` 默认只列出已经配置、并且在这份名单里的模型；`?all=1` 才带上未认证的。`xbot provider list` 始终列出已配置的供应商；下面的模型默认只有认证过的，`--all` 才带上其余的，并标明未认证。一个供应商还没有认证模型时，这一行仍然打出来。`xbot bind` 绑定未认证模型要加 `--uncertified`。
 
 工具 schema 错误由 `provider.ToolSchemaRejection` 分类：只认带 HTTP 400 状态的明确工具定义错误，JSON 错误只读 message/code，不从反射的输入里匹配；最多解析 64 KiB 错误正文。overflow 优先，401/403、普通请求错误、工具调用参数错误和输出 schema 错误不进此路径。MCP 的有界降级与恢复见 [生态](ecosystem.md)。
+
+## 输出截断
+
+本轮设计与验收：[输出截断自动续写](../dev/output-truncation-continue.md)。
+
+`Message.StopReason` 仅在请求期间传递，不进请求或 transcript。Completions 保留 `finish_reason=length`，Messages 保留 `stop_reason=max_tokens`，Responses 仅把 `response.incomplete` 且 `incomplete_details.reason=max_output_tokens` 视为可续写；其他 incomplete 仍报错。三个协议均兼容端点返回 `application/json`，正文先按 1 MiB 限制读取，再复用流式解析器。Completions 的文本与工具参数累计也设 1 MiB 上限。
+
+Agent 通过 `provider.Complete` 获取一次逻辑回复：首请求和最多两次续写都先收齐，不公开文字增量或 hosted 进度；明确截断但正文为空也续写。临时助手内容和续写指令只在请求内，不单独落盘；完整结果只发布一次。普通 stop/end_turn 不增加请求。累计内容序列化上限 1 MiB，超限、续写失败或用完次数仍截断时返回错误，不发布半截正文；截断的本地工具调用直接报错，不执行或回放不完整参数。成功后保留内容块顺序、引用偏移和各次用量，内部推理不作为正文公开。因结束信号在流尾，Agent 的普通回复也须等完整响应；直接调用协议适配器仍保留原流式接口。
 
 ## 主动性评测
 评测看行为和结果，不看模型自己的汇报。依据是主人对通用智能的第一条：自己设定目标，被打断后继续同一件事，做不到时停下来说明原因。
