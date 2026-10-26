@@ -118,12 +118,17 @@ type challengeIn struct {
 }
 
 func (s *Service) hRegister(w http.ResponseWriter, r *http.Request) {
+	// Counted before the body is read, so malformed requests use up the hour too.
+	if !s.regLimit.allow(clientIP(r), s.cfg.Now()) {
+		writeErr(w, ErrBusy)
+		return
+	}
 	var in credsIn
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, err)
 		return
 	}
-	out, err := s.Register(r.Context(), in.Email, in.Password)
+	out, err := s.register(r.Context(), in.Email, in.Password)
 	if err != nil {
 		writeErr(w, err)
 		return

@@ -102,24 +102,194 @@ func (e *env) openLink(t *testing.T, tok string) int {
 	return res.StatusCode
 }
 
-func TestSignUpByMailLinkThenPasswordLogin(t *testing.T) {
+func TestRegisterSignsInAtOnce(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	const pass = "correct horse 1"
-	p, err := e.cli.Register(ctx, "Zhengdong@Example.com", pass)
-	if err != nil || p.Challenge == "" || p.Email != "zh***@example.com" {
-		t.Fatalf("register %+v %v", p, err)
+	r, err := e.cli.Register(ctx, "Zhengdong@Example.com", pass)
+	if err != nil || r.Session == "" || r.Email != "zh***@example.com" {
+		t.Fatalf("register %+v %v", r, err)
+	}
+	if n := len(e.mails(t)); n != 0 {
+		t.Fatalf("register sent %d mails", n)
+	}
+	me, err := e.cli.Me(ctx, r.Session)
+	if err != nil || !me.Verified || me.Email != "zh***@example.com" || me.Key == "" {
+		t.Fatalf("me %+v %v", me, err)
+	}
+	signed, _, err := e.cli.Login(ctx, "ZHENGDONG@example.com", pass)
+	if err != nil || signed.Session == "" {
+		t.Fatalf("login %+v %v", signed, err)
+	}
+	if _, _, err := e.cli.Login(ctx, "zhengdong@example.com", "wrong pass 1"); err != ErrCredentials {
+		t.Fatalf("wrong password %v", err)
+	}
+	if err := e.cli.Logout(ctx, signed.Session); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.cli.Logout(ctx, signed.Session); err != nil {
+		t.Fatalf("second logout %v", err)
+	}
+	if _, err := e.cli.Me(ctx, signed.Session); err != ErrSession {
+		t.Fatalf("after logout %v", err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(filepath.Dir(e.outbox), "accounts.json"))
+	if strings.Contains(string(raw), pass) || strings.Contains(string(raw), r.Session) || strings.Contains(string(raw), signed.Session) {
+		t.Fatal("a secret is stored in the clear")
+	}
+}
+
+// The first sign-up holds the address: signing up again with its password is
+// a login, with any other password it fails like a wrong login.
+func TestFirstSignUpHoldsTheAddress(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	first, err := e.cli.Register(ctx, "a@example.com", "first pass 12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.cli.Register(ctx, "a@example.com", "other pass 12"); err != ErrCredentials {
+		t.Fatalf("second sign-up with another password %v", err)
+	}
+	if _, _, err := e.cli.Login(ctx, "a@example.com", "other pass 12"); err != ErrCredentials {
+		t.Fatalf("second password works: %v", err)
+	}
+	again, err := e.cli.Register(ctx, "A@example.com", "first pass 12")
+	if err != nil || again.Session == "" || again.Session == first.Session {
+		t.Fatalf("sign-up as login %+v %v", again, err)
+	}
+	if _, err := e.cli.Me(ctx, again.Session); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A short wrong password for a taken address is a failed login, not bad input.
+func TestRegisterTakenShortPasswordIsALogin(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if _, err := e.cli.Register(ctx, "short@example.com", "password 1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.cli.Register(ctx, "short@example.com", "wrong"); err != ErrCredentials {
+		t.Fatalf("short wrong password %v", err)
+	}
+	var fails int
+	e.svc.store.View(func(st *State) error { fails = st.Accounts["short@example.com"].Failures; return nil })
+	if fails != 1 {
+		t.Fatalf("failures %d", fails)
+	}
+	if _, err := e.cli.Register(ctx, "new@example.com", "short"); err != ErrInput {
+		t.Fatalf("short password for a new address %v", err)
+	}
+}
+
+// A Local caller that passes an IP is limited like HTTP; one without is not.
+func TestLocalRegisterLimit(t *testing.T) {
+	e := newEnv(t)
+	l := Local{S: e.svc}
+	ctx := WithClientIP(context.Background(), "192.0.2.1")
+	for i := 0; i < 5; i++ {
+		l.Register(ctx, "bad", "password 1")
+	}
+	if _, err := l.Register(ctx, "l@example.com", "password 1"); err != ErrBusy {
+		t.Fatalf("sixth local %v", err)
+	}
+	if _, err := l.Register(context.Background(), "l@example.com", "password 1"); err != nil {
+		t.Fatalf("no IP %v", err)
+	}
+}
+
+// postRegister calls register over HTTP with the given headers set.
+func (e *env) postRegister(t *testing.T, email string, hdr map[string]string) int {
+	t.Helper()
+	req, _ := http.NewRequest("POST", e.srv.URL+Prefix+"register", strings.NewReader(`{"email":"`+email+`","password":"password 1"}`))
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	return res.StatusCode
+}
+
+func TestRegisterIsLimitedPerIP(t *testing.T) {
+	e := newEnv(t)
+	ip := map[string]string{"X-Real-IP": "203.0.113.7"}
+	for i := 0; i < 5; i++ {
+		if code := e.postRegister(t, "r"+string(rune('a'+i))+"@example.com", ip); code != 200 {
+			t.Fatalf("register %d: %d", i, code)
+		}
+	}
+	if code := e.postRegister(t, "rz@example.com", ip); code != http.StatusTooManyRequests {
+		t.Fatalf("sixth register %d", code)
+	}
+	// A forged X-Forwarded-For does not make a new client.
+	spoof := map[string]string{"X-Real-IP": "203.0.113.7", "X-Forwarded-For": "198.51.100.1"}
+	if code := e.postRegister(t, "rz@example.com", spoof); code != http.StatusTooManyRequests {
+		t.Fatalf("forwarded-for bypass %d", code)
+	}
+	if code := e.postRegister(t, "rz@example.com", map[string]string{"X-Real-IP": "203.0.113.8"}); code != 200 {
+		t.Fatalf("another IP %d", code)
+	}
+	// Failures count too: bad input and wrong passwords use up the hour.
+	other := map[string]string{"X-Real-IP": "203.0.113.9"}
+	for i := 0; i < 5; i++ {
+		if code := e.postRegister(t, "not an email", other); code != http.StatusBadRequest {
+			t.Fatalf("bad input %d: %d", i, code)
+		}
+	}
+	if code := e.postRegister(t, "ok@example.com", other); code != http.StatusTooManyRequests {
+		t.Fatalf("after five bad tries %d", code)
+	}
+	// So do bodies that are not JSON at all.
+	raw := map[string]string{"X-Real-IP": "203.0.113.10"}
+	for i := 0; i < 5; i++ {
+		req, _ := http.NewRequest("POST", e.srv.URL+Prefix+"register", strings.NewReader("{"))
+		req.Header.Set("X-Real-IP", raw["X-Real-IP"])
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("malformed %d: %d", i, res.StatusCode)
+		}
+	}
+	if code := e.postRegister(t, "json@example.com", raw); code != http.StatusTooManyRequests {
+		t.Fatalf("after five malformed bodies %d", code)
+	}
+	// Without X-Real-IP the peer address is the client.
+	for i := 0; i < 5; i++ {
+		e.postRegister(t, "p"+string(rune('a'+i))+"@example.com", nil)
+	}
+	if code := e.postRegister(t, "pz@example.com", nil); code != http.StatusTooManyRequests {
+		t.Fatalf("direct sixth %d", code)
+	}
+	// The window slides.
+	e.clk.add(61 * time.Minute)
+	if code := e.postRegister(t, "rz@example.com", ip); code != 200 {
+		t.Fatalf("after the hour %d", code)
+	}
+}
+
+// Mail login still works: link page, confirm, poll for the session.
+func TestMagicLinkLogin(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if _, err := e.cli.Register(ctx, "m@example.com", "password 1"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := e.cli.Magic(ctx, "m@example.com")
+	if err != nil || p.Challenge == "" || p.Email != "m***@example.com" {
+		t.Fatalf("magic %+v %v", p, err)
 	}
 	mails := e.mails(t)
-	if len(mails) != 1 || strings.Contains(mails[0], pass) || !strings.Contains(mails[0], "To: zhengdong@example.com") {
+	if len(mails) != 1 || !strings.Contains(mails[0], "To: m@example.com") || !strings.Contains(mails[0], "登录 XBot") {
 		t.Fatalf("mail %q", mails)
 	}
 	tok, _ := lastLink(t, mails[0])
-	// Not confirmed yet: the password does not sign in, it points back to the wait.
-	_, pend, err := e.cli.Login(ctx, "zhengdong@example.com", pass)
-	if err != ErrUnverified || pend.Challenge != p.Challenge {
-		t.Fatalf("unverified login %+v %v", pend, err)
-	}
 	if r, _ := e.cli.Poll(ctx, p.Challenge); r.State != "pending" || r.Session != "" {
 		t.Fatalf("poll before %+v", r)
 	}
@@ -145,65 +315,20 @@ func TestSignUpByMailLinkThenPasswordLogin(t *testing.T) {
 	if r2, _ := e.cli.Poll(ctx, p.Challenge); r2.State != "expired" || r2.Session != "" {
 		t.Fatalf("session handed out twice %+v", r2)
 	}
-	me, err := e.cli.Me(ctx, r.Session)
-	if err != nil || !me.Verified || me.Email != "zh***@example.com" || me.Key == "" {
+	if me, err := e.cli.Me(ctx, r.Session); err != nil || !me.Verified {
 		t.Fatalf("me %+v %v", me, err)
 	}
-	signed, _, err := e.cli.Login(ctx, "ZHENGDONG@example.com", pass)
-	if err != nil || signed.Session == "" {
-		t.Fatalf("login %+v %v", signed, err)
-	}
-	if _, _, err := e.cli.Login(ctx, "zhengdong@example.com", "wrong pass 1"); err != ErrCredentials {
-		t.Fatalf("wrong password %v", err)
-	}
-	if err := e.cli.Logout(ctx, signed.Session); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.cli.Logout(ctx, signed.Session); err != nil {
-		t.Fatalf("second logout %v", err)
-	}
-	if _, err := e.cli.Me(ctx, signed.Session); err != ErrSession {
-		t.Fatalf("after logout %v", err)
-	}
 	raw, _ := os.ReadFile(filepath.Join(filepath.Dir(e.outbox), "accounts.json"))
-	if strings.Contains(string(raw), pass) || strings.Contains(string(raw), tok) || strings.Contains(string(raw), signed.Session) {
+	if strings.Contains(string(raw), tok) || strings.Contains(string(raw), r.Session) {
 		t.Fatal("a secret is stored in the clear")
-	}
-}
-
-// Whoever controls the mailbox sets the password: a stranger's earlier sign-up for
-// the same address does not survive the owner's confirmation.
-func TestSignUpPasswordIsTheConfirmedOne(t *testing.T) {
-	e := newEnv(t)
-	ctx := context.Background()
-	if _, err := e.cli.Register(ctx, "a@example.com", "stranger pass"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.cli.Register(ctx, "a@example.com", "owner pass 12"); err != nil {
-		t.Fatal(err)
-	}
-	mails := e.mails(t)
-	tok, _ := lastLink(t, mails[1])
-	if e.openLink(t, tok) != 200 {
-		t.Fatal("confirm")
-	}
-	if _, _, err := e.cli.Login(ctx, "a@example.com", "stranger pass"); err != ErrCredentials {
-		t.Fatalf("stranger password works: %v", err)
-	}
-	if _, _, err := e.cli.Login(ctx, "a@example.com", "owner pass 12"); err != nil {
-		t.Fatal(err)
-	}
-	// The stranger's link is void now.
-	tok0, _ := lastLink(t, mails[0])
-	if e.openLink(t, tok0) != http.StatusGone {
-		t.Fatal("old sign-up link still works")
 	}
 }
 
 func TestCodeAndResendAndLimits(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	p, _ := e.cli.Register(ctx, "b@example.com", "password 1")
+	e.cli.Register(ctx, "b@example.com", "password 1")
+	p, _ := e.cli.Magic(ctx, "b@example.com")
 	tok1, code1 := lastLink(t, e.mails(t)[0])
 	// Again within the gap: nothing new is sent, no error.
 	if err := e.cli.Resend(ctx, p.Challenge); err != nil || len(e.mails(t)) != 1 {
@@ -257,30 +382,20 @@ func TestCodeAndResendAndLimits(t *testing.T) {
 func TestNoAccountEnumeration(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	p, _ := e.cli.Register(ctx, "c@example.com", "password 1")
-	tok, _ := lastLink(t, e.mails(t)[0])
-	e.openLink(t, tok)
-	e.cli.Poll(ctx, p.Challenge)
+	e.cli.Register(ctx, "c@example.com", "password 1")
 	known, err1 := e.cli.Magic(ctx, "c@example.com")
 	unknown, err2 := e.cli.Magic(ctx, "nobody@example.com")
 	if err1 != nil || err2 != nil || known.Challenge == "" || unknown.Challenge == "" {
 		t.Fatalf("magic %v %v", err1, err2)
 	}
-	if n := len(e.mails(t)); n != 2 {
+	if n := len(e.mails(t)); n != 1 {
 		t.Fatalf("mails %d", n)
 	}
-	// Signing up again with a taken address mails its owner a login link and
+	// Signing up again with a taken address answers like a wrong login and
 	// changes nothing.
-	again, err := e.cli.Register(ctx, "c@example.com", "new password 9")
-	if err != nil || again.Challenge == "" {
-		t.Fatal(err)
+	if _, err := e.cli.Register(ctx, "c@example.com", "new password 9"); err != ErrCredentials {
+		t.Fatalf("taken address %v", err)
 	}
-	last := e.mails(t)[2]
-	if !strings.Contains(last, "登录 XBot") {
-		t.Fatalf("taken address mail %q", last)
-	}
-	tok2, _ := lastLink(t, last)
-	e.openLink(t, tok2)
 	if _, _, err := e.cli.Login(ctx, "c@example.com", "new password 9"); err != ErrCredentials {
 		t.Fatal("re-registering changed the password")
 	}
@@ -298,10 +413,7 @@ func TestNoAccountEnumeration(t *testing.T) {
 func TestPasswordGuessingIsThrottled(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	p, _ := e.cli.Register(ctx, "g@example.com", "password 1")
-	tok, _ := lastLink(t, e.mails(t)[0])
-	e.openLink(t, tok)
-	e.cli.Poll(ctx, p.Challenge)
+	e.cli.Register(ctx, "g@example.com", "password 1")
 	for i := 0; i < 10; i++ {
 		if _, _, err := e.cli.Login(ctx, "g@example.com", "nope nope"); err != ErrCredentials {
 			t.Fatalf("try %d %v", i, err)
@@ -320,11 +432,7 @@ func TestDevicesBelongToTheAccount(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	sign := func(addr string) string {
-		p, _ := e.cli.Register(ctx, addr, "password 1")
-		mails := e.mails(t)
-		tok, _ := lastLink(t, mails[len(mails)-1])
-		e.openLink(t, tok)
-		r, _ := e.cli.Poll(ctx, p.Challenge)
+		r, _ := e.cli.Register(ctx, addr, "password 1")
 		return r.Session
 	}
 	a, b := sign("own@example.com"), sign("other@example.com")

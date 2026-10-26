@@ -104,6 +104,14 @@ func (e *acctEnv) lastMail() (string, string, string) {
 	return string(raw), l[1], c[1]
 }
 
+// noMail fails if the stand-in mailer wrote anything: sign-up sends no mail.
+func (e *acctEnv) noMail() {
+	e.t.Helper()
+	if ents, _ := os.ReadDir(filepath.Join(e.root, "account-api", "outbox")); len(ents) != 0 {
+		e.t.Fatalf("mail sent %v", ents)
+	}
+}
+
 // click opens the mail link and presses 确认, as the owner would in any browser.
 func (e *acctEnv) click(tok string) {
 	e.t.Helper()
@@ -124,8 +132,8 @@ func acct(m map[string]any) map[string]any {
 	return a
 }
 
-// The way in on this computer: sign up, wait, confirm by mail, and the
-// install is bound to the account; the main interface opens.
+// The way in on this computer: sign up and the install is bound to the
+// account at once (no mail for now); the main interface opens.
 func TestAccountSignUpOpensTheOwnerInterface(t *testing.T) {
 	e := newAcctEnv(t, false)
 	c := e.browser()
@@ -136,29 +144,11 @@ func TestAccountSignUpOpensTheOwnerInterface(t *testing.T) {
 		t.Fatalf("me before %v", me)
 	}
 	const pass = "owner pass 123"
-	code, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "zhengdong@example.com", "password": pass}, nil)
-	if code != 200 || p["email"] != "zh***@example.com" || p["challenge"] == "" {
-		t.Fatalf("register %d %v", code, p)
+	code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "zhengdong@example.com", "password": pass}, nil)
+	if code != 200 || out["state"] != "done" || acct(out)["owner"] != true || acct(out)["email"] != "zh***@example.com" || out["challenge"] != nil {
+		t.Fatalf("register %d %v", code, out)
 	}
-	mail, tok, _ := e.lastMail()
-	if strings.Contains(mail, pass) || !strings.Contains(mail, e.srv.URL+account.LinkPath) {
-		t.Fatalf("mail %q", mail)
-	}
-	// Not confirmed: no way into the interface or the devices.
-	if code, out := e.do(c, "POST", "/api/account/login", map[string]string{"email": "zhengdong@example.com", "password": pass}, nil); code != http.StatusForbidden || out["challenge"] != p["challenge"] {
-		t.Fatalf("unverified login %d %v", code, out)
-	}
-	if code, _ := e.do(c, "GET", "/api/account/devices", nil, nil); code != http.StatusUnauthorized {
-		t.Fatalf("devices before confirm %d", code)
-	}
-	if code, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, nil); code != 200 || out["state"] != "pending" {
-		t.Fatalf("poll %d %v", code, out)
-	}
-	e.click(tok)
-	code, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, nil)
-	if code != 200 || out["state"] != "done" || acct(out)["owner"] != true {
-		t.Fatalf("poll after %d %v", code, out)
-	}
+	e.noMail()
 	if code, _ := e.do(c, "GET", "/api/bots", nil, nil); code != 200 {
 		t.Fatalf("owner interface %d", code)
 	}
@@ -206,10 +196,10 @@ func TestAccountBindingNeedsTheOwner(t *testing.T) {
 	e := newAcctEnv(t, false)
 	tunnel := map[string]string{"Cf-Connecting-Ip": "203.0.113.9"}
 	signUp := func(c *http.Client, email string, hdr map[string]string) map[string]any {
-		_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": email, "password": "password 12"}, hdr)
-		_, tok, _ := e.lastMail()
-		e.click(tok)
-		_, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, hdr)
+		code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": email, "password": "password 12"}, hdr)
+		if code != 200 || out["state"] != "done" {
+			t.Fatalf("register %s %d %v", email, code, out)
+		}
 		return out
 	}
 	phone := e.browser()
@@ -250,7 +240,14 @@ func TestAccountBindingNeedsTheOwner(t *testing.T) {
 func TestAccountMailLinkAndCode(t *testing.T) {
 	e := newAcctEnv(t, true)
 	c := e.browser()
-	_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "a@example.com", "password": "password 12"}, nil)
+	if st, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "a@example.com", "password": "password 12"}, nil); st != 200 || acct(out)["owner"] != true || acct(out)["app"] != true {
+		t.Fatalf("register %d %v", st, out)
+	}
+	// The desktop app may sign out of the account.
+	if st, _ := e.do(c, "POST", "/api/account/logout", nil, nil); st != 200 {
+		t.Fatalf("app logout %d", st)
+	}
+	_, p := e.do(c, "POST", "/api/account/magic", map[string]string{"email": "a@example.com"}, nil)
 	_, _, code := e.lastMail()
 	if st, out := e.do(c, "POST", "/api/account/code", map[string]any{"challenge": p["challenge"], "code": "000000"}, nil); st != http.StatusUnauthorized || out["error"] != "credentials" {
 		t.Fatalf("wrong code %d %v", st, out)
@@ -258,9 +255,8 @@ func TestAccountMailLinkAndCode(t *testing.T) {
 	if st, out := e.do(c, "POST", "/api/account/code", map[string]any{"challenge": p["challenge"], "code": code}, nil); st != 200 || acct(out)["owner"] != true || acct(out)["app"] != true {
 		t.Fatalf("code %d %v", st, out)
 	}
-	// The desktop app may sign out of the account.
 	if st, _ := e.do(c, "POST", "/api/account/logout", nil, nil); st != 200 {
-		t.Fatalf("app logout %d", st)
+		t.Fatalf("logout %d", st)
 	}
 	_, m := e.do(c, "POST", "/api/account/magic", map[string]string{"email": "a@example.com"}, nil)
 	_, tok, _ := e.lastMail()
@@ -311,8 +307,8 @@ func TestInstallCodeStillWorks(t *testing.T) {
 	}
 }
 
-// With XBOT_ACCOUNT_API set, serve uses the hosted service over HTTP: the mail
-// link points at the service, and confirming it there still lets this window in.
+// With XBOT_ACCOUNT_API set, serve uses the hosted service over HTTP: sign-up
+// lets this window in at once, and a mail login link points at the service.
 func TestAccountWithHostedService(t *testing.T) {
 	data := t.TempDir()
 	hosted := httptest.NewServer(nil)
@@ -334,7 +330,19 @@ func TestAccountWithHostedService(t *testing.T) {
 	t.Cleanup(srv.Close)
 	e := &acctEnv{t: t, s: s, srv: srv, root: root}
 	c := e.browser()
-	_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "h@example.com", "password": "password 12"}, nil)
+	if st, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "h@example.com", "password": "password 12"}, nil); st != 200 || acct(out)["owner"] != true || acct(out)["hosted"] != true {
+		t.Fatalf("register %d %v", st, out)
+	}
+	if ents, _ := os.ReadDir(filepath.Join(data, "outbox")); len(ents) != 0 {
+		t.Fatalf("sign-up mailed %v", ents)
+	}
+	if st, _ := e.do(c, "GET", "/api/bots", nil, nil); st != 200 {
+		t.Fatalf("owner interface after sign-up %d", st)
+	}
+	if st, _ := e.do(c, "POST", "/api/account/logout", nil, nil); st != 200 {
+		t.Fatalf("logout %d", st)
+	}
+	_, p := e.do(c, "POST", "/api/account/magic", map[string]string{"email": "h@example.com"}, nil)
 	ents, _ := os.ReadDir(filepath.Join(data, "outbox"))
 	if len(ents) != 1 {
 		t.Fatalf("hosted outbox %v", ents)
@@ -376,10 +384,7 @@ func TestAccountBindingRefusesForwardedRequests(t *testing.T) {
 	} {
 		e := newAcctEnv(t, false)
 		c := e.browser()
-		_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr)
-		_, tok, _ := e.lastMail()
-		e.click(tok)
-		code, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, hdr)
+		code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr)
 		if code != 200 || acct(out)["owner"] != false {
 			t.Fatalf("%v: bound through a proxy %d %v", hdr, code, out)
 		}
@@ -402,10 +407,7 @@ func TestAccountBindingRefusesForwardedRequests(t *testing.T) {
 		t.Fatal("install code")
 	}
 	hdr := map[string]string{"X-Forwarded-Proto": "https"}
-	_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr)
-	_, tok, _ := e.lastMail()
-	e.click(tok)
-	if code, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, hdr); code != 200 || acct(out)["owner"] != true {
+	if code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "o@example.com", "password": "password 12"}, hdr); code != 200 || acct(out)["owner"] != true {
 		t.Fatalf("owner session through a proxy %d %v", code, out)
 	}
 }

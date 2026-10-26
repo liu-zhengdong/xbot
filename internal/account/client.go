@@ -14,7 +14,7 @@ import (
 // Client is how xbot serve talks to the Account API: in process (Local) while
 // the hosted service is not set up, or over HTTP (Remote) once it is.
 type Client interface {
-	Register(ctx context.Context, email, pass string) (Pending, error)
+	Register(ctx context.Context, email, pass string) (Signed, error)
 	Login(ctx context.Context, email, pass string) (Signed, Pending, error)
 	Magic(ctx context.Context, email string) (Pending, error)
 	Resend(ctx context.Context, challenge string) error
@@ -31,7 +31,7 @@ type Client interface {
 // Local runs the service in this process.
 type Local struct{ S *Service }
 
-func (l Local) Register(ctx context.Context, e, p string) (Pending, error) {
+func (l Local) Register(ctx context.Context, e, p string) (Signed, error) {
 	return l.S.Register(ctx, e, p)
 }
 func (l Local) Login(ctx context.Context, e, p string) (Signed, Pending, error) {
@@ -106,8 +106,8 @@ func (c Remote) call(ctx context.Context, method, path, session string, in, out 
 	return nil, nil
 }
 
-func (c Remote) Register(ctx context.Context, e, p string) (Pending, error) {
-	var out Pending
+func (c Remote) Register(ctx context.Context, e, p string) (Signed, error) {
+	var out Signed
 	_, err := c.call(ctx, "POST", "register", "", credsIn{e, p}, &out)
 	return out, err
 }

@@ -36,6 +36,7 @@ const (
 	maxDevices    = 16
 	maxDeviceBots = 64
 	maxNameLen    = 64
+	maxRegPerIP   = 5 // register calls per client IP per rolling hour
 )
 
 // Config is the service's knobs. Zero values take the defaults.
@@ -54,9 +55,10 @@ type Config struct {
 
 // Service is the account logic over a Store and a Mailer.
 type Service struct {
-	store Store
-	mail  Mailer
-	cfg   Config
+	store    Store
+	mail     Mailer
+	cfg      Config
+	regLimit *ipLimit
 }
 
 func New(store Store, mailer Mailer, cfg Config) *Service {
@@ -79,7 +81,7 @@ func New(store Store, mailer Mailer, cfg Config) *Service {
 		cfg.Now = time.Now
 	}
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-	return &Service{store: store, mail: mailer, cfg: cfg}
+	return &Service{store: store, mail: mailer, cfg: cfg, regLimit: newIPLimit(maxRegPerIP, time.Hour)}
 }
 
 type linkBaseKey struct{}
@@ -153,43 +155,68 @@ func checkPass(p string) error {
 	return nil
 }
 
-// Register starts a sign-up. The password is kept on the challenge and becomes
-// the account's only when the email is confirmed, so whoever controls the
-// mailbox decides the password. A known address gets a login link instead;
-// the caller sees the same answer either way.
-func (s *Service) Register(ctx context.Context, email, pass string) (Pending, error) {
+// Register creates a verified account and signs it in at once; no mail is
+// sent. A taken address is a login: the right password signs in, any other is
+// ErrCredentials and counts as a failed login. Every call counts against the
+// caller's IP (see WithClientIP), bad input included.
+func (s *Service) Register(ctx context.Context, email, pass string) (Signed, error) {
+	if !s.regLimit.allow(clientIPFrom(ctx), s.cfg.Now()) {
+		return Signed{}, ErrBusy
+	}
+	return s.register(ctx, email, pass)
+}
+
+// register is Register after the IP has been counted.
+func (s *Service) register(ctx context.Context, email, pass string) (Signed, error) {
 	e, err := normEmail(email)
 	if err != nil {
-		return Pending{}, err
+		return Signed{}, err
 	}
-	if err := checkPass(pass); err != nil {
-		return Pending{}, err
-	}
-	hash, err := hashPassword(pass)
-	if err != nil {
-		return Pending{}, err
-	}
-	var out Pending
-	var m *Mail
-	err = s.store.Update(func(st *State) error {
-		s.prune(st)
-		login := false
-		if a, ok := st.Accounts[e]; ok && a.Verified {
-			login, hash = true, ""
-		} else if len(st.Accounts) >= maxAccounts {
-			return ErrBusy
-		}
-		c, mm, err := s.newChallenge(ctx, st, e, hash, login, false)
-		if err != nil {
-			return err
-		}
-		out, m = Pending{Challenge: c.ID, Email: MaskEmail(e)}, mm
+	taken := false
+	if err := s.store.View(func(st *State) error {
+		_, taken = st.Accounts[e]
 		return nil
-	})
-	if err != nil {
-		return Pending{}, err
+	}); err != nil {
+		return Signed{}, err
 	}
-	return out, s.send(ctx, m)
+	if !taken {
+		if err := checkPass(pass); err != nil {
+			return Signed{}, err
+		}
+		hash, err := hashPassword(pass)
+		if err != nil {
+			return Signed{}, err
+		}
+		var out Signed
+		err = s.store.Update(func(st *State) error {
+			s.prune(st)
+			if _, ok := st.Accounts[e]; ok {
+				taken = true // signed up by another call meanwhile
+				return nil
+			}
+			if len(st.Accounts) >= maxAccounts {
+				return ErrBusy
+			}
+			st.Accounts[e] = &Account{Email: e, PassHash: hash, Verified: true, Created: s.cfg.Now()}
+			// Sign-ups still waiting from the mail flow are void now.
+			for _, c := range st.Challenges {
+				if c.Email == e && c.PassHash != "" && !c.Done {
+					c.Done, c.Collected = true, true
+				}
+			}
+			tok, err := s.newSession(st, e)
+			out = Signed{Session: tok, Email: MaskEmail(e)}
+			return err
+		})
+		if err != nil || !taken {
+			return out, err
+		}
+	}
+	signed, _, err := s.Login(ctx, e, pass)
+	if errors.Is(err, ErrUnverified) {
+		err = ErrCredentials
+	}
+	return signed, err
 }
 
 // Magic starts a login by mail. An address with no account sends nothing but

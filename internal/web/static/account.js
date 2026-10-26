@@ -134,8 +134,8 @@
       busy(go, true);
       const r = await call("POST", "/api/account/register", { email: email.value.trim(), password: pass.value });
       busy(go, false);
-      if (r.ok) showVerify(r.data);
-      else showErr(err, say(r.data, "没能创建账号，稍后再试"));
+      if (r.ok) { signedIn(r.data.account); return; }
+      showErr(err, say(r.data, "没能创建账号，稍后再试"));
     };
     mount(form);
     email.focus({ preventScroll: true });

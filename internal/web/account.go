@@ -218,12 +218,14 @@ func (s *Server) accountRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	p, err := s.acct.client.Register(accountCtx(r), in.Email, in.Password)
+	// Sign-up sends no mail for now and signs in at once; mail verification
+	// comes back once real mail is sent (ADR 0025).
+	signed, err := s.acct.client.Register(accountCtx(r), in.Email, in.Password)
 	if err != nil {
 		writeAccountErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	s.signIn(w, r, signed.Session)
 }
 
 func (s *Server) accountMagic(w http.ResponseWriter, r *http.Request) {
