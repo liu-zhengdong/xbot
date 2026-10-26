@@ -269,6 +269,11 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	for key, value := range prev.Fields {
 		next.Fields[key] = value
 	}
+	paths, err := k.Bot.Paths()
+	if err != nil {
+		return next, err
+	}
+	environmentSet(&next, "paths", paths)
 	for _, key := range []string{"persona", "rules", "skills", "profile", "overlay"} {
 		var v string
 		var err error

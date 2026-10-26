@@ -65,6 +65,9 @@ Usage:
   xbot [--root DIR] template import --file FILE [--name NAME]
   xbot [--root DIR] routine migrate [--dry-run] [--bot NAME]
   xbot [--root DIR] export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE
+  xbot [--root DIR] trace paths [bot]
+  xbot [--root DIR] trace list [bot] [--since RFC3339] [--until RFC3339] [--kind KIND]
+  xbot [--root DIR] trace replay [bot] [--from SEQ --to SEQ]
   xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
   xbot [--root DIR] bind <name> --clear
@@ -213,6 +216,8 @@ func run(argv []string) error {
 		return cmdRoutine(root, rest[1:])
 	case "export":
 		return cmdExport(root, rest[1:])
+	case "trace":
+		return cmdTrace(root, rest[1:], os.Stdout)
 	case "reindex":
 		return cmdReindex(root, rest[1:])
 	case "bind":

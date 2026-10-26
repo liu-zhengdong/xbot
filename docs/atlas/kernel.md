@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ c580239 + 图片生成全局门控 + 上下文批 B @ b160417 / Agent Todo 中文展示
+verified: 2026-10-26 @ a5764e5 + 图片生成全局门控 + 上下文批 B / Agent Todo 中文展示 / 轨迹可发现与回放
 ---
 # 内核：Link、Event、收件箱
 
@@ -27,6 +27,24 @@ verified: 2026-10-26 @ c580239 + 图片生成全局门控 + 上下文批 B @ b16
 - **悬空工具调用**：中断、取消、切换模型都走 `DanglingResult`，给没返回的调用补一条占位结果，配对不会断。
 
 有主人话或任务结果的一轮必须给正常回复，不能以 `SILENT` 吞掉；只有没有这些输入的定时唤醒才允许静默。环境与任务结果都是原有消息，不另建转告请求或签收机制。接收原话和公布该输入的环境共用原环境发布锁；请求发送前从有效对话回放基线并采样变化，不再保存独立已见状态（格式见 [上下文](context.md)）。
+
+## 轨迹路径与脚本回放
+
+扩展现有入口，禁止第二套轨迹账本。三处各有职责，`{root}` 是当前安装的数据根：
+
+| 内容 | 路径与来源 |
+|---|---|
+| 用量、熔断及 fit 等遥测 | `{root}/bots/<name>/trace.jsonl`，`Bot.TracePath()`；不是工具步骤全文 |
+| 对话与工具调用、结果 | `{root}/bots/<name>/transcript/`，`Bot.TranscriptDir()`；原有 seq 分段与 blobs，网页「轨迹」是同源投影 |
+| 子代理步骤 | `{root}/bots/<name>/agents/<id>/transcript.jsonl`，`Bot.AgentsDir()` / `Bot.AgentDir(id)`；不复制进主 Bot 账本 |
+
+环境流的 `paths` 与 `xbot [--root DIR] trace paths [bot]` 共用 `Bot.Paths()`：`bot`、`trace`、`transcript`、`agents` 均为真实存储位置的绝对路径，另有 `access` 说明访问方法。路径不变不重复公布，压缩后的完整环境快照会恢复它们；不修改固定前缀。路径可在首条遥测或任务写入前存在于约定中，对应文件/目录按原有规则延迟创建。`read_file` 沙箱在 WorkDir，读取这些路径使用 shell、`xbot trace` 或脚本。
+
+- `trace paths [bot]` 输出一条 JSON 对象；省略 bot 使用已存在的主 Bot，空安装报错，不创建 Bot。
+- `trace list [bot] [--since RFC3339] [--until RFC3339] [--kind KIND]` 将遥测按文件顺序逐行输出 JSONL。时间窗包含两端，支持时区偏移；缺文件为空结果，未知 kind 无匹配。只读打开时的文件大小，未换行的追加尾巴留给下次读取；单行上限 1 MiB，完整坏行报行号而不打印原文。
+- `trace replay [bot] [--from SEQ --to SEQ]` 将 Markdown 投影流式写 stdout，序号窗包含两端；from/to 必须成对，省略则全量。直接复用 `bot.ExportTo` 与 `TranscriptExport{Tools:true}`，还原工具 blob，沿用摘要、脱敏与公开边界，不输出 reasoning 或 vendor_raw，不执行历史工具。它回放主 Bot transcript，子代理全文按上述路径另读。
+
+list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务记录。加载仍可能触发既有配置或保险箱迁移；replay 的读取沿用原存储锁、旧格式迁移和派生索引维护，不能理解成底层文件系统绝对零写入。实现与待验收项见 [轨迹可发现与回放](../dev/trace-discoverability.md)。
 
 ## 厂商生图
 

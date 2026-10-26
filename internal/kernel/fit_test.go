@@ -95,6 +95,19 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 	p := &scripted{resps: longTurn(steps, 2000)}
 	comp := &recCompactor{}
 	k, b := fitKernel(t, p, comp, compact.Budget{Ceiling: 12_000, KeepTail: 1}, 8000)
+	// Keep the workload's original headroom when local storage paths are
+	// published. Absolute TempDir lengths vary by host. The fitter budgets
+	// both the visible environment and its possible replacement snapshot.
+	paths, err := b.Paths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathJSON, err := json.Marshal(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ceiling := 12_000 + 2*compact.Estimate(`"paths":`+string(pathJSON)+",")
+	k.Budget.Ceiling = ceiling
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +115,8 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 		t.Fatalf("requests %d, want %d", len(p.reqs), steps+1)
 	}
 	for i, req := range p.reqs {
-		if n := compact.EstimateMessages(req.Messages); n > 12_000 {
-			t.Fatalf("request %d is %d tokens, over the 12000 ceiling", i, n)
+		if n := compact.EstimateMessages(req.Messages); n > ceiling {
+			t.Fatalf("request %d is %d tokens, over the %d ceiling", i, n, ceiling)
 		}
 	}
 	last := p.reqs[len(p.reqs)-1].Messages
