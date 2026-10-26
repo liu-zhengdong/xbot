@@ -531,10 +531,13 @@ func TestUpdateProfileSavedReceipt(t *testing.T) {
 	if _, seed := loaded.AvatarState(); seed != "Ada#4" || loaded.Config().Description != "笔记助手" {
 		t.Fatalf("saved receipt precedes persistence: %+v", loaded.Config())
 	}
-	if output != "profile saved" {
+	if !strings.HasPrefix(output, "profile saved") || !strings.Contains(output, "已换好") {
 		t.Fatalf("receipt must acknowledge the completed save: %q", output)
 	}
-	for _, text := range []string{tool.Description(), link.Blurb(link.NamePersona)} {
+	for _, text := range []string{output, tool.Description(), link.Blurb(link.NamePersona)} {
+		if !(strings.Contains(text, "immediately") && strings.Contains(text, "sidebar")) && !(strings.Contains(text, "当面刷新") && strings.Contains(text, "侧栏")) {
+			t.Fatalf("profile guidance lacks current-conversation refresh: %s", text)
+		}
 		if strings.Contains(text, "next wake") || strings.Contains(text, "下次唤醒") {
 			t.Fatalf("profile guidance postpones a completed save: %s", text)
 		}

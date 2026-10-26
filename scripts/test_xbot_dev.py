@@ -26,8 +26,9 @@ class DevBuildTest(unittest.TestCase):
             )
             (fakebin / "go").write_text(
                 '#!/bin/bash\n[ "$TEST_BUILD_FAIL" = 0 ] || exit 1\n'
-                '[ "$1" = build ] && [ "$2" = -o ] || exit 2\n'
-                'printf "%s\\n" "$TEST_BUILD_HEAD" > "$3"\n'
+                '[ "$1" = build ] && [ "$2" = -ldflags ] && [ "$4" = -o ] || exit 2\n'
+                '[ "$3" = "-X xbot/internal/version.Tip=$TEST_BUILD_HEAD" ] || exit 3\n'
+                'printf "%s\\n" "${3##*=}" > "$5"\n'
             )
             for executable in fakebin.iterdir():
                 executable.chmod(0o755)

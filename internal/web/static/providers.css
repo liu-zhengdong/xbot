@@ -113,3 +113,5 @@ html[data-theme="dark"] .provider-glyph-openai{--provider-openai-filter:invert(1
  .provider-subscription{grid-column:1/-1;flex-direction:row;align-items:center;min-height:50px}
 }
 .provider-image-toggle{display:inline-flex;align-items:center;gap:var(--x-s1);cursor:pointer}.provider-image-toggle input{margin:0}.provider-image-model{width:calc(var(--x-s9) * 4);font:var(--x-fs-cap) var(--x-mono);padding:var(--x-s1);border:0;border-radius:var(--x-r-xs);background:var(--x-fill-1);color:inherit}
+
+.hs-full-prompt{flex-basis:100%;overflow-wrap:anywhere;white-space:pre-wrap;margin:0;color:var(--x-muted)}

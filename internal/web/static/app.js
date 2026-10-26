@@ -87,6 +87,7 @@
     modelCatalog: null,
     push: null,
     version: "",
+    tip: "",
   };
 
   // Soft blobs: near-circles with an irregular edge. No eyes, no smile.
@@ -2801,7 +2802,7 @@
       appendBotContent(body, EMPTY_REPLY);
     }
     if (pasted.length) body.append(gallery(pasted));
- window.XBotProviders.decorate(body,m.parts);
+ window.XBotProviders.decorate(body,m.parts, who && !who.includes("@") ? () => openGenerated(who) : null);
     const calls = m.tool_calls || [];
     const peers = [];
     for (const call of calls) {
@@ -4391,6 +4392,7 @@
     const copy = item("clipboard", "复制 Bot ID", () => copyBotID(name));
     copy.append(el("span", "v mono", name));
     if (state.app) item("folder-open", "打开工作目录", () => openWorkdir(name));
+    item("folder-open", "查看生成的图片", () => openGenerated(name));
     item("download", "导出对话", () => openExport(name));
     menu.append(el("div", "mgap"));
     item("trash", "删除 Bot", () => confirmDelete(name), { danger: true });
@@ -4436,6 +4438,33 @@
     } catch (e) {
       setStatus(visibleError(e), true);
     }
+  }
+
+  async function openGenerated(name) {
+    const route = "/api/bots/" + encodeURIComponent(name);
+    try {
+      const data = await api(route + "/generated");
+      openModal("生成的图片", [
+        { type: "note", label: "图片保存在运行 XBot 的电脑上。" },
+        { name: "path", label: "工作区 generated/", value: data.path },
+      ], async () => {
+        if (!await copyText(data.path)) throw new Error("复制失败，请手动选择路径。");
+        showToast("已复制路径");
+      }, "复制路径", inputs => {
+        inputs.path.readOnly = true;
+        $("modal-cancel").textContent = "关闭";
+        if (data.can_open) {
+          const open = el("button", "secondary", "打开目录"); open.type = "button";
+          open.onclick = async () => {
+            open.disabled = true;
+            try { await api(route + "/open-workdir?folder=generated", {method:"POST"}); }
+            catch (e) { modalError.hidden = false; modalError.textContent = visibleError(e); }
+            finally { open.disabled = false; }
+          };
+          modalFields.append(open);
+        }
+      });
+    } catch (e) { setStatus(visibleError(e), true); }
   }
 
   let toastTimer = 0;
@@ -6139,7 +6168,7 @@
           appendMarkdown(prose, stripBotImages(displayText(acc)));
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "part") {
- window.XBotProviders.progress(host,payload);
+ window.XBotProviders.progress(host,payload, selection.type === "bot" ? () => openGenerated(selection.id) : null);
  } else if (event === "tool") {
           const who = state.sel && state.sel.id;
           if (host) {
@@ -6919,6 +6948,7 @@
       state.ownerName = data.owner_name || "";
       const session = await api("/api/session");
       state.version = session.version || "";
+      state.tip = session.tip || "";
       state.app = !!session.app;
       syncDevicesSession(session);
       $("logout").hidden = state.app;
@@ -7162,7 +7192,7 @@
     window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
     $("settings-theme").value = themeMode;
-    for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = state.version || "dev";
+    for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = aboutVersion();
     if (opening) page.focus({ preventScroll: true });
     else if (settingsNarrow.matches && !home) $("settings-back").focus({ preventScroll: true });
     if (home) return;
@@ -7236,7 +7266,9 @@
       else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
     }
   });
-  $("settings-copy-version").addEventListener("click", (ev) => copyText(state.version || "dev", ev.currentTarget));
+  function aboutVersion() { return (state.version || "dev") + (state.tip ? " · " + state.tip : ""); }
+
+  $("settings-copy-version").addEventListener("click", (ev) => copyText(aboutVersion(), ev.currentTarget));
   $("push-icon").append(icon("phone"));
 
   // A connector that needs a key asks for it on a confirmation card in chat. The card needs some Bot to
@@ -7760,6 +7792,7 @@
     state.owner = (data && data.owner) || "";
     state.ownerName = (data && data.owner_name) || "";
     state.version = (data && data.version) || "";
+    state.tip = (data && data.tip) || "";
     state.app = !!data.app;
     syncDevicesSession(data);
     // The old desktop code path has no login page to come back to; accounts can always sign out.

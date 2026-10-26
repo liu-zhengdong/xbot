@@ -2,26 +2,27 @@
 kind: part
 parent: README.md
 code: [internal/version/, internal/upgrade/, scripts/release.sh, internal/web/update.go, scripts/xbot-dev]
-verified: 2026-10-26 @ c91e7dd + 开发构建 tip 同步
+verified: 2026-10-26 @ c580239 + 开发构建 tip 注入与关于页复制
 ---
 # 版本与自动升级
 
 > **30 秒版**：`xbot version` 打印编译时注入的版本；推一个 `v*` tag，release.yml 就打包并发 Release；`xbot serve` 和桌面版每 6 小时查一次发布列表，有新版就后台下载校验好，网页右上角出现「更新」，点一下装好并重启；`xbot upgrade [--check]` 在命令行走同一条路径。
 
-`scripts/xbot-dev` 每次成功构建后，把编译版本所用的同一短 HEAD 写入 `build-info` 和 `bin/xbot.tip`；编译失败不更新版本记录。构建与重启分开，运行实例的版本在重启后才与新构建一致。
+`scripts/xbot-dev` 每次成功构建后，用 ldflags 把短 HEAD 注入 `internal/version.Tip`，并把同一短 HEAD 写入 `build-info` 和 `bin/xbot.tip`；编译失败不更新版本记录。构建与重启分开，运行实例的版本在重启后才与新构建一致。
 
 ## 边界
 负责：版本号的注入与展示、发布流程、运行中检查与应用升级、优雅重启。
 不负责：系统服务托管（systemd/launchd 各平台自理）、回滚（重新下载旧 tag 即可）。
 
 ## 版本
-`internal/version` 只有一个变量：
+`internal/version` 区分发布版本与构建短号：
 
 ```go
 var Version = "dev"
+var Tip = ""
 ```
 
-发布脚本用 `-ldflags "-X xbot/internal/version.Version=v0.1.0"` 注入。未注入时是 `dev`，`dev` 构建**不会**自动升级（避免开发机上跑测试版把自己换掉），只有手动 `xbot upgrade` 强制检查。
+发布脚本用 `-ldflags "-X xbot/internal/version.Version=v0.1.0"` 注入。未注入时是 `dev`，`dev` 构建**不会**自动升级（避免开发机上跑测试版把自己换掉），只有手动 `xbot upgrade` 强制检查。开发短号经 `/api/session.tip` 单独送到关于页展示与复制，不经过会剥离 `+` 后缀的版本格式化；`Version` 仍为 `dev`，不改变升级边界。
 
 ## 发布
 **推 tag 就是发布**。`.github/workflows/release.yml` 在 `push: tags: ["v*"]` 时自己打包并

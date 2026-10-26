@@ -5,3 +5,6 @@ package version
 //
 //	go build -ldflags "-X xbot/internal/version.Version=v0.1.0"
 var Version = "dev"
+
+// Tip is the checkout revision used by development builds, separate from Version.
+var Tip = ""

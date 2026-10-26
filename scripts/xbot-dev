@@ -53,7 +53,7 @@ build() {
 	local head
 	head="$(git -C "$REPO" rev-parse --short HEAD)"
 	echo "xbot-dev: 编译 $head ..."
-	(cd "$REPO" && go build -o "$BIN" ./cmd/xbot)
+	(cd "$REPO" && go build -ldflags "-X xbot/internal/version.Tip=$head" -o "$BIN" ./cmd/xbot)
 	printf 'commit=%s\nworktree=%s\nbuilt=%s\n' "$head" "$(dirty_mark)" "$(date '+%Y-%m-%d %H:%M:%S')" >"$INFO"
 	printf '%s\n' "$head" >"$STATE/bin/xbot.tip"
 }

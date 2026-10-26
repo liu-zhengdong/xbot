@@ -117,7 +117,7 @@ const visible=n=>!!n&&n.getClientRects().length>0;
  await XBotSettings.open('image-gen');checkToggle(true);
  assert(!guide(),'logged-in selection still asks login');
  const binding=$('#settings-image-gen .ig-binding-guide');
- assert(visible(binding)&&binding.textContent.includes('画图功能不会启用')&&binding.textContent.includes('模型与供应商')&&binding.textContent.includes('用哪家'),'missing binding guidance even when logged in');
+ assert(visible(binding)&&binding.textContent.includes('账号')&&binding.textContent.includes('模型')&&Array.from(binding.textContent).length<=30,'missing binding guidance even when logged in');
  assert(!/hosted|image_gen/.test($('#settings-image-gen').textContent),'engineering words in image settings');
  assert(radio('xai').querySelector('.ws-meta').textContent==='已登录','missing login state');
  fixture.imageSaveFail=true;toggle().click();await saved();

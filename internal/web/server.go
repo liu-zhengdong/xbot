@@ -228,6 +228,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/bots/{name}/avatar", s.deleteAvatar)
 	mux.HandleFunc("GET /api/bots/{name}/template", s.exportTemplate)
 	mux.HandleFunc("POST /api/bots/{name}/open-workdir", s.openWorkdir)
+	mux.HandleFunc("GET /api/bots/{name}/generated", s.generatedWorkdir)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("PATCH /api/bots/{name}/routines/{id}", s.patchRoutine)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
@@ -373,7 +374,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
-	out := map[string]any{"authed": true, "owner": s.owner, "owner_name": s.ownerName(), "app": s.App, "version": displayVersion(version.Version)}
+	out := map[string]any{"authed": true, "owner": s.owner, "owner_name": s.ownerName(), "app": s.App, "version": displayVersion(version.Version), "tip": version.Tip}
 	// Reached through a tunnel or proxy: the 官网 entry, not this machine's
 	// window. The sidebar stays the same; the bottom line names the account's
 	// devices instead of this computer.
@@ -746,7 +747,15 @@ func (s *Server) openWorkdir(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "open workdir is not configured")
 		return
 	}
+	folder := r.URL.Query().Get("folder")
+	if folder != "" && folder != work.GeneratedDir {
+		writeErr(w, http.StatusBadRequest, "unknown folder")
+		return
+	}
 	dir, _, err := work.Open(s.Root, b.Name())
+	if err == nil && folder == work.GeneratedDir {
+		dir, err = generatedPath(dir)
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

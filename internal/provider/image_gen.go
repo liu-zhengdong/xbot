@@ -194,7 +194,7 @@ func imageGenerationPart(raw json.RawMessage, p ContentPart) (ContentPart, error
 	p.Hosted = &HostedStep{ID: it.ID, Name: "image_generation", Status: it.Status, Query: q}
 	switch {
 	case it.Path != "":
-		p.Text = "[厂商生图: 已保存到工作区 " + it.Path + "]"
+		p.Text = "[厂商生图: 已保存到工作区 " + it.Path + "；请从生图步骤的「查看 generated/」或 Bot 菜单的「查看生成的图片」查找。这里只保存文件，未附加聊天图片；勿声称已在消息中展示。]"
 	case it.Error != "":
 		p.Hosted.Status = "failed"
 		p.Text = "[厂商生图失败: " + it.Error + "]"
@@ -210,6 +210,10 @@ func imageGenerationPart(raw json.RawMessage, p ContentPart) (ContentPart, error
 	}
 	return p, nil
 }
+
+// imageDeliveryGuidance also applies to prose produced in the generating
+// response itself, before the model can see the saved-path receipt on replay.
+const imageDeliveryGuidance = "厂商生图的图片由 XBot 保存到工作区 generated/，不会自动附加到聊天。交付时指向生图步骤的「查看 generated/」或 Bot 菜单的「查看生成的图片」；只有保存成功才说已保存。禁止声称图片已在消息或气泡中显示。"
 
 // HasImageGen reports whether ctx mounts hosted image generation.
 func HasImageGen(ctx context.Context) bool {

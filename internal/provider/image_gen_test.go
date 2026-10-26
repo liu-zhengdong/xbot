@@ -80,6 +80,10 @@ func TestResponsesMountsImageGeneration(t *testing.T) {
 			if _, err := p.Chat(ctx, Request{HostedSearch: tc.search, Tools: tc.tools}, nil); err != nil {
 				t.Fatal(err)
 			}
+			input, _ := json.Marshal(tr.bodies[0]["input"])
+			if guided := strings.Contains(string(input), "禁止声称") && strings.Contains(string(input), "查看 generated/"); guided != (len(tc.want) > 0) {
+				t.Fatalf("image delivery guidance mounted=%v, tools=%v", guided, tc.want)
+			}
 			got := imageTools(tr.bodies[0])
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("image tools %v want %v", got, tc.want)
@@ -136,6 +140,9 @@ func TestResponsesSavesImageGenerationCall(t *testing.T) {
 			}
 			if !strings.Contains(first.Text, "generated/1.png") || len(first.VendorRaw) != 0 {
 				t.Fatalf("image part text %q raw %d", first.Text, len(first.VendorRaw))
+			}
+			if !strings.Contains(first.Text, "查看 generated/") || !strings.Contains(first.Text, "未附加聊天图片") {
+				t.Fatalf("receipt lacks truthful delivery instructions: %q", first.Text)
 			}
 			// The bytes stay out of the record and out of the replayed request.
 			raw, _ := json.Marshal(msg)

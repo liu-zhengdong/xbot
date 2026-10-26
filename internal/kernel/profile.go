@@ -68,7 +68,7 @@ type profileChanges struct {
 
 func (profileTool) Name() string { return "update_profile" }
 func (profileTool) Description() string {
-	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly."
+	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly; the sidebar and header avatar refresh immediately in the current conversation."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
@@ -113,6 +113,9 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 			}
 			t.k.Bot = loaded
 		}
+	}
+	if update.avatarSeed != nil {
+		return "profile saved; 头像已换好；侧栏与顶栏当面刷新", nil
 	}
 	return "profile saved", nil
 }

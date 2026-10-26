@@ -36,7 +36,7 @@
 
 账号服务本身（`xbot account-api`，或 serve 里的替身）在 `/account/v1/`：`register`、`login`、`magic`、`resend`、`code`、`poll`（POST，JSON），`me`、`devices`（GET，`Authorization: Bearer <会话>`），`logout`、`devices`（POST，Bearer），`health`（GET），以及邮件链接页 `link?t=…`（GET 只显示「确认」按钮，POST 才用掉链接，邮件扫描器预取不会把它用掉）。
 
-`GET /api/session` 已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。
+`GET /api/session` 已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 
@@ -142,6 +142,10 @@
 `DELETE /api/bots/{name}/avatar` 回到按种子画的头像，种子是上传前那个。200 `{"name","avatar":"generated","avatar_seed"}`。
 
 `POST /api/bots/{name}/open-workdir` 只在桌面版存在：让系统文件管理器打开这个 Bot 的工作目录。成功 200 `{"status":"ok"}`。浏览器里（`/api/session` 没有 `app:true`）是 404；桌面版里调用文件管理器失败是 500，正文是原因。要登录；不是这个 owner 的 Bot 是 404。
+
+`GET /api/bots/{name}/generated` 返回 `{"path":"<服务端 Bot 工作区的 generated 绝对路径>","can_open":<bool>}`。浏览器与桌面均可用；要登录且为该 Bot 的 owner。目录不存在则幂等创建，只处理固定的 `generated/`，不接收任意路径、不读取图片。`generated/` 为符号链接时拒绝。`can_open` 仅在桌面且配置了系统打开回调时为真；浏览器显示路径并提供复制。
+
+`POST /api/bots/{name}/open-workdir?folder=generated` 复用桌面打开接口，指向该 Bot 的 `generated/`；其余非空 folder 返回 400，符号链接拒绝。无 folder 仍打开整个工作目录。
 
 `GET /api/bots/{name}/template` 下载 JSON，`Content-Disposition: attachment`。模板含档案、persona、例程、`avatar_seed` 和可选的 base64 头像。自定义头像的模板同时带图和种子。不含记忆、transcript、webhook、watch、provider、owner、置顶。
 

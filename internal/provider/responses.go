@@ -163,6 +163,9 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 	// request without local tools (compaction, extraction) never gets it.
 	if g, ok := imageGenFrom(ctx); ok && len(req.Tools) > 0 {
 		ts = append(ts, imageTool(c.BaseURL, g))
+		// Hosted output is stored by XBot; the vendor cannot attach it to chat.
+		guide, _ := json.Marshal(map[string]any{"role": "developer", "content": imageDeliveryGuidance})
+		input = append(input, guide)
 	}
 	body := map[string]any{"model": c.Model, "input": input, "tools": ts, "stream": true, "store": false, "include": []string{"reasoning.encrypted_content"}}
 	// Explicit settings use this protocol's native control. An unset/omit

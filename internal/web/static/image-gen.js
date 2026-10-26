@@ -39,7 +39,7 @@
       const next = rows[(i + (["ArrowDown","ArrowRight"].includes(e.key) ? 1 : rows.length - 1)) % rows.length];
       next.select.focus(); save({provider:next.id});
     };
-    section.append(list, node("p", "setfoot ig-binding-guide", "只有绑定了所选账号下模型的 Bot 才能画图。Bot 用的是另一家或密钥登录的模型时，画图功能不会启用。请到「模型与供应商」登录所选账号，再从 Bot 的模型选项换成该账号下的模型；也可以在这里改「用哪家」，与 Bot 当前使用的账号一致。"), node("p", "setfoot ws-provider-foot", "画好的图会放进工作区，不会直接出现在聊天气泡里。"));
+    section.append(list, node("p", "setfoot ig-binding-guide", "要和 Bot 当前使用的账号、模型对上。"), node("p", "setfoot ws-provider-foot", "画好的图进工作区，不会出现在气泡里。"));
     host.append(section, node("p", "setfoot", "改完后，新开的对话按新设置来。"));
     function paint() {
       toggle.classList.toggle("on", data.enabled); toggle.setAttribute("aria-checked", String(data.enabled)); toggle.disabled = saving;
