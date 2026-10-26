@@ -70,7 +70,49 @@ func validateOAuth(p Provider) error {
 	return nil
 }
 
-// SaveOAuthProvider updates one complete binding entry under the registry lock.
+// PrepareOAuthProvider frees the canonical login name without removing a key
+// binding. Cancellation leaves the key available under its new name.
+func PrepareOAuthProvider(root, kind string) error {
+	return fsutil.WithLock(Path(root)+".lock", func() error {
+		f, err := Load(root)
+		if err != nil {
+			return err
+		}
+		changed, err := yieldOAuthProviderName(&f, kind, kind)
+		if err != nil || !changed {
+			return err
+		}
+		return Save(root, f)
+	})
+}
+
+// yieldOAuthProviderName must run under the registry lock, with a fresh Load.
+// Only the name changes; the key's endpoint and model settings stay separate
+// from the OAuth entry. Existing OAuth accounts must never be renamed as keys.
+func yieldOAuthProviderName(f *File, name, kind string) (bool, error) {
+	i := indexOf(f.Providers, name)
+	if i < 0 || f.Providers[i].OAuth == kind {
+		return false, nil
+	}
+	if f.Providers[i].OAuth != "" {
+		return false, fmt.Errorf("providers: %s already uses a different OAuth account", name)
+	}
+	newName := name + "-key"
+	for suffix := 2; indexOf(f.Providers, newName) >= 0; suffix++ {
+		newName = fmt.Sprintf("%s-key-%d", name, suffix)
+	}
+	p := &f.Providers[i]
+	protocol := p.WireProtocol()
+	p.Name = newName
+	if p.WireProtocol() != protocol {
+		// Names such as openai infer a protocol when the field is omitted.
+		p.Protocol = protocol
+	}
+	return true, nil
+}
+
+// SaveOAuthProvider migrates a conflicting key and updates one complete OAuth
+// binding in the same registry transaction, including when Begin was bypassed.
 func SaveOAuthProvider(root string, p Provider) error {
 	if err := validateProvider(p, true); err != nil {
 		return err
@@ -85,12 +127,17 @@ func SaveOAuthProvider(root string, p Provider) error {
 		if err != nil {
 			return err
 		}
+		if p.OAuth != "" {
+			if _, err := yieldOAuthProviderName(&f, p.Name, p.OAuth); err != nil {
+				return err
+			}
+		}
 		i := indexOf(f.Providers, p.Name)
 		if i < 0 {
 			f.Providers = append(f.Providers, p)
 		} else {
 			if f.Providers[i].OAuth != p.OAuth {
-				return fmt.Errorf("providers: %s already uses an API key; choose a different provider name", p.Name)
+				return fmt.Errorf("providers: %s already uses a different OAuth account", p.Name)
 			}
 			previous := f.Providers[i]
 			if p.OAuth == "openrouter" || p.OAuth == "xai" {
