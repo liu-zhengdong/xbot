@@ -11,18 +11,22 @@
 5. 只动对话 composer + 消息渲染相关；设置浮层等其它 textarea 不动。
 6. 合入本地 main（不 push）→ Mini 8788 → 政东手测。
 
-## 现状与最小改动方向
+## 现状与实现（第二批已落，均在本分支）
 
-- 现状：`#input` 曾是 `<textarea>`；本批改为 **contenteditable** textbox（若编码已在做，继续这条，勿回退 textarea）。
-- 草稿高亮：在 contenteditable 内对 token 包 span/a（URL 用 `<a href>` 可点；MD 语法用 `<span class="md-…">` 上色，**保留可见的 `*` `_` `#` 等源字符**，不要把草稿变成 WYSIWYG 成品）。
-- 消息数学：在 `appendMarkdown` / `appendBlocks` / `appendInline` 路径识别 `$…$` / `$$…$$`，交给 KaTeX（`renderToString` 或 DOM API）；失败时回退纯文本，勿炸整条气泡。
-- 安全：`href` 仅 http(s)；KaTeX 输出走信任库默认；用户稿勿当原始 HTML 塞 DOM；`maxlength` 16000 仍按纯文本计。
-- 不做：mailto、WYSIWYG 工具栏、改设置页、全量 CommonMark、化学式插件。
+- 输入框：`#input` 已是纯文本 contenteditable（`plaintext-only`，不支持时回退 `contenteditable=true`）。
+- URL 高亮：`http(s)://` 就地成链，`_blank` + `noopener`，尾标点不吞，紧贴中文不吞，非 http(s) 不亮。
+- 草稿 Markdown 高亮（第二批）：行首 `#`/`##`/`###`（要求后跟空格；`####` 及更深不认）、列表符 `- `/`* `（要求空格）、`` `code` ``（内部不再嵌套其它高亮）、`**粗**`、`*斜*`、`[text](url)`。全部保留源字符、非 WYSIWYG；`_斜_` **不做**（snake_case 误判太多）；列表星不误判成斜体（先吃行首标记再扫行内）；`[text](url)` 协议规则与裸 URL 一致，非 http(s) 整段保持纯文本。
+- 气泡数学（第二批）：`appendMarkdown`/`appendBlocks`/`appendInline` 路径上渲染 `$…$`（行内）与 `$$…$$`（行首成块、居中显示；句子中间的 `$$…$$` 作行内 span）。KaTeX 0.16.11 内置在 `static/vendor/katex/`（未改动的上游 katex.min.css/js + LICENSE，字体仅 woff2 共 20 个 296 KB）；sw SHELL 加 CSS/JS（CACHE 升 v15），字体走运行时缓存。TeX 源从不作为 HTML 进 DOM：唯一 innerHTML 来自 `katex.renderToString` 的转义输出；`window.katex` 缺失或渲染抛错时回退原文（`.math-raw` 等宽字显示 `$…$`），不炸气泡。
+- 数学启发式：金额 `$5 和 $6`（闭侧是空格）不当公式；代码段里的 `$` 保护；流式期间未闭合的 `$` 先显原文，闭合后整段重渲染即正确（流式每 delta 全量重建，无需增量）。
+- Enter（非 Shift、非 IME composing）仍发送；点 URL / 点 `[text](url)` / 点高亮 span 不 `requestSubmit`。
+- 只动对话 composer + 消息渲染相关；设置浮层等其它输入区不动。
+- 安全：`href` 仅 http(s)；用户稿从不 innerHTML；`maxlength` 16000 仍按纯文本计（renderComposer 统一截断）。
+- 不做：mailto、WYSIWYG 工具栏、改设置页、全量 CommonMark、化学式插件、`_斜_`。
 
 ## 还没做的
 
 - 合入本地 main、Mini 8788 走查与政东手测（本分支交付时未做；不动候选 status）。
-- 规格明确不做的：mailto/自定义协议、预览卡片、改已发送消息气泡、拖拽排版。
+- 规格明确不做的：mailto/自定义协议、预览卡片、改已发送消息气泡的排版模式、拖拽排版、`_斜_`。
 
 ## 交付
 

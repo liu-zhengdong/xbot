@@ -350,3 +350,9 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 对话输入框从 textarea 改为纯文本 contenteditable：草稿里的 `http(s)://` 地址就地高亮，点击走气泡链接同款 `target=_blank` + `noopener`（桌面壳复用离域导航 → OpenExternal），点击不触发发送；Enter 发送、Shift+Enter 换行、IME 选词回车不发送均保持。只认可解析为 http/https 的地址，尾随标点与紧贴中文不吞进链接，纯文本上限 16000 照旧，粘贴一律转纯文本，图片粘贴/拖拽流程不变。规格 [docs/dev/composer-url-links.md](dev/composer-url-links.md)，现状已提炼进 [界面](atlas/ui.md)。
 
 验证：node 纯函数单测（识别/协议白名单/尾标点/序列化/偏移）+ 点击不提交 form 的 node 单测 + headless Chrome 端到端（高亮、点击打开不发送、非 http(s) 不亮、Enter/Shift+Enter/IME、16000 上限）全过；`go test -count=1 ./...` 全过，web 包 `-count=3` 过，gofmt/vet 净。浅色/深色截图已在本地 Chrome 查看。级别：本地分支端到端通过，未合入 main、未 push，主人日用未验证。
+
+### 草稿 Markdown 高亮 + 气泡数学（2026-10-26，同一候选第二批）
+
+在 composer URL 高亮分支上续作：输入框在 URL 高亮之上加 Markdown 语法上色（行首 `#`/`##`/`###`、列表 `- `/`* `、`` `code` ``、`**粗**`、`*斜*`、`[text](url)`，全部保留源字符、非 WYSIWYG，`[text](url)` 沿用裸 URL 的 http(s) 白名单与 `_blank`+`noopener` 点击路径）；消息气泡（流式与 transcript 同路径）用内置 KaTeX 0.16.11 渲染 `$…$` 与 `$$…$$`，TeX 源从不作为 HTML 进 DOM，库缺失或渲染失败回退原文；金额 `$5 和 $6`、代码段内的 `$` 不误判；sw SHELL 加 KaTeX CSS/JS（缓存 v15），字体仅 woff2 运行时缓存。规格更新见 [docs/dev/composer-url-links.md](dev/composer-url-links.md)，现状已提炼进 [界面](atlas/ui.md)。
+
+验证：新增 node 单测（草稿高亮 7 组断言、数学 13 组断言含回退）与 headless Chrome 端到端（草稿高亮/点链接不发送/Enter 发送源码、行内+块级公式/KaTeX CSS 接线/回退/未闭合流式/持久化重渲染）全过；既有 composer links 三测试不回退照过；`go test -count=1 ./...` 46 包全过，gofmt/vet 净。浅色/深色截图本地 Chrome 查看：公式排版、草稿各色、金额不误判均确认。KaTeX 体积 gz 约 76 KB JS + 3.5 KB CSS + 296 KB 字体（woff2 运行时缓存）。级别：本地分支端到端通过，未合入 main、未 push，主人日用未验证。
