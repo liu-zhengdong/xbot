@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-26 + 思考回传启用 low 默认 @ 01d38c5（叠 xAI/hosted 既有 stamp）
+verified: 2026-10-26 + StablePrefix 模型补丁槽 @ e64d62a
 ---
 # 模型供应商与主动性评测
 
@@ -32,7 +32,7 @@ verified: 2026-10-26 + 思考回传启用 low 默认 @ 01d38c5（叠 xAI/hosted 
 - **每次请求都有时限**：一次尝试从发出到最后一个字节最多 3 分钟；流式回复里两块之间超过 90 秒没动静就切断（设成负数可以关掉这一条）。两种超时和意外 EOF、429、5xx 一样可以重试，最多再试两次，间隔递增。增量文字收到就交出去，长回答的第一句不等最后一句（2026-10-20 前要等整次尝试成功才一起交出，真实 DeepSeek 上第一句晚到 8 秒多）。还没交出任何文字或 hosted 步骤时失败照常重试；已经交出过文字再失败就不重试，直接返回错误，免得把半截回答重复或说成两样。之前出现过请求挂几分钟不报错的情况，这是对它的修复。流式请求带 `stream_options.include_usage`。响应里有 usage 对象就按原数记下 prompt、completion 和 cached（`prompt_tokens_details.cached_tokens`，否则 `prompt_cache_hit_tokens`），全是 0 也算报告过。没有这个对象时，内核才按大约 4 字一 token 估计，并在 `trace.jsonl` 里把 reason 写成 estimated。用量不进 transcript。超长不在重试之列：同一个请求再发还是会被拒。`provider.IsContextOverflow` 认 400 正文里的 `maximum context length`、`context_length_exceeded` 一类字样（DeepSeek 实测是前者，2026-10-19）和 413，由内核先切短请求再发一次（见 [context.md](context.md)）。
 - **工具调用 id**：有的网关回复里不带工具调用 id，客户端补一个本地 id，并带随机后缀，不同轮之间不会撞号。工具结果按 id 配给它之前最近的那次调用；以前同一个 id 跨轮重复，结果配错位置，严格网关回 400，dev Bot 每次唤醒都失败。
 - 预留一个选择模型的接口，以后做按任务自动选模型时再实现。
-- **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，系统提示和原来逐字节一样；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `## Model`。正文只进入固定前缀的 `## Model`，仍按加载器的 8KB 上限处理。环境更新只公布 `provider/model` 和 12 位内容哈希；没有正文时公布 `none`。内容或绑定变化才追加短更新；压缩后的完整环境快照也不带正文。
+- **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，整个模型补丁槽省略；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `### 模型补丁`，固定说明「仅针对当前模型的额外约束。」之后才放正文。正文只进入固定前缀 S0 的该槽，仍按加载器的 8KB 上限处理。环境更新只公布 `provider/model` 和 12 位内容哈希；没有正文时公布 `none`。内容或绑定变化才追加短更新；压缩后的完整环境快照也不带正文。
 - **派活评测**：内置的 `dispatch` 套件（`xbot eval <model> --suite dispatch`）测派活的前台：该派哪种、任务说明写没写全（`checks.dispatch` 的 `type`、`task_mentions`，用 `|` 分隔可选说法），以及不该派的别派（`none`）。派出去的活只记录不执行（`recordExec`），用例里没有 shell，所以不用沙箱，macOS 上也能跑；前台可以读工作目录和自己的记忆。它不进认证名单。2026-10-20 deepseek-flash 跑 4 条 × 3 次全过（pass^3=1.00）。
 - **认证名单**：`xbot eval <provider/model>` 先跑内置的 `proactivity`，再跑 `proactivity-holdout`。两套里每一条都按多数通过，才把 `provider/model` 写进该数据根的 `certified.json`。只跑其中一套，或 `--suite` 指向一个目录，都不写。默认每条跑 3 次，通过次数多于失败次数才算这条通过，3 次里就是至少 2 次。有一条多数没过就不写。`fake/*` 不写。认证是定期做的：主人隔一段时间自己跑真模型评测，不作为合并条件，也不进 CI。测试和 CI 只用 `fake/scripted`，不调用真模型。`GET /api/models` 默认只列出已经配置、并且在这份名单里的模型；`?all=1` 才带上未认证的。`xbot provider list` 始终列出已配置的供应商；下面的模型默认只有认证过的，`--all` 才带上其余的，并标明未认证。一个供应商还没有认证模型时，这一行仍然打出来。`xbot bind` 绑定未认证模型要加 `--uncertified`。
 

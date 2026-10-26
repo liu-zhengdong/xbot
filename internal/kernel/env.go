@@ -16,6 +16,13 @@ import (
 	"xbot/internal/tools"
 )
 
+const (
+	personaSection = "### 人设\n这段定义你是谁、口吻和关系分寸；下面是正文，照着演，不要复述本说明。\n"
+	rulesSection   = "### 内核规矩\nXBot 硬规矩，与人设无关；冲突时本段优先。\n"
+	modelSection   = "### 模型补丁\n仅针对当前模型的额外约束。\n"
+	linksSection   = "### 能力框\n当前授权的连接/可发现能力；细节按需 load，别假装有未列出的。\n"
+)
+
 // StablePrefix is the system prompt. It depends only on persona, rules, the model overlay, and granted link names.
 // Tool schemas, memory, time, and the sender are not included, so provider prefix caches can hit.
 // An empty overlay leaves the prefix unchanged.
@@ -28,16 +35,30 @@ func StablePrefix(persona, rules, overlay string, links []string) string {
 	if rules == "" {
 		rules = KernelRules()
 	}
+	overlay = strings.TrimSpace(overlay)
+	linkBlock := linksPrefix(links)
+	size := len(personaSection) + len(persona) + 2 + len(rulesSection) + len(rules)
+	if overlay != "" {
+		size += 2 + len(modelSection) + len(overlay)
+	}
+	if linkBlock != "" {
+		size += 2 + len(linkBlock)
+	}
 	var b strings.Builder
+	b.Grow(size)
+	b.WriteString(personaSection)
 	b.WriteString(persona)
 	b.WriteString("\n\n")
+	b.WriteString(rulesSection)
 	b.WriteString(rules)
-	if overlay = strings.TrimSpace(overlay); overlay != "" {
-		b.WriteString("\n\n## Model\n")
+	if overlay != "" {
+		b.WriteString("\n\n")
+		b.WriteString(modelSection)
 		b.WriteString(overlay)
 	}
-	if block := linksPrefix(links); block != "" {
-		b.WriteString("\n\n" + block)
+	if linkBlock != "" {
+		b.WriteString("\n\n")
+		b.WriteString(linkBlock)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -47,7 +68,7 @@ func linksPrefix(links []string) string {
 	sort.Strings(names)
 	var b strings.Builder
 	if len(names) > 0 {
-		b.WriteString("## Links\n")
+		b.WriteString(linksSection)
 		for _, name := range names {
 			fmt.Fprintf(&b, "- %s: %s\n", name, link.Blurb(name))
 		}

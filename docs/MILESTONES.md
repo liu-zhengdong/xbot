@@ -2,6 +2,14 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 StablePrefix 分段与可读环境人设（分支实现，待合入/验收）
+
+- 实现提交 `e64d62a`：S0 人设/内核规矩/可选模型补丁、S1 能力框各用固定 `###` 标题和槽说明，保留 S2 技能边界；环境 persona 改为卡名或稳定标签加正文指纹，全文仍只进前缀。复用 PersonaText 的读取路径，由 PersonaSource 一次返回卡名与正文，保留 JSON 差分与快照回放。设计见 [stable-prefix-sections](dev/stable-prefix-sections.md)。
+- `go test -count=1 ./...`（46 包，含 e2e 长程）、kernel 定向、kernel/bot `-count=3`、vet、gofmt 和 diff 检查通过；四项最终回归在 e164b7a 隔离归档中失败、当前实现通过。缓存专项确认 link 改动保留 S0 7062 字节，skill 改动保留 S0/S1 7336 字节。Atlas audit 已跑，既存告警没有新增项目。
+- 扩展 smoke 套件未全绿：唯一失败 `TestNewTaskWhileBusy` 缺子任务验收值转告、relay-s3 超时（当前 124.64s）；e164b7a 原实现隔离复跑同样失败（124.80s），属基线已有失败，本批未改调度或冒烟期望。其余冒烟未报失败。完整日志与交付：`~/.xbot-build/stable-prefix-sections/encode-report.md`。
+- Apple M6 / Darwin arm64 五次微基准中位数：StablePrefix 1494→1226 ns/op、14309→8595 B/op；完整分段组装 1510→1664 ns/op、12460→11612 B/op（约 +154ns，+10.2%）；四槽齐全固定增加 332 字节。未测真实模型缓存收益、交互/IPC p95、后台负载或帧率，不以微基准代替这些指标。
+- Pi glm-5.3 review1 **PASS**（`~/.xbot-build/stable-prefix-sections/review1-report.md`）；真模型自述与主人日用尚未验。dev 保留供手测。
+
 ## 2026-10-26 官方薄入口续作（分支交付，本机 scripted 浏览器通过，未合入）
 
 - 复用同款 static、账号 Bearer、ADR 0024 票/待命/AuthorizeOwner；加五种 `/api/` 方法、双向 Content-Type、正文限额与领票 CORS。serve 保存/恢复主人账号会话并独立报在线，轮换/登出/失效取消旧管道。

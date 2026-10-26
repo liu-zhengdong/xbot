@@ -26,13 +26,25 @@ func (b *Bot) SetPersonaCard(id string) error {
 // or the card is gone. The binding is read from disk because a long-running
 // kernel keeps the config it loaded, and the owner picks cards from the web.
 func (b *Bot) PersonaText() (string, error) {
+	body, _, err := b.PersonaSource()
+	return body, err
+}
+
+// PersonaSource reads the effective persona and its readable label together.
+// Keep the card name and body from the same read, including for a stale Bot copy.
+func (b *Bot) PersonaSource() (body, label string, err error) {
 	id := b.boundCard()
 	if owners := b.cfg.Owners; id != "" && len(owners) == 1 && b.Root != "" {
 		if c, err := personacard.Get(b.Root, owners[0], id); err == nil {
-			return c.Body, nil
+			return c.Body, c.Name, nil
 		}
 	}
-	return b.ReadPersona()
+	body, err = b.ReadPersona()
+	label = "persona.md"
+	if body == DefaultPersona {
+		label = "默认人设"
+	}
+	return body, label, err
 }
 
 func (b *Bot) boundCard() string {
