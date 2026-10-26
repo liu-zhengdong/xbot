@@ -1,12 +1,14 @@
 ---
 kind: part
 parent: README.md
-code: [internal/version/, internal/upgrade/, scripts/release.sh, internal/web/update.go]
-verified: 2026-10-19 @ a39bfb7
+code: [internal/version/, internal/upgrade/, scripts/release.sh, internal/web/update.go, scripts/xbot-dev]
+verified: 2026-10-26 @ c91e7dd + 开发构建 tip 同步
 ---
 # 版本与自动升级
 
 > **30 秒版**：`xbot version` 打印编译时注入的版本；推一个 `v*` tag，release.yml 就打包并发 Release；`xbot serve` 和桌面版每 6 小时查一次发布列表，有新版就后台下载校验好，网页右上角出现「更新」，点一下装好并重启；`xbot upgrade [--check]` 在命令行走同一条路径。
+
+`scripts/xbot-dev` 每次成功构建后，把编译版本所用的同一短 HEAD 写入 `build-info` 和 `bin/xbot.tip`；编译失败不更新版本记录。构建与重启分开，运行实例的版本在重启后才与新构建一致。
 
 ## 边界
 负责：版本号的注入与展示、发布流程、运行中检查与应用升级、优雅重启。

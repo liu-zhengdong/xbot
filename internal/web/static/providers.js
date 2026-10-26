@@ -274,7 +274,7 @@
       box.append(node("p", "provider-xai-lead", "登录 xAI 账号即可使用，无需 API 密钥。"));
       const area = node("div", "provider-auth");
       const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
-      const auth = xaiAuthControls(area, "登录 xAI", status, done, current);
+      const auth = xaiAuthControls(area, "登录", status, done, current);
       box.append(area);
       const alt = node("details", "provider-key-alt");
       const fold = node("summary"); fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
@@ -325,7 +325,7 @@
           auth.replaceChildren(); xaiStatus("idle");
           if (p.oauth === "xai") {
             const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
-            xaiAuthControls(auth, p.key_configured ? null : "重新登录", xaiStatus, done, current).sync();
+            xaiAuthControls(auth, p.key_configured ? null : "登录", xaiStatus, done, current).sync();
           }
           return;
         }
@@ -352,7 +352,7 @@
         if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current, xaiStatus)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
-          if (p.oauth === "xai") { body.replaceChildren(state("请重新登录 xAI，再拉取模型。")); return; }
+          if (p.oauth === "xai") { body.replaceChildren(state("请先登录 xAI，再拉取模型。")); return; }
           const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
           if (vendor && vendor.key_login) {
             body.replaceChildren(state("这家供应商需要先登录 Google Cloud，暂时不能直接填密钥使用。"));

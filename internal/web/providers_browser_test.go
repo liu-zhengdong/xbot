@@ -49,7 +49,7 @@ func TestProvidersSettingsBrowser(t *testing.T) {
 	}
 	// The xai scene runs the OAuth login path on its own page: a logged-in
 	// xai binding cannot share a name with the key binding the main run saves.
-	for _, query := range []string{"", "state=xai"} {
+	for _, query := range []string{"", "state=xai", "state=xaiunconfigured"} {
 		page := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html"), RawQuery: query}).String()
 		out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", page).CombinedOutput()
 		if err != nil {
@@ -82,6 +82,7 @@ const fixture={calls:[],fail:false,empty:false,large:false,oauthPolls:0};
 window.open=()=>({opener:null,closed:false,location:{replace(){}},close(){this.closed=true}});
 const providers=[{name:'',brand:'deepseek',protocol:'chat_completions',api_key_env:'XBOT_API_KEY',key_configured:true,models:[]},{name:'openai',protocol:'responses',api_key_env:'OPENAI_API_KEY',key_configured:true,models:[]},{name:'anthropic',protocol:'anthropic_messages',api_key_env:'ANTHROPIC_API_KEY',key_configured:true,models:[]}];
 if(['loggedin','chatgptdetail'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
+if(scene==='xaiunconfigured'){providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:false,models:[]});fixture.xaiIdle=true;}
 const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],['kimi','Kimi'],['kimi-code','Kimi Code'],['zhipu','Zhipu GLM'],['zai','Z.ai'],['minimax','MiniMax'],['stepfun','StepFun'],['mimo','Xiaomi MiMo'],['qianfan','Baidu Qianfan'],['tencent','Tencent Cloud']].map(([brand,title])=>({brand,title,protocol:'chat_completions',key_login:brand==='vertex',models:['m1','m2']}));
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(path,opts={})=>{
@@ -131,21 +132,21 @@ const fullWidth=()=>$('.provider-models').getBoundingClientRect().width;
 // xAI OAuth: log in; the header carries only the 退出登录 icon and the hosted
 // note sits above the models; clicking logout returns to the login page.
 async function xaiLoggedIn(){
- card('xAI').click();await waitFor(()=>btn('登录 xAI'),'xai login CTA missing');
- fixture.xaiSucceed=true;btn('登录 xAI').click();
+ card('xAI').click();await waitFor(()=>btn('登录'),'xai login CTA missing');
+ fixture.xaiSucceed=true;btn('登录').click();
  await waitFor(()=>$('.provider-status .provider-logout')&&$('.provider-model-row'),'xai did not log in');
  const out=$('.provider-status .provider-logout');
  assert(out&&out.getAttribute('aria-label')==='退出登录'&&out.title==='退出登录'&&!out.textContent.trim(),'xai logout icon missing');
  assert($('.provider-detail-heading').getBoundingClientRect().right-out.getBoundingClientRect().right<2,'xai logout icon not on the header right');
  assert(!/已登录|重新登录/.test($('#settings-providers').innerText),'xai logged-in page shows 已登录 or 重新登录');
- assert(!btn('登录 xAI')&&!$('.provider-status').textContent.includes('密钥已配置'),'xai logged-in detail kept login or key state');
+ assert(!btn('登录')&&!$('.provider-status').textContent.includes('密钥已配置'),'xai logged-in detail kept login or key state');
  assert(gap($('.provider-hosted-hint'),$('.provider-model-count'))>=0&&$('.provider-hosted-hint').textContent.includes('已用厂商搜索'),'xai hosted note not above the models');
  assert(/grok-4/.test($('.provider-models').textContent)&&/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'xai models missing');
  assert($('.provider-auth-slot').getBoundingClientRect().height===0,'empty re-login slot takes space');
  out.click();
- await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('未登录'),'xai logout did not return to the login page');
+ await waitFor(()=>btn('登录')&&$('.provider-status').textContent.includes('未登录'),'xai logout did not return to the login page');
  assert(fixture.calls.includes('/api/providers/oauth/xai/logout'),'xai logout not sent');
- assert($('.provider-key-alt')&&!$('.provider-key-alt').open&&!$('.provider-logout')&&btn('登录 xAI').getBoundingClientRect().width>=fullWidth()-2,'xai logged-out page wrong');
+ assert($('.provider-key-alt')&&!$('.provider-key-alt').open&&!$('.provider-logout')&&btn('登录').getBoundingClientRect().width>=fullWidth()-2,'xai logged-out page wrong');
  assert(testErrors.length===0,testErrors.join(';'));
 }
 (async()=>{
@@ -157,6 +158,12 @@ async function xaiLoggedIn(){
   if(['detail','error','empty','unconfigured'].includes(scene))card(scene==='unconfigured'?'OpenRouter':'OpenAI').click();
   if(scene==='search'){$('.provider-search input').value='OpenAI';$('.provider-search input').dispatchEvent(new Event('input'))}
   if(scene==='xai')await xaiLoggedIn();
+  if(scene==='xaiunconfigured'){
+   card('xAI').click();await waitFor(()=>btn('登录'),'unconfigured OAuth login CTA missing');
+   assert(btn('登录').classList.contains('provider-btn-pri')&&!btn('重新登录'),'unconfigured OAuth entry shows retry');
+   assert($('.provider-status').textContent.includes('未登录'),'unconfigured OAuth status wrong');
+   assert(!fixture.calls.some(p=>p.includes('/api/providers/models')||p.endsWith('/start')),'unconfigured OAuth fetched models or started login');
+  }
   document.body.dataset.testResult='passed';return;
  }
  assert(!card('ChatGPT').disabled,'subscription login disabled');
@@ -166,21 +173,21 @@ async function xaiLoggedIn(){
  card('Vertex AI').click();await waitFor(()=>$('.provider-empty'),'vertex state');assert(!$('.provider-key')&&$('.provider-empty').textContent.includes('Google Cloud'),'vertex shown as keyable');assert(document.querySelectorAll('.provider-model-row').length===2,'vertex default models');
  $('.provider-back').click();
  // xAI leads with account login; the key form folds away as a secondary entry.
- card('xAI').click();await waitFor(()=>btn('登录 xAI'),'xai login CTA missing');
+ card('xAI').click();await waitFor(()=>btn('登录'),'xai login CTA missing');
  assert(!$('.provider-key-alt').open,'xai key form not folded');assert($('.provider-key input'),'xai key form missing');
  assert($('.provider-status').textContent.includes('未登录')&&!$('#settings-providers').textContent.includes('密钥已配置'),'xai header status is not OAuth');
  // Full width: the login button fills the column and the state sits on the header's right edge.
- assert($('.provider-models').getBoundingClientRect().width>=$('#settings-providers').getBoundingClientRect().width-2&&btn('登录 xAI').getBoundingClientRect().width>=fullWidth()-2,'xai login CTA does not fill the column');
+ assert($('.provider-models').getBoundingClientRect().width>=$('#settings-providers').getBoundingClientRect().width-2&&btn('登录').getBoundingClientRect().width>=fullWidth()-2,'xai login CTA does not fill the column');
  assert($('.provider-detail-heading').getBoundingClientRect().right-$('.provider-status').getBoundingClientRect().right<2,'xai state not on the header right');
  assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
- btn('登录 xAI').click();await waitFor(()=>btn('取消')&&btn('再点重开'),'xai pending controls missing');
+ btn('登录').click();await waitFor(()=>btn('取消')&&btn('再点重开'),'xai pending controls missing');
  assert(btn('等待登录…').disabled&&$('.provider-status').textContent.includes('等待登录'),'xai pending state missing');
- // Cancelling a pending login by clicking 取消 sends cancel and returns to 登录 xAI.
+ // Cancelling a pending login by clicking 取消 sends cancel and returns to 登录.
  $('.provider-auth .provider-btn-sec').click();
- await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('未登录'),'xai cancel did not return to idle');
+ await waitFor(()=>btn('登录')&&$('.provider-status').textContent.includes('未登录'),'xai cancel did not return to idle');
  assert(fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length===1,'xai pending cancel not sent');
  // A failed login keeps a readable error with cancel and re-login visible.
- btn('登录 xAI').click();await waitFor(()=>btn('再点重开'),'xai second login not pending');
+ btn('登录').click();await waitFor(()=>btn('再点重开'),'xai second login not pending');
  fixture.xaiFail=true;await waitFor(()=>btn('重新登录')&&$('.provider-auth .provider-btn-sec'),'xai retry after failure missing');
  // Flat failure: a short red line (the lead gives way), then both buttons on one full-width row.
  const failLine=$('.provider-auth-fail');
@@ -191,20 +198,20 @@ async function xaiLoggedIn(){
  assert(stop.getBoundingClientRect().right-again.getBoundingClientRect().left>=fullWidth()-2,'xai failure buttons do not fill the column');
  assert(!/登录 xAI登录未完成|重新登录登录未完成/.test($('#settings-providers').innerText),'xai button and error glued together');
  assert($('.provider-status').textContent.includes('登录未完成')&&!$('.provider-status .sdot.ok'),'xai failed status row wrong');
- // Cancelling the failed login by clicking 取消 returns to 登录 xAI.
+ // Cancelling the failed login by clicking 取消 returns to 登录.
  $('.provider-auth .provider-btn-sec').click();
- await waitFor(()=>btn('登录 xAI')&&!$('.provider-auth-fail').textContent,'xai failed cancel did not return to idle');
+ await waitFor(()=>btn('登录')&&!$('.provider-auth-fail').textContent,'xai failed cancel did not return to idle');
  assert(fixture.calls.filter(p=>p==='/api/providers/oauth/xai/cancel').length===2,'xai failed cancel not sent');
  fixture.xaiFail=false;$('.provider-back').click();
  card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');
  const typed=$('.provider-key input');assert(typed.type==='password','key input visible');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
  // A saved key is secondary on xAI: the detail still leads with account login and fetches nothing.
- await waitFor(()=>btn('登录 xAI')&&$('.provider-key-alt').textContent.includes('密钥已配置 · 可用'),'xai login after key');assert(fixture.saves===1,'key saved once');
+ await waitFor(()=>btn('登录')&&$('.provider-key-alt').textContent.includes('密钥已配置 · 可用'),'xai login after key');assert(fixture.saves===1,'key saved once');
  assert(!$('.provider-status').textContent.includes('密钥已配置')&&$('.provider-status').textContent.includes('未登录'),'saved xai key shown on the header row');
  assert(!(fixture.catalogCalls||[]).includes('/api/providers/xai/sync'),'key-only xai fetched models before login');
  const words=/API_KEY|providers\.json|web\.json|xbot provider|hosted|vision|\benv\b|backend/i;
  assert(!words.test($('#settings-providers').textContent),'engineering words after save');
- $('.provider-back').click();card('xAI').click();await waitFor(()=>btn('登录 xAI')&&$('.provider-key-alt').textContent.includes('密钥已配置'),'configured xai detail');assert(!$('.provider-key-alt').open&&!$('.provider-status').textContent.includes('密钥已配置'),'configured xai key left the fold');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
+ $('.provider-back').click();card('xAI').click();await waitFor(()=>btn('登录')&&$('.provider-key-alt').textContent.includes('密钥已配置'),'configured xai detail');assert(!$('.provider-key-alt').open&&!$('.provider-status').textContent.includes('密钥已配置'),'configured xai key left the fold');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
  // A save that finishes late must not repaint over the page the person moved to.
  $('.provider-back').click();card('MiniMax').click();await waitFor(()=>$('.provider-key input'),'minimax form');
  $('.provider-key input').value='minimax-0123456789';fixture.slowSave=true;$('.provider-key').requestSubmit();await waitFor(()=>fixture.releaseSave,'slow save pending');

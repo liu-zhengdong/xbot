@@ -12,6 +12,11 @@ import (
 
 // Exercise the shipped app. Only HTTP and the model stream are scripted.
 func TestChatStreamBrowser(t *testing.T) {
+	runChatStreamBrowser(t, chatStreamFixture, chatStreamDriver)
+}
+
+func runChatStreamBrowser(t *testing.T, fixture, driver string) {
+	t.Helper()
 	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 	if err != nil {
 		t.Skip("Chrome unavailable")
@@ -35,8 +40,8 @@ func TestChatStreamBrowser(t *testing.T) {
 		if path == "static/index.html" {
 			page := strings.ReplaceAll(string(raw), `src="/`, `src="./`)
 			page = strings.ReplaceAll(page, `href="/`, `href="./`)
-			page = strings.Replace(page, "<head>", "<head><script>"+chatStreamFixture+"</script>", 1)
-			page = strings.Replace(page, "</body>", "<script>"+chatStreamDriver+"</script></body>", 1)
+			page = strings.Replace(page, "<head>", "<head><script>"+fixture+"</script>", 1)
+			page = strings.Replace(page, "</body>", "<script>"+driver+"</script></body>", 1)
 			raw = []byte(page)
 		}
 		return os.WriteFile(dst, raw, 0600)

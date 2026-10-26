@@ -2589,9 +2589,48 @@
     return card;
   }
 
+  // Assistant image markup is a workspace artifact, not a bubble attachment.
+  // Strip before link parsing (which otherwise leaves !alt). Protect source
+  // examples and TeX; an incomplete image consumes only its own line.
+  function stripBotImages(text) {
+    const src = String(text || "");
+    const tokens = /```[\s\S]*?(?:```|$)|`[^`\n]*(?:`|$)|\$\$[\s\S]*?(?:\$\$|$)|\$[^\s$][^$\n]*\$|\\[^\n]|\[(?:\\.|[^\]\\\n])*\]\((?:\\.|[^)\\\n])*\)|!\[/g;
+    let out = "", last = 0, m;
+    while ((m = tokens.exec(src))) {
+      out += src.slice(last, m.index);
+      if (m[0] !== "![") { out += m[0]; last = tokens.lastIndex; continue; }
+      let i = tokens.lastIndex, depth = 1;
+      const lineEnd = src.indexOf("\n", i), stop = lineEnd < 0 ? src.length : lineEnd;
+      // A completed multiline alt is one image. An unfinished alt removes
+      // only the first line, so later ordinary prose cannot disappear.
+      for (; i < src.length && !src.startsWith("\n\n", i) && !src.startsWith("![", i) && depth; i++) {
+        if (src[i] === "\\" && i + 1 < src.length && src[i + 1] !== "\n") i++;
+        else if (src[i] === "[") depth++;
+        else if (src[i] === "]") depth--;
+      }
+      if (depth || (i > stop && src[i] !== "(" && src[i] !== "[")) i = stop;
+      // Complete image destinations may contain balanced parentheses. A
+      // reference-style image is removed too, without consuming later prose.
+      if (!depth && (src[i] === "(" || src[i] === "[")) {
+        const open = src[i++], close = open === "(" ? ")" : "]";
+        depth = 1;
+        let quote = "";
+        for (; i < src.length && src[i] !== "\n" && depth; i++) {
+          if (src[i] === "\\" && i + 1 < src.length && src[i + 1] !== "\n") i++;
+          else if (quote) { if (src[i] === quote) quote = ""; }
+          else if (open === "(" && /["']/.test(src[i]) && /\s/.test(src[i - 1])) quote = src[i];
+          else if (src[i] === open) depth++;
+          else if (src[i] === close) depth--;
+        }
+      }
+      last = tokens.lastIndex = i;
+    }
+    return out + src.slice(last);
+  }
+
   function appendBotContent(parent, text) {
     const bubble = el("div", "prose bot-bubble");
-    appendRich(bubble, text);
+    appendMarkdown(bubble, stripBotImages(text));
     parent.append(bubble);
   }
 
@@ -3530,7 +3569,7 @@
   function renderLists() {
     const collapsed = folderStore();
     const sig = JSON.stringify({
-      bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, (b.notes || 0) > 0, b.group || "", b.description, lineForBot(b)]),
+      bots: state.bots.map((b) => [b.name, !!b.pinned, !!b.primary, !!b.unread, (b.notes || 0) > 0, b.group || "", b.description, b.avatar, b.avatar_seed, b.avatar_url, lineForBot(b)]),
       folders: state.folders.map((f) => [f.name, f.count, !!f.ungrouped, (f.bots || []).join("\n"), !!collapsed[f.name]]),
       groups: state.groups.map((g) => [g.id, g.name, lineForGroup(g)]),
       others: (state.others || []).map((o) => [(o && o.bot) || "", (o && o.name) || ""]),
@@ -6056,7 +6095,7 @@
           host.querySelector(".typing-dots")?.remove();
           acc += payload.text;
           prose.replaceChildren();
-          appendMarkdown(prose, displayText(acc));
+          appendMarkdown(prose, stripBotImages(displayText(acc)));
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "part") {
  window.XBotProviders.progress(host,payload);
@@ -6072,6 +6111,13 @@
             }
           }
           thread.scrollTop = thread.scrollHeight;
+        } else if (event === "result" && payload.name === "update_profile") {
+          // The result arrives after persistence. Refresh faces even while the
+          // streaming poll is paused, without holding up incoming text. The
+          // selection guard keeps a delayed fetch from restoring an old header.
+          refreshLists().then(() => {
+            if (state.sel === selection && selection.type === "bot" && !state.peer) setHeader(selection.id);
+          }).catch(() => {});
         } else if (event === "approval" && host) {
           const status = host.querySelector(".live-status");
           if (status) status.remove();

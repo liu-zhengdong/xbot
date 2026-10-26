@@ -516,3 +516,27 @@ func TestProfileRejectsRemovedStyleFields(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateProfileSavedReceipt(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NamePersona)
+	tool := profileTool{&Kernel{Bot: b}}
+	output, err := tool.Run(context.Background(), json.RawMessage(`{"avatar_seed":"Ada#4","description":"笔记助手"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := bot.Load(b.Root, b.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, seed := loaded.AvatarState(); seed != "Ada#4" || loaded.Config().Description != "笔记助手" {
+		t.Fatalf("saved receipt precedes persistence: %+v", loaded.Config())
+	}
+	if output != "profile saved" {
+		t.Fatalf("receipt must acknowledge the completed save: %q", output)
+	}
+	for _, text := range []string{tool.Description(), link.Blurb(link.NamePersona)} {
+		if strings.Contains(text, "next wake") || strings.Contains(text, "下次唤醒") {
+			t.Fatalf("profile guidance postpones a completed save: %s", text)
+		}
+	}
+}

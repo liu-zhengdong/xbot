@@ -458,3 +458,13 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 验证：新增 scripted 内核回归同时启用 Dispatch、agents grant 与权限检查，断言 load 前不可写、load 后主线包含读写工具，并实际写入测试 Bot Root 下的 owner 库再读回。文案、dev 白名单回归在 f22b708 旧源码覆盖下失败，主线可达回归在该基线已通过（此前 ADR 0028 已打通）。指定五包 `go test ./internal/kernel/ ./internal/link/ ./internal/agenttype/ ./internal/skill/ ./internal/review/`、`go test -count=1 ./...`、`go vet ./...`、gofmt 与 diff 检查通过；atlas audit 已跑，仓内其它文档告警未在本批扩改。证据：`~/.xbot-build/bot-self-skill/`。
 
 验证耗时：指定五包中的 kernel 为 34.261 秒，全量中的 kernel 为 48.838 秒；这是测试运行时间，不是产品性能数据。本批未测交互/IPC p95 或后台减速。级别：本地功能分支提交待复审；未合入 main、未 push，Bot 自装技能的真实入口端到端与主人日用待验。Not run: `-count=3`（按任务要求）、真模型/真实对话安装、Linux CI、性能专项。
+
+### 生图体验热修、头像即时刷新与开发 tip（2026-10-26，本地分支）
+
+`feature/imggen-ux-hotfix` 补齐生图账号与 Bot 模型绑定的人话说明；助手流式和历史统一剥掉图片语法与残片，保留代码、公式和普通链接；xAI 未登录主钮统一「登录」。`update_profile` 回执改为 `profile saved`，保存结果主动刷新侧栏与顶栏，头像字段进入侧栏缓存签名。开发脚本成功构建时同步短 HEAD 到 build-info 和 xbot.tip。现状见 [界面](atlas/ui.md)、[多 Bot](atlas/multibot.md)、[版本](atlas/release.md)。
+
+开关同步在基线 c91e7dd 已通过本机 Chrome：本批补 class、aria、section.hidden、实际滑块/背景、初始开启、保存失败和重开断言，未修改已同步的 paint/CSS，也不宣称复现了现场失同步。原始 box 证据不可读，全局首个 `.tog` 是隐藏的手机推送开关，原采样是否选错仍待执行官复核。
+
+验证：全量 `go test -count=1 ./...`、`go vet ./...` 通过；config/web/kernel/link 相关单遍通过，修改到的 web/kernel/link 整包三遍通过。六条基础旅程 smoke 通过（280.203 秒）；本机 Chrome、脚本隔离构建回归、gofmt、diff 检查通过。绑家提示、气泡、xAI、头像与 tip 的回归均已验证旧代码失败。atlas audit 与基线对照无新增告警，已有告警保留。证据在 `~/.xbot-build/imggen-ux-hotfix/`，浅深色截图在 `~/.xbot-build/ui-shots/imggen-ux-hotfix*/`。
+
+性能：17,280 字节图片语法过滤，Node v24.22.1 预热后 200 次 p95 0.137 ms；fake 页面工具结果到头像更新为虚拟时钟 10 ms，不能当作真实响应 p95。级别：本地分支自动化与 scripted 基础旅程通过，未合 main、未 push、未重启 8788；真实账号生图、运行 tip 一致性、设计师本批截图验收、主人日用、真实模型/IPC p95、FPS 与后台减速未验证。后续边界留在 [开发短记](dev/imggen-ux-hotfix.md)。

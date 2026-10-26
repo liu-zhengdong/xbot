@@ -22,7 +22,7 @@ status: 候选，机制还没设计
 
 **留记录。** 改了什么、为什么、谁批准的，都追加进记录，不改写历史。transcript 只追加；每次确认决定写进 `decisions.jsonl`；仓库里的决策写成 ADR，只追加不删。
 
-现在已有的雏形：Bot 改自己的人设和档案（`propose_persona`、`update_profile`，以及直接写这两个文件）由权限总开关控制；`update_profile` 默认直接落盘，下次唤醒生效，只有 permissions on 时按 SelfEdit 表审核；`write_skill` 写盘前走确认卡；LESSONS.md 里同一条教训出现 3 天就升级成硬约束，这本身就是一条人参与的「从经验改规则」的路径。
+现在已有的雏形：Bot 改自己的人设和档案（`propose_persona`、`update_profile`，以及直接写这两个文件）由权限总开关控制；`update_profile` 默认直接落盘，侧栏与顶栏当面刷新，只有 permissions on 时按 SelfEdit 表审核；`write_skill` 写盘前走确认卡；LESSONS.md 里同一条教训出现 3 天就升级成硬约束，这本身就是一条人参与的「从经验改规则」的路径。
 
 ## 它带来什么、代价是什么
 好处是 Bot 能从长期使用里积累改进，而不是每次都靠人发现问题再改。代价和风险都不小：评测覆盖不到的地方可能悄悄变差，自动改动多了以后，人很难看懂系统为什么变成现在这样。所以在设计清楚之前，它只在候选清单里，不开工。

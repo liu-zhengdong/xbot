@@ -55,6 +55,7 @@ build() {
 	echo "xbot-dev: 编译 $head ..."
 	(cd "$REPO" && go build -o "$BIN" ./cmd/xbot)
 	printf 'commit=%s\nworktree=%s\nbuilt=%s\n' "$head" "$(dirty_mark)" "$(date '+%Y-%m-%d %H:%M:%S')" >"$INFO"
+	printf '%s\n' "$head" >"$STATE/bin/xbot.tip"
 }
 
 seed_data() {

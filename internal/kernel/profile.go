@@ -68,7 +68,7 @@ type profileChanges struct {
 
 func (profileTool) Name() string { return "update_profile" }
 func (profileTool) Description() string {
-	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly and apply on the next wake."
+	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
@@ -114,7 +114,7 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 			t.k.Bot = loaded
 		}
 	}
-	return "profile saved; it applies on the next wake", nil
+	return "profile saved", nil
 }
 
 func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, error) {
