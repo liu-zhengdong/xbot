@@ -138,8 +138,11 @@ func Create(root, owner, name, body string) (Card, error) {
 		if len(cards) >= MaxCards {
 			return ErrFull
 		}
-		c, err = write(dir, newID(), name, body)
-		return err
+		if c, err = write(dir, newID(), name, body); err != nil {
+			return err
+		}
+		_ = markSeeded(dir)
+		return nil
 	})
 	return c, err
 }
@@ -165,8 +168,11 @@ func Update(root, owner, id string, name, body *string) (Card, error) {
 		if n, b, err = clean(n, b); err != nil {
 			return err
 		}
-		c, err = write(dir, id, n, b)
-		return err
+		if c, err = write(dir, id, n, b); err != nil {
+			return err
+		}
+		_ = markSeeded(dir)
+		return nil
 	})
 	return c, err
 }
@@ -177,8 +183,9 @@ func Delete(root, owner, id string) error {
 }
 
 // DeleteWith runs before under the library lock with the card known to exist,
-// then removes the card unless before failed. Callers unbind bots in before,
-// so a concurrent pick (see With) cannot bind the card after the check.
+// then marks the library as used and removes the card unless before failed.
+// Callers unbind bots in before, so a concurrent pick (see With) cannot bind
+// the card after the check.
 func DeleteWith(root, owner, id string, before func() error) error {
 	if !ValidID(id) {
 		return ErrNotFound
@@ -194,6 +201,11 @@ func DeleteWith(root, owner, id string, before func() error) error {
 			if err := before(); err != nil {
 				return err
 			}
+		}
+		// The card existed, so the library has had cards: record it before the last
+		// one can go, or a library from before the marker would get the seeds again.
+		if err := markSeeded(dir); err != nil {
+			return err
 		}
 		return os.RemoveAll(filepath.Join(dir, id))
 	})
@@ -244,8 +256,11 @@ func Import(root, owner, filename, content string, confirm bool) (Card, error) {
 			}
 			name = nextFree(name, taken)
 		}
-		c, err = write(dir, newID(), name, body)
-		return err
+		if c, err = write(dir, newID(), name, body); err != nil {
+			return err
+		}
+		_ = markSeeded(dir)
+		return nil
 	})
 	return c, err
 }

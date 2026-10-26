@@ -168,3 +168,118 @@ func TestPersonaCardSearchCoversWholeBody(t *testing.T) {
 		t.Fatalf("long query %d", code)
 	}
 }
+
+// A library opened for the first time lists the built-in cards from disk: they search, open and pick like any card.
+func TestPersonaCardListSeedsAnEmptyLibrary(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	var out struct {
+		Cards []struct{ ID, Name string }
+	}
+	code, raw := call("GET", "/api/persona-cards", "", true)
+	if err := json.Unmarshal([]byte(raw), &out); code != 200 || err != nil || len(out.Cards) != 3 {
+		t.Fatalf("list %d %s", code, raw)
+	}
+	for i, want := range []string{"碎嘴群友", "值班运维", "周末搭子"} {
+		if out.Cards[i].Name != want {
+			t.Fatalf("card %d %s", i, raw)
+		}
+	}
+	if disk, _ := personacard.List(root, "u1"); len(disk) != 3 {
+		t.Fatalf("not on disk: %+v", disk)
+	}
+	if code, raw = call("GET", "/api/persona-cards/"+out.Cards[0].ID, "", true); code != 200 || !strings.Contains(raw, "这个我接不上") {
+		t.Fatalf("open %d %s", code, raw)
+	}
+	if code, raw = call("GET", "/api/persona-cards?q=群友", "", true); !strings.Contains(raw, `"name":"碎嘴群友"`) || strings.Contains(raw, "值班运维") {
+		t.Fatalf("search %d %s", code, raw)
+	}
+	if code, raw = call("PUT", "/api/bots/ada/persona-card", `{"id":"`+out.Cards[1].ID+`"}`, true); code != 200 || !strings.Contains(raw, `"name":"值班运维"`) {
+		t.Fatalf("pick %d %s", code, raw)
+	}
+	if code, raw = call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != 3 {
+		t.Fatalf("second list %d %s", code, raw)
+	}
+}
+
+// Another process holds the library lock in the middle of seeding (k seeds on disk).
+// A list must wait for it, not show an empty or partial library, and must not seed again.
+func TestPersonaCardListWaitsForASeedRunInAnotherProcess(t *testing.T) {
+	for k := 0; k < len(personacard.Seeds); k++ {
+		root, _, call := skillTestServer(t)
+		dir := personacard.OwnerDir(root, "u1")
+		seed := func(i int) {
+			id := strings.Repeat(string(rune('a'+i)), 16)
+			raw := "name: " + personacard.Seeds[i].Name + "\n\n" + personacard.Seeds[i].Body + "\n"
+			if err := fsutil.WriteAtomic(filepath.Join(dir, id, "card.md"), []byte(raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := make(chan string, 1)
+		err := fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+			for i := 0; i < k; i++ {
+				seed(i)
+			}
+			go func() { _, raw := call("GET", "/api/persona-cards", "", true); got <- raw }()
+			select {
+			case raw := <-got:
+				t.Fatalf("%d seeds written: listed %s while the run held the lock", k, raw)
+			case <-time.After(150 * time.Millisecond):
+			}
+			for i := k; i < len(personacard.Seeds); i++ {
+				seed(i)
+			}
+			return fsutil.WriteAtomic(filepath.Join(dir, ".seeded"), nil, 0600)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw := <-got; strings.Count(raw, `"id":`) != 3 || !strings.Contains(raw, "周末搭子") {
+			t.Fatalf("%d seeds written: %s", k, raw)
+		}
+	}
+}
+
+// A failed pick or delete of a missing card on a new library leaves a lock file behind;
+// the first list still gets the seeds.
+func TestPersonaCardFailedPickStillSeeds(t *testing.T) {
+	_, _, call := skillTestServer(t)
+	if code, _ := call("PUT", "/api/bots/ada/persona-card", `{"id":"0123456789abcdef"}`, true); code != 404 {
+		t.Fatalf("pick %d", code)
+	}
+	if code, _ := call("DELETE", "/api/persona-cards/0123456789abcdef", "", true); code != 404 {
+		t.Fatalf("delete %d", code)
+	}
+	if code, raw := call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != 3 {
+		t.Fatalf("list %d %s", code, raw)
+	}
+}
+
+// A library from before the marker: deleting its last card over the API, then listing
+// again (what the page does), must not bring the seeds in.
+func TestPersonaCardEmptiedLegacyLibraryStaysEmpty(t *testing.T) {
+	for _, withLock := range []bool{true, false} {
+		t.Run(map[bool]string{true: "with_lock", false: "without_lock"}[withLock], func(t *testing.T) {
+			root, _, call := skillTestServer(t)
+			dir := personacard.OwnerDir(root, "u1")
+			if err := fsutil.WriteAtomic(filepath.Join(dir, "0123456789abcdef", "card.md"), []byte("name: 旧卡\n\n旧正文。\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if withLock {
+				if err := os.WriteFile(filepath.Join(dir, ".lock"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Count(raw, `"id":`) != 1 {
+				t.Fatalf("list %d %s", code, raw)
+			}
+			if code, raw := call("DELETE", "/api/persona-cards/0123456789abcdef", "", true); code/100 != 2 {
+				t.Fatalf("delete %d %s", code, raw)
+			}
+			for i := 0; i < 2; i++ {
+				if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Contains(raw, `"id":`) {
+					t.Fatalf("list after delete %d %s", code, raw)
+				}
+			}
+		})
+	}
+}
