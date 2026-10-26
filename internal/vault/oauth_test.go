@@ -325,6 +325,9 @@ func TestOAuthRefreshAfterRemoveDoesNotRevive(t *testing.T) {
 				_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fakeOAuthToken(), "refresh_token": fakeOAuthToken(), "expires_in": 3600, "token_type": "Bearer"})
 			}))
 			defer up.Close()
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			defer unblock()
 			var b Backend
 			if daemon {
 				b = newOAuthDaemon(t)
@@ -339,6 +342,16 @@ func TestOAuthRefreshAfterRemoveDoesNotRevive(t *testing.T) {
 			if err := SetOAuth(b, "xai", OAuthCredential{AccessToken: fakeOAuthToken(), RefreshToken: fakeOAuthToken(), ExpiresAt: time.Now().Add(-time.Hour), ClientID: "test", TokenURL: up.URL + "/token"}, []string{"127.0.0.1"}); err != nil {
 				t.Fatal(err)
 			}
+			// Use an independent local Store so Remove and refresh do not share
+			// an in-memory cache; writeback must reload under the file lock.
+			remover := b
+			if local, ok := b.(*Store); ok {
+				var err error
+				remover, err = Open(local.dir, local.keyPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			done := make(chan error, 1)
 			go func() { _, err := EnsureOAuth(context.Background(), b, "xai"); done <- err }()
 			select {
@@ -348,7 +361,7 @@ func TestOAuthRefreshAfterRemoveDoesNotRevive(t *testing.T) {
 			}
 			// Remove does not wait for the refresh: it returns while the endpoint is still blocked.
 			removed := make(chan error, 1)
-			go func() { removed <- b.Remove("xai") }()
+			go func() { removed <- remover.Remove("xai") }()
 			select {
 			case err := <-removed:
 				if err != nil {
@@ -357,18 +370,27 @@ func TestOAuthRefreshAfterRemoveDoesNotRevive(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("remove waited for the in-flight refresh")
 			}
-			close(release)
+			assertAbsent := func() {
+				t.Helper()
+				info, err := OAuthMetadata(context.Background(), b, "xai")
+				if err != nil {
+					t.Fatalf("read credential metadata: %v", err)
+				}
+				if info.Configured {
+					t.Fatal("removed credential configured")
+				}
+			}
+			assertAbsent()
+			unblock()
 			select {
 			case err := <-done:
 				if err == nil || !strings.Contains(err.Error(), "login required") {
-					t.Fatalf("late refresh result %v", err)
+					t.Errorf("late refresh result %v", err)
 				}
 			case <-time.After(3 * time.Second):
 				t.Fatal("refresh did not finish")
 			}
-			if info, err := OAuthMetadata(context.Background(), b, "xai"); err == nil && info.Configured {
-				t.Fatal("removed credential revived by the in-flight refresh")
-			}
+			assertAbsent()
 		})
 	}
 }

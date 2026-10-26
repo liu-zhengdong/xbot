@@ -317,81 +317,116 @@ func TestOAuthLogoutRoute(t *testing.T) {
 // waiting on the token endpoint; when the endpoint answers, the refresh must
 // not bring the credential back. Bindings stay gone and status stays idle.
 func TestOAuthLogoutDuringRefresh(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("XBOT_VAULT_SOCKET", "")
-	b, err := bot.Create(root, "ada", "persona", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	seen, release := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		once.Do(func() { close(seen) })
-		<-release
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "logout-race-new-access", "refresh_token": "logout-race-new-refresh", "expires_in": 3600, "token_type": "Bearer"})
-	}))
-	defer up.Close()
-	var releaseOnce sync.Once
-	unblock := func() { releaseOnce.Do(func() { close(release) }) }
-	defer unblock()
-	backend, err := config.OAuthVault(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := vault.SetOAuth(backend, "xai", vault.OAuthCredential{AccessToken: "logout-race-old-access", RefreshToken: "logout-race-old-refresh", ExpiresAt: time.Now().Add(-time.Hour), ClientID: "test", TokenURL: up.URL + "/token"}, []string{"127.0.0.1", "api.x.ai"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := config.SaveOAuthProvider(root, config.Provider{Name: "xai", OAuth: "xai", Protocol: config.Responses, BaseURL: "https://api.x.ai/v1", Models: []config.ModelSpec{{Name: "grok-4", Context: 256000}}}); err != nil {
-		t.Fatal(err)
-	}
-	m := &providerauth.Manager{Root: root}
-	defer m.Close()
-	s := &Server{Root: root, Owner: "u1", oauth: m}
-	token, _, err := s.EnsureToken()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ui := httptest.NewServer(muxOf(s))
-	defer ui.Close()
-	cookie := loginCookie(t, ui.URL, token)
-	done := make(chan error, 1)
-	go func() { _, err := vault.EnsureOAuth(context.Background(), backend, "xai"); done <- err }()
-	select {
-	case <-seen:
-	case <-time.After(3 * time.Second):
-		t.Fatal("refresh did not start")
-	}
-	req, _ := http.NewRequest("POST", ui.URL+"/api/providers/oauth/xai/logout", nil)
-	req.AddCookie(cookie)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal("logout call failed")
-	}
-	io.Copy(io.Discard, res.Body)
-	res.Body.Close()
-	if res.StatusCode != 200 {
-		t.Fatalf("logout status %d", res.StatusCode)
-	}
-	unblock()
-	select {
-	case err := <-done:
-		if err == nil || !strings.Contains(err.Error(), "login required") {
-			t.Fatalf("late refresh result %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("refresh did not finish")
-	}
-	if info, err := vault.OAuthMetadata(context.Background(), backend, "xai"); err == nil && info.Configured {
-		t.Fatal("credential revived after logout by the in-flight refresh")
-	}
-	registry, err := config.Load(root)
-	if err != nil || len(registry.Providers) != 0 {
-		t.Fatal("binding came back after logout")
-	}
-	if st := m.Status("xai").State; st != "idle" {
-		t.Fatalf("status after logout %s", st)
+	for _, daemon := range []bool{false, true} {
+		t.Run(map[bool]string{false: "local", true: "daemon"}[daemon], func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("XBOT_VAULT_SOCKET", "")
+			if daemon {
+				// Keep the Unix socket path below macOS's 104-byte limit.
+				socketDir, err := os.MkdirTemp("", "xl-")
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.RemoveAll(socketDir) })
+				socket := filepath.Join(socketDir, "v.sock")
+				ln, err := net.Listen("unix", socket)
+				if err != nil {
+					t.Fatal(err)
+				}
+				server := &vault.Server{DataDir: filepath.Join(root, "daemon"), AllowUIDs: []int{os.Getuid()}}
+				stopped := make(chan struct{})
+				go func() { defer close(stopped); _ = server.Serve(ln) }()
+				t.Cleanup(func() { ln.Close(); <-stopped })
+				t.Setenv("XBOT_VAULT_SOCKET", socket)
+			}
+			b, err := bot.Create(root, "ada", "persona", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := b.SetOwners([]string{"u1"}); err != nil {
+				t.Fatal(err)
+			}
+			seen, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				once.Do(func() { close(seen) })
+				<-release
+				_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "logout-race-new-access", "refresh_token": "logout-race-new-refresh", "expires_in": 3600, "token_type": "Bearer"})
+			}))
+			defer up.Close()
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			defer unblock()
+			backend, err := config.OAuthVault(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := vault.SetOAuth(backend, "xai", vault.OAuthCredential{AccessToken: "logout-race-old-access", RefreshToken: "logout-race-old-refresh", ExpiresAt: time.Now().Add(-time.Hour), ClientID: "test", TokenURL: up.URL + "/token"}, []string{"127.0.0.1", "api.x.ai"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := config.SaveOAuthProvider(root, config.Provider{Name: "xai", OAuth: "xai", Protocol: config.Responses, BaseURL: "https://api.x.ai/v1", Models: []config.ModelSpec{{Name: "grok-4", Context: 256000}}}); err != nil {
+				t.Fatal(err)
+			}
+			m := &providerauth.Manager{Root: root}
+			defer m.Close()
+			s := &Server{Root: root, Owner: "u1", oauth: m}
+			token, _, err := s.EnsureToken()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ui := httptest.NewServer(muxOf(s))
+			defer func() { unblock(); ui.Close() }()
+			cookie := loginCookie(t, ui.URL, token)
+			done := make(chan error, 1)
+			go func() { _, err := vault.EnsureOAuth(context.Background(), backend, "xai"); done <- err }()
+			select {
+			case <-seen:
+			case <-time.After(3 * time.Second):
+				t.Fatal("refresh did not start")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			req, _ := http.NewRequestWithContext(ctx, "POST", ui.URL+"/api/providers/oauth/xai/logout", nil)
+			req.AddCookie(cookie)
+			started := time.Now()
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("logout did not finish while refresh was blocked: %v", err)
+			}
+			io.Copy(io.Discard, res.Body)
+			res.Body.Close()
+			if res.StatusCode != 200 {
+				t.Fatalf("logout status %d", res.StatusCode)
+			}
+			t.Logf("logout returned while token endpoint blocked: %s", time.Since(started))
+			assertAbsent := func() {
+				t.Helper()
+				info, err := vault.OAuthMetadata(context.Background(), backend, "xai")
+				if err != nil {
+					t.Fatalf("read credential metadata: %v", err)
+				}
+				if info.Configured {
+					t.Fatal("credential configured after logout")
+				}
+			}
+			assertAbsent()
+			unblock()
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), "login required") {
+					t.Errorf("late refresh result %v", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("refresh did not finish")
+			}
+			assertAbsent()
+			registry, err := config.Load(root)
+			if err != nil || len(registry.Providers) != 0 {
+				t.Fatal("binding came back after logout")
+			}
+			if st := m.Status("xai").State; st != "idle" {
+				t.Fatalf("status after logout %s", st)
+			}
+		})
 	}
 }
