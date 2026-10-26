@@ -255,7 +255,7 @@ func TestPersonaAndProfileSelfEditsStillAsk(t *testing.T) {
 	profile := reviewedTool{Tool: profileTool{}}
 	for _, args := range []string{`{"description":"notes"}`, `{"avatar_seed":"XBot#3"}`, `{"description":"notes","avatar_seed":"XBot#3"}`} {
 		if need, _, err := profile.Confirm(json.RawMessage(args)); err != nil || !need {
-			t.Fatalf("propose_profile %s need=%v err=%v", args, need, err)
+			t.Fatalf("update_profile %s need=%v err=%v", args, need, err)
 		}
 	}
 }

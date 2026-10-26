@@ -61,7 +61,7 @@ var Table = map[string]Class{
 
 	// Persona and profile.
 	"propose_persona": SelfEdit,
-	"propose_profile": SelfEdit,
+	"update_profile":  SelfEdit,
 
 	// Routines and the owner notification. A routine is the bot's own
 	// schedule, so deleting one is not a data deletion.

@@ -8,6 +8,13 @@
 - 全仓 Go 单次测试、vet、gofmt 通过；新增配置并发/幂等、API 输入边界、门控与浅深色 Chrome 交互回归。旧门控 overlay 上全局关/错家/未登录/API key 的回归失败；原工作区落图与无气泡断言继续通过。截图在 `~/.xbot-build/ui-shots/image-gen-settings/`，编码报告在 `~/.xbot-build/image-gen-settings/encode-report.md`。
 - 本机 Chrome、1440×900、DPR 2、模拟 API，每个主题 30 次开关点击至下一帧：浅色 p95 35.7ms / 最大 35.9ms，深色 p95 34.9ms / 最大 35.0ms；零页面脚本错误。这是设置交互耗时，不代表真模型响应、IPC、后台负载或 60fps 达标。未合 main、未 push、未重启服务；待设计师截图复核及合入后真实账号工作区验收。
 
+## 2026-10-26 update_profile 改名与默认直接落盘文案（分支提交，未合入）
+
+- 基于 revert 后的 `2217ce2`，既有 profile 工具统一命名为 `update_profile`，不保留别名；工具/schema、Link 引导、权限表、cardtext、eval 与文档同步。默认 permissions off 含头像也直接落盘，无预览确认卡例外；SelfEdit 分类和 permissions on 审核不变，未改 propose_persona 流程。
+- 单次相关套件通过：kernel 40.422s、bot 5.770s、review 0.702s、eval 4.591s；头像/资料 API 0.524s。补齐 Link 文案后重跑 link 0.761s、kernel 34.603s。gofmt、vet、diff 检查通过；atlas audit 执行完成，仍有文档陈旧、链接与映射等提醒。
+- 回归覆盖模型工具列表、默认无卡（含无审批入口）、落盘重载、组合字段、上传清除、仅本 Bot、重复调用与非法参数。overlay 恢复旧工具实现后工具列表断言失败；恢复 `27f1970` 的头像例外后默认无卡和无审批入口落盘断言失败。
+- 首轮三个默认模式 scripted 头像回合为 32.028–41.052ms（含落盘），不是线上交互/IPC p95 或浏览器帧率。日志与逐项交付在 `~/.xbot-build/update-profile-rename/`。按本次范围未跑全仓测试、三遍复测、真模型与浏览器；未 push、合入或重启服务，日用验收仍由主管安排。
+
 ## 2026-10-26 Bot 面板与窄屏、rail 修正（已合本地 main，待手测）
 
 - 满宽厂头仅留编辑；模型整栏、人设满宽；更多复用原菜单，改由本机 Bot 行和置顶头像右键／长按进入，动作绑定被操作的 Bot，旧菜单及子菜单统一关闭。信息面板各断点统一右进右出，手机全高近全宽；汉堡按 52px 内容带加安全区、16px 左距、8px 间距落实。72px rail 分区头仅留 10px 透明间隔，设备头同样清掉灰底和圆角，壳间距保留。编码 tip `1765587`（rebase onto main 后 tip 见合入提交）；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-panel-detail/review1.md`）。
@@ -16,8 +23,8 @@
 
 ## 2026-10-26 Bot 自改头像（已合本地 main，待手测）
 
-- 扩展既有 `propose_profile` 的 `avatar_seed`，复用 ValidAvatarSeed / SetAvatarSeed，仅作用于本 Kernel Bot；与名字、简介、时区同卡，权限仍为 SelfEdit。无上传能力、风格或主题变更。tip `0752c11`；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-self-avatar/review1.md`）。
-- scripted Kernel 覆盖拒绝、允许、非法 seed、非字符串、未知/跨 Bot 字段、同卡组合、上传清除、重载 AvatarState 与重复 seed；仅回退工具实现的 overlay 实际复现旧代码 unknown field、零确认和 schema 缺字段。指定三包与全量 Go 测试 count=1、既有头像/资料 API 与 vet 通过；三遍复测按政东要求取消。
+- 扩展既有 `update_profile` 的 `avatar_seed`，复用 ValidAvatarSeed / SetAvatarSeed，仅作用于本 Kernel Bot；与名字、简介、时区组合更新，默认直接落盘；permissions on 按 SelfEdit 表审核。无上传能力、风格或主题变更。tip `0752c11`；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-self-avatar/review1.md`）。
+- 当时的 permissions on scripted Kernel 覆盖拒绝、允许、非法 seed、非字符串、未知/跨 Bot 字段、同卡组合、上传清除、重载 AvatarState 与重复 seed；仅回退工具实现的 overlay 实际复现旧代码 unknown field、零确认和 schema 缺字段。指定三包与全量 Go 测试 count=1、既有头像/资料 API 与 vet 通过；三遍复测按政东要求取消。
 - 首次专项四个 scripted 回合（含一拒绝）为 32.882–36.081 ms，含立即确认与落盘；不是线上回复 p95、IPC 或浏览器帧率。命令、结果与逐项自检在 `~/.xbot-build/bot-self-avatar/encode-report.md`。
 - 已合本地 main（不 push）；8788 手测见 `~/.xbot-build/bot-self-avatar/accept.md`。保留 dev 设计待验收。
 

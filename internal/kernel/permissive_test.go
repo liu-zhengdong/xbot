@@ -58,6 +58,11 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
 		t.Error("the links card was dropped")
 	}
+	for _, args := range []string{`{"avatar_seed":"XBot#3"}`, `{"description":"笔记助手"}`, `{"description":"笔记助手","avatar_seed":"XBot#3"}`} {
+		if needsCard(t, k, "update_profile", args) {
+			t.Errorf("profile update %s asked with permissions off", args)
+		}
+	}
 	// The machine switch and the guard on outside turns are off too.
 	k.Machine = func() (string, error) { return "ask", nil }
 	if needsCard(t, k, "shell", `{"command":"ls"}`) {

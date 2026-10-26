@@ -66,16 +66,16 @@ type profileChanges struct {
 	avatarSeed *string
 }
 
-func (profileTool) Name() string { return "propose_profile" }
+func (profileTool) Name() string { return "update_profile" }
 func (profileTool) Description() string {
-	return "Propose a change to this bot's profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), propose a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. It is saved only after the owner confirms, and applies on the next wake."
+	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly and apply on the next wake."
 }
 func (profileTool) Parameters() any {
 	return schema(map[string]any{
 		"name":        stringProp("new bot name; letters, digits, _ and -"),
 		"description": stringProp("one-line description; empty clears it"),
 		"timezone":    stringProp("IANA timezone such as Asia/Shanghai; empty uses the machine zone"),
-		"avatar_seed": stringProp("generated avatar seed for this bot; propose a new seed for 换一批, conventionally 名字#n (e.g. XBot#3); 1–80 characters after trimming, no markup, quotes, ampersands, backticks or control characters; replaces any uploaded avatar"),
+		"avatar_seed": stringProp("generated avatar seed for this bot; set a new seed for 换一批, conventionally 名字#n (e.g. XBot#3); 1–80 characters after trimming, no markup, quotes, ampersands, backticks or control characters; replaces any uploaded avatar"),
 	}, nil)
 }
 func (profileTool) Confirm(args json.RawMessage) (bool, string, error) {

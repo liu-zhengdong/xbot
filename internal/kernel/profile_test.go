@@ -81,19 +81,19 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	}
 }
 
-func TestProposeProfileNeedsConfirmation(t *testing.T) {
+func TestUpdateProfileNeedsConfirmationPermissionsOn(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NamePersona)
 	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	now := t0
 	call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"description":"中文笔记"}`},
+		Function: provider.FunctionCall{Name: "update_profile", Arguments: `{"description":"中文笔记"}`},
 	}})}
 	// A denied call cannot be retried with the same arguments. The later
-	// approval uses a different proposal.
+	// approval uses a different update.
 	call2 := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c2", Type: "function",
-		Function: provider.FunctionCall{Name: "propose_profile", Arguments: `{"description":"中文笔记","timezone":"UTC"}`},
+		Function: provider.FunctionCall{Name: "update_profile", Arguments: `{"description":"中文笔记","timezone":"UTC"}`},
 	}})}
 	p := &scripted{resps: []provider.Message{
 		call,
@@ -107,7 +107,7 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 		Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4,
 		Now: func() time.Time { return now },
 		Approve: func(_ context.Context, name, summary string) (bool, error) {
-			if name != "propose_profile" || !strings.Contains(summary, "中文") {
+			if name != "update_profile" || !strings.Contains(summary, "中文") {
 				t.Fatalf("confirm %s %s", name, summary)
 			}
 			return approved, nil
@@ -149,16 +149,28 @@ func TestProposeProfileNeedsConfirmation(t *testing.T) {
 	}
 }
 
-func TestProposeProfileAvatarConfirmation(t *testing.T) {
+func TestUpdateProfileAvatarConfirmationPermissionsOn(t *testing.T) {
+	testUpdateProfileAvatar(t, false)
+}
+
+func TestUpdateProfileAvatarDirectPermissive(t *testing.T) {
+	testUpdateProfileAvatar(t, true)
+}
+
+func testUpdateProfileAvatar(t *testing.T, permissive bool) {
 	for _, tc := range []struct {
 		name, args, description, renamed string
 		allow                            bool
 	}{
 		{name: "deny", args: `{"description":"笔记助手","avatar_seed":"Ada#2"}`},
+		{name: "no approver", args: `{"avatar_seed":"Ada#2"}`, allow: true},
 		{name: "avatar only", args: `{"avatar_seed":"Ada#2"}`, allow: true},
 		{name: "with description", args: `{"description":"笔记助手","avatar_seed":"Ada#2"}`, description: "笔记助手", allow: true},
 		{name: "all fields", args: `{"name":"renamed","description":"笔记助手","timezone":"UTC","avatar_seed":" Ada#2 "}`, description: "笔记助手", renamed: "renamed", allow: true},
 	} {
+		if (permissive && !tc.allow) || (!permissive && tc.name == "no approver") {
+			continue
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			b := testBot(t, link.NameTerminal, link.NamePersona)
 			png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 7}
@@ -172,17 +184,17 @@ func TestProposeProfileAvatarConfirmation(t *testing.T) {
 			}
 			otherBefore := profileAvatarFiles(t, other)
 			call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-				ID: "avatar", Type: "function", Function: provider.FunctionCall{Name: "propose_profile", Arguments: tc.args},
+				ID: "avatar", Type: "function", Function: provider.FunctionCall{Name: "update_profile", Arguments: tc.args},
 			}})}
 			p := &scripted{resps: []provider.Message{
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done again")},
 			}}
 			confirms := 0
-			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4}
+			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive}
 			k.Approve = func(_ context.Context, name, summary string) (bool, error) {
 				confirms++
-				if name != "propose_profile" || !strings.Contains(summary, `avatar_seed "Ada#2"`) {
+				if name != "update_profile" || !strings.Contains(summary, `avatar_seed "Ada#2"`) {
 					t.Errorf("confirmation %s %s", name, summary)
 				}
 				if tc.description != "" && !strings.Contains(summary, `description "笔记助手"`) {
@@ -196,13 +208,23 @@ func TestProposeProfileAvatarConfirmation(t *testing.T) {
 				}
 				return tc.allow, nil
 			}
+			if tc.name == "no approver" {
+				k.Approve = nil
+			}
 			started := time.Now()
 			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "给自己换个头像", started)); err != nil {
 				t.Fatal(err)
 			}
 			t.Logf("scripted avatar turn: %s", time.Since(started))
-			if confirms != 1 {
-				t.Fatalf("confirmation count %d, want one card", confirms)
+			if !hasDef(p.reqs[0].Tools, "update_profile") {
+				t.Fatal("update_profile missing from provider tool list")
+			}
+			wantConfirms := 1
+			if permissive {
+				wantConfirms = 0
+			}
+			if confirms != wantConfirms {
+				t.Fatalf("confirmation count %d, want %d", confirms, wantConfirms)
 			}
 			if tc.allow {
 				loaded, err := bot.Load(b.Root, k.Bot.Name())
@@ -227,19 +249,19 @@ func TestProposeProfileAvatarConfirmation(t *testing.T) {
 				if _, ok := after["avatar.mime"]; ok {
 					t.Fatal("upload MIME was not removed")
 				}
-				// A second confirmed proposal of the same seed preserves stored state.
+				// Repeating the same update preserves stored state.
 				if err := k.Handle(context.Background(), link.TerminalEvent("u1", "再用同一头像", time.Now())); err != nil {
 					t.Fatal(err)
 				}
-				if confirms != 2 || !reflect.DeepEqual(profileAvatarFiles(t, k.Bot), after) {
-					t.Fatal("repeated proposal changed stored profile or skipped confirmation")
+				if confirms != 2*wantConfirms || !reflect.DeepEqual(profileAvatarFiles(t, k.Bot), after) {
+					t.Fatal("repeated update changed stored profile or unexpected confirmation count")
 				}
 			} else {
 				if !reflect.DeepEqual(profileAvatarFiles(t, b), before) {
-					t.Fatal("denied proposal changed profile or upload")
+					t.Fatal("denied update changed profile or upload")
 				}
 				if av, _ := b.AvatarState(); av != bot.AvatarCustom {
-					t.Fatal("denied proposal changed in-memory avatar")
+					t.Fatal("denied update changed in-memory avatar")
 				}
 				entries, err := b.Entries()
 				if err != nil || !transcriptHas(entries, "denied by user") {
@@ -253,7 +275,15 @@ func TestProposeProfileAvatarConfirmation(t *testing.T) {
 	}
 }
 
-func TestProposeProfileAvatarRejectsInvalid(t *testing.T) {
+func TestUpdateProfileAvatarRejectsInvalid(t *testing.T) {
+	testUpdateProfileAvatarRejectsInvalid(t, false)
+}
+
+func TestUpdateProfileAvatarRejectsInvalidPermissive(t *testing.T) {
+	testUpdateProfileAvatarRejectsInvalid(t, true)
+}
+
+func testUpdateProfileAvatarRejectsInvalid(t *testing.T, permissive bool) {
 	cases := []struct{ name, args, want string }{
 		{"number", `{"avatar_seed":3}`, "must be a string"},
 		{"boolean", `{"avatar_seed":true}`, "must be a string"},
@@ -280,12 +310,12 @@ func TestProposeProfileAvatarRejectsInvalid(t *testing.T) {
 			before := profileAvatarFiles(t, b)
 			p := &scripted{resps: []provider.Message{
 				{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-					ID: "bad-avatar", Type: "function", Function: provider.FunctionCall{Name: "propose_profile", Arguments: tc.args},
+					ID: "bad-avatar", Type: "function", Function: provider.FunctionCall{Name: "update_profile", Arguments: tc.args},
 				}})},
 				{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 			}}
 			confirms := 0
-			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4,
+			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive,
 				Approve: func(context.Context, string, string) (bool, error) { confirms++; return true, nil },
 			}
 			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change avatar", time.Now())); err != nil {
@@ -299,13 +329,13 @@ func TestProposeProfileAvatarRejectsInvalid(t *testing.T) {
 				t.Fatalf("Run must also validate: %v", err)
 			}
 			if confirms != 0 || !reflect.DeepEqual(profileAvatarFiles(t, b), before) {
-				t.Fatal("invalid proposal asked for confirmation or changed profile/upload")
+				t.Fatal("invalid update asked for confirmation or changed profile/upload")
 			}
 		})
 	}
 }
 
-func TestProposeProfileAvatarSeedBoundary(t *testing.T) {
+func TestUpdateProfileAvatarSeedBoundary(t *testing.T) {
 	for _, seed := range []string{"XBot#3", " 周报#2 ", strings.Repeat("周", 80)} {
 		raw, _ := json.Marshal(map[string]string{"avatar_seed": seed})
 		need, summary, err := (reviewedTool{Tool: profileTool{}}).Confirm(raw)
@@ -315,7 +345,7 @@ func TestProposeProfileAvatarSeedBoundary(t *testing.T) {
 	}
 }
 
-func TestProposeProfileAvatarSchema(t *testing.T) {
+func TestUpdateProfileAvatarSchema(t *testing.T) {
 	raw, err := json.Marshal((profileTool{}).Parameters())
 	if err != nil {
 		t.Fatal(err)
@@ -329,7 +359,7 @@ func TestProposeProfileAvatarSchema(t *testing.T) {
 	if len(schema.Properties) != 4 || schema.Properties["avatar_seed"].Type != "string" {
 		t.Fatalf("expected four profile fields including string avatar_seed: %s", raw)
 	}
-	if review.ClassOf("propose_profile") != review.SelfEdit {
+	if review.ClassOf("update_profile") != review.SelfEdit {
 		t.Fatal("profile avatar must remain SelfEdit")
 	}
 }

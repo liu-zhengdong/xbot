@@ -33,7 +33,7 @@ func TestTableHasEveryClass(t *testing.T) {
 		"write_file":      SelfEdit,
 		"edit_file":       SelfEdit,
 		"propose_persona": SelfEdit,
-		"propose_profile": SelfEdit,
+		"update_profile":  SelfEdit,
 		"routine_create":  Normal,
 		"routine_update":  Normal,
 		"routine_delete":  Normal,
@@ -178,7 +178,7 @@ func TestLinksInstallAndRemoveAsk(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
-	for _, name := range []string{"propose_persona", "propose_profile"} {
+	for _, name := range []string{"propose_persona", "update_profile"} {
 		if !need(t, name, `{}`) {
 			t.Fatalf("%s did not ask", name)
 		}
