@@ -1652,13 +1652,23 @@
   // before fences are split, so a fence written inside a quote is parsed
   // after its > prefix is gone and stays inside the blockquote. A line holding
   // an odd number of ``` opens or closes a fence, matching appendFenced's
-  // pairing; > lines inside a fence are code, not quotes.
+  // pairing; > lines inside a fence are code, not quotes. Likewise inside a
+  // $$ block (same open/close rules as appendBlocks) a leading > is TeX.
   function appendMarkdown(parent, text) {
     const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
-    let buf = [], fence = false;
+    let buf = [], fence = false, math = false;
     const flush = () => { if (buf.length) appendFenced(parent, buf.join("\n")); buf = []; };
     for (let i = 0; i < lines.length; i++) {
-      if (!fence && /^\s{0,3}>/.test(lines[i])) {
+      // A line that opens, continues or closes a $$ block is TeX.
+      let tex = false;
+      if (!fence && math) {
+        tex = true;
+        if (lines[i].indexOf("$$") >= 0) math = false;
+      } else if (!fence) {
+        const open = /^\s*\$\$(.*)$/.exec(lines[i]);
+        if (open && open[1].indexOf("$$") < 0) math = true;
+      }
+      if (!fence && !tex && /^\s{0,3}>/.test(lines[i])) {
         flush();
         const inner = [];
         while (i < lines.length && /^\s{0,3}>/.test(lines[i])) inner.push(lines[i++].replace(/^\s{0,3}> ?/, ""));

@@ -38,7 +38,8 @@ const document = {
 const el = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls || ""; if (text != null) n.textContent = String(text); n.addEventListener = () => {}; return n; };
 const pathLabel = (path, tag) => el(tag || "span", "compact-path", path);
 const copyText = () => {};
-const window = { katex: { renderToString: (tex) => "<katex>" + tex + "</katex>" } };
+const calls = [];
+const window = { katex: { renderToString: (tex, opts) => { calls.push([tex, !!(opts && opts.displayMode)]); return "<katex>" + tex + "</katex>"; } } };
 `+s[a:b]+`
 const dump = (n) => n.nodeType === 3 ? JSON.stringify(n.nodeValue)
   : n.tagName + (n.className ? "." + n.className : "") + (n.textContent != null ? "{" + JSON.stringify(n.textContent) + "}" : "") + "[" + (n.childNodes || []).map(dump).join(",") + "]";
@@ -149,6 +150,27 @@ for (const [pre, fn] of [[">", appendMarkdown], [">>", appendMarkdown], [">", ap
   assert.equal(text(bq[0]), "x | y", pre + " quote text: " + JSON.stringify(text(bq[0])));
   assert.ok(!text(root).includes(">"), pre + " > leaked: " + JSON.stringify(text(root)));
 }
+// A leading > inside a $$ block is TeX, not a quote: one display formula
+// gets the whole source, at top level and inside a quote, and a closing
+// line that starts with > still belongs to the formula (review B3).
+for (const [src, tex, quoted] of [
+  ["$$\nx\n> 0\n$$", "x\n> 0", 0],
+  ["> $$\n> x\n> > 0\n> $$", "x\n> 0", 1],
+  ["$$\nx\n> 0 $$\n尾", "x\n> 0 ", 0],
+  [">> $$\n>> x\n>> > 0\n>> $$", "x\n> 0", 2],
+]) {
+  calls.length = 0;
+  root = render(appendMarkdown, src);
+  assert.deepEqual(calls, [[tex, true]], JSON.stringify(src) + " katex calls: " + JSON.stringify(calls));
+  assert.equal(find(root, (n) => n.className === "math-block").length, 1, JSON.stringify(src) + " math split: " + dump(root));
+  assert.equal(find(root, (n) => n.tagName === "BLOCKQUOTE").length, quoted, JSON.stringify(src) + " quote count: " + dump(root));
+}
+// After the formula closes, > lines are quotes again.
+calls.length = 0;
+root = render(appendMarkdown, "$$\nx\n> 0\n$$\n> 引用");
+assert.deepEqual(calls, [["x\n> 0", true]], "formula before quote: " + JSON.stringify(calls));
+assert.equal(find(root, (n) => n.tagName === "BLOCKQUOTE").length, 1, "quote after formula lost: " + dump(root));
+assert.equal(text(find(root, (n) => n.tagName === "BLOCKQUOTE")[0]), "引用", "quote after formula text");
 // Tables work inside quotes.
 root = render(appendMarkdown, "> | a | b |\n> |---|---|\n> | 1 | 2 |");
 assert.equal(find(root, (n) => n.tagName === "BLOCKQUOTE" && find(n, (m) => m.tagName === "TABLE").length).length, 1, "quoted table: " + dump(root));
