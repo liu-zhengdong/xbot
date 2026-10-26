@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Accepted（取代 0001、0002）
+status: Superseded by ADR-0028
 date: 2026-10-20
 ---
 # 0016 前台只理解和派活，干活交给预制类型的子代理
