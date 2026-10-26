@@ -38,6 +38,7 @@ const send=async value=>{
  emit(s,'delta',{text:'质能式 $E=mc^2$ 很有名。\n\n$$\\frac{a}{b}$$\n完\n坏 $x$ 坏'});
  await waitFor(()=>document.querySelector('#thread .math-raw'),'fallback missing');
  assert([...document.querySelectorAll('#thread .math-raw')].some(n=>n.textContent==='$x$'),'fallback text wrong: '+[...document.querySelectorAll('#thread .math-raw')].map(n=>n.textContent).join('|'));
+ assert([...document.querySelectorAll('#thread .math-raw')].some(n=>n.textContent==='$$\\frac{a}{b}$$'),'block fallback lost its $$ delimiters: '+[...document.querySelectorAll('#thread .math-raw')].map(n=>n.textContent).join('|'));
  assert(!document.querySelector('#thread .math-inline .katex'),'stale katex after fallback');
  assert(text().includes('很有名'),'bubble broke in fallback');
  // Persisted transcript renders math again after the whole-segment re-render.
@@ -56,6 +57,25 @@ const send=async value=>{
  await waitFor(()=>document.querySelector('#thread .live .math-inline .katex'),'completed math missing');
  finish(s2,'未闭合 $E=mc^2$ 闭合');
  await waitFor(()=>!$('#thread .live'),'second stream did not settle');
+ // Real parse failure with the real library present (throwOnError): the
+ // source words come back, never .katex-error markup (review R4).
+ const s3=await send('解析');
+ emit(s3,'delta',{text:'坏 $\\frac{$ 结束'});
+ await waitFor(()=>document.querySelector('#thread .live .math-raw'),'bad TeX did not fall back');
+ assert([...document.querySelectorAll('#thread .live .math-raw')].some(n=>n.textContent==='$\\frac{$'),'real parse fallback lost the source: '+[...document.querySelectorAll('#thread .live .math-raw')].map(n=>n.textContent).join('|'));
+ assert(!document.querySelector('#thread .katex-error'),'katex-error markup leaked into the bubble');
+ assert(text().includes('结束'),'bubble broke on bad TeX');
+ // Sentence-middle $$…$$ keeps both delimiters when the library is missing
+ // (review R5); a valid formula on the same page still renders.
+ delete window.katex;
+ emit(s3,'delta',{text:'质能式 $E=mc^2$ 很有名。\n\n坏 $\\frac{$ 结束\n\n看 $$x+y$$ 尾'});
+ await waitFor(()=>[...document.querySelectorAll('#thread .live .math-raw')].some(n=>n.textContent==='$$x+y$$'),'sentence $$ fallback lost its delimiters');
+ assert([...document.querySelectorAll('#thread .live .math-raw')].some(n=>n.textContent==='$\\frac{$'),'bad TeX fallback lost its source');
+ assert(!document.querySelector('#thread .live .katex'),'library removal left rendered math behind');
+ window.katex=realKatex;
+ finish(s3,'质能式 $E=mc^2$ 很有名。\n\n坏 $\\frac{$ 结束\n\n看 $$x+y$$ 尾');
+ await waitFor(()=>!$('#thread .live'),'bad-TeX stream did not settle');
+ await waitFor(()=>document.querySelector('#thread .math-inline .katex'),'valid math missing after settle');
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `)

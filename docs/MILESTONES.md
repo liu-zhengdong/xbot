@@ -356,3 +356,15 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 在 composer URL 高亮分支上续作：输入框在 URL 高亮之上加 Markdown 语法上色（行首 `#`/`##`/`###`、列表 `- `/`* `、`` `code` ``、`**粗**`、`*斜*`、`[text](url)`，全部保留源字符、非 WYSIWYG，`[text](url)` 沿用裸 URL 的 http(s) 白名单与 `_blank`+`noopener` 点击路径）；消息气泡（流式与 transcript 同路径）用内置 KaTeX 0.16.11 渲染 `$…$` 与 `$$…$$`，TeX 源从不作为 HTML 进 DOM，库缺失或渲染失败回退原文；金额 `$5 和 $6`、代码段内的 `$` 不误判；sw SHELL 加 KaTeX CSS/JS（缓存 v15），字体仅 woff2 运行时缓存。规格更新见 [docs/dev/composer-url-links.md](dev/composer-url-links.md)，现状已提炼进 [界面](atlas/ui.md)。
 
 验证：新增 node 单测（草稿高亮 7 组断言、数学 13 组断言含回退）与 headless Chrome 端到端（草稿高亮/点链接不发送/Enter 发送源码、行内+块级公式/KaTeX CSS 接线/回退/未闭合流式/持久化重渲染）全过；既有 composer links 三测试不回退照过；`go test -count=1 ./...` 46 包全过，gofmt/vet 净。浅色/深色截图本地 Chrome 查看：公式排版、草稿各色、金额不误判均确认。KaTeX 体积 gz 约 76 KB JS + 3.5 KB CSS + 296 KB 字体（woff2 运行时缓存）。级别：本地分支端到端通过，未合入 main、未 push，主人日用未验证。
+
+### composer/气泡数学复审一修（2026-10-26，同一候选第三批）
+
+复审 1（仓外 `~/.xbot-build/composer-url/review1.md`）五个问题全修，范围不出该报告：
+
+- **上限拒绝不截尾（R1 P1）**：16000 上限从 renderComposer 事后 `slice` 改回旧 textarea 的 maxlength 语义——超限的用户编辑（中间插字、选区替换、粘贴、拖入、整段替换）在编辑入口整体拒绝并恢复光标，未被选中的已有草稿一字不丢；程序化写入不再截断。
+- **撤销/重做（R2 P2）**：每次 input 全量 replaceChildren 弄死原生撤销，改为页面自维护 composerHistory（每接受一步编辑一步，上限 200；⌘/Ctrl+Z、⌘/Ctrl+Shift+Z、Ctrl+Y，菜单撤销/重做经 beforeinput 拦截）；发送清空、草稿恢复、失败回填等程序化写入重置基线，同旧 textarea 赋值。
+- **块级数学配对（R3 P2）**：开块行与闭合行都改按首个闭合 `$$` 切分并继续处理尾部：`$$a$$ 和 $$b$$` 两段公式加中间正文，多行闭合行尾再跟公式照切。
+- **真实解析失败回退（R4 P2）**：KaTeX 改以 `throwOnError:true` 调用，非法 TeX 抛错进 catch 回退原文，不再以 `.katex-error` 蒙混；node 测试加载仓内真实 KaTeX 回归。
+- **回退保留源定界符（R5 P2）**：mathNode 的源串与 displayMode 分开传，句中 `$$…$$` 缺库/抛错回退仍是 `$$…$$`，不改写成 `$…$`。
+
+验证：新增 `TestComposerNativeEditBrowser`（headless Chrome，真实 `execCommand` 输入/删除 + ⌘/Ctrl+Z/⇧Z 撤销重做 + 上限处原生 insertText 断言）、`TestBubbleMathRendering` 加真实 KaTeX/非法 TeX 与配对/回退断言、`TestBubbleMathBrowser` 加真实解析失败与句中 `$$` 回退段；四个测试在旧 HEAD（6595c80）上逐一失败确认。`go test ./internal/web/ -count=1` 与 `-count=3` 过，gofmt/vet 净，`go build ./...` 过。级别：本地分支端到端通过，未合入 main、未 push，主人日用未验证。复审报告与证据在仓外 `~/.xbot-build/composer-url/`。

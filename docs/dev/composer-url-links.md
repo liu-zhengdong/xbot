@@ -16,11 +16,12 @@
 - 输入框：`#input` 已是纯文本 contenteditable（`plaintext-only`，不支持时回退 `contenteditable=true`）。
 - URL 高亮：`http(s)://` 就地成链，`_blank` + `noopener`，尾标点不吞，紧贴中文不吞，非 http(s) 不亮。
 - 草稿 Markdown 高亮（第二批）：行首 `#`/`##`/`###`（要求后跟空格；`####` 及更深不认）、列表符 `- `/`* `（要求空格）、`` `code` ``（内部不再嵌套其它高亮）、`**粗**`、`*斜*`、`[text](url)`。全部保留源字符、非 WYSIWYG；`_斜_` **不做**（snake_case 误判太多）；列表星不误判成斜体（先吃行首标记再扫行内）；`[text](url)` 协议规则与裸 URL 一致，非 http(s) 整段保持纯文本。
-- 气泡数学（第二批）：`appendMarkdown`/`appendBlocks`/`appendInline` 路径上渲染 `$…$`（行内）与 `$$…$$`（行首成块、居中显示；句子中间的 `$$…$$` 作行内 span）。KaTeX 0.16.11 内置在 `static/vendor/katex/`（未改动的上游 katex.min.css/js + LICENSE，字体仅 woff2 共 20 个 296 KB）；sw SHELL 加 CSS/JS（CACHE 升 v15），字体走运行时缓存。TeX 源从不作为 HTML 进 DOM：唯一 innerHTML 来自 `katex.renderToString` 的转义输出；`window.katex` 缺失或渲染抛错时回退原文（`.math-raw` 等宽字显示 `$…$`），不炸气泡。
+- 气泡数学（第二批，复审一修）：`appendMarkdown`/`appendBlocks`/`appendInline` 路径上渲染 `$…$`（行内）与 `$$…$$`（行首成块、居中显示；句子中间的 `$$…$$` 作行内 span，回退仍保留完整源串含 `$$` 定界符）。块级配对按首个闭合 `$$` 切分（`lastIndexOf` 会把同行/闭合行尾的后续公式吞进第一段 TeX）。KaTeX 0.16.11 内置在 `static/vendor/katex/`（未改动的上游 katex.min.css/js + LICENSE，字体仅 woff2 共 20 个 296 KB）；sw SHELL 加 CSS/JS（CACHE 升 v15），字体走运行时缓存。TeX 源从不作为 HTML 进 DOM：唯一 innerHTML 来自 `katex.renderToString` 的转义输出，且以 `throwOnError:true` 调用——库缺失、抛错或真实解析失败（非法 TeX 不再以 `.katex-error` 蒙混）都回退原文（`.math-raw` 等宽字显示含定界符的源串），不炸气泡。
 - 数学启发式：金额 `$5 和 $6`（闭侧是空格）不当公式；代码段里的 `$` 保护；流式期间未闭合的 `$` 先显原文，闭合后整段重渲染即正确（流式每 delta 全量重建，无需增量）。
 - Enter（非 Shift、非 IME composing）仍发送；点 URL / 点 `[text](url)` / 点高亮 span 不 `requestSubmit`。
 - 只动对话 composer + 消息渲染相关；设置浮层等其它输入区不动。
-- 安全：`href` 仅 http(s)；用户稿从不 innerHTML；`maxlength` 16000 仍按纯文本计（renderComposer 统一截断）。
+- 安全：`href` 仅 http(s)；用户稿从不 innerHTML。16000 上限同旧 textarea 的 maxlength：超限的用户编辑（中间插字、选区替换、粘贴、拖入、整段替换）在编辑入口（refreshComposerLinks）整体拒绝并恢复光标，禁止事后截尾；程序化写入（发送清空、草稿恢复、失败回填）不截断。
+- 撤销/重做由页面自维护（composerHistory，每接受一步编辑一步；⌘/Ctrl+Z、⌘/Ctrl+Shift+Z、Ctrl+Y 与菜单撤销经 beforeinput 拦截）：每次 input 都全量 replaceChildren，原生撤销栈已失效；程序化写入重置基线，同旧 textarea 赋值。
 - 不做：mailto、WYSIWYG 工具栏、改设置页、全量 CommonMark、化学式插件、`_斜_`。
 
 ## 还没做的

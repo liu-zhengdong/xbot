@@ -106,9 +106,17 @@ const type=s=>{const b=$('#input');b.textContent=s;b.dispatchEvent(new Event('in
  box.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:229,bubbles:true}));
  await new Promise(r=>setTimeout(r,50));
  assert(streams()===settled,'IME Enter sent');
- // The 16000 cap survives the contenteditable switch.
+ // The cap keeps the old maxlength semantics: an edit that would push the
+ // draft past 16000 is refused whole instead of being sliced afterwards.
  type('x'.repeat(16100));
- assert(box.textContent.length===16000,'draft cap not enforced: '+box.textContent.length);
+ assert(box.textContent==='中文','over-cap replacement must be refused whole: '+JSON.stringify(box.textContent));
+ type('a'.repeat(15999)+'Z');
+ box.focus();
+ const r=document.createRange();r.selectNodeContents(box);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
+ document.execCommand('insertText',false,'X');
+ assert(box.textContent.length===16000,'cap length changed: '+box.textContent.length);
+ assert(box.textContent.startsWith('aaa'),'over-cap insertion was accepted: '+box.textContent.slice(0,3));
+ assert(box.textContent.endsWith('aaZ'),'existing last character was lost: '+box.textContent.slice(-3));
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `

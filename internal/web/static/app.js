@@ -19,8 +19,10 @@
   const input = $("input");
   // The composer's last rendered text and its IME state; see the composer
   // helpers further down for how they keep the draft plain and linkified.
+  // composerEditCaret is the caret captured before an edit mutates the draft.
   let composerTextCache = "";
   let composerComposing = false;
+  let composerEditCaret = null;
   const titleEl = $("title");
   const subtitle = $("subtitle");
   const updateBtn = $("update");
@@ -1318,16 +1320,23 @@
   // TeX source itself and its escaped output is the library's supported
   // injection contract (no raw user HTML ever enters the tree any other way);
   // on any failure the original source stays visible and the bubble survives.
-  function mathNode(tex, display) {
-    const src = (display ? "$$" : "$") + tex + (display ? "$$" : "$");
+  // src is the formula's full source text including its delimiters — kept
+  // separate from displayMode, because a sentence-middle $$…$$ renders as an
+  // inline span but must still fall back as $$…$$, not with rewritten
+  // delimiters (review-1 R5).
+  function mathNode(tex, display, src) {
+    const full = src === undefined ? (display ? "$$" + tex + "$$" : "$" + tex + "$") : src;
     const box = document.createElement(display ? "div" : "span");
     box.className = display ? "math-block" : "math-inline";
     try {
       if (!window.katex || typeof window.katex.renderToString !== "function") throw new Error("katex missing");
-      box.innerHTML = window.katex.renderToString(tex, { throwOnError: false, displayMode: !!display });
+      // throwOnError: TeX that cannot parse must reach the catch above and
+      // fall back to the source. With false, KaTeX returns .katex-error
+      // markup instead and the original words would never come back.
+      box.innerHTML = window.katex.renderToString(tex, { throwOnError: true, displayMode: !!display });
     } catch (e) {
       box.classList.add("math-raw");
-      box.textContent = src; // fallback: the words the model sent
+      box.textContent = full; // fallback: the words the model sent
     }
     return box;
   }
@@ -1356,9 +1365,11 @@
         const code = tok.slice(1, -1);
         parent.append(/^(?:~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(code) && !/\s--?/.test(code) ? pathLabel(code, "code") : el("code", "", code));
       } else if (tok.startsWith("$$")) {
-        parent.append(mathNode(tok.slice(2, -2), false));
+        // The sentence-middle $$…$$ tradeoff: rendered inline, but the
+        // fallback keeps the full source including both $$ delimiters.
+        parent.append(mathNode(tok.slice(2, -2), false, tok));
       } else if (tok.charAt(0) === "$") {
-        parent.append(mathNode(tok.slice(1, -1), false));
+        parent.append(mathNode(tok.slice(1, -1), false, tok));
       } else if (tok.startsWith("**")) {
         parent.append(el("strong", "", tok.slice(2, -2)));
       } else if (tok.charAt(0) === "*") {
@@ -1405,7 +1416,9 @@
     };
     for (const line of lines) {
       if (math !== null) {
-        const end = line.lastIndexOf("$$");
+        // First closing $$ wins: the rest of the line is prose again and may
+        // hold further formulas (lastIndexOf would swallow them into the TeX).
+        const end = line.indexOf("$$");
         if (end < 0) { math.push(line); continue; }
         math.push(line.slice(0, end));
         flushMath();
@@ -1417,7 +1430,9 @@
       if (open) {
         flushPara(); flushList();
         const body = open[1];
-        const end = body.lastIndexOf("$$");
+        // First closing $$ ends the formula; whatever follows is prose that
+        // may itself contain another formula (…$$ one $$ and $$ two $$).
+        const end = body.indexOf("$$");
         if (end >= 0) {
           // $$x^2$$ closed on the opening line; trailing prose goes on as text.
           if (body.slice(0, end).trim()) parent.append(mathNode(body.slice(0, end), true));
@@ -1816,27 +1831,78 @@
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
   }
 
+  // Renders the draft. No cap here: truncating after the fact silently eats
+  // existing characters whenever the edit landed before the end, so the old
+  // textarea's maxlength lives at the edit entry instead (see below).
   function renderComposer(text) {
-    // The maxlength of the old textarea lives here now: one cap, applied no
-    // matter how the words got in (typed, pasted, dropped, restored).
-    if (text.length > COMPOSER_MAX) text = text.slice(0, COMPOSER_MAX);
     input.replaceChildren(...composerNodes(text));
     composerTextCache = text;
   }
 
+  // Programmatic draft writes (fill, restore, refill, send): like assigning
+  // the old textarea's value they start a fresh undo history.
+  function composerSet(text) {
+    renderComposer(text);
+    composerHistory.stack = [{ text: composerTextCache, caret: Infinity }];
+    composerHistory.index = 0;
+  }
+
+  // Undo/redo is ours, one step per accepted edit: the native history would
+  // try to restore nodes that every re-render has long replaced. Keys are
+  // handled in the keydown/beforeinput listeners further down.
+  const composerHistory = { stack: [], index: -1, limit: 200 };
+  function composerRecord(before, text, caret) {
+    const h = composerHistory;
+    if (!h.stack.length) { h.stack.push({ text: before, caret: Infinity }); h.index = 0; }
+    if (h.stack[h.index].text === text) return;
+    h.stack.length = h.index + 1; // a new edit abandons the redo tail
+    h.stack.push({ text, caret: caret === null ? Infinity : caret });
+    if (h.stack.length > h.limit) h.stack.shift();
+    h.index = h.stack.length - 1;
+  }
+  function composerApply(entry) {
+    renderComposer(entry.text);
+    composerRefreshHeight();
+    composerCaretTo(entry.caret);
+    syncComposer();
+  }
+  function composerUndo() {
+    const h = composerHistory;
+    if (h.index <= 0) return;
+    h.index--;
+    composerApply(h.stack[h.index]);
+  }
+  function composerRedo() {
+    const h = composerHistory;
+    if (h.index >= h.stack.length - 1) return;
+    h.index++;
+    composerApply(h.stack[h.index]);
+  }
+
   // Rewrites the draft's DOM only when its text changed, keeping the caret at
-  // the same spot, so typing beside a link never jumps the cursor.
+  // the same spot, so typing beside a link never jumps the cursor. This is the
+  // edit entry, so the maxlength rule lives here: an edit that would push the
+  // draft past COMPOSER_MAX is refused whole — the old textarea never accepted
+  // the new characters by silently deleting older ones at the end.
   function refreshComposerLinks() {
     if (composerComposing) return;
     const text = composerText(input);
     if (text === composerTextCache) return;
+    if (text.length > COMPOSER_MAX) {
+      renderComposer(composerTextCache);
+      composerRefreshHeight();
+      composerCaretTo(composerEditCaret === null ? Infinity : composerEditCaret);
+      return;
+    }
+    const before = composerTextCache;
     const caret = composerCaret();
     renderComposer(text);
     if (caret !== null) composerCaretTo(caret);
+    composerRecord(before, text, caret);
   }
 
   function fillComposer(text) {
-    renderComposer(String(text == null ? "" : text));
+    composerSet(String(text == null ? "" : text));
     composerRefreshHeight();
     syncComposer();
     input.focus();
@@ -3818,7 +3884,7 @@
       const draft = sessionStorage.getItem("xbot-draft:" + name);
       if (draft) {
         sessionStorage.removeItem("xbot-draft:" + name);
-        if (!composerText(input)) renderComposer(draft);
+        if (!composerText(input)) composerSet(draft);
         syncComposer();
       }
     } catch (e) {}
@@ -3852,7 +3918,7 @@
       const draft = sessionStorage.getItem("xbot-draft:group:" + id);
       if (draft) {
         sessionStorage.removeItem("xbot-draft:group:" + id);
-        if (!composerText(input)) renderComposer(draft);
+        if (!composerText(input)) composerSet(draft);
         syncComposer();
       }
     } catch (e) {}
@@ -5986,7 +6052,7 @@
       // picture came with it, and the row says what the picture needs.
       const pictureNote = images.length ? "；图片要重新贴一次" : "";
       if (!composerText(input).trim() && text) {
-        renderComposer(text);
+        composerSet(text);
         composerRefreshHeight();
         marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
         announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
@@ -5999,7 +6065,7 @@
         back.type = "button";
         back.addEventListener("click", () => {
           const cur = composerText(input);
-          renderComposer(cur.trim() ? cur.replace(/\s*$/, "\n") + text : text);
+          composerSet(cur.trim() ? cur.replace(/\s*$/, "\n") + text : text);
           composerRefreshHeight();
           syncComposer();
           input.focus();
@@ -7101,7 +7167,7 @@
     const images = attachReady().map((row) => row.id);
     if (attachBusy()) { attachNote("图片还在上传，等一下再发。"); return; }
     if ((!text.trim() && !images.length) || !state.sel) return;
-    renderComposer("");
+    composerSet("");
     composerRefreshHeight();
     clearAttach();
     syncComposer();
@@ -7118,8 +7184,9 @@
     uploadAttach(files);
   });
 
-  // Rich pastes stay plain: the draft is text, and the cap still applies via
-  // the re-render. insertText also keeps the native undo stack intact.
+  // Rich pastes stay plain: the draft is text, and the cap still applies at
+  // the edit entry (an over-cap paste is refused whole, like maxlength).
+  // The insert that follows lands in the app's undo history like any edit.
   input.addEventListener("paste", (ev) => {
     const text = ev.clipboardData ? ev.clipboardData.getData("text/plain") : "";
     if (!text) return;
@@ -7173,12 +7240,33 @@
   });
 
   input.addEventListener("keydown", (ev) => {
+    // Undo/redo is ours (see composerHistory): the browser's own history
+    // would restore nodes that every re-render replaced.
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === "z" || ev.key === "Z" || ev.key === "y" || ev.key === "Y")) {
+      ev.preventDefault();
+      if (!composerComposing) { // mid-composition the IME owns undo
+        if (ev.shiftKey || ev.key === "y" || ev.key === "Y") composerRedo();
+        else composerUndo();
+      }
+      return;
+    }
     if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;
     ev.preventDefault();
     composer.requestSubmit();
   });
 
-  input.addEventListener("compositionstart", () => { composerComposing = true; });
+  // Intercept the menu-driven undo/redo too, and capture the caret before the
+  // browser mutates the draft: a refused over-cap edit restores it.
+  input.addEventListener("beforeinput", (ev) => {
+    if (ev.inputType === "historyUndo") { ev.preventDefault(); composerUndo(); return; }
+    if (ev.inputType === "historyRedo") { ev.preventDefault(); composerRedo(); return; }
+    composerEditCaret = composerCaret();
+  });
+
+  input.addEventListener("compositionstart", () => {
+    composerComposing = true;
+    composerEditCaret = composerCaret();
+  });
   input.addEventListener("compositionend", () => {
     composerComposing = false;
     refreshComposerLinks();
