@@ -466,7 +466,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		stopWatch = context.AfterFunc(ctx, cancelRun)
 	}
 	runCtx = context.WithValue(runCtx, turnKey{}, t)
-	t.runCtx = runCtx
+	t.runCtx = k.withImageGen(runCtx)
 	t.cancelRun = cancelRun
 	r := &turnRun{
 		k:         k,

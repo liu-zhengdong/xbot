@@ -183,6 +183,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 	mux.HandleFunc("POST /api/app/theme", s.appTheme)
 
+	mux.HandleFunc("GET /api/image-gen", s.getImageGen)
+	mux.HandleFunc("PUT /api/image-gen", s.putImageGenSettings)
+	mux.HandleFunc("GET /image-gen.js", s.static("static/image-gen.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /image-gen.css", s.static("static/image-gen.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/web-search", s.getWebSearch)
 	mux.HandleFunc("PUT /api/web-search", s.putWebSearch)
 	mux.HandleFunc("POST /api/web-search/key", s.testWebSearchKey)

@@ -6993,6 +6993,7 @@
     const page = $("setpage");
     ++settingsRequest;
     window.XBotWebSearch?.unmount();
+    window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
     window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
@@ -7011,6 +7012,7 @@
   function closeSettings(restore = true) {
     ++settingsRequest;
     window.XBotWebSearch?.unmount();
+    window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
     window.XBotPersonaCards?.unmount();
     $("setpage").hidden = $("setscrim").hidden = true;
@@ -7020,7 +7022,7 @@
     if (restore) (settingsOpener?.isConnected && !settingsOpener.hidden ? settingsOpener : $("account")).focus({ preventScroll: true });
     settingsOpener = null;
   }
-  async function openSettings(section = "general", { home = false } = {}) {
+  async function openSettings(section = "general", { home = false, provider = "" } = {}) {
     const page = $("setpage");
     const opening = page.hidden;
     if (opening) settingsOpener = document.activeElement?.closest("#account-menu") ? $("account") : document.activeElement;
@@ -7042,6 +7044,7 @@
     for (const pane of page.querySelectorAll("[data-spane]")) pane.hidden = pane.dataset.spane !== section;
     if (section !== "devices") window.xbotDevices?.unmount();
     window.XBotWebSearch?.unmount();
+    window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
     window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
@@ -7057,12 +7060,14 @@
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
       } else if (section === "search") {
         await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
+      } else if (section === "image-gen") {
+        await window.XBotImageGen.mount({api, host:$("settings-image-gen"), isCurrent:()=>request===settingsRequest, manage:id=>openSettings("providers", {provider:id})});
       } else if (section === "skills") {
         await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "persona") {
         await window.XBotPersonaCards.mount({api, host:$("settings-persona"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "providers") {
- await window.XBotProviders.settings({api,host:$("settings-providers"),isCurrent:()=>request===settingsRequest});
+ await window.XBotProviders.settings({api,host:$("settings-providers"),initialProvider:provider,isCurrent:()=>request===settingsRequest});
  } else if (section === "devices") {
         await window.xbotDevices.mount();
       } else if (section === "apps") {

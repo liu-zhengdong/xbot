@@ -40,6 +40,12 @@
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 
+## 图片生成
+
+- `GET /api/image-gen`：返回 `{enabled,provider,providers:[{id,name,logged_in}]}`。默认关，选择尚未保存时优先已登录的账号，否则 OpenAI；`openai` 对应 ChatGPT OAuth，`xai` 对应 xAI OAuth。只返回登录布尔值，不返回保险箱原文。
+- `PUT /api/image-gen`：完整提交 `{enabled:true,provider:"openai|xai"}`，返回当前设置。正文上限 4 KiB，拒绝未知字段、缺失值、非法供应商和尾随 JSON。认证与同源要求复用现有设置接口。写入现有 `web.json`，与搜索共用文件锁，重复值不重写。
+- 全局关闭不挂生图；开启后仅所选家的已登录 OAuth Responses 绑定可用。每轮开始固定配置，进行中的一轮保留快照；产物仍进工作区，不自动挂气泡。
+
 ## 网页搜索
 
 以下接口均要求登录，写入还要求同源。请求最多 4 KiB，拒绝未知字段和多份 JSON。

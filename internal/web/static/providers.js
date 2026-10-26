@@ -65,7 +65,7 @@
     const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" };
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
   }
-  async function settings({ api, host, isCurrent = () => true }) {
+  async function settings({ api, host, isCurrent = () => true, initialProvider = "" }) {
     const mount = {}; mounts.set(host, mount);
     const alive = () => mounts.get(host) === mount && isCurrent();
     let data, query = "", selected = "", revision = 0, loginRequest = null;
@@ -332,7 +332,7 @@
         status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : p.oauth ? "未登录" : "密钥未配置"));
         if (p.oauth === "chatgpt") {
           const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
-          const again = button("重新登录", "provider-back", () => login("chatgpt", paint, () => capability(subscriptionEntry())));
+          const again = button(p.key_configured ? "重新登录" : "登录", "provider-back", () => login("chatgpt", paint, () => capability(subscriptionEntry())));
           function paint(state, message) {
             again.disabled = state === "starting";
             if (state === "starting") note.textContent = "正在登录…";
@@ -414,7 +414,13 @@
     }
     async function load() {
       host.replaceChildren(state("正在读取供应商…"));
-      try { data = await api("/api/providers"); if (!alive()) return; selected = key(entries().find(p => p.key_configured) || entries()[0]); paint(); }
+      try {
+        data = await api("/api/providers");
+        if (!alive()) return;
+        const target = initialProvider === "openai" ? subscriptionEntry() : initialProvider === "xai" ? (entries().find(p => p.oauth === "xai") || entries().find(p => p.brand === "xai")) : null;
+        selected = key(target || entries().find(p => p.key_configured) || entries()[0]);
+        if (target) await capability(target); else paint();
+      }
       catch { if (alive()) host.replaceChildren(state("读取供应商失败。", load)); }
     }
     await load();

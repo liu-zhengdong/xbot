@@ -17,6 +17,7 @@ import (
 	"xbot/internal/config"
 	"xbot/internal/link"
 	"xbot/internal/provider"
+	"xbot/internal/vault"
 	"xbot/internal/work"
 )
 
@@ -49,10 +50,20 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 	}))
 	defer server.Close()
 	off := false
-	if err := config.Add(b.Root, config.Provider{Name: "openai", Protocol: config.Responses, BaseURL: server.URL, APIKeyEnv: "FAKE"}, config.ModelSpec{Name: "gpt-5.5", Context: 272000, HostedSearch: &off}); err != nil {
+	if err := config.Add(b.Root, config.Provider{Name: "openai", Protocol: config.Responses, BaseURL: server.URL, OAuth: "chatgpt"}, config.ModelSpec{Name: "gpt-5.5", Context: 272000, HostedSearch: &off}); err != nil {
 		t.Fatal(err)
 	}
 	if err := config.SetImageGen(b.Root, "openai", "gpt-5.5", true, "gpt-image-2.5-flare"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := config.OAuthVault(b.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := vault.SetOAuth(v, "chatgpt", vault.OAuthCredential{AccessToken: "fake"}, []string{"127.0.0.1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SetWebImageGen(b.Root, true, "openai"); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.SetBinding("openai", "gpt-5.5"); err != nil {
@@ -130,7 +141,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 		t.Fatalf("image tool %v", first)
 	}
 
-	if err := config.SetImageGen(b.Root, "openai", "gpt-5.5", false, ""); err != nil {
+	if err := config.SetWebImageGen(b.Root, false, "openai"); err != nil {
 		t.Fatal(err)
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "再来", time.Unix(1001, 0))); err != nil {
@@ -143,5 +154,72 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 		if tool["type"] == "image_generation" {
 			t.Fatal("image generation still mounted after switching off")
 		}
+	}
+}
+
+func TestImageGenGlobalGate(t *testing.T) {
+	for _, tc := range []struct {
+		name, selected, oauth         string
+		enabled, logged, legacy, want bool
+	}{
+		{"default off", "openai", "chatgpt", false, true, true, false},
+		{"openai oauth", "openai", "chatgpt", true, true, false, true},
+		{"xai oauth", "xai", "xai", true, true, false, true},
+		{"wrong selection", "xai", "chatgpt", true, true, true, false},
+		{"not logged in", "openai", "chatgpt", true, false, true, false},
+		{"api key only", "openai", "", true, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := testBot(t, link.NameTools, link.NameTerminal)
+			keyEnv := ""
+			if tc.oauth == "" {
+				keyEnv = "FAKE"
+			}
+			if err := config.Add(b.Root, config.Provider{Name: "custom-name", Protocol: config.Responses, BaseURL: "http://127.0.0.1:1", OAuth: tc.oauth, APIKeyEnv: keyEnv}, config.ModelSpec{Name: "model", Context: 1000, HostedImageGen: &tc.legacy}); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.SetBinding("custom-name", "model"); err != nil {
+				t.Fatal(err)
+			}
+			if tc.enabled {
+				if err := config.SetWebImageGen(b.Root, true, tc.selected); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.logged {
+				v, err := config.OAuthVault(b.Root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				kind := tc.oauth
+				if kind == "" {
+					kind = "chatgpt"
+				}
+				if err := vault.SetOAuth(v, kind, vault.OAuthCredential{AccessToken: "fake"}, []string{"127.0.0.1"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			k := &Kernel{Bot: b}
+			inherited := provider.WithImageGen(context.Background(), provider.ImageGen{Save: func([]byte) (string, error) { return "", nil }})
+			ctx := k.withImageGen(context.Background())
+			if got := provider.HasImageGen(ctx); got != tc.want {
+				t.Fatalf("mounted=%v want=%v", got, tc.want)
+			}
+			if got := provider.HasImageGen(k.withImageGen(inherited)); got != tc.want {
+				t.Fatalf("inherited mounted=%v want=%v", got, tc.want)
+			}
+			if tc.want {
+				if err := config.SetWebImageGen(b.Root, false, tc.selected); err != nil {
+					t.Fatal(err)
+				}
+				r := &turnRun{k: k, t: &turn{runCtx: ctx}}
+				if !provider.HasImageGen(r.modelContext()) {
+					t.Fatal("running turn lost its snapshot")
+				}
+				if provider.HasImageGen(k.withImageGen(context.Background())) {
+					t.Fatal("next turn kept disabled capability")
+				}
+			}
+		})
 	}
 }

@@ -2,6 +2,12 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 图片生成设置（分支实现，待合入/验收）
+
+- 设置在人设卡后新增图片生成，复用网页搜索密度与 web.json 写锁；全局默认关，OpenAI / Grok 单选，账号状态只读现有 OAuth 元数据，未登录同浮层深链至 ChatGPT / xAI 详情。新轮固定配置，只有所选家的已登录 OAuth Responses 绑定挂生图；图片继续进 generated/，不挂气泡。设计与待验收项见 [image-gen-settings](dev/image-gen-settings.md)。
+- 全仓 Go 单次测试、vet、gofmt 通过；新增配置并发/幂等、API 输入边界、门控与浅深色 Chrome 交互回归。旧门控 overlay 上全局关/错家/未登录/API key 的回归失败；原工作区落图与无气泡断言继续通过。截图在 `~/.xbot-build/ui-shots/image-gen-settings/`，编码报告在 `~/.xbot-build/image-gen-settings/encode-report.md`。
+- 本机 Chrome、1440×900、DPR 2、模拟 API，每个主题 30 次开关点击至下一帧：浅色 p95 35.7ms / 最大 35.9ms，深色 p95 34.9ms / 最大 35.0ms；零页面脚本错误。这是设置交互耗时，不代表真模型响应、IPC、后台负载或 60fps 达标。未合 main、未 push、未重启服务；待设计师截图复核及合入后真实账号工作区验收。
+
 ## 2026-10-26 Bot 面板与窄屏、rail 修正（已合本地 main，待手测）
 
 - 满宽厂头仅留编辑；模型整栏、人设满宽；更多复用原菜单，改由本机 Bot 行和置顶头像右键／长按进入，动作绑定被操作的 Bot，旧菜单及子菜单统一关闭。信息面板各断点统一右进右出，手机全高近全宽；汉堡按 52px 内容带加安全区、16px 左距、8px 间距落实。72px rail 分区头仅留 10px 透明间隔，设备头同样清掉灰底和圆角，壳间距保留。编码 tip `1765587`（rebase onto main 后 tip 见合入提交）；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-panel-detail/review1.md`）。

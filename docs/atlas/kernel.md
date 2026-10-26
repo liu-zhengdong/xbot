@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ 9046089 + hosted 生图工作区入口
+verified: 2026-10-26 @ 7164a11 + 图片生成全局门控
 ---
 # 内核：Link、Event、收件箱
 
@@ -30,7 +30,7 @@ verified: 2026-10-26 @ 9046089 + hosted 生图工作区入口
 
 ## 厂商生图
 
-原有模型调用上下文按当前 Bot 绑定提供 hosted 生图的工作区保存入口；与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
+每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。仅开启、当前 Bot 绑定为所选家的 OAuth Responses 且现有保险箱登录态已配置时，模型调用上下文才提供 hosted 生图的工作区保存入口；开关关闭优先于旧模型标记，同一轮续段保留快照。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
 
 ## 全局搜索策略
 

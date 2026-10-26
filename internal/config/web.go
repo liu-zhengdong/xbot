@@ -16,10 +16,12 @@ import (
 // WebFile is ~/.xbot/web.json. It names search and fetch backends.
 // API keys are environment variable names, never values.
 type WebFile struct {
-	Search        WebBackend `json:"search"`
-	Fetch         WebBackend `json:"fetch"`
-	SearchEnabled *bool      `json:"search_enabled,omitempty"`
-	SearchMode    string     `json:"search_mode,omitempty"`
+	Search           WebBackend `json:"search"`
+	Fetch            WebBackend `json:"fetch"`
+	SearchEnabled    *bool      `json:"search_enabled,omitempty"`
+	SearchMode       string     `json:"search_mode,omitempty"`
+	ImageGenEnabled  *bool      `json:"image_gen_enabled,omitempty"`
+	ImageGenProvider string     `json:"image_gen_provider,omitempty"`
 	// TrustedEgressCIDRs is accepted so an older web.json still loads. Web
 	// requests no longer need an address allow-list. The value is ignored
 	// and dropped on the next save.
@@ -103,6 +105,9 @@ func applyWebEnv(f *WebFile, getenv func(string) string) {
 }
 
 func validateWeb(f WebFile) error {
+	if f.ImageGenProvider != "" && ImageGenOAuth(f.ImageGenProvider) == "" {
+		return errors.New("web: invalid image generation provider")
+	}
 	if f.SearchMode != "" && f.SearchMode != "auto" && f.SearchMode != "local" {
 		return errors.New("web: invalid search mode")
 	}

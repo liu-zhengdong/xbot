@@ -9,12 +9,13 @@ import (
 	"xbot/internal/work"
 )
 
-// withImageGen mounts vendor-hosted image generation when the bound model has
-// it switched on. The registry is read on each model request, like the search
-// preference, so a settings change reaches the next turn. Pictures land in
+// withImageGen snapshots the global preference and account at turn start.
+// Only the selected OAuth Responses binding can generate. Pictures land in
 // the bot workspace's generated/ directory; the conversation keeps only the
 // relative path, never the bytes, and nothing is attached to a bubble.
 func (k *Kernel) withImageGen(ctx context.Context) context.Context {
+	// Clear an inherited capability as well: a disabled global setting wins.
+	ctx = provider.WithImageGen(ctx, provider.ImageGen{})
 	if k.Bot == nil {
 		return ctx
 	}
@@ -23,8 +24,21 @@ func (k *Kernel) withImageGen(ctx context.Context) context.Context {
 	if name == "" {
 		return ctx
 	}
+	f, err := config.LoadWeb(k.Bot.Root)
+	if err != nil || !f.ImageGenOn() || config.ImageGenOAuth(f.ImageGenProvider) == "" {
+		return ctx
+	}
 	p, spec, err := config.Lookup(k.Bot.Root, name, model)
-	if err != nil || !spec.HasHostedImageGen(p.WireProtocol()) {
+	if err != nil || p.OAuth != config.ImageGenOAuth(f.ImageGenProvider) {
+		return ctx
+	}
+	// The global setting supplies the capability; no per-model switch is
+	// required after login or when the account catalog gains a new model.
+	spec.HostedImageGen = f.ImageGenEnabled
+	if !spec.HasHostedImageGen(p.WireProtocol()) {
+		return ctx
+	}
+	if loggedIn, err := config.ImageGenLoggedIn(ctx, k.Bot.Root, f.ImageGenProvider); err != nil || !loggedIn {
 		return ctx
 	}
 	dir := work.BotDir(k.Bot.Root, k.Bot.Name())
