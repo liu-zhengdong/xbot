@@ -368,3 +368,9 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 - **回退保留源定界符（R5 P2）**：mathNode 的源串与 displayMode 分开传，句中 `$$…$$` 缺库/抛错回退仍是 `$$…$$`，不改写成 `$…$`。
 
 验证：新增 `TestComposerNativeEditBrowser`（headless Chrome，真实 `execCommand` 输入/删除 + ⌘/Ctrl+Z/⇧Z 撤销重做 + 上限处原生 insertText 断言）、`TestBubbleMathRendering` 加真实 KaTeX/非法 TeX 与配对/回退断言、`TestBubbleMathBrowser` 加真实解析失败与句中 `$$` 回退段；四个测试在旧 HEAD（6595c80）上逐一失败确认。`go test ./internal/web/ -count=1` 与 `-count=3` 过，gofmt/vet 净，`go build ./...` 过。级别：本地分支端到端通过，未合入 main、未 push，主人日用未验证。复审报告与证据在仓外 `~/.xbot-build/composer-url/`。
+
+### 推翻前台后台 · 删限制（2026-10-26，分支 `feature/drop-foreground-bg`，未推）
+
+按 [ADR 0028](adr/0028-no-foreground-background-split.md) 整块删掉前台闸：`foreground.go` 全文（`foregroundHidden`/`foregroundKept`/`workClass`、`foregroundTools`/`foregroundRefuses`/`errForeground`、`foregroundCap`/`cappedTools`/`capTools`/`capNote`/`capGrace`/`<foreground_limit>`）、`StopForegroundLimit`、turn 的 `capped`/`capSteps`/`capBaseTools`/`capFrom`/`capFork`、`freshAllowanceLocked`；`AllowFork` 下「超前台上限自动转后台」（`foregroundCapped`/`capNotice`）一并删，插话分叉保留。`ForegroundMaxTools`/`ForegroundMaxTime` 从 Kernel、role 默认、`Config`、`ProfileUpdate`、`profile set` 参数里删除。`DispatchRule` 改写为「先回人再干活；短活自己干，长活 dispatch」，旧措辞留 `legacyDispatchRule` 只供迁移识别。
+
+验证：新测 `TestMainLineDoesTheWork`、`TestMainLineAndSubagentsReachTheMountedTools`、`TestLongTurnStaysOnMainLine` 在旧代码（71f1ac9）上均失败；`go test -count=1 ./...` 46 包全过，kernel/bot/cmd/xbot/eval `-count=3` 过，gofmt/vet 净。级别：已合入分支（未合 main、未推）。Not run：真模型 `evals/dispatch/*`（新规则下模型可能自己做短活，期望值需主人用真 DeepSeek 再认证）；浏览器手测。
