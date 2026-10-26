@@ -15,7 +15,7 @@ type skillTool struct{ k *Kernel }
 
 func (skillTool) Name() string { return "read_skill" }
 func (skillTool) Description() string {
-	return "Read the body of a shared skill. Pass id, the skill id from the Skills list. The text is for this turn only."
+	return "Read a skill from this bot owner's local library at ~/.xbot/skills/<owner>/. Pass id, the skill id from the Skills list. The text is for this turn only."
 }
 func (skillTool) Parameters() any {
 	return schema(map[string]any{
@@ -50,7 +50,7 @@ type writeSkillTool struct{ k *Kernel }
 
 func (writeSkillTool) Name() string { return "write_skill" }
 func (writeSkillTool) Description() string {
-	return "Draft a new user skill or replace one. The owner must approve before it is written."
+	return "Create or replace a skill directly in this bot owner's local library at ~/.xbot/skills/<owner>/<slug>/SKILL.md."
 }
 func (writeSkillTool) Parameters() any {
 	return schema(map[string]any{

@@ -33,6 +33,18 @@ func TestBuiltinTypes(t *testing.T) {
 	}
 }
 
+func TestBuiltinDevAllowsSkills(t *testing.T) {
+	dev, ok := Find(Builtin(), "dev")
+	if !ok {
+		t.Fatal("missing dev type")
+	}
+	for _, name := range []string{"read_skill", "write_skill"} {
+		if !dev.Allows(name) {
+			t.Errorf("dev cannot use %s", name)
+		}
+	}
+}
+
 func TestFileOverridesAndAdds(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string) {

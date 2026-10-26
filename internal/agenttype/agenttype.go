@@ -64,7 +64,7 @@ func Builtin() []Type {
 		{
 			Name:    "dev",
 			When:    "Change code or files: read, edit, run commands and tests, use git.",
-			Tools:   []string{"read_file", "write_file", "edit_file", "shell", "web_fetch", "web_search", "view_image"},
+			Tools:   []string{"read_file", "write_file", "edit_file", "shell", "web_fetch", "web_search", "view_image", "read_skill", "write_skill"},
 			Prompt:  "You are a developer. Read before you edit. Run the tests after a change. Stay inside the task: do not refactor or fix things you were not asked to.",
 			Budget:  2 * time.Hour,
 			Report:  []string{"Changed", "Tests", "Not done"},

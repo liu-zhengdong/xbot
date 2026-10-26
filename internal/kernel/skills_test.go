@@ -233,6 +233,71 @@ func TestReadSkillWithoutLoad(t *testing.T) {
 	}
 }
 
+func TestDispatchMainLineWritesLoadedSkill(t *testing.T) {
+	ada := testBot(t, link.NameTerminal, link.NameSkills, link.NameAgents)
+	if err := ada.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{resps: []provider.Message{
+		linksCall("load", "skills"),
+		assistantCall("write", "", "write_skill", `{"slug":"ship","description":"Pack a release","body":"Run the release checks."}`),
+		assistantCall("read", "", "read_skill", `{"id":"ship"}`),
+		{Role: provider.RoleAssistant, Content: provider.TextContent("installed")},
+	}}
+	k := skillKernel(ada)
+	k.Provider = p
+	k.Dispatch = true
+	k.PermissionsOn = func() bool { return true }
+	k.Links = append(k.Links, link.Agents{})
+	k.MaxSteps = 6
+	k.Approve = func(context.Context, string, string) (bool, error) {
+		t.Error("writing a skill must use the existing Normal policy")
+		return false, nil
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install ship", time.Unix(1, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.reqs) != 4 {
+		t.Fatalf("model calls = %d, want 4", len(p.reqs))
+	}
+	if !hasDef(p.reqs[0].Tools, "dispatch") {
+		t.Fatal("test did not activate typed dispatch")
+	}
+	if hasDef(p.reqs[0].Tools, "write_skill") {
+		t.Fatal("write_skill must wait for links load")
+	}
+	for _, name := range []string{"read_skill", "write_skill"} {
+		if !hasDef(p.reqs[1].Tools, name) {
+			t.Errorf("loaded %s missing from the main line with Dispatch enabled", name)
+		}
+	}
+	info, body, err := skill.Open(skill.OwnerDir(ada.Root, "u1"), "ship")
+	if err != nil || info.Description != "Pack a release" || body != "Run the release checks." {
+		t.Fatalf("owner library write: info=%+v body=%q err=%v", info, body, err)
+	}
+	if !strings.Contains(messagesText(p.reqs[3].Messages), "Run the release checks.") {
+		t.Fatal("main line could not read back the installed skill")
+	}
+}
+
+func TestSkillDescriptionsNameLocalOwnerLibrary(t *testing.T) {
+	for name, text := range map[string]string{
+		"read_skill":  (skillTool{}).Description(),
+		"write_skill": (writeSkillTool{}).Description(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !strings.Contains(text, "~/.xbot/skills/<owner>/") {
+				t.Errorf("missing local owner library path: %s", text)
+			}
+			for _, misleading := range []string{"shared", "magpie", "approve", "approval"} {
+				if strings.Contains(strings.ToLower(text), misleading) {
+					t.Errorf("description contradicts local library / Normal policy: %s", text)
+				}
+			}
+		})
+	}
+}
+
 func skillKernel(b *bot.Bot) *Kernel {
 	return &Kernel{
 		Bot: b, MaxSteps: 4,
