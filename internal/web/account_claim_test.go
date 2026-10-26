@@ -1,11 +1,15 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/account"
 )
 
 // 认领本机把安装绑到登录着的账号：走真 bindIfFree + ReportDevice，落盘后
@@ -68,11 +72,43 @@ func TestSessionMarksRemoteEntry(t *testing.T) {
 	if code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "zhengdong@example.com", "password": "password 12"}, nil); code != 200 {
 		t.Fatalf("register %d %v", code, out)
 	}
+	e.claim(c, nil)
 	tunnel := map[string]string{"X-Forwarded-For": "203.0.113.9"}
 	if _, out := e.do(c, "GET", "/api/session", nil, nil); out["remote"] != false {
 		t.Fatalf("local session %v", out)
 	}
 	if _, out := e.do(c, "GET", "/api/session", nil, tunnel); out["remote"] != true {
 		t.Fatalf("tunnel session %v", out)
+	}
+}
+
+type failingReport struct{ account.Client }
+
+func (failingReport) Report(context.Context, string, string, string, []string) error {
+	return errors.New("report down")
+}
+
+// 认领绑上了但账号设备登记失败：回包说没登记上，下一次页面请求重报，
+// 不能装作账号列表里已经有这台电脑。
+func TestAccountClaimSaysWhenReportFails(t *testing.T) {
+	e := newAcctEnv(t, false)
+	c := e.browser()
+	if code, out := e.do(c, "POST", "/api/account/register", map[string]string{"email": "zhengdong@example.com", "password": "password 12"}, nil); code != 200 {
+		t.Fatalf("register %d %v", code, out)
+	}
+	real := e.s.acct.client
+	e.s.acct.client = failingReport{real}
+	code, out := e.do(c, "POST", "/api/account/claim", nil, nil)
+	if code != 200 || out["bound"] != true || out["reported"] != false {
+		t.Fatalf("claim with report down %d %v", code, out)
+	}
+	if _, devs := e.do(c, "GET", "/api/account/devices", nil, nil); len(devs["devices"].([]any)) != 0 {
+		t.Fatalf("devices while report down %v", devs)
+	}
+	// Report is back: the next page request reports without waiting a minute.
+	e.s.acct.client = real
+	e.do(c, "GET", "/api/account/me", nil, nil)
+	if _, devs := e.do(c, "GET", "/api/account/devices", nil, nil); len(devs["devices"].([]any)) != 1 {
+		t.Fatalf("devices after report recovers %v", devs)
 	}
 }

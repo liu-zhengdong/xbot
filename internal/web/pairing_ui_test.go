@@ -52,19 +52,28 @@ func TestDevicesPairBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=12000", "--dump-dom", (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html")}).String()).CombinedOutput()
-	if err != nil {
-		t.Fatalf("Chrome: %v\n%s", err, out)
-	}
-	if !strings.Contains(string(out), `data-test-result="passed"`) {
-		// Keep diagnostics small: the full app DOM contains bundled artwork.
-		result := string(out)
-		if i := strings.Index(result, "data-test-result="); i >= 0 {
-			result = result[i:min(i+4000, len(result))]
-		} else if len(result) > 1500 {
-			result = result[:1500]
-		}
-		t.Fatalf("devices/pairing browser: %s", result)
+	// Every scene the driver knows runs in its own page and profile.
+	for _, scene := range []string{"", "remote", "claim", "account-claim", "account-claim-empty", "request", "join", "unpair"} {
+		t.Run("scene="+scene, func(t *testing.T) {
+			page := &url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html")}
+			if scene != "" {
+				page.RawQuery = "scene=" + scene
+			}
+			out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--window-size=1280,900", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=12000", "--dump-dom", page.String()).CombinedOutput()
+			if err != nil {
+				t.Fatalf("Chrome: %v\n%s", err, out)
+			}
+			if !strings.Contains(string(out), `data-test-result="passed"`) {
+				// Keep diagnostics small: the full app DOM contains bundled artwork.
+				result := string(out)
+				if i := strings.Index(result, "data-test-result="); i >= 0 {
+					result = result[i:min(i+4000, len(result))]
+				} else if len(result) > 1500 {
+					result = result[:1500]
+				}
+				t.Fatalf("devices/pairing browser: %s", result)
+			}
+		})
 	}
 }
 
@@ -75,8 +84,9 @@ window.addEventListener('unhandledrejection',e=>testErrors.push(String(e.reason)
 const scene=new URLSearchParams(location.search).get('scene');
 localStorage.setItem('xbot-theme',new URLSearchParams(location.search).get('theme')||'light');
 const fixture={calls:[],copied:'',codes:0,pendingCode:null,delayCode:false,delayCodeDelete:false,
- account:{email:'zh***@example.com',owner:true,hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true,unbound:false},
- pairing:{a:{phase:'none'},b:{phase:'none'}},devices:[],accountDevices:[{id:'self',name:'MacBook',online:true,self:true,bots:['XBot']},{id:'desktop',name:'台式机',online:true,self:false,bots:['writer','editor']}]};
+ // claim：已有主人会话、账号没绑；account-claim*：本机登录后没绑（登录从不静默绑定），落在「我的设备」。
+ account:{email:'zh***@example.com',owner:!/^account-claim/.test(scene),hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true,unbound:/claim/.test(scene)},
+ pairing:{a:{phase:'none'},b:{phase:'none'}},devices:[],accountDevices:scene==='account-claim-empty'?[]:[{id:'self',name:'MacBook',online:true,self:true,bots:[{name:'XBot'}]},{id:'desktop',name:'台式机',online:true,self:false,bots:[{name:'writer'},{name:'editor'}]}]};
 const peerDevice={id:'desktop',name:'台式机',label:'台式机',os:'Linux',online:true,bots:['writer','editor'],seen:new Date().toISOString(),added:'2026-10-03T00:00:00Z',bot_messaging:true};
 const json=v=>new Response(JSON.stringify(v),{headers:{'Content-Type':'application/json'}});
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{fixture.copied=text}}});
@@ -84,9 +94,9 @@ window.fetch=async(path,opts={})=>{
  const method=opts.method||'GET',key=method+' '+path;
  fixture.calls.push({key,body:opts.body&&JSON.parse(opts.body)});
  if(path==='/api/account/me')return json({account:fixture.account});
- if(path==='/api/account/claim'){fixture.account=Object.assign({},fixture.account,{owner:true,unbound:false});return json({account:fixture.account,bound:true})}
+ if(path==='/api/account/claim'){fixture.account=Object.assign({},fixture.account,{owner:true,unbound:false});return json({account:fixture.account,bound:true,reported:true})}
  if(path==='/api/account/devices')return json({devices:fixture.accountDevices});
- if(path==='/api/session')return json({authed:true,owner:'owner',owner_name:scene==='remote'?'政东':'政东',version:'dev-test',remote:scene==='remote'});
+ if(path==='/api/session')return json({authed:fixture.account.owner,owner:'owner',owner_name:scene==='remote'?'政东':'政东',version:'dev-test',remote:scene==='remote'});
  if(path==='/api/devices')return json({self:{name:'MacBook',os:'macOS',bots:['XBot'],gateway:'https://gateway.test'},gateway_ok:true,devices:fixture.devices,pairing:fixture.pairing});
  if(path==='/api/devices/pairing')return json({pairing:fixture.pairing});
  if(key==='POST /api/devices/code'){
@@ -96,8 +106,10 @@ window.fetch=async(path,opts={})=>{
  }
  if(key==='DELETE /api/devices/code'){if(fixture.delayCodeDelete)await new Promise(r=>fixture.pendingCodeDelete=r);fixture.pairing.a={phase:'none'};return json({pairing:fixture.pairing})}
  if(key==='DELETE /api/devices/join'){fixture.pairing.b={phase:'none'};return json({pairing:fixture.pairing})}
+ if(key==='POST /api/devices/join'){fixture.pairing.b={phase:'confirm',name:'台式机',os:'Linux',bots:['writer','editor']};return json({pairing:fixture.pairing})}
+ if(key==='POST /api/devices/join/confirm'){fixture.pairing.b={phase:'waiting',name:'台式机',expires:new Date(Date.now()+120000).toISOString()};return json({pairing:fixture.pairing})}
  if(key==='POST /api/devices/request'){fixture.pairing.a={phase:'done',name:'台式机'};return json({pairing:fixture.pairing})}
- if(/^DELETE \/api\/devices\//.test(path)){const id=path.split('/').pop();fixture.devices=fixture.devices.filter(d=>d.id!==id);return json({status:'ok'})}
+ if(/^DELETE \/api\/devices\//.test(key)){const id=path.split('/').pop();fixture.devices=fixture.devices.filter(d=>d.id!==id);return json({status:'ok'})}
  if(path.startsWith('/api/remote/'))return json({messages:[],device:peerDevice});
  if(path==='/api/bots/status')return json({bots:[]});
  if(path==='/api/notifications')return json({notifications:[]});
@@ -115,6 +127,19 @@ const clicks=key=>fixture.calls.filter(x=>x.key===key).length;
 const closed=async before=>waitFor(()=>clicks('DELETE /api/devices/code')>before&&!$('#devices-modal').firstChild&&fixture.pairing.a.phase==='none'&&fixture.pairing.b.phase==='none','cancel left live pairing');
 const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitFor(()=>$('#g7-copy-code')&&!xbotDevices.S.busy,'add did not generate code')};
 (async()=>{
+ if(/^account-claim/.test(scene)){
+  // 本机登录后没绑：「我的设备」上有认领卡，设备列表（空或有）到了也不刷掉；点了是真 POST，绑上后进主界面。
+  await waitFor(()=>clicks('GET /api/account/devices')>0&&document.querySelector('#acct .ac-devcnt')&&document.querySelector(scene==='account-claim-empty'?'#acct .ac-empty':'#acct .ac-dcard'),'account devices did not render');
+  await new Promise(r=>setTimeout(r,50));
+  const go=[...document.querySelectorAll('#acct .ac-claim button')].find(b=>b.textContent==='绑定这台电脑');
+  assert(go,'claim card was wiped by the device list');
+  assert(document.querySelector('#acct .ac-claim').textContent.includes('把这台电脑绑到账号？'),'claim copy');
+  go.click();
+  await waitFor(()=>clicks('POST /api/account/claim')===1,'claim did not POST');
+  await waitFor(()=>window.xbotDevices&&!document.getElementById('shell').hidden,'claim did not open the main interface');
+  assert(fixture.account.owner&&!fixture.account.unbound,'claim did not bind');
+  document.body.dataset.testResult='passed';return;
+ }
  await waitFor(()=>window.XBotSettings&&window.xbotDevices&&!document.getElementById('shell').hidden,'app did not boot');
  if(scene==='remote'){
   // 官网入口：底栏写账号设备数，不写本机名；侧栏照旧是真实设备组。
@@ -149,7 +174,7 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
   await waitFor(()=>xbotDevices.S.view==='request','poll did not surface the request');
   $('#devices-modal [data-act="decide"][data-d="allow"]').click();
   await waitFor(()=>xbotDevices.S.view==='success-a','allow did not succeed');
-  assert($('#devices-modal').textContent.includes('已和 台式机 绑定'),'success copy');
+  assert($('#devices-modal').textContent.includes('已和 台式机 配对'),'success copy');
   assert(clicks('POST /api/devices/request')===1&&fixture.calls.find(x=>x.key==='POST /api/devices/request').body.decision==='allow','allow body');
   document.body.dataset.testResult='passed';return;
  }
@@ -159,13 +184,45 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
   await waitFor(()=>$('#settings-devices .g7-dev-card'),'device card missing');
   $('#settings-devices [data-act="row-menu"][data-id="desktop"]').click();
   const row=$('#devices-modal [data-act="ask-unpair"]')||document.querySelector('.g7-row-menu [data-act="ask-unpair"]');
-  assert(row&&row.textContent.includes('解除绑定'),'unbind entry');
+  assert(row&&row.textContent.includes('解除配对'),'unpair entry');
   row.click();
   await waitFor(()=>xbotDevices.S.view==='unpair','unbind confirm missing');
   $('#devices-modal [data-act="unpair"]').click();
   await waitFor(()=>clicks('DELETE /api/devices/desktop')===1,'unbind did not DELETE');
   await waitFor(()=>!$('#settings-devices .g7-dev-card')&&document.getElementById('settings-devices').textContent.includes('还没有设备'),'unbound device stayed in the list');
   await waitFor(()=>document.getElementById('remote-roster').hidden,'unbind left the sidebar group');
+  document.body.dataset.testResult='passed';return;
+ }
+ if(scene==='join'){
+  // 次要路径：在添加设备里输入对方的短码 → 确认 → 等对方允许 → 配对成功。
+  await XBotSettings.open('devices');
+  await waitFor(()=>!$('[data-spane="devices"]').hidden,'settings devices pane');
+  await open();
+  assert(!$('#g7-code'),'join input should start folded');
+  const toggle=$('#devices-modal [data-act="join-open"]');
+  assert(toggle&&!toggle.classList.contains('primary'),'join entry must be a secondary text button');
+  toggle.click();
+  await waitFor(()=>$('#g7-code'),'join input did not open');
+  const type=v=>{const c=$('#g7-code');c.value=v;c.dispatchEvent(new Event('input',{bubbles:true}))};
+  type('2345-6789-ABC8');
+  await waitFor(()=>!$('#devices-modal [data-act="join"]').disabled,'next stayed disabled');
+  $('#devices-modal [data-act="join"]').click();
+  await waitFor(()=>$('#devices-modal').textContent.includes('有一位不对'),'typo not caught locally');
+  assert(clicks('POST /api/devices/join')===0,'typo reached the gateway');
+  type('请输入 2345-6789-ABC7 谢谢');
+  await waitFor(()=>!$('#devices-modal [data-act="join"]').disabled,'next stayed disabled for pasted sentence');
+  $('#devices-modal [data-act="join"]').click();
+  await waitFor(()=>xbotDevices.S.view==='confirm','join did not reach confirm');
+  assert(fixture.calls.find(x=>x.key==='POST /api/devices/join').body.code==='23456789ABC7','join body');
+  assert($('#devices-modal').textContent.includes('连接到 台式机？'),'confirm copy');
+  $('#devices-modal [data-act="confirm"]').click();
+  await waitFor(()=>xbotDevices.S.view==='waiting','confirm did not wait');
+  assert(clicks('POST /api/devices/join/confirm')===1,'confirm did not POST');
+  fixture.pairing.b={phase:'done',name:'台式机'};fixture.devices=[peerDevice];
+  await waitFor(()=>xbotDevices.S.view==='success-b','peer allow did not finish');
+  assert($('#devices-modal').textContent.includes('已和 台式机 配对'),'join success copy');
+  await waitFor(()=>document.querySelector('.g7-side-head'),'paired device missing from the sidebar');
+  assert(testErrors.length===0,testErrors.join(';'));
   document.body.dataset.testResult='passed';return;
  }
  // 默认场景：设置·设备与添加设备嵌层。
@@ -186,9 +243,11 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  assert(document.querySelector('.g7-side-head').textContent.includes('台式机'),'sidebar group name');
  // 添加设备：说明为主、短码次要；复制、换一个、完成都真清理。
  await open();
- assert($('#devices-modal').textContent.includes('把这台电脑绑到账号'),'add lead copy');
- assert($('#devices-modal').textContent.includes('也可以让对方输入下方短码'),'short code is secondary');
- assert(!$('#g7-code'),'join input must stay gone');
+ // 不承诺「只绑账号就能聊」：说明写清要配对一次。
+ const sheet=$('#devices-modal').textContent;
+ assert(sheet.includes('配对后')&&sheet.includes('还不会出现在这里的侧栏'),'add lead must say pairing is needed');
+ assert(!sheet.includes('绑定后，这里就能看到'),'add sheet promises account-only chat');
+ assert(!$('#g7-code')&&$('#devices-modal [data-act="join-open"]'),'join stays folded behind a secondary entry');
  assert($('#devices-modal [data-act="close-pair"]').textContent.includes('完成'),'finish button');
  $('#g7-copy-code').click();await waitFor(()=>fixture.copied,'clipboard failed');
  assert(fixture.copied===fixture.pairing.a.code,'wrong code copied');
@@ -213,5 +272,5 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  assert(!document.getElementById('greeting').textContent.includes('有什么事'),'greeting idle line');
  assert(testErrors.length===0,testErrors.join(';'));
  document.body.dataset.testResult='passed';
-})().catch(e=>{document.body.dataset.testResult="view="+xbotDevices.S.view+" modal="+document.getElementById("devices-modal").innerHTML.slice(0,150)+" ERR "+String(e).slice(0,150)});
+})().catch(e=>{const m=document.getElementById("devices-modal");document.body.dataset.testResult="ERR "+String(e).slice(0,150)+" view="+(window.xbotDevices&&xbotDevices.S.view)+" modal="+(m?m.innerHTML.slice(0,150):"")});
 `

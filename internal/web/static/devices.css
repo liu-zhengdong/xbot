@@ -185,6 +185,11 @@ span.g7-switch { margin-top: 2px; opacity: 0.55; cursor: default; }
 .g7-or { margin-top: var(--x-s8); text-align: center; color: var(--x-faint); font-size: var(--x-fs-sm); }
 .g7-pair .g7-or + .g7-pair-label { margin-top: var(--x-s6); }
 .g7-pair-field { margin: 0; }
+/* 输入对方的短码：次要入口，收起时只有一行文字按钮 */
+.g7-join-open { display: block; margin: var(--x-s6) auto 0; font-size: var(--x-fs-sm); color: var(--muted); }
+.g7-join { margin-top: var(--x-s6); padding-top: var(--x-s5); border-top: 1px solid var(--x-fill-2); }
+.g7-join-acts { display: flex; margin-top: var(--x-s4); }
+.g7-join-acts .spacer { flex: 1; }
 .g7-pair-field input { min-height: var(--x-s9); padding: var(--x-s5); font-size: var(--x-fs-ui); color: var(--x-text); }
 .g7-pair-field.is-bad input { background: var(--x-danger-bg); }
 .g7-pair .g7-fine { margin: var(--x-s3) 0 0; font-size: var(--x-fs-sm); color: var(--x-muted); }

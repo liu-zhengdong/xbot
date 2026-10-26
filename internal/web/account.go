@@ -164,8 +164,10 @@ func (s *Server) accountClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	view := s.accountViewFor(r, me, b)
 	s.setCookie(w, s.loginToken())
-	s.reportDevice(r.Context(), session, b, true)
-	writeJSON(w, http.StatusOK, map[string]any{"account": view, "bound": true})
+	// The binding is on disk either way; reported tells the page whether the
+	// account's device list has this computer yet.
+	reported := s.reportDevice(r.Context(), session, b, true) == nil
+	writeJSON(w, http.StatusOK, map[string]any{"account": view, "bound": true, "reported": reported})
 }
 
 func (s *Server) registerAccount(mux *http.ServeMux) {
@@ -384,7 +386,9 @@ type accountView struct {
 }
 
 // signIn keeps the account session in a cookie and, for the account this
-// install belongs to, opens the owner session too.
+// install belongs to, opens the owner session too. It never binds: an unbound
+// install answers unbound, and the page asks 把这台电脑绑到账号？ before
+// POST /api/account/claim binds it.
 func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) {
 	me, err := s.acct.client.Me(r.Context(), session)
 	if err != nil {
@@ -392,7 +396,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 		return
 	}
 	setAccountCookie(w, session)
-	b, err := s.bindIfFree(me.Key, me.Verified && s.ownerProof(r))
+	b, err := s.bindIfFree(me.Key, false)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "account binding")
 		return
@@ -400,7 +404,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
 		s.setCookie(w, s.loginToken())
-		s.reportDevice(r.Context(), session, b, true)
+		_ = s.reportDevice(r.Context(), session, b, true)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"state": "done", "account": view})
 }
@@ -445,7 +449,7 @@ func (s *Server) accountMe(w http.ResponseWriter, r *http.Request) {
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
 		s.setCookie(w, s.loginToken())
-		s.reportDevice(r.Context(), session, b, false)
+		_ = s.reportDevice(r.Context(), session, b, false)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"account": view, "app": s.App})
 }
@@ -466,20 +470,27 @@ func (s *Server) accountLogout(w http.ResponseWriter, r *http.Request) {
 
 // reportDevice tells the service this computer and its bots, at most once a
 // minute unless forced. Only bot names leave the machine.
-func (s *Server) reportDevice(ctx context.Context, session string, b accountBinding, force bool) {
+// A failed report clears the throttle, so the next page request tries again.
+func (s *Server) reportDevice(ctx context.Context, session string, b accountBinding, force bool) error {
 	s.acct.mu.Lock()
 	if !force && time.Since(s.acct.report) < time.Minute {
 		s.acct.mu.Unlock()
-		return
+		return nil
 	}
 	s.acct.report = time.Now()
 	s.acct.mu.Unlock()
 	if b.DeviceID == "" {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_ = s.acct.client.Report(ctx, session, b.DeviceID, s.selfDeviceName(), s.ownerBotNames())
+	err := s.acct.client.Report(ctx, session, b.DeviceID, s.selfDeviceName(), s.ownerBotNames())
+	if err != nil {
+		s.acct.mu.Lock()
+		s.acct.report = time.Time{}
+		s.acct.mu.Unlock()
+	}
+	return err
 }
 
 // selfDeviceName is the name this computer goes by in 设备; before any
@@ -543,7 +554,7 @@ func (s *Server) accountDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	owner := me.Verified && b.Key != "" && b.Key == me.Key
 	if owner {
-		s.reportDevice(r.Context(), session, b, false)
+		_ = s.reportDevice(r.Context(), session, b, false)
 	}
 	list, err := s.acct.client.Devices(r.Context(), session)
 	if err != nil {
