@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +18,9 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/notify"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 	"xbot/internal/work"
 )
 
@@ -193,5 +198,149 @@ func TestNotifyOwnerTakesAPastedID(t *testing.T) {
 	}
 	if len(k.turn.outImages) != 1 || k.turn.outImages[0] != id {
 		t.Fatalf("queued %v", k.turn.outImages)
+	}
+}
+
+// TestLateNotifyImagesStayWithTheirTurn is the regression for a detached
+// notify_owner: the owner interjects, the call goes on as a tool job, the
+// original turn writes its reply and a new turn starts. The late call used to
+// queue its pictures on whatever turn was live, so the next turn's unrelated
+// reply showed them. Now the call is refused, with no note, and says so.
+func TestLateNotifyImagesStayWithTheirTurn(t *testing.T) {
+	for _, replied := range []bool{true, false} {
+		t.Run(map[bool]string{true: "reply-sent", false: "reply-pending"}[replied], func(t *testing.T) {
+			k, dir, _ := outImageKernel(t)
+			if err := os.WriteFile(filepath.Join(dir, "chart.png"), onePixelPNG(t), 0600); err != nil {
+				t.Fatal(err)
+			}
+			owner := &turn{}
+			k.turn = owner
+			ctx := context.WithValue(context.Background(), turnKey{}, owner)
+			signal := make(chan struct{})
+			ctx = tools.WithWaitSignal(ctx, signal)
+			started, release := make(chan struct{}), make(chan struct{})
+			finished := make(chan tools.CallResult, 1)
+			receipt := make(chan tools.CallResult, 1)
+			defer func() { _ = k.Close() }()
+			args := json.RawMessage(`{"text":"chart ready","images":["chart.png"]}`)
+			go func() {
+				receipt <- k.runToolCall(ctx, notifyTool{k}, args, func(callCtx context.Context) tools.CallResult {
+					close(started)
+					<-release
+					out, err := (notifyTool{k}).Run(callCtx, args)
+					res := tools.CallResult{Text: out, Err: err}
+					finished <- res
+					return res
+				})
+			}()
+			<-started
+			close(signal)
+			if got := <-receipt; got.Job == nil {
+				close(release)
+				t.Fatalf("tool did not detach: %+v", got)
+			}
+			if replied {
+				if _, err := k.recordTurn(owner, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("原轮先收尾")}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			next := &turn{}
+			k.turnMu.Lock()
+			k.turn = next
+			k.turnMu.Unlock()
+			close(release)
+			result := <-finished
+			if _, err := k.recordTurn(next, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("另一件事的回复")}); err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entriesFor(t, k.Bot) {
+				if e.Message.Text() == "另一件事的回复" && len(e.Images) > 0 {
+					t.Fatalf("late notify put its pictures on the next turn's reply: %v", e.Images)
+				}
+			}
+			owner.mu.Lock()
+			queued := slices.Clone(owner.outImages)
+			owner.mu.Unlock()
+			if replied {
+				if result.Err == nil || !strings.Contains(result.Err.Error(), "already sent") {
+					t.Fatalf("late notify after the reply = %q, %v; want a refusal that says so", result.Text, result.Err)
+				}
+				if notes, _ := notify.Open(k.Bot.OutboxPath()).Unread(); len(notes) != 0 {
+					t.Fatalf("refused call still sent a note: %+v", notes)
+				}
+				return
+			}
+			if result.Err != nil || len(queued) != 1 {
+				t.Fatalf("late notify before the reply: %v, queued on owner %v", result.Err, queued)
+			}
+		})
+	}
+}
+
+// TestPastedIDContentsAreChecked: a name in paste/ proves nothing about the
+// file, so an id goes through the same type and pixel checks as a path.
+func TestPastedIDContentsAreChecked(t *testing.T) {
+	for name, data := range map[string][]byte{
+		"not-an-image":   []byte("not an image"),
+		"over-pixel-cap": nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if data == nil {
+				data = sizedPNG(t, 2049, 1)
+			}
+			k, dir, _ := outImageKernel(t)
+			k.turn = &turn{}
+			id, _ := work.PastedName("image/png")
+			if err := work.WritePasted(dir, id, data); err != nil {
+				t.Fatal(err)
+			}
+			args, _ := json.Marshal(map[string]any{"text": "这张", "images": []string{id}})
+			if out, err := (notifyTool{k}).Run(context.Background(), args); err == nil {
+				t.Fatalf("accepted: %s", out)
+			}
+			if len(k.turn.outImages) != 0 {
+				t.Fatalf("queued %v", k.turn.outImages)
+			}
+			if notes, _ := notify.Open(k.Bot.OutboxPath()).Unread(); len(notes) != 0 {
+				t.Fatalf("note sent: %+v", notes)
+			}
+		})
+	}
+}
+
+// TestRepeatedRefsAreReadOnce: the caps bind while reading. One path named 24
+// times used to be read 24 times and held before deduplication.
+func TestRepeatedRefsAreReadOnce(t *testing.T) {
+	k, dir, _ := outImageKernel(t)
+	k.turn = &turn{}
+	pic := onePixelPNG(t)
+	data := append(pic, make([]byte, (1<<20)-len(pic))...)
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	refs := make([]string, 24)
+	for i := range refs {
+		refs[i] = "chart.png"
+	}
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	ids, err := k.attachOutImages(context.Background(), refs)
+	runtime.ReadMemStats(&after)
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("%v %v", ids, err)
+	}
+	if got := after.TotalAlloc - before.TotalAlloc; got > 8<<20 {
+		t.Fatalf("allocated %d bytes for one 1 MiB picture named 24 times", got)
+	}
+	// Distinct refs past the count cap are refused before anything is read.
+	many := []string{"a.png", "b.png", "c.png", "d.png", "e.png"}
+	if _, err := k.attachOutImages(context.Background(), many); err == nil || !strings.Contains(err.Error(), "at most") {
+		t.Fatalf("five missing files: %v; want the count refusal first", err)
+	}
+	// A file that would push the reply past 10 MiB is refused by its size.
+	k.turn = &turn{outImages: []string{"x"}, outBytes: work.PastedMaxTotalBytes - 10}
+	if _, err := k.attachOutImages(context.Background(), []string{"chart.png"}); !errors.Is(err, errOverBudget) {
+		t.Fatalf("over budget: %v", err)
 	}
 }
