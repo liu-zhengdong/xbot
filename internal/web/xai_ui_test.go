@@ -82,3 +82,51 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
 		t.Fatalf("xai login states: %v: %s", err, out)
 	}
 }
+
+// TestXAIKeyConfiguredStillShowsLogin guards the primary path: a vendor card
+// with a saved API key but no OAuth binding must still lead with「登录 xAI」
+// and the folded key entry, not a failed model fetch with only a retry.
+func TestXAIKeyConfiguredStillShowsLogin(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node unavailable")
+	}
+	const script = `
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+let completed=false;process.on('beforeExit',()=>{if(!completed){console.error('async test did not complete');process.exitCode=1}});
+class Element {
+ constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.classList={add(){}};this.textContent='';}
+ append(...nodes){this.children.push(...nodes)} replaceChildren(...nodes){this.children=nodes}
+ setAttribute(k,v){this.attrs[k]=v} focus(){} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
+}
+const host=new Element('main'),calls=[];
+const window={open(){throw Error('no login window expected before OAuth')}};
+const document={documentElement:{classList:{contains:()=>false}},createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag)};
+vm.runInNewContext(fs.readFileSync('static/providers.js','utf8'),{window,document,URL,WeakMap,encodeURIComponent,setTimeout(){}});
+const walk=n=>[n,...n.children.flatMap(walk)],find=(tag,text)=>walk(host).find(n=>n.tag===tag&&n.innerText.includes(text));
+// An old-style key binding: protocol chat_completions, a key configured, no OAuth.
+const providers=[{name:'xai',brand:'xai',protocol:'chat_completions',api_key_env:'XAI_API_KEY',key_configured:true,models:[]}];
+const api=async(path)=>{
+ calls.push(path);
+ if(path==='/api/providers')return {providers,vendors:[{brand:'xai',title:'xAI',protocol:'chat_completions',models:['grok-4']}]};
+ if(path==='/api/providers/oauth/xai/status')return {state:'idle'};
+ throw Error('unexpected '+path);
+};
+const flush=async()=>{for(let i=0;i<8;i++)await Promise.resolve()};
+(async()=>{
+ await window.XBotProviders.settings({api,host,isCurrent:()=>true});
+ const card=find('button','xAI');assert(card,'xAI card missing');
+ await card.onclick();await flush();
+ assert(find('button','登录 xAI'),'key-configured xAI lost the login CTA');
+ assert(find('summary','用 API 密钥'),'folded key entry missing');
+ assert(find('button','保存密钥'),'key form missing');
+ assert(host.innerText.includes('密钥已配置'),'configured status missing');
+ assert(host.innerText.includes('登录 xAI 账号即可使用'),'login lead missing');
+ assert(!calls.some(c=>c.endsWith('/xai/sync')||c.includes('/api/providers/models')),'key-only xAI fetched models before login');
+ assert(!host.innerText.includes('拉取模型失败'),'failed fetch shown before any fetch');
+ completed=true;
+})().catch(e=>{console.error(e);process.exitCode=1});`
+	if out, err := exec.Command(node, "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("xai key-configured login CTA: %v: %s", err, out)
+	}
+}

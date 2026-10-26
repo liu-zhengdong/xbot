@@ -294,6 +294,10 @@
       keyStatus(); body.append(state("正在拉取模型…"));
       try {
         if (refresh) { data = await api("/api/providers"); if (!current()) return; p = p.oauth === "chatgpt" ? subscriptionEntry() : entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
+        // An xAI vendor card leads with account login even when an old API key
+        // is configured; OAuth is the primary path and the key folds away.
+        const vendorEarly = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
+        if (vendorEarly && vendorEarly.brand === "xai" && p.oauth !== "xai") { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
           if (p.oauth === "xai") { body.replaceChildren(state("请重新登录 xAI，再拉取模型。")); return; }
@@ -303,7 +307,6 @@
             if (vendor.models.length) { body.append(node("h3", "provider-model-count", `默认模型 · ${vendor.models.length}`)); const rows = node("div", "provider-model-list"); for (const name of vendor.models) { const row = node("div", "provider-model-row"); row.append(node("strong", "provider-model-name", name)); rows.append(row); } body.append(rows); }
             return;
           }
-          if (vendor && vendor.brand === "xai") { body.replaceChildren(xaiVendorBody(p, vendor, current)); return; }
           if (vendor) { body.replaceChildren(keyForm(p, vendor, () => capability(p, true), current)); return; }
           body.replaceChildren(state("请先配置密钥，再拉取模型。", () => capability(p, true))); return;
         }
@@ -333,6 +336,13 @@
         const message = err && err.message || "";
         if (p.oauth && message.includes("重新登录")) {
           body.replaceChildren(state(p.oauth === "chatgpt" ? "ChatGPT 登录凭证已失效，请重新登录。" : "登录凭证已失效，请点「重新登录」。", () => capability(p, true)));
+          return;
+        }
+        // A key-only xAI vendor card that still fails points back at account
+        // login; an OAuth binding keeps the re-login message above.
+        const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
+        if (vendor && vendor.brand === "xai" && p.oauth !== "xai") {
+          body.replaceChildren(state("拉取模型失败，可以登录 xAI 账号后再试。", () => capability(p, true)), xaiVendorBody(p, vendor, current));
           return;
         }
         body.replaceChildren(state(p.oauth === "chatgpt" ? "拉取模型失败，请重试或重新登录 ChatGPT。" : "拉取模型失败，请检查供应商配置和网络。", () => capability(p, true)));

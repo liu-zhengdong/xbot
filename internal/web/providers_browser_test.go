@@ -139,14 +139,12 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  fixture.xaiCancelled=true;fixture.xaiFail=false;$('.provider-back').click();
  card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');
  const typed=$('.provider-key input');assert(typed.type==='password','key input visible');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
- await waitFor(()=>$('.provider-model-row'),'models after key');assert(fixture.saves===1,'key saved once');assert($('.provider-status').textContent.includes('密钥已配置'),'status after key');
- assert(fixture.catalogCalls.includes('/api/providers/xai/sync'),'fetched models were not registered');
+ // A saved key is secondary on xAI: the detail still leads with account login and fetches nothing.
+ await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('密钥已配置'),'xai login after key');assert(fixture.saves===1,'key saved once');
+ assert(!(fixture.catalogCalls||[]).includes('/api/providers/xai/sync'),'key-only xai fetched models before login');
  const words=/API_KEY|providers\.json|web\.json|xbot provider|hosted|vision|\benv\b|backend/i;
- assert(!words.test($('#settings-providers').textContent),'engineering words after save');assert(/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'plain wording missing');
- // A configured vendor, and a failed fetch followed by a retry, stay free of engineering words too.
- $('.provider-back').click();card('xAI').click();await waitFor(()=>$('.provider-model-row'),'configured detail');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
- $('.provider-back').click();fixture.fail=true;card('xAI').click();await waitFor(()=>$('.provider-empty button'),'xai retry');assert(!words.test($('#settings-providers').textContent),'engineering words in failed state');
- fixture.fail=false;$('.provider-empty button').click();await waitFor(()=>$('.provider-model-row'),'xai retry recovered');assert(!words.test($('#settings-providers').textContent),'engineering words after retry');
+ assert(!words.test($('#settings-providers').textContent),'engineering words after save');
+ $('.provider-back').click();card('xAI').click();await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('密钥已配置'),'configured xai detail');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
  // A save that finishes late must not repaint over the page the person moved to.
  $('.provider-back').click();card('MiniMax').click();await waitFor(()=>$('.provider-key input'),'minimax form');
  $('.provider-key input').value='minimax-0123456789';fixture.slowSave=true;$('.provider-key').requestSubmit();await waitFor(()=>fixture.releaseSave,'slow save pending');
@@ -159,9 +157,10 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  $('.provider-back').click();const input=$('.provider-search input');input.focus();input.value='OpenAI';input.dispatchEvent(new Event('input'));assert(document.activeElement===input,'search lost focus');
  assert(document.querySelectorAll('.provider-card:not(:disabled)').length===2,'search failed');card('OpenAI').click();await waitFor(()=>$('.provider-model-row'),'models missing');
  assert(document.querySelectorAll('.provider-model-row').length===2,'runtime models missing');assert(!$('#settings-providers table'),'obsolete table');
+ assert(!words.test($('#settings-providers').textContent),'engineering words in key-only detail');assert(/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'plain wording missing');
  $('.provider-back').click();assert($('.provider-search input').value==='OpenAI','search reset on return');
- fixture.fail=true;card('OpenAI').click();await waitFor(()=>$('.provider-empty button'),'missing retry');assert($('.provider-empty').textContent.includes('失败'),'failed list silent');
- fixture.fail=false;$('.provider-empty button').click();await waitFor(()=>$('.provider-model-row'),'retry did not recover');
+ fixture.fail=true;card('OpenAI').click();await waitFor(()=>$('.provider-empty button'),'missing retry');assert($('.provider-empty').textContent.includes('失败'),'failed list silent');assert(!words.test($('#settings-providers').textContent),'engineering words in failed state');
+ fixture.fail=false;$('.provider-empty button').click();await waitFor(()=>$('.provider-model-row'),'retry did not recover');assert(!words.test($('#settings-providers').textContent),'engineering words after retry');
  $('.provider-back').click();fixture.large=true;card('OpenAI').click();await waitFor(()=>document.querySelectorAll('.provider-model-row').length===2048,'large catalog missing');
  assert(fixture.xaiStarts===1,'unexpected xAI login starts');assert(!fixture.calls.some(p=>p.includes('/oauth/chatgpt/start')),'OAuth started without subscription click');
  $('.provider-back').click();$('.provider-search input').value='chatgpt';$('.provider-search input').dispatchEvent(new Event('input'));
