@@ -2,14 +2,14 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-26 @ main（composer-url + 多设备认领 + bubble-markdown 代码高亮/引用/表）
+verified: 2026-10-26 @ 9046089 + hosted 生图设置浏览器检查
 ---
 # 网页界面
 
 > **30 秒版**：网页和桌面版用同一套界面：左边侧栏列出 Bot，中间是对话，右边是信息面板。对话里只有主人和 Bot 说的话，工具调用、子代理任务和上下文用量都放在面板里。整体是黑白灰，靠底色深浅分层、不画线，颜色只留给错误、在线和子代理类型。以后改界面要守的规矩在 [guard/界面.md](../guard/界面.md)。
 
 - 详情中的模型行打开换绑定浮层，按 Completions / Responses / Messages 分组，读取运行时能力表。Messages 选项禁用；Bot 有前台、分叉后台或运行/排队子代理时换绑返回清晰错误，不取消已有任务。换绑保存后下一轮重建内核。
-- 设置浮层的「模型与供应商」按 A-magpie 分成订阅和供应商两区。订阅区以 ChatGPT 卡作为唯一入口：未登录时点击授权，等待时可再次点击重开授权窗，不重绘搜索框；成功后显示已登录绿点，再点进入详情；供应商用两列圆角卡，只显示透明品牌标、短名和已配置绿点，搜索框靠右。点卡进入详情：返回入口、厂标、厂名、协议小标签、密钥状态，以及「厂商搜索」「看图」/ 窗口芯片行（用户用语，不露工程词）；不使用能力表格。进入详情及重试时实时拉供应商 model list，名单与能力来源见 [供应商](providers.md)。未配密钥先提示配置，拉取失败和空名单均给出重试；返回保留搜索条件，迟到响应（含保存密钥）不会覆盖新页面。内置厂商的详情拉取走 `POST /api/providers/{brand}/sync`：把厂商真名单登记进配置（可选择、可绑定），未改动且无 Bot 绑定的占位种子随之清掉；同名但地址或密钥变量不同的自定义条目一律 409，不收密钥、不被发送。ChatGPT 详情显示「已登录」并支持重新登录；名单失败可重试或重新登录。授权复用既有 OAuth 与 vault；OpenRouter 列表不提供登录入口，Claude 订阅不提供 OAuth。模型仍从 Bot 的模型行选择绑定。hosted 步骤、正文引用角标和来源列表显示在对话气泡内，不画任务卡。供应商网格在 DeepSeek / OpenAI / Anthropic / OpenRouter 之后列 12 家密钥厂商（Gemini、Vertex AI、xAI、Kimi、Kimi Code、Zhipu GLM、Z.ai、MiniMax、StepFun、Xiaomi MiMo、Baidu Qianfan、Tencent Cloud），默认值在 `internal/config/vendors.go`，`GET /api/providers` 的 `vendors` 只带品牌、短名、协议和默认模型名。未配密钥的厂商详情给密钥输入框，`PUT /api/providers/{brand}/key` 按内置默认补 providers.json 条目（不覆盖用户同名条目）并把密钥写入 env 文件；Vertex 没有纯密钥路线，只显示默认模型和「需要先登录 Google Cloud」，不可聊。已配置条目的品牌按 base_url 主机名识别。
+- 设置浮层的「模型与供应商」按 A-magpie 分成订阅和供应商两区。订阅区以 ChatGPT 卡作为唯一入口：未登录时点击授权，等待时可再次点击重开授权窗，不重绘搜索框；成功后显示已登录绿点，再点进入详情；供应商用两列圆角卡，只显示透明品牌标、短名和已配置绿点，搜索框靠右。点卡进入详情：返回入口、厂标、厂名、协议小标签、密钥状态，以及「厂商搜索」「看图」/ 窗口芯片行（用户用语，不露工程词）；不使用能力表格。已登记的 Responses 模型还显示「厂商生图」开关；OpenAI 可填生图模型，xAI 由厂商选择，保存失败恢复已保存值。进入详情及重试时实时拉供应商 model list，名单与能力来源见 [供应商](providers.md)。未配密钥先提示配置，拉取失败和空名单均给出重试；返回保留搜索条件，迟到响应（含保存密钥）不会覆盖新页面。内置厂商的详情拉取走 `POST /api/providers/{brand}/sync`：把厂商真名单登记进配置（可选择、可绑定），未改动且无 Bot 绑定的占位种子随之清掉；同名但地址或密钥变量不同的自定义条目一律 409，不收密钥、不被发送。ChatGPT 详情显示「已登录」并支持重新登录；名单失败可重试或重新登录。授权复用既有 OAuth 与 vault；OpenRouter 列表不提供登录入口，Claude 订阅不提供 OAuth。模型仍从 Bot 的模型行选择绑定。hosted 步骤、正文引用角标和来源列表显示在对话气泡内，不画任务卡。供应商网格在 DeepSeek / OpenAI / Anthropic / OpenRouter 之后列 12 家密钥厂商（Gemini、Vertex AI、xAI、Kimi、Kimi Code、Zhipu GLM、Z.ai、MiniMax、StepFun、Xiaomi MiMo、Baidu Qianfan、Tencent Cloud），默认值在 `internal/config/vendors.go`，`GET /api/providers` 的 `vendors` 只带品牌、短名、协议和默认模型名。未配密钥的厂商详情给密钥输入框，`PUT /api/providers/{brand}/key` 按内置默认补 providers.json 条目（不覆盖用户同名条目）并把密钥写入 env 文件；Vertex 没有纯密钥路线，只显示默认模型和「需要先登录 Google Cloud」，不可聊。已配置条目的品牌按 base_url 主机名识别。
 
 ## 边界
 负责：网页界面（`internal/web/static`）的组成和展示规则，以及桌面窗口外壳（`internal/appshell`）。接口见 [API.md](../API.md)。「值得留意」清单由内核整理（`internal/notable`，见 [subagents.md](subagents.md)），界面只管显示。

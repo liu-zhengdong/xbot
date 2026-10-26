@@ -64,12 +64,21 @@ func openAIImageAndSearch(name string) bool {
 	}
 }
 
+// HasHostedImageGen reports whether a binding mounts the vendor's
+// image_generation tool. Only Responses carries it, and only when switched on.
+func (m ModelSpec) HasHostedImageGen(protocol string) bool {
+	return protocol == Responses && m.HostedImageGen != nil && *m.HostedImageGen
+}
+
 func SupportedBinding(protocol string, m ModelSpec) error {
 	if err := ValidProtocol(protocol); err != nil {
 		return err
 	}
 	if m.HostedSearch != nil && *m.HostedSearch && protocol != Responses && protocol != AnthropicMessages {
 		return fmt.Errorf("providers: hosted_web_search requires responses or anthropic_messages")
+	}
+	if m.HostedImageGen != nil && *m.HostedImageGen && protocol != Responses {
+		return fmt.Errorf("providers: hosted_image_generation requires responses")
 	}
 	return nil
 }

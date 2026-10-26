@@ -81,10 +81,12 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 			if configured, ok := specs[id]; ok {
 				spec = configured
 			}
+			_, registered := registeredSpec(p, id)
 			if spec.Context <= 0 {
 				spec.Context = compact.DefaultWindow
 			}
-			models = append(models, ModelInfo{ID: ModelID(name, id), Provider: name, Model: id, Context: spec.Context, Protocol: p.WireProtocol(), Vision: spec.SeesImages(), HostedSearch: spec.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), spec) == nil})
+			models = append(models, ModelInfo{ID: ModelID(name, id), Provider: name, Model: id, Context: spec.Context, Protocol: p.WireProtocol(), Vision: spec.SeesImages(), HostedSearch: spec.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), spec) == nil,
+				HostedImageGen: spec.HasHostedImageGen(p.WireProtocol()), ImageGenModel: spec.ImageGenModel, Registered: registered})
 		}
 		if !page.HasMore {
 			break
@@ -101,6 +103,15 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 		return nil, errors.New("模型能力列表超过 1 MiB")
 	}
 	return models, nil
+}
+
+func registeredSpec(p Provider, name string) (ModelSpec, bool) {
+	for _, m := range p.Models {
+		if m.Name == name {
+			return m, true
+		}
+	}
+	return ModelSpec{}, false
 }
 
 func catalogEndpoint(root, name string) (Provider, ModelConfig, error) {

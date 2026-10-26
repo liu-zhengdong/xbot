@@ -30,6 +30,11 @@ type ModelInfo struct {
 	Vision       bool   `json:"vision"`
 	HostedSearch bool   `json:"hosted_web_search"`
 	Available    bool   `json:"available"`
+
+	HostedImageGen bool   `json:"hosted_image_generation"`
+	ImageGenModel  string `json:"image_generation_model,omitempty"`
+	// Registered says the model is in providers.json, so its settings can be saved.
+	Registered bool `json:"registered"`
 }
 
 // CertifiedPath is the list under the data root.
@@ -140,6 +145,7 @@ func VisibleModels(root string, all bool) ([]ModelInfo, error) {
 			}
 			out = append(out, ModelInfo{
 				Protocol: p.WireProtocol(), Vision: m.SeesImages(), HostedSearch: m.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), m) == nil,
+				HostedImageGen: m.HasHostedImageGen(p.WireProtocol()), ImageGenModel: m.ImageGenModel, Registered: true,
 				ID: id, Provider: p.Name, Model: m.Name, Context: m.Context, Certified: ok,
 			})
 		}
