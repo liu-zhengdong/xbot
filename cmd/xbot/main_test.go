@@ -496,13 +496,16 @@ func TestParseProfileAndTemplate(t *testing.T) {
 	}
 	// The role flags pick the working defaults and must survive reordering,
 	// including after the bot name.
-	opt, err = parseProfileSet([]string{"ada", "--role", "dev", "--background-max-time", "90", "--foreground-max-tools", "6", "--foreground-max-time", "45"})
+	opt, err = parseProfileSet([]string{"ada", "--role", "dev", "--background-max-time", "90"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opt.Role != "dev" || opt.BgTime != 90 || opt.FgTools != 6 || opt.FgTime != 45 ||
-		!opt.Set["role"] || !opt.Set["background-max-time"] || !opt.Set["foreground-max-tools"] || !opt.Set["foreground-max-time"] {
+	if opt.Role != "dev" || opt.BgTime != 90 || !opt.Set["role"] || !opt.Set["background-max-time"] {
 		t.Fatalf("%+v", opt)
+	}
+	// The foreground limits are gone (ADR 0028); their flags are unknown now.
+	if _, err := parseProfileSet([]string{"ada", "--foreground-max-tools", "6"}); err == nil {
+		t.Fatal("--foreground-max-tools still accepted")
 	}
 	opt, err = parseProfileSet([]string{"--role", "chat", "ada"})
 	if err != nil || opt.Role != "chat" || !opt.Set["role"] || opt.Set["background-max-time"] {

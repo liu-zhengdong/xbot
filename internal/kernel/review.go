@@ -47,13 +47,6 @@ func (t reviewedTool) Confirm(args json.RawMessage) (bool, string, error) {
 // and shell on one link are shared by the foreground and every background
 // branch, so the directory comes from ctx, not from a kernel-global.
 func (t reviewedTool) ConfirmContext(ctx context.Context, args json.RawMessage) (bool, string, error) {
-	// A call the foreground will refuse is refused before any card: the owner
-	// is never asked to approve something that cannot run.
-	if t.k != nil {
-		if err := t.k.foregroundRefuses(ctx, t.Tool, args); err != nil {
-			return false, "", err
-		}
-	}
 	if t.k != nil && t.k.deniedBefore(t.Name(), args) {
 		return false, "", errors.New(msgDenied)
 	}
@@ -83,9 +76,6 @@ func (t reviewedTool) WaitPolicy(args json.RawMessage) (time.Duration, bool) {
 
 func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (tools.PreparedRun, error) {
 	name := t.Name()
-	if err := t.k.foregroundRefuses(ctx, t.Tool, args); err != nil {
-		return tools.PreparedRun{}, err
-	}
 	if name == "read_file" {
 		if s, ok := t.k.unchangedReceipt(ctx, t.Tool, args); ok {
 			return tools.PreparedRun{Text: s}, nil

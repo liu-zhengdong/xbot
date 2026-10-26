@@ -13,14 +13,30 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/agenttype"
 	"xbot/internal/exec"
+	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
 )
 
-// The foreground understands, plans, and dispatches; typed subagents do the
-// work (ADR 0016, docs/atlas/subagents.md). This file is the dispatch tool, the
-// tool set each type gets, and the context guard on a subagent's requests.
+// The main line has every tool and does short work itself; long work goes to
+// typed subagents through dispatch (ADR 0028, docs/atlas/subagents.md). This
+// file is the dispatch rule, the dispatch tool, the tool set each type gets,
+// and the context guard on a subagent's requests.
+
+// DispatchRule tells the model to answer the owner before working and to hand
+// long work out. It is added to the rules only while dispatch is on.
+const DispatchRule = "Answer the owner first, then work: before any tool call that takes more than a moment, say in a sentence or two what you understood and what you are about to do. You have every tool and may do short work yourself. Long work (many steps, long builds or research, anything the owner should not wait on) goes to a subagent: call dispatch with the right type and a task that says everything the subagent needs, since it starts with an empty context (goal, paths, constraints, what done looks like). Then tell the owner in a sentence or two what you handed out. When a subagent's result arrives, tell the owner what came of it and record anything worth keeping in memory. When results arrive separately, report only the newly arrived result; do not repeat details you have already told the owner. If a summary is needed, acknowledge earlier results in one sentence without listing their details again. Do not dispatch unrequested verification or duplicate research; if a result is doubtful, explain the doubt and ask whether the owner wants it checked. While a subagent runs, use steer, queue, interrupt, or cancel to change its course; do not start a second one for the same work."
+
+// legacyDispatchRule is the ADR 0016 wording. It is only recognized, so a
+// bot rules file that still carries it drops it on migration.
+const legacyDispatchRule = "You are the foreground: you talk with the owner, work out what they want, plan, hand work out, report results, and keep memory. You do not do the work yourself."
+
+// dispatching reports whether dispatch is offered. It needs the agents link:
+// without it the work would have nowhere to go.
+func (k *Kernel) dispatching() bool {
+	return k != nil && k.Dispatch && k.hasLink(link.NameAgents)
+}
 
 // agentTypes is the built-in types overlaid by the bot's own type files.
 // A file that does not parse is skipped; the others still load.

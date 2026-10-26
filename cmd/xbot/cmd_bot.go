@@ -304,8 +304,6 @@ type profileSetOpts struct {
 	Timezone    string
 	Name        string
 	Role        string
-	FgTools     int
-	FgTime      int
 	BgTime      int
 	Set         map[string]bool
 }
@@ -314,7 +312,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	ordered, err := reorderFlags(args, map[string]bool{
 		"description": true,
 		"timezone":    true, "name": true,
-		"role": true, "foreground-max-tools": true, "foreground-max-time": true, "background-max-time": true,
+		"role": true, "background-max-time": true,
 	})
 	if err != nil {
 		return profileSetOpts{}, err
@@ -325,8 +323,6 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
 	name := fs.String("name", "", "new bot name")
 	role := fs.String("role", "", "chat or dev: picks the working defaults")
-	fgTools := fs.Int("foreground-max-tools", 0, "tool calls before a turn moves backstage (0 keeps the role default)")
-	fgTime := fs.Int("foreground-max-time", 0, "seconds before a turn moves backstage (0 keeps the role default)")
 	bgTime := fs.Int("background-max-time", 0, "minutes one background task may work (0 keeps the role default)")
 	if err := fs.Parse(ordered); err != nil {
 		return profileSetOpts{}, err
@@ -337,7 +333,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	opt := profileSetOpts{
 		Bot: fs.Arg(0), Description: *desc,
 		Timezone: *tz, Name: *name,
-		Role: *role, FgTools: *fgTools, FgTime: *fgTime, BgTime: *bgTime, Set: map[string]bool{},
+		Role: *role, BgTime: *bgTime, Set: map[string]bool{},
 	}
 	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
 	if len(opt.Set) == 0 {
@@ -371,14 +367,6 @@ func cmdProfileSet(root string, args []string) error {
 	if opt.Set["background-max-time"] {
 		n := opt.BgTime * 60
 		u.BackgroundMaxTime = &n
-	}
-	if opt.Set["foreground-max-tools"] {
-		n := opt.FgTools
-		u.ForegroundMaxTools = &n
-	}
-	if opt.Set["foreground-max-time"] {
-		n := opt.FgTime
-		u.ForegroundMaxTime = &n
 	}
 	if u != (bot.ProfileUpdate{}) {
 		if err := b.ApplyProfile(u); err != nil {
