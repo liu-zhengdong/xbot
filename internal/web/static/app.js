@@ -3451,6 +3451,7 @@
     const unread = !active && (!!b.unread || (b.notes || 0) > 0);
     const btn = listButton(b.name, d.node, active, unread, paintOfBot(b), !!b.primary);
     btn.dataset.bot = b.name;
+    btn.dataset.botMenu = "true";
     btn.dataset.stsig = d.sig;
     btn.classList.toggle("off", d.off);
     btn.addEventListener("click", () => pickBot(b.name));
@@ -3547,6 +3548,7 @@
       const btn = el("button", "pin" + (state.sel && state.sel.type === "bot" && state.sel.id === b.name ? " active" : ""));
       btn.type = "button";
       btn.dataset.bot = b.name;
+      btn.dataset.botMenu = "true";
       setTip(btn, niceName(b.name), "right");
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
@@ -4190,8 +4192,7 @@
     return box;
   }
 
-  // The bot's actions are icon buttons in the info panel's top bar, left of
-  // its close button; the header keeps a single control that opens the panel.
+  // The info header has only edit; other actions belong to sidebar Bot rows.
   function panelAct(iconName, label, danger) {
     const btn = el("button", "ghost panel-act" + (danger ? " danger" : ""));
     btn.type = "button";
@@ -4212,11 +4213,12 @@
   }
 
   // closePanelMenu removes the open submenu. placeMenu moves it to <body> while
-  // open, so it is no longer a descendant of #panel-actions; selecting only
+  // open, so it is no longer a descendant of the anchor; selecting only
   // inside the row would leave it on screen, still acting on the old bot.
   let panelMore = null;
   let panelSub = null;
   let chromeBot = "";
+  let panelMoreAnchor = null;
 
   function closePanelSub() {
     if (!panelSub) return;
@@ -4234,7 +4236,8 @@
       panelMore.remove();
       panelMore = null;
     }
-    const more = $("panel-more");
+    const more = panelMoreAnchor;
+    panelMoreAnchor = null;
     if (more) {
       more.classList.remove("on");
       more.setAttribute("aria-expanded", "false");
@@ -4252,11 +4255,11 @@
     });
   }
 
-  // The panel top row: edit and more. Everything else moved into the menu.
+  // Polling preserves both the edit button focus and an open sidebar menu.
   function syncPanelChrome() {
     const bot = state.sel && state.sel.type === "bot";
     // A repaint for the same bot (polling, status) must not close an open menu.
-    if (bot && panelMore && chromeBot === state.sel.id) return;
+    if (bot && chromeBot === state.sel.id) return;
     const row = $("panel-actions");
     closePanelMenu();
     row.replaceChildren();
@@ -4266,27 +4269,63 @@
     const edit = panelAct("pencil", "编辑资料");
     edit.addEventListener("click", () => openProfile(state.panelData || {}));
     row.append(edit);
-    const more = panelAct("ellipsis", "更多");
-    more.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      openPanelMore(more);
-    });
-    more.id = "panel-more";
-    more.setAttribute("aria-haspopup", "menu");
-    more.setAttribute("aria-expanded", "false");
-    row.append(more);
   }
+
+  // Delegate to the sidebar so pinned tiles and normal rows share one path,
+  // even after polling replaces their DOM. A long press must not select a Bot.
+  let botPress = null;
+  let suppressBotClick = null;
+  const sidebarBot = (target) => target.closest?.("[data-bot-menu]");
+  function cancelBotPress() {
+    if (botPress) clearTimeout(botPress.timer);
+    botPress = null;
+  }
+  sidebar.addEventListener("contextmenu", (ev) => {
+    const row = sidebarBot(ev.target);
+    if (!row) return;
+    ev.preventDefault();
+    if (botPress || ev.pointerType === "touch") suppressBotClick = {name: row.dataset.bot, until: Infinity};
+    cancelBotPress();
+    openPanelMore(row, row.dataset.bot);
+  });
+  sidebar.addEventListener("pointerdown", (ev) => {
+    cancelBotPress();
+    suppressBotClick = null;
+    const row = sidebarBot(ev.target);
+    if (!row || ev.pointerType === "mouse" || !ev.isPrimary) return;
+    botPress = {x: ev.clientX, y: ev.clientY, timer: setTimeout(() => {
+      botPress = null;
+      if (!row.isConnected) return;
+      suppressBotClick = {name: row.dataset.bot, until: Infinity};
+      openPanelMore(row, row.dataset.bot);
+    }, 500)};
+  });
+  sidebar.addEventListener("pointermove", (ev) => {
+    if (botPress && Math.hypot(ev.clientX - botPress.x, ev.clientY - botPress.y) > 10) cancelBotPress();
+  });
+  sidebar.addEventListener("pointerup", () => {
+    if (suppressBotClick) suppressBotClick.until = Date.now() + 1000;
+    cancelBotPress();
+  });
+  sidebar.addEventListener("pointercancel", cancelBotPress);
+  sidebar.addEventListener("scroll", () => { cancelBotPress(); closePanelMenu(); }, true);
+  sidebar.addEventListener("click", (ev) => {
+    const row = sidebarBot(ev.target);
+    if (row && suppressBotClick?.name === row.dataset.bot && Date.now() < suppressBotClick.until) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      suppressBotClick = null;
+    }
+  }, true);
 
   function currentGroup(name) {
     return (state.bots.find((b) => b.name === name) || {}).group || "";
   }
 
-  function openPanelMore(anchor) {
-    const data = state.panelData || {};
-    if (!state.sel) return;
-    // A second click on 更多 closes the menu instead of stacking another one.
-    if (panelMore && anchor.classList.contains("on")) { closePanelMore(); return; }
-    closePanelMore();
+  function openPanelMore(anchor, name) {
+    const data = state.bots.find((b) => b.name === name);
+    if (!data) return;
+    closePops();
     const pinned = !!data.pinned;
     const menu = el("div", "pop panel-more");
     const item = (ic, text, fn, opts = {}) => {
@@ -4301,18 +4340,19 @@
       menu.append(row);
       return row;
     };
-    item("pin", pinned ? "取消置顶" : "置顶", () => togglePin(state.sel.id, !pinned));
-    menu.append(moveMenu(state.sel.id, currentGroup(state.sel.id)));
-    item("copy", "复刻", () => openFork(state.sel.id));
-    const copy = item("clipboard", "复制 Bot ID", () => copyBotID(state.sel.id));
-    copy.append(el("span", "v mono", state.sel.id));
-    if (state.app) item("folder-open", "打开工作目录", () => openWorkdir(state.sel.id));
-    item("download", "导出对话", () => openExport());
+    item("pin", pinned ? "取消置顶" : "置顶", () => togglePin(name, !pinned));
+    menu.append(moveMenu(name, currentGroup(name)));
+    item("copy", "复刻", () => openFork(name));
+    const copy = item("clipboard", "复制 Bot ID", () => copyBotID(name));
+    copy.append(el("span", "v mono", name));
+    if (state.app) item("folder-open", "打开工作目录", () => openWorkdir(name));
+    item("download", "导出对话", () => openExport(name));
     menu.append(el("div", "mgap"));
-    item("trash", "删除 Bot", () => confirmDelete(state.sel.id), { danger: true });
+    item("trash", "删除 Bot", () => confirmDelete(name), { danger: true });
     anchor.classList.add("on");
     anchor.setAttribute("aria-expanded", "true");
-    placeMenu(anchor, menu, "panel");
+    placeMenu(anchor, menu);
+    panelMoreAnchor = anchor;
     panelMore = menu;
   }
 
@@ -4500,7 +4540,7 @@
     ident.replaceChildren();
     ident.hidden = false;
     ident.append(avatar(name, paint, "lg"));
-    const who = el("div", "identity");
+    const who = el("div", "tx");
     who.append(el("b", "", niceName(name) || "Bot"));
     if (sub) {
       const line = el("div", "sub");
@@ -4953,31 +4993,34 @@
 
   function detailsView(data) {
     const wrap = document.createDocumentFragment();
-    const about = section("");
-    if (data.persona_card) {
-      about.append(kv("人设卡", data.persona_card.name));
-    } else if (data.persona) {
-      const block = el("div", "kv");
-      block.append(el("div", "k", "人设"), el("p", "clamp v", data.persona));
-      about.append(block);
+    const persona = data.persona_card ? data.persona_card.name : data.persona;
+    if (persona) {
+      const about = el("div", "psec");
+      about.append(el("h4", "", data.persona_card ? "人设卡" : "人设"), el("p", "", persona));
+      wrap.append(about);
     }
     const model = modelLabel(data);
     if (model) {
-      const row = el("div", "kv");
-      const value = el("div", "v");
+      const section = el("div", "psec");
+      const row = el("div", "lrow z");
       const change = el("button", "binding-model", model);
- change.type="button";change.setAttribute("aria-haspopup","dialog");
- change.addEventListener("click",()=>window.XBotProviders.open({api,data,opener:change,manage:()=>openSettings("providers"),onBound:async()=>{state.modelCatalog=null;await refreshLists();await loadPanel();}}));
- value.append(change);
-      if (modelCertified(data)) {
-        const flag = el("span", "cert");
+      change.type = "button";
+      change.setAttribute("aria-haspopup", "dialog");
+      change.addEventListener("click", () => window.XBotProviders.open({api, data, opener: change, manage: () => openSettings("providers"), onBound: async () => {state.modelCatalog = null; await refreshLists(); await loadPanel();}}));
+      row.append(change);
+      const snap = state.ctxSnap;
+      const meta = [];
+      if (snap?.ceiling > 0) meta.push("窗口 " + ctxK(snap.ceiling));
+      if (snap?.target > 0) meta.push("后台整理线 " + ctxK(snap.target));
+      if (meta.length) row.append(el("span", "v", meta.join(" · ")));
+      else if (modelCertified(data)) {
+        const flag = el("span", "v cert");
         flag.append(icon("check"), document.createTextNode("已认证"));
-        value.append(flag);
+        row.append(flag);
       }
-      row.append(el("div", "k", "模型"), value);
-      about.append(row);
+      section.append(el("h4", "", "模型"), row);
+      wrap.append(section);
     }
-    wrap.append(about);
     return wrap;
   }
 
@@ -5790,9 +5833,8 @@
     const drawer = window.innerWidth < 768 && sidebar.classList.contains("open");
     backdrop.hidden = !drawer;
     // The panel is a drawer over the card at every width (#243), so it always
-    // covers part of the conversation: narrow windows get a scrim to click
-    // away, wide ones keep the thread readable and close with 详情 or Escape.
-    $("panel-scrim").hidden = !(window.innerWidth < 960 && panel.classList.contains("open") && !drawer);
+    // covers part of the conversation. The exposed conversation closes it.
+    $("panel-scrim").hidden = !(panel.classList.contains("open") && !drawer);
   }
 
   async function refreshLists() {
@@ -6423,9 +6465,8 @@
     setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
-  function openExport() {
-    if (!state.sel || state.sel.type !== "bot") return;
-    const name = state.sel.id;
+  function openExport(name) {
+    if (!name) return;
     closePops();
     openModal("导出对话", [
       { name: "format", label: "格式", type: "choice", value: "md", options: [["md", "Markdown"], ["jsonl", "JSONL"]] },
@@ -6739,7 +6780,7 @@
 
   document.addEventListener("click", (ev) => {
     const inSub = panelSub && panelSub.contains(ev.target);
-    if (panelMore && !inSub && !panelMore.contains(ev.target) && !(ev.target.closest && ev.target.closest("#panel-more"))) {
+    if (panelMore && !inSub && !panelMore.contains(ev.target) && !panelMoreAnchor?.contains(ev.target)) {
       closePanelMore();
     }
     if (authenticated && subtitleError) setStatus("");
@@ -7233,7 +7274,7 @@
   document.addEventListener("click", (ev) => {
     if (!ev.target.closest(".account-wrap")) closeAccount();
     if (!ev.target.closest(".new-menu")) closeNewMenu();
-    if (!ev.target.closest(".panel-actions") && !ev.target.closest(".menu-sub")) closePanelMenu();
+    if (!panelMoreAnchor?.contains(ev.target) && !ev.target.closest(".panel-more, .menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
     if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) {

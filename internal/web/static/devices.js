@@ -515,7 +515,7 @@
       const body = String(c.last || "").trim(), me = c.last_role === "me" ? "你：" : "";
       const pv = c.queued ? `<span class="preview g7-side-q"><b class="g7-side-qb">◷ 排队中</b> · 你：${esc(c.queued)}</span>`
         : `<span class="preview">${body ? esc(me + body) : "还没有消息"}</span>`;
-      return `<button class="item g7-remote-bot${sel === d.id + "\u0000" + b ? " active" : ""}" type="button" data-side="open" data-id="${esc(d.id)}" data-bot="${esc(b)}">
+      return `<button class="item g7-remote-bot${sel === d.id + "\u0000" + b ? " active" : ""}" type="button" data-side="open" data-id="${esc(d.id)}" data-bot="${esc(b)}" data-tip="${esc(b)}" data-tip-placement="right">
         ${c.unread > 0 ? face(b, d.id).replace(/<\/span>$/, '<i class="unread"></i></span>') : face(b, d.id)}<span class="item-body"><span class="name-line"><span class="name">${esc(b)}</span></span>${pv}</span></button>`;
     };
     nav.hidden = !devs.length;

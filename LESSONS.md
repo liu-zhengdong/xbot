@@ -3,6 +3,7 @@
 格式：一行规则；原因；证据（提交或问题）；出现次数「Seen N×」。同一条在 3 个不同日子出现，就升级进 [AGENTS.md](AGENTS.md) 的硬约束。
 
 ## 教训
+- **响应式抽屉要验证每个断点的开关几何与实际触摸。** 原因：只读第一段 CSS 会漏掉窄屏 translateY 和桌面 display:none 覆盖；长按还要保证松手不选中别的 Bot。证据：`TestBotPanelBrowser` 在旧代码的 390/1440 档因关闭轴失败、820 档因厂头额外动作失败，浏览器触摸补验通过。Seen 1×（2026-10-26）
 - **区分 turn 曾经回答与某次调用的回复已经发出。** 原因：同 turn 插话续聊时 `answered` 保留为真，直接用它拒绝挂图会误伤新调用；清掉它又可能放过旧 Job。调用发起时捕获最终回复次数，并在读取前与提交前持锁比较。证据：`TestContinuationCanAttachImages` 旧红新绿、`TestContinuationRejectsOldImageJob` 新旧调用同 turn 并存。Seen 1×（2026-10-26）
 - **按去重后的新增内容算剩余预算，身份未知时先限长流式判重。** 原因：读前直接用剩余预算拒绝同图，会让合法大图重挂失败；先整图读完再判重又退回无效大分配。证据：`TestQueuedDuplicateFitsBudget` 的三类引用及内容副本旧红新绿、`TestNewOutImageOverBudgetIsNotLoaded` 的超额新图分配上限。Seen 1×（2026-10-26）
 - **OAuth 刷新写回必须与退出删除原子核对，测试要阻塞刷新响应再退出。** 原因：只串行登录回调挡不住 vault 自动刷新，logout 成功后迟到的刷新仍可重建凭证；写回前在 secrets 文件锁内重读并核对旧值，退出无需等待网络。证据：`7589cca` 的 P2，`TestOAuthRefreshAfterRemoveDoesNotRevive`、`TestOAuthLogoutDuringRefresh` 覆盖本地与 daemon。Seen 1×（2026-10-26）

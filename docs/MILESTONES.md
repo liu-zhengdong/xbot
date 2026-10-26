@@ -2,6 +2,12 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 Bot 面板与窄屏、rail 修正（已合本地 main，待手测）
+
+- 满宽厂头仅留编辑；模型整栏、人设满宽；更多复用原菜单，改由本机 Bot 行和置顶头像右键／长按进入，动作绑定被操作的 Bot，旧菜单及子菜单统一关闭。信息面板各断点统一右进右出，手机全高近全宽；汉堡按 52px 内容带加安全区、16px 左距、8px 间距落实。72px rail 分区头仅留 10px 透明间隔，设备头同样清掉灰底和圆角，壳间距保留。编码 tip `1765587`（rebase onto main 后 tip 见合入提交）；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-panel-detail/review1.md`）。
+- `internal/web` 单次及新增三档浏览器回归通过；旧提交归档上的同一回归在手机/桌面关闭轴和中宽厂头额外动作处失败。Chrome 真实触摸长按通过，浅深色截图在 `~/.xbot-build/ui-shots/bot-panel-detail/`。模拟顶部安全区 44px 时内容带仍为 52px；24 次点击至动画结束 p95 196.3ms，最大 198.6ms（CSS 动画 180ms，含浏览器事件调度；不是 60fps、模型回复或 IPC 测量）。
+- gofmt、vet 通过；atlas audit 的已有提醒未增加。全仓单次末轮有 `internal/code/TestLocalModelStepCapIsTheTasks` 的 TempDir 清理失败（directory not empty），本批未改该包。已合本地 main（不 push）；8788 手测见 `~/.xbot-build/bot-panel-detail/accept.md`。无独立候选（热修）。
+
 ## 2026-10-26 Bot 自改头像（已合本地 main，待手测）
 
 - 扩展既有 `propose_profile` 的 `avatar_seed`，复用 ValidAvatarSeed / SetAvatarSeed，仅作用于本 Kernel Bot；与名字、简介、时区同卡，权限仍为 SelfEdit。无上传能力、风格或主题变更。tip `0752c11`；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-self-avatar/review1.md`）。

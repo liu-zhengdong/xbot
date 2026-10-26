@@ -215,7 +215,8 @@ span.g7-switch { margin-top: 2px; opacity: 0.55; cursor: default; }
 .g7-side-down { display: flex; align-items: center; gap: 6px; margin: 6px 8px; padding: 8px 10px; border-radius: 10px; background: var(--hover); color: var(--muted); font-size: 12px; line-height: 1.4; }
 .g7-side-down span { flex: 1; }
 @media (min-width: 768px) {
-  .sidebar.rail .g7-side-head { height: 10px; padding: 0; overflow: hidden; }
+  .sidebar.rail .g7-side-dev { margin-top: 0; }
+  .sidebar.rail .g7-side-head { height: 10px; padding: 0; overflow: hidden; background: transparent; border-radius: 0; pointer-events: none; }
   .sidebar.rail .g7-side-head > *, .sidebar.rail .g7-side-down, .sidebar.rail .g7-side-line { display: none; }
   .sidebar.rail .g7-side-bots[hidden] { display: block !important; }
 }
