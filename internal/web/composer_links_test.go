@@ -75,6 +75,10 @@ const elem = (tag, kids) => ({ nodeType: 1, tagName: tag, childNodes: kids });
 const root = elem("DIV", [text("abc"), elem("BR", []), elem("DIV", [text("de")]), text("f")]);
 assert.equal(composerText(root), "abc\nde\nf");
 assert.equal(composerOffsetOf(root, root.childNodes[2].childNodes[0], 1), 5, "caret offset counts breaks as one");
+assert.equal(composerOffsetOf(root, root, 0), 0, "root start is not the end of the draft");
+assert.equal(composerOffsetOf(root, root, 2), 4, "root offset counts children, including BR");
+assert.equal(composerOffsetOf(root, root.childNodes[2], 1), 6, "element offset counts its preceding children");
+assert.equal(composerOffsetOf(root, root, 3), 7, "after a block includes its newline");
 `
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
 		t.Fatalf("composer link parsing: %v\n%s", err, out)
