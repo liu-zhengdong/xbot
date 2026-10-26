@@ -11,7 +11,149 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"xbot/internal/fsutil"
 )
+
+func thinSeedLibrary(t *testing.T) (string, []Card) {
+	t.Helper()
+	root := t.TempDir()
+	var cards []Card
+	for _, s := range Seeds {
+		c, err := Create(root, "u1", s.Name, legacySeedBodies[s.Name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		cards = append(cards, c)
+	}
+	if !has(OwnerDir(root, "u1"), seededFile) {
+		t.Fatal("fixture must represent an already seeded library")
+	}
+	return root, cards
+}
+
+func TestEnsureSeedsUpgradesOnlyUnchangedThinCards(t *testing.T) {
+	for _, edit := range []string{"none", "one_body_character", "title", "trimmed_body"} {
+		t.Run(edit, func(t *testing.T) {
+			root, cards := thinSeedLibrary(t)
+			first := cards[0]
+			var err error
+			switch edit {
+			case "one_body_character":
+				body := first.Body + "改"
+				first, err = Update(root, "u1", first.ID, nil, &body)
+			case "title":
+				name := first.Name + "（我的）"
+				first, err = Update(root, "u1", first.ID, &name, nil)
+			case "trimmed_body":
+				// read trims the blank separator and trailing whitespace on disk.
+				err = os.WriteFile(filepath.Join(OwnerDir(root, "u1"), first.ID, "card.md"),
+					[]byte("name: "+first.Name+"\n\n \n"+first.Body+"\n \t\n"), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := EnsureSeeds(root, "u1"); err != nil {
+				t.Fatal(err)
+			}
+			for i, c := range cards {
+				got, err := Get(root, "u1", c.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if i == 0 && (edit == "one_body_character" || edit == "title") {
+					if got != first {
+						t.Fatalf("edited card changed: %+v", got)
+					}
+				} else if got.Name != c.Name || got.Body != Seeds[i].Body {
+					t.Fatalf("%s was not upgraded to its current seed", c.Name)
+				}
+			}
+			before := snapshotLibrary(t, OwnerDir(root, "u1"))
+			if err := EnsureSeeds(root, "u1"); err != nil {
+				t.Fatal(err)
+			}
+			if after := snapshotLibrary(t, OwnerDir(root, "u1")); !reflect.DeepEqual(before, after) {
+				t.Fatal("repeated ensure changed contents, paths, modes or mtimes")
+			}
+		})
+	}
+}
+
+func TestEnsureSeedsUpgradeWaitsForLibraryLock(t *testing.T) {
+	root, cards := thinSeedLibrary(t)
+	dir := OwnerDir(root, "u1")
+	lock, err := fsutil.Lock(filepath.Join(dir, ".lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	done := make(chan error, 1)
+	go func() { done <- EnsureSeeds(root, "u1") }()
+	select {
+	case err := <-done:
+		t.Fatalf("ensure returned before the library lock was released: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// Simulate an edit finishing in another process while it owns the lock.
+	const edited = "主人刚改过的正文"
+	if _, err := write(dir, cards[0].ID, cards[0].Name, edited); err != nil {
+		t.Fatal(err)
+	}
+	lock.Release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ensure did not finish after releasing the library lock")
+	}
+	for i, c := range cards {
+		want := Seeds[i].Body
+		if i == 0 {
+			want = edited
+		}
+		if got, err := Get(root, "u1", c.ID); err != nil || got.Body != want {
+			t.Fatalf("card %d: lost edit or missed upgrade: %v", i, err)
+		}
+	}
+}
+
+func TestEnsureSeedsUpgradeContinuesAfterWriteFailure(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires directory write permissions to be enforced")
+	}
+	root, cards := thinSeedLibrary(t)
+	// The newest card is visited first by list; make that card unwritable.
+	failed := cards[len(cards)-1]
+	dir := filepath.Join(OwnerDir(root, "u1"), failed.ID)
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+	if err := EnsureSeeds(root, "u1"); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("want write error, got %v", err)
+	}
+	for i, c := range cards {
+		want := Seeds[i].Body
+		if c.ID == failed.ID {
+			want = c.Body
+		}
+		if got, err := Get(root, "u1", c.ID); err != nil || got.Body != want {
+			t.Fatalf("card %d: failure blocked other cards or damaged old body: %v", i, err)
+		}
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSeeds(root, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Get(root, "u1", failed.ID); err != nil || got.Body != Seeds[len(cards)-1].Body {
+		t.Fatalf("failed card was not upgraded on retry: %v", err)
+	}
+}
 
 func TestEnsureSeedsFillsAnEmptyLibraryOnce(t *testing.T) {
 	root := t.TempDir()

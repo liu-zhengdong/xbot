@@ -283,3 +283,54 @@ func TestPersonaCardEmptiedLegacyLibraryStaysEmpty(t *testing.T) {
 		})
 	}
 }
+
+// Listing a marked old library upgrades persisted bodies, not just the preview.
+func TestPersonaCardListUpgradesThinSeeds(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	old := []struct{ name, body string }{
+		{"碎嘴群友", `说话像群里那个爱接梗的：短句、口语，别端着。
+
+能玩梗就玩，但别硬凹；接不住就老实说「这个我接不上」。
+
+正经事也能办，先给结论再补一句人话。
+
+别碰：别替主人做决定；别编没发生过的群聊八卦；别用公文腔。`},
+		{"值班运维", `你是值班那班：先报状态，再给下一步。
+
+出事先止血，再说道理。日志和命令用短句甩出来。
+
+别吓主人，也别报喜不报忧。`},
+		{"周末搭子", `周末搭子气质：轻松、会起哄，约局和闲聊都行。
+
+别太卷，别一开口就任务清单。能一起摸鱼也能一起办正事。`},
+	}
+	var ids []string
+	for _, s := range old {
+		c, err := personacard.Create(root, "u1", s.name, s.body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, c.ID)
+	}
+	if code, raw := call("GET", "/api/persona-cards", "", false); code != 401 {
+		t.Fatalf("unauthenticated list: %d %s", code, raw)
+	}
+	for i, id := range ids {
+		if c, err := personacard.Get(root, "u1", id); err != nil || c.Body != old[i].body {
+			t.Fatalf("unauthenticated request changed card %d: %v", i, err)
+		}
+	}
+	if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 {
+		t.Fatalf("list: %d %s", code, raw)
+	}
+	for i, id := range ids {
+		code, raw := call("GET", "/api/persona-cards/"+id, "", true)
+		var c struct{ ID, Name, Body string }
+		if err := json.Unmarshal([]byte(raw), &c); err != nil || code != 200 || c.ID != id || c.Name != old[i].name || c.Body != personacard.Seeds[i].Body {
+			t.Fatalf("detail %d did not return upgraded body: status %d, decode %v", i, code, err)
+		}
+		if disk, err := personacard.Get(root, "u1", id); err != nil || disk.Body != c.Body {
+			t.Fatalf("upgrade %d not persisted: %v", i, err)
+		}
+	}
+}

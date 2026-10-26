@@ -88,7 +88,7 @@
     function showList() {
       nav++; fail(""); onLevel(null);
       const head = node("div", "sethd"); head.append(node("h2", "", "人设卡"));
-      const lead = node("p", "setlead", "人设卡写明 Bot 是谁、怎么说话。整台共用；哪个 Bot 用哪张，在它的「编辑资料」里选。");
+      const lead = node("p", "setlead", "人设卡写明 Bot 是谁、怎么说话。整台共用；哪个 Bot 用哪张，在它的「编辑资料」里选。内置种子已升级；你改过的不会被盖。");
       const statusLine = node("p", "sk-status", status); statusLine.setAttribute("role", "status"); statusLine.hidden = !status;
       status = "";
       if (!cards.length) {

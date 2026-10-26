@@ -2,6 +2,7 @@ package personacard
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -322,6 +323,26 @@ var Seeds = []Seed{
 - 假装已经在现场。`},
 }
 
+// legacySeedBodies is the original thin text from 7173d25. Match read bodies
+// exactly: written seeds have no builtin identity, so any edit must be preserved.
+var legacySeedBodies = map[string]string{
+	"碎嘴群友": `说话像群里那个爱接梗的：短句、口语，别端着。
+
+能玩梗就玩，但别硬凹；接不住就老实说「这个我接不上」。
+
+正经事也能办，先给结论再补一句人话。
+
+别碰：别替主人做决定；别编没发生过的群聊八卦；别用公文腔。`,
+	"值班运维": `你是值班那班：先报状态，再给下一步。
+
+出事先止血，再说道理。日志和命令用短句甩出来。
+
+别吓主人，也别报喜不报忧。`,
+	"周末搭子": `周末搭子气质：轻松、会起哄，约局和闲聊都行。
+
+别太卷，别一开口就任务清单。能一起摸鱼也能一起办正事。`,
+}
+
 // seededFile marks a library that has had cards: a seed run finished, or a card was
 // created, imported, updated or deleted. Only it and cards decide; .lock is also
 // made by failed calls, so it says nothing about history.
@@ -343,19 +364,16 @@ func markSeeded(dir string) error {
 	return fsutil.WriteAtomic(filepath.Join(dir, seededFile), nil, 0600)
 }
 
-// EnsureSeeds writes Seeds into a library that has never had a card, and returns once
-// the library is complete, so a list read after it sees all seeds or none of this run.
-// A marked library returns without touching the disk. Cards without a lock file were
-// never part of a seed run (a run takes the lock before its first card), so they also
-// return at once; otherwise the caller waits on the library lock and checks again,
-// which also waits out a run in another process. A failed run removes its cards.
+// EnsureSeeds fills a never-used empty library, or upgrades unchanged thin seeds
+// in a marked library. Both writes use the library lock, including across processes.
+// A marked empty library stays empty; a failed first seed run removes its own cards.
 func EnsureSeeds(root, owner string) error {
 	if !ownerRe.MatchString(owner) {
 		return errors.New("personacard: bad owner")
 	}
 	dir := OwnerDir(root, owner)
 	if has(dir, seededFile) {
-		return nil
+		return locked(root, owner, upgradeSeeds)
 	}
 	cards, err := list(dir)
 	if err != nil {
@@ -366,7 +384,7 @@ func EnsureSeeds(root, owner string) error {
 	}
 	return locked(root, owner, func(dir string) error {
 		if has(dir, seededFile) {
-			return nil
+			return upgradeSeeds(dir)
 		}
 		if cards, err := list(dir); err != nil || len(cards) > 0 {
 			return err
@@ -400,4 +418,35 @@ func EnsureSeeds(root, owner string) error {
 		}
 		return err
 	})
+}
+
+// upgradeSeeds runs under the library lock, so an Update cannot slip between the
+// comparison and write. Keep successful upgrades if another card fails; retry only
+// unchanged thin cards on the next call. list skips unreadable cards as usual.
+func upgradeSeeds(dir string) error {
+	cards, err := list(dir)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, c := range cards {
+		old, ok := legacySeedBodies[c.Name]
+		if !ok || c.Body != old {
+			continue
+		}
+		for _, s := range Seeds {
+			if s.Name != c.Name || c.Body == s.Body {
+				continue
+			}
+			name, body, err := clean(c.Name, s.Body)
+			if err == nil {
+				_, err = write(dir, c.ID, name, body)
+			}
+			if err != nil {
+				errs = append(errs, fmt.Errorf("personacard: upgrade %s: %w", c.ID, err))
+			}
+			break
+		}
+	}
+	return errors.Join(errs...)
 }
