@@ -2,6 +2,13 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 官方薄入口续作（分支交付，本机 scripted 浏览器通过，未合入）
+
+- 复用同款 static、账号 Bearer、ADR 0024 票/待命/AuthorizeOwner；加五种 `/api/` 方法、双向 Content-Type、正文限额与领票 CORS。serve 保存/恢复主人账号会话并独立报在线，轮换/登出/失效取消旧管道。
+- 本机 Chromium 经真实 JS Web Crypto → Go Hub → 主人 API，用 scripted Provider 完成桌面/手机主界面、发消息、离线重试和退出。首屏样本 54 ms，20 次 `/api/bots` 的 p95 0.6 ms；不是公网、真模型、IPC 或帧率测量。完整 Go 套件与前端 14 条测试通过，详细命令、部署和余项见 `~/.xbot-build/public-thin-entry/encode-remote-ui-report.md`。
+- 扩展 `smoke` 套件唯一失败为 `TestNewTaskWhileBusy`（子任务缺结果汇报、relay 等待超时），在隔离归档的 main `e164b7a` 上同样复现；六条基础旅程未出现失败。本批没有修改忙时任务逻辑，不能把扩展冒烟报为全绿。
+- 不合入 main、不 push、不重启 Mini 8788。真实账号手机公网验收交指挥官与主人，尚不报主人日用通过。
+
 ## 2026-10-26 hosted 生图 P2：多图完成事件预算（分支回修，未合入）
 
 - SSE 生图行预算按既有 20 MiB/图 × 8 张的 base64，加有限输出元数据与事件封装计算，修复 completed 重复携带多张大图使整轮报 token too long、最终路径丢失的问题。单图/张数/落盘上限、未启用生图的 1 MiB 行限与清理后的 1 MiB 输出预算不变。
