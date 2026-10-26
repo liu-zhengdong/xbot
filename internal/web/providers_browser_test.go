@@ -131,20 +131,26 @@ const card=name=>[...document.querySelectorAll('.provider-card')].find(n=>n.text
  // xAI leads with account login; the key form folds away as a secondary entry.
  card('xAI').click();await waitFor(()=>btn('登录 xAI'),'xai login CTA missing');
  assert(!$('.provider-key-alt').open,'xai key form not folded');assert($('.provider-key input'),'xai key form missing');
+ assert($('.provider-status').textContent.includes('未登录')&&!$('#settings-providers').textContent.includes('密钥已配置'),'xai header status is not OAuth');
  assert(!/API_KEY|providers\.json|web\.json|xbot provider|hosted/.test($('#settings-providers').textContent),'engineering words shown');
- btn('登录 xAI').click();await waitFor(()=>btn('取消')&&btn('重新打开'),'xai pending controls missing');
+ btn('登录 xAI').click();await waitFor(()=>btn('取消')&&btn('再点重开'),'xai pending controls missing');
+ assert(btn('等待登录…').disabled&&$('.provider-status').textContent.includes('等待登录'),'xai pending state missing');
  // A failed login keeps a readable error with cancel and re-login visible.
  fixture.xaiFail=true;await waitFor(()=>btn('重新登录')&&btn('取消'),'xai retry after failure missing');
- assert($('#settings-providers').textContent.includes('授权未完成'),'xai failure text missing');
+ assert($('.provider-auth-error').textContent.includes('登录未完成，请重试。可取消后重新登录。')&&$('.provider-auth-error').textContent.includes('授权未完成'),'xai error card missing');
+ assert(!$('.provider-auth-error button')&&$('.provider-auth-error').getBoundingClientRect().bottom<=btn('重新登录').getBoundingClientRect().top,'xai error card not separate from the button');
+ assert(!/登录 xAI登录未完成|重新登录登录未完成/.test($('#settings-providers').innerText),'xai button and error glued together');
+ assert($('.provider-status').textContent.includes('登录未完成')&&!$('.provider-status .sdot.ok'),'xai failed status row wrong');
  fixture.xaiCancelled=true;fixture.xaiFail=false;$('.provider-back').click();
  card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');
  const typed=$('.provider-key input');assert(typed.type==='password','key input visible');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
  // A saved key is secondary on xAI: the detail still leads with account login and fetches nothing.
- await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('密钥已配置'),'xai login after key');assert(fixture.saves===1,'key saved once');
+ await waitFor(()=>btn('登录 xAI')&&$('.provider-key-alt').textContent.includes('密钥已配置 · 可用'),'xai login after key');assert(fixture.saves===1,'key saved once');
+ assert(!$('.provider-status').textContent.includes('密钥已配置')&&$('.provider-status').textContent.includes('未登录'),'saved xai key shown on the header row');
  assert(!(fixture.catalogCalls||[]).includes('/api/providers/xai/sync'),'key-only xai fetched models before login');
  const words=/API_KEY|providers\.json|web\.json|xbot provider|hosted|vision|\benv\b|backend/i;
  assert(!words.test($('#settings-providers').textContent),'engineering words after save');
- $('.provider-back').click();card('xAI').click();await waitFor(()=>btn('登录 xAI')&&$('.provider-status').textContent.includes('密钥已配置'),'configured xai detail');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
+ $('.provider-back').click();card('xAI').click();await waitFor(()=>btn('登录 xAI')&&$('.provider-key-alt').textContent.includes('密钥已配置'),'configured xai detail');assert(!$('.provider-key-alt').open&&!$('.provider-status').textContent.includes('密钥已配置'),'configured xai key left the fold');assert(!words.test($('#settings-providers').textContent),'engineering words in configured detail');
  // A save that finishes late must not repaint over the page the person moved to.
  $('.provider-back').click();card('MiniMax').click();await waitFor(()=>$('.provider-key input'),'minimax form');
  $('.provider-key input').value='minimax-0123456789';fixture.slowSave=true;$('.provider-key').requestSubmit();await waitFor(()=>fixture.releaseSave,'slow save pending');

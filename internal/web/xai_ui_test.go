@@ -27,6 +27,7 @@ const window={open(url){assert(url==='about:blank'||url==='https://auth.example/
 const document={documentElement:{classList:{contains:()=>false}},createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag)};
 vm.runInNewContext(fs.readFileSync('static/providers.js','utf8'),{window,document,URL,WeakMap,encodeURIComponent,setTimeout:fn=>timers.push(fn)});
 const walk=n=>[n,...n.children.flatMap(walk)],find=(tag,text)=>walk(host).find(n=>n.tag===tag&&n.innerText.includes(text));
+const cls=c=>walk(host).find(n=>String(n.className||'').split(' ').includes(c)),statusText=()=>cls('provider-status').innerText;
 const providers=()=>configured?[{name:'xai',oauth:'xai',protocol:'responses',key_configured:true,models:[]}]:[];
 const api=async(path,opts={})=>{
  calls.push({path,opts});
@@ -43,32 +44,59 @@ const starts=()=>calls.filter(c=>c.path.endsWith('/start')).length;
  await window.XBotProviders.settings({api,host,isCurrent:()=>current});
  const card=find('button','xAI');assert(card,'xAI card missing');
  await card.onclick();await flush();
+ // Idle: the header row reflects OAuth only; the key form is folded away.
  assert(find('button','登录 xAI'),'login CTA missing');
- assert(find('summary','用 API 密钥'),'folded key entry missing');
+ assert(find('button','登录 xAI').className.includes('provider-btn-pri'),'login CTA is not the primary button');
+ assert(statusText().includes('未登录'),'idle status missing');
+ assert(!host.innerText.includes('密钥已配置'),'unconfigured key shown as configured');
+ assert(!host.innerText.includes('登录未完成'),'idle shows a failure');
+ assert(find('summary','用 API 密钥')&&!cls('provider-key-alt').open,'folded key entry missing');
  assert(find('button','保存密钥'),'key form missing');
- // The account login leads; pending shows cancel and reopen.
+ // The account login leads; pending shows a disabled wait button, cancel and reopen.
  const attempt=find('button','登录 xAI').onclick();await flush();
- assert.equal(starts(),1);assert(find('button','取消')&&find('button','重新打开'),'pending controls missing');
- assert(host.innerText.includes('等待登录'),'pending note missing');
+ assert.equal(starts(),1);
+ const waiting=find('button','等待登录…');assert(waiting&&waiting.disabled,'pending button not disabled');
+ assert(find('button','取消')&&find('button','再点重开'),'pending controls missing');
+ assert(statusText().includes('等待登录')&&walk(cls('provider-status')).some(n=>n.tag==='button'&&n.textContent==='取消'),'pending status row missing');
  resolveStatus({state:'pending'});await flush();assert.equal(timers.length,1,'poll sleep missing');
  // Cancelling stops the pending login; the CTA returns without a new start.
  const cancelled=find('button','取消').onclick();await flush();await cancelled;
  assert(find('button','登录 xAI'),'cancelled login cannot restart');
+ assert(host.innerText.includes('已取消登录'),'cancel note missing');
+ assert(statusText().includes('未登录'),'cancel did not reset status');
  assert(calls.some(c=>c.path.endsWith('/cancel')),'cancel not sent');
  assert.equal(starts(),1,'cancel started a new login');
- // A failed login keeps a readable error with cancel and re-login.
+ // A failed login: separate error card, then re-login and cancel as separate controls.
  const retry=find('button','登录 xAI').onclick();await flush();assert.equal(starts(),2);
  resolveStatus({state:'failed',error:'授权未完成，请重试'});await retry;await flush();
- assert(find('button','重新登录')&&find('button','取消'),'failed controls missing');
- assert(host.innerText.includes('授权未完成'),'failure text missing');
+ const failCard=cls('provider-auth-error');
+ assert(failCard&&failCard.innerText.includes('登录未完成，请重试。可取消后重新登录。'),'error card missing');
+ assert(failCard.innerText.includes('授权未完成'),'server failure text missing');
+ assert(!walk(failCard).some(n=>n.tag==='button'),'button inside the error card');
+ const relogin=find('button','重新登录'),stop=find('button','取消');
+ assert(relogin&&stop&&relogin!==stop&&relogin.textContent==='重新登录'&&stop.textContent==='取消','failed controls missing');
+ assert(!/登录 xAI登录未完成/.test(host.innerText),'button and error glued together');
+ assert(!find('button','登录 xAI'),'idle CTA kept next to the failure');
+ assert(statusText().includes('登录未完成')&&!walk(cls('provider-status')).some(n=>String(n.className).includes('sdot ok')),'failed status row wrong');
  // Re-login succeeds; the OAuth binding pulls its catalog read-only.
  const again=find('button','重新登录').onclick();await flush();assert.equal(starts(),3);
  configured=true;resolveStatus({state:'succeeded'});await again;await flush();
- assert(host.innerText.includes('已登录'),'logged-in status missing');
+ assert(statusText().includes('已登录'),'logged-in status missing');
+ assert(walk(cls('provider-status')).some(n=>n.tag==='button'&&n.className==='provider-relink'&&n.textContent==='重新登录'),'re-login link missing');
+ assert(statusText().includes('已用厂商搜索'),'hosted note missing');
+ assert(!find('button','登录 xAI'),'logged-in detail still shows the login CTA');
  assert(host.innerText.includes('grok-4'),'model list missing');
  assert(calls.some(c=>c.path==='/api/providers/models?provider=xai'),'oauth catalog not pulled');
  assert(!calls.some(c=>c.path.endsWith('/xai/sync')),'oauth binding hit the vendor sync route');
  assert(!host.innerText.includes('private-upstream-body'));
+ // A failed re-login from the logged-in header shows the error card, and cancel returns to logged in.
+ const relink=walk(cls('provider-status')).find(n=>n.className==='provider-relink').onclick();await flush();assert.equal(starts(),4);
+ assert(statusText().includes('等待登录'),'re-login pending status missing');
+ resolveStatus({state:'failed',error:''});await relink;await flush();
+ assert(cls('provider-auth-error').innerText.includes('登录未完成，请重试'),'re-login error card missing');
+ assert(statusText().includes('登录未完成'),'re-login failed status missing');
+ const back=find('button','取消').onclick();await flush();await back;
+ assert(statusText().includes('已登录')&&!cls('provider-auth-error').children.length,'cancel did not return to logged in');
  // A rejected refresh surfaces as a re-login prompt, not a network error.
  expired=true;
  find('button','模型与供应商').onclick();
@@ -104,6 +132,7 @@ const window={open(){throw Error('no login window expected before OAuth')}};
 const document={documentElement:{classList:{contains:()=>false}},createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag)};
 vm.runInNewContext(fs.readFileSync('static/providers.js','utf8'),{window,document,URL,WeakMap,encodeURIComponent,setTimeout(){}});
 const walk=n=>[n,...n.children.flatMap(walk)],find=(tag,text)=>walk(host).find(n=>n.tag===tag&&n.innerText.includes(text));
+const cls=c=>walk(host).find(n=>String(n.className||'').split(' ').includes(c)),statusText=()=>cls('provider-status').innerText;
 // An old-style key binding: protocol chat_completions, a key configured, no OAuth.
 const cases=[];
 // The API's default endpoint carries an empty name; a named vendor binding uses the brand.
@@ -123,7 +152,11 @@ cases.push(async()=>{
  assert(find('button','登录 xAI'),'key-configured xAI lost the login CTA');
  assert(find('summary','用 API 密钥'),'folded key entry missing');
  assert(find('button','保存密钥'),'key form missing');
- assert(host.innerText.includes('密钥已配置'),'configured status missing');
+ assert(statusText().includes('未登录'),'header status is not OAuth');
+ assert(!statusText().includes('密钥已配置'),'saved key shown on the header row');
+ const fold=cls('provider-key-alt');assert(!fold.open,'key fold opened by default');
+ assert(fold.innerText.includes('密钥已配置 · 可用'),'saved key state missing from the fold');
+ assert.equal(host.innerText.split('密钥已配置').length,2,'saved key state shown outside the fold');
  assert(host.innerText.includes('登录 xAI 账号即可使用'),'login lead missing');
  assert(!calls.some(c=>c.endsWith('/xai/sync')||c.includes('/api/providers/models')),'key-only xAI fetched models before login');
  assert(!host.innerText.includes('拉取模型失败'),'failed fetch shown before any fetch');

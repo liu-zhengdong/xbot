@@ -5,7 +5,7 @@
 ## 怎样算对
 
 1. 认证失败 / 进行中：UI 有明确「取消」与「重新登录」；取消后可立刻再开 OAuth；重走能成功或给出人话错误（不卡死、不假成功）。
-2. 设置·模型与供应商：xAI 主 CTA 是 OAuth 登录；密钥表单若仍在则为次要（文案/按钮权重低于登录）。
+2. 设置·模型与供应商：xAI 主 CTA 是 OAuth 登录；密钥表单若仍在则为次要（文案/按钮权重低于登录）。厂头下的状态行只反映 OAuth（未登录 / 等待登录… / 登录未完成 / 已登录+重新登录），即使本机已有 API 密钥也不显示「密钥已配置」；密钥状态只在默认收起的「用 API 密钥」折叠里。失败时错误文案是独立错误卡，「重新登录」「取消」是分开的按钮，不与错误粘成一行（设计真源 `~/.xbot-build/xai-oauth/design/handoff.md`）。
 3. Bot 绑 `xai` + grok 模型后：全局网页搜索自动模式下走厂商 hosted `web_search`（本绑定无本地 `web_search`）；可选同时开 `x_search`、`code_interpreter`（Responses tools 数组）。失败不假装成功（ADR 0023）。
 4. 令牌进现有 vault `_provider_accounts`；可 refresh；临近过期自动换；刷新失败提示重新登录。
 5. `go test` 相关包绿；合入本地 main（不 push）→ Mini 8788 → 手测。

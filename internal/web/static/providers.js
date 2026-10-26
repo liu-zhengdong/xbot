@@ -60,7 +60,7 @@
   function lineIcon(kind) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round"); svg.setAttribute("aria-hidden", "true");
-    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0" };
+    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", alert: "M12 8v4M12 16h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0" };
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
   }
   async function settings({ api, host, isCurrent = () => true }) {
@@ -189,11 +189,14 @@
       input.oninput = () => { query = input.value; filter(); }; filter();
       if (!subscription.hidden && (focusKey === "chatgpt" || focusKey === key(subscriptionEntry()))) chatgpt.focus();
     }
-    function keyForm(p, vendor, saved, current, lead) {
+    // `opts` lets the xAI fold label its input and show the saved-key state
+    // inside the fold instead of on the header row.
+    function keyForm(p, vendor, saved, current, lead, opts = {}) {
       const form = node("form", "provider-key"), input = node("input"), note = node("p", "provider-login-note");
-      input.type = "password"; input.autocomplete = "off"; input.spellcheck = false; input.placeholder = "粘贴密钥"; input.setAttribute("aria-label", `${vendor.title} 密钥`);
+      input.type = "password"; input.autocomplete = "off"; input.spellcheck = false; input.placeholder = "粘贴密钥"; input.setAttribute("aria-label", opts.label || `${vendor.title} 密钥`);
       const save = button("保存密钥", "btn primary", () => {}); save.type = "submit"; note.setAttribute("role", "status");
-      form.append(node("p", "", lead || "请先配置密钥，再拉取模型。"), input, save, note);
+      form.append(opts.label ? node("label", "provider-key-label", opts.label) : node("p", "", lead || "请先配置密钥，再拉取模型。"), input, save, note);
+      if (opts.configured) { const ok = node("p", "provider-key-state"); ok.append(node("span", "sdot ok"), node("span", "", "密钥已配置 · 可用")); form.append(ok); }
       let saving = false;
       form.onsubmit = async ev => {
         ev.preventDefault(); const value = input.value.trim(); if (!value || saving) return;
@@ -203,62 +206,75 @@
       };
       return form;
     }
-    // xAI account login controls: the primary login or re-login button, cancel
-    // and reopen while pending, a readable error with retry when it failed.
-    // The API-key form stays a secondary entry, never the main CTA.
-    function xaiAuthControls(host, primaryLabel, done, current) {
-      const actions = node("span", "provider-login-actions");
-      const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
-      const start = button(primaryLabel, "provider-back", () => login("xai", paint, done));
-      const reopen = button("重新打开", "provider-back", () => login("xai", paint, done));
-      const retry = button("重新登录", "provider-back", () => login("xai", paint, done));
-      const cancel = button("取消", "provider-back", async () => {
+    // xAI account login controls. The error card, the primary button and the
+    // secondary cancel are separate blocks so their text never runs together;
+    // `status(state, go, cancel)` mirrors the OAuth state into the header row.
+    // A null label means the binding is logged in: idle shows nothing here and
+    // re-login lives in the header row.
+    function xaiAuthControls(area, label, status, done, current) {
+      const error = node("div", "provider-auth-error"); error.setAttribute("role", "alert");
+      const actions = node("div", "provider-login-actions");
+      const note = node("p", "provider-login-note"); note.setAttribute("role", "status");
+      const go = () => login("xai", paint, done);
+      const start = button(label || "重新登录", "provider-btn-pri", go);
+      const reopen = button("再点重开", "provider-btn-ghost", go);
+      const cancel = async () => {
         if (loginRequest && loginRequest.current() && loginRequest.kind === "xai") {
           loginRequest.stopped = true;
           if (loginRequest.popup && !loginRequest.popup.closed) loginRequest.popup.close();
         }
-        cancel.disabled = true;
+        stop.disabled = true;
         try { await api("/api/providers/oauth/xai/cancel", { method: "POST" }); }
         catch (err) { paint("error", err && err.status ? err.message : ""); return; }
         paint("cancelled", "");
-      });
+      };
+      const stop = button("取消", "provider-btn-sec", cancel);
+      let shown = "";
       function paint(state, message) {
-        if (!current()) return;
-        start.disabled = reopen.disabled = retry.disabled = cancel.disabled = false;
-        actions.replaceChildren();
-        if (state === "starting") { start.disabled = true; actions.append(start); note.textContent = "正在登录…"; }
-        else if (state === "pending") { actions.append(cancel, reopen); note.textContent = message || "等待登录，在浏览器里完成登录，或点重新打开"; }
-        else if (state === "failed") { actions.append(cancel, retry); note.textContent = message || "登录未完成，请重试"; }
-        else if (state === "cancelled") { actions.append(start); note.textContent = "已取消登录，可重新开始"; }
-        else { actions.append(start); note.textContent = message || "登录未完成，请重试"; }
+        // Polling repaints every second; keep the same nodes so focus stays put.
+        if (!current() || shown === state + "\n" + message) return; shown = state + "\n" + message;
+        start.disabled = stop.disabled = reopen.disabled = false;
+        error.replaceChildren(); actions.replaceChildren(); note.textContent = "";
+        if (state === "starting" || state === "pending") {
+          start.textContent = "等待登录…"; start.disabled = true;
+          actions.append(start); if (state === "pending") actions.append(stop, reopen);
+          note.textContent = message; status("pending", go, cancel);
+        } else if (state === "failed" || state === "error") {
+          error.append(lineIcon("alert"), node("span", "", "登录未完成，请重试。可取消后重新登录。"));
+          if (message) error.append(node("small", "", message));
+          start.textContent = "重新登录"; actions.append(start, stop); status("failed", go, cancel);
+        } else {
+          start.textContent = label || "重新登录"; if (label) actions.append(start);
+          if (state === "cancelled") note.textContent = "已取消登录，可重新开始";
+          status(label ? "idle" : "logged", go, cancel);
+        }
       }
       paint("idle", "");
-      host.append(actions, note);
+      area.append(error, actions, note);
       return {
-        paint,
         // A login may be pending or failed from an earlier view; show it once.
         sync: async () => {
           try {
-            const status = await api("/api/providers/oauth/xai/status");
+            const state = await api("/api/providers/oauth/xai/status");
             if (!current() || (loginRequest && loginRequest.current() && loginRequest.kind === "xai")) return;
-            if (status.state === "pending") paint("pending", "");
-            else if (status.state === "failed") paint("failed", status.error || "");
+            if (state.state === "pending") paint("pending", "");
+            else if (state.state === "failed") paint("failed", state.error || "");
           } catch {}
         }
       };
     }
-    // The unconfigured xAI card leads with account login; the key form folds away.
-    function xaiVendorBody(p, vendor, current) {
-      const box = node("div", "provider-empty");
-      box.append(node("p", "", "登录 xAI 账号即可使用，无需 API 密钥。"));
+    // The unconfigured xAI card leads with account login; the key form folds
+    // away and carries the saved-key state.
+    function xaiVendorBody(p, vendor, current, status) {
+      const box = node("div", "provider-xai");
+      box.append(node("p", "provider-xai-lead", "登录 xAI 账号即可使用，无需 API 密钥。"));
       const area = node("div", "provider-auth");
       const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
-      const auth = xaiAuthControls(area, "登录 xAI", done, current);
+      const auth = xaiAuthControls(area, "登录 xAI", status, done, current);
       box.append(area);
       const alt = node("details", "provider-key-alt");
-      const fold = node("summary", "", "用 API 密钥");
-      fold.append(lineIcon("back"));
-      alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "没有账号时，也可以改用 API 密钥。"));
+      const fold = node("summary"); fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
+      alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
       box.append(alt);
       auth.sync();
       return box;
@@ -269,8 +285,28 @@
       const back = button("", "provider-back", () => paint(key(p))); back.append(lineIcon("back"), node("span", "", "模型与供应商"));
       const heading = node("div", "provider-detail-heading"), info = node("div", "provider-detail-info"), title = node("div", "provider-detail-title"); title.append(node("h2", "", p.title), badge(p.protocol));
       const status = node("div", "provider-status"); info.append(title, status); heading.append(glyph(p.brand), info);
-      const body = node("div", "provider-models"); host.replaceChildren(back, heading, body); heading.tabIndex = -1; heading.focus({preventScroll:true});
+      const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models"); host.replaceChildren(back, heading, auth, body); heading.tabIndex = -1; heading.focus({preventScroll:true});
+      // xAI's header row reflects account login only; a saved API key shows
+      // inside the folded key form, never here.
+      let hosted = false, xaiLast = null;
+      function xaiStatus(state, go, cancel) {
+        xaiLast = [state, go, cancel];
+        if (state === "pending") status.replaceChildren(node("span", "sdot wait"), node("span", "provider-status-wait", "等待登录…"), button("取消", "provider-relink", cancel));
+        else if (state === "failed") status.replaceChildren(node("span", "provider-status-fail", "登录未完成"));
+        else if (state === "logged") {
+          status.replaceChildren(node("span", "sdot ok"), node("span", "provider-status-ok", "已登录"), button("重新登录", "provider-relink", go));
+          if (hosted) status.append(node("span", "provider-search-note", "已用厂商搜索，本绑定不再使用本地搜索"));
+        } else status.replaceChildren(node("span", "sdot off"), node("span", "", "未登录"));
+      }
       function keyStatus() {
+        if (p.brand === "xai") {
+          auth.replaceChildren(); xaiStatus("idle");
+          if (p.oauth === "xai") {
+            const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
+            xaiAuthControls(auth, p.key_configured ? null : "重新登录", xaiStatus, done, current).sync();
+          }
+          return;
+        }
         status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : p.oauth ? "未登录" : "密钥未配置"));
         if (p.oauth === "chatgpt") {
           const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
@@ -283,13 +319,6 @@
           }
           status.append(again, note);
         }
-        if (p.oauth === "xai") {
-          const area = node("span", "provider-status-auth");
-          const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
-          const auth = xaiAuthControls(area, "重新登录", done, current);
-          status.append(area);
-          auth.sync();
-        }
       }
       keyStatus(); body.append(state("正在拉取模型…"));
       try {
@@ -298,7 +327,7 @@
         // is configured; OAuth is the primary path and the key folds away.
         // The default endpoint has an empty name, so match on brand alone.
         const vendorEarly = p.brand === "xai" && p.oauth !== "xai" && vendorOf("xai");
-        if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
+        if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current, xaiStatus)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
           if (p.oauth === "xai") { body.replaceChildren(state("请重新登录 xAI，再拉取模型。")); return; }
@@ -318,7 +347,10 @@
         const models = result.models;
         body.replaceChildren(node("h3", "provider-model-count", `模型 · ${models.length}`));
         if (!models.length) { body.append(state("供应商未返回可用模型。", () => capability(p, true))); return; }
-        if (models.some(m => m.hosted_web_search)) status.append(node("span", "provider-search-note", "已用厂商搜索，本绑定不再使用本地搜索"));
+        if (models.some(m => m.hosted_web_search)) {
+          if (p.brand !== "xai") status.append(node("span", "provider-search-note", "已用厂商搜索，本绑定不再使用本地搜索"));
+          else { hosted = true; if (xaiLast && xaiLast[0] === "logged") xaiStatus(...xaiLast); }
+        }
         const rows = node("div", "provider-model-list");
         for (const m of models) {
           const row = node("div", "provider-model-row"), chips = node("div", "provider-chips");
@@ -343,7 +375,7 @@
         // login; an OAuth binding keeps the re-login message above.
         const vendor = p.brand === "xai" && p.oauth !== "xai" && vendorOf("xai");
         if (vendor) {
-          body.replaceChildren(state("拉取模型失败，可以登录 xAI 账号后再试。", () => capability(p, true)), xaiVendorBody(p, vendor, current));
+          body.replaceChildren(state("拉取模型失败，可以登录 xAI 账号后再试。", () => capability(p, true)), xaiVendorBody(p, vendor, current, xaiStatus));
           return;
         }
         body.replaceChildren(state(p.oauth === "chatgpt" ? "拉取模型失败，请重试或重新登录 ChatGPT。" : "拉取模型失败，请检查供应商配置和网络。", () => capability(p, true)));
