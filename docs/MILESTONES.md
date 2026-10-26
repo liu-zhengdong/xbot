@@ -13,19 +13,20 @@
 
 
 
-## 2026-10-26 Agent Todo streaming 热修（分支验证通过，待执行官核验）
+## 2026-10-26 Agent Todo streaming 热修
 
 - 针对 `dfaa232` 设计师不 PASS 的四处：流式回复期间继续既有 3 秒 status 轮询；侧栏和 live 优先同一 `st.todo`，无摘要时 todo／shell 用「待办／后台命令」；未完成轨迹用「进度 n/m 项」；running 预览恢复后可点击打开中文待办步骤。不改账本、工具执行、模型默认或 Tasks。
 - `go test -count=1 ./internal/web/` 通过（30.797 秒，含本机 Chrome）；`go vet ./internal/web/`、JS 语法检查通过。`TestTodoBrowser`、`TestTodoStreamingBrowser`、`TestTodoLiveToolsBrowser` 均新绿；仅回退 app.js 至 `dfaa232` 后分别因 0/3 完成口吻、streaming 无 running 进度、live 裸 todo 而失败。流式测试还覆盖摘要连续变化、shell 事件不盖摘要、摘要消失后的工具人话兜底和两个轮询周期节点复用。
 - 1440×900、DPR 2 的浅深色前后截图（流中默认/悬停、步骤打开、轨迹折叠/展开）在 `~/.xbot-build/ui-shots/agent-todo-hotfix/`，日志和夹具在 `~/.xbot-build/agent-todo-hotfix/`。两次非虚拟时间 Chrome 采样：status 变化到进度可见为 2993/3004 ms，符合既有 3 秒轮询；不是模型回复、IPC、60fps 或线上 p95 验收。
-- 未改 kernel，未运行 kernel／全仓测试、三遍复测和全仓 vet；未启动 8788，未合并、未 push。真实入口旅程及设计师复验交执行官，尚未达到「已合入／端到端通过／主人日用通过」。
+- 编码期未改 kernel、未跑全仓三遍；其后已合本地 main（tip `a02e3f3`，祖先含热修与 `949d542`）；设计师用户视角 Ultra 四块 PASS（含本热修）；`docs/dev/agent-todo-tool.md` 已毕业删除。未 push。
 
-## 2026-10-26 Agent Todo 工具可见性（分支实现，待合入/验收）
 
-- 复用内核 `todo`、`todos.json` 和既有归档/提醒，将 TodoSummary 改为中文；侧栏显示待办进度，步骤弹层和轨迹使用「待办」及中文状态。轨迹成功回包才展示已保存条目，失败/未返回单独标明，原文折叠留在轨迹；全部完成归档后仍可看历史。未改模型默认开关、写盘锁或原子写路径，没有第二账本、Tasks 或对话任务卡。设计见 [agent-todo-tool](dev/agent-todo-tool.md)。
+## 2026-10-26 Agent Todo 工具可见性
+
+- 复用内核 `todo`、`todos.json` 和既有归档/提醒，将 TodoSummary 改为中文；侧栏显示待办进度，步骤弹层和轨迹使用「待办」及中文状态。轨迹成功回包才展示已保存条目，失败/未返回单独标明，原文折叠留在轨迹；全部完成归档后仍可看历史。未改模型默认开关、写盘锁或原子写路径，没有第二账本、Tasks 或对话任务卡。约定见 [ui](atlas/ui.md) 状态/轨迹段与 [kernel](atlas/kernel.md) 待办清单。
 - kernel/web 的 `go test -count=1`、相关 vet、gofmt 和 diff 检查通过；新增摘要边界与浏览器行为测试，API 测试改为真实工具连续建三项/更新后读取同一磁盘账本。旧实现隔离归档上的摘要、API、浏览器三条回归均失败。浏览器验证成功/失败/未返回/放弃原因、原文折叠、归档清空预览和未变节点跨两次轮询保持；1440×900、DPR 2 浅深色截图经审美顾问复审通过。
 - 五 Bot 状态接口 500 样本 p95 1.205ms；本机 Chrome 30 次轨迹切换至下一帧 p95 浅色 19.7ms、深色 20.2ms。前者为测试 HTTP handler 耗时，后者为 scripted HTTP 页面交互耗时，不代表真模型回复、IPC、后台负载或 60fps 达标。证据：`~/.xbot-build/agent-todo-tool/`，截图：`~/.xbot-build/ui-shots/agent-todo-tool/`。
-- 按本批范围未跑全仓测试、`-count=3`、真模型或主人日用；未 push、未合 main、未重启日用服务。Atlas audit 已跑，既存提醒不在本批修；保留 dev 供执行官合入后在 8788 验收。
+- 已合本地 main；设计师 PASS（tip `a02e3f3`）；`docs/dev/agent-todo-tool.md` 已毕业删除。未 push。按本批范围未跑主人日用。
 
 ## 2026-10-26 轨迹可发现与回放
 
@@ -450,6 +451,8 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 
 设置浮层新增「技能」（网页搜索与设备之间）：一层是主人技能库清单，带搜索和唯一主按钮「导入」；二层按 Bot 开关，关只影响该 Bot。导入由浏览器选文件夹，同名先问再覆盖；新增库级 `GET /api/skills`、`GET /api/skills/{slug}`、`POST /api/skills/import`，开关复用每个 Bot 的 enable/disable。现状见 [界面](atlas/ui.md#技能设置)。
 
+其后合入四源导入（Agent / Codex / Claude / 本机文件夹）；设计师用户视角 PASS（tip `a02e3f3`，祖先 `3803f3d`）；`docs/dev/skills-import-sources.md` 已毕业删除。未 push。
+
 本地 Chrome 走查了列表、搜索、无匹配、空态、二层开关、导入、同名覆盖/取消、错误和深浅色、窄屏；`go test` 覆盖库级接口、导入覆盖与并发同名。级别：本地分支验收，未合入、未发布，主人日用未测。证据在仓库外 `~/.xbot-build/skills-settings/`。
 
 ### 输入框 URL 高亮可点（2026-10-26）
@@ -515,14 +518,14 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 性能：17,280 字节图片语法过滤，Node v24.22.1 预热后 200 次 p95 0.137 ms；fake 页面工具结果到头像更新为虚拟时钟 10 ms，不能当作真实响应 p95。级别：本地分支自动化与 scripted 基础旅程通过，未合 main、未 push、未重启 8788；真实账号生图、运行 tip 一致性、设计师本批截图验收、主人日用、真实模型/IPC p95、FPS 与后台减速未验证。后续边界（工作区可发现、交付话术、关于页 tip 展示等）见候选清单，不另留开发短记。
 
 
-### 技能主名与落库默认范围（2026-10-26，本地分支）
+### 技能主名与落库默认范围（2026-10-26）
 
-`feature/skills-main-default` 按 [本批设计](dev/skills-title-and-scope-defaults.md) 落地：新技能的 `name` 保持 slug，`title` 为可选人读短名；解析、库/来源接口与列表/详情优先 title，旧 name/slug 降级，description 不再作主标题。`write_skill` 支持 title 与显式 scope：self/同 owner 本机单 owner Bot 名（忽略大小写）只开目标，省略/空全开；不扫描 transcript，设置页新导入继续全开，覆盖保留既有开关。
+`feature/skills-main-default` 落地：新技能的 `name` 保持 slug，`title` 为可选人读短名；解析、库/来源接口与列表/详情优先 title，旧 name/slug 降级，description 不再作主标题。`write_skill` 支持 title 与显式 scope：self/同 owner 本机单 owner Bot 名（忽略大小写）只开目标，省略/空全开；不扫描 transcript，设置页新导入继续全开，覆盖保留既有开关。
 
-范围默认复用 `EnableSkill` / `DisableSkill` 与 `disabled_skills`；同库自装串行，配置更新在原文件锁内读最新值并原子写入，其它配置保存不覆盖既有开关。已加载内核也读取持久化名单，安装后手动开关立即影响技能列举和读取。现状见生态、界面、多 Bot atlas；旧设计稿已删除，以 title/scope 真源保留后续验收。
+范围默认复用 `EnableSkill` / `DisableSkill` 与 `disabled_skills`；同库自装串行，配置更新在原文件锁内读最新值并原子写入，其它配置保存不覆盖既有开关。已加载内核也读取持久化名单，安装后手动开关立即影响技能列举和读取。现状见生态、界面、多 Bot atlas；设计师用户视角 PASS（tip `a02e3f3`）；`docs/dev/skills-title-and-scope-defaults.md` 已毕业删除。
 
 验证：skill/kernel/web/bot/link/review/cmd/xbot 七包单遍通过，最终 `go test -count=1 ./...` 46 个有测试包全过，`go vet ./...`、gofmt、diff 检查通过；kernel/bot 的范围并发、不同 slug 并发与旧配置保存专项 race 通过。新增/更新 title YAML 读写、旧文件兼容、API、DOM、scripted 工具调用、self/具名/省略/空 scope、非法与跨 owner scope、已加载内核手动开关、并发写入回归；c580239 隔离归档上回归按预期失败（只添加新字段/参数的编译适配，不改变旧行为）。本机 Chrome 真设置入口行为通过，浅深色列表/详情前后截图已保存。atlas audit 已跑，与同一 git 历史下基线相比无新增文档告警，既有告警保留。
 
 性能：本机持久化开关读取基准 10,314 ns/op（约 10.3 微秒/次，200 ms 基准窗口）；不是交互/IPC p95 或 FPS。证据与完整自检：`~/.xbot-build/skills-main-default/`；截图：`~/.xbot-build/ui-shots/skills-main-default/`。
 
-级别：本地功能分支提交待复审，scripted 内核/API 与本机浏览器通过；未合 main、未 push、未发版、未重启 8788。Not run: `-count=3`（任务要求）、smoke tag 六旅程、真模型当轮意图判断、8788 实服、设计师本批验收、主人日用、Linux CI、交互/IPC p95、FPS 和后台减速。
+级别：已合本地 main（tip `a02e3f3` / 本切片祖先 `b4fd276`←`18b6989`）；设计师用户视角 PASS；未 push。Not run: 主人日用、Linux CI、交互/IPC p95、FPS 和后台减速。
