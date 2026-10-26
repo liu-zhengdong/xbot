@@ -17,6 +17,12 @@
   const backdrop = $("backdrop");
   const thread = $("thread");
   const input = $("input");
+  // The composer's last rendered text and its IME state; see the composer
+  // helpers further down for how they keep the draft plain and linkified.
+  // composerEditCaret is the caret captured before an edit mutates the draft.
+  let composerTextCache = "";
+  let composerComposing = false;
+  let composerEditCaret = null;
   const titleEl = $("title");
   const subtitle = $("subtitle");
   const updateBtn = $("update");
@@ -27,6 +33,11 @@
   const modalFields = $("modal-fields");
   const modalError = $("modal-error");
   const composer = $("composer");
+  // plaintext-only keeps paste and drop plain in Chrome, Safari and current
+  // Firefox; engines without it throw here and fall back to editable
+  // everything, where the paste handler and the re-render keep the draft plain.
+  try { document.createElement("div").contentEditable = "plaintext-only"; }
+  catch (e) { input.setAttribute("contenteditable", "true"); }
   const lightbox = $("lightbox");
 
   const state = {
@@ -1305,6 +1316,31 @@
     return label;
   }
 
+  // One math formula as a span/div holding KaTeX's markup. KaTeX escapes the
+  // TeX source itself and its escaped output is the library's supported
+  // injection contract (no raw user HTML ever enters the tree any other way);
+  // on any failure the original source stays visible and the bubble survives.
+  // src is the formula's full source text including its delimiters — kept
+  // separate from displayMode, because a sentence-middle $$…$$ renders as an
+  // inline span but must still fall back as $$…$$, not with rewritten
+  // delimiters (review-1 R5).
+  function mathNode(tex, display, src) {
+    const full = src === undefined ? (display ? "$$" + tex + "$$" : "$" + tex + "$") : src;
+    const box = document.createElement(display ? "div" : "span");
+    box.className = display ? "math-block" : "math-inline";
+    try {
+      if (!window.katex || typeof window.katex.renderToString !== "function") throw new Error("katex missing");
+      // throwOnError: TeX that cannot parse must reach the catch above and
+      // fall back to the source. With false, KaTeX returns .katex-error
+      // markup instead and the original words would never come back.
+      box.innerHTML = window.katex.renderToString(tex, { throwOnError: true, displayMode: !!display });
+    } catch (e) {
+      box.classList.add("math-raw");
+      box.textContent = full; // fallback: the words the model sent
+    }
+    return box;
+  }
+
   function appendPathText(parent, text) {
     const paths = /(?<![^\s，。；：（("'])((?:~\/|\/|[A-Za-z]:\\)[^\s，。；、）)<>"'`]+)/g;
     let last = 0;
@@ -1316,7 +1352,10 @@
   }
 
   function appendInline(parent, text) {
-    const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+    // Math needs its neighbors glued on: `$5 and $6` is prose (the closing
+    // side is a space), `$x^2$` is a formula. $$ pairs come first so a single
+    // $ never eats their opening.
+    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
     let last = 0;
     let match;
     while ((match = re.exec(text))) {
@@ -1325,6 +1364,12 @@
       if (tok.charAt(0) === "`") {
         const code = tok.slice(1, -1);
         parent.append(/^(?:~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(code) && !/\s--?/.test(code) ? pathLabel(code, "code") : el("code", "", code));
+      } else if (tok.startsWith("$$")) {
+        // The sentence-middle $$…$$ tradeoff: rendered inline, but the
+        // fallback keeps the full source including both $$ delimiters.
+        parent.append(mathNode(tok.slice(2, -2), false, tok));
+      } else if (tok.charAt(0) === "$") {
+        parent.append(mathNode(tok.slice(1, -1), false, tok));
       } else if (tok.startsWith("**")) {
         parent.append(el("strong", "", tok.slice(2, -2)));
       } else if (tok.charAt(0) === "*") {
@@ -1351,6 +1396,7 @@
     const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
     let para = [];
     let list = null;
+    let math = null; // lines gathered between $$ fences, or null outside one
     const flushPara = () => {
       if (!para.length) return;
       const p = document.createElement("p");
@@ -1363,7 +1409,40 @@
       parent.append(list);
       list = null;
     };
+    const flushMath = () => {
+      if (math === null) return;
+      parent.append(mathNode(math.join("\n").replace(/^\n+|\n+$/g, ""), true));
+      math = null;
+    };
     for (const line of lines) {
+      if (math !== null) {
+        // First closing $$ wins: the rest of the line is prose again and may
+        // hold further formulas (lastIndexOf would swallow them into the TeX).
+        const end = line.indexOf("$$");
+        if (end < 0) { math.push(line); continue; }
+        math.push(line.slice(0, end));
+        flushMath();
+        const rest = line.slice(end + 2);
+        if (rest.trim()) para.push(rest);
+        continue;
+      }
+      const open = /^\s*\$\$(.*)$/.exec(line);
+      if (open) {
+        flushPara(); flushList();
+        const body = open[1];
+        // First closing $$ ends the formula; whatever follows is prose that
+        // may itself contain another formula (…$$ one $$ and $$ two $$).
+        const end = body.indexOf("$$");
+        if (end >= 0) {
+          // $$x^2$$ closed on the opening line; trailing prose goes on as text.
+          if (body.slice(0, end).trim()) parent.append(mathNode(body.slice(0, end), true));
+          const rest = body.slice(end + 2);
+          if (rest.trim()) para.push(rest);
+        } else {
+          math = body.trim() ? [body] : [];
+        }
+        continue;
+      }
       const h = /^(#{1,3})\s+(.*)$/.exec(line);
       if (h) {
         flushPara(); flushList();
@@ -1388,6 +1467,7 @@
     }
     flushPara();
     flushList();
+    flushMath();
   }
 
   function highlight(codeEl, text, lang) {
@@ -1555,13 +1635,278 @@
     return out;
   }
 
-  function fillComposer(text) {
-    input.value = text;
+  // The composer keeps the textarea's contract (plain text only, Enter sends,
+  // Shift+Enter breaks a line, drafts and pasted pictures behave the same) but
+  // renders as a contenteditable so http(s) URLs in the draft become links.
+  const COMPOSER_MAX = 16000;
+  // The body is an ASCII whitelist, aligned with the bubble pattern but
+  // tighter: prose glued to the address (https://x.y这个) stops the link where
+  // the address really ends instead of swallowing the sentence.
+  const composerURL = /https?:\/\/[[A-Za-z0-9\-._~:?#@!$&()*+,;=%/\]]+/g;
+
+  // Only http(s) counts as an address: the href comes from parsing the text,
+  // so a javascript: or data: URL can never become a link.
+  function composerSafeHref(url) {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  // Trailing punctuation stays prose: a URL before ,.)… must not eat it.
+  function composerURLStop(url) {
+    while (url.length > 2 && /[.,;:!?)\]}]$/.test(url)) url = url.slice(0, -1);
+    return url;
+  }
+
+  function composerLinkNode(url, href) {
+    const a = document.createElement("a");
+    a.href = href;
+    a.textContent = url; // never innerHTML: the draft is untrusted text
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+  }
+
+  // A colored span that keeps its source characters: draft Markdown is
+  // highlighted, never rendered into final layout (not WYSIWYG).
+  function composerSpan(cls, text) {
+    const s = document.createElement("span");
+    s.className = cls;
+    s.textContent = text; // never innerHTML: the draft is untrusted text
+    return s;
+  }
+
+  // Inline draft tokens, leftmost first: code spans, [text](url) links, bold,
+  // italic, then the bare composerURL addresses. Code spans win over URL
+  // inside backticks; math is a bubble-side thing and stays plain here.
+  const composerMD = new RegExp(
+    "(`[^`\\n]+`)" +
+    "|(\\[[^\\]\\n]*\\]\\(https?://[^\\s)\\n]+\\))" +
+    "|(\\*\\*[^*\\n]+\\*\\*)" +
+    "|(\\*[^*\\n]+\\*)" +
+    "|" + composerURL.source,
+  "g");
+
+  function composerInline(out, text) {
+    let last = 0;
+    for (const m of text.matchAll(composerMD)) {
+      if (m.index > last) out.push(document.createTextNode(text.slice(last, m.index)));
+      const tok = m[0];
+      if (m[1] != null) { // `code`
+        out.push(composerSpan("md-code", tok));
+      } else if (m[2] != null) { // [text](url)
+        const url = tok.slice(tok.indexOf("](") + 2, -1);
+        const href = composerSafeHref(url);
+        out.push(href ? composerLinkNode(tok, href) : document.createTextNode(tok));
+      } else if (m[3] != null) { // **bold**
+        out.push(composerSpan("md-bold", tok));
+      } else if (m[4] != null) { // *italic*
+        out.push(composerSpan("md-italic", tok));
+      } else { // bare http(s) address, same rules as before
+        const url = composerURLStop(tok);
+        if (!url) continue;
+        const href = composerSafeHref(url);
+        if (href) {
+          out.push(composerLinkNode(url, href));
+          // Punctuation trimmed off the address stays prose.
+          if (url.length < tok.length) out.push(document.createTextNode(tok.slice(url.length)));
+        } else {
+          out.push(document.createTextNode(tok));
+        }
+      }
+      last = m.index + tok.length;
+    }
+    if (last < text.length) out.push(document.createTextNode(text.slice(last)));
+  }
+
+  // The draft split into text nodes, links and colored spans. Line starts get
+  // their heading/list marker first (so `* item` is a list dot, not italic);
+  // anything that is not a usable http(s) address stays plain text.
+  function composerNodes(text) {
+    const out = [];
+    const lines = String(text).split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (i) out.push(document.createTextNode("\n"));
+      let rest = lines[i];
+      const h = /^#{1,3}(?=\s)/.exec(rest);
+      if (h) {
+        out.push(composerSpan("md-heading", h[0]));
+        rest = rest.slice(h[0].length);
+      } else {
+        const li = /^[-*](?=\s)/.exec(rest);
+        if (li) {
+          out.push(composerSpan("md-list", li[0]));
+          rest = rest.slice(li[0].length);
+        }
+      }
+      composerInline(out, rest);
+    }
+    return out;
+  }
+
+  // The editor's plain text: <br> and block edges both count as a newline, so
+  // typing, Enter and paste all round-trip through the same string.
+  function composerText(root = input) {
+    let out = "";
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) { out += child.nodeValue; continue; }
+        if (child.nodeType !== 1) continue;
+        if (child.tagName === "BR") { out += "\n"; continue; }
+        walk(child);
+        if (child.tagName === "DIV" || child.tagName === "P") out += "\n";
+      }
+    };
+    walk(root);
+    return out;
+  }
+
+  function composerOffsetOf(root, node, offset) {
+    let total = 0;
+    const walk = (cur) => {
+      for (const child of cur.childNodes) {
+        if (child === node) {
+          if (node.nodeType === 3) total += offset;
+          return true;
+        }
+        if (child.nodeType === 3) total += child.nodeValue.length;
+        else if (child.nodeType === 1) {
+          if (child.tagName === "BR") total += 1;
+          else {
+            if (walk(child)) return true;
+            if (child.tagName === "DIV" || child.tagName === "P") total += 1;
+          }
+        }
+      }
+      return false;
+    };
+    walk(root);
+    return total;
+  }
+
+  // The caret as a plain-text offset, or null when it is outside the editor.
+  function composerCaret() {
+    const sel = getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    if (!input.contains(r.startContainer)) return null;
+    return composerOffsetOf(input, r.startContainer, r.startOffset);
+  }
+
+  function composerCaretTo(want) {
+    const sel = getSelection();
+    if (!sel) return;
+    let remaining = Math.max(0, want);
+    let spot = null;
+    let lastText = null;
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (spot) return;
+        if (child.nodeType === 3) {
+          lastText = child;
+          if (remaining <= child.nodeValue.length) { spot = [child, Math.max(0, remaining)]; return; }
+          remaining -= child.nodeValue.length;
+        } else if (child.nodeType === 1) {
+          if (child.tagName === "BR") { remaining -= 1; continue; }
+          walk(child);
+          if (!spot && (child.tagName === "DIV" || child.tagName === "P")) remaining -= 1;
+        }
+      }
+    };
+    walk(input);
+    const range = document.createRange();
+    if (spot) range.setStart(spot[0], spot[1]);
+    else if (lastText) range.setStart(lastText, lastText.nodeValue.length);
+    else range.setStart(input, 0);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function composerRefreshHeight() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
+  }
+
+  // Renders the draft. No cap here: truncating after the fact silently eats
+  // existing characters whenever the edit landed before the end, so the old
+  // textarea's maxlength lives at the edit entry instead (see below).
+  function renderComposer(text) {
+    input.replaceChildren(...composerNodes(text));
+    composerTextCache = text;
+  }
+
+  // Programmatic draft writes (fill, restore, refill, send): like assigning
+  // the old textarea's value they start a fresh undo history.
+  function composerSet(text) {
+    renderComposer(text);
+    composerHistory.stack = [{ text: composerTextCache, caret: Infinity }];
+    composerHistory.index = 0;
+  }
+
+  // Undo/redo is ours, one step per accepted edit: the native history would
+  // try to restore nodes that every re-render has long replaced. Keys are
+  // handled in the keydown/beforeinput listeners further down.
+  const composerHistory = { stack: [], index: -1, limit: 200 };
+  function composerRecord(before, text, caret) {
+    const h = composerHistory;
+    if (!h.stack.length) { h.stack.push({ text: before, caret: Infinity }); h.index = 0; }
+    if (h.stack[h.index].text === text) return;
+    h.stack.length = h.index + 1; // a new edit abandons the redo tail
+    h.stack.push({ text, caret: caret === null ? Infinity : caret });
+    if (h.stack.length > h.limit) h.stack.shift();
+    h.index = h.stack.length - 1;
+  }
+  function composerApply(entry) {
+    renderComposer(entry.text);
+    composerRefreshHeight();
+    composerCaretTo(entry.caret);
+    syncComposer();
+  }
+  function composerUndo() {
+    const h = composerHistory;
+    if (h.index <= 0) return;
+    h.index--;
+    composerApply(h.stack[h.index]);
+  }
+  function composerRedo() {
+    const h = composerHistory;
+    if (h.index >= h.stack.length - 1) return;
+    h.index++;
+    composerApply(h.stack[h.index]);
+  }
+
+  // Rewrites the draft's DOM only when its text changed, keeping the caret at
+  // the same spot, so typing beside a link never jumps the cursor. This is the
+  // edit entry, so the maxlength rule lives here: an edit that would push the
+  // draft past COMPOSER_MAX is refused whole — the old textarea never accepted
+  // the new characters by silently deleting older ones at the end.
+  function refreshComposerLinks() {
+    if (composerComposing) return;
+    const text = composerText(input);
+    if (text === composerTextCache) return;
+    if (text.length > COMPOSER_MAX) {
+      renderComposer(composerTextCache);
+      composerRefreshHeight();
+      composerCaretTo(composerEditCaret === null ? Infinity : composerEditCaret);
+      return;
+    }
+    const before = composerTextCache;
+    const caret = composerCaret();
+    renderComposer(text);
+    if (caret !== null) composerCaretTo(caret);
+    composerRecord(before, text, caret);
+  }
+
+  function fillComposer(text) {
+    composerSet(String(text == null ? "" : text));
+    composerRefreshHeight();
     syncComposer();
     input.focus();
-    input.setSelectionRange(text.length, text.length);
+    composerCaretTo(Infinity);
   }
 
   // The profile behind the starters: the panel's when it is this bot's, else
@@ -3539,7 +3884,7 @@
       const draft = sessionStorage.getItem("xbot-draft:" + name);
       if (draft) {
         sessionStorage.removeItem("xbot-draft:" + name);
-        if (!input.value) input.value = draft;
+        if (!composerText(input)) composerSet(draft);
         syncComposer();
       }
     } catch (e) {}
@@ -3573,7 +3918,7 @@
       const draft = sessionStorage.getItem("xbot-draft:group:" + id);
       if (draft) {
         sessionStorage.removeItem("xbot-draft:group:" + id);
-        if (!input.value) input.value = draft;
+        if (!composerText(input)) composerSet(draft);
         syncComposer();
       }
     } catch (e) {}
@@ -5706,8 +6051,9 @@
       // send cleared the input, so the text is restored whether or not a
       // picture came with it, and the row says what the picture needs.
       const pictureNote = images.length ? "；图片要重新贴一次" : "";
-      if (!input.value.trim() && text) {
-        input.value = text;
+      if (!composerText(input).trim() && text) {
+        composerSet(text);
+        composerRefreshHeight();
         marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
         announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
       } else if (!text && images.length) {
@@ -5718,9 +6064,12 @@
         const back = el("button", "secondary", "放回输入框");
         back.type = "button";
         back.addEventListener("click", () => {
-          input.value = input.value.trim() ? input.value.replace(/\s*$/, "\n") + text : text;
+          const cur = composerText(input);
+          composerSet(cur.trim() ? cur.replace(/\s*$/, "\n") + text : text);
+          composerRefreshHeight();
           syncComposer();
           input.focus();
+          composerCaretTo(Infinity);
         });
         marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
         announceSend("没发出去，可以放回输入框" + (images.length ? "，图片要重新贴一次" : ""));
@@ -6199,7 +6548,8 @@
   }
 
   function syncComposer() {
-    const hasText = input.value.trim().length > 0;
+    const hasText = composerText(input).trim().length > 0;
+    input.classList.toggle("empty", !hasText);
     const ready = attachReady().length > 0;
     const canSend = hasText || ready;
     composer.classList.toggle("has-text", hasText);
@@ -6727,7 +7077,7 @@
 
   function setComposerPlaceholder(text) {
     state.placeholder = text;
-    if (!state.replyTo) input.placeholder = text;
+    if (!state.replyTo) input.dataset.placeholder = text;
   }
 
   function paintQuoteBar() {
@@ -6737,9 +7087,9 @@
     composer.classList.toggle("quoting", on);
     if (on) {
       $("quote-bar-text").textContent = quoteSnippet(state.replyTo.text);
-      input.placeholder = "回复…";
+      input.dataset.placeholder = "回复…";
     } else {
-      input.placeholder = state.placeholder || "写一条消息";
+      input.dataset.placeholder = state.placeholder || "写一条消息";
     }
   }
 
@@ -6813,12 +7163,12 @@
 
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();
-    const text = input.value;
+    const text = composerText(input);
     const images = attachReady().map((row) => row.id);
     if (attachBusy()) { attachNote("图片还在上传，等一下再发。"); return; }
     if ((!text.trim() && !images.length) || !state.sel) return;
-    input.value = "";
-    input.style.height = "auto";
+    composerSet("");
+    composerRefreshHeight();
     clearAttach();
     syncComposer();
     sendText(text, null, images);
@@ -6826,12 +7176,35 @@
 
   // A screenshot pasted from the clipboard arrives here, not as text. The
   // browser gives the picture in clipboardData; anything else falls through to
-  // the textarea's own paste.
+  // the plain-text handler below.
   input.addEventListener("paste", (ev) => {
     const files = imagesFrom(ev.clipboardData);
     if (!files.length) return;
     ev.preventDefault();
     uploadAttach(files);
+  });
+
+  // Rich pastes stay plain: the draft is text, and the cap still applies at
+  // the edit entry (an over-cap paste is refused whole, like maxlength).
+  // The insert that follows lands in the app's undo history like any edit.
+  input.addEventListener("paste", (ev) => {
+    const text = ev.clipboardData ? ev.clipboardData.getData("text/plain") : "";
+    if (!text) return;
+    ev.preventDefault();
+    document.execCommand("insertText", false, text);
+  });
+
+  // A click on a highlighted URL opens the system browser through the same
+  // off-origin path as the bubble links (target=_blank + noopener; the desktop
+  // shell turns it into OpenExternal). The anchor sits inside the composer
+  // form, so the click is consumed here and can never become a submit.
+  input.addEventListener("click", (ev) => {
+    const link = ev.target && ev.target.closest ? ev.target.closest("a") : null;
+    if (!link || !input.contains(link)) return;
+    ev.preventDefault();
+    const href = link.getAttribute("href") || "";
+    if (!composerSafeHref(href)) return;
+    window.open(href, "_blank", "noopener");
   });
 
   // Dragging a file anywhere over the chat would otherwise make the browser
@@ -6867,14 +7240,56 @@
   });
 
   input.addEventListener("keydown", (ev) => {
+    // Undo/redo is ours (see composerHistory): the browser's own history
+    // would restore nodes that every re-render replaced.
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === "z" || ev.key === "Z" || ev.key === "y" || ev.key === "Y")) {
+      ev.preventDefault();
+      if (!composerComposing) { // mid-composition the IME owns undo
+        if (ev.shiftKey || ev.key === "y" || ev.key === "Y") composerRedo();
+        else composerUndo();
+      }
+      return;
+    }
     if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return;
     ev.preventDefault();
     composer.requestSubmit();
   });
 
-  input.addEventListener("input", () => {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+  // Intercept the menu-driven undo/redo too, and capture the caret before the
+  // browser mutates the draft: a refused over-cap edit restores it.
+  input.addEventListener("beforeinput", (ev) => {
+    if (ev.inputType === "historyUndo") { ev.preventDefault(); composerUndo(); return; }
+    if (ev.inputType === "historyRedo") { ev.preventDefault(); composerRedo(); return; }
+    composerEditCaret = composerCaret();
+  });
+
+  input.addEventListener("compositionstart", () => {
+    composerComposing = true;
+    composerEditCaret = composerCaret();
+  });
+  input.addEventListener("compositionend", () => {
+    composerComposing = false;
+    refreshComposerLinks();
+  });
+
+  input.addEventListener("input", (ev) => {
+    // A native undo/redo command (execCommand, some menus) skips beforeinput
+    // and arrives here already applied against nodes the re-renders retired:
+    // its result is wrong, so drop it and replay our own history instead.
+    if (!composerComposing && (ev.inputType === "historyUndo" || ev.inputType === "historyRedo")) {
+      const h = composerHistory, at = h.index;
+      if (ev.inputType === "historyUndo") composerUndo();
+      else composerRedo();
+      if (h.index === at) { // nothing to step to: just undo the native damage
+        renderComposer(composerTextCache);
+        composerRefreshHeight();
+        composerCaretTo(at >= 0 ? h.stack[at].caret : Infinity);
+        syncComposer();
+      }
+      return;
+    }
+    composerRefreshHeight();
+    refreshComposerLinks();
     syncComposer();
   });
 

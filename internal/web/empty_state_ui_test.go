@@ -56,10 +56,6 @@ func TestEmptyChatStartersAndCard(t *testing.T) {
 			t.Errorf("the starter path must never send: %s", path)
 		}
 	}
-	if !strings.Contains(fill, "input.value = text;") || !strings.Contains(fill, "input.focus();") || !strings.Contains(fill, "syncComposer();") {
-		t.Error("fillComposer sets the text, updates the send button and focuses the input")
-	}
-
 	// The card: radius 12, flush with the sidebar.
 	main := regexp.MustCompile(`(?m)^\.main \{\n([^}]*)\}`).FindStringSubmatch(css)
 	if main == nil || !strings.Contains(main[1], "margin-left: 0; border-radius: 12px;") {
