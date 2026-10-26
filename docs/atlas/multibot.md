@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-26 @ merge persona-builtin-seeds + 删前台限制
+verified: 2026-10-26 @ 8781064 + persona seeds
 ---
 # 多 Bot
 
