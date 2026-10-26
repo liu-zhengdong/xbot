@@ -17,7 +17,7 @@
 - 新增三组外在行为正反脚本、创建澄清/直接创建、七节先读再答、五任务状态和无测试证据两案；脚本是验收夹具，不是真实模型改前改后分数。旧基线隔离归档上的空职责、简介注入、手册接线和规则约束回归均失败。已有长轮折叠频率门槛保持，缩短规则后连续十次通过。
 - 独立长程 450 轮、3 次压缩、峰值 64460 token，压缩开销 1.760%，缓存恢复最差为压缩前中位数的 97.6%，K=0.520。同一升级夹具前缀 6033→6716 字节；手册读取微基准 1036ns/op。真 CLI 七节同源与离线读取通过；其启动到结束延时见 `~/.xbot-build/context-batch-c/cli-smoke.json`，不代表模型回复/IPC/帧率。
 - 普通全仓 go test、六个相关包三遍复测、批 C 专项 race 三遍、vet/gofmt 通过，六条 guard 冒烟通过。扩展 smoke 另有忙时回报、OAuth 生图、Responses 恢复三项失败，均在 f16c9a6 隔离基线复现；全工具 configureWeb 既有 race 也有基线反证，本批未修这些模块。
-- Pi glm-5.3 review1 **PASS**；合入本地 main（未 push）。完整检查见 `~/.xbot-build/context-batch-c/encode-report.md` / `review1-report.md`。四维真实模型对照、C8 与手册面板后置；候选仍实现中待日用。
+- Pi glm-5.3 review1 **PASS**；合入本地 main tip `d052a38`（其后曾误毕业 docs/dev，已 revert；`docs/dev/context-batch-c.md` 保留）。完整检查见 `~/.xbot-build/context-batch-c/encode-report.md` / `review1-report.md`。四维真实模型对照、C8 与手册面板后置；候选仍实现中待日用。未 push。
 
 
 ## 2026-10-26 Agent Todo streaming 热修
