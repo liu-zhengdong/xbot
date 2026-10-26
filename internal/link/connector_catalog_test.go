@@ -71,3 +71,41 @@ func TestFilesystemConnectorIsGone(t *testing.T) {
 		t.Fatalf("hand-written entry lost: %v %v", list, err)
 	}
 }
+
+// A keyless entry from an older one-click add is upgraded to the row, a keyed
+// one is left alone, and the Bot's key store wins over the process environment
+// only for the names the server declares.
+func TestEnableConnectorUpgradesAndKeyReachesSpawn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := AddMCP(path, MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := EnableConnector(path, "context7"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, _ := LoadMCP(path)
+	if len(list) != 1 || !HasSecretEnvs(list[0], []string{"CONTEXT7_API_KEY"}) {
+		t.Fatalf("not upgraded %+v", list)
+	}
+	secrets := filepath.Join(t.TempDir(), "secrets.json")
+	if err := WriteSecrets(secrets, map[string]string{"CONTEXT7_API_KEY": "from-bot", "PATH": "/evil"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CONTEXT7_API_KEY", "from-env")
+	s := list[0]
+	s.Secret = SecretLookup(secrets)
+	env := strings.Join(spawnEnv(s.SecretEnvs, s.secretLookup()), "\n")
+	if !strings.Contains(env, "CONTEXT7_API_KEY=from-bot") || strings.Contains(env, "from-env") || strings.Contains(env, "/evil") {
+		t.Fatalf("env %q", env)
+	}
+	if h := secretHeaders(s.SecretEnvs, s.secretLookup()); h.Get("CONTEXT7_API_KEY") != "from-bot" {
+		t.Fatalf("headers %v", h)
+	}
+	// Without a stored key the environment is still the fallback.
+	s.Secret = SecretLookup(filepath.Join(t.TempDir(), "none.json"))
+	if env := strings.Join(spawnEnv(s.SecretEnvs, s.secretLookup()), "\n"); !strings.Contains(env, "CONTEXT7_API_KEY=from-env") {
+		t.Fatalf("fallback %q", env)
+	}
+}

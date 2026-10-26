@@ -191,6 +191,12 @@ func (s *Server) removeApp(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
 		}
+		if ok && a.NeedsSecret {
+			if err := s.dropServerKeys(a.ID); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "state": "available"})
 }
@@ -212,6 +218,29 @@ func (s *Server) dropFromBots(a link.App) error {
 			return err
 		}
 		if err := dropSecrets(b, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dropServerKeys removes a key-bearing store server's keys from every bot of
+// the owner; links install kept them in the installing Bot's secrets file.
+func (s *Server) dropServerKeys(id string) error {
+	c, err := link.LookupConnector(id)
+	if err != nil {
+		return nil
+	}
+	cfgs, err := peer.OwnerBots(s.Root, s.owner)
+	if err != nil {
+		return err
+	}
+	for _, cfg := range cfgs {
+		b, err := bot.Load(s.Root, cfg.Name)
+		if err != nil {
+			continue
+		}
+		if err := link.DropSecrets(b.SecretPath(), c.SecretEnvs); err != nil {
 			return err
 		}
 	}

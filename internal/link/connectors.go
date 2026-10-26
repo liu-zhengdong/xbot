@@ -57,15 +57,48 @@ func LookupConnector(id string) (CatalogItem, error) {
 }
 
 // EnableConnector copies one catalog row into the mcp.json at path. Run again, it changes nothing.
+// An existing entry that lacks a key the row names (left by an older keyless
+// add) is replaced by the row, so the key reaches the server.
 func EnableConnector(path, id string) error {
 	c, err := LookupConnector(id)
 	if err != nil {
 		return err
 	}
-	if err := AddMCP(path, catalogServer(c)); err != nil && !errors.Is(err, ErrMCPExists) {
+	err = AddMCP(path, catalogServer(c))
+	if !errors.Is(err, ErrMCPExists) {
 		return err
 	}
-	return nil
+	return ReplaceMCP(path, catalogServer(c), func(old MCPServer) bool { return !HasSecretEnvs(old, c.SecretEnvs) })
+}
+
+// HasSecretEnvs says the entry names every key in names.
+func HasSecretEnvs(s MCPServer, names []string) bool {
+	for _, n := range names {
+		found := false
+		for _, have := range s.SecretEnvs {
+			if have == n {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// SecretLookup reads one value from a Bot's secrets file at call time, so a
+// key filled after the server was mounted is still found on its next start.
+func SecretLookup(path string) func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		m, err := ReadSecrets(path)
+		if err != nil {
+			return "", false
+		}
+		v, ok := m[name]
+		return v, ok
+	}
 }
 
 func catalogServer(c CatalogItem) MCPServer {

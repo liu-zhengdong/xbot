@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 )
@@ -26,7 +25,7 @@ func openStreamable(ctx context.Context, spec MCPServer) (io.ReadWriteCloser, er
 		ctx:     ctx,
 		url:     strings.TrimSpace(spec.URL),
 		hc:      &http.Client{},
-		headers: secretHeaders(spec.SecretEnvs, os.LookupEnv),
+		headers: secretHeaders(spec.SecretEnvs, spec.secretLookup()),
 		pr:      pr,
 		pw:      pw,
 	}

@@ -301,6 +301,10 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
 		t.Fatalf("keyed entry %d %+v", n, apps["context7"])
 	}
+	ada, _ := bot.Load(e.root, "ada")
+	if err := link.WriteSecrets(ada.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "ctx7sk-abc"}); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 2; i++ {
 		if code, raw := e.call("DELETE", "/api/apps/context7", "", true); code != 200 {
 			t.Fatalf("remove %d %s", code, raw)
@@ -308,5 +312,8 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	}
 	if all, _ := link.LoadMCP(path); len(all) != 0 {
 		t.Fatalf("left %+v", all)
+	}
+	if got, _ := link.ReadSecrets(ada.SecretPath()); got["CONTEXT7_API_KEY"] != "" {
+		t.Fatal("store remove left the key with the Bot")
 	}
 }

@@ -51,6 +51,8 @@ var (
 // URL, when set, is a Streamable HTTP endpoint and Command is unused.
 // SecretEnvs names variables; values stay out of the file. Provider API keys
 // are rejected. Dial, when set, replaces both transports. Tests use it.
+// Secret, when set, is asked first for each SecretEnvs value (the Bot's own
+// key store); the process environment is the fallback.
 type MCPServer struct {
 	Name       string                                                `json:"name"`
 	Command    string                                                `json:"command,omitempty"`
@@ -58,6 +60,24 @@ type MCPServer struct {
 	URL        string                                                `json:"url,omitempty"`
 	SecretEnvs []string                                              `json:"secret_envs"`
 	Dial       func(ctx context.Context) (io.ReadWriteCloser, error) `json:"-"`
+	Secret     func(name string) (string, bool)                      `json:"-"`
+}
+
+// secretLookup reads a SecretEnvs value from Secret, then the process environment.
+func (s MCPServer) secretLookup() func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		if s.Secret != nil {
+			for _, n := range s.SecretEnvs {
+				if n != name {
+					continue
+				}
+				if v, ok := s.Secret(name); ok && v != "" {
+					return v, true
+				}
+			}
+		}
+		return os.LookupEnv(name)
+	}
 }
 
 // MCP is one MCP server mounted as a Link. Name is mcp:<server>.
@@ -200,7 +220,7 @@ func (m *MCP) open(ctx context.Context) (io.ReadWriteCloser, error) {
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, m.Spec.Command, m.Spec.Args...)
-	cmd.Env = spawnEnv(m.Spec.SecretEnvs, os.LookupEnv)
+	cmd.Env = spawnEnv(m.Spec.SecretEnvs, m.Spec.secretLookup())
 	cmd.Stderr = io.Discard
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -436,6 +456,35 @@ func AddMCP(path string, s MCPServer) error {
 		}
 		list = append(list, s)
 		return writeMCP(path, list)
+	})
+}
+
+// ReplaceMCP swaps the entry named s.Name for s when stale says so, under the
+// file lock. A missing entry is added.
+func ReplaceMCP(path string, s MCPServer, stale func(MCPServer) bool) error {
+	s = normalizeServer(s)
+	if err := ValidateMCP(s); err != nil {
+		return err
+	}
+	return fsutil.WithLock(path+".lock", func() error {
+		list, err := readMCP(path)
+		if err != nil {
+			return err
+		}
+		for i, e := range list {
+			if e.Name != s.Name {
+				continue
+			}
+			if !stale(e) {
+				return nil
+			}
+			list[i] = s
+			return writeMCP(path, list)
+		}
+		if len(list) >= maxMCPServers {
+			return errors.New("mcp: too many servers")
+		}
+		return writeMCP(path, append(list, s))
 	})
 }
 

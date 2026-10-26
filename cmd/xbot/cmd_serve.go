@@ -281,6 +281,7 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		return nil, err
 	}
 	for i := range servers {
+		servers[i].Secret = link.SecretLookup(b.SecretPath())
 		out = append(out, link.NewMCP(servers[i]))
 	}
 	return out, nil

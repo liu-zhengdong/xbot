@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -52,6 +53,9 @@ func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
 	case "install":
 		e, ok := link.Lookup(id)
 		if !ok {
+			if c, ok := storeConnector(id); ok {
+				return false, connectorCard(c), nil
+			}
 			return false, "install " + id, nil
 		}
 		var b strings.Builder
@@ -118,8 +122,37 @@ func (t linksTool) search(query string) string {
 		}
 		b.WriteByte('\n')
 	}
-	if servers, err := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath()); err == nil {
+	servers, _ := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
+	store := map[string]bool{}
+	if list, err := link.Connectors(); err == nil {
+		for _, c := range list {
+			if _, ok := storeConnector(c.ID); !ok {
+				continue
+			}
+			store[c.ID] = true
+			blob := strings.ToLower(c.ID + " " + c.Title + " " + c.Summary)
+			if q != "" && !strings.Contains(blob, q) {
+				continue
+			}
+			// Installed only once the entry carries every key the row names.
+			state := "available"
+			for _, s := range servers {
+				if s.Name == c.ID && link.HasSecretEnvs(s, c.SecretEnvs) {
+					state = "installed"
+				}
+			}
+			fmt.Fprintf(&b, "%s\t%s\t%s", c.ID, state, linkOneLine(c.Summary))
+			if len(c.SecretEnvs) > 0 {
+				fmt.Fprintf(&b, "\tsecrets: %s", strings.Join(c.SecretEnvs, ", "))
+			}
+			b.WriteByte('\n')
+		}
+	}
+	if servers != nil {
 		for _, s := range servers {
+			if store[s.Name] {
+				continue
+			}
 			id := "mcp:" + s.Name
 			summary := link.Blurb(id)
 			if q != "" && !strings.Contains(strings.ToLower(id+" "+summary), q) {
@@ -138,6 +171,9 @@ func (t linksTool) search(query string) string {
 func (t linksTool) install(id string) (string, error) {
 	e, ok := link.Lookup(id)
 	if !ok {
+		if c, ok := storeConnector(id); ok {
+			return t.installConnector(c)
+		}
 		return "", fmt.Errorf("links: not found")
 	}
 	values := t.k.takeSecrets(e.ID)
@@ -171,9 +207,81 @@ func (t linksTool) install(id string) (string, error) {
 	return scrubSecrets("installed "+e.ID, values), nil
 }
 
+// storeConnector finds a store app that runs as a catalog server, by id,
+// title, or mcp:<id>. Every such row installs the same way; a row that names
+// keys takes them from the approval card.
+func storeConnector(id string) (link.CatalogItem, bool) {
+	id = strings.TrimPrefix(link.ResolveApp(strings.TrimSpace(id)), "mcp:")
+	a, ok := link.LookupApp(id)
+	if !ok || a.Kind != link.AppServer {
+		return link.CatalogItem{}, false
+	}
+	c, err := link.LookupConnector(a.ID)
+	return c, err == nil
+}
+
+// connectorCard is the install summary; the approval card reads the id from
+// the first line and the key names from the secrets line.
+func connectorCard(c link.CatalogItem) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "install %s\n%s", c.ID, linkOneLine(c.Summary))
+	if len(c.SecretEnvs) > 0 {
+		fmt.Fprintf(&b, "\nsecrets: %s", strings.Join(c.SecretEnvs, ", "))
+	}
+	return b.String()
+}
+
+// installConnector writes a store server into the owner's global mcp.json.
+// Its keys go to this Bot's key store first; without every key nothing is
+// written, and an older keyless entry is upgraded so the key reaches it.
+func (t linksTool) installConnector(c link.CatalogItem) (string, error) {
+	values := t.k.takeSecrets(c.ID)
+	keep := map[string]string{}
+	var missing []string
+	for _, name := range c.SecretEnvs {
+		v := strings.TrimSpace(values[name])
+		if v == "" {
+			missing = append(missing, name)
+			continue
+		}
+		keep[name] = v
+	}
+	if len(missing) > 0 {
+		return scrubSecrets("links: owner did not fill "+strings.Join(missing, ", "), values), nil
+	}
+	if len(keep) > 0 {
+		if err := t.k.storeSecrets(keep); err != nil {
+			return scrubSecrets("links: "+err.Error(), values), nil
+		}
+	}
+	if err := link.EnableConnector(t.k.Bot.GlobalMCPPath(), c.ID); err != nil {
+		return scrubSecrets("links: "+err.Error(), values), nil
+	}
+	t.k.snapshotLinks() // mount it now, so load works in this turn
+	return scrubSecrets("installed "+c.ID, values), nil
+}
+
+// removeConnector takes a store server out of the global and this Bot's
+// mcp.json and drops the keys this Bot stored for it. Removing twice is fine.
+func (t linksTool) removeConnector(c link.CatalogItem) (string, error) {
+	for _, path := range []string{t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath()} {
+		if err := link.RemoveMCP(path, c.ID); err != nil && !errors.Is(err, link.ErrMCPMissing) {
+			return "", err
+		}
+	}
+	if err := t.k.dropSecrets(link.CatalogEntry{ID: c.ID, Secrets: c.SecretEnvs}); err != nil {
+		return "", err
+	}
+	t.k.snapshotLinks()
+	return "removed " + c.ID, nil
+}
+
 func (t linksTool) remove(id string) (string, error) {
 	e, ok := link.Lookup(id)
 	if !ok {
+		if c, ok := storeConnector(id); ok {
+			return t.removeConnector(c)
+		}
 		return "", fmt.Errorf("links: not found")
 	}
 	if e.Grant != "" {
@@ -194,6 +302,9 @@ func (t linksTool) load(id string) (string, error) {
 		return "", fmt.Errorf("links: id is required")
 	}
 	id = link.ResolveApp(id)
+	if c, ok := storeConnector(id); ok {
+		id = "mcp:" + c.ID
+	}
 	if strings.HasPrefix(id, "mcp:") {
 		name := strings.TrimPrefix(id, "mcp:")
 		servers, err := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
@@ -346,6 +457,7 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 		if have[s.Name] {
 			continue
 		}
+		s.Secret = link.SecretLookup(k.Bot.SecretPath())
 		mk := k.newMCP
 		if mk == nil {
 			mk = func(s link.MCPServer) link.Link { return link.NewMCP(s) }
@@ -360,6 +472,7 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 
 func sameMCPSpec(a, b link.MCPServer) bool {
 	a.Dial, b.Dial = nil, nil
+	a.Secret, b.Secret = nil, nil
 	a.Args, b.Args = append([]string{}, a.Args...), append([]string{}, b.Args...)
 	a.SecretEnvs, b.SecretEnvs = append([]string{}, a.SecretEnvs...), append([]string{}, b.SecretEnvs...)
 	return reflect.DeepEqual(a, b)
