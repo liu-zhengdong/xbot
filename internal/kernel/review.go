@@ -197,13 +197,11 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, summary + " (untrusted turn: memory access)", nil
 		}
 	}
-	// With the table's cards off (ADR 0019), keep product cards: links
-	// collects connector keys, and an avatar proposal needs owner preview.
+	// The owner turned the table's cards off (ADR 0019): the checks above
+	// stay (an explicit machine setting, the vault, a turn from outside
+	// touching memory), and so does the links card, which is where the
+	// owner types a connector's keys.
 	if k.permissive() && name != "links" {
-		if name == "propose_profile" {
-			_, update, _, err := parseProfileArgs(args)
-			return update.avatarSeed != nil, summary, err
-		}
 		return false, summary, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {

@@ -8,7 +8,7 @@ Bot 能提议改自己的生成头像种子；主人确认后侧栏与资料头�
 
 ## 验收
 
-1. `propose_profile({"avatar_seed":"Ada#3"})` 走既有 SelfEdit 预览确认卡；日常 permissions off 时，含 `avatar_seed` 的提议仍必须出卡（仅 name/description/timezone 的提议保持 ADR 0019 默认不问）；拒绝不写盘；允许后 `SetAvatarSeed`，avatar 回 `generated`（若曾有上传则清除）。
+1. `propose_profile({"avatar_seed":"Ada#3"})` 走确认卡（与改名同级）；拒绝不写盘；允许后 `SetAvatarSeed`，avatar 回 `generated`（若曾有上传则清除）。
 2. 非法 seed（空、控制字符、`<>"'&`、超长）工具层报错，不发卡。
 3. 仍拒绝未知字段；name/description/timezone 行为不变；可与 avatar_seed 同卡组合。
 4. 只作用于本 Kernel 的 Bot；无「改别人头像」入口。
