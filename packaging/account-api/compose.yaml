@@ -1,0 +1,19 @@
+# Account API on one host: the xbot binary (linux build) plus a data directory.
+#   GOOS=linux GOARCH=amd64 go build -o xbot ./cmd/xbot
+#   docker compose up -d
+# Put a TLS reverse proxy in front and set BASE_URL to its public address.
+services:
+  account-api:
+    image: gcr.io/distroless/static-debian12
+    command: ["/app/xbot", "account-api"]
+    environment:
+      DATA_DIR: /data
+      BASE_URL: https://account.example.com
+      ADDR: ":8790"
+      MAIL_MODE: outbox
+    volumes:
+      - ./xbot:/app/xbot:ro
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8790:8790"
+    restart: unless-stopped

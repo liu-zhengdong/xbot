@@ -424,7 +424,7 @@ func (s *Server) reportDevice(ctx context.Context, session string, b accountBind
 // pairing set one up, the host name.
 func (s *Server) selfDeviceName() string {
 	if self, err := remote.Self(s.Root, s.owner); err == nil && strings.TrimSpace(self.Name) != "" {
-		return self.Name
+		return strings.TrimSuffix(self.Name, ".local")
 	}
 	if h, err := os.Hostname(); err == nil && strings.TrimSpace(h) != "" {
 		return strings.TrimSuffix(h, ".local")

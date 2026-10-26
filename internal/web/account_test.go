@@ -310,3 +310,55 @@ func TestInstallCodeStillWorks(t *testing.T) {
 		t.Fatalf("launch session %d", st)
 	}
 }
+
+// With XBOT_ACCOUNT_API set, serve uses the hosted service over HTTP: the mail
+// link points at the service, and confirming it there still lets this window in.
+func TestAccountWithHostedService(t *testing.T) {
+	data := t.TempDir()
+	hosted := httptest.NewServer(nil)
+	t.Cleanup(hosted.Close)
+	svc, err := account.Open(account.Env{DataDir: data, BaseURL: hosted.URL, Outbox: filepath.Join(data, "outbox")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hosted.Config.Handler = svc.Handler()
+
+	root := t.TempDir()
+	s := &Server{Root: root, Owner: "u1", Account: account.NewRemote(hosted.URL)}
+	if _, _, err := s.EnsureToken(); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	s.Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	e := &acctEnv{t: t, s: s, srv: srv, root: root}
+	c := e.browser()
+	_, p := e.do(c, "POST", "/api/account/register", map[string]string{"email": "h@example.com", "password": "password 12"}, nil)
+	ents, _ := os.ReadDir(filepath.Join(data, "outbox"))
+	if len(ents) != 1 {
+		t.Fatalf("hosted outbox %v", ents)
+	}
+	raw, _ := os.ReadFile(filepath.Join(data, "outbox", ents[0].Name()))
+	if !strings.Contains(string(raw), hosted.URL+account.LinkPath) {
+		t.Fatalf("link does not point at the service: %s", raw)
+	}
+	tok := mailLink.FindStringSubmatch(string(raw))[1]
+	res, err := http.PostForm(hosted.URL+account.LinkPath, url.Values{"t": {tok}})
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("confirm %v %v", res, err)
+	}
+	res.Body.Close()
+	if st, out := e.do(c, "POST", "/api/account/poll", map[string]any{"challenge": p["challenge"]}, nil); st != 200 || acct(out)["owner"] != true || acct(out)["hosted"] != true {
+		t.Fatalf("poll %d %v", st, out)
+	}
+	if st, _ := e.do(c, "GET", "/api/bots", nil, nil); st != 200 {
+		t.Fatalf("owner interface %d", st)
+	}
+	if _, err := os.Stat(filepath.Join(root, "account-api")); err == nil {
+		t.Fatal("the local stand-in ran although a hosted service is set")
+	}
+	if st, _ := e.do(c, "GET", "/account/v1/link?t=x", nil, nil); st == 200 {
+		t.Fatal("serve mounted the link page although the service is hosted")
+	}
+}

@@ -17,7 +17,24 @@
 
 `POST /api/login`，body `{"token":"..."}`。成功 200 `{"owner":"<id>"}` 并设置 cookie。token 不对是 401。
 
-`POST /api/logout` 清 cookie，200 `{"status":"ok"}`。
+`POST /api/logout` 清 cookie，200 `{"status":"ok"}`。以上是旧的登录码路径，保留作调试；产品里进门走下面的账号。
+
+## 账号
+
+都不需要 `xbot_session`；写入要求同源，body 最多 1 MiB、拒绝未知字段。账号会话放在 cookie `xbot_account`（HttpOnly，SameSite=Strict，30 天）。错误一律 `{"error":"<代码>"}`：`bad_input` 400、`credentials` 401、`unverified` 403、`busy` 429、`expired` 410、`session` 401、`unreachable` 502（连不上账号服务）。
+
+- `POST /api/account/register` `{email,password}`：密码 8–128 字节。回 `{challenge,email}`（`email` 已打码）。已有账号的邮箱回同样的形状，改发一封登录信。
+- `POST /api/account/login` `{email,password}`：成功同下面的「进门回包」。邮箱还没确认、密码对时 403 `{"error":"unverified","challenge":"…","email":"…"}`。
+- `POST /api/account/magic` `{email}`：用邮件里的链接登录，回 `{challenge,email}`；没有这个账号也回同样的话，但不发信。
+- `POST /api/account/resend` `{challenge}`：再发一次，30 秒内重复调用不重发也不报错。
+- `POST /api/account/code` `{challenge,code}`：用 6 位验证码完成，成功同「进门回包」。
+- `POST /api/account/poll` `{challenge}`：没完成 `{"state":"pending"}`，过期或已领过 `{"state":"expired"}`；邮件链接确认后第一次轮询回「进门回包」。
+- 进门回包：200 `{"state":"done","account":{email,owner,hosted,gateway,official,gateway_ok,app}}`，并设 `xbot_account`；`owner` 为真时同时设 `xbot_session`。
+- `GET /api/account/me`：`{"account":null|{…同上},"app":<bool>}`。账号是主人时顺手续上 `xbot_session`。
+- `POST /api/account/logout`：退出账号，同时清掉 `xbot_account` 和 `xbot_session`。
+- `GET /api/account/devices`：`{"devices":[{id,name,online,self,bots:[{name,hint,unread,avatar_url,avatar_bg,avatar_ink,initial}]}]}`；没有账号会话 401。
+
+账号服务本身（`xbot account-api`，或 serve 里的替身）在 `/account/v1/`：`register`、`login`、`magic`、`resend`、`code`、`poll`（POST，JSON），`me`、`devices`（GET，`Authorization: Bearer <会话>`），`logout`、`devices`（POST，Bearer），`health`（GET），以及邮件链接页 `link?t=…`（GET 只显示「确认」按钮，POST 才用掉链接，邮件扫描器预取不会把它用掉）。
 
 `GET /api/session` 已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。
 
