@@ -177,6 +177,21 @@ func TestThinkingToolReplay(t *testing.T) {
 						t.Fatalf("private reasoning exposed: %s", raw)
 					}
 				}
+				// Export before the restart as well: downloads must not remove the
+				// private payloads the strict model requires on the next owner turn.
+				for _, format := range []string{"jsonl", "md"} {
+					for _, tools := range []int{0, 1} {
+						status, raw := srv.do("GET", fmt.Sprintf("/api/bots/ada/export?format=%s&tools=%d", format, tools), nil)
+						if status != 200 || !strings.Contains(string(raw), "文件已读完。") {
+							t.Fatalf("export %s tools=%d: %d %s", format, tools, status, raw)
+						}
+						for _, private := range []string{"PRIVATE-THOUGHT", "signature-", "vendor_raw", "encrypted_content", "redacted_thinking"} {
+							if strings.Contains(string(raw), private) {
+								t.Fatalf("export %s tools=%d leaked %s", format, tools, private)
+							}
+						}
+					}
+				}
 				t.Logf("turn %d total latency %s (scripted model, includes two real file tools)", turn, time.Since(reply.Sent))
 			}
 			mu.Lock()

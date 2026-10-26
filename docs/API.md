@@ -169,7 +169,7 @@
 
 `GET /api/bots/{name}/export?format=md|jsonl&tools=0|1` 下载这个 Bot 的 transcript。未登录 401。不是这个 owner 的 Bot 是 404。`format` 缺省是 `md`。`tools` 缺省是 `0`；只有 `1` 才包含工具调用和 `role=tool` 的行。可选 `from` 和 `to`，要成对出现，是包含端点的 seq。
 
-正文按 transcript 段流式写出，不把整份历史装进内存。工具结果如果另存成 blob，写出那一行时读回全文。成功时正文不是 JSON。`md` 的 `Content-Type` 是 `text/markdown`，时间用服务器本机时区，摘要块写成 `## Summary seq <from>-<to>`，后台分支的行标题多一段 `[后台 <branch>]`，`fork` 和 `fork_end` 各写成一行。`jsonl` 是 `application/x-ndjson`。普通行是 transcript 记录再加 `seq`，`json.Unmarshal` 进记录时忽略 `seq`，所以能再导入，序号还是原来的。带引用的行多一个 `reply_to`；后台行带 `branch`，标记行带 `mark`（`{"kind","branch","from","task","status","steps"}`）。`{"kind":"summary","from","to","text","focus","at"}` 是摘要块。每一段写出前过 `RedactText`；保险箱还没安装替换函数时，文本原样出去。`Content-Disposition` 是附件，文件名 `<bot>.md` 或 `<bot>.jsonl`。`md` 在该行标题下写 `reply_to: <seq>`。
+正文按 transcript 段流式写出，不把整份历史装进内存。工具结果如果另存成 blob，写出那一行时读回全文。成功时正文不是 JSON。`md` 的 `Content-Type` 是 `text/markdown`，时间用服务器本机时区，摘要块写成 `## Summary seq <from>-<to>`，后台分支的行标题多一段 `[后台 <branch>]`，`fork` 和 `fork_end` 各写成一行。`jsonl` 是 `application/x-ndjson`。两种导出格式均为公开投影：移除 reasoning 内容块、清除所有保留块的 `vendor_raw`，`tools=1` 也不例外；普通正文、可公开 hosted/citation 与按开关保留的工具块不变。内部 transcript 原始块与同协议回放不受影响。普通行是公开消息记录再加 `seq`，`json.Unmarshal` 进记录时忽略 `seq`，所以能再导入，序号还是原来的。带引用的行多一个 `reply_to`；后台行带 `branch`，标记行带 `mark`（`{"kind","branch","from","task","status","steps"}`）。`{"kind":"summary","from","to","text","focus","at"}` 是摘要块。每一段写出前过 `RedactText`；保险箱还没安装替换函数时，文本原样出去。`Content-Disposition` 是附件，文件名 `<bot>.md` 或 `<bot>.jsonl`。`md` 在该行标题下写 `reply_to: <seq>`。
 
 `GET /api/bots/{name}/transcript` 仍一次返回全部消息，给界面用。很长的历史用上面的 export。Bot 列表上的未读比较用序号计数，不读段文件。
 

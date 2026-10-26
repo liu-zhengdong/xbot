@@ -37,6 +37,7 @@ DeepSeek + 工具时若不回传 `reasoning_content`，开 thinking 会炸，所
 - `internal/provider/thinking_test.go`：请求开关、low/high/max、omit 回传、缓冲上限、脱敏与跨协议投影。
 - `internal/config/providers_test.go`：配置落盘、保留档位、非法值与手改文件校验。
 - `internal/web/thinking_stream_test.go` / `thinking_browser_test.go`：SSE、公开 transcript 和本机 Chrome 气泡隔离。
+- `internal/web/export_thinking_test.go`：三协议 × tools=0/1 的 JSONL/Markdown 导出均隔离 reasoning/VendorRaw，保留公开正文、步骤、引用与按开关显示的工具；内部段文件逐字节不变、重开后回放数据完整。`internal/bot/export_projection_test.go` 守投影不修改共享消息与幂等。
 - `e2e/smoke/thinking_test.go`：真实 CLI / serve，三种协议连续两次工具调用，进程重启后再次回传；上游仅 scripted，按硬约束不调真模型。
 
 ## 还没做的
