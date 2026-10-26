@@ -1465,7 +1465,8 @@
           flushPara(); flushList();
           const rows = [];
           i += 2;
-          while (i < lines.length && lines[i].indexOf("|") >= 0 && lines[i].trim()) rows.push(tableCells(lines[i++]));
+          // A quote line ends the table even when it holds a pipe.
+          while (i < lines.length && lines[i].indexOf("|") >= 0 && lines[i].trim() && !/^\s{0,3}>/.test(lines[i])) rows.push(tableCells(lines[i++]));
           i--;
           parent.append(tableNode(head, aligns, rows));
           continue;
@@ -1647,7 +1648,33 @@
     return wrap;
   }
 
+  // Quotes are containers: a run of > lines outside a code fence is cut out
+  // before fences are split, so a fence written inside a quote is parsed
+  // after its > prefix is gone and stays inside the blockquote. A line holding
+  // an odd number of ``` opens or closes a fence, matching appendFenced's
+  // pairing; > lines inside a fence are code, not quotes.
   function appendMarkdown(parent, text) {
+    const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    let buf = [], fence = false;
+    const flush = () => { if (buf.length) appendFenced(parent, buf.join("\n")); buf = []; };
+    for (let i = 0; i < lines.length; i++) {
+      if (!fence && /^\s{0,3}>/.test(lines[i])) {
+        flush();
+        const inner = [];
+        while (i < lines.length && /^\s{0,3}>/.test(lines[i])) inner.push(lines[i++].replace(/^\s{0,3}> ?/, ""));
+        i--;
+        const quote = document.createElement("blockquote");
+        appendMarkdown(quote, inner.join("\n"));
+        parent.append(quote);
+        continue;
+      }
+      if ((lines[i].split("```").length - 1) % 2) fence = !fence;
+      buf.push(lines[i]);
+    }
+    flush();
+  }
+
+  function appendFenced(parent, text) {
     const src = String(text || "");
     const re = /```([^\n`]*)\n?([\s\S]*?)```/g;
     let last = 0;

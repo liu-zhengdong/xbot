@@ -119,6 +119,36 @@ root = render(appendMarkdown, "a | b\n不是表");
 assert.ok(!find(root, (n) => n.tagName === "TABLE").length, "pipe prose became a table");
 root = render(appendMarkdown, "| a | b |");
 assert.ok(text(root).includes("| a | b |"), "partial table lost");
+// A fence inside a quote is parsed after the > prefix is gone: one quote,
+// the code block inside it, highlighted, with no > in the code (review B1).
+for (const pre of [">", ">>"]) {
+  root = render(appendMarkdown, pre + " 引用\n" + pre + " @BQ@@BQ@@BQ@python\n" + pre + " def f():\n" + pre + "     return \"s\"\n" + pre + " @BQ@@BQ@@BQ@\n" + pre + " 结尾");
+  const outer = root.childNodes;
+  assert.equal(outer.length, 1, pre + " quote split around its fence: " + dump(root));
+  assert.equal(outer[0].tagName, "BLOCKQUOTE", pre + " no quote: " + dump(root));
+  const qc = find(outer[0], (n) => n.tagName === "CODE");
+  assert.equal(qc.length, 1, pre + " code not inside the quote: " + dump(root));
+  assert.equal(text(qc[0]), "def f():\n    return \"s\"", pre + " quoted code text: " + JSON.stringify(text(qc[0])));
+  assert.deepEqual(tokens(qc[0], "kw"), ["def", "return"], pre + " quoted code lost highlighting");
+  assert.ok(!text(root).includes(">"), pre + " > leaked: " + JSON.stringify(text(root)));
+  assert.ok(text(root).startsWith("引用") && text(root).endsWith("结尾"), pre + " quote prose lost");
+}
+// A > line inside an ordinary fence is code, not a quote.
+root = render(appendMarkdown, "@BQ@@BQ@@BQ@sh\necho a > out.txt\n> not a quote\n@BQ@@BQ@@BQ@");
+assert.ok(!find(root, (n) => n.tagName === "BLOCKQUOTE").length, "> inside a fence became a quote: " + dump(root));
+assert.equal(text(find(root, (n) => n.tagName === "CODE")[0]), "echo a > out.txt\n> not a quote", "fenced > lines changed");
+// A quote line right after a table ends the table, pipes and all (review
+// B2), through the full path and through appendBlocks alone.
+for (const [pre, fn] of [[">", appendMarkdown], [">>", appendMarkdown], [">", appendBlocks], [">>", appendBlocks]]) {
+  root = render(fn, "| a | b |\n|---|---|\n| 1 | 2 |\n" + pre + " x | y");
+  const tb = find(root, (n) => n.tagName === "TABLE");
+  assert.equal(tb.length, 1, pre + " table missing: " + dump(root));
+  assert.equal(find(tb[0], (n) => n.tagName === "TD").length, 2, pre + " quote line swallowed into the table: " + dump(root));
+  const bq = find(root, (n) => n.tagName === "BLOCKQUOTE");
+  assert.ok(bq.length >= 1 && !find(tb[0], (n) => n.tagName === "BLOCKQUOTE").length, pre + " no quote after the table: " + dump(root));
+  assert.equal(text(bq[0]), "x | y", pre + " quote text: " + JSON.stringify(text(bq[0])));
+  assert.ok(!text(root).includes(">"), pre + " > leaked: " + JSON.stringify(text(root)));
+}
 // Tables work inside quotes.
 root = render(appendMarkdown, "> | a | b |\n> |---|---|\n> | 1 | 2 |");
 assert.equal(find(root, (n) => n.tagName === "BLOCKQUOTE" && find(n, (m) => m.tagName === "TABLE").length).length, 1, "quoted table: " + dump(root));
