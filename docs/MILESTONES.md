@@ -2,6 +2,12 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 Bot 自改头像确认卡热修（分支实现，待复审/合入/手测）
+
+- 修复 `reviewCall` 在 Permissive 下跳过头像提案确认：只为含合法 `avatar_seed` 的 `propose_profile` 保留既有 SelfEdit 卡，纯档案文字和 `propose_persona` 默认行为不变；无 UI 或写盘机制变更。
+- 新增 Permissive 回归在旧 `7164a11` 实现上复现零确认；修复后指定 `internal/kernel`、`internal/bot`、`internal/review` 单次套件通过（分别 36.766s、5.306s、0.259s）。覆盖确认前不写、允许/拒绝、非法与跨 Bot 参数、纯简介免卡、拒绝后换新 seed 再确认；既有头像与 SelfEdit 测试同轮通过。gofmt、vet 通过。
+- 仅本地分支交付，不合 main、不 push；浏览器 E2E、日用与性能 p95/帧率未测，包测试耗时不代表交互性能。详细命令与证据见 `~/.xbot-build/bot-self-avatar-confirm/encode-report.md`。
+
 ## 2026-10-26 Bot 面板与窄屏、rail 修正（已合本地 main，待手测）
 
 - 满宽厂头仅留编辑；模型整栏、人设满宽；更多复用原菜单，改由本机 Bot 行和置顶头像右键／长按进入，动作绑定被操作的 Bot，旧菜单及子菜单统一关闭。信息面板各断点统一右进右出，手机全高近全宽；汉堡按 52px 内容带加安全区、16px 左距、8px 间距落实。72px rail 分区头仅留 10px 透明间隔，设备头同样清掉灰底和圆角，壳间距保留。编码 tip `1765587`（rebase onto main 后 tip 见合入提交）；Pi glm-5.3 review1 **PASS**（`~/.xbot-build/bot-panel-detail/review1.md`）。

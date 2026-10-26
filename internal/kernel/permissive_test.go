@@ -32,8 +32,8 @@ func needsCard(t *testing.T, k *Kernel, tool, args string) bool {
 }
 
 // With the table's cards off (the default for serve and chat, ADR 0019),
-// calls the table would confirm run without a card; the links card, which
-// collects a connector's keys, and an explicit machine "ask" still ask.
+// calls the table would confirm run without a card; connector key collection
+// and avatar previews still need their product cards.
 func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
 	k.ensureTurn().turnTrusted = true
@@ -57,6 +57,12 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	}
 	if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
 		t.Error("the links card was dropped")
+	}
+	if !needsCard(t, k, "propose_profile", `{"avatar_seed":"XBot#3"}`) {
+		t.Error("the avatar preview card was dropped")
+	}
+	if needsCard(t, k, "propose_profile", `{"description":"笔记助手"}`) {
+		t.Error("profile without avatar asked with permissions off")
 	}
 	// The machine switch and the guard on outside turns are off too.
 	k.Machine = func() (string, error) { return "ask", nil }
