@@ -23,6 +23,11 @@ let browser;
  await page.locator('#input').fill('浏览器管道消息');
  await page.locator('#send').click();
  await page.getByText('管道测试回复',{exact:true}).first().waitFor();
+ const media=await page.evaluate(()=>new Promise((resolve,reject)=>{
+  const img=new Image();img.onload=()=>resolve({url:img.src,width:img.naturalWidth});img.onerror=()=>reject(new Error('owner image failed'));
+  window.XBotPipe.image(img,'/api/test-image');
+ }));
+ assert.ok(media.url.startsWith('blob:'));assert.equal(media.width,1);
  const timings=await page.evaluate(async()=>{
    const times=[];
    for(let i=0;i<20;i++) { const start=performance.now();const r=await fetch('/api/bots');if(!r.ok)throw new Error('bots');await r.json();times.push(performance.now()-start); }
@@ -58,6 +63,6 @@ let browser;
  assert.equal(await phone.evaluate(()=>localStorage.getItem('xbot_account_session')),null);
  assert.deepEqual(errors,[]);
  assert.deepEqual(await phone.evaluate(()=>window.cspViolations||[]),[]);
- console.log(JSON.stringify({desktopBootMs:boot,apiSamples:timings.length,apiP95Ms:timings[18],phoneMainUI:true,scriptedMessage:true,offlineRetry:true,logout:true,pageErrors:errors.length}));
+ console.log(JSON.stringify({desktopBootMs:boot,apiSamples:timings.length,apiP95Ms:timings[18],phoneMainUI:true,scriptedMessage:true,ownerImage:true,offlineRetry:true,logout:true,pageErrors:errors.length}));
  await browser.close();
 })().catch(async e=>{console.error(e);await browser?.close();process.exit(1)});

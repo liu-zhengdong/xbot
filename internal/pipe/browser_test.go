@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -44,6 +45,16 @@ func TestBrowserRemoteUI(t *testing.T) {
 	w.ui.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: browserScripted{}, Memory: memory.NopStore{}, MaxSteps: 4}, nil
 	}
+	original := w.device.Handler
+	w.device.Handler = http.HandlerFunc(func(out http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/test-image" {
+			raw, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aJgAAAABJRU5ErkJggg==")
+			out.Header().Set("Content-Type", "image/png")
+			_, _ = out.Write(raw)
+			return
+		}
+		original.ServeHTTP(out, r)
+	})
 	w.startDevice(t)
 	accountURL, _ := url.Parse(w.hub.Accounts.(account.Remote).Base)
 	proxy := httputil.NewSingleHostReverseProxy(accountURL)

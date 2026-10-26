@@ -5,7 +5,7 @@
 ## 2026-10-26 官方薄入口续作（分支交付，本机 scripted 浏览器通过，未合入）
 
 - 复用同款 static、账号 Bearer、ADR 0024 票/待命/AuthorizeOwner；加五种 `/api/` 方法、双向 Content-Type、正文限额与领票 CORS。serve 保存/恢复主人账号会话并独立报在线，轮换/登出/失效取消旧管道。
-- 本机 Chromium 经真实 JS Web Crypto → Go Hub → 主人 API，用 scripted Provider 完成桌面/手机主界面、发消息、离线重试和退出。首屏样本 54 ms，20 次 `/api/bots` 的 p95 0.6 ms；不是公网、真模型、IPC 或帧率测量。完整 Go 套件与前端 14 条测试通过，详细命令、部署和余项见 `~/.xbot-build/public-thin-entry/encode-remote-ui-report.md`。
+- 本机 Chromium 经真实 JS Web Crypto → Go Hub → 主人 API，用 scripted Provider 完成桌面/手机主界面、发消息、原生图片取回、离线重试和退出。连续 3 次首屏样本 48–54 ms，每次 20 次 `/api/bots` 的 p95 0.6–0.8 ms；不是公网、真模型、IPC 或帧率测量。完整 Go 套件与前端 15 条测试通过，详细命令、部署和余项见 `~/.xbot-build/public-thin-entry/encode-remote-ui-report.md`。
 - 扩展 `smoke` 套件唯一失败为 `TestNewTaskWhileBusy`（子任务缺结果汇报、relay 等待超时），在隔离归档的 main `e164b7a` 上同样复现；六条基础旅程未出现失败。本批没有修改忙时任务逻辑，不能把扩展冒烟报为全绿。
 - 不合入 main、不 push、不重启 Mini 8788。真实账号手机公网验收交指挥官与主人，尚不报主人日用通过。
 

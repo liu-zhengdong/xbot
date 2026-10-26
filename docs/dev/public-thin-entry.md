@@ -40,7 +40,7 @@
 
 - 管道沿用批 1 的票、待命、密钥派生和主人 AuthorizeOwner，放行有 Body/Content-Type 的五种 `/api/` 方法。SSE 仍是整段缓冲，单请求/响应 700 KiB，密文帧 1 MiB。
 - 设备登录或认领为主人后保存 0600 会话，serve 恢复待命、独立校验/心跳；登出及确定失效清理。Hub 用 `XBOT_PIPE_HUB` 或官方默认。
-- 账号仓脚本同步 `internal/web/static` 到 `public/app/`；只补资源路径、bridge、手机主人直接入主界面及禁用远程 Service Worker。账号 API 字段在 bridge 适配，保留原侧栏和对话。
+- 账号仓脚本同步 `internal/web/static` 到 `public/app/`；只补资源路径、bridge、手机主人直接入主界面、原生图片通过 bridge 取回及禁用远程 Service Worker。账号 API 字段在 bridge 适配，保留原侧栏和对话。
 - 入口连接 Web Crypto X25519/HKDF/AES-GCM；同一连接串行请求，连接失败不自动重放写操作。CORS 仅账号来源，CSP 只增固定 pipe 的 HTTPS/WSS。
 
 ### 用户验收（主人给定）
