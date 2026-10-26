@@ -61,8 +61,10 @@ var Table = map[string]Class{
 	"recall": Readonly,
 
 	// Persona and profile.
-	"propose_persona": SelfEdit,
-	"update_profile":  SelfEdit,
+	"bot_propose_persona": SelfEdit,
+	"bot_update_profile":  SelfEdit,
+	"bot_profile":         Readonly,
+	"expand_tool_group":   Readonly,
 
 	// Routines and the owner notification. A routine is the bot's own
 	// schedule, so deleting one is not a data deletion. The kernel reviews a

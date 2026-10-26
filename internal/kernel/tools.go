@@ -26,14 +26,15 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
+	list = k.discloseToolGroups(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
 	return k.reviewedTools(list), nil
 }
 
 // mountedTools is the whole tool directory the bot has mounted: the tools the
-// granted links offer plus the ones the kernel adds. The main line gets all of
-// it (ADR 0028); a subagent gets it minus the tools that hand work out
-// (subagentBase).
+// granted links offer plus the ones the kernel adds. The main line can reach
+// all of it (ADR 0028), with grouped schemas discovered through modelTools;
+// a subagent gets it minus the tools that hand work out (subagentBase).
 func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	k.attachShell()
 	links := k.snapshotLinks()
@@ -150,7 +151,7 @@ func intProp(desc string) map[string]any {
 
 type personaTool struct{ k *Kernel }
 
-func (personaTool) Name() string { return "propose_persona" }
+func (personaTool) Name() string { return "bot_propose_persona" }
 func (personaTool) Description() string {
 	return "Propose a new persona. It is saved only after the owner confirms, and applies on the next wake."
 }

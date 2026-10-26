@@ -18,35 +18,35 @@ func shellNeed(t *testing.T, command string) bool {
 
 func TestTableHasEveryClass(t *testing.T) {
 	want := map[string]Class{
-		"read_file":       Readonly,
-		"list_secrets":    Readonly,
-		"recall_history":  Readonly,
-		"routine_list":    Readonly,
-		"code_show":       Readonly,
-		"recall":          Readonly,
-		"delete_bot":      Delete,
-		"secret_rm":       Delete,
-		"telegram_send":   ExternalSend,
-		"lark_send":       ExternalSend,
-		"http_request":    HTTP,
-		"shell":           Shell,
-		"write_file":      SelfEdit,
-		"edit_file":       SelfEdit,
-		"propose_persona": SelfEdit,
-		"update_profile":  SelfEdit,
-		"routine_create":  Normal,
-		"routine_update":  Normal,
-		"routine_delete":  Normal,
-		"message_bot":     Normal,
-		"post_group":      Normal,
-		"write_skill":     Normal,
-		"code_start":      Normal,
-		"browser_stop":    Normal,
-		"bot_status":      Readonly,
-		"todo":            Normal,
-		"shell_output":    Readonly,
-		"shell_status":    Readonly,
-		"shell_cancel":    Normal,
+		"read_file":           Readonly,
+		"list_secrets":        Readonly,
+		"recall_history":      Readonly,
+		"routine_list":        Readonly,
+		"code_show":           Readonly,
+		"recall":              Readonly,
+		"delete_bot":          Delete,
+		"secret_rm":           Delete,
+		"telegram_send":       ExternalSend,
+		"lark_send":           ExternalSend,
+		"http_request":        HTTP,
+		"shell":               Shell,
+		"write_file":          SelfEdit,
+		"edit_file":           SelfEdit,
+		"bot_propose_persona": SelfEdit,
+		"bot_update_profile":  SelfEdit,
+		"routine_create":      Normal,
+		"routine_update":      Normal,
+		"routine_delete":      Normal,
+		"message_bot":         Normal,
+		"post_group":          Normal,
+		"write_skill":         Normal,
+		"code_start":          Normal,
+		"browser_stop":        Normal,
+		"bot_status":          Readonly,
+		"todo":                Normal,
+		"shell_output":        Readonly,
+		"shell_status":        Readonly,
+		"shell_cancel":        Normal,
 	}
 	for name, class := range want {
 		if !Known(name) {
@@ -178,7 +178,7 @@ func TestLinksInstallAndRemoveAsk(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
-	for _, name := range []string{"propose_persona", "update_profile"} {
+	for _, name := range []string{"bot_propose_persona", "bot_update_profile"} {
 		if !need(t, name, `{}`) {
 			t.Fatalf("%s did not ask", name)
 		}

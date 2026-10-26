@@ -66,7 +66,7 @@ type profileChanges struct {
 	avatarSeed *string
 }
 
-func (profileTool) Name() string { return "update_profile" }
+func (profileTool) Name() string { return "bot_update_profile" }
 func (profileTool) Description() string {
 	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly; the sidebar and header avatar refresh immediately in the current conversation."
 }
