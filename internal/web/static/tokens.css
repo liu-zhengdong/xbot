@@ -31,6 +31,7 @@
   --x-danger:#c93a2b; --x-danger-bg:#fbeaea; /* 只给错误、删除、失败 */
   --x-caption-close:#c42b1c; /* 只给 Windows 关闭按钮悬停（系统惯例） */
   --x-online:#2f9e5b;                         /* 只给「在线」小圆点 */
+  --x-pending:#c9a227;                        /* 只给「等待登录…」小圆点（xAI 详情定稿） */
   /* 子代理类型标签（低饱和，同一族明度） */
   --x-type-dev:#4f7d69;  --x-type-dev-bg:#e5efe9;   /* 开发 · 墨绿 */
   --x-type-res:#5c7a9c;  --x-type-res-bg:#e6edf5;   /* 调研 · 雾蓝 */
@@ -64,7 +65,7 @@ html[data-theme="dark"]{
   --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:#6f6f78; --x-ph:#6f6f75;
   --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;
   --x-disabled:rgba(255,255,255,.08); --x-on-disabled:#6f6f75;
-  --x-danger:#f97066; --x-danger-bg:rgba(249,112,102,.12); --x-online:#3fb27f;
+  --x-danger:#f97066; --x-danger-bg:rgba(249,112,102,.12); --x-online:#3fb27f; --x-pending:#d9b44a;
   --x-type-dev:#8fbfa8; --x-type-dev-bg:#21302a;
   --x-type-res:#9db6d4; --x-type-res-bg:#222b37;
   --x-type-gen:#c2b8aa; --x-type-gen-bg:#2e2b27;

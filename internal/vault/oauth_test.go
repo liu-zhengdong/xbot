@@ -310,3 +310,87 @@ func TestOAuthRefreshWithoutChatGPTScope(t *testing.T) {
 		t.Fatalf("chatgpt scope dropped: %v", err)
 	}
 }
+
+// TestOAuthRefreshAfterRemoveDoesNotRevive: a refresh already waiting on the
+// token endpoint when the credential is removed (logout) must not write it
+// back when the endpoint finally answers, on the local and daemon backends.
+func TestOAuthRefreshAfterRemoveDoesNotRevive(t *testing.T) {
+	for _, daemon := range []bool{false, true} {
+		t.Run(map[bool]string{false: "local", true: "daemon"}[daemon], func(t *testing.T) {
+			seen, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				once.Do(func() { close(seen) })
+				<-release
+				_ = json.NewEncoder(w).Encode(map[string]any{"access_token": fakeOAuthToken(), "refresh_token": fakeOAuthToken(), "expires_in": 3600, "token_type": "Bearer"})
+			}))
+			defer up.Close()
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			defer unblock()
+			var b Backend
+			if daemon {
+				b = newOAuthDaemon(t)
+			} else {
+				root := t.TempDir()
+				s, err := Open(filepath.Join(root, "vault"), filepath.Join(root, "key"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				b = s
+			}
+			if err := SetOAuth(b, "xai", OAuthCredential{AccessToken: fakeOAuthToken(), RefreshToken: fakeOAuthToken(), ExpiresAt: time.Now().Add(-time.Hour), ClientID: "test", TokenURL: up.URL + "/token"}, []string{"127.0.0.1"}); err != nil {
+				t.Fatal(err)
+			}
+			// Use an independent local Store so Remove and refresh do not share
+			// an in-memory cache; writeback must reload under the file lock.
+			remover := b
+			if local, ok := b.(*Store); ok {
+				var err error
+				remover, err = Open(local.dir, local.keyPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			done := make(chan error, 1)
+			go func() { _, err := EnsureOAuth(context.Background(), b, "xai"); done <- err }()
+			select {
+			case <-seen:
+			case <-time.After(3 * time.Second):
+				t.Fatal("refresh did not start")
+			}
+			// Remove does not wait for the refresh: it returns while the endpoint is still blocked.
+			removed := make(chan error, 1)
+			go func() { removed <- remover.Remove("xai") }()
+			select {
+			case err := <-removed:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("remove waited for the in-flight refresh")
+			}
+			assertAbsent := func() {
+				t.Helper()
+				info, err := OAuthMetadata(context.Background(), b, "xai")
+				if err != nil {
+					t.Fatalf("read credential metadata: %v", err)
+				}
+				if info.Configured {
+					t.Fatal("removed credential configured")
+				}
+			}
+			assertAbsent()
+			unblock()
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), "login required") {
+					t.Errorf("late refresh result %v", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("refresh did not finish")
+			}
+			assertAbsent()
+		})
+	}
+}

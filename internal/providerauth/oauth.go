@@ -229,6 +229,40 @@ func (m *Manager) Cancel(kind string) error {
 	return nil
 }
 
+// Logout forgets the account for kind: any login underway stops, then the
+// vault credential and the OAuth binding are removed. It holds the manager
+// lock throughout, the same lock a finishing callback stores under, so a
+// login that completes concurrently cannot write a token back after it. A
+// Bot bound to the provider reports it missing until the next login, which
+// recreates the same name. Logging out with nothing stored succeeds.
+func (m *Manager) Logout(kind string) error {
+	if _, err := defaults(kind); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pending != nil && m.pending.kind == kind {
+		if m.pending.status.State == "pending" && m.pending.exchangeCancel != nil {
+			m.pending.exchangeCancel()
+		}
+		m.pending.status = Status{State: "idle"}
+		_ = m.pending.server.Close()
+	}
+	b, err := config.OAuthVault(m.Root)
+	if err != nil {
+		return errors.New("无法打开保险箱")
+	}
+	// The token goes first: if the registry write then fails, a retry finds a
+	// binding without a credential, never a credential nobody can see.
+	if err := b.Remove(kind); err != nil {
+		return errors.New("无法删除授权凭证，请重试")
+	}
+	if err := config.RemoveOAuthProvider(m.Root, kind); err != nil {
+		return errors.New("无法删除供应商绑定，请重试")
+	}
+	return nil
+}
+
 // Close releases a pending listener when the hosting server shuts down.
 func (m *Manager) Close() {
 	m.mu.Lock()

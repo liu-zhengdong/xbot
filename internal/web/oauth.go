@@ -57,3 +57,20 @@ func (s *Server) oauthCancel(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "cancelled"})
 }
+
+// oauthLogout forgets the account for kind: the vault credential and the
+// OAuth binding go away and the provider reads as not logged in again.
+func (s *Server) oauthLogout(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	if !oauthKinds[r.PathValue("kind")] {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.oauthManager().Logout(r.PathValue("kind")); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "logged_out"})
+}

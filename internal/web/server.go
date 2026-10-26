@@ -198,6 +198,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/providers/oauth/{kind}/start", s.oauthStart)
 	mux.HandleFunc("GET /api/providers/oauth/{kind}/status", s.oauthStatus)
 	mux.HandleFunc("POST /api/providers/oauth/{kind}/cancel", s.oauthCancel)
+	mux.HandleFunc("POST /api/providers/oauth/{kind}/logout", s.oauthLogout)
 	mux.HandleFunc("PUT /api/bots/{name}/binding", s.bindModel)
 	mux.HandleFunc("GET /providers.js", s.static("static/providers.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /providers.css", s.static("static/providers.css", "text/css; charset=utf-8"))

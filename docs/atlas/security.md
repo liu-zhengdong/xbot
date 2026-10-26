@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-10-25 @ ea2d75e + 网页出站去掉白名单
+verified: 2026-10-26 + 网页出站去掉白名单与 OAuth 退出刷新协调
 ---
 # 安全：保险箱与权限表
 
@@ -28,7 +28,7 @@ verified: 2026-10-25 @ ea2d75e + 网页出站去掉白名单
 - **保险箱路径一律确认**：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）、桌面应用启动时读取密钥和端点的 `<root>/env`时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。`xbot remote add/invite/join/remove`、`xbot remote gateway <url>` 不写路径也会改设备表，命令位置出现时同样出卡。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
 - **绑定**：每个凭据记一串允许的域名。请求域名不在名单里就拒绝注入，一个字节的真值都不发。按域名标签边界匹配，`a.com` 不覆盖 `evil-a.com` 和 `a.com.evil.com`；只认 ASCII 域名（IDN 用 punycode），只认 http/https，重定向的每一跳都重新校验，跳转 URL 或被复制的头里捎带真值（含 URL 编码、base64 等变体）同样拒绝。
 - **出站代理**：内核在请求离开进程前，把 URL、请求头和请求体里的 `{{secret:名字}}` 换成真值。模型只写名字。URL 路径里的花括号会被 Go 转义成 `%7B%7Bsecret:名字%7D%7D`，代理也认这种写法，同样先查域名绑定。Telegram 和飞书连接器的 token 也存在这里，出站只带占位符（见 [生态](ecosystem.md)）。
-- **OAuth 模型鉴权**：凭证格式、刷新与共享命名空间见 [供应商](providers.md)。模型请求通过同一后端的 `InjectStream` 只替换鉴权头，保留正文里的占位示例；本地和 daemon 都校验域名。出站时固定这次使用的脱敏快照，响应的令牌、编码变体与折行形式按既有口径隐藏，正常 SSE 文本不等待完整令牌长度的缓冲窗口。
+- **OAuth 模型鉴权**：凭证格式、刷新、退出时的并发写回协调与共享命名空间见 [供应商](providers.md)。模型请求通过同一后端的 `InjectStream` 只替换鉴权头，保留正文里的占位示例；本地和 daemon 都校验域名。出站时固定这次使用的脱敏快照，响应的令牌、编码变体与折行形式按既有口径隐藏，正常 SSE 文本不等待完整令牌长度的缓冲窗口。
 - **脱敏**：真值出现在工具结果、transcript 或导出里时换成 `[secret]`，接的是现成的 `RedactText`；URL 编码、JSON 转义、base64 等变体以及被截断拆开的残段同样脱敏。base64 还认两种情况：值落在更长的 base64 流里、不在 3 字节组的开头（例如 Basic auth 的 `user:token`），这时它中间的整组照样认得出，两端最多各剩 2 个字节混在边界组里；以及被 base64 工具按 64、76 或任意固定宽度折行的，同宽的 base64 行先拼起来再找，连同换行一起换掉。替换是一遍从左到右：每个位置最长的形式先匹配，换进去的 `[secret]` 不再参与匹配。形式列表和替换器按保险箱版本缓存，保险箱变了才重算。`Store.Forms` 和 `RegisteredForms` 按从长到短列出这些形式（一样长按字节序），后台 shell 用这份列表决定待写尾巴留哪一段。
 - **CLI**：`xbot secret set <bot> NAME --domains a.com,b.com`（值从 stdin 读，永不从 argv）、`xbot secret list <bot>`（只列名字和域名）、`xbot secret rm <bot> NAME`；配了守护进程后用 `xbot secret migrate <bot>` 把本地保险箱整体搬过去（见下）。
 

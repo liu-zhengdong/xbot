@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -551,5 +552,34 @@ func TestCancelDuringTokenExchange(t *testing.T) {
 				t.Fatalf("restart: %v", err)
 			}
 		})
+	}
+}
+
+// TestLogoutStopsPendingLogin: logging out while a login is pending stops it,
+// frees the listener, and a new login can begin at once.
+func TestLogoutStopsPendingLogin(t *testing.T) {
+	f := newFakeAuth(t)
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	m := &Manager{Root: t.TempDir(), CallbackPort: port, Endpoints: map[string]Endpoints{"xai": f.endpoints("xai")}}
+	t.Cleanup(m.Close)
+	if _, err := m.Begin("xai"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Logout("xai"); err != nil {
+		t.Fatal(err)
+	}
+	if st := m.Status("xai").State; st != "idle" {
+		t.Fatalf("status after logout %s", st)
+	}
+	if _, err := m.Begin("xai"); err != nil {
+		t.Fatalf("login after logout: %v", err)
+	}
+	if err := m.Logout("anthropic"); err == nil {
+		t.Fatal("logout accepted an unsupported kind")
 	}
 }
