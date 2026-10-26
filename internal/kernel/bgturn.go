@@ -146,6 +146,7 @@ func (k *Kernel) ownerWaiting(t *turn) bool {
 
 // tryFork moves the running turn t to the background when the owner is waiting,
 // the turn is past the threshold, and the cap allows another background.
+// There is no foreground limit that forks a turn on its own (ADR 0028).
 // It writes the fork marker and closes t.forked. It is safe to call repeatedly.
 func (k *Kernel) tryFork(t *turn) bool {
 	if !k.AllowFork || t == nil || t.forked == nil {
@@ -161,11 +162,8 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 	t.mu.Lock()
 	open := t.branch == "" && !t.finished && !t.answered
 	eligible := open && (t.tools > 0 || k.now().Sub(t.started) >= k.forkAfter())
-	capped := open && k.foregroundCapped(t)
 	t.mu.Unlock()
-	// A turn past the foreground cap moves to the background on its own; any other
-	// turn forks only for an owner message.
-	if !capped && (!eligible || !k.ownerWaiting(t)) {
+	if !eligible || !k.ownerWaiting(t) {
 		return false
 	}
 	k.bgMu.Lock()
@@ -189,7 +187,6 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 		k.bgs = map[string]*turn{}
 	}
 	k.bgs[id] = t
-	t.capFork = capped
 	k.writeForkMeta(t, "running")
 	close(t.forked)
 	return true
@@ -541,30 +538,3 @@ func (k *Kernel) CancelBackgrounds() {
 
 // ForkCapValue is the background slot cap in effect.
 func (k *Kernel) ForkCapValue() int { return k.forkCap() }
-
-// foregroundCapped reports a main-line turn past the foreground cap: ForegroundMaxTools
-// tool calls (default 4) or ForegroundMaxTime (default 20s). A negative value turns
-// that limit off. The caller holds t.mu.
-func (k *Kernel) foregroundCapped(t *turn) bool {
-	maxTools, maxTime := k.ForegroundMaxTools, k.ForegroundMaxTime
-	if maxTools == 0 {
-		maxTools = 4
-	}
-	if maxTime == 0 {
-		maxTime = 20 * time.Second
-	}
-	if maxTools > 0 && t.tools-t.capBaseTools >= maxTools {
-		return true
-	}
-	from := t.started
-	if !t.capFrom.IsZero() {
-		from = t.capFrom
-	}
-	return maxTime > 0 && k.now().Sub(from) >= maxTime
-}
-
-// capNotice is the main-line reply when a turn moves to the background because it
-// passed the foreground cap.
-func capNotice(id string) string {
-	return fmt.Sprintf("这件事比较长，已转到后台 %s 继续做，做完告诉你。", id)
-}

@@ -48,13 +48,9 @@ type Config struct {
 	Proactivity string `json:"proactivity,omitempty"`
 	Timezone    string `json:"timezone,omitempty"`
 	// Role picks the working defaults: "chat" (default) for interactive use and
-	// "dev" for long engineering runs. It sets the foreground thresholds and the
-	// background budget unless those are set explicitly.
+	// "dev" for long engineering runs. It sets the background budget unless
+	// that is set explicitly.
 	Role string `json:"role,omitempty"`
-	// ForegroundMaxTools and ForegroundMaxTime override the role's foreground
-	// thresholds. Zero uses the role default; negative turns a limit off.
-	ForegroundMaxTools int `json:"foreground_max_tools,omitempty"`
-	ForegroundMaxTime  int `json:"foreground_max_time,omitempty"` // seconds
 	// BackgroundMaxTime overrides the role's background budget in seconds. Zero
 	// uses the role default; negative lets a background run with no time limit.
 	BackgroundMaxTime int       `json:"background_max_time,omitempty"`

@@ -149,14 +149,11 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		MaxSteps:        steps,
 		Budget:          budget,
 		AllowBackground: allowBackground,
-		// The foreground understands and hands out work; typed subagents do
-		// it (ADR 0016).
+		// The main line has every tool and hands long work to typed
+		// subagents (ADR 0028).
 		Dispatch: true,
 		// No permission cards unless the owner turned them on (ADR 0019).
 		PermissionsOn: func() bool { return permissions.On(root) },
-		// Foreground limits come from the role unless the bot overrode them.
-		ForegroundMaxTools: work.ForegroundMaxTools,
-		ForegroundMaxTime:  work.ForegroundMaxTime,
 		// How long one background task may keep going.
 		BackgroundMaxTime: work.BackgroundMaxTime,
 		WorkDir:           workDir,

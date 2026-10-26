@@ -21,7 +21,6 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
-	"xbot/internal/review"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
 )
@@ -246,91 +245,73 @@ func TestSubagentRequestsAreFit(t *testing.T) {
 	}
 }
 
-// The dispatching foreground cannot do the work: a file edit outside memory
-// and a shell command that writes are refused, a plain read runs, and the
-// tools that only do work are not offered at all.
-func TestForegroundCannotDoTheWork(t *testing.T) {
+// With dispatch on, the main line still does the work itself (ADR 0028): a
+// file write and a shell command that writes both run, more calls than the old
+// foreground limit allowed keep every tool, and the rules say to answer the
+// owner first and hand long work out.
+func TestMainLineDoesTheWork(t *testing.T) {
 	m := &roleModel{}
-	k, b, _ := dispatchKernel(t, m)
+	k, _, _ := dispatchKernel(t, m)
 	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
-	memFile := filepath.Join(b.Root, "bots", b.Name(), "memory", "notes.md")
+	read := func(id string) provider.Message {
+		return toolCall(id, "shell", mustArgs(t, map[string]any{"command": "ls"}))
+	}
 	m.fore = []provider.Message{
 		toolCall("w1", "write_file", mustArgs(t, map[string]string{"path": filepath.Join(k.WorkDir, "a.txt"), "content": "x"})),
 		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
-		toolCall("s2", "shell", mustArgs(t, map[string]any{"command": "ls"})),
-		toolCall("m1", "write_file", mustArgs(t, map[string]string{"path": memFile, "content": "- likes tea\n"})),
+		read("r1"), read("r2"), read("r3"), read("r4"),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	got := bodies(t, k)
-	if len(got) != 4 {
+	if len(got) != 6 {
 		t.Fatalf("results %q", got)
 	}
-	for i := 0; i < 2; i++ {
-		if !strings.Contains(got[i], "hand it to a subagent with dispatch") {
-			t.Fatalf("call %d ran: %q", i, got[i])
+	for i, body := range got {
+		if strings.Contains(body, "subagent with dispatch") {
+			t.Fatalf("call %d was refused: %q", i, body)
 		}
-	}
-	if strings.Contains(got[2], "dispatch") {
-		t.Fatalf("a plain read was refused: %q", got[2])
-	}
-	if strings.Contains(got[3], "dispatch") {
-		t.Fatalf("a memory edit was refused: %q", got[3])
 	}
 	for _, f := range []string{"a.txt", "b.txt"} {
-		if _, err := os.Stat(filepath.Join(k.WorkDir, f)); err == nil {
-			t.Fatalf("%s was written", f)
+		if _, err := os.Stat(filepath.Join(k.WorkDir, f)); err != nil {
+			t.Fatalf("%s was not written: %v", f, err)
 		}
-	}
-	if raw, err := os.ReadFile(memFile); err != nil || !strings.Contains(string(raw), "likes tea") {
-		t.Fatalf("memory not written: %v %q", err, raw)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	names := toolNamesOf(m.foreReq[0].Tools)
-	for _, hidden := range []string{"spawn", "http_request", "code_start", "write_skill"} {
-		if contains(names, hidden) {
-			t.Fatalf("foreground offers %s", hidden)
+	if len(m.foreReq) != 7 {
+		t.Fatalf("requests %d", len(m.foreReq))
+	}
+	first := toolNamesOf(m.foreReq[0].Tools)
+	for _, want := range []string{"write_file", "edit_file", "shell", "dispatch"} {
+		if !contains(first, want) {
+			t.Fatalf("main line lacks %s: %v", want, first)
 		}
 	}
-	if sys := m.foreReq[0].Messages[0].Text(); !strings.Contains(sys, DispatchRule) {
-		t.Fatal("the foreground's rules lack the dispatch rule")
+	// Every request that asked for a tool call kept the whole set; the old
+	// limit cut it down to dispatch and the controls after the fourth call.
+	for i, req := range m.foreReq[:6] {
+		if names := toolNamesOf(req.Tools); len(names) != len(first) {
+			t.Fatalf("request %d narrowed the tool set: %v -> %v", i, first, names)
+		}
+	}
+	last := m.foreReq[len(m.foreReq)-1]
+	if strings.Contains(messagesText(last.Messages), "foreground_limit") {
+		t.Fatal("a foreground limit note reached the model")
+	}
+	sys := m.foreReq[0].Messages[0].Text()
+	if !strings.Contains(sys, DispatchRule) || !strings.Contains(sys, "Answer the owner first, then work") {
+		t.Fatal("the rules lack the reply-first dispatch rule")
+	}
+	if strings.Contains(sys, "You do not do the work yourself") {
+		t.Fatal("the ADR 0016 foreground rule is still injected")
 	}
 }
 
-// The owner is never shown a card for a call the foreground refuses: with
-// every command asking (machine "ask"), a write is refused before a card,
-// and a chain of reads is let through to its card.
-func TestForegroundRefusesBeforeTheCard(t *testing.T) {
-	m := &roleModel{}
-	k, _, _ := dispatchKernel(t, m)
-	k.Machine = func() (string, error) { return "ask", nil }
-	var asked []string
-	k.Approve = func(_ context.Context, tool, summary string) (bool, error) {
-		asked = append(asked, summary)
-		return true, nil
-	}
-	m.fore = []provider.Message{
-		toolCall("s1", "shell", mustArgs(t, map[string]any{"command": "echo x > b.txt"})),
-		toolCall("s2", "shell", mustArgs(t, map[string]any{"command": "pwd && ls -la"})),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	got := bodies(t, k)
-	if len(got) != 2 || !strings.Contains(got[0], "hand it to a subagent with dispatch") || strings.Contains(got[1], "dispatch") {
-		t.Fatalf("results %q", got)
-	}
-	if len(asked) != 1 || !strings.Contains(asked[0], "pwd && ls -la") {
-		t.Fatalf("cards %q; want only the chain of reads", asked)
-	}
-}
-
-// Without dispatch the foreground keeps every tool and no dispatch rule.
-func TestForegroundUnchangedWithoutDispatch(t *testing.T) {
+// Without dispatch the main line has no dispatch tool and no dispatch rule.
+func TestNoDispatchRuleWithoutDispatch(t *testing.T) {
 	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k, _, _ := dispatchKernel(t, m)
 	k.Dispatch = false
@@ -348,51 +329,6 @@ func TestForegroundUnchangedWithoutDispatch(t *testing.T) {
 	}
 }
 
-// At the foreground limit the model is told to hand the rest out and is left
-// with only dispatch and the controls; past the grace calls the run stops.
-func TestForegroundLimitHandsTheRestOut(t *testing.T) {
-	read := func(id string) provider.Message {
-		return toolCall(id, "shell", mustArgs(t, map[string]any{"command": "ls"}))
-	}
-	m := &roleModel{fore: []provider.Message{
-		read("r1"), read("r2"), read("r3"), read("r4"), read("r5"), read("r6"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
-	}}
-	k, b, _ := dispatchKernel(t, m)
-	k.ForegroundMaxTools = 2
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	m.mu.Lock()
-	reqs := append([]provider.Request(nil), m.foreReq...)
-	m.mu.Unlock()
-	if len(reqs) < 3 {
-		t.Fatalf("requests %d", len(reqs))
-	}
-	capped := reqs[2]
-	if !strings.Contains(messagesText(capped.Messages), "foreground's step limit") {
-		t.Fatal("no limit note after the cap")
-	}
-	for _, n := range toolNamesOf(capped.Tools) {
-		if !capTools[n] {
-			t.Fatalf("after the cap the foreground still has %s", n)
-		}
-	}
-	trs, err := b.Traces()
-	if err != nil {
-		t.Fatal(err)
-	}
-	stopped := false
-	for _, tr := range trs {
-		if tr.Kind == bot.TraceStop && tr.Reason == StopForegroundLimit {
-			stopped = true
-		}
-	}
-	if !stopped {
-		t.Fatal("the foreground kept working past the grace calls")
-	}
-}
-
 // workLink offers tools in every work class, as a connector, an MCP server,
 // or a later link might.
 type workLink struct{}
@@ -402,46 +338,12 @@ func (workLink) Tools() []tools.Tool {
 	return []tools.Tool{namedTool{"send_email"}, namedTool{"delete_file"}, namedTool{"mcp_srv_post"}, hintTool{ro: true}}
 }
 
-// Guard: whatever links a bot has, the foreground in no turn is offered a
-// tool that writes, runs commands, sends out, or deletes, except the few it
-// keeps on purpose (foregroundKept), whose limits are checked at run time.
-func TestForegroundNeverOffersWorkTools(t *testing.T) {
-	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
-	k, _, _ := dispatchKernel(t, m)
-	k.Links = append(k.Links, link.Memory{}, link.Persona{}, link.Context{}, link.Peers{}, link.Skills{}, link.Web{}, workLink{})
-	list, err := k.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := map[string]bool{}
-	for _, tl := range list {
-		name := tl.Name()
-		seen[name] = true
-		if _, kept := foregroundKept[name]; kept || name == "mcp_srv_lookup" {
-			// mcp_srv_lookup declares itself read-only.
-			continue
-		}
-		if workClass(review.ClassOf(name)) {
-			t.Errorf("foreground offers %s (%s)", name, review.ClassOf(name))
-		}
-	}
-	for _, want := range []string{"dispatch", "steer", "read_file", "recall", "mcp_srv_lookup"} {
-		if !seen[want] {
-			t.Errorf("foreground lacks %s", want)
-		}
-	}
-	for _, hidden := range []string{"send_email", "delete_file", "mcp_srv_post", "http_request", "spawn"} {
-		if seen[hidden] {
-			t.Errorf("foreground offers %s", hidden)
-		}
-	}
-}
-
-// Guard: whatever the foreground hides from itself while dispatching, a
-// subagent reaches, or the work has no way in. The general type takes the whole
-// mounted directory minus the tools that hand work out; a narrower type still
-// narrows it, and no subagent can hand work out again (ADR 0016).
-func TestSubagentReachesWhatTheForegroundHides(t *testing.T) {
+// Guard: whatever links a bot has, the main line is offered the whole mounted
+// directory even while dispatching, including tools that write, send out, or
+// delete (ADR 0028). The general subagent type takes the same directory minus
+// the tools that hand work out; a narrower type still narrows it, and no
+// subagent can hand work out again.
+func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents,
 		link.NameCoding, link.NameDesktop, link.NameBrowser)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
@@ -477,13 +379,30 @@ func TestSubagentReachesWhatTheForegroundHides(t *testing.T) {
 		}
 		return out
 	}
+	main, err := k.modelTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainNames := namesOf(main)
+	for _, tl := range mounted {
+		if !contains(mainNames, tl.Name()) {
+			t.Errorf("main line lacks mounted tool %s", tl.Name())
+		}
+	}
+	// code, desktop, and browser tools are lazy until loaded, for the main line
+	// and subagents alike; that is not a main-line limit.
+	for _, want := range []string{"dispatch", "write_file", "shell", "http_request", "send_email", "delete_file", "mcp_srv_post"} {
+		if !contains(mainNames, want) {
+			t.Errorf("main line lacks %s", want)
+		}
+	}
 	general := namesOf(k.toolsFor(exec.StartRequest{ID: "sa_0123456789", Type: "general"}))
 	for _, tl := range mounted {
 		if handingOut[tl.Name()] {
 			continue
 		}
 		if !contains(general, tl.Name()) {
-			t.Errorf("general subagent cannot reach %s, so a tool the foreground hides has no way in", tl.Name())
+			t.Errorf("general subagent cannot reach %s", tl.Name())
 		}
 	}
 	for _, never := range []string{"dispatch", "spawn"} {

@@ -154,8 +154,7 @@ func (k *Kernel) subTools() []tools.Tool {
 var handingOut = map[string]bool{"dispatch": true, "spawn": true}
 
 // subagentBase is a subagent's tool set before its type filters it: the whole
-// mounted directory minus the tools that hand work out, so a tool the
-// foreground hides still has a way in. The scope's shell and file tools win
+// mounted directory minus the tools that hand work out. The scope's shell and file tools win
 // over any link copy of the same name, which keeps the subagent's own cwd and
 // the memory guard.
 func (k *Kernel) subagentBase(id string) []tools.Tool {

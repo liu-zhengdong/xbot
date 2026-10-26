@@ -16,7 +16,7 @@ var ruleParagraphBreak = regexp.MustCompile(`\r?\n[ \t]*\r?\n`)
 
 func botRuleSupplements(text string) string {
 	defaults := strings.Split(KernelRules(), "\n\n")
-	defaults = append(defaults, legacyVerifyRule, OwnAskActionRule, EventMemoryRule, MemoryWriteRule, DispatchRule)
+	defaults = append(defaults, legacyVerifyRule, OwnAskActionRule, EventMemoryRule, MemoryWriteRule, DispatchRule, legacyDispatchRule)
 	var kept []string
 	for _, paragraph := range ruleParagraphBreak.Split(strings.TrimSpace(text), -1) {
 		paragraph = strings.TrimSpace(paragraph)

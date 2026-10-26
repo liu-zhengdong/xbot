@@ -33,7 +33,7 @@ type Case struct {
 	Memory bool `yaml:"memory"`
 	// Role is the bot working role, chat or dev. Empty stays chat.
 	Role string `yaml:"role"`
-	// Dispatch runs the bot as a dispatching foreground (ADR 0016). The
+	// Dispatch runs the bot with typed subagents offered (ADR 0028). The
 	// dispatch is recorded, not run, and the case has no shell, so it needs
 	// no jail.
 	Dispatch bool `yaml:"dispatch"`

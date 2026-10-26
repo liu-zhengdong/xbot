@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
@@ -45,15 +46,22 @@ func (p *bgControlProvider) Chat(_ context.Context, req provider.Request, _ func
 	}})...)}, nil
 }
 
-// blockingTool blocks until it is released, which is what keeps the turn on the
-// main line long enough for the control to be sent.
-type blockingTool struct{ release chan struct{} }
+// blockingTool posts an owner message, which forks the turn, and blocks until
+// it is released, which keeps the background busy long enough for the control
+// to be sent.
+type blockingTool struct {
+	box     *inbox.Inbox
+	release chan struct{}
+}
 
 func (*blockingTool) Name() string                                  { return "wait" }
 func (*blockingTool) Description() string                           { return "wait" }
 func (*blockingTool) Parameters() any                               { return map[string]any{"type": "object"} }
 func (*blockingTool) Confirm(json.RawMessage) (bool, string, error) { return false, "wait", nil }
 func (h *blockingTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	if err := h.box.Post(link.TerminalEvent("u1", "插一句", time.Unix(20, 0).UTC())); err != nil {
+		return "", err
+	}
 	select {
 	case <-h.release:
 		return "ok", nil
@@ -66,13 +74,12 @@ func (h *blockingTool) Run(ctx context.Context, _ json.RawMessage) (string, erro
 // so the caller can steer it while it works.
 func controlKernel(t *testing.T) (*Kernel, chan struct{}, *bgControlProvider) {
 	t.Helper()
-	k, g, _ := forkKernel(t)
+	k, g, box := forkKernel(t)
 	rel := make(chan struct{})
-	k.Links = []link.Link{link.Terminal{}, oneToolLink{&blockingTool{release: rel}}}
+	k.Links = []link.Link{link.Terminal{}, oneToolLink{&blockingTool{box: box, release: rel}}}
 	p := &bgControlProvider{}
 	k.Provider = p
 	k.MaxSteps = 4
-	k.ForegroundMaxTools = 1
 	k.BackgroundMaxTime = -1
 	g.release = rel
 	return k, rel, p

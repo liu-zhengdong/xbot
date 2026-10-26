@@ -26,15 +26,14 @@ func (k *Kernel) modelTools() ([]tools.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
-	list = k.foregroundTools(list)
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
 	return k.reviewedTools(list), nil
 }
 
 // mountedTools is the whole tool directory the bot has mounted: the tools the
-// granted links offer plus the ones the kernel adds. The foreground narrows it
-// (foregroundTools); a subagent gets it too, minus the tools that hand work out
-// (subagentBase), so a tool only the foreground hides still has a way in.
+// granted links offer plus the ones the kernel adds. The main line gets all of
+// it (ADR 0028); a subagent gets it minus the tools that hand work out
+// (subagentBase).
 func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	k.attachShell()
 	links := k.snapshotLinks()

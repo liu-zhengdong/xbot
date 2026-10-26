@@ -21,11 +21,15 @@ func TestPendingApprovalBackgroundAcceptsNextHandle(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("background completed")},
 	}}
 	k.Provider = p
-	k.ForegroundMaxTime = 100 * time.Millisecond
+	k.ForkAfter = 100 * time.Millisecond
 	release := make(chan struct{})
 	asked := make(chan struct{})
 	k.Approve = func(ctx context.Context, tool, summary string) (bool, error) {
 		appendCard(t, k.Bot, "pending-card", tool, summary, bot.ApprovalPending, time.Now())
+		// The owner speaks while the card waits, which forks the turn.
+		if err := k.Inbox.Post(link.TerminalEvent("u1", "还在吗", time.Unix(15, 0))); err != nil {
+			t.Error(err)
+		}
 		close(asked)
 		select {
 		case <-release:

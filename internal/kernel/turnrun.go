@@ -155,22 +155,19 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 // options builds the agent callbacks for this run.
 func (r *turnRun) options(approve agent.Approver) agent.Options {
 	opts := agent.Options{
-		ToolBatch: r.t.toolBatch,
-		RunTool:   r.k.runToolCall,
-		MaxSteps:  r.k.stepGuard(),
-		Approve:   approve,
-		OnDelta:   r.delta,
-		OnTool:    r.toolStart,
-		OnResult:  r.toolEnd,
-		Redact:    r.k.redactor(),
-		OnMessage: r.onMessage,
-		RefreshTools: func() ([]tools.Tool, error) {
-			list, err := r.k.modelTools()
-			return r.k.cappedTools(r.t, list), err
-		},
-		AfterStep: r.afterStep,
-		Guard:     r.guardStep,
-		OnIdle:    r.onIdle,
+		ToolBatch:    r.t.toolBatch,
+		RunTool:      r.k.runToolCall,
+		MaxSteps:     r.k.stepGuard(),
+		Approve:      approve,
+		OnDelta:      r.delta,
+		OnTool:       r.toolStart,
+		OnResult:     r.toolEnd,
+		Redact:       r.k.redactor(),
+		OnMessage:    r.onMessage,
+		RefreshTools: r.k.modelTools,
+		AfterStep:    r.afterStep,
+		Guard:        r.guardStep,
+		OnIdle:       r.onIdle,
 	}
 	// A timer wake has no one to stream to, until an owner message takes
 	// over its output.
@@ -179,7 +176,7 @@ func (r *turnRun) options(approve agent.Approver) agent.Options {
 	}
 	if !r.k.AllowFork {
 		opts.Preempt = r.t.preempt
-		opts.Preempted = r.takeOwner
+		opts.Preempted = r.t.takeInterjected
 	}
 	return opts
 }
@@ -235,7 +232,7 @@ func (r *turnRun) onMessage(m provider.Message) {
 func (r *turnRun) afterStep() ([]provider.Message, error) {
 	if !r.k.AllowFork {
 		// The owner's words go first, then whatever the inbox brought.
-		owner := r.takeOwner()
+		owner := r.t.takeInterjected()
 		rest, err := r.k.absorbInbox()
 		return append(owner, rest...), err
 	}
@@ -291,12 +288,6 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 	// instructions and context usage use the same boundary: they show up on the
 	// next model call, not in the middle of one.
 	join.add(r.k.stepBoundaryNotes(r.t))
-	capRemind, capStop := r.k.foregroundCap(r.t)
-	join.add(capRemind)
-	if capStop && !stop {
-		stop, reason = true, StopForegroundLimit
-	}
-
 	if !stop {
 		if why, over := r.k.backgroundOverBudget(r.t); over {
 			stop, reason = true, why
@@ -391,9 +382,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		if len(pend) == 0 && !bg && !r.k.AllowFork && err == nil {
 			// The owner spoke as the model finished: answer in this turn.
 			// The lock order is t.mu, then t.inter.mu, the same everywhere.
-			if pend = r.k.closeInterject(r.t, false); len(pend) > 0 {
-				r.k.freshAllowanceLocked(r.t)
-			}
+			pend = r.k.closeInterject(r.t, false)
 		}
 		finishing := len(pend) == 0
 		if finishing {

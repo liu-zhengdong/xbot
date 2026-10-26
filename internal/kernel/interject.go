@@ -294,27 +294,6 @@ func (k *Kernel) HandedOff() bool {
 	return t.inter.handed
 }
 
-// freshAllowanceLocked gives the foreground its full allowance again: an
-// owner message taken in mid-turn is a new request. t.mu must be held.
-func (k *Kernel) freshAllowanceLocked(t *turn) {
-	t.capped = false
-	t.capSteps = 0
-	t.capBaseTools = t.tools
-	t.capFrom = k.now()
-}
-
-// takeOwner returns the owner messages interjected into t and, when there
-// are any, restarts the foreground allowance.
-func (r *turnRun) takeOwner() []provider.Message {
-	q := r.t.takeInterjected()
-	if len(q) > 0 {
-		r.t.mu.Lock()
-		r.k.freshAllowanceLocked(r.t)
-		r.t.mu.Unlock()
-	}
-	return q
-}
-
 // Failed generation does not remove accepted words. Associate the failure with
 // each owner input using the ordinary transcript rather than an unread ledger.
 func (k *Kernel) replyToFailedInputs(t *turn) error {

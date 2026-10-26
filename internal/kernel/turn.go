@@ -59,18 +59,10 @@ type turn struct {
 	replyInputThrough int
 	// forkMu serializes the fork decision with absorbing the inbox, so a message
 	// absorbed into this turn cannot also be the one that forks it.
-	forkMu sync.Mutex
-	tools  int
-	// capped is set once a dispatching foreground reached its limit, and
-	// capSteps counts the steps after that (see foregroundCap).
-	capped   bool
-	capSteps int
-	// capBaseTools and capFrom are where the foreground's allowance starts:
-	// the turn's start, or the latest owner message taken in mid-turn.
-	capBaseTools int
-	capFrom      time.Time
-	replies      int // assistant messages recorded on this turn, for the step count
-	lastTool     string
+	forkMu   sync.Mutex
+	tools    int
+	replies  int // assistant messages recorded on this turn, for the step count
+	lastTool string
 	// Status tracking for the bot status feature: when the last tool call
 	// started and ended, whether the turn waits on the owner, and a ring of the
 	// last stepRingCap steps.
@@ -85,8 +77,6 @@ type turn struct {
 	forked        chan struct{}
 	runCtx        context.Context
 	cancelRun     context.CancelFunc
-	// capFork is set when the turn moved to the background for passing the foreground cap.
-	capFork bool
 	// stopReason says why a background ended before the task was done: the
 	// wall-clock budget ran out with a control still waiting. finishBackground
 	// reports it and leaves the control unread.

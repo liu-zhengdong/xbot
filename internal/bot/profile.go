@@ -76,13 +76,11 @@ func callGenerator(name, description string) ([]byte, error) {
 type ProfileUpdate struct {
 	Description *string
 	Timezone    *string
-	// Role picks the working defaults (chat or dev). ForegroundMaxTools,
-	// ForegroundMaxTime, and BackgroundMaxTime override them: zero uses the role
-	// default, a negative value turns that limit off.
-	Role               *string
-	ForegroundMaxTools *int
-	ForegroundMaxTime  *int
-	BackgroundMaxTime  *int
+	// Role picks the working defaults (chat or dev). BackgroundMaxTime
+	// overrides it: zero uses the role default, a negative value turns the
+	// limit off.
+	Role              *string
+	BackgroundMaxTime *int
 }
 
 // ApplyProfile validates and stores a partial profile update.
@@ -110,18 +108,6 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 			return fmt.Errorf("bot: role: %w", err)
 		}
 		cfg.Role = v
-	}
-	if u.ForegroundMaxTools != nil {
-		if err := checkRange("foreground_max_tools", *u.ForegroundMaxTools, 0, 64); err != nil {
-			return err
-		}
-		cfg.ForegroundMaxTools = *u.ForegroundMaxTools
-	}
-	if u.ForegroundMaxTime != nil {
-		if err := checkRange("foreground_max_time", *u.ForegroundMaxTime, 0, 600); err != nil {
-			return err
-		}
-		cfg.ForegroundMaxTime = *u.ForegroundMaxTime
 	}
 	if u.BackgroundMaxTime != nil {
 		// Negative turns the budget off, so the low end is negative here rather

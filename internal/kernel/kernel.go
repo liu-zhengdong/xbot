@@ -118,9 +118,9 @@ type Kernel struct {
 	// one policy table.
 	Machine func() (string, error)
 
-	// Dispatch makes the foreground the one that understands, plans, and hands
-	// out work (ADR 0016): it gets dispatch instead of spawn, keeps only quick
-	// read tools and memory edits, and the work runs in typed subagents.
+	// Dispatch offers typed subagents: the main line gets dispatch instead of
+	// spawn and the dispatch rule (answer first, hand long work out). It keeps
+	// every other tool (ADR 0028).
 	Dispatch bool
 
 	// AllowFork moves a running turn to the background when the owner sends a
@@ -133,11 +133,6 @@ type Kernel struct {
 	BackgroundApprove agent.Approver
 	ForkCap           int
 	ForkAfter         time.Duration
-	// ForegroundMaxTools (default 4) and ForegroundMaxTime (default 20s) cap a
-	// main-line turn when AllowFork is on; past either, the turn moves to the
-	// background if a slot is free. Negative turns a limit off.
-	ForegroundMaxTools int
-	ForegroundMaxTime  time.Duration
 	// BackgroundMaxTime caps how long one background task may keep working. It
 	// comes from the bot's role; a negative value turns it off. The background
 	// turn's own context carries the deadline (see backgroundBudget).
@@ -506,18 +501,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		case <-t.forked:
 			// The turn goes on in the background; the caller may answer the owner now.
 			stopWatch()
-			t.mu.Lock()
-			capped, id := t.capFork, t.branch
-			t.mu.Unlock()
-			if capped {
-				note := capNotice(id)
-				if err := k.Bot.Append(bot.Entry{Time: k.now(), Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(note)}}); err != nil {
-					return err
-				}
-				if onDelta != nil {
-					onDelta(note)
-				}
-			}
 			return nil
 		case <-tick:
 			k.tryFork(t)

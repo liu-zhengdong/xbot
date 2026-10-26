@@ -59,7 +59,7 @@ Usage:
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
   xbot [--root DIR] profile show <name>
-  xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--foreground-max-tools N] [--foreground-max-time N] [--background-max-time MIN] [--name NEW]
+  xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--background-max-time MIN] [--name NEW]
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
