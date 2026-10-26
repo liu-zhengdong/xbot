@@ -14,7 +14,7 @@ func cmdSkill(root string, args []string) error {
 		return errUsage
 	}
 	if err := skill.Migrate(root); err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "skill migration: %v\n", err)
 	}
 	switch args[0] {
 	case "list":
