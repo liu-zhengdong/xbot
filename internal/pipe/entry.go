@@ -111,16 +111,26 @@ func Dial(ctx context.Context, hub string, t TicketOut) (*Conn, error) {
 // Get runs GET path (such as /api/bots/ada/transcript) on the device's owner
 // API and returns its status and body.
 func (c *Conn) Get(ctx context.Context, path string) (int, []byte, error) {
+	status, body, _, err := c.Do(ctx, http.MethodGet, path, nil, "")
+	return status, body, err
+}
+
+// Do runs one bounded owner API request. A failed or cancelled exchange closes
+// the connection; callers may obtain a fresh ticket, but must not replay writes.
+func (c *Conn) Do(ctx context.Context, method, path string, body []byte, contentType string) (int, []byte, string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.broken != nil {
-		return 0, nil, c.broken
+		return 0, nil, "", c.broken
 	}
 	if err := ctx.Err(); err != nil {
-		return 0, nil, err
+		return 0, nil, "", err
+	}
+	if len(body) > MaxBody {
+		return 0, nil, "", errors.New("pipe: request too large")
 	}
 	done := withContext(ctx, c.ws)
-	status, body, err := c.roundTrip(path)
+	res, err := c.roundTrip(method, path, body, contentType)
 	if done() && err == nil {
 		err = ctx.Err()
 	}
@@ -130,30 +140,30 @@ func (c *Conn) Get(ctx context.Context, path string) (int, []byte, error) {
 		}
 		c.broken = fmt.Errorf("pipe: session ended: %w", err)
 		c.ws.Close()
-		return 0, nil, err
+		return 0, nil, "", err
 	}
-	return status, body, nil
+	return res.Status, res.Body, res.CT, nil
 }
 
-func (c *Conn) roundTrip(path string) (int, []byte, error) {
+func (c *Conn) roundTrip(method, path string, body []byte, contentType string) (frame, error) {
 	c.n++
 	id := strconv.Itoa(c.n)
-	msg, err := c.s.seal(frame{T: "req", ID: id, Method: http.MethodGet, Path: path})
+	msg, err := c.s.seal(frame{T: "req", ID: id, Method: method, Path: path, Body: body, CT: contentType})
 	if err != nil {
-		return 0, nil, err
+		return frame{}, err
 	}
 	if err := c.ws.WriteMessage(opBinary, msg); err != nil {
-		return 0, nil, err
+		return frame{}, err
 	}
 	op, raw, err := c.ws.ReadMessage()
 	if err != nil {
-		return 0, nil, err
+		return frame{}, err
 	}
 	var res frame
-	if op != opBinary || c.s.open(raw, &res) != nil || res.T != "res" || res.ID != id {
-		return 0, nil, errors.New("pipe: bad frame")
+	if op != opBinary || c.s.open(raw, &res) != nil || res.T != "res" || res.ID != id || len(res.Body) > MaxBody || res.Status < 200 || res.Status > 599 {
+		return frame{}, errors.New("pipe: bad frame")
 	}
-	return res.Status, res.Body, nil
+	return res, nil
 }
 
 // Close ends the session; the hub then ends the device's side and voids the ticket.

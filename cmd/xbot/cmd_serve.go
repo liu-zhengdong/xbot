@@ -16,8 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"xbot/internal/account"
 
+	"xbot/internal/account"
 	"xbot/internal/appshell"
 	"xbot/internal/bot"
 	"xbot/internal/browser"
@@ -35,6 +35,7 @@ import (
 	"xbot/internal/notify"
 	"xbot/internal/permissions"
 	"xbot/internal/person"
+	"xbot/internal/pipe"
 	"xbot/internal/provider"
 	"xbot/internal/remote"
 	"xbot/internal/serve"
@@ -617,6 +618,15 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	mux := http.NewServeMux()
 	hub.Register(mux)
 	ui.Register(mux)
+	pipeHub := strings.TrimSpace(os.Getenv("XBOT_PIPE_HUB"))
+	if pipeHub == "" {
+		pipeHub = "https://pipe.babelgo.cn:8443"
+	}
+	stopPipe := ui.StartAccountPipe(ctx, func(ctx context.Context, session, deviceID string) error {
+		d := &pipe.Device{Hub: pipeHub, Session: session, DeviceID: deviceID, Handler: mux, Authorize: ui.AuthorizeOwner, Log: log.New(os.Stderr, "xbot: ", 0)}
+		return d.Run(ctx)
+	})
+	defer stopPipe()
 	fmt.Fprintf(os.Stderr, "listening on http://%s\n", ln.Addr())
 	publicURL := resolved.PublicURL
 	var cloud *tunnel.Proc

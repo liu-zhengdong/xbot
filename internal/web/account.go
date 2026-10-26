@@ -35,6 +35,8 @@ type accountState struct {
 	local  *account.Service // the stand-in, when no hosted service is configured
 	mu     sync.Mutex
 	report time.Time // last device report, to send at most once a minute
+	pipeMu sync.Mutex
+	pipe   *accountPipe
 }
 
 // accountBinding is which account this install belongs to, by the service's
@@ -141,6 +143,7 @@ func (s *Server) accountClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	me, err := s.acct.client.Me(r.Context(), session)
 	if errors.Is(err, account.ErrSession) {
+		s.forgetPipeSession(session)
 		clearAccountCookie(w)
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -164,6 +167,10 @@ func (s *Server) accountClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	view := s.accountViewFor(r, me, b)
 	s.setCookie(w, s.loginToken())
+	if err := s.keepPipeSession(session); err != nil {
+		writeErr(w, 500, "account session persistence")
+		return
+	}
 	// The binding is on disk either way; reported tells the page whether the
 	// account's device list has this computer yet.
 	reported := s.reportDevice(r.Context(), session, b, true) == nil
@@ -403,6 +410,10 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 	}
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
+		if err := s.keepPipeSession(session); err != nil {
+			writeErr(w, 500, "account session persistence")
+			return
+		}
 		s.setCookie(w, s.loginToken())
 		_ = s.reportDevice(r.Context(), session, b, true)
 	}
@@ -433,6 +444,7 @@ func (s *Server) accountMe(w http.ResponseWriter, r *http.Request) {
 	}
 	me, err := s.acct.client.Me(r.Context(), session)
 	if errors.Is(err, account.ErrSession) {
+		s.forgetPipeSession(session)
 		clearAccountCookie(w)
 		writeJSON(w, http.StatusOK, map[string]any{"account": nil, "app": s.App})
 		return
@@ -448,6 +460,10 @@ func (s *Server) accountMe(w http.ResponseWriter, r *http.Request) {
 	}
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
+		if err := s.keepPipeSession(session); err != nil {
+			writeErr(w, 500, "account session persistence")
+			return
+		}
 		s.setCookie(w, s.loginToken())
 		_ = s.reportDevice(r.Context(), session, b, false)
 	}
@@ -462,6 +478,7 @@ func (s *Server) accountLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	if session := accountSession(r); session != "" {
 		_ = s.acct.client.Logout(r.Context(), session)
+		s.forgetPipeSession(session)
 	}
 	clearAccountCookie(w)
 	s.clearCookie(w)
@@ -544,6 +561,9 @@ func (s *Server) accountDevices(w http.ResponseWriter, r *http.Request) {
 	session := accountSession(r)
 	me, err := s.acct.client.Me(r.Context(), session)
 	if err != nil {
+		if errors.Is(err, account.ErrSession) {
+			s.forgetPipeSession(session)
+		}
 		writeAccountErr(w, err)
 		return
 	}
@@ -558,6 +578,9 @@ func (s *Server) accountDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := s.acct.client.Devices(r.Context(), session)
 	if err != nil {
+		if errors.Is(err, account.ErrSession) {
+			s.forgetPipeSession(session)
+		}
 		writeAccountErr(w, err)
 		return
 	}
