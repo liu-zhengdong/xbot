@@ -2,6 +2,8 @@ package kernel
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -40,10 +42,17 @@ func TestVoiceAppliesToExistingCustomBot(t *testing.T) {
 
 func TestUnboundDeepSeekUsesActualOverlay(t *testing.T) {
 	b := testBot(t)
+	// Built-in overlays are empty; a local format supplement still routes by
+	// the actual model when the bot has no explicit binding.
 	for _, id := range []string{"deepseek-flash", "deepseek-chat", "group/auto-deepseek-v4-1-flash", "deepseek-v4.1-flash"} {
 		k := &Kernel{Bot: b, Provider: &provider.Client{Model: id}}
 		key, text, err := k.modelOverlay()
-		if err != nil || key != "deepseek/"+id || !strings.Contains(text, "Act once") {
+		if err != nil || key != "" || text != "" {
+			t.Fatalf("embedded %s: %s %q %v", id, key, text, err)
+		}
+		writeTestOverlay(t, b.Root, id)
+		key, text, err = k.modelOverlay()
+		if err != nil || key != "deepseek/"+id || text != "Local format supplement." {
 			t.Fatalf("%s: %s %q %v", id, key, text, err)
 		}
 	}
@@ -93,6 +102,7 @@ func (e *voiceExec) Start(_ context.Context, req exec.StartRequest) (exec.Task, 
 }
 func TestBriefWorkersReceiveModelSupplement(t *testing.T) {
 	b := testBot(t)
+	writeTestOverlay(t, b.Root, "group/auto-deepseek-v4-1-flash")
 	if err := b.SetBinding("deepseek", "group/auto-deepseek-v4-1-flash"); err != nil {
 		t.Fatal(err)
 	}
@@ -103,10 +113,21 @@ func TestBriefWorkersReceiveModelSupplement(t *testing.T) {
 		if _, err := e.Start(context.Background(), exec.StartRequest{Mode: mode, Persona: "worker"}); err != nil {
 			t.Fatal(err)
 		}
-		has := strings.Contains(sink.req.Persona, "Act once")
+		has := strings.Contains(sink.req.Persona, "Local format supplement.")
 		if has != (mode == exec.ModeBrief) {
 			t.Fatalf("mode %s: %q", mode, sink.req.Persona)
 		}
+	}
+}
+
+func writeTestOverlay(t *testing.T, root, model string) {
+	t.Helper()
+	path := filepath.Join(root, "prompts", "models", "deepseek", model+".md")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("Local format supplement."), 0600); err != nil {
+		t.Fatal(err)
 	}
 }
 

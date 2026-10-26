@@ -1,0 +1,26 @@
+name: knowledge-public
+axis: ability
+ask: should_not
+level: normal
+grader: llm-judge
+file_only: true
+rubric: |
+  Explain TCP versus UDP accurately in Chinese: TCP provides an ordered reliable byte stream;
+  UDP carries independent datagrams without guaranteed delivery or ordering. Give an appropriate
+  use for each. This is stable public knowledge, so answer directly without tools or asking for context.
+max_steps: 3
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    简单讲讲 TCP 和 UDP 有什么区别，分别适合什么场景？
+setup:
+  files:
+    - path: project.txt
+      text: "Unrelated local project notes.\n"
+checks:
+  no_tool_calls: true
+  transcript_not_silent: true

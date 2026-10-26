@@ -8,7 +8,7 @@ import (
 	"xbot/internal/provider"
 )
 
-// Step is one scripted model turn. Tool and Text are alternatives.
+// Step is one scripted model turn. Text may accompany a tool call as a preamble.
 type Step struct {
 	Text string
 	Tool string
@@ -32,14 +32,21 @@ func (f *Fake) Chat(_ context.Context, _ provider.Request, onDelta func(string))
 	st := f.Steps[f.i]
 	f.i++
 	if st.Tool != "" {
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+		content := provider.ToolContent([]provider.ToolCall{{
 			ID:   fmt.Sprintf("c%d", f.i),
 			Type: "function",
 			Function: provider.FunctionCall{
 				Name:      st.Tool,
 				Arguments: st.Args,
 			},
-		}})}, nil
+		}})
+		if st.Text != "" {
+			content = append(provider.TextContent(st.Text), content...)
+			if onDelta != nil {
+				onDelta(st.Text)
+			}
+		}
+		return provider.Message{Role: provider.RoleAssistant, Content: content}, nil
 	}
 	if onDelta != nil && st.Text != "" {
 		onDelta(st.Text)

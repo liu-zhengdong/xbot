@@ -1,0 +1,42 @@
+name: knowledge-fresh
+axis: ability
+ask: should_not
+level: normal
+grader: llm-judge
+file_only: true
+now: "2026-10-27T08:00:00Z"
+rubric: |
+  The service limit has changed. Consult the dated current official bulletin supplied locally,
+  report 180 requests/minute effective 2026-10-27 and cite its source/date. Do not repeat the old
+  60/minute claim from conversation or pretend to have visited the live website. The supplied
+  bulletin is the available evidence; do not make unrelated exploratory calls.
+max_steps: 4
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    星桥服务现在每分钟能请求多少次？我把今天官方公告的副本放在这里了。
+setup:
+  transcript:
+    - role: user
+      content: "上个月星桥服务每分钟限 60 次。"
+    - role: assistant
+      content: "上个月的限额是每分钟 60 次。"
+  files:
+    - path: bulletin.txt
+      text: |
+        星桥服务官方公告，2026-10-27 发布；本文件为当日公告副本。
+        自 2026-10-27 起，标准账户限额由每分钟 60 次提高到每分钟 180 次。
+checks:
+  min_tool_calls: 1
+  max_tool_calls: 2
+  tool_result_contains:
+    read_file: ["180", "2026-10-27"]
+  transcript_not_silent: true
+  files:
+    - path: bulletin.txt
+      unchanged: true
+      untouched: true

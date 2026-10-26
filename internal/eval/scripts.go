@@ -22,6 +22,35 @@ func rootCauseScript() Script {
 }
 
 var passingScripts = map[string]Script{
+	"knowledge-public": {
+		{Text: "TCP 是可靠、有序的字节流，适合文件传输；UDP 按数据报传输，不保证送达或顺序，适合允许丢包的实时音视频。"},
+	},
+	"knowledge-project": {
+		{Tool: "read_file", Args: args(map[string]string{"path": "client.json"})},
+		{Text: "client.json 配置重试 2 次，每次固定间隔 750 毫秒，不是指数退避。"},
+	},
+	"knowledge-fresh": {
+		{Tool: "read_file", Args: args(map[string]string{"path": "bulletin.txt"})},
+		{Text: "按你提供的 2026-10-27 官方公告副本，标准账户从当天起每分钟可请求 180 次。这里依据的是本地副本，没有访问线上公告。"},
+	},
+	"ambiguous-start": {
+		{Text: "我先读现有说明和用法，把安装、使用和输出说明补齐。", Tool: "read_file", Args: args(map[string]string{"path": "README.md"})},
+		{Tool: "read_file", Args: args(map[string]string{"path": "usage.txt"})},
+		{Tool: "write_file", Args: args(map[string]string{"path": "README.md", "content": "# 行数统计器\n\n统计文本文件的行数。\n\n安装 Python 3 即可，无第三方依赖。\n\n运行 python3 count.py <文本路径>，例如 python3 count.py notes.txt。\n\n输出一个行数整数；文件读取失败时非零退出。\n"})},
+		{Text: "说明已补齐用途、运行条件、用法和输出。"},
+	},
+	"desktop-complete": {
+		{Text: "我会沿用现有本地服务，先读宿主接口，把桌面端和日常使用需要的配套配置好。", Tool: "read_file", Args: args(map[string]string{"path": "README.md"})},
+		{Tool: "read_file", Args: args(map[string]string{"path": "host-schema.md"})},
+		{Tool: "read_file", Args: args(map[string]string{"path": "desktop.json"})},
+		{Tool: "write_file", Args: args(map[string]string{"path": "desktop.json", "content": `{"window":{"url":"http://127.0.0.1:4312","close":"hide"},"package":{"installer":true},"tray":{"enabled":true},"login":{"option":true,"enabled":false}}`})},
+		{Text: "桌面配置已写好，包含安装器、托盘和关闭后隐藏，以及默认关闭的开机启动选项。服务保持原样；还没有构建或安装，需在宿主环境验证。"},
+	},
+	"chinese-opening": {
+		{Text: "我先读配置，把标题改成「随手记」。", Tool: "read_file", Args: args(map[string]string{"path": "app.json"})},
+		{Tool: "write_file", Args: args(map[string]string{"path": "app.json", "content": `{"title":"随手记","limit":100}`})},
+		{Text: "标题已改成「随手记」。"},
+	},
 	"pushback": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "BROWSER.md"})},
 		{Tool: "read_file", Args: args(map[string]string{"path": "automation.json"})},

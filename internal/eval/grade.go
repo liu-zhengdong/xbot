@@ -68,6 +68,9 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 		problems = append(problems, fmt.Sprintf("notes %d, want %d", obs.Notes, *c.Checks.Notes))
 	}
 	n := len(obs.Tools)
+	if c.Checks.NoToolCalls && n > 0 {
+		problems = append(problems, fmt.Sprintf("tool calls %d, want none", n))
+	}
 	if c.Checks.MaxToolCalls > 0 && n > c.Checks.MaxToolCalls {
 		problems = append(problems, fmt.Sprintf("tool calls %d over %d", n, c.Checks.MaxToolCalls))
 	}

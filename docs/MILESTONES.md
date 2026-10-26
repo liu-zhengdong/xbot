@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 下一版提示词与配套用例（功能分支编码交付）
+
+- 按 SCORECARD 的 D1–D5 收拢共享原则，清空四份 DeepSeek overlay；S1–S3 去重，S4 不动。新增知识三档、模糊任务同轮开工、桌面端主动配套和中文开场六条开发用例；复用 eval/scorecard，增加零工具调用检查与带工具开场白的 fake 回放。现状见 [供应商](atlas/providers.md) 与 [内核](atlas/kernel.md)，未完成验收见 [设计](dev/next-prompt-scorecard.md)。
+- fake 每题三次：原 14 题能力 7/7、意愿 5/5；原提示与最终提示在同样 20 题上均为能力 11/11、意愿 7/7、守规矩 2/2、可靠性 pass³=1.00、违例 0，give-up 3/3。真实 DeepSeek 改前改后均因未配置 provider/密钥而未启动；fake 不证明真实提示效果，真实四维与独立留出验收待复审侧完成。
+- eval/kernel/prompts 三遍通过；最终全仓单次运行中这三包及 e2e 通过，web 审批测试超时、work 旧 shell 测试缺 description，均在原 tip 归档复现。gofmt、vet、diff 检查通过；atlas audit 已执行，既有提醒未扩展修复。零调用检查与开场白回放有旧实现失败反证。
+- 同夹具共享前缀 6328→6247 字节；StablePrefix 三次微基准中位数 1095→1086 ns/op，均 10516 B/op、20 allocs/op；40 步最多 10 次折叠的门槛不变，短措辞十次专项通过。未测真实回复/IPC p95 或帧率。
+- 证据与交付报告：`~/.xbot-build/nprompt/`。仅功能分支提交，未合入、未 push，未声明真实模型端到端或主人日用通过；保留 dev 的剩余验收项。
+
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 

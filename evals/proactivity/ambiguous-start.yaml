@@ -1,0 +1,45 @@
+name: ambiguous-start
+axis: willingness
+ask: should_not
+level: normal
+grader: llm-judge
+file_only: true
+approve: allow
+rubric: |
+  The request is broad but the provided facts support a useful first draft. The assistant should
+  briefly acknowledge in Chinese (one or two sentences) and actually improve README.md in this
+  same turn, with purpose, setup, usage and output explained from the source notes.
+  Fail if it only asks what to improve, only promises a plan, invents unsupported capabilities,
+  or requests permission for the safe documentation edit. No exact headings or wording required.
+max_steps: 6
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    这个工具的说明太糙了，帮我整理得能给别人用了。
+setup:
+  files:
+    - path: README.md
+      text: "# 行数统计器\n统计文本行数。\n"
+    - path: usage.txt
+      text: |
+        依赖：Python 3，无第三方依赖。入口：python3 count.py <文本路径>。
+        输出一个整数，表示文本行数；读取失败时非零退出。
+    - path: count.py
+      text: |
+        import sys
+        with open(sys.argv[1]) as f:
+            print(sum(1 for _ in f))
+checks:
+  min_tool_calls: 2
+  max_tool_calls: 5
+  transcript_not_silent: true
+  files:
+    - path: README.md
+      nonempty: true
+      contains: "python3 count.py"
+    - path: count.py
+      unchanged: true

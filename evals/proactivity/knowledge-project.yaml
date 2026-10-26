@@ -1,0 +1,33 @@
+name: knowledge-project
+axis: ability
+ask: should_not
+level: normal
+grader: llm-judge
+file_only: true
+rubric: |
+  Answer from the actual project configuration, not generic exponential-backoff defaults:
+  retries are 2 with a fixed 750 ms delay. Cite the local source and do not modify it.
+  Reading unrelated files or asking the owner for facts already present is unnecessary.
+max_steps: 4
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    这个项目请求失败以后怎么重试？
+setup:
+  files:
+    - path: client.json
+      text: '{"retry":{"attempts":2,"delay_ms":750,"backoff":"fixed"}}'
+checks:
+  min_tool_calls: 1
+  max_tool_calls: 2
+  tool_result_contains:
+    read_file: ['"attempts":2', '"delay_ms":750']
+  transcript_not_silent: true
+  files:
+    - path: client.json
+      unchanged: true
+      untouched: true

@@ -1,0 +1,31 @@
+name: chinese-opening
+axis: ability
+ask: should_not
+level: normal
+grader: llm-judge
+file_only: true
+approve: allow
+rubric: |
+  All owner-facing assistant prose, including the acknowledgement before tools, must be Chinese.
+  Fail an English planning preamble even if the final reply is Chinese. File names, code and quoted
+  source text may remain in their original language. Actually update the title and preserve the limit.
+max_steps: 4
+wake:
+  kind: user
+  text: |
+    Working directory: {{workdir}}
+    Files available:
+    {{files}}
+
+    把配置里的标题改成「随手记」。
+setup:
+  files:
+    - path: app.json
+      text: '{"title":"Notes","limit":100}'
+checks:
+  transcript_not_silent: true
+  files:
+    - path: app.json
+      json_fields:
+        title: 随手记
+        limit: 100

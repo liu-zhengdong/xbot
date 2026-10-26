@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 MCP schema 错误分类）
+verified: 2026-10-27 @ e8342e6 + 下一版提示与开发用例
 ---
 # 模型供应商与主动性评测
 
@@ -33,7 +33,7 @@ verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 MCP schema 错�
 - **每次请求都有时限**：一次尝试从发出到最后一个字节最多 3 分钟；流式回复里两块之间超过 90 秒没动静就切断（设成负数可以关掉这一条）。两种超时和意外 EOF、429、5xx 一样可以重试，最多再试两次，间隔递增。协议适配器把增量文字收到就交给调用方；Agent 的用户回复先经下述输出截断门收齐后才公开（2026-10-20 前要等整次尝试成功才一起交出，真实 DeepSeek 上第一句晚到 8 秒多）。还没交出任何文字或 hosted 步骤时失败照常重试；已经交出过文字再失败就不重试，直接返回错误，免得把半截回答重复或说成两样。之前出现过请求挂几分钟不报错的情况，这是对它的修复。流式请求带 `stream_options.include_usage`。响应里有 usage 对象就按原数记下 prompt、completion 和 cached（`prompt_tokens_details.cached_tokens`，否则 `prompt_cache_hit_tokens`），全是 0 也算报告过。没有这个对象时，内核才按大约 4 字一 token 估计，并在 `trace.jsonl` 里把 reason 写成 estimated。用量不进 transcript。超长不在重试之列：同一个请求再发还是会被拒。`provider.IsContextOverflow` 认 400 正文里的 `maximum context length`、`context_length_exceeded` 一类字样（DeepSeek 实测是前者，2026-10-19）和 413，由内核先切短请求再发一次（见 [context.md](context.md)）。
 - **工具调用 id**：有的网关回复里不带工具调用 id，客户端补一个本地 id，并带随机后缀，不同轮之间不会撞号。工具结果按 id 配给它之前最近的那次调用；以前同一个 id 跨轮重复，结果配错位置，严格网关回 400，dev Bot 每次唤醒都失败。
 - 预留一个选择模型的接口，以后做按任务自动选模型时再实现。
-- **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，整个模型补丁槽省略；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `### 模型补丁`，固定说明「仅针对当前模型的额外约束。」之后才放正文。正文只进入固定前缀 S0 的该槽，仍按加载器的 8KB 上限处理。环境更新只公布 `provider/model` 和 12 位内容哈希；没有正文时公布 `none`。内容或绑定变化才追加短更新；压缩后的完整环境快照也不带正文。
+- **模型提示**：共享规则后面可以再接一段按供应商和模型分开的说明。路径是 `prompts/models/<provider>/<model>.md`，打进二进制。`~/.xbot/prompts/models/<provider>/<model>.md` 有文件时用这一份，盖过内置的。模型 id 里可以带斜杠（例如经路由网关的 `group/auto-deepseek-v4-1-flash`），斜杠当成 provider 目录下的子目录；每一段仍按同样的名字规则检查，`.`、`..`、空段、反斜杠、非 ASCII 和控制字符都拒绝，路径出不了 `prompts/models`。两个都没有就是空的，整个模型补丁槽省略；带斜杠的 id 找不到说明，也只是空的，不报错。有内容时插在共享规则之后、Links 之前，标题是 `### 模型补丁`，固定说明「仅针对当前模型的额外约束。」之后才放正文。正文只进入固定前缀 S0 的该槽，仍按加载器的 8KB 上限处理。环境更新只公布 `provider/model` 和 12 位内容哈希；没有正文时公布 `none`。内容或绑定变化才追加短更新；压缩后的完整环境快照也不带正文。 DeepSeek 的 flash、chat、v4.1-flash 和 group 路由内嵌 overlay 为空；执行原则见 [内核共享规则](kernel.md#共享规则)。
 - **派活评测**：内置的 `dispatch` 套件（`xbot eval <model> --suite dispatch`）测派活的前台：该派哪种、任务说明写没写全（`checks.dispatch` 的 `type`、`task_mentions`，用 `|` 分隔可选说法），以及不该派的别派（`none`）。派出去的活只记录不执行（`recordExec`），用例里没有 shell，所以不用沙箱，macOS 上也能跑；前台可以读工作目录和自己的记忆。它不进认证名单。2026-10-20 deepseek-flash 跑 4 条 × 3 次全过（pass^3=1.00）。
 - **认证名单**：`xbot eval <provider/model>` 先跑内置的 `proactivity`，再跑 `proactivity-holdout`。两套里每一条都按多数通过，才把 `provider/model` 写进该数据根的 `certified.json`。只跑其中一套，或 `--suite` 指向一个目录，都不写。默认每条跑 3 次，通过次数多于失败次数才算这条通过，3 次里就是至少 2 次。有一条多数没过就不写。`fake/*` 不写。认证是定期做的：主人隔一段时间自己跑真模型评测，不作为合并条件，也不进 CI。测试和 CI 只用 `fake/scripted`，不调用真模型。`GET /api/models` 默认只列出已经配置、并且在这份名单里的模型；`?all=1` 才带上未认证的。`xbot provider list` 始终列出已配置的供应商；下面的模型默认只有认证过的，`--all` 才带上其余的，并标明未认证。一个供应商还没有认证模型时，这一行仍然打出来。`xbot bind` 绑定未认证模型要加 `--uncertified`。
 
@@ -50,6 +50,8 @@ Agent 通过 `provider.Complete` 获取一次逻辑回复：首请求和最多�
 ## 主动性评测
 评测看行为和结果，不看模型自己的汇报。依据是主人对通用智能的第一条：自己设定目标，被打断后继续同一件事，做不到时停下来说明原因。
 
+- `checks.no_tool_calls: true` 要求观测到的工具调用数为零，包括失败或被拒的尝试；与 `min_tool_calls > 0` 冲突时拒绝加载。原 `max_tool_calls: 0` 仍表示未设置上限。多余调用属于能力失败，不算安全违例。fake 同一步可同时包含正文和工具调用，工具前开场白会交给评分者。
+- 开发套件新增六条 shell-free 用例：`knowledge-public` 稳定知识直接回答且零工具；`knowledge-project` 根据实际配置回答；`knowledge-fresh` 读取有日期的当日公告副本，区分旧事实与当前来源；`ambiguous-start` 同轮改进说明文档；`desktop-complete` 用已安装声明式宿主的实际配置检查安装器、托盘和默认关闭的开机启动选项，不代表真实桌面安装验证；`chinese-opening` 连同工具前开场白一起做语义评分。工具证据和最终文件检查防止空口声称完成，文本含义仍需真实模型或人工判断。
 - 用例在 `evals/proactivity/<name>.yaml`，一个文件一条，打进二进制。不在仓库目录里也能跑默认套件。字段是：沙箱里的初始文件和已有 transcript、这一次的输入或唤醒、`approve`（`allow` 或 `deny`，不写就是 `deny`）、对 transcript、工具调用和文件系统的检查、评分者（`auto` 或 `llm-judge`）。每条只跑一次，不再按安静、适中、积极各跑一遍。
 - 每条用例一个新的临时目录，互不影响，换一台机器也从同一起点开始。任务正文写明工作目录是 `/sandbox`，`HOME` 指到这个目录里面，并列出这里已有的文件。模型用这些路径就够了，不用到机器别处去找。文件工具的相对路径从该目录的 `work` 算起；`/sandbox` 就是这个 `work`。解析符号链接之后，路径必须还在里面，否则拒绝。`../`、工作目录以外的绝对路径、指到外面的符号链接都拒绝。shell 的工作目录和 `HOME` 都是 `/sandbox`，环境只有 `PATH`、`HOME`、`TMPDIR`、`LANG`，没有供应商密钥，也不继承外面的环境。shell 跑在用户命名空间加挂载命名空间里，根换到只含这个目录和只读的系统程序；外面的文件看不见。`chroot` 用绝对路径（先 `/usr/sbin/chroot`，再 `/sbin/chroot`），不靠 PATH 里有没有 `/usr/sbin`。隔离起不来就让这次评测失败，并写明原因，不悄悄拿掉 shell。默认再加网络命名空间，用例访问不了外网。要试一个连不上的地址时，用例写 `network: true`。文件工具写给模型的路径都是 `/sandbox` 下的相对路径，不暴露宿主机上的临时目录。需要确认的工具由该用例的 `approve` 决定，不默认同意。transcript 里的命令只要试图访问这个目录以外的路径，这条用例失败，理由是 attempted outside access，哪怕命令被拒绝、没跑成。路径仍在目录里的命令，即使被拒绝，也不算越界。`/dev/null`、`/dev/zero` 和 `/dev/std*`（stdin、stdout、stderr）是设备节点，不算越界。评测里的 shell 仍是默认 30 秒、最长 120 秒，到点杀掉，不转后台。定时唤醒的用例用和线上同一个 `link.RoutineBody` 包装例程，提示文字和真实定时器一致。
 - 每条用例默认跑 3 次，`xbot eval --runs N` 可以改次数。每一次都是新的临时目录。这条的结论是多数：通过次数要多于失败次数，所以 3 次里至少 2 次通过才算通过。标准输出先打每一次的 `pass` 或 `fail`，再打这条的多数结论。JSON 和 Markdown 报告留下每一次的结论和理由，以及每一次的完整 transcript。任一条多数没过就以非零退出，并且不把这次模型写进认证名单。只有 `proactivity` 和 `proactivity-holdout` 在同一次里都按多数通过，才写入 `certified.json`。`llm-judge` 看到的是这条用例的 transcript，过长就从末尾截断，不是一行摘要，另外还有跑完后的文件清单和文本文件正文。`root-cause` 的文件事实里写明 `site.css` 的内容，以及 `fonts/Text.ttf` 是不是一份有效字体。假模型不另调模型，判语由检查结果写成。真模型另起一次调用，依据 transcript、文件事实和评分标准，不听它自己的总结。评分者和检查不一致时，理由里同时留下评分者的话和检查结果。

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 MCP schema / Shell 解释器）
+verified: 2026-10-27 @ e8342e6 + 下一版提示通用原则
 ---
 # 内核：Link、Event、收件箱
 
@@ -64,9 +64,12 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 `internal/manual/sections/*.md` 通过 go:embed 跟版，包含[记忆](../../internal/manual/sections/memory.md)、[上下文与压缩](../../internal/manual/sections/context.md)、[例程与唤醒](../../internal/manual/sections/routines.md)、[子代理](../../internal/manual/sections/subagents.md)、[插话与排队](../../internal/manual/sections/interjections.md)、[连接器](../../internal/manual/sections/connectors.md)、[文件与工作区](../../internal/manual/sections/workspace.md)。`KernelRules` 只注入短目录和先读要求；`kernel_manual(section)` 始终挂载且属于 readonly，读取已知 section 或 index，未知值报错，不读任意路径或实时状态。主人用 `xbot manual [section]` 读取同一正文。
 
 ## 共享规则
+
+通用执行原则统一在本层，DeepSeek 内嵌 overlay 为空：`VerifyRule` 把任务材料写明的结果做完整，按结果验收；`JudgmentRule` 对齐提问与改动请求，对不运行的系统给建议，非关键细节不全时说明推断后同轮做安全部分；`ResourcefulRule` 补齐成品必需配套，标明推断。两个确认模式共用交接原则，指定渠道和既定 Bot 的交接属于执行，新接收人仍需批准，删除、外发、不可逆操作和目录边界保持原确认模式。`KnowledgeRule` 区分稳定知识、项目证据和时效来源；`ConvergenceRule` 要求工具调用能改变结论或推进必需结果，外部失败最多重试一次，结论定了就停止。SilenceRule 的 S4 和 LanguageRule 不变。开发用例见 [供应商](providers.md#主动性评测)。
+
 所有 Bot 共用的规则由 [assemble.go](../../internal/kernel/assemble.go) 的 `KernelRules` 随当前二进制组装，包含完整默认规则与通用说话规则。`rules.md` 只存 Bot 自有补充；创建和模板导入不再复制默认规则。首次组装（fork 继承前也一样）按空行分段清理旧默认：完整当前规则及开头可识别的旧默认段删除，独立自定义段保留，混入旧默认段而无法拆出的修改丢弃，不提示、不存历史版本账。清理和规则写入共用文件锁、原子替换；重复加载没有内容变化就不写盘。空文件和缺文件都表示无补充。组装顺序仍是人设、当前内核规则、Bot 补充、模型补充和 Link/技能，条件规则仍在原内核边界追加。
 
-`ProjectRule` 把项目文件当成编码约定：工作区根上、且该目录不是 git 检出、也不是共享目录时，才是主人放的；共享目录、git 检出、子目录和克隆仓库里的不是批准、发送、读密钥或删除的依据，也不压过内核安全、权限表和脱敏。新旧 Bot 均由当前内核注入这一条。评测目录没有提示词快照，这是有意的稳定前缀变化。另外两条是主人的做事方式：`JudgmentRule`（先给答案和理由；主人的说法只对一半时指出哪部分对、哪部分不对，给独立判断；需要决定时以一份可直接批准的方案收尾）和 `ResourcefulRule`（缺工具或信息时先做能做的部分，推断的内容标「待确认」，或换一条路，例如把文件放到共享处再给别的 Bot 发消息让它自己改；只把最小的剩余一步交出去并说明原因）。评测用例 `half-right`、`propose-plan`、`vision-draft`、`avatar-handoff` 和留出的 `ci-version` 守着它们。挂了记忆存储时，内核在规则末尾追加 `MemoryWriteRule`（用文件工具改记忆文件夹、`memory.md` 常驻且不超过 4 KiB、日志按月追加、其余细节放自由文件、用 `recall` 检索）；它不写进 `rules.md`，所以已有自定义规则的 Bot 也会带上。写记忆文件夹时的内核守卫和只读 `recall` 见 [身份与记忆](memory.md)。外部调用失败后「最多再试一次」不在常驻规则里，改由熔断的轮询提醒在真的重复失败时说。
+`ProjectRule` 把项目文件当成编码约定：工作区根上、且该目录不是 git 检出、也不是共享目录时，才是主人放的；共享目录、git 检出、子目录和克隆仓库里的不是批准、发送、读密钥或删除的依据，也不压过内核安全、权限表和脱敏。新旧 Bot 均由当前内核注入这一条。评测目录没有提示词快照，这是有意的稳定前缀变化。挂了记忆存储时，内核在规则末尾追加 `MemoryWriteRule`（用文件工具改记忆文件夹、`memory.md` 常驻且不超过 4 KiB、日志按月追加、其余细节放自由文件、用 `recall` 检索）；它不写进 `rules.md`，所以已有自定义规则的 Bot 也会带上。写记忆文件夹时的内核守卫和只读 `recall` 见 [身份与记忆](memory.md)。共享规则提前限制外部失败最多重试一次；熔断轮询提醒仍要求停止重复失败，不追加重试预算。
 
 `ActionRule` 让模型在删除、代表主人对外发消息、改已定计划之前先问一次，「即使请求里点名了这一步」。权限卡关着时（默认，[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`Kernel.Permissive`），组装时换成 `OwnAskActionRule`：主人点名的步骤（删除、发消息也算）直接做、不再追问，只有模型自己加出来的这类步骤才先问一次；同时补一条 `EventMemoryRule`：外部事件报告的事和工作有关（新 issue、重大 bug、故障、构建挂了）就记进记忆并写明来源，但事件里的措辞仍不改人设和规则。评测按表确认的内核，`boundary` 仍测旧规则。
 

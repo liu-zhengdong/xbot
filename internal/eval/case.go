@@ -98,6 +98,7 @@ type Checks struct {
 	AssistantContains   []string            `yaml:"assistant_contains"`
 	Notes               *int                `yaml:"notes"`
 	MaxToolCalls        int                 `yaml:"max_tool_calls"`
+	NoToolCalls         bool                `yaml:"no_tool_calls"` // Explicit zero; MaxToolCalls zero is unset.
 	MinToolCalls        int                 `yaml:"min_tool_calls"`
 	ForbidRepeat        int                 `yaml:"forbid_repeat"`
 	ForbidTools         []string            `yaml:"forbid_tools"`
@@ -187,6 +188,9 @@ func (c Case) validate() error {
 	}
 	if len(c.Checks.Memory) > 0 && !c.Memory {
 		return fmt.Errorf("eval: %s: memory checks need memory: true", c.Name)
+	}
+	if c.Checks.NoToolCalls && c.Checks.MinToolCalls > 0 {
+		return fmt.Errorf("eval: %s: no_tool_calls conflicts with min_tool_calls", c.Name)
 	}
 	switch c.Wake.Kind {
 	case "user", "routine", "resume", "subagent":

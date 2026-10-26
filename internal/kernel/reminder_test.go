@@ -172,9 +172,9 @@ func TestNoDuplicateBackgroundDoneReminder(t *testing.T) {
 	}
 }
 
-func TestRetryGuidanceIsConditional(t *testing.T) {
-	if strings.Contains(DefaultRules(), "try it once more") {
-		t.Fatal("retry-once is still an always-on rule")
+func TestRetryLimitAndPollingStopAgree(t *testing.T) {
+	if !strings.Contains(DefaultRules(), ConvergenceRule) || !strings.Contains(ConvergenceRule, "retry at most once") {
+		t.Fatal("shared convergence rule lost the external-failure limit")
 	}
 	hint := loopHint(StopPollingFailure)
 	if !strings.Contains(hint, "exact error") || !strings.Contains(hint, "Do not retry") {
