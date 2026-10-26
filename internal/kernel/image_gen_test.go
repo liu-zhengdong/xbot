@@ -23,8 +23,8 @@ import (
 
 // A Responses binding with hosted image generation on writes the vendor's
 // picture into the bot workspace's generated/ directory. The conversation
-// keeps the relative path, never the bytes, and the final reply carries the
-// picture via the existing outgoing-image queue. Switching it off removes the tool on the next request without
+// keeps the relative path, never the bytes. Saving alone does not attach a
+// picture. Switching it off removes the tool on the next request without
 // rebuilding the kernel; hosted search being off does not matter.
 func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 	b := testBot(t, link.NameTools, link.NameTerminal)
@@ -102,26 +102,21 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 		t.Fatalf("file content %d %v", len(got), err)
 	}
 	id, _ := work.PastedNameFor("image/png", png)
-	if stored, err := work.ReadPasted(k.WorkDir, id); err != nil || string(stored) != string(png) {
-		t.Fatalf("delivery bytes differ: %v", err)
+	if _, err := work.ReadPasted(k.WorkDir, id); err == nil {
+		t.Fatal("Save copied image into paste without notify_owner")
 	}
 	entries, err := b.Entries()
 	if err != nil {
 		t.Fatal(err)
 	}
-	found, attached := false, false
+	found := false
 	for _, e := range entries {
 		raw, _ := json.Marshal(e)
 		if strings.Contains(string(raw), b64[:64]) {
 			t.Fatal("base64 in transcript")
 		}
-		if e.Message.Role == provider.RoleAssistant && len(e.Message.Calls()) == 0 {
-			if len(e.Images) != 1 || e.Images[0] != id {
-				t.Fatalf("reply images = %v, want %s", e.Images, id)
-			}
-			attached = true
-		} else if len(e.Images) > 0 {
-			t.Fatalf("image on non-final reply: %v", e.Images)
+		if len(e.Images) > 0 {
+			t.Fatalf("Save attached image without notify_owner: %v", e.Images)
 		}
 		for _, part := range e.Message.Content {
 			if part.Hosted != nil && part.Hosted.Name == "image_generation" && strings.Contains(part.Text, rel) {
@@ -129,10 +124,10 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 			}
 		}
 	}
-	if !found || !attached {
-		t.Fatal("transcript lacks the generated path or reply image")
+	if !found {
+		t.Fatal("transcript lacks the generated path")
 	}
-	if len(progress) == 0 || (!strings.Contains(progress[len(progress)-1], rel) || !strings.Contains(progress[len(progress)-1], "已挂本条回复")) {
+	if len(progress) == 0 || progress[len(progress)-1] != "[厂商生图: 已保存到工作区 "+rel+"]" {
 		t.Fatalf("progress %v", progress)
 	}
 	mu.Lock()
@@ -210,7 +205,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 				}
 			}
 			k := &Kernel{Bot: b}
-			inherited := provider.WithImageGen(context.Background(), provider.ImageGen{Save: func(context.Context, []byte) (string, error) { return "", nil }})
+			inherited := provider.WithImageGen(context.Background(), provider.ImageGen{Save: func([]byte) (string, error) { return "", nil }})
 			ctx := k.withImageGen(context.Background())
 			if got := provider.HasImageGen(ctx); got != tc.want {
 				t.Fatalf("mounted=%v want=%v", got, tc.want)
@@ -234,8 +229,8 @@ func TestImageGenGlobalGate(t *testing.T) {
 	}
 }
 
-// Real hosted parsing and workspace delivery, including partial failures and
-// repeated events. No local image tool or notify_owner call is involved.
+// Hosted Save only stores files. Delivery limits and deduplication apply when
+// the Bot explicitly calls notify_owner with the receipt paths.
 func TestHostedImageDeliveryLimitsAndIdempotency(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string
@@ -281,6 +276,36 @@ func TestHostedImageDeliveryLimitsAndIdempotency(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if len(k.turn.outImages) != 0 || k.turn.outBytes != 0 {
+				t.Fatal("Save automatically queued outgoing images")
+			}
+			files, err := os.ReadDir(filepath.Join(dir, "generated"))
+			if err != nil || len(files) != tc.wantFiles {
+				t.Fatalf("saved files = %d: %v", len(files), err)
+			}
+			var paths []string
+			for _, part := range msg.Content {
+				if part.Hosted != nil && part.Hosted.Name == "image_generation" {
+					rel := strings.TrimSuffix(strings.TrimPrefix(part.Text, "[厂商生图: 已保存到工作区 "), "]")
+					if !strings.HasPrefix(rel, "generated/") {
+						t.Fatalf("dishonest save receipt: %s", part.Text)
+					}
+					paths = append(paths, rel)
+				}
+			}
+			if len(paths) != tc.wantFiles {
+				t.Fatalf("receipt paths = %v", paths)
+			}
+			var failures []string
+			for _, path := range paths {
+				args, _ := json.Marshal(map[string]any{"text": "看图", "images": []string{path, path}})
+				if _, err := (notifyTool{k}).Run(ctx, args); err != nil {
+					failures = append(failures, err.Error())
+				}
+			}
+			if tc.failure == "" && len(failures) > 0 || tc.failure != "" && !strings.Contains(strings.Join(failures, "\n"), tc.failure) {
+				t.Fatalf("notify failures = %v, want %q", failures, tc.failure)
+			}
 			if _, err = k.recordTurn(k.turn, msg); err != nil {
 				t.Fatal(err)
 			}
@@ -288,16 +313,9 @@ func TestHostedImageDeliveryLimitsAndIdempotency(t *testing.T) {
 			if len(entries) != 1 || len(entries[0].Images) != tc.wantImages {
 				t.Fatalf("reply entries = %+v", entries)
 			}
-			files, err := os.ReadDir(filepath.Join(dir, "generated"))
-			if err != nil || len(files) != tc.wantFiles {
-				t.Fatalf("saved files = %d: %v", len(files), err)
-			}
-			if tc.failure != "" && (!strings.Contains(msg.PortableText(), tc.failure) || !strings.Contains(msg.PortableText(), "挂图失败") || !strings.Contains(msg.PortableText(), "文件仍保留")) {
-				t.Fatalf("missing failure receipt: %s", msg.PortableText())
-			}
 			for _, f := range files {
-				if !strings.Contains(msg.PortableText(), "generated/"+f.Name()) {
-					t.Fatalf("missing actual path: %s", f.Name())
+				if _, err := os.Stat(filepath.Join(dir, "generated", f.Name())); err != nil {
+					t.Fatalf("delivery removed saved file: %v", err)
 				}
 			}
 			if len(k.turn.outImages) != 0 || k.turn.outBytes != 0 {
@@ -357,12 +375,21 @@ func TestHostedImageDeliveryStaysWithOriginatingReply(t *testing.T) {
 		return msg
 	}
 	late := chat(oldCtx)
-	if !strings.Contains(late.Text(), "挂图失败") || len(owner.outImages) != 0 || len(k.turn.outImages) != 0 {
+	if strings.Contains(late.PortableText(), "失败") || len(owner.outImages) != 0 || len(k.turn.outImages) != 0 {
 		t.Fatalf("late save contaminated reply: %s", late.PortableText())
 	}
-	// The same long-lived turn can deliver on its next reply generation.
-	continued := chat(r.modelContext())
-	if strings.Contains(continued.PortableText(), "挂图失败") || len(owner.outImages) != 1 || len(k.turn.outImages) != 0 {
+	// A late save is only a file. An old notify call cannot attach it, while
+	// a fresh call in the same long-lived turn can use that actual receipt.
+	rel := strings.TrimSuffix(strings.TrimPrefix(late.Content[0].Text, "[厂商生图: 已保存到工作区 "), "]")
+	args, _ := json.Marshal(map[string]any{"text": "看图", "images": []string{rel}})
+	if _, err := (notifyTool{k}).Run(oldCtx, args); err == nil || !strings.Contains(err.Error(), "already sent") {
+		t.Fatalf("stale notify result: %v", err)
+	}
+	if _, err := (notifyTool{k}).Run(r.modelContext(), args); err != nil {
+		t.Fatal(err)
+	}
+	continued := provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("已用挂图方法挂上。")}
+	if len(owner.outImages) != 1 || len(k.turn.outImages) != 0 {
 		t.Fatalf("continuation delivery: %s", continued.PortableText())
 	}
 	if _, err := k.recordTurn(owner, continued); err != nil {

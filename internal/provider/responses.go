@@ -493,7 +493,6 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				}
 			}
 			size, textOffset, generated := 0, 0, false
-			var deliveryFailures []string
 			for index, raw := range output {
 				if !fromItems {
 					var err error
@@ -521,13 +520,6 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 					}
 					if h := ps[i].Hosted; h != nil && h.Name == "image_generation" {
 						generated = true
-						var receipt struct {
-							Path  string `json:"xbot_path"`
-							Error string `json:"xbot_error"`
-						}
-						if json.Unmarshal(raw, &receipt) == nil && receipt.Path != "" && receipt.Error != "" {
-							deliveryFailures = append(deliveryFailures, "图片"+receipt.Error+"；文件仍保留在工作区 "+receipt.Path+"。")
-						}
 						emitPart(ctx, ps[i])
 					}
 				}
@@ -535,11 +527,6 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			}
 			if len(output) == 0 && streamed.Len() > 0 {
 				msg.Content = TextContent(streamed.String())
-			}
-			// The generating model cannot see a local delivery failure during
-			// this response. Make it visible in the reply as well as the trace.
-			if len(deliveryFailures) > 0 {
-				msg.Content = append(msg.Content, TextContent("\n\n"+strings.Join(deliveryFailures, "\n"))...)
 			}
 			// A reply that only generated a picture still says where it went.
 			if strings.TrimSpace(msg.Text()) == "" && len(msg.Calls()) == 0 && generated {

@@ -39,7 +39,7 @@
       const next = rows[(i + (["ArrowDown","ArrowRight"].includes(e.key) ? 1 : rows.length - 1)) % rows.length];
       next.select.focus(); save({provider:next.id});
     };
-    section.append(list, node("p", "setfoot ig-binding-guide", "要和 Bot 当前使用的账号、模型对上。"), node("p", "setfoot ws-provider-foot", "画好的图保存在工作区，并自动挂到本条回复。"));
+    section.append(list, node("p", "setfoot ig-binding-guide", "要和 Bot 当前使用的账号、模型对上。"), node("p", "setfoot ws-provider-foot", "画好的图保存在工作区，由 Bot 主动挂到回复中。"));
     host.append(section, node("p", "setfoot", "改完后，新开的对话按新设置来。"));
     function paint() {
       toggle.classList.toggle("on", data.enabled); toggle.setAttribute("aria-checked", String(data.enabled)); toggle.disabled = saving;

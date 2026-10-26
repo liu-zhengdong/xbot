@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -34,8 +35,16 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"chatgpt", "xai"} {
-		t.Run(kind, func(t *testing.T) {
+	for _, tc := range []struct {
+		kind   string
+		attach bool
+	}{{"chatgpt", false}, {"chatgpt", true}, {"xai", false}, {"xai", true}} {
+		kind := tc.kind
+		t.Run(fmt.Sprintf("%s/attach=%v", kind, tc.attach), func(t *testing.T) {
+			wantRequests, disabledRequest := 3, 2
+			if tc.attach {
+				wantRequests, disabledRequest = 5, 4
+			}
 			stub := StartStub(t)
 			srv := Start(t, stub)
 			srv.CreateBot("ada", "Be brief.")
@@ -81,12 +90,54 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 					event(map[string]any{"type": "response.image_generation_call.generating", "item_id": "ig_smoke", "output_index": 0})
 					event(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item})
 					output = append(output, item)
-				} else if n == 3 {
+					if tc.attach {
+						// A normal tool step lets the Bot see the local save receipt
+						// on its next model request, within this same user turn.
+						checkTool := ""
+						for _, tool := range req.Tools {
+							if name, _ := tool["name"].(string); name == "bash" || name == "zsh" || name == "sh" {
+								checkTool = name
+								break
+							}
+						}
+						if checkTool == "" {
+							t.Error("no mounted shell to inspect generated directory")
+						}
+						output = append(output, map[string]any{"type": "function_call", "id": "fc_check", "call_id": "check", "name": checkTool, "arguments": `{"command":"ls generated","description":"查看生成图片的真实文件名"}`})
+					}
+				} else if tc.attach && n == 2 {
+					var replay []map[string]any
+					_ = json.Unmarshal(req.Input, &replay)
+					for _, item := range replay {
+						if item["type"] == "function_call_output" {
+							if output, _ := item["output"].(string); strings.HasPrefix(output, "error:") || !strings.Contains(output, ".png") {
+								t.Errorf("directory check failed: %s", output)
+							}
+						}
+					}
+					// Take the path from the actual replayed receipt, never a
+					// guessed filename or a fixture-created paste id.
+					rel := regexp.MustCompile(`generated/[a-zA-Z0-9._-]+\.png`).FindString(string(req.Input))
+					if rel == "" || !strings.Contains(string(req.Input), "已保存到工作区") {
+						t.Error("missing real save receipt before notify_owner")
+					}
+					if strings.Contains(string(req.Input), "已挂本条回复") {
+						t.Error("save receipt falsely claims attachment")
+					}
+					args, _ := json.Marshal(map[string]any{"text": "请看这张图", "images": []string{rel, rel}})
+					output = append(output, map[string]any{"type": "function_call", "id": "fc_notify", "call_id": "notify", "name": "notify_owner", "arguments": string(args)})
+				} else if n == wantRequests {
 					// A nominally completed tool with no image must remain an
 					// honest failure in the persisted conversation.
 					output = append(output, map[string]any{"type": "image_generation_call", "id": "ig_empty", "status": "completed"})
 				}
 				text := "生成结果已处理。"
+				if tc.attach && n == 3 {
+					if !strings.Contains(string(req.Input), "picture(s) will show in your reply bubble") {
+						t.Error("notify_owner did not confirm attachment")
+					}
+					text = "已用挂图方法挂上。"
+				}
 				event(map[string]any{"type": "response.output_text.delta", "delta": text})
 				output = append(output, map[string]any{"type": "message", "id": fmt.Sprintf("m%d", n), "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}}})
 				event(map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": output}})
@@ -133,8 +184,11 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 			}
 			setImage(true)
 			first := srv.Send("ada", "画猫并告诉我图在哪。")
-			if len(first.Tools) != 0 {
+			if !tc.attach && len(first.Tools) != 0 {
 				t.Fatalf("hosted image ran as a local tool: %+v", first.Tools)
+			}
+			if tc.attach && (len(first.Tools) != 2 || (first.Tools[0].Name != "sh" && first.Tools[0].Name != "bash" && first.Tools[0].Name != "zsh") || first.Tools[1].Name != "notify_owner") {
+				t.Fatalf("delivery did not use existing tools: %+v", first.Tools)
 			}
 			genDir := filepath.Join(work.BotDir(srv.Root, "ada"), "generated")
 			files, err := os.ReadDir(genDir)
@@ -147,8 +201,12 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 				t.Fatalf("generated image bytes/type mismatch: len=%d err=%v", len(actual), err)
 			}
 			id, _ := work.PastedNameFor("image/png", png)
-			if code, raw := srv.do("GET", "/api/bots/ada/paste/"+id, nil); code != 200 || !bytes.Equal(raw, png) {
-				t.Fatalf("attached image endpoint: %d, bytes=%d", code, len(raw))
+			if code, raw := srv.do("GET", "/api/bots/ada/paste/"+id, nil); tc.attach {
+				if code != 200 || !bytes.Equal(raw, png) {
+					t.Fatalf("attached image endpoint: %d, bytes=%d", code, len(raw))
+				}
+			} else if code != 404 {
+				t.Fatalf("Save exposed an unrequested image: %d", code)
 			}
 			setImage(false)
 			srv.Send("ada", "确认刚才生成的文件路径。")
@@ -176,7 +234,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 					if part.Hosted == nil || part.Hosted.Name != "image_generation" {
 						continue
 					}
-					if part.Hosted.Status == "completed" && strings.Contains(part.Text, rel) && strings.Contains(part.Text, "已挂本条回复") {
+					if part.Hosted.Status == "completed" && part.Text == "[厂商生图: 已保存到工作区 "+rel+"]" {
 						foundPath = true
 					}
 					if part.Hosted.Status == "failed" && strings.Contains(part.Text, "厂商生图失败") {
@@ -184,7 +242,11 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 					}
 				}
 			}
-			if attached != 1 || !foundPath || !foundFailure || strings.Contains(string(raw), imageB64) || strings.Contains(string(raw), access) {
+			wantAttached := 0
+			if tc.attach {
+				wantAttached = 1
+			}
+			if attached != wantAttached || !foundPath || !foundFailure || strings.Contains(string(raw), imageB64) || strings.Contains(string(raw), access) {
 				t.Fatalf("transcript lost result/failure or leaked data: path=%v failure=%v", foundPath, foundFailure)
 			}
 			files, err = os.ReadDir(genDir)
@@ -193,8 +255,8 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if len(requests) != 3 {
-				t.Fatalf("model requests=%d, want 3", len(requests))
+			if len(requests) != wantRequests {
+				t.Fatalf("model requests=%d, want %d", len(requests), wantRequests)
 			}
 			for i, req := range requests {
 				imageTools := 0
@@ -214,7 +276,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 					}
 				}
 				want := 1
-				if i == 1 {
+				if i+1 == disabledRequest {
 					want = 0
 				}
 				if imageTools != want {

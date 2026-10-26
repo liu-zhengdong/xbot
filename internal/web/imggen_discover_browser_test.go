@@ -8,9 +8,9 @@ func TestImggenDiscoverBrowser(t *testing.T) {
 
 const imggenDiscoverFixture = `
 const prompt='very small simple black and white cat, '.repeat(15)+'猫😀';
-const generatedPart={type:'hosted',text:'已保存到工作区 generated/real.png；已挂本条回复。',hosted:{id:'ig_1',name:'image_generation',status:'completed',query:prompt}};
+const generatedPart={type:'hosted',text:'[厂商生图: 已保存到工作区 generated/real.png]',hosted:{id:'ig_1',name:'image_generation',status:'completed',query:prompt}};
 const imageID='0123456789abcdef0123456789abcdef.png';
-fixture.messages['2号小伙子']=[{...message('assistant','图已挂本条回复，文件在 generated/real.png。'),parts:[generatedPart],images:[imageID]}];
+fixture.messages['2号小伙子']=[{...message('assistant','已用挂图方法挂上，文件在 generated/real.png。'),parts:[generatedPart],images:[imageID]}];
 // HTTP is scripted in this file fixture, including the existing paste route.
 const imageSrc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
 Object.defineProperty(HTMLImageElement.prototype,'src',{...imageSrc,set(value){
@@ -60,7 +60,7 @@ const openGenerated=async()=>{
  $('.trace-row').click();
  assert($('.trace-call-name').textContent==='image_generation','wrong trace call');
  assert($('.trace-args').textContent.includes(prompt),'trace lost prompt');
- assert($('.trace-out').textContent.includes('generated/real.png')&&$('.trace-out').textContent.includes('已挂本条回复'),'trace lost receipt');
+ assert($('.trace-out').textContent.includes('generated/real.png')&&!$('.trace-out').textContent.includes('已挂'),'trace lost receipt');
  assert(!$('#panel img[src*="paste"]'),'trace displayed an image');
  if(shot==='trace'){document.body.dataset.testResult='passed';return}
  // Preserve the optional workspace menu; it is no longer a reply step.
@@ -91,12 +91,15 @@ const openGenerated=async()=>{
  emit(stream,'part',{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}});
  await new Promise(r=>setTimeout(r,20));
  assert(!$('#thread .live .gallery'),'completion part alone displayed a picture');
- fixture.messages[stream.bot].push({...message('assistant','图已挂本条回复。'),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}}],images:[imageID]});
- emit(stream,'done',{text:'图已挂本条回复。'});stream.controller.close();
+ // Simulate the subsequent notify_owner success and final Entry.Images.
+ fixture.messages[stream.bot].push({...message('assistant','已用挂图方法挂上。'),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}}],images:[imageID]});
+ emit(stream,'done',{text:'已用挂图方法挂上。'});stream.controller.close();
  await waitFor(()=>!$('#thread .live')&&$('#thread').querySelectorAll('.gallery img').length===2,'final reply did not attach image');
  assert(!$('#thread .hs-step'),'history restored dedicated image component');
- // Failed delivery is just a textual tool receipt, never a gallery.
- fixture.messages[stream.bot].push({...message('assistant','挂图失败，文件仍在 generated/large.png。'),parts:[{type:'hosted',text:'已保存到工作区 generated/large.png；挂图失败: 2049x1；文件仍保留。',hosted:{id:'ig_failed',name:'image_generation',status:'completed',query:'大图'}}]});
+ // A save-only final reply has no gallery, even with a successful hosted part.
+ fixture.messages[stream.bot].push({...message('assistant','仅保存于 generated/saved.png。'),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_saved'}}]});
+ // Failed delivery remains plain text without Images, never a gallery.
+ fixture.messages[stream.bot].push({...message('assistant','挂图失败，文件仍在 generated/large.png。'),parts:[{type:'hosted',text:'[厂商生图: 已保存到工作区 generated/large.png]',hosted:{id:'ig_failed',name:'image_generation',status:'completed',query:'大图'}}]});
  $('[data-bot="另一个Bot"]').click();await waitFor(()=>$('#title').textContent.includes('另一个Bot'),'switch failed');
  $('[data-bot="2号小伙子"]').click();await waitFor(()=>$('#thread').textContent.includes('generated/large.png'),'history not restored');
  assert($('#thread').querySelectorAll('.gallery').length===2,'failed delivery created gallery');

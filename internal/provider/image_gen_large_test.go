@@ -33,7 +33,7 @@ func TestResponsesImageGenerationLargeCompleted(t *testing.T) {
 		t.Run(fmt.Sprintf("done_first=%t", doneFirst), func(t *testing.T) {
 			dir := t.TempDir()
 			var paths []string
-			ctx := WithImageGen(context.Background(), ImageGen{Save: func(_ context.Context, data []byte) (string, error) {
+			ctx := WithImageGen(context.Background(), ImageGen{Save: func(data []byte) (string, error) {
 				path, err := work.WriteGenerated(dir, data)
 				if err == nil {
 					paths = append(paths, path)
