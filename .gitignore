@@ -16,3 +16,5 @@ coverage.*
 cookie.txt
 serve.log
 *.log
+# Bound-owner account bearer used only for device standby.
+account-session

@@ -10,14 +10,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
-// MaxBody bounds one response body so its sealed, base64'd frame stays under MaxFrame.
+// MaxBody bounds each request and response body so its sealed, base64'd frame stays under MaxFrame.
 const MaxBody = 700 << 10
 
-// Device answers pipe sessions for one signed-in device. Batch 1 serves only
-// GET under /api/ (reading transcripts and the like); anything else is 403.
+// Device answers bounded owner API requests for one signed-in device.
 type Device struct {
 	Hub      string // hub base URL, such as https://pipe.babelgo.cn:8443
 	Session  string // this device's account session
@@ -84,6 +84,9 @@ func (d *Device) Run(ctx context.Context) error {
 }
 
 func (d *Device) standby(ctx context.Context) error {
+	ctx, cancelSessions := context.WithCancel(ctx)
+	var sessions sync.WaitGroup
+	defer func() { cancelSessions(); sessions.Wait() }()
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	c, err := dialWS(dctx, wsURL(d.Hub), 64<<10)
 	cancel()
@@ -105,7 +108,9 @@ func (d *Device) standby(ctx context.Context) error {
 			return err
 		}
 		if m.T == "open" && m.TicketID != "" && m.Secret != "" {
+			sessions.Add(1)
 			go func() {
+				defer sessions.Done()
 				if err := d.Serve(ctx, m.TicketID, m.Secret); err != nil && ctx.Err() == nil {
 					d.logf("pipe: session %s: %v", short(m.TicketID), err)
 				}
@@ -166,17 +171,26 @@ func (d *Device) Serve(ctx context.Context, ticketID, secret string) error {
 func (d *Device) answer(ctx context.Context, req frame) frame {
 	res := frame{T: "res", ID: req.ID}
 	fail := func(status int, msg string) frame {
+		res.CT = "application/json"
 		res.Status, res.Body = status, []byte(`{"error":"`+msg+`"}`)
 		return res
 	}
 	u, err := url.ParseRequestURI(req.Path)
-	if req.Method != http.MethodGet || err != nil || u.Host != "" || !strings.HasPrefix(u.Path, "/api/") {
-		return fail(http.StatusForbidden, "pipe serves only GET /api/")
+	allowed := req.Method == "GET" || req.Method == "POST" || req.Method == "PATCH" || req.Method == "PUT" || req.Method == "DELETE"
+	if !allowed || err != nil || u.Host != "" || u.Scheme != "" || !strings.HasPrefix(req.Path, "/api/") || !strings.HasPrefix(u.Path, "/api/") || strings.Contains(u.Path, "\\") {
+		return fail(http.StatusForbidden, "pipe serves only owner /api/ methods")
 	}
-	r, err := http.NewRequestWithContext(ctx, http.MethodGet, u.RequestURI(), nil)
+	if len(req.Body) > MaxBody {
+		return fail(http.StatusRequestEntityTooLarge, "request too large for the pipe")
+	}
+	if len(req.CT) > 256 || strings.ContainsAny(req.CT, "\r\n") {
+		return fail(http.StatusBadRequest, "bad content type")
+	}
+	r, err := http.NewRequestWithContext(ctx, req.Method, u.RequestURI(), bytes.NewReader(req.Body))
 	if err != nil {
 		return fail(http.StatusBadRequest, "bad path")
 	}
+	r.Header.Set("Content-Type", req.CT)
 	r.Host, r.RemoteAddr = "pipe.local", "pipe"
 	if d.Authorize != nil {
 		if err := d.Authorize(r); err != nil {
@@ -188,7 +202,7 @@ func (d *Device) answer(ctx context.Context, req frame) frame {
 	if w.over {
 		return fail(http.StatusRequestEntityTooLarge, "response too large for the pipe")
 	}
-	res.Status, res.Body = cmpStatus(w.status), w.body.Bytes()
+	res.Status, res.Body, res.CT = cmpStatus(w.status), w.body.Bytes(), w.header.Get("Content-Type")
 	return res
 }
 

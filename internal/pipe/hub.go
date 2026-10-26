@@ -3,7 +3,7 @@
 // entry (phone, remote desktop) and the device both dial the hub's WebSocket
 // with it, and the hub relays opaque binary frames between them. Entry and
 // device agree an end-to-end key the hub never sees (crypto.go) and run the
-// device's owner GET /api over it (device.go, entry.go).
+// device's owner /api over it (device.go, entry.go).
 package pipe
 
 import (
@@ -104,9 +104,27 @@ type TicketOut struct {
 func (h *Hub) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	mux.HandleFunc("POST /pipe/v1/ticket", h.serveTicket)
+	mux.HandleFunc("POST /pipe/v1/ticket", h.ticketCORS(h.serveTicket))
+	mux.HandleFunc("OPTIONS /pipe/v1/ticket", h.ticketCORS(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	mux.HandleFunc("GET /pipe/v1/ws", h.serveWS)
 	return mux
+}
+
+// ticketCORS shares the explicit browser allowlist with WebSocket upgrades.
+func (h *Hub) ticketCORS(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Origin")
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if !slices.Contains(h.Origins, origin) {
+				writeErr(w, http.StatusForbidden, "origin not allowed")
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		}
+		next(w, r)
+	}
 }
 
 func (h *Hub) now() time.Time {

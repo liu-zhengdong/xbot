@@ -40,6 +40,8 @@ func (l *lockedBuf) String() string {
 }
 
 type world struct {
+	root     string
+	ui       *web.Server
 	hub      *Hub
 	hubURL   string
 	logs     *lockedBuf
@@ -94,7 +96,7 @@ func newWorld(t *testing.T) *world {
 	mux := http.NewServeMux()
 	ui.Register(mux)
 
-	w := &world{logs: &lockedBuf{}, entrySes: phone.Session, devSes: mini.Session}
+	w := &world{root: root, ui: ui, logs: &lockedBuf{}, entrySes: phone.Session, devSes: mini.Session}
 	w.hub = &Hub{Accounts: acc, Log: log.New(w.logs, "", 0)}
 	hubSrv := httptest.NewServer(w.hub.Handler())
 	t.Cleanup(hubSrv.Close)

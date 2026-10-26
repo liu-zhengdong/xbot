@@ -112,4 +112,5 @@ type frame struct {
 	Path   string `json:"path,omitempty"`
 	Status int    `json:"status,omitempty"`
 	Body   []byte `json:"body,omitempty"`
+	CT     string `json:"ct,omitempty"`
 }
