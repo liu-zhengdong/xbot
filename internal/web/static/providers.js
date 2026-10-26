@@ -13,7 +13,9 @@
     const n = node("div", "hs-step" + (running ? " running" : ""));
     n.dataset.hostedId = h.id;
     n.setAttribute("role", "status");
-    n.append(node("span", "hs-dot"), node("span", "", (running ? "正在搜索" : h.status === "failed" ? "搜索失败" : "已搜索") + (h.query ? "「" + h.query + "」" : "")), node("small", "", "厂商搜索 · 不进任务"));
+    const image = h.name === "image_generation";
+    const verb = image ? (running ? "正在生图" : h.status === "failed" ? "生图失败" : "已生图") : (running ? "正在搜索" : h.status === "failed" ? "搜索失败" : "已搜索");
+    n.append(node("span", "hs-dot"), node("span", "", verb + (h.query ? "「" + h.query + "」" : "")), node("small", "", image ? "厂商生图 · 存到工作区 generated/" : "厂商搜索 · 不进任务"));
     return n;
   }
   function progress(host, part) {
@@ -327,6 +329,7 @@
           }
           const context = m.context >= 1000000 ? `${+(m.context / 1000000).toFixed(2)}M` : `${+(m.context / 1000).toFixed(1)}K`;
           const windowChip = node("span", "provider-chip provider-window", context); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);
+          if (m.protocol === "responses" && m.registered) chips.append(imageGenControl(api, p, m));
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
         body.append(rows);
@@ -355,6 +358,28 @@
       catch { if (alive()) host.replaceChildren(state("读取供应商失败。", load)); }
     }
     await load();
+  }
+  // Hosted image generation is a per-model switch, apart from hosted search.
+  // OpenAI takes a tool-level image model; xAI picks its own.
+  function imageGenControl(api, p, m) {
+    const xai = p.oauth === "xai" || p.brand === "xai";
+    const wrap = node("span", "provider-chip " + (m.hosted_image_generation ? "supported" : "unsupported"));
+    const box = node("input"); box.type = "checkbox"; box.checked = !!m.hosted_image_generation; box.setAttribute("aria-label", `${m.model} 厂商生图`);
+    const model = node("input", "provider-image-model"); model.type = "text"; model.placeholder = "生图模型（默认）"; model.value = m.image_generation_model || ""; model.maxLength = 128; model.hidden = xai || !box.checked; model.setAttribute("aria-label", `${m.model} 生图模型`);
+    const save = async () => {
+      box.disabled = model.disabled = true; wrap.title = "";
+      try {
+        const out = await api("/api/providers/models/image-generation", { method: "PUT", body: { provider: p.name || "", model: m.model, enabled: box.checked, image_model: xai ? "" : model.value.trim() } });
+        m.hosted_image_generation = out.hosted_image_generation; m.image_generation_model = out.image_generation_model;
+      } catch (err) { wrap.title = err.message || String(err); }
+      box.checked = !!m.hosted_image_generation; model.value = m.image_generation_model || ""; model.hidden = xai || !box.checked;
+      wrap.className = "provider-chip " + (box.checked ? "supported" : "unsupported");
+      box.disabled = model.disabled = false;
+    };
+    box.onchange = save; model.onchange = save;
+    const label = node("label", "provider-image-toggle"); label.append(box, node("span", "", "厂商生图"));
+    wrap.append(label, model);
+    return wrap;
   }
   let activeDialog = null;
   async function open({ api, data, onBound, manage, opener }) {

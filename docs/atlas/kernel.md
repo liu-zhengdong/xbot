@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-26 @ 71f1ac9 + 删前台限制
+verified: 2026-10-26 @ 9046089 + hosted 生图工作区入口
 ---
 # 内核：Link、Event、收件箱
 
@@ -27,6 +27,10 @@ verified: 2026-10-26 @ 71f1ac9 + 删前台限制
 - **悬空工具调用**：中断、取消、切换模型都走 `DanglingResult`，给没返回的调用补一条占位结果，配对不会断。
 
 有主人话或任务结果的一轮必须给正常回复，不能以 `SILENT` 吞掉；只有没有这些输入的定时唤醒才允许静默。环境与任务结果都是原有消息，不另建转告请求或签收机制。接收原话和公布该输入的环境共用原环境发布锁；请求发送前从有效对话回放基线并采样变化，不再保存独立已见状态（格式见 [上下文](context.md)）。
+
+## 厂商生图
+
+原有模型调用上下文按当前 Bot 绑定提供 hosted 生图的工作区保存入口；与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
 
 ## 全局搜索策略
 

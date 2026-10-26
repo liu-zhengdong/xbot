@@ -42,6 +42,10 @@ type Provider struct {
 // Vision, when set, is this model's image understanding. Nil uses the default
 // for the model id: deepseek-flash sees images; deepseek-chat and
 // deepseek-v4-pro do not. Other ids do not, until the spec says so.
+// HostedImageGen mounts the vendor's image_generation tool on a Responses
+// binding; nil and false leave it off. It is independent of HostedSearch.
+// ImageGenModel is the OpenAI tool-level image model; empty uses the vendor
+// default, and xAI ignores it.
 type ModelSpec struct {
 	Name         string `json:"name"`
 	Context      int    `json:"context"`
@@ -50,6 +54,9 @@ type ModelSpec struct {
 	Thinking     string `json:"thinking,omitempty"`
 	Vision       *bool  `json:"vision,omitempty"`
 	HostedSearch *bool  `json:"hosted_web_search,omitempty"`
+
+	HostedImageGen *bool  `json:"hosted_image_generation,omitempty"`
+	ImageGenModel  string `json:"image_generation_model,omitempty"`
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -190,6 +197,10 @@ func Add(root string, p Provider, model ModelSpec) error {
 			if model.HostedSearch == nil {
 				model.HostedSearch = cur.Models[n].HostedSearch
 			}
+			if model.HostedImageGen == nil {
+				model.HostedImageGen = cur.Models[n].HostedImageGen
+				model.ImageGenModel = cur.Models[n].ImageGenModel
+			}
 			cur.Models[n] = model
 			replaced = true
 			break
@@ -262,6 +273,39 @@ func Lookup(root, providerName, modelName string) (Provider, ModelSpec, error) {
 		}
 	}
 	return Provider{}, ModelSpec{}, fmt.Errorf("providers: model %q is not on %q", modelName, providerName)
+}
+
+// SetImageGen switches vendor-hosted image generation on one registered model
+// and sets its OpenAI tool-level image model. Only Responses bindings take it.
+// The image model is kept as given, trimmed; empty clears it.
+func SetImageGen(root, providerName, modelName string, on bool, imageModel string) error {
+	imageModel = strings.TrimSpace(imageModel)
+	if len(imageModel) > 128 || strings.ContainsAny(imageModel, " \t\r\n\"") {
+		return errors.New("providers: bad image_generation_model")
+	}
+	return fsutil.WithLock(Path(root)+".lock", func() error {
+		f, err := Load(root)
+		if err != nil {
+			return err
+		}
+		i := indexOf(f.Providers, providerName)
+		if i < 0 {
+			return fmt.Errorf("providers: %q not found", providerName)
+		}
+		p := &f.Providers[i]
+		for n := range p.Models {
+			if p.Models[n].Name != modelName {
+				continue
+			}
+			if on && p.WireProtocol() != Responses {
+				return errors.New("providers: hosted_image_generation requires responses")
+			}
+			p.Models[n].HostedImageGen = &on
+			p.Models[n].ImageGenModel = imageModel
+			return Save(root, f)
+		}
+		return fmt.Errorf("providers: model %q is not on %q", modelName, providerName)
+	})
 }
 
 // Resolve turns a bot binding into an endpoint. An empty binding uses FromEnv and a zero context length.

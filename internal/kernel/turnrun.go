@@ -452,8 +452,8 @@ func (r *turnRun) part(p provider.ContentPart) {
 }
 
 func (r *turnRun) modelContext() context.Context {
-	ctx := notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable)
-	if provider.HasHostedSearch(r.p) {
+	ctx := r.k.withImageGen(notable.With(r.t.runCtx, r.k.WorkDir, &r.t.notable))
+	if provider.HasHostedSearch(r.p) || provider.HasImageGen(ctx) {
 		return provider.WithPartObserver(ctx, r.part)
 	}
 	return ctx

@@ -193,6 +193,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/models", s.listModels)
 	mux.HandleFunc("GET /api/providers", s.listProviders)
 	mux.HandleFunc("GET /api/providers/models", s.providerModels)
+	mux.HandleFunc("PUT /api/providers/models/image-generation", s.putImageGen)
 	mux.HandleFunc("PUT /api/providers/{brand}/key", s.putVendorKey)
 	mux.HandleFunc("POST /api/providers/{brand}/sync", s.syncVendorModels)
 	mux.HandleFunc("POST /api/providers/oauth/{kind}/start", s.oauthStart)

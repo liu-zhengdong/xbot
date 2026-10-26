@@ -2,6 +2,13 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 厂商 hosted 生图（分支实现，替身端到端通过，未合入）
+
+- 沿用已有未提交实现，完成 Responses `image_generation` 的独立开关、OpenAI tool 级模型、xAI 默认 Imagine、工作区 `generated/` 落盘及相对路径回放。设置写入现有 ModelSpec；搜索关仍可生图。复用 OAuth/vault、PartHosted、BotDir，不新增本地工具，不改消息挂图或气泡 gallery，不自动写 transcript Images。
+- 单图 20 MiB、每个响应 8 张、目录 500 项；流式图片行最多 32 MiB，移除 base64 后保持 1 MiB 输出预算。补终态失败、空结果、解码/落盘失败、重复完成省略 result、无 ID 限额及并发目录限额检查。四条失败终态回归和原实现边界回归有修前失败证据；独立复审发现的残留 result 假成功已修复，独立 overlay、四包专项 race 及真实 serve 双 OAuth 冒烟通过。
+- 六条基本旅程与 Responses 搜索兼容冒烟通过；hosted 冒烟使用真实二进制、HTTP 设置/绑定、vault OAuth 注入和磁盘，上游 scripted。独立复测首个可见回复 ChatGPT 83.7 ms、xAI 101.1 ms（各一例）；本机 Chrome 30 次开关保存 p95 69.7 ms，含驱动开销，不代表线上回复 p95、IPC 或帧率。1440×900、DPR 2 的浅深色默认/悬停/开启截图已留存，保存和刷新读回通过；主人确认沿用界面。
+- 按主人最终收束要求以 hosted 专项作为本批门禁；此前全量/三遍有 shell 通知测试失败，未修该测试或生产机制。vet、格式、构建、atlas audit 与完整交付见仓外 `~/.xbot-build/hosted-image-gen/encode-report.md`。未合 main、未 push、未重启日用服务；未测真实账号权限与生图、Mini 8788、主人日用、60fps 或后台负载。dev 保留，候选不标完成。
+
 ## 2026-10-25 网页搜索设置（本地实现，未合入）
 
 - 设置浮层在权限后、设备前增加网页搜索。全局开关、自动 / 总用本机和九家单选按定稿接入；默认 DuckDuckGo，DeepSeek 已实现，其余七家后端占位。选中为中性灰；密钥「试一下」成功即保存，失败保留输入，不回显密钥，不增加保存主按钮和供应商详情开关。

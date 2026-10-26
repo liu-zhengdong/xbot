@@ -159,6 +159,11 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 			ts = append(ts, map[string]any{"type": "x_search"}, map[string]any{"type": "code_interpreter"})
 		}
 	}
+	// Image generation is its own capability: it mounts with search off. A
+	// request without local tools (compaction, extraction) never gets it.
+	if g, ok := imageGenFrom(ctx); ok && len(req.Tools) > 0 {
+		ts = append(ts, imageTool(c.BaseURL, g))
+	}
 	body := map[string]any{"model": c.Model, "input": input, "tools": ts, "stream": true, "store": false, "include": []string{"reasoning.encrypted_content"}}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -288,6 +293,8 @@ func responseParts(raw json.RawMessage) ([]ContentPart, error) {
 		}
 		p.Hosted = &HostedStep{ID: it.ID, Name: "x_search", Status: it.Status, Query: q}
 		p.Text = "[X 搜索: " + q + " · " + it.Status + "]"
+	case "image_generation_call":
+		return single(imageGenerationPart(raw, p))
 	case "code_interpreter_call":
 		p.Type = PartHosted
 		p.Hosted = &HostedStep{ID: it.ID, Name: "code_interpreter", Status: it.Status}
@@ -338,9 +345,21 @@ func responseParts(raw json.RawMessage) ([]ContentPart, error) {
 	return []ContentPart{p}, nil
 }
 
+func single(p ContentPart, err error) ([]ContentPart, error) {
+	if err != nil {
+		return nil, err
+	}
+	return []ContentPart{p}, nil
+}
+
 func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Message, error) {
+	images := newImageStore(ctx)
 	scan := bufio.NewScanner(r)
-	scan.Buffer(make([]byte, 4096), 1<<20)
+	line := 1 << 20
+	if images.ok {
+		line = imageStreamLine
+	}
+	scan.Buffer(make([]byte, 4096), line)
 	// Some streams deliver full items only in output_item.done. The terminal
 	// response is not guaranteed to repeat them. Keep their wire order and raw
 	// payload for native replay, replacing repeated indices rather than appending.
@@ -391,6 +410,13 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				delta(ev.Delta)
 			}
 		case "response.output_item.added", "response.output_item.done":
+			if len(ev.Item) > 0 {
+				item, err := images.strip(ev.Item, ev.OutputIndex, ev.Type == "response.output_item.done")
+				if err != nil {
+					return Message{}, err
+				}
+				ev.Item = item
+			}
 			if ev.Type == "response.output_item.done" {
 				if ev.OutputIndex < 0 {
 					return Message{}, errors.New("responses: invalid output index")
@@ -405,6 +431,9 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 				items[ev.OutputIndex] = ev.Item
 			}
 			if len(ev.Item) > 0 {
+				if len(ev.Item) > 1<<20 {
+					return Message{}, errors.New("responses: output exceeds 1 MiB")
+				}
 				ps, err := responseParts(ev.Item)
 				if err == nil {
 					for _, p := range ps {
@@ -419,6 +448,9 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			emitPart(ctx, ContentPart{Type: PartHosted, Hosted: &HostedStep{ID: ev.ItemID, Name: "web_search", Status: status}})
 		default:
 			if tool, status, ok := hostedProgress(ev.Type); ok {
+				if tool == "image_generation" && status == "completed" {
+					continue // A local save, rather than upstream progress, confirms completion.
+				}
 				emitPart(ctx, ContentPart{Type: PartHosted, Hosted: &HostedStep{ID: ev.ItemID, Name: tool, Status: status}})
 			}
 		case "response.completed":
@@ -427,7 +459,8 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 			}
 			msg := Message{Role: RoleAssistant}
 			output := ev.Response.Output
-			if len(output) == 0 {
+			fromItems := len(output) == 0
+			if fromItems {
 				indices := make([]int, 0, len(items))
 				for i := range items {
 					indices = append(indices, i)
@@ -437,8 +470,15 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 					output = append(output, items[i])
 				}
 			}
-			size, textOffset := 0, 0
-			for _, raw := range output {
+			size, textOffset, generated := 0, 0, false
+			for index, raw := range output {
+				if !fromItems {
+					var err error
+					raw, err = images.strip(raw, index, true)
+					if err != nil {
+						return Message{}, err
+					}
+				}
 				size += len(raw)
 				if size > 1<<20 {
 					return Message{}, errors.New("responses: output exceeds 1 MiB")
@@ -456,13 +496,18 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 						ps[i].Citation.Start += offset
 						ps[i].Citation.End += offset
 					}
+					if h := ps[i].Hosted; h != nil && h.Name == "image_generation" {
+						generated = true
+						emitPart(ctx, ps[i])
+					}
 				}
 				msg.Content = append(msg.Content, ps...)
 			}
 			if len(output) == 0 && streamed.Len() > 0 {
 				msg.Content = TextContent(streamed.String())
 			}
-			if strings.TrimSpace(msg.Text()) == "" && len(msg.Calls()) == 0 {
+			// A reply that only generated a picture still says where it went.
+			if strings.TrimSpace(msg.Text()) == "" && len(msg.Calls()) == 0 && !generated {
 				return Message{}, errors.New("responses: empty response")
 			}
 			if u := ev.Response.Usage; u != nil {
@@ -498,14 +543,15 @@ func readResponses(ctx context.Context, r io.Reader, delta func(string)) (Messag
 type visibleResponseError struct{ error }
 
 // hostedProgress maps a hosted tool progress event to its tool name and
-// status. xAI adds x_search and code_interpreter to web_search; unknown tools
+// status. xAI adds x_search and code_interpreter to web_search, and either
+// vendor may run image_generation; unknown tools
 // are not hosted calls and stay ignored.
 func hostedProgress(event string) (tool, status string, ok bool) {
 	if !strings.HasPrefix(event, "response.") {
 		return "", "", false
 	}
 	rest := strings.TrimPrefix(event, "response.")
-	for _, name := range []string{"web_search_call", "x_search_call", "code_interpreter_call"} {
+	for _, name := range []string{"web_search_call", "x_search_call", "code_interpreter_call", "image_generation_call"} {
 		if strings.HasPrefix(rest, name+".") {
 			return strings.TrimSuffix(name, "_call"), strings.TrimPrefix(rest, name+"."), true
 		}
