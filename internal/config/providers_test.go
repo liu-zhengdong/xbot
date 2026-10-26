@@ -82,7 +82,7 @@ func TestProviderAddListRemoveAndBind(t *testing.T) {
 	}
 
 	fallback, n, err := Resolve(root, "", "", func(string) string { return "" })
-	if err != nil || fallback.Model != defaultModel || n != 0 {
+	if err != nil || fallback.Model != defaultModel || n != 256_000 {
 		t.Fatalf("fallback %+v %d %v", fallback, n, err)
 	}
 

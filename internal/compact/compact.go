@@ -35,8 +35,8 @@ type State struct {
 }
 
 // DefaultWindow stands in for a model whose window providers.json does not
-// give. It is a common size, so the derived lines stay on the safe side.
-const DefaultWindow = 128_000
+// give. Explicit catalog windows always take precedence over this fallback.
+const DefaultWindow = 256_000
 
 // TargetCap and TargetPercent set the soft target from the hard ceiling:
 // min(TargetCap, TargetPercent% of the ceiling). A small window keeps room to

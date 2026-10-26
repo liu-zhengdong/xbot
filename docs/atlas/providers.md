@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-26 @ c580239 + 生图交付话术
+verified: 2026-10-27 @ 530d20f + 模型窗口目录刷新
 ---
 # 模型供应商与主动性评测
 
@@ -13,7 +13,8 @@ verified: 2026-10-26 @ c580239 + 生图交付话术
 
 ## 怎么运转
 
-- 设置详情读取 API 供应商与 ChatGPT 订阅的实时名单。ChatGPT 登录和详情共用 SIWC 目录解析，读取 `models[].slug` 且只保留 `visibility: list`；未配置的模型窗口取目录中的 `context_window`，已有模型的能力与窗口覆盖保留。未登录时提示重新登录。模型名单通过 `GET /api/providers/models?provider=<配置名>` 按需实时拉取，不写回配置。Completions / Responses 读取配置端点的 `/models`，用 Bearer 鉴权；Messages 用 `x-api-key` 与 `anthropic-version`，按 `has_more` / `last_id` 续页。能力仍复用 `ModelSpec` 的 vision、hosted 规则和窗口覆盖；没有配置覆盖且目录未提供窗口时使用 `compact.DefaultWindow`（128000），不从原型名单或 URL 推断能力。每次最多 15 秒、累计 1 MiB、2048 个模型，拒绝重定向、无效格式和分页循环；错误不透传上游响应或凭证，OAuth 凭证刷新被供应商拒绝时返回「登录凭证已失效，请重新登录」，设置页据此引导重新登录。
+- 设置详情读取 API 供应商与 ChatGPT 订阅的实时名单。ChatGPT 登录和详情共用 SIWC 目录解析，读取 `models[].slug` 且只保留 `visibility: list`；未配置的模型窗口取目录中的 `context_window`，已有模型的能力与窗口覆盖保留。未登录时提示重新登录。模型名单通过 `GET /api/providers/models?provider=<配置名>` 按需实时拉取，名单本身不写回配置。Completions / Responses 读取配置端点的 `/models`，用 Bearer 鉴权；Messages 用 `x-api-key` 与 `anthropic-version`，按 `has_more` / `last_id` 续页。能力仍复用 `ModelSpec` 的 vision、hosted 规则和窗口覆盖；没有配置覆盖且目录未提供窗口时使用 `compact.DefaultWindow`（256000），不从原型名单或 URL 推断能力。每次最多 15 秒、累计 1 MiB、2048 个模型，拒绝重定向、无效格式和分页循环；错误不透传上游响应或凭证，OAuth 凭证刷新被供应商拒绝时返回「登录凭证已失效，请重新登录」，设置页据此引导重新登录。
+- **模型窗口真源**：日常 Resolve 与 T/H 使用 `providers.json` 的显式 `ModelSpec.Context`；缺值与未知模型退 256000，不按模型名猜窗口。按需拉取 `/models` 时，整数 `context_length`（1～10000000 token）覆盖返回值，并在整份目录通过大小、条数与分页检查后，批量写回已登记模型；缺失、非整数、非正或超限元数据不改目录，也不妨碍其他有效模型刷新。未登记模型只展示上游窗口，选用时沿原登记路径保存；ChatGPT 的 `context_window` 覆盖规则不变。刷新复用 registry 文件锁，锁内重读，只改 context，保留能力开关；供应商被删除或端点/认证配置改变则不写回，不复活条目。重复相同窗口不落盘；刷新成功只记录供应商名与更新数量，不带上游正文或凭证。Add、Remove、vendor 同步和 OAuth/能力更新共用此锁。Resolve 不请求 `/models`；内核凭目录文件身份、大小和 mtime 使窗口缓存失效，同一绑定的后续 T/H 查询能看到刷新。
 - 供应商边界读写有序消息内容块，格式与旧串兼容规则见 [上下文与 transcript](context.md)。Chat Completions 适配器把文本和工具块投影回 `content`、`tool_calls`、`tool_call_id`；流式响应按文本和调用首次出现的顺序组装成块。Responses 则回放自己的原始输出条目，外厂内容降成文字摘要；不改 transcript 旧行。
 
 - `providers.json` 的供应商有 `protocol`：`chat_completions`、`responses`、`anthropic_messages`。缺省时已知 `openai` 推断为 Responses，`anthropic` 推断为 Messages，其余保留 Completions；协议不从 URL 推断。Messages 已接入 Claude API key 绑定，请求发往配置端点下的 `/messages`。`xbot provider add --protocol responses` 可写协议。
@@ -54,3 +55,5 @@ verified: 2026-10-26 @ c580239 + 生图交付话术
 - 留出套件拿来调提示 → 分数好看但只是对着题调出来的 → 留出套件只在验收时跑。
 
 思考回传的验收与待验证项见 [开发设计](../dev/thinking-enable.md)。
+
+对应实现规格：[模型上下文窗口跟真值走](../dev/model-context-truth.md)。

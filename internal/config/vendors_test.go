@@ -113,10 +113,10 @@ func TestSyncVendorModelsRegistersServedAndDropsStaleSeeds(t *testing.T) {
 	}
 	f, _ := Load(root)
 	seed := f.Providers[0].Models[0].Name
-	if err := SyncVendorModels(root, "xai", []string{"grok-5", "grok-5-mini"}, nil); err != nil {
+	if err := SyncVendorModels(root, "xai", []ModelInfo{{Model: "grok-5", Context: 1_048_576}, {Model: "grok-5-mini"}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Resolve(root, "xai", "grok-5", func(string) string { return "k-0123456789" }); err != nil {
+	if _, window, err := Resolve(root, "xai", "grok-5", func(string) string { return "k-0123456789" }); err != nil || window != 1_048_576 {
 		t.Fatalf("served model not bindable: %v", err)
 	}
 	if _, _, err := Resolve(root, "xai", seed, func(string) string { return "k-0123456789" }); err == nil {
@@ -129,7 +129,7 @@ func TestSyncVendorModelsRegistersServedAndDropsStaleSeeds(t *testing.T) {
 	if err := SyncVendorModels(root, "xai", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := SyncVendorModels(root, "xai", []string{"grok-5"}, func(m string) bool { return m == "grok-old" }); err != nil {
+	if err := SyncVendorModels(root, "xai", []ModelInfo{{Model: "grok-5"}}, func(m string) bool { return m == "grok-old" }); err != nil {
 		t.Fatal(err)
 	}
 	f, _ = Load(root)

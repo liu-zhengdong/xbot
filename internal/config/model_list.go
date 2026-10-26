@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -13,12 +14,14 @@ import (
 	"time"
 
 	"xbot/internal/compact"
+	"xbot/internal/fsutil"
 	"xbot/internal/vault"
 )
 
 // ProviderModels asks the configured endpoint for its current catalog. Only
-// membership comes from the vendor; capability overrides stay in providers.json.
-// Nothing is persisted and neither upstream error bodies nor credentials escape.
+// membership and explicit context_length come from the vendor. Valid windows
+// refresh registered models after the entire catalog succeeds; other capability
+// overrides stay in providers.json. Resolve never fetches the catalog.
 func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error) {
 	p, endpoint, err := catalogEndpoint(root, name)
 	if err != nil {
@@ -42,6 +45,7 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 			return nil, err
 		}
 	}
+	windows := map[string]int{}
 	seen, cursors := map[string]bool{}, map[string]bool{}
 	remaining, cursor := int64(1<<20), ""
 	specs := make(map[string]ModelSpec, len(p.Models))
@@ -81,6 +85,10 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 			if configured, ok := specs[id]; ok {
 				spec = configured
 			}
+			if window := catalogWindow(item.ContextLength); window > 0 {
+				spec.Context = window
+				windows[id] = window
+			}
 			_, registered := registeredSpec(p, id)
 			if spec.Context <= 0 {
 				spec.Context = compact.DefaultWindow
@@ -101,6 +109,9 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 	raw, err := json.Marshal(models)
 	if err != nil || len(raw) > (1<<20)-32 {
 		return nil, errors.New("模型能力列表超过 1 MiB")
+	}
+	if err := refreshCatalogWindows(root, p, windows); err != nil {
+		return nil, errors.New("保存模型窗口失败，请重试")
 	}
 	return models, nil
 }
@@ -149,7 +160,8 @@ func catalogEndpoint(root, name string) (Provider, ModelConfig, error) {
 }
 
 type catalogItem struct {
-	ID string `json:"id"`
+	ID            string          `json:"id"`
+	ContextLength json.RawMessage `json:"context_length"`
 }
 
 type catalogPage struct {
@@ -200,4 +212,50 @@ func readCatalogPage(ctx context.Context, client *http.Client, p Provider, key, 
 		return catalogPage{}, 0, errors.New("模型列表格式无效")
 	}
 	return page, int64(len(raw)), nil
+}
+
+// Ignore malformed or implausible metadata without losing the other models.
+// The bound also keeps subsequent token-budget arithmetic safely within int.
+func catalogWindow(raw json.RawMessage) int {
+	var window int
+	if json.Unmarshal(raw, &window) != nil || window <= 0 || window > 10_000_000 {
+		return 0
+	}
+	return window
+}
+
+func refreshCatalogWindows(root string, source Provider, windows map[string]int) error {
+	if source.Name == "" || len(windows) == 0 {
+		return nil
+	}
+	return fsutil.WithLock(Path(root)+".lock", func() error {
+		f, err := Load(root)
+		if err != nil {
+			return err
+		}
+		i := indexOf(f.Providers, source.Name)
+		if i < 0 {
+			return nil // Removed while the network request was in flight.
+		}
+		p := &f.Providers[i]
+		if p.BaseURL != source.BaseURL || p.APIKeyEnv != source.APIKeyEnv || p.OAuth != source.OAuth || p.WireProtocol() != source.WireProtocol() {
+			return nil // Never apply the old endpoint's metadata to a new binding.
+		}
+		changed := 0
+		for i := range p.Models {
+			m := &p.Models[i]
+			if window := windows[m.Name]; window > 0 && window != m.Context {
+				m.Context = window
+				changed++
+			}
+		}
+		if changed == 0 {
+			return nil
+		}
+		if err := Save(root, f); err != nil {
+			return err
+		}
+		slog.Info("refreshed model context windows from catalog", "provider", source.Name, "models", changed)
+		return nil
+	})
 }

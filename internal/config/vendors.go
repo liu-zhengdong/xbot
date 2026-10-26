@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"xbot/internal/compact"
+	"xbot/internal/fsutil"
 )
 
 // Vendor is a built-in API-key vendor the settings grid can add with one key.
@@ -155,7 +155,11 @@ func CheckVendorEntry(root, brand string) error {
 // endpoint really serves, so they can be chosen and bound. Models the endpoint
 // lacks are dropped only when they are untouched built-in seeds and keep(model)
 // is false (a bot is bound to them). An empty catalog changes nothing.
-func SyncVendorModels(root, brand string, served []string, keep func(model string) bool) error {
+func SyncVendorModels(root, brand string, served []ModelInfo, keep func(model string) bool) error {
+	return fsutil.WithLock(Path(root)+".lock", func() error { return syncVendorModels(root, brand, served, keep) })
+}
+
+func syncVendorModels(root, brand string, served []ModelInfo, keep func(model string) bool) error {
 	v, ok := VendorFor(brand)
 	if !ok || v.KeyLogin || len(served) == 0 {
 		return nil
@@ -179,29 +183,24 @@ func SyncVendorModels(root, brand string, served []string, keep func(model strin
 		for _, s := range v.Models {
 			seed = seed || (s.Name == m.Name && s == m)
 		}
-		live := containsName(served, m.Name)
+		live := false
+		for _, model := range served {
+			live = live || model.Model == m.Name
+		}
 		if live || !seed || (keep != nil && keep(m.Name)) {
 			kept = append(kept, m)
 		}
 	}
-	for _, id := range served {
+	for _, model := range served {
+		id := model.Model
 		if !have[id] && len(kept) < 2048 {
-			kept = append(kept, ModelSpec{Name: id, Context: compact.DefaultWindow})
+			kept = append(kept, ModelSpec{Name: id, Context: (ModelSpec{Context: model.Context}).ContextWindow()})
 			have[id] = true
 		}
 	}
 	cur.Models = kept
 	f.Providers[i] = cur
 	return Save(root, f)
-}
-
-func containsName(list []string, name string) bool {
-	for _, n := range list {
-		if n == name {
-			return true
-		}
-	}
-	return false
 }
 
 // AddVendor registers a built-in vendor's defaults in providers.json. It never

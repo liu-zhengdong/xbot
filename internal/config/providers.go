@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"xbot/internal/compact"
 	"xbot/internal/fsutil"
 	"xbot/internal/provider"
 	"xbot/internal/vault"
@@ -60,6 +61,14 @@ type ModelSpec struct {
 
 	HostedImageGen *bool  `json:"hosted_image_generation,omitempty"`
 	ImageGenModel  string `json:"image_generation_model,omitempty"`
+}
+
+// ContextWindow uses the catalog value, falling back only when it is absent.
+func (m ModelSpec) ContextWindow() int {
+	if m.Context > 0 {
+		return m.Context
+	}
+	return compact.DefaultWindow
 }
 
 // File is ~/.xbot/providers.json. It must not contain raw API keys.
@@ -139,6 +148,10 @@ func Save(root string, f File) error {
 
 // Add upserts a provider and one model. A second add with the same model updates its context length.
 func Add(root string, p Provider, model ModelSpec) error {
+	return fsutil.WithLock(Path(root)+".lock", func() error { return add(root, p, model) })
+}
+
+func add(root string, p Provider, model ModelSpec) error {
 	if !nameOK(p.Name) {
 		return fmt.Errorf("providers: bad name %q", p.Name)
 	}
@@ -222,6 +235,10 @@ func Add(root string, p Provider, model ModelSpec) error {
 // Remove deletes a provider, or one model when model is not empty.
 // Removing the last model deletes the provider.
 func Remove(root, name, model string) error {
+	return fsutil.WithLock(Path(root)+".lock", func() error { return remove(root, name, model) })
+}
+
+func remove(root, name, model string) error {
 	if strings.TrimSpace(name) == "" {
 		return errors.New("providers: name is required")
 	}
@@ -314,19 +331,19 @@ func SetImageGen(root, providerName, modelName string, on bool, imageModel strin
 	})
 }
 
-// Resolve turns a bot binding into an endpoint. An empty binding uses FromEnv and a zero context length.
+// Resolve turns a bot binding into an endpoint. An empty binding uses FromEnv and the default context length.
 // The API key is read from the environment variable named in the registry.
 func Resolve(root, providerName, modelName string, getenv func(string) string) (endpoint ModelConfig, contextLen int, err error) {
 	providerName = strings.TrimSpace(providerName)
 	modelName = strings.TrimSpace(modelName)
 	if providerName == "" && modelName == "" {
 		m := FromEnv(getenv)
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, 0, nil
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, compact.DefaultWindow, nil
 	}
 	if providerName == "" {
 		m := FromEnv(getenv)
 		m.Model = modelName
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, 0, nil
+		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, compact.DefaultWindow, nil
 	}
 	p, model, err := Lookup(root, providerName, modelName)
 	if err != nil {
@@ -380,7 +397,7 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 		ReasoningEffort: model.ReasoningEffort,
 		Vision:          model.SeesImages(),
 		HTTPClient:      oauthHTTP,
-	}, model.Context, nil
+	}, model.ContextWindow(), nil
 }
 
 // ModelConfig is a resolved endpoint. KeyEnv is the variable name, not a place to store the key.

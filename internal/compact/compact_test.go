@@ -203,11 +203,17 @@ func (emptyProv) Chat(context.Context, provider.Request, func(string)) (provider
 
 // TestLines pins the two lines ADR 0015 derives from a window.
 func TestLines(t *testing.T) {
+	if DefaultWindow != 256_000 {
+		t.Fatalf("DefaultWindow = %d, want 256000", DefaultWindow)
+	}
 	cases := []struct{ window, target, ceiling int }{
 		{1_000_000, 200_000, 868_000},
 		{128_000, 64_320, 107_200},
 		{64_000, 32_160, 53_600},
-		{0, 64_320, 107_200}, // unknown window: DefaultWindow
+		{1_048_576, 200_000, 911_719},
+		{256_000, 128_640, 214_400},
+		{0, 128_640, 214_400}, // unknown window: DefaultWindow
+		{-1, 128_640, 214_400},
 	}
 	for _, c := range cases {
 		target, ceiling := Lines(c.window)

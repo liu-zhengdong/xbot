@@ -59,7 +59,7 @@ func TestChatGPTModelsCatalogValidation(t *testing.T) {
 				t.Fatalf("catalog followed redirect: %d", calls)
 			}
 			if mode == "valid" {
-				if err != nil || len(models) != 2 || models[0].Name != "runtime" || models[0].Context != 272000 || models[1].Context != 128000 {
+				if err != nil || len(models) != 2 || models[0].Name != "runtime" || models[0].Context != 272000 || models[1].Context != 256000 {
 					t.Fatalf("catalog: %v %v", models, err)
 				}
 			} else if err == nil || strings.Contains(err.Error(), "private-upstream-body") || strings.Contains(err.Error(), "scripted-token") {

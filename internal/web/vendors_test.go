@@ -230,7 +230,7 @@ func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
 	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/models":
-			fmt.Fprint(w, `{"data":[{"id":"grok-5"},{"id":"grok-5-mini"}]}`)
+			fmt.Fprint(w, `{"data":[{"id":"grok-5","context_length":1048576},{"id":"grok-5-mini"}]}`)
 		case "/v1/chat/completions":
 			var in struct {
 				Model string `json:"model"`
@@ -268,6 +268,9 @@ func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
 	}
 	if code, out := setupCall(t, srv, tok, "POST", "/api/providers/xai/sync", ""); code != 200 || len(out["models"].([]any)) != 2 {
 		t.Fatalf("sync: %d %v", code, out)
+	}
+	if _, m, err := config.Lookup(s.Root, "xai", "grok-5"); err != nil || m.Context != 1_048_576 {
+		t.Fatalf("synced context=%d err=%v", m.Context, err)
 	}
 	if code, out := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-5"}`); code != 200 {
 		t.Fatalf("bind fetched model: %d %v", code, out)

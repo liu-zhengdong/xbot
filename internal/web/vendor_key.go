@@ -93,11 +93,7 @@ func (s *Server) syncVendorModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	names := make([]string, 0, len(models))
-	for _, m := range models {
-		names = append(names, m.Model)
-	}
-	if err := config.SyncVendorModels(s.Root, brand, names, func(m string) bool { return bound[m] }); err != nil {
+	if err := config.SyncVendorModels(s.Root, brand, models, func(m string) bool { return bound[m] }); err != nil {
 		if errors.Is(err, config.ErrVendorNameTaken) {
 			writeErr(w, http.StatusConflict, err.Error())
 			return

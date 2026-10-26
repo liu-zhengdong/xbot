@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ type tokenState struct {
 	window         int
 	windowKey      string
 	windowChecked  bool
+	windowFile     os.FileInfo
 	hw             int
 	hwSet          bool
 	seen           bool
@@ -317,8 +319,9 @@ func (k *Kernel) contextWindow() int {
 		return 0
 	}
 	key := k.boundModelKey()
+	info, _ := os.Stat(config.Path(k.Bot.Root))
 	k.tokens.mu.Lock()
-	if k.tokens.windowChecked && k.tokens.windowKey == key {
+	if k.tokens.windowChecked && k.tokens.windowKey == key && sameWindowFile(k.tokens.windowFile, info) {
 		n := k.tokens.window
 		k.tokens.mu.Unlock()
 		return n
@@ -329,8 +332,17 @@ func (k *Kernel) contextWindow() int {
 	k.tokens.window = n
 	k.tokens.windowKey = key
 	k.tokens.windowChecked = true
+	k.tokens.windowFile = info
 	k.tokens.mu.Unlock()
 	return n
+}
+
+// Atomic registry replacement changes file identity even if size/mtime match.
+func sameWindowFile(a, b os.FileInfo) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 func lookupWindow(k *Kernel, key string) int {

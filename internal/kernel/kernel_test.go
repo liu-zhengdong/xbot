@@ -434,6 +434,15 @@ func TestLinesFollowTheModel(t *testing.T) {
 	if tg, c := k.lines(); tg != 200_000 || c != 1_000_000-32_000-100_000 {
 		t.Fatalf("1M window: target %d ceiling %d", tg, c)
 	}
+	bind("deepseek-flash", 1_048_576, 0)
+	if tg, c := k.lines(); tg != 200_000 || c != 911_719 {
+		t.Fatalf("catalog flash: target %d ceiling %d", tg, c)
+	}
+	// Same binding, replaced catalog: a cached window must not remain stale.
+	bind("deepseek-flash", 256_000, 0)
+	if tg, c := k.lines(); tg != 128_640 || c != 214_400 {
+		t.Fatalf("refreshed flash: target %d ceiling %d", tg, c)
+	}
 	bind("small", 128_000, 0)
 	if tg, c := k.lines(); c != 128_000-8_000-12_800 || tg != c*60/100 {
 		t.Fatalf("after binding a 128K model: target %d ceiling %d", tg, c)
@@ -541,4 +550,44 @@ func messagesText(msgs []provider.Message) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func TestLinesMissingCatalogWindow(t *testing.T) {
+	for _, model := range []string{"deepseek-flash", "unknown"} {
+		t.Run(model, func(t *testing.T) {
+			k, _, _ := freshBot(t)
+			// Save models as a hand-edited providers.json with missing context.
+			if err := config.Save(k.Bot.Root, config.File{Providers: []config.Provider{{Name: "fake", Models: []config.ModelSpec{{Name: model}}}}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := k.Bot.InheritBinding(bot.Config{Provider: "fake", Model: model}); err != nil {
+				t.Fatal(err)
+			}
+			if tg, c := k.lines(); tg != 128_640 || c != 214_400 {
+				t.Fatalf("missing window: target %d ceiling %d", tg, c)
+			}
+		})
+	}
+}
+
+func BenchmarkContextWindowCached(b *testing.B) {
+	root := b.TempDir()
+	if err := config.Add(root, config.Provider{Name: "fake", BaseURL: "http://127.0.0.1:9", APIKeyEnv: "FAKE_KEY"}, config.ModelSpec{Name: "deepseek-flash", Context: 1_048_576}); err != nil {
+		b.Fatal(err)
+	}
+	botInstance, err := bot.Create(root, "bench", "", nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := botInstance.InheritBinding(bot.Config{Provider: "fake", Model: "deepseek-flash"}); err != nil {
+		b.Fatal(err)
+	}
+	k := &Kernel{Bot: botInstance}
+	k.contextWindow()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got := k.contextWindow(); got != 1_048_576 {
+			b.Fatal(got)
+		}
+	}
 }
