@@ -473,4 +473,4 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 
 验证：全量 `go test -count=1 ./...`、`go vet ./...` 通过；config/web/kernel/link 相关单遍通过，修改到的 web/kernel/link 整包三遍通过。六条基础旅程 smoke 通过（280.203 秒）；本机 Chrome、脚本隔离构建回归、gofmt、diff 检查通过。绑家提示、气泡、xAI、头像与 tip 的回归均已验证旧代码失败。atlas audit 与基线对照无新增告警，已有告警保留。证据在 `~/.xbot-build/imggen-ux-hotfix/`，浅深色截图在 `~/.xbot-build/ui-shots/imggen-ux-hotfix*/`。
 
-性能：17,280 字节图片语法过滤，Node v24.22.1 预热后 200 次 p95 0.137 ms；fake 页面工具结果到头像更新为虚拟时钟 10 ms，不能当作真实响应 p95。级别：本地分支自动化与 scripted 基础旅程通过，未合 main、未 push、未重启 8788；真实账号生图、运行 tip 一致性、设计师本批截图验收、主人日用、真实模型/IPC p95、FPS 与后台减速未验证。后续边界留在 [开发短记](dev/imggen-ux-hotfix.md)。
+性能：17,280 字节图片语法过滤，Node v24.22.1 预热后 200 次 p95 0.137 ms；fake 页面工具结果到头像更新为虚拟时钟 10 ms，不能当作真实响应 p95。级别：本地分支自动化与 scripted 基础旅程通过，未合 main、未 push、未重启 8788；真实账号生图、运行 tip 一致性、设计师本批截图验收、主人日用、真实模型/IPC p95、FPS 与后台减速未验证。后续边界（工作区可发现、交付话术、关于页 tip 展示等）见候选清单，不另留开发短记。
