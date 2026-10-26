@@ -619,7 +619,7 @@
     $("login-notice").hidden = true;
     login.hidden = true;
     shell.hidden = false;
-    $("account-version").textContent = shortVersion(state.version);
+    $("account-version").textContent = shortVersion(state.version) || "dev";
   }
 
   // A newer version, downloaded in the background: one click installs it and
@@ -6849,7 +6849,29 @@
     $("send").classList.toggle("secondary", !canSend);
   }
 
+  let accountCountRequest = null;
+  async function refreshAccountDeviceCount() {
+    const count = $("account-device-count");
+    count.hidden = true;
+    count.textContent = "";
+    if (legacyLogin) return;
+    const request = new AbortController();
+    accountCountRequest = request;
+    try {
+      // Match the existing account devices destination, not the local pairing table.
+      // An absent account cookie must not sign out a valid local owner session.
+      const res = await fetch("/api/account/devices", { credentials: "same-origin", signal: request.signal });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (accountCountRequest !== request || !Array.isArray(data.devices)) return;
+      count.textContent = String(data.devices.length);
+      count.hidden = false;
+    } catch (e) { /* Unknown counts stay hidden; opening the menu never waits. */ }
+  }
+
   function closeAccount() {
+    if (accountCountRequest) accountCountRequest.abort();
+    accountCountRequest = null;
     $("account-menu").hidden = true;
     $("account").setAttribute("aria-expanded", "false");
   }
@@ -6974,11 +6996,15 @@
   $("rail-new").append(icon("plus"));
   $("rail-new").addEventListener("click", (ev) => { ev.stopPropagation(); toggleNewMenu($("rail-new")); });
   $("logout").prepend(icon("logout"));
+  $("account-devices").prepend(icon("monitor"));
+  $("account-gateway").prepend(icon("person"));
+  $("account-about").prepend(icon("info"));
   $("account").addEventListener("click", () => {
     const open = $("account-menu").hidden;
     closePops();
     $("account-menu").hidden = !open;
     $("account").setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) refreshAccountDeviceCount();
   });
   $("collapse").addEventListener("click", () => {
     closeAccount();

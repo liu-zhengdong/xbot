@@ -117,14 +117,20 @@ try {
           <svg class="icon me-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
         </button>
         <div id="account-menu" class="pop account-menu" hidden>
-          <button id="account-settings" type="button" aria-haspopup="dialog">设置</button>
-          <div class="mgap"></div>
-          <button id="collapse" class="desk-only" type="button">收起列表</button>
-          <button id="account-devices" type="button">我的设备</button>
-          <button id="account-gateway" type="button">账号 / 网关</button>
-          <button id="logout" type="button">退出登录</button>
-          <div class="mgap"></div>
-          <button id="account-about" class="account-about" type="button" aria-haspopup="dialog"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span>关于 XBot</span><span id="account-version" class="menu-count"></span></button>
+          <div class="account-menu-group">
+            <button id="account-settings" type="button" aria-haspopup="dialog">设置</button>
+            <button id="collapse" class="desk-only" type="button">收起列表</button>
+          </div>
+          <div class="account-menu-group">
+            <button id="account-devices" type="button"><span>设备</span><span id="account-device-count" class="menu-count" hidden></span></button>
+            <button id="account-gateway" type="button"><span>账号</span><span class="menu-count">网关</span></button>
+          </div>
+          <div class="account-menu-group">
+            <button id="logout" class="account-danger" type="button">退出登录</button>
+          </div>
+          <div class="account-menu-group">
+            <button id="account-about" class="account-about" type="button" aria-haspopup="dialog"><span>关于 XBot</span><span id="account-version" class="menu-count"></span></button>
+          </div>
         </div>
       </div>
     </div>

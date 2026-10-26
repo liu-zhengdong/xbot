@@ -38,3 +38,12 @@
 ## 验收
 
 相关前端/web 测试绿；encode-report 写清 diff 与对照 shot 的结构点。
+
+台数与既有「设备」点击目的地保持同一口径：读 `/api/account/devices` 的 `devices.length`，包括离线的已绑定设备；成功空列表为 0，未取得列表时隐藏。菜单每次打开刷新，关闭取消请求，迟到结果不覆盖下一次打开；不把本机配对数与账号绑定数相加。
+
+**冒烟用例**：`internal/web/account_menu_browser_test.go` 的 `TestAccountMenuBrowser`（真实 DOM/事件，脚本化 HTTP）；另用隔离 `xbot serve` 注册、绑定真实测试设备后走六个入口，证据在 `~/.xbot-build/account-menu/verification/`。
+
+## 还没做的
+
+- 执行官复审并合入本分支；本次不改其它分支。
+- 设计师复核实现截图、主人日用验收。之后由主管按整包进度提炼 atlas / 守护旅程并收掉本设计；本切片按任务限制只改菜单相关文件与本薄设计。
