@@ -2,6 +2,13 @@
 
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在主人的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
+## 2026-10-26 Bot 自改头像（分支实现，未合入）
+
+- 扩展既有 `propose_profile` 的 `avatar_seed`，复用 ValidAvatarSeed / SetAvatarSeed，仅作用于本 Kernel Bot；与名字、简介、时区同卡，权限仍为 SelfEdit。无上传能力、风格或主题变更。
+- scripted Kernel 覆盖拒绝、允许、非法 seed、非字符串、未知/跨 Bot 字段、同卡组合、上传清除、重载 AvatarState 与重复 seed；仅回退工具实现的 overlay 实际复现旧代码 unknown field、零确认和 schema 缺字段。指定三包、全量 Go 测试、既有头像/资料 API 与 vet 通过；三遍复测结果见交付报告。
+- 首次专项四个 scripted 回合（含一拒绝）为 32.882–36.081 ms，含立即确认与落盘；不是线上回复 p95、IPC 或浏览器帧率。命令、结果与逐项自检在 `~/.xbot-build/bot-self-avatar/encode-report.md`。
+- 级别为分支实现与组件验证；未合 main、未 push、未重启服务，未做真实浏览器/8788 与主人日用验收。保留 dev 设计待验收。
+
 ## 2026-10-26 官方薄入口续作（分支交付，本机 scripted 浏览器通过，未合入）
 
 - 复用同款 static、账号 Bearer、ADR 0024 票/待命/AuthorizeOwner；加五种 `/api/` 方法、双向 Content-Type、正文限额与领票 CORS。serve 保存/恢复主人账号会话并独立报在线，轮换/登出/失效取消旧管道。
