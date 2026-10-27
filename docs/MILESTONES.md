@@ -644,3 +644,5 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 - 单点修复：模型 id 在左、能力句靠右、选中标记贴右缘；本机 Chrome 用 scripted 名单检查 390 / 820 / 1440 像素布局和既有换绑交互，旧布局在新增几何回归中失败。尚未合入或经过主人日用验收。
 - CSS 资源由 17126 增至 17289 字节（+163 字节）；无新增请求、轮询或动画。未测帧率、交互及 IPC p95。
 - `gofmt -l .`、`go vet ./...` 和布局浏览器回归 `-count=3` 通过。全量测试中 E2E `TestSpawnWhileChatKeepsAnswering`、kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir` 失败；Web 全包两次运行均卡在测试服务器关闭，手动中止，故全量及 Web 全包重复检查未通过。
+
+- 2026-10-27：本机可选账号分支实现本机免账号进入、设置账号与设备双态；脚本替身检查及实际验收见 `docs/dev/device-optional-account.md`，未合入 main。

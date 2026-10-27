@@ -7390,6 +7390,7 @@
   function showSettingsHome() {
     const page = $("setpage");
     ++settingsRequest;
+    window.XBotAccount?.unmountSettings();
     window.XBotWebSearch?.unmount();
     window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
@@ -7409,6 +7410,7 @@
   }
   function closeSettings(restore = true) {
     ++settingsRequest;
+    window.XBotAccount?.unmountSettings();
     window.XBotWebSearch?.unmount();
     window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
@@ -7441,6 +7443,7 @@
     }
     for (const pane of page.querySelectorAll("[data-spane]")) pane.hidden = pane.dataset.spane !== section;
     if (section !== "devices") window.xbotDevices?.unmount();
+    window.XBotAccount?.unmountSettings();
     window.XBotWebSearch?.unmount();
     window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
@@ -7452,7 +7455,9 @@
     else if (settingsNarrow.matches && !home) $("settings-back").focus({ preventScroll: true });
     if (home) return;
     try {
-      if (section === "perm") {
+      if (section === "account") {
+        await window.XBotAccount.mountSettings($("settings-account"), () => request === settingsRequest);
+      } else if (section === "perm") {
         $("settings-permissions").disabled = true;
         const data = await api("/api/permissions");
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
@@ -8026,18 +8031,10 @@
     if (name) { try { sessionStorage.setItem("xbot-selected-bot", name); } catch (e) {} }
     await ownerSession(await api("/api/session"));
   }
-  if (legacyLogin) api("/api/session").then(ownerSession).catch(() => showLogin());
-  else window.XBotAccount.boot({
-    owner: (name) => enterOwner(name).catch(() => showLogin()),
-    signedOut: () => {
-      forgetOwner();
-      authenticated = false;
-      booted = false;
-      closeSettings(false);
-      closeModal();
-      closePops();
-      shell.hidden = true;
-    },
+  api("/api/session").then(async data => {
+    if (data.authed) await ownerSession(data);
+    else if (legacyLogin) showLogin();
+    else await window.XBotAccount.boot({owner: name => enterOwner(name).catch(() => showLogin()), signedOut: () => { forgetOwner(); authenticated = false; booted = false; shell.hidden = true; }});
   }).catch(() => showLogin());
   // 把 session 里的入口语境交给设备模块：官网入口（隧道/代理）底栏写账号设备数。
   function syncDevicesSession(data) { if (window.xbotDevices) window.xbotDevices.setSession({ remote: !!data.remote }); }
@@ -8064,6 +8061,6 @@
     showApp();
     await boot();
     startPoll();
-    offerClaimOnce();
+    if (new URLSearchParams(location.search).get("s") === "account") openSettings("account");
   }
 })();

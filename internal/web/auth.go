@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -152,4 +153,22 @@ func allowOrigin(r *http.Request) bool {
 		origin = origin[:i]
 	}
 	return strings.EqualFold(origin, r.Host)
+}
+
+// localBrowser identifies direct requests to the loopback address, excluding
+// proxies and arbitrary Host names (including DNS rebinding).
+func localBrowser(r *http.Request) bool {
+	if forwarded(r) || !allowOrigin(r) {
+		return false
+	}
+	peer, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil || net.ParseIP(peer) == nil || !net.ParseIP(peer).IsLoopback() {
+		return false
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	return strings.EqualFold(host, "localhost") || (net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback())
 }

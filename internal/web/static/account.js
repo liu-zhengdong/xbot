@@ -25,7 +25,7 @@
   const wide = () => window.matchMedia("(min-width:641px)").matches;
   const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
 
-  let root = null, hooks = {}, me = null, pending = null, view = "", pollTimer = 0, polling = false, back = "devices";
+  let root = null, hooks = {}, me = null, pending = null, view = "", pollTimer = 0, polling = false, back = "devices", embedded = false;
 
   async function call(method, path, body) {
     const opt = { method, credentials: "same-origin", headers: {} };
@@ -81,7 +81,7 @@
   function showLogin(opts = {}) {
     view = "login";
     const form = el("form", "ac-auth"); form.noValidate = true;
-    form.append(el("h1", "", "登录"), Object.assign(el("p", "ac-lead"), { textContent: wide() ? LEAD.desk : LEAD.phone }));
+    form.append(el("h1", "", "登录"), Object.assign(el("p", "ac-lead"), { textContent: embedded ? "登录后，可把本机绑到账号，在手机上继续用这边的 Bot。" : (wide() ? LEAD.desk : LEAD.phone) }));
     const [fe, email] = field("acct-login-email", "邮箱", "email", "username", "you@example.com");
     const [fp, pass] = field("acct-login-pass", "密码", "password", "current-password", "密码");
     const err = errLine(), note = el("p", "ac-note");
@@ -89,7 +89,9 @@
     const go = el("button", "ac-btn ac-pri", "登录"); go.type = "submit";
     const alt = el("p", "ac-altlink"), link = el("button", "ac-link", "用邮件里的链接登录");
     link.type = "button"; alt.append(link);
-    form.append(fe, fp, err, go, alt, note, oauth(), foot("没有账号？", "注册", () => showRegister()));
+    form.append(fe, fp, err, go, alt, note);
+    if (!embedded) form.append(oauth());
+    form.append(foot("没有账号？", "注册", () => showRegister()));
     if (opts.email) email.value = opts.email;
     form.onsubmit = async (ev) => {
       ev.preventDefault();
@@ -124,7 +126,9 @@
     const [fp2, pass2] = field("acct-reg-pass2", "确认密码", "password", "new-password", "再输入一次");
     const err = errLine();
     const go = el("button", "ac-btn ac-pri", "创建账号"); go.type = "submit";
-    form.append(fe, fp, fp2, err, go, oauth(), foot("已有账号？", "登录", () => showLogin()));
+    form.append(fe, fp, fp2, err, go);
+    if (!embedded) form.append(oauth());
+    form.append(foot("已有账号？", "登录", () => showLogin()));
     form.onsubmit = async (ev) => {
       ev.preventDefault();
       showErr(err, "");
@@ -198,8 +202,10 @@
   }
 
   function signedIn(account) {
+    if (!view) return;
     pending = null;
     me = { account };
+    if (embedded) { showSettingsAccount(); return; }
     route();
   }
 
@@ -347,7 +353,34 @@
     showLogin();
   }
 
+
+  function showSettingsAccount() {
+    const a = me && me.account;
+    if (!a) { showLogin(); return; }
+    const box = el("div", "ac-settings-profile");
+    const avatar = el("span", "ac-av"); avatar.textContent = (a.email || "?")[0].toUpperCase();
+    const tx = el("div");
+    const email = a.email || "";
+    const parts = email.split("@");
+    const masked = parts.length === 2 ? parts[0].slice(0, 1) + "***@" + parts[1] : email;
+    tx.append(Object.assign(el("b"), {textContent: masked}), Object.assign(el("p", "ac-hint"), {textContent: a.official ? "经官方网关" : "经自建网关"}));
+    box.append(avatar, tx);
+    const out = el("button", "ac-btn ac-sec", "退出登录"); out.type = "button";
+    out.onclick = async () => { const r = await call("POST", "/api/account/logout"); if (r.ok) { me = null; showLogin(); } else { out.textContent = "退出失败，请重试"; } };
+    const wrap = el("div", "ac-settings-wrap"); wrap.append(box, out); mount(wrap);
+  }
+  async function mountSettings(host, isCurrent) {
+    embedded = true; root = host;
+    const r = await call("GET", "/api/account/me");
+    if (!isCurrent()) return;
+    if (!r.ok) { const p = el("p", "ac-err"); p.textContent = say(r.data, "账号信息暂时不可用，请稍后重试"); host.replaceChildren(p); return; }
+    me = r.data;
+    showSettingsAccount();
+  }
+  function unmountSettings() { if (embedded) { stopPoll(); view = ""; embedded = false; root = document.getElementById("acct"); } }
+
   async function boot(h) {
+    embedded = false;
     root = document.getElementById("acct");
     hooks = h || {};
     const r = await call("GET", "/api/account/me");
@@ -368,5 +401,5 @@
     else showDevices();
   }
 
-  window.XBotAccount = { boot, show, signOut, active: () => !!root && !root.hidden, state: () => (me && me.account) || null };
+  window.XBotAccount = { boot, show, signOut, mountSettings, unmountSettings, active: () => !!root && !root.hidden, state: () => (me && me.account) || null };
 })();

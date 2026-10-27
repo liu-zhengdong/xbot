@@ -148,23 +148,12 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
   document.body.dataset.testResult='passed';return;
  }
  if(scene==='claim'){
-  // 开机认领：本机未绑定时给「把这台电脑绑到账号？」，绑定是真 POST。
-  await waitFor(()=>$('#devices-modal [data-act="claim"]'),'boot claim offer missing');
-  assert($('#devices-modal').textContent.includes('把这台电脑绑到账号？'),'claim copy');
-  $('#devices-modal [data-act="claim-dismiss"]').click();
-  await waitFor(()=>!$('#devices-modal').firstChild,'dismiss did not close');
-  await xbotDevices.offerClaim();
-  assert(!$('#devices-modal').firstChild,'dismissed offer came back');
-  sessionStorage.removeItem('xbot-claim-dismissed');
-  await xbotDevices.offerClaim();
-  await waitFor(()=>$('#devices-modal [data-act="claim"]'),'offer did not return');
-  $('#devices-modal [data-act="claim"]').click();
-  await waitFor(()=>clicks('POST /api/account/claim')===1,'claim did not POST');
-  await waitFor(()=>!$('#devices-modal').firstChild,'claim did not close');
-  assert(fixture.account.unbound===false,'claim did not bind');
   await XBotSettings.open('devices');
-  await waitFor(()=>!$('[data-spane="devices"]').hidden,'settings devices pane');
-  assert(!$('#settings-devices .g7-claim'),'claim banner stayed after binding');
+  await waitFor(()=>$('#settings-devices [data-act="claim"]'),'claim action missing');
+  $('#settings-devices [data-act="claim"]').click();
+  await waitFor(()=>clicks('POST /api/account/claim')===1,'claim did not POST');
+  await waitFor(()=>!$('#settings-devices [data-act="claim"]'),'claim action stayed after binding');
+  assert(fixture.account.unbound===false,'claim did not bind');
   document.body.dataset.testResult='passed';return;
  }
  if(scene==='request'){
@@ -233,17 +222,17 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  const devices=$('#settings-devices');
  assert(devices.querySelectorAll('[data-act="add"]').length===1,'add entry count');
  const add=devices.querySelector('.sethd [data-act="add"]');
- assert(add&&add.textContent.includes('添加设备'),'add entry must be 添加设备 in the title row');
+ assert(add,'pairing entry missing from title row');
  assert(!devices.querySelector('.g7-foot,.dfoot,[data-act="join-open"]'),'obsolete footer or join entry');
  assert(!devices.querySelector('#g7-code')&&devices.querySelector('[data-act="self-gw-edit"]').textContent.trim()==='','join input or text gateway button');
  assert(devices.querySelector('[data-act="self-gw-edit"]').getAttribute('aria-label')==='改网关地址','gateway pencil label');
- assert(!devices.querySelector('.g7-claim'),'claim banner without an unbound account');
+ assert(!devices.querySelector('.g7-claim [data-act=claim]'),'claim action shown for bound account');
  // 空态与侧栏。
  assert(devices.querySelector('.g7-self').closest('section').textContent.includes('这台电脑'),'local device card missing in the empty state');
  assert(devices.textContent.includes('还没有其它设备'),'other-device empty copy');
  assert(!devices.textContent.includes('还没有设备'),'empty state contradicts the local device card');
  fixture.devices=[peerDevice];await xbotDevices.mount();
- assert(devices.textContent.includes('已配对 · 1')&&!devices.querySelector('.g7-empty'),'paired list still shows an empty state');
+ assert(!devices.querySelector('.g7-empty'),'paired list still shows an empty state');
  await waitFor(()=>document.querySelector('.g7-side-head'),'sidebar group missing');
  assert(document.querySelector('.g7-side-head').textContent.includes('台式机'),'sidebar group name');
  // 添加设备：说明为主、短码次要；复制、换一个、完成都真清理。

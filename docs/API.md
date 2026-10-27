@@ -23,7 +23,7 @@
 
 `POST /api/login`，body `{"token":"..."}`。成功 200 `{"owner":"<id>"}` 并设置 cookie。token 不对是 401。
 
-`POST /api/logout` 清 cookie，200 `{"status":"ok"}`。以上是旧的登录码路径，保留作调试；产品里进门走下面的账号。
+`POST /api/logout` 清 cookie，200 `{"status":"ok"}`。以上是旧的登录码路径，保留作调试；本机直接进入，公网入口走账号。
 
 ## 账号
 
@@ -37,12 +37,12 @@
 - `POST /api/account/poll` `{challenge}`：没完成 `{"state":"pending"}`，过期或已领过 `{"state":"expired"}`；邮件链接确认后第一次轮询回「进门回包」。
 - 进门回包：200 `{"state":"done","account":{email,owner,hosted,gateway,official,gateway_ok,app}}`，并设 `xbot_account`；`owner` 为真时同时设 `xbot_session`。
 - `GET /api/account/me`：`{"account":null|{…同上},"app":<bool>}`。账号是主人时顺手续上 `xbot_session`。
-- `POST /api/account/logout`：退出账号，同时清掉 `xbot_account` 和 `xbot_session`。
+- `POST /api/account/logout`：退出账号并清掉 `xbot_account`；本机直连保留 `xbot_session`，远端同时清掉主人会话。
 - `GET /api/account/devices`：`{"devices":[{id,name,online,self,bots:[{name,hint,unread,avatar_url,avatar_bg,avatar_ink,initial}]}]}`；没有账号会话 401。
 
 账号服务本身（`xbot account-api`，或 serve 里的替身）在 `/account/v1/`：`register`、`login`、`magic`、`resend`、`code`、`poll`（POST，JSON），`me`、`devices`（GET，`Authorization: Bearer <会话>`），`logout`、`devices`（POST，Bearer），`health`（GET），以及邮件链接页 `link?t=…`（GET 只显示「确认」按钮，POST 才用掉链接，邮件扫描器预取不会把它用掉）。
 
-`GET /api/session` 已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
+`GET /api/session` 对无转发头的本机回环连接、回环 Host 且同源的请求签发本机主人会话；远端仍须已有主人会话。已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 

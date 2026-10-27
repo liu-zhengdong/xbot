@@ -182,11 +182,11 @@ func TestAccountSignUpOpensTheOwnerInterface(t *testing.T) {
 	if d["self"] != true || d["online"] != true || len(d["bots"].([]any)) != 2 {
 		t.Fatalf("self device %v", d)
 	}
-	// Signing out ends both the account and the owner session.
+	// Signing out of the account preserves the local owner session.
 	if code, _ := e.do(c, "POST", "/api/account/logout", nil, nil); code != 200 {
 		t.Fatal("logout")
 	}
-	if code, _ := e.do(c, "GET", "/api/bots", nil, nil); code != http.StatusUnauthorized {
+	if code, _ := e.do(c, "GET", "/api/bots", nil, nil); code != http.StatusOK {
 		t.Fatalf("bots after logout %d", code)
 	}
 	if _, me := e.do(c, "GET", "/api/account/me", nil, nil); me["account"] != nil {

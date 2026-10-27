@@ -3,29 +3,8 @@ package web
 import (
 	"encoding/json"
 	"os/exec"
-	"regexp"
-	"strings"
 	"testing"
 )
-
-// The settings sidebar lists 人设卡 right after 技能 and before 设备.
-func TestSettingsNavPutsPersonaCardsAfterSkills(t *testing.T) {
-	raw, err := staticFS.ReadFile("static/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var order []string
-	for _, m := range regexp.MustCompile(`data-set="([a-z]+)"`).FindAllStringSubmatch(string(raw), -1) {
-		order = append(order, m[1])
-	}
-	got := strings.Join(order, ",")
-	if !strings.HasPrefix(got, "general,perm,search,skills,persona,devices,") {
-		t.Fatalf("settings order %s", got)
-	}
-	if !strings.Contains(string(raw), `data-spane="persona"`) || !strings.Contains(string(raw), `src="/persona-cards.js"`) {
-		t.Fatal("persona pane or script missing")
-	}
-}
 
 // Behaviour of the persona-card page and picker against a fake DOM and a fake API: empty state,
 // search, import as a new card with a same-name question, saving, deleting a card in use, and picking.

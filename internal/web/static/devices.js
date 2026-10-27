@@ -35,7 +35,7 @@
       headers: body === undefined ? {} : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (res.status === 401) { sessionExpired(); }
+    if (res.status === 401 && !path.startsWith("/api/account/")) { sessionExpired(); }
     authed = true;
     if (res.status === 204) return null;
     let data = null;
@@ -129,9 +129,8 @@
     }
     me.hidden = !me.textContent;
   }
-  // 账号状态只取一次（设置打开或认领弹窗要用 unbound）；401 之外的错都当没登录。
+  // 每次打开设备页刷新账号状态。
   async function loadAcct() {
-    if (S.acct !== null) return S.acct;
     try { const out = await api("GET", "/api/account/me"); S.acct = (out && out.account) || null; } catch (e) { S.acct = null; }
     return S.acct;
   }
@@ -320,26 +319,26 @@
       <div class="g7-device g7-self"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
         <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div></section>`;
-    // 本机还没绑到登录着的账号：先给认领（主路径，shot 04b）。
-    const claim = S.acct && S.acct.unbound ? `<div class="g7-claim"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
-      <div class="g7-claim-main"><b>把这台电脑绑到账号？</b><small>绑定后，手机和其它入口也能看到这台电脑上的 Bot。</small>
+    // 已登录时展示账号关联说明，未绑定时提供认领。
+    const claim = S.acct ? `<div class="g7-claim"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+      <div class="g7-claim-main"><b>通过账号关联设备</b><small>把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。</small>
       ${S.claimErr ? `<p class="error g7-inline-err">${esc(S.claimErr)}</p>` : ""}</div>
-      <button class="primary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></div>` : "";
+      ${S.acct.unbound ? `<button class="secondary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button>` : ""}</div>` : "";
     const banner = gw && !up ? `<div class="g7-banner"><span class="g7-banner-ico">${svg("cloudOff", 18)}</span>
         <span>${sp("连不上网关" + host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
     let list;
     if (!devs.length) {
-      list = `<section class="profile-section"><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有其它设备</h3>
-          <p>点「添加设备」，在另一台电脑上输入短码配对。配对后它的 Bot 会出现在左侧，那台电脑保持在线就能聊。</p></div>
+      list = `<section class="profile-section"><h3>已匹配设备</h3><div class="g7-empty"><svg class="doodle" width="220" height="110" viewBox="0 0 220 110" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#doodle-devices"/></svg><h3>还没有其它设备</h3>
+          <p>点「配对设备」，在另一台电脑上输入短码配对。配对后它的 Bot 会出现在左侧，那台电脑保持在线就能聊。</p></div>
         </section>`;
     } else {
-      list = `<section class="profile-section"><h3>已配对 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
+      list = `<section class="profile-section"><h3>已匹配设备 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
           <p class="g7-fine">${sp("这里列的是配对过的电脑。「在线」表示最近能连上该设备上的 XBot。官网入口不是设备，不会出现在此列表。")}</p></section>`;
     }
-    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>添加设备</span></button></div>
-      <div class="g7-lead">${sp("配对后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${claim}${banner}
-      <div class="g7-body">${selfCard}${list}
+    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
+      <div class="g7-lead">${sp("配对后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${banner}
+      <div class="g7-body">${selfCard}${claim}${list}
         <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>`;
   }
   // 认领确认（shot 04b）：POST /api/account/claim 是真绑定（bindIfFree + 上报账号）。

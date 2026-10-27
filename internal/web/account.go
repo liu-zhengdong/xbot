@@ -481,7 +481,9 @@ func (s *Server) accountLogout(w http.ResponseWriter, r *http.Request) {
 		s.forgetPipeSession(session)
 	}
 	clearAccountCookie(w)
-	s.clearCookie(w)
+	if !localBrowser(r) {
+		s.clearCookie(w)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

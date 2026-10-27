@@ -357,7 +357,9 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
-	if !s.authenticated(r) {
+	if !s.authenticated(r) && localBrowser(r) && s.loginToken() != "" {
+		s.setCookie(w, s.loginToken())
+	} else if !s.authenticated(r) {
 		writeJSON(w, http.StatusOK, map[string]bool{"authed": false})
 		return
 	}
