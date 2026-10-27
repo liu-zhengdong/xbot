@@ -4980,7 +4980,7 @@
       const row = el("details", "inbox-row");
       const head = el("summary", "inbox-row-head");
       const date = new Date(item.time);
-      const source = item.sender_kind === "bot" || item.source.startsWith("bot:") ? "其他 Bot" : (names[item.source] || "其他");
+      const source = item.sender_kind === "bot" || item.source.startsWith("bot:") ? "其他 Bot" : (names[item.source] || (item.source.startsWith("webhook:") ? "Webhook" : item.source.startsWith("watch:") ? "文件监听" : "其他"));
       head.append(el("time", "inbox-time", isNaN(date) ? "" : date.toLocaleString()), el("span", "inbox-source", source), el("span", "inbox-preview", item.summary.replace(/\s+/g, " ")));
       row.append(head, el("p", "inbox-content", item.summary));
       view.append(row);

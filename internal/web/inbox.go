@@ -26,6 +26,9 @@ type inboxItem struct {
 
 var inboxFence = regexp.MustCompile(`(?i)</?untrusted_event\b[^>]*>`)
 
+var inboxDelivery = regexp.MustCompile(`<delivery\b[^>]*>`)
+var inboxWatch = regexp.MustCompile(`^<watch\b[^>]*>`)
+
 func (s *Server) listInbox(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
@@ -83,6 +86,18 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request) {
 			pending++
 		}
 		summary := strings.TrimSpace(inboxFence.ReplaceAllString(ev.Content, ""))
+		if strings.HasPrefix(ev.Source, "webhook:") || ev.Source == "webhook" {
+			if loc := inboxDelivery.FindStringIndex(summary); loc != nil {
+				summary = summary[loc[1]:]
+				if end := strings.Index(summary, "</delivery>"); end >= 0 {
+					summary = summary[:end]
+				}
+				summary = strings.TrimSpace(summary)
+			}
+		} else if strings.HasPrefix(ev.Source, "watch:") || ev.Source == "watch" {
+			summary = strings.TrimSpace(inboxWatch.ReplaceAllString(summary, ""))
+			summary = strings.TrimSpace(strings.TrimSuffix(summary, "</watch>"))
+		}
 		chars := []rune(summary)
 		if len(chars) > 1000 {
 			summary = string(chars[:1000]) + "…"

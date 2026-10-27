@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,9 +27,10 @@ func TestInboxList(t *testing.T) {
 	}
 	now := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
 	old := link.NewEvent("timer", "timer", link.Wrap(link.NewEvent("timer", "timer", "old body", "timer", now)), "timer", now)
-	recent := link.NewEvent("webhook", "message", "new body", "hook", now.Add(time.Minute))
+	recent := link.NewEvent("webhook:foo", "message", "<webhook name=\"foo\" count=\"1\" dropped=\"0\">\ndelivery: 123\ntype: push\n<delivery id=\"123\">\nhello webhook\n</delivery>\n</webhook>\n", "hook", now.Add(time.Minute))
+	watch := link.NewEvent("watch:abc", "changed", "<watch id=\"abc\" kind=\"changed\" count=\"1\">\npath: /tmp/file\nkind: changed\n</watch>\n", "watch:abc", now.Add(-time.Minute))
 	owner := link.WebEvent("u1", "private chat", now.Add(2*time.Minute))
-	for _, ev := range []link.Event{old, recent, owner} {
+	for _, ev := range []link.Event{old, recent, watch, owner} {
 		if err := box.Post(ev); err != nil {
 			t.Fatal(err)
 		}
@@ -70,15 +72,21 @@ func TestInboxList(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Pending != 1 || len(got.Items) != 2 || got.Items[0].ID != recent.ID || got.Items[1].ID != old.ID || got.Items[1].Status != "acked" || got.Items[1].Summary != "old body" {
+	if got.Pending != 2 || len(got.Items) != 3 || got.Items[0].ID != recent.ID || got.Items[1].ID != old.ID || got.Items[1].Status != "acked" || got.Items[1].Summary != "old body" {
 		t.Fatalf("unexpected: %+v", got)
+	}
+	if got.Items[0].Source != "webhook:foo" || strings.Contains(got.Items[0].Summary, "<webhook") || !strings.Contains(got.Items[0].Summary, "hello webhook") {
+		t.Fatalf("webhook summary: %+v", got.Items[0])
+	}
+	if got.Items[2].Summary != "path: /tmp/file\nkind: changed" {
+		t.Fatalf("watch summary: %+v", got.Items[2])
 	}
 	res = get("/api/bots/ada/inbox?limit=1", true)
 	defer res.Body.Close()
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Items) != 1 || got.Pending != 1 {
+	if len(got.Items) != 1 || got.Pending != 2 {
 		t.Fatalf("limited: %+v", got)
 	}
 }

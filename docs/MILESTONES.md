@@ -7,6 +7,12 @@
 
 - 复审回修：恢复送达消息记账，`result.text` 与 `done.text` 带正文，忙态仍只显示 description；删除无调用的 progress 和闲置参数。新 result 断言在旧 tip 失败，修复后 `TestReplyToRoundTrip`、忙态与活泡浏览器回归各连续三次通过，kernel 定向测试三次通过；gofmt、全仓 vet 通过，atlas audit 有既有告警。全仓单次失败：e2e `TestSpawnWhileChatKeepsAnswering` 超时、kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir`，web `TestWebApprovalAllowAndDeny` 在 240 秒包超时；kernel/web 全包三次同样分别因长轮失败和审批超时未通过（长轮复审已在基线复现）。未测交互 p95、帧率和主人日用；未合 main、未 push。
 
+## 2026-10-27 收件箱来源和摘要修复（功能分支）
+
+- Webhook、文件监听按真实来源前缀显示；摘要提取首个 Webhook delivery 正文、去掉 watch 外壳。真实格式接口及 Chrome 脚本回归在旧代码失败、修复后专项连续三次通过。
+- gofmt、vet 通过；atlas audit 退出 0，存在既有告警。全仓测试失败于 e2e 等待、kernel 长轮折叠、work shell 描述及 web 审批 180 秒超时；web 全包三次在同一审批测试超时，未完成三次，与复审记录现象一致，未重新核验基线。未测真实入口端到端、用户日用、交互 p95 或帧率；新增请求、轮询和动画均为 0。未合 main、未 push。
+
+
 ## 2026-10-27 技能删除确认计数（功能分支）
 
 - 删除确认的 N 统计本数据根所有 Bot，开关列表仍限当前用户可管理的 Bot；对齐设计的文案和危险按钮已存在。回归先在旧代码失败，定向 API、界面与 Chrome 脚本三次通过；gofmt、vet 通过，atlas audit 有既有告警。

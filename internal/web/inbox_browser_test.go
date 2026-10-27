@@ -19,9 +19,9 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
  assert(tabs.map(x=>x.textContent).join('·')==='详情·记忆·任务·轨迹·上下文·收件箱','tab order');
  tabs[5].click(); await waitFor(()=>$('.inbox-empty-title'),'empty');
  assert($('#panel').textContent.includes('Webhook、定时、其他 Bot 等叫醒时会出现在这里'),'empty hint');
- inboxItems=[{id:'1',source:'timer',time:'2026-10-27T12:00:00Z',summary:'第一行\n第二行',status:'pending'}];
+ inboxItems=[{id:'1',source:'webhook:foo',time:'2026-10-27T12:00:00Z',summary:'第一行\n第二行',status:'pending'},{id:'2',source:'watch:abc',time:'2026-10-27T12:00:00Z',summary:'path: /tmp/file',status:'pending'},{id:'3',source:'timer',time:'2026-10-27T12:00:00Z',summary:'定时任务',status:'pending'},{id:'4',source:'bot:ada',time:'2026-10-27T12:00:00Z',summary:'消息',status:'pending'}];
  tabs[5].click(); await waitFor(()=>$('.inbox-row'),'list');
- assert($('.inbox-row-head').textContent.includes('定时'),'source');
+ assert([...document.querySelectorAll('.inbox-source')].map(x=>x.textContent).join('|')==='Webhook|文件监听|定时|其他 Bot','sources');
  $('.inbox-row-head').click(); assert($('.inbox-row').open&&$('.inbox-content').textContent.includes('第二行'),'expand');
  $('#panel-tabs').style.width='240px'; assert($('#panel-tabs').scrollWidth>$('#panel-tabs').clientWidth,'tabs should scroll');
  $('#panel [role=tab][aria-selected=true]').click(); await waitFor(()=>$('#panel-tabs').scrollLeft>0,'selected tab not visible');
