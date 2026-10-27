@@ -2219,18 +2219,8 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .me-device { font-size: 12px; line-height: 1.35; color: var(--faint); }
 .me-chev { width: 16px; height: 16px; flex: none; color: var(--faint); }
 .account-menu { width: 220px; min-width: 220px; right: auto; left: 8px; }
-.account-menu-group:not(:has(> button:not([hidden]))) { display: none; }
-/* The approved account menu uses hairlines between its four action groups. */
-.account-menu-group:has(> button:not([hidden])) ~ .account-menu-group:has(> button:not([hidden]))::before {
-  content: ""; display: block; height: calc(var(--x-s1) / 4);
-  margin: var(--x-s2) var(--x-s3); background: var(--x-fill-2);
-}
 .account-menu button { display: flex; align-items: center; justify-content: flex-start; gap: var(--x-s4); font-size: var(--x-fs-ui); min-height: calc(var(--x-s8) + var(--x-s4)); }
 .account-menu button .icon { width: var(--x-s6); height: var(--x-s6); flex: none; color: var(--x-muted); }
-.account-menu .menu-count { margin-left: auto; font-size: var(--x-fs-sm); color: var(--x-faint); }
-.account-menu .account-danger, .account-menu .account-danger .icon { color: var(--x-danger); }
-.account-menu .account-about { color: var(--x-muted); }
-.account-menu .account-about .icon { color: var(--x-faint); }
 
 /* Sidebar width: 260px, 240px from 768 to 1100 wide (the list no longer folds
    at 1024). Pinned bots show their name under the face. */

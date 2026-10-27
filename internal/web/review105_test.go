@@ -55,7 +55,6 @@ func TestDesktopAppKeepsItsSession(t *testing.T) {
 	}
 	js := string(data)
 	for _, want := range []string{
-		`$("logout").hidden = legacyLogin && !!data.app;`,
 		// The other #105 web items ride along in the same file.
 		`if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) return;`,
 		`"xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id`,

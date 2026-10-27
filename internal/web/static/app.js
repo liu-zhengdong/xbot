@@ -622,7 +622,6 @@
     $("login-notice").hidden = true;
     login.hidden = true;
     shell.hidden = false;
-    $("account-version").textContent = shortVersion(state.version) || "dev";
   }
 
   // A newer version, downloaded in the background: one click installs it and
@@ -7179,29 +7178,7 @@
     $("send").classList.toggle("secondary", !canSend);
   }
 
-  let accountCountRequest = null;
-  async function refreshAccountDeviceCount() {
-    const count = $("account-device-count");
-    count.hidden = true;
-    count.textContent = "";
-    if (legacyLogin) return;
-    const request = new AbortController();
-    accountCountRequest = request;
-    try {
-      // Match the existing account devices destination, not the local pairing table.
-      // An absent account cookie must not sign out a valid local owner session.
-      const res = await fetch("/api/account/devices", { credentials: "same-origin", signal: request.signal });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (accountCountRequest !== request || !Array.isArray(data.devices)) return;
-      count.textContent = String(data.devices.length);
-      count.hidden = false;
-    } catch (e) { /* Unknown counts stay hidden; opening the menu never waits. */ }
-  }
-
   function closeAccount() {
-    if (accountCountRequest) accountCountRequest.abort();
-    accountCountRequest = null;
     $("account-menu").hidden = true;
     $("account").setAttribute("aria-expanded", "false");
   }
@@ -7252,7 +7229,6 @@
       state.tip = session.tip || "";
       state.app = !!session.app;
       syncDevicesSession(session);
-      $("logout").hidden = state.app;
       renderMe();
       showApp();
       await boot();
@@ -7270,17 +7246,6 @@
     state.listSig = "";
     try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
   }
-  $("logout").addEventListener("click", async () => {
-    closeAccount();
-    if (!legacyLogin) { await window.XBotAccount.signOut(); return; }
-    try { await api("/api/logout", { method: "POST" }); } catch (e) {}
-    forgetOwner();
-    showLogin();
-  });
-  $("account-devices").addEventListener("click", () => { closeAccount(); window.XBotAccount.show("devices"); });
-  $("account-gateway").addEventListener("click", () => { closeAccount(); window.XBotAccount.show("gateway", { from: "app" }); });
-  $("account-devices").hidden = $("account-gateway").hidden = legacyLogin;
-
   const SIDE = { min: 240, max: 360, def: 280, snap: 200, rail: 72 };
   function readSide() {
     try {
@@ -7294,7 +7259,6 @@
     sidebar.classList.toggle("rail", rail);
     document.documentElement.classList.toggle("has-rail", rail);
     sidebar.style.setProperty("--side-w", (rail ? SIDE.rail : side.w) + "px");
-    $("collapse").replaceChildren(icon("sidebar"), document.createTextNode(rail ? "展开列表" : "收起列表"));
   }
   function saveSide() { localStorage.setItem("xbot.side", JSON.stringify(side)); }
   const sideGrip = $("side-grip");
@@ -7326,25 +7290,12 @@
   sideGrip.addEventListener("dblclick", () => { side = { w: SIDE.def, rail: false }; syncSidebar(); saveSide(); });
   $("rail-new").append(icon("plus"));
   $("rail-new").addEventListener("click", (ev) => { ev.stopPropagation(); toggleNewMenu($("rail-new")); });
-  $("logout").prepend(icon("logout"));
-  $("account-devices").prepend(icon("monitor"));
-  $("account-gateway").prepend(icon("person"));
-  $("account-about").prepend(icon("info"));
   $("account").addEventListener("click", () => {
     const open = $("account-menu").hidden;
     closePops();
     $("account-menu").hidden = !open;
     $("account").setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) refreshAccountDeviceCount();
   });
-  $("collapse").addEventListener("click", () => {
-    closeAccount();
-    if (window.innerWidth < 768) { closeDrawer(); return; }
-    side.rail = !side.rail;
-    saveSide();
-    syncSidebar();
-  });
-
   function rememberPanel(open) {
     state.panelTouched = true;
     try { localStorage.setItem("xbot-panel-open", String(open)); } catch (e) {}
@@ -7547,7 +7498,6 @@
   $("settings-theme").addEventListener("change", (ev) => applyTheme(ev.target.value));
   $("account-settings").prepend(icon("settings"));
   $("account-settings").addEventListener("click", () => openSettings("general", { home: settingsNarrow.matches }));
-  $("account-about").addEventListener("click", () => openSettings("about"));
   $("settings-close").addEventListener("click", () => closeSettings());
   $("settings-close-m").addEventListener("click", () => closeSettings());
   $("settings-back").addEventListener("click", () => { if (settingsLevel) settingsLevel.back(); else showSettingsHome(); });
@@ -8109,8 +8059,6 @@
     state.tip = (data && data.tip) || "";
     state.app = !!data.app;
     syncDevicesSession(data);
-    // The old desktop code path has no login page to come back to; accounts can always sign out.
-    $("logout").hidden = legacyLogin && !!data.app;
     if (data.needs_key) await showSetup(data.key_host || "");
     renderMe();
     showApp();

@@ -278,7 +278,7 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  escape();context('另一个Bot');item('置顶').click();
  await waitFor(()=>fixture.calls.some(([p,o])=>p.includes(encodeURIComponent('另一个Bot'))&&p.endsWith('/pin')&&o.method==='POST'),'pin hit wrong Bot');
  if(innerWidth>=768){
-  $('#collapse').click();
+  const grip=$('#side-grip');grip.setPointerCapture=()=>{};grip.dispatchEvent(new PointerEvent('pointerdown',{pointerId:1,button:0,bubbles:true}));grip.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,clientX:100,bubbles:true}));grip.dispatchEvent(new PointerEvent('pointerup',{pointerId:1,bubbles:true}));
   assert(near(rect($('#sidebar')).width,72),'rail width changed');
   for(const head of document.querySelectorAll('.folder-head,.group-label,.g7-side-head')){
    const style=getComputedStyle(head);
