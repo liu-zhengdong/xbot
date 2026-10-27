@@ -191,8 +191,14 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(!sub.includes(' / ')&&sub.endsWith('当前 fake · scripted'),'picker subtitle is slash soup');
  assert(heads.includes('xAI · Completions')&&!heads.some(h=>h.includes('xai-key')),'group header uses a raw id');
  assert([...dlg.querySelectorAll('.binding-empty')].some(n=>n.textContent==='配好密钥后再选模型'),'keyless vendor pretends to have no models');
- const option=text=>[...dlg.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text)),cap=text=>option(text).querySelector('.binding-cap').textContent;
- assert(!dlg.querySelector('.provider-badge')&&cap('scripted')==='不看图 · 本机搜索 · 128K'&&cap('fresh-new')==='不看图 · 本机搜索 · 64K'&&cap('deep-pro')==='可看图 · 厂商搜索 · 500K','row is not one quiet capability line');
+ const option=text=>[...dlg.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text)),cap=text=>option(text).querySelector('.binding-cap');
+ for(const [model,vision,search,context] of [['scripted','不看图','本机搜索','128K'],['fresh-new','不看图','本机搜索','64K'],['deep-pro','可看图','厂商搜索','500K']]){
+  const c=cap(model), icons=[...c.querySelectorAll('[role=img]')];
+  assert(c.textContent===context&&icons.length===2&&icons[0].getAttribute('aria-label')===vision&&icons[1].getAttribute('aria-label')===search,'capability icons or labels wrong');
+  assert(icons.every(n=>n.title===n.getAttribute('aria-label')&&n.querySelector('svg[fill=none]'))&&c.lastElementChild.title.includes('上下文窗口'),'capability title or outline missing');
+ }
+ assert(!dlg.querySelector('.provider-badge')&&getComputedStyle(cap('scripted').firstChild).opacity<getComputedStyle(cap('deep-pro').firstChild).opacity,'unsupported vision is not dimmed');
+ assert(cap('scripted').children[1].innerHTML===cap('deep-pro').children[1].innerHTML,'search routes use different icons');
  // 2b: the clickable row spans the group, with the capability beside the id
  // and close to the right-edge check, at both phone and desktop widths.
  for(const row of dlg.querySelectorAll('.binding-option')){

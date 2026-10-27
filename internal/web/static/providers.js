@@ -67,7 +67,7 @@
   function lineIcon(kind) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round"); svg.setAttribute("aria-hidden", "true");
-    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" };
+    const paths = { back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", image: "M4 4h16v16H4zM4 16l5-5 4 4 2-2 5 5M15 8h.01", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" };
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
   }
   async function settings({ api, host, isCurrent = () => true, initialProvider = "" }) {
@@ -452,7 +452,7 @@
   }
   let activeDialog = null;
   // The picker says "which model does this Bot use": groups carry the vendor's
-  // display name, rows a model id alongside one quiet capability line. A row click
+  // display name, rows a model id alongside quiet capability icons. A row click
   // only stages a choice; 使用此模型 commits it.
   async function open({ api, data, onBound, manage, opener }) {
     if (activeDialog) return;
@@ -534,7 +534,15 @@
       const group = node("div", "binding-group");group.setAttribute("role","radiogroup");group.setAttribute("aria-label",section._title);section.replaceChildren(heading, group);
       for (const m of list) {
         const o = {p, m}, b = button("", "binding-option", () => stage(o));b._o = o;b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
-        b.append(node("strong", "", m.model), node("span", "binding-cap", m.available ? [m.vision ? "可看图" : "不看图", m.hosted_web_search ? "厂商搜索" : "本机搜索", m.context ? ctxShort(m.context) : ""].filter(Boolean).join(" · ") : "暂时用不了"));
+        const caps = node("span", "binding-cap");
+        if (m.available) {
+          for (const [kind, label, dim] of [["image", m.vision ? "可看图" : "不看图", !m.vision], ["search", m.hosted_web_search ? "厂商搜索" : "本机搜索", false]]) {
+            const icon = node("span", "binding-cap-icon" + (dim ? " dim" : ""));
+            icon.title = label;icon.setAttribute("role", "img");icon.setAttribute("aria-label", label);icon.append(lineIcon(kind));caps.append(icon);
+          }
+          if (m.context) { const context = node("span", "", ctxShort(m.context));context.title = `上下文窗口 ${m.context.toLocaleString()}`;context.setAttribute("aria-label", context.title);caps.append(context); }
+        } else caps.textContent = "暂时用不了";
+        b.append(node("strong", "", m.model), caps);
         b.disabled = !m.available;options.push(b);section._rows.push(b);group.append(b);
         if (p.name === (data.provider || "") && m.model === data.model) { current = o; if (!pending) stage(o); }
       }
