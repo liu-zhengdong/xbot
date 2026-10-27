@@ -242,6 +242,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("PATCH /api/bots/{name}/routines/{id}", s.patchRoutine)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
+	mux.HandleFunc("GET /api/bots/{name}/inbox", s.listInbox)
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
 	mux.HandleFunc("GET /api/apps", s.listApps)
 	mux.HandleFunc("POST /api/apps", s.installApp)

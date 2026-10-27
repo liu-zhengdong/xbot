@@ -1398,7 +1398,17 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 .phdr .model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phdr .acts { flex: none; display: flex; align-items: center; gap: 2px; margin-left: auto; }
 
-.panel-tabs { padding: 0; }
+.panel-tabs { padding: 0; overflow-x: auto; scrollbar-width: none; }
+.panel-tabs::-webkit-scrollbar { display: none; }
+.panel-tabs .tabs { width: max-content; min-width: 100%; }
+.inbox-count { color: var(--muted); font-size: 12px; }
+.inbox-empty-title { margin: 28px 0 6px; }
+.inbox-row { padding: 10px 8px; border-radius: 8px; }
+.inbox-row:nth-of-type(even) { background: var(--x-fill-2); }
+.inbox-row-head { display: flex; gap: 8px; align-items: baseline; cursor: pointer; list-style: none; min-width: 0; }
+.inbox-time, .inbox-source { flex: none; color: var(--muted); font-size: 12px; }
+.inbox-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.inbox-content { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: 13px; }
 
 .panel-body { overflow: auto; padding: 0 0 24px; flex: 1; min-height: 0; }
 

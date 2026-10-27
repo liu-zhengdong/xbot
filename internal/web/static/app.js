@@ -62,6 +62,7 @@
     listSig: "",
     tab: "details",
     panelData: null,
+    inboxData: null,
     panelTouched: false,
     editOpen: false,
     messages: [],
@@ -4310,6 +4311,7 @@
     state.firstRender = true;
     state.messages = [];
     state.panelData = null;
+    state.inboxData = null;
     state.traceOpen = {};
     state.traceOut = {};
     state.traceThink = {};
@@ -4460,19 +4462,22 @@
     return row;
   }
 
-  const TABS = [["details", "详情"], ["library", "记忆"], ["computer", "任务"], ["trace", "轨迹"], ["context", "上下文"]];
+  const TABS = [["details", "详情"], ["library", "记忆"], ["computer", "任务"], ["trace", "轨迹"], ["context", "上下文"], ["inbox", "收件箱"]];
 
   function tabBar() {
     const bar = el("div", "tabs");
     bar.setAttribute("role", "tablist");
     for (const pair of TABS) {
+      if (pair[0] === "inbox" && state.sel?.type !== "bot") continue;
       const btn = el("button", state.tab === pair[0] ? "on" : "", pair[1]);
+      if (pair[0] === "inbox" && state.sel?.type === "bot" && state.inboxData?.pending_count) btn.append(el("span", "inbox-count", " " + state.inboxData.pending_count));
       btn.type = "button";
       btn.setAttribute("role", "tab");
       btn.setAttribute("aria-selected", state.tab === pair[0] ? "true" : "false");
       btn.addEventListener("click", () => {
         state.tab = pair[0];
         paintPanel();
+        if (pair[0] === "inbox" && state.sel?.type === "bot") loadInbox();
       });
       bar.append(btn);
     }
@@ -4891,6 +4896,8 @@
     const tabs = $("panel-tabs");
     tabs.replaceChildren(tabBar());
     tabs.hidden = false;
+    const active = tabs.querySelector("[aria-selected=true]");
+    if (active) tabs.scrollLeft = Math.max(0, active.offsetLeft + active.offsetWidth - tabs.clientWidth + 16);
   }
 
   function paintPanel() {
@@ -4919,6 +4926,8 @@
         body.append(el("p", "hint", "没有轨迹"));
       } else if (state.tab === "context") {
         body.append(el("p", "hint", "群组没有上下文"));
+      } else if (state.tab === "inbox") {
+        body.append(el("p", "hint", "群组没有收件箱"));
       } else {
         const s = section("成员");
         s.append(el("p", "", (g.members || []).map(niceName).join("、") || "没有成员"));
@@ -4937,8 +4946,46 @@
     else if (state.tab === "computer") body.append(computerView(data));
     else if (state.tab === "trace") body.append(traceView());
     else if (state.tab === "context") body.append(contextView(data));
+    else if (state.tab === "inbox") body.append(inboxView());
     else body.append(detailsView(data));
     panelBody.append(body);
+  }
+
+  async function loadInbox() {
+    const selection = state.sel;
+    if (!selection || selection.type !== "bot") return;
+    try {
+      const data = await api("/api/bots/" + encodeURIComponent(selection.id) + "/inbox");
+      if (state.sel !== selection) return;
+      state.inboxData = data;
+    } catch (e) {
+      if (state.sel !== selection) return;
+      state.inboxData = { error: true };
+    }
+    paintPanel();
+  }
+
+  function inboxView() {
+    const view = el("div", "inbox-view");
+    view.append(el("p", "hint", "叫醒这个 Bot 的外部消息"));
+    const data = state.inboxData;
+    if (!data) { view.append(el("p", "hint", "正在加载…")); return view; }
+    if (data.error) { view.append(el("p", "hint", "收件箱加载失败")); return view; }
+    if (!data.items.length) {
+      view.append(el("p", "inbox-empty-title", "还没有收到外部消息"), el("p", "hint", "Webhook、定时、其他 Bot 等叫醒时会出现在这里"));
+      return view;
+    }
+    const names = { webhook: "Webhook", timer: "定时", peers: "其他 Bot", telegram: "Telegram", lark: "飞书", watch: "文件监听", "coding-agent": "编码任务" };
+    for (const item of data.items) {
+      const row = el("details", "inbox-row");
+      const head = el("summary", "inbox-row-head");
+      const date = new Date(item.time);
+      const source = item.sender_kind === "bot" || item.source.startsWith("bot:") ? "其他 Bot" : (names[item.source] || "其他");
+      head.append(el("time", "inbox-time", isNaN(date) ? "" : date.toLocaleString()), el("span", "inbox-source", source), el("span", "inbox-preview", item.summary.replace(/\s+/g, " ")));
+      row.append(head, el("p", "inbox-content", item.summary));
+      view.append(row);
+    }
+    return view;
   }
 
   function durText(ms) {
@@ -5807,13 +5854,15 @@
     const selection = state.sel;
     const request = ++state.panelLoad;
     try {
-      const [data, snap] = await Promise.all([
+      const [data, snap, inbox] = await Promise.all([
         fetchBotProfile(selection.id),
         api("/api/bots/" + encodeURIComponent(selection.id) + "/context").catch(() => ({ requests: [] })),
+        api("/api/bots/" + encodeURIComponent(selection.id) + "/inbox").catch(() => ({ error: true })),
       ]);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
+      state.inboxData = inbox;
       state.ctxSnap = snap;
       paintPanel();
       paintWorkStatus();
