@@ -5854,13 +5854,14 @@
   }
 
   // The gateway's public base follows its standby; when the poll's differs
-  // from the one the list was read with, reload the list and the open detail
-  // so neither keeps handing out a dead address.
+  // from the one the list or the open detail was read with, reload it so
+  // neither keeps handing out a dead address. Only a successful read records
+  // the base, so a failed refresh is retried on the next poll.
   function syncWebhookBase(root, data) {
-    if (!("webhook_public" in data) || root.hookBase === undefined || root.hookBase === data.webhook_public) return;
-    root.hookBase = data.webhook_public;
-    loadWebhooks(root);
-    if (root.hookDetail) openWebhook(root, root.hookDetail.name, true);
+    if (!("webhook_public" in data) || root.hookBase === undefined) return;
+    const base = data.webhook_public, d = root.hookDetail;
+    if (root.hookBase !== base) loadWebhooks(root);
+    if (d && (base ? !d.public_url?.startsWith(base + "/") : d.public_url)) openWebhook(root, d.name, true);
   }
 
   const hookRoute = (bot, name) => "/api/bots/" + encodeURIComponent(bot) + "/webhooks" + (name ? "/" + encodeURIComponent(name) : "");
@@ -5904,7 +5905,7 @@
       if (keep && root.hookDetail?.name !== name) return;
       root.hookDetail = h; if (!keep) root.hookReveal = false;
     }
-    catch (e) { root.hookError = visibleError(e, "读不到这条 Webhook"); }
+    catch (e) { if (keep) return; root.hookError = visibleError(e, "读不到这条 Webhook"); }
     paintWebhooks(root);
   }
 

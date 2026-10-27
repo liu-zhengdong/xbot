@@ -10,7 +10,7 @@ func TestWebhookTaskTabBrowser(t *testing.T) {
 }
 
 const webhookFixture = `
-const hookFixture={hooks:[],public:new URLSearchParams(location.search).get('gw')!=='local',calls:[]};
+const hookFixture={hooks:[],public:new URLSearchParams(location.search).get('gw')!=='local',calls:[],fail:new Set()};
 const hookView=h=>{const local='http://127.0.0.1:8787/webhook/2号小伙子/'+h.name,pub='https://pipe.example/pipe/v1/hook/mini-1/webhook/2号小伙子/'+h.name;
  return {name:h.name,auth:h.auth,local_url:local,url:hookFixture.public?pub:local,...(hookFixture.public?{public_url:pub}:{})}};
 const hookBase=window.fetch;
@@ -21,6 +21,7 @@ window.fetch=async(path,opts={})=>{
  const m=String(path).match(/^\/api\/bots\/[^/]+\/webhooks(?:\/([^/]+))?$/);
  if(!m)return hookBase(path,opts);
  const method=opts.method||'GET';hookFixture.calls.push(method+' '+(m[1]||''));
+ if(hookFixture.fail.delete(method+' '+(m[1]||'')))return new Response(JSON.stringify({error:'gateway hiccup'}),{status:503});
  if(method==='GET'&&!m[1])return json({hooks:hookFixture.hooks.map(hookView),public:hookFixture.public?'https://pipe.example/pipe/v1/hook/mini-1':''});
  if(method==='POST'){const b=JSON.parse(opts.body);
   if(hookFixture.hooks.some(h=>h.name===b.name))return new Response(JSON.stringify({error:'已有同名 Webhook'}),{status:409});
@@ -84,6 +85,13 @@ const stop=name=>{if(shot===name){document.body.dataset.testResult='passed';retu
  gw();await waitFor(follows,'detail did not follow the gateway change');
  gw();await waitFor(follows,'detail did not follow the gateway coming back');
  assert(secret().includes('s3cr3t'),'gateway change hid the revealed secret');
+ // The gateway drops but both refreshes fail once: the next poll retries them
+ // instead of keeping the dead public address on show.
+ hookFixture.fail=new Set(['GET ','GET github']);gw();
+ await waitFor(()=>!hookFixture.fail.size,'refresh not attempted');await new Promise(r=>setTimeout(r,300));
+ document.dispatchEvent(new Event('visibilitychange'));await waitFor(follows,'detail kept a stale public address after a failed refresh');
+ $('.hook-back').click();await waitFor(()=>$('.hook-row')?.textContent.includes('127.0.0.1'),'list kept a stale public address after a failed refresh');
+ $('.hook-row').click();await waitFor(()=>$('.hook-detail'),'detail missing after the retry');
  $('.hook-remove').click();await waitFor(()=>!$('#modal').hidden&&$('#modal-title').textContent.includes('撤掉'),'remove confirm missing');
  if(stop('remove'))return;
  $('#modal-form').requestSubmit();await waitFor(()=>$('#modal').hidden&&$('.hook-empty'),'not back to empty after remove');
