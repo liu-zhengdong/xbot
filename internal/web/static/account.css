@@ -122,10 +122,11 @@
 @media (prefers-reduced-motion:reduce){.acct .ac-btn{transition:none}}
 .acct.acct-settings{position:static;inset:auto;z-index:auto;display:block;background:transparent;overflow:visible}
 .acct-settings .ac-stage{display:block;min-height:0;padding:0;background:transparent}
-.acct-settings .ac-card{width:100%;max-width:420px;box-shadow:none;background:transparent}
-.acct.acct-settings .ac-card .ac-auth{padding:0;max-width:420px}
+/* settings · account fills .setcnt (E2); beats the wide-stage .acct .ac-card 420/560 */
+.acct.acct-settings .ac-card{width:100%;max-width:none;box-shadow:none;background:transparent}
+.acct.acct-settings .ac-card .ac-auth{padding:0;max-width:none}
 .acct-settings .ac-auth h1{display:none}
 .acct-settings .ac-auth .ac-foot{margin-top:12px;padding:0}
-.acct-settings .ac-settings-wrap{max-width:420px}
+.acct.acct-settings .ac-settings-wrap{max-width:none}
 .acct-settings .ac-settings-profile{display:flex;gap:12px;align-items:center;padding:16px;background:var(--x-fill-1);border-radius:12px;margin-bottom:18px}
 .acct-settings .ac-settings-profile p{margin:4px 0 0;color:var(--x-muted);font-size:13px}
