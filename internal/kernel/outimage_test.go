@@ -744,3 +744,13 @@ func TestSilentAfterChatSendIsAnAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The description is the one place the model learns that plain reply text
+// never reaches the user. It must say so in plain Chinese, so a model that
+// stops on bare text is told it was invisible, not an optional courtesy.
+func TestSendMessageDescriptionSaysOnlyTheToolIsVisible(t *testing.T) {
+	d := (sendMessageTool{}).Description()
+	if !strings.Contains(d, "只有调用本工具用户才看得见；裸助手正文不可见（不是可选通知）") {
+		t.Fatalf("description hides the visibility rule: %q", d)
+	}
+}

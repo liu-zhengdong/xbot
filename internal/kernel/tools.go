@@ -180,7 +180,7 @@ type sendMessageTool struct{ k *Kernel }
 
 func (sendMessageTool) Name() string { return "send_message_to_user" }
 func (sendMessageTool) Description() string {
-	return "Say something to the owner; it is the only way they see you, since plain reply text is hidden. One call is one chat bubble; on a wake the owner is not chatting in, it is also a notification. Keep it short, plain and easy to follow: no jargon, no manual, no officialese. importance: low, normal or high. images: pasted ids or workspace paths (PNG, JPEG, GIF, WebP), at most 4 and 10 MiB per reply, 2048 px a side; show local pictures this way, never link them."
+	return "对用户说话的唯一可见通道：只有调用本工具用户才看得见；裸助手正文不可见（不是可选通知）。一次调用就是一个聊天气泡；用户不在聊天的唤醒里，它同时是通知。话要短、直白、好懂：不堆术语，不打官腔。importance：low、normal 或 high。images：粘贴 id 或工作区图片路径（PNG、JPEG、GIF、WebP），每条回复最多 4 张、合计 10 MiB、单边最长 2048 像素；给用户看本机图片只能走这里，不要发链接。"
 }
 func (sendMessageTool) Parameters() any {
 	return schema(map[string]any{
