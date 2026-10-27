@@ -8,10 +8,11 @@ func TestAccountMenuBrowser(t *testing.T) {
  const $=id=>document.getElementById(id), assert=(v,m)=>{if(!v)throw Error(m)};
  const until=async(f,m)=>{for(let i=0;i<200;i++){if(f())return;await new Promise(r=>setTimeout(r,10))}throw Error(m)};
  await until(()=>!$('shell').hidden,'app did not open');
- const base=window.fetch; let account=null, cloudCalls=0;
+ const base=window.fetch; let account=null, accountDeviceCalls=0, externalCalls=0;
  window.fetch=async(p,o)=>{
   if(p==='/api/account/me')return json({account});
-  if(p==='/api/account/devices'){cloudCalls++;return json({devices:[]})}
+  if(typeof p==='string' && /^https?:\/\//.test(p) && !p.startsWith(location.origin)) externalCalls++;
+  if(p==='/api/account/devices'){accountDeviceCalls++;return json({devices:[{id:'other',name:'另一台电脑',online:true,self:false,bots:[]}]})}
   if(p==='/api/account/login'||p==='/api/account/register'){account={email:'person@example.com',official:true,unbound:true};return json({account})}
   if(p==='/api/account/logout'){account=null;return json({status:'ok'})}
   if(p==='/api/account/claim'){account={...account,unbound:false,owner:true};return json({account})}
@@ -27,6 +28,8 @@ func TestAccountMenuBrowser(t *testing.T) {
  document.querySelector('[data-set=devices]').click();
  await until(()=>$('settings-devices').textContent.includes('通过账号关联设备'),'claim missing');
  assert($('settings-devices').textContent.includes('已匹配设备'),'matched devices missing');
+ await until(()=>$('g7-account-devices') && $('g7-account-devices').textContent.includes('另一台电脑'),'account device missing');
+ assert(accountDeviceCalls>0,'signed-in local account devices not fetched');
  $('settings-devices').querySelector('[data-act=claim]').click();
  await until(()=>!$('settings-devices').querySelector('[data-act=claim]'),'claim not completed');
  document.querySelector('[data-set=account]').click();
@@ -40,10 +43,13 @@ func TestAccountMenuBrowser(t *testing.T) {
  await until(()=>$('settings-account').textContent.includes('p***@example.com'),'registration did not sign in');
  [...$('settings-account').querySelectorAll('button')].find(b=>b.textContent==='退出登录').click();
  await until(()=>$('acct-login-email'),'second logout failed');
+ const callsBeforeLoggedOut=accountDeviceCalls;
  document.querySelector('[data-set=devices]').click();
  await until(()=>$('settings-devices').textContent.includes('已匹配设备'),'device list missing');
  assert(!$('settings-devices').textContent.includes('通过账号关联设备'),'logged-out claim visible');
- assert(cloudCalls===0,'local UI fetched cloud device list');
+ assert(!$('g7-account-devices'),'logged-out account device visible');
+ assert(accountDeviceCalls===callsBeforeLoggedOut,'logged-out local UI fetched account devices');
+ assert(externalCalls===0,'local UI opened an external domain');
  assert(!testErrors.length,testErrors.join('; ')); document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `)

@@ -1,5 +1,5 @@
 /* G7 设备：设置浮层的设备页，列出这台电脑和配对的设备。
-   只经 /api/devices* 和本机 serve 通信。配对码的弹窗在 pairing.js，通过 window.xbotDevices 挂进来。 */
+   只经同源 /api/devices* 和 /api/account/* 与本机 serve 通信。配对码的弹窗在 pairing.js，通过 window.xbotDevices 挂进来。 */
 (function () {
   "use strict";
   const I = {
@@ -84,6 +84,7 @@
     remote: false,         // 官网入口（session.remote）：底栏写账号设备数，不写本机名
     acct: null,            // GET /api/account/me 的 account，用来出「把这台电脑绑到账号」
     acctDevs: null,        // 官网入口底栏「已绑定 N 台设备」的 N
+    accountDevices: null, accountDevicesErr: false,
     claimBusy: false, claimErr: "",
     joinOpen: false, joinVal: "", joinErr: "", // 添加设备下半：输入对方的短码（次要）
     gwVal: "", fieldErr: "", checking: false,
@@ -135,12 +136,20 @@
     return S.acct;
   }
 
+  async function loadAccountDevices() {
+    S.accountDevices = null; S.accountDevicesErr = false;
+    if (!S.acct) return;
+    try { S.accountDevices = (await api("GET", "/api/account/devices")).devices || []; }
+    catch (e) { S.accountDevicesErr = true; }
+  }
+
   // ---- 打开、关闭 ----
   function openDevices() { return window.XBotSettings.open("devices"); }
   async function mount() {
     ensureHosts();
     S.embedded = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
     await Promise.all([refresh(), loadAcct()]);
+    await loadAccountDevices();
     render();
   }
   // 「把这台电脑绑到账号？」（04b）：本机还没绑到登录着的账号时，app.js 开机后请一次。
@@ -324,6 +333,11 @@
       <div class="g7-claim-main"><b>通过账号关联设备</b><small>把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。</small>
       ${S.claimErr ? `<p class="error g7-inline-err">${esc(S.claimErr)}</p>` : ""}</div>
       ${S.acct.unbound ? `<button class="secondary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button>` : ""}</div>` : "";
+    const accountList = S.acct ? `<section class="profile-section" id="g7-account-devices"><h3>账号关联设备</h3>
+      ${S.accountDevicesErr ? `<p class="g7-fine">账号设备加载失败，请重新打开设备页重试。</p>` :
+        S.accountDevices && S.accountDevices.length ? S.accountDevices.map((d) => `<div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+          <div class="g7-dev-main"><div class="g7-dev-name">${esc(d.name)}${d.self ? " · 这台电脑" : ""}</div><div class="g7-dev-sub">${d.online ? "在线" : "离线"}</div></div></div>`).join("") : `<p class="g7-fine">账号还没有关联设备。</p>`}
+      <p class="g7-fine">账号关联设备需要配对后，才能在这里与其 Bot 聊天。</p></section>` : "";
     const banner = gw && !up ? `<div class="g7-banner"><span class="g7-banner-ico">${svg("cloudOff", 18)}</span>
         <span>${sp("连不上网关" + host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
@@ -338,7 +352,7 @@
     }
     return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
       <div class="g7-lead">${sp("配对后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${banner}
-      <div class="g7-body">${selfCard}${claim}${list}
+      <div class="g7-body">${selfCard}${claim}${accountList}${list}
         <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>`;
   }
   // 认领确认（shot 04b）：POST /api/account/claim 是真绑定（bindIfFree + 上报账号）。
@@ -439,7 +453,7 @@
           const out = await api("POST", "/api/account/claim");
           S.acct = (out && out.account) || S.acct;
           S.view = null;
-          await refresh();
+          await Promise.all([refresh(), loadAccountDevices()]);
         } catch (e) { S.claimErr = e.message; }
         S.claimBusy = false; render(); break;
       }
