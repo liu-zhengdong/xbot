@@ -32,7 +32,7 @@
 
 ## 数据与复用
 
-- **卡库**：按主人一份，类似技能库目录布局。建议 `persona-cards/<owner>/<id>/card.md`（或仓内既有约定目录）；`id` 仅内部/路径用，**界面永不展示**。
+- **卡库**：本机一份，扁平 `persona-cards/<id>/card.md`，不按主人分子目录；`id` 仅内部/路径用，**界面永不展示**。
 - **卡内容**：`name`（可改）+ `body`（整块 Markdown/纯文本）。导入：文件名或首行非空作卡名，全文作正文；大小/条数上限对齐技能导入量级（参考 `skills.js` `MAX_FILE`、skill `maxBody`），防路径穿越。
 - **Bot 绑定**：档案/config 增加可选 `persona_card`（卡 id；空=未选用）。**未选用**时继续走现有 `persona.md` / `ReadPersona`（创建时角色正文）。**已选用**时固定前缀/ComposedPersona 用卡正文（保存卡后绑定 Bot 下一轮即见，勿另拷一份会过期的快照当唯一真源）。
 - **写锁/权限**：复用 `fsutil.WriteAtomic`、现有 owner 鉴权（`require`/`owned`）、技能库同类路径校验；勿另起一套锁或权限。

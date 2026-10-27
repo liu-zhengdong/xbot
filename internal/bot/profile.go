@@ -310,7 +310,7 @@ type Template struct {
 }
 
 // ExportTemplate reads profile, duty (persona), and routines. Memory and the transcript stay out.
-// A picked card stays out too: cards belong to this owner's library.
+// A picked card stays out too: cards belong to this machine's library.
 func ExportTemplate(b *Bot) (Template, error) {
 	persona, err := b.ReadPersona()
 	if err != nil {

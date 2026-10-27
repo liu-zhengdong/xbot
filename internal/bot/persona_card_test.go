@@ -19,7 +19,7 @@ func TestPickedCardStacksOnDuty(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	card, err := personacard.Create(root, "u1", "简洁", "先给结论，再给理由。")
+	card, err := personacard.Create(root, "简洁", "先给结论，再给理由。")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestPickedCardStacksOnDuty(t *testing.T) {
 	}
 	// The card is referenced, not copied: an edit reaches the bot on its next turn.
 	body := "只说一句话。"
-	if _, err := personacard.Update(root, "u1", card.ID, nil, &body); err != nil {
+	if _, err := personacard.Update(root, card.ID, nil, &body); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := running.ComposedPersona(); got != "From persona.md."+cardHead+body {
@@ -60,7 +60,7 @@ func TestPickedCardStacksOnDuty(t *testing.T) {
 		t.Fatalf("composed %q", got)
 	}
 	// A card that is gone falls back to the default card; the duty stays.
-	if err := personacard.Delete(root, "u1", card.ID); err != nil {
+	if err := personacard.Delete(root, card.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := fresh.ComposedPersona(); !strings.HasPrefix(got, "New duty.\n\n### 人设卡 · "+personacard.DefaultName+"\n") || !strings.HasSuffix(got, personacard.PartnerPersona) {
@@ -77,7 +77,7 @@ func TestPickedCardStacksOnDuty(t *testing.T) {
 	}
 }
 
-// A template carries the duty. The card stays in this owner's library and is
+// A template carries the duty. The card stays in this machine's library and is
 // not folded into the duty of the imported bot.
 func TestExportTemplateCarriesDutyNotCard(t *testing.T) {
 	root := t.TempDir()
@@ -88,7 +88,7 @@ func TestExportTemplateCarriesDutyNotCard(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	card, err := personacard.Create(root, "u1", "简洁", "CURRENT CARD BODY")
+	card, err := personacard.Create(root, "简洁", "CURRENT CARD BODY")
 	if err != nil {
 		t.Fatal(err)
 	}

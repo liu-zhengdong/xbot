@@ -57,7 +57,7 @@ func TestEnvironmentPersonaIdentityNamesDutyAndCard(t *testing.T) {
 	if got := sample(); got != duty+partner {
 		t.Fatalf("no card: %q", got)
 	}
-	card, err := personacard.Create(root, "u1", "简洁", "先给结论。")
+	card, err := personacard.Create(root, "简洁", "先给结论。")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestEnvironmentPersonaIdentityNamesDutyAndCard(t *testing.T) {
 		t.Fatalf("picked card: %q", got)
 	}
 	body := "只说一句。"
-	if _, err := personacard.Update(root, "u1", card.ID, nil, &body); err != nil {
+	if _, err := personacard.Update(root, card.ID, nil, &body); err != nil {
 		t.Fatal(err)
 	}
 	if got := sample(); got != duty+"；人设卡 简洁 "+shortHash(body) {
@@ -82,13 +82,13 @@ func TestEnvironmentPersonaIdentityNamesDutyAndCard(t *testing.T) {
 		t.Fatalf("duty edit under a card: %q", got)
 	}
 	name := "简洁新版"
-	if _, err := personacard.Update(root, "u1", card.ID, &name, nil); err != nil {
+	if _, err := personacard.Update(root, card.ID, &name, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := sample(); got != duty+"；人设卡 "+name+" "+shortHash(body) {
 		t.Fatalf("renamed card: %q", got)
 	}
-	if err := personacard.Delete(root, "u1", card.ID); err != nil {
+	if err := personacard.Delete(root, card.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := sample(); got != duty+partner {

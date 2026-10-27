@@ -10,7 +10,7 @@ import (
 	"xbot/internal/personacard"
 )
 
-// SetPersonaCard binds this bot to one of its owner's persona cards. Empty goes back to the default card.
+// SetPersonaCard binds this bot to a persona card. Empty goes back to the default card.
 // The card is read on every turn, so later edits to it reach this bot too.
 func (b *Bot) SetPersonaCard(id string) error {
 	id = strings.TrimSpace(id)
@@ -22,28 +22,27 @@ func (b *Bot) SetPersonaCard(id string) error {
 	return b.SaveConfig()
 }
 
-// PickedCard is the bound card, or the owner's default card when none was
+// PickedCard is the bound card, or the library's default card when none was
 // picked or the picked one is gone. The binding is read from disk because a
 // long-running kernel keeps the config it loaded, and the owner picks cards
 // from the web. ok is false only for a bot without exactly one owner.
 func (b *Bot) PickedCard() (personacard.Card, bool) {
-	owners := b.cfg.Owners
-	if len(owners) != 1 || b.Root == "" {
+	if len(b.cfg.Owners) != 1 || b.Root == "" {
 		return personacard.Card{}, false
 	}
 	if id := b.boundCard(); id != "" {
-		if c, err := personacard.Get(b.Root, owners[0], id); err == nil {
+		if c, err := personacard.Get(b.Root, id); err == nil {
 			return c, true
 		}
 	}
-	if c, ok := personacard.Default(b.Root, owners[0]); ok {
+	if c, ok := personacard.Default(b.Root); ok {
 		return c, true
 	}
 	// A library nobody has opened yet gets its default card on first use.
-	if personacard.EnsureSeeds(b.Root, owners[0]) != nil {
+	if personacard.EnsureSeeds(b.Root) != nil {
 		return personacard.Card{}, false
 	}
-	return personacard.Default(b.Root, owners[0])
+	return personacard.Default(b.Root)
 }
 
 // ComposedPersona is the duty (persona.md), plus the picked card as its own

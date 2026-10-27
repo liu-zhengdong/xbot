@@ -89,7 +89,7 @@ func TestPersonaCardAPI(t *testing.T) {
 		}
 	}
 	// The default card is what bots fall back to, so it cannot be deleted.
-	def, _ := personacard.Default(root, "u1")
+	def, _ := personacard.Default(root)
 	if code, raw = call("DELETE", "/api/persona-cards/"+def.ID+"?force=1", "", true); code != 400 || !strings.Contains(raw, "默认人设卡不能删") {
 		t.Fatalf("delete default %d %s", code, raw)
 	}
@@ -116,7 +116,7 @@ func TestPickWaitsForDeleteUnderLibraryLock(t *testing.T) {
 	}
 	var card struct{ ID string }
 	_ = json.Unmarshal([]byte(raw), &card)
-	lock, err := fsutil.Lock(filepath.Join(personacard.OwnerDir(root, "u1"), ".lock"))
+	lock, err := fsutil.Lock(filepath.Join(personacard.Dir(root), ".lock"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestPickWaitsForDeleteUnderLibraryLock(t *testing.T) {
 		t.Fatalf("pick answered %d without the library lock", code)
 	case <-time.After(200 * time.Millisecond):
 	}
-	if err := os.RemoveAll(filepath.Join(personacard.OwnerDir(root, "u1"), card.ID)); err != nil {
+	if err := os.RemoveAll(filepath.Join(personacard.Dir(root), card.ID)); err != nil {
 		t.Fatal(err)
 	}
 	lock.Release()
@@ -189,7 +189,7 @@ func TestPersonaCardListSeedsAnEmptyLibrary(t *testing.T) {
 			t.Fatalf("card %d %s", i, raw)
 		}
 	}
-	if disk, _ := personacard.List(root, "u1"); len(disk) != len(personacard.Seeds) {
+	if disk, _ := personacard.List(root); len(disk) != len(personacard.Seeds) {
 		t.Fatalf("not on disk: %+v", disk)
 	}
 	if code, raw = call("GET", "/api/persona-cards/"+out.Cards[1].ID, "", true); code != 200 || !strings.Contains(raw, "这个我接不上") {
@@ -211,7 +211,7 @@ func TestPersonaCardListSeedsAnEmptyLibrary(t *testing.T) {
 func TestPersonaCardListWaitsForASeedRunInAnotherProcess(t *testing.T) {
 	for k := 0; k < len(personacard.Seeds); k++ {
 		root, _, call := skillTestServer(t)
-		dir := personacard.OwnerDir(root, "u1")
+		dir := personacard.Dir(root)
 		seed := func(i int) {
 			id := strings.Repeat(string(rune('a'+i)), 16)
 			raw := "name: " + personacard.Seeds[i].Name + "\n\n" + personacard.Seeds[i].Body + "\n"
@@ -265,7 +265,7 @@ func TestPersonaCardEmptiedLegacyLibraryStaysEmpty(t *testing.T) {
 	for _, withLock := range []bool{true, false} {
 		t.Run(map[bool]string{true: "with_lock", false: "without_lock"}[withLock], func(t *testing.T) {
 			root, _, call := skillTestServer(t)
-			dir := personacard.OwnerDir(root, "u1")
+			dir := personacard.Dir(root)
 			if err := fsutil.WriteAtomic(filepath.Join(dir, "0123456789abcdef", "card.md"), []byte("name: 旧卡\n\n旧正文。\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -311,7 +311,7 @@ func TestPersonaCardListUpgradesThinSeeds(t *testing.T) {
 	}
 	var ids []string
 	for _, s := range old {
-		c, err := personacard.Create(root, "u1", s.name, s.body)
+		c, err := personacard.Create(root, s.name, s.body)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -321,7 +321,7 @@ func TestPersonaCardListUpgradesThinSeeds(t *testing.T) {
 		t.Fatalf("unauthenticated list: %d %s", code, raw)
 	}
 	for i, id := range ids {
-		if c, err := personacard.Get(root, "u1", id); err != nil || c.Body != old[i].body {
+		if c, err := personacard.Get(root, id); err != nil || c.Body != old[i].body {
 			t.Fatalf("unauthenticated request changed card %d: %v", i, err)
 		}
 	}
@@ -334,7 +334,7 @@ func TestPersonaCardListUpgradesThinSeeds(t *testing.T) {
 		if err := json.Unmarshal([]byte(raw), &c); err != nil || code != 200 || c.ID != id || c.Name != old[i].name || c.Body != personacard.Seeds[i+1].Body {
 			t.Fatalf("detail %d did not return upgraded body: status %d, decode %v", i, code, err)
 		}
-		if disk, err := personacard.Get(root, "u1", id); err != nil || disk.Body != c.Body {
+		if disk, err := personacard.Get(root, id); err != nil || disk.Body != c.Body {
 			t.Fatalf("upgrade %d not persisted: %v", i, err)
 		}
 	}

@@ -12,7 +12,7 @@ import (
 	"xbot/internal/personacard"
 )
 
-// The settings page keeps the owner's persona-card library; a bot picks one card in its profile drawer.
+// The settings page keeps the persona-card library; a bot picks one card in its profile drawer.
 // Ids go to the page so it can pick and edit, but the page never shows them.
 
 // maxCardImport caps the Markdown file the page sends; the card body has its own, smaller cap.
@@ -95,8 +95,8 @@ func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A library opened for the first time starts with the built-in cards; a failed seed still lists.
-	_ = personacard.EnsureSeeds(s.Root, s.owner)
-	cards, err := personacard.List(s.Root, s.owner)
+	_ = personacard.EnsureSeeds(s.Root)
+	cards, err := personacard.List(s.Root)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "没能读取人设卡")
 		return
@@ -106,7 +106,7 @@ func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(q)) > maxCardQuery {
 		q = string([]rune(q)[:maxCardQuery])
 	}
-	def, _ := personacard.Default(s.Root, s.owner)
+	def, _ := personacard.Default(s.Root)
 	out := make([]map[string]any, 0, len(cards))
 	for _, c := range cards {
 		if q != "" && !strings.Contains(strings.ToLower(c.Name+"\n"+c.Body), q) {
@@ -124,7 +124,7 @@ func (s *Server) readPersonaCard(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
-	c, err := personacard.Get(s.Root, s.owner, r.PathValue("id"))
+	c, err := personacard.Get(s.Root, r.PathValue("id"))
 	if err != nil {
 		cardErr(w, err)
 		return
@@ -157,7 +157,7 @@ func (s *Server) createPersonaCard(w http.ResponseWriter, r *http.Request) {
 	if in.Name != nil {
 		name = *in.Name
 	}
-	c, err := personacard.Create(s.Root, s.owner, name, *in.Body)
+	c, err := personacard.Create(s.Root, name, *in.Body)
 	if err != nil {
 		cardErr(w, err)
 		return
@@ -174,7 +174,7 @@ func (s *Server) updatePersonaCard(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "没能读取这张人设卡")
 		return
 	}
-	c, err := personacard.Update(s.Root, s.owner, r.PathValue("id"), in.Name, in.Body)
+	c, err := personacard.Update(s.Root, r.PathValue("id"), in.Name, in.Body)
 	if err != nil {
 		cardErr(w, err)
 		return
@@ -195,7 +195,7 @@ func (s *Server) deletePersonaCard(w http.ResponseWriter, r *http.Request) {
 	var users []string
 	var unbindErr string
 	errInUse := errors.New("in use")
-	err := personacard.DeleteWith(s.Root, s.owner, id, func() error {
+	err := personacard.DeleteWith(s.Root, id, func() error {
 		var err error
 		if users, err = s.cardUsers(id); err != nil {
 			unbindErr = "没能读取 Bot"
@@ -245,7 +245,7 @@ func (s *Server) importPersonaCard(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "没能读取这个文件，请换一个再试")
 		return
 	}
-	c, err := personacard.Import(s.Root, s.owner, in.Filename, in.Content, in.Confirm)
+	c, err := personacard.Import(s.Root, in.Filename, in.Content, in.Confirm)
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, cardJSON(c))
@@ -294,7 +294,7 @@ func (s *Server) pickPersonaCard(w http.ResponseWriter, r *http.Request) {
 	// this bot as a user or runs first and makes the pick answer not found.
 	var picked map[string]any
 	var bindErr error
-	err = personacard.With(s.Root, s.owner, id, func(c personacard.Card) error {
+	err = personacard.With(s.Root, id, func(c personacard.Card) error {
 		if bindErr = b.SetPersonaCard(id); bindErr != nil {
 			return bindErr
 		}

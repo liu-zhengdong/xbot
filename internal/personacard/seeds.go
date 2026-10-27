@@ -483,16 +483,17 @@ func markSeeded(dir string) error {
 // defaultFile holds the default card's id, so renaming the card keeps it the default.
 const defaultFile = ".default"
 
-// Default reads the owner's default card. ok is false until EnsureSeeds has made it.
-func Default(root, owner string) (Card, bool) {
-	if !ownerRe.MatchString(owner) {
-		return Card{}, false
-	}
-	raw, err := os.ReadFile(filepath.Join(OwnerDir(root, owner), defaultFile))
+// Default reads the library's default card. ok is false until EnsureSeeds has made it.
+func Default(root string) (Card, bool) {
+	dir, err := open(root)
 	if err != nil {
 		return Card{}, false
 	}
-	c, err := Get(root, owner, strings.TrimSpace(string(raw)))
+	raw, err := os.ReadFile(filepath.Join(dir, defaultFile))
+	if err != nil {
+		return Card{}, false
+	}
+	c, err := Get(root, strings.TrimSpace(string(raw)))
 	return c, err == nil
 }
 
@@ -534,23 +535,23 @@ func ensureDefault(dir string) error {
 // in a marked library, then makes sure the library has its default card. All
 // writes use the library lock, including across processes. A marked empty
 // library gets only the default card; a failed first seed run removes its own cards.
-func EnsureSeeds(root, owner string) error {
-	if err := ensureSeeds(root, owner); err != nil {
+func EnsureSeeds(root string) error {
+	if err := ensureSeeds(root); err != nil {
 		return err
 	}
-	if _, ok := Default(root, owner); ok {
+	if _, ok := Default(root); ok {
 		return nil
 	}
-	return locked(root, owner, ensureDefault)
+	return locked(root, ensureDefault)
 }
 
-func ensureSeeds(root, owner string) error {
-	if !ownerRe.MatchString(owner) {
-		return errors.New("personacard: bad owner")
+func ensureSeeds(root string) error {
+	dir, err := open(root)
+	if err != nil {
+		return err
 	}
-	dir := OwnerDir(root, owner)
 	if has(dir, seededFile) {
-		return locked(root, owner, upgradeSeeds)
+		return locked(root, upgradeSeeds)
 	}
 	cards, err := list(dir)
 	if err != nil {
@@ -559,7 +560,7 @@ func ensureSeeds(root, owner string) error {
 	if len(cards) > 0 && !has(dir, ".lock") {
 		return nil
 	}
-	return locked(root, owner, func(dir string) error {
+	return locked(root, func(dir string) error {
 		if has(dir, seededFile) {
 			return upgradeSeeds(dir)
 		}

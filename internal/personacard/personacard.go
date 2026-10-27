@@ -1,4 +1,4 @@
-// Package personacard keeps one owner's persona cards in ~/.xbot/persona-cards/<owner>/<id>/card.md.
+// Package personacard keeps the persona cards in ~/.xbot/persona-cards/<id>/card.md.
 // A bot that picks a card reads its body as the persona on every turn, so editing a card
 // changes every bot that uses it. The id names the directory only; people see the card name.
 package personacard
@@ -28,7 +28,7 @@ const (
 	MaxBody = 32 << 10
 	// MaxName is the card name in runes.
 	MaxName = 60
-	// MaxCards caps one owner's library.
+	// MaxCards caps the library.
 	MaxCards = 200
 )
 
@@ -42,9 +42,8 @@ var (
 	// ErrDefault is returned when deleting the default card.
 	ErrDefault = errors.New("personacard: the default card stays")
 
-	idRe    = regexp.MustCompile(`^[a-z0-9]{8,32}$`)
-	ownerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
-	suffix  = regexp.MustCompile(` \((\d+)\)$`)
+	idRe   = regexp.MustCompile(`^[a-z0-9]{8,32}$`)
+	suffix = regexp.MustCompile(` \((\d+)\)$`)
 )
 
 // Card is one persona card.
@@ -55,11 +54,8 @@ type Card struct {
 	Updated time.Time
 }
 
-// Dir is the persona-card root. Each owner has a subdirectory.
+// Dir is the library: one directory per card.
 func Dir(root string) string { return filepath.Join(root, "persona-cards") }
-
-// OwnerDir is one owner's library.
-func OwnerDir(root, owner string) string { return filepath.Join(Dir(root), owner) }
 
 // ValidID reports whether id can name a card directory.
 func ValidID(id string) bool { return idRe.MatchString(id) }
@@ -68,25 +64,118 @@ func ValidID(id string) bool { return idRe.MatchString(id) }
 // the library lock does the same across processes.
 var mu sync.Mutex
 
-func locked(root, owner string, fn func(dir string) error) error {
-	if !ownerRe.MatchString(owner) {
-		return errors.New("personacard: bad owner")
-	}
-	dir := OwnerDir(root, owner)
+// flat holds libraries already checked for per-owner subdirectories; guarded by mu.
+var flat = map[string]bool{}
+
+func locked(root string, fn func(dir string) error) error {
+	dir := Dir(root)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	return fsutil.WithLock(filepath.Join(dir, ".lock"), func() error { return fn(dir) })
+	return fsutil.WithLock(filepath.Join(dir, ".lock"), func() error {
+		if err := liftOwners(dir); err != nil {
+			return err
+		}
+		return fn(dir)
+	})
 }
 
-// List returns the owner's cards, most recently updated first. A missing library is empty.
-func List(root, owner string) ([]Card, error) {
-	if !ownerRe.MatchString(owner) {
-		return nil, errors.New("personacard: bad owner")
+// open returns the library for a read, first lifting any per-owner subdirectories
+// under the library lock. A library already flat is not written to.
+func open(root string) (string, error) {
+	dir := Dir(root)
+	mu.Lock()
+	done := flat[dir] || len(owners(dir)) == 0
+	flat[dir] = done
+	mu.Unlock()
+	if done {
+		return dir, nil
 	}
-	return list(OwnerDir(root, owner))
+	return dir, locked(root, func(string) error { return nil })
+}
+
+// owners lists the subdirectories left by the old persona-cards/<owner>/<id>/ layout:
+// a card directory holds card.md, an owner directory does not.
+func owners(dir string) []string {
+	ents, _ := os.ReadDir(dir)
+	var out []string
+	for _, e := range ents {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && !has(filepath.Join(dir, e.Name()), "card.md") {
+			out = append(out, filepath.Join(dir, e.Name()))
+		}
+	}
+	return out
+}
+
+// liftOwners moves every card of the old per-owner layout into the flat library and
+// keeps its id, so bots bound to it still find it. An id already taken by a different
+// card gets a new id instead of overwriting; an identical copy is dropped. The first
+// owner's default card becomes the library's default unless it already has one.
+// Callers hold the library lock.
+func liftOwners(dir string) error {
+	if flat[dir] {
+		return nil
+	}
+	for _, od := range owners(dir) {
+		ents, err := os.ReadDir(od)
+		if err != nil {
+			return err
+		}
+		moved := map[string]string{}
+		for _, e := range ents {
+			src := filepath.Join(od, e.Name())
+			if !e.IsDir() || !ValidID(e.Name()) || !has(src, "card.md") {
+				continue
+			}
+			id := e.Name()
+			if has(filepath.Join(dir, id), "card.md") {
+				a, _ := os.ReadFile(filepath.Join(src, "card.md"))
+				b, _ := os.ReadFile(filepath.Join(dir, id, "card.md"))
+				if string(a) == string(b) {
+					if err := os.RemoveAll(src); err != nil {
+						return err
+					}
+					moved[e.Name()] = id
+					continue
+				}
+				id = newID()
+			}
+			if err := os.Rename(src, filepath.Join(dir, id)); err != nil {
+				return err
+			}
+			moved[e.Name()] = id
+		}
+		// Carry the markers after the cards, so a crash in between keeps them to lift again.
+		if raw, err := os.ReadFile(filepath.Join(od, defaultFile)); err == nil && !has(dir, defaultFile) {
+			if id, ok := moved[strings.TrimSpace(string(raw))]; ok {
+				if err := fsutil.WriteAtomic(filepath.Join(dir, defaultFile), []byte(id+"\n"), 0600); err != nil {
+					return err
+				}
+			}
+		}
+		if has(od, seededFile) {
+			if err := markSeeded(dir); err != nil {
+				return err
+			}
+		}
+		for _, f := range []string{defaultFile, seededFile, ".lock"} {
+			_ = os.Remove(filepath.Join(od, f))
+		}
+		_ = os.Remove(od)
+	}
+	flat[dir] = true
+	return nil
+}
+
+// List returns the cards, most recently updated first. A missing library is empty.
+func List(root string) ([]Card, error) {
+	dir, err := open(root)
+	if err != nil {
+		return nil, err
+	}
+	return list(dir)
 }
 
 func list(dir string) ([]Card, error) {
@@ -118,21 +207,25 @@ func list(dir string) ([]Card, error) {
 }
 
 // Get reads one card.
-func Get(root, owner, id string) (Card, error) {
-	if !ownerRe.MatchString(owner) || !ValidID(id) {
+func Get(root, id string) (Card, error) {
+	if !ValidID(id) {
 		return Card{}, ErrNotFound
 	}
-	return read(OwnerDir(root, owner), id)
+	dir, err := open(root)
+	if err != nil {
+		return Card{}, err
+	}
+	return read(dir, id)
 }
 
 // Create stores a new card and returns it.
-func Create(root, owner, name, body string) (Card, error) {
+func Create(root, name, body string) (Card, error) {
 	name, body, err := clean(name, body)
 	if err != nil {
 		return Card{}, err
 	}
 	var c Card
-	err = locked(root, owner, func(dir string) error {
+	err = locked(root, func(dir string) error {
 		cards, err := list(dir)
 		if err != nil {
 			return err
@@ -150,12 +243,12 @@ func Create(root, owner, name, body string) (Card, error) {
 }
 
 // Update changes a card's name, body, or both. A nil field stays as it was.
-func Update(root, owner, id string, name, body *string) (Card, error) {
+func Update(root, id string, name, body *string) (Card, error) {
 	if !ValidID(id) {
 		return Card{}, ErrNotFound
 	}
 	var c Card
-	err := locked(root, owner, func(dir string) error {
+	err := locked(root, func(dir string) error {
 		cur, err := read(dir, id)
 		if err != nil {
 			return err
@@ -180,19 +273,19 @@ func Update(root, owner, id string, name, body *string) (Card, error) {
 }
 
 // Delete removes a card. Unbinding the bots that use it is the caller's job.
-func Delete(root, owner, id string) error {
-	return DeleteWith(root, owner, id, nil)
+func Delete(root, id string) error {
+	return DeleteWith(root, id, nil)
 }
 
 // DeleteWith runs before under the library lock with the card known to exist,
 // then marks the library as used and removes the card unless before failed.
 // Callers unbind bots in before, so a concurrent pick (see With) cannot bind
 // the card after the check.
-func DeleteWith(root, owner, id string, before func() error) error {
+func DeleteWith(root, id string, before func() error) error {
 	if !ValidID(id) {
 		return ErrNotFound
 	}
-	return locked(root, owner, func(dir string) error {
+	return locked(root, func(dir string) error {
 		if _, err := os.Stat(filepath.Join(dir, id, "card.md")); err != nil {
 			if os.IsNotExist(err) {
 				return ErrNotFound
@@ -218,11 +311,11 @@ func DeleteWith(root, owner, id string, before func() error) error {
 
 // With runs fn under the library lock with the card known to exist, so the
 // card cannot be deleted between the check and what fn does with it.
-func With(root, owner, id string, fn func(Card) error) error {
+func With(root, id string, fn func(Card) error) error {
 	if !ValidID(id) {
 		return ErrNotFound
 	}
-	return locked(root, owner, func(dir string) error {
+	return locked(root, func(dir string) error {
 		c, err := read(dir, id)
 		if err != nil {
 			return err
@@ -235,14 +328,14 @@ func With(root, owner, id string, fn func(Card) error) error {
 // or the file name without its extension when that line is too long to be a name.
 // Without confirm, a name already in the library returns ErrExists with that name;
 // with confirm, the new card gets the next free " (2)" style suffix. Nothing is overwritten.
-func Import(root, owner, filename, content string, confirm bool) (Card, error) {
+func Import(root, filename, content string, confirm bool) (Card, error) {
 	name := importName(filename, content)
 	_, body, err := clean(name, content)
 	if err != nil {
 		return Card{Name: name}, err
 	}
 	var c Card
-	err = locked(root, owner, func(dir string) error {
+	err = locked(root, func(dir string) error {
 		cards, err := list(dir)
 		if err != nil {
 			return err
