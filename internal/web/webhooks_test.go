@@ -149,6 +149,18 @@ func TestWebhookAPI(t *testing.T) {
 	if code, out := call("GET", "/api/bots/ada/webhooks/github", ""); code != 200 || out["secret"] != secret {
 		t.Fatalf("detail: %d %v", code, out)
 	}
+	// The polled profile carries the gateway base, so the page notices it
+	// come and go; once the standby drops, nothing hands out the public one.
+	if _, prof := call("GET", "/api/bots/ada", ""); prof["webhook_public"] != public {
+		t.Fatalf("profile with the gateway up: %v", prof["webhook_public"])
+	}
+	public = ""
+	if _, prof := call("GET", "/api/bots/ada", ""); prof["webhook_public"] != "" {
+		t.Fatalf("profile with the gateway down: %v", prof["webhook_public"])
+	}
+	if _, out := call("GET", "/api/bots/ada/webhooks/github", ""); out["url"] != out["local_url"] || out["public_url"] != nil {
+		t.Fatalf("detail with the gateway down: %v", out)
+	}
 	if code, _ := call("GET", "/api/bots/ada/webhooks/nope", ""); code != 404 {
 		t.Fatalf("missing detail: %d", code)
 	}

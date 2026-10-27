@@ -58,7 +58,11 @@ func (s *Server) listWebhooks(w http.ResponseWriter, r *http.Request) {
 	for _, h := range hooks {
 		out = append(out, s.webhookView(b.Name(), h, false))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"hooks": out})
+	var public string
+	if s.WebhookBase != nil {
+		_, public = s.WebhookBase()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hooks": out, "public": public})
 }
 
 func (s *Server) addWebhook(w http.ResponseWriter, r *http.Request) {

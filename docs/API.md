@@ -303,12 +303,12 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 都要用户会话，只能管自己的 Bot。
 
-- `GET /api/bots/{name}/webhooks` → `{"hooks":[{"name","auth","url","local_url","public_url?","created"}]}`，按配置顺序，**不带密钥**。
+- `GET /api/bots/{name}/webhooks` → `{"hooks":[{"name","auth","url","local_url","public_url?","created"}],"public"}`（`public` 是读这份列表时的公网 base，没有为空串），按配置顺序，**不带密钥**。
 - `POST /api/bots/{name}/webhooks`，body `{"name","auth?"}`。`auth` 是 `hmac`（默认，界面叫「签名校验」）或 `bearer`（「令牌」）。名字必须是 `^[a-z0-9][a-z0-9-]{0,63}$`，否则 400「用小写字母、数字和短横线，不要大写或下划线」；重名 409「已有同名 Webhook」。成功 201，同上字段外加明文 `secret`。第一条会顺带给 Bot 写上 `webhook` Link 授权，不用另装。
 - `GET /api/bots/{name}/webhooks/{hook}` → 同上，带 `secret`（详情里「显示」用）。没有这条是 404。
 - `DELETE /api/bots/{name}/webhooks/{hook}` → 204。只删这条和它的密钥，`webhook` Link 授权保留。
 
-`url` 是要交给外部服务的地址：有公网地址时等于 `public_url`，否则等于 `local_url`（serve 的监听地址）。公网地址依次取 `XBOT_PUBLIC_URL`、隧道地址、账号网关入口 `https://<网关>/pipe/v1/hook/<设备>`（登录网关、待命运行时，见 [pipe.md](pipe.md)）。Bot 名在地址里做了百分号转义。
+`url` 是要交给外部服务的地址：有公网地址时等于 `public_url`，否则等于 `local_url`（serve 的监听地址）。公网地址依次取 `XBOT_PUBLIC_URL`、隧道地址、账号网关入口 `https://<网关>/pipe/v1/hook/<设备>`（中枢确认了这台设备的待命才有，握手失败、断开或重连中就没有，见 [pipe.md](pipe.md)）。`GET /api/bots/{name}` 带 `webhook_public`（当前公网 base），任务页随轮询比对，变了就重读列表和打开的详情。Bot 名在地址里做了百分号转义。
 
 外部服务投递：`POST <url>`，签名校验带 `X-XBot-Signature: sha256=<hex(HMAC-SHA256(secret, body))>`，令牌带 `Authorization: Bearer <secret>`；可选 `X-XBot-Delivery`（去重）、`X-XBot-Event`、`X-XBot-Sender`。成功 202 `{"status":"accepted"}`，签名不对 401，没有这条 404，正文超 32 KiB 413。
 

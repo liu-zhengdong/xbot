@@ -721,6 +721,10 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 	url, bg, ink, initial := paintBot(b)
 	avatar, seed := b.AvatarState()
 	providerName, modelName := runningModel(s.Root, b)
+	var hookPublic string
+	if s.WebhookBase != nil {
+		_, hookPublic = s.WebhookBase()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": b.Name(), "persona": persona,
 		"description":  b.Config().Description,
@@ -732,6 +736,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		"pinned": b.Config().Pinned, "primary": b.Name() == primary,
 		"group":  b.Config().Group,
 		"memory": mem, "routines": routines, "agents": agents,
+		"webhook_public": hookPublic,
 	})
 }
 

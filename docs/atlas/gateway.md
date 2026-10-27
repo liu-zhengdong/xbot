@@ -43,4 +43,4 @@ verified: 2026-10-26 @ a63cbb5
 
 **批 1 穿刺已实现**（`internal/pipe`、`xbot pipe serve`，部署在 `pipe.babelgo.cn:8443`，材料在 [packaging/pipe/](../../packaging/pipe/README.md)）：账号会话领短时票（绑定账号下的设备、5 分钟、一次性），入口和设备各连中枢 WebSocket，中枢只转发不透明的二进制帧；双方用临时 X25519 + 票密钥派生 AES-GCM 会话密钥，入口经管道 `GET /api/bots/<bot>/transcript` 拉到设备上的权威 transcript 一页。两数据根测试里建立约 1 毫秒、拉一页约 1 毫秒，中枢日志只有票 id 前缀和字节数。设备端还没接进 `xbot serve`，只放行 `GET /api/`。协议见 [pipe.md](../pipe.md)。
 
-**入站 Webhook 公网入口**（`internal/pipe/hook.go`，[ADR 0031](../adr/0031-webhook-ingress-via-pipe.md)）：中枢开放 `POST /pipe/v1/hook/{device}/webhook/{bot}/{name}`，经该设备的待命连接转给本机 inbound 处理器（不带主人凭证、只认 `/webhook/<bot>/<name>`），签名/令牌在设备上校验，中枢不存 hook 密钥；白名单请求头、32 KiB、每设备 8 条并发、15 秒超时。serve 在网关待命运行期间把这条入口当 Bot webhook 的公网地址。
+**入站 Webhook 公网入口**（`internal/pipe/hook.go`，[ADR 0031](../adr/0031-webhook-ingress-via-pipe.md)）：中枢开放 `POST /pipe/v1/hook/{device}/webhook/{bot}/{name}`，经该设备的待命连接转给本机 inbound 处理器（不带主人凭证、只认 `/webhook/<bot>/<name>`），签名/令牌在设备上校验，中枢不存 hook 密钥；白名单请求头、32 KiB、每设备 8 条并发、15 秒超时。serve 以 `Device.Standby` 回调为准：中枢回 standby 确认后才把这条入口当 Bot webhook 的公网地址，待命断开（含握手失败、重连中）即撤回。

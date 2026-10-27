@@ -15,10 +15,13 @@ const hookView=h=>{const local='http://127.0.0.1:8787/webhook/2号小伙子/'+h.
  return {name:h.name,auth:h.auth,local_url:local,url:hookFixture.public?pub:local,...(hookFixture.public?{public_url:pub}:{})}};
 const hookBase=window.fetch;
 window.fetch=async(path,opts={})=>{
+ const p=String(path).match(/^\/api\/bots\/([^/]+)$/);
+ if(p&&p[1]!=='status'&&(opts.method||'GET')==='GET'){const r=await hookBase(path,opts);if(!r.ok)return r;
+  return json({...await r.json(),webhook_public:hookFixture.public?'https://pipe.example/pipe/v1/hook/mini-1':''})}
  const m=String(path).match(/^\/api\/bots\/[^/]+\/webhooks(?:\/([^/]+))?$/);
  if(!m)return hookBase(path,opts);
  const method=opts.method||'GET';hookFixture.calls.push(method+' '+(m[1]||''));
- if(method==='GET'&&!m[1])return json({hooks:hookFixture.hooks.map(hookView)});
+ if(method==='GET'&&!m[1])return json({hooks:hookFixture.hooks.map(hookView),public:hookFixture.public?'https://pipe.example/pipe/v1/hook/mini-1':''});
  if(method==='POST'){const b=JSON.parse(opts.body);
   if(hookFixture.hooks.some(h=>h.name===b.name))return new Response(JSON.stringify({error:'已有同名 Webhook'}),{status:409});
   const h={name:b.name,auth:b.auth||'hmac',secret:'s3cr3t'.padEnd(64,'0')};hookFixture.hooks.push(h);
@@ -75,6 +78,12 @@ const stop=name=>{if(shot===name){document.body.dataset.testResult='passed';retu
  if(stop('detail'))return;
  $('.hook-reveal').click();await waitFor(()=>secret().includes('s3cr3t'),'reveal did not show the secret');
  if(stop('detail-secret'))return;
+ // The gateway drops and comes back while the detail is open.
+ const addr=()=>$('.hook-detail .hook-addr .hook-copy').textContent,gw=()=>{hookFixture.public=!hookFixture.public;document.dispatchEvent(new Event('visibilitychange'))};
+ const follows=()=>hookFixture.public?addr().includes('公网地址')&&!$('.hook-detail .hook-gw'):addr().includes('127.0.0.1')&&$('.hook-detail .hook-gw');
+ gw();await waitFor(follows,'detail did not follow the gateway change');
+ gw();await waitFor(follows,'detail did not follow the gateway coming back');
+ assert(secret().includes('s3cr3t'),'gateway change hid the revealed secret');
  $('.hook-remove').click();await waitFor(()=>!$('#modal').hidden&&$('#modal-title').textContent.includes('撤掉'),'remove confirm missing');
  if(stop('remove'))return;
  $('#modal-form').requestSubmit();await waitFor(()=>$('#modal').hidden&&$('.hook-empty'),'not back to empty after remove');

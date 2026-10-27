@@ -619,7 +619,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		pipeHub = "https://pipe.babelgo.cn:8443"
 	}
 	// Webhook addresses: XBOT_PUBLIC_URL or the tunnel when set, else the
-	// account gateway's ingress while this device's standby runs.
+	// account gateway's ingress while the hub holds this device's standby.
 	var fixedPublic, gatewayPublic atomic.Value
 	fixedPublic.Store(strings.TrimRight(strings.TrimSpace(os.Getenv("XBOT_PUBLIC_URL")), "/"))
 	gatewayPublic.Store("")
@@ -631,9 +631,15 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		return localBase, gatewayPublic.Load().(string)
 	}
 	stopPipe := ui.StartAccountPipe(ctx, func(ctx context.Context, session, deviceID string) error {
+		base := pipe.HookBase(pipeHub, deviceID)
 		d := &pipe.Device{Hub: pipeHub, Session: session, DeviceID: deviceID, Handler: mux, Authorize: ui.AuthorizeOwner, Hooks: hub.Handler(), Log: log.New(os.Stderr, "xbot: ", 0)}
-		gatewayPublic.Store(pipe.HookBase(pipeHub, deviceID))
-		defer gatewayPublic.Store("")
+		d.Standby = func(up bool) {
+			if up {
+				gatewayPublic.Store(base)
+			} else {
+				gatewayPublic.Store("")
+			}
+		}
 		return d.Run(ctx)
 	})
 	defer stopPipe()

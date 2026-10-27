@@ -5804,7 +5804,7 @@
       ["最近结束", agents.filter(a => !["running", "awaiting", "queued"].includes(a.status)).sort((a,b) => Date.parse(b.finished_at || 0) - Date.parse(a.finished_at || 0)).slice(0,20), "agent"],
       ["例程", data.routines || [], "routine"],
     ];
-    const hooks = webhookSection(root);
+    const hooks = webhookSection(root); syncWebhookBase(root, data);
     if (!agents.length && !sections[3][1].length) { if (!root.querySelector(".panel-empty")) root.replaceChildren(panelEmpty("tasks", "没有任务", "让它「每天 8 点提醒我」，这里就会有一个例程。"), hooks); return; }
     root.querySelector(".panel-empty")?.remove();
     const cards = new Map([...root.querySelectorAll("[data-agent], [data-routine]")].map(n => [n.dataset.agent ? "agent:" + n.dataset.agent : "routine:" + n.dataset.routine, n]));
@@ -5840,7 +5840,7 @@
   }
 
   // The task tab's Webhook section. It loads once per task view and repaints
-  // only on its own actions, so the task poll never touches it.
+  // on its own actions, or when the poll says the gateway came or went.
   function webhookSection(root) {
     let sec = root.querySelector(':scope > [data-section="webhook"]');
     if (sec) return sec;
@@ -5853,12 +5853,22 @@
     paintWebhooks(root, sec); return sec;
   }
 
+  // The gateway's public base follows its standby; when the poll's differs
+  // from the one the list was read with, reload the list and the open detail
+  // so neither keeps handing out a dead address.
+  function syncWebhookBase(root, data) {
+    if (!("webhook_public" in data) || root.hookBase === undefined || root.hookBase === data.webhook_public) return;
+    root.hookBase = data.webhook_public;
+    loadWebhooks(root);
+    if (root.hookDetail) openWebhook(root, root.hookDetail.name, true);
+  }
+
   const hookRoute = (bot, name) => "/api/bots/" + encodeURIComponent(bot) + "/webhooks" + (name ? "/" + encodeURIComponent(name) : "");
   const hookAuth = a => a === "bearer" ? "令牌" : "签名校验";
 
   async function loadWebhooks(root) {
     const bot = root.dataset.bot;
-    try { const data = await api(hookRoute(bot)); if (root.dataset.bot === bot) root.hooks = data.hooks || []; }
+    try { const data = await api(hookRoute(bot)); if (root.dataset.bot === bot) { root.hooks = data.hooks || []; root.hookBase = data.public || ""; } }
     catch (e) { root.hooks = root.hooks || []; root.hookError = visibleError(e, "读不到 Webhook"); }
     paintWebhooks(root);
   }
@@ -5888,8 +5898,12 @@
     body.replaceChildren(...nodes);
   }
 
-  async function openWebhook(root, name) {
-    try { root.hookDetail = await api(hookRoute(root.dataset.bot, name)); root.hookReveal = false; }
+  async function openWebhook(root, name, keep = false) {
+    try {
+      const h = await api(hookRoute(root.dataset.bot, name));
+      if (keep && root.hookDetail?.name !== name) return;
+      root.hookDetail = h; if (!keep) root.hookReveal = false;
+    }
     catch (e) { root.hookError = visibleError(e, "读不到这条 Webhook"); }
     paintWebhooks(root);
   }
