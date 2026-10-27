@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"xbot/internal/fsutil"
@@ -214,29 +215,41 @@ func AddVendor(root, brand string) (Provider, error) {
 	if v.KeyLogin {
 		return Provider{}, ErrNoKeyRoute
 	}
-	f, err := Load(root)
-	if err != nil {
-		return Provider{}, err
-	}
-	if i := indexOf(f.Providers, v.Brand); i >= 0 {
-		// Only the vendor's own entry may take this vendor's key.
-		if !vendorOwns(v, f.Providers[i]) {
-			return Provider{}, ErrVendorNameTaken
+	var result Provider
+	err := fsutil.WithLock(Path(root)+".lock", func() error {
+		f, err := Load(root)
+		if err != nil {
+			return err
 		}
-		return f.Providers[i], nil
-	}
-	for n, m := range v.Models {
-		p := Provider{Name: v.Brand, Protocol: v.Protocol, BaseURL: v.BaseURL, APIKeyEnv: v.KeyEnv}
-		if n > 0 {
-			p = Provider{Name: v.Brand}
+		name := v.Brand
+		if i := indexOf(f.Providers, name); i >= 0 {
+			if vendorOwns(v, f.Providers[i]) {
+				result = f.Providers[i]
+				return nil
+			}
+			if brand != "xai" || f.Providers[i].OAuth != "xai" {
+				return ErrVendorNameTaken
+			}
+			name = "xai-key"
 		}
-		if err := Add(root, p, m); err != nil {
-			return Provider{}, err
+		if brand == "xai" {
+			for _, p := range f.Providers {
+				suffix := strings.TrimPrefix(p.Name, "xai-key-")
+				n, err := strconv.Atoi(suffix)
+				if (p.Name == "xai-key" || (suffix != p.Name && err == nil && n >= 2 && strconv.Itoa(n) == suffix)) && vendorOwns(v, p) {
+					result = p
+					return nil
+				}
+			}
+			if name == "xai-key" {
+				for n := 2; indexOf(f.Providers, name) >= 0; n++ {
+					name = fmt.Sprintf("xai-key-%d", n)
+				}
+			}
 		}
-	}
-	f, err = Load(root)
-	if err != nil {
-		return Provider{}, err
-	}
-	return f.Providers[indexOf(f.Providers, v.Brand)], nil
+		result = Provider{Name: name, Protocol: v.Protocol, BaseURL: v.BaseURL, APIKeyEnv: v.KeyEnv, Models: append([]ModelSpec(nil), v.Models...)}
+		f.Providers = append(f.Providers, result)
+		return Save(root, f)
+	})
+	return result, err
 }

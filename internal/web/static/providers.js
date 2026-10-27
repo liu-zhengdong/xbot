@@ -283,15 +283,12 @@
     function goToXaiSubscription() {
       query = ""; selected = "subscription:xai"; paint(selected);
     }
-    const xaiOccupied = () => data.providers.some(p => p.name === "xai" && p.oauth === "xai");
     function xaiVendorBody(p, vendor, current) {
       const box = node("div", "provider-xai");
-      if (!xaiOccupied() && !subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription));
+      if (!subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription));
       const alt = node("details", "provider-key-alt");
       const fold = node("summary"); fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
-      alt.append(fold, xaiOccupied()
-        ? node("p", "provider-login-note", "xAI 已被账号登录占用，暂时不能保存 API 密钥。想修改密钥，请先退出登录。")
-        : keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
+      alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
       box.append(alt);
       return box;
     }
@@ -303,7 +300,7 @@
       // xAI puts its login state on the right of the header so the column fills.
       const status = node("div", "provider-status"); heading.append(glyph(p.brand), info); info.append(title);
       if (p.brand === "xai") { heading.className += " provider-detail-heading-aside"; heading.append(status); } else info.append(status);
-      const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models"); host.replaceChildren(back, heading, auth, body); heading.tabIndex = -1; heading.focus({preventScroll:true});
+      const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models"), keySlot = node("div"); host.replaceChildren(back, heading, auth, body, keySlot); heading.tabIndex = -1; heading.focus({preventScroll:true});
       // xAI's header row reflects account login only; a saved API key shows
       // inside the folded key form, never here. Logged in, the list already
       // says so: the header carries only the 退出登录 icon.
@@ -335,7 +332,7 @@
       function keyStatus() {
         if (p.brand === "xai") {
           auth.replaceChildren();
-          if (p.oauth !== "xai" && xaiOccupied()) status.replaceChildren(node("span", "provider-status-idle", "账号登录占用"));
+          if (p.oauth !== "xai" && subscriptionEntry("xai").key_configured) status.replaceChildren();
           else xaiStatus("idle");
           if (p.oauth === "xai" && p.key_configured) {
             const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
@@ -359,6 +356,13 @@
       keyStatus(); body.append(state("正在拉取模型…"));
       try {
         if (refresh) { data = await api("/api/providers"); if (!current()) return; p = p.oauth === "chatgpt" ? subscriptionEntry() : entries().find(row => key(row) === key(p) || (p.name == null && row.brand === p.brand)) || p; title.replaceChildren(node("h2", "", p.title), badge(p.protocol)); keyStatus(); }
+        if (p.oauth === "xai" && p.key_configured) {
+          const alt = node("details", "provider-key-alt"), fold = node("summary");
+          fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
+          const keyEntry = entries().find(row => row.brand === "xai" && !row.oauth && row.name);
+          alt.append(fold, keyForm(keyEntry || p, vendorOf("xai"), () => capability(p, true), current, "", { label: "API 密钥", configured: !!keyEntry?.key_configured }));
+          keySlot.replaceChildren(alt);
+        }
         // An xAI vendor card leads with account login even when an old API key
         // is configured; OAuth is the primary path and the key folds away.
         // The default endpoint has an empty name, so match on brand alone.
@@ -399,13 +403,6 @@
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
         body.append(rows);
-        if (p.oauth === "xai") {
-          const alt = node("details", "provider-key-alt"), fold = node("summary");
-          fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
-          const keyEntry = entries().find(row => row.brand === "xai" && !row.oauth && row.name);
-          alt.append(fold, node("p", "provider-login-note", keyEntry ? "已配置 API 密钥，可在 Bot 的模型设置中选择。" : "登录账号后，如需配置 API 密钥，请先退出登录。"));
-          body.append(alt);
-        }
       } catch (err) {
         if (!current()) return;
         // A rejected refresh is a dead credential: say so instead of a network

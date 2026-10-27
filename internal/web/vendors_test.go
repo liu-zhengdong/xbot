@@ -17,6 +17,78 @@ import (
 
 var newBrands = []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent"}
 
+func TestXAIKeySaveWhileOAuthOwnsName(t *testing.T) {
+	for _, scenario := range []string{"new", "existing", "numbered", "numbered-new"} {
+		t.Run(scenario, func(t *testing.T) {
+			s, srv, tok := setupServer(t, false, func(http.ResponseWriter, *http.Request) {})
+			t.Cleanup(config.ForgetKeys)
+			oauth := config.Provider{Name: "xai", OAuth: "xai", Protocol: config.Responses, BaseURL: "https://api.x.ai/v1", Models: []config.ModelSpec{{Name: "grok-oauth", Context: 12345}}}
+			if err := config.SaveOAuthProvider(s.Root, oauth); err != nil {
+				t.Fatal(err)
+			}
+			want := "xai-key"
+			if scenario == "numbered" || scenario == "numbered-new" {
+				if err := config.Add(s.Root, config.Provider{Name: "xai-key", BaseURL: "https://example.com/v1", APIKeyEnv: "OTHER_KEY"}, config.ModelSpec{Name: "other", Context: 12345}); err != nil {
+					t.Fatal(err)
+				}
+				want = "xai-key-2"
+			}
+			if scenario == "existing" || scenario == "numbered" {
+				if err := config.Add(s.Root, config.Provider{Name: want, Protocol: config.ChatCompletions, BaseURL: "https://api.x.ai/v1", APIKeyEnv: "XAI_API_KEY"}, config.ModelSpec{Name: "custom-model", Context: 12345}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := 0; i < 2; i++ {
+				code, out := setupCall(t, srv, tok, "PUT", "/api/providers/xai/key", `{"key":"scripted-test-key"}`)
+				if code != 200 || out["provider"] != want {
+					t.Fatalf("save: %d %v", code, out)
+				}
+			}
+			f, err := config.Load(s.Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var key, account *config.Provider
+			for i := range f.Providers {
+				p := &f.Providers[i]
+				if p.Name == want {
+					key = p
+				}
+				if p.Name == "xai" {
+					account = p
+				}
+			}
+			if key == nil || key.APIKeyEnv != "XAI_API_KEY" || account == nil || account.OAuth != "xai" || ((scenario == "existing" || scenario == "numbered") && key.Models[0].Name != "custom-model") {
+				t.Fatal("bindings changed or missing")
+			}
+			env, err := os.ReadFile(config.EnvFile(s.Root))
+			if err != nil || !strings.Contains(string(env), "XAI_API_KEY=scripted-test-key") {
+				t.Fatal("key not saved")
+			}
+			if err := config.RemoveOAuthProvider(s.Root, "xai"); err != nil {
+				t.Fatal(err)
+			}
+			f, err = config.Load(s.Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, p := range f.Providers {
+				if p.Name == want && p.APIKeyEnv == "XAI_API_KEY" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("logout removed key binding")
+			}
+			code, out := setupCall(t, srv, tok, "PUT", "/api/providers/xai/key", `{"key":"scripted-test-key"}`)
+			if code != 200 || out["provider"] != want {
+				t.Fatalf("save after logout: %d %v", code, out)
+			}
+		})
+	}
+}
+
 func TestVendorIconsServed(t *testing.T) {
 	_, srv, _ := setupServer(t, false, func(http.ResponseWriter, *http.Request) {})
 	for _, b := range append([]string{"deepseek", "openai", "anthropic", "openrouter"}, newBrands...) {
