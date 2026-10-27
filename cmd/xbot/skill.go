@@ -37,6 +37,11 @@ func cmdSkill(root string, args []string) error {
 			return errUsage
 		}
 		return cmdSkillShow(root, args[1])
+	case "remove":
+		if len(args) != 2 {
+			return errUsage
+		}
+		return cmdSkillRemove(root, args[1])
 	case "disable":
 		if len(args) != 3 {
 			return errUsage
@@ -76,6 +81,14 @@ func cmdSkillShow(root, slug string) error {
 		return err
 	}
 	fmt.Print(string(raw))
+	return nil
+}
+
+func cmdSkillRemove(root, slug string) error {
+	if err := skill.Remove(root, slug, func() error { return bot.ForgetSkill(root, slug) }); err != nil {
+		return err
+	}
+	fmt.Printf("removed %s from the skill library; bots no longer keep a switch for it\n", slug)
 	return nil
 }
 

@@ -549,3 +549,55 @@ func TestWebRegistrationMigratesLegacySkills(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Deleting a library skill removes its folder and every bot's switch for it, so a later skill
+// of the same name starts on everywhere. A second delete, or a name that is not a skill, is 404.
+func TestSkillDeleteClearsSwitches(t *testing.T) {
+	root, _, call := skillTestServer(t)
+	for _, slug := range []string{"ship", "keep"} {
+		if err := skill.Write(root, slug, "x", "x"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"ada", "eve"} {
+		b, err := bot.Load(root, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := b.DisableSkill("ship"); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.DisableSkill("keep"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, _ := call(http.MethodDelete, "/api/skills/ship", "", false); code != http.StatusUnauthorized {
+		t.Fatalf("auth %d", code)
+	}
+	code, raw := call(http.MethodDelete, "/api/skills/ship", "", true)
+	if code != http.StatusOK || !strings.Contains(raw, `"deleted":true`) {
+		t.Fatalf("delete %d %s", code, raw)
+	}
+	if _, err := os.Stat(filepath.Join(skill.Dir(root), "ship")); !os.IsNotExist(err) {
+		t.Fatalf("skill folder still there: %v", err)
+	}
+	for _, name := range []string{"ada", "eve"} {
+		b, err := bot.Load(root, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := b.DisabledSkills(); len(got) != 1 || got[0] != "keep" {
+			t.Fatalf("%s switches %v", name, got)
+		}
+	}
+	code, raw = call(http.MethodDelete, "/api/skills/ship", "", true)
+	if code != http.StatusNotFound || !strings.Contains(raw, "没有找到这个技能") {
+		t.Fatalf("second delete %d %s", code, raw)
+	}
+	if code, raw = call(http.MethodDelete, "/api/skills/Bad_Slug", "", true); code != http.StatusNotFound {
+		t.Fatalf("bad slug %d %s", code, raw)
+	}
+	if code, raw = call(http.MethodGet, "/api/skills/keep", "", true); code != http.StatusOK {
+		t.Fatalf("other skill %d %s", code, raw)
+	}
+}

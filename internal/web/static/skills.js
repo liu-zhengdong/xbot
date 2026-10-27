@@ -96,8 +96,30 @@
         b.paint = paint; paint(); line.append(tx, tog); bots.append(line);
       }
       const sec = node("div", "setsec"); sec.append(node("h4", "", "在这些 Bot 里启用"), bots);
+      const foot = node("div", "sk-foot"); foot.append(button("btn sk-del", "删除", ev => askDelete(ev.currentTarget, data, title)));
       body.replaceChildren(back, node("div", "skdetail-name", title), ...(hint ? [node("p", "skdetail-desc", hint)] : []), sec,
-        node("p", "setfoot", "关掉只影响这一条技能、这一个 Bot。库里还在，别的 Bot 不受影响。"));
+        node("p", "setfoot", "关掉只影响这一条技能、这一个 Bot。库里还在，别的 Bot 不受影响。"), foot);
+    }
+    // 删除：无独立设计真源，照人设卡的底栏「删除」+ 嵌层确认
+    function askDelete(opener, data, title) {
+      openLayer(opener, "删除这个技能？", "从本机技能库删掉「" + title + "」，各个 Bot 里对它的开关也一并清掉。删除后找不回来。",
+        [["btn sec", "取消", () => closeLayer()], ["btn pri", "删除", () => remove(data, title)]]);
+    }
+    async function remove(data, title) {
+      if (importing || !current()) return;
+      importing = true; layer.buttons.forEach(b => b.disabled = true); layerError("");
+      try {
+        await api("/api/skills/" + encodeURIComponent(data.slug), {method: "DELETE"});
+        importing = false;
+        if (!current()) return;
+        closeLayer(); status = "已删除「" + title + "」。";
+        if (await load()) showList();
+      } catch (e) {
+        importing = false;
+        if (!current()) return;
+        layer?.buttons.forEach(b => b.disabled = false);
+        layerError(plain(e, "没能删除，请再试一次。"));
+      }
     }
     async function flip(b, tog) {
       if (tog.disabled || !current()) return;

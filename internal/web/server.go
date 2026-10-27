@@ -116,7 +116,7 @@ type Server struct {
 	// vendorMu serializes adding a built-in vendor and saving its key.
 	vendorMu    sync.Mutex
 	searchMu    sync.Mutex
-	skillMu     sync.Mutex // one skill switch or persona-card pick at a time: each loads and saves the bot config
+	skillMu     sync.Mutex // one skill switch, skill removal or persona-card pick at a time: each loads and saves the bot config
 	searchProbe func(context.Context, string, string) error
 	tabs        map[string]*tabState
 
@@ -251,6 +251,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/links", s.listBotLinks)
 	mux.HandleFunc("GET /api/skills", s.listLibrary)
 	mux.HandleFunc("GET /api/skills/{slug}", s.readLibrarySkill)
+	mux.HandleFunc("DELETE /api/skills/{slug}", s.deleteLibrarySkill)
 	mux.HandleFunc("POST /api/skills/import", s.importSkill)
 	mux.HandleFunc("GET /api/skills/sources/{id}", s.listSourceSkills)
 	mux.HandleFunc("GET /skills.js", s.static("static/skills.js", "text/javascript; charset=utf-8"))

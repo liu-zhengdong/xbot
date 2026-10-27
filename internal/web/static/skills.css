@@ -51,6 +51,10 @@
 .skdetail-desc{font-size:var(--x-fs-ui);color:var(--x-muted);line-height:1.65;margin:0 0 var(--x-s7)}
 .skills-settings .setrow .tog{cursor:pointer}
 .skills-settings .setrow .tog:disabled{opacity:.6;cursor:default}
+/* Delete follows the persona-card footer: a quiet danger-text button on the left. */
+.sk-foot{display:flex;align-items:center;margin-top:var(--x-s5)}
+.skills-settings .btn.sk-del{background:transparent;color:var(--x-danger);padding:0 var(--x-s3)}
+.skills-settings .btn.sk-del:hover{background:var(--x-fill-1)}
 
 /* Import and same-name layers sit over the settings card only. */
 .nestlayer{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:var(--x-s6);background:var(--x-scrim)}

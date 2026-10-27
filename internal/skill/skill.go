@@ -298,6 +298,36 @@ func ImportData(root, dir string, raw []byte, overwrite bool) (Imported, error) 
 	return res, nil
 }
 
+// ErrNotFound means the library has no skill with that slug.
+var ErrNotFound = errors.New("skill: not found")
+
+// Remove deletes one skill's folder from the library.
+// before runs under the library write lock once the skill is known to exist,
+// so clearing what refers to it cannot interleave with an import of the same slug.
+func Remove(root, slug string, before func() error) error {
+	if !ValidSlug(slug) {
+		return fmt.Errorf("%w %q", ErrBadSlug, slug)
+	}
+	lock, err := fsutil.Lock(filepath.Join(Dir(root), ".write.lock"))
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+	dir := filepath.Join(Dir(root), slug)
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: %s", ErrNotFound, slug)
+		}
+		return err
+	}
+	if before != nil {
+		if err := before(); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(dir)
+}
+
 // Write creates or replaces one skill. The file mode is 0600.
 // title optionally supplies a short human-readable label; name stays the slug.
 func Write(root, slug, description, body string, title ...string) error {

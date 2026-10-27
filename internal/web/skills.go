@@ -150,6 +150,26 @@ func (s *Server) readLibrarySkill(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// deleteLibrarySkill removes a skill from the local library and clears every bot's switch for it,
+// so a later skill with the same name does not start out switched off.
+func (s *Server) deleteLibrarySkill(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	slug := r.PathValue("slug")
+	s.skillMu.Lock()
+	defer s.skillMu.Unlock()
+	err := skill.Remove(s.Root, slug, func() error { return bot.ForgetSkill(s.Root, slug) })
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	case errors.Is(err, skill.ErrNotFound), errors.Is(err, skill.ErrBadSlug):
+		writeErr(w, http.StatusNotFound, "没有找到这个技能")
+	default:
+		writeErr(w, http.StatusInternalServerError, "没能删除，请再试一次")
+	}
+}
+
 // importSkill takes the SKILL.md the browser read from a folder the owner picked.
 // Nothing here names a path on this machine: the folder name only proposes the skill's directory name,
 // and ImportData accepts it only when it is a plain slug.

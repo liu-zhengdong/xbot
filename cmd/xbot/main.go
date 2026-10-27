@@ -51,6 +51,7 @@ Usage:
   xbot [--root DIR] skill list
   xbot [--root DIR] skill import <path>
   xbot [--root DIR] skill show <slug>
+  xbot [--root DIR] skill remove <slug>
   xbot [--root DIR] skill disable <bot> <slug>
   xbot [--root DIR] skill enable <bot> <slug>
   xbot [--root DIR] chat [name] [--yes]

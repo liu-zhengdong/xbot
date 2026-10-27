@@ -53,3 +53,25 @@ func (b *Bot) setSkillDisabled(slug string, disabled bool) error {
 		return nil
 	})
 }
+
+// ForgetSkill drops slug from every bot's disable list, for a skill leaving the library.
+// Bots that never switched it off are left untouched.
+func ForgetSkill(root, slug string) error {
+	cfgs, err := List(root)
+	if err != nil {
+		return err
+	}
+	for _, cfg := range cfgs {
+		if !slices.Contains(cfg.DisabledSkills, slug) {
+			continue
+		}
+		b, err := Load(root, cfg.Name)
+		if err != nil {
+			return err
+		}
+		if err := b.EnableSkill(slug); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -418,3 +418,57 @@ func TestSkillsDisplayNamesAndCopy(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// Deleting from the detail page goes through a confirm layer; cancel sends nothing, a failure keeps the
+// layer with its error, and success closes it, reports on the list and reloads it.
+func TestSkillsSettingsDelete(t *testing.T) {
+	source, err := staticFS.ReadFile("static/skills.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(string(source))
+	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
+ const all=[];
+ class Node{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;all.push(this);
+  this.classList={toggle:(n,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(n):s.delete(n);this.className=[...s].join(' ')}}}
+  append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){document.activeElement=this}}
+ const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t}),activeElement:null};
+ vm.runInNewContext(` + string(encoded) + `,{window,document});
+ const find=(cls,from=all)=>from.filter(n=>n.className.split(' ').includes(cls));
+ const btn=text=>all.filter(n=>n.tag==='button'&&n.textContent===text).at(-1);
+ (async()=>{
+  let library=[{slug:'weekly',name:'写周报',description:'整理周报'},{slug:'flight',name:'订机票',description:'比较航班'}];
+  const calls=[];let fails=true;
+  const api=async(path,opt)=>{calls.push([opt?.method||'GET',path]);
+   if(path==='/api/skills')return {skills:structuredClone(library)};
+   if(path==='/api/skills/weekly'&&!opt)return {slug:'weekly',name:'写周报',description:'整理周报',bots:[{name:'ada',enabled:false}]};
+   if(path==='/api/skills/weekly'&&opt.method==='DELETE'){if(fails){const e=new Error('x');e.status=500;throw e}library=library.slice(1);return {deleted:true}}
+   throw new Error('unexpected '+path)};
+  const host=new Node('div');
+  await window.XBotSkills.mount({api,host,isCurrent:()=>true});
+  find('sklist')[0].children[0].onclick();await new Promise(r=>setImmediate(r));
+  const del=find('sk-del')[0];assert.equal(del.textContent,'删除');
+  del.onclick({currentTarget:del});
+  const card=find('nestcard').at(-1);
+  assert.equal(card.children[0].textContent,'删除这个技能？');
+  assert.match(card.children[1].textContent,/各个 Bot 里对它的开关也一并清掉。删除后找不回来。/);
+  assert.doesNotMatch(card.children[1].textContent,/weekly|disabled/);
+  assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消','删除']);
+  btn('取消').onclick();assert.equal(find('sk-layers')[0].children.length,0);
+  assert.equal(calls.some(c=>c[0]==='DELETE'),false,'cancel sends nothing');
+  del.onclick({currentTarget:del});
+  await find('nest-actions').at(-1).children[1].onclick();
+  assert.equal(find('sk-layers')[0].children.length,1,'a failed delete keeps the layer');
+  assert.equal(find('sk-error').some(n=>!n.hidden&&n.textContent==='没能删除，请再试一次。'),true);
+  assert.equal(find('nest-actions').at(-1).children[1].disabled,false);
+  fails=false;await find('nest-actions').at(-1).children[1].onclick();
+  assert.deepEqual(calls.filter(c=>c[0]==='DELETE').at(-1),['DELETE','/api/skills/weekly']);
+  assert.equal(find('sk-layers')[0].children.length,0);
+  assert.equal(find('sk-status').at(-1).textContent,'已删除「写周报」。');
+  assert.deepEqual(find('sklist').at(-1).children.map(r=>r.children[0].children[0].textContent),['订机票']);
+ finished=true;
+ })().catch(e=>{console.error(e);process.exitCode=1});`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

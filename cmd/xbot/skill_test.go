@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,5 +126,37 @@ func TestSkillCLIMigratesWithoutOwner(t *testing.T) {
 	}
 	if err := cmdSkill(root, []string{"show", "../escape"}); err == nil {
 		t.Fatal("show accepted path traversal")
+	}
+}
+
+func TestSkillCLIRemove(t *testing.T) {
+	root := t.TempDir()
+	ada, err := bot.Create(root, "ada", "persona", []string{link.NameSkills})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := skill.Write(root, "ship", "Pack a release", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.DisableSkill("ship"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdSkill(root, []string{"remove", "ship"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(skill.Dir(root), "ship")); !os.IsNotExist(err) {
+		t.Fatalf("skill folder still there: %v", err)
+	}
+	if got := ada.DisabledSkills(); len(got) != 0 {
+		t.Fatalf("switch left behind: %v", got)
+	}
+	if err := cmdSkill(root, []string{"remove", "ship"}); !errors.Is(err, skill.ErrNotFound) {
+		t.Fatalf("second remove: %v", err)
+	}
+	if err := cmdSkill(root, []string{"remove", "../ship"}); !errors.Is(err, skill.ErrBadSlug) {
+		t.Fatalf("bad slug: %v", err)
+	}
+	if err := cmdSkill(root, []string{"remove"}); !errors.Is(err, errUsage) {
+		t.Fatalf("usage: %v", err)
 	}
 }
