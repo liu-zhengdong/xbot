@@ -29,7 +29,7 @@ func TestContextUsesSVGArrows(t *testing.T) {
 	if start < 0 {
 		t.Fatal("contextView not found")
 	}
-	end := strings.Index(src[start:], "function modelLabel(data)")
+	end := strings.Index(src[start:], "function modelHits(data)")
 	if end < 0 {
 		t.Fatal("could not bound the context section")
 	}

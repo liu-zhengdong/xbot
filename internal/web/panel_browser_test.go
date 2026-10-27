@@ -79,11 +79,14 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/devices')return json({self:{name:'本机'},gateway_ok:true,devices:[{id:'remote',label:'台式机',bots:['远端Bot'],online:true}]});
  if(path==='/api/groups')return json({groups:[{id:'group',name:'讨论组',members:[]}],folders:[{name:'项目',count:2,bots:bots.map(b=>b.name)}]});
  if(String(path).endsWith('/context'))return json({ceiling:128000,target:64000,requests:[]});
+ if(String(path).startsWith('/api/models'))return json({models:[{provider:'fake',model:'scripted',protocol:'chat_completions'}]});
+ if(path==='/api/providers')return json({providers:[{name:'fake',protocol:'chat_completions',key_configured:true,models:[{model:'scripted',available:true}]},{name:'deep',protocol:'responses',key_configured:true,models:[{model:'deep-pro',available:true,hosted_web_search:true}]}]});
+ if(String(path).endsWith('/binding')){fixture.bound=JSON.parse(opts.body);return json(fixture.bound)}
  const match=String(path).match(/^\/api\/bots\/([^/]+)$/);
  if(match){
   const name=decodeURIComponent(match[1]);
   if(opts.method==='PATCH'){Object.assign(bots.find(b=>b.name===name),JSON.parse(opts.body));return json({})}
-  return json({...bots.find(b=>b.name===name),persona:'You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete.',model:'scripted',provider:'fake',agents:[],links:[]});
+  return json({...bots.find(b=>b.name===name),persona:'You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete.',model:fixture.bound?.model||'scripted',provider:fixture.bound?.provider||'fake',agents:[],links:[]});
  }
  return baseFetch(path,opts);
 };
@@ -133,10 +136,25 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(!panel.contains($('#head-chip')),'toggle moved into panel');
  const edit=$('#panel-actions button'),avatar=$('#panel-ident .avatar');
  assert(near(rect(edit).y+rect(edit).height/2,rect(avatar).y+rect(avatar).height/2),'edit is not on identity row');
- const model=$('.binding-model'),line=model.parentElement,body=$('.tab-body');
- assert(rect(line).width>=rect(body).width-41,'model still a short card');
+ const model=$('.tab-body .binding-trigger'),body=$('.tab-body'),face=n=>[n.querySelector('.bt-model').textContent,n.querySelector('.bt-sub').textContent].join('|');
+ assert(rect(model).width>=rect(body).width-41,'model still a short card');
+ assert(face(model)==='scripted|fake · Completions','details model is not model over provider · protocol');
  assert($('.psec p').textContent.includes('personal assistant'),'persona missing');
  edit.focus();edit.click();await waitFor(()=>!$('#modal').hidden,'edit does not open');
+ // The drawer shares the face; rebinding there repaints both faces and leaves the drawer open.
+ const drawerModel=$('#modal .binding-trigger');
+ assert(drawerModel&&face(drawerModel)==='scripted|fake · Completions','drawer lacks the model face');
+ drawerModel.click();await waitFor(()=>$('.binding-option'),'picker does not open');
+ assert(!$('.binding-dialog .provider-meta').textContent.includes(' / ')&&$('.binding-dialog .provider-meta').textContent.endsWith('当前 fake · scripted'),'picker subtitle is slash soup');
+ $('.binding-dialog').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ assert(!$('#modal').hidden&&panel.classList.contains('open'),'Escape in picker closed the layers below');
+ [...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes('deep-pro')).click();
+ [...document.querySelectorAll('.binding-footer button')].find(b=>b.textContent==='使用此绑定').click();
+ await waitFor(()=>!$('.binding-dialog'),'picker does not close');
+ assert(face(drawerModel)==='deep-pro|deep · Responses · 厂商搜索','drawer face not repainted after rebind');
+ assert(fixture.bound.provider==='deep'&&fixture.bound.model==='deep-pro','binding not saved');
+ await waitFor(()=>$('.tab-body .binding-trigger .bt-model')?.textContent==='deep-pro','details face not refreshed');
+ assert(!$('#modal').hidden,'rebind closed the drawer');
  escape();await sleep(20);assert(document.activeElement===$('#panel-actions button'),'edit focus not restored');
  $('#panel-scrim').click();await sleep(250);finishAnimations();
  assert(!panel.classList.contains('open'),'scrim does not close drawer');

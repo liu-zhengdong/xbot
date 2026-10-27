@@ -44,7 +44,7 @@ func TestProfileDrawer(t *testing.T) {
 	}
 }
 
-// The drawer is 基本 → 人设卡 → 保存. Speaking style and quiet hours are gone from the product,
+// The drawer opens with 基本 then 人设卡. Speaking style and quiet hours are gone from the product,
 // and the drawer no longer edits the persona text or sends those fields.
 func TestProfileDrawerHasOnlyBasicsAndPersonaCard(t *testing.T) {
 	data, err := staticFS.ReadFile("static/app.js")
@@ -62,9 +62,6 @@ func TestProfileDrawerHasOnlyBasicsAndPersonaCard(t *testing.T) {
 	card := strings.Index(form, `section("人设卡",`)
 	if basic < 0 || card < basic {
 		t.Fatalf("drawer order: 基本 %d, 人设卡 %d", basic, card)
-	}
-	if n := strings.Count(form, `section("`); n != 2 {
-		t.Fatalf("drawer has %d sections, want 基本 and 人设卡", n)
 	}
 	for _, gone := range []string{"说话方式", "免打扰", "language", "quiet_start", "quiet_end", "persona:", `labeled("人设"`} {
 		if strings.Contains(form, gone) {

@@ -454,13 +454,15 @@
     const dialog = node("dialog", "binding-dialog");activeDialog = dialog;
     const close = () => { dialog.close();dialog.remove();activeDialog = null;opener?.isConnected && opener.focus(); };
     dialog.addEventListener("cancel", ev => { ev.preventDefault();close(); });
-    dialog.append(node("h2", "", "更换绑定"), node("p", "provider-meta", `${data.name} · 当前 ${data.provider} / ${data.model}`));
+    dialog.addEventListener("keydown", ev => { if (ev.key === "Escape") ev.stopPropagation(); });
+    const current = [data.provider, data.model].filter(Boolean).join(" · ");
+    dialog.append(node("h2", "", "更换绑定"), node("p", "provider-meta", `${data.name} · ${current ? "当前 " + current : "未绑定模型"}`));
     const body = node("div", "binding-body"), note = node("p", "binding-note"), error = node("p", "bad");error.setAttribute("role", "alert");
     const footer = node("div", "binding-footer");let selected = null, saving = false;
     const cancel = button("取消", "secondary", () => { if (!saving) close(); });
     const use = button("使用此绑定", "primary", async () => {
       if (!selected || saving) return; saving = true;use.disabled = cancel.disabled = true;error.textContent = "";
-      try { await api(`/api/bots/${encodeURIComponent(data.name)}/binding`, {method:"PUT",body:{provider:selected.p.name,model:selected.m.model}});close();await onBound(); }
+      try { await api(`/api/bots/${encodeURIComponent(data.name)}/binding`, {method:"PUT",body:{provider:selected.p.name,model:selected.m.model}});close();await onBound({provider:selected.p.name,model:selected.m.model,protocol:selected.p.protocol,hosted_web_search:!!selected.m.hosted_web_search}); }
       catch (err) {error.textContent = err.message || String(err);}
       finally {saving=false;use.disabled = cancel.disabled = false;}
     });use.disabled = true;
@@ -491,5 +493,25 @@
       }
     } catch (err) {error.textContent = err.message || String(err);}
   }
-  window.XBotProviders = { open, settings, decorate, citedText, progress };
+  // The Bot's model face, shared by the details tab and the profile drawer:
+  // model id over "provider · protocol", the whole row opens the picker.
+  // info carries protocol/hosted_web_search when the catalog knows the pair.
+  function trigger({ api, data, info, aside, manage, onBound }) {
+    const b = button("", "binding-trigger", () => open({ api, data, manage, opener: b, onBound: async bound => {
+      data.provider = bound.provider; data.model = bound.model; info = bound; paint(); await onBound?.(bound);
+    } }));
+    b.setAttribute("aria-haspopup", "dialog");
+    const paint = () => {
+      const tx = node("span", "bt-tx"), sub = [data.provider, labels[info?.protocol] || info?.protocol].filter(Boolean);
+      if (info?.hosted_web_search) sub.push("厂商搜索");
+      tx.append(node("strong", data.model ? "bt-model" : "bt-model unset", data.model || "未绑定模型"));
+      if (sub.length) tx.append(node("span", "bt-sub", sub.join(" · ")));
+      const chev = node("span", "skchev"); chev.setAttribute("aria-hidden", "true");
+      b.replaceChildren(tx, ...(aside ? [aside] : []), chev);
+      b.setAttribute("aria-label", `模型：${data.model || "未绑定"}${data.provider ? "，供应商 " + data.provider : ""}，点按更换`);
+    };
+    paint();
+    return b;
+  }
+  window.XBotProviders = { open, trigger, settings, decorate, citedText, progress };
 })();

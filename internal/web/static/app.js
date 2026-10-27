@@ -5357,19 +5357,15 @@
     host.append(bar);
   }
 
-  function modelLabel(data) {
-    const model = String(data.model || "").trim();
-    const provider = String(data.provider || "").trim();
-    if (provider && model && provider !== model) return provider + " / " + model;
-    return model || provider;
-  }
-
-  function modelCertified(data) {
+  function modelHits(data) {
     const model = String((data && data.model) || "").trim();
     const provider = String((data && data.provider) || "").trim();
-    if (!model) return false;
-    const hits = (state.modelCatalog || []).filter((m) => m.model === model && (!provider || m.provider === provider));
-    return hits.some((m) => m.certified);
+    if (!model) return [];
+    return (state.modelCatalog || []).filter((m) => m.model === model && (!provider || m.provider === provider));
+  }
+
+  function modelTrigger(data, aside) {
+    return window.XBotProviders.trigger({api, data, info: modelHits(data)[0], aside, manage: () => { if (!modal.hidden) closeModal(); openSettings("providers"); }, onBound: async () => {state.modelCatalog = null; await refreshLists(); await loadPanel();}});
   }
 
   function detailsView(data) {
@@ -5380,28 +5376,19 @@
       about.append(el("h4", "", data.persona_card ? "人设卡" : "人设"), el("p", "", persona));
       wrap.append(about);
     }
-    const model = modelLabel(data);
-    if (model) {
-      const section = el("div", "psec");
-      const row = el("div", "lrow z");
-      const change = el("button", "binding-model", model);
-      change.type = "button";
-      change.setAttribute("aria-haspopup", "dialog");
-      change.addEventListener("click", () => window.XBotProviders.open({api, data, opener: change, manage: () => openSettings("providers"), onBound: async () => {state.modelCatalog = null; await refreshLists(); await loadPanel();}}));
-      row.append(change);
-      const snap = state.ctxSnap;
-      const meta = [];
-      if (snap?.ceiling > 0) meta.push("窗口 " + ctxK(snap.ceiling));
-      if (snap?.target > 0) meta.push("后台整理线 " + ctxK(snap.target));
-      if (meta.length) row.append(el("span", "v", meta.join(" · ")));
-      else if (modelCertified(data)) {
-        const flag = el("span", "v cert");
-        flag.append(icon("check"), document.createTextNode("已认证"));
-        row.append(flag);
-      }
-      section.append(el("h4", "", "模型"), row);
-      wrap.append(section);
+    const section = el("div", "psec");
+    const snap = state.ctxSnap;
+    const meta = [];
+    if (snap?.ceiling > 0) meta.push("窗口 " + ctxK(snap.ceiling));
+    if (snap?.target > 0) meta.push("后台整理线 " + ctxK(snap.target));
+    let aside = null;
+    if (meta.length) aside = el("span", "v", meta.join(" · "));
+    else if (modelHits(data).some((m) => m.certified)) {
+      aside = el("span", "v cert");
+      aside.append(icon("check"), document.createTextNode("已认证"));
     }
+    section.append(el("h4", "", "模型"), modelTrigger(data, aside));
+    wrap.append(section);
     return wrap;
   }
 
@@ -6072,6 +6059,7 @@
     wrap.append(
       section("基本", head, labeled("名字", name), labeled("简介", description)),
       section("人设卡", pickLine, pickHint),
+      section("模型", modelTrigger(data)),
       err,
     );
     const showErr = (e, fallback) => { err.hidden = false; err.textContent = visibleError(e, fallback); };
