@@ -748,15 +748,15 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .prose p:last-child { margin-bottom: 0; }
 
-/* Text links everywhere (bubbles, prose, composer draft) share one skin:
+/* Text links everywhere (bubbles, prose, web cites, composer draft) share one skin:
    blue text on a light blue rounded pad, no underline, no bold. */
-.prose a, .bubble a, .composer .composer-input a {
+.prose a, .bubble a, .hs-cites a, .composer .composer-input a {
   color: var(--x-text-link); background: var(--x-text-link-bg);
   border-radius: 4px; padding: 0 3px; text-decoration: none;
   -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
 
-:is(.prose, .bubble, .composer .composer-input) a:hover { background: var(--x-text-link-hover); }
+:is(.prose, .bubble, .hs-cites, .composer .composer-input) a:hover { background: var(--x-text-link-hover); }
 
 .prose ul { margin: 0 0 8px; padding-left: 16px; }
 

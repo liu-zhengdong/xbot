@@ -86,6 +86,13 @@ assert.deepEqual(links.map((a) => [a.textContent, a.href, a.target]),
   [["https://diygod.cc/home-gateway/", "https://diygod.cc/home-gateway/", "_blank"], ["https://a.b/c", "https://a.b/c", "_blank"]]);
 assert.ok(dump(urlP).includes('"). 完"'), "trailing punctuation eaten: " + dump(urlP));
 
+// Prose glued to the address stays prose, same as the composer.
+const cjkP = document.createElement("p");
+appendInline(cjkP, "点 https://x.y这个，再看 https://a.b/c?q=1。");
+assert.deepEqual(cjkP.childNodes.filter((n) => n.tagName === "A").map((a) => [a.textContent, a.href]),
+  [["https://x.y", "https://x.y"], ["https://a.b/c?q=1", "https://a.b/c?q=1"]]);
+assert.ok(dump(cjkP).includes('"这个，再看 "'), "glued CJK eaten: " + dump(cjkP));
+
 // Block math on one line: display mode, its own div.
 calls.length = 0;
 out = run(appendBlocks, "$$\\frac{1}{2}$$");

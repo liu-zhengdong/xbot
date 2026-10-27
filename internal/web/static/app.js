@@ -1367,7 +1367,7 @@
     // Math needs its neighbors glued on: `$5 and $6` is prose (the closing
     // side is a space), `$x^2$` is a formula. $$ pairs come first so a single
     // $ never eats their opening.
-    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(https?:\/\/[^\s<>"'`，。；：、）]*[^\s<>"'`，。；：、）.,;:!?)\]}])/g;
+    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(https?:\/\/[A-Za-z0-9\-._~:?#@!$&()*+,;=%/[\]]*[A-Za-z0-9\-_~#@$&(*+=%/[])/g;
     let last = 0;
     let match;
     while ((match = re.exec(text))) {
