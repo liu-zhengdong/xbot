@@ -78,6 +78,14 @@ assert.ok(out.includes("SPAN.math-inline"), "inline $$ should stay a span: " + o
 out = run(appendInline, "@BQ@$x$@BQ@ 是源码");
 assert.ok(out.includes("CODE") && !out.includes("math"), "code span did not protect $: " + out);
 
+// Bare URLs link like [text](url) ones; trailing punctuation stays prose.
+const urlP = document.createElement("p");
+appendInline(urlP, "看 https://diygod.cc/home-gateway/，和 https://a.b/c). 完");
+const links = urlP.childNodes.filter((n) => n.tagName === "A");
+assert.deepEqual(links.map((a) => [a.textContent, a.href, a.target]),
+  [["https://diygod.cc/home-gateway/", "https://diygod.cc/home-gateway/", "_blank"], ["https://a.b/c", "https://a.b/c", "_blank"]]);
+assert.ok(dump(urlP).includes('"). 完"'), "trailing punctuation eaten: " + dump(urlP));
+
 // Block math on one line: display mode, its own div.
 calls.length = 0;
 out = run(appendBlocks, "$$\\frac{1}{2}$$");

@@ -27,7 +27,7 @@
 .hs-step.running .hs-dot{border-right-color:transparent;animation:hosted-spin 1s linear infinite}
 @keyframes hosted-spin{to{transform:rotate(360deg)}}
 .hs-cites{font-size:13px;margin:12px 0 0;padding:10px 0 0 24px;border-top:1px solid var(--x-fill-3);color:var(--x-muted)}
-.hs-cites li{padding:5px 0}.hs-cites a{color:var(--x-text-2);text-decoration:none;overflow-wrap:anywhere}.hs-cites small{color:var(--x-muted);margin-left:8px}
+.hs-cites li{padding:5px 0}.hs-cites a{overflow-wrap:anywhere}.hs-cites small{color:var(--x-muted);margin-left:8px}
 @media(prefers-reduced-motion:reduce){.hs-step.running .hs-dot{animation:none}}
 @media(max-width:600px){.binding-dialog{padding:18px}.binding-footer{flex-wrap:wrap}}
 

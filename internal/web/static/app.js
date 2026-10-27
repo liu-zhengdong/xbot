@@ -1367,7 +1367,7 @@
     // Math needs its neighbors glued on: `$5 and $6` is prose (the closing
     // side is a space), `$x^2$` is a formula. $$ pairs come first so a single
     // $ never eats their opening.
-    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(https?:\/\/[^\s<>"'`，。；：、）]*[^\s<>"'`，。；：、）.,;:!?)\]}])/g;
     let last = 0;
     let match;
     while ((match = re.exec(text))) {
@@ -1387,7 +1387,8 @@
       } else if (tok.charAt(0) === "*") {
         parent.append(el("em", "", tok.slice(1, -1)));
       } else {
-        const lm = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(tok);
+        // [text](url) or a bare URL; trailing punctuation stays prose.
+        const lm = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(tok) || (match[7] && [tok, tok, tok]);
         if (lm) {
           const a = document.createElement("a");
           a.textContent = lm[1];

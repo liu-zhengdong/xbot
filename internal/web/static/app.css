@@ -657,7 +657,9 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .bot-bubble code { background: var(--x-card); }
 .bubble code, .bubble .code-block { background: var(--x-user-code); color: inherit; }
 .bubble .code-block code { background: transparent; }
-.bubble a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.bubble {
+  --x-text-link: var(--x-user-link); --x-text-link-bg: var(--x-user-link-bg); --x-text-link-hover: var(--x-user-link-hover);
+}
 
 /* Math from KaTeX: inline formulas scroll if long, display blocks stay
    compact; a failed render falls back to the raw $…$ text (math-raw). */
@@ -746,7 +748,15 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .prose p:last-child { margin-bottom: 0; }
 
-.prose a { color: inherit; text-underline-offset: 3px; }
+/* Text links everywhere (bubbles, prose, composer draft) share one skin:
+   blue text on a light blue rounded pad, no underline, no bold. */
+.prose a, .bubble a, .composer .composer-input a {
+  color: var(--x-text-link); background: var(--x-text-link-bg);
+  border-radius: 4px; padding: 0 3px; text-decoration: none;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+
+:is(.prose, .bubble, .composer .composer-input) a:hover { background: var(--x-text-link-hover); }
 
 .prose ul { margin: 0 0 8px; padding-left: 16px; }
 
@@ -1233,7 +1243,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 .quote-row .ghost svg { width: 16px; height: 16px; }
 
 /* The composer is a plain-text contenteditable: literal newlines render via
-   pre-wrap, and only http(s) URLs become links, styled like bubble links. */
+   pre-wrap, and only http(s) URLs become links, styled like .prose a. */
 .composer .composer-input {
   width: 100%; min-width: 0; border: 0; outline: none; background: transparent;
   margin: 0; padding: 16px 0; max-height: 140px;
@@ -1253,9 +1263,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   pointer-events: none;
 }
 
-.composer .composer-input a {
-  color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
-}
+.composer .composer-input a { cursor: pointer; }
 
 /* Draft Markdown is syntax-colored, not rendered: every token keeps its
    source characters and the caret moves through it like plain text. */
