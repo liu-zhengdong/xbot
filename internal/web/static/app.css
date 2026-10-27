@@ -555,7 +555,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .item.active { background: var(--selected); }
 
 /* Adjacent hover/selected fills keep a 5px seam of list background so their rounded corners show. */
-#roster .item + .item { margin-top: 5px; }
+#roster .item + .item, #remote-roster .item + .item { margin-top: 5px; }
 
 .item .item-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 
