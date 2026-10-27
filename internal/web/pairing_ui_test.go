@@ -224,8 +224,8 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  const add=devices.querySelector('.sethd [data-act="add"]');
  assert(add,'pairing entry missing from title row');
  assert(!devices.querySelector('.g7-foot,.dfoot,[data-act="join-open"]'),'obsolete footer or join entry');
- assert(!devices.querySelector('#g7-code')&&devices.querySelector('[data-act="self-gw-edit"]').textContent.trim()==='','join input or text gateway button');
- assert(devices.querySelector('[data-act="self-gw-edit"]').getAttribute('aria-label')==='改网关地址','gateway pencil label');
+ assert(!devices.querySelector('#g7-code'),'join input');
+ assert(![...devices.querySelectorAll('h3')].some(h=>h.textContent==='连接')&&!devices.querySelector('#gw-row,#lan-row'),'obsolete connection section');
  assert(!devices.querySelector('.g7-claim [data-act=claim]'),'claim action shown for bound account');
  // 空态与侧栏。
  assert(devices.querySelector('.g7-self').closest('section').textContent.includes('这台电脑'),'local device card missing in the empty state');

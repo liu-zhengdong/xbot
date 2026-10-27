@@ -19,15 +19,11 @@
     bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4"/><path d="M9 13h.01M15 13h.01"/>',
     swap: '<path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/>',
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
-    server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
-    wifi: '<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.86a10 10 0 0 1 14 0"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/>',
     cloudOff: '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2"/><path d="M21.53 16.9A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 9.69 5.8"/>',
   };
   const svg = (k, size) => `<svg viewBox="0 0 24 24" aria-hidden="true" class="icon"${size ? ` style="width:${size}px;height:${size}px"` : ""}>${I[k]}</svg>`;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const host = (u) => { try { return new URL(u).host || u; } catch (e) { return u || ""; } };
-  // Same rule as the server (remote.NormalizeGateway): trim, https:// for a bare host, drop the trailing slash.
-  const normGw = (u) => { const s = String(u || "").trim().replace(/\/+$/, ""); return s && s.indexOf("://") < 0 ? "https://" + s : s; };
 
   async function api(method, path, body) {
     const res = await fetch(path, {
@@ -84,11 +80,10 @@
     remote: false,         // 官网入口（session.remote）：底栏写账号设备数，不写本机名
     acct: null,            // GET /api/account/me 的 account，用来出「把这台电脑绑到账号」
     acctDevs: null,        // 官网入口底栏「已绑定 N 台设备」的 N
-    accountDevices: null, accountDevicesErr: false,
     claimBusy: false, claimErr: "",
     joinOpen: false, joinVal: "", joinErr: "", // 添加设备下半：输入对方的短码（次要）
-    gwVal: "", fieldErr: "", checking: false,
-    menuFor: "", target: null, selfGwEdit: false, selfGwErr: "", busy: false,
+    fieldErr: "",
+    menuFor: "", target: null, busy: false,
   };
   let devicesEl = null, modalEl = null, lastView = "";
   // 挂给 pairing.js 的句柄（最后填上 views/acts 等）。
@@ -136,20 +131,12 @@
     return S.acct;
   }
 
-  async function loadAccountDevices() {
-    S.accountDevices = null; S.accountDevicesErr = false;
-    if (!S.acct) return;
-    try { S.accountDevices = (await api("GET", "/api/account/devices")).devices || []; }
-    catch (e) { S.accountDevicesErr = true; }
-  }
-
   // ---- 打开、关闭 ----
   function openDevices() { return window.XBotSettings.open("devices"); }
   async function mount() {
     ensureHosts();
-    S.embedded = true; S.menuFor = ""; S.selfGwEdit = false; S.selfGwErr = "";
+    S.embedded = true; S.menuFor = "";
     await Promise.all([refresh(), loadAcct()]);
-    await loadAccountDevices();
     render();
   }
   // 「把这台电脑绑到账号？」（04b）：本机还没绑到登录着的账号时，app.js 开机后请一次。
@@ -175,7 +162,7 @@
     const top = modalEl && modalEl.firstChild ? "modal" : "";
     if (!top) return false;
     if (ev.key === "Escape") {
-      if (top === "modal" && !["rename", "unpair", "gw-confirm", "claim"].includes(S.view)) return false; // pairing.js owns its modals' Escape (it cancels codes)
+      if (top === "modal" && !["rename", "unpair", "claim"].includes(S.view)) return false; // pairing.js owns its modals' Escape (it cancels codes)
       if (S.view === "claim") { try { sessionStorage.setItem("xbot-claim-dismissed", "1"); } catch (e) {} }
       closeModal();
       return true;
@@ -235,51 +222,6 @@
       ${S.fieldErr ? `<p class="error g7-field-err">${esc(S.fieldErr)}</p>` : ""}
       <div class="modal-actions"><button class="secondary" type="button" data-act="close">取消</button><button class="primary" type="button" data-act="unpair">解除配对</button></div>`, "g7-over");
   }
-  function viewGwConfirm() {
-    const devs = ((S.data && S.data.devices) || []).filter((d) => !d.unpaired);
-    const next = host(normGw(S.gwVal)) || "新网关";
-    return modal(`<h2>换网关后要重新配对</h2>
-      <p class="g7-lead">一台电脑只用一个网关。换成 ${esc(next)} 以后，下面这 ${devs.length} 台设备都要在新网关上重新配对，才能继续使用。</p>
-      <ul class="g7-plain">${devs.map((d) => `<li>${esc(d.label)} <span class="g7-muted">· ${(d.bots || []).length} 个 Bot · ${d.online ? "在线" : "离线"}</span></li>`).join("")}</ul>
-      <p class="g7-fine">保存前会先检查新地址，连不上就还用原来的网关。</p>
-      <div class="modal-actions"><button class="secondary" type="button" data-act="gw-confirm-cancel">取消</button><span class="spacer"></span><button class="primary" type="button" data-act="gw-confirm-save">换网关</button></div>`, "g7-over");
-  }
-
-  // ---- 抽屉 ----
-  const official = "gateway.babelgo.cn:8443";
-  // 网关地址只填官方或自建，三种错误：格式不对（400）、连不上新地址（502）、没填。
-  function gwCheck(v, cur) {
-    if (!v) return "请填网关地址";
-    const s = normGw(v), m = /^(https?:\/\/)?([^\/:?#\s]+)(:\d+)?(\/[^\s]*)?$/.exec(s);
-    if (!m || (s.indexOf("://") >= 0 && !/^https?:\/\//.test(s))) return "网关地址不对：要用 http:// 或 https:// 开头，后面跟主机名。";
-    const hostname = m[2].toLowerCase();
-    if (!/^([a-z0-9-]+\.)*[a-z0-9-]+$/.test(hostname) || !/[a-z0-9]$/.test(hostname)) return "网关地址不对：要用 http:// 或 https:// 开头，后面跟主机名。";
-    if (cur && s.replace(/^http:/, "https:") === normGw(cur).replace(/^http:/, "https:")) return "现在用的就是这个网关。";
-    return "";
-  }
-  function gwSection(gw) {
-    const v = S.gwVal;
-    const cur = gw ? (host(gw) === official ? "官方 · " + official : "自建 · " + host(gw)) : "";
-    if (!S.selfGwEdit) return `<div class="g7-set" id="gw-row"><span class="g7-set-ico">${svg("server", 20)}</span><div class="g7-set-main"><b>网关</b>
-      <small>${gw ? sp(cur) : "还没设网关"}</small><small>消息端到端加密，网关只转交，看不到内容。</small></div>
-      <button class="ghost" type="button" aria-label="改网关地址" data-act="self-gw-edit">${svg("pencil")}</button></div>`;
-    const bad = !!S.selfGwErr;
-    return `<div class="g7-set g7-set-edit" id="gw-row"><div class="g7-set-head"><span class="g7-set-ico">${svg("server", 20)}</span><div class="g7-set-main"><b>网关</b>
-        <small>现在用：${gw ? sp(cur) : "还没设网关"}</small></div></div>
-      <label class="field${bad ? " is-bad" : ""}"><span class="g7-sr">新的网关地址</span><input id="g7-self-gw" type="text" spellcheck="false" placeholder="网关地址，例如 gw.example.com" value="${esc(v)}" ${S.checking ? "disabled" : ""}></label>
-      ${S.checking ? `<p class="g7-fine g7-wait">${svg("spin")}<span>正在检查 ${esc(host(normGw(v)))}</span></p>`
-        : bad ? `<p class="error g7-inline-err">${esc(S.selfGwErr)}</p>`
-        : `<p class="g7-fine">填主机名就行，会自动补上 https://。自建网关的口令在启动 XBot 前用环境变量设置，这里不填。</p>`}
-      <div class="g7-gw-acts"><button class="text-btn" type="button" data-act="self-gw-official">用官方网关</button><span class="spacer"></span>
-        <button class="secondary g7-sm" type="button" data-act="self-gw-cancel">取消</button>
-        <button class="primary g7-sm" type="button" data-act="self-gw-save" ${S.checking || !v.trim() ? "disabled" : ""}>${S.checking ? "检查中" : "保存"}</button></div></div>`;
-  }
-  function lanSection() {
-    return `<div class="g7-set" id="lan-row"><span class="g7-set-ico">${svg("wifi", 20)}</span><div class="g7-set-main"><b>局域网直连</b>
-      <small>两台电脑在同一个网络里时直接传消息，更快；连不上就自动走网关。打开后这台电脑会多开一个端口，只接受已配对的设备。公司网络可能不允许。</small></div>
-      <span class="g7-switch" role="switch" aria-checked="false" aria-disabled="true" aria-label="局域网直连"></span></div>`;
-  }
-
   // 和侧栏同一个头像：灰阶圆 + 首字，拉丁名两个字母，中文单字（导出的 D.sideFaces，所以下面不改侧栏的 face）。
   const faceX = (n, id) => (window.XBotFaces ? D.sideFaces(n, id, "xs") : `<span class="avatar xs">${D.sideFaces(n, id)}</span>`);
   // 在线时写多久前联系过（「3 分钟前联系过」）；隔天或对方一整天都显得在线时，写日期。
@@ -324,20 +266,17 @@
   function viewDevices() {
     const data = S.data || { self: {}, devices: [] };
     const self = data.self || {}, devs = data.devices || [], gw = self.gateway, up = !!data.gateway_ok;
+    // 本机绑到当前账号时只在这台电脑卡里弱标，不另列账号设备。
+    const bound = !!(S.acct && S.acct.owner && !S.acct.unbound);
     const selfCard = `<section class="profile-section"><h3>这台电脑</h3>
       <div class="g7-device g7-self"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
-        <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
+        <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}${bound ? `<span class="g7-bound">已绑到账号</span>` : ""}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
         <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div></section>`;
-    // 已登录时展示账号关联说明，未绑定时提供认领。
-    const claim = S.acct ? `<div class="g7-claim"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
-      <div class="g7-claim-main"><b>通过账号关联设备</b><small>把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。</small>
-      ${S.claimErr ? `<p class="error g7-inline-err">${esc(S.claimErr)}</p>` : ""}</div>
-      ${S.acct.unbound ? `<button class="secondary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button>` : ""}</div>` : "";
-    const accountList = S.acct ? `<section class="profile-section" id="g7-account-devices"><h3>账号关联设备</h3>
-      ${S.accountDevicesErr ? `<p class="g7-fine">账号设备加载失败，请重新打开设备页重试。</p>` :
-        S.accountDevices && S.accountDevices.length ? S.accountDevices.map((d) => `<div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
-          <div class="g7-dev-main"><div class="g7-dev-name">${esc(d.name)}${d.self ? " · 这台电脑" : ""}</div><div class="g7-dev-sub">${d.online ? "在线" : "离线"}</div></div></div>`).join("") : `<p class="g7-fine">账号还没有关联设备。</p>`}
-      <p class="g7-fine">账号关联设备需要配对后，才能在这里与其 Bot 聊天。</p></section>` : "";
+    // 只在已登录且本机未绑时出现；已绑、未登都整节不渲染。
+    const claim = S.acct && S.acct.unbound ? `<section class="profile-section g7-claim" id="g7-claim"><b>通过账号关联设备</b>
+      <small>把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。</small>
+      ${S.claimErr ? `<p class="error g7-inline-err">${esc(S.claimErr)}</p>` : ""}
+      <button class="secondary g7-sm" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></section>` : "";
     const banner = gw && !up ? `<div class="g7-banner"><span class="g7-banner-ico">${svg("cloudOff", 18)}</span>
         <span>${sp("连不上网关" + host(gw))}<small>所有设备暂时显示离线，消息会先排队。</small></span>
         <button class="secondary g7-sm" type="button" data-act="gw-retry">${svg("refresh", 14)}<span>重试</span></button></div>` : "";
@@ -352,8 +291,7 @@
     }
     return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
       <div class="g7-lead">${sp("配对后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${banner}
-      <div class="g7-body">${selfCard}${claim}${accountList}${list}
-        <section class="profile-section"><h3>连接</h3>${lanSection()}${gwSection(gw)}</section></div>`;
+      <div class="g7-body">${selfCard}${claim}${list}</div>`;
   }
   // 认领确认（shot 04b）：POST /api/account/claim 是真绑定（bindIfFree + 上报账号）。
   function viewClaim() {
@@ -376,7 +314,7 @@
     const selDir = sel != null ? document.activeElement.selectionDirection : null;
     const wasView = lastView;
     devicesEl.innerHTML = S.embedded ? viewDevices() : "";
-    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, "gw-confirm": viewGwConfirm, claim: viewClaim }, D.views)[S.view];
+    const V = Object.assign({ rename: viewRename, unpair: viewUnpair, claim: viewClaim }, D.views)[S.view];
     modalEl.innerHTML = V ? V() : "";
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
     lastView = S.view || "";
@@ -426,23 +364,6 @@
         catch (e) { d.bot_messaging = old; S.bmErr = d.id; S.bmErrMsg = "没改成功：" + e.message + "。开关已经改回去了。"; }
         render(); break;
       }
-      case "self-gw-edit": S.selfGwEdit = true; S.selfGwErr = ""; S.gwVal = (data.self && data.self.gateway) || ""; render(); { const g = document.getElementById("g7-self-gw"); if (g) g.focus(); } break;
-      case "self-gw-cancel": S.selfGwEdit = false; S.selfGwErr = ""; render(); break;
-      case "self-gw-official": S.gwVal = official; return act("self-gw-save", el);
-      case "self-gw-save": {
-        const bad = gwCheck(S.gwVal, data.self && data.self.gateway);
-        if (bad) { S.selfGwErr = bad; render(); return; }
-        // Paired devices would need re-pairing: ask first unless the address is unchanged.
-        const gwNow = normGw(data.self && data.self.gateway), gwNew = normGw(S.gwVal);
-        if ((data.devices || []).filter((d) => !d.unpaired).length && gwNew !== gwNow) { S.selfGwErr = ""; S.view = "gw-confirm"; render(); break; }
-        return act("gw-confirm-save", el);
-      }
-      case "gw-confirm-cancel": S.view = null; render(); break; // back to the drawer, editor open with the typed value
-      case "gw-confirm-save":
-        S.view = null; S.selfGwEdit = true; S.selfGwErr = ""; S.checking = true; render(); // 服务端保存前先检查新地址（502 连不上时保留旧地址）
-        try { await api("PUT", "/api/devices/gateway", { gateway: S.gwVal }); S.selfGwEdit = false; await refresh(); }
-        catch (e) { S.selfGwErr = e.message; }
-        S.checking = false; render(); break;
       case "gw-retry":
         try { S.data = await api("GET", "/api/devices?retry=1"); } catch (e) {}
         paintSidebar(); render(); break;
@@ -453,7 +374,7 @@
           const out = await api("POST", "/api/account/claim");
           S.acct = (out && out.account) || S.acct;
           S.view = null;
-          await Promise.all([refresh(), loadAccountDevices()]);
+          await refresh();
         } catch (e) { S.claimErr = e.message; }
         S.claimBusy = false; render(); break;
       }
@@ -471,14 +392,9 @@
     if (S.menuFor && devicesEl && devicesEl.contains(ev.target) && !ev.target.closest(".g7-row-menu")) { S.menuFor = ""; render(); }
   });
   document.addEventListener("input", (ev) => {
-    if (ev.target.id === "g7-self-gw") {
-      S.gwVal = ev.target.value;
-      const save = devicesEl.querySelector('[data-act="self-gw-save"]');
-      if (save && !S.checking) save.disabled = !S.gwVal.trim();
-    } else if (D.onInput) D.onInput(ev.target);
+    if (D.onInput) D.onInput(ev.target);
   });
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && ev.target.id === "g7-self-gw") { ev.preventDefault(); act("self-gw-save", ev.target); }
     if (ev.key === "Enter" && ev.target.id === "g7-name") { ev.preventDefault(); act("save-name", ev.target); }
     if (D.onKey && D.onKey(ev)) return;
     if (devicesEl && (devicesEl.firstChild || modalEl.firstChild)) trap(ev);

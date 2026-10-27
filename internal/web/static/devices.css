@@ -9,7 +9,6 @@
 .g7-lead { margin: 0 0 4px; font-size: 14px; line-height: 1.6; color: var(--muted); }
 .g7-h3 { margin: 20px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .g7-fine { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
-.g7-plain { margin: 8px 0 0; padding: 0 0 0 18px; font-size: 14px; line-height: 1.7; }
 .modal-actions .spacer { flex: 1; }
 .modal-actions { align-items: center; }
 .modal-actions .primary, .modal-actions .secondary { display: inline-flex; align-items: center; gap: 6px; }
@@ -65,16 +64,15 @@
 .g7-body .profile-section + .profile-section { margin-top: 20px; }
 .g7-body .profile-section h3 { margin-bottom: 8px; }
 .g7-fine { margin: 8px 2px 0; font-size: 12px; line-height: 1.6; color: var(--faint); }
-.g7-muted { color: var(--muted); }
 .g7-inline-err { margin: 6px 4px 0; font-size: 12px; }
 .g7-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 /* 网关不通：灰底，不用红色（这是状态，不是这次操作的错误） */
 .g7-banner { display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--x-fill-1); font-size: 13px; line-height: 1.5; flex: none; }
 /* 认领本机（还没绑到登录着的账号时的主路径）；图标复用 .g7-dev-ico */
-.g7-claim { display: flex; align-items: center; gap: 12px; margin: 12px 20px 0; padding: 10px 10px 10px 14px; border-radius: 12px; background: var(--x-fill-1); flex: none; }
-.g7-claim-main { flex: 1; min-width: 0; }
-.g7-claim-main b { font-size: 14px; font-weight: 500; display: block; }
-.g7-claim-main small { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 2px; }
+.g7-claim { padding: 14px 14px 12px; border-radius: 12px; background: var(--x-fill-1); }
+.g7-claim b { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.g7-claim small { display: block; color: var(--muted); font-size: 13px; line-height: 1.55; margin-bottom: 10px; }
+.g7-bound { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 500; color: var(--muted); background: var(--x-fill-2); vertical-align: middle; }
 .g7-banner > span:nth-child(2) { flex: 1; min-width: 0; }
 .g7-banner small { display: block; color: var(--muted); font-size: 12px; }
 .g7-banner-ico { display: grid; color: var(--muted); flex: none; }
@@ -116,23 +114,7 @@ html[data-theme="dark"] .g7-switch[aria-checked="true"]::after { background: var
 span.g7-switch { margin-top: 2px; opacity: 0.55; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .g7-switch::after { transition: none; } }
 /* 设置行（局域网直连、网关） */
-.g7-set { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: var(--x-fill-1); }
-.g7-set + .g7-set { margin-top: 8px; }
-.g7-set-ico { flex: 0 0 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--bg); color: var(--text); }
-.g7-set-main { flex: 1; min-width: 0; }
-.g7-set-main b { display: block; font-size: 14px; font-weight: 500; line-height: 1.4; }
-.g7-set-main small { display: block; font-size: 12px; line-height: 1.55; color: var(--muted); margin-top: 2px; }
-.g7-set-act, .g7-gw-acts .text-btn { min-height: 28px; padding: 0 10px; font-size: 13px; color: var(--text); background: var(--fill); }
 /* 网关编辑：整块变成一列；先检查新地址，502 时保留旧地址并原地报错 */
-.g7-set-edit { display: block; }
-.g7-set-head { display: flex; gap: 12px; align-items: flex-start; }
-.g7-set-edit .field { margin: 10px 0 6px; }
-.g7-set-edit .field input { color: var(--text); background: var(--bg); }
-.g7-set-edit .field.is-bad input { background: var(--err-bg); }
-.g7-set-edit .g7-fine { margin-top: 6px; }
-.g7-gw-acts { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-.g7-gw-acts .spacer { flex: 1; }
-.g7-gw-acts .text-btn { background: transparent; }
 .g7-can { list-style: none; margin: 0 2px 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .g7-can li { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.55; }
 .g7-can .icon { color: var(--muted); margin-top: 2px; flex: none; }

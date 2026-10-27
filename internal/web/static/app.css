@@ -2686,14 +2686,6 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setdev .g7-addr{padding:0;background:transparent}
 .setdev .g7-caps{margin:0;padding:0;background:transparent}
 .setdev .g7-cap{padding:0;gap:10px}.setdev .g7-cap-t b{font-weight:400}
-.setdev .g7-set:not(.g7-set-edit){background:transparent;padding:6px 10px;min-height:36px;gap:9px;align-items:center}
-.setdev .g7-set:not(.g7-set-edit) .g7-set-ico{flex:0 0 15px;height:15px;background:transparent}
-.setdev .g7-set:not(.g7-set-edit) .g7-set-main small{display:none}
-.setdev .g7-set:not(.g7-set-edit) .g7-set-act{background:transparent}
-.setdev .g7-set + .g7-set{margin-top:0}
-
-.setdev #gw-row:not(.g7-set-edit) .g7-set-main{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.setdev #gw-row:not(.g7-set-edit) .g7-set-main small:first-of-type{display:inline;font-family:var(--mono);font-size:12px;margin:0}
 .setdev .g7-lead{margin-bottom:6px}
 
 .setdev .status-dot.ok{background:var(--x-online)}

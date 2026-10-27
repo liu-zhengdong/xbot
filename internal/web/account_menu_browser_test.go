@@ -6,6 +6,7 @@ func TestAccountMenuBrowser(t *testing.T) {
 	runPageInChrome(t, `
 (async()=>{
  const $=id=>document.getElementById(id), assert=(v,m)=>{if(!v)throw Error(m)};
+ const heads=()=>[...$('settings-devices').querySelectorAll('.g7-body > section')].map(s=>s.id==='g7-claim'?'claim':s.querySelector('h3').textContent.replace(/ · \d+$/,'')).join();
  const until=async(f,m)=>{for(let i=0;i<200;i++){if(f())return;await new Promise(r=>setTimeout(r,10))}throw Error(m)};
  await until(()=>!$('shell').hidden,'app did not open');
  const base=window.fetch; let account=null, accountDeviceCalls=0, externalCalls=0;
@@ -26,12 +27,20 @@ func TestAccountMenuBrowser(t *testing.T) {
  $('acct-login-email').closest('form').requestSubmit();
  await until(()=>$('settings-account').textContent.includes('p***@example.com'),'signed-in account missing');
  document.querySelector('[data-set=devices]').click();
- await until(()=>$('settings-devices').textContent.includes('通过账号关联设备'),'claim missing');
- assert($('settings-devices').textContent.includes('已匹配设备'),'matched devices missing');
- await until(()=>$('g7-account-devices') && $('g7-account-devices').textContent.includes('另一台电脑'),'account device missing');
- assert(accountDeviceCalls>0,'signed-in local account devices not fetched');
+ // 已登未绑：这台电脑、关联提示、已匹配设备三段，不另列账号设备，也没有底部「连接」。
+ await until(()=>$('g7-claim'),'claim missing');
+ assert(heads()==='这台电脑,claim,已匹配设备',heads());
+ assert($('g7-claim').textContent.includes('通过账号关联设备')&&$('g7-claim').textContent.includes('把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。'),'claim copy');
+ assert($('g7-claim').querySelector('[data-act=claim]').textContent.trim()==='绑定这台电脑','claim CTA');
+ assert(!$('g7-account-devices')&&![...$('settings-devices').querySelectorAll('h3')].some(h=>h.textContent==='账号关联设备'),'account device list rendered');
+ assert(!$('settings-devices').querySelector('.g7-bound'),'unbound shows bound badge');
  $('settings-devices').querySelector('[data-act=claim]').click();
- await until(()=>!$('settings-devices').querySelector('[data-act=claim]'),'claim not completed');
+ // 已登已绑：关联提示整节不渲染，本机卡弱标「已绑到账号」。
+ await until(()=>!$('g7-claim'),'claim not completed');
+ assert(heads()==='这台电脑,已匹配设备',heads());
+ assert($('settings-devices').querySelector('.g7-self .g7-bound').textContent==='已绑到账号','bound badge missing');
+ assert(!$('settings-devices').querySelector('[data-act=claim]'),'bound still offers claim');
+ assert(accountDeviceCalls===0,'local devices page fetched account devices');
  document.querySelector('[data-set=account]').click();
  await until(()=>$('settings-account').textContent.includes('退出登录'),'logout missing');
  [...$('settings-account').querySelectorAll('button')].find(b=>b.textContent==='退出登录').click();
@@ -46,8 +55,8 @@ func TestAccountMenuBrowser(t *testing.T) {
  const callsBeforeLoggedOut=accountDeviceCalls;
  document.querySelector('[data-set=devices]').click();
  await until(()=>$('settings-devices').textContent.includes('已匹配设备'),'device list missing');
- assert(!$('settings-devices').textContent.includes('通过账号关联设备'),'logged-out claim visible');
- assert(!$('g7-account-devices'),'logged-out account device visible');
+ assert(heads()==='这台电脑,已匹配设备',heads());
+ assert(!$('settings-devices').textContent.includes('账号'),'logged-out account UI visible');
  assert(accountDeviceCalls===callsBeforeLoggedOut,'logged-out local UI fetched account devices');
  assert(externalCalls===0,'local UI opened an external domain');
  assert(!testErrors.length,testErrors.join('; ')); document.body.dataset.testResult='passed';
