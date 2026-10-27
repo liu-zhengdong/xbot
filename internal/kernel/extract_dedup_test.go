@@ -30,17 +30,17 @@ func TestRememberNewDropsNearDuplicates(t *testing.T) {
 		// A correction changes the quoted value and is kept.
 		{fact(memory.TierProfile, "Bot 简介已改为「认真干活的助手」")},
 		// Review 1 P1: one changed name, count or negation in a long, similar fact.
-		{fact(memory.TierProfile, "主人要求所有项目的代码审查必须由小王负责")},
-		{fact(memory.TierProfile, "主人要求所有项目的代码审查必须由小李负责")},
-		{fact(memory.TierLog, "主人每天早上喝咖啡")},
-		{fact(memory.TierLog, "主人每天早上喝咖啡2杯")},
-		{fact(memory.TierLog, "主人不喜欢喝咖啡")},
-		{fact(memory.TierLog, "主人不喜欢不喝咖啡")},
+		{fact(memory.TierProfile, "用户要求所有项目的代码审查必须由小王负责")},
+		{fact(memory.TierProfile, "用户要求所有项目的代码审查必须由小李负责")},
+		{fact(memory.TierLog, "用户每天早上喝咖啡")},
+		{fact(memory.TierLog, "用户每天早上喝咖啡2杯")},
+		{fact(memory.TierLog, "用户不喜欢喝咖啡")},
+		{fact(memory.TierLog, "用户不喜欢不喝咖啡")},
 		// Review 2 P1: a filler-looking char in a name, and a comparative liking.
 		{fact(memory.TierProfile, "项目负责人是王得福")},
 		{fact(memory.TierProfile, "项目负责人是王福")},
-		{fact(memory.TierLog, "主人喜欢茶")},
-		{fact(memory.TierLog, "主人更喜欢茶")},
+		{fact(memory.TierLog, "用户喜欢茶")},
+		{fact(memory.TierLog, "用户更喜欢茶")},
 	}
 	for _, facts := range rounds {
 		if err := k.rememberNew(ctx, facts); err != nil {
@@ -54,16 +54,16 @@ func TestRememberNewDropsNearDuplicates(t *testing.T) {
 	want := map[string]bool{
 		"Bot 简介已设为「今晚随便逛逛的小助手」": true,
 		"Bot 简介已改为「认真干活的助手」":    true,
-		"主人要求所有项目的代码审查必须由小王负责":  true,
-		"主人要求所有项目的代码审查必须由小李负责":  true,
-		"主人每天早上喝咖啡":             true,
-		"主人每天早上喝咖啡2杯":           true,
-		"主人不喜欢喝咖啡":              true,
-		"主人不喜欢不喝咖啡":             true,
+		"用户要求所有项目的代码审查必须由小王负责":  true,
+		"用户要求所有项目的代码审查必须由小李负责":  true,
+		"用户每天早上喝咖啡":             true,
+		"用户每天早上喝咖啡2杯":           true,
+		"用户不喜欢喝咖啡":              true,
+		"用户不喜欢不喝咖啡":             true,
 		"项目负责人是王得福":             true,
 		"项目负责人是王福":              true,
-		"主人喜欢茶":                 true,
-		"主人更喜欢茶":                true,
+		"用户喜欢茶":                 true,
+		"用户更喜欢茶":                true,
 	}
 	for _, f := range got {
 		if !want[f.Text] {

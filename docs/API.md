@@ -15,7 +15,7 @@
 
 ## 设备静态壳
 
-`GET /api/ui/static/<path>` 要求主人认证（pipe 复用 `AuthorizeOwner`）。与本机静态路由同源：设置 `XBOT_DEV_STATIC` 时只读该配置目录内的真实文件（拒绝符号链接越界），否则读内嵌 `static/`。扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。
+`GET /api/ui/static/<path>` 要求用户认证（pipe 复用 `AuthorizeOwner`）。与本机静态路由同源：设置 `XBOT_DEV_STATIC` 时只读该配置目录内的真实文件（拒绝符号链接越界），否则读内嵌 `static/`。扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。
 
 成功按资源类型返回正文、`ETag`、`Cache-Control: no-cache` 和 `X-Xbot-Tip`。If-None-Match 命中回 304 空正文；tip 为构建版本，未注入版本时为 `dev-<内嵌 UI 摘要>`。文件大于 pipe 的 700 KiB 正文预算回 413，不截断为成功；大字体由公网入口缓存。开发覆盖时 tip 为 `dev-static`、缓存为 `no-store`，仍有正文 ETag / 304；每次重读磁盘，缺文件不回落 embed，实际读取也受 700 KiB 上限约束。
 
@@ -36,13 +36,13 @@
 - `POST /api/account/code` `{challenge,code}`：用 6 位验证码完成，成功同「进门回包」。
 - `POST /api/account/poll` `{challenge}`：没完成 `{"state":"pending"}`，过期或已领过 `{"state":"expired"}`；邮件链接确认后第一次轮询回「进门回包」。
 - 进门回包：200 `{"state":"done","account":{email,owner,hosted,gateway,official,gateway_ok,app}}`，并设 `xbot_account`；`owner` 为真时同时设 `xbot_session`。
-- `GET /api/account/me`：`{"account":null|{…同上},"app":<bool>}`。账号是主人时顺手续上 `xbot_session`。
-- `POST /api/account/logout`：退出账号并清掉 `xbot_account`；本机直连保留 `xbot_session`，远端同时清掉主人会话。
+- `GET /api/account/me`：`{"account":null|{…同上},"app":<bool>}`。账号是用户时顺手续上 `xbot_session`。
+- `POST /api/account/logout`：退出账号并清掉 `xbot_account`；本机直连保留 `xbot_session`，远端同时清掉用户会话。
 - `GET /api/account/devices`：`{"devices":[{id,name,online,self,bots:[{name,hint,unread,avatar_url,avatar_bg,avatar_ink,initial}]}]}`；没有账号会话 401。
 
 账号服务本身（`xbot account-api`，或 serve 里的替身）在 `/account/v1/`：`register`、`login`、`magic`、`resend`、`code`、`poll`（POST，JSON），`me`、`devices`（GET，`Authorization: Bearer <会话>`），`logout`、`devices`（POST，Bearer），`health`（GET），以及邮件链接页 `link?t=…`（GET 只显示「确认」按钮，POST 才用掉链接，邮件扫描器预取不会把它用掉）。
 
-`GET /api/session` 对无转发头的本机回环连接、回环 Host 且同源的请求签发本机主人会话；远端仍须已有主人会话。已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
+`GET /api/session` 对无转发头的本机回环连接、回环 Host 且同源的请求签发本机用户会话；远端仍须已有用户会话。已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 
@@ -139,7 +139,7 @@
 
 `agents` 是子代理状态，不是一套独立的任务系统；`type` 为派发时的类型（如 `research`、`dev`），普通 spawn 为空，界面在没有任务标题时用它显示类型名；`started_at` 是实际开始时间（尚未开始时为 `null`），`current_step` 是当前一步的一行摘要，`finished_at` 优先使用实际结束时刻。
 
-`PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的主人。请求体可含布尔字段 `enabled` 和字符串字段 `precheck`，至少提供一个；返回更新后的例程。`precheck` 是 shell 命令字符串（不是布尔开关），最多 16 KiB；省略保留原值，空串移除检查。请求体上限 128 KiB（容纳 JSON 转义），详情接口的 `routines[]` 在非空时也返回 `precheck`。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对、命令超长或未知字段 400，写入失败 500。有效前置命令（包括省略字段时保留的命令）复用 shell 审核；需要确认或机器 off 时返回 403、整次 PATCH 不落盘，可通过聊天中的 `routine_update` 走现有确认。显式清空仍可使用本接口，不新增 UI。执行规则见 [多 Bot](atlas/multibot.md)。
+`PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的用户。请求体可含布尔字段 `enabled` 和字符串字段 `precheck`，至少提供一个；返回更新后的例程。`precheck` 是 shell 命令字符串（不是布尔开关），最多 16 KiB；省略保留原值，空串移除检查。请求体上限 128 KiB（容纳 JSON 转义），详情接口的 `routines[]` 在非空时也返回 `precheck`。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对、命令超长或未知字段 400，写入失败 500。有效前置命令（包括省略字段时保留的命令）复用 shell 审核；需要确认或机器 off 时返回 403、整次 PATCH 不落盘，可通过聊天中的 `routine_update` 走现有确认。显式清空仍可使用本接口，不新增 UI。执行规则见 [多 Bot](atlas/multibot.md)。
 
 `PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`timezone`、`persona`、`avatar_seed`；`language`、`quiet_start`、`quiet_end` 已删除，带上是 400。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
 
@@ -175,11 +175,11 @@
 }]}
 ```
 
-`reply_to` 省略表示这行没有引用。有的话，它是本 transcript 里另一行的 `seq`。用户消息上的值是主人发送时带的序号。助手消息上的值是这条回复指向的用户消息序号。
+`reply_to` 省略表示这行没有引用。有的话，它是本 transcript 里另一行的 `seq`。用户消息上的值是用户发送时带的序号。助手消息上的值是这条回复指向的用户消息序号。
 
 行上还可能有 `images`，是这条消息带的图片文件名（见 `POST /api/bots/{name}/paste`），字节不在里面。`branch` 省略表示主线。有值时，这行属于后台任务 `bg_7`；它是接口按 `fork` 标记重放算出的有效分支：`fork` 标记的 `from` 之后、标记之前的行，以及自己带 `branch` 的行都归这个分支。标记行没有正文，用 `kind` 区分：`"kind":"fork"` 另带 `from`（被分出那一轮的起始 seq）和 `task`；`"kind":"fork_end"` 另带 `status`（`done`、`failed`、`cancelled`、`interrupted`）和 `steps`。标记行的 `branch` 是它自己的分支 id。旧记录没有这些字段，读出来和以前完全一样。
 
-这次 GET 会把该 Bot 的已读游标记到当前长度。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是主人说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。主人聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
+这次 GET 会把该 Bot 的已读游标记到当前长度。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是用户说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。用户聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
 
 跨 Bot 阅读不是 HTTP。模型工具 `recall_history` 和 `expand` 有可选的 `bot`。只能读和调用者至少有一个相同 owner 的 Bot。别的 owner、只是同群或能互发消息的 Bot、以及群 id，都是 `not found`（`history: bot: not found`），不说明原因。搜索和展开用对方 Bot 自己的索引。读到的文本包在 `<untrusted_event source="bot:<name>" ... sender="<name>">` 里，没有指令效力。长度上限和读自己的一样（搜索约 4 KiB，展开约 8 KiB）。
 
@@ -200,28 +200,28 @@
 - `event: done`，`data: {"text":"这一轮拼起来的正文","reply_to":2}`。`reply_to` 省略表示这条回复没有指向某一条用户消息。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。模型用来标记引用的 `reply_to:` 行不会出现在 `delta` 或 `done.text` 里。
 - `event: error`，`data: {"error":"..."}`
 
-`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 30 分钟（`Server.ApprovalWait` 同时配置权限卡和提问卡）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，按允许执行原调用并继续；transcript 卡追加 `state="auto_approved"` 和 `notice="30 分钟没人确认，已按允许执行"`。挂起的调用沿用一次性放行与决定唤醒恢复。超时后再点权限卡仍返回 410。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。**默认不发权限卡**（[ADR 0019](adr/0019-no-permission-cards-by-default.md)，`xbot permissions on` 打开）：只有 `links` 的 install/remove 和触到保险箱或密钥还发卡；机器开关按 `allow` 算，外部事件开的一轮碰记忆也不发卡。`update_profile` 默认直接更新本 Bot 头像/资料，含 `avatar_seed` 也不出预览确认卡；落盘后回执为 `profile saved`，网页收到工具结果即刷新侧栏与顶栏头像，流式回复期间也生效。打开之后，哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、persona/profile 自改（`propose_persona`/`update_profile`，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。routine 的增删改暂停、Bot 之间的 `message_bot`/`post_group`、写技能、编码任务都不发。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成主人拒绝。主人明确拒绝才是 `denied by user`。
+`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 30 分钟（`Server.ApprovalWait` 同时配置权限卡和提问卡）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，按允许执行原调用并继续；transcript 卡追加 `state="auto_approved"` 和 `notice="30 分钟没人确认，已按允许执行"`。挂起的调用沿用一次性放行与决定唤醒恢复。超时后再点权限卡仍返回 410。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。**默认不发权限卡**（[ADR 0019](adr/0019-no-permission-cards-by-default.md)，`xbot permissions on` 打开）：只有 `links` 的 install/remove 和触到保险箱或密钥还发卡；机器开关按 `allow` 算，外部事件开的一轮碰记忆也不发卡。`update_profile` 默认直接更新本 Bot 头像/资料，含 `avatar_seed` 也不出预览确认卡；落盘后回执为 `profile saved`，网页收到工具结果即刷新侧栏与顶栏头像，流式回复期间也生效。打开之后，哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、persona/profile 自改（`propose_persona`/`update_profile`，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。routine 的增删改暂停、Bot 之间的 `message_bot`/`post_group`、写技能、编码任务都不发。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成用户拒绝。用户明确拒绝才是 `denied by user`。
 
-`POST /api/bots/{name}/questions/{id}`，body `{"choice":"选项的完整字符串"}`。未登录 401；不是当前 owner 的 Bot 或没有这张卡 404；choice 不在 options 内 400；已手动选择过 409；成功 200 `{"status":"ok"}`。超时自动推荐后再点选仍返回 200，把选择当作一条新主人消息处理。直接发普通消息走原 messages 接口，并结束未答提问卡的计时。
+`POST /api/bots/{name}/questions/{id}`，body `{"choice":"选项的完整字符串"}`。未登录 401；不是当前 owner 的 Bot 或没有这张卡 404；choice 不在 options 内 400；已手动选择过 409；成功 200 `{"status":"ok"}`。超时自动推荐后再点选仍返回 200，把选择当作一条新用户消息处理。直接发普通消息走原 messages 接口，并结束未答提问卡的计时。
 
-提问卡与权限卡一样以 `<approval_card>` 用户角色记录追加保存，`tool="ask_user"`，不进入模型上下文。卡体 JSON 为 `{question,options,recommended,choice?}`；属性 `id` 是提交选择用的卡 ID，`deadline` 是截止时刻（RFC3339），`state` 为 pending/approved/auto_approved。自动选择的记录另有 `notice`，默认是「30 分钟没人选，按推荐选了 X」。网页显示推荐标记、自动选中项和灰字事件；超时决定作为主人的选择送进内核并当场唤醒，随后 Bot 的回复仍在 transcript 中出现。注入其他等待时长时，notice 使用实际时长。权限卡的自动允许也使用相同 notice 属性。重启后待答卡沿用 no_decision:restart 处理，不能用失效 ID 再作第一次选择。
+提问卡与权限卡一样以 `<approval_card>` 用户角色记录追加保存，`tool="ask_user"`，不进入模型上下文。卡体 JSON 为 `{question,options,recommended,choice?}`；属性 `id` 是提交选择用的卡 ID，`deadline` 是截止时刻（RFC3339），`state` 为 pending/approved/auto_approved。自动选择的记录另有 `notice`，默认是「30 分钟没人选，按推荐选了 X」。网页显示推荐标记、自动选中项和灰字事件；超时决定作为用户的选择送进内核并当场唤醒，随后 Bot 的回复仍在 transcript 中出现。注入其他等待时长时，notice 使用实际时长。权限卡的自动允许也使用相同 notice 属性。重启后待答卡沿用 no_decision:restart 处理，不能用失效 ID 再作第一次选择。
 
 
-卡在等决定时主人又发了消息，这张卡不挡它（[ADR 0018](adr/0018-cards-never-block-the-owner.md)）：卡照样开着、照样能用上面的接口决定，这次请求收到 `done`、`handed_off:true`，插话那条请求马上得到回答。之后的决定送回 Bot：允许时 Bot 用相同参数再调一次，不再弹卡，然后接着做原来的事；拒绝时 Bot 收到拒绝。
+卡在等决定时用户又发了消息，这张卡不挡它（[ADR 0018](adr/0018-cards-never-block-the-owner.md)）：卡照样开着、照样能用上面的接口决定，这次请求收到 `done`、`handed_off:true`，插话那条请求马上得到回答。之后的决定送回 Bot：允许时 Bot 用相同参数再调一次，不再弹卡，然后接着做原来的事；拒绝时 Bot 收到拒绝。
 
-`links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`，并带 `deadline`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<主人填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
+`links` 的 `install` 也走这张卡。`event: approval` 的 data 仍有 `id`、`tool`、`summary`，并带 `deadline`。`tool` 是 `links`。`summary` 第一行是 `install <id>`。这条 Link 声明了密钥时，多一个 `secrets` 数组，里面只是名字，例如 `["TELEGRAM_BOT_TOKEN"]`，没有值。界面为每个名字放一个输入框。提交时 body 是 `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"<用户填写的值>"}}`。只发 `{"allow":true}` 仍然合法；密钥没填齐时安装不会完成。值不会出现在后续的 `event: result`、transcript 或系统提示里。拒绝时不必带 `secrets`。
 
-Bot 正在这个进程里跑一轮时，主人的消息直接插进那一轮（[ADR 0017](adr/0017-owner-words-go-straight-into-the-turn.md)），不进 inbox。响应立刻以 200 开始事件流：那一轮正在等模型就取消重发，正在跑工具就等它返回再接上；之后的 `delta`、`tool`、`result` 和 `done` 都流到这次请求。原来那条请求收到 `event: done`，`data: {"text":"","handed_off":true}` 后结束，界面在这次请求那边等回答。那一轮出错结束、还没读到这句话时，这次请求自己回答它。正在跑的一轮在另一个进程（终端）时，事件放进 inbox，请求保持打开，那一轮在下一步之间读到；锁空出来后发回那一轮的回答，没读到就自己回答。页面断开或 serve 正在重启时，消息留在 inbox，由 serve 回答。只有 `Server.ForkTurns` 打开时，锁被别的进程占着才仍回 202 `{"status":"queued"}`。
+Bot 正在这个进程里跑一轮时，用户的消息直接插进那一轮（[ADR 0017](adr/0017-owner-words-go-straight-into-the-turn.md)），不进 inbox。响应立刻以 200 开始事件流：那一轮正在等模型就取消重发，正在跑工具就等它返回再接上；之后的 `delta`、`tool`、`result` 和 `done` 都流到这次请求。原来那条请求收到 `event: done`，`data: {"text":"","handed_off":true}` 后结束，界面在这次请求那边等回答。那一轮出错结束、还没读到这句话时，这次请求自己回答它。正在跑的一轮在另一个进程（终端）时，事件放进 inbox，请求保持打开，那一轮在下一步之间读到；锁空出来后发回那一轮的回答，没读到就自己回答。页面断开或 serve 正在重启时，消息留在 inbox，由 serve 回答。只有 `Server.ForkTurns` 打开时，锁被别的进程占着才仍回 202 `{"status":"queued"}`。
 
 ## Bot 状态
 
-`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`tool_summary`（当前仍在运行的工具步骤摘要，已脱敏，最多 120 字）、`since`（RFC3339，本机时区）、`backgrounds`（分叉后台数）、`agents`（正在执行的子代理数，不含排队）、`completed_unread`（主人尚未读到的子代理或分叉完成汇报数，随既有 transcript 已读游标归零）、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等主人确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
+`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`tool_summary`（当前仍在运行的工具步骤摘要，已脱敏，最多 120 字）、`since`（RFC3339，本机时区）、`backgrounds`（分叉后台数）、`agents`（正在执行的子代理数，不含排队）、`completed_unread`（用户尚未读到的子代理或分叉完成汇报数，随既有 transcript 已读游标归零）、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等用户确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
 
 `GET /api/bots/{name}/steps?n=20` 返回 `{"steps":[{"time","tool","summary","state"}]}`，是这个 Bot 当前这一轮的步骤环。`summary` 最多 120 个字符，写前过替换函数；`state` 是 `running`、`done`、`error` 或 `awaiting`。`n` 缺省 20，最多 20，小于 1 是 400 `{"error":"bad n"}`。不是这个 owner 的 Bot 是 404。远端 Bot 只给状态，不给步骤，空数组。
 
 `GET /api/bots/{name}/context` 返回这一轮模型实际收到的上下文：`{"bot","target","ceiling","window","requests":[...],"detail":{...}}`。`target` 是软目标（消息到这里后台开始压），`ceiling` 是这次请求的硬上限（含工具定义，到这里轮内同步压），都按当前绑定的模型现算。`requests` 是本轮最近的模型调用，最多 10 次，按发生顺序排列；这是内核在内存里留的快照，进程重启或这个 Bot 还没在本进程里发过请求时是空数组、没有 `detail`，不是 404。每次调用是 `{"step","at","prompt","tools","layers":[{"key","label","tokens","from","to"}],"turn_steps"}`。`step` 是这次唤醒里的第几次调用，从 1 起；`prompt` 是整次请求的估算用量，含工具定义，`tools` 是其中工具定义那一份（用量记录里不含它，所以面板要单独列出）；`layers` 按发送顺序给分层合计，`key` 是 `sys`、`mem`、`block`、`env`、`hist`（早先对话）、`turn`（本轮，从唤醒这一轮的那条消息起）之一，摘要块每块单独一项并带它覆盖的 `from`、`to`；`turn_steps` 是这次调用带上了本轮的几步。`detail` 只描述最新一次调用：`steps` 是本轮的步骤 `{"tool","what","tokens","fail","preview"}`（一次工具调用和它的结果合成一步，`what` 是命令、路径或查询这类参数，`fail` 表示结果以 error 开头或 exit 非 0，`preview` 是结果开头 240 字；`tool` 为空的是回复文字），最多 150 步，再早的丢掉并写进 `skipped_steps`；`turns` 是早先对话每轮 `{"ask","tokens"}`，最多 40 轮，更早的只记 `earlier_turns`、`earlier_tokens`；`blocks` 是摘要块 `{"from","to","tokens","preview"}`；`tool_defs` 是每个工具定义的 `{"name","tokens"}`，从大到小。较早的一次调用的步骤就是 `steps` 的前 `turn_steps` 步。所有文字都过 `RedactText`。只有前台主循环的请求会出现在这里，子代理、记忆抽取和压缩自身的调用不在其中。不是这个 owner 的 Bot 是 404。
 
-`GET /api/bots/{name}/todos` 返回 `{"items":[{"id","content","status","reason"}]}`，是这个 Bot 当前任务的待办清单。没有活动清单时 `items` 是空数组。每一项都已完成或放弃、写入空清单、或换成没有相同 id 的新清单时，旧清单归档，不再出现在这里。主人接着说继续，或前台插话时后台还在跑，活动清单还在。`status` 是 `pending`、`in_progress`、`done` 或 `dropped`。`BotStatus` 多一个 `todo` 字段，有未完成项时是一行摘要（「进度：… · 还剩 N 项待办」，或「待办：还有 N 项」），写前过替换函数，最多 80 个字符；没有未完成项就省略。步骤环不放清单。不是这个 owner 的 Bot 是 404。
+`GET /api/bots/{name}/todos` 返回 `{"items":[{"id","content","status","reason"}]}`，是这个 Bot 当前任务的待办清单。没有活动清单时 `items` 是空数组。每一项都已完成或放弃、写入空清单、或换成没有相同 id 的新清单时，旧清单归档，不再出现在这里。用户接着说继续，或前台插话时后台还在跑，活动清单还在。`status` 是 `pending`、`in_progress`、`done` 或 `dropped`。`BotStatus` 多一个 `todo` 字段，有未完成项时是一行摘要（「进度：… · 还剩 N 项待办」，或「待办：还有 N 项」），写前过替换函数，最多 80 个字符；没有未完成项就省略。步骤环不放清单。不是这个 owner 的 Bot 是 404。
 
 ## 子代理、通知、群
 
@@ -233,7 +233,7 @@ Bot 正在这个进程里跑一轮时，主人的消息直接插进那一轮（[
 
 `POST /api/groups` 带 `members` 时创建聊天群，body `{"name":"...","members":["ada","bob"]}`。成功 200 就是这个群对象。没有 `members` 时创建的是侧边栏分组，见下。
 
-`GET /api/groups/{id}` 返回 `{"group":{...},"messages":[{"id","time","sender","kind","text"}]}`。`kind` 是 `person` 时这行是主人发的。
+`GET /api/groups/{id}` 返回 `{"group":{...},"messages":[{"id","time","sender","kind","text"}]}`。`kind` 是 `person` 时这行是用户发的。
 
 `POST /api/groups/{id}/messages`，body `{"text":"..."}`。200 `{"status":"sent"}`。
 
@@ -255,7 +255,7 @@ Bot 正在这个进程里跑一轮时，主人的消息直接插进那一轮（[
 }
 ```
 
-`order` 只含主人建过的分组，不含「未分组」。`folders` 按这个顺序，最后一项永远是「未分组」。组内 Bot 先置顶，再按名字。`count` 是 `bots` 的长度。没有分组时 `order` 是 `[]`，`folders` 只有「未分组」。`groups` 仍是聊天群，上面那一节的对象不变。
+`order` 只含用户建过的分组，不含「未分组」。`folders` 按这个顺序，最后一项永远是「未分组」。组内 Bot 先置顶，再按名字。`count` 是 `bots` 的长度。没有分组时 `order` 是 `[]`，`folders` 只有「未分组」。`groups` 仍是聊天群，上面那一节的对象不变。
 
 `POST /api/groups`，body 只有 `{"name":"工作"}`，没有 `members`。成功 200 `{"name":"工作"}`，名字追加到 `order` 末尾。名字去掉首尾空白，1 到 32 个字符，不能含斜杠、反斜杠或控制字符，也不能叫「未分组」。重名 409，正文含 `group already exists`。坏名字 400。
 
@@ -287,7 +287,7 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 `GET /api/bots/{name}/links` 是同一份清单，每条多一个 `installed`。不是这个 owner 的 Bot 是 404。
 
-`POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。声明了密钥的条目（Telegram、飞书）也是 409，正文含 `secrets required`，授权和 `secrets.json` 都不变。密钥只能在聊天确认卡里填，或由主人用命令行从同名环境变量安装。
+`POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。声明了密钥的条目（Telegram、飞书）也是 409，正文含 `secrets required`，授权和 `secrets.json` 都不变。密钥只能在聊天确认卡里填，或由用户用命令行从同名环境变量安装。
 
 `DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时删掉这些名字：连接器（Telegram、飞书）的 token 存在保险箱 backend 里，用 `backend.Remove` 删除；只有非连接器的键还留在 `secrets.json`。
 
@@ -308,7 +308,7 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status":"not_found"}`。密钥不对或还没写入，是 401 `{"status":"unauthorized"}`。对上的消息是 200 `{"status":"accepted"}`，收件箱里多一条不可信事件，来源是 `telegram` 或 `lark`，正文是 `chat: <id>` 加文本，没有密钥。同一条 `update_id` 或 `message_id` 再来一次是 200 `{"status":"duplicate"}`，不再写第二份。没有文本是 200 `{"status":"ignored"}`。飞书 `{"type":"url_verification","challenge":"..."}` 在密钥对上之后回 `{"challenge":"..."}`，不写收件箱。
 
-出站不在这个接口上。Bot 用 `telegram_send` 或 `lark_send` 落草稿，主人在确认卡点头之后才发出。
+出站不在这个接口上。Bot 用 `telegram_send` 或 `lark_send` 落草稿，用户在确认卡点头之后才发出。
 
 命令行：`xbot link list`，`xbot link list <bot>`，`xbot link install <bot> <id>`，`xbot link remove <bot> <id>`。
 
@@ -316,7 +316,7 @@ Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status
 
 ## 连接应用的运行状态
 
-`GET /api/apps` 沿用 owner 登录校验和全局安装列表。MCP 商店条目增加 `load_id`（如 `mcp:playwright`）；已配置的 MCP 增加 `runtime`，键为当前主人的 Bot 名，值为 `{state, tool_count, error?}`。`configured` 表示当前配置尚未成功取得工具；`ready` 表示该 Bot 的匹配实例取得非空工具表；`error` 附带有界、脱敏的失败原因。没有 Bot 时不返回 runtime。读取不启动 MCP 进程、不发网络请求，不将其他配置实例或其他主人的状态混入。
+`GET /api/apps` 沿用 owner 登录校验和全局安装列表。MCP 商店条目增加 `load_id`（如 `mcp:playwright`）；已配置的 MCP 增加 `runtime`，键为当前用户的 Bot 名，值为 `{state, tool_count, error?}`。`configured` 表示当前配置尚未成功取得工具；`ready` 表示该 Bot 的匹配实例取得非空工具表；`error` 附带有界、脱敏的失败原因。没有 Bot 时不返回 runtime。读取不启动 MCP 进程、不发网络请求，不将其他配置实例或其他用户的状态混入。
 
 旧 `state=connected` 和顶层 `connected` 仍表达安装/凭据状态，不代表工具可用；前端本次未接入 runtime。`load_id` 可直接交给 `links` 的 load 动作，成功后返回工具名；错误在原工具结果通路内返回。ready 不保证某个工具的浏览器等外部依赖可用。
 
@@ -360,7 +360,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 }]}
 ```
 
-`GET /api/bots/{name}/skills/{slug}` 读这一条。成功 200，有 `slug`、`name`、`title`、`description`、`body`。`body` 是 frontmatter 下面的 markdown，不含密钥以外的限制；这里没有密钥。本机技能库里没有这个 slug 是 404 `{"error":"not found"}`。停用了也能读，读的是主人，不是模型。
+`GET /api/bots/{name}/skills/{slug}` 读这一条。成功 200，有 `slug`、`name`、`title`、`description`、`body`。`body` 是 frontmatter 下面的 markdown，不含密钥以外的限制；这里没有密钥。本机技能库里没有这个 slug 是 404 `{"error":"not found"}`。停用了也能读，读的是用户，不是模型。
 
 `POST /api/bots/{name}/skills/{slug}/disable` 无 body。成功 200 `{"slug":"ship","disabled":true}`。已经停用再停一次仍是 200。库里没有这个 slug 是 404。
 
@@ -370,7 +370,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `GET /api/skills` 返回 `{"skills":[{"slug","name","title","description"}]}`，按 slug 排序，没有时是空数组，不带正文，不带停用状态。
 
-`GET /api/skills/{slug}` 返回 `slug`、`name`、`title`、`description` 和 `bots:[{"name","enabled"}]`：这个 owner 名下每个 Bot 是否开着这条技能（默认开；顺序同 Bot 列表）。多主人 Bot 同样返回真实启用状态和开关，不再返回 `shared`。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
+`GET /api/skills/{slug}` 返回 `slug`、`name`、`title`、`description` 和 `bots:[{"name","enabled"}]`：这个 owner 名下每个 Bot 是否开着这条技能（默认开；顺序同 Bot 列表）。多用户 Bot 同样返回真实启用状态和开关，不再返回 `shared`。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
 
 `POST /api/skills/import` body `{"folder","content","overwrite"}`：`content` 是浏览器从用户选的文件夹里读出的 SKILL.md 文本（最多 1 MiB 的请求），`folder` 只是文件夹名，是合法 slug 就当技能目录名，否则取头里的 `name`，仍不合法就 400；请求里不出现本机路径，服务端也不据此读任何路径。成功 200 `{"slug","name"}`。库里已有同名且 `overwrite` 不是 true：409 `{"error":"库里已有同名技能，要覆盖吗？","conflict":true,"name":...}`，库不变。头里缺 `name` 或 `description` 是 400，文件夹名不能用也是 400，错误文字都是给用户看的中文。检查与写入在同一把锁里，并发导入同名只有一个成功，其余得到 409；覆盖不动各 Bot 的开关。
 
@@ -412,11 +412,11 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `GET /api/bots/{name}/peers/{peer}/messages?limit=N&before=<to>:<seq>`
 
-`{peer}` 也可以写成 `bot@设备`（设备是配对表里的设备名），用来读本机 Bot 跟另一台已配对设备上同名主人的 Bot 的来往：收到的部分来自本机 Bot 自己的 transcript 里 `bot:bot@设备` 事件，发出的部分是它给这个地址调 `message_bot` 的那几行和对应工具结果，退回的通知记为 `kind: "bounce"`。另一半不在本机，看不到。
+`{peer}` 也可以写成 `bot@设备`（设备是配对表里的设备名），用来读本机 Bot 跟另一台已配对设备上同名用户的 Bot 的来往：收到的部分来自本机 Bot 自己的 transcript 里 `bot:bot@设备` 事件，发出的部分是它给这个地址调 `message_bot` 的那几行和对应工具结果，退回的通知记为 `kind: "bounce"`。另一半不在本机，看不到。
 
 只读。返回这两个 Bot 之间已经写进 transcript 的私聊，时间从旧到新。调用者必须同时是两边的 owner。不是 owner、Bot 不存在，或者 `{name}` 和 `{peer}` 是同一个名字，都是 404 `{"error":"not found"}`。未登录 401。
 
-每条消息只存在收件 Bot 的 transcript 里，这个接口不另存一份。它读的就是搜索、导出和 `recall_history` 能看见的那几行。群消息不在这里。发送方 transcript 里的 `message_bot` 工具调用也不在这里。还留在收件箱、收件 Bot 还没写进 transcript 的，先不出现。主人跟某个 Bot 的聊天窗口不改：对方 Bot 发来的内容仍是一行淡提示。
+每条消息只存在收件 Bot 的 transcript 里，这个接口不另存一份。它读的就是搜索、导出和 `recall_history` 能看见的那几行。群消息不在这里。发送方 transcript 里的 `message_bot` 工具调用也不在这里。还留在收件箱、收件 Bot 还没写进 transcript 的，先不出现。用户跟某个 Bot 的聊天窗口不改：对方 Bot 发来的内容仍是一行淡提示。
 
 `limit` 缺省 50，最大 200。小于 1、大于 200，或不是整数，400 `{"error":"bad limit"}`。
 
@@ -453,8 +453,8 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 OAuth 供应商额外返回 `oauth`（`openrouter`、`chatgpt` 或 `xai`）；`key_configured` 此时表示 vault 中已保存凭证，不暴露令牌。保险箱不可用时该项带 `auth_error`，其他 key 供应商仍可列出和绑定。
 
-`PUT /api/providers/models/image-generation`（需主人登录）接收 `{provider,model,enabled,image_model}`，更新现有 `providers.json` 中已登记模型的 `hosted_image_generation` 和 `image_generation_model`；只允许 Responses 开启，模型名空串使用厂商默认。成功返回 `{provider,model,hosted_image_generation,image_generation_model}`；未登录 401、无法解析 400、未知绑定/不支持的协议或非法模型名 422。下一轮模型请求读取新配置，无须重建内核。`GET /api/providers`、`GET /api/models` 和实时模型目录携带生图能力字段；`registered` 表示模型已登记、允许保存设置，读取目录不自动登记模型。
+`PUT /api/providers/models/image-generation`（需用户登录）接收 `{provider,model,enabled,image_model}`，更新现有 `providers.json` 中已登记模型的 `hosted_image_generation` 和 `image_generation_model`；只允许 Responses 开启，模型名空串使用厂商默认。成功返回 `{provider,model,hosted_image_generation,image_generation_model}`；未登录 401、无法解析 400、未知绑定/不支持的协议或非法模型名 422。下一轮模型请求读取新配置，无须重建内核。`GET /api/providers`、`GET /api/models` 和实时模型目录携带生图能力字段；`registered` 表示模型已登记、允许保存设置，读取目录不自动登记模型。
 
-`POST /api/providers/oauth/{kind}/start`（需主人登录）返回 `{url}`，供浏览器打开授权窗口。支持 `openrouter`、`chatgpt`、`xai`（xAI 用 Grok CLI 公共客户端 PKCE，回调固定监听 `127.0.0.1:56121/callback`，端口被占用时报人话错误）；重复点击复用十分钟内的待完成尝试；已有另一类登录进行中返回 400。`GET /api/providers/oauth/{kind}/status` 返回 `{state,error?}`，状态为 `idle`、`pending`、`succeeded`、`failed` 或 `cancelled`，错误不含授权响应明文。`POST /api/providers/oauth/{kind}/cancel`（同 start 鉴权）取消进行中的登录：关闭回调监听、状态置 `cancelled`，取消或失败后可立刻重新 start；无可取消时 409。`POST /api/providers/oauth/{kind}/logout`（同 start 鉴权）退出该账号：先停掉进行中的登录，再删除 vault 中的凭证和该 kind 的 OAuth 绑定（同名的 API key 绑定不动），状态回到 `idle`，返回 `{status:"logged_out"}`；什么都没存时也返回 200；不支持的 kind 返回 404，删除失败返回 500 和人话错误。绑在这个供应商上的 Bot 会失去凭证，直到再次登录（重建同名绑定）。退出不等待进行中的自动刷新：刷新写回前会核对凭证仍是它开始时那一份，已被退出删掉就放弃写回（本地与保险箱守护进程同一路径）。设置页只在点击 ChatGPT 订阅卡或 xAI 登录按钮、或详情的「重新登录」时启动授权；轮询成功后刷新供应商列表。回调由短期 loopback listener 接收，不通过对话或 transcript 传递授权码。协议及凭证保存方式见 [供应商](atlas/providers.md)。
+`POST /api/providers/oauth/{kind}/start`（需用户登录）返回 `{url}`，供浏览器打开授权窗口。支持 `openrouter`、`chatgpt`、`xai`（xAI 用 Grok CLI 公共客户端 PKCE，回调固定监听 `127.0.0.1:56121/callback`，端口被占用时报人话错误）；重复点击复用十分钟内的待完成尝试；已有另一类登录进行中返回 400。`GET /api/providers/oauth/{kind}/status` 返回 `{state,error?}`，状态为 `idle`、`pending`、`succeeded`、`failed` 或 `cancelled`，错误不含授权响应明文。`POST /api/providers/oauth/{kind}/cancel`（同 start 鉴权）取消进行中的登录：关闭回调监听、状态置 `cancelled`，取消或失败后可立刻重新 start；无可取消时 409。`POST /api/providers/oauth/{kind}/logout`（同 start 鉴权）退出该账号：先停掉进行中的登录，再删除 vault 中的凭证和该 kind 的 OAuth 绑定（同名的 API key 绑定不动），状态回到 `idle`，返回 `{status:"logged_out"}`；什么都没存时也返回 200；不支持的 kind 返回 404，删除失败返回 500 和人话错误。绑在这个供应商上的 Bot 会失去凭证，直到再次登录（重建同名绑定）。退出不等待进行中的自动刷新：刷新写回前会核对凭证仍是它开始时那一份，已被退出删掉就放弃写回（本地与保险箱守护进程同一路径）。设置页只在点击 ChatGPT 订阅卡或 xAI 登录按钮、或详情的「重新登录」时启动授权；轮询成功后刷新供应商列表。回调由短期 loopback listener 接收，不通过对话或 transcript 传递授权码。协议及凭证保存方式见 [供应商](atlas/providers.md)。
 
 Transcript 消息保留原 `content` 字符串投影，另有可选 `parts` 数组，包含 `server_tool` 的 `hosted:{id,name,status,query}` 和 `citation:{url,title,start,end}`；位置按 Unicode 字符计数。助手行另有可选 `thinking` 字符串，是该行可读思考正文（Chat Completions 的 `reasoning_content`、Anthropic thinking 块正文，多段以空行合并），只给「轨迹」用；网页不接收 `vendor_raw`、signature、redacted/encrypted reasoning；Chat Completions 的 `reasoning_content` 也不进 `delta`。消息 SSE 增加 `part` 事件，承载临时 hosted 步骤；最终内容从 transcript 读取。

@@ -8,14 +8,14 @@ func TestNearDuplicate(t *testing.T) {
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", "Bot 简介已定为「今晚随便逛逛的小助手」"},
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", "bot简介已经改为「今晚随便逛逛的小助手」。"},
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", Provenance("Bot 简介已改为「今晚随便逛逛的小助手」", "astr", "")},
-		{"主人喜欢简短回答", "主人偏好简短回答"},
-		{"主人更喜欢咖啡", "主人更偏好咖啡"},
+		{"用户喜欢简短回答", "用户偏好简短回答"},
+		{"用户更喜欢咖啡", "用户更偏好咖啡"},
 		{"负责人已改为王得福", "负责人改为王得福"},
 		{"Owner prefers short answers.", "owner likes short answers"},
 		{"The profile was set to night owl", "profile has been changed to night owl"},
 		// One contained in the other.
 		{"note-capture 写到 `~/notes/inbox.md`", "约定：note-capture 写到 `~/notes/inbox.md`"},
-		{"主人时区 UTC+8", "主人时区 UTC+8。"},
+		{"用户时区 UTC+8", "用户时区 UTC+8。"},
 		{"约定：每周五下午整理周报", "每周五下午整理周报"},
 	}
 	for _, c := range dup {
@@ -26,22 +26,22 @@ func TestNearDuplicate(t *testing.T) {
 	distinct := [][2]string{
 		// Corrections change an anchor and must stay.
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", "Bot 简介已改为「严肃的工作助手」"},
-		{"主人时区 UTC+8", "主人时区 UTC+9"},
+		{"用户时区 UTC+8", "用户时区 UTC+9"},
 		{"trace 写到 /Users/a/trace/1.json", "trace 写到 /Users/a/trace/2.json"},
-		{"主人偏好简短回答", "主人偏好详细回答"},
+		{"用户偏好简短回答", "用户偏好详细回答"},
 		{"Owner prefers short answers", "Owner prefers long answers"},
 		{"Owner prefers short answers", "Owner no longer prefers short answers"},
 		// A short fragment is not a containing match.
-		{"主人", "主人每天七点起床"},
+		{"用户", "用户每天七点起床"},
 		// Review 1 P1: a long sentence that changes one name, count, quoted
 		// value or negation is a correction, however similar the rest is.
-		{"主人要求所有项目的代码审查必须由小王负责", "主人要求所有项目的代码审查必须由小李负责"},
+		{"用户要求所有项目的代码审查必须由小王负责", "用户要求所有项目的代码审查必须由小李负责"},
 		{"项目名称是「工作助手」", "项目名称是「工作的助手」"},
-		{"主人每天早上喝咖啡", "主人每天早上喝咖啡2杯"},
-		{"主人每天早上喝咖啡", "主人每天早上喝咖啡两杯"},
-		{"主人不喜欢喝咖啡", "主人不喜欢不喝咖啡"},
-		{"主人每天早上喝咖啡", "主人每天早上不喝咖啡"},
-		{"主人周末早上喝咖啡", "主人每天早上喝咖啡"},
+		{"用户每天早上喝咖啡", "用户每天早上喝咖啡2杯"},
+		{"用户每天早上喝咖啡", "用户每天早上喝咖啡两杯"},
+		{"用户不喜欢喝咖啡", "用户不喜欢不喝咖啡"},
+		{"用户每天早上喝咖啡", "用户每天早上不喝咖啡"},
+		{"用户周末早上喝咖啡", "用户每天早上喝咖啡"},
 		{"每周五下午整理周报", "周末：每周五下午整理周报"},
 		{"部署前必须先在测试环境跑完回归并由张三签字确认", "部署前必须先在测试环境跑完回归并由李四签字确认"},
 		{"所有对外发布的文档都必须先经过法务部门审核再发出", "所有对外发布的文档都必须先经过市场部门审核再发出"},
@@ -56,7 +56,7 @@ func TestNearDuplicate(t *testing.T) {
 		{"项目负责人是王的福", "项目负责人是王福"},
 		{"项目负责人是王已福", "项目负责人是王福"},
 		{"负责人已改为王得福", "负责人已改为王福"},
-		{"主人喜欢咖啡", "主人更喜欢咖啡"},
+		{"用户喜欢咖啡", "用户更喜欢咖啡"},
 		{"Owner likes coffee", "Owner likes coffee more"},
 		{"", ""},
 	}
