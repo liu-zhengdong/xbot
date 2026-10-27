@@ -79,8 +79,12 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/devices')return json({self:{name:'本机'},gateway_ok:true,devices:[{id:'remote',label:'台式机',bots:['远端Bot'],online:true}]});
  if(path==='/api/groups')return json({groups:[{id:'group',name:'讨论组',members:[]}],folders:[{name:'项目',count:2,bots:bots.map(b=>b.name)}]});
  if(String(path).endsWith('/context'))return json({ceiling:128000,target:64000,requests:[]});
- if(String(path).startsWith('/api/models'))return json({models:[{provider:'fake',model:'scripted',protocol:'chat_completions'}]});
- if(path==='/api/providers')return json({providers:[{name:'fake',protocol:'chat_completions',key_configured:true,models:[{model:'scripted',available:true}]},{name:'deep',protocol:'responses',key_configured:true,models:[{model:'deep-pro',available:true,hosted_web_search:true}]}]});
+ if(String(path).startsWith('/api/models'))return json({models:[{provider:'fake',model:'scripted',protocol:'chat_completions'},{provider:'deep',brand:'deepseek',model:'deep-pro',protocol:'responses',hosted_web_search:true}]});
+ if(path==='/api/providers'){
+  if(fixture.providers==='fail')return new Response('{"error":"boom"}',{status:500,headers:{'Content-Type':'application/json'}});
+  if(fixture.providers==='none')return json({providers:[]});
+  return json({providers:[{name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:false,models:[]},{name:'fake',protocol:'chat_completions',key_configured:true,models:[{model:'scripted',available:true,context:128000}]},{name:'deep',brand:'deepseek',protocol:'responses',key_configured:true,models:[{model:'deep-pro',available:true,hosted_web_search:true,vision:true,context:500000}]}]});
+ }
  if(String(path).endsWith('/binding')){fixture.bound=JSON.parse(opts.body);return json(fixture.bound)}
  const match=String(path).match(/^\/api\/bots\/([^/]+)$/);
  if(match){
@@ -144,16 +148,44 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  // The drawer shares the face; rebinding there repaints both faces and leaves the drawer open.
  const drawerModel=$('#modal .binding-trigger');
  assert(drawerModel&&face(drawerModel)==='scripted|fake · Completions','drawer lacks the model face');
- drawerModel.click();await waitFor(()=>$('.binding-option'),'picker does not open');
- assert(!$('.binding-dialog .provider-meta').textContent.includes(' / ')&&$('.binding-dialog .provider-meta').textContent.endsWith('当前 fake · scripted'),'picker subtitle is slash soup');
+ // Empty and failed lists say so in a flat line instead of a blank picker.
+ const pick=async()=>{drawerModel.click();await waitFor(()=>$('.binding-dialog')&&!$('.binding-dialog').textContent.includes('正在拉模型'),'picker does not open')};
+ const dlgButton=text=>[...$('.binding-dialog').querySelectorAll('button')].find(b=>b.textContent===text);
+ fixture.providers='none';await pick();
+ assert($('.binding-flat').textContent.includes('还没有可用的供应商')&&dlgButton('管理供应商')&&$('.binding-search').hidden,'no-provider state missing');
+ dlgButton('取消').click();
+ fixture.providers='fail';await pick();
+ assert($('.binding-flat').textContent.includes('模型名单暂时拉不下来'),'list failure state missing');
+ fixture.providers='';dlgButton('重试').click();await waitFor(()=>$('.binding-option'),'retry does not reload');
+ const dlg=$('.binding-dialog'),sub=$('.binding-sub').textContent,heads=[...dlg.querySelectorAll('.binding-heading')].map(n=>n.textContent);
+ assert($('.binding-dialog h2').textContent==='更换模型','picker title');
+ assert(!sub.includes(' / ')&&sub.endsWith('当前 fake · scripted'),'picker subtitle is slash soup');
+ assert(heads.includes('xAI · Completions')&&!heads.some(h=>h.includes('xai-key')),'group header uses a raw id');
+ assert([...dlg.querySelectorAll('.binding-empty')].some(n=>n.textContent==='配好密钥后再选模型'),'keyless vendor pretends to have no models');
+ const option=text=>[...dlg.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text)),cap=text=>option(text).querySelector('.binding-cap').textContent;
+ assert(!dlg.querySelector('.provider-badge')&&cap('scripted')==='不看图 · 本机搜索 · 128K'&&cap('deep-pro')==='可看图 · 厂商搜索 · 500K','row is not one quiet capability line');
+ const use=dlgButton('使用此模型');
+ assert(use.disabled&&option('scripted').getAttribute('aria-checked')==='true'&&!$('.binding-note').textContent,'current binding is confirmable');
+ const search=$('.binding-search');
+ search.value='nothing';search.dispatchEvent(new Event('input'));assert(dlg.textContent.includes('没有匹配的模型'),'no-match state missing');
+ search.value='pro';search.dispatchEvent(new Event('input'));assert(!option('deep-pro').hidden&&option('scripted').hidden&&!dlg.textContent.includes('没有匹配的模型'),'search does not filter');
+ option('deep-pro').click();
+ assert(!use.disabled&&$('.binding-note').textContent==='下一轮改用厂商搜索。旧对话还能看。','consequence note is not plain');
+ assert(!/web_search|hosted|互斥|绑定/.test(dlg.textContent),'engineering words in picker');
+ assert(!fixture.bound,'row click committed');
  $('.binding-dialog').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
  assert(!$('#modal').hidden&&panel.classList.contains('open'),'Escape in picker closed the layers below');
- [...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes('deep-pro')).click();
- [...document.querySelectorAll('.binding-footer button')].find(b=>b.textContent==='使用此绑定').click();
+ // Cancel drops the staged row; reopening starts from the current binding.
+ dlgButton('取消').click();assert(!$('.binding-dialog')&&!fixture.bound&&face(drawerModel)==='scripted|fake · Completions','cancel did not discard');
+ await pick();const pickRow=text=>[...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text));
+ assert(pickRow('scripted').getAttribute('aria-checked')==='true'&&pickRow('deep-pro').getAttribute('aria-checked')==='false','reopen kept staged row');
+ pickRow('deep-pro').click();
+ dlgButton('使用此模型').click();
  await waitFor(()=>!$('.binding-dialog'),'picker does not close');
- assert(face(drawerModel)==='deep-pro|deep · Responses · 厂商搜索','drawer face not repainted after rebind');
+ assert(face(drawerModel)==='deep-pro|DeepSeek · Responses · 厂商搜索','drawer face not repainted with the vendor display name');
  assert(fixture.bound.provider==='deep'&&fixture.bound.model==='deep-pro','binding not saved');
  await waitFor(()=>$('.tab-body .binding-trigger .bt-model')?.textContent==='deep-pro','details face not refreshed');
+ assert(face($('.tab-body .binding-trigger'))==='deep-pro|DeepSeek · Responses · 厂商搜索','details face shows the raw provider id');
  assert(!$('#modal').hidden,'rebind closed the drawer');
  escape();await sleep(20);assert(document.activeElement===$('#panel-actions button'),'edit focus not restored');
  $('#panel-scrim').click();await sleep(250);finishAnimations();

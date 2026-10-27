@@ -5,7 +5,7 @@
   const button = (text, cls, click) => { const n = node("button", cls, text); n.type = "button"; n.onclick = click; return n; };
   const badge = (protocol) => node("span", "provider-badge " + protocol, labels[protocol] || protocol);
   const pname = p => p.name;
-  const detail = m => `${m.hosted_web_search ? "厂商搜索" : "本地搜索"} · ${m.vision ? "可看图" : "不看图"}${m.context ? " · " + m.context.toLocaleString() + " tokens" : ""}`;
+  const ctxShort = c => c >= 1000000 ? `${+(c / 1000000).toFixed(2)}M` : `${+(c / 1000).toFixed(1)}K`;
   function safeURL(value) { try { const u = new URL(value); return ["http:", "https:"].includes(u.protocol) ? u.href : null; } catch { return null; } }
   function step(part) {
     const h = part.hosted;
@@ -52,6 +52,9 @@
     gemini: "Google Gemini", vertex: "Vertex AI", xai: "xAI", kimi: "Kimi", "kimi-code": "Kimi Code", zhipu: "Zhipu GLM", zai: "Z.ai",
     minimax: "MiniMax", stepfun: "StepFun", mimo: "Xiaomi MiMo", qianfan: "Baidu Qianfan", tencent: "Tencent Cloud"
   });
+  // The picker's group title: the vendor's brand name, ChatGPT for the
+  // subscription, and the configured name only when the brand is unknown.
+  const displayName = p => p.oauth === "chatgpt" ? "ChatGPT" : brands[p.brand || String(p.name).toLowerCase()] || p.name;
   const mounts = new WeakMap();
   function glyph(brand) {
     if (!brands[brand]) {
@@ -381,8 +384,7 @@
           for (const [kind, supported, label, none] of [["search", m.hosted_web_search, "厂商搜索", "无厂商搜索"], ["vision", m.vision, "看图", "不能看图"]]) {
             const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); if (supported) chip.append(lineIcon(kind)); chip.append(node("span", "", supported ? label : none)); chips.append(chip);
           }
-          const context = m.context >= 1000000 ? `${+(m.context / 1000000).toFixed(2)}M` : `${+(m.context / 1000).toFixed(1)}K`;
-          const windowChip = node("span", "provider-chip provider-window", context); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);
+          const windowChip = node("span", "provider-chip provider-window", ctxShort(m.context)); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);
           if (m.protocol === "responses" && m.registered) chips.append(imageGenControl(api, p, m));
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
@@ -449,52 +451,90 @@
     return wrap;
   }
   let activeDialog = null;
+  // The picker says "which model does this Bot use": groups carry the vendor's
+  // display name, rows a model id over one quiet capability line. A row click
+  // only stages a choice; 使用此模型 commits it.
   async function open({ api, data, onBound, manage, opener }) {
     if (activeDialog) return;
-    const dialog = node("dialog", "binding-dialog");activeDialog = dialog;
+    const dialog = node("dialog", "binding-dialog");activeDialog = dialog;dialog.tabIndex = -1;
     const close = () => { dialog.close();dialog.remove();activeDialog = null;opener?.isConnected && opener.focus(); };
-    dialog.addEventListener("cancel", ev => { ev.preventDefault();close(); });
+    dialog.addEventListener("cancel", ev => { ev.preventDefault();if (!saving) close(); });
     dialog.addEventListener("keydown", ev => { if (ev.key === "Escape") ev.stopPropagation(); });
-    const current = [data.provider, data.model].filter(Boolean).join(" · ");
-    dialog.append(node("h2", "", "更换绑定"), node("p", "provider-meta", `${data.name} · ${current ? "当前 " + current : "未绑定模型"}`));
+    dialog.addEventListener("click", ev => {
+      const r = dialog.getBoundingClientRect();
+      if (ev.target === dialog && !saving && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom)) close();
+    });
+    const head = node("div", "binding-head"), titles = node("div", "binding-titles"), sub = node("p", "binding-sub");
+    const subtitle = shown => { sub.textContent = data.model ? `${data.name} · 当前 ${shown || displayName({name: data.provider})} · ${data.model}` : `${data.name} · 未绑定模型`; };
+    subtitle();titles.append(node("h2", "", "更换模型"), sub);
+    const search = node("input", "binding-search");search.type = "search";search.placeholder = "查找模型…";search.setAttribute("aria-label", "查找模型");search.hidden = true;
+    const x = button("×", "binding-close", () => { if (!saving) close(); });x.setAttribute("aria-label", "关闭");
+    head.append(titles, search, x);
     const body = node("div", "binding-body"), note = node("p", "binding-note"), error = node("p", "bad");error.setAttribute("role", "alert");
-    const footer = node("div", "binding-footer");let selected = null, saving = false;
+    const footer = node("div", "binding-footer");let pending = null, current = null, saving = false;
+    const goManage = () => { if (!saving) {close();manage();} };
     const cancel = button("取消", "secondary", () => { if (!saving) close(); });
-    const use = button("使用此绑定", "primary", async () => {
-      if (!selected || saving) return; saving = true;use.disabled = cancel.disabled = true;error.textContent = "";
-      try { await api(`/api/bots/${encodeURIComponent(data.name)}/binding`, {method:"PUT",body:{provider:selected.p.name,model:selected.m.model}});close();await onBound({provider:selected.p.name,model:selected.m.model,protocol:selected.p.protocol,hosted_web_search:!!selected.m.hosted_web_search}); }
+    const use = button("使用此模型", "primary", async () => {
+      if (!pending || pending === current || saving) return; saving = true;use.disabled = cancel.disabled = true;error.textContent = "";
+      const {p, m} = pending;
+      try { await api(`/api/bots/${encodeURIComponent(data.name)}/binding`, {method:"PUT",body:{provider:p.name,model:m.model}});saving = false;close();await onBound({provider:p.name,display:displayName(p),model:m.model,protocol:p.protocol,hosted_web_search:!!m.hosted_web_search}); }
       catch (err) {error.textContent = err.message || String(err);}
-      finally {saving=false;use.disabled = cancel.disabled = false;}
+      finally {saving=false;cancel.disabled = false;use.disabled = !pending || pending === current;}
     });use.disabled = true;
-    footer.append(button("管理供应商…", "secondary", () => { if (!saving) {close();manage();} }), cancel, use);
-    dialog.append(body,note,error,footer);document.body.append(dialog);dialog.showModal();
-    try {
-      const {providers} = await api("/api/providers");
+    footer.append(button("管理供应商…", "binding-manage", goManage), cancel, use);
+    dialog.append(head,body,note,error,footer);document.body.append(dialog);dialog.showModal();dialog.focus();
+    const flat = (text, action) => { const n = node("div", "binding-flat"); n.append(node("p", "", text)); if (action) n.append(action); return n; };
+    const options = [];
+    const stage = o => {
+      pending = o;for (const b of options) b.setAttribute("aria-checked", String(b._o === o));
+      use.disabled = o === current;
+      note.textContent = o === current ? "" : current && !!current.m.hosted_web_search !== !!o.m.hosted_web_search ? (o.m.hosted_web_search ? "下一轮改用厂商搜索。旧对话还能看。" : "下一轮改用本机搜索。旧对话还能看。") : "确认后下一轮生效。";
+    };
+    const filter = () => {
+      const term = search.value.trim().toLowerCase();let hits = 0;
+      for (const g of body.querySelectorAll(".binding-section")) {
+        const byName = g._title.toLowerCase().includes(term);let any = byName && !g._rows.length;
+        for (const b of g._rows) { b.hidden = !!term && !byName && !b._o.m.model.toLowerCase().includes(term); if (!b.hidden) any = true; }
+        g.hidden = !any;if (any) hits++;
+      }
+      body.querySelector(".binding-nomatch")?.remove();
+      if (!hits) body.append(Object.assign(flat("没有匹配的模型"), {className: "binding-flat binding-nomatch"}));
+    };
+    search.oninput = filter;
+    async function load() {
+      body.replaceChildren(flat("正在拉模型…"));search.hidden = true;options.length = 0;
+      let providers;
+      try { ({providers} = await api("/api/providers")); }
+      catch { if (dialog.isConnected) body.replaceChildren(flat("模型名单暂时拉不下来", button("重试", "secondary", load))); return; }
       if (!dialog.isConnected) return;
-      const options = [];
-      const choose = (p,m,b) => {
-        selected = {p,m};for (const o of options) o.setAttribute("aria-checked", String(o === b));
-        note.textContent = m.hosted_web_search ? "将改用厂商搜索：下一轮工具列表不再含本地 web_search。旧对话仍可读。" : "将使用本地搜索：下一轮恢复本地 web_search。旧对话仍可读。";use.disabled = false;
-      };
-      for (const protocol of Object.keys(labels)) {
-        const groups = providers.filter(p => p.protocol === protocol);
-        if (!groups.length) {body.append(node("h3", "provider-heading", labels[protocol]), node("p", "provider-meta", protocol === "anthropic_messages" ? "Messages · 后做" : "尚未配置"));continue;}
-        for (const p of groups) {
-          body.append(node("h3", "provider-heading", pname(p) + " · " + labels[protocol]));
-          const group = node("div", "binding-group");group.setAttribute("role","radiogroup");group.setAttribute("aria-label",pname(p));body.append(group);
+      body.replaceChildren();
+      if (!providers.length) { body.append(flat("还没有可用的供应商", button("管理供应商", "primary", goManage))); return; }
+      search.hidden = false;
+      const order = Object.keys(labels), rank = p => order.indexOf(p.protocol) < 0 ? 99 : order.indexOf(p.protocol);
+      for (const p of providers.slice().sort((a, b) => rank(a) - rank(b))) {
+        const title = displayName(p), section = node("section", "binding-section");section._title = title;section._rows = [];
+        section.append(node("h3", "binding-heading", title + " · " + (labels[p.protocol] || p.protocol)));
+        if (p.name === data.provider) subtitle(title);
+        if (!p.key_configured || p.auth_error) section.append(button("配好密钥后再选模型", "binding-empty", goManage));
+        else if (!p.models.length) section.append(flat("模型名单暂时拉不下来", button("重试", "secondary", load)));
+        else {
+          const group = node("div", "binding-group");group.setAttribute("role","radiogroup");group.setAttribute("aria-label",title);section.append(group);
           for (const m of p.models) {
-            const b = button("", "binding-option", () => choose(p,m,b));b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
-            b.append(node("strong", "", m.model));const meta = node("span", "provider-meta");meta.append(badge(protocol),node("span", "", detail(m)));b.append(meta);
-            if (!m.available || !p.key_configured) {b.disabled = true;b.append(node("small", "", !m.available ? "该协议后做" : p.oauth ? "请先重新登录" : "请先配置密钥"));}
-            options.push(b);group.append(b);
-            if (p.name === (data.provider || "") && m.model === data.model && !b.disabled) choose(p,m,b);
+            const o = {p, m}, b = button("", "binding-option", () => stage(o));b._o = o;b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
+            b.append(node("strong", "", m.model), node("span", "binding-cap", m.available ? [m.vision ? "可看图" : "不看图", m.hosted_web_search ? "厂商搜索" : "本机搜索", m.context ? ctxShort(m.context) : ""].filter(Boolean).join(" · ") : "暂时用不了"));
+            b.disabled = !m.available;options.push(b);section._rows.push(b);group.append(b);
+            if (p.name === (data.provider || "") && m.model === data.model) current = o;
           }
         }
+        body.append(section);
       }
-    } catch (err) {error.textContent = err.message || String(err);}
+      if (current) stage(current);
+      if (search.value) filter();
+    }
+    await load();
   }
   // The Bot's model face, shared by the details tab and the profile drawer:
-  // model id over "provider · protocol", the whole row opens the picker.
+  // model id over "provider display name · protocol", the whole row opens the picker.
   // info carries protocol/hosted_web_search when the catalog knows the pair.
   function trigger({ api, data, info, aside, manage, onBound }) {
     const b = button("", "binding-trigger", () => open({ api, data, manage, opener: b, onBound: async bound => {
@@ -502,7 +542,7 @@
     } }));
     b.setAttribute("aria-haspopup", "dialog");
     const paint = () => {
-      const tx = node("span", "bt-tx"), sub = [data.provider, labels[info?.protocol] || info?.protocol].filter(Boolean);
+      const tx = node("span", "bt-tx"), sub = [data.provider && (info?.display || displayName({name: data.provider, brand: info?.brand, oauth: info?.oauth})), labels[info?.protocol] || info?.protocol].filter(Boolean);
       if (info?.hosted_web_search) sub.push("厂商搜索");
       tx.append(node("strong", data.model ? "bt-model" : "bt-model unset", data.model || "未绑定模型"));
       if (sub.length) tx.append(node("span", "bt-sub", sub.join(" · ")));

@@ -46,6 +46,16 @@ func TestModelsAPIHidesUncertified(t *testing.T) {
 	if len(page.Models) != 2 {
 		t.Fatalf("all %+v", page.Models)
 	}
+	if err := config.Add(root, config.Provider{Name: "ds-key", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "XBOT_DS_UNUSED"}, config.ModelSpec{Name: "deepseek-flash", Context: 8}); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(getAuth(t, ui.URL+"/api/models?all=1", cookie), &page); err != nil {
+		t.Fatal(err)
+	}
+	// The model face names the vendor by brand even when the provider entry has a custom name.
+	if m := page.Models[len(page.Models)-1]; m.Provider != "ds-key" || m.Brand != "deepseek" || page.Models[0].Brand != "" {
+		t.Fatalf("brand %+v", page.Models)
+	}
 	req, _ := http.NewRequest(http.MethodGet, ui.URL+"/api/models?all=2", nil)
 	req.AddCookie(cookie)
 	res, err := http.DefaultClient.Do(req)

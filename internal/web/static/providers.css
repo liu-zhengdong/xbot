@@ -1,25 +1,44 @@
-.provider-heading{margin:24px 0 10px;font-size:14px;color:var(--x-muted)}
-.binding-group{background:var(--x-fill-1);border-radius:16px;overflow:hidden}
-.binding-option{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;padding:17px;text-align:left;color:var(--x-text);background:transparent;border:0;font:inherit;cursor:pointer}
-.binding-option:hover{background:var(--x-fill-2)}
-.binding-option strong{display:block;margin-bottom:5px}
-.provider-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:var(--x-muted);font-size:13px}
 .provider-badge{display:inline-block;padding:2px 7px;border-radius:5px;background:var(--x-fill-2);font-size:12px;white-space:nowrap}
 .provider-badge.responses{color:var(--x-type-res);background:var(--x-type-res-bg)}
 .provider-badge.anthropic_messages{color:var(--x-type-own);background:var(--x-type-own-bg)}
-.binding-dialog{background:var(--x-card);color:var(--x-text);border:0;border-radius:22px;padding:24px;width:min(560px,calc(100vw - 32px));max-height:90dvh;box-sizing:border-box;box-shadow:var(--x-shadow-pop);font:inherit}
+.binding-dialog{background:var(--x-card);color:var(--x-text);border:0;border-radius:18px;padding:0;width:min(560px,calc(100vw - 40px));max-height:min(760px,92dvh);box-sizing:border-box;box-shadow:var(--x-shadow-pop);font:inherit;overflow:hidden}
+.binding-dialog[open]{display:flex;flex-direction:column}
+.binding-dialog:focus{outline:none}
 .binding-dialog::backdrop{background:var(--x-scrim);backdrop-filter:blur(4px)}
-.binding-dialog h2{margin:0 0 5px;font-size:20px}
-.binding-body{max-height:53dvh;overflow:auto;margin:12px -8px;padding:0 8px}
-.binding-option{display:block;position:relative;padding-right:42px}
+.binding-head{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 12px;flex:none}
+.binding-titles{flex:1;min-width:0}
+.binding-dialog h2{margin:0;font-size:15px;font-weight:620;line-height:1.3}
+.binding-sub{margin:3px 0 0;font-size:12.5px;line-height:1.4;color:var(--x-muted);overflow-wrap:anywhere}
+.binding-search{flex:none;width:168px;max-width:36vw;height:32px;padding:0 12px;border:0;border-radius:8px;background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:13px}
+.binding-search::placeholder{color:var(--x-ph)}
+.binding-search:focus{outline:none;background:var(--x-card);box-shadow:inset 0 0 0 1px var(--x-fill-3)}
+.binding-close{flex:none;width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--x-muted);font-size:20px;line-height:1;cursor:pointer}
+.binding-close:hover{background:var(--x-fill-2);color:var(--x-text)}
+.binding-body{flex:1;min-height:0;overflow:auto;padding:0 14px 4px}
+.binding-section{margin-top:10px}
+.binding-section:first-child{margin-top:2px}
+.binding-heading{margin:0 0 8px 6px;font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--x-muted)}
+.binding-group{display:flex;flex-direction:column;background:var(--x-fill-1);border-radius:12px;overflow:hidden}
+.binding-option{position:relative;display:block;width:100%;padding:10px 40px 10px 12px;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
+.binding-option:first-child{border-top:0}
+.binding-option:hover{background:var(--x-fill-2)}
 .binding-option[aria-checked=true]{background:var(--x-fill-3)}
-.binding-option[aria-checked=true]::after{content:'✓';position:absolute;right:18px;top:18px}
+.binding-option[aria-checked=true]::after{content:'✓';position:absolute;right:14px;top:10px;color:var(--x-primary)}
 .binding-option:disabled{opacity:.5;cursor:default}
-.binding-option small{display:block;color:var(--x-muted);margin-top:6px}
-.binding-note{background:var(--x-fill-1);padding:12px;border-radius:12px;font-size:13px;line-height:1.65}
+.binding-option strong{display:block;font-family:var(--x-mono);font-size:13.5px;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
+.binding-cap{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:var(--x-muted)}
+.binding-empty{display:block;width:100%;padding:10px 12px;border:0;border-radius:12px;background:var(--x-fill-1);color:var(--x-faint);font:inherit;font-size:12.5px;line-height:1.5;text-align:left;cursor:pointer}
+.binding-empty:hover{color:var(--x-text)}
+.binding-flat{padding:28px 16px;text-align:center;font-size:13.5px;line-height:1.55;color:var(--x-muted)}
+.binding-flat p{margin:0}
+.binding-flat button{margin-top:12px}
+.binding-note{margin:8px 18px 0;font-size:12.5px;line-height:1.55;color:var(--x-muted);flex:none}
 .binding-note:empty{display:none}
-.binding-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
-.binding-footer>:first-child{margin-right:auto}
+.binding-dialog .bad{margin:6px 18px 0;flex:none}
+.binding-dialog .bad:empty{display:none}
+.binding-footer{display:flex;align-items:center;gap:8px;margin-top:10px;padding:12px 18px 16px;border-top:1px solid var(--x-fill-2);flex:none}
+.binding-manage{margin-right:auto;padding:0 8px;border:0;background:transparent;color:var(--x-muted);font:inherit;font-size:13.5px;cursor:pointer}
+.binding-manage:hover{color:var(--x-text)}
 .binding-trigger{display:flex;align-items:center;gap:var(--x-s4);width:100%;min-height:52px;padding:8px var(--x-s4) 8px var(--x-s5);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
 .binding-trigger:hover{background:var(--x-fill-2)}
 .binding-trigger .bt-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -36,7 +55,7 @@
 .hs-cites{font-size:13px;margin:12px 0 0;padding:10px 0 0 24px;border-top:1px solid var(--x-fill-3);color:var(--x-muted)}
 .hs-cites li{padding:5px 0}.hs-cites a{overflow-wrap:anywhere}.hs-cites small{color:var(--x-muted);margin-left:8px}
 @media(prefers-reduced-motion:reduce){.hs-step.running .hs-dot{animation:none}}
-@media(max-width:600px){.binding-dialog{padding:18px}.binding-footer{flex-wrap:wrap}}
+@media(max-width:600px){.binding-head{flex-wrap:wrap}.binding-search{order:3;width:100%;max-width:none}}
 
 .hs-cite-mark{font-size:.75em;vertical-align:super;line-height:0;text-decoration:none!important}
 
