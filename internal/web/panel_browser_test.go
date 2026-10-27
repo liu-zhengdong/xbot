@@ -216,7 +216,12 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(!panel.classList.contains('open'),'scrim does not close drawer');
  assert(!chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='false','chip keeps open state after scrim');
  chip.click();assert(panel.classList.contains('open'),'chip does not reopen');
- chip.click();assert(!panel.classList.contains('open')&&!chip.classList.contains('on'),'chip does not close panel');
+ // Hit-test like a real pointer: the open scrim must not swallow the chip.
+ await sleep(250);finishAnimations();
+ const cr=rect(chip),hit=document.elementFromPoint(cr.x+cr.width/2,cr.y+cr.height/2);
+ assert(chip.contains(hit)||panel.contains(hit),'scrim covers the chip');
+ (chip.contains(hit)?hit:chip).click();await sleep(250);finishAnimations();
+ assert(!panel.classList.contains('open')&&!chip.classList.contains('on'),'chip does not close panel');
  const closing=new DOMMatrix(getComputedStyle(panel).transform);
  assert(closing.m41>0&&near(closing.m42,0),'drawer exits downwards');
  // Right-click an unselected Bot: every action belongs to that Bot.

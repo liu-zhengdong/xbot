@@ -230,6 +230,9 @@ button:disabled { cursor: default; }
 .top-title:hover:not(:disabled) { background: var(--hover); }
 .top-title.on { background: var(--x-fill-2); }
 .top-title:disabled { cursor: default; }
+/* The chip stays clickable above the panel scrim (28) yet under the panel (30),
+   so a second click on it closes the panel. */
+.top-title { position: relative; z-index: 29; }
 
 .title {
   display: flex; align-items: center; gap: 10px; min-width: 0;
@@ -2289,7 +2292,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
    drawer covers, so clicking the conversation closes it while the sidebar
    stays usable. Fixed positioning would have blanked the sidebar as well. */
 .panel-scrim {
-  position: absolute; inset: 0; z-index: 29;
+  position: absolute; inset: 0; z-index: 28;
   background: rgba(0, 0, 0, 0.22);
 }
 /* Native controls float above the three columns; there is no title-bar row. */
