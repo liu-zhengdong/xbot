@@ -13,7 +13,8 @@ import (
 	"xbot/internal/provider"
 )
 
-// Extractor pulls durable facts out of a range before it is summarized.
+// Extractor pulls durable facts out of a range. Compaction does not call it:
+// summarizing a range never writes memory.
 type Extractor interface {
 	Extract(ctx context.Context, focus string, turns []provider.Message) ([]memory.Fact, error)
 }
@@ -88,14 +89,6 @@ func parseFacts(raw string) ([]memory.Fact, error) {
 		})
 	}
 	return facts, nil
-}
-
-func (k *Kernel) extractInto(ctx context.Context, entries []bot.Entry, focus string) {
-	if k.Memory == nil {
-		return
-	}
-	facts := k.collectFacts(ctx, entries, focus, k.memoryPerson(), k.curTurn().turnTrusted)
-	_ = k.rememberNew(ctx, facts)
 }
 
 // collectFacts asks the extractor for facts in the given lines.

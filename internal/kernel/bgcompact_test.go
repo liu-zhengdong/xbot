@@ -98,8 +98,8 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	if len(st.Blocks) != 0 {
 		t.Fatalf("ready job swapped outside a turn: %+v", st.Blocks)
 	}
-	if mem.count() != 1 {
-		t.Fatalf("facts %d, want the background extraction", mem.count())
+	if mem.count() != 0 {
+		t.Fatalf("background compaction wrote %d facts to memory", mem.count())
 	}
 	for _, turn := range comp.snapshot() {
 		if strings.Contains(turn.Text(), "LATE") || strings.Contains(turn.Text(), "DURING") {
@@ -133,8 +133,8 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 			}
 		}
 	}
-	if mem.count() != 1 {
-		t.Fatalf("facts duplicated: %d", mem.count())
+	if mem.count() != 0 {
+		t.Fatalf("applying the summary wrote %d facts to memory", mem.count())
 	}
 	if _, err := os.Stat(filepath.Join(bot.Dir(b.Root, b.Name()), "compact-job.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("job file after apply: %v", err)
@@ -196,7 +196,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	job := compactJob{From: 1, To: 3, Focus: defaultFocus, Status: jobRunning, Summary: "PARTIAL", Sender: "u1", Trusted: true}
+	job := compactJob{From: 1, To: 3, Focus: defaultFocus, Status: jobRunning, Summary: "PARTIAL"}
 	raw, err := fsutil.Marshal(job)
 	if err != nil {
 		t.Fatal(err)
@@ -251,14 +251,12 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 	if st.Blocks[0].From != 1 || st.Blocks[0].To != 3 {
 		t.Fatalf("range %+v", st.Blocks[0])
 	}
-	if mem.count() != 1 {
-		t.Fatalf("facts %d", mem.count())
+	if mem.count() != 0 {
+		t.Fatalf("compaction wrote %d facts to memory", mem.count())
 	}
 
 	// Crash after the block was saved and before the job file was removed.
-	job = compactJob{From: 1, To: 3, Focus: defaultFocus, Status: jobReady, Summary: "FULL", FactsDone: true, Facts: []memory.Fact{{
-		Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "durable",
-	}}}
+	job = compactJob{From: 1, To: 3, Focus: defaultFocus, Status: jobReady, Summary: "FULL"}
 	raw, err = fsutil.Marshal(job)
 	if err != nil {
 		t.Fatal(err)
@@ -277,8 +275,8 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 	if len(st.Blocks) != 1 || st.Blocks[0].Text != "FULL" {
 		t.Fatalf("duplicate block %+v", st.Blocks)
 	}
-	if mem.count() != 1 {
-		t.Fatalf("duplicate facts %d", mem.count())
+	if mem.count() != 0 {
+		t.Fatalf("compaction wrote %d facts to memory", mem.count())
 	}
 	if calls := comp.ncalls(); calls != 2 {
 		t.Fatalf("compactor calls %d, want the failed attempt and one retry", calls)

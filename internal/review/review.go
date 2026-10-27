@@ -80,6 +80,7 @@ var Table = map[string]Class{
 	"kernel_manual": Readonly,
 
 	// Context.
+	"compact":        Normal,
 	"recall_history": Readonly,
 	"expand":         Readonly,
 

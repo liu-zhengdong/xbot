@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,12 +10,14 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/compact"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
@@ -235,25 +238,71 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 	}
 }
 
-func TestRetiredCompactAbsentFromSecurityPolicy(t *testing.T) {
+func TestBotCompactToolMountedAndGuarded(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "atlas", "security.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	documented := false
 	for _, line := range strings.Split(string(raw), "\n") {
 		if strings.HasPrefix(line, "| `normal` |") && strings.Contains(line, "`compact`") {
-			t.Fatal("retired compact still documented as a normal tool")
+			documented = true
 		}
 	}
-	k := &Kernel{Bot: testBot(t, link.NameContext), Links: []link.Link{link.Context{}}}
+	if !documented {
+		t.Fatal("compact missing from the normal tool row")
+	}
+	b := testBot(t, link.NameContext)
+	msgs := []bot.Entry{
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("the secret code is purple finch")}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
+			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "sh", Arguments: `{"command":"ls"}`},
+		}})}},
+		{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("c1", "a.txt")}},
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("listed")}},
+		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("RECENT tail")}},
+	}
+	for _, e := range msgs {
+		if err := b.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mem := &factMem{}
+	k := &Kernel{
+		Bot: b, Links: []link.Link{link.Context{}}, Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, Ceiling: 10},
+		Memory: mem, Extractor: stubExtract{facts: []memory.Fact{{Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "from the range"}}},
+	}
 	list, err := k.modelTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range list {
-		if tool.Name() == "compact" {
-			t.Fatal("retired compact still offered")
+	var tool tools.Tool
+	for _, x := range list {
+		if x.Name() == "compact" {
+			tool = x
 		}
+	}
+	if tool == nil {
+		t.Fatal("compact not offered with the Context grant")
+	}
+	if _, err := tool.Run(context.Background(), json.RawMessage(`{"from":2,"to":2}`)); err == nil {
+		t.Fatal("compact split a tool-call pair")
+	}
+	if _, err := tool.Run(context.Background(), json.RawMessage(`{"from":5,"to":5}`)); err == nil {
+		t.Fatal("compact took the raw tail")
+	}
+	if _, err := tool.Run(context.Background(), json.RawMessage(`{"from":1,"to":4,"focus":"keep the bird"}`)); err != nil {
+		t.Fatal(err)
+	}
+	st, err := b.LoadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Blocks) != 1 || st.Blocks[0].From != 1 || st.Blocks[0].To != 4 || st.Blocks[0].Focus != "keep the bird" {
+		t.Fatalf("blocks=%+v", st.Blocks)
+	}
+	if mem.count() != 0 {
+		t.Fatalf("compact wrote %d facts to memory", mem.count())
 	}
 }
 

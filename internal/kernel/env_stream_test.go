@@ -161,7 +161,7 @@ func TestEnvStreamSilenceRules(t *testing.T) {
 	}
 }
 
-func TestEnvStreamNoManualCompact(t *testing.T) {
+func TestEnvStreamContextToolsIncludeCompact(t *testing.T) {
 	b := testBot(t, link.NameContext)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Context{}}}
 	list, err := k.modelTools()
@@ -172,7 +172,7 @@ func TestEnvStreamNoManualCompact(t *testing.T) {
 	for _, tool := range list {
 		names[tool.Name()] = true
 	}
-	if names["compact"] || !names["recall_history"] || !names["expand"] {
+	if !names["compact"] || !names["recall_history"] || !names["expand"] {
 		t.Fatalf("tools=%v", names)
 	}
 }

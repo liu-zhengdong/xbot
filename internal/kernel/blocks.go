@@ -257,7 +257,6 @@ func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (
 	if err != nil {
 		return "", err
 	}
-	k.extractInto(ctx, span, focus)
 	st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 		From: from, To: to, Text: text, Focus: focus, At: k.now(),
 	})
@@ -576,7 +575,6 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 	if err != nil {
 		return st, err
 	}
-	k.extractInto(ctx, span, defaultFocus)
 	st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 		From: from, To: to, Text: text, Focus: "automatic", At: k.now(),
 	})

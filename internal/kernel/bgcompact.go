@@ -10,8 +10,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
-	"xbot/internal/memory"
 )
 
 const (
@@ -20,19 +18,15 @@ const (
 )
 
 // compactJob is the crash-safe record of one background compaction.
-// Status running has no summary yet. Status ready has a finished summary and
-// any facts already extracted. The summary block is added only when a turn
-// boundary applies the job.
+// Status running has no summary yet. Status ready has a finished summary. The
+// summary block is added only when a turn boundary applies the job. Compaction
+// never writes memory.
 type compactJob struct {
-	From      int           `json:"from"`
-	To        int           `json:"to"`
-	Focus     string        `json:"focus"`
-	Status    string        `json:"status"`
-	Summary   string        `json:"summary,omitempty"`
-	Facts     []memory.Fact `json:"facts,omitempty"`
-	FactsDone bool          `json:"facts_done,omitempty"`
-	Sender    string        `json:"sender,omitempty"`
-	Trusted   bool          `json:"trusted,omitempty"`
+	From    int    `json:"from"`
+	To      int    `json:"to"`
+	Focus   string `json:"focus"`
+	Status  string `json:"status"`
+	Summary string `json:"summary,omitempty"`
 }
 
 func (k *Kernel) jobPath() string {
@@ -98,15 +92,7 @@ func (k *Kernel) startBackground(st bot.State, protectSeq int, mem string, minim
 		unlock()
 		return
 	}
-	ct := k.curTurn()
-	sender := ct.turnSender
-	if ct.turnSource == link.SourceSubagent || strings.HasPrefix(ct.turnSender, "sa_") {
-		sender = k.memoryPerson()
-	}
-	job = compactJob{
-		From: from, To: to, Focus: defaultFocus, Status: jobRunning,
-		Sender: sender, Trusted: ct.turnTrusted,
-	}
+	job = compactJob{From: from, To: to, Focus: defaultFocus, Status: jobRunning}
 	if err := k.writeJob(job); err != nil {
 		unlock()
 		return
@@ -167,11 +153,6 @@ func (k *Kernel) finishJob() {
 	if text == "" {
 		return
 	}
-	facts := k.collectFacts(context.Background(), span, job.Focus, job.Sender, job.Trusted)
-	if err := k.rememberNew(context.Background(), facts); err != nil {
-		return
-	}
-
 	unlock, err = k.lockJob(false)
 	if err != nil {
 		return
@@ -182,8 +163,6 @@ func (k *Kernel) finishJob() {
 		return
 	}
 	cur.Summary = text
-	cur.Facts = facts
-	cur.FactsDone = true
 	cur.Status = jobReady
 	_ = k.writeJob(cur)
 }
@@ -240,11 +219,6 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 		changed = true
 		if err := k.ensureSnapshot(st); err != nil {
 			return st, changed, err
-		}
-	}
-	if !job.FactsDone {
-		if err := k.rememberNew(context.Background(), job.Facts); err != nil {
-			return st, changed, nil
 		}
 	}
 	_ = os.Remove(k.jobPath())

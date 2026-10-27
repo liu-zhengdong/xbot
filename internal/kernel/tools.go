@@ -61,7 +61,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	// The owner sees only what the bot sends, so every bot can send.
 	list = append(list, sendMessageTool{k})
 	if namedLink(links, link.NameContext) {
-		list = append(list, historyTool{k}, expandTool{k})
+		list = append(list, compactTool{k}, historyTool{k}, expandTool{k})
 	}
 	if namedLink(links, link.NameWeb) {
 		list = append(list, askTool{k})
@@ -516,6 +516,32 @@ func (t routineDelete) Run(_ context.Context, args json.RawMessage) (string, err
 		return "", err
 	}
 	return "deleted routine " + in.ID, nil
+}
+
+type compactTool struct{ k *Kernel }
+
+func (compactTool) Name() string { return "compact" }
+func (compactTool) Description() string {
+	return "Summarize a finished transcript range. from and to are inclusive sequence numbers. The last turns stay raw, and a tool-call pair cannot be split."
+}
+func (compactTool) Parameters() any {
+	return schema(map[string]any{
+		"from":  intProp("first sequence number"),
+		"to":    intProp("last sequence number"),
+		"focus": stringProp("what the summary must preserve"),
+	}, []string{"from", "to"})
+}
+func (compactTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
+func (t compactTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	var in struct {
+		From  int    `json:"from"`
+		To    int    `json:"to"`
+		Focus string `json:"focus"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return "", err
+	}
+	return t.k.CompactRange(ctx, in.From, in.To, in.Focus)
 }
 
 type historyTool struct{ k *Kernel }

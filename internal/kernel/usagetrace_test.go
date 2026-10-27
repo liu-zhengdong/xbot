@@ -132,7 +132,7 @@ func TestExtractorUsageIsRecorded(t *testing.T) {
 }
 
 // A turn that opens over the hard ceiling compacts inside Handle, before the
-// turn value is installed. Those summary and extraction calls now carry the
+// turn value is installed. That summary call now carries the
 // opening message's seq instead of 0, so an in-turn compaction can be told
 // from a background job by its cost.
 func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
@@ -177,10 +177,10 @@ func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
 			ext = &traces[i]
 		}
 	}
-	if comp == nil || ext == nil {
-		t.Fatalf("opening compaction traces: compact %+v, extract %+v; want both", comp, ext)
+	if comp == nil || ext != nil {
+		t.Fatalf("opening compaction traces: compact %+v, extract %+v; want only compact", comp, ext)
 	}
-	if comp.Turn != opened || ext.Turn != opened {
-		t.Fatalf("opening compaction ran as compact turn %d / extract turn %d, want the opening seq %d", comp.Turn, ext.Turn, opened)
+	if comp.Turn != opened {
+		t.Fatalf("opening compaction ran as turn %d, want the opening seq %d", comp.Turn, opened)
 	}
 }

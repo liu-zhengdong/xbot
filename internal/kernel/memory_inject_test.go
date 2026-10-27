@@ -101,11 +101,12 @@ func TestExtractOmittedScopeWritesBot(t *testing.T) {
 			{Scope: memory.ScopePerson, Tier: memory.TierProfile, Text: "owner timezone is Asia/Shanghai"},
 		}},
 	}
-	k.ensureTurn().turnTrusted = true
-	k.ensureTurn().turnSender = "u1"
-	k.extractInto(context.Background(), []bot.Entry{{
+	facts := k.collectFacts(context.Background(), []bot.Entry{{
 		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("remember the rule and my timezone")},
-	}}, "")
+	}}, "", "u1", true)
+	if err := k.rememberNew(context.Background(), facts); err != nil {
+		t.Fatal(err)
+	}
 	botFacts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
 	if err != nil {
 		t.Fatal(err)
