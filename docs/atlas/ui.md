@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 4a4ad70
+verified: 2026-10-27 @ d34542c
 ---
 # 网页界面
 
