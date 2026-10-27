@@ -283,12 +283,15 @@
     function goToXaiSubscription() {
       query = ""; selected = "subscription:xai"; paint(selected);
     }
-    function xaiVendorBody(p, vendor, current, status) {
+    const xaiOccupied = () => data.providers.some(p => p.name === "xai" && p.oauth === "xai");
+    function xaiVendorBody(p, vendor, current) {
       const box = node("div", "provider-xai");
-      if (!subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription));
+      if (!xaiOccupied() && !subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription));
       const alt = node("details", "provider-key-alt");
       const fold = node("summary"); fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
-      alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
+      alt.append(fold, xaiOccupied()
+        ? node("p", "provider-login-note", "xAI 已被账号登录占用，暂时不能保存 API 密钥。想修改密钥，请先退出登录。")
+        : keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
       box.append(alt);
       return box;
     }
@@ -331,7 +334,9 @@
       }
       function keyStatus() {
         if (p.brand === "xai") {
-          auth.replaceChildren(); xaiStatus("idle");
+          auth.replaceChildren();
+          if (p.oauth !== "xai" && xaiOccupied()) status.replaceChildren(node("span", "provider-status-idle", "账号登录占用"));
+          else xaiStatus("idle");
           if (p.oauth === "xai" && p.key_configured) {
             const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
             xaiAuthControls(auth, p.key_configured ? null : "登录", xaiStatus, done, current).sync();
@@ -358,7 +363,7 @@
         // is configured; OAuth is the primary path and the key folds away.
         // The default endpoint has an empty name, so match on brand alone.
         const vendorEarly = p.brand === "xai" && p.oauth !== "xai" && vendorOf("xai");
-        if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current, xaiStatus)); return; }
+        if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
           if (p.oauth === "xai") { body.replaceChildren(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription)); return; }

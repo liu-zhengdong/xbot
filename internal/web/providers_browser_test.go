@@ -149,7 +149,14 @@ async function xaiLoggedIn(){
  assert(/grok-4/.test($('.provider-models').textContent)&&/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'xai models missing');
  assert($('.provider-auth-slot').getBoundingClientRect().height===0,'empty re-login slot takes space');
  assert($('.provider-key-alt')&&!$('.provider-key-alt').open,'logged-in key fold missing');
- out.click();
+ $('.provider-back').click();card('xai-key').click();
+ await waitFor(()=>$('.provider-key-alt'),'old key detail missing');
+ $('.provider-key-alt').open=true;
+ assert(!$('.provider-key input')&&!$('.provider-key button[type=submit]'),'occupied key form remains submittable');
+ assert($('.provider-key-alt').textContent.includes('账号登录占用')&&$('.provider-key-alt').textContent.includes('先退出登录'),'occupied key explanation missing');
+ assert(!$('.provider-status').textContent.includes('未登录'),'occupied account shown as logged out');
+ $('.provider-back').click();subcard('xAI').click();await waitFor(()=>$('.provider-logout'),'subscription detail missing after old key');
+ $('.provider-logout').click();
  await waitFor(()=>btn('去订阅')&&$('.provider-status').textContent.includes('未登录'),'xai logout did not return to the vendor page');
  assert(fixture.calls.includes('/api/providers/oauth/xai/logout'),'xai logout not sent');
  assert($('.provider-key-alt')&&!$('.provider-key-alt').open&&!$('.provider-logout')&&btn('去订阅'),'xai logged-out page wrong');
