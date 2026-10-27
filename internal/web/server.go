@@ -1295,6 +1295,8 @@ func (rs *replyStream) tool(name, summary string) {
 		rs.mu.Lock()
 		rs.asked = append(rs.asked, summary)
 		rs.mu.Unlock()
+		// This is the message text, not a progress description.
+		summary = ""
 	}
 	rs.send("tool", map[string]string{"name": name, "summary": summary})
 }

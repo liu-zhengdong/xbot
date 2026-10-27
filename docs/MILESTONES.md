@@ -3,7 +3,9 @@
 ## 2026-10-27 主列忙态单行（功能分支）
 
 - 活泡复用一行三点胶囊和 description；状态及 SSE 的文案来自工具参数 description 首行，确认摘要仍在步骤中。侧栏运行预览同规则；厂商搜索流式提示不再另占一行。
-- 新浏览器回归旧代码先失败，最终定向 agent/kernel/web 测试连续三次通过；本机 Chrome 脚本化截图核对同行。gofmt、vet、atlas audit 通过（audit 有既有告警）。全仓单次失败：e2e 聊天测试、kernel 长轮折叠、work shell 描述，以及 web 审批测试 180 秒超时；受影响包三次中 agent 通过，kernel 长轮折叠失败，web 同一审批测试超时，未完成三次。未做基线对照；并行有其他工作区测试。未测帧率、交互 p95 或主人日用，未合 main、未 push。
+- 新浏览器回归旧代码先失败，所选定向 agent/kernel/web 测试连续三次通过，但未覆盖 TestReplyToRoundTrip；该测试在复审时确认因本提交回归失败；本机 Chrome 脚本化截图核对同行。gofmt、vet、atlas audit 通过（audit 有既有告警）。全仓单次失败：e2e 聊天测试（复审确认是送达正文回归）、kernel 长轮折叠、work shell 描述，以及 web 审批测试 180 秒超时；受影响包三次中 agent 通过，kernel 长轮折叠失败，web 同一审批测试超时，未完成三次。未做基线对照；并行有其他工作区测试。未测帧率、交互 p95 或主人日用，未合 main、未 push。
+
+- 复审回修：恢复送达消息记账，`result.text` 与 `done.text` 带正文，忙态仍只显示 description；删除无调用的 progress 和闲置参数。新 result 断言在旧 tip 失败，修复后 `TestReplyToRoundTrip`、忙态与活泡浏览器回归各连续三次通过，kernel 定向测试三次通过；gofmt、全仓 vet 通过，atlas audit 有既有告警。全仓单次失败：e2e `TestSpawnWhileChatKeepsAnswering` 超时、kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir`，web `TestWebApprovalAllowAndDeny` 在 240 秒包超时；kernel/web 全包三次同样分别因长轮失败和审批超时未通过（长轮复审已在基线复现）。未测交互 p95、帧率和主人日用；未合 main、未 push。
 
 ## 2026-10-27 技能删除确认计数（功能分支）
 

@@ -197,6 +197,11 @@ func (r *turnRun) toolStart(id, name, summary, description string) {
 		r.t.mu.Unlock()
 	}
 	display := r.k.beginStepDisplay(r.t, id, name, summary, description)
+	// Delivery accounting needs the message text; other tools expose only their
+	// description to the live progress display.
+	if name == "send_message_to_user" {
+		display = summary
+	}
 	r.t.mu.Lock()
 	forked := r.t.branch != ""
 	r.t.mu.Unlock()

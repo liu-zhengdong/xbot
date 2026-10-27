@@ -78,6 +78,22 @@ func TestReplyToRoundTrip(t *testing.T) {
 		t.Fatalf("send %d %s", res.StatusCode, res.Body)
 	}
 	ev := parseSSE(t, res.Body)
+	var tool struct {
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal([]byte(ev["tool"]), &tool); err != nil || tool.Summary != "" {
+		t.Fatalf("tool event must not display message text: %q", ev["tool"])
+	}
+	var result struct {
+		Name string `json:"name"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(ev["result"]), &result); err != nil {
+		t.Fatalf("result event %q: %v", ev["result"], err)
+	}
+	if result.Name != "send_message_to_user" || result.Text != "back to you" {
+		t.Fatalf("delivered result %+v", result)
+	}
 	done, ok := ev["done"]
 	if !ok {
 		t.Fatalf("events %+v", ev)

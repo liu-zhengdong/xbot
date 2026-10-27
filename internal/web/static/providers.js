@@ -20,12 +20,6 @@
     n.append(node("span", "hs-dot"), label, node("small", "", "厂商搜索 · 不进任务"));
     return n;
   }
-  function progress(host, part) {
-    if (!host || !part.hosted || part.hosted.name === "image_generation") return;
-    const old = [...host.querySelectorAll(".hs-step")].find(n => n.dataset.hostedId === part.hosted.id);
-    if (old) { if (!part.hosted.query) part = { ...part, hosted: { ...part.hosted, query: old._query || "" } }; const n = step(part); n._query = part.hosted.query; old.replaceWith(n); }
-    else { const n = step(part); n._query = part.hosted.query; host.prepend(n); }
-  }
   function citations(parts) { return (parts || []).filter(p => p.citation && safeURL(p.citation.url)); }
   function citedText(text, parts) {
     const cs = citations(parts), chars = Array.from(text);
@@ -585,5 +579,5 @@
     paint();
     return b;
   }
-  window.XBotProviders = { open, trigger, settings, decorate, citedText, progress };
+  window.XBotProviders = { open, trigger, settings, decorate, citedText };
 })();

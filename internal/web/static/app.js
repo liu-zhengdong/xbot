@@ -259,7 +259,7 @@
       line.className = "preview st run click";
       line.append(spinIcon(11));
       const text = el("span");
-      const summary = workText(st.tool, st.tool_summary) || "在处理";
+      const summary = workText(st.tool_summary) || "在处理";
       text.append(summary);
       line.title = summary;
       line.append(text);
@@ -360,7 +360,7 @@
     if (state.sel && state.sel.type === "bot" && !state.peer) {
       const st = stStatus.map[state.sel.id];
       const host = thread.querySelector(".msg.live .body");
-      if (st && host && host.querySelector(".live-status")) setWorking(host, workText(st.tool, st.tool_summary));
+      if (st && host && host.querySelector(".live-status")) setWorking(host, workText(st.tool_summary));
     }
   }
 
@@ -6321,7 +6321,7 @@
 
   // Progress shows the purpose: the first summary line (a shell's description),
   // never the tool name or the command. Empty means the dot stands alone.
-  function workText(tool, summary) {
+  function workText(summary) {
     return String(summary || "").split("\n")[0].trim();
   }
 
@@ -6474,7 +6474,7 @@
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "tool") {
           // Tool steps show only as the busy line; the trace has the detail.
-          setWorking(prose.closest(".body"), workText(payload.name, payload.summary));
+          setWorking(prose.closest(".body"), workText(payload.summary));
         } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
           // A message that landed is this bubble; the next one streams into a
           // fresh live row, as the transcript keeps one bubble per call.
