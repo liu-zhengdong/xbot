@@ -200,11 +200,15 @@ button:disabled { cursor: default; }
 }
 
 /* The header, the thread and the composer share one centred column, so the
-   header avatar, the bot message avatar and the composer start on one line. */
+   header avatar, the bot message avatar and the composer start on one line.
+   The header is a transparent layer over the thread: no full-width bar, only
+   the floating identity card; messages scroll underneath it. */
 .top {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 29;
   height: var(--top-h); display: flex; align-items: center; justify-content: center;
-  padding: 0; flex: none;
+  padding: 0; background: transparent; pointer-events: none;
 }
+.top-inner > * { pointer-events: auto; }
 
 /* One centred column for the header, messages and composer (P1 / 5–6).
    860px is the reading measure now that the panel no longer takes a column;
@@ -217,22 +221,33 @@ button:disabled { cursor: default; }
   position: relative; min-width: 0; height: 100%;
 }
 
-/* The identity chip: avatar and name are one toggle for the bot panel,
-   centred in the header. It fills on hover and while the panel is open. */
+/* The identity card: avatar, name and the bot's short description float over
+   the thread and toggle the bot panel. Below 960 it is one row that fits the
+   header band (the drawer opens beneath that band); wider it stacks. */
 .top-title {
+  position: relative; z-index: 29;
   display: flex; flex-direction: column; justify-content: center;
-  flex: 0 1 auto; min-width: 0; max-width: 100%; min-height: 36px; margin-inline: auto;
-  padding: 4px 10px 4px 6px; border: 0; border-radius: 8px;
-  background: transparent; color: var(--text); font: inherit; text-align: left;
-  cursor: pointer; transition: background 160ms ease-out;
+  flex: 0 1 auto; min-width: 0; max-width: min(360px, 100%); min-height: 40px; margin-inline: auto;
+  padding: 5px 14px; border: 0; border-radius: 14px;
+  background: color-mix(in srgb, var(--x-card) 88%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: var(--x-shadow-pop);
+  color: var(--text); font: inherit; text-align: left;
+  cursor: pointer; transition: background 160ms ease-out, transform 160ms ease-out;
   --app-region: no-drag; -webkit-app-region: no-drag;
 }
-.top-title:hover:not(:disabled) { background: var(--hover); }
-.top-title.on { background: var(--x-fill-2); }
+.top-title:has(.avatar.head) { padding-left: 50px; }
+.top-title:hover:not(:disabled) { background: var(--x-card); }
+.top-title.on {
+  background: var(--x-fill-2); transform: translateY(-1px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.14), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
 .top-title:disabled { cursor: default; }
-/* The chip stays clickable above the panel scrim (28) yet under the panel (30),
-   so a second click on it closes the panel. */
-.top-title { position: relative; z-index: 29; }
+.main.peer .top-title { max-width: 100%; }
+@media (prefers-reduced-motion: reduce) { .top-title { transition: none; } }
+
+/* The messages start below the card, so the first bubble is never hidden. */
+.chat > .thread { padding-top: calc(var(--top-h) + 4px); }
 
 .title {
   display: flex; align-items: center; gap: 10px; min-width: 0;
@@ -246,6 +261,20 @@ button:disabled { cursor: default; }
    device prototype v2 shape), so header, bot message and composer share x. */
 .title .avatar.head {
   width: 24px; height: 24px; border-radius: 50%; overflow: hidden; flex: none;
+}
+/* In the row card the face sits left of both lines. */
+.top-title .avatar.head { position: absolute; left: 14px; top: 50%; width: 28px; height: 28px; margin-top: -14px; }
+
+@media (min-width: 960px) {
+  .top-inner { align-items: flex-start; padding-top: 12px; }
+  .top-title, .top-title:has(.avatar.head) {
+    align-items: center; text-align: center; gap: 4px;
+    min-width: 168px; max-width: min(300px, 100%); padding: 10px 18px 12px;
+  }
+  .main.peer .top-title { max-width: 100%; }
+  .top-title .title { flex-direction: column; gap: 4px; }
+  .top-title .avatar.head { position: static; width: 36px; height: 36px; margin: 0 0 2px; }
+  .chat > .thread { padding-top: calc(var(--top-h) + 68px); }
 }
 
 .msg > .avatar { width: 24px; height: 24px; margin-top: 1px; }
@@ -1993,6 +2022,7 @@ html[data-theme="dark"] {
   #menu { flex: none; width: 32px; height: 32px; }
   #menu .icon { width: 20px; height: 20px; }
   .thread { padding: 8px 0; }
+  .chat > .thread { padding-top: calc(52px + env(safe-area-inset-top) + 4px); }
   .composer textarea { font-size: 16px; }
   .backdrop { background: rgba(0, 0, 0, 0.4); }
   .sidebar {

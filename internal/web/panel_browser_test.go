@@ -252,7 +252,9 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  const cr=rect(chip),hit=document.elementFromPoint(cr.x+cr.width/2,cr.y+cr.height/2);
  assert(chip.contains(hit),(panel.contains(hit)?'drawer':'scrim')+' covers the chip at '+innerWidth+'px');
  assert(rect(panel).top>=rect($('.top')).bottom-1||rect(panel).left>=cr.right,'drawer overlaps the header chip');
- hit.click();await sleep(250);finishAnimations();
+ // At wide widths the stacked card's centre lands on the avatar SVG, which
+ // has no .click(), so dispatch the click on whatever the pointer hits.
+ hit.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));await sleep(250);finishAnimations();
  assert(!panel.classList.contains('open')&&!chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='false','chip does not close panel');
  const closing=new DOMMatrix(getComputedStyle(panel).transform);
  assert(closing.m41>0&&near(closing.m42,0),'drawer exits downwards');
