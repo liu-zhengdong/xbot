@@ -1970,7 +1970,9 @@ html[data-theme="dark"] {
 /* Below 1100 the drawer scrim appears, so the click-away works there. The
    drawer itself is the same element at every width; only its inset changes. */
 @media (max-width: 959px) and (min-width: 768px) {
-  .panel { max-width: min(340px, calc(100% - 16px)); }
+  /* Here the drawer reaches the centred chip, so it opens below the header
+     and the chip stays clickable to close it again. */
+  .panel { top: var(--top-h); max-width: min(340px, calc(100% - 16px)); }
 }
 
 @media (max-width: 767px) {
@@ -2021,13 +2023,13 @@ html[data-theme="dark"] {
   .sidebar.rail .pin .avatar.pin > svg { width: 44px; height: 44px; }
   .sidebar.rail .side-foot { align-items: stretch; }
   .sidebar.rail .group-label { justify-content: space-between; }
-  /* Phones keep the same horizontal axis and own both safe-area insets. */
+  /* Phones keep the same horizontal axis. The drawer starts below the header
+     (which owns the top safe area), so the chip above it still closes it. */
   .panel {
-    position: fixed; inset: 0 0 0 auto;
-    width: min(90%, 400px); min-width: 0; max-width: none; height: 100%;
+    position: fixed; inset: calc(52px + env(safe-area-inset-top)) 0 0 auto;
+    width: min(90%, 400px); min-width: 0; max-width: none; height: auto;
     z-index: 35; margin: 0; border-radius: 20px 0 0 0;
     transform: translateX(100%);
-    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .panel.open { transform: translateX(0); }
