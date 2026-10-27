@@ -12,13 +12,13 @@ Bot 的入站 webhook（`POST /webhook/{bot}/{name}`）只挂在 serve 自己的
 
 ## 决定
 
-1. 中枢加一条公开入口 `POST /pipe/v1/hook/{device}/webhook/{bot}/{name}`。中枢按设备 id 找到它的待命连接，把请求作为文本控制消息 `{"t":"hook"}` 发下去，等设备回 `{"t":"hook_res"}`，把状态码和短正文还给发送方。
+1. 中枢加一条公开入口 `POST /pipe/v1/hook/{handle}/webhook/{bot}/{name}`。`{handle}` 是 `pipe.HookHandle(账号 key, 设备 id)`（sha256 截 128 位，按账号+设备唯一、重连不变，不暴露两者），中枢在 standby 确认里下发；中枢按句柄精确找到那个账号那台设备的待命连接，把请求作为文本控制消息 `{"t":"hook"}` 发下去，等设备回 `{"t":"hook_res"}`，把状态码和短正文还给发送方。
 2. 设备只把 `/webhook/{bot}/{name}` 交给本机 inbound 处理器（`Device.Hooks`），**不带主人凭证**，也不进 `/api/`。签名或令牌照旧在本机用 Bot 目录里的密钥校验；中枢不存、也拿不到 hook 密钥（签名校验时密钥从不过中枢；令牌方式下令牌在 TLS 终止后经过中枢内存，不落盘不记日志）。
 3. 只转发白名单请求头（`Content-Type`、`Authorization`、`X-XBot-Signature`、`X-XBot-Delivery`、`X-Delivery-Id`、`X-XBot-Event`、`X-XBot-Sender`），正文上限 32 KiB（同 `inbound.MaxBody`），每台设备同时最多 8 条，15 秒没回答 504，设备不在线 503。中枢日志只有 hook id 前 8 位和状态码。
 4. 网页 API 的 `url` 优先公网：`XBOT_PUBLIC_URL` 或隧道地址（运维显式配置）> 账号网关（中枢确认待命后才算，断开即撤回）> 本机监听地址；另回 `local_url` / `public_url`。没有公网时不假装有，界面引导去设置·设备登录网关。
 
 ## 后果
 
-- 公网地址里带设备 id。知道地址的人能打到设备，但过不了本机的签名/令牌校验；并发上限挡住单设备刷量。
+- 公网地址里带的是句柄，不是裸设备 id：设备 id 只在账号内唯一，按裸 id 路由时别的账号注册同名设备就能分走投递（复审 1 的 P0）。知道地址的人能打到设备，但过不了本机的签名/令牌校验；并发上限挡住单设备刷量。
 - 中枢要随版本重新部署才有这条入口；旧中枢上这个地址 404。旧设备收到 `hook` 控制消息会忽略，中枢 15 秒后回 504。
 - 不做 Cloudflare/frp 教程，也不把 `XBOT_PUBLIC_URL` 当产品解（仍保留给自建部署）。

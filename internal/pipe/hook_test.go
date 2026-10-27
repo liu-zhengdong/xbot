@@ -2,11 +2,16 @@ package pipe
 
 import (
 	"bytes"
+	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"xbot/internal/account"
 	"xbot/internal/bot"
 	"xbot/internal/inbound"
 	"xbot/internal/inbox"
@@ -50,13 +55,27 @@ func TestHookIngressThroughHub(t *testing.T) {
 	}
 	in := &inbound.Server{Root: w.root}
 	w.device.Hooks = in.Handler()
-	base := HookBase(w.hubURL, "mini-1")
+	me, err := w.hub.Accounts.Me(context.Background(), w.devSes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle := HookHandle(me.Key, "mini-1")
+	base := HookBase(w.hubURL, handle)
 
 	// The device is not on standby yet.
 	if code, _ := postHook(t, inbound.WebhookURL(base, "ada", "github"), []byte(`{}`), nil); code != http.StatusServiceUnavailable {
 		t.Fatalf("offline device: %d", code)
 	}
+	heard := make(chan string, 1)
+	w.device.Standby = func(hook string) {
+		if hook != "" {
+			heard <- hook
+		}
+	}
 	w.startDevice(t)
+	if got := <-heard; got != handle {
+		t.Fatalf("standby ack handle %q, want %q", got, handle)
+	}
 
 	body := []byte(`{"ref":"main","note":"` + secretLine + `"}`)
 	if code, _ := postHook(t, inbound.WebhookURL(base, "ada", "github"), body, map[string]string{"X-XBot-Signature": inbound.SignHMAC(signed.Secret, []byte("other"))}); code != http.StatusUnauthorized {
@@ -77,8 +96,10 @@ func TestHookIngressThroughHub(t *testing.T) {
 	if code, _ := postHook(t, inbound.WebhookURL(base, "ada", "github"), bytes.Repeat([]byte("x"), HookBody+1), nil); code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversize: %d", code)
 	}
-	if code, _ := postHook(t, inbound.WebhookURL(HookBase(w.hubURL, "other"), "ada", "github"), body, nil); code != http.StatusServiceUnavailable {
-		t.Fatalf("unknown device: %d", code)
+	for _, other := range []string{"other", "mini-1"} { // the bare device id names nothing
+		if code, _ := postHook(t, inbound.WebhookURL(HookBase(w.hubURL, other), "ada", "github"), body, nil); code != http.StatusServiceUnavailable {
+			t.Fatalf("unknown handle %q: %d", other, code)
+		}
 	}
 	// An escaped slash cannot reach another route on the device.
 	if code, _ := postHook(t, base+"/webhook/..%2Fapi/github", body, nil); code == http.StatusAccepted {
@@ -110,6 +131,65 @@ func TestHookIngressThroughHub(t *testing.T) {
 	}
 	if !strings.Contains(logs, "answered 202") {
 		t.Fatalf("log: %s", logs)
+	}
+}
+
+// Device ids are only unique within an account. Another account that reports
+// the same id and holds a standby must never receive this device's hooks.
+func TestHookIngressStaysInItsAccount(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	b, err := bot.Load(w.root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := inbound.AddHook(b, "ci", inbound.AuthBearer, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.device.Hooks = (&inbound.Server{Root: w.root}).Handler()
+	victim := make(chan string, 1)
+	w.device.Standby = func(hook string) {
+		if hook != "" {
+			victim <- hook
+		}
+	}
+	w.startDevice(t)
+	base := HookBase(w.hubURL, <-victim)
+
+	acc := w.hub.Accounts.(account.Remote)
+	evil, err := acc.Register(ctx, "evil@example.com", "correct horse battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := acc.Report(ctx, evil.Session, "mini-1", "Mini", nil); err != nil {
+		t.Fatal(err)
+	}
+	var stolen atomic.Int32
+	attacker := &Device{Hub: w.hubURL, Session: evil.Session, DeviceID: "mini-1", Log: log.New(w.logs, "", 0),
+		Hooks: http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) { stolen.Add(1); rw.WriteHeader(http.StatusAccepted) })}
+	theirs := make(chan string, 1)
+	attacker.Standby = func(hook string) {
+		if hook != "" {
+			theirs <- hook
+		}
+	}
+	actx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); _ = attacker.Run(actx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	if HookBase(w.hubURL, <-theirs) == base {
+		t.Fatal("two accounts share a webhook handle")
+	}
+
+	body := []byte(`{"n":1}`)
+	for i := range 30 {
+		if code, out := postHook(t, inbound.WebhookURL(base, "ada", "ci"), body, map[string]string{"Authorization": "Bearer " + token.Secret, "X-XBot-Delivery": fmt.Sprint("d", i)}); code != http.StatusAccepted {
+			t.Fatalf("delivery %d: %d %s", i, code, out)
+		}
+	}
+	if n := stolen.Load(); n != 0 {
+		t.Fatalf("the other account's device took %d of 30 deliveries", n)
 	}
 }
 

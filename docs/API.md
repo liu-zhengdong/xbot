@@ -308,7 +308,7 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 - `GET /api/bots/{name}/webhooks/{hook}` → 同上，带 `secret`（详情里「显示」用）。没有这条是 404。
 - `DELETE /api/bots/{name}/webhooks/{hook}` → 204。只删这条和它的密钥，`webhook` Link 授权保留。
 
-`url` 是要交给外部服务的地址：有公网地址时等于 `public_url`，否则等于 `local_url`（serve 的监听地址）。公网地址依次取 `XBOT_PUBLIC_URL`、隧道地址、账号网关入口 `https://<网关>/pipe/v1/hook/<设备>`（中枢确认了这台设备的待命才有，握手失败、断开或重连中就没有，见 [pipe.md](pipe.md)）。`GET /api/bots/{name}` 带 `webhook_public`（当前公网 base），任务页随轮询比对，变了就重读列表和打开的详情。Bot 名在地址里做了百分号转义。
+`url` 是要交给外部服务的地址：有公网地址时等于 `public_url`，否则等于 `local_url`（serve 的监听地址）。公网地址依次取 `XBOT_PUBLIC_URL`、隧道地址、账号网关入口 `https://<网关>/pipe/v1/hook/<句柄>`（中枢确认了这台设备的待命才有，握手失败、断开或重连中就没有，见 [pipe.md](pipe.md)）。`GET /api/bots/{name}` 带 `webhook_public`（当前公网 base），任务页随轮询比对，变了就重读列表和打开的详情。Bot 名在地址里做了百分号转义。
 
 外部服务投递：`POST <url>`，签名校验带 `X-XBot-Signature: sha256=<hex(HMAC-SHA256(secret, body))>`，令牌带 `Authorization: Bearer <secret>`；可选 `X-XBot-Delivery`（去重）、`X-XBot-Event`、`X-XBot-Sender`。成功 202 `{"status":"accepted"}`，签名不对 401，没有这条 404，正文超 32 KiB 413。
 

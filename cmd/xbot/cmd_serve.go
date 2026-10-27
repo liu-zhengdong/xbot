@@ -631,11 +631,10 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		return localBase, gatewayPublic.Load().(string)
 	}
 	stopPipe := ui.StartAccountPipe(ctx, func(ctx context.Context, session, deviceID string) error {
-		base := pipe.HookBase(pipeHub, deviceID)
 		d := &pipe.Device{Hub: pipeHub, Session: session, DeviceID: deviceID, Handler: mux, Authorize: ui.AuthorizeOwner, Hooks: hub.Handler(), Log: log.New(os.Stderr, "xbot: ", 0)}
-		d.Standby = func(up bool) {
-			if up {
-				gatewayPublic.Store(base)
+		d.Standby = func(hook string) {
+			if hook != "" {
+				gatewayPublic.Store(pipe.HookBase(pipeHub, hook))
 			} else {
 				gatewayPublic.Store("")
 			}

@@ -31,6 +31,6 @@
 
 ## 入站 Webhook 公网入口
 
-`POST /pipe/v1/hook/{device}/webhook/{bot}/{name}` 不要登录，给外网服务投 Bot 的 webhook（[ADR 0031](adr/0031-webhook-ingress-via-pipe.md)）。中枢把请求经该设备的待命连接发成 `{"t":"hook","id","path","header","body"}`，设备只接受 `/webhook/<段>/<段>`、不带主人凭证地交给 `Device.Hooks`（serve 里是 inbound 处理器），回 `{"t":"hook_res","id","status","body"}`（正文最多 1 KiB）；中枢只接受原待命连接对自己发出的 id 的回答。签名/令牌在设备上校验，中枢不存密钥。白名单请求头、32 KiB 正文、每设备 8 条并发、15 秒超时（504）、设备不在线 503。`Device.Standby` 在收到中枢的 standby 确认时报 true、这次待命结束时报 false；serve 只在 true 期间把 `pipe.HookBase(hub, deviceID)` 作为网页 API 的公网 webhook 地址。
+`POST /pipe/v1/hook/{handle}/webhook/{bot}/{name}` 不要登录，`{handle}` 是 `pipe.HookHandle(账号 key, 设备 id)`（sha256 截 128 位，按账号+设备唯一、重连不变，不暴露两者），中枢在 standby 确认里下发，别的账号同名设备拿不到这台的投递；给外网服务投 Bot 的 webhook（[ADR 0031](adr/0031-webhook-ingress-via-pipe.md)）。中枢把请求经该设备的待命连接发成 `{"t":"hook","id","path","header","body"}`，设备只接受 `/webhook/<段>/<段>`、不带主人凭证地交给 `Device.Hooks`（serve 里是 inbound 处理器），回 `{"t":"hook_res","id","status","body"}`（正文最多 1 KiB）；中枢只接受原待命连接对自己发出的 id 的回答。签名/令牌在设备上校验，中枢不存密钥。白名单请求头、32 KiB 正文、每设备 8 条并发、15 秒超时（504）、设备不在线 503。`Device.Standby` 在收到中枢的 standby 确认时报句柄、这次待命结束时报空串；没有这条入口的旧中枢不下发句柄，也就不报。serve 只在有句柄期间把 `pipe.HookBase(hub, 句柄)` 作为网页 API 的公网 webhook 地址。
 
 部署见 [packaging/pipe/](../packaging/pipe/README.md)。

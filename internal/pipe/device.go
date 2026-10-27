@@ -31,9 +31,10 @@ type Device struct {
 	// Hooks answers webhooks the hub forwards from its public ingress. It
 	// runs without the owner's credential; nil refuses every hook.
 	Hooks http.Handler
-	// Standby, when set, hears true once the hub acknowledges this device's
-	// standby and false when that standby ends.
-	Standby func(up bool)
+	// Standby, when set, hears the device's webhook handle once the hub
+	// acknowledges its standby, and "" when that standby ends. A hub without
+	// the webhook ingress sends no handle, so it is never reported.
+	Standby func(hook string)
 	Log     *log.Logger
 }
 
@@ -107,12 +108,13 @@ func (d *Device) standby(ctx context.Context) error {
 	if err := sendHello(c, hello{Role: "standby", Session: d.Session, DeviceID: d.DeviceID}); err != nil {
 		return err
 	}
-	if m, err := readControl(c); err != nil || m.T != "standby" {
+	ack, err := readControl(c)
+	if err != nil || ack.T != "standby" {
 		return cmpErr(err, "pipe: no standby ack")
 	}
-	if d.Standby != nil {
-		d.Standby(true)
-		defer d.Standby(false)
+	if d.Standby != nil && ack.Hook != "" {
+		d.Standby(ack.Hook)
+		defer d.Standby("")
 	}
 	for {
 		m, err := readControl(c)

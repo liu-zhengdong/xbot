@@ -97,7 +97,7 @@ func TestStandbyFollowsHub(t *testing.T) {
 	// The hub refuses the handshake: never up.
 	refusedLog := &lockedBuf{}
 	refused := make(chan bool, 4)
-	run(&Device{Hub: w.hubURL, Session: "not-a-session", DeviceID: "mini-1", Handler: w.device.Handler, Log: log.New(refusedLog, "", 0), Standby: func(up bool) { refused <- up }})
+	run(&Device{Hub: w.hubURL, Session: "not-a-session", DeviceID: "mini-1", Handler: w.device.Handler, Log: log.New(refusedLog, "", 0), Standby: func(hook string) { refused <- hook != "" }})
 	waitFor(func() bool { return strings.Contains(refusedLog.String(), "standby ended") }, "refused handshake never failed")
 	if len(refused) != 0 {
 		t.Fatalf("refused handshake reported standby: %v", <-refused)
@@ -107,7 +107,7 @@ func TestStandbyFollowsHub(t *testing.T) {
 	events := make(chan bool, 16)
 	d := *w.device
 	d.Hub = "http://" + g.ln.Addr().String()
-	d.Standby = func(up bool) { events <- up }
+	d.Standby = func(hook string) { events <- hook != "" }
 	next := func(want bool, msg string) {
 		t.Helper()
 		select {

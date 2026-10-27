@@ -3,6 +3,8 @@ package pipe
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,8 +15,8 @@ import (
 )
 
 // The hub's public webhook ingress (ADR 0031). A sender posts to
-// {hub}/pipe/v1/hook/{device}/webhook/{bot}/{name}; the hub hands the request
-// to that device's standby socket and returns the device's answer. The hub
+// {hub}/pipe/v1/hook/{handle}/webhook/{bot}/{name}; the hub hands the request
+// to the standby the handle names and returns the device's answer. The hub
 // never holds a hook secret: the device's own inbound handler checks the
 // signature or token.
 const (
@@ -23,16 +25,24 @@ const (
 	MaxHooksPerDevice  = 8
 	maxHookHeader      = 512
 	maxHookAnswer      = 1 << 10
-	hookIngressPattern = "POST /pipe/v1/hook/{device}/webhook/{bot}/{name}"
+	hookIngressPattern = "POST /pipe/v1/hook/{handle}/webhook/{bot}/{name}"
 )
 
 // hookHeaders are the only request headers that cross the hub.
 var hookHeaders = []string{"Content-Type", "Authorization", "X-Xbot-Signature", "X-Xbot-Delivery", "X-Delivery-Id", "X-Xbot-Event", "X-Xbot-Sender"}
 
+// HookHandle names one account's device in the public ingress. Device ids are
+// only unique within an account, so the handle covers both; it is stable
+// across reconnects and reveals neither. The hub sends it with the standby ack.
+func HookHandle(accountKey, deviceID string) string {
+	sum := sha256.Sum256([]byte("xbot-hook\x00" + accountKey + "/" + deviceID))
+	return hex.EncodeToString(sum[:16])
+}
+
 // HookBase is the public base for a device's webhooks; inbound.WebhookURL
 // appends /webhook/{bot}/{name}.
-func HookBase(hub, deviceID string) string {
-	return strings.TrimRight(hub, "/") + "/pipe/v1/hook/" + url.PathEscape(deviceID)
+func HookBase(hub, handle string) string {
+	return strings.TrimRight(hub, "/") + "/pipe/v1/hook/" + url.PathEscape(handle)
 }
 
 type pendingHook struct {
@@ -41,21 +51,15 @@ type pendingHook struct {
 }
 
 func (h *Hub) serveHook(w http.ResponseWriter, r *http.Request) {
-	device, botName, name := r.PathValue("device"), r.PathValue("bot"), r.PathValue("name")
+	handle, botName, name := r.PathValue("handle"), r.PathValue("bot"), r.PathValue("name")
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, HookBody))
 	if err != nil {
 		writeErr(w, http.StatusRequestEntityTooLarge, "too_large")
 		return
 	}
 	h.mu.Lock()
-	var slot string
-	var standby *wsConn
-	for k, c := range h.standby {
-		if strings.HasSuffix(k, "/"+device) {
-			slot, standby = k, c
-			break
-		}
-	}
+	slot := h.hookSlots[handle]
+	standby := h.standby[slot]
 	switch {
 	case standby == nil:
 		h.mu.Unlock()

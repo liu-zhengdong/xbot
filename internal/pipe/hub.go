@@ -58,11 +58,12 @@ type Hub struct {
 	Log     *log.Logger
 	Now     func() time.Time
 
-	mu       sync.Mutex
-	tickets  map[string]*ticket
-	standby  map[string]*wsConn // account key + "/" + device id
-	hooks    map[string]pendingHook
-	hookLoad map[string]int // in-flight hooks per standby slot
+	mu        sync.Mutex
+	tickets   map[string]*ticket
+	standby   map[string]*wsConn // account key + "/" + device id
+	hookSlots map[string]string  // HookHandle -> standby slot
+	hooks     map[string]pendingHook
+	hookLoad  map[string]int // in-flight hooks per standby slot
 }
 
 type ticket struct {
@@ -99,6 +100,7 @@ type control struct {
 	Header map[string]string `json:"header,omitempty"`
 	Body   []byte            `json:"body,omitempty"`
 	Status int               `json:"status,omitempty"`
+	Hook   string            `json:"hook,omitempty"` // standby ack: this device's HookHandle
 }
 
 // TicketOut is the POST /pipe/v1/ticket answer. The secret is shown once.
@@ -334,14 +336,16 @@ func (h *Hub) serveStandby(ctx context.Context, c *wsConn, in hello) {
 		return
 	}
 	if h.standby == nil {
-		h.standby = make(map[string]*wsConn)
+		h.standby, h.hookSlots = make(map[string]*wsConn), make(map[string]string)
 	}
 	h.standby[slot] = c
+	handle := HookHandle(key, in.DeviceID)
+	h.hookSlots[handle] = slot
 	h.mu.Unlock()
 	if old != nil {
 		old.Close()
 	}
-	raw, _ := json.Marshal(control{T: "standby"})
+	raw, _ := json.Marshal(control{T: "standby", Hook: handle})
 	if c.WriteMessage(opText, raw) == nil {
 		stop := make(chan struct{})
 		go keepalive(c, stop)
@@ -361,6 +365,7 @@ func (h *Hub) serveStandby(ctx context.Context, c *wsConn, in hello) {
 	h.mu.Lock()
 	if h.standby[slot] == c {
 		delete(h.standby, slot)
+		delete(h.hookSlots, handle)
 	}
 	h.mu.Unlock()
 	c.Close()
