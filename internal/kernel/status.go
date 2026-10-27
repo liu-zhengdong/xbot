@@ -317,7 +317,10 @@ func (k *Kernel) beginStep(t *turn, id, name, summary string) {
 	t.tools++
 	t.lastTool = name
 	t.lastToolStart = k.now()
-	line := clipStatusPreview(oneStatusLine(redact(summary)), stepSummaryCap)
+	// Only the first line: shell-like summaries are "description\ncommand", and the
+	// status shows the purpose, never the command.
+	first, _, _ := strings.Cut(redact(summary), "\n")
+	line := clipStatusPreview(oneStatusLine(first), stepSummaryCap)
 	t.steps = append(t.steps, Step{callID: id, Time: t.lastToolStart, Tool: name, Summary: line, State: StepRunning})
 	t.steps = trimSteps(t.steps)
 }

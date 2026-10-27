@@ -300,3 +300,14 @@ func TestStatusDuringExecutorPublication(t *testing.T) {
 		t.Fatal("executor was not published")
 	}
 }
+
+func TestToolSummaryKeepsOnlyTheDescriptionLine(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
+	tr := &turn{started: time.Now()}
+	k.turn = tr
+	k.beginStep(tr, "shell-call", "shell", "添加一条记忆\nxbot memory add hi")
+	if got := k.Status().ToolSummary; got != "添加一条记忆" {
+		t.Fatalf("tool summary = %q", got)
+	}
+}

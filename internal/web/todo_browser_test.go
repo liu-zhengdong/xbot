@@ -192,7 +192,12 @@ const todoStreamingDriver = todoLiveSetup + `
  if(shot==='live-steps'){document.body.dataset.testResult='passed';return}
  $('#stp .x').click();
  todoStatus.todo='';
- await waitFor(()=>working()?.textContent==='后台命令'&&preview().textContent==='在跑 后台命令','cleared progress did not fall back to human tool');
+ todoStatus.tool_summary='跑一遍测试';
+ await waitFor(()=>working()?.textContent==='跑一遍测试'&&preview().textContent==='跑一遍测试','cleared progress did not fall back to the description');
+ todoStatus.tool_summary='添加一条记忆';emit(stream,'tool',{name:'shell',summary:'添加一条记忆\nxbot memory add hi'});
+ await waitFor(()=>working()?.textContent==='添加一条记忆','live progress did not show the first summary line');
+ todoStatus.tool_summary='';await waitFor(()=>!working()&&$('#thread .live .live-status')&&preview().textContent==='在处理','no description did not leave the dot alone');
+ assert(!/shell|bash|后台命令/.test($('#thread .live .live-status').textContent+preview().textContent),'tool name shown in progress');
  todoStatus.state='idle';todoStatus.tool='';todoStatus.last_message='查好了';finish(stream,'查好了');
  await waitFor(()=>!$('#thread .live')&&$('#thread').textContent.includes('查好了'),'stream did not finish');
  assert(testErrors.length===0,testErrors.join('; '));
@@ -203,12 +208,12 @@ const todoStreamingDriver = todoLiveSetup + `
 const todoLiveToolsDriver = todoLiveSetup + `
 (async()=>{
  const stream=await start();
- for(const [tool,label] of [['todo','待办'],['shell','后台命令']]){
-  emit(stream,'tool',{name:tool});
+ for(const [tool,summary,label] of [['todo','','正在更新待办'],['shell','添加一条记忆\nxbot memory add hi','添加一条记忆']]){
+  emit(stream,'tool',{name:tool,summary:summary});
   await waitFor(()=>working()?.textContent===label,'raw '+tool+' leaked into live status');
-  todoStatus.state='running';todoStatus.tool=tool;
-  await waitFor(()=>preview().matches('.st.run')&&preview().textContent.includes(label),'human tool fallback missing in sidebar');
-  assert(!/\btodo\b|\bshell\b/.test(preview().textContent),'raw tool leaked into sidebar');
+  todoStatus.state='running';todoStatus.tool=tool;todoStatus.tool_summary=summary.split('\n')[0];
+  await waitFor(()=>preview().matches('.st.run')&&preview().textContent===label,'description missing in sidebar');
+  assert(!/\btodo\b|\bshell\b|xbot memory/.test(preview().textContent+working().textContent),'raw tool leaked into progress');
  }
  finish(stream,'查好了');
  await waitFor(()=>!$('#thread .live'),'stream did not finish');

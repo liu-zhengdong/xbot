@@ -258,17 +258,12 @@
       line.className = "preview st run click";
       line.append(spinIcon(11));
       const text = el("span");
-      const tool = st && st.tool ? String(st.tool) : "";
-      const summary = st.todo || (tool === "todo" ? "正在更新待办" : "");
-      if (summary) text.append(summary);
-      else {
-        text.append("在跑 ");
-        if (tool) text.append(toolLabel(tool));
-      }
-      if (summary) line.title = summary;
+      const summary = st.todo || workText(st.tool, st.tool_summary) || "在处理";
+      text.append(summary);
+      line.title = summary;
       line.append(text);
       line.addEventListener("click", (ev) => { ev.stopPropagation(); toggleStp(name, line); });
-      sig += summary || tool;
+      sig += summary;
     } else if (kind === "awaiting") {
       line.className = "preview st wait click";
       line.append(el("i", "wd"));
@@ -364,7 +359,7 @@
     if (state.sel && state.sel.type === "bot" && !state.peer) {
       const st = stStatus.map[state.sel.id];
       const host = thread.querySelector(".msg.live .body");
-      if (st && host && (st.todo || host.querySelector(".live-status"))) setWorking(host, st.tool || "");
+      if (st && host && (st.todo || host.querySelector(".live-status"))) setWorking(host, workText(st.tool, st.tool_summary));
     }
   }
 
@@ -6254,13 +6249,15 @@
     } catch (e) {}
   }
 
-  function toolLabel(name) {
-    return ({ todo: "待办", shell: "后台命令", image_generation: "生成图片" })[name] || name;
+  // Progress shows the purpose: the first summary line (a shell's description),
+  // never the tool name or the command. Empty means the dot stands alone.
+  function workText(tool, summary) {
+    return tool === "todo" ? "正在更新待办" : String(summary || "").split("\n")[0].trim();
   }
 
-  function setWorking(host, name) {
+  function setWorking(host, text) {
     const st = state.sel && state.sel.type === "bot" && !state.peer && stStatus.map[state.sel.id];
-    const label = (st && st.todo) || toolLabel(name);
+    const label = (st && st.todo) || text;
     let status = host.querySelector(".live-status");
     if (status && status.textContent === label) return;
     if (!status) {
@@ -6409,11 +6406,11 @@
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "part") {
           if (payload.hosted?.name === "image_generation") {
-            if (host) setWorking(host, "image_generation");
+            if (host) setWorking(host, "生成图片");
           } else window.XBotProviders.progress(host, payload);
         } else if (event === "tool") {
           // Tool steps show only as the busy line; the trace has the detail.
-          setWorking(prose.closest(".body"), payload.name || "");
+          setWorking(prose.closest(".body"), workText(payload.name, payload.summary));
         } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
           // A message that landed is this bubble; the next one streams into a
           // fresh live row, as the transcript keeps one bubble per call.
