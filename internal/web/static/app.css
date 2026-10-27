@@ -554,6 +554,9 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 .item.active { background: var(--selected); }
 
+/* Adjacent hover/selected fills keep a 5px seam of list background so their rounded corners show. */
+#roster .item + .item { margin-top: 5px; }
+
 .item .item-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 
 .item .name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -2390,7 +2393,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   .sidebar.rail .side-scroll { width: 100%; }
   .sidebar.rail .pin-row { gap: 4px; padding: 0 0 4px; }
   .sidebar.rail .pin.add, .sidebar.rail .greeting, .sidebar.rail .gateway-hint { display: none; }
-  .sidebar.rail .item { width: 52px; min-height: 56px; padding: 8px; margin: 0 auto 2px; border-radius: 12px; }
+  .sidebar.rail .item { width: 52px; min-height: 56px; padding: 8px; margin: 0 auto; border-radius: 12px; }
   .sidebar.rail .group-label, .sidebar.rail .folder-head {
     height: 10px; min-height: 10px; margin: 0; padding: 0; overflow: hidden;
     background: transparent; border: 0; border-radius: 0; pointer-events: none;
@@ -2622,6 +2625,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setnav button{display:flex;align-items:center;gap:9px;height:36px;padding:0 10px;border-radius:9px;font-size:13.5px;color:var(--x-muted);cursor:pointer}
 .setnav button:hover{background:var(--x-fill-2);color:var(--x-text)}
 .setnav button.on{background:var(--x-fill-3);color:var(--x-text);font-weight:600}
+.setnav button+button{margin-top:5px}
 .setnav button .ic{color:inherit;opacity:.9;flex:none}
 .setmain{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;background:var(--x-card);overflow:hidden;border-radius:0 18px 18px 0}
 .setclose{position:absolute;top:14px;right:14px;z-index:2;width:32px;height:32px}
@@ -2707,7 +2711,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setnav{flex:1;width:auto;background:var(--x-card);padding:0 var(--x-s6) var(--x-s9)}
 .setnavlead{display:block;margin:0 0 var(--x-s4);font-size:var(--x-fs-ui);color:var(--x-muted);line-height:1.65}
 .setnav button{position:relative;height:56px;padding:0 var(--x-s5);gap:var(--x-s5);font-size:var(--x-fs-ui);font-weight:560;color:var(--x-text);border-radius:0;background:var(--x-fill-1)}
-.setnav button+button{border-top:1px solid var(--x-fill-2)}
+.setnav button+button{margin-top:0;border-top:1px solid var(--x-fill-2)}
 .setnav button:first-of-type{border-radius:var(--x-r-card) var(--x-r-card) 0 0}
 .setnav button:last-of-type{border-radius:0 0 var(--x-r-card) var(--x-r-card)}
 .setnav button:hover,.setnav button.on,.setpage .setnav button.on{background:var(--x-fill-1);font-weight:560}
