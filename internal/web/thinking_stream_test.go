@@ -88,7 +88,7 @@ func TestThinkingToolTurnReplaysReasoningAndHidesIt(t *testing.T) {
 	cookie := loginCookie(t, ui.URL, tok)
 	res := postJSON(t, ui.URL+"/api/bots/ada/messages", cookie, `{"text":"查一下"}`)
 	stream := res.Body
-	if !strings.Contains(string(stream), "完成。") {
+	if !strings.Contains(string(stream), "event: done") {
 		t.Fatalf("second tool turn failed: %s", stream)
 	}
 	if strings.Contains(string(stream), "SECRET-THOUGHT") {

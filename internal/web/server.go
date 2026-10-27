@@ -1263,13 +1263,14 @@ func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, e
 	}
 }
 
-// replyStream writes one request's live answer as server-sent events. Text
-// before a tool call is status; reply is only what came after the last tool.
+// replyStream writes one request's live answer as server-sent events. The
+// owner sees only what the bot sends with send_message_to_user, so reply
+// text is not streamed; reply is those messages.
 type replyStream struct {
 	w      http.ResponseWriter
 	mu     sync.Mutex
-	seg    strings.Builder
-	sent   int
+	asked  []string // texts of send_message_to_user calls still running
+	said   []string
 	closed bool
 }
 
@@ -1281,40 +1282,41 @@ func (rs *replyStream) send(event string, v any) {
 	}
 }
 
-func (rs *replyStream) delta(t string) {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
-	rs.seg.WriteString(t)
-	if rs.closed || bot.SilentPrefix(rs.seg.String()) {
-		return
-	}
-	rest := rs.seg.String()[rs.sent:]
-	rs.sent = rs.seg.Len()
-	if rest != "" {
-		sendEvent(rs.w, "delta", map[string]string{"text": rest})
-	}
-}
+// delta drops reply text: the chat does not show it.
+func (rs *replyStream) delta(string) {}
 
 func (rs *replyStream) tool(name, summary string) {
-	rs.mu.Lock()
-	rs.seg.Reset()
-	rs.sent = 0
-	rs.mu.Unlock()
+	if name == "send_message_to_user" {
+		rs.mu.Lock()
+		rs.asked = append(rs.asked, summary)
+		rs.mu.Unlock()
+	}
 	rs.send("tool", map[string]string{"name": name, "summary": summary})
 }
 
+// result carries the text of a delivered send_message_to_user, so the chat
+// draws that bubble when the call lands.
 func (rs *replyStream) result(name, output string) {
-	rs.send("result", map[string]string{"name": name, "output": clip(output, 4000)})
+	payload := map[string]string{"name": name, "output": clip(output, 4000)}
+	if name == "send_message_to_user" {
+		rs.mu.Lock()
+		if len(rs.asked) > 0 {
+			text := rs.asked[0]
+			rs.asked = rs.asked[1:]
+			if strings.HasPrefix(output, "sent to the owner's chat") {
+				rs.said = append(rs.said, text)
+				payload["text"] = text
+			}
+		}
+		rs.mu.Unlock()
+	}
+	rs.send("result", payload)
 }
 
 func (rs *replyStream) reply() string {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
-	reply := rs.seg.String()
-	if bot.SilentText(reply) {
-		return ""
-	}
-	return reply
+	return strings.Join(rs.said, "\n\n")
 }
 
 // close stops all later writes, for a request that has returned.

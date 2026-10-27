@@ -12,7 +12,7 @@ import (
 // withImageGen snapshots the global preference and account at turn start.
 // Only the selected OAuth Responses binding can generate. Pictures land in
 // the bot workspace's generated/ directory; the conversation keeps only the
-// relative path, never the bytes. The Bot delivers via notify_owner images.
+// relative path, never the bytes. The Bot delivers via send_message_to_user images.
 func (k *Kernel) withImageGen(ctx context.Context) context.Context {
 	// Clear an inherited capability as well: a disabled global setting wins.
 	ctx = provider.WithImageGen(ctx, provider.ImageGen{})

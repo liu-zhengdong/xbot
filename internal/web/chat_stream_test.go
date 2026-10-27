@@ -53,8 +53,9 @@ func TestResponsesStreamPersistence(t *testing.T) {
 				if !strings.Contains(events["error"], "empty response") {
 					t.Fatalf("missing empty reply error: %s", res.Body)
 				}
-			} else if !strings.Contains(events["delta"], "我是助手。") || !strings.Contains(events["done"], "我是助手。") {
-				t.Fatalf("stream lost reply: %s", res.Body)
+			} else if _, ok := events["done"]; !ok || events["delta"] != "" {
+				// Reply text is not streamed to the chat; the transcript keeps it.
+				t.Fatalf("stream did not finish cleanly: %s", res.Body)
 			}
 			var transcript struct {
 				Messages []apiRow `json:"messages"`

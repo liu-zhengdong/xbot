@@ -229,7 +229,7 @@ func (k *Kernel) todoToolsQuiet() bool {
 			continue
 		}
 		name := t.Name()
-		if name == "" || name == "todo" || name == "links" {
+		if name == "" || name == "todo" || name == "links" || name == "send_message_to_user" {
 			continue
 		}
 		saw = true

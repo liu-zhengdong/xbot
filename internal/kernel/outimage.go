@@ -17,7 +17,7 @@ import (
 
 // Pictures the bot shows the owner.
 //
-// notify_owner takes images: pasted ids or workspace paths. They are stored in
+// send_message_to_user takes images: pasted ids or workspace paths. They are stored in
 // paste/ like the owner's own pictures, and the names wait on the turn until its
 // final reply is recorded; that line carries them in Entry.Images, so the chat
 // draws them in the reply bubble. The bytes never enter the transcript. The
@@ -35,7 +35,7 @@ type outPicture struct {
 // call that finished late (a detached tool job) cannot put them in that bubble,
 // and putting them in whatever turn runs now would show them under an
 // unrelated reply.
-var errReplySent = errors.New("images: the reply this call belongs to was already sent, so the pictures were not attached and no note went out; call notify_owner with images again from the reply that should show them")
+var errReplySent = errors.New("images: the reply this call belongs to was already sent, so the pictures were not attached and no note went out; call send_message_to_user with images again from the reply that should show them")
 
 // imageTurn is the turn the call belongs to. A tool job keeps the real turn in
 // callTurnKey (turnKey there is a frozen copy); an ordinary call carries it in

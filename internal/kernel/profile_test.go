@@ -394,7 +394,7 @@ func TestNotifyAlwaysDeliversAndFlushesLegacyHeld(t *testing.T) {
 		desks = append(desks, body)
 		return nil
 	}}
-	out, err := (notifyTool{k}).Run(context.Background(), json.RawMessage(`{"text":"late","importance":"low"}`))
+	out, err := (sendMessageTool{k}).Run(context.Background(), json.RawMessage(`{"text":"late","importance":"low"}`))
 	if err != nil || out != "notified the owner" {
 		t.Fatalf("night note %s %v", out, err)
 	}

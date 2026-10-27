@@ -103,7 +103,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 	}
 	id, _ := work.PastedNameFor("image/png", png)
 	if _, err := work.ReadPasted(k.WorkDir, id); err == nil {
-		t.Fatal("Save copied image into paste without notify_owner")
+		t.Fatal("Save copied image into paste without send_message_to_user")
 	}
 	entries, err := b.Entries()
 	if err != nil {
@@ -116,7 +116,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 			t.Fatal("base64 in transcript")
 		}
 		if len(e.Images) > 0 {
-			t.Fatalf("Save attached image without notify_owner: %v", e.Images)
+			t.Fatalf("Save attached image without send_message_to_user: %v", e.Images)
 		}
 		for _, part := range e.Message.Content {
 			if part.Hosted != nil && part.Hosted.Name == "image_generation" && strings.Contains(part.Text, rel) {
@@ -230,7 +230,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 }
 
 // Hosted Save only stores files. Delivery limits and deduplication apply when
-// the Bot explicitly calls notify_owner with the receipt paths.
+// the Bot explicitly calls send_message_to_user with the receipt paths.
 func TestHostedImageDeliveryLimitsAndIdempotency(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string
@@ -299,7 +299,7 @@ func TestHostedImageDeliveryLimitsAndIdempotency(t *testing.T) {
 			var failures []string
 			for _, path := range paths {
 				args, _ := json.Marshal(map[string]any{"text": "看图", "images": []string{path, path}})
-				if _, err := (notifyTool{k}).Run(ctx, args); err != nil {
+				if _, err := (sendMessageTool{k}).Run(ctx, args); err != nil {
 					failures = append(failures, err.Error())
 				}
 			}
@@ -382,10 +382,10 @@ func TestHostedImageDeliveryStaysWithOriginatingReply(t *testing.T) {
 	// a fresh call in the same long-lived turn can use that actual receipt.
 	rel := strings.TrimSuffix(strings.TrimPrefix(late.Content[0].Text, "[厂商生图: 已保存到工作区 "), "]")
 	args, _ := json.Marshal(map[string]any{"text": "看图", "images": []string{rel}})
-	if _, err := (notifyTool{k}).Run(oldCtx, args); err == nil || !strings.Contains(err.Error(), "already sent") {
+	if _, err := (sendMessageTool{k}).Run(oldCtx, args); err == nil || !strings.Contains(err.Error(), "already sent") {
 		t.Fatalf("stale notify result: %v", err)
 	}
-	if _, err := (notifyTool{k}).Run(r.modelContext(), args); err != nil {
+	if _, err := (sendMessageTool{k}).Run(r.modelContext(), args); err != nil {
 		t.Fatal(err)
 	}
 	continued := provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("已用挂图方法挂上。")}

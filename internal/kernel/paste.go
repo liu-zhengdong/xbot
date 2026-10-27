@@ -208,7 +208,7 @@ func pastedPathIn(b *bot.Bot, name string) string {
 }
 
 // withLineNote is withPastedNote for a transcript line of any role. A reply's
-// pictures are ones the bot showed the owner (notify_owner images), so they are
+// pictures are ones the bot showed the owner (send_message_to_user images), so they are
 // named as such, not as the owner's.
 func (k *Kernel) withLineNote(role, content string, names []string) string {
 	return k.withLineNoteIn(k.Bot, role, content, names)

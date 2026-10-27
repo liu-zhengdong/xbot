@@ -2889,7 +2889,7 @@
 
   function previewText(m) {
     if (!m) return "";
-    const raw = m.role === "user" ? unwrap(m.content || "").text : (m.content || "");
+    const raw = m.role === "user" ? unwrap(m.content || "").text : sayText(m);
     return String(m.role === "assistant" ? displayText(raw) : raw).replace(/\r\n/g, "\n").trim();
   }
 
@@ -2966,39 +2966,96 @@
     return row;
   }
 
-  function botBubble(m, results, messages, index, who) {
+  // What the owner sees from the bot. The bot speaks with
+  // send_message_to_user (notify_owner before the rename): one bubble per call
+  // that landed. A run of bot lines between two inputs that made no such call
+  // shows nothing, unless it predates tool-only chat; then its reply text
+  // stays, so old history is not blank. Pictures queue on the run's final line
+  // and show in its last bubble.
+  const SAY_TOOLS = ["send_message_to_user", "notify_owner"];
+  const TOOL_CHAT_SINCE = Date.parse("2026-10-27T11:00:00+08:00");
+
+  function sayLanded(result) {
+    const out = String((result && result.content) || "");
+    return out.startsWith("sent to the owner's chat") || out.includes("notified the owner");
+  }
+
+  // spokenLines maps a bot line's index to the bubbles it shows: a list of
+  // {text, images, replyTo}, or null for a legacy line drawn from its content.
+  // Lines it leaves out are not drawn.
+  function spokenLines(messages) {
+    const results = {};
+    for (const m of messages) {
+      if (m.role === "tool" && m.tool_call_id) results[m.tool_call_id] = m;
+    }
+    const spoken = new Map();
+    let run = [];
+    const close = () => {
+      const says = [];
+      const images = [];
+      let replyTo = 0;
+      let imageLine = -1;
+      for (const i of run) {
+        const m = messages[i];
+        if ((m.images || []).length) { images.push(...m.images); imageLine = i; }
+        if (m.reply_to) replyTo = m.reply_to;
+        for (const call of m.tool_calls || []) {
+          const info = toolSummary(call);
+          if (SAY_TOOLS.includes(info.name) && sayLanded(results[call.id])) says.push({ i: i, text: String(info.args.text || "").trim() });
+        }
+      }
+      if (!says.length && images.length) says.push({ i: imageLine, text: "" });
+      if (says.length) {
+        says[0].replyTo = replyTo;
+        says[says.length - 1].images = images;
+        for (const say of says) spoken.set(say.i, [...(spoken.get(say.i) || []), say]);
+      } else {
+        for (const i of run) {
+          if (!(Date.parse(messages[i].time) >= TOOL_CHAT_SINCE)) spoken.set(i, null);
+        }
+      }
+      run = [];
+    };
+    messages.forEach((m, i) => {
+      if (m.role === "assistant") run.push(i);
+      else if (m.role === "user" && !m.internal) close();
+    });
+    close();
+    return spoken;
+  }
+
+  // sayText is what a bot line said to the owner, for quotes and previews.
+  function sayText(m) {
+    const said = (m.tool_calls || []).map(toolSummary).filter((info) => SAY_TOOLS.includes(info.name)).map((info) => String(info.args.text || "").trim()).filter(Boolean);
+    return said.length ? said.join("\n\n") : (m.content || "");
+  }
+
+  // botBubble draws one bubble: say from spokenLines, or null for a legacy
+  // line drawn from its content.
+  function botBubble(m, say, messages, who) {
     const row = el("div", "msg bot");
     if (m.seq) row.dataset.seq = String(m.seq);
     if (m.time) row.dataset.time = String(m.time);
     row.dataset.sender = "bot:" + (who || "");
     const body = el("div", "body");
-    if (m.reply_to) body.append(quoteBlock(messages, m.reply_to));
-    // Pictures the bot showed with notify_owner, stored in paste/ like the
+    const replyTo = say ? say.replyTo : m.reply_to;
+    if (replyTo) body.append(quoteBlock(messages, replyTo));
+    // Pictures the bot showed with send_message_to_user, stored in paste/ like the
     // owner's own; the same gallery as userBubble.
-    const pasted = pastedURLs(state.sel, m.images);
-    const said = String(m.content || "").trim();
-    if (said && said !== "SILENT") appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
+    const pasted = pastedURLs(state.sel, say ? say.images : m.images);
+    const said = say ? say.text : String(m.content || "").trim();
+    if (say) {
+      if (said) appendBotContent(body, displayText(said));
+    } else if (said && said !== "SILENT") appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
     else if (!pasted.length && !(m.parts || []).length && !(m.tool_calls || []).length) {
       appendBotContent(body, EMPTY_REPLY);
     }
     if (pasted.length) body.append(gallery(pasted));
-    window.XBotProviders.decorate(body, m.parts);
-    const calls = m.tool_calls || [];
-    const peers = [];
-    for (const call of calls) {
-      const info = toolSummary(call);
-      const phrase = peerPhrase(info.name, info.args, who);
-      if (phrase) { peers.push(phrase); continue; }
-      if (info.name === "ask_user") {
-        // ask_user now persists its own decision card, rendered below.
-
-        continue;
-      }
-    }
-    bindMessageMenu(row, m, m.content || "");
+    if (!say) window.XBotProviders.decorate(body, m.parts);
+    bindMessageMenu(row, m, said);
     row.append(body);
     addBubbleTime(row, m.time);
-    return { row: row, peers: peers };
+    return row;
   }
 
   function skipMessage(m) {
@@ -3020,10 +3077,7 @@
       if (near) thread.scrollTop = thread.scrollHeight;
       return;
     }
-    const results = {};
-    for (const m of messages) {
-      if (m.role === "tool" && m.tool_call_id) results[m.tool_call_id] = m;
-    }
+    const spoken = spokenLines(messages);
     let any = false;
     let lastKey = "";
     let lastMsg = null;
@@ -3105,22 +3159,20 @@
         inner.append(row);
         return;
       }
-      if (relays.has(i)) return;
+      if (relays.has(i) || !spoken.has(i)) return;
       any = true;
       const key = "bot:" + (who || "");
-      const cont = !groupStart(lastMsg, m, lastKey, key);
-      const built = botBubble(m, results, messages, i, who);
-      const visibleParts = (m.parts || []).some(p => !p.hosted || p.hosted.name !== "image_generation");
-      if (m.content || visibleParts || (m.images || []).length || (!(m.tool_calls || []).length && !(m.parts || []).length)) {
-        if (cont) markContinuation(built.row, m.time);
-        inner.append(built.row);
+      const says = spoken.get(i);
+      if (!says) {
+        const visibleParts = (m.parts || []).some(p => !p.hosted || p.hosted.name !== "image_generation");
+        if (!(m.content || visibleParts || (m.images || []).length || (!(m.tool_calls || []).length && !(m.parts || []).length))) return;
+      }
+      for (const say of says || [null]) {
+        const row = botBubble(m, say, messages, who);
+        if (!groupStart(lastMsg, m, lastKey, key)) markContinuation(row, m.time);
+        inner.append(row);
         lastKey = key;
         lastMsg = m;
-      }
-      for (const line of built.peers) {
-        if (line.sent) addPeerEvent(inner, "sent", line.peer, m.time);
-        else inner.append(systemLine(line.text, who, line.peer));
-        lastKey = "";
       }
     });
     if (!any) inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
@@ -3509,10 +3561,14 @@
 
   function previewFromMessages(messages) {
     if (!messages) return "";
+    // A bot line counts only for what the chat draws from it.
+    const spoken = spokenLines(messages);
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (hiddenFromPreview(m)) continue;
-      const parsed = unwrap(m.content || "");
+      if (m.role === "assistant" && !spoken.has(i)) continue;
+      const says = m.role === "assistant" && spoken.get(i);
+      const parsed = says ? { text: says.map((say) => say.text).join(" ") } : unwrap(m.content || "");
       if (parsed.untrusted) continue;
       const text = clip(plainText(pullImages(parsed.text).text), 72);
       if (!text || text === "SILENT" || summaryLine(text)) continue;
@@ -6325,7 +6381,6 @@
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
-    let acc = "";
     // After a switch keep reading without touching the view: closing the
     // request would cancel the turn on the server.
     const drain = async () => { try { while (!(await reader.read()).done) { /* discard */ } } catch (e) { /* gone */ } };
@@ -6351,38 +6406,22 @@
         try { payload = JSON.parse(data); } catch (e) { continue; }
         if (payload.status === "queued") { onQueued(); continue; }
         const host = prose.closest(".body") || prose.parentElement;
-        if (event === "delta" && payload.text) {
-          const status = host && host.querySelector(".live-status");
-          if (status) status.remove();
-          host.querySelector(".typing-dots")?.remove();
-          acc += payload.text;
-          prose.replaceChildren();
-          appendMarkdown(prose, stripBotImages(displayText(acc)));
-          thread.scrollTop = thread.scrollHeight;
-        } else if (event === "part") {
+        if (event === "part") {
           if (payload.hosted?.name === "image_generation") {
             if (host) setWorking(host, "image_generation");
           } else window.XBotProviders.progress(host, payload);
         } else if (event === "tool") {
-          const who = state.sel && state.sel.id;
-          // The live summary has no recipient for message_bot; the transcript
-          // re-render after the turn draws its grouped event line.
-          const phrase = payload.name === "message_bot" ? null : peerPhrase(payload.name || "", { text: payload.summary || "" }, who);
-          const line = phrase && phrase.text ? systemLine(phrase.text, who, phrase.peer) : null;
-          // The server starts a new text segment at every tool, and the
-          // transcript keeps each segment as its own message: seal this
-          // bubble and stream the next segment into a fresh one.
-          if (acc) {
-            host.querySelector(".live-status")?.remove();
-            host.parentElement.classList.remove("live");
-            if (line) host.parentElement.after(line);
-            prose = liveBubble();
-            onLive(prose);
-            acc = "";
-          } else if (line) {
-            host.parentElement.before(line);
-          }
+          // Tool steps show only as the busy line; the trace has the detail.
           setWorking(prose.closest(".body"), payload.name || "");
+        } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
+          // A message that landed is this bubble; the next one streams into a
+          // fresh live row, as the transcript keeps one bubble per call.
+          host.querySelector(".live-status")?.remove();
+          host.querySelector(".typing-dots")?.remove();
+          appendMarkdown(prose, stripBotImages(displayText(payload.text)));
+          host.parentElement.classList.remove("live");
+          prose = liveBubble();
+          onLive(prose);
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "result" && payload.name === "bot_update_profile") {
           // The result arrives after persistence. Refresh faces even while the

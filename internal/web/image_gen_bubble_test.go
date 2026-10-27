@@ -17,17 +17,13 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
  const box=$('#input');box.textContent='画图';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
  await waitFor(()=>fixture.streams.length&&$('#thread .live'),'stream');
  const s=fixture.streams.at(-1),B='\x60\x60\x60';
- let md='画好了。\n\n';emit(s,'delta',{text:md});
- // Streaming prefixes, then the complete image; alt must never leak as !alt.
- for(const delta of ['![简笔画小猫坐在窗台上','](https://example.com/cat', '.png)']){
-  md+=delta;emit(s,'delta',{text:delta});
-  await new Promise(r=>setTimeout(r,20));
-  assert(!$('#thread .live').textContent.includes('简笔画小猫'),'image fragment in stream');
-  assert(!$('#thread .live img'),'image attached to live bubble');
- }
+ let md='画好了。\n\n![简笔画小猫坐在窗台上](https://example.com/cat.png)';
  const tail='\n\n保留！ !important 和 !flag。 [普通链接](https://example.com/example.png)\n\n'+B+'md\n![代码示例](generated/example.png)\n'+B+'\n\n\x60![行内示例](https://example.com/example.png)\x60\n\n![本地图](generated/cat.png)\n\n![残缺图](generated/incomplete';
- md+=tail;emit(s,'delta',{text:tail});
- await waitFor(()=>$('#thread .live a'),'normal link');
+ md+=tail;say(s,md);
+ // The landed message renders through the same filter as history; alt never leaks as !alt.
+ await waitFor(()=>$('#thread .msg.bot:not(.live) a'),'normal link');
+ assert(!$('#thread .msg.bot:not(.live)').textContent.includes('简笔画小猫'),'image fragment in live bubble');
+ assert(!$('#thread .msg.bot:not(.live) img'),'image attached to live bubble');
  finish(s,md);await waitFor(()=>!$('#thread .live')&&$('#thread .msg.bot .bot-bubble'),'history');
  const bubble=$('#thread .msg.bot .bot-bubble'),text=bubble.textContent;
  assert(!/简笔画小猫|本地图|残缺图/.test(text),'image fragment in history: '+text);

@@ -33,7 +33,7 @@ func CountVoice(text string, toolNames []string) VoiceStats {
 	v := VoiceStats{Paths: len(voicePaths.FindAllString(text, -1)), Internals: len(voiceIDs.FindAllString(text, -1))}
 	// Deduplicate names supplied by repeated model requests.
 	seen := map[string]bool{}
-	for _, name := range append([]string{"read_file", "write_file", "edit_file", "dispatch", "spawn", "read_subagent", "notify_owner", "ask_user", "bot_update_profile"}, toolNames...) {
+	for _, name := range append([]string{"read_file", "write_file", "edit_file", "dispatch", "spawn", "read_subagent", "send_message_to_user", "ask_user", "bot_update_profile"}, toolNames...) {
 		if name == "" || seen[name] {
 			continue
 		}

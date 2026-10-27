@@ -95,7 +95,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 			case "write_file":
 				sawWrite = true
 				sawMemoryWrite = strings.Contains(tc.Function.Arguments, "memory.md") || sawMemoryWrite
-			case "notify_owner":
+			case "send_message_to_user":
 				sawNotify = true
 			case "recall":
 				sawRecall = true
@@ -130,6 +130,9 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "PREAMBLE_ZH") && !sawMemoryWrite:
 		writeToolContent(w, "I'll remember those three things.", "call_pre", "write_file", memoryWriteArgs(req, "Person", "three things"))
 		return
+	case strings.Contains(lastUser, "PREAMBLE_ZH") && !sawNotify:
+		writeTool(w, "call_say", "send_message_to_user", `{"text":"已记住"}`)
+		return
 	case strings.Contains(lastUser, "PREAMBLE_ZH"):
 		writeText(w, "已记住\n")
 		return
@@ -149,13 +152,13 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "recalled\n")
 		return
 	case strings.Contains(lastUser, "SHOW_PICTURE") && !sawNotify:
-		writeTool(w, "call_notify", "notify_owner", `{"text":"chart ready","images":["chart.png"]}`)
+		writeTool(w, "call_notify", "send_message_to_user", `{"text":"chart ready","images":["chart.png"]}`)
 		return
 	case strings.Contains(lastUser, "SHOW_PICTURE"):
 		writeText(w, "here is the chart\n")
 		return
 	case strings.Contains(lastUser, "DRINK_WATER") && !sawNotify:
-		writeTool(w, "call_notify", "notify_owner", `{"text":"drink water","importance":"low"}`)
+		writeTool(w, "call_notify", "send_message_to_user", `{"text":"drink water","importance":"low"}`)
 		return
 	case strings.Contains(lastUser, "DRINK_WATER"):
 		writeText(w, "noted\n")
@@ -164,7 +167,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "SILENT\n")
 		return
 	case strings.Contains(lastUser, "<routine") && !sawNotify:
-		writeTool(w, "call_notify", "notify_owner", `{"text":"mail is waiting"}`)
+		writeTool(w, "call_notify", "send_message_to_user", `{"text":"mail is waiting"}`)
 		return
 	case strings.Contains(lastUser, "<routine"):
 		writeText(w, "noted\n")
@@ -280,13 +283,13 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "SILENT\n")
 		return
 	case strings.Contains(lastUser, `source="webhook`) && !sawNotify:
-		writeTool(w, "call_notify", "notify_owner", `{"text":"hook fired"}`)
+		writeTool(w, "call_notify", "send_message_to_user", `{"text":"hook fired"}`)
 		return
 	case strings.Contains(lastUser, `source="webhook`):
 		writeText(w, "noted\n")
 		return
 	case strings.Contains(lastUser, `source="watch`) && !sawNotify:
-		writeTool(w, "call_notify", "notify_owner", `{"text":"file changed"}`)
+		writeTool(w, "call_notify", "send_message_to_user", `{"text":"file changed"}`)
 		return
 	case strings.Contains(lastUser, `source="watch`):
 		writeText(w, "noted\n")
@@ -296,6 +299,9 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		return
 	case strings.Contains(lastUser, "NEED_APPROVAL"):
 		writeText(w, "made the directory\n")
+		return
+	case strings.Contains(lastUser, "HELLO_WEB") && !sawNotify:
+		writeTool(w, "call_say", "send_message_to_user", `{"text":"web hello"}`)
 		return
 	case strings.Contains(lastUser, "HELLO_WEB"):
 		writeText(w, "web hello\n")

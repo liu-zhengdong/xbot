@@ -115,7 +115,7 @@ func waitTranscript(t *testing.T, b *bot.Bot, text string) {
 		}
 		found := false
 		for _, e := range entries {
-			if strings.Contains(e.Message.Text(), text) {
+			if saidIn(e.Message, text) {
 				found = true
 			}
 		}

@@ -304,8 +304,8 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 	switch {
 	case strings.Contains(text, "<routine"):
 		if strings.Contains(text, "SMOKE_FIRE_NEWS") {
-			if !sawTool(req, "notify_owner") {
-				streamTool(w, "call_notify", "notify_owner", argsJSON(map[string]string{"text": "NOTE_NEWS"}))
+			if !sawTool(req, "send_message_to_user") {
+				streamTool(w, "call_notify", "send_message_to_user", argsJSON(map[string]string{"text": "NOTE_NEWS"}))
 				return
 			}
 			streamText(w, []string{"noted"})

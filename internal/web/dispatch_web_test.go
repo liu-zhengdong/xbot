@@ -29,12 +29,7 @@ type dispatchModel struct {
 }
 
 func (m *dispatchModel) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
-	say := func(text string) (provider.Message, error) {
-		if onDelta != nil {
-			onDelta(text)
-		}
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
-	}
+	say := func(text string) (provider.Message, error) { return sayTo(text), nil }
 	if strings.HasPrefix(req.Messages[0].Text(), exec.SubPersona) {
 		select {
 		case <-m.hold:
@@ -46,6 +41,9 @@ func (m *dispatchModel) Chat(ctx context.Context, req provider.Request, onDelta 
 	m.mu.Lock()
 	m.foreCalls++
 	m.mu.Unlock()
+	if done, ok := spoke(req); ok {
+		return done, nil
+	}
 	last := lastConversationInput(req.Messages)
 	switch {
 	case last.Role == provider.RoleTool:
@@ -135,7 +133,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 		}
 		n := 0
 		for _, e := range entries {
-			if e.Message.Role == provider.RoleAssistant && strings.Contains(e.Message.Text(), report) {
+			if e.Message.Role == provider.RoleAssistant && saidIn(e.Message, report) {
 				n++
 			}
 		}

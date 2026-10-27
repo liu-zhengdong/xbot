@@ -446,7 +446,7 @@ func TestPasteWorksBeforeTheBotHasRun(t *testing.T) {
 }
 
 // TestBotReplyPicturesReachTheChat: a reply line that carries pictures
-// (notify_owner images) is served with their names, and each name resolves
+// (send_message_to_user images) is served with their names, and each name resolves
 // through the same paste endpoint the owner's pictures use.
 func TestBotReplyPicturesReachTheChat(t *testing.T) {
 	root, ui, cookie, _ := pasteTestServer(t, true)

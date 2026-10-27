@@ -20,18 +20,20 @@ import (
 )
 
 type replyProvider struct {
+	said    string
 	content string
 	seen    string
 }
 
-func (p *replyProvider) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+func (p *replyProvider) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	for _, m := range req.Messages {
 		p.seen += m.Text() + "\n"
 	}
-	if onDelta != nil && p.content != "" {
-		onDelta(p.content)
+	// The closing line carries reply_to after the owner has the message.
+	if _, ok := spoke(req); ok || p.said == "" {
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(p.content)}, nil
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(p.content)}, nil
+	return sayTo(p.said), nil
 }
 
 func TestReplyToRoundTrip(t *testing.T) {
@@ -54,7 +56,7 @@ func TestReplyToRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	model := &replyProvider{content: "reply_to: 2\nback to you"}
+	model := &replyProvider{said: "back to you", content: "reply_to: 2\nok"}
 	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: model, Memory: memory.NopStore{}, MaxSteps: 2}, nil
 	}

@@ -222,7 +222,7 @@ func TestLaterResultStillNotifiesAfterAnEarlierExplicitNotification(t *testing.T
 	}
 	a := link.NewEvent(link.SourceSubagent, exec.EvDone, "A结论731", "sa_a", time.Now())
 	c := link.NewEvent(link.SourceSubagent, exec.EvDone, "B结论951", "sa_b", time.Now())
-	p := &scripted{resps: []provider.Message{toolCall("notify", "notify_owner", `{"text":"A结论731"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("B结论951。")}}}
+	p := &scripted{resps: []provider.Message{toolCall("notify", "send_message_to_user", `{"text":"A结论731"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("B结论951。")}}}
 	posted := false
 	k := &Kernel{Bot: b, Links: []link.Link{&link.Timer{Dir: b.RoutineDir(), Sender: "u1"}}, Inbox: in, Provider: p, MaxSteps: 3, Desktop: func(context.Context, string, string) error {
 		if !posted {

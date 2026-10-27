@@ -29,9 +29,9 @@ const md=B+'python\ndef f(x):\n    # note\n    return "s"\n'+B+'\n\n> 引用 $x^
  const s=await send(B+'python\ndef g():\n    return "u"  # c\n'+B);
  await waitFor(()=>document.querySelector('#thread .msg.user .code-block'),'owner code block missing');
  colored(document.querySelector('#thread .msg.user .bubble'),'owner bubble');
- emit(s,'delta',{text:md});
- await waitFor(()=>document.querySelector('#thread .live table'),'table missing');
- const live=document.querySelector('#thread .live');
+ say(s,md);
+ await waitFor(()=>document.querySelector('#thread .msg.bot:not(.live) table'),'table missing');
+ const live=document.querySelector('#thread .msg.bot:not(.live)');
  colored(live,'bot bubble');
  const q=live.querySelectorAll('blockquote');
  assert(q.length===2&&q[0].contains(q[1]),'quotes not nested: '+q.length);

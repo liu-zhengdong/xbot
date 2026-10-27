@@ -135,7 +135,7 @@ func missedBody(slots []missedSlot, since, now time.Time, truncated bool, loc *t
 	if truncated {
 		b.WriteString("Only the last 7 days were checked.\n")
 	}
-	b.WriteString("The computer was off or asleep. These routine times were missed and were not run. Decide whether anything is still worth doing now; if nothing is, reply with exactly SILENT and do not call notify_owner.")
+	b.WriteString("The computer was off or asleep. These routine times were missed and were not run. Decide whether anything is still worth doing now; if nothing is, reply with exactly SILENT and do not call send_message_to_user.")
 	return b.String()
 }
 

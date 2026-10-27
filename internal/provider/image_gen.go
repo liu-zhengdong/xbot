@@ -18,7 +18,7 @@ import (
 //
 // Model is the OpenAI tool-level image model; empty uses the vendor default,
 // and xAI never receives it. Save stores one decoded picture and returns its
-// path relative to the bot workspace. Delivery is a separate notify_owner call.
+// path relative to the bot workspace. Delivery is a separate send_message_to_user call.
 type ImageGen struct {
 	Model string
 	Save  func([]byte) (string, error)
@@ -215,7 +215,7 @@ func imageGenerationPart(raw json.RawMessage, p ContentPart) (ContentPart, error
 
 // imageDeliveryGuidance also applies to prose produced in the generating
 // response itself, before the model can see the saved-path receipt on replay.
-const imageDeliveryGuidance = "厂商生图由 XBot 保存到工作区 generated/，保存回执只代表文件已落盘。交付图片时，先读取回执给出的真实路径，再调用 notify_owner，将该路径放入 images 挂进本轮回复气泡；若当前目录已改变，按工作区根目录解析该路径。仅在 notify_owner 挂图成功回执后说明「已用挂图方法挂上」；失败则如实说明原因。当前响应尚未见到保存回执时，继续用现有工具检查 generated/ 后读取下一步回执，不编造路径或图片 ID，不声称已经挂图。"
+const imageDeliveryGuidance = "厂商生图由 XBot 保存到工作区 generated/，保存回执只代表文件已落盘。交付图片时，先读取回执给出的真实路径，再调用 send_message_to_user，将该路径放入 images 挂进本轮回复气泡；若当前目录已改变，按工作区根目录解析该路径。仅在 send_message_to_user 挂图成功回执后说明「已用挂图方法挂上」；失败则如实说明原因。当前响应尚未见到保存回执时，继续用现有工具检查 generated/ 后读取下一步回执，不编造路径或图片 ID，不声称已经挂图。"
 
 // HasImageGen reports whether ctx mounts hosted image generation.
 func HasImageGen(ctx context.Context) bool {

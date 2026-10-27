@@ -17,7 +17,7 @@
 ## 现状（main `ca742b4`）
 
 - 用户贴图全链路已通；助手 `botBubble` 不读 `m.images`；`recordTurn` 已能写 `ImageNames`→`Images`。
-- 发消息类工具：`message_bot` / `post_group` / `notify_owner` / 连接器 `*_send` 等——扩合适的现有工具。
+- 发消息类工具：`message_bot` / `post_group` / `send_message_to_user` / 连接器 `*_send` 等——扩合适的现有工具。
 
 ## 不做
 
@@ -31,7 +31,7 @@
 
 ## 实现（本分支）
 
-- 扩的是 `notify_owner`：新参数 `images`（pasted id 或工作区图片路径）。没有新工具。
+- 扩的是 `send_message_to_user`：新参数 `images`（pasted id 或工作区图片路径）。没有新工具。
 - 落盘：`internal/kernel/outimage.go`。路径经 `os.Root` 在 WorkDir/SharedDir 内读；类型/单张 10 MiB/长边 2048/每条回复 4 张、合计 10 MiB 沿用 `work.PastedMax*` 和 `tools.FitsModel`；先全部校验再写，拒绝时不留文件也不发通知；`work.PastedNameFor` 按内容哈希命名，重复挂同一张无害。
 - 挂到气泡：名字挂在本轮（`turn.outImages`），`recordTurn` 写最终回复（无 tool_calls 的助手行）时放进 `Entry.Images`。
 - 归属按调用身份：工具 Job 用 `callTurnKey` 里的原轮，普通调用用 `turnKey`，都没有才取当前轮。调用发起时同时捕获原轮已提交最终回复的次数；挂图前及落盘前在原轮锁内核对，次数已变或原轮 `finished` 时整次调用拒绝，不发通知，结果里说明要重新调用；不挂到别的轮。同 turn 插话续聊新发起的调用按当时次数挂到自己的下一条回复，不受粘滞的 `answered` 误拒；没有调用快照时仍按 `answered` 保守拒绝。

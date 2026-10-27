@@ -307,7 +307,7 @@ func TestMainLineDoesTheWork(t *testing.T) {
 	}
 	// The shared language rule must agree with the dispatch rule, not tell the
 	// model to call tools before saying anything.
-	if !strings.Contains(sys, LanguageRule) || !strings.Contains(sys, "first tell the owner in a sentence or two") {
+	if !strings.Contains(sys, LanguageRule) || !strings.Contains(sys, "first send the owner a sentence or two") {
 		t.Fatal("the language rule does not ask for a reply before slow work")
 	}
 	if strings.Contains(sys, "Call tools first, then give the result") {

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -54,13 +55,13 @@ func sizedPNG(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
-// TestNotifyOwnerImagesLandOnTheReplyLine is the journey: notify_owner names a
+// TestNotifyOwnerImagesLandOnTheReplyLine is the journey: send_message_to_user names a
 // workspace picture, the picture is stored in paste/, and the turn's final
 // reply line carries its name, so the chat draws it in the bot's bubble. The
 // bytes stay out of the transcript.
 func TestNotifyOwnerImagesLandOnTheReplyLine(t *testing.T) {
 	k, dir, _ := outImageKernel(t,
-		toolCall("n1", "notify_owner", `{"text":"图好了","images":["chart.png","chart.png"]}`),
+		toolCall("n1", "send_message_to_user", `{"text":"图好了","images":["chart.png","chart.png"]}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("看图")},
 	)
 	pic := onePixelPNG(t)
@@ -158,7 +159,7 @@ func TestNotifyOwnerImagesRefusals(t *testing.T) {
 		{"p0.png", "p1.png", "p2.png", "p3.png", "p4.png"},
 	} {
 		args, _ := json.Marshal(map[string]any{"text": "x", "images": refs})
-		if out, err := (notifyTool{k}).Run(context.Background(), args); err == nil {
+		if out, err := (sendMessageTool{k}).Run(context.Background(), args); err == nil {
 			t.Fatalf("%v accepted: %s", refs, out)
 		}
 	}
@@ -171,12 +172,12 @@ func TestNotifyOwnerImagesRefusals(t *testing.T) {
 	// The count is the reply's, across calls.
 	for _, refs := range [][]string{{"p0.png", "p1.png"}, {"p2.png", "p0.png"}, {"p3.png"}} {
 		args, _ := json.Marshal(map[string]any{"text": "x", "images": refs})
-		if _, err := (notifyTool{k}).Run(context.Background(), args); err != nil {
+		if _, err := (sendMessageTool{k}).Run(context.Background(), args); err != nil {
 			t.Fatal(err)
 		}
 	}
 	args, _ := json.Marshal(map[string]any{"text": "x", "images": []string{"p4.png"}})
-	if _, err := (notifyTool{k}).Run(context.Background(), args); err == nil {
+	if _, err := (sendMessageTool{k}).Run(context.Background(), args); err == nil {
 		t.Fatal("a fifth picture on one reply was accepted")
 	}
 	if len(k.turn.outImages) != 4 {
@@ -194,7 +195,7 @@ func TestNotifyOwnerTakesAPastedID(t *testing.T) {
 	}
 	k.turn = &turn{}
 	args, _ := json.Marshal(map[string]any{"text": "这张", "images": []string{id}})
-	if _, err := (notifyTool{k}).Run(context.Background(), args); err != nil {
+	if _, err := (sendMessageTool{k}).Run(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
 	if len(k.turn.outImages) != 1 || k.turn.outImages[0] != id {
@@ -203,7 +204,7 @@ func TestNotifyOwnerTakesAPastedID(t *testing.T) {
 }
 
 // TestLateNotifyImagesStayWithTheirTurn is the regression for a detached
-// notify_owner: the owner interjects, the call goes on as a tool job, the
+// send_message_to_user: the owner interjects, the call goes on as a tool job, the
 // original turn writes its reply and a new turn starts. The late call used to
 // queue its pictures on whatever turn was live, so the next turn's unrelated
 // reply showed them. Now the call is refused, with no note, and says so.
@@ -225,10 +226,10 @@ func TestLateNotifyImagesStayWithTheirTurn(t *testing.T) {
 			defer func() { _ = k.Close() }()
 			args := json.RawMessage(`{"text":"chart ready","images":["chart.png"]}`)
 			go func() {
-				receipt <- k.runToolCall(ctx, notifyTool{k}, args, func(callCtx context.Context) tools.CallResult {
+				receipt <- k.runToolCall(ctx, sendMessageTool{k}, args, func(callCtx context.Context) tools.CallResult {
 					close(started)
 					<-release
-					out, err := (notifyTool{k}).Run(callCtx, args)
+					out, err := (sendMessageTool{k}).Run(callCtx, args)
 					res := tools.CallResult{Text: out, Err: err}
 					finished <- res
 					return res
@@ -296,7 +297,7 @@ func TestPastedIDContentsAreChecked(t *testing.T) {
 				t.Fatal(err)
 			}
 			args, _ := json.Marshal(map[string]any{"text": "这张", "images": []string{id}})
-			if out, err := (notifyTool{k}).Run(context.Background(), args); err == nil {
+			if out, err := (sendMessageTool{k}).Run(context.Background(), args); err == nil {
 				t.Fatalf("accepted: %s", out)
 			}
 			if len(k.turn.outImages) != 0 {
@@ -377,7 +378,7 @@ func TestQueuedDuplicateFitsBudget(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = (notifyTool{k}).Run(context.Background(), args)
+				_, err = (sendMessageTool{k}).Run(context.Background(), args)
 				return err
 			}
 			wantNotes := 1
@@ -440,7 +441,7 @@ func TestNewOutImageOverBudgetIsNotLoaded(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := json.RawMessage(`{"text":"ready","images":["chart.png"]}`)
-	if _, err := (notifyTool{k}).Run(context.Background(), args); err != nil {
+	if _, err := (sendMessageTool{k}).Run(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
 	queued := slices.Clone(k.turn.outImages)
@@ -458,7 +459,7 @@ func TestNewOutImageOverBudgetIsNotLoaded(t *testing.T) {
 		runtime.GC()
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
-		_, err = (notifyTool{k}).Run(context.Background(), args)
+		_, err = (sendMessageTool{k}).Run(context.Background(), args)
 		runtime.ReadMemStats(&after)
 		if !errors.Is(err, errOverBudget) {
 			t.Fatalf("new picture over budget: %v", err)
@@ -508,13 +509,13 @@ func TestQueuedPastedIDIsStillValidated(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := (notifyTool{k}).Run(context.Background(), args); err != nil {
+			if _, err := (sendMessageTool{k}).Run(context.Background(), args); err != nil {
 				t.Fatal(err)
 			}
 			if err := work.WritePasted(dir, id, data); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := (notifyTool{k}).Run(context.Background(), args); err == nil {
+			if _, err := (sendMessageTool{k}).Run(context.Background(), args); err == nil {
 				t.Fatal("queued id skipped content validation")
 			}
 			if !slices.Equal(k.turn.outImages, []string{id}) || k.turn.outBytes != len(pic) {
@@ -557,10 +558,10 @@ func TestContinuationCanAttachImages(t *testing.T) {
 			if !strings.Contains(messagesText(req.Messages), late.Content) {
 				t.Fatal("continuation lost new input")
 			}
-			return toolCall("new-picture", "notify_owner", `{"text":"新请求的图","images":["chart.png"]}`), nil
+			return toolCall("new-picture", "send_message_to_user", `{"text":"新请求的图","images":["chart.png"]}`), nil
 		case 3:
 			for _, m := range req.Messages {
-				if m.Role == provider.RoleTool && m.Name == "notify_owner" {
+				if m.Role == provider.RoleTool && m.Name == "send_message_to_user" {
 					t.Logf("fresh continuation tool result: %s", m.Text())
 				}
 			}
@@ -599,8 +600,9 @@ func TestContinuationCanAttachImages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(notes) != 1 || notes[0].Text != "新请求的图" {
-		t.Errorf("new call delivered %d notes, want 1", len(notes))
+	// Owner chat: the bubble is the delivery, so no note.
+	if len(notes) != 0 {
+		t.Errorf("new call in owner chat delivered %d notes, want 0", len(notes))
 	}
 }
 
@@ -630,10 +632,10 @@ func TestContinuationRejectsOldImageJob(t *testing.T) {
 	}()
 	oldArgs := json.RawMessage(`{"text":"old note","images":["old.png"]}`)
 	go func() {
-		receipt <- k.runToolCall(jobCtx, notifyTool{k}, oldArgs, func(callCtx context.Context) tools.CallResult {
+		receipt <- k.runToolCall(jobCtx, sendMessageTool{k}, oldArgs, func(callCtx context.Context) tools.CallResult {
 			close(started)
 			<-release
-			out, err := (notifyTool{k}).Run(callCtx, oldArgs)
+			out, err := (sendMessageTool{k}).Run(callCtx, oldArgs)
 			result := tools.CallResult{Text: out, Err: err}
 			finished <- result
 			return result
@@ -648,8 +650,8 @@ func TestContinuationRejectsOldImageJob(t *testing.T) {
 		t.Fatal(err)
 	}
 	newArgs := json.RawMessage(`{"text":"new note","images":["new.png"]}`)
-	fresh := k.runToolCall(ctx, notifyTool{k}, newArgs, func(callCtx context.Context) tools.CallResult {
-		out, err := (notifyTool{k}).Run(callCtx, newArgs)
+	fresh := k.runToolCall(ctx, sendMessageTool{k}, newArgs, func(callCtx context.Context) tools.CallResult {
+		out, err := (sendMessageTool{k}).Run(callCtx, newArgs)
 		return tools.CallResult{Text: out, Err: err}
 	})
 	if fresh.Err != nil || fresh.Job != nil {
@@ -692,5 +694,53 @@ func TestContinuationRejectsOldImageJob(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("continuation reply absent")
+	}
+}
+
+// TestSendInOwnerChatSkipsTheBell: in owner chat the bubble is the delivery,
+// so send_message_to_user leaves no note; a wake the owner is not chatting in
+// still notifies.
+func TestSendInOwnerChatSkipsTheBell(t *testing.T) {
+	k, _, _ := outImageKernel(t,
+		toolCall("s1", "send_message_to_user", `{"text":"搞定了"}`),
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
+		toolCall("s2", "send_message_to_user", `{"text":"例程有新情况"}`),
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("已告知")},
+	)
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "做吧", time.Unix(10, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != 0 {
+		t.Fatalf("owner chat rang the bell: %v, %v", notes, err)
+	}
+	var said string
+	for _, e := range entriesFor(t, k.Bot) {
+		if e.Message.Role == provider.RoleTool && e.Message.Name == "send_message_to_user" {
+			said = e.Message.Text()
+		}
+	}
+	if said != "sent to the owner's chat" {
+		t.Fatalf("result = %q", said)
+	}
+	if err := k.Handle(context.Background(), link.NewEvent(link.SourceSubagent, exec.EvDone, "查完了", "sa_a", time.Unix(20, 0).UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != 1 || notes[0].Text != "例程有新情况" {
+		t.Fatalf("wake did not notify: %v, %v", notes, err)
+	}
+}
+
+// After send_message_to_user reached the chat, the owner has the answer, so
+// a closing SILENT does not fail the turn.
+func TestSilentAfterChatSendIsAnAnswer(t *testing.T) {
+	k, _, _ := outImageKernel(t,
+		toolCall("s1", "send_message_to_user", `{"text":"好了"}`),
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")},
+	)
+	if err := k.Bot.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "做吧", time.Unix(10, 0).UTC())); err != nil {
+		t.Fatal(err)
 	}
 }

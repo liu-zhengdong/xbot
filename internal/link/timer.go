@@ -281,7 +281,7 @@ func routineBody(r Routine) string {
 // RoutineBody wraps a routine prompt with the scheduled-wake tail. A routine's
 // own instruction for the empty case wins over the default SILENT reply.
 func RoutineBody(id, name, prompt string) string {
-	return fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call notify_owner. If the routine says what to send when there is nothing (for example \"if nothing, say X\") and you checked and found nothing, send X with notify_owner; do not reply SILENT. Only when the routine gives no such instruction and nothing is worth saying, reply with exactly SILENT and do not call notify_owner.", id, name, prompt)
+	return fmt.Sprintf("<routine id=%q name=%q>\n%s\n</routine>\nThis is a scheduled wake. Use memory. If the owner should hear about it, call send_message_to_user. If the routine says what to send when there is nothing (for example \"if nothing, say X\") and you checked and found nothing, send X with send_message_to_user; do not reply SILENT. Only when the routine gives no such instruction and nothing is worth saying, reply with exactly SILENT and do not call send_message_to_user.", id, name, prompt)
 }
 
 // List reads every routine file, sorted by id. A zone that a pre-C1 binary

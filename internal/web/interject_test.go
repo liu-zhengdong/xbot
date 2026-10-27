@@ -25,13 +25,13 @@ type interjectModel struct {
 	holding chan struct{}
 }
 
-func (m interjectModel) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+func (m interjectModel) Chat(ctx context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
+	if done, ok := spoke(req); ok {
+		return done, nil
+	}
 	for _, msg := range req.Messages {
 		if msg.Role == provider.RoleUser && strings.Contains(msg.Text(), "插一句") {
-			if onDelta != nil {
-				onDelta("答插话")
-			}
-			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("答插话")}, nil
+			return sayTo("答插话"), nil
 		}
 	}
 	if m.hold != nil {
@@ -41,13 +41,10 @@ func (m interjectModel) Chat(ctx context.Context, req provider.Request, onDelta 
 		case <-ctx.Done():
 			return provider.Message{}, ctx.Err()
 		}
-		if onDelta != nil {
-			onDelta("第一件答完")
-		}
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第一件答完")}, nil
+		return sayTo("第一件答完"), nil
 	}
 	if req.Messages[len(req.Messages)-1].Role == provider.RoleTool {
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("第一件答完")}, nil
+		return sayTo("第一件答完"), nil
 	}
 	return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 		ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "slow", Arguments: "{}"},
@@ -143,13 +140,14 @@ func TestInterjectionGoesStraightIntoTheTurn(t *testing.T) {
 	}
 	for _, e := range entries {
 		switch {
+		case e.Message.Role == provider.RoleTool && e.Message.Name == "send_message_to_user":
 		case e.Message.Role == provider.RoleTool:
 			order = append(order, "tool")
 		case strings.Contains(e.Message.Text(), "插一句"):
 			order = append(order, "owner")
 		case strings.Contains(e.Message.Text(), "<owner_interjected>") && e.IsInternal():
 			order = append(order, "note")
-		case e.Message.Text() == "答插话":
+		case e.Message.Role == provider.RoleAssistant && saidIn(e.Message, "答插话"):
 			order = append(order, "answer")
 		}
 	}

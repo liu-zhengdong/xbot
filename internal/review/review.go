@@ -69,12 +69,12 @@ var Table = map[string]Class{
 	// Routines and the owner notification. A routine is the bot's own
 	// schedule, so deleting one is not a data deletion. The kernel reviews a
 	// create/update's nonempty precheck separately as sh, using this same table.
-	"routine_create": Normal,
-	"routine_list":   Readonly,
-	"routine_update": Normal,
-	"routine_delete": Normal,
-	"routine_pause":  Normal,
-	"notify_owner":   Normal,
+	"routine_create":       Normal,
+	"routine_list":         Readonly,
+	"routine_update":       Normal,
+	"routine_delete":       Normal,
+	"routine_pause":        Normal,
+	"send_message_to_user": Normal,
 
 	// Built-in mechanism manual.
 	"kernel_manual": Readonly,
@@ -110,13 +110,14 @@ var Table = map[string]Class{
 	"set_primary": Normal,
 
 	// Peers and groups. A message between the owner's own bots is not egress.
-	"list_bots":    Readonly,
-	"message_bot":  Normal,
-	"list_groups":  Readonly,
-	"create_group": Normal,
-	"post_group":   Normal,
-	"fork_bot":     Normal,
-	"bot_status":   Readonly,
+	"list_bots":                 Readonly,
+	"message_bot":               Normal,
+	"list_groups":               Readonly,
+	"get_group_message_history": Readonly,
+	"create_group":              Normal,
+	"post_group":                Normal,
+	"fork_bot":                  Normal,
+	"bot_status":                Readonly,
 
 	// Link catalog. install and remove ask; search and load do not.
 	"links": ExternalSend,

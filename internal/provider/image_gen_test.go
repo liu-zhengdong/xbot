@@ -81,7 +81,7 @@ func TestResponsesMountsImageGeneration(t *testing.T) {
 				t.Fatal(err)
 			}
 			input, _ := json.Marshal(tr.bodies[0]["input"])
-			if guided := strings.Contains(string(input), "notify_owner") && strings.Contains(string(input), "images") && strings.Contains(string(input), "真实路径"); guided != (len(tc.want) > 0) {
+			if guided := strings.Contains(string(input), "send_message_to_user") && strings.Contains(string(input), "images") && strings.Contains(string(input), "真实路径"); guided != (len(tc.want) > 0) {
 				t.Fatalf("image delivery guidance mounted=%v, tools=%v", guided, tc.want)
 			}
 			got := imageTools(tr.bodies[0])
@@ -365,7 +365,7 @@ func TestImageGenerationSaveFailureReceiptIsReused(t *testing.T) {
 }
 
 func TestImageDeliveryGuidanceRequiresExplicitAttachment(t *testing.T) {
-	for _, required := range []string{"真实路径", "notify_owner", "images", "已用挂图方法挂上", "失败", "不编造"} {
+	for _, required := range []string{"真实路径", "send_message_to_user", "images", "已用挂图方法挂上", "失败", "不编造"} {
 		if !strings.Contains(imageDeliveryGuidance, required) {
 			t.Errorf("missing delivery guidance %q", required)
 		}

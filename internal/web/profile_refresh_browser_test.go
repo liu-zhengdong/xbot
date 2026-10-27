@@ -53,7 +53,7 @@ const send=async value=>{
  fixture.holdProfile=true;bots[0].avatar_seed='Ada#3';
  emit(stream,'result',{name:'bot_update_profile',output:'profile saved'});
  await waitFor(()=>fixture.releaseProfile,'profile read not started');
- emit(stream,'delta',{text:'继续处理。'});
+ say(stream,'继续处理。');
  await waitFor(()=>$('#thread').textContent.includes('继续处理。'),'profile fetch blocked the stream');
  $('[data-bot="另一个Bot"]').click();
  await waitFor(()=>$('#title').textContent.includes('另一个Bot'),'switch failed');
@@ -66,7 +66,7 @@ const send=async value=>{
  // A refresh error must not reject readSSE or lose the actual reply.
  const next=await send('继续');fixture.failProfile=true;
  emit(next,'result',{name:'bot_update_profile',output:'profile saved'});
- emit(next,'delta',{text:'仍能回复。'});
+ say(next,'仍能回复。');
  await waitFor(()=>$('#thread').textContent.includes('仍能回复。'),'list failure broke stream');
  finish(next,'仍能回复。');
  await waitFor(()=>!$('#thread .live'),'stream did not finish');

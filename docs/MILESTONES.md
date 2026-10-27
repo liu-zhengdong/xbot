@@ -615,3 +615,7 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 性能：1440×900、DPR 2、本机 Chrome、缓存 scripted 图片各 30 次，从 DOM 点击到图片加载并经历两帧的 p95 为浅色 34.5 ms、深色 34.4 ms；不代表网络延迟或真实屏幕 FPS。级别：已合本地 main（merge `4a4ad70` / 功能 `1d8e24e`）；Pi civ-rev PASS（P0/P1=0）；未 push；等设计师逛后再 →已完成。Not run: 真模型、Linux CI、Safari／真实手机、真实网络交互与 IPC p95、真实屏幕 FPS、后台减速专项。
 
 交付前已 rebase 到含编码克制约束的 `28501a6`（相对原基线只新增 AGENTS.md 约束），未修改该指令文件。rebase 后图片回归三遍及 trusted 检查再次通过：鼠标双击 scale=2.5、触屏捏合 scale=3、触屏双击 scale=2.5；均为浏览器真实输入后的 transform 实测。
+
+## 2026-10-27 聊天仅工具产物可见（feature/tool-mediated-chat）
+
+`notify_owner` 改名 `send_message_to_user`（扁平 text/images，每个 Bot 都挂，描述要求简洁人话）；主人正聊（web/terminal）只进气泡，不写 outbox/桌面，非正聊照旧通知。SSE 不再发 `delta`，送达的 `result` 带 `text`，`done.text` 为送达消息。网页聊天、侧栏预览、引用摘要只画该工具产物；主列不画工具过程行和自发往来系统行；旧轮（2026-10-27 11:00 +08:00 前）无该工具时仍按正文画。LanguageRule 改为短答与结果都经该工具；SilenceRule 旧措辞保留识别。新增只读工具 `get_group_message_history`（成员可读、limit 20/50、keyword/sender/before_id、正文不可信且一行加引号）。验证见 dev/tool-mediated-chat.md「怎样算对」；原有失败未改：`TestWebApprovalAllowAndDeny` 挂起、4 条 parked approval、`internal/work` TestShellUsesBotDir，基线同样失败。级别：已提交本分支，未合 main、未 push。Not run: 真模型、Linux CI、本机浏览器人工查看、性能数字。

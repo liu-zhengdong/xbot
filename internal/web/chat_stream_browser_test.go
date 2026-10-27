@@ -97,9 +97,17 @@ window.fetch=async(path,opts={})=>{
  return json({});
 };
 const emit=(s,event,payload)=>s.controller.enqueue(new TextEncoder().encode('event: '+event+'\ndata: '+JSON.stringify(payload)+'\n\n'));
+// The bot speaks through send_message_to_user: say is that call landing in
+// the stream, sayRows is how the transcript keeps it.
+const say=(s,text)=>emit(s,'result',{name:'send_message_to_user',output:"sent to the owner's chat",text});
+const sayRows=text=>{const id='say'+(++fixture.seq);return [{...message('assistant',''),tool_calls:[{id,function:{name:'send_message_to_user',arguments:JSON.stringify({text})}}]},{...message('tool',"sent to the owner's chat"),tool_call_id:id}]};
 const finish=(s,content,error)=>{
  if(error)emit(s,'error',{error});
- else {fixture.messages[s.bot].push(message('assistant',content));emit(s,'done',{text:content})}
+ else {
+  if(content&&content!=='SILENT')fixture.messages[s.bot].push(...sayRows(content));
+  else fixture.messages[s.bot].push(message('assistant',content));
+  emit(s,'done',{text:content});
+ }
  s.controller.close();
 };
 `
@@ -116,26 +124,25 @@ const send=async value=>{
 };
 (async()=>{
  await waitFor(()=>selected('2号小伙子')&&!$('#thread .thread-skeleton'),'app did not boot');
- const s=await send('你现在是什么模型？');emit(s,'delta',{text:'我是助手。'});
- await waitFor(()=>text().includes('我是助手。'),'delta missing');
- // Reproduce the historic row: the stream had text but persistence was empty.
- finish(s,'');
+ const s=await send('你现在是什么模型？');say(s,'我是助手。');
+ await waitFor(()=>text().includes('我是助手。'),'message missing');
+ finish(s,'我是助手。');
  await waitFor(()=>!$('#thread .live'),'stream did not settle');
  assert(selected('2号小伙子'),'selection cleared at completion');
  assert(text().includes('你现在是什么模型？'),'user message disappeared');
- assert(text().includes('这次没有收到回复'),'empty reply has no readable state');
+ assert(text().includes('我是助手。'),'sent message lost at completion');
  assert(!$('#thread .empty')&&!$('#thread .thread-unavailable'),'conversation replaced by empty/offline shell');
  const reads=fixture.reads;await waitFor(()=>fixture.reads>reads,'poll did not resume');
- assert(selected('2号小伙子')&&text().includes('这次没有收到回复'),'poll erased the empty reply');
+ assert(selected('2号小伙子')&&text().includes('我是助手。'),'poll erased the sent message');
  if(new URLSearchParams(location.search).has('shot')){document.body.dataset.testResult='passed';return}
- const normal=await send('再说一句');emit(normal,'delta',{text:'你好。'});finish(normal,'你好。');
+ const normal=await send('再说一句');say(normal,'你好。');finish(normal,'你好。');
  await waitFor(()=>!$('#thread .live')&&text().includes('你好。'),'normal reply lost at completion');
  assert(selected('2号小伙子')&&text().includes('再说一句'),'normal completion left chat');
  const empty=await send('没有内容时呢');finish(empty,'','responses: empty response');
  await waitFor(()=>$('#thread .reply-error'),'empty response error missing');
  assert(selected('2号小伙子')&&text().includes('没有内容时呢'),'empty response error erased chat');
  assert($('#thread .reply-error').textContent.includes('这次没有收到回复'),'empty error is not readable');
- const late=await send('稍后再答');emit(late,'delta',{text:'旧的回复'});
+ const late=await send('稍后再答');say(late,'旧的回复');
  await waitFor(()=>text().includes('旧的回复'),'late stream missing');
  $('[data-bot="另一个Bot"]').click();
  await waitFor(()=>selected('另一个Bot')&&!$('#thread .thread-skeleton'),'switch failed');

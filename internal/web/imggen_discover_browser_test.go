@@ -91,15 +91,15 @@ const openGenerated=async()=>{
  emit(stream,'part',{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}});
  await new Promise(r=>setTimeout(r,20));
  assert(!$('#thread .live .gallery'),'completion part alone displayed a picture');
- // Simulate the subsequent notify_owner success and final Entry.Images.
+ // Simulate the subsequent send_message_to_user success and final Entry.Images.
  fixture.messages[stream.bot].push({...message('assistant','已用挂图方法挂上。'),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}}],images:[imageID]});
  emit(stream,'done',{text:'已用挂图方法挂上。'});stream.controller.close();
  await waitFor(()=>!$('#thread .live')&&$('#thread').querySelectorAll('.gallery img').length===2,'final reply did not attach image');
  assert(!$('#thread .hs-step'),'history restored dedicated image component');
  // A save-only final reply has no gallery, even with a successful hosted part.
- fixture.messages[stream.bot].push({...message('assistant','仅保存于 generated/saved.png。'),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_saved'}}]});
+ fixture.messages[stream.bot].push(message('user','只存不挂'),{...message('assistant',''),parts:[{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_saved'}}]},...sayRows('仅保存于 generated/saved.png。'));
  // Failed delivery remains plain text without Images, never a gallery.
- fixture.messages[stream.bot].push({...message('assistant','挂图失败，文件仍在 generated/large.png。'),parts:[{type:'hosted',text:'[厂商生图: 已保存到工作区 generated/large.png]',hosted:{id:'ig_failed',name:'image_generation',status:'completed',query:'大图'}}]});
+ fixture.messages[stream.bot].push(message('user','挂大图'),{...message('assistant',''),parts:[{type:'hosted',text:'[厂商生图: 已保存到工作区 generated/large.png]',hosted:{id:'ig_failed',name:'image_generation',status:'completed',query:'大图'}}]},...sayRows('挂图失败，文件仍在 generated/large.png。'));
  $('[data-bot="另一个Bot"]').click();await waitFor(()=>$('#title').textContent.includes('另一个Bot'),'switch failed');
  $('[data-bot="2号小伙子"]').click();await waitFor(()=>$('#thread').textContent.includes('generated/large.png'),'history not restored');
  assert($('#thread').querySelectorAll('.gallery').length===2,'failed delivery created gallery');

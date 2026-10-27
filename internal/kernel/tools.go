@@ -56,8 +56,10 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 		list = append(list, personaTool{k}, profileTool{k})
 	}
 	if namedLink(links, link.NameTimer) {
-		list = append(list, routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k}, notifyTool{k})
+		list = append(list, routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k})
 	}
+	// The owner sees only what the bot sends, so every bot can send.
+	list = append(list, sendMessageTool{k})
 	if namedLink(links, link.NameContext) {
 		list = append(list, historyTool{k}, expandTool{k})
 	}
@@ -65,7 +67,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 		list = append(list, askTool{k})
 	}
 	if namedLink(links, link.NamePeers) {
-		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}, botStatusTool{k})
+		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, groupHistoryTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}, botStatusTool{k})
 	}
 	if k.isPrimary() {
 		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
@@ -174,13 +176,13 @@ func (t personaTool) Run(_ context.Context, args json.RawMessage) (string, error
 	return "persona saved; it applies on the next wake", nil
 }
 
-type notifyTool struct{ k *Kernel }
+type sendMessageTool struct{ k *Kernel }
 
-func (notifyTool) Name() string { return "notify_owner" }
-func (notifyTool) Description() string {
-	return "Leave a notification for the owner. importance is low, normal, or high. The note is delivered on any wake. images shows pictures in your reply bubble in the owner's chat: pasted image ids or workspace file paths, PNG, JPEG, GIF, or WebP, up to 4 and 10 MiB together per reply, at most 2048 px on a side. Use it to show a local picture; do not link one."
+func (sendMessageTool) Name() string { return "send_message_to_user" }
+func (sendMessageTool) Description() string {
+	return "Say something to the owner; it is the only way they see you, since plain reply text is hidden. One call is one chat bubble; on a wake the owner is not chatting in, it is also a notification. Keep it short, plain and easy to follow: no jargon, no manual, no officialese. importance: low, normal or high. images: pasted ids or workspace paths (PNG, JPEG, GIF, WebP), at most 4 and 10 MiB per reply, 2048 px a side; show local pictures this way, never link them."
 }
-func (notifyTool) Parameters() any {
+func (sendMessageTool) Parameters() any {
 	return schema(map[string]any{
 		"text":       stringProp("what the owner should see"),
 		"importance": stringProp("low, normal, or high; default normal"),
@@ -191,8 +193,17 @@ func (notifyTool) Parameters() any {
 		},
 	}, []string{"text"})
 }
-func (notifyTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+
+// Confirm's summary is the text, so the live chat can show the bubble when
+// the call lands.
+func (sendMessageTool) Confirm(args json.RawMessage) (bool, string, error) {
+	var in struct {
+		Text string `json:"text"`
+	}
+	_ = json.Unmarshal(args, &in)
+	return false, strings.TrimSpace(in.Text), nil
+}
+func (t sendMessageTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Text       string   `json:"text"`
 		Importance string   `json:"importance"`
@@ -203,13 +214,21 @@ func (t notifyTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 	}
 	text := strings.TrimSpace(in.Text)
 	if text == "" {
-		return "", errors.New("notify: empty text")
+		return "", errors.New("send_message_to_user: empty text")
 	}
 	// Pictures are checked and stored before the note goes out, so a refused
 	// picture does not leave a note that promises it.
 	images, err := t.k.attachOutImages(ctx, in.Images)
 	if err != nil {
 		return "", err
+	}
+	// In owner chat the bubble is the delivery; the outbox and the desktop are
+	// for wakes the owner is not watching.
+	if turn := t.k.imageTurn(ctx); turn != nil && (turn.turnSource == link.NameTerminal || turn.turnSource == link.NameWeb) {
+		if len(images) > 0 {
+			return fmt.Sprintf("sent to the owner's chat with %d picture(s): %s", len(images), strings.Join(images, ", ")), nil
+		}
+		return "sent to the owner's chat", nil
 	}
 	if err := deliverNote(ctx, t.k, text); err != nil {
 		return "", err
@@ -234,7 +253,7 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 
 // pushFindings delivers a non-empty final reply from an untrusted wake.
 // Owner chat on the terminal or web is not pushed. SILENT is not a finding.
-// A notify_owner covers its input through that point, so its trailing reply
+// A send_message_to_user covers its input through that point, so its trailing reply
 // is not sent again. A later incoming message can produce a new finding.
 func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
 	switch k.curTurn().turnSource {
@@ -244,9 +263,9 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	var replies []string
 	covered := false
 	for _, msg := range produced {
-		// notify_owner covers the inputs it saw, not later arrivals. All ordering
+		// send_message_to_user covers the inputs it saw, not later arrivals. All ordering
 		// comes from the normal conversation; no per-result receipt is involved.
-		if msg.Role == provider.RoleTool && msg.Name == "notify_owner" && strings.Contains(msg.Text(), "notified the owner") {
+		if msg.Role == provider.RoleTool && msg.Name == "send_message_to_user" && strings.Contains(msg.Text(), "notified the owner") {
 			covered = true
 			replies = nil
 		}

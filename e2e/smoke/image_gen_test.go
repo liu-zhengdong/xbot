@@ -119,13 +119,13 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 					// guessed filename or a fixture-created paste id.
 					rel := regexp.MustCompile(`generated/[a-zA-Z0-9._-]+\.png`).FindString(string(req.Input))
 					if rel == "" || !strings.Contains(string(req.Input), "已保存到工作区") {
-						t.Error("missing real save receipt before notify_owner")
+						t.Error("missing real save receipt before send_message_to_user")
 					}
 					if strings.Contains(string(req.Input), "已挂本条回复") {
 						t.Error("save receipt falsely claims attachment")
 					}
 					args, _ := json.Marshal(map[string]any{"text": "请看这张图", "images": []string{rel, rel}})
-					output = append(output, map[string]any{"type": "function_call", "id": "fc_notify", "call_id": "notify", "name": "notify_owner", "arguments": string(args)})
+					output = append(output, map[string]any{"type": "function_call", "id": "fc_notify", "call_id": "notify", "name": "send_message_to_user", "arguments": string(args)})
 				} else if n == wantRequests {
 					// A nominally completed tool with no image must remain an
 					// honest failure in the persisted conversation.
@@ -134,7 +134,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 				text := "生成结果已处理。"
 				if tc.attach && n == 3 {
 					if !strings.Contains(string(req.Input), "picture(s) will show in your reply bubble") {
-						t.Error("notify_owner did not confirm attachment")
+						t.Error("send_message_to_user did not confirm attachment")
 					}
 					text = "已用挂图方法挂上。"
 				}
@@ -187,7 +187,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 			if !tc.attach && len(first.Tools) != 0 {
 				t.Fatalf("hosted image ran as a local tool: %+v", first.Tools)
 			}
-			if tc.attach && (len(first.Tools) != 2 || (first.Tools[0].Name != "sh" && first.Tools[0].Name != "bash" && first.Tools[0].Name != "zsh") || first.Tools[1].Name != "notify_owner") {
+			if tc.attach && (len(first.Tools) != 2 || (first.Tools[0].Name != "sh" && first.Tools[0].Name != "bash" && first.Tools[0].Name != "zsh") || first.Tools[1].Name != "send_message_to_user") {
 				t.Fatalf("delivery did not use existing tools: %+v", first.Tools)
 			}
 			genDir := filepath.Join(work.BotDir(srv.Root, "ada"), "generated")

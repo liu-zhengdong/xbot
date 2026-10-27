@@ -15,7 +15,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
  await waitFor(()=>fixture.streams.length&&$('#thread .live'),'stream did not start');
  const s=fixture.streams.at(-1);
  // The server has no reasoning delta event; only ordinary answer text reaches here.
- emit(s,'delta',{text:'文件已读完。'});
+ say(s,'文件已读完。');
  await waitFor(()=>$('#thread').textContent.includes('文件已读完。'),'answer missing');
  assert(!$('#thread').textContent.includes('PRIVATE-THOUGHT'),'private thought in live bubble');
  finish(s,'文件已读完。');

@@ -49,7 +49,7 @@ func (s *slowTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
 // forkModel answers the interrupt in the foreground and runs the long job in the turn it forks from.
 type forkModel struct{}
 
-func (forkModel) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
+func (forkModel) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	last := req.Messages[len(req.Messages)-1]
 	var lastUser string
 	for _, m := range req.Messages {
@@ -57,12 +57,12 @@ func (forkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 			lastUser = m.Text()
 		}
 	}
+	if done, ok := spoke(req); ok {
+		return done, nil
+	}
 	switch {
 	case strings.Contains(lastUser, "插一句"):
-		if onDelta != nil {
-			onDelta("前台回答")
-		}
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("前台回答")}, nil
+		return sayTo("前台回答"), nil
 	case last.Role == provider.RoleTool:
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("后台完成")}, nil
 	default:

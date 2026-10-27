@@ -312,7 +312,7 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err != nil || string(got) != "hi" {
 		t.Fatalf("file %q err=%v", got, err)
 	}
-	if len(p.reqs[0].Tools) != 13+len(tools.NewShells()) {
+	if len(p.reqs[0].Tools) != 14+len(tools.NewShells()) {
 		t.Fatalf("tools %d", len(p.reqs[0].Tools))
 	}
 
@@ -321,8 +321,8 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(toolNamesOf(p2.reqs[0].Tools), ",") != "expand_tool_group,kernel_manual,links,todo" {
-		t.Fatalf("expected expand_tool_group, kernel_manual, links and todo, got %d", len(p2.reqs[0].Tools))
+	if strings.Join(toolNamesOf(p2.reqs[0].Tools), ",") != "expand_tool_group,kernel_manual,links,send_message_to_user,todo" {
+		t.Fatalf("expected expand_tool_group, kernel_manual, links, send_message_to_user and todo, got %d", len(p2.reqs[0].Tools))
 	}
 }
 
