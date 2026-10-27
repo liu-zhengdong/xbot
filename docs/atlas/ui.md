@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove
+verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row
 ---
 # 网页界面
 
@@ -47,7 +47,7 @@ verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai
 
 ### 人设卡设置
 
-「人设卡」是用户整个卡库（`static/persona-cards.js`、`persona-cards.css`，壳和列表复用技能设置）。一层：标题行只有「人设卡」；导语提示「内置种子已升级；你改过的不会被盖」；导语下、列表顶外缘右对齐 `[搜索人设卡][＋][导入]`，「＋」是纯图标的新建，「导入」是唯一主按钮；有卡时工具条下方显示选中的「全部」分段项，空库不显示；每行卡名、正文首行预览和 chevron，不显示 Bot 数或开关；搜索输入时先按卡名加正文前 1 KiB 即时过滤，再以服务端 `?q=` 的全文结果为准（旧回答迟到会丢掉）；选用层同样。选用层归资料抽屉：抽屉关闭或重开时 `closePick` 让还在加载的选用层作废，打开或加载期间再点不重复打开。库为空时隐藏搜索和工具条，空态中心放「写一张」（次）和「导入」（主），说明导入总是新建。无匹配显示「没有匹配的人设卡」和「清除搜索」。二层：返回「人设卡」，卡名可改，一整块正文，底栏左边次要「删除」、右边主「保存」；不在这里按 Bot 开关。删除在有 Bot 在用时说「N 个 Bot 还在用它」，确认后解绑再删。「导入 Markdown」嵌层选一份 .md（最多 256 KiB），同名时问「库里已有同名人设卡」，「仍然导入」新建带编号的一张，原来那张不变。卡正文进页面只用 textContent。
+「人设卡」是用户整个卡库（`static/persona-cards.js`、`persona-cards.css`，壳和列表复用技能设置）。一层：标题行只有「人设卡」；导语提示「内置种子已升级；你改过的不会被盖」；导语下、列表顶外缘一行左侧是选中的「全部」分段项，右侧是 `[搜索人设卡][＋][导入]`（窄屏可折行），「＋」是纯图标的新建，「导入」是唯一主按钮；空库不显示工具条；每行卡名、正文首行预览和 chevron，不显示 Bot 数或开关；搜索输入时先按卡名加正文前 1 KiB 即时过滤，再以服务端 `?q=` 的全文结果为准（旧回答迟到会丢掉）；选用层同样。选用层归资料抽屉：抽屉关闭或重开时 `closePick` 让还在加载的选用层作废，打开或加载期间再点不重复打开。库为空时隐藏搜索和工具条，空态中心放「写一张」（次）和「导入」（主），说明导入总是新建。无匹配显示「没有匹配的人设卡」和「清除搜索」。二层：返回「人设卡」，卡名可改，一整块正文，底栏左边次要「删除」、右边主「保存」；不在这里按 Bot 开关。删除在有 Bot 在用时说「N 个 Bot 还在用它」，确认后解绑再删。「导入 Markdown」嵌层选一份 .md（最多 256 KiB），同名时问「库里已有同名人设卡」，「仍然导入」新建带编号的一张，原来那张不变。卡正文进页面只用 textContent。
 
 ### 图片生成设置
 

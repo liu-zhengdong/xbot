@@ -105,9 +105,9 @@
       wrap.append(glyph, search);
       const add = button("btn pc-add", "", () => openDetail(null)); add.setAttribute("aria-label", "新建人设卡"); add.title = "新建人设卡";
       const plus = node("span", "pc-plus"); plus.setAttribute("aria-hidden", "true"); add.append(plus);
-      toolbar.append(wrap, add, button("btn pri", "导入", ev => openImport(ev.currentTarget)));
       const segments = node("div", "pc-segments"); segments.setAttribute("role", "group"); segments.setAttribute("aria-label", "人设卡筛选");
       const all = button("pc-segment", "全部", () => {}); all.setAttribute("aria-pressed", "true"); segments.append(all);
+      toolbar.append(segments, wrap, add, button("btn pri", "导入", ev => openImport(ev.currentTarget)));
       const list = node("div", "sklist");
       const none = node("div", "sknone"); none.setAttribute("aria-live", "polite");
       none.append(node("p", "", "没有匹配的人设卡"), button("clearsrch", "清除搜索", () => { query = ""; search.value = ""; found = null; ask(""); paint(); search.focus?.(); }));
@@ -126,7 +126,7 @@
       search.oninput = () => { query = search.value; found = null; ask(query); paint(); };
       paint();
       if (query.trim()) ask(query);
-      body.replaceChildren(head, lead, statusLine, toolbar, segments, list, none);
+      body.replaceChildren(head, lead, statusLine, toolbar, list, none);
     }
 
     // ---- 二层：一张卡（新建时 row 为 null）----
