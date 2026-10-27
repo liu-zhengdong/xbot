@@ -1,5 +1,10 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 云上账号壳切开
+
+- 账号仓 tip `26a0067`：云静态只留登录 / 注册 / 查收邮件；删 `#devices` / `#gateway`；有会话一律 `/app/`；无设备/离线用设备侧 boot。见 [界面](atlas/ui.md#公网登录后的设备壳)。
+- 复审 PASS（Pi cas-rev，P0/P1/P2=0）。`docs/dev/cloud-auth-split.md` 已毕业删除。未 push；禁 sync-app；登录/注册壳待设计师逛后再 →已完成。
+
 ## 2026-10-27 生图挂气泡重开（Bot 主动 notify_owner）
 
 - 上一版内核 Save 自动 `attachOutImages`（`b389806`）作废。Save 只落盘 `generated/`；交付改由 Bot 调既有 `notify_owner` images 挂进本轮回复。引导禁「自动挂」话术。见 [内核](atlas/kernel.md#厂商生图)、[供应商](atlas/providers.md)、[界面](atlas/ui.md#图片生成设置)。

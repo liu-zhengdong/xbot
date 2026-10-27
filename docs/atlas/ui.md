@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 4524fd2
+verified: 2026-10-27 @ 26a0067-account
 ---
 # 网页界面
 
@@ -31,7 +31,7 @@ verified: 2026-10-27 @ 4524fd2
 
 ### 公网登录后的设备壳
 
-公网账号入口保留登录页、boot / bridge、仅控制 `/app/` 文档的资源 worker 和字体；业务 HTML、JS、CSS、图标通过当前配对设备的 `GET /api/ui/static/<path>` 读取 serve 进程实际提供的 UI。本机路由与 pipe 共用解析：开启 `XBOT_DEV_STATIC` 时同读配置目录（每次请求重读，缺文件不回落 embed），关闭时同读内嵌 `staticFS`；开发覆盖时 `X-Xbot-Tip` 为 `dev-static`。同源浏览器资源请求由 worker 交回所属页面的现有加密 pipe，账号 API 继续在云上。没有云上业务壳副本或持久业务资源缓存。
+公网账号入口（`xbot-account` 云静态）只留登录 / 注册 / 查收邮件三屏；`#devices` / `#gateway` 已删，有会话一律进 `/app/`，无设备或离线用设备侧 boot 中文，不回落云设备列表。入口另保留 boot / bridge、仅控制 `/app/` 文档的资源 worker 和字体；业务 HTML、JS、CSS、图标通过当前配对设备的 `GET /api/ui/static/<path>` 读取 serve 进程实际提供的 UI。本机路由与 pipe 共用解析：开启 `XBOT_DEV_STATIC` 时同读配置目录（每次请求重读，缺文件不回落 embed），关闭时同读内嵌 `staticFS`；开发覆盖时 `X-Xbot-Tip` 为 `dev-static`。同源浏览器资源请求由 worker 交回所属页面的现有加密 pipe，账号 API 继续在云上。没有云上业务壳副本或持久业务资源缓存。
 
 账号菜单可选择设备；切换会关闭原 pipe 并整页重载。未选择时取在线设备；明确选择的设备离线时显示原因和重试，不自动换设备、不回落旧壳。会话版本由设备静态响应的 `X-Xbot-Tip` 提供，纯 dev 构建用内嵌 UI 摘要区分。同步脚本不再是业务 UI 发版路径。协议、安全和体限见 [ADR 0029](../adr/0029-public-ui-single-source-via-pipe.md)、[API](../API.md#设备静态壳)。 设计师用户视角已 PASS（合入 tip `a02e3f3`）：公网 `/app/` 仅 pipe 薄引导（`boot.js` 200、`app.js` 404），业务壳经设备 `GET /api/ui/static`；本约定即 atlas 真源。登录后主壳缺会话不挡本条收口。
 
@@ -149,8 +149,8 @@ Bot 名字保留原样的大小写（默认 Bot 叫 XBot），可以用的字符
 
 ### 登录和会话
 
-公网 `account.babelgo.cn:8443` 登录后进入 `/app/`，账号仓同步同一套 static 并前置 pipe bridge，手机也直接打开主界面。bridge 的账号适配走原 Bearer，主人 API 经 ADR 0024 管道 `Do`；不反代 8788。`xbot serve` 保存 0600 的主人账号会话、启动/恢复设备待命、独立报在线，登出/失效取消；协议、上限和缓冲 SSE 边界统一见 [pipe](../pipe.md)。
-进门靠**账号**（邮箱 + 密码，[ADR 0025](../adr/0025-account-is-the-way-in.md)），桌面和手机一样。`account.js` / `account.css` 画登录、创建账号、查收邮件、我的设备、账号 / 网关五屏，`#acct` 盖在主界面上；任何一屏都不放产品标和名字，标题直接是「登录」「创建账号」。宽于 640px 是桌面构图（窗口灰底、居中 420px 卡），登录价值句用桌面那句；窄屏是手机全屏单列。页面启动先读 `GET /api/account/me`：没登录进登录屏；账号是这台电脑的主人（见下）时，宽屏直接进主界面，窄屏落在「我的设备」，点本机的 Bot 进对应对话；不是主人的账号只看到自己的设备（空态一句说明）。创建账号不发信，成功即进门（同登录成功）；同一 IP 每小时第 6 次注册回 429 `busy`。「用邮件里的链接登录」进「查收邮件」，每 2 秒（后台标签 5 秒）轮询，邮件里的链接在任何设备上点「确认」后这里自动进门；也可改用 6 位验证码。GitHub / Google 两个按钮灰着并标「即将支持」，点了什么都不发生。账号菜单含「设备」「账号」（右侧弱化「网关」）与危险组「退出登录」；「退出登录」退出账号并关掉主人会话，桌面版也可以退出。
+公网 `account.babelgo.cn:8443` 云静态只走登录 / 注册 / 查收邮件；成功或已有会话进入 `/app/`（账号仓前置 pipe bridge），手机也直接打开主界面。bridge 的账号适配走原 Bearer，主人 API 经 ADR 0024 管道 `Do`；不反代 8788。`xbot serve` 保存 0600 的主人账号会话、启动/恢复设备待命、独立报在线，登出/失效取消；协议、上限和缓冲 SSE 边界统一见 [pipe](../pipe.md)。
+进门靠**账号**（邮箱 + 密码，[ADR 0025](../adr/0025-account-is-the-way-in.md)），桌面和手机一样。本机业务壳上的 `account.js` / `account.css` 仍画登录、创建账号、查收邮件、我的设备、账号 / 网关五屏，`#acct` 盖在主界面上；任何一屏都不放产品标和名字，标题直接是「登录」「创建账号」。宽于 640px 是桌面构图（窗口灰底、居中 420px 卡），登录价值句用桌面那句；窄屏是手机全屏单列。页面启动先读 `GET /api/account/me`：没登录进登录屏；账号是这台电脑的主人（见下）时，宽屏直接进主界面，窄屏落在「我的设备」，点本机的 Bot 进对应对话；不是主人的账号只看到自己的设备（空态一句说明）。创建账号不发信，成功即进门（同登录成功）；同一 IP 每小时第 6 次注册回 429 `busy`。「用邮件里的链接登录」进「查收邮件」，每 2 秒（后台标签 5 秒）轮询，邮件里的链接在任何设备上点「确认」后这里自动进门；也可改用 6 位验证码。GitHub / Google 两个按钮灰着并标「即将支持」，点了什么都不发生。账号菜单含「设备」「账号」（右侧弱化「网关」）与危险组「退出登录」；「退出登录」退出账号并关掉主人会话，桌面版也可以退出。
 
 账号服务在 `internal/account`：`Store`（现为一个 0600 的 `accounts.json`）和 `Mailer`（现为把信写成文件的 `OutboxMailer`）两个接口；密码 PBKDF2-SHA256 60 万次；链接 token、验证码、会话都只存哈希；注册直接建已验证账号并发会话（首期免邮，ADR 0025 第 6 条），已占用的邮箱按登录处理，密码不对回 `credentials` 并计一次失败；注册按客户端 IP 每小时 5 次限频（内存里，`X-Real-IP` 优先、不读 `X-Forwarded-For`；进程内 `Local` 调用不带 IP 时不限）；验证 15 分钟有效、只能用一次，验证码错 5 次作废，「再发一次」30 秒内不重发，密码错 10 次锁 15 分钟；已存在和不存在的邮箱回同样的话，后者不发信。同一个 `Handler` 挂在 `/account/v1/`，可以单独跑成 `xbot account-api`（环境变量 `DATA_DIR`、`BASE_URL`、`ADDR`、`MAIL_MODE`、`MAIL_OUTBOX`），部署时只要这个二进制和数据目录。`xbot serve` 设了 `XBOT_ACCOUNT_API` 就调它；没设就在进程里跑一份替身，数据在 `<root>/account-api/`，信写到 `<root>/account-api/outbox/`，邮件链接指回本机地址，本机只挂链接页的 GET/POST。
 
