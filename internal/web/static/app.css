@@ -221,13 +221,11 @@ button:disabled { cursor: default; }
   position: relative; min-width: 0; height: 100%;
 }
 
-/* The identity card: avatar, name and the bot's short description float over
-   the thread and toggle the bot panel. Below 960 it is one row that fits the
-   header band (the drawer opens beneath that band); wider it stacks. */
+/* The identity card floats over the thread and toggles the bot panel. */
 .top-title {
   position: relative; z-index: 29;
   display: flex; flex-direction: column; justify-content: center;
-  flex: 0 1 auto; min-width: 0; max-width: min(360px, 100%); min-height: 40px; margin-inline: auto;
+  flex: 0 1 auto; min-width: 0; max-width: min(260px, 100%); min-height: 40px; margin-inline: auto;
   padding: 5px 14px; border: 0; border-radius: 14px;
   background: color-mix(in srgb, var(--x-card) 88%, transparent);
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
@@ -242,6 +240,7 @@ button:disabled { cursor: default; }
   background: var(--x-fill-2); transform: translateY(-1px);
 }
 .top-title:disabled { cursor: default; }
+.top-title .title { line-height: 1.2; }
 .main.peer .top-title { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) { .top-title { transition: none; } }
 
@@ -263,18 +262,6 @@ button:disabled { cursor: default; }
 }
 /* In the row card the face sits left of both lines. */
 .top-title .avatar.head { position: absolute; left: 14px; top: 50%; width: 28px; height: 28px; margin-top: -14px; }
-
-@media (min-width: 960px) {
-  .top-inner { align-items: flex-start; padding-top: 12px; }
-  .top-title, .top-title:has(.avatar.head) {
-    align-items: center; text-align: center; gap: 4px;
-    min-width: 168px; max-width: min(300px, 100%); padding: 10px 18px 12px;
-  }
-  .main.peer .top-title { max-width: 100%; }
-  .top-title .title { flex-direction: column; gap: 4px; }
-  .top-title .avatar.head { position: static; width: 36px; height: 36px; margin: 0 0 2px; }
-  .chat > .thread { padding-top: calc(var(--top-h) + 68px); }
-}
 
 .msg > .avatar { width: 24px; height: 24px; margin-top: 1px; }
 
@@ -308,9 +295,11 @@ button:disabled { cursor: default; }
 }
 
 .subtitle {
-  display: block; font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 1px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  width: min(680px, 100% - 64px); margin: 0 auto;
+  flex: none; min-height: 1.4em;
+  font-size: 12px; line-height: 1.4; color: var(--muted);
 }
+.subtitle[hidden] { display: block !important; visibility: hidden; }
 
 /* Shared controls */
 
@@ -1414,9 +1403,9 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 @media (min-width: 960px) {
   .panel { width: 384px; max-width: calc(100% - 16px); }
-  /* 384px drawer + half of the widest 300px card on each side. */
-  @container (max-width: 1068px) {
-    .panel { top: calc(var(--top-h) + 68px); }
+  /* Leave the header reachable when the drawer could cover the card. */
+  @container (max-width: 1128px) {
+    .panel { top: var(--top-h); }
   }
 }
 
@@ -2089,9 +2078,6 @@ html[data-theme="dark"] {
   white-space: normal;
 }
 
-/* The panel's action row (and the header subtitle). */
-.top-title .subtitle { margin-top: 0; }
-
 /* Bot row actions reuse the shared menu and viewport positioning. */
 .panel-more { width: 220px; max-width: calc(100vw - 24px); background: var(--x-card); line-height: normal; }
 .panel-more .mgap { height: 6px; }
@@ -2405,8 +2391,8 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .pair-side .pair-who { font-size: 15px; font-weight: 620; }
 .pair-device { font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; }
 .pair-swap { width: 14px; height: 14px; color: var(--muted); flex: none; }
-.subtitle.peer-note { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-.subtitle.peer-note[hidden] { display: none; }
+.subtitle.peer-note { display: flex; align-items: center; gap: 6px; }
+.subtitle.peer-note[hidden] { display: flex !important; }
 .subtitle.peer-note .icon { width: 12px; height: 12px; flex: none; }
 .main.peer .top-title { align-self: center; }
 .main.peer #back { order: 99; }

@@ -137,7 +137,6 @@ try {
         <!-- The identity chip opens and closes the bot panel. -->
         <button id="head-chip" class="top-title" type="button" aria-label="打开信息" aria-expanded="false" disabled>
           <span id="title" class="title">XBot</span>
-          <span id="subtitle" class="subtitle" hidden></span>
         </button>
         <!-- Shown once a newer version is downloaded: a click installs it and
              starts XBot again. Nothing appears while it downloads in the
@@ -149,6 +148,7 @@ try {
       </div>
     </header>
     <div id="thread" class="thread"></div>
+    <div id="subtitle" class="subtitle" hidden></div>
     <!-- The exchange between two bots is read-only: this replaces the composer. -->
     <div class="peer-dock"><button id="peer-close" class="peer-close secondary" type="button">关闭聊天</button></div>
     <div class="dock">

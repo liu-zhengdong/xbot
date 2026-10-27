@@ -4290,14 +4290,8 @@
     }
     if (state.peer) subtitle.classList.remove("peer-note");
     subtitleError = isError;
-    let desc = "";
-    if (!text && state.sel && state.sel.type === "bot") {
-      const bot = (state.bots || []).find((b) => b.name === state.sel.id);
-      desc = (bot && bot.description) || "";
-    }
-    const show = text || desc;
-    subtitle.textContent = show;
-    subtitle.hidden = !show;
+    subtitle.textContent = text;
+    subtitle.hidden = !text;
   }
 
   function resetConversation() {

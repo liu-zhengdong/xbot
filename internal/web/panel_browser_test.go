@@ -145,6 +145,12 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  }
  if(innerWidth>=768&&document.documentElement.classList.contains('in-app'))assert(near(rect($('.top')).height,88),'desktop shell header is not 88px');
  const chip=$('#head-chip');
+ assert(!chip.contains($('#subtitle'))&&!chip.textContent.includes('这是一段很长的 Bot 简介'),'identity card contains a subtitle or description');
+ assert($('#subtitle').hidden,'bot description is shown as a status');
+ const card=rect(chip),head=rect($('#title .avatar')),name=rect($('#title .title-name'));
+ assert(card.height<=44&&near(head.width,28)&&head.right<=name.left,'identity card is not compact and horizontal: '+[card.height,head.width,head.right,name.left]);
+ const thread=$('.chat > .thread'),header=rect($('.top'));
+ assert(near(parseFloat(getComputedStyle(thread).paddingTop),header.height+4),'message top padding does not follow header height');
  if(innerWidth>=768)assert(!$('#sidebar').classList.contains('rail'),'sidebar is not expanded');
  assert(!$('#info')&&!$('.ptog'),'separate panel toggle still present');
  assert(!chip.disabled&&chip.contains($('#title .avatar'))&&chip.getAttribute('aria-expanded')==='false','chip is not the closed toggle');
@@ -260,8 +266,7 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  }
  const hit=document.elementFromPoint(cr.x+cr.width/2,cr.y+cr.height/2);
  assert(rect(panel).top>=cr.bottom-1||rect(panel).left>=cr.right,'drawer overlaps the header chip');
- // At wide widths the stacked card's centre lands on the avatar SVG, which
- // has no .click(), so dispatch the click on whatever the pointer hits.
+ // Dispatch on the actual hit target, which may be an SVG without .click().
  hit.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));await sleep(250);finishAnimations();
  assert(!panel.classList.contains('open')&&!chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='false','chip does not close panel');
  const closing=new DOMMatrix(getComputedStyle(panel).transform);

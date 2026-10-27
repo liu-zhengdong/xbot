@@ -124,10 +124,14 @@ const send=async value=>{
 };
 (async()=>{
  await waitFor(()=>selected('2号小伙子')&&!$('#thread .thread-skeleton'),'app did not boot');
+ const threadBottom=$('#thread').getBoundingClientRect().bottom;
  const s=await send('你现在是什么模型？');say(s,'我是助手。');
+ assert(!$('#head-chip').contains($('#subtitle'))&&!$('#subtitle').hidden&&$('#subtitle').textContent==='正在回复','reply status is not visible outside the card');
+ assert(Math.abs($('#thread').getBoundingClientRect().bottom-threadBottom)<0.1,'thread moved when reply status appeared');
  await waitFor(()=>text().includes('我是助手。'),'message missing');
  finish(s,'我是助手。');
  await waitFor(()=>!$('#thread .live'),'stream did not settle');
+ assert(Math.abs($('#thread').getBoundingClientRect().bottom-threadBottom)<0.1,'thread moved when reply status disappeared');
  assert(selected('2号小伙子'),'selection cleared at completion');
  assert(text().includes('你现在是什么模型？'),'user message disappeared');
  assert(text().includes('我是助手。'),'sent message lost at completion');

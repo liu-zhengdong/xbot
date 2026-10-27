@@ -1,5 +1,11 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 对话顶悬浮卡紧凑回修（功能分支）
+
+- 复审 P1 回修：底部状态行预留高度，发送和回复结束时不再推动消息列；浏览器回归覆盖两次切换，断言在修复前失败，修复后连续 3 次通过，线程底边变化均小于 0.1px。gofmt、vet 和 atlas audit 通过（audit 有既有告警）；全仓及 web 全包三次检查再次在 `TestWebApprovalAllowAndDeny` 超时，未完成三次；全仓还报 e2e、kernel、work 既有失败，以及 OAuth 固定端口占用（并行检查时发生）。未测帧率或交互 p95。
+- 各断点身份卡只显示 28px 头像和名字，状态及 Bot 往来提示移到对话底部；消息顶垫和会遮挡卡的抽屉回到顶栏下沿。Chrome 脚本在 390–1440px 检查尺寸、命中及开合，另检查回复状态；相关测试三次通过，新增回归在旧代码失败，1200px 脚本截图已查看。gofmt、vet 通过；atlas audit 退出 0，有既有告警。
+- 全仓测试报 e2e `TestSpawnWhileChatKeepsAnswering` 等待超时、kernel `TestLongTurnStaysUnderTheCeiling` 和 work `TestShellUsesBotDir` 失败；全仓和 web 全包三次均在 `TestWebApprovalAllowAndDeny` 以 180 秒超时退出，未做基线对照。新增请求、轮询和动画均为 0；未测帧率或交互 p95，未做用户日用验收，未合 main、未 push。
+
 ## 2026-10-27 技能收成提议（功能分支）
 
 空库也注入提议与确认后写入的模型规则，沿用现有写工具和 Normal 权限；脚本化内核对话、Dispatch、skill、review、agenttype 定向测试和 vet 通过，atlas audit 退出 0（有既有告警）。未测真模型、主人日用、交互 p95；新增网络请求和后台任务均为 0。未合 main、未 push。
