@@ -375,8 +375,6 @@
       const old = row.querySelector(".rail-status");
       if (old) old.remove();
       const busy = kind === "running" || kind === "awaiting";
-      setTip(av, niceName(name), "right");
-      if (row.classList.contains("pin")) setTip(row, niceName(name), "right");
       if (busy && !row.classList.contains("pin")) {
         const dot = el("span", "rail-status " + kind);
         dot.setAttribute("aria-hidden", "true");
@@ -3638,8 +3636,11 @@
   function listButton(name, preview, active, unread, paint, primary, label) {
     const btn = el("button", "item" + (active ? " active" : ""));
     btn.type = "button";
-    setTip(btn, name, "right");
+    // The name is on the row; only the 72px rail, which hides it, tips it.
+    setTip(btn, label || niceName(name), "rail");
+    btn.setAttribute("aria-label", label || niceName(name));
     const av = avatar(name, paint);
+    setTip(av, "");
     if (unread) av.append(el("i", "unread"));
     const body = el("span", "item-body");
     const line = el("span", "name-line");
@@ -3712,7 +3713,7 @@
     });
   }
 
-  function placeMenu(anchor, menu, side) {
+  function placeMenu(anchor, menu, side, point) {
     document.body.append(menu);
     menu.hidden = false;
     menu.style.position = "fixed";
@@ -3727,7 +3728,11 @@
     const height = menu.offsetHeight;
     const r = anchor.getBoundingClientRect();
     let left, top;
-    if (side === "panel") {
+    if (point) {
+      // A context menu opens at the pointer and flips inward at the edges.
+      ({left, top} = messageMenuPosition(point.x, point.y, width, height, innerWidth, innerHeight));
+      menu.style.transformOrigin = Math.max(0, Math.min(width, point.x - left)) + "px " + Math.max(0, Math.min(height, point.y - top)) + "px";
+    } else if (side === "panel") {
       // Menus opened from the panel stay inside it: left edge on the action
       // row's line, 220 wide, dropping from the button.
       const p = $("panel").getBoundingClientRect();
@@ -3851,9 +3856,10 @@
       btn.type = "button";
       btn.dataset.bot = b.name;
       btn.dataset.botMenu = "true";
-      setTip(btn, niceName(b.name), "right");
+      setTip(btn, niceName(b.name), "rail");
       btn.setAttribute("aria-label", niceName(b.name));
       const av = avatar(b.name, paintOfBot(b), "pin");
+      setTip(av, "");
       const pinActive = state.sel && state.sel.type === "bot" && state.sel.id === b.name;
       if (!pinActive && (!!b.unread || (b.notes || 0) > 0)) av.append(el("i", "unread"));
       // A pinned bot shows its name under the face; the primary bot keeps its pin.
@@ -4588,18 +4594,20 @@
     ev.preventDefault();
     if (botPress || ev.pointerType === "touch") suppressBotClick = {name: row.dataset.bot, until: Infinity};
     cancelBotPress();
-    openPanelMore(row, row.dataset.bot);
+    // A keyboard-opened menu has no pointer; it falls back to the row.
+    openPanelMore(row, row.dataset.bot, ev.clientX || ev.clientY ? {x: ev.clientX, y: ev.clientY} : null);
   });
   sidebar.addEventListener("pointerdown", (ev) => {
     cancelBotPress();
     suppressBotClick = null;
     const row = sidebarBot(ev.target);
     if (!row || ev.pointerType === "mouse" || !ev.isPrimary) return;
-    botPress = {x: ev.clientX, y: ev.clientY, timer: setTimeout(() => {
+    const point = {x: ev.clientX, y: ev.clientY};
+    botPress = {...point, timer: setTimeout(() => {
       botPress = null;
       if (!row.isConnected) return;
       suppressBotClick = {name: row.dataset.bot, until: Infinity};
-      openPanelMore(row, row.dataset.bot);
+      openPanelMore(row, row.dataset.bot, point);
     }, 500)};
   });
   sidebar.addEventListener("pointermove", (ev) => {
@@ -4624,10 +4632,11 @@
     return (state.bots.find((b) => b.name === name) || {}).group || "";
   }
 
-  function openPanelMore(anchor, name) {
+  function openPanelMore(anchor, name, point) {
     const data = state.bots.find((b) => b.name === name);
     if (!data) return;
     closePops();
+    hideTip();
     const pinned = !!data.pinned;
     const menu = el("div", "pop panel-more");
     const item = (ic, text, fn, opts = {}) => {
@@ -4654,7 +4663,7 @@
     item("trash", "删除 Bot", () => confirmDelete(name), { danger: true });
     anchor.classList.add("on");
     anchor.setAttribute("aria-expanded", "true");
-    placeMenu(anchor, menu);
+    placeMenu(anchor, menu, undefined, point);
     panelMoreAnchor = anchor;
     panelMore = menu;
   }
@@ -7644,6 +7653,8 @@
   function placeTip(host) {
     const text = host.getAttribute("data-tip");
     if (!text || (host.getAttribute("aria-expanded") === "true" && host !== $("head-chip"))) { hideTip(); return; }
+    const rail = host.closest(".sidebar.rail");
+    if (host.dataset.tipPlacement === "rail" && !rail) { hideTip(); return; }
     tipEl.textContent = text;
     tipEl.hidden = false;
     const r = host.getBoundingClientRect();
@@ -7651,7 +7662,7 @@
     const th = tipEl.offsetHeight;
     let left = r.left + (r.width / 2) - (tw / 2);
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
-    const right = host.dataset.tipPlacement === "right" && host.closest(".sidebar.rail");
+    const right = (host.dataset.tipPlacement === "right" || host.dataset.tipPlacement === "rail") && rail;
     if (right) left = Math.max(8, Math.min(r.right + 8, window.innerWidth - tw - 8));
     let top = right ? Math.max(8, Math.min(r.top + (r.height - th) / 2, window.innerHeight - th - 8)) : r.bottom + 6;
     if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 6);

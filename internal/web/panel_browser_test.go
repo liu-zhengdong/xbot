@@ -265,6 +265,11 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(item('取消置顶'),'pinned tile does not use its own state');
  escape();assert(!$('.panel-more'),'Escape did not close menu');
  context('另一个Bot');document.body.click();assert(!$('.panel-more'),'outside click did not close menu');
+ // The menu opens at the pointer, and neither the row nor its face tips the visible name.
+ row('另一个Bot').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:60,clientY:120}));
+ assert(near(rect($('.panel-more')).left,60)&&near(rect($('.panel-more')).top,120),'menu not at pointer');
+ assert($('.tip').hidden&&!row('另一个Bot').querySelector('[data-tip]'),'row menu shows a name tip');
+ escape();
  // A remote row can share a local name; it must not expose local destructive actions.
  const remote=document.createElement('button');remote.dataset.bot='另一个Bot';$('#sidebar').append(remote);
  remote.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
