@@ -67,6 +67,7 @@
     messages: [],
     traceOpen: {},
     traceOut: {},
+    traceThink: {},
     // The context panel's own UI state: which request is shown, which band or
     // message is open, and the snapshot itself (fetched per bot, never cached
     // across a switch so a stale turn cannot be misread as the current one).
@@ -4281,6 +4282,7 @@
     state.panelData = null;
     state.traceOpen = {};
     state.traceOut = {};
+    state.traceThink = {};
     // The snapshot belongs to one bot's one wake. Keeping it would show A's
     // context under B's name, so it is dropped and refetched on demand.
     state.ctxSnap = null;
@@ -4972,6 +4974,7 @@
         time: m.time,
         names: calls.map((c) => c.name === "todo" ? todoTrace(c).title : c.name),
         dur: start && end > start ? end - start : 0,
+        thinking: (m.thinking || "").trim(),
         calls: calls,
       });
     }
@@ -5000,6 +5003,14 @@
 
   function traceBody(turn) {
     const box = el("div", "trace-body");
+    // Thinking stays folded until the owner opens it; repaints keep the choice.
+    if (turn.thinking) {
+      const think = el("details", "trace-think");
+      think.open = !!state.traceThink[turn.key];
+      think.append(el("summary", "text-btn", "思考"), el("pre", "trace-out", turn.thinking));
+      think.addEventListener("toggle", () => { state.traceThink[turn.key] = think.open; });
+      box.append(think);
+    }
     turn.calls.forEach((call, i) => {
       const item = el("div", "trace-call");
       if (call.name === "todo") {

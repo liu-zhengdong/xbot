@@ -70,6 +70,30 @@ func ToolResult(id, text string) []ContentPart {
 // not assistant speech and must not be parsed as kernel control lines.
 func (m Message) Text() string { return m.contentText(false) }
 
+// Thinking returns the readable reasoning text: Completions reasoning_content
+// and Anthropic thinking blocks. Signatures, redacted and encrypted reasoning
+// stay out.
+func (m Message) Thinking() string {
+	var out []string
+	for _, p := range m.Content {
+		if p.Type != PartReasoning {
+			continue
+		}
+		var r struct {
+			ReasoningContent string `json:"reasoning_content"`
+			Thinking         string `json:"thinking"`
+		}
+		_ = json.Unmarshal(p.VendorRaw, &r)
+		switch {
+		case p.Vendor == ChatCompletions && r.ReasoningContent != "":
+			out = append(out, r.ReasoningContent)
+		case p.Vendor == AnthropicMessages && r.Thinking != "":
+			out = append(out, r.Thinking)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
 // PortableText adds summaries for blocks Completions cannot replay natively.
 func (m Message) PortableText() string { return m.contentText(true) }
 

@@ -100,7 +100,9 @@ func TestThinkingToolTurnReplaysReasoningAndHidesIt(t *testing.T) {
 	}
 	mu.Unlock()
 	history := getAuth(t, ui.URL+"/api/bots/ada/transcript", cookie)
-	if strings.Contains(string(history), "SECRET-THOUGHT") || !strings.Contains(string(history), "完成。") {
+	// Readable thinking goes only to the trace's thinking field, never as content or vendor raw.
+	if !strings.Contains(string(history), `"thinking":"SECRET-THOUGHT-1"`) || strings.Count(string(history), "SECRET-THOUGHT") != 2 ||
+		strings.Contains(string(history), "vendor_raw") || strings.Contains(string(history), "reasoning_content") || !strings.Contains(string(history), "完成。") {
 		t.Fatalf("transcript API: %s", history)
 	}
 	// The internal transcript keeps it for replay.

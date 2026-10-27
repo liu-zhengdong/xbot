@@ -805,9 +805,11 @@ func (s *Server) profile(b *bot.Bot) []map[string]string {
 }
 
 type apiRow struct {
-	Seq        int                    `json:"seq"`
-	Role       string                 `json:"role"`
-	Content    string                 `json:"content,omitempty"`
+	Seq     int    `json:"seq"`
+	Role    string `json:"role"`
+	Content string `json:"content,omitempty"`
+	// Thinking is readable reasoning for the trace panel only, never vendor raw.
+	Thinking   string                 `json:"thinking,omitempty"`
 	Parts      []provider.ContentPart `json:"parts,omitempty"`
 	Name       string                 `json:"name,omitempty"`
 	Title      string                 `json:"title,omitempty"`
@@ -927,7 +929,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	for i, e := range entries {
 		row := apiRow{
 			Parts: publicParts(e.Message), Seq: i + 1, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
-			ToolCalls: e.Message.Calls(), ToolCallID: e.Message.CallID(), Time: e.Time,
+			Thinking: e.Message.Thinking(), ToolCalls: e.Message.Calls(), ToolCallID: e.Message.CallID(), Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
 			Images: e.Images,
 		}

@@ -67,6 +67,23 @@ func TestExportHidesThinkingAcrossProtocols(t *testing.T) {
 			ui := httptest.NewServer(muxOf(s))
 			defer ui.Close()
 			cookie := loginCookie(t, ui.URL, token)
+			// The trace panel gets readable thinking text and nothing else private.
+			var hist struct {
+				Messages []apiRow `json:"messages"`
+			}
+			raw := getAuth(t, ui.URL+"/api/bots/ada/transcript", cookie)
+			if err := json.Unmarshal(raw, &hist); err != nil || len(hist.Messages) != 2 {
+				t.Fatalf("transcript: %v %s", err, raw)
+			}
+			want := map[string]string{provider.ChatCompletions: "PRIVATE-completions", provider.AnthropicMessages: "PRIVATE-anthropic"}[protocol]
+			if hist.Messages[0].Thinking != want || hist.Messages[1].Thinking != "" {
+				t.Fatalf("thinking = %q, want %q", hist.Messages[0].Thinking, want)
+			}
+			for _, forbidden := range []string{"vendor_raw", "reasoning_content", "signature", "encrypted_content", "redacted_thinking", `"type":"reasoning"`} {
+				if bytes.Contains(raw, []byte(forbidden)) {
+					t.Errorf("transcript contains %s: %s", forbidden, raw)
+				}
+			}
 			for _, format := range []string{"jsonl", "md"} {
 				for _, tools := range []int{0, 1} {
 					t.Run(fmt.Sprintf("%s/tools=%d", format, tools), func(t *testing.T) {
