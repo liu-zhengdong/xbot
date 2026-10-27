@@ -112,6 +112,20 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Provider = strings.TrimSpace(in.Provider)
 	in.Model = strings.TrimSpace(in.Model)
+	// The picker lists the vendor's live catalog, so a model it shows may not be
+	// in providers.json yet; register it once the live list confirms it.
+	if _, _, err := config.Lookup(s.Root, in.Provider, in.Model); err != nil && in.Model != "" {
+		if live, err := config.ProviderModels(r.Context(), s.Root, in.Provider); err == nil {
+			for _, m := range live {
+				if m.Model == in.Model && m.Available {
+					if err := config.Add(s.Root, config.Provider{Name: in.Provider}, config.ModelSpec{Name: m.Model, Context: m.Context}); err != nil {
+						writeErr(w, 500, config.RedactHeld(err.Error()))
+						return
+					}
+				}
+			}
+		}
+	}
 	_, window, err := config.Resolve(s.Root, in.Provider, in.Model, config.Getenv)
 	if err != nil {
 		writeErr(w, 400, err.Error())

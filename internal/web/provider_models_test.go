@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/vault"
@@ -299,5 +300,39 @@ func TestProviderModelsRefreshRejectedAsksRelogin(t *testing.T) {
 				t.Fatalf("upstream body or token leaked: %q", msg)
 			}
 		})
+	}
+}
+
+// The picker lists the live catalog, so binding a model only the vendor knows
+// registers it; a model the vendor does not serve stays refused.
+func TestBindRegistersLiveCatalogModel(t *testing.T) {
+	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":[{"id":"configured"},{"id":"runtime-only","context_length":400000}]}`)
+	})
+	config.SetHeld("XBOT_API_KEY", setupTestKey)
+	if err := config.Add(s.Root, config.Provider{Name: "vendor", Protocol: config.ChatCompletions, BaseURL: config.FromEnv(config.Getenv).BaseURL, APIKeyEnv: "XBOT_API_KEY"}, config.ModelSpec{Name: "configured", Context: 200000}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := bot.Create(s.Root, "ada", "persona", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"vendor","model":"ghost"}`); code != 400 {
+		t.Fatalf("unserved model bound: %d", code)
+	}
+	if _, _, err := config.Lookup(s.Root, "vendor", "ghost"); err == nil {
+		t.Fatal("unserved model registered")
+	}
+	if code, out := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"vendor","model":"runtime-only"}`); code != 200 {
+		t.Fatalf("live model not bound: %d %v", code, out)
+	}
+	if _, m, err := config.Lookup(s.Root, "vendor", "runtime-only"); err != nil || m.Context != 400000 {
+		t.Fatalf("live model not registered: %+v %v", m, err)
+	}
+	if got, err := bot.Load(s.Root, "ada"); err != nil || got.Config().Model != "runtime-only" {
+		t.Fatalf("binding not saved: %v", err)
 	}
 }

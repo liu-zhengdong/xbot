@@ -510,25 +510,34 @@
       body.replaceChildren();
       if (!providers.length) { body.append(flat("还没有可用的供应商", button("管理供应商", "primary", goManage))); return; }
       search.hidden = false;
-      const order = Object.keys(labels), rank = p => order.indexOf(p.protocol) < 0 ? 99 : order.indexOf(p.protocol);
+      const order = Object.keys(labels), rank = p => order.indexOf(p.protocol) < 0 ? 99 : order.indexOf(p.protocol), lists = [];
       for (const p of providers.slice().sort((a, b) => rank(a) - rank(b))) {
         const title = displayName(p), section = node("section", "binding-section");section._title = title;section._rows = [];
         section.append(node("h3", "binding-heading", title + " · " + (labels[p.protocol] || p.protocol)));
         if (p.name === data.provider) subtitle(title);
         if (!p.key_configured || p.auth_error) section.append(button("配好密钥后再选模型", "binding-empty", goManage));
-        else if (!p.models.length) section.append(flat("模型名单暂时拉不下来", button("重试", "secondary", load)));
-        else {
-          const group = node("div", "binding-group");group.setAttribute("role","radiogroup");group.setAttribute("aria-label",title);section.append(group);
-          for (const m of p.models) {
-            const o = {p, m}, b = button("", "binding-option", () => stage(o));b._o = o;b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
-            b.append(node("strong", "", m.model), node("span", "binding-cap", m.available ? [m.vision ? "可看图" : "不看图", m.hosted_web_search ? "厂商搜索" : "本机搜索", m.context ? ctxShort(m.context) : ""].filter(Boolean).join(" · ") : "暂时用不了"));
-            b.disabled = !m.available;options.push(b);section._rows.push(b);group.append(b);
-            if (p.name === (data.provider || "") && m.model === data.model) current = o;
-          }
-        }
+        else lists.push(models(p, section));
         body.append(section);
       }
-      if (current) stage(current);
+      await Promise.all(lists);
+    }
+    // Rows come from the vendor's live list, not whatever providers.json
+    // happens to hold; a failed list retries only that vendor.
+    async function models(p, section) {
+      const heading = section.firstChild;
+      section.replaceChildren(heading, flat("正在拉模型…"));
+      let list;
+      try { ({models: list} = await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`)); }
+      catch { if (dialog.isConnected) section.replaceChildren(heading, flat("模型名单暂时拉不下来", button("重试", "secondary", () => models(p, section)))); return; }
+      if (!dialog.isConnected) return;
+      if (!list.length) { section.replaceChildren(heading, flat("这家暂时没有可用模型")); return; }
+      const group = node("div", "binding-group");group.setAttribute("role","radiogroup");group.setAttribute("aria-label",section._title);section.replaceChildren(heading, group);
+      for (const m of list) {
+        const o = {p, m}, b = button("", "binding-option", () => stage(o));b._o = o;b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
+        b.append(node("strong", "", m.model), node("span", "binding-cap", m.available ? [m.vision ? "可看图" : "不看图", m.hosted_web_search ? "厂商搜索" : "本机搜索", m.context ? ctxShort(m.context) : ""].filter(Boolean).join(" · ") : "暂时用不了"));
+        b.disabled = !m.available;options.push(b);section._rows.push(b);group.append(b);
+        if (p.name === (data.provider || "") && m.model === data.model) { current = o; if (!pending) stage(o); }
+      }
       if (search.value) filter();
     }
     await load();

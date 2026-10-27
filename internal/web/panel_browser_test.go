@@ -83,7 +83,14 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/providers'){
   if(fixture.providers==='fail')return new Response('{"error":"boom"}',{status:500,headers:{'Content-Type':'application/json'}});
   if(fixture.providers==='none')return json({providers:[]});
-  return json({providers:[{name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:false,models:[]},{name:'fake',protocol:'chat_completions',key_configured:true,models:[{model:'scripted',available:true,context:128000}]},{name:'deep',brand:'deepseek',protocol:'responses',key_configured:true,models:[{model:'deep-pro',available:true,hosted_web_search:true,vision:true,context:500000}]}]});
+  return json({providers:[{name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:false,models:[]},{name:'fake',protocol:'chat_completions',key_configured:true,models:[{model:'scripted',available:true,context:128000},{model:'stale-local',available:true,context:128000}]},{name:'deep',brand:'deepseek',protocol:'responses',key_configured:true,models:[]}]});
+ }
+ // The live catalog differs from the local registry on purpose: stale-local is gone, fresh-new is new.
+ if(String(path).startsWith('/api/providers/models?')){
+  const name=new URL(path,location.href).searchParams.get('provider');
+  if(fixture.catalogFail===name){return new Response('{"error":"拉取失败"}',{status:422,headers:{'Content-Type':'application/json'}})}
+  if(name==='fake')return json({models:[{model:'scripted',available:true,context:128000},{model:'fresh-new',available:true,context:64000}]});
+  if(name==='deep')return json({models:[{model:'deep-pro',available:true,hosted_web_search:true,vision:true,context:500000}]});
  }
  if(String(path).endsWith('/binding')){fixture.bound=JSON.parse(opts.body);return json(fixture.bound)}
  const match=String(path).match(/^\/api\/bots\/([^/]+)$/);
@@ -156,14 +163,24 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  dlgButton('取消').click();
  fixture.providers='fail';await pick();
  assert($('.binding-flat').textContent.includes('模型名单暂时拉不下来'),'list failure state missing');
- fixture.providers='';dlgButton('重试').click();await waitFor(()=>$('.binding-option'),'retry does not reload');
+ // A vendor whose live list fails says so in its own group, without falling back to the local registry.
+ fixture.catalogFail='deep';fixture.providers='';dlgButton('重试').click();await waitFor(()=>$('.binding-option'),'retry does not reload');
+ const catalogCalls=name=>fixture.calls.filter(([p])=>p==='/api/providers/models?provider='+name).length;
+ const deepGroup=()=>[...$('.binding-dialog').querySelectorAll('.binding-section')].find(n=>n._title==='DeepSeek');
+ await waitFor(()=>deepGroup().textContent.includes('模型名单暂时拉不下来'),'vendor list failure not shown');
+ assert(![...document.querySelectorAll('.binding-option')].some(b=>b.textContent.includes('stale-local')),'picker shows the local registry instead of the live list');
+ assert([...document.querySelectorAll('.binding-option')].some(b=>b.textContent.includes('fresh-new')),'new vendor model missing from picker');
+ const before=catalogCalls('deep'),listCalls=fixture.calls.filter(([p])=>p==='/api/providers').length;
+ fixture.catalogFail='';[...deepGroup().querySelectorAll('button')].find(b=>b.textContent==='重试').click();
+ await waitFor(()=>deepGroup().querySelector('.binding-option'),'vendor retry does not refetch the live list');
+ assert(catalogCalls('deep')===before+1&&fixture.calls.filter(([p])=>p==='/api/providers').length===listCalls,'vendor retry did not hit the live list');
  const dlg=$('.binding-dialog'),sub=$('.binding-sub').textContent,heads=[...dlg.querySelectorAll('.binding-heading')].map(n=>n.textContent);
  assert($('.binding-dialog h2').textContent==='更换模型','picker title');
  assert(!sub.includes(' / ')&&sub.endsWith('当前 fake · scripted'),'picker subtitle is slash soup');
  assert(heads.includes('xAI · Completions')&&!heads.some(h=>h.includes('xai-key')),'group header uses a raw id');
  assert([...dlg.querySelectorAll('.binding-empty')].some(n=>n.textContent==='配好密钥后再选模型'),'keyless vendor pretends to have no models');
  const option=text=>[...dlg.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text)),cap=text=>option(text).querySelector('.binding-cap').textContent;
- assert(!dlg.querySelector('.provider-badge')&&cap('scripted')==='不看图 · 本机搜索 · 128K'&&cap('deep-pro')==='可看图 · 厂商搜索 · 500K','row is not one quiet capability line');
+ assert(!dlg.querySelector('.provider-badge')&&cap('scripted')==='不看图 · 本机搜索 · 128K'&&cap('fresh-new')==='不看图 · 本机搜索 · 64K'&&cap('deep-pro')==='可看图 · 厂商搜索 · 500K','row is not one quiet capability line');
  const use=dlgButton('使用此模型');
  assert(use.disabled&&option('scripted').getAttribute('aria-checked')==='true'&&!$('.binding-note').textContent,'current binding is confirmable');
  const search=$('.binding-search');
@@ -175,9 +192,16 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(!fixture.bound,'row click committed');
  $('.binding-dialog').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
  assert(!$('#modal').hidden&&panel.classList.contains('open'),'Escape in picker closed the layers below');
- // Cancel drops the staged row; reopening starts from the current binding.
+ // Esc (the dialog's cancel), ✕ and 取消 all drop the staged row; reopening starts from the current binding.
+ $('.binding-dialog').dispatchEvent(new Event('cancel',{cancelable:true}));
+ assert(!$('.binding-dialog')&&!fixture.bound&&!$('#modal').hidden,'Esc did not close only the picker');
+ await pick();await waitFor(()=>document.querySelectorAll('.binding-option').length===3,'picker rows missing');
+ [...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes('fresh-new')).click();
+ $('.binding-close').click();assert(!$('.binding-dialog')&&!fixture.bound,'close button did not discard');
+ await pick();await waitFor(()=>document.querySelectorAll('.binding-option').length===3,'picker rows missing');
+ [...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes('fresh-new')).click();
  dlgButton('取消').click();assert(!$('.binding-dialog')&&!fixture.bound&&face(drawerModel)==='scripted|fake · Completions','cancel did not discard');
- await pick();const pickRow=text=>[...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text));
+ await pick();await waitFor(()=>document.querySelectorAll('.binding-option').length===3,'picker rows missing');const pickRow=text=>[...document.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text));
  assert(pickRow('scripted').getAttribute('aria-checked')==='true'&&pickRow('deep-pro').getAttribute('aria-checked')==='false','reopen kept staged row');
  pickRow('deep-pro').click();
  dlgButton('使用此模型').click();

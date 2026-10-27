@@ -263,8 +263,8 @@ func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
 	if code, _ := setupCall(t, srv, tok, "PUT", "/api/providers/xai/key", `{"key":"`+secret+`"}`); code != 200 {
 		t.Fatalf("save: %d", code)
 	}
-	if code, _ := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-5"}`); code != 400 {
-		t.Fatalf("model outside the seed bound before it was fetched: %d", code)
+	if code, _ := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-9"}`); code != 400 {
+		t.Fatalf("model the vendor does not serve was bound: %d", code)
 	}
 	if code, out := setupCall(t, srv, tok, "POST", "/api/providers/xai/sync", ""); code != 200 || len(out["models"].([]any)) != 2 {
 		t.Fatalf("sync: %d %v", code, out)
