@@ -51,6 +51,9 @@ func TestSkillsCatalogNamesLocalLibrary(t *testing.T) {
 	if !ok {
 		t.Fatal("skills missing")
 	}
+	if strings.Contains(entry.Summary, "~/.xbot") {
+		t.Errorf("catalog summary should not contain a fixed path: %s", entry.Summary)
+	}
 	if blurb := Blurb(NameSkills); strings.Contains(blurb, "~/.xbot") || !strings.Contains(blurb, "Skills section") {
 		t.Errorf("grant blurb should point at the Skills section, not a fixed path: %s", blurb)
 	}

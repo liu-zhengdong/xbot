@@ -86,7 +86,7 @@ var catalog = []CatalogEntry{
 	{
 		ID: "skills", Title: "技能", Kind: KindNative,
 		Capabilities: []string{"tools"}, Secrets: []string{},
-		Summary:   "读写本机技能库（~/.xbot/skills/）。",
+		Summary:   "读写本机技能库。",
 		Keywords:  []string{"skill", "skills"},
 		Available: true, Grant: NameSkills,
 	},
