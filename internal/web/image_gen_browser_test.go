@@ -111,7 +111,7 @@ const visible=n=>!!n&&n.getClientRects().length>0;
  assert(!fixture.calls.some(p=>p.endsWith('/start')),'navigation started login');
  assert([...document.querySelectorAll('#settings-providers button')].some(b=>b.textContent==='登录'),'missing existing ChatGPT login');
  await XBotSettings.open('image-gen');radio('xai').click();await saved();guide().querySelector('button').click();
- await waitFor(()=>$('#settings-providers .provider-detail-title h2')?.textContent==='xAI','Grok did not reach xAI detail');
+ await waitFor(()=>[...document.querySelectorAll('#settings-providers .provider-subscription')].some(c=>c.textContent.includes('xAI')&&c.getAttribute('aria-current')==='true'&&document.activeElement===c),'Grok did not reach xAI subscription');
  assert(!fixture.calls.some(p=>p.endsWith('/start')),'xAI navigation started login');
  imageState.providers[1].logged_in=true;
  await XBotSettings.open('image-gen');checkToggle(true);

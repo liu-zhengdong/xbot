@@ -5,6 +5,11 @@
 - 浮层行保留横铺，在右侧用看图、搜索 outline 图标和短数字窗口替代能力句；语义通过 title / 无障碍名称提供。
 - 本机 Chrome 脚本连续三次覆盖手机、桌面及桌面壳尺寸的能力语义和布局；未进行主人日用验收。新增网络请求和轮询为 0；未测帧率或交互 p95。全量测试已报 e2e 并发聊天超时、kernel 长轮折叠次数失败；全量及 web 包三次测试在 web 包等待超过三分钟后中断，未完成。
 
+## 2026-10-27 xAI 订阅入口（功能分支）
+
+- 订阅区并列 ChatGPT 与 xAI；xAI 详情未登录引导回订阅，图片生成 Grok 未登录跳回 xAI 卡，复用既有 OAuth 与密钥绑定。账号占用同名条目时保留密钥折叠说明，不提供会被后端拒绝的密钥写入。
+- Chrome 脚本化界面与相关测试 `-count=3` 通过；gofmt、vet、atlas audit 已跑。全仓单次与 web 全包三次未通过：e2e `TestSpawnWhileChatKeepsAnswering`、web `TestWebApprovalAllowAndDeny` 超时，work `TestShellUsesBotDir` 失败；三条在 `f4a54cd` 归档复现。未测真实 OAuth、生产性能或主人日用；未合 main、未 push、未启动 8788。
+
 ## 2026-10-27 provider 请求原文 debug
 
 - 三种协议共用请求 body 落盘函数；热开关、路径与原文约定见 [供应商](atlas/providers.md)。按主人纠正，含原始密钥、未 redact，仅 body，不额外采集 header。实现与测试仅改 provider；不改权限、vault、UI 或 transcript。

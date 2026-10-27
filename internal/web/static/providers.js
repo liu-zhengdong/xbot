@@ -85,9 +85,9 @@
       const order = Object.keys(brands);
       return rows.sort((a, b) => (order.indexOf(a.brand) < 0 ? 99 : order.indexOf(a.brand)) - (order.indexOf(b.brand) < 0 ? 99 : order.indexOf(b.brand)));
     }
-    function subscriptionEntry() {
-      const p = data.providers.find(p => p.oauth === "chatgpt");
-      return { ...p, name: p?.name || "chatgpt", oauth: "chatgpt", brand: "openai", title: "ChatGPT", protocol: "responses" };
+    function subscriptionEntry(kind = "chatgpt") {
+      const p = data.providers.find(p => p.oauth === kind);
+      return { ...p, name: p?.name || kind, oauth: kind, brand: kind === "chatgpt" ? "openai" : "xai", title: kind === "chatgpt" ? "ChatGPT" : "xAI", protocol: "responses" };
     }
     async function login(kind, render, done) {
       if (!alive()) return;
@@ -164,27 +164,35 @@
       const tools = node("div", "provider-tools"), search = node("label", "provider-search"); search.append(lineIcon("search"));
       const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query; search.append(input); tools.append(search); host.append(tools);
       const subscription = section("订阅", "登录即可，无需密钥"), subgrid = node("div", "provider-grid");
-      const subnote = node("span", "provider-login-note"); subnote.setAttribute("role", "status");
-      function paintSubscription(state, message) {
-        chatgpt.disabled = state === "starting";
-        if (state === "starting") subnote.textContent = "正在登录…";
-        else if (state === "pending") subnote.textContent = message || "等待登录，再点重开";
-        else subnote.textContent = "登录未完成，请重试";
-      }
-      const chatgpt = button("", "provider-card provider-subscription", () => {
-        const p = subscriptionEntry(); selected = key(p);
-        return p.key_configured ? capability(p) : login("chatgpt", paintSubscription, updateSubscription);
+      const subscriptions = ["chatgpt", "xai"].map(kind => {
+        const subnote = node("span", "provider-login-note"); subnote.setAttribute("role", "status");
+        function paintSubscription(state, message) {
+          card.disabled = state === "starting";
+          if (state === "starting") subnote.textContent = "正在登录…";
+          else if (state === "pending") subnote.textContent = message || "等待登录，再点重开";
+          else subnote.textContent = "登录未完成，请重试";
+        }
+        const card = button("", "provider-card provider-subscription", () => {
+          const p = subscriptionEntry(kind); selected = key(p);
+          return p.key_configured ? capability(p) : login(kind, paintSubscription, updateSubscription);
+        });
+        card.setAttribute("aria-current", String(selected === "subscription:" + kind));
+        function updateSubscription() {
+          const p = subscriptionEntry(kind);
+          card.replaceChildren(kind === "chatgpt" ? node("span", "provider-glyph provider-chatgpt-glyph") : glyph("xai"), node("strong", "", p.title));
+          if (p.key_configured) {
+            const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); card.append(dot);
+          } else { subnote.textContent = "登录"; card.append(subnote); }
+        }
+        updateSubscription(); subgrid.append(card);
+        return { kind, card };
       });
-      function updateSubscription() {
-        chatgpt.replaceChildren(node("span", "provider-glyph provider-chatgpt-glyph"), node("strong", "", "ChatGPT"));
-        if (subscriptionEntry().key_configured) {
-          const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); chatgpt.append(dot);
-        } else { subnote.textContent = "登录"; chatgpt.append(subnote); }
-      }
-      updateSubscription(); subgrid.append(chatgpt); subscription.append(subgrid);
+      subscription.append(subgrid);
       const vendors = section("供应商", "模型厂商的 API"), grid = node("div", "provider-grid"); vendors.append(grid); host.append(subscription, vendors);
       function filter() {
-        const term = query.trim().toLowerCase(); subscription.hidden = !"chatgpt".includes(term); grid.replaceChildren();
+        const term = query.trim().toLowerCase();
+        for (const {kind, card} of subscriptions) card.hidden = !subscriptionEntry(kind).title.toLowerCase().includes(term);
+        subscription.hidden = subscriptions.every(({card}) => card.hidden); grid.replaceChildren();
         for (const p of entries().filter(p => p.title.toLowerCase().includes(term))) {
           const card = button("", "provider-card", () => { selected = key(p); return capability(p); }); card.setAttribute("aria-current", String(selected === key(p))); card.append(glyph(p.brand), node("strong", "", p.title));
           if (p.key_configured) { const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已配置"); card.append(dot); }
@@ -193,7 +201,8 @@
         if (!grid.children.length) grid.append(state("没有匹配的供应商"));
       }
       input.oninput = () => { query = input.value; filter(); }; filter();
-      if (!subscription.hidden && (focusKey === "chatgpt" || focusKey === key(subscriptionEntry()))) chatgpt.focus();
+      const focusSubscription = subscriptions.find(({kind, card}) => !card.hidden && (focusKey === "subscription:" + kind || focusKey === key(subscriptionEntry(kind))));
+      if (focusSubscription) focusSubscription.card.focus();
     }
     // `opts` lets the xAI fold label its input and show the saved-key state
     // inside the fold instead of on the header row.
@@ -271,20 +280,16 @@
         }
       };
     }
-    // The unconfigured xAI card leads with account login; the key form folds
-    // away and carries the saved-key state.
+    function goToXaiSubscription() {
+      query = ""; selected = "subscription:xai"; paint(selected);
+    }
     function xaiVendorBody(p, vendor, current, status) {
       const box = node("div", "provider-xai");
-      box.append(node("p", "provider-xai-lead", "登录 xAI 账号即可使用，无需 API 密钥。"));
-      const area = node("div", "provider-auth");
-      const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
-      const auth = xaiAuthControls(area, "登录", status, done, current);
-      box.append(area);
+      if (!subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription));
       const alt = node("details", "provider-key-alt");
       const fold = node("summary"); fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
       alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
       box.append(alt);
-      auth.sync();
       return box;
     }
     async function capability(p, refresh = false) {
@@ -327,7 +332,7 @@
       function keyStatus() {
         if (p.brand === "xai") {
           auth.replaceChildren(); xaiStatus("idle");
-          if (p.oauth === "xai") {
+          if (p.oauth === "xai" && p.key_configured) {
             const done = () => capability(entries().find(row => key(row) === key(p)) || p, true);
             xaiAuthControls(auth, p.key_configured ? null : "登录", xaiStatus, done, current).sync();
           }
@@ -356,7 +361,7 @@
         if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current, xaiStatus)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
-          if (p.oauth === "xai") { body.replaceChildren(state("请先登录 xAI，再拉取模型。")); return; }
+          if (p.oauth === "xai") { body.replaceChildren(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription)); return; }
           const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
           if (vendor && vendor.key_login) {
             body.replaceChildren(state("这家供应商需要先登录 Google Cloud，暂时不能直接填密钥使用。"));
@@ -389,6 +394,13 @@
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
         body.append(rows);
+        if (p.oauth === "xai") {
+          const alt = node("details", "provider-key-alt"), fold = node("summary");
+          fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
+          const keyEntry = entries().find(row => row.brand === "xai" && !row.oauth && row.name);
+          alt.append(fold, node("p", "provider-login-note", keyEntry ? "已配置 API 密钥，可在 Bot 的模型设置中选择。" : "登录账号后，如需配置 API 密钥，请先退出登录。"));
+          body.append(alt);
+        }
       } catch (err) {
         if (!current()) return;
         // A rejected refresh is a dead credential: say so instead of a network
@@ -420,7 +432,8 @@
       try {
         data = await api("/api/providers");
         if (!alive()) return;
-        const target = initialProvider === "openai" ? subscriptionEntry() : initialProvider === "xai" ? (entries().find(p => p.oauth === "xai") || entries().find(p => p.brand === "xai")) : null;
+        if (initialProvider === "xai") { selected = "subscription:xai"; paint(selected); return; }
+        const target = initialProvider === "openai" ? subscriptionEntry() : null;
         selected = key(target || entries().find(p => p.key_configured) || entries()[0]);
         if (target) await capability(target); else paint();
       }
