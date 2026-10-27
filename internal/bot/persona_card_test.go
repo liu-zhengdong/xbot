@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -105,5 +107,60 @@ func TestExportTemplateCarriesDutyNotCard(t *testing.T) {
 	}
 	if got, _ := other.ComposedPersona(); strings.TrimSpace(got) != "legacy persona" || other.Config().PersonaCard != "" {
 		t.Fatalf("imported %q card %q", got, other.Config().PersonaCard)
+	}
+}
+
+// A card lifted from an owner's old library under a new id, because the flat library
+// already had a different card with its id, takes that owner's bound bots with it;
+// every bot still reads the card it read before the lift.
+func TestLiftedClashKeepsBindings(t *testing.T) {
+	root := t.TempDir()
+	lib := filepath.Join(root, "persona-cards")
+	card := func(dir, id, name, body string) {
+		if err := os.MkdirAll(filepath.Join(dir, id), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, id, "card.md"), []byte("name: "+name+"\n\n"+body+"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const clash, other = "0123456789abcdef", "2222222222222222"
+	card(lib, clash, "现有", "现有正文。")
+	card(filepath.Join(lib, "u501"), clash, "旧卡", "旧正文。")
+	card(filepath.Join(lib, "u501"), other, "另一张", "另一张正文。")
+	card(filepath.Join(lib, "u502"), clash, "第三", "第三正文。")
+	want := map[string]string{}
+	for _, c := range []struct{ name, owner, id, body string }{
+		{"ada", "u501", clash, "旧正文。"},
+		{"bea", "u9", clash, "现有正文。"},
+		{"cyd", "u502", clash, "第三正文。"},
+		{"dan", "u501", other, "另一张正文。"},
+	} {
+		b, err := Create(root, c.name, "职责。", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := b.SetOwners([]string{c.owner}); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.SetPersonaCard(c.id); err != nil {
+			t.Fatal(err)
+		}
+		want[c.name] = c.body
+	}
+	for name, body := range want {
+		b, err := Load(root, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c, ok := b.PickedCard(); !ok || c.Body != body {
+			t.Fatalf("%s reads %+v %v, want %q", name, c, ok, body)
+		}
+		if got := b.Config().Owners; len(got) != 1 {
+			t.Fatalf("%s lost its owners: %v", name, got)
+		}
+	}
+	if cards, err := personacard.List(root); err != nil || len(cards) != 4 {
+		t.Fatalf("%+v %v", cards, err)
 	}
 }

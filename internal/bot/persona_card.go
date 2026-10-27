@@ -30,13 +30,16 @@ func (b *Bot) PickedCard() (personacard.Card, bool) {
 	if len(b.cfg.Owners) != 1 || b.Root == "" {
 		return personacard.Card{}, false
 	}
+	// Default opens the library first: lifting an old per-owner layout can move
+	// this bot's binding, so the binding is read only after it.
+	def, ok := personacard.Default(b.Root)
 	if id := b.boundCard(); id != "" {
 		if c, err := personacard.Get(b.Root, id); err == nil {
 			return c, true
 		}
 	}
-	if c, ok := personacard.Default(b.Root); ok {
-		return c, true
+	if ok {
+		return def, true
 	}
 	// A library nobody has opened yet gets its default card on first use.
 	if personacard.EnsureSeeds(b.Root) != nil {

@@ -6,6 +6,7 @@ package personacard
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -111,7 +112,8 @@ func owners(dir string) []string {
 
 // liftOwners moves every card of the old per-owner layout into the flat library and
 // keeps its id, so bots bound to it still find it. An id already taken by a different
-// card gets a new id instead of overwriting; an identical copy is dropped. The first
+// card gets a new id instead of overwriting, and that owner's bots bound to the old id
+// follow it to the new one; an identical copy is dropped. The first
 // owner's default card becomes the library's default unless it already has one.
 // Callers hold the library lock.
 func liftOwners(dir string) error {
@@ -147,6 +149,9 @@ func liftOwners(dir string) error {
 			}
 			moved[e.Name()] = id
 		}
+		if err := rebind(filepath.Dir(dir), filepath.Base(od), moved); err != nil {
+			return err
+		}
 		// Carry the markers after the cards, so a crash in between keeps them to lift again.
 		if raw, err := os.ReadFile(filepath.Join(od, defaultFile)); err == nil && !has(dir, defaultFile) {
 			if id, ok := moved[strings.TrimSpace(string(raw))]; ok {
@@ -166,6 +171,51 @@ func liftOwners(dir string) error {
 		_ = os.Remove(od)
 	}
 	flat[dir] = true
+	return nil
+}
+
+// rebind points the bots of owner bound to a renamed card at its new id. Only bots
+// with that single owner read the owner's library before, so only they move; the
+// rest of each config is kept as it is on disk.
+func rebind(root, owner string, moved map[string]string) error {
+	ents, _ := os.ReadDir(filepath.Join(root, "bots"))
+	for _, e := range ents {
+		bd := filepath.Join(root, "bots", e.Name())
+		if !e.IsDir() || !has(bd, "config.json") {
+			continue
+		}
+		path := filepath.Join(bd, "config.json")
+		err := fsutil.WithLock(path+".lock", func() error {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			var cfg struct {
+				Owners      []string `json:"owners"`
+				PersonaCard string   `json:"persona_card"`
+			}
+			if json.Unmarshal(raw, &cfg) != nil || len(cfg.Owners) != 1 || cfg.Owners[0] != owner {
+				return nil
+			}
+			id, ok := moved[cfg.PersonaCard]
+			if !ok || id == cfg.PersonaCard {
+				return nil
+			}
+			var all map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &all); err != nil {
+				return err
+			}
+			all["persona_card"], _ = json.Marshal(id)
+			out, err := fsutil.Marshal(all)
+			if err != nil {
+				return err
+			}
+			return fsutil.WriteAtomic(path, out, 0600)
+		})
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
