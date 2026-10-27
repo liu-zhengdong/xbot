@@ -23,11 +23,11 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
  // The landed message renders through the same filter as history; alt never leaks as !alt.
  await waitFor(()=>$('#thread .msg.bot:not(.live) a'),'normal link');
  assert(!$('#thread .msg.bot:not(.live)').textContent.includes('简笔画小猫'),'image fragment in live bubble');
- assert(!$('#thread .msg.bot:not(.live) img'),'image attached to live bubble');
+ assert(!$('#thread .msg.bot:not(.live) img:not(.link-icon)'),'image attached to live bubble');
  finish(s,md);await waitFor(()=>!$('#thread .live')&&$('#thread .msg.bot .bot-bubble'),'history');
  const bubble=$('#thread .msg.bot .bot-bubble'),text=bubble.textContent;
  assert(!/简笔画小猫|本地图|残缺图/.test(text),'image fragment in history: '+text);
- assert(!bubble.querySelector('img,.gallery'),'image attached to history');
+ assert(!bubble.querySelector('img:not(.link-icon),.gallery'),'image attached to history');
  assert(text.includes('保留！ !important 和 !flag。'),'ordinary punctuation stripped');
  assert(text.includes('![代码示例](generated/example.png)')&&text.includes('![行内示例](https://example.com/example.png)'),'code examples stripped');
  assert(bubble.querySelector('a')?.href==='https://example.com/example.png','ordinary link changed');

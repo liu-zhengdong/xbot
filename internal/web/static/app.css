@@ -758,6 +758,11 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 :is(.prose, .bubble, .hs-cites, .composer .composer-input) a:hover { background: var(--x-text-link-hover); }
 
+/* Site favicon at the front of the link pad: no room taken until it loads,
+   removed on failure (linkIcon in app.js). */
+.link-icon { display: none; width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; }
+.link-icon.ok { display: inline-block; }
+
 .prose ul { margin: 0 0 8px; padding-left: 16px; }
 
 .prose li { margin: 0; }

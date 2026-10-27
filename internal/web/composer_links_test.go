@@ -30,6 +30,8 @@ const document = {
   createTextNode: (v) => ({ nodeType: 3, nodeValue: String(v) }),
   createElement: (tag) => ({ nodeType: 1, tagName: String(tag).toUpperCase() }),
 };
+// The bubble's favicon helper; draft links must go through it.
+const linkIcon = (a) => { a.icon = true; return a; };
 ` + s[a:b] + `
 const texty = (nodes) => nodes.every((n) => n.nodeType === 3);
 
@@ -45,6 +47,7 @@ assert.equal(parts[1].textContent, "https://example.com/a(b");
 assert.ok(parts[1].href.startsWith("https://"), "href must be http(s)");
 assert.equal(parts[1].target, "_blank");
 assert.ok(parts[1].rel.includes("noopener"));
+assert.ok(parts[1].icon, "draft links carry the favicon like bubble links");
 assert.equal(parts[2].nodeValue, ")", "trimmed punctuation stays prose");
 assert.equal(parts[3].nodeValue, "，好", "the rest of the sentence stays prose");
 assert.equal(parts.map((n) => n.nodeValue == null ? n.textContent : n.nodeValue).join(""), "看 https://example.com/a(b)，好", "the draft must round-trip unchanged");

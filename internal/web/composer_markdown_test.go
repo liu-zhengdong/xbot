@@ -28,6 +28,7 @@ const document = {
   createTextNode: (v) => ({ nodeType: 3, nodeValue: String(v) }),
   createElement: (tag) => ({ nodeType: 1, tagName: String(tag).toUpperCase() }),
 };
+const linkIcon = (a) => a; // favicon is the bubble's helper; not under test here
 `+s[a:b]+`
 const text = (nodes) => nodes.map((n) => n.nodeValue == null ? n.textContent : n.nodeValue).join("");
 const kinds = (nodes) => nodes.map((n) => n.nodeType === 3 ? "text" : (n.tagName === "A" ? "a" : n.className)).join(",");

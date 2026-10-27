@@ -42,6 +42,9 @@ const document = {
   createElement: (tag) => ({
     nodeType: 1, tagName: String(tag).toUpperCase(), childNodes: [], style: {}, className: "",
     append(...kids) { this.childNodes.push(...kids); },
+    prepend(...kids) { this.childNodes.unshift(...kids); for (const k of kids) k.parentNode = this; },
+    remove() { const sib = this.parentNode.childNodes; sib.splice(sib.indexOf(this), 1); },
+    get origin() { return this.href ? new URL(this.href).origin : ""; },
     classList: { add(c) { (this._cls = this._cls || []).push(c); } },
   }),
 };
@@ -92,6 +95,25 @@ appendInline(cjkP, "点 https://x.y这个，再看 https://a.b/c?q=1。");
 assert.deepEqual(cjkP.childNodes.filter((n) => n.tagName === "A").map((a) => [a.textContent, a.href]),
   [["https://x.y", "https://x.y"], ["https://a.b/c?q=1", "https://a.b/c?q=1"]]);
 assert.ok(dump(cjkP).includes('"这个，再看 "'), "glued CJK eaten: " + dump(cjkP));
+
+// Every link carries its site's favicon inside the pad, hidden until loaded;
+// the outcome sticks per site: loaded shows at once, failed is never re-added.
+const iconOf = (a) => a.childNodes.find((n) => n.tagName === "IMG");
+const iconLinks = (text) => { const p = document.createElement("p"); appendInline(p, text); return p.childNodes.filter((n) => n.tagName === "A"); };
+let [okA, badA, mdA] = iconLinks("看 https://ok.example/a 和 https://bad.example/b 及 [文档](https://ok.example/doc)");
+assert.equal(okA.childNodes[0], iconOf(okA), "icon must lead inside the link");
+assert.equal(iconOf(okA).src, "https://ok.example/favicon.ico", "the site's own icon, no third-party service");
+assert.equal(iconOf(okA).className, "link-icon", "icon takes no room before it loads");
+assert.equal(iconOf(okA).alt, "");
+assert.ok(iconOf(mdA), "markdown links get the icon too");
+iconOf(okA).onload();
+const badIcon = iconOf(badA);
+badIcon.onerror();
+assert.equal(iconOf(badA), undefined, "failed icon must leave the link text-only");
+assert.equal(badA.textContent, "https://bad.example/b");
+[okA, badA] = iconLinks("https://ok.example/c https://bad.example/d");
+assert.equal(iconOf(okA).className, "link-icon ok", "a loaded site shows at once");
+assert.equal(iconOf(badA), undefined, "a failed site is not fetched again");
 
 // Block math on one line: display mode, its own div.
 calls.length = 0;

@@ -1359,6 +1359,28 @@
     if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
   }
 
+  // Text links (bubbles, composer draft, web cites) carry the site's own
+  // /favicon.ico inside the shared link pad. Not a favicon service: those
+  // answer unknown hosts with a placeholder globe that loads fine, while a
+  // site without the file answers a page that fails as an image. The icon
+  // takes no room until it loads; each site's outcome is kept, so a re-render
+  // (the composer's, on every key) builds the same DOM and a failed site is
+  // never re-fetched.
+  const linkIcons = new Map(); // origin -> loaded (true) or failed (false)
+  function linkIcon(a) {
+    const site = a.origin;
+    if (!/^https?:/.test(site) || linkIcons.get(site) === false) return a;
+    const img = document.createElement("img");
+    img.className = linkIcons.get(site) ? "link-icon ok" : "link-icon";
+    img.alt = "";
+    img.src = site + "/favicon.ico";
+    img.onload = () => { linkIcons.set(site, true); img.classList.add("ok"); };
+    img.onerror = () => { linkIcons.set(site, false); img.remove(); };
+    a.prepend(img);
+    return a;
+  }
+  window.XBotLinkIcon = linkIcon;
+
   function appendInline(parent, text) {
     // Math needs its neighbors glued on: `$5 and $6` is prose (the closing
     // side is a space), `$x^2$` is a formula. $$ pairs come first so a single
@@ -1391,7 +1413,7 @@
           a.href = lm[2];
           a.rel = "noopener noreferrer";
           a.target = "_blank";
-          parent.append(a);
+          parent.append(linkIcon(a));
         } else {
           parent.append(document.createTextNode(tok));
         }
@@ -2010,7 +2032,7 @@
     a.textContent = url; // never innerHTML: the draft is untrusted text
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    return a;
+    return linkIcon(a);
   }
 
   // A colored span that keeps its source characters: draft Markdown is

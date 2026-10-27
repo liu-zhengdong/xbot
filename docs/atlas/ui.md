@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ d34542c
+verified: 2026-10-27 @ e464d97
 ---
 # 网页界面
 
@@ -92,7 +92,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 **Bot 只通过工具说话**：对话里 Bot 的正文和挂图只来自 `send_message_to_user`（旧名 `notify_owner`）的 `text` / `images`，一次送达的调用一条气泡，同一轮的挂图画在这一轮最后一条气泡里；`ask_user` 仍是决策卡。裸助手正文（流式和终稿，含 SILENT）不进气泡、不进侧栏预览和引用摘要，transcript 照存给模型。服务端 SSE 不再发 `delta`；`send_message_to_user` 送达时 `result` 事件带 `text`，前端据此封住当前活泡、另开一条只显示忙态的活泡；`done.text` 是本次送达的消息。主列不画工具过程行和 Bot 自己发起的往来系统行，忙态只留活泡里的灰点和「在做什么」一行，细节在「轨迹」。历史按「两次非内部输入之间的 Bot 行」分轮（`spokenLines`）：有送达的调用只画它们；没有的，`2026-10-27 11:00 +08:00` 之前的旧轮仍按正文画，之后的新轮不画。正文渲染先去掉图片 Markdown 与残缺语法，再统一渲染 Markdown；代码示例、数学公式和普通链接保留，原 transcript 不改。空闲轮询 transcript 签名不变时不重算预览、不重画对话与轨迹。旧轮的空助手回复显示「这次没有收到回复，请再试一次。」。Responses 真正返回空回复时走现有错误提示和内核失败通知，主人的原话保留。
 桌面版（`Server.App`）的旧登录码路径不提供「退出」，`/api/session` 带 `app:true`，`POST /api/logout` 回 409，因为登录码只在启动时生成一次；账号可以退出（`POST /api/account/logout`），再用账号登录回来；`POST /api/app/theme`（`{"theme":"light|dark|system"}`）只在桌面版存在，走登录和同源检查，值不对回 400，成功回 204，App 用它设置 `Server.AppTheme`。再次发送同一原文时先移除旧的失败行；返回 202 排队的消息保留气泡并标「已排队」，直到对话记录里出现同样的文字；「回复出错了」在下一次发送被接受时清除。重新点击当前打开的 Bot 或群不重置对话；群消息在会话过期时同样保存草稿并在重新进入时恢复；服务端 4xx 带原因时显示「没能完成：原因」。
 
-**文内可点文字一套皮**：输入框草稿、主人与 Bot 气泡、`.prose` 正文里的链接共用 `--x-text-link` / `--x-text-link-bg` / `--x-text-link-hover`（tokens.css，浅深两套）：蓝字、浅蓝 4px 圆角底、无下划线、不加粗；主人气泡底色与卡片相反，`.bubble` 把这组换成 `--x-user-link*`。按钮、整行、图标钮、code 不用这套。
+**文内可点文字一套皮**：输入框草稿、主人与 Bot 气泡、`.prose` 正文里的链接共用 `--x-text-link` / `--x-text-link-bg` / `--x-text-link-hover`（tokens.css，浅深两套）：蓝字、浅蓝 4px 圆角底、无下划线、不加粗；主人气泡底色与卡片相反，`.bubble` 把这组换成 `--x-user-link*`。按钮、整行、图标钮、code 不用这套。可点的 http(s) 文内链（气泡裸 URL 与 `[文字](url)`、输入框草稿链、联网来源 `.hs-cites`）在底内最左带该站自己的 `/favicon.ico`（`linkIcon`，14px，距字 4px）：加载成功前不占位，失败就去掉图片、只剩文字链；每个站点的成败在进程内记一次，草稿重绘不重复请求。不用公开图标服务，因为它们对没有图标的站回一个能正常加载的占位地球。
 
 **输入框 URL 高亮可点**：对话输入框是纯文本 contenteditable（不是 textarea）：草稿里的 `http(s)://` 地址就地高亮成文字链（与气泡链接同款），点它用系统默认浏览器打开（网页走 `target=_blank` + `noopener`，桌面壳复用既有离域导航 → OpenExternal），点击不会触发发送；Enter 照旧发送、Shift+Enter 换行、输入法选词回车不发送。只认能解析为 http/https 的地址，尾随标点（`。，)…`）不进链接，紧贴的中文正文不吞；`javascript:`、`data:` 等其它协议不高亮不可点。纯文本上限仍 16000，规则同旧 textarea 的 maxlength：超限的编辑（输入、粘贴、拖入、整段替换）在编辑入口整体拒绝，不截尾，已有草稿一字不丢；程序化写入（发送清空、草稿恢复、失败回填）不走截断。撤销/重做由页面自己维护（每次被接受的编辑一步，⌘/Ctrl+Z、⌘/Ctrl+Shift+Z、Ctrl+Y，菜单撤销和浏览器原生 undo/redo 命令也接住：后者不经 beforeinput、作为不可取消的 historyUndo/historyRedo input 到达，丢弃原生结果、改放自己的历史），因为原生撤销栈经不住整段重渲染；程序化写入重置撤销基线，同旧 textarea 赋值。粘贴一律转纯文本，图片粘贴照走下面的流程。
 
