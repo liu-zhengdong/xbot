@@ -91,7 +91,18 @@ func (k *Kernel) now() time.Time {
 // localStamp is the owner's clock to the minute, for the environment block only.
 // It is not part of the stable prefix.
 func (k *Kernel) localStamp() string {
-	utc := k.now()
+	loc, name := k.locationName()
+	local := k.now().In(loc).Truncate(time.Minute)
+	return local.Format(time.RFC3339) + " (" + name + ")"
+}
+
+// location is the bot's timezone, else the machine's.
+func (k *Kernel) location() *time.Location {
+	loc, _ := k.locationName()
+	return loc
+}
+
+func (k *Kernel) locationName() (*time.Location, string) {
 	name := "UTC"
 	loc := time.UTC
 	if k != nil && k.Bot != nil {
@@ -106,8 +117,7 @@ func (k *Kernel) localStamp() string {
 			name = loc.String()
 		}
 	}
-	local := utc.In(loc).Truncate(time.Minute)
-	return local.Format(time.RFC3339) + " (" + name + ")"
+	return loc, name
 }
 
 func (k *Kernel) linkNames() []string {

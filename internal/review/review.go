@@ -59,6 +59,9 @@ var Table = map[string]Class{
 
 	// Memory.
 	"recall": Readonly,
+	// Experiences are the bot's own log; recording one destroys nothing.
+	"experience_record": Normal,
+	"experience_search": Readonly,
 
 	// Persona and profile.
 	"bot_propose_persona": SelfEdit,
@@ -83,6 +86,7 @@ var Table = map[string]Class{
 	"compact":        Normal,
 	"recall_history": Readonly,
 	"expand":         Readonly,
+	"detail":         Readonly,
 
 	// Subagents.
 	"spawn":           Normal,

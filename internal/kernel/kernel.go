@@ -591,6 +591,9 @@ func (k *Kernel) rulesText() (string, error) {
 	if k.dispatching() && !strings.Contains(rules, DispatchRule) {
 		rules += "\n\n" + DispatchRule
 	}
+	if k.hasLink(link.NameMemory) && !strings.Contains(rules, ExperienceRule) {
+		rules += "\n\n" + ExperienceRule
+	}
 	if k.Memory == nil || strings.Contains(rules, MemoryWriteRule) {
 		return rules, nil
 	}

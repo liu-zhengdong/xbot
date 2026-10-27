@@ -50,7 +50,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	}
 	list := append([]tools.Tool{}, link.CollectTools(active)...)
 	if namedLink(links, link.NameMemory) {
-		list = append(list, recallTool{k})
+		list = append(list, recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k})
 	}
 	if namedLink(links, link.NamePersona) {
 		list = append(list, personaTool{k}, profileTool{k})
@@ -61,7 +61,7 @@ func (k *Kernel) mountedTools() ([]tools.Tool, error) {
 	// The owner sees only what the bot sends, so every bot can send.
 	list = append(list, sendMessageTool{k})
 	if namedLink(links, link.NameContext) {
-		list = append(list, compactTool{k}, historyTool{k}, expandTool{k})
+		list = append(list, compactTool{k}, historyTool{k}, expandTool{k}, detailTool{k})
 	}
 	if namedLink(links, link.NameWeb) {
 		list = append(list, askTool{k})

@@ -1,8 +1,8 @@
 ---
 kind: part
 parent: README.md
-code: [internal/memory/, internal/person/]
-verified: 2026-10-27 @ fa97c33 + 近义判重回修2 + 压缩不写记忆
+code: [internal/memory/, internal/person/, internal/experience/]
+verified: 2026-10-27 @ fa97c33 + 近义判重回修2 + 压缩不写记忆 + 经历库批 B/C
 ---
 # 身份与记忆
 
@@ -35,4 +35,5 @@ verified: 2026-10-27 @ fa97c33 + 近义判重回修2 + 压缩不写记忆
 - **旧数据**：每次进程启动都重新走一遍 `bots/*/people/*/memory`，每个数据根每进程一次。没有持久化的迁移标记；迁过的目录已改名为 `memory.bak`，所以重复走是幂等的。`config.json` 缺失、读不了或不是合法 JSON 时，这个 Bot 的旧目录留在原地。`owners` 为空才算没有主人，旧事实只留在 `memory.bak`。只合并 owners 里的人，其他人的目录改名为 `memory.bak` 并记日志，读不读得动都挪走。主人的目录读失败才留在原地。不让 Remember、Recall、Forget 或启动失败。合并去重，保留时间戳、来源和原来的 kind。profile 放不下的改记日志并写一条说明；说明同样按日志身份匹配，防止中断重试重复写入。person 日志的 Forget 先折叠同步记录，只删除当前仍匹配的键，不影响同键后来更新的值。迁进日志时按月落盘，不受大小守卫限制。普通写入只在当月超过 64 KiB 且继续增长时拒绝，提示压成几条整理记录；同步折叠绕过守卫。无文本查询从最新月份读够 200 条即停，文本查询读全部月份；快照总条数单独按行计数。人的同步日志仍是 person 通道。
 - **只读检索**：`recall` 用 BM25 按行检索可见的 bot/person 目录中的 `.md`、`.txt`（递归，跳过备份和符号链接，每文件最多 256 KiB，每次最多 2000 文件、合计 4 MiB，触顶标明搜索不完整），读取各范围时持 `.lock`，拒绝偏离数据根规范路径的符号链接祖先，打开后核对文件 inode；汉字按重叠双字分词。返回最多 20 条 `scope:路径:行号`，正文截到约 200 字，超出提示剩余数量；`scope` 缩小范围，`since=YYYY-MM-DD` 按条目日期筛选常驻与日志、按 mtime 筛选自由文件。
 - **演进中**：[ADR 0008](../adr/0008-memory-v2-dated-log-first.md) 和 [ADR 0009](../adr/0009-memory-as-folder.md) 已定：每个范围是一个文件夹（常驻 `memory.md` 带索引，`log/YYYY-MM.md`，其余自由文件），用普通文件工具编辑，只留只读的 `recall`；快照加差异已在批 1 落地（见上）；每晚整理时核对索引。分批落地，见 [记忆 v2 规格](../MEMORY-V2.md)；上面描述的是还没落地的现状，每落地一批就改一处。
+- **经历**（[ADR 0030](../adr/0030-experience-and-reference.md) 草稿，批 B、C）：每个 Bot 一个 `bots/<bot>/experience.sqlite`，表 `experiences(id, created_at, summary, focus, from_seq, to_seq, segment)`，第一次记录时才建。`experience_record` 由 Agent 自己调：摘要不超过 2 KiB，起止 seq 默认从最近 200 行里最新一条用户消息到 transcript 尾，`segment` 是内核从该范围前 200 行拼的提纲（每行发言截 160 字节、只列工具名、跳过工具结果和内部行，合计约 600 字节），不调模型。`ExperienceRule` 在挂了记忆链接时进规则段，是常驻轻推，不是每条消息的提醒。环境采样带 `experience` 字段（总数和最新一条 `#id 摘要`，截 200 字节），新记一条后下一轮按环境流只追加这一项差异；读库出错时保留已公布的值，不让这一轮失败。`experience_search` 不带 query 列最新，带 query 时在最近 2000 条上用 BM25 排序，最多 8 条、合计 6 KiB，只给摘要和提纲；`detail`（挂在上下文链接上）按 seq 或「经历 id + 0 起下标」读单条消息全文，blob 会读回，上限 64 KiB，经脱敏。压缩不写经历。设计稿：Obsidian `正在干什么/06-XBot/设计/经历与资料.md`。
 - **资料库不单独做**：Bot 直接读用户本机的文件和笔记。

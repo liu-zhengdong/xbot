@@ -335,6 +335,7 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		delete(next.Fields, "pending_approvals")
 	}
 	environmentSet(&next, "time", k.localStamp())
+	k.experienceEnv(&next)
 	tasks, err := k.taskEnvironment(environmentTasks(prev), link.Event{})
 	if err != nil {
 		return next, err
