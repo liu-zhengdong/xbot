@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row
+verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count
 ---
 # 网页界面
 
@@ -43,7 +43,7 @@ verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai
 
 「技能」是本机技能库的安静清单（`static/skills.js`、`skills.css`，同族于网页搜索）。一层：标题行只有「技能」，导语下、列表块顶外缘右对齐 `[搜索技能][导入]`，导入是唯一主按钮；每行只有主名、副行和 chevron，不显示路径、停用状态或 Bot 数。列表与详情共用展示名规则：非空 title 优先，再用旧文件的可读 name 或 slug/文件夹名，永不用 description 作主名；副行优先放不同于主名的 description，否则放不同于主名的 slug，没有就不画。手机标题和开关无障碍名称沿用同一主名，内容均按纯文本渲染；搜索按名称、说明和 slug 在前端过滤。导语与导入层统一写「本机 Bot 共享。是否启用，按每个 Bot 单独设。」；列表脚注只提示按 Bot 开关。库为空时隐藏搜索和工具条，空态提示「从本机导入一份技能，也可在对话里让 Bot 帮你装。」，中心放「导入」；无匹配显示「没有匹配的技能」和「清除搜索」，不再放第二个导入。二层：返回「技能」，名称和说明只读，「在这些 Bot 里启用」当前登录人有权管理的每个本机 Bot 一个开关（默认开，关只影响该 Bot，失败时开关退回）。
 
-点「导入」先出来源层：Agent、Codex、Claude、本机文件夹四行，底栏只有取消。前三项读本机对应技能库的一级技能目录（服务端只认来源 id，不回路径），进多选清单，底栏唯一主按钮「导入所选」（没勾禁用），逐条导入，遇同名逐条问、取消只跳过那一条；空源写「这边还没有可导入的技能。」和「换个来源」。本机文件夹由浏览器选（`webkitdirectory`），只读出根下的 SKILL.md 发给 `POST /api/skills/import`，不传路径；同名先问「库里已有同名技能，要覆盖吗？」，覆盖才替换，取消不动库。多用户 Bot 同样显示开关；库共享不扩大 Bot 管理接口的访问权限。详情、导入这类异步回包只认最新一次选择：新选择、返回列表、关闭设置都会让旧的回包作废，导入文件读完后若设置已关或导入层已换也不再发送。接口见 [API](../API.md#用户技能)。详情底栏左边次要「删除技能」（照人设卡危险文），嵌层确认「从库里删除？」；有 Bot 开着则点明 N；确认后删出库并清掉各 Bot 对它的开关，回列表报「已删除「…」。」。不做改正文、重命名、分组、MCP 和设置页编辑器。 设计师用户视角已 PASS（tip `a02e3f3`，祖先含 `3803f3d`）：技能 title 优先、只给你用默认开关、四源导入；本约定即 atlas 真源。
+点「导入」先出来源层：Agent、Codex、Claude、本机文件夹四行，底栏只有取消。前三项读本机对应技能库的一级技能目录（服务端只认来源 id，不回路径），进多选清单，底栏唯一主按钮「导入所选」（没勾禁用），逐条导入，遇同名逐条问、取消只跳过那一条；空源写「这边还没有可导入的技能。」和「换个来源」。本机文件夹由浏览器选（`webkitdirectory`），只读出根下的 SKILL.md 发给 `POST /api/skills/import`，不传路径；同名先问「库里已有同名技能，要覆盖吗？」，覆盖才替换，取消不动库。多用户 Bot 同样显示开关；库共享不扩大 Bot 管理接口的访问权限。详情、导入这类异步回包只认最新一次选择：新选择、返回列表、关闭设置都会让旧的回包作废，导入文件读完后若设置已关或导入层已换也不再发送。接口见 [API](../API.md#用户技能)。详情底栏左边次要「删除技能」（照人设卡危险文），嵌层确认「从库里删除？」；有本机 Bot 开着则点明本数据根的启用总数 N（详情里的开关仍只列当前用户可管理的 Bot）；确认后删出库并清掉各 Bot 对它的开关，回列表报「已删除「…」。」。不做改正文、重命名、分组、MCP 和设置页编辑器。 设计师用户视角已 PASS（tip `a02e3f3`，祖先含 `3803f3d`）：技能 title 优先、只给你用默认开关、四源导入；本约定即 atlas 真源。
 
 ### 人设卡设置
 

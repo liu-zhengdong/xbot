@@ -370,7 +370,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `GET /api/skills` 返回 `{"skills":[{"slug","name","title","description"}]}`，按 slug 排序，没有时是空数组，不带正文，不带停用状态。
 
-`GET /api/skills/{slug}` 返回 `slug`、`name`、`title`、`description` 和 `bots:[{"name","enabled"}]`：这个 owner 名下每个 Bot 是否开着这条技能（默认开；顺序同 Bot 列表）。多用户 Bot 同样返回真实启用状态和开关，不再返回 `shared`。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
+`GET /api/skills/{slug}` 返回 `slug`、`name`、`title`、`description`、`enabled_count` 和 `bots:[{"name","enabled"}]`：`enabled_count` 是本数据根全部 Bot 开着这条技能的数量；`bots` 只列这个 owner 名下每个 Bot 是否开着（默认开；顺序同 Bot 列表）。多用户 Bot 同样返回真实启用状态和开关，不再返回 `shared`。不带正文。库里没有这个 slug 是 404 `{"error":"没有找到这个技能"}`。开关仍用上面每个 Bot 的 `enable` / `disable`，重复调用无副作用；服务端把这两个接口串行处理，快速连点不会互相覆盖。
 
 `DELETE /api/skills/{slug}` 把这条技能从库里删掉（整个 `skills/<slug>/` 目录），同时把本数据根所有 Bot 的 `disabled_skills` 里的这个 slug 清掉，以后再导入同名技能时默认开着。成功 200 `{"deleted":true}`；库里没有这个 slug（含不合法的 slug、已经删过）是 404 `{"error":"没有找到这个技能"}`。技能没有选用绑定，所以没有 409/force。和开关接口共用同一把串行锁，并在库写锁内先清开关再删目录。命令行对应 `xbot skill remove <slug>`。
 

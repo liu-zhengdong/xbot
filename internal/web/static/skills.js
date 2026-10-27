@@ -84,6 +84,7 @@
       try { data = await api("/api/skills/" + encodeURIComponent(row.slug)); }
       catch (e) { if (latest()) fail(plain(e, "没能读取这条技能，请再试一次。")); return; }
       if (!latest()) return;
+      const initialEnabled = data.bots.filter(b => b.enabled).length;
       const {title, hint} = displayText(data);
       detail = data; status = ""; onLevel({title, backLabel: "技能", back: () => showList()});
       const back = button("setback", "", () => { showList(); }); back.append(node("span", "skback-chev"), document.createTextNode("技能"));
@@ -96,13 +97,13 @@
         b.paint = paint; paint(); line.append(tx, tog); bots.append(line);
       }
       const sec = node("div", "setsec"); sec.append(node("h4", "", "在这些 Bot 里启用"), bots);
-      const foot = node("div", "sk-foot"); foot.append(button("btn sk-del", "删除技能", ev => askDelete(ev.currentTarget, data, title)));
+      const foot = node("div", "sk-foot"); foot.append(button("btn sk-del", "删除技能", ev => askDelete(ev.currentTarget, data, title, initialEnabled)));
       body.replaceChildren(back, node("div", "skdetail-name", title), ...(hint ? [node("p", "skdetail-desc", hint)] : []), sec,
         node("p", "setfoot", "关掉只影响这一条技能、这一个 Bot。库里还在，别的 Bot 不受影响。"), foot);
     }
     // 删除出库：底栏左次要危险文 + 确认嵌层（有 Bot 开着则点明 N）
-    function askDelete(opener, data, title) {
-      const n = (data.bots || []).filter(b => b.enabled).length;
+    function askDelete(opener, data, title, initialEnabled) {
+      const n = (data.enabled_count ?? initialEnabled) + data.bots.filter(b => b.enabled).length - initialEnabled;
       let lead = "删掉后所有 Bot 都看不到「" + title + "」；要再用只能重新导入。";
       if (n >= 1) lead += "目前有 " + n + " 个 Bot 开着它。";
       openLayer(opener, "从库里删除？", lead,

@@ -171,6 +171,7 @@ func TestSkillLibraryListsLocalSkillsWithPerBotState(t *testing.T) {
 	}
 	var detail struct {
 		Name, Description string
+		EnabledCount      int `json:"enabled_count"`
 		Bots              []struct {
 			Name    string
 			Enabled bool
@@ -188,7 +189,7 @@ func TestSkillLibraryListsLocalSkillsWithPerBotState(t *testing.T) {
 		}
 	}
 	read()
-	if len(detail.Bots) != 2 || !detail.Bots[0].Enabled || !detail.Bots[1].Enabled {
+	if len(detail.Bots) != 2 || !detail.Bots[0].Enabled || !detail.Bots[1].Enabled || detail.EnabledCount != 3 {
 		t.Fatalf("every bot starts with the skill on: %+v", detail.Bots)
 	}
 	// Switching one bot off through the per-bot endpoint shows up in the library view, and only for that bot.
@@ -198,7 +199,7 @@ func TestSkillLibraryListsLocalSkillsWithPerBotState(t *testing.T) {
 		}
 	}
 	read()
-	if detail.Bots[0].Name != "ada" || detail.Bots[0].Enabled || !detail.Bots[1].Enabled {
+	if detail.Bots[0].Name != "ada" || detail.Bots[0].Enabled || !detail.Bots[1].Enabled || detail.EnabledCount != 2 {
 		t.Fatalf("only ada is off: %+v", detail.Bots)
 	}
 	ada, _ := bot.Load(root, "ada")

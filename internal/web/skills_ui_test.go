@@ -438,10 +438,11 @@ func TestSkillsSettingsDelete(t *testing.T) {
  const btn=text=>all.filter(n=>n.tag==='button'&&n.textContent===text).at(-1);
  (async()=>{
   let library=[{slug:'weekly',name:'写周报',description:'整理周报'},{slug:'flight',name:'订机票',description:'比较航班'}];
-  const calls=[];let fails=true;
+  const calls=[];let fails=true, enabledCount=3;
   const api=async(path,opt)=>{calls.push([opt?.method||'GET',path]);
    if(path==='/api/skills')return {skills:structuredClone(library)};
-   if(path==='/api/skills/weekly'&&!opt)return {slug:'weekly',name:'写周报',description:'整理周报',bots:[{name:'ada',enabled:true},{name:'eve',enabled:false}]};
+   if(path==='/api/skills/weekly'&&!opt)return {slug:'weekly',name:'写周报',description:'整理周报',enabled_count:enabledCount,bots:[{name:'ada',enabled:true},{name:'eve',enabled:false}]};
+   if(path.startsWith('/api/bots/')&&opt?.method==='POST')return {};
    if(path==='/api/skills/weekly'&&opt.method==='DELETE'){if(fails){const e=new Error('x');e.status=500;throw e}library=library.slice(1);return {deleted:true}}
    throw new Error('unexpected '+path)};
   const host=new Node('div');
@@ -452,12 +453,19 @@ func TestSkillsSettingsDelete(t *testing.T) {
   const card=find('nestcard').at(-1);
   assert.equal(card.children[0].textContent,'从库里删除？');
   assert.match(card.children[1].textContent,/删掉后所有 Bot 都看不到「写周报」；要再用只能重新导入。/);
-  assert.match(card.children[1].textContent,/目前有 1 个 Bot 开着它。/);
+  assert.match(card.children[1].textContent,/目前有 3 个 Bot 开着它。/);
   assert.doesNotMatch(card.children[1].textContent,/weekly|disabled/);
   assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消','删除']);
   btn('取消').onclick();assert.equal(find('sk-layers')[0].children.length,0);
   assert.equal(calls.some(c=>c[0]==='DELETE'),false,'cancel sends nothing');
-  del.onclick({currentTarget:del});
+  enabledCount=1;find('setback').at(-1).onclick();find('sklist').at(-1).children[0].onclick();await new Promise(r=>setImmediate(r));
+  const toggle=find('tog').at(-2), delAgain=find('sk-del').at(-1);await toggle.onclick();
+  delAgain.onclick({currentTarget:delAgain});
+  assert.doesNotMatch(find('nestcard').at(-1).children[1].textContent,/目前有/,'zero enabled omits count');
+  btn('取消').onclick();await toggle.onclick();delAgain.onclick({currentTarget:delAgain});
+  assert.match(find('nestcard').at(-1).children[1].textContent,/目前有 1 个 Bot 开着它。/,'toggle updates count');
+  btn('取消').onclick();
+  delAgain.onclick({currentTarget:delAgain});
   await find('nest-actions').at(-1).children[1].onclick();
   assert.equal(find('sk-layers')[0].children.length,1,'a failed delete keeps the layer');
   assert.equal(find('sk-error').some(n=>!n.hidden&&n.textContent==='没能删除，请再试一次。'),true);

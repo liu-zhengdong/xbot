@@ -9,7 +9,6 @@ import (
 	"slices"
 
 	"xbot/internal/bot"
-	"xbot/internal/peer"
 	"xbot/internal/skill"
 )
 
@@ -136,17 +135,24 @@ func (s *Server) readLibrarySkill(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "没有找到这个技能")
 		return
 	}
-	cfgs, err := peer.OwnerBots(s.Root, s.owner)
+	cfgs, err := bot.List(s.Root)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "没能读取 Bot")
 		return
 	}
 	bots := []map[string]any{}
+	enabledCount := 0
 	for _, cfg := range bot.Order(cfgs) {
-		bots = append(bots, map[string]any{"name": cfg.Name, "enabled": !slices.Contains(cfg.DisabledSkills, info.Slug)})
+		enabled := !slices.Contains(cfg.DisabledSkills, info.Slug)
+		if enabled {
+			enabledCount++
+		}
+		if slices.Contains(cfg.Owners, s.owner) {
+			bots = append(bots, map[string]any{"name": cfg.Name, "enabled": enabled})
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"slug": info.Slug, "name": info.Name, "title": info.Title, "description": info.Description, "bots": bots,
+		"slug": info.Slug, "name": info.Name, "title": info.Title, "description": info.Description, "bots": bots, "enabled_count": enabledCount,
 	})
 }
 
