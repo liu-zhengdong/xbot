@@ -491,8 +491,55 @@ func Rename(root, from, to string) error {
 			_ = moveVaultKey(root, to, from)
 			return err
 		}
+		migrateShellJobs(fromDir, toDir)
 		return nil
 	})
+}
+
+// migrateShellJobs repoints the old bot directory embedded in shell job
+// records. The records moved with the directory; the output path inside them
+// did not, and loading later refuses to keep such a record running. Records
+// that do not match the moved path, or cannot be read or rewritten, are left
+// alone; Load tolerates them.
+func migrateShellJobs(fromDir, toDir string) {
+	dir := filepath.Join(toDir, "shell-jobs")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, ent := range entries {
+		name := ent.Name()
+		if ent.IsDir() || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+		path := filepath.Join(dir, name)
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			continue
+		}
+		var output string
+		if err := json.Unmarshal(fields["output"], &output); err != nil {
+			continue
+		}
+		if output == "" || output != filepath.Join(fromDir, "shell-jobs", id+".log") {
+			continue
+		}
+		fixed, err := json.Marshal(filepath.Join(toDir, "shell-jobs", id+".log"))
+		if err != nil {
+			continue
+		}
+		fields["output"] = fixed
+		out, err := json.Marshal(fields)
+		if err != nil {
+			continue
+		}
+		_ = fsutil.WriteAtomic(path, append(out, '\n'), 0600)
+	}
 }
 
 func rewritePrimaryName(root, from, to string) error {

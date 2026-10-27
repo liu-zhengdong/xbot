@@ -418,3 +418,84 @@ func rgb(hex string) (float64, float64, float64) {
 	}
 	return float64((n>>16)&0xff) / 255, float64((n>>8)&0xff) / 255, float64(n&0xff) / 255
 }
+
+// Rename moves the shell-jobs directory with the bot; the output path inside
+// each record is repointed so a later load does not find it outside the bot
+// directory. A record naming some other path is left alone.
+func TestRenameMigratesShellJobs(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Create(root, "ada", "p", nil); err != nil {
+		t.Fatal(err)
+	}
+	jobsDir := filepath.Join(Dir(root, "ada"), "shell-jobs")
+	if err := os.MkdirAll(jobsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{
+		"sh_0abc12de": "running",
+		"sh_1abc12de": "done",
+	}
+	for id, status := range ids {
+		meta, err := json.Marshal(map[string]any{
+			"id": id, "command": "sleep 30", "status": status,
+			"output":  filepath.Join(jobsDir, id+".log"),
+			"started": time.Unix(1_700_000_000, 0).UTC(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(jobsDir, id+".json"), meta, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(jobsDir, id+".log"), []byte("output\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	foreign := "sh_2abc12de"
+	foreignPath := filepath.Join(t.TempDir(), foreign+".log")
+	raw, err := json.Marshal(map[string]any{
+		"id": foreign, "command": "x", "status": "running",
+		"output": foreignPath, "started": time.Unix(1, 0).UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jobsDir, foreign+".json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Rename(root, "ada", "grace"); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(Dir(root, "grace"), "shell-jobs")
+	if _, err := os.Stat(Dir(root, "ada")); !os.IsNotExist(err) {
+		t.Fatalf("old bot directory still present: %v", err)
+	}
+	for id := range ids {
+		raw, err := os.ReadFile(filepath.Join(moved, id+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rec map[string]string
+		if err := json.Unmarshal(raw, &rec); err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(moved, id+".log"); rec["output"] != want {
+			t.Fatalf("%s output %q, want %q", id, rec["output"], want)
+		}
+		if _, err := os.Stat(filepath.Join(moved, id+".log")); err != nil {
+			t.Fatalf("output file did not move with the bot: %v", err)
+		}
+	}
+	raw, err = os.ReadFile(filepath.Join(moved, foreign+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec map[string]string
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec["output"] != foreignPath {
+		t.Fatalf("foreign record rewritten: %+v", rec)
+	}
+}
