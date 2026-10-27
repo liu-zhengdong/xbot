@@ -1754,27 +1754,202 @@
         plus.append(icon("plus"), el("span", "", String(extra)));
         cell.append(plus);
       }
-      cell.addEventListener("click", () => openShots(urls));
+      cell.setAttribute("aria-label", "查看第 " + (i + 1) + " 张图片");
+      cell.addEventListener("click", () => openShots(urls, i, cell));
       box.append(cell);
     });
     return box;
   }
 
-  function openShots(urls) {
-    const grid = el("div", "grid");
-    for (const url of urls) {
-      const img = document.createElement("img");
-      img.alt = "";
-      img.src = url;
-      grid.append(img);
+  let shots = null;
+
+  function openShots(urls, index = 0, trigger = document.activeElement) {
+    if (!urls.length) return;
+    closeShots();
+    // A snapshot of this gallery only: never consult the rest of the thread.
+    const list = urls.slice();
+    const events = new AbortController();
+    const on = (node, type, fn, options = {}) => node.addEventListener(type, fn, { ...options, signal: events.signal });
+    const stage = el("div", "image-stage");
+    const status = el("div", "image-status", "正在载入…");
+    status.setAttribute("role", "status");
+    const count = el("div", "image-count");
+    count.setAttribute("aria-live", "polite");
+    count.hidden = list.length === 1;
+    const control = (name, glyph, cls, action) => {
+      const btn = el("button", "image-control " + cls);
+      btn.type = "button";
+      btn.setAttribute("aria-label", name);
+      btn.title = name;
+      btn.append(icon(glyph));
+      on(btn, "click", action);
+      return btn;
+    };
+    const close = control("关闭", "x", "image-close", closeShots);
+    const prev = control("上一张", "chevronLeft", "image-prev", () => select(index - 1));
+    const next = control("下一张", "chevron", "image-next", () => select(index + 1));
+    prev.hidden = next.hidden = list.length === 1;
+    let img, scale = 1, x = 0, y = 0, width = 0, height = 0;
+    let gesture = null, lastTap = null, lastTouch = -Infinity, suppressClick = false;
+    const pointers = new Map();
+    const clamp = (v, bound) => Math.max(-bound, Math.min(bound, v));
+    const paint = () => {
+      x = clamp(x, Math.max(0, (width * scale - stage.clientWidth) / 2));
+      y = clamp(y, Math.max(0, (height * scale - stage.clientHeight) / 2));
+      img.style.transform = "translate(" + x + "px," + y + "px) scale(" + scale + ")";
+      stage.classList.toggle("zoomed", scale > 1);
+    };
+    const fit = () => {
+      scale = 1; x = y = 0;
+      if (!img.naturalWidth) return;
+      const ratio = Math.min(1, stage.clientWidth / img.naturalWidth, stage.clientHeight / img.naturalHeight);
+      width = img.naturalWidth * ratio; height = img.naturalHeight * ratio;
+      img.style.width = width + "px"; img.style.height = height + "px";
+      paint();
+    };
+    const zoom = (value, cx, cy) => {
+      if (!width) return;
+      const rect = stage.getBoundingClientRect();
+      const px = cx - rect.left - rect.width / 2, py = cy - rect.top - rect.height / 2;
+      const target = Math.max(1, Math.min(6, value));
+      x = px - (px - x) * target / scale;
+      y = py - (py - y) * target / scale;
+      scale = target; paint();
+    };
+    function select(to) {
+      if (to < 0 || to >= list.length) return;
+      index = to;
+      pointers.clear(); gesture = lastTap = null;
+      scale = 1; x = y = width = height = 0;
+      stage.classList.remove("zoomed");
+      count.textContent = (index + 1) + " / " + list.length;
+      // Keep focused controls in the tab order even at an endpoint.
+      prev.setAttribute("aria-disabled", String(index === 0));
+      next.setAttribute("aria-disabled", String(index === list.length - 1));
+      status.hidden = false; status.textContent = "正在载入…";
+      const current = document.createElement("img");
+      current.alt = "第 " + (index + 1) + " 张图片";
+      current.draggable = false; current.hidden = true;
+      current.onload = () => {
+        if (img !== current || events.signal.aborted) return;
+        status.hidden = true; current.hidden = false; fit();
+      };
+      current.onerror = () => {
+        if (img !== current || events.signal.aborted) return;
+        current.hidden = true; status.hidden = false; status.textContent = "图片暂时无法显示";
+      };
+      img = current; stage.replaceChildren(current, status); current.src = list[index];
     }
-    lightbox.replaceChildren(grid);
+    lightbox.replaceChildren(stage, count, prev, next, close);
+    const scroll = { left: thread.scrollLeft, top: thread.scrollTop };
+    shots = { events, trigger, scroll };
     lightbox.hidden = false;
+    lightbox.showModal();
+    select(index);
+    close.focus({ preventScroll: true });
+    on(window, "resize", fit);
+    on(lightbox, "cancel", ev => { ev.preventDefault(); closeShots(); });
+    on(document, "keydown", ev => {
+      if (ev.key === "Escape" || ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
+        ev.preventDefault(); ev.stopImmediatePropagation();
+        if (ev.key === "Escape") closeShots();
+        else select(index + (ev.key === "ArrowLeft" ? -1 : 1));
+      } else if (ev.key === "Tab") {
+        // Native dialog isolates the background; explicitly wrap focus as well.
+        const controls = [prev, next, close].filter(btn => !btn.hidden);
+        const i = controls.indexOf(document.activeElement);
+        ev.preventDefault();
+        controls[(i + (ev.shiftKey ? -1 : 1) + controls.length) % controls.length].focus({ preventScroll: true });
+      }
+    }, { capture: true });
+    on(lightbox, "wheel", ev => {
+      ev.preventDefault();
+      if (!stage.contains(ev.target)) return;
+      const delta = ev.deltaY * (ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? stage.clientHeight : 1);
+      zoom(scale * Math.exp(-Math.max(-200, Math.min(200, delta)) * 0.003), ev.clientX, ev.clientY);
+    }, { passive: false });
+    on(stage, "dblclick", ev => {
+      // Touch double taps are handled below; browsers may also emit dblclick.
+      if (performance.now() - lastTouch < 500) return;
+      const r = img.getBoundingClientRect();
+      if (img.hidden || ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) return;
+      ev.preventDefault(); zoom(scale > 1 ? 1 : 2.5, ev.clientX, ev.clientY);
+    });
+    const point = ev => ({ x: ev.clientX, y: ev.clientY });
+    const pair = () => {
+      const [a, b] = [...pointers.values()];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) };
+    };
+    on(lightbox, "pointerdown", () => { suppressClick = false; }, { capture: true });
+    on(stage, "pointerdown", ev => {
+      if (ev.button !== 0) return;
+      if (ev.pointerType === "touch") lastTouch = performance.now();
+      pointers.set(ev.pointerId, point(ev));
+      stage.setPointerCapture(ev.pointerId);
+      if (pointers.size === 1) gesture = { start: point(ev), last: point(ev), moved: false, multi: false, zoomed: scale > 1, image: ev.target === img };
+      else {
+        gesture.multi = true; gesture.pair = pair(); lastTap = null;
+      }
+    });
+    on(stage, "pointermove", ev => {
+      if (!pointers.has(ev.pointerId) || !gesture) return;
+      pointers.set(ev.pointerId, point(ev));
+      if (pointers.size > 1) {
+        const now = pair(), before = gesture.pair;
+        if (before && before.distance > 0) {
+          zoom(scale * now.distance / before.distance, before.x, before.y);
+          x += now.x - before.x; y += now.y - before.y; paint();
+        }
+        gesture.pair = now; gesture.moved = true;
+      } else {
+        if (Math.hypot(ev.clientX - gesture.start.x, ev.clientY - gesture.start.y) > 8) gesture.moved = true;
+        if (scale > 1) {
+          x += ev.clientX - gesture.last.x; y += ev.clientY - gesture.last.y; paint();
+        }
+      }
+      gesture.last = point(ev);
+    });
+    const release = ev => {
+      if (!pointers.has(ev.pointerId) || !gesture) return;
+      pointers.delete(ev.pointerId);
+      if (stage.hasPointerCapture(ev.pointerId)) stage.releasePointerCapture(ev.pointerId);
+      suppressClick = gesture.moved || gesture.multi || ev.type !== "pointerup";
+      if (pointers.size) { gesture.last = [...pointers.values()][0]; return; }
+      const dx = ev.clientX - gesture.start.x, dy = ev.clientY - gesture.start.y;
+      if (ev.type === "pointerup" && !gesture.multi) {
+        if (!gesture.zoomed && ev.pointerType === "touch" && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+          select(index + (dx < 0 ? 1 : -1));
+        } else if (!gesture.moved && gesture.image && ev.pointerType === "touch") {
+          const now = performance.now();
+          if (lastTap && now - lastTap.time < 300 && Math.hypot(ev.clientX - lastTap.x, ev.clientY - lastTap.y) < 24) {
+            zoom(scale > 1 ? 1 : 2.5, ev.clientX, ev.clientY); lastTap = null;
+          } else lastTap = { ...point(ev), time: now };
+        }
+      }
+      gesture = null;
+    };
+    on(stage, "pointerup", release);
+    on(stage, "pointercancel", release);
+    on(stage, "lostpointercapture", release);
+    on(lightbox, "click", ev => {
+      if (suppressClick) { suppressClick = false; return; }
+      // Pointer capture retargets image clicks to the stage. Hit-test the image
+      // rectangle so a tap on the picture never dismisses the viewer.
+      const r = img.getBoundingClientRect();
+      const onImage = !img.hidden && ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+      if ((ev.target === lightbox || ev.target === stage) && !onImage) closeShots();
+    });
   }
 
   function closeShots() {
-    lightbox.hidden = true;
-    lightbox.replaceChildren();
+    if (!shots) return;
+    const { events, trigger, scroll } = shots;
+    shots = null;
+    events.abort();
+    lightbox.close(); lightbox.hidden = true; lightbox.replaceChildren();
+    if (trigger && trigger.isConnected) trigger.focus({ preventScroll: true });
+    else input.focus({ preventScroll: true });
+    thread.scrollLeft = scroll.left; thread.scrollTop = scroll.top;
   }
 
   // Empty chat (window review P2 #7): the bot's face, its name, one line and
@@ -2775,8 +2950,8 @@
       appendRich(bubble, pulled.text);
       wrap.append(bubble);
     }
-    if (pulled.images.length) wrap.append(gallery(pulled.images));
-    if (pasted.length) wrap.append(gallery(pasted));
+    const images = [...pulled.images, ...pasted];
+    if (images.length) wrap.append(gallery(images));
     if (!pulled.text && !pulled.images.length && !pasted.length) {
       const bubble = el("div", "bubble");
       bubble.textContent = parsed.text;
@@ -7537,7 +7712,6 @@
 
   modal.addEventListener("click", (ev) => { if (ev.target === modal) closeModal(); });
   $("modal-cancel").addEventListener("click", closeModal);
-  lightbox.addEventListener("click", (ev) => { if (ev.target === lightbox) closeShots(); });
 
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();

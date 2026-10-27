@@ -47,6 +47,10 @@
   --x-bot-code:rgba(24,24,27,.06);
   --x-shadow-pop:0 8px 30px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
   --x-scrim:rgba(24,24,27,.28);
+  /* 图片查看：浅深主题都使用沉浸暗底。 */
+  --x-viewer-bg:#101012; --x-viewer-text:#f5f5f7;
+  --x-viewer-control-bg:rgba(255,255,255,.10); --x-viewer-hover:rgba(255,255,255,.22);
+  --x-viewer-control:44px; --x-viewer-gutter:72px; --x-viewer-disabled:.35;
   /* 字体 */
   --x-font:"Segoe UI","Noto Sans SC","PingFang SC",sans-serif;
   --x-mono:"JetBrains Mono","SF Mono",Consolas,"Noto Sans Mono",monospace;

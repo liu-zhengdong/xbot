@@ -81,3 +81,7 @@
 - **跟版提示增补也要守原压缩频率门槛。** 常驻前缀多几百字可能跨过长轮折叠阈值；先合并/精简已有规则，不为文案增量放宽频率或硬上限断言。对照行为脚本只验证接线与验收谓词，不能当作真实模型改前改后成绩。证据：上下文批 C 的 `TestLongTurnStaysUnderTheCeiling` 与 `TestBatchCPartnerBehaviorComparison`。Seen 1×（2026-10-26）。
 
 - **保存成功与交付成功要分开回报。** hosted 生图先落工作区，再走同轮挂图；挂图超限时保留真实文件路径和失败原因，当前模型响应看不到的本机失败由程序追加到回复，不能只靠下一轮提示纠正。守护：`TestImageGenerationAttachmentFailureKeepsPathAndReceipt`、`TestHostedImageDeliveryLimitsAndIdempotency`。Seen 1×（2026-10-27）。
+
+## 界面交互
+
+- **图片手势要用真实浏览器输入验证。** Pointer capture 会把 click/dblclick 重定向到容器；触屏双击还可能附带合成 dblclick。按图片实际边界判点击、避免重复缩放，并验证取消手势后下一次空白点击仍能关闭。守护：`internal/web/testdata/chat-image-viewer.cjs`。Seen 1×（2026-10-27）。
