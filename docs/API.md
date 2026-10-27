@@ -467,4 +467,4 @@ Transcript 消息保留原 `content` 字符串投影，另有可选 `parts` 数�
 
 ### Bot 收件箱
 
-`GET /api/bots/{name}/inbox?limit=50` 需登录且为 Bot owner。返回 `{pending_count,items}`，包含待处理与已吸收事件，按事件时间新到旧；主人聊天和确认事件不列入。`limit` 默认 50，范围 1–100；每项含 id、source、type、sender、sender_kind、time、summary 和 status（pending 或 acked）。摘要去除 untrusted_event 标签；Webhook 取首个 delivery 正文，文件监听去除 watch 外壳，最多 1000 字符。接口只读，不执行 Ack。
+`GET /api/bots/{name}/inbox?limit=50` 需登录且为 Bot owner。返回 `{pending_count,items}`，包含待处理与已吸收事件，按事件时间新到旧；主人聊天和确认事件不列入。`limit` 默认 50，范围 1–100；每项含 id、source、type、sender、sender_kind、time、summary 和 status（pending 或 acked）。摘要去除 untrusted_event 标签；Webhook 取首个 delivery 正文，文件监听去除 watch 外壳，定时 routine 只取标签内正文并去掉后续唤醒套话；正文去除首尾空白后最多 1000 字符（截断时加省略号）。接口只读，不执行 Ack。

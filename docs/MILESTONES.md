@@ -7,6 +7,10 @@
 
 - 复审回修：恢复送达消息记账，`result.text` 与 `done.text` 带正文，忙态仍只显示 description；删除无调用的 progress 和闲置参数。新 result 断言在旧 tip 失败，修复后 `TestReplyToRoundTrip`、忙态与活泡浏览器回归各连续三次通过，kernel 定向测试三次通过；gofmt、全仓 vet 通过，atlas audit 有既有告警。全仓单次失败：e2e `TestSpawnWhileChatKeepsAnswering` 超时、kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir`，web `TestWebApprovalAllowAndDeny` 在 240 秒包超时；kernel/web 全包三次同样分别因长轮失败和审批超时未通过（长轮复审已在基线复现）。未测交互 p95、帧率和主人日用；未合 main、未 push。
 
+## 2026-10-27 收件箱定时摘要修复（功能分支）
+
+定时 routine 摘要只显示标签内正文，去掉后续唤醒套话；接口回归在旧代码失败、修复后专项通过。级别：本分支，尚未端到端验收；未测性能数字。
+
 ## 2026-10-27 收件箱来源和摘要修复（功能分支）
 
 - Webhook、文件监听按真实来源前缀显示；摘要提取首个 Webhook delivery 正文、去掉 watch 外壳。真实格式接口及 Chrome 脚本回归在旧代码失败、修复后专项连续三次通过。

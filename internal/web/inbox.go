@@ -28,6 +28,7 @@ var inboxFence = regexp.MustCompile(`(?i)</?untrusted_event\b[^>]*>`)
 
 var inboxDelivery = regexp.MustCompile(`<delivery\b[^>]*>`)
 var inboxWatch = regexp.MustCompile(`^<watch\b[^>]*>`)
+var inboxRoutine = regexp.MustCompile(`(?s)^<routine\b[^>]*>(.*?)</routine>`)
 
 func (s *Server) listInbox(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
@@ -97,6 +98,8 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request) {
 		} else if strings.HasPrefix(ev.Source, "watch:") || ev.Source == "watch" {
 			summary = strings.TrimSpace(inboxWatch.ReplaceAllString(summary, ""))
 			summary = strings.TrimSpace(strings.TrimSuffix(summary, "</watch>"))
+		} else if match := inboxRoutine.FindStringSubmatch(summary); match != nil {
+			summary = strings.TrimSpace(match[1])
 		}
 		chars := []rune(summary)
 		if len(chars) > 1000 {
