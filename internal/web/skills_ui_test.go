@@ -441,17 +441,18 @@ func TestSkillsSettingsDelete(t *testing.T) {
   const calls=[];let fails=true;
   const api=async(path,opt)=>{calls.push([opt?.method||'GET',path]);
    if(path==='/api/skills')return {skills:structuredClone(library)};
-   if(path==='/api/skills/weekly'&&!opt)return {slug:'weekly',name:'写周报',description:'整理周报',bots:[{name:'ada',enabled:false}]};
+   if(path==='/api/skills/weekly'&&!opt)return {slug:'weekly',name:'写周报',description:'整理周报',bots:[{name:'ada',enabled:true},{name:'eve',enabled:false}]};
    if(path==='/api/skills/weekly'&&opt.method==='DELETE'){if(fails){const e=new Error('x');e.status=500;throw e}library=library.slice(1);return {deleted:true}}
    throw new Error('unexpected '+path)};
   const host=new Node('div');
   await window.XBotSkills.mount({api,host,isCurrent:()=>true});
   find('sklist')[0].children[0].onclick();await new Promise(r=>setImmediate(r));
-  const del=find('sk-del')[0];assert.equal(del.textContent,'删除');
+  const del=find('sk-del')[0];assert.equal(del.textContent,'删除技能');
   del.onclick({currentTarget:del});
   const card=find('nestcard').at(-1);
-  assert.equal(card.children[0].textContent,'删除这个技能？');
-  assert.match(card.children[1].textContent,/各个 Bot 里对它的开关也一并清掉。删除后找不回来。/);
+  assert.equal(card.children[0].textContent,'从库里删除？');
+  assert.match(card.children[1].textContent,/删掉后所有 Bot 都看不到「写周报」；要再用只能重新导入。/);
+  assert.match(card.children[1].textContent,/目前有 1 个 Bot 开着它。/);
   assert.doesNotMatch(card.children[1].textContent,/weekly|disabled/);
   assert.deepEqual(find('nest-actions').at(-1).children.map(b=>b.textContent),['取消','删除']);
   btn('取消').onclick();assert.equal(find('sk-layers')[0].children.length,0);

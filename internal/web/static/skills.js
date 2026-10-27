@@ -96,14 +96,17 @@
         b.paint = paint; paint(); line.append(tx, tog); bots.append(line);
       }
       const sec = node("div", "setsec"); sec.append(node("h4", "", "在这些 Bot 里启用"), bots);
-      const foot = node("div", "sk-foot"); foot.append(button("btn sk-del", "删除", ev => askDelete(ev.currentTarget, data, title)));
+      const foot = node("div", "sk-foot"); foot.append(button("btn sk-del", "删除技能", ev => askDelete(ev.currentTarget, data, title)));
       body.replaceChildren(back, node("div", "skdetail-name", title), ...(hint ? [node("p", "skdetail-desc", hint)] : []), sec,
         node("p", "setfoot", "关掉只影响这一条技能、这一个 Bot。库里还在，别的 Bot 不受影响。"), foot);
     }
-    // 删除：无独立设计真源，照人设卡的底栏「删除」+ 嵌层确认
+    // 删除出库：底栏左次要危险文 + 确认嵌层（有 Bot 开着则点明 N）
     function askDelete(opener, data, title) {
-      openLayer(opener, "删除这个技能？", "从本机技能库删掉「" + title + "」，各个 Bot 里对它的开关也一并清掉。删除后找不回来。",
-        [["btn sec", "取消", () => closeLayer()], ["btn pri", "删除", () => remove(data, title)]]);
+      const n = (data.bots || []).filter(b => b.enabled).length;
+      let lead = "删掉后所有 Bot 都看不到「" + title + "」；要再用只能重新导入。";
+      if (n >= 1) lead += "目前有 " + n + " 个 Bot 开着它。";
+      openLayer(opener, "从库里删除？", lead,
+        [["btn sec", "取消", () => closeLayer()], ["btn danger", "删除", () => remove(data, title)]]);
     }
     async function remove(data, title) {
       if (importing || !current()) return;

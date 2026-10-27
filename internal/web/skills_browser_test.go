@@ -53,7 +53,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<400;i++){if(fn())return;await new Pr
  const del=$('.sk-del'),box=del.getBoundingClientRect();
  assert(box.width>0&&box.bottom<=innerHeight+1,'delete button not on screen');
  del.click();await waitFor(()=>$('.nestcard'),'confirm layer missing');
- assert($('.nestcard h3').textContent==='删除这个技能？','confirm title');
+ assert($('.nestcard h3').textContent==='从库里删除？','confirm title');
  const card=$('.nestcard').getBoundingClientRect();assert(card.width>0&&card.top>=0&&card.bottom<=innerHeight,'confirm layer off screen');
  if(shot==='delete'){document.body.dataset.testResult='passed';return}
  [...document.querySelectorAll('.nest-actions button')].at(-1).click();
