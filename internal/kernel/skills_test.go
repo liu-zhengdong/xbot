@@ -288,6 +288,44 @@ func TestDispatchMainLineWritesLoadedSkill(t *testing.T) {
 	}
 }
 
+func TestSkillHarvestProposalAndConfirmation(t *testing.T) {
+	ada := testBot(t, link.NameTerminal, link.NameSkills, link.NameAgents)
+	k := skillKernel(ada)
+	k.Dispatch = true
+	k.Links = append(k.Links, link.Agents{})
+	k.MaxSteps = 6
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("Imported skills from three sources and resolved name conflicts. Save as a skill to invoke for future imports? Confirm, rename, or decline.")}}}
+	k.Provider = p
+	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "Import skills from three sources", time.Unix(1, 0))); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.reqs[0].Messages[0].Text(), SkillHarvestRule) {
+		t.Fatal("empty library did not receive the harvest rule")
+	}
+	if _, err := os.Stat(skillPath(ada, "multi-import")); !os.IsNotExist(err) {
+		t.Fatalf("proposal wrote a skill: %v", err)
+	}
+	p = &scripted{resps: []provider.Message{
+		linksCall("load", "skills"),
+		assistantCall("write", "", "write_skill", `{"slug":"multi-import","description":"Import skills from several sources","body":"Import and resolve name conflicts."}`),
+		assistantCall("read", "", "read_skill", `{"id":"multi-import"}`),
+		{Role: provider.RoleAssistant, Content: provider.TextContent("Saved.")},
+	}}
+	k.Provider = p
+	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "Confirm", time.Unix(2, 0))); err != nil {
+		t.Fatal(err)
+	}
+	if !hasDef(p.reqs[1].Tools, "write_skill") || !strings.Contains(messagesText(p.reqs[3].Messages), "Import and resolve name conflicts.") {
+		t.Fatal("loaded skill tools did not write and read the skill")
+	}
+	if !strings.Contains(systemOf(t, k), "multi-import: Import skills from several sources") {
+		t.Fatal("new skill missing from the list")
+	}
+	if !strings.Contains((writeSkillTool{k}).Description(), "only after the owner confirms") {
+		t.Fatal("write_skill description lacks confirmation guidance")
+	}
+}
+
 func TestSkillDescriptionsNameLocalLibrary(t *testing.T) {
 	k := &Kernel{SkillsDir: filepath.Join(t.TempDir(), ".xbot-dev", "skills")}
 	for name, text := range map[string]string{

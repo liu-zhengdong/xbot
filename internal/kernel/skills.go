@@ -64,7 +64,7 @@ func (t writeSkillTool) Description() string {
 	if t.k != nil && t.k.SkillsDir != "" {
 		at = " at " + filepath.Join(t.k.SkillsDir, "<slug>", "SKILL.md")
 	}
-	return "Create or replace a skill directly in the local skill library" + at + ". Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all local bots."
+	return "Create or replace a skill directly in the local skill library" + at + ". Call only after the owner confirms a proposal or explicitly requests writing a skill. Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all local bots."
 }
 func (writeSkillTool) Parameters() any {
 	return schema(map[string]any{
