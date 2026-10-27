@@ -195,7 +195,7 @@ button:disabled { cursor: default; }
    width whether the panel is open or not (#243). */
 .main {
   flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
-  position: relative; background: var(--bg);
+  position: relative; background: var(--bg); container-type: inline-size;
   margin-left: 0; border-radius: 12px; overflow: hidden;
 }
 
@@ -240,7 +240,6 @@ button:disabled { cursor: default; }
 .top-title:hover:not(:disabled) { background: var(--x-card); }
 .top-title.on {
   background: var(--x-fill-2); transform: translateY(-1px);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.14), 0 2px 4px rgba(0, 0, 0, 0.06);
 }
 .top-title:disabled { cursor: default; }
 .main.peer .top-title { max-width: 100%; }
@@ -1405,6 +1404,10 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 @media (min-width: 960px) {
   .panel { width: 384px; max-width: calc(100% - 16px); }
+  /* 384px drawer + half of the widest 300px card on each side. */
+  @container (max-width: 1068px) {
+    .panel { top: calc(var(--top-h) + 68px); }
+  }
 }
 
 .toast {

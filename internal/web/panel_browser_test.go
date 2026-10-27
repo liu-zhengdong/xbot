@@ -24,7 +24,7 @@ func TestBotPanelBrowser(t *testing.T) {
 		name  string
 		width int
 		shell string
-	}{{"390", 390, ""}, {"820", 820, ""}, {"1440", 1440, ""}, {"820-shell", 820, "os-linux"}} {
+	}{{"390", 390, ""}, {"820", 820, ""}, {"959", 959, ""}, {"960", 960, ""}, {"1100", 1100, ""}, {"1200", 1200, ""}, {"1440", 1440, ""}, {"820-shell", 820, "os-linux"}, {"1100-shell", 1100, "os-linux"}} {
 		width := tc.width
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -83,6 +83,7 @@ const panelFixture = `
 localStorage.removeItem('xbot-panel-open');
 localStorage.removeItem('xbot.side');
 bots[1].pinned=false;
+bots.find(b=>b.name==='2号小伙子').description='这是一段很长的 Bot 简介，用来检查身份卡在侧栏展开和抽屉打开时仍然完整可点击。'.repeat(4);
 const baseFetch=window.fetch;
 fixture.calls=[];
 window.fetch=async(path,opts={})=>{
@@ -144,9 +145,12 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  }
  if(innerWidth>=768&&document.documentElement.classList.contains('in-app'))assert(near(rect($('.top')).height,88),'desktop shell header is not 88px');
  const chip=$('#head-chip');
+ if(innerWidth>=768)assert(!$('#sidebar').classList.contains('rail'),'sidebar is not expanded');
  assert(!$('#info')&&!$('.ptog'),'separate panel toggle still present');
  assert(!chip.disabled&&chip.contains($('#title .avatar'))&&chip.getAttribute('aria-expanded')==='false','chip is not the closed toggle');
- chip.click();
+ const initial=rect(chip),firstHit=document.elementFromPoint(initial.x+initial.width/2,initial.y+initial.height/2);
+ assert(chip.contains(firstHit),'closed chip is blocked');
+ firstHit.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
  assert(chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='true'&&panel.classList.contains('open'),'chip does not open panel');
  assert($('#setpage').hidden,'chip opened settings');
  await waitFor(()=>panel.textContent.includes('scripted'),'panel data missing');
@@ -249,9 +253,13 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  // Hit-test like a real pointer: neither the scrim nor the open drawer may
  // cover the chip at any width, so a second real click closes the panel.
  await sleep(250);finishAnimations();
- const cr=rect(chip),hit=document.elementFromPoint(cr.x+cr.width/2,cr.y+cr.height/2);
- assert(chip.contains(hit),(panel.contains(hit)?'drawer':'scrim')+' covers the chip at '+innerWidth+'px');
- assert(rect(panel).top>=rect($('.top')).bottom-1||rect(panel).left>=cr.right,'drawer overlaps the header chip');
+ const cr=rect(chip);
+ for(const x of [0.05,0.5,0.95])for(const y of [0.1,0.5,0.9]){
+  const hit=document.elementFromPoint(cr.x+cr.width*x,cr.y+cr.height*y);
+  assert(chip.contains(hit),(panel.contains(hit)?'drawer':'scrim')+' covers the chip at '+innerWidth+'px');
+ }
+ const hit=document.elementFromPoint(cr.x+cr.width/2,cr.y+cr.height/2);
+ assert(rect(panel).top>=cr.bottom-1||rect(panel).left>=cr.right,'drawer overlaps the header chip');
  // At wide widths the stacked card's centre lands on the avatar SVG, which
  // has no .click(), so dispatch the click on whatever the pointer hits.
  hit.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));await sleep(250);finishAnimations();
