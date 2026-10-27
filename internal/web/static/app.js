@@ -7826,6 +7826,16 @@
   // off-origin path as the bubble links (target=_blank + noopener; the desktop
   // shell turns it into OpenExternal). The anchor sits inside the composer
   // form, so the click is consumed here and can never become a submit.
+  // Links inside contenteditable never take focus, so the "caret in link" pad
+  // is a class following the selection.
+  document.addEventListener("selectionchange", () => {
+    const sel = getSelection();
+    const node = sel && sel.rangeCount ? sel.getRangeAt(0).startContainer : null;
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    const link = el && input.contains(el) ? el.closest("a") : null;
+    for (const a of input.querySelectorAll("a.caret-in")) if (a !== link) a.classList.remove("caret-in");
+    if (link) link.classList.add("caret-in");
+  });
   input.addEventListener("click", (ev) => {
     const link = ev.target && ev.target.closest ? ev.target.closest("a") : null;
     if (!link || !input.contains(link)) return;

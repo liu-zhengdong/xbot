@@ -31,10 +31,10 @@
   --x-danger:#c93a2b; --x-danger-bg:#fbeaea; /* 只给错误、删除、失败 */
   --x-caption-close:#c42b1c; /* 只给 Windows 关闭按钮悬停（系统惯例） */
   --x-online:#2f9e5b;                         /* 只给「在线」小圆点 */
-  /* 文内可点文字（外链、跳转）：蓝字浅蓝圆角底；按钮、整行、code 不用 */
-  --x-text-link:#1a62d6; --x-text-link-bg:#dae6fb; --x-text-link-hover:#c9dbf9;
+  /* 文内可点文字（外链、跳转）：默认只是偏蓝字无底；悬停或光标进链才出淡蓝圆角底（bg/hover 只用于这时）；按钮、整行、code 不用 */
+  --x-text-link:#3b82f6; --x-text-link-bg:#e8f1ff; --x-text-link-hover:#e8f1ff;
   /* 主人气泡底色与卡片相反，链接用另一侧主题的那组 */
-  --x-user-link:#8ab8ff; --x-user-link-bg:rgba(110,160,255,.22); --x-user-link-hover:rgba(110,160,255,.32);
+  --x-user-link:#8ab8ff; --x-user-link-bg:rgba(110,160,255,.16); --x-user-link-hover:rgba(110,160,255,.16);
   --x-pending:#c9a227;                        /* 只给「等待登录…」小圆点（xAI 详情定稿） */
   /* 子代理类型标签（低饱和，同一族明度） */
   --x-type-dev:#4f7d69;  --x-type-dev-bg:#e5efe9;   /* 开发 · 墨绿 */
@@ -74,8 +74,8 @@ html[data-theme="dark"]{
   --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;
   --x-disabled:rgba(255,255,255,.08); --x-on-disabled:#6f6f75;
   --x-danger:#f97066; --x-danger-bg:rgba(249,112,102,.12); --x-online:#3fb27f; --x-pending:#d9b44a;
-  --x-text-link:#8ab8ff; --x-text-link-bg:rgba(110,160,255,.18); --x-text-link-hover:rgba(110,160,255,.28);
-  --x-user-link:#1a62d6; --x-user-link-bg:#d3e1f9; --x-user-link-hover:#c3d5f6;
+  --x-text-link:#8ab8ff; --x-text-link-bg:rgba(110,160,255,.16); --x-text-link-hover:rgba(110,160,255,.16);
+  --x-user-link:#3b82f6; --x-user-link-bg:rgba(59,130,246,.12); --x-user-link-hover:rgba(59,130,246,.12);
   --x-type-dev:#8fbfa8; --x-type-dev-bg:#21302a;
   --x-type-res:#9db6d4; --x-type-res-bg:#222b37;
   --x-type-gen:#c2b8aa; --x-type-gen-bg:#2e2b27;

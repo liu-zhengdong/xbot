@@ -749,14 +749,16 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .prose p:last-child { margin-bottom: 0; }
 
 /* Text links everywhere (bubbles, prose, web cites, composer draft) share one skin:
-   blue text on a light blue rounded pad, no underline, no bold. */
+   plain blue text, no underline, no bold; the light blue rounded pad only shows on
+   hover, or in the composer while the caret is inside the link (caret-in, app.js). */
 .prose a, .bubble a, .hs-cites a, .composer .composer-input a {
-  color: var(--x-text-link); background: var(--x-text-link-bg);
+  color: var(--x-text-link); background: transparent;
   border-radius: 4px; padding: 0 3px; text-decoration: none;
   -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
 
-:is(.prose, .bubble, .hs-cites, .composer .composer-input) a:hover { background: var(--x-text-link-hover); }
+:is(.prose, .bubble, .hs-cites, .composer .composer-input) a:hover,
+.composer .composer-input a.caret-in { background: var(--x-text-link-hover); }
 
 /* Site favicon at the front of the link pad: no room taken until it loads,
    removed on failure (linkIcon in app.js). */
