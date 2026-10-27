@@ -77,19 +77,20 @@ func TestTaskCardUsesTitleAndKeepsOriginalErrorAcrossPolls(t *testing.T) {
  const el=(tag,cls,text)=>Object.assign(node(),{tag,textContent:text||''}), icon=()=>node(),spinIcon=icon;
  const document={createTextNode:text=>({textContent:text})};const pathLabel=path=>el('span','compact-path',path);
  const taskStatus=x=>x,when=x=>x,plainText=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=()=> '请求超时';
- const elements=new Map([['.task-error',node()]]),card=node();card.querySelector=sel=>{if(sel==='.res'&&elements.get('.task-type')?.className?.split(' ').includes('res'))return elements.get('.task-type');if(!elements.has(sel))elements.set(sel,node());return elements.get(sel)};
+ const elements=new Map([['.task-error',node()]]),card=node();card.querySelector=sel=>{if(sel==='.recent-name')sel='.task-name';if(sel==='.res'&&elements.get('.task-type')?.className?.split(' ').includes('res'))return elements.get('.task-type');if(!elements.has(sel))elements.set(sel,node());return elements.get(sel)};
+ card.querySelector('.task-heading').prepend=()=>{};card.querySelector('.recent-task').insertBefore=()=>{};
  ` + part("  function clip(", "  function when(") + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskNotable(", "  function taskCard(") + part("  function updateTaskCard(", "  const routineChanges") + `
  const plain=node();taskText(plain,'研究/开发 3/5');assert.equal(plain.textContent,'研究/开发 3/5');assert.equal(plain.children.length,0);
  const ag={id:'sa_0123456789abcdef',type:'dev',task:'核对页面\n下一行是具体步骤',status:'failed',summary:'provider: context deadline exceeded',steps:3};
  updateTaskCard(card,ag);
- assert.equal(elements.get('.task-name').textContent,'核对页面');assert.equal(elements.get('.recent-name').textContent,'核对页面');
+ assert.equal(elements.get('.task-name').textContent,'核对页面');
  assert.equal(elements.get('.task-id').textContent,ag.id);
  assert.equal(taskTitle({...ag,task:'',type:'research'}),'调研');assert.equal(taskTitle({...ag,task:''}),'开发');
  assert.equal(taskProgress({...ag,task:'建骨架',current_step:'在建骨架'}),'');assert.equal(taskProgress({...ag,task:'建骨架',current_step:'建骨架并测试'}),'');assert.equal(taskProgress({...ag,task:'建骨架',current_step:'运行测试'}),'运行测试');
  assert.equal(taskStatusIcon({status:'cancelled'}),'ban');assert.equal(taskStatusIcon({status:'done'}),'circle-check');assert.equal(taskStatusIcon({status:'failed'}),'x');
  assert.equal(taskTitle({id:ag.id}), '子代理');assert.equal(taskTitle({...ag,task:ag.id}), '开发');
  assert.equal(taskTitle({...ag,task:'😀'.repeat(25)+'\n这行不要显示'}),'😀'.repeat(24)+'…');
- updateTaskCard(card,{...ag,task:''});assert.equal(elements.get('.task-name').textContent,'开发');assert.equal(elements.get('.recent-name').textContent,'开发');
+ updateTaskCard(card,{...ag,task:''});assert.equal(elements.get('.task-name').textContent,'开发');
  updateTaskCard(card,ag);
  const detail=elements.get('.task-error');assert.equal(detail.hidden,false);assert.equal(detail.children.length,2);assert.equal(detail.children[1].textContent,ag.summary);
  detail.children[0].click();assert.equal(detail.children[1].hidden,false);

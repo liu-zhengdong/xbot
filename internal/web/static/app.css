@@ -2572,12 +2572,12 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .task-record .secondary[hidden] { display: none; }
 .task-record .secondary .icon { width: 14px; height: 14px; }
 .task-record .failed { color: var(--x-danger); }
-.task-fold { border: 0; background: transparent; color: var(--x-muted); font-size: 11.5px; padding: 0; }
-.task-fold .icon { width: 13px; height: 13px; transform: rotate(180deg); }
-.task-record:not(.finished) > .recent-task, .task-record.finished:not(.expanded) > .card, .task-record.expanded > .recent-task { display: none; }
+.task-record:not(.finished) > .recent-task, .task-record.finished:not(.expanded) > .card, .task-record.finished .ch { display: none; }
+.task-record.finished > .card.tk { margin: 0; padding: 0 10px 8px; background: transparent; }
+.task-record.finished.expanded .recent-task > .icon:last-child { transform: rotate(90deg); }
 .task-record .recent-task { gap: 9px; min-height: 36px; padding: 6px 10px; }
 .task-record .recent-task > .icon { width: 14px; height: 14px; flex: none; }
-.task-record .recent-name { font-size: 12.5px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-record .recent-task .recent-name { font-size: 12.5px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-details { margin-top: 8px; font-size: 11.5px; color: var(--x-faint); }
 .task-details > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 3px; list-style: none; }
 .task-details > summary::-webkit-details-marker { display: none; }

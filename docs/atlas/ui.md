@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary
+verified: 2026-10-27 @ 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary + task-record-fold
 ---
 # 网页界面
 
@@ -130,6 +130,8 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 ### 任务页
 「任务」页分四段，顺序是进行中、排队中、最近结束、例程。一个子代理一项，状态原地更新；名字后面紧跟一个低饱和的类型标签（开发、调研、通用、自定义四色），名字本身就是类型名时不重复。卡片标题用任务的短标题，没有短标题时退回类型名，不显示内部编号。进度文字和标题重复时（去掉开头的「在」后和标题相同，或以标题开头）只显示「第 N 步 · 用时」。每项下面有可展开的「任务详情」（带向右的箭头，展开时转向下），里面是原始请求和任务编号，编号放在这里就是为了让人能复制。
+
+最近结束的运行记录以紧凑行显示；点同一行展开或收起下方结果，标题、图标和行密度保持不变。进行中的任务仍显示展开卡片。
 
 面板每 3 秒轮询一次。值没变的节点不重写，选区落在某个节点里时跳过这个节点，所以用户选中任务编号后，刷新不会清掉选区。
 

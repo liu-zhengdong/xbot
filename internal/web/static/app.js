@@ -5665,21 +5665,19 @@
   function taskCard(ag) {
     const card = el("div", "task-record"); card.dataset.agent = ag.id;
     const compact = el("button", "recent-task"); compact.type = "button";
-    compact.append(icon("circle-check"), el("b", "recent-name"), el("span", "recent-status"), icon("chevron"));
+    const name = el("b", "task-name recent-name");
+    compact.append(icon("circle-check"), name, el("span", "recent-status"), icon("chevron"));
     const detail = el("div", "card tk");
-    compact.addEventListener("click", () => { card.classList.add("expanded"); compact.setAttribute("aria-expanded", "true"); queuePathLayout(); });
+    compact.addEventListener("click", () => { card.classList.toggle("expanded"); compact.setAttribute("aria-expanded", String(card.classList.contains("expanded"))); queuePathLayout(); });
     card.append(compact, detail);
     const head = el("div", "ch"), ct = el("div", "ct");
-    const title = el("div", "task-heading"); title.append(el("b", "task-name"), el("span", "task-type ty")); ct.append(title);
+    const title = el("div", "task-heading"); title.append(el("span", "task-type ty")); ct.append(title);
     head.append(taskAvatar(ag, "xs"), ct, el("span", "task-state"));
     detail.append(head, el("div", "now"), el("div", "res"), el("div", "task-notable"), el("div", "task-error"));
     const info = el("details", "task-details"); info.hidden = ag.type === "routine";
     const infoTitle = el("summary", "", "任务详情"); infoTitle.append(icon("chevron"));
     info.append(infoTitle, el("p", "task-request"), el("code", "task-id"), el("div", "task-notable-details"));
     detail.append(info);
-    const close = el("button", "task-fold"); close.type = "button"; close.setAttribute("aria-label", "收起结果"); close.append(icon("chevronDown"));
-    close.addEventListener("click", () => { card.classList.remove("expanded"); compact.setAttribute("aria-expanded", "false"); });
-    head.append(close);
     const controls = el("div", "ca");
     const steer = el("button", "secondary task-guide"); steer.type = "button"; steer.append(icon("corner-down-right"), document.createTextNode("引导"));
     const stop = el("button", "secondary task-stop"); stop.type = "button";
@@ -5714,8 +5712,10 @@
     const hot = ["running", "awaiting", "queued"].includes(ag.status);
     card.classList.toggle("finished", !hot);
     const title = taskTitle(ag);
-    taskText(card.querySelector(".recent-name"), title);
     const compact = card.querySelector(".recent-task");
+    const name = card.querySelector(".task-name"), heading = card.querySelector(".task-heading");
+    if (hot && name.parentElement !== heading) heading.prepend(name);
+    else if (!hot && name.parentElement !== compact) compact.insertBefore(name, compact.querySelector(".recent-status"));
     if (compact.dataset.state !== ag.status) { compact.dataset.state = ag.status; compact.firstElementChild.replaceWith(icon(ag.type === "routine" ? "alarm-clock" : taskStatusIcon(ag))); }
     taskValue(card.querySelector(".recent-status"), ag.finished_at ? when(ag.finished_at) : taskStatus(ag.status));
     card.querySelector(".recent-task").classList.toggle("failed", ag.status === "failed");
@@ -5761,7 +5761,6 @@
     card.querySelector(".ca").hidden = !hot;
     card.querySelector(".task-guide").hidden = !running; card.querySelector(".task-stop").hidden = !running; card.querySelector(".task-cancel").hidden = ag.status !== "queued";
     if (!running) { card.querySelector(".steer-editor").hidden = true; card.querySelector(".task-guide").setAttribute("aria-expanded", "false"); }
-    card.querySelector(".task-fold").hidden = hot;
   }
 
   const routineChanges = new Set();
