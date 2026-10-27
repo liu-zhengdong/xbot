@@ -76,18 +76,17 @@ dev 实例的数据在 `~/.xbot-dev`，第一次 start 时从 `~/.xbot` 整份�
 | `XBOT_RUNNER_TOKEN` | runner 的 bearer token | 空 |
 | `XBOT_CODE_AGENT` | 编码任务要启动的外部程序，优先于 runner 和本机模型 | 空 |
 
-命名 provider 写在 `~/.xbot/providers.json`。里面只存 `api_key_env`（环境变量的名字），不存密钥本身。Bot 的 `config.json` 只记下 provider 名和 model 名。
+供应商只有 `~/.xbot/providers.json` 这一张表。首次运行或升级时表里没有 `deepseek` 项就补上（base_url 取 `XBOT_BASE_URL`，默认 `https://api.deepseek.com/v1`；`api_key_env` 是 `XBOT_API_KEY`；模型取 `XBOT_MODEL`，默认 `deepseek-flash`），删掉后下次启动会再补回；旧 Bot 没记 provider 的，自动绑到这一项。里面只存 `api_key_env`（环境变量的名字），不存密钥本身。Bot 的 `config.json` 只记下 provider 名和 model 名。
 
 ```bash
 xbot provider list
 xbot provider remove deepseek --model deepseek-flash
 xbot bind ada --provider deepseek --model deepseek-flash
-xbot bind ada --clear
 ```
 
 DeepSeek 的模型默认会先思考；XBot 对模型名含 deepseek 的请求一律带上 `"thinking":{"type":"disabled"}`，关掉思考。`deepseek-chat` 是官方已停用的旧名，现在被路由到 deepseek-flash 的非思考模式，仍能用。模型条目可以写 `thinking`：`off` 总是带上这个字段，`omit` 不带（给不认这个字段的网关用）。`xbot provider add --thinking off|omit` 写入它。
 
-`xbot new` 可以带 `--provider` 和 `--model`。两个都空就用上面的环境变量。内核和模型之间是 `provider.ModelSelector`。现在只有固定绑定（`FixedSelector`），以后的自动路由走同一个接口。
+`xbot new` 可以带 `--provider` 和 `--model`。两个都空就绑 `deepseek` 项的第一个模型。内核和模型之间是 `provider.ModelSelector`。现在只有固定绑定（`FixedSelector`），以后的自动路由走同一个接口。
 
 请求发到 `{base}/chat/completions`，带 tool calling，流式返回。不依赖 Anthropic。
 

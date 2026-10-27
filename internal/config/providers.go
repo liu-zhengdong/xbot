@@ -331,19 +331,57 @@ func SetImageGen(root, providerName, modelName string, on bool, imageModel strin
 	})
 }
 
-// Resolve turns a bot binding into an endpoint. An empty binding uses FromEnv and the default context length.
-// The API key is read from the environment variable named in the registry.
+// DefaultProvider is the registry entry new bots bind to and bots saved
+// without a provider move to. It is an ordinary entry in providers.json.
+const DefaultProvider = "deepseek"
+
+// EnsureDefault returns the deepseek entry, first adding it when the registry
+// lacks it and adding each given model it does not list yet. A new entry
+// takes XBOT_BASE_URL and XBOT_MODEL (defaults https://api.deepseek.com/v1
+// and deepseek-flash) and api_key_env XBOT_API_KEY, so an upgrade keeps the
+// endpoint the environment used to give. Nothing is written when nothing is
+// missing.
+func EnsureDefault(root string, models ...string) (Provider, error) {
+	var out Provider
+	err := fsutil.WithLock(Path(root)+".lock", func() error {
+		f, err := Load(root)
+		if err != nil {
+			return err
+		}
+		changed := false
+		i := indexOf(f.Providers, DefaultProvider)
+		if i < 0 {
+			m := FromEnv(Getenv)
+			f.Providers = append(f.Providers, Provider{Name: DefaultProvider, BaseURL: m.BaseURL, APIKeyEnv: "XBOT_API_KEY", Models: []ModelSpec{{Name: m.Model, Context: compact.DefaultWindow}}})
+			i = len(f.Providers) - 1
+			changed = true
+		}
+		p := &f.Providers[i]
+		for _, name := range models {
+			if name = strings.TrimSpace(name); name == "" {
+				continue
+			}
+			if _, ok := registeredSpec(*p, name); !ok {
+				p.Models = append(p.Models, ModelSpec{Name: name, Context: compact.DefaultWindow})
+				changed = true
+			}
+		}
+		out = *p
+		if !changed {
+			return nil
+		}
+		return Save(root, f)
+	})
+	return out, err
+}
+
+// Resolve turns a bot binding into an endpoint. Every binding names a
+// registry entry; the API key is read from the environment variable named there.
 func Resolve(root, providerName, modelName string, getenv func(string) string) (endpoint ModelConfig, contextLen int, err error) {
 	providerName = strings.TrimSpace(providerName)
 	modelName = strings.TrimSpace(modelName)
-	if providerName == "" && modelName == "" {
-		m := FromEnv(getenv)
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, compact.DefaultWindow, nil
-	}
 	if providerName == "" {
-		m := FromEnv(getenv)
-		m.Model = modelName
-		return ModelConfig{APIKey: m.APIKey, BaseURL: m.BaseURL, Model: m.Model, KeyEnv: "XBOT_API_KEY", Vision: SeesImages(m.Model, nil)}, compact.DefaultWindow, nil
+		return ModelConfig{}, 0, errors.New("providers: no provider bound")
 	}
 	p, model, err := Lookup(root, providerName, modelName)
 	if err != nil {

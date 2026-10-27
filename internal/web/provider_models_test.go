@@ -120,9 +120,13 @@ func TestProviderModelsRejectsMissingKeyAndUnsafeResponses(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			path := "/api/providers/models"
+			// The deepseek entry is seeded from XBOT_BASE_URL, the mock upstream.
+			if _, err := config.EnsureDefault(s.Root); err != nil {
+				t.Fatal(err)
+			}
+			path := "/api/providers/models?provider=deepseek"
 			if mode == "pagination-loop" {
-				path += "?provider=vendor"
+				path = "/api/providers/models?provider=vendor"
 			}
 			code, out := setupCall(t, srv, tok, "GET", path, "")
 			raw, _ := json.Marshal(out)

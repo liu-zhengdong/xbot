@@ -18,18 +18,35 @@ import (
 // env file or XBOT_API_KEY keeps working and skips the screen.
 
 // needsKey reports whether the desktop app should show the first-run screen:
-// no XBOT_API_KEY anywhere and no provider registry of its own.
+// no XBOT_API_KEY anywhere and no provider keyed by anything else.
 func (s *Server) needsKey() bool {
 	if !s.App || strings.TrimSpace(config.Getenv("XBOT_API_KEY")) != "" {
 		return false
 	}
 	f, err := config.Load(s.Root)
-	return err == nil && len(f.Providers) == 0
+	if err != nil {
+		return false
+	}
+	for _, p := range f.Providers {
+		if p.APIKeyEnv != "XBOT_API_KEY" {
+			return false
+		}
+	}
+	return true
+}
+
+// keyBase is the deepseek entry's base_url, the endpoint XBOT_API_KEY is for.
+func (s *Server) keyBase() string {
+	p, err := config.EnsureDefault(s.Root)
+	if err != nil {
+		return ""
+	}
+	return p.BaseURL
 }
 
 // keyHost is the host the key test talks to, shown on the screen.
-func keyHost() string {
-	u, err := url.Parse(config.FromEnv(config.Getenv).BaseURL)
+func (s *Server) keyHost() string {
+	u, err := url.Parse(s.keyBase())
 	if err != nil {
 		return ""
 	}
@@ -76,13 +93,13 @@ func (s *Server) setupKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-// testKey lists models with the key. It talks only to the configured base
-// URL (XBOT_BASE_URL or the default), never to a host from the request.
+// testKey lists models with the key. It talks only to the deepseek entry's
+// base_url, never to a host from the request.
 // The returned message never contains the key. Errors are 4xx so the UI shows
 // the message rather than a generic server error.
 func (s *Server) testKey(ctx context.Context, key string) (string, int) {
-	base := config.FromEnv(config.Getenv).BaseURL
-	host := keyHost()
+	base := s.keyBase()
+	host := s.keyHost()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/models", nil)

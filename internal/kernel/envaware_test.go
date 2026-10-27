@@ -693,6 +693,10 @@ func TestContextNoteMarksEstimate(t *testing.T) {
 // the window, decides the percentage, so an unknown window no longer silences it.
 func TestUsageWithoutWindowStillTraces(t *testing.T) {
 	k, p, now := freshBot(t)
+	// A binding the registry does not list has no known window.
+	if err := k.Bot.SetBinding("fake", "scripted"); err != nil {
+		t.Fatal(err)
+	}
 	runTurn(t, k, now, "one", reportedMsg("ok", 800, 3, 1))
 	uses := usageTraces(t, k)
 	if len(uses) != 1 || uses[0].Window != 0 || uses[0].Prompt != 800 || uses[0].Reason != "reported" {

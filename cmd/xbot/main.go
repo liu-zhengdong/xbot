@@ -70,7 +70,6 @@ Usage:
   xbot [--root DIR] trace replay [bot] [--from SEQ --to SEQ]
   xbot [--root DIR] reindex <bot>
   xbot [--root DIR] bind <name> --provider NAME --model NAME [--uncertified]
-  xbot [--root DIR] bind <name> --clear
   xbot [--root DIR] eval <provider/model> [--suite NAME|DIR] [--runs 3] [--out DIR]
   xbot eval scorecard <report.json>
   xbot [--root DIR] app [--port 8787]
@@ -117,9 +116,9 @@ Terminology:
   profile set --role chat|dev: runtime preset (运行档位), not duties.
 
 Environment:
-  XBOT_API_KEY    API key when a bot has no provider binding
-  XBOT_BASE_URL   OpenAI-compatible base URL (default https://api.deepseek.com/v1)
-  XBOT_MODEL       Model name (default deepseek-flash)
+  XBOT_API_KEY    API key of the deepseek provider entry
+  XBOT_BASE_URL   base_url the deepseek entry is first created with (default https://api.deepseek.com/v1)
+  XBOT_MODEL       model the deepseek entry is first created with (default deepseek-flash)
   XBOT_PUBLIC_URL   Base URL printed for new webhooks (default http://127.0.0.1:8787)
   XBOT_CLOUDFLARED  cloudflared binary for --tunnel cloudflare (default cloudflared)
   XBOT_TAILSCALE    tailscale binary for --tunnel tailscale (default tailscale)
@@ -170,6 +169,12 @@ func run(argv []string) error {
 		if err := loadEnvFile(filepath.Join(root, "env")); err != nil {
 			return err
 		}
+	}
+	if _, err := config.EnsureDefault(root); err != nil {
+		return fmt.Errorf("补齐 deepseek 供应商失败：%w", err)
+	}
+	if err := bot.BindLegacy(root); err != nil {
+		return fmt.Errorf("迁移旧 Bot 的供应商绑定失败：%w", err)
 	}
 	keyNames := config.KeyEnvNames(root)
 	config.HoldKeys(keyNames)

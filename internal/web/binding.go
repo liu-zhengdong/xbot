@@ -65,9 +65,6 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 		Models        []config.ModelInfo `json:"models"`
 	}
 	out := []item{}
-	m := config.FromEnv(config.Getenv)
-	brand := config.BrandForBase(m.BaseURL)
-	out = append(out, item{Brand: brand, Name: "", Protocol: config.ChatCompletions, KeyEnv: "XBOT_API_KEY", KeyConfigured: strings.TrimSpace(m.APIKey) != "", Models: []config.ModelInfo{{ID: "/" + m.Model, Model: m.Model, Protocol: config.ChatCompletions, Context: 0, Vision: config.SeesImages(m.Model, nil), Available: true}}})
 	for _, p := range f.Providers {
 		row := item{Brand: config.BrandForBase(p.BaseURL), Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
 		if p.OAuth != "" {

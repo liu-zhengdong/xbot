@@ -445,9 +445,9 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 ## 供应商与模型绑定
 
-`GET /api/providers` 返回 `{providers:[{name,protocol,api_key_env,key_configured,models}]}`。只返回环境变量名和配置状态，不返回密钥值。模型项含 `model`、`context`、`vision`、`hosted_web_search`、`available`；`available` 表示协议可执行。默认端点的 `name` 为空，`brand` 在能识别默认端点品牌时提供，仅供图标和名称展示，协议不变；未知窗口为 0。`GET /api/models` 也带协议和能力字段，原认证过滤不变。
+`GET /api/providers` 返回 `{providers:[{name,protocol,api_key_env,key_configured,models}]}`。只返回环境变量名和配置状态，不返回密钥值。模型项含 `model`、`context`、`vision`、`hosted_web_search`、`available`；`available` 表示协议可执行。每项都是 `providers.json` 里的条目（DeepSeek 是其中名为 `deepseek` 的一项），没有空名的默认端点；`brand` 按 `base_url` 主机名识别，仅供图标和名称展示；未知窗口为 0。`GET /api/models` 也带协议和能力字段，原认证过滤不变。
 
-`GET /api/providers/models?provider=<配置名>`（需登录）实时拉取该供应商模型名单；空配置名表示默认端点；ChatGPT 订阅按保存的配置名读取 SIWC 账号目录（`models[].slug`、`visibility: list`），凭证由既有 vault 注入；未登录或凭证失效时返回 422 并引导重新登录。返回 `{models:[...]}`，字段同模型能力项。名单来自厂商，能力来自现有 ModelSpec 规则；ChatGPT 未配置模型的窗口取账号目录，其余未知窗口为仓内默认 256000。未配密钥、网络失败、非法或超限名单返回 422 短错误；API 供应商成功但无模型时返回空数组；ChatGPT 账号无可用模型时返回 422。该读取不会增加模型条目、认证或绑定；有效 context_length 元数据会刷新已登记模型的窗口，规则见 [供应商](atlas/providers.md)。
+`GET /api/providers/models?provider=<配置名>`（需登录）实时拉取该供应商模型名单；配置名必须是表里的项；ChatGPT 订阅按保存的配置名读取 SIWC 账号目录（`models[].slug`、`visibility: list`），凭证由既有 vault 注入；未登录或凭证失效时返回 422 并引导重新登录。返回 `{models:[...]}`，字段同模型能力项。名单来自厂商，能力来自现有 ModelSpec 规则；ChatGPT 未配置模型的窗口取账号目录，其余未知窗口为仓内默认 256000。未配密钥、网络失败、非法或超限名单返回 422 短错误；API 供应商成功但无模型时返回空数组；ChatGPT 账号无可用模型时返回 422。该读取不会增加模型条目、认证或绑定；有效 context_length 元数据会刷新已登记模型的窗口，规则见 [供应商](atlas/providers.md)。
 
 `PUT /api/bots/{name}/binding` 接收 `{provider,model}`，成功返回保存的二元绑定。二者为空时清除绑定。未知模型、协议或缺少密钥为 400；Bot 正在工作为 409。换到更小窗口时先由内核预检并按需压缩；仍超新 H、无法安全压缩或摘要失败为 409（「上下文仍超新窗口，需先删分支/导出」），旧绑定保留，已成功保存的摘要块继续有效。成功后下一轮重建内核，不重写 transcript。
 

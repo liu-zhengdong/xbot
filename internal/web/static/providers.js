@@ -4,7 +4,7 @@
   const node = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls || ""; if (text != null) n.textContent = text; return n; };
   const button = (text, cls, click) => { const n = node("button", cls, text); n.type = "button"; n.onclick = click; return n; };
   const badge = (protocol) => node("span", "provider-badge " + protocol, labels[protocol] || protocol);
-  const pname = p => p.name || "默认端点";
+  const pname = p => p.name;
   const detail = m => `${m.hosted_web_search ? "厂商搜索" : "本地搜索"} · ${m.vision ? "可看图" : "不看图"}${m.context ? " · " + m.context.toLocaleString() + " tokens" : ""}`;
   function safeURL(value) { try { const u = new URL(value); return ["http:", "https:"].includes(u.protocol) ? u.href : null; } catch { return null; } }
   function step(part) {
@@ -79,7 +79,6 @@
         return { ...p, brand, title: p.name && p.name.toLowerCase() !== brand ? p.name : brands[brand] || pname(p) };
       });
       for (const brand of Object.keys(brands)) if (!rows.some(p => p.brand === brand)) rows.push({ brand, title: brands[brand], key_configured: false, protocol: {openai:"responses",anthropic:"anthropic_messages"}[brand] || vendorOf(brand)?.protocol || "chat_completions" });
-      for (const p of rows) if (p.name === "" && rows.some(other => other !== p && other.brand === p.brand)) p.title += "（默认）";
       const order = Object.keys(brands);
       return rows.sort((a, b) => (order.indexOf(a.brand) < 0 ? 99 : order.indexOf(a.brand)) - (order.indexOf(b.brand) < 0 ? 99 : order.indexOf(b.brand)));
     }
@@ -437,7 +436,7 @@
     const save = async () => {
       box.disabled = model.disabled = true; wrap.title = "";
       try {
-        const out = await api("/api/providers/models/image-generation", { method: "PUT", body: { provider: p.name || "", model: m.model, enabled: box.checked, image_model: xai ? "" : model.value.trim() } });
+        const out = await api("/api/providers/models/image-generation", { method: "PUT", body: { provider: p.name, model: m.model, enabled: box.checked, image_model: xai ? "" : model.value.trim() } });
         m.hosted_image_generation = out.hosted_image_generation; m.image_generation_model = out.image_generation_model;
       } catch (err) { wrap.title = err.message || String(err); }
       box.checked = !!m.hosted_image_generation; model.value = m.image_generation_model || ""; model.hidden = xai || !box.checked;
@@ -455,7 +454,7 @@
     const dialog = node("dialog", "binding-dialog");activeDialog = dialog;
     const close = () => { dialog.close();dialog.remove();activeDialog = null;opener?.isConnected && opener.focus(); };
     dialog.addEventListener("cancel", ev => { ev.preventDefault();close(); });
-    dialog.append(node("h2", "", "更换绑定"), node("p", "provider-meta", `${data.name} · 当前 ${data.provider || "默认端点"} / ${data.model}`));
+    dialog.append(node("h2", "", "更换绑定"), node("p", "provider-meta", `${data.name} · 当前 ${data.provider} / ${data.model}`));
     const body = node("div", "binding-body"), note = node("p", "binding-note"), error = node("p", "bad");error.setAttribute("role", "alert");
     const footer = node("div", "binding-footer");let selected = null, saving = false;
     const cancel = button("取消", "secondary", () => { if (!saving) close(); });

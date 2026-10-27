@@ -377,7 +377,6 @@ func cmdBind(root string, args []string) error {
 	fs.SetOutput(io.Discard)
 	prov := fs.String("provider", "", "named provider")
 	model := fs.String("model", "", "model id")
-	clear := fs.Bool("clear", false, "drop the binding and use environment defaults")
 	uncertified := fs.Bool("uncertified", false, "allow a model that has not passed the proactivity suite")
 	if err := fs.Parse(ordered); err != nil {
 		return err
@@ -388,13 +387,6 @@ func cmdBind(root string, args []string) error {
 	b, err := bot.Load(root, fs.Arg(0))
 	if err != nil {
 		return err
-	}
-	if *clear {
-		if err := b.SetBinding("", ""); err != nil {
-			return err
-		}
-		fmt.Printf("cleared provider binding for %s\n", b.Name())
-		return nil
 	}
 	if *prov == "" || *model == "" {
 		return errors.New("usage: xbot bind <name> --provider NAME --model NAME")

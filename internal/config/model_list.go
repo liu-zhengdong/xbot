@@ -130,23 +130,15 @@ func catalogEndpoint(root, name string) (Provider, ModelConfig, error) {
 	if err != nil {
 		return Provider{}, ModelConfig{}, errors.New("无法读取供应商配置")
 	}
-	p := Provider{Protocol: ChatCompletions}
-	var endpoint ModelConfig
-	if name == "" {
-		m := FromEnv(Getenv)
-		p.BaseURL, p.APIKeyEnv = m.BaseURL, "XBOT_API_KEY"
-		endpoint, _, err = Resolve(root, "", "", Getenv)
-	} else {
-		i := indexOf(f.Providers, name)
-		if i < 0 {
-			return Provider{}, ModelConfig{}, errors.New("供应商尚未配置")
-		}
-		p = f.Providers[i]
-		if len(p.Models) == 0 {
-			return Provider{}, ModelConfig{}, errors.New("供应商配置缺少模型")
-		}
-		endpoint, _, err = Resolve(root, name, p.Models[0].Name, Getenv)
+	i := indexOf(f.Providers, name)
+	if i < 0 {
+		return Provider{}, ModelConfig{}, errors.New("供应商尚未配置")
 	}
+	p := f.Providers[i]
+	if len(p.Models) == 0 {
+		return Provider{}, ModelConfig{}, errors.New("供应商配置缺少模型")
+	}
+	endpoint, _, err := Resolve(root, name, p.Models[0].Name, Getenv)
 	if err != nil || strings.TrimSpace(endpoint.APIKey) == "" {
 		if p.OAuth == "chatgpt" {
 			return Provider{}, ModelConfig{}, errors.New("请重新登录 ChatGPT")

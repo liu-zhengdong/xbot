@@ -420,8 +420,7 @@ func TestOAuthLogoutDuringRefresh(t *testing.T) {
 				t.Fatal("refresh did not finish")
 			}
 			assertAbsent()
-			registry, err := config.Load(root)
-			if err != nil || len(registry.Providers) != 0 {
+			if _, _, err := config.Lookup(root, "xai", "grok-4"); err == nil {
 				t.Fatal("binding came back after logout")
 			}
 			if st := m.Status("xai").State; st != "idle" {

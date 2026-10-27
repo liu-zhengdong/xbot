@@ -40,12 +40,15 @@ func TestVoiceAppliesToExistingCustomBot(t *testing.T) {
 	}
 }
 
-func TestUnboundDeepSeekUsesActualOverlay(t *testing.T) {
+func TestDeepSeekBindingUsesItsOverlay(t *testing.T) {
 	b := testBot(t)
-	// Built-in overlays are empty; a local format supplement still routes by
-	// the actual model when the bot has no explicit binding.
+	// Built-in overlays are empty; a local format supplement routes by the
+	// bound registry entry and model, never by the client's model name.
 	for _, id := range []string{"deepseek-flash", "deepseek-chat", "group/auto-deepseek-v4-1-flash", "deepseek-v4.1-flash"} {
-		k := &Kernel{Bot: b, Provider: &provider.Client{Model: id}}
+		if err := b.SetBinding("deepseek", id); err != nil {
+			t.Fatal(err)
+		}
+		k := &Kernel{Bot: b, Provider: &provider.Client{Model: "gpt-5"}}
 		key, text, err := k.modelOverlay()
 		if err != nil || key != "" || text != "" {
 			t.Fatalf("embedded %s: %s %q %v", id, key, text, err)
@@ -56,7 +59,10 @@ func TestUnboundDeepSeekUsesActualOverlay(t *testing.T) {
 			t.Fatalf("%s: %s %q %v", id, key, text, err)
 		}
 	}
-	k := &Kernel{Bot: b, Provider: &provider.Client{Model: "gpt-5"}}
+	if err := b.SetBinding("openai", "gpt-5"); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Bot: b, Provider: &provider.Client{Model: "deepseek-flash"}}
 	_, text, err := k.modelOverlay()
 	if err != nil || text != "" {
 		t.Fatalf("strong model got DeepSeek overlay: %q %v", text, err)

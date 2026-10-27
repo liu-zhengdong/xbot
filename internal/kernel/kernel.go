@@ -672,13 +672,6 @@ func (k *Kernel) modelOverlay() (string, string, error) {
 		return "", "", nil
 	}
 	cfg := k.Bot.Config()
-	if strings.TrimSpace(cfg.Provider) == "" {
-		// Unbound app bots use a concrete client from the environment. Match
-		// its actual model, rather than assuming the product default model.
-		if client, ok := k.Provider.(*provider.Client); ok && strings.Contains(strings.ToLower(client.Model), "deepseek") {
-			cfg.Provider, cfg.Model = "deepseek", client.Model
-		}
-	}
 	if strings.TrimSpace(cfg.Provider) == "" || strings.TrimSpace(cfg.Model) == "" {
 		return "", "", nil
 	}

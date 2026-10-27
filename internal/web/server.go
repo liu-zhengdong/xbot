@@ -368,7 +368,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	out["remote"] = forwarded(r)
 	if s.needsKey() {
 		out["needs_key"] = true
-		out["key_host"] = keyHost()
+		out["key_host"] = s.keyHost()
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -773,16 +773,12 @@ func agentRank(status string) int {
 }
 
 // runningModel is the provider and model this bot will call.
-// An empty binding resolves through the process environment, which defaults to deepseek-flash.
 func runningModel(root string, b *bot.Bot) (string, string) {
 	providerName := strings.TrimSpace(b.Config().Provider)
 	modelName := strings.TrimSpace(b.Config().Model)
 	resolved, _, err := config.Resolve(root, providerName, modelName, config.Getenv)
 	if err == nil && strings.TrimSpace(resolved.Model) != "" {
 		return providerName, resolved.Model
-	}
-	if modelName == "" {
-		modelName = config.FromEnv(config.Getenv).Model
 	}
 	return providerName, modelName
 }

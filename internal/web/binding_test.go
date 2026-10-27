@@ -83,6 +83,9 @@ func TestBindingAPIProtocolsPersistenceBusyAndPublicParts(t *testing.T) {
 	if strings.Contains(string(data), "not-a-real-key") || !strings.Contains(string(data), `"protocol":"responses"`) || !strings.Contains(string(data), `"hosted_web_search":true`) {
 		t.Fatalf("bad public capabilities %s", data)
 	}
+	if !strings.Contains(string(data), `"name":"deepseek"`) || strings.Contains(string(data), `"name":""`) || strings.Contains(string(data), `"id":"/`) {
+		t.Fatalf("providers must come only from the registry %s", data)
+	}
 	msg := provider.Message{Content: []provider.ContentPart{{Type: provider.PartReasoning, VendorRaw: json.RawMessage(`{"encrypted_content":"private-reasoning"}`)}, {Type: provider.PartHosted, VendorRaw: json.RawMessage(`{"private":"raw"}`), Hosted: &provider.HostedStep{ID: "ws1", Name: "web_search", Status: "completed"}}, {Type: provider.PartCitation, Citation: &provider.Citation{URL: "https://example.org", Title: "来源"}}}}
 	parts := publicParts(msg)
 	raw, _ := json.Marshal(parts)
@@ -122,7 +125,7 @@ func TestBindingPreservesRunningAndQueuedExecutor(t *testing.T) {
 	cookie := loginCookie(t, ui.URL, token)
 	for _, status := range []string{"running", "queued"} {
 		jobs.tasks = []exec.Task{{ID: "ag_fixture", Status: status}}
-		req, _ := http.NewRequest("PUT", ui.URL+"/api/bots/ada/binding", strings.NewReader(`{"provider":"","model":""}`))
+		req, _ := http.NewRequest("PUT", ui.URL+"/api/bots/ada/binding", strings.NewReader(`{"provider":"deepseek","model":"deepseek-flash"}`))
 		req.AddCookie(cookie)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {

@@ -2,14 +2,7 @@ package config
 
 import (
 	"testing"
-	"xbot/internal/bot"
 )
-
-func TestOAuthNamespaceCannotBeABot(t *testing.T) {
-	if bot.ValidName(oauthNamespace) {
-		t.Fatal("OAuth namespace can collide with a Bot and lose its shared key")
-	}
-}
 
 func TestOAuthReloginPreservesModelSettings(t *testing.T) {
 	for _, kind := range []string{"openrouter", "chatgpt", "xai"} {

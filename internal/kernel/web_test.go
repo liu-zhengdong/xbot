@@ -152,15 +152,22 @@ type fetchPage struct {
 	text, url, title string
 }
 
-func TestUnboundVisionUsesEnvModel(t *testing.T) {
+func TestVisionFollowsTheBoundDeepSeekModel(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b}
-	t.Setenv("XBOT_MODEL", "deepseek-v4-pro")
+	if _, err := config.EnsureDefault(b.Root, "deepseek-v4-pro"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetBinding("deepseek", "deepseek-v4-pro"); err != nil {
+		t.Fatal(err)
+	}
 	model, ok := k.vision()
 	if model != "deepseek-v4-pro" || ok {
-		t.Fatalf("env model %s vision %v", model, ok)
+		t.Fatalf("bound model %s vision %v", model, ok)
 	}
-	t.Setenv("XBOT_MODEL", "")
+	if err := b.SetBinding("deepseek", "deepseek-flash"); err != nil {
+		t.Fatal(err)
+	}
 	model, ok = k.vision()
 	if model != "deepseek-flash" || !ok {
 		t.Fatalf("default %s vision %v", model, ok)

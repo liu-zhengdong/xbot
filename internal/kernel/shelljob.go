@@ -213,8 +213,7 @@ type failFetch struct{ err error }
 func (f failFetch) Fetch(context.Context, string) (tools.Page, error) { return tools.Page{}, f.err }
 
 // vision is the bound model's image capability. An explicit providers.json
-// vision flag wins. An empty binding follows XBOT_MODEL (default
-// deepseek-flash, which sees images), not a hardcoded id.
+// vision flag wins; a kernel with no bot is deepseek-flash, which sees images.
 func (k *Kernel) vision() (string, bool) {
 	model := ""
 	if k != nil && k.Bot != nil {
@@ -226,9 +225,6 @@ func (k *Kernel) vision() (string, bool) {
 				return spec.Name, spec.SeesImages()
 			}
 		}
-	}
-	if model == "" {
-		model = strings.TrimSpace(config.FromEnv(config.Getenv).Model)
 	}
 	if model == "" {
 		model = "deepseek-flash"

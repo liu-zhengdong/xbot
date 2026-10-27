@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"xbot/internal/config"
 	"xbot/internal/fsutil"
 	"xbot/internal/provider"
 )
@@ -227,9 +228,15 @@ func Create(root, name, persona string, links []string) (*Bot, error) {
 	if _, err := os.Stat(filepath.Join(dir, "config.json")); err == nil {
 		return nil, fmt.Errorf("bot %q: %w", name, ErrExists)
 	}
+	def, err := config.EnsureDefault(root)
+	if err != nil {
+		return nil, err
+	}
 	cfg := Config{
 		Name:       name,
 		Persona:    persona,
+		Provider:   def.Name,
+		Model:      def.Models[0].Name,
 		Links:      append([]string(nil), links...),
 		Avatar:     AvatarGenerated,
 		AvatarSeed: name,
@@ -485,6 +492,36 @@ func (b *Bot) SetBinding(providerName, modelName string) error {
 	b.cfg.Provider = providerName
 	b.cfg.Model = modelName
 	return b.SaveConfig()
+}
+
+// BindLegacy moves bots saved without a provider onto the deepseek entry,
+// keeping their model name (empty becomes XBOT_MODEL or deepseek-flash, the
+// model the environment used to give them) and adding it to the entry.
+func BindLegacy(root string) error {
+	cfgs, err := List(root)
+	if err != nil {
+		return err
+	}
+	for _, c := range cfgs {
+		if strings.TrimSpace(c.Provider) != "" {
+			continue
+		}
+		model := strings.TrimSpace(c.Model)
+		if model == "" {
+			model = config.FromEnv(config.Getenv).Model
+		}
+		if _, err := config.EnsureDefault(root, model); err != nil {
+			return err
+		}
+		b, err := Load(root, c.Name)
+		if err != nil {
+			return err
+		}
+		if err := b.SetBinding(config.DefaultProvider, model); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // InheritBinding copies the provider name, model, and context limit.

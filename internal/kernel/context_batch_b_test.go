@@ -353,7 +353,7 @@ func TestBatchBBindingRefusesAfterInsufficientCompaction(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "上下文仍超新窗口") || c.calls != 1 {
 		t.Fatalf("calls=%d err=%v", c.calls, err)
 	}
-	if b.Config().Provider != "" || k.Budget.Target != 0 {
+	if b.Config().Provider != "deepseek" || k.Budget.Target != 0 {
 		t.Fatal("failed preflight changed binding or budget")
 	}
 	st, err := b.LoadState()

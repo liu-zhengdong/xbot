@@ -4,8 +4,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"xbot/internal/bot"
 )
 
 func TestProviderAddListRemoveAndBind(t *testing.T) {
@@ -58,32 +56,8 @@ func TestProviderAddListRemoveAndBind(t *testing.T) {
 		t.Fatal("missing key should fail at resolve time")
 	}
 
-	b, err := bot.Create(root, "ada", "Be brief.", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.SetBinding("deepseek", "deepseek-chat"); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := bot.Load(root, "ada")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg := loaded.Config()
-	if cfg.Provider != "deepseek" || cfg.Model != "deepseek-chat" {
-		t.Fatalf("%+v", cfg)
-	}
-	botRaw, err := os.ReadFile(root + "/bots/ada/config.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(botRaw), "super-secret") || strings.Contains(string(botRaw), "DEEPSEEK_API_KEY") {
-		t.Fatalf("bot file should store only the binding:\n%s", botRaw)
-	}
-
-	fallback, n, err := Resolve(root, "", "", func(string) string { return "" })
-	if err != nil || fallback.Model != defaultModel || n != 256_000 {
-		t.Fatalf("fallback %+v %d %v", fallback, n, err)
+	if _, _, err := Resolve(root, "", "", func(string) string { return "super-secret" }); err == nil {
+		t.Fatal("an empty binding must not resolve outside the registry")
 	}
 
 	if err := Remove(root, "deepseek", "deepseek-reasoner"); err != nil {
