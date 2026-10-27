@@ -17,7 +17,7 @@ func oldPrefix(in Input) []provider.Message {
 	if in.Installed != "" {
 		text += "\n\n" + in.Installed
 	}
-	if block := skill.FormatPrompt(in.Skills); block != "" {
+	if block := skill.FormatPrompt(in.SkillsDir, in.Skills); block != "" {
 		text += "\n\n" + block
 	}
 	return []provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent(text)}}
@@ -99,7 +99,7 @@ func TestPrefixSegmentsAndAccounting(t *testing.T) {
 			t.Fatal("prefix role")
 		}
 	}
-	if msgs[0].Text() != StablePrefix(in.Persona, in.Rules, in.Overlay, nil) || msgs[1].Text() != linksPrefix(in.Links) || !strings.Contains(msgs[2].Text(), skill.FormatPrompt(in.Skills)) {
+	if msgs[0].Text() != StablePrefix(in.Persona, in.Rules, in.Overlay, nil) || msgs[1].Text() != linksPrefix(in.Links) || !strings.Contains(msgs[2].Text(), skill.FormatPrompt(in.SkillsDir, in.Skills)) {
 		t.Fatal("segment contents")
 	}
 	if !strings.Contains(msgs[3].Text(), "&lt;/memory&gt;") || msgs[4].Text() != in.Entries[0].Message.Text() {

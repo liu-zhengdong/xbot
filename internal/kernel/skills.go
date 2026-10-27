@@ -15,9 +15,17 @@ import (
 
 type skillTool struct{ k *Kernel }
 
+// skillsAt names the runtime skills directory for tool descriptions; empty when unset.
+func (k *Kernel) skillsAt() string {
+	if k == nil || k.SkillsDir == "" {
+		return ""
+	}
+	return " at " + k.SkillsDir
+}
+
 func (skillTool) Name() string { return "read_skill" }
-func (skillTool) Description() string {
-	return "Read a skill from the local skill library at ~/.xbot/skills/. Pass id, the skill id from the Skills list. The text is for this turn only."
+func (t skillTool) Description() string {
+	return "Read a skill from the local skill library" + t.k.skillsAt() + ". Pass id, the skill id from the Skills list. The text is for this turn only."
 }
 func (skillTool) Parameters() any {
 	return schema(map[string]any{
@@ -51,8 +59,12 @@ func (t skillTool) Run(_ context.Context, args json.RawMessage) (string, error) 
 type writeSkillTool struct{ k *Kernel }
 
 func (writeSkillTool) Name() string { return "write_skill" }
-func (writeSkillTool) Description() string {
-	return "Create or replace a skill directly in the local skill library at ~/.xbot/skills/<slug>/SKILL.md. Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all local bots."
+func (t writeSkillTool) Description() string {
+	at := " as <slug>/SKILL.md"
+	if t.k != nil && t.k.SkillsDir != "" {
+		at = " at " + filepath.Join(t.k.SkillsDir, "<slug>", "SKILL.md")
+	}
+	return "Create or replace a skill directly in the local skill library" + at + ". Supply title as a short human-readable label, e.g. 记一下; name remains the slug. When the current request says only for you or a named bot, pass scope=self or that bot name. Omit scope when no restriction was requested; the default is enabled for all local bots."
 }
 func (writeSkillTool) Parameters() any {
 	return schema(map[string]any{

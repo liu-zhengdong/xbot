@@ -97,23 +97,27 @@ func TestSkillSymlinkAndImport(t *testing.T) {
 }
 
 func TestSkillPromptOneLineAndCap(t *testing.T) {
-	one := skill.FormatPrompt([]string{"ship: Pack a release"})
-	two := skill.FormatPrompt([]string{"ship: Pack a release", "watch: Watch files"})
+	one := skill.FormatPrompt("", []string{"ship: Pack a release"})
+	two := skill.FormatPrompt("", []string{"ship: Pack a release", "watch: Watch files"})
 	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "- ship: Pack a release") {
 		t.Fatal(one)
 	}
 	if strings.Count(two, "\n") != strings.Count(one, "\n")+1 {
 		t.Fatalf("lines\n%s\n%s", one, two)
 	}
-	if strings.Contains(two, "SECRET") || strings.Contains(two, "inputSchema") {
+	if strings.Contains(two, "SECRET") || strings.Contains(two, "inputSchema") || strings.Contains(one, "Directory:") {
 		t.Fatal(two)
+	}
+	const winDir = `C:\Users\ada\.xbot-dev\skills`
+	if withDir := skill.FormatPrompt(winDir, []string{"ship: Pack a release"}); !strings.Contains(withDir, "Directory: "+winDir+"\n") {
+		t.Fatal(withDir)
 	}
 	const marker = "SUMMARY-SHOULD-DROP"
 	var lines []string
 	for i := 0; i < 40; i++ {
 		lines = append(lines, "skill: "+marker+" "+strings.Repeat("字", 30))
 	}
-	text := skill.FormatPrompt(lines)
+	text := skill.FormatPrompt("", lines)
 	if strings.Contains(text, marker) {
 		t.Fatal("descriptions kept over cap")
 	}

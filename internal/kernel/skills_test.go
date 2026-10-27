@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -57,7 +58,7 @@ func TestSkillLocalLibraryAndDisable(t *testing.T) {
 	if strings.Contains(one, "SECRET_BODY") || strings.Contains(one, "OTHER_BODY") || strings.Contains(one, "EVE_BODY") {
 		t.Fatal(one)
 	}
-	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "read_skill") || !strings.Contains(one, "- ship: Pack a release") {
+	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "read_skill") || !strings.Contains(one, "- ship: Pack a release") || !strings.Contains(one, "Directory: "+kAda.SkillsDir+"\n") {
 		t.Fatal(one)
 	}
 	kWatch := skillKernel(ada)
@@ -66,8 +67,8 @@ func TestSkillLocalLibraryAndDisable(t *testing.T) {
 		t.Fatal("same bot should be stable")
 	}
 	// one was built after both writes, so compare a single-skill prompt by disabling watch on a copy of the text shape
-	shipOnly := skill.FormatPrompt([]string{"ship: Pack a release"})
-	both := skill.FormatPrompt([]string{"ship: Pack a release", "watch: Watch files"})
+	shipOnly := skill.FormatPrompt("", []string{"ship: Pack a release"})
+	both := skill.FormatPrompt("", []string{"ship: Pack a release", "watch: Watch files"})
 	if strings.Count(both, "\n") != strings.Count(shipOnly, "\n")+1 {
 		t.Fatalf("prompt lines\n%s\n%s", shipOnly, both)
 	}
@@ -288,13 +289,14 @@ func TestDispatchMainLineWritesLoadedSkill(t *testing.T) {
 }
 
 func TestSkillDescriptionsNameLocalLibrary(t *testing.T) {
+	k := &Kernel{SkillsDir: filepath.Join(t.TempDir(), ".xbot-dev", "skills")}
 	for name, text := range map[string]string{
-		"read_skill":  (skillTool{}).Description(),
-		"write_skill": (writeSkillTool{}).Description(),
+		"read_skill":  (skillTool{k}).Description(),
+		"write_skill": (writeSkillTool{k}).Description(),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if !strings.Contains(text, "~/.xbot/skills/") {
-				t.Errorf("missing local library path: %s", text)
+			if !strings.Contains(text, k.SkillsDir) || strings.Contains(text, "~/.xbot") {
+				t.Errorf("missing runtime library path: %s", text)
 			}
 			for _, misleading := range []string{"<owner>", "magpie", "approve", "approval"} {
 				if strings.Contains(strings.ToLower(text), misleading) {

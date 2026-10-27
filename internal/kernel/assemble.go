@@ -126,6 +126,8 @@ type Input struct {
 	Entries []bot.Entry
 	// Skills are "slug: description" lines. Empty means the prefix is unchanged.
 	Skills []string
+	// SkillsDir is the skills directory shown with Skills. Empty omits it.
+	SkillsDir string
 	// Installed is the one-line-per-link block. Empty leaves the prefix unchanged.
 	Installed string
 	// Overlay is optional text for this provider/model. Empty leaves the prefix unchanged.
@@ -182,7 +184,7 @@ func Assemble(in Input) ([]provider.Message, bot.SectionUsage) {
 func account(in Input, hist []provider.Message) ([]provider.Message, bot.SectionUsage) {
 	var msgs []provider.Message
 	var usage bot.SectionUsage
-	for _, text := range prefixWithSkills(in.Persona, in.Rules, in.Overlay, in.Links, in.Skills, in.Installed) {
+	for _, text := range prefixWithSkills(in.Persona, in.Rules, in.Overlay, in.Links, in.SkillsDir, in.Skills, in.Installed) {
 		msg := provider.Message{Role: provider.RoleSystem, Content: provider.TextContent(text)}
 		msgs = append(msgs, msg)
 		usage.Stable += compact.EstimateMessage(msg)
@@ -206,13 +208,13 @@ func account(in Input, hist []provider.Message) ([]provider.Message, bot.Section
 
 // prefixWithSkills orders independently changing segments from stable to volatile.
 // Empty catalogues add no message; memory and environment remain outside them.
-func prefixWithSkills(persona, rules, overlay string, links, skills []string, installed string) []string {
+func prefixWithSkills(persona, rules, overlay string, links []string, skillsDir string, skills []string, installed string) []string {
 	segments := []string{StablePrefix(persona, rules, overlay, nil)}
 	if block := linksPrefix(links); block != "" {
 		segments = append(segments, block)
 	}
 	catalogue := installed
-	if block := skill.FormatPrompt(skills); block != "" {
+	if block := skill.FormatPrompt(skillsDir, skills); block != "" {
 		if catalogue != "" {
 			catalogue += "\n\n"
 		}

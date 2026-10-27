@@ -106,8 +106,9 @@ func Lines(dir string) ([]string, error) {
 }
 
 // FormatPrompt renders one line per skill plus the precedence sentence.
+// dir is the skills directory as given at runtime; empty omits the Directory line.
 // Past PromptCap it keeps the names and drops descriptions.
-func FormatPrompt(lines []string) string {
+func FormatPrompt(dir string, lines []string) string {
 	var cleaned []string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -119,16 +120,19 @@ func FormatPrompt(lines []string) string {
 	if len(cleaned) == 0 {
 		return ""
 	}
-	full := renderPrompt(cleaned, true)
+	full := renderPrompt(dir, cleaned, true)
 	if len(full) <= PromptCap {
 		return full
 	}
-	return renderPrompt(cleaned, false)
+	return renderPrompt(dir, cleaned, false)
 }
 
-func renderPrompt(lines []string, descriptions bool) string {
+func renderPrompt(dir string, lines []string, descriptions bool) string {
 	var b strings.Builder
 	b.WriteString("## Skills\n")
+	if dir != "" {
+		fmt.Fprintf(&b, "Directory: %s\n", dir)
+	}
 	b.WriteString(Precedence)
 	b.WriteByte('\n')
 	b.WriteString(ReadWith)

@@ -51,11 +51,11 @@ func TestSkillsCatalogNamesLocalLibrary(t *testing.T) {
 	if !ok {
 		t.Fatal("skills missing")
 	}
+	if blurb := Blurb(NameSkills); strings.Contains(blurb, "~/.xbot") || !strings.Contains(blurb, "Skills section") {
+		t.Errorf("grant blurb should point at the Skills section, not a fixed path: %s", blurb)
+	}
 	for name, text := range map[string]string{"catalog": entry.Summary, "grant": Blurb(NameSkills)} {
 		t.Run(name, func(t *testing.T) {
-			if !strings.Contains(text, "~/.xbot/skills/") {
-				t.Errorf("missing local library path: %s", text)
-			}
 			for _, misleading := range []string{"<owner>", "magpie"} {
 				if strings.Contains(strings.ToLower(text), misleading) {
 					t.Errorf("misleading library description: %s", text)

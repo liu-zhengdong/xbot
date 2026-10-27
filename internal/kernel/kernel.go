@@ -664,6 +664,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 		Memory:    mem,
 		Blocks:    st.Blocks,
 		Skills:    skills,
+		SkillsDir: k.SkillsDir,
 		Installed: installed,
 		Overlay:   overlay,
 	}, omitPastResults(projected(st.Blocks, raw, seqs), blobs))
