@@ -274,6 +274,11 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		return next, err
 	}
 	environmentSet(&next, "paths", paths)
+	reference, err := k.referenceText()
+	if err != nil {
+		return next, err
+	}
+	environmentSet(&next, "reference", reference)
 	for _, key := range []string{"persona", "rules", "skills", "profile", "overlay"} {
 		var v string
 		var err error

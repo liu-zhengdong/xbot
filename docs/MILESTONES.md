@@ -656,3 +656,4 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 - `gofmt -l .`、`go vet ./...` 和布局浏览器回归 `-count=3` 通过。全量测试中 E2E `TestSpawnWhileChatKeepsAnswering`、kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir` 失败；Web 全包两次运行均卡在测试服务器关闭，手动中止，故全量及 Web 全包重复检查未通过。
 
 - 2026-10-27：本机可选账号分支实现本机免账号进入、设置账号与设备双态；脚本替身检查及实际验收见 `docs/dev/device-optional-account.md`，未合入 main。
+- 2026-10-27：经历与资料批 D：共享资料目录的契约和根层索引通过环境流发布，保留旧记忆过渡；关键词提醒留批 E。20 篇小文件的资料索引微基准平均 0.366 ms/次（本机，非 p95）；验证及基线软点见本地提交说明。尚未做真实模型或用户日用验收。
