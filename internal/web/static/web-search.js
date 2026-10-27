@@ -31,7 +31,11 @@
       body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
     }
     modeSec.append(modes); host.append(modeSec);
-    const providerSec = node("div", "setsec"); providerSec.append(node("h4", "", "本机用哪家"));
+    const providerSec = node("div", "setsec"), providerTitle = node("h4", "ws-provider-title", "本机用哪家");
+    const info = button("ws-provider-info", "ⓘ");
+    info.setAttribute("aria-label", "说明");
+    info.dataset.tip = "本机搜不到网页时，对话里会提示。默认 DuckDuckGo，免密钥。改完后，新开的对话按新设置来。";
+    providerTitle.append(info); providerSec.append(providerTitle);
     const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "本机用哪家");
     for (const p of data.providers) {
       const row = {p, status:resting(p), version:0, lastAttempt:null};
@@ -54,8 +58,7 @@
       }
       rows.set(p.id, row);
     }
-    providerSec.append(list, node("p", "setfoot ws-provider-foot", "本机搜不到网页时，对话里会提示。默认 DuckDuckGo，免密钥。"));
-    host.append(providerSec, node("p", "setfoot", "改完后，新开的对话按新设置来。"));
+    providerSec.append(list); host.append(providerSec);
     function paint() {
       toggle.classList.toggle("on",data.enabled); toggle.setAttribute("aria-checked",String(data.enabled)); toggle.disabled = saving;
       hint.textContent = data.enabled ? "需要时 Bot 可以查网页。" : "对话里不会去搜网页。";

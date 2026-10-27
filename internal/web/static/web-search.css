@@ -32,6 +32,7 @@
 .ws-try:hover{background:var(--x-card)}
 .ws-try:disabled{background:var(--x-disabled);color:var(--x-on-disabled);cursor:default}
 .ws-status{font-size:var(--x-fs-cap);margin-top:var(--x-s2);line-height:1.45;color:var(--x-faint)}
-.ws-provider-foot{margin-top:var(--x-s4)}
+.ws-provider-title{display:flex;align-items:center;gap:var(--x-s2)}
+.ws-provider-info{border:0;padding:0;background:none;color:inherit;font:inherit;font-size:14px;line-height:1;cursor:help}
 .ws-error{font-size:var(--x-fs-sm)}
 @media(max-width:600px){.ws-provider{gap:var(--x-s3);padding:var(--x-s3)}.ws-name{flex-wrap:wrap;gap:var(--x-s1)}.ws-key{padding-left:var(--x-s3)}.ws-choice{padding:var(--x-s5)}.ws-title,.ws-name,.ws-try{font-size:var(--x-fs-sm)}}

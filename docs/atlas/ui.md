@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density
+verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info
 ---
 # 网页界面
 
@@ -65,7 +65,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 「网页搜索」控制整台 XBot 的所有 Bot。关闭时不提供本机和厂商搜索；自动模式优先模型自带搜索，没有则用本机；总用本机只用所选本机搜索。新一轮对话使用新设置；本机已有内核也会在下一次调用读取设置，不重建内核或取消任务。运行中的远端任务保留启动时的设置，新任务使用新设置。供应商详情不加搜索开关。
 
-本机默认 DuckDuckGo。九家名单由 `config.SearchProviders` 提供，DeepSeek 已接入，其余七家保留入口但搜索会明确报不可用。选中用中性填充色；除 DuckDuckGo 外，选中行展开 API 密钥和「试一下」。空输入禁用；失焦和按钮共用一次探测。成功后自动保存、清空输入并只留遮蔽占位，读取接口只给配置状态；失败保留输入。改字或离开设置时取消旧探测，迟到结果不覆盖草稿。保存选择后同步接口返回的密钥状态，保留未提交输入和已知失败状态。
+本机默认 DuckDuckGo。「本机用哪家」标题旁的说明在悬停或聚焦时提示默认服务、搜索失败和新设置生效时机。九家名单由 `config.SearchProviders` 提供，DeepSeek 已接入，其余七家保留入口但搜索会明确报不可用。选中用中性填充色；除 DuckDuckGo 外，选中行展开 API 密钥和「试一下」。空输入禁用；失焦和按钮共用一次探测。成功后自动保存、清空输入并只留遮蔽占位，读取接口只给配置状态；失败保留输入。改字或离开设置时取消旧探测，迟到结果不覆盖草稿。保存选择后同步接口返回的密钥状态，保留未提交输入和已知失败状态。
 
 ### 窗口和三栏
 桌面版 `xbot app [--port 8787]`（[ADR 0007](../adr/0007-local-first-desktop-app.md)）在同一进程里跑 serve（不开隧道、不自动升级、不打印登录 token），只绑 127.0.0.1，用 `internal/appshell`（唯一引用 MyGo 的包）开系统 WebView 窗口。窗口打开 `/app/launch?code=…`：一次性登录码 32 字节随机、60 秒过期、用一次就作废，换成正常的会话 cookie 后跳到 `/`，所以桌面用户看不到登录页。同一个数据根只能开一个（`app.lock`）；端口被占时在改动数据之前就报错退出。安装包由 scripts/package-desktop.sh 打出（macOS .app/.dmg、Windows XBot.exe），安装和放行步骤见 [desktop-install.md](../desktop-install.md)。关窗即退出；窗口记住尺寸、位置与最大化状态，外链交给默认浏览器。页面切换外观时 `POST /api/app/theme` 让系统按钮跟随 XBot 自己的明暗主题，不跟系统（`appshell.SetTheme`）。
