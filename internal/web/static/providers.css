@@ -19,14 +19,14 @@
 .binding-section:first-child{margin-top:2px}
 .binding-heading{margin:0 0 8px 6px;font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--x-muted)}
 .binding-group{display:flex;flex-direction:column;background:var(--x-fill-1);border-radius:12px;overflow:hidden}
-.binding-option{position:relative;display:block;width:100%;padding:10px 40px 10px 12px;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
+.binding-option{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:10px 40px 10px 12px;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
 .binding-option:first-child{border-top:0}
 .binding-option:hover{background:var(--x-fill-2)}
 .binding-option[aria-checked=true]{background:var(--x-fill-3)}
-.binding-option[aria-checked=true]::after{content:'✓';position:absolute;right:14px;top:10px;color:var(--x-primary)}
+.binding-option[aria-checked=true]::after{content:'✓';position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--x-primary)}
 .binding-option:disabled{opacity:.5;cursor:default}
-.binding-option strong{display:block;font-family:var(--x-mono);font-size:13.5px;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
-.binding-cap{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:var(--x-muted)}
+.binding-option strong{flex:1;min-width:0;font-family:var(--x-mono);font-size:13.5px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.binding-cap{flex:none;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-size:12px;line-height:1.45;color:var(--x-muted)}
 .binding-empty{display:block;width:100%;padding:10px 12px;border:0;border-radius:12px;background:var(--x-fill-1);color:var(--x-faint);font:inherit;font-size:12.5px;line-height:1.5;text-align:left;cursor:pointer}
 .binding-empty:hover{color:var(--x-text)}
 .binding-flat{padding:28px 16px;text-align:center;font-size:13.5px;line-height:1.55;color:var(--x-muted)}

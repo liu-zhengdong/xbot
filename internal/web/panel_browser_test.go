@@ -193,6 +193,18 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert([...dlg.querySelectorAll('.binding-empty')].some(n=>n.textContent==='配好密钥后再选模型'),'keyless vendor pretends to have no models');
  const option=text=>[...dlg.querySelectorAll('.binding-option')].find(b=>b.textContent.includes(text)),cap=text=>option(text).querySelector('.binding-cap').textContent;
  assert(!dlg.querySelector('.provider-badge')&&cap('scripted')==='不看图 · 本机搜索 · 128K'&&cap('fresh-new')==='不看图 · 本机搜索 · 64K'&&cap('deep-pro')==='可看图 · 厂商搜索 · 500K','row is not one quiet capability line');
+ // 2b: the clickable row spans the group, with the capability beside the id
+ // and close to the right-edge check, at both phone and desktop widths.
+ for(const row of dlg.querySelectorAll('.binding-option')){
+  const r=rect(row), id=rect(row.querySelector('strong')), c=rect(row.querySelector('.binding-cap'));
+  assert(near(r.width,rect(row.parentElement).width),'model row does not fill group');
+  assert(Math.abs(id.y+id.height/2-c.y-c.height/2)<2&&c.x>=id.right,'model id and capability are not side by side');
+  assert(r.right-c.right<50,'capability leaves dead space before the check');
+ }
+ const selected=option('scripted'),check=getComputedStyle(selected,'::after');
+ assert(check.content.includes('✓')&&parseFloat(check.right)<=16,'selection check is not at the right edge');
+ const longID=selected.querySelector('strong'),originalID=longID.textContent;longID.textContent='a-very-long-model-identifier-'.repeat(8);
+ assert(rect(longID).right<=rect(selected.querySelector('.binding-cap')).left,'long model id overlaps capability');longID.textContent=originalID;
  const use=dlgButton('使用此模型');
  assert(use.disabled&&option('scripted').getAttribute('aria-checked')==='true'&&!$('.binding-note').textContent,'current binding is confirmable');
  const search=$('.binding-search');

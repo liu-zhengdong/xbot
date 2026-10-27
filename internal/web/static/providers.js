@@ -452,7 +452,7 @@
   }
   let activeDialog = null;
   // The picker says "which model does this Bot use": groups carry the vendor's
-  // display name, rows a model id over one quiet capability line. A row click
+  // display name, rows a model id alongside one quiet capability line. A row click
   // only stages a choice; 使用此模型 commits it.
   async function open({ api, data, onBound, manage, opener }) {
     if (activeDialog) return;

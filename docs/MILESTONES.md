@@ -619,3 +619,8 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 ## 2026-10-27 聊天仅工具产物可见（feature/tool-mediated-chat）
 
 `notify_owner` 改名 `send_message_to_user`（扁平 text/images，每个 Bot 都挂，描述要求简洁人话）；主人正聊（web/terminal）只进气泡，不写 outbox/桌面，非正聊照旧通知。SSE 不再发 `delta`，送达的 `result` 带 `text`，`done.text` 为送达消息。网页聊天、侧栏预览、引用摘要只画该工具产物；主列不画工具过程行和自发往来系统行；旧轮（2026-10-27 11:00 +08:00 前）无该工具时仍按正文画。LanguageRule 改为短答与结果都经该工具；SilenceRule 旧措辞保留识别。新增只读工具 `get_group_message_history`（成员可读、limit 20/50、keyword/sender/before_id、正文不可信且一行加引号）。验证见 dev/tool-mediated-chat.md「怎样算对」；原有失败未改：`TestWebApprovalAllowAndDeny` 挂起、4 条 parked approval、`internal/work` TestShellUsesBotDir，基线同样失败。级别：已提交本分支，未合 main、未 push。Not run: 真模型、Linux CI、本机浏览器人工查看、性能数字。
+## 2026-10-27 更换模型行横铺（功能分支）
+
+- 单点修复：模型 id 在左、能力句靠右、选中标记贴右缘；本机 Chrome 用 scripted 名单检查 390 / 820 / 1440 像素布局和既有换绑交互，旧布局在新增几何回归中失败。尚未合入或经过主人日用验收。
+- CSS 资源由 17126 增至 17289 字节（+163 字节）；无新增请求、轮询或动画。未测帧率、交互及 IPC p95。
+- `gofmt -l .`、`go vet ./...` 和布局浏览器回归 `-count=3` 通过。全量测试中 E2E `TestSpawnWhileChatKeepsAnswering`、kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir` 失败；Web 全包两次运行均卡在测试服务器关闭，手动中止，故全量及 Web 全包重复检查未通过。
