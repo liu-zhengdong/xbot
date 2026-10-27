@@ -1,9 +1,6 @@
 /* G7 设备 · 配对两台电脑。只用 app.css 里的变量；不加边框、不加分隔线。 */
 .g7-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
-/* 账户菜单：「设备」放第一项，右侧是已配对数量 */
-.account-menu { min-width: 180px; }
-
 /* 弹窗通用 */
 .g7-card { width: min(460px, 100%); }
 .g7-lead { margin: 0 0 4px; font-size: 14px; line-height: 1.6; color: var(--muted); }

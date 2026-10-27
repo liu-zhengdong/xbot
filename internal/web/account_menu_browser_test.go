@@ -21,6 +21,12 @@ func TestAccountMenuBrowser(t *testing.T) {
  };
  $('account').click();
  assert([...$('account-menu').querySelectorAll('button')].filter(b=>!b.hidden).map(b=>b.textContent.trim()).join()==='设置','menu should contain only settings');
+ const edges=m=>{const a=$('account').getBoundingClientRect(),b=$('account-menu').getBoundingClientRect();assert(Math.abs(a.left-b.left)<1&&Math.abs(a.right-b.right)<1,m+' menu '+b.left+'-'+b.right+' vs 我 '+a.left+'-'+a.right)};
+ edges('expanded');
+ $('account').click(); const side=document.querySelector('.sidebar'); side.classList.add('rail'); side.style.setProperty('--side-w','72px');
+ $('account').click(); edges('rail');
+ assert($('account-settings').getBoundingClientRect().right<=$('account-menu').getBoundingClientRect().right,'rail settings row overflows');
+ side.classList.remove('rail'); side.style.removeProperty('--side-w');
  $('account-settings').click(); document.querySelector('[data-set=account]').click();
  await until(()=>$('acct-login-email'),'account login missing');
  $('acct-login-email').value='person@example.com';$('acct-login-pass').value='password';
