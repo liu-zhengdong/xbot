@@ -96,3 +96,26 @@ func TestStoreKeyRowsNeedSecret(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveEveryStoreAppAlias(t *testing.T) {
+	apps, err := StoreApps()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, app := range apps {
+		if app.Kind == AppSoon {
+			continue
+		}
+		want := app.ID
+		aliases := []string{app.ID, app.Title}
+		if app.Kind == AppServer {
+			want = "mcp:" + app.ID
+			aliases = append(aliases, want)
+		}
+		for _, alias := range aliases {
+			if got := ResolveApp(alias); got != want {
+				t.Errorf("%q: %q want %q", alias, got, want)
+			}
+		}
+	}
+}

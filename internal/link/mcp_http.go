@@ -68,12 +68,18 @@ type httpConn struct {
 
 func (h *httpConn) Read(p []byte) (int, error) { return h.pr.Read(p) }
 
-func (h *httpConn) Write(p []byte) (int, error) {
+func (h *httpConn) Write(p []byte) (int, error) { return h.WriteContext(h.ctx, p) }
+
+func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, mcpRPCWait)
+	defer cancel()
+	stop := context.AfterFunc(h.ctx, cancel)
+	defer stop()
 	body := bytes.TrimSpace(p)
 	if len(body) == 0 {
 		return len(p), nil
 	}
-	req, err := http.NewRequestWithContext(h.ctx, http.MethodPost, h.url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}

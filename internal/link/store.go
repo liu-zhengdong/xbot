@@ -1,5 +1,7 @@
 package link
 
+import "strings"
+
 // App is one card in the settings store. The store installs for the owner, so
 // every bot sees it; nothing here names a bot.
 type App struct {
@@ -74,9 +76,10 @@ func LookupApp(id string) (App, bool) {
 // ResolveApp maps what the prompt shows (a store title, an id, or mcp:<name>)
 // back to the id links load understands. Unknown text comes back unchanged.
 func ResolveApp(name string) string {
+	name = strings.TrimSpace(name)
 	if apps, err := StoreApps(); err == nil {
 		for _, a := range apps {
-			if a.Title == name && a.Kind != AppSoon {
+			if (strings.EqualFold(a.Title, name) || strings.EqualFold(a.ID, name) || (a.Kind == AppServer && strings.EqualFold("mcp:"+a.ID, name))) && a.Kind != AppSoon {
 				if a.Kind == AppServer {
 					return "mcp:" + a.ID
 				}

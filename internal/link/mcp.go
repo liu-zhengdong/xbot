@@ -99,6 +99,11 @@ func (s MCPServer) secretLookup() func(string) (string, bool) {
 type MCP struct {
 	Spec MCPServer
 
+	loadMu  sync.Mutex
+	stderr  mcpDiagnostics
+	redact  func(string) string
+	lastErr error
+
 	once    sync.Once
 	onceErr error
 
@@ -118,40 +123,44 @@ func NewMCP(s MCPServer) *MCP {
 
 func (m *MCP) Name() string { return "mcp:" + m.Spec.Name }
 
-// Tools lists the server's tools. A connection failure yields no tools.
+// Tools preserves the Link interface; failures remain observable through Status.
+// Call LoadTools when the caller can return an error (notably links load).
 func (m *MCP) Tools() []tools.Tool {
+	list, _ := m.LoadTools(context.Background())
+	return list
+}
+
+// LoadTools lists tools with a bounded RPC deadline and preserves failures.
+func (m *MCP) LoadTools(ctx context.Context) ([]tools.Tool, error) {
+	m.loadMu.Lock()
+	defer m.loadMu.Unlock()
+	if err := m.connectContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := m.client.failure(); err != nil {
+		return nil, m.diagnostic("connection", err)
+	}
 	m.mu.Lock()
 	if m.listed {
 		out := m.tools
 		m.mu.Unlock()
-		return out
+		return out, nil
 	}
 	m.mu.Unlock()
-	if err := m.connect(); err != nil {
-		m.remember(nil)
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), mcpRPCWait)
+	ctx, cancel := context.WithTimeout(ctx, mcpRPCWait)
 	defer cancel()
 	specs, err := m.client.listTools(ctx)
 	if err != nil {
-		m.remember(nil)
-		return nil
+		return nil, m.diagnostic("tools/list", err)
 	}
-	return m.remember(m.build(specs))
-}
-
-func (m *MCP) remember(list []tools.Tool) []tools.Tool {
-	if list == nil {
-		list = []tools.Tool{}
+	list := m.build(specs)
+	if len(list) == 0 {
+		return nil, m.diagnostic("tools/list", errors.New("server returned no tools"))
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.listed {
-		m.tools = list
-		m.listed = true
-	}
-	return m.tools
+	m.tools, m.listed, m.lastErr = list, true, nil
+	m.mu.Unlock()
+	return list, nil
 }
 
 // Run reads optional inbound notifications until ctx ends, then stops the process.
@@ -195,19 +204,22 @@ func (m *MCP) Close() error {
 	return nil
 }
 
-func (m *MCP) connect() error {
+func (m *MCP) connect() error { return m.connectContext(context.Background()) }
+
+func (m *MCP) connectContext(ctx context.Context) error {
 	m.once.Do(func() {
-		m.onceErr = m.start()
+		m.onceErr = m.start(ctx)
 	})
 	return m.onceErr
 }
 
-func (m *MCP) start() error {
+func (m *MCP) start(caller context.Context) error {
+	m.redact = m.diagnosticRedactor()
 	ctx, cancel := context.WithCancel(context.Background())
 	conn, err := m.open(ctx)
 	if err != nil {
 		cancel()
-		return err
+		return m.diagnostic("start", err)
 	}
 	client := newMCPClient(conn)
 	m.mu.Lock()
@@ -215,11 +227,11 @@ func (m *MCP) start() error {
 	m.client = client
 	m.mu.Unlock()
 	go client.readLoop()
-	initCtx, initCancel := context.WithTimeout(context.Background(), mcpRPCWait)
+	initCtx, initCancel := context.WithTimeout(caller, mcpRPCWait)
 	defer initCancel()
 	if err := client.initialize(initCtx); err != nil {
 		_ = m.Close()
-		return err
+		return m.diagnostic("initialize", err)
 	}
 	return nil
 }
@@ -236,7 +248,8 @@ func (m *MCP) open(ctx context.Context) (io.ReadWriteCloser, error) {
 	}
 	cmd := exec.CommandContext(ctx, m.Spec.Command, m.Spec.Args...)
 	cmd.Env = spawnEnv(m.Spec.SecretEnvs, m.Spec.secretLookup())
-	cmd.Stderr = io.Discard
+	cmd.Stderr = &m.stderr
+	cmd.WaitDelay = time.Second
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -248,8 +261,8 @@ func (m *MCP) open(ctx context.Context) (io.ReadWriteCloser, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	go func() { _ = cmd.Wait() }()
-	return &stdioConn{Reader: stdout, w: stdin, c: stdout}, nil
+	reader := &mcpProcessReader{Reader: stdout, cmd: cmd}
+	return &stdioConn{Reader: reader, w: stdin, c: stdout, wait: reader.wait}, nil
 }
 
 func (m *MCP) build(specs []mcpToolSpec) []tools.Tool {
@@ -721,8 +734,9 @@ func spawnEnv(names []string, lookup func(string) (string, bool)) []string {
 
 type stdioConn struct {
 	io.Reader
-	w io.WriteCloser
-	c io.Closer
+	w    io.WriteCloser
+	c    io.Closer
+	wait func()
 }
 
 func (s *stdioConn) Write(p []byte) (int, error) { return s.w.Write(p) }
@@ -730,6 +744,9 @@ func (s *stdioConn) Write(p []byte) (int, error) { return s.w.Write(p) }
 func (s *stdioConn) Close() error {
 	err1 := s.w.Close()
 	err2 := s.c.Close()
+	if s.wait != nil {
+		s.wait()
+	}
 	if err1 != nil {
 		return err1
 	}

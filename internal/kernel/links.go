@@ -27,12 +27,12 @@ type linksTool struct{ k *Kernel }
 
 func (linksTool) Name() string { return "links" }
 func (linksTool) Description() string {
-	return "Search the link catalog, install or remove one, or load its tool schemas for this turn only. install and remove both ask the owner. When the catalog entry lists secrets, the owner fills the values in the approval card; you never see those values. Installed links are one line each in the system prompt. load brings that link's tool schemas into later steps of this turn, then they drop off. search returns summaries, including when the prompt lists ids only."
+	return "搜索、安装、移除或加载连接器。看到上下文‘连接器’摘要中的名称:描述后，先用 action=load、id=名称或 id 加载，例如电脑操作/desktop、浏览器/browser、Playwright/playwright/mcp:playwright。成功返回工具名，工具 schema 只加入本轮后续调用；失败返回原因。search 查摘要；install/remove 走主人确认，所需密钥由主人在确认卡填写，你不接收密钥值。"
 }
 func (linksTool) Parameters() any {
 	return schema(map[string]any{
 		"action": stringProp("search, install, remove, or load"),
-		"id":     stringProp("catalog id, or mcp:<server> for load"),
+		"id":     stringProp("名称或 id；load 也接受 mcp:<服务器>"),
 		"query":  stringProp("search text; empty lists the catalog"),
 	}, []string{"action"})
 }
@@ -71,7 +71,7 @@ func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
 	}
 }
 
-func (t linksTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	var in struct {
 		Action string `json:"action"`
 		ID     string `json:"id"`
@@ -91,7 +91,7 @@ func (t linksTool) Run(_ context.Context, args json.RawMessage) (string, error) 
 	case "remove":
 		return t.remove(strings.TrimSpace(in.ID))
 	case "load":
-		return t.load(strings.TrimSpace(in.ID))
+		return t.loadContext(ctx, strings.TrimSpace(in.ID))
 	default:
 		return "", fmt.Errorf("links: action must be search, install, remove, or load")
 	}
@@ -298,7 +298,9 @@ func (t linksTool) remove(id string) (string, error) {
 	return "removed " + e.ID, nil
 }
 
-func (t linksTool) load(id string) (string, error) {
+func (t linksTool) load(id string) (string, error) { return t.loadContext(context.Background(), id) }
+
+func (t linksTool) loadContext(ctx context.Context, id string) (string, error) {
 	if id == "" {
 		return "", fmt.Errorf("links: id is required")
 	}
@@ -322,8 +324,7 @@ func (t linksTool) load(id string) (string, error) {
 		if !found {
 			return "", fmt.Errorf("links: not found")
 		}
-		t.k.markLoaded(id)
-		return t.loadedNames(id)
+		return t.loadedNamesContext(ctx, id)
 	}
 	e, ok := link.Lookup(id)
 	if !ok {
@@ -337,7 +338,14 @@ func (t linksTool) load(id string) (string, error) {
 }
 
 func (t linksTool) loadedNames(id string) (string, error) {
-	list := t.k.toolsForLoaded(id)
+	return t.loadedNamesContext(context.Background(), id)
+}
+
+func (t linksTool) loadedNamesContext(ctx context.Context, id string) (string, error) {
+	list, err := t.k.toolsForLoaded(ctx, id)
+	if err != nil {
+		return "", errors.New(t.k.redactor()(err.Error()))
+	}
 	names := make([]string, 0, len(list))
 	for _, tool := range list {
 		if tool == nil || tool.Name() == "" {
@@ -349,16 +357,17 @@ func (t linksTool) loadedNames(id string) (string, error) {
 	if len(names) == 0 {
 		return "loaded " + id + ": no tools", nil
 	}
+	t.k.markLoaded(id)
 	return "loaded " + id + ": " + strings.Join(names, ", "), nil
 }
 
-func (k *Kernel) toolsForLoaded(id string) []tools.Tool {
+func (k *Kernel) toolsForLoaded(ctx context.Context, id string) ([]tools.Tool, error) {
 	links := k.snapshotLinks()
 	if id == link.NameSkills || id == "skills" {
 		if namedLink(links, link.NameSkills) {
-			return []tools.Tool{skillTool{k}, writeSkillTool{k}}
+			return []tools.Tool{skillTool{k}, writeSkillTool{k}}, nil
 		}
-		return nil
+		return nil, nil
 	}
 	var out []tools.Tool
 	for _, l := range links {
@@ -366,10 +375,18 @@ func (k *Kernel) toolsForLoaded(id string) []tools.Tool {
 			continue
 		}
 		if l.Name() == id || (id != "" && l.Name() == grantName(id)) {
-			out = append(out, l.Tools()...)
+			if m, ok := l.(*link.MCP); ok {
+				list, err := m.LoadTools(ctx)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, list...)
+			} else {
+				out = append(out, l.Tools()...)
+			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // snapshotLinks mounts catalog grants that were installed after this kernel
@@ -614,7 +631,6 @@ func (k *Kernel) installedSection() (string, error) {
 			refs = append(refs, link.InstalledRef{ID: a.Title, Summary: a.Summary})
 			continue
 		}
-		refs = append(refs, link.InstalledRef{ID: e.ID, Summary: e.Summary})
 	}
 	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
 	if err != nil {
@@ -797,3 +813,15 @@ func lazyUntilLoad(name string) bool {
 
 // silence unused import if tools is only used in toolsForLoaded
 var _ tools.Tool = linksTool{}
+
+// MCPStatus reads the matching mounted instance without mounting or connecting.
+func (k *Kernel) MCPStatus(spec link.MCPServer) link.MCPStatus {
+	k.linksMu.Lock()
+	defer k.linksMu.Unlock()
+	for _, l := range k.Links {
+		if m, ok := l.(*link.MCP); ok && sameMCPSpec(m.Spec, spec) {
+			return m.Status()
+		}
+	}
+	return link.MCPStatus{State: "configured"}
+}

@@ -171,20 +171,20 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 	if strings.Contains(base, "## 连接器") {
 		t.Fatal(base)
 	}
-	if err := b.GrantLink(link.NameWebhook); err != nil {
+	if err := b.GrantLink(link.NameDesktop); err != nil {
 		t.Fatal(err)
 	}
 	one := systemOf(t, k)
 	lines := installedBody(one)
-	if len(lines) != 1 || !strings.HasPrefix(lines[0], "webhook:") {
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "电脑操作:") {
 		t.Fatalf("%q", lines)
 	}
-	if err := b.GrantLink(link.NameWatch); err != nil {
+	if err := b.GrantLink(link.NameBrowser); err != nil {
 		t.Fatal(err)
 	}
 	two := systemOf(t, k)
 	lines = installedBody(two)
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "webhook:") || !strings.HasPrefix(lines[1], "watch:") {
+	if len(lines) != 2 || !strings.Contains(strings.Join(lines, "\n"), "电脑操作:") || !strings.Contains(strings.Join(lines, "\n"), "浏览器:") {
 		t.Fatalf("%q", lines)
 	}
 	if strings.Count(two, "\n") != strings.Count(one, "\n")+1 {
@@ -194,7 +194,7 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	three := systemOf(t, k)
-	if strings.Count(three, "\n") != strings.Count(two, "\n")+1 {
+	if strings.Count(three, "\n") != strings.Count(two, "\n") {
 		t.Fatalf("newline growth two %d three %d", strings.Count(two, "\n"), strings.Count(three, "\n"))
 	}
 	if strings.Contains(three, "Read the body of a shared skill") || strings.Contains(three, "Skill slug") || strings.Contains(three, `"type": "object"`) || strings.Contains(three, "inputSchema") {
