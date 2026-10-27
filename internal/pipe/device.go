@@ -28,7 +28,10 @@ type Device struct {
 	// adds the owner's credential to each request before it runs.
 	Handler   http.Handler
 	Authorize func(*http.Request) error
-	Log       *log.Logger
+	// Hooks answers webhooks the hub forwards from its public ingress. It
+	// runs without the owner's credential; nil refuses every hook.
+	Hooks http.Handler
+	Log   *log.Logger
 }
 
 func (d *Device) logf(format string, args ...any) {
@@ -116,6 +119,13 @@ func (d *Device) standby(ctx context.Context) error {
 				if err := d.Serve(ctx, m.TicketID, m.Secret); err != nil && ctx.Err() == nil {
 					d.logf("pipe: session %s: %v", short(m.TicketID), err)
 				}
+			}()
+		}
+		if m.T == "hook" && m.ID != "" {
+			sessions.Add(1)
+			go func() {
+				defer sessions.Done()
+				d.hook(ctx, c, m)
 			}()
 		}
 	}

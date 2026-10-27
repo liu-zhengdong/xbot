@@ -2764,3 +2764,38 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 /* The bar names the page and the back button leaves it, so the in-page title and back link would only repeat them. */
 #setpage .setpane>h2,#setpage .skills-settings .sethd,#setpage .web-search-settings>h2,#setpage .provider-title,#setpage .setdev .sethd>h2,#setpage .skills-settings .setback{display:none}
 }
+
+/* Task tab · Webhook */
+.hook-section > .hook-head { display: flex; align-items: center; gap: 8px; }
+.hook-head > span { flex: 1; }
+.hook-head .hook-new { font-size: 12.5px; font-weight: 600; color: var(--text); padding: 2px 8px; min-height: 0; }
+.hook-lead { margin: -2px 0 8px; font-size: 12.5px; line-height: 1.45; color: var(--x-faint); }
+.hook-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px 12px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--x-faint); }
+.hook-empty b { color: var(--text); font-weight: 600; }
+.hook-empty .primary { margin-top: 10px; }
+.hook-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.hook-row + .hook-row { margin-top: 4px; }
+.hook-row:hover, .hook-row:focus-visible { background: var(--hover); }
+.hook-row .ct { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hook-row .ct b { font-size: 14px; font-weight: 600; }
+.hook-row .ct .s2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hook-row .s2 { font-size: 12px; color: var(--x-faint); }
+.hook-row > .icon { width: 14px; height: 14px; flex: none; color: var(--x-faint); }
+.hook-error { font-size: 12.5px; color: var(--err); padding: 4px 0 6px; }
+.hook-detail { display: flex; flex-direction: column; gap: 14px; }
+.hook-back { align-self: flex-start; padding-left: 0; font-size: 12.5px; color: var(--x-faint); }
+.hook-label { font-size: 12px; color: var(--x-faint); margin-bottom: 6px; }
+.hook-name { font-size: 15px; font-weight: 600; }
+.hook-addr { display: flex; flex-direction: column; gap: 6px; }
+.hook-copy { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--x-fill-1); color: var(--text); text-align: left; cursor: pointer; }
+.hook-copy:hover, .hook-copy:focus-visible { background: var(--x-fill-2); }
+.hook-copy .k { font-size: 11.5px; color: var(--x-faint); }
+.hook-copy .v { font-family: var(--mono); font-size: 12.5px; line-height: 1.5; word-break: break-all; }
+.hook-local > summary { font-size: 12px; color: var(--x-faint); cursor: pointer; padding: 2px 0; }
+.hook-local > .hook-copy { margin-top: 6px; }
+.hook-gw { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--x-fill-2); color: var(--text); font-size: 13px; text-align: left; cursor: pointer; }
+.hook-gw:hover, .hook-gw:focus-visible { background: var(--x-fill-3); }
+.hook-gw > .icon { width: 14px; height: 14px; flex: none; color: var(--x-faint); }
+.hook-reveal { margin-top: 6px; font-size: 12.5px; }
+.hook-remove { align-self: flex-start; padding-left: 0; }
+.modal-card .hook-addr, .modal-card .hook-addr + .hook-copy { margin-top: 12px; }

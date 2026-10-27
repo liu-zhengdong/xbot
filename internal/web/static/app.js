@@ -5804,7 +5804,8 @@
       ["最近结束", agents.filter(a => !["running", "awaiting", "queued"].includes(a.status)).sort((a,b) => Date.parse(b.finished_at || 0) - Date.parse(a.finished_at || 0)).slice(0,20), "agent"],
       ["例程", data.routines || [], "routine"],
     ];
-    if (!agents.length && !sections[3][1].length) { if (!root.querySelector(".panel-empty")) root.replaceChildren(panelEmpty("tasks", "没有任务", "让它「每天 8 点提醒我」，这里就会有一个例程。")); return; }
+    const hooks = webhookSection(root);
+    if (!agents.length && !sections[3][1].length) { if (!root.querySelector(".panel-empty")) root.replaceChildren(panelEmpty("tasks", "没有任务", "让它「每天 8 点提醒我」，这里就会有一个例程。"), hooks); return; }
     root.querySelector(".panel-empty")?.remove();
     const cards = new Map([...root.querySelectorAll("[data-agent], [data-routine]")].map(n => [n.dataset.agent ? "agent:" + n.dataset.agent : "routine:" + n.dataset.routine, n]));
     const emptyActive = !sections[0][1].length && !sections[1][1].length;
@@ -5831,10 +5832,145 @@
       }
     }
     for (const [key, card] of cards) if (!keep.has(key)) card.remove();
+    if (root.lastElementChild !== hooks) root.append(hooks);
   }
 
   function computerView(data) {
     const root = el("div", "task-view"); root.dataset.bot = data.name; syncTaskView(root, data); return root;
+  }
+
+  // The task tab's Webhook section. It loads once per task view and repaints
+  // only on its own actions, so the task poll never touches it.
+  function webhookSection(root) {
+    let sec = root.querySelector(':scope > [data-section="webhook"]');
+    if (sec) return sec;
+    sec = el("section", "task-section hook-section"); sec.dataset.section = "webhook";
+    const head = el("h4", "hook-head"); const add = el("button", "text-btn hook-new", "新建"); add.type = "button";
+    add.onclick = () => newWebhook(root);
+    head.append(el("span", "", "Webhook"), add);
+    sec.append(head, el("p", "hook-lead", "外网请求可叫醒这个 Bot"), el("div", "hook-body"));
+    root.hookDetail = null; loadWebhooks(root);
+    paintWebhooks(root, sec); return sec;
+  }
+
+  const hookRoute = (bot, name) => "/api/bots/" + encodeURIComponent(bot) + "/webhooks" + (name ? "/" + encodeURIComponent(name) : "");
+  const hookAuth = a => a === "bearer" ? "令牌" : "签名校验";
+
+  async function loadWebhooks(root) {
+    const bot = root.dataset.bot;
+    try { const data = await api(hookRoute(bot)); if (root.dataset.bot === bot) root.hooks = data.hooks || []; }
+    catch (e) { root.hooks = root.hooks || []; root.hookError = visibleError(e, "读不到 Webhook"); }
+    paintWebhooks(root);
+  }
+
+  function paintWebhooks(root, sec = root.querySelector(':scope > [data-section="webhook"]')) {
+    if (!sec) return;
+    const body = sec.querySelector(".hook-body"), detail = root.hookDetail;
+    sec.querySelector(".hook-new").hidden = !!detail || !root.hooks?.length;
+    sec.querySelector(".hook-lead").hidden = !!detail;
+    if (detail) { body.replaceChildren(webhookDetail(root, detail)); return; }
+    if (!root.hooks) { body.replaceChildren(el("div", "pnone", "正在读取…")); return; }
+    const nodes = [];
+    if (root.hookError) { nodes.push(el("div", "hook-error", root.hookError)); root.hookError = ""; }
+    if (!root.hooks.length) {
+      const empty = el("div", "hook-empty"); const add = el("button", "primary", "新建"); add.type = "button";
+      add.onclick = () => newWebhook(root);
+      empty.append(el("b", "", "还没有 Webhook"), el("span", "", "建一条后把地址给外网服务"), add);
+      nodes.push(empty);
+    }
+    for (const h of root.hooks) {
+      const row = el("button", "hook-row"); row.type = "button"; row.dataset.hook = h.name;
+      const ct = el("span", "ct"); ct.append(el("b", "", h.name), el("span", "s2", h.url.replace(/^https?:\/\//, "")));
+      row.append(ct, el("span", "s2 hook-auth", hookAuth(h.auth)), icon("chevron"));
+      row.onclick = () => openWebhook(root, h.name);
+      nodes.push(row);
+    }
+    body.replaceChildren(...nodes);
+  }
+
+  async function openWebhook(root, name) {
+    try { root.hookDetail = await api(hookRoute(root.dataset.bot, name)); root.hookReveal = false; }
+    catch (e) { root.hookError = visibleError(e, "读不到这条 Webhook"); }
+    paintWebhooks(root);
+  }
+
+  async function copyHookText(text) { showToast(await copyText(text) ? "已复制" : "复制失败，请手动选择"); }
+
+  function hookCopy(label, text, shown = text) {
+    const box = el("button", "hook-copy"); box.type = "button";
+    box.append(el("span", "k", label), el("span", "v", shown));
+    box.onclick = () => copyHookText(text);
+    return box;
+  }
+
+  // The address to hand out: the gateway's public one when there is one,
+  // the local one tucked below it; without a gateway, a way to get one.
+  function hookAddress(h) {
+    const box = el("div", "hook-addr");
+    box.append(hookCopy(h.public_url ? "公网地址" : "地址", h.url));
+    if (h.public_url) {
+      const local = el("details", "hook-local"); local.append(el("summary", "", "本机"), hookCopy("本机地址", h.local_url));
+      box.append(local);
+    } else {
+      const go = el("button", "hook-gw"); go.type = "button"; go.append(el("span", "", "登录网关后可得到公网地址"), icon("chevron"));
+      go.onclick = () => { if (!modal.hidden) closeModal(); openSettings("devices"); };
+      box.append(go);
+    }
+    return box;
+  }
+
+  function webhookDetail(root, h) {
+    const box = el("div", "hook-detail");
+    const back = el("button", "text-btn hook-back", "← Webhook"); back.type = "button";
+    back.onclick = () => { root.hookDetail = null; paintWebhooks(root); };
+    const name = el("div", "hook-block"); name.append(el("div", "hook-label", "名称"), el("b", "hook-name", h.name));
+    const addr = el("div", "hook-block"); addr.append(el("div", "hook-label", "地址 · 点击复制"), hookAddress(h));
+    const auth = el("div", "hook-block"); auth.append(el("div", "hook-label", "校验"), el("span", "", hookAuth(h.auth)));
+    const secret = el("div", "hook-block");
+    const toggle = el("button", "text-btn hook-reveal", root.hookReveal ? "隐藏" : "显示"); toggle.type = "button";
+    toggle.onclick = () => { root.hookReveal = !root.hookReveal; paintWebhooks(root); };
+    secret.append(el("div", "hook-label", "密钥 · 点击复制"), hookCopy("密钥", h.secret, root.hookReveal ? h.secret : "•".repeat(12) + h.secret.slice(-4)), toggle);
+    const remove = el("button", "text-btn danger hook-remove", "撤掉"); remove.type = "button";
+    remove.onclick = () => removeWebhook(root, h);
+    box.append(back, name, addr, auth, secret, remove);
+    return box;
+  }
+
+  function newWebhook(root) {
+    openModal("新建 Webhook", [
+      { type: "note", label: "名称会出现在地址里，创建后不可改。" },
+      { name: "name", label: "名称", placeholder: "例如 github" },
+      { name: "auth", type: "choice", label: "校验方式", options: [["hmac", "签名校验"], ["bearer", "令牌"]] },
+    ], async (v) => {
+      const name = (v.name || "").trim();
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) throw new Error("用小写字母、数字和短横线，不要大写或下划线");
+      let h;
+      try { h = await api(hookRoute(root.dataset.bot), { method: "POST", body: { name, auth: v.auth } }); }
+      catch (e) { throw new Error(e.message); }
+      root.hooks = [...(root.hooks || []).filter(x => x.name !== h.name), h];
+      paintWebhooks(root);
+      // openModal closes its card once this returns; show the result after.
+      setTimeout(() => webhookCreated(h));
+    }, "创建");
+  }
+
+  function webhookCreated(h) {
+    openModal("已创建", [{ type: "note", label: "请先复制保存。关掉后仍可在详情里再看。" }], async () => {}, "完成", () => {
+      $("modal-cancel").hidden = true;
+      modalFields.append(hookAddress(h), hookCopy("密钥", h.secret));
+    });
+  }
+
+  function removeWebhook(root, h) {
+    openModal("撤掉「" + h.name + "」？", [
+      { type: "note", label: "之后用这条地址的请求将不再叫醒本 Bot。需要时可以再新建。" },
+    ], async () => {
+      try { await api(hookRoute(root.dataset.bot, h.name), { method: "DELETE" }); }
+      catch (e) { throw new Error(e.message); }
+      root.hookDetail = null;
+      root.hooks = (root.hooks || []).filter(x => x.name !== h.name);
+      paintWebhooks(root);
+    }, "撤掉", () => { $("modal-ok").className = "text-btn danger"; });
   }
 
   async function loadModelCatalog() {
@@ -6787,6 +6923,7 @@
     $("modal-ok").className = okLabel === "删除" ? (title === "删除 Bot" ? "text-btn danger" : "secondary") : "primary";
     $("modal-ok").disabled = false;
     $("modal-cancel").textContent = "取消";
+    $("modal-cancel").hidden = false;
     modalFields.replaceChildren();
     modalError.hidden = true;
     const inputs = {};

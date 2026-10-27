@@ -29,4 +29,8 @@
 
 静态请求帧可带 `inm`（If-None-Match，最多 256 字节且禁止换行）；静态响应帧可带 `etag`、`tip`、`cache`，分别对应 ETag、X-Xbot-Tip、Cache-Control。只回传这几个白名单字段，不转发 cookie。Go `Do` 既有返回签名保持不变，浏览器 bridge 读取可选元数据。
 
+## 入站 Webhook 公网入口
+
+`POST /pipe/v1/hook/{device}/webhook/{bot}/{name}` 不要登录，给外网服务投 Bot 的 webhook（[ADR 0031](adr/0031-webhook-ingress-via-pipe.md)）。中枢把请求经该设备的待命连接发成 `{"t":"hook","id","path","header","body"}`，设备只接受 `/webhook/<段>/<段>`、不带主人凭证地交给 `Device.Hooks`（serve 里是 inbound 处理器），回 `{"t":"hook_res","id","status","body"}`（正文最多 1 KiB）；中枢只接受原待命连接对自己发出的 id 的回答。签名/令牌在设备上校验，中枢不存密钥。白名单请求头、32 KiB 正文、每设备 8 条并发、15 秒超时（504）、设备不在线 503。serve 在待命运行期间把 `pipe.HookBase(hub, deviceID)` 作为网页 API 的公网 webhook 地址。
+
 部署见 [packaging/pipe/](../packaging/pipe/README.md)。

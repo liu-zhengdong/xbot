@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,9 @@ const (
 	AuthHMAC   = "hmac"
 	AuthBearer = "bearer"
 )
+
+// ErrHookExists is AddHook's answer when the name is taken.
+var ErrHookExists = errors.New("webhook: already exists")
 
 // Hook is one webhook route. The secret stays in the bot directory, mode 0600.
 type Hook struct {
@@ -46,7 +50,7 @@ func AddHook(b *bot.Bot, name, auth string, now time.Time) (Hook, error) {
 		return Hook{}, errors.New("webhook: auth must be hmac or bearer")
 	}
 	if _, err := LoadHook(b, name); err == nil {
-		return Hook{}, errors.New("webhook: already exists")
+		return Hook{}, ErrHookExists
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Hook{}, err
 	}
@@ -139,9 +143,10 @@ func newSecret() (string, error) {
 	return hex.EncodeToString(buf[:]), nil
 }
 
-// WebhookURL is the route a client posts to.
+// WebhookURL is the route a client posts to. The bot name is escaped, since
+// it may hold any letters; a hook name is always URL-safe.
 func WebhookURL(base, botName, hook string) string {
-	return strings.TrimRight(base, "/") + "/webhook/" + botName + "/" + hook
+	return strings.TrimRight(base, "/") + "/webhook/" + url.PathEscape(botName) + "/" + hook
 }
 
 func verifyHook(h Hook, body []byte, sigHeader, authHeader string) bool {

@@ -58,9 +58,11 @@ type Hub struct {
 	Log     *log.Logger
 	Now     func() time.Time
 
-	mu      sync.Mutex
-	tickets map[string]*ticket
-	standby map[string]*wsConn // account key + "/" + device id
+	mu       sync.Mutex
+	tickets  map[string]*ticket
+	standby  map[string]*wsConn // account key + "/" + device id
+	hooks    map[string]pendingHook
+	hookLoad map[string]int // in-flight hooks per standby slot
 }
 
 type ticket struct {
@@ -91,6 +93,12 @@ type control struct {
 	TicketID string `json:"ticket_id,omitempty"`
 	Secret   string `json:"secret,omitempty"`
 	Error    string `json:"error,omitempty"`
+	// A forwarded webhook (hook) and the device's answer (hook_res).
+	ID     string            `json:"id,omitempty"`
+	Path   string            `json:"path,omitempty"`
+	Header map[string]string `json:"header,omitempty"`
+	Body   []byte            `json:"body,omitempty"`
+	Status int               `json:"status,omitempty"`
 }
 
 // TicketOut is the POST /pipe/v1/ticket answer. The secret is shown once.
@@ -107,6 +115,7 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("POST /pipe/v1/ticket", h.ticketCORS(h.serveTicket))
 	mux.HandleFunc("OPTIONS /pipe/v1/ticket", h.ticketCORS(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	mux.HandleFunc("GET /pipe/v1/ws", h.serveWS)
+	mux.HandleFunc(hookIngressPattern, h.serveHook)
 	return mux
 }
 
@@ -337,9 +346,14 @@ func (h *Hub) serveStandby(ctx context.Context, c *wsConn, in hello) {
 		stop := make(chan struct{})
 		go keepalive(c, stop)
 		for {
-			// Standby sockets carry nothing upward; reading only notices the close.
-			if _, _, err := c.ReadMessage(); err != nil {
+			// Upward, a standby socket carries only webhook answers.
+			op, raw, err := c.ReadMessage()
+			if err != nil {
 				break
+			}
+			var m control
+			if op == opText && json.Unmarshal(raw, &m) == nil && m.T == "hook_res" {
+				h.hookAnswer(slot, m)
 			}
 		}
 		close(stop)

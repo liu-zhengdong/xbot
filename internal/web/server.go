@@ -91,6 +91,12 @@ type Server struct {
 	launchCodes map[string]time.Time
 	launchNow   func() time.Time
 
+	// WebhookBase returns the base URLs a webhook is posted to: local is this
+	// serve's own listener, public is reachable from the internet (the account
+	// gateway's ingress, a tunnel or XBOT_PUBLIC_URL) and empty when there is
+	// none. Nil uses http://127.0.0.1:8787 and no public base.
+	WebhookBase func() (local, public string)
+
 	// ApprovalWait is how long permission and question cards wait. Zero uses 30 minutes.
 	ApprovalWait time.Duration
 
@@ -118,7 +124,7 @@ type Server struct {
 	searchMu    sync.Mutex
 	appsMu      sync.Mutex
 	appsProbe   func(context.Context, link.App, []string) error
-	skillMu     sync.Mutex // one skill switch, skill removal or persona-card pick at a time: each loads and saves the bot config
+	skillMu     sync.Mutex // one skill switch, skill removal, persona-card pick or webhook change at a time: each loads and saves the bot config
 	searchProbe func(context.Context, string, string) error
 	tabs        map[string]*tabState
 
@@ -241,6 +247,10 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/generated", s.generatedWorkdir)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
 	mux.HandleFunc("PATCH /api/bots/{name}/routines/{id}", s.patchRoutine)
+	mux.HandleFunc("GET /api/bots/{name}/webhooks", s.listWebhooks)
+	mux.HandleFunc("POST /api/bots/{name}/webhooks", s.addWebhook)
+	mux.HandleFunc("GET /api/bots/{name}/webhooks/{hook}", s.getWebhook)
+	mux.HandleFunc("DELETE /api/bots/{name}/webhooks/{hook}", s.removeWebhook)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("GET /api/bots/{name}/inbox", s.listInbox)
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
