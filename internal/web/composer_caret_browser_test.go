@@ -79,3 +79,37 @@ const refresh=()=>box.dispatchEvent(new InputEvent('input',{inputType:'insertTex
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `)
 }
+
+// The empty-state placeholder must not occupy flow: the caret starts at the
+// content's left edge, like a native input placeholder, not after the text.
+func TestComposerPlaceholderCaretBrowser(t *testing.T) {
+	runPageInChrome(t, `
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
+const box=$('#input');
+// An empty contenteditable has no caret rect; a zero-width node added
+// without an input event keeps is-empty and marks where the caret draws.
+const probe=()=>{
+ const z=document.createTextNode('​');box.replaceChildren(z);box.focus();
+ const r=document.createRange();r.setStart(z,0);r.collapse(true);
+ const c=r.getBoundingClientRect(),b=box.getBoundingClientRect(),s=getComputedStyle(box);
+ box.replaceChildren();
+ return {dx:c.left-(b.left+parseFloat(s.paddingLeft)),dy:c.top-(b.top+parseFloat(s.paddingTop)),h:b.height};
+};
+(async()=>{
+ await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes('2号小伙子'),'app did not boot');
+ box.replaceChildren();box.dispatchEvent(new InputEvent('input',{bubbles:true}));
+ assert(box.classList.contains('is-empty')&&box.dataset.placeholder,'composer not in placeholder state');
+ const h0=box.getBoundingClientRect().height;
+ for(const quoting of [false,true]){
+  $('#composer').classList.toggle('quoting',quoting);
+  const p=probe();
+  assert(Math.abs(p.dx)<=3,(quoting?'quoting ':'')+'caret sits after the placeholder: dx='+p.dx);
+  assert(Math.abs(p.dy)<=3,(quoting?'quoting ':'')+'caret drifted vertically: dy='+p.dy);
+ }
+ $('#composer').classList.remove('quoting');
+ assert(box.getBoundingClientRect().height===h0,'placeholder changed composer height');
+ document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`)
+}

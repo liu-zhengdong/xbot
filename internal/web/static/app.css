@@ -1239,12 +1239,16 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   margin: 0; padding: 16px 0; max-height: 140px;
   line-height: 20px; font-size: 15px; height: auto; min-height: 52px;
   overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+  position: relative;
 }
 
 .composer.quoting .composer-input { padding: 2px 8px 4px; height: 28px; min-height: 28px; }
 
+/* Out of flow, so the caret starts where the placeholder text starts. */
 .composer .composer-input.is-empty::before {
   content: attr(data-placeholder);
+  position: absolute; inset: 0; padding: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   color: var(--faint);
   pointer-events: none;
 }
