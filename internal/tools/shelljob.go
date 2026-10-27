@@ -155,6 +155,9 @@ func (j *Jobs) outputCap() int {
 // Load reads job records. A record still marked running is lost, unless its
 // pid and proc_start still name a live process: that job belongs to a serve
 // that is still up, and this process must not rewrite it or signal it.
+// A record whose output path no longer sits in this directory, as a bot
+// rename leaves behind, is repointed here before it is marked lost; one
+// record that still cannot be written is skipped, not fatal.
 // Loaded jobs are not Local. Finished jobs older than maxJobAge, and finished
 // jobs past maxKeptJobs, are removed.
 func (j *Jobs) Load() error {
@@ -196,8 +199,14 @@ func (j *Jobs) Load() error {
 			job.Status = "lost"
 			job.Ended = j.now()
 			if err := j.writeMeta(job); err != nil {
-				j.mu.Unlock()
-				return err
+				// A renamed bot moved this directory with the record in it; the
+				// output path inside still names the old one. Pull the output back
+				// to this directory and write once more; if that also fails, drop
+				// this one record rather than the whole table.
+				job.Output = filepath.Join(j.Dir, job.ID+".log")
+				if err := j.writeMeta(job); err != nil {
+					continue
+				}
 			}
 		}
 		j.jobs[id] = &live{job: job, done: closedChan()}

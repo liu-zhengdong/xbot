@@ -1051,3 +1051,59 @@ func TestStopWaitsForOnDone(t *testing.T) {
 		})
 	}
 }
+
+// A bot rename moves the shell-jobs directory with the bot. A record left
+// running still names the old directory in its output path; Load repoints the
+// output to the directory it now lives in, marks the record lost, and keeps
+// the whole table working.
+func TestLoadRepairsRenamedOutputPath(t *testing.T) {
+	root := t.TempDir()
+	oldJobs := filepath.Join(root, "bots", "大飞鱼", "shell-jobs")
+	dir := filepath.Join(root, "bots", "大肥鱼", "shell-jobs")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id := "sh_0abc12de"
+	meta, err := json.Marshal(Job{
+		ID: id, Command: "sleep 30", Status: "running",
+		Output:  filepath.Join(oldJobs, id+".log"),
+		Started: time.Unix(1_700_000_000, 0).UTC(), PID: 1 << 22, ProcStart: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id+".json"), meta, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// The output file moved with the directory.
+	if err := os.WriteFile(filepath.Join(dir, id+".log"), []byte("moved output\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	jobs := NewJobs(dir)
+	if err := jobs.Load(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := jobs.Status(id)
+	if err != nil || st.Status != "lost" {
+		t.Fatalf("status %+v err %v", st, err)
+	}
+	if want := filepath.Join(dir, id+".log"); st.Output != want {
+		t.Fatalf("output %q, want %q", st.Output, want)
+	}
+	out, err := jobs.Output(id, 0, 0)
+	if err != nil || !strings.Contains(out, "moved output") {
+		t.Fatalf("output %q err %v", out, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, id+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disk Job
+	if err := json.Unmarshal(raw, &disk); err != nil {
+		t.Fatal(err)
+	}
+	if disk.Status != "lost" || disk.Output != filepath.Join(dir, id+".log") {
+		t.Fatalf("disk record %+v", disk)
+	}
+}
