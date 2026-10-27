@@ -591,3 +591,16 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 性能：本机持久化开关读取基准 10,314 ns/op（约 10.3 微秒/次，200 ms 基准窗口）；不是交互/IPC p95 或 FPS。证据与完整自检：`~/.xbot-build/skills-main-default/`；截图：`~/.xbot-build/ui-shots/skills-main-default/`。
 
 级别：已合本地 main（tip `a02e3f3` / 本切片祖先 `b4fd276`←`18b6989`）；设计师用户视角 PASS；未 push。Not run: 主人日用、Linux CI、交互/IPC p95、FPS 和后台减速。
+
+
+### 聊天图片单图查看（2026-10-27，本地功能分支）
+
+`feature/chat-image-viewer` 把气泡点图后的多图墙替换成单图沉浸层，点击索引直达、同条前后切换、缩放拖动、关闭与焦点／滚动恢复共用现有图片列表。现状见 [界面](atlas/ui.md#聊天图片查看)，[交接设计](dev/chat-image-viewer.md) 保留设计复核和日用待验项。
+
+本机 Chrome 真鼠标、键盘、滚轮、触屏滑动、捏合、双击、取消手势和减少动态效果通过；真实隔离 `xbot serve` 经登录、paste 上传、发消息、历史、图片查看完整入口通过，模型为 scripted，匿名 paste 请求仍为 401。新浏览器回归三遍通过，在原始 `ce4ebc9` 归档上因仍为多图墙而失败。前后浅深色截图及完整命令证据在 `~/.xbot-build/chat-image-viewer/` 和 `~/.xbot-build/ui-shots/chat-image-viewer/`。
+
+检查未全绿：全量检查遇到原有审批测试 `shell` / `sh` 断言失败并阻塞清理，`internal/work` 原有 shell 测试缺 description；两项在原始提交复现。跳过该阻塞审批用例后，web 整包三遍仅四条已有 parked approval 用例失败，基线同样失败。六条基础旅程中五条通过，WebChat 非空 delta 数断言在本分支与基线同样失败。全量的 90 秒诊断上限曾截断长程测试，随后按默认超时单跑 `go test -count=1 ./e2e` 全过（68.436 秒）。`go vet`、gofmt、JS 语法、diff 检查通过；atlas audit 无新增告警。详尽结果与基线对照见编码报告；没有改这些范围外的测试期望。
+
+性能：1440×900、DPR 2、本机 Chrome、缓存 scripted 图片各 30 次，从 DOM 点击到图片加载并经历两帧的 p95 为浅色 34.5 ms、深色 34.4 ms；不代表网络延迟或真实屏幕 FPS。级别：本地分支编码及本条 scripted 真入口验证通过，未合入、未 push、未获设计师本批截图通过或主人日用通过。Not run: 真模型、Linux CI、Safari／真实手机、真实网络交互与 IPC p95、真实屏幕 FPS、后台减速专项。
+
+交付前已 rebase 到含编码克制约束的 `28501a6`（相对原基线只新增 AGENTS.md 约束），未修改该指令文件。rebase 后图片回归三遍及 trusted 检查再次通过：鼠标双击 scale=2.5、触屏捏合 scale=3、触屏双击 scale=2.5；均为浏览器真实输入后的 transform 实测。
