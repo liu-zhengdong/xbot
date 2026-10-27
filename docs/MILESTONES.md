@@ -5,6 +5,12 @@
 - 三种协议共用请求 body 落盘函数；热开关、路径与原文约定见 [供应商](atlas/providers.md)。按主人纠正，含原始密钥、未 redact，仅 body，不额外采集 header。实现与测试仅改 provider；不改权限、vault、UI 或 transcript。
 - 复审 PASS（Pi prd-rev，P0/P1/P2=0）。功能 tip `1c94e90` 已合本地 main；`docs/dev/provider-request-debug.md` 已毕业删除。未 push；禁 sync-app；纯工程无 UI，不喊设计师。
 
+## 2026-10-27 连接器 Agent 侧可用
+
+- 沿现有 `links load` 补全名称/id 解析与商店类摘要筛选；MCP 失败回传阶段与有界脱敏 stderr；`/api/apps` 提供按 Bot runtime，读取不拉进程；前端未改。见 [生态](atlas/ecosystem.md)。
+- 复审 PASS（Pi pwm-rev，P0/P1=0，P2=4 不阻塞）。功能 tip `de23bd0` 待合本地 main。未 push；禁 sync-app。
+
+
 ## 2026-10-27 云上账号壳切开
 
 - 账号仓 tip `26a0067`：云静态只留登录 / 注册 / 查收邮件；删 `#devices` / `#gateway`；有会话一律 `/app/`；无设备/离线用设备侧 boot。见 [界面](atlas/ui.md#公网登录后的设备壳)。

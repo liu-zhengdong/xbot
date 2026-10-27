@@ -50,14 +50,15 @@ type rpcResult struct {
 }
 
 type mcpClient struct {
-	conn      io.ReadWriteCloser
-	wmu       sync.Mutex
-	mu        sync.Mutex
-	next      int64
-	pending   map[string]chan rpcResult
-	notes     chan string
-	closeOnce sync.Once
-	closeErr  error
+	conn        io.ReadWriteCloser
+	wmu         sync.Mutex
+	mu          sync.Mutex
+	next        int64
+	pending     map[string]chan rpcResult
+	notes       chan string
+	closeOnce   sync.Once
+	closeErr    error
+	terminalErr error
 }
 
 func newMCPClient(conn io.ReadWriteCloser) *mcpClient {
@@ -98,9 +99,16 @@ func (c *mcpClient) readLoop() {
 	c.fail(err)
 }
 
+func (c *mcpClient) failure() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.terminalErr
+}
+
 func (c *mcpClient) fail(err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.terminalErr = err
 	for id, ch := range c.pending {
 		select {
 		case ch <- rpcResult{err: err}:
@@ -182,7 +190,9 @@ func (c *mcpClient) replyUnsupported(id json.RawMessage) {
 	})
 }
 
-func (c *mcpClient) write(v any) error {
+func (c *mcpClient) write(v any) error { return c.writeContext(context.Background(), v) }
+
+func (c *mcpClient) writeContext(ctx context.Context, v any) error {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -190,7 +200,13 @@ func (c *mcpClient) write(v any) error {
 	raw = append(raw, '\n')
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
-	_, err = c.conn.Write(raw)
+	if writer, ok := c.conn.(interface {
+		WriteContext(context.Context, []byte) (int, error)
+	}); ok {
+		_, err = writer.WriteContext(ctx, raw)
+	} else {
+		_, err = c.conn.Write(raw)
+	}
 	return err
 }
 
@@ -200,6 +216,11 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		return nil, err
 	}
 	c.mu.Lock()
+	if c.terminalErr != nil {
+		err := c.terminalErr
+		c.mu.Unlock()
+		return nil, err
+	}
 	id := c.next
 	c.next++
 	key := strconv.FormatInt(id, 10)
@@ -211,7 +232,7 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		delete(c.pending, key)
 		c.mu.Unlock()
 	}()
-	if err := c.write(rpcMessage{
+	if err := c.writeContext(ctx, rpcMessage{
 		JSONRPC: "2.0",
 		ID:      json.RawMessage(key),
 		Method:  method,
@@ -246,7 +267,7 @@ func (c *mcpClient) initialize(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
-	return c.notify("notifications/initialized", map[string]any{})
+	return c.writeContext(ctx, rpcMessage{JSONRPC: "2.0", Method: "notifications/initialized", Params: json.RawMessage(`{}`)})
 }
 
 type mcpToolSpec struct {

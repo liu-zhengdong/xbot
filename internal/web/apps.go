@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/peer"
 )
@@ -29,6 +30,9 @@ type appJSON struct {
 	// Card means connecting asks for a key on a confirmation card in chat.
 	Card   bool `json:"card,omitempty"`
 	Custom bool `json:"custom,omitempty"`
+	// Runtime is per Bot. Legacy state=connected describes installation only.
+	Runtime map[string]link.MCPStatus `json:"runtime,omitempty"`
+	LoadID  string                    `json:"load_id,omitempty"`
 }
 
 func (s *Server) listApps(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +85,24 @@ func (s *Server) appRows() ([]appJSON, error) {
 	for _, v := range servers {
 		srv[v.Name] = v
 	}
+	// Snapshot references only; querying the store must never start MCP processes.
+	s.mu.Lock()
+	kernels := make(map[string]*kernel.Kernel, len(cfgs))
+	for _, cfg := range cfgs {
+		kernels[cfg.Name] = s.kernels[cfg.Name]
+	}
+	s.mu.Unlock()
+	runtime := func(spec link.MCPServer) map[string]link.MCPStatus {
+		states := make(map[string]link.MCPStatus, len(cfgs))
+		for _, cfg := range cfgs {
+			state := link.MCPStatus{State: "configured"}
+			if k := kernels[cfg.Name]; k != nil {
+				state = k.MCPStatus(spec)
+			}
+			states[cfg.Name] = state
+		}
+		return states
+	}
 	rows := make([]appJSON, 0, len(apps)+len(servers))
 	known := map[string]bool{}
 	for _, a := range apps {
@@ -96,13 +118,19 @@ func (s *Server) appRows() ([]appJSON, error) {
 		case a.Kind == link.AppNative && have[a.Grant], a.Kind == link.AppServer && serverReady(srv, a.ID, keyHeld):
 			row.State = "connected"
 		}
+		if a.Kind == link.AppServer {
+			row.LoadID = "mcp:" + a.ID
+			if spec, ok := srv[a.ID]; ok {
+				row.Runtime = runtime(spec)
+			}
+		}
 		rows = append(rows, row)
 	}
 	for _, v := range servers {
 		if known[v.Name] {
 			continue
 		}
-		rows = append(rows, appJSON{ID: v.Name, Title: v.Name, Summary: "自定义应用", Category: "custom", State: "connected", Custom: true})
+		rows = append(rows, appJSON{ID: v.Name, Title: v.Name, Summary: "自定义应用", Category: "custom", State: "connected", Custom: true, Runtime: runtime(v), LoadID: "mcp:" + v.Name})
 	}
 	return rows, nil
 }

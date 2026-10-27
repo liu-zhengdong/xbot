@@ -314,6 +314,12 @@ Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status
 
 目录里的 `mcp` 仍然 `available: false`。服务器不是一条目录授权，按下节单独登记。
 
+## 连接应用的运行状态
+
+`GET /api/apps` 沿用 owner 登录校验和全局安装列表。MCP 商店条目增加 `load_id`（如 `mcp:playwright`）；已配置的 MCP 增加 `runtime`，键为当前主人的 Bot 名，值为 `{state, tool_count, error?}`。`configured` 表示当前配置尚未成功取得工具；`ready` 表示该 Bot 的匹配实例取得非空工具表；`error` 附带有界、脱敏的失败原因。没有 Bot 时不返回 runtime。读取不启动 MCP 进程、不发网络请求，不将其他配置实例或其他主人的状态混入。
+
+旧 `state=connected` 和顶层 `connected` 仍表达安装/凭据状态，不代表工具可用；前端本次未接入 runtime。`load_id` 可直接交给 `links` 的 load 动作，成功后返回工具名；错误在原工具结果通路内返回。ready 不保证某个工具的浏览器等外部依赖可用。
+
 ## MCP 服务器
 
 M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`，权限 0600。文件里只有名字、命令、参数和密钥环境变量的名字，没有密钥的值。
