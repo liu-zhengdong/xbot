@@ -116,6 +116,8 @@ type Server struct {
 	// vendorMu serializes adding a built-in vendor and saving its key.
 	vendorMu    sync.Mutex
 	searchMu    sync.Mutex
+	appsMu      sync.Mutex
+	appsProbe   func(context.Context, link.App, []string) error
 	skillMu     sync.Mutex // one skill switch, skill removal or persona-card pick at a time: each loads and saves the bot config
 	searchProbe func(context.Context, string, string) error
 	tabs        map[string]*tabState

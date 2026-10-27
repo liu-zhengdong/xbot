@@ -1,13 +1,16 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"xbot/internal/bot"
@@ -15,16 +18,17 @@ import (
 )
 
 type appsEnv struct {
-	t    *testing.T
-	root string
-	srv  *httptest.Server
-	tok  string
+	t      *testing.T
+	root   string
+	srv    *httptest.Server
+	tok    string
+	server *Server
 }
 
 func newAppsEnv(t *testing.T) *appsEnv {
 	t.Helper()
 	root := t.TempDir()
-	s := &Server{Root: root, Owner: "u1"}
+	s := &Server{Root: root, Owner: "u1", appsProbe: func(context.Context, link.App, []string) error { return nil }}
 	tok, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +44,7 @@ func newAppsEnv(t *testing.T) *appsEnv {
 	}
 	srv := httptest.NewServer(muxOf(s))
 	t.Cleanup(srv.Close)
-	return &appsEnv{t: t, root: root, srv: srv, tok: tok}
+	return &appsEnv{t: t, root: root, srv: srv, tok: tok, server: s}
 }
 
 func (e *appsEnv) call(method, path, body string, auth bool) (int, []byte) {
@@ -182,13 +186,13 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestAppsKeyConnectorsNeverTakeKeysOverHTTP(t *testing.T) {
+func TestAppsKeyConnectorsNeedTheirKeys(t *testing.T) {
 	e := newAppsEnv(t)
 	for _, id := range []string{"telegram", "lark"} {
-		if code, _ := e.call("POST", "/api/apps", `{"id":"`+id+`"}`, true); code != http.StatusConflict {
+		if code, _ := e.call("POST", "/api/apps", `{"id":"`+id+`"}`, true); code != http.StatusBadRequest {
 			t.Fatalf("%s %d", id, code)
 		}
-		// a key in the body is refused outright, not stored
+		// a key under any other field is refused outright, not stored
 		if code, _ := e.call("POST", "/api/apps", `{"id":"`+id+`","token":"sk-secret-123"}`, true); code != http.StatusBadRequest {
 			t.Fatalf("%s with key %d", id, code)
 		}
@@ -206,6 +210,13 @@ func TestAppsKeyConnectorsNeverTakeKeysOverHTTP(t *testing.T) {
 	}
 	if _, apps := e.list(); apps["telegram"].State != "connected" || apps["telegram"].Scope != keyPerBotNote || strings.Contains(apps["telegram"].Summary, "分别保存") {
 		t.Fatalf("connected key app must say the key stays per Bot: %+v", apps["telegram"])
+	}
+	// The layer asks in plain words; variable names never reach the page.
+	if _, apps := e.list(); strings.Join(apps["context7"].Fields, ",") != "API 密钥" || strings.Join(apps["lark"].Fields, ",") != "应用密钥" || len(apps["fetch"].Fields) != 0 {
+		t.Fatalf("fields %+v %+v", apps["context7"], apps["lark"])
+	}
+	if _, raw := e.call("GET", "/api/apps", "", true); strings.Contains(string(raw), "_KEY") || strings.Contains(string(raw), "_TOKEN") || strings.Contains(string(raw), "_SECRET") {
+		t.Fatal("variable names on the page")
 	}
 	if _, apps := e.list(); apps["fetch"].Scope != "" || apps["lark"].Scope != keyPerBotNote {
 		t.Fatal("per-Bot note belongs on key apps only")
@@ -272,7 +283,7 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ { // a repeated click is the same refusal
 		code, raw := e.call("POST", "/api/apps", `{"id":"context7"}`, true)
-		if code != http.StatusConflict || !strings.Contains(string(raw), "secrets required") {
+		if code != http.StatusBadRequest {
 			t.Fatalf("context7 install %d %s", code, raw)
 		}
 	}
@@ -373,5 +384,55 @@ func TestAppsContext7KeyFromEnvironment(t *testing.T) {
 	}
 	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
 		t.Fatalf("env fallback %d %+v", n, apps["context7"])
+	}
+}
+
+func TestAppsProbeBeforeCommit(t *testing.T) {
+	e := newAppsEnv(t)
+	e.server.appsProbe = func(_ context.Context, _ link.App, _ []string) error { return errors.New("private fixture error") }
+	for _, body := range []string{`{"id":"playwright"}`, `{"id":"context7","secrets":["fixture-key"]}`} {
+		code, raw := e.call("POST", "/api/apps", body, true)
+		if code != 422 || strings.Contains(string(raw), "fixture") {
+			t.Fatalf("failure %d %s", code, raw)
+		}
+	}
+	if n, rows := e.list(); n != 0 || rows["context7"].State != "available" || rows["playwright"].State != "available" {
+		t.Fatal("failed probe installed an app")
+	}
+	if _, err := os.Stat(bot.GlobalMCPPath(e.root)); !os.IsNotExist(err) {
+		t.Fatal("failed probe wrote configuration")
+	}
+	ada, _ := bot.Load(e.root, "ada")
+	if keys, _ := link.ReadSecrets(ada.SecretPath()); len(keys) != 0 {
+		t.Fatal("failed probe stored credentials")
+	}
+	e.server.appsProbe = func(_ context.Context, a link.App, values []string) error {
+		if a.ID != "context7" || len(values) != 1 || values[0] != "fixture-key" {
+			return errors.New("bad probe input")
+		}
+		return nil
+	}
+	var wg sync.WaitGroup
+	codes := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			code, _ := e.call("POST", "/api/apps", `{"id":"context7","secrets":["fixture-key"]}`, true)
+			codes <- code
+		}()
+	}
+	wg.Wait()
+	close(codes)
+	for code := range codes {
+		if code != 200 {
+			t.Fatalf("repeat install: %d", code)
+		}
+	}
+	if n, rows := e.list(); n != 1 || rows["context7"].State != "connected" {
+		t.Fatal("verified app missing")
+	}
+	if _, raw := e.call("GET", "/api/apps", "", true); strings.Contains(string(raw), "fixture-key") {
+		t.Fatal("credential exposed in list")
 	}
 }

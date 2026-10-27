@@ -7475,7 +7475,7 @@
  } else if (section === "devices") {
         await window.xbotDevices.mount();
       } else if (section === "apps") {
-        await window.XBotApps.mount({api, host:$("settings-apps"), isCurrent:()=>request===settingsRequest, connect:connectApp});
+        await window.XBotApps.mount({api, host:$("settings-apps"), isCurrent:()=>request===settingsRequest});
       } else if (section === "general") {
         await loadPush();
       }
@@ -7536,17 +7536,6 @@
     }
   });
   $("push-icon").append(icon("phone"));
-
-  // A connector that needs a key asks for it on a confirmation card in chat. The card needs some Bot to
-  // host it, so the owner's primary Bot (else the first) takes the request; the app itself stays global.
-  async function connectApp(app) {
-    const host = state.bots.find(b => b.primary) || state.bots[0];
-    if (!host) { settingsError(new Error("先新建一个 Bot，才能在对话里填写密钥。")); return; }
-    closeSettings(false);
-    window.xbotRemoteChat?.close();
-    await selectBot(host.name);
-    sendText("请帮我安装 " + app.title + " 连接器，需要的密钥请用确认卡让我填写。");
-  }
 
   function urlBase64ToUint8Array(s) {
     const pad = "=".repeat((4 - (s.length % 4)) % 4);

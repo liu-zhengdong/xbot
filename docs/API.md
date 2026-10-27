@@ -314,6 +314,10 @@ Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status
 
 目录里的 `mcp` 仍然 `available: false`。服务器不是一条目录授权，按下节单独登记。
 
+## 连接应用安装
+
+`POST /api/apps` 接收 `{"id":"context7","secrets":["密钥值"]}`；无密钥条目省略 `secrets`。密钥按 `GET /api/apps` 每行 `fields`（人话标签，如「API 密钥」）的顺序提交，只在探测通过后保存，不出现在列表。真实探测失败返回 422，未添加；需要密钥却未填齐返回 400。Telegram、飞书的密钥保存于主 Bot（或首个 owner Bot）的保险箱；Context7 写该 Bot 的 secrets。探测方式见 [ADR 0031](adr/0031-store-keys-in-settings.md)；飞书只发一个不存在的消息类型，不会投递到群。同一时间只处理一个添加或移除，单次上限 45 秒；请求取消时在途探测终止。旧的自定义应用接口不在此变更范围。
+
 ## 连接应用的运行状态
 
 `GET /api/apps` 沿用 owner 登录校验和全局安装列表。MCP 商店条目增加 `load_id`（如 `mcp:playwright`）；已配置的 MCP 增加 `runtime`，键为当前用户的 Bot 名，值为 `{state, tool_count, error?}`。`configured` 表示当前配置尚未成功取得工具；`ready` 表示该 Bot 的匹配实例取得非空工具表；`error` 附带有界、脱敏的失败原因。没有 Bot 时不返回 runtime。读取不启动 MCP 进程、不发网络请求，不将其他配置实例或其他用户的状态混入。

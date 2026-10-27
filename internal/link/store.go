@@ -13,7 +13,7 @@ type App struct {
 	Kind string
 	// Grant is the native link name for Kind native.
 	Grant string
-	// NeedsSecret means the owner fills a key on a confirmation card in chat.
+	// NeedsSecret means the store asks for a key in settings.
 	NeedsSecret bool
 }
 
@@ -46,7 +46,7 @@ func StoreApps() ([]App, error) {
 		if c.Hidden || c.Category == "" {
 			continue
 		}
-		// A row that names a key goes through the chat card like Telegram, never a one-click add.
+		// A row that names a key needs settings input before installation.
 		apps = append(apps, App{ID: c.ID, Title: c.Title, Summary: c.Summary, Category: c.Category, Kind: AppServer, NeedsSecret: len(c.SecretEnvs) > 0})
 	}
 	apps = append(apps,

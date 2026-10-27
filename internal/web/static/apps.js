@@ -23,16 +23,20 @@
   const textOf = a => (a.title + " " + a.summary).toLowerCase();
 
   // The store installs for the owner, so every call here is free of any Bot.
-  async function mount({api, host, isCurrent, connect = () => {}}) {
+  async function mount({api, host, isCurrent}) {
     teardown();
-    let alive = true, apps = [], count = 0, chip = "all", query = "", view = "store", busy = new Set(), layer = null;
+    let alive = true, apps = [], count = 0, chip = "all", query = "", view = "store", busy = new Set(), layer = null, cardErrors = new Map();
     const current = () => alive && isCurrent();
-    teardown = () => { alive = false; layer = null; host.replaceChildren(); };
+    let toastTimer = 0;
+    teardown = () => { alive = false; clearTimeout(toastTimer); layer?.controller?.abort(); layer = null; host.replaceChildren(); };
     host.className = "skills-settings apps-settings";
     const body = node("div", "ap-body");
     const errorBox = node("p", "sk-error"); errorBox.setAttribute("role", "alert"); errorBox.hidden = true;
     const layers = node("div", "sk-layers");
-    host.replaceChildren(body, errorBox, layers);
+    // The app-wide toast sits under the settings sheet, so the store shows its own.
+    const notice = node("div", "toast"); notice.setAttribute("role", "status"); notice.hidden = true;
+    const toast = text => { notice.textContent = text; notice.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { notice.hidden = true; }, 3000); };
+    host.replaceChildren(body, errorBox, layers, notice);
     const fail = text => { errorBox.textContent = text || ""; errorBox.hidden = !text; };
 
     async function load() {
@@ -49,10 +53,10 @@
     }
     async function add(a) {
       if (busy.has(a.id)) return;
-      if (a.card) { connect(a); return; }
-      busy.add(a.id); fail("");
-      try { await api("/api/apps", {method: "POST", body: {id: a.id}}); if (!(await load())) return; }
-      catch (e) { if (current()) fail(plain(e, "没能添加，请再试一次。")); }
+      if (a.card) { openSecretLayer(a); return; }
+      busy.add(a.id); cardErrors.delete(a.id); fail(""); paint();
+      try { await api("/api/apps", {method: "POST", body: {id: a.id}}); if (!(await load())) return; toast("已添加到你的应用"); }
+      catch (e) { if (current()) { const message = plain(e, "没能添加，请再试一次。"); cardErrors.set(a.id, message); fail(message); } }
       finally { busy.delete(a.id); }
       if (current()) paint();
     }
@@ -69,7 +73,8 @@
       const c = node("div", "ap-card"), tx = node("div", "tx"), [text, cls, off] = label(a);
       tx.append(node("b", "", a.title), node("span", "hint", a.summary));
       if (a.scope) tx.append(node("span", "ap-scope", a.scope));
-      const b = button(cls, text, () => a.state === "connected" ? remove(a) : add(a)); b.disabled = off || busy.has(a.id);
+      if (cardErrors.has(a.id)) tx.append(node("span", "sk-error", cardErrors.get(a.id)));
+      const b = button(cls, busy.has(a.id) ? text + "中…" : text, () => a.state === "connected" ? remove(a) : add(a)); b.disabled = off || busy.has(a.id);
       c.append(icon(a), tx, b); return c;
     }
     function paint() { return view === "connected" ? showConnected() : showStore(); }
@@ -130,7 +135,34 @@
       body.replaceChildren(back, head, lead, rows);
     }
 
-    function closeLayer() { if (!layer) return; const {opener} = layer; layer = null; layers.replaceChildren(); opener?.isConnected && opener.focus?.({preventScroll: true}); }
+    function closeLayer() { if (!layer) return; const {opener, controller} = layer; controller?.abort(); layer = null; layers.replaceChildren(); opener?.isConnected && opener.focus?.({preventScroll: true}); }
+    function openSecretLayer(a) {
+      if (layer) closeLayer();
+      const root = node("div", "nestlayer"), cardEl = node("div", "nestcard");
+      const action = a.category === "local" || a.category === "chat" ? "连接" : "添加";
+      root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true"); root.setAttribute("aria-label", action + " " + a.title);
+      const labels = a.fields?.length ? a.fields : ["密钥"];
+      const fields = labels.map(label => { const wrap = node("label", "ap-field"), input = node("input"); input.type = "password"; input.autocomplete = "off"; input.placeholder = "粘贴" + label; wrap.append(node("span", "", label), input); return [wrap, input]; });
+      const err = node("p", "sk-error"); err.hidden = true; err.setAttribute("role", "alert");
+      const ok = button("btn pri", action, async () => {
+        if (ok.disabled) return;
+        const missing = fields.findIndex(([, input]) => !input.value.trim());
+        if (missing >= 0) { err.textContent = "请填写" + labels[missing] + "。"; err.hidden = false; fields[missing][1].focus(); return; }
+        err.hidden = true; ok.disabled = true; ok.textContent = action + "中…";
+        const controller = new AbortController(); layer.controller = controller;
+        try {
+          await api("/api/apps", {method: "POST", body: {id: a.id, secrets: fields.map(([, input]) => input.value)}, signal: controller.signal});
+          if (!current() || controller.signal.aborted) return;
+          layer.controller = null; closeLayer(); if (!(await load())) return; paint(); toast("已添加到你的应用");
+        } catch (e) { if (controller.signal.aborted || !current()) return; err.textContent = "密钥无效或连不上，请检查后重试。"; err.hidden = false; ok.disabled = false; ok.textContent = action; }
+      });
+      const actions = node("div", "nest-actions"); actions.append(button("btn", "取消", closeLayer), ok);
+      cardEl.append(node("h3", "", action + " " + a.title), node("p", "lead", "需要填写下面的密钥才能用。只保存在本机，不会出现在对话里。"), ...fields.map(([wrap]) => wrap), err, actions);
+      root.append(cardEl); layers.replaceChildren(root); layer = {opener: null};
+      root.addEventListener("keydown", ev => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeLayer(); } });
+      fields[0][1].focus({preventScroll: true});
+    }
+
     function openCustom(opener) {
       if (layer) closeLayer();
       const root = node("div", "nestlayer"), cardEl = node("div", "nestcard");

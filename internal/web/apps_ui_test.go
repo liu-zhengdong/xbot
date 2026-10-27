@@ -22,7 +22,7 @@ func TestAppsStoreBehaviour(t *testing.T) {
   this.classList={toggle:(n,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(n):s.delete(n);this.className=[...s].join(' ')}}}
   append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){} addEventListener(){}}
  const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t,children:[]})};
- vm.runInNewContext(` + string(encoded) + `,{window,document});
+ vm.runInNewContext(` + string(encoded) + `,{window,document,AbortController,setTimeout:()=>0,clearTimeout:()=>{}});
  const walk=(n,out=[])=>{out.push(n);(n.children||[]).forEach(c=>walk(c,out));return out};
  const textOf=n=>walk(n).map(x=>x.textContent||'').join(' ');
  const buttons=host=>walk(host).filter(n=>n.tag==='button');
@@ -32,14 +32,15 @@ func TestAppsStoreBehaviour(t *testing.T) {
   {id:'desktop',title:'电脑操作',summary:'看屏幕、点击。',category:'local',state:'available'},
   {id:'browser',title:'浏览器',summary:'打开网页。',category:'local',state:'connected'},
   {id:'fetch',title:'网页抓取',summary:'读网页。',category:'dev',state:'available'},
-  {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available',card:true},
+  {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available',card:true,fields:['API 密钥']},
   {id:'telegram',title:'Telegram',summary:'收消息。',category:'chat',state:'available',card:true},
   {id:'gmail',title:'Gmail',summary:'邮件。',category:'work',state:'soon'},
   {id:'notes',title:'notes',summary:'自定义应用',category:'custom',state:'connected',custom:true}];
  (async()=>{
-  const calls=[];let connected=[];
+  const calls=[];let connected=[], rejectKey=true;
   const api=async(path,opt)=>{calls.push([opt?.method||'GET',path,opt?.body]);
    if(path==='/api/apps'&&!opt){return {connected:rows.filter(r=>r.state==='connected').length,apps:structuredClone(rows)}}
+   if(path==='/api/apps'&&opt.method==='POST'&&opt.body.id==='context7'&&rejectKey){rejectKey=false;throw Error('no')}
    if(path==='/api/apps'&&opt.method==='POST'){rows.find(r=>r.id===opt.body.id).state='connected';return {}}
    if(path.startsWith('/api/apps/')&&opt?.method==='DELETE'){rows.find(r=>r.id===decodeURIComponent(path.slice(10))).state='available';return {}}
    throw new Error('unexpected '+path)};
@@ -64,20 +65,28 @@ func TestAppsStoreBehaviour(t *testing.T) {
   await cardBtn(host,'网页抓取').onclick();
   assert.equal(JSON.stringify(calls.filter(c=>c[0]==='POST')[0]),JSON.stringify(['POST','/api/apps',{id:'fetch'}]));
   assert.equal(cardBtn(host,'网页抓取').textContent,'移除');
-  // Context7 needs a key: its 添加 hands off to chat and never posts or turns connected
+  const notice=walk(host).find(n=>n.attrs.role==='status');assert.equal(notice.textContent,'已添加到你的应用');notice.hidden=true;
+  // The settings layer keeps blank input in place and installs on success.
   let before=calls.length;await cardBtn(host,'Context7').onclick();
-  assert.equal(connected.join(),'context7');assert.equal(calls.length,before);
-  assert.equal(cardBtn(host,'Context7').textContent,'添加');
-  assert.ok(calls.every(c=>!c[1].includes('/api/bots/')),'store calls must not name a Bot');
-  // a key connector hands off to chat instead of posting
-  walk(host).find(n=>n.dataset.chip==='chat').onclick();
-  before=calls.length;await btn(host,'连接').onclick();
-  assert.equal(connected.join(),'context7,telegram');assert.equal(calls.length,before);
+  assert.equal(calls.length,before);
+  let dialog=walk(host).find(n=>n.attrs.role==='dialog');assert.ok(dialog);
+  let input=walk(dialog).find(n=>n.tag==='input');assert.equal(input.type,'password');
+  await btn(dialog,'添加').onclick();assert.equal(calls.length,before);
+  assert.ok(textOf(dialog).includes('请填写API 密钥'));
+  input.value='fixture-key';await btn(dialog,'添加').onclick();
+  assert.ok(walk(host).includes(dialog));assert.equal(input.value,'fixture-key');assert.ok(textOf(dialog).includes('密钥无效或连不上'));
+  assert.equal(cardBtn(host,'Context7').textContent,'添加');assert.equal(notice.hidden,true);
+  await btn(dialog,'添加').onclick();
+  assert.equal(cardBtn(host,'Context7').textContent,'移除');assert.ok(!walk(host).includes(dialog));assert.equal(notice.hidden,false);
+  // the old connect hook is never called: the store no longer hands a key app to chat
+  assert.equal(connected.length,0);
+  assert.ok(!textOf(host).includes('CONTEXT7'));
+  assert.ok(calls.every(c=>!c[1].includes('/api/bots/')));
   // search with no match
   const search=walk(host).find(n=>n.tag==='input');search.value='zzz';search.oninput();
   assert.ok(textOf(host).includes('没有匹配的应用'));
   // connected list, remove, then the empty state
-  btn(host,'已连接 3 个').onclick();
+  btn(host,'已连接 4 个').onclick();
   assert.ok(textOf(host).includes('这些应用对所有 Bot 都能用'));assert.ok(textOf(host).includes('notes'));
   // removing from a store card sends the same DELETE as the connected page
   walk(host).find(n=>n.className==='setback').onclick();btn(host,'清除搜索').onclick();
@@ -139,7 +148,7 @@ func TestAppsFailureStaysAndIconsShow(t *testing.T) {
   this.classList={toggle:(n,on)=>{const s=new Set(this.className.split(' ').filter(Boolean));on?s.add(n):s.delete(n);this.className=[...s].join(' ')}}}
   append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){} addEventListener(){}}
  const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t,children:[]})};
- vm.runInNewContext(` + string(encoded) + `,{window,document});
+ vm.runInNewContext(` + string(encoded) + `,{window,document,AbortController,setTimeout:()=>0,clearTimeout:()=>{}});
  const walk=(n,out=[])=>{out.push(n);(n.children||[]).forEach(c=>walk(c,out));return out};
  const textOf=n=>walk(n).map(x=>x.textContent||'').join(' ');
  const buttons=host=>walk(host).filter(n=>n.tag==='button');

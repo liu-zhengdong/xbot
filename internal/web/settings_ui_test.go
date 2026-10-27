@@ -40,32 +40,12 @@ func TestSettingsSystemThemeKeepsPreference(t *testing.T) {
 	}
 }
 
-func TestConnectorSetupRevealsTheLocalChat(t *testing.T) {
+func TestConnectorSetupDoesNotSendChat(t *testing.T) {
 	source, err := staticFS.ReadFile("static/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, body, ok := strings.Cut(string(source), "  async function connectApp(app) {\n")
-	if !ok {
-		t.Fatal("missing connector setup path")
-	}
-	body, _, ok = strings.Cut(body, "\n  }\n")
-	if !ok {
-		t.Fatal("missing connector setup end")
-	}
-	encoded, _ := json.Marshal("return (async()=>{" + body + "})()")
-	script := `const assert=require('node:assert/strict');
- const setup=new Function('app','state','settingsError','closeSettings','window','selectBot','sendText',` + string(encoded) + `);
- (async()=>{for(const opened of [false,true]){
-  let remote=opened,selected='',messages=[];const calls=[];
-  // the key card is hosted by the primary Bot, not by whatever the sidebar has selected
-  const state={bots:[{name:'bob'},{name:'ada',primary:true}],sel:{type:'bot',id:'bob'}};
-  await setup({title:'Telegram'},state,e=>{throw e},restore=>{assert.equal(restore,false);calls.push('settings')},
-    {xbotRemoteChat:{close(){remote=false;calls.push('remote')}}},async name=>{selected=name;calls.push('select')},
-    text=>{assert.equal(remote,false,'remote chat still hides the local reply/card');assert.equal(selected,'ada');messages.push(text);calls.push('send')});
-  assert.equal(messages.length,1);assert.ok(messages[0].includes('Telegram'));
- }})().catch(e=>{console.error(e);process.exitCode=1});`
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
+	if strings.Contains(string(source), "connectApp") || strings.Contains(string(source), "请帮我安装") {
+		t.Fatal("obsolete chat handoff remains")
 	}
 }
