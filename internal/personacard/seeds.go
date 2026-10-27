@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -469,17 +470,22 @@ var legacyPartnerOwner string
 //go:embed legacy-owner/1.txt
 var legacyGroupOwner string
 
+// A local copy of 1.txt that later gained a 【跟人交流】 section.
+//
+//go:embed legacy-owner/1-talk.txt
+var legacyGroupOwnerTalk string
+
 //go:embed legacy-owner/2.txt
 var legacyOpsOwner string
 
 //go:embed legacy-owner/3.txt
 var legacyWeekendOwner string
 
-var legacyOwnerBodies = map[string]string{
-	DefaultName: legacyPartnerOwner,
-	"碎嘴群友":      legacyGroupOwner,
-	"值班运维":      legacyOpsOwner,
-	"周末搭子":      legacyWeekendOwner,
+var legacyOwnerBodies = map[string][]string{
+	DefaultName: {legacyPartnerOwner},
+	"碎嘴群友":      {legacyGroupOwner, legacyGroupOwnerTalk},
+	"值班运维":      {legacyOpsOwner},
+	"周末搭子":      {legacyWeekendOwner},
 }
 
 // seededFile marks a library that has had cards: a seed run finished, or a card was
@@ -631,7 +637,7 @@ func upgradeSeeds(dir string) error {
 	}
 	var errs []error
 	for _, c := range cards {
-		if c.Body != legacySeedBodies[c.Name] && c.Body != legacyOwnerBodies[c.Name] {
+		if c.Body != legacySeedBodies[c.Name] && !slices.Contains(legacyOwnerBodies[c.Name], c.Body) {
 			continue
 		}
 		for _, s := range Seeds {

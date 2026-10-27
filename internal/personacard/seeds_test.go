@@ -137,6 +137,47 @@ func TestEnsureSeedsUpgradesUnchangedOwnerSeeds(t *testing.T) {
 	}
 }
 
+func TestEnsureSeedsUpgradesLocalGroupOwnerVariant(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("legacy-owner", "1-talk.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := string(raw)
+	if !strings.Contains(old, "【跟人交流】") || !strings.Contains(old, "主人") {
+		t.Fatal("snapshot is not the local owner-era variant")
+	}
+	var want string
+	for _, s := range Seeds {
+		if s.Name == "碎嘴群友" {
+			want = s.Body
+		}
+	}
+	for _, edit := range []bool{false, true} {
+		root := t.TempDir()
+		body := old
+		if edit {
+			body = strings.Replace(old, "【跟人交流】", "【跟人交流·改】", 1)
+		}
+		card, err := Create(root, "碎嘴群友", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := EnsureSeeds(root); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Get(root, card.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if edit && got.Body != body {
+			t.Fatal("edited card was upgraded")
+		}
+		if !edit && (got.Body != want || strings.Contains(got.Body, "主人")) {
+			t.Fatal("local owner variant was not upgraded")
+		}
+	}
+}
+
 func TestEnsureSeedsUpgradeWaitsForLibraryLock(t *testing.T) {
 	root, cards := thinSeedLibrary(t)
 	dir := Dir(root)
