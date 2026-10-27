@@ -28,6 +28,7 @@ const (
 	KindLoop            = "loop"
 	KindTodo            = "todo"
 	KindFileChange      = "file_change"
+	KindReplyFirst      = "reply_first"
 
 	pendingCooldown = 10 * time.Minute
 	loopCooldown    = time.Minute
@@ -557,6 +558,10 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		Trigger:  k.pendingTrigger(ev),
 	})
 	ch.Register(Kind{
+		Name:    KindReplyFirst,
+		Trigger: replyFirstTrigger(ev),
+	})
+	ch.Register(Kind{
 		Name:     KindLoop,
 		Cooldown: loopCooldown,
 		Trigger:  nil,
@@ -684,6 +689,20 @@ func (k *Kernel) pendingTrigger(ev link.Event) func(time.Time, []Reminder) strin
 			return ""
 		}
 		return pendingNote(k.openApprovals())
+	}
+}
+
+// replyFirstNote reminds the model, on the first request of an owner chat
+// turn, that only send_message_to_user reaches the owner. Bind runs once per
+// wake and later steps do not re-register it, so a turn carries it once.
+const replyFirstNote = "<system-reminder>\n主人正在聊天。先调用 send_message_to_user 用一两句回主人：你理解到了什么、接下来做什么。你的裸助手正文主人看不见；这条回复不是可选通知。然后再自己动手或 dispatch。\n</system-reminder>"
+
+func replyFirstTrigger(ev link.Event) func(time.Time, []Reminder) string {
+	return func(time.Time, []Reminder) string {
+		if (ev.Source != link.NameWeb && ev.Source != link.NameTerminal) || !personEvent(ev) {
+			return ""
+		}
+		return replyFirstNote
 	}
 }
 

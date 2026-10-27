@@ -22,6 +22,10 @@ type questionModel struct{}
 
 func (questionModel) Chat(_ context.Context, req provider.Request, delta func(string)) (provider.Message, error) {
 	last := lastConversationInput(req.Messages)
+	// An owner chat line carries the reply-first reminder; the script reads the words.
+	if body, _, ok := strings.Cut(last.Text(), "\n\n<system-reminder>"); ok {
+		last.SetText(body)
+	}
 	if last.Role == provider.RoleUser && last.Text() == "ASK_TIMEOUT" {
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "ask", Type: "function", Function: provider.FunctionCall{Name: "ask_user", Arguments: `{"question":"先做哪一步？","options":["先搭骨架","先写文档"],"recommended":"先搭骨架"}`}}})}, nil
 	}
