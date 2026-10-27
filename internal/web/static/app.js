@@ -4339,14 +4339,11 @@
         const messages = data.messages || [];
         const sig = JSON.stringify(messages);
         state.messages = messages;
-        state.preview["b:" + selection.id] = previewFromMessages(messages);
         state.previewAt["b:" + selection.id] = Date.now();
-        renderLists();
-        if (sig === state.sig) {
-          if (panel.classList.contains("open") && state.tab === "trace") paintPanel();
-          return;
-        }
+        if (sig === state.sig) return;
         state.sig = sig;
+        state.preview["b:" + selection.id] = previewFromMessages(messages);
+        renderLists();
         if (state.peer) return;
         renderMessages(messages, selection.id);
         if (panel.classList.contains("open")) await loadPanel();
@@ -4356,11 +4353,11 @@
       if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
       const messages = data.messages || [];
       const sig = JSON.stringify(messages);
-      state.preview["g:" + selection.id] = previewFromGroup(messages);
       state.previewAt["g:" + selection.id] = Date.now();
-      renderLists();
       if (sig === state.sig) return;
       state.sig = sig;
+      state.preview["g:" + selection.id] = previewFromGroup(messages);
+      renderLists();
       renderGroup(messages, data.group && data.group.name);
     } catch (e) {
       if (state.sel === selection && request === state.threadLoad && !state.streaming && !state.pendingSends.length) threadUnavailable();
@@ -6324,7 +6321,7 @@
     return prose;
   }
 
-  async function readSSE(res, selection, prose, onQueued) {
+  async function readSSE(res, selection, prose, onQueued, onLive) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -6368,15 +6365,24 @@
           } else window.XBotProviders.progress(host, payload);
         } else if (event === "tool") {
           const who = state.sel && state.sel.id;
-          if (host) {
-            setWorking(host, payload.name || "");
-            // The live summary has no recipient for message_bot; the transcript
-            // re-render after the turn draws its grouped event line.
-            const phrase = payload.name === "message_bot" ? null : peerPhrase(payload.name || "", { text: payload.summary || "" }, who);
-            if (phrase && phrase.text && host.parentElement) {
-              host.parentElement.insertAdjacentElement("afterend", systemLine(phrase.text, who, phrase.peer));
-            }
+          // The live summary has no recipient for message_bot; the transcript
+          // re-render after the turn draws its grouped event line.
+          const phrase = payload.name === "message_bot" ? null : peerPhrase(payload.name || "", { text: payload.summary || "" }, who);
+          const line = phrase && phrase.text ? systemLine(phrase.text, who, phrase.peer) : null;
+          // The server starts a new text segment at every tool, and the
+          // transcript keeps each segment as its own message: seal this
+          // bubble and stream the next segment into a fresh one.
+          if (acc) {
+            host.querySelector(".live-status")?.remove();
+            host.parentElement.classList.remove("live");
+            if (line) host.parentElement.after(line);
+            prose = liveBubble();
+            onLive(prose);
+            acc = "";
+          } else if (line) {
+            host.parentElement.before(line);
           }
+          setWorking(prose.closest(".body"), payload.name || "");
           thread.scrollTop = thread.scrollHeight;
         } else if (event === "result" && payload.name === "bot_update_profile") {
           // The result arrives after persistence. Refresh faces even while the
@@ -6458,8 +6464,8 @@
     marker.className = "send-state";
     marker.replaceChildren(document.createTextNode("发送中"));
     announceSend("发送中");
-    const prose = selection.type === "bot" ? liveBubble() : null;
-    const live = prose?.closest(".msg.live");
+    let prose = selection.type === "bot" ? liveBubble() : null;
+    let live = prose?.closest(".msg.live");
     const markQueued = () => {
       if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
       pending.queued = true;
@@ -6518,7 +6524,7 @@
         }
         setStatus(data.status === "queued" ? "已排队" : "");
       } else if (prose) {
-        await readSSE(res, selection, prose, markQueued);
+        await readSSE(res, selection, prose, markQueued, (p) => { prose = p; live = p.closest(".msg.live"); });
       }
       if (state.sel !== selection) return;
       state.sig = "";
