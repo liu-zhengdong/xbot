@@ -33,7 +33,7 @@ func Index() string {
 	for _, s := range sections {
 		fmt.Fprintf(&out, "- %s: %s\n", s.ID, s.Title)
 	}
-	out.WriteString("读取：kernel_manual(section)；主人在终端运行 xbot manual <section>。\n")
+	out.WriteString("读取：kernel_manual(section)；用户在终端运行 xbot manual <section>。\n")
 	return out.String()
 }
 

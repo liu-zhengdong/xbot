@@ -1,4 +1,4 @@
-/* 远端 Bot 对话：点侧栏设备分组里的 Bot，以主人的身份和另一台电脑上的 Bot 聊天（v2 原型 remote-*、side-full）。
+/* 远端 Bot 对话：点侧栏设备分组里的 Bot，以用户的身份和另一台电脑上的 Bot 聊天（v2 原型 remote-*、side-full）。
    面板绝对定位盖住 .main，app.js 不参与；请求走 devices.js 的 api，登录过期和别处一样。 */
 (function () {
   "use strict";
@@ -86,7 +86,7 @@
     try { await api("POST", path(V.dev, V.bot) + "/read"); } catch (e) { /* 连不上网关就下次再说 */ }
     if (D.refresh) D.refresh();
   }
-  // 主人打的字：先显示气泡，拿到服务器那条后替换；没发出去就留原文和「重试」。
+  // 用户打的字：先显示气泡，拿到服务器那条后替换；没发出去就留原文和「重试」。
   async function sendText(text) {
     const t = String(text || "").trim().slice(0, MAX);
     if (!t) return;
@@ -175,7 +175,7 @@
       ev.preventDefault();
       sendText(el.input.value);
     });
-    el.input.addEventListener("input", () => { grow(); showError(""); }); // 主人一改就收起上次的报错
+    el.input.addEventListener("input", () => { grow(); showError(""); }); // 用户一改就收起上次的报错
     el.form.addEventListener("submit", (ev) => { ev.preventDefault(); sendText(el.input.value); });
     el.thread.addEventListener("scroll", () => {
       const t = el.thread;
@@ -206,7 +206,7 @@
   }
   // 正文一律当纯文本：先转义，再把换行变成 <br>。
   const lines = (t) => esc(String(t).replace(/\r\n?/g, "\n").replace(/\n+$/, "")).replace(/\n/g, "<br>");
-  // 主人这条下面的状态：本机还没发出、网关里等离线设备上线、设备在线但没回执、没发出去；其他不写。
+  // 用户这条下面的状态：本机还没发出、网关里等离线设备上线、设备在线但没回执、没发出去；其他不写。
   function stateOf(m) {
     if (m.role === "me" && (m.state === "failed" || V.failed.includes(m.text))) return "failed"; // 服务端存成 failed 的（502）重新打开也给「重试」
     if (m.state === "queued_local") return "local";

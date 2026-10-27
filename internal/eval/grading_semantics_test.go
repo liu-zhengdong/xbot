@@ -47,7 +47,7 @@ func TestMemoryScopeJudgesPersistedMeaning(t *testing.T) {
 		name := "correct"
 		verdict := `{"pass":true,"reason":"work rule in bot, timezone in person"}`
 		botText := "- (2026-10-15) 工作规则：修复完成前必须先跑测试。\n"
-		personText := "- (2026-10-15) 主人时区 Asia/Shanghai。\n"
+		personText := "- (2026-10-15) 用户时区 Asia/Shanghai。\n"
 		if wrongScope {
 			name = "wrong-scope"
 			verdict = `{"pass":false,"reason":"work rule saved in person instead of bot"}`

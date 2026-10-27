@@ -27,7 +27,7 @@ type linksTool struct{ k *Kernel }
 
 func (linksTool) Name() string { return "links" }
 func (linksTool) Description() string {
-	return "搜索、安装、移除或加载连接器。看到上下文‘连接器’摘要中的名称:描述后，先用 action=load、id=名称或 id 加载，例如电脑操作/desktop、浏览器/browser、Playwright/playwright/mcp:playwright。成功返回工具名，工具 schema 只加入本轮后续调用；失败返回原因。search 查摘要；install/remove 走主人确认，所需密钥由主人在确认卡填写，你不接收密钥值。"
+	return "搜索、安装、移除或加载连接器。看到上下文‘连接器’摘要中的名称:描述后，先用 action=load、id=名称或 id 加载，例如电脑操作/desktop、浏览器/browser、Playwright/playwright/mcp:playwright。成功返回工具名，工具 schema 只加入本轮后续调用；失败返回原因。search 查摘要；install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
 }
 func (linksTool) Parameters() any {
 	return schema(map[string]any{

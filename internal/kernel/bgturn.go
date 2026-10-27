@@ -328,7 +328,7 @@ type Control struct {
 func (c *Control) message() string {
 	switch c.Kind {
 	case "steer":
-		return "[主人的补充] " + c.Text
+		return "[用户的补充] " + c.Text
 	case "queue":
 		return "[排队] 做完当前的事后再做：" + c.Text
 	case "interrupt":

@@ -91,7 +91,7 @@ func TestBusyReportRequiresActualResultEvent(t *testing.T) {
 		}
 	}
 	row := busyReportEvent(1, task)
-	row.Content = "主人引用：\n" + row.Content
+	row.Content = "用户引用：\n" + row.Content
 	if e := busyReports([]Row{row, {Seq: 2, Role: "assistant", Content: busyCode(task)}}, []string{task})[0]; len(e.Results) != 0 || e.Status != "FAIL" {
 		t.Fatalf("quoted event counted: %+v", e)
 	}

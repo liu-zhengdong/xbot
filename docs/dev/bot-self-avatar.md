@@ -44,5 +44,5 @@ Bot 能直接更新自己的生成头像种子；落盘后侧栏与资料头像�
 ## 还没做的
 
 - 合入本地 main，由主管安排；本编码交付只提交 `feature/update-profile-rename`，不 push。
-- 真入口浏览器验收：从对话调用 update_profile 默认无卡落盘，到侧栏与资料头像刷新；8788 与主人日用尚未验证。
+- 真入口浏览器验收：从对话调用 update_profile 默认无卡落盘，到侧栏与资料头像刷新；8788 与用户日用尚未验证。
 - **冒烟用例**：独立端到端用例待写。Go 组件回归在 `internal/kernel/profile_test.go`，不代替浏览器旅程。

@@ -48,7 +48,7 @@ func TestBotCollaboration(t *testing.T) {
 		// One grey event line in the owner's conversation, from bob.
 		rows := srv.Transcript("ada")
 		if n := countUserRows(rows, `source="bot:bob"`); n != 1 {
-			t.Fatalf("ada has %d bot:bob event rows, want exactly 1 (旅程「Bot 之间协作」: 主人的对话里只出现一行灰色事件):\n%s",
+			t.Fatalf("ada has %d bot:bob event rows, want exactly 1 (旅程「Bot 之间协作」: 用户的对话里只出现一行灰色事件):\n%s",
 				n, dumpRows(rows))
 		}
 

@@ -94,7 +94,7 @@ func (b *Bot) migrateStyle(raw []byte) error {
 			}
 		}
 		if len(parts) > 0 {
-			text := "主人希望我说话：" + strings.Join(parts, "，") + "。"
+			text := "用户希望我说话：" + strings.Join(parts, "，") + "。"
 			if err := rememberPreference(b.Name(), memory.Open(b.Root), text); err != nil {
 				return fmt.Errorf("bot: migrate speaking preference: %w", err)
 			}

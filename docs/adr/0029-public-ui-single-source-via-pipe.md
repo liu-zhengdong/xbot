@@ -8,7 +8,7 @@ date: 2026-10-26
 
 ## 背景
 
-公网账号入口曾把 `internal/web/static` 拷成账号仓的 `public/app`，再经 `sync-app-from-xbot` 和 `sync-public` 发布。设备与云上两份业务壳会漂移，主人看到的菜单与本机 tip 不一致。主人纠正双源，主管确定通过 ADR 0024 的现有 pipe 读取设备壳；设计师的完成标准已对齐。
+公网账号入口曾把 `internal/web/static` 拷成账号仓的 `public/app`，再经 `sync-app-from-xbot` 和 `sync-public` 发布。设备与云上两份业务壳会漂移，用户看到的菜单与本机 tip 不一致。用户纠正双源，主管确定通过 ADR 0024 的现有 pipe 读取设备壳；设计师的完成标准已对齐。
 
 ## 决定
 
@@ -28,4 +28,4 @@ date: 2026-10-26
 
 设备须运行包含新出口的构建。未开启 `XBOT_DEV_STATIC` 时，修改磁盘文件仍须重新构建并重启才能改变内嵌 UI；开启时，本机页和 pipe 每次请求都读同一配置目录，修改文件后刷新即可，无需重建。资源源在 Server 首次注册/使用时固定，改变环境配置须重启。磁盘多文件编辑不是原子发布，不保证跨请求快照；ETag 标识每次实际读取的正文。本批不改发版脚本。
 
-浏览器需支持 Web Crypto X25519 和 Service Worker；不支持时显示明确错误。无设备时不会展示业务主界面；pipe 中断不自动重放写请求。公网网络启动时延与主人日用另验，本地浏览器使用真实 Go 账号 / hub / owner handlers 和 scripted 模型。
+浏览器需支持 Web Crypto X25519 和 Service Worker；不支持时显示明确错误。无设备时不会展示业务主界面；pipe 中断不自动重放写请求。公网网络启动时延与用户日用另验，本地浏览器使用真实 Go 账号 / hub / owner handlers 和 scripted 模型。

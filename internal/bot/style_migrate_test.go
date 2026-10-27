@@ -72,7 +72,7 @@ func TestLegacyStyleBecomesOneBotMemory(t *testing.T) {
 		t.Fatal(persona)
 	}
 	facts, err := memory.Open(b.Root).Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, Tier: memory.TierProfile, BotName: b.Name()})
-	if err != nil || len(facts) != 1 || facts[0].Text != "主人希望我说话：语言 中文，语气 亲切，篇幅 short，emoji spare。" {
+	if err != nil || len(facts) != 1 || facts[0].Text != "用户希望我说话：语言 中文，语气 亲切，篇幅 short，emoji spare。" {
 		t.Fatalf("%+v %v", facts, err)
 	}
 	again, _ := os.ReadFile(path)
@@ -239,7 +239,7 @@ func TestLanguageOnlyStyleWithFullProfileStillLoads(t *testing.T) {
 		t.Fatalf("style kept after a safe save: %s", after)
 	}
 	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, Tier: memory.TierLog, BotName: b.Name()})
-	want := "主人希望我说话：语言 中文。"
+	want := "用户希望我说话：语言 中文。"
 	found := 0
 	for _, f := range facts {
 		if f.Text == want {

@@ -8,7 +8,7 @@
 
 ## 做完是什么样
 
-贯穿例子：主人有一个 Bot，先绑 DeepSeek（Completions），聊了几轮含本地 `web_search`；再改绑 GPT（Responses，能力表有 hosted `web_search`）；再改绑 Claude（Messages）。旧对话仍可读；GPT 轮次里搜索出引用步骤；Claude 能跑通一轮服务端工具（若该模型有）。
+贯穿例子：用户有一个 Bot，先绑 DeepSeek（Completions），聊了几轮含本地 `web_search`；再改绑 GPT（Responses，能力表有 hosted `web_search`）；再改绑 Claude（Messages）。旧对话仍可读；GPT 轮次里搜索出引用步骤；Claude 能跑通一轮服务端工具（若该模型有）。
 
 | # | 指标 | 怎样算对 |
 |---|---|---|

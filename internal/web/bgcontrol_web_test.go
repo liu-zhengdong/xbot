@@ -114,7 +114,7 @@ func TestWebBackgroundControlsAndIdleEvents(t *testing.T) {
 	entries, _ := b.Entries()
 	var steer, queue bool
 	for _, e := range entries {
-		steer = steer || (e.Branch == id && e.Message.Text() == "[主人的补充] 顺便写个总结")
+		steer = steer || (e.Branch == id && e.Message.Text() == "[用户的补充] 顺便写个总结")
 		queue = queue || (e.Branch == id && strings.HasPrefix(e.Message.Text(), "[排队]"))
 	}
 	if !steer || !queue {

@@ -9,7 +9,7 @@ verified: 2026-10-18 @ c545964
 ## 怎么读
 - **只用公开资料**：官方 changelog 与 release、公开文章、X 上的公开帖子。Grok Bot 只按外部能看到的行为和用户的公开反馈推断，不获取内部提示词或私有接口。
 - **XBot 现状**按 GitHub `liu-zhengdong/xbot` main 的代码核对（本期 `c545964`），证据写路径；更早的整体对照见 [claude-code-internals.md](claude-code-internals.md)。
-- **决定**：做 = 建议排进下一版；候选 = 进候选清单（在主人的 Obsidian，不在仓库），不直接开工；不做 = 写明理由。已定不做：文件检查点/回滚、hooks、规划模式。
+- **决定**：做 = 建议排进下一版；候选 = 进候选清单（在用户的 Obsidian，不在仓库），不直接开工；不做 = 写明理由。已定不做：文件检查点/回滚、hooks、规划模式。
 - 每期只追加新行或改已有行的状态，旧行不删；日期是写入或最后改动的日期。
 
 ## 对标表
@@ -25,7 +25,7 @@ verified: 2026-10-18 @ c545964
 | 换到上下文更小的模型前先用旧模型摘要 | Claude Code | [v2.1.301](https://github.com/anthropics/claude-code/releases/tag/v2.1.301)（Improved switching to a model with a smaller context window） | ❌ 换绑定模型时不检查窗口（窗口只在 `usage.go` 里用来算占比） | XBot 一个 Bot 可换模型，换小窗口时下一轮直接超长；改动小 | 候选 | 小改动，复用已有压缩 | 2026-10-18 |
 | MCP 工具 schema 被模型服务商拒绝时，去掉参数继续，而不是每轮 400 | Claude Code | [v2.1.301](https://github.com/anthropics/claude-code/releases/tag/v2.1.301)（Fixed a conversation failing on every turn…） | ❌ 没找到对应处理（`internal/link/mcp*.go`） | 装了一个 schema 写坏的 MCP 服务器，整个 Bot 就不能用；属于健壮性问题 | 候选 | 先写一个复现用例确认 XBot 真会这样，确认后按 bug 修 | 2026-10-18 |
 | 编码 Agent 安全对抗基准（HarnessSecurity-Bench：打开自动批准，攻击成功率 29.2% → 95.6%） | 研究（测了 Claude Code、Codex CLI、Gemini CLI 等 6 个） | [X：结果摘要](https://x.com/al3rez/status/2109570007613259850)、[X：实验设置](https://x.com/himanshu19890/status/2109483239576322324) | 🟡 规则式审查、不可信围栏、机器开关 `allow` 档（`internal/review`） | 正好检验 XBot 的 `allow` 档和围栏在投毒文件、投毒网页下守不守得住 | 候选（旁路评测） | 测评是旁路，不卡发布；借它的投毒场景写几条 eval | 2026-10-18 |
-| 协调者 + 并行线程：给目标，自动拆线程、汇总、开 PR | Claude Code（Projects，9/17 beta，10/9 放开 waitlist） | [官方介绍](https://claude.com/resources/articles/projects-redesigned)、[METAL 报道](https://metallab.ai/en/2026/10/claude-code-projects-waitlist-pro-max) | 🟡 多 Bot、群、主 Bot；没有「目标→自动拆线程→汇总」 | 和 XBot 的多 Bot 方向一致，但官方自己说用量涨得快 | 候选（远期） | 先做完子代理类型（M7）；主人对 token 消耗敏感 | 2026-10-18 |
+| 协调者 + 并行线程：给目标，自动拆线程、汇总、开 PR | Claude Code（Projects，9/17 beta，10/9 放开 waitlist） | [官方介绍](https://claude.com/resources/articles/projects-redesigned)、[METAL 报道](https://metallab.ai/en/2026/10/claude-code-projects-waitlist-pro-max) | 🟡 多 Bot、群、主 Bot；没有「目标→自动拆线程→汇总」 | 和 XBot 的多 Bot 方向一致，但官方自己说用量涨得快 | 候选（远期） | 先做完子代理类型（M7）；用户对 token 消耗敏感 | 2026-10-18 |
 | 回复中途插话、立即转向 | Codex | [rust-v0.163.0](https://github.com/openai/codex/releases/tag/rust-v0.163.0)（#51812） | ✅ 插话分叉（F1–F5），`steer/queue/interrupt` | XBot 前台几秒内回答、原来那轮转后台，比「立即转向」更强 | 不做 | 已覆盖 | 2026-10-18 |
 | fork 子代理默认开、子代理默认后台跑 | Claude Code | [v2.1.302](https://github.com/anthropics/claude-code/releases/tag/v2.1.302) | ✅ `spawn` 的 fork 模式、后台续段（`internal/kernel/agents.go`、`bgsegment.go`） | 已有 | 不做 | 已覆盖 | 2026-10-18 |
 | 后台完成通知写清原因；模型不再轮询后台输出或 sleep 等 | Claude Code | [v2.1.300](https://github.com/anthropics/claude-code/releases/tag/v2.1.300) | ✅ `shell_job` 完成提醒和叫醒，`sleep` 轮询交给熔断（`docs/MILESTONES.md` shell 后台） | 已有 | 不做 | 已覆盖 | 2026-10-18 |
@@ -33,7 +33,7 @@ verified: 2026-10-18 @ c545964
 | 环境里的日期和时区可配置 | Codex | [rust-v0.163.0](https://github.com/openai/codex/releases/tag/rust-v0.163.0)（#52164） | ✅ Bot 的 `timezone` 配置（`cmd/xbot/cmd_bot.go`） | 已有 | 不做 | 已覆盖 | 2026-10-18 |
 | 执行前的沙箱完整性检查 | Codex | [rust-v0.163.0](https://github.com/openai/codex/releases/tag/rust-v0.163.0)（#51843 等） | ❌ | — | 不做 | 沙箱有意不做，隔离靠部署方式和 `xbot vaultd` | 2026-10-18 |
 | 文件工具串行化与原子写；状态文件原子落盘、坏了从备份恢复 | Gemini CLI | [v0.64.0](https://github.com/google-gemini/gemini-cli/releases/tag/v0.64.0) | ✅ `fsutil.WriteAtomic`、记忆写锁、同文件写操作排队（F3） | 已有；「坏了从备份恢复」XBot 没有，但目前没出过事 | 不做 | 已覆盖主要部分 | 2026-10-18 |
-| 云端代理产出可交互画布 | Cursor | [changelog](https://cursor.com/changelog)（Canvases from cloud agents） | ❌ | 对编码团队有用，对个人常驻 Bot 价值低 | 不做 | 先补「把文件发给主人」 | 2026-10-18 |
+| 云端代理产出可交互画布 | Cursor | [changelog](https://cursor.com/changelog)（Canvases from cloud agents） | ❌ | 对编码团队有用，对个人常驻 Bot 价值低 | 不做 | 先补「把文件发给用户」 | 2026-10-18 |
 | 手机遥控本机上的 Agent | Cursor（10/6） | [changelog](https://cursor.com/changelog)（Remote control for local agents） | ✅ 网页 + PWA + 隧道 + 官方网关 | 已有 | 不做 | 已覆盖 | 2026-10-18 |
 
 ## 本期没有功能可对标的动态

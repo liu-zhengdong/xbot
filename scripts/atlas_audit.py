@@ -94,7 +94,7 @@ for p in nodes:
     if p not in (ENTRY, TREE_ROOT) and p.resolve() not in linked:
         issues.append(f'[orphan] {p.relative_to(ROOT)}: no node links here')
 
-# 已经做好的旅程：docs/guard/ 一条一个文件。步骤和「怎样算对」只有主人能改，
+# 已经做好的旅程：docs/guard/ 一条一个文件。步骤和「怎样算对」只有用户能改，
 # 冒烟用例和级别由 AI 同步；这里只查机械能核的部分。
 guard_files = sorted(GUARD.glob('*.md')) if GUARD.is_dir() else []
 if guard_files:

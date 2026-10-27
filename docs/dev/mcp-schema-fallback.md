@@ -1,6 +1,6 @@
 # MCP schema 被拒时降级
 
-候选真源：主人 Obsidian `正在干什么/06-XBot/候选/MCP schema 被拒时降级.md`。Ultra 2026-10-27 拍板；先复现再改。
+候选真源：用户 Obsidian `正在干什么/06-XBot/候选/MCP schema 被拒时降级.md`。Ultra 2026-10-27 拍板；先复现再改。
 
 ## 对照回顾
 

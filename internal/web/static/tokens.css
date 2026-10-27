@@ -17,8 +17,8 @@
   --x-fill-2:#ededf0;     /* 次级按钮、标签、悬停 */
   --x-fill-3:#e4e4e8;     /* 选中、按下 */
   --x-zebra:#f4f4f6;
-  --x-user-bubble:#18181b; --x-user-bubble-text:#ffffff; /* 主人气泡：深底白字（同 primary） */
-  --x-user-code:rgba(255,255,255,.14); --x-user-sel:rgba(255,255,255,.28); /* 主人气泡里的代码块 / 选中 */
+  --x-user-bubble:#18181b; --x-user-bubble-text:#ffffff; /* 用户气泡：深底白字（同 primary） */
+  --x-user-code:rgba(255,255,255,.14); --x-user-sel:rgba(255,255,255,.28); /* 用户气泡里的代码块 / 选中 */
   --x-bot-bubble:#f5f5f7; /* Bot 气泡（单聊），同 fill-1 */
   --x-input:#f3f3f5;      /* 输入框 */
   --x-code:#f1f1f3;
@@ -33,7 +33,7 @@
   --x-online:#2f9e5b;                         /* 只给「在线」小圆点 */
   /* 文内可点文字（外链、跳转）：默认只是偏蓝字无底；悬停或光标进链才出淡蓝圆角底（bg/hover 只用于这时）；按钮、整行、code 不用 */
   --x-text-link:#3b82f6; --x-text-link-bg:#e8f1ff; --x-text-link-hover:#e8f1ff;
-  /* 主人气泡底色与卡片相反，链接用另一侧主题的那组 */
+  /* 用户气泡底色与卡片相反，链接用另一侧主题的那组 */
   --x-user-link:#8ab8ff; --x-user-link-bg:rgba(110,160,255,.16); --x-user-link-hover:rgba(110,160,255,.16);
   --x-pending:#c9a227;                        /* 只给「等待登录…」小圆点（xAI 详情定稿） */
   /* 子代理类型标签（低饱和，同一族明度） */

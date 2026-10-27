@@ -18,7 +18,7 @@ func TestTopFindsKeyword(t *testing.T) {
 }
 
 func TestHanKeywords(t *testing.T) {
-	if hits := Top("时区", []string{"主人的时区是上海"}, 1); len(hits) != 1 {
+	if hits := Top("时区", []string{"用户的时区是上海"}, 1); len(hits) != 1 {
 		t.Fatal(hits)
 	}
 	if got := tokens("Go42时区海 ABC"); len(got) != 4 || got[0] != "go42" || got[1] != "时区" || got[2] != "区海" || got[3] != "abc" {

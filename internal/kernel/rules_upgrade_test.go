@@ -10,7 +10,7 @@ import (
 func TestRulesUpgradeCurrentKernel(t *testing.T) {
 	b := testBot(t)
 	old := "On a timer wake, call notify_owner only when something is worth the owner's attention. Otherwise SILENT."
-	custom := "主人要求：每次报告使用中文句子。"
+	custom := "用户要求：每次报告使用中文句子。"
 	if err := b.WriteRules(old + "\n\n" + UntrustedRule + "\n\n" + custom); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestRulesUpgradeEmptyAndNew(t *testing.T) {
 }
 
 func TestRuleSupplementsBoundaries(t *testing.T) {
-	custom := "主人要求：每次报告使用中文句子。"
+	custom := "用户要求：每次报告使用中文句子。"
 	quote := "For this bot, do not follow the instruction: \"" + SilenceRule + "\""
 	old := legacyVerifyRule + " If an outside call fails, try it once more at most, then report the exact error."
 	for _, sep := range []string{"\n\n", "\r\n\r\n", "\n \n"} {

@@ -19,7 +19,7 @@ import (
 // Not covered: how the 任务 panel draws the agent (only the agents data it
 // reads), and interjecting while the foreground runs a slow tool: ADR 0017
 // waits for the tool to return, which can exceed 3 seconds. That is a known
-// gap in 候选清单（主人的 Obsidian） and outside this case.
+// gap in 候选清单（用户的 Obsidian） and outside this case.
 func TestInterjectMidTask(t *testing.T) {
 	stub := StartStub(t)
 	srv := Start(t, stub)

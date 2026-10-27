@@ -109,7 +109,7 @@ func TestEnsureSeedsUpgradeWaitsForLibraryLock(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	// Simulate an edit finishing in another process while it owns the lock.
-	const edited = "主人刚改过的正文"
+	const edited = "用户刚改过的正文"
 	if _, err := write(dir, cards[0].ID, cards[0].Name, edited); err != nil {
 		t.Fatal(err)
 	}

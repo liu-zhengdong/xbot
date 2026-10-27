@@ -1,6 +1,6 @@
 # 下一版提示词与配套用例
 
-候选真源：主人 Obsidian `正在干什么/06-XBot/候选/下一版提示词与配套用例.md`。规格真源：`docs/SCORECARD.md` §5（D1–D5 / S1–S4 替换表）与 §2「计划新增」。Codex Astra 在 feature/next-prompt-scorecard 实现；提交后由复审侧完成真实模型及留出验收。
+候选真源：用户 Obsidian `正在干什么/06-XBot/候选/下一版提示词与配套用例.md`。规格真源：`docs/SCORECARD.md` §5（D1–D5 / S1–S4 替换表）与 §2「计划新增」。Codex Astra 在 feature/next-prompt-scorecard 实现；提交后由复审侧完成真实模型及留出验收。
 
 ## 目标
 

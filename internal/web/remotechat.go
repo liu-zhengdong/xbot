@@ -12,7 +12,7 @@ import (
 	"xbot/internal/remote"
 )
 
-// 主人远端对话的网页接口（G7e 批次 B）：一台配对设备上某个 Bot 的对话记录、
+// 用户远端对话的网页接口（G7e 批次 B）：一台配对设备上某个 Bot 的对话记录、
 // 发送一句话、标记已读，以及设备列表上每个 Bot 的摘要。
 
 func (s *Server) registerRemoteChatAPI(mux *http.ServeMux) {

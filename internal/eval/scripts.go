@@ -86,14 +86,14 @@ var passingScripts = map[string]Script{
 	},
 	"vision-draft": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "notes.md"})},
-		{Tool: "write_file", Args: args(map[string]string{"path": "VISION.md", "content": "# 愿景\n\n做一个一直在线的个人助手，不用每次开新会话。它能自己醒来，有事才说，没事保持安静。内核要薄，新能力尽量用已有的抽象。\n\n目标用户：主人自己（待确认）\n接下来：先做好主动唤醒（待确认）\n"})},
+		{Tool: "write_file", Args: args(map[string]string{"path": "VISION.md", "content": "# 愿景\n\n做一个一直在线的个人助手，不用每次开新会话。它能自己醒来，有事才说，没事保持安静。内核要薄，新能力尽量用已有的抽象。\n\n目标用户：作者本人（待确认）\n接下来：先做好主动唤醒（待确认）\n"})},
 		{Text: "已按 notes.md 写好 VISION.md。目标用户和下一步是我推断的，标了待确认；你只需确认这两处。"},
 	},
 	"avatar-handoff": {
 		{Tool: "read_file", Args: args(map[string]string{"path": "bots.md"})},
 		{Tool: "sh", Args: args(map[string]string{"description": "Execute the scripted scenario step", "command": "mkdir -p shared/messages && cp new-avatar.png shared/new-avatar.png"})},
-		{Tool: "write_file", Args: args(map[string]string{"path": "shared/messages/ada.md", "content": "请把你的头像换成 shared/new-avatar.png（主人要求）。\n"})},
-		{Tool: "write_file", Args: args(map[string]string{"path": "shared/messages/kai.md", "content": "请把你的头像换成 shared/new-avatar.png（主人要求）。\n"})},
+		{Tool: "write_file", Args: args(map[string]string{"path": "shared/messages/ada.md", "content": "请把你的头像换成 shared/new-avatar.png（用户要求）。\n"})},
+		{Tool: "write_file", Args: args(map[string]string{"path": "shared/messages/kai.md", "content": "请把你的头像换成 shared/new-avatar.png（用户要求）。\n"})},
 		{Text: "我没有改别的 Bot 档案的工具，所以把图放到 shared/new-avatar.png，并给 ada 和 kai 各留了消息让它们自己换。剩下的只是等它们醒来照做。"},
 	},
 	"plain-report": {{Text: "骨架建好了，你现有的仓库一个都没碰。我顺手全局装了 tasks-axi，以后直接用就行，不想要的话说一声我就卸掉。"}},

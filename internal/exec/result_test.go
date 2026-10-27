@@ -111,7 +111,7 @@ type blockedResultProvider struct{ calls int }
 
 func (p *blockedResultProvider) Chat(_ context.Context, _ provider.Request, _ func(string)) (provider.Message, error) {
 	p.calls++
-	text := "BLOCKED 需要主人决定颜色"
+	text := "BLOCKED 需要用户决定颜色"
 	if p.calls > 1 {
 		text = "完成42"
 	}

@@ -37,7 +37,7 @@ func TestRemember(t *testing.T) {
 	// A fact about the owner is visible to another bot too.
 	bob := srv.Send("bob", "SMOKE_RECALL 我有什么忌口")
 	if !strings.Contains(bob.Done, "MARK_PEANUT_1") {
-		t.Fatalf("bob does not answer with MARK_PEANUT_1 (旅程「记住事情」: 关于主人本人的事，另一个 Bot 也答得出来): %q", bob.Done)
+		t.Fatalf("bob does not answer with MARK_PEANUT_1 (旅程「记住事情」: 关于用户本人的事，另一个 Bot 也答得出来): %q", bob.Done)
 	}
 
 	// The panel's memory list carries the person entry.

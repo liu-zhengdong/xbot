@@ -42,7 +42,7 @@ xbot upgrade --check
 
 长时间的活用 `spawn` 交给子代理。本机默认是 goroutine。`xbot runner` 是同一套执行器的 HTTP 服务，只听环回地址，要用 token。`xbot chat --runner URL --runner-token TOKEN` 把 Bot 接到它上面。
 
-默认 permissions off 时，`update_profile`（含头像）直接落盘；显式 `xbot permissions on` 后，执行工具前内核只看一张显式的权限表：确认只经过这一张表，工具自己从不确认。只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、以及 persona/profile 自改会问 `y/n`。机器开关管本机工具：`allow` 时 shell 只对删除和对外发送问，普通读写直接做；`ask` 每次都要点头；`off` 直接拒绝。写自己的 persona 或 profile 文件在 `allow` 下仍要确认；创建、修改、暂停、删除 routine，Bot 之间的 `message_bot`/`post_group`，写技能、编码任务都不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`send_message_to_user` 不需要确认，它是说给主人听的。
+默认 permissions off 时，`update_profile`（含头像）直接落盘；显式 `xbot permissions on` 后，执行工具前内核只看一张显式的权限表：确认只经过这一张表，工具自己从不确认。只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、以及 persona/profile 自改会问 `y/n`。机器开关管本机工具：`allow` 时 shell 只对删除和对外发送问，普通读写直接做；`ask` 每次都要点头；`off` 直接拒绝。写自己的 persona 或 profile 文件在 `allow` 下仍要确认；创建、修改、暂停、删除 routine，Bot 之间的 `message_bot`/`post_group`，写技能、编码任务都不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`send_message_to_user` 不需要确认，它是说给用户听的。
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
 
@@ -143,11 +143,11 @@ bot / group ──untrusted Event──▶ 另一个 Bot 的 inbox
 
 Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模型。同一来源在一个短窗口里的多次投递会合成一条再进 inbox，所以一串请求只会唤醒一次。Bot 自己决定处理、`send_message_to_user`，或者回复 `SILENT`。
 
-**信任。** 主人在终端或网页上的输入是指令，原文进 transcript。除此之外（别的人、别的 Bot、群消息、timer、webhook、文件变化、子代理）都包在 `<untrusted_event>` 里，当成数据。是不是主人由内核判断，不看事件自己带的标记。来源不是 terminal 或 web 时，就算发送者字符串和 owner 相同，也仍然是不可信数据。
+**信任。** 用户在终端或网页上的输入是指令，原文进 transcript。除此之外（别的人、别的 Bot、群消息、timer、webhook、文件变化、子代理）都包在 `<untrusted_event>` 里，当成数据。是不是用户由内核判断，不看事件自己带的标记。来源不是 terminal 或 web 时，就算发送者字符串和 owner 相同，也仍然是不可信数据。
 
 **稳定前缀和环境快照。** 每次唤醒的 system 消息只有 persona、rules、以及按名字排序的 link 说明。工具 schema、时间、发送者、记忆都不在里面，这样上游的前缀缓存可以对得上。工具列表按名字排序，schema 变化不会把这段前缀打乱。
 
-易变的部分是环境快照：小时、发送者、工具名、未读通知数、persona/rules/记忆的哈希。和上一次比，没变就不写；变了就在 transcript 末尾追加一条很短的 `<environment_update>`，只含差异。时间只在小时变化，或距离上次唤醒至少 30 分钟时才写。不改历史。persona 文件改完并得到主人确认后，下一次唤醒的前缀换成新文本，同时多一条 `persona: updated`。
+易变的部分是环境快照：小时、发送者、工具名、未读通知数、persona/rules/记忆的哈希。和上一次比，没变就不写；变了就在 transcript 末尾追加一条很短的 `<environment_update>`，只含差异。时间只在小时变化，或距离上次唤醒至少 30 分钟时才写。不改历史。persona 文件改完并得到用户确认后，下一次唤醒的前缀换成新文本，同时多一条 `persona: updated`。
 
 **上下文预算。** 粗算按大约 4 字节约 1 token，分成 stable、memory、env、history 四段。总量超过预算（默认约 4.8 万，或 context 的四分之三；绑定的模型 context 会用来算这个预算）就当场压缩。History 自己的预算是总预算减去另外三段。它用到这份预算的大约 70% 时，后台先压更早的一段，这一轮不等它。Profile 记忆注入最多两份满档加 512 字节（`2×4KiB+512`）。
 
@@ -159,11 +159,11 @@ Webhook 和文件监听只负责把外部事情变成 Event。它们不调用模
 
 侧边栏分组是 Bot 档案上的 `group`，加上当前用户自己的一份顺序。`xbot group` 可以新建、改名、删除分组，或把 Bot 放进去。删除分组不会删除 Bot。这和聊天群不是一回事。
 
-`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram 和飞书要同名环境变量里已经有密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`），缺了就不装。装上之后，`xbot serve` 接受 `POST /connector/telegram/<bot>` 和 `POST /connector/lark/<bot>`，对上密钥的消息进收件箱，当成不可信事件。代表主人发出去的话先留草稿，主人确认后才发。`xbot link install <bot> coding-agent` 加上编码任务。工作目录、仓库、步数和时间按这次任务另定。`code_start` 要主人确认，因为会改文件。`XBOT_CODE_AGENT` 优先；没设时用 PATH 里的 `cursor-agent`、`codex` 或 `claude`。输出按行出现在对话里的编码卡片上。`code_show` 能看已经流出来的文字，`code_cancel` 停掉进程。没有外部命令时交给 `xbot runner`；再没有就用这个 Bot 的模型。都没配时只写记录。完成时仍进收件箱。MCP 不走 `link install`。网页上的安装接口不收密钥。
+`xbot link list` 是内置的 Link 目录。`xbot link install <bot> <id>` 把已经有运行时的条目加进这个 Bot 的授权。Telegram 和飞书要同名环境变量里已经有密钥（`TELEGRAM_BOT_TOKEN`、`LARK_APP_SECRET`），缺了就不装。装上之后，`xbot serve` 接受 `POST /connector/telegram/<bot>` 和 `POST /connector/lark/<bot>`，对上密钥的消息进收件箱，当成不可信事件。代表用户发出去的话先留草稿，用户确认后才发。`xbot link install <bot> coding-agent` 加上编码任务。工作目录、仓库、步数和时间按这次任务另定。`code_start` 要用户确认，因为会改文件。`XBOT_CODE_AGENT` 优先；没设时用 PATH 里的 `cursor-agent`、`codex` 或 `claude`。输出按行出现在对话里的编码卡片上。`code_show` 能看已经流出来的文字，`code_cancel` 停掉进程。没有外部命令时交给 `xbot runner`；再没有就用这个 Bot 的模型。都没配时只写记录。完成时仍进收件箱。MCP 不走 `link install`。网页上的安装接口不收密钥。
 
 `xbot mcp add <bot> <name> --command PATH` 把一个 stdio MCP 服务器记在这个 Bot 的 `mcp.json`。`--url URL` 改成 Streamable HTTP，不能和 `--command` 一起用。参数用重复的 `--arg`。密钥只写环境变量的名字（`--secret-env NAME`），文件和接口里都没有值。供应商 API key 不会传给子进程或 HTTP 头。对话里的工具名是 `mcp_<服务器>_<工具>`。`readOnlyHint` 为真的不用确认，其余要确认。服务器可以用通知把不可信事件推进收件箱。`xbot connector list` 看打进二进制的目录，`connector add/remove <bot> <id>` 只给这一个 Bot 启用，没有托管市场。
 
-Bot 用内置工具 `links` 搜索目录、安装、卸下和加载。安装要主人在确认卡上点头；带密钥的还要主人在这张卡里填写，模型看不到值。已安装的 Link 在系统提示里每条一行。`load` 只把工具 schema 带进当前这一轮。
+Bot 用内置工具 `links` 搜索目录、安装、卸下和加载。安装要用户在确认卡上点头；带密钥的还要用户在这张卡里填写，模型看不到值。已安装的 Link 在系统提示里每条一行。`load` 只把工具 schema 带进当前这一轮。
 
 ```bash
 xbot export ada --out ada.md
@@ -178,12 +178,12 @@ xbot export ada --format jsonl --tools --from 1 --to 20 --out ada.jsonl
 
 | 范围 | 谁看得见 | 档 |
 | --- | --- | --- |
-| person | 所有 Bot。只放每个 Bot 都需要的、关于主人本人的事实：时区、语言、作息、他是谁。写入必须显式写 `scope=person` | profile 每次注入；log 只在 `recall` 时搜 |
-| bot | 这个 Bot。角色、和主人约定的规则、项目决定。省略 scope 时的默认 | 同上 |
+| person | 所有 Bot。只放每个 Bot 都需要的、关于用户本人的事实：时区、语言、作息、他是谁。写入必须显式写 `scope=person` | profile 每次注入；log 只在 `recall` 时搜 |
+| bot | 这个 Bot。角色、和用户约定的规则、项目决定。省略 scope 时的默认 | 同上 |
 
 冲突规则：关于人的事实，新的赢；怎么干活，bot 范围赢，压过 person。用 `write_file` / `edit_file` 编辑记忆目录里的文件，用只读 `recall` 检索。检索是 BM25，没有向量库。Person 事实必须带上写下它的 Bot。不可信回合写进哪一层，正文都会标成 untrusted。单条事实最多 1 KiB，每个范围的 profile 文件 4 KiB（两份一起注入，预算 `2×4KiB+512`），log 文件 64 KiB。profile 写超上限会报错，要求合并、忘记或改记到 log，不静默截断。已经超限的文件仍能 forget，只要这次写不会把文件变大。工作规则和项目决定不进 person。Bot 记忆每个发送者都看得见。
 
-旧的 bot-person 目录只在该 Bot 的 `owners` 里才并进 `bots/<name>/memory`，去重，保留时间戳、来源和原来的 kind。没有主人的 Bot 不合并，旧事实只留在 `memory.bak`。`config.json` 缺失或读不了时目录留在原地，不算没有主人。其他人的目录改名为 `memory.bak`。profile 放不下的改记 log。迁进 log 时文件留到大约 48 KiB，更旧的写到 `log.overflow.md`。每次进程启动都重新走一遍 `bots/*/people/*/memory`（每个数据根每进程一次）；迁过的目录已改名为 `memory.bak`，所以重复走是幂等的。见 [ADR 0006](docs/adr/0006-two-memory-scopes.md)。
+旧的 bot-person 目录只在该 Bot 的 `owners` 里才并进 `bots/<name>/memory`，去重，保留时间戳、来源和原来的 kind。没有用户的 Bot 不合并，旧事实只留在 `memory.bak`。`config.json` 缺失或读不了时目录留在原地，不算没有用户。其他人的目录改名为 `memory.bak`。profile 放不下的改记 log。迁进 log 时文件留到大约 48 KiB，更旧的写到 `log.overflow.md`。每次进程启动都重新走一遍 `bots/*/people/*/memory`（每个数据根每进程一次）；迁过的目录已改名为 `memory.bak`，所以重复走是幂等的。见 [ADR 0006](docs/adr/0006-two-memory-scopes.md)。
 
 **历史。** 原文按大约 8MB 或 UTC 日期分成段，只有尾段可写。SQLite 索引（纯 Go，无 cgo）把序号映射到段和偏移，并用 FTS5 做全文。`recall_history(query)` 走这个索引的 BM25，带回序列号。`expand(from, to)` 按序号把原文拉回来，输出有上限。大段工具输出另存成 blob，上下文里只留预览。索引丢了会自动重建，也可以 `xbot reindex <bot>`。旧的单文件 `transcript.jsonl` 第一次打开时迁进分段。摘要掉的句子还能这样找到。
 
@@ -237,7 +237,7 @@ xbot pin ada
 xbot delete xbot
 ```
 
-**Bot 档案。** 每个 Bot 有名字（可以改）、一行简介、头像、说话风格和免打扰时段。说话风格是语气、回复长度（短 / 中 / 长）、表情（不用 / 少量 / 常用）和默认语言，写进系统提示，跟在 persona 后面。没填的字段不进提示，空档案不会改变原来的稳定前缀。没有安静、适中、积极三档；通知在任何唤醒上都会送出，想自己约束就写在 persona 里。旧配置里的 `proactivity` 还能读进来，但不生效。免打扰用 Bot 时区的 `HH:MM`（没设时区就用唯一 owner 的时区，再没有用本机时区），时段可以跨过午夜；这段时间里的通知先攒着，结束后合成一条发出。主人在网页右侧「档案」或 CLI 里改，马上生效。Bot 自己用 `update_profile` 更新本 Bot 头像/资料，默认直接落盘，下一次唤醒会看到 `profile: updated`；显式打开 permissions 时按 SelfEdit 权限表审核。
+**Bot 档案。** 每个 Bot 有名字（可以改）、一行简介、头像、说话风格和免打扰时段。说话风格是语气、回复长度（短 / 中 / 长）、表情（不用 / 少量 / 常用）和默认语言，写进系统提示，跟在 persona 后面。没填的字段不进提示，空档案不会改变原来的稳定前缀。没有安静、适中、积极三档；通知在任何唤醒上都会送出，想自己约束就写在 persona 里。旧配置里的 `proactivity` 还能读进来，但不生效。免打扰用 Bot 时区的 `HH:MM`（没设时区就用唯一 owner 的时区，再没有用本机时区），时段可以跨过午夜；这段时间里的通知先攒着，结束后合成一条发出。用户在网页右侧「档案」或 CLI 里改，马上生效。Bot 自己用 `update_profile` 更新本 Bot 头像/资料，默认直接落盘，下一次唤醒会看到 `profile: updated`；显式打开 permissions 时按 SelfEdit 权限表审核。
 
 头像可以上传 png、jpeg、gif 或 webp。没上传时是一块低饱和的色块加上名字首字母。`GenerateAvatar` 留作以后接生成头像，没设置时不会调用。
 
@@ -293,7 +293,7 @@ bash scripts/e2e.sh
 `go test` 覆盖这些 M5 行为，以及 M2、M3、M4：
 
 - 错误 token 和没有 cookie 的请求是 401。跨站 Origin 或 `Sec-Fetch-Site: cross-site` 是 403。token 文件权限 0600。
-- 网页发一条消息，SSE 里有模型回复；transcript 里主人的原文没有被包成不可信事件。
+- 网页发一条消息，SSE 里有模型回复；transcript 里用户的原文没有被包成不可信事件。
 - 终端再对同一个 Bot 说一句，网页读到的 transcript 里两边都在。
 - 终端占着处理锁时，网页消息进 inbox 并返回排队，松开锁之后只处理一次。
 - Bot A `message_bot` 给 Bot B，B 回复，A 的 transcript 里看得到回复。B 看到的是 `source="bot:ada"` 的不可信事件，里面没有 A 的私人记忆。
@@ -321,7 +321,7 @@ M2：
 
 - Bot A 记住的 person 事实，新建的 Bot B 能 recall；Bot 自己的记忆别的 Bot 看不到。
 - `serve` 里 routine 到点：模型选择通知时 outbox 有一条；选择 `SILENT` 时没有通知。
-- 主人的终端输入不会包成 `<untrusted_event>`。
+- 用户的终端输入不会包成 `<untrusted_event>`。
 - 两次唤醒的稳定前缀字节相同；小时变化只追加一条很小的环境差异。
 - `compact` 守住工具对、尾部和重叠；被压掉的句子还能用 `recall_history` 和 `expand` 找到；组装顺序是前缀、记忆、摘要、原文。
 - provider 注册表只存环境变量名，Bot 配置只存绑定。
@@ -346,7 +346,7 @@ M2：
 | `tools` | shell、读、写、精确替换 |
 | `link` | Link、Event、终端、工具、timer、routine |
 | `inbox` | 每个 Bot 的收件箱 |
-| `notify` | 给主人的 outbox |
+| `notify` | 给用户的 outbox |
 | `serve` | 后台轮询 |
 | `bot` | Bot 目录、绑定、transcript、摘要块 |
 | `kernel` | 一次唤醒：信任、环境差异、压缩、组装、调用 agent |
@@ -401,11 +401,11 @@ xbot machine set local off
 xbot machine set desk allow
 ```
 
-以下机器开关规则只在 permissions on 时生效。`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要主人点头。`off`：shell 直接拒绝。`read_file`、`write_file`、`edit_file` 也看这个开关：`allow` 下普通读写直接做，写自己的 persona/profile 仍确认；`ask` 每次问；`off` 拒绝。桌面和浏览器也看这个开关，`browser_stop` 在 `off` 下仍可用来关进程。
+以下机器开关规则只在 permissions on 时生效。`allow`：本机 shell 只对删除和对外发送确认，其余命令（包括 `date`、`cat`、`python 脚本`）直接跑。`ask`：每条 shell 都要用户点头。`off`：shell 直接拒绝。`read_file`、`write_file`、`edit_file` 也看这个开关：`allow` 下普通读写直接做，写自己的 persona/profile 仍确认；`ask` 每次问；`off` 拒绝。桌面和浏览器也看这个开关，`browser_stop` 在 `off` 下仍可用来关进程。
 
 ## 桌面
 
-需要本机有 `xdotool` 和 ImageMagick 的 `import`。装了 `xprintidle` 时，主人 5 秒内还在用电脑，点击、输入、滚动、按键会停下来；没有这个命令就分不出来，照常做。截图不受这个限制。
+需要本机有 `xdotool` 和 ImageMagick 的 `import`。装了 `xprintidle` 时，用户 5 秒内还在用电脑，点击、输入、滚动、按键会停下来；没有这个命令就分不出来，照常做。截图不受这个限制。
 
 ```bash
 xbot machine set local allow
@@ -420,7 +420,7 @@ xbot desktop key Return
 
 ## 浏览器
 
-用本机 Chrome 的调试端口，配置目录单独放在 `~/.xbot/browser/profile`，不打开主人正在用的那一份。需要 Chrome 或 Chromium 在 PATH 里，或者设 `XBOT_CHROME`。
+用本机 Chrome 的调试端口，配置目录单独放在 `~/.xbot/browser/profile`，不打开用户正在用的那一份。需要 Chrome 或 Chromium 在 PATH 里，或者设 `XBOT_CHROME`。
 
 ```bash
 xbot machine set local allow

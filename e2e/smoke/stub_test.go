@@ -403,7 +403,7 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 		case !sawTool(req, "write_file"):
 			streamTool(w, "call_correct", "write_file", argsJSON(map[string]string{
 				"path":    memoryPath(req, "Person"),
-				"content": rememberLine + "- (2026-10-20) 主人已不再对花生过敏 MARK_PEANUT_2\n",
+				"content": rememberLine + "- (2026-10-20) 用户已不再对花生过敏 MARK_PEANUT_2\n",
 			}))
 		default:
 			streamText(w, []string{"改好了"})
@@ -614,7 +614,7 @@ func shellQuote(s string) string {
 }
 
 // rememberLine is one memory fact line the stub writes to the person file.
-const rememberLine = "- (2026-10-20) 主人对花生过敏 MARK_PEANUT_1\n"
+const rememberLine = "- (2026-10-20) 用户对花生过敏 MARK_PEANUT_1\n"
 
 // memoryPath is the memory file named by the snapshot heading
 // "### <Scope> — <path>; ...".

@@ -143,7 +143,7 @@ func TestBackgroundSteerAppliedAfterStep(t *testing.T) {
 	last := p.reqs[len(p.reqs)-1].Messages
 	var steered bool
 	for _, m := range last {
-		steered = steered || (m.Role == provider.RoleUser && m.Text() == "[主人的补充] 用中文写")
+		steered = steered || (m.Role == provider.RoleUser && m.Text() == "[用户的补充] 用中文写")
 	}
 	if !steered {
 		t.Fatal("steer was not given to the next model step")

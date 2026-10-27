@@ -10,7 +10,7 @@ import (
 // A newer trusted person fact must still beat an older trusted bot copy of the
 // same attribute key (ADR 0006: facts about the person, newest wins).
 func TestM33ResolveNewerPersonAttributeWins(t *testing.T) {
-	key := "主人希望白天每两小时被提醒喝水，晚上 21 点后不要再提醒，周末"
+	key := "用户希望白天每两小时被提醒喝水，晚上 21 点后不要再提醒，周末"
 	old := Fact{Key: key, Kind: KindAttribute, Scope: ScopeBot, BotName: "health", Text: key + "也一样", Time: time.Unix(100, 0)}
 	upd := Fact{Key: key, Kind: KindAttribute, Scope: ScopePerson, PersonID: "u1", Text: key + "不用提醒", Time: time.Unix(200, 0)}
 	got := Resolve([]Fact{old, upd})

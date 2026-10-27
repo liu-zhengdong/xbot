@@ -112,10 +112,10 @@ func TestNotifyOwnerImagesLandOnTheReplyLine(t *testing.T) {
 	}
 	var named bool
 	for _, m := range msgs {
-		if m.Role == provider.RoleAssistant && strings.Contains(m.Text(), "[发给主人的图]") && strings.Contains(m.Text(), id) {
+		if m.Role == provider.RoleAssistant && strings.Contains(m.Text(), "[发给用户的图]") && strings.Contains(m.Text(), id) {
 			named = true
 		}
-		if m.Role == provider.RoleAssistant && strings.Contains(m.Text(), "[主人的图]") {
+		if m.Role == provider.RoleAssistant && strings.Contains(m.Text(), "[用户的图]") {
 			t.Fatalf("reply named as the owner's picture: %q", m.Text())
 		}
 	}

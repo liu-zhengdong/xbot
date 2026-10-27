@@ -42,6 +42,6 @@ DeepSeek + 工具时若不回传 `reasoning_content`，开 thinking 会炸，所
 
 ## 还没做的
 
-- 真实 DeepSeek 账号验收及主人日用验证；交执行官收尾，本分支不合 main、不重启 8788。
+- 真实 DeepSeek 账号验收及用户日用验证；交执行官收尾，本分支不合 main、不重启 8788。
 - 窗口估算（`compact.Estimate` / `fit`）只按 `PortableText` 算，回传的思考全文没计入；长思考多轮时仍靠既有溢出缩窗重试兜底。
 - 日用确认后再毕业整理；不擅自改 guard 旅程或验收标准。

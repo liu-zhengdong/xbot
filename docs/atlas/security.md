@@ -8,21 +8,21 @@ verified: 2026-10-27 @ 5450bc6 + Bot compact 工具恢复
 
 > **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**默认不弹权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`xbot permissions on|off`，`permissions.json`，没有就是关）：只剩 `links` 填 key 的卡和触到保险箱、密钥这两处还问；机器开关（ask/off）和外部事件开的一轮碰记忆的围栏也一起关掉。打开开关时，是否确认只由内核里的一张权限表决定，只确认对外发送、删除、带密钥或非 GET 的 HTTP、persona/profile 自改。
 
-> **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。计划中的改动：确认卡、shell 黑名单、保险箱和配置路径出卡、不可信回合碰记忆时出卡、文件新鲜度拒写收进一个默认放行的开关；主人绑定的 Telegram、飞书消息按主人消息处理。落地之前，下面的描述仍然有效。
+> **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。计划中的改动：确认卡、shell 黑名单、保险箱和配置路径出卡、不可信回合碰记忆时出卡、文件新鲜度拒写收进一个默认放行的开关；用户绑定的 Telegram、飞书消息按用户消息处理。落地之前，下面的描述仍然有效。
 
 ## 边界
 负责：工具环境、保险箱、出站代理、脱敏、权限表、决定留痕。不负责：机器开关的配置（见 [机器与设备](machines.md)），但开关在这里的 review 路径生效。
 
 ## 怎么运转
-- **工具环境**：shell 和文件工具仍可访问这台机器，主人本来就是为此授权的。进程读完供应商 API key（`XBOT_API_KEY` 和各 provider 的 `api_key_env`）后就把这些变量从进程环境里清掉，包括启动时留在 `/proc` 环境块里的那一份，只留在内存里。`web.json` 里搜索或抓取的 `api_key_env`，以及 `XBOT_SEARCH_API_KEY_ENV` / `XBOT_FETCH_API_KEY_ENV` 点名的变量，同样清掉。选了 DeepSeek 搜索又没写变量名时，`DEEPSEEK_API_KEY` 也清掉。这些名字在进程启动之后写进 `web.json` 的，下次配置网页工具时再清一次。没登记的变量（例如 `OPENAI_API_KEY`）仍留在环境里。命令参数 `keys` 为 true 时，这次调用从内存把登记过的 key 放回环境，并且要主人确认。
+- **工具环境**：shell 和文件工具仍可访问这台机器，用户本来就是为此授权的。进程读完供应商 API key（`XBOT_API_KEY` 和各 provider 的 `api_key_env`）后就把这些变量从进程环境里清掉，包括启动时留在 `/proc` 环境块里的那一份，只留在内存里。`web.json` 里搜索或抓取的 `api_key_env`，以及 `XBOT_SEARCH_API_KEY_ENV` / `XBOT_FETCH_API_KEY_ENV` 点名的变量，同样清掉。选了 DeepSeek 搜索又没写变量名时，`DEEPSEEK_API_KEY` 也清掉。这些名字在进程启动之后写进 `web.json` 的，下次配置网页工具时再清一次。没登记的变量（例如 `OPENAI_API_KEY`）仍留在环境里。命令参数 `keys` 为 true 时，这次调用从内存把登记过的 key 放回环境，并且要用户确认。
 - **网页出站**：`web_fetch`、`view_image` 的网址和 `web_search` 只做一道最小的地址检查（[ADR 0022](../adr/0022-web-egress-floor.md)）：DNS 解析出的地址，以及 URL、重定向里写死的 IP，落在回环、未指定（`0.0.0.0/8`、`::`）、链路本地（含云元数据 `169.254.169.254`）或组播时拒绝；域名 `localhost`、`*.localhost`、`metadata*` 直接拒绝；同一个名字再解析一次变成这类地址，按 DNS 改绑拒绝。私网、`100.64.0.0/10`、`198.18.0.0/15` 等其它地址都放行，所以本机代理（mihomo、Clash 的假 IP）不用配置。没有地址白名单；旧 `web.json` 里的 `trusted_egress_cidrs` 读进来后忽略，下次保存时丢掉。出站不走环境代理。POST（搜索密钥探测）不跟重定向，凭证头不会被带到别的主机。
 - **搜索密钥**：代码默认仍是不需要密钥的 DuckDuckGo。选 DeepSeek 时，没写 `api_key_env` 就用已经收进内存的 `DEEPSEEK_API_KEY`，不回落到 `XBOT_API_KEY`。现场只有 `XBOT_API_KEY` 时，在 `web.json` 写 `"api_key_env":"XBOT_API_KEY"` 显式复用，例如 `{"search":{"backend":"deepseek","api_key_env":"XBOT_API_KEY"}}`。另写了变量名时，那个名字和供应商密钥一样只留在内存里。供应商密钥（`DEEPSEEK_API_KEY`、`XBOT_API_KEY`，或 `providers.json` 里的 `api_key_env`）只能发往 `https://api.deepseek.com`。`providers.json` 读失败时也按供应商密钥处理，不放行别的主机。已经收进内存、但不在这份名单里的搜索密钥仍可以走别的 https 主机。`http` 一律拒绝。请求是 `POST /v1/tools/search`，密钥只出现在 `Authorization` 头里，错误、日志和工具结果里的真值换成 `[secret]`。`web.json` 和 `providers.json` 跟保险箱一样，读或改都要确认卡。`providers.json` 的 `base_url` 必须是 http(s) 绝对地址，不带用户信息、查询串和片段；明文 `http` 只允许本机（`localhost`、回环）和私网 IP，其余必须 `https`。`xbot provider add` 时检查一次，每次按绑定解析供应商时再检查一次，手改的文件也挡得住。
 - **保险箱**：Bot 只知道 key 的名字。内核的出站代理在请求发出时把 `{{secret:名字}}` 替换成真值，并且只允许发往绑定的域名。key 由内核注入到相关进程中，这些进程和 Bot 的 Shell 隔离。工具输出中出现真值会被脱敏。
 - **危险操作审核**：执行前审查命令本身。
-- **代表主人对外发消息**：默认先出草稿，主人确认后再发。
+- **代表用户对外发消息**：默认先出草稿，用户确认后再发。
 
 ## 保险箱与出站代理
-钥匙只在主人这一侧。Bot 和模型只看得到名字，出站时代理才把 `{{secret:名字}}` 换成真值。
+钥匙只在用户这一侧。Bot 和模型只看得到名字，出站时代理才把 `{{secret:名字}}` 换成真值。
 
 - **存储**：每个 Bot 一份保险箱目录 `bots/<name>/vault/`，目录 0700，所有文件 0600。内容用 AES-GCM 加密，密钥挪到 Bot 工作区之外的数据根 `<root>/keys/vault/<bot>.key`（目录 0700，文件 0600）。旧版密钥仍和密文同目录时，`Open` 会在文件锁下把它移到新位置（跨设备则先写 0600 再删旧文件），绝不因迁移另造新钥。Bot 改名时密钥文件跟着走，删除 Bot 时删掉。
 - **保险箱路径一律确认**：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）、桌面应用启动时读取密钥和端点的 `<root>/env`时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。`xbot remote add/invite/join/remove`、`xbot remote gateway <url>` 不写路径也会改设备表，命令位置出现时同样出卡。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
@@ -84,12 +84,12 @@ WantedBy=multi-user.target
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
 - **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。不含前置命令的 routine 创建、修改、暂停、删除，Bot 之间的 `message_bot`/`post_group`，写计划文件、写技能、编码任务都是 `normal`，不弹确认卡。
-- **例程前置命令同表审核**：`routine_create/update` 只把纯排期部分归 Normal；创建的审核与落盘共用 `parseRoutineCreate`，`precheck` 以 `*string` 解析：重复字段的末位 null 清除先前值，两边都视为无命令，不会落盘并执行先前字符串。有效 `precheck` 非空时转成 `sh` 调用，沿原 `Kernel.reviewCall` 做机器开关、保护路径、不可信记忆写及命令分类审核。更新省略字段时也检查保留的命令，清空则没有待执行命令。确认摘要包含命令，决定与原 routine 工具调用一起走原审批记录；路径按实际进程 cwd 解析，不借用对话 shell 的 cwd。已登录主人的 HTTP 修改也用同一审核；需确认的命令返回 403，交给聊天工具走现有卡片，不新增 HTTP 审批机制。到点读取现有实时机器 gate 的有效模式，仅 allow 可无交互执行，ask/off/读取错误均静默跳过并 Commit slot；有效模式仍由现有 permissions 开关决定（ADR 0019）。
+- **例程前置命令同表审核**：`routine_create/update` 只把纯排期部分归 Normal；创建的审核与落盘共用 `parseRoutineCreate`，`precheck` 以 `*string` 解析：重复字段的末位 null 清除先前值，两边都视为无命令，不会落盘并执行先前字符串。有效 `precheck` 非空时转成 `sh` 调用，沿原 `Kernel.reviewCall` 做机器开关、保护路径、不可信记忆写及命令分类审核。更新省略字段时也检查保留的命令，清空则没有待执行命令。确认摘要包含命令，决定与原 routine 工具调用一起走原审批记录；路径按实际进程 cwd 解析，不借用对话 shell 的 cwd。已登录用户的 HTTP 修改也用同一审核；需确认的命令返回 403，交给聊天工具走现有卡片，不新增 HTTP 审批机制。到点读取现有实时机器 gate 的有效模式，仅 allow 可无交互执行，ask/off/读取错误均静默跳过并 Commit slot；有效模式仍由现有 permissions 开关决定（ADR 0019）。
 - **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。
 - **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；`routine_delete` 是 Bot 自己的排期，不算数据删除。
-- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。主人自己 Bot 之间的消息不算对外发送。
+- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。用户自己 Bot 之间的消息不算对外发送。
 - **工具组发现**：`bot_profile` 短入口与 `expand_tool_group` 走同一 review 入口，归 `readonly`，permissions on/off 均不增加展开确认；展开不改变成员的 `SelfEdit` 分类。展开态与目录边界见 [内核](kernel.md#工具组渐进披露)。
 - **self_edit**：`bot_propose_persona`/`bot_update_profile` 在 permissions on 时确认；`bot_update_profile` 默认 permissions off 直接落盘，含 `avatar_seed` 也没有预览确认卡例外；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时确认。
 - **记忆文件夹**（记忆 v2 批 3）：不可信回合里 `write_file`/`edit_file` 写进任何 `bots/*/memory/` 或 `people/*/memory/` 都确认；可信回合不弹卡，但内核持目录锁校验（`memory.md` ≤ 4 KiB、日志只能在当月文件末尾按格式追加、索引和锁文件不许写、文件夹内不许符号链接），违规就恢复原文件并把原因告诉模型。`remember`/`forget` 工具已拿掉。
@@ -110,7 +110,7 @@ WantedBy=multi-user.target
 
 完成标准：
 1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明，也不依赖工具自己的 `Confirm`；工具自己的 `Confirm` 只给出摘要。
-2. permissions on 时，只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要主人确认卡；其余动作按表放行。不含前置命令的 routine 增删改暂停、Bot 之间的消息、写计划/技能、编码任务都不问。
+2. permissions on 时，只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要用户确认卡；其余动作按表放行。不含前置命令的 routine 增删改暂停、Bot 之间的消息、写计划/技能、编码任务都不问。
 3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
 4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），时间带本地时区偏移，真值脱敏。
 

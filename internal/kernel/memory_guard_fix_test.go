@@ -168,7 +168,7 @@ func TestMemoryMDRejectsLinesTheStoreDrops(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("rejected file left behind")
 	}
-	if err := guardWrite(t, k, path, "# memory\n\n## 偏好：主人喜欢茶\n"); err == nil {
+	if err := guardWrite(t, k, path, "# memory\n\n## 偏好：用户喜欢茶\n"); err == nil {
 		t.Fatal("a heading the store drops was accepted")
 	}
 	ok := "# memory\n\n## 索引\nnotes/ - free notes\n\n## 条目\n- (2026-10-18) always run the tests\n"

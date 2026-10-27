@@ -44,9 +44,9 @@ func (k *Kernel) pastedNoteIn(owner *bot.Bot, names []string) string {
 	}
 	var b strings.Builder
 	if len(names) == 1 {
-		b.WriteString("[主人的图] ")
+		b.WriteString("[用户的图] ")
 	} else {
-		fmt.Fprintf(&b, "[主人的 %d 张图] ", len(names))
+		fmt.Fprintf(&b, "[用户的 %d 张图] ", len(names))
 	}
 	for i, name := range names {
 		if i > 0 {
@@ -67,9 +67,9 @@ func (k *Kernel) pastedNoteIn(owner *bot.Bot, names []string) string {
 	// context identical in either case, which is what makes the request
 	// cacheable across steps.
 	if _, sees := k.vision(); sees {
-		b.WriteString("。写在主人这条消息上；这一轮请求已附上图片，早先的消息则用 view_image 打开这个路径。路径是绝对的，Bot 换过工作目录也照样打得开。")
+		b.WriteString("。写在用户这条消息上；这一轮请求已附上图片，早先的消息则用 view_image 打开这个路径。路径是绝对的，Bot 换过工作目录也照样打得开。")
 	} else {
-		b.WriteString("。当前模型看不了图；需要时请主人说图里有什么。")
+		b.WriteString("。当前模型看不了图；需要时请用户说图里有什么。")
 	}
 	return b.String()
 }
@@ -223,7 +223,7 @@ func (k *Kernel) withLineNoteIn(b *bot.Bot, role, content string, names []string
 	for i, name := range names {
 		paths[i] = pastedPathIn(b, name)
 	}
-	return joinNote(content, "[发给主人的图] "+strings.Join(paths, "、"))
+	return joinNote(content, "[发给用户的图] "+strings.Join(paths, "、"))
 }
 
 // withPastedNoteIn is withPastedNote for another bot's line.

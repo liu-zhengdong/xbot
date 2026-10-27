@@ -9,7 +9,7 @@
 - **复用执行器不等于复用授权，嵌在排期参数里的命令也必须进入原命令审核。** 原因：例程 precheck 在 `59b41d1` 直接复用 runCommand，却把创建/修改仍当成 Normal，绕过保护路径和机器 ask；修复复用 Kernel.reviewCall，定时执行遇 ask/off 静默跳过。证据：`TestRoutinePrecheckUsesShellReview`、`TestTimerPrecheckHonorsChangedMachinePolicy` 旧红新绿。Seen 1×（2026-10-27）
 - **构建短号与发布版本分开传。** 原因：`dev+tip` 会被显示版本函数剥掉后缀，关于页仍只有 dev；用同一短 HEAD 注入独立 Tip、写 build-info/xbot.tip，再验证 session 与复制内容。证据：TestSessionBuildTip、TestImggenDiscoverBrowser、test_xbot_dev.py 旧红新绿。Seen 1×（2026-10-26）
 - **进度展示必须在 SSE 尚未结束时验收。** 原因：只验收尾后的轨迹，会漏掉 streaming 整段暂停 status 轮询和 live 工具名盖住摘要；浏览器回归应保持流打开、跨两个轮询周期检查预览与节点复用。证据：2026-10-26 `dfaa232` 设计师不 PASS，`TestTodoStreamingBrowser` 在该基线因无 running 进度失败。Seen 1×（2026-10-26）
-- **工具名和描述必须对齐默认落盘行为。** 原因：更新资料却写成提议或等待确认，会让模型误判调用结果；不能为头像另加默认确认卡例外。证据：2026-10-26 主人确认 `update_profile` 默认直接落盘，permissions on 仍沿既有 SelfEdit 表；回归同时检查默认无卡和实际磁盘状态。Seen 1×（2026-10-26）
+- **工具名和描述必须对齐默认落盘行为。** 原因：更新资料却写成提议或等待确认，会让模型误判调用结果；不能为头像另加默认确认卡例外。证据：2026-10-26 用户确认 `update_profile` 默认直接落盘，permissions on 仍沿既有 SelfEdit 表；回归同时检查默认无卡和实际磁盘状态。Seen 1×（2026-10-26）
 - **响应式抽屉要验证每个断点的开关几何与实际触摸。** 原因：只读第一段 CSS 会漏掉窄屏 translateY 和桌面 display:none 覆盖；长按还要保证松手不选中别的 Bot。证据：`TestBotPanelBrowser` 在旧代码的 390/1440 档因关闭轴失败、820 档因厂头额外动作失败，浏览器触摸补验通过。Seen 1×（2026-10-26）
 - **区分 turn 曾经回答与某次调用的回复已经发出。** 原因：同 turn 插话续聊时 `answered` 保留为真，直接用它拒绝挂图会误伤新调用；清掉它又可能放过旧 Job。调用发起时捕获最终回复次数，并在读取前与提交前持锁比较。证据：`TestContinuationCanAttachImages` 旧红新绿、`TestContinuationRejectsOldImageJob` 新旧调用同 turn 并存。Seen 1×（2026-10-26）
 - **按去重后的新增内容算剩余预算，身份未知时先限长流式判重。** 原因：读前直接用剩余预算拒绝同图，会让合法大图重挂失败；先整图读完再判重又退回无效大分配。证据：`TestQueuedDuplicateFitsBudget` 的三类引用及内容副本旧红新绿、`TestNewOutImageOverBudgetIsNotLoaded` 的超额新图分配上限。Seen 1×（2026-10-26）
@@ -35,7 +35,7 @@
 - **追加日志的进程内缓存要在文件 size 或 mtime 变了之后重新读。** 原因：两个进程各写一份 `reminders.jsonl` 时，先读进内存的那份一直用旧列表，冷却和去重都看漏。证据：`TestReminderCacheReloadsWhenFileChanges`。Seen 1×（2026-10-17）
 - **局部读过的文件，`edit_file` 不能标成已经看全。** 原因：只读了第 1 行再改这一行，下一次整文件读取如果回执，模型就看不到后面的行。`write_file` 可以标完整，因为正文是模型自己给的。证据：`TestRangedReadThenEditDoesNotReceipt`。Seen 1×（2026-10-17）
 - **短回执和「第 N 步」只在记下那次读取的同一轮里有效。** 原因：压缩把工具结果挪走之后，回执仍说没变，模型手里没有正文，步号也是上一轮的。证据：`TestReceiptDoesNotCrossTurns`。Seen 1×（2026-10-17）
-- **主人拒绝过的调用只挡这一轮，下一轮要重新问。** 原因：进程级拒绝表让主人下一条消息说「改主意了」时，相同参数直接报错，不再出确认。证据：`TestDenialClearsOnNextOwnerTurn`。Seen 1×（2026-10-17）
+- **用户拒绝过的调用只挡这一轮，下一轮要重新问。** 原因：进程级拒绝表让用户下一条消息说「改主意了」时，相同参数直接报错，不再出确认。证据：`TestDenialClearsOnNextOwnerTurn`。Seen 1×（2026-10-17）
 - **按文件大小决定的缓冲不要按上限预分配。** 原因：6 字节的文件快照分配了 4 MiB 以上。哈希用流式读，缓冲按文件大小封顶。证据：`TestSnapshotSmallFileAlloc`。Seen 1×（2026-10-17）
 - **`file_change` 的 diff 不能带出密钥文件的内容。** 原因：`.env`、`*.key`、`*.pem`、credentials 一类文件的提醒如果附上 diff，会把刚写进去的值送进模型上下文。这类路径只写 changed。10-18 补上另一半：保险箱脱敏只认保险箱里的值，别人写进 `config.yaml` 这类普通文件的 token 照样随 diff 进上下文，所以 diff 本身也要过一道通用密钥扫描，命中就不附。证据：`TestSensitiveFileChangeOmitsDiff`、`TestFileChangeWithholdsSecretLookingDiff`（#24）。Seen 2×（2026-10-17、2026-10-18）
 - **超时不要杀掉还在出结果的命令；`sleep` 和明显的轮询除外。** 原因：到点杀进程会丢掉长构建和服务器；把 `sleep` 自动转后台又会把空转藏过熔断。证据：`TestShellTimeoutMovesToBackground`、`TestSleepIsNotAutoBackgrounded`。Seen 1×（2026-10-17）
@@ -48,10 +48,10 @@
 - **加容量上限时，已经超限的旧数据要能往小里改。** 原因：PR #13 让每次写都检查整个 profile ≤ 4KB，线上 person profile 已有 7402 字节，forget 一条也报满，同步合并也卡住，Bot 没法逐步整理。只拦变大的写。证据：`TestForgetOnOverCapProfileSucceeds`、`TestMergeSyncOnOverCapProfile`。Seen 1×（2026-10-17）
 - **合入 main 前的测试门槛（2026-10-19 起：全量一遍 + 改到的包 `-count=3`）不能写一句 Not run 就跳过。** 原因：Not run 是用来如实交代没跑的检查，不是跳过门槛的许可；10-17 的 #7 只跑一遍、#10（M5）写明没跑三遍就合了，而同一天并行跑测试刚挂过一次（`b252f4e`）。证据：`fd66d9e`、`2337be8` 的提交说明。Seen 1×（2026-10-17）
 - **atlas 的 verified 戳要指向 main 上真实存在的提交；squash 合并后再统一补戳。** 原因：分支上的提交在 squash 后就不在历史里了，`ba7de7f`、`617c0be` 一类戳全部悬空，每个大 PR 合完都要再开一个补戳 PR。证据：`7e8fdeb`、`2337be8` 的说明，补戳 PR #28、#35、#37。Seen 1×（2026-10-17）
-- **不可信内容的围栏不能用内容自己能写出来的闭合标签。** 原因：仓库里的 AGENTS.md 能写出闭合标签跳出项目围栏、混进主人的消息（M5）；网页结果的闭合标签换大小写、加空格、用全角字符也能绕过（M6），最后改成不是标签的围栏才算收口。证据：`2337be8`、`060672d`。Seen 1×（2026-10-17）
+- **不可信内容的围栏不能用内容自己能写出来的闭合标签。** 原因：仓库里的 AGENTS.md 能写出闭合标签跳出项目围栏、混进用户的消息（M5）；网页结果的闭合标签换大小写、加空格、用全角字符也能绕过（M6），最后改成不是标签的围栏才算收口。证据：`2337be8`、`060672d`。Seen 1×（2026-10-17）
 - **接外部接口前先用真请求探一次端点、参数和默认值，再写实现。** 原因：M6 的 DeepSeek 搜索先按 Responses API 写，又改成官方 `/v1/tools/search`；默认的 DuckDuckGo 在盒子上直接被挡（202 页面），线上只能改用 DeepSeek 后端。两轮返工都是先写后探。证据：`060672d`（#31）的第 2、4 个提交。Seen 1×（2026-10-17）
 - **有额度或上限的资源，要用真实尺寸的输入测上限，并测它在长任务里会复位。** 原因：常见照片尺寸在 2048 直通之前就被拒；子代理一直攥着所有工具图片，4 张的额度整个任务都不复位，前后修了三轮。证据：`060672d`（#31）后半段的图片修复。Seen 1×（2026-10-17）
-- **写下的状态要有人读，没人读就删；记忆冲突就按最新的赢，不加信任级别的特例。** 原因：#33 写了每个 Bot 的 `.memory-migrated` 标记却从不读；`newest()` 让旧的可信 Bot 事实压过更新的 person 事实，主人的更正被藏住，第三轮 review 才发现。证据：`966d9f8`（#33）最后一个提交，两条复现测试。Seen 1×（2026-10-17）
+- **写下的状态要有人读，没人读就删；记忆冲突就按最新的赢，不加信任级别的特例。** 原因：#33 写了每个 Bot 的 `.memory-migrated` 标记却从不读；`newest()` 让旧的可信 Bot 事实压过更新的 person 事实，用户的更正被藏住，第三轮 review 才发现。证据：`966d9f8`（#33）最后一个提交，两条复现测试。Seen 1×（2026-10-17）
 - **合并草稿 PR 前先 `gh pr ready`。** 原因：草稿状态下合并会被拒，合并流程卡在半路。证据：2026-10-17 合 #33。Seen 1×（2026-10-17）
 - **升级脚本用 flock 拿的锁，要在启动 serve 之前关掉文件描述符。** 原因：serve 会继承这个描述符，一直攥着 `.upgrade.lock`，下一次升级或回退报「another upgrade holds .upgrade.lock」。证据：线上 `backups/rollback-m6.sh` 的 `exec 9>&-`。Seen 1×（2026-10-17）
 

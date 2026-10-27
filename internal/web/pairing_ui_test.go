@@ -84,7 +84,7 @@ window.addEventListener('unhandledrejection',e=>testErrors.push(String(e.reason)
 const scene=new URLSearchParams(location.search).get('scene');
 localStorage.setItem('xbot-theme',new URLSearchParams(location.search).get('theme')||'light');
 const fixture={calls:[],copied:'',codes:0,pendingCode:null,delayCode:false,delayCodeDelete:false,
- // claim：已有主人会话、账号没绑；account-claim*：本机登录后没绑（登录从不静默绑定），落在「我的设备」。
+ // claim：已有用户会话、账号没绑；account-claim*：本机登录后没绑（登录从不静默绑定），落在「我的设备」。
  account:{email:'zh***@example.com',owner:!/^account-claim/.test(scene),hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true,unbound:/claim/.test(scene)},
  pairing:{a:{phase:'none'},b:{phase:'none'}},devices:[],accountDevices:scene==='account-claim-empty'?[]:[{id:'self',name:'MacBook',online:true,self:true,bots:[{name:'XBot'}]},{id:'desktop',name:'台式机',online:true,self:false,bots:[{name:'writer'},{name:'editor'}]}]};
 const peerDevice={id:'desktop',name:'台式机',label:'台式机',os:'Linux',online:true,bots:['writer','editor'],seen:new Date().toISOString(),added:'2026-10-03T00:00:00Z',bot_messaging:true};
