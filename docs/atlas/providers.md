@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-27 @ 07d6592
+verified: 2026-10-27 @ b64ff8e + imggen-notify-attach graduated
 ---
 # 模型供应商与主动性评测
 

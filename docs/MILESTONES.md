@@ -1,5 +1,10 @@
 # XBot 里程碑与进度
 
+## 2026-10-27 生图挂气泡重开（Bot 主动 notify_owner）
+
+- 上一版内核 Save 自动 `attachOutImages`（`b389806`）作废。Save 只落盘 `generated/`；交付改由 Bot 调既有 `notify_owner` images 挂进本轮回复。引导禁「自动挂」话术。见 [内核](atlas/kernel.md#厂商生图)、[供应商](atlas/providers.md)、[界面](atlas/ui.md#图片生成设置)。
+- 复审 PASS（Pi，无 P0/P1；两则 P2 备案）。功能 tip `07d6592` + atlas `b64ff8e`；已合本地 main。`docs/dev/imggen-attach-bubble.md` 已毕业删除。未 push；**未**跑 sync-app-from-xbot（ADR 0029）。设置脚注文案有改，待设计师逛后再收口已完成。
+
 ## 2026-10-27 生图同轮挂回复
 
 - hosted 生图保存后接入既有挂图通路；普通工具轨迹展示、成功/部分失败的真实回执和轮次归属见 [内核](atlas/kernel.md#厂商生图)、[供应商](atlas/providers.md)、[界面](atlas/ui.md#图片生成设置)。按主人纠正移除独立生图步骤块，保留原 gallery 与可选工作区菜单。
