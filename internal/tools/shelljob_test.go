@@ -1107,3 +1107,43 @@ func TestLoadRepairsRenamedOutputPath(t *testing.T) {
 		t.Fatalf("disk record %+v", disk)
 	}
 }
+
+// The record's file name is the only validated id. A body that names another
+// id, here one climbing out of the directory, is not loaded and nothing is
+// written outside the job directory.
+func TestLoadIgnoresRecordWithForeignID(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "shell-jobs")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, id := range map[string]string{"sh_0abc12de": "../escaped", "sh_1abc12de": "sh_2abc12de"} {
+		meta, err := json.Marshal(Job{
+			ID: id, Command: "sleep 30", Status: "running",
+			Output:  filepath.Join(root, "old", "other.log"),
+			Started: time.Unix(1_700_000_000, 0).UTC(), PID: 1 << 22, ProcStart: 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".json"), meta, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobs := NewJobs(dir)
+	if err := jobs.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobs.List(); len(got) != 0 {
+		t.Fatalf("loaded %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "escaped.json")); !os.IsNotExist(err) {
+		t.Fatalf("Load wrote outside the job directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sh_2abc12de.json")); !os.IsNotExist(err) {
+		t.Fatalf("Load wrote a record under the body's id: %v", err)
+	}
+	if _, err := jobs.Status("sh_0abc12de"); err == nil {
+		t.Fatal("Status loaded a record whose body names another id")
+	}
+}

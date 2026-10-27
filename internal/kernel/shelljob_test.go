@@ -836,3 +836,107 @@ func TestShellJobsFollowRename(t *testing.T) {
 		}
 	}
 }
+
+// The real self-rename: bot_update_profile is itself a running job in the old
+// directory when it moves the bot. Its completion lands in the new directory,
+// the old bot directory is not recreated, and the same turn keeps working.
+func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
+	b := testBot(t, link.NameTerminal, link.NameTools, link.NamePersona)
+	root := b.Root
+	now := time.Unix(1_700_000_000, 0).UTC()
+	p := &scripted{resps: []provider.Message{
+		toolCall("expand", "expand_tool_group", `{"group":"bot_profile"}`),
+		toolCall("rename", "bot_update_profile", `{"name":"grace"}`),
+		toolCall("say", "send_message_to_user", mustArgs(t, map[string]string{"text": "改名以后还能说话"})),
+		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
+	}}
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
+		Links: []link.Link{link.Terminal{}, link.NewToolsLink(), link.Persona{}},
+		Now:   func() time.Time { return now },
+	}
+	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "改名叫 grace", now)); err != nil {
+		t.Fatal(err)
+	}
+	if k.Bot.Name() != "grace" {
+		t.Fatalf("bot %q, results %q", k.Bot.Name(), bodies(t, k))
+	}
+	got := bodies(t, k)
+	if len(got) < 3 || !strings.Contains(got[1], "profile saved") || !strings.Contains(got[2], "sent to the owner's chat") {
+		t.Fatalf("tool results %q", got)
+	}
+	if _, err := os.Stat(bot.Dir(root, "ada")); !os.IsNotExist(err) {
+		t.Fatalf("old bot directory recreated after rename: %v", err)
+	}
+	newJobs := filepath.Join(bot.Dir(root, "grace"), "shell-jobs")
+	if d := k.shellJobs().Dir; d != newJobs {
+		t.Fatalf("job table at %q, want %q", d, newJobs)
+	}
+	ents, err := os.ReadDir(newJobs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		raw, err := os.ReadFile(filepath.Join(newJobs, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasSuffix(e.Name(), ".json") && strings.Contains(string(raw), `"running"`) {
+			t.Fatalf("record left running in the new directory: %s", raw)
+		}
+	}
+}
+
+// Calls racing on the first lookup after a rename all get the one live table,
+// so a job started on it stays queryable, cancellable, and in the new place.
+func TestShellJobsKeepOneTableAfterRename(t *testing.T) {
+	k, _, _ := freshBot(t)
+	root := k.Bot.Root
+	before := k.shellJobs()
+	started := make(chan struct{})
+	res := before.RunCall(context.Background(), tools.CallRequest{Name: "any_tool", Background: true, Run: func(ctx context.Context) tools.CallResult {
+		close(started)
+		<-ctx.Done()
+		return tools.CallResult{Err: ctx.Err()}
+	}})
+	<-started
+	if err := RenameBot(root, "ada", "grace"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := bot.Load(root, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.Bot = loaded
+	var wg sync.WaitGroup
+	tables := make([]*tools.Jobs, 8)
+	for i := range tables {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tables[i] = k.shellJobs()
+		}()
+	}
+	wg.Wait()
+	for _, j := range tables {
+		if j != before {
+			t.Fatal("a second job table replaced the live one")
+		}
+	}
+	id := res.Job.ID
+	st, err := before.Status(id)
+	if want := filepath.Join(bot.Dir(root, "grace"), "shell-jobs", id+".log"); err != nil || st.Status != "running" || st.Output != want {
+		t.Fatalf("status %+v err %v, want running at %s", st, err, want)
+	}
+	if _, err := before.Cancel(id); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = before.Status(id)
+	if st.Status != "cancelled" {
+		t.Fatalf("after cancel %+v", st)
+	}
+	if _, err := os.Stat(bot.Dir(root, "ada")); !os.IsNotExist(err) {
+		t.Fatalf("old bot directory recreated: %v", err)
+	}
+}

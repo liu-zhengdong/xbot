@@ -73,13 +73,13 @@ func CallWait(t Tool, args json.RawMessage) (time.Duration, bool) {
 // live.mu may choose completion, detachment, or cancellation. A detached call
 // keeps the captured context values, but no longer follows the waiter's cancel.
 func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
-	if j == nil || j.Dir == "" || req.Run == nil {
+	if j == nil || j.dir() == "" || req.Run == nil {
 		return CallResult{Err: errors.New("tool job: missing directory or execution")}
 	}
 	if err := ctx.Err(); err != nil {
 		return CallResult{Err: err}
 	}
-	if err := os.MkdirAll(j.Dir, 0700); err != nil {
+	if err := os.MkdirAll(j.dir(), 0700); err != nil {
 		return CallResult{Err: err}
 	}
 	j.mu.Lock()
@@ -95,7 +95,7 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
 		j.mu.Unlock()
 		return CallResult{Err: err}
 	}
-	path := filepath.Join(j.Dir, id+".log")
+	path := filepath.Join(j.dir(), id+".log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		j.mu.Unlock()

@@ -112,6 +112,9 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 				return "", err
 			}
 			t.k.Bot = loaded
+			// This call is itself a running job in the old directory; move the
+			// table now so its completion lands in the new one.
+			t.k.shellJobs()
 		}
 	}
 	if update.avatarSeed != nil {

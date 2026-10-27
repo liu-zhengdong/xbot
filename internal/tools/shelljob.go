@@ -106,6 +106,7 @@ type Jobs struct {
 
 	mu     sync.Mutex
 	metaMu sync.Mutex
+	dirMu  sync.RWMutex
 	jobs   map[string]*live
 }
 
@@ -129,6 +130,45 @@ type live struct {
 // does not treat an old running record as live.
 func NewJobs(dir string) *Jobs {
 	return &Jobs{Dir: dir, jobs: map[string]*live{}}
+}
+
+// dir is Dir read under dirMu, since Move can change it while calls run.
+func (j *Jobs) dir() string {
+	j.dirMu.RLock()
+	defer j.dirMu.RUnlock()
+	return j.Dir
+}
+
+// Move points this table at dir after a bot rename moved its directory there.
+// Jobs whose output sat in the old directory follow it, so calls still running,
+// the rename tool itself included, finish in the new directory and never
+// recreate the old one. Moving to the current directory does nothing.
+func (j *Jobs) Move(dir string) {
+	if j == nil || dir == "" {
+		return
+	}
+	j.metaMu.Lock()
+	defer j.metaMu.Unlock()
+	j.dirMu.Lock()
+	old := j.Dir
+	j.Dir = dir
+	j.dirMu.Unlock()
+	if old == dir {
+		return
+	}
+	j.mu.Lock()
+	lives := make([]*live, 0, len(j.jobs))
+	for _, lv := range j.jobs {
+		lives = append(lives, lv)
+	}
+	j.mu.Unlock()
+	for _, lv := range lives {
+		lv.mu.Lock()
+		if id := lv.job.ID; lv.job.Output == filepath.Join(old, id+".log") {
+			lv.job.Output = filepath.Join(dir, id+".log")
+		}
+		lv.mu.Unlock()
+	}
 }
 
 func (j *Jobs) now() time.Time {
@@ -161,13 +201,14 @@ func (j *Jobs) outputCap() int {
 // Loaded jobs are not Local. Finished jobs older than maxJobAge, and finished
 // jobs past maxKeptJobs, are removed.
 func (j *Jobs) Load() error {
-	if j == nil || j.Dir == "" {
+	if j == nil || j.dir() == "" {
 		return errors.New("shell: no job directory")
 	}
-	if err := os.MkdirAll(j.Dir, 0700); err != nil {
+	dir := j.dir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(j.Dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
@@ -203,7 +244,7 @@ func (j *Jobs) Load() error {
 				// output path inside still names the old one. Pull the output back
 				// to this directory and write once more; if that also fails, drop
 				// this one record rather than the whole table.
-				job.Output = filepath.Join(j.Dir, job.ID+".log")
+				job.Output = filepath.Join(dir, id+".log")
 				if err := j.writeMeta(job); err != nil {
 					continue
 				}
@@ -601,7 +642,7 @@ func (lv *live) snapshot() Job {
 }
 
 func (j *Jobs) metaPath(id string) string {
-	return filepath.Join(j.Dir, id+".json")
+	return filepath.Join(j.dir(), id+".json")
 }
 
 func (j *Jobs) readMeta(id string) (Job, error) {
@@ -616,11 +657,16 @@ func (j *Jobs) readMeta(id string) (Job, error) {
 	if job.ID == "" {
 		job.ID = id
 	}
+	// The file name is the validated id; a body naming another id is not
+	// this record, and its id must never build a path.
+	if job.ID != id {
+		return Job{}, fmt.Errorf("shell: job record %s names id %q", id, job.ID)
+	}
 	return job, nil
 }
 
 func (j *Jobs) writeMeta(job Job) error {
-	want := filepath.Clean(filepath.Join(j.Dir, job.ID+".log"))
+	want := filepath.Clean(filepath.Join(j.dir(), job.ID+".log"))
 	if job.Output != "" && filepath.Clean(job.Output) != want {
 		return errors.New("shell: job output is outside the bot directory")
 	}
