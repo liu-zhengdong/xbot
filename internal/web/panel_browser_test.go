@@ -18,8 +18,15 @@ func TestBotPanelBrowser(t *testing.T) {
 	if err != nil {
 		t.Skip("Chrome unavailable")
 	}
-	for _, width := range []int{390, 820, 1440} {
-		t.Run(fmt.Sprint(width), func(t *testing.T) {
+	// The Windows/Linux desktop shell has a taller header; app.js marks it with
+	// these root classes, so the fixture adds them the same way.
+	for _, tc := range []struct {
+		name  string
+		width int
+		shell string
+	}{{"390", 390, ""}, {"820", 820, ""}, {"1440", 1440, ""}, {"820-shell", 820, "os-linux"}} {
+		width := tc.width
+		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			err := fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
@@ -36,7 +43,11 @@ func TestBotPanelBrowser(t *testing.T) {
 				if path == "static/index.html" {
 					page := strings.ReplaceAll(string(raw), `src="/`, `src="./`)
 					page = strings.ReplaceAll(page, `href="/`, `href="./`)
-					page = strings.Replace(page, "<head>", "<head><script>"+chatStreamFixture+panelFixture+"</script>", 1)
+					shell := ""
+					if tc.shell != "" {
+						shell = "document.documentElement.classList.add('in-app','" + tc.shell + "');"
+					}
+					page = strings.Replace(page, "<head>", "<head><script>"+shell+chatStreamFixture+panelFixture+"</script>", 1)
 					page = strings.Replace(page, "</body>", "<script>"+panelDriver+"</script></body>", 1)
 					raw = []byte(page)
 				}
@@ -131,6 +142,7 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
   assert(Math.abs((c.x-m.right-8)-(bar.right-c.right))<2,'chip is not centred between hamburger and edge');
   assert(near(m.y+m.height/2,a.y+a.height/2)&&m.width>=32&&m.height>=32,'hamburger is not centered or touchable');
  }
+ if(innerWidth>=768&&document.documentElement.classList.contains('in-app'))assert(near(rect($('.top')).height,88),'desktop shell header is not 88px');
  const chip=$('#head-chip');
  assert(!$('#info')&&!$('.ptog'),'separate panel toggle still present');
  assert(!chip.disabled&&chip.contains($('#title .avatar'))&&chip.getAttribute('aria-expanded')==='false','chip is not the closed toggle');

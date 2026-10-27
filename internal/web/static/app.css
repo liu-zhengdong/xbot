@@ -2315,8 +2315,11 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .in-app:is(.os-win, .os-linux) .phdr { padding-top: 36px; }
 .in-app:is(.os-win, .os-linux) .profile-drawer { top: 32px; }
 .in-app.os-win { --font: "Segoe UI Variable", "Segoe UI", "XBot SC", var(--x-font); }
+/* The shell header is taller; set it through --top-h so the 768–959 drawer
+   still opens below it. */
 @media (min-width: 768px) {
-  .in-app:is(.os-win, .os-linux) .top { padding-top: 32px; height: 88px; }
+  .in-app:is(.os-win, .os-linux) { --top-h: 88px; }
+  .in-app:is(.os-win, .os-linux) .top { padding-top: 32px; }
 }
 
 .panel-more .v.mono { white-space: nowrap; font-family: var(--x-mono); overflow: hidden; text-overflow: ellipsis; }
