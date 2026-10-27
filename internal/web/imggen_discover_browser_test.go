@@ -79,7 +79,14 @@ const openGenerated=async()=>{
  assert($('#modal').hidden,'failed lookup opened a fake directory');fixture.generatedFail=false;
  await XBotSettings.open('about');
  assert([...document.querySelectorAll('[data-settings-version]')].some(n=>visible(n)&&n.textContent==='dev · abc1234'),'about loses build tip');
- $('#settings-copy-version').click();await waitFor(()=>fixture.copied==='dev · abc1234','copy loses tip');XBotSettings.close();
+ const version=$('#settings-version');
+ assert(version?.textContent==='dev · abc1234','version row missing full version');
+ assert(!$('#settings-copy-version')&&!version.closest('.kvrow').querySelector('svg')&&!version.closest('.kvrow').textContent.includes('复制'),'separate copy control remains');
+ assert(version.getBoundingClientRect().right>version.closest('.kvrow').getBoundingClientRect().right-20,'version is not right aligned');
+ fixture.copied='';$('.aboutlogo [data-settings-version]').click();await new Promise(r=>setTimeout(r,20));
+ assert(!fixture.copied,'header copies version');
+ version.click();await waitFor(()=>fixture.copied==='dev · abc1234','clicking version did not copy full text');
+ await waitFor(()=>visible($('#settings-version-status'))&&$('#settings-version-status').textContent==='已复制','copy feedback missing');XBotSettings.close();
  // The running hosted event uses the same live status as a local tool. No
  // picture appears until the final reply has an actual Images reference.
  const box=$('#input');box.textContent='画猫并告诉我图在哪';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();

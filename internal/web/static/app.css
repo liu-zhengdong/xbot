@@ -2655,6 +2655,8 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .aboutlogo h3{font-size:18px;font-weight:650}.aboutlogo .v{font-size:13px;color:var(--x-muted);margin-top:2px;font-family:var(--x-mono)}
 .kvrow{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 14px;border-radius:10px;background:var(--x-fill-1);margin-bottom:8px;font-size:13.5px}
 .kvrow .k{width:72px;color:var(--x-faint);flex:none}.kvrow .v{flex:1;min-width:0;font-family:var(--x-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#settings-version-status{color:var(--x-muted);font-size:12px;white-space:nowrap}
+.kvrow button.v{border:0;padding:0;background:transparent;color:var(--x-muted);text-align:right;cursor:pointer}.kvrow button.v:hover{color:var(--x-text)}
 .setnav button{width:100%;border:0;background:transparent;text-align:left;font:inherit;font-size:13.5px}
 .setpage .ic{stroke-width:1.8;flex:none}
 .setpage .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:8px;height:32px;padding:0 13px;font:inherit;font-size:13px;background:var(--x-fill-2);color:var(--x-text);white-space:nowrap}

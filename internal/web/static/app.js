@@ -7527,7 +7527,13 @@
   });
   function aboutVersion() { return (state.version || "dev") + (state.tip ? " · " + state.tip : ""); }
 
-  $("settings-copy-version").addEventListener("click", (ev) => copyText(aboutVersion(), ev.currentTarget));
+  $("settings-version").addEventListener("click", async (ev) => {
+    if (await copyText(ev.currentTarget.textContent)) {
+      const status = $("settings-version-status");
+      status.textContent = "已复制";
+      setTimeout(() => { status.textContent = ""; }, 2000);
+    }
+  });
   $("push-icon").append(icon("phone"));
 
   // A connector that needs a key asks for it on a confirmation card in chat. The card needs some Bot to

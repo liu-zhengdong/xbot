@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-27 @ 0afc18e + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account
+verified: 2026-10-27 @ aed95c9 + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy
 ---
 # 网页界面
 
@@ -37,7 +37,7 @@ verified: 2026-10-27 @ 0afc18e + duty-persona-split + model-bind-cap-icons + xai
 
 ### 统一设置浮层
 
-账号菜单的「设置」打开居中浮层，左侧依次是通用、账号、权限、网页搜索、技能、人设卡、图片生成、设备、连接应用、模型与供应商、关于，对话保留在遮罩后面。主题用浅色/深色/跟随系统下拉框；跟随系统会响应系统明暗变化。权限总开关与 CLI 共用 `permissions.json`，缺文件默认关，运行中的 Bot 也读取同一开关。设备列表嵌在浮层内，远端对话与配对完成后的「查看设备」都进入这一页；设备标题行只有「+ 添加设备」入口，页面没有加入入口和底部动作条；配对、改名等弹窗复用原设备模块。连接应用是应用商店：顶栏「已连接 N 个」、搜索、分类芯片、推荐与分区卡网格，全部走不带 Bot 名的 `/api/apps`（添加、移除、自定义应用），装的是主人全局，与侧栏选中的 Bot 无关；Google 三家只展示「即将支持」，文件系统、Webhook、文件监听、技能不在这一栏。要密钥的 Telegram、飞书仍走聊天确认卡，由主 Bot 承载。手机推送开关挪到「通用」。关于显示服务端版本与构建短号，并可一起复制；短号来自 `/api/session.tip`。
+账号菜单的「设置」打开居中浮层，左侧依次是通用、账号、权限、网页搜索、技能、人设卡、图片生成、设备、连接应用、模型与供应商、关于，对话保留在遮罩后面。主题用浅色/深色/跟随系统下拉框；跟随系统会响应系统明暗变化。权限总开关与 CLI 共用 `permissions.json`，缺文件默认关，运行中的 Bot 也读取同一开关。设备列表嵌在浮层内，远端对话与配对完成后的「查看设备」都进入这一页；设备标题行只有「+ 添加设备」入口，页面没有加入入口和底部动作条；配对、改名等弹窗复用原设备模块。连接应用是应用商店：顶栏「已连接 N 个」、搜索、分类芯片、推荐与分区卡网格，全部走不带 Bot 名的 `/api/apps`（添加、移除、自定义应用），装的是主人全局，与侧栏选中的 Bot 无关；Google 三家只展示「即将支持」，文件系统、Webhook、文件监听、技能不在这一栏。要密钥的 Telegram、飞书仍走聊天确认卡，由主 Bot 承载。手机推送开关挪到「通用」。关于的版本行左侧是标签、右侧是服务端版本与构建短号；点击版本串复制完整展示内容并短显「已复制」，头区短号只展示。短号来自 `/api/session.tip`。
 
 ### 技能设置
 
