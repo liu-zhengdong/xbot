@@ -10,16 +10,27 @@ import (
 // "约定：X" repeats "X". Any other lead-in may be a qualifier and keeps the fact.
 var labels = map[string]bool{"约定": true, "备注": true, "规则": true, "决定": true, "note": true, "rule": true, "decision": true}
 
-// fillers carry no meaning in a fact; dropping them lets "简短的回答" match "简短回答"
-// and "已经改为" match "改为". They run before synonyms, which do not chain.
-var fillers = strings.NewReplacer("已经", "", "已", "", "的", "", "了", "", "地", "", "得", "")
+// rewordVerbs are the "set to" verbs synonyms fold onto 设为.
+var rewordVerbs = []string{"设置为", "更新为", "修改为", "调整为", "改为", "改成", "定为", "换成"}
+
+// fillers drop "已"/"已经" only right before a reword verb, so "已经改为" matches
+// "改为". Elsewhere 的/得/地/已 may be part of a name ("王得福" is not "王福"), so
+// they stay. They run before synonyms, which do not chain.
+var fillers = func() *strings.Replacer {
+	var pairs []string
+	for _, v := range append(rewordVerbs, "设为") {
+		pairs = append(pairs, "已经"+v, v, "已"+v, v)
+	}
+	return strings.NewReplacer(pairs...)
+}()
 
 // synonyms fold rewordings an extractor rotates through onto one spelling.
-// Longer phrases come first so "设置为" is not split by "置为".
+// Longer phrases come first so "设置为" is not split by "置为". "更喜欢" becomes
+// "更偏好", not "偏好": a comparison may correct a plain liking.
 var synonyms = strings.NewReplacer(
 	"设置为", "设为", "更新为", "设为", "修改为", "设为", "调整为", "设为",
 	"改为", "设为", "改成", "设为", "定为", "设为", "换成", "设为",
-	"更喜欢", "偏好", "喜欢", "偏好", "倾向于", "偏好", "倾向", "偏好", "习惯用", "偏好用",
+	"喜欢", "偏好", "倾向于", "偏好", "倾向", "偏好", "习惯用", "偏好用",
 	"has been set to", "set to", "was set to", "set to", "has been changed to", "set to",
 	"was changed to", "set to", "changed to", "set to", "has been updated to", "set to",
 	"was updated to", "set to", "updated to", "set to", "is now", "set to",
@@ -37,10 +48,10 @@ func Bare(text string) string {
 }
 
 // NearDuplicate reports whether two facts record the same thing: equal once the
-// provenance suffix, case, punctuation, filler words, common rewordings and a
+// provenance suffix, case, punctuation, "已" before a reword verb, common rewordings and a
 // heading label such as "约定：" are removed. Anything else that differs, even one
 // name, count or negation in a long sentence, may be a correction and keeps both;
-// numbers, quoted values and paths are compared before fillers are dropped.
+// numbers, quoted values and paths are compared before rewordings are folded.
 func NearDuplicate(a, b string) bool {
 	a, b = Bare(a), Bare(b)
 	if !sameSet(anchors(a), anchors(b)) {

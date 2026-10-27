@@ -8,7 +8,9 @@ func TestNearDuplicate(t *testing.T) {
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", "Bot 简介已定为「今晚随便逛逛的小助手」"},
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", "bot简介已经改为「今晚随便逛逛的小助手」。"},
 		{"Bot 简介已设为「今晚随便逛逛的小助手」", Provenance("Bot 简介已改为「今晚随便逛逛的小助手」", "astr", "")},
-		{"主人喜欢简短的回答", "主人偏好简短回答"},
+		{"主人喜欢简短回答", "主人偏好简短回答"},
+		{"主人更喜欢咖啡", "主人更偏好咖啡"},
+		{"负责人已改为王得福", "负责人改为王得福"},
 		{"Owner prefers short answers.", "owner likes short answers"},
 		{"The profile was set to night owl", "profile has been changed to night owl"},
 		// One contained in the other.
@@ -47,6 +49,15 @@ func TestNearDuplicate(t *testing.T) {
 		{"Owner wants every pull request reviewed by Alice before merging to main", "Owner wants every pull request reviewed by Bob before merging to main"},
 		{"Owner wants every pull request reviewed before merging to main", "Owner wants every pull request reviewed twice before merging to main"},
 		{"Owner wants every pull request reviewed before merging to main", "Owner doesn't want every pull request reviewed before merging to main"},
+		// Review 2 P1: 的/得/地/已 inside an unquoted name, and a comparative
+		// liking, are not filler.
+		{"项目负责人是王得福", "项目负责人是王福"},
+		{"项目负责人是王地福", "项目负责人是王福"},
+		{"项目负责人是王的福", "项目负责人是王福"},
+		{"项目负责人是王已福", "项目负责人是王福"},
+		{"负责人已改为王得福", "负责人已改为王福"},
+		{"主人喜欢咖啡", "主人更喜欢咖啡"},
+		{"Owner likes coffee", "Owner likes coffee more"},
 		{"", ""},
 	}
 	for _, c := range distinct {
