@@ -18,10 +18,12 @@ import (
 
 // shellJobs is the process-lifetime job set for this bot. The first call loads
 // records left by a previous serve and marks the ones still running as lost.
-// A rename moves the bot directory under a live kernel; the same set then
-// moves with it, so calls still running and later calls all write into the
-// new directory, and no second set can replace the live one.
+// Once built, the set is returned without reading k.Bot: only renameBot moves
+// it, so a caller holding a stale bot name can never point it back.
 func (k *Kernel) shellJobs() *tools.Jobs {
+	if jobs := k.liveShell(); jobs != nil {
+		return jobs
+	}
 	if k == nil || k.Bot == nil || k.Bot.Root == "" || k.Bot.Name() == "" {
 		return nil
 	}
@@ -40,11 +42,7 @@ func (k *Kernel) shellJobs() *tools.Jobs {
 			k.shellMu.Unlock()
 		}
 	})
-	k.shellMu.Lock()
-	jobs := k.shell
-	k.shellMu.Unlock()
-	jobs.Move(dir)
-	return jobs
+	return k.liveShell()
 }
 
 // attachShellJobs points every shell tool on a mounted link at this bot's jobs.

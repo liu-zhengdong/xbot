@@ -139,22 +139,28 @@ func (j *Jobs) dir() string {
 	return j.Dir
 }
 
-// Move points this table at dir after a bot rename moved its directory there.
-// Jobs whose output sat in the old directory follow it, so calls still running,
-// the rename tool itself included, finish in the new directory and never
-// recreate the old one. Moving to the current directory does nothing.
-func (j *Jobs) Move(dir string) {
-	if j == nil || dir == "" {
-		return
+// Move runs rename, which moves this table's directory to dir, and points the
+// table there. Every write into the directory holds metaMu from reading the
+// path to writing the file, so rename and the repoint form one step: no call
+// writes the old directory after it moved, or recreates it. Jobs whose output
+// sat in the old directory follow it, so calls still running, the rename tool
+// itself included, finish in the new one. A nil table only runs rename.
+func (j *Jobs) Move(dir string, rename func() error) error {
+	if j == nil {
+		return rename()
 	}
 	j.metaMu.Lock()
 	defer j.metaMu.Unlock()
 	j.dirMu.Lock()
 	old := j.Dir
+	if err := rename(); err != nil {
+		j.dirMu.Unlock()
+		return err
+	}
 	j.Dir = dir
 	j.dirMu.Unlock()
 	if old == dir {
-		return
+		return nil
 	}
 	j.mu.Lock()
 	lives := make([]*live, 0, len(j.jobs))
@@ -169,6 +175,7 @@ func (j *Jobs) Move(dir string) {
 		}
 		lv.mu.Unlock()
 	}
+	return nil
 }
 
 func (j *Jobs) now() time.Time {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -103,24 +104,32 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 	if name != nil {
 		next := strings.TrimSpace(*name)
 		if next != "" && next != t.k.Bot.Name() {
-			old := t.k.Bot.Name()
-			if err := RenameBot(t.k.Bot.Root, old, next); err != nil {
+			if err := t.k.renameBot(next); err != nil {
 				return "", err
 			}
-			loaded, err := bot.Load(t.k.Bot.Root, next)
-			if err != nil {
-				return "", err
-			}
-			t.k.Bot = loaded
-			// This call is itself a running job in the old directory; move the
-			// table now so its completion lands in the new one.
-			t.k.shellJobs()
 		}
 	}
 	if update.avatarSeed != nil {
 		return "profile saved; 头像已换好；侧栏与顶栏当面刷新", nil
 	}
 	return "profile saved", nil
+}
+
+// renameBot renames this live bot. The directory moves inside the job table's
+// Move, so calls running meanwhile, this one included, finish in the new
+// directory and nothing writes the old one once it has gone.
+func (k *Kernel) renameBot(next string) error {
+	root, old := k.Bot.Root, k.Bot.Name()
+	dir := filepath.Join(bot.Dir(root, next), "shell-jobs")
+	if err := k.shellJobs().Move(dir, func() error { return RenameBot(root, old, next) }); err != nil {
+		return err
+	}
+	loaded, err := bot.Load(root, next)
+	if err != nil {
+		return err
+	}
+	k.Bot = loaded
+	return nil
 }
 
 func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, error) {

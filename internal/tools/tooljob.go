@@ -79,7 +79,10 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
 	if err := ctx.Err(); err != nil {
 		return CallResult{Err: err}
 	}
+	// metaMu holds off Move until the record is on disk at the path it names.
+	j.metaMu.Lock()
 	if err := os.MkdirAll(j.dir(), 0700); err != nil {
+		j.metaMu.Unlock()
 		return CallResult{Err: err}
 	}
 	j.mu.Lock()
@@ -88,17 +91,20 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
 	}
 	if j.countLocked() >= maxShellJobs {
 		j.mu.Unlock()
+		j.metaMu.Unlock()
 		return CallResult{Err: errors.New("tool job: too many background jobs")}
 	}
 	id, err := newJobID(j.jobs)
 	if err != nil {
 		j.mu.Unlock()
+		j.metaMu.Unlock()
 		return CallResult{Err: err}
 	}
 	path := filepath.Join(j.dir(), id+".log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		j.mu.Unlock()
+		j.metaMu.Unlock()
 		return CallResult{Err: err}
 	}
 	w := newJobWriter(f, j.outputCap(), j.redact)
@@ -112,7 +118,9 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
 	lv.cancel = cancel
 	j.jobs[id] = lv
 	j.mu.Unlock()
-	if err := j.writeMeta(lv.snapshot()); err != nil {
+	err = j.writeMeta(lv.snapshot())
+	j.metaMu.Unlock()
+	if err != nil {
 		cancel()
 		_ = w.Close()
 		j.remove(lv)
@@ -249,6 +257,15 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 	text := j.redact(lv.result.Text)
 	res.Text = text
 	res.Err = nil
+	if !detached && onCwd != nil && ended != "" {
+		onCwd(ended)
+	}
+	// Publishing writes into the job directory, so it runs under metaMu with
+	// the output path Move left on the live job, not the one copied above.
+	j.metaMu.Lock()
+	lv.mu.Lock()
+	job.Output = lv.job.Output
+	lv.mu.Unlock()
 	// Shell keeps its streamed log. Other tools publish their processed text
 	// to the same bounded output file, never another result store.
 	if !review.IsShellTool(job.Tool) {
@@ -274,13 +291,9 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 			job.Result = "保存工具结果失败：" + j.redact(err.Error())
 		}
 	}
-	if !detached && onCwd != nil && ended != "" {
-		onCwd(ended)
-	}
 	if review.IsShellTool(job.Tool) {
 		job.Bytes, job.Dropped = lv.w.span()
 	}
-	j.metaMu.Lock()
 	lv.mu.Lock()
 	lv.job = job
 	lv.mu.Unlock()

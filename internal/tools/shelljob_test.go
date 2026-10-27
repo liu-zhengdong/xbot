@@ -1147,3 +1147,56 @@ func TestLoadIgnoresRecordWithForeignID(t *testing.T) {
 		t.Fatal("Status loaded a record whose body names another id")
 	}
 }
+
+// A background call publishes its result while the table moves. The publish
+// writes with the path Move leaves on the live job, never a copy from before
+// it, so the call ends done in the new directory and the old one stays gone.
+func TestCompletionCrossesMove(t *testing.T) {
+	root := t.TempDir()
+	oldBot, newBot := filepath.Join(root, "ada"), filepath.Join(root, "grace")
+	j := NewJobs(filepath.Join(oldBot, "shell-jobs"))
+	if err := j.Load(); err != nil {
+		t.Fatal(err)
+	}
+	paused, resume := make(chan struct{}), make(chan struct{})
+	res := j.RunCall(context.Background(), CallRequest{Name: "any_tool", Background: true,
+		Run: func(context.Context) CallResult { return CallResult{Text: "ok"} },
+		Finalize: func(job Job, _ CallResult) (Job, error) {
+			close(paused)
+			<-resume
+			return job, nil
+		},
+	})
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	lv := j.get(res.Job.ID)
+	<-paused
+	newDir := filepath.Join(newBot, "shell-jobs")
+	moved := make(chan error, 1)
+	go func() {
+		moved <- j.Move(newDir, func() error { return os.Rename(oldBot, newBot) })
+	}()
+	// Let Move run first if the publish does not hold it off.
+	select {
+	case err := <-moved:
+		moved <- err
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(resume)
+	if err := <-moved; err != nil {
+		t.Fatal(err)
+	}
+	<-lv.done
+	st, err := j.Status(res.Job.ID)
+	if want := filepath.Join(newDir, res.Job.ID+".log"); err != nil || st.Status != "done" || st.Output != want {
+		t.Fatalf("status %+v err %v, want done at %s", st, err, want)
+	}
+	disk, err := j.readMeta(res.Job.ID)
+	if err != nil || disk.Status != "done" {
+		t.Fatalf("record in new directory %+v err %v", disk, err)
+	}
+	if _, err := os.Stat(oldBot); !os.IsNotExist(err) {
+		t.Fatalf("old bot directory recreated: %v", err)
+	}
+}
