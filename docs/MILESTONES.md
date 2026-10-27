@@ -745,3 +745,7 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 
 按对话区宽度让信息面板避开悬浮身份卡，恢复整卡点击开合；开态阴影沿用浮层 token。浏览器 scripted 回归覆盖 959、960、1100、1200 等宽度、展开侧栏、长简介和桌面壳；旧样式在 960、1100、1200 复现遮挡。当前为功能分支验证，未合 main、未经过用户日用。目标浏览器测试三遍通过；web 整包三遍检查在 `TestWebApprovalAllowAndDeny` 等待连接关闭时 90 秒超时，全仓测试长时间未结束而中止。未测交互 p95 或帧率；没有新增动画、轮询或请求。
 - 2026-10-27：连接应用设置内密钥弹层及安装前探测在特性分支实现（ADR 0031）；废掉商店关设置、代发聊天的路径。脚本替身覆盖弹层、探测失败不落盘、并发重复添加；真实上游手探 Playwright 导航 1.7 秒通过，Context7 坏 key、飞书坏 token 均被拒；正 token 的飞书与 Telegram 未实测。进度见 `docs/dev/connectors-secret-modal.md`。
+
+## 2026-10-27 改名与 tool job 持久化（feature/rename-tool-jobs）
+
+Bot 改名后所有工具回执 `tool job storage unavailable`（裸文本进 transcript，气泡无产物）的三处修复：`tools.Jobs.Load` 写 lost 失败时把 output 收束到当前 `Dir/id.log` 重试一次，仍失败丢弃该条，不再 `return err` 让 `shellJobs()` 永久 nil；`bot.Rename` 搬目录后原子改写 `shell-jobs/*.json` 里指向旧目录的 output；内核 `shellJobs()` 检测目录漂移后从新目录重建任务表，`bot_update_profile` 同一轮里再调工具（含 `send_message_to_user`）不再往旧目录写。回归测试 5 条，回退修复验证均先红：TestLoadRepairsRenamedOutputPath、TestLoadSkipsUnwritableRecord（root 跳过）、TestRenameMigratesShellJobs、TestRenameKeepsToolJobsWorking、TestShellJobsFollowRename。三个改动包 `-count=3` 全绿。原有失败未改（基线同样失败）：TestWebApprovalAllowAndDeny 挂起、4 条 parked approval、internal/work TestShellUsesBotDir。级别：已提交本分支，未合 main、未 push。Not run: Linux CI、真模型、性能数字。
