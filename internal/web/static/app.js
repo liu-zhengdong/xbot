@@ -7367,7 +7367,7 @@
     $("head-chip").classList.toggle("on", open);
     $("head-chip").setAttribute("aria-expanded", open ? "true" : "false");
     $("head-chip").setAttribute("aria-label", open ? "收起信息" : "打开信息");
-    setTip($("head-chip"), (open ? "收起面板" : "展开面板") + (isMac ? "  ⌘\\" : "  Ctrl+\\"));
+    setTip($("head-chip"), (open ? "收起信息" : "打开信息") + (isMac ? "  ⌘\\" : "  Ctrl+\\"));
     syncBackdrop();
   }
 

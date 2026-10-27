@@ -46,7 +46,7 @@ const bubbles=()=>[...document.querySelectorAll('#thread .msg.bot')].map(n=>n.te
  assert(!merged,'messages merged into one bubble at some point');
  assert(!leaked,'reply text or a tool line reached the chat');
  // Idle polls with an unchanged transcript leave the thread and trace alone.
- $('#info').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');
+ $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');
  [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='轨迹').click();
  await waitFor(()=>$('#panel-body .trace'),'trace missing');
  const inner=$('#thread .thread-inner'),trace=$('#panel-body .trace');
