@@ -720,3 +720,119 @@ func TestScrubSecretsIsOnePass(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// leaveRenamedRunningJob writes a still-running job record and its output file
+// into the bot's shell-jobs directory, as a serve that died mid-rename leaves
+// behind: the files moved with the bot, the output path inside did not.
+func leaveRenamedRunningJob(t *testing.T, root, name string) string {
+	t.Helper()
+	jobsDir := filepath.Join(bot.Dir(root, name), "shell-jobs")
+	if err := os.MkdirAll(jobsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id := "sh_0abc12de"
+	meta, err := json.Marshal(tools.Job{
+		ID: id, Command: "sleep 30", Status: "running",
+		Output:  filepath.Join(jobsDir, id+".log"),
+		Started: time.Unix(1_700_000_000, 0).UTC(), PID: 1 << 22, ProcStart: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jobsDir, id+".json"), meta, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jobsDir, id+".log"), []byte("running output\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// A rename leaves a running job record whose output names the old bot
+// directory. A fresh kernel still gets a working job table: the record turns
+// lost with the output repointed, and tools, send_message_to_user included,
+// keep answering instead of reporting storage unavailable.
+func TestRenameKeepsToolJobsWorking(t *testing.T) {
+	k, _, now := freshBot(t)
+	root := k.Bot.Root
+	id := leaveRenamedRunningJob(t, root, "ada")
+	if err := RenameBot(root, "ada", "grace"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := bot.Load(root, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &scripted{}
+	k2 := &Kernel{
+		Bot: loaded, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
+		Links: []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Now:   func() time.Time { return *now },
+	}
+	next := *now
+	runTurn(t, k2, &next, "say it",
+		toolCall("m1", "send_message_to_user", mustArgs(t, map[string]string{"text": "改名以后还能说话"})),
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
+	)
+	got := bodies(t, k2)
+	if len(got) == 0 {
+		t.Fatal("no tool results")
+	}
+	if last := got[len(got)-1]; strings.Contains(last, "unavailable") || !strings.Contains(last, "sent to the owner's chat") {
+		t.Fatalf("send_message_to_user after rename: %q", last)
+	}
+	jobs := k2.shellJobs()
+	if jobs == nil {
+		t.Fatal("job table missing after rename")
+	}
+	st, err := jobs.Status(id)
+	if err != nil || st.Status != "lost" {
+		t.Fatalf("leftover job %+v err %v", st, err)
+	}
+	if want := filepath.Join(bot.Dir(root, "grace"), "shell-jobs", id+".log"); st.Output != want {
+		t.Fatalf("output %q, want %q", st.Output, want)
+	}
+	for _, job := range jobs.List() {
+		if job.Tool == "send_message_to_user" && job.Output != "" &&
+			!strings.HasPrefix(job.Output, filepath.Join(bot.Dir(root, "grace"), "shell-jobs")) {
+			t.Fatalf("new record left the bot directory: %+v", job)
+		}
+	}
+}
+
+// bot_update_profile renames inside a live kernel. The job set follows the
+// bot to the new directory, so tool calls later in the same turn do not write
+// back into the old one.
+func TestShellJobsFollowRename(t *testing.T) {
+	k, _, now := freshBot(t)
+	root := k.Bot.Root
+	before := k.shellJobs()
+	if before == nil || before.Dir != filepath.Join(bot.Dir(root, "ada"), "shell-jobs") {
+		t.Fatalf("before %+v", before)
+	}
+	if err := RenameBot(root, "ada", "grace"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := bot.Load(root, "grace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.Bot = loaded
+	after := k.shellJobs()
+	if after == nil || after.Dir != filepath.Join(bot.Dir(root, "grace"), "shell-jobs") {
+		t.Fatalf("after %+v", after)
+	}
+	runTurn(t, k, now, "say it",
+		toolCall("m1", "send_message_to_user", mustArgs(t, map[string]string{"text": "同一轮里继续说"})),
+		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
+	)
+	got := bodies(t, k)
+	if last := got[len(got)-1]; strings.Contains(last, "unavailable") || !strings.Contains(last, "sent to the owner's chat") {
+		t.Fatalf("send_message_to_user after in-kernel rename: %q", last)
+	}
+	for _, job := range k.shellJobs().List() {
+		if job.Tool == "send_message_to_user" && !strings.HasPrefix(job.Output, filepath.Join(bot.Dir(root, "grace"), "shell-jobs")) {
+			t.Fatalf("record written into the old directory: %+v", job)
+		}
+	}
+}

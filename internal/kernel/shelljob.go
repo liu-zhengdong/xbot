@@ -18,28 +18,43 @@ import (
 
 // shellJobs is the process-lifetime job set for this bot. The first call loads
 // records left by a previous serve and marks the ones still running as lost.
+// A rename moves the bot directory under a live kernel; the set is then
+// rebuilt from the new directory so later calls do not write into the old
+// path. Calls already running on the previous set finish there.
 func (k *Kernel) shellJobs() *tools.Jobs {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" || k.Bot.Name() == "" {
 		return nil
 	}
+	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "shell-jobs")
 	k.shellOnce.Do(func() {
-		dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "shell-jobs")
-		j := tools.NewJobs(dir)
-		j.Redact = func(s string) string {
-			return scrubSecrets(k.redactor()(s), k.secretValues())
-		}
-		j.Forms = k.shellForms
-		j.Now = k.now
-		j.OnDone = k.onToolDone
-		if err := j.Load(); err == nil {
-			k.shellMu.Lock()
-			k.shell = j
-			k.shellMu.Unlock()
-		}
+		k.adoptShellJobs(dir)
 	})
+	k.shellMu.Lock()
+	moved := k.shell != nil && k.shell.Dir != dir
+	k.shellMu.Unlock()
+	if moved {
+		k.adoptShellJobs(dir)
+	}
 	k.shellMu.Lock()
 	defer k.shellMu.Unlock()
 	return k.shell
+}
+
+// adoptShellJobs loads the job set for dir and makes it this kernel's set.
+// A load that fails leaves the previous set in place.
+func (k *Kernel) adoptShellJobs(dir string) {
+	j := tools.NewJobs(dir)
+	j.Redact = func(s string) string {
+		return scrubSecrets(k.redactor()(s), k.secretValues())
+	}
+	j.Forms = k.shellForms
+	j.Now = k.now
+	j.OnDone = k.onToolDone
+	if err := j.Load(); err == nil {
+		k.shellMu.Lock()
+		k.shell = j
+		k.shellMu.Unlock()
+	}
 }
 
 // attachShellJobs points every shell tool on a mounted link at this bot's jobs.
