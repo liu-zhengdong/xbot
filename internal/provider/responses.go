@@ -199,6 +199,7 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 	if h == nil {
 		h = defaultHTTP
 	}
+	dumpRequest(ResponsesProtocol, raw)
 	res, err := h.Do(r)
 	if err != nil {
 		return Message{}, err

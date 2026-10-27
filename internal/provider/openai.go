@@ -481,6 +481,7 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	httpReq.Header.Set("Accept", "text/event-stream")
 	httpReq.Header.Set("User-Agent", "xbot/m1")
 
+	dumpRequest(ChatCompletions, raw)
 	resp, err := c.http().Do(httpReq)
 	if err != nil {
 		return Message{}, err

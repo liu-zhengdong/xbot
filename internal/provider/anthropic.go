@@ -310,6 +310,7 @@ func (c *Anthropic) messagesOnce(ctx context.Context, req Request, delta func(st
 	// Copy the client so concurrent calls and the shared transport stay intact.
 	direct := *h
 	direct.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	dumpRequest(AnthropicMessages, raw)
 	res, err := direct.Do(r)
 	if err != nil {
 		return Message{}, err
