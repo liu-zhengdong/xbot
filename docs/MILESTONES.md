@@ -8,7 +8,7 @@
 ## 2026-10-27 连接器 Agent 侧可用
 
 - 沿现有 `links load` 补全名称/id 解析与商店类摘要筛选；MCP 失败回传阶段与有界脱敏 stderr；`/api/apps` 提供按 Bot runtime，读取不拉进程；前端未改。见 [生态](atlas/ecosystem.md)。
-- 复审 PASS（Pi pwm-rev，P0/P1=0，P2=4 不阻塞）。功能 tip `de23bd0` 待合本地 main。未 push；禁 sync-app。
+- 复审 PASS（Pi pwm-rev，P0/P1=0，P2=4 不阻塞）。功能 tip `5c04f8e`（rebase 自 `de23bd0`）已合本地 main；`docs/dev/playwright-mcp-tools.md` 已毕业删除。未 push；禁 sync-app；前端未改，待设计师逛后再 →已完成。
 
 
 ## 2026-10-27 云上账号壳切开
