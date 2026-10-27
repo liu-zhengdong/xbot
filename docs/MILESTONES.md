@@ -1,13 +1,9 @@
 # XBot 里程碑与进度
 
-## 2026-10-27 provider 请求原文 debug（功能分支）
+## 2026-10-27 provider 请求原文 debug
 
 - 三种协议共用请求 body 落盘函数；热开关、路径与原文约定见 [供应商](atlas/providers.md)。按主人纠正，含原始密钥、未 redact，仅 body，不额外采集 header。实现与测试仅改 provider；不改权限、vault、UI 或 transcript。
-- provider 全包 `-count=3`、新增用例 race、全仓 vet、gofmt、diff 检查通过。旧 `28501a6` 的三个适配器经外部 overlay 运行新测试，均因 dump 数为 0 失败；新版验证原文字节、开关、0600/0700、32 并行文件、每次重试及落盘失败不阻断 Chat。
-- 全仓 `go test -count=1 -timeout=3m ./...` 未全绿：web 的 `TestWebApprovalAllowAndDeny` 超时，work 的 `TestShellUsesBotDir` 缺 description；二者均在 `28501a6` 外部归档复现，未扩修。atlas audit 已执行，保留既有告警。
-- 独立 scripted 冒烟经真实 `xbot new/chat`、本机 rqv 和 Chrome，两协议同进程关→开→关落盘数都是 0/1/0，原文逐字节匹配假供应商收到的 body；rqv 分别解析 9/3 条 messages 和各 44 个 tools。没有调用真实模型或使用真实密钥。
-- 本机关闭检查 1000 次、1 MiB body：p50 1.125 µs、p95 1.292 µs；CLI 三轮 Completions 60.086/24.079/31.324 ms，Messages 56.738/31.901/33.685 ms。后两组是 scripted 冒烟采样，不是生产 p95 或开关开销对比。
-- 级别：本特性 scripted 端到端通过；未合入、未 push、未 sync-app、未主人日用验收。报告与复现脚本：`~/.xbot-build/provider-request-debug/encode-report.md`；保留 dev 供复审和日用收尾。
+- 复审 PASS（Pi prd-rev，P0/P1/P2=0）。功能 tip `1c94e90` 已合本地 main；`docs/dev/provider-request-debug.md` 已毕业删除。未 push；禁 sync-app；纯工程无 UI，不喊设计师。
 
 ## 2026-10-27 云上账号壳切开
 

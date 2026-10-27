@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-27 @ 28501a6 + provider-request-debug
+verified: 2026-10-27 @ a9f1c4f
 ---
 # 模型供应商与主动性评测
 
@@ -13,7 +13,7 @@ verified: 2026-10-27 @ 28501a6 + provider-request-debug
 
 ## 怎么运转
 
-- **请求 debug**：创建 `~/.xbot/provider-debug.enabled` 普通文件开启，删除即关闭；三种协议每次 HTTP 尝试前热检查，无需重启或重编译，缺省不写盘。开启后把发送的已编码 body 原样写入 `~/.xbot/provider-debug/<UTC时间>-<协议>-<随机后缀>.json`，不重新编码、截断或脱敏；含原始密钥、未 redact（若密钥在 body 中即原样保留），不额外采集 header。新目录 0700、文件 0600，独占随机文件名防覆盖；写入失败只报错日志，不阻断 Chat。开关按本机用户共享，不随 `--root` 改变；关闭不删除已存文件。Chat Completions / Messages 的文件可直接 `rqv <file>` 查看，Responses 保留自身原生 JSON，不转换成其他协议。用法与待验收项见 [开发设计](../dev/provider-request-debug.md)。
+- **请求 debug**：创建 `~/.xbot/provider-debug.enabled` 普通文件开启，删除即关闭；三种协议每次 HTTP 尝试前热检查，无需重启或重编译，缺省不写盘。开启后把发送的已编码 body 原样写入 `~/.xbot/provider-debug/<UTC时间>-<协议>-<随机后缀>.json`，不重新编码、截断或脱敏；含原始密钥、未 redact（若密钥在 body 中即原样保留），不额外采集 header。新目录 0700、文件 0600，独占随机文件名防覆盖；写入失败只报错日志，不阻断 Chat。开关按本机用户共享，不随 `--root` 改变；关闭不删除已存文件。Chat Completions / Messages 的文件可直接 `rqv <file>` 查看，Responses 保留自身原生 JSON，不转换成其他协议。
 
 - 设置详情读取 API 供应商与 ChatGPT 订阅的实时名单。ChatGPT 登录和详情共用 SIWC 目录解析，读取 `models[].slug` 且只保留 `visibility: list`；未配置的模型窗口取目录中的 `context_window`，已有模型的能力与窗口覆盖保留。未登录时提示重新登录。模型名单通过 `GET /api/providers/models?provider=<配置名>` 按需实时拉取，名单本身不写回配置。Completions / Responses 读取配置端点的 `/models`，用 Bearer 鉴权；Messages 用 `x-api-key` 与 `anthropic-version`，按 `has_more` / `last_id` 续页。能力仍复用 `ModelSpec` 的 vision、hosted 规则和窗口覆盖；没有配置覆盖且目录未提供窗口时使用 `compact.DefaultWindow`（256000），不从原型名单或 URL 推断能力。每次最多 15 秒、累计 1 MiB、2048 个模型，拒绝重定向、无效格式和分页循环；错误不透传上游响应或凭证，OAuth 凭证刷新被供应商拒绝时返回「登录凭证已失效，请重新登录」，设置页据此引导重新登录。
 - **模型窗口真源**：日常 Resolve 与 T/H 使用 `providers.json` 的显式 `ModelSpec.Context`；缺值与未知模型退 256000，不按模型名猜窗口。按需拉取 `/models` 时，整数 `context_length`（1～10000000 token）覆盖返回值，并在整份目录通过大小、条数与分页检查后，批量写回已登记模型；缺失、非整数、非正或超限元数据不改目录，也不妨碍其他有效模型刷新。未登记模型只展示上游窗口，选用时沿原登记路径保存；ChatGPT 的 `context_window` 覆盖规则不变。刷新复用 registry 文件锁，锁内重读，只改 context，保留能力开关；供应商被删除或端点/认证配置改变则不写回，不复活条目。重复相同窗口不落盘；刷新成功只记录供应商名与更新数量，不带上游正文或凭证。Add、Remove、vendor 同步和 OAuth/能力更新共用此锁。Resolve 不请求 `/models`；内核凭目录文件身份、大小和 mtime 使窗口缓存失效，同一绑定的后续 T/H 查询能看到刷新。
