@@ -15,6 +15,7 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/personacard"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -198,7 +199,8 @@ func (o *overflowProvider) Chat(ctx context.Context, req provider.Request, onDel
 // The lines say the request fits, the model says it does not. Before, the turn
 // ended with the provider's error.
 func TestOverflowIsCutAndSentAgain(t *testing.T) {
-	p := &overflowProvider{scripted: scripted{resps: longTurn(4, 0)}, limit: 6000}
+	// Keep the workload's original headroom: every bot's prefix now carries the default card.
+	p := &overflowProvider{scripted: scripted{resps: longTurn(4, 0)}, limit: 6000 + compact.Estimate(personacard.PartnerPersona)}
 	k, b := fitKernel(t, p, &recCompactor{}, compact.Budget{Ceiling: 100_000, KeepTail: 1}, 8000)
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)

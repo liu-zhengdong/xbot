@@ -42,8 +42,8 @@ type Config struct {
 	Description  string   `json:"description,omitempty"`
 	Avatar       string   `json:"avatar,omitempty"`
 	AvatarSeed   string   `json:"avatar_seed,omitempty"`
-	// PersonaCard is the id of the owner's persona card this bot speaks from.
-	// Empty uses persona.md.
+	// PersonaCard is the id of the owner's persona card this bot speaks from,
+	// stacked after its duty (persona.md). Empty uses the owner's default card.
 	PersonaCard string `json:"persona_card,omitempty"`
 	// Proactivity is ignored. Old config files may still contain quiet, normal, or active.
 	Proactivity string `json:"proactivity,omitempty"`

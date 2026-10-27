@@ -100,85 +100,8 @@ func TestPersonaCardsSettingsBehaviour(t *testing.T) {
   assert.match(find('nestcard').at(-1).children[1].textContent,/2 个 Bot 还在用它/);
   await btn('删除').at(-1).onclick();await tick();
   assert.deepEqual(J(calls.find(c=>c[0]==='DELETE').slice(0,2)),['DELETE','/api/persona-cards/c0aaaaaaa?force=1']);
-  // picker: 未选用 first, single choice, confirm binds at once
-  let picked='unset';
-  await window.XBotPersonaCards.pick({api,botName:'ada',current:'',onPicked:c=>{picked=c}});
-  const rows=find('pc-picklist').at(-1).children;
-  assert.equal(rows[0].children[1].children[0].textContent,'未选用');assert.equal(rows[0].attrs['aria-checked'],'true');
-  rows[1].onclick();
-  const rows2=find('pc-picklist').at(-1).children;assert.equal(rows2[1].attrs['aria-checked'],'true');assert.equal(rows2[0].attrs['aria-checked'],'false');
-  await btn('选用').at(-1).onclick();
-  assert.deepEqual(J(calls.at(-1)),['PUT','/api/bots/ada/persona-card',{id:cards[0].id}]);
-  assert.equal(picked.name,'写作助手 (2)');
-  assert.equal(document.body.children.length,0,'picker closed');
   // nothing a card says goes into markup
   assert.equal(all.some(n=>'innerHTML' in n),false);
- finished=true;
- })().catch(e=>{console.error(e);process.exitCode=1});`
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-}
-
-// The picker belongs to the drawer: a list that arrives after the drawer closed,
-// or after the drawer moved on, opens nothing; a second click while one is loading
-// or open does nothing. Search uses the server's whole-body answer, and an older
-// answer arriving late does not replace a newer one.
-func TestPersonaCardPickerLateAndDeepSearch(t *testing.T) {
-	source, err := staticFS.ReadFile("static/persona-cards.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	encoded, _ := json.Marshal(string(source))
-	script := finishGuard + `const assert=require('node:assert/strict'),vm=require('node:vm');
- let all=[];
- class Node{constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attrs={};this.className='';this.textContent='';this.value='';this.hidden=false;all.push(this);
-  this.classList={add:n=>{this.className=(this.className+' '+n).trim()},toggle:()=>{}}}
-  append(...n){this.children.push(...n)} replaceChildren(...n){this.children=n} setAttribute(k,v){this.attrs[k]=v} focus(){document.activeElement=this}}
- const window={},document={createElement:t=>new Node(t),createTextNode:t=>({textContent:t}),activeElement:null,body:new Node('body')};
- vm.runInNewContext(` + string(encoded) + `,{window,document,setTimeout,clearTimeout});
- const P=window.XBotPersonaCards,find=cls=>all.filter(n=>n.className.split(' ').includes(cls));
- const wait=ms=>new Promise(r=>setTimeout(r,ms));
- const deep='x'.repeat(1024)+'关键词';
- const cards=[{id:'aaaaaaaaaaaaaaaa',name:'长卡',preview:'xxx',search:'x'.repeat(1024)},{id:'bbbbbbbbbbbbbbbb',name:'短卡',preview:'先给结论',search:'先给结论'}];
- (async()=>{
-  let gets=0,release=[];
-  const slow=async path=>{if(path==='/api/persona-cards'){gets++;await new Promise(r=>release.push(r));return {cards:structuredClone(cards)}}throw new Error('unexpected '+path)};
-  // closed while loading: nothing opens
-  let p=P.pick({api:slow,botName:'ada',current:''});
-  P.closePick();release.shift()();assert.equal(await p,null);
-  assert.equal(document.body.children.length,0,'late list reopened a closed picker');
-  // the drawer moved on (alive false): nothing opens
-  let open=true;p=P.pick({api:slow,botName:'ada',current:'',alive:()=>open});
-  open=false;release.shift()();assert.equal(await p,null);
-  assert.equal(document.body.children.length,0,'late list opened for a gone drawer');
-  // two clicks while loading: one request, one picker
-  p=P.pick({api:slow,botName:'ada',current:''});const q=P.pick({api:slow,botName:'ada',current:''});
-  assert.equal(gets,3);release.shift()();const L=await p;await q;
-  assert.equal(document.body.children.length,1);
-  await P.pick({api:slow,botName:'ada',current:''});assert.equal(gets,3,'open picker reloaded');
-  assert.equal(document.body.children.length,1);
-  P.closePick();assert.equal(document.body.children.length,0);
-  assert.equal(L.closed,true);
-  // search past the first KiB: the server's answer wins; a stale answer is dropped
-  const answers=[];
-  const fast=async path=>{if(path==='/api/persona-cards')return {cards:structuredClone(cards)};
-   if(path.startsWith('/api/persona-cards?q=')){const q=decodeURIComponent(path.slice(21));let r;const done=new Promise(x=>r=x);answers.push({q,r});await done;
-    return {cards:cards.filter(c=>(c.name+' '+(c.id[0]==='a'?deep:c.search)).includes(q))}}
-   throw new Error('unexpected '+path)};
-  await P.pick({api:fast,botName:'ada',current:''});
-  const search=find('pc-picksearch').at(-1),list=find('pc-picklist').at(-1);
-  search.value='关键';search.oninput();await wait(150);
-  search.value='关键词';search.oninput();
-  assert.equal(list.children.length,1,'only 未选用 before the server answers');
-  await wait(150);
-  assert.deepEqual(answers.map(a=>a.q),['关键','关键词']);
-  answers[1].r();await wait(0);
-  assert.equal(find('pc-picklist').at(-1).children.length,2,'deep match missing');
-  assert.equal(find('pc-picklist').at(-1).children[1].children[1].children[0].textContent,'长卡');
-  answers[0].r();await wait(0);
-  assert.equal(find('pc-picklist').at(-1).children.length,2,'stale answer replaced the newer one');
-  P.closePick();
  finished=true;
  })().catch(e=>{console.error(e);process.exitCode=1});`
 	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {

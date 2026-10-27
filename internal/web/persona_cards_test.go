@@ -48,7 +48,7 @@ func TestPersonaCardAPI(t *testing.T) {
 		t.Fatalf("confirmed import %d %s", code, raw)
 	}
 
-	// Pick it for two bots; the panel shows the card name, and the prompt uses its body.
+	// Pick it for two bots; the panel shows the card name, and the prompt adds its body after the duty.
 	for _, name := range []string{"ada", "bob"} {
 		if code, raw = call("PUT", "/api/bots/"+name+"/persona-card", `{"id":"`+card.ID+`"}`, true); code != 200 || !strings.Contains(raw, `"name":"简洁"`) {
 			t.Fatalf("pick %s %d %s", name, code, raw)
@@ -61,11 +61,11 @@ func TestPersonaCardAPI(t *testing.T) {
 		t.Fatalf("missing card %d", code)
 	}
 	code, raw = call("GET", "/api/bots/ada", "", true)
-	if code != 200 || !strings.Contains(raw, `"persona_card":{"id":"`+card.ID+`","name":"简洁"}`) {
+	if code != 200 || !strings.Contains(raw, `"persona_card":{"id":"`+card.ID+`","name":"简洁","preview":`) || !strings.Contains(raw, `"persona":"persona`) {
 		t.Fatalf("panel %d %s", code, raw)
 	}
 	ada, _ := bot.Load(root, "ada")
-	if got, _ := ada.ComposedPersona(); got != "<b>只说一句</b>" {
+	if got, _ := ada.ComposedPersona(); !strings.HasPrefix(got, "persona\n\n### 人设卡 · 简洁\n") || !strings.HasSuffix(got, "<b>只说一句</b>") {
 		t.Fatalf("persona %q", got)
 	}
 	if code, raw = call("GET", "/api/persona-cards/"+card.ID, "", true); code != 200 || !strings.Contains(raw, `"bots":2`) {
@@ -84,12 +84,17 @@ func TestPersonaCardAPI(t *testing.T) {
 		if b.Config().PersonaCard != "" {
 			t.Fatalf("%s still bound", name)
 		}
-		if got, _ := b.ComposedPersona(); got != "persona" {
+		if got, _ := b.ComposedPersona(); !strings.HasPrefix(got, "persona\n\n### 人设卡 · "+personacard.DefaultName+"\n") {
 			t.Fatalf("%s persona %q", name, got)
 		}
 	}
+	// The default card is what bots fall back to, so it cannot be deleted.
+	def, _ := personacard.Default(root, "u1")
+	if code, raw = call("DELETE", "/api/persona-cards/"+def.ID+"?force=1", "", true); code != 400 || !strings.Contains(raw, "默认人设卡不能删") {
+		t.Fatalf("delete default %d %s", code, raw)
+	}
 	code, raw = call("GET", "/api/bots/ada", "", true)
-	if code != 200 || !strings.Contains(raw, `"persona_card":null`) {
+	if code != 200 || !strings.Contains(raw, `"persona_card":{"id":"`+def.ID+`","name":"`+personacard.DefaultName+`"`) {
 		t.Fatalf("panel after delete %d %s", code, raw)
 	}
 	if code, _ = call("GET", "/api/persona-cards/..%2Fx", "", true); code != 404 {
@@ -176,27 +181,27 @@ func TestPersonaCardListSeedsAnEmptyLibrary(t *testing.T) {
 		Cards []struct{ ID, Name string }
 	}
 	code, raw := call("GET", "/api/persona-cards", "", true)
-	if err := json.Unmarshal([]byte(raw), &out); code != 200 || err != nil || len(out.Cards) != 3 {
+	if err := json.Unmarshal([]byte(raw), &out); code != 200 || err != nil || len(out.Cards) != len(personacard.Seeds) {
 		t.Fatalf("list %d %s", code, raw)
 	}
-	for i, want := range []string{"碎嘴群友", "值班运维", "周末搭子"} {
+	for i, want := range []string{"工程合伙人", "碎嘴群友", "值班运维", "周末搭子"} {
 		if out.Cards[i].Name != want {
 			t.Fatalf("card %d %s", i, raw)
 		}
 	}
-	if disk, _ := personacard.List(root, "u1"); len(disk) != 3 {
+	if disk, _ := personacard.List(root, "u1"); len(disk) != len(personacard.Seeds) {
 		t.Fatalf("not on disk: %+v", disk)
 	}
-	if code, raw = call("GET", "/api/persona-cards/"+out.Cards[0].ID, "", true); code != 200 || !strings.Contains(raw, "这个我接不上") {
+	if code, raw = call("GET", "/api/persona-cards/"+out.Cards[1].ID, "", true); code != 200 || !strings.Contains(raw, "这个我接不上") {
 		t.Fatalf("open %d %s", code, raw)
 	}
 	if code, raw = call("GET", "/api/persona-cards?q=群友", "", true); !strings.Contains(raw, `"name":"碎嘴群友"`) || strings.Contains(raw, "值班运维") {
 		t.Fatalf("search %d %s", code, raw)
 	}
-	if code, raw = call("PUT", "/api/bots/ada/persona-card", `{"id":"`+out.Cards[1].ID+`"}`, true); code != 200 || !strings.Contains(raw, `"name":"值班运维"`) {
+	if code, raw = call("PUT", "/api/bots/ada/persona-card", `{"id":"`+out.Cards[2].ID+`"}`, true); code != 200 || !strings.Contains(raw, `"name":"值班运维"`) {
 		t.Fatalf("pick %d %s", code, raw)
 	}
-	if code, raw = call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != 3 {
+	if code, raw = call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != len(personacard.Seeds) {
 		t.Fatalf("second list %d %s", code, raw)
 	}
 }
@@ -233,7 +238,7 @@ func TestPersonaCardListWaitsForASeedRunInAnotherProcess(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if raw := <-got; strings.Count(raw, `"id":`) != 3 || !strings.Contains(raw, "周末搭子") {
+		if raw := <-got; strings.Count(raw, `"id":`) != len(personacard.Seeds) || !strings.Contains(raw, "周末搭子") {
 			t.Fatalf("%d seeds written: %s", k, raw)
 		}
 	}
@@ -249,13 +254,13 @@ func TestPersonaCardFailedPickStillSeeds(t *testing.T) {
 	if code, _ := call("DELETE", "/api/persona-cards/0123456789abcdef", "", true); code != 404 {
 		t.Fatalf("delete %d", code)
 	}
-	if code, raw := call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != 3 {
+	if code, raw := call("GET", "/api/persona-cards", "", true); strings.Count(raw, `"id":`) != len(personacard.Seeds) {
 		t.Fatalf("list %d %s", code, raw)
 	}
 }
 
 // A library from before the marker: deleting its last card over the API, then listing
-// again (what the page does), must not bring the seeds in.
+// again (what the page does), must not bring the seeds in. Only the default card stays.
 func TestPersonaCardEmptiedLegacyLibraryStaysEmpty(t *testing.T) {
 	for _, withLock := range []bool{true, false} {
 		t.Run(map[bool]string{true: "with_lock", false: "without_lock"}[withLock], func(t *testing.T) {
@@ -269,14 +274,14 @@ func TestPersonaCardEmptiedLegacyLibraryStaysEmpty(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Count(raw, `"id":`) != 1 {
+			if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Count(raw, `"id":`) != 2 {
 				t.Fatalf("list %d %s", code, raw)
 			}
 			if code, raw := call("DELETE", "/api/persona-cards/0123456789abcdef", "", true); code/100 != 2 {
 				t.Fatalf("delete %d %s", code, raw)
 			}
 			for i := 0; i < 2; i++ {
-				if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Contains(raw, `"id":`) {
+				if code, raw := call("GET", "/api/persona-cards", "", true); code != 200 || strings.Count(raw, `"id":`) != 1 || !strings.Contains(raw, `"default":true`) {
 					t.Fatalf("list after delete %d %s", code, raw)
 				}
 			}
@@ -326,7 +331,7 @@ func TestPersonaCardListUpgradesThinSeeds(t *testing.T) {
 	for i, id := range ids {
 		code, raw := call("GET", "/api/persona-cards/"+id, "", true)
 		var c struct{ ID, Name, Body string }
-		if err := json.Unmarshal([]byte(raw), &c); err != nil || code != 200 || c.ID != id || c.Name != old[i].name || c.Body != personacard.Seeds[i].Body {
+		if err := json.Unmarshal([]byte(raw), &c); err != nil || code != 200 || c.ID != id || c.Name != old[i].name || c.Body != personacard.Seeds[i+1].Body {
 			t.Fatalf("detail %d did not return upgraded body: status %d, decode %v", i, code, err)
 		}
 		if disk, err := personacard.Get(root, "u1", id); err != nil || disk.Body != c.Body {

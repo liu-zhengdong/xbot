@@ -39,6 +39,8 @@ var (
 	ErrFull   = errors.New("personacard: library is full")
 	ErrEmpty  = errors.New("personacard: empty body")
 	ErrLarge  = errors.New("personacard: body too long")
+	// ErrDefault is returned when deleting the default card.
+	ErrDefault = errors.New("personacard: the default card stays")
 
 	idRe    = regexp.MustCompile(`^[a-z0-9]{8,32}$`)
 	ownerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
@@ -196,6 +198,9 @@ func DeleteWith(root, owner, id string, before func() error) error {
 				return ErrNotFound
 			}
 			return err
+		}
+		if isDefault(dir, id) {
+			return ErrDefault
 		}
 		if before != nil {
 			if err := before(); err != nil {

@@ -7,7 +7,10 @@ import (
 	"xbot/internal/personacard"
 )
 
-func TestPickedCardIsThePersona(t *testing.T) {
+const cardHead = "\n\n### 人设卡 · 简洁\n这段只管口吻、节奏和关系分寸，不改上面的职责；两者冲突时职责优先。\n"
+
+// A picked card is a second section after the duty; it never replaces it.
+func TestPickedCardStacksOnDuty(t *testing.T) {
 	root := t.TempDir()
 	b, err := Create(root, "ada", "From persona.md.", nil)
 	if err != nil {
@@ -29,7 +32,7 @@ func TestPickedCardIsThePersona(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := running.ComposedPersona()
-	if err != nil || got != "先给结论，再给理由。" {
+	if err != nil || got != "From persona.md."+cardHead+"先给结论，再给理由。" {
 		t.Fatalf("picked card not used: %q %v", got, err)
 	}
 	// The card is referenced, not copied: an edit reaches the bot on its next turn.
@@ -37,7 +40,7 @@ func TestPickedCardIsThePersona(t *testing.T) {
 	if _, err := personacard.Update(root, "u1", card.ID, nil, &body); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := running.ComposedPersona(); got != body {
+	if got, _ := running.ComposedPersona(); got != "From persona.md."+cardHead+body {
 		t.Fatalf("edited card not used: %q", got)
 	}
 	// A save from the stale copy must not undo the newer pick.
@@ -49,14 +52,18 @@ func TestPickedCardIsThePersona(t *testing.T) {
 	if err != nil || fresh.Config().PersonaCard != card.ID {
 		t.Fatalf("stale save dropped the pick: %+v %v", fresh.Config(), err)
 	}
-	if got, _ := fresh.ComposedPersona(); got != body {
+	// Editing the duty while a card is picked reaches the prompt too.
+	if err := fresh.WritePersona("New duty."); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := fresh.ComposedPersona(); got != "New duty."+cardHead+body {
 		t.Fatalf("composed %q", got)
 	}
-	// Unbinding, or a card that is gone, goes back to persona.md.
+	// A card that is gone falls back to the default card; the duty stays.
 	if err := personacard.Delete(root, "u1", card.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := fresh.ComposedPersona(); !strings.HasPrefix(got, "From persona.md.") {
+	if got, _ := fresh.ComposedPersona(); !strings.HasPrefix(got, "New duty.\n\n### 人设卡 · "+personacard.DefaultName+"\n") || !strings.HasSuffix(got, personacard.PartnerPersona) {
 		t.Fatalf("missing card %q", got)
 	}
 	if err := fresh.SetPersonaCard(""); err != nil {
@@ -70,9 +77,9 @@ func TestPickedCardIsThePersona(t *testing.T) {
 	}
 }
 
-// A template carries the persona in effect, so another owner who imports it
-// gets the picked card's text without needing its id.
-func TestExportTemplateCarriesPickedCard(t *testing.T) {
+// A template carries the duty. The card stays in this owner's library and is
+// not folded into the duty of the imported bot.
+func TestExportTemplateCarriesDutyNotCard(t *testing.T) {
 	root := t.TempDir()
 	b, err := Create(root, "ada", "legacy persona", nil)
 	if err != nil {
@@ -89,14 +96,14 @@ func TestExportTemplateCarriesPickedCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	tpl, err := ExportTemplate(b)
-	if err != nil || tpl.Persona != "CURRENT CARD BODY" {
+	if err != nil || tpl.Persona != "legacy persona" {
 		t.Fatalf("exported %q %v", tpl.Persona, err)
 	}
 	other, err := ImportTemplate(t.TempDir(), tpl, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := other.ComposedPersona(); got != "CURRENT CARD BODY" || other.Config().PersonaCard != "" {
+	if got, _ := other.ComposedPersona(); strings.TrimSpace(got) != "legacy persona" || other.Config().PersonaCard != "" {
 		t.Fatalf("imported %q card %q", got, other.Config().PersonaCard)
 	}
 }

@@ -58,6 +58,8 @@ func cardErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusBadRequest, "人设卡正文太长了，请删短一些")
 	case errors.Is(err, personacard.ErrFull):
 		writeErr(w, http.StatusBadRequest, "人设卡已经满了，先删掉几张再试")
+	case errors.Is(err, personacard.ErrDefault):
+		writeErr(w, http.StatusBadRequest, "默认人设卡不能删，可以改它的名字和正文")
 	default:
 		writeErr(w, http.StatusInternalServerError, "没能保存，请再试一次")
 	}
@@ -78,17 +80,14 @@ func (s *Server) cardUsers(id string) ([]string, error) {
 	return out, nil
 }
 
-// pickedCard is the bot's card for the profile drawer, or nil when none is picked or it is gone.
+// pickedCard is the bot's card for the details and the profile drawer, or nil when none is picked or it is gone.
+// It carries the name and a one-line preview, never the full body.
 func (s *Server) pickedCard(b *bot.Bot) map[string]any {
-	id := b.Config().PersonaCard
-	if id == "" || len(b.Config().Owners) != 1 {
+	c, ok := b.PickedCard()
+	if !ok {
 		return nil
 	}
-	c, err := personacard.Get(s.Root, b.Config().Owners[0], id)
-	if err != nil {
-		return nil
-	}
-	return map[string]any{"id": c.ID, "name": c.Name}
+	return map[string]any{"id": c.ID, "name": c.Name, "preview": cardPreview(c.Body)}
 }
 
 func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +106,7 @@ func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(q)) > maxCardQuery {
 		q = string([]rune(q)[:maxCardQuery])
 	}
+	def, _ := personacard.Default(s.Root, s.owner)
 	out := make([]map[string]any, 0, len(cards))
 	for _, c := range cards {
 		if q != "" && !strings.Contains(strings.ToLower(c.Name+"\n"+c.Body), q) {
@@ -114,7 +114,7 @@ func (s *Server) listPersonaCards(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, map[string]any{
 			"id": c.ID, "name": c.Name, "preview": cardPreview(c.Body),
-			"search": clipUTF8(c.Body, cardSearch), "updated": c.Updated,
+			"search": clipUTF8(c.Body, cardSearch), "updated": c.Updated, "default": c.ID == def.ID,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"cards": out})
@@ -183,7 +183,7 @@ func (s *Server) updatePersonaCard(w http.ResponseWriter, r *http.Request) {
 }
 
 // deletePersonaCard asks first when bots still use the card: without force it answers 409 with the count.
-// With force those bots go back to no card, then the card is removed.
+// With force those bots go back to the default card, then the card is removed.
 func (s *Server) deletePersonaCard(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
@@ -258,7 +258,7 @@ func (s *Server) importPersonaCard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// pickPersonaCard binds the bot to one card, or to none when id is empty.
+// pickPersonaCard binds the bot to one card, or back to the default card when id is empty.
 func (s *Server) pickPersonaCard(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
@@ -283,7 +283,7 @@ func (s *Server) pickPersonaCard(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "没能选用，请再试一次")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "persona_card": nil})
+		writeJSON(w, http.StatusOK, map[string]any{"name": b.Name(), "persona_card": s.pickedCard(b)})
 		return
 	}
 	if len(b.Config().Owners) != 1 {

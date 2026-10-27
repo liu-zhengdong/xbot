@@ -19,28 +19,9 @@
 .persona-settings .btn.pc-del:hover{background:var(--x-fill-1)}
 
 /* The picker opens over the profile drawer. */
-.nestlayer.pc-picklayer{z-index:60}
 /* Picker: a quiet single choice. The selected row is a neutral fill, the radio near black. */
-.nestcard.pc-pickcard .pc-pickwrap{margin:0 0 var(--x-s3)}
-.nestcard.pc-pickcard .sksearch{width:100%;max-width:none}
-.nestcard.pc-pickcard{--sk-search:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E")}
-.pc-picklist{display:flex;flex-direction:column;gap:var(--x-s1);padding:var(--x-s1);border-radius:var(--x-r-card);background:var(--x-fill-1);overflow-y:auto;max-height:min(320px,48vh)}
-.pc-pickrow{display:flex;align-items:flex-start;gap:var(--x-s5);width:100%;min-height:48px;padding:var(--x-s4) var(--x-s5);border:0;border-radius:var(--x-r-sm);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer;flex:none}
-.pc-pickrow:hover{background:var(--x-fill-2)}
-.pc-pickrow.on{background:var(--x-fill-3)}
-.pc-pickrow .tx{flex:1;min-width:0}
-.pc-pickrow b{display:block;font-size:var(--x-fs-ui);font-weight:560}
-.pc-pickrow .hint{display:block;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pc-radio{flex:none;width:16px;height:16px;margin-top:2px;border-radius:50%;border:1.5px solid var(--x-faint);box-sizing:border-box;background:var(--x-card)}
-.pc-pickrow.on .pc-radio{border:5px solid var(--x-text)}
-.pc-picknone{margin:var(--x-s4) 0 0;font-size:var(--x-fs-sm);color:var(--x-muted)}
 .nestcard .pc-manage{margin-top:var(--x-s5)}
 
 /* The profile drawer row that opens the picker. */
-.pc-pickline{display:flex;align-items:center;gap:var(--x-s4);width:100%;min-height:44px;padding:0 var(--x-s4) 0 var(--x-s5);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:var(--x-fs-ui);text-align:left;cursor:pointer}
-.pc-pickline:hover{background:var(--x-fill-2)}
-.pc-pickline .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pc-pickline .tx.unset{color:var(--x-muted)}
-.pc-pickline .skchev{--sk-chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")}
 .pc-pickhint{margin:var(--x-s2) 0 0;font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.5}
-@media (prefers-reduced-motion:reduce){.pc-pickrow,.pc-pickline{transition:none}}

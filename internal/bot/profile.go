@@ -143,12 +143,6 @@ func (b *Bot) ProfileText() string {
 	return ""
 }
 
-// ComposedPersona returns the effective duties/persona. Display metadata such
-// as the description never becomes instructions or replaces the owner's text.
-func (b *Bot) ComposedPersona() (string, error) {
-	return b.PersonaText()
-}
-
 // AvatarColors is the fallback fill: a low-saturation color from the name, plus an optional initial.
 func AvatarColors(name string) (bg, ink, initial string) {
 	initial = "?"
@@ -315,11 +309,10 @@ type Template struct {
 	Routines []TemplateRoutine `json:"routines,omitempty"`
 }
 
-// ExportTemplate reads profile, persona, and routines. Memory and the transcript stay out.
-// The persona is the text in effect: a picked card's body is copied in, so the
-// template does not depend on this owner's card ids.
+// ExportTemplate reads profile, duty (persona), and routines. Memory and the transcript stay out.
+// A picked card stays out too: cards belong to this owner's library.
 func ExportTemplate(b *Bot) (Template, error) {
-	persona, err := b.PersonaText()
+	persona, err := b.ReadPersona()
 	if err != nil {
 		return Template{}, err
 	}

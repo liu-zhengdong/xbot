@@ -220,7 +220,7 @@ func TestCreateBotPersonaOccursOnlyInArgumentsAndOwnPrefix(t *testing.T) {
 	if err := ck.Handle(context.Background(), link.TerminalEvent("u1", "start", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(messagesText(cp.reqs[0].Messages), persona) != 1 || !strings.Contains(cp.reqs[0].Messages[0].Text(), persona) || environmentGet[string](testPublished(t, ck), "persona") != "persona.md "+shortHash(persona) {
+	if strings.Count(messagesText(cp.reqs[0].Messages), persona) != 1 || !strings.Contains(cp.reqs[0].Messages[0].Text(), persona) || !strings.HasPrefix(environmentGet[string](testPublished(t, ck), "persona"), "职责 "+shortHash(persona)) {
 		t.Fatal("persona must occur only in own prefix; environment must carry its readable label and hash")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,11 +16,23 @@ import (
 	"xbot/internal/fsutil"
 )
 
+func seedBody(name string) string {
+	for _, s := range Seeds {
+		if s.Name == name {
+			return s.Body
+		}
+	}
+	return ""
+}
+
 func thinSeedLibrary(t *testing.T) (string, []Card) {
 	t.Helper()
 	root := t.TempDir()
 	var cards []Card
 	for _, s := range Seeds {
+		if legacySeedBodies[s.Name] == "" {
+			continue
+		}
 		c, err := Create(root, "u1", s.Name, legacySeedBodies[s.Name])
 		if err != nil {
 			t.Fatal(err)
@@ -65,7 +78,7 @@ func TestEnsureSeedsUpgradesOnlyUnchangedThinCards(t *testing.T) {
 					if got != first {
 						t.Fatalf("edited card changed: %+v", got)
 					}
-				} else if got.Name != c.Name || got.Body != Seeds[i].Body {
+				} else if got.Name != c.Name || got.Body != seedBody(c.Name) {
 					t.Fatalf("%s was not upgraded to its current seed", c.Name)
 				}
 			}
@@ -110,7 +123,7 @@ func TestEnsureSeedsUpgradeWaitsForLibraryLock(t *testing.T) {
 		t.Fatal("ensure did not finish after releasing the library lock")
 	}
 	for i, c := range cards {
-		want := Seeds[i].Body
+		want := seedBody(c.Name)
 		if i == 0 {
 			want = edited
 		}
@@ -136,7 +149,7 @@ func TestEnsureSeedsUpgradeContinuesAfterWriteFailure(t *testing.T) {
 		t.Fatalf("want write error, got %v", err)
 	}
 	for i, c := range cards {
-		want := Seeds[i].Body
+		want := seedBody(c.Name)
 		if c.ID == failed.ID {
 			want = c.Body
 		}
@@ -150,7 +163,7 @@ func TestEnsureSeedsUpgradeContinuesAfterWriteFailure(t *testing.T) {
 	if err := EnsureSeeds(root, "u1"); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := Get(root, "u1", failed.ID); err != nil || got.Body != Seeds[len(cards)-1].Body {
+	if got, err := Get(root, "u1", failed.ID); err != nil || got.Body != seedBody(failed.Name) {
 		t.Fatalf("failed card was not upgraded on retry: %v", err)
 	}
 }
@@ -169,7 +182,10 @@ func TestEnsureSeedsFillsAnEmptyLibraryOnce(t *testing.T) {
 			t.Fatalf("card %d is %+v, want %s", i, cards[i], s.Name)
 		}
 	}
-	if cards[0].Name != "碎嘴群友" || cards[1].Name != "值班运维" || cards[2].Name != "周末搭子" {
+	if cards[0].Name != DefaultName || cards[1].Name != "碎嘴群友" || cards[2].Name != "值班运维" || cards[3].Name != "周末搭子" {
+		t.Fatalf("%+v", cards)
+	}
+	if def, ok := Default(root, "u1"); !ok || def.ID != cards[0].ID {
 		t.Fatalf("%+v", cards)
 	}
 	if err := EnsureSeeds(root, "u1"); err != nil {
@@ -180,20 +196,24 @@ func TestEnsureSeedsFillsAnEmptyLibraryOnce(t *testing.T) {
 	}
 	// An edited seed stays edited; deleting every seed does not bring them back.
 	body := "改过的正文。"
-	if _, err := Update(root, "u1", cards[0].ID, nil, &body); err != nil {
+	if _, err := Update(root, "u1", cards[1].ID, nil, &body); err != nil {
 		t.Fatal(err)
 	}
 	_ = EnsureSeeds(root, "u1")
-	if got, _ := Get(root, "u1", cards[0].ID); got.Body != body {
+	if got, _ := Get(root, "u1", cards[1].ID); got.Body != body {
 		t.Fatalf("seed overwrote an edit: %q", got.Body)
 	}
-	for _, c := range cards {
+	// The default card stays: deleting it is refused, so bots always have one to fall back to.
+	if err := Delete(root, "u1", cards[0].ID); !errors.Is(err, ErrDefault) {
+		t.Fatalf("deleted the default card: %v", err)
+	}
+	for _, c := range cards[1:] {
 		if err := Delete(root, "u1", c.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
 	_ = EnsureSeeds(root, "u1")
-	if left, _ := List(root, "u1"); len(left) != 0 {
+	if left := userCards(t, root, "u1"); len(left) != 0 {
 		t.Fatalf("reseeded after delete: %+v", left)
 	}
 }
@@ -230,17 +250,17 @@ func TestEnsureSeedsLeavesAUsedLibraryUntouched(t *testing.T) {
 		}
 	}
 	for d, want := range before {
-		if got := snapshotLibrary(t, d); !reflect.DeepEqual(got, want) {
+		if got := withoutDefault(snapshotLibrary(t, d), d); !reflect.DeepEqual(got, withoutDefault(want, d)) {
 			t.Fatalf("%s changed: %v -> %v", d, want, got)
 		}
 	}
-	if cards, _ := List(root, "u1"); len(cards) != 1 || cards[0].Name != "我的卡" {
+	if cards := userCards(t, root, "u1"); len(cards) != 1 || cards[0].Name != "我的卡" {
 		t.Fatalf("%+v", cards)
 	}
-	if cards, _ := List(root, "u2"); len(cards) != 1 || cards[0].Name != "旧卡" {
+	if cards := userCards(t, root, "u2"); len(cards) != 1 || cards[0].Name != "旧卡" {
 		t.Fatalf("%+v", cards)
 	}
-	if cards, _ := List(root, "u3"); len(cards) != 0 {
+	if cards := userCards(t, root, "u3"); len(cards) != 0 {
 		t.Fatalf("emptied library reseeded: %+v", cards)
 	}
 }
@@ -345,8 +365,8 @@ func TestLegacyLibraryEmptiedStaysEmpty(t *testing.T) {
 		if err := EnsureSeeds(root, "u1"); err != nil {
 			t.Fatal(err)
 		}
-		if cards, err := List(root, "u1"); err != nil || len(cards) != 0 {
-			t.Fatalf("reopened library: %+v, %v", cards, err)
+		if cards := userCards(t, root, "u1"); len(cards) != 0 {
+			t.Fatalf("reopened library: %+v", cards)
 		}
 		return
 	}
@@ -371,12 +391,12 @@ func TestLegacyLibraryEmptiedStaysEmpty(t *testing.T) {
 			if err := EnsureSeeds(root, "u1"); err != nil {
 				t.Fatal(err)
 			}
-			if got := snapshotLibrary(t, dir); !reflect.DeepEqual(got, before) {
+			if got := withoutDefault(snapshotLibrary(t, dir), dir); !reflect.DeepEqual(got, withoutDefault(before, dir)) {
 				t.Fatalf("lock %v: list wrote %v -> %v", withLock, before, got)
 			}
-			cards, err := List(root, "u1")
-			if err != nil || len(cards) != 2 {
-				t.Fatalf("legacy cards: %+v, %v", cards, err)
+			cards := userCards(t, root, "u1")
+			if len(cards) != 2 {
+				t.Fatalf("legacy cards: %+v", cards)
 			}
 			for _, c := range cards {
 				if err := Delete(root, "u1", c.ID); err != nil {
@@ -387,8 +407,8 @@ func TestLegacyLibraryEmptiedStaysEmpty(t *testing.T) {
 				if err := EnsureSeeds(root, "u1"); err != nil {
 					t.Fatal(err)
 				}
-				if left, err := List(root, "u1"); err != nil || len(left) != 0 {
-					t.Fatalf("lock %v: reseeded after deleting every old card: %+v, %v", withLock, left, err)
+				if left := userCards(t, root, "u1"); len(left) != 0 {
+					t.Fatalf("lock %v: reseeded after deleting every old card: %+v", withLock, left)
 				}
 			}
 			if _, err := os.Stat(filepath.Join(dir, seededFile)); err != nil {
@@ -417,6 +437,41 @@ type libraryEntry struct {
 
 // Compare contents and mtimes as well as paths: equal file counts do not prove
 // that listing an existing library made no writes.
+// withoutDefault drops what ensureDefault may add to any library: the default
+// card, the file naming it, the lock it takes, and the library directory's own mtime.
+func withoutDefault(snap map[string]libraryEntry, dir string) map[string]libraryEntry {
+	raw, _ := os.ReadFile(filepath.Join(dir, defaultFile))
+	id := strings.TrimSpace(string(raw))
+	out := map[string]libraryEntry{}
+	for path, e := range snap {
+		if path == dir || path == filepath.Join(dir, defaultFile) || path == filepath.Join(dir, ".lock") || (id != "" && strings.HasPrefix(path, filepath.Join(dir, id))) {
+			continue
+		}
+		out[path] = e
+	}
+	return out
+}
+
+// userCards lists the owner's cards other than the default one.
+func userCards(t *testing.T, root, owner string) []Card {
+	t.Helper()
+	cards, err := List(root, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, ok := Default(root, owner)
+	if !ok || def.Name != DefaultName {
+		t.Fatalf("%s has no default card: %+v", owner, def)
+	}
+	var out []Card
+	for _, c := range cards {
+		if c.ID != def.ID {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func snapshotLibrary(t *testing.T, dir string) map[string]libraryEntry {
 	t.Helper()
 	out := map[string]libraryEntry{}
@@ -499,7 +554,7 @@ func TestDeleteKeepsCardIfSeedMarkerCannotBeWritten(t *testing.T) {
 	if err := EnsureSeeds(root, "u1"); err != nil {
 		t.Fatal(err)
 	}
-	if cards, err := List(root, "u1"); err != nil || len(cards) != 0 {
-		t.Fatalf("reseeded after retrying delete: %+v, %v", cards, err)
+	if cards := userCards(t, root, "u1"); len(cards) != 0 {
+		t.Fatalf("reseeded after retrying delete: %+v", cards)
 	}
 }

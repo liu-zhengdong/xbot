@@ -83,7 +83,7 @@ func TestCardText(t *testing.T) {
 		{
 			name: "propose persona", tool: "bot_propose_persona",
 			args: `{"persona":"x"}`, summary: "update persona",
-			wantT: "修改人设", wantSub: "",
+			wantT: "修改职责", wantSub: "",
 		},
 		{
 			name: "update profile", tool: "bot_update_profile",

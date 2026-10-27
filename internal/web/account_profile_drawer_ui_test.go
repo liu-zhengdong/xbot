@@ -16,8 +16,6 @@ func TestProfileDrawer(t *testing.T) {
 			`name.dataset.profileFocus = "true";`,
 			`modalFields.querySelector("[data-profile-focus]").focus();`,
 			`target.focus({ preventScroll: true });`,
-			`section("人设卡", pickLine, pickHint)`,
-			`window.XBotPersonaCards.pick({`,
 			`if (!modal.hidden) { closeModal(); return; }`,
 			`if (ev.target === modal) closeModal();`,
 		},
@@ -44,9 +42,9 @@ func TestProfileDrawer(t *testing.T) {
 	}
 }
 
-// The drawer opens with 基本 then 人设卡. Speaking style and quiet hours are gone from the product,
-// and the drawer no longer edits the persona text or sends those fields.
-func TestProfileDrawerHasOnlyBasicsAndPersonaCard(t *testing.T) {
+// The drawer is 基本 → 职责 → 人设卡 → 模型 → 保存. Speaking style and quiet hours are gone from the product,
+// and the drawer does not send those fields.
+func TestProfileDrawerHasBasicsDutyAndPersonaCard(t *testing.T) {
 	data, err := staticFS.ReadFile("static/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -59,9 +57,17 @@ func TestProfileDrawerHasOnlyBasicsAndPersonaCard(t *testing.T) {
 	}
 	form := src[start:end]
 	basic := strings.Index(form, `section("基本",`)
+	duty := strings.Index(form, `section("职责",`)
 	card := strings.Index(form, `section("人设卡",`)
-	if basic < 0 || card < basic {
-		t.Fatalf("drawer order: 基本 %d, 人设卡 %d", basic, card)
+	if basic < 0 || duty < basic || card < duty {
+		t.Fatalf("drawer order: 基本 %d, 职责 %d, 人设卡 %d", basic, duty, card)
+	}
+	model := strings.Index(form, `section("模型",`)
+	if model < 0 || model < card {
+		t.Fatalf("drawer order: 人设卡 %d, 模型 %d", card, model)
+	}
+	if n := strings.Count(form, `section("`); n != 4 {
+		t.Fatalf("drawer has %d sections, want 基本, 职责, 人设卡 and 模型", n)
 	}
 	for _, gone := range []string{"说话方式", "免打扰", "language", "quiet_start", "quiet_end", "persona:", `labeled("人设"`} {
 		if strings.Contains(form, gone) {

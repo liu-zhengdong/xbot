@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-27 @ 2e28199 + providers-sole-entity
+verified: 2026-10-27 @ e95836f + duty-persona-split
 ---
 # 内核：Link、Event、收件箱
 
@@ -37,7 +37,7 @@ verified: 2026-10-27 @ 2e28199 + providers-sole-entity
 
 ## 工具组渐进披露
 
-`mountedTools` 保留全部已挂载能力；主 Agent 的 `modelTools` 将尚未展开的资料写工具换成组短入口。当前只有 `bot_profile`（「Bot资料编辑」）：`bot_update_profile` 改名字、简介、时区、头像，`bot_propose_persona` 改人设；其他常驻工具不变。短入口只带名称、摘要和协议要求的空参数对象，不带成员参数；直接调用短入口会明确提示使用 `expand_tool_group`。
+`mountedTools` 保留全部已挂载能力；主 Agent 的 `modelTools` 将尚未展开的资料写工具换成组短入口。当前只有 `bot_profile`（「Bot资料编辑」）：`bot_update_profile` 改名字、简介、时区、头像，`bot_propose_persona` 改职责；其他常驻工具不变。短入口只带名称、摘要和协议要求的空参数对象，不带成员参数；直接调用短入口会明确提示使用 `expand_tool_group`。
 
 `expand_tool_group({"group":"bot_profile"})` 也接受展示名，返回成员完整定义。下一次模型请求由现有 `RefreshTools` 重建可调用目录，整组成员替换短入口，元工具一直可用。未展开时直接调用成员，以及与展开放在同一批里的成员调用，均返回 `unknown tool`。这只是能力发现，不是主线权限白名单；子代理仍沿用完整挂载目录和原有类型范围。
 

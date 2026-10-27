@@ -10,7 +10,7 @@ import (
 	"xbot/internal/personacard"
 )
 
-// SetPersonaCard binds this bot to one of its owner's persona cards. Empty unbinds it.
+// SetPersonaCard binds this bot to one of its owner's persona cards. Empty goes back to the default card.
 // The card is read on every turn, so later edits to it reach this bot too.
 func (b *Bot) SetPersonaCard(id string) error {
 	id = strings.TrimSpace(id)
@@ -22,29 +22,43 @@ func (b *Bot) SetPersonaCard(id string) error {
 	return b.SaveConfig()
 }
 
-// PersonaText is the picked card's body, or persona.md when no card is picked
-// or the card is gone. The binding is read from disk because a long-running
-// kernel keeps the config it loaded, and the owner picks cards from the web.
-func (b *Bot) PersonaText() (string, error) {
-	body, _, err := b.PersonaSource()
-	return body, err
-}
-
-// PersonaSource reads the effective persona and its readable label together.
-// Keep the card name and body from the same read, including for a stale Bot copy.
-func (b *Bot) PersonaSource() (body, label string, err error) {
-	id := b.boundCard()
-	if owners := b.cfg.Owners; id != "" && len(owners) == 1 && b.Root != "" {
+// PickedCard is the bound card, or the owner's default card when none was
+// picked or the picked one is gone. The binding is read from disk because a
+// long-running kernel keeps the config it loaded, and the owner picks cards
+// from the web. ok is false only for a bot without exactly one owner.
+func (b *Bot) PickedCard() (personacard.Card, bool) {
+	owners := b.cfg.Owners
+	if len(owners) != 1 || b.Root == "" {
+		return personacard.Card{}, false
+	}
+	if id := b.boundCard(); id != "" {
 		if c, err := personacard.Get(b.Root, owners[0], id); err == nil {
-			return c.Body, c.Name, nil
+			return c, true
 		}
 	}
-	body, err = b.ReadPersona()
-	label = "persona.md"
-	if body == DefaultPersona {
-		label = "默认人设"
+	if c, ok := personacard.Default(b.Root, owners[0]); ok {
+		return c, true
 	}
-	return body, label, err
+	// A library nobody has opened yet gets its default card on first use.
+	if personacard.EnsureSeeds(b.Root, owners[0]) != nil {
+		return personacard.Card{}, false
+	}
+	return personacard.Default(b.Root, owners[0])
+}
+
+// ComposedPersona is the duty (persona.md), plus the picked card as its own
+// section. A card adds voice; it never replaces the duty. Display metadata
+// such as the description never becomes instructions.
+func (b *Bot) ComposedPersona() (string, error) {
+	duty, err := b.ReadPersona()
+	if err != nil {
+		return "", err
+	}
+	c, ok := b.PickedCard()
+	if !ok {
+		return duty, nil
+	}
+	return strings.TrimSpace(duty) + "\n\n### 人设卡 · " + c.Name + "\n这段只管口吻、节奏和关系分寸，不改上面的职责；两者冲突时职责优先。\n" + strings.TrimSpace(c.Body), nil
 }
 
 func (b *Bot) boundCard() string {

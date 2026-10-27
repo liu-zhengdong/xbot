@@ -279,9 +279,16 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		var err error
 		switch key {
 		case "persona":
-			var label string
-			v, label, err = k.Bot.PersonaSource()
+			// Duty and card are named apart, so a picked card never hides the duty.
+			v, err = k.Bot.ReadPersona()
+			label := "职责"
+			if v == bot.DefaultPersona {
+				label = "默认职责"
+			}
 			v = label + " " + shortHash(v)
+			if c, ok := k.Bot.PickedCard(); ok {
+				v += "；人设卡 " + c.Name + " " + shortHash(c.Body)
+			}
 		case "rules":
 			v, err = k.rulesText()
 		case "skills":

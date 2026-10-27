@@ -5370,11 +5370,18 @@
 
   function detailsView(data) {
     const wrap = document.createDocumentFragment();
-    const persona = data.persona_card ? data.persona_card.name : data.persona;
-    if (persona) {
-      const about = el("div", "psec");
-      about.append(el("h4", "", data.persona_card ? "人设卡" : "人设"), el("p", "", persona));
-      wrap.append(about);
+    if (data.persona) {
+      const duty = el("div", "psec");
+      duty.append(el("h4", "", "职责"), el("p", "", data.persona));
+      wrap.append(duty);
+    }
+    // Only the card's name and first line: the body lives in 设置 · 人设卡, and rebinding is in the drawer.
+    const card = data.persona_card;
+    if (card) {
+      const sec = el("div", "psec");
+      sec.append(el("h4", "", "人设卡"), el("p", "", card.name));
+      if (card.preview) sec.append(el("p", "psec-weak", card.preview));
+      wrap.append(sec);
     }
     const section = el("div", "psec");
     const snap = state.ctxSnap;
@@ -6010,30 +6017,58 @@
     const name = textInput(data.name, 64);
     name.dataset.profileFocus = "true";
     const description = textInput(data.description, 160);
-    // The card is bound the moment the picker confirms; the drawer's save only covers the other fields.
-    const pickLine = el("button", "pc-pickline");
-    pickLine.type = "button";
-    pickLine.setAttribute("aria-haspopup", "dialog");
-    const paintPick = (card) => {
-      const label = el("span", card ? "tx" : "tx unset", card ? card.name : "未选用");
-      const chev = el("span", "skchev");
-      chev.setAttribute("aria-hidden", "true");
-      pickLine.replaceChildren(label, chev);
-      pickLine.setAttribute("aria-label", "人设卡：" + (card ? card.name : "未选用"));
+    const duty = document.createElement("textarea");
+    duty.value = data.persona || "";
+    duty.rows = 8;
+    duty.maxLength = 32768;
+    duty.setAttribute("aria-label", "职责");
+    const dutyBox = el("label", "field", "");
+    dutyBox.append(duty);
+    const dutyHint = el("p", "pc-pickhint", "这个 Bot 负责什么、边界在哪。口吻交给下面的人设卡。");
+    // The card is bound the moment the menu changes; the drawer's save only covers the other fields.
+    const cardMenu = document.createElement("select");
+    cardMenu.setAttribute("aria-label", "人设卡");
+    const cardOption = (card) => {
+      const o = document.createElement("option");
+      o.value = card.id;
+      o.textContent = card.name + (card.default ? "（默认）" : "");
+      return o;
     };
-    paintPick(data.persona_card);
-    pickLine.addEventListener("click", async () => {
+    const current = data.persona_card;
+    if (current) cardMenu.append(cardOption(current));
+    cardMenu.value = current ? current.id : "";
+    cardMenu.disabled = true;
+    api("/api/persona-cards").then((res) => {
+      if (drawerGen !== profileDrawerGen) return;
+      const cards = (res && res.cards) || [];
+      cardMenu.replaceChildren(...cards.map(cardOption));
+      const id = data.persona_card ? data.persona_card.id : "";
+      if (id && !cards.some((c) => c.id === id)) cardMenu.prepend(cardOption(data.persona_card));
+      cardMenu.value = id || (cards.find((c) => c.default) || {}).id || "";
+      cardMenu.disabled = false;
+    }).catch((e) => showErr(e, "没能读取人设卡"));
+    cardMenu.addEventListener("change", async () => {
       err.hidden = true;
+      const prev = data.persona_card ? data.persona_card.id : "";
+      cardMenu.disabled = true;
       try {
-        await window.XBotPersonaCards.pick({
-          api, botName: data.name, current: data.persona_card ? data.persona_card.id : "",
-          alive: () => drawerGen === profileDrawerGen && !modal.hidden,
-          onPicked: (card) => { data.persona_card = card; paintPick(card); pickLine.focus(); loadPanel().catch(() => {}); },
-          manage: () => { closeModal(); openSettings("persona"); },
-        });
-      } catch (e) { showErr(e, "没能读取人设卡"); }
+        const res = await api("/api/bots/" + encodeURIComponent(data.name) + "/persona-card", { method: "PUT", body: { id: cardMenu.value } });
+        data.persona_card = res && res.persona_card;
+        loadPanel().catch(() => {});
+      } catch (e) {
+        cardMenu.value = prev;
+        showErr(e, "没能选用这张人设卡");
+      } finally {
+        if (drawerGen === profileDrawerGen) cardMenu.disabled = false;
+      }
     });
-    const pickHint = el("p", "pc-pickhint", "人设卡写明 Bot 是谁、怎么说话。改卡请去 设置 · 人设卡。");
+    const cardBox = el("label", "field", "");
+    cardBox.append(cardMenu);
+    const manage = el("button", "text-btn pc-manage", "管理人设卡");
+    manage.type = "button";
+    manage.addEventListener("click", () => { closeModal(); openSettings("persona"); });
+    const pickHint = el("p", "pc-pickhint", "人设卡管口吻和分寸，叠在职责之上，选中马上生效。");
+    pickHint.append(" ", manage);
     const err = el("p", "error", "");
     err.hidden = true;
     const save = $("modal-ok");
@@ -6058,7 +6093,8 @@
     };
     wrap.append(
       section("基本", head, labeled("名字", name), labeled("简介", description)),
-      section("人设卡", pickLine, pickHint),
+      section("职责", dutyBox, dutyHint),
+      section("人设卡", cardBox, pickHint),
       section("模型", modelTrigger(data)),
       err,
     );
@@ -6070,6 +6106,9 @@
         name: name.value.trim(),
         description: description.value.trim(),
       };
+      const nextDuty = duty.value.trim();
+      if (!nextDuty) { showErr(null, "职责不能为空"); duty.focus(); return; }
+      if (nextDuty !== (data.persona || "").trim()) body.persona = nextDuty;
       try {
         const res = await api("/api/bots/" + encodeURIComponent(data.name), { method: "PATCH", body: body });
         closeModal();
@@ -6104,7 +6143,6 @@
   function openProfile(data) {
     if (!data || !data.name) return;
     profileDrawerGen++;
-    window.XBotPersonaCards?.closePick?.();
     profileReturnFocus = document.activeElement;
     hideTip();
     $("modal-title").textContent = "编辑资料";
@@ -6670,7 +6708,6 @@
 
   function closeModal() {
     profileDrawerGen++;
-    window.XBotPersonaCards?.closePick?.();
     modal.hidden = true;
     modal.classList.remove("profile-drawer");
     modalForm.classList.remove("profile-modal");
@@ -6862,7 +6899,7 @@
     const av = { seed: "", follow: true, file: null };
     openModal("新建 Bot", [
       { name: "name", label: "标识", placeholder: "ada" },
-      { name: "persona", label: "人设", multiline: true },
+      { name: "persona", label: "职责", multiline: true },
     ], async (v) => {
       const name = (v.name || "").trim();
       if (!name) throw new Error("需要一个名字");

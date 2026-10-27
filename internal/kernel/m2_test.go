@@ -151,7 +151,7 @@ func TestPersonaEditSurfacesAsEnvUpdate(t *testing.T) {
 		t.Fatal("new persona missing from prefix")
 	}
 	updates := envUpdates(t, b)
-	if !strings.Contains(updates[len(updates)-1], "persona.md "+shortHash(next)) || strings.Contains(updates[len(updates)-1], next) {
+	if !strings.Contains(updates[len(updates)-1], "职责 "+shortHash(next)) || strings.Contains(updates[len(updates)-1], next) {
 		t.Fatalf("persona diff: %s", updates[len(updates)-1])
 	}
 	now = t0.Add(10 * time.Minute)

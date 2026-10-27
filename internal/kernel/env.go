@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	personaSection = "### 人设\n这段定义你是谁、口吻和关系分寸；下面是正文，照着演，不要复述本说明。\n"
-	rulesSection   = "### 内核规矩\nXBot 硬规矩，与人设无关；冲突时本段优先。\n"
+	personaSection = "### 职责\n这段写你是谁、负责什么、边界在哪；下面是正文，照着做，不要复述本说明。\n"
+	rulesSection   = "### 内核规矩\nXBot 硬规矩，与职责和人设卡无关；冲突时本段优先。\n"
 	modelSection   = "### 模型补丁\n仅针对当前模型的额外约束。\n"
 	linksSection   = "### 能力框\n当前授权的连接/可发现能力；细节按需 load，别假装有未列出的。\n"
 )

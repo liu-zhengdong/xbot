@@ -43,7 +43,7 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
-	if strings.Contains(msgs[0].Text(), "项目笔记") || !strings.HasPrefix(msgs[0].Text(), "### 人设\n这段定义你是谁、口吻和关系分寸；下面是正文，照着演，不要复述本说明。\n"+file) {
+	if strings.Contains(msgs[0].Text(), "项目笔记") || !strings.HasPrefix(msgs[0].Text(), "### 职责\n这段写你是谁、负责什么、边界在哪；下面是正文，照着做，不要复述本说明。\n"+file) {
 		t.Fatal(msgs[0].Text())
 	}
 }

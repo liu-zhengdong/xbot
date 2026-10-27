@@ -88,7 +88,7 @@
     function showList() {
       nav++; fail(""); onLevel(null);
       const head = node("div", "sethd"); head.append(node("h2", "", "人设卡"));
-      const lead = node("p", "setlead", "人设卡写明 Bot 是谁、怎么说话。整台共用；哪个 Bot 用哪张，在它的「编辑资料」里选。内置种子已升级；你改过的不会被盖。");
+      const lead = node("p", "setlead", "人设卡写明 Bot 怎么说话：口吻、节奏和分寸，叠在每个 Bot 自己的职责之上。整台共用；哪个 Bot 用哪张，在它的「编辑资料」里选，没选过的用默认卡。内置种子已升级；你改过的不会被盖。");
       const statusLine = node("p", "sk-status", status); statusLine.setAttribute("role", "status"); statusLine.hidden = !status;
       status = "";
       if (!cards.length) {
@@ -168,7 +168,7 @@
       }
       function askDelete(opener) {
         const n = data.bots || 0;
-        const L = openLayer("删除这张人设卡？", n ? n + " 个 Bot 还在用它。删除后，它们改回未选用。" : "删除后找不回来。",
+        const L = openLayer("删除这张人设卡？", n ? n + " 个 Bot 还在用它。删除后，它们改用默认的「工程合伙人」。" : "删除后找不回来。",
           [["btn", "取消", () => L.close()], ["btn pri", "删除", () => remove(L, n > 0)]]);
         L.opener = opener;
       }
@@ -236,71 +236,5 @@
     showList();
   }
 
-  // The profile drawer's picker: one card or none, bound as soon as it is confirmed.
-  // It belongs to the drawer that opened it: alive says whether that drawer is still
-  // showing the same bot, and closePick (called when the drawer closes) drops a picker
-  // that is open or still loading. While one is loading or open, another click does nothing.
-  let pickSeq = 0, pickLoading = false, pickLayer = null;
-  function closePick() { pickSeq++; pickLoading = false; pickLayer?.close(); pickLayer = null; }
-  async function pick({api, botName, current, onPicked, manage, alive = () => true}) {
-    if (pickLoading || pickLayer) return pickLayer;
-    const mine = ++pickSeq, live = () => mine === pickSeq && alive();
-    pickLoading = true;
-    let cards;
-    try { cards = (await api("/api/persona-cards")).cards || []; }
-    catch (e) { if (mine === pickSeq) pickLoading = false; if (!live()) return null; throw new Error(plain(e, "没能读取人设卡，请再试一次。")); }
-    if (mine === pickSeq) pickLoading = false;
-    if (!live()) return null;
-    const parent = document.body;
-    let chosen = current || "", query = "", found = null;
-    const search = node("input", "sksearch pc-picksearch"); search.type = "search"; search.placeholder = "搜索人设卡"; search.setAttribute("aria-label", "搜索人设卡"); search.autocomplete = "off";
-    const wrap = node("div", "sksearchwrap pc-pickwrap"), glyph = node("span", "sksic"); glyph.setAttribute("aria-hidden", "true"); wrap.append(glyph, search);
-    const list = node("div", "pc-picklist"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "人设卡");
-    const none = node("p", "pc-picknone", "没有匹配的人设卡"); none.hidden = true;
-    const manageBtn = button("btn linkish pc-manage", "管理卡库", () => { L.close(); manage?.(); });
-    const rows = [{id: "", name: "未选用", preview: "用创建 Bot 时写的人设"}, ...cards];
-    function paint() {
-      const q = query.trim().toLowerCase();
-      const shown = rows.filter(r => !r.id || !q || (found ? found.has(r.id) : ownText(r).includes(q)));
-      list.replaceChildren(...shown.map(r => {
-        const on = r.id === chosen;
-        const row = button("pc-pickrow" + (on ? " on" : ""), "", () => { chosen = r.id; paint(); });
-        row.setAttribute("role", "radio"); row.setAttribute("aria-checked", String(on));
-        const dot = node("span", "pc-radio"); dot.setAttribute("aria-hidden", "true");
-        const tx = node("span", "tx"); tx.append(node("b", "", r.name)); if (r.preview) tx.append(node("span", "hint", r.preview));
-        row.append(dot, tx); return row;
-      }));
-      none.hidden = !(q && shown.length === 1);
-    }
-    const ask = searcher(api, ids => { if (L.closed) return; found = ids; paint(); });
-    search.oninput = () => { query = search.value; found = null; ask(query); paint(); };
-    paint();
-    const extra = cards.length ? [wrap, list, none, manageBtn] : [list, node("p", "pc-picknone", "卡库还是空的。"), manageBtn];
-    const L = nest(parent, "选用人设卡", "选中后马上生效，这个 Bot 下一轮对话就按这张卡说话。", [
-      ["btn", "取消", () => L.close()],
-      ["btn pri", "选用", async () => {
-        if (L.busy || L.closed) return;
-        L.busy = true; L.buttons.forEach(b => b.disabled = true); L.fail("");
-        try {
-          const res = await api("/api/bots/" + encodeURIComponent(botName) + "/persona-card", {method: "PUT", body: {id: chosen}});
-          L.busy = false;
-          if (L.closed || !alive()) return;
-          L.close();
-          onPicked?.(res && res.persona_card || null);
-        } catch (e) {
-          L.busy = false;
-          if (L.closed) return;
-          L.buttons.forEach(b => b.disabled = false);
-          L.fail(plain(e, "没能选用，请再试一次。"));
-        }
-      }],
-    ], extra, () => { if (pickLayer === L) pickLayer = null; });
-    pickLayer = L;
-    L.card.classList?.add?.("pc-pickcard");
-    L.root.classList?.add?.("pc-picklayer");
-    (cards.length ? search : L.buttons.at(-1)).focus?.();
-    return L;
-  }
-
-  window.XBotPersonaCards = {mount, unmount: () => teardown(), pick, closePick};
+  window.XBotPersonaCards = {mount, unmount: () => teardown()};
 })();

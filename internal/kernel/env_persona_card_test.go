@@ -11,9 +11,9 @@ import (
 	"xbot/internal/provider"
 )
 
-// The environment's persona identity follows the persona the prefix uses: the
-// picked card. Editing persona.md while a card is picked changes nothing.
-func TestEnvironmentPersonaIdentityFollowsPickedCard(t *testing.T) {
+// The environment names the duty and the picked card apart, so a card never
+// hides a duty edit.
+func TestEnvironmentPersonaIdentityNamesDutyAndCard(t *testing.T) {
 	root := t.TempDir()
 	b, err := bot.Create(root, "ada", "From persona.md.", nil)
 	if err != nil {
@@ -33,7 +33,7 @@ func TestEnvironmentPersonaIdentityFollowsPickedCard(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		body, err := running.PersonaText()
+		body, err := running.ComposedPersona()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,7 +52,9 @@ func TestEnvironmentPersonaIdentityFollowsPickedCard(t *testing.T) {
 		}
 		return environmentGet[string](env, "persona")
 	}
-	if got := sample(); got != "persona.md "+shortHash("From persona.md.") {
+	duty := "职责 " + shortHash("From persona.md.")
+	partner := "；人设卡 " + personacard.DefaultName + " " + shortHash(personacard.PartnerPersona)
+	if got := sample(); got != duty+partner {
 		t.Fatalf("no card: %q", got)
 	}
 	card, err := personacard.Create(root, "u1", "简洁", "先给结论。")
@@ -62,40 +64,41 @@ func TestEnvironmentPersonaIdentityFollowsPickedCard(t *testing.T) {
 	if err := b.SetPersonaCard(card.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := sample(); got != "简洁 "+shortHash("先给结论。") {
+	if got := sample(); got != duty+"；人设卡 简洁 "+shortHash("先给结论。") {
 		t.Fatalf("picked card: %q", got)
 	}
 	body := "只说一句。"
 	if _, err := personacard.Update(root, "u1", card.ID, nil, &body); err != nil {
 		t.Fatal(err)
 	}
-	if got := sample(); got != "简洁 "+shortHash(body) {
+	if got := sample(); got != duty+"；人设卡 简洁 "+shortHash(body) {
 		t.Fatalf("edited card: %q", got)
 	}
-	if err := os.WriteFile(b.PersonaPath(), []byte("unused fallback"), 0600); err != nil {
+	if err := os.WriteFile(b.PersonaPath(), []byte("new duty"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if got := sample(); got != "简洁 "+shortHash(body) {
-		t.Fatalf("fallback edit moved the hash: %q", got)
+	duty = "职责 " + shortHash("new duty")
+	if got := sample(); got != duty+"；人设卡 简洁 "+shortHash(body) {
+		t.Fatalf("duty edit under a card: %q", got)
 	}
 	name := "简洁新版"
 	if _, err := personacard.Update(root, "u1", card.ID, &name, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := sample(); got != name+" "+shortHash(body) {
+	if got := sample(); got != duty+"；人设卡 "+name+" "+shortHash(body) {
 		t.Fatalf("renamed card: %q", got)
 	}
 	if err := personacard.Delete(root, "u1", card.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := sample(); got != "persona.md "+shortHash("unused fallback") {
-		t.Fatalf("deleted card fallback: %q", got)
+	if got := sample(); got != duty+partner {
+		t.Fatalf("deleted card: %q", got)
 	}
 	if err := b.SetPersonaCard(""); err != nil {
 		t.Fatal(err)
 	}
-	if got := sample(); got != "persona.md "+shortHash("unused fallback") {
-		t.Fatalf("unbound fallback: %q", got)
+	if got := sample(); got != duty+partner {
+		t.Fatalf("unbound: %q", got)
 	}
 }
 
@@ -112,7 +115,7 @@ func TestEnvironmentPersonaIdentityReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "默认人设 " + shortHash(bot.DefaultPersona)
+	want := "默认职责 " + shortHash(bot.DefaultPersona)
 	if got := environmentGet[string](next, "persona"); got != want {
 		t.Fatalf("default identity: %q", got)
 	}

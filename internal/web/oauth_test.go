@@ -104,9 +104,10 @@ func TestOAuthWebRoutesBindingAndKeyIsolation(t *testing.T) {
 		t.Fatalf("catalog %d %s", code, raw)
 	}
 	t.Setenv("XBOT_OAUTH_KEY_REGRESSION", "test-api-key")
-	if err := config.Add(root, config.Provider{Name: "key-only", Protocol: config.ChatCompletions, BaseURL: up.URL + "/v1", APIKeyEnv: "XBOT_OAUTH_KEY_REGRESSION"}, config.ModelSpec{Name: "fake", Context: 4096}); err != nil {
+	if err := config.Add(root, config.Provider{Name: "key-only", Protocol: config.ChatCompletions, BaseURL: up.URL + "/v1", APIKeyEnv: "XBOT_OAUTH_KEY_REGRESSION"}, config.ModelSpec{Name: "fake", Context: 16384}); err != nil {
 		t.Fatal(err)
 	}
+	// 16K rather than 4K: the default persona card alone is about 2K tokens of prefix, and this test is about keys, not fit.
 	if code, _ := call("PUT", "/api/bots/ada/binding", `{"provider":"key-only","model":"fake"}`, true); code != 200 {
 		t.Fatalf("API key binding %d", code)
 	}

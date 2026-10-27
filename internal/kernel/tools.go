@@ -155,10 +155,10 @@ type personaTool struct{ k *Kernel }
 
 func (personaTool) Name() string { return "bot_propose_persona" }
 func (personaTool) Description() string {
-	return "Propose a new persona. It is saved only after the owner confirms, and applies on the next wake."
+	return "Propose new duties for this bot: what it is for and where its limits are. Voice comes from its persona card, not from this text. It is saved only after the owner confirms, and applies on the next wake."
 }
 func (personaTool) Parameters() any {
-	return schema(map[string]any{"text": stringProp("the full persona")}, []string{"text"})
+	return schema(map[string]any{"text": stringProp("the full duties text")}, []string{"text"})
 }
 func (personaTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "update persona", nil

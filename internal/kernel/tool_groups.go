@@ -20,7 +20,7 @@ type ToolGroup struct {
 func toolGroups(mounted []tools.Tool) []ToolGroup {
 	g := ToolGroup{
 		ID: "bot_profile", Name: "Bot资料编辑",
-		Description: "修改本 Bot 的名字、简介、时区、头像或人设。先调用 expand_tool_group(group: bot_profile) 展开完整工具定义。",
+		Description: "修改本 Bot 的名字、简介、时区、头像或职责。先调用 expand_tool_group(group: bot_profile) 展开完整工具定义。",
 	}
 	for _, t := range mounted {
 		switch t.Name() {
