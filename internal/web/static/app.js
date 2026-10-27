@@ -595,7 +595,8 @@
     closeShots();
     panel.classList.remove("open");
     $("panel-scrim").hidden = true;
-    $("info").setAttribute("aria-expanded", "false");
+    $("head-chip").classList.remove("on");
+    $("head-chip").setAttribute("aria-expanded", "false");
     state.sel = null;
     ++state.threadLoad;
     ++state.panelLoad;
@@ -3993,8 +3994,9 @@
       titleAv = bot ? avatar(slug, paintOfBot(bot), "head") : null;
       if (titleAv) setTip(titleAv, "");
     }
-    titleEl.replaceChildren(...(titleAv ? [titleAv] : []), document.createTextNode(shown));
+    titleEl.replaceChildren(...(titleAv ? [titleAv] : []), el("span", "title-name", shown));
     setTip(titleEl, slug && slug !== shown ? slug : "");
+    $("head-chip").disabled = !state.sel;
     document.title = shown + " · XBot";
   }
 
@@ -4048,8 +4050,9 @@
     if (back) back.hidden = false;
     const main = document.querySelector(".main");
     if (main) main.classList.add("peer");
+    $("head-chip").disabled = true;
     titleEl.replaceChildren();
-    const row = el("div", "pair-title");
+    const row = el("span", "pair-title");
     row.append(peerWho(a), icon("swap", "pair-swap"), peerWho(b));
     titleEl.append(row);
     setTip(titleEl, a + " ⇄ " + b);
@@ -6690,7 +6693,7 @@
       // The action row is redrawn; return to its live 编辑资料 button instead.
       const acts = $("panel-actions");
       const target = profileReturnFocus.closest("#panel-actions") || !profileReturnFocus.isConnected
-        ? acts.querySelector(".panel-act:not(.danger)") || $("info") : profileReturnFocus;
+        ? acts.querySelector(".panel-act:not(.danger)") || $("head-chip") : profileReturnFocus;
       profileReturnFocus = null;
       target.focus({ preventScroll: true });
     }
@@ -7332,8 +7335,9 @@
     if (window.innerWidth < 768 && panel.classList.contains("open")) {
       rememberPanel(false);
       panel.classList.remove("open");
+      $("head-chip").classList.remove("on");
+      $("head-chip").setAttribute("aria-expanded", "false");
     }
-    $("info").setAttribute("aria-expanded", "false");
     syncBackdrop();
   });
 
@@ -7341,7 +7345,8 @@
     state.panelTouched = true;
     sidebar.classList.remove("open");
     panel.classList.remove("open");
-    $("info").setAttribute("aria-expanded", "false");
+    $("head-chip").classList.remove("on");
+    $("head-chip").setAttribute("aria-expanded", "false");
     backdrop.hidden = true;
   });
 
@@ -7359,13 +7364,14 @@
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
   function panelOpen(open) {
     panel.classList.toggle("open", open);
-    $("info").classList.toggle("on", open);
-    $("info").setAttribute("aria-expanded", open ? "true" : "false");
-    setTip($("info"), (open ? "收起面板" : "展开面板") + (isMac ? "  ⌘\\" : "  Ctrl+\\"));
+    $("head-chip").classList.toggle("on", open);
+    $("head-chip").setAttribute("aria-expanded", open ? "true" : "false");
+    $("head-chip").setAttribute("aria-label", open ? "收起信息" : "打开信息");
+    setTip($("head-chip"), (open ? "收起面板" : "展开面板") + (isMac ? "  ⌘\\" : "  Ctrl+\\"));
     syncBackdrop();
   }
 
-  $("info").addEventListener("click", async () => {
+  $("head-chip").addEventListener("click", async () => {
     const open = !panel.classList.contains("open");
     rememberPanel(open);
     panelOpen(open);
@@ -7651,13 +7657,13 @@
 
   function placeTip(host) {
     const text = host.getAttribute("data-tip");
-    if (!text || (host.getAttribute("aria-expanded") === "true" && host !== $("info"))) { hideTip(); return; }
+    if (!text || (host.getAttribute("aria-expanded") === "true" && host !== $("head-chip"))) { hideTip(); return; }
     tipEl.textContent = text;
     tipEl.hidden = false;
     const r = host.getBoundingClientRect();
     const tw = tipEl.offsetWidth;
     const th = tipEl.offsetHeight;
-    let left = host === $("info") ? r.right - tw : r.left + (r.width / 2) - (tw / 2);
+    let left = r.left + (r.width / 2) - (tw / 2);
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
     const right = host.dataset.tipPlacement === "right" && host.closest(".sidebar.rail");
     if (right) left = Math.max(8, Math.min(r.right + 8, window.innerWidth - tw - 8));

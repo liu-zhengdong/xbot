@@ -147,13 +147,10 @@ try {
         <button id="back" class="icon-btn" type="button" aria-label="返回" data-tip="返回" hidden>
           <svg class="icon" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
         </button>
-        <div class="top-title">
-          <div id="title" class="title">XBot</div>
-          <div id="subtitle" class="subtitle" hidden></div>
-        </div>
-        <!-- The panel toggle belongs to the conversation header. -->
-        <button id="info" class="icon-btn ptog" type="button" aria-label="详情" data-tip="详情" aria-expanded="false">
-          <svg class="icon" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+        <!-- The identity chip opens and closes the bot panel. -->
+        <button id="head-chip" class="top-title" type="button" aria-label="打开信息" aria-expanded="false" disabled>
+          <span id="title" class="title">XBot</span>
+          <span id="subtitle" class="subtitle" hidden></span>
         </button>
         <!-- Shown once a newer version is downloaded: a click installs it and
              starts XBot again. Nothing appears while it downloads in the

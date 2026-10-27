@@ -217,15 +217,27 @@ button:disabled { cursor: default; }
   position: relative; min-width: 0; height: 100%;
 }
 
-.top-title { flex: 1; min-width: 0; }
+/* The identity chip: avatar and name are one toggle for the bot panel,
+   centred in the header. It fills on hover and while the panel is open. */
+.top-title {
+  display: flex; flex-direction: column; justify-content: center;
+  flex: 0 1 auto; min-width: 0; max-width: 100%; min-height: 36px; margin-inline: auto;
+  padding: 4px 10px 4px 6px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; text-align: left;
+  cursor: pointer; transition: background 160ms ease-out;
+  --app-region: no-drag; -webkit-app-region: no-drag;
+}
+.top-title:hover:not(:disabled) { background: var(--hover); }
+.top-title.on { background: var(--x-fill-2); }
+.top-title:disabled { cursor: default; }
 
 .title {
   display: flex; align-items: center; gap: 10px; min-width: 0;
   font-size: 15px; font-weight: 620; line-height: 1.3; letter-spacing: -0.015em;
   white-space: nowrap; overflow: hidden;
-  /* A long name fades over its last 32px instead of reaching the buttons. */
-  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
+
+.title-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* Header and message faces are 24px and round (window review P1 #4 size,
    device prototype v2 shape), so header, bot message and composer share x. */
@@ -265,7 +277,7 @@ button:disabled { cursor: default; }
 }
 
 .subtitle {
-  font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 1px;
+  display: block; font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -284,11 +296,6 @@ button:disabled { cursor: default; }
 
 /* Open controls keep their fill while their content is showing. */
 .icon-btn.on, .ghost.on { background: var(--x-fill-2); color: var(--x-text); }
-
-.ptog {
-  flex: none; margin-left: auto;
-  --app-region: no-drag; -webkit-app-region: no-drag;
-}
 
 .icon-btn:active:not(:disabled) { background: var(--selected); color: var(--text); }
 
@@ -2362,7 +2369,6 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .subtitle.peer-note .icon { width: 12px; height: 12px; flex: none; }
 .main.peer .top-title { align-self: center; }
 .main.peer #back { order: 99; }
-.main.peer #info { display: none; }
 .who .who-device { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-weight: 400; }
 .who .who-device .icon { width: 12px; height: 12px; }
 .peer-text { font-size: 15px; line-height: 1.7; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }

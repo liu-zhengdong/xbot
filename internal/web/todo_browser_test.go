@@ -118,7 +118,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
  if(!shot){assert(!/in_progress|"items"|\btodo\b/.test($('#stp').textContent),'raw todo leaked into steps');}
  if(shot==='steps'){document.body.dataset.testResult='passed';return}
  $('#stp .x').click();
- $('#info').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');
+ $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');
  [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='轨迹').click();
  await waitFor(()=>document.querySelectorAll('.trace-row').length===6,'trace missing calls');
  if(shot==='default'){document.body.dataset.testResult='passed';return}

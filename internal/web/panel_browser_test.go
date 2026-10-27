@@ -112,10 +112,17 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  if(innerWidth<768){
   const m=rect($('#menu')),a=rect($('#title .avatar')),top=rect($('.top'));
   assert(near(top.height,96)&&near(m.y+m.height/2,top.y+44+26),'safe area compresses the content band');
-  assert(near(m.x,16)&&near(a.x-m.right,8),'hamburger inset or avatar gap wrong');
+  const c=rect($('#head-chip')),bar=rect($('.top-inner'));
+  assert(near(m.x,16),'hamburger inset wrong');
+  assert(Math.abs((c.x-m.right-8)-(bar.right-c.right))<2,'chip is not centred between hamburger and edge');
   assert(near(m.y+m.height/2,a.y+a.height/2)&&m.width>=32&&m.height>=32,'hamburger is not centered or touchable');
  }
- $('#info').click();
+ const chip=$('#head-chip');
+ assert(!$('#info')&&!$('.ptog'),'separate panel toggle still present');
+ assert(!chip.disabled&&chip.contains($('#title .avatar'))&&chip.getAttribute('aria-expanded')==='false','chip is not the closed toggle');
+ chip.click();
+ assert(chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='true'&&panel.classList.contains('open'),'chip does not open panel');
+ assert($('#setpage').hidden,'chip opened settings');
  await waitFor(()=>panel.textContent.includes('scripted'),'panel data missing');
  await sleep(250);finishAnimations();
  const opened=rect(panel),openMatrix=new DOMMatrix(getComputedStyle(panel).transform);
@@ -123,7 +130,7 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(near(openMatrix.m41,0)&&near(openMatrix.m42,0),'open drawer axis wrong');
  assert(getComputedStyle(panel).transitionProperty.includes('transform'),'desktop drawer skips animation');
  assert(!$('#panel-more')&&$('#panel-actions').children.length===1,'header contains extra action');
- assert(!panel.contains($('#info')),'toggle moved into panel');
+ assert(!panel.contains($('#head-chip')),'toggle moved into panel');
  const edit=$('#panel-actions button'),avatar=$('#panel-ident .avatar');
  assert(near(rect(edit).y+rect(edit).height/2,rect(avatar).y+rect(avatar).height/2),'edit is not on identity row');
  const model=$('.binding-model'),line=model.parentElement,body=$('.tab-body');
@@ -133,6 +140,9 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  escape();await sleep(20);assert(document.activeElement===$('#panel-actions button'),'edit focus not restored');
  $('#panel-scrim').click();await sleep(250);finishAnimations();
  assert(!panel.classList.contains('open'),'scrim does not close drawer');
+ assert(!chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='false','chip keeps open state after scrim');
+ chip.click();assert(panel.classList.contains('open'),'chip does not reopen');
+ chip.click();assert(!panel.classList.contains('open')&&!chip.classList.contains('on'),'chip does not close panel');
  const closing=new DOMMatrix(getComputedStyle(panel).transform);
  assert(closing.m41>0&&near(closing.m42,0),'drawer exits downwards');
  // Right-click an unselected Bot: every action belongs to that Bot.

@@ -12,7 +12,7 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name),'app did not boot');
- $('#info').click();
+ $('#head-chip').click();
  await waitFor(()=>$('#panel-actions button'),'edit action missing');
  $('#panel-actions button').click();
  await waitFor(()=>!$('#modal').hidden&&$('#modal-fields input'),'profile did not open');
