@@ -1,6 +1,7 @@
 package personacard
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -459,6 +460,28 @@ var legacySeedBodies = map[string]string{
 别太卷，别一开口就任务清单。能一起摸鱼也能一起办正事。`,
 }
 
+// The complete built-in bodies before 9fdfcbd changed the terminology. Keep
+// these snapshots independent of today's seeds so only unchanged cards match.
+//
+//go:embed legacy-owner/0.txt
+var legacyPartnerOwner string
+
+//go:embed legacy-owner/1.txt
+var legacyGroupOwner string
+
+//go:embed legacy-owner/2.txt
+var legacyOpsOwner string
+
+//go:embed legacy-owner/3.txt
+var legacyWeekendOwner string
+
+var legacyOwnerBodies = map[string]string{
+	DefaultName: legacyPartnerOwner,
+	"碎嘴群友":      legacyGroupOwner,
+	"值班运维":      legacyOpsOwner,
+	"周末搭子":      legacyWeekendOwner,
+}
+
 // seededFile marks a library that has had cards: a seed run finished, or a card was
 // created, imported, updated or deleted. Only it and cards decide; .lock is also
 // made by failed calls, so it says nothing about history.
@@ -531,7 +554,7 @@ func ensureDefault(dir string) error {
 	return fsutil.WriteAtomic(filepath.Join(dir, defaultFile), []byte(id+"\n"), 0600)
 }
 
-// EnsureSeeds fills a never-used empty library, or upgrades unchanged thin seeds
+// EnsureSeeds fills a never-used empty library, or upgrades unchanged old seeds
 // in a marked library, then makes sure the library has its default card. All
 // writes use the library lock, including across processes. A marked empty
 // library gets only the default card; a failed first seed run removes its own cards.
@@ -600,7 +623,7 @@ func ensureSeeds(root string) error {
 
 // upgradeSeeds runs under the library lock, so an Update cannot slip between the
 // comparison and write. Keep successful upgrades if another card fails; retry only
-// unchanged thin cards on the next call. list skips unreadable cards as usual.
+// unchanged old cards on the next call. list skips unreadable cards as usual.
 func upgradeSeeds(dir string) error {
 	cards, err := list(dir)
 	if err != nil {
@@ -608,8 +631,7 @@ func upgradeSeeds(dir string) error {
 	}
 	var errs []error
 	for _, c := range cards {
-		old, ok := legacySeedBodies[c.Name]
-		if !ok || c.Body != old {
+		if c.Body != legacySeedBodies[c.Name] && c.Body != legacyOwnerBodies[c.Name] {
 			continue
 		}
 		for _, s := range Seeds {

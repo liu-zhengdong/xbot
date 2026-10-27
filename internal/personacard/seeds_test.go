@@ -3,6 +3,7 @@ package personacard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,6 +89,49 @@ func TestEnsureSeedsUpgradesOnlyUnchangedThinCards(t *testing.T) {
 			}
 			if after := snapshotLibrary(t, Dir(root)); !reflect.DeepEqual(before, after) {
 				t.Fatal("repeated ensure changed contents, paths, modes or mtimes")
+			}
+		})
+	}
+}
+
+func TestEnsureSeedsUpgradesUnchangedOwnerSeeds(t *testing.T) {
+	for i, seed := range Seeds {
+		t.Run(seed.Name, func(t *testing.T) {
+			old, err := os.ReadFile(filepath.Join("legacy-owner", fmt.Sprintf("%d.txt", i)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, edit := range []bool{false, true} {
+				root := t.TempDir()
+				body := string(old)
+				if edit {
+					body += "用户补充"
+				}
+				card, err := Create(root, seed.Name, body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := EnsureSeeds(root); err != nil {
+					t.Fatal(err)
+				}
+				got, err := Get(root, card.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := seed.Body
+				if edit {
+					want = body
+				}
+				if got.Name != seed.Name || got.Body != want {
+					t.Fatalf("edit=%v: unexpected card body or name", edit)
+				}
+				before := snapshotLibrary(t, Dir(root))
+				if err := EnsureSeeds(root); err != nil {
+					t.Fatal(err)
+				}
+				if after := snapshotLibrary(t, Dir(root)); !reflect.DeepEqual(before, after) {
+					t.Fatal("repeated ensure changed library")
+				}
 			}
 		})
 	}
