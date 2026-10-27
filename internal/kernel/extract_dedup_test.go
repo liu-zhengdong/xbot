@@ -29,6 +29,12 @@ func TestRememberNewDropsNearDuplicates(t *testing.T) {
 		},
 		// A correction changes the quoted value and is kept.
 		{fact(memory.TierProfile, "Bot 简介已改为「认真干活的助手」")},
+		// Review 1 P1: one changed name, count or negation in a long, similar fact.
+		{fact(memory.TierProfile, "主人要求所有项目的代码审查必须由小王负责")},
+		{fact(memory.TierProfile, "主人要求所有项目的代码审查必须由小李负责")},
+		{fact(memory.TierLog, "主人每天早上喝咖啡")},
+		{fact(memory.TierLog, "主人每天早上喝咖啡2杯")},
+		{fact(memory.TierLog, "主人不喜欢不喝咖啡")},
 	}
 	for _, facts := range rounds {
 		if err := k.rememberNew(ctx, facts); err != nil {
@@ -39,7 +45,22 @@ func TestRememberNewDropsNearDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("facts %d, want the first and the correction: %+v", len(got), got)
+	want := map[string]bool{
+		"Bot 简介已设为「今晚随便逛逛的小助手」": true,
+		"Bot 简介已改为「认真干活的助手」":    true,
+		"主人要求所有项目的代码审查必须由小王负责":  true,
+		"主人要求所有项目的代码审查必须由小李负责":  true,
+		"主人每天早上喝咖啡":             true,
+		"主人每天早上喝咖啡2杯":           true,
+		"主人不喜欢不喝咖啡":             true,
+	}
+	for _, f := range got {
+		if !want[f.Text] {
+			t.Errorf("unexpected fact %q", f.Text)
+		}
+		delete(want, f.Text)
+	}
+	for text := range want {
+		t.Errorf("missing fact %q", text)
 	}
 }

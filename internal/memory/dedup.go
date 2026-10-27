@@ -3,14 +3,12 @@ package memory
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
-// nearDupDice is the token-set similarity above which two facts say the same thing.
-// "主人偏好简短回答" against "主人偏好详细回答" scores 0.57; a pure rewording scores 1.
-const nearDupDice = 0.8
-
-// minContainRunes keeps a short fragment such as "主人" from swallowing every fact.
-const minContainRunes = 6
+// labels are lead-ins that file a fact under a heading without changing it, so
+// "约定：X" repeats "X". Any other lead-in may be a qualifier and keeps the fact.
+var labels = map[string]bool{"约定": true, "备注": true, "规则": true, "决定": true, "note": true, "rule": true, "decision": true}
 
 // fillers carry no meaning in a fact; dropping them lets "简短的回答" match "简短回答"
 // and "已经改为" match "改为". They run before synonyms, which do not chain.
@@ -39,37 +37,34 @@ func Bare(text string) string {
 }
 
 // NearDuplicate reports whether two facts record the same thing: equal once the
-// provenance suffix, case, punctuation and common rewordings are removed, one
-// contained in the other, or nearly the same token set. Numbers, quoted values and
-// paths are anchors, and so is a negation: a fact that changes one of them is a
-// correction, not a repeat.
+// provenance suffix, case, punctuation, filler words, common rewordings and a
+// heading label such as "约定：" are removed. Anything else that differs, even one
+// name, count or negation in a long sentence, may be a correction and keeps both;
+// numbers, quoted values and paths are compared before fillers are dropped.
 func NearDuplicate(a, b string) bool {
+	a, b = Bare(a), Bare(b)
+	if !sameSet(anchors(a), anchors(b)) {
+		return false
+	}
 	na, nb := normFact(a), normFact(b)
 	if na == "" || nb == "" {
 		return false
 	}
-	if na == nb {
-		return true
+	return na == nb || normFact(unlabel(a)) == nb || na == normFact(unlabel(b))
+}
+
+// unlabel drops a leading heading label and its colon.
+func unlabel(s string) string {
+	i := strings.IndexAny(s, "：:")
+	if i < 0 || !labels[strings.ToLower(strings.TrimSpace(s[:i]))] {
+		return s
 	}
-	if negated(na) != negated(nb) {
-		return false
-	}
-	aa, ab := anchors(Bare(a)), anchors(Bare(b))
-	short, long, as, al := na, nb, aa, ab
-	if len([]rune(short)) > len([]rune(long)) {
-		short, long, as, al = nb, na, ab, aa
-	}
-	if len([]rune(short)) >= minContainRunes && strings.Contains(long, short) && subset(as, al) {
-		return true
-	}
-	if !subset(aa, ab) || !subset(ab, aa) {
-		return false
-	}
-	return dice(tokens(na), tokens(nb)) >= nearDupDice
+	_, n := utf8.DecodeRuneInString(s[i:])
+	return s[i+n:]
 }
 
 // normFact lowercases, folds rewordings and keeps letters, digits, a few path
-// characters and single spaces between ASCII words.
+// characters and single spaces between ASCII words, without English articles.
 func normFact(s string) string {
 	s = strings.ToLower(Bare(s))
 	s = strings.Join(strings.Fields(s), " ")
@@ -83,7 +78,23 @@ func normFact(s string) string {
 			b.WriteRune(' ')
 		}
 	}
-	return strings.Join(strings.Fields(b.String()), " ")
+	// A space survives only between two ASCII words, so "bot 简介" matches "bot简介".
+	var out strings.Builder
+	for _, w := range strings.Fields(b.String()) {
+		w = strings.TrimRight(w, ".")
+		if w == "" || englishFiller[w] {
+			continue
+		}
+		if out.Len() > 0 {
+			last, _ := utf8.DecodeLastRuneInString(out.String())
+			first, _ := utf8.DecodeRuneInString(w)
+			if last < unicode.MaxASCII && first < unicode.MaxASCII {
+				out.WriteByte(' ')
+			}
+		}
+		out.WriteString(w)
+	}
+	return out.String()
 }
 
 // anchors are the values a correction changes: digit runs, quoted text and paths.
@@ -130,23 +141,10 @@ func anchors(s string) map[string]bool {
 	return out
 }
 
-// negated reports a negation word, so "no longer prefers X" does not repeat "prefers X".
-func negated(norm string) bool {
-	for _, w := range []string{"不", "没", "别", "勿", "禁止", "避免"} {
-		if strings.Contains(norm, w) {
-			return true
-		}
+func sameSet(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	for _, w := range strings.Fields(norm) {
-		switch w {
-		case "not", "no", "never", "don", "doesn", "isn", "avoid", "stop":
-			return true
-		}
-	}
-	return false
-}
-
-func subset(a, b map[string]bool) bool {
 	for k := range a {
 		if !b[k] {
 			return false
@@ -155,51 +153,4 @@ func subset(a, b map[string]bool) bool {
 	return true
 }
 
-// tokens are ASCII words plus bigrams of the other runes, so Chinese and
-// English facts are compared at a similar grain.
-func tokens(s string) map[string]bool {
-	out := map[string]bool{}
-	var word strings.Builder
-	var prev rune
-	for _, r := range s {
-		if r < unicode.MaxASCII {
-			if r == ' ' {
-				if word.Len() > 0 && !englishFiller[word.String()] {
-					out[word.String()] = true
-				}
-				word.Reset()
-			} else {
-				word.WriteRune(r)
-			}
-			prev = 0
-			continue
-		}
-		if word.Len() > 0 && !englishFiller[word.String()] {
-			out[word.String()] = true
-		}
-		word.Reset()
-		if prev != 0 {
-			out[string([]rune{prev, r})] = true
-		}
-		prev = r
-	}
-	if word.Len() > 0 && !englishFiller[word.String()] {
-		out[word.String()] = true
-	}
-	return out
-}
-
 var englishFiller = map[string]bool{"a": true, "an": true, "the": true}
-
-func dice(a, b map[string]bool) float64 {
-	if len(a)+len(b) == 0 {
-		return 0
-	}
-	n := 0
-	for k := range a {
-		if b[k] {
-			n++
-		}
-	}
-	return 2 * float64(n) / float64(len(a)+len(b))
-}
