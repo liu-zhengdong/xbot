@@ -93,7 +93,8 @@ const openGenerated=async()=>{
  await waitFor(()=>fixture.streams.length&&$('#thread .live'),'stream missing');
  const stream=fixture.streams.at(-1);
  emit(stream,'part',{hosted:{id:'ig_live',name:'image_generation',status:'in_progress'}});
- await waitFor(()=>$('#thread .live .live-status')?.textContent.includes('生成图片'),'ordinary working status missing');
+ await waitFor(()=>$('#thread .live .live-status .typing-dots'),'ordinary working status missing');
+ assert(!$('#thread .live .working-name'),'hosted event without description showed a label');
  assert(!$('#thread .live .hs-step')&&!$('#thread .live .gallery'),'running generation rendered a special block or picture');
  emit(stream,'part',{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}});
  await new Promise(r=>setTimeout(r,20));

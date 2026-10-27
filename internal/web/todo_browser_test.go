@@ -23,6 +23,34 @@ func TestTodoLiveToolsBrowser(t *testing.T) {
 	runTodoBrowser(t, todoBrowserFixture+todoStreamingFixture, todoLiveToolsDriver)
 }
 
+func TestBusyLineBrowser(t *testing.T) {
+	runTodoBrowser(t, todoBrowserFixture+todoStreamingFixture, todoLiveSetup+`
+(async()=>{
+ const stream=await start();
+ const check=(label)=>{
+  const row=$('#thread .live .live-status'), dots=row?.querySelector('.typing-dots'), name=row?.querySelector('.working-name');
+  assert(row&&dots&&row.querySelectorAll('.typing-dots i').length===3,'busy line missing three dots');
+  assert(document.querySelectorAll('#thread .live .typing-dots').length===1,'duplicate dots');
+  assert((name?.textContent||'')===label,'wrong busy label');
+  assert(['flex','inline-flex'].includes(getComputedStyle(row).display),'busy line is not inline flex');
+  if(name){const a=dots.getBoundingClientRect(),b=name.getBoundingClientRect();assert(b.left>=a.right&&Math.abs((a.top+a.bottom-b.top-b.bottom)/2)<2,'label is not beside dots');}
+ };
+ check('');
+ emit(stream,'part',{hosted:{id:'search',name:'web_search',status:'in_progress',query:'资料'}});
+ await sleep(20);assert(!$('#thread .live .hs-step'),'hosted progress added a second busy row');
+ emit(stream,'tool',{name:'shell',summary:'继续看资料\nsecret command'});
+ await waitFor(()=>working()?.textContent==='继续看资料','description missing');check('继续看资料');
+ todoStatus.state='running';todoStatus.tool='shell';todoStatus.todo='旧待办';todoStatus.tool_summary='继续看资料\nsecret command';
+ await waitFor(()=>preview().textContent==='继续看资料','sidebar description missing');
+ emit(stream,'tool',{name:'shell',summary:''});todoStatus.tool_summary='';
+ await waitFor(()=>!working()&&preview().textContent==='在处理','empty description leaked another label');check('');
+ assert(!/shell|secret command|旧待办/.test($('#thread .live').textContent+preview().textContent),'non-description leaked');
+ finish(stream,'查好了');await waitFor(()=>!$('#thread .live'),'stream did not finish');
+ document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`)
+}
+
 func runTodoBrowser(t *testing.T, fixture, driver string) {
 	t.Helper()
 	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
@@ -77,7 +105,7 @@ localStorage.removeItem('xbot-panel-open');localStorage.removeItem('xbot.side');
 bots.forEach(b=>b.pinned=false);
 const todoItems=[{id:'a',content:'查第一处',status:'done'},{id:'b',content:'查第二处',status:'in_progress'},{id:'c',content:'查第三处',status:'pending'}];
 const todoSummary='进度：查第二处 · 还剩 1 项待办';
-const todoStatus={bot:bots[0].name,state:'running',tool:'todo',todo:todoSummary,since:new Date().toISOString()};
+const todoStatus={bot:bots[0].name,state:'running',tool:'todo',todo:todoSummary,tool_summary:todoSummary,since:new Date().toISOString()};
 let statusReads=0;
 const addTodo=(id,items,output)=>{
  fixture.messages[bots[0].name].push({...message('assistant',''),tool_calls:[{id,function:{name:'todo',arguments:JSON.stringify({items})}}]});
@@ -168,10 +196,10 @@ const start=async()=>{
 const todoStreamingDriver = todoLiveSetup + `
 (async()=>{
  const stream=await start();
- emit(stream,'tool',{name:'todo'});
+ emit(stream,'tool',{name:'todo',summary:todoSummary});
  await waitFor(()=>working(),'live tool missing');
  const reads=statusReads,transcriptReads=fixture.reads;
- todoStatus.state='running';todoStatus.tool='todo';todoStatus.todo=todoSummary;
+ todoStatus.state='running';todoStatus.tool='todo';todoStatus.todo=todoSummary;todoStatus.tool_summary=todoSummary;
  const started=performance.now();
  const shot=new URLSearchParams(location.search).get('shot');
  if(shot==='streaming'){await sleep(3500);document.body.dataset.testResult='passed';return}
@@ -182,9 +210,9 @@ const todoStreamingDriver = todoLiveSetup + `
  const node=preview(),liveName=working(),stableReads=statusReads;
  await waitFor(()=>statusReads>=stableReads+2,'streaming status poll stopped');
  assert(preview()===node&&working()===liveName,'unchanged streaming poll replaced status nodes');
- todoStatus.tool='shell';emit(stream,'tool',{name:'shell'});await sleep(20);
+ todoStatus.tool='shell';emit(stream,'tool',{name:'shell',summary:todoSummary});await sleep(20);
  assert(working()?.textContent===todoSummary,'shell SSE covered readable progress');
- todoStatus.todo='进度：查第三处';
+ todoStatus.todo='进度：查第三处';todoStatus.tool_summary=todoStatus.todo;
  await waitFor(()=>preview().textContent===todoStatus.todo&&working()?.textContent===todoStatus.todo,'later progress did not reach sidebar and live');
  preview().click();await waitFor(()=>$('#stp li'),'running steps entry did not open');
  assert($('#stp').textContent.includes('待办')&&$('#stp').textContent.includes('正在更新待办'),'running todo step lost human label');
@@ -208,7 +236,7 @@ const todoStreamingDriver = todoLiveSetup + `
 const todoLiveToolsDriver = todoLiveSetup + `
 (async()=>{
  const stream=await start();
- for(const [tool,summary,label] of [['todo','','正在更新待办'],['shell','添加一条记忆\nxbot memory add hi','添加一条记忆']]){
+ for(const [tool,summary,label] of [['todo','更新清单','更新清单'],['shell','添加一条记忆\nxbot memory add hi','添加一条记忆']]){
   emit(stream,'tool',{name:tool,summary:summary});
   await waitFor(()=>working()?.textContent===label,'raw '+tool+' leaked into live status');
   todoStatus.state='running';todoStatus.tool=tool;todoStatus.tool_summary=summary.split('\n')[0];

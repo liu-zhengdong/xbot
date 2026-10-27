@@ -655,7 +655,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 
 /* Chat */
 
-.live-status { display: inline-flex; align-items: center; min-height: 16px; }
+.live-status { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
 
 .meta { font-size: 12px; line-height: 1.4; color: var(--faint); font-variant-numeric: tabular-nums; }
 .branch-tag { font-size: 11px; line-height: 1.4; color: var(--faint); margin-bottom: 2px; }
@@ -963,9 +963,9 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--muted);
 }
 
-.live-status { margin-top: 2px; gap: 6px; }
+.live-status { gap: 9px; }
 
-.working-name { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.working-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); line-height: 1.4; }
 
 .coding-card {
   margin: 8px 0; padding: 12px; border-radius: 12px; background: var(--fill); max-width: 100%;
@@ -2204,12 +2204,11 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .send-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: var(--faint); }
 .send-failed { color: var(--err); }
 .send-state .secondary { padding: 4px 10px; font-size: 12px; }
-.typing-dots { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; }
+.typing-dots { display: inline-flex; flex: none; align-items: center; gap: 5px; min-height: 22px; padding: 0 10px; border-radius: 999px; background: var(--bot-bubble); }
 .typing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); animation: typing-dot 180ms ease-in-out infinite alternate; }
 .typing-dots i:nth-child(2) { animation-delay: 60ms; }
 .typing-dots i:nth-child(3) { animation-delay: 120ms; }
 @keyframes typing-dot { from { opacity: .35; transform: translateY(0); } to { opacity: .8; transform: translateY(-2px); } }
-.bubble:has(> .typing-dots) { display: block; }
 @media (prefers-reduced-motion: reduce) { .typing-dots i { animation: none; } }
 
 .reply-error { color: var(--faint); font-size: 12px; padding: 4px 0; }

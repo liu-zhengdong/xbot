@@ -67,9 +67,10 @@ type Options struct {
 	// OnTool and OnResult may run at the same time, once per call.
 	// id is the provider call ID, so same-name parallel calls can be paired.
 	// Callers that stream them (the terminal printer, the web SSE writer) must tolerate that.
-	OnTool    func(id, name, summary string)
-	OnResult  func(id, name, output string)
-	OnMessage func(provider.Message)
+	OnTool        func(id, name, summary string)
+	OnToolDisplay func(id, name, summary, description string)
+	OnResult      func(id, name, output string)
+	OnMessage     func(provider.Message)
 	// Redact masks known secret values in tool output before it is streamed or
 	// recorded. Nil leaves the output unchanged.
 	Redact func(string) string
@@ -449,6 +450,13 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	}
 	if opt.OnTool != nil {
 		opt.OnTool(tc.ID, t.Name(), summary)
+	}
+	if opt.OnToolDisplay != nil {
+		var args struct {
+			Description string `json:"description"`
+		}
+		_ = json.Unmarshal(raw, &args)
+		opt.OnToolDisplay(tc.ID, t.Name(), summary, args.Description)
 	}
 	if need {
 		if opt.Approve == nil {

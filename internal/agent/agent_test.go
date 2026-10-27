@@ -788,3 +788,18 @@ func TestToolCallbacksKeepParallelCallIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestToolDisplayUsesDescriptionRatherThanConfirmSummary(t *testing.T) {
+	for _, tc := range []struct{ args, want string }{
+		{`{"description":"查看资料","path":"/private/file"}`, "查看资料"},
+		{`{"path":"/private/file"}`, ""},
+	} {
+		var summary, display string
+		execTool(context.Background(), map[string]tools.Tool{"echo": &echoTool{}}, provider.ToolCall{ID: "1", Function: provider.FunctionCall{Name: "echo", Arguments: tc.args}}, Options{
+			OnToolDisplay: func(_, _, s, d string) { summary, display = s, d },
+		}, &sync.Mutex{})
+		if summary != "echo" || display != tc.want {
+			t.Fatalf("args %s: summary %q, display %q", tc.args, summary, display)
+		}
+	}
+}

@@ -259,7 +259,7 @@
       line.className = "preview st run click";
       line.append(spinIcon(11));
       const text = el("span");
-      const summary = st.todo || workText(st.tool, st.tool_summary) || "在处理";
+      const summary = workText(st.tool, st.tool_summary) || "在处理";
       text.append(summary);
       line.title = summary;
       line.append(text);
@@ -360,7 +360,7 @@
     if (state.sel && state.sel.type === "bot" && !state.peer) {
       const st = stStatus.map[state.sel.id];
       const host = thread.querySelector(".msg.live .body");
-      if (st && host && (st.todo || host.querySelector(".live-status"))) setWorking(host, workText(st.tool, st.tool_summary));
+      if (st && host && host.querySelector(".live-status")) setWorking(host, workText(st.tool, st.tool_summary));
     }
   }
 
@@ -6322,23 +6322,23 @@
   // Progress shows the purpose: the first summary line (a shell's description),
   // never the tool name or the command. Empty means the dot stands alone.
   function workText(tool, summary) {
-    return tool === "todo" ? "正在更新待办" : String(summary || "").split("\n")[0].trim();
+    return String(summary || "").split("\n")[0].trim();
   }
 
   function setWorking(host, text) {
-    const st = state.sel && state.sel.type === "bot" && !state.peer && stStatus.map[state.sel.id];
-    const label = (st && st.todo) || text;
     let status = host.querySelector(".live-status");
-    if (status && status.textContent === label) return;
     if (!status) {
       status = el("div", "meta live-status");
+      const dots = el("span", "typing-dots");
+      dots.setAttribute("aria-label", "正在回复");
+      for (let i = 0; i < 3; i++) dots.append(el("i", ""));
+      status.append(dots);
       host.append(status);
     }
-    status.replaceChildren();
-    const dot = el("i", "status-dot run");
-    setTip(dot, "正在处理");
-    status.append(dot);
-    if (label) status.append(el("span", "working-name", label));
+    const name = status.querySelector(".working-name");
+    if ((name?.textContent || "") === text) return;
+    if (name) name.remove();
+    if (text) status.append(el("span", "working-name", text));
   }
 
   function approvalCard(payload) {
@@ -6432,10 +6432,8 @@
     row.dataset.time = now;
     const body = el("div", "body");
     const prose = el("div", "prose bot-bubble");
-    const dots = el("span", "typing-dots");
-    dots.setAttribute("aria-label", "正在回复");
-    for (let i = 0; i < 3; i++) dots.append(el("i", ""));
-    body.append(prose, dots);
+    body.append(prose);
+    setWorking(body, "");
     row.append(body);
     markLiveGroup(inner, row);
     addBubbleTime(row, now);
@@ -6474,18 +6472,13 @@
         try { payload = JSON.parse(data); } catch (e) { continue; }
         if (payload.status === "queued") { onQueued(); continue; }
         const host = prose.closest(".body") || prose.parentElement;
-        if (event === "part") {
-          if (payload.hosted?.name === "image_generation") {
-            if (host) setWorking(host, "生成图片");
-          } else window.XBotProviders.progress(host, payload);
-        } else if (event === "tool") {
+        if (event === "tool") {
           // Tool steps show only as the busy line; the trace has the detail.
           setWorking(prose.closest(".body"), workText(payload.name, payload.summary));
         } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
           // A message that landed is this bubble; the next one streams into a
           // fresh live row, as the transcript keeps one bubble per call.
           host.querySelector(".live-status")?.remove();
-          host.querySelector(".typing-dots")?.remove();
           appendMarkdown(prose, stripBotImages(displayText(payload.text)));
           host.parentElement.classList.remove("live");
           prose = liveBubble();
@@ -6707,7 +6700,6 @@
       }
       syncComposer();
     } finally {
-      live?.querySelector(".typing-dots")?.remove();
       live?.querySelector(".live-status")?.remove();
       if (prose && !prose.textContent && !live?.querySelector(".approval")) live?.remove();
       settle();

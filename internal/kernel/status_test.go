@@ -311,3 +311,22 @@ func TestToolSummaryKeepsOnlyTheDescriptionLine(t *testing.T) {
 		t.Fatalf("tool summary = %q", got)
 	}
 }
+
+func TestToolDisplayKeepsConfirmSummaryOutOfStatus(t *testing.T) {
+	b := testBot(t, link.NameTerminal)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
+	tr := &turn{started: time.Now()}
+	k.turn = tr
+	k.beginStepDisplay(tr, "read", "read_file", "read /private/file", "")
+	if got := k.Status().ToolSummary; got != "" {
+		t.Fatalf("empty description: %q", got)
+	}
+	if got := k.Steps(1)[0].Summary; got != "read /private/file" {
+		t.Fatalf("step summary lost: %q", got)
+	}
+	k.endStep(tr, "read", "ok")
+	k.beginStepDisplay(tr, "shell", "shell", "检查资料\ncommand", "检查资料\nmore")
+	if got := k.Status().ToolSummary; got != "检查资料" {
+		t.Fatalf("description: %q", got)
+	}
+}

@@ -155,19 +155,19 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 // options builds the agent callbacks for this run.
 func (r *turnRun) options(approve agent.Approver) agent.Options {
 	opts := agent.Options{
-		ToolBatch:    r.t.toolBatch,
-		RunTool:      r.k.runToolCall,
-		MaxSteps:     r.k.stepGuard(),
-		Approve:      approve,
-		OnDelta:      r.delta,
-		OnTool:       r.toolStart,
-		OnResult:     r.toolEnd,
-		Redact:       r.k.redactor(),
-		OnMessage:    r.onMessage,
-		RefreshTools: r.k.modelTools,
-		AfterStep:    r.afterStep,
-		Guard:        r.guardStep,
-		OnIdle:       r.onIdle,
+		ToolBatch:     r.t.toolBatch,
+		RunTool:       r.k.runToolCall,
+		MaxSteps:      r.k.stepGuard(),
+		Approve:       approve,
+		OnDelta:       r.delta,
+		OnToolDisplay: r.toolStart,
+		OnResult:      r.toolEnd,
+		Redact:        r.k.redactor(),
+		OnMessage:     r.onMessage,
+		RefreshTools:  r.k.modelTools,
+		AfterStep:     r.afterStep,
+		Guard:         r.guardStep,
+		OnIdle:        r.onIdle,
 	}
 	// A timer wake has no one to stream to, until an owner message takes
 	// over its output.
@@ -190,18 +190,18 @@ func (r *turnRun) delta(s string) {
 	}
 }
 
-func (r *turnRun) toolStart(id, name, summary string) {
+func (r *turnRun) toolStart(id, name, summary, description string) {
 	if name == "ask_user" {
 		r.t.mu.Lock()
 		r.t.askedOwner = true
 		r.t.mu.Unlock()
 	}
-	r.k.beginStep(r.t, id, name, summary)
+	display := r.k.beginStepDisplay(r.t, id, name, summary, description)
 	r.t.mu.Lock()
 	forked := r.t.branch != ""
 	r.t.mu.Unlock()
 	if sk := r.t.sinkNow(); sk != nil && sk.OnTool != nil && !forked {
-		sk.OnTool(name, summary)
+		sk.OnTool(name, display)
 	}
 }
 

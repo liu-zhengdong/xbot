@@ -60,11 +60,12 @@ type BotStatus struct {
 // Step is one tool step in a turn, kept in a small ring for the web and the
 // bot_status tool.
 type Step struct {
-	callID  string    // private correlation key; never sent to the UI
-	Time    time.Time `json:"time"`
-	Tool    string    `json:"tool"`
-	Summary string    `json:"summary,omitempty"`
-	State   string    `json:"state"`
+	callID      string // private correlation key; never sent to the UI
+	description string
+	Time        time.Time `json:"time"`
+	Tool        string    `json:"tool"`
+	Summary     string    `json:"summary,omitempty"`
+	State       string    `json:"state"`
 }
 
 // StatusSource lets a kernel read every same-owner bot's status. The web
@@ -239,7 +240,7 @@ func (k *Kernel) Status() BotStatus {
 	// Show the longest-running call, even when a later parallel call finished.
 	for _, step := range t.steps {
 		if active && (step.State == StepRunning || (awaiting && step.State == StepAwaiting)) {
-			tool, toolStart, st.ToolSummary = step.Tool, step.Time, step.Summary
+			tool, toolStart, st.ToolSummary = step.Tool, step.Time, step.description
 			break
 		}
 	}
@@ -308,8 +309,12 @@ func (k *Kernel) Steps(n int) []Step {
 
 // beginStep records a tool call starting, for the turn ring and the status.
 func (k *Kernel) beginStep(t *turn, id, name, summary string) {
+	k.beginStepDisplay(t, id, name, summary, summary)
+}
+
+func (k *Kernel) beginStepDisplay(t *turn, id, name, summary, description string) string {
 	if t == nil {
-		return
+		return ""
 	}
 	redact := k.redactor()
 	t.mu.Lock()
@@ -317,12 +322,14 @@ func (k *Kernel) beginStep(t *turn, id, name, summary string) {
 	t.tools++
 	t.lastTool = name
 	t.lastToolStart = k.now()
-	// Only the first line: shell-like summaries are "description\ncommand", and the
-	// status shows the purpose, never the command.
+	// Steps keep the confirmation summary; status uses only the description.
 	first, _, _ := strings.Cut(redact(summary), "\n")
 	line := clipStatusPreview(oneStatusLine(first), stepSummaryCap)
-	t.steps = append(t.steps, Step{callID: id, Time: t.lastToolStart, Tool: name, Summary: line, State: StepRunning})
+	firstDescription, _, _ := strings.Cut(redact(description), "\n")
+	display := clipStatusPreview(oneStatusLine(firstDescription), stepSummaryCap)
+	t.steps = append(t.steps, Step{callID: id, description: display, Time: t.lastToolStart, Tool: name, Summary: line, State: StepRunning})
 	t.steps = trimSteps(t.steps)
+	return display
 }
 
 // endStep records a tool call finishing. output is the tool result, whose

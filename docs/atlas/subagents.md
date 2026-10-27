@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 Shell 解释器白名单）
+verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 Shell 解释器白名单） + process-bar-busy-one-row
 ---
 # 后台工作与子代理
 
