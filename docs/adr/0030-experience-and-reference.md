@@ -6,7 +6,7 @@ date: 2026-10-27
 ---
 # 0030 记忆拆成经历与资料：经历由 Agent 自记，压缩不写记忆
 
-> 资料范围的决定已由 [ADR 0032](0032-bot-reference-and-optional-shared.md) 取代；经历和压缩的其余决定仍适用。
+> 资料范围的决定已由 [ADR 0033](0033-bot-and-shared-reference-workspace.md) 取代；经历和压缩的其余决定仍适用。
 
 > 设计稿：Obsidian `正在干什么/06-XBot/设计/经历与资料.md`；压缩不写记忆见 [ADR 0021](0021-env-stream.md)。
 
@@ -16,7 +16,7 @@ date: 2026-10-27
 
 ## 决定
 
-1. **两层**：资料是长期事实、约定和项目知识，默认是 `bots/<bot>/memory/`，可选 `<root>/memory/` 存跨 Bot 事实（见 ADR 0032）；Bot 用文件工具写，根层索引通过环境流注入；原 Bot/person 记忆仍注入。经历是可检索的「发生过什么」，锚到 transcript。
+1. **两层**：资料是长期事实、约定和项目知识，默认是 `bots/<bot>/memory/`，共享工作空间 `<root>/memory/` 存跨 Bot 事实（见 ADR 0033）；Bot 用文件工具写，根层索引通过环境流注入；原 Bot/person 记忆仍注入。经历是可检索的「发生过什么」，锚到 transcript。
 2. **经历由 Agent 自觉记录**：`experience_record` 写一条摘要，可选 focus 与起止 seq；内核补时间，默认锚从最近一条用户消息到 transcript 尾，并存一段不调模型的原文段提纲（只有发言与工具名，不含工具结果）。没有闲置封口、压缩封口或系统兜底，漏记可接受。
 3. **存储**：每个 Bot 一个 `bots/<bot>/experience.sqlite`（`modernc.org/sqlite`）。表 `experiences(id, created_at, summary, focus, from_seq, to_seq, segment)`。
 4. **轻推**：`ExperienceRule` 随记忆链接挂进规则段；资料写入另在每轮请求中短提醒一次。资料关键词命中字面用户或模型文本时提醒深层路径，同轮按路径去重。

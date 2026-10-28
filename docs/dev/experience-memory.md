@@ -5,7 +5,7 @@
 ## 怎样算对
 
 - 经历记录：Agent 调 `experience_record` 能落库，带时间和 transcript 起止 seq；下一次发给模型的环境里能看到新经历。守护：`TestExperienceRecordShowsInNextEnvironment`。
-- 资料：每个 Bot 看到自己的资料契约和索引，空库有契约；可选共享目录存在时两个 Bot 均能看到共享段。磁盘变化后刷新，不变不重发。守护：`TestReferenceEnvironmentPerBotAndOptionalShared`。
+- 资料：每个 Bot 看到自己的资料契约和索引，空库有契约；共享工作空间空库也有契约，两个 Bot 均能看到共享段。磁盘变化后刷新，不变不重发。守护：`TestReferenceEnvironmentPerBotAndSharedWorkspace`。
 - 经历查阅：`experience_search` 只给经历摘要加原文段提纲，不带工具结果正文；`detail` 能按 seq、或按经历 id 加下标读出单条全文（含 blob）。守护：`TestExperienceSearchLeavesOutToolBodyAndDetailReadsIt`。
 
 ## 还没做的

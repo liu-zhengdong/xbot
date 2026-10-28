@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/memory/, internal/person/, internal/experience/]
-verified: 2026-10-28 @ 2b1e9efa + Bot 资料库回修
+verified: 2026-10-28 @ 342cc208 + 共享工作空间回修
 ---
 # 身份与记忆
 
@@ -36,4 +36,4 @@ verified: 2026-10-28 @ 2b1e9efa + Bot 资料库回修
 - **只读检索**：`recall` 用 BM25 按行检索可见的 bot/person 目录中的 `.md`、`.txt`（递归，跳过备份和符号链接，每文件最多 256 KiB，每次最多 2000 文件、合计 4 MiB，触顶标明搜索不完整），读取各范围时持 `.lock`，拒绝偏离数据根规范路径的符号链接祖先，打开后核对文件 inode；汉字按重叠双字分词。返回最多 20 条 `scope:路径:行号`，正文截到约 200 字，超出提示剩余数量；`scope` 缩小范围，`since=YYYY-MM-DD` 按条目日期筛选常驻与日志、按 mtime 筛选自由文件。
 - **演进中**：[ADR 0008](../adr/0008-memory-v2-dated-log-first.md) 和 [ADR 0009](../adr/0009-memory-as-folder.md) 已定：每个范围是一个文件夹（常驻 `memory.md` 带索引，`log/YYYY-MM.md`，其余自由文件），用普通文件工具编辑，只留只读的 `recall`；快照加差异已在批 1 落地（见上）；每晚整理时核对索引。分批落地，见 [记忆 v2 规格](../MEMORY-V2.md)；上面描述的是还没落地的现状，每落地一批就改一处。
 - **经历**（[ADR 0030](../adr/0030-experience-and-reference.md)）：每个 Bot 一个 `bots/<bot>/experience.sqlite`，表 `experiences(id, created_at, summary, focus, from_seq, to_seq, segment)`，第一次记录时才建。`experience_record` 由 Agent 自己调：摘要不超过 2 KiB，起止 seq 默认从最近 200 行里最新一条用户消息到 transcript 尾，`segment` 是内核从该范围前 200 行拼的提纲（每行发言截 160 字节、只列工具名、跳过工具结果和内部行，合计约 600 字节），不调模型。`ExperienceRule` 在挂了记忆链接时进规则段，是常驻轻推，不是每条消息的提醒。环境采样带 `experience` 字段（总数和最新一条 `#id 摘要`，截 200 字节），新记一条后下一轮按环境流只追加这一项差异；读库出错时保留已公布的值，不让这一轮失败。`experience_search` 不带 query 列最新，带 query 时在最近 2000 条上用 BM25 排序，最多 8 条、合计 6 KiB，只给摘要和提纲；`detail`（挂在上下文链接上）按 seq 或「经历 id + 0 起下标」读单条消息全文，blob 会读回，上限 64 KiB，经脱敏。压缩不写经历。设计稿：Obsidian `正在干什么/06-XBot/设计/经历与资料.md`。
-- **资料库**（[ADR 0032](../adr/0032-bot-reference-and-optional-shared.md)）：默认 `bots/<bot>/memory/`，可选 `<root>/memory/` 存跨 Bot 事实；共享目录不存在时不创建也不注入。环境流 `reference` 先注入 Bot 契约及根层索引，存在共享库时再注入其契约及索引；空 Bot 库仍给契约。根层 Markdown 列文件名和 `description`，`defaultopen: true` 才带全文，子目录只列入口；Bot 库的 `memory.md`、`log/`、索引、旧系统文件及备份跳过。各来源根层文件或索引超过 256 KiB 时只排除该来源索引并说明，不截断；变化才发布，压缩后环境快照重新公布。内核只建 Bot 目录和读取，文件工具写资料；旧 Bot/person 记忆仍沿原路径注入。每轮一次 sidecar 轻推默认写 Bot 资料、跨 Bot 才写共享；两源 `keywords` 按英文大小写不敏感、中文原样的字面子串匹配用户或模型文本，只提醒路径，单轮路径去重，已进入该源根层索引的不重复提醒。关键词扫描最多读 4 MiB，每文件最多读 64 KiB，单步路径最多 1 KiB；压缩不写记忆或经历。
+- **资料库**（[ADR 0033](../adr/0033-bot-and-shared-reference-workspace.md)）：默认 `bots/<bot>/memory/`，整机共享工作空间 `<root>/memory/` 存跨 Bot 事实；采样时创建两目录，空库也注入契约。环境流 `reference` 先注入 Bot 契约及根层索引，再注入共享契约及索引。根层 Markdown 列文件名和 `description`，`defaultopen: true` 才带全文，子目录只列入口；Bot 库的 `memory.md`、`log/`、索引、旧系统文件及备份跳过。各来源根层文件或索引超过 256 KiB 时只排除该来源索引并说明，不截断；变化才发布，压缩后环境快照重新公布。内核只建这两个目录和读取，文件工具写资料；旧 Bot/person 记忆仍沿原路径注入。每轮一次 sidecar 轻推给出两条绝对路径，默认写 Bot 资料、跨 Bot 才写共享；两源 `keywords` 按英文大小写不敏感、中文原样的字面子串匹配用户或模型文本，只提醒路径，单轮路径去重，已进入该源根层索引的不重复提醒。关键词扫描最多读 4 MiB，每文件最多读 64 KiB，单步路径最多 1 KiB；压缩不写记忆或经历。

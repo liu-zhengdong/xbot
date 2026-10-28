@@ -1,10 +1,12 @@
 ---
 kind: adr
 guard: owner
-status: Accepted
+status: Superseded
 date: 2026-10-28
 ---
 # 0032 资料默认归 Bot，可选跨 Bot 共享
+
+> 共享目录改为始终可用，见 [ADR 0033](0033-bot-and-shared-reference-workspace.md)。
 
 ## 背景
 

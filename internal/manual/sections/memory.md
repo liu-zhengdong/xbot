@@ -1,6 +1,6 @@
 # 记忆
 
-长期资料默认写入本 Bot 的 `<root>/bots/<bot>/memory/`；可选 `<root>/memory/` 仅存跨 Bot 事实，存在时才在环境里的 `reference` 字段给出路径。用文件工具维护自由 Markdown：根层 `description` 进索引，`defaultopen: true` 带全文；子目录只列入口，正文按需读取。Bot 库的 `memory.md`、`log/`、索引和备份不进资料索引。每个来源超过 256 KiB 时整源索引排除并说明。`keywords` 按字面命中用户或模型文本时提醒路径，每轮路径去重。索引变化走环境流，不变不重复发送；压缩不写记忆或经历。Bot 和 person 的既有记忆继续注入。
+长期资料默认写入本 Bot 的 `<root>/bots/<bot>/memory/`；整机共享工作空间 `<root>/memory/` 仅存跨 Bot 事实，空库也在环境里的 `reference` 字段给出路径；内核按需创建目录。用文件工具维护自由 Markdown：根层 `description` 进索引，`defaultopen: true` 带全文；子目录只列入口，正文按需读取。Bot 库的 `memory.md`、`log/`、索引和备份不进资料索引。每个来源超过 256 KiB 时整源索引排除并说明。`keywords` 按字面命中用户或模型文本时提醒路径，每轮路径去重。索引变化走环境流，不变不重复发送；压缩不写记忆或经历。Bot 和 person 的既有记忆继续注入。
 
 - Bot：`<root>/bots/<bot>/memory/`，Bot 工作记忆和默认资料库。职责与边界在有效人设里（选用的人设卡正文，未选用时是 `persona.md`）；学到的工作档案复用 Bot 记忆，不双写职责、不让记忆覆写人设。
 - person：`<root>/people/<id>/memory/`，旧的用户事实记忆，过渡期保留。

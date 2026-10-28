@@ -16,7 +16,7 @@ import (
 	"xbot/internal/provider"
 )
 
-func TestReferenceEnvironmentPerBotAndOptionalShared(t *testing.T) {
+func TestReferenceEnvironmentPerBotAndSharedWorkspace(t *testing.T) {
 	root := t.TempDir()
 	var ks []*Kernel
 	for _, name := range []string{"one", "two"} {
@@ -37,11 +37,11 @@ func TestReferenceEnvironmentPerBotAndOptionalShared(t *testing.T) {
 	a, b := sample(ks[0], environment{}), sample(ks[1], environment{})
 	private := filepath.Join(bot.Dir(root, "one"), "memory")
 	shared := filepath.Join(root, "memory")
-	if _, err := os.Stat(shared); !os.IsNotExist(err) {
-		t.Fatalf("optional shared directory created: %v", err)
+	if info, err := os.Stat(shared); err != nil || !info.IsDir() {
+		t.Fatalf("shared workspace unavailable: %v", err)
 	}
 	first, second := environmentGet[string](a, "reference"), environmentGet[string](b, "reference")
-	if !strings.Contains(first, private) || strings.Contains(first, shared+"\n") || !strings.Contains(second, filepath.Join(bot.Dir(root, "two"), "memory")) || first == second {
+	if !strings.Contains(first, private) || !strings.Contains(first, shared+"\n") || !strings.Contains(second, shared+"\n") || !strings.Contains(second, filepath.Join(bot.Dir(root, "two"), "memory")) || first == second {
 		t.Fatalf("private contracts: %s / %s", first, second)
 	}
 	if err := os.WriteFile(filepath.Join(private, "private.md"), []byte("---\ndescription: private fact\n---\nPRIVATE BODY"), 0600); err != nil {
@@ -149,9 +149,6 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "memory", "agreement.md")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
 	args, err := json.Marshal(map[string]string{"path": path, "content": "---\ndescription: deployment agreement\n---\nUse blue green.\n"})
 	if err != nil {
 		t.Fatal(err)
@@ -466,13 +463,22 @@ func TestReferencePrivateWrittenByBot(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := messagesText(p.reqs[0].Messages)
-	if !strings.Contains(first, "Bot reference library") || !strings.Contains(first, "shared library for cross-Bot facts only") || strings.Contains(first, "Shared reference library (cross-Bot facts):") {
+	if !strings.Contains(first, "Bot reference library") || !strings.Contains(first, "shared workspace for cross-Bot facts only") || !strings.Contains(first, "Shared workspace (cross-Bot facts):") {
 		t.Fatalf("wrong initial writing guidance: %s", first)
 	}
 	if len(p.reqs) < 2 || !strings.Contains(messagesText(p.reqs[1].Messages), "private agreement") {
 		t.Fatal("private write absent from subsequent environment")
 	}
-	if _, err := os.Stat(filepath.Join(root, "memory")); !os.IsNotExist(err) {
-		t.Fatalf("shared directory unexpectedly exists: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "memory")); err != nil {
+		t.Fatalf("shared workspace unavailable: %v", err)
+	}
+	var nudge string
+	for _, m := range p.reqs[0].Messages {
+		if strings.Contains(m.Text(), "<reference-reminder>") {
+			nudge = m.Text()
+		}
+	}
+	if !strings.Contains(nudge, filepath.Dir(path)) || !strings.Contains(nudge, filepath.Join(root, "memory")) {
+		t.Fatalf("nudge missing both paths: %s", nudge)
 	}
 }

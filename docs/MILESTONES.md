@@ -1,6 +1,12 @@
 # XBot 里程碑与进度
 
-## 2026-10-28 资料默认归 Bot 回修（功能分支）
+## 2026-10-28 私有资料与共享工作空间（功能分支）
+
+- 私有资料继续使用 `bots/<bot>/memory/`；整机共享工作空间保留 `<root>/memory/`，采样时创建并始终注入契约与索引，空库也给路径。每轮轻推列出两条绝对路径，默认写私有、跨 Bot 才写共享；沿用环境流与 sidecar，关键词和预算覆盖两源。见 [ADR 0033](adr/0033-bot-and-shared-reference-workspace.md)。
+- 空库、跨 Bot 写读、关键词、去重、预算与压缩定向 kernel 测试三次通过，分叉/重试/跨 Bot 写入 race 通过；`TestSpawnWhileChatKeepsAnswering` 三次通过，手册和命令包三次通过；gofmt、vet、atlas audit 通过（既有告警）。全仓测试 e2e 包通过；kernel 长轮、work shell 失败和 web 审批超时均在上一 tip 分别复现。kernel 全包三次运行在 90 秒总超时前两次遇到同一长轮失败，第三次未完成；全仓运行后仅调整了私有契约措辞，定向与入口测试重新通过。
+- 20 个深层文件关键词扫描微基准约 0.20 ms/次；未测交互 p95、真实模型或主人日用，未合 main、未 push。
+
+## 2026-10-28 资料默认归 Bot 回修（功能分支，之后共享策略由 ADR 0033 更新）
 
 - 按政东新决定，资料默认使用 `bots/<bot>/memory/`，可选 `<root>/memory/` 保存跨 Bot 事实；Bot 库跳过系统记忆文件、日志、索引和备份。两源沿用环境流及提醒 sidecar，按来源独立预算，旧 extract 不恢复。决定见 [ADR 0032](adr/0032-bot-reference-and-optional-shared.md)。
 - 定向 kernel 测试连续三次通过，覆盖私有隔离、共享可见、两源关键词、每轮轻推、系统条目排除、独立预算、压缩和分叉；提醒相关 race 测试通过。`TestSpawnWhileChatKeepsAnswering` 连续三次通过，手册与命令包三次通过；gofmt、vet、atlas audit 通过（既有告警）。全仓 e2e 包通过，kernel 长轮折叠失败、work shell 描述失败、web 审批测试 90 秒超时，三项在旧 tip 分别复现；kernel 全包三次运行受总超时影响未完成，前两次均遇到同一长轮失败。
