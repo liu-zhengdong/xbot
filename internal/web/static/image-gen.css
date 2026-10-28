@@ -3,7 +3,7 @@
 .ig-provider{gap:var(--x-s5);padding:var(--x-s3) calc(var(--x-s5) + var(--x-s1)/2)}
 .ig-glyph{width:calc(var(--x-s7) + var(--x-s3));height:calc(var(--x-s7) + var(--x-s3));object-fit:contain;padding:calc(var(--x-s4)/2);flex:none}
 [data-theme="dark"] .ig-glyph{filter:invert(1)}
-.ig-guide{padding:0 calc(var(--x-s5) + var(--x-s1)/2) calc(var(--x-s5) + var(--x-s1)/2) calc(var(--x-s7) + var(--x-s3) + var(--x-s6) + 3 * var(--x-s5) + var(--x-s1)/2);background:var(--x-fill-3)}
+.ig-guide{padding:0 calc(var(--x-s5) + var(--x-s1)/2) calc(var(--x-s5) + var(--x-s1)/2) calc(var(--x-s7) + var(--x-s3) + var(--x-s6) + 3 * var(--x-s5) + var(--x-s1)/2);background:transparent}
 .ig-guide p{font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.55;margin:0 0 var(--x-s4)}
 .ig-guide .ws-try{width:100%}
 @media(max-width:600px){.ig-guide{padding-left:var(--x-s3)}.ig-provider{padding:var(--x-s3)}}

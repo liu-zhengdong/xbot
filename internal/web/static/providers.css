@@ -78,7 +78,7 @@
 .provider-card:hover{background:var(--x-fill-2)}.provider-card:active{transform:scale(var(--press-scale))}
 .provider-card[aria-current="true"]{background:var(--provider-selected)}
 .provider-card:focus-visible,.provider-back:focus-visible{outline:2px solid var(--provider-accent);outline-offset:2px}
-.provider-card strong{font-size:14px;font-weight:600;overflow-wrap:anywhere;min-width:0}.provider-card .sdot{margin-left:-5px}
+.provider-card strong{font-size:14px;font-weight:600;overflow-wrap:anywhere;min-width:0}.provider-card .sdot,.provider-card .provider-login-note{margin-left:auto}
 .provider-glyph{width:22px;height:22px;object-fit:contain;flex:none;background:transparent}.provider-glyph-openai{filter:var(--provider-openai-filter,none)}
 html[data-theme="dark"] .provider-glyph-openai{--provider-openai-filter:invert(1)}
 .provider-chatgpt-glyph{background:#10a37f;mask:url("provider-icons/openai.svg") center/contain no-repeat}

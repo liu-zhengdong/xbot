@@ -13,7 +13,7 @@ func TestAppsStoreDensityBrowser(t *testing.T) {
   document.body.append(host);
   const apps = [
    {id:'context7',title:'Context7',summary:'这是很长的说明。'.repeat(40),scope:'密钥按 Bot 分别保存，只有填过密钥的 Bot 能用。',category:'dev',state:'available'},
-   {id:'browser',title:'浏览器',summary:'浏览网页',category:'dev',state:'available'},
+   {id:'playwright',title:'Playwright',summary:'自动化网页',category:'dev',state:'available'},
    {id:'gmail',title:'Gmail',summary:'邮件',category:'dev',state:'soon'}
   ];
   await XBotApps.mount({host,api:async()=>({apps,connected:0}),isCurrent:()=>true});

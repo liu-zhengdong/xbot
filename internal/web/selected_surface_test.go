@@ -22,7 +22,7 @@ func TestSelectedCardSurfaces(t *testing.T) {
 		t.Skip("Chrome is not installed")
 	}
 	var styles strings.Builder
-	for _, file := range []string{"static/tokens.css", "static/app.css", "static/providers.css", "static/web-search.css"} {
+	for _, file := range []string{"static/tokens.css", "static/app.css", "static/providers.css", "static/web-search.css", "static/skills.css", "static/image-gen.css", "static/devices.css"} {
 		data, err := staticFS.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)
@@ -30,7 +30,7 @@ func TestSelectedCardSurfaces(t *testing.T) {
 		styles.Write(data)
 		styles.WriteByte('\n')
 	}
-	page := `<!doctype html><style>` + styles.String() + `</style><div id="settings-providers"><div class="provider-grid"><button class="provider-card" aria-current="true">selected</button><button class="provider-card">other</button></div></div><div class="binding-group"><button class="binding-option" aria-checked="true">model</button></div><div class="setrows other-settings">other settings</div><div class="web-search-settings"><div class="setrows"><div class="setrow">switch</div></div><div class="ws-choices"><button class="ws-choice on">search</button><button class="ws-choice">other</button></div><div class="ws-list"><button class="ws-provider on">provider</button><div class="ws-key">key</div><button class="ws-provider">other</button></div></div><script>
+	page := `<!doctype html><style>` + styles.String() + `</style><div id="settings-providers" style="width:640px"><div class="provider-grid"><button class="provider-card" aria-current="true"><strong>selected</strong><span class="sdot ok"></span></button><button class="provider-card">other</button></div></div><div class="binding-group"><button class="binding-option" aria-checked="true">model</button></div><div class="setrows other-settings">other settings</div><div class="approw">push</div><div class="kvrow">version</div><div class="sklist"><button class="skrow">skill</button></div><div class="sknone">none</div><div class="setdev"><div class="g7-device g7-self">this computer</div></div><div class="ig-guide">guide</div><div class="web-search-settings"><div class="setrows"><div class="setrow">switch</div></div><div class="ws-choices"><button class="ws-choice on">search</button><button class="ws-choice">other</button></div><div class="ws-list"><button class="ws-provider on">provider</button><div class="ws-key">key</div><button class="ws-provider">other</button></div></div><script>
  try {
   const bg = e => getComputedStyle(e).backgroundColor;
   const q = s => document.querySelector(s);
@@ -42,7 +42,12 @@ func TestSelectedCardSurfaces(t *testing.T) {
    for (const surface of ['.web-search-settings .setrows','.ws-choice','.ws-provider','.ws-choice.on','.ws-provider.on','.ws-key']) {
     if(bg(q(surface))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+surface+' has a background');
    }
-   if(bg(q('.other-settings'))==='rgba(0, 0, 0, 0)') throw Error(theme+' other settings lost background');
+   for (const shell of ['.other-settings','.approw','.kvrow','.sklist','.skrow','.sknone','.setdev .g7-self','.ig-guide']) {
+    if(bg(q(shell))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+shell+' has a gray shell');
+   }
+   if(getComputedStyle(q('.skrow')).borderTopStyle!=='none') throw Error(theme+' skill rows have hairlines');
+   const card=q('.provider-card[aria-current]').getBoundingClientRect(), dot=q('.provider-card .sdot').getBoundingClientRect();
+   if(card.right-dot.right>24) throw Error(theme+' provider status is not on the right edge');
    const sample=document.createElement('div');
    sample.style.background='var(--x-fill-2)'; document.body.append(sample);
    for (const surface of ['.provider-card[aria-current]','.binding-option']) {

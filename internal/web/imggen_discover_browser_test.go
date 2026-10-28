@@ -83,8 +83,8 @@ const openGenerated=async()=>{
  assert(version?.textContent==='dev · abc1234','version row missing full version');
  assert(!$('#settings-copy-version')&&!version.closest('.kvrow').querySelector('svg')&&!version.closest('.kvrow').textContent.includes('复制'),'separate copy control remains');
  assert(version.getBoundingClientRect().right>version.closest('.kvrow').getBoundingClientRect().right-20,'version is not right aligned');
- fixture.copied='';$('.aboutlogo [data-settings-version]').click();await new Promise(r=>setTimeout(r,20));
- assert(!fixture.copied,'header copies version');
+ assert(!$('.aboutlogo [data-settings-version]'),'header repeats the version');
+ fixture.copied='';
  version.click();await waitFor(()=>fixture.copied==='dev · abc1234','clicking version did not copy full text');
  await waitFor(()=>visible($('#settings-version-status'))&&$('#settings-version-status').textContent==='已复制','copy feedback missing');XBotSettings.close();
  // The running hosted event uses the same live status as a local tool. No

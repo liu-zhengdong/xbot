@@ -31,7 +31,9 @@ func TestAppsStoreBehaviour(t *testing.T) {
  const rows=[
   {id:'desktop',title:'电脑操作',summary:'看屏幕、点击。',category:'local',state:'available'},
   {id:'browser',title:'浏览器',summary:'打开网页。',category:'local',state:'connected'},
-  {id:'fetch',title:'网页抓取',summary:'读网页。',category:'dev',state:'available'},
+  {id:'fetch',title:'网页抓取',summary:'读网页。',category:'dev',state:'connected'},
+  {id:'playwright',title:'Playwright',summary:'自动化网页。',category:'dev',state:'available'},
+  {id:'github',title:'GitHub',summary:'看仓库。',category:'dev',state:'connected'},
   {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available',card:true,fields:['API 密钥']},
   {id:'telegram',title:'Telegram',summary:'收消息。',category:'chat',state:'available',card:true},
   {id:'gmail',title:'Gmail',summary:'邮件。',category:'work',state:'soon'},
@@ -50,21 +52,23 @@ func TestAppsStoreBehaviour(t *testing.T) {
   assert.ok(buttons(host).some(b=>b.textContent==='已连接 2 个'));
   assert.equal(walk(host).find(n=>n.tag==='input').placeholder,'搜索应用…');
   const chips=walk(host).filter(n=>n.className.split(' ').includes('ap-chip')).map(n=>n.textContent);
-  assert.equal(chips.join(),'全部,本机,开发,效率,通讯,更多');
+  assert.equal(chips.join(),'全部,开发,效率,通讯,更多');
+  // native organs stay out of the store, the picks and the count
+  for(const t of ['电脑操作','浏览器','网页抓取'])assert.ok(!textOf(host).includes(t),t+' is in the store');
   assert.ok(textOf(host).includes('为你推荐'));
   assert.ok(!textOf(host).includes('notes'),'custom apps stay out of the grid');
   // buttons by state
   // a connected card offers 移除 right in the store; nothing reads as a dead 已添加 or 已连接
-  const done=cardBtn(host,'浏览器');assert.equal(done.textContent,'移除');assert.equal(done.disabled,false);
+  const done=cardBtn(host,'GitHub');assert.equal(done.textContent,'移除');assert.equal(done.disabled,false);
   assert.ok(!btn(host,'已添加')&&!btn(host,'已连接'));
   const soon=btn(host,'即将支持');assert.equal(soon.disabled,true);
   // chip filters
   walk(host).find(n=>n.dataset.chip==='dev').onclick();
   assert.ok(textOf(host).includes('Context7'));assert.ok(!textOf(host).includes('电脑操作'));
   // adding a plain app goes to the global route with no bot in sight
-  await cardBtn(host,'网页抓取').onclick();
-  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='POST')[0]),JSON.stringify(['POST','/api/apps',{id:'fetch'}]));
-  assert.equal(cardBtn(host,'网页抓取').textContent,'移除');
+  await cardBtn(host,'Playwright').onclick();
+  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='POST')[0]),JSON.stringify(['POST','/api/apps',{id:'playwright'}]));
+  assert.equal(cardBtn(host,'Playwright').textContent,'移除');
   const notice=walk(host).find(n=>n.attrs.role==='status');assert.equal(notice.textContent,'已添加到你的应用');notice.hidden=true;
   // The settings layer keeps blank input in place and installs on success.
   let before=calls.length;await cardBtn(host,'Context7').onclick();
@@ -88,11 +92,12 @@ func TestAppsStoreBehaviour(t *testing.T) {
   // connected list, remove, then the empty state
   btn(host,'已连接 4 个').onclick();
   assert.ok(textOf(host).includes('这些应用对所有 Bot 都能用'));assert.ok(textOf(host).includes('notes'));
+  assert.ok(!textOf(host).includes('浏览器')&&!textOf(host).includes('网页抓取'),'native organs in the connected list');
   // removing from a store card sends the same DELETE as the connected page
   walk(host).find(n=>n.className==='setback').onclick();btn(host,'清除搜索').onclick();
-  await cardBtn(host,'浏览器').onclick();
-  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='DELETE')[0]),JSON.stringify(['DELETE','/api/apps/browser',undefined]));
-  assert.equal(cardBtn(host,'浏览器').textContent,'连接');
+  await cardBtn(host,'GitHub').onclick();
+  assert.equal(JSON.stringify(calls.filter(c=>c[0]==='DELETE')[0]),JSON.stringify(['DELETE','/api/apps/github',undefined]));
+  assert.equal(cardBtn(host,'GitHub').textContent,'添加');
   for(const r of rows)if(r.state==='connected'&&!r.custom)r.state='available';
   rows.find(r=>r.id==='notes').state='available';
   await window.XBotApps.mount({api,host,isCurrent:()=>true});
@@ -159,7 +164,7 @@ func TestAppsFailureStaysAndIconsShow(t *testing.T) {
  (async()=>{
   const rows=[
    {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available'},
-   {id:'fetch',title:'网页抓取',summary:'抓网页。',category:'dev',state:'connected'},
+   {id:'github',title:'GitHub',summary:'看仓库。',category:'dev',state:'connected'},
    {id:'telegram',title:'Telegram',summary:long,scope:note,category:'chat',state:'connected',card:true},
    {id:'mine',title:'mine',summary:'自定义应用',category:'custom',state:'connected',custom:true}];
   let fail=null;

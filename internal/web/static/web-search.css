@@ -1,7 +1,6 @@
 /* Web search direction A: rows follow the page; selection shows only in the radio. */
 .setpage:has([data-spane="search"]:not([hidden])){height:min(760px,90vh)}
 .web-search-settings h2{font-size:var(--x-fs-title);font-weight:650;margin:var(--x-s1) 0 var(--x-s3)}
-.web-search-settings .setrows{background:transparent}
 .ws-choices{display:flex;flex-direction:column;gap:var(--x-s3)}
 .ws-choice,.ws-provider{display:flex;align-items:center;gap:var(--x-s5);width:100%;border:0;text-align:left;font:inherit;cursor:pointer;color:var(--x-text);background:transparent}
 .ws-choice{align-items:flex-start;padding:var(--x-s5) var(--x-s6);border-radius:var(--x-r-card)}

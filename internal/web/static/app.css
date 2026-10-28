@@ -2664,7 +2664,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setsec{margin-top:22px}
 .setsec:first-of-type{margin-top:0}
 .setsec>h4{font-size:12px;color:var(--x-faint);font-weight:600;margin:0 0 8px;letter-spacing:.01em}
-.setrows{display:flex;flex-direction:column;border-radius:12px;background:var(--x-fill-1);overflow:hidden}
+.setrows{display:flex;flex-direction:column;border-radius:12px;background:transparent;overflow:hidden}
 .setrow{display:flex;align-items:center;gap:16px;min-height:48px;padding:10px 16px}
 .setrow .tx{flex:1;min-width:0}
 .setrow .tx b{font-size:13.5px;font-weight:560;display:block;color:var(--x-text)}
@@ -2675,7 +2675,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setlist .li .ic{margin-top:2px;color:var(--x-faint);flex:none}
 .setfoot{font-size:12px;color:var(--x-faint);margin-top:14px;line-height:1.6}
 .setfoot code{font-size:11.5px;background:var(--x-fill-2);padding:1px 6px;border-radius:5px}
-.approw{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 14px;border-radius:12px;background:var(--x-fill-1);margin-bottom:8px}
+.approw{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 16px;border-radius:12px;background:transparent;margin-bottom:8px}
 .approw .icwrap{width:36px;height:36px;border-radius:10px;background:var(--x-card);display:grid;place-items:center;color:var(--x-muted);flex:none}
 .approw .tx{flex:1;min-width:0}
 .approw b{font-size:14px;font-weight:620;display:block}
@@ -2685,7 +2685,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .aboutlogo{display:flex;align-items:center;gap:14px;padding:8px 0 18px}
 .aboutlogo .mark{width:48px;height:48px;border-radius:14px;background:var(--x-fill-2);display:grid;place-items:center;font-size:22px;font-weight:700;letter-spacing:-.02em}
 .aboutlogo h3{font-size:18px;font-weight:650}.aboutlogo .v{font-size:13px;color:var(--x-muted);margin-top:2px;font-family:var(--x-mono)}
-.kvrow{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 14px;border-radius:10px;background:var(--x-fill-1);margin-bottom:8px;font-size:13.5px}
+.kvrow{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 16px;border-radius:10px;background:transparent;margin-bottom:8px;font-size:13.5px}
 .kvrow .k{width:72px;color:var(--x-faint);flex:none}.kvrow .v{flex:1;min-width:0;font-family:var(--x-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #settings-version-status{color:var(--x-muted);font-size:12px;white-space:nowrap}
 .kvrow button.v{border:0;padding:0;background:transparent;color:var(--x-muted);text-align:right;cursor:pointer}.kvrow button.v:hover{color:var(--x-text)}
@@ -2703,6 +2703,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setdev .profile-section+.profile-section{margin-top:22px}.setdev .g7-dev-name{font-size:14px;font-weight:600}
 .setdev .g7-device,.setdev .g7-dev-card{margin-top:8px}.setdev .g7-self{margin-top:0}.setdev .g7-caps,.setdev .g7-meta,.setdev .g7-bots{margin-left:0}
 .setdev .g7-flat{margin-top:0}
+.setdev .g7-self{background:transparent}
 .setdev .g7-switch{width:34px}.setdev .g7-switch[aria-checked="true"]::after{transform:translateX(14px)}
 @media(max-width:600px){.setcnt{padding:20px 16px 28px}.setpane>h2{padding-right:28px}.setrow{padding:10px;gap:8px;flex-wrap:wrap}.setselect{min-width:110px}.approw{flex-wrap:wrap}}
 
