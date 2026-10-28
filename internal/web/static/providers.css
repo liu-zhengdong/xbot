@@ -22,7 +22,7 @@
 .binding-option{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:10px 40px 10px 12px;border:0;border-top:1px solid var(--x-fill-2);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
 .binding-option:first-child{border-top:0}
 .binding-option:hover{background:var(--x-fill-2)}
-.binding-option[aria-checked=true]{background:var(--x-fill-3)}
+.binding-option[aria-checked=true]{background:var(--x-fill-2)}
 .binding-option[aria-checked=true]::after{content:'✓';position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--x-primary)}
 .binding-option:disabled{opacity:.5;cursor:default}
 .binding-option strong{flex:1;min-width:0;font-family:var(--x-mono);font-size:13.5px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -63,7 +63,7 @@
 .hs-cite-mark{font-size:.75em;vertical-align:super;line-height:0;text-decoration:none!important}
 
 /* A-magpie: quiet provider cards, details revealed on the next level. */
-#settings-providers{--provider-accent:var(--x-primary);--provider-selected:var(--x-fill-3)}
+#settings-providers{--provider-accent:var(--x-primary);--provider-selected:var(--x-fill-2)}
 .provider-title{font-size:18px;font-weight:650;margin:4px 0 8px}
 .provider-tools{display:flex;justify-content:flex-end;margin:12px 0 18px}
 .provider-search{display:flex;align-items:center;gap:10px;width:200px;max-width:100%;padding:8px 12px;border-radius:9px;background:var(--x-fill-1);color:var(--x-faint);box-sizing:border-box}
@@ -72,7 +72,7 @@
 .provider-search:focus-within{outline:2px solid var(--provider-accent);outline-offset:2px}
 .provider-section{margin-top:22px}.provider-section[hidden]{display:none}
 .provider-section h3{font-size:14px;font-weight:650;line-height:1.3;margin:0 0 3px}.provider-section-note{font-size:12px;color:var(--x-faint);margin:0 0 10px}
-.provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;background:var(--x-fill-1)}
 .provider-card{display:flex;align-items:center;gap:12px;min-width:0;width:100%;min-height:50px;padding:12px 16px;border:1px solid transparent;border-radius:13px;background:var(--x-fill-1);color:var(--x-text);font:inherit;text-align:left;cursor:pointer;transition:transform var(--dur-press)}
 .provider-card[hidden]{display:none}
 .provider-card:hover{background:var(--x-fill-2)}.provider-card:active{transform:scale(var(--press-scale))}
