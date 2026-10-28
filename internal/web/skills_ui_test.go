@@ -378,8 +378,9 @@ func TestSkillsDisplayNamesAndCopy(t *testing.T) {
   [{slug:'blank',name:' ',description:' \n '},'blank',''],
   [{slug:'same',name:'same',description:'same'},'same',''],
   [{slug:'no-description',name:'no-description'},'no-description',''],
-  [{slug:'duplicate',name:'人读标题',description:'人读标题'},'人读标题','duplicate'],
-  [{slug:'named',name:'有名字',description:''},'有名字','named'],
+  [{slug:'duplicate',name:'人读标题',description:'人读标题'},'人读标题',''],
+  [{slug:'named',name:'有名字',description:''},'有名字',''],
+  [{slug:'rqv',name:'rqv',description:'>-'},'rqv',''],
   [{slug:'markup',name:'markup',description:'<img src=x onerror=alert(1)>'},'markup','<img src=x onerror=alert(1)>'],
   [{slug:'html-name',name:'<b>标题</b>',description:'<script>alert(1)</script>'},'<b>标题</b>','<script>alert(1)</script>'],
  ];

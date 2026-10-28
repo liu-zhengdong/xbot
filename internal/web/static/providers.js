@@ -73,7 +73,7 @@
     function entries() {
       const rows = data.providers.filter(p => p.oauth !== "chatgpt").map(p => {
         const brand = p.brand || (brands[p.name.toLowerCase()] ? p.name.toLowerCase() : "");
-        return { ...p, brand, title: p.name && p.name.toLowerCase() !== brand ? p.name : brands[brand] || pname(p) };
+        return { ...p, brand, title: brands[brand] || vendorOf(brand)?.title || "自定义供应商" };
       });
       for (const brand of Object.keys(brands)) if (!rows.some(p => p.brand === brand)) rows.push({ brand, title: brands[brand], key_configured: false, protocol: {openai:"responses",anthropic:"anthropic_messages"}[brand] || vendorOf(brand)?.protocol || "chat_completions" });
       const order = Object.keys(brands);

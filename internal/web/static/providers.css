@@ -63,8 +63,7 @@
 .hs-cite-mark{font-size:.75em;vertical-align:super;line-height:0;text-decoration:none!important}
 
 /* A-magpie: quiet provider cards, details revealed on the next level. */
-#settings-providers{--provider-accent:#c4b5fd;--provider-selected:#f4f0ff}
-html[data-theme="dark"] #settings-providers{--provider-accent:#76639f;--provider-selected:#2a2438}
+#settings-providers{--provider-accent:var(--x-primary);--provider-selected:var(--x-fill-3)}
 .provider-title{font-size:18px;font-weight:650;margin:4px 0 8px}
 .provider-tools{display:flex;justify-content:flex-end;margin:12px 0 18px}
 .provider-search{display:flex;align-items:center;gap:10px;width:200px;max-width:100%;padding:8px 12px;border-radius:9px;background:var(--x-fill-1);color:var(--x-faint);box-sizing:border-box}

@@ -17,6 +17,9 @@
 - 资料库增加关键词路径提醒和每轮写入轻推，通过提醒 sidecar 绑定并回放；原文不写入提醒，根层已有索引不重复提示。旧压缩抽事实代码及接线退役；资料索引超 256 KiB 整源排除并说明。
 - 脚本化入口 `TestSpawnWhileChatKeepsAnswering` 连续三次通过，原 tip 在 `pong` 超时；脚本模型现能识别附有既有 reply-first 提醒的输入，旧 tip 仅带此脚本修正也通过。关键词、写入轻推、预算、压缩、分叉、溢出重试及稳定前缀等定向 kernel 测试三次通过，相关 race 检查通过。全仓测试 e2e 包通过；kernel 长轮折叠失败、work shell 描述失败及 web 确认测试超时均在原 tip 单独复现。kernel 全包三次运行在 90 秒总超时前两次出现同一长轮失败，未完成第三次。gofmt、vet、atlas audit 通过（audit 有既有告警）。
 - 20 个文件的关键词扫描微基准约 0.41 ms/次；未测交互 p95、真实模型及主人日用，未合 main、未 push。
+## 2026-10-28 日巡检界面修复
+
+- 供应商卡选中皮与焦点改中性，主标题用供应商展示名；技能 YAML 块说明正确解析，缺失或无效说明不展示符号和 slug。相关浏览器与 skill 回归见本批测试；未合 main，尚待日用验收。
 
 ## 2026-10-27 对话顶悬浮卡紧凑回修（功能分支）
 
@@ -48,7 +51,6 @@
 
 - Webhook、文件监听按真实来源前缀显示；摘要提取首个 Webhook delivery 正文、去掉 watch 外壳。真实格式接口及 Chrome 脚本回归在旧代码失败、修复后专项连续三次通过。
 - gofmt、vet 通过；atlas audit 退出 0，存在既有告警。全仓测试失败于 e2e 等待、kernel 长轮折叠、work shell 描述及 web 审批 180 秒超时；web 全包三次在同一审批测试超时，未完成三次，与复审记录现象一致，未重新核验基线。未测真实入口端到端、用户日用、交互 p95 或帧率；新增请求、轮询和动画均为 0。未合 main、未 push。
-
 
 ## 2026-10-27 技能删除确认计数（功能分支）
 
@@ -123,7 +125,6 @@
 - 沿现有 `links load` 补全名称/id 解析与商店类摘要筛选；MCP 失败回传阶段与有界脱敏 stderr；`/api/apps` 提供按 Bot runtime，读取不拉进程；前端未改。见 [生态](atlas/ecosystem.md)。
 - 复审 PASS（Pi pwm-rev，P0/P1=0，P2=4 不阻塞）。功能 tip `5c04f8e`（rebase 自 `de23bd0`）已合本地 main；`docs/dev/playwright-mcp-tools.md` 已毕业删除。未 push；禁 sync-app；前端未改，待设计师逛后再 →已完成。
 
-
 ## 2026-10-27 云上账号壳切开
 
 - 账号仓 tip `26a0067`：云静态只留登录 / 注册 / 查收邮件；删 `#devices` / `#gateway`；有会话一律 `/app/`；无设备/离线用设备侧 boot。见 [界面](atlas/ui.md#公网登录后的设备壳)。
@@ -173,7 +174,6 @@
 - 同夹具共享前缀 6328→6247 字节；StablePrefix 三次微基准中位数 1095→1086 ns/op，均 10516 B/op、20 allocs/op；40 步最多 10 次折叠的门槛不变，短措辞十次专项通过。未测真实回复/IPC p95 或帧率。
 - 证据与交付报告：`~/.xbot-build/nprompt/`。仅功能分支提交，未合入、未 push，未声明真实模型端到端或用户日用通过；保留 dev 的剩余验收项。
 
-
 > 这里只记**已经发生的事**：做完了什么、验了什么、实测数字、提交号、踩过的坑。**正在做什么、怎样才算做完写在 [dev](dev/) 里那份设计**；还没开始的想法在候选清单（不在仓库，在用户的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`）。现行设计见 [atlas](atlas/README.md)。每日测试报告不进仓库。
 
 ## 2026-10-27 编辑资料名字标签（分支验证）
@@ -198,14 +198,12 @@
 - 普通全仓 go test、六个相关包三遍复测、批 C 专项 race 三遍、vet/gofmt 通过，六条 guard 冒烟通过。扩展 smoke 另有忙时回报、OAuth 生图、Responses 恢复三项失败，均在 f16c9a6 隔离基线复现；全工具 configureWeb 既有 race 也有基线反证，本批未修这些模块。
 - Pi glm-5.3 review1 **PASS**；已合本地 main（tip `d052a38`）；`docs/dev/context-batch-c.md` 已毕业删除（本批无网页 UI，不经设计师；此前误留/revert 已纠正）。完整检查见 `~/.xbot-build/context-batch-c/encode-report.md` / `review1-report.md`。四维真实模型对照、C8 与手册面板后置；五条候选已完成。未 push。
 
-
 ## 2026-10-26 Agent Todo streaming 热修
 
 - 针对 `dfaa232` 设计师不 PASS 的四处：流式回复期间继续既有 3 秒 status 轮询；侧栏和 live 优先同一 `st.todo`，无摘要时 todo／shell 用「待办／后台命令」；未完成轨迹用「进度 n/m 项」；running 预览恢复后可点击打开中文待办步骤。不改账本、工具执行、模型默认或 Tasks。
 - `go test -count=1 ./internal/web/` 通过（30.797 秒，含本机 Chrome）；`go vet ./internal/web/`、JS 语法检查通过。`TestTodoBrowser`、`TestTodoStreamingBrowser`、`TestTodoLiveToolsBrowser` 均新绿；仅回退 app.js 至 `dfaa232` 后分别因 0/3 完成口吻、streaming 无 running 进度、live 裸 todo 而失败。流式测试还覆盖摘要连续变化、shell 事件不盖摘要、摘要消失后的工具人话兜底和两个轮询周期节点复用。
 - 1440×900、DPR 2 的浅深色前后截图（流中默认/悬停、步骤打开、轨迹折叠/展开）在 `~/.xbot-build/ui-shots/agent-todo-hotfix/`，日志和夹具在 `~/.xbot-build/agent-todo-hotfix/`。两次非虚拟时间 Chrome 采样：status 变化到进度可见为 2993/3004 ms，符合既有 3 秒轮询；不是模型回复、IPC、60fps 或线上 p95 验收。
 - 编码期未改 kernel、未跑全仓三遍；其后已合本地 main（tip `a02e3f3`，祖先含热修与 `949d542`）；设计师用户视角 Ultra 四块 PASS（含本热修）；`docs/dev/agent-todo-tool.md` 已毕业删除。未 push。
-
 
 ## 2026-10-26 Agent Todo 工具可见性
 
@@ -380,7 +378,6 @@
 | M7 | 凭据代理与保险箱、危险操作审核 | 盒子回归（假模型，2026-10-16）。已验证：保险箱 CLI、落盘加密与权限、只向绑定域名注入、跨域跳转不带真值、工具结果/transcript/模型输入里脱敏；删除、外发、带密钥或写方法的 HTTP、`keys:true` 都出确认卡，拒绝后不执行；只读不问；`decisions.jsonl` 留痕。修复：强制 `git push` 不确认；密钥挪到 `<root>/keys/vault/<bot>.key`（旧数据打开时迁移），触及保险箱/密钥路径的 `shell`/文件工具无论机器开关都出确认卡。独立用户守护进程 `xbot vaultd`（[ADR 0005](adr/0005-vault-daemon-user.md)）已在盒子上以 `xbot-vault` 用户端到端验证：迁移后 Bot 读不到密钥和密文，注入、拒绝未绑定域名、跨域跳转不带真值照常；其他 uid 连接被 SO_PEERCRED 拒绝；小请求额外开销 p95 0.22 毫秒（300 次）。遗留：Bot 所在用户若有免密 sudo，隔离形同虚设 |
 | M8 | 开源网关与跨设备 Link（[GATEWAY.md](GATEWAY.md)，G1–G7）；P2P、跨用户通信、模板分享推迟 | G1–G7 全部已合入：网关、身份与 `bot@设备` 收发、邀请码配对、端到端加密、发件队列与退信、`list_bots` 目录推送、桌面「设备」抽屉配对（`internal/web/static/devices.js`）。盒子上两个数据根 e2e 通过（配对、加密往返约 1.9 秒、网关停机后重试送达、目录推送）。官方网关 `https://xbot.babelgo.cn`（Cloudflare Workers，ADR 0011）已部署，客户端默认连它，两台安装经它配对和收发实测通过（2026-10-18，往返约 1.2 秒） |
 | 桌面端 | 本地优先桌面端（Windows、Mac），见下文「本地优先桌面端」 | A、B、C 三线代码已交付：`xbot app`、跨平台核心、打包出 dmg 与 Windows 安装器，GitHub Actions 上 Windows 与 macOS 全量测试在跑。真机逐项验收未做 |
-
 
 全局验收：每个里程碑都要报性能数字（交互回复 p95、IPC 开销 p95、后台变慢比例、链路数据量；涉及界面的报帧率），预算见 [AGENTS.md](../AGENTS.md) 的「全局要求：性能与界面流畅」。
 
@@ -604,7 +601,6 @@ Bot 复刻会在自己的电脑上长期运行 XBot，像真实用户一样使�
 
 假模型六场景取消慢工具豁免后通过，10 个 B 全部受理，最终派出 p95 约 373 毫秒；新增回归在旧代码上因慢工具/记忆写锁阻塞失败。快调用含登记及结果整理实测均值 0.62 毫秒（300 次，本机文件系统），不是 IPC 或真实模型 p95。真实模型与用户日用未测。最终门禁、审阅修订及提交号见仓库外 `~/.xbot-build/env-baseline-c1/commit2.md`；现行规则见 [内核](atlas/kernel.md)「慢工具后台化」。
 
-
 ## 多 Provider 批 1（2026-10-23，本地分支）
 
 实现提交 `54cfade`：消息正文改为有序 `ContentPart`，沿原 transcript、索引、blob、导出和投影链路读写。旧串在读取时转成块，已分段的旧行不重写；Completions 请求保留原有行为。跨块脱敏覆盖写入与 JSONL 导出，压缩保留未知块的可读摘要。现状见 [providers](atlas/providers.md) 与 [context](atlas/context.md)。
@@ -703,7 +699,6 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 
 性能：17,280 字节图片语法过滤，Node v24.22.1 预热后 200 次 p95 0.137 ms；fake 页面工具结果到头像更新为虚拟时钟 10 ms，不能当作真实响应 p95。级别：本地分支自动化与 scripted 基础旅程通过，未合 main、未 push、未重启 8788；真实账号生图、运行 tip 一致性、设计师本批截图验收、用户日用、真实模型/IPC p95、FPS 与后台减速未验证。后续边界（工作区可发现、交付话术、关于页 tip 展示等）见候选清单，不另留开发短记。
 
-
 ### 技能主名与落库默认范围（2026-10-26）
 
 `feature/skills-main-default` 落地：新技能的 `name` 保持 slug，`title` 为可选人读短名；解析、库/来源接口与列表/详情优先 title，旧 name/slug 降级，description 不再作主标题。`write_skill` 支持 title 与显式 scope：self/同 owner 本机单 owner Bot 名（忽略大小写）只开目标，省略/空全开；不扫描 transcript，设置页新导入继续全开，覆盖保留既有开关。
@@ -715,7 +710,6 @@ mihomo、Clash 的 fake-ip 把 `api.deepseek.com` 解析成 `198.18.x`，旧出�
 性能：本机持久化开关读取基准 10,314 ns/op（约 10.3 微秒/次，200 ms 基准窗口）；不是交互/IPC p95 或 FPS。证据与完整自检：`~/.xbot-build/skills-main-default/`；截图：`~/.xbot-build/ui-shots/skills-main-default/`。
 
 级别：已合本地 main（tip `a02e3f3` / 本切片祖先 `b4fd276`←`18b6989`）；设计师用户视角 PASS；未 push。Not run: 用户日用、Linux CI、交互/IPC p95、FPS 和后台减速。
-
 
 ### 聊天图片单图查看（2026-10-27）
 

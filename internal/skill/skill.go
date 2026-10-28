@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"xbot/internal/clip"
 	"xbot/internal/fsutil"
 )
@@ -28,8 +30,9 @@ const Precedence = "User skills override this bot's default habits."
 const ReadWith = "Call read_skill with id set to the skill id on each line."
 
 var (
-	slugRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}(?:__from_[A-Za-z0-9][A-Za-z0-9_-]{0,63})*(?:__[0-9]+)?$`)
-	ownerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+	slugRe           = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}(?:__from_[A-Za-z0-9][A-Za-z0-9_-]{0,63})*(?:__[0-9]+)?$`)
+	ownerRe          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+	blockIndicatorRe = regexp.MustCompile(`^[>|](?:[+-][1-9]?|[1-9][+-]?)?$`)
 )
 
 // Info is the description shown in the stable prefix.
@@ -79,9 +82,6 @@ func List(dir string) ([]Info, error) {
 			return nil, err
 		}
 		name, title, desc, _ := parse(string(raw))
-		if desc == "" {
-			desc = ent.Name()
-		}
 		if name == "" {
 			name = ent.Name()
 		}
@@ -202,19 +202,17 @@ func parse(raw string) (name, title, desc, body string) {
 			if strings.TrimSpace(lines[i]) != "---" {
 				continue
 			}
-			for _, ln := range lines[1:i] {
-				if n, ok := metaLine(ln, "name"); ok {
-					name = n
-				}
-				if t, ok := metaLine(ln, "title"); ok {
-					title = t
-				}
-				if d, ok := metaLine(ln, "description"); ok {
-					desc = d
-				}
+			var meta struct {
+				Name        string `yaml:"name"`
+				Title       string `yaml:"title"`
+				Description string `yaml:"description"`
+			}
+			if yaml.Unmarshal([]byte(strings.Join(lines[1:i], "\n")), &meta) == nil {
+				name, title, desc = meta.Name, meta.Title, meta.Description
 			}
 			return name, title, clipDesc(desc), strings.TrimSpace(strings.Join(lines[i+1:], "\n"))
 		}
+		return "", "", "", strings.TrimSpace(raw)
 	}
 	if d, ok := metaLine(lines[0], "description"); ok {
 		return "", "", clipDesc(d), strings.TrimSpace(strings.Join(lines[1:], "\n"))
@@ -374,9 +372,6 @@ func Open(dir, slug string) (Info, string, error) {
 	if name == "" {
 		name = slug
 	}
-	if desc == "" {
-		desc = slug
-	}
 	if body == "" {
 		body = strings.TrimSpace(string(raw))
 	}
@@ -400,6 +395,9 @@ func metaLine(ln, key string) (string, bool) {
 }
 
 func clipDesc(s string) string {
+	if blockIndicatorRe.MatchString(strings.TrimSpace(s)) {
+		return ""
+	}
 	s, _ = clip.Bytes(strings.TrimSpace(s), 200)
 	return s
 }

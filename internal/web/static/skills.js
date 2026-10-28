@@ -11,7 +11,7 @@
   const displayText = row => {
     const slug = (row.slug || "").trim(), name = (row.name || "").trim(), description = (row.description || "").trim();
     const title = (row.title || "").trim() || name || slug;
-    const hint = [description, slug].find(text => text && text !== title) || "";
+    const hint = description !== title && !/^[>|](?:[+-][1-9]?|[1-9][+-]?)?$/.test(description) ? description : "";
     return {title, hint};
   };
 

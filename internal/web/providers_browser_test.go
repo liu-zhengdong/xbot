@@ -153,7 +153,7 @@ async function xaiLoggedIn(){
  fixture.fail=true;$('.provider-back').click();subcard('xAI').click();
  await waitFor(()=>btn('重试'),'catalog failure missing');
  assert($('.provider-key-alt .provider-key input'),'catalog failure hid key form');fixture.fail=false;
- $('.provider-back').click();card('xai-key').click();
+ $('.provider-back').click();assert(card('xAI').querySelector('strong').textContent==='xAI'&&!card('xAI').querySelector('strong').textContent.includes('xai-key'),'xai key card title is not human readable');card('xAI').click();
  await waitFor(()=>$('.provider-key-alt'),'old key detail missing');
  $('.provider-key-alt').open=true;
  const input=$('.provider-key input');assert(input&&$('.provider-key button[type=submit]'),'key form missing while logged in');
@@ -200,6 +200,7 @@ async function xaiLoggedIn(){
  card('xAI').click();await waitFor(()=>btn('去订阅'),'xai subscription guidance missing');
  assert(!btn('登录')&&$('.provider-key-alt')&&!$('.provider-key-alt').open,'vendor detail still leads with login');
  btn('去订阅').click();assert(subcard('xAI').getAttribute('aria-current')==='true'&&document.activeElement===subcard('xAI'),'subscription not highlighted');
+ for(const theme of ['light','dark']){document.documentElement.dataset.theme=theme;const selected=subcard('xAI'),probe=document.createElement('div');probe.style.cssText='background:var(--x-fill-3);border:1px solid var(--x-primary);outline:2px solid var(--x-primary)';selected.append(probe);const actual=getComputedStyle(selected),expected=getComputedStyle(probe);assert(actual.backgroundColor===expected.backgroundColor&&actual.borderTopColor===expected.borderTopColor,'selected colors are not neutral in '+theme);const search=$('.provider-search input');search.focus();assert(getComputedStyle(search.parentElement).outlineColor===expected.outlineColor,'focus color is not neutral in '+theme);probe.remove()}
  card('xAI').click();await waitFor(()=>$('.provider-key input'),'missing key form');
  const typed=$('.provider-key input');typed.value='xai-0123456789';$('.provider-key').requestSubmit();
  await waitFor(()=>$('.provider-key-alt')?.textContent.includes('密钥已配置 · 可用'),'saved key missing');assert(fixture.saves===1,'key saved once');

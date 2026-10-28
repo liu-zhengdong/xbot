@@ -48,6 +48,36 @@ func TestDescriptionInPrefixBodyOnDemand(t *testing.T) {
 	}
 }
 
+func TestListFrontmatterDescriptions(t *testing.T) {
+	for _, tc := range []struct{ name, raw, want string }{
+		{"folded", "---\nname: folded\ndescription: >-\n  Search requests\n  in the viewer\n---\nbody", "Search requests in the viewer"},
+		{"literal", "---\nname: literal\ndescription: |\n  First line\n  Second line\n---\nbody", "First line\nSecond line"},
+		{"marker", "---\nname: marker\ndescription: ' >- '\n---\nbody", ""},
+		{"invalid", "---\nname: invalid\ndescription: [broken\n---\nbody", ""},
+		{"empty", "---\n---\nbody", ""},
+		{"unclosed", "---\nname: unclosed\ndescription: >-\n  text", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, tc.name)
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(path, "SKILL.md"), []byte(tc.raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+			infos, err := skill.List(dir)
+			if err != nil || len(infos) != 1 || infos[0].Description != tc.want {
+				t.Fatalf("List: %+v, %v; want %q", infos, err, tc.want)
+			}
+			info, _, err := skill.Open(dir, tc.name)
+			if err != nil || info.Description != tc.want {
+				t.Fatalf("Open: %+v, %v; want %q", info, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestSkillSymlinkAndImport(t *testing.T) {
 	root := t.TempDir()
 	real := filepath.Join(t.TempDir(), "real")
