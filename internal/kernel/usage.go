@@ -167,12 +167,6 @@ func (k *Kernel) noteCompactUsage(turn int, req provider.Request, msg provider.M
 	k.noteSideUsage(bot.TraceCallCompact, turn, req, msg)
 }
 
-// noteExtractUsage records one fact-extraction call's usage. It runs beside a
-// summary and is part of the same compaction cost, so it carries its own tag.
-func (k *Kernel) noteExtractUsage(turn int, req provider.Request, msg provider.Message) {
-	k.noteSideUsage(bot.TraceCallExtract, turn, req, msg)
-}
-
 // noteSideUsage logs the usage of a call that is not part of the conversation,
 // with the tag and turn that place it.
 func (k *Kernel) noteSideUsage(call string, turn int, req provider.Request, msg provider.Message) {
@@ -219,19 +213,6 @@ func (k *Kernel) compactor(turn int) compact.Compactor {
 		return l
 	}
 	return k.Compactor
-}
-
-// extractor is k.Extractor with its model calls' usage recorded. An extractor
-// that is not LLMExtractor is returned as is: it has no calls to see. turn is
-// the opening seq of the turn the facts belong to, or 0 outside a turn.
-func (k *Kernel) extractor(turn int) Extractor {
-	if e, ok := k.Extractor.(LLMExtractor); ok && e.P != nil {
-		e.Note = func(req provider.Request, msg provider.Message) {
-			k.noteExtractUsage(turn, req, msg)
-		}
-		return e
-	}
-	return k.Extractor
 }
 
 // Ratio bounds. The estimate is never trusted to be larger than the real count

@@ -95,7 +95,6 @@ type Kernel struct {
 	OnHandoff func()
 	Selector  provider.ModelSelector
 	Now       func() time.Time
-	Extractor Extractor
 	// Redact overrides bot.RedactText for text this kernel returns, records, or
 	// streams from a tool. Nil uses the process replacer.
 	Redact func(string) string
@@ -349,7 +348,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		return err
 	}
 	// The opening message is on the transcript, so this turn now owns this
-	// ctx. The synchronous compaction below may summarize and extract, and
+	// ctx. The synchronous compaction below may summarize, and
 	// those calls belong to the turn that started them.
 	ctx = withTurnSeq(ctx, seq)
 	st, _, err = k.applyReadyJob(st)

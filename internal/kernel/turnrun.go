@@ -37,8 +37,9 @@ type turnRun struct {
 	msgSeqs []int
 	// err is the first transcript error. The model loop keeps going so its
 	// output is not dropped; the error is returned once the run ends.
-	err         error
-	requestSeqs []int
+	err             error
+	requestSeqs     []int
+	referenceInputs []provider.Message
 	// Request bounds for error reporting only. A late input may already be on
 	// the transcript without being in the completed answer's request.
 	sentThrough int
@@ -239,7 +240,9 @@ func (r *turnRun) afterStep() ([]provider.Message, error) {
 		// The owner's words go first, then whatever the inbox brought.
 		owner := r.t.takeInterjected()
 		rest, err := r.k.absorbInbox()
-		return append(owner, rest...), err
+		messages := append(owner, rest...)
+		r.referenceInputs = append(r.referenceInputs, messages...)
+		return messages, err
 	}
 	r.t.forkMu.Lock()
 	defer r.t.forkMu.Unlock()
@@ -247,9 +250,13 @@ func (r *turnRun) afterStep() ([]provider.Message, error) {
 		// A background never reads the owner's messages; they belong to the
 		// foreground. It reads only the controls sent to it: steer, queue,
 		// interrupt.
-		return r.t.takeCtrl(), nil
+		messages := r.t.takeCtrl()
+		r.referenceInputs = append(r.referenceInputs, messages...)
+		return messages, nil
 	}
-	return r.k.absorbInbox()
+	messages, err := r.k.absorbInbox()
+	r.referenceInputs = append(r.referenceInputs, messages...)
+	return messages, err
 }
 
 func (r *turnRun) onIdle(msg provider.Message) (string, bool) {
@@ -287,6 +294,15 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 	// reminder and reports what to append.
 	var join textJoin
 	join.add(r.recordReminder(KindLoop, remind))
+	var referenceInput strings.Builder
+	for _, m := range append(stepMsgs, r.referenceInputs...) {
+		if !m.Internal && (m.Role == provider.RoleUser || m.Role == provider.RoleAssistant) {
+			referenceInput.WriteString(m.Text())
+			referenceInput.WriteByte('\n')
+		}
+	}
+	r.referenceInputs = nil
+	join.add(r.recordReminder(KindReference, r.k.referenceKeywordNote(referenceInput.String(), r.t.referenceProvided)))
 	join.add(r.recordReminder(KindTodo, r.k.todoNote(r.k.now(), r.k.todoPrev())))
 	// A shell job that finished during this step is attached here, after the
 	// tool results, so it does not land in the middle of a call. Project
@@ -408,6 +424,16 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			r.fail(r.track(m))
 			convo = append(convo, m)
 			produced = append(produced, m)
+		}
+		var pendingText strings.Builder
+		for _, m := range pend {
+			if !m.Internal && m.Role == provider.RoleUser {
+				pendingText.WriteString(m.Text())
+				pendingText.WriteByte('\n')
+			}
+		}
+		if note := r.recordReminder(KindReference, r.k.referenceKeywordNote(pendingText.String(), r.t.referenceProvided)); note != "" {
+			convo = agent.AttachReminder(convo, note)
 		}
 		more, rerr := agent.Run(r.modelContext(), rp, r.list, convo, opts)
 		produced = append(produced, more...)

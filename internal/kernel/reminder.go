@@ -29,6 +29,7 @@ const (
 	KindTodo            = "todo"
 	KindFileChange      = "file_change"
 	KindReplyFirst      = "reply_first"
+	KindReference       = "reference"
 
 	pendingCooldown = 10 * time.Minute
 	loopCooldown    = time.Minute
@@ -130,8 +131,8 @@ func (c *Channel) Due(now time.Time) ([]Reminder, error) {
 
 // Bind appends due reminders to the newest message and records them against seq
 // so the next request can replay the same bytes. Earlier messages are not touched.
-// A repo-provided project note is its own trailing user message, so it is not
-// concatenated into the owner's trusted line.
+// Project notes follow the carrier; reference notes precede it, preserving
+// the current user line and the order seen by the model.
 func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provider.Message, error) {
 	if c == nil {
 		return msgs, nil
@@ -140,10 +141,14 @@ func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provi
 	if err != nil || len(due) == 0 {
 		return msgs, err
 	}
-	var trusted, apart []string
+	var trusted, apart, before []string
 	for i, d := range due {
 		due[i].Text = c.log.prepare(d.Text)
 		if due[i].Text == "" {
+			continue
+		}
+		if referenceApart(due[i].Text) {
+			before = append(before, due[i].Text)
 			continue
 		}
 		if projectApart(due[i].Text) {
@@ -152,8 +157,17 @@ func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provi
 		}
 		trusted = append(trusted, due[i].Text)
 	}
-	if len(trusted) == 0 && len(apart) == 0 {
+	if len(trusted) == 0 && len(apart) == 0 && len(before) == 0 {
 		return msgs, nil
+	}
+	if len(before) > 0 && len(msgs) > 0 {
+		last := len(msgs) - 1
+		inserted := make([]provider.Message, 0, len(msgs)+len(before))
+		inserted = append(inserted, msgs[:last]...)
+		for _, note := range before {
+			inserted = append(inserted, provider.Message{Role: provider.RoleUser, Internal: true, Seq: seq, Content: provider.TextContent(note)})
+		}
+		msgs = append(inserted, msgs[last:]...)
 	}
 	if len(trusted) > 0 {
 		msgs = agent.AttachReminder(msgs, strings.Join(trusted, "\n\n"))
@@ -161,6 +175,7 @@ func (c *Channel) Bind(msgs []provider.Message, seq int, now time.Time) ([]provi
 	for _, text := range apart {
 		msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)})
 	}
+
 	if seq <= 0 {
 		return msgs, nil
 	}
@@ -215,9 +230,8 @@ func (c *Channel) Apply(msgs []provider.Message, seqs []int) error {
 
 // Replay appends stored reminders onto the in-memory copies of the lines they
 // belong to. It does not write the transcript. seqs[i] is the sequence of entries[i].
-// A repo-provided project note bound to a user line becomes the next message
-// instead of joining that line, so a later wake does not put it back inside
-// the owner's trusted text. The returned slice may be longer than entries, so
+// Project notes follow their user line; reference notes precede it. Both are
+// replayed separately so the user line stays intact. The returned slice may be longer than entries, so
 // the returned sequence numbers let a caller keep the lines in transcript order:
 // a split-out note carries the sequence of the line it was bound to.
 func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, error) {
@@ -242,8 +256,12 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, e
 	for i := range entries {
 		e := entries[i]
 		if i < len(seqs) {
-			var join, apart []string
+			var join, apart, before []string
 			for _, text := range by[seqs[i]] {
+				if referenceApart(text) && e.Message.Role == provider.RoleUser {
+					before = append(before, text)
+					continue
+				}
 				if projectApart(text) && e.Message.Role == provider.RoleUser {
 					apart = append(apart, text)
 					continue
@@ -252,6 +270,10 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, e
 			}
 			if len(join) > 0 {
 				e.Message.SetText(joinReminder(e.Message.Text(), strings.Join(join, "\n\n")))
+			}
+			for _, text := range before {
+				out = append(out, bot.Entry{Time: e.Time, Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
+				outSeqs = append(outSeqs, seqs[i])
 			}
 			out = append(out, e)
 			outSeqs = append(outSeqs, seqs[i])
@@ -268,6 +290,10 @@ func (c *Channel) Replay(entries []bot.Entry, seqs []int) ([]bot.Entry, []int, e
 		out = append(out, e)
 	}
 	return out, outSeqs, nil
+}
+
+func referenceApart(text string) bool {
+	return strings.HasPrefix(text, "<system-reminder>\n<reference-reminder>\n")
 }
 
 func joinReminder(body, note string) string {
@@ -557,6 +583,15 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		Cooldown: pendingCooldown,
 		Trigger:  k.pendingTrigger(ev),
 	})
+	if t != nil {
+		t.referenceProvided = make(map[string]bool)
+		ch.Register(Kind{Name: KindReference, MaxBytes: reminderMax, Trigger: func(_ time.Time, _ []Reminder) string {
+			var note textJoin
+			note.add("Save lasting preferences, agreements, lessons and reusable facts in the shared reference library with file tools; skip one-off process details.")
+			note.add(k.referenceKeywordNote(ev.Content, t.referenceProvided))
+			return "<system-reminder>\n<reference-reminder>\n" + note.String() + "\n</reference-reminder>\n</system-reminder>"
+		}})
+	}
 	ch.Register(Kind{
 		Name:    KindReplyFirst,
 		Trigger: replyFirstTrigger(ev),

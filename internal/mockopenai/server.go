@@ -109,6 +109,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		}
 	}
 	all := joined(req)
+	userText, _, _ := strings.Cut(lastUser, "\n\n<system-reminder>")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	switch {
@@ -172,10 +173,10 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	case strings.Contains(lastUser, "<routine"):
 		writeText(w, "noted\n")
 		return
-	case strings.TrimSpace(lastUser) == "ping":
+	case strings.TrimSpace(userText) == "ping":
 		writeText(w, "pong\n")
 		return
-	case strings.TrimSpace(lastUser) == "MARKER_7f3a":
+	case strings.TrimSpace(userText) == "MARKER_7f3a":
 		writeText(w, "ok\n")
 		return
 	case strings.Contains(lastUser, "SPAWN_LONG") && !sawSpawn:

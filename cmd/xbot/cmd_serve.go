@@ -149,7 +149,6 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		Inbox:           box,
 		Memory:          memory.Open(root),
 		Compactor:       compact.LLM{P: client},
-		Extractor:       kernel.LLMExtractor{P: client},
 		Approve:         approve,
 		MaxSteps:        steps,
 		Budget:          budget,

@@ -26,9 +26,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	comp := &gateCompactor{release: make(chan struct{}), entered: make(chan struct{})}
 	k := &Kernel{
 		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}},
-		Compactor: comp, Memory: mem, Extractor: stubExtract{facts: []memory.Fact{{
-			Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "kept from the old range",
-		}}},
+		Compactor: comp, Memory: mem,
 		MaxSteps: 2,
 	}
 	tuneSoftBudget(t, k)
@@ -67,7 +65,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 
 	k2 := &Kernel{
 		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("still")}}},
-		Compactor: comp, Memory: mem, Extractor: k.Extractor, Budget: k.Budget, MaxSteps: 2,
+		Compactor: comp, Memory: mem, Budget: k.Budget, MaxSteps: 2,
 	}
 	done2 := make(chan error, 1)
 	go func() {
@@ -109,7 +107,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 
 	k3 := &Kernel{
 		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}},
-		Compactor: comp, Memory: mem, Extractor: k.Extractor, Budget: k.Budget, MaxSteps: 2,
+		Compactor: comp, Memory: mem, Budget: k.Budget, MaxSteps: 2,
 	}
 	if err := k3.Handle(context.Background(), link.TerminalEvent("u1", "AFTER", time.Unix(32, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -148,8 +146,7 @@ func TestBackgroundSwapOnlyBetweenTurns(t *testing.T) {
 	chat := &holdChat{entered: make(chan struct{}), release: make(chan struct{})}
 	k := &Kernel{
 		Bot: b, Provider: chat, Compactor: comp, Memory: &factMem{},
-		Extractor: stubExtract{facts: []memory.Fact{{Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "from the job"}}},
-		MaxSteps:  2,
+		MaxSteps: 2,
 	}
 	tuneSoftBudget(t, k)
 	done := make(chan error, 1)
@@ -213,8 +210,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 			{Role: provider.RoleAssistant, Content: provider.TextContent("three")},
 		}},
 		Compactor: comp, Memory: mem,
-		Extractor: stubExtract{facts: []memory.Fact{{Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "durable"}}},
-		Budget:    compact.Budget{Ceiling: 1_000_000, KeepTail: 1}, MaxSteps: 2,
+		Budget: compact.Budget{Ceiling: 1_000_000, KeepTail: 1}, MaxSteps: 2,
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Unix(50, 0).UTC())); err != nil {
 		t.Fatal(err)
@@ -264,7 +260,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 	if err := fsutil.WriteAtomic(filepath.Join(bot.Dir(b.Root, b.Name()), "compact-job.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	k2 := &Kernel{Bot: b, Provider: k.Provider, Compactor: comp, Memory: mem, Extractor: k.Extractor, Budget: k.Budget, MaxSteps: 2}
+	k2 := &Kernel{Bot: b, Provider: k.Provider, Compactor: comp, Memory: mem, Budget: k.Budget, MaxSteps: 2}
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "third", time.Unix(52, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
@@ -516,12 +512,6 @@ func (h *holdChat) Chat(context.Context, provider.Request, func(string)) (provid
 	h.once.Do(func() { close(h.entered) })
 	<-h.release
 	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}, nil
-}
-
-type stubExtract struct{ facts []memory.Fact }
-
-func (s stubExtract) Extract(context.Context, string, []provider.Message) ([]memory.Fact, error) {
-	return s.facts, nil
 }
 
 type factMem struct {

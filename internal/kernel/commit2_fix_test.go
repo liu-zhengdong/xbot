@@ -270,7 +270,7 @@ func TestBotCompactToolMountedAndGuarded(t *testing.T) {
 	mem := &factMem{}
 	k := &Kernel{
 		Bot: b, Links: []link.Link{link.Context{}}, Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, Ceiling: 10},
-		Memory: mem, Extractor: stubExtract{facts: []memory.Fact{{Scope: memory.ScopeBot, Tier: memory.TierLog, Text: "from the range"}}},
+		Memory: mem,
 	}
 	list, err := k.modelTools()
 	if err != nil {

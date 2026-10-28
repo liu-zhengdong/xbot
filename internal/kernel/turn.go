@@ -40,6 +40,9 @@ type turn struct {
 	// A background branch keeps it: its context is this turn's.
 	projects projectSigs
 
+	// referenceProvided belongs to the turn and is used by its single model loop.
+	referenceProvided map[string]bool
+
 	// shrunk is set once this turn's requests left out or summarized one of
 	// its own earlier results (see fit.go). A read receipt that points at an
 	// earlier step is then no longer safe: that step may be gone.

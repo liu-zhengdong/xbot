@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -87,49 +86,6 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 	}
 	if mem == "" || !strings.Contains(mem, marker) || strings.Contains(mem, "memory clipped") {
 		t.Fatalf("injected memory dropped a fact\n%s", mem)
-	}
-}
-
-func TestExtractOmittedScopeWritesBot(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	store := memory.Open(b.Root)
-	k := &Kernel{
-		Bot: b, Memory: store,
-		Extractor: stubExtract{facts: []memory.Fact{
-			{Tier: memory.TierLog, Text: "omitted lands in bot"},
-			{Scope: memory.ScopeBotPerson, Tier: memory.TierLog, Text: "legacy label lands in bot"},
-			{Scope: memory.ScopePerson, Tier: memory.TierProfile, Text: "owner timezone is Asia/Shanghai"},
-		}},
-	}
-	facts := k.collectFacts(context.Background(), []bot.Entry{{
-		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("remember the rule and my timezone")},
-	}}, "", "u1", true)
-	if err := k.rememberNew(context.Background(), facts); err != nil {
-		t.Fatal(err)
-	}
-	botFacts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	joined := ""
-	for _, f := range botFacts {
-		joined += f.Text + "\n"
-		if f.Scope != memory.ScopeBot {
-			t.Fatalf("scope %+v", f)
-		}
-	}
-	if !strings.Contains(joined, "omitted lands in bot") || !strings.Contains(joined, "legacy label lands in bot") {
-		t.Fatalf("bot facts:\n%s", joined)
-	}
-	if strings.Contains(joined, "Asia/Shanghai") {
-		t.Fatalf("timezone stored in bot:\n%s", joined)
-	}
-	person, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopePerson, PersonID: "u1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(person) != 1 || !strings.Contains(person[0].Text, "Asia/Shanghai") {
-		t.Fatalf("person %+v", person)
 	}
 }
 

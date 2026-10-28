@@ -647,7 +647,6 @@ func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journ
 	}
 	if compaction {
 		k.Compactor = compact.LLM{P: model}
-		k.Extractor = kernel.LLMExtractor{P: model}
 		return k, b, model
 	}
 	reg := `{"providers":[{"name":"sim","base_url":"http://127.0.0.1:1/v1","api_key_env":"XBOT_API_KEY","models":[{"name":"sim-big","context":20000000}]}]}`

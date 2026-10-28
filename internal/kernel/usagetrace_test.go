@@ -100,37 +100,6 @@ func TestSummaryUsageKeepsTheTurnItRanIn(t *testing.T) {
 	}
 }
 
-// factModel answers an extraction with the same reported usage.
-type factModel struct{}
-
-func (factModel) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
-	return provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{
-		PromptTokens: 40, CompletionTokens: 3, Reported: true,
-	}, Content: provider.TextContent(`{"facts":[]}`)}, nil
-}
-
-// The fact extractor's model call is recorded too, tagged extract and keeping
-// its turn, so a compaction's cost includes both calls it makes.
-func TestExtractorUsageIsRecorded(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	k := &Kernel{Bot: b, Provider: usageModel{}, Links: []link.Link{link.Terminal{}}, Extractor: LLMExtractor{P: factModel{}}}
-	inTurn := context.WithValue(context.Background(), turnKey{}, &turn{fromSeq: 9})
-	k.collectFacts(inTurn, []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hello")}}}, "", "", true)
-	traces, err := b.Traces()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got *bot.Trace
-	for i := range traces {
-		if traces[i].Kind == bot.TraceUsage && traces[i].Call == bot.TraceCallExtract {
-			got = &traces[i]
-		}
-	}
-	if got == nil || got.Prompt != 40 || got.Turn != 9 {
-		t.Fatalf("extract usage %+v, want prompt 40 in turn 9", got)
-	}
-}
-
 // A turn that opens over the hard ceiling compacts inside Handle, before the
 // turn value is installed. That summary call now carries the
 // opening message's seq instead of 0, so an in-turn compaction can be told
@@ -142,7 +111,6 @@ func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
 		Bot: b, Provider: usageModel{}, Memory: memory.NopStore{}, MaxSteps: 2,
 		Links:     []link.Link{link.Terminal{}},
 		Compactor: compact.LLM{P: usageModel{}},
-		Extractor: LLMExtractor{P: factModel{}},
 		Budget:    compact.Budget{Ceiling: 1, KeepTail: 1},
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
