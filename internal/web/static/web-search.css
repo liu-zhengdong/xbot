@@ -1,14 +1,10 @@
-/* Web search uses the approved neutral selection and shared settings shell. */
+/* Web search direction A: rows follow the page; selection shows only in the radio. */
 .setpage:has([data-spane="search"]:not([hidden])){height:min(760px,90vh)}
 .web-search-settings h2{font-size:var(--x-fs-title);font-weight:650;margin:var(--x-s1) 0 var(--x-s3)}
 .web-search-settings .setrows{background:transparent}
 .ws-choices{display:flex;flex-direction:column;gap:var(--x-s3)}
-.ws-choice,.ws-provider{display:flex;align-items:center;gap:var(--x-s5);width:100%;border:0;text-align:left;font:inherit;cursor:pointer;color:var(--x-text);background:var(--x-fill-1)}
-.web-search-settings .ws-choice,.web-search-settings .ws-provider{background:transparent}
+.ws-choice,.ws-provider{display:flex;align-items:center;gap:var(--x-s5);width:100%;border:0;text-align:left;font:inherit;cursor:pointer;color:var(--x-text);background:transparent}
 .ws-choice{align-items:flex-start;padding:var(--x-s5) var(--x-s6);border-radius:var(--x-r-card)}
-.ws-choice:hover,.ws-provider:hover{background:var(--x-fill-2)}
-.ws-choice.on,.ws-provider.on{background:var(--x-fill-2)}
-.web-search-settings .ws-choice:hover,.web-search-settings .ws-provider:hover,.web-search-settings .ws-choice.on,.web-search-settings .ws-provider.on{background:var(--x-fill-2)}
 .ws-radio{width:var(--x-s6);height:var(--x-s6);border-radius:var(--x-r-pill);flex:none;background:var(--x-card);outline:2px solid var(--x-fill-3);outline-offset:-2px}
 .on>.ws-radio{outline:none;background:var(--x-primary);position:relative}
 .on>.ws-radio:after{content:"";position:absolute;inset:calc(var(--x-s4)/2);border-radius:var(--x-r-pill);background:var(--x-on-primary)}
@@ -20,22 +16,21 @@
 .ws-list{display:flex;flex-direction:column;overflow:hidden;border-radius:var(--x-r-card)}
 .ws-provider{min-height:calc(var(--x-s9) + var(--x-s2));padding:var(--x-s3) var(--x-s6)}
 .ws-meta{font-size:var(--x-fs-sm);color:var(--x-muted);flex:none;white-space:nowrap}
-.ws-provider.on .ws-meta{color:var(--x-text-2)}
-.ws-meta.ok,.ws-status.ok{color:var(--x-online);display:flex;align-items:center;gap:var(--x-s2)}
-.ws-provider .ws-meta.bad,.ws-status.bad,.ws-error{color:var(--x-danger)}
-.ws-provider .ws-meta.ok{color:var(--x-online)}
-.ws-meta.ok:before,.ws-status.ok:before{content:"";width:var(--x-s2);height:var(--x-s2);border-radius:var(--x-r-pill);background:var(--x-online);flex:none}
-.ws-key{padding:0 var(--x-s6) var(--x-s5) calc(var(--x-s9) + var(--x-s5));background:var(--x-fill-2)}
-.ws-key label{display:block;font-size:var(--x-fs-sm);font-weight:560;color:var(--x-muted);margin:0 0 var(--x-s2)}
-.ws-key-row{display:flex;align-items:center;gap:var(--x-s3)}
-.ws-input{flex:1;min-width:0;height:calc(var(--x-s9) + var(--x-s1)/2);border:0;border-radius:var(--x-r-sm);padding:0 var(--x-s5);background:var(--x-card);color:var(--x-text);font:inherit;font-size:var(--x-fs-ui)}
-.ws-input::placeholder{color:var(--x-faint)}
-.ws-input:focus-visible{outline:2px solid var(--x-muted);outline-offset:2px}
-.ws-try{flex:none;height:calc(var(--x-s9) + var(--x-s1)/2);padding:0 var(--x-s5);border:0;border-radius:var(--x-r-sm);background:var(--x-fill-2);color:var(--x-text);font:inherit;font-size:var(--x-fs-ui);font-weight:560;cursor:pointer;white-space:nowrap}
-.ws-try:hover{background:var(--x-card)}
-.ws-try:disabled{background:var(--x-disabled);color:var(--x-on-disabled);cursor:default}
-.ws-status{font-size:var(--x-fs-cap);margin-top:var(--x-s2);line-height:1.45;color:var(--x-faint)}
+.ws-provider:focus-visible{outline:2px solid var(--x-muted);outline-offset:-2px}
+.ws-key{flex:0 1 auto;min-width:0;max-width:58%;display:flex;align-items:center;gap:var(--x-s3);cursor:default}
+.ws-key[hidden]{display:none}
+.ws-input{min-width:0;width:220px;max-width:100%;height:calc(var(--x-s6) + var(--x-s2));padding:0;border:0;border-radius:0;background:transparent;color:var(--x-text);font-family:var(--x-mono);font-size:var(--x-fs-sm);letter-spacing:.02em;text-align:right}
+.ws-input::placeholder{color:var(--x-faint);font-family:var(--x-font);letter-spacing:0}
+.ws-input.saved::placeholder{color:var(--x-text);font-family:var(--x-mono)}
+.ws-input:focus{outline:none;box-shadow:inset 0 -1px 0 var(--x-fill-3)}
+.ws-try{flex:none;width:calc(var(--x-s6) + var(--x-s2));height:calc(var(--x-s6) + var(--x-s2));padding:0;border:0;border-radius:var(--x-r-sm);display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--x-muted);cursor:pointer}
+.ws-try svg{width:15px;height:15px;display:block}
+.ws-try:hover{background:var(--x-fill-2);color:var(--x-text)}
+.ws-try.ok,.ws-try.ok:hover{color:var(--x-online)}
+.ws-try.bad,.ws-try.bad:hover{color:var(--x-danger)}
+.ws-try:disabled{opacity:.35;cursor:default;background:transparent}
+.ws-try:focus-visible{outline:2px solid var(--x-muted);outline-offset:1px}
 .ws-provider-title{display:flex;align-items:center;gap:var(--x-s2)}
 .ws-provider-info{border:0;padding:0;background:none;color:inherit;font:inherit;font-size:14px;line-height:1;cursor:help}
-.ws-error{font-size:var(--x-fs-sm)}
-@media(max-width:600px){.ws-provider{gap:var(--x-s3);padding:var(--x-s3)}.ws-name{flex-wrap:wrap;gap:var(--x-s1)}.ws-key{padding-left:var(--x-s3)}.ws-choice{padding:var(--x-s5)}.ws-title,.ws-name,.ws-try{font-size:var(--x-fs-sm)}}
+.ws-error{font-size:var(--x-fs-sm);color:var(--x-danger)}
+@media(max-width:600px){.ws-provider{gap:var(--x-s3);padding:var(--x-s3)}.ws-name{flex-wrap:wrap;gap:var(--x-s1)}.ws-choice{padding:var(--x-s5)}.ws-title,.ws-name{font-size:var(--x-fs-sm)}}

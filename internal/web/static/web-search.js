@@ -4,6 +4,8 @@
   const known = new Map();
   const resting = p => p.key_configured ? known.get(p.id) || "saved" : "empty";
   const node = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls || ""; if (text != null) n.textContent = text; return n; };
+  const svg = path => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>${path}</svg>`;
+  const icons = {play:svg('<path d="M10 9.5v5l4.5-2.5z" fill="currentColor" stroke="none"/>'), ok:svg('<path d="m8.5 12.5 2.2 2.2 4.8-5"/>'), bad:svg('<path d="m9 9 6 6"/><path d="m15 9-6 6"/>')};
   const button = (cls, text, action) => { const b = node("button", cls, text); b.type = "button"; b.onclick = action; return b; };
   async function mount({api, host, isCurrent}) {
     teardown();
@@ -39,24 +41,25 @@
     const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "本机用哪家");
     for (const p of data.providers) {
       const row = {p, status:resting(p), version:0, lastAttempt:null};
-      row.button = button("ws-provider", "", () => save({provider:p.id})); row.button.dataset.provider = p.id; row.button.setAttribute("role", "radio");
+      // A div, not a button: the selected row holds the key input and its status icon.
+      row.button = node("div", "ws-provider"); row.button.dataset.provider = p.id; row.button.setAttribute("role", "radio"); row.button.tabIndex = 0;
+      row.button.onclick = () => save({provider:p.id});
+      row.button.onkeydown = e => { if (e.target === row.button && (e.key === " " || e.key === "Enter")) { e.preventDefault(); save({provider:p.id}); } };
       const name = node("span", "ws-name", p.name); if (p.id === "ddg") name.append(node("span", "ws-tag", "默认"));
-      row.meta = node("span", "ws-meta"); row.button.append(node("span", "ws-radio"), name, row.meta); list.append(row.button);
-      if (p.needs_key) {
-        row.key = node("div", "ws-key");
-        const label = node("label", "", "API 密钥"); label.htmlFor = "search-key-" + p.id;
-        row.input = node("input", "ws-input"); row.input.type = "password"; row.input.id = label.htmlFor; row.input.autocomplete = "new-password"; row.input.maxLength = 512;
-        row.input.placeholder = p.key_configured ? "••••••••••••" : "粘贴 API 密钥";
-        row.try = button("ws-try", "试一下", () => probe(row, true));
+      row.button.append(node("span", "ws-radio"), name);
+      if (!p.needs_key) row.button.append(node("span", "ws-meta", "免密钥"));
+      else {
+        row.key = node("span", "ws-key"); row.key.onclick = e => e.stopPropagation();
+        row.input = node("input", "ws-input"); row.input.type = "password"; row.input.id = "search-key-" + p.id; row.input.autocomplete = "new-password"; row.input.maxLength = 512;
+        row.input.setAttribute("aria-label", p.name + " API 密钥");
+        row.try = button("ws-try", "", () => probe(row, true));
         row.input.oninput = () => {
           row.controller?.abort(); ++row.version; row.status = "empty"; row.lastAttempt = null; row.edited = true; paint();
         };
         row.input.onblur = e => { if (e.relatedTarget !== row.try) probe(row, false); };
-        const line = node("div", "ws-key-row"); line.append(row.input, row.try);
-        row.message = node("div", "ws-status"); row.message.setAttribute("role", "status"); row.message.setAttribute("aria-live", "polite");
-        row.key.append(label, line, row.message); list.append(row.key);
+        row.key.append(row.input, row.try); row.button.append(row.key);
       }
-      rows.set(p.id, row);
+      list.append(row.button); rows.set(p.id, row);
     }
     providerSec.append(list); host.append(providerSec);
     function paint() {
@@ -66,15 +69,16 @@
       for (const b of modeButtons) { const on = b.dataset.mode === data.mode; b.classList.toggle("on",on); b.setAttribute("aria-checked",String(on)); b.disabled = saving; }
       for (const [id,r] of rows) {
         const selected = id === data.provider;
-        r.button.classList.toggle("on",selected); r.button.setAttribute("aria-checked",String(selected)); r.button.disabled = saving;
-        const ok = selected && r.status === "ok", bad = selected && r.status === "bad";
-        r.meta.className = "ws-meta" + (ok ? " ok" : bad ? " bad" : "");
-        r.meta.textContent = ok ? "可用" : bad ? "密钥无效" : selected && r.status === "checking" ? "正在试…" : r.status === "saved" ? "已保存" : r.p.needs_key ? "要密钥" : "免密钥";
+        r.button.classList.toggle("on",selected); r.button.setAttribute("aria-checked",String(selected)); r.button.setAttribute("aria-disabled",String(saving));
         if (!r.key) continue;
         r.key.hidden = !selected;
-        r.try.disabled = r.status === "checking" || (!r.input.value.trim() && (!r.p.key_configured || r.edited));
-        r.message.className = "ws-status" + (ok ? " ok" : bad ? " bad" : "");
-        r.message.textContent = ok ? "密钥可用" : bad ? "密钥无效或连不上" : r.status === "checking" ? "正在试…" : r.status === "saved" ? "已保存在本机，点「试一下」确认能用。" : "只保存在本机，用于本机搜网页。";
+        const stored = r.p.key_configured && !r.edited;
+        r.input.placeholder = stored ? "••••••••••••" : "粘贴密钥"; r.input.classList.toggle("saved", stored);
+        r.try.disabled = r.status === "checking" || (!r.input.value.trim() && !stored);
+        const state = r.status === "ok" || r.status === "bad" ? r.status : "play";
+        r.try.className = "ws-try " + state; r.try.innerHTML = icons[state];
+        const label = r.status === "ok" ? "可用 · 点再试" : r.status === "bad" ? "密钥无效 · 点再试" : r.status === "checking" ? "正在试…" : r.try.disabled ? "先粘贴密钥" : "试一下";
+        r.try.title = label; r.try.setAttribute("aria-label", label);
       }
     }
     async function save(patch) {
@@ -89,10 +93,7 @@
             const r = rows.get(p.id); if (!r || r.version !== keyVersions.get(p.id)) continue;
             const changed = r.p.key_configured !== p.key_configured;
             r.p = p;
-            if (changed && r.input && !r.edited && r.status !== "checking") {
-              r.input.placeholder = p.key_configured ? "••••••••••••" : "粘贴 API 密钥";
-              r.status = resting(p);
-            }
+            if (changed && r.input && !r.edited && r.status !== "checking") r.status = resting(p);
           }
         }
       } catch { if (current()) { error.textContent = "没能保存网页搜索设置，请再试一次。"; error.hidden = false; } }
@@ -107,7 +108,7 @@
         await api("/api/web-search/key",{method:"POST",body:{provider:r.p.id,key},signal:controller.signal});
         if (current() && version === r.version) {
           ++r.version; r.status = "ok"; known.set(r.p.id, "ok"); r.p.key_configured = true; r.edited = false;
-          r.input.value = ""; r.input.placeholder = "••••••••••••"; r.lastAttempt = "";
+          r.input.value = ""; r.lastAttempt = "";
         }
       } catch { if (current() && version === r.version) { r.status = "bad"; if (!key) known.set(r.p.id, "bad"); } }
       finally { requests.delete(controller); if (current()) paint(); }

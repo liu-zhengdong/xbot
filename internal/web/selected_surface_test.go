@@ -39,13 +39,13 @@ func TestSelectedCardSurfaces(t *testing.T) {
    for (const container of ['.provider-grid','.binding-group','.ws-choices','.ws-list']) {
     if(bg(q(container))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+container+' has a background');
    }
-   for (const surface of ['.web-search-settings .setrows','.ws-choice:not(.on)','.ws-provider:not(.on)']) {
+   for (const surface of ['.web-search-settings .setrows','.ws-choice','.ws-provider','.ws-choice.on','.ws-provider.on','.ws-key']) {
     if(bg(q(surface))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+surface+' has a background');
    }
    if(bg(q('.other-settings'))==='rgba(0, 0, 0, 0)') throw Error(theme+' other settings lost background');
    const sample=document.createElement('div');
    sample.style.background='var(--x-fill-2)'; document.body.append(sample);
-   for (const surface of ['.provider-card[aria-current]','.binding-option','.ws-choice.on','.ws-provider.on']) {
+   for (const surface of ['.provider-card[aria-current]','.binding-option']) {
     if(bg(q(surface))!==bg(sample)) throw Error(theme+' '+surface+' selection differs from fill-2');
    }
    for (const surface of ['.ws-choice.on','.ws-provider.on','.ws-key']) {
@@ -53,7 +53,6 @@ func TestSelectedCardSurfaces(t *testing.T) {
     if(style.borderStyle!=='none' || style.boxShadow!=='none') throw Error(theme+' '+surface+' has an outline');
    }
    sample.remove();
-   if(bg(q('.ws-key'))!==bg(q('.ws-provider.on'))) throw Error(theme+' expanded key surface differs');
   }
   document.body.dataset.result='pass';
  } catch(e) { document.body.dataset.result=e.message; }
