@@ -1,5 +1,10 @@
 # XBot 里程碑与进度
 
+## 2026-10-28 供应商选中卡只留底色（功能分支）
+
+- 选中卡保留中性 `--x-fill-3` 底，边框与未选卡相同；焦点轮廓保留。Chrome 设置入口脚本覆盖明暗主题，回归在旧样式失败、修复后连续三次通过，并查看了脚本化截图。gofmt、vet 和 atlas audit 通过（audit 有既有告警）。
+- 全仓测试中 kernel 的 `TestLongTurnStaysUnderTheCeiling` 失败（40 步折叠 12 次）；全仓和 web 全包三次运行因 web 测试长时间未结束而中断，未完成。新增请求、轮询和动画为 0；未测帧率或交互 p95，未做用户日用验收，未合 main、未 push。
+
 ## 2026-10-28 私有资料与共享工作空间（功能分支）
 
 - 私有资料继续使用 `bots/<bot>/memory/`；整机共享工作空间保留 `<root>/memory/`，采样时创建并始终注入契约与索引，空库也给路径。每轮轻推列出两条绝对路径，默认写私有、跨 Bot 才写共享；沿用环境流与 sidecar，关键词和预算覆盖两源。见 [ADR 0033](adr/0033-bot-and-shared-reference-workspace.md)。
