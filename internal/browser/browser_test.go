@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -370,5 +372,44 @@ func TestChromeSurvivesCLIExit(t *testing.T) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestFindChromeOrder(t *testing.T) {
+	exe := func(dir, name string) string {
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	app := exe(t.TempDir(), "Google Chrome")
+	bin := t.TempDir()
+	onPath := exe(bin, "chromium")
+	old := appChromes
+	t.Cleanup(func() { appChromes = old })
+	appChromes = []string{filepath.Join(t.TempDir(), "missing"), app}
+
+	t.Setenv("XBOT_CHROME", "")
+	t.Setenv("PATH", t.TempDir())
+	if got, err := findChrome(); err != nil || got != app {
+		t.Fatalf("app bundle: %q %v", got, err)
+	}
+	t.Setenv("PATH", bin)
+	if got, err := findChrome(); err != nil || got != onPath {
+		t.Fatalf("PATH first: %q %v", got, err)
+	}
+	t.Setenv("XBOT_CHROME", "/custom/chrome")
+	if got, err := findChrome(); err != nil || got != "/custom/chrome" {
+		t.Fatalf("XBOT_CHROME first: %q %v", got, err)
+	}
+	t.Setenv("XBOT_CHROME", "")
+	t.Setenv("PATH", t.TempDir())
+	appChromes = nil
+	if _, err := findChrome(); !errors.Is(err, ErrNoChrome) {
+		t.Fatalf("missing: %v", err)
 	}
 }

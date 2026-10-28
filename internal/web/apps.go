@@ -240,6 +240,10 @@ func (s *Server) installApp(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusUnprocessableEntity, "飞书暂时无法验证，请稍后再试。")
 			return
 		}
+		if errors.Is(err, browser.ErrNoChrome) {
+			writeErr(w, http.StatusUnprocessableEntity, "本机没找到 Chrome，请先安装 Google Chrome 再添加。")
+			return
+		}
 		writeErr(w, http.StatusUnprocessableEntity, "没能连上，请检查后重试。")
 		return
 	}

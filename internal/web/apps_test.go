@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/browser"
 	"xbot/internal/link"
 )
 
@@ -411,6 +413,10 @@ func TestAppsProbeBeforeCommit(t *testing.T) {
 	ada, _ := bot.Load(e.root, "ada")
 	if keys, _ := link.ReadSecrets(ada.SecretPath()); len(keys) != 0 {
 		t.Fatal("failed probe stored credentials")
+	}
+	e.server.appsProbe = func(context.Context, link.App, []string) error { return fmt.Errorf("probe: %w", browser.ErrNoChrome) }
+	if code, raw := e.call("POST", "/api/apps", `{"id":"browser"}`, true); code != 422 || !strings.Contains(string(raw), "没找到 Chrome") {
+		t.Fatalf("no chrome %d %s", code, raw)
 	}
 	e.server.appsProbe = func(_ context.Context, a link.App, values []string) error {
 		if a.ID != "context7" || len(values) != 1 || values[0] != "fixture-key" {

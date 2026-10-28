@@ -208,6 +208,9 @@ func allow(root string, approved bool) error {
 	return nil
 }
 
+// ErrNoChrome means no Chrome binary was found on this machine.
+var ErrNoChrome = errors.New("browser: chrome not found; set XBOT_CHROME")
+
 func findChrome() (string, error) {
 	if p := strings.TrimSpace(os.Getenv("XBOT_CHROME")); p != "" {
 		return p, nil
@@ -217,7 +220,12 @@ func findChrome() (string, error) {
 			return path, nil
 		}
 	}
-	return "", errors.New("browser: chrome not found; set XBOT_CHROME")
+	for _, path := range appChromes {
+		if _, err := exec.LookPath(path); err == nil {
+			return path, nil
+		}
+	}
+	return "", ErrNoChrome
 }
 
 func waitPort(ctx context.Context, profile string) (int, error) {
