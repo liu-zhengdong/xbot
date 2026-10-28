@@ -3,11 +3,11 @@
     "id": "fetch",
     "title": "网页抓取",
     "summary": "打开网址，把网页内容读成文字。",
-    "category": "dev",
     "transport": "stdio",
     "command": "uvx",
     "args": ["mcp-server-fetch"],
-    "secret_envs": []
+    "secret_envs": [],
+    "hidden": true
   },
   {
     "id": "playwright",

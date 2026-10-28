@@ -29,9 +29,6 @@ func TestAppsStoreBehaviour(t *testing.T) {
  const btn=(host,label)=>buttons(host).find(b=>b.textContent===label);
  const cardBtn=(host,title)=>walk(host).find(n=>n.className==='ap-card'&&textOf(n).includes(title)).children.find(n=>n.tag==='button');
  const rows=[
-  {id:'desktop',title:'电脑操作',summary:'看屏幕、点击。',category:'local',state:'available'},
-  {id:'browser',title:'浏览器',summary:'打开网页。',category:'local',state:'connected'},
-  {id:'fetch',title:'网页抓取',summary:'读网页。',category:'dev',state:'connected'},
   {id:'playwright',title:'Playwright',summary:'自动化网页。',category:'dev',state:'available'},
   {id:'github',title:'GitHub',summary:'看仓库。',category:'dev',state:'connected'},
   {id:'context7',title:'Context7',summary:'查文档。',category:'dev',state:'available',card:true,fields:['API 密钥']},
@@ -53,8 +50,6 @@ func TestAppsStoreBehaviour(t *testing.T) {
   assert.equal(walk(host).find(n=>n.tag==='input').placeholder,'搜索应用…');
   const chips=walk(host).filter(n=>n.className.split(' ').includes('ap-chip')).map(n=>n.textContent);
   assert.equal(chips.join(),'全部,开发,效率,通讯,更多');
-  // native organs stay out of the store, the picks and the count
-  for(const t of ['电脑操作','浏览器','网页抓取'])assert.ok(!textOf(host).includes(t),t+' is in the store');
   assert.ok(textOf(host).includes('为你推荐'));
   assert.ok(!textOf(host).includes('notes'),'custom apps stay out of the grid');
   // buttons by state
@@ -64,7 +59,7 @@ func TestAppsStoreBehaviour(t *testing.T) {
   const soon=btn(host,'即将支持');assert.equal(soon.disabled,true);
   // chip filters
   walk(host).find(n=>n.dataset.chip==='dev').onclick();
-  assert.ok(textOf(host).includes('Context7'));assert.ok(!textOf(host).includes('电脑操作'));
+  assert.ok(textOf(host).includes('Context7'));
   // adding a plain app goes to the global route with no bot in sight
   await cardBtn(host,'Playwright').onclick();
   assert.equal(JSON.stringify(calls.filter(c=>c[0]==='POST')[0]),JSON.stringify(['POST','/api/apps',{id:'playwright'}]));
@@ -92,7 +87,6 @@ func TestAppsStoreBehaviour(t *testing.T) {
   // connected list, remove, then the empty state
   btn(host,'已连接 4 个').onclick();
   assert.ok(textOf(host).includes('这些应用对所有 Bot 都能用'));assert.ok(textOf(host).includes('notes'));
-  assert.ok(!textOf(host).includes('浏览器')&&!textOf(host).includes('网页抓取'),'native organs in the connected list');
   // removing from a store card sends the same DELETE as the connected page
   walk(host).find(n=>n.className==='setback').onclick();btn(host,'清除搜索').onclick();
   await cardBtn(host,'GitHub').onclick();

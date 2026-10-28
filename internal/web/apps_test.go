@@ -101,15 +101,13 @@ func TestAppsStoreListsCuratedCardsOnly(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("connected %d", n)
 	}
-	for _, gone := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp"} {
+	// Native organs (computer use, browser, page fetching) are not store cards.
+	for _, gone := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp", "desktop", "browser", "fetch"} {
 		if _, ok := apps[gone]; ok {
 			t.Fatalf("%s must not be in the store", gone)
 		}
 	}
-	if apps["desktop"].Title != "电脑操作" || apps["browser"].Title != "浏览器" {
-		t.Fatalf("local titles %+v %+v", apps["desktop"], apps["browser"])
-	}
-	for _, id := range []string{"fetch", "playwright", "context7", "telegram", "lark"} {
+	for _, id := range []string{"playwright", "context7", "telegram", "lark"} {
 		if apps[id].State != "available" {
 			t.Fatalf("%s %+v", id, apps[id])
 		}
@@ -133,19 +131,20 @@ func TestAppsStoreListsCuratedCardsOnly(t *testing.T) {
 func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 	e := newAppsEnv(t)
 	for i := 0; i < 2; i++ { // a second click changes nothing
-		if code, raw := e.call("POST", "/api/apps", `{"id":"fetch"}`, true); code != 200 {
-			t.Fatalf("install %d %s", code, raw)
-		}
-		if code, raw := e.call("POST", "/api/apps", `{"id":"desktop"}`, true); code != 200 {
+		if code, raw := e.call("POST", "/api/apps", `{"id":"playwright"}`, true); code != 200 {
 			t.Fatalf("install %d %s", code, raw)
 		}
 	}
+	// organs are granted natively, never through the store
+	if code, _ := e.call("POST", "/api/apps", `{"id":"desktop"}`, true); code != http.StatusNotFound {
+		t.Fatalf("desktop installed from the store: %d", code)
+	}
 	n, apps := e.list()
-	if n != 2 || apps["fetch"].State != "connected" || apps["desktop"].State != "connected" {
+	if n != 1 || apps["playwright"].State != "connected" {
 		t.Fatalf("%d %+v", n, apps)
 	}
 	global, _ := link.LoadMCP(bot.GlobalMCPPath(e.root))
-	if len(global) != 1 || global[0].Name != "fetch" {
+	if len(global) != 1 || global[0].Name != "playwright" {
 		t.Fatalf("global %+v", global)
 	}
 	for _, name := range []string{"ada", "bob"} {
@@ -156,9 +155,6 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 		if own, _ := link.LoadMCP(b.MCPPath()); len(own) != 0 {
 			t.Fatalf("%s got a per-bot copy: %+v", name, own)
 		}
-		if !b.Grants(link.NameDesktop) {
-			t.Fatalf("%s lacks the global desktop grant", name)
-		}
 		if all, _ := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath()); len(all) != 1 {
 			t.Fatalf("%s sees %+v", name, all)
 		}
@@ -168,7 +164,7 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 	}
 	// removing is global too, and removing twice is fine
 	for i := 0; i < 2; i++ {
-		for _, id := range []string{"fetch", "desktop"} {
+		for _, id := range []string{"playwright"} {
 			if code, raw := e.call("DELETE", "/api/apps/"+id, "", true); code != 200 {
 				t.Fatalf("remove %s %d %s", id, code, raw)
 			}
@@ -178,9 +174,6 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 		t.Fatalf("connected after remove %d", n)
 	}
 	b, _ := bot.Load(e.root, "bob")
-	if b.Grants(link.NameDesktop) {
-		t.Fatal("bob still granted desktop")
-	}
 	if all, _ := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath()); len(all) != 0 {
 		t.Fatalf("bob still sees %+v", all)
 	}
@@ -212,13 +205,13 @@ func TestAppsKeyConnectorsNeedTheirKeys(t *testing.T) {
 		t.Fatalf("connected key app must say the key stays per Bot: %+v", apps["telegram"])
 	}
 	// The layer asks in plain words; variable names never reach the page.
-	if _, apps := e.list(); strings.Join(apps["context7"].Fields, ",") != "API 密钥" || strings.Join(apps["lark"].Fields, ",") != "应用密钥" || len(apps["fetch"].Fields) != 0 {
+	if _, apps := e.list(); strings.Join(apps["context7"].Fields, ",") != "API 密钥" || strings.Join(apps["lark"].Fields, ",") != "应用密钥" || len(apps["playwright"].Fields) != 0 {
 		t.Fatalf("fields %+v %+v", apps["context7"], apps["lark"])
 	}
 	if _, raw := e.call("GET", "/api/apps", "", true); strings.Contains(string(raw), "_KEY") || strings.Contains(string(raw), "_TOKEN") || strings.Contains(string(raw), "_SECRET") {
 		t.Fatal("variable names on the page")
 	}
-	if _, apps := e.list(); apps["fetch"].Scope != "" || apps["lark"].Scope != keyPerBotNote {
+	if _, apps := e.list(); apps["playwright"].Scope != "" || apps["lark"].Scope != keyPerBotNote {
 		t.Fatal("per-Bot note belongs on key apps only")
 	}
 	if code, raw := e.call("DELETE", "/api/apps/telegram", "", true); code != 200 {
@@ -238,7 +231,7 @@ func TestAppsCustomLayer(t *testing.T) {
 	}{
 		{`{"name":"notes"}`, 400},
 		{`{"name":"notes","program":"/bin/echo","url":"https://example.com/mcp"}`, 400},
-		{`{"name":"fetch","program":"/bin/echo"}`, 409},
+		{`{"name":"playwright","program":"/bin/echo"}`, 409},
 		{`{"name":"notes","url":"ftp://example.com"}`, 400},
 		{`{"name":"notes","url":"https://example.com/mcp"}`, 200},
 		{`{"name":"tool","program":"/bin/echo","options":["a","b"]}`, 200},
@@ -278,8 +271,8 @@ func TestAppsRoutesNameNoBot(t *testing.T) {
 func TestAppsContext7NeedsKey(t *testing.T) {
 	t.Setenv("CONTEXT7_API_KEY", "") // the shell's own key must not make it look connected
 	e := newAppsEnv(t)
-	if _, apps := e.list(); !apps["context7"].Card || apps["context7"].State != "available" || apps["fetch"].Card || apps["playwright"].Card {
-		t.Fatalf("card flags %+v %+v %+v", apps["context7"], apps["fetch"], apps["playwright"])
+	if _, apps := e.list(); !apps["context7"].Card || apps["context7"].State != "available" || apps["playwright"].Card {
+		t.Fatalf("card flags %+v %+v", apps["context7"], apps["playwright"])
 	}
 	for i := 0; i < 2; i++ { // a repeated click is the same refusal
 		code, raw := e.call("POST", "/api/apps", `{"id":"context7"}`, true)

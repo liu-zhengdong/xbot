@@ -627,9 +627,12 @@ func (k *Kernel) installedSection() (string, error) {
 		if e.Grant == "" || !granted[e.Grant] {
 			continue
 		}
-		if a, ok := link.LookupApp(e.ID); ok {
+		a, ok := link.LookupApp(e.ID)
+		if !ok {
+			a, ok = link.LookupOrgan(e.ID)
+		}
+		if ok {
 			refs = append(refs, link.InstalledRef{ID: a.Title, Summary: a.Summary})
-			continue
 		}
 	}
 	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())

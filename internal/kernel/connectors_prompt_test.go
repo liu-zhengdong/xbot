@@ -19,7 +19,7 @@ func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
 	if err := bot.GrantGlobal(b.Root, link.NameDesktop); err != nil {
 		t.Fatal(err)
 	}
-	if err := link.EnableConnector(b.GlobalMCPPath(), "fetch"); err != nil {
+	if err := link.EnableConnector(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
 	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "mine", Command: "/bin/echo"}); err != nil {
@@ -30,7 +30,7 @@ func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("%q", lines)
 	}
-	want := []string{"电脑操作:", "网页抓取:", "mcp:mine:"}
+	want := []string{"电脑操作:", "mcp:mine:", "Playwright:"}
 	for i, prefix := range want {
 		if !strings.HasPrefix(lines[i], prefix) {
 			t.Fatalf("line %d %q, want prefix %q", i, lines[i], prefix)
@@ -48,17 +48,17 @@ func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
 
 func TestConnectorsLoadAcceptsShownName(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	if err := link.EnableConnector(b.GlobalMCPPath(), "fetch"); err != nil {
+	if err := link.EnableConnector(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	k.newMCP = func(s link.MCPServer) link.Link {
-		s.Dial = fakeMCP(t, "fetch")
+		s.Dial = fakeMCP(t, "playwright")
 		m := link.NewMCP(s)
 		t.Cleanup(func() { _ = m.Close() })
 		return m
 	}
-	if _, err := (linksTool{k: k}).load("网页抓取"); err != nil {
+	if _, err := (linksTool{k: k}).load("Playwright"); err != nil {
 		t.Fatalf("load by shown name: %v", err)
 	}
 	if _, err := (linksTool{k: k}).load("Gmail"); err == nil {

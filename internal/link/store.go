@@ -8,7 +8,7 @@ type App struct {
 	ID       string
 	Title    string
 	Summary  string
-	Category string // local | dev | work | chat
+	Category string // dev | work | chat
 	// Kind is how it installs: native grant, MCP server, or soon (shown, not installable).
 	Kind string
 	// Grant is the native link name for Kind native.
@@ -25,19 +25,33 @@ const (
 
 // Store category ids, in chip order after "all".
 const (
-	CatLocal = "local"
-	CatDev   = "dev"
-	CatWork  = "work"
-	CatChat  = "chat"
+	CatDev  = "dev"
+	CatWork = "work"
+	CatChat = "chat"
 )
 
-// StoreApps is the curated store list in display order. Files, Webhook, file
-// watching and skills are not apps here, and hidden catalog rows are left out.
-func StoreApps() ([]App, error) {
-	apps := []App{
-		{ID: "desktop", Title: "电脑操作", Summary: "看屏幕、点击、输入，帮你操作电脑上的软件。你在用电脑时它会让开。", Category: CatLocal, Kind: AppNative, Grant: NameDesktop},
-		{ID: "browser", Title: "浏览器", Summary: "用单独的浏览器窗口打开网页、读内容、点按钮。", Category: CatLocal, Kind: AppNative, Grant: NameBrowser},
+// organs are native abilities, not store cards: a Bot gets them by native
+// grant, and the prompt shows and resolves them by title.
+var organs = []App{
+	{ID: "desktop", Title: "电脑操作", Summary: "看屏幕、点击、输入，帮你操作电脑上的软件。你在用电脑时它会让开。", Kind: AppNative, Grant: NameDesktop},
+	{ID: "browser", Title: "浏览器", Summary: "用单独的浏览器窗口打开网页、读内容、点按钮。", Kind: AppNative, Grant: NameBrowser},
+}
+
+// LookupOrgan finds a native organ by id.
+func LookupOrgan(id string) (App, bool) {
+	for _, a := range organs {
+		if a.ID == id {
+			return a, true
+		}
 	}
+	return App{}, false
+}
+
+// StoreApps is the curated store list in display order. Native organs, Files,
+// Webhook, file watching and skills are not apps here, and hidden catalog rows
+// are left out.
+func StoreApps() ([]App, error) {
+	var apps []App
 	list, err := Connectors()
 	if err != nil {
 		return nil, err
@@ -73,12 +87,12 @@ func LookupApp(id string) (App, bool) {
 	return App{}, false
 }
 
-// ResolveApp maps what the prompt shows (a store title, an id, or mcp:<name>)
-// back to the id links load understands. Unknown text comes back unchanged.
+// ResolveApp maps what the prompt shows (a store or organ title, an id, or
+// mcp:<name>) back to the id links load understands. Unknown text comes back unchanged.
 func ResolveApp(name string) string {
 	name = strings.TrimSpace(name)
 	if apps, err := StoreApps(); err == nil {
-		for _, a := range apps {
+		for _, a := range append(apps, organs...) {
 			if (strings.EqualFold(a.Title, name) || strings.EqualFold(a.ID, name) || (a.Kind == AppServer && strings.EqualFold("mcp:"+a.ID, name))) && a.Kind != AppSoon {
 				if a.Kind == AppServer {
 					return "mcp:" + a.ID

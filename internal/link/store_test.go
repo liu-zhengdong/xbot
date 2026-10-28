@@ -15,13 +15,17 @@ func TestStoreAppsCurated(t *testing.T) {
 	for _, a := range apps {
 		got[a.ID] = a
 	}
-	for _, id := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp", "coding-agent"} {
+	// Native organs (computer use, browser, page fetching) are not store cards.
+	for _, id := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp", "coding-agent", "desktop", "browser", "fetch"} {
 		if _, ok := got[id]; ok {
 			t.Fatalf("%s listed in the store", id)
 		}
 	}
-	if got["desktop"].Title != "电脑操作" || got["browser"].Title != "浏览器" {
-		t.Fatalf("%+v %+v", got["desktop"], got["browser"])
+	if a, ok := LookupOrgan("desktop"); !ok || a.Title != "电脑操作" || a.Grant != NameDesktop {
+		t.Fatalf("organ %+v", a)
+	}
+	if _, ok := LookupApp("browser"); ok {
+		t.Fatal("browser is a store app")
 	}
 	for _, id := range []string{"gmail", "gdrive", "gcalendar"} {
 		if got[id].Kind != AppSoon {
@@ -66,7 +70,7 @@ func TestLoadMCPAllBotEntryWinsAndEnableIsIdempotent(t *testing.T) {
 }
 
 func TestResolveApp(t *testing.T) {
-	for in, want := range map[string]string{"电脑操作": "desktop", "浏览器": "browser", "网页抓取": "mcp:fetch", "Gmail": "Gmail", "webhook": "webhook"} {
+	for in, want := range map[string]string{"电脑操作": "desktop", "浏览器": "browser", "Playwright": "mcp:playwright", "网页抓取": "网页抓取", "Gmail": "Gmail", "webhook": "webhook"} {
 		if got := ResolveApp(in); got != want {
 			t.Fatalf("%q -> %q, want %q", in, got, want)
 		}
@@ -90,7 +94,7 @@ func TestStoreKeyRowsNeedSecret(t *testing.T) {
 	for _, a := range apps {
 		need[a.ID] = a.NeedsSecret
 	}
-	for id, want := range map[string]bool{"context7": true, "telegram": true, "lark": true, "fetch": false, "playwright": false, "desktop": false, "browser": false} {
+	for id, want := range map[string]bool{"context7": true, "telegram": true, "lark": true, "playwright": false} {
 		if need[id] != want {
 			t.Fatalf("%s NeedsSecret=%v, want %v", id, need[id], want)
 		}
