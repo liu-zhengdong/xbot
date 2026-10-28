@@ -53,7 +53,7 @@ func SecretName(kind string) string {
 // Poster delivers one approved draft. secret is the connector credential.
 type Poster func(ctx context.Context, to, body, secret string) error
 
-// Connector is the Telegram or Lark grant. Tools stay off the model list until links load.
+// Connector is the Telegram or Lark grant. Its tools register behind the tools door.
 // Dir is the bot directory. SecretPath is the legacy plaintext secrets.json.
 // Vault holds the credential; it is the only place a token is stored.
 type Connector struct {

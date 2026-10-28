@@ -322,11 +322,14 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	if err != nil {
 		return next, err
 	}
-	names := toolNames(list)
+	names := toolNames(declared(list))
 	if provider.HasHostedSearch(k.boundProvider()) {
 		names = append(names, "hosted:web_search")
 	}
 	environmentSet(&next, "tools", names)
+	// The short list of everything behind the tools door. It lives here, in
+	// the changing part, so installing a Link never moves the stable prefix.
+	environmentSet(&next, "tool_index", k.toolRegistry().index())
 	environmentSet(&next, "notes", k.pendingNotes())
 	// A cleared card list must supersede old reminders in the visible history.
 	// Count is stable while waiting; elapsed age belongs only to the reminder.

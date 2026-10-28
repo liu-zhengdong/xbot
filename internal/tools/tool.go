@@ -43,6 +43,20 @@ type PathContext interface {
 	ResolvedPathContext(ctx context.Context, args json.RawMessage) string
 }
 
+// Undeclared is a tool the agent can run but does not list in the request's
+// tools[]. The model reaches it through a Forwarder, so disclosing it never
+// changes the declared set (ADR 0035).
+type Undeclared interface {
+	Undeclared() bool
+}
+
+// Forwarder is a proxy tool. When it returns a tool, the call is that tool
+// with inner args, and the agent confirms, runs and reports it as if the model
+// had called it by name; a nil tool means the proxy itself runs.
+type Forwarder interface {
+	Forward(ctx context.Context, args json.RawMessage) (Tool, json.RawMessage, error)
+}
+
 // ConfirmCall uses ConfirmContext when the tool has one, so a shared tool can
 // confirm against the caller's working directory.
 func ConfirmCall(ctx context.Context, t Tool, args json.RawMessage) (bool, string, error) {

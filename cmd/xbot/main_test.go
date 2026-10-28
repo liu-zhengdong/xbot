@@ -812,7 +812,8 @@ func TestMountEveryCatalogLinkTwice(t *testing.T) {
 	for _, item := range first {
 		names[item.Name()] = true
 	}
-	for _, want := range []string{link.NameDesktop, link.NameBrowser} {
+	// The desktop is an organ, not a catalog grant; the kernel mounts it.
+	for _, want := range []string{link.NameBrowser} {
 		if !names[want] {
 			t.Fatalf("missing %s", want)
 		}

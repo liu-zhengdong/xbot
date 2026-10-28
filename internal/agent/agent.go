@@ -276,6 +276,9 @@ func indexTools(list []tools.Tool) (map[string]tools.Tool, []provider.ToolDef, e
 			return nil, nil, fmt.Errorf("agent: duplicate tool %q", t.Name())
 		}
 		byName[t.Name()] = t
+		if u, ok := t.(tools.Undeclared); ok && u.Undeclared() {
+			continue
+		}
 		defs = append(defs, provider.ToolDef{
 			Name:        t.Name(),
 			Description: t.Description(),
@@ -443,6 +446,17 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	raw := json.RawMessage(tc.Function.Arguments)
 	if !json.Valid(raw) {
 		return toolExec{text: finish(opt, tc.ID, t.Name(), "error: tool arguments are not valid JSON")}
+	}
+	// A proxy call is the inner tool from here on: review, cards and the
+	// background lifecycle all see the concrete name and args.
+	if f, ok := t.(tools.Forwarder); ok {
+		target, inner, err := f.Forward(ctx, raw)
+		if err != nil {
+			return toolExec{text: finish(opt, tc.ID, t.Name(), "error: "+err.Error())}
+		}
+		if target != nil {
+			t, raw = target, inner
+		}
 	}
 	need, summary, err := tools.ConfirmCall(ctx, t, raw)
 	if err != nil {

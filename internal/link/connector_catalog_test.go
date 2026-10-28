@@ -19,10 +19,13 @@ func TestConnectorCatalogEnable(t *testing.T) {
 			t.Fatalf("secret value in catalog: %+v", c)
 		}
 	}
-	for _, id := range []string{"fetch", "localhttp"} {
+	for _, id := range []string{"playwright", "localhttp"} {
 		if !seen[id] {
 			t.Fatalf("missing %s in %v", id, seen)
 		}
+	}
+	if seen["fetch"] {
+		t.Fatal("retired fetch is in the catalog")
 	}
 	if seen["filesystem"] {
 		t.Fatal("filesystem duplicates the built-in file tools and has no catalog entry")

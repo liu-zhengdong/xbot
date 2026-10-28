@@ -10,6 +10,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 func TestLinksConfirmInstallAndRemove(t *testing.T) {
@@ -171,20 +172,20 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 	if strings.Contains(base, "## 连接器") {
 		t.Fatal(base)
 	}
-	if err := b.GrantLink(link.NameDesktop); err != nil {
+	if err := b.GrantLink(link.NameBrowser); err != nil {
 		t.Fatal(err)
 	}
 	one := systemOf(t, k)
 	lines := installedBody(one)
-	if len(lines) != 1 || !strings.HasPrefix(lines[0], "电脑操作:") {
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "浏览器:") {
 		t.Fatalf("%q", lines)
 	}
-	if err := b.GrantLink(link.NameBrowser); err != nil {
+	if err := b.GrantLink(link.NameTelegram); err != nil {
 		t.Fatal(err)
 	}
 	two := systemOf(t, k)
 	lines = installedBody(two)
-	if len(lines) != 2 || !strings.Contains(strings.Join(lines, "\n"), "电脑操作:") || !strings.Contains(strings.Join(lines, "\n"), "浏览器:") {
+	if len(lines) != 2 || !strings.Contains(strings.Join(lines, "\n"), "Telegram:") || !strings.Contains(strings.Join(lines, "\n"), "浏览器:") {
 		t.Fatalf("%q", lines)
 	}
 	if strings.Count(two, "\n") != strings.Count(one, "\n")+1 {
@@ -218,16 +219,17 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 	if len(p.reqs) < 2 {
 		t.Fatalf("calls %d", len(p.reqs))
 	}
-	if hasDef(p.reqs[0].Tools, "read_skill") {
-		t.Fatal("read_skill on the first request")
-	}
-	if !hasDef(p.reqs[1].Tools, "read_skill") {
-		t.Fatal("read_skill missing after load")
-	}
-	for _, def := range p.reqs[1].Tools {
-		if def.Name == "read_skill" && !strings.Contains(def.Description, "Pass id, the skill id") {
-			t.Fatal(def.Description)
+	// Loading never declares a schema; the tools stay behind the door.
+	for _, req := range p.reqs {
+		if hasDef(req.Tools, "read_skill") || hasDef(req.Tools, "write_skill") {
+			t.Fatal("skill schema declared in tools[]")
 		}
+	}
+	if !k.isLoaded(link.NameSkills) || !hasToolName(mustMounted(t, k), "write_skill") {
+		t.Fatal("write_skill not loaded for this turn")
+	}
+	if e, ok := k.toolRegistry().find("read_skill"); !ok || !strings.Contains(e.tool.Description(), "Pass id, the skill id") {
+		t.Fatal("read_skill not registered")
 	}
 	if strings.Contains(p.reqs[0].Messages[0].Text(), "Read the body of a shared skill") || strings.Contains(p.reqs[1].Messages[0].Text(), "Skill slug") {
 		t.Fatal("schema leaked into the system prompt")
@@ -237,8 +239,8 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if len(p2.reqs) == 0 || hasDef(p2.reqs[0].Tools, "read_skill") {
-		t.Fatal("read_skill persisted into the next turn")
+	if len(p2.reqs) == 0 || k.isLoaded(link.NameSkills) || hasToolName(mustMounted(t, k), "write_skill") {
+		t.Fatal("the load persisted into the next turn")
 	}
 }
 
@@ -271,10 +273,8 @@ func TestBrowserLoadListsTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range list {
-		if tool.Name() == "browser_open" {
-			t.Fatal("browser tools visible before load")
-		}
+	if !hasToolName(list, "browser_open") || hasToolName(declared(list), "browser_open") {
+		t.Fatal("browser tools must be registered behind the door, never declared")
 	}
 	out, err = (linksTool{k}).load("browser")
 	if err != nil || !strings.Contains(out, "browser_open") || !strings.Contains(out, "browser_snapshot") || !strings.Contains(out, "browser_stop") {
@@ -282,26 +282,33 @@ func TestBrowserLoadListsTools(t *testing.T) {
 	}
 }
 
+// The desktop is an organ: on from boot, not installable, and load only lists it.
 func TestDesktopLoadListsTools(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
-	out, err := (linksTool{k}).install("desktop")
-	if err != nil || out != "installed desktop" {
-		t.Fatalf("install %q %v", out, err)
+	if _, err := (linksTool{k}).install("desktop"); err == nil {
+		t.Fatal("an organ installed like a Link")
 	}
 	list, err := k.modelTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range list {
-		if tool.Name() == "desktop_click" {
-			t.Fatal("desktop tools visible before load")
-		}
+	if !hasToolName(list, "desktop_click") || hasToolName(declared(list), "desktop_click") {
+		t.Fatal("desktop tools must be registered from boot, never declared")
 	}
-	out, err = (linksTool{k}).load("desktop")
+	out, err := (linksTool{k}).load("desktop")
 	if err != nil || !strings.Contains(out, "desktop_screenshot") || !strings.Contains(out, "desktop_click") {
 		t.Fatalf("load %q %v", out, err)
 	}
+}
+
+func mustMounted(t *testing.T, k *Kernel) []tools.Tool {
+	t.Helper()
+	list, err := k.mountedTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
 }
 
 // TestOldNodeGrantIsIgnored pins the retired node link out of wiring: a bot

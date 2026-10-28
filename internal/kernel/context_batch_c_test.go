@@ -124,13 +124,9 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 			if !strings.Contains(prompt, "可撤销不等于可以替 Bot 编造用途") {
 				t.Fatal("creation constraint missing")
 			}
-			found := false
-			for _, tool := range p.reqs[0].Tools {
-				if tool.Name == "create_bot" {
-					found = strings.Contains(tool.Description, "Do not call when its purpose or duties are unclear")
-				}
-			}
-			if !found {
+			// The description reaches the model through the tools door.
+			e, ok := k.toolRegistry().find("create_bot")
+			if !ok || !strings.Contains(e.tool.Description(), "Do not call when its purpose or duties are unclear") {
 				t.Fatal("creation schema/description not delivered")
 			}
 			if review.ClassOf("create_bot") != review.Normal {

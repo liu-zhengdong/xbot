@@ -11,7 +11,7 @@ import (
 	"xbot/internal/tools"
 )
 
-// Link drives a local Chrome. Schemas stay off the model list until load.
+// Link drives a local Chrome. Its tools register behind the tools door.
 type Link struct {
 	Root string
 	mu   sync.Mutex

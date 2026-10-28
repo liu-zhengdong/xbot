@@ -10,7 +10,7 @@ import (
 	"xbot/internal/tools"
 )
 
-// Link is the desktop grant. Schemas stay off the model list until load.
+// Link is the desktop organ: on from boot, its tools behind the tools door.
 type Link struct {
 	Root   string
 	Driver Driver

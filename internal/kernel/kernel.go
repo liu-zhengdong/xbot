@@ -155,9 +155,7 @@ type Kernel struct {
 	execMu      sync.RWMutex
 	loadMu      sync.Mutex
 	loaded      map[string]bool
-	// Tool groups stay expanded across wakes for this live kernel, unlike links.
-	expandedToolGroups map[string]bool
-	linksMu            sync.Mutex
+	linksMu     sync.Mutex
 	// newMCP builds an mcp link for a server in mcp.json; tests replace it with a fake.
 	newMCP      func(link.MCPServer) link.Link
 	secretMu    sync.Mutex

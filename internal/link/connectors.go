@@ -21,13 +21,45 @@ type CatalogItem struct {
 	Args       []string `json:"args,omitempty"`
 	URL        string   `json:"url,omitempty"`
 	SecretEnvs []string `json:"secret_envs,omitempty"`
-	// Category is the store chip (dev, ...). Hidden rows are not shown in the store.
+	// Category is the store chip (dev, ...).
 	Category string `json:"category,omitempty"`
-	Hidden   bool   `json:"hidden,omitempty"`
+	// Retired marks a server a native tool replaced. It is not in the
+	// catalog any more; an old mcp.json entry of that name is neither mounted
+	// nor shown as connected.
+	Retired bool `json:"retired,omitempty"`
 }
 
 // Connectors reads the embedded catalog. It is not a hosted marketplace.
+// Retired rows are not part of it.
 func Connectors() ([]CatalogItem, error) {
+	list, err := catalogRows()
+	if err != nil {
+		return nil, err
+	}
+	out := list[:0]
+	for _, c := range list {
+		if !c.Retired {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// RetiredServer says an mcp.json entry names a retired catalog row.
+func RetiredServer(name string) bool {
+	list, err := catalogRows()
+	if err != nil {
+		return false
+	}
+	for _, c := range list {
+		if c.Retired && c.ID == name {
+			return true
+		}
+	}
+	return false
+}
+
+func catalogRows() ([]CatalogItem, error) {
 	dec := json.NewDecoder(bytes.NewReader(connectorCatalog))
 	dec.DisallowUnknownFields()
 	var list []CatalogItem

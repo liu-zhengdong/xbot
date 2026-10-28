@@ -1,6 +1,6 @@
 # 连接器
 
-Link 是能力与事件的现有边界：出站工具、入站事件。Bot 只能使用当前授权并挂载的能力。`links search` 查目录，`links install/remove` 改安装，`links load` 把已授权连接的工具按需装进这一轮；安装不等于已读取工具详情，也不等于实际请求已经成功。
+Link 是能力与事件的现有边界：出站工具、入站事件。Bot 只能使用当前授权并挂载的能力。`links search` 查目录，`links install/remove` 改安装，`links load` 启动已授权的连接并列出工具 id；工具不进工具列表，一律经代理门 `tools`（search 找、describe 看参数、call 调用）；安装不等于已读取工具详情，也不等于实际请求已经成功。
 
 MCP 服务器提供工具，Telegram、飞书等连接器还把外部消息投进收件箱。用户可在连接器设置中管理，或用 `xbot link list <bot>` / `xbot mcp list <bot>` 查看。需要密钥时用既有填写入口；手册和对话只称密钥名字，不能输出值。安装和授权沿内核权限/密钥流程，不另造发送通道。
 

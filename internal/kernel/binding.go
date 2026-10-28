@@ -35,7 +35,7 @@ func (k *Kernel) PrepareBinding(ctx context.Context, providerName, modelName str
 		return err
 	}
 	toolTokens := 0
-	for _, tool := range list {
+	for _, tool := range declared(list) {
 		toolTokens += estimateTools([]provider.ToolDef{{Name: tool.Name(), Description: tool.Description(), Parameters: tool.Parameters()}})
 	}
 	st, err := k.Bot.LoadState()

@@ -118,13 +118,6 @@ var catalog = []CatalogEntry{
 		Available: true, Grant: NameBrowser,
 	},
 	{
-		ID: "desktop", Title: "电脑操作", Kind: KindNative,
-		Capabilities: []string{"tools"}, Secrets: []string{},
-		Summary:   "截图、点击、输入、滚动、按键。用户正在用电脑时不抢鼠标。",
-		Keywords:  []string{"desktop", "screenshot", "click"},
-		Available: true, Grant: NameDesktop,
-	},
-	{
 		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{},
 		Summary:   "长时间编码任务，步数和时间按这次任务另定。先只记本地任务。",

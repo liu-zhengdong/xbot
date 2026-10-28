@@ -104,7 +104,7 @@ func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
 	}
 	bind("deepseek", "deepseek-flash")
 	run()
-	if !slices.Contains(environmentGet[[]string](testPublished(t, k), "tools"), "web_search") {
+	if !indexHas(testPublished(t, k), "web_search") {
 		t.Fatal("local search missing")
 	}
 	bind("openai", "gpt-5.5")
@@ -116,7 +116,7 @@ func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
 	}
 	run()
 	names := environmentGet[[]string](testPublished(t, k), "tools")
-	if slices.Contains(names, "web_search") || !slices.Contains(names, "hosted:web_search") || !slices.Contains(names, "web_fetch") {
+	if indexHas(testPublished(t, k), "web_search") || !slices.Contains(names, "hosted:web_search") || !slices.Contains(names, "web_fetch") {
 		t.Fatalf("bad hosted environment %v", names)
 	}
 	if k.contextWindow() != 272000 || progress != 1 {
@@ -167,7 +167,7 @@ func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
 	}
 	bind("deepseek", "deepseek-flash")
 	run()
-	if !slices.Contains(environmentGet[[]string](testPublished(t, k), "tools"), "web_search") || k.contextWindow() != 1000000 {
+	if !indexHas(testPublished(t, k), "web_search") || k.contextWindow() != 1000000 {
 		t.Fatal("Completions local search/window not restored")
 	}
 	local := false
@@ -179,8 +179,9 @@ func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
 			t.Fatal("hosted leaked into Completions")
 		}
 	}
-	if !local {
-		t.Fatal("local schema missing after switch")
+	// Local search is back in the registry, behind the tools door.
+	if local {
+		t.Fatal("local web_search declared; it belongs behind the tools door")
 	}
 }
 func reflectToolsEqual(a, b environment) bool {

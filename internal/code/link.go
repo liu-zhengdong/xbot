@@ -15,7 +15,7 @@ import (
 )
 
 // Link is the coding-agent grant. Its tools edit local records and, when a
-// backend is configured, run the task. Schemas stay off the model list until load.
+// backend is configured, run the task. Its tools register behind the tools door.
 type Link struct {
 	rec         *Record
 	inbox       string

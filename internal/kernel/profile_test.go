@@ -184,11 +184,10 @@ func testUpdateProfileAvatar(t *testing.T, permissive bool) {
 				t.Fatal(err)
 			}
 			otherBefore := profileAvatarFiles(t, other)
-			call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-				ID: "avatar", Type: "function", Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: tc.args},
-			}})}
+			// Through the tools door: describe, then call by id.
+			call := toolCall("avatar", "tools", `{"action":"call","id":"bot_update_profile","args":`+tc.args+`}`)
 			p := &scripted{resps: []provider.Message{
-				toolCall("expand-profile", "expand_tool_group", `{"group":"bot_profile"}`),
+				toolCall("describe-profile", "tools", `{"action":"describe","id":"bot_update_profile"}`),
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done again")},
 			}}
@@ -218,8 +217,14 @@ func testUpdateProfileAvatar(t *testing.T, permissive bool) {
 				t.Fatal(err)
 			}
 			t.Logf("scripted avatar turn: %s", time.Since(started))
-			if hasDef(p.reqs[0].Tools, "bot_update_profile") || !hasDef(p.reqs[1].Tools, "bot_update_profile") {
-				t.Fatal("bot_update_profile must appear only after expansion")
+			// describe puts the schema in a result; tools[] never changes.
+			if !strings.Contains(p.reqs[1].Messages[len(p.reqs[1].Messages)-1].Text(), `"avatar_seed"`) {
+				t.Fatal("describe did not return the schema")
+			}
+			for _, req := range p.reqs {
+				if hasDef(req.Tools, "bot_update_profile") || !reflect.DeepEqual(toolNamesOf(req.Tools), toolNamesOf(p.reqs[0].Tools)) {
+					t.Fatalf("tools[] changed: %v", toolNamesOf(req.Tools))
+				}
 			}
 			wantConfirms := 1
 			if permissive {

@@ -15,25 +15,50 @@ func TestStoreAppsCurated(t *testing.T) {
 	for _, a := range apps {
 		got[a.ID] = a
 	}
-	// Native organs (computer use, browser, page fetching) are not store cards.
-	for _, id := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp", "coding-agent", "desktop", "browser", "fetch"} {
+	// Files, events and skills are ours and not store cards.
+	for _, id := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp", "coding-agent"} {
 		if _, ok := got[id]; ok {
 			t.Fatalf("%s listed in the store", id)
+		}
+	}
+	// The cut: an organ is implemented here, so it is never a store card nor
+	// an installable catalog grant; it is on from boot.
+	if len(Organs()) == 0 {
+		t.Fatal("no organs")
+	}
+	for _, o := range Organs() {
+		if _, ok := got[o.ID]; ok {
+			t.Fatalf("organ %s listed in the store", o.ID)
+		}
+		if StoreGrant(o.Grant) {
+			t.Fatalf("organ %s installs from the store", o.ID)
+		}
+		if _, ok := Lookup(o.ID); ok {
+			t.Fatalf("organ %s is an installable catalog row", o.ID)
 		}
 	}
 	if a, ok := LookupOrgan("desktop"); !ok || a.Title != "电脑操作" || a.Grant != NameDesktop {
 		t.Fatalf("organ %+v", a)
 	}
-	if _, ok := LookupApp("browser"); ok {
-		t.Fatal("browser is a store app")
+	// The browser depends on the owner's Chrome, so it is a Link in the store.
+	if a, ok := LookupApp("browser"); !ok || a.Kind != AppNative || a.Grant != NameBrowser || a.Category == "" || !StoreGrant(NameBrowser) {
+		t.Fatalf("browser store card %+v %v", a, ok)
+	}
+	// A retired catalog row (fetch, replaced by web_fetch) is in neither the
+	// store nor the catalog.
+	if !RetiredServer("fetch") {
+		t.Fatal("fetch is not retired")
+	}
+	if _, ok := got["fetch"]; ok {
+		t.Fatal("retired fetch listed in the store")
+	}
+	if _, err := LookupConnector("fetch"); err == nil {
+		t.Fatal("retired fetch still in the connector catalog")
 	}
 	for _, id := range []string{"gmail", "gdrive", "gcalendar"} {
 		if got[id].Kind != AppSoon {
 			t.Fatalf("%s %+v", id, got[id])
 		}
-	}
-	if e, _ := Lookup("desktop"); e.Title != "电脑操作" {
-		t.Fatalf("catalog title %q", e.Title)
 	}
 	banned := regexp.MustCompile(`(?i)MCP|stdio|npx|uvx|command|args|JSON|桌面`)
 	for _, a := range apps {
@@ -47,11 +72,11 @@ func TestLoadMCPAllBotEntryWinsAndEnableIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	global, own := filepath.Join(dir, "mcp.json"), filepath.Join(dir, "bot-mcp.json")
 	for i := 0; i < 2; i++ {
-		if err := EnableConnector(global, "fetch"); err != nil {
+		if err := EnableConnector(global, "playwright"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := AddMCP(own, MCPServer{Name: "fetch", Command: "/bin/echo"}); err != nil {
+	if err := AddMCP(own, MCPServer{Name: "playwright", Command: "/bin/echo"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := AddMCP(own, MCPServer{Name: "mine", Command: "/bin/echo"}); err != nil {
@@ -61,7 +86,7 @@ func TestLoadMCPAllBotEntryWinsAndEnableIsIdempotent(t *testing.T) {
 	if err != nil || len(list) != 2 {
 		t.Fatalf("%v %v", list, err)
 	}
-	if list[0].Name != "fetch" || list[0].Command != "/bin/echo" {
+	if list[0].Name != "playwright" || list[0].Command != "/bin/echo" {
 		t.Fatalf("bot entry must override: %+v", list[0])
 	}
 	if list, err := LoadMCPAll(filepath.Join(dir, "none.json")); err != nil || list == nil || len(list) != 0 {

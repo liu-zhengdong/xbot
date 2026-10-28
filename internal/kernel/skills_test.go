@@ -229,11 +229,10 @@ func TestReadSkillWithoutLoad(t *testing.T) {
 	if len(p.reqs) < 2 {
 		t.Fatalf("calls %d", len(p.reqs))
 	}
-	if !hasDef(p.reqs[0].Tools, "read_skill") {
-		t.Fatal("read_skill missing while a skill is listed")
-	}
-	if hasDef(p.reqs[0].Tools, "write_skill") {
-		t.Fatal("write_skill should wait for links load")
+	// Listed skills make read_skill callable at once; a subagent still waits
+	// for links load before it has write_skill.
+	if !hasToolName(mustMounted(t, k), "read_skill") || hasToolName(mustMounted(t, k), "write_skill") {
+		t.Fatal("read_skill must be ready while a skill is listed; write_skill waits for load")
 	}
 	text := messagesText(p.reqs[1].Messages)
 	if strings.Contains(text, "unknown tool") || !strings.Contains(text, "SECRET_BODY") {
@@ -268,15 +267,12 @@ func TestDispatchMainLineWritesLoadedSkill(t *testing.T) {
 	if len(p.reqs) != 4 {
 		t.Fatalf("model calls = %d, want 4", len(p.reqs))
 	}
-	if !hasDef(p.reqs[0].Tools, "dispatch") {
+	if !registered(k, "dispatch") {
 		t.Fatal("test did not activate typed dispatch")
 	}
-	if hasDef(p.reqs[0].Tools, "write_skill") {
-		t.Fatal("write_skill must wait for links load")
-	}
 	for _, name := range []string{"read_skill", "write_skill"} {
-		if !hasDef(p.reqs[1].Tools, name) {
-			t.Errorf("loaded %s missing from the main line with Dispatch enabled", name)
+		if !registered(k, name) {
+			t.Errorf("%s missing from the main line with Dispatch enabled", name)
 		}
 	}
 	info, body, err := skill.Open(skill.Dir(ada.Root), "ship")
@@ -315,7 +311,7 @@ func TestSkillHarvestProposalAndConfirmation(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "Confirm", time.Unix(2, 0))); err != nil {
 		t.Fatal(err)
 	}
-	if !hasDef(p.reqs[1].Tools, "write_skill") || !strings.Contains(messagesText(p.reqs[3].Messages), "Import and resolve name conflicts.") {
+	if !registered(k, "write_skill") || !strings.Contains(messagesText(p.reqs[3].Messages), "Import and resolve name conflicts.") {
 		t.Fatal("loaded skill tools did not write and read the skill")
 	}
 	if !strings.Contains(systemOf(t, k), "multi-import: Import skills from several sources") {

@@ -312,8 +312,13 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err != nil || string(got) != "hi" {
 		t.Fatalf("file %q err=%v", got, err)
 	}
-	if len(p.reqs[0].Tools) != 14+len(tools.NewShells()) {
-		t.Fatalf("tools %d", len(p.reqs[0].Tools))
+	// Declared: the tools door, send, three file tools, web_fetch, the
+	// shells and todo; the rest of the granted link sits behind the door.
+	if want := 7 + len(tools.NewShells()); len(p.reqs[0].Tools) != want {
+		t.Fatalf("tools %d, want %d: %v", len(p.reqs[0].Tools), want, toolNamesOf(p.reqs[0].Tools))
+	}
+	if !registered(k, "web_search") || hasDef(p.reqs[0].Tools, "web_search") {
+		t.Fatal("web_search must be registered behind the door")
 	}
 
 	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("no tools")}}}
@@ -321,8 +326,8 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(toolNamesOf(p2.reqs[0].Tools), ",") != "expand_tool_group,kernel_manual,links,send_message_to_user,todo" {
-		t.Fatalf("expected expand_tool_group, kernel_manual, links, send_message_to_user and todo, got %d", len(p2.reqs[0].Tools))
+	if got := strings.Join(toolNamesOf(p2.reqs[0].Tools), ","); got != "send_message_to_user,todo,tools" {
+		t.Fatalf("expected send_message_to_user, todo and the tools door, got %s", got)
 	}
 }
 

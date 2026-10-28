@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-28 统一工具注册中心与代理门（feature/tool-registry-proxy）
+
+- 一张工具注册表（`internal/kernel/registry.go`，`kernelTools` 声明表替掉 `namedLink` 拼装）。主线 `tools[]` 只声明代理门 `tools`、send、todo、壳、文件和 `web_fetch`，其余经 `tools` 的 search/describe/call 调用（抄 Pi 的 mcp 代理，不抄 deferred）。`expand_tool_group` 删除。环境流加 `tool_index`。见 [ADR 0035](adr/0035-unified-tool-registry.md)。
+- 原生和 Links 分开：电脑操作是 organ，开机即挂；浏览器回到商店（带探测）；fetch 标 `retired`，不进目录、不挂载、不算已连接。
+- 性能：同一 Bot 声明的工具从 38 个、22.8 KB（约 5.5k token）降到 10 个、9.2 KB（约 2.25k token），能调用 46 个；`tool_index` 668 字节。一轮里多次 describe/call 之后，`tools[]` 按字节比不变。新增请求、轮询、动画都是 0。
+- 级别：端到端通过（假模型，scripted）；未合 main，未 push，没有用户日用，没有真模型认证。
+
 ## 2026-10-28 商店目录真源去掉原生器官（功能分支）
 
 - `StoreApps()` 不再列电脑操作、浏览器（改为 `link.LookupOrgan`，提示词「连接器」与 `links load` 按标题照旧认）；`fetch` 目录行 `hidden`，`/api/apps` 不再出现「网页抓取」；前端 `apps.js` 的 `NATIVE` 滤掉删除。商店 POST `desktop` 返回 404。

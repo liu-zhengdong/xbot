@@ -66,8 +66,10 @@ var Table = map[string]Class{
 	// Persona and profile.
 	"bot_propose_persona": SelfEdit,
 	"bot_update_profile":  SelfEdit,
-	"bot_profile":         Readonly,
-	"expand_tool_group":   Readonly,
+
+	// The tool door's search and describe only read the registry; a call
+	// through it is reviewed as the tool it names (ADR 0035).
+	"tools": Readonly,
 
 	// Routines and the owner notification. A routine is the bot's own
 	// schedule, so deleting one is not a data deletion. The kernel reviews a

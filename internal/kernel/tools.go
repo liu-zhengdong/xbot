@@ -21,70 +21,24 @@ import (
 	"xbot/internal/tools"
 )
 
+// modelTools is what one model request can run: every registered tool, with
+// only the hot ones and the tools door declared in tools[] (ADR 0035).
 func (k *Kernel) modelTools() ([]tools.Tool, error) {
-	list, err := k.mountedTools()
-	if err != nil {
-		return nil, err
+	r := k.toolRegistry()
+	list := make([]tools.Tool, 0, len(r.entries)+1)
+	for _, e := range r.entries {
+		list = append(list, reviewedTool{Tool: e.tool, k: k, undeclared: e.expose != exposeHot})
 	}
-	list = k.discloseToolGroups(list)
+	list = append(list, reviewedTool{Tool: toolDoor{k}, k: k})
 	sort.Slice(list, func(i, j int) bool { return list[i].Name() < list[j].Name() })
-	return k.reviewedTools(list), nil
+	return list, nil
 }
 
-// mountedTools is the whole tool directory the bot has mounted: the tools the
-// granted links offer plus the ones the kernel adds. The main line can reach
-// all of it (ADR 0028), with grouped schemas discovered through modelTools;
-// a subagent gets it minus the tools that hand work out (subagentBase).
+// mountedTools is every registered tool not waiting for links load. A
+// subagent gets it minus the tools that hand work out (subagentBase), all
+// declared: a subagent has no tools door.
 func (k *Kernel) mountedTools() ([]tools.Tool, error) {
-	k.attachShell()
-	links := k.snapshotLinks()
-	var active []link.Link
-	for _, l := range links {
-		if l == nil {
-			continue
-		}
-		if lazyUntilLoad(l.Name()) && !k.isLoaded(l.Name()) {
-			continue
-		}
-		active = append(active, l)
-	}
-	list := append([]tools.Tool{}, link.CollectTools(active)...)
-	if namedLink(links, link.NameMemory) {
-		list = append(list, recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k})
-	}
-	if namedLink(links, link.NamePersona) {
-		list = append(list, personaTool{k}, profileTool{k})
-	}
-	if namedLink(links, link.NameTimer) {
-		list = append(list, routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k})
-	}
-	// The owner sees only what the bot sends, so every bot can send.
-	list = append(list, sendMessageTool{k})
-	if namedLink(links, link.NameContext) {
-		list = append(list, compactTool{k}, historyTool{k}, expandTool{k}, detailTool{k})
-	}
-	if namedLink(links, link.NameWeb) {
-		list = append(list, askTool{k})
-	}
-	if namedLink(links, link.NamePeers) {
-		list = append(list, listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, groupHistoryTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}, botStatusTool{k})
-	}
-	if k.isPrimary() {
-		list = append(list, createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k})
-	}
-	list = append(list, linksTool{k}, kernelManualTool{})
-	if k.todoToolOn() {
-		list = append(list, todoTool{k})
-	}
-	if k.Vault != nil && namedLink(links, link.NameTools) {
-		list = append(list, &tools.HTTPRequest{Store: k.Vault}, &tools.SecretList{Store: k.Vault})
-	}
-	if shellBackgroundOn(links) || k.liveShell() != nil && len(k.liveShell().List()) > 0 {
-		list = append(list, shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k})
-	}
-	list = k.modelAgentTools(list)
-	list = k.bindingTools(list)
-	return list, nil
+	return k.toolRegistry().loaded(), nil
 }
 
 // selfEditGuard reports whether path is one of this bot's own persona or
@@ -594,14 +548,20 @@ func (t expandTool) Run(_ context.Context, args json.RawMessage) (string, error)
 	return t.k.ExpandBot(in.Bot, in.From, in.To)
 }
 
-// bindingTools applies search exclusivity to both mounted and scoped tools.
-func (k *Kernel) bindingTools(list []tools.Tool) []tools.Tool {
+// webSearchOn says the local web_search tool is offered: search is on and the
+// bound provider has no hosted search of its own.
+func (k *Kernel) webSearchOn() bool {
 	root := ""
 	if k.Bot != nil {
 		root = k.Bot.Root
 	}
 	f, err := config.LoadWeb(root)
-	if err == nil && f.SearchOn() && !provider.HasHostedSearch(k.boundProvider()) {
+	return err == nil && f.SearchOn() && !provider.HasHostedSearch(k.boundProvider())
+}
+
+// bindingTools applies search exclusivity to a scoped tool set.
+func (k *Kernel) bindingTools(list []tools.Tool) []tools.Tool {
+	if k.webSearchOn() {
 		return list
 	}
 	out := list[:0]

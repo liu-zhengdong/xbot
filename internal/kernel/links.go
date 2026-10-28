@@ -27,7 +27,7 @@ type linksTool struct{ k *Kernel }
 
 func (linksTool) Name() string { return "links" }
 func (linksTool) Description() string {
-	return "搜索、安装、移除或加载连接器。看到上下文‘连接器’摘要中的名称:描述后，先用 action=load、id=名称或 id 加载，例如电脑操作/desktop、浏览器/browser、Playwright/playwright/mcp:playwright。成功返回工具名，工具 schema 只加入本轮后续调用；失败返回原因。search 查摘要；install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
+	return "搜索、安装、移除或加载连接器。看到上下文‘连接器’摘要中的名称:描述后，可用 action=load、id=名称或 id 连上它，例如浏览器/browser、Playwright/playwright/mcp:playwright；成功返回工具 id，之后用 tools 的 describe 看参数、call 调用（不会加进你的工具列表）。失败返回原因。search 查目录摘要；install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
 }
 func (linksTool) Parameters() any {
 	return schema(map[string]any{
@@ -326,6 +326,10 @@ func (t linksTool) loadContext(ctx context.Context, id string) (string, error) {
 		}
 		return t.loadedNamesContext(ctx, id)
 	}
+	// An organ is on from boot; loading it only lists its tools.
+	if o, ok := link.LookupOrgan(id); ok {
+		return t.loadedNames(o.Grant)
+	}
 	e, ok := link.Lookup(id)
 	if !ok {
 		return "", fmt.Errorf("links: not found")
@@ -439,6 +443,16 @@ func (k *Kernel) syncGrantsLocked() {
 		kept = append(kept, mounted)
 		have[name] = true
 	}
+	// Organs are on from boot: no grant mounts or drops them.
+	for _, o := range link.Organs() {
+		if have[o.Grant] {
+			continue
+		}
+		if mounted := k.mountGrantLocked(o.Grant); mounted != nil {
+			kept = append(kept, mounted)
+			have[o.Grant] = true
+		}
+	}
 	k.Links = k.syncMCPLocked(kept)
 }
 
@@ -453,6 +467,9 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 	}
 	want := make(map[string]link.MCPServer, len(servers))
 	for _, s := range servers {
+		if link.RetiredServer(s.Name) {
+			continue
+		}
 		want[s.Name] = s
 	}
 	out := make([]link.Link, 0, len(links)+len(servers))
@@ -472,7 +489,7 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 		stale = append(stale, m)
 	}
 	for _, s := range servers {
-		if have[s.Name] {
+		if have[s.Name] || link.RetiredServer(s.Name) {
 			continue
 		}
 		s.Secret = link.SecretLookup(k.Bot.SecretPath())
@@ -498,7 +515,7 @@ func sameMCPSpec(a, b link.MCPServer) bool {
 
 func catalogRuntime(name string) bool {
 	switch name {
-	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser:
+	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameBrowser:
 		return true
 	default:
 		return false

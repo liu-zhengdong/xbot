@@ -125,9 +125,8 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	fore := toolNamesOf(m.foreReq[0].Tools)
-	if !contains(fore, "dispatch") || contains(fore, "spawn") {
-		t.Fatalf("foreground tools %v", fore)
+	if !registered(k, "dispatch") || registered(k, "spawn") {
+		t.Fatal("foreground must reach dispatch, not spawn")
 	}
 	sub := m.subReq[0]
 	names := toolNamesOf(sub.Tools)
@@ -285,10 +284,13 @@ func TestMainLineDoesTheWork(t *testing.T) {
 		t.Fatalf("requests %d", len(m.foreReq))
 	}
 	first := toolNamesOf(m.foreReq[0].Tools)
-	for _, want := range []string{"write_file", "edit_file", "sh", "dispatch"} {
+	for _, want := range []string{"write_file", "edit_file", "sh"} {
 		if !contains(first, want) {
 			t.Fatalf("main line lacks %s: %v", want, first)
 		}
+	}
+	if !registered(k, "dispatch") {
+		t.Fatal("main line lacks dispatch")
 	}
 	// Every request that asked for a tool call kept the whole set; the old
 	// limit cut it down to dispatch and the controls after the fourth call.
@@ -328,9 +330,8 @@ func TestNoDispatchRuleWithoutDispatch(t *testing.T) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	names := toolNamesOf(m.foreReq[0].Tools)
-	if !contains(names, "spawn") || contains(names, "dispatch") {
-		t.Fatalf("tools %v", names)
+	if !registered(k, "spawn") || registered(k, "dispatch") {
+		t.Fatal("without dispatch the main line reaches spawn only")
 	}
 	if strings.Contains(m.foreReq[0].Messages[0].Text(), DispatchRule) {
 		t.Fatal("dispatch rule without dispatch")

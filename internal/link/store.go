@@ -30,12 +30,15 @@ const (
 	CatChat = "chat"
 )
 
-// organs are native abilities, not store cards: a Bot gets them by native
-// grant, and the prompt shows and resolves them by title.
+// organs are abilities this process implements itself. Every Bot has them
+// from boot; they are never store cards and never grants in apps.json. The
+// machine switch, not installation, keeps a dangerous one quiet.
 var organs = []App{
 	{ID: "desktop", Title: "电脑操作", Summary: "看屏幕、点击、输入，帮你操作电脑上的软件。你在用电脑时它会让开。", Kind: AppNative, Grant: NameDesktop},
-	{ID: "browser", Title: "浏览器", Summary: "用单独的浏览器窗口打开网页、读内容、点按钮。", Kind: AppNative, Grant: NameBrowser},
 }
+
+// Organs lists the native organs.
+func Organs() []App { return append([]App(nil), organs...) }
 
 // LookupOrgan finds a native organ by id.
 func LookupOrgan(id string) (App, bool) {
@@ -47,17 +50,18 @@ func LookupOrgan(id string) (App, bool) {
 	return App{}, false
 }
 
-// StoreApps is the curated store list in display order. Native organs, Files,
-// Webhook, file watching and skills are not apps here, and hidden catalog rows
-// are left out.
+// StoreApps is the curated store list in display order: only Links, abilities
+// that depend on something outside this process. Native organs, Files,
+// Webhook, file watching and skills are not apps here.
 func StoreApps() ([]App, error) {
-	var apps []App
+	// The browser drives the owner's Chrome, so it is a Link, not an organ.
+	apps := []App{{ID: "browser", Title: "浏览器", Summary: "用单独的浏览器窗口打开网页、读内容、点按钮。", Category: CatDev, Kind: AppNative, Grant: NameBrowser}}
 	list, err := Connectors()
 	if err != nil {
 		return nil, err
 	}
 	for _, c := range list {
-		if c.Hidden || c.Category == "" {
+		if c.Category == "" {
 			continue
 		}
 		// A row that names a key needs settings input before installation.
@@ -71,6 +75,21 @@ func StoreApps() ([]App, error) {
 		App{ID: "gcalendar", Title: "Google Calendar", Summary: "查看和安排日程。", Category: CatWork, Kind: AppSoon},
 	)
 	return apps, nil
+}
+
+// StoreGrant says a native grant name is installed from the store, so its
+// tools register as a Link's.
+func StoreGrant(name string) bool {
+	apps, err := StoreApps()
+	if err != nil {
+		return false
+	}
+	for _, a := range apps {
+		if a.Kind == AppNative && a.Grant == name {
+			return true
+		}
+	}
+	return false
 }
 
 // LookupApp finds a store card by id.

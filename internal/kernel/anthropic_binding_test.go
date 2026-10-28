@@ -146,7 +146,7 @@ func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
 			t.Fatalf("stale context %d", k.contextWindow())
 		}
 		names := environmentGet[[]string](testPublished(t, k), "tools")
-		if slices.Contains(names, "web_search") != (binding.Name == "deepseek") || !slices.Contains(names, "web_fetch") {
+		if indexHas(testPublished(t, k), "web_search") != (binding.Name == "deepseek") || !slices.Contains(names, "web_fetch") {
 			t.Fatalf("wrong tools %v", names)
 		}
 		next, err := k.sampleEnvironment(testPublished(t, k))

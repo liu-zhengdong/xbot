@@ -18,22 +18,6 @@ import (
 	"xbot/internal/tools"
 )
 
-func (k *Kernel) modelAgentTools(list []tools.Tool) []tools.Tool {
-	if k.hasLink(link.NameAgents) {
-		var start tools.Tool = spawnTool{k}
-		if k.Dispatch {
-			start = dispatchTool{k}
-		}
-		list = append(list, start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k})
-	}
-	if k.hasLink(link.NameSkills) && k.isLoaded(link.NameSkills) {
-		list = append(list, skillTool{k}, writeSkillTool{k})
-	} else if k.listedSkill() {
-		list = append(list, skillTool{k})
-	}
-	return list
-}
-
 func (k *Kernel) listedSkill() bool {
 	infos, err := k.skillInfos()
 	return err == nil && len(infos) > 0

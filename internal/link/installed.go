@@ -9,7 +9,7 @@ import (
 const InstalledCap = 1024
 
 // InstalledRef is one installed link. Name is what the prompt shows; the
-// model can pass it to links load.
+// model can pass it to links load or to the tools door's describe.
 type InstalledRef struct {
 	ID      string
 	Summary string

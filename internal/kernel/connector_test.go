@@ -13,44 +13,35 @@ import (
 	"xbot/internal/tools"
 )
 
-func TestConnectorSchemasWaitForLoad(t *testing.T) {
+// A Link's tools register as soon as it is mounted, but they are never
+// declared in tools[]: the model reaches them through the tools door.
+func TestConnectorToolsRegisterButStayUndeclared(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTelegram)
 	k := &Kernel{Bot: b, Links: []link.Link{link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameTelegram)}}
-	list, err := k.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasToolName(list, "telegram_send") {
-		t.Fatal("schema was listed before load")
-	}
-	k.markLoaded(link.NameTelegram)
-	list, err = k.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasToolName(list, "telegram_send") {
-		t.Fatal("schema missing after load")
+	for _, loaded := range []bool{false, true} {
+		if loaded {
+			k.markLoaded(link.NameTelegram)
+		}
+		list, err := k.modelTools()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasToolName(list, "telegram_send") || hasToolName(declared(list), "telegram_send") {
+			t.Fatalf("loaded=%v: telegram_send must be registered and undeclared", loaded)
+		}
 	}
 }
 
-func TestCodingSchemasWaitForLoad(t *testing.T) {
+func TestCodingToolsRegisterButStayUndeclared(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameCoding)
 	k := &Kernel{Bot: b, Links: []link.Link{code.Open(bot.Dir(b.Root, b.Name()), b.InboxPath())}}
 	list, err := k.modelTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasToolName(list, "code_start") {
-		t.Fatal("schema was listed before load")
-	}
-	k.markLoaded(link.NameCoding)
-	list, err = k.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, name := range []string{"code_start", "code_steer", "code_queue", "code_interrupt", "code_cancel", "code_show"} {
-		if !hasToolName(list, name) {
-			t.Fatalf("missing %s", name)
+		if !hasToolName(list, name) || hasToolName(declared(list), name) {
+			t.Fatalf("%s must be registered and undeclared", name)
 		}
 	}
 }

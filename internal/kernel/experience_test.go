@@ -29,11 +29,7 @@ func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 	if !strings.Contains(messagesText(first.Messages), ExperienceRule) {
 		t.Fatal("experience rule missing from the request")
 	}
-	var named bool
-	for _, tool := range first.Tools {
-		named = named || tool.Name == "experience_record"
-	}
-	if !named {
+	if !registered(k, "experience_record") {
 		t.Fatal("experience_record not offered")
 	}
 	if got := messagesText(p.reqs[1].Messages); !strings.Contains(got, "recorded experience #1 (seq ") {

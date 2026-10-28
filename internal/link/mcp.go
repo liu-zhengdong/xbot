@@ -123,6 +123,12 @@ func NewMCP(s MCPServer) *MCP {
 
 func (m *MCP) Name() string { return "mcp:" + m.Spec.Name }
 
+// Owns says a tool name follows this server's naming, so a caller can start
+// the right server for a name it saw in an earlier turn.
+func (m *MCP) Owns(tool string) bool {
+	return strings.HasPrefix(tool, "mcp_"+sanitizeTool(m.Spec.Name)+"_")
+}
+
 // Tools preserves the Link interface; failures remain observable through Status.
 // Call LoadTools when the caller can return an error (notably links load).
 func (m *MCP) Tools() []tools.Tool {

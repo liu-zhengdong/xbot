@@ -70,10 +70,10 @@ func TestStoreMCPReachesLiveKernel(t *testing.T) {
 	if _, err := k.mountedTools(); err != nil {
 		t.Fatal(err)
 	}
-	if err := link.EnableConnector(b.GlobalMCPPath(), "fetch"); err != nil {
+	if err := link.EnableConnector(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
-	if got := mcpToolNames(t, k, "mcp:fetch"); !strings.Contains(got, "first") {
+	if got := mcpToolNames(t, k, "mcp:playwright"); !strings.Contains(got, "first") {
 		t.Fatalf("installed server has no tools on the live kernel: %q", got)
 	}
 	list, err := k.mountedTools()
@@ -94,22 +94,22 @@ func TestStoreMCPReachesLiveKernel(t *testing.T) {
 	mu.Lock()
 	tool = "second"
 	mu.Unlock()
-	if err := link.RemoveMCP(b.GlobalMCPPath(), "fetch"); err != nil {
+	if err := link.RemoveMCP(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
-	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "fetch", URL: "https://example.com/mcp"}); err != nil {
+	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "playwright", URL: "https://example.com/mcp"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := mcpToolNames(t, k, "mcp:fetch"); !strings.Contains(got, "second") || strings.Contains(got, "first") {
+	if got := mcpToolNames(t, k, "mcp:playwright"); !strings.Contains(got, "second") || strings.Contains(got, "first") {
 		t.Fatalf("replaced server not remounted: %q", got)
 	}
 
 	// Remove: the instance leaves the kernel.
-	if err := link.RemoveMCP(b.GlobalMCPPath(), "fetch"); err != nil {
+	if err := link.RemoveMCP(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
 	for _, l := range k.snapshotLinks() {
-		if l.Name() == "mcp:fetch" {
+		if l.Name() == "mcp:playwright" {
 			t.Fatal("removed server is still mounted")
 		}
 	}
@@ -117,7 +117,7 @@ func TestStoreMCPReachesLiveKernel(t *testing.T) {
 
 func TestMCPSyncKeepsInstanceWhenUnchanged(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	if err := link.EnableConnector(b.GlobalMCPPath(), "fetch"); err != nil {
+	if err := link.EnableConnector(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
@@ -126,12 +126,12 @@ func TestMCPSyncKeepsInstanceWhenUnchanged(t *testing.T) {
 	second := k.snapshotLinks()
 	var a, c link.Link
 	for _, l := range first {
-		if l.Name() == "mcp:fetch" {
+		if l.Name() == "mcp:playwright" {
 			a = l
 		}
 	}
 	for _, l := range second {
-		if l.Name() == "mcp:fetch" {
+		if l.Name() == "mcp:playwright" {
 			c = l
 		}
 	}

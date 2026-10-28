@@ -27,19 +27,20 @@ func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
 	}
 	text := systemOf(t, k)
 	lines := installedBody(text)
-	if len(lines) != 3 {
+	// An organ is native, not a connector, even with an old grant on file.
+	if len(lines) != 2 {
 		t.Fatalf("%q", lines)
 	}
-	want := []string{"电脑操作:", "mcp:mine:", "Playwright:"}
+	want := []string{"mcp:mine:", "Playwright:"}
 	for i, prefix := range want {
 		if !strings.HasPrefix(lines[i], prefix) {
 			t.Fatalf("line %d %q, want prefix %q", i, lines[i], prefix)
 		}
 	}
-	if !strings.HasPrefix(text[strings.Index(text, "## 连接器"):], "## 连接器\n电脑操作:") {
+	if !strings.HasPrefix(text[strings.Index(text, "## 连接器"):], "## 连接器\nmcp:mine:") {
 		t.Fatal("heading must be followed directly by name:description lines")
 	}
-	for _, bad := range []string{"inputSchema", `"type": "object"`, "- 电脑操作"} {
+	for _, bad := range []string{"inputSchema", `"type": "object"`, "电脑操作"} {
 		if strings.Contains(text, bad) {
 			t.Fatalf("%q leaked into the prompt", bad)
 		}

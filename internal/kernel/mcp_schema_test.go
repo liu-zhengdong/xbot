@@ -78,7 +78,9 @@ func (p *schemaRejectProvider) Chat(_ context.Context, req provider.Request, _ f
 	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("conversation continues")}, nil
 }
 
-func TestMCPSchemaRejectionContinuesConversation(t *testing.T) {
+// The main line never declares an MCP schema, even after links load: MCP
+// tools sit behind the tools door, so a vendor cannot reject them up front.
+func TestMainLineNeverDeclaresMCPSchemas(t *testing.T) {
 	b := testBot(t, link.NameTerminal, "mcp:schema")
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
@@ -89,42 +91,20 @@ func TestMCPSchemaRejectionContinuesConversation(t *testing.T) {
 	p := &schemaRejectProvider{}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}, newMCP: func(link.MCPServer) link.Link { return schemaMCP(t) }}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "load the MCP tool", time.Now())); err != nil {
-		t.Fatalf("schema rejection stopped the conversation: %v (rejections=%d requests=%d)", err, p.rejected, len(p.reqs))
-	}
-	if p.rejected != 1 {
-		t.Fatalf("rejections=%d", p.rejected)
-	}
-	if len(p.reqs) != 3 {
-		t.Fatalf("requests=%d", len(p.reqs))
-	}
-	last := p.reqs[len(p.reqs)-1]
-	good, notice := false, false
-	for _, td := range last.Tools {
-		if td.Name == "mcp_schema_bad" {
-			t.Fatal("rejected tool still offered")
-		}
-		if td.Name == "mcp_schema_good" {
-			good = true
-		}
-	}
-	for _, m := range last.Messages {
-		if strings.Contains(m.Text(), "MCP schema") && strings.Contains(m.Text(), "mcp_schema_bad") {
-			notice = true
-		}
-	}
-	if !good || !notice {
-		t.Fatalf("healthy tool=%v readable notice=%v", good, notice)
-	}
-	// A fresh kernel for the same bot must retain the cooldown across turns.
-	k = &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}, newMCP: func(link.MCPServer) link.Link { return schemaMCP(t) }}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "load it again", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.reqs) != 5 {
-		t.Fatalf("second turn requests=%d", len(p.reqs))
+	if p.rejected != 0 || len(p.reqs) != 2 {
+		t.Fatalf("rejections=%d requests=%d", p.rejected, len(p.reqs))
 	}
-	if p.rejected != 1 {
-		t.Fatalf("next turn retried the same rejected schema: %d", p.rejected)
+	for _, req := range p.reqs {
+		for _, td := range req.Tools {
+			if strings.HasPrefix(td.Name, "mcp_") {
+				t.Fatalf("MCP schema declared on the main line: %s", td.Name)
+			}
+		}
+	}
+	if _, ok := k.toolRegistry().find("mcp_schema_bad"); !ok {
+		t.Fatal("loaded MCP tool is not registered")
 	}
 }
 

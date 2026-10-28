@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -101,13 +102,23 @@ func TestAppsStoreListsCuratedCardsOnly(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("connected %d", n)
 	}
-	// Native organs (computer use, browser, page fetching) are not store cards.
-	for _, gone := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp", "desktop", "browser", "fetch"} {
+	// Our own abilities are not store cards: files, events, skills, organs.
+	for _, gone := range []string{"filesystem", "localhttp", "webhook", "watch", "skills", "mcp"} {
 		if _, ok := apps[gone]; ok {
 			t.Fatalf("%s must not be in the store", gone)
 		}
 	}
-	for _, id := range []string{"playwright", "context7", "telegram", "lark"} {
+	for _, o := range link.Organs() {
+		if _, ok := apps[o.ID]; ok {
+			t.Fatalf("organ %s must not be in the store", o.ID)
+		}
+	}
+	// A retired catalog row is not a card either.
+	if _, ok := apps["fetch"]; ok || !link.RetiredServer("fetch") {
+		t.Fatal("retired fetch must not be in the store")
+	}
+	// The browser depends on the owner's Chrome: a Link card.
+	for _, id := range []string{"browser", "playwright", "context7", "telegram", "lark"} {
 		if apps[id].State != "available" {
 			t.Fatalf("%s %+v", id, apps[id])
 		}
@@ -135,9 +146,11 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 			t.Fatalf("install %d %s", code, raw)
 		}
 	}
-	// organs are granted natively, never through the store
-	if code, _ := e.call("POST", "/api/apps", `{"id":"desktop"}`, true); code != http.StatusNotFound {
-		t.Fatalf("desktop installed from the store: %d", code)
+	// organs are on from boot, never installed through the store
+	for _, o := range link.Organs() {
+		if code, _ := e.call("POST", "/api/apps", `{"id":"`+o.ID+`"}`, true); code != http.StatusNotFound {
+			t.Fatalf("%s installed from the store: %d", o.ID, code)
+		}
 	}
 	n, apps := e.list()
 	if n != 1 || apps["playwright"].State != "connected" {
@@ -427,5 +440,34 @@ func TestAppsProbeBeforeCommit(t *testing.T) {
 	}
 	if _, raw := e.call("GET", "/api/apps", "", true); strings.Contains(string(raw), "fixture-key") {
 		t.Fatal("credential exposed in list")
+	}
+}
+
+// An old global mcp.json entry for a retired catalog row is neither a custom
+// card nor counted as connected.
+func TestAppsHideRetiredServer(t *testing.T) {
+	e := newAppsEnv(t)
+	if err := link.AddMCP(bot.GlobalMCPPath(e.root), link.MCPServer{Name: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch"}}); err != nil {
+		t.Fatal(err)
+	}
+	n, apps := e.list()
+	if _, ok := apps["fetch"]; ok || n != 0 {
+		t.Fatalf("retired fetch shown: %d %+v", n, apps["fetch"])
+	}
+}
+
+// The browser installs from the store as a native grant for every Bot.
+func TestAppsInstallBrowserGrantsGlobally(t *testing.T) {
+	e := newAppsEnv(t)
+	if code, raw := e.call("POST", "/api/apps", `{"id":"browser"}`, true); code != 200 {
+		t.Fatalf("install %d %s", code, raw)
+	}
+	n, apps := e.list()
+	if n != 1 || apps["browser"].State != "connected" {
+		t.Fatalf("%d %+v", n, apps["browser"])
+	}
+	global, err := bot.GlobalLinks(e.root)
+	if err != nil || !slices.Contains(global, link.NameBrowser) {
+		t.Fatalf("global links %v %v", global, err)
 	}
 }

@@ -8,12 +8,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/browser"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/machine"
 	"xbot/internal/peer"
 	"xbot/internal/vault"
 )
@@ -143,7 +146,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 		rows = append(rows, row)
 	}
 	for _, v := range servers {
-		if known[v.Name] {
+		if known[v.Name] || link.RetiredServer(v.Name) {
 			continue
 		}
 		rows = append(rows, appJSON{ID: v.Name, Title: v.Name, Summary: "自定义应用", Category: "custom", State: "connected", Custom: true, Runtime: runtime(v), LoadID: "mcp:" + v.Name})
@@ -273,6 +276,23 @@ func appSecretNames(a link.App) []string {
 // sending an empty message: Feishu may still deliver it to a group.
 func (s *Server) probeApp(ctx context.Context, a link.App, values []string) error {
 	switch a.ID {
+	case "browser":
+		mode, err := machine.Get(s.Root, machine.Local)
+		if err != nil || mode == machine.Off {
+			return errors.New("machine unavailable")
+		}
+		root, err := os.MkdirTemp("", "xbot-browser-probe-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(root)
+		sess, err := browser.Launch(ctx, root, "http://127.0.0.1/", true)
+		if err != nil {
+			return err
+		}
+		defer sess.Close()
+		_, err = sess.Snapshot(ctx)
+		return err
 	case "lark":
 		return probeLark(ctx, link.LarkAPI, values[0])
 	case "telegram":

@@ -715,7 +715,8 @@ func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
 		}
 	}
 	got := strings.Join(names, ",")
-	const want = "edit_file,expand_tool_group,kernel_manual,links,read_file,send_message_to_user,sh,todo,write_file"
+	// Discovery is the tools door; links and the manual sit behind it.
+	const want = "edit_file,read_file,send_message_to_user,sh,todo,tools,write_file"
 	if got != want {
 		t.Fatalf("tools %s", got)
 	}

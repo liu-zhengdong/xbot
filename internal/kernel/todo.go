@@ -219,7 +219,7 @@ func (k *Kernel) todoQuiet() bool {
 }
 
 func (k *Kernel) todoToolsQuiet() bool {
-	list, err := k.modelTools()
+	list, err := k.mountedTools()
 	if err != nil {
 		return false
 	}

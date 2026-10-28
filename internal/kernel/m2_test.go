@@ -98,7 +98,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
-	want := []string{"edit_file", "expand_tool_group", "kernel_manual", "links", "read_file", "send_message_to_user", "shell_cancel", "shell_output", "shell_status", "todo", "view_image", "web_fetch", "web_search", "write_file"}
+	want := []string{"edit_file", "read_file", "send_message_to_user", "todo", "tools", "web_fetch", "write_file"}
 	for _, sh := range tools.NewShells() {
 		want = append(want, sh.Name())
 	}

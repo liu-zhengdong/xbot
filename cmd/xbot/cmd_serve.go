@@ -26,7 +26,6 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/config"
-	"xbot/internal/desktop"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbound"
 	"xbot/internal/inbox"
@@ -261,7 +260,8 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 				fmt.Fprintf(os.Stderr, "xbot: bot %s: 节点功能已移除，忽略 node 授权\n", b.Name())
 			}
 		case link.NameDesktop:
-			out = append(out, desktop.Open(b.Root))
+			// An organ: the kernel mounts it for every Bot, so an old grant
+			// adds nothing.
 		case link.NameBrowser:
 			out = append(out, browser.Open(b.Root))
 		default:

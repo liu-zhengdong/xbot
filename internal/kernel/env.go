@@ -134,6 +134,18 @@ func (k *Kernel) linkNames() []string {
 	return names
 }
 
+// declared drops the tools that stay out of tools[].
+func declared(list []tools.Tool) []tools.Tool {
+	var out []tools.Tool
+	for _, t := range list {
+		if u, ok := t.(tools.Undeclared); ok && u.Undeclared() {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 func toolNames(list []tools.Tool) []string {
 	seen := map[string]bool{}
 	var names []string

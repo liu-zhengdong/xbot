@@ -31,6 +31,18 @@ var ErrApprovalExpired = errors.New("expired, no decision")
 type reviewedTool struct {
 	tools.Tool
 	k *Kernel
+	// undeclared tools run when named but stay out of tools[] (ADR 0035).
+	undeclared bool
+}
+
+func (t reviewedTool) Undeclared() bool { return t.undeclared }
+
+// Forward lets the tools door forward through the review wrapper.
+func (t reviewedTool) Forward(ctx context.Context, args json.RawMessage) (tools.Tool, json.RawMessage, error) {
+	if f, ok := t.Tool.(tools.Forwarder); ok {
+		return f.Forward(ctx, args)
+	}
+	return nil, nil, nil
 }
 
 // ReadOnlyHint preserves the MCP annotation through the review wrapper.
@@ -339,18 +351,6 @@ func (k *Kernel) selfEditPath(ctx context.Context, tool tools.Tool, args json.Ra
 	}
 	guard := k.selfEditGuard()
 	return guard == nil || guard(path)
-}
-
-// reviewedTools wraps every tool the kernel hands to the model.
-func (k *Kernel) reviewedTools(list []tools.Tool) []tools.Tool {
-	out := make([]tools.Tool, len(list))
-	for i, t := range list {
-		if t == nil {
-			continue
-		}
-		out[i] = reviewedTool{Tool: t, k: k}
-	}
-	return out
 }
 
 // trackApprove records the owner's decision after the wrapped approver answers.

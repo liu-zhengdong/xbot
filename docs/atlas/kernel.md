@@ -2,13 +2,13 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-28 @ 0bc1807b + rename-tool-jobs fix2
+verified: 2026-10-28 @ 9caaa4c4 + tool-registry-proxy
 ---
 # 内核：Link、Event、收件箱
 
 > **30 秒版**：内核只有几个抽象：Link 是 Bot 和外界之间的任何通道，Event 是统一的事件结构，每个 Bot 一个收件箱和一个事件循环。新能力尽量用这几个抽象表达，不加新对象。
 
-连接器的名称解析、渐进加载及错误回传见 [生态](ecosystem.md#连接器发现与加载诊断)；`links` 说明用中文指向摘要中的名称或 id，MCP 失败不标记本轮已加载。
+连接器的名称解析、渐进加载及错误回传见 [生态](ecosystem.md#连接器发现与加载诊断)；`links` 说明用中文指向摘要中的名称或 id，MCP 失败不标记本轮已加载。工具怎么登记、怎么经代理门披露见下文[工具注册与代理门](#工具注册与代理门)。
 
 ## 边界
 负责：事件进出、可信判断、一轮对话的循环、工具调度和确认路径。不负责：具体工具（见 [生态](ecosystem.md)）、transcript 存储（见 [上下文](context.md)）、权限分类（见 [安全](security.md)）。
@@ -35,13 +35,13 @@ verified: 2026-10-28 @ 0bc1807b + rename-tool-jobs fix2
 
 输出截断的合并规则见 [供应商](providers.md#输出截断)。内核把 prepare、fit、环境公布和用量记账保留在每次实际请求上，输出截断不改变 overflow 的裁剪重试。逻辑回复拼接完成后才统一剥离 `reply_to`、校验 SILENT 和工具协议文本，并沿原助手记录入口追加一次；中间片段及续写指令不进 transcript。取消和插话沿原模型请求的 context；已正常完成的回复仍优先于迟到取消。
 
-## 工具组渐进披露
+## 工具注册与代理门
 
-`mountedTools` 保留全部已挂载能力；主 Agent 的 `modelTools` 将尚未展开的资料写工具换成组短入口。当前只有 `bot_profile`（「Bot资料编辑」）：`bot_update_profile` 改名字、简介、时区、头像，`bot_propose_persona` 改职责；其他常驻工具不变。短入口只带名称、摘要和协议要求的空参数对象，不带成员参数；直接调用短入口会明确提示使用 `expand_tool_group`。
+见 [ADR 0035](../adr/0035-unified-tool-registry.md)。`toolRegistry()`（`internal/kernel/registry.go`）是本轮能调的工具的唯一来源：已挂载 Link 的工具和声明式表 `kernelTools` 的每一行各登记一次，记下 source（`kernel` / `organ` / `link` / `mcp:<服务器>`）、group 和 expose。`modelTools` 把全部登记的工具包进 review 交给 agent，但只声明代理门 `tools`、`send_message_to_user`、`todo`（开着时）和 hot 名单（各个壳、`read_file`、`write_file`、`edit_file`、`web_fetch`）；其余标成 `Undeclared`，可以调用但不进 `tools[]`。
 
-`expand_tool_group({"group":"bot_profile"})` 也接受展示名，返回成员完整定义。下一次模型请求由现有 `RefreshTools` 重建可调用目录，整组成员替换短入口，元工具一直可用。未展开时直接调用成员，以及与展开放在同一批里的成员调用，均返回 `unknown tool`。这只是能力发现，不是主线权限白名单；子代理仍沿用完整挂载目录和原有类型范围。
+代理门照抄 Pi 的 mcp 代理。`search` 返回 id、分组、一行摘要；`describe` 把完整说明和 schema 放在工具结果里，传分组 id 时列出成员，没启动的 MCP 顺手启动；`call` 由 agent 层转发（`tools.Forwarder`），之后的审核、确认卡、拒绝表、后台化都按被调用的工具名和参数走。没启动的 MCP 用 `mcp_<服务器>_` 前缀认领工具 id，在 call 或 describe 时启动，所以下一轮直接按 id 调也行。三种动作都不改 `tools[]`，一轮里按字节比稳定。环境流的 `tool_index` 按分组列出 listed 的 id 和没启动的服务器，`tools` 字段只列已声明的工具。
 
-展开态按当前 Bot 的 Kernel 实例保存在互斥保护的内存映射里：同一实例的后续步骤、插话和后续唤醒保留；重复展开无害；Kernel 重建、进程重启或另一个 Bot 从折叠态开始。不落盘、不从历史 schema 回包恢复，不与每轮清空的 Link `loaded` 混用。网页复用缓存 Kernel，绑定切换或改名等导致缓存重建时也重置；短命服务唤醒内核只覆盖该实例的请求。现有 Env Stream 从 `modelTools()` 采样 `tools`，列表变化才追加差异，固定前缀与旧 transcript 不改。权限分类见 [安全](security.md)。
+子代理没有代理门：`mountedTools` 返回注册表里不是 `deferred` 的工具（懒加载 Link 在 `links load` 之前算 deferred），全部声明。`expand_tool_group` 已删除。
 
 ## 轨迹路径与脚本回放
 

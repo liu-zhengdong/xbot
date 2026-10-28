@@ -2,12 +2,12 @@
   {
     "id": "fetch",
     "title": "网页抓取",
-    "summary": "打开网址，把网页内容读成文字。",
+    "summary": "已由原生 web_fetch 取代。",
     "transport": "stdio",
     "command": "uvx",
     "args": ["mcp-server-fetch"],
     "secret_envs": [],
-    "hidden": true
+    "retired": true
   },
   {
     "id": "playwright",
@@ -35,7 +35,6 @@
     "summary": "连接本机上运行的一个服务。地址和口令需要自己准备，不在商店里展示。",
     "transport": "http",
     "url": "http://127.0.0.1:18779/mcp",
-    "secret_envs": ["MCP_TOKEN"],
-    "hidden": true
+    "secret_envs": ["MCP_TOKEN"]
   }
 ]
