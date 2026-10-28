@@ -38,7 +38,7 @@ const (
 
 const (
 	compactionPrefix = "Summarize the conversation so it can continue"
-	subagentPrefix   = "You are a subagent working for the main bot."
+	subagentPrefix   = "你是主 Bot 的协作伙伴"
 	extractPrefix    = "Extract durable facts and decisions from the turns."
 )
 

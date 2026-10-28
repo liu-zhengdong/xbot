@@ -467,7 +467,7 @@ func busyQueuedReceipt(rows []Row, task string) bool {
 				calls[tc.ID] = true
 			}
 		}
-		if row.Role == "tool" && calls[row.ToolCallID] && strings.HasPrefix(row.Content, "queued ") && strings.Contains(row.Content, "position ") {
+		if row.Role == "tool" && calls[row.ToolCallID] && strings.HasPrefix(row.Content, "已排队 ") && strings.Contains(row.Content, "位）") {
 			return true
 		}
 	}

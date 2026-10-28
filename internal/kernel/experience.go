@@ -29,7 +29,7 @@ const (
 
 // ExperienceRule nudges the bot to keep its own log of what happened. It is a
 // standing rule, not a per-message reminder.
-const ExperienceRule = "When a stretch of work or talk settles (a decision, a fix, something learned, the owner's reaction), call experience_record with a sentence or two on what happened, like jotting a note for a colleague; skip small talk. experience_search finds them later; detail reads one transcript message in full."
+const ExperienceRule = "一段工作或对话告一段落时（做了决定、修好了问题、学到了东西、用户有了反应），调用 experience_record，用一两句话记下发生了什么，像给同事留张便条；闲聊不记。之后用 experience_search 找回；detail 能读出一条 transcript 消息的全文。"
 
 func (k *Kernel) experiences() experience.Store {
 	return experience.At(bot.Dir(k.Bot.Root, k.Bot.Name()))

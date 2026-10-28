@@ -32,7 +32,7 @@ func TestModelOverlayAppendsAfterRulesAndShowsInEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	sys := p.reqs[0].Messages[0].Text()
-	rulesAt := strings.Index(sys, "Answer in the owner's language")
+	rulesAt := strings.Index(sys, "按用户的语言回答")
 	noteAt := strings.Index(sys, "### 模型补丁\n仅针对当前模型的额外约束。\n"+note)
 	if rulesAt < 0 || noteAt < 0 || rulesAt > noteAt {
 		t.Fatalf("overlay placement\n%s", sys)

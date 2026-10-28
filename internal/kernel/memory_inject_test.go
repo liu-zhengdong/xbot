@@ -71,7 +71,7 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 			t.Fatalf("missing %q in %d-byte memory\n...%s", want, len(body), tail)
 		}
 	}
-	if strings.Contains(body, "memory clipped") {
+	if strings.Contains(body, "记忆已截断") {
 		t.Fatalf("standing memory was clipped (%d bytes)", len(body))
 	}
 	if len(body) <= 4096 {
@@ -84,7 +84,7 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 			mem = m.Text()
 		}
 	}
-	if mem == "" || !strings.Contains(mem, marker) || strings.Contains(mem, "memory clipped") {
+	if mem == "" || !strings.Contains(mem, marker) || strings.Contains(mem, "记忆已截断") {
 		t.Fatalf("injected memory dropped a fact\n%s", mem)
 	}
 }
@@ -92,7 +92,7 @@ func TestNearFullProfileInjectsEveryScope(t *testing.T) {
 func TestClipMemoryReportsConsolidation(t *testing.T) {
 	body := strings.Repeat("a", memory.ProfileInjectBytes+recentLogBytes+80)
 	got := clipMemory(body)
-	if !strings.Contains(got, "memory clipped") || !strings.Contains(got, "consolidate") {
+	if !strings.Contains(got, "记忆已截断") || !strings.Contains(got, "整理 memory.md") {
 		end := got
 		if len(end) > 160 {
 			end = end[len(end)-160:]

@@ -379,7 +379,7 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 	}
 	receipt := startReceipt(live)
 	if live.Status == "queued" {
-		receipt += ". Tell the owner it is queued, not started. It starts automatically when a slot and its resource are free; do not do the task yourself."
+		receipt += "。告诉用户它在排队、还没开始；有空位和资源时会自动开始，不要自己去做这件事。"
 	}
 	return receipt, nil
 }
@@ -387,9 +387,9 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 // startReceipt is the executor's admission fact shared by spawn and dispatch.
 func startReceipt(task exec.Task) string {
 	if task.Status == "queued" {
-		return fmt.Sprintf("queued %s (position %d)", task.ID, task.Position)
+		return fmt.Sprintf("已排队 %s（第 %d 位）", task.ID, task.Position)
 	}
-	return "started " + task.ID
+	return "已开始 " + task.ID
 }
 
 func (k *Kernel) needsEndpoint() bool {

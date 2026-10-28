@@ -20,14 +20,14 @@ func TestEnsureExecQueuesAndReportsPosition(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dispatch %d: %v", i, err)
 		}
-		want := "started "
+		want := "已开始 "
 		if i >= 3 {
-			want = "queued "
+			want = "已排队 "
 		}
 		if !strings.HasPrefix(result, want) {
 			t.Fatalf("dispatch %d = %s", i, result)
 		}
-		if i >= 3 && !strings.Contains(result, "position "+string(rune('1'+i-3))) {
+		if i >= 3 && !strings.Contains(result, "第 "+string(rune('1'+i-3))+" 位") {
 			t.Fatalf("position %d: %s", i, result)
 		}
 	}
@@ -70,7 +70,7 @@ func TestSameResourceDispatchSaysQueued(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if i == 1 && (!strings.HasPrefix(result, "queued ") || !strings.Contains(result, "position 1")) {
+		if i == 1 && (!strings.HasPrefix(result, "已排队 ") || !strings.Contains(result, "第 1 位")) {
 			t.Fatal(result)
 		}
 	}
@@ -162,15 +162,15 @@ func TestSpawnReportsQueuedAdmission(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fields := strings.Fields(out)
+		fields := strings.FieldsFunc(out, receiptBreak)
 		if len(fields) < 2 {
 			t.Fatal(out)
 		}
-		want := "started " + fields[1]
+		want := "已开始 " + fields[1]
 		if i == 3 {
-			want = "queued " + fields[1] + " (position 1)"
+			want = "已排队 " + fields[1] + "（第 1 位）"
 		}
-		if i == 3 && !strings.Contains(out, "Tell the owner it is queued, not started") {
+		if i == 3 && !strings.Contains(out, "告诉用户它在排队、还没开始") {
 			t.Fatalf("spawn hides queued admission from owner: %q", out)
 		}
 		if !strings.HasPrefix(out, want) {
@@ -194,8 +194,11 @@ func TestSpawnReportsQueuedAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields := strings.Fields(out)
-	if len(fields) < 2 || !strings.HasPrefix(out, "queued "+fields[1]+" (position 2) as research") || !strings.Contains(out, "Tell the owner it is queued, not started") {
+	fields := strings.FieldsFunc(out, receiptBreak)
+	if len(fields) < 2 || !strings.HasPrefix(out, "已排队 "+fields[1]+"（第 2 位），类型 research") || !strings.Contains(out, "告诉用户它在排队、还没开始") {
 		t.Fatalf("dispatch differs from spawn: %q", out)
 	}
 }
+
+// receiptBreak splits an admission receipt so the task ID is the second field.
+func receiptBreak(r rune) bool { return r == ' ' || r == '（' || r == '，' || r == '。' }

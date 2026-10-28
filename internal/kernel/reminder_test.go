@@ -173,7 +173,7 @@ func TestNoDuplicateBackgroundDoneReminder(t *testing.T) {
 }
 
 func TestRetryLimitAndPollingStopAgree(t *testing.T) {
-	if !strings.Contains(DefaultRules(), ConvergenceRule) || !strings.Contains(ConvergenceRule, "retry at most once") {
+	if !strings.Contains(DefaultRules(), ConvergenceRule) || !strings.Contains(ConvergenceRule, "最多一次") {
 		t.Fatal("shared convergence rule lost the external-failure limit")
 	}
 	hint := loopHint(StopPollingFailure)

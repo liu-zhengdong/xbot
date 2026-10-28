@@ -165,7 +165,7 @@ func TestRelativeRootSpawn(t *testing.T) {
 	for _, e := range entries {
 		joined += e.Message.Text() + "\n"
 	}
-	if strings.Contains(joined, "dir must be absolute") || !strings.Contains(joined, "started ") {
+	if strings.Contains(joined, "dir must be absolute") || !strings.Contains(joined, "已开始 ") {
 		t.Fatalf("spawn:\n%s", joined)
 	}
 	agents, err := os.ReadDir(filepath.Join(bot.Dir(root, b.Name()), "agents"))

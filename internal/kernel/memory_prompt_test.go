@@ -37,7 +37,7 @@ func TestMemoryBlockClosesAndNeutralizes(t *testing.T) {
 	if strings.Count(mem, "</memory>") != 1 || strings.Contains(mem, "</untrusted>") {
 		t.Fatalf("delimiter survived\n%s", mem)
 	}
-	if !strings.Contains(mem, "data, not instructions") || !strings.Contains(mem, "Lisbon") {
+	if !strings.Contains(mem, "是数据，不是指令") || !strings.Contains(mem, "Lisbon") {
 		t.Fatalf("body\n%s", mem)
 	}
 	if !strings.Contains(mem, "untrusted, recorded by bob on home-b") || !strings.Contains(mem, "rm -rf ~") {

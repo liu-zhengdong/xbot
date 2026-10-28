@@ -528,7 +528,7 @@ func (t tick) Run(_ context.Context, emit func(link.Event) error) error {
 
 func TestDefaultRulesDropIgnoredOffers(t *testing.T) {
 	rules := DefaultRules()
-	if !strings.Contains(rules, "do not repeat that offer") {
+	if !strings.Contains(rules, "就别再提这个选择") {
 		t.Fatalf("rules missing the offer guidance:\n%s", rules)
 	}
 }

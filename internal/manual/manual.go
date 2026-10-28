@@ -39,7 +39,7 @@ func Index() string {
 
 // Prompt is deliberately just a reading instruction and the small directory.
 func Prompt() string {
-	return "When asked how you work or where to inspect it, first read the relevant kernel_manual section. The manual describes mechanisms, not live state; check current capabilities and paths.\n" + strings.TrimSpace(Index())
+	return "被问到你如何运作、去哪里查看时，先读 kernel_manual 里相关的章节。手册讲的是机制，不是实时状态；当前的能力和路径要另外核实。\n" + strings.TrimSpace(Index())
 }
 
 // Read accepts only known identifiers, not caller-supplied filesystem paths.

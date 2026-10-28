@@ -302,12 +302,12 @@ func TestMainLineDoesTheWork(t *testing.T) {
 		t.Fatal("a foreground limit note reached the model")
 	}
 	sys := m.foreReq[0].Messages[0].Text()
-	if !strings.Contains(sys, DispatchRule) || !strings.Contains(sys, "Answer the owner first, then work") {
+	if !strings.Contains(sys, DispatchRule) || !strings.Contains(sys, "先回应用户，再干活") {
 		t.Fatal("the rules lack the reply-first dispatch rule")
 	}
 	// The shared language rule must agree with the dispatch rule, not tell the
 	// model to call tools before saying anything.
-	if !strings.Contains(sys, LanguageRule) || !strings.Contains(sys, "first send the owner a sentence or two") {
+	if !strings.Contains(sys, LanguageRule) || !strings.Contains(sys, "先给用户发一两句话") {
 		t.Fatal("the language rule does not ask for a reply before slow work")
 	}
 	if strings.Contains(sys, "Call tools first, then give the result") {
@@ -466,7 +466,7 @@ func TestDevSubagentsOnOneDirectoryQueue(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ids = append(ids, strings.Fields(out)[1])
+		ids = append(ids, strings.FieldsFunc(out, receiptBreak)[1])
 	}
 	status := func(id string) string {
 		meta, _, _ := exec.ReadStatus(b.AgentDir(id))

@@ -121,7 +121,7 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 				t.Fatalf("persona %q %v", persona, err)
 			}
 			prompt := p.reqs[0].Messages[0].Text()
-			if !strings.Contains(prompt, "Reversibility is not permission to invent") {
+			if !strings.Contains(prompt, "可撤销不等于可以替 Bot 编造用途") {
 				t.Fatal("creation constraint missing")
 			}
 			found := false
@@ -174,7 +174,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		if err != nil || !strings.Contains(string(raw), "换肤") {
 			t.Fatalf("candidate not saved: %s %v", raw, err)
 		}
-		if !strings.Contains(p.reqs[0].Messages[0].Text(), "When a new idea distracts from an active goal") {
+		if !strings.Contains(p.reqs[0].Messages[0].Text(), "新想法让人偏离进行中的目标时，把它记进候选清单") {
 			t.Fatal("focus rule missing")
 		}
 		t.Log("before counterexample: silently starts theme work; after script: records candidate and explains tradeoff")
@@ -193,7 +193,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		if !strings.Contains(messagesText(p.reqs[1].Messages), "exit status: 1") {
 			t.Fatal("actual evidence not delivered")
 		}
-		if !strings.Contains(p.reqs[0].Messages[0].Text(), "a downstream claim alone is unverified") {
+		if !strings.Contains(p.reqs[0].Messages[0].Text(), "只有下游的说法不算验证过") {
 			t.Fatal("verification rule missing")
 		}
 		t.Log("before counterexample: repeats passed without checking; after script: reads failing evidence and reports failure")
@@ -210,7 +210,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		if err != nil || len(files) != 0 {
 			t.Fatalf("started implementation without goal: %v %v", files, err)
 		}
-		if !strings.Contains(p.reqs[0].Messages[0].Text(), "Before starting work, align on what done looks like") {
+		if !strings.Contains(p.reqs[0].Messages[0].Text(), "开工前先对齐怎样算做完") {
 			t.Fatal("goal rule missing")
 		}
 		t.Log("before counterexample: guesses optimization target and edits; after script: clarifies outcome before writing")
@@ -256,7 +256,7 @@ func (p *batchTaskCounter) Chat(_ context.Context, req provider.Request, _ func(
 		<-p.hold
 		return batchReply("Findings\nnone"), nil
 	}
-	if !strings.Contains(req.Messages[0].Text(), "Count tasks and statuses from the latest replayed environment") {
+	if !strings.Contains(req.Messages[0].Text(), "任务数和状态按最新回放的环境来数") {
 		return provider.Message{}, fmt.Errorf("task evidence rule absent")
 	}
 	env := replayEnvironment(req.Messages, "")
@@ -287,7 +287,7 @@ func TestBatchCEvidenceValueIsNotTestProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := p.reqs[0]
-	if !strings.Contains(req.Messages[0].Text(), "An acceptance value without test details does not mean tests ran or passed") {
+	if !strings.Contains(req.Messages[0].Text(), "只有验收数值、没有测试细节，不代表测试跑过或通过") {
 		t.Fatal("evidence constraint absent")
 	}
 	if !strings.Contains(messagesText(req.Messages), "验收值731010；已完成。") {

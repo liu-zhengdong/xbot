@@ -26,7 +26,7 @@ import (
 
 // DispatchRule tells the model to answer the owner before working and to hand
 // long work out. It is added to the rules only while dispatch is on.
-const DispatchRule = "Answer the owner first, then work: before any tool call that takes more than a moment, say in a sentence or two what you understood and what you are about to do. You have every tool and may do short work yourself. Long work (many steps, long builds or research, anything the owner should not wait on) goes to a subagent: call dispatch with the right type and a task that says everything the subagent needs, since it starts with an empty context (goal, paths, constraints, what done looks like). Then tell the owner in a sentence or two what you handed out. When a subagent's result arrives, tell the owner what came of it and record anything worth keeping in memory. When results arrive separately, report only the newly arrived result; do not repeat details you have already told the owner. If a summary is needed, acknowledge earlier results in one sentence without listing their details again. Do not dispatch unrequested verification or duplicate research; inspect the evidence for the already agreed acceptance checks yourself; if that evidence is unavailable, report it as unverified and ask only before expanding the scope. While a subagent runs, use steer, queue, interrupt, or cancel to change its course; do not start a second one for the same work."
+const DispatchRule = "先回应用户，再干活：调用要花点时间的工具前，用一两句话说你理解了什么、接下来要做什么。你拥有所有工具，短活可以自己做。长活（步骤多、构建或调研耗时长、任何不该让用户等的事）交给子代理：用 dispatch 选对类型，任务里写清子代理需要的一切，因为它从空上下文开始（目标、路径、约束、怎样算做完）。把子代理当成能自己判断的同事：交代目标、约束、验收标准和必要背景，步骤由它自己定，它可以反问；不要写逐步剧本，也不要要求它「只输出…」。然后用一两句话告诉用户你交出去了什么。子代理的结果回来后，告诉用户结果如何，值得留的记进记忆。结果分批回来时，只报告新到的那个；已经告诉过用户的细节不要再说。需要总结时，用一句话带过之前的结果，不再列它们的细节。不要派发没人要求的验证或重复调研；已商定的验收检查由你自己看证据；拿不到证据就报告为未验证，只有要扩大范围时才先问。子代理运行时，用 steer、queue、interrupt 或 cancel 改变它的方向；同一件事不要再开第二个。"
 
 // legacyDispatchRule is the ADR 0016 wording. It is only recognized, so a
 // bot rules file that still carries it drops it on migration.
@@ -63,7 +63,7 @@ func (t dispatchTool) Parameters() any {
 	}
 	return schema(map[string]any{
 		"type": map[string]any{"type": "string", "enum": names, "description": "subagent type"},
-		"task": stringProp("the full task description"),
+		"task": stringProp("交给子代理的事：写清意图、约束、验收标准和必要背景；不要写逐步剧本，也不要「只输出…」之类的格式指令"),
 	}, []string{"type", "task"})
 }
 func (dispatchTool) Confirm(json.RawMessage) (bool, string, error) { return false, "dispatch", nil }
@@ -99,7 +99,7 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 	}
 	persona := ty.Instructions(exec.SubPersona)
 	if mem := k.dispatchMemory(ctx); mem != "" {
-		persona += "\n\nWhat is known about the people you work for and about this bot (a read-only snapshot of memory):\n" + mem
+		persona += "\n\n你服务的人和这个 Bot 的已知情况（记忆的只读快照）：\n" + mem
 	}
 	cwd := k.cwdFor(ctx)
 	k.adoptScope(ctx, id)
@@ -120,10 +120,10 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 		return "", err
 	}
 	if live.Status == "queued" {
-		return fmt.Sprintf("%s as %s (budget %s). Tell the owner it is queued, not started. It starts automatically when a slot and its resource are free; do not do the task yourself.", startReceipt(live), ty.Name, ty.Budget), nil
+		return fmt.Sprintf("%s，类型 %s（预算 %s）。告诉用户它在排队、还没开始；有空位和资源时会自动开始，不要自己去做这件事。", startReceipt(live), ty.Name, ty.Budget), nil
 	}
 
-	return fmt.Sprintf("%s as %s (budget %s). Its result arrives as an event; tell the owner it has started, and do not do the task yourself.", startReceipt(live), ty.Name, ty.Budget), nil
+	return fmt.Sprintf("%s，类型 %s（预算 %s）。结果会作为事件送回；告诉用户它已经开始，不要自己去做这件事。", startReceipt(live), ty.Name, ty.Budget), nil
 }
 
 // writeResource is what a subagent of type ty may write when it starts in
@@ -195,7 +195,7 @@ func (s readOnlyShell) Description() string {
 
 func (s readOnlyShell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if !review.ShellToolIsReadOnly(s.Name(), args) {
-		return "", errors.New("shell: this subagent may only run plain read commands; no redirection, chaining, or writes")
+		return "", errors.New("shell: 这个子代理只能运行单纯的读取命令，不能重定向、串联命令或写入")
 	}
 	return s.Tool.Run(ctx, args)
 }
