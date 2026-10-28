@@ -587,7 +587,7 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		t.referenceProvided = make(map[string]bool)
 		ch.Register(Kind{Name: KindReference, MaxBytes: reminderMax, Trigger: func(_ time.Time, _ []Reminder) string {
 			var note textJoin
-			note.add("Save lasting preferences, agreements, lessons and reusable facts in the shared reference library with file tools; skip one-off process details.")
+			note.add("Save lasting preferences, agreements, lessons and reusable facts in the Bot reference library with file tools; use the shared library for cross-Bot facts only. Skip one-off process details.")
 			note.add(k.referenceKeywordNote(ev.Content, t.referenceProvided))
 			return "<system-reminder>\n<reference-reminder>\n" + note.String() + "\n</reference-reminder>\n</system-reminder>"
 		}})

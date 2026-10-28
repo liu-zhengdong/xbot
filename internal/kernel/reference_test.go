@@ -16,15 +16,15 @@ import (
 	"xbot/internal/provider"
 )
 
-func TestSharedReferenceEnvironment(t *testing.T) {
+func TestReferenceEnvironmentPerBotAndOptionalShared(t *testing.T) {
 	root := t.TempDir()
-	var kernels []*Kernel
+	var ks []*Kernel
 	for _, name := range []string{"one", "two"} {
 		b, err := bot.Create(root, name, "brief", []string{link.NameTerminal})
 		if err != nil {
 			t.Fatal(err)
 		}
-		kernels = append(kernels, &Kernel{Bot: b, Memory: memory.NopStore{}})
+		ks = append(ks, &Kernel{Bot: b, Memory: memory.NopStore{}})
 	}
 	sample := func(k *Kernel, prev environment) environment {
 		t.Helper()
@@ -34,49 +34,107 @@ func TestSharedReferenceEnvironment(t *testing.T) {
 		}
 		return e
 	}
-	a := sample(kernels[0], environment{})
-	b := sample(kernels[1], environment{})
-	path := filepath.Join(root, "memory")
-	empty := environmentGet[string](a, "reference")
-	if empty != environmentGet[string](b, "reference") || !strings.Contains(empty, path) {
-		t.Fatalf("different or missing contract: %q", empty)
+	a, b := sample(ks[0], environment{}), sample(ks[1], environment{})
+	private := filepath.Join(bot.Dir(root, "one"), "memory")
+	shared := filepath.Join(root, "memory")
+	if _, err := os.Stat(shared); !os.IsNotExist(err) {
+		t.Fatalf("optional shared directory created: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(path, "topic.md"), []byte("---\ndescription: project facts\n---\nSECRET BODY\n"), 0600); err != nil {
+	first, second := environmentGet[string](a, "reference"), environmentGet[string](b, "reference")
+	if !strings.Contains(first, private) || strings.Contains(first, shared+"\n") || !strings.Contains(second, filepath.Join(bot.Dir(root, "two"), "memory")) || first == second {
+		t.Fatalf("private contracts: %s / %s", first, second)
+	}
+	if err := os.WriteFile(filepath.Join(private, "private.md"), []byte("---\ndescription: private fact\n---\nPRIVATE BODY"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, "open.md"), []byte("---\ndefaultopen: true\n---\nVISIBLE BODY\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(private, "memory.md"), []byte("---\nkeywords: [needle]\ndefaultopen: true\n---\nSYSTEM BODY"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(path, "sub"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(private, "log"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, "sub", "deep.md"), []byte("DEEP BODY"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(private, "log", "hidden.md"), []byte("---\nkeywords: [needle]\n---\nLOG BODY"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	next := sample(kernels[0], a)
+	if err := os.MkdirAll(shared, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shared, "common.md"), []byte("---\ndescription: shared fact\n---\nSHARED BODY"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shared, "open.md"), []byte("---\ndefaultopen: true\n---\nVISIBLE BODY"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	next := sample(ks[0], a)
+	other := sample(ks[1], b)
 	ref := environmentGet[string](next, "reference")
-	for _, want := range []string{"topic.md: project facts", "VISIBLE BODY", "sub/"} {
-		if !strings.Contains(ref, want) {
-			t.Fatalf("missing %q: %s", want, ref)
+	ref2 := environmentGet[string](other, "reference")
+	for _, v := range []string{"private fact", "shared fact", "VISIBLE BODY", private, shared} {
+		if !strings.Contains(ref, v) {
+			t.Fatalf("missing %q: %s", v, ref)
 		}
 	}
-	for _, unwanted := range []string{"SECRET BODY", "DEEP BODY"} {
-		if strings.Contains(ref, unwanted) {
-			t.Fatalf("unexpected body: %s", ref)
+	if strings.Index(ref, private) > strings.Index(ref, shared) {
+		t.Fatal("private must precede shared")
+	}
+	if strings.Contains(ref2, "private fact") || !strings.Contains(ref2, "shared fact") {
+		t.Fatalf("wrong scope: %s", ref2)
+	}
+	for _, v := range []string{"PRIVATE BODY", "SHARED BODY", "SYSTEM BODY", "memory.md", "log/"} {
+		if strings.Contains(ref, v) {
+			t.Fatalf("unexpected %q: %s", v, ref)
 		}
 	}
-	delta := environmentDelta(a, next, "", "")
-	if !strings.Contains(delta, "VISIBLE BODY") {
-		t.Fatal("changed index not published")
+	if got := ks[0].referenceKeywords("needle", map[string]bool{}); len(got) != 0 {
+		t.Fatalf("system keywords exposed: %v", got)
 	}
-	replayed := replayEnvironment([]provider.Message{{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(environmentDelta(environment{}, next, "", ""))}}, "")
-	again := sample(kernels[0], replayed)
-	if strings.Contains(environmentDelta(replayed, again, "", ""), `"reference"`) {
+	replay := replayEnvironment([]provider.Message{{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(environmentDelta(environment{}, next, "", ""))}}, "")
+	if strings.Contains(environmentDelta(replay, sample(ks[0], replay), "", ""), `"reference"`) {
 		t.Fatal("unchanged index republished")
 	}
-	other := sample(kernels[1], b)
-	if environmentGet[string](other, "reference") != ref {
-		t.Fatal("second bot did not see shared update")
+}
+
+func TestReferenceBudgetsArePerSource(t *testing.T) {
+	b := testBot(t)
+	k := &Kernel{Bot: b}
+	private := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
+	shared := filepath.Join(b.Root, "memory")
+	for _, dir := range []string{private, shared} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(private, "big.md"), []byte(strings.Repeat("x", (256<<10)+1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shared, "ok.md"), []byte("---\ndescription: shared survives\n---\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	text, err := k.referenceText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "omitted") || !strings.Contains(text, "shared survives") {
+		t.Fatalf("budget not independent: %s", text)
+	}
+	if err := os.Remove(filepath.Join(private, "big.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(private, "ok.md"), []byte("---\ndescription: private survives\n---\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(private, "memory.md"), []byte(strings.Repeat("x", (256<<10)+1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shared, "big.md"), []byte(strings.Repeat("x", (256<<10)+1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	text, err = k.referenceText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "private survives") || !strings.Contains(text, "omitted") || strings.Contains(text, "shared survives") {
+		t.Fatalf("shared budget not independent: %s", text)
 	}
 }
 
@@ -91,6 +149,9 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "memory", "agreement.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
 	args, err := json.Marshal(map[string]string{"path": path, "content": "---\ndescription: deployment agreement\n---\nUse blue green.\n"})
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +182,7 @@ func BenchmarkReferenceIndex(b *testing.B) {
 		b.Fatal(err)
 	}
 	k := &Kernel{Bot: botInstance}
-	dir := filepath.Join(root, "memory")
+	dir := filepath.Join(bot.Dir(root, botInstance.Name()), "memory")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		b.Fatal(err)
 	}
@@ -141,7 +202,7 @@ func BenchmarkReferenceIndex(b *testing.B) {
 func TestReferenceOverBudgetOmitsWholeIndex(t *testing.T) {
 	b := testBot(t)
 	k := &Kernel{Bot: b}
-	dir := filepath.Join(b.Root, "memory")
+	dir := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +223,7 @@ func TestReferenceOverBudgetOmitsWholeIndex(t *testing.T) {
 
 func TestReferenceRemindersThroughTurn(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
-	dir := filepath.Join(b.Root, "memory")
+	dir := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +263,7 @@ func TestReferenceRemindersThroughTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Message.Text(), "Save lasting preferences") || strings.Contains(e.Message.Text(), "Relevant shared reference files") {
+		if strings.Contains(e.Message.Text(), "Save lasting preferences") || strings.Contains(e.Message.Text(), "Relevant reference files") {
 			t.Fatal("reference reminder was written into transcript")
 		}
 	}
@@ -225,7 +286,7 @@ func TestReferenceRemindersThroughTurn(t *testing.T) {
 func TestReferenceKeywordOnRootWhenIndexOmitted(t *testing.T) {
 	b := testBot(t)
 	k := &Kernel{Bot: b}
-	dir := filepath.Join(b.Root, "memory")
+	dir := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +307,7 @@ func BenchmarkReferenceKeywords(b *testing.B) {
 		b.Fatal(err)
 	}
 	k := &Kernel{Bot: botInstance}
-	dir := filepath.Join(root, "memory", "topics")
+	dir := filepath.Join(bot.Dir(root, botInstance.Name()), "memory", "topics")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		b.Fatal(err)
 	}
@@ -273,7 +334,7 @@ func (p *referenceRetryModel) Chat(_ context.Context, req provider.Request, _ fu
 
 func TestReferenceReminderOverflowRetry(t *testing.T) {
 	b := testBot(t)
-	dir := filepath.Join(b.Root, "memory", "nested")
+	dir := filepath.Join(bot.Dir(b.Root, b.Name()), "memory", "nested")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +373,7 @@ func TestReferenceReminderOverflowRetry(t *testing.T) {
 
 func TestReferenceReminderSurvivesFork(t *testing.T) {
 	k, g, box := forkKernel(t)
-	dir := filepath.Join(k.Bot.Root, "memory", "nested")
+	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "memory", "nested")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -360,5 +421,58 @@ func TestReferenceReminderSurvivesFork(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("sidecar records: %d", n)
+	}
+}
+
+func TestReferenceKeywordsAcrossPrivateAndShared(t *testing.T) {
+	b := testBot(t)
+	k := &Kernel{Bot: b}
+	private := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
+	shared := filepath.Join(b.Root, "memory")
+	for _, dir := range []string{filepath.Join(private, "nested"), filepath.Join(shared, "nested"), filepath.Join(private, "log"), filepath.Join(private, "old.bak")} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{filepath.Join(private, "nested", "a.md"), filepath.Join(shared, "nested", "b.md"), filepath.Join(private, "log", "ignored.md"), filepath.Join(private, "old.bak", "ignored.md"), filepath.Join(private, "memory.md"), filepath.Join(shared, "root.md")} {
+		if err := os.WriteFile(path, []byte("---\nkeywords: [Needle, 中文]\n---\nsecret"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seen := map[string]bool{}
+	matches := k.referenceKeywords("NEEDLE 中文", seen)
+	if len(matches) != 2 || matches[0] != filepath.Join(private, "nested", "a.md") || matches[1] != filepath.Join(shared, "nested", "b.md") {
+		t.Fatalf("matches: %v", matches)
+	}
+	if again := k.referenceKeywords("needle", seen); len(again) != 0 {
+		t.Fatalf("duplicate: %v", again)
+	}
+}
+
+func TestReferencePrivateWrittenByBot(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "private", "brief", []string{link.NameTerminal, link.NameTools})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(bot.Dir(root, b.Name()), "memory", "project.md")
+	args, _ := json.Marshal(map[string]string{"path": path, "content": "---\ndescription: private agreement\n---\nprivate details"})
+	p := &scripted{resps: []provider.Message{toolCall("write", "write_file", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("saved")}}}
+	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(root), Links: []link.Link{link.NewToolsLinkAt(root, "")}, Permissive: true, MaxSteps: 4}
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "save this", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	first := messagesText(p.reqs[0].Messages)
+	if !strings.Contains(first, "Bot reference library") || !strings.Contains(first, "shared library for cross-Bot facts only") || strings.Contains(first, "Shared reference library (cross-Bot facts):") {
+		t.Fatalf("wrong initial writing guidance: %s", first)
+	}
+	if len(p.reqs) < 2 || !strings.Contains(messagesText(p.reqs[1].Messages), "private agreement") {
+		t.Fatal("private write absent from subsequent environment")
+	}
+	if _, err := os.Stat(filepath.Join(root, "memory")); !os.IsNotExist(err) {
+		t.Fatalf("shared directory unexpectedly exists: %v", err)
 	}
 }
