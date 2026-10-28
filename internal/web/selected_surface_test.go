@@ -9,8 +9,7 @@ import (
 	"testing"
 )
 
-// Check rendered surfaces in both themes, including the gap which makes a
-// transparent border look like an outline when it exposes the page.
+// Check rendered selection and container surfaces in both themes.
 func TestSelectedCardSurfaces(t *testing.T) {
 	chrome := ""
 	for _, name := range []string{"google-chrome", "chromium", "chromium-browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"} {
@@ -35,16 +34,17 @@ func TestSelectedCardSurfaces(t *testing.T) {
  try {
   const bg = e => getComputedStyle(e).backgroundColor;
   const q = s => document.querySelector(s);
-  const rgb = s => (s.match(/\d+/g)||[]).slice(0,3).map(Number);
   for (const theme of ['light','dark']) {
    document.documentElement.dataset.theme=theme;
-   const grid=q('.provider-grid'), selected=q('.provider-card[aria-current]'), other=q('.provider-card:not([aria-current])');
-   if(bg(grid)!==bg(other)) throw Error(theme+' provider gap differs from card');
-   const delta=(a,b)=>rgb(a).reduce((n,v,i)=>n+Math.abs(v-rgb(b)[i]),0);
-   if(delta(bg(selected),bg(grid))>30) throw Error(theme+' provider edge contrast too high');
-   for (const [surface,parent] of [['.binding-option','.binding-group'],['.ws-choice.on','.ws-choices'],['.ws-provider.on','.ws-list']]) {
-    if(delta(bg(q(surface)),bg(q(parent)))>30) throw Error(theme+' '+surface+' edge contrast too high');
+   for (const container of ['.provider-grid','.binding-group','.ws-choices','.ws-list']) {
+    if(bg(q(container))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+container+' has a background');
    }
+   const sample=document.createElement('div');
+   sample.style.background='var(--x-fill-2)'; document.body.append(sample);
+   for (const surface of ['.provider-card[aria-current]','.binding-option','.ws-choice.on','.ws-provider.on']) {
+    if(bg(q(surface))!==bg(sample)) throw Error(theme+' '+surface+' selection differs from fill-2');
+   }
+   sample.remove();
    if(bg(q('.ws-key'))!==bg(q('.ws-provider.on'))) throw Error(theme+' expanded key surface differs');
   }
   document.body.dataset.result='pass';
