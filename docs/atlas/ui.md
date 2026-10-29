@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-28 @ 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary + task-record-fold + chat-header-float-compact + patrol-20261028-ui + provider-grid-transparent + websearch-decard + websearch-radio-silent + settings-flat-xfer
+verified: 2026-10-29 @ routine-runs-not-in-ui + 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary + task-record-fold + chat-header-float-compact + patrol-20261028-ui + provider-grid-transparent + websearch-decard + websearch-radio-silent + settings-flat-xfer
 ---
 # 网页界面
 
@@ -87,7 +87,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 右键（手机上长按）一条消息弹出菜单，有「回复」和「复制」，群聊里不显示「回复」。菜单弹出时，被点的那条气泡先轻轻按下再回弹，菜单本身一次回弹展开；系统打开「减少动态效果」时只淡入淡出。
 
-系统行仍是文字，不画气泡：定时唤醒和错过的定时汇总是居中的灰色时钟行，写成「定时 · 早报 · 昨天 08:00」，点开看提示词和来源；收到别的 Bot 的消息、没送到、限流这类状态行也是灰字；Bot 自己调工具发出的往来不画系统行。汇报和主动唤醒都按普通 Bot 消息画，消息上没有「后台」标签。工具调用原文不进对话，在面板的「轨迹」里看。助手正文、预览和标题只在显示时隐藏内部任务编号，原始编号只在「任务」页的「任务详情」里出现。
+系统行仍是文字，不画气泡。定时唤醒和错过的定时汇总是记录，不进对话：例程跑完有话对用户说时只见那条气泡，没话说（SILENT）就什么都不出；这条投影规则在 `app.js` 的 `routineRuns`。收到别的 Bot 的消息、没送到、限流这类状态行也是灰字；Bot 自己调工具发出的往来不画系统行。汇报和主动唤醒都按普通 Bot 消息画，消息上没有「后台」标签。工具调用原文不进对话，在面板的「轨迹」里看。助手正文、预览和标题只在显示时隐藏内部任务编号，原始编号只在「任务」页的「任务详情」里出现。
 
 子代理在跑时，输入框上方有一行状态：一个时写「头像 名字 · 当前一步 · 第 N 步 · 用时」，多个时收成「N 个子代理在跑 · 最久 X 分」，点它打开面板的「任务」页，全部做完这行就消失。前台在跑一个慢工具、用户又说了话时，消息流末尾多一行灰字说明它在等什么、等了多久；慢工具按调用 id 跟踪，并行的快调用结束不会把仍在跑的慢调用藏掉。标题栏只放头像、名字、状态，不放后台任务的小标；以后子代理的提示方式按子代理卡片来做（类型来自 [ADR 0016](../adr/0016-foreground-dispatches-typed-subagents.md)；主线全工具、长活派子代理见 [ADR 0028](../adr/0028-no-foreground-background-split.md)）。
 
@@ -139,7 +139,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 面板每 3 秒轮询一次。值没变的节点不重写，选区落在某个节点里时跳过这个节点，所以用户选中任务编号后，刷新不会清掉选区。
 
-例程每行一个开关，接 `PATCH /api/bots/{name}/routines/{id}`；请求失败时开关弹回，在这一行报错。例程以中文显示常见定时规则，其他规则显示「自定义时间」，原始 cron 放在行的悬停提示里。例程跑完没话说时，只在「最近结束」里记一条「没什么要说的」。
+例程每行一个开关，接 `PATCH /api/bots/{name}/routines/{id}`；请求失败时开关弹回，在这一行报错。例程以中文显示常见定时规则，其他规则显示「自定义时间」，原始 cron 放在行的悬停提示里。例程的跑次不进「最近结束」，那里只有子代理的结束记录。
 
 ### 值得留意
 子代理任务结束时，内核整理一份只含四类事情的清单（`agents[].notable`，见 [API.md](../API.md)）：删除、对外部服务发消息、在 Bot 工作区以外写入、全局安装。清单只记实际发生了的事，判断不准的宁可不报；`--dry-run`、`rsync -n` 这类只预演的命令不算。界面只显示内核给的条目，一条都没有就不出现。

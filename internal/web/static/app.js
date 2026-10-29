@@ -1236,22 +1236,6 @@
   // Drawers the owner opened stay open when a poll redraws the thread.
   const openRoutines = new Set();
 
-  function routineLine(routine, key) {
-    const row = el("details", "routine-line");
-    if (key && openRoutines.has(key)) row.open = true;
-    row.addEventListener("toggle", () => {
-      if (!key) return;
-      if (row.open) openRoutines.add(key);
-      else openRoutines.delete(key);
-    });
-    const head = el("summary", "sysline");
-    head.append(icon("alarm-clock"), el("span", "", routine.time ? "定时 · " + routine.label + " · " + routine.time : routine.label));
-    const drawer = el("div", "routine-drawer");
-    drawer.append(el("div", "routine-prompt", routine.prompt), el("div", "routine-source", "来源：定时"));
-    row.append(head, drawer);
-    return row;
-  }
-
   // Both task rows and message bubbles use this priority order. The caller
   // supplies its real font/available width; filenames are never shortened.
   function compactPath(path, fits) {
@@ -2859,7 +2843,7 @@
 
   function addTimeDivider(inner, row, previous) {
     if (inner.classList.contains("grpchat")) return;
-    const last = previous || Array.from(inner.querySelectorAll(".msg[data-time], .routine-line[data-time]")).at(-1)?.dataset.time;
+    const last = previous || Array.from(inner.querySelectorAll(".msg[data-time]")).at(-1)?.dataset.time;
     const label = timeDivider(last, row.dataset.time);
     if (label) inner.append(el("div", "tdiv", label));
   }
@@ -2867,8 +2851,8 @@
   function addTimeDividers(inner) {
     if (inner.classList.contains("grpchat")) return;
     let previous;
-    for (const row of inner.querySelectorAll(":scope > .msg[data-time], :scope > .routine-line[data-time]")) {
-      const label = row.dataset.timed ? "" : timeDivider(previous, row.dataset.time);
+    for (const row of inner.querySelectorAll(":scope > .msg[data-time]")) {
+      const label = timeDivider(previous, row.dataset.time);
       if (label) row.before(el("div", "tdiv", label));
       previous = row.dataset.time;
     }
@@ -3099,7 +3083,6 @@
     let any = false;
     let lastKey = "";
     let lastMsg = null;
-    let lastRoutine = null;
     const relays = backgroundRelays(messages);
     const wakeRuns = routineRuns(messages);
     const latestCard = {};
@@ -3114,16 +3097,6 @@
       if (skipMessage(m) || wakeRuns.hidden.has(i)) return;
       // Background turns have no cards in the chat; the header badge lists them.
       if (m.kind === "fork" || m.kind === "fork_end") return;
-      const routine = routineOf(m);
-      if (routine) {
-        lastRoutine = routineLine(routine, (state.sel ? state.sel.id : "") + ":" + (m.seq || m.time || i));
-        lastRoutine.dataset.branch = m.branch || "";
-        lastRoutine.dataset.time = m.time || ""; lastRoutine.dataset.timed = routine.time ? "true" : "";
-        inner.append(lastRoutine);
-        any = true;
-        lastKey = "";
-        return;
-      }
       if (m.role === "assistant" && String(m.content || "").trim() === "SILENT" && !(m.images || []).length) return;
       const appr = approvalCardOf(m.content);
       if (appr) {
@@ -5473,27 +5446,25 @@
     return seconds < 60 ? seconds + " 秒" : Math.floor(seconds / 60) + " 分" + (seconds % 60 ? " " + seconds % 60 + " 秒" : "");
   }
 
+  // A routine run is a record, not speech: its wake (missed summaries too)
+  // and a text-only SILENT reply never reach the user. Only what the bot says
+  // to the user stays in the chat, and the task tab lists no runs.
   // Transcript snapshots are replaced, never edited in place.
   const routineCache = new WeakMap();
   function routineRuns(messages) {
     if (routineCache.has(messages)) return routineCache.get(messages);
-    const pending = new Map(), hidden = new Set(), recent = [];
+    const pending = new Set(), hidden = new Set();
     messages.forEach((m, i) => {
       const branch = m.branch || "";
       if (m.role === "user") {
-        const rt = routineOf(m);
-        if (rt) pending.set(branch, {m, i, rt});
+        if (routineOf(m)) { hidden.add(i); pending.add(branch); }
         else if (!unwrap(m.content || "").untrusted && !m.internal) pending.delete(branch);
       }
-      if (m.role !== "assistant" || !m.content || (m.tool_calls || []).length) return;
-      const wake = pending.get(branch);
-      if (!wake) return;
-      const silent = m.content.trim() === "SILENT";
-      if (silent) { hidden.add(wake.i); hidden.add(i); }
-      recent.push({id: "routine:" + (wake.m.seq || wake.i), type: "routine", task: wake.rt.label, status: "done", summary: silent ? "没什么要说的" : m.content, finished_at: m.time, started_at: wake.m.time});
+      if (m.role !== "assistant" || !m.content || (m.tool_calls || []).length || !pending.has(branch)) return;
+      if (m.content.trim() === "SILENT" && !(m.images || []).length) hidden.add(i);
       pending.delete(branch);
     });
-    const result = {hidden, recent}; routineCache.set(messages, result); return result;
+    const result = {hidden}; routineCache.set(messages, result); return result;
   }
 
   function taskTypeLabel(ag) {
@@ -5791,7 +5762,7 @@
   }
 
   function syncTaskView(root, data) {
-    const agents = [...(data.agents || []), ...routineRuns(state.messages || []).recent];
+    const agents = data.agents || [];
     const sections = [
       ["进行中", agents.filter(a => ["running", "awaiting"].includes(a.status)), "agent"],
       ["排队中", agents.filter(a => a.status === "queued"), "agent"],
