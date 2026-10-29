@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-29 @ worktree 19b13842 + desktop-shell-restart-continuation (targeted tests; full suite incomplete)
+verified: 2026-10-29 @ worktree b8c7720 + cli-send-event (targeted tests)
 ---
 # 内核：Link、Event、收件箱
 
@@ -94,3 +94,5 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 记忆渲染版本由 State.MemRender 记录；唤醒时版本不符则重建唯一的 Bot 记忆快照，人物资料改走环境流，压缩刷新也记录版本。记忆注入的默认键不重复显示文本，自定义键保留；只有 person 范围追加 `via` 作者，使已接受的常驻记忆不因重复键和作者格式膨胀而被裁剪（见 [身份与记忆](memory.md)）。
 
 环境当前值、跨轮提前占位、空闲队列触发和换小窗口预检共用内核压缩路径，配置与边界见 [上下文与 transcript](context.md)。
+
+CLI 外部事件经本机会话认证的 `/api/bots/{name}/events` 写入 inbox，来源为 `cli`、发送者由调用方提供，始终按不可信数据处理；输入行标为内部，不作为主人消息显示。处理锁可用后才受理，回执随该次唤醒返回可见结果或安静。

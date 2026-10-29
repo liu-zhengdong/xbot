@@ -483,3 +483,5 @@ Transcript 消息保留原 `content` 字符串投影，另有可选 `parts` 数�
 ### Bot 收件箱
 
 `GET /api/bots/{name}/inbox?limit=50` 需登录且为 Bot owner。返回 `{pending_count,items}`，包含待处理与已吸收事件，按事件时间新到旧；主人聊天和确认事件不列入。`limit` 默认 50，范围 1–100；每项含 id、source、type、sender、sender_kind、time、summary 和 status（pending 或 acked）。摘要去除 untrusted_event 标签；Webhook 取首个 delivery 正文，文件监听去除 watch 外壳，定时 routine 只取标签内正文并去掉后续唤醒套话；正文去除首尾空白后最多 1000 字符（截断时加省略号）。接口只读，不执行 Ack。
+
+`POST /api/bots/{name}/events` 接收本机会话认证的 CLI 外部事件，body 为 `{"sender":"codex","text":"..."}`；sender 必填、最长 64 字节，text 非空、最长 16 KiB。等待 Bot 的处理锁后写入 inbox，作为 `source=cli` 的不可信事件处理；SSE 先发 `accepted`（含事件 id），然后发 `done`（`text` 为本轮可见内容，空为安静）或 `error`。断开连接后已受理事件继续执行。此接口不使用主人消息插话路径。

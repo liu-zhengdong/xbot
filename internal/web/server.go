@@ -289,6 +289,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/bots/{name}/mcp/{server}", s.removeMCP)
 	mux.HandleFunc("GET /api/bots/{name}/export", s.exportTranscript)
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
+	mux.HandleFunc("POST /api/bots/{name}/events", s.postCLIEvent)
 	// A pasted picture is uploaded first; the message then names it.
 	mux.HandleFunc("POST /api/bots/{name}/paste", s.postPaste)
 	mux.HandleFunc("GET /api/bots/{name}/paste/{image}", s.getPaste)
@@ -1328,7 +1329,7 @@ func (rs *replyStream) result(name, output string) {
 		if len(rs.asked) > 0 {
 			text := rs.asked[0]
 			rs.asked = rs.asked[1:]
-			if strings.HasPrefix(output, "sent to the owner's chat") {
+			if strings.HasPrefix(output, "sent to the owner's chat") || strings.HasPrefix(output, "notified the owner") {
 				rs.said = append(rs.said, text)
 				payload["text"] = text
 			}

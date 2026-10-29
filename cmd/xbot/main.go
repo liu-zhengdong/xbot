@@ -55,6 +55,7 @@ Usage:
   xbot [--root DIR] skill disable <bot> <slug>
   xbot [--root DIR] skill enable <bot> <slug>
   xbot [--root DIR] chat [name] [--yes]
+  xbot [--root DIR] send --whoami ID [--http ADDR] [--timeout DURATION] <bot> <text...|->
   xbot [--root DIR] message [--http ADDR] [--timeout DURATION] <bot> <text...|-> [--text TEXT]
   xbot [--root DIR] pin <name>
   xbot [--root DIR] unpin <name>
@@ -163,6 +164,9 @@ func run(argv []string) error {
 	root, err = resolveRoot(root)
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "send" {
+		return cmdSend(rest[1:], os.Stdin, os.Stdout)
 	}
 	if len(rest) > 0 && rest[0] == "message" {
 		return cmdMessage(rest[1:], os.Stdin, os.Stdout)

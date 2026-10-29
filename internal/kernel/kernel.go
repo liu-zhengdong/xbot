@@ -84,6 +84,7 @@ type Kernel struct {
 	OnPart     func(provider.ContentPart)
 	OnTool     func(name, summary string)
 	OnResult   func(name, output string)
+	OnFinding  func(string)
 	// Permissive turns the permission table's cards off (ADR 0019,
 	// review.ConfirmTable): only an explicit machine setting, the vault, a
 	// turn from outside touching memory, and the links card still ask.

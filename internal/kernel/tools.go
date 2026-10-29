@@ -234,7 +234,13 @@ func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) 
 	if text == "" || text == "SILENT" {
 		return nil
 	}
-	return deliverNote(ctx, k, text)
+	if err := deliverNote(ctx, k, text); err != nil {
+		return err
+	}
+	if k.OnFinding != nil {
+		k.OnFinding(text)
+	}
+	return nil
 }
 
 func finalAssistantText(msgs []provider.Message) string {

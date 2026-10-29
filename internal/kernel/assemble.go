@@ -40,7 +40,7 @@ const OwnerRule = "用户在终端或网页链路上发来的消息是可信指�
 const legacySilenceRule = "On a timer wake, call notify_owner only when something is worth the owner's attention."
 
 // SilenceRule tells a timer wake to stay quiet when nothing is worth reporting.
-const SilenceRule = "定时唤醒时，只有值得用户留意的事才调用 send_message_to_user。你改了东西或发现了问题，就说出来。找不到新东西，或工具被拒导致无法检查时，回复恰好 SILENT，且不要调用 send_message_to_user。例外：<routine> 块写明没有新东西时要发什么，而你检查后确实什么也没发现，就用 send_message_to_user 发那段内容，不回 SILENT。工具被拒不算什么也没发现，仍然回复 SILENT。"
+const SilenceRule = "定时唤醒或 CLI 外部事件唤醒时，只有值得用户留意的事才调用 send_message_to_user。你改了东西或发现了问题，就说出来。找不到新东西，或工具被拒导致无法检查时，回复恰好 SILENT，且不要调用 send_message_to_user。例外：<routine> 块写明没有新东西时要发什么，而你检查后确实什么也没发现，就用 send_message_to_user 发那段内容，不回 SILENT。工具被拒不算什么也没发现，仍然回复 SILENT。"
 
 // handoffRule is shared by the mutually exclusive confirmation modes.
 const handoffRule = "Bot 之间的交接走已商定的渠道；只有新的收件人才要问，其余已给的同意照旧有效。"

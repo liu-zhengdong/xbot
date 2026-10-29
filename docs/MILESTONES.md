@@ -791,3 +791,5 @@ Bot 改名后所有工具回执 `tool job storage unavailable`（裸文本进 tr
 `scripts/xbot-dev start/restart` 默认改为后台 `xbot app`，`--web` 显式回到 serve + 浏览器；PID 和日志仍在 `~/.xbot-build/dev/`，README 说明安装版 `/Applications/XBot.app` 使用默认 `~/.xbot`。新增 kernel 工具 `restart_xbot`，走统一注册表和权限表，即使 permissions off 仍须用户确认；先将活跃 Bot 名单与共享提示原子落入数据根唯一续跑文件，再请求桌面 `appshell.Relaunch` 或 serve `reexecService`。启动经现有 append-only Inbox 给持有前台 handle lock 或带 running/queued 子代理的所有 Bot 注入“XBot 已重启”与用户提示；确定性事件 ID 让部分 fan-out 可幂等重试，闲置 Bot 不收事件。未做外置 Codex 兜底、自动改代码合入或回滚链。
 
 验证：`TestRestartContinuationPersistsAndWakesEveryWorkingBot` 覆盖前台忙、运行子代理、排队子代理均收到提示且 idle 未收到；kernel 注册/提示转交和 restart 必须确认测试通过；目标包 `cmd/xbot`、`internal/review` `-count=3` 通过。`gofmt -l .`、`go vet ./...`、`git diff --check`、`bash -n scripts/xbot-dev` 通过。全量测试跑到 web 包后，kernel 的已知 `TestLongTurnStaysUnderTheCeiling` 失败且 web 测试进程约 4 分钟无输出后中止；目标包 `internal/kernel -count=3` 同一已知用例三次失败。此前里程碑已记录该用例失败。未在本机实际打开桌面窗，性能数字未测；不代表端到端或主人日用通过。代码仍在 `19b13842` 基线上的未提交工作树，未 push、未合并。
+
+- 2026-10-29：CLI 外部 Event 入站实现与脚本化定向测试；真实入口及主人日用待验。
