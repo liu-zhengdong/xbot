@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-29 @ 2f9b308 + feature/cli-peer-ui (targeted browser regression)
+verified: 2026-10-29 @ 7032b678 + feature/dev-app-icon (appshell tests)
 ---
 # 网页界面
 
@@ -201,3 +201,5 @@ Bot 之间的消息在用户对话里只是一行居中灰字事件（12.5px、1
 模型换绑在工作锁内先经内核的新窗口预检与必要压缩，成功才保存绑定；上下文仍超新窗口时 HTTP 409 保留旧绑定，详见 [上下文](context.md)。
 
 开发入口 `scripts/xbot-dev start/restart` 默认后台启动当前构建的 `xbot app`，使用 `~/.xbot-dev` 和 8788；显式 `--web` 才启动 serve 并打开浏览器。PID 与日志仍在 `~/.xbot-build/dev/`。安装版 `/Applications/XBot.app` 默认用 `~/.xbot`，不替代 dev 实例；关桌面窗会结束 app 进程。
+
+桌面壳在建窗时使用内嵌的品牌 PNG：macOS 设置 Dock 图标，其他平台设置窗口图标；调用方可通过 `appshell.Options.Icon` 指定 PNG，设置失败写日志但不阻止开窗。正式 macOS 包仍带 icns。

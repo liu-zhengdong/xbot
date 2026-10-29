@@ -1,6 +1,8 @@
 package appshell
 
 import (
+	"bytes"
+	"image/png"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -12,8 +14,20 @@ func TestDefaults(t *testing.T) {
 		t.Fatal(opts)
 	}
 	custom := Options{Width: 800, Height: 600}
-	if defaults(custom) != custom {
+	if got := defaults(custom); got.Width != custom.Width || got.Height != custom.Height {
 		t.Fatal("explicit size changed")
+	}
+}
+
+func TestDefaultIcon(t *testing.T) {
+	icon := defaults(Options{}).Icon
+	img, err := png.Decode(bytes.NewReader(icon))
+	if err != nil || img.Bounds().Dx() != 512 || img.Bounds().Dy() != 512 {
+		t.Fatalf("default icon is not a 512px PNG: %v", err)
+	}
+	custom := []byte("custom")
+	if got := defaults(Options{Icon: custom}).Icon; !bytes.Equal(got, custom) {
+		t.Fatal("explicit icon changed")
 	}
 }
 

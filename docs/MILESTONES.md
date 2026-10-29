@@ -1,5 +1,8 @@
 # XBot 里程碑与进度
 
+- 2026-10-29：桌面壳为裸二进制启动设置内嵌品牌图标，macOS 用 Dock 图标，其他平台用窗口图标；允许调用方覆盖，失败写日志。默认 PNG 和覆盖选项的回归在旧代码失败、修复后 appshell 包三次通过。尚未做原生窗口目视或用户日用验收；新增网络请求、轮询和动画均为 0，交互 p95 和帧率未测。
+- 提交前 gofmt、vet、atlas audit 通过（audit 有既有告警）；全仓测试失败：kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir` 失败，web `TestWebApprovalAllowAndDeny` 在 90 秒超时。此前里程碑已记录这些失败，本次未复测基线。
+
 - 2026-10-29：CLI Event 新写入的 transcript 行标为主人可见，保持不可信包裹，修复来源行入口；事件入口及 transcript API 回归旧代码失败、定向连跑三次通过。全仓测试中内核折叠测试失败、OAuth 测试端口占用，网页包未结束时中断；改动包全量三次也未完成。真实入口和主人日用尚未验收；新增请求、轮询和动画均为 0，交互时延与帧率未测。
 
 - 2026-10-29：CLI Event 接入通用可点击来源行；Bot 往来保留既有入口。浏览器行为回归覆盖分组、展开和来源隔离；真实入口与日用验收待做。

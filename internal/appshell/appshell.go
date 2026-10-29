@@ -3,8 +3,10 @@
 package appshell
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"runtime"
 	"sync/atomic"
@@ -16,9 +18,16 @@ type Options struct {
 	Title, URL    string
 	StatePath     string
 	Width, Height int
+	Icon          []byte
 }
 
+//go:embed icon-512.png
+var defaultIcon []byte
+
 func defaults(opts Options) Options {
+	if len(opts.Icon) == 0 {
+		opts.Icon = defaultIcon
+	}
 	if opts.Width <= 0 {
 		opts.Width = 1100
 	}
@@ -58,6 +67,15 @@ func Run(opts Options, ready func()) error {
 			TitleBarStyle:   mygo.TitleBarHidden, TitleBarHeight: titleBarHeight,
 			TrafficLightPosition: &mygo.Point{X: 20, Y: 18},
 		})
+		var iconErr error
+		if runtime.GOOS == "darwin" {
+			iconErr = mygo.App.Dock.SetIcon(opts.Icon)
+		} else {
+			iconErr = win.SetIcon(opts.Icon)
+		}
+		if iconErr != nil {
+			log.Printf("appshell: set icon: %v", iconErr)
+		}
 		win.Page().OnPageTitleUpdated(func(e *mygo.TitleEvent) { e.PreventDefault() })
 		origin, _ := url.Parse(opts.URL)
 		win.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
