@@ -2678,7 +2678,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .sdot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
 .sdot.ok{background:var(--x-online)}.sdot.off{background:var(--x-faint)}
 .aboutlogo{display:flex;align-items:center;gap:14px;padding:8px 0 18px}
-.aboutlogo .mark{width:48px;height:48px;border-radius:14px;background:var(--x-fill-2);display:grid;place-items:center;font-size:22px;font-weight:700;letter-spacing:-.02em}
+.aboutlogo .mark{width:48px;height:48px;border-radius:14px;display:block}
 .aboutlogo h3{font-size:18px;font-weight:650}.aboutlogo .v{font-size:13px;color:var(--x-muted);margin-top:2px;font-family:var(--x-mono)}
 .kvrow{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 16px;border-radius:10px;background:transparent;margin-bottom:8px;font-size:13.5px}
 .kvrow .k{width:72px;color:var(--x-faint);flex:none}.kvrow .v{flex:1;min-width:0;font-family:var(--x-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

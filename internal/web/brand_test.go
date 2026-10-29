@@ -9,8 +9,7 @@ import (
 	"testing"
 )
 
-// The XBot mark replaces the green icon and the text 「X」 placeholders. The
-// small icons are pixel-tuned files served as they are.
+// Brand resources are served from the embedded static files.
 func TestBrandMark(t *testing.T) {
 	s := &Server{Root: t.TempDir(), Owner: "u1"}
 	srv := httptest.NewServer(muxOf(s))
@@ -68,6 +67,6 @@ func TestBrandMark(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(pkg), "PIL") || !strings.Contains(string(pkg), `cp packaging/icons/XBot.ico "$work/XBot.ico"`) {
-		t.Error("packaging copies the hand-tuned .ico and .icns instead of resizing")
+		t.Error("packaging copies the .ico and .icns instead of resizing")
 	}
 }
