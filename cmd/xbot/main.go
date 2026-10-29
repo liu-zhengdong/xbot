@@ -337,13 +337,7 @@ func splitGlobal(argv []string) (string, []string, error) {
 	return root, nil, errUsage
 }
 
-var defaultLinks = []string{
-	link.NameTerminal, link.NameTools, link.NameTimer,
-	link.NameMemory, link.NamePersona, link.NameContext,
-	link.NameAgents, link.NameSkills,
-	link.NameWebhook, link.NameWatch,
-	link.NameWeb, link.NamePeers,
-}
+var defaultLinks []string
 
 type runnerSpec struct {
 	URL   string

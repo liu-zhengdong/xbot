@@ -8,6 +8,8 @@ func (l *Link) UseTranscript(fn func(string) error) {
 	if l == nil {
 		return
 	}
+	l.pathMu.Lock()
+	defer l.pathMu.Unlock()
 	l.transcript = fn
 }
 
@@ -25,6 +27,8 @@ func (l *Link) stream(id, status, text string) {
 		return
 	}
 	text = strings.TrimSpace(text)
+	l.pathMu.RLock()
+	defer l.pathMu.RUnlock()
 	l.mu.Lock()
 	if l.tail == nil {
 		l.tail = map[string]string{}

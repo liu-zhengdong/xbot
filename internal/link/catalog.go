@@ -70,27 +70,6 @@ func GrantName(id string) (string, error) {
 
 var catalog = []CatalogEntry{
 	{
-		ID: "webhook", Title: "Webhook", Kind: KindNative,
-		Capabilities: []string{"events"}, Secrets: []string{},
-		Summary:   "接收 HTTP 回调，写成不可信事件。",
-		Keywords:  []string{"http", "callback"},
-		Available: true, Grant: NameWebhook,
-	},
-	{
-		ID: "watch", Title: "文件监听", Kind: KindNative,
-		Capabilities: []string{"events"}, Secrets: []string{},
-		Summary:   "路径变化写成不可信事件，正文只有路径和元数据。",
-		Keywords:  []string{"file watch", "filesystem"},
-		Available: true, Grant: NameWatch,
-	},
-	{
-		ID: "skills", Title: "技能", Kind: KindNative,
-		Capabilities: []string{"tools"}, Secrets: []string{},
-		Summary:   "读写本机技能库。",
-		Keywords:  []string{"skill", "skills"},
-		Available: true, Grant: NameSkills,
-	},
-	{
 		ID: "telegram", Title: "Telegram", Kind: KindNative,
 		Capabilities: []string{"tools", "events"}, Secrets: []string{"TELEGRAM_BOT_TOKEN"},
 		Summary:   "把 Telegram 消息推进来，发出去之前先留草稿。",
@@ -116,12 +95,5 @@ var catalog = []CatalogEntry{
 		Summary:   "用 CDP 驱动本机 Chrome，单独的配置目录。优先用命令行或 API。",
 		Keywords:  []string{"browser", "chrome", "cdp"},
 		Available: true, Grant: NameBrowser,
-	},
-	{
-		ID: "coding-agent", Title: "编码代理", Kind: KindNative,
-		Capabilities: []string{"tools", "events"}, Secrets: []string{},
-		Summary:   "长时间编码任务，步数和时间按这次任务另定。先只记本地任务。",
-		Keywords:  []string{"coding agent", "code"},
-		Available: true, Grant: NameCoding,
 	},
 }

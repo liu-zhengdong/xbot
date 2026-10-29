@@ -32,7 +32,7 @@ func TestCatalogInstallNames(t *testing.T) {
 			}
 		}
 	}
-	if !seen["webhook"] || !seen["telegram"] || !seen["mcp"] || !seen["coding-agent"] || available < 1 {
+	if seen["webhook"] || seen["watch"] || seen["skills"] || seen["coding-agent"] || !seen["telegram"] || !seen["mcp"] || available < 1 {
 		t.Fatalf("catalog %v available %d", seen, available)
 	}
 	if _, err := GrantName("missing"); !errors.Is(err, ErrUnknown) {
@@ -47,17 +47,13 @@ func TestCatalogInstallNames(t *testing.T) {
 }
 
 func TestSkillsCatalogNamesLocalLibrary(t *testing.T) {
-	entry, ok := Lookup("skills")
-	if !ok {
-		t.Fatal("skills missing")
-	}
-	if strings.Contains(entry.Summary, "~/.xbot") {
-		t.Errorf("catalog summary should not contain a fixed path: %s", entry.Summary)
+	if _, ok := Lookup("skills"); ok {
+		t.Fatal("native skills is in the catalog")
 	}
 	if blurb := Blurb(NameSkills); strings.Contains(blurb, "~/.xbot") || !strings.Contains(blurb, "Skills section") {
 		t.Errorf("grant blurb should point at the Skills section, not a fixed path: %s", blurb)
 	}
-	for name, text := range map[string]string{"catalog": entry.Summary, "grant": Blurb(NameSkills)} {
+	for name, text := range map[string]string{"organ": Blurb(NameSkills)} {
 		t.Run(name, func(t *testing.T) {
 			for _, misleading := range []string{"<owner>", "magpie"} {
 				if strings.Contains(strings.ToLower(text), misleading) {

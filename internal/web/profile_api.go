@@ -9,7 +9,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 )
 
 func paintBot(b *bot.Bot) (url, bg, ink, initial string) {
@@ -211,9 +210,6 @@ func (s *Server) importTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	links := s.DefaultLinks
-	if len(links) == 0 {
-		links = []string{link.NameTerminal, link.NameTools, link.NameTimer, link.NameMemory, link.NameWeb, link.NamePeers}
-	}
 	existing, err := bot.List(s.Root)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())

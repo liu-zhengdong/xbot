@@ -64,7 +64,12 @@ func StablePrefix(persona, rules, overlay string, links []string) string {
 }
 
 func linksPrefix(links []string) string {
-	names := append([]string(nil), links...)
+	var names []string
+	for _, name := range links {
+		if _, organ := link.LookupOrgan(name); !organ {
+			names = append(names, name)
+		}
+	}
 	sort.Strings(names)
 	var b strings.Builder
 	if len(names) > 0 {

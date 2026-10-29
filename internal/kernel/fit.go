@@ -36,8 +36,9 @@ import (
 // A request the provider rejects as too long is cut with all three and sent
 // once more.
 type turnFit struct {
-	mu      sync.Mutex
-	reserve int // next full environment, counted before fitting not after sending
+	mu                 sync.Mutex
+	reserve            int  // next full environment, counted before fitting not after sending
+	refreshEnvironment bool // this caller appends a full snapshot after a fold
 	// pre is the number of messages assembled at the turn's start. Everything
 	// from it on was produced by this turn. The agent only appends, so an
 	// index names the same message in every request of the turn.
@@ -102,6 +103,19 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 				out = append(out, turnSummary(f.summary, f.from, f.to))
 			}
 			continue
+		}
+		// A fold requires a fresh complete environment at the tail. The old
+		// tool index describes an obsolete registry; retaining it as well can
+		// crowd out the latest result. Keep the rest of the old environment.
+		if f.refreshEnvironment && f.cut > f.pre && i < f.pre && m.Role == provider.RoleUser && m.Internal {
+			if env, ok := decodeEnvironment(m.Text()); ok {
+				if _, present := env.Set["tool_index"]; present {
+					delete(env.Set, "tool_index")
+					if text := encodeEnvironment(env); text != "" {
+						m.SetText(text)
+					}
+				}
+			}
 		}
 		if seq, ok := f.omitted[i]; ok {
 			m = f.omittedResult(m, seq)

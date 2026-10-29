@@ -31,7 +31,7 @@ func TestWebhookAuthDedupAndBurst(t *testing.T) {
 	if st.Mode().Perm() != 0600 {
 		t.Fatalf("mode %o", st.Mode().Perm())
 	}
-	if !b.Grants("webhook") || len(b.Config().Webhooks) != 1 {
+	if b.Grants("webhook") || len(b.Config().Webhooks) != 1 {
 		t.Fatalf("grant %+v", b.Config())
 	}
 	start := time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)

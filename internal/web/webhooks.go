@@ -90,7 +90,7 @@ func (s *Server) addWebhook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "校验方式只能是签名校验或令牌")
 		return
 	}
-	// AddHook also grants the webhook link on the first hook, so the owner
+	// AddHook records the hook, so the owner
 	// never installs it by hand.
 	s.skillMu.Lock()
 	h, err := inbound.AddHook(b, in.Name, in.Auth, time.Now())
@@ -119,7 +119,7 @@ func (s *Server) removeWebhook(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// RemoveHook drops the named hook only; the webhook link grant stays.
+	// RemoveHook drops the named hook only.
 	s.skillMu.Lock()
 	err := inbound.RemoveHook(b, h.Name)
 	s.skillMu.Unlock()

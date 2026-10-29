@@ -229,10 +229,9 @@ func TestReadSkillWithoutLoad(t *testing.T) {
 	if len(p.reqs) < 2 {
 		t.Fatalf("calls %d", len(p.reqs))
 	}
-	// Listed skills make read_skill callable at once; a subagent still waits
-	// for links load before it has write_skill.
-	if !hasToolName(mustMounted(t, k), "read_skill") || hasToolName(mustMounted(t, k), "write_skill") {
-		t.Fatal("read_skill must be ready while a skill is listed; write_skill waits for load")
+	// Both native skill tools are callable without loading a Link.
+	if !hasToolName(mustMounted(t, k), "read_skill") || !hasToolName(mustMounted(t, k), "write_skill") {
+		t.Fatal("native skill tools must be ready")
 	}
 	text := messagesText(p.reqs[1].Messages)
 	if strings.Contains(text, "unknown tool") || !strings.Contains(text, "SECRET_BODY") {

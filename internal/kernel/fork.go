@@ -10,7 +10,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/peer"
 )
@@ -86,12 +85,6 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 		return ForkResult{}, err
 	}
 	if err := child.InheritBinding(k.Bot.Config()); err != nil {
-		return ForkResult{}, err
-	}
-	if err := child.GrantLink(link.NamePeers); err != nil {
-		return ForkResult{}, err
-	}
-	if err := k.Bot.GrantLink(link.NamePeers); err != nil {
 		return ForkResult{}, err
 	}
 	rules, err := k.botRules()

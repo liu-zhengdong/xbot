@@ -37,7 +37,7 @@ func (pingTool) Run(context.Context, json.RawMessage) (string, error) {
 
 type roLink struct{}
 
-func (roLink) Name() string        { return "rolink" }
+func (roLink) Name() string        { return link.NameTools }
 func (roLink) Tools() []tools.Tool { return []tools.Tool{roTool{}} }
 
 type roTool struct{}
@@ -288,28 +288,26 @@ func TestTodoDefaultStepsAndModelSwitch(t *testing.T) {
 }
 
 func TestTodoQuietForReadOnly(t *testing.T) {
+	// A genuinely read-only tool set is still quiet. Real bots now always have
+	// native writable tools, so they use the completion gate.
+	if !todoToolListQuiet([]tools.Tool{roTool{}}) {
+		t.Fatal("read-only tool set should be quiet")
+	}
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		todoCall("c0", `{"items":[{"content":"write the tests","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("ok")},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("should not run")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("still pending")},
 	}}
-	ro := &Kernel{
-		Bot: b, Provider: p, MaxSteps: 4,
-		Links: []link.Link{roLink{}},
+	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Links: []link.Link{roLink{}}}
+	if k.todoToolsQuiet() {
+		t.Fatal("native writable tools missing")
 	}
-	if err := ro.Handle(context.Background(), link.TerminalEvent("u1", "look", time.Unix(11, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "look", time.Unix(11, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.reqs) != 2 {
-		t.Fatalf("read-only continued: %d", len(p.reqs))
-	}
-	for _, r := range p.reqs {
-		for _, m := range r.Messages {
-			if strings.Contains(m.Text(), "<todo_reminder>") || strings.Contains(m.Text(), "<todo_gate>") {
-				t.Fatal("read-only run got a todo reminder")
-			}
-		}
+	if len(p.reqs) != 3 || !strings.Contains(messagesText(p.reqs[2].Messages), "<todo_gate>") {
+		t.Fatalf("completion gate missing: %d requests", len(p.reqs))
 	}
 }
 

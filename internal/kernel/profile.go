@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/code"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
+	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
 
@@ -120,16 +122,31 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 // directory and nothing writes the old one once it has gone.
 func (k *Kernel) renameBot(next string) error {
 	root, old := k.Bot.Root, k.Bot.Name()
-	dir := filepath.Join(bot.Dir(root, next), "shell-jobs")
-	if err := k.shellJobs().Move(dir, func() error { return RenameBot(root, old, next) }); err != nil {
-		return err
+	newDir := bot.Dir(root, next)
+	var coding *code.Link
+	for _, l := range k.snapshotLinks() {
+		if c, ok := l.(*code.Link); ok {
+			coding = c
+			break
+		}
 	}
-	loaded, err := bot.Load(root, next)
-	if err != nil {
-		return err
+	rename := func() error {
+		if err := k.shellJobs().Move(filepath.Join(newDir, "shell-jobs"), func() error { return RenameBot(root, old, next) }); err != nil {
+			return err
+		}
+		loaded, err := bot.Load(root, next)
+		if err != nil {
+			return err
+		}
+		k.Bot = loaded
+		return nil
 	}
-	k.Bot = loaded
-	return nil
+	if coding == nil {
+		return rename()
+	}
+	return coding.Move(newDir, filepath.Join(newDir, "inbox.jsonl"), func(text string) error {
+		return k.Bot.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
+	}, rename)
 }
 
 func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, error) {

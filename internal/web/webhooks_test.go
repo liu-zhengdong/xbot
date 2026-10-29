@@ -85,8 +85,8 @@ func TestWebhookAPI(t *testing.T) {
 		t.Fatalf("create: %d %v", code, gh)
 	}
 	b, _ := bot.Load(root, "ada")
-	if !b.Grants(link.NameWebhook) {
-		t.Fatal("first hook did not grant the webhook link")
+	if b.Grants(link.NameWebhook) {
+		t.Fatal("native webhook was granted")
 	}
 	if code, out := call("POST", "/api/bots/ada/webhooks", `{"name":"github"}`); code != 409 || out["error"] != "已有同名 Webhook" {
 		t.Fatalf("duplicate: %d %v", code, out)
@@ -180,8 +180,8 @@ func TestWebhookAPI(t *testing.T) {
 		t.Fatalf("removed hook still answers: %d", c)
 	}
 	b, _ = bot.Load(root, "ada")
-	if !b.Grants(link.NameWebhook) || len(b.Config().Webhooks) != 0 {
-		t.Fatalf("remove must keep the link and drop the names: %+v", b.Config())
+	if b.Grants(link.NameWebhook) || len(b.Config().Webhooks) != 0 {
+		t.Fatalf("remove must drop the names: %+v", b.Config())
 	}
 	if strings.Contains(logs.String(), secret) {
 		t.Fatal("a secret reached the log")

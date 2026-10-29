@@ -70,8 +70,8 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasTool(bareTools, "fork_bot") {
-		t.Fatal("fork_bot without peers")
+	if !hasTool(bareTools, "fork_bot") {
+		t.Fatal("native fork_bot missing")
 	}
 
 	out, err := (forkBotTool{k}).Run(ctx, []byte(`{"name":"reviewer","role":"Review pull requests."}`))

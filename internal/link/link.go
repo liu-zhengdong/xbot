@@ -11,7 +11,7 @@
 //   - NewEvent marks content untrusted. The kernel, not the producer, decides
 //     whether an owner on the terminal link is trusted.
 //   - Messages sent on the user's behalf stay drafts until confirmed (SendPolicy).
-//   - Which links exist is a per-bot grant in the bot config, not a global switch.
+//   - External links are installed per bot or globally; native organs are always present.
 package link
 
 import (

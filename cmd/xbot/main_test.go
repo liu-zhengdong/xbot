@@ -368,7 +368,7 @@ func TestMountGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(links) != 3 {
+	if len(links) != len(link.Organs()) {
 		t.Fatalf("links %d", len(links))
 	}
 	if _, err := mountBot(t, []string{"nope"}); err == nil {
@@ -400,7 +400,7 @@ func TestWebhookAndWatchCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !b.Grants("webhook") || len(b.Config().Webhooks) != 1 {
+	if b.Grants("webhook") || len(b.Config().Webhooks) != 1 {
 		t.Fatalf("%+v", b.Config())
 	}
 	st, err := os.Stat(filepath.Join(b.WebhookDir(), "id", "github.json"))
@@ -431,7 +431,7 @@ func TestWebhookAndWatchCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !b.Grants("watch") || len(b.Config().Watches) != 1 {
+	if b.Grants("watch") || len(b.Config().Watches) != 1 {
 		t.Fatalf("%+v", b.Config())
 	}
 	links, err := mount(b, runnerSpec{})
@@ -593,43 +593,22 @@ func TestLinkCLIGrantsAndRevokes(t *testing.T) {
 	if err := cmdLink(root, []string{"install", "ada", "mcp"}); err == nil || !strings.Contains(err.Error(), "not available yet") {
 		t.Fatalf("mcp %v", err)
 	}
-	if err := cmdLink(root, []string{"install", "ada", "webhook"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmdLink(root, []string{"install", "ada", "coding-agent"}); err != nil {
+	if err := cmdLink(root, []string{"install", "ada", "browser"}); err != nil {
 		t.Fatal(err)
 	}
 	b, err = bot.Load(root, "ada")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	coding := false
-	for _, name := range b.Config().Links {
-		if name == link.NameWebhook {
-			found = true
-		}
-		if name == link.NameCoding {
-			coding = true
-		}
-	}
-	if !found || !coding {
-		t.Fatalf("links %v", b.Config().Links)
+	if err != nil || !b.Grants(link.NameBrowser) {
+		t.Fatalf("browser grant: %v", err)
 	}
 	if _, err := mount(b, runnerSpec{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdLink(root, []string{"remove", "ada", "webhook"}); err != nil {
+	if err := cmdLink(root, []string{"remove", "ada", "browser"}); err != nil {
 		t.Fatal(err)
 	}
 	b, err = bot.Load(root, "ada")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range b.Config().Links {
-		if name == link.NameWebhook {
-			t.Fatal("webhook still granted")
-		}
+	if err != nil || b.Grants(link.NameBrowser) {
+		t.Fatalf("browser removal: %v", err)
 	}
 	if _, err := bot.Load(root, "ada"); err != nil {
 		t.Fatal(err)

@@ -162,7 +162,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		dir := t.TempDir()
 		candidate := filepath.Join(dir, "candidates.md")
 		p := &scripted{resps: []provider.Message{batchCall("save", "write_file", `{"path":"candidates.md","content":"候选：新增主题换肤；当前先完成导出验收。"}`), batchReply("换肤会延后导出验收，已记入候选，先把导出走通。")}}
-		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{oneToolLink{t: &tools.WriteFile{Root: dir}}}, Permissive: true, MaxSteps: 4}
+		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{c1Link{tool: &tools.WriteFile{Root: dir}}}, Permissive: true, MaxSteps: 4}
 		if err := k.Handle(context.Background(), link.TerminalEvent("u1", "当前目标是导出验收，顺便再来个换肤吧？新想法记 candidates.md。", time.Now())); err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +182,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 			t.Fatal(err)
 		}
 		p := &scripted{resps: []provider.Message{batchCall("evidence", "read_file", `{"path":"test.log"}`), batchReply("核对日志后发现测试失败，尚未通过验收。")}}
-		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{oneToolLink{t: &tools.ReadFile{Root: dir}}}, Permissive: true, MaxSteps: 4}
+		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{c1Link{tool: &tools.ReadFile{Root: dir}}}, Permissive: true, MaxSteps: 4}
 		if err := k.Handle(context.Background(), link.TerminalEvent("u1", "下游说测通了；按约定核对 test.log 的验收证据。", time.Now())); err != nil {
 			t.Fatal(err)
 		}

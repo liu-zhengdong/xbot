@@ -35,7 +35,7 @@ func TestLinksConfirmInstallAndRemove(t *testing.T) {
 func TestLinksInstallRequiresApproval(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
-		linksCall("install", "webhook"),
+		linksCall("install", "browser"),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
 	var gotTool, gotSummary string
@@ -43,13 +43,13 @@ func TestLinksInstallRequiresApproval(t *testing.T) {
 		gotTool, gotSummary = tool, summary
 		return false, nil
 	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install webhook", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install browser", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if gotTool != "links" || !strings.Contains(gotSummary, "install webhook") {
+	if gotTool != "links" || !strings.Contains(gotSummary, "install browser") {
 		t.Fatalf("card %s %s", gotTool, gotSummary)
 	}
-	if b.Grants(link.NameWebhook) {
+	if b.Grants(link.NameBrowser) {
 		t.Fatal("granted without approval")
 	}
 	text := transcriptText(t, b)
@@ -61,19 +61,19 @@ func TestLinksInstallRequiresApproval(t *testing.T) {
 func TestLinksInstallAllowGrants(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
-		linksCall("install", "webhook"),
+		linksCall("install", "browser"),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
 		return true, nil
 	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install webhook", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install browser", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if !b.Grants(link.NameWebhook) {
+	if !b.Grants(link.NameBrowser) {
 		t.Fatal("not granted")
 	}
-	if !strings.Contains(transcriptText(t, b), "installed webhook") {
+	if !strings.Contains(transcriptText(t, b), "installed browser") {
 		t.Fatal(transcriptText(t, b))
 	}
 }
@@ -139,11 +139,11 @@ func TestLinksInstallWaitsForSecretFill(t *testing.T) {
 
 func TestLinksRemoveRequiresApproval(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	if err := b.GrantLink(link.NameWebhook); err != nil {
+	if err := b.GrantLink(link.NameBrowser); err != nil {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		linksCall("remove", "webhook"),
+		linksCall("remove", "browser"),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("gone")},
 	}}
 	asked := false
@@ -151,16 +151,16 @@ func TestLinksRemoveRequiresApproval(t *testing.T) {
 		asked = true
 		return true, nil
 	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "remove webhook", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "remove browser", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if !asked {
 		t.Fatal("remove did not ask for approval")
 	}
-	if b.Grants(link.NameWebhook) {
+	if b.Grants(link.NameBrowser) {
 		t.Fatal("still granted")
 	}
-	if !strings.Contains(transcriptText(t, b), "removed webhook") {
+	if !strings.Contains(transcriptText(t, b), "removed browser") {
 		t.Fatal(transcriptText(t, b))
 	}
 }
@@ -239,8 +239,8 @@ func TestLinksLoadDoesNotPersist(t *testing.T) {
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if len(p2.reqs) == 0 || k.isLoaded(link.NameSkills) || hasToolName(mustMounted(t, k), "write_skill") {
-		t.Fatal("the load persisted into the next turn")
+	if len(p2.reqs) == 0 || k.isLoaded(link.NameSkills) || !hasToolName(mustMounted(t, k), "write_skill") {
+		t.Fatal("native write_skill missing or link load persisted")
 	}
 }
 
@@ -250,10 +250,6 @@ func TestLinksSearchMatchesEnglish(t *testing.T) {
 	tool := linksTool{k}
 	for _, tc := range []struct{ query, id string }{
 		{"feishu", "lark"},
-		{"file watch", "watch"},
-		{"coding agent", "coding-agent"},
-		{"callback", "webhook"},
-		{"skill", "skills"},
 	} {
 		got := tool.search(tc.query)
 		if !strings.Contains(got, tc.id) {
@@ -349,21 +345,10 @@ func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	if err != nil || !strings.Contains(out, "telegram_send") || strings.Contains(out, "no tools") {
 		t.Fatalf("load %q %v", out, err)
 	}
-	out, err = (linksTool{k}).install("skills")
-	if err != nil || out != "installed skills" {
-		t.Fatalf("skills %q %v", out, err)
-	}
-	out, err = (linksTool{k}).load("skills")
-	if err != nil || !strings.Contains(out, "read_skill") || !strings.Contains(out, "write_skill") {
-		t.Fatalf("skills load %q %v", out, err)
-	}
-	out, err = (linksTool{k}).install("coding-agent")
-	if err != nil || out != "installed coding-agent" {
-		t.Fatalf("coding %q %v", out, err)
-	}
-	out, err = (linksTool{k}).load("coding-agent")
-	if err != nil || !strings.Contains(out, "code_start") || strings.Contains(out, "no tools") {
-		t.Fatalf("coding load %q %v", out, err)
+	for _, name := range []string{"read_skill", "write_skill", "code_start"} {
+		if !registered(k, name) {
+			t.Fatalf("native tool %s missing", name)
+		}
 	}
 	if _, err := (linksTool{k}).remove("telegram"); err != nil {
 		t.Fatal(err)

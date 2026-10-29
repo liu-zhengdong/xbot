@@ -476,9 +476,6 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	links := s.DefaultLinks
-	if len(links) == 0 {
-		links = []string{link.NameTerminal, link.NameTools, link.NameTimer, link.NameMemory, link.NameWeb, link.NamePeers}
-	}
 	b, err := bot.Create(s.Root, strings.TrimSpace(in.Name), strings.TrimSpace(in.Persona), links)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())

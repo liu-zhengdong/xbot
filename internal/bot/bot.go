@@ -15,6 +15,7 @@ import (
 
 	"xbot/internal/config"
 	"xbot/internal/fsutil"
+	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -539,6 +540,9 @@ func (b *Bot) GrantLink(name string) error {
 	if name == "" {
 		return errors.New("bot: empty link")
 	}
+	if _, organ := link.LookupOrgan(name); organ {
+		return nil
+	}
 	next := addUnique(b.cfg.Links, name)
 	if len(next) == len(b.cfg.Links) {
 		return nil
@@ -722,27 +726,25 @@ func (b *Bot) WebhookDir() string { return filepath.Join(b.dir(), "webhooks") }
 // WatchDir holds watch globs and the poller's cursor.
 func (b *Bot) WatchDir() string { return filepath.Join(b.dir(), "watches") }
 
-// GrantWebhook records the hook name and the webhook link.
+// GrantWebhook records a configured hook name.
 func (b *Bot) GrantWebhook(name string) error {
 	b.cfg.Webhooks = addUnique(b.cfg.Webhooks, name)
-	b.cfg.Links = addUnique(b.cfg.Links, "webhook")
 	return b.SaveConfig()
 }
 
-// RevokeWebhook drops the hook name. The link grant stays.
+// RevokeWebhook drops the hook name.
 func (b *Bot) RevokeWebhook(name string) error {
 	b.cfg.Webhooks = dropName(b.cfg.Webhooks, name)
 	return b.SaveConfig()
 }
 
-// GrantWatch records the watch id and the watch link.
+// GrantWatch records a configured watch id.
 func (b *Bot) GrantWatch(id string) error {
 	b.cfg.Watches = addUnique(b.cfg.Watches, id)
-	b.cfg.Links = addUnique(b.cfg.Links, "watch")
 	return b.SaveConfig()
 }
 
-// RevokeWatch drops the watch id. The link grant stays.
+// RevokeWatch drops the watch id.
 func (b *Bot) RevokeWatch(id string) error {
 	b.cfg.Watches = dropName(b.cfg.Watches, id)
 	return b.SaveConfig()

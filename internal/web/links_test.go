@@ -67,7 +67,7 @@ func TestLinkCatalogInstall(t *testing.T) {
 		t.Fatalf("auth %d", code)
 	}
 	code, raw = call(http.MethodGet, "/api/links", "", true)
-	if code != http.StatusOK || !strings.Contains(string(raw), `"id":"webhook"`) || !strings.Contains(string(raw), `"id":"coding-agent"`) || strings.Contains(string(raw), `"installed"`) {
+	if code != http.StatusOK || strings.Contains(string(raw), `"id":"webhook"`) || strings.Contains(string(raw), `"id":"coding-agent"`) || strings.Contains(string(raw), `"installed"`) {
 		t.Fatalf("catalog %d %s", code, raw)
 	}
 	if !strings.Contains(string(raw), `"available":false`) || !strings.Contains(string(raw), "TELEGRAM_BOT_TOKEN") {
@@ -95,29 +95,29 @@ func TestLinkCatalogInstall(t *testing.T) {
 		t.Fatalf("links changed %v", b.Config().Links)
 	}
 
-	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"webhook"}`, true)
+	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"browser"}`, true)
 	if code != http.StatusOK || !strings.Contains(string(raw), `"installed":true`) {
 		t.Fatalf("install %d %s", code, raw)
 	}
-	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"webhook"}`, true)
+	code, raw = call(http.MethodPost, "/api/bots/ada/links", `{"id":"browser"}`, true)
 	if code != http.StatusOK {
 		t.Fatalf("second %d %s", code, raw)
 	}
 	b, _ = bot.Load(root, "ada")
-	if !hasLink(b, link.NameWebhook) || len(b.Config().Links) != 2 {
+	if !hasLink(b, link.NameBrowser) || len(b.Config().Links) != 2 {
 		t.Fatalf("granted %v", b.Config().Links)
 	}
 	code, raw = call(http.MethodGet, "/api/bots/ada/links", "", true)
-	if !strings.Contains(string(raw), `"id":"webhook"`) || !strings.Contains(string(raw), `"installed":true`) || !strings.Contains(string(raw), `"installed":false`) {
+	if !strings.Contains(string(raw), `"id":"browser"`) || !strings.Contains(string(raw), `"installed":true`) || !strings.Contains(string(raw), `"installed":false`) {
 		t.Fatalf("bot links %d %s", code, raw)
 	}
 
-	code, raw = call(http.MethodDelete, "/api/bots/ada/links/webhook", "", true)
+	code, raw = call(http.MethodDelete, "/api/bots/ada/links/browser", "", true)
 	if code != http.StatusOK || !strings.Contains(string(raw), `"installed":false`) {
 		t.Fatalf("remove %d %s", code, raw)
 	}
 	b, _ = bot.Load(root, "ada")
-	if hasLink(b, link.NameWebhook) {
+	if hasLink(b, link.NameBrowser) {
 		t.Fatalf("still granted %v", b.Config().Links)
 	}
 	code, raw = call(http.MethodDelete, "/api/bots/ada/links/nope", "", true)

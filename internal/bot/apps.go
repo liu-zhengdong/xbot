@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"xbot/internal/fsutil"
+	"xbot/internal/link"
 )
 
 // appsFile is the owner-level app list under the root. Every bot reads it, so
@@ -43,6 +44,9 @@ func GrantGlobal(root, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("bot: empty link")
+	}
+	if _, organ := link.LookupOrgan(name); organ {
+		return nil
 	}
 	return fsutil.WithLock(AppsPath(root)+".lock", func() error {
 		cur, err := GlobalLinks(root)
@@ -89,10 +93,12 @@ func writeApps(root string, links []string) error {
 // EffectiveLinks is this bot's own grants plus the owner-level ones.
 // A damaged owner list counts as empty so a bot still starts.
 func (b *Bot) EffectiveLinks() []string {
-	out := append([]string(nil), b.cfg.Links...)
+	var out []string
 	global, _ := GlobalLinks(b.Root)
-	for _, n := range global {
-		out = addUnique(out, n)
+	for _, n := range append(append([]string(nil), b.cfg.Links...), global...) {
+		if _, organ := link.LookupOrgan(n); !organ {
+			out = addUnique(out, n)
+		}
 	}
 	return out
 }

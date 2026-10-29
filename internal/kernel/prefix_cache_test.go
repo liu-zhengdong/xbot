@@ -47,7 +47,7 @@ func cachedPrefix(a, b []provider.Message, whole bool) int {
 }
 
 func TestPrefixCacheComparison(t *testing.T) {
-	base := Input{Persona: strings.Repeat("persona ", 128), Rules: KernelRules(), Overlay: "model rules", Links: []string{"tools", "terminal"}, Skills: []string{"alpha: first", "beta: second"}, Installed: "Installed connectors: local"}
+	base := Input{Persona: strings.Repeat("persona ", 128), Rules: KernelRules(), Overlay: "model rules", Links: []string{"browser", "telegram"}, Skills: []string{"alpha: first", "beta: second"}, Installed: "Installed connectors: local"}
 	cases := []struct {
 		name     string
 		change   func(*Input)
@@ -55,7 +55,7 @@ func TestPrefixCacheComparison(t *testing.T) {
 	}{
 		{"unchanged", func(*Input) {}, 3},
 		{"skill", func(in *Input) { in.Skills = []string{"alpha: changed", "beta: second"} }, 2},
-		{"link", func(in *Input) { in.Links = []string{"terminal"} }, 1},
+		{"link", func(in *Input) { in.Links = []string{"telegram"} }, 1},
 		{"installed", func(in *Input) { in.Installed = "Installed connectors: changed" }, 2},
 		{"overlay", func(in *Input) { in.Overlay = "changed model" }, 0},
 	}
@@ -89,7 +89,7 @@ func TestPrefixCacheComparison(t *testing.T) {
 }
 
 func TestPrefixSegmentsAndAccounting(t *testing.T) {
-	in := Input{Persona: "persona", Rules: KernelRules() + "\n\ncustom supplement", Overlay: "overlay", Links: []string{"tools", "terminal"}, Skills: []string{"alpha: first"}, Installed: "installed", Memory: "</memory> secret", Entries: []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<environment_update>now task state</environment_update>")}}}}
+	in := Input{Persona: "persona", Rules: KernelRules() + "\n\ncustom supplement", Overlay: "overlay", Links: []string{"browser", "telegram"}, Skills: []string{"alpha: first"}, Installed: "installed", Memory: "</memory> secret", Entries: []bot.Entry{{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<environment_update>now task state</environment_update>")}}}}
 	msgs, usage := Assemble(in)
 	if len(msgs) != 5 {
 		t.Fatalf("messages=%d", len(msgs))
@@ -113,7 +113,7 @@ func TestPrefixSegmentsAndAccounting(t *testing.T) {
 		t.Fatalf("accounting: %+v", usage)
 	}
 	again, _ := Assemble(in)
-	if !reflect.DeepEqual(msgs, again) || in.Links[0] != "tools" {
+	if !reflect.DeepEqual(msgs, again) || in.Links[0] != "browser" {
 		t.Fatal("assembly mutates input or is not repeatable")
 	}
 	empty, _ := Assemble(Input{})

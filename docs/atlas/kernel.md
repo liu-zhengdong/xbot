@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-29 @ 2c6b8ca6 + unattended-restart (targeted tests)
+verified: 2026-10-30 @ native-always-organs (targeted tests)
 ---
 # 内核：Link、Event、收件箱
 
@@ -40,6 +40,8 @@ verified: 2026-10-29 @ 2c6b8ca6 + unattended-restart (targeted tests)
 输出截断的合并规则见 [供应商](providers.md#输出截断)。内核把 prepare、fit、环境公布和用量记账保留在每次实际请求上，输出截断不改变 overflow 的裁剪重试。逻辑回复拼接完成后才统一剥离 `reply_to`、校验 SILENT 和工具协议文本，并沿原助手记录入口追加一次；中间片段及续写指令不进 transcript。取消和插话沿原模型请求的 context；已正常完成的回复仍优先于迟到取消。
 
 ## 工具注册与代理门
+
+`link.Organs()` 是原生能力的唯一装配清单，CLI 启动与内核快照共用；内核原生工具始终登记，旧原生 grant 不参与开关。折叠后的请求会补完整环境快照；该请求投影从旧环境消息移除被快照取代的工具索引，保留其他字段与 transcript 原文，给最新工具结果留出空间。能力框只列外接 Link。浏览器、Telegram、飞书和 MCP 仍按安装状态挂载。
 
 见 [ADR 0035](../adr/0035-unified-tool-registry.md)。`toolRegistry()`（`internal/kernel/registry.go`）是本轮能调的工具的唯一来源：已挂载 Link 的工具和声明式表 `kernelTools` 的每一行各登记一次，记下 source（`kernel` / `organ` / `link` / `mcp:<服务器>`）、group 和 expose。`modelTools` 把全部登记的工具包进 review 交给 agent，但只声明代理门 `tools`、`send_message_to_user`、`todo`（开着时）和 hot 名单（各个壳、`read_file`、`write_file`、`edit_file`、`web_fetch`）；其余标成 `Undeclared`，可以调用但不进 `tools[]`。
 

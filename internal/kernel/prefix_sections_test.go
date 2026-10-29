@@ -21,11 +21,11 @@ func TestStablePrefixSections(t *testing.T) {
 		if got := StablePrefix(" persona body\n", " rules body\n", overlay, nil); got != want {
 			t.Fatalf("sections: got %q want %q", got, want)
 		}
-		msgs, _ := Assemble(Input{Persona: "persona body", Rules: "rules body", Overlay: overlay, Links: []string{"terminal"}, Skills: []string{"alpha: first"}})
-		if len(msgs) != 3 || msgs[0].Text() != want || msgs[1].Text() != links+"- terminal: "+link.Blurb("terminal") || strings.Contains(msgs[2].Text(), "### 能力框") {
+		msgs, _ := Assemble(Input{Persona: "persona body", Rules: "rules body", Overlay: overlay, Links: []string{"browser"}, Skills: []string{"alpha: first"}})
+		if len(msgs) != 3 || msgs[0].Text() != want || msgs[1].Text() != links+"- browser: "+link.Blurb("browser") || strings.Contains(msgs[2].Text(), "### 能力框") {
 			t.Fatalf("S0/S1/S2 boundaries: %+v", msgs)
 		}
-		if got := StablePrefix("persona body", "rules body", overlay, []string{"terminal"}); got != want+"\n\n"+msgs[1].Text() {
+		if got := StablePrefix("persona body", "rules body", overlay, []string{"browser"}); got != want+"\n\n"+msgs[1].Text() {
 			t.Fatalf("combined prefix order: %q", got)
 		}
 	}

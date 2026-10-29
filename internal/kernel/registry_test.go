@@ -104,7 +104,7 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 		seen[e.tool.Name()] = true
 	}
 	for name, source := range map[string]string{
-		"read_file":            "kernel",
+		"read_file":            "organ",
 		"send_message_to_user": "kernel",
 		"bot_update_profile":   "kernel",
 		"desktop_click":        "organ",

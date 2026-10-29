@@ -6,31 +6,31 @@ import (
 	"xbot/internal/tools"
 )
 
-// Memory is the grant for read-only recall. Memory is edited with file tools.
+// Memory is the native organ for read-only recall. Memory is edited with file tools.
 type Memory struct{}
 
 func (Memory) Name() string        { return NameMemory }
 func (Memory) Tools() []tools.Tool { return nil }
 
-// Persona is the grant for proposing a persona edit. The kernel supplies the tool.
+// Persona is the native organ for proposing a persona edit. The kernel supplies the tool.
 type Persona struct{}
 
 func (Persona) Name() string        { return NamePersona }
 func (Persona) Tools() []tools.Tool { return nil }
 
-// Context is the grant for compaction and transcript recall. The kernel supplies the tools.
+// Context is the native organ for compaction and transcript recall. The kernel supplies the tools.
 type Context struct{}
 
 func (Context) Name() string        { return NameContext }
 func (Context) Tools() []tools.Tool { return nil }
 
-// Agents is the grant for spawn and subagent control. The kernel supplies the tools.
+// Agents is the native organ for spawn and subagent control. The kernel supplies the tools.
 type Agents struct{}
 
 func (Agents) Name() string        { return NameAgents }
 func (Agents) Tools() []tools.Tool { return nil }
 
-// Skills is the grant for reading and writing the local owner skill library. Descriptions live in the stable prefix.
+// Skills is the native organ for reading and writing the local owner skill library. Descriptions live in the stable prefix.
 type Skills struct{}
 
 func (Skills) Name() string        { return NameSkills }
@@ -45,13 +45,13 @@ type Runner struct {
 func (Runner) Name() string        { return NameRunner }
 func (Runner) Tools() []tools.Tool { return nil }
 
-// Webhook is the grant for inbound HTTP triggers. The serve process posts events.
+// Webhook is the native organ for inbound HTTP triggers. The serve process posts events.
 type Webhook struct{}
 
 func (Webhook) Name() string        { return NameWebhook }
 func (Webhook) Tools() []tools.Tool { return nil }
 
-// Watch is the grant for debounced file-change events. Payloads are metadata only.
+// Watch is the native organ for debounced file-change events. Payloads are metadata only.
 type Watch struct{}
 
 func (Watch) Name() string        { return NameWatch }

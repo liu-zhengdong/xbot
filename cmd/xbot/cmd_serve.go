@@ -76,9 +76,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err := skill.Migrate(root); err != nil {
 		log.Printf("skill migration: %v", err)
 	}
-	if !b.Grants(link.NameTerminal) && pr != nil {
-		return nil, person.Person{}, fmt.Errorf("bot %q does not grant the terminal link", b.Name())
-	}
+
 	store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		return nil, person.Person{}, err
@@ -200,10 +198,6 @@ func attachConnectors(links []link.Link, backend vault.Backend) {
 }
 
 func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
-	sender := "timer"
-	if owners := b.Config().Owners; len(owners) > 0 {
-		sender = owners[0]
-	}
 	var out []link.Link
 	seen := map[string]bool{}
 	for _, name := range b.EffectiveLinks() {
@@ -211,41 +205,14 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			continue
 		}
 		seen[name] = true
+		if _, organ := link.LookupOrgan(name); organ {
+			continue
+		}
 		switch name {
-		case link.NameTerminal:
-			out = append(out, link.Terminal{})
-		case link.NameTools:
-			dir, shared, err := work.Open(b.Root, b.Name())
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, link.NewToolsLinkAt(dir, shared))
-		case link.NameTimer:
-			out = append(out, &link.Timer{Dir: b.RoutineDir(), Sender: sender})
-		case link.NameMemory:
-			out = append(out, link.Memory{})
-		case link.NamePersona:
-			out = append(out, link.Persona{})
-		case link.NameContext:
-			out = append(out, link.Context{})
-		case link.NameAgents:
-			out = append(out, link.Agents{})
-		case link.NameSkills:
-			out = append(out, link.Skills{})
-		case link.NameWebhook:
-			out = append(out, link.Webhook{})
-		case link.NameWatch:
-			out = append(out, link.Watch{})
-		case link.NameWeb:
-			out = append(out, link.Web{})
-		case link.NamePeers:
-			out = append(out, link.Peers{})
 		case link.NameTelegram:
 			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameTelegram))
 		case link.NameLark:
 			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameLark))
-		case link.NameCoding:
-			out = append(out, code.Open(bot.Dir(b.Root, b.Name()), b.InboxPath()))
 		case link.NameRunner:
 			url, token := runner.URL, runner.Token
 			if url == "" {
@@ -262,9 +229,6 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			if noteLegacyNodeGrant(b.Name()) {
 				fmt.Fprintf(os.Stderr, "xbot: bot %s: 节点功能已移除，忽略 node 授权\n", b.Name())
 			}
-		case link.NameDesktop:
-			// An organ: the kernel mounts it for every Bot, so an old grant
-			// adds nothing.
 		case link.NameBrowser:
 			out = append(out, browser.Open(b.Root))
 		default:
@@ -289,7 +253,10 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		servers[i].Secret = link.SecretLookup(b.SecretPath())
 		out = append(out, link.NewMCP(servers[i]))
 	}
-	return out, nil
+	if _, _, err := work.Open(b.Root, b.Name()); err != nil {
+		return nil, err
+	}
+	return kernel.MountOrgans(b, out), nil
 }
 
 // legacyNodeFiles names the retired node feature's files under root, in the

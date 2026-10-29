@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"xbot/internal/fsutil"
@@ -64,6 +65,7 @@ type Note struct {
 
 // Record is the local task store. OnTerminal runs after a task becomes done, failed, or cancelled.
 type Record struct {
+	mu         sync.Mutex
 	Dir        string
 	OnTerminal func(Task)
 	Now        func() time.Time
@@ -332,7 +334,22 @@ func (r *Record) write(task Task) error {
 }
 
 func (r *Record) lock(fn func() error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return fsutil.WithLock(filepath.Join(r.dir(), ".lock"), fn)
+}
+
+// Move serializes the directory rename with every record operation.
+func (r *Record) Move(dir string, rename func() error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return fsutil.WithLock(filepath.Join(r.dir(), ".lock"), func() error {
+		if err := rename(); err != nil {
+			return err
+		}
+		r.Dir = dir
+		return nil
+	})
 }
 
 func (r *Record) dir() string {

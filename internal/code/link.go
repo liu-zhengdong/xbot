@@ -14,9 +14,10 @@ import (
 	"xbot/internal/tools"
 )
 
-// Link is the coding-agent grant. Its tools edit local records and, when a
+// Link is the native coding-agent capability. Its tools edit local records and, when a
 // backend is configured, run the task. Its tools register behind the tools door.
 type Link struct {
+	pathMu      sync.RWMutex
 	rec         *Record
 	inbox       string
 	command     string
@@ -44,6 +45,18 @@ func (l *Link) Record() *Record {
 	return l.rec
 }
 
+// Move keeps live records, cards and completion events on the renamed bot.
+func (l *Link) Move(botDir, inboxPath string, transcript func(string) error, rename func() error) error {
+	l.pathMu.Lock()
+	defer l.pathMu.Unlock()
+	if err := l.rec.Move(filepath.Join(botDir, "code"), rename); err != nil {
+		return err
+	}
+	l.inbox = inboxPath
+	l.transcript = transcript
+	return nil
+}
+
 func (l *Link) Name() string { return link.NameCoding }
 
 func (l *Link) Tools() []tools.Tool {
@@ -61,7 +74,12 @@ func (l *Link) Tools() []tools.Tool {
 }
 
 func (l *Link) post(task Task) {
-	if l == nil || l.inbox == "" || task.ID == "" {
+	if l == nil || task.ID == "" {
+		return
+	}
+	l.pathMu.RLock()
+	defer l.pathMu.RUnlock()
+	if l.inbox == "" {
 		return
 	}
 	box, err := inbox.Open(l.inbox)

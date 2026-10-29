@@ -326,8 +326,8 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(toolNamesOf(p2.reqs[0].Tools), ","); got != "send_message_to_user,todo,tools" {
-		t.Fatalf("expected send_message_to_user, todo and the tools door, got %s", got)
+	if !hasDef(p2.reqs[0].Tools, "read_file") || !hasDef(p2.reqs[0].Tools, "web_fetch") {
+		t.Fatalf("native tools missing: %v", toolNamesOf(p2.reqs[0].Tools))
 	}
 }
 

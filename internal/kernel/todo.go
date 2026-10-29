@@ -19,6 +19,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/review"
+	"xbot/internal/tools"
 )
 
 const (
@@ -223,6 +224,10 @@ func (k *Kernel) todoToolsQuiet() bool {
 	if err != nil {
 		return false
 	}
+	return todoToolListQuiet(list)
+}
+
+func todoToolListQuiet(list []tools.Tool) bool {
 	saw := false
 	for _, t := range list {
 		if t == nil {

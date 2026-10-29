@@ -18,6 +18,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
+	"xbot/internal/work"
 )
 
 // linksTool lets the bot search, install, remove, and load links.
@@ -456,6 +457,13 @@ func (k *Kernel) syncGrantsLocked() {
 	k.Links = k.syncMCPLocked(kept)
 }
 
+// MountOrgans assembles the same always-on capabilities used by the registry.
+// The caller opens the workspace first and can pass already mounted external links.
+func MountOrgans(b *bot.Bot, links []link.Link) []link.Link {
+	k := &Kernel{Bot: b, Links: links}
+	return k.snapshotLinks()
+}
+
 // syncMCPLocked makes the mounted mcp links match the global and personal
 // mcp.json: a server the store added is mounted, one it removed is closed, and
 // one whose definition changed is replaced by a fresh instance. An unreadable
@@ -514,12 +522,7 @@ func sameMCPSpec(a, b link.MCPServer) bool {
 }
 
 func catalogRuntime(name string) bool {
-	switch name {
-	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameBrowser:
-		return true
-	default:
-		return false
-	}
+	return link.StoreGrant(name)
 }
 
 // storeSecrets writes link credentials. With a vault they go to the backend
@@ -575,6 +578,28 @@ func (k *Kernel) connector(dir, kind string) *link.Connector {
 func (k *Kernel) mountGrantLocked(name string) link.Link {
 	dir := bot.Dir(k.Bot.Root, k.Bot.Name())
 	switch name {
+	case link.NameTerminal:
+		return link.Terminal{}
+	case link.NameTools:
+		return link.NewToolsLinkAt(work.BotDir(k.Bot.Root, k.Bot.Name()), work.SharedDir(k.Bot.Root))
+	case link.NameTimer:
+		sender := "timer"
+		if owners := k.Bot.Config().Owners; len(owners) > 0 {
+			sender = owners[0]
+		}
+		return &link.Timer{Dir: k.Bot.RoutineDir(), Sender: sender}
+	case link.NameMemory:
+		return link.Memory{}
+	case link.NamePersona:
+		return link.Persona{}
+	case link.NameContext:
+		return link.Context{}
+	case link.NameAgents:
+		return link.Agents{}
+	case link.NameWeb:
+		return link.Web{}
+	case link.NamePeers:
+		return link.Peers{}
 	case link.NameWebhook:
 		return link.Webhook{}
 	case link.NameWatch:
@@ -820,15 +845,7 @@ func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
 }
 
 func lazyUntilLoad(name string) bool {
-	if strings.HasPrefix(name, "mcp:") {
-		return true
-	}
-	switch name {
-	case link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram, link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser:
-		return true
-	default:
-		return false
-	}
+	return strings.HasPrefix(name, "mcp:") || link.StoreGrant(name)
 }
 
 // silence unused import if tools is only used in toolsForLoaded

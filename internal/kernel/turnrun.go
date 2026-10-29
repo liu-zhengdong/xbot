@@ -366,6 +366,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		validate: r.validateReply,
 	}
 	fit := newTurnFit(len(r.assembled), r.seqAt)
+	fit.refreshEnvironment = !r.k.AllowFork
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
 		// Reserve the sampled replacement before fit, so a snapshot never bypasses H.
 		st, err := r.k.Bot.LoadState()

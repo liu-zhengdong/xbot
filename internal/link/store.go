@@ -34,6 +34,19 @@ const (
 // from boot; they are never store cards and never grants in apps.json. The
 // machine switch, not installation, keeps a dangerous one quiet.
 var organs = []App{
+	{ID: "terminal", Title: "terminal", Grant: "terminal", Kind: AppNative},
+	{ID: "tools", Title: "tools", Grant: "tools", Kind: AppNative},
+	{ID: "timer", Title: "timer", Grant: "timer", Kind: AppNative},
+	{ID: "memory", Title: "memory", Grant: "memory", Kind: AppNative},
+	{ID: "persona", Title: "persona", Grant: "persona", Kind: AppNative},
+	{ID: "context", Title: "context", Grant: "context", Kind: AppNative},
+	{ID: "agents", Title: "agents", Grant: "agents", Kind: AppNative},
+	{ID: "skills", Title: "skills", Grant: "skills", Kind: AppNative},
+	{ID: "webhook", Title: "webhook", Grant: "webhook", Kind: AppNative},
+	{ID: "watch", Title: "watch", Grant: "watch", Kind: AppNative},
+	{ID: "web", Title: "web", Grant: "web", Kind: AppNative},
+	{ID: "peers", Title: "peers", Grant: "peers", Kind: AppNative},
+	{ID: "coding-agent", Title: "coding-agent", Grant: "coding-agent", Kind: AppNative},
 	{ID: "desktop", Title: "电脑操作", Summary: "看屏幕、点击、输入，帮你操作电脑上的软件。你在用电脑时它会让开。", Kind: AppNative, Grant: NameDesktop},
 }
 

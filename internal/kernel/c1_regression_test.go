@@ -25,7 +25,7 @@ type c1Link struct {
 	more []tools.Tool
 }
 
-func (c1Link) Name() string          { return "c1-tools" }
+func (c1Link) Name() string          { return link.NameTools }
 func (l c1Link) Tools() []tools.Tool { return append([]tools.Tool{l.tool}, l.more...) }
 
 type c1Slow struct {

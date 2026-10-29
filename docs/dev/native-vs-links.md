@@ -1,6 +1,6 @@
 ---
 created: 2026-10-28
-updated: 2026-10-28
+updated: 2026-10-30
 status: 已实现（功能分支 feature/tool-registry-proxy）·待合入与日用
 来源: 政东 2026-10-28；划分刀口：「自己实现 → 原生工具；依赖外部 → Links」
 ---
@@ -38,7 +38,7 @@ status: 已实现（功能分支 feature/tool-registry-proxy）·待合入与日
 
 ## 现状（2026-10-28）
 
-- 电脑操作：`link.Organs()`，内核在每个 Bot 上开机就挂，不是商店卡，也不是目录 grant；旧的 `desktop` 授权无害但不再起作用。
+- `link.Organs()` 驱动 CLI 与内核的原生能力装配；memory、timer、persona、context、agents、skills、webhook、watch、web、peers、terminal、tools、desktop 和有本进程后端的 coding-agent 都常驻注册，旧原生 grant 被忽略。能力框和 catalog 不列这些器官。
 - 浏览器：`StoreApps()` 里的原生 grant 卡（`dev` 分类），安装前探测 Chrome。
 - fetch：`connectors.json` 里标 `retired`，`Connectors()` 不返回；旧 `mcp.json` 里的同名条目不挂载，也不出现在 `/api/apps` 和已连接计数。
 - 判断按 `Organs()` / `StoreApps()` / `StoreGrant()` / `retired` 做，没有 id 黑名单，也没有命令指纹。

@@ -124,22 +124,22 @@ var kernelTools = []struct {
 	// deferred, when set, says the row waits for links load (see toolEntry).
 	deferred func(k *Kernel) bool
 }{
-	{"memory", granted(link.NameMemory), func(k *Kernel) []tools.Tool {
+	{"memory", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k}}
 	}, nil},
-	{"bot_profile", granted(link.NamePersona), func(k *Kernel) []tools.Tool {
+	{"bot_profile", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{personaTool{k}, profileTool{k}}
 	}, nil},
-	{"routine", granted(link.NameTimer), func(k *Kernel) []tools.Tool {
+	{"routine", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k}}
 	}, nil},
 	// The owner sees only what the bot sends, so every bot can send.
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{sendMessageTool{k}} }, nil},
-	{"chat", granted(link.NameWeb), func(k *Kernel) []tools.Tool { return []tools.Tool{askTool{k}} }, nil},
-	{"context", granted(link.NameContext), func(k *Kernel) []tools.Tool {
+	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{askTool{k}} }, nil},
+	{"context", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{compactTool{k}, historyTool{k}, expandTool{k}, detailTool{k}}
 	}, nil},
-	{"peers", granted(link.NamePeers), func(k *Kernel) []tools.Tool {
+	{"peers", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{listBotsTool{k}, messageBotTool{k}, listGroupsTool{k}, groupHistoryTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}, botStatusTool{k}}
 	}, nil},
 	{"bots", func(k *Kernel, _ []link.Link) bool { return k.isPrimary() }, func(k *Kernel) []tools.Tool {
@@ -158,22 +158,18 @@ var kernelTools = []struct {
 	}, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k}}
 	}, nil},
-	{"agents", granted(link.NameAgents), func(k *Kernel) []tools.Tool {
+	{"agents", always, func(k *Kernel) []tools.Tool {
 		var start tools.Tool = spawnTool{k}
 		if k.Dispatch {
 			start = dispatchTool{k}
 		}
 		return []tools.Tool{start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k}}
 	}, nil},
-	// A skill listed in the prompt can be read without loading skills.
-	{"skills", func(k *Kernel, links []link.Link) bool { return namedLink(links, link.NameSkills) || k.listedSkill() }, func(k *Kernel) []tools.Tool {
+	// Skills are native tools, including when the library is empty.
+	{"skills", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{skillTool{k}}
-	}, func(k *Kernel) bool { return !k.isLoaded(link.NameSkills) && !k.listedSkill() }},
-	{"skills", granted(link.NameSkills), func(k *Kernel) []tools.Tool { return []tools.Tool{writeSkillTool{k}} }, func(k *Kernel) bool { return !k.isLoaded(link.NameSkills) }},
-}
-
-func granted(name string) func(*Kernel, []link.Link) bool {
-	return func(_ *Kernel, links []link.Link) bool { return namedLink(links, name) }
+	}, nil},
+	{"skills", always, func(k *Kernel) []tools.Tool { return []tools.Tool{writeSkillTool{k}} }, nil},
 }
 
 func always(*Kernel, []link.Link) bool { return true }

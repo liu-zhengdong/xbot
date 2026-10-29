@@ -10,7 +10,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/compact"
-	"xbot/internal/link"
 	"xbot/internal/manual"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -244,9 +243,6 @@ func (k *Kernel) skillLines() ([]string, error) {
 
 func (k *Kernel) skillInfos() ([]skill.Info, error) {
 	if k == nil || k.Bot == nil || k.SkillsDir == "" {
-		return nil, nil
-	}
-	if !k.Bot.Grants(link.NameSkills) && !k.hasLink(link.NameSkills) {
 		return nil, nil
 	}
 	disabled := map[string]bool{}

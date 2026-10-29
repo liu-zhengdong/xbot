@@ -27,7 +27,7 @@ func TestCreateLoadAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Config().Persona != "Be brief." || !loaded.Grants("tools") {
+	if loaded.Config().Persona != "Be brief." || loaded.Grants("tools") {
 		t.Fatalf("%+v", loaded.Config())
 	}
 	if err := loaded.Append(Entry{
