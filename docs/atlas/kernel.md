@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-29 @ worktree b8c7720 + cli-send-event (targeted tests)
+verified: 2026-10-29 @ c78bb646 + cli-origin-owner (targeted tests)
 ---
 # 内核：Link、Event、收件箱
 
@@ -95,4 +95,4 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 
 环境当前值、跨轮提前占位、空闲队列触发和换小窗口预检共用内核压缩路径，配置与边界见 [上下文与 transcript](context.md)。
 
-CLI 外部事件经本机会话认证的 `/api/bots/{name}/events` 写入 inbox，来源为 `cli`、发送者由调用方提供，始终按不可信数据处理；输入行标为内部，不作为主人消息显示。处理锁可用后才受理，回执随该次唤醒返回可见结果或安静。
+CLI 外部事件经本机会话认证的 `/api/bots/{name}/events` 写入 inbox，来源为 `cli`、发送者由调用方提供，始终按不可信数据处理；输入行标为主人可见的事件，界面显示来源行，不作为主人消息。处理锁可用后才受理，回执随该次唤醒返回可见结果或安静。此前已写成内部行的记录保留原标记。

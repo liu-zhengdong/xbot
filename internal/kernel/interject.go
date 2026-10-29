@@ -117,7 +117,7 @@ func (k *Kernel) receive(ev link.Event) (int, error) {
 	}
 	if seq == 0 {
 		origin := bot.OriginOwner
-		if ev.Source == link.NameApproval || ev.Source == "cli" {
+		if ev.Source == link.NameApproval {
 			origin = bot.OriginInternal
 		}
 		seq, err = k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images,

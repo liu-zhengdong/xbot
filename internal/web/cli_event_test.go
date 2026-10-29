@@ -84,13 +84,34 @@ func TestCLIEventWake(t *testing.T) {
 	for _, e := range entries {
 		if strings.Contains(e.Message.Text(), "external ping") {
 			found = true
-			if e.Origin != bot.OriginInternal || !strings.Contains(e.Message.Text(), `<untrusted_event source="cli" type="event" sender="u1"`) {
+			if e.Origin != bot.OriginOwner || !strings.Contains(e.Message.Text(), `<untrusted_event source="cli" type="event" sender="u1"`) {
 				t.Fatalf("entry %+v", e)
 			}
 		}
 	}
 	if !found {
 		t.Fatal("missing event")
+	}
+	var transcript struct {
+		Messages []struct {
+			Content  string `json:"content"`
+			Internal bool   `json:"internal"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(getAuth(t, ui.URL+"/api/bots/ada/transcript", cookie), &transcript); err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, row := range transcript.Messages {
+		if strings.Contains(row.Content, "external ping") {
+			found = true
+			if row.Internal || !strings.Contains(row.Content, `<untrusted_event source="cli" type="event" sender="u1"`) {
+				t.Fatalf("projected row %+v", row)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing projected event")
 	}
 	found = false
 	for _, m := range model.messages {
