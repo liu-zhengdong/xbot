@@ -102,6 +102,9 @@ type Kernel struct {
 	// outbound HTTP tool whose {{secret:NAME}} placeholders are filled at egress.
 	Vault   vault.Backend
 	Desktop func(ctx context.Context, title, body string) error
+	// Restart requests a graceful process restart after persisting its continuation.
+	// Nil means this kernel is not running in a restart-capable service.
+	Restart func(hint string) error
 	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
 	Exec exec.Executor
 	// Statuses, when set, supplies the bot status across every same-owner bot

@@ -2,8 +2,8 @@
 # xbot-dev: build the checkout and run it as a separate dev instance.
 #
 #   xbot-dev install            link this script to ~/.local/bin/xbot-dev
-#   xbot-dev start [--no-open]  build, start serve on 127.0.0.1:8788, open the page
-#   xbot-dev restart [--no-open]
+#   xbot-dev start [--web] [--no-open]  build and start the desktop app (or browser with --web)
+#   xbot-dev restart [--web] [--no-open]
 #   xbot-dev stop
 #   xbot-dev status
 #   xbot-dev logs [-f]
@@ -30,6 +30,7 @@ PIDFILE="$STATE/serve.pid"
 LOG="$STATE/serve.log"
 INFO="$STATE/build-info"
 URL="http://$ADDR/"
+WEB_MODE=0
 
 die() { echo "xbot-dev: $*" >&2; exit 1; }
 
@@ -112,7 +113,7 @@ load_env() {
 launch() {
 	if pid="$(running_pid)"; then
 		echo "xbot-dev: 已经在跑（pid ${pid}）$URL"
-		open_page
+		[ "$WEB_MODE" = 1 ] && open_page
 		return 0
 	fi
 	if lsof -nP -iTCP:"${ADDR##*:}" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -124,18 +125,23 @@ launch() {
 	mkdir -p "$STATE"
 	rm -f "$PIDFILE"
 	echo "---- $(date '+%Y-%m-%d %H:%M:%S') start $(sed -n 's/^commit=//p' "$INFO") ----" >>"$LOG"
-	# The token line is masked before it reaches the log.
 	XBOT_DEV_STATIC="$REPO/internal/web/static" XBOT_AUTO_UPGRADE=0 \
-		BIN="$BIN" DATA="$DATA" ADDR="$ADDR" PIDFILE="$PIDFILE" LOG="$LOG" \
+		BIN="$BIN" DATA="$DATA" ADDR="$ADDR" PIDFILE="$PIDFILE" LOG="$LOG" WEB_MODE="$WEB_MODE" \
 		nohup bash -c '
-			{ "$BIN" --root "$DATA" serve --http "$ADDR" --no-auto-upgrade </dev/null & echo $! >"$PIDFILE"; wait; } 2>&1 |
-				awk "/login token/ { sub(/: .*/, \": <已隐藏>\") } { print; fflush() }" >>"$LOG"
+			if [ "$WEB_MODE" = 1 ]; then
+				{ "$BIN" --root "$DATA" serve --http "$ADDR" --no-auto-upgrade </dev/null & echo $! >"$PIDFILE"; wait; } 2>&1 |
+					awk "/login token/ { sub(/: .*/, \": <已隐藏>\") } { print; fflush() }" >>"$LOG"
+			else
+				"$BIN" --root "$DATA" app --port "${ADDR##*:}" </dev/null >>"$LOG" 2>&1 &
+				echo $! >"$PIDFILE"
+				wait
+			fi
 		' >/dev/null 2>&1 &
 	local i
 	for i in $(seq 1 60); do
 		if curl -fsS -o /dev/null "$URL" 2>/dev/null; then
 			echo "xbot-dev: 已启动（pid $(cat "$PIDFILE")）$URL"
-			open_page
+			[ "$WEB_MODE" = 1 ] && open_page
 			return 0
 		fi
 		if [ -f "$PIDFILE" ] && ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -188,7 +194,13 @@ install_link() {
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
-for a in "$@"; do [ "$a" = --no-open ] && NO_OPEN=1; done
+for a in "$@"; do
+	case "$a" in
+	--no-open) NO_OPEN=1 ;;
+	--web) WEB_MODE=1 ;;
+	*) ;;
+	esac
+done
 case "$cmd" in
 install) install_link ;;
 start) launch ;;

@@ -61,8 +61,11 @@ const legacyNodeGrant = "node"
 // because log filters and docs search for that text.
 const loginTokenLine = "登录码（login token）: %s\n"
 
-func newServeKernel(root string, b *bot.Bot) (*kernel.Kernel, error) {
+func newServeKernel(root string, b *bot.Bot, restart ...func(string) error) (*kernel.Kernel, error) {
 	k, _, err := openKernel(root, b, serveSteps, nil, nil, false, runnerSpec{})
+	if err == nil && len(restart) > 0 {
+		k.Restart = restart[0]
+	}
 	return k, err
 }
 
@@ -483,6 +486,27 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	// installs and starts the new version. The desktop app restarts its
 	// window; serve re-execs this process.
 	updater := upgrade.NewUpdater(root)
+	restartCh := make(chan string, 1)
+	restart := func(reason string) {
+		select {
+		case restartCh <- reason:
+		default:
+		}
+	}
+	var restartRequestMu sync.Mutex
+	restartRequested := false
+	restartFromBot := func(hint string) error {
+		restartRequestMu.Lock()
+		defer restartRequestMu.Unlock()
+		if restartRequested {
+			return errors.New("restart already requested")
+		}
+		if err := requestBotRestart(root, hint, restart); err != nil {
+			return err
+		}
+		restartRequested = true
+		return nil
+	}
 	deliverTimers := cfg.DeliverTimers
 	if deliverTimers == nil {
 		deliverTimers = serve.DeliverTimers
@@ -506,7 +530,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		ForkTurns: false,
 		App:       cfg.App,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
-			return newServeKernel(root, b)
+			return newServeKernel(root, b, restartFromBot)
 		},
 		Updater: updater,
 	}
@@ -542,6 +566,9 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	if err := ensureSeed(root); err != nil {
 		return err
 	}
+	if err := deliverRestartContinuation(root); err != nil {
+		return fmt.Errorf("deliver restart continuation: %w", err)
+	}
 	// The serve command has no key-entry screen: fail before accepting work.
 	// The desktop app must still reach its existing first-run key setup screen.
 	if !cfg.App {
@@ -573,12 +600,13 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	_ = os.Unsetenv("XBOT_GATEWAY_TOKEN")
 	// restart asks the serve loop to re-exec. A graceful upgrade and SIGHUP both
 	// funnel through it so the listener stays up until the last moment.
-	restartCh := make(chan string, 1)
-	restart := func(reason string) {
-		select {
-		case restartCh <- reason:
-		default:
+	restartApp := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), drainCap)
+		defer cancel()
+		if !ui.Drain(ctx) {
+			fmt.Fprintln(os.Stderr, "xbot: restart: in-flight turns did not finish in time")
 		}
+		return appshell.Relaunch(exe, argv[1:], config.HeldEnv(env))
 	}
 	// Installing an update ends this way in both modes: the window reopens
 	// (appshell.Relaunch), or serve re-execs the new binary.
@@ -743,14 +771,14 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		select {
 		case reason := <-restartCh:
 			if cfg.App {
-				return nil
+				return restartApp()
 			}
 			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
 		default:
 		}
 		startEmitters(ctx, root, seen)
 		err := serve.Pass(ctx, root, clock.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
-			return newServeKernel(root, b)
+			return newServeKernel(root, b, restartFromBot)
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "xbot:", err)
@@ -760,7 +788,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 			return nil
 		case reason := <-restartCh:
 			if cfg.App {
-				return nil
+				return restartApp()
 			}
 			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
 		case <-time.After(cfg.Interval):

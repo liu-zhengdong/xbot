@@ -25,6 +25,7 @@ func TestTableHasEveryClass(t *testing.T) {
 		"code_show":           Readonly,
 		"recall":              Readonly,
 		"delete_bot":          Delete,
+		"restart_xbot":        Restart,
 		"secret_rm":           Delete,
 		"telegram_send":       ExternalSend,
 		"lark_send":           ExternalSend,
@@ -55,6 +56,12 @@ func TestTableHasEveryClass(t *testing.T) {
 		if got := ClassOf(name); got != class {
 			t.Fatalf("%s class %q want %q", name, got, class)
 		}
+	}
+}
+
+func TestRestartAlwaysNeedsOwnerConfirmation(t *testing.T) {
+	if !need(t, "restart_xbot", `{}`) {
+		t.Fatal("restart_xbot did not require owner confirmation")
 	}
 }
 

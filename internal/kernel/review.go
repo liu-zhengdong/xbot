@@ -161,6 +161,12 @@ func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (too
 // reviewCall returns whether the owner must confirm this concrete call.
 func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawMessage, summary string) (bool, string, error) {
 	name := tool.Name()
+	if review.ClassOf(name) == review.Restart {
+		turn := k.turnFor(ctx)
+		if turn == nil || !turn.turnTrusted {
+			return false, "", errors.New("restart requires a request from the user")
+		}
+	}
 	if name == "routine_create" || name == "routine_update" {
 		command, err := k.routinePrecheck(name, args)
 		if err != nil {
@@ -222,7 +228,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	// stay (an explicit machine setting, the vault, a turn from outside
 	// touching memory), and so does the links card, which is where the
 	// owner types a connector's keys.
-	if k.permissive() && name != "links" {
+	if k.permissive() && name != "links" && review.ClassOf(name) != review.Restart {
 		return false, summary, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {

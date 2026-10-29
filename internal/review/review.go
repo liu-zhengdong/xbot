@@ -33,6 +33,8 @@ const (
 	Shell Class = "shell"
 	// SelfEdit tools change the bot's own persona or profile; they ask.
 	SelfEdit Class = "self_edit"
+	// Restart interrupts and relaunches the local XBot process; it always asks.
+	Restart Class = "restart"
 )
 
 // Table is the one explicit policy table. Every tool any link or the kernel
@@ -69,7 +71,8 @@ var Table = map[string]Class{
 
 	// The tool door's search and describe only read the registry; a call
 	// through it is reviewed as the tool it names (ADR 0035).
-	"tools": Readonly,
+	"tools":        Readonly,
+	"restart_xbot": Restart,
 
 	// Routines and the owner notification. A routine is the bot's own
 	// schedule, so deleting one is not a data deletion. The kernel reviews a
@@ -244,7 +247,7 @@ func NeedsOwner(tool string, args json.RawMessage) bool {
 	switch ClassOf(name) {
 	case Readonly, Normal:
 		return false
-	case Delete:
+	case Delete, Restart:
 		return true
 	case ExternalSend:
 		// links is one tool with four actions. Only install and remove change

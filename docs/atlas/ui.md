@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-29 @ routine-runs-not-in-ui + 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary + task-record-fold + chat-header-float-compact + patrol-20261028-ui + provider-grid-transparent + websearch-decard + websearch-radio-silent + settings-flat-xfer
+verified: 2026-10-29 @ worktree 19b13842 + desktop-shell-restart-continuation (targeted tests; full suite incomplete)
 ---
 # 网页界面
 
@@ -195,3 +195,5 @@ Bot 之间的消息在用户对话里只是一行居中灰字事件（12.5px、1
 - 「值得留意」把预演命令也算进去 → 用户看到并没发生的删除或外发 → 预演选项（`--dry-run`、`-n` 等）一律不报；判断不了的命令宁可不报。
 
 模型换绑在工作锁内先经内核的新窗口预检与必要压缩，成功才保存绑定；上下文仍超新窗口时 HTTP 409 保留旧绑定，详见 [上下文](context.md)。
+
+开发入口 `scripts/xbot-dev start/restart` 默认后台启动当前构建的 `xbot app`，使用 `~/.xbot-dev` 和 8788；显式 `--web` 才启动 serve 并打开浏览器。PID 与日志仍在 `~/.xbot-build/dev/`。安装版 `/Applications/XBot.app` 默认用 `~/.xbot`，不替代 dev 实例；关桌面窗会结束 app 进程。

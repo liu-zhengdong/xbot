@@ -126,6 +126,25 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 	}
 }
 
+func TestRestartToolUsesKernelRegistryAndPassesHintToServiceHook(t *testing.T) {
+	k, _ := doorKernel(t, nil)
+	if _, ok := k.toolRegistry().find("restart_xbot"); ok {
+		t.Fatal("restart tool registered without a service restart hook")
+	}
+	var got string
+	k.Restart = func(hint string) error { got = hint; return nil }
+	e, ok := k.toolRegistry().find("restart_xbot")
+	if !ok || e.source != "kernel" || e.group != "system" {
+		t.Fatalf("restart tool registry entry = %+v, %v", e, ok)
+	}
+	if _, err := e.tool.Run(context.Background(), json.RawMessage(`{"hint":"继续检查设备同步"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got != "继续检查设备同步" {
+		t.Fatalf("restart hook hint = %q", got)
+	}
+}
+
 // tools[] is the door, send_message_to_user, the shells, files and
 // web_fetch. Everything else is registered but undeclared.
 func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {

@@ -2,11 +2,15 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-28 @ 9caaa4c4 + tool-registry-proxy
+verified: 2026-10-29 @ worktree 19b13842 + desktop-shell-restart-continuation (targeted tests; full suite incomplete)
 ---
 # 内核：Link、Event、收件箱
 
 > **30 秒版**：内核只有几个抽象：Link 是 Bot 和外界之间的任何通道，Event 是统一的事件结构，每个 Bot 一个收件箱和一个事件循环。新能力尽量用这几个抽象表达，不加新对象。
+
+## 重启续跑（2026-10-29）
+
+服务运行时，kernel 注册 `restart_xbot` 原生工具。它在统一权限表中归为 `Restart`，即使 permissions off 也必须用户确认。服务回调先将提示与正在工作的 Bot 名单原子写入数据根唯一待续跑文件，再请求重启：桌面 app 经 `appshell.Relaunch`，serve 经现有 `reexecService`。前台处理锁忙的 Bot、或含 running/queued 子代理记录的 Bot 都算正在工作。新进程把“XBot 已重启”与用户提示作为不可信 Inbox 消息投给全部名单 Bot；每个 Bot 的事件 ID 确定且 Inbox 去重，投递完成后删除待续跑文件。部分投递失败会保留文件供下次启动重试。此机制不改 transcript 旧行、不自动修改或合入代码。
 
 连接器的名称解析、渐进加载及错误回传见 [生态](ecosystem.md#连接器发现与加载诊断)；`links` 说明用中文指向摘要中的名称或 id，MCP 失败不标记本轮已加载。工具怎么登记、怎么经代理门披露见下文[工具注册与代理门](#工具注册与代理门)。
 

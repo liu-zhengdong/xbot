@@ -42,21 +42,22 @@ xbot upgrade --check
 
 长时间的活用 `spawn` 交给子代理。本机默认是 goroutine。`xbot runner` 是同一套执行器的 HTTP 服务，只听环回地址，要用 token。`xbot chat --runner URL --runner-token TOKEN` 把 Bot 接到它上面。
 
-默认 permissions off 时，`update_profile`（含头像）直接落盘；显式 `xbot permissions on` 后，执行工具前内核只看一张显式的权限表：确认只经过这一张表，工具自己从不确认。只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、以及 persona/profile 自改会问 `y/n`。机器开关管本机工具：`allow` 时 shell 只对删除和对外发送问，普通读写直接做；`ask` 每次都要点头；`off` 直接拒绝。写自己的 persona 或 profile 文件在 `allow` 下仍要确认；创建、修改、暂停、删除 routine，Bot 之间的 `message_bot`/`post_group`，写技能、编码任务都不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`send_message_to_user` 不需要确认，它是说给用户听的。
+默认 permissions off 时，`update_profile`（含头像）直接落盘；显式 `xbot permissions on` 后，执行工具前内核只看一张显式的权限表：确认只经过这一张表，工具自己从不确认。只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改，以及 `restart_xbot` 会问 `y/n`；重启即使 permissions off 也始终需要用户确认。机器开关管本机工具：`allow` 时 shell 只对删除和对外发送问，普通读写直接做；`ask` 每次都要点头；`off` 直接拒绝。写自己的 persona 或 profile 文件在 `allow` 下仍要确认；创建、修改、暂停、删除 routine，Bot 之间的 `message_bot`/`post_group`，写技能、编码任务都不问。`--yes` 跳过询问。`serve` 里没有人点头时，需要确认的工具会被拒绝。`send_message_to_user` 不需要确认，它是说给用户听的。
 
 `--root` 放在子命令前面，默认是 `~/.xbot`。
 
 开发时用 `scripts/xbot-dev` 一条命令把当前代码拉起来看（macOS）。`scripts/xbot-dev install` 把它链到 `~/.local/bin/xbot-dev`，之后：
 
 ```bash
-xbot-dev start      # 编译当前代码，后台起 serve（127.0.0.1:8788），打开浏览器，登录码复制到剪贴板
+xbot-dev start      # 编译当前代码，后台起桌面窗（127.0.0.1:8788）
+xbot-dev start --web # 显式使用 serve 并打开浏览器；登录码复制到剪贴板
 xbot-dev restart    # 拉了新提交或改了 Go 代码后，重新编译再起
 xbot-dev status     # 在不在跑、pid、跑的是哪个提交、工作区有没有未提交改动
 xbot-dev logs [-f]  # 看日志（登录码已遮掉）
 xbot-dev stop
 ```
 
-dev 实例的数据在 `~/.xbot-dev`，第一次 start 时从 `~/.xbot` 整份拷过去，之后不再覆盖，跟装好的 XBot 互不影响；要重来就删掉这个目录。自动升级关掉。它设了 `XBOT_DEV_STATIC`，网页文件每次请求都从 `internal/web/static` 现读，只改前端时刷新浏览器就行。不设这个变量时照旧用编译进去的那份。编译产物、pid 和日志在 `~/.xbot-build/dev/`。
+dev 实例的数据在 `~/.xbot-dev`，第一次 start 时从 `~/.xbot` 整份拷过去，之后不再覆盖，跟装好的 XBot 互不影响；要重来就删掉这个目录。`/Applications/XBot.app` 默认使用独立的 `~/.xbot`，不替代日常 dev 实例。自动升级关掉。它设了 `XBOT_DEV_STATIC`，网页文件每次请求都从 `internal/web/static` 现读，只改前端时刷新浏览器就行。不设这个变量时照旧用编译进去的那份。编译产物、pid 和日志在 `~/.xbot-build/dev/`。
 
 ## 版本与升级
 

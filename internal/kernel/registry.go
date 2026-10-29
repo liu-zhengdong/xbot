@@ -146,6 +146,9 @@ var kernelTools = []struct {
 		return []tools.Tool{createBotTool{k}, deleteBotTool{k}, pinBotTool{k}, setPrimaryTool{k}}
 	}, nil},
 	{"links", always, func(k *Kernel) []tools.Tool { return []tools.Tool{linksTool{k}, kernelManualTool{}} }, nil},
+	{"system", func(k *Kernel, _ []link.Link) bool { return k.Restart != nil }, func(k *Kernel) []tools.Tool {
+		return []tools.Tool{restartTool{k}}
+	}, nil},
 	{"todo", func(k *Kernel, _ []link.Link) bool { return k.todoToolOn() }, func(k *Kernel) []tools.Tool { return []tools.Tool{todoTool{k}} }, nil},
 	{"secrets", func(k *Kernel, links []link.Link) bool { return k.Vault != nil && namedLink(links, link.NameTools) }, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{&tools.HTTPRequest{Store: k.Vault}, &tools.SecretList{Store: k.Vault}}
