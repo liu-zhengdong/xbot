@@ -13,7 +13,7 @@ type restartTool struct{ k *Kernel }
 
 func (restartTool) Name() string { return "restart_xbot" }
 func (restartTool) Description() string {
-	return "Gracefully restart XBot after saving a short hint for all Bots currently working, so they can continue after startup. Use when the user wants a restart; this action always asks the user to confirm."
+	return "Gracefully restart the XBot process, affecting all Bots on this machine, after saving a short continuation hint for currently working Bots. Can be called unattended without user confirmation."
 }
 func (restartTool) Parameters() any {
 	return schema(map[string]any{"hint": map[string]any{"type": "string", "description": "Optional continuation hint for all working Bots"}}, nil)

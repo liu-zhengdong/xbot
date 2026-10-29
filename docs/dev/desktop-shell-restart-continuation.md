@@ -7,7 +7,7 @@
 ## 怎样算对
 
 - `xbot-dev start/restart` 默认启动 `xbot app`，复用 `~/.xbot-dev`、8788 和既有 dev pid/log；只有 `--web` 才启动 serve 并打开浏览器。
-- `restart_xbot` 走 kernel 工具注册表和统一权限表，始终需用户确认。确认后先写唯一待续跑记录，再请求 app Relaunch 或 serve reexec。
+- `restart_xbot` 走 kernel 工具注册表和统一权限表，无人值守也可调用、不弹确认卡。先写唯一待续跑记录，再请求 app Relaunch 或 serve reexec；重启影响同进程的所有 Bot。
 - 启动只消费一次待续跑记录，给前台锁忙、或含运行/排队子代理的每个 Bot 投递相同提示和“XBot 已重启”；空闲 Bot 不收到。
 - 进程退出仍由 app 窗口生命周期负责；服务模式沿用现有 drain。
 
@@ -19,7 +19,7 @@
 
 ## 冒烟用例
 
-`cmd/xbot/restart_continuation_test.go` 覆盖数据落盘后模拟新进程消费：前台忙、运行子代理、排队子代理都收到包含共同提示的事件，空闲 Bot 不收到。`internal/kernel/registry_test.go` 覆盖注册缝与提示参数传递；`internal/review/review_test.go` 覆盖始终确认。
+`cmd/xbot/restart_continuation_test.go` 覆盖数据落盘后模拟新进程消费：前台忙、运行子代理、排队子代理都收到包含共同提示的事件，空闲 Bot 不收到。`internal/kernel/restart_unattended_test.go` 覆盖非可信事件经工具审查到重启回调且不弹卡；`internal/kernel/registry_test.go` 覆盖注册缝与提示参数传递。
 
 ## 还没做的
 

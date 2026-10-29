@@ -1,5 +1,8 @@
 # XBot 里程碑与进度
 
+- 2026-10-29：`restart_xbot` 的 Restart 类审查对所有事件直接放行，无确认卡，复用原进程重启和续跑链；Timer、webhook 和两种权限卡状态的脚本化内核回归旧代码失败、新代码通过。尚未进行真实进程重启或用户日用验收；新增网络请求、轮询和动画均为 0，交互 p95 未测。
+- 重启专项与续跑专项各连跑三次、gofmt、vet、atlas audit（有既有告警）通过。全仓内核 `TestLongTurnStaysUnderTheCeiling` 失败，干净基线同样 40 步 12 次折叠；网页 httptest 连接未退出，约 90 秒中断，内核整包三次也未完成。
+
 - 2026-10-29：桌面壳为裸二进制启动设置内嵌品牌图标，macOS 用 Dock 图标，其他平台用窗口图标；允许调用方覆盖，失败写日志。默认 PNG 和覆盖选项的回归在旧代码失败、修复后 appshell 包三次通过。尚未做原生窗口目视或用户日用验收；新增网络请求、轮询和动画均为 0，交互 p95 和帧率未测。
 - 提交前 gofmt、vet、atlas audit 通过（audit 有既有告警）；全仓测试失败：kernel `TestLongTurnStaysUnderTheCeiling`、work `TestShellUsesBotDir` 失败，web `TestWebApprovalAllowAndDeny` 在 90 秒超时。此前里程碑已记录这些失败，本次未复测基线。
 

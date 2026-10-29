@@ -58,8 +58,8 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
 		t.Error("the links card was dropped")
 	}
-	if !needsCard(t, k, "restart_xbot", `{}`) {
-		t.Error("restart did not ask with the cards off")
+	if needsCard(t, k, "restart_xbot", `{}`) {
+		t.Error("restart asked with the cards off")
 	}
 	for _, args := range []string{`{"avatar_seed":"XBot#3"}`, `{"description":"笔记助手"}`, `{"description":"笔记助手","avatar_seed":"XBot#3"}`} {
 		if needsCard(t, k, "bot_update_profile", args) {
@@ -87,16 +87,16 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	}
 }
 
-func TestRestartRequiresTrustedUserTurnEvenWhenCardsAreOff(t *testing.T) {
+func TestRestartDoesNotRequireTrustedUserTurnOrConfirmation(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
-	k.ensureTurn().turnTrusted = false
-	need, _, err := reviewedTool{Tool: namedTool{"restart_xbot"}, k: k}.ConfirmContext(context.Background(), json.RawMessage(`{}`))
-	if err == nil || need {
-		t.Fatalf("untrusted restart: confirmation=%v err=%v", need, err)
-	}
-	k.curTurn().turnTrusted = true
-	if !needsCard(t, k, "restart_xbot", `{}`) {
-		t.Fatal("trusted restart did not require confirmation with permissions off")
+	for _, trusted := range []bool{false, true} {
+		for _, permissive := range []bool{false, true} {
+			k.ensureTurn().turnTrusted = trusted
+			k.Permissive = permissive
+			if needsCard(t, k, "restart_xbot", `{}`) {
+				t.Fatalf("restart asked: trusted=%v permissive=%v", trusted, permissive)
+			}
+		}
 	}
 }
 

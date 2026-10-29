@@ -33,7 +33,8 @@ const (
 	Shell Class = "shell"
 	// SelfEdit tools change the bot's own persona or profile; they ask.
 	SelfEdit Class = "self_edit"
-	// Restart interrupts and relaunches the local XBot process; it always asks.
+	// Restart interrupts and relaunches the local XBot process. Kernel review
+	// handles this class directly before consulting NeedsOwner.
 	Restart Class = "restart"
 )
 

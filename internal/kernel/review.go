@@ -162,10 +162,7 @@ func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (too
 func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawMessage, summary string) (bool, string, error) {
 	name := tool.Name()
 	if review.ClassOf(name) == review.Restart {
-		turn := k.turnFor(ctx)
-		if turn == nil || !turn.turnTrusted {
-			return false, "", errors.New("restart requires a request from the user")
-		}
+		return false, summary, nil
 	}
 	if name == "routine_create" || name == "routine_update" {
 		command, err := k.routinePrecheck(name, args)
@@ -228,7 +225,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	// stay (an explicit machine setting, the vault, a turn from outside
 	// touching memory), and so does the links card, which is where the
 	// owner types a connector's keys.
-	if k.permissive() && name != "links" && review.ClassOf(name) != review.Restart {
+	if k.permissive() && name != "links" {
 		return false, summary, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {
