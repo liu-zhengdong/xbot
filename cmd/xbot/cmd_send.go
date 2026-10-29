@@ -20,13 +20,18 @@ import (
 func cmdSend(args []string, in io.Reader, out io.Writer) error {
 	addr, timeout, explicit := "127.0.0.1:8788", 2*time.Minute, ""
 	whoami := ""
+	noWait := false
 	var positional []string
 	textSet := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--help" || a == "-h" {
-			_, err := fmt.Fprintln(out, "Usage: xbot [--root DIR] send --whoami ID [--http ADDR] [--timeout DURATION] <bot> <text...|-> [--text TEXT]\nDefault: --http 127.0.0.1:8788, --timeout 2m. With no text or with -, read stdin.")
+			_, err := fmt.Fprintln(out, "Usage: xbot [--root DIR] send --whoami ID [--http ADDR] [--timeout DURATION] [--no-wait] <bot> <text...|-> [--text TEXT]\nDefault: --http 127.0.0.1:8788, --timeout 2m. With no text or with -, read stdin.\n--no-wait: return as soon as the event is accepted, without waiting for the bot's reply.")
 			return err
+		}
+		if a == "--no-wait" {
+			noWait = true
+			continue
 		}
 		if a == "--http" || a == "--timeout" || a == "--text" || a == "--whoami" {
 			if i+1 == len(args) {
@@ -52,7 +57,7 @@ func cmdSend(args []string, in io.Reader, out io.Writer) error {
 		}
 	}
 	if whoami == "" || len(whoami) > 64 || len(positional) < 1 || (textSet && len(positional) != 1) {
-		return errors.New("usage: xbot send --whoami ID [--http ADDR] [--timeout DURATION] <bot> <text...|-> [--text TEXT]")
+		return errors.New("usage: xbot send --whoami ID [--http ADDR] [--timeout DURATION] [--no-wait] <bot> <text...|-> [--text TEXT]")
 	}
 	var message string
 	switch {
@@ -103,7 +108,13 @@ func cmdSend(args []string, in io.Reader, out io.Writer) error {
 		return errors.New("local owner session unavailable")
 	}
 	payload, _ := json.Marshal(map[string]string{"text": message, "sender": whoami})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String()+"/api/bots/"+url.PathEscape(positional[0])+"/events", bytes.NewReader(payload))
+	eventsURL := base.String() + "/api/bots/" + url.PathEscape(positional[0]) + "/events"
+	if noWait {
+		// Queue mode: the server answers as soon as the event is in the inbox,
+		// so a busy bot does not turn a notification into a timeout.
+		eventsURL += "?queue=1"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, eventsURL, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -129,6 +140,10 @@ func cmdSend(args []string, in io.Reader, out io.Writer) error {
 				accepted = true
 				if _, err := fmt.Fprintln(out, "accepted"); err != nil {
 					return err
+				}
+				if noWait {
+					// The event is in the inbox; the bot answers on its own time.
+					return nil
 				}
 			}
 			if event == "done" || event == "error" {

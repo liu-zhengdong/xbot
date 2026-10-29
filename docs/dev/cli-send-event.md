@@ -10,6 +10,12 @@
 
 对话里的 CLI 来源行复用 Bot 往来行，点击展开原文；浏览器行为回归见 `internal/web/source_event_browser_test.go`。
 
+## 只通知不等回执（`--no-wait`）
+
+只想把消息交过去、不关心回答的调用方（定时汇报、别的 Bot 转发）加 `--no-wait`：CLI 打 `POST /api/bots/<bot>/events?queue=1`，服务端把事件放进 inbox 就回 `accepted {queued:true}` 并关流，再叫醒 Bot 自己去答。
+
+原因：默认那条路要等处理锁空出来，Bot 正忙时调用方会一直等到超时，看起来像投递失败，其实事件根本没进箱。queue 模式下受理即返回，事件不会丢，回答留在主人聊天里。实现见 `queueCLIEvent`。
+
 ## 还没做的
 
 - 真入口端到端、主人日用验收；外置健康循环仍在候选。

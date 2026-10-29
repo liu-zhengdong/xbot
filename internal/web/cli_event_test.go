@@ -158,3 +158,42 @@ func TestCLIEventVisibleNotification(t *testing.T) {
 		t.Fatalf("response %s", raw)
 	}
 }
+
+// A queue-mode post must come back before the bot answers, and the event must
+// still land in the inbox so a later drain can answer it.
+func TestCLIEventQueue(t *testing.T) {
+	s, ui, cookie, _ := questionServer(t, time.Second)
+	model := &cliEventModel{}
+	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+		box, err := inbox.Open(b.InboxPath())
+		if err != nil {
+			return nil, err
+		}
+		return &kernel.Kernel{Bot: b, Inbox: box, Provider: model, MaxSteps: 4}, nil
+	}
+	req, _ := http.NewRequest("POST", ui.URL+"/api/bots/ada/events?queue=1", strings.NewReader(`{"sender":"codex","text":"queued ping"}`))
+	req.AddCookie(cookie)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !strings.Contains(string(raw), `"queued":"true"`) || strings.Contains(string(raw), "event: done") {
+		t.Fatalf("status %d body %s", res.StatusCode, raw)
+	}
+	// The wake runs in the background: wait for it to pick the event up, so the
+	// test does not race the drain (and the temp dir cleanup).
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		for _, m := range model.messages {
+			if strings.Contains(m.Text(), "queued ping") {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("queued event never reached the model")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

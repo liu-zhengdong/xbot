@@ -43,6 +43,27 @@ func TestSendEventHTTP(t *testing.T) {
 	}
 }
 
+func TestSendEventNoWait(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/session":
+			http.SetCookie(w, &http.Cookie{Name: "xbot_session", Value: "test", Path: "/"})
+			fmt.Fprint(w, `{"authed":true}`)
+		case "/api/bots/ada/events":
+			fmt.Fprint(w, "event: accepted\ndata: {\"id\":\"e1\"}\n\n")
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	var out bytes.Buffer
+	err := cmdSend([]string{"--http", srv.URL, "--whoami", "codex", "--no-wait", "ada", "ping"}, strings.NewReader(""), &out)
+	if err != nil || out.String() != "accepted\n" {
+		t.Fatalf("no-wait out %q err %v", out.String(), err)
+	}
+}
+
 func TestSendProcess(t *testing.T) {
 	if os.Getenv("XBOT_SEND_TEST_PROCESS") == "1" {
 		for i, arg := range os.Args {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
@@ -27,6 +28,10 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.Sender) == "" || len(in.Sender) > 64 || strings.TrimSpace(in.Text) == "" || len(in.Text) > 16<<10 {
 		writeErr(w, http.StatusBadRequest, "bad event")
+		return
+	}
+	if r.URL.Query().Get("queue") == "1" {
+		s.queueCLIEvent(w, b, in.Sender, in.Text)
 		return
 	}
 	if !s.BeginTurn() {
@@ -99,4 +104,33 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 		visible += strings.Join(findings, "\n\n")
 	}
 	rs.send("done", doneBody{Text: visible})
+}
+
+// queueCLIEvent posts the event and returns at once, without waiting for the
+// bot to answer. A busy bot would otherwise hold the caller until its running
+// turn ends, which looks like a failed delivery to a caller that only wants to
+// hand over a notification. serve (or wakeBot here) drains the inbox later.
+func (s *Server) queueCLIEvent(w http.ResponseWriter, b *bot.Bot, sender, text string) {
+	if !s.BeginTurn() {
+		writeErr(w, http.StatusServiceUnavailable, "restarting")
+		return
+	}
+	defer s.EndTurn()
+	if _, _, err := s.kernel(b); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ev := link.NewEvent("cli", "event", text, strings.TrimSpace(sender), time.Now())
+	if err = box.Post(ev); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	startStream(w)
+	sendEvent(w, "accepted", map[string]string{"id": ev.ID, "queued": "true"})
+	s.wakeBot(b)
 }
