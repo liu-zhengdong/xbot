@@ -3118,6 +3118,7 @@
       }
       if (m.role === "user") {
         const parsed = unwrap(m.content || "");
+        if (parsed.untrusted && parsed.source === "shell") return;
         if (parsed.untrusted && parsed.source === "subagent" && parsed.type === "fork_end") return;
         if (parsed.untrusted && (parsed.source.startsWith("bot:") || parsed.source.startsWith("group:"))) {
           any = true;

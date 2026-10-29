@@ -1,5 +1,10 @@
 # XBot 里程碑与进度
 
+## 2026-10-29 隐藏聊天中的后台工具完工（功能分支）
+
+- 聊天 transcript 投影跳过 `shell` 来源完工事件；事件仍保留。无头 Chrome 回归旧代码失败、修复后通过，覆盖主人消息、工具送达消息和 webhook 对照；尚未用户日用验收。新增请求、轮询、动画均为 0；帧率与交互 p95 未测。
+- 定向测试连续三次、gofmt、vet、atlas audit（有既有告警）通过。全仓测试复现内核 `TestLongTurnStaysUnderTheCeiling` 失败，另有 `internal/work` 的 `TestShellUsesBotDir` 缺 description 失败；网页测试 HTTP 连接未结束，约 70 秒中断，网页包三次及全仓均未完成。
+
 ## 2026-10-29 CLI 消息通道（功能分支）
 
 - `xbot message` 经本机 owner 会话和现有 messages SSE 给运行中的 Bot 发消息；脚本化 HTTP 测试覆盖命令分发、正文与失败路径。未合 main，尚待真实入口及主人日用验收。真实二进制对假 HTTP 服务单次 632 ms；新增每次调用 2 次本机 HTTP 请求，交互 p95 尚未测。命令包三次、go vet、gofmt 通过；全仓测试遇既有内核 TestLongTurnStaysUnderTheCeiling 失败，网页包未结束时中止，全仓未完成。

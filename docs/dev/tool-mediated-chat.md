@@ -10,6 +10,8 @@
 - `TestGroupHistoryMembersReadAndFilter`：成员可读、非成员拒、默认 20/封顶 50、keyword+sender、before_id、正文一行加引号。
 - e2e `HELLO_WEB` 三条：网页流 `done.text` 是送达的消息。
 
+回归：`TestShellCompletionStaysOutOfChatBrowser` 用假 transcript 检查 shell 来源完工不出现在主列，主人和送达消息及 webhook 仍可见。
+
 ## 还没做的
 
 - 用户日用：真模型下是否稳定先调 `send_message_to_user`，没调时新轮是空白（只有忙态）；需观察后决定要不要内核兜底提醒。
