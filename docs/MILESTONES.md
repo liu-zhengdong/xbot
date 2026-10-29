@@ -1,5 +1,9 @@
 # XBot 里程碑与进度
 
+## 2026-10-29 CLI 消息通道（功能分支）
+
+- `xbot message` 经本机 owner 会话和现有 messages SSE 给运行中的 Bot 发消息；脚本化 HTTP 测试覆盖命令分发、正文与失败路径。未合 main，尚待真实入口及主人日用验收。真实二进制对假 HTTP 服务单次 632 ms；新增每次调用 2 次本机 HTTP 请求，交互 p95 尚未测。命令包三次、go vet、gofmt 通过；全仓测试遇既有内核 TestLongTurnStaysUnderTheCeiling 失败，网页包未结束时中止，全仓未完成。
+
 ## 2026-10-28 统一工具注册中心与代理门（feature/tool-registry-proxy）
 
 - 一张工具注册表（`internal/kernel/registry.go`，`kernelTools` 声明表替掉 `namedLink` 拼装）。主线 `tools[]` 只声明代理门 `tools`、send、todo、壳、文件和 `web_fetch`，其余经 `tools` 的 search/describe/call 调用（抄 Pi 的 mcp 代理，不抄 deferred）。`expand_tool_group` 删除。环境流加 `tool_index`。见 [ADR 0035](adr/0035-unified-tool-registry.md)。

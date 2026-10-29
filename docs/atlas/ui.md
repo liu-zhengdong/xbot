@@ -2,11 +2,13 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-29 @ routine-runs-not-in-ui + 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary + task-record-fold + chat-header-float-compact + patrol-20261028-ui + provider-grid-transparent + websearch-decard + websearch-radio-silent + settings-flat-xfer
+verified: 2026-10-29 @ cli-message-bot + routine-runs-not-in-ui + 62cf2f22 + bot-inbox-routine-strip + a94b174d + connectors-secret-modal + process-bar-busy-one-row + chat-header-float + duty-persona-split + model-bind-cap-icons + xai-oauth-subscription + sidebar-settings-only-menu + device-optional-account + about-version-copy + xai-key-separate + persona-segment-all + device-page-sections + connectors-row-density + websearch-title-info + skill-remove + persona-seg-toolbar-row + skill-remove-count + bot-inbox-tab + bot-inbox-source-summary + task-record-fold + chat-header-float-compact + patrol-20261028-ui + provider-grid-transparent + websearch-decard + websearch-radio-silent + settings-flat-xfer
 ---
 # 网页界面
 
 > **30 秒版**：网页和桌面版用同一套界面：左边侧栏列出 Bot，中间是对话，右边是信息面板。对话里只有用户的话和 Bot 用 `send_message_to_user` 说的话，工具调用、子代理任务和上下文用量都放在面板里。整体是黑白灰，靠底色深浅分层、不画线，颜色只留给错误、在线和子代理类型。以后改界面要守的规矩在 [guard/界面.md](../guard/界面.md)。
+
+命令行 `xbot [--root DIR] message <bot> <text...>` 向已运行的本机 serve 发送主人消息：`--http` 默认 `127.0.0.1:8788`，`--timeout` 默认 2 分钟，`--text` 或 `-`/省略正文可提供文本或读 stdin。先通过回环 `/api/session` 获取会话，再调用现有 messages SSE；只输出 `done.text`，没有可见回复、转交、错误或超时返回非零。
 
 Bot 信息面板的收件箱位于上下文右侧：只读展示该 Bot 的入站叫醒事件，按时间新到旧，可展开摘要；待处理数量弱显，窄面板标签横滚。数据来自 `GET /api/bots/{name}/inbox`，Webhook 和文件监听来源按前缀识别，摘要展示事件正文而非外壳，routine 只取标签内正文；与聊天和全局通知分开。
 
