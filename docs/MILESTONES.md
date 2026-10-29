@@ -1,5 +1,8 @@
 # XBot 里程碑与进度
 
+- 2026-10-30：E2-final 非 maskable 图标的面板外画布改为透明，覆盖 web PNG、SVG 内嵌 PNG、appshell、ICNS 和 ICO 全部尺寸；maskable 字节不变。以既有 1024px 图像抠图，保留面板内 RGB；透明度回归旧资源失败、新资源连续三次通过，appshell 整包三次通过，Chrome 浅深色资源截图与 alpha 检查通过。尚未合入、原生 Dock/安装包和用户日用未验收；新增请求、轮询、动画均为 0，512px PNG 增加 3,885 字节，交互 p95/帧率未测。
+- gofmt、vet、diff 检查通过，atlas audit 有既有告警；全仓测试复现内核 `TestLongTurnStaysUnderTheCeiling`（40 步 19 次折叠）、work `TestShellUsesBotDir` 缺 description，以及 web `TestWebApprovalAllowAndDeny` 在 90 秒超时；网页整包三次也被同一测试的 90 秒超时阻断。
+
 - 2026-10-30：原生能力统一由 `link.Organs()` 驱动 CLI 与内核装配，旧原生 grant 忽略；真实 Link 仍可装卸。编码任务随 Bot 改名迁移记录、卡片和完成事件；折叠后的请求去掉被新快照取代的旧工具索引，保留 transcript 与其他环境字段。改动包连续三次通过（内核跳过既有失败的长轮测试，网页只跑相关 API），编码任务改名通过 race 检查；真实入口和用户日用尚未验收。长轮折叠测试既有基线为 40 步 12 次，本次为 19 次，均超过测试门槛；交互 p95 未测。全仓检查另遇已知网页包超时、`TestShellUsesBotDir` 失败，以及 OAuth 测试报告本机 56121 端口被占用。
 
 - 2026-10-29：`restart_xbot` 的 Restart 类审查对所有事件直接放行，无确认卡，复用原进程重启和续跑链；Timer、webhook 和两种权限卡状态的脚本化内核回归旧代码失败、新代码通过。尚未进行真实进程重启或用户日用验收；新增网络请求、轮询和动画均为 0，交互 p95 未测。

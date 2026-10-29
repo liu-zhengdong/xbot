@@ -2,6 +2,9 @@ package web
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/xml"
+	"image/png"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -32,6 +35,41 @@ func TestBrandMark(t *testing.T) {
 		if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), typ) || len(want) == 0 || !bytes.Equal(got, want) {
 			t.Errorf("%s: %d %q (%d bytes)", path, res.StatusCode, res.Header.Get("Content-Type"), len(got))
 		}
+		if typ == "image/png" {
+			img, err := png.Decode(bytes.NewReader(got))
+			if err != nil {
+				t.Fatalf("%s: %v", path, err)
+			}
+			w, h := img.Bounds().Dx(), img.Bounds().Dy()
+			wantAlpha := uint32(0)
+			if path == "/icon-maskable-512.png" {
+				wantAlpha = 0xffff
+			}
+			for _, p := range [][2]int{{0, 0}, {w - 1, 0}, {0, h - 1}, {w - 1, h - 1}, {w / 2, 0}} {
+				if _, _, _, a := img.At(p[0], p[1]).RGBA(); a != wantAlpha {
+					t.Errorf("%s: canvas alpha at %v = %d, want %d", path, p, a, wantAlpha)
+				}
+			}
+			for _, p := range [][2]int{{w / 2, h / 4}, {w / 2, h / 2}, {w / 2, 3 * h / 4}} {
+				if _, _, _, a := img.At(p[0], p[1]).RGBA(); a != 0xffff {
+					t.Errorf("%s: panel must remain opaque at %v", path, p)
+				}
+			}
+		}
+	}
+	var favicon struct {
+		Image struct {
+			Href string `xml:"href,attr"`
+		} `xml:"image"`
+	}
+	svg, _ := staticFS.ReadFile("static/favicon.svg")
+	if err := xml.Unmarshal(svg, &favicon); err != nil {
+		t.Fatal(err)
+	}
+	embedded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(favicon.Image.Href, "data:image/png;base64,"))
+	faviconPNG, _ := staticFS.ReadFile("static/favicon-32.png")
+	if err != nil || !bytes.Equal(embedded, faviconPNG) {
+		t.Fatal("SVG favicon must embed the same transparent PNG as favicon-32.png")
 	}
 	read := func(name string) string {
 		b, err := staticFS.ReadFile("static/" + name)

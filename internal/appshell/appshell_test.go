@@ -3,6 +3,7 @@ package appshell
 import (
 	"bytes"
 	"image/png"
+	"os"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -24,6 +25,15 @@ func TestDefaultIcon(t *testing.T) {
 	img, err := png.Decode(bytes.NewReader(icon))
 	if err != nil || img.Bounds().Dx() != 512 || img.Bounds().Dy() != 512 {
 		t.Fatalf("default icon is not a 512px PNG: %v", err)
+	}
+	webIcon, err := os.ReadFile("../web/static/icon-512.png")
+	if err != nil || !bytes.Equal(icon, webIcon) {
+		t.Fatal("default icon must match the web icon")
+	}
+	for _, p := range [][2]int{{0, 0}, {511, 0}, {0, 511}, {511, 511}} {
+		if _, _, _, a := img.At(p[0], p[1]).RGBA(); a != 0 {
+			t.Errorf("default icon canvas alpha at %v = %d, want 0", p, a)
+		}
 	}
 	custom := []byte("custom")
 	if got := defaults(Options{Icon: custom}).Icon; !bytes.Equal(got, custom) {
