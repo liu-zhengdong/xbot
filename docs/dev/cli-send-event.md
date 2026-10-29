@@ -8,6 +8,8 @@
 
 唯一装配缝：CLI → owner 鉴权的 Event HTTP 入口 → inbox → 已有 kernel。处理锁空出后才受理，以免忙时事件被吸收而产生无法归属的回执。测试见 `cmd/xbot/cmd_send_test.go` 和 `internal/web/cli_event_test.go`。
 
+对话里的 CLI 来源行复用 Bot 往来行，点击展开原文；浏览器行为回归见 `internal/web/source_event_browser_test.go`。
+
 ## 还没做的
 
 - 真入口端到端、主人日用验收；外置健康循环仍在候选。

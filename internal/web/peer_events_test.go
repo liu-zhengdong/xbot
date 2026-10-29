@@ -26,12 +26,14 @@ func TestPeerEventGrouping(t *testing.T) {
 	}
 	script := `
 class N {
-  constructor(cls, text) { this.className = cls || ""; this.kids = []; this.text = text || ""; this.dataset = {}; this.parent = null; }
+  constructor(cls, text) { this.className = cls || ""; this.kids = []; this.text = text || ""; this.dataset = {}; this.parent = null; this.classList = { add() {} }; }
   get textContent() { return this.text + this.kids.map((k) => k.textContent).join(""); }
+  get firstElementChild() { return this.kids[0] || null; }
   get lastElementChild() { return this.kids[this.kids.length - 1] || null; }
   get previousElementSibling() { const p = this.parent.kids; return p[p.indexOf(this) - 1] || null; }
   append(...ns) { for (const n of ns) { n.parent = this; this.kids.push(n); } }
   replaceChildren(...ns) { this.kids = []; this.append(...ns); }
+  setAttribute() {}
   addEventListener(type, fn) { this.click = fn; }
 }
 const el = (tag, cls, text) => new N(cls, text);
@@ -39,6 +41,7 @@ const avatar = (name) => new N("avatar", "[" + name + "]");
 const paintOf = () => ({});
 const peerAvatar = (who) => avatar(who.bot);
 const setTip = () => {};
+const openRoutines = new Set();
 const niceName = (s) => String(s || "").trim();
 const opened = [];
 const openPeer = (a, b, at) => opened.push([a, b, at]);
@@ -59,7 +62,7 @@ check(lines(), ["和[writer]writer · MacBook往来了 6 条消息"]);
 addPeerEvent(inner, "bounce", "writer@MacBook", "t7");
 check(lines(), ["和[writer]writer · MacBook往来了 6 条消息 · 1 条没送到"]);
 // The dot stands alone, with the row's gap on both sides (beta.3 review).
-check(inner.kids[0].kids.slice(3).map((k) => k.text), ["往来了 6 条消息", " · ", "1 条没送到"]);
+check(inner.kids[0].kids[0].kids.slice(3).map((k) => k.text), ["往来了 6 条消息", " · ", "1 条没送到"]);
 // Another peer gets its own line, and the run with writer goes on past it.
 addPeerEvent(inner, "received", "dev", "t8");
 // The transcript's display label for the device wins over the raw name.
@@ -72,7 +75,7 @@ inner.append(new N("msg user", "hi"));
 addPeerEvent(inner, "received", "writer@MacBook", "t10");
 check(lines().slice(2), ["收到[writer]writer · MacBook的消息"]);
 // Clicking opens the exchange at the run's first event.
-inner.kids[0].click();
+inner.kids[0].kids[0].click();
 check(opened, [["diary", "writer@MacBook", "t1"]]);
 check(splitPeer("writer"), { bot: "writer", device: "" });
 check(bounceTarget({ source: "remote", text: "message to writer@MacBook was not delivered: x" }), "writer@MacBook");

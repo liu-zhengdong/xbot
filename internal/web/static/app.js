@@ -1027,7 +1027,7 @@
       img.src = paint.url;
       img.addEventListener("error", () => drawGlyph(av, name || seed));
       av.append(img);
-    } else if (seed === "glyph") {
+    } else if (seed === "glyph" && !paint.portrait) {
       drawGlyph(av, name || seed);
     } else {
       const src = portraitURL(seed, size === "xs");
@@ -2625,15 +2625,6 @@
     return cut < 0 ? { bot: raw, device: "" } : { bot: raw.slice(0, cut), device: raw.slice(cut + 1) };
   }
 
-  // Bot-to-bot traffic in the owner's chat: one centered gray line per run of
-  // events with the same peer, never the other bot's text. A run ends at the
-  // owner's message or a bot reply to the owner (any other row), so only the
-  // trailing event lines can take another event.
-  function peerMergeIndex(tail, peer) {
-    for (let i = tail.length - 1; i >= 0; i--) if (tail[i] === peer) return i;
-    return -1;
-  }
-
   // The words around the peer's name for a run: sent, received, and bounced
   // counts. One message keeps its own wording; more say how many.
   function peerEventWords(g) {
@@ -2645,43 +2636,73 @@
     return { lead: "发给", tail: "的消息没送到", lost: "" };
   }
 
-  function paintPeerEvent(row) {
-    const g = row._peer;
-    const who = splitPeer(g.peer);
-    const words = peerEventWords(g);
-    const device = g.device || who.device;
-    const name = el("span", "peer-event-name", niceName(who.bot) + (device ? " · " + device : ""));
-    row.replaceChildren(el("span", "", words.lead), peerAvatar({ bot: who.bot, device: device }, "xs"), name);
-    if (words.tail) row.append(el("span", "", words.tail));
-    // The dot is its own flex item, so the row's gap puts an even space on both
-    // sides; a space typed after it came out too thin next to the CJK text.
-    if (words.lost) row.append(el("span", "peer-event-dot", " · "), el("span", "", words.lost));
-    row.dataset.count = String(g.sent + g.received);
-  }
-
-  // Adds one event (kind sent, received or bounce) to the run it belongs to,
-  // or starts a line at the end of container. device is the paired device's
-  // display label when the transcript row has one (m.relay.device).
-  function addPeerEvent(container, kind, peer, ts, device) {
-    const tail = [];
-    for (let n = container.lastElementChild; n && n._peer; n = n.previousElementSibling) tail.unshift(n);
-    const at = peerMergeIndex(tail.map((n) => n._peer.peer), peer);
-    let row = at < 0 ? null : tail[at];
-    if (!row) {
-      row = el("button", "sysline link peer-event");
-      row.type = "button";
-      row.dataset.peer = peer;
-      row._peer = { peer: peer, sent: 0, received: 0, bounced: 0, first: ts || "" };
-      row.addEventListener("click", () => openPeer(state.sel && state.sel.id, peer, row._peer.first));
-      setTip(row, "查看往来");
+  // One assembly seam for clickable source rows. A kind and identity keep
+  // unrelated sources apart while consecutive rows can share their own data.
+  function addSourceEvent(container, kind, identity, make, update) {
+    let row = container.lastElementChild;
+    while (row && row._source) {
+      if (row._source.kind === kind && row._source.identity === identity) break;
+      row = row.previousElementSibling;
+    }
+    if (!row || !row._source) {
+      row = el("div", "source-event-row");
+      row._source = { kind: kind, identity: identity };
+      const head = el("button", "sysline link peer-event");
+      head.type = "button";
+      row.append(head);
+      make(row, head);
       container.append(row);
     }
-    if (device) row._peer.device = device;
-    if (kind === "sent") row._peer.sent++;
-    else if (kind === "received") row._peer.received++;
-    else row._peer.bounced++;
-    paintPeerEvent(row);
+    update(row, row.firstElementChild);
     return row;
+  }
+
+  function paintSourceEvent(head, picture, name, words, count) {
+    head.replaceChildren(el("span", "", words.lead), picture, el("span", "peer-event-name", name));
+    if (words.tail) head.append(el("span", "", words.tail));
+    if (words.lost) head.append(el("span", "peer-event-dot", " · "), el("span", "", words.lost));
+    head.dataset.count = String(count);
+  }
+
+  function addPeerEvent(container, kind, peer, ts, device) {
+    return addSourceEvent(container, "bot", peer, (row, head) => {
+      row._peer = { peer: peer, sent: 0, received: 0, bounced: 0, first: ts || "" };
+      head.dataset.peer = peer;
+      head.addEventListener("click", () => openPeer(state.sel && state.sel.id, peer, row._peer.first));
+      setTip(head, "查看往来");
+    }, (row, head) => {
+      const g = row._peer;
+      if (device) g.device = device;
+      if (kind === "sent") g.sent++;
+      else if (kind === "received") g.received++;
+      else g.bounced++;
+      const who = splitPeer(peer), label = g.device || who.device;
+      paintSourceEvent(head, peerAvatar({ bot: who.bot, device: label }, "xs"),
+        niceName(who.bot) + (label ? " · " + label : ""), peerEventWords(g), g.sent + g.received);
+    });
+  }
+
+  function addCLIEvent(container, parsed, key) {
+    const sender = parsed.sender || "CLI";
+    return addSourceEvent(container, "cli", sender, (row, head) => {
+      const drawer = el("div", "routine-drawer event-raw");
+      row.classList.add("routine-line");
+      row._texts = [];
+      drawer.hidden = !openRoutines.has(key);
+      head.setAttribute("aria-expanded", String(!drawer.hidden));
+      head.addEventListener("click", () => {
+        drawer.hidden = !drawer.hidden;
+        head.setAttribute("aria-expanded", String(!drawer.hidden));
+        if (drawer.hidden) openRoutines.delete(key); else openRoutines.add(key);
+      });
+      row.append(drawer);
+    }, (row, head) => {
+      row._texts.push(parsed.text);
+      row.lastElementChild.textContent = row._texts.join("\n\n");
+      const count = row._texts.length;
+      paintSourceEvent(head, avatar(sender, { seed: sender, portrait: true }, "xs"), sender,
+        { lead: "收到", tail: count > 1 ? "的 " + count + " 条消息" : "的消息" }, count);
+    });
   }
 
   // A remote bounce the outbox or the peer wrote back into the sender's inbox.
@@ -3134,6 +3155,12 @@
           any = true;
           lastKey = "";
           addPeerEvent(inner, "bounce", bounceTarget(parsed), m.time);
+          return;
+        }
+        if (parsed.untrusted && parsed.source === "cli") {
+          addCLIEvent(inner, parsed, (state.sel ? state.sel.id : "") + ":event:" + (m.seq || m.time || i));
+          any = true;
+          lastKey = "";
           return;
         }
         if (parsed.untrusted) {

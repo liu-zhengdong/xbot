@@ -2373,6 +2373,8 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 
 /* Bot-to-bot traffic in the owner's chat: one centered gray event line per
    run with the same peer (device prototype v2 items 20, review 99 and 108). */
+.source-event-row { align-self: center; min-width: 0; }
+.source-event-row > .peer-event { margin-inline: auto; }
 .peer-event { font-size: 12.5px; gap: 5px; max-width: min(100%, 560px); }
 .peer-event .avatar.xs { width: 16px; height: 16px; flex: none; }
 .peer-event-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
