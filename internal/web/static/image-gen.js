@@ -18,8 +18,8 @@
     const toggle = button("tog", "", () => save({enabled:!data.enabled}));
     toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-label", "允许生成图片");
     row.append(tx, toggle); box.append(row); host.append(box);
-    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "怎么画"));
-    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "怎么画");
+    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "生图工具策略"));
+    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "生图工具策略");
     const modeButtons = [];
     for (const [id, title, desc] of [["auto", "自动", "模型自带生图就用厂商的；没有就用设置里的家。"], ["local", "总用设置里的家", "一律用下面选的账号画，不用厂商自带生图。"]]) {
       const b = button("ws-choice", "", () => save({mode:id})); b.dataset.mode = id; b.setAttribute("role", "radio");
@@ -28,8 +28,8 @@
       body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
     }
     modeSec.append(modes); host.append(modeSec);
-    const section = node("div", "setsec"); section.append(node("h4", "", "用哪家"));
-    const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "用哪家");
+    const section = node("div", "setsec"); section.append(node("h4", "", "生图工具"));
+    const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "生图工具");
     const rows = [];
     for (const p of data.providers) {
       const select = button("ws-provider ig-provider", "", () => save({provider:p.id}));
