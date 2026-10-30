@@ -1733,7 +1733,7 @@ html[data-theme="dark"] {
 
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
-.task, .lib-card, .routine {
+.task, .routine {
   background: var(--x-panel-card); border: 0; border-radius: 12px; padding: 12px 14px; margin-top: 8px;
 }
 
@@ -1750,12 +1750,6 @@ html[data-theme="dark"] {
 .task .secondary, .routine .meta { margin: 0; }
 .routine { align-items: center; }
 .routine .meta { font-family: var(--font); font-variant-numeric: tabular-nums; }
-
-.lib-card:nth-of-type(even) { background: var(--x-zebra); }
-
-.lib-card .k { font-size: 12px; color: var(--faint); }
-
-.lib-card .v { font-size: 14px; line-height: 1.5; margin-top: 4px; }
 
 .hint { margin: 12px 0 0; font-size: 12px; line-height: 1.55; color: var(--faint); }
 
@@ -2781,3 +2775,30 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .hook-reveal { margin-top: 6px; font-size: 12.5px; }
 .hook-remove { align-self: flex-start; padding-left: 0; }
 .modal-card .hook-addr, .modal-card .hook-addr + .hook-copy { margin-top: 12px; }
+
+/* Memory keeps each Markdown document whole; only experiences are rows. */
+.memory-view { display: flex; flex-direction: column; gap: var(--x-s8); min-width: 0; }
+.memory-heading { margin: 0; font-size: var(--x-fs-ui); font-weight: 600; color: var(--x-muted); }
+.memory-document-head { display: flex; align-items: center; justify-content: space-between; gap: var(--x-s3); margin-bottom: var(--x-s5); }
+.memory-document-head h4 { margin: 0; font-size: var(--x-fs-ui); font-weight: 600; }
+.memory-file { flex: none; font-size: var(--x-fs-sm); color: var(--x-muted); text-decoration: none; border-radius: var(--x-r-xs); }
+.memory-file:hover, .memory-file:focus-visible { color: var(--x-text); background: var(--x-fill-2); }
+.memory-markdown { overflow-wrap: anywhere; min-width: 0; }
+.memory-markdown :is(h1,h2,h3,h4,h5,h6) { font-size: var(--x-fs-body); margin: var(--x-s6) 0 var(--x-s3); }
+.memory-markdown > :first-child { margin-top: 0; }
+.memory-experiences > .memory-heading { margin-bottom: var(--x-s5); }
+.memory-experience { border-radius: var(--x-r-sm); padding: var(--x-s5); }
+.memory-experience:nth-child(even) { background: var(--x-zebra); }
+.memory-experience summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--x-s3); cursor: pointer; list-style: none; }
+.memory-experience summary::-webkit-details-marker { display: none; }
+.memory-experience time { grid-column: 1; color: var(--x-faint); font-size: var(--x-fs-sm); font-variant-numeric: tabular-nums; }
+.memory-summary { grid-column: 1; font-size: var(--x-fs-ui); line-height: 1.6; overflow-wrap: anywhere; }
+.memory-experience summary .icon { grid-column: 2; grid-row: 1 / 3; align-self: center; color: var(--x-faint); transform: rotate(90deg); }
+.memory-experience[open] summary .icon { transform: rotate(270deg); }
+.memory-focus, .memory-segment { font-size: var(--x-fs-sm); line-height: 1.6; margin: var(--x-s5) 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.memory-focus { color: var(--x-muted); }
+.memory-earlier { border: 0; border-radius: var(--x-r-sm); padding: var(--x-s3) var(--x-s5); margin-top: var(--x-s5); font-size: var(--x-fs-sm); color: var(--x-muted); background: transparent; }
+.memory-earlier:hover { background: var(--x-fill-2); }
+.memory-page-error { color: var(--x-danger); font-size: var(--x-fs-sm); margin: var(--x-s3) 0 0; }
+.memory-footer { font-size: var(--x-fs-sm); color: var(--x-faint); }
+.memory-empty { margin: 0; }

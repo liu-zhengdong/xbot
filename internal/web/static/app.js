@@ -5449,22 +5449,83 @@
     return wrap;
   }
 
-  function scopeLabel(scope) {
-    if (scope === "person") return "关于你";
-    if (scope === "bot") return "关于 Bot";
-    return scope || "资料";
+  function libraryView(data) {
+    const view = el("div", "memory-view");
+    const memory = data.memory;
+    if (!memory) { view.append(el("p", "hint", "正在加载…")); return view; }
+    view.append(el("h3", "memory-heading", "常驻"));
+    for (const [kind, label] of [["person", "关于你"], ["bot", "关于本 Bot"]]) {
+      const doc = memory[kind];
+      const section = el("section", "memory-document");
+      const head = el("div", "memory-document-head");
+      head.append(el("h4", "", label));
+      if (doc && !doc.empty) head.append(memoryFileLink(data.name, kind, "打开文件", doc.path));
+      section.append(head);
+      if (!doc || doc.empty) section.append(el("p", "hint memory-empty", "还没有常驻记忆"));
+      else { const body = el("div", "prose memory-markdown"); appendMarkdown(body, doc.markdown); section.append(body); }
+      view.append(section);
+    }
+    const experiences = el("section", "memory-experiences");
+    experiences.append(el("h3", "memory-heading", "经历"));
+    const rows = el("div", "memory-experience-list");
+    const append = (items) => {
+      for (const item of items) {
+        const row = el("details", "memory-experience");
+        const head = el("summary");
+        const at = new Date(item.created_at);
+        const time = el("time", "", Number.isNaN(at.getTime()) ? item.created_at : at.toLocaleString([], {year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false}));
+        time.dateTime = item.created_at;
+        head.append(time, el("span", "memory-summary", item.summary || ""), icon("chevron"));
+        row.append(head);
+        if (item.focus) row.append(el("p", "memory-focus", item.focus));
+        if (item.segment) row.append(el("p", "memory-segment", item.segment));
+        rows.append(row);
+      }
+    };
+    const first = memory.experiences || {items:[]};
+    append(first.items);
+    if (!first.items.length) rows.append(el("p", "hint memory-empty", "还没有经历"));
+    experiences.append(rows);
+    let before = first.next_before;
+    if (before) {
+      const earlier = el("button", "memory-earlier", "更早的经历");
+      earlier.type = "button";
+      const error = el("p", "memory-page-error"); error.hidden = true;
+      earlier.addEventListener("click", async () => {
+        const selection = state.sel;
+        earlier.disabled = true; error.hidden = true;
+        try {
+          const page = await api("/api/bots/" + encodeURIComponent(data.name) + "/experiences?before=" + before);
+          if (state.sel !== selection || !view.isConnected) return;
+          append(page.items); before = page.next_before;
+          if (!before) earlier.remove();
+        } catch (e) {
+          if (state.sel !== selection || !view.isConnected) return;
+          error.textContent = "经历加载失败，请重试"; error.hidden = false;
+        } finally { earlier.disabled = false; }
+      });
+      experiences.append(earlier, error);
+    }
+    view.append(experiences);
+    const footer = el("footer", "memory-footer");
+    if (memory.month_log && !memory.month_log.empty) {
+      const link = memoryFileLink(data.name, "month-log", "打开本月流水", memory.month_log.path);
+      link.classList.add("memory-log"); footer.append(link);
+    } else footer.append(el("span", "", "本月还没有流水"));
+    view.append(footer);
+    return view;
   }
 
-  function libraryView(data) {
-    const wrap = document.createDocumentFragment();
-    const facts = data.memory || [];
-    if (!facts.length) wrap.append(panelEmpty("memory", "还没有记忆", "聊着聊着，它会记下关于你的事和你们的约定。"));
-    for (const f of facts) {
-      const card = el("div", "lib-card");
-      card.append(el("div", "k", scopeLabel(f.scope)), el("div", "v", f.text || ""));
-      wrap.append(card);
-    }
-    return wrap;
+  function memoryFileLink(name, kind, label, path) {
+    const url = "/api/bots/" + encodeURIComponent(name) + "/memory-files/" + kind;
+    const link = el("a", "memory-file", label);
+    link.href = url; link.target = "_blank"; link.rel = "noopener"; link.title = path;
+    if (state.app) link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      try { await api(url + "/open", {method:"POST"}); }
+      catch (e) { setStatus(visibleError(e), true); }
+    });
+    return link;
   }
 
   function elapsedWork(started, now = Date.now()) {

@@ -127,13 +127,22 @@
   "model":"",
   "pinned":false,
   "primary":false,
-  "memory":[{"scope":"person","text":"..."}],
+  "memory":{
+    "person":{"path":"/data/people/u1/memory/memory.md","markdown":"# 用户记忆\n…","empty":false},
+    "bot":{"path":"/data/bots/ada/memory/memory.md","markdown":"# Bot 记忆\n…","empty":false},
+    "experiences":{"items":[{"id":43,"created_at":"2026-10-30T00:17:00Z","summary":"…","focus":"…","segment":"…"}],"next_before":43},
+    "month_log":{"path":"/data/bots/ada/memory/log/2026-10.md","empty":false}
+  },
   "routines":[{"id":"...","name":"...","cron":"7 * * * *","at":"","enabled":true}],
   "agents":[{"id":"...","type":"dev","status":"running","task":"截到 140 字","mode":"brief","steps":1,"started_at":"RFC3339","current_step":"当前工具的一行摘要","finished_at":null}]
 }
 ```
 
-`persona_card` 是选用的人设卡（没选或卡已删时是 `null`），`persona` 仍是 `persona.md` 全文。没有 `style` 和免打扰：旧配置里的 `style`（language、tone、length、emoji）加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧配置的 `quiet_start`/`quiet_end` 读进来丢掉；旧模板里的这些字段忽略。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示用本机时区。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 最多 40 条 profile 事实（person、bot、bot+person）。
+`persona_card` 是选用的人设卡（没选或卡已删时是 `null`），`persona` 仍是 `persona.md` 全文。没有 `style` 和免打扰：旧配置里的 `style`（language、tone、length、emoji）加载时合成一条 Bot 长期记忆，写入成功后从配置删除，只迁一次；旧配置的 `quiet_start`/`quiet_end` 读进来丢掉；旧模板里的这些字段忽略。详情里没有 `proactivity`。磁盘上的旧配置还可以带这个字段，读进来之后忽略，不进提示。`timezone` 是 IANA 时区名（例如 `Asia/Shanghai`），空字符串表示用本机时区。每轮环境更新里有一行 `now: <本地 RFC3339，精确到分钟> (<时区>)`，不进稳定前缀。`routines[].cron` 和 `routines[].at` 二选一：`at` 是一次性的 RFC3339 时间，触发后 `enabled` 变成 false。`memory` 是记忆 Tab 的只读装配 DTO。`person` 与 `bot` 的 `markdown` 为各自 `memory.md` 原文，不经 Recall 拆条；空白或缺文件时 `empty=true`，仍给绝对路径。每份文档上限 256 KiB，超出或读取失败报错，不静默截断。`month_log` 只给本机当月 Bot 流水的路径和空状态，不装入流水正文。
+
+`memory.experiences.items` 来自当前 Bot 的经历库，按 `created_at` 新到旧、相同时间按 id 递减，首屏最多 40 条；`focus` / `segment` 可省略，`created_at` 为 RFC3339 时间。`next_before` 存在时，`GET /api/bots/{name}/experiences?before=<next_before>` 取下一页，响应同 `experiences`；末页不再给游标。读取空库不创建数据库。
+
+`GET /api/bots/{name}/memory-files/{kind}` 在浏览器以 `text/plain` 打开原文件；`POST /api/bots/{name}/memory-files/{kind}/open` 仅桌面端可用，通过系统默认应用打开。`kind` 只收 `person`、`bot`、`month-log`，不能指定任意路径；两者沿用登录与 Bot 所有权检查，缺文件返回 404。
 
 `agents[].notable` 是已实际发生的「值得留意」清单（无条目时为空或省略）：`[{"kind":"global_install","text":"全局安装了 ripgrep","objects":["ripgrep"]}]`。`kind` 固定为 `global_install`、`write_outside`、`external_message`、`delete`；按删除、外发、工作区外写入、全局安装排序，同一类每个任务合成一项。`text` 是不带句号的短句，超过两个对象只列前两个并写总数；`objects` 保留完整对象列表，放在任务详情。`calls` 是成功调用数，外发短句用它写消息数量；`unit` 是对象计数单位。`incomplete:true` 表示部分调用没有可靠对象字段，或对象明细达到单任务 64 KiB 上限，此时不声称完整数量。交回 Bot 的报告用同一份清单生成一句摘要：统一以「值得留意：」开头、句号结尾；一项直接写该项，多项写首项及其余项数，并提示详见任务。卡片行本身不加句号。普通工作区内读写不会产生条目。
 

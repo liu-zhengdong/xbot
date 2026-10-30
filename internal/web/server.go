@@ -25,7 +25,6 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
-	"xbot/internal/memory"
 	"xbot/internal/notable"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
@@ -61,7 +60,7 @@ type Server struct {
 	// minted at start, so logging out would lock the owner out until a relaunch.
 	App bool
 
-	// OpenPath opens a directory in the desktop file manager. Only the desktop
+	// OpenPath opens a file or directory in its default application. Only the desktop
 	// app supplies it; a plain serve leaves it nil and the route stays 404.
 	OpenPath func(string) error
 
@@ -246,6 +245,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/open-workdir", s.openWorkdir)
 	mux.HandleFunc("GET /api/bots/{name}/generated", s.generatedWorkdir)
 	mux.HandleFunc("GET /api/bots/{name}", s.botPanel)
+	mux.HandleFunc("GET /api/bots/{name}/experiences", s.listExperiences)
+	mux.HandleFunc("GET /api/bots/{name}/memory-files/{kind}", s.memoryFile)
+	mux.HandleFunc("POST /api/bots/{name}/memory-files/{kind}/open", s.memoryFile)
 	mux.HandleFunc("PATCH /api/bots/{name}/routines/{id}", s.patchRoutine)
 	mux.HandleFunc("GET /api/bots/{name}/webhooks", s.listWebhooks)
 	mux.HandleFunc("POST /api/bots/{name}/webhooks", s.addWebhook)
@@ -643,7 +645,11 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	persona, _ := b.ReadPersona()
-	mem := s.profile(b)
+	mem, err := s.memoryPanel(b)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	routines := []map[string]any{}
 	list, err := (&link.Timer{Dir: b.RoutineDir()}).List()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -800,27 +806,6 @@ func runningModel(root string, b *bot.Bot) (string, string) {
 		return providerName, resolved.Model
 	}
 	return providerName, modelName
-}
-
-func (s *Server) profile(b *bot.Bot) []map[string]string {
-	store := memory.Open(s.Root)
-	ctx := context.Background()
-	var out []map[string]string
-	add := func(scope memory.Scope, personID string) {
-		facts, err := store.Recall(ctx, memory.Query{Scope: scope, BotName: b.Name(), PersonID: personID, Tier: memory.TierProfile})
-		if err != nil {
-			return
-		}
-		for _, f := range facts {
-			if len(out) >= 40 {
-				return
-			}
-			out = append(out, map[string]string{"scope": string(f.Scope), "text": f.Text})
-		}
-	}
-	add(memory.ScopePerson, s.owner)
-	add(memory.ScopeBot, "")
-	return out
 }
 
 type apiRow struct {

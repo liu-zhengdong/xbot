@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots)
+verified: 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots)
 ---
 # 网页界面
 
@@ -11,6 +11,8 @@ verified: 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2
 命令行 `xbot [--root DIR] message <bot> <text...>` 向已运行的本机 serve 发送主人消息：`--http` 默认 `127.0.0.1:8788`，`--timeout` 默认 2 分钟，`--text` 或 `-`/省略正文可提供文本或读 stdin。先通过回环 `/api/session` 获取会话，再调用现有 messages SSE；只输出 `done.text`，没有可见回复、转交、错误或超时返回非零。
 
 对话中的 Bot 往来与 CLI Event 共用可点击的来源行装配缝，按来源种类和身份合并连续事件。Bot 行打开既有往来视图；CLI 行以发送者为 Notionists 头像种子，点击展开该组原文，不把发送者登记为 Bot。
+
+Bot 信息面板「记忆」由 `GET /api/bots/{name}` 的 `memory` DTO 装配：常驻竖叠「关于你」「关于本 Bot」，直接展示各自 `memory.md` 整篇原文，复用气泡 Markdown 渲染和打开文件入口；主数据不经 Recall 拆卡。经历来自当前 Bot 的 `experience.sqlite`，带时间、按记录时间新到旧，点开关注点与提纲；首屏 40 条，`GET /api/bots/{name}/experiences?before=…` 加载更早内容。流水只在页脚给「打开本月流水」入口或空状态，不进主列表。浏览器打开只读原文件，桌面交给默认应用；不提供面板编辑器。守护为 `memory_panel_test.go` 的整篇与带时间数据装配回归、`memory_panel_browser_test.go` 的浏览器行为。
 
 Bot 信息面板的收件箱位于上下文右侧：只读展示该 Bot 的入站叫醒事件，按时间新到旧，可展开摘要；待处理数量弱显，窄面板标签横滚。数据来自 `GET /api/bots/{name}/inbox`，Webhook 和文件监听来源按前缀识别，摘要展示事件正文而非外壳，routine 只取标签内正文；与聊天和全局通知分开。
 

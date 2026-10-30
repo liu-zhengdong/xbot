@@ -1,5 +1,8 @@
 # XBot 里程碑与进度
 
+- 2026-10-30：记忆 Tab 在 Bot 面板装配缝改为整篇 person / bot `memory.md`、带时间经历及页脚本月流水入口；经历首屏 40 条、更早分页、点开提纲，常驻复用气泡 Markdown。原文 / 经历分页 / 打开文件 / 空数据 / 读取失败的接口与 Chrome 行为定向三次通过，整篇 DTO 回归旧代码失败。真实 `xbot serve` 专用冒烟三次通过；Chrome 1440×900、DPR 2 明暗及 390px 窄屏无横向溢出。未合 main、未 push；独立视觉复审、Box handoff 逐字核对、原生打开文件与用户日用待验收（本机无法直读 Box）。
+- 本机面板 HTTP 三轮各 30 次样本 p95 为 0.797 / 0.775 / 0.771 ms，payload 8,318 字节；沿用现有面板请求，新增轮询 / 动画为 0，更早分页每次 1 个请求；真模型响应及帧率未测。gofmt、vet、diff 检查通过，atlas audit 有既有告警。全仓测试复现内核 `TestLongTurnStaysUnderTheCeiling`（40 步 19 次折叠）、work `TestShellUsesBotDir` 缺 description、web `TestWebApprovalAllowAndDeny` 在 90 秒超时；web 整包三次同样被审批超时阻断。旧六条旅程冒烟均未通过模型回复阶段；干净 HEAD 的 `TestRemember`（空 done.text）与 `TestWebChat`（0 个非空 delta）同样失败，本批未改模型或工具链路。
+
 - 2026-10-30：E2-final 非 maskable 图标的面板外画布改为透明，覆盖 web PNG、SVG 内嵌 PNG、appshell、ICNS 和 ICO 全部尺寸；maskable 字节不变。以既有 1024px 图像抠图，保留面板内 RGB；透明度回归旧资源失败、新资源连续三次通过，appshell 整包三次通过，Chrome 浅深色资源截图与 alpha 检查通过。尚未合入、原生 Dock/安装包和用户日用未验收；新增请求、轮询、动画均为 0，512px PNG 增加 3,885 字节，交互 p95/帧率未测。
 - gofmt、vet、diff 检查通过，atlas audit 有既有告警；全仓测试复现内核 `TestLongTurnStaysUnderTheCeiling`（40 步 19 次折叠）、work `TestShellUsesBotDir` 缺 description，以及 web `TestWebApprovalAllowAndDeny` 在 90 秒超时；网页整包三次也被同一测试的 90 秒超时阻断。
 - 2026-10-30：生图统一为关 / 自动 hosted 优先、代理兜底 / 总用设置里的家（只代理）；本地 `generate_image` 经统一注册表与 `tools` 门调用全局 OpenAI/xAI OAuth，复用 Responses、generated/ 及既有挂图。设置增加「怎么画」，详情能力只读。功能分支 scripted 真实 serve 端到端三次通过，六次代理完整旅程 86–103 ms（样本 p95 103 ms，非真厂商性能）；本机 Chrome 浅深色截图与行为通过，未获独立视觉复审或用户日用验收；未合 main、未 push。

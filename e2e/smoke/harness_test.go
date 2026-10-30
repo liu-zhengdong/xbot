@@ -612,27 +612,30 @@ func (s *Server) State(bot string) string {
 	return ""
 }
 
-// MemoryFact is one entry from the panel's memory list.
-type MemoryFact struct {
-	Scope string `json:"scope"`
-	Text  string `json:"text"`
+// MemoryDocument is the whole file shown in the memory panel.
+type MemoryDocument struct {
+	Path     string `json:"path"`
+	Markdown string `json:"markdown"`
+	Empty    bool   `json:"empty"`
 }
 
-// Memory reads the panel's memory list, what 详情的「记忆」shows.
-func (s *Server) Memory(bot string) []MemoryFact {
+type MemoryPanel struct {
+	Person MemoryDocument `json:"person"`
+	Bot    MemoryDocument `json:"bot"`
+}
+
+// Memory reads the assembled memory panel through the real HTTP entry point.
+func (s *Server) Memory(bot string) MemoryPanel {
 	s.t.Helper()
 	status, body := s.do(http.MethodGet, "/api/bots/"+url.PathEscape(bot), nil)
 	if status != http.StatusOK {
 		s.t.Fatalf("panel of %s: %d %s", bot, status, body)
 	}
 	var out struct {
-		Memory []MemoryFact `json:"memory"`
+		Memory MemoryPanel `json:"memory"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		s.t.Fatalf("panel of %s: %v", bot, err)
-	}
-	if out.Memory == nil {
-		out.Memory = []MemoryFact{}
 	}
 	return out.Memory
 }

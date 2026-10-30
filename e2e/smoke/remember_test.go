@@ -40,10 +40,10 @@ func TestRemember(t *testing.T) {
 		t.Fatalf("bob does not answer with MARK_PEANUT_1 (旅程「记住事情」: 关于用户本人的事，另一个 Bot 也答得出来): %q", bob.Done)
 	}
 
-	// The panel's memory list carries the person entry.
+	// The whole person document on the panel carries the remembered fact.
 	if !hasPersonFact(srv, "ada", "花生") {
 		t.Fatalf("ada's panel has no person memory entry about 花生 (旅程「记住事情」: 详情的「记忆」里能看到这一条):\n%s",
-			dumpFacts(srv.Memory("ada")))
+			dumpMemory(srv.Memory("ada")))
 	}
 
 	if r := srv.Send("ada", "SMOKE_CORRECT 其实我不过敏了"); r.Done != "改好了" {
@@ -71,18 +71,14 @@ func TestRemember(t *testing.T) {
 
 	if !hasPersonFact(srv, "ada", "MARK_PEANUT_2") {
 		t.Fatalf("ada's panel does not show the corrected entry (旅程「记住事情」: 详情里能看到更正那条):\n%s",
-			dumpFacts(srv.Memory("ada")))
+			dumpMemory(srv.Memory("ada")))
 	}
 }
 
-// hasPersonFact reports a person entry on the panel that contains want.
+// hasPersonFact checks the whole person document returned by the panel.
 func hasPersonFact(srv *Server, bot, want string) bool {
-	for _, f := range srv.Memory(bot) {
-		if f.Scope == "person" && strings.Contains(f.Text, want) {
-			return true
-		}
-	}
-	return false
+	doc := srv.Memory(bot).Person
+	return !doc.Empty && doc.Path != "" && strings.Contains(doc.Markdown, want)
 }
 
 // requestBodyOf is the raw body of the last ada request that carries cue: what
@@ -101,8 +97,8 @@ func requestBodyOf(t *testing.T, stub *Stub, cue string) string {
 	return body
 }
 
-func dumpFacts(facts []MemoryFact) string {
-	raw, err := json.MarshalIndent(facts, "", "  ")
+func dumpMemory(memory MemoryPanel) string {
+	raw, err := json.MarshalIndent(memory, "", "  ")
 	if err != nil {
 		return ""
 	}

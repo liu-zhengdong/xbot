@@ -165,3 +165,32 @@ func nullSeq(n int) any {
 	}
 	return n
 }
+
+// Page returns entries in recorded-time order, with id breaking ties. before
+// is the last id on the previous page; zero starts at the newest entry.
+func (s Store) Page(limit int, before int64) ([]Entry, error) {
+	if ok, err := s.exists(); !ok || err != nil {
+		return nil, err
+	}
+	db, err := s.open()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	// Stored dates are UTC RFC3339Nano. Removing Z keeps a whole second before
+	// its fractional seconds when comparing dates with different precision.
+	order := `rtrim(created_at, 'Z')`
+	query := selectCols
+	var args []any
+	if before > 0 {
+		query += ` WHERE (` + order + `, id) < (SELECT ` + order + `, id FROM experiences WHERE id=?)`
+		args = append(args, before)
+	}
+	query += ` ORDER BY ` + order + ` DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return scan(rows)
+}
