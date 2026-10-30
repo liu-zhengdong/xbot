@@ -1,5 +1,8 @@
 # XBot 里程碑与进度
 
+- 2026-10-30：聊天 transcript 首次加载／轮询／收工对账收敛到 `applyTranscript`，按 seq／送达序号与卡片 id 做 keyed DOM patch，未变旧行、选区与展开态保留；复用尾段 stamp 的弱 ETag，304 无正文且不解码历史，不再 stringify 整份消息。仅主列与 transcript 条件请求，未改侧栏刷新或发送 SSE；有变化时仍计算完整离屏投影。级别：功能分支 Chrome/scripted HTTP 行为通过，未合 main、未 push；真实 serve 与用户日用、独立视觉复审未验。
+- 新增接口与 Chrome（有／无 validator）回归旧代码红、新代码连续三次绿，现有 live 分段、transcript 来源／分叉／转义定向三次通过。条件请求 handler 三轮各 100 次，p95 32.833 / 32.958 / 31.125 µs，正文 0 字节；隐藏工具追加的主列 DOM mutation 为 0；未测真实模型延迟／60fps。1440×900、DPR 2 明暗前后截图在 `~/.xbot-build/ui-shots/chat-transcript-incremental/`。gofmt、vet、diff 检查通过，atlas audit 有既有告警。全仓测试遇既有内核长轮 40 步 19 次折叠失败，600 秒内未完成；web 整包三次在审批测试 180 秒超时。浏览器批量三次另遇 `TestChatStreamBrowser` 布局高度偶发差 8px，未修改 HEAD 的重复运行也复现；未扩修这些路径。
+
 - 2026-10-30：记忆 Tab 在 Bot 面板装配缝改为整篇 person / bot `memory.md`、带时间经历及页脚本月流水入口；经历首屏 40 条、更早分页、点开提纲，常驻复用气泡 Markdown。原文 / 经历分页 / 打开文件 / 空数据 / 读取失败的接口与 Chrome 行为定向三次通过，整篇 DTO 回归旧代码失败。真实 `xbot serve` 专用冒烟三次通过；Chrome 1440×900、DPR 2 明暗及 390px 窄屏无横向溢出。未合 main、未 push；独立视觉复审、Box handoff 逐字核对、原生打开文件与用户日用待验收（本机无法直读 Box）。
 - 本机面板 HTTP 三轮各 30 次样本 p95 为 0.797 / 0.775 / 0.771 ms，payload 8,318 字节；沿用现有面板请求，新增轮询 / 动画为 0，更早分页每次 1 个请求；真模型响应及帧率未测。gofmt、vet、diff 检查通过，atlas audit 有既有告警。全仓测试复现内核 `TestLongTurnStaysUnderTheCeiling`（40 步 19 次折叠）、work `TestShellUsesBotDir` 缺 description、web `TestWebApprovalAllowAndDeny` 在 90 秒超时；web 整包三次同样被审批超时阻断。旧六条旅程冒烟均未通过模型回复阶段；干净 HEAD 的 `TestRemember`（空 done.text）与 `TestWebChat`（0 个非空 delta）同样失败，本批未改模型或工具链路。
 

@@ -917,6 +917,21 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
+	// Reuse the append-only tail stamp; do not read/serialize history on idle
+	// polls. Device labels also participate in this endpoint's projection.
+	stamp, stamped := b.TranscriptStamp()
+	if stamped {
+		if fi, err := os.Stat(filepath.Join(s.Root, "remote", "devices.json")); err == nil {
+			stamp += fmt.Sprintf(":%d:%d", fi.Size(), fi.ModTime().UnixNano())
+		}
+		etag := fmt.Sprintf("W/\"%s\"", stamp)
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "private, no-cache")
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
 	entries, err := b.Entries()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())

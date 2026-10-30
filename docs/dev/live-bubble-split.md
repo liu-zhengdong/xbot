@@ -14,7 +14,7 @@
 | 流中 delta | 写入当前 live 泡 | `loadThread` / 全量 `renderMessages` |
 | 流中 tool | 封当前 live（若有文）、新 live；工作条/sysline | 把多段文拼进同一 `acc` |
 | 收工 | 一次对账 `loadThread`；能无感则无感 | 肉眼「一条炸成多条」 |
-| 空闲轮询 (~3s) | status / notes / lists / transcript 各用签名；无变则跳过 DOM | 无变仍 `thread.replaceChildren` |
+| 空闲轮询 (~3s) | transcript 用条件请求，无变跳过 body；变化经唯一 `applyTranscript` 做 keyed patch | 无变仍 `thread.replaceChildren` |
 | 切会话 | 重置 sig、一次拉 transcript | 与旧会话交叉写 |
 
 ## 已知浪费（改前核对，按证据砍）
@@ -41,6 +41,4 @@
 ## 还没做的
 
 - 流中每个 delta 仍 `prose.replaceChildren` + 全量 `appendMarkdown(acc)`；长段落时是主要 paint 开销。
-- 收工对账仍整串 `renderMessages`；分段对齐后肉眼无变化，但 DOM 整体换新（滚动保持靠 near-bottom）。
-- 轮询签名仍整份 `JSON.stringify(messages)`（纯 JS，不碰 DOM）；要更省需服务端给版本号/ETag。
 - tool 前没有正文时，peer 系统行插在当前空 live 之前，live 已按续写标了 `cont`；对账后会断组（只影响 peer 工具首段无 ack 的情形）。

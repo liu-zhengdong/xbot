@@ -168,7 +168,7 @@
 
 ## 对话
 
-`GET /api/bots/{name}/transcript` 返回原文：
+`GET /api/bots/{name}/transcript` 返回原文。段存储可用时带弱 `ETag`（现有 transcript 尾段 stamp，并计入远端设备标签文件的 size/mtime）和 `Cache-Control: private, no-cache`；`If-None-Match` 命中返回 304、无正文，不读取历史、不重写已读游标。首次迁移或 stamp 不可用时仍返回完整 200；有变化的 200 仍更新已读游标。返回形状：
 
 ```json
 {"messages":[{

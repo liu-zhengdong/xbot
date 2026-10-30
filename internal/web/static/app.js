@@ -3088,17 +3088,23 @@
     return !!m.internal;
   }
 
-  function renderMessages(messages, who) {
+  // Sole transcript -> main-column assembly seam. Keys are transcript seqs
+  // (plus the delivered-message ordinal), never content fingerprints. Compare
+  // against the last projection, not live DOM: selection, open drawers and
+  // image load state belong to the reader and must survive a poll.
+  function applyTranscript(messages, who) {
+    if (!state.firstRender && state.sig && sameTranscriptValue(messages, state.messages)) return false;
+    state.messages = messages;
     const inner = el("div", "thread-inner");
     const prevTop = thread.scrollTop;
     const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     if (!messages || !messages.length) {
       inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
       restoreSendFeedback(inner);
-      thread.replaceChildren(inner);
+      commitTranscript(inner, who);
       state.firstRender = false;
       if (near) thread.scrollTop = thread.scrollHeight;
-      return;
+      return true;
     }
     const spoken = spokenLines(messages);
     let any = false;
@@ -3114,7 +3120,7 @@
       const appr = approvalCardOf(m && m.content);
       if (appr) latestApproval[appr.id] = i;
     });
-    messages.forEach((m, i) => {
+    const projectMessage = (m, i) => {
       if (skipMessage(m) || wakeRuns.hidden.has(i)) return;
       // Background turns have no cards in the chat; the header badge lists them.
       if (m.kind === "fork" || m.kind === "fork_end") return;
@@ -3193,13 +3199,73 @@
         lastKey = key;
         lastMsg = m;
       }
+    };
+    messages.forEach((m, i) => {
+      const before = inner.lastElementChild;
+      projectMessage(m, i);
+      let row = before ? before.nextElementSibling : inner.firstElementChild;
+      let ordinal = 0;
+      for (; row; row = row.nextElementSibling) {
+        row.dataset.transcriptKey = transcriptRowKey(m, i) + ":" + ordinal++;
+      }
     });
     if (!any) inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
     addTimeDividers(inner);
-    restoreSendFeedback(inner);
-    thread.replaceChildren(inner);
+    const unaligned = messages.some((m, i) => !Number.isInteger(m.seq) || m.seq <= 0 || (i > 0 && m.seq <= messages[i - 1].seq));
+    const changed = commitTranscript(inner, who, unaligned);
     state.firstRender = false;
-    thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
+    if (changed) thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
+    return true;
+  }
+
+  function transcriptRowKey(m, i) {
+    const approval = approvalCardOf(m.content);
+    const card = codingCardOf(m.content);
+    return approval ? "approval:" + approval.id : card ? "card:" + card.id : "seq:" + (m.seq || i);
+  }
+
+  function commitTranscript(next, who, reset = false) {
+    for (const row of next.children) {
+      if (!row.dataset.transcriptKey) row.dataset.transcriptKey = row.classList.contains("tdiv")
+        ? "time:" + row.nextElementSibling.dataset.transcriptKey : "empty";
+    }
+    const current = thread.querySelector(".thread-inner");
+    if (reset || !current || current.dataset.transcriptBot !== who || state.firstRender) {
+      next.dataset.transcriptBot = who;
+      for (const row of next.children) row._transcriptView = row.cloneNode(true);
+      restoreSendFeedback(next);
+      thread.replaceChildren(next);
+      return true;
+    }
+    const old = new Map(Array.from(current.children, row => [row.dataset.transcriptKey, row]));
+    let cursor = current.firstElementChild;
+    let changed = false;
+    for (const projected of Array.from(next.children)) {
+      const key = projected.dataset.transcriptKey;
+      let row = old.get(key);
+      old.delete(key);
+      if (!row || !row._transcriptView?.isEqualNode(projected)) {
+        changed = true;
+        projected._transcriptView = projected.cloneNode(true);
+        if (row) {
+          if (cursor === row) cursor = projected;
+          row.replaceWith(projected);
+        }
+        row = projected;
+      }
+      if (row !== cursor) {
+        current.insertBefore(row, cursor);
+        changed = true;
+      }
+      cursor = row.nextElementSibling;
+    }
+    // Pending/failed sends are reconciled by the existing send-feedback path.
+    for (const row of old.values()) if (row.dataset.transcriptKey) { row.remove(); changed = true; }
+    restoreSendFeedback(current);
+    for (const row of Array.from(current.children)) {
+      if (!row.dataset.transcriptKey && !state.pendingSends.includes(row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
+    }
+    return changed;
   }
 
   function renderGroup(messages, who) {
@@ -4409,24 +4475,40 @@
     if (state.sel === selection && panel.classList.contains("open")) await loadPanel();
   }
 
+  // Structural equality for responses without validators (legacy/migration).
+  // No full-transcript serialization or content fingerprints.
+  function sameTranscriptValue(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every(key =>
+      Object.prototype.hasOwnProperty.call(b, key) && sameTranscriptValue(a[key], b[key]));
+  }
+
   async function loadThread() {
     if (!state.sel || state.streaming || state.peer) return;
     const selection = state.sel;
     const request = ++state.threadLoad;
     try {
       if (selection.type === "bot") {
-        const data = await api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript");
+        const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript", {
+          credentials: "same-origin",
+          headers: state.sig && selection.transcriptETag ? { "If-None-Match": selection.transcriptETag } : {},
+        });
         if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
+        if (res.status === 304) return;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "request failed");
+        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
+        selection.transcriptETag = res.headers.get("ETag");
         const messages = data.messages || [];
-        const sig = JSON.stringify(messages);
-        state.messages = messages;
+        const changed = applyTranscript(messages, selection.id);
         state.previewAt["b:" + selection.id] = Date.now();
-        if (sig === state.sig) return;
-        state.sig = sig;
+        if (!changed) return;
+        state.sig = "transcript-loaded";
         state.preview["b:" + selection.id] = previewFromMessages(messages);
         renderLists();
         if (state.peer) return;
-        renderMessages(messages, selection.id);
         if (panel.classList.contains("open")) await loadPanel();
         return;
       }
