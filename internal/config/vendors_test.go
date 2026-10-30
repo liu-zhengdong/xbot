@@ -8,7 +8,7 @@ import (
 )
 
 func TestVendorDefaultsAreValid(t *testing.T) {
-	want := []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent"}
+	want := []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent", "opencode-go"}
 	if len(Vendors) != len(want) {
 		t.Fatalf("vendors: %d", len(Vendors))
 	}

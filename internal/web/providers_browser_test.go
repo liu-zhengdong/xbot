@@ -49,7 +49,7 @@ func TestProvidersSettingsBrowser(t *testing.T) {
 	}
 	// The xai scene runs the OAuth login path on its own page: a logged-in
 	// xai binding cannot share a name with the key binding the main run saves.
-	for _, query := range []string{"", "state=xai", "state=xaiunconfigured", "state=xaifailure"} {
+	for _, query := range []string{"", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode"} {
 		page := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html"), RawQuery: query}).String()
 		out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", page).CombinedOutput()
 		if err != nil {
@@ -84,7 +84,7 @@ const providers=[{name:'',brand:'deepseek',protocol:'chat_completions',api_key_e
 if(scene==='xai')providers.push({name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:true,models:[]});
 if(['loggedin','chatgptdetail'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
 if(scene==='xaiunconfigured'){providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:false,models:[]});fixture.xaiIdle=true;}
-const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],['kimi','Kimi'],['kimi-code','Kimi Code'],['zhipu','Zhipu GLM'],['zai','Z.ai'],['minimax','MiniMax'],['stepfun','StepFun'],['mimo','Xiaomi MiMo'],['qianfan','Baidu Qianfan'],['tencent','Tencent Cloud']].map(([brand,title])=>({brand,title,protocol:'chat_completions',key_login:brand==='vertex',models:['m1','m2']}));
+const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],['kimi','Kimi'],['kimi-code','Kimi Code'],['zhipu','Zhipu GLM'],['zai','Z.ai'],['minimax','MiniMax'],['stepfun','StepFun'],['mimo','Xiaomi MiMo'],['qianfan','Baidu Qianfan'],['tencent','Tencent Cloud'],['opencode-go','OpenCode Go']].map(([brand,title])=>({brand,title,protocol:'chat_completions',key_login:brand==='vertex',models:['m1','m2']}));
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
 window.fetch=async(path,opts={})=>{
  fixture.calls.push(path);
@@ -176,6 +176,16 @@ async function xaiLoggedIn(){
   if(['detail','error','empty','unconfigured'].includes(scene))card(scene==='unconfigured'?'OpenRouter':'OpenAI').click();
   if(scene==='search'){$('.provider-search input').value='OpenAI';$('.provider-search input').dispatchEvent(new Event('input'))}
   if(scene==='xai')await xaiLoggedIn();
+  if(scene==='opencode'||scene==='opencodepreview'){
+   assert(!subcard('OpenCode Go'),'Go must not be an OAuth subscription');
+   card('OpenCode Go').click();await waitFor(()=>$('.provider-key input'),'Go key form missing');
+   if(scene==='opencode'){
+    $('.provider-key input').value='scripted-go-key-12345';$('.provider-key').requestSubmit();
+    await waitFor(()=>$('.provider-model-row'),'Go live models missing after key save');
+    assert(fixture.calls.includes('/api/providers/opencode-go/key')&&fixture.calls.includes('/api/providers/opencode-go/sync'),'Go bypassed vendor routes');
+    assert(!fixture.calls.some(p=>p.includes('/oauth/')),'Go started OAuth');
+   }
+  }
   if(scene==='xaifailure'){fixture.xaiFail=true;subcard('xAI').click();await waitFor(()=>subcard('xAI').textContent.includes('登录未完成'),'xai failure missing');fixture.xaiFail=false;fixture.xaiSucceed=true;subcard('xAI').click();await waitFor(()=>subcard('xAI').querySelector('[aria-label="已登录"]'),'xai retry failed');}
   if(scene==='xaiunconfigured'){
    card('xAI').click();await waitFor(()=>btn('去订阅'),'unconfigured OAuth guidance missing');
@@ -186,7 +196,7 @@ async function xaiLoggedIn(){
   document.body.dataset.testResult='passed';return;
  }
  assert(!card('ChatGPT').disabled,'subscription login disabled');
- assert(document.querySelectorAll('.provider-card').length===18,'missing provider');
+ assert(document.querySelectorAll('.provider-card').length===19,'missing provider');
  assert(subcard('ChatGPT')&&subcard('xAI'),'subscription cards missing');
  const search=$('.provider-search input');search.value='xai';search.dispatchEvent(new Event('input'));
  assert(!$('.provider-section').hidden&&subcard('xAI')&&!subcard('xAI').hidden&&subcard('ChatGPT').hidden,'xai subscription search failed');

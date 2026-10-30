@@ -15,7 +15,7 @@ import (
 	"xbot/internal/provider"
 )
 
-var newBrands = []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent"}
+var newBrands = []string{"gemini", "vertex", "xai", "kimi", "kimi-code", "zhipu", "zai", "minimax", "stepfun", "mimo", "qianfan", "tencent", "opencode-go"}
 
 func TestXAIKeySaveWhileOAuthOwnsName(t *testing.T) {
 	for _, scenario := range []string{"new", "existing", "numbered", "numbered-new"} {
@@ -297,11 +297,27 @@ func TestVendorKeyRefusesSameNameOtherEndpoint(t *testing.T) {
 
 // Save a key, fetch models beyond the seed, bind one, and chat with it.
 func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
+	for _, brand := range []string{"xai", "opencode-go"} {
+		t.Run(brand, func(t *testing.T) { testVendorFetchedModelCanBeBoundAndChatted(t, brand) })
+	}
+}
+
+func testVendorFetchedModelCanBeBoundAndChatted(t *testing.T, brand string) {
+	v, ok := config.VendorFor(brand)
+	if !ok {
+		t.Fatalf("vendor %s not registered", brand)
+	}
+	if brand == "opencode-go" && (v.Title != "OpenCode Go" || v.Protocol != config.ChatCompletions || v.BaseURL != "https://opencode.ai/zen/go/v1" || v.KeyEnv != "OPENCODE_API_KEY" || v.KeyLogin || config.BrandForBase(v.BaseURL) != brand) {
+		t.Fatal("OpenCode Go must use its built-in Bearer key route")
+	}
 	const secret = "xai-test-secret-0123456789"
 	var auth, chatModel string
 	s, srv, tok := setupServer(t, false, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/models":
+			if r.Header.Get("Authorization") != "Bearer "+secret {
+				t.Error("model catalog request missing vendor Bearer key")
+			}
 			fmt.Fprint(w, `{"data":[{"id":"grok-5","context_length":1048576},{"id":"grok-5-mini"}]}`)
 		case "/v1/chat/completions":
 			var in struct {
@@ -315,11 +331,11 @@ func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	})
-	t.Setenv("XAI_API_KEY", "")
-	os.Unsetenv("XAI_API_KEY")
+	t.Setenv(v.KeyEnv, "")
+	os.Unsetenv(v.KeyEnv)
 	t.Cleanup(config.ForgetKeys)
 	for i := range config.Vendors {
-		if config.Vendors[i].Brand == "xai" {
+		if config.Vendors[i].Brand == brand {
 			saved := config.Vendors[i].BaseURL
 			config.Vendors[i].BaseURL = os.Getenv("XBOT_BASE_URL")
 			t.Cleanup(func() { config.Vendors[i].BaseURL = saved })
@@ -332,25 +348,32 @@ func TestVendorFetchedModelCanBeBoundAndChatted(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if code, _ := setupCall(t, srv, tok, "PUT", "/api/providers/xai/key", `{"key":"`+secret+`"}`); code != 200 {
+	if code, _ := setupCall(t, srv, tok, "PUT", "/api/providers/"+brand+"/key", `{"key":"`+secret+`"}`); code != 200 {
 		t.Fatalf("save: %d", code)
 	}
-	if code, _ := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-9"}`); code != 400 {
+	registered, _, err := config.Lookup(s.Root, brand, v.Models[0].Name)
+	if err != nil || registered.APIKeyEnv != v.KeyEnv || registered.OAuth != "" || registered.WireProtocol() != v.Protocol || registered.BaseURL != os.Getenv("XBOT_BASE_URL") {
+		t.Fatal("key save did not register the vendor defaults")
+	}
+	if code, out := setupCall(t, srv, tok, "GET", "/api/providers/models?provider="+brand, ""); code != 200 || len(out["models"].([]any)) != 2 {
+		t.Fatalf("live models: %d %v", code, out)
+	}
+	if code, _ := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"`+brand+`","model":"grok-9"}`); code != 400 {
 		t.Fatalf("model the vendor does not serve was bound: %d", code)
 	}
-	if code, out := setupCall(t, srv, tok, "POST", "/api/providers/xai/sync", ""); code != 200 || len(out["models"].([]any)) != 2 {
+	if code, out := setupCall(t, srv, tok, "POST", "/api/providers/"+brand+"/sync", ""); code != 200 || len(out["models"].([]any)) != 2 {
 		t.Fatalf("sync: %d %v", code, out)
 	}
-	if _, m, err := config.Lookup(s.Root, "xai", "grok-5"); err != nil || m.Context != 1_048_576 {
+	if _, m, err := config.Lookup(s.Root, brand, "grok-5"); err != nil || m.Context != 1_048_576 {
 		t.Fatalf("synced context=%d err=%v", m.Context, err)
 	}
-	if code, out := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"xai","model":"grok-5"}`); code != 200 {
+	if code, out := setupCall(t, srv, tok, "PUT", "/api/bots/ada/binding", `{"provider":"`+brand+`","model":"grok-5"}`); code != 200 {
 		t.Fatalf("bind fetched model: %d %v", code, out)
 	}
 	visible, _ := config.VisibleModels(s.Root, true)
 	found := false
 	for _, m := range visible {
-		found = found || m.Provider == "xai" && m.Model == "grok-5"
+		found = found || m.Provider == brand && m.Model == "grok-5"
 	}
 	if !found {
 		t.Fatal("fetched model missing from the chat picker")

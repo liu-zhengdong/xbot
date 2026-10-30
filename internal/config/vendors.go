@@ -75,6 +75,8 @@ var Vendors = []Vendor{
 		Models: specs(131072, "deepseek-v4-pro", "deepseek-v4-flash", "glm-5.2"), Hosts: []string{"qianfan.baidubce.com"}},
 	{Brand: "tencent", Title: "Tencent Cloud", Protocol: ChatCompletions, BaseURL: "https://tokenhub.tencentmaas.com/v1", KeyEnv: "TENCENT_API_KEY",
 		Models: specs(200000, "glm-5.2", "hy3"), Hosts: []string{"tokenhub.tencentmaas.com", "tokenhub-intl.tencentmaas.com"}},
+	{Brand: "opencode-go", Title: "OpenCode Go", Protocol: ChatCompletions, BaseURL: "https://opencode.ai/zen/go/v1", KeyEnv: "OPENCODE_API_KEY",
+		Models: specs(256000, "deepseek-v4-pro", "glm-5.2", "kimi-k3", "minimax-m3"), Hosts: []string{"opencode.ai"}},
 }
 
 // VendorFor finds a built-in vendor by brand id.

@@ -44,7 +44,7 @@
   const brands = Object.assign(Object.create(null), {
     deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic", openrouter: "OpenRouter",
     gemini: "Google Gemini", vertex: "Vertex AI", xai: "xAI", kimi: "Kimi", "kimi-code": "Kimi Code", zhipu: "Zhipu GLM", zai: "Z.ai",
-    minimax: "MiniMax", stepfun: "StepFun", mimo: "Xiaomi MiMo", qianfan: "Baidu Qianfan", tencent: "Tencent Cloud"
+    minimax: "MiniMax", stepfun: "StepFun", mimo: "Xiaomi MiMo", qianfan: "Baidu Qianfan", tencent: "Tencent Cloud", "opencode-go": "OpenCode Go"
   });
   // The picker's group title: the vendor's brand name, ChatGPT for the
   // subscription, and the configured name only when the brand is unknown.
@@ -204,7 +204,7 @@
       const form = node("form", "provider-key"), input = node("input"), note = node("p", "provider-login-note");
       input.type = "password"; input.autocomplete = "off"; input.spellcheck = false; input.placeholder = "粘贴密钥"; input.setAttribute("aria-label", opts.label || `${vendor.title} 密钥`);
       const save = button("保存密钥", "btn primary", () => {}); save.type = "submit"; note.setAttribute("role", "status");
-      form.append(opts.label ? node("label", "provider-key-label", opts.label) : node("p", "", lead || "请先配置密钥，再拉取模型。"), input, save, note);
+      form.append(opts.label ? node("label", "provider-key-label", opts.label) : node("p", "", lead || (vendor.brand === "opencode-go" ? "订阅 Go 后到 Console 复制 API key，粘到这里。" : "请先配置密钥，再拉取模型。")), input, save, note);
       if (opts.configured) { const ok = node("p", "provider-key-state"); ok.append(node("span", "sdot ok"), node("span", "", "密钥已配置 · 可用")); form.append(ok); }
       let saving = false;
       form.onsubmit = async ev => {
