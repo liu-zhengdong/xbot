@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke)
+verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake)
 ---
 # 内核：Link、Event、收件箱
 
@@ -13,6 +13,8 @@ verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + script
 服务运行时，kernel 注册 `restart_xbot` 原生工具。它在统一权限表中归为 `Restart`，内核审查直接放行，无论事件来源和权限卡开关都不需用户确认。重启影响同一进程中的所有 Bot。服务回调先将提示与正在工作的 Bot 名单原子写入数据根唯一待续跑文件，再请求重启：桌面 app 经 `appshell.Relaunch`，serve 经现有 `reexecService`。前台处理锁忙的 Bot、或含 running/queued 子代理记录的 Bot 都算正在工作。新进程把“XBot 已重启”与用户提示作为不可信 Inbox 消息投给全部名单 Bot；每个 Bot 的事件 ID 确定且 Inbox 去重，投递完成后删除待续跑文件。部分投递失败会保留文件供下次启动重试。此机制不改 transcript 旧行、不自动修改或合入代码。
 
 连接器的名称解析、渐进加载及错误回传见 [生态](ecosystem.md#连接器发现与加载诊断)；`links` 说明用中文指向摘要中的名称或 id，MCP 失败不标记本轮已加载。工具怎么登记、怎么经代理门披露见下文[工具注册与代理门](#工具注册与代理门)。
+
+例程附带技能名时，`projectRoutineSkills` 在当轮 user message 投影上按序加载正文；初次 Handle 与忙时 eventMessage 吸收共用此缝。固定前缀、原事件与历史不写正文，字段和失败语义见 [多 Bot](multibot.md)「例程挂技能」。
 
 ## 边界
 负责：事件进出、可信判断、一轮对话的循环、工具调度和确认路径。不负责：具体工具（见 [生态](ecosystem.md)）、transcript 存储（见 [上下文](context.md)）、权限分类（见 [安全](security.md)）。

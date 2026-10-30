@@ -22,13 +22,14 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Enabled  *bool   `json:"enabled"`
-		Precheck *string `json:"precheck"`
+		Enabled  *bool     `json:"enabled"`
+		Precheck *string   `json:"precheck"`
+		Skills   *[]string `json:"skills"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10))
 	dec.DisallowUnknownFields()
-	if err = dec.Decode(&body); err != nil || (body.Enabled == nil && body.Precheck == nil) {
-		writeErr(w, 400, "expected enabled boolean or precheck string")
+	if err = dec.Decode(&body); err != nil || (body.Enabled == nil && body.Precheck == nil && body.Skills == nil) {
+		writeErr(w, 400, "expected enabled boolean, precheck string, or skills array")
 		return
 	}
 	if body.Precheck != nil && len(*body.Precheck) > tools.MaxPrecheckBytes {
@@ -48,6 +49,9 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 		if body.Precheck != nil {
 			rt.Precheck = *body.Precheck
 		}
+		if body.Skills != nil {
+			rt.Skills = *body.Skills
+		}
 		reviewErr = kernel.CheckRoutinePrecheck(r.Context(), b, rt.Precheck)
 		if reviewErr != nil {
 			return reviewErr
@@ -58,6 +62,8 @@ func (s *Server) patchRoutine(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if reviewErr != nil {
 			writeErr(w, http.StatusForbidden, reviewErr.Error())
+		} else if errors.Is(err, link.ErrRoutineSkills) {
+			writeErr(w, 400, err.Error())
 		} else if errors.Is(err, os.ErrNotExist) {
 			writeErr(w, 404, "routine not found")
 		} else {

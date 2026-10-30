@@ -20,14 +20,15 @@ import (
 // Routine is a saved prompt plus either a 5-field cron expression or a one-shot At time.
 // At is RFC3339. A one-shot is exempt from the minimum cron gap and disables itself after it fires.
 type Routine struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Prompt   string `json:"prompt"`
-	Precheck string `json:"precheck,omitempty"`
-	Cron     string `json:"cron,omitempty"`
-	At       string `json:"at,omitempty"`
-	Enabled  bool   `json:"enabled"`
-	LastSlot string `json:"last_slot,omitempty"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Prompt   string   `json:"prompt"`
+	Precheck string   `json:"precheck,omitempty"`
+	Skills   []string `json:"skills,omitempty"`
+	Cron     string   `json:"cron,omitempty"`
+	At       string   `json:"at,omitempty"`
+	Enabled  bool     `json:"enabled"`
+	LastSlot string   `json:"last_slot,omitempty"`
 	// Zone is "local" for the computer's local zone, "UTC" for a pinned UTC
 	// schedule, or "" for a legacy file written before C1 (also UTC).
 	// A fixed local wall time inside the repeated fall-back hour fires once,
@@ -39,6 +40,8 @@ type Routine struct {
 // OneShotWindow is how late a poll may be and still fire a one-shot. It is the
 // same threshold C2 uses to decide a computer was down or asleep.
 const OneShotWindow = 2 * time.Minute
+
+var ErrRoutineSkills = errors.New("timer: invalid skills")
 
 var routineID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
@@ -134,7 +137,7 @@ func (t *Timer) Due(now time.Time) ([]Event, error) {
 		if r.Zone == "local" && !sched.EveryHour() && repeatedWall(now, zoneLoc) {
 			continue
 		}
-		ev := NewEvent(NameTimer, TypeTimer, routineBody(r), t.sender(), now)
+		ev := routineEvent(r, t.sender(), now)
 		ev.ID = "rt_" + r.ID + "_" + slot
 		out = append(out, ev)
 	}
@@ -168,7 +171,7 @@ func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
 	if r.LastSlot == slot {
 		return Event{}, false
 	}
-	ev := NewEvent(NameTimer, TypeTimer, routineBody(r), sender, now)
+	ev := routineEvent(r, sender, now)
 	ev.ID = "rt_" + r.ID + "_" + slot
 	return ev, true
 }
@@ -272,6 +275,13 @@ func splitRoutineID(eventID string) (string, string, error) {
 		return "", "", fmt.Errorf("timer: bad routine event %q", eventID)
 	}
 	return rest[:i], rest[i+1:], nil
+}
+
+// routineEvent carries references only; the kernel reads bodies for this wake.
+func routineEvent(r Routine, sender string, now time.Time) Event {
+	ev := NewEvent(NameTimer, TypeTimer, routineBody(r), sender, now)
+	ev.RoutineSkills = r.Skills
+	return ev
 }
 
 func routineBody(r Routine) string {
@@ -407,6 +417,16 @@ func (t *Timer) saveLocked(r Routine) error {
 	}
 	if len(r.Precheck) > tools.MaxPrecheckBytes {
 		return fmt.Errorf("timer: precheck exceeds %d bytes", tools.MaxPrecheckBytes)
+	}
+	if len(r.Skills) > 32 {
+		return fmt.Errorf("%w: at most 32 references", ErrRoutineSkills)
+	}
+	for i, id := range r.Skills {
+		id = strings.TrimSpace(id)
+		if id == "" || len(id) > 240 || strings.ContainsAny(id, "\r\n\x00") {
+			return fmt.Errorf("%w: each name/id must be 1–240 bytes on one line", ErrRoutineSkills)
+		}
+		r.Skills[i] = id
 	}
 	r.Prompt = strings.TrimSpace(r.Prompt)
 	if r.Prompt == "" {

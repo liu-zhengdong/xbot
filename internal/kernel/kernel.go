@@ -371,6 +371,16 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err != nil {
 		return err
 	}
+	// Project attached skills only onto this wake's live input. The raw
+	// transcript and fixed prefix retain their original bytes.
+	for i := range assembled {
+		if assembled[i].Seq == seq && !assembled[i].Internal {
+			before := compact.EstimateMessage(assembled[i])
+			assembled[i] = k.projectRoutineSkills(assembled[i], ev)
+			usage.History += compact.EstimateMessage(assembled[i]) - before
+			break
+		}
+	}
 	// Reminders stick to the newest message. The sidecar replays them on the
 	// next wake so that message's bytes stay what the model already saw.
 	// Timer wakes skip the pending-card kind; the trigger returns empty.

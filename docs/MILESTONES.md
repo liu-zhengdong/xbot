@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-10-30 例程挂技能（feature/routine-skills，本地分支验收）
+
+- Routine 有序 skills 引用、工具/API/CLI 读写与 Kernel 唯一正文投影已落地；覆盖初次唤醒和忙时吸收，不改调度/precheck，不写技能库。
+- 独立真实 CLI→serve ticker→Inbox→scripted 模型冒烟通过，现有 liu-dev-workflow 技能样本 12013 字节，16.61s；默认可移植 fixture 16.73s。顺序、清空、缺失说明、前缀/历史无正文及库不变均有断言。
+- 目标回归先红后绿；两份约 14 KiB 正文的本机装配平均 0.224ms、p95 0.321ms（200 次）；不等同于模型回复延迟或 UI 帧率。
+- gofmt、go vet、功能涉及四包的目标回归三遍通过；link/cmd 完整包三遍通过。全量及 kernel 完整包三遍遇 TestLongTurnStaysUnderTheCeiling（40 步 19 folds）；全量另有 work.TestShellUsesBotDir 缺 description，web 完整包卡在 TestWebApprovalAllowAndDeny 的连接清理后主动停止。三者均在原始 tip dbda0b60 隔离 archive 复现；未修改既有测试。atlas_audit 执行成功，无新增非 stale 告警；全量 e2e 包通过（61.618s）。
+- 级别：CLI→serve→scripted 模型端到端通过；未合 main，真实模型及用户日用未验。UI 定稿与剩余工作只在 [设计](dev/routine-skills.md) 维护。
+
+
 - 2026-10-30：聊天 transcript 首次加载／轮询／收工对账收敛到 `applyTranscript`，按 seq／送达序号与卡片 id 做 keyed DOM patch，未变旧行、选区与展开态保留；复用尾段 stamp 的弱 ETag，304 无正文且不解码历史，不再 stringify 整份消息。仅主列与 transcript 条件请求，未改侧栏刷新或发送 SSE；有变化时仍计算完整离屏投影。级别：功能分支 Chrome/scripted HTTP 行为通过，未合 main、未 push；真实 serve 与用户日用、独立视觉复审未验。
 - 新增接口与 Chrome（有／无 validator）回归旧代码红、新代码连续三次绿，现有 live 分段、transcript 来源／分叉／转义定向三次通过。条件请求 handler 三轮各 100 次，p95 32.833 / 32.958 / 31.125 µs，正文 0 字节；隐藏工具追加的主列 DOM mutation 为 0；未测真实模型延迟／60fps。1440×900、DPR 2 明暗前后截图在 `~/.xbot-build/ui-shots/chat-transcript-incremental/`。gofmt、vet、diff 检查通过，atlas audit 有既有告警。全仓测试遇既有内核长轮 40 步 19 次折叠失败，600 秒内未完成；web 整包三次在审批测试 180 秒超时。浏览器批量三次另遇 `TestChatStreamBrowser` 布局高度偶发差 8px，未修改 HEAD 的重复运行也复现；未扩修这些路径。
 

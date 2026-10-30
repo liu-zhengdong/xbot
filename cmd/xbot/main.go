@@ -67,6 +67,8 @@ Usage:
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
   xbot [--root DIR] routine migrate [--dry-run] [--bot NAME]
+  xbot [--root DIR] routine list --bot NAME
+  xbot [--root DIR] routine update ID --bot NAME --skills id1,id2
   xbot [--root DIR] export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE
   xbot [--root DIR] trace paths [bot]
   xbot [--root DIR] trace list [bot] [--since RFC3339] [--until RFC3339] [--kind KIND]

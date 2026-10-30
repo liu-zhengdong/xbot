@@ -148,7 +148,7 @@
 
 `agents` 是子代理状态，不是一套独立的任务系统；`type` 为派发时的类型（如 `research`、`dev`），普通 spawn 为空，界面在没有任务标题时用它显示类型名；`started_at` 是实际开始时间（尚未开始时为 `null`），`current_step` 是当前一步的一行摘要，`finished_at` 优先使用实际结束时刻。
 
-`PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的用户。请求体可含布尔字段 `enabled` 和字符串字段 `precheck`，至少提供一个；返回更新后的例程。`precheck` 是 shell 命令字符串（不是布尔开关），最多 16 KiB；省略保留原值，空串移除检查。请求体上限 128 KiB（容纳 JSON 转义），详情接口的 `routines[]` 在非空时也返回 `precheck`。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对、命令超长或未知字段 400，写入失败 500。有效前置命令（包括省略字段时保留的命令）复用 shell 审核；需要确认或机器 off 时返回 403、整次 PATCH 不落盘，可通过聊天中的 `routine_update` 走现有确认。显式清空仍可使用本接口，不新增 UI。执行规则见 [多 Bot](atlas/multibot.md)。
+`PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的用户。请求体可含布尔字段 `enabled`、字符串字段 `precheck` 和有序字符串数组 `skills`，至少提供一个；返回更新后的例程。`precheck` 是 shell 命令字符串（不是布尔开关），最多 16 KiB；省略保留原值，空串移除检查。`skills` 为已有技能名/id（最多 32 项，每项去首尾空白后 1–240 字节、单行），省略保留、`[]` 清空；详情与 PATCH 回执非空时返回同一字段。叫醒时按序只读加载；缺失、改名、停用或读取失败会跳过并在本次上下文说明原因。请求体上限 128 KiB（容纳 JSON 转义），详情接口的 `routines[]` 在非空时也返回 `precheck`。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对、命令超长或未知字段 400，写入失败 500。有效前置命令（包括省略字段时保留的命令）复用 shell 审核；需要确认或机器 off 时返回 403、整次 PATCH 不落盘，可通过聊天中的 `routine_update` 走现有确认。显式清空仍可使用本接口。执行规则见 [多 Bot](atlas/multibot.md)。
 
 `PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`timezone`、`persona`、`avatar_seed`；`language`、`quiet_start`、`quiet_end` 已删除，带上是 400。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
 

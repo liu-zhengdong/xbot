@@ -9,6 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
+	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
 )
@@ -45,7 +46,11 @@ func (t skillTool) Run(_ context.Context, args json.RawMessage) (string, error) 
 	if id == "" {
 		id = strings.TrimSpace(in.Slug)
 	}
-	dir, info, err := t.k.openSkill(id)
+	return t.k.readSkill(id)
+}
+
+func (k *Kernel) readSkill(id string) (string, error) {
+	dir, info, err := k.openSkill(id)
 	if err != nil {
 		return "", err
 	}
@@ -244,4 +249,26 @@ func redactSkillRead(m provider.Message) provider.Message {
 
 func oneSkillLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// projectRoutineSkills is the one body-assembly seam for both a fresh timer
+// turn and a timer event absorbed by a busy turn. Only this request's message
+// changes; receive already stored the original event without skill bodies.
+func (k *Kernel) projectRoutineSkills(m provider.Message, ev link.Event) provider.Message {
+	if ev.Source != link.NameTimer || len(ev.RoutineSkills) == 0 {
+		return m
+	}
+	var text strings.Builder
+	text.WriteString(m.Text())
+	for _, id := range ev.RoutineSkills {
+		body, err := k.readSkill(id)
+		if err != nil {
+			fmt.Fprintf(&text, "\n\nRoutine skill %q skipped: %s", id, err)
+			continue
+		}
+		text.WriteString("\n\n")
+		text.WriteString(body)
+	}
+	m.SetText(text.String())
+	return m
 }

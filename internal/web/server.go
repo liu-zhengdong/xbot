@@ -663,6 +663,9 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		if rt.Precheck != "" {
 			routine["precheck"] = rt.Precheck
 		}
+		if len(rt.Skills) > 0 {
+			routine["skills"] = rt.Skills
+		}
 		routines = append(routines, routine)
 	}
 	agents := []map[string]any{}

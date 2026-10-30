@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"xbot/internal/bot"
@@ -14,6 +16,9 @@ import (
 )
 
 func cmdRoutine(root string, args []string) error {
+	if len(args) > 0 && (args[0] == "list" || args[0] == "update") {
+		return cmdRoutineSkills(root, args)
+	}
 	if len(args) == 0 || args[0] != "migrate" {
 		return errors.New("usage: xbot routine migrate [--dry-run] [--bot NAME]")
 	}
@@ -133,4 +138,53 @@ func nextThree(expr string, loc *time.Location, now time.Time) string {
 		return "-"
 	}
 	return out
+}
+
+// cmdRoutineSkills exposes the existing definition's skill references only;
+// scheduling and prechecks continue through their existing write paths.
+func cmdRoutineSkills(root string, args []string) error {
+	ordered, err := reorderFlags(args[1:], map[string]bool{"bot": true, "skills": true})
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("routine "+args[0], flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	name := fs.String("bot", "", "bot name (required)")
+	refs := fs.String("skills", "", "ordered comma-separated skill names/ids; empty clears")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	specified := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "skills" {
+			specified = true
+		}
+	})
+	if *name == "" || (args[0] == "list" && (fs.NArg() != 0 || specified)) || (args[0] == "update" && (fs.NArg() != 1 || !specified)) {
+		return errors.New("usage: xbot routine list --bot NAME | routine update ID --bot NAME --skills id1,id2 (empty clears)")
+	}
+	b, err := bot.Load(root, *name)
+	if err != nil {
+		return err
+	}
+	tm := &link.Timer{Dir: b.RoutineDir()}
+	if args[0] == "list" {
+		routines, err := tm.List()
+		if err != nil {
+			return err
+		}
+		if routines == nil {
+			routines = []link.Routine{}
+		}
+		return json.NewEncoder(os.Stdout).Encode(routines)
+	}
+	var skills []string
+	if strings.TrimSpace(*refs) != "" {
+		skills = strings.Split(*refs, ",")
+	}
+	if err := tm.Update(fs.Arg(0), func(r *link.Routine) error { r.Skills = skills; return nil }); err != nil {
+		return err
+	}
+	fmt.Println("updated routine " + fs.Arg(0))
+	return nil
 }

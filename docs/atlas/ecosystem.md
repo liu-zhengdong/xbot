@@ -2,11 +2,13 @@
 kind: part
 parent: README.md
 code: [internal/link/, internal/skill/, internal/code/, internal/tools/]
-verified: 2026-10-30 @ native-always-organs
+verified: 2026-10-30 @ native-always-organs + feature/routine-skills (shared read_skill path)
 ---
 # 生态：Link、MCP、技能、连接器、编码代理
 
 > **30 秒版**：浏览器、MCP 和 Telegram/飞书等外接能力以 Link 接入；用户技能和编码代理等本进程能力是原生器官。Bot 用 `links` 自己搜索、安装、加载。装上之后，所有工具进同一张工具注册表，主线经代理门 `tools`（search / describe / call）调用，不改 `tools[]`（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。刀口是：功能自己实现的算原生，开机即有；依赖外部的算 Link，从商店装。
+
+例程可用 `skills` 按序引用本库技能；叫醒时和 `read_skill` 共用读取及 Bot 停用检查，正文仅供当轮请求，缺失明确跳过。字段写口与唯一装配缝见 [多 Bot](multibot.md)「例程挂技能」。
 
 ## 边界
 负责：各类 Link 的接入方式。不负责：确认规则（见 [安全](security.md)），各片进度（见 [MILESTONES](../MILESTONES.md)）。

@@ -158,3 +158,65 @@ func TestRoutineSwitchUsesTimerUpdate(t *testing.T) {
 		}
 	}
 }
+
+func TestRoutineSkillsAPI(t *testing.T) {
+	s, tok, bots := statusFixture(t, 1)
+	b := bots[0]
+	tm := &link.Timer{Dir: b.RoutineDir()}
+	if err := tm.Save(link.Routine{ID: "check", Prompt: "inspect", Cron: "0 * * * *", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	mux := muxOf(s)
+	for _, tc := range []struct {
+		body, want string
+		code       int
+	}{
+		{`{"skills":["ship","atlas"]}`, `["ship","atlas"]`, 200},
+		{`{"enabled":false}`, `["ship","atlas"]`, 200},
+		{`{"skills":"ship"}`, `["ship","atlas"]`, 400},
+		{`{"skills":[true]}`, `["ship","atlas"]`, 400},
+		{`{"skills":[""]}`, `["ship","atlas"]`, 400},
+		{`{"skills":["atlas"]}`, `["atlas"]`, 200},
+		{`{"skills":[]}`, `null`, 200},
+	} {
+		req := httptest.NewRequest("PATCH", "/api/bots/"+b.Name()+"/routines/check", strings.NewReader(tc.body))
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != tc.code {
+			t.Fatalf("PATCH %s: %d %s", tc.body, rec.Code, rec.Body.String())
+		}
+		r, err := tm.Load("check")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := json.Marshal(r.Skills)
+		if string(got) != tc.want {
+			t.Fatalf("skills %s want %s", got, tc.want)
+		}
+		if tc.code == 200 {
+			var response link.Routine
+			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			responseRefs, _ := json.Marshal(response.Skills)
+			if string(responseRefs) != tc.want {
+				t.Fatalf("response refs %s", responseRefs)
+			}
+		}
+		req = httptest.NewRequest("GET", "/api/bots/"+b.Name(), nil)
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: tok})
+		rec = httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		var detail struct {
+			Routines []link.Routine `json:"routines"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil || rec.Code != 200 || len(detail.Routines) != 1 {
+			t.Fatalf("GET %d %s %v", rec.Code, rec.Body.String(), err)
+		}
+		refs, _ := json.Marshal(detail.Routines[0].Skills)
+		if string(refs) != tc.want {
+			t.Fatalf("GET refs %s", refs)
+		}
+	}
+}

@@ -54,3 +54,36 @@ func TestRoutineMigrateContinuesAfterBadBot(t *testing.T) {
 		t.Fatalf("good bot was not migrated: %+v", got)
 	}
 }
+
+func TestRoutineSkillsCLI(t *testing.T) {
+	root := t.TempDir()
+	b, err := bot.Create(root, "ada", "Be brief.", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tm := &link.Timer{Dir: b.RoutineDir()}
+	if err := tm.Save(link.Routine{ID: "morning", Prompt: "inspect", Cron: "0 * * * *", Enabled: true, Precheck: "false"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		refs string
+		want int
+	}{{"ship, atlas", 2}, {"", 0}} {
+		if err := cmdRoutine(root, []string{"update", "morning", "--bot", "ada", "--skills", tc.refs}); err != nil {
+			t.Fatal(err)
+		}
+		r, err := tm.Load("morning")
+		if err != nil || len(r.Skills) != tc.want || r.Precheck != "false" || !r.Enabled {
+			t.Fatalf("routine %+v %v", r, err)
+		}
+		if tc.want > 0 && (r.Skills[0] != "ship" || r.Skills[1] != "atlas") {
+			t.Fatalf("order/trim %+v", r.Skills)
+		}
+	}
+	if err := cmdRoutine(root, []string{"update", "morning", "--bot", "ada"}); err == nil {
+		t.Fatal("omitting --skills must not clear bindings")
+	}
+	if err := cmdRoutine(root, []string{"list", "--bot", "ada"}); err != nil {
+		t.Fatal(err)
+	}
+}

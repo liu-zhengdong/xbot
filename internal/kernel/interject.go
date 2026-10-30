@@ -281,7 +281,7 @@ func (k *Kernel) eventMessage(ev link.Event) provider.Message {
 		msg.SetText(k.withPastedNote(msg.Text(), ev.Images))
 		msg.Images = k.pastedImages(ev.Images)
 	}
-	return msg
+	return k.projectRoutineSkills(msg, ev)
 }
 
 // HandedOff reports whether a newer owner message took over the output of
