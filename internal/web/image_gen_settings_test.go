@@ -33,7 +33,7 @@ func TestImageGenSettingsAPI(t *testing.T) {
 			t.Fatal(code)
 		}
 	}
-	if code, raw := call("GET", "", true); code != 200 || !strings.Contains(raw, `"enabled":false`) || !strings.Contains(raw, `"provider":"openai"`) || strings.Contains(raw, `"logged_in":true`) {
+	if code, raw := call("GET", "", true); code != 200 || !strings.Contains(raw, `"enabled":false`) || !strings.Contains(raw, `"provider":"openai"`) || !strings.Contains(raw, `"mode":"auto"`) || strings.Contains(raw, `"logged_in":true`) {
 		t.Fatalf("default %d %s", code, raw)
 	}
 	// A configured API key is not an OAuth login.
@@ -54,7 +54,7 @@ func TestImageGenSettingsAPI(t *testing.T) {
 	if code, raw := call("GET", "", true); code != 200 || !strings.Contains(raw, `"provider":"xai"`) || !strings.Contains(raw, `"logged_in":true`) || strings.Contains(raw, "fake-image") {
 		t.Fatalf("login priority %d %s", code, raw)
 	}
-	for _, body := range []string{`{}`, `null`, `{"enabled":true,"provider":"bad"}`, `{"enabled":null,"provider":"openai"}`, `{"enabled":true,"provider":"xai","key":"secret"}`, `{"enabled":true,"provider":"openai"} {}`, `{"enabled":true,"provider":"openai"}` + strings.Repeat(" ", 4096)} {
+	for _, body := range []string{`{"enabled":true,"provider":"openai","mode":"bad"}`, `{}`, `null`, `{"enabled":true,"provider":"bad"}`, `{"enabled":null,"provider":"openai"}`, `{"enabled":true,"provider":"xai","key":"secret"}`, `{"enabled":true,"provider":"openai"} {}`, `{"enabled":true,"provider":"openai"}` + strings.Repeat(" ", 4096)} {
 		if code, _ := call("PUT", body, true); code != 400 {
 			t.Fatalf("invalid input returned %d", code)
 		}
@@ -74,8 +74,18 @@ func TestImageGenSettingsAPI(t *testing.T) {
 			}
 		}
 	}
+	for _, mode := range []string{"auto", "local"} {
+		code, raw := call("PUT", `{"enabled":true,"provider":"xai","mode":"`+mode+`"}`, true)
+		if code != 200 || !strings.Contains(raw, `"mode":"`+mode+`"`) {
+			t.Fatalf("mode roundtrip: %d %s", code, raw)
+		}
+		f, err := config.LoadWeb(root)
+		if err != nil || f.ImageGenPolicy() != mode {
+			t.Fatalf("mode not saved: %+v %v", f, err)
+		}
+	}
 	// Explicit choice survives a different account logging in.
-	if err := config.SetWebImageGen(root, true, "openai"); err != nil {
+	if err := config.SetWebImageGen(root, true, "openai", "auto"); err != nil {
 		t.Fatal(err)
 	}
 	if _, raw := call("GET", "", true); !strings.Contains(raw, `"provider":"openai"`) {

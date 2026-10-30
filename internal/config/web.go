@@ -22,6 +22,7 @@ type WebFile struct {
 	SearchMode       string     `json:"search_mode,omitempty"`
 	ImageGenEnabled  *bool      `json:"image_gen_enabled,omitempty"`
 	ImageGenProvider string     `json:"image_gen_provider,omitempty"`
+	ImageGenMode     string     `json:"image_gen_mode,omitempty"`
 	// TrustedEgressCIDRs is accepted so an older web.json still loads. Web
 	// requests no longer need an address allow-list. The value is ignored
 	// and dropped on the next save.
@@ -105,6 +106,9 @@ func applyWebEnv(f *WebFile, getenv func(string) string) {
 }
 
 func validateWeb(f WebFile) error {
+	if f.ImageGenMode != "" && f.ImageGenMode != "auto" && f.ImageGenMode != "local" {
+		return errors.New("web: invalid image generation mode")
+	}
 	if f.ImageGenProvider != "" && ImageGenOAuth(f.ImageGenProvider) == "" {
 		return errors.New("web: invalid image generation provider")
 	}

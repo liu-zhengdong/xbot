@@ -58,7 +58,7 @@ func TestImageGenSettingsBrowser(t *testing.T) {
 }
 
 const imageGenFixture = `
-const imageState={enabled:false,provider:'openai',providers:[{id:'openai',name:'OpenAI',logged_in:false},{id:'xai',name:'Grok（xAI）',logged_in:false}]};
+const imageState={enabled:false,mode:'auto',provider:'openai',providers:[{id:'openai',name:'OpenAI',logged_in:false},{id:'xai',name:'Grok（xAI）',logged_in:false}]};
 const originalFetch=window.fetch;
 window.fetch=async(path,opts={})=>{
  if(path==='/api/image-gen'){
@@ -80,8 +80,16 @@ const visible=n=>!!n&&n.getClientRects().length>0;
 (async()=>{
  await waitFor(()=>window.XBotSettings,'settings not ready');
  const params=new URLSearchParams(location.search),shot=params.get('shot');
+ if(shot==='providers'){
+  await XBotSettings.open('providers');
+  await waitFor(()=>$('.provider-subscription'),'provider cards missing');
+  [...document.querySelectorAll('.provider-subscription')].find(b=>b.textContent.includes('ChatGPT')).click();
+  await waitFor(()=>$('.provider-model-row'),'provider models missing');
+  assert(!$('.provider-model-row input'),'model capability is still editable');
+  document.body.dataset.testResult='passed';return;
+ }
  if(shot){
-  imageState.enabled=shot!=='off';imageState.provider=shot==='need-login'?'xai':'openai';imageState.providers[0].logged_in=true;
+  imageState.enabled=shot!=='off';imageState.mode=shot==='forced'?'local':'auto';imageState.provider=shot==='need-login'?'xai':'openai';imageState.providers[0].logged_in=true;
   await XBotSettings.open('image-gen');document.body.dataset.testResult='passed';return;
  }
  await XBotSettings.open('image-gen');
@@ -116,8 +124,13 @@ const visible=n=>!!n&&n.getClientRects().length>0;
  imageState.providers[1].logged_in=true;
  await XBotSettings.open('image-gen');checkToggle(true);
  assert(!guide(),'logged-in selection still asks login');
- const binding=$('#settings-image-gen .ig-binding-guide');
- assert(visible(binding)&&binding.textContent.includes('账号')&&binding.textContent.includes('模型')&&Array.from(binding.textContent).length<=30,'missing binding guidance even when logged in');
+ const mode=id=>$('#settings-image-gen [data-mode="'+id+'"]');
+ assert(mode('auto').getAttribute('aria-checked')==='true','automatic not default');
+ mode('local').click();await saved();
+ assert(imageState.mode==='local'&&mode('local').getAttribute('aria-checked')==='true','forced mode not saved');
+ await XBotSettings.open('image-gen');
+ assert(mode('local').getAttribute('aria-checked')==='true','mode lost after reopen');
+ mode('auto').click();await saved();
  assert(!/hosted|image_gen/.test($('#settings-image-gen').textContent),'engineering words in image settings');
  assert(radio('xai').querySelector('.ws-meta').textContent==='已登录','missing login state');
  fixture.imageSaveFail=true;toggle().click();await saved();

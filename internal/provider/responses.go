@@ -160,8 +160,9 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 		}
 	}
 	// Image generation is its own capability: it mounts with search off. A
-	// request without local tools (compaction, extraction) never gets it.
-	if g, ok := imageGenFrom(ctx); ok && len(req.Tools) > 0 {
+	// auxiliary request without local tools never gets it; the image proxy
+	// opts in explicitly without declaring dummy local tools.
+	if g, ok := imageGenFrom(ctx); ok && (len(req.Tools) > 0 || req.ImageGeneration) {
 		ts = append(ts, imageTool(c.BaseURL, g))
 		// Hosted output is stored by XBot; the vendor cannot attach it to chat.
 		guide, _ := json.Marshal(map[string]any{"role": "developer", "content": imageDeliveryGuidance})

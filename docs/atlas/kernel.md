@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-30 @ native-always-organs (targeted tests)
+verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke)
 ---
 # 内核：Link、Event、收件箱
 
@@ -69,7 +69,7 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 
 ## 厂商生图
 
-每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。仅开启、当前 Bot 绑定为所选家的 OAuth Responses 且现有保险箱登录态已配置时，模型调用上下文才提供 hosted 生图的工作区保存入口；开关关闭优先于旧模型标记，同一轮续段保留快照。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。Save 只将文件保存到 `generated/` 并返回真实工作区相对路径，不写出图队列或 `Entry.Images`。Bot 读取回执后，主动调用既有 `send_message_to_user` 的 `images` 挂图；相对路径按调用时的目录解析，目录改变时需按工作区根定位回执路径。挂图沿既有 `attachOutImages` 的工作区边界、类型/尺寸校验和每条回复 4 张 / 10 MiB / 长边 2048 上限，内容相同的图只挂一次。通知调用携带原 turn 与 reply generation，迟到调用不能挂到另一条回复，同一长轮的后续回复可正常挂图。最终回复沿既有队列写 `Entry.Images`；保存成功不代表交付成功，挂图成败以 `send_message_to_user` 回执为准，拒绝不污染队列，原文件仍保留。传输、配置、保存上限及回放规则见 [供应商](providers.md)，不增加本地工具或权限分支，不改 transcript 旧行。
+每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。`resolveImageGen` 在装配工具目录前固定一份能力：关则两路都关；自动优先当前绑定的已登录 OpenAI/xAI OAuth Responses hosted，否则注册代理 `generate_image`；总用设置里的家则只注册代理。代理须全局所选账号已登录且目录有 Responses 模型，经 `kernelTools` 的真实 `image_gen` 分组登记为 listed，再由 `tools` 门调用；没有空组或 `expand_tool_group`。同一轮续段保留快照，设置变化下一轮生效。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。Save 只将文件保存到 `generated/` 并返回真实工作区相对路径，不写出图队列或 `Entry.Images`。Bot 读取回执后，主动调用既有 `send_message_to_user` 的 `images` 挂图；相对路径按调用时的目录解析，目录改变时需按工作区根定位回执路径。挂图沿既有 `attachOutImages` 的工作区边界、类型/尺寸校验和每条回复 4 张 / 10 MiB / 长边 2048 上限，内容相同的图只挂一次。通知调用携带原 turn 与 reply generation，迟到调用不能挂到另一条回复，同一长轮的后续回复可正常挂图。最终回复沿既有队列写 `Entry.Images`；保存成功不代表交付成功，挂图成败以 `send_message_to_user` 回执为准，拒绝不污染队列，原文件仍保留。传输、配置、保存上限及回放规则见 [供应商](providers.md)，代理复用相同保存上限和回执，权限表归 Normal，不增加工具内确认分支，不改 transcript 旧行。
 
 主对话与本机子代理的模型调用另有一次 MCP schema 降级重试，独立于 overflow；停用范围、跨轮冷却和恢复边界见 [生态](ecosystem.md)。
 

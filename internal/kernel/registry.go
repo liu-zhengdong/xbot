@@ -124,6 +124,13 @@ var kernelTools = []struct {
 	// deferred, when set, says the row waits for links load (see toolEntry).
 	deferred func(k *Kernel) bool
 }{
+	{"image_gen", always, func(k *Kernel) []tools.Tool {
+		cap := k.imageGenCapability()
+		if cap.proxy == nil {
+			return nil
+		}
+		return []tools.Tool{generateImageTool{cap: cap}}
+	}, nil},
 	{"memory", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k}}
 	}, nil},

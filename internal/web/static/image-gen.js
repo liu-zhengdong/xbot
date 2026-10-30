@@ -18,6 +18,16 @@
     const toggle = button("tog", "", () => save({enabled:!data.enabled}));
     toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-label", "允许生成图片");
     row.append(tx, toggle); box.append(row); host.append(box);
+    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "怎么画"));
+    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "怎么画");
+    const modeButtons = [];
+    for (const [id, title, desc] of [["auto", "自动", "模型自带生图就用厂商的；没有就用设置里的家。"], ["local", "总用设置里的家", "一律用下面选的账号画，不用厂商自带生图。"]]) {
+      const b = button("ws-choice", "", () => save({mode:id})); b.dataset.mode = id; b.setAttribute("role", "radio");
+      const body = node("span", "ws-body"), ttl = node("span", "ws-title", title);
+      if (id === "auto") ttl.append(node("span", "ws-tag", "默认"));
+      body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
+    }
+    modeSec.append(modes); host.append(modeSec);
     const section = node("div", "setsec"); section.append(node("h4", "", "用哪家"));
     const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "用哪家");
     const rows = [];
@@ -39,12 +49,16 @@
       const next = rows[(i + (["ArrowDown","ArrowRight"].includes(e.key) ? 1 : rows.length - 1)) % rows.length];
       next.select.focus(); save({provider:next.id});
     };
-    section.append(list, node("p", "setfoot ig-binding-guide", "要和 Bot 当前使用的账号、模型对上。"), node("p", "setfoot ws-provider-foot", "画好的图保存在工作区，由 Bot 主动挂到回复中。"));
+    section.append(list, node("p", "setfoot ws-provider-foot", "画好的图保存在工作区，由 Bot 主动挂到回复中。"));
     host.append(section, node("p", "setfoot", "改完后，新开的对话按新设置来。"));
     function paint() {
       toggle.classList.toggle("on", data.enabled); toggle.setAttribute("aria-checked", String(data.enabled)); toggle.disabled = saving;
       hint.textContent = data.enabled ? "需要时 Bot 可以画图。" : "对话里不会去画图。";
-      section.hidden = !data.enabled;
+      modeSec.hidden = section.hidden = !data.enabled;
+      for (const b of modeButtons) {
+        const selected = b.dataset.mode === data.mode;
+        b.classList.toggle("on", selected); b.setAttribute("aria-checked", String(selected)); b.disabled = saving;
+      }
       for (const r of rows) {
         const selected = data.provider === r.id, loggedIn = data.providers.find(p => p.id === r.id)?.logged_in;
         r.select.classList.toggle("on", selected); r.select.setAttribute("aria-checked", String(selected)); r.select.disabled = saving; r.select.tabIndex = selected ? 0 : -1;
@@ -56,7 +70,7 @@
       if (saving || !current()) return;
       saving = true; error.hidden = true; paint();
       try {
-        const next = await api("/api/image-gen", {method:"PUT", body:{enabled:data.enabled,provider:data.provider,...patch}});
+        const next = await api("/api/image-gen", {method:"PUT", body:{enabled:data.enabled,mode:data.mode,provider:data.provider,...patch}});
         if (current()) data = next;
       } catch { if (current()) { error.textContent = "没能保存图片生成设置，请再试一次。"; error.hidden = false; } }
       finally { saving = false; if (current()) paint(); }

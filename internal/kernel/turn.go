@@ -85,6 +85,7 @@ type turn struct {
 	fromSeq       int
 	task          string
 	forked        chan struct{}
+	imageGen      *imageGenCapability
 	runCtx        context.Context
 	cancelRun     context.CancelFunc
 	// stopReason says why a background ended before the task was done: the

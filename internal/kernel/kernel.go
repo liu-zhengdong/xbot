@@ -260,6 +260,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	t.started = k.now()
 	t.task = clipRunes(strings.TrimSpace(ev.Content), forkTaskRunes)
 	t.forked = make(chan struct{})
+	imageGen := k.resolveImageGen(ctx)
+	t.imageGen = &imageGen
 	k.turnMu.Lock()
 	k.turn = t
 	k.turnMu.Unlock()

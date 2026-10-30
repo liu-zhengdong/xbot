@@ -133,7 +133,7 @@ func TestHostedImageGenerationOAuth(t *testing.T) {
 				}
 				text := "生成结果已处理。"
 				if tc.attach && n == 3 {
-					if !strings.Contains(string(req.Input), "picture(s) will show in your reply bubble") {
+					if !strings.Contains(string(req.Input), "sent to the owner's chat with 1 picture(s)") {
 						t.Error("send_message_to_user did not confirm attachment")
 					}
 					text = "已用挂图方法挂上。"

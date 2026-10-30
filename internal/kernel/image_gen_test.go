@@ -62,7 +62,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 	if err := vault.SetOAuth(v, "chatgpt", vault.OAuthCredential{AccessToken: "fake"}, []string{"127.0.0.1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := config.SetWebImageGen(b.Root, true, "openai"); err != nil {
+	if err := config.SetWebImageGen(b.Root, true, "openai", "auto"); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.SetBinding("openai", "gpt-5.5"); err != nil {
@@ -146,7 +146,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 		t.Fatalf("image tool %v", first)
 	}
 
-	if err := config.SetWebImageGen(b.Root, false, "openai"); err != nil {
+	if err := config.SetWebImageGen(b.Root, false, "openai", "auto"); err != nil {
 		t.Fatal(err)
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "再来", time.Unix(1001, 0))); err != nil {
@@ -170,7 +170,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 		{"default off", "openai", "chatgpt", false, true, true, false},
 		{"openai oauth", "openai", "chatgpt", true, true, false, true},
 		{"xai oauth", "xai", "xai", true, true, false, true},
-		{"wrong selection", "xai", "chatgpt", true, true, true, false},
+		{"different selection uses hosted", "xai", "chatgpt", true, true, true, true},
 		{"not logged in", "openai", "chatgpt", true, false, true, false},
 		{"api key only", "openai", "", true, true, true, false},
 	} {
@@ -187,7 +187,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.enabled {
-				if err := config.SetWebImageGen(b.Root, true, tc.selected); err != nil {
+				if err := config.SetWebImageGen(b.Root, true, tc.selected, "auto"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -214,7 +214,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 				t.Fatalf("inherited mounted=%v want=%v", got, tc.want)
 			}
 			if tc.want {
-				if err := config.SetWebImageGen(b.Root, false, tc.selected); err != nil {
+				if err := config.SetWebImageGen(b.Root, false, tc.selected, "auto"); err != nil {
 					t.Fatal(err)
 				}
 				r := &turnRun{k: k, t: &turn{runCtx: ctx}}
@@ -334,7 +334,7 @@ func hostedDeliveryKernel(t *testing.T) (*Kernel, string) {
 	if err := k.Bot.SetBinding("openai", "model"); err != nil {
 		t.Fatal(err)
 	}
-	if err := config.SetWebImageGen(k.Bot.Root, true, "openai"); err != nil {
+	if err := config.SetWebImageGen(k.Bot.Root, true, "openai", "auto"); err != nil {
 		t.Fatal(err)
 	}
 	v, err := config.OAuthVault(k.Bot.Root)

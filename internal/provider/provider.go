@@ -113,6 +113,9 @@ type Request struct {
 	Messages     []Message
 	Tools        []ToolDef
 	HostedSearch bool
+	// ImageGeneration explicitly requests hosted generation without local tools
+	// (the local image proxy); ordinary auxiliary requests leave it false.
+	ImageGeneration bool
 }
 
 // Provider completes a turn. onDelta receives assistant text as it streams.

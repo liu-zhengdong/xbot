@@ -2,6 +2,8 @@
 
 - 2026-10-30：E2-final 非 maskable 图标的面板外画布改为透明，覆盖 web PNG、SVG 内嵌 PNG、appshell、ICNS 和 ICO 全部尺寸；maskable 字节不变。以既有 1024px 图像抠图，保留面板内 RGB；透明度回归旧资源失败、新资源连续三次通过，appshell 整包三次通过，Chrome 浅深色资源截图与 alpha 检查通过。尚未合入、原生 Dock/安装包和用户日用未验收；新增请求、轮询、动画均为 0，512px PNG 增加 3,885 字节，交互 p95/帧率未测。
 - gofmt、vet、diff 检查通过，atlas audit 有既有告警；全仓测试复现内核 `TestLongTurnStaysUnderTheCeiling`（40 步 19 次折叠）、work `TestShellUsesBotDir` 缺 description，以及 web `TestWebApprovalAllowAndDeny` 在 90 秒超时；网页整包三次也被同一测试的 90 秒超时阻断。
+- 2026-10-30：生图统一为关 / 自动 hosted 优先、代理兜底 / 总用设置里的家（只代理）；本地 `generate_image` 经统一注册表与 `tools` 门调用全局 OpenAI/xAI OAuth，复用 Responses、generated/ 及既有挂图。设置增加「怎么画」，详情能力只读。功能分支 scripted 真实 serve 端到端三次通过，六次代理完整旅程 86–103 ms（样本 p95 103 ms，非真厂商性能）；本机 Chrome 浅深色截图与行为通过，未获独立视觉复审或用户日用验收；未合 main、未 push。
+- 本批 gofmt、vet、atlas audit（既有告警）通过；config/provider/review 包三次及 kernel 跳过既有长轮失败后三次通过，web 生图与供应商浏览器相关测试三次通过。旧绑定/所选家相等门控恢复后回归红，修复绿。全仓检查 600 秒未完成：kernel 长轮 40 步 19 次折叠失败，web 审批连接挂起；两项在未修改 HEAD 复现。web 跳过审批后重跑仍遇人设卡锁用例挂起，未继续扩修。移除挡住供应商页测试的既有选中底色静态值断言，不改成新色值断言。
 
 - 2026-10-30：原生能力统一由 `link.Organs()` 驱动 CLI 与内核装配，旧原生 grant 忽略；真实 Link 仍可装卸。编码任务随 Bot 改名迁移记录、卡片和完成事件；折叠后的请求去掉被新快照取代的旧工具索引，保留 transcript 与其他环境字段。改动包连续三次通过（内核跳过既有失败的长轮测试，网页只跑相关 API），编码任务改名通过 race 检查；真实入口和用户日用尚未验收。长轮折叠测试既有基线为 40 步 12 次，本次为 19 次，均超过测试门槛；交互 p95 未测。全仓检查另遇已知网页包超时、`TestShellUsesBotDir` 失败，以及 OAuth 测试报告本机 56121 端口被占用。
 

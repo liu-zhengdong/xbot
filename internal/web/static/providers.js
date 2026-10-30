@@ -393,7 +393,7 @@
             const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); if (supported) chip.append(lineIcon(kind)); chip.append(node("span", "", supported ? label : none)); chips.append(chip);
           }
           const windowChip = node("span", "provider-chip provider-window", ctxShort(m.context)); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);
-          if (m.protocol === "responses" && m.registered) chips.append(imageGenControl(api, p, m));
+          chips.append(imageGenCapability(p, m));
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
         body.append(rows);
@@ -437,27 +437,10 @@
     }
     await load();
   }
-  // Hosted image generation is a per-model switch, apart from hosted search.
-  // OpenAI takes a tool-level image model; xAI picks its own.
-  function imageGenControl(api, p, m) {
-    const xai = p.oauth === "xai" || p.brand === "xai";
-    const wrap = node("span", "provider-chip " + (m.hosted_image_generation ? "supported" : "unsupported"));
-    const box = node("input"); box.type = "checkbox"; box.checked = !!m.hosted_image_generation; box.setAttribute("aria-label", `${m.model} 厂商生图`);
-    const model = node("input", "provider-image-model"); model.type = "text"; model.placeholder = "生图模型（默认）"; model.value = m.image_generation_model || ""; model.maxLength = 128; model.hidden = xai || !box.checked; model.setAttribute("aria-label", `${m.model} 生图模型`);
-    const save = async () => {
-      box.disabled = model.disabled = true; wrap.title = "";
-      try {
-        const out = await api("/api/providers/models/image-generation", { method: "PUT", body: { provider: p.name, model: m.model, enabled: box.checked, image_model: xai ? "" : model.value.trim() } });
-        m.hosted_image_generation = out.hosted_image_generation; m.image_generation_model = out.image_generation_model;
-      } catch (err) { wrap.title = err.message || String(err); }
-      box.checked = !!m.hosted_image_generation; model.value = m.image_generation_model || ""; model.hidden = xai || !box.checked;
-      wrap.className = "provider-chip " + (box.checked ? "supported" : "unsupported");
-      box.disabled = model.disabled = false;
-    };
-    box.onchange = save; model.onchange = save;
-    const label = node("label", "provider-image-toggle"); label.append(box, node("span", "", "厂商生图"));
-    wrap.append(label, model);
-    return wrap;
+  // Capability is read-only; generation policy belongs to 图片生成 settings.
+  function imageGenCapability(p, m) {
+    const supported = (m.protocol || p.protocol) === "responses" && ["chatgpt", "xai"].includes(p.oauth);
+    return node("span", "provider-chip " + (supported ? "supported" : "unsupported"), supported ? "有厂商生图" : "无厂商生图");
   }
   let activeDialog = null;
   // The picker says "which model does this Bot use": groups carry the vendor's

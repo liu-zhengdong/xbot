@@ -39,9 +39,10 @@ func (s *Server) getImageGen(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, struct {
 		Enabled   bool                   `json:"enabled"`
+		Mode      string                 `json:"mode"`
 		Provider  string                 `json:"provider"`
 		Providers []imageGenProviderView `json:"providers"`
-	}{f.ImageGenOn(), selected, providers})
+	}{f.ImageGenOn(), f.ImageGenPolicy(), selected, providers})
 }
 
 func (s *Server) putImageGenSettings(w http.ResponseWriter, r *http.Request) {
@@ -51,15 +52,16 @@ func (s *Server) putImageGenSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Enabled  *bool  `json:"enabled"`
 		Provider string `json:"provider"`
+		Mode     string `json:"mode"`
 	}
 	if !readSearchInput(w, r, &in) {
 		return
 	}
-	if in.Enabled == nil || config.ImageGenOAuth(in.Provider) == "" {
+	if in.Enabled == nil || config.ImageGenOAuth(in.Provider) == "" || (in.Mode != "" && in.Mode != "auto" && in.Mode != "local") {
 		writeErr(w, 400, "请检查图片生成选项")
 		return
 	}
-	if err := config.SetWebImageGen(s.Root, *in.Enabled, in.Provider); err != nil {
+	if err := config.SetWebImageGen(s.Root, *in.Enabled, in.Provider, in.Mode); err != nil {
 		writeErr(w, 500, "没能保存图片生成设置，请再试一次")
 		return
 	}

@@ -14,15 +14,15 @@ func TestWebImageGenSettings(t *testing.T) {
 	}
 	for _, id := range []string{"openai", "xai"} {
 		for _, enabled := range []bool{true, false} {
-			if err := SetWebImageGen(root, enabled, id); err != nil {
+			if err := SetWebImageGen(root, enabled, id, "local"); err != nil {
 				t.Fatal(err)
 			}
 			f, err = LoadWeb(root)
-			if err != nil || f.ImageGenOn() != enabled || f.ImageGenProvider != id {
+			if err != nil || f.ImageGenOn() != enabled || f.ImageGenProvider != id || f.ImageGenPolicy() != "local" {
 				t.Fatalf("roundtrip: %+v %v", f, err)
 			}
 			before, _ := os.Stat(WebPath(root))
-			if err := SetWebImageGen(root, enabled, id); err != nil {
+			if err := SetWebImageGen(root, enabled, id, "local"); err != nil {
 				t.Fatal(err)
 			}
 			after, _ := os.Stat(WebPath(root))
@@ -31,7 +31,7 @@ func TestWebImageGenSettings(t *testing.T) {
 			}
 		}
 	}
-	if err := SetWebImageGen(root, true, "unknown"); err == nil {
+	if err := SetWebImageGen(root, true, "unknown", "auto"); err == nil {
 		t.Fatal("unknown accepted")
 	}
 	f.ImageGenProvider = "unknown"
@@ -50,7 +50,7 @@ func TestWebImageGenSharesSearchLock(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if err := SetWebImageGen(root, true, "xai"); err != nil {
+			if err := SetWebImageGen(root, true, "xai", "local"); err != nil {
 				t.Error(err)
 			}
 		}()

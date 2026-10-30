@@ -48,8 +48,8 @@
 
 ## 图片生成
 
-- `GET /api/image-gen`：返回 `{enabled,provider,providers:[{id,name,logged_in}]}`。默认关，选择尚未保存时优先已登录的账号，否则 OpenAI；`openai` 对应 ChatGPT OAuth，`xai` 对应 xAI OAuth。只返回登录布尔值，不返回保险箱原文。
-- `PUT /api/image-gen`：完整提交 `{enabled:true,provider:"openai|xai"}`，返回当前设置。正文上限 4 KiB，拒绝未知字段、缺失值、非法供应商和尾随 JSON。认证与同源要求复用现有设置接口。写入现有 `web.json`，与搜索共用文件锁，重复值不重写。
+- `GET /api/image-gen`：返回 `{enabled,mode,provider,providers:[{id,name,logged_in}]}`；`mode` 为 `auto`（默认）或 `local`（总用设置里的家）。默认关，选择尚未保存时优先已登录的账号，否则 OpenAI；`openai` 对应 ChatGPT OAuth，`xai` 对应 xAI OAuth。只返回登录布尔值，不返回保险箱原文。
+- `PUT /api/image-gen`：提交 `{enabled:true,mode:"auto|local",provider:"openai|xai"}`（省略 mode 取 auto），返回当前设置。正文上限 4 KiB，拒绝未知字段、缺失值、非法供应商和尾随 JSON。认证与同源要求复用现有设置接口。写入现有 `web.json`，与搜索共用文件锁，重复值不重写。
 - 全局关闭不挂生图；开启后仅所选家的已登录 OAuth Responses 绑定可用。每轮开始固定配置，进行中的一轮保留快照；产物仍进工作区，不自动挂气泡。
 
 ## 网页搜索
@@ -474,7 +474,7 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 OAuth 供应商额外返回 `oauth`（`openrouter`、`chatgpt` 或 `xai`）；`key_configured` 此时表示 vault 中已保存凭证，不暴露令牌。保险箱不可用时该项带 `auth_error`，其他 key 供应商仍可列出和绑定。
 
-`PUT /api/providers/models/image-generation`（需用户登录）接收 `{provider,model,enabled,image_model}`，更新现有 `providers.json` 中已登记模型的 `hosted_image_generation` 和 `image_generation_model`；只允许 Responses 开启，模型名空串使用厂商默认。成功返回 `{provider,model,hosted_image_generation,image_generation_model}`；未登录 401、无法解析 400、未知绑定/不支持的协议或非法模型名 422。下一轮模型请求读取新配置，无须重建内核。`GET /api/providers`、`GET /api/models` 和实时模型目录携带生图能力字段；`registered` 表示模型已登记、允许保存设置，读取目录不自动登记模型。
+旧 `PUT /api/providers/models/image-generation` 保留供已有配置调用，设置界面不再提供此入口；其中 enabled 标记不决定全局策略，实际路由由 `/api/image-gen` 的三态与 OAuth Responses 能力决定。该接口（需用户登录）接收 `{provider,model,enabled,image_model}`，更新现有 `providers.json` 中已登记模型的 `hosted_image_generation` 和 `image_generation_model`；只允许 Responses 开启，模型名空串使用厂商默认。成功返回 `{provider,model,hosted_image_generation,image_generation_model}`；未登录 401、无法解析 400、未知绑定/不支持的协议或非法模型名 422。下一轮模型请求读取新配置，无须重建内核。`GET /api/providers`、`GET /api/models` 和实时模型目录携带生图能力字段；`registered` 表示模型已登记、允许保存设置，读取目录不自动登记模型。
 
 `POST /api/providers/oauth/{kind}/start`（需用户登录）返回 `{url}`，供浏览器打开授权窗口。支持 `openrouter`、`chatgpt`、`xai`（xAI 用 Grok CLI 公共客户端 PKCE，回调固定监听 `127.0.0.1:56121/callback`，端口被占用时报人话错误）；重复点击复用十分钟内的待完成尝试；已有另一类登录进行中返回 400。`GET /api/providers/oauth/{kind}/status` 返回 `{state,error?}`，状态为 `idle`、`pending`、`succeeded`、`failed` 或 `cancelled`，错误不含授权响应明文。`POST /api/providers/oauth/{kind}/cancel`（同 start 鉴权）取消进行中的登录：关闭回调监听、状态置 `cancelled`，取消或失败后可立刻重新 start；无可取消时 409。`POST /api/providers/oauth/{kind}/logout`（同 start 鉴权）退出该账号：先停掉进行中的登录，再删除 vault 中的凭证和该 kind 的 OAuth 绑定（同名的 API key 绑定不动），状态回到 `idle`，返回 `{status:"logged_out"}`；什么都没存时也返回 200；不支持的 kind 返回 404，删除失败返回 500 和人话错误。绑在这个供应商上的 Bot 会失去凭证，直到再次登录（重建同名绑定）。退出不等待进行中的自动刷新：刷新写回前会核对凭证仍是它开始时那一份，已被退出删掉就放弃写回（本地与保险箱守护进程同一路径）。设置页只在点击 ChatGPT 订阅卡或 xAI 登录按钮、或详情的「重新登录」时启动授权；轮询成功后刷新供应商列表。回调由短期 loopback listener 接收，不通过对话或 transcript 传递授权码。协议及凭证保存方式见 [供应商](atlas/providers.md)。
 

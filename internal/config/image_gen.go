@@ -10,6 +10,13 @@ import (
 
 func (f WebFile) ImageGenOn() bool { return f.ImageGenEnabled != nil && *f.ImageGenEnabled }
 
+func (f WebFile) ImageGenPolicy() string {
+	if f.ImageGenMode == "" {
+		return "auto"
+	}
+	return f.ImageGenMode
+}
+
 // ImageGenOAuth maps the settings brand to the existing account identity.
 // Provider names and API keys are deliberately not login evidence.
 func ImageGenOAuth(id string) string {
@@ -38,7 +45,13 @@ func ImageGenLoggedIn(ctx context.Context, root, id string) (bool, error) {
 
 // SetWebImageGen shares the search read/modify/write lock and preserves all
 // other web settings. Repeating a PUT does not rewrite an unchanged file.
-func SetWebImageGen(root string, enabled bool, id string) error {
+func SetWebImageGen(root string, enabled bool, id, mode string) error {
+	if mode == "" {
+		mode = "auto"
+	}
+	if mode != "auto" && mode != "local" {
+		return errors.New("请选择画图方式")
+	}
 	if ImageGenOAuth(id) == "" {
 		return errors.New("请从列表里选择一家")
 	}
@@ -47,10 +60,10 @@ func SetWebImageGen(root string, enabled bool, id string) error {
 		if err != nil {
 			return err
 		}
-		if f.ImageGenEnabled != nil && f.ImageGenOn() == enabled && f.ImageGenProvider == id {
+		if f.ImageGenEnabled != nil && f.ImageGenOn() == enabled && f.ImageGenProvider == id && f.ImageGenPolicy() == mode {
 			return nil
 		}
-		f.ImageGenEnabled, f.ImageGenProvider = &enabled, id
+		f.ImageGenEnabled, f.ImageGenProvider, f.ImageGenMode = &enabled, id, mode
 		return SaveWeb(root, f)
 	})
 }

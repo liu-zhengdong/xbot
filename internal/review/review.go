@@ -84,6 +84,7 @@ var Table = map[string]Class{
 	"routine_delete":       Normal,
 	"routine_pause":        Normal,
 	"send_message_to_user": Normal,
+	"generate_image":       Normal,
 
 	// Built-in mechanism manual.
 	"kernel_manual": Readonly,
