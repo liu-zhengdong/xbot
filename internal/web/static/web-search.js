@@ -23,8 +23,8 @@
     const hint = node("div", "hint"); tx.append(node("b", "", "允许查网页"), hint);
     const toggle = button("tog", "", () => save({enabled:!data.enabled})); toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-label", "允许查网页");
     switchRow.append(tx, toggle); switchBox.append(switchRow); host.append(switchBox);
-    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "怎么搜"));
-    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "怎么搜");
+    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "搜索工具策略"));
+    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "搜索工具策略");
     const modeButtons = [];
     for (const [id, title, desc] of [["auto","自动","模型自带搜索就用厂商的；没有就用本机搜。"],["local","总用本机","一律用本机搜，不用厂商的——即便模型支持。"]]) {
       const b = button("ws-choice", "", () => save({mode:id})); b.dataset.mode = id; b.setAttribute("role", "radio");
@@ -33,12 +33,12 @@
       body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
     }
     modeSec.append(modes); host.append(modeSec);
-    const providerSec = node("div", "setsec"), providerTitle = node("h4", "ws-provider-title", "本机用哪家");
+    const providerSec = node("div", "setsec"), providerTitle = node("h4", "ws-provider-title", "搜索工具");
     const info = button("ws-provider-info", "ⓘ");
     info.setAttribute("aria-label", "说明");
     info.dataset.tip = "本机搜不到网页时，对话里会提示。默认 DuckDuckGo，免密钥。改完后，新开的对话按新设置来。";
     providerTitle.append(info); providerSec.append(providerTitle);
-    const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "本机用哪家");
+    const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "搜索工具");
     for (const p of data.providers) {
       const row = {p, status:resting(p), version:0, lastAttempt:null};
       // A div, not a button: the selected row holds the key input and its status icon.
