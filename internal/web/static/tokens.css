@@ -59,7 +59,7 @@
   --x-font:"Segoe UI","Noto Sans SC","PingFang SC",sans-serif;
   --x-mono:"JetBrains Mono","SF Mono",Consolas,"Noto Sans Mono",monospace;
   /* 字号 */
-  --x-fs-cap:11.5px; --x-fs-sm:12.5px; --x-fs-ui:13.5px; --x-fs-body:15px; --x-fs-title:17px; --x-fs-greet:19px; --x-fs-h:24px;
+  --x-fs-cap:11.5px; --x-fs-label:12px; --x-fs-sm:12.5px; --x-fs-ui:13.5px; --x-fs-body:15px; --x-fs-title:17px; --x-fs-greet:19px; --x-fs-h:24px;
   /* 间距（4 的倍数为主，6/10 用于紧凑行） */
   --x-s1:4px; --x-s2:6px; --x-s3:8px; --x-s4:10px; --x-s5:12px; --x-s6:16px; --x-s7:20px; --x-s8:24px; --x-s9:32px;
   /* 圆角 */

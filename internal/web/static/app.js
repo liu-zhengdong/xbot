@@ -5905,6 +5905,38 @@
     const copy = el("div", "ct"); copy.append(el("b", "routine-name"), el("span", "s2 routine-time"));
     const toggle = el("button", "tog"); toggle.type = "button"; toggle.setAttribute("role", "switch");
     const notice = el("span", "routine-error"); notice.hidden = true; notice.setAttribute("role", "status");
+    const skills = el("div", "routine-skills");
+    const summary = el("button", "routine-skills-summary"); summary.type = "button"; summary.setAttribute("aria-expanded", "false");
+    const editor = el("form", "routine-skills-editor"); editor.hidden = true;
+    const label = el("label", "", "运行时加载的技能"), input = el("input"); input.type = "text"; input.autocomplete = "off";
+    label.append(input);
+    const help = el("p", "routine-skills-help", "填技能名或 ID，用逗号分隔，按顺序加载。留空不加载；找不到或已停用的技能会在运行时说明。");
+    const error = el("p", "routine-skills-error"); error.hidden = true; error.setAttribute("role", "status");
+    const actions = el("div", "routine-skills-actions");
+    const cancel = el("button", "", "取消"); cancel.type = "button";
+    const save = el("button", "primary", "保存"); save.type = "submit";
+    actions.append(cancel, save); editor.append(label, help, error, actions); skills.append(summary, editor);
+    const closeEditor = () => {
+      editor.hidden = true; summary.hidden = false; summary.setAttribute("aria-expanded", "false"); summary.focus();
+    };
+    summary.onclick = () => {
+      input.value = (card.routine.skills || []).join(", "); error.hidden = true;
+      summary.hidden = true; summary.setAttribute("aria-expanded", "true"); editor.hidden = false; input.focus();
+    };
+    cancel.onclick = closeEditor;
+    editor.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); if (!save.disabled) closeEditor(); }
+    });
+    editor.onsubmit = async e => {
+      e.preventDefault(); if (save.disabled) return;
+      const refs = input.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+      input.disabled = cancel.disabled = save.disabled = true; error.hidden = true;
+      try {
+        const changed = await api("/api/bots/" + encodeURIComponent(data.name) + "/routines/" + encodeURIComponent(rt.id), {method: "PATCH", body: {skills: refs}});
+        card.routine.skills = changed.skills; updateRoutineCard(card, card.routine); closeEditor();
+      } catch (e) { error.textContent = "没保存成功：" + zhError(e.message); error.hidden = false; }
+      finally { input.disabled = cancel.disabled = save.disabled = false; }
+    };
     toggle.addEventListener("click", async () => {
       const before = card.routine.enabled !== false; const desired = !before;
       clearTimeout(card.failureTimer); notice.getAnimations().forEach(a => a.cancel()); notice.hidden = true;
@@ -5920,13 +5952,14 @@
       }
       finally { routineChanges.delete(rt.id); toggle.disabled = false; updateRoutineCard(card, card.routine); }
     });
-    card.append(icon("alarm-clock"), copy, toggle, notice); updateRoutineCard(card, rt); return card;
+    card.append(icon("alarm-clock"), copy, toggle, notice, skills); updateRoutineCard(card, rt); return card;
   }
 
   function updateRoutineCard(card, rt) {
     card.routine = rt;
     taskValue(card.querySelector(".routine-name"), rt.name || "例程");
     taskValue(card.querySelector(".routine-time"), rt.at ? when(rt.at) : cronText(rt.cron, true) + (rt.zone === "UTC" ? " · UTC" : ""));
+    taskValue(card.querySelector(".routine-skills-summary"), rt.skills?.length ? "技能：" + rt.skills.join(" → ") : "添加技能");
     if (routineChanges.has(rt.id)) return;
     const toggle = card.querySelector(".tog"), enabled = rt.enabled !== false;
     toggle.classList.toggle("on", enabled); toggle.setAttribute("aria-checked", String(enabled)); toggle.setAttribute("aria-label", (enabled ? "停用" : "启用") + "「" + (rt.name || "例程") + "」");

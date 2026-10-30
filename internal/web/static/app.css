@@ -2579,6 +2579,25 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 .task-routine .ct { flex-direction: row; align-items: center; gap: 8px; }
 .task-routine .ct b { font-size: 13px; font-weight: 600; }
 .task-routine .s2 { margin-left: auto; font-size: 12px; color: var(--x-muted); }
+.task-routine .ct { min-height: var(--x-s8); }
+.task-routine > .icon { flex: none; }
+.task-routine .routine-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-routine .routine-time { flex: none; }
+.routine-skills { flex-basis: calc(100% - var(--x-s2) - 2 * var(--x-s3)); min-width: 0; margin-left: calc(var(--x-s2) + 2 * var(--x-s3)); font-size: var(--x-fs-label); color: var(--x-muted); }
+.routine-skills-summary { display: block; width: 100%; border: 0; padding: var(--x-s1) 0; background: transparent; color: inherit; text-align: left; overflow-wrap: anywhere; border-radius: var(--x-r-xs); }
+.routine-skills-summary:hover { color: var(--x-text); }
+.routine-skills-editor label { display: block; color: var(--x-text-2); }
+.routine-skills-editor input { display: block; width: 100%; min-width: 0; margin-top: var(--x-s3); padding: var(--x-s3) var(--x-s4); border: 0; border-radius: var(--x-r-sm); background: var(--x-input); color: var(--x-text); }
+.routine-skills-help, .routine-skills-error { margin: var(--x-s3) 0 0; overflow-wrap: anywhere; }
+.routine-skills-error { color: var(--x-danger); }
+.routine-skills-actions { display: flex; justify-content: flex-end; gap: var(--x-s3); margin-top: var(--x-s5); }
+.routine-skills-actions button { border: 0; border-radius: var(--x-r-sm); padding: var(--x-s2) var(--x-s4); background: var(--x-fill-2); color: var(--x-text); }
+.routine-skills-actions button:hover { background: var(--x-fill-3); }
+.routine-skills-actions .primary { background: var(--x-primary); color: var(--x-on-primary); }
+.routine-skills-actions .primary:hover { background: var(--x-primary-hover); }
+.routine-skills-actions button:disabled, .routine-skills-editor input:disabled { opacity: .5; }
+.routine-skills :is(button, input):focus-visible { outline-color: var(--x-muted); }
+.routine-skills [hidden] { display: none; }
 .tog { width: 34px; height: 20px; border: 0; border-radius: 99px; background: var(--x-fill-3); position: relative; padding: 0; flex: none; }
 .tog::after { content: ""; width: 16px; height: 16px; position: absolute; top: 2px; left: 2px; border-radius: 99px; background: var(--x-card); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
 .tog.on { background: var(--x-primary); }

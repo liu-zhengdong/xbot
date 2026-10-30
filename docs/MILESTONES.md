@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 例程技能任务面板 UI（feature/routine-skills-ui，本地交付）
+
+- 生产 UI 只在 `routineCard` / `updateRoutineCard` 的原 `.task-routine` 下挂技能摘要、添加入口和逗号编辑；取消／Escape 丢弃，保存仅 PATCH `skills`，失败保留输入。沿用原行头和开关，无新选择器、Webhook 或 CRUD 改动。
+- Chrome 使用生产静态资源与受控 fetch：有序引用、添加、空数组、失败重试、取消、两个轮询周期的输入／焦点／选区保持、原开关和行头节点保留均连续三遍通过；例程 skills API、开关 API 与例程运行投影同批三遍通过。新行为用例在旧 UI 上因缺少技能入口失败。级别：本地浏览器行为与 API 检查通过；真实 serve 界面全链路、设计师生产截图复审和用户日用待验，未合 main、未 push。
+- 1440×900、DPR 2 浅深色前后及默认／悬停／编辑／错误／添加状态截图在 `~/.xbot-build/ui-shots/routine-skills-ui/`；另有 390px 窄屏。Chrome 实测行头 36px、icon 14px、toggle 34×20px、pad 6×10px、副行 12px，与正文同起点，副行右缘命中按钮；窄屏页面宽 390px、输入与按钮均在视口内。
+- 本机无头 Chrome 50 次展开到下一帧 p95 22.7ms；新增后台请求、轮询、动画均为 0，保存每次 1 个 PATCH。此数字是受控浏览器交互采样，不代表真实网络延迟或 60fps 验收。
+- gofmt、JS 语法、go vet 和 diff 检查通过；atlas audit 执行，保留既有告警。已跑全仓 `go test -count=1 -timeout=90s ./...` 与 web 整包 `-count=3`，未全绿：内核 `TestLongTurnStaysUnderTheCeiling`（40 步 19 folds）、`TestMemoryFileLogGuard`、memory `TestMonthlyGuardAndRoundTrip`、work `TestShellUsesBotDir` 失败，web `TestWebApprovalAllowAndDeny` 超时；这五项均在干净 `b67fe44d` archive 定向复现，未扩修。检查日志与几何数据在 `~/.xbot-build/routine-skills-ui/checks/`。
+
 ## 2026-10-30 例程挂技能（feature/routine-skills，本地分支验收）
 
 - Routine 有序 skills 引用、工具/API/CLI 读写与 Kernel 唯一正文投影已落地；覆盖初次唤醒和忙时吸收，不改调度/precheck，不写技能库。
