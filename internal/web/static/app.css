@@ -849,10 +849,12 @@ html[data-theme="dark"] .bubble .code-block {
 .md-table:last-child { margin-bottom: 0; }
 .md-table table {
   border-collapse: collapse; font-size: .93em; line-height: 1.55; white-space: normal;
+  min-width: 100%; width: max-content; max-width: none;
 }
 .md-table :is(th, td) {
   border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
   padding: 7px 12px; text-align: left; vertical-align: top;
+  min-width: 5.5em;
 }
 .md-table tbody tr:nth-child(even) {
   background: color-mix(in srgb, currentColor 6%, transparent);
