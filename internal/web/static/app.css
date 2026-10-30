@@ -851,15 +851,15 @@ html[data-theme="dark"] .bubble .code-block {
   border-collapse: collapse; font-size: .93em; line-height: 1.55; white-space: normal;
 }
 .md-table :is(th, td) {
-  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
   padding: 7px 12px; text-align: left; vertical-align: top;
 }
 .md-table tbody tr:nth-child(even) {
-  background: color-mix(in srgb, currentColor 7%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
 }
 .md-table th {
   font-weight: 600; padding: 8px 12px;
-  background: color-mix(in srgb, currentColor 14%, transparent);
+  background: color-mix(in srgb, currentColor 18%, transparent);
   border-bottom-width: 2px;
 }
 
