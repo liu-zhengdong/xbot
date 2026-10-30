@@ -89,3 +89,10 @@ html[data-theme="dark"]{
   --x-scrim:rgba(0,0,0,.5);
   color-scheme:dark;
 }
+
+/* Voice chat: approved composer and bubble geometry. */
+:root {
+  --voice-width:200px; --voice-button:36px;
+  --voice-track:4px; --voice-track-radius:2px; --voice-dot:10px;
+  --voice-pulse:1100ms;
+}

@@ -95,7 +95,7 @@ func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, k.withLineNoteIn(target, e.Message.Role, e.Message.Text(), e.Images))
+		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, k.withLineNoteIn(target, e.Message.Role, e.Message.Text(), e.Images, e.Audios))
 		if blob := toolBlob(e.Message); blob != "" && e.Message.Text() == "" {
 			b.WriteString(blob)
 			b.WriteByte('\n')

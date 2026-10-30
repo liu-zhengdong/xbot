@@ -2,11 +2,16 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D
+verified: 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 上下文与 transcript
 
 > **30 秒版**：每个 Bot 一份只追加、带编号的 transcript；固定前缀保证缓存命中，压缩生成摘要块，原文永远保留并可检索、导出。
+
+## 语音附件
+
+`Entry.Audios` 与 `Images` 平行，只记录 Bot 工作区 `voice/` 的文件名；Event、插话、待处理消息、API 与 md/jsonl 导出保留该字段，原行不改写。模型上下文、摘要、expand 和经历材料追加绝对文件路径与 `listen` 入口，不注入音频字节、不自动转写或替换用户原文。音频文件继续留在工作区。附件 HTTP 契约见 [API](../API.md#语音附件)，工具装配见 [内核](kernel.md#语音工具与挂泡)。
+
 
 ## 边界
 负责：组装上下文、transcript 分段存储和索引、压缩、找回、导出、引用回复。不负责：分叉的分支规则（见 [插话时分叉](fork.md)）。

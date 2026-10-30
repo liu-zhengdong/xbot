@@ -77,7 +77,16 @@ func (t *turn) imageReplySentLocked(ctx context.Context) bool {
 // An over-budget path first gets a bounded streaming fingerprint: only a known
 // id may then be loaded for validation without consuming new budget. Kept new
 // pictures stay within the reply cap, plus at most one duplicate being checked.
-func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, error) {
+func (k *Kernel) attachOutImages(ctx context.Context, refs []string, audioRefs ...[]string) ([]string, error) {
+	var audios []outAudio
+	if len(audioRefs) > 0 {
+		var err error
+		audios, err = k.prepareOutAudios(ctx, audioRefs[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var uniq []string
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
@@ -88,7 +97,7 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 			return nil, fmt.Errorf("images: at most %d pictures per reply", work.PastedMaxPerMessage)
 		}
 	}
-	if len(uniq) == 0 {
+	if len(uniq) == 0 && len(audios) == 0 {
 		return nil, nil
 	}
 	t := k.imageTurn(ctx)
@@ -141,6 +150,36 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 	if total > work.PastedMaxTotalBytes {
 		return nil, errOverBudget
 	}
+	// Validate both attachment types before either enters the reply queue.
+	queuedAudio := slices.Clone(t.outAudios)
+	audioBytes := 0
+	for _, id := range queuedAudio {
+		f, err := work.OpenVoice(dir, id)
+		if err != nil {
+			return nil, err
+		}
+		st, err := f.Stat()
+		f.Close()
+		if err != nil {
+			return nil, err
+		}
+		audioBytes += int(st.Size())
+	}
+	for _, a := range audios {
+		if slices.Contains(queuedAudio, a.id) {
+			continue
+		}
+		queuedAudio = append(queuedAudio, a.id)
+		audioBytes += len(a.data)
+	}
+	if len(queuedAudio) > work.VoiceMaxPerMessage || audioBytes > work.VoiceMaxBytes {
+		return nil, errors.New("audios: at most 4 files and 10 MiB per reply")
+	}
+	for _, a := range audios {
+		if _, err := work.StoreVoice(dir, a.data); err != nil {
+			return nil, err
+		}
+	}
 	for _, p := range added {
 		if p.data == nil {
 			continue
@@ -150,6 +189,7 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string) ([]string, 
 		}
 	}
 	t.outImages, t.outBytes = queued, total
+	t.outAudios = queuedAudio
 	return queued, nil
 }
 

@@ -2,13 +2,18 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests)
+verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 安全：保险箱与权限表
 
 > **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**默认不弹权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`xbot permissions on|off`，`permissions.json`，没有就是关）：只剩 `links` 填 key 的卡和触到保险箱、密钥这两处还问；机器开关（ask/off）和外部事件开的一轮碰记忆的围栏也一起关掉。打开开关时，是否确认只由内核里的一张权限表决定，只确认对外发送、删除、带密钥或非 GET 的 HTTP、persona/profile 自改。
 
 > **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。计划中的改动：确认卡、shell 黑名单、保险箱和配置路径出卡、不可信回合碰记忆时出卡、文件新鲜度拒写收进一个默认放行的开关；用户绑定的 Telegram、飞书消息按用户消息处理。落地之前，下面的描述仍然有效。
+
+## 音频工具
+
+统一权限表把 `listen` 归为 `Readonly`、`tts` 归为 `Normal`；挂泡仍用既有 `send_message_to_user`。本地音频读取和保存经工作区 `os.Root`，拒绝工作区外路径／符号链接；上传和取回复用 Bot owner 鉴权。文件与消息大小上限见 [API](../API.md#语音附件)，凭据沿供应商既有配置和传输复用。
+
 
 ## 边界
 负责：工具环境、保险箱、出站代理、脱敏、权限表、决定留痕。不负责：机器开关的配置（见 [机器与设备](machines.md)），但开关在这里的 review 路径生效。

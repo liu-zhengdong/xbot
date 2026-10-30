@@ -1,5 +1,15 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 语音分支同步例程技能 main（本地整合）
+
+- 将语音提交 rebase 到本地 main `e58b1834`；Event 同时保留 audios 与 RoutineSkills，忙时输入先装配音频路径再投影例程技能。两侧 API、任务行技能编辑、录音播放器及 atlas 说明均保留，未合 main、未 push、未重启 8788。
+- 语音 HTTP／kernel／work、原生 Chrome 录音播放、既有挂图／增量刷新和例程技能后端／API／CLI／Chrome 行为定向连续三遍通过，无跳过。真 serve 的语音与例程技能冒烟各三遍通过；语音完整 scripted 链 95.9–142.6 ms（三次样本），原生浏览器 Range GET 各 25 次的 p95 为 3.0／3.3／3.3 ms，非真实供应商或物理设备性能验收。
+- gofmt、vet、JS 语法与 diff 检查通过；atlas audit 退出 0、有告警。全仓 `go test -count=1 -timeout=90s ./...` 未全绿：kernel 长轮 19 folds／40 steps、MemoryFileLogGuard、memory 月容量及 work description 失败，web 审批超时；与已有记录一致，本轮未重做基线对照。整包三遍中 bot／link／provider／review／cmd 通过，kernel 仍有长轮／记忆失败且达到 90 秒总上限（当时运行 ProjectCacheDistrustsRecentChange，未归因），web 审批超时，work 同一 description 失败。完整日志在 `~/.xbot-build/voice-merge/`。真实供应商、物理麦克风／扬声器、Linux CI、旧六旅程 smoke 与用户日用本轮未跑。
+
+- 2026-10-31：语音作为 `audios` 一等附件，沿 images 装配：录音上传到 Bot 工作区 `voice/`，消息／插话／transcript／上下文路径／导出保留音频引用，GET 支持 Range。原生 audio 工具组提供 listen 与只落盘的 tts；挂泡仅由 send_message_to_user 扩 audios，混合附件校验成功才一起入回复队列。Composer 支持点按、持按、取消、Esc、草稿保留；双方手动点播互斥，失败可重试，附件在同泡文字／图片上方，增量刷新保留未变播放器。
+- 级别：功能分支端到端通过（真 serve + 本机 scripted 音频／模型），独立视觉复审通过。语音二进制冒烟连续三次通过（本轮 408–459 ms，3 次样本，非真供应商 p95）；专项 HTTP／kernel／work／Chrome 与既有挂图、增量刷新回归连续三次通过。Chrome 另验原生 MediaRecorder、浏览器测试麦克风、原生解码播放，Range GET 25 次 p95 2.9 ms；浅深 mic 可见响应 p95 38.2/37.5 ms。录音态各 180 帧平均 60.09/60.02 fps，帧间隔 p95 22.6/23.3 ms（同机基线 idle p95 22.8/21.7 ms），非物理设备／厂商性能验收。截图：`~/.xbot-build/ui-shots/voice-chat/`；完整日志和文件清单：`~/.xbot-build/voice-chat/`。
+- gofmt、vet、diff 检查通过；atlas audit 退出 0，仍有既有告警。全仓与改动包整包三次未全绿：内核长轮 40 步 19 次折叠、记忆文件／月容量、work description 失败均在干净 dbda0b60 复现；web 审批挂起同样在基线复现，最终全量以 90 秒超时退出。整包三次另在 QuestionChoices 用例到达总超时，未归因。旧六旅程冒烟仍有忙时任务／协作门等待及旧 done.text/delta 期望失败，代表性的 WebChat、Remember 在基线复现；新 voice 真二进制冒烟独立通过。未合 main、未 push；真实供应商、物理麦克风／扬声器及用户日用未验，设计保留在 dev，未移动守护层。
+
 ## 2026-10-31 例程技能任务面板 UI（feature/routine-skills-ui，本地交付）
 
 - 生产 UI 只在 `routineCard` / `updateRoutineCard` 的原 `.task-routine` 下挂技能摘要、添加入口和逗号编辑；取消／Escape 丢弃，保存仅 PATCH `skills`，失败保留输入。沿用原行头和开关，无新选择器、Webhook 或 CRUD 改动。

@@ -809,6 +809,8 @@
   }
 
   const ICONS = {
+    play: '<path d="m8 5 12 7-12 7Z"/>',
+    pause: '<path d="M8 5v14M16 5v14"/>',
     plug: '<path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8Z"/>',
     globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>',
     monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
@@ -2958,6 +2960,118 @@
     window.setTimeout(() => row.classList.remove("quote-hit"), 1500);
   }
 
+  let activeVoice = null;
+  function stopVoice() { if (activeVoice) activeVoice.pause();activeVoice=null; }
+  function voiceTime(seconds) {
+    seconds=Number.isFinite(seconds)?Math.max(0,Math.floor(seconds)):0;
+    return Math.floor(seconds/60)+":"+String(seconds%60).padStart(2,"0");
+  }
+  function appendAudios(parent, ids) {
+    for (const id of ids || []) {
+      const row=el("div","voice"),audio=document.createElement("audio");
+      audio.preload="none";
+      queueMicrotask(()=>{if(audio.isConnected){audio.preload="metadata";audio.load();}});
+      audio.src="/api/bots/"+encodeURIComponent(state.sel.id)+"/voice/"+encodeURIComponent(id);
+      const play=el("button","v-play"),meta=el("div","v-meta"),time=el("span","v-time","");
+      const progress=el("div","v-bar"),fill=el("i"),failure=el("span","v-fail","语音加载失败"),retry=el("button","v-retry","重试");
+      play.type=retry.type="button";play.setAttribute("aria-label","播放语音");play.append(icon("play"));
+      failure.hidden=retry.hidden=true;progress.append(fill);meta.append(progress,time);row.append(play,meta,failure,retry,audio);parent.append(row);
+      const failed=()=>{audio.pause();play.hidden=meta.hidden=true;failure.hidden=retry.hidden=false;};
+      const start=()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;audio.play().catch(error=>{if(error.name!=="AbortError"&&activeVoice===audio)failed();});};
+      play.onclick=()=>{if(audio.paused)start();else audio.pause();};
+      retry.onclick=()=>{failure.hidden=retry.hidden=true;play.hidden=meta.hidden=false;audio.load();start();};
+      audio.addEventListener("play",()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;play.replaceChildren(icon("pause"));play.setAttribute("aria-label","暂停语音");});
+      audio.addEventListener("pause",()=>{play.replaceChildren(icon("play"));play.setAttribute("aria-label","播放语音");});
+      audio.addEventListener("ended",()=>{if(activeVoice===audio)activeVoice=null;});
+      audio.addEventListener("error",failed);
+      const update=()=>{time.textContent=Number.isFinite(audio.duration)&&audio.duration>0?(audio.currentTime?voiceTime(audio.currentTime)+" / ":"")+voiceTime(audio.duration):(audio.currentTime?voiceTime(audio.currentTime):"");fill.style.transform="scaleX("+(Number.isFinite(audio.duration)&&audio.duration>0?audio.currentTime/audio.duration:0)+")";};
+      audio.addEventListener("timeupdate",update);audio.addEventListener("loadedmetadata",update);
+    }
+  }
+
+  let recording=null, micPress=null, suppressMicClick=false;
+  const mic=$("mic"),recBar=$("rec-bar"),recSend=$("rec-send"),recCancel=$("rec-cancel");
+  function recordingUI(on) {
+    composer.classList.toggle("recording",on);recBar.hidden=!on;
+    recSend.disabled=false;recCancel.disabled=false;
+  }
+  function cancelRecording() {
+    clearTimeout(micPress?.timer);micPress=null;
+    const rec=recording;if(!rec)return;recording=null;rec.cancelled=true;
+    clearInterval(rec.timer);rec.stream?.getTracks().forEach(t=>t.stop());
+    if(rec.recorder?.state==="recording")rec.recorder.stop();recordingUI(false);
+  }
+  async function startRecording() {
+    if(recording||state.sel?.type!=="bot"||state.peer)return;
+    const rec={owner:state.sel,chunks:[],size:0,cancelled:false};recording=rec;
+    recordingUI(true);$("rec-time").textContent="0:00";
+    try {
+      if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)throw Error("microphone unavailable");
+      rec.stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      if(rec.cancelled||recording!==rec||state.sel!==rec.owner){rec.stream.getTracks().forEach(t=>t.stop());return;}
+      const mime=["audio/webm;codecs=opus","audio/mp4","audio/ogg;codecs=opus"].find(t=>MediaRecorder.isTypeSupported(t));
+      rec.recorder=new MediaRecorder(rec.stream,mime?{mimeType:mime}:undefined);
+      rec.recorder.ondataavailable=e=>{
+        if(!e.data.size||rec.cancelled)return;
+        rec.size+=e.data.size;
+        if(rec.size>10*1024*1024){cancelRecording();showToast("语音超过 10 MB，请分段录音");return;}
+        rec.chunks.push(e.data);
+      };
+      rec.recorder.onerror=()=>{cancelRecording();showToast("无法使用麦克风");};
+      rec.recorder.onstop=async()=>{
+        rec.stream.getTracks().forEach(t=>t.stop());clearInterval(rec.timer);
+        if(rec.cancelled||recording!==rec)return;
+        rec.blob=new Blob(rec.chunks,{type:rec.recorder.mimeType});
+        await uploadRecording(rec);
+      };
+      rec.recorder.start(1000);rec.started=Date.now();
+      rec.timer=setInterval(()=>{$("rec-time").textContent=voiceTime((Date.now()-rec.started)/1000);},250);
+      if(rec.finish)finishRecording(true);
+    } catch(e) {
+      if(recording===rec){cancelRecording();showToast("无法使用麦克风");}
+    }
+  }
+  async function uploadRecording(rec) {
+    if(rec.cancelled||recording!==rec||state.sel!==rec.owner)return;
+    recSend.disabled=true;
+    try {
+      if(!rec.blob.size)throw Error("录音是空的，请重新录音");
+      const res=await apiFetch("/api/bots/"+encodeURIComponent(rec.owner.id)+"/voice",{method:"POST",headers:{"Content-Type":rec.blob.type},body:rec.blob});
+      if(!res.ok)throw Error("语音没传上来，请重试");
+      const data=await res.json();if(recording!==rec||state.sel!==rec.owner)return;
+      recording=null;recordingUI(false);
+      sendText("",null,[],[data.audio]);
+    } catch(e) {
+      if(recording===rec){showToast(e.message);recSend.disabled=false;}
+    }
+  }
+  function finishRecording(send) {
+    if(!send){cancelRecording();return;}
+    const rec=recording;if(!rec)return;
+    if(rec.blob){uploadRecording(rec);return;}
+    if(!rec.recorder){rec.finish=true;return;}
+    recSend.disabled=true;clearInterval(rec.timer);
+    if(rec.recorder.state==="recording")rec.recorder.stop();
+  }
+  mic.addEventListener("pointerdown",e=>{
+    if(e.button!==0)return;
+    const press={id:e.pointerId,held:false};micPress=press;suppressMicClick=false;
+    press.timer=setTimeout(()=>{press.held=true;suppressMicClick=true;startRecording();},250);
+  });
+  document.addEventListener("pointerup",e=>{
+    const press=micPress;if(!press||press.id!==e.pointerId)return;
+    clearTimeout(press.timer);micPress=null;
+    if(press.held)setTimeout(()=>{suppressMicClick=false;},0);
+    if(press.held){const box=composer.getBoundingClientRect();const inside=e.clientX>=box.left&&e.clientX<=box.right&&e.clientY>=box.top&&e.clientY<=box.bottom;
+      finishRecording(inside&&!recCancel.contains(e.target));}
+  });
+  document.addEventListener("pointercancel",()=>{if(micPress){clearTimeout(micPress.timer);micPress=null;cancelRecording();}});
+  mic.addEventListener("click",()=>{if(suppressMicClick){suppressMicClick=false;return;}startRecording();});
+  mic.addEventListener("contextmenu",e=>e.preventDefault());
+  recSend.onclick=()=>finishRecording(true);recCancel.onclick=()=>cancelRecording();
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&recording){e.preventDefault();cancelRecording();}});
+  window.addEventListener("pagehide",()=>{cancelRecording();stopVoice();});
+
   function userBubble(m, messages) {
     const parsed = unwrap(m.content || "");
     const row = el("div", "msg user");
@@ -2968,14 +3082,16 @@
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
     const pulled = pullImages(parsed.text);
     const pasted = pastedURLs(state.sel, m.images);
+    let audioBubble;
+    if ((m.audios || []).length) { audioBubble=el("div","bubble");appendAudios(audioBubble,m.audios);wrap.append(audioBubble); }
     if (pulled.text) {
       const bubble = el("div", "bubble");
       appendRich(bubble, pulled.text);
-      wrap.append(bubble);
+      if (audioBubble) { bubble.className="prose";audioBubble.append(bubble); } else wrap.append(bubble);
     }
     const images = [...pulled.images, ...pasted];
-    if (images.length) wrap.append(gallery(images));
-    if (!pulled.text && !pulled.images.length && !pasted.length) {
+    if (images.length) (audioBubble || wrap).append(gallery(images));
+    if (!audioBubble && !pulled.text && !pulled.images.length && !pasted.length) {
       const bubble = el("div", "bubble");
       bubble.textContent = parsed.text;
       wrap.append(bubble);
@@ -3016,21 +3132,24 @@
     const close = () => {
       const says = [];
       const images = [];
+      const audios = [];
       let replyTo = 0;
       let imageLine = -1;
       for (const i of run) {
         const m = messages[i];
         if ((m.images || []).length) { images.push(...m.images); imageLine = i; }
+        if ((m.audios || []).length) { audios.push(...m.audios); imageLine = i; }
         if (m.reply_to) replyTo = m.reply_to;
         for (const call of m.tool_calls || []) {
           const info = toolSummary(call);
           if (SAY_TOOLS.includes(info.name) && sayLanded(results[call.id])) says.push({ i: i, text: String(info.args.text || "").trim() });
         }
       }
-      if (!says.length && images.length) says.push({ i: imageLine, text: "" });
+      if (!says.length && (images.length || audios.length)) says.push({ i: imageLine, text: "" });
       if (says.length) {
         says[0].replyTo = replyTo;
         says[says.length - 1].images = images;
+        says[says.length - 1].audios = audios;
         for (const say of says) spoken.set(say.i, [...(spoken.get(say.i) || []), say]);
       } else {
         for (const i of run) {
@@ -3067,6 +3186,13 @@
     // owner's own; the same gallery as userBubble.
     const pasted = pastedURLs(state.sel, say ? say.images : m.images);
     const said = say ? say.text : String(m.content || "").trim();
+    const audios = say ? say.audios : m.audios;
+    if ((audios || []).length) {
+      const bubble=el("div","prose bot-bubble");appendAudios(bubble,audios);
+      if (said && said!=="SILENT") { const prose=el("div","prose");appendRich(prose,displayText(said));bubble.append(prose); }
+      if (pasted.length) bubble.append(gallery(pasted));
+      body.append(bubble);bindMessageMenu(row,m,said);row.append(body);addBubbleTime(row,m.time);return row;
+    }
     if (say) {
       if (said) appendBotContent(body, displayText(said));
     } else if (said && said !== "SILENT") appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
@@ -3124,7 +3250,7 @@
       if (skipMessage(m) || wakeRuns.hidden.has(i)) return;
       // Background turns have no cards in the chat; the header badge lists them.
       if (m.kind === "fork" || m.kind === "fork_end") return;
-      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT" && !(m.images || []).length) return;
+      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT" && !(m.images || []).length && !(m.audios || []).length) return;
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;
@@ -3190,7 +3316,7 @@
       const says = spoken.get(i);
       if (!says) {
         const visibleParts = (m.parts || []).some(p => !p.hosted || p.hosted.name !== "image_generation");
-        if (!(m.content || visibleParts || (m.images || []).length || (!(m.tool_calls || []).length && !(m.parts || []).length))) return;
+        if (!(m.content || visibleParts || (m.images || []).length || (m.audios || []).length || (!(m.tool_calls || []).length && !(m.parts || []).length))) return;
       }
       for (const say of says || [null]) {
         const row = botBubble(m, say, messages, who);
@@ -3265,6 +3391,7 @@
     for (const row of Array.from(current.children)) {
       if (!row.dataset.transcriptKey && !state.pendingSends.includes(row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
     }
+    if (activeVoice && !activeVoice.isConnected) stopVoice();
     return changed;
   }
 
@@ -4362,6 +4489,8 @@
   }
 
   function resetConversation() {
+    cancelRecording();stopVoice();
+    $("mic").hidden = state.sel?.type !== "bot";
     closeMessageMenu();
     // Pasted pictures belong to the bot they were uploaded to.
     clearAttach();
@@ -5632,7 +5761,7 @@
         else if (!unwrap(m.content || "").untrusted && !m.internal) pending.delete(branch);
       }
       if (m.role !== "assistant" || !m.content || (m.tool_calls || []).length || !pending.has(branch)) return;
-      if (m.content.trim() === "SILENT" && !(m.images || []).length) hidden.add(i);
+      if (m.content.trim() === "SILENT" && !(m.images || []).length && !(m.audios || []).length) hidden.add(i);
       pending.delete(branch);
     });
     const result = {hidden}; routineCache.set(messages, result); return result;
@@ -6882,7 +7011,7 @@
     }
   }
 
-  function optimisticMessage(text, images) {
+  function optimisticMessage(text, images, audios) {
     let inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
     if (!inner) {
       inner = el("div", "thread-inner");
@@ -6893,7 +7022,8 @@
     const body = el("div", "bubble-col");
     row.dataset.sender = "user";
     row.dataset.time = new Date().toISOString();
-    if (text) { const bubble = el("div", "bubble"); appendRich(bubble, text); body.append(bubble); }
+    if (audios?.length) { const bubble=el("div","bubble");appendAudios(bubble,audios);if(text)appendRich(bubble,text);body.append(bubble); }
+    else if (text) { const bubble = el("div", "bubble"); appendRich(bubble, text); body.append(bubble); }
     // The picture is already on the server by the time a send starts, so the
     // optimistic row points at it directly. Nothing local to revoke, and the
     // row after the repaint looks exactly the same.
@@ -6909,12 +7039,13 @@
     return row;
   }
 
-  async function sendText(text, pending, images) {
+  async function sendText(text, pending, images, audios) {
     text = (text || "").trim();
     images = images || [];
+    audios = audios || [];
     // A message sent while a reply is streaming interrupts it: the server forks the
     // running turn to the background and answers this one at once.
-    if ((!text && !images.length) || !state.sel) return;
+    if ((!text && !images.length && !audios.length) || !state.sel) return;
     const selection = state.sel;
     ++state.threadLoad;
     if (!pending) {
@@ -6925,7 +7056,7 @@
         return !stale;
       });
     }
-    pending = pending || optimisticMessage(text, images);
+    pending = pending || optimisticMessage(text, images, audios);
     pending.dataset.sendText = text;
     pending.baseline = ownerSends(text);
     const marker = pending.querySelector(".send-state");
@@ -6974,6 +7105,7 @@
     try {
       const payload = { text: text };
       if (images.length) payload.images = images;
+      if (audios.length) payload.audios = audios;
       if (state.replyTo && state.replyTo.seq > 0) payload.reply_to = state.replyTo.seq;
       const res = await apiFetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
         method: "POST",
@@ -7048,6 +7180,9 @@
         composerRefreshHeight();
         marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
         announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
+      } else if (audios.length) {
+        const retry=el("button","secondary","重试");retry.type="button";retry.onclick=()=>sendText(text,pending,images,audios);
+        marker.replaceChildren(el("span","","语音没发出去"),retry);announceSend("语音没发出去，可以重试");
       } else if (!text && images.length) {
         marker.replaceChildren(el("span", "", accepted ? "没送到；图片要重新贴一次" : "没发出去；图片要重新贴一次"));
         announceSend("没发出去，图片要重新贴一次");
@@ -8144,6 +8279,7 @@
 
   composer.addEventListener("submit", (ev) => {
     ev.preventDefault();
+    if (recording) { finishRecording(true);return; }
     const text = composerText(input);
     const images = attachReady().map((row) => row.id);
     if (attachBusy()) { attachNote("图片还在上传，等一下再发。"); return; }

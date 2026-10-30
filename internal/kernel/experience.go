@@ -227,7 +227,7 @@ func (k *Kernel) Detail(seq int, experienceID int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	body := fmt.Sprintf("# seq %d %s %s\n%s", seq, e.Message.Role, e.Time.In(k.location()).Format("2006-01-02 15:04"), k.withLineNoteIn(k.Bot, e.Message.Role, e.Message.Text(), e.Images))
+	body := fmt.Sprintf("# seq %d %s %s\n%s", seq, e.Message.Role, e.Time.In(k.location()).Format("2006-01-02 15:04"), k.withLineNoteIn(k.Bot, e.Message.Role, e.Message.Text(), e.Images, e.Audios))
 	if blob := toolBlob(e.Message); blob != "" {
 		body += "\n" + blob
 	}

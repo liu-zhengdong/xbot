@@ -167,6 +167,7 @@ type Entry struct {
 	Origin  string           `json:"origin,omitempty"`
 	Mark    *ForkMark        `json:"mark,omitempty"`
 	Images  []string         `json:"images,omitempty"`
+	Audios  []string         `json:"audios,omitempty"`
 }
 
 // IsInternal reports a kernel-written line the owner did not say.

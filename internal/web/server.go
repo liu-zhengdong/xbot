@@ -293,6 +293,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/messages", s.postMessage)
 	mux.HandleFunc("POST /api/bots/{name}/events", s.postCLIEvent)
 	// A pasted picture is uploaded first; the message then names it.
+	mux.HandleFunc("POST /api/bots/{name}/voice", s.postVoice)
+	mux.HandleFunc("GET /api/bots/{name}/voice/{audio}", s.getVoice)
 	mux.HandleFunc("POST /api/bots/{name}/paste", s.postPaste)
 	mux.HandleFunc("GET /api/bots/{name}/paste/{image}", s.getPaste)
 	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
@@ -838,6 +840,7 @@ type apiRow struct {
 	// Images are the pictures this line carried, as ids the chat turns back
 	// into GET /api/bots/{name}/paste/{image}.
 	Images []string `json:"images,omitempty"`
+	Audios []string `json:"audios,omitempty"`
 }
 
 // apiFromDevice names the paired device an owner line was typed on.
@@ -953,7 +956,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 			Parts: publicParts(e.Message), Seq: i + 1, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
 			Thinking: e.Message.Thinking(), ToolCalls: e.Message.Calls(), ToolCallID: e.Message.CallID(), Time: e.Time,
 			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
-			Images: e.Images,
+			Images: e.Images, Audios: e.Audios,
 		}
 		if e.Message.Role == provider.RoleUser {
 			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Text())
@@ -1055,6 +1058,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		Text    string   `json:"text"`
 		ReplyTo *int     `json:"reply_to"`
 		Images  []string `json:"images"`
+		Audios  []string `json:"audios"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
@@ -1062,11 +1066,16 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	text := strings.TrimSpace(in.Text)
 	// A picture on its own is a message: "look at this" needs no words.
-	if (text == "" && len(in.Images) == 0) || len(text) > 16<<10 {
+	if (text == "" && len(in.Images) == 0 && len(in.Audios) == 0) || len(text) > 16<<10 {
 		writeErr(w, http.StatusBadRequest, "bad message")
 		return
 	}
 	images, err := s.checkPasted(b, in.Images)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	audios, err := s.checkVoice(b, in.Audios)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -1087,6 +1096,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	ev := link.WebEvent(s.owner, text, time.Now())
 	ev.ReplyTo = replyTo
 	ev.Images = images
+	ev.Audios = audios
 	if !s.ForkTurns {
 		// The owner's word goes straight into a running turn (ADR 0017).
 		// Accepted messages get either a reply or an explicit failed outcome

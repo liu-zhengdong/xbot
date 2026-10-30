@@ -134,18 +134,19 @@ type sendMessageTool struct{ k *Kernel }
 
 func (sendMessageTool) Name() string { return "send_message_to_user" }
 func (sendMessageTool) Description() string {
-	return "对用户说话的唯一可见通道：只有调用本工具用户才看得见；裸助手正文不可见（不是可选通知）。一次调用就是一个聊天气泡；用户不在聊天的唤醒里，它同时是通知。话要短、直白、好懂：不堆术语，不打官腔。importance：low、normal 或 high。images：粘贴 id 或工作区图片路径（PNG、JPEG、GIF、WebP），每条回复最多 4 张、合计 10 MiB、单边最长 2048 像素；给用户看本机图片只能走这里，不要发链接。"
+	return "对用户说话的唯一可见通道：只有调用本工具用户才看得见；裸助手正文不可见（不是可选通知）。一次调用就是一个聊天气泡；用户不在聊天的唤醒里，它同时是通知。话要短、直白、好懂：不堆术语，不打官腔。importance：low、normal 或 high。images：粘贴 id 或工作区图片路径（PNG、JPEG、GIF、WebP），每条回复最多 4 张、合计 10 MiB、单边最长 2048 像素；给用户看本机图片只能走这里，不要发链接。audios：工作区语音路径或 voice id，最多 4 段合计 10 MiB；只挂语音，不做 TTS；纯音频时 text 可为空。"
 }
 func (sendMessageTool) Parameters() any {
 	return schema(map[string]any{
 		"text":       stringProp("what the owner should see"),
 		"importance": stringProp("low, normal, or high; default normal"),
+		"audios":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "workspace audio paths or voice ids to attach; generation is a separate tts tool"},
 		"images": map[string]any{
 			"type":        "array",
 			"items":       map[string]any{"type": "string"},
 			"description": "pasted image ids or workspace image paths to show in your reply",
 		},
-	}, []string{"text"})
+	}, []string{})
 }
 
 // Confirm's summary is the text, so the live chat can show the bubble when
@@ -162,17 +163,18 @@ func (t sendMessageTool) Run(ctx context.Context, args json.RawMessage) (string,
 		Text       string   `json:"text"`
 		Importance string   `json:"importance"`
 		Images     []string `json:"images"`
+		Audios     []string `json:"audios"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
 	text := strings.TrimSpace(in.Text)
-	if text == "" {
-		return "", errors.New("send_message_to_user: empty text")
+	if text == "" && len(in.Audios) == 0 {
+		return "", errors.New("send_message_to_user: empty message")
 	}
 	// Pictures are checked and stored before the note goes out, so a refused
 	// picture does not leave a note that promises it.
-	images, err := t.k.attachOutImages(ctx, in.Images)
+	images, err := t.k.attachOutImages(ctx, in.Images, in.Audios)
 	if err != nil {
 		return "", err
 	}
@@ -183,6 +185,9 @@ func (t sendMessageTool) Run(ctx context.Context, args json.RawMessage) (string,
 			return fmt.Sprintf("sent to the owner's chat with %d picture(s): %s", len(images), strings.Join(images, ", ")), nil
 		}
 		return "sent to the owner's chat", nil
+	}
+	if text == "" {
+		text = "语音消息"
 	}
 	if err := deliverNote(ctx, t.k, text); err != nil {
 		return "", err

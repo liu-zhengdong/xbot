@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots)
+verified: 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 网页界面
 
@@ -20,6 +20,13 @@ Bot 信息面板的收件箱位于上下文右侧：只读展示该 Bot 的入�
 
 - 详情与编辑资料共用一块模型触发面（`XBotProviders.trigger`）：整栏可点双行，主行模型 id、辅行「供应商展示名 · 协议」（厂商搜索模型再加「厂商搜索」；展示名取 `/api/models` 的 brand/oauth，未知品牌退回供应商名），右侧 chevron。点开「更换模型」浮层（`XBotProviders.open`，沿用 `.binding-dialog` 壳）：副标「Bot名 · 当前 供应商展示名 · 模型id」，顶栏右侧查找模型（按模型 id 或展示名过滤）与 ✕；按 `/api/providers` 分组，每家有密钥的再逐个读运行时名单 `/api/providers/models`（不用本地登记表充当名单；选中尚未登记的模型时换绑接口先核对实时名单再登记），组头「展示名 · 协议短标」，可点行横铺整宽，左侧模型 id（mono），右侧看图、搜索的 outline 图标及短数字窗口（图标的 title 和无障碍名称区分可看图/不看图、本机/厂商搜索），选中中性底加右缘 ✓；空间不足时文字截断。点行只是待选，搜索路变化时列表下一行灰字说明下一轮改用本机或厂商搜索；「使用此模型」才提交，待选等于当前时禁用；取消、Esc、✕、点遮罩丢弃待选。底栏左「管理供应商…」关浮层开设置「模型与供应商」。加载中、没有供应商、没配密钥（组内一行可点去管理）、名单拉取失败（读供应商表失败为整面重试；某家实时名单失败只在该组显示并只重拉该家）、无匹配都是扁平面短句。确认后两处触发面就地重画。浮层内 Escape 只关浮层，不连带关抽屉或面板。厂头副标只读显示模型 id。不可用的模型行禁用并写「暂时用不了」；Bot 有前台、分叉后台或运行/排队子代理时换绑返回清晰错误，不取消已有任务。换绑保存后下一轮重建内核。
 - 设置浮层的「模型与供应商」按 A-magpie 分成订阅和供应商两区。订阅区以 ChatGPT 和 xAI 卡作为登录入口：未登录时点击授权，等待时可再次点击重开授权窗，不重绘搜索框；成功后显示已登录绿点，再点进入详情；供应商用两列圆角卡，只显示透明品牌标、供应商展示名和已配置绿点，名左、绿点（订阅未登录时的「登录」）贴卡右缘，配置 id 不作主标题；选中卡用中性底色 `--x-fill-2`，网格容器透明，未选卡为 `--x-fill-1`，不靠外框或硬切强调；键盘焦点用中性轮廓。换绑行和网页搜索选项也用较浅的选中底，其列表容器不铺底色。搜索框靠右。点卡进入详情：返回入口、厂标、厂名、协议小标签、密钥状态，以及「厂商搜索」「看图」/ 窗口芯片行（用户用语，不露工程词）；不使用能力表格。模型行显示只读「有厂商生图 / 无厂商生图」能力芯片（OpenAI/xAI OAuth Responses 为有），不再提供可勾策略或生图模型输入；策略只在「图片生成」设置。进入详情及重试时实时拉供应商 model list，名单与能力来源见 [供应商](providers.md)。未配密钥先提示配置，拉取失败和空名单均给出重试；返回保留搜索条件，迟到响应（含保存密钥）不会覆盖新页面。内置厂商的详情拉取走 `POST /api/providers/{brand}/sync`：把厂商真名单登记进配置（可选择、可绑定），未改动且无 Bot 绑定的占位种子随之清掉；同名但地址或密钥变量不同的自定义条目一律 409，不收密钥、不被发送。xAI 账号登录与 API 密钥互不占用，订阅详情和密钥供应商详情都可填写密钥；Bot 分别绑定账号或密钥供应商。ChatGPT 详情显示「已登录」并支持重新登录；名单失败可重试或重新登录。授权复用既有 OAuth 与 vault；OpenRouter 列表不提供登录入口，Claude 订阅不提供 OAuth。模型仍从 Bot 的模型行选择绑定。厂商搜索步骤、正文引用角标和来源列表显示在对话气泡内，不画任务卡；生图按下述普通工具轨迹展示。供应商网格在 DeepSeek / OpenAI / Anthropic / OpenRouter 之后列 13 家密钥厂商（Gemini、Vertex AI、xAI、Kimi、Kimi Code、Zhipu GLM、Z.ai、MiniMax、StepFun、Xiaomi MiMo、Baidu Qianfan、Tencent Cloud、OpenCode Go），默认值在 `internal/config/vendors.go`，`GET /api/providers` 的 `vendors` 只带品牌、短名、协议和默认模型名。未配密钥的厂商详情给密钥输入框，`PUT /api/providers/{brand}/key` 按内置默认补 providers.json 条目（不覆盖用户同名条目）并把密钥写入 env 文件；Vertex 没有纯密钥路线，只显示默认模型和「需要先登录 Google Cloud」，不可聊。已配置条目的品牌按 base_url 主机名识别。OpenCode Go 复用密钥详情，提示「订阅 Go 后到 Console 复制 API key，粘到这里。」，不进入订阅 OAuth 区。
+
+## 语音交流
+
+Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交语音文件；持按松手发送，滑出或取消区丢弃，Esc、切 Bot 和离页释放麦克风。文字草稿、待发图片不随录音发送。录音失败用短提示；上传失败保留录音供重试，消息发送失败保留语音 id 供重试。
+
+双方气泡复用原有底色，`audios` 竖叠在同泡文字和图片之前。原生音频播放器只由点击播放，同线程互斥；取 metadata 显示实际时长，未知时不画零秒。失败显示「语音加载失败 / 重试」。主列不展示 listen/tts 调用，轨迹沿用既有投影。`commitTranscript` 继续按行比较静态投影：附件改变只替换受影响行，未变播放器与播放状态保留，移除或切线程时停止播放。新投影只有进入 DOM 才载入 metadata，不因丢弃投影发媒体请求。HTTP 契约见 [API](../API.md#语音附件)，验收入口见 [语音交流](../dev/voice-chat.md)。
+
 
 ## 边界
 负责：网页界面（`internal/web/static`）的组成和展示规则，以及桌面窗口外壳（`internal/appshell`）。接口见 [API.md](../API.md)。「值得留意」清单由内核整理（`internal/notable`，见 [subagents.md](subagents.md)），界面只管显示。

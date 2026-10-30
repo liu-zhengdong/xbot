@@ -2,11 +2,18 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-30 @ feature/opencode-go-vendor (vendor HTTP/scripted + Chrome tests)
+verified: 2026-10-30 @ feature/opencode-go-vendor (vendor HTTP/scripted + Chrome tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 模型供应商与主动性评测
 
 > **30 秒版**：每个 Bot 绑定一个供应商和模型，按协议调用 Chat Completions、OpenAI Responses 或 Anthropic Messages；hosted 搜索与本地搜索按绑定互斥。模型通过评测后才进认证名单。
+
+## 音频端点
+
+音频走既有 Completions 兼容供应商的 `/audio/transcriptions`（multipart file、model、JSON 转写结果）与 `/audio/speech`（JSON input、model、voice，返回音频）。默认沿用当前绑定端点和认证传输；工具可显式选择已配置的 Completions 供应商。Responses/Messages 订阅绑定不会被猜成音频服务；无兼容端点或上游拒绝均返回错误，不伪造转写或语音。
+
+`listen` 的兼容默认模型为 `whisper-1`，`tts` 为 `tts-1` / `alloy`，均可显式覆盖。音频请求沿 caller context 取消、90 秒封顶；转写结果最多 1 MiB，合成音频最多 10 MiB。错误只返回短说明和 HTTP 状态，不回显上游 body 或凭据。工具与落盘／挂泡职责见 [内核](kernel.md#语音工具与挂泡)。
+
 
 ## 边界
 负责：供应商配置、模型提示、认证名单、主动性评测。不负责：密钥的出站注入（见 [安全](security.md)）。

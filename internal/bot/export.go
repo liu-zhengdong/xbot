@@ -37,6 +37,7 @@ type exportEntry struct {
 	// workspace; an export says which files they were so the message is not
 	// blank and the picture can still be found.
 	Images []string `json:"images,omitempty"`
+	Audios []string `json:"audios,omitempty"`
 }
 
 type exportSummary struct {
@@ -132,7 +133,7 @@ func ExportTo(w io.Writer, b *Bot, opt TranscriptExport) error {
 		if !ok {
 			return nil
 		}
-		return write(entryMD(seq, e.Time, msg, e.ReplyTo, e.Branch, e.Images, opt.Tools, loc))
+		return write(entryMD(seq, e.Time, msg, e.ReplyTo, e.Branch, e.Images, opt.Tools, loc, e.Audios))
 	})
 }
 
@@ -195,7 +196,7 @@ func exportJSONLTo(b *Bot, blocks []SummaryBlock, from, to int, tools bool, writ
 		if !ok {
 			return nil
 		}
-		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg.MapText(redact), ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark, Images: e.Images})
+		return emit(exportEntry{Seq: seq, Time: e.Time, EventID: e.EventID, Message: msg.MapText(redact), ReplyTo: e.ReplyTo, Branch: e.Branch, Mark: e.Mark, Images: e.Images, Audios: e.Audios})
 	})
 }
 
@@ -216,7 +217,7 @@ func summaryMD(block SummaryBlock, loc *time.Location) string {
 	return b.String()
 }
 
-func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch string, images []string, tools bool, loc *time.Location) string {
+func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch string, images []string, tools bool, loc *time.Location, audios ...[]string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n## seq %d · %s · %s", seq, stamp(at, loc), msg.Role)
 	if branch != "" {
@@ -241,6 +242,11 @@ func entryMD(seq int, at time.Time, msg provider.Message, replyTo int, branch st
 	// picture would otherwise export as an empty line.
 	for _, name := range images {
 		fmt.Fprintf(&b, "image: paste/%s\n", name)
+	}
+	if len(audios) > 0 {
+		for _, name := range audios[0] {
+			fmt.Fprintf(&b, "audio: voice/%s\n", name)
+		}
 	}
 	if tools {
 		for _, tc := range msg.Calls() {

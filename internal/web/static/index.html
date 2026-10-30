@@ -170,7 +170,14 @@ try {
              desktop shell opens off-origin navigations externally; the web
              page opens them with target=_blank + noopener. -->
         <div id="input" class="composer-input" role="textbox" aria-multiline="true" aria-label="写一条消息" contenteditable="plaintext-only" data-placeholder="写一条消息"></div>
+        <div id="rec-bar" class="rec-bar" hidden>
+          <span class="rec-dot" aria-hidden="true"></span><span id="rec-time" class="rec-time">0:00</span>
+          <div class="rec-actions"><button id="rec-cancel" type="button" class="ghost">取消</button><button id="rec-send" type="button" class="primary">发送</button></div>
+        </div>
         <div class="composer-actions">
+          <button id="mic" class="mic secondary" type="button" aria-label="录音" data-tip="录音">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
+          </button>
           <button id="send" class="send secondary" disabled type="submit" aria-label="发送" data-tip="发送">
             <svg class="icon" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
           </button>

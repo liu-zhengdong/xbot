@@ -65,6 +65,7 @@ type turn struct {
 	replyInputThrough int
 	// outImages are pictures send_message_to_user or hosted generation queued for this turn's reply line,
 	// and outBytes what they weigh (outimage.go).
+	outAudios []string
 	outImages []string
 	outBytes  int
 	// forkMu serializes the fork decision with absorbing the inbox, so a message

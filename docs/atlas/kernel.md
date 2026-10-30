@@ -2,11 +2,18 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake)
+verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 内核：Link、Event、收件箱
 
 > **30 秒版**：内核只有几个抽象：Link 是 Bot 和外界之间的任何通道，Event 是统一的事件结构，每个 Bot 一个收件箱和一个事件循环。新能力尽量用这几个抽象表达，不加新对象。
+
+## 语音工具与挂泡
+
+原生 `audio` 工具组提供 `listen` 和 `tts`，经既有注册表与 `tools` 门披露。`listen` 按工作区路径主动读取音频并向已配置音频端点请求转写；`tts` 只保存 `voice/` 并返回真实路径，不挂泡、不通知、不播放。供应商路由见 [供应商](providers.md#音频端点)。
+
+`send_message_to_user` 的 `audios` 与 `images` 走同一附件装配入口：各自最多 4 个、合计 10 MiB；同时校验两类附件，成功后一起进入所属 turn/reply generation 的回复队列。迟到调用不能挂到下一轮；最终助手行承接音频文件名，工具结果行不携带音频。纯音频调用可省略 text。这个工具只挂文件，不合成音频。
+
 
 ## 重启续跑（2026-10-29）
 

@@ -131,6 +131,7 @@ var kernelTools = []struct {
 		}
 		return []tools.Tool{generateImageTool{cap: cap}}
 	}, nil},
+	{"audio", always, func(k *Kernel) []tools.Tool { return []tools.Tool{listenTool{k}, ttsTool{k}} }, nil},
 	{"memory", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k}}
 	}, nil},

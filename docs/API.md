@@ -202,6 +202,12 @@
 
 本机命令行可用 `xbot message <bot> <text...>` 调用此接口，默认连接 `127.0.0.1:8788`，输出最终可见回复。
 
+### 语音附件
+
+`POST /api/bots/{name}/voice` 接收原始音频字节，按内容识别 WebM、MP4/M4A、Ogg、WAV、MP3、FLAC，单文件最多 10 MiB；返回 `{"audio":"<32 位十六进制>.<扩展>"}`。文件存 Bot 工作区 `voice/`，权限 0600；首次录音会建立工作区。空文件／未知类型 400，超限 413，保存失败 500。`GET /api/bots/{name}/voice/{audio}` 返回可播文件，支持 Range（206）、`nosniff` 与 private immutable 缓存。两条均要求登录及对应 Bot owner；非法 id、缺失或越界文件 404。
+
+`POST .../messages` 额外接受 `audios:["<voice id>"]`，最多 4 段、合计 10 MiB，允许只有 audios。名字必须对应本 Bot 已落盘音频；坏附件在启动模型前以 400 拒绝。它与 text/images 同泡，音频排在文字和图片之前。transcript 的 `audios`、jsonl 导出的同名字段和 Markdown 的 `audio: voice/<id>` 只记录文件名。用户语音不会自动 STT，Agent 上下文只收到文件路径，自己调用 listen；TTS 保存与发消息挂泡分开。
+
 `POST /api/bots/{name}/messages`，body `{"text":"...","reply_to":3,"images":["<paste id>"]}`。`text` 0 到 16 KiB，`images` 最多 4 个、每个必须是 `POST .../paste` 返回过的名字，否则 400 `图片已失效，重新贴一次`；只有图片、没有文字也可以发。这些图片挂在写入的那行 transcript 上（记录里叫 `images`），回答这条消息的那一轮请求带上图片字节，之后各轮只留一行路径说明，模型要用 `view_image` 自己打开。transcript 和导出里都不带图片字节；导出会用 `image: paste/<名字>`（md）或 `images` 字段（jsonl）写出文件名，纯图片的消息不会变成空行。群聊的发送接口不接受图片。`reply_to` 可省略；给出时必须是这个 Bot 的 transcript 里已有的序号，否则 400 `{"error":"bad reply_to"}`。群聊的发送接口不接受这个字段。拿到处理锁时响应是 `text/event-stream`：
 
 - `event: delta`，`data: {"text":"..."}`

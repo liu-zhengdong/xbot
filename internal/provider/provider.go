@@ -39,6 +39,7 @@ type Message struct {
 	// request and off the message record; the transcript line keeps them in its
 	// own Images field instead.
 	ImageNames []string `json:"-"`
+	AudioNames []string `json:"-"`
 	Internal   bool     `json:"-"`
 }
 

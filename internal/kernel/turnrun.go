@@ -120,7 +120,7 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 				msg.SetText(q + "\n\n" + msg.Text())
 			}
 		}
-		msg.SetText(r.k.withLineNote(msg.Role, msg.Text(), e.Images))
+		msg.SetText(r.k.withLineNote(msg.Role, msg.Text(), e.Images, e.Audios))
 		out = append(out, msg)
 		return nil
 	})

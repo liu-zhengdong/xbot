@@ -120,7 +120,7 @@ func (k *Kernel) receive(ev link.Event) (int, error) {
 		if ev.Source == link.NameApproval {
 			origin = bot.OriginInternal
 		}
-		seq, err = k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images,
+		seq, err = k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images, Audios: ev.Audios,
 			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)))}})
 		if err != nil {
 			return 0, err
@@ -281,6 +281,8 @@ func (k *Kernel) eventMessage(ev link.Event) provider.Message {
 		msg.SetText(k.withPastedNote(msg.Text(), ev.Images))
 		msg.Images = k.pastedImages(ev.Images)
 	}
+	msg.AudioNames = ev.Audios
+	msg.SetText(joinNote(msg.Text(), audioNote(k.Bot, ev.Audios)))
 	return k.projectRoutineSkills(msg, ev)
 }
 

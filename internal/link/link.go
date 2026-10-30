@@ -121,6 +121,7 @@ type Event struct {
 	// Images are pictures the sender attached, as file names in the bot's
 	// workspace. The bytes are not in the event: they are already on disk.
 	Images []string `json:"images,omitempty"`
+	Audios []string `json:"audios,omitempty"`
 	// RoutineSkills holds ordered library references for a timer wake, never bodies.
 	RoutineSkills []string `json:"routine_skills,omitempty"`
 }

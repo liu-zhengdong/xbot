@@ -210,12 +210,15 @@ func pastedPathIn(b *bot.Bot, name string) string {
 // withLineNote is withPastedNote for a transcript line of any role. A reply's
 // pictures are ones the bot showed the owner (send_message_to_user images), so they are
 // named as such, not as the owner's.
-func (k *Kernel) withLineNote(role, content string, names []string) string {
-	return k.withLineNoteIn(k.Bot, role, content, names)
+func (k *Kernel) withLineNote(role, content string, names []string, audios ...[]string) string {
+	return k.withLineNoteIn(k.Bot, role, content, names, audios...)
 }
 
 // withLineNoteIn is withLineNote for a named bot's line.
-func (k *Kernel) withLineNoteIn(b *bot.Bot, role, content string, names []string) string {
+func (k *Kernel) withLineNoteIn(b *bot.Bot, role, content string, names []string, audios ...[]string) string {
+	if len(audios) > 0 {
+		content = joinNote(content, audioNote(b, audios[0]))
+	}
 	if role != provider.RoleAssistant || len(names) == 0 {
 		return k.withPastedNoteIn(b, content, names)
 	}

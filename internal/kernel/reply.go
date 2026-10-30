@@ -60,6 +60,15 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	}
 	// A user line answered inside a running turn carries its pictures with it;
 	// the names are recorded on the line so a later turn can find them.
+	audios := m.AudioNames
+	m.AudioNames = nil
+	if m.Role == provider.RoleAssistant && len(m.Calls()) == 0 {
+		audios = append(audios, t.outAudios...)
+		t.outAudios = nil
+	}
+	if len(audios) > 0 && m.Role == provider.RoleUser {
+		m.SetText(stripPastedNote(m.Text(), audioNote(k.Bot, audios)))
+	}
 	images := m.ImageNames
 	m.ImageNames = nil
 	// The final reply carries pictures queued by tools or hosted generation, so the chat
@@ -73,7 +82,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	if len(images) > 0 && m.Role == provider.RoleUser {
 		m.SetText(stripPastedNote(m.Text(), k.pastedNote(images)))
 	}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images})
+	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images, Audios: audios})
 	if err != nil {
 		return 0, err
 	}
