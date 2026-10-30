@@ -845,14 +845,23 @@ html[data-theme="dark"] .bubble .code-block {
 .prose blockquote:last-child { margin-bottom: 0; }
 .prose blockquote > :last-child { margin-bottom: 0; }
 .prose blockquote blockquote { margin-top: 2px; }
-.md-table { max-width: 100%; overflow-x: auto; margin: 2px 0 6px; }
+.md-table { max-width: 100%; overflow-x: auto; margin: 4px 0 8px; }
 .md-table:last-child { margin-bottom: 0; }
-.md-table table { border-collapse: collapse; font-size: .93em; line-height: 1.5; white-space: normal; }
-.md-table :is(th, td) {
-  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  padding: 4px 10px; text-align: left; vertical-align: top;
+.md-table table {
+  border-collapse: collapse; font-size: .93em; line-height: 1.55; white-space: normal;
 }
-.md-table th { font-weight: 600; background: color-mix(in srgb, currentColor 6%, transparent); }
+.md-table :is(th, td) {
+  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
+  padding: 7px 12px; text-align: left; vertical-align: top;
+}
+.md-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+.md-table th {
+  font-weight: 600; padding: 8px 12px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-bottom-width: 2px;
+}
 
 .sysline {
   align-self: center; width: auto; max-width: min(100%, 520px);
