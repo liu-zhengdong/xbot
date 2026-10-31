@@ -807,6 +807,37 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
   background: var(--code); border-radius: 8px; margin: 2px 0; overflow: hidden; width: 100%;
 }
 
+.formula-block {
+  position: relative; width: 100%; margin: var(--x-formula-gap) 0;
+  background: transparent; color: var(--x-text); cursor: pointer; outline: none;
+  border-radius: var(--x-formula-radius); padding: var(--x-formula-padding);
+}
+.formula-block:hover, .formula-block:focus-visible { background: var(--x-fill-2); }
+.formula-body {
+  font-family: var(--x-formula-font); font-size: var(--x-formula-fs);
+  line-height: var(--x-formula-lh); white-space: pre-wrap; text-align: left; overflow-x: auto;
+}
+.formula-block .math-block { margin: 0; }
+.formula-block .copy {
+  position: absolute; top: 50%; right: var(--x-s2); transform: translateY(-50%);
+  width: var(--x-formula-copy-size); height: var(--x-formula-copy-size);
+  border-radius: var(--x-formula-copy-radius); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--x-faint); opacity: 0;
+  transition: opacity var(--dur-press) ease-out;
+}
+.formula-block .copy { pointer-events: none; }
+.formula-block:hover .copy, .formula-block:focus-visible .copy { opacity: 1; }
+.formula-block .copied-tip {
+  position: absolute; right: var(--x-s3); top: 50%; transform: translateY(-50%);
+  font-family: var(--x-font); font-size: var(--x-fs-label); color: var(--x-online);
+  pointer-events: none; visibility: hidden;
+}
+.formula-block.is-copied .copied-tip { visibility: visible; }
+.formula-block.is-copied .copy { opacity: 0; }
+.formula-block .copy .icon { width: var(--x-formula-icon-size); height: var(--x-formula-icon-size); }
+@media (prefers-reduced-motion: reduce) { .formula-block .copy { transition: none; } }
+
 .code-head {
   display: flex; justify-content: space-between; align-items: center;
   min-height: 32px; padding: 4px 8px 4px 12px; color: var(--faint); font-size: 12px;

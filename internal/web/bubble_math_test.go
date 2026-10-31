@@ -40,17 +40,19 @@ assert.equal(typeof realKatex.renderToString, "function", "vendored katex did no
 const document = {
   createTextNode: (v) => ({ nodeType: 3, nodeValue: String(v) }),
   createElement: (tag) => ({
-    nodeType: 1, tagName: String(tag).toUpperCase(), childNodes: [], style: {}, className: "",
+    nodeType: 1, tagName: String(tag).toUpperCase(), childNodes: [], style: {}, dataset: {}, className: "",
     append(...kids) { this.childNodes.push(...kids); },
     prepend(...kids) { this.childNodes.unshift(...kids); for (const k of kids) k.parentNode = this; },
     remove() { const sib = this.parentNode.childNodes; sib.splice(sib.indexOf(this), 1); },
     get origin() { return this.href ? new URL(this.href).origin : ""; },
-    classList: { add(c) { (this._cls = this._cls || []).push(c); } },
+    classList: { add(c) { (this._cls = this._cls || []).push(c); }, contains(c) { return (this._cls || []).includes(c); } },
+    setAttribute() {},
   }),
 };
 const el = (tag, cls, text) => { const n = document.createElement(tag); n.className = cls || ""; if (text != null) n.textContent = String(text); n.addEventListener = () => {}; return n; };
 const pathLabel = (path, tag) => el(tag || "span", "compact-path", path);
 const copyText = () => {};
+const icon = () => el("svg", "icon");
 const calls = [];
 const realKatexStub = { renderToString: (tex, opts) => { calls.push([tex, !!(opts && opts.displayMode)]); return "<katex>" + tex + "</katex>"; } };
 const window = { katex: realKatexStub };
@@ -158,6 +160,39 @@ assert.ok(out.includes("DIV.math-block"), "unclosed $$ swallowed everything: " +
 out = run(appendMarkdown, "看 $a$\n@BQ@@BQ@@BQ@go\nx := 1\n@BQ@@BQ@@BQ@\n再 $b$");
 assert.equal((out.match(/SPAN.math-inline/g) || []).length, 2, "both formulas expected: " + out);
 assert.ok(out.includes("code-block") && out.includes("x"), "code fence broke: " + out);
+
+// Formula-like fences split from real code without changing dollar math.
+for (const lang of ["", "text", " TEXT "]) {
+  for (const code of ["ℕ⁺ = { n ∈ ℕ | n ≥ 1 }", "f(x) = ax² + bx + c", "limₙ→∞ (1 + 1/n)ⁿ = e", "x = 1\ny = 2", "x_1 = y^2"]) {
+    out = run(appendMarkdown, "@BQ@@BQ@@BQ@" + lang + "\n" + code + "\n@BQ@@BQ@@BQ@");
+    assert.ok(out.includes("formula-block") && !out.includes("code-head"), "formula fence stayed code: " + out);
+  }
+}
+for (const lang of ["python", "js", "go", "unknown"]) {
+  out = run(appendMarkdown, "@BQ@@BQ@@BQ@" + lang + "\nx = y^2\n@BQ@@BQ@@BQ@");
+  assert.ok(out.includes("code-block") && !out.includes("formula-block"), "labelled code became formula");
+}
+for (const code of ["hello world", "x = 1", "some_text", ""]) {
+  out = run(appendMarkdown, "@BQ@@BQ@@BQ@text\n" + code + "\n@BQ@@BQ@@BQ@");
+  assert.ok(out.includes("code-block"), "plain text became formula: " + code);
+}
+window.katex = realKatex;
+const lines = formulaBlocks("text", "  x² = 1  \n\n y² = 2 \n z² = 3\n");
+assert.deepEqual(lines.map(n => n.dataset.copy), ["x² = 1", "y² = 2", "z² = 3"], "each nonempty trimmed line needs its own copy target");
+assert.equal(formulaBlocks("tex", "\\badcommand\nx² = 1").length, 2, "invalid multiline TeX must split");
+assert.equal(formulaBlocks("tex", "\\begin{aligned}x&=1\\\\y&=2\\end{aligned}").length, 1, "valid multiline TeX must stay together");
+for (const lang of ["math", "latex", "tex"]) {
+  const [f] = formulaBlocks(lang, "\\frac{a}{b}\n");
+  assert.ok(dump(f).includes("math-block"), "TeX fence missing math node");
+  assert.ok(f.childNodes.some(n => String(n.innerHTML).includes("katex")), "TeX fence did not use KaTeX");
+}
+let [f] = formulaBlocks("tex", "\\frac{");
+assert.ok(f.childNodes.some(n => n.className === "formula-body" && n.textContent === "\\frac{"), "invalid TeX must fall back to plain mathematical text");
+[f] = formulaBlocks("text", "x² = <img src=x onerror=alert(1)>");
+assert.ok(f.childNodes.some(n => n.className === "formula-body" && n.textContent.includes("<img")), "Unicode formula must stay textContent");
+window.katex = null;
+[f] = formulaBlocks("math", "x^2");
+assert.ok(f.childNodes.some(n => n.className === "formula-body" && n.textContent === "x^2"), "missing KaTeX fence fallback lost source");
 
 // Fallbacks: missing KaTeX or a parse error leave the raw source, never an
 // exception, and only the library's output is ever handed to innerHTML.

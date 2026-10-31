@@ -58,6 +58,12 @@
   /* 字体 */
   --x-font:"Segoe UI","Noto Sans SC","PingFang SC",sans-serif;
   --x-mono:"JetBrains Mono","SF Mono",Consolas,"Noto Sans Mono",monospace;
+  /* 围栏公式块（已定稿） */
+  --x-formula-font:"KaTeX_Main","Times New Roman","Noto Serif SC","Songti SC",serif;
+  --x-formula-fs:15.5px; --x-formula-lh:1.78;
+  --x-formula-radius:9px; --x-formula-padding:8px 36px 8px 12px;
+  --x-formula-copy-size:26px; --x-formula-icon-size:14px; --x-formula-gap:2px;
+  --x-formula-copy-radius:7px;
   /* 字号 */
   --x-fs-cap:11.5px; --x-fs-label:12px; --x-fs-sm:12.5px; --x-fs-ui:13.5px; --x-fs-body:15px; --x-fs-title:17px; --x-fs-greet:19px; --x-fs-h:24px;
   /* 间距（4 的倍数为主，6/10 用于紧凑行） */

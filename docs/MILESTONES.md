@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 围栏公式块（feature/math-formula-block，本地分支）
+
+- S 档展示修复，按新版 handoff [t740u]：只在 appendFenced 分流，空/text Unicode 等式逐行独立透明公式块；显式 TeX 成功整段一条，失败拆行。整条 click/Enter/Space 复制当前原文，成功提示 1.6 秒；悬停/聚焦软底，icon 仅提示。普通 Python 等代码路径与皮肤、输入草稿、美元公式路径不变。
+- 最终单测在 HEAD 归档上红（公式仍是 code-block），新实现 Math/Markdown/Formula 专项三遍绿（7.549s），Chrome 覆盖按行复制、键盘、反馈消失、浅深默认透明与字色、KaTeX 成功/失败、持久消息和 Python 高亮。1440×900 DPR2 前后浅深截图含默认/hover/copied：`~/.xbot-build/ui-shots/math-formula-block/`，本机查看。focus/blur 到下一帧 40 次采样 p95 19.5ms，非真实服务交互 p95 或持续帧率。
+- gofmt、go vet、diff check、atlas audit 通过（audit 保留已有告警）。全仓一遍与 web 整包三遍均已跑完但未绿，见 `/tmp/formula-tests.log`、`/tmp/formula-web3.log`：kernel/memory/work 与旧 UI/审批/提问等既有失败，web 三遍另见 DevicesPairBrowser；HEAD 归档定向复现时间分隔/供应商/审批/粘贴/人设五项（`/tmp/formula-baseline.log`），其余未逐条归因或扩修。
+- 级别：本地分支专项单测/浏览器通过，未合 main、未 push、未重启用户服务，不宣称真服务端到端或用户日用通过。Not run: 真二进制旅程、真模型、Linux CI、用户日用、IPC/后台减速性能专项；按用户要求不再邀设计师复审。
+
 ## 2026-10-31 心里话来源行（feature/aside-thoughts，本地分支）
 
 - M 档，按政东指定的 chat-timeline 扩展：整轮 `deliveries` 在存在 landed say 时选最后一条合格无 tool_call 裸正文，经 Record 同一幂等插入实现追加 `aside:<seq>`。非空非 SILENT、120 Unicode 字符上限（超长整段丢）、近重复/协议垃圾/路径 dump 过滤；媒体仍挂最后一条 say。投影世代升为 2，重建不改 transcript；不加模型轮或已说出口上下文记录。

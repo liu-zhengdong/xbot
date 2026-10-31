@@ -1663,6 +1663,53 @@
     flush();
   }
 
+  function looksLikeFormula(lang, code) {
+    lang = lang.trim().toLowerCase();
+    if (/^(math|latex|tex)$/.test(lang)) return true;
+    if (lang && lang !== "text") return false;
+    if (code.includes("=") && /[∈∉⊂∑∏∫√≤≥≠≈→¹²³⁰-⁹₀-₟⁺⁻⁼⁽⁾ⁿⁱ_^]/u.test(code)) return true;
+    const lines = code.trim().split("\n").filter(line => line.trim());
+    return lines.length > 1 && lines.every(line => line.length <= 100 && /^[^=]+=[^=]+$/.test(line));
+  }
+
+  function formulaBlocks(lang, code) {
+    const source = code.trim();
+    if (/^(math|latex|tex)$/i.test(lang.trim())) {
+      const math = mathNode(source, true, source);
+      if (!math.classList.contains("math-raw")) return [formulaBlock(source, math)];
+    }
+    return code.split("\n").map(line => line.trim()).filter(Boolean).map(line => formulaBlock(line));
+  }
+
+  function formulaBlock(source, math) {
+    const wrap = el("div", "formula-block");
+    wrap.setAttribute("role", "button");
+    wrap.tabIndex = 0;
+    wrap.dataset.copy = source;
+    wrap.title = "点击复制";
+    wrap.setAttribute("aria-label", "点击复制");
+    const hint = el("span", "copy");
+    hint.setAttribute("aria-hidden", "true");
+    hint.append(icon("copy"));
+    const tip = el("span", "copied-tip", "已复制");
+    tip.setAttribute("role", "status");
+    wrap.append(math || el("div", "formula-body", source), hint, tip);
+    let reset;
+    const copy = async () => {
+      if (!await copyText(source)) return;
+      clearTimeout(reset);
+      wrap.classList.add("is-copied");
+      reset = setTimeout(() => wrap.classList.remove("is-copied"), 1600);
+    };
+    wrap.addEventListener("click", copy);
+    wrap.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      copy();
+    });
+    return wrap;
+  }
+
   function codeBlock(lang, code) {
     const wrap = el("div", "code-block");
     const head = el("div", "code-head");
@@ -1722,7 +1769,8 @@
     let match;
     while ((match = re.exec(src))) {
       if (match.index > last) appendBlocks(parent, src.slice(last, match.index));
-      parent.append(codeBlock(match[1], match[2]));
+      if (looksLikeFormula(match[1], match[2])) parent.append(...formulaBlocks(match[1], match[2]));
+      else parent.append(codeBlock(match[1], match[2]));
       last = match.index + match[0].length;
     }
     if (last < src.length) appendBlocks(parent, src.slice(last));
