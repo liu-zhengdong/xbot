@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 记忆提醒（feature/memory-reminder，本地分支）
+
+- L 档，按用户指定设计，仅在 `reminderKindsFor` 经 `Channel.Register(Kind)` 接容量与轻量沉淀两条 reminder；不动 promptinject/envprompt、写入守卫、UI 或额外模型轮。容量读 Bot/当前人物 memory.md 实际大小，85% 起劝整理，已满明确提示，附当前/上限字节；两种各冷却 10 分钟，沉淀限有记忆存储的 web/terminal 人物对话。
+- `TestRegisteredMemoryCapacity` 覆盖门槛两侧、已满/超限、Bot/person、冷却与整理后消失；`TestRegisteredMemoryReflection` 覆盖轻量文案、冷却、重建 Kernel 仍冷却、timer/无 memory 不发；`TestMemoryReminderPreservesProfileFull` 断言 ErrProfileFull 且拒写前后原文一致。三条专项三遍通过（2.668s，测试墙钟，非交互延迟指标）。deletion：临时删除两处 Register，实际正文缺失使容量/沉淀两测试变红；恢复后通过。
+- gofmt 无输出、go vet、diff check、atlas audit 通过（audit 保留已有告警）。全仓一遍完整跑完未绿；kernel 整包三遍完整跑完（202.653s）仅 LongTurnStaysUnderTheCeiling / MemoryFileLogGuard 两条既有失败。全仓另有 memory MonthlyGuardAndRoundTrip、work ShellUsesBotDir，及 web 时间分隔/供应商设置/4 个审批/粘贴图片/人设/2 个提问共 10 条失败；全部在未修改 HEAD 归档定向复现，未放宽断言或扩修。日志 `/tmp/mem-rem-{target,deletion,all,kernel3,baseline,baseline-web,vet,atlas}.log`。
+- 级别：本地分支已实现、注册缝专项通过；未合入、未 push、未声称真入口端到端或日用通过。Not run: 真二进制端到端冒烟、真模型、用户日用、独立复审、Linux CI、交互 p95/IPC/后台减速性能测量。不增加新 ADR（复用既有 reminder、未推翻现行决定），主管复审待交接。
+
 ## 2026-10-31 环境提示 Register 光框架与语义时间（feature/env-prompt-frame，本地分支）
 
 - L 档，落实已落仓设计批 1 + 2。新字段唯一缝为 `envprompt.Env.Register(Field{Key, Sample, Prompt})`；上层 `promptinject.Registry.Register(Source{Name, Order, Render})` 首先挂环境。time 从钟现采，独立尾部语义公告；同分钟不重复，外置 Env 只在成功追加后提交已告知全文，预算预览不提交。压缩/拟合后强制补语义全量快照，计入原 T/H；不改 StablePrefix。Env 生命周期跟 Kernel，重启后重采重公告一次，无新增磁盘账本。

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/memory/, internal/person/, internal/experience/]
-verified: 2026-10-30 @ memory-panel-whole (read-only panel assembly); 2026-10-28 @ 342cc208 + 共享工作空间回修
+verified: 2026-10-31 @ feature/memory-reminder (ErrProfileFull / no truncation); 2026-10-30 @ memory-panel-whole (read-only panel assembly); 2026-10-28 @ 342cc208 + 共享工作空间回修
 ---
 # 身份与记忆
 
@@ -25,6 +25,7 @@ verified: 2026-10-30 @ memory-panel-whole (read-only panel assembly); 2026-10-28
 - **文件写入守卫**：内核对两个范围的 `write_file`/`edit_file` 持目录锁校验并在违规时恢复；`memory.md` 超过 4 KiB 只许缩小，日志只许向本地当月追加合法行且不超过 64 KiB，索引与锁文件禁止写入，自由文件不限大小。逻辑路径或真实路径落入记忆目录均受保护，拒绝记忆目录本身的文件写入及目录内（含目录自身）的符号链接。不可信回合须用户确认；仅成功的常驻与日志文件改动跳过下一轮差异，回滚失败明确提示路径可能残留被拒内容，快照标题给出文件工具路径。目录根上由存储自己管理的名字（`.lock`、`sync.jsonl`、旧布局的 `log.md`/`log.overflow.md`/`profile.md`、`*.index.json`）一律拒写；`memory.md` 只收存储能读回的三个标题、一个索引段和 `- (YYYY-MM-DD) 文本` 条目；在 macOS 和 Windows 上按大小写不敏感判定（`MEMORY.md` 就是 `memory.md`）。子代理的文件工具同样过守卫，但它的改动算外部改动，前台下一轮能看到差异。不可信回合里写到记忆目录的 `shell`（含先 `cd` 再写）也要用户确认，纯只读命令照常执行。
 - **慢写期间的环境读取**：新一轮直接复用已有的固定前缀，不为读取一个不会使用的新版本等待慢写；压缩时该范围正忙也保留原前缀，之后继续公布有效对话的差异。环境采样复用记忆目录的非阻塞 `TryLock`；该范围正在提交时，保留有效对话已公布的值，真实写入仍受原目录锁、校验和回滚保护。完成后通过原结果回执和环境回放公布差异；不加另存的记忆版本，接收新话不等慢工具。
 - **人的记忆只在本机**：人的身份和人的记忆是每台安装自己的存储（`people/<id>/identity.jsonl`、`people/<id>/memory/sync.jsonl`），不在机器之间同步；跨节点同步已于 2026-10-18 随旧的「节点」一起退役（[ADR 0012](../adr/0012-retire-node.md)）。这些日志是本机的事实记录，往模型里注入时仍然只当数据。
+- **容量劝导与轻量沉淀**：走内核已有提醒 Register 缝，门槛/冷却与行为测试见 [内核：记忆提醒](kernel.md#怎么运转)，不另造容量账或自省模型轮；原 `ErrProfileFull` 与超限不落盘、不截断的后盾不变。
 - **常驻上限**：每个范围的 profile 约 4 KiB；默认键事实注入为 `- text`，自定义键保留 `- key: text`，person 范围追加 ` via X`；写入和迁移按 memory.md 的实际渲染字节数加每个自定义键的 `len(Key)+2` 计量，文件格式不变。Bot 快照和人物环境资料分别沿原 4 KiB 预算。写超了就报错，要求合并事实、忘掉过时的、或把细节挪到日志层，不静默截断。只拦会让文件变大的写：已经超限的文件（上限之前写的，或同步合并进来的）照样能删减条目，一条一条整理；日志层同样只拦变大的写。同步合并不受 profile 上限挡，免得整次合并卡死。注入只有越界才裁，并注明该整理。
 - **注入：快照加差异**（记忆 v2 批 1，已落地）：
   - 写入规则在 `<memory>` 块里紧随 `MemoryRule` 注入，不依赖已保存的 `rules.md`；渲染版本 3 使旧 Bot 下一次唤醒重新拍快照。

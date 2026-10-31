@@ -18,6 +18,7 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/fsutil"
 	"xbot/internal/link"
+	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
@@ -30,6 +31,10 @@ const (
 	KindFileChange      = "file_change"
 	KindReplyFirst      = "reply_first"
 	KindReference       = "reference"
+	KindMemoryCapacity  = "memory_capacity"
+	KindMemoryReflect   = "memory_reflect"
+
+	memoryReminderCooldown = 10 * time.Minute
 
 	pendingCooldown = 10 * time.Minute
 	loopCooldown    = time.Minute
@@ -596,6 +601,21 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		}})
 	}
 	ch.Register(Kind{
+		Name:     KindMemoryCapacity,
+		Cooldown: memoryReminderCooldown,
+		Trigger:  k.memoryCapacityTrigger(ev),
+	})
+	ch.Register(Kind{
+		Name:     KindMemoryReflect,
+		Cooldown: memoryReminderCooldown,
+		Trigger: func(time.Time, []Reminder) string {
+			if k.Memory == nil || !personEvent(ev) || (ev.Source != link.NameWeb && ev.Source != link.NameTerminal) {
+				return ""
+			}
+			return "<system-reminder>\n本轮有值得沉淀的就记进记忆，没有就跳过。\n</system-reminder>"
+		},
+	})
+	ch.Register(Kind{
 		Name:    KindReplyFirst,
 		Trigger: replyFirstTrigger(ev),
 	})
@@ -741,6 +761,36 @@ func replyFirstTrigger(ev link.Event) func(time.Time, []Reminder) string {
 			return ""
 		}
 		return replyFirstNote
+	}
+}
+
+// memoryCapacityTrigger checks the actual standing files, not the rendered
+// context (which may already be clipped). No profile contents enter the note.
+func (k *Kernel) memoryCapacityTrigger(ev link.Event) func(time.Time, []Reminder) string {
+	return func(time.Time, []Reminder) string {
+		if k.Memory == nil || k.Bot == nil {
+			return ""
+		}
+		paths := []string{filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "memory", "memory.md")}
+		if personEvent(ev) {
+			paths = append(paths, filepath.Join(k.Bot.Root, "people", ev.Sender, "memory", "memory.md"))
+		}
+		var notes []string
+		for _, path := range paths {
+			st, err := os.Stat(path)
+			if err != nil || st.Size()*100 < memory.ProfileBytes*85 {
+				continue
+			}
+			state := "将满"
+			if st.Size() >= memory.ProfileBytes {
+				state = "已满"
+			}
+			notes = append(notes, fmt.Sprintf("记忆%s（%s：当前 %d / 上限 %d 字节），先整理或删旧再写：合并重复事实、删除过时内容，细节可移到日志或资料文件。", state, path, st.Size(), memory.ProfileBytes))
+		}
+		if len(notes) == 0 {
+			return ""
+		}
+		return "<system-reminder>\n" + strings.Join(notes, "\n") + "\n</system-reminder>"
 	}
 }
 
