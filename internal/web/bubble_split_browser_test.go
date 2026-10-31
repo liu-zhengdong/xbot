@@ -15,7 +15,7 @@ fixture.messages[bots[0].name]=[quoted,{...message('assistant',splitText),reply_
   const bot=document.querySelector('#thread .msg.bot');
   if(bot){
    const bubbles=bot.querySelectorAll('.bot-bubble');
-   if(bubbles.length!==3||!bubbles[0].textContent.includes('第一段第二行。')||bubbles[1].textContent!=='第二段。'||bubbles[2].textContent!=='第三段。')throw Error('legacy paragraphs not split');
+   if(bubbles.length!==1||bubbles[0].querySelectorAll('p').length!==3||!bubbles[0].textContent.includes('第一段第二行。'))throw Error('legacy paragraphs not combined');
    if(bot.querySelectorAll('.quote-block').length!==1||!bot.firstElementChild.firstElementChild.matches('.quote-block'))throw Error('legacy quote misplaced');
    document.body.dataset.testResult='passed';return;
   }
@@ -62,10 +62,10 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep
 const bubbles=row=>[...row.querySelectorAll(':scope > .bubble-col > .bubble, :scope > .body > .bot-bubble')];
 const check=(row,label)=>{
  const parts=bubbles(row);
- assert(parts.length===5,label+': expected two audio and three text bubbles, got '+parts.length);
- for(let i=0;i<2;i++)assert(parts[i].querySelectorAll('audio').length===1&&!parts[i].querySelector('.prose,.gallery'),label+': audio not isolated');
- assert(parts[2].textContent.includes('第一段第一行。')&&parts[2].textContent.includes('第一段第二行。'),label+': single newline split');
- assert(parts[3].textContent==='第二段。'&&parts[4].textContent==='第三段。',label+': blank lines not split');
+ assert(parts.length===3,label+': expected one text and two audio bubbles, got '+parts.length);
+ for(let i=1;i<3;i++)assert(parts[i].querySelectorAll('audio').length===1&&!parts[i].querySelector('.prose,.gallery'),label+': audio not isolated');
+ assert(parts[0].textContent.includes('第一段第一行。')&&parts[0].textContent.includes('第一段第二行。'),label+': single newline split');
+ assert(parts[0].querySelectorAll('p').length===3&&parts[0].textContent.includes('第三段。'),label+': paragraphs not combined');
  const images=[...row.querySelectorAll('.gallery')];
  assert(images.length===2&&images.every(g=>g.querySelectorAll('img').length===1&&!g.closest('.bubble,.bot-bubble')),label+': images not isolated');
  const quote=row.querySelectorAll('.quote-block');assert(quote.length===1&&quote[0]===row.firstElementChild.firstElementChild,label+': quote repeated or misplaced');
@@ -86,23 +86,23 @@ const check=(row,label)=>{
  // CRLF and repeated empty paragraphs do not produce empty bubbles.
  splitUser.content='甲\r\n乙\r\n\r\n\r\n丙';splitUser.images=[];splitUser.audios=[];
  document.dispatchEvent(new Event('visibilitychange'));
- await waitFor(()=>bubbles($('[data-seq="'+splitUser.seq+'"]')).length===2,'CRLF paragraphs');
- const crlf=bubbles($('[data-seq="'+splitUser.seq+'"]'));assert(crlf[0].textContent.includes('甲')&&crlf[0].textContent.includes('乙')&&crlf[1].textContent==='丙','CRLF single line lost');
+ await waitFor(()=>bubbles($('[data-seq="'+splitUser.seq+'"]')).length===1,'CRLF paragraphs');
+ const crlf=bubbles($('[data-seq="'+splitUser.seq+'"]'));assert(crlf[0].textContent.includes('甲')&&crlf[0].textContent.includes('乙')&&crlf[0].querySelectorAll('p').length===2,'CRLF single line lost');
  // Preserve blank lines inside existing Markdown code/math blocks.
  const fence=String.fromCharCode(96).repeat(3);
  splitUser.content=fence+'js\nconst a = 1;\n\nconst b = 2;\n'+fence+'\n\n$$x\n\n+y$$';
  document.dispatchEvent(new Event('visibilitychange'));
  await waitFor(()=>$('[data-seq="'+splitUser.seq+'"] .code-block'),'code missing');
- assert(bubbles($('[data-seq="'+splitUser.seq+'"]')).length===2,'split inside code/math block');
+ assert(bubbles($('[data-seq="'+splitUser.seq+'"]')).length===1,'split code/math message');
  assert($('[data-seq="'+splitUser.seq+'"] code').textContent.includes('1;\n\nconst'),'code blank line lost');
  splitUser.content='行内代码 '+String.fromCharCode(96)+'$$'+String.fromCharCode(96)+'。\n\n代码之后。';
  document.dispatchEvent(new Event('visibilitychange'));
  await waitFor(()=>$('[data-seq="'+splitUser.seq+'"]')?.textContent.includes('代码之后。'),'inline code update');
- assert(bubbles($('[data-seq="'+splitUser.seq+'"]')).length===2,'inline code swallowed paragraph boundary');
+ assert(bubbles($('[data-seq="'+splitUser.seq+'"]')).length===1,'inline code swallowed paragraph boundary');
  const input=$('#input');input.textContent=splitText;input.dispatchEvent(new Event('input',{bubbles:true}));$('#composer').requestSubmit();
  await waitFor(()=>splitPayload&&$('#thread .optimistic'),'optimistic send missing');
  const pending=bubbles($('#thread .optimistic'));
- assert(pending.length===3&&pending[0].textContent.includes('第一段第二行。')&&pending[1].textContent==='第二段。','optimistic paragraphs not split immediately');
+ assert(pending.length===1&&pending[0].textContent.includes('第一段第二行。')&&pending[0].querySelectorAll('p').length===3,'optimistic paragraphs not combined immediately');
  assert(splitPayload.text===splitText,'send payload split or changed');
  assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.stack});

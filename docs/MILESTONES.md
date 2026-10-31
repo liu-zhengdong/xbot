@@ -868,3 +868,15 @@ Bot 改名后所有工具回执 `tool job storage unavailable`（裸文本进 tr
 验证：`TestRestartContinuationPersistsAndWakesEveryWorkingBot` 覆盖前台忙、运行子代理、排队子代理均收到提示且 idle 未收到；kernel 注册/提示转交和 restart 必须确认测试通过；目标包 `cmd/xbot`、`internal/review` `-count=3` 通过。`gofmt -l .`、`go vet ./...`、`git diff --check`、`bash -n scripts/xbot-dev` 通过。全量测试跑到 web 包后，kernel 的已知 `TestLongTurnStaysUnderTheCeiling` 失败且 web 测试进程约 4 分钟无输出后中止；目标包 `internal/kernel -count=3` 同一已知用例三次失败。此前里程碑已记录该用例失败。未在本机实际打开桌面窗，性能数字未测；不代表端到端或主人日用通过。代码仍在 `19b13842` 基线上的未提交工作树，未 push、未合并。
 
 - 2026-10-29：CLI 外部 Event 入站实现与脚本化定向测试；真实入口及主人日用待验。
+
+## 2026-10-31 对话／语音簇 v4（功能分支）
+
+按本机设计师 v4 定稿修正聊天渲染，现状见 [界面](atlas/ui.md#语音交流)。装配仍走 `appendMessageBubbles`：连续文字一泡、明确短尾注归音、音图各自独立；簇内各泡自然宽，播放钮与十根竖波形行内同高。未改 transcript、`spokenLines` 或存盘，也没有齐宽分支。
+
+浏览器回归覆盖用户、Bot、legacy 与乐观发送，包含三段正文加语音尾注恰为两泡、引用和图片导航、代码／公式空行、模糊尾句仍留正文、音频互斥与键盘播放、轮询保留播放器。新回归在 `101c2bcf` 归档上因五泡而失败；目标浏览器组 `-count=3` 通过，原生录音和播放单独三遍通过（组合运行曾有一次播放等待超时）。浅深色 1440×900／DPR 2 的前后、悬停、播放态及 390px 窄屏截图在 `~/.xbot-build/ui-shots/chat-voice-cluster-v4/`；待设计师复核。
+
+性能：短音泡 197.94px、长文泡 451.78px，播放钮与波形均高 36px，窄屏 1 秒／60 秒音频均无溢出。scripted transcript 响应到 DOM 更新后两帧各取 30 次，p95 浅色 28.8ms、深色 33.5ms；测试轮询压到 100ms，只计响应后的渲染，不代表真实网络、屏幕 FPS 或 IPC。
+
+`gofmt -l .`、JS 语法、`go vet ./...` 与 diff 检查通过；atlas audit 退出 0，保留已有告警。全量测试及 Web 整包三遍未绿：kernel 的 `TestLongTurnStaysUnderTheCeiling`／`TestMemoryFileLogGuard`、memory 的 `TestMonthlyGuardAndRoundTrip`、work 的 `TestShellUsesBotDir`，以及 Web 的旧头像静态断言与 `TestAskOnlyMessageDoesNotLeaveEmptyRow` 源码切片 panic 均在基线复现；扩大浏览器组的 `TestChatStreamBrowser` 布局断言也在基线复现。六条基础旅程冒烟仍在旧送达文本／delta 期望处失败，语音二进制冒烟通过。完整日志在 `~/.xbot-build/chat-voice-cluster-v4/`。
+
+级别：已提交功能分支、本机渲染与原生语音验证通过，未合 main、未 push，未宣称整套旅程通过。Not run: 真模型、真实麦克风／扬声器、Linux CI、真实网络交互／IPC p95、FPS、后台减速专项、设计师截图验收与用户日用。

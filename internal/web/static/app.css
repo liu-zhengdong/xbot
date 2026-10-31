@@ -667,10 +667,11 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .thread-inner > .msg.cont { margin-top: 6px; }
 .msg { display: flex; gap: 8px; align-items: flex-start; animation: rise 180ms ease-out; }
 .msg.user { justify-content: flex-end; }
-.bubble-col { max-width: 72%; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.bubble-col { width: max-content; max-width: 72%; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--x-s2); }
 .msg.user .bubble-col { align-items: flex-end; }
 .msg.bot .body { min-width: 0; max-width: 86%; display: flex; flex-direction: column; align-items: flex-start; }
 .bubble, .bot-bubble.prose {
+  width: max-content; max-width: 100%;
   border: 0; border-radius: 18px; padding: 9px 15px;
   overflow-wrap: anywhere; word-break: break-word;
   line-height: 1.6; font-size: 15px; font-weight: 400;
@@ -680,7 +681,8 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .bot-bubble { background: var(--x-bot-bubble); color: var(--x-text); max-width: 100%; }
 .bot-bubble:empty { display: none; }
 .bubble .prose, .bot-bubble .prose { font: inherit; }
-.bot-bubble .prose p, .bot-bubble .prose ul { margin-bottom: 6px; }
+.bubble .prose p, .bot-bubble.prose p { margin-bottom: 0; }
+.bubble .prose p + p, .bot-bubble.prose p + p { margin-top: var(--chat-paragraph-gap); }
 .bot-bubble .prose > :last-child { margin-bottom: 0; }
 .bot-bubble code { background: var(--x-card); }
 .bubble code, .bubble .code-block { background: var(--x-user-code); color: inherit; }
@@ -2833,16 +2835,16 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .memory-footer { font-size: var(--x-fs-sm); color: var(--x-faint); }
 .memory-empty { margin: 0; }
 
-/* Voice attachments share the text bubble; their bytes stay in voice/. */
-.voice { display:flex; align-items:center; gap:var(--x-s4); width:var(--voice-width); max-width:100%; padding:var(--voice-track-radius) 0; user-select:none; }
+/* Each voice bubble follows its duration, independently of the text width. */
+.voice { display:flex; align-items:center; gap:var(--x-s4); width:max-content; max-width:100%; user-select:none; }
 .voice + .voice, .voice + .prose, .voice + .gallery { margin-top:var(--x-s3); }
 .v-play { border:0; width:var(--voice-button); height:var(--voice-button); min-width:var(--voice-button); flex:none; border-radius:var(--x-r-pill); padding:0; display:inline-flex; align-items:center; justify-content:center; background:var(--x-fill-3); color:inherit; }
 .bubble .v-play { background:var(--x-user-code); }
-.v-meta { flex:1; min-width:0; display:flex; flex-direction:column; gap:var(--x-s2); }
-.v-bar { height:var(--voice-track); border-radius:var(--voice-track-radius); overflow:hidden; background:var(--x-fill-3); }
-.bubble .v-bar { background:var(--x-user-code); }
-.v-bar > i { display:block; height:100%; width:100%; background:currentColor; transform:scaleX(0); transform-origin:left; }
-.v-time { font-size:var(--x-fs-sm); font-variant-numeric:tabular-nums; line-height:1; opacity:.85; }
+.v-wave { display:flex; align-items:center; justify-content:space-between; flex:0 1 auto; width:var(--voice-wave-w,var(--voice-wave-base)); height:var(--voice-button); min-width:0; color:var(--x-muted); cursor:pointer; }
+.v-wave i { flex:none; width:var(--voice-wave-bar); height:calc(var(--h) * 1px); border-radius:var(--voice-wave-radius); background:currentColor; }
+.v-time { flex:none; font-size:var(--x-fs-sm); color:var(--x-muted); font-variant-numeric:tabular-nums; line-height:1; }
+.bubble :is(.v-wave,.v-time,.v-caption) { color:inherit; opacity:var(--voice-user-muted); }
+.v-caption { margin-top:var(--x-s3); font-size:var(--voice-caption-size); color:var(--x-muted); }
 .v-fail, .v-retry { font-size:var(--x-fs-ui); color:inherit; }
 .v-retry { border:0; padding:0; text-decoration:underline; background:none; }
 .voice audio { display:none; }

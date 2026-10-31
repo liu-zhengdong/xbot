@@ -2974,20 +2974,29 @@
       audio.preload="none";
       queueMicrotask(()=>{if(audio.isConnected){audio.preload="metadata";audio.load();}});
       audio.src="/api/bots/"+encodeURIComponent(state.sel.id)+"/voice/"+encodeURIComponent(id);
-      const play=el("button","v-play"),meta=el("div","v-meta"),time=el("span","v-time","");
-      const progress=el("div","v-bar"),fill=el("i"),failure=el("span","v-fail","语音加载失败"),retry=el("button","v-retry","重试");
+      const play=el("button","v-play"),wave=el("div","v-wave"),time=el("span","v-time","");
+      const failure=el("span","v-fail","语音加载失败"),retry=el("button","v-retry","重试");
+      for(const height of [10,18,26,14,22,12,28,16,20,12]){
+        const bar=el("i");bar.style.setProperty("--h",height);wave.append(bar);
+      }
       play.type=retry.type="button";play.setAttribute("aria-label","播放语音");play.append(icon("play"));
-      failure.hidden=retry.hidden=true;progress.append(fill);meta.append(progress,time);row.append(play,meta,failure,retry,audio);parent.append(row);
-      const failed=()=>{audio.pause();play.hidden=meta.hidden=true;failure.hidden=retry.hidden=false;};
+      wave.setAttribute("role","button");wave.tabIndex=0;wave.setAttribute("aria-label","播放语音");
+      failure.hidden=retry.hidden=true;row.append(play,wave,time,failure,retry,audio);parent.append(row);
+      const failed=()=>{audio.pause();play.hidden=wave.hidden=time.hidden=true;failure.hidden=retry.hidden=false;};
       const start=()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;audio.play().catch(error=>{if(error.name!=="AbortError"&&activeVoice===audio)failed();});};
       play.onclick=()=>{if(audio.paused)start();else audio.pause();};
-      retry.onclick=()=>{failure.hidden=retry.hidden=true;play.hidden=meta.hidden=false;audio.load();start();};
-      audio.addEventListener("play",()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;play.replaceChildren(icon("pause"));play.setAttribute("aria-label","暂停语音");});
-      audio.addEventListener("pause",()=>{play.replaceChildren(icon("play"));play.setAttribute("aria-label","播放语音");});
+      wave.onclick=play.onclick;
+      wave.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();play.onclick();}};
+      retry.onclick=()=>{failure.hidden=retry.hidden=true;play.hidden=wave.hidden=time.hidden=false;audio.load();start();};
+      audio.addEventListener("play",()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;play.replaceChildren(icon("pause"));play.setAttribute("aria-label","暂停语音");wave.setAttribute("aria-label","暂停语音");});
+      audio.addEventListener("pause",()=>{play.replaceChildren(icon("play"));play.setAttribute("aria-label","播放语音");wave.setAttribute("aria-label","播放语音");});
       audio.addEventListener("ended",()=>{if(activeVoice===audio)activeVoice=null;});
       audio.addEventListener("error",failed);
-      const update=()=>{time.textContent=Number.isFinite(audio.duration)&&audio.duration>0?(audio.currentTime?voiceTime(audio.currentTime)+" / ":"")+voiceTime(audio.duration):(audio.currentTime?voiceTime(audio.currentTime):"");fill.style.transform="scaleX("+(Number.isFinite(audio.duration)&&audio.duration>0?audio.currentTime/audio.duration:0)+")";};
-      audio.addEventListener("timeupdate",update);audio.addEventListener("loadedmetadata",update);
+      audio.addEventListener("loadedmetadata",()=>{
+        const duration=Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:0;
+        time.textContent=duration?voiceTime(duration):"";
+        row.style.setProperty("--voice-wave-w","calc(var(--voice-wave-base) + "+Math.min(64,Math.max(0,duration-3)*2)+"px)");
+      });
     }
   }
 
@@ -3099,11 +3108,6 @@
   function appendMessageBubbles(wrap, text, images, audios, bot = false) {
     const pulled = bot ? { text: stripBotImages(text), images: [] } : pullImages(text);
     const cls = bot ? "prose bot-bubble" : "bubble";
-    for (const id of audios || []) {
-      const bubble = el("div", cls);
-      appendAudios(bubble, [id]);
-      wrap.append(bubble);
-    }
     const src = pulled.text.replace(/\r\n/g, "\n");
     // Blank lines inside fenced code or display math belong to that block.
     const boundaries = /```[\s\S]*?(?:```|$)|`[^`\n]*(?:`|$)|\$\$[\s\S]*?(?:\$\$|$)|\n[ \t]*\n(?:[ \t]*\n)*/g;
@@ -3115,13 +3119,27 @@
       start = match.index + match[0].length;
     }
     paragraphs.push(src.slice(start));
-    for (const paragraph of paragraphs) {
-      if (!paragraph.trim()) continue;
+    // Flat attachment ids carry no text offsets. Only an explicit short audio
+    // label becomes a caption; ambiguous prose stays with the preceding text.
+    let caption = "";
+    const tail = paragraphs[paragraphs.length - 1].trim();
+    if (audios?.length && /^(?:[\p{L}\p{N} -]{1,12}版|(?:注|备注|说明)[：:][^\n]{1,20})[。！.!]?$/u.test(tail)) {
+      caption = tail;
+      paragraphs.pop();
+    }
+    const prose = paragraphs.join("\n\n").trim();
+    if (prose) {
       const bubble = el("div", cls);
-      if (bot) appendMarkdown(bubble, paragraph);
-      else appendRich(bubble, paragraph);
+      if (bot) appendMarkdown(bubble, prose);
+      else appendRich(bubble, prose);
       wrap.append(bubble);
     }
+    (audios || []).forEach((id, i) => {
+      const bubble = el("div", cls);
+      appendAudios(bubble, [id]);
+      if (caption && i === audios.length - 1) bubble.append(el("div", "v-caption", caption));
+      wrap.append(bubble);
+    });
     const urls = [...pulled.images, ...(images || [])];
     urls.forEach((url, i) => wrap.append(gallery(urls, i)));
   }

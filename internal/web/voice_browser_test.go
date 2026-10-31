@@ -54,12 +54,14 @@ const refresh=()=>document.dispatchEvent(new Event('visibilitychange'));
  if(shot==='recording'){$('#mic').click();await waitFor(()=>voiceStreams.length,'recording');document.body.dataset.testResult='passed';return}
  const mic=$('#mic').getBoundingClientRect(),send=$('#send').getBoundingClientRect();assert(mic.right<=send.left,'mic must be left of send');
  const user=$('#thread .msg.user'),bot=$('#thread .msg.bot'),audio=user.querySelector('audio'),botAudio=bot.querySelector('audio');
- assert(user.querySelector('.bubble').firstElementChild.contains(audio),'user audio is not first in same bubble');
- assert(bot.querySelector('.bot-bubble').firstElementChild.contains(botAudio),'bot audio is not above text');
+ assert(audio.closest('.bubble').firstElementChild.contains(audio),'user audio is not in its own bubble');
+ assert(botAudio.closest('.bot-bubble').firstElementChild.contains(botAudio),'bot audio is not in its own bubble');
  assert(playCount===0&&!audio.autoplay&&!botAudio.autoplay,'audio autoplayed');
  if(shot==='default'){document.body.dataset.testResult='passed';return}
  user.querySelector('.v-play').click();await waitFor(()=>!audio.paused,'user did not play');
- bot.querySelector('.v-play').click();assert(audio.paused&&!botAudio.paused,'two audios playing');
+ const wave=bot.querySelector('.v-wave');wave.click();assert(audio.paused&&!botAudio.paused,'two audios playing');
+ wave.dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true}));assert(botAudio.paused,'wave keyboard pause failed');
+ wave.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));assert(!botAudio.paused,'wave keyboard play failed');
  bot.querySelector('.v-play').click();assert(botAudio.paused,'pause failed');
  Object.defineProperty(audio,'duration',{value:Infinity,configurable:true});audio.dispatchEvent(new Event('loadedmetadata'));
  assert(user.querySelector('.v-time').textContent==='','unknown duration shown as zero');
