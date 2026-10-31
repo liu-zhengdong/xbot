@@ -1328,12 +1328,17 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
   background: var(--x-code); border-radius: 4px; padding: 1px 3px;
 }
 
-.composer .send { margin: 0; flex: none; align-self: center; }
+.composer-actions { align-self: stretch; align-items: center; gap: 8px; }
 
-/* 36px circle, 18px arrow at 2px: dark ink when it can send, grey while empty. */
+.composer .mic { width: 42px; height: 42px; min-width: 42px; min-height: 42px; flex: none; }
+
+.composer .send { margin: 0 4px 0 0; flex: none; align-self: center; }
+
+/* 42px circle, 20px arrow: dark ink when it can send, grey while empty.
+   Kept in one place so mic and send read as a single cluster inside the pill. */
 .send {
-  width: 36px; height: 36px; min-width: 36px; min-height: 36px;
-  padding: 0; margin: 0; border: 0; border-radius: 18px; line-height: 0;
+  width: 42px; height: 42px; min-width: 42px; min-height: 42px;
+  padding: 0; margin: 0; border: 0; border-radius: 21px; line-height: 0;
   display: inline-flex; align-items: center; justify-content: center;
   transition: opacity 160ms ease-out;
 }
@@ -1343,7 +1348,7 @@ html[data-theme="dark"] .card-icon { background: var(--hover); }
 
 .send.primary:not(:disabled) { background: var(--send); color: var(--send-ink); }
 
-.send svg { width: 18px; height: 18px; stroke-width: 2; }
+.send svg { width: 20px; height: 20px; stroke-width: 2; }
 
 .send:hover:not(:disabled) { opacity: 0.88; }
 
@@ -2910,3 +2915,19 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 @media(prefers-reduced-motion:reduce){.chat-open-avatar{animation:none}}
 
 .search-bar .secondary{height:28px;padding:4px 8px;font-size:12.5px}
+
+/* Composer action cluster: mic and send share one geometry so they read as a
+   single group, centred inside the pill and inset from its right edge. Later
+   rules above keep drifting apart, so this block stays last in the file. */
+.composer-actions { align-self: stretch; align-items: center; gap: 2px; padding: 0 2px 0 0; }
+.composer-actions .mic,
+.composer-actions .send {
+  width: 42px; height: 42px; min-width: 42px; min-height: 42px;
+  margin: 0; padding: 0; border: 0; border-radius: 21px;
+  display: inline-flex; align-items: center; justify-content: center;
+  align-self: center; flex: none;
+}
+.composer-actions .mic { background: transparent; color: var(--x-muted); }
+.composer-actions .mic:hover { background: var(--x-fill-2); color: var(--x-text); }
+.composer-actions .mic svg,
+.composer-actions .send svg { width: 20px; height: 20px; }
