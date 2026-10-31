@@ -21,6 +21,9 @@ import (
 type questionModel struct{}
 
 func (questionModel) Chat(_ context.Context, req provider.Request, delta func(string)) (provider.Message, error) {
+	if msg, ok := spoke(req); ok {
+		return msg, nil
+	}
 	last := lastConversationInput(req.Messages)
 	// An owner chat line carries the reply-first reminder; the script reads the words.
 	if body, _, ok := strings.Cut(last.Text(), "\n\n<system-reminder>"); ok {
@@ -36,7 +39,7 @@ func (questionModel) Chat(_ context.Context, req provider.Request, delta func(st
 	if delta != nil {
 		delta(text)
 	}
-	return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
+	return sayTo(text), nil
 }
 func questionServer(t *testing.T, wait time.Duration) (*Server, *httptest.Server, *http.Cookie, *bot.Bot) {
 	t.Helper()
@@ -58,7 +61,9 @@ func questionServer(t *testing.T, wait time.Duration) (*Server, *httptest.Server
 		if err != nil {
 			return nil, err
 		}
-		return &kernel.Kernel{Bot: b, Provider: questionModel{}, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4, Budget: compact.DefaultBudget(), Links: []link.Link{link.Web{}}}, nil
+		// ask_user remains a question card even when production tool review
+		// always allows permission-controlled tools.
+		return &kernel.Kernel{Bot: b, Provider: questionModel{}, Inbox: box, Memory: memory.NopStore{}, Permissive: true, MaxSteps: 4, Budget: compact.DefaultBudget(), Links: []link.Link{link.Web{}}}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))
 	t.Cleanup(func() { kernel.AnswerQuestions(b, "结束测试"); kernel.SetWaker(root, nil); ui.Close() })
@@ -173,7 +178,7 @@ func TestQuestionTypedReplyStopsTimer(t *testing.T) {
 
 func lastConversationInput(messages []provider.Message) provider.Message {
 	for i := len(messages) - 1; i >= 0; i-- {
-		if !strings.HasPrefix(messages[i].Text(), "<environment_") {
+		if !strings.HasPrefix(messages[i].Text(), "<environment_") && !strings.HasPrefix(messages[i].Text(), "<system-reminder>") {
 			return messages[i]
 		}
 	}

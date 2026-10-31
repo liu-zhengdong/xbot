@@ -25,7 +25,7 @@ const walk=n=>[n,...n.children.flatMap(walk)];
 const find=(tag,text)=>walk(host).find(n=>n.tag===tag&&n.innerText.includes(text));
 const provider={name:'openai',protocol:'responses',key_configured:true,models:[{model:'local-only'}]};
 let resolveList,fail=false,empty=false,current=true;
-const api=async path=>{calls.push(path);if(path==='/api/providers')return {providers:[provider,...['constructor','__proto__'].map(name=>({name,protocol:'chat_completions',key_configured:false,models:[]}))]};if(fail)throw Error('private-upstream-body');return await new Promise(resolve=>{resolveList=resolve})};
+const api=async path=>{calls.push(path);if(path==='/api/providers')return {providers:[provider,...['constructor','__proto__'].map(name=>({name,custom:true,display_name:name,protocol:'chat_completions',key_configured:false,models:[]}))]};if(fail)throw Error('private-upstream-body');return await new Promise(resolve=>{resolveList=resolve})};
 const result={models:[{model:'runtime-only',context:128000,vision:false,hosted_web_search:false}]};
 (async()=>{
  await window.XBotProviders.settings({api,host,isCurrent:()=>current});

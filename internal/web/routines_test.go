@@ -13,7 +13,7 @@ import (
 	"xbot/internal/permissions"
 )
 
-func TestRoutinePrecheckAPIRequiresShellApproval(t *testing.T) {
+func TestRoutinePrecheckAPIDefaultAllowsThroughReview(t *testing.T) {
 	s, tok, bots := statusFixture(t, 1)
 	b := bots[0]
 	tm := &link.Timer{Dir: b.RoutineDir()}
@@ -49,18 +49,18 @@ func TestRoutinePrecheckAPIRequiresShellApproval(t *testing.T) {
 				}
 			}
 			body, _ := json.Marshal(map[string]string{"precheck": tc.command})
-			patch(body, 403)
+			patch(body, 200)
 			r, err := tm.Load("check")
-			if err != nil || r.Precheck != "" {
-				t.Fatalf("rejected write persisted: %+v %v", r, err)
+			if err != nil || r.Precheck != tc.command {
+				t.Fatalf("allowed write missing: %+v %v", r, err)
 			}
-			// A pre-existing command is reviewed on enable, too; clearing it
-			// remains possible without asking permission to run anything.
+			// Retained commands also pass review on enable, regardless of
+			// the legacy permission switch or machine gate.
 			r.Precheck, r.Enabled = tc.command, false
 			if err := tm.Save(r); err != nil {
 				t.Fatal(err)
 			}
-			patch([]byte(`{"enabled":true}`), 403)
+			patch([]byte(`{"enabled":true}`), 200)
 			patch([]byte(`{"precheck":""}`), 200)
 			patch([]byte(`{"enabled":true}`), 200)
 		})

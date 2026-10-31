@@ -54,7 +54,9 @@ func TestMemoryFileProfileGuard(t *testing.T) {
 
 func TestMemoryFileLogGuard(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	now := time.Now()
+	// Pin the month-end that exposed AddDate normalizing September 31
+	// back into October; the rejected path must really be a past month.
+	now := time.Date(2026, time.October, 31, 12, 0, 0, 0, time.Local)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root), Now: func() time.Time { return now }}
 	dir := filepath.Join(b.Root, "bots", b.Name(), "memory")
 	path := filepath.Join(dir, "log", now.Format("2006-01")+".md")
@@ -76,7 +78,7 @@ func TestMemoryFileLogGuard(t *testing.T) {
 	if string(raw) != string(old) {
 		t.Fatal("log not restored")
 	}
-	past := filepath.Join(dir, "log", now.AddDate(0, -1, 0).Format("2006-01")+".md")
+	past := filepath.Join(dir, "log", time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Format("2006-01")+".md")
 	if err := guardWrite(t, k, past, line); err == nil {
 		t.Fatal("past month accepted")
 	}

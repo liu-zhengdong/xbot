@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 全仓测试修绿（feature/fix-full-suite，基线 f743221d）
+
+- S 档测试维护集合；未改生产代码或 UI、保险箱、权限策略。未 push、未合 main。
+- A：routine precheck API 的 403 期望过时，改为经 review 后 200 且命令落盘，覆盖保护路径、ask/off、删除、外发和旧权限开关。park 四例仍用退役的 `shell`、缺 description、用裸助手正文交付；改用 `sh` 与用途、say 工具，明确只在严格测试内核测挂起/允许/拒绝/超时/断线。另加 permissive 经真实工具 review 执行、无审批事件/卡的 HTTP 回归，旧权限开关开着且机器 ask 也不出卡。ask 两例的替身错把独立 system-reminder 当成选择；跳过提醒并用 say 交付，设 permissive 验证问句卡仍保留推荐超时与手动选择语义。
+- B：长轮的固定 T/H 夹具被增长的共享前缀挤占；按实际组装前缀补回工作负载余量，仍守 40 步最多 10 次折叠、最新结果完整、原文保留，并加强检查消息加工具定义不超 H。kernel/memory 月日志夹具用月末减一月，10 月 31 日归一化成 10 月 1 日；改从月首减月，kernel 固定月末重现边界，保留回滚和 64 KiB 守卫断言。work shell 夹具补必填用途。
+- B/UI：时间分隔测试仍放入已不进 chat 的定时原始记录，改测送达回复；供应商测试把内部配置名当展示名，fixture 补显式 custom/display_name，仍测原型属性名与迟到响应；人设卡删旧工具栏结构断言，保留导入/搜索/保存/删除行为。按仓库规则删除查 JS/HTML/CSS 文本的 paste_ui_test，已有图片 HTTP 行为守护保留，新增当前 chat 重载图片 ID 回归。不改界面资源。
+- 基线归档独立运行逐条重现上述 15 个顶层失败（`/tmp/xbot-fix-baseline.log`）；修复后四包整包 `go test -count=3 ./internal/kernel ./internal/memory ./internal/web ./internal/work` 通过，分别 169.346s / 0.769s / 433.687s / 0.778s。最终 `go test -count=1 ./...` 全绿（`/tmp/xbot-fix-full.log`，web 146.111s、e2e 72.307s）；gofmt 无输出、全仓 go vet、git diff --check 通过。atlas audit 退出 0，保留既有链接、陈旧和设计索引告警，未扩修。
+- 级别：本地分支自动化回归全绿，未合入、未宣称用户日用或整体旅程验收。以上为测试耗时，非生产性能数字。Not run: 真模型、Linux CI、用户日用、交互 p95/IPC/后台减速性能专项。
+
 ## 2026-10-31 永远放行、无工具权限卡（feature/always-allow-no-permission-cards，本地分支）
 
 - 按用户明确要求固定 serve/chat 的 `Permissive: true`；旧 live permissions on 不能覆盖。保护路径不再绕过 permissive 硬弹卡，子代理与例程 API 同口径；links 填 key 输入卡保留，严格测试/评测内核与权限分类保留。同步 ADR 0019 和 atlas，未动界面、代理或运行中的服务。

@@ -72,6 +72,23 @@ func TestPastedImageNeedsNoText(t *testing.T) {
 		t.Fatalf("transcript does not name the picture: %+v", page.Messages)
 	}
 
+	// Reloads now read the chat delivery timeline, not raw transcript.
+	var chat struct {
+		Messages []chatAPIRow `json:"messages"`
+	}
+	if err := json.Unmarshal(getAuth(t, ui.URL+"/api/bots/ada/chat", cookie), &chat); err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, row := range chat.Messages {
+		if row.Kind == "owner" && len(row.Images) == 1 && row.Images[0] == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("chat reload lost the picture: %+v", chat.Messages)
+	}
+
 	// The turn that answered it was sent the bytes.
 	bodies := shots()
 	if len(bodies) == 0 {

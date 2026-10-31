@@ -21,29 +21,25 @@ import (
 	"xbot/internal/provider"
 )
 
-// parkModel runs one shell command that needs a card, answers an
-// interjection, and follows the owner's late decision on the card.
+// parkModel exercises the review seam in an explicitly strict test kernel,
+// not the production always-allow assembly.
 type parkModel struct{}
 
-const parkCall = `{"command":"mkdir parked-dir"}`
+const parkCall = `{"command":"mkdir parked-dir","description":"Create the parked test directory"}`
 
 func (parkModel) Chat(_ context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	// Environment deltas are context, not a new owner/card decision.
-	at := len(req.Messages) - 1
-	for at > 0 && strings.HasPrefix(req.Messages[at].Text(), "<environment_") {
-		at--
+	if msg, ok := spoke(req); ok {
+		return msg, nil
 	}
-	last := req.Messages[at]
+	last := lastConversationInput(req.Messages)
 	say := func(text string) (provider.Message, error) {
-		if onDelta != nil {
-			onDelta(text)
-		}
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}, nil
+		return sayTo(text), nil
 	}
 	call := func() (provider.Message, error) {
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c" + time.Now().Format("150405.000000"), Type: "function",
-			Function: provider.FunctionCall{Name: "shell", Arguments: parkCall},
+			Function: provider.FunctionCall{Name: "sh", Arguments: parkCall},
 		}})}, nil
 	}
 	switch {
@@ -62,7 +58,7 @@ func (parkModel) Chat(_ context.Context, req provider.Request, onDelta func(stri
 	}
 }
 
-func parkServer(t *testing.T, wait ...time.Duration) (*httptest.Server, *http.Cookie, *bot.Bot, string) {
+func parkServer(t *testing.T, permissive bool, wait ...time.Duration) (*httptest.Server, *http.Cookie, *bot.Bot, string) {
 	t.Helper()
 	root := t.TempDir()
 	work := t.TempDir()
@@ -88,10 +84,13 @@ func parkServer(t *testing.T, wait ...time.Duration) (*httptest.Server, *http.Co
 		}
 		return &kernel.Kernel{
 			Bot: b, Provider: parkModel{}, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 8,
-			Budget:  compact.DefaultBudget(),
-			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
-			WorkDir: work,
-			// ask: every shell command raises a card.
+			Budget:        compact.DefaultBudget(),
+			Links:         []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
+			WorkDir:       work,
+			Permissive:    permissive,
+			PermissionsOn: func() bool { return true },
+			// Strict mechanism tests ask; production-style assembly must
+			// bypass this gate even with the legacy switch on.
 			Machine: func() (string, error) { return "ask", nil },
 		}, nil
 	}
@@ -184,10 +183,28 @@ func parkAndInterject(t *testing.T, ui *httptest.Server, cookie *http.Cookie, b 
 	return card.ID
 }
 
+// Production-style permissive assembly still runs the real interpreter tool
+// through review, but never parks for a tool permission card.
+func TestPermissiveToolReviewRunsWithoutParking(t *testing.T) {
+	ui, cookie, b, work := parkServer(t, true)
+	for ev := range postSSE(t, ui.URL, cookie, "创建目录") {
+		if ev.name == "approval" || ev.name == "error" {
+			t.Fatalf("unexpected %s: %s", ev.name, ev.data)
+		}
+	}
+	waitTranscript(t, b, "做完了")
+	if _, err := os.Stat(filepath.Join(work, "parked-dir")); err != nil {
+		t.Fatalf("allowed tool did not run: %v", err)
+	}
+	if n := cardCount(t, b); n != 0 {
+		t.Fatalf("permissive review opened %d cards", n)
+	}
+}
+
 // A card being waited on does not hold up the owner, and approving it later
 // runs the call once, with no second card, and the bot carries on.
 func TestParkedCardApprovedLater(t *testing.T) {
-	ui, cookie, b, work := parkServer(t)
+	ui, cookie, b, work := parkServer(t, false)
 	id := parkAndInterject(t, ui, cookie, b, work)
 	decide(t, ui.URL, cookie, id, true)
 	waitTranscript(t, b, "做完了")
@@ -201,7 +218,7 @@ func TestParkedCardApprovedLater(t *testing.T) {
 
 // Declining it later tells the bot, and the call never runs.
 func TestParkedCardDeclinedLater(t *testing.T) {
-	ui, cookie, b, work := parkServer(t)
+	ui, cookie, b, work := parkServer(t, false)
 	id := parkAndInterject(t, ui, cookie, b, work)
 	decide(t, ui.URL, cookie, id, false)
 	waitTranscript(t, b, "好的不做了")
@@ -211,7 +228,7 @@ func TestParkedCardDeclinedLater(t *testing.T) {
 }
 
 func TestParkedApprovalTimeoutAllowsAndWakes(t *testing.T) {
-	ui, cookie, b, work := parkServer(t, 300*time.Millisecond)
+	ui, cookie, b, work := parkServer(t, false, 300*time.Millisecond)
 	stream := postSSE(t, ui.URL, cookie, "long task")
 	id := approvalCardID(t, waitEvent(t, stream, "approval"))
 	for ev := range postSSE(t, ui.URL, cookie, "顺便问一句") {
@@ -234,7 +251,7 @@ func TestParkedApprovalTimeoutAllowsAndWakes(t *testing.T) {
 }
 
 func TestDisconnectedApprovalTimeoutResumes(t *testing.T) {
-	ui, cookie, b, work := parkServer(t, 200*time.Millisecond)
+	ui, cookie, b, work := parkServer(t, false, 200*time.Millisecond)
 	req, _ := http.NewRequest("POST", ui.URL+"/api/bots/ada/messages", strings.NewReader(`{"text":"long task"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)

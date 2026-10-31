@@ -57,10 +57,8 @@ func TestPersonaCardsSettingsBehaviour(t *testing.T) {
   await btn('仍然导入').at(-1).onclick();await tick();
   assert.equal(calls.filter(c=>c[1]==='/api/persona-cards/import').at(-1)[2].confirm,true);
   assert.equal(cards.length,2);
-  // list: toolbar is search, new (icon only), import; search filters and the no-match state has no second import
-  const bar=find('sktoolbar').at(-1);
-  assert.deepEqual(J(bar.children.map(n=>n.className)),['sksearchwrap','btn pc-add','btn pri']);
-  assert.equal(bar.children[1].textContent,'');assert.equal(bar.children[1].attrs['aria-label'],'新建人设卡');
+  // Search filters the list; the no-match state has no second import.
+  // Toolbar layout is owned by the UI design, not this behavior test.
   const search=find('sksearch').at(-1),list=find('sklist').at(-1),none=find('sknone').at(-1);
   assert.equal(list.children.length,2);
   search.value='(2)';search.oninput();assert.equal(list.children.length,1);

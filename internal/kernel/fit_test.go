@@ -96,9 +96,13 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 	p := &scripted{resps: longTurn(steps, 2000)}
 	comp := &recCompactor{}
 	k, b := fitKernel(t, p, comp, compact.Budget{Ceiling: 12_000, KeepTail: 1}, 8000)
-	// Keep the workload's original headroom when local storage paths are
-	// published. Absolute TempDir lengths vary by host. The fitter budgets
-	// both the visible environment and its possible replacement snapshot.
+	// This is a workload/headroom test, not a fixed system-prompt budget.
+	// Keep room for the workload as shared rules grow, and for host-specific
+	// paths in both the visible environment and its replacement snapshot.
+	prefix, _, err := k.assemble(bot.State{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	paths, err := b.Paths()
 	if err != nil {
 		t.Fatal(err)
@@ -107,8 +111,9 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ceiling := 12_000 + 2*compact.Estimate(`"paths":`+string(pathJSON)+",")
+	ceiling := 12_000 + compact.EstimateMessages(prefix) + 2*compact.Estimate(`"paths":`+string(pathJSON)+",")
 	k.Budget.Ceiling = ceiling
+	k.Budget.Target = 7_200 + compact.EstimateMessages(prefix) + 2*compact.Estimate(`"paths":`+string(pathJSON)+",")
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +121,7 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 		t.Fatalf("requests %d, want %d", len(p.reqs), steps+1)
 	}
 	for i, req := range p.reqs {
-		if n := compact.EstimateMessages(req.Messages); n > ceiling {
+		if n := compact.EstimateMessages(req.Messages) + estimateTools(req.Tools); n > ceiling {
 			t.Fatalf("request %d is %d tokens, over the %d ceiling", i, n, ceiling)
 		}
 	}
@@ -137,7 +142,7 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 	// Each fold is a model call and a cache miss from the turn's start, so
 	// they must be rare: the cut leaves room for several steps.
 	if tr["fold_turn"] > steps/4 {
-		t.Fatalf("%d folds in %d steps", tr["fold_turn"], steps)
+		t.Fatalf("%d folds in %d steps (initial prompt %d, target %d, message ceiling %d)", tr["fold_turn"], steps, compact.EstimateMessages(p.reqs[0].Messages), k.target(), k.ceiling())
 	}
 	raw, err := b.ConcatRaw()
 	if err != nil {

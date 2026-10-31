@@ -19,7 +19,7 @@ func TestShellUsesBotDir(t *testing.T) {
 	sh := tools.NewShell()
 	sh.Dir = dir
 	sh.Shared = shared
-	args, _ := json.Marshal(map[string]string{"command": "pwd; printf ' %s' \"$XBOT_SHARED\""})
+	args, _ := json.Marshal(map[string]string{"command": "pwd; printf ' %s' \"$XBOT_SHARED\"", "description": "Check the Bot working and shared directories"})
 	out, err := sh.Run(context.Background(), args)
 	if err != nil {
 		t.Fatal(err)

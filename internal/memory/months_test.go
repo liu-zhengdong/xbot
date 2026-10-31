@@ -70,10 +70,13 @@ func TestMonthlyGuardAndRoundTrip(t *testing.T) {
 	s := Open(t.TempDir())
 	ctx := context.Background()
 	dir := filepath.Join(s.Root, "bots/dev/memory")
+	// Month arithmetic must start on day one: October 31 minus a month
+	// normalizes back into October, contaminating the current-month fixture.
 	now := time.Now().In(time.Local)
+	previousMonth := time.Date(now.Year(), now.Month(), 1, 12, 0, 0, 0, now.Location()).AddDate(0, -1, 0)
 	var past []Fact
 	for i := 0; i < 90; i++ {
-		past = append(past, Fact{Scope: ScopeBot, Text: fmt.Sprintf("%d %s", i, strings.Repeat("x", 800)), Time: now.AddDate(0, -1, 0)})
+		past = append(past, Fact{Scope: ScopeBot, Text: fmt.Sprintf("%d %s", i, strings.Repeat("x", 800)), Time: previousMonth})
 	}
 	if err := writeMonths(dir, past, false); err != nil {
 		t.Fatal(err)
