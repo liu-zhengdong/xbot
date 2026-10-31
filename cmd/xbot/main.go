@@ -40,7 +40,7 @@ Usage:
   xbot [--root DIR] mcp list <bot>
   xbot [--root DIR] mcp add <bot> <name> (--command PATH [--arg A]... | --url URL) [--secret-env NAME]...
   xbot [--root DIR] mcp remove <bot> <name>
-  xbot [--root DIR] secret set <bot> NAME --domains a.com,b.com
+  xbot [--root DIR] secret set <bot> NAME [--domains a.com,b.com]
   xbot [--root DIR] secret list <bot>
   xbot [--root DIR] secret rm <bot> NAME
   xbot [--root DIR] secret migrate <bot>
@@ -152,6 +152,13 @@ func main() {
 }
 
 func run(argv []string) error {
+	// Dedicated askpass subprocess: no config loading, logs, or generic secret read.
+	if len(argv) > 0 && argv[0] == "--internal-sudo-askpass" {
+		if len(argv) != 3 {
+			return errors.New("sudo askpass: invalid arguments")
+		}
+		return vault.WriteLocalSudo(argv[1], argv[2], os.Stdout)
+	}
 	root, rest, err := splitGlobal(launchArgs(argv))
 	if errors.Is(err, errUsage) && defaultCommand != "" {
 		err = nil // a double-clicked desktop build runs defaultCommand

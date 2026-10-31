@@ -46,12 +46,12 @@ func cmdSecretSet(root string, args []string) error {
 	}
 	fs := flag.NewFlagSet("secret set", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	domains := fs.String("domains", "", "comma-separated allowed domains")
+	domains := fs.String("domains", "", "comma-separated allowed domains (empty: local only)")
 	if err := fs.Parse(ordered); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return errors.New("usage: xbot secret set <bot> NAME --domains a.com,b.com")
+		return errors.New("usage: xbot secret set <bot> NAME [--domains a.com,b.com]")
 	}
 	b, err := bot.Load(root, fs.Arg(0))
 	if err != nil {

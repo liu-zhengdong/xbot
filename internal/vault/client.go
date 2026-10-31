@@ -179,6 +179,19 @@ func (c *Client) Set(name, value string, domains []string) error {
 	return err
 }
 
+// SetDomains updates metadata without receiving the value from the daemon.
+func (c *Client) SetDomains(name string, domains []string) error {
+	body, err := json.Marshal(struct {
+		Name    string   `json:"name"`
+		Domains []string `json:"domains"`
+	}{name, domains})
+	if err != nil {
+		return err
+	}
+	_, err = c.control(context.Background(), http.MethodPost, "/v1/domains", body)
+	return err
+}
+
 // Remove deletes a secret. A missing name is success.
 func (c *Client) Remove(name string) error {
 	body, err := json.Marshal(struct {

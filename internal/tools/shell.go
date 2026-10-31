@@ -15,6 +15,7 @@ import (
 
 	"xbot/internal/clip"
 	"xbot/internal/notable"
+	"xbot/internal/vault"
 )
 
 const (
@@ -48,6 +49,7 @@ type Shell struct {
 	startDir  func(context.Context) (dir, notice string)
 	afterDir  func(context.Context, string) (kept, notice string)
 	markerDir string
+	localSudo func() (vault.Backend, error)
 }
 
 // BindSession installs the working directory for this shell. start reports
@@ -314,6 +316,13 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		}
 		cwdCh = make(chan string, 1)
 	}
+	env, cleanupSudo, sudoStore, err := s.sudoEnv(env)
+	if err != nil {
+		if marker != "" {
+			_ = os.Remove(marker)
+		}
+		return "", err
+	}
 	// The shared Jobs runner owns the wait for every command.
 	var out string
 	if s.Jobs != nil {
@@ -327,6 +336,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			MaxOutput:   s.maxOutput(),
 			Dir:         dir,
 			Env:         env,
+			OnExit:      cleanupSudo,
 			Background:  in.RunInBackground,
 			CwdFile:     marker,
 			OnCwd: func(got string) {
@@ -340,13 +350,18 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			},
 		})
 	} else {
+		defer cleanupSudo()
 		out, err = runInterpreterCommand(ctx, s.interpreter, command, timeout, s.maxOutput(), dir, env)
+		if sudoStore != nil {
+			out = sudoStore.MaskTruncated(sudoStore.Redact(out))
+		}
 		if marker != "" {
 			ended = readCwdFile(marker)
 			_ = os.Remove(marker)
 		}
 	}
 	if err != nil {
+		cleanupSudo()
 		if marker != "" && s.Jobs != nil {
 			// A foreground failure returns before finish; a background failure
 			// already removed the marker. Remove is idempotent.

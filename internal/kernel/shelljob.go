@@ -81,11 +81,22 @@ func (k *Kernel) attachShell() {
 			if ok {
 				sh.BindSession(k.shellStartDir, k.shellAfterDir)
 				sh.SetMarkerDir(k.shellMarkerDir())
+				k.bindShellSudo(sh)
 			}
 			k.bindFileCwd(t)
 			k.configureWeb(t)
 		}
 	}
+}
+
+// bindShellSudo is shared by mounted and scoped (subagent) shells.
+func (k *Kernel) bindShellSudo(sh *tools.Shell) {
+	if k.Bot == nil || k.Vault == nil {
+		return
+	}
+	sh.BindLocalSudo(func() (vault.Backend, error) {
+		return vault.OpenBackend(k.Bot.Name(), k.Bot.VaultDir(), k.Bot.VaultKeyPath())
+	})
 }
 
 // shellBackgroundOn reports that a real shell on these links has a job table.

@@ -89,6 +89,7 @@ func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/list", s.handleList)
 	mux.HandleFunc("/v1/set", s.handleSet)
+	mux.HandleFunc("/v1/domains", s.handleDomains)
 	mux.HandleFunc("/v1/rm", s.handleRm)
 	mux.HandleFunc("/v1/forward", s.handleForward)
 	mux.HandleFunc("/v1/oauth/set", s.handleOAuth)
@@ -209,6 +210,31 @@ func (s *Server) handleSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := st.Set(in.Name, in.Value, in.Domains); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleDomains(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, errors.New("vault: method not allowed"))
+		return
+	}
+	st, ok := s.botOf(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSetBody)
+	var in struct {
+		Name    string   `json:"name"`
+		Domains []string `json:"domains"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, errors.New("vault: bad domains request"))
+		return
+	}
+	if err := st.SetDomains(in.Name, in.Domains); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

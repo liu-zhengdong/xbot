@@ -1,5 +1,15 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 设置保险库与本机 sudo（feature/vault-settings-sudo，本地分支）
+
+- L 档，按更新后的 Grok 风格 handoff，废弃旧安静行 UI。设置「保险库」位于权限后、搜索前，per-bot 全部/出站/本机计数、名称/域名搜索、轻底圆角卡与管理；添加下拉、LOCAL_SUDO 预填、管理只改域名/重设值、D5 删除、全空与筛选/搜索无结果。没有迁移供应商/搜索密钥，没有改并行权限卡、AGENTS/CLAUDE、发版或 sudoers。
+- 唯一存储缝为 OpenBackend；API DTO 永不含 value，SetDomains 在原写锁内保留旧值，本地/daemon 同契约。Shell.Run 的进程环境缝装配临时 0700 SUDO_ASKPASS；主线与子代理同一绑定，现读固定 LOCAL_SUDO，密码不入 env/助手文件，后台保留至实际退出。vaultd 不开明文出口。注册身份 epoch 修复重开 vault 快照的脱敏形式缓存碰撞，回退此修复后 TestShellFormsFollowReopenedSudoVault 实际红，恢复后绿；空域不出站与非 ASCII 域名拒绝同守。
+- 专项三遍全绿：vault Set/HTTP URL、头、体拒注入，API 元数据、同连接器 backend、域名保值/重设/删除，CLI 入口，mounted/scoped Shell，前后台助手清理、删除后失效，Chrome 增删/管理/过滤/搜索/迟到响应。vault、tools、link、cmd 整包三遍通过；web/kernel 整包三遍完整跑完但旧组未绿。全仓 gofmt、vet、diff check 通过，atlas audit 退出 0，保留既有告警。
+- 真二进制 `TestVaultSettingsSudoBinary` 对真实 serve/HTTP/页面、浅深 Chrome 1440×900 DPR2，脚本化模型与 sudo（不碰本机密码/系统策略）最终三遍通过（24.945s）：管理改域名/重设值、切 Bot、sudo -A、模型请求/transcript 无密码、删除后 exit 4。最终三遍设置打开 126–135ms，secrets GET 每遍 30 样本 p95 2–3ms；是本机脚本化交互数字，不是生产/IPC/60fps 指标。截图 `~/.xbot-build/ui-shots/vault-settings/after/{light,dark}/`，含列表、添加、sudo、管理、重设、删除、过滤、无匹配、空态，已本机对照新 shots/ref 查看。
+- 全量一遍未绿：kernel 长轮/记忆日志、memory 月日志、web 时间/供应商/审批/粘贴/人设/提问、work description，在 HEAD 2a5f3044 归档复现；初跑的 vault 非 ASCII 校验回归已修且整包三遍绿。web 三遍另有 CLIEventQueue/VoiceRealBrowser/DevicesPairBrowser 偶发失败，baseline 单次未复现，不扩修。既有六旅程 smoke 均卡旧 done.text/delta 契约，HEAD 归档同样复现；本条新 smoke 绿，不声称全局旅程无退化已证明。日志 `/tmp/xbot-vault-{tests,repeat,baseline,baseline-extra,smoke,baseline-smoke,binary3,atlas}.log`。
+- 级别：本地分支专项真二进制端到端通过，未合 main、未 push、未重启日用服务；整体门禁未全绿，不宣称用户日用通过。设计保留，未经用户确认不移 guard。Not run: 真实系统 sudo/真实密码、真模型、Linux CI、独立设计/代码复审、用户日用、生产 p95/IPC/后台减速/持续帧率专项；不安排合入后逛验收。
+
+
 ## 2026-10-31 全仓测试修绿（feature/fix-full-suite，基线 f743221d）
 
 - S 档测试维护集合；未改生产代码或 UI、保险箱、权限策略。未 push、未合 main。

@@ -55,8 +55,8 @@ func TestSetValidates(t *testing.T) {
 	if err := s.Set("N", "", []string{"a.com"}); err == nil {
 		t.Fatal("empty value accepted")
 	}
-	if err := s.Set("N", "v", nil); err == nil {
-		t.Fatal("empty domains accepted")
+	if err := s.Set("N", "v", nil); err != nil {
+		t.Fatal("local-only secret rejected")
 	}
 	if err := s.Set("N", "v", []string{"a.com", " A.COM ", "a.com"}); err != nil {
 		t.Fatal(err)

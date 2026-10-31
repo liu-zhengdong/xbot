@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/memory-reminder (Register→Bind / cooldown / deletion); 2026-10-31 @ feature/env-prompt-frame (Register + scripted requests); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/vault-settings-sudo (mounted/scoped Shell registration); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/memory-reminder (Register→Bind / cooldown / deletion); 2026-10-31 @ feature/env-prompt-frame (Register + scripted requests); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 内核：Link、Event、收件箱
 
@@ -27,7 +27,7 @@ verified: 2026-10-31 @ feature/always-allow-no-permission-cards (permission regr
 负责：事件进出、可信判断、一轮对话的循环、工具调度和确认路径。不负责：具体工具（见 [生态](ecosystem.md)）、transcript 存储（见 [上下文](context.md)）、权限分类（见 [安全](security.md)）。
 
 ## 怎么运转
-- **解释器命令**：按 [生态](ecosystem.md) 注册具体壳名；新鲜度刷新、保护路径、只读判定、资源冲突、熔断和 Jobs 输出保留覆盖全部解释器。后台完成事件仍沿用 `shell` 来源和 `shell_job` 类型，任务记录的 `tool` 是实际解释器名，`description` 是调用用途。
+- **解释器命令**：按 [生态](ecosystem.md) 注册具体壳名；新鲜度刷新、保护路径、只读判定、资源冲突、熔断和 Jobs 输出保留覆盖全部解释器。后台完成事件仍沿用 `shell` 来源和 `shell_job` 类型，任务记录的 `tool` 是实际解释器名，`description` 是调用用途。`bindShellSudo` 在主线 `attachShell` 与 `toolsForScope` 两个既有挂载处共用，为同一 Bot 的 Shell 提供现读 `OpenBackend` 的绑定，密码处理只在 Shell 的进程环境装配缝（见 [安全](security.md#保险箱与出站代理)），不改权限表。
 - **Link**：Bot 与外部世界之间的任何一条通道。出站方向把动作暴露成工具；入站方向把外部发生的事变成 Event，投进 Bot 的收件箱。终端、Web 界面、定时器、Webhook、文件监听、MCP、浏览器、编码代理、其他机器、其他 Bot，都是 Link。其他 Bot 走 `message_bot`：同一安装里直接投进对方收件箱；写成 `bot@设备` 时由 `internal/remote` 经网关发给已配对设备上的同用户 Bot；网关连不上时进本机发件队列，工具结果说明已排队；`list_bots` 也列出配对设备推送来的 `bot@设备`（只有名字，见 [网关](gateway.md)）。
 - **Event**：统一的事件结构 `{source, type, content, sender, time}`。内核根据来源判断是否可信：只有用户通过经过认证的入口发来的消息才算可信，其余一律当作不可信数据包裹在 `<untrusted_event>` 里；正文里能关上或伪造这层包裹的开闭标签先被拆开（规则同网页结果，见 [生态](ecosystem.md)）。
 - **收件箱与唤醒**：每个 Bot 只有一个事件处理循环，事件按顺序处理，同一事件不会处理两次，用户正在聊天时事件也会被及时处理。终端只在真正跑一轮时拿着处理锁，停在提示符上时不占锁，网页可以当场回复，也可以 fork。网页写进 transcript 的行，终端下一次刷新时补上。主循环在工具返回和无工具正常答复的下一边界，把这一轮期间新到的收件箱事件按到达顺序接进当前对话，先写 transcript 再 Ack；这些非用户事件不取消正在等的模型，下一步就能看见，transcript 的时间不会倒退。

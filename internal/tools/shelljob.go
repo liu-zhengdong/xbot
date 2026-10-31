@@ -87,6 +87,7 @@ type RunRequest struct {
 	Background  bool
 	CwdFile     string
 	OnCwd       func(string)
+	OnExit      func()
 }
 
 // Jobs tracks tool calls for one bot directory. The same value lives for

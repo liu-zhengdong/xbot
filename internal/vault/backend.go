@@ -17,6 +17,8 @@ type Backend interface {
 	Names() []string
 	// Set stores value under name with the given allowed domains.
 	Set(name, value string, domains []string) error
+	// SetDomains changes only bindings, without exposing or replacing the value.
+	SetDomains(name string, domains []string) error
 	// Remove deletes one secret. A missing name is success.
 	Remove(name string) error
 	// Transport wraps base so outbound requests are injected at egress.

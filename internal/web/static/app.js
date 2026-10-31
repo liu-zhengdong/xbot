@@ -4768,6 +4768,7 @@
     leavePeer();
     clearQuote();
     state.sel = { type: "bot", id: name };
+    if (!$('setpage').hidden && settingsSection === 'vault') openSettings('vault');
     try { sessionStorage.setItem("xbot-selected-bot", name); } catch (e) {}
     resetConversation();
     try {
@@ -4800,6 +4801,7 @@
     leavePeer();
     clearQuote();
     state.sel = { type: "group", id: id };
+    if (!$('setpage').hidden && settingsSection === 'vault') openSettings('vault');
     resetConversation();
     state.sig = "";
     state.editOpen = false;
@@ -8363,6 +8365,7 @@
     window.XBotSkills?.unmount();
     window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
+    window.XBotVault?.unmount();
     window.xbotDevices?.unmount();
     settingsLevel = null;
     settingsError(null);
@@ -8382,6 +8385,7 @@
     window.XBotImageGen?.unmount();
     window.XBotSkills?.unmount();
     window.XBotPersonaCards?.unmount();
+    window.XBotVault?.unmount();
     $("setpage").hidden = $("setscrim").hidden = true;
     settingsLevel = null;
     window.xbotDevices?.unmount();
@@ -8416,6 +8420,7 @@
     window.XBotSkills?.unmount();
     window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
+    window.XBotVault?.unmount();
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = aboutVersion();
     if (opening) page.focus({ preventScroll: true });
@@ -8428,6 +8433,9 @@
         $("settings-permissions").disabled = true;
         const data = await api("/api/permissions");
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
+      } else if (section === "vault") {
+        const bot = state.sel?.type === "bot" && !state.peer ? state.sel.id : "";
+        await window.XBotVault.mount({api, host:$("settings-vault"), bot, displayName:niceName(bot), isCurrent:()=>request===settingsRequest});
       } else if (section === "search") {
         await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
       } else if (section === "image-gen") {

@@ -92,6 +92,16 @@
 
 `POST /api/bots`，body `{"name":"ada","persona":"...","avatar_seed":"writer#3"}`。名字匹配 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`。`avatar_seed` 可省略，省了就用名字。种子是去空白后 1–80 个字符，不能有控制字符和「<>"'&」以及反引号。种子不合法 400，这时不会建出 Bot。成功 200 `{"name":"ada"}`。这是目录里第一个 Bot 时，它成为主 Bot 并被置顶。
 
+## Bot 保险库
+
+均要求登录、Bot owner；写请求沿用同源校验。JSON 正文上限 1 MiB，拒绝未知字段。接口与连接器 NeedsSecret、CLI 共用该 Bot 的 `vault.OpenBackend`，没有另一份存储。
+
+- `GET /api/bots/{name}/secrets` → `{"secrets":[{"name":"LOCAL_SUDO","domains":[]}]}`。响应 DTO 只有名称、域名，**永远没有 value 字段或值**。
+- `POST /api/bots/{name}/secrets`：`{name,value,domains}` 添加/覆盖，值仅在请求体；成功 `{ok:true}`。名称/值为空或保存失败 400，不回显提交内容。省略 `value` 时，仅用 `SetDomains` 在原写锁内修改已有条目的域名，不取出、不替换旧值；不存在的名字返回 400，不能复活已删除条目。显式空值仍拒绝。
+- `DELETE /api/bots/{name}/secrets/{secret}`：按 URL 编码后的名称删除，成功 `{ok:true}`，重复删除幂等。
+
+空 `domains` 是本机用途（包括 `LOCAL_SUDO`），绝不注入 HTTP；非空名单沿既有域名规范化与 HostAllowed 规则。设置的全部/出站/本机计数与名称/域名搜索均在前端处理。列表和写响应不提供查看、复制旧明文的入口。
+
 ## 主 Bot、置顶、删除
 
 `POST /api/bots/{name}/primary` 无 body。把主 Bot 转给这个 Bot，并把它置顶。原来的主 Bot 保持原来的置顶状态，不会被自动取消置顶。成功 200 `{"name","primary":true,"pinned":true}`。没点名的入口之后进这个 Bot 的 inbox。

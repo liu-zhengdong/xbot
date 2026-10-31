@@ -70,6 +70,11 @@
   --x-s1:4px; --x-s2:6px; --x-s3:8px; --x-s4:10px; --x-s5:12px; --x-s6:16px; --x-s7:20px; --x-s8:24px; --x-s9:32px;
   /* 圆角 */
   --x-r-xs:6px; --x-r-sm:8px; --x-r-card:12px; --x-r-bubble:18px; --x-r-input:24px; --x-r-pill:999px;
+  /* 保险库：已定稿 Grok 风格卡行，色块只区分出站 / 本机。 */
+  --vault-outbound:#d4897a; --vault-local:#5a9e7f; --vault-glyph-ink:#fff;
+  --vault-glyph-size:36px; --vault-card-radius:14px; --vault-card-height:56px;
+  --vault-search-width:200px; --vault-search-icon:14px; --vault-menu-width:168px;
+  --vault-glyph-radius:10px; --vault-chip-height:28px;
   color-scheme:light;
 }
 html[data-theme="dark"]{
@@ -93,6 +98,7 @@ html[data-theme="dark"]{
   --x-bot-code:rgba(255,255,255,.07);
   --x-shadow-pop:0 10px 34px rgba(0,0,0,.5);
   --x-scrim:rgba(0,0,0,.5);
+  --vault-outbound:#c47868; --vault-local:#4a8f70;
   color-scheme:dark;
 }
 

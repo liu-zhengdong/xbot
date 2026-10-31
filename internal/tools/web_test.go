@@ -785,7 +785,8 @@ func (r redactVault) Names() []string      { return nil }
 func (r redactVault) Set(string, string, []string) error {
 	return nil
 }
-func (r redactVault) Remove(string) error { return nil }
+func (r redactVault) SetDomains(string, []string) error { return nil }
+func (r redactVault) Remove(string) error               { return nil }
 func (r redactVault) Transport(base http.RoundTripper) http.RoundTripper {
 	return base
 }

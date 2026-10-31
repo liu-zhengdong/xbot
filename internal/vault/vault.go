@@ -214,7 +214,7 @@ func (s *Store) load() error {
 }
 
 // Set stores value under name, replacing any previous binding. value must not
-// be empty and at least one domain is required. The write is a locked
+// be empty. Empty domains means local-only: HTTP injection is refused. The write is a locked
 // read-modify-write, so a concurrent setter (another process) is kept.
 func (s *Store) Set(name, value string, domains []string) error {
 	name = strings.TrimSpace(name)
@@ -224,9 +224,9 @@ func (s *Store) Set(name, value string, domains []string) error {
 	if value == "" {
 		return errors.New("vault: empty secret value")
 	}
-	ds := normalizeDomains(domains)
-	if len(ds) == 0 {
-		return errors.New("vault: at least one domain is required")
+	ds, err := writeDomains(domains)
+	if err != nil {
+		return err
 	}
 	return s.withFileLock(func() error {
 		s.mu.Lock()
@@ -239,6 +239,29 @@ func (s *Store) Set(name, value string, domains []string) error {
 		}
 		s.secrets[name] = Secret{Name: name, Value: value, Domains: ds}
 		s.invalidateForms()
+		return s.saveLocked()
+	})
+}
+
+// SetDomains preserves the value under the same cross-process write lock as Set.
+func (s *Store) SetDomains(name string, domains []string) error {
+	name = strings.TrimSpace(name)
+	ds, err := writeDomains(domains)
+	if err != nil {
+		return err
+	}
+	return s.withFileLock(func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if err := s.reloadLocked(); err != nil {
+			return err
+		}
+		sec, ok := s.secrets[name]
+		if !ok {
+			return errors.New("vault: secret not found")
+		}
+		sec.Domains = ds
+		s.secrets[name] = sec
 		return s.saveLocked()
 	})
 }
@@ -738,6 +761,16 @@ func (s *Store) saveLocked() error {
 	return nil
 }
 
+// writeDomains permits deliberately empty bindings, not a nonempty binding
+// that normalization rejected (for example a Unicode lookalike host).
+func writeDomains(in []string) ([]string, error) {
+	ds := normalizeDomains(in)
+	if len(ds) == 0 && strings.TrimSpace(strings.Join(in, "")) != "" {
+		return nil, errors.New("vault: invalid domain binding")
+	}
+	return ds, nil
+}
+
 func normalizeDomains(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -819,6 +852,7 @@ func decrypt(key, sealed []byte) ([]byte, error) {
 var (
 	regMu     sync.RWMutex
 	regStores []*Store
+	regGen    uint64 // registration identity, not just the number of stores
 )
 
 // Register adds a store to the process-wide redactor. It returns a function
@@ -830,12 +864,14 @@ func Register(s *Store) func() {
 	}
 	regMu.Lock()
 	regStores = append(regStores, s)
+	regGen++
 	regMu.Unlock()
 	return func() {
 		regMu.Lock()
 		for i, other := range regStores {
 			if other == s {
 				regStores = append(regStores[:i], regStores[i+1:]...)
+				regGen++
 				break
 			}
 		}
@@ -887,7 +923,7 @@ func RegisteredForms() []string {
 func RegisteredFormGen() uint64 {
 	regMu.RLock()
 	defer regMu.RUnlock()
-	var g uint64 = uint64(len(regStores)) << 32
+	var g uint64 = regGen << 32
 	for _, s := range regStores {
 		if s != nil {
 			g += s.FormGen()
@@ -901,9 +937,9 @@ func RegisteredFormGen() uint64 {
 func RegisteredFormState() (int, uint64) {
 	regMu.RLock()
 	stores := append([]*Store(nil), regStores...)
+	g := regGen << 32
 	regMu.RUnlock()
 	best := 0
-	var g uint64 = uint64(len(stores)) << 32
 	for _, s := range stores {
 		if s == nil {
 			continue

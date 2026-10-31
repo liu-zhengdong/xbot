@@ -4,6 +4,8 @@
 
 ## 教训
 
+- **脱敏缓存的注册代数要辨认对象替换，不能只数对象个数。** 原因：Shell 现读 sudo vault 时，新旧快照的 store-local generation 和注册数量可相同，轮换密码会误复用旧 forms。守护：`TestShellFormsFollowReopenedSudoVault`（回退注册代数修复后旧红，恢复后绿），以注册/注销 epoch 使缓存失效。Seen 1×（2026-10-31）。
+
 - **连接器：安装配置不等于取得工具；发现失败不能缓存成成功空表。** 启动、握手、列工具错误要沿 load 返回，stderr 有界且脱敏，API 安装状态与运行状态分开。守护：`TestPlaywrightLoadToolsAndFailure`、`TestMCPStartupStderrAndStatus`、`TestMCPHTTPLoadDeadline`、`TestAppsExposeMCPRuntimeWithoutProbing`。Seen 1×（2026-10-27）
 - **审核与执行必须共享参数解析，不能用不同 Go 字段类型各解一次 JSON。** 原因：重复 precheck 键末位 null 把审核的 `*string` 清为 nil，却让落盘的 `string` 保留先前敏感命令；修复让 create 两条路径共用解析。证据：`TestRoutineCreatePrecheckDuplicateNull` 在 `914a2f8` 上实际写出未批准 marker，修复后不落命令、不执行。Seen 1×（2026-10-27）
 - **复用执行器不等于复用授权，嵌在排期参数里的命令也必须进入原命令审核。** 原因：例程 precheck 在 `59b41d1` 直接复用 runCommand，却把创建/修改仍当成 Normal，绕过保护路径和机器 ask；修复复用 Kernel.reviewCall，定时执行遇 ask/off 静默跳过。证据：`TestRoutinePrecheckUsesShellReview`、`TestTimerPrecheckHonorsChangedMachinePolicy` 旧红新绿。Seen 1×（2026-10-27）

@@ -321,6 +321,9 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 // runProcess is only the shell process adapter. It has no timer or separate
 // background decision; RunCall owns both for shell and every other tool.
 func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (string, error) {
+	if req.OnExit != nil {
+		defer req.OnExit()
+	}
 	script := req.Exec
 	if script == "" {
 		script = req.Command

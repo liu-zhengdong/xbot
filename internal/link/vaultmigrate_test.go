@@ -101,7 +101,8 @@ func (failingBackend) Names() []string      { return nil }
 func (failingBackend) Set(string, string, []string) error {
 	return errors.New("backend: down")
 }
-func (failingBackend) Remove(string) error { return nil }
+func (failingBackend) SetDomains(string, []string) error { return nil }
+func (failingBackend) Remove(string) error               { return nil }
 func (failingBackend) Transport(b http.RoundTripper) http.RoundTripper {
 	if b != nil {
 		return b
