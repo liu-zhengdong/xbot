@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 心里话来源行（feature/aside-thoughts，本地分支）
+
+- M 档，按政东指定的 chat-timeline 扩展：整轮 `deliveries` 在存在 landed say 时选最后一条合格无 tool_call 裸正文，经 Record 同一幂等插入实现追加 `aside:<seq>`。非空非 SILENT、120 Unicode 字符上限（超长整段丢）、近重复/协议垃圾/路径 dump 过滤；媒体仍挂最后一条 say。投影世代升为 2，重建不改 transcript；不加模型轮或已说出口上下文记录。
+- 前端复用 `addSourceEvent` 的 `sysline link` 来源行，灰字「查看心里话」，`setTip` 悬停全文、点击展开纯文本抽屉；现成 identity 合并计数，未绑定正式回复菜单，不进侧栏预览或引用摘要。未碰图片、缩图、提示词与守护层旅程。
+- `TestChatAsideRecordWindow` 先在旧实现红，再覆盖 Record→窗口/幂等重开/过滤；last-eligible 与分支独立完成、媒体独立保留有专项。真实 POST messages→scripted Kernel→chat 验证 say 后的 aside；Chrome 验证 tooltip 可见全文、展开/收起、原文转义、无回复菜单、轮询保态。最终 bot 整包三遍通过（70.585s），chat/aside/来源行/stick/live/增量/语音专项三遍通过（68.986s）。单轮 say+aside HTTP 在三遍专项中约 0.42–4.90ms、约 723 字节；非公网/真模型/IPC p95 指标。
+- gofmt、go vet、JS 语法、diff check 通过；atlas audit 退出 0，保留既有告警。最终全仓一遍完整跑完但未绿：kernel 长轮/MemoryFileLogGuard、memory 月容量、work description，及 web CLI 清理/时间分隔/供应商/审批/图片/人设/提问共 15 项，均在未改 HEAD 归档复现。Web 整包三遍尝试中另遇 DevicesPairBrowser 偶发失败，进程在约 316s 被终止，不能称整包三遍完成；没有放宽断言或扩修。
+- 1440×900 DPR2 浅深默认/悬停/展开截图：`~/.xbot-build/ui-shots/aside-thoughts/{before,after}/`，本机已查看；日志 `~/.xbot-build/aside-thoughts/`。级别：本地分支专项 HTTP/Chrome 通过，未合 main、未 push、未重启日用服务。Not run: 真二进制联合旅程、真模型、用户日用、设计师独立复审、Linux CI、物理帧率/IPC/后台减速专项；未委派 Agent。
+
 ## 2026-10-31 粘贴超边图缩后落盘（feature/paste-downscale，本地分支）
 
 - S 档，按用户指定的行为修正。`postPaste` 经导出的 `tools.FitImage` 复用原 `fitImage`，PNG/JPEG/GIF 超 2048 等比缩后保存（GIF 转 PNG），合规图原字节保存；超边 WebP 明确拒绝。原上传/缩后 10 MiB、每条 4 张/合计 10 MiB 及解码预算不变；不改 outimage、浏览器显示尺寸或 UI 资源。
@@ -13,6 +21,7 @@
 - `TestDeleteBotConfirmBrowser` 浅深各三遍通过，覆盖实心按钮、无正文灰框／身份行、取消、Esc、焦点循环、两种拒绝及删除成功刷新；回退旧 app.js 后因缺少 nestcard 失败。Chrome 1440×900 DPR 2 前后与 hover 截图：`~/.xbot-build/ui-shots/delete-bot-confirm/`。20 次打开到下一帧 p95：浅 16.6ms、深 17.5ms（本机 scripted HTTP 页面，非真模型）。
 - gofmt、go vet、diff check 通过；atlas audit 仅已有告警。全仓一遍未绿：kernel 两条、memory 月容量、OAuth 端口占用、work description 以及 web 十条失败；web 十条已回退旧 app.js 定向复现，日志 `/tmp/delete-bot-{tests,baseline-web}.log`。web 整包三遍未绿并在总计 10 分钟时超时（当时运行 `TestTranscriptWindowHTTP`）；另见 CLI event queue、设备配对、语音失败，未扩修或逐条归因。日志 `/tmp/delete-bot-repeat.log`。
 - 级别：本地分支实现，浏览器 scripted 删除路径通过；未合 main、未 push，待设计师复审和用户日用。Not run: 真服务删除冒烟、Linux CI、用户日用。
+
 
 ## 2026-10-31 记忆提醒（feature/memory-reminder，本地分支）
 

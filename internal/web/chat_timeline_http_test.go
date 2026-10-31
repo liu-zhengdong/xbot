@@ -49,12 +49,19 @@ func TestChatTimelineNewSayThroughHTTPKernel(t *testing.T) {
 	if events["done"] == "" || events["error"] != "" {
 		t.Fatalf("round did not finish: %s", response.Body)
 	}
+	start := time.Now()
+	chatBody := getAuth(t, server.URL+"/api/bots/ada/chat", cookie)
+	t.Logf("say + aside chat HTTP: %s, %d bytes", time.Since(start), len(chatBody))
 	var window bot.ChatWindow
-	if err := json.Unmarshal(getAuth(t, server.URL+"/api/bots/ada/chat", cookie), &window); err != nil {
+	if err := json.Unmarshal(chatBody, &window); err != nil {
 		t.Fatal(err)
 	}
-	if len(window.Messages) != 3 || window.Messages[0].Text != "owner input" || window.Messages[1].Text != "first delivery" || window.Messages[2].Text != "second delivery" || window.Messages[1].DeliveryKey != "say:one" || window.Messages[2].DeliveryKey != "say:two" {
+	if len(window.Messages) != 4 || window.Messages[0].Text != "owner input" || window.Messages[1].Text != "first delivery" || window.Messages[2].Text != "second delivery" || window.Messages[1].DeliveryKey != "say:one" || window.Messages[2].DeliveryKey != "say:two" {
 		t.Fatalf("new delivery missing at chat seam: %+v", window.Messages)
+	}
+	aside := window.Messages[3]
+	if aside.Kind != "aside" || aside.Text != "hidden final prose" || aside.DeliveryKey != fmt.Sprintf("aside:%d", aside.TranscriptSeq) {
+		t.Fatalf("aside missing after landed says: %+v", aside)
 	}
 	raw := getAuth(t, server.URL+"/api/bots/ada/transcript", cookie)
 	if !strings.Contains(string(raw), "hidden final prose") || !strings.Contains(string(raw), "tool_calls") {

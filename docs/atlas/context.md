@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-31 @ feature/chat-timeline (Chat delivery snapshots, HTTP/Chrome); 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary tests); 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/aside-thoughts (aside snapshot/filter/HTTP); 2026-10-31 @ feature/chat-timeline (Chat delivery snapshots, HTTP/Chrome); 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary tests); 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 上下文与 transcript
 
@@ -15,7 +15,7 @@ verified: 2026-10-31 @ feature/chat-timeline (Chat delivery snapshots, HTTP/Chro
 
 ## 聊天读取窗口
 
-Web 主列只读 `Chat.Window` / `Chat.Search`：原 index.sqlite 内的 chat 表存主人可见送达快照，chat_fts 只索引会话正文；默认40条、上限200条，before/after/around 使用 chat ID，transcript_seq 保留回链。工具噪声不占 chat 窗口。`Chat.Record` 的唯一插入实现按 delivery_key 幂等，正文/附件不回写；主人话、卡和来源行在追加时记录，成功 say 等最终助手行携带媒体后整批提交，多 say 多行、媒体挂最后一条。SSE 仍即时显示。
+Web 主列只读 `Chat.Window` / `Chat.Search`：原 index.sqlite 内的 chat 表存主人可见送达快照，chat_fts 只索引会话正文；默认40条、上限200条，before/after/around 使用 chat ID，transcript_seq 保留回链。工具噪声不占 chat 窗口。`Chat.Record` 的唯一插入实现按 delivery_key 幂等，正文/附件不回写；主人话、卡和来源行在追加时记录，成功 say 等最终助手行携带媒体后整批提交，多 say 多行、媒体挂最后一条。SSE 仍即时显示。同轮至少一条 landed say 时，最后一条合格无 tool_call 裸助手正文可经同一 Record 插入实现追加 `aside:<transcript_seq>` 来源快照，不进 bot 气泡。非空非 SILENT、≤120 Unicode 字符（超长丢弃），与任一 say 去标点空白后包含重复或编辑距离≤20%则丢；协议标记、代码围栏、≥3 个路径片段丢。每轮最多一条，媒体与引用仍只挂 say，不改 transcript 或模型上下文。
 
 首次读取/追加或投影世代落后时按 seq 分块回填，快照与检查点同事务写入，不改旧 jsonl；显式 internal、来源行、旧轮截止与成功 say 共用 Go 可见规则。chat FTS 把汉字拆成连续字符词组，支持短中文片段；搜索不读 raw 工具正文。peer 原文仍走 peer API。
 

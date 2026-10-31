@@ -196,8 +196,9 @@ func TestWindowVisibleSaySuppressesLegacyRun(t *testing.T) {
 		appendEntry(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")})
 	}
 	w, err := b.Window(WindowQuery{})
-	if err != nil || w.HeadSeq != 1 {
-		t.Fatalf("legacy prose counted as speech despite landed say: %+v %v", w.WindowMeta, err)
+	// The run contributes one say plus at most one aside, not 25 legacy bubbles.
+	if err != nil || w.HeadSeq != 2 {
+		t.Fatalf("legacy run did not collapse to say + aside: %+v %v", w.WindowMeta, err)
 	}
 }
 

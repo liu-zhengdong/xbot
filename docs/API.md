@@ -170,7 +170,7 @@
 
 ### 主列 chat 时间线
 
-`GET /api/bots/{name}/chat?before=&after=&around=&limit=` 需要登录及 Bot owner（401/404）。无参读尾窗，默认40条chat行、limit为1..200；三个游标互斥，before/after排他，around包含命中。非法参数400，不存在的around目标404。返回 `{"messages":[{"id":1,"transcript_seq":7,"delivery_key":"say:call_id","kind":"bot","time":"RFC3339","text":"送达快照","images":[],"audios":[],"reply_to_seq":1,"reply_to_id":1,"meta":{}}],"window":{"head_id":1,"tail_id":40,"total":40,"next_before":1,"next_after":40,"has_more_before":false,"has_more_after":false}}`。kind为owner/bot/card/source；附件、引用与来源字段可省略。reply_to_id是chat目标，reply_to_seq仍为账本引用；行上的from_device/relay沿原展示规则。
+`GET /api/bots/{name}/chat?before=&after=&around=&limit=` 需要登录及 Bot owner（401/404）。无参读尾窗，默认40条chat行、limit为1..200；三个游标互斥，before/after排他，around包含命中。非法参数400，不存在的around目标404。返回 `{"messages":[{"id":1,"transcript_seq":7,"delivery_key":"say:call_id","kind":"bot","time":"RFC3339","text":"送达快照","images":[],"audios":[],"reply_to_seq":1,"reply_to_id":1,"meta":{}}],"window":{"head_id":1,"tail_id":40,"total":40,"next_before":1,"next_after":40,"has_more_before":false,"has_more_after":false}}`。kind为owner/bot/card/source/aside；aside 是「心里话」来源行，text 为短正文全文、delivery_key 为 aside:<transcript_seq>，不是正式 bot 回复；附件、引用与来源字段可省略。reply_to_id是chat目标，reply_to_seq仍为账本引用；行上的from_device/relay沿原展示规则。
 
 每个delivery_key只插入一次，正文/附件不能编辑。成功say等最终助手行与媒体归组定稿后整轮提交；多say多行，图片/语音挂最后一条；SSE实时显示不变。旧Bot/世代落后自动分块投影，不改旧jsonl。主列打开、上翻、搜索、轮询与收工对账不再读raw transcript或扩大raw窗。
 

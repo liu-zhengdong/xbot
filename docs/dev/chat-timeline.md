@@ -36,7 +36,7 @@
 | `id` | chat 单调序号（主列游标） |
 | `transcript_seq` | 回链账本 seq |
 | `delivery_key` | 幂等键：`user:<seq>` / `say:<tool_call_id>` / `card:<id>:<state>` / `source:<seq>` |
-| `kind` | `owner` \| `bot` \| `card` \| `source` |
+| `kind` | `owner` \| `bot` \| `card` \| `source` \| `aside` |
 | `time` | UTC |
 | `text` | 送达快照正文 |
 | `images` / `audios` | 附件 id 快照 |
@@ -90,7 +90,7 @@
 | 聊天主列增量刷新 | 可复用 | patch 缝保留，换行模型 |
 | 聊天仅工具产物可见 | 撑得住 | 可见规则升格为 Record 谓词 |
 | 活气泡分段 | 可复用 | SSE 保留；对账认 chat |
-| 裸正文不进气泡 | 撑得住 | 新轮不 Record；旧轮回填保留截止 |
+| 裸正文不进气泡 | 撑得住 | 不进 bot 气泡；同轮有 landed say 时，合格裸正文可经 Record 追加 aside 来源行；旧轮 bot 回填保留截止 |
 | 出图 / 语音附件 | 可复用 | id 快照 |
 | 来源行 CLI/往来 | 可复用 | kind=source；peer 原文仍分 API |
 | 会话折叠 | 无冲突 | 本批不做 |
@@ -124,6 +124,14 @@
 - 存储：`internal/bot/chat_timeline_test.go`（Record、不可变/幂等、整轮多 say/媒体、重开、回填世代、中文 FTS、分支完成、internal 谓词）。
 - HTTP：`internal/web/chat_timeline_http_test.go`（窗口、搜索、700 KiB、鉴权、ETag、真实消息入口→scripted Kernel→chat）。
 - 浏览器：`TestTranscriptWindowLiveBrowser`、`TestTranscriptWindowVisibleTailBrowser` 与既有 stick/live/语音/增量 patch 用例，改用 chat DTO；真实 HTTP 旅程另外核对主列不读 transcript、轨迹仍读 transcript。
+
+## 心里话彩蛋（政东 2026-10-31 定稿）
+
+沿本设计扩展，冲突面仅 `chat.go` 整轮投影与 `app.js` 来源行装配，不碰粘贴缩图、主列图尺寸。用户钉的皮复用通用来源行：灰字「查看心里话」，`setTip` 悬停全文；点击展开原文抽屉，非 bot 气泡，不绑定正式回复菜单。
+
+怎样算对：同轮至少一条成功 say 才可经 Record 幂等插入 `kind=aside`、`delivery_key=aside:<seq>`；每轮取最后一条合格无 tool_call 裸正文，非空非 SILENT，≤120 Unicode 字符（超长整段丢），与任一 say 去标点/空白后近重复则丢（包含片段或编辑距离≤20%）；协议标记、代码围栏、≥3 条路径 dump 丢。整轮媒体仍只挂 say。连续 aside 复用 identity 合并计数，全文纯文本，不进侧栏预览和引用摘要；不改模型请求、不添自省轮、不另注入已说出口记录。
+
+冒烟：`TestChatAsideRecordWindow`（Record→Window、幂等重开、过滤）、`TestChatAsideLastEligibleAndNotToolNarration`、`TestChatTimelineNewSayThroughHTTPKernel`（真实 HTTP→scripted Kernel→chat 含 aside）、`TestAsideSourceBrowser`（Chrome 实际来源行、全文 tip、点击展开、纯文本、无回复菜单、轮询保态）。
 
 ## 还没做的
 

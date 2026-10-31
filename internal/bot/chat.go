@@ -13,7 +13,7 @@ import (
 	"xbot/internal/provider"
 )
 
-const chatGeneration = 1
+const chatGeneration = 2
 const DefaultChatLimit = 40
 
 // Chat is the owner-visible delivery timeline. Transcript remains the ledger;
@@ -190,7 +190,7 @@ func chatLanded(text string) bool {
 // deliveries freezes one completed run. Media from the whole run is attached
 // to its last landed say, never back-written into an earlier snapshot.
 func (p *chatProjection) deliveries() []ChatRow {
-	var says, legacy []ChatRow
+	var says, legacy, asides []ChatRow
 	var images, audios []string
 	reply := 0
 	for _, se := range p.Pending {
@@ -211,6 +211,9 @@ func (p *chatProjection) deliveries() []ChatRow {
 			says = append(says, ChatRow{TranscriptSeq: se.Seq, DeliveryKey: "say:" + call.ID, Kind: "bot", Time: e.Time, Text: strings.TrimSpace(args.Text), Meta: ChatMeta{Branch: e.Branch}})
 		}
 		text := strings.TrimSpace(e.Message.Text())
+		if len(e.Message.Calls()) == 0 && chatAsideText(text) {
+			asides = append(asides, ChatRow{TranscriptSeq: se.Seq, DeliveryKey: fmt.Sprintf("aside:%d", se.Seq), Kind: "aside", Time: e.Time, Text: text, Meta: ChatMeta{Branch: e.Branch}})
+		}
 		var parts []provider.ContentPart
 		for _, part := range e.Message.Content {
 			if part.Type == provider.PartHosted || part.Type == provider.PartCitation {
@@ -226,6 +229,7 @@ func (p *chatProjection) deliveries() []ChatRow {
 			legacy = append(legacy, ChatRow{TranscriptSeq: se.Seq, DeliveryKey: fmt.Sprintf("legacy:%d", se.Seq), Kind: "bot", Time: e.Time, Text: text, ReplyToSeq: e.ReplyTo, Meta: ChatMeta{Branch: e.Branch, Parts: parts}})
 		}
 	}
+	landedSay := len(says) > 0
 	if len(says) == 0 && len(images)+len(audios) > 0 && len(p.Pending) > 0 {
 		se := p.Pending[len(p.Pending)-1]
 		says = append(says, ChatRow{TranscriptSeq: se.Seq, DeliveryKey: fmt.Sprintf("media:%d", se.Seq), Kind: "bot", Time: se.Entry.Time})
@@ -240,9 +244,77 @@ func (p *chatProjection) deliveries() []ChatRow {
 				filtered = append(filtered, row)
 			}
 		}
+		if landedSay {
+			for i := len(asides) - 1; i >= 0; i-- {
+				duplicate := false
+				for _, say := range says {
+					duplicate = duplicate || chatNearSay(asides[i].Text, say.Text)
+				}
+				if !duplicate {
+					filtered = append(filtered, asides[i])
+					break
+				}
+			}
+		}
 		return filtered
 	}
 	return legacy
+}
+
+var chatAsidePath = regexp.MustCompile(`(?:[A-Za-z]:[\\/]|~/|\./|/)[^\s]+`)
+
+// Keep the easter egg short and prose-only; long text is dropped, not clipped.
+func chatAsideText(text string) bool {
+	if text == "" || strings.EqualFold(text, "SILENT") || len([]rune(text)) > 120 {
+		return false
+	}
+	for _, marker := range []string{"[语音文件]", "<system-reminder>", "<untrusted_event", "<environment_update", "<tool_call", "```"} {
+		if strings.Contains(strings.ToLower(text), marker) {
+			return false
+		}
+	}
+	return len(chatAsidePath.FindAllString(text, 3)) < 3
+}
+
+// Compare prose without punctuation/spacing. At most 20% edits counts as a
+// near repeat, including a short aside lifted verbatim from a longer say.
+func chatNearSay(aside, say string) bool {
+	normalize := func(s string) []rune {
+		return []rune(strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsNumber(r) {
+				return unicode.ToLower(r)
+			}
+			return -1
+		}, s))
+	}
+	a, b := normalize(aside), normalize(say)
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	if strings.Contains(string(b), string(a)) {
+		return true
+	}
+	if min(len(a), len(b))*5 < max(len(a), len(b))*4 {
+		return false
+	}
+	d := make([]int, len(b)+1)
+	for j := range d {
+		d[j] = j
+	}
+	for i, r := range a {
+		prev := d[0]
+		d[0] = i + 1
+		for j, s := range b {
+			cost := 0
+			if r != s {
+				cost = 1
+			}
+			old := d[j+1]
+			d[j+1] = min(d[j+1]+1, d[j]+1, prev+cost)
+			prev = old
+		}
+	}
+	return d[len(b)]*5 <= max(len(a), len(b))
 }
 
 func (c *Chat) sync(s *segStore) error {
@@ -336,7 +408,7 @@ func (c *Chat) sync(s *segStore) error {
 				}
 			}
 			if e.Mark == nil && !e.IsInternal() && e.Message.Role == provider.RoleAssistant {
-				keep := e.Time.Before(toolChatSince) || len(e.Images)+len(e.Audios) > 0
+				keep := e.Time.Before(toolChatSince) || len(e.Images)+len(e.Audios) > 0 || len(e.Message.Calls()) == 0 && chatAsideText(strings.TrimSpace(e.Message.Text()))
 				for _, call := range e.Message.Calls() {
 					keep = keep || chatSay(call.Function.Name)
 				}

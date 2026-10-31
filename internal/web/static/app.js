@@ -2722,6 +2722,28 @@
     });
   }
 
+  function addAsideEvent(container, text, key) {
+    return addSourceEvent(container, "aside", "thought", (row, head) => {
+      const drawer = el("div", "routine-drawer event-raw");
+      row.classList.add("routine-line");
+      row._texts = [];
+      drawer.hidden = !openRoutines.has(key);
+      head.setAttribute("aria-expanded", String(!drawer.hidden));
+      head.addEventListener("click", () => {
+        drawer.hidden = !drawer.hidden;
+        head.setAttribute("aria-expanded", String(!drawer.hidden));
+        if (drawer.hidden) openRoutines.delete(key); else openRoutines.add(key);
+      });
+      row.append(drawer);
+    }, (row, head) => {
+      row._texts.push(text);
+      const full = row._texts.join("\n\n");
+      row.lastElementChild.textContent = full;
+      head.textContent = "查看心里话" + (row._texts.length > 1 ? " · " + row._texts.length : "");
+      setTip(head, full);
+    });
+  }
+
   // A remote bounce the outbox or the peer wrote back into the sender's inbox.
   function bounceTarget(parsed) {
     if (parsed.source !== "remote") return "";
@@ -2928,7 +2950,7 @@
   }
 
   function previewText(m) {
-    if (!m) return "";
+    if (!m || m.kind === "aside") return "";
     const raw = m.role === "user" ? unwrap(m.content || "").text : sayText(m);
     return String(m.role === "assistant" ? displayText(raw) : raw).replace(/\r\n/g, "\n").trim();
   }
@@ -3308,6 +3330,12 @@
       if (appr) latestApproval[appr.id] = i;
     });
     const projectMessage = (m, i) => {
+      if (m.kind === "aside") {
+        any = true;
+        lastKey = "";
+        addAsideEvent(inner, m.content, (state.sel ? state.sel.id : "") + ":" + m.delivery_key);
+        return;
+      }
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;
@@ -3837,7 +3865,7 @@
     // Rows are already owner-visible delivery snapshots.
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (hiddenFromPreview(m)) continue;
+      if (m.kind === "aside" || hiddenFromPreview(m)) continue;
       const parsed = unwrap(m.content || "");
       if (parsed.untrusted) continue;
       const text = clip(plainText(pullImages(parsed.text).text), 72);

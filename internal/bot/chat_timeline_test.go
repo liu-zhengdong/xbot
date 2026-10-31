@@ -116,14 +116,14 @@ func TestChatInternalPredicateAndBranchCompletion(t *testing.T) {
 	background.Branch = "bg_branch"
 	chatAppend(t, b, background)
 	chatAppend(t, b, chatResult("background"))
-	final := chatEntry(provider.RoleAssistant, "hidden final")
+	final := chatEntry(provider.RoleAssistant, "SILENT")
 	final.Branch = "bg_branch"
 	chatAppend(t, b, final)
 	got := chatWindow(t, b, WindowQuery{}).Messages
 	if len(got) != 2 || got[0].Text != owner.Message.Text() || got[1].Text != "background delivery" {
 		t.Fatalf("predicate/branch completion: %+v", got)
 	}
-	chatAppend(t, b, chatEntry(provider.RoleAssistant, "main final"))
+	chatAppend(t, b, chatEntry(provider.RoleAssistant, "SILENT"))
 	got = chatWindow(t, b, WindowQuery{}).Messages
 	if len(got) != 3 || got[2].Text != "main delivery" {
 		t.Fatalf("foreground run was flushed by another branch: %+v", got)
@@ -139,7 +139,7 @@ func TestChatSparseHistoryPagingAndFTS(t *testing.T) {
 		}
 		chatAppend(t, b, chatCall(fmt.Sprintf("s%d", i), fmt.Sprintf("visible %02d 历史线索", i)))
 		chatAppend(t, b, chatResult(fmt.Sprintf("s%d", i)))
-		chatAppend(t, b, chatEntry(provider.RoleAssistant, "hiddenonlyneedle"))
+		chatAppend(t, b, chatEntry(provider.RoleAssistant, strings.Repeat("hiddenonlyneedle", 10)))
 	}
 	tail := chatWindow(t, b, WindowQuery{})
 	if len(tail.Messages) != 40 || tail.Window.Total != 130 || tail.Window.HeadID != 91 {
@@ -167,7 +167,7 @@ func TestChatBackfillGenerationAndLedgerUnchanged(t *testing.T) {
 	old := chatEntry(provider.RoleAssistant, "old reply")
 	old.Time = toolChatSince.Add(-time.Hour)
 	source := chatEntry(provider.RoleUser, "<untrusted_event source=\"cli\" type=\"message\" sender=\"builder\">\nsource body\n</untrusted_event>")
-	entries := []Entry{chatEntry(provider.RoleUser, "owner"), old, chatEntry(provider.RoleUser, "next"), chatCall("legacy-say", "landed"), chatResult("legacy-say"), chatEntry(provider.RoleAssistant, "hidden"), source, chatEntry(provider.RoleUser, ApprovalCardText("card", "ask_user", "", "", "question", ApprovalPending)), chatEntry(provider.RoleUser, "<untrusted_event source=\"timer\">\nwake\n</untrusted_event>")}
+	entries := []Entry{chatEntry(provider.RoleUser, "owner"), old, chatEntry(provider.RoleUser, "next"), chatCall("legacy-say", "landed"), chatResult("legacy-say"), chatEntry(provider.RoleAssistant, "SILENT"), source, chatEntry(provider.RoleUser, ApprovalCardText("card", "ask_user", "", "", "question", ApprovalPending)), chatEntry(provider.RoleUser, "<untrusted_event source=\"timer\">\nwake\n</untrusted_event>")}
 	var ledger []byte
 	for _, e := range entries {
 		raw, _ := json.Marshal(e)
