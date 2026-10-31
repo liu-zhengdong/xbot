@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/env-prompt-frame (Register + scripted requests); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 内核：Link、Event、收件箱
 
@@ -44,7 +44,7 @@ verified: 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + script
 - **熔断**：同一轮里数五件事：重复输出、同工具同参数、文件来回改、同一失败反复轮询、连续 3 次确认被拒。同参和轮询只数连续重复，中间夹了别的调用就清零，并且按命令各自计数；成功一次就清掉失败计数。只读、`go test`/`go build`/`go vet`、后台轮询放宽到 8 次。排队的控制消息另起一轮时清掉这些连续计数。收益递减这一项随续段机制一起删掉了：没有续段就没有「又开了一段却什么都没干」这种形态，后台的时间由墙钟预算管。第一次只注入打转提醒；第二次硬停，让模型总结，并把 `<stop_reason>` 写进 transcript，同时往 `trace.jsonl` 追加 `{kind:stop, reason}`。
 - **悬空工具调用**：中断、取消、切换模型都走 `DanglingResult`，给没返回的调用补一条占位结果，配对不会断。
 
-有用户话或任务结果的一轮必须给正常回复，不能以 `SILENT` 吞掉；只有没有这些输入的定时唤醒才允许静默。环境与任务结果都是原有消息，不另建转告请求或签收机制。接收原话和公布该输入的环境共用原环境发布锁；请求发送前从有效对话回放基线并采样变化，不再保存独立已见状态（格式见 [上下文](context.md)）。
+有用户话或任务结果的一轮必须给正常回复，不能以 `SILENT` 吞掉；只有没有这些输入的定时唤醒才允许静默。环境与任务结果都是原有消息，不另建转告请求或签收机制。接收原话和公布该输入的环境共用原环境发布锁；请求发送前，经 `promptinject` 的环境 Source 现采 Register 字段；time 在外置 Env 内比较已告知语义全文，有变才追加，不从对话回放时间。其余字段暂沿有效对话的 JSON 基线采样；压缩后两路一同补尾部全量快照，格式与生命周期见 [上下文](context.md)。
 
 输出截断的合并规则见 [供应商](providers.md#输出截断)。内核把 prepare、fit、环境公布和用量记账保留在每次实际请求上，输出截断不改变 overflow 的裁剪重试。逻辑回复拼接完成后才统一剥离 `reply_to`、校验 SILENT 和工具协议文本，并沿原助手记录入口追加一次；中间片段及续写指令不进 transcript。取消和插话沿原模型请求的 context；已正常完成的回复仍优先于迟到取消。
 

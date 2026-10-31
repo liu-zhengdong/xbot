@@ -90,11 +90,11 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatalf("prefix changed within the hour\n%s\n%s", p.reqs[0].Messages[0].Text(), p.reqs[1].Messages[0].Text())
 	}
 	updates := envUpdates(t, b)
-	if len(updates) != 3 {
+	if len(updates) != 4 {
 		t.Fatalf("env updates %+v", updates)
 	}
 	stamp := now.UTC().Truncate(time.Minute).Format(time.RFC3339) + " (UTC)"
-	if !strings.Contains(updates[len(updates)-1], `"time":"`+stamp+`"`) {
+	if !strings.Contains(updates[len(updates)-1], "当前时间："+stamp) {
 		t.Fatalf("minute update: %s", updates[1])
 	}
 	names := toolNamesOf(p.reqs[0].Tools)
@@ -114,11 +114,11 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 		t.Fatal(err)
 	}
 	updates = envUpdates(t, b)
-	if len(updates) != 4 {
+	if len(updates) != 5 {
 		t.Fatalf("updates after hour change: %d", len(updates))
 	}
 	last := updates[len(updates)-1]
-	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, `"time":`) {
+	if len(last) > 400 || strings.Contains(last, "Be brief") || !strings.Contains(last, "当前时间：") {
 		t.Fatalf("diff not small: %s", last)
 	}
 	if p.reqs[2].Messages[0].Text() != p.reqs[1].Messages[0].Text() {
@@ -257,8 +257,9 @@ func TestCompactGuardsAndHistoryRecall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != len(before)+2 {
-		t.Fatalf("transcript length %d want %d", len(after), len(before)+2)
+	// New input plus the semantic clock and legacy snapshot announcements.
+	if len(after) != len(before)+3 {
+		t.Fatalf("transcript length %d want %d", len(after), len(before)+3)
 	}
 }
 

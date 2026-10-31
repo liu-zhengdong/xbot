@@ -375,6 +375,10 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 			next, sampleErr := r.k.sampleEnvironment(prev)
 			if sampleErr == nil {
 				text := environmentDelta(prev, next, environmentBasis(st, req.Messages), st.MemSnap)
+				texts, _, renderErr := r.k.environmentPrompts(ctx, text, true)
+				if renderErr == nil {
+					text = strings.Join(texts, "\n\n")
+				}
 				fit.reserve = r.k.scaled(compact.EstimateMessage(provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}))
 			}
 		}

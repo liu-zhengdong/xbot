@@ -198,7 +198,11 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 	}
 
 	// One more message arrives. The next pass covers what the first left out,
-	// and the new message becomes the raw tail.
+	// including the appended environment snapshot; the new input stays raw.
+	beforeInput, err := b.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(marker(7))}}); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +244,7 @@ func TestAutoCompactIsIncremental(t *testing.T) {
 	if active[0].From != 1 || active[0].To != covered || active[0].Text != firstText {
 		t.Fatalf("the first block was rewritten: %+v", active[0])
 	}
-	if active[1].From != covered+1 || active[1].To != 7 {
+	if active[1].From != covered+1 || active[1].To != beforeInput {
 		t.Fatalf("the second block does not continue where the first ends: %+v", active[1])
 	}
 }

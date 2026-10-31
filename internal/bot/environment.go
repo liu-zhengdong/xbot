@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"encoding/json"
 	"strings"
 )
 
@@ -11,7 +10,12 @@ import (
 const EnvironmentOpen = "<environment_update>\n"
 const EnvironmentClose = "\n</environment_update>"
 
-// SplitEnvironmentReceipt separates the last complete JSON receipt from a tool
+// FrameEnvironment frames semantic announcements and legacy machine receipts alike.
+func FrameEnvironment(text string) string {
+	return EnvironmentOpen + text + EnvironmentClose
+}
+
+// SplitEnvironmentReceipt separates the last complete environment receipt from a tool
 // result. Reminders may follow it, and remain on the same original result.
 func SplitEnvironmentReceipt(text string) (body, receipt, after string) {
 	i := strings.LastIndex(text, "\n\n"+EnvironmentOpen)
@@ -24,9 +28,6 @@ func SplitEnvironmentReceipt(text string) (body, receipt, after string) {
 		return text, "", ""
 	}
 	end := start + len(EnvironmentOpen) + j
-	if !json.Valid([]byte(text[start+len(EnvironmentOpen) : end])) {
-		return text, "", ""
-	}
 	end += len(EnvironmentClose)
 	return text[:i], text[start:end], text[end:]
 }

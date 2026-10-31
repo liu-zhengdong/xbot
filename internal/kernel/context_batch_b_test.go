@@ -33,9 +33,12 @@ func TestBatchBEnvironmentCurrentValues(t *testing.T) {
 	msgs := p.reqs[2].Messages
 	times, cards := 0, 0
 	for _, m := range msgs {
+		if strings.Contains(m.Text(), "当前时间：") {
+			times++
+		}
 		if e, ok := decodeEnvironment(m.Text()); ok {
 			if e.Set["time"] != nil {
-				times++
+				t.Fatal("time still uses JSON set")
 			}
 			if string(e.Set["pending_approvals"]) == "1" {
 				cards++
@@ -65,7 +68,7 @@ func TestBatchBEnvironmentCurrentValues(t *testing.T) {
 	if _, ok := env.Fields["pending_approvals"]; ok {
 		t.Fatal("cleared card still current")
 	}
-	if environmentGet[string](env, "time") != k.localStamp() {
+	if !strings.Contains(messagesText(msgs), "当前时间："+k.localStamp()) {
 		t.Fatal("clock did not advance")
 	}
 	after, _ := b.ConcatRaw()
@@ -94,7 +97,7 @@ func TestBatchBEnvironmentCurrentValues(t *testing.T) {
 		t.Fatalf("snapshots=%d", snapshots)
 	}
 	env = replayEnvironment(msgs, st.MemSnap)
-	if environmentGet[string](env, "time") != k.localStamp() || env.Fields["pending_approvals"] != nil {
+	if !strings.Contains(messagesText(msgs), "当前时间："+k.localStamp()) || env.Fields["pending_approvals"] != nil {
 		t.Fatal("snapshot not current")
 	}
 }

@@ -1,5 +1,15 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 环境提示 Register 光框架与语义时间（feature/env-prompt-frame，本地分支）
+
+- L 档，落实已落仓设计批 1 + 2。新字段唯一缝为 `envprompt.Env.Register(Field{Key, Sample, Prompt})`；上层 `promptinject.Registry.Register(Source{Name, Order, Render})` 首先挂环境。time 从钟现采，独立尾部语义公告；同分钟不重复，外置 Env 只在成功追加后提交已告知全文，预算预览不提交。压缩/拟合后强制补语义全量快照，计入原 T/H；不改 StablePrefix。Env 生命周期跟 Kernel，重启后重采重公告一次，无新增磁盘账本。
+- `sampleEnvironment` 不再采 time，遗留回放忽略历史 JSON time。person/tasks/memory 等保留旧路；公告与写记忆回执共用 `bot.FrameEnvironment`，存储 splitter 不再限定 JSON 载荷。未迁提醒/插话、未加 UI；Accepted ADR 0021 与 Proposed 提议状态均未改。
+- `TestRegisteredTimeRequests` 经真注册缝验证同分钟/变分钟、请求无 time JSON、注册额外字段、压缩/拟合恢复。实际 deletion test：临时删 time 的 Register，首请求缺语义公告而失败；恢复后通过。新增真二进制用例也在未改 HEAD 上先红（首请求语义公告数为 0），不是静态文字指纹。Env/Source 注册、预览不提交及语义/JSON 工具回执均有行为测试。
+- 新增真实二进制 HTTP/scripted 冒烟 `TestEnvironmentPromptBinary` 连跑三遍通过（2.575s 含构建），覆盖登录、模型传输、跨轮、跨分钟、重启、固定前缀；12 次完整 HTTP 往返 37.7–104.8ms，近邻法 p95=104.8ms，非真模型/公网/IPC或物理性能。长程守护单独通过：573 轮、3 次后台压缩、恢复最差 98.6%、整段 K=0.491、压缩成本 0.424%，前 200 轮 K=1.004；无硬上限越界。
+- `gofmt -l .`、`go vet ./...`、diff check、atlas audit 通过（atlas 保留已有告警）。改到四包 `-count=3` 已完整跑完：bot/envprompt/promptinject 绿；kernel 只有原有 LongTurn（19 folds/40 steps）与 MemoryFileLogGuard 失败，未修改 HEAD 归档同样复现。未放宽这两条断言。vision 测试夹具窗口改 64K，避免其 1000-token 夹具因新增公告误入压缩路径，vision 行为断言保留。
+- 全仓 `go test -count=1 ./...` 完整跑完但未绿：kernel 上述两条、memory 月日志守门、work description、web 旧时间分隔/供应商/审批/图片/人设/提问断言。旧六条旅程 smoke 全跑失败于 done.text/deltas 原口径，未修改 HEAD 基线六条同样复现；未改守护断言或扩修。日志和回退证据：`~/.xbot-build/env-prompt-frame/`。
+- 级别：本功能专项真入口端到端通过，但全仓/旧旅程守门未绿，不能宣称整体验收通过。未合 main、未 push、未移动 guard。Not run: Linux CI、真模型、用户日用、独立复审、IPC/后台减速专项。
+
 ## 2026-10-31 主列 stick-to-bottom（feature/chat-scroll-to-tail，本地分支）
 
 - M 档，按用户合同收拢 `threadStick`：持有 stick 状态与唯一底部阈值、rAF 合帧、ResizeObserver、prepend 视觉锚；打开/latest 贴底，上翻解除，主动下滚到底可重新跟尾。applyTranscript、群渲染、poll、SSE/live、临时发送、历史控件统一调用；异步增高不再用瞬时距离冻结 poll。stick 时尾窗断层直接换新尾，历史阅读仍保位置。未动服务端 Bot.Window 与800 raw保尾。

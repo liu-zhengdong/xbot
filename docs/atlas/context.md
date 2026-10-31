@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary tests); 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 上下文与 transcript
 
@@ -29,10 +29,10 @@ HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览�
 - **固定前缀**：人设、当前二进制的 `KernelRules`、`rules.md` 自有补充、Bot 自己的记忆和 Link 说明，在多次唤醒之间逐字节不变，保证模型服务商的前缀缓存能命中；工具按名字排序。提醒不进前缀，也不改 transcript 正文：按序号另存，组装时只贴在当时那一条的末尾，重放字节不变。
 - **前缀分段**：连续 system 消息按 S0（职责与人设卡、A′ 跟版内核规则与 Bot 补充、模型 overlay）、S1（排序后的 Link 清单）、S2（installed 说明与技能目录）排列；S0 依次用 `### 职责`（`persona.md` 正文，必有）、`### 人设卡 · 卡名`（选用的卡或默认卡，另起一段叠在职责后，不顶掉职责）、`### 内核规矩`、可选 `### 模型补丁`，S1 用 `### 能力框`，每槽标题后是固定说明句再放正文，空 overlay 整槽省略。空目录不产生消息，记忆快照随后仍是 user 消息。装配与用量统计共用这份顺序。技能或连接器变化不改 S0；最长公共前缀缓存遇到前段变化即停止，不能跳过变化复用后段。专项替身同时比较完整消息与字节前缀：消息边界能保留 S0/S1，细粒度公共前缀基本持平；未测真实供应商，不据此承诺供应商收益。
 - **同一轮的工具调用并行**。一次模型回复里的多个工具调用同时执行，并尊重取消。需要用户确认的，一次只问一个，其余调用继续跑。结果按原来的调用顺序写回对话，历史和前缀缓存保持确定。慢调用交回后台回执后，该调用不会再写第二条 tool 结果；实际完成沿原 Inbox 作为普通回报追加，全文与图片按既有文件路径读取，见 [内核](kernel.md)「慢工具后台化」。同时写同一处由模型自己避开，内核不为此加特殊规则。
-- **环境提示光框架（设计中）**：真源外置 + 语义公告的 Register 缝，见 [env-prompt-frame](../dev/env-prompt-frame.md)；ADR 修订提议 [0021-env-stream-amend-draft](../adr/0021-env-stream-amend-draft.md)（Proposed）。
-- **环境流**（[ADR 0021](../adr/0021-env-stream.md)）：时间、工具、发送者与人物资料、共享资料索引、任务状态、记忆有变化才向对话尾部追加，不改历史或固定前缀。已公布的值只从本次有效对话回放，不在 `state.json` 另存已见账；摘要中的引文和用户粘贴的标签不参与回放。Bot 记忆从固定前缀起算；人物资料复用 person 存储，按各人在有效对话中的版本比较，变了追加当前资料块。非人只报来源，不清人物基线。同来源、同资料、同任务状态不重复。任务说明保留完整值，终态提示结果见普通任务回报，不要求两条紧挨。本地时间精确到分钟。环境字段 `pending_approvals` 表示当前待批卡数，从有到无显式写 `null`；卡片真源仍为 transcript，采样按 seq 增量回放，读取失败不发布清空。
-- **环境消息可回放**（`env_replay.go`）：统一为内部 `<environment_update>` 中的 JSON。`set` 的字段是当前值，省略表示没变，`null` 表示移除；人物和任务按各自 ID 分项。Bot 记忆用 `memory.add/remove` 记录事实增删，完整保留变化，不再只报条数。`persona` 分开公布职责与卡：`职责 <指纹>`（默认正文为「默认职责」）加 `；人设卡 <卡名> <指纹>`，正文不进环境；规则、资料和技能仍用内容摘要指纹比较。模型说明正文只在固定前缀 `### 模型补丁`；环境字段 `overlay` 只存 `provider/model` 加内容短哈希，或 `none`。差异与压缩快照共用这一短值，不另存缓存或已见账。自己的成功记忆修改把同一格式的回执带在原工具结果末尾；只有配对的内置文件工具回执参与回放；转成 blob 时在可见预览里保留完整回执，原结果后面的提醒不影响回放。
-- **压缩后补全环境**：跨轮摘要完成后、覆盖范围发布前，在尾部追加重新采样的完整环境快照；轮内裁剪在最终发送前补。快照带现有摘要范围与固定记忆前缀的指纹，不另存版本账。快照恢复时间、来源、当前人物资料、工具配置及活任务；Bot 记忆只带相对固定前缀的变化，没有变化就不写记忆字段。快照占用计入原 T/H。已覆盖的其他人物资料在下次出现时重建；仍在有效对话里的其他人物版本保留。压缩与快照两侧任一点重启，都从有效对话重新判断是否需要补全。
+- **环境提示光框架**：`envprompt.Env.Register(Field{Key, Sample, Prompt})` 是新字段唯一装配缝，`promptinject.Registry.Register(Source{Name, Order, Render})` 按序渲染尾部提示，空串不注入；第一个 Source 是环境。time 从本地钟现采，按分钟渲染语义公告，与进程内「上次已告知」全文比较，成功追加后才提交；预算预览不提交。真值可从 Env.Current 读取，不解析公告。进程重启后重采并公告一次。提醒未迁，接口可用闭包接原 Channel。ADR 修订提议仍为 [Proposed](../adr/0021-env-stream-amend-draft.md)，Accepted 0021 未改。
+- **环境流**（[ADR 0021](../adr/0021-env-stream.md)）：时间、工具、发送者与人物资料、共享资料索引、任务状态、记忆有变化才向对话尾部追加，不改历史或固定前缀。除已迁 Register 的 time 外，遗留字段的已公布值仍从本次有效对话回放，不在 `state.json` 另存已见账；摘要中的引文和用户粘贴的标签不参与回放。Bot 记忆从固定前缀起算；人物资料复用 person 存储，按各人在有效对话中的版本比较，变了追加当前资料块。非人只报来源，不清人物基线。同来源、同资料、同任务状态不重复。任务说明保留完整值，终态提示结果见普通任务回报，不要求两条紧挨。本地时间精确到分钟。环境字段 `pending_approvals` 表示当前待批卡数，从有到无显式写 `null`；卡片真源仍为 transcript，采样按 seq 增量回放，读取失败不发布清空。
+- **环境消息 framing**：公告与写记忆工具回执共用 `bot.FrameEnvironment`（`<environment_update>`），存储层按完整标签保留语义或 JSON 回执，不解析载荷；time 主文是「当前时间：…；本条取代先前…」，不是 JSON set。`env_replay.go` 只回放尚未迁移字段的 JSON，忽略历史 JSON time；`set` 的字段是当前值，省略表示没变，`null` 表示移除；人物和任务按各自 ID 分项。Bot 记忆用 `memory.add/remove` 记录事实增删，完整保留变化，不再只报条数。`persona` 分开公布职责与卡：`职责 <指纹>`（默认正文为「默认职责」）加 `；人设卡 <卡名> <指纹>`，正文不进环境；规则、资料和技能仍用内容摘要指纹比较。模型说明正文只在固定前缀 `### 模型补丁`；环境字段 `overlay` 只存 `provider/model` 加内容短哈希，或 `none`。差异与压缩快照共用这一短值，不另存缓存或已见账。自己的成功记忆修改把同一格式的回执带在原工具结果末尾；只有配对的内置文件工具回执参与回放；转成 blob 时在可见预览里保留完整回执，原结果后面的提醒不影响回放。
+- **压缩后补全环境**：跨轮摘要完成后、覆盖范围发布前，在尾部追加重新采样的完整环境快照；轮内裁剪在最终发送前补。快照带现有摘要范围与固定记忆前缀的指纹，不另存版本账。快照恢复时间、来源、当前人物资料、工具配置及活任务；Bot 记忆只带相对固定前缀的变化，没有变化就不写记忆字段。快照占用计入原 T/H。已覆盖的其他人物资料在下次出现时重建；仍在有效对话里的其他人物版本保留。压缩与快照两侧任一点重启，遗留字段从有效对话判断是否补全；注册字段重新现采。完整快照会强制补语义公告（即使同分钟），轮内拟合和换绑预检均预留这份文本的 T/H 体积。
 
 - **请求组装共用工具配对规则**：用户的话收到即落盘；物理 transcript 可以是调用、插话、结果。模型请求把同一批工具结果紧贴调用，再放中途入串的话；同轮与下一轮重组使用同一规则，原始记录不重排。
 - **原始记录只追加**，每条消息有编号。压缩生成"摘要块"，记录覆盖的编号范围，可以层层合并。

@@ -1,6 +1,6 @@
 # 环境提示光框架（语义公告 · 外置真源）
 
-档位：**L**。政东 2026-10-31 点头世界模型（对话「好」）。对照 DSH：`systemPrompt.context` 注册缝、time-context 语义散文、真值≠公告双轨。本稿只定缝与第一刀；**不派编码实现**，等另开批。
+档位：**L**。政东 2026-10-31 点头世界模型（对话「好」）。对照 DSH：`systemPrompt.context` 注册缝、time-context 语义散文、真值≠公告双轨。本稿定缝与第一刀；政东随后授权本 worktree 同批实现时间字段与光框架（批 1 + 2），不迁全量字段或提醒。
 
 写稿 tip：`7d84cb3b`。相关：候选「环境更新只发当前值」「环境实体自注册更新」；Obsidian `设计/上下文一批` §4；仓内桩 `docs/dev/env-entity-registry-stub.md`。ADR 修订提议：[0021-env-stream-amend-draft](../adr/0021-env-stream-amend-draft.md)（Proposed，主人确认前不得改 Accepted 0021 正文）。
 
@@ -79,11 +79,19 @@ promptinject.Register(Source{   // 名称可随实现微调；形状要对齐 DS
 
 ## 非目标（本期）
 
-- 不实现编码；不迁全量字段；不强制迁提醒 / 插话 / turn_progress。
+- 不迁全量字段；不强制迁提醒 / 插话 / turn_progress。
 - 不改「环境只追加、不改前缀」。
 - 不做「公告也不进串、只进当次请求」（比 DSH 更激进，另议）。
 - 不建第二套环境 UI 账本；不与「对话区统一插入系统提示」抢 UI 缝。
 - 不擅自改写 Accepted ADR 0021 正文（只提交 Proposed 提议稿）。
+
+## 还没做的
+
+- 主人日用验收与独立复审；本分支不合 main、不 push，不移动 guard。
+- Proposed ADR 是否接受仍由主人决定，Agent 不改 Accepted 0021。
+- 其余字段逐项迁 Prompt、提醒迁 Source 属后续批，不纳入本次交付。
+
+**冒烟用例**：`go test -tags smoke ./e2e/smoke -run '^TestEnvironmentPromptBinary$'`；压缩/拟合快照缝：`TestRegisteredTimeRequests`；通用注册缝：`internal/envprompt/env_test.go`、`internal/promptinject/registry_test.go`。结果与性能数字只记 MILESTONES。
 
 ## ADR 修订要点（摘要）
 

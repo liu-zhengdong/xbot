@@ -17,7 +17,8 @@ import (
 	"xbot/internal/provider"
 )
 
-// environment is a fold of the effective conversation, never a saved ledger.
+// environment is the legacy fields' fold of the effective conversation.
+// Registered fields (time first) use envprompt instead, never this replay.
 // Fields hold absolute published values; memory is folded from the fixed prefix.
 // A snapshot resets the fold. Its memory operations are relative to that prefix,
 // so an unchanged Bot memory is never repeated in a snapshot.
@@ -57,7 +58,7 @@ func encodeEnvironment(p environmentMessage) string {
 	if err := encoder.Encode(p); err != nil {
 		panic(err)
 	}
-	return environmentOpen + strings.TrimSuffix(body.String(), "\n") + environmentClose
+	return bot.FrameEnvironment(strings.TrimSuffix(body.String(), "\n"))
 }
 func decodeEnvironment(text string) (environmentMessage, bool) {
 	var p environmentMessage
@@ -143,6 +144,10 @@ func applyEnvironment(e *environment, p environmentMessage, prefix []string) {
 		*e = environment{Fields: people, Memory: append([]string(nil), prefix...), Basis: p.Snapshot}
 	}
 	for key, value := range p.Set {
+		// Historical JSON clock publications are no longer a field baseline.
+		if key == "time" {
+			continue
+		}
 		if string(value) == "null" {
 			delete(e.Fields, key)
 		} else {
@@ -342,7 +347,6 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	} else {
 		delete(next.Fields, "pending_approvals")
 	}
-	environmentSet(&next, "time", k.localStamp())
 	k.experienceEnv(&next)
 	tasks, err := k.taskEnvironment(environmentTasks(prev), link.Event{})
 	if err != nil {
@@ -376,10 +380,10 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	next.Memory = memoryFacts(text)
 	return next, nil
 }
-func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, basis string) (provider.Message, error) {
+func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, basis string) ([]provider.Message, error) {
 	next, err := k.sampleEnvironment(prev)
 	if err != nil {
-		return provider.Message{}, err
+		return nil, err
 	}
 	if full {
 		// Only the current person's full profile is restored. Other people establish
@@ -393,7 +397,7 @@ func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, b
 	} else {
 		basis = ""
 	}
-	return k.appendEnvironment(environmentDelta(prev, next, basis, st.MemSnap))
+	return k.appendEnvironmentPrompts(context.Background(), environmentDelta(prev, next, basis, st.MemSnap), full)
 }
 func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
 	st, err := k.Bot.LoadState()
@@ -555,12 +559,12 @@ func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Re
 	} else {
 		basis = ""
 	}
-	m, err := k.appendEnvironment(environmentDelta(before, next, basis, st.MemSnap))
+	messages, err := k.appendEnvironmentPrompts(ctx, environmentDelta(before, next, basis, st.MemSnap), full)
 	if err != nil {
 		return fitted, err
 	}
-	if m.Text() != "" {
-		fitted.Messages = append(fitted.Messages, m)
+	if len(messages) != 0 {
+		fitted.Messages = append(fitted.Messages, messages...)
 		// The full replacement was reserved by fit before any cut. Like the
 		// existing fitter, keep the latest tool step intact even when that
 		// step alone is larger than H; do not invent a second truncation rule.

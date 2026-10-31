@@ -15,8 +15,8 @@
 // normal case, so the reverse order would deadlock a live bot rather than a
 // test.
 //
-// Environment sampling may also take approvals.mu under envMu; the card
-// projection never takes envMu. Every other lock is taken and released before
+// Environment sampling may also take approvals.mu or promptEnv.mu under envMu;
+// neither projection takes envMu. Every other lock is taken and released before
 // the next is taken; they are listed here in the order the outer work runs, so a new
 // caller can see where it belongs:
 //
@@ -36,9 +36,10 @@
 //	compactMu   the auto-compaction job
 //	denyMu      tool calls the owner refused this turn
 //
-// The *Once fields (startOnce, recoverOnce, execOnce, shellOnce) never nest:
+// The *Once fields (startOnce, recoverOnce, execOnce, shellOnce, promptOnce) never nest:
 // each body runs once and may take other locks freely, because nothing holds a
-// lock across the call that starts them.
+// lock across the call that starts them, except promptOnce: registration may
+// run under envMu and only takes promptEnv.mu.
 package kernel
 
 import (
@@ -52,6 +53,7 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/envprompt"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
@@ -143,9 +145,11 @@ type Kernel struct {
 	// turn's own context carries the deadline (see backgroundBudget).
 	BackgroundMaxTime time.Duration
 
-	approvals approvalState
-	envMu     sync.Mutex // serializes environment comparison and publication
-	turnMu    sync.Mutex
+	approvals  approvalState
+	envMu      sync.Mutex // serializes environment comparison and publication
+	promptOnce sync.Once
+	promptEnv  envprompt.Env
+	turnMu     sync.Mutex
 
 	// memWriteMu serializes own memory writes with their before/after reads.
 	memWriteMu  sync.Mutex

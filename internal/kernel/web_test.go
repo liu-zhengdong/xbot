@@ -128,7 +128,8 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 	off := false
 	if err := config.Add(flash.Root, config.Provider{
 		Name: "deepseek", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "DEEPSEEK_API_KEY",
-	}, config.ModelSpec{Name: "deepseek-flash", Context: 1000, Vision: &off}); err != nil {
+	}, // This tests the vision switch, not compression; leave room for history and tail prompts.
+		config.ModelSpec{Name: "deepseek-flash", Context: 64000, Vision: &off}); err != nil {
 		t.Fatal(err)
 	}
 	p = &scripted{resps: []provider.Message{

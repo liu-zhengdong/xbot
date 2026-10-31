@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"xbot/internal/compact"
 	"xbot/internal/provider"
@@ -60,6 +61,11 @@ func (k *Kernel) PrepareBinding(ctx context.Context, providerName, modelName str
 			return 0, err
 		}
 		snapshot := environmentDelta(prev, next, environmentBasis(st, nil), st.MemSnap)
+		texts, _, err := k.environmentPrompts(ctx, snapshot, true)
+		if err != nil {
+			return 0, err
+		}
+		snapshot = strings.Join(texts, "\n\n")
 		// Leave bounded headroom for the incoming message and hosted tools.
 		return k.scaled(usage.Total()+toolTokens+compact.Estimate(overlay)+compact.Estimate(snapshot)) + min(1024, ceiling/20), nil
 	}
