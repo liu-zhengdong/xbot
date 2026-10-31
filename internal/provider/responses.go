@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Responses speaks the native Responses protocol. Hosted calls are output
@@ -208,7 +209,7 @@ func (c *Responses) responseOnce(ctx context.Context, req Request, delta func(st
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]")}
+		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]"), retryAfter: retryAfterHeader(res.Header, time.Now())}
 	}
 	reader, err := responseStream(&idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, res.Header.Get("Content-Type"), ResponsesProtocol)
 	if err != nil {

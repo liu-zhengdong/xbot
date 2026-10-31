@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Anthropic speaks Messages. Hosted blocks are never executable local calls.
@@ -318,7 +319,7 @@ func (c *Anthropic) messagesOnce(ctx context.Context, req Request, delta func(st
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]")}
+		return Message{}, &statusError{code: res.StatusCode, body: strings.ReplaceAll(string(b), c.APIKey, "[secret]"), retryAfter: retryAfterHeader(res.Header, time.Now())}
 	}
 	reader, err := responseStream(&idleReader{r: res.Body, idle: c.streamIdleTimeout(), cancel: cancel}, res.Header.Get("Content-Type"), AnthropicMessages)
 	if err != nil {

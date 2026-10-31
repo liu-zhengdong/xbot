@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 限流等待上限与一次备用（feature/rate-limit-end-or-switch）
+
+- M 档，仅 Provider 共用重试、供应商配置与启动 selector 装配。`config.ModelSelector → RateLimitSelector → FixedSelector` 为唯一装配 seam；每次唤醒累计额度等待默认 180 秒，可用 providers.json 的 `rate_limit_wait_seconds` 配置。三协议读取 Retry-After/reset 建议，长等立即以 `ErrRateLimitWait` 结束；显式 `fallback: {provider, model}` 最多切一次，后续工具步保持备用、共享剩余等待预算；无备用不声称换模。普通 5xx/超时维持两次短重试，已有输出不重试/切换。不碰 UI、主列窗口、控机、公式、AGENTS/CLAUDE、发版脚本或 lock。
+- seam HTTP 测试覆盖三协议、累计无建议等待、2 秒短重置、usage-limit 分类、reset 解析、无备用、一次备用与备用失败，断言错误类型/请求数/模型目标而非日志名字。临时回退共用重试层修复，新增 seam 测试实际失败，恢复后通过。config/provider/cmd 三包 `-count=3` 全绿（10.497s / 1.539s / 4.041s）。
+- 新增 `TestRateLimitBinary` 真 serve / registry / API / SSE 与真实到期 Timer，上游仅 scripted。Timer 的 slot 被消费、trace 写 failed、现有 serve 错误出口记录原因；备用经真实工具步发消息成功，主模一次、备用两步、不回跳。真二进制专项三遍通过（5.941s）；并行全量检查时交互观察 135–216ms（6 次样本上限约 216ms），Timer 含重启观察最大 248ms；不是生产 p95 或 IPC/后台性能测量。
+- gofmt、diff check、全量 vet 通过。最终 `go test -count=1 ./...` 未绿：kernel 长轮/记忆守护、memory 月日志、web 时间分隔/供应商/审批/粘贴/人设/提问、work shell description；未改动 HEAD b04e79fb 归档全量复现同组失败。既有六条 smoke 也未绿，HEAD 归档复现相同输出契约失败（done.text 为空 / 无 delta）；不扩修。最初全量另有一次 CLIEventQueue 临时目录清理失败，baseline 单项三遍与最终全量均未复现。日志 `/tmp/rate-limit-{all-final,base-all,smoke,base-smoke,repeat,binary3,before}.log`。
+- 级别：分支专项真二进制通过；未合 main、未接 8788、既有旅程守护未全绿，不宣称整体端到端或用户日用通过。开发设计保留供主管验收，未经确认不移入 guard。Not run: 真模型、Linux CI、主人日用、生产 p95、IPC/后台减速专项。
+
 ## 2026-10-31 公式复制同槽对勾（feature/formula-copy-check，本地分支）
 
 - S 档，仅按 handoff [t741u] 调整 formulaBlock：删除 copied-tip，可见成功态为右缘同槽绿 check，约 1.6 秒恢复 copy；aria-label 可报「已复制」。默认透明、hover/focus 与成功态 fill-2，普通 hover 图标透明度 .72、成功 1；不改公式分流、逐行拆块、普通代码或美元公式。

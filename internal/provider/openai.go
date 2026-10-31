@@ -260,8 +260,8 @@ func contentJSON(m Message) (json.RawMessage, error) {
 // Chat streams a completion and returns the assembled assistant message.
 // Each attempt is bounded twice: RequestTimeout covers the whole request from
 // the call going out to its last byte, StreamIdleTimeout covers the gap between
-// two chunks. Either timeout is retried like unexpected EOF, HTTP 429, and HTTP
-// 5xx, twice, with backoff.
+// two chunks. Either timeout is retried like unexpected EOF and HTTP 5xx,
+// twice with backoff. Explicit rate/quota limits use a cumulative wait budget.
 // Deltas go out as they arrive, so the first words of a long answer reach the
 // owner before the last is written. A failed attempt is retried only while
 // nothing has gone out yet; once text has been streamed, a retry would repeat
@@ -271,7 +271,11 @@ func (c *Client) Chat(ctx context.Context, req Request, onDelta func(string)) (M
 }
 
 func (c *Client) complete(ctx context.Context, req Request, onDelta func(string), attemptCall func(context.Context, Request, func(string)) (Message, error)) (Message, error) {
-	var last error
+	budget, _ := ctx.Value(waitBudgetKey{}).(*waitBudget)
+	if budget == nil {
+		budget = &waitBudget{max: DefaultRateLimitWait}
+	}
+	ordinaryRetries := 0
 	streamed := false
 	live := func(s string) {
 		if s != "" {
@@ -281,22 +285,38 @@ func (c *Client) complete(ctx context.Context, req Request, onDelta func(string)
 			onDelta(s)
 		}
 	}
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			if err := c.pause(ctx, attempt); err != nil {
-				return Message{}, err
-			}
-		}
+	for {
 		msg, err := attemptCall(ctx, req, live)
 		if err == nil {
 			return msg, nil
 		}
-		last = err
-		if streamed || !retryable(err) {
+		if streamed {
+			return Message{}, err
+		}
+		if delay, limited := limitDelay(err); limited {
+			if delay <= 0 {
+				delay = c.retryWait
+				if delay <= 0 {
+					delay = 200 * time.Millisecond
+				}
+			}
+			if delay > budget.max-budget.used {
+				return Message{}, fmt.Errorf("%w (budget %s, waited %s, next %s): %w", ErrRateLimitWait, budget.max, budget.used, delay, err)
+			}
+			if err := waitForRetry(ctx, delay); err != nil {
+				return Message{}, err
+			}
+			budget.used += delay
+			continue
+		}
+		if !retryable(err) || ordinaryRetries == 2 {
+			return Message{}, err
+		}
+		ordinaryRetries++
+		if err := c.pause(ctx, ordinaryRetries); err != nil {
 			return Message{}, err
 		}
 	}
-	return Message{}, last
 }
 
 // requestTimeout is the whole-attempt budget in effect.
@@ -337,6 +357,10 @@ func (c *Client) pause(ctx context.Context, attempt int) error {
 		wait = 200 * time.Millisecond
 	}
 	wait *= time.Duration(attempt)
+	return waitForRetry(ctx, wait)
+}
+
+func waitForRetry(ctx context.Context, wait time.Duration) error {
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
@@ -414,8 +438,9 @@ func retryable(err error) bool {
 }
 
 type statusError struct {
-	code int
-	body string
+	code       int
+	body       string
+	retryAfter time.Duration
 }
 
 func (e *statusError) Error() string {
@@ -489,7 +514,7 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return Message{}, &statusError{code: resp.StatusCode, body: strings.TrimSpace(string(b))}
+		return Message{}, &statusError{code: resp.StatusCode, body: strings.TrimSpace(string(b)), retryAfter: retryAfterHeader(resp.Header, time.Now())}
 	}
 	stream := io.ReadCloser(resp.Body)
 	if idle > 0 {

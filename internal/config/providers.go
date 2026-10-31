@@ -32,6 +32,15 @@ type Provider struct {
 	APIKeyEnv   string      `json:"api_key_env"`
 	OAuth       string      `json:"oauth,omitempty"`
 	Models      []ModelSpec `json:"models"`
+	// RateLimitWaitSeconds caps cumulative quota waiting per wake, including backup.
+	RateLimitWaitSeconds int              `json:"rate_limit_wait_seconds,omitempty"`
+	Fallback             *FallbackBinding `json:"fallback,omitempty"`
+}
+
+// FallbackBinding is an explicit backup, never an inferred cheapest model.
+type FallbackBinding struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // ModelSpec is one model id and its context length in tokens.

@@ -115,6 +115,10 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
+	selector, err := config.ModelSelector(root, b.Config().Provider, client, config.Getenv)
+	if err != nil {
+		return nil, person.Person{}, err
+	}
 	// The kernel derives both context lines from the bound model on each use,
 	// so a model change moves them; the budget only carries the tail floor.
 	budget := kernel.BudgetFor(b.Config())
@@ -144,7 +148,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	k := &kernel.Kernel{
 		Bot:             b,
 		Provider:        client,
-		Selector:        provider.FixedSelector{P: client},
+		Selector:        selector,
 		Links:           links,
 		Inbox:           box,
 		Memory:          memory.Open(root),
