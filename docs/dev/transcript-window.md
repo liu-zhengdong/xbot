@@ -19,7 +19,7 @@
 
 ## 实现方案
 
-- 同一 GET transcript，无参数默认 tail 60 条，limit 1–200；before/after 为排他 seq，around 为包含目标的居中窗口，三者互斥。响应 messages + window{head_seq,tail_seq,total,next_before,next_after,has_more_before,has_more_after}。无全量兼容开关；export 保留全量用途。
+- 同一 GET transcript，无参数尾窗与 before 页以25条可见交付为目标，先取60条原始记录，不足由 Bot.Window 向前扩，仍受200条/128 KiB硬帽约束；显式 limit 1–200 仍按原始条数，after/around 缺省60条；before/after 为排他 seq，around 为包含目标的居中窗口，三者互斥。响应 messages + window{head_seq,tail_seq,total,next_before,next_after,has_more_before,has_more_after}。无全量兼容开关；export 保留全量用途。
 - Bot.Window 在存储锁内确定快照尾序号，按索引长度和范围选窗口，最多约 128 KiB 原始行（单行超大仍允许前进），复用偏移读取，不 Entries 后 slice。旧 fork 回溯分支需按衍生索引补上下文，不能靠整本 replay。
 - Web 保留原行投影，单超大行公开预览裁剪并标 truncated；最终窗口响应字节受限，裁剪仍保持连续范围与可推进游标。ETag 纳入规范窗口参数，身份先校验，历史浏览不错误标记尾部已读。
 - GET transcript/search?q=&limit=，鉴权同原入口，q 最多 1024 字节，limit 默认20/最多100，直接 Bot.Search；返回 matches[{seq}]，不读整本/另建索引。朴素命中列表显示序号对应的短预览（接口提供或定位后），空/失败/加载状态可区分。

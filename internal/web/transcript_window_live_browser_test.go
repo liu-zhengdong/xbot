@@ -59,3 +59,57 @@ func TestTranscriptWindowLiveBrowser(t *testing.T) {
 	}
 	t.Log(string(out))
 }
+
+func TestTranscriptWindowVisibleTailBrowser(t *testing.T) {
+	if _, err := os.Stat("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"); err != nil {
+		t.Skip("Chrome unavailable")
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node unavailable")
+	}
+	root := t.TempDir()
+	s := &Server{Root: root, Owner: "reader"}
+	token, _, err := s.EnsureToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := bot.Create(root, "History", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bot.CloseStore(b)
+	if err := b.SetOwners([]string{"reader"}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	appendMessage := func(m provider.Message) {
+		t.Helper()
+		if err := b.Append(bot.Entry{Time: at, Message: m}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for page := 0; page < 2; page++ {
+		for i := 0; i < 25; i++ {
+			call := provider.ToolCall{ID: fmt.Sprintf("say-%d-%d", page, i), Type: "function"}
+			call.Function.Name, call.Function.Arguments = "send_message_to_user", `{"text":"visible delivered bubble"}`
+			appendMessage(provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})})
+			appendMessage(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "sent to the owner's chat")})
+		}
+		for i := 0; i < 20; i++ {
+			appendMessage(provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<untrusted_event source=\"timer\" type=\"tick\">\nwake\n</untrusted_event>")})
+			appendMessage(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")})
+			appendMessage(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("noise", "done")})
+		}
+	}
+	srv := httptest.NewServer(muxOf(s))
+	defer srv.Close()
+	input, _ := json.Marshal(map[string]string{"url": srv.URL, "cookie": cookieName, "token": token})
+	cmd := exec.Command(node, "testdata/transcript-visible-tail.cjs")
+	cmd.Stdin = bytes.NewReader(input)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("visible tail HTTP/browser: %v\n%s", err, out)
+	}
+	t.Log(string(out))
+}

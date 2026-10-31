@@ -1,12 +1,235 @@
 package bot
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"xbot/internal/provider"
 )
+
+func TestWindowVisibleTailAndBefore(t *testing.T) {
+	b, err := Create(t.TempDir(), "visible", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer CloseStore(b)
+	appendEntry := func(e Entry) {
+		t.Helper()
+		e.Time = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+		if err := b.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Each page ends in sixty records with no chat bubbles at all.
+	for page := 0; page < 2; page++ {
+		for i := 0; i < 25; i++ {
+			call := provider.ToolCall{ID: fmt.Sprintf("say-%d-%d", page, i), Type: "function"}
+			call.Function.Name, call.Function.Arguments = "send_message_to_user", `{"text":"visible delivery"}`
+			appendEntry(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})}})
+			appendEntry(Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "sent to the owner's chat")}})
+		}
+		for i := 0; i < 20; i++ {
+			appendEntry(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<untrusted_event source=\"timer\" type=\"tick\">\nwake\n</untrusted_event>")}})
+			appendEntry(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}})
+			appendEntry(Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("noise", "done")}})
+		}
+	}
+	before, _ := b.ConcatRaw()
+	q := WindowQuery{}
+	for page := 0; page < 2; page++ {
+		w, err := b.Window(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		says := 0
+		for i, r := range w.Rows {
+			if i > 0 && r.Seq != w.Rows[i-1].Seq+1 {
+				t.Fatal("gap in window")
+			}
+			says += len(r.Entry.Message.Calls())
+		}
+		if says < 25 || len(w.Rows) > MaxWindowLimit || w.TailSeq != 220-page*110 || w.HeadSeq != 111-page*110 || w.HasMoreBefore != (page == 0) {
+			t.Fatalf("page %d: says=%d rows=%d meta=%+v", page, says, len(w.Rows), w.WindowMeta)
+		}
+		q.Before = w.NextBefore
+	}
+	fixed, err := b.Window(WindowQuery{Limit: 3})
+	if err != nil || len(fixed.Rows) != 3 {
+		t.Fatalf("explicit limit: %d, %v", len(fixed.Rows), err)
+	}
+	after, err := b.ConcatRaw()
+	if err != nil || string(before) != string(after) {
+		t.Fatal("window changed transcript")
+	}
+}
+
+func TestWindowVisibleExpansionCaps(t *testing.T) {
+	for _, large := range []bool{false, true} {
+		t.Run(fmt.Sprint("large=", large), func(t *testing.T) {
+			b, err := Create(t.TempDir(), "capped", "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer CloseStore(b)
+			text := "SILENT"
+			if large {
+				text = strings.Repeat("x", 3000)
+			}
+			for i := 0; i < 250; i++ {
+				m := provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}
+				if !large && i == 170 {
+					call := provider.ToolCall{ID: "sparse", Type: "function"}
+					call.Function.Name, call.Function.Arguments = "send_message_to_user", `{"text":"only one say within the cap"}`
+					m.Content = provider.ToolContent([]provider.ToolCall{call})
+				} else if !large && i == 171 {
+					m.Role, m.Content = provider.RoleTool, provider.ToolResult("sparse", "sent to the owner's chat")
+				}
+				if err := b.Append(Entry{Time: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC), Message: m}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w, err := b.Window(WindowQuery{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w.TailSeq != 250 || !w.HasMoreBefore || w.HasMoreAfter || w.NextBefore != w.HeadSeq || len(w.Rows) > MaxWindowLimit {
+				t.Fatalf("cap metadata: %+v", w.WindowMeta)
+			}
+			if !large && len(w.Rows) != MaxWindowLimit {
+				t.Fatalf("raw cap: %d", len(w.Rows))
+			}
+			if large && len(w.Rows) >= DefaultWindowLimit {
+				t.Fatalf("byte cap ignored: %d", len(w.Rows))
+			}
+		})
+	}
+}
+
+func TestWindowVisibleProjection(t *testing.T) {
+	for _, kind := range []string{"user", "legacy", "image", "audio", "notify_owner"} {
+		t.Run(kind, func(t *testing.T) {
+			b, err := Create(t.TempDir(), "projection", "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer CloseStore(b)
+			at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+			appendEntry := func(e Entry) {
+				t.Helper()
+				if e.Time.IsZero() {
+					e.Time = at
+				}
+				if err := b.Append(e); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := 0; i < 25; i++ {
+				e := Entry{Message: provider.Message{Role: provider.RoleAssistant}}
+				switch kind {
+				case "user":
+					e.Message.Role, e.Message.Content = provider.RoleUser, provider.TextContent("real input")
+				case "legacy":
+					e.Time, e.Message.Content = at.AddDate(0, 0, -10), provider.TextContent("old visible prose")
+				case "image":
+					e.Images = []string{"picture.png"}
+				case "audio":
+					e.Audios = []string{"voice.wav"}
+				case "notify_owner":
+					call := provider.ToolCall{ID: fmt.Sprint(i), Type: "function"}
+					call.Function.Name, call.Function.Arguments = kind, `{"text":"old delivery"}`
+					e.Message.Content = provider.ToolContent([]provider.ToolCall{call})
+					appendEntry(e)
+					e.Message = provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "notified the owner")}
+				}
+				appendEntry(e)
+				// A non-internal source event closes the run without a bubble.
+				appendEntry(Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<untrusted_event source=\"timer\">\nwake\n</untrusted_event>")}})
+			}
+			for i := 0; i < 20; i++ {
+				appendEntry(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("modern bare text is not speech")}})
+				appendEntry(Entry{Origin: OriginInternal, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("hidden kernel note")}})
+				appendEntry(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}})
+				call := provider.ToolCall{ID: fmt.Sprint("failed-", i), Type: "function"}
+				call.Function.Name, call.Function.Arguments = "send_message_to_user", `{"text":"not delivered"}`
+				appendEntry(Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})}})
+				appendEntry(Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "error: not sent")}})
+			}
+			w, err := b.Window(WindowQuery{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w.HeadSeq != 1 || w.HasMoreBefore {
+				t.Fatalf("%s did not bring all 25 visible deliveries: %+v", kind, w.WindowMeta)
+			}
+		})
+	}
+}
+
+func TestWindowVisibleSaySuppressesLegacyRun(t *testing.T) {
+	b, err := Create(t.TempDir(), "suppressed", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer CloseStore(b)
+	at := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	appendEntry := func(m provider.Message) {
+		t.Helper()
+		if err := b.Append(Entry{Time: at, Message: m}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 24; i++ {
+		appendEntry(provider.Message{Role: provider.RoleUser, Content: provider.TextContent("input")})
+	}
+	for i := 0; i < 25; i++ {
+		appendEntry(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("legacy prose suppressed by the landed say in this run")})
+	}
+	call := provider.ToolCall{ID: "landed", Type: "function"}
+	call.Function.Name, call.Function.Arguments = "send_message_to_user", `{"text":"visible"}`
+	appendEntry(provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})})
+	appendEntry(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "sent to the owner's chat")})
+	for i := 0; i < 60; i++ {
+		appendEntry(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")})
+	}
+	w, err := b.Window(WindowQuery{})
+	if err != nil || w.HeadSeq != 1 {
+		t.Fatalf("legacy prose counted as speech despite landed say: %+v %v", w.WindowMeta, err)
+	}
+}
+
+func TestWindowVisibleSayResultOutsideBefore(t *testing.T) {
+	b, err := Create(t.TempDir(), "outside", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer CloseStore(b)
+	at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	appendEntry := func(m provider.Message) {
+		t.Helper()
+		if err := b.Append(Entry{Time: at, Message: m}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 24 genuine user bubbles, then a say whose success is outside this page.
+	for i := 0; i < 24; i++ {
+		appendEntry(provider.Message{Role: provider.RoleUser, Content: provider.TextContent("input")})
+	}
+	for i := 0; i < 80; i++ {
+		appendEntry(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")})
+	}
+	call := provider.ToolCall{ID: "outside", Type: "function"}
+	call.Function.Name, call.Function.Arguments = "send_message_to_user", `{"text":"delivered"}`
+	appendEntry(provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})})
+	appendEntry(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "sent to the owner's chat")})
+	w, err := b.Window(WindowQuery{Before: 106})
+	if err != nil || w.HeadSeq != 1 || w.TailSeq != 105 {
+		t.Fatalf("outside success: %+v %v", w.WindowMeta, err)
+	}
+}
 
 func TestWindowRangeReplayAndIndexUpgrade(t *testing.T) {
 	b, err := Create(t.TempDir(), "reader", "", nil)

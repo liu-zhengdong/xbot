@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 可见交付尾窗修复（feature/visible-tail-window，本地分支）
+
+- S 档：唯一扩窗装配缝仍为 `Bot.Window`。默认尾窗和未指定 limit 的 before 页先取60条 raw，再按25条可见交付向前扩，保留200条/128 KiB硬帽、连续 seq、真实 has_more_before、原有 fork 回放；显式 limit 与 after/around 原语义保留。HTTP 仅透传未指定 limit，不增加前端自动续拉或另一套计数，不改旧 transcript、Agent 指令或发版。
+- Window 回归覆盖尾部 tool/SILENT/timer、双页各25条 say、用户/legacy/旧 notify_owner/图片/语音、失败送达不充数、同轮 say 抑制旧正文、窗外成功回包、条数/字节触顶。删除扩窗循环后，同一测试回到0条 say/60条 raw而失败；恢复后 Bot 整包 `-count=3` 通过（86.273s）。
+- 全部 `TestTranscriptWindow*` 三遍通过（162.410s），包括真实 HTTP+Chrome 首包直接25泡、无自动 before，单次上翻另增25泡且保留已有消息节点；既有真实 serve 二进制窗口/搜索冒烟通过（9.686s）。新稀疏夹具110条 raw，响应15,724字节；每轮40次本机浏览器 fetch，三轮 p95 为0.6/1.0/0.9ms。不是跨设备、真实网络或模型性能验收。
+- gofmt、go vet、diff 检查通过，atlas audit 退出0。全仓一遍与 Web 整包三遍未绿：kernel 长轮/MemoryFileLogGuard、memory 月容量、work description，以及 Web 的既有断言失败；全仓 kernel/tools/web 与 Web 整包达到120s包超时。上述长轮/记忆/work及8条Web断言在原tip归档复现；CLIEventQueue清理、Interjection顺序、DevicesPairBrowser本次基线单跑未复现，包超时未归因。保留日志，不把专项绿称为全仓绿；基线对照与完整结果在 `~/.xbot-build/visible-tail-window/`。
+- 级别：本机 Window/HTTP/Chrome 专项通过，既有真 serve 冒烟通过；未合 main、未 push。Not run: Linux CI、真实 Air/跨设备日用、真模型、物理设备帧率/IPC与后台减速专项。
+
 ## 2026-10-31 聊天主列窗口、历史搜索与打开遮罩（feature-transcript-window，本地分支）
 
 - L 档：同一 `GET /api/bots/{name}/transcript` 默认尾部最多60行，before/after排他翻页、around定位命中，返回双向范围/游标/总seq。无参数不再全本；完整原文仍走现有流式export。搜索出口直接复用Bot.Search/FTS5，返回seq、短预览与时间，没有另建全文索引或Bot名字特例。

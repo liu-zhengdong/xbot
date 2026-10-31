@@ -12,7 +12,7 @@ import (
 )
 
 func transcriptQuery(r *http.Request) (bot.WindowQuery, error) {
-	q := bot.WindowQuery{Limit: bot.DefaultWindowLimit}
+	q := bot.WindowQuery{}
 	cursors := 0
 	for key, dest := range map[string]*int{"before": &q.Before, "after": &q.After, "around": &q.Around, "limit": &q.Limit} {
 		values, ok := r.URL.Query()[key]
