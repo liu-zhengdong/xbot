@@ -188,7 +188,7 @@
 
 行上还可能有 `images`，是这条消息带的图片文件名（见 `POST /api/bots/{name}/paste`），字节不在里面。`branch` 省略表示主线。有值时，这行属于后台任务 `bg_7`；它是接口按 `fork` 标记重放算出的有效分支：`fork` 标记的 `from` 之后、标记之前的行，以及自己带 `branch` 的行都归这个分支。标记行没有正文，用 `kind` 区分：`"kind":"fork"` 另带 `from`（被分出那一轮的起始 seq）和 `task`；`"kind":"fork_end"` 另带 `status`（`done`、`failed`、`cancelled`、`interrupted`）和 `steps`。标记行的 `branch` 是它自己的分支 id。旧记录没有这些字段，读出来和以前完全一样。
 
-这次 GET 会把该 Bot 的已读游标记到当前长度。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是用户说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。用户聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
+默认尾窗和读至尾部的 `after` 请求把已读游标记到当前长度；`before`/`around` 浏览历史不标记未见的新消息。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是用户说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。用户聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
 
 跨 Bot 阅读不是 HTTP。模型工具 `recall_history` 和 `expand` 有可选的 `bot`。只能读和调用者至少有一个相同 owner 的 Bot。别的 owner、只是同群或能互发消息的 Bot、以及群 id，都是 `not found`（`history: bot: not found`），不说明原因。搜索和展开用对方 Bot 自己的索引。读到的文本包在 `<untrusted_event source="bot:<name>" ... sender="<name>">` 里，没有指令效力。长度上限和读自己的一样（搜索约 4 KiB，展开约 8 KiB）。
 
@@ -196,7 +196,11 @@
 
 正文按 transcript 段流式写出，不把整份历史装进内存。工具结果如果另存成 blob，写出那一行时读回全文。成功时正文不是 JSON。`md` 的 `Content-Type` 是 `text/markdown`，时间用服务器本机时区，摘要块写成 `## Summary seq <from>-<to>`，后台分支的行标题多一段 `[后台 <branch>]`，`fork` 和 `fork_end` 各写成一行。`jsonl` 是 `application/x-ndjson`。两种导出格式均为公开投影：移除 reasoning 内容块、清除所有保留块的 `vendor_raw`，`tools=1` 也不例外；普通正文、可公开 hosted/citation 与按开关保留的工具块不变。内部 transcript 原始块与同协议回放不受影响。普通行是公开消息记录再加 `seq`，`json.Unmarshal` 进记录时忽略 `seq`，所以能再导入，序号还是原来的。带引用的行多一个 `reply_to`；后台行带 `branch`，标记行带 `mark`（`{"kind","branch","from","task","status","steps"}`）。`{"kind":"summary","from","to","text","focus","at"}` 是摘要块。每一段写出前过 `RedactText`；保险箱还没安装替换函数时，文本原样出去。`Content-Disposition` 是附件，文件名 `<bot>.md` 或 `<bot>.jsonl`。`md` 在该行标题下写 `reply_to: <seq>`。
 
-`GET /api/bots/{name}/transcript` 仍一次返回全部消息，给界面用。很长的历史用上面的 export。Bot 列表上的未读比较用序号计数，不读段文件。
+`GET /api/bots/{name}/transcript` **无参数默认仅尾部最多 60 条**，不再整本返回；这是有意的接口默认改变，需要全本时使用上面的流式 export。`limit=1..200`，可选 `before=<seq>` / `after=<seq>`（排他）或 `around=<seq>`（包含命中附近），三个游标互斥。非法参数 400，around 目标不存在 404。记录按 seq 升序且连续；条数可能因字节预算更少。空窗 messages 为 `[]`，head/tail/cursor 为 0。追加不改变已有 seq，稳定游标可跨请求使用。
+
+响应另带 `window:{head_seq,tail_seq,total,next_before,next_after,has_more_before,has_more_after}`。head/tail 为本窗含端点范围，total 是快照末 seq；next_before/next_after 分别用于下一页 before/after，有更多时由对应 has_more 标志指明。响应包括 JSON 包络控制在 pipe 的 700 KiB 内（本机与远端统一窗口预算，完整内容用导出）。单超大行公开预览裁短并带 `truncated:true`，仍推进游标；普通附件字段不变。assistant 的 `delivered:[call_id]` 是已成功送达的通知调用，可在成功回包落在窗外时复用原有气泡规则。fork 的有效分支仍包含窗外标记的回溯作用。条件请求 ETag 包括尾部指纹、设备标签和规范窗口参数；不同窗口不能共用 304。Bot 列表未读仍用序号计数。
+
+`GET /api/bots/{name}/transcript/search?q=<关键词>&limit=20` 与 transcript GET 同样要求登录及 Bot owner。直接复用该 Bot 的 `Bot.Search` / FTS5，返回 `{"matches":[{"seq":111,"preview":"短预览","time":"RFC3339"}]}`，沿用 BM25 排名；limit 默认 20、1..100，q 去空白后最多 1024 字节，非法参数 400。空词或无命中返回空数组。预览取存储行（工具 blob 只用已有预览，不解包全文），命中 seq 可用 `transcript?around=<seq>` 定位。工具/内部记录也可被索引命中；若不属于聊天气泡投影，界面保留搜索预览并提示已定位附近，可在轨迹/导出查看原文。不另建全文索引。
 
 `POST /api/bots/{name}/paste` 收一张要贴进对话的图片。body 是图片原始字节，`Content-Type` 只当提示，类型按字节嗅探。成功 200 `{"image":"<32 位十六进制>.png"}`。只认 PNG、JPEG、GIF、WebP（其他 400 `只认 PNG、JPEG、GIF、WebP`），超过 10 MB 回 413，边长超过 2048 或读不出尺寸回 400 并说明原因。文件存在这个 Bot 的工作区 `paste/` 下，权限 0600。`GET /api/bots/{name}/paste/{image}` 读回这张图，`Content-Type` 按字节定，带 `nosniff`，可长期缓存（文件名不会改）；名字不是一个合法 id 或文件已不在时 404。这两条都要登录，不是这个 owner 的 Bot 是 404。
 

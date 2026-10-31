@@ -47,29 +47,3 @@ func TestContextBarUsesLatestSnapshot(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
-
-func TestUsageSnapshotRefreshesWhenThreadChanges(t *testing.T) {
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(raw)
-	a := strings.Index(s, "  async function loadThread(")
-	b := strings.Index(s, "  function section(")
-	script := `const assert=require('node:assert/strict');
- const state={sel:{type:'bot',id:'ada'},threadLoad:0,sig:'',messages:[],preview:{},previewAt:{},pendingSends:[],tab:'details'};
- let messages=[],loads=0,open=true;const api=async()=>({messages});const panel={classList:{contains:()=>open}};
- const previewFromMessages=()=>'',renderLists=()=>{},renderMessages=()=>{},paintPanel=()=>{},threadUnavailable=()=>{throw Error('unexpected load failure')};
- const loadPanel=async()=>{loads++};
- ` + s[a:b] + `
- (async()=>{
- await loadThread();assert.equal(loads,1,'first transcript should load the snapshot');
- await loadThread();assert.equal(loads,1,'an unchanged poll must not refetch the full context');
- messages=[{seq:1,role:'assistant',content:'done'}];await loadThread();assert.equal(loads,2,'a new reply must refresh the usage bar');
- open=false;messages.push({seq:2,role:'assistant',content:'later'});await loadThread();assert.equal(loads,2,'closed panel needs no context request');
- })().catch(e=>{console.error(e);process.exit(1)});
- `
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-}

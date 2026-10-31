@@ -254,6 +254,20 @@ func (s *segStore) openDB() error {
 		}
 	}
 	s.db = db
+	// The index is disposable. Upgrade existing indexes once so old fork
+	// intervals remain correct even when their marker is outside a window.
+	var indexVersion int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&indexVersion); err != nil {
+		return err
+	}
+	if indexVersion < 2 {
+		if err := s.rebuild(); err != nil {
+			_ = s.closeDB()
+			return err
+		}
+		_, err := db.Exec(`PRAGMA user_version=2`)
+		return err
+	}
 	return nil
 }
 
@@ -272,6 +286,15 @@ CREATE TABLE IF NOT EXISTS lines (
   role TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS lines_event ON lines(event_id) WHERE event_id != '';
+CREATE TABLE IF NOT EXISTS tool_results (
+  id TEXT PRIMARY KEY,
+  seq INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fork_spans (
+  seq INTEGER PRIMARY KEY,
+  from_seq INTEGER NOT NULL,
+  branch TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS open_tools (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -389,7 +412,7 @@ func (s *segStore) indexFrom(path string, start int, off int64, seq int) error {
 }
 
 func (s *segStore) rebuild() error {
-	if _, err := s.db.Exec(`DELETE FROM lines; DELETE FROM open_tools;`); err != nil {
+	if _, err := s.db.Exec(`DELETE FROM lines; DELETE FROM open_tools; DELETE FROM fork_spans; DELETE FROM tool_results;`); err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO fts(fts) VALUES('delete-all')`); err != nil {
@@ -528,6 +551,11 @@ func (s *segStore) index(seq, start int, off int64, n int, e Entry, body string)
 	if _, err := tx.Exec(`INSERT INTO fts(rowid, body) VALUES (?,?)`, seq, body); err != nil {
 		return err
 	}
+	if e.Mark != nil && e.Mark.Kind == ForkKindStart {
+		if _, err := tx.Exec(`INSERT INTO fork_spans(seq, from_seq, branch) VALUES (?,?,?)`, seq, e.Mark.From, e.Mark.Branch); err != nil {
+			return err
+		}
+	}
 	if e.Message.Role == provider.RoleAssistant {
 		for _, tc := range e.Message.Calls() {
 			if tc.ID == "" {
@@ -540,6 +568,9 @@ func (s *segStore) index(seq, start int, off int64, n int, e Entry, body string)
 		}
 	}
 	if e.Message.Role == provider.RoleTool && e.Message.CallID() != "" {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO tool_results(id,seq) VALUES (?,?)`, e.Message.CallID(), seq); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`DELETE FROM open_tools WHERE id=?`, e.Message.CallID()); err != nil {
 			return err
 		}

@@ -24,7 +24,7 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 (async()=>{
- await waitFor(()=>!$('#shell').hidden&&!$('#thread .thread-skeleton')&&$('#roster .item[data-bot="'+bots[0].name+'"]'),'app did not boot');
+ await waitFor(()=>!$('#shell').hidden&&!$('.thread-loading-cover')&&$('#roster .item[data-bot="'+bots[0].name+'"]'),'app did not boot');
  assert(!$('#thread').textContent.includes('先列目录'),'thinking entered conversation');
  await waitFor(()=>!$('#head-chip').disabled,'header chip stayed disabled');
  $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');

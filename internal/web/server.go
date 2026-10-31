@@ -19,6 +19,7 @@ import (
 	"xbot/internal/account"
 
 	"xbot/internal/bot"
+	textclip "xbot/internal/clip"
 	"xbot/internal/config"
 	"xbot/internal/exec"
 	"xbot/internal/fsutil"
@@ -28,6 +29,7 @@ import (
 	"xbot/internal/notable"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
+	"xbot/internal/pipe/limits"
 	"xbot/internal/proc"
 	"xbot/internal/provider"
 	"xbot/internal/providerauth"
@@ -259,6 +261,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/webhooks/{hook}", s.getWebhook)
 	mux.HandleFunc("DELETE /api/bots/{name}/webhooks/{hook}", s.removeWebhook)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
+	mux.HandleFunc("GET /api/bots/{name}/transcript/search", s.searchTranscript)
 	mux.HandleFunc("GET /api/bots/{name}/inbox", s.listInbox)
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
 	mux.HandleFunc("GET /api/apps", s.listApps)
@@ -819,10 +822,12 @@ func runningModel(root string, b *bot.Bot) (string, string) {
 }
 
 type apiRow struct {
-	Seq     int    `json:"seq"`
-	Role    string `json:"role"`
-	Content string `json:"content,omitempty"`
+	Seq       int    `json:"seq"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Role      string `json:"role"`
+	Content   string `json:"content,omitempty"`
 	// Thinking is readable reasoning for the trace panel only, never vendor raw.
+	Delivered  []string               `json:"delivered,omitempty"`
 	Thinking   string                 `json:"thinking,omitempty"`
 	Parts      []provider.ContentPart `json:"parts,omitempty"`
 	Name       string                 `json:"name,omitempty"`
@@ -928,14 +933,18 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	// Reuse the append-only tail stamp; do not read/serialize history on idle
-	// polls. Device labels also participate in this endpoint's projection.
+	q, err := transcriptQuery(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Validators belong to the selected range as well as the append-only tail.
 	stamp, stamped := b.TranscriptStamp()
 	if stamped {
 		if fi, err := os.Stat(filepath.Join(s.Root, "remote", "devices.json")); err == nil {
 			stamp += fmt.Sprintf(":%d:%d", fi.Size(), fi.ModTime().UnixNano())
 		}
-		etag := fmt.Sprintf("W/\"%s\"", stamp)
+		etag := fmt.Sprintf("W/\"%s:%d:%d:%d:%d\"", stamp, q.Before, q.After, q.Around, q.Limit)
 		w.Header().Set("ETag", etag)
 		w.Header().Set("Cache-Control", "private, no-cache")
 		if r.Header.Get("If-None-Match") == etag {
@@ -943,25 +952,25 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	entries, err := b.Entries()
+	window, err := b.Window(q)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		code := http.StatusInternalServerError
+		if errors.Is(err, bot.ErrWindowTarget) {
+			code = http.StatusNotFound
+		}
+		writeErr(w, code, err.Error())
 		return
 	}
-	_ = s.writeCursor(b.Name(), len(entries))
-	seqEntries := make([]bot.SeqEntry, len(entries))
-	for i, e := range entries {
-		seqEntries[i] = bot.SeqEntry{Seq: i + 1, Entry: e}
-	}
-	replay, _ := bot.Replay(seqEntries)
 	src := loadSources(s.Root)
-	var rows []apiRow
-	for i, e := range entries {
+	rows := make([]apiRow, 0, len(window.Rows))
+	var sizes []int
+	totalBytes := 0
+	for _, re := range window.Rows {
+		e := re.Entry
 		row := apiRow{
-			Parts: publicParts(e.Message), Seq: i + 1, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
+			Parts: publicParts(e.Message), Seq: re.Seq, Role: e.Message.Role, Content: e.Message.Text(), Name: e.Message.Name,
 			Thinking: e.Message.Thinking(), ToolCalls: e.Message.Calls(), ToolCallID: e.Message.CallID(), Time: e.Time,
-			ReplyTo: e.ReplyTo, Branch: replay[i].Branch, Internal: e.IsInternal(),
-			Images: e.Images, Audios: e.Audios,
+			ReplyTo: e.ReplyTo, Branch: re.Branch, Internal: e.IsInternal(), Images: e.Images, Audios: e.Audios,
 		}
 		if e.Message.Role == provider.RoleUser {
 			row.FromDevice, row.Relay = src.fromDevice(e.EventID), src.relay(e.Message.Text())
@@ -973,12 +982,70 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		if card, ok := bot.ParseApprovalCard(e.Message.Text()); ok {
 			row.Title, row.Subtitle = card.Title, card.Subtitle
 		}
+		for _, call := range row.ToolCalls {
+			if call.Function.Name != "send_message_to_user" && call.Function.Name != "notify_owner" {
+				continue
+			}
+			result, found, err := b.ToolResult(call.ID)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			text := result.Message.Text()
+			if found && (strings.HasPrefix(text, "sent to the owner's chat") || strings.Contains(text, "notified the owner")) {
+				row.Delivered = append(row.Delivered, call.ID)
+			}
+		}
+		raw, _ := json.Marshal(row)
+		if len(raw) > 64<<10 {
+			preview, _ := textclip.Bytes(e.Message.Text(), 8192)
+			row = apiRow{Seq: re.Seq, Role: e.Message.Role, Content: preview, Time: e.Time,
+				ReplyTo: e.ReplyTo, Branch: re.Branch, Internal: e.IsInternal(), Truncated: true,
+				Images: e.Images, Audios: e.Audios, Delivered: row.Delivered}
+			for _, call := range e.Message.Calls() {
+				if call.Function.Name != "send_message_to_user" && call.Function.Name != "notify_owner" {
+					continue
+				}
+				var args struct {
+					Text string `json:"text"`
+				}
+				if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
+					continue
+				}
+				args.Text, _ = textclip.Bytes(args.Text, 8192)
+				rawArgs, _ := json.Marshal(args)
+				call.Function.Arguments = string(rawArgs)
+				row.ToolCalls = append(row.ToolCalls, call)
+				if len(row.ToolCalls) == 4 {
+					break
+				}
+			}
+			raw, _ = json.Marshal(row)
+		}
 		rows = append(rows, row)
+		sizes = append(sizes, len(raw)+1)
+		totalBytes += len(raw) + 1
 	}
-	if rows == nil {
-		rows = []apiRow{}
+	lo, hi := 0, len(rows)
+	for totalBytes > limits.MaxBody-(60<<10) && hi-lo > 1 {
+		if q.After > 0 || q.Around > 0 && q.Around-rows[lo].Seq < rows[hi-1].Seq-q.Around {
+			hi--
+			totalBytes -= sizes[hi]
+		} else {
+			totalBytes -= sizes[lo]
+			lo++
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": rows})
+	rows = rows[lo:hi]
+	if len(rows) > 0 {
+		window.HeadSeq, window.TailSeq = rows[0].Seq, rows[len(rows)-1].Seq
+		window.NextBefore, window.NextAfter = window.HeadSeq, window.TailSeq
+		window.HasMoreBefore, window.HasMoreAfter = window.HeadSeq > 1, window.TailSeq < window.Total
+	}
+	if !window.HasMoreAfter && q.Before == 0 && q.Around == 0 {
+		_ = s.writeCursor(b.Name(), window.Total)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": rows, "window": window.WindowMeta})
 }
 
 func (s *Server) exportTranscript(w http.ResponseWriter, r *http.Request) {

@@ -37,7 +37,7 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 (async()=>{
- await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('#thread .thread-skeleton'),'boot');
+ await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('.thread-loading-cover'),'boot');
  $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel');
  const memoryTab=()=>[...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='记忆');
  memoryTab().click();await waitFor(()=>$('.memory-view'),'memory view');

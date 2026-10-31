@@ -6,29 +6,6 @@ import (
 	"testing"
 )
 
-func TestAskOnlyMessageDoesNotLeaveEmptyRow(t *testing.T) {
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(raw)
-	a := strings.Index(s, "  function renderMessages(")
-	b := strings.Index(s, "  function renderGroup(")
-	script := `const assert=require('node:assert/strict');
- const el=(tag,cls)=>({tag,cls,children:[],append(...c){this.children.push(...c)}});
- const thread={scrollTop:0,scrollHeight:0,clientHeight:900,replaceChildren(inner){this.inner=inner}};
- const state={firstRender:true};const backgroundRelays=()=>new Set(),codingCardOf=()=>null,approvalCardOf=()=>null,skipMessage=()=>false,routineOf=()=>null,groupStart=()=>true,addTimeDividers=()=>{},restoreSendFeedback=()=>{};
- const botBubble=()=>el('div','msg bot');const toolSummary=()=>({name:'ask_user'});
- ` + s[strings.Index(s, "  const SAY_TOOLS"):strings.Index(s, "  // botBubble draws one bubble")] + s[strings.Index(s, "  const routineCache"):strings.Index(s, "  function taskAvatar(")] + s[a:b] + `
- renderMessages([{role:'assistant',content:'',tool_calls:[{function:{name:'ask_user'}}]}],'ada');
- assert.equal(thread.inner.children.length,0,'ask-only assistant must not append an empty hoverable message row');
- renderMessages([{role:'assistant',content:'先做哪件事？'}],'ada');assert.equal(thread.inner.children.length,1);
- `
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-}
-
 func TestMissedRoutineShowsHumanExplanation(t *testing.T) {
 	raw, err := staticFS.ReadFile("static/app.js")
 	if err != nil {

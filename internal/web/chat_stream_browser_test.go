@@ -123,7 +123,7 @@ const send=async value=>{
  return fixture.streams.at(-1);
 };
 (async()=>{
- await waitFor(()=>selected('2号小伙子')&&!$('#thread .thread-skeleton'),'app did not boot');
+ await waitFor(()=>selected('2号小伙子')&&!$('.thread-loading-cover'),'app did not boot');
  const threadBottom=$('#thread').getBoundingClientRect().bottom;
  const s=await send('你现在是什么模型？');say(s,'我是助手。');
  assert(!$('#head-chip').contains($('#subtitle'))&&!$('#subtitle').hidden&&$('#subtitle').textContent==='正在回复','reply status is not visible outside the card');
@@ -149,7 +149,7 @@ const send=async value=>{
  const late=await send('稍后再答');say(late,'旧的回复');
  await waitFor(()=>text().includes('旧的回复'),'late stream missing');
  $('[data-bot="另一个Bot"]').click();
- await waitFor(()=>selected('另一个Bot')&&!$('#thread .thread-skeleton'),'switch failed');
+ await waitFor(()=>selected('另一个Bot')&&!$('.thread-loading-cover'),'switch failed');
  finish(late,'迟到的回答');
  const other=await send('这里是另一个对话');finish(other,'另一个回答');
  await waitFor(()=>text().includes('另一个回答')&&!$('#thread .live'),'second bot did not settle');
@@ -159,7 +159,7 @@ const send=async value=>{
  // Intentional silence and tool-only steps must not become empty reply errors.
  fixture.messages['另一个Bot']=[message('assistant','SILENT'),{...message('assistant',''),tool_calls:[{id:'call_1',function:{name:'read_file',arguments:'{}'}}]}];
  $('[data-bot="另一个Bot"]').click();
- await waitFor(()=>selected('另一个Bot')&&!$('#thread .thread-skeleton'),'silent history did not load');
+ await waitFor(()=>selected('另一个Bot')&&!$('.thread-loading-cover'),'silent history did not load');
  assert(!text().includes('这次没有收到回复'),'silent/tool-only message became an error');
  assert(testErrors.length===0,testErrors.join('; '));
  document.body.dataset.testResult='passed';

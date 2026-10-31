@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 聊天主列窗口、历史搜索与打开遮罩（feature-transcript-window，本地分支）
+
+- L 档：同一 `GET /api/bots/{name}/transcript` 默认尾部最多60行，before/after排他翻页、around定位命中，返回双向范围/游标/总seq。无参数不再全本；完整原文仍走现有流式export。搜索出口直接复用Bot.Search/FTS5，返回seq、短预览与时间，没有另建全文索引或Bot名字特例。
+- `Bot.Window` 按已有lines索引长度/偏移读命中段，原始窗口128KiB预算、HTTP正文含包络留在700KiB内；大单行明确预览并推进连续游标。新增可重建fork_spans/tool_results关系索引保留窗外fork回溯与成功送达投影；旧index首次升级重建、成功后提交版本，可重试，原段字节不变。
+- 主列最多缓存300行；chip/上滑prepend保留节点与锚点，搜索浮层开附近窗/高亮、双向续翻与回最新。历史位置不被轮询抢走；退出Bot往来恢复原历史窗口/视口。首屏为半透明遮罩+当前Bot圆头像（默认/上传沿原路径）叠随机闲话，长等换句、轻弹入/晃动/字抖，整包一次置入后320ms散去；失败留遮罩内诚实提示并重试，reduced-motion全静态。侧栏签名只含选择身份，分页加载状态不再触发侧栏重建。
+- 专项HTTP/存储、独立Chrome、真实HTTP+Chrome通过；`TestTranscriptWindowJourney` 用真serve二进制/真实登录/FTS/浏览器连续三遍通过（17.848s合计，不调用模型），覆盖chip与真实wheel、命中跳窗/回最新及浅深640/390几何。旧代码同样本默认2,799,808字节，大小回归失败；新代码4460行/2,916,860原始字节默认响应37,834字节（小于716,800），三次40请求暖handler p95为0.846–1.052ms；条件空轮询p95约48–61µs，body为0。这些是本机受控读取数字，不代表公网或模型延迟。
+- 1440×900 DPR2浅深截图（等待/失败/尾窗/更早/搜索/命中与窄屏）在 `~/.xbot-build/ui-shots/transcript-window/`；前态由干净56e6fda8资源生成。移除四条依赖旧JS文字/函数切片的过时UI测试，既有浏览器等待条件同步到新遮罩完成；未改守护旅程的步骤或怎样算对。独立最终复核PASS_WITH_SOFT，设计师本人视觉复审、真实跨设备管道及用户日用待验。
+- gofmt、JS语法、go vet、diff检查通过；atlas audit退出0，保留已有告警。全仓一遍与web整包三遍未全绿：kernel长轮19 folds/40 steps、MemoryFileLogGuard、memory月容量、work description，以及web时间分隔/供应商/旧审批/提问/人设/贴图测试，在干净HEAD archive定向复现；CLIEventQueue目录清理偶发也在基线三遍复现。全仓另有OAuth固定56121端口占用，基线单跑未复现。旧六条smoke当前与干净基线均失败于原脚本期待done.text/deltas的旧对话口径；未改断言或扩修。日志/基线/回退证据在 `~/.xbot-build/transcript-window/`。
+- 级别：本功能本机端到端通过；未合main、未push，未动AGENTS/CLAUDE、changelog、lock与guard。
 ## 2026-10-31 语音簇 v5（feature-chat-voice-cluster-v5，本地分支）
 
 - S 档，依据用户拍板的 `~/agent-tools/chat-voice-cluster/{handoff.md,ia.md,hifi/v5-*.html}`，只改现有 `appendAudios` 播放态和 voice CSS/tokens；继续经 `appendMessageBubbles` 装配，合文一泡、尾注 `.v-caption`、10 竖条和簇 gap 6 保留。短音波形 56px、play 32px、行内 gap 8px，Chrome 实测短音泡约 158–160px；随时长增长，不齐宽、不画细横轨。麦克风仍为原 36px，transcript／spokenLines／存盘未改。
@@ -8,6 +17,7 @@
 - 1440×900、DPR 2 浅深色前后、hover／playing／paused 和 390px 短长音截图在 `~/.xbot-build/ui-shots/chat-voice-cluster-v5/`，已对照原型自查。每色 30 次播放事件更新到布局 p95 浅 0.4ms／深 0.3ms；投影到两帧绘制 p95 26.1／33.6ms。原生 Range GET 每轮 25 次，三轮 p95 5.0／3.6／6.8ms。均为本机受控样本，非真实供应商／物理设备／60fps 或用户日用验收。
 - gofmt、JS 语法、go vet、diff 检查通过；atlas audit 退出 0，保留既有告警。全仓 `-count=1 -timeout=90s` 与 web 整包 `-count=3 -timeout=90s` 未全绿：kernel 长轮 19 folds/40 steps、MemoryFileLogGuard、memory 月容量、work description，以及 web 旧头像断言与 AskOnly 静态测试 panic，均在原 tip `56e6fda8` 干净归档复现。全仓另在 e2e LongRunJourney、tools JobWriterManySecretsIsFast 达到 90 秒包超时，本轮未作基线归因，未扩修。证据与完整日志在 `~/.xbot-build/chat-voice-cluster-v5/`。
 - 级别：本地浏览器行为通过，既有语音真入口 scripted 冒烟通过；设计师对生产截图复审、真实供应商／物理麦克风扬声器、Linux CI 和用户日用未验。只提交本分支，未合 main、未 push，未移动 guard。
+
 
 ## 2026-10-31 设置自定义供应商（feature/custom-provider，本地分支）
 

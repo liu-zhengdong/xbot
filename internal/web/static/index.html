@@ -138,6 +138,9 @@ try {
         <button id="head-chip" class="top-title" type="button" aria-label="打开信息" aria-expanded="false" disabled>
           <span id="title" class="title">XBot</span>
         </button>
+        <button id="chat-search" class="icon-btn chat-search-btn" type="button" aria-label="搜索聊天记录" aria-expanded="false" aria-controls="history-search-panel" hidden>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+        </button>
         <!-- Shown once a newer version is downloaded: a click installs it and
              starts XBot again. Nothing appears while it downloads in the
              background, and nothing at all when there is no update. -->
@@ -147,6 +150,21 @@ try {
         </button>
       </div>
     </header>
+    <div id="history-search-panel" class="chat-search-pop" role="dialog" aria-label="搜索聊天记录" hidden>
+      <form id="history-form" class="search-bar" role="search">
+        <input id="history-search" type="search" aria-label="搜索此 Bot 的聊天历史" placeholder="搜索聊天记录" maxlength="1024">
+        <button class="secondary" type="submit">搜索</button>
+        <button id="history-close" class="icon-btn search-x" type="button" aria-label="关闭搜索">×</button>
+      </form>
+      <div id="history-results" class="history-results search-list" aria-live="polite"></div>
+    </div>
+    <div id="history-nav" class="history-nav" data-history-controls hidden>
+      <button id="history-older" class="history-earlier" type="button" hidden>更早的消息</button>
+      <span id="history-end" class="muted" hidden>没有更早了</span>
+      <button id="history-newer" class="history-earlier" type="button" hidden>更新的消息</button>
+      <button id="history-latest" class="history-earlier" type="button" hidden>回到最新</button>
+      <p id="history-error" role="status" hidden></p>
+    </div>
     <div id="thread" class="thread"></div>
     <div id="subtitle" class="subtitle" hidden></div>
     <!-- The exchange between two bots is read-only: this replaces the composer. -->

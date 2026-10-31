@@ -13,7 +13,7 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 const bubbles=()=>[...document.querySelectorAll('#thread .msg.bot')].map(n=>n.textContent);
 (async()=>{
- await waitFor(()=>$('#title').textContent.includes('2号小伙子')&&!$('#thread .thread-skeleton'),'app did not boot');
+ await waitFor(()=>$('#title').textContent.includes('2号小伙子')&&!$('.thread-loading-cover'),'app did not boot');
  let merged=false,leaked=false;
  new MutationObserver(()=>{if(bubbles().some(t=>t.includes('先看一下')&&t.includes('改好了')))merged=true;if(bubbles().some(t=>t.includes('草稿')))leaked=true;if($('#thread .sysline, #thread .system-line'))leaked=true}).observe($('#thread'),{subtree:true,childList:true,characterData:true});
  const box=$('#input');box.textContent='改一下配置';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();

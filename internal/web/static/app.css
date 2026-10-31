@@ -2868,3 +2868,45 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 @media (prefers-reduced-motion:reduce) { .rec-dot { animation:none; } }
 
 #rec-send { border-radius:var(--x-r-pill); }
+
+/* Chat window/search: chat-window-search designer handoff, 2026-10-31. */
+.chat-search-btn{position:absolute;right:0;top:50%;transform:translateY(-50%);color:var(--x-muted)}
+.top-title{max-width:min(260px,calc(100% - 80px))}
+.history-nav{align-self:stretch;display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px!important;margin-bottom:-4px}
+.history-nav[hidden]{display:none}
+.history-earlier{height:30px;padding:0 14px;border:0;border-radius:999px;font:inherit;font-size:12.5px;font-weight:560;color:var(--x-text-2);background:var(--x-fill-2);cursor:pointer}
+.history-earlier:hover{background:var(--x-fill-3);color:var(--x-text)}
+.history-earlier[aria-busy="true"]{color:var(--x-faint);cursor:wait}
+.chat-search-pop{position:absolute;top:calc(var(--top-h) - 4px);left:50%;transform:translateX(-50%);z-index:41;width:min(400px,calc(100% - 48px));background:var(--x-card);border-radius:14px;box-shadow:var(--x-shadow-pop);overflow:hidden;display:flex;flex-direction:column;max-height:min(420px,70vh)}
+.chat-search-pop[hidden]{display:none}
+.search-bar{display:flex;align-items:center;gap:8px;padding:10px 12px}
+#history-search{min-width:0;flex:1;background:transparent;color:var(--x-text);border:0;font:inherit;font-size:14.5px}
+.search-x{flex:none;width:28px;height:28px}
+.history-results{overflow:auto;overscroll-behavior:contain;padding:6px;display:flex;flex-direction:column;gap:5px}
+.history-results>p{padding:16px;text-align:center}
+.history-hit{display:flex;flex-direction:column;gap:4px;align-items:stretch;flex:none;text-align:left;width:100%;border:0;background:transparent;color:var(--x-text);padding:10px 12px;border-radius:10px;font:inherit;cursor:pointer;overflow-wrap:anywhere}
+.history-hit .ex{font-size:13.5px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.history-hit .tm{font-size:11.5px;color:var(--x-faint)}
+.history-hit:hover{background:var(--x-fill-2)}
+.history-hit:focus-visible,#history-search:focus-visible,.history-earlier:focus-visible{outline:2px solid var(--x-muted);outline-offset:-2px}
+#history-error{flex-basis:100%;margin:0;text-align:center;color:var(--x-muted);font-size:12.5px}
+.thread{overflow-anchor:none}
+.thread-loading-cover{position:absolute;inset:0;z-index:28;display:grid;place-items:center;background:color-mix(in srgb,var(--x-card) 78%,transparent);backdrop-filter:blur(6px);color:var(--x-muted);font-size:14px;opacity:1;transition:opacity 320ms ease-out}
+.thread-loading-cover.leaving{opacity:0;pointer-events:none}
+.history-hit-target .bubble,.history-hit-target .bot-bubble{background:var(--x-fill-2);color:var(--x-text)}
+@media(prefers-reduced-motion:reduce){.thread-loading-cover{transition:none}}
+
+.chat-open-banter{display:flex;white-space:pre;align-items:center;justify-content:center;opacity:1;transform:translateY(0);transition:opacity 160ms ease-out,transform 160ms ease-out}
+.chat-open-banter.changing{opacity:0;transform:translateY(-4px)}
+.banter-char{display:inline-block}
+.chat-open-mask .thread-unavailable{min-height:0;padding:24px}
+@media(prefers-reduced-motion:reduce){.chat-open-banter{transition:none}}
+
+.chat-open-companion{display:flex;flex-direction:column;align-items:center;gap:14px}
+.chat-open-avatar{width:52px;height:52px;flex:none;transform-origin:50% 60%;animation:chat-avatar-sway 3.6s ease-in-out infinite}
+.chat-open-avatar .avatar{width:100%;height:100%;border-radius:50%;overflow:hidden}
+.chat-open-banter{font-size:16px;font-weight:560;color:var(--x-text-2);line-height:1.35;text-align:center;padding:0 8px}
+@keyframes chat-avatar-sway{0%,100%{transform:rotate(-2.2deg) translateY(0)}50%{transform:rotate(2.2deg) translateY(-1px)}}
+@media(prefers-reduced-motion:reduce){.chat-open-avatar{animation:none}}
+
+.search-bar .secondary{height:28px;padding:4px 8px;font-size:12.5px}

@@ -20,7 +20,7 @@ func TestTaskFoldInPanelBrowser(t *testing.T) {
  const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
  const waitFor=async(fn,label)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep(10)}throw Error('timed out: '+label)};
  (async()=>{
-  await waitFor(()=>!$('#shell').hidden && $('#title').textContent.includes(bots[0].name) && !$('#thread .thread-skeleton'),'boot');$('#head-chip').click();
+  await waitFor(()=>!$('#shell').hidden && $('#title').textContent.includes(bots[0].name) && !$('.thread-loading-cover'),'boot');$('#head-chip').click();
   await waitFor(()=>[...document.querySelectorAll('#panel [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
   [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='任务').click();
   await waitFor(()=>$('.task-record.finished') && $('.task-routine'),'records');

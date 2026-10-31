@@ -133,7 +133,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 (async()=>{
  const preview=()=>$('#roster .item[data-bot="'+bots[0].name+'"] .preview');
- await waitFor(()=>!$('#shell').hidden&&preview()&&!$('#thread .thread-skeleton'),'app did not boot');
+ await waitFor(()=>!$('#shell').hidden&&preview()&&!$('.thread-loading-cover'),'app did not boot');
  const shot=new URLSearchParams(location.search).get('shot');
  if(!shot){
   await waitFor(()=>preview().textContent===todoSummary,'sidebar did not consume status summary');
@@ -186,7 +186,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<900;i++){if(fn())return;await sleep(
 const preview=()=>$('#roster .item[data-bot="'+bots[0].name+'"] .preview');
 const working=()=>$('#thread .live .working-name');
 const start=async()=>{
- await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&preview()?.textContent==='上一条闲聊'&&!$('#thread .thread-skeleton'),'app did not boot');
+ await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&preview()?.textContent==='上一条闲聊'&&!$('.thread-loading-cover'),'app did not boot');
  const input=$('#input');input.textContent='继续查三处';input.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
  await waitFor(()=>fixture.streams.length&&$('#thread .live'),'stream did not start');
  return fixture.streams.at(-1);

@@ -12,7 +12,7 @@ const $=s=>document.querySelector(s), assert=(ok,msg)=>{if(!ok)throw Error(msg)}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 (async()=>{
- await waitFor(()=>!$('#shell').hidden&&$('#roster .item[data-bot="'+bots[0].name+'"] .preview')&&!$('#thread .thread-skeleton'),'boot');
+ await waitFor(()=>!$('#shell').hidden&&$('#roster .item[data-bot="'+bots[0].name+'"] .preview')&&!$('.thread-loading-cover'),'boot');
  $('#roster .item[data-bot="'+bots[0].name+'"]').click();
  $('#head-chip').click(); await waitFor(()=>$('#panel [role=tab]'),'panel');
  const tabs=[...document.querySelectorAll('#panel [role=tab]')];

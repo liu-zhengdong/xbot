@@ -37,7 +37,7 @@ const $=s=>document.querySelector(s), sleep=ms=>new Promise(r=>setTimeout(r,ms))
 const assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const waitFor=async(fn,label)=>{for(let i=0;i<1100;i++){if(fn())return;await sleep(10)}throw Error('timed out: '+label)};
 (async()=>{
- await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('#thread .thread-skeleton'),'boot');
+ await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('.thread-loading-cover'),'boot');
  $('#head-chip').click();
  await waitFor(()=>[...document.querySelectorAll('#panel [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
  [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='任务').click();

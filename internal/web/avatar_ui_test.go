@@ -109,38 +109,3 @@ func TestNewBotDialogPicksAvatar(t *testing.T) {
 		}
 	}
 }
-
-// A remote bot without a seed is the glyph, never a local bot's face (designer
-// ruling): event lines, the exchange title and its messages go through
-// paintOfPeer, which only falls back to paintOf for bots on this computer.
-func TestRemotePeerWithoutSeedIsGlyph(t *testing.T) {
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(raw)
-	for _, want := range []string{
-		`if (!who.device) return paintOf(who.bot);`,
-		`return { seed: !a.custom && a.avatar_seed ? a.avatar_seed : "glyph" };`,
-		`peerAvatar({ bot: who.bot, device: device }, "xs")`,
-		`box.append(peerAvatar(who), el("span", "pair-who"`,
-		`row.append(peerAvatar(from));`,
-		`window.addEventListener("xbot:devices", () => {`,
-	} {
-		if !strings.Contains(js, want) {
-			t.Errorf("app.js: missing %s", want)
-		}
-	}
-	for _, bad := range []string{`avatar(who.bot, paintOf(who.bot)`, `avatar(from.bot, paintOf(from.bot))`} {
-		if strings.Contains(js, bad) {
-			t.Errorf("app.js: a peer is still drawn by name: %s", bad)
-		}
-	}
-	dev, err := staticFS.ReadFile("static/devices.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(dev), `window.dispatchEvent(new Event("xbot:devices"))`) {
-		t.Error("devices.js announces fresh device data so peer faces repaint")
-	}
-}

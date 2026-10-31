@@ -30,7 +30,7 @@ const send=async value=>{
 };
 (async()=>{
  const name='2号小伙子';
- await waitFor(()=>$('#title').textContent.includes(name)&&face(name)&&!$('#thread .thread-skeleton'),'boot failed');
+ await waitFor(()=>$('#title').textContent.includes(name)&&face(name)&&!$('.thread-loading-cover'),'boot failed');
  const stream=await send('给自己换张头像');
  const oldFace=face(name),oldHead=face(name,true),reads=fixture.botReads;
  bots[0].avatar_seed='Ada#2';

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 上下文与 transcript
 
@@ -12,6 +12,12 @@ verified: 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资�
 
 `Entry.Audios` 与 `Images` 平行，只记录 Bot 工作区 `voice/` 的文件名；Event、插话、待处理消息、API 与 md/jsonl 导出保留该字段，原行不改写。模型上下文、摘要、expand 和经历材料追加绝对文件路径与 `listen` 入口，不注入音频字节、不自动转写或替换用户原文。音频文件继续留在工作区。附件 HTTP 契约见 [API](../API.md#语音附件)，工具装配见 [内核](kernel.md#语音工具与挂泡)。
 
+
+## 聊天读取窗口
+
+Web 主列沿同一 transcript GET 读取默认尾部 60 条，before/after 排他翻页、around 定位搜索命中，最多200条并有字节预算；不调用 Entries 读整本再切。`Bot.Window` 在同一存储锁下确定快照末 seq、按 lines 的长度和偏移选择连续范围，只打开命中段的目标偏移。跨窗 fork 通过派生 fork_spans 复原；tool_results 按调用 id 定位成功回包，保持跨窗消息交付投影。旧 index 版本首次读取会从原段重建一次，版本提交在重建成功后，失败/中断可再修复；不改已存段字节。它们只是已有 SQLite 的可重建关系索引，全文搜索仍是原 FTS5 / Bot.Search。
+
+HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览，游标仍连续可推进；全本仍走流式export。窗口元数据、鉴权和搜索出口见 [API](../API.md#对话)；决定见 [ADR 0038](../adr/0038-transcript-window.md)。
 
 ## 边界
 负责：组装上下文、transcript 分段存储和索引、压缩、找回、导出、引用回复。不负责：分叉的分支规则（见 [插话时分叉](fork.md)）。

@@ -16,6 +16,8 @@
   const sidebar = $("sidebar");
   const backdrop = $("backdrop");
   const thread = $("thread");
+  const historyControls = $("history-nav");
+  const historyButtons = Object.fromEntries(["older", "newer", "latest", "error", "end"].map(key => [key, $("history-" + key)]));
   const input = $("input");
   // The composer's last rendered text and its IME state; see the composer
   // helpers further down for how they keep the draft plain and linkified.
@@ -2954,8 +2956,8 @@
 
   function jumpToSeq(seq) {
     const row = thread.querySelector('.msg[data-seq="' + Number(seq) + '"]');
-    if (!row) return;
-    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (!row) { loadThread("around", seq); return; }
+    row.scrollIntoView({ block: "center", behavior: "instant" });
     row.classList.remove("quote-hit");
     void row.offsetWidth;
     row.classList.add("quote-hit");
@@ -3194,7 +3196,7 @@
         if (m.reply_to) replyTo = m.reply_to;
         for (const call of m.tool_calls || []) {
           const info = toolSummary(call);
-          if (SAY_TOOLS.includes(info.name) && sayLanded(results[call.id])) says.push({ i: i, text: String(info.args.text || "").trim() });
+          if (SAY_TOOLS.includes(info.name) && (sayLanded(results[call.id]) || (m.delivered || []).includes(call.id))) says.push({ i: i, text: String(info.args.text || "").trim() });
         }
       }
       if (!says.length && (images.length || audios.length)) says.push({ i: imageLine, text: "" });
@@ -3376,6 +3378,7 @@
     messages.forEach((m, i) => {
       const before = inner.lastElementChild;
       projectMessage(m, i);
+      if (m.truncated && inner.lastElementChild !== before) inner.lastElementChild.append(el("div", "muted", "长记录仅显示预览，完整内容可导出查看。"));
       let row = before ? before.nextElementSibling : inner.firstElementChild;
       let ordinal = 0;
       for (; row; row = row.nextElementSibling) {
@@ -3410,13 +3413,25 @@
       thread.replaceChildren(next);
       return true;
     }
-    const old = new Map(Array.from(current.children, row => [row.dataset.transcriptKey, row]));
+    const old = new Map(Array.from(current.children).filter(row => !row.hasAttribute("data-history-controls")).map(row => [row.dataset.transcriptKey, row]));
     let cursor = current.firstElementChild;
+    if (cursor?.hasAttribute("data-history-controls")) cursor = cursor.nextElementSibling;
     let changed = false;
     for (const projected of Array.from(next.children)) {
       const key = projected.dataset.transcriptKey;
       let row = old.get(key);
       old.delete(key);
+      // Prepending can make the first existing bubble continue a sender group.
+      // Update that class without replacing the reader's bubble/selection.
+      if (row?._transcriptView && row._transcriptView.className !== projected.className) {
+        const grouped = row._transcriptView.cloneNode(true);
+        grouped.className = projected.className;
+        if (grouped.isEqualNode(projected)) {
+          row.className = projected.className;
+          row._transcriptView = grouped;
+          changed = true;
+        }
+      }
       if (!row || !row._transcriptView?.isEqualNode(projected)) {
         changed = true;
         projected._transcriptView = projected.cloneNode(true);
@@ -3436,7 +3451,7 @@
     for (const row of old.values()) if (row.dataset.transcriptKey) { row.remove(); changed = true; }
     restoreSendFeedback(current);
     for (const row of Array.from(current.children)) {
-      if (!row.dataset.transcriptKey && !state.pendingSends.includes(row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
+      if (!row.dataset.transcriptKey && !row.hasAttribute("data-history-controls") && !state.pendingSends.includes(row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
     }
     if (activeVoice && !activeVoice.isConnected) stopVoice();
     return changed;
@@ -4083,7 +4098,7 @@
       folders: state.folders.map((f) => [f.name, f.count, !!f.ungrouped, (f.bots || []).join("\n"), !!collapsed[f.name]]),
       groups: state.groups.map((g) => [g.id, g.name, lineForGroup(g)]),
       others: (state.others || []).map((o) => [(o && o.bot) || "", (o && o.name) || ""]),
-      sel: state.sel,
+      sel: state.sel ? [state.sel.type, state.sel.id] : null,
     });
     if (sig === state.listSig) return;
     state.listSig = sig;
@@ -4249,6 +4264,7 @@
 
   function leavePeer() {
     state.peer = null;
+    $("chat-search").hidden = state.sel?.type !== "bot";
     subtitle.classList.remove("peer-note");
     const main = document.querySelector(".main");
     if (main) main.classList.remove("peer");
@@ -4502,13 +4518,16 @@
   async function openPeer(a, b, at) {
     if (!a || !b || a === b || state.streaming) return;
     clearQuote();
-    state.peer = { a: a, b: b, at: at || "", remote: !!splitPeer(b).device, list: [], more: false, cursor: null, mock: false };
+    $("chat-search").hidden = true;
+    $("history-search-panel").hidden = true;
+    state.peer = { a: a, b: b, returnTop: state.peer?.returnTop ?? thread.scrollTop, at: at || "", remote: !!splitPeer(b).device, list: [], more: false, cursor: null, mock: false };
     paintPeerHeader(a, b);
     await loadPeer(null);
   }
 
   async function closePeer() {
     if (!state.peer) return;
+    const returnTop = state.peer.returnTop;
     leavePeer();
     if (state.sel && state.sel.type === "bot") setHeader(state.sel.id);
     else if (state.sel && state.sel.type === "group") {
@@ -4517,6 +4536,12 @@
     }
     setStatus("");
     state.sig = "";
+    if (state.sel?.type === "bot" && state.messages.length) {
+      state.firstRender = true;
+      applyTranscript(state.messages, state.sel.id);
+      paintHistory();
+      thread.scrollTop = returnTop;
+    }
     await loadThread();
   }
 
@@ -4547,6 +4572,14 @@
     state.replyErrors = [];
     state.firstRender = true;
     state.messages = [];
+    $("chat-search").hidden = state.sel?.type !== "bot";
+    $("history-search-panel").hidden = true;
+    $("chat-search").setAttribute("aria-expanded", "false");
+    $("history-search").value = "";
+    $("history-results").replaceChildren();
+    historyButtons.error.hidden = true;
+    historyButtons.end.hidden = true;
+    paintHistory();
     state.panelData = null;
     state.inboxData = null;
     state.traceOpen = {};
@@ -4561,29 +4594,91 @@
     ++state.threadLoad;
     ++state.panelLoad;
     thread.replaceChildren();
-    const skeleton = el("div", "thread-inner thread-skeleton");
-    skeleton.setAttribute("aria-label", "正在加载对话");
-    for (let i = 0; i < 3; i++) skeleton.append(el("div", "skeleton-bubble"));
-    thread.append(skeleton);
+    showThreadCover();
     panelBody.replaceChildren(el("div", "muted", "正在加载"));
     closePanelMenu();
   }
 
+  let banterIndex = -1;
+  let coverTimer = null;
+  const BANTER = ["Bot 正在嬉戏", "正在拆家", "去阳台晒太阳了", "在翻旧账（礼貌版）", "假装很忙", "马上回来，别偷看", "把尾巴卷好了再聊", "在和别的 Bot 打架（输了）"];
+  function stopCoverBanter() {
+    clearTimeout(coverTimer);
+    coverTimer = null;
+  }
+
+  function showThreadCover() {
+    stopCoverBanter();
+    document.querySelector(".thread-loading-cover")?.remove();
+    thread.setAttribute("aria-busy", "true");
+    const cover = el("div", "thread-loading-cover chat-open-mask");
+    cover.setAttribute("role", "status");
+    cover.setAttribute("aria-label", "正在加载对话");
+    const companion = el("div", "chat-open-companion");
+    const face = el("div", "chat-open-avatar");
+    face.setAttribute("aria-hidden", "true");
+    const selectedBot = state.sel?.type === "bot" && state.bots.find(bot => bot.name === state.sel.id);
+    if (selectedBot) face.append(avatar(selectedBot.name, paintOfBot(selectedBot), "lg"));
+    const line = el("div", "chat-open-banter");
+    companion.append(face, line);
+    cover.append(companion);
+    thread.after(cover);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let ticks = 0;
+    const change = () => {
+      banterIndex = (banterIndex + 1 + Math.floor(Math.random() * (BANTER.length - 1))) % BANTER.length;
+      line.replaceChildren(...Array.from(BANTER[banterIndex], ch => el("span", "banter-char", ch)));
+      line.classList.remove("changing");
+      if (!reduced) line.animate([{opacity:0,transform:"translateY(6px) scale(.98)"},{opacity:1,transform:"translateY(0) scale(1)"}], {duration:280,easing:"ease-out"});
+    };
+    change();
+    if (!reduced) companion.animate([{opacity:0,transform:"translateY(6px) scale(.98)"},{opacity:1,transform:"translateY(0) scale(1)"}],{duration:280,easing:"ease-out"});
+    const tick = () => {
+      if (!cover.isConnected || cover.classList.contains("leaving")) return;
+      ticks++;
+      if (ticks % 3 === 0) {
+        if (!reduced) line.classList.add("changing");
+        coverTimer = setTimeout(() => { change(); coverTimer = setTimeout(tick, 900); }, reduced ? 0 : 160);
+        return;
+      }
+      if (!reduced && ticks % 2 === 0) {
+        const chars = line.children;
+        const ch = chars[Math.floor(Math.random() * chars.length)];
+        ch?.animate([{transform:"translateY(0) rotate(0)"},{transform:"translateY(-1.5px) rotate(2deg)"},{transform:"translateY(0) rotate(0)"}],{duration:180,easing:"ease-out"});
+      }
+      coverTimer = setTimeout(tick,900);
+    };
+    coverTimer = setTimeout(tick,900);
+  }
+
+  function revealThread() {
+    stopCoverBanter();
+    thread.removeAttribute("aria-busy");
+    const cover = document.querySelector(".thread-loading-cover");
+    if (!cover) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { cover.remove(); return; }
+    cover.classList.add("leaving");
+    cover.addEventListener("transitionend", ev => { if (ev.target === cover) cover.remove(); });
+    window.setTimeout(() => cover.remove(), 360);
+  }
+
   function threadUnavailable() {
     state.sig = "";
+    stopCoverBanter();
+    const cover = document.querySelector(".thread-loading-cover");
     const box = el("div", "thread-unavailable");
     box.setAttribute("role", "status");
     const retry = el("button", "btn sec");
     retry.append(icon("refresh-cw"), document.createTextNode("重试"));
     retry.type = "button";
     retry.addEventListener("click", async () => {
-      retry.disabled = true;
+      showThreadCover();
       await loadThread();
-      retry.disabled = false;
       if (panel.classList.contains("open")) await loadPanel();
     });
-    box.append(doodle("offline"), el("h3", "", "连不上 XBot"), el("p", "", "本机的 XBot 服务没有响应。它可能刚升级完还在重启，等几秒再试一次。"), retry);
-    thread.replaceChildren(box);
+    box.append(el("h3", "", "对话加载失败"), el("p", "", "这次没能打开对话记录。可以重试。"), retry);
+    if (cover) cover.replaceChildren(box);
+    else thread.replaceChildren(box);
   }
 
   // Clicking the conversation that is already open keeps its live reply and
@@ -4661,47 +4756,196 @@
       Object.prototype.hasOwnProperty.call(b, key) && sameTranscriptValue(a[key], b[key]));
   }
 
-  async function loadThread() {
-    if (!state.sel || state.streaming || state.peer) return;
+  function paintHistory() {
+    const sel = state.sel, meta = sel?.history;
+    const inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
+    if (inner && sel?.type === "bot" && !state.peer) {
+      if (historyControls.parentNode !== inner) inner.prepend(historyControls);
+      historyControls.hidden = false;
+    } else historyControls.hidden = true;
+    historyButtons.older.hidden = !meta?.has_more_before;
+    historyButtons.newer.hidden = !meta?.has_more_after;
+    historyButtons.latest.hidden = !meta?.has_more_after;
+    for (const key of ["older", "newer", "latest"]) {
+      const btn = historyButtons[key];
+      btn.disabled = !!sel?.historyLoading || !!state.streaming;
+      btn.setAttribute("aria-busy", String(sel?.historyLoading === key));
+      const label = {older:"更早的消息",newer:"更新的消息",latest:"回到最新"}[key];
+      const text = sel?.historyLoading === key ? "加载中…" : label;
+      if (btn.textContent !== text) btn.textContent = text;
+    }
+  }
+
+  async function loadThread(mode = "poll", target = 0) {
+    if (!state.sel || state.streaming || state.peer) return false;
     const selection = state.sel;
+    if (mode === "poll" && (selection.historyLoading || selection.history?.has_more_after)) return false;
+    if (selection.historyLoading && mode !== "around" && mode !== "latest") return false;
     const request = ++state.threadLoad;
+    selection.historyLoading = mode;
+    paintHistory();
     try {
       if (selection.type === "bot") {
-        const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript", {
+        let query = "";
+        if (mode === "older") query = "?before=" + selection.history.next_before;
+        if (mode === "newer") query = "?after=" + selection.history.next_after;
+        if (mode === "around") query = "?around=" + Number(target);
+        const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript" + query, {
           credentials: "same-origin",
-          headers: state.sig && selection.transcriptETag ? { "If-None-Match": selection.transcriptETag } : {},
+          headers: mode === "poll" && state.sig && selection.transcriptETag ? { "If-None-Match": selection.transcriptETag } : {},
         });
-        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
-        if (res.status === 304) return;
+        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
+        if (res.status === 304) return true;
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "request failed");
-        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
-        selection.transcriptETag = res.headers.get("ETag");
-        const messages = data.messages || [];
+        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
+        selection.transcriptETag = !query ? res.headers.get("ETag") : null;
+        let messages = data.messages || [];
+        const old = state.messages;
+        if (mode === "poll" && data.window && old.length && !state.firstRender &&
+            thread.scrollHeight-thread.scrollTop-thread.clientHeight >= 120 && data.window.tail_seq > old.at(-1).seq) {
+          selection.history = {...selection.history, total:data.window.total, has_more_after:true};
+          return true;
+        }
+        if (data.window && old.length && ["older", "newer", "poll"].includes(mode)) {
+          const head = messages[0]?.seq, tail = messages.at(-1)?.seq;
+          if (mode === "poll" && head > old.at(-1).seq + 1) {
+            selection.history = { ...selection.history, total: data.window.total, has_more_after: true };
+            return true;
+          }
+          if (head && tail) {
+            const bySeq = new Map(old.map(m => [m.seq, m]));
+            messages.forEach(m => bySeq.set(m.seq, m));
+            messages = [...bySeq.values()].sort((a,b) => a.seq-b.seq);
+            messages = mode === "older" ? messages.slice(0,300) : messages.slice(-300);
+          }
+        }
+        const box = thread.getBoundingClientRect();
+        const anchor = [...thread.querySelectorAll(".msg[data-transcript-key]")].find(row => row.getBoundingClientRect().bottom > box.top);
+        const anchorTop = anchor?.getBoundingClientRect().top;
+        if (mode === "around" || mode === "latest") state.firstRender = true;
         const changed = applyTranscript(messages, selection.id);
+        revealThread();
+        if ((mode === "older" || mode === "newer") && anchor?.isConnected) thread.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+        selection.history = data.window ? { ...data.window,
+          head_seq: messages[0]?.seq || 0, tail_seq: messages.at(-1)?.seq || 0,
+          next_before: messages[0]?.seq || 0, next_after: messages.at(-1)?.seq || 0,
+          has_more_before: (messages[0]?.seq || 0) > 1,
+          has_more_after: (messages.at(-1)?.seq || 0) < data.window.total,
+        } : null;
+        historyButtons.error.hidden = true;
+        if (subtitleError && subtitle.textContent === "对话加载失败，请重试。") setStatus("");
+        if (mode === "around") {
+          const row = thread.querySelector('.msg[data-seq="' + Number(target) + '"]');
+          if (row) {
+            row.scrollIntoView({block:"center", behavior:"instant"});
+            row.classList.add("history-hit-target");
+            window.setTimeout(() => row.classList.remove("history-hit-target"), 2500);
+          }
+          else {
+            historyButtons.error.textContent = "已定位到命中附近。该记录不在聊天气泡中显示，可查看搜索预览或轨迹。";
+            historyButtons.error.hidden = false;
+          }
+        }
+        if (mode === "older" && !selection.history?.has_more_before) {
+          historyButtons.end.hidden = false;
+          window.setTimeout(() => { historyButtons.end.hidden = true; }, 1800);
+        }
         state.previewAt["b:" + selection.id] = Date.now();
-        if (!changed) return;
         state.sig = "transcript-loaded";
-        state.preview["b:" + selection.id] = previewFromMessages(messages);
-        renderLists();
-        if (state.peer) return;
-        if (panel.classList.contains("open")) await loadPanel();
-        return;
+        if (changed && !selection.history?.has_more_after) state.preview["b:" + selection.id] = previewFromMessages(messages);
+        if (changed) renderLists();
+        if (changed && panel.classList.contains("open")) await loadPanel();
+        return true;
       }
       const data = await api("/api/groups/" + encodeURIComponent(selection.id));
-      if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return;
+      if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
       const messages = data.messages || [];
       const sig = JSON.stringify(messages);
       state.previewAt["g:" + selection.id] = Date.now();
-      if (sig === state.sig) return;
+      if (sig === state.sig) return true;
       state.sig = sig;
       state.preview["g:" + selection.id] = previewFromGroup(messages);
       renderLists();
       renderGroup(messages, data.group && data.group.name);
+      revealThread();
+      return true;
     } catch (e) {
-      if (state.sel === selection && request === state.threadLoad && !state.streaming && !state.pendingSends.length) threadUnavailable();
+      if (state.sel === selection && request === state.threadLoad && !state.streaming && !state.pendingSends.length) {
+        if (!state.messages.length) threadUnavailable();
+        else {
+          historyButtons.error.textContent = "对话加载失败，请重试。";
+          historyButtons.error.hidden = false;
+          setStatus("对话加载失败，请重试。", true);
+        }
+      }
+      return false;
+    } finally {
+      if (state.sel === selection && request === state.threadLoad) {
+        selection.historyLoading = false;
+        paintHistory();
+      }
     }
   }
+
+  historyButtons.older.addEventListener("click", () => loadThread("older"));
+  historyButtons.newer.addEventListener("click", () => loadThread("newer"));
+  historyButtons.latest.addEventListener("click", () => loadThread("latest"));
+  $("chat-search").addEventListener("click", () => {
+    const panel = $("history-search-panel");
+    panel.hidden = !panel.hidden;
+    $("chat-search").setAttribute("aria-expanded", String(!panel.hidden));
+    if (!panel.hidden) $("history-search").focus();
+  });
+  function closeHistorySearch() {
+    $("history-search-panel").hidden = true;
+    $("chat-search").setAttribute("aria-expanded", "false");
+  }
+  $("history-close").addEventListener("click", () => { closeHistorySearch(); $("chat-search").focus(); });
+  document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape" && !$("history-search-panel").hidden) { closeHistorySearch(); $("chat-search").focus(); }
+  });
+  document.addEventListener("pointerdown", ev => {
+    if (!$("history-search-panel").hidden && !ev.target.closest("#history-search-panel, #chat-search")) closeHistorySearch();
+    thread.querySelectorAll(".history-hit-target").forEach(row => row.classList.remove("history-hit-target"));
+  });
+  let lastHistoryTop = 0;
+  thread.addEventListener("scroll", () => {
+    const movingUp = thread.scrollTop < lastHistoryTop;
+    lastHistoryTop = thread.scrollTop;
+    if (movingUp && thread.scrollTop < 24 && !state.sel?.historyLoading && state.sel?.history?.has_more_before && !state.peer) loadThread("older");
+  });
+  let searchRequest = 0;
+  $("history-search").addEventListener("input", () => { ++searchRequest; });
+  $("history-form").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const selection = state.sel, request = ++searchRequest;
+    if (selection?.type !== "bot" || state.peer) return;
+    const results = $("history-results"), q = $("history-search").value.trim();
+    results.replaceChildren(el("p", "muted", q ? "正在搜索…" : "输入关键词搜索聊天历史。"));
+    if (!q) return;
+    try {
+      const data = await api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript/search?q=" + encodeURIComponent(q));
+      if (state.sel !== selection || request !== searchRequest || state.peer) return;
+      results.replaceChildren();
+      for (const hit of data.matches || []) {
+        const btn = el("button", "history-hit search-row");
+        btn.append(el("span", "ex", hit.preview || "查看这条历史记录"));
+        if (hit.time) btn.append(el("time", "tm", new Date(hit.time).toLocaleString()));
+        btn.type = "button";
+        btn.dataset.seq = hit.seq;
+        btn.addEventListener("click", () => {
+          closeHistorySearch();
+          loadThread("around", hit.seq);
+        });
+        results.append(btn);
+      }
+      if (!results.childElementCount) results.append(el("p", "muted", "没有找到相关历史。"));
+      else if (data.matches.length === 20) results.append(el("p", "muted", "显示最相关的 20 条，可增加关键词缩小范围。"));
+    } catch (e) {
+      if (state.sel === selection && request === searchRequest && !state.peer) results.replaceChildren(el("p", "muted", "历史搜索失败，请重试。"));
+    }
+  });
 
   function section(title) {
     const box = el("div", "section");
@@ -6809,7 +7053,7 @@
 
   let warming = false;
   async function warmOne() {
-    if (warming || state.streaming) return;
+    if (!state.sel || warming || state.streaming) return;
     const now = Date.now();
     const jobs = [];
     for (const b of state.bots) jobs.push({ key: "b:" + b.name, kind: "bot", id: b.name });
@@ -7092,7 +7336,16 @@
     // running turn to the background and answers this one at once.
     if ((!text && !images.length && !audios.length) || !state.sel) return;
     const selection = state.sel;
+    if (selection.type === "bot" && selection.history?.has_more_after && !state.streaming) {
+      await loadThread("latest");
+      if (state.sel !== selection) return;
+      // Sending still works if reading history fails. Reconcile at the tail
+      // when the turn settles, instead of losing the already submitted draft.
+      selection.history = null;
+      selection.transcriptETag = null;
+    }
     ++state.threadLoad;
+    selection.historyLoading = false;
     if (!pending) {
       // Resending a failed text from the composer replaces its failed row.
       state.pendingSends = state.pendingSends.filter((row) => {
