@@ -812,7 +812,7 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
   background: transparent; color: var(--x-text); cursor: pointer; outline: none;
   border-radius: var(--x-formula-radius); padding: var(--x-formula-padding);
 }
-.formula-block:hover, .formula-block:focus-visible { background: var(--x-fill-2); }
+.formula-block:hover, .formula-block:focus-visible, .formula-block.is-copied { background: var(--x-fill-2); }
 .formula-body {
   font-family: var(--x-formula-font); font-size: var(--x-formula-fs);
   line-height: var(--x-formula-lh); white-space: pre-wrap; text-align: left; overflow-x: auto;
@@ -827,14 +827,11 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
   transition: opacity var(--dur-press) ease-out;
 }
 .formula-block .copy { pointer-events: none; }
-.formula-block:hover .copy, .formula-block:focus-visible .copy { opacity: 1; }
-.formula-block .copied-tip {
-  position: absolute; right: var(--x-s3); top: 50%; transform: translateY(-50%);
-  font-family: var(--x-font); font-size: var(--x-fs-label); color: var(--x-online);
-  pointer-events: none; visibility: hidden;
-}
-.formula-block.is-copied .copied-tip { visibility: visible; }
-.formula-block.is-copied .copy { opacity: 0; }
+.formula-block:hover .copy, .formula-block:focus-within .copy { opacity: .72; }
+.formula-block .copy .icon-check { display: none; }
+.formula-block.is-copied .copy { opacity: 1; color: var(--x-online); }
+.formula-block.is-copied .copy .icon-copy { display: none; }
+.formula-block.is-copied .copy .icon-check { display: block; }
 .formula-block .copy .icon { width: var(--x-formula-icon-size); height: var(--x-formula-icon-size); }
 @media (prefers-reduced-motion: reduce) { .formula-block .copy { transition: none; } }
 

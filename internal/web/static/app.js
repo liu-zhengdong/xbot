@@ -1690,16 +1690,18 @@
     wrap.setAttribute("aria-label", "点击复制");
     const hint = el("span", "copy");
     hint.setAttribute("aria-hidden", "true");
-    hint.append(icon("copy"));
-    const tip = el("span", "copied-tip", "已复制");
-    tip.setAttribute("role", "status");
-    wrap.append(math || el("div", "formula-body", source), hint, tip);
+    hint.append(icon("copy", "icon-copy"), icon("check", "icon-check"));
+    wrap.append(math || el("div", "formula-body", source), hint);
     let reset;
     const copy = async () => {
       if (!await copyText(source)) return;
       clearTimeout(reset);
       wrap.classList.add("is-copied");
-      reset = setTimeout(() => wrap.classList.remove("is-copied"), 1600);
+      wrap.setAttribute("aria-label", "已复制");
+      reset = setTimeout(() => {
+        wrap.classList.remove("is-copied");
+        wrap.setAttribute("aria-label", "点击复制");
+      }, 1600);
     };
     wrap.addEventListener("click", copy);
     wrap.addEventListener("keydown", ev => {

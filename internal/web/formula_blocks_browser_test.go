@@ -8,6 +8,8 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes('2号小伙子'),'boot');
+ // Virtual-time Chrome does not reliably advance compositor transitions.
+ const style=document.createElement('style');style.textContent='.formula-block .copy { transition: none; }';document.head.append(style);
  let copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{copied=text}}});
  $('#input').textContent='公式';$('#input').dispatchEvent(new Event('input'));$('#composer').requestSubmit();
  await waitFor(()=>fixture.streams.length&&$('#thread .live'),'send');
@@ -31,8 +33,20 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
  }
  first.click();await waitFor(()=>first.classList.contains('is-copied'),'click feedback');
  assert(copied===first.dataset.copy&&!copied.includes('f(x)'),'click must copy only this line');
- assert(getComputedStyle(first.querySelector('.copied-tip')).visibility==='visible','copied feedback hidden');
+ const check=first.querySelector('.icon-check'),copyIcon=first.querySelector('.icon-copy');
+ assert(check&&copyIcon,'copy/check icons missing');
+ for(const theme of ['light','dark']){
+  document.documentElement.dataset.theme=theme;
+  assert(getComputedStyle(check).display!=='none'&&getComputedStyle(copyIcon).display==='none','success must swap copy for check');
+  await waitFor(()=>getComputedStyle(first.querySelector('.copy')).opacity==='1','success slot hidden');
+  const probe=document.createElement('span');probe.style.color='var(--x-online)';document.body.append(probe);
+  assert(getComputedStyle(check).color===getComputedStyle(probe).color,'check must be online green');probe.remove();
+  assert(!first.querySelector('.copied-tip')&&!first.innerText.includes('已复制'),'success must not draw text');
+ }
+ await new Promise(r=>setTimeout(r,1200));
+ assert(first.classList.contains('is-copied'),'feedback cleared too early');
  await waitFor(()=>!first.classList.contains('is-copied'),'feedback not cleared');
+ assert(getComputedStyle(check).display==='none'&&getComputedStyle(copyIcon).display!=='none','copy icon not restored');
  blocks[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
  await waitFor(()=>copied===blocks[1].dataset.copy,'Enter copy');
  blocks[2].dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));

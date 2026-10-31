@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 公式复制同槽对勾（feature/formula-copy-check，本地分支）
+
+- S 档，仅按 handoff [t741u] 调整 formulaBlock：删除 copied-tip，可见成功态为右缘同槽绿 check，约 1.6 秒恢复 copy；aria-label 可报「已复制」。默认透明、hover/focus 与成功态 fill-2，普通 hover 图标透明度 .72、成功 1；不改公式分流、逐行拆块、普通代码或美元公式。
+- 浏览器回归覆盖浅深 copy/check 互换、绿色、无 tip/文字、恢复、整行及键盘复制；最终测试回退旧 JS/CSS 实际红（copy/check icons missing），恢复后 Formula/Math/Markdown 专项三遍通过（10.701s）。虚拟时间驱动关闭该槽 transition，真实 Chrome 截图保留原动效。1440×900 DPR2 浅深 before/after 的 default/hover/copied 在 `~/.xbot-build/ui-shots/formula-copy-check/`，已查看；focus/blur 到下一帧 40 次采样 p95 19.6ms，非真实服务交互或持续帧率指标。
+- gofmt、全仓 go vet、JS 语法、diff check 通过；atlas audit 通过并保留已有告警。最终全仓一遍、web 整包三遍均完整跑完但未绿；公式回归不再失败，其余 kernel/memory/work、时间分隔/供应商/审批/粘贴/人设/提问等与上一条已记录失败同组；全仓另见 OAuth TestLogoutStopsPendingLogin，未逐条重新归因或扩修。日志 `/tmp/formula-check-final-{all,web3}.log`。
+- 级别：本地分支专项 Chrome 通过，未合 main、未 push、未重启日用服务，待设计师复审与用户日用。Not run: 真服务联合旅程、真模型、Linux CI、用户日用、IPC/后台减速性能专项。
+
 ## 2026-10-31 围栏公式块（feature/math-formula-block，本地分支）
 
 - S 档展示修复，按新版 handoff [t740u]：只在 appendFenced 分流，空/text Unicode 等式逐行独立透明公式块；显式 TeX 成功整段一条，失败拆行。整条 click/Enter/Space 复制当前原文，成功提示 1.6 秒；悬停/聚焦软底，icon 仅提示。普通 Python 等代码路径与皮肤、输入草稿、美元公式路径不变。
