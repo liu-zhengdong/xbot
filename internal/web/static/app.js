@@ -5361,25 +5361,63 @@
     }, "删除");
   }
 
-  function confirmDelete(name) {
-    openModal("删除 Bot", [
-      { name: "warn", type: "note", label: "「" + niceName(name) + "」和它的对话会一起删掉，不能恢复。" },
-    ], async () => {
-      try {
-        await api("/api/bots/" + encodeURIComponent(name), { method: "DELETE" });
-      } catch (e) {
-        const msg = e.message || "";
-        if (/primary/i.test(msg)) throw new Error("主 Bot 不能删，先把主 Bot 交给另一个。");
-        if (/last bot/i.test(msg)) throw new Error("最后一个 Bot 不能删。");
-        throw new Error(msg || "删除失败");
+  function openDangerConfirm({ title, lead, onOk }) {
+    const opener = document.activeElement;
+    const root = el("div", "nestlayer"), card = el("div", "nestcard");
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-label", title);
+    const cancel = el("button", "btn sec", "取消"), ok = el("button", "btn danger", "删除");
+    const error = el("p", "sk-error");
+    error.setAttribute("role", "alert");
+    error.hidden = true;
+    const actions = el("div", "nest-actions");
+    actions.append(cancel, ok);
+    card.append(el("h3", "", title), el("p", "lead", lead), error, actions);
+    root.append(card);
+    const close = () => { root.remove(); opener?.focus({ preventScroll: true }); };
+    cancel.onclick = close;
+    ok.onclick = async () => {
+      ok.disabled = cancel.disabled = true;
+      error.hidden = true;
+      try { await onOk(); close(); }
+      catch (e) { error.textContent = e.message || "删除失败"; error.hidden = false; }
+      finally { ok.disabled = cancel.disabled = false; }
+    };
+    root.onkeydown = ev => {
+      if (ev.key === "Escape") {
+        ev.preventDefault(); ev.stopPropagation();
+        if (!ok.disabled) close();
+      } else if (ev.key === "Tab") {
+        ev.preventDefault();
+        (document.activeElement === cancel ? ok : cancel).focus();
       }
-      delete state.preview["b:" + name];
-      if (state.sel && state.sel.type === "bot" && state.sel.id === name) state.sel = null;
-      await refreshLists();
-      const home = state.bots.find((b) => b.primary) || state.bots[0];
-      if (home) await selectBot(home.name);
-      else paintPanel();
-    }, "删除");
+    };
+    document.body.append(root);
+    cancel.focus();
+  }
+
+  function confirmDelete(name) {
+    openDangerConfirm({
+      title: "删除 " + niceName(name) + "？",
+      lead: "删掉后，和它的对话也会一起没了，不能恢复。",
+      onOk: async () => {
+        try {
+          await api("/api/bots/" + encodeURIComponent(name), { method: "DELETE" });
+        } catch (e) {
+          const msg = e.message || "";
+          if (/primary/i.test(msg)) throw new Error("主 Bot 不能删，先把主 Bot 交给另一个。");
+          if (/last bot/i.test(msg)) throw new Error("最后一个 Bot 不能删。");
+          throw new Error(msg || "删除失败");
+        }
+        delete state.preview["b:" + name];
+        if (state.sel && state.sel.type === "bot" && state.sel.id === name) state.sel = null;
+        await refreshLists();
+        const home = state.bots.find((b) => b.primary) || state.bots[0];
+        if (home) await selectBot(home.name);
+        else paintPanel();
+      },
+    });
   }
 
   // The fixed head has a name above its identity line. Only the body scrolls.
@@ -7585,7 +7623,7 @@
     $("modal-title").textContent = title;
     $("modal-ok").hidden = false;
     $("modal-ok").textContent = okLabel || "创建";
-    $("modal-ok").className = okLabel === "删除" ? (title === "删除 Bot" ? "text-btn danger" : "secondary") : "primary";
+    $("modal-ok").className = okLabel === "删除" ? "secondary" : "primary";
     $("modal-ok").disabled = false;
     $("modal-cancel").textContent = "取消";
     $("modal-cancel").hidden = false;

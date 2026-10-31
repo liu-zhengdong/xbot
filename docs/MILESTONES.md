@@ -7,6 +7,13 @@
 - gofmt 无输出、go vet 全仓、diff check 通过；atlas audit 跑过，保留已有告警。全仓测试完整跑完未绿：kernel 长轮/月日志、memory 月日志、work description 和 web CLI/时间分隔/供应商/审批/粘贴静态 UI/人设/提问等失败（同日既有里程碑已记录此组失败），未扩修。改动包三遍：tools 通过（333.160s），web 出现同组失败后 600s 超时；paste 专项另跑三遍全绿。日志 `/tmp/paste-{red,focused,all,repeat,vet,gofmt,atlas}.log`。
 - 级别：本地分支已实现、paste HTTP 回归通过，未合 main、未 push，不宣称整体验收或用户日用通过。Not run: 本机浏览器手动粘贴、真模型、Linux CI、用户日用、交互 p95/IPC/后台减速专项。
 
+## 2026-10-31 删除 Bot 确认（feature/delete-bot-confirm，本地分支）
+
+- S 档展示修复：仅删 Bot 确认改用技能同族 nestcard；移除通用 modal 的删 Bot 文字危险钮特判。点名标题、一句灰字 lead、取消与实心删除；保留原删除接口、主 Bot／最后一只的人话拦截和删后回主 Bot，不改其它更多菜单项。
+- `TestDeleteBotConfirmBrowser` 浅深各三遍通过，覆盖实心按钮、无正文灰框／身份行、取消、Esc、焦点循环、两种拒绝及删除成功刷新；回退旧 app.js 后因缺少 nestcard 失败。Chrome 1440×900 DPR 2 前后与 hover 截图：`~/.xbot-build/ui-shots/delete-bot-confirm/`。20 次打开到下一帧 p95：浅 16.6ms、深 17.5ms（本机 scripted HTTP 页面，非真模型）。
+- gofmt、go vet、diff check 通过；atlas audit 仅已有告警。全仓一遍未绿：kernel 两条、memory 月容量、OAuth 端口占用、work description 以及 web 十条失败；web 十条已回退旧 app.js 定向复现，日志 `/tmp/delete-bot-{tests,baseline-web}.log`。web 整包三遍未绿并在总计 10 分钟时超时（当时运行 `TestTranscriptWindowHTTP`）；另见 CLI event queue、设备配对、语音失败，未扩修或逐条归因。日志 `/tmp/delete-bot-repeat.log`。
+- 级别：本地分支实现，浏览器 scripted 删除路径通过；未合 main、未 push，待设计师复审和用户日用。Not run: 真服务删除冒烟、Linux CI、用户日用。
+
 ## 2026-10-31 记忆提醒（feature/memory-reminder，本地分支）
 
 - L 档，按用户指定设计，仅在 `reminderKindsFor` 经 `Channel.Register(Kind)` 接容量与轻量沉淀两条 reminder；不动 promptinject/envprompt、写入守卫、UI 或额外模型轮。容量读 Bot/当前人物 memory.md 实际大小，85% 起劝整理，已满明确提示，附当前/上限字节；两种各冷却 10 分钟，沉淀限有记忆存储的 web/terminal 人物对话。
