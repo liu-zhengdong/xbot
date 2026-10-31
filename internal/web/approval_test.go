@@ -22,6 +22,8 @@ import (
 	"xbot/internal/provider"
 )
 
+var shellToolNames = map[string]bool{"sh": true, "bash": true, "zsh": true}
+
 func TestWebApprovalAllowAndDeny(t *testing.T) {
 	// ask mode makes every shell command need the owner, so this test can use a
 	// harmless mkdir to exercise the approval card on the web.
@@ -66,7 +68,8 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	if err := json.Unmarshal([]byte(ev.data), &card); err != nil {
 		t.Fatal(err)
 	}
-	if card.ID == "" || card.Tool != "shell" || !strings.Contains(card.Summary, "mkdir") {
+	// 工具名跟默认 shell 走，常见 sh / bash / zsh，别写死成 shell。
+	if card.ID == "" || !shellToolNames[card.Tool] || !strings.Contains(card.Summary, "mkdir") {
 		t.Fatalf("card %+v", card)
 	}
 	if card.Title != "运行命令" || card.Subtitle != "在本机上执行" {
@@ -123,7 +126,7 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	if len(decisions) != 2 || decisions[0].State != bot.DecisionAllowed || decisions[1].State != bot.DecisionDeclined {
 		t.Fatalf("decisions %+v", decisions)
 	}
-	if decisions[0].Tool != "shell" || decisions[1].Tool != "shell" || decisions[0].Time.IsZero() {
+	if !shellToolNames[decisions[0].Tool] || !shellToolNames[decisions[1].Tool] || decisions[0].Time.IsZero() {
 		t.Fatalf("decisions %+v", decisions)
 	}
 }
@@ -282,6 +285,8 @@ func postSSE(t *testing.T, base string, cookie *http.Cookie, text string) <-chan
 		t.Fatalf("message %d %s", res.StatusCode, raw)
 	}
 	ch := make(chan sseEvent, 32)
+	// 测试中途 Fatal 时未必会把流读完，先挂个清理，免得 httptest.Server.Close 卡住。
+	t.Cleanup(func() { res.Body.Close() })
 	go func() {
 		defer close(ch)
 		defer res.Body.Close()
