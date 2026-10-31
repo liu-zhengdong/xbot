@@ -30,13 +30,13 @@ type Vendor struct {
 // ExistingBrands are the vendors the grid already had; their defaults live
 // elsewhere and are not changed by the vendor table.
 var existingBrands = []struct {
-	Brand, Title string
-	Hosts        []string
+	Brand, Title, Protocol string
+	Hosts                  []string
 }{
-	{"deepseek", "DeepSeek", []string{"api.deepseek.com"}},
-	{"openai", "OpenAI", []string{"api.openai.com"}},
-	{"anthropic", "Anthropic", []string{"api.anthropic.com"}},
-	{"openrouter", "OpenRouter", []string{"openrouter.ai"}},
+	{"deepseek", "DeepSeek", ChatCompletions, []string{"api.deepseek.com"}},
+	{"openai", "OpenAI", Responses, []string{"api.openai.com"}},
+	{"anthropic", "Anthropic", AnthropicMessages, []string{"api.anthropic.com"}},
+	{"openrouter", "OpenRouter", ChatCompletions, []string{"openrouter.ai"}},
 }
 
 func specs(context int, names ...string) []ModelSpec {
@@ -254,4 +254,45 @@ func AddVendor(root, brand string) (Provider, error) {
 		return Save(root, f)
 	})
 	return result, err
+}
+
+// InferProvider uses the existing host table for custom-entry defaults only.
+func InferProvider(base string) (brand, title, protocol string) {
+	brand = BrandForBase(base)
+	for _, b := range existingBrands {
+		if b.Brand == brand {
+			return brand, b.Title, b.Protocol
+		}
+	}
+	if v, ok := VendorFor(brand); ok {
+		return brand, v.Title, v.Protocol
+	}
+	return "", "自定义供应商", ChatCompletions
+}
+
+// IsCustomProvider also recognizes existing CLI entries without migrating them.
+func IsCustomProvider(p Provider) bool {
+	if p.Custom {
+		return true
+	}
+	if p.OAuth != "" {
+		return false
+	}
+	if v, ok := VendorFor(BrandForBase(p.BaseURL)); ok {
+		return !vendorOwns(v, p) || (p.Name != v.Brand && !(v.Brand == "xai" && (p.Name == "xai-key" || strings.HasPrefix(p.Name, "xai-key-"))))
+	}
+	for _, b := range existingBrands {
+		if p.Name == b.Brand && BrandForBase(p.BaseURL) == b.Brand {
+			return false
+		}
+	}
+	return true
+}
+
+func ProviderTitle(p Provider) string {
+	if p.DisplayName != "" {
+		return p.DisplayName
+	}
+	_, title, _ := InferProvider(p.BaseURL)
+	return title
 }

@@ -93,7 +93,7 @@ func ProviderModels(ctx context.Context, root, name string) ([]ModelInfo, error)
 			if spec.Context <= 0 {
 				spec.Context = compact.DefaultWindow
 			}
-			models = append(models, ModelInfo{ID: ModelID(name, id), Provider: name, Model: id, Context: spec.Context, Protocol: p.WireProtocol(), Vision: spec.SeesImages(), HostedSearch: spec.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), spec) == nil,
+			models = append(models, ModelInfo{ID: ModelID(name, id), Provider: name, Model: id, Custom: IsCustomProvider(p), Title: ProviderTitle(p), Context: spec.Context, Protocol: p.WireProtocol(), Vision: spec.SeesImages(), HostedSearch: spec.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), spec) == nil,
 				HostedImageGen: spec.HasHostedImageGen(p.WireProtocol()), ImageGenModel: spec.ImageGenModel, Registered: registered})
 		}
 		if !page.HasMore {
@@ -135,10 +135,11 @@ func catalogEndpoint(root, name string) (Provider, ModelConfig, error) {
 		return Provider{}, ModelConfig{}, errors.New("供应商尚未配置")
 	}
 	p := f.Providers[i]
-	if len(p.Models) == 0 {
-		return Provider{}, ModelConfig{}, errors.New("供应商配置缺少模型")
+	spec := ModelSpec{}
+	if len(p.Models) > 0 {
+		spec = p.Models[0]
 	}
-	endpoint, _, err := Resolve(root, name, p.Models[0].Name, Getenv)
+	endpoint, _, err := resolveProvider(root, p, spec, Getenv)
 	if err != nil || strings.TrimSpace(endpoint.APIKey) == "" {
 		if p.OAuth == "chatgpt" {
 			return Provider{}, ModelConfig{}, errors.New("请重新登录 ChatGPT")

@@ -37,8 +37,10 @@ type ModelInfo struct {
 	Registered bool `json:"registered"`
 	// Brand and OAuth let the UI show the vendor's display name, not the
 	// configured provider name.
-	Brand string `json:"brand,omitempty"`
-	OAuth string `json:"oauth,omitempty"`
+	Custom bool   `json:"custom,omitempty"`
+	Title  string `json:"title,omitempty"`
+	Brand  string `json:"brand,omitempty"`
+	OAuth  string `json:"oauth,omitempty"`
 }
 
 // CertifiedPath is the list under the data root.
@@ -151,7 +153,7 @@ func VisibleModels(root string, all bool) ([]ModelInfo, error) {
 				Protocol: p.WireProtocol(), Vision: m.SeesImages(), HostedSearch: m.HasHostedSearch(p.WireProtocol()), Available: SupportedBinding(p.WireProtocol(), m) == nil,
 				HostedImageGen: m.HasHostedImageGen(p.WireProtocol()), ImageGenModel: m.ImageGenModel, Registered: true,
 				ID: id, Provider: p.Name, Model: m.Name, Context: m.Context, Certified: ok,
-				Brand: BrandForBase(p.BaseURL), OAuth: p.OAuth,
+				Custom: IsCustomProvider(p), Title: ProviderTitle(p), Brand: BrandForBase(p.BaseURL), OAuth: p.OAuth,
 			})
 		}
 	}

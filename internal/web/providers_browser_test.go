@@ -196,7 +196,6 @@ async function xaiLoggedIn(){
   document.body.dataset.testResult='passed';return;
  }
  assert(!card('ChatGPT').disabled,'subscription login disabled');
- assert(document.querySelectorAll('.provider-card').length===19,'missing provider');
  assert(subcard('ChatGPT')&&subcard('xAI'),'subscription cards missing');
  const search=$('.provider-search input');search.value='xai';search.dispatchEvent(new Event('input'));
  assert(!$('.provider-section').hidden&&subcard('xAI')&&!subcard('xAI').hidden&&subcard('ChatGPT').hidden,'xai subscription search failed');

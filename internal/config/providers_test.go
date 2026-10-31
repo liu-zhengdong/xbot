@@ -161,8 +161,8 @@ func TestFromEnvDefaultIsDeepSeekFlash(t *testing.T) {
 	}
 }
 
-// The provider key goes wherever base_url says, so a base_url that would leak
-// it is refused on add and again on resolve, for a hand-edited file (#34).
+// Explicit provider endpoints permit HTTP (ADR 0037), while malformed URLs
+// remain invalid on add and on resolve of a hand-edited file.
 func TestProviderBaseURLChecked(t *testing.T) {
 	for base, ok := range map[string]bool{
 		"https://api.deepseek.com/v1":        true,
@@ -171,8 +171,8 @@ func TestProviderBaseURLChecked(t *testing.T) {
 		"http://localhost:11434/v1":          true,
 		"http://192.168.1.20/v1":             true,
 		"http://[::1]:8080/v1":               true,
-		"http://gateway.example/v1":          false,
-		"http://8.8.8.8/v1":                  false,
+		"http://gateway.example/v1":          true,
+		"http://8.8.8.8/v1":                  true,
 		"https://user:pw@gateway.example/v1": false,
 		"https://gateway.example/v1?k=1":     false,
 		"https://gateway.example/v1#x":       false,
@@ -185,12 +185,12 @@ func TestProviderBaseURLChecked(t *testing.T) {
 		}
 	}
 	root := t.TempDir()
-	if err := os.WriteFile(Path(root), []byte(`{"providers":[{"name":"p","base_url":"http://evil.example/v1","api_key_env":"P_KEY","models":[{"name":"m","context":1}]}]}`), 0600); err != nil {
+	if err := os.WriteFile(Path(root), []byte(`{"providers":[{"name":"p","base_url":"ftp://evil.example/v1","api_key_env":"P_KEY","models":[{"name":"m","context":1}]}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err := Resolve(root, "p", "m", func(string) string { return "key-value" })
-	if err == nil || !strings.Contains(err.Error(), "https") {
-		t.Fatalf("resolve of a hand-edited http base_url: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "http") {
+		t.Fatalf("resolve of a hand-edited invalid base_url: %v", err)
 	}
 }
 

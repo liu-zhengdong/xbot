@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/custom-provider (real binary + Chrome/scripted); 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 网页界面
 
@@ -67,6 +67,12 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 ### 人设卡设置
 
 「人设卡」是用户整个卡库（`static/persona-cards.js`、`persona-cards.css`，壳和列表复用技能设置）。一层：标题行只有「人设卡」；导语提示「内置种子已升级；你改过的不会被盖」；导语下、列表顶外缘一行左侧是选中的「全部」分段项，右侧是 `[搜索人设卡][＋][导入]`（窄屏可折行），「＋」是纯图标的新建，「导入」是唯一主按钮；空库不显示工具条；每行卡名、正文首行预览和 chevron，不显示 Bot 数或开关；搜索输入时先按卡名加正文前 1 KiB 即时过滤，再以服务端 `?q=` 的全文结果为准（旧回答迟到会丢掉）；选用层同样。选用层归资料抽屉：抽屉关闭或重开时 `closePick` 让还在加载的选用层作废，打开或加载期间再点不重复打开。库为空时隐藏搜索和工具条，空态中心放「写一张」（次）和「导入」（主），说明导入总是新建。无匹配显示「没有匹配的人设卡」和「清除搜索」。二层：返回「人设卡」，卡名可改，一整块正文，底栏左边次要「删除」、右边主「保存」；不在这里按 Bot 开关。删除在有 Bot 在用时说「N 个 Bot 还在用它」，确认后解绑再删。「导入 Markdown」嵌层选一份 .md（最多 256 KiB），同名时问「库里已有同名人设卡」，「仍然导入」新建带编号的一张，原来那张不变。卡正文进页面只用 textContent。
+
+### 自定义供应商设置
+
+模型与供应商的 API 网格末格为透明 ghost「添加自定义」。详情在现有扁平面内填可选展示名、Base URL 与脱敏密钥；地址失焦或保存按后端 host 表给协议芯片，「更改」展开三协议选项。HTTP 仅灰字建议 HTTPS；非法 URL 和无已存密钥时的空输入阻止保存。试态 icon 明确标为「保存并测试密钥」，先落配置再读目录，成功才显示通过；普通保存也在成功后拉模型。空/失败目录可重试或手动添加 id，模型勾选直接登记/取消；删除在底栏危险入口二次说明密钥、模型与 Bot 换绑影响。
+
+自定义卡用通用线标、右缘配置点和中性 fill-2 选中。主标题优先用户展示名、其次 host 对应人话名、最后「自定义供应商」，不露内部配置 id。匹配内置 host 的自定义卡仍单独存在，且不吞内置格。绑定侧复用实时目录及显式手动模型，供应商标题读取同一元数据。注册与密钥规则见 [供应商](providers.md)，真入口冒烟为 `e2e/smoke/custom_provider_test.go`，辅助 `internal/web/testdata/custom-provider.cjs`；用户日用尚待验收。
 
 ### 图片生成设置
 

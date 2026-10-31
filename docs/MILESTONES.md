@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 设置自定义供应商（feature/custom-provider，本地分支）
+
+- L 档，沿 `config.Add / Remove / Resolve`、`providers.json` 文件锁与现有 `SaveEnvKey` / held 装配。Add 允许先存零模型端点；custom/display_name 是原表内元数据，host 匹配内置仍是独立配置和密钥，CLI add 调用及旧协议默认规则保留。host 默认来自既有 Brands/Vendors，显式保存协议；HTTP 灰字警告可存，决定见 ADR 0037。
+- 设置网格末 ghost 入口、扁平表单、失焦推断芯片和展开三态、保存后目录/勾选、融合试态 icon、底栏危险删除。主标题人话、通用 glyph、fill-2；模型目录失败可手动登记，并在绑定浮层明确显示已保存模型及目录错误/重试。删除仅清独占 env/held，保留其他条目共享的凭据。未改 OAuth、搜索、生图路径。
+- 独立作者的 `internal/web/custom_provider_test.go` 在原 HEAD 归档先红（缺路由/元数据），新实现三遍通过；覆盖真实 API/config 注册后可读可绑、无模型保存、host 同厂独立、编辑删除、共享密钥、URL/key 校验和模型勾选。旧供应商浏览器中的固定卡数断言随新增入口删除，其余行为回归保留。
+- `e2e/smoke/custom_provider_test.go` + `internal/web/testdata/custom-provider.cjs` 用真 serve 二进制、实际页面、Chrome、scripted /models 连续三遍通过：从 account 设置入口到注册、拉目录、改协议/地址/名称、测试 icon、绑定 runtime 模型、目录失败手动模型绑定、危险删除。最终复跑另通过既有 `TestThinkingEffortCLI`，验证原 CLI provider add 的实参路径。浅深截图在 `~/.xbot-build/custom-provider/screenshots/`；选中失焦后 fill-2、透明 border、outline none、点击命中，绿点距右 17px。每色 25 次目录 HTTP 的最终复跑 p95 为浅色 1.298ms、深色 0.633ms，三轮最高 3.281ms；不是实际厂商/模型时延或日用性能验收。无新增轮询或动画。
+- gofmt、JS 语法、go vet、diff 检查通过；config 整包三遍、web 本批及既有供应商/绑定/OAuth/首启/表面定向三遍通过。已跑全仓一遍和改动包三遍，但 web 整包被旧静态测试 panic 中断；全仓未绿的长轮 19 folds/40 steps、MemoryFileLogGuard、memory 月容量、web 头像/审批静态断言、work description 均在原 HEAD `31594dff` 干净归档复现。旧模拟 DOM 的 constructor 标题断言也在原 HEAD 单独复现；不改这些无关失败。日志在 `~/.xbot-build/custom-provider/checks/`。atlas audit 退出 0，保留既有告警。
+- 级别：本条真入口端到端通过（scripted），未合 main、未 push、未调用真实供应商/模型、未用户日用验收。实现设计已吸收进 atlas；未迁入 guard。
+
 ## 2026-10-31 聊天气泡纯渲染拆分（feature/bubble-split，本地分支）
 
 - S 档单点渲染修复：`userBubble`、`botBubble`、`optimisticMessage` 共用 `appendMessageBubbles`。每个 audio id、每张图片、每个空行分隔段落各成一泡；单换行同泡，代码围栏和块级公式内部空行保留，引用只挂列首。复用 `.bubble-col` 的 gap，没有改 CSS、transcript／存盘、录音逻辑或 `spokenLines` 归组；大图仍可在同条消息的图片间切换。

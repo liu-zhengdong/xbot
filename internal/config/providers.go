@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,12 +24,14 @@ var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Provider is one protocol endpoint. The key is the name of an environment variable.
 type Provider struct {
-	Name      string      `json:"name"`
-	Protocol  string      `json:"protocol,omitempty"`
-	BaseURL   string      `json:"base_url"`
-	APIKeyEnv string      `json:"api_key_env"`
-	OAuth     string      `json:"oauth,omitempty"`
-	Models    []ModelSpec `json:"models"`
+	Name        string      `json:"name"`
+	DisplayName string      `json:"display_name,omitempty"`
+	Custom      bool        `json:"custom,omitempty"`
+	Protocol    string      `json:"protocol,omitempty"`
+	BaseURL     string      `json:"base_url"`
+	APIKeyEnv   string      `json:"api_key_env"`
+	OAuth       string      `json:"oauth,omitempty"`
+	Models      []ModelSpec `json:"models"`
 }
 
 // ModelSpec is one model id and its context length in tokens.
@@ -146,17 +147,20 @@ func Save(root string, f File) error {
 	return fsutil.WriteAtomic(Path(root), raw, 0600)
 }
 
-// Add upserts a provider and one model. A second add with the same model updates its context length.
-func Add(root string, p Provider, model ModelSpec) error {
-	return fsutil.WithLock(Path(root)+".lock", func() error { return add(root, p, model) })
+// Add upserts an endpoint and optional models. With no models it registers an
+// endpoint for catalog discovery; existing models and capabilities are kept.
+func Add(root string, p Provider, models ...ModelSpec) error {
+	return fsutil.WithLock(Path(root)+".lock", func() error { return add(root, p, models...) })
 }
 
-func add(root string, p Provider, model ModelSpec) error {
+func add(root string, p Provider, models ...ModelSpec) error {
 	if !nameOK(p.Name) {
 		return fmt.Errorf("providers: bad name %q", p.Name)
 	}
-	if err := validateModel(model); err != nil {
-		return err
+	for _, model := range models {
+		if err := validateModel(model); err != nil {
+			return err
+		}
 	}
 	f, err := Load(root)
 	if err != nil {
@@ -168,11 +172,15 @@ func add(root string, p Provider, model ModelSpec) error {
 			return err
 		}
 		p.BaseURL = strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
-		p.Models = []ModelSpec{model}
+		p.Models = append([]ModelSpec{}, models...)
 		f.Providers = append(f.Providers, p)
 		return Save(root, f)
 	}
 	cur := f.Providers[i]
+	if p.Custom {
+		cur.Custom = true
+		cur.DisplayName = p.DisplayName
+	}
 	if p.Protocol != "" {
 		if err := ValidProtocol(p.Protocol); err != nil {
 			return err
@@ -193,40 +201,42 @@ func add(root string, p Provider, model ModelSpec) error {
 		cur.OAuth = p.OAuth
 		cur.APIKeyEnv = ""
 	}
-	replaced := false
-	for n := range cur.Models {
-		if cur.Models[n].Name == model.Name {
-			// A context-length update leaves an explicit todo switch in place
-			// unless the caller set one.
-			if model.Todo == nil {
-				model.Todo = cur.Models[n].Todo
+	for _, model := range models {
+		replaced := false
+		for n := range cur.Models {
+			if cur.Models[n].Name == model.Name {
+				// A context-length update leaves an explicit todo switch in place
+				// unless the caller set one.
+				if model.Todo == nil {
+					model.Todo = cur.Models[n].Todo
+				}
+				if model.TodoSteps == 0 {
+					model.TodoSteps = cur.Models[n].TodoSteps
+				}
+				if model.Thinking == "" {
+					model.Thinking = cur.Models[n].Thinking
+				}
+				if model.ReasoningEffort == "" {
+					model.ReasoningEffort = cur.Models[n].ReasoningEffort
+				}
+				if model.Vision == nil {
+					model.Vision = cur.Models[n].Vision
+				}
+				if model.HostedSearch == nil {
+					model.HostedSearch = cur.Models[n].HostedSearch
+				}
+				if model.HostedImageGen == nil {
+					model.HostedImageGen = cur.Models[n].HostedImageGen
+					model.ImageGenModel = cur.Models[n].ImageGenModel
+				}
+				cur.Models[n] = model
+				replaced = true
+				break
 			}
-			if model.TodoSteps == 0 {
-				model.TodoSteps = cur.Models[n].TodoSteps
-			}
-			if model.Thinking == "" {
-				model.Thinking = cur.Models[n].Thinking
-			}
-			if model.ReasoningEffort == "" {
-				model.ReasoningEffort = cur.Models[n].ReasoningEffort
-			}
-			if model.Vision == nil {
-				model.Vision = cur.Models[n].Vision
-			}
-			if model.HostedSearch == nil {
-				model.HostedSearch = cur.Models[n].HostedSearch
-			}
-			if model.HostedImageGen == nil {
-				model.HostedImageGen = cur.Models[n].HostedImageGen
-				model.ImageGenModel = cur.Models[n].ImageGenModel
-			}
-			cur.Models[n] = model
-			replaced = true
-			break
 		}
-	}
-	if !replaced {
-		cur.Models = append(cur.Models, model)
+		if !replaced {
+			cur.Models = append(cur.Models, model)
+		}
 	}
 	f.Providers[i] = cur
 	return Save(root, f)
@@ -267,7 +277,7 @@ func remove(root, name, model string) error {
 	if !found {
 		return fmt.Errorf("providers: model %q not found on %q", model, name)
 	}
-	if len(next) == 0 {
+	if len(next) == 0 && !IsCustomProvider(cur) {
 		f.Providers = append(f.Providers[:i], f.Providers[i+1:]...)
 	} else {
 		cur.Models = next
@@ -387,6 +397,10 @@ func Resolve(root, providerName, modelName string, getenv func(string) string) (
 	if err != nil {
 		return ModelConfig{}, 0, err
 	}
+	return resolveProvider(root, p, model, getenv)
+}
+
+func resolveProvider(root string, p Provider, model ModelSpec, getenv func(string) string) (ModelConfig, int, error) {
 	protocol := p.WireProtocol()
 	if err := SupportedBinding(protocol, model); err != nil {
 		return ModelConfig{}, 0, err
@@ -469,14 +483,13 @@ func validateProvider(p Provider, modelRequired bool) error {
 	return nil
 }
 
-// checkProviderBase rejects a base_url that would leak the provider key: not
-// an absolute http(s) URL, user info, a query or fragment, or plain http to a
-// host that is not this machine or a private address.
+// checkProviderBase accepts an explicit http(s) endpoint without credentials,
+// query or fragment. Settings warn about HTTP but permit it (ADR 0037).
 func checkProviderBase(base string) error {
 	base = strings.TrimSpace(base)
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" || u.Hostname() == "" {
-		return fmt.Errorf("providers: base_url %q is not an absolute URL", base)
+		return errors.New("providers: Base URL 必须是完整的 http(s) 地址")
 	}
 	if u.User != nil {
 		return errors.New("providers: base_url must not include user info")
@@ -485,29 +498,11 @@ func checkProviderBase(base string) error {
 		return errors.New("providers: base_url must not include a query or fragment")
 	}
 	switch strings.ToLower(u.Scheme) {
-	case "https":
+	case "https", "http":
 		return nil
-	case "http":
-		if localHost(u.Hostname()) {
-			return nil
-		}
-		return fmt.Errorf("providers: base_url must be https for %s; plain http is only for this machine or a private address", u.Hostname())
 	default:
 		return fmt.Errorf("providers: base_url must be http or https, got %q", u.Scheme)
 	}
-}
-
-// localHost is localhost, or a loopback or private IP literal.
-func localHost(host string) bool {
-	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
-		return true
-	}
-	addr, err := netip.ParseAddr(host)
-	if err != nil {
-		return false
-	}
-	addr = addr.Unmap()
-	return addr.IsLoopback() || addr.IsPrivate()
 }
 
 func validateModel(m ModelSpec) error {

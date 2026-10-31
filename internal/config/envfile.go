@@ -54,3 +54,24 @@ func saveEnvKey(root, name, value string) error {
 	}
 	return fsutil.WriteAtomic(EnvFile(root), []byte(strings.Join(out, "\n")+"\n"), 0600)
 }
+
+// RemoveEnvKey removes only the named credential, preserving unrelated lines.
+func RemoveEnvKey(root, name string) error {
+	return fsutil.WithLock(EnvFile(root)+".lock", func() error {
+		raw, err := os.ReadFile(EnvFile(root))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var out []string
+		for _, line := range strings.Split(strings.TrimSuffix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n"), "\n") {
+			key, _, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(line, "\ufeff")), "export ")), "=")
+			if !ok || strings.TrimSpace(key) != name {
+				out = append(out, line)
+			}
+		}
+		return fsutil.WriteAtomic(EnvFile(root), []byte(strings.Join(out, "\n")+"\n"), 0600)
+	})
+}

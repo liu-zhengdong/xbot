@@ -55,6 +55,10 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type item struct {
+		Custom        bool               `json:"custom"`
+		DisplayName   string             `json:"display_name,omitempty"`
+		Title         string             `json:"title"`
+		BaseURL       string             `json:"base_url"`
 		Brand         string             `json:"brand,omitempty"`
 		Name          string             `json:"name"`
 		Protocol      string             `json:"protocol"`
@@ -66,7 +70,7 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []item{}
 	for _, p := range f.Providers {
-		row := item{Brand: config.BrandForBase(p.BaseURL), Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
+		row := item{Custom: config.IsCustomProvider(p), DisplayName: p.DisplayName, Title: config.ProviderTitle(p), BaseURL: p.BaseURL, Brand: config.BrandForBase(p.BaseURL), Name: p.Name, Protocol: p.WireProtocol(), KeyEnv: p.APIKeyEnv, KeyConfigured: strings.TrimSpace(config.Getenv(p.APIKeyEnv)) != "", Models: []config.ModelInfo{}}
 		if p.OAuth != "" {
 			row.OAuth = p.OAuth
 			backend, err := config.OAuthVault(s.Root)

@@ -483,6 +483,14 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 `GET /api/providers` 返回 `{providers:[{name,protocol,api_key_env,key_configured,models}]}`。只返回环境变量名和配置状态，不返回密钥值。模型项含 `model`、`context`、`vision`、`hosted_web_search`、`available`；`available` 表示协议可执行。每项都是 `providers.json` 里的条目（DeepSeek 是其中名为 `deepseek` 的一项），没有空名的默认端点；`brand` 按 `base_url` 主机名识别，仅供图标和名称展示；未知窗口为 0。`GET /api/models` 也带协议和能力字段，原认证过滤不变。
 
+`GET /api/providers` 的供应商项另含 `base_url`、`custom`、`display_name?`、人话 `title`；`custom` 包括设置创建和原 CLI 非内置条目。模型项带同源 `custom/title` 供绑定摘要显示。
+
+- `GET /api/providers/infer?base_url=<地址>`：需登录，按既有 host 表返回 `{brand,title,protocol}`，未知为 `自定义供应商` / `chat_completions`；只推断，不注册、不请求上游。
+- `POST /api/providers/custom`：需登录，接收 `{base_url,key,display_name?,protocol?}`；创建独立供应商（即使 host 匹配内置），返回 `{provider:<稳定配置名>}`，不预取模型。未指定协议则按 host 推断；非法 URL/协议、空密钥为 400；HTTP 可保存。密钥只进入既有 env/held，JSON 配置仅记变量名。
+- `PUT /api/providers/custom/{name}/config`：同上，编辑自定义项；空 key 保留已存值，空 display_name 清除展示名，省略/空 protocol 按新地址推断。配置名保持不变；非自定义/未知项 404。
+- `DELETE /api/providers/custom/{name}`：删除自定义项和独占密钥；共享密钥保留给其他供应商，Bot 绑定不改写，需重新换绑。
+- `PUT /api/providers/custom/{name}/models`：接收 `{model,enabled,context?}`；经 config.Add/Remove 登记/取消模型，未知窗口为 256000；最后模型取消仍保留端点，手动登记后可沿原绑定 API 选用。以上 API 都需登录，401 表示未登录。
+
 `GET /api/providers/models?provider=<配置名>`（需登录）实时拉取该供应商模型名单；配置名必须是表里的项；ChatGPT 订阅按保存的配置名读取 SIWC 账号目录（`models[].slug`、`visibility: list`），凭证由既有 vault 注入；未登录或凭证失效时返回 422 并引导重新登录。返回 `{models:[...]}`，字段同模型能力项。名单来自厂商，能力来自现有 ModelSpec 规则；ChatGPT 未配置模型的窗口取账号目录，其余未知窗口为仓内默认 256000。未配密钥、网络失败、非法或超限名单返回 422 短错误；API 供应商成功但无模型时返回空数组；ChatGPT 账号无可用模型时返回 422。该读取不会增加模型条目、认证或绑定；有效 context_length 元数据会刷新已登记模型的窗口，规则见 [供应商](atlas/providers.md)。
 
 `PUT /api/bots/{name}/binding` 接收 `{provider,model}`，成功返回保存的二元绑定。二者为空时清除绑定。模型尚未登记时，先实时拉一次该供应商名单，名单里有且可用就登记（名称与窗口）后再绑定；更换模型浮层按供应商逐个读 `/api/providers/models`，某家失败只在该组显示「模型名单暂时拉不下来」与重试。名单里也没有的模型、协议不支持或缺少密钥为 400；Bot 正在工作为 409。换到更小窗口时先由内核预检并按需压缩；仍超新 H、无法安全压缩或摘要失败为 409（「上下文仍超新窗口，需先删分支/导出」），旧绑定保留，已成功保存的摘要块继续有效。成功后下一轮重建内核，不重写 transcript。
