@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 网页界面
 
@@ -25,7 +25,7 @@ Bot 信息面板的收件箱位于上下文右侧：只读展示该 Bot 的入�
 
 Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交语音文件；持按松手发送，滑出或取消区丢弃，Esc、切 Bot 和离页释放麦克风。文字草稿、待发图片不随录音发送。录音失败用短提示；上传失败保留录音供重试，消息发送失败保留语音 id 供重试。
 
-双方气泡复用原有底色，`audios` 竖叠在同泡文字和图片之前。原生音频播放器只由点击播放，同线程互斥；取 metadata 显示实际时长，未知时不画零秒。失败显示「语音加载失败 / 重试」。主列不展示 listen/tts 调用，轨迹沿用既有投影。`commitTranscript` 继续按行比较静态投影：附件改变只替换受影响行，未变播放器与播放状态保留，移除或切线程时停止播放。新投影只有进入 DOM 才载入 metadata，不因丢弃投影发媒体请求。HTTP 契约见 [API](../API.md#语音附件)，验收入口见 [语音交流](../dev/voice-chat.md)。
+主列的 `userBubble`、`botBubble` 与 `optimisticMessage` 共用 `appendMessageBubbles`：每个 audio id 各一泡，文字只在空行处分泡（连续非空行留在同泡，代码围栏与块级公式内部空行保留），每张图各一泡；沿用原有底色及 `.bubble-col` 间距。引用只放在该列第一条内容前，同一条 transcript 仍是一条，不改变存盘或 Bot 已送达消息的归组。原生音频播放器只由点击播放，同线程互斥；取 metadata 显示实际时长，未知时不画零秒。失败显示「语音加载失败 / 重试」。主列不展示 listen/tts 调用，轨迹沿用既有投影。`commitTranscript` 继续按行比较静态投影：附件改变只替换受影响行，未变播放器与播放状态保留，移除或切线程时停止播放。新投影只有进入 DOM 才载入 metadata，不因丢弃投影发媒体请求。HTTP 契约见 [API](../API.md#语音附件)，验收入口见 [语音交流](../dev/voice-chat.md)。
 
 
 ## 边界
@@ -123,7 +123,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 **气泡 Markdown 排版**：同一 `appendMarkdown` 路径还渲染三种块。围栏代码由自研 `highlight` 按语言档（go、js/ts、python、java/kotlin、c/c++、rust、shell、sql、json、yaml 及常见别名）切出关键词、字面量、字符串、注释、数字、函数名，每段用 textContent 进 span；未标语言或不认识的语言保持纯文本，单行字符串没闭合时引号按原文处理，不吞后文。颜色走 `.code-block` 上的 `--syn-*` 变量：浅底用浅色板，深底（深色主题的 Bot 气泡、浅色主题的用户气泡）用深色板。行首 `>` 连成引用块：每层剥一个 `>` 后递归回 `appendMarkdown`，所以 `>>` 嵌套、列表、行内格式、数学都照常，可见文字里不留 `>`。引用在切围栏之前先按行认出（围栏里的 `>` 行仍是代码，`$$` 块里的 `>` 行仍是 TeX），所以写在引用里的 ``` 围栏留在引用内、代码不带 `>`；表格数据行遇到引用行即结束。GFM 管道表（表头行紧跟 `|---|` 分隔行、列数一致）渲成 `div.md-table > table`，`:---:` 对齐写 text-align，单元格走 `appendInline`（链接仍只认 http(s)），`` `a|b` `` 与 `\|` 不拆格；只有表头没有分隔行时按正文显示，流式补齐后整段重绘成表。
 
-**粘贴图片**：在输入框里粘贴、或把图片文件拖到对话区，图片先上传（`POST /api/bots/{name}/paste`）再在输入框上方排成 56px 缩略图，每张右上角一个「去掉」；撤回后可以重贴。只认 PNG、JPEG、GIF、WebP，单张不超过 10 MB、长边不超过 2048（超过就整张退回，不缩），一条消息最多 4 张、合计不超过 10 MB，被拒时在缩略图下方用一句话说明原因，没有缩略图时这一行也照样显示。上传中缩略图变淡、发送按钮禁用；只有图片没有文字也能发。发送失败时图片不入输入框，提示「图片要重新贴一次」。换到别的 Bot 或群会清掉未发的图片，因为图片存在上一个 Bot 的工作区里。对话里的图片按 84px 缩略图排，最多显示 3 张、第 3 张盖「+N」，点开是大图。历史上这一轮的图片照常显示，刷新页面后还在：transcript 只记文件名，图片字节不进 transcript，也不进历史请求；回答这一条的那一轮请求直接带图，之后各轮只留一行「`[用户的图] paste/<文件名>`」让模型自己用 `view_image` 打开。群组对话暂不支持贴图。**Bot 出图**：Bot 用 `send_message_to_user` 的 `images`（pasted id 或工作区图片路径）挂图，图片存进同一个 `paste/`，这一轮最终回复那一行带上文件名，界面把它画在这一轮最后一条 `send_message_to_user` 气泡下方，用同一套 84px gallery、点开是大图。发送失败时原文回到输入框（输入框已有新草稿则保留新草稿并提供「放回输入框」），不再显示「重试」。
+**粘贴图片**：在输入框里粘贴、或把图片文件拖到对话区，图片先上传（`POST /api/bots/{name}/paste`）再在输入框上方排成 56px 缩略图，每张右上角一个「去掉」；撤回后可以重贴。只认 PNG、JPEG、GIF、WebP，单张不超过 10 MB、长边不超过 2048（超过就整张退回，不缩），一条消息最多 4 张、合计不超过 10 MB，被拒时在缩略图下方用一句话说明原因，没有缩略图时这一行也照样显示。上传中缩略图变淡、发送按钮禁用；只有图片没有文字也能发。发送失败时图片不入输入框，提示「图片要重新贴一次」。换到别的 Bot 或群会清掉未发的图片，因为图片存在上一个 Bot 的工作区里。主列每张图片单独显示一个 84px 缩略图泡，全部展示；点开大图后仍可在同条消息的图片间切换。历史上这一轮的图片照常显示，刷新页面后还在：transcript 只记文件名，图片字节不进 transcript，也不进历史请求；回答这一条的那一轮请求直接带图，之后各轮只留一行「`[用户的图] paste/<文件名>`」让模型自己用 `view_image` 打开。群组对话暂不支持贴图。**Bot 出图**：Bot 用 `send_message_to_user` 的 `images`（pasted id 或工作区图片路径）挂图，图片存进同一个 `paste/`，这一轮最终回复那一行带上文件名，界面把它画在这一轮最后一条 `send_message_to_user` 气泡下方，用同一套 84px gallery、点开是大图。发送失败时原文回到输入框（输入框已有新草稿则保留新草稿并提供「放回输入框」），不再显示「重试」。
 
 ### 侧栏
 侧栏顶部是问候句，下面只在有 Bot 在忙时写「有 N 个 Bot 在忙。」（窗口窄于 960 时隐藏）。下面是置顶的 Bot 和「新建」（新建 Bot 或群组），再下面按分组列出 Bot 和群组，分组可以折叠、改名、删除（删除不带走 Bot），折叠状态记在本机。没有铃铛，也没有通知面板：要用户看的，就在那个 Bot 的头像右上点一个黑色未读点；未读只按消息游标判断，打开这个 Bot 的对话就算已读。在跑的 Bot 在窄条里是头像右下一个小转圈。底部是「我」，点头像开关账号菜单；菜单只留带齿轮的「设置」一行，无分隔线。设备和关于仍可在设置中访问，展开列表、设备、账号、退出登录和关于暂不在此菜单。界面里不出现「节点」这个词。

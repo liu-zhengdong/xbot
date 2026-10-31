@@ -1740,11 +1740,13 @@
     return ids.map((id) => "/api/bots/" + encodeURIComponent(sel.id) + "/paste/" + encodeURIComponent(id));
   }
 
-  function gallery(urls) {
+  function gallery(urls, singleIndex) {
     const box = el("div", "gallery");
-    const extra = urls.length > 3 ? urls.length - 2 : 0;
-    const show = extra ? urls.slice(0, 3) : urls;
-    show.forEach((url, i) => {
+    const single = singleIndex !== undefined;
+    const extra = !single && urls.length > 3 ? urls.length - 2 : 0;
+    const show = single ? [urls[singleIndex]] : extra ? urls.slice(0, 3) : urls;
+    show.forEach((url, index) => {
+      const i = single ? singleIndex : index;
       const cell = el("button", "thumb");
       cell.type = "button";
       const img = document.createElement("img");
@@ -3080,22 +3082,9 @@
     row.dataset.sender = "user";
     const wrap = el("div", "bubble-col");
     if (m.reply_to) wrap.append(quoteBlock(messages, m.reply_to));
-    const pulled = pullImages(parsed.text);
-    const pasted = pastedURLs(state.sel, m.images);
-    let audioBubble;
-    if ((m.audios || []).length) { audioBubble=el("div","bubble");appendAudios(audioBubble,m.audios);wrap.append(audioBubble); }
-    if (pulled.text) {
-      const bubble = el("div", "bubble");
-      appendRich(bubble, pulled.text);
-      if (audioBubble) { bubble.className="prose";audioBubble.append(bubble); } else wrap.append(bubble);
-    }
-    const images = [...pulled.images, ...pasted];
-    if (images.length) (audioBubble || wrap).append(gallery(images));
-    if (!audioBubble && !pulled.text && !pulled.images.length && !pasted.length) {
-      const bubble = el("div", "bubble");
-      bubble.textContent = parsed.text;
-      wrap.append(bubble);
-    }
+    const before = wrap.childElementCount;
+    appendMessageBubbles(wrap, parsed.text, pastedURLs(state.sel, m.images), m.audios);
+    if (wrap.childElementCount === before) wrap.append(el("div", "bubble", parsed.text));
     if (parsed.untrusted && parsed.source !== "timer" && !parsed.source.startsWith("bot:")) {
       wrap.append(el("span", "tag warn", parsed.source ? "不可信 · " + parsed.source : "不可信"));
     }
@@ -3105,12 +3094,44 @@
     return row;
   }
 
+  // One transcript message stays one row. Only its visible content is split;
+  // each image keeps the whole message's viewer navigation.
+  function appendMessageBubbles(wrap, text, images, audios, bot = false) {
+    const pulled = bot ? { text: stripBotImages(text), images: [] } : pullImages(text);
+    const cls = bot ? "prose bot-bubble" : "bubble";
+    for (const id of audios || []) {
+      const bubble = el("div", cls);
+      appendAudios(bubble, [id]);
+      wrap.append(bubble);
+    }
+    const src = pulled.text.replace(/\r\n/g, "\n");
+    // Blank lines inside fenced code or display math belong to that block.
+    const boundaries = /```[\s\S]*?(?:```|$)|`[^`\n]*(?:`|$)|\$\$[\s\S]*?(?:\$\$|$)|\n[ \t]*\n(?:[ \t]*\n)*/g;
+    let start = 0;
+    const paragraphs = [];
+    for (const match of src.matchAll(boundaries)) {
+      if (!match[0].startsWith("\n")) continue;
+      paragraphs.push(src.slice(start, match.index));
+      start = match.index + match[0].length;
+    }
+    paragraphs.push(src.slice(start));
+    for (const paragraph of paragraphs) {
+      if (!paragraph.trim()) continue;
+      const bubble = el("div", cls);
+      if (bot) appendMarkdown(bubble, paragraph);
+      else appendRich(bubble, paragraph);
+      wrap.append(bubble);
+    }
+    const urls = [...pulled.images, ...(images || [])];
+    urls.forEach((url, i) => wrap.append(gallery(urls, i)));
+  }
+
   // What the owner sees from the bot. The bot speaks with
-  // send_message_to_user (notify_owner before the rename): one bubble per call
-  // that landed. A run of bot lines between two inputs that made no such call
-  // shows nothing, unless it predates tool-only chat; then its reply text
+  // send_message_to_user (notify_owner before the rename): one group per call
+  // that landed, split into content bubbles. A run of bot lines between two
+  // inputs that made no such call shows nothing, unless it predates tool-only chat; then its reply text
   // stays, so old history is not blank. Pictures queue on the run's final line
-  // and show in its last bubble.
+  // and show after its last delivery's text.
   const SAY_TOOLS = ["send_message_to_user", "notify_owner"];
   const TOOL_CHAT_SINCE = Date.parse("2026-10-27T11:00:00+08:00");
 
@@ -3120,7 +3141,7 @@
   }
 
   // spokenLines maps a bot line's index to the bubbles it shows: a list of
-  // {text, images, replyTo}, or null for a legacy line drawn from its content.
+  // {text, images, audios, replyTo}, or null for a legacy line drawn from its content.
   // Lines it leaves out are not drawn.
   function spokenLines(messages) {
     const results = {};
@@ -3172,14 +3193,14 @@
     return said.length ? said.join("\n\n") : (m.content || "");
   }
 
-  // botBubble draws one bubble: say from spokenLines, or null for a legacy
+  // botBubble draws one delivery row: say from spokenLines, or null for a legacy
   // line drawn from its content.
   function botBubble(m, say, messages, who) {
     const row = el("div", "msg bot");
     if (m.seq) row.dataset.seq = String(m.seq);
     if (m.time) row.dataset.time = String(m.time);
     row.dataset.sender = "bot:" + (who || "");
-    const body = el("div", "body");
+    const body = el("div", "body bubble-col");
     const replyTo = say ? say.replyTo : m.reply_to;
     if (replyTo) body.append(quoteBlock(messages, replyTo));
     // Pictures the bot showed with send_message_to_user, stored in paste/ like the
@@ -3187,19 +3208,14 @@
     const pasted = pastedURLs(state.sel, say ? say.images : m.images);
     const said = say ? say.text : String(m.content || "").trim();
     const audios = say ? say.audios : m.audios;
-    if ((audios || []).length) {
-      const bubble=el("div","prose bot-bubble");appendAudios(bubble,audios);
-      if (said && said!=="SILENT") { const prose=el("div","prose");appendRich(prose,displayText(said));bubble.append(prose); }
-      if (pasted.length) bubble.append(gallery(pasted));
-      body.append(bubble);bindMessageMenu(row,m,said);row.append(body);addBubbleTime(row,m.time);return row;
-    }
+    let text = "";
     if (say) {
-      if (said) appendBotContent(body, displayText(said));
-    } else if (said && said !== "SILENT") appendBotContent(body, displayText(window.XBotProviders.citedText(m.content,m.parts)));
-    else if (!pasted.length && !(m.parts || []).length && !(m.tool_calls || []).length) {
-      appendBotContent(body, EMPTY_REPLY);
+      if (said && said !== "SILENT") text = said;
+    } else if (said && said !== "SILENT") text = window.XBotProviders.citedText(m.content,m.parts);
+    else if (!pasted.length && !(audios || []).length && !(m.parts || []).length && !(m.tool_calls || []).length) {
+      text = EMPTY_REPLY;
     }
-    if (pasted.length) body.append(gallery(pasted));
+    appendMessageBubbles(body, displayText(text), pasted, audios, true);
     if (!say) window.XBotProviders.decorate(body, m.parts);
     bindMessageMenu(row, m, said);
     row.append(body);
@@ -7022,12 +7038,10 @@
     const body = el("div", "bubble-col");
     row.dataset.sender = "user";
     row.dataset.time = new Date().toISOString();
-    if (audios?.length) { const bubble=el("div","bubble");appendAudios(bubble,audios);if(text)appendRich(bubble,text);body.append(bubble); }
-    else if (text) { const bubble = el("div", "bubble"); appendRich(bubble, text); body.append(bubble); }
     // The picture is already on the server by the time a send starts, so the
     // optimistic row points at it directly. Nothing local to revoke, and the
     // row after the repaint looks exactly the same.
-    if (images && images.length) body.append(gallery(pastedURLs(state.sel, images)));
+    appendMessageBubbles(body, text, pastedURLs(state.sel, images), audios);
     body.append(el("div", "send-state", "发送中"));
     row.append(body);
     markLiveGroup(inner, row);

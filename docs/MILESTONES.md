@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 聊天气泡纯渲染拆分（feature/bubble-split，本地分支）
+
+- S 档单点渲染修复：`userBubble`、`botBubble`、`optimisticMessage` 共用 `appendMessageBubbles`。每个 audio id、每张图片、每个空行分隔段落各成一泡；单换行同泡，代码围栏和块级公式内部空行保留，引用只挂列首。复用 `.bubble-col` 的 gap，没有改 CSS、transcript／存盘、录音逻辑或 `spokenLines` 归组；大图仍可在同条消息的图片间切换。
+- 生产静态资源 + scripted fetch 的本机 Chrome 回归覆盖混合消息、旧 Bot 文本记录、CRLF／连续空行、代码／公式、引用、乐观文本发送；旧代码混合消息用例因只有一个合并泡失败，新代码通过。既有语音／图片查看器／Markdown／数学／增量刷新／live 拆分专项连续三遍通过；图片及正文断言改为检查对应消息范围，继续守原有导航和内容行为。
+- Chrome CDP 在真实私有 `optimisticMessage` 入口传入两段语音、两图及三段文字，浅深色均当场为 7 个独立内容泡。1440×900、DPR 2 前后及音频悬停／大图打开／混合乐观态截图在 `~/.xbot-build/ui-shots/bubble-split/`。30 次受控混合乐观渲染到两帧绘制 p95：浅色 36.3 ms、深色 36.9 ms；不含真实网络／模型或日用性能验收。
+- gofmt、JS 语法、go vet、diff 检查通过；atlas audit 退出 0，保留既有告警。全仓 `-count=1 -timeout=90s` 与 web 整包 `-count=3 -timeout=90s` 未全绿：内核长轮 19 folds／40 steps、MemoryFileLogGuard、memory 月容量、work description 失败，web 审批测试挂起；五项均在干净 HEAD `05a829ae` archive 定向复现。完整日志在 `~/.xbot-build/bubble-split/checks/`。
+- 级别：本地浏览器投影行为通过；真实 serve 全链路、设计师新稿／截图复审、用户日用未验。只在本功能分支本地提交，未合 main、未 push，未移动守护层。
+
 ## 2026-10-31 语音分支同步例程技能 main（本地整合）
 
 - 将语音提交 rebase 到本地 main `e58b1834`；Event 同时保留 audios 与 RoutineSkills，忙时输入先装配音频路径再投影例程技能。两侧 API、任务行技能编辑、录音播放器及 atlas 说明均保留，未合 main、未 push、未重启 8788。

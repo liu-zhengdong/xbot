@@ -55,12 +55,12 @@ const screenshot=async(p,theme,name)=>{if(shots){const dir=path.join(shots,theme
    // Trusted click on the picture must keep it open, blank padding must close.
    await thumbs.nth(0).click();await loaded(p);await p.locator(img).click();assert.ok(await p.locator(visible).count());
    await p.mouse.click(5,5);assert.equal(await p.locator(visible).count(),0);
-   await thumbs.nth(3).click();await loaded(p);await current(p,5);
+   await thumbs.nth(4).click();await loaded(p);await current(p,5);
    assert.ok(await p.locator('.image-count').isHidden());
    await p.keyboard.press('ArrowRight');await current(p,5);
    await screenshot(p,theme,'single');
    await p.getByRole('button',{name:'关闭',exact:true}).click();
-   await thumbs.nth(4).click();await p.getByText('图片暂时无法显示',{exact:true}).waitFor();
+   await thumbs.nth(5).click();await p.getByText('图片暂时无法显示',{exact:true}).waitFor();
    await screenshot(p,theme,'failed');await p.keyboard.press('Escape');
    // Measure DOM click to image load + two rendered frames on a warm local fixture.
    const times=await p.evaluate(async()=>{
