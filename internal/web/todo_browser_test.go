@@ -36,16 +36,38 @@ func TestBusyLineBrowser(t *testing.T) {
   if(name){const a=dots.getBoundingClientRect(),b=name.getBoundingClientRect();assert(b.left>=a.right&&Math.abs((a.top+a.bottom-b.top-b.bottom)/2)<2,'label is not beside dots');}
  };
  check('');
+ emit(stream,'tool',{name:'shell',summary:''});
+ await waitFor(()=>preview().matches('.st.run')&&preview().textContent==='','first empty description invented a sidebar label');
  emit(stream,'part',{hosted:{id:'search',name:'web_search',status:'in_progress',query:'资料'}});
  await sleep(20);assert(!$('#thread .live .hs-step'),'hosted progress added a second busy row');
  emit(stream,'tool',{name:'shell',summary:'继续看资料\nsecret command'});
  await waitFor(()=>working()?.textContent==='继续看资料','description missing');check('继续看资料');
  todoStatus.state='running';todoStatus.tool='shell';todoStatus.todo='旧待办';todoStatus.tool_summary='继续看资料\nsecret command';
  await waitFor(()=>preview().textContent==='继续看资料','sidebar description missing');
+ const reads=statusReads;
  emit(stream,'tool',{name:'shell',summary:''});todoStatus.tool_summary='';
- await waitFor(()=>!working()&&preview().textContent==='在处理','empty description leaked another label');check('');
+ await waitFor(()=>statusReads>=reads+2,'empty-summary polls missing');
+ check('继续看资料');
+ assert(preview().textContent==='继续看资料','empty description cleared shared last description');
+ const label=working(),side=preview(),sideText=side.querySelector('span');
+ emit(stream,'tool',{name:'shell',summary:'核对新资料\nprivate command'});todoStatus.tool_summary='核对新资料';
+ await waitFor(()=>label.getAnimations().length>0,'description did not transition');
+ assert(label.textContent==='继续看资料','description hard-switched before fade');
+ await waitFor(()=>working()?.textContent==='核对新资料'&&preview().textContent==='核对新资料','new shared description missing');
+ assert(working()===label&&preview()===side&&side.querySelector('span')===sideText,'description replaced existing nodes');
+ if(new URLSearchParams(location.search).has('shot')){document.body.dataset.testResult='passed';return}
+ emit(stream,'result',{name:'send_message_to_user',text:'阶段结果'});
+ await waitFor(()=>$('#thread').textContent.includes('阶段结果')&&working()!==label,'next live row missing');
+ check('核对新资料');
+ assert(preview()===side,'message delivery replaced sidebar');
+ emit(stream,'tool',{name:'shell',summary:'   '});todoStatus.tool_summary='';
+ await waitFor(()=>statusReads>=reads+4,'sticky polls missing');check('核对新资料');
  assert(!/shell|secret command|旧待办/.test($('#thread .live').textContent+preview().textContent),'non-description leaked');
- finish(stream,'查好了');await waitFor(()=>!$('#thread .live'),'stream did not finish');
+ todoStatus.state='idle';todoStatus.todo='';todoStatus.tool_summary='';todoStatus.last_message='查好了';
+ finish(stream,'查好了');await waitFor(()=>!$('#thread .live')&&preview().textContent==='查好了','stream did not finish');
+ const input=$('#input');input.textContent='新一轮';input.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
+ await waitFor(()=>fixture.streams.length===2&&$('#thread .live'),'new busy period missing');check('');
+ finish(fixture.streams.at(-1),'新一轮好了');
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `)
@@ -224,7 +246,9 @@ const todoStreamingDriver = todoLiveSetup + `
  await waitFor(()=>working()?.textContent==='跑一遍测试'&&preview().textContent==='跑一遍测试','cleared progress did not fall back to the description');
  todoStatus.tool_summary='添加一条记忆';emit(stream,'tool',{name:'shell',summary:'添加一条记忆\nxbot memory add hi'});
  await waitFor(()=>working()?.textContent==='添加一条记忆','live progress did not show the first summary line');
- todoStatus.tool_summary='';await waitFor(()=>!working()&&$('#thread .live .live-status')&&preview().textContent==='在处理','no description did not leave the dot alone');
+ const emptyReads=statusReads;todoStatus.tool_summary='';
+ await waitFor(()=>statusReads>=emptyReads+2,'empty summary polls missing');
+ assert(working()?.textContent==='添加一条记忆'&&preview().textContent==='添加一条记忆','empty summary cleared last description');
  assert(!/shell|bash|后台命令/.test($('#thread .live .live-status').textContent+preview().textContent),'tool name shown in progress');
  todoStatus.state='idle';todoStatus.tool='';todoStatus.last_message='查好了';finish(stream,'查好了');
  await waitFor(()=>!$('#thread .live')&&$('#thread').textContent.includes('查好了'),'stream did not finish');

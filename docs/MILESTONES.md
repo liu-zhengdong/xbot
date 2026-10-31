@@ -8,6 +8,15 @@
 - gofmt、JS语法、diff check、vet通过；atlas audit退出0、保留仓库现有告警。全仓一遍与Web整包三遍已完整跑完但未绿：kernel长轮/记忆文件守门、memory月容量、work命令description，以及Web时间分隔/供应商/parked审批/贴图/人设/提问；Web三遍另出现CLIEventQueue临时目录清理和Interjection顺序偶发失败。不将这些失败归因于本改动，也不宣称全仓绿。日志 `~/.xbot-build/chat-stick/`。
 - 浅深1440×900 DPR2截图 `~/.xbot-build/ui-shots/chat-stick/{before,after}/`；已看after浅深。级别：本机专项浏览器通过，实际Air/小鲸、设计师复审与用户日用待验。未合main、未push、未重启8788。Not run: Linux CI、实际Air/跨设备/真实模型、物理帧率与IPC/后台减速专项。
 
+## 2026-10-31 忙碌描述同源粘性与切换过渡（feature-busy-desc-sticky，本地分支）
+
+- S 档：沿现有忙碌行接入按 Bot 保存的 last-description，SSE／status 共源；空 summary 不清名、不回「在处理」，新非空描述才替换。送达消息后的新活泡沿用描述，空闲后清理，不串下一轮；未动 stick 滚动、接口、内核或 transcript。
+- 侧栏预览与主列标签保留原节点，opacity 淡出后换字再淡入，复用 token：普通 120ms、reduced-motion 100ms。真实 Chrome/scripted 浅深采样两侧同帧换字，约 145／146ms 恢复 opacity=1；未测物理 FPS、IPC 或后台减速。
+- BusyLine／Todo 四条 Chrome 测试最终连跑三遍通过（15.197s），覆盖首个空描述、连续空描述与轮询、首行过滤、新描述过渡／节点保留、送达后延续、下一轮清理。新回归在旧实现先红；未修改旧滚动或底边测试。
+- 1440×900、DPR 2 浅深前后 default／hover／steps 及 after reduced-motion 截图与逐帧采样：`~/.xbot-build/ui-shots/busy-desc-sticky/`，已看浅深 after，设计师复审和用户日用待验。
+- gofmt、JS 语法、diff、go vet 通过；atlas audit 退出 0，保留已有告警。全仓一遍已跑但未绿：kernel 长轮／MemoryFileLogGuard、memory 月容量、work description，以及 Web 旧时间分隔／供应商／审批／图片／人设／提问断言、CLIEventQueue 清理、Interjection 顺序。ChatStream 的回复结束底边断言偶发失败，在干净 HEAD 单跑十遍也复现三次，未扩修。Web 整包三遍首次运行 300s 超时，另一次超过 6 分钟后停止，未取得完整结果；不称全包绿。全量日志在 `~/.xbot-build/busy-desc-sticky/`。
+- 级别：本机专项端到端通过，未合 main、未 push。Not run: Linux CI、真实模型／跨设备、设计师复审、用户日用与物理性能专项。
+
 ## 2026-10-31 更早消息保尾回归修复（feature/older-keep-tail，本地分支）
 
 - S 档，修设计师对 `6186bb3d` 的 FAIL：前端合并改为保最新尾部、从旧端裁；缓存800 raw，与默认两页各400 raw对齐。满窗后继续上翻无进展时沿原提示行说明用搜索定位，不新增分页。保锚移到加载态/最老页控件更新之后；最老页提示不再定时消失而二次抖动。

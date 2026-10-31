@@ -232,6 +232,8 @@
 
   // ---- Bot status: sidebar second line + step-flow popover (bot-status prototype) ----
   const stStatus = { map: {} };
+  // One last non-empty description per Bot, shared by SSE and status polling.
+  const workDescriptions = new Map();
   const stpState = { ready: false, open: false, bot: "", row: null, steps: null };
 
   function tsOf(v) {
@@ -251,18 +253,19 @@
     return s;
   }
 
-  // The second line is owned by the status poll; rows only record a signature so an
+  // SSE and polling share the busy description; rows record a signature so an
   // unchanged line is never rewritten and no row is touched without a change.
   function stDesc(name) {
     const st = stStatus.map[name] || null;
-    const kind = st ? String(st.state || "idle") : "idle";
+    const streaming = state.streaming && state.sel?.type === "bot" && state.sel.id === name;
+    const kind = streaming && (!st || st.state === "idle") ? "running" : st ? String(st.state || "idle") : "idle";
     let sig = kind;
     const line = el("span", "preview");
     if (kind === "running") {
       line.className = "preview st run click";
       line.append(spinIcon(11));
       const text = el("span");
-      const summary = workText(st.tool_summary) || "在处理";
+      const summary = workDescriptions.get(name) || "";
       text.append(summary);
       line.title = summary;
       line.append(text);
@@ -347,7 +350,10 @@
       row.dataset.stsig = d.sig;
       row.classList.toggle("off", d.off);
       const old = row.querySelector(".preview");
-      if (old) old.replaceWith(d.node);
+      if (old?.matches(".st.run") && d.node.matches(".st.run")) {
+        old.title = d.node.title;
+        transitionWorkText(old.querySelector("span"), d.node.title);
+      } else if (old) old.replaceWith(d.node);
     });
     const bySlug = {};
     (state.others || []).forEach((o) => { if (o && o.bot) bySlug[o.bot] = o; });
@@ -363,7 +369,7 @@
     if (state.sel && state.sel.type === "bot" && !state.peer) {
       const st = stStatus.map[state.sel.id];
       const host = thread.querySelector(".msg.live .body");
-      if (st && host && host.querySelector(".live-status")) setWorking(host, workText(st.tool_summary));
+      if (st && host && host.querySelector(".live-status")) setWorking(host);
     }
   }
 
@@ -408,7 +414,14 @@
   async function refreshStatus() {
     const data = await api("/api/bots/status");
     const map = {};
-    for (const b of (data && data.bots) || []) if (b && b.bot) map[b.bot] = b;
+    for (const b of (data && data.bots) || []) if (b && b.bot) {
+      map[b.bot] = b;
+      const streaming = state.streaming && state.sel?.type === "bot" && state.sel.id === b.bot;
+      if (b.state === "running") {
+        const text = workText(b.tool_summary);
+        if (text) workDescriptions.set(b.bot, text);
+      } else if (!streaming) workDescriptions.delete(b.bot);
+    }
     stStatus.map = map;
     state.others = data && Array.isArray(data.others) ? data.others : null;
     renderLists();
@@ -7176,12 +7189,32 @@
   }
 
   // Progress shows the purpose: the first summary line (a shell's description),
-  // never the tool name or the command. Empty means the dot stands alone.
+  // never the tool name or the command. Empty keeps the last description;
+  // only a busy period with no description yet leaves the dots alone.
   function workText(summary) {
     return String(summary || "").split("\n")[0].trim();
   }
 
-  function setWorking(host, text) {
+  // Fade the existing label out before changing it, then fade it back in.
+  // A repeated poll does not restart an in-flight transition.
+  function transitionWorkText(node, text) {
+    if (node.dataset.workText === text || (!node.dataset.workText && node.textContent === text)) return;
+    node.dataset.workText = text;
+    clearTimeout(node.workTextTimer);
+    node.getAnimations().forEach((animation) => animation.cancel());
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const token = reduced ? "--dur-motion-reduced" : "--dur-press";
+    const duration = parseFloat(getComputedStyle(node).getPropertyValue(token)) / 2;
+    const fade = node.animate({ opacity: [1, 0] }, { duration, fill: "forwards" });
+    node.workTextTimer = setTimeout(() => {
+      node.textContent = text;
+      fade.cancel();
+      node.animate({ opacity: [0, 1] }, { duration });
+    }, duration);
+  }
+
+  function setWorking(host) {
+    const text = workDescriptions.get(state.sel?.id) || "";
     let status = host.querySelector(".live-status");
     if (!status) {
       status = el("div", "meta live-status");
@@ -7192,9 +7225,8 @@
       host.append(status);
     }
     const name = status.querySelector(".working-name");
-    if ((name?.textContent || "") === text) return;
-    if (name) name.remove();
-    if (text) status.append(el("span", "working-name", text));
+    if (name) transitionWorkText(name, text);
+    else if (text) status.append(el("span", "working-name", text));
   }
 
   function approvalCard(payload) {
@@ -7289,7 +7321,7 @@
     const body = el("div", "body");
     const prose = el("div", "prose bot-bubble");
     body.append(prose);
-    setWorking(body, "");
+    setWorking(body);
     row.append(body);
     markLiveGroup(inner, row);
     addBubbleTime(row, now);
@@ -7330,7 +7362,10 @@
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "tool") {
           // Tool steps show only as the busy line; the trace has the detail.
-          setWorking(prose.closest(".body"), workText(payload.summary));
+          const text = workText(payload.summary);
+          if (text) workDescriptions.set(selection.id, text);
+          setWorking(prose.closest(".body"));
+          paintStatus();
         } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
           // A message that landed is this bubble; the next one streams into a
           // fresh live row, as the transcript keeps one bubble per call.
@@ -7459,6 +7494,9 @@
         state.replyErrors = [];
       }
     };
+    if (selection.type === "bot" && !state.streaming && stStatus.map[selection.id]?.state !== "running") {
+      workDescriptions.delete(selection.id);
+    }
     state.streaming = (state.streaming || 0) + 1;
     let counted = true;
     const settle = () => {
