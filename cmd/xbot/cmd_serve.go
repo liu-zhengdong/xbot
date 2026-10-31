@@ -33,7 +33,6 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
-	"xbot/internal/permissions"
 	"xbot/internal/person"
 	"xbot/internal/pipe"
 	"xbot/internal/provider"
@@ -160,8 +159,8 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		// The main line has every tool and hands long work to typed
 		// subagents (ADR 0028).
 		Dispatch: true,
-		// No permission cards unless the owner turned them on (ADR 0019).
-		PermissionsOn: func() bool { return permissions.On(root) },
+		// Production never asks for tool permission (ADR 0019).
+		Permissive: true,
 		// How long one background task may keep going.
 		BackgroundMaxTime: work.BackgroundMaxTime,
 		WorkDir:           workDir,

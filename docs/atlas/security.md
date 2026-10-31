@@ -2,13 +2,13 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 安全：保险箱与权限表
 
-> **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**默认不弹权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`xbot permissions on|off`，`permissions.json`，没有就是关）：只剩 `links` 填 key 的卡和触到保险箱、密钥这两处还问；机器开关（ask/off）和外部事件开的一轮碰记忆的围栏也一起关掉。打开开关时，是否确认只由内核里的一张权限表决定，只确认对外发送、删除、带密钥或非 GET 的 HTTP、persona/profile 自改。
+> **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**生产内核永远不弹工具权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）：`serve`/`chat` 固定 `Permissive: true`，旧 `permissions on` 不能开回卡；保险箱/密钥/配置路径、机器 ask/off、外部事件记忆写入也不弹卡。只保留 `links` 填 key 的输入卡。以下权限分类与确认条件仅描述直接构造的严格测试/评测内核，不是生产许可限制。
 
-> **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。计划中的改动：确认卡、shell 黑名单、保险箱和配置路径出卡、不可信回合碰记忆时出卡、文件新鲜度拒写收进一个默认放行的开关；用户绑定的 Telegram、飞书消息按用户消息处理。落地之前，下面的描述仍然有效。
+> **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。生产工具许可已经固定放行；文件新鲜度、密钥脱敏、出站域名绑定和存储校验不受这次改动影响。
 
 ## 音频工具
 
@@ -30,7 +30,7 @@ verified: 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-3
 钥匙只在用户这一侧。Bot 和模型只看得到名字，出站时代理才把 `{{secret:名字}}` 换成真值。
 
 - **存储**：每个 Bot 一份保险箱目录 `bots/<name>/vault/`，目录 0700，所有文件 0600。内容用 AES-GCM 加密，密钥挪到 Bot 工作区之外的数据根 `<root>/keys/vault/<bot>.key`（目录 0700，文件 0600）。旧版密钥仍和密文同目录时，`Open` 会在文件锁下把它移到新位置（跨设备则先写 0600 再删旧文件），绝不因迁移另造新钥。Bot 改名时密钥文件跟着走，删除 Bot 时删掉。
-- **保险箱路径一律确认**：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）、桌面应用启动时读取密钥和端点的 `<root>/env`时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。`xbot remote add/invite/join/remove`、`xbot remote gateway <url>` 不写路径也会改设备表，命令位置出现时同样出卡。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
+- **严格测试/评测内核的保险箱路径确认**（生产不出卡）：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）、桌面应用启动时读取密钥和端点的 `<root>/env`时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。`xbot remote add/invite/join/remove`、`xbot remote gateway <url>` 不写路径也会改设备表，命令位置出现时同样出卡。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
 - **绑定**：每个凭据记一串允许的域名。请求域名不在名单里就拒绝注入，一个字节的真值都不发。按域名标签边界匹配，`a.com` 不覆盖 `evil-a.com` 和 `a.com.evil.com`；只认 ASCII 域名（IDN 用 punycode），只认 http/https，重定向的每一跳都重新校验，跳转 URL 或被复制的头里捎带真值（含 URL 编码、base64 等变体）同样拒绝。
 - **出站代理**：内核在请求离开进程前，把 URL、请求头和请求体里的 `{{secret:名字}}` 换成真值。模型只写名字。URL 路径里的花括号会被 Go 转义成 `%7B%7Bsecret:名字%7D%7D`，代理也认这种写法，同样先查域名绑定。Telegram 和飞书连接器的 token 也存在这里，出站只带占位符（见 [生态](ecosystem.md)）。
 - **OAuth 模型鉴权**：凭证格式、刷新、退出时的并发写回协调与共享命名空间见 [供应商](providers.md)。模型请求通过同一后端的 `InjectStream` 只替换鉴权头，保留正文里的占位示例；本地和 daemon 都校验域名。出站时固定这次使用的脱敏快照，响应的令牌、编码变体与折行形式按既有口径隐藏，正常 SSE 文本不等待完整令牌长度的缓冲窗口。
@@ -43,7 +43,7 @@ verified: 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-3
 3. 每个凭据绑定允许的域名；向名单外域名注入会被拒绝，真值不发出。
 4. 工具结果、transcript 和导出里出现的真值会被脱敏（接上 `RedactText`）。
 5. 落盘加密（AES-GCM + 本地密钥文件），保险箱文件 0600，目录 0700，密钥在 `<root>/keys/vault/<bot>.key`（0600，目录 0700）。
-6. 触及保险箱或密钥路径的 `shell`/`read_file`/`write_file`/`edit_file` 无论机器开关如何都出确认卡；这是防随手读取的尽力而为，不是隔离。
+6. 生产内核触及保险箱或密钥路径不出确认卡；严格测试/评测内核仍验证保护路径分类。这不是隔离。
 
 ## 独立用户守护进程
 第一步只把密钥挪出 Bot 目录、读写出确认卡，密钥和密文仍在同一系统用户可读处；真正隔离由独立系统用户 `xbot-vault` 的守护进程 `xbot vaultd` 提供（见 [ADR 0005](../adr/0005-vault-daemon-user.md)）。
@@ -85,7 +85,7 @@ WantedBy=multi-user.target
 ```
 
 ## 危险操作审核
-执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
+生产路径只保留审查入口和分类，不出工具许可卡；`links` 填 key 输入例外。下列确认规则属于严格测试/评测模式：执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
 - **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。不含前置命令的 routine 创建、修改、暂停、删除，Bot 之间的 `message_bot`/`post_group`，写计划文件、写技能、编码任务都是 `normal`，不弹确认卡。

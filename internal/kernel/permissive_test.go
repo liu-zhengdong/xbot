@@ -10,6 +10,7 @@ import (
 	"xbot/internal/machine"
 	"xbot/internal/permissions"
 	"xbot/internal/review"
+	"xbot/internal/tools"
 )
 
 type namedTool struct{ name string }
@@ -31,9 +32,8 @@ func needsCard(t *testing.T, k *Kernel, tool, args string) bool {
 	return need
 }
 
-// With the table's cards off (the default for serve and chat, ADR 0019),
-// calls the table would confirm run without a card; the links card, which
-// collects a connector's keys, and an explicit machine "ask" still ask.
+// With the table's cards off (permanent for serve/chat, ADR 0019),
+// calls run without permission cards; links still collects connector keys.
 func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
 	k.ensureTurn().turnTrusted = true
@@ -84,6 +84,26 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k.Permissive = false
 	if !needsCard(t, k, "sh", `{"description":"Verify the scenario behavior","command":"echo x >> memory/memory.md"}`) {
 		t.Error("with permissions on, a turn from outside touching memory must ask")
+	}
+}
+
+func TestPermissiveProtectedCallsNeverAsk(t *testing.T) {
+	k, work := protectedKernel(t)
+	k.Permissive = true
+	k.PermissionsOn = func() bool { return true }
+	k.Machine = func() (string, error) { return machine.Ask, nil }
+	for _, tool := range []tools.Tool{&tools.ReadFile{Root: work}, &tools.WriteFile{Root: work}, &tools.EditFile{Root: work}, &tools.Shell{}} {
+		args, err := json.Marshal(map[string]string{"path": k.Bot.VaultKeyPath(), "command": "cat " + k.Bot.VaultKeyPath(), "old_string": "fake", "new_string": "replacement"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !k.protectedCall(context.Background(), tool, args) {
+			t.Fatalf("%s did not exercise a protected path", tool.Name())
+		}
+		need, _, err := k.reviewCall(context.Background(), tool, args, "protected operation")
+		if err != nil || need {
+			t.Fatalf("%s: need=%v err=%v", tool.Name(), need, err)
+		}
 	}
 }
 
@@ -157,25 +177,33 @@ func TestPermissiveRuleDropsTheSecondQuestion(t *testing.T) {
 	}
 }
 
-// A live kernel, including an already-created subagent approver, reads the same
-// permissions.json that the Web API and CLI write.
+// Production always-allow kernels, including existing subagent approvers,
+// cannot be switched back to permission cards by permissions.json.
 func TestLivePermissionSwitch(t *testing.T) {
 	b := testBot(t, link.NameTools)
-	k := &Kernel{Bot: b, PermissionsOn: func() bool { return permissions.On(b.Root) }}
+	k := &Kernel{Bot: b, Permissive: true, PermissionsOn: func() bool { return permissions.On(b.Root) }}
 	k.ensureTurn().turnTrusted = true
 	asked := 0
 	k.BackgroundApprove = func(context.Context, string, string) (bool, error) { asked++; return true, nil }
 	approve := k.subApprover()
 	check := func(on bool) {
 		t.Helper()
-		if got := needsCard(t, k, "delete_file", `{"path":"a.txt"}`); got != on {
+		if got := needsCard(t, k, "delete_file", `{"path":"a.txt"}`); got {
 			t.Fatalf("delete needsCard=%v, on=%v", got, on)
+		}
+		for _, tool := range []string{"http_request", "mcp_x_send", "bot_update_profile", "sh"} {
+			if needsCard(t, k, tool, `{"method":"POST","command":"rm a.txt","avatar_seed":"XBot#3"}`) {
+				t.Fatalf("%s asked with permissions on=%v", tool, on)
+			}
+		}
+		if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
+			t.Fatal("links key input card was dropped")
 		}
 		before := asked
 		if _, err := approve(context.Background(), "delete_file", "delete a.txt"); err != nil {
 			t.Fatal(err)
 		}
-		if (asked > before) != on {
+		if asked > before {
 			t.Fatalf("subagent asked=%d, on=%v", asked-before, on)
 		}
 	}

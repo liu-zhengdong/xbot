@@ -1,5 +1,11 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 永远放行、无工具权限卡（feature/always-allow-no-permission-cards，本地分支）
+
+- 按用户明确要求固定 serve/chat 的 `Permissive: true`；旧 live permissions on 不能覆盖。保护路径不再绕过 permissive 硬弹卡，子代理与例程 API 同口径；links 填 key 输入卡保留，严格测试/评测内核与权限分类保留。同步 ADR 0019 和 atlas，未动界面、代理或运行中的服务。
+- 两条回归先在旧实现实际红（保护路径出卡、live on 重开卡），新实现专项三遍通过（kernel 0.845s、cmd/xbot 0.735s，测试总耗时而非交互 p95）；cmd/xbot 整包三遍通过（16.491s）。gofmt、diff check、全仓 go vet 通过；atlas audit 跑过，仍有已有链接/陈旧/设计索引告警。
+- 全仓一遍与改动包三遍已尝试但未全绿：kernel 长轮/overflow/记忆日志失败，memory 月日志、work description、web CLI/时间分隔/供应商失败；90s 包级超时涉及 e2e/kernel/tools/web。未逐条重新归因，不扩修。日志 `/tmp/always-allow-{full,repeat}-final.log`。
+- 级别：本地分支专项回归通过，未合 main、未发布、未重启；不宣称端到端或用户日用通过。Not run: 真二进制/浏览器联合旅程、真模型、Linux CI、用户日用、交互 p95/IPC/后台性能专项；全仓及 kernel 整包三遍未完整通过。
 ## 2026-10-31 限流等待上限与一次备用（feature/rate-limit-end-or-switch）
 
 - M 档，仅 Provider 共用重试、供应商配置与启动 selector 装配。`config.ModelSelector → RateLimitSelector → FixedSelector` 为唯一装配 seam；每次唤醒累计额度等待默认 180 秒，可用 providers.json 的 `rate_limit_wait_seconds` 配置。三协议读取 Retry-After/reset 建议，长等立即以 `ErrRateLimitWait` 结束；显式 `fallback: {provider, model}` 最多切一次，后续工具步保持备用、共享剩余等待预算；无备用不声称换模。普通 5xx/超时维持两次短重试，已有输出不重试/切换。不碰 UI、主列窗口、控机、公式、AGENTS/CLAUDE、发版脚本或 lock。

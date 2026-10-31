@@ -31,7 +31,7 @@ func TestRoutinePrecheckUsesShellReview(t *testing.T) {
 		on, need, reject    bool
 	}{
 		{"protected_on", protected, machine.Allow, true, true, false},
-		{"protected_off", protected, machine.Allow, false, true, false},
+		{"protected_off", protected, machine.Allow, false, false, false},
 		{"ask", "true", machine.Ask, true, true, false},
 		{"off", "true", machine.Off, true, false, true},
 		{"delete", "rm -f disposable", machine.Allow, true, true, false},
@@ -55,7 +55,7 @@ func TestRoutinePrecheckUsesShellReview(t *testing.T) {
 				if tc.need && !strings.Contains(summary, tc.command) && !strings.Contains(summary, "precheck sh -c") {
 					t.Fatalf("card lacks command: %q", summary)
 				}
-				if strings.HasPrefix(tc.name, "protected") && !strings.Contains(summary, review.ProtectedSuffix) {
+				if tc.need && strings.HasPrefix(tc.name, "protected") && !strings.Contains(summary, review.ProtectedSuffix) {
 					t.Fatalf("missing protected-path summary: %s", summary)
 				}
 			}
@@ -90,7 +90,7 @@ func TestRoutinePrecheckUsesShellReview(t *testing.T) {
 func TestRoutinePrecheckReviewsProcessCWD(t *testing.T) {
 	b := testBot(t, link.NameTimer)
 	t.Chdir(b.Root)
-	k := &Kernel{Bot: b, WorkDir: t.TempDir(), Permissive: true}
+	k := &Kernel{Bot: b, WorkDir: t.TempDir()}
 	for _, tool := range []tools.Tool{routineCreate{k}, routineUpdate{k}} {
 		need, summary, err := (reviewedTool{Tool: tool, k: k}).Confirm(json.RawMessage(`{"id":"check","precheck":"printf marker > env"}`))
 		if err != nil || !need || !strings.Contains(summary, review.ProtectedSuffix) {
@@ -175,7 +175,7 @@ func TestRoutineCreatePrecheckDuplicateNull(t *testing.T) {
 			tm := &link.Timer{Dir: b.RoutineDir()}
 			marker := filepath.Join(b.Root, "env") // Only a temporary fake protected path.
 			command := "printf marker > " + precheckQuote(marker)
-			k := &Kernel{Bot: b, Links: []link.Link{tm}, Permissive: true}
+			k := &Kernel{Bot: b, Links: []link.Link{tm}}
 			k.ensureTurn().turnTrusted = true
 			shellArgs, _ := json.Marshal(map[string]string{"description": "test protected command", "command": command})
 			if need, _, err := (reviewedTool{Tool: &tools.Shell{}, k: k}).Confirm(shellArgs); err != nil || !need {

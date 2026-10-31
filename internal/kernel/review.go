@@ -188,9 +188,9 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, k.protectedSummary(ctx, tool, args, summary), nil
 		}
 	}
-	// A call that reaches a vault or its key always asks, even in allow mode:
-	// the vault is the one thing a bot's own shell should not read.
-	if k.protectedCall(ctx, tool, args) {
+	// Protected-path cards remain available only to strict test/eval kernels.
+	// Production always-allow kernels do not ask, even for these paths.
+	if !k.permissive() && k.protectedCall(ctx, tool, args) {
 		return true, summary + review.ProtectedSuffix, nil
 	}
 	// A turn from outside (a webhook, another bot) touching memory asks only
@@ -221,10 +221,8 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 			return true, summary + " (untrusted turn: memory access)", nil
 		}
 	}
-	// The owner turned the table's cards off (ADR 0019): the checks above
-	// stay (an explicit machine setting, the vault, a turn from outside
-	// touching memory), and so does the links card, which is where the
-	// owner types a connector's keys.
+	// Always-allow skips permission cards, including machine, protected-path
+	// and untrusted-memory checks above. Keep links for connector key input.
 	if k.permissive() && name != "links" {
 		return false, summary, nil
 	}
@@ -314,10 +312,13 @@ func (k *Kernel) permissive() bool {
 	if k == nil {
 		return false
 	}
+	if k.Permissive {
+		return true
+	}
 	if k.PermissionsOn != nil {
 		return !k.PermissionsOn()
 	}
-	return k.Permissive
+	return false
 }
 
 // machineMode reads the local machine switch. A nil kernel or bot is allow, so

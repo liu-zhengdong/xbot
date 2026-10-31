@@ -87,11 +87,11 @@ type Kernel struct {
 	OnTool     func(name, summary string)
 	OnResult   func(name, output string)
 	OnFinding  func(string)
-	// Permissive turns the permission table's cards off (ADR 0019,
-	// review.ConfirmTable): only an explicit machine setting, the vault, a
-	// turn from outside touching memory, and the links card still ask.
+	// Permissive permanently disables tool permission cards (ADR 0019).
+	// Production sets this true; only links connector key input remains.
 	Permissive bool
-	// PermissionsOn reads the install-wide switch live. Nil uses Permissive.
+	// PermissionsOn is a legacy live switch for strict test/eval kernels.
+	// It cannot override Permissive.
 	PermissionsOn func() bool
 	// OnHandoff runs when a newer owner message takes over the running
 	// turn's output (Interject); the caller can end its own stream.

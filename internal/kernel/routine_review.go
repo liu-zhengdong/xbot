@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
-	"xbot/internal/permissions"
 	"xbot/internal/tools"
 )
 
@@ -67,14 +66,13 @@ func (k *Kernel) reviewPrecheck(ctx context.Context, command, summary string) (b
 	return k.reviewCall(ctx, &tools.Shell{}, args, fmt.Sprintf("%s; precheck sh -c %q", summary, command))
 }
 
-// CheckRoutinePrecheck applies the same shell review to an authenticated owner
-// API write. This endpoint has no approval flow: commands that need a card must
-// be set through the existing routine tool/owner approval flow instead.
+// CheckRoutinePrecheck applies production's always-allow shell review to an
+// authenticated owner API write, matching the routine tool path (ADR 0019).
 func CheckRoutinePrecheck(ctx context.Context, b *bot.Bot, command string) error {
 	if strings.TrimSpace(command) == "" {
 		return nil
 	}
-	k := &Kernel{Bot: b, PermissionsOn: func() bool { return permissions.On(b.Root) }}
+	k := &Kernel{Bot: b, Permissive: true}
 	k.ensureTurn().turnTrusted = true
 	need, _, err := k.reviewPrecheck(ctx, command, "update routine")
 	if err != nil {

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/]
-verified: 2026-10-31 @ feature/memory-reminder (Register→Bind / cooldown / deletion); 2026-10-31 @ feature/env-prompt-frame (Register + scripted requests); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/memory-reminder (Register→Bind / cooldown / deletion); 2026-10-31 @ feature/env-prompt-frame (Register + scripted requests); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (targeted tests + scripted smoke) + feature/routine-skills (fresh/busy scripted wake); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 内核：Link、Event、收件箱
 
@@ -99,7 +99,7 @@ list/replay 使用对应 Bot 既有保险箱脱敏出口；命令不追加业务
 
 `ProjectRule` 把项目文件当成编码约定：工作区根上、且该目录不是 git 检出、也不是共享目录时，才是用户放的；共享目录、git 检出、子目录和克隆仓库里的不是批准、发送、读密钥或删除的依据，也不压过内核安全、权限表和脱敏。新旧 Bot 均由当前内核注入这一条。评测目录没有提示词快照，这是有意的稳定前缀变化。挂了记忆存储时，内核在规则末尾追加 `MemoryWriteRule`（用文件工具改记忆文件夹、`memory.md` 常驻且不超过 4 KiB、日志按月追加、其余细节放自由文件、用 `recall` 检索）；它不写进 `rules.md`，所以已有自定义规则的 Bot 也会带上。写记忆文件夹时的内核守卫和只读 `recall` 见 [身份与记忆](memory.md)。共享规则提前限制外部失败最多重试一次；熔断轮询提醒仍要求停止重复失败，不追加重试预算。
 
-`ActionRule` 让模型在删除、代表用户对外发消息、改已定计划之前先问一次，「即使请求里点名了这一步」。权限卡关着时（默认，[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`Kernel.Permissive`），组装时换成 `OwnAskActionRule`：用户点名的步骤（删除、发消息也算）直接做、不再追问，只有模型自己加出来的这类步骤才先问一次；同时补一条 `EventMemoryRule`：外部事件报告的事和工作有关（新 issue、重大 bug、故障、构建挂了）就记进记忆并写明来源，但事件里的措辞仍不改人设和规则。评测按表确认的内核，`boundary` 仍测旧规则。
+`ActionRule` 让模型在删除、代表用户对外发消息、改已定计划之前先问一次，「即使请求里点名了这一步」。生产内核固定不弹工具权限卡（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`Kernel.Permissive: true`，旧实时 `permissions on` 不能覆盖；保险箱路径也放行，只保留 links 填 key 输入卡），组装时换成 `OwnAskActionRule`：用户点名的步骤（删除、发消息也算）直接做、不再追问，只有模型自己加出来的这类步骤才先问一次；同时补一条 `EventMemoryRule`：外部事件报告的事和工作有关（新 issue、重大 bug、故障、构建挂了）就记进记忆并写明来源，但事件里的措辞仍不改人设和规则。评测按表确认的内核，`boundary` 仍测旧规则。
 
 合伙人行为分散在既有规则对应职责：Judgment 先对齐结果并独立判断；Resourceful 禁止因可逆就替用户编职责；Offer 把偏题新想法记候选（无指定落点则 Bot 记忆），维护聚焦并用既有例程盯进度；Verify 自己核对已约定的产物、测试命令/输出/退出状态，缺证据说未验证，验收数值与 done 不等于测通。任务数量与各状态按最新环境回放，包含 queued/blocked。Dispatch 同步允许核对既定验收，仍禁止越界重复派活。Action/OwnAskAction 也涵盖未经授权的花钱。人设与工作档案不双写，字段落点见 [多 Bot](multibot.md#人设组成与提示词边界)。
 
