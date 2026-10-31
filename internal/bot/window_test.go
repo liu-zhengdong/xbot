@@ -52,7 +52,7 @@ func TestWindowVisibleTailAndBefore(t *testing.T) {
 			}
 			says += len(r.Entry.Message.Calls())
 		}
-		if says < 25 || len(w.Rows) > MaxWindowLimit || w.TailSeq != 220-page*110 || w.HeadSeq != 111-page*110 || w.HasMoreBefore != (page == 0) {
+		if says < 25 || len(w.Rows) > MaxVisibleWindowLimit || w.TailSeq != 220-page*110 || w.HeadSeq != 111-page*110 || w.HasMoreBefore != (page == 0) {
 			t.Fatalf("page %d: says=%d rows=%d meta=%+v", page, says, len(w.Rows), w.WindowMeta)
 		}
 		q.Before = w.NextBefore
@@ -79,7 +79,7 @@ func TestWindowVisibleExpansionCaps(t *testing.T) {
 			if large {
 				text = strings.Repeat("x", 3000)
 			}
-			for i := 0; i < 250; i++ {
+			for i := 0; i < MaxVisibleWindowLimit+50; i++ {
 				m := provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(text)}
 				if !large && i == 170 {
 					call := provider.ToolCall{ID: "sparse", Type: "function"}
@@ -96,13 +96,13 @@ func TestWindowVisibleExpansionCaps(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if w.TailSeq != 250 || !w.HasMoreBefore || w.HasMoreAfter || w.NextBefore != w.HeadSeq || len(w.Rows) > MaxWindowLimit {
+			if w.TailSeq != MaxVisibleWindowLimit+50 || !w.HasMoreBefore || w.HasMoreAfter || w.NextBefore != w.HeadSeq || len(w.Rows) > MaxVisibleWindowLimit {
 				t.Fatalf("cap metadata: %+v", w.WindowMeta)
 			}
-			if !large && len(w.Rows) != MaxWindowLimit {
+			if !large && len(w.Rows) != MaxVisibleWindowLimit {
 				t.Fatalf("raw cap: %d", len(w.Rows))
 			}
-			if large && len(w.Rows) >= DefaultWindowLimit {
+			if large && len(w.Rows) >= windowBytes/3000 {
 				t.Fatalf("byte cap ignored: %d", len(w.Rows))
 			}
 		})

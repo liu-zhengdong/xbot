@@ -14,7 +14,8 @@ import (
 
 const DefaultWindowLimit = 60
 const MaxWindowLimit = 200
-const windowBytes = 128 << 10
+const MaxVisibleWindowLimit = 400
+const windowBytes = 256 << 10
 const defaultVisibleTarget = 25
 
 var ErrWindowTarget = errors.New("transcript target does not exist")
@@ -22,7 +23,7 @@ var ErrWindowTarget = errors.New("transcript target does not exist")
 // WindowQuery selects a contiguous transcript range. Cursors are exclusive;
 // Around includes the target. With no cursor, the window ends at the tail.
 // An omitted Limit grows tail/before windows to 25 visible deliveries, within
-// MaxWindowLimit and windowBytes. Explicit limits remain raw-record limits.
+// MaxVisibleWindowLimit and windowBytes. Explicit limits remain raw-record limits.
 type WindowQuery struct {
 	Before, After, Around, Limit int
 }
@@ -89,7 +90,7 @@ func (b *Bot) Window(q WindowQuery) (TranscriptWindow, error) {
 			from = max(1, to-q.Limit+1)
 		}
 		if visibleWindow {
-			from = max(1, to-MaxWindowLimit+1)
+			from = max(1, to-MaxVisibleWindowLimit+1)
 		}
 		rows, err := s.db.Query(`SELECT seq, len FROM lines WHERE seq BETWEEN ? AND ? ORDER BY seq`, from, to)
 		if err != nil {

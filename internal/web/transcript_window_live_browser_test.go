@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,15 +97,13 @@ func TestTranscriptWindowVisibleTailBrowser(t *testing.T) {
 			appendMessage(provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{call})})
 			appendMessage(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult(call.ID, "sent to the owner's chat")})
 		}
-		for i := 0; i < 20; i++ {
-			appendMessage(provider.Message{Role: provider.RoleUser, Content: provider.TextContent("<untrusted_event source=\"timer\" type=\"tick\">\nwake\n</untrusted_event>")})
-			appendMessage(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")})
-			appendMessage(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("noise", "done")})
+		for i := 0; i < 250; i++ {
+			appendMessage(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("noise", strings.Repeat("x", 600))})
 		}
 	}
 	srv := httptest.NewServer(muxOf(s))
 	defer srv.Close()
-	input, _ := json.Marshal(map[string]string{"url": srv.URL, "cookie": cookieName, "token": token})
+	input, _ := json.Marshal(map[string]string{"url": srv.URL, "cookie": cookieName, "token": token, "evidence": os.Getenv("XBOT_TRANSCRIPT_EVIDENCE")})
 	cmd := exec.Command(node, "testdata/transcript-visible-tail.cjs")
 	cmd.Stdin = bytes.NewReader(input)
 	out, err := cmd.CombinedOutput()

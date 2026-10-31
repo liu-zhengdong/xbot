@@ -16,6 +16,31 @@ func TestTranscriptWindowBrowser(t *testing.T) {
 	runTodoBrowser(t, transcriptWindowFixture, transcriptWindowDriver)
 }
 
+func TestTranscriptWindowLargeMergeBrowser(t *testing.T) {
+	runTodoBrowser(t, transcriptWindowFixture+`
+fixture.messages[bots[0].name]=Array.from({length:1200},(_,i)=>({seq:i+1,role:'user',content:'真实发言 '+(i+1),time:'2026-10-30T10:00:00Z'}));
+`, transcriptWindowLargeMergeDriver)
+}
+
+const transcriptWindowLargeMergeDriver = `
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep(10)}throw Error(msg)};
+(async()=>{
+ await waitFor(()=>$('#thread [data-seq="1200"]')&&!$('.thread-loading-cover'),'opening failed');
+ const tail=$('#thread [data-seq="1200"]');
+ for(let i=0;i<15;i++){
+  const n=historyFixture.requests.length;
+  $('#history-older').click();await waitFor(()=>historyFixture.requests.length>n,'missing older request');await sleep(40);
+  assert(tail.isConnected,'older merge evicted opened newest bubble');
+  assert(document.querySelectorAll('#thread .msg').length<=800,'cache exceeded two expanded pages');
+ }
+ assert(!$('#history-error').hidden&&$('#history-error').textContent.includes('搜索'),'full cache silently stalled the before cursor');
+ assert(testErrors.length===0,testErrors.join('; '));
+ document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
+
 func TestTranscriptWindowOpeningBrowser(t *testing.T) {
 	runTodoBrowser(t, transcriptWindowFixture+`historyFixture.holdTranscript=true;`, transcriptWindowOpeningDriver)
 }
@@ -102,10 +127,8 @@ const search=async query=>{if($('#history-search-panel').hidden)$('#chat-search'
  await waitFor(()=>historyFixture.requests.length>scrollReads&&row(241),'scrolling to top did not load older history');
  assert(historyFixture.requests.at(-1).before===301,'top scroll used the wrong before cursor');
  for(let i=0;i<4;i++){const n=historyFixture.requests.length;$('#history-older').click();await waitFor(()=>historyFixture.requests.length>n,'older request missing');await sleep(40)}
- assert(row(1)&&rows().length<=300,'oldest page did not load or DOM grew beyond window cap');
- assert($('#history-newer')&&!$('#history-newer').hidden,'trimmed newer history cannot be reached');
- $('#history-newer').click();await waitFor(()=>row(301),'newer page did not reconnect trimmed history');
- assert(rows().length<=300,'newer page exceeded DOM window cap');
+ assert(row(1)&&row(420)&&rows().length<=800,'oldest page did not load or opened tail was lost');
+ assert($('#history-newer').hidden,'tail unexpectedly trimmed');
  $('#chat-search').click();await waitFor(()=>$('#history-form')&&!$('#history-form').hidden,'search did not open');
  await search('needle');await waitFor(()=>$('#history-results button[data-seq="65"]'),'search hit missing');
  assert($('#history-results').textContent.includes('历史线索'),'search omitted useful preview');

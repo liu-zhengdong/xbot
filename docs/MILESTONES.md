@@ -1,11 +1,21 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 更早消息保尾回归修复（feature/older-keep-tail，本地分支）
+
+- S 档，修设计师对 `6186bb3d` 的 FAIL：前端合并改为保最新尾部、从旧端裁；缓存800 raw，与默认两页各400 raw对齐。满窗后继续上翻无进展时沿原提示行说明用搜索定位，不新增分页。保锚移到加载态/最老页控件更新之后；最老页提示不再定时消失而二次抖动。
+- `Bot.Window` 默认尾窗/before仍按25条真实交付扩展，将硬帽调到400 raw/256 KiB；显式 limit仍1–200，HTTP含包络700 KiB上限不变。只改既有读取缝，不改原始历史、投影计数、模型或权限。
+- 真实HTTP+Chrome回归改为每页300 raw（250条各600字节隐藏工具记录＋25次成功say），打开25泡→点更早50泡，打开时25个节点全部保留；三轮含控件稳定后的锚点 Δtop=-3.609px（门槛绝对值<4px），响应181,944字节、40次fetch p95分别0.6/1.5/0.8ms。回退旧300行裁切后该测试确实失败；原128KiB/200 raw帽下该夹具甚至无真泡。不是实际小鲸、跨设备或模型性能数据。
+- 全部 `TestTranscriptWindow*` 连续三遍通过，最终控件状态同步后又三遍通过；包含800行触顶提示/保尾、失败、切Bot、搜索、reduced-motion和真实HTTP。Bot整包三遍通过（42.646s）；真serve二进制 `TestTranscriptWindowJourney` 冒烟通过。gofmt、vet、JS语法、diff和atlas audit通过（已有atlas告警保留）。
+- 全仓一遍、Web整包三遍已跑但未绿：kernel长轮19 folds/40 steps、MemoryFileLogGuard、memory月容量、work description；Web时间分隔/供应商/parked审批/贴图/人设/提问断言失败，Web达120s包超时，与既有里程碑记录的失败相同，本次未重新做无关基线归因。完整日志 `~/.xbot-build/older-keep-tail/`。
+- 1440×900 DPR2浅深打开/更早截图 `~/.xbot-build/ui-shots/older-keep-tail/{before,after}/`，before专门回退前端裁切（后端使用扩窗，隔离丢尾回归），已看浅深after。级别：本机专项端到端通过，未合main、未push、未重启8788；实际小鲸软目标与设计师复审/用户日用待验。Not run: Linux CI、真实box/Air与跨设备、真实模型、物理帧率/IPC/后台减速专项。
+
 ## 2026-10-31 移除重复回复文案（feature/drop-replying-label，本地分支）
 
 - S 档：只移除发送开始时的「正在回复」状态及其对应清理；主列三点、工具进度、排队和错误逻辑保留。未 push、未合 main。
 - 本地 Chrome/scripted 端到端通过：ChatStream、BusyLine、TodoLiveTools 连跑 3 次通过（合计 10.130s）；回归在旧实现上先红。回复状态切换前后主列底边变化 < 0.1px；未测 p95/FPS。
 - 浅深色 1440×900、DPR 2 前后截图：`~/.xbot-build/ui-shots/drop-replying-label/`，待设计师/用户日用验收。
 - gofmt 与 go vet 通过；全量 go test 运行 120 秒后超时，期间 kernel 的 TestLongTurnStaysUnderTheCeiling、TestMemoryFileLogGuard 及 memory 的 TestMonthlyGuardAndRoundTrip 失败；web 全包 -count=3 运行 300 秒超时，无结果。未扩改无关包。
+
 
 ## 2026-10-31 可见交付尾窗修复（feature/visible-tail-window，本地分支）
 

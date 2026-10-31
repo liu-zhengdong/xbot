@@ -4802,6 +4802,7 @@
         selection.transcriptETag = !query ? res.headers.get("ETag") : null;
         let messages = data.messages || [];
         const old = state.messages;
+        let olderAtCapacity = false;
         if (mode === "poll" && data.window && old.length && !state.firstRender &&
             thread.scrollHeight-thread.scrollTop-thread.clientHeight >= 120 && data.window.tail_seq > old.at(-1).seq) {
           selection.history = {...selection.history, total:data.window.total, has_more_after:true};
@@ -4817,7 +4818,10 @@
             const bySeq = new Map(old.map(m => [m.seq, m]));
             messages.forEach(m => bySeq.set(m.seq, m));
             messages = [...bySeq.values()].sort((a,b) => a.seq-b.seq);
-            messages = mode === "older" ? messages.slice(0,300) : messages.slice(-300);
+            // Two fully expanded Bot.Window pages (400 raw records each).
+            // Prepending must never evict the already loaded latest deliveries.
+            messages = messages.slice(-800);
+            olderAtCapacity = mode === "older" && messages[0]?.seq >= old[0]?.seq;
           }
         }
         const box = thread.getBoundingClientRect();
@@ -4826,14 +4830,14 @@
         if (mode === "around" || mode === "latest") state.firstRender = true;
         const changed = applyTranscript(messages, selection.id);
         revealThread();
-        if ((mode === "older" || mode === "newer") && anchor?.isConnected) thread.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
         selection.history = data.window ? { ...data.window,
           head_seq: messages[0]?.seq || 0, tail_seq: messages.at(-1)?.seq || 0,
           next_before: messages[0]?.seq || 0, next_after: messages.at(-1)?.seq || 0,
           has_more_before: (messages[0]?.seq || 0) > 1,
           has_more_after: (messages.at(-1)?.seq || 0) < data.window.total,
         } : null;
-        historyButtons.error.hidden = true;
+        historyButtons.error.hidden = !olderAtCapacity;
+        if (olderAtCapacity) historyButtons.error.textContent = "当前窗口已满，可用搜索定位更早的消息。";
         if (subtitleError && subtitle.textContent === "对话加载失败，请重试。") setStatus("");
         if (mode === "around") {
           const row = thread.querySelector('.msg[data-seq="' + Number(target) + '"]');
@@ -4847,10 +4851,12 @@
             historyButtons.error.hidden = false;
           }
         }
-        if (mode === "older" && !selection.history?.has_more_before) {
-          historyButtons.end.hidden = false;
-          window.setTimeout(() => { historyButtons.end.hidden = true; }, 1800);
-        }
+        historyButtons.end.hidden = !!selection.history?.has_more_before;
+        // Finish paging controls before measuring: loading labels and reaching
+        // the oldest page can both change the controls' height.
+        selection.historyLoading = false;
+        paintHistory();
+        if ((mode === "older" || mode === "newer") && anchor?.isConnected) thread.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
         state.previewAt["b:" + selection.id] = Date.now();
         state.sig = "transcript-loaded";
         if (changed && !selection.history?.has_more_after) state.preview["b:" + selection.id] = previewFromMessages(messages);
