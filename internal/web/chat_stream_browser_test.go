@@ -126,7 +126,8 @@ const send=async value=>{
  await waitFor(()=>selected('2号小伙子')&&!$('.thread-loading-cover'),'app did not boot');
  const threadBottom=$('#thread').getBoundingClientRect().bottom;
  const s=await send('你现在是什么模型？');say(s,'我是助手。');
- assert(!$('#head-chip').contains($('#subtitle'))&&!$('#subtitle').hidden&&$('#subtitle').textContent==='正在回复','reply status is not visible outside the card');
+ assert($('#subtitle').hidden,'redundant reply status is visible');
+ assert($('#thread .live .typing-dots')?.querySelectorAll('i').length===3,'reply typing indicator missing');
  assert(Math.abs($('#thread').getBoundingClientRect().bottom-threadBottom)<0.1,'thread moved when reply status appeared');
  await waitFor(()=>text().includes('我是助手。'),'message missing');
  finish(s,'我是助手。');

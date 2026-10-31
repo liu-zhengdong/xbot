@@ -7399,7 +7399,6 @@
         if (state.sel === selection) state.streaming = Math.max(0, state.streaming - 1);
       }
     };
-    setStatus("正在回复");
     try {
       const payload = { text: text };
       if (images.length) payload.images = images;
@@ -7429,7 +7428,6 @@
       clearQuote();
       settle();
       await loadThread();
-      if (state.sel === selection && subtitle.textContent === "正在回复") setStatus("");
     } catch (e) {
       // Session expired mid-send: keep the text so the input gets it back
       // after the owner logs in again (showLogin already dropped the thread).

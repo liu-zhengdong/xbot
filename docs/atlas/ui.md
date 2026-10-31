@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-31 @ feature-transcript-window (real HTTP + Chrome paging/search); 2026-10-31 @ feature-chat-voice-cluster-v5 (Chrome rendered clusters and playback progress); 2026-10-31 @ feature/custom-provider (real binary + Chrome/scripted); 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/drop-replying-label (Chrome reply status regression); 2026-10-31 @ feature-transcript-window (real HTTP + Chrome paging/search); 2026-10-31 @ feature-chat-voice-cluster-v5 (Chrome rendered clusters and playback progress); 2026-10-31 @ feature/custom-provider (real binary + Chrome/scripted); 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 
 ---
 # 网页界面
@@ -109,7 +109,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 对话顶栏透明，身份卡悬浮在对话上方：各宽度均只显示 28px 头像与名字的紧凑横排；状态和 Bot 往来提示在对话底部，简介不显示在卡上。面板依对话区宽度避开身份卡，空间不足时从顶栏下方打开。面板开关是对话顶栏中间的身份芯片 `#head-chip`（头像 + 展示名，整块是按钮），点一下开、再点收起；开态浅底并 `aria-expanded=true`；没有单独的详情钮，也不属于面板厂头。群组同样可点；两个 Bot 的往来视图没有面板，芯片禁用。窄屏左边是打开 Bot 列表的汉堡，芯片在汉堡与右缘之间居中，右边留空。窄屏顶栏高度为 `52px + safe-area-inset-top`，内容带固定 52px、左右内边距 16px；热区 32×32，图标约 20px。Esc 收起面板（有菜单、资料抽屉、弹窗时先关它们），⌘\ / Ctrl+\ 切换。面板默认关闭，只恢复本机明确保存的打开选择。Windows/Linux 桌面顶栏为系统按钮让出顶部空间。
 
 ### 对话
-底部状态行预留一行高度，回复状态显隐不改变消息列高度；Bot 往来提示可按内容换行。
+底部状态行预留一行高度，不再显示重复的「正在回复」文案，回复中保留主列三点 typing 指示；排队、错误与进程状态逻辑不变，Bot 往来提示可按内容换行。
 
 对话列宽 `min(680px, 100% - 64px)`。消息都画成气泡：用户的气泡靠右、深底白字（深色模式反过来），最宽 72%；Bot 的气泡靠左、浅灰底，最宽 86%，段落、列表和代码块都在气泡里，代码块用比气泡浅一级的底色。单聊不放头像和名字，时间只在悬停时出现在气泡旁边。同一个发送者 5 分钟内、中间没夹别的东西的几条算一串，串内间距小，串与串之间间距大；分组由 `groupStart` 这个纯函数决定，历史、翻页和实时追加都走它。和上一条相隔 30 分钟以上或跨天时，中间出现一行居中的时间（「昨天 11:38」）。群聊和 Bot 之间的往来视图里，每串第一条保留头像、名字和时间。消息少时对话贴着底部排。
 

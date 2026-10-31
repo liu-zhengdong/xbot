@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 移除重复回复文案（feature/drop-replying-label，本地分支）
+
+- S 档：只移除发送开始时的「正在回复」状态及其对应清理；主列三点、工具进度、排队和错误逻辑保留。未 push、未合 main。
+- 本地 Chrome/scripted 端到端通过：ChatStream、BusyLine、TodoLiveTools 连跑 3 次通过（合计 10.130s）；回归在旧实现上先红。回复状态切换前后主列底边变化 < 0.1px；未测 p95/FPS。
+- 浅深色 1440×900、DPR 2 前后截图：`~/.xbot-build/ui-shots/drop-replying-label/`，待设计师/用户日用验收。
+- gofmt 与 go vet 通过；全量 go test 运行 120 秒后超时，期间 kernel 的 TestLongTurnStaysUnderTheCeiling、TestMemoryFileLogGuard 及 memory 的 TestMonthlyGuardAndRoundTrip 失败；web 全包 -count=3 运行 300 秒超时，无结果。未扩改无关包。
+
 ## 2026-10-31 可见交付尾窗修复（feature/visible-tail-window，本地分支）
 
 - S 档：唯一扩窗装配缝仍为 `Bot.Window`。默认尾窗和未指定 limit 的 before 页先取60条 raw，再按25条可见交付向前扩，保留200条/128 KiB硬帽、连续 seq、真实 has_more_before、原有 fork 回放；显式 limit 与 after/around 原语义保留。HTTP 仅透传未指定 limit，不增加前端自动续拉或另一套计数，不改旧 transcript、Agent 指令或发版。
