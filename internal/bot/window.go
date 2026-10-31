@@ -2,11 +2,8 @@ package bot
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"strings"
 	"time"
 
 	"xbot/internal/provider"
@@ -233,97 +230,52 @@ func (s *segStore) toolResult(id string) (Entry, bool, error) {
 	return entries[0], true, nil
 }
 
-var windowEvent = regexp.MustCompile(`^<untrusted_event\s+[^>]*>\n[\s\S]*\n</untrusted_event>$`)
 var toolChatSince = time.Date(2026, 10, 27, 3, 0, 0, 0, time.UTC)
 
-// Mirror spokenLines/skipMessage's delivery units, not raw transcript rows:
-// non-internal user inputs close a run; landed says or attachments suppress
-// legacy prose in that run. Source event lines and cards are not chat bubbles.
-// This runs under the store lock and reuses the result index across windows.
+// Legacy transcript Window budgeting reuses Chat's visibility predicate.
+// Main-column reads use Chat.Window directly; source rows/cards do not count
+// toward this older bubble budget.
 func (s *segStore) windowVisibleCounts(entries []Entry) ([]int, error) {
 	counts := make([]int, len(entries))
-	var run []int
-	closeRun := func() error {
-		says, mediaLine, lastSay := 0, -1, -1
-		for _, i := range run {
-			e := entries[i]
-			if len(e.Images)+len(e.Audios) > 0 {
-				mediaLine = i
-			}
-			for _, call := range e.Message.Calls() {
-				if call.Function.Name != "send_message_to_user" && call.Function.Name != "notify_owner" {
-					continue
-				}
-				result, found, err := s.toolResult(call.ID)
-				if err != nil {
-					return err
-				}
-				text := result.Message.Text()
-				if !found || !(strings.HasPrefix(text, "sent to the owner's chat") || strings.Contains(text, "notified the owner")) {
-					continue
-				}
-				says++
-				lastSay = i
-				var args struct {
-					Text string `json:"text"`
-				}
-				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
-				if text := strings.TrimSpace(args.Text); text != "" && text != "SILENT" && !e.IsInternal() && (strings.TrimSpace(e.Message.Text()) != "SILENT" || len(e.Images)+len(e.Audios) > 0) {
-					counts[i]++
-				}
+	p := chatProjection{Landed: map[string]bool{}}
+	closeRun := func() {
+		for _, row := range p.deliveries() {
+			counts[row.TranscriptSeq-1]++
+			// Preserve this legacy Window budget's separate media unit. Chat
+			// itself limits actual delivery rows, never this adaptive count.
+			if len(row.Images)+len(row.Audios) > 0 && row.Text != "" {
+				counts[row.TranscriptSeq-1]++
 			}
 		}
-		if mediaLine >= 0 {
-			// spokenLines queues the run's media on its last delivered say.
-			if lastSay >= 0 {
-				mediaLine = lastSay
-			}
-			e := entries[mediaLine]
-			if !e.IsInternal() && (strings.TrimSpace(e.Message.Text()) != "SILENT" || len(e.Images)+len(e.Audios) > 0) {
-				counts[mediaLine]++
-			}
-		}
-		if says == 0 && mediaLine < 0 {
-			for _, i := range run {
-				e := entries[i]
-				text := strings.TrimSpace(e.Message.Text())
-				parts, visibleParts := 0, false
-				for _, p := range e.Message.Content {
-					if p.Type == provider.PartHosted || p.Type == provider.PartCitation {
-						parts++
-						visibleParts = visibleParts || p.Hosted == nil || p.Hosted.Name != "image_generation"
-					}
-				}
-				if !e.IsInternal() && e.Time.Before(toolChatSince) && text != "SILENT" && (text != "" || visibleParts || len(e.Message.Calls()) == 0 && parts == 0) {
-					counts[i]++
-				}
-			}
-		}
-		run = nil
-		return nil
+		p.Pending = nil
+		p.Landed = map[string]bool{}
 	}
 	for i, e := range entries {
-		if e.Mark != nil {
+		if e.Mark != nil || e.IsInternal() {
 			continue
 		}
 		switch e.Message.Role {
 		case provider.RoleAssistant:
-			run = append(run, i)
+			p.Pending = append(p.Pending, SeqEntry{Seq: i + 1, Entry: e})
+			for _, call := range e.Message.Calls() {
+				if !chatSay(call.Function.Name) {
+					continue
+				}
+				result, found, err := s.toolResult(call.ID)
+				if err != nil {
+					return nil, err
+				}
+				if found && chatLanded(result.Message.Text()) {
+					p.Landed[call.ID] = true
+				}
+			}
 		case provider.RoleUser:
-			if e.IsInternal() {
-				continue
-			}
-			if err := closeRun(); err != nil {
-				return nil, err
-			}
-			text := e.Message.Text()
-			if !windowEvent.MatchString(text) && !IsApprovalCard(text) && !strings.HasPrefix(text, "<coding_card ") {
+			closeRun()
+			if row, ok := chatInput(i+1, e); ok && row.Kind == "owner" {
 				counts[i]++
 			}
 		}
 	}
-	if err := closeRun(); err != nil {
-		return nil, err
-	}
+	closeRun()
 	return counts, nil
 }

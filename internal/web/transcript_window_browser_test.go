@@ -71,27 +71,27 @@ bots[1].avatar='custom';bots[1].avatar_url='data:image/svg+xml;charset=utf-8,'+e
 fixture.messages[bots[1].name]=[{seq:1,role:'user',content:'另一个 Bot 的独立对话',time:'2026-10-31T10:00:00Z'}];
 const historyBaseFetch=window.fetch;
 window.fetch=async(path,opts={})=>{
- const url=new URL(String(path),'http://fixture.local'),match=url.pathname.match(/^\/api\/bots\/([^/]+)\/transcript(\/search)?$/);
+ const url=new URL(String(path),'http://fixture.local'),match=url.pathname.match(/^\/api\/bots\/([^/]+)\/chat(\/search)?$/);
  if(!match)return historyBaseFetch(path,opts);
- const name=decodeURIComponent(match[1]),q=url.searchParams,all=fixture.messages[name]||[];
+ const name=decodeURIComponent(match[1]),q=url.searchParams,all=fixtureChatRows(fixture.messages[name]||[]);
  if(match[2]){
   const query=q.get('q')||'';historyFixture.searches.push({name,query});
   if(historyFixture.holdSearch){await new Promise(r=>historyFixture.releaseSearch=r)}
   if(query==='error')return new Response(JSON.stringify({error:'scripted search failure'}),{status:500,headers:{'Content-Type':'application/json'}});
-  return json({matches:query==='needle'?[{seq:65,preview:'needle 历史线索'}]:[]});
+  return json({matches:query==='needle'?[{id:65,transcript_seq:65,preview:'needle 历史线索'}]:[]});
  }
  historyFixture.requests.push({name,before:Number(q.get('before')||0),after:Number(q.get('after')||0),around:Number(q.get('around')||0)});
  if(historyFixture.deferTranscript)await new Promise(resolve=>historyFixture.pendingTranscripts[name]=resolve);
  if(historyFixture.failTranscript)return new Response(JSON.stringify({error:'scripted transcript failure'}),{status:500,headers:{'Content-Type':'application/json'}});
- const limit=Number(q.get('limit')||60),total=all.length,before=Number(q.get('before')||0),after=Number(q.get('after')||0),around=Number(q.get('around')||0);
+ const limit=Number(q.get('limit')||60),total=all.at(-1)?.id||0,before=Number(q.get('before')||0),after=Number(q.get('after')||0),around=Number(q.get('around')||0);
  let lo=Math.max(1,total-limit+1),hi=total;
  if(before){hi=Math.min(total,before-1);lo=Math.max(1,hi-limit+1)}
  if(after){lo=after+1;hi=Math.min(total,lo+limit-1)}
  if(around){lo=Math.max(1,around-Math.floor(limit/2));hi=Math.min(total,lo+limit-1)}
- const messages=all.filter(m=>m.seq>=lo&&m.seq<=hi),head=messages[0]?.seq||0,tail=messages.at(-1)?.seq||0;
+ const messages=all.filter(m=>m.id>=lo&&m.id<=hi),head=messages[0]?.id||0,tail=messages.at(-1)?.id||0;
  const tag='W/"history-'+historyFixture.version+'-'+encodeURIComponent(name)+'-'+url.search+'"';
  if(opts.headers?.['If-None-Match']===tag)return new Response(null,{status:304,headers:{ETag:tag}});
- const body=JSON.stringify({messages,window:{head_seq:head,tail_seq:tail,total,next_before:head,next_after:tail,has_more_before:head>1,has_more_after:tail<total}});
+ const body=JSON.stringify({messages,window:{head_id:head,tail_id:tail,total,next_before:head,next_after:tail,has_more_before:head>1,has_more_after:tail<total}});
  if(historyFixture.holdTranscript){
   historyFixture.holdTranscript=false;
   const split=Math.floor(body.length/2),enc=new TextEncoder();
@@ -109,8 +109,8 @@ const transcriptWindowDriver = `
 const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep(10)}throw Error(msg)};
-const rows=()=>Array.from(document.querySelectorAll('#thread [data-transcript-key^="seq:"]')).filter(n=>n.classList.contains('msg'));
-const row=seq=>$('#thread [data-transcript-key="seq:'+seq+':0"]');
+const rows=()=>Array.from(document.querySelectorAll('#thread [data-transcript-key^="chat:"]')).filter(n=>n.classList.contains('msg'));
+const row=seq=>$('#thread [data-transcript-key="chat:'+seq+':0"]');
 const refresh=()=>document.dispatchEvent(new Event('visibilitychange'));
 const search=async query=>{if($('#history-search-panel').hidden)$('#chat-search').click();const box=$('#history-search');box.value=query;box.dispatchEvent(new Event('input',{bubbles:true}));$('#history-form').requestSubmit();await sleep(30)};
 (async()=>{
@@ -130,9 +130,9 @@ const search=async query=>{if($('#history-search-panel').hidden)$('#chat-search'
  assert(row(1)&&row(420)&&rows().length<=800,'oldest page did not load or opened tail was lost');
  assert($('#history-newer').hidden,'tail unexpectedly trimmed');
  $('#chat-search').click();await waitFor(()=>$('#history-form')&&!$('#history-form').hidden,'search did not open');
- await search('needle');await waitFor(()=>$('#history-results button[data-seq="65"]'),'search hit missing');
+ await search('needle');await waitFor(()=>$('#history-results button[data-id="65"]'),'search hit missing');
  assert($('#history-results').textContent.includes('历史线索'),'search omitted useful preview');
- $('#history-results button[data-seq="65"]').click();await waitFor(()=>row(65)&&!row(301),'hit did not replace with nearby window');
+ $('#history-results button[data-id="65"]').click();await waitFor(()=>row(65)&&!row(301),'hit did not replace with nearby window');
  assert($('#history-search-panel').hidden,'hit did not close search popover');
  assert(historyFixture.requests.some(r=>r.around===65),'hit did not request around target seq');
  assert(!$('#history-older').hidden&&!$('#history-newer').hidden,'located history cannot page both ways');
@@ -146,12 +146,12 @@ const search=async query=>{if($('#history-search-panel').hidden)$('#chat-search'
  assert(row(421)===latest,'page failure erased loaded conversation');
  assert(!$('#thread').textContent.includes('连不上 XBot'),'page failure pretended server was offline');
  historyFixture.failTranscript=false;$('#history-older').click();await waitFor(()=>row(302),'failed page was not retryable');
- await search('none');await waitFor(()=>!$('#history-results button[data-seq]')&&$('#history-results').textContent,'empty search left stale hits');
+ await search('none');await waitFor(()=>!$('#history-results button[data-id]')&&$('#history-results').textContent,'empty search left stale hits');
  await search('error');await waitFor(()=>$('#history-results').textContent.includes('失败'),'search failure not distinguishable');
  historyFixture.holdSearch=true;await search('needle');await waitFor(()=>historyFixture.releaseSearch,'slow search not in flight');
  document.querySelector('[data-bot="'+bots[1].name+'"]').click();await waitFor(()=>$('#title').textContent.includes(bots[1].name)&&row(1),'second bot did not load');
  historyFixture.releaseSearch();await sleep(80);
- assert(!$('#history-results button[data-seq="65"]')&&!$('#thread').textContent.includes('历史线索'),'stale search leaked across Bot selection');
+ assert(!$('#history-results button[data-id="65"]')&&!$('#thread').textContent.includes('历史线索'),'stale search leaked across Bot selection');
  assert(testErrors.length===0,testErrors.join('; '));
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
@@ -173,7 +173,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep
  assert($('.thread-loading-cover')&&!$('.thread-loading-cover .thread-unavailable'),'retry did not restore waiting cover');
  assert($('.thread-loading-cover .chat-open-avatar')?.getClientRects().length,'retry did not restore Bot avatar');
  historyFixture.deferTranscript=false;historyFixture.pendingTranscripts[bots[0].name]();
- await waitFor(()=>$('#thread [data-transcript-key="seq:420:0"]'),'initial failure retry did not load tail');
+ await waitFor(()=>$('#thread [data-transcript-key="chat:420:0"]'),'initial failure retry did not load tail');
  await waitFor(()=>!$('.thread-loading-cover'),'retry retained failure cover');
  assert(!$('.thread-unavailable'),'retry retained failure shell');
  assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
@@ -210,7 +210,7 @@ document.addEventListener('history-transcript-partial',()=>{
 (async()=>{
  await waitFor(()=>partialObserved,'partial tail response did not start');
  assert(!partialError,partialError);
- await waitFor(()=>$('#thread [data-transcript-key="seq:420:0"]'),'complete tail did not reveal');await sleep(40);
+ await waitFor(()=>$('#thread [data-transcript-key="chat:420:0"]'),'complete tail did not reveal');await sleep(40);
  observer.disconnect();
  await waitFor(()=>!$('.thread-loading-cover'),'complete window retained loading cover');
  assert(!$('#thread .thread-skeleton'),'success retained obsolete opening skeleton');
@@ -314,7 +314,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep
  releaseFirst();await sleep(80);
  assert($('.thread-loading-cover')===next&&!$('#thread .msg'),'stale tail response removed current Bot cover');
  historyFixture.deferTranscript=false;historyFixture.pendingTranscripts[bots[1].name]();
- await waitFor(()=>$('#thread [data-transcript-key="seq:1:0"]'),'second Bot tail did not reveal');
+ await waitFor(()=>$('#thread [data-transcript-key="chat:1:0"]'),'second Bot tail did not reveal');
  const leaving=$('.thread-loading-cover');
  if(reduced){
   assert(!leaving||leaving.getAnimations({subtree:true}).length===0,'reduced-motion reveal animates');
@@ -358,7 +358,7 @@ const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms)),
 const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 (async()=>{
  await waitFor(()=>$('#thread [data-seq="420"]'),'tail');$('#chat-search').click();$('#history-search').value='needle';$('#history-form').requestSubmit();
- await waitFor(()=>$('#history-results button[data-seq="65"]'),'hit');$('#history-results button[data-seq="65"]').click();
+ await waitFor(()=>$('#history-results button[data-id="65"]'),'hit');$('#history-results button[data-id="65"]').click();
  await waitFor(()=>$('#thread button[data-peer]')&&$('#thread [data-seq="70"]'),'historical peer event');
  const thread=$('#thread');$('#thread [data-seq="70"]').scrollIntoView({block:'center',behavior:'instant'});await sleep(30);
  const oldTop=thread.scrollTop,oldY=$('#thread [data-seq="70"]').getBoundingClientRect().top;

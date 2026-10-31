@@ -10,6 +10,15 @@
 - 全仓 `go test -count=1 ./...` 完整跑完但未绿：kernel 上述两条、memory 月日志守门、work description、web 旧时间分隔/供应商/审批/图片/人设/提问断言。旧六条旅程 smoke 全跑失败于 done.text/deltas 原口径，未修改 HEAD 基线六条同样复现；未改守护断言或扩修。日志和回退证据：`~/.xbot-build/env-prompt-frame/`。
 - 级别：本功能专项真入口端到端通过，但全仓/旧旅程守门未绿，不能宣称整体验收通过。未合 main、未 push、未移动 guard。Not run: Linux CI、真模型、用户日用、独立复审、IPC/后台减速专项。
 
+## 2026-10-31 聊天送达时间线（feature/chat-timeline，本地分支）
+
+- L 档，按政东确认的选 1：transcript 继续只追加；原 index.sqlite 增加 chat/chat_fts 和世代检查点。主人话/卡/来源行追加时投影，成功 say 待最终助手行与媒体定稿后整批插入，多 say 多行、媒体挂最后一条；delivery_key 幂等且不回写正文/附件。回填分块读取、快照/检查点同事务；旧无 say 正文沿原截止。单一 Go 可见规则同时供回填和非主列 Window 旧预算使用。
+- 主列打开、上翻、搜索、轮询、收工与预览改读 chat；40 行默认/200 行硬顶，700 KiB 帽保留，key/游标为 chat ID，transcript_seq 为引用回链。复用 keyed patch、stick、打开遮罩与媒体组件；前端 spokenLines/skipMessage 主筛退出。轨迹独立读 transcript，并用条件请求/结构相等跳过无变重画；peer 原文、recall、expand、导出和模型上下文主责不变。ADR 0039、atlas、API 已同步，dev 留待用户日用/设计师确认，不改 guard。
+- 新存储/API 回归覆盖不可变快照、Record 幂等、整轮多 say/媒体、重开、分支独立完成、显式 internal、世代回填、短中文 FTS、分页、鉴权、ETag、单行和聚合体限，以及真实 POST messages→scripted Kernel→chat。Bot 整包最终三遍通过（60.244s）；Chat/stick/live/全部窗口/搜索/增量/语音 Chrome 专项最终三遍通过（112.749s）。真 serve 二进制 `TestTranscriptWindowJourney` 通过，包含浅深尾窗→上翻→chat FTS→around→回最新，并确认主列无 transcript 请求、轨迹仍请求 transcript。替换旧 skipMessage 静态源码测试为 Go 字段行为守护，不修改旧旅程验收。
+- 稀疏夹具含600条工具/say记录，尾窗40个可见行仅6037字节；三轮40次本机 HTTP p95 为1.6/2.0/2.0ms，prepend 锚点偏差-3.609px。stick 墙钟20帧样本p95为20.7/22.2/21.3ms，不宣称稳定60fps；原生语音Range每轮25次p95为2.8/2.7/2.9ms。1440×900 DPR2浅深前后截图位于 `~/.xbot-build/ui-shots/chat-timeline/{before,after}/`，已看并对照；视觉组件/样式未改，设计师本人复审待验。
+- gofmt、JS语法、go vet、diff检查通过；atlas audit退出0、保留仓库已有告警。全仓一遍、Bot/Web整包三遍均完整执行，但全仓与Web整包未绿：kernel长轮/MemoryFileLogGuard、memory月容量、work description与10项Web时间/供应商/审批/图片/人设/提问断言均在干净基线归档定向复现。Web整包另有CLIEventQueue清理、DevicesPairBrowser与一次VoiceReal的bot playback超时，基线单独三遍未复现这些偶发项，不归因为本改动或声称已修；最终功能专项三遍含真实语音全过。六条旧guard smoke本次和基线均失败（旧done.text/工具对话口径），未扩改断言。初次新trace轮询导致无变重画的问题已在本批修正，并由LiveBubbleSplit守住。
+- 级别：本功能本机端到端通过，未合main、未push、未重启日用8788。完整测试/基线日志 `~/.xbot-build/chat-timeline/`。Not run: Linux CI、真实跨设备pipe、真实模型、设计师独立复审、用户日用、物理帧率/IPC/后台减速专项；未委派Agent。
+
 ## 2026-10-31 主列 stick-to-bottom（feature/chat-scroll-to-tail，本地分支）
 
 - M 档，按用户合同收拢 `threadStick`：持有 stick 状态与唯一底部阈值、rAF 合帧、ResizeObserver、prepend 视觉锚；打开/latest 贴底，上翻解除，主动下滚到底可重新跟尾。applyTranscript、群渲染、poll、SSE/live、临时发送、历史控件统一调用；异步增高不再用瞬时距离冻结 poll。stick 时尾窗断层直接换新尾，历史阅读仍保位置。未动服务端 Bot.Window 与800 raw保尾。

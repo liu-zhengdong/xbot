@@ -1,10 +1,12 @@
 ---
 kind: adr
 guard: owner
-status: Accepted
+status: Superseded（主列数据源部分，见 0039）
 date: 2026-10-31
 ---
 # 0038 聊天读取是原 transcript 的窗口，搜索沿用原 FTS
+
+> 主列数据源与搜索已由 [ADR 0039](0039-chat-delivery-timeline.md) 取代；本文的 transcript 窗口、fork 回放和传输上限仍保留给非主列用途。
 
 ## 背景
 

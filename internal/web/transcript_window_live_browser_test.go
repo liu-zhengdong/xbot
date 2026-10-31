@@ -100,6 +100,7 @@ func TestTranscriptWindowVisibleTailBrowser(t *testing.T) {
 		for i := 0; i < 250; i++ {
 			appendMessage(provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("noise", strings.Repeat("x", 600))})
 		}
+		appendMessage(provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")})
 	}
 	srv := httptest.NewServer(muxOf(s))
 	defer srv.Close()

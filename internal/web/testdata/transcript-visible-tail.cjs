@@ -10,7 +10,7 @@ const assert = (ok, message) => { if (!ok) throw Error(message); };
     await context.addInitScript(() => sessionStorage.setItem('xbot-selected-bot','History'));
     const page = await context.newPage();
     const requests = [], errors = [];
-    page.on('request', req => { if(new URL(req.url()).pathname.endsWith('/transcript')) requests.push(new URL(req.url()).search); });
+    page.on('request', req => { if(new URL(req.url()).pathname.endsWith('/chat')) requests.push(new URL(req.url()).search); });
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(cfg.url);
     await page.locator('#thread .msg.bot').first().waitFor();
@@ -25,9 +25,9 @@ const assert = (ok, message) => { if (!ok) throw Error(message); };
       }
     };
     await shot('opened');
-    assert(await page.locator('#thread .msg.bot').count() === 25, 'default Window did not render 25 delivered bubbles');
+    assert(await page.locator('#thread .msg.bot').count() === 40, 'default chat window did not render 40 delivered bubbles');
     assert(!requests.some(q => q.includes('before=')), 'opening relied on automatic before requests');
-    await page.locator('#thread .msg.bot[data-seq="301"]').evaluate(n => { window.visibleTailAnchor = n; window.tailNodes = [...document.querySelectorAll('#thread .msg.bot')]; });
+    await page.locator('#thread .msg.bot').first().evaluate(n => { window.visibleTailAnchor = n; window.tailNodes = [...document.querySelectorAll('#thread .msg.bot')]; });
     await page.locator('#thread').evaluate(n => { n.scrollTop = 40; });
     await page.waitForTimeout(250);
     await page.evaluate(() => {
@@ -44,16 +44,16 @@ const assert = (ok, message) => { if (!ok) throw Error(message); };
     assert(await page.evaluate(() => window.visibleTailAnchor === document.querySelector('#thread .msg.bot[data-seq="'+window.visibleTailAnchor.dataset.seq+'"]')), 'prepend replaced the existing delivery node');
     const deltaTop = await page.evaluate(y => window.visibleTailAnchor.getBoundingClientRect().top-y, top);
     assert(Math.abs(deltaTop)<4, 'prepend moved the reading anchor: '+deltaTop);
-    assert(requests.filter(q => q.includes('before=')).length === 1 && requests.includes('?before=301'), 'caller guessed extra raw pages');
+    assert(requests.filter(q => q.includes('before=')).length === 1 && requests.includes('?before=11'), 'caller guessed extra raw pages');
     const stats = await page.evaluate(async () => {
       const times = []; let bytes = 0;
       for (let i=0;i<40;i++) {
-        const start = performance.now(), response = await fetch('/api/bots/History/transcript');
+        const start = performance.now(), response = await fetch('/api/bots/History/chat');
         const text = await response.text(); times.push(performance.now()-start); bytes = new TextEncoder().encode(text).length;
         const data = JSON.parse(text);
-        if(data.messages.length !== 300 || data.window.head_seq !== 301) throw Error('HTTP default lost adaptive Window');
+        if(data.messages.length !== 40 || data.window.head_id !== 11) throw Error('HTTP did not limit chat delivery rows');
       }
-      times.sort((a,b)=>a-b); return {httpP95Ms:times[37],bytes,rows:300,bubbles:25};
+      times.sort((a,b)=>a-b); return {httpP95Ms:times[37],bytes,rows:40,bubbles:40};
     });
     assert(errors.length === 0, errors.join('; '));
     console.log(JSON.stringify({...stats,deltaTop}));

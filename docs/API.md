@@ -168,6 +168,18 @@
 
 ## 对话
 
+### 主列 chat 时间线
+
+`GET /api/bots/{name}/chat?before=&after=&around=&limit=` 需要登录及 Bot owner（401/404）。无参读尾窗，默认40条chat行、limit为1..200；三个游标互斥，before/after排他，around包含命中。非法参数400，不存在的around目标404。返回 `{"messages":[{"id":1,"transcript_seq":7,"delivery_key":"say:call_id","kind":"bot","time":"RFC3339","text":"送达快照","images":[],"audios":[],"reply_to_seq":1,"reply_to_id":1,"meta":{}}],"window":{"head_id":1,"tail_id":40,"total":40,"next_before":1,"next_after":40,"has_more_before":false,"has_more_after":false}}`。kind为owner/bot/card/source；附件、引用与来源字段可省略。reply_to_id是chat目标，reply_to_seq仍为账本引用；行上的from_device/relay沿原展示规则。
+
+每个delivery_key只插入一次，正文/附件不能编辑。成功say等最终助手行与媒体归组定稿后整轮提交；多say多行，图片/语音挂最后一条；SSE实时显示不变。旧Bot/世代落后自动分块投影，不改旧jsonl。主列打开、上翻、搜索、轮询与收工对账不再读raw transcript或扩大raw窗。
+
+响应含包络仍≤约700 KiB；大单行带truncated预览并保持chat游标前进。弱ETag由chat尾ID、设备标签和窗口参数组成，无可见变化返回304；工具噪声不使chat失效。默认尾窗/读到尾部的after更新既有transcript已读游标；before/around不标记未见尾部。
+
+`GET /api/bots/{name}/chat/search?q=&limit=20` 只搜chat FTS正文，返回 `{"matches":[{"id":1,"transcript_seq":7,"preview":"短预览","time":"RFC3339","kind":"bot"}]}`，按BM25排名。limit为1..100、q去空白后最多1024字节；空词/无命中为空数组，非法参数400。短中文片段可命中；工具参数、内部正文不进此索引。主列用命中id开around窗；轨迹与Agent继续用下面的transcript接口。
+
+### transcript 账本
+
 `GET /api/bots/{name}/transcript` 返回原文。段存储可用时带弱 `ETag`（现有 transcript 尾段 stamp，并计入远端设备标签文件的 size/mtime）和 `Cache-Control: private, no-cache`；`If-None-Match` 命中返回 304、无正文，不读取历史、不重写已读游标。首次迁移或 stamp 不可用时仍返回完整 200；有变化的 200 仍更新已读游标。返回形状：
 
 ```json
@@ -200,7 +212,7 @@
 
 响应另带 `window:{head_seq,tail_seq,total,next_before,next_after,has_more_before,has_more_after}`。head/tail 为本窗含端点范围，total 是快照末 seq；next_before/next_after 分别用于下一页 before/after，有更多时由对应 has_more 标志指明。响应包括 JSON 包络控制在 pipe 的 700 KiB 内（本机与远端统一窗口预算，完整内容用导出）。单超大行公开预览裁短并带 `truncated:true`，仍推进游标；普通附件字段不变。assistant 的 `delivered:[call_id]` 是已成功送达的通知调用，可在成功回包落在窗外时复用原有气泡规则。fork 的有效分支仍包含窗外标记的回溯作用。条件请求 ETag 包括尾部指纹、设备标签和规范窗口参数；不同窗口不能共用 304。Bot 列表未读仍用序号计数。
 
-`GET /api/bots/{name}/transcript/search?q=<关键词>&limit=20` 与 transcript GET 同样要求登录及 Bot owner。直接复用该 Bot 的 `Bot.Search` / FTS5，返回 `{"matches":[{"seq":111,"preview":"短预览","time":"RFC3339"}]}`，沿用 BM25 排名；limit 默认 20、1..100，q 去空白后最多 1024 字节，非法参数 400。空词或无命中返回空数组。预览取存储行（工具 blob 只用已有预览，不解包全文），命中 seq 可用 `transcript?around=<seq>` 定位。工具/内部记录也可被索引命中；若不属于聊天气泡投影，界面保留搜索预览并提示已定位附近，可在轨迹/导出查看原文。不另建全文索引。
+`GET /api/bots/{name}/transcript/search?q=<关键词>&limit=20` 与 transcript GET 同样要求登录及 Bot owner。直接复用该 Bot 的 `Bot.Search` / FTS5，返回 `{"matches":[{"seq":111,"preview":"短预览","time":"RFC3339"}]}`，沿用 BM25 排名；limit 默认 20、1..100，q 去空白后最多 1024 字节，非法参数 400。空词或无命中返回空数组。预览取存储行（工具 blob 只用已有预览，不解包全文），命中 seq 可用 `transcript?around=<seq>` 定位。工具/内部记录也可被索引命中；本接口给Agent与账本用途，主列搜索不调用它。transcript本身不另建全文索引。
 
 `POST /api/bots/{name}/paste` 收一张要贴进对话的图片。body 是图片原始字节，`Content-Type` 只当提示，类型按字节嗅探。成功 200 `{"image":"<32 位十六进制>.png"}`。只认 PNG、JPEG、GIF、WebP（其他 400 `只认 PNG、JPEG、GIF、WebP`），超过 10 MB 回 413，边长超过 2048 或读不出尺寸回 400 并说明原因。文件存在这个 Bot 的工作区 `paste/` 下，权限 0600。`GET /api/bots/{name}/paste/{image}` 读回这张图，`Content-Type` 按字节定，带 `nosniff`，可长期缓存（文件名不会改）；名字不是一个合法 id 或文件已不在时 404。这两条都要登录，不是这个 owner 的 Bot 是 404。
 

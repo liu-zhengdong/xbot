@@ -2969,7 +2969,11 @@
 
   function jumpToSeq(seq) {
     const row = thread.querySelector('.msg[data-seq="' + Number(seq) + '"]');
-    if (!row) { loadThread("around", seq); return; }
+    if (!row) {
+      const target = state.messages.find(m => m.reply_to === seq)?.reply_to_id;
+      if (target) loadThread("around", target);
+      return;
+    }
     row.scrollIntoView({ block: "center", behavior: "instant" });
     row.classList.remove("quote-hit");
     void row.offsetWidth;
@@ -3172,65 +3176,14 @@
     urls.forEach((url, i) => wrap.append(gallery(urls, i)));
   }
 
-  // What the owner sees from the bot. The bot speaks with
-  // send_message_to_user (notify_owner before the rename): one group per call
-  // that landed, split into content bubbles. A run of bot lines between two
-  // inputs that made no such call shows nothing, unless it predates tool-only chat; then its reply text
-  // stays, so old history is not blank. Pictures queue on the run's final line
-  // and show after its last delivery's text.
   const SAY_TOOLS = ["send_message_to_user", "notify_owner"];
-  const TOOL_CHAT_SINCE = Date.parse("2026-10-27T11:00:00+08:00");
 
-  function sayLanded(result) {
-    const out = String((result && result.content) || "");
-    return out.startsWith("sent to the owner's chat") || out.includes("notified the owner");
-  }
-
-  // spokenLines maps a bot line's index to the bubbles it shows: a list of
-  // {text, images, audios, replyTo}, or null for a legacy line drawn from its content.
-  // Lines it leaves out are not drawn.
-  function spokenLines(messages) {
-    const results = {};
-    for (const m of messages) {
-      if (m.role === "tool" && m.tool_call_id) results[m.tool_call_id] = m;
-    }
-    const spoken = new Map();
-    let run = [];
-    const close = () => {
-      const says = [];
-      const images = [];
-      const audios = [];
-      let replyTo = 0;
-      let imageLine = -1;
-      for (const i of run) {
-        const m = messages[i];
-        if ((m.images || []).length) { images.push(...m.images); imageLine = i; }
-        if ((m.audios || []).length) { audios.push(...m.audios); imageLine = i; }
-        if (m.reply_to) replyTo = m.reply_to;
-        for (const call of m.tool_calls || []) {
-          const info = toolSummary(call);
-          if (SAY_TOOLS.includes(info.name) && (sayLanded(results[call.id]) || (m.delivered || []).includes(call.id))) says.push({ i: i, text: String(info.args.text || "").trim() });
-        }
-      }
-      if (!says.length && (images.length || audios.length)) says.push({ i: imageLine, text: "" });
-      if (says.length) {
-        says[0].replyTo = replyTo;
-        says[says.length - 1].images = images;
-        says[says.length - 1].audios = audios;
-        for (const say of says) spoken.set(say.i, [...(spoken.get(say.i) || []), say]);
-      } else {
-        for (const i of run) {
-          if (!(Date.parse(messages[i].time) >= TOOL_CHAT_SINCE)) spoken.set(i, null);
-        }
-      }
-      run = [];
-    };
-    messages.forEach((m, i) => {
-      if (m.role === "assistant") run.push(i);
-      else if (m.role === "user" && !m.internal) close();
-    });
-    close();
-    return spoken;
+  // Adapt delivery snapshots to the existing bubble/quote/patch components.
+  // seq remains the transcript backlink; only id is a chat paging/key cursor.
+  function chatMessage(m) {
+    return {...m, seq:m.transcript_seq, content:m.text,
+      role:m.kind === "bot" ? "assistant" : "user", reply_to:m.reply_to_seq,
+      branch:m.meta?.branch, parts:m.meta?.parts || []};
   }
 
   // sayText is what a bot line said to the owner, for quotes and previews.
@@ -3239,8 +3192,7 @@
     return said.length ? said.join("\n\n") : (m.content || "");
   }
 
-  // botBubble draws one delivery row: say from spokenLines, or null for a legacy
-  // line drawn from its content.
+  // Draw an already finalized delivery snapshot (or a live SSE delivery).
   function botBubble(m, say, messages, who) {
     const row = el("div", "msg bot");
     if (m.seq) row.dataset.seq = String(m.seq);
@@ -3267,13 +3219,6 @@
     row.append(body);
     addBubbleTime(row, m.time);
     return row;
-  }
-
-  function skipMessage(m) {
-    if (!m || m.role === "tool" || m.role === "system") return true;
-    // A kernel note the owner did not say. The transcript row says so; the
-    // interface does not recognize the text.
-    return !!m.internal;
   }
 
   // Scroll state belongs to the reader, not to transient layout geometry.
@@ -3336,8 +3281,8 @@
     };
   })();
 
-  // Sole transcript -> main-column assembly seam. Keys are transcript seqs
-  // (plus the delivered-message ordinal), never content fingerprints. Compare
+  // Sole chat -> main-column assembly seam. Keys are chat delivery IDs,
+  // never transcript sequence numbers or content fingerprints. Compare
   // against the last projection, not live DOM: selection, open drawers and
   // image load state belong to the reader and must survive a poll.
   function applyTranscript(messages, who) {
@@ -3353,12 +3298,9 @@
       threadStick.changed();
       return true;
     }
-    const spoken = spokenLines(messages);
     let any = false;
     let lastKey = "";
     let lastMsg = null;
-    const relays = backgroundRelays(messages);
-    const wakeRuns = routineRuns(messages);
     const latestCard = {};
     const latestApproval = {};
     messages.forEach((m, i) => {
@@ -3368,10 +3310,6 @@
       if (appr) latestApproval[appr.id] = i;
     });
     const projectMessage = (m, i) => {
-      if (skipMessage(m) || wakeRuns.hidden.has(i)) return;
-      // Background turns have no cards in the chat; the header badge lists them.
-      if (m.kind === "fork" || m.kind === "fork_end") return;
-      if (m.role === "assistant" && String(m.content || "").trim() === "SILENT" && !(m.images || []).length && !(m.audios || []).length) return;
       const appr = approvalCardOf(m.content);
       if (appr) {
         if (latestApproval[appr.id] !== i) return;
@@ -3431,21 +3369,13 @@
         inner.append(row);
         return;
       }
-      if (relays.has(i) || !spoken.has(i)) return;
       any = true;
       const key = "bot:" + (who || "");
-      const says = spoken.get(i);
-      if (!says) {
-        const visibleParts = (m.parts || []).some(p => !p.hosted || p.hosted.name !== "image_generation");
-        if (!(m.content || visibleParts || (m.images || []).length || (m.audios || []).length || (!(m.tool_calls || []).length && !(m.parts || []).length))) return;
-      }
-      for (const say of says || [null]) {
-        const row = botBubble(m, say, messages, who);
-        if (!groupStart(lastMsg, m, lastKey, key)) markContinuation(row, m.time);
-        inner.append(row);
-        lastKey = key;
-        lastMsg = m;
-      }
+      const row = botBubble(m, null, messages, who);
+      if (!groupStart(lastMsg, m, lastKey, key)) markContinuation(row, m.time);
+      inner.append(row);
+      lastKey = key;
+      lastMsg = m;
     };
     messages.forEach((m, i) => {
       const before = inner.lastElementChild;
@@ -3459,7 +3389,7 @@
     });
     if (!any) inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
     addTimeDividers(inner);
-    const unaligned = messages.some((m, i) => !Number.isInteger(m.seq) || m.seq <= 0 || (i > 0 && m.seq <= messages[i - 1].seq));
+    const unaligned = messages.some((m, i) => !Number.isInteger(m.id) || m.id <= 0 || (i > 0 && m.id <= messages[i - 1].id));
     const changed = commitTranscript(inner, who, unaligned);
     state.firstRender = false;
     if (changed) threadStick.changed();
@@ -3469,7 +3399,7 @@
   function transcriptRowKey(m, i) {
     const approval = approvalCardOf(m.content);
     const card = codingCardOf(m.content);
-    return approval ? "approval:" + approval.id : card ? "card:" + card.id : "seq:" + (m.seq || i);
+    return approval ? "approval:" + approval.id : card ? "card:" + card.id : "chat:" + m.id;
   }
 
   function commitTranscript(next, who, reset = false) {
@@ -3906,14 +3836,11 @@
 
   function previewFromMessages(messages) {
     if (!messages) return "";
-    // A bot line counts only for what the chat draws from it.
-    const spoken = spokenLines(messages);
+    // Rows are already owner-visible delivery snapshots.
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
       if (hiddenFromPreview(m)) continue;
-      if (m.role === "assistant" && !spoken.has(i)) continue;
-      const says = m.role === "assistant" && spoken.get(i);
-      const parsed = says ? { text: says.map((say) => say.text).join(" ") } : unwrap(m.content || "");
+      const parsed = unwrap(m.content || "");
       if (parsed.untrusted) continue;
       const text = clip(plainText(pullImages(parsed.text).text), 72);
       if (!text || text === "SILENT" || summaryLine(text)) continue;
@@ -4644,6 +4571,7 @@
     state.firstRender = true;
     threadStick.reset();
     state.messages = [];
+    state.traceMessages = [];
     $("chat-search").hidden = state.sel?.type !== "bot";
     $("history-search-panel").hidden = true;
     $("chat-search").setAttribute("aria-expanded", "false");
@@ -4863,7 +4791,7 @@
         if (mode === "older") query = "?before=" + selection.history.next_before;
         if (mode === "newer") query = "?after=" + selection.history.next_after;
         if (mode === "around") query = "?around=" + Number(target);
-        const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript" + query, {
+        const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/chat" + query, {
           credentials: "same-origin",
           headers: mode === "poll" && state.sig && selection.transcriptETag ? { "If-None-Match": selection.transcriptETag } : {},
         });
@@ -4873,28 +4801,27 @@
         if (!res.ok) throw new Error(data.error || "request failed");
         if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
         selection.transcriptETag = !query ? res.headers.get("ETag") : null;
-        let messages = data.messages || [];
+        let messages = (data.messages || []).map(chatMessage);
         const old = state.messages;
         let olderAtCapacity = false;
         if (mode === "poll" && data.window && old.length && !state.firstRender &&
-            !threadStick.sticking && data.window.tail_seq > old.at(-1).seq) {
+            !threadStick.sticking && data.window.tail_id > old.at(-1).id) {
           selection.history = {...selection.history, total:data.window.total, has_more_after:true};
           return true;
         }
         if (data.window && old.length && ["older", "newer", "poll"].includes(mode)) {
-          const head = messages[0]?.seq, tail = messages.at(-1)?.seq;
-          if (mode === "poll" && !threadStick.sticking && head > old.at(-1).seq + 1) {
+          const head = messages[0]?.id, tail = messages.at(-1)?.id;
+          if (mode === "poll" && !threadStick.sticking && head > old.at(-1).id + 1) {
             selection.history = { ...selection.history, total: data.window.total, has_more_after: true };
             return true;
           }
-          if (head && tail && !(mode === "poll" && head > old.at(-1).seq + 1)) {
-            const bySeq = new Map(old.map(m => [m.seq, m]));
-            messages.forEach(m => bySeq.set(m.seq, m));
-            messages = [...bySeq.values()].sort((a,b) => a.seq-b.seq);
-            // Two fully expanded Bot.Window pages (400 raw records each).
-            // Prepending must never evict the already loaded latest deliveries.
+          if (head && tail && !(mode === "poll" && head > old.at(-1).id + 1)) {
+            const byID = new Map(old.map(m => [m.id, m]));
+            messages.forEach(m => byID.set(m.id, m));
+            messages = [...byID.values()].sort((a,b) => a.id-b.id);
+            // Retain the opened tail and existing DOM anchors while paging.
             messages = messages.slice(-800);
-            olderAtCapacity = mode === "older" && messages[0]?.seq >= old[0]?.seq;
+            olderAtCapacity = mode === "older" && messages[0]?.id >= old[0]?.id;
           }
         }
         const paging = mode === "older" || mode === "newer";
@@ -4904,16 +4831,16 @@
         const changed = applyTranscript(messages, selection.id);
         revealThread();
         selection.history = data.window ? { ...data.window,
-          head_seq: messages[0]?.seq || 0, tail_seq: messages.at(-1)?.seq || 0,
-          next_before: messages[0]?.seq || 0, next_after: messages.at(-1)?.seq || 0,
-          has_more_before: (messages[0]?.seq || 0) > 1,
-          has_more_after: (messages.at(-1)?.seq || 0) < data.window.total,
+          head_id: messages[0]?.id || 0, tail_id: messages.at(-1)?.id || 0,
+          next_before: messages[0]?.id || 0, next_after: messages.at(-1)?.id || 0,
+          has_more_before: (messages[0]?.id || 0) > 1,
+          has_more_after: (messages.at(-1)?.id || 0) < data.window.total,
         } : null;
         historyButtons.error.hidden = !olderAtCapacity;
         if (olderAtCapacity) historyButtons.error.textContent = "当前窗口已满，可用搜索定位更早的消息。";
         if (subtitleError && subtitle.textContent === "对话加载失败，请重试。") setStatus("");
         if (mode === "around") {
-          const row = thread.querySelector('.msg[data-seq="' + Number(target) + '"]');
+          const row = thread.querySelector('[data-transcript-key="chat:' + Number(target) + ':0"]');
           if (row) {
             threadStick.locate(row);
             row.classList.add("history-hit-target");
@@ -5006,7 +4933,7 @@
     results.replaceChildren(el("p", "muted", q ? "正在搜索…" : "输入关键词搜索聊天历史。"));
     if (!q) return;
     try {
-      const data = await api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript/search?q=" + encodeURIComponent(q));
+      const data = await api("/api/bots/" + encodeURIComponent(selection.id) + "/chat/search?q=" + encodeURIComponent(q));
       if (state.sel !== selection || request !== searchRequest || state.peer) return;
       results.replaceChildren();
       for (const hit of data.matches || []) {
@@ -5014,10 +4941,10 @@
         btn.append(el("span", "ex", hit.preview || "查看这条历史记录"));
         if (hit.time) btn.append(el("time", "tm", new Date(hit.time).toLocaleString()));
         btn.type = "button";
-        btn.dataset.seq = hit.seq;
+        btn.dataset.id = hit.id;
         btn.addEventListener("click", () => {
           closeHistorySearch();
-          loadThread("around", hit.seq);
+          loadThread("around", hit.id);
         });
         results.append(btn);
       }
@@ -5056,6 +4983,7 @@
         state.tab = pair[0];
         paintPanel();
         if (pair[0] === "inbox" && state.sel?.type === "bot") loadInbox();
+        if (pair[0] === "trace" && state.sel?.type === "bot") loadPanel();
       });
       bar.append(btn);
     }
@@ -5710,7 +5638,7 @@
 
   function traceView() {
     const wrap = document.createDocumentFragment();
-    const turns = traceTurns(state.messages);
+    const turns = traceTurns(state.traceMessages || []);
     if (!turns.length) {
       wrap.append(panelEmpty("trace", "没有轨迹", "它每做一件事，都会在这里留下一行。"));
       return wrap;
@@ -6668,20 +6596,38 @@
     }
   }
 
+  async function loadTrace() {
+    const selection = state.sel;
+    if (selection?.type !== "bot" || state.tab !== "trace" || !panel.classList.contains("open")) return;
+    const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript", {
+      credentials:"same-origin", headers:selection.traceETag ? {"If-None-Match":selection.traceETag} : {},
+    });
+    if (res.status === 304 || state.sel !== selection) return;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "request failed");
+    if (state.sel !== selection) return;
+    selection.traceETag = res.headers.get("ETag");
+    if (sameTranscriptValue(state.traceMessages || [], data.messages || [])) return;
+    state.traceMessages = data.messages || [];
+    if (state.tab === "trace" && panel.classList.contains("open")) paintPanel();
+  }
+
   async function loadPanel() {
     if (!state.sel) { paintPanel(); return; }
     if (state.sel.type === "group") { state.panelData = null; paintPanel(); return; }
     const selection = state.sel;
     const request = ++state.panelLoad;
     try {
-      const [data, snap, inbox] = await Promise.all([
+      const [data, snap, inbox, transcript] = await Promise.all([
         fetchBotProfile(selection.id),
         api("/api/bots/" + encodeURIComponent(selection.id) + "/context").catch(() => ({ requests: [] })),
         api("/api/bots/" + encodeURIComponent(selection.id) + "/inbox").catch(() => ({ error: true })),
+        state.tab === "trace" ? api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript") : Promise.resolve(null),
       ]);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
+      if (transcript) state.traceMessages = transcript.messages || [];
       state.inboxData = inbox;
       state.ctxSnap = snap;
       paintPanel();
@@ -7148,8 +7094,8 @@
     warming = true;
     try {
       if (job.kind === "bot") {
-        const data = await api("/api/bots/" + encodeURIComponent(job.id) + "/transcript");
-        state.preview[job.key] = previewFromMessages(data.messages || []);
+        const data = await api("/api/bots/" + encodeURIComponent(job.id) + "/chat");
+        state.preview[job.key] = previewFromMessages((data.messages || []).map(chatMessage));
       } else {
         const data = await api("/api/groups/" + encodeURIComponent(job.id));
         state.preview[job.key] = previewFromGroup(data.messages || []);
@@ -8885,6 +8831,7 @@
       refreshNotes().catch(() => {});
       refreshLists().catch(() => {});
       loadThread().catch(() => {});
+      if (panel.classList.contains("open") && state.tab === "trace") loadTrace().catch(() => {});
     }, 3000);
   }
 

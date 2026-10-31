@@ -16,7 +16,7 @@ fixture.messages[bots[0].name].push(message('user','保留这条选区。'),...s
 let transcriptVersion=1,notModified=0,bodyReads=0,useConditional=true;
 const transcriptFetch=window.fetch;
 window.fetch=async(path,opts={})=>{
- if(String(path).endsWith('/transcript')){
+ if(String(path).endsWith('/chat')){
   const tag='W/"fixture-'+transcriptVersion+'"';
   if(useConditional&&opts.headers?.['If-None-Match']===tag){notModified++;return new Response(null,{status:304,headers:{ETag:tag}})}
   const res=await transcriptFetch(path,opts);bodyReads++;

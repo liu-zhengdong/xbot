@@ -480,7 +480,16 @@ func (s *segStore) appendSeq(e Entry, indexIt bool) (int, error) {
 	var seq int
 	err := s.with(func() error {
 		var err error
+		chat := &Chat{}
+		if indexIt {
+			if err := chat.sync(s); err != nil {
+				return err
+			}
+		}
 		seq, err = s.appendLocked(e, indexIt)
+		if err == nil && indexIt {
+			err = chat.sync(s)
+		}
 		return err
 	})
 	return seq, err

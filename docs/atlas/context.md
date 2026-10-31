@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary tests); 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature/chat-timeline (Chat delivery snapshots, HTTP/Chrome); 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary tests); 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 上下文与 transcript
 
@@ -15,9 +15,13 @@ verified: 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary
 
 ## 聊天读取窗口
 
-Web 主列沿同一 transcript GET 读取尾窗；默认尾窗和未指定 limit 的 before 页先取60条原始记录，可见交付不足25条时由 `Bot.Window` 向前扩，仍受400条原始记录和256 KiB预算约束（显式 limit 仍最多200条），触顶保留真实 has_more_before。计数按 spokenLines/skipMessage 的交付单位：真实用户输入、成功 say（含旧名 notify_owner）、无 say 的旧轮正文、轮内图片/语音；内部行、来源提示、工具和 SILENT 不充数，同轮成功 say/附件抑制旧正文。显式 limit 仍按原始条数；after 排他翻页、around 定位搜索命中保持原规则。不调用 Entries 读整本再切。`Bot.Window` 在同一存储锁下确定快照末 seq、按 lines 的长度和偏移选择连续范围，只打开命中段的目标偏移。跨窗 fork 通过派生 fork_spans 复原；tool_results 按调用 id 定位成功回包，保持跨窗消息交付投影。旧 index 版本首次读取会从原段重建一次，版本提交在重建成功后，失败/中断可再修复；不改已存段字节。它们只是已有 SQLite 的可重建关系索引，全文搜索仍是原 FTS5 / Bot.Search。
+Web 主列只读 `Chat.Window` / `Chat.Search`：原 index.sqlite 内的 chat 表存主人可见送达快照，chat_fts 只索引会话正文；默认40条、上限200条，before/after/around 使用 chat ID，transcript_seq 保留回链。工具噪声不占 chat 窗口。`Chat.Record` 的唯一插入实现按 delivery_key 幂等，正文/附件不回写；主人话、卡和来源行在追加时记录，成功 say 等最终助手行携带媒体后整批提交，多 say 多行、媒体挂最后一条。SSE 仍即时显示。
 
-HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览，游标仍连续可推进；全本仍走流式export。窗口元数据、鉴权和搜索出口见 [API](../API.md#对话)；决定见 [ADR 0038](../adr/0038-transcript-window.md)。
+首次读取/追加或投影世代落后时按 seq 分块回填，快照与检查点同事务写入，不改旧 jsonl；显式 internal、来源行、旧轮截止与成功 say 共用 Go 可见规则。chat FTS 把汉字拆成连续字符词组，支持短中文片段；搜索不读 raw 工具正文。peer 原文仍走 peer API。
+
+非主列 `Bot.Window` / transcript GET/search 保留：尾窗/before 的旧自适应预算为60起步、25可见目标、400 raw/256 KiB硬帽，显式limit最多200条；可见预算复用 Chat 规则。它按 lines 偏移仅读命中段，fork_spans/tool_results 保持跨窗回溯与成功回包；原 Bot.Search/FTS、模型上下文、recall、expand、导出不改职责。
+
+HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览，游标仍连续可推进；全本仍走流式export。窗口元数据、鉴权和搜索出口见 [API](../API.md#对话)；决定见 [ADR 0039](../adr/0039-chat-delivery-timeline.md)，非主列窗口见 [ADR 0038](../adr/0038-transcript-window.md)。
 
 ## 边界
 负责：组装上下文、transcript 分段存储和索引、压缩、找回、导出、引用回复。不负责：分叉的分支规则（见 [插话时分叉](fork.md)）。

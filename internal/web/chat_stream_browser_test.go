@@ -82,10 +82,11 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/groups')return json({groups:[],folders:[]});
  if(path==='/api/bots/status')return json({bots:[]});
  if(path==='/api/notes')return json({notes:[]});
- const match=String(path).match(/^\/api\/bots\/([^/]+)(\/transcript|\/messages)?$/);
+ const match=String(path).match(/^\/api\/bots\/([^/]+)(\/transcript|\/chat|\/messages)?$/);
  if(match){
   const bot=decodeURIComponent(match[1]);
-  if(match[2]==='/transcript'){fixture.reads++;return json({messages:fixture.messages[bot]})}
+  if(match[2]==='/transcript')return json({messages:fixture.messages[bot]});
+  if(match[2]==='/chat'){fixture.reads++;return json({messages:fixtureChatRows(fixture.messages[bot]||[])})}
   if(match[2]==='/messages'){
    fixture.messages[bot].push(message('user',JSON.parse(opts.body).text));
    let controller;const body=new ReadableStream({start(c){controller=c}});
@@ -110,7 +111,7 @@ const finish=(s,content,error)=>{
  }
  s.controller.close();
 };
-`
+` + chatTimelineFixture
 
 const chatStreamDriver = `
 const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};

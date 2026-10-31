@@ -262,6 +262,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/bots/{name}/webhooks/{hook}", s.removeWebhook)
 	mux.HandleFunc("GET /api/bots/{name}/transcript", s.transcript)
 	mux.HandleFunc("GET /api/bots/{name}/transcript/search", s.searchTranscript)
+	mux.HandleFunc("GET /api/bots/{name}/chat", s.chat)
+	mux.HandleFunc("GET /api/bots/{name}/chat/search", s.searchChat)
 	mux.HandleFunc("GET /api/bots/{name}/inbox", s.listInbox)
 	mux.HandleFunc("GET /api/bots/{name}/peers/{peer}/messages", s.peerMessages)
 	mux.HandleFunc("GET /api/apps", s.listApps)
