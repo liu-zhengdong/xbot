@@ -22,8 +22,35 @@ const screenshot=async(p,theme,name)=>{if(shots){const dir=path.join(shots,theme
    const p=await context.newPage();
    await p.goto(url+'?manual=1&theme='+theme);
    await p.waitForFunction(()=>document.body.dataset.testResult==='ready');
-   await screenshot(p,theme,'chat');
+   await p.locator('.thread-loading-cover').waitFor({state:'detached'});
    const thumbs=p.locator('#thread .gallery .thumb');
+   if(!baseline){
+    for(const width of [1440,800,390]){
+     await p.setViewportSize({width,height:900});
+     const sizes=await p.evaluate(()=>{
+      const cells=[...document.querySelectorAll('#thread .gallery .thumb')];
+      const single=cells[4].getBoundingClientRect();
+      const column=document.querySelector('#thread .thread-inner').getBoundingClientRect().width;
+      return {column,single:single.width,height:single.height,multi:cells.slice(0,4).map(c=>({width:c.getBoundingClientRect().width,top:c.getBoundingClientRect().top}))};
+     });
+     assert.ok(Math.abs(sizes.single-sizes.column/3)<2,JSON.stringify(sizes));
+     assert.ok(Math.abs(sizes.single/sizes.height-1.6)<.02);
+     assert.ok(sizes.multi.every(c=>c.width===84));
+     if(width===390)assert.ok(sizes.multi.at(-1).top>sizes.multi[0].top,'multi gallery did not wrap');
+     console.log(JSON.stringify({theme,viewport:width,...sizes}));
+    }
+    await p.setViewportSize({width:1440,height:900});
+    const singleImage=thumbs.nth(4).locator('img');
+    const source=await singleImage.getAttribute('src');
+    await singleImage.evaluate(e=>{e.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="1000"/>')});
+    await p.waitForFunction(()=>document.querySelectorAll('#thread .gallery .thumb img')[4].naturalHeight===1000);
+    assert.ok((await singleImage.boundingBox()).height<=320,'portrait exceeds height cap');
+    assert.equal(await singleImage.evaluate(e=>getComputedStyle(e).objectFit),'contain');
+    await singleImage.evaluate((e,src)=>{e.src=src},source);
+    await p.waitForFunction(()=>document.querySelectorAll('#thread .gallery .thumb img')[4].naturalWidth===1600);
+   }
+   await screenshot(p,theme,'chat');
+   await thumbs.nth(4).hover();await screenshot(p,theme,'single-hover');
    await thumbs.nth(1).click();await loaded(p);
    await screenshot(p,theme,'opened');
    if(baseline){await context.close();continue}

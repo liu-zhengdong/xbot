@@ -47,6 +47,13 @@ const matrix=()=>new DOMMatrix(getComputedStyle(picture()).transform);
  const thumbs=[...document.querySelectorAll('#thread .gallery .thumb')];
  const thread=$('#thread');thread.scrollTop=thread.scrollHeight;
  if(new URLSearchParams(location.search).has('manual')){document.body.dataset.testResult='ready';return}
+ const column=$('#thread .thread-inner').getBoundingClientRect().width;
+ const single=thumbs[4].getBoundingClientRect();
+ assert(Math.abs(single.width-column/3)<2,'single image is not one third of chat column: '+single.width+' / '+column);
+ assert(single.height<=320&&Math.abs(single.width/single.height-1.6)<.02,'single image aspect ratio or height cap lost');
+ assert(getComputedStyle(thumbs[4].querySelector('img')).objectFit==='contain','single image cropped');
+ assert(thumbs.slice(0,4).every(t=>t.getBoundingClientRect().width===84),'multi images enlarged');
+ assert(thumbs.slice(0,4).every(t=>t.parentElement===thumbs[0].parentElement),'multi images are not a wrapping gallery');
  const before=thread.scrollTop;
  thumbs[1].focus({preventScroll:true});thumbs[1].click();
  await waitFor(loaded,'viewer did not load');

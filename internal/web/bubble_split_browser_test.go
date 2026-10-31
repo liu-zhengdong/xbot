@@ -67,7 +67,7 @@ const check=(row,label)=>{
  assert(parts[0].textContent.includes('第一段第一行。')&&parts[0].textContent.includes('第一段第二行。'),label+': single newline split');
  assert(parts[0].querySelectorAll('p').length===3&&parts[0].textContent.includes('第三段。'),label+': paragraphs not combined');
  const images=[...row.querySelectorAll('.gallery')];
- assert(images.length===2&&images.every(g=>g.querySelectorAll('img').length===1&&!g.closest('.bubble,.bot-bubble')),label+': images not isolated');
+ assert(images.length===1&&images[0].querySelectorAll('img').length===2&&!images[0].closest('.bubble,.bot-bubble'),label+': image gallery not isolated');
  const quote=row.querySelectorAll('.quote-block');assert(quote.length===1&&quote[0]===row.firstElementChild.firstElementChild,label+': quote repeated or misplaced');
  const nodes=[...row.firstElementChild.children].filter(n=>n.matches('.bubble,.bot-bubble,.gallery'));
  for(let i=1;i<nodes.length;i++){const a=nodes[i-1].getBoundingClientRect(),b=nodes[i].getBoundingClientRect();assert(b.top>a.bottom,label+': bubbles touch or overlap')}

@@ -7,6 +7,14 @@
 - gofmt 无输出、go vet、diff check、atlas audit 通过（audit 保留已有告警）。全仓一遍完整跑完未绿；kernel 整包三遍完整跑完（202.653s）仅 LongTurnStaysUnderTheCeiling / MemoryFileLogGuard 两条既有失败。全仓另有 memory MonthlyGuardAndRoundTrip、work ShellUsesBotDir，及 web 时间分隔/供应商设置/4 个审批/粘贴图片/人设/2 个提问共 10 条失败；全部在未修改 HEAD 归档定向复现，未放宽断言或扩修。日志 `/tmp/mem-rem-{target,deletion,all,kernel3,baseline,baseline-web,vet,atlas}.log`。
 - 级别：本地分支已实现、注册缝专项通过；未合入、未 push、未声称真入口端到端或日用通过。Not run: 真二进制端到端冒烟、真模型、用户日用、独立复审、Linux CI、交互 p95/IPC/后台减速性能测量。不增加新 ADR（复用既有 reminder、未推翻现行决定），主管复审待交接。
 
+## 2026-10-31 聊天图片尺寸（feature/chat-image-size，本地分支）
+
+- S 档展示修复：单图按聊天内容栏 ⅓、最高 320px、contain 展示；多图全部保留为 84px 缩略格并换行。只改 gallery 装配与图片 CSS，不改 lightbox、语音或生图设置。
+- 回归先红：旧实现单图 84px／内容栏 680px，不满足 ⅓；修复后图片查看器与 bubble Chrome 测试三遍通过。可信鼠标／键盘／触屏／reduced-motion lightbox 冒烟通过；1440／800／390px 视口下内容栏 680／448／326px，单图宽 226.66／149.33／108.66px，多图均 84px、窄屏换行；竖图限高 320px。暖本地夹具各 30 次点图至载入加两帧，p95 浅色 33.7ms／深色 34.1ms，不代表真模型或公网性能。
+- 1440×900、DPR 2 浅深前后截图：`~/.xbot-build/ui-shots/chat-image-size/{before,after}/{light,dark}/`，包含主列、悬停与打开大图；已本机自查，设计师复审及用户日用待验。
+- `gofmt -l .`、`go vet ./...`、diff check 通过；atlas audit 已运行，仍报已有 broken link／stale／unmapped 告警。全仓 `go test -count=1 ./...` 与 web 整包 `-count=3` 未绿：kernel 长轮／记忆日志、memory 月日志、work shell 描述、web CLI 事件／时间分隔／供应商／审批／粘图静态断言／人设／提问。所有失败项在未修改 HEAD 的独立归档逐项复现，未扩修。日志：`/tmp/xbot-chat-image-size-{all,web,baseline,baseline-other,playwright,red}.log`。
+- 级别：浏览器展示缝端到端通过；仅本地分支提交，未合 main、未 push。Not run: Linux CI、设计师复审、用户日用。
+
 ## 2026-10-31 环境提示 Register 光框架与语义时间（feature/env-prompt-frame，本地分支）
 
 - L 档，落实已落仓设计批 1 + 2。新字段唯一缝为 `envprompt.Env.Register(Field{Key, Sample, Prompt})`；上层 `promptinject.Registry.Register(Source{Name, Order, Render})` 首先挂环境。time 从钟现采，独立尾部语义公告；同分钟不重复，外置 Env 只在成功追加后提交已告知全文，预算预览不提交。压缩/拟合后强制补语义全量快照，计入原 T/H；不改 StablePrefix。Env 生命周期跟 Kernel，重启后重采重公告一次，无新增磁盘账本。

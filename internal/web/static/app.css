@@ -887,10 +887,15 @@ html[data-theme="dark"] .bubble .code-block {
 
 .sysline.link:active { background: var(--selected); color: var(--text); }
 
-.gallery { display: flex; flex-wrap: wrap; gap: 6px; }
+.thread-inner { container-type: inline-size; }
+.gallery { display: flex; flex-wrap: wrap; gap: var(--x-s2); max-width: 100%; }
+.gallery.single-image { width: calc(100cqw / 3); }
+.gallery.single-image .thumb { width: 100%; height: auto; }
+.gallery.single-image .thumb.broken { height: 84px; }
+.gallery.single-image .thumb img { height: auto; max-height: calc(var(--x-s9) * 10); object-fit: contain; }
 
 .thumb {
-  width: 84px; height: 84px; padding: 0; border: 0; border-radius: 12px;
+  width: 84px; height: 84px; flex: 0 0 auto; padding: 0; border: 0; border-radius: var(--x-r-card);
   overflow: hidden; position: relative; background: var(--hover); display: block;
 }
 

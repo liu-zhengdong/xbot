@@ -1755,13 +1755,11 @@
     return ids.map((id) => "/api/bots/" + encodeURIComponent(sel.id) + "/paste/" + encodeURIComponent(id));
   }
 
-  function gallery(urls, singleIndex) {
-    const box = el("div", "gallery");
-    const single = singleIndex !== undefined;
-    const extra = !single && urls.length > 3 ? urls.length - 2 : 0;
-    const show = single ? [urls[singleIndex]] : extra ? urls.slice(0, 3) : urls;
-    show.forEach((url, index) => {
-      const i = single ? singleIndex : index;
+  function gallery(urls, showAll = false) {
+    const box = el("div", "gallery" + (urls.length === 1 ? " single-image" : ""));
+    const extra = !showAll && urls.length > 3 ? urls.length - 2 : 0;
+    const show = extra ? urls.slice(0, 3) : urls;
+    show.forEach((url, i) => {
       const cell = el("button", "thumb");
       cell.type = "button";
       const img = document.createElement("img");
@@ -3173,7 +3171,7 @@
       wrap.append(bubble);
     });
     const urls = [...pulled.images, ...(images || [])];
-    urls.forEach((url, i) => wrap.append(gallery(urls, i)));
+    if (urls.length) wrap.append(gallery(urls, true));
   }
 
   const SAY_TOOLS = ["send_message_to_user", "notify_owner"];
