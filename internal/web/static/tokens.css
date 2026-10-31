@@ -92,8 +92,8 @@ html[data-theme="dark"]{
 
 /* Voice chat: approved composer and bubble geometry. */
 :root {
-  --voice-button:36px; --voice-wave-base:88px;
-  --voice-wave-bar:4px; --voice-wave-radius:1.5px;
+  --voice-button:32px; --voice-mic-button:36px; --voice-wave-base:56px;
+  --voice-wave-bar:3px; --voice-wave-radius:1.5px; --voice-wave-muted:.55;
   --voice-caption-size:13px; --voice-user-muted:.7;
   --chat-paragraph-gap:9px; --voice-dot:10px;
   --voice-pulse:1100ms;

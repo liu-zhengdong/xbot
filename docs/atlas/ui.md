@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-10-31 @ feature-chat-voice-cluster-v4 (Chrome rendered clusters); 2026-10-31 @ feature/custom-provider (real binary + Chrome/scripted); 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-10-31 @ feature-chat-voice-cluster-v5 (Chrome rendered clusters and playback progress); 2026-10-31 @ feature/custom-provider (real binary + Chrome/scripted); 2026-10-31 @ feature/bubble-split (Chrome content projection); 2026-10-31 @ feature/routine-skills-ui (Chrome skill editor behavior and routine API tests); 2026-10-30 @ chat-transcript-incremental (Chrome keyed patch + conditional HTTP tests); 2026-10-30 @ memory-panel-whole (panel API and Chrome behavior); 2026-10-30 @ feature/icon-transparent-bg (brand and appshell tests); 2026-10-30 @ image-gen-local-proxy (Chrome settings behavior + screenshots); 2026-10-30 @ feature/opencode-go-vendor (Chrome settings behavior + light/dark screenshots); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 网页界面
 
@@ -25,7 +25,7 @@ Bot 信息面板的收件箱位于上下文右侧：只读展示该 Bot 的入�
 
 Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交语音文件；持按松手发送，滑出或取消区丢弃，Esc、切 Bot 和离页释放麦克风。文字草稿、待发图片不随录音发送。录音失败用短提示；上传失败保留录音供重试，消息发送失败保留语音 id 供重试。
 
-主列的 `userBubble`、`botBubble` 与 `optimisticMessage` 共用 `appendMessageBubbles`：连续文字合为一泡，空行在泡内形成多个段落（代码围栏与块级公式内部空行保留）；每个 audio id 与每张图各一泡。短尾段明确标作版本或以「注／备注／说明：」开头时归入最后一个语音泡的 `.v-caption`，不确定的正文保留在文字泡内。文字在音频前、图片仍在末尾。簇间距 6px，Bot 左对齐、用户右对齐；各泡宽跟内容，语音独立于文字宽度。播放器横排行内居中：36px 播放钮、同高的十根静态竖波形、右侧时长；波形短音 88px，随 metadata 时长增长到 152px，窄屏仅收缩、不扩张填满文字。下方注释 13px 灰字；不另套灰壳，不画横进度轨。引用只放在该列第一条内容前，同一条 transcript 仍是一条，不改变存盘或 Bot 已送达消息的归组。原生音频播放器只由点击播放，同线程互斥；取 metadata 显示实际时长，未知时不画零秒。失败显示「语音加载失败 / 重试」。主列不展示 listen/tts 调用，轨迹沿用既有投影。`commitTranscript` 继续按行比较静态投影：附件改变只替换受影响行，未变播放器与播放状态保留，移除或切线程时停止播放。新投影只有进入 DOM 才载入 metadata，不因丢弃投影发媒体请求。HTTP 契约见 [API](../API.md#语音附件)，验收入口见 [语音交流](../dev/voice-chat.md)。
+主列的 `userBubble`、`botBubble` 与 `optimisticMessage` 共用 `appendMessageBubbles`：连续文字合为一泡，空行在泡内形成多个段落（代码围栏与块级公式内部空行保留）；每个 audio id 与每张图各一泡。短尾段明确标作版本或以「注／备注／说明：」开头时归入最后一个语音泡的 `.v-caption`，不确定的正文保留在文字泡内。文字在音频前、图片仍在末尾。簇间距 6px，Bot 左对齐、用户右对齐；各泡宽跟内容，语音独立于文字宽度。播放器横排行内居中：32px 播放钮、同高的十根竖波形、右侧时长，行内间距 8px；波形短音（≤5 秒）56px，随 metadata 时长增长到 120px，短音泡约 140–170px，窄屏仅收缩、不扩张填满文字。播放时右侧显示向上取整的剩余秒数，原生 audio 的 play／pause／ended／timeupdate 事件更新状态，按 currentTime / duration 从左到右给已播竖条加 `.is-on` 填实、未播 muted；暂停与结束回总时长和静态波形，不增加计时器。下方注释 13px 灰字；不另套灰壳，不画横进度轨。引用只放在该列第一条内容前，同一条 transcript 仍是一条，不改变存盘或 Bot 已送达消息的归组。原生音频播放器只由点击播放，同线程互斥；取 metadata 显示实际时长，未知时不画零秒。失败显示「语音加载失败 / 重试」。主列不展示 listen/tts 调用，轨迹沿用既有投影。`commitTranscript` 继续按行比较静态投影：附件改变只替换受影响行，未变播放器与播放状态保留，移除或切线程时停止播放。新投影只有进入 DOM 才载入 metadata，不因丢弃投影发媒体请求。HTTP 契约见 [API](../API.md#语音附件)，验收入口见 [语音交流](../dev/voice-chat.md)。
 
 
 ## 边界

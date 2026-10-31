@@ -2836,7 +2836,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .memory-empty { margin: 0; }
 
 /* Each voice bubble follows its duration, independently of the text width. */
-.voice { display:flex; align-items:center; gap:var(--x-s4); width:max-content; max-width:100%; user-select:none; }
+.voice { display:flex; align-items:center; gap:var(--x-s3); width:max-content; max-width:100%; user-select:none; }
 .voice + .voice, .voice + .prose, .voice + .gallery { margin-top:var(--x-s3); }
 .v-play { border:0; width:var(--voice-button); height:var(--voice-button); min-width:var(--voice-button); flex:none; border-radius:var(--x-r-pill); padding:0; display:inline-flex; align-items:center; justify-content:center; background:var(--x-fill-3); color:inherit; }
 .bubble .v-play { background:var(--x-user-code); }
@@ -2844,13 +2844,17 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .v-wave i { flex:none; width:var(--voice-wave-bar); height:calc(var(--h) * 1px); border-radius:var(--voice-wave-radius); background:currentColor; }
 .v-time { flex:none; font-size:var(--x-fs-sm); color:var(--x-muted); font-variant-numeric:tabular-nums; line-height:1; }
 .bubble :is(.v-wave,.v-time,.v-caption) { color:inherit; opacity:var(--voice-user-muted); }
+.voice.is-playing .v-wave i { background:var(--x-faint); opacity:var(--voice-wave-muted); }
+.voice.is-playing .v-wave i.is-on { background:var(--x-text); opacity:1; }
+.bubble .voice.is-playing .v-wave { opacity:1; }
+.bubble .voice.is-playing .v-wave i { background:currentColor; }
 .v-caption { margin-top:var(--x-s3); font-size:var(--voice-caption-size); color:var(--x-muted); }
 .v-fail, .v-retry { font-size:var(--x-fs-ui); color:inherit; }
 .v-retry { border:0; padding:0; text-decoration:underline; background:none; }
 .voice audio { display:none; }
 .voice [hidden] { display:none; }
 .composer-actions { gap:var(--x-s1); }
-.composer .mic { width:var(--voice-button); height:var(--voice-button); min-width:var(--voice-button); margin:0; padding:0; border-radius:var(--x-r-pill); color:var(--x-muted); background:transparent; touch-action:none; user-select:none; }
+.composer .mic { width:var(--voice-mic-button); height:var(--voice-mic-button); min-width:var(--voice-mic-button); margin:0; padding:0; border-radius:var(--x-r-pill); color:var(--x-muted); background:transparent; touch-action:none; user-select:none; }
 .composer .mic:hover { color:var(--x-text); background:var(--x-fill-2); }
 .composer.recording { grid-template-areas:"rec rec"; grid-template-columns:minmax(0,1fr); }
 .composer.recording .composer-input, .composer.recording .composer-actions, .composer.recording .quote-row, .composer.recording .attach-row { display:none; }

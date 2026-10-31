@@ -6,6 +6,36 @@ func TestVoiceChatBrowser(t *testing.T) {
 	runTodoBrowser(t, voiceBrowserFixture, voiceBrowserDriver)
 }
 
+func TestVoicePlaybackProgressBrowser(t *testing.T) {
+	runTodoBrowser(t, voiceBrowserFixture, voiceProgressDriver)
+}
+
+const voiceProgressDriver = `
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+ for(let i=0;i<1000&&!$('#thread .msg.bot audio');i++)await sleep(10);
+ const row=$('#thread .msg.bot .voice'),audio=row.querySelector('audio'),time=row.querySelector('.v-time'),bars=[...row.querySelectorAll('.v-wave i')];
+ const progress=(at,remaining,count)=>{
+  audio.currentTime=at;audio.dispatchEvent(new Event('timeupdate'));
+  assert(time.textContent===remaining,'remaining '+time.textContent+' at '+at);
+  assert(bars.every((bar,i)=>bar.classList.contains('is-on')===(i<count)),'progress not filled left to right at '+at);
+ };
+ assert(time.textContent==='0:12','idle total');
+ row.querySelector('.v-play').click();
+ assert(row.classList.contains('is-playing')&&row.querySelector('.v-play').getAttribute('aria-label')==='暂停语音','play state');
+ progress(0.1,'0:12',0);progress(3,'0:09',2);progress(6,'0:06',5);progress(9.8,'0:03',8);
+ row.querySelector('.v-play').click();
+ assert(!row.classList.contains('is-playing')&&time.textContent==='0:12','pause did not restore total');
+ row.querySelector('.v-wave').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+ assert(row.classList.contains('is-playing')&&time.textContent==='0:03','resume did not restore remaining');
+ progress(1.5,'0:11',1);progress(12,'0:00',10);
+ mediaPaused.set(audio,true);Object.defineProperty(audio,'ended',{value:true,configurable:true});audio.dispatchEvent(new Event('ended'));
+ assert(!row.classList.contains('is-playing')&&time.textContent==='0:12'&&row.querySelector('.v-play').getAttribute('aria-label')==='播放语音','ended did not restore idle');
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.stack});
+`
+
 const voiceBrowserFixture = `
 localStorage.removeItem('xbot-panel-open');
 const voiceID='0123456789abcdef0123456789abcdef.webm';

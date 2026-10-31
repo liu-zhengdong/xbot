@@ -2988,14 +2988,27 @@
       wave.onclick=play.onclick;
       wave.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();play.onclick();}};
       retry.onclick=()=>{failure.hidden=retry.hidden=true;play.hidden=wave.hidden=time.hidden=false;audio.load();start();};
-      audio.addEventListener("play",()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;play.replaceChildren(icon("pause"));play.setAttribute("aria-label","暂停语音");wave.setAttribute("aria-label","暂停语音");});
-      audio.addEventListener("pause",()=>{play.replaceChildren(icon("play"));play.setAttribute("aria-label","播放语音");wave.setAttribute("aria-label","播放语音");});
+      const updatePlayback=()=>{
+        const duration=Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:0;
+        const playing=!audio.paused&&!audio.ended;
+        if(playing!==row.classList.contains("is-playing")){
+          row.classList.toggle("is-playing",playing);
+          play.replaceChildren(icon(playing?"pause":"play"));
+          play.setAttribute("aria-label",playing?"暂停语音":"播放语音");
+          wave.setAttribute("aria-label",playing?"暂停语音":"播放语音");
+        }
+        time.textContent=duration?voiceTime(playing?Math.ceil(Math.max(0,duration-audio.currentTime)):duration):"";
+        const count=duration?Math.floor(Math.min(1,audio.currentTime/duration)*wave.children.length):0;
+        [...wave.children].forEach((bar,i)=>bar.classList.toggle("is-on",i<count));
+      };
+      audio.addEventListener("play",()=>{if(activeVoice!==audio)stopVoice();activeVoice=audio;updatePlayback();});
+      for(const event of ["pause","ended","timeupdate"])audio.addEventListener(event,updatePlayback);
       audio.addEventListener("ended",()=>{if(activeVoice===audio)activeVoice=null;});
       audio.addEventListener("error",failed);
       audio.addEventListener("loadedmetadata",()=>{
         const duration=Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:0;
-        time.textContent=duration?voiceTime(duration):"";
-        row.style.setProperty("--voice-wave-w","calc(var(--voice-wave-base) + "+Math.min(64,Math.max(0,duration-3)*2)+"px)");
+        updatePlayback();
+        row.style.setProperty("--voice-wave-w","calc(var(--voice-wave-base) + "+Math.min(64,Math.max(0,duration-5)*2)+"px)");
       });
     }
   }

@@ -24,11 +24,11 @@ const check=(row,label)=>{
  assert(text.querySelectorAll('p').length===3&&text.textContent.includes('Tingting'),label+': paragraphs not in one bubble');
  assert(voice.querySelectorAll('audio').length===1&&voice.querySelector('.v-caption')?.textContent==='短句版。',label+': caption not attached');
  const t=text.getBoundingClientRect(),v=voice.getBoundingClientRect();
- assert(v.width>=160&&v.width<=220&&v.width<t.width-40,label+': short voice stretched '+v.width+'/'+t.width);
+ assert(v.width>=140&&v.width<=170&&v.width<t.width-40,label+': short voice stretched '+v.width+'/'+t.width);
  assert(Math.abs((row.matches('.user')?t.right-v.right:t.left-v.left))<1,label+': cluster alignment');
  assert(Math.abs(v.top-t.bottom-6)<1,label+': cluster gap');
  const play=voice.querySelector('.v-play').getBoundingClientRect(),wave=voice.querySelector('.v-wave').getBoundingClientRect(),time=voice.querySelector('.v-time').getBoundingClientRect();
- assert(Math.abs(play.height-36)<1&&Math.abs(wave.height-play.height)<1,label+': play/wave heights');
+ assert(Math.abs(play.height-32)<1&&Math.abs(wave.height-play.height)<1,label+': play/wave heights');
  assert(Math.abs(play.top+play.height/2-wave.top-wave.height/2)<1&&Math.abs(play.top+play.height/2-time.top-time.height/2)<1,label+': row centers');
  assert(voice.querySelectorAll('.v-wave i').length===10&&!voice.querySelector('.v-bar'),label+': waveform missing');
 };
@@ -54,7 +54,7 @@ const check=(row,label)=>{
  assert(voice.getBoundingClientRect().width>short,'wave width did not follow duration');
  // Unknown metadata falls back to the compact waveform.
  Object.defineProperty(audio,'duration',{value:Infinity,configurable:true});audio.dispatchEvent(new Event('loadedmetadata'));
- assert(Math.abs(voice.querySelector('.v-wave').getBoundingClientRect().width-88)<1,'unknown duration widened waveform');
+ assert(Math.abs(voice.querySelector('.v-wave').getBoundingClientRect().width-56)<1,'unknown duration widened waveform');
  assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.stack});
 `

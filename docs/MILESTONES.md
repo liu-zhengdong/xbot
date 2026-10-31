@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 语音簇 v5（feature-chat-voice-cluster-v5，本地分支）
+
+- S 档，依据用户拍板的 `~/agent-tools/chat-voice-cluster/{handoff.md,ia.md,hifi/v5-*.html}`，只改现有 `appendAudios` 播放态和 voice CSS/tokens；继续经 `appendMessageBubbles` 装配，合文一泡、尾注 `.v-caption`、10 竖条和簇 gap 6 保留。短音波形 56px、play 32px、行内 gap 8px，Chrome 实测短音泡约 158–160px；随时长增长，不齐宽、不画细横轨。麦克风仍为原 36px，transcript／spokenLines／存盘未改。
+- 播放中数字为剩余秒数（向上取整），已播竖条按 `floor(currentTime / duration * 10)` 左→右填实；暂停／结束回总时长及静态波形。复用原生 audio 事件，无新增轮询、计时器或动画。
+- 新回归在原 v4 先红（短音泡约 198px、缺播放态），新实现语音簇／播放倒数与前后跳转／暂停续播与结束／录音交互／增量刷新浏览器测试连续三遍通过；原生 Chrome MediaRecorder／播放器与真 serve 的 scripted 语音冒烟也各三遍通过。并发检查期间原生浏览器曾一次 bot playback 超时，单独复跑三遍通过；未改测试放宽门槛。
+- 1440×900、DPR 2 浅深色前后、hover／playing／paused 和 390px 短长音截图在 `~/.xbot-build/ui-shots/chat-voice-cluster-v5/`，已对照原型自查。每色 30 次播放事件更新到布局 p95 浅 0.4ms／深 0.3ms；投影到两帧绘制 p95 26.1／33.6ms。原生 Range GET 每轮 25 次，三轮 p95 5.0／3.6／6.8ms。均为本机受控样本，非真实供应商／物理设备／60fps 或用户日用验收。
+- gofmt、JS 语法、go vet、diff 检查通过；atlas audit 退出 0，保留既有告警。全仓 `-count=1 -timeout=90s` 与 web 整包 `-count=3 -timeout=90s` 未全绿：kernel 长轮 19 folds/40 steps、MemoryFileLogGuard、memory 月容量、work description，以及 web 旧头像断言与 AskOnly 静态测试 panic，均在原 tip `56e6fda8` 干净归档复现。全仓另在 e2e LongRunJourney、tools JobWriterManySecretsIsFast 达到 90 秒包超时，本轮未作基线归因，未扩修。证据与完整日志在 `~/.xbot-build/chat-voice-cluster-v5/`。
+- 级别：本地浏览器行为通过，既有语音真入口 scripted 冒烟通过；设计师对生产截图复审、真实供应商／物理麦克风扬声器、Linux CI 和用户日用未验。只提交本分支，未合 main、未 push，未移动 guard。
+
 ## 2026-10-31 设置自定义供应商（feature/custom-provider，本地分支）
 
 - L 档，沿 `config.Add / Remove / Resolve`、`providers.json` 文件锁与现有 `SaveEnvKey` / held 装配。Add 允许先存零模型端点；custom/display_name 是原表内元数据，host 匹配内置仍是独立配置和密钥，CLI add 调用及旧协议默认规则保留。host 默认来自既有 Brands/Vendors，显式保存协议；HTTP 灰字警告可存，决定见 ADR 0037。
