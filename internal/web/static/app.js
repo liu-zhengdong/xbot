@@ -3263,6 +3263,66 @@
     return !!m.internal;
   }
 
+  // Scroll state belongs to the reader, not to transient layout geometry.
+  const threadStick = (() => {
+    let sticking = true, frame = 0, lastTop = 0, observed = null;
+    const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    function position(top) { thread.scrollTop = top; lastTop = thread.scrollTop; }
+    function follow() {
+      // Input can move the viewport before its scroll event is delivered.
+      if (thread.scrollTop < lastTop && !nearBottom()) sticking = false;
+      if (sticking && !state.peer) position(thread.scrollHeight);
+    }
+    function schedule() {
+      if (frame || !sticking || state.peer) return;
+      frame = requestAnimationFrame(() => { frame = 0; follow(); });
+    }
+    const resize = new ResizeObserver(schedule);
+    resize.observe(thread);
+    function changed() {
+      const inner = thread.querySelector('.thread-inner');
+      if (inner !== observed) {
+        if (observed) resize.unobserve(observed);
+        observed = inner;
+        if (inner) resize.observe(inner);
+      }
+      follow();
+      schedule();
+    }
+    return {
+      get sticking() { return sticking; },
+      reset() { sticking = true; lastTop = thread.scrollTop; schedule(); },
+      release() { sticking = false; },
+      changed,
+      schedule,
+      position(top) { sticking = false; position(top); },
+      anchor() {
+        const box = thread.getBoundingClientRect();
+        const row = [...thread.querySelectorAll('.msg[data-transcript-key]')].find(row => row.getBoundingClientRect().bottom > box.top);
+        return row ? { row, top: row.getBoundingClientRect().top } : null;
+      },
+      restore(anchor) {
+        if (anchor?.row.isConnected) position(thread.scrollTop + anchor.row.getBoundingClientRect().top - anchor.top);
+      },
+      locate(row) {
+        sticking = false;
+        row.scrollIntoView({block:'center', behavior:'instant'});
+        lastTop = thread.scrollTop;
+      },
+      scrolled() {
+        if (state.peer) return;
+        const top = thread.scrollTop;
+        if (top < lastTop && !nearBottom()) sticking = false;
+        else if (!sticking && top > lastTop && nearBottom()) {
+          sticking = true;
+          if (state.sel?.history?.has_more_after && !state.sel.historyLoading) loadThread('latest');
+          else schedule();
+        }
+        lastTop = top;
+      },
+    };
+  })();
+
   // Sole transcript -> main-column assembly seam. Keys are transcript seqs
   // (plus the delivered-message ordinal), never content fingerprints. Compare
   // against the last projection, not live DOM: selection, open drawers and
@@ -3271,14 +3331,13 @@
     if (!state.firstRender && state.sig && sameTranscriptValue(messages, state.messages)) return false;
     state.messages = messages;
     const inner = el("div", "thread-inner");
-    const prevTop = thread.scrollTop;
-    const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    if (state.firstRender) threadStick.reset();
     if (!messages || !messages.length) {
       inner.append(emptyState(niceName(who) || "XBot", EMPTY_LINE, who, true));
       restoreSendFeedback(inner);
       commitTranscript(inner, who);
       state.firstRender = false;
-      if (near) thread.scrollTop = thread.scrollHeight;
+      threadStick.changed();
       return true;
     }
     const spoken = spokenLines(messages);
@@ -3390,7 +3449,7 @@
     const unaligned = messages.some((m, i) => !Number.isInteger(m.seq) || m.seq <= 0 || (i > 0 && m.seq <= messages[i - 1].seq));
     const changed = commitTranscript(inner, who, unaligned);
     state.firstRender = false;
-    if (changed) thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
+    if (changed) threadStick.changed();
     return true;
   }
 
@@ -3459,14 +3518,13 @@
 
   function renderGroup(messages, who) {
     const inner = el("div", "thread-inner grpchat");
-    const prevTop = thread.scrollTop;
-    const near = state.firstRender || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    if (state.firstRender) threadStick.reset();
     if (!messages || !messages.length) {
       inner.append(emptyState(niceName(who) || "群", "没有消息", who));
       restoreSendFeedback(inner);
       thread.replaceChildren(inner);
       state.firstRender = false;
-      if (near) thread.scrollTop = thread.scrollHeight;
+      threadStick.changed();
       return;
     }
     let last = "";
@@ -3522,7 +3580,7 @@
     restoreSendFeedback(inner);
     thread.replaceChildren(inner);
     state.firstRender = false;
-    thread.scrollTop = near ? thread.scrollHeight : Math.min(prevTop, thread.scrollHeight);
+    threadStick.changed();
   }
 
   function codingCardOf(content) {
@@ -4540,7 +4598,7 @@
       state.firstRender = true;
       applyTranscript(state.messages, state.sel.id);
       paintHistory();
-      thread.scrollTop = returnTop;
+      threadStick.position(returnTop);
     }
     await loadThread();
   }
@@ -4571,6 +4629,7 @@
     paintWorkStatus();
     state.replyErrors = [];
     state.firstRender = true;
+    threadStick.reset();
     state.messages = [];
     $("chat-search").hidden = state.sel?.type !== "bot";
     $("history-search-panel").hidden = true;
@@ -4774,12 +4833,13 @@
       const text = sel?.historyLoading === key ? "加载中…" : label;
       if (btn.textContent !== text) btn.textContent = text;
     }
+    threadStick.schedule();
   }
 
   async function loadThread(mode = "poll", target = 0) {
     if (!state.sel || state.streaming || state.peer) return false;
     const selection = state.sel;
-    if (mode === "poll" && (selection.historyLoading || selection.history?.has_more_after)) return false;
+    if (mode === "poll" && (selection.historyLoading || (selection.history?.has_more_after && !threadStick.sticking))) return false;
     if (selection.historyLoading && mode !== "around" && mode !== "latest") return false;
     const request = ++state.threadLoad;
     selection.historyLoading = mode;
@@ -4804,17 +4864,17 @@
         const old = state.messages;
         let olderAtCapacity = false;
         if (mode === "poll" && data.window && old.length && !state.firstRender &&
-            thread.scrollHeight-thread.scrollTop-thread.clientHeight >= 120 && data.window.tail_seq > old.at(-1).seq) {
+            !threadStick.sticking && data.window.tail_seq > old.at(-1).seq) {
           selection.history = {...selection.history, total:data.window.total, has_more_after:true};
           return true;
         }
         if (data.window && old.length && ["older", "newer", "poll"].includes(mode)) {
           const head = messages[0]?.seq, tail = messages.at(-1)?.seq;
-          if (mode === "poll" && head > old.at(-1).seq + 1) {
+          if (mode === "poll" && !threadStick.sticking && head > old.at(-1).seq + 1) {
             selection.history = { ...selection.history, total: data.window.total, has_more_after: true };
             return true;
           }
-          if (head && tail) {
+          if (head && tail && !(mode === "poll" && head > old.at(-1).seq + 1)) {
             const bySeq = new Map(old.map(m => [m.seq, m]));
             messages.forEach(m => bySeq.set(m.seq, m));
             messages = [...bySeq.values()].sort((a,b) => a.seq-b.seq);
@@ -4824,10 +4884,10 @@
             olderAtCapacity = mode === "older" && messages[0]?.seq >= old[0]?.seq;
           }
         }
-        const box = thread.getBoundingClientRect();
-        const anchor = [...thread.querySelectorAll(".msg[data-transcript-key]")].find(row => row.getBoundingClientRect().bottom > box.top);
-        const anchorTop = anchor?.getBoundingClientRect().top;
-        if (mode === "around" || mode === "latest") state.firstRender = true;
+        const paging = mode === "older" || mode === "newer";
+        if (paging || mode === "around") threadStick.release();
+        const anchor = paging ? threadStick.anchor() : null;
+        if (mode === "latest") { state.firstRender = true; threadStick.reset(); }
         const changed = applyTranscript(messages, selection.id);
         revealThread();
         selection.history = data.window ? { ...data.window,
@@ -4842,7 +4902,7 @@
         if (mode === "around") {
           const row = thread.querySelector('.msg[data-seq="' + Number(target) + '"]');
           if (row) {
-            row.scrollIntoView({block:"center", behavior:"instant"});
+            threadStick.locate(row);
             row.classList.add("history-hit-target");
             window.setTimeout(() => row.classList.remove("history-hit-target"), 2500);
           }
@@ -4856,7 +4916,8 @@
         // the oldest page can both change the controls' height.
         selection.historyLoading = false;
         paintHistory();
-        if ((mode === "older" || mode === "newer") && anchor?.isConnected) thread.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+        if (paging) threadStick.restore(anchor);
+        threadStick.changed();
         state.previewAt["b:" + selection.id] = Date.now();
         state.sig = "transcript-loaded";
         if (changed && !selection.history?.has_more_after) state.preview["b:" + selection.id] = previewFromMessages(messages);
@@ -4917,6 +4978,7 @@
   });
   let lastHistoryTop = 0;
   thread.addEventListener("scroll", () => {
+    threadStick.scrolled();
     const movingUp = thread.scrollTop < lastHistoryTop;
     lastHistoryTop = thread.scrollTop;
     if (movingUp && thread.scrollTop < 24 && !state.sel?.historyLoading && state.sel?.history?.has_more_before && !state.peer) loadThread("older");
@@ -7233,7 +7295,7 @@
     addBubbleTime(row, now);
     addTimeDivider(inner, row);
     inner.append(row);
-    thread.scrollTop = thread.scrollHeight;
+    threadStick.changed();
     return prose;
   }
 
@@ -7277,7 +7339,7 @@
           host.parentElement.classList.remove("live");
           prose = liveBubble();
           onLive(prose);
-          thread.scrollTop = thread.scrollHeight;
+          threadStick.changed();
         } else if (event === "result" && payload.name === "bot_update_profile") {
           // The result arrives after persistence. Refresh faces even while the
           // streaming poll is paused, without holding up incoming text. The
@@ -7289,7 +7351,7 @@
           const status = host.querySelector(".live-status");
           if (status) status.remove();
           host.append(approvalCard(payload));
-          thread.scrollTop = thread.scrollHeight;
+          threadStick.changed();
         } else if (event === "done" && payload.reply_to && host) {
           const live = host.closest(".msg");
           if (live && !live.querySelector(".quote-block")) {
@@ -7329,7 +7391,7 @@
     addBubbleTime(row, row.dataset.time);
     addTimeDivider(inner, row);
     inner.append(row);
-    thread.scrollTop = thread.scrollHeight;
+    threadStick.changed();
     state.pendingSends.push(row);
     return row;
   }

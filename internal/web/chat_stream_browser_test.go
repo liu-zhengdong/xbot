@@ -12,7 +12,7 @@ import (
 
 // Exercise the shipped app. Only HTTP and the model stream are scripted.
 func TestChatStreamBrowser(t *testing.T) {
-	runChatStreamBrowser(t, chatStreamFixture, chatStreamDriver)
+	runChatFramesBrowser(t, "", chatStreamDriver)
 }
 
 func runChatStreamBrowser(t *testing.T, fixture, driver string) {

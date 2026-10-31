@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 主列 stick-to-bottom（feature/chat-scroll-to-tail，本地分支）
+
+- M 档，按用户合同收拢 `threadStick`：持有 stick 状态与唯一底部阈值、rAF 合帧、ResizeObserver、prepend 视觉锚；打开/latest 贴底，上翻解除，主动下滚到底可重新跟尾。applyTranscript、群渲染、poll、SSE/live、临时发送、历史控件统一调用；异步增高不再用瞬时距离冻结 poll。stick 时尾窗断层直接换新尾，历史阅读仍保位置。未动服务端 Bot.Window 与800 raw保尾。
+- 新增墙钟 Chrome + scripted HTTP 回归 `TestChatStickBrowser`，覆盖首次、迟到高度突增、追加/poll、离底观察者不拉回、回真尾、prepend、重新跟尾、临时发送和流式离底；旧 app.js 确实在首次贴底断言失败。沿用原断言，将受 ResizeObserver/rAF 影响、虚拟时间下偶发8px几何误差的 `TestChatStreamBrowser` 改走同一墙钟驱动；不放宽验收。
+- 最终专项三遍全部通过：ChatStick、ChatStream、TranscriptWindow各浏览器用例、TranscriptIncremental、LiveBubbleSplit、Voice各浏览器用例（含真实音频）；最终锚点偏差3.007–3.148px，20帧墙钟样本p95为22.4–22.5ms，不宣称稳定60fps。模型/HTTP内容均scripted，媒体与ResizeObserver/rAF为浏览器原生。
+- gofmt、JS语法、diff check、vet通过；atlas audit退出0、保留仓库现有告警。全仓一遍与Web整包三遍已完整跑完但未绿：kernel长轮/记忆文件守门、memory月容量、work命令description，以及Web时间分隔/供应商/parked审批/贴图/人设/提问；Web三遍另出现CLIEventQueue临时目录清理和Interjection顺序偶发失败。不将这些失败归因于本改动，也不宣称全仓绿。日志 `~/.xbot-build/chat-stick/`。
+- 浅深1440×900 DPR2截图 `~/.xbot-build/ui-shots/chat-stick/{before,after}/`；已看after浅深。级别：本机专项浏览器通过，实际Air/小鲸、设计师复审与用户日用待验。未合main、未push、未重启8788。Not run: Linux CI、实际Air/跨设备/真实模型、物理帧率与IPC/后台减速专项。
+
 ## 2026-10-31 更早消息保尾回归修复（feature/older-keep-tail，本地分支）
 
 - S 档，修设计师对 `6186bb3d` 的 FAIL：前端合并改为保最新尾部、从旧端裁；缓存800 raw，与默认两页各400 raw对齐。满窗后继续上翻无进展时沿原提示行说明用搜索定位，不新增分页。保锚移到加载态/最老页控件更新之后；最老页提示不再定时消失而二次抖动。
