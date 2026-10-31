@@ -30,6 +30,13 @@ const (
 // land in memory together.
 var decodeMu sync.Mutex
 
+// FitImage applies view_image's size and decode limits for callers that need
+// model-ready bytes on disk. Compliant images pass through unchanged; oversized
+// GIFs become PNGs, so callers must use the returned MIME type.
+func FitImage(mime string, data []byte) (string, []byte, error) {
+	return fitImage(mime, data)
+}
+
 // fitImage keeps an image within the pixel cap view_image accepts. JPEG, PNG,
 // and GIF that are larger than maxImageEdge on a side are downscaled. WebP has
 // no decoder here: an over-size WebP is refused instead of being sent whole.

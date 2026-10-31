@@ -270,25 +270,11 @@ func storedPastePath(root, name, id string) string {
 // TestPasteRefusesLinksAndOversize is the regression for three holes the first
 // cut had: a symlink in the paste directory was followed (so any file on the
 // machine could be served or shown to the model), an oversized picture was
-// accepted because the downscale was thrown away, and pictures that fit one by
+// stored without keeping the downscale, and pictures that fit one by
 // one but not together were accepted and then silently trimmed.
 func TestPasteRefusesLinksAndOversize(t *testing.T) {
 	root, ui, cookie, _ := pasteTestServer(t, true)
 	defer ui.Close()
-
-	// A picture over the edge cap is refused instead of stored.
-	wide := pngBytes(t, 2100, 8)
-	req, _ := http.NewRequest(http.MethodPost, ui.URL+"/api/bots/ada/paste", bytes.NewReader(wide))
-	req.AddCookie(cookie)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := io.ReadAll(res.Body)
-	res.Body.Close()
-	if res.StatusCode != http.StatusBadRequest || !bytes.Contains(raw, []byte("2100")) {
-		t.Fatalf("oversize picture: %d %s", res.StatusCode, raw)
-	}
 
 	// A picture grown past the cap after upload is refused on read, so a bot
 	// cannot make the process load an arbitrarily large file by rewriting one.

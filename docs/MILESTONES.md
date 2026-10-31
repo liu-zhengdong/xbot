@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-10-31 粘贴超边图缩后落盘（feature/paste-downscale，本地分支）
+
+- S 档，按用户指定的行为修正。`postPaste` 经导出的 `tools.FitImage` 复用原 `fitImage`，PNG/JPEG/GIF 超 2048 等比缩后保存（GIF 转 PNG），合规图原字节保存；超边 WebP 明确拒绝。原上传/缩后 10 MiB、每条 4 张/合计 10 MiB 及解码预算不变；不改 outimage、浏览器显示尺寸或 UI 资源。
+- `paste_downscale_test.go` 在真实 paste HTTP 缝覆盖横竖 2340×1682 PNG/JPEG/GIF 返回 200、磁盘尺寸与比例、GIF 扩展名转换、GET 字节一致、合规图不变，以及超边 WebP 400 且不落盘；在旧实现上实际先红，再修绿。旧测试的整张拒绝断言由上述落盘行为回归替代，符号链接/体积/张数守门保留。专项三遍通过，墙钟 4.894s（含 fake 服务及其它 paste 回归，非交互 p95）。
+- gofmt 无输出、go vet 全仓、diff check 通过；atlas audit 跑过，保留已有告警。全仓测试完整跑完未绿：kernel 长轮/月日志、memory 月日志、work description 和 web CLI/时间分隔/供应商/审批/粘贴静态 UI/人设/提问等失败（同日既有里程碑已记录此组失败），未扩修。改动包三遍：tools 通过（333.160s），web 出现同组失败后 600s 超时；paste 专项另跑三遍全绿。日志 `/tmp/paste-{red,focused,all,repeat,vet,gofmt,atlas}.log`。
+- 级别：本地分支已实现、paste HTTP 回归通过，未合 main、未 push，不宣称整体验收或用户日用通过。Not run: 本机浏览器手动粘贴、真模型、Linux CI、用户日用、交互 p95/IPC/后台减速专项。
+
 ## 2026-10-31 记忆提醒（feature/memory-reminder，本地分支）
 
 - L 档，按用户指定设计，仅在 `reminderKindsFor` 经 `Channel.Register(Kind)` 接容量与轻量沉淀两条 reminder；不动 promptinject/envprompt、写入守卫、UI 或额外模型轮。容量读 Bot/当前人物 memory.md 实际大小，85% 起劝整理，已满明确提示，附当前/上限字节；两种各冷却 10 分钟，沉淀限有记忆存储的 web/terminal 人物对话。

@@ -60,16 +60,15 @@ func (s *Server) postPaste(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "只认 PNG、JPEG、GIF、WebP")
 		return
 	}
-	// The pixel cap is the model's, not the browser's. A stored picture is what
-	// every later view_image reads back, and view_image only downscales the run
-	// that opens it, so an oversized original is refused here instead of being
-	// kept. Small enough is stored byte for byte.
-	if iw, ih, fits := tools.FitsModel(mime, data); !fits {
-		if iw == 0 && ih == 0 {
-			writeErr(w, http.StatusBadRequest, "这张图读不出尺寸，换一张")
-		} else {
-			writeErr(w, http.StatusBadRequest, fmt.Sprintf("这张图 %d×%d，长边超过 %d 像素，先缩小再贴", iw, ih, tools.MaxImageEdge))
+	// Store model-ready bytes: later turns and view_image read this same file.
+	// FitImage leaves compliant uploads unchanged and may turn a GIF into PNG.
+	mime, data, err = tools.FitImage(mime, data)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "larger than 10 MiB") {
+			status = http.StatusRequestEntityTooLarge
 		}
+		writeErr(w, status, pastedProblem(err))
 		return
 	}
 	id, err := work.PastedName(mime)
@@ -88,8 +87,10 @@ func (s *Server) postPaste(w http.ResponseWriter, r *http.Request) {
 func pastedProblem(err error) string {
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "pixel cap"), strings.Contains(msg, "cannot be downscaled"):
-		return "这张图太大，先缩小再贴"
+	case strings.Contains(msg, "cannot be downscaled"):
+		return fmt.Sprintf("WebP 长边超过 %d 像素，无法缩小，请换成 PNG 或 JPEG 再贴", tools.MaxImageEdge)
+	case strings.Contains(msg, "pixel cap"):
+		return "这张图超过缩放处理上限，先缩小再贴"
 	case strings.Contains(msg, "cannot read image dimensions"), strings.Contains(msg, "cannot downscale"):
 		return "这张图读不出尺寸，换一张"
 	case strings.Contains(msg, "larger than 10 MiB"):

@@ -214,7 +214,7 @@
 
 `GET /api/bots/{name}/transcript/search?q=<关键词>&limit=20` 与 transcript GET 同样要求登录及 Bot owner。直接复用该 Bot 的 `Bot.Search` / FTS5，返回 `{"matches":[{"seq":111,"preview":"短预览","time":"RFC3339"}]}`，沿用 BM25 排名；limit 默认 20、1..100，q 去空白后最多 1024 字节，非法参数 400。空词或无命中返回空数组。预览取存储行（工具 blob 只用已有预览，不解包全文），命中 seq 可用 `transcript?around=<seq>` 定位。工具/内部记录也可被索引命中；本接口给Agent与账本用途，主列搜索不调用它。transcript本身不另建全文索引。
 
-`POST /api/bots/{name}/paste` 收一张要贴进对话的图片。body 是图片原始字节，`Content-Type` 只当提示，类型按字节嗅探。成功 200 `{"image":"<32 位十六进制>.png"}`。只认 PNG、JPEG、GIF、WebP（其他 400 `只认 PNG、JPEG、GIF、WebP`），超过 10 MB 回 413，边长超过 2048 或读不出尺寸回 400 并说明原因。文件存在这个 Bot 的工作区 `paste/` 下，权限 0600。`GET /api/bots/{name}/paste/{image}` 读回这张图，`Content-Type` 按字节定，带 `nosniff`，可长期缓存（文件名不会改）；名字不是一个合法 id 或文件已不在时 404。这两条都要登录，不是这个 owner 的 Bot 是 404。
+`POST /api/bots/{name}/paste` 收一张要贴进对话的图片。body 是图片原始字节，`Content-Type` 只当提示，类型按字节嗅探。成功 200 `{"image":"<32 位十六进制>.png"}`。只认 PNG、JPEG、GIF、WebP（其他 400 `只认 PNG、JPEG、GIF、WebP`），上传或缩后超过 10 MiB 回 413。PNG、JPEG、GIF 长边超过 2048 时复用 `view_image` 等比缩到长边 2048 后保存（GIF 缩后为 PNG，文件名扩展名按缩后类型）；合规图原字节保存。超边 WebP 无法缩小，回 400 并提示换 PNG/JPEG；读不出尺寸、缩放失败或超过既有解码上限（边长 4096／估算 160 MiB）也回 400 并说明原因。文件存在这个 Bot 的工作区 `paste/` 下，权限 0600。`GET /api/bots/{name}/paste/{image}` 读回这张图，`Content-Type` 按字节定，带 `nosniff`，可长期缓存（文件名不会改）；名字不是一个合法 id 或文件已不在时 404。这两条都要登录，不是这个 owner 的 Bot 是 404。
 
 本机命令行可用 `xbot message <bot> <text...>` 调用此接口，默认连接 `127.0.0.1:8788`，输出最终可见回复。
 
