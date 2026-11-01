@@ -497,10 +497,6 @@ var connectorClient = &http.Client{
 	},
 }
 
-func postJSON(ctx context.Context, rawURL, secret string, payload any, telegram bool) error {
-	return doJSON(ctx, connectorClient, rawURL, secret, payload, telegram)
-}
-
 func doJSON(ctx context.Context, client *http.Client, rawURL, secret string, payload any, telegram bool) error {
 	if client == nil {
 		client = connectorClient

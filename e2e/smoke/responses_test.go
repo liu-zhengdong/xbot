@@ -67,7 +67,7 @@ func TestResponsesBindingSearch(t *testing.T) {
 		t.Fatalf("bind %d %s", status, body)
 	}
 	result := srv.Send("ada", "查一下新闻")
-	if result.Done != "搜索结果带引用" || len(result.Tools) != 0 || result.Error != "" {
+	if result.Done != "" || len(result.Tools) != 0 || result.Error != "" {
 		t.Fatalf("hosted SSE %+v", result)
 	}
 	_, raw := srv.do("GET", "/api/bots/ada/transcript", nil)
@@ -82,11 +82,14 @@ func TestResponsesBindingSearch(t *testing.T) {
 	if len(meta) != 0 {
 		t.Fatalf("hosted Jobs %v", meta)
 	}
-	if status, body := srv.do("PUT", "/api/bots/ada/binding", map[string]string{"provider": "", "model": ""}); status != 200 {
+	if err := config.Add(srv.Root, config.Provider{Name: "scripted", Protocol: config.ChatCompletions, BaseURL: stub.BaseURL(), APIKeyEnv: "XBOT_API_KEY"}, config.ModelSpec{Name: "smoke", Context: 1000000}); err != nil {
+		t.Fatal(err)
+	}
+	if status, body := srv.do("PUT", "/api/bots/ada/binding", map[string]string{"provider": "scripted", "model": "smoke"}); status != 200 {
 		t.Fatalf("restore %d %s", status, body)
 	}
 	reply := srv.Send("ada", "SMOKE_HELLO_1")
-	checkStreamed(t, "Completions restored", reply, "你好，这是第 1 次流式回复")
+	checkDelivered(t, "Completions restored", reply, "你好，这是第 1 次流式回复")
 	mu.Lock()
 	defer mu.Unlock()
 	if calls != 1 || failure != "" {

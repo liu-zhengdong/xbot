@@ -40,7 +40,7 @@ Bot 是全能的。授权给它的机器，它能做用户在终端里能做的�
 - 还没跑到「端到端通过」的，写在正在做的那份 dev 设计里。
 - 已经做了、还没写成旅程的：启动与登录（目前包在「网页对话」里）、危险操作的确认卡、跨设备网关、桌面端、MCP 与连接应用、浏览器和桌面操作、头像与外观。同样不能弄坏，只是还没有冒烟用例；要补时按上面的格式写成旅程，带一条冒烟用例。
 
-正在做的东西在 `docs/dev/`：有正在做的设计时才放 `docs/dev/`，里面有什么就是在做什么，做完就删，内容转进 atlas 和 `docs/guard/`。还没排上的想法在候选清单（不在仓库，在用户的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`，按 P1–P4 往下做）。
+正在做的东西在 [docs/dev/](../dev/)：有正在做的设计时才放 `docs/dev/`，里面有什么就是在做什么，做完就删，内容转进 atlas 和 `docs/guard/`。还没排上的想法在候选清单（不在仓库，在用户的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`，按 P1–P4 往下做）。
 
 ## 你需要知道的术语
 | 术语 | 白话解释 | 代码里叫 |
@@ -115,9 +115,7 @@ flowchart LR
 | 模型提示正文 | [deepseek-flash.md](../../prompts/models/deepseek/deepseek-flash.md)、[deepseek-chat.md](../../prompts/models/deepseek/deepseek-chat.md) | 模型 | 活的 | 开发者 |
 
 ## 全局要求：性能与界面流畅
-- 链路不传大块数据：只传摘要或流式传输；每次节点调用上限 1 MiB，处处设大小上限。
-- 交互回复 p95 < 3 秒；本机进程间通信（IPC）额外开销 p95 < 5 毫秒；后台导致的变慢不超过 10%。
-- 界面：60fps；动画只动 transform/opacity，普通过渡不超过 200 毫秒，弹性动画最长 300 毫秒（弹出用 `--dur-pop` 220 毫秒，气泡回弹 300 毫秒）；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
-- 涉及性能目标或性能行为的改动才测相关指标；验证范围和复跑条件统一见 [测试约定](../TESTING.md)。
+
+性能目标统一见 [AGENTS.md](../../AGENTS.md)，验证范围与测量条件见 [TESTING.md](../TESTING.md)。
 
 ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻快照加差异](../adr/0008-memory-v2-dated-log-first.md)、[0009 每个记忆范围是一个文件夹，用普通文件工具编辑](../adr/0009-memory-as-folder.md)、[0010 跨设备靠开源信箱中继传 Bot 消息，不同步数据](../adr/0010-gateway-mailbox-relay.md)、[0011 官方网关跑在 Cloudflare Workers 上，客户端默认连它](../adr/0011-official-gateway-on-workers.md)、[0012 退役「节点」，多台电脑只靠网关配对](../adr/0012-retire-node.md)、[0013 现阶段先把功能调通调顺，安全只留接口](../adr/0013-features-before-security.md)、[0014 后台不做续段，也不再按步数限制](../adr/0014-no-background-segments.md)、[0015 上下文分两条线：软目标和硬上限，都从模型推出来](../adr/0015-soft-target-hard-ceiling.md)、[0016 前台只理解和派活，干活交给预制类型的子代理（已被 0028 取代）](../adr/0016-foreground-dispatches-typed-subagents.md)、[0017 用户的话直接插进正在跑的一轮，不进收件箱](../adr/0017-owner-words-go-straight-into-the-turn.md)、[0018 确认卡不挡用户说话：插话时挂起，决定稍后送达](../adr/0018-cards-never-block-the-owner.md)、[0019 默认不弹权限卡，用户自己控制](../adr/0019-no-permission-cards-by-default.md)、[0021 环境流：一切会变的状态只追加差异，不改前缀](../adr/0021-env-stream.md)、[0028 无前后台之分：主 Agent 全工具，长活直接 subAgent](../adr/0028-no-foreground-background-split.md)。

@@ -6,33 +6,6 @@ import (
 	"testing"
 )
 
-func TestRoutineRunsHideWakesAndSilentReplies(t *testing.T) {
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(raw)
-	a := strings.Index(s, "  const routineCache")
-	b := strings.Index(s, "  function taskTypeLabel(")
-	script := `const assert=require('node:assert/strict');
- const routineOf=m=>m.routine?{label:m.routine}:null,unwrap=text=>({untrusted:text.startsWith('event:')});
- ` + s[a:b] + `
- const rows=[{seq:1,role:'user',routine:'新闻',content:'event:timer',branch:'wake'},
- {seq:2,role:'assistant',content:'另一个回合的回答'},
- {seq:3,role:'assistant',content:'SILENT',branch:'wake'},
- {seq:4,role:'user',routine:'提醒',content:'event:timer'},
- {seq:5,role:'assistant',content:'现在该出发了'}];
- const runs=routineRuns(rows);assert.equal(routineRuns(rows),runs,'unchanged snapshot should reuse its derived routine data');
- assert.deepEqual([...runs.hidden].sort(),[0,2,3],'wakes and the SILENT reply are records; spoken replies stay');
- assert.deepEqual([...routineRuns(rows.slice(0,1)).hidden],[0],'a wake still running is a record too');
- const imageReply=routineRuns([{role:'user',routine:'提醒',content:'event:timer',branch:'image'},{role:'assistant',content:'SILENT',images:['paste/image.png'],branch:'image'}]);assert.deepEqual([...imageReply.hidden],[0],'an image reply is still user-visible');
- const owner=routineRuns([{role:'user',routine:'提醒',content:'event:timer'},{role:'user',content:'我的新问题'},{role:'assistant',content:'SILENT'}]);assert.deepEqual([...owner.hidden],[0],'the user turn owns its own reply');
- `
-	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-}
-
 func TestSlowToolNoticeRequiresAnOwnerInterjection(t *testing.T) {
 	raw, err := staticFS.ReadFile("static/app.js")
 	if err != nil {
@@ -40,7 +13,7 @@ func TestSlowToolNoticeRequiresAnOwnerInterjection(t *testing.T) {
 	}
 	s := string(raw)
 	a := strings.Index(s, "  function elapsedWork(")
-	b := strings.Index(s, "  function routineRuns(")
+	b := strings.Index(s, "  function taskTypeLabel(")
 	c := strings.Index(s, "  function slowToolNotice(")
 	d := strings.Index(s, "  function updateWorkTimes(")
 	script := `const assert=require('node:assert/strict'),unwrap=text=>({untrusted:text.startsWith('event:')});

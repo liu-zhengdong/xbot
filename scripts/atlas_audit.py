@@ -83,7 +83,9 @@ for p in nodes:
     elif code:
         issues.append(f'[stale?] {rel}: no verified commit')
 
-    for link in re.findall(r'\]\(((?!https?:|mailto:|<)[^)\s#]+)', text):
+    # Markdown examples inside code spans/fences are not navigation links.
+    link_text = re.sub(r'(`+).*?\1', '', text, flags=re.S)
+    for link in re.findall(r'\]\(((?!https?:|mailto:|<)[^)\s#]+)', link_text):
         target = (p.parent / link).resolve()
         if not target.exists():
             issues.append(f'[link]   {rel}: broken link {link}')

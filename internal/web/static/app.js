@@ -1184,76 +1184,8 @@
     return row;
   }
 
-  function backgroundRelays(messages) {
-    const normalize = text => String(text || "").replace(/\s+/g, " ").trim();
-    const finalByBranch = new Map();
-    messages.forEach((m, i) => {
-      if (m.role === "assistant" && m.branch) finalByBranch.set(m.branch, i);
-    });
-    const suppressed = new Set();
-    const pending = new Set();
-    messages.forEach((m, i) => {
-      const parsed = unwrap(m.content || "");
-      if (m.role === "user" && parsed.untrusted && parsed.source === "subagent" && parsed.type === "fork_end") {
-        if (normalize(parsed.text)) pending.add(normalize(parsed.text));
-      }
-      if (m.role !== "assistant") return;
-      if (m.branch) {
-        if (finalByBranch.get(m.branch) === i && !(m.tool_calls || []).length && normalize(m.content)) {
-          pending.add(normalize(m.content));
-        }
-        return;
-      }
-      if (!(m.tool_calls || []).length && pending.has(normalize(m.content))) suppressed.add(i);
-      // Even a different or tool-calling first reply consumes the opportunity.
-      pending.clear();
-    });
-    return suppressed;
-  }
 
-  function missedTimes(text, now = new Date()) {
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    let previousDay = "";
-    return text.split(/,\s*/).map(value => {
-      const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(value);
-      if (!match) return value;
-      const day = match.slice(1, 4).join("-");
-      const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-      const label = date.toDateString() === now.toDateString() ? "今天" : date.toDateString() === yesterday.toDateString() ? "昨天" : match[2] + "-" + match[3];
-      const result = (day === previousDay ? "" : label + " ") + match[4];
-      previousDay = day;
-      return result;
-    }).join("、");
-  }
 
-  function routineOf(m) {
-    if (m.role !== "user") return null;
-    const parsed = unwrap(m.content || "");
-    if (!parsed.untrusted || parsed.source !== "timer") return null;
-    const text = parsed.text.trim();
-    if (text.startsWith("Missed routine times from")) {
-      const items = text.match(/^- /gm) || [];
-      const more = /^- … and (\d+) more routines/m.exec(text);
-      const count = items.length + (more ? Number(more[1]) - 1 : 0);
-      const lines = text.split("\n").filter(line => /^- /.test(line)).map(line => {
-        const m = /^- "[^"]*" "(.*)": (\d+) missed \((.*)\)$/.exec(line);
-        if (m) return m[1] + " · 错过 " + m[2] + " 次（" + missedTimes(m[3]) + "）";
-        const more = /^- … and (\d+) more routines/.exec(line);
-        return more ? "另有 " + more[1] + " 项定时" : "其他定时";
-      });
-      return { label: "错过的定时 · " + count + " 项", prompt: "电脑关机或休眠期间，这些定时没有运行。\n" + lines.join("\n") };
-    }
-    const routine = /^<routine\b([^>]*)>([\s\S]*?)<\/routine>/.exec(text);
-    if (!routine) return null;
-    const name = /\bname="([^"]*)"/.exec(routine[1]);
-    const id = /\bid="([^"]*)"/.exec(routine[1]);
-    return {
-      label: (name && name[1]) || (id && id[1]) || "定时",
-      prompt: routine[2].trim(),
-      time: when(m.time),
-    };
-  }
 
   // Drawers the owner opened stay open when a poll redraws the thread.
   const openRoutines = new Set();
@@ -2406,76 +2338,10 @@
     return { name: name, args: args, line: bits.join(" · ") };
   }
 
-  function peerPhrase(name, args, who) {
-    const text = clip(args.text || args.prompt || "", 72);
-    const from = niceName(who) || "Bot";
-    if (name === "message_bot") {
-      const to = args.bot || args.to || "";
-      // The other bot's name, never the text: the exchange view has it.
-      if (to) return { text: "", peer: to, sent: true };
-      return { text: from + " 发给了另一个 Bot", peer: "" };
-    }
-    if (name === "post_group") {
-      const g = args.name || args.id || "群";
-      return { text: from + " 发到 " + niceName(g) + (text ? " · " + text : ""), peer: "" };
-    }
-    if (name === "create_group") return { text: from + " 建了群" + (args.name ? " · " + niceName(args.name) : ""), peer: "" };
-    if (name === "fork_bot") return { text: from + " 复刻出 " + niceName(args.name || "新 Bot"), peer: "" };
-    return null;
-  }
 
-  function toolIconName(name) {
-    return /shell|bash|exec|terminal/i.test(name || "") ? "terminal" : "wrench";
-  }
 
-  function closeToolPop() {
-    const pop = document.querySelector(".tool-pop");
-    if (pop) pop.remove();
-    document.querySelectorAll(".card.open").forEach((node) => node.classList.remove("open"));
-  }
 
-  function openToolPop(anchor, text) {
-    closeToolPop();
-    const pop = el("div", "pop tool-pop");
-    const pre = document.createElement("pre");
-    pre.textContent = text;
-    pop.append(pre);
-    document.body.append(pop);
-    const r = anchor.getBoundingClientRect();
-    const width = Math.min(420, window.innerWidth - 24);
-    let left = r.left;
-    if (left + width > window.innerWidth - 12) left = window.innerWidth - 12 - width;
-    if (left < 12) left = 12;
-    pop.style.width = width + "px";
-    pop.style.left = left + "px";
-    let top = r.bottom + 6;
-    if (top + 180 > window.innerHeight) top = Math.max(12, r.top - 186);
-    pop.style.top = top + "px";
-    anchor.classList.add("open");
-  }
 
-  function toolShell(name, line, resultText) {
-    const card = el("button", "card");
-    card.type = "button";
-    const head = el("span", "card-head");
-    const well = el("span", "card-icon");
-    well.append(icon(toolIconName(name)));
-    const text = el("span", "card-copy");
-    text.append(el("div", "card-title", name || "tool"));
-    if (line) text.append(el("div", "card-sub", line));
-    head.append(well, text);
-    if (resultText) head.append(icon("chevron", "chev"));
-    card.append(head);
-    if (!resultText) card.disabled = true;
-    else {
-      card.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (card.classList.contains("open")) closeToolPop();
-        else openToolPop(card, resultText);
-      });
-    }
-    return card;
-  }
 
   const messageContents = new WeakMap();
   let messageMenu = null;
@@ -5254,15 +5120,6 @@
     return btn;
   }
 
-  function menuRow(iconName, label, onClick, danger) {
-    const btn = panelAct(iconName, label, danger);
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      closePanelMenu();
-      onClick();
-    });
-    return btn;
-  }
 
   // closePanelMenu removes the open submenu. placeMenu moves it to <body> while
   // open, so it is no longer a descendant of the anchor; selecting only
@@ -6331,27 +6188,6 @@
     if (!Number.isFinite(at) || at <= 0) return "";
     const seconds = Math.max(0, Math.floor((now - at) / 1000));
     return seconds < 60 ? seconds + " 秒" : Math.floor(seconds / 60) + " 分" + (seconds % 60 ? " " + seconds % 60 + " 秒" : "");
-  }
-
-  // A routine run is a record, not speech: its wake (missed summaries too)
-  // and a text-only SILENT reply never reach the user. Only what the bot says
-  // to the user stays in the chat, and the task tab lists no runs.
-  // Transcript snapshots are replaced, never edited in place.
-  const routineCache = new WeakMap();
-  function routineRuns(messages) {
-    if (routineCache.has(messages)) return routineCache.get(messages);
-    const pending = new Set(), hidden = new Set();
-    messages.forEach((m, i) => {
-      const branch = m.branch || "";
-      if (m.role === "user") {
-        if (routineOf(m)) { hidden.add(i); pending.add(branch); }
-        else if (!unwrap(m.content || "").untrusted && !m.internal) pending.delete(branch);
-      }
-      if (m.role !== "assistant" || !m.content || (m.tool_calls || []).length || !pending.has(branch)) return;
-      if (m.content.trim() === "SILENT" && !(m.images || []).length && !(m.audios || []).length) hidden.add(i);
-      pending.delete(branch);
-    });
-    const result = {hidden}; routineCache.set(messages, result); return result;
   }
 
   function taskTypeLabel(ag) {
@@ -8339,7 +8175,6 @@
     closeNewMenu();
     closePanelMenu();
     closeFolderMenus();
-    closeToolPop();
   }
 
   document.addEventListener("click", (ev) => {
@@ -8812,7 +8647,6 @@
     if (!ev.target.closest(".new-menu")) closeNewMenu();
     if (!panelMoreAnchor?.contains(ev.target) && !ev.target.closest(".panel-more, .menu-sub")) closePanelMenu();
     if (!ev.target.closest(".folder-head") && !ev.target.closest(".folder-menu")) closeFolderMenus();
-    if (!ev.target.closest(".tool-pop") && !ev.target.closest(".card")) closeToolPop();
     if (!ev.target.closest("#notes") && !ev.target.closest("#bell")) {
     }
   });
@@ -9047,7 +8881,7 @@
   window.addEventListener("resize", () => {
     if (window.innerWidth >= 768) sidebar.classList.remove("open");
     syncSidebar();
-    syncPanelDefault();
+    renderWorkspaceTabs();
     syncBackdrop();
   });
 
@@ -9069,10 +8903,9 @@
       thread.replaceChildren(inner);
     }
     for (let i = 0; i < state.bots.length + state.groups.length; i++) await warmOne();
-    syncPanelDefault();
+    renderWorkspaceTabs();
   }
 
-  function syncPanelDefault() { renderWorkspaceTabs(); }
 
   syncSidebar();
   initTheme(); // in the app this also tells the window which theme to use

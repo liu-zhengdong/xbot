@@ -33,10 +33,8 @@ const (
 	stopTimeout  = 10 * time.Second
 	sendTimeout  = 60 * time.Second
 
-	// servePassInterval mirrors the default --interval of xbot serve, which
-	// the harness leaves alone. An inbox event with no direct wake waits at
-	// most this long for the next pass.
-	servePassInterval = 15 * time.Second
+	// Private test servers poll quickly; production keeps its 15s default.
+	servePassInterval = 100 * time.Millisecond
 
 	listenPrefix     = "listening on "
 	loginTokenPrefix = "登录码（login token）: "
@@ -167,7 +165,7 @@ func (s *Server) launch() {
 	s.mu.Unlock()
 
 	s.cmd = exec.Command(xbotBinary,
-		"--root", s.Root, "serve",
+		"--root", s.Root, "serve", "--interval", servePassInterval.String(),
 		"--http", "127.0.0.1:0",
 		"--no-auto-upgrade",
 	)
@@ -334,8 +332,8 @@ func (s *Server) do(method, path string, in any) (int, []byte) {
 	return resp.StatusCode, raw
 }
 
-// Delta is one streamed piece of a reply, with the time it reached the client.
-type Delta struct {
+// Delivery is a successful owner message, timed at its SSE result event.
+type Delivery struct {
 	At   time.Time
 	Text string
 }
@@ -351,7 +349,7 @@ type ToolEvent struct {
 type Reply struct {
 	Sent         time.Time
 	FirstVisible time.Time
-	Deltas       []Delta
+	Delivered    []Delivery
 	Tools        []ToolEvent
 	Done         string
 	HandedOff    bool
@@ -457,16 +455,17 @@ func (st *Stream) run() {
 		case strings.HasPrefix(line, "data: "):
 			data := strings.TrimPrefix(line, "data: ")
 			switch event {
-			case "delta":
+			case "result":
 				var d struct {
+					Name string `json:"name"`
 					Text string `json:"text"`
 				}
-				if err := json.Unmarshal([]byte(data), &d); err == nil {
+				if json.Unmarshal([]byte(data), &d) == nil && d.Name == "send_message_to_user" && d.Text != "" {
 					now := time.Now()
-					if d.Text != "" && st.reply.FirstVisible.IsZero() {
+					st.reply.Delivered = append(st.reply.Delivered, Delivery{At: now, Text: d.Text})
+					if st.reply.FirstVisible.IsZero() {
 						st.reply.FirstVisible = now
 					}
-					st.reply.Deltas = append(st.reply.Deltas, Delta{At: now, Text: d.Text})
 				}
 			case "tool":
 				var d struct {
@@ -553,6 +552,38 @@ func (s *Server) Transcript(bot string) []Row {
 		out.Messages = []Row{}
 	}
 	return out.Messages
+}
+
+// ChatRows reads the owner's delivery timeline. Seq is the chat ID here;
+// Transcript keeps the original ledger seq for trace and tool assertions.
+func (s *Server) ChatRows(bot string) []Row {
+	s.t.Helper()
+	status, body := s.do(http.MethodGet, "/api/bots/"+url.PathEscape(bot)+"/chat?limit=200", nil)
+	if status != http.StatusOK {
+		s.t.Fatalf("chat of %s: %d %s", bot, status, body)
+	}
+	var out struct {
+		Messages []struct {
+			ID   int    `json:"id"`
+			Kind string `json:"kind"`
+			Text string `json:"text"`
+		}
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		s.t.Fatal(err)
+	}
+	rows := make([]Row, 0, len(out.Messages))
+	for _, m := range out.Messages {
+		role := m.Kind
+		switch role {
+		case "owner", "source":
+			role = "user"
+		case "bot":
+			role = "assistant"
+		}
+		rows = append(rows, Row{Seq: m.ID, Role: role, Content: m.Text, Kind: m.Kind})
+	}
+	return rows
 }
 
 // Agent is one subagent record from GET /api/bots/{name}.

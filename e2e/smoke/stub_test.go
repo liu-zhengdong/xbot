@@ -4,6 +4,7 @@ package smoke
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -289,12 +290,13 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 	// Completion events now carry a result pointer. Follow it through the
 	// existing tool, as mockopenai does, before answering about the result.
 	if strings.Contains(text, `source="subagent"`) && strings.Contains(text, "[结论全文：") {
-		if !sawTool(req, "read_subagent") {
-			_, sender, _ := strings.Cut(text, `sender="`)
-			id, _, _ := strings.Cut(sender, `"`)
-			streamTool(w, "call_read_sub", "read_subagent", argsJSON(map[string]string{"id": id}))
+		if !sawTool(req, "read_file") {
+			_, path, _ := strings.Cut(text, "[结论全文：")
+			path, _, _ = strings.Cut(path, "；")
+			streamTool(w, "call_read_result", "read_file", argsJSON(map[string]string{"path": path}))
 			return
 		}
+
 		for _, m := range req.Messages {
 			if m.Role == "tool" {
 				text = m.Content
@@ -318,7 +320,7 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 		s.mu.Unlock()
 		streamText(w, []string{"SILENT"})
 	case strings.Contains(text, "B_OPINION_77"):
-		streamText(w, []string{"B 的意见是：" + lineWith(text, "B_OPINION_77")})
+		streamOwner(w, req, strings.Join([]string{"B 的意见是：" + lineWith(text, "B_OPINION_77")}, ""))
 	case strings.Contains(text, "SMOKE_ASK_B"):
 		if !sawTool(req, "message_bot") {
 			streamTool(w, "call_ask", "message_bot", argsJSON(map[string]string{
@@ -326,7 +328,7 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 			}))
 			return
 		}
-		streamText(w, []string{"已经问 B 了"})
+		streamOwner(w, req, "已经问 B 了")
 	case strings.Contains(text, "SMOKE_Q"):
 		if !sawTool(req, "message_bot") {
 			streamTool(w, "call_reply", "message_bot", argsJSON(map[string]string{
@@ -359,7 +361,7 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 			}))
 			return
 		}
-		streamText(w, []string{"定好了"})
+		streamOwner(w, req, "定好了")
 	case strings.Contains(text, "SMOKE_CRON"):
 		if !sawTool(req, "routine_create") {
 			f := strings.Fields(text)
@@ -372,9 +374,9 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 			}))
 			return
 		}
-		streamText(w, []string{"定好了"})
+		streamOwner(w, req, "定好了")
 	case strings.Contains(text, "wrote ") && strings.Contains(text, "summary.txt"):
-		streamText(w, []string{"我列出了目录里的文件，写好了 " + summaryPath(text)})
+		streamOwner(w, req, "我列出了目录里的文件，写好了 "+summaryPath(text))
 	case strings.Contains(text, "SMOKE_DO"):
 		if !sawTool(req, "dispatch") {
 			dir := afterMarker(text, "dir=")
@@ -382,7 +384,7 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 			streamTool(w, "call_dispatch", "dispatch", argsJSON(map[string]string{"type": "dev", "task": task}))
 			return
 		}
-		streamText(w, []string{"交给子代理了"})
+		streamOwner(w, req, "交给子代理了")
 	case strings.Contains(text, "SMOKE_REMEMBER"):
 		if !sawTool(req, "write_file") {
 			streamTool(w, "call_remember", "write_file", argsJSON(map[string]string{
@@ -391,7 +393,7 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 			}))
 			return
 		}
-		streamText(w, []string{"记住了"})
+		streamOwner(w, req, "记住了")
 	case strings.Contains(text, "SMOKE_CORRECT"):
 		// The file already exists, so the kernel asks for a read before the
 		// write; the stub reads it and then rewrites both lines.
@@ -406,34 +408,34 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 				"content": rememberLine + "- (2026-10-20) 用户已不再对花生过敏 MARK_PEANUT_2\n",
 			}))
 		default:
-			streamText(w, []string{"改好了"})
+			streamOwner(w, req, "改好了")
 		}
 	case strings.Contains(text, "SMOKE_RECALL"):
-		streamText(w, []string{peanutLines(req)})
+		streamOwner(w, req, peanutLines(req))
 	case strings.Contains(all, "SMOKE_SLOW") && strings.Contains(all, "SMOKE_ASIDE_2"):
-		streamText(w, []string{"先答插话"})
+		streamOwner(w, req, "先答插话")
 	case strings.Contains(text, "SMOKE_SLOW"):
 		// The first piece goes out before the hold, as a real model would.
 		streamHold(w, r.Context(), s, "fg", "稍等，")
 	case strings.Contains(text, "SMOKE_ASIDE_2"):
-		streamText(w, []string{"ok"})
+		streamOwner(w, req, "ok")
 	case strings.Contains(text, "SMOKE_ASIDE"):
-		streamText(w, []string{"插话的回答"})
+		streamOwner(w, req, "插话的回答")
 	case strings.Contains(text, "LONG_RESULT_42"):
-		streamText(w, []string{"长任务完成：LONG_RESULT_42"})
+		streamOwner(w, req, "长任务完成：LONG_RESULT_42")
 	case strings.Contains(text, "SMOKE_LONG") && !sawTool(req, "dispatch"):
 		streamTool(w, "call_dispatch", "dispatch", `{"type":"general","task":"SMOKE_LONG_TASK"}`)
 	case strings.Contains(text, "SMOKE_LONG"):
-		streamText(w, []string{"已交给后台"})
+		streamOwner(w, req, "已交给后台")
+	case strings.HasPrefix(text, "TOP_TABS_"):
+		streamOwner(w, req, "切页期间的实际回复 "+strings.TrimPrefix(text, "TOP_TABS_"))
 	case helloCall.MatchString(text):
 		n := helloCall.FindStringSubmatch(text)[1]
-		streamText(w, []string{"你好，", "这是第 " + n + " 次", "流式回复"})
+		streamOwner(w, req, strings.Join([]string{"你好，", "这是第 " + n + " 次", "流式回复"}, ""))
 	case strings.Contains(text, "SMOKE_FROM_TERMINAL"):
-		streamText(w, []string{"终端你好"})
-	case strings.Contains(text, "SMOKE_FROM_WEB_LATE"):
-		streamText(w, []string{"网页后话"})
+		streamOwner(w, req, "终端你好")
 	default:
-		streamText(w, []string{"ok"})
+		streamOwner(w, req, "ok")
 	}
 }
 
@@ -656,6 +658,19 @@ func peanutLines(req stubRequest) string {
 		return "不知道"
 	}
 	return strings.Join(lines, "\n")
+}
+
+// streamOwner delivers through the current owner-message tool, then ends
+// the turn. Model prose alone belongs to the internal ledger.
+func streamOwner(w http.ResponseWriter, req stubRequest, text string) {
+	if sawTool(req, "send_message_to_user") {
+		streamText(w, []string{"sent"})
+		return
+	}
+	raw, _ := json.Marshal(req.Messages)
+	digest := sha256.Sum256(raw)
+	id := fmt.Sprintf("owner_%x", digest[:12])
+	streamTool(w, id, "send_message_to_user", argsJSON(map[string]string{"text": text}))
 }
 
 // startSSE writes the headers of a streaming answer.

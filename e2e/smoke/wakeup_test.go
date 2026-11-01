@@ -9,11 +9,10 @@ import (
 )
 
 // TestWakeUp is the smoke case for 「主动唤醒」 (journey and spec in
-// docs/guard/六条基本旅程.md). Four parts:
+// docs/guard/六条基本旅程.md). Three parts:
 //
 //   - a routine fires on time and raises one note;
 //   - a routine with nothing to say stays silent;
-//   - a note raised in quiet hours is held, then released once as a batch;
 //   - after a restart a fired slot is not run again and the missed slots are
 //     summarized once.
 //
@@ -34,10 +33,13 @@ func TestWakeUp(t *testing.T) {
 			t.Fatalf("SMOKE_ROUTINE: done.text %q, want %q", r.Done, "定好了")
 		}
 
+		srv.Advance(time.Until(at) + time.Second)
+
 		// Judge when the client actually saw the wake, not the event's own
 		// timestamp: an event posted on time but handled late still carries the
 		// early time.
 		row, seen := waitRoutineRowAt(t, srv, "ada", "SMOKE_FIRE_NEWS", 90*time.Second)
+		seen = seen.Add(srv.clock) // compare in the controlled server clock
 		if seen.Before(at) {
 			t.Fatalf("the routine woke the bot %s before its time (旅程「主动唤醒」: 到点后 1 分钟内醒来): at %s, seen %s",
 				at.Sub(seen), at, seen)
@@ -66,9 +68,13 @@ func TestWakeUp(t *testing.T) {
 		if r := srv.Send("ada", "SMOKE_ROUTINE QUIET "+at.Format(time.RFC3339)); r.Done != "定好了" {
 			t.Fatalf("SMOKE_ROUTINE: done.text %q, want %q", r.Done, "定好了")
 		}
+		srv.Advance(time.Until(at) + time.Second)
 		waitRoutineRow(t, srv, "ada", "SMOKE_FIRE_QUIET", 90*time.Second)
 
-		time.Sleep(30 * time.Second)
+		WaitFor(t, 10*time.Second, "the silent routine to finish", func() (bool, string) {
+			rows := srv.Transcript("ada")
+			return eventAnswered(rows, "SMOKE_FIRE_QUIET"), dumpRows(rows)
+		})
 		if n := len(srv.Notes()); n != before {
 			t.Fatalf("a SILENT routine added %d note(s) (旅程「主动唤醒」: 没有时回复 SILENT，不产生通知):\n%s",
 				n-before, dumpNotes(srv.Notes()))
@@ -97,7 +103,7 @@ func TestWakeUp(t *testing.T) {
 		// the assistant reply after the summary row.
 		WaitFor(t, 90*time.Second, "the summary turn to finish", func() (bool, string) {
 			rows := srv.Transcript("ada")
-			return summaryRows(rows) == 1 && summaryAnswered(rows), dumpRows(rows)
+			return summaryRows(rows) == 1 && eventAnswered(rows, "Missed routine times"), dumpRows(rows)
 		})
 
 		// Watch one full serve interval after the restart, so a late backfill
@@ -207,10 +213,10 @@ func waitRoutineRowAt(t *testing.T, srv *Server, bot, marker string, d time.Dura
 	return row, seen
 }
 
-// summaryAnswered reports an assistant reply after the summary row.
-func summaryAnswered(rows []Row) bool {
+// eventAnswered reports a completed assistant reply after the event row.
+func eventAnswered(rows []Row, marker string) bool {
 	for i, r := range rows {
-		if r.Role != "user" || !strings.Contains(r.Content, "Missed routine times") {
+		if r.Role != "user" || !strings.Contains(r.Content, marker) {
 			continue
 		}
 		for _, later := range rows[i+1:] {

@@ -99,15 +99,6 @@ func missingResults(msgs []provider.Message) []provider.ToolCall {
 	return missing
 }
 
-func indexEvent(entries []bot.Entry, eventID string) int {
-	for i, e := range entries {
-		if e.EventID == eventID && e.Message.Role == provider.RoleUser {
-			return i
-		}
-	}
-	return -1
-}
-
 // turnSpan groups all inputs before the shared normal answer. A new EventID
 // alone is no boundary: input is durable even while the model/tool is busy.
 // An answered input (or a fork handoff) does end before the next wake.

@@ -6,14 +6,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +22,7 @@ import (
 // Real serve, disk-backed memory/chat and shipped UI. The model alone is stubbed.
 func TestChatTabsJourney(t *testing.T) {
 	t.Setenv("XBOT_TEST_CHROME", browsertest.Chrome(t))
-	srv := Start(t, chatTabsVisibleStub(t))
+	srv := Start(t, StartStub(t))
 	srv.CreateBot("Workspace", "聊天页面改版验收")
 	srv.CreateBot("Other", "切换隔离验收")
 	srv.Send("Workspace", "SMOKE_HELLO_1")
@@ -75,50 +71,4 @@ func TestChatTabsJourney(t *testing.T) {
 		t.Fatalf("chat tabs real journey: %v\n%s", err, out)
 	}
 	t.Log(string(out))
-}
-
-// The legacy smoke hello returns model prose (an aside in the current UI).
-// This journey scripts an actual send_message_to_user tool delivery instead.
-func chatTabsVisibleStub(t *testing.T) *Stub {
-	s := StartStub(t)
-	fallback := s.srv
-	t.Cleanup(fallback.Close)
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			fallback.Config.Handler.ServeHTTP(w, r)
-			return
-		}
-		raw, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "read", http.StatusBadRequest)
-			return
-		}
-		r.Body = io.NopCloser(bytes.NewReader(raw))
-		var req stubRequest
-		if json.Unmarshal(raw, &req) != nil {
-			fallback.Config.Handler.ServeHTTP(w, r)
-			return
-		}
-		text := lastUser(req)
-		if !strings.HasPrefix(text, "TOP_TABS_") {
-			fallback.Config.Handler.ServeHTTP(w, r)
-			return
-		}
-		label := strings.TrimPrefix(text, "TOP_TABS_")
-		id := "tabs_" + label
-		for _, m := range req.Messages {
-			for _, tc := range m.ToolCalls {
-				var call struct {
-					ID string `json:"id"`
-				}
-				if json.Unmarshal(tc, &call) == nil && call.ID == id {
-					streamText(w, []string{"SILENT"})
-					return
-				}
-			}
-		}
-		time.Sleep(150 * time.Millisecond)
-		streamTool(w, id, "send_message_to_user", argsJSON(map[string]string{"text": "切页期间的实际回复 " + label}))
-	}))
-	return s
 }

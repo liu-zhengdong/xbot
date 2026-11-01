@@ -82,4 +82,4 @@ Agent 通过 `provider.Complete` 获取一次逻辑回复：首请求和最多�
 
 思考回传的验收与待验证项见 [开发设计](../dev/thinking-enable.md)。
 
-对应实现规格：[模型上下文窗口跟真值走](../dev/model-context-truth.md)。
+模型窗口与预算的现行规则见 [上下文](context.md)。

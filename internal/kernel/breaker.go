@@ -325,13 +325,6 @@ func loopReminder(reasons []string) string {
 	return b.String()
 }
 
-func breakerHaltReason(why string) string {
-	if why == "" {
-		why = "unspecified"
-	}
-	return "熔断 " + why
-}
-
 func loopHint(reason string) string {
 	switch reason {
 	case StopRepeatedOutput:

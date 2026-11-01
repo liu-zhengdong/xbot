@@ -26,7 +26,6 @@ verified: 2026-11-01 @ feature/vault-global-shared (NeedsSecret/MCP global looku
 - **市场条目**：标明类型（原生 Link 插件，或 MCP）、能力（工具 / 入站事件）、以及需要的密钥。
 - **编码代理器官**：运行中改 Bot 名时，任务记录与改目录同步切换到新路径，后续卡片和完成事件投向新 Bot。和子代理分开。一个 Bot 可以同时留下多条编码任务，每条有自己的工作目录、仓库、步数上限和时间上限，不套用子代理的 16 步、10 分钟。记录在 `bots/<name>/code/<id>.json`，id 以 `ca_` 开头。同时只有一条是 `running`，再开始的进 `queued`。`code_start` 记录工作目录、目标和会改文件，然后启动；按权限表它是普通动作，不弹确认卡。Bot 可以补充（`code_steer`）、排队（`code_queue`）、打断（`code_interrupt`）、取消（`code_cancel`），并用 `code_show` 看记录。取消正在跑的那条时，队列里最早的一条变成 `running`。完成、失败或取消时向该 Bot 的收件箱投来源 `coding-agent` 的不可信事件。这些工具常驻注册表，经代理门调用。内核没有新的对象。后端三选一。`XBOT_CODE_AGENT` 是已有编码代理的可执行文件，优先用它。没设时在 PATH 里依次找 `cursor-agent`、`codex`、`claude`。`claude` 和 `cursor-agent` 加 `-p`，`codex` 加 `exec`，其它命令仍把目标当作唯一参数。子进程环境只有基础变量和这次任务的 `XBOT_CODE_*`，不带供应商密钥。标准输出和标准错误按行追加进该 Bot 的 transcript，每条包在 `<coding_card id status>` 里。对话里同一个 id 只显示最新的一张卡片。进程结束时再追加一张终态卡片，状态是 done、failed 或 cancelled。取消之后记录已经不是 running，这张卡片仍然要写，不能停在 running。这些卡片不进模型上下文，也不进记忆抽取。`code_show` 在任务还在跑时能看到已经流出来的输出。`code_cancel` 停掉进程，并杀掉它所在的进程组，避免子进程把管道占住。没有外部命令时，`xbot chat --runner` 或 `XBOT_RUNNER_URL` 把任务交给 `xbot runner`。都没有时，用这个 Bot 绑定的模型在本进程里跑。步数和时间都用这条任务自己的上限。仓库非空且工作目录还没有 `.git` 时先克隆。这三个都没配时，仍然只写记录。
 
-正在验收的设计：[连接器 Agent 侧可用](../dev/playwright-mcp-tools.md)、[技能库去掉用户路径段](../dev/skills-flat-no-owner.md)、[Shell 按解释器拆工具](../dev/shell-by-interpreter.md)、[技能收成提议](../dev/skill-harvest-propose.md)。
 
 ## 连接器发现与加载诊断
 

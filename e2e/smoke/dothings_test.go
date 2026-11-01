@@ -72,8 +72,8 @@ func TestDoThings(t *testing.T) {
 	// The final reply names the full path, and reads like an answer rather
 	// than tool output.
 	var report string
-	WaitFor(t, 60*time.Second, "the report in the transcript", func() (bool, string) {
-		rows := srv.Transcript("ada")
+	WaitFor(t, 60*time.Second, "the delivered report in chat", func() (bool, string) {
+		rows := srv.ChatRows("ada")
 		report = ""
 		for _, r := range rows {
 			if r.Role == "assistant" && strings.Contains(r.Content, summary) {
@@ -104,14 +104,14 @@ func TestDoThings(t *testing.T) {
 	}
 	checkClean("done.text", task.Done)
 	var streamed strings.Builder
-	for _, d := range task.Deltas {
+	for _, d := range task.Delivered {
 		streamed.WriteString(d.Text)
 	}
-	checkClean("streamed deltas joined", streamed.String())
-	rows := srv.Transcript("ada")
+	checkClean("delivered owner messages", streamed.String())
+	rows := srv.ChatRows("ada")
 	for _, r := range rows {
 		if r.Role == "assistant" {
-			checkClean("assistant transcript row", r.Content)
+			checkClean("delivered chat row", r.Content)
 		}
 	}
 
@@ -125,9 +125,10 @@ func TestDoThings(t *testing.T) {
 		t.Fatalf("the final reply is not the report:\nlast:   %q\nreport: %q", lastAssistant, report)
 	}
 
+	rows = srv.Transcript("ada")
 	// The trace: this turn dispatched work, then read the subagent's result.
 	// Completion events carry a result.txt pointer; the report above names
-	// summary.txt after the foreground follows that pointer via read_subagent.
+	// summary.txt after the foreground follows that pointer via read_file.
 	dispatched := false
 	readResult := false
 	for _, r := range rows {
@@ -135,7 +136,7 @@ func TestDoThings(t *testing.T) {
 			if tc.Function.Name == "dispatch" {
 				dispatched = true
 			}
-			if tc.Function.Name == "read_subagent" {
+			if tc.Function.Name == "read_file" {
 				readResult = true
 			}
 		}
@@ -155,7 +156,7 @@ func TestDoThings(t *testing.T) {
 		t.Fatalf("no subagent completion event carries a result.txt pointer (旅程「动手做事」: 轨迹里能看到子代理交回结果):\n%s", dumpRows(rows))
 	}
 	if !readResult {
-		t.Fatalf("no assistant row calls read_subagent (旅程「动手做事」: 读取子代理结果后说清文件在哪):\n%s", dumpRows(rows))
+		t.Fatalf("no assistant row calls read_file (旅程「动手做事」: 读取子代理结果后说清文件在哪):\n%s", dumpRows(rows))
 	}
 }
 
