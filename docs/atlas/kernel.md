@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ c3cd3f0c (runtime profile, local task lifetime and live handle synchronization)
+verified: 2026-11-01 @ c599679f (environment sender name and stable ID); 2026-11-01 @ c3cd3f0c (runtime profile, local task lifetime and live handle synchronization)
 ---
 # 内核：Link、Event、收件箱
 

@@ -1,5 +1,11 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 环境发送者正式姓名
+
+- L 档（内核环境来源语义），范围限用户要求的 `sender=u501` 改为正式姓名。环境 `sender` 现读 person 显示姓名，`sender_id` 保留稳定 ID；记忆、认证与快照关联继续按 ID，旧环境可回放，原 transcript 不改。方案及对照回顾见 [ADR 0044](adr/0044-environment-sender-name.md)，独立设计与代码复核无剩余问题。实现 `c599679f`。
+- `TestEnvironmentSenderUsesPersonName` 在旧实现实际先红，修复后与 `TestEnvironment*` / `TestEnvStream*` 一起通过（4.743s），覆盖首请求姓名/ID、同人改名、旧环境和人物记忆。独立编写的 `TestSenderNameBinary` 经真实二进制、HTTP、scripted 模型验证姓名/ID与回复送达，通过（0.45s）；初次执行的测试解析器误读纯文本时间公告，修正后单项通过。kernel vet、diff check 通过。
+- 本机正式与开发数据根的姓名经 person.Record 追加授权记录更新为「刘政东」；运行中 8788 会话接口确认 `owner_name=刘政东`。级别：本地 main 已合入、专项真实入口端到端通过，待用户日用。Not run: 全仓、真实模型、无关旅程与 Linux/Windows；本次按影响选择定向检查。
+
 ## 2026-11-01 经历展开区阅读优化
 
 - S 档，响应用户对真实提纲中工具回报、绝对路径和截断提示的视觉反馈。正常对话改为「你／Bot 名」角色与短段落，限制阅读行宽；工具完成回报及截断标记只放在默认折叠的「原始提纲」，完整原文可查看复制、搜索命中保留。不改存储、API 或生成新摘要。提交 `a8558329`、`f45f0e46`。
