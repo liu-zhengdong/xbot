@@ -24,6 +24,7 @@ var (
 )
 
 type Continuable interface {
+	Stop(context.Context, string) (Task, error)
 	Message(context.Context, string, Control) (Task, error)
 	SendParent(context.Context, string, string) (Event, error)
 }
