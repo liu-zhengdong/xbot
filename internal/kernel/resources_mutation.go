@@ -23,7 +23,7 @@ func (r *BotResources) CurrentBot() (*bot.Bot, error) {
 	if r.closed || r.ctx.Err() != nil {
 		return nil, errResourcesUnavailable
 	}
-	return r.current, nil
+	return bot.Load(r.current.Root, r.current.Name())
 }
 
 // TryCurrentHandle keeps the current-path check and handle-lock creation in one

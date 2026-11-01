@@ -136,7 +136,7 @@ func (t linksTool) search(query string) string {
 		}
 		b.WriteByte('\n')
 	}
-	servers, _ := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
+	servers, _ := t.k.mcpSpecs()
 	store := map[string]bool{}
 	if list, err := link.Connectors(); err == nil {
 		for _, c := range list {
@@ -324,7 +324,7 @@ func (t linksTool) loadContext(ctx context.Context, id string) (string, error) {
 	}
 	if strings.HasPrefix(id, "mcp:") {
 		name := strings.TrimPrefix(id, "mcp:")
-		servers, err := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
+		servers, err := t.k.mcpSpecs()
 		if err != nil {
 			return "", err
 		}
@@ -481,16 +481,19 @@ func MountOrgans(b *bot.Bot, links []link.Link) []link.Link {
 // mcp.json: a server the store added is mounted, one it removed is closed, and
 // one whose definition changed is replaced by a fresh instance. An unreadable
 // file leaves the mounted set as it is.
-func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
-	var servers []link.MCPServer
+// mcpSpecs is authoritative for runtime metadata and adapter discovery. The
+// Manager retains the last effective inputs when an external file is invalid.
+func (k *Kernel) mcpSpecs() ([]link.MCPServer, error) {
 	if k.Resources != nil {
-		servers = k.Resources.MCP.Specs()
-	} else {
-		var err error
-		servers, err = link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
-		if err != nil {
-			return links
-		}
+		return k.Resources.MCP.Specs(), nil
+	}
+	return link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+}
+
+func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
+	servers, err := k.mcpSpecs()
+	if err != nil {
+		return links
 	}
 	want := make(map[string]link.MCPServer, len(servers))
 	for _, s := range servers {
@@ -687,7 +690,7 @@ func (k *Kernel) installedSection() (string, error) {
 			refs = append(refs, link.InstalledRef{ID: a.Title, Summary: a.Summary})
 		}
 	}
-	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+	servers, err := k.mcpSpecs()
 	if err != nil {
 		return "", err
 	}
