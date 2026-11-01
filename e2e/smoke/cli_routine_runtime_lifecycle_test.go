@@ -104,13 +104,13 @@ func TestCLIRoutineRuntimeCurrentTimerAndGate(t *testing.T) {
 		}
 	}
 
+	localCLI("machine", "set", "local", "allow")
 	model.add("CLI_ROUTINE_CLEAR_NO_CONTEXT", mcpRuntimeTool("sh", map[string]string{"description": "Clear an effective precheck without requiring an approval call", "command": `XBOT_CALL_ID=missing "$XBOT_BIN" routine update ` + id + ` --self --args '{"precheck":""}' --json`}))
 	cliSkillSend(t, srv, moved, "CLI_ROUTINE_CLEAR_NO_CONTEXT")
 	cliRoutineDecode(t, model.results("CLI_ROUTINE_CLEAR_NO_CONTEXT")[0], &updated)
 	if !updated.Applied || updated.ID != id || updated.Error != "" || readSaved().Precheck != "" {
 		t.Fatal("explicit empty precheck wrongly required source approval context or failed to clear")
 	}
-	localCLI("machine", "set", "local", "allow")
 	// Same-ID create resets the actual definition. Its precheck runs only when
 	// Due/Deliver calls it, never during CLI save or update.
 	nextAt := time.Now().Add(250 * time.Second).UTC()

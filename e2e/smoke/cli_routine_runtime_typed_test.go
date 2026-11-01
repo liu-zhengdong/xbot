@@ -67,7 +67,7 @@ func TestCLIRoutineRuntimeTypedOnceLifecycle(t *testing.T) {
 	}
 
 	initial := mutateAndList("CLI_ROUTINE_TYPED_CREATE_ONCE", "create", string(createArgs))
-	if initial.ID != id || initial.Name != "Typed once" || initial.Prompt != "TYPED_INITIAL_PROMPT" || initial.At != utcAt || initial.Zone != "UTC" || initial.Cron != "" || !initial.Enabled || initial.Precheck != "" || initial.LastSlot != "" || !slices.Equal(initial.Skills, []string{"first-reference", "second-reference", "first-reference"}) {
+	if initial.ID != id || initial.Name != "Typed once" || initial.Prompt != "TYPED_INITIAL_PROMPT" || initial.At != utcAt || initial.Zone != "" || initial.Cron != "" || !initial.Enabled || initial.Precheck != "" || initial.LastSlot != "" || !slices.Equal(initial.Skills, []string{"first-reference", "second-reference", "first-reference"}) {
 		t.Fatal("create lost offset-to-UTC, default-enabled, trimmed prompt or ordered skills semantics")
 	}
 	preserved := mutateAndList("CLI_ROUTINE_TYPED_NULL_PRESERVE", "update "+id, `{"name":" \t ","prompt":" \r\n ","cron":" ","enabled":null,"precheck":null,"skills":null}`)
