@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ 0856164f (merged CLI; exact 16be6d78 same-slot readonly and owner/root phase evidence, prior vault checks retained)
+verified: 2026-11-01 @ 748ea940
 ---
 # 安全：保险箱与权限表
 
@@ -13,6 +13,10 @@ verified: 2026-11-01 @ 0856164f (merged CLI; exact 16be6d78 same-slot readonly a
 ## 子代理工具分类
 
 统一权限表把 `agent_message`、`agent_stop`、`send_message_to_parent` 归 Normal，`list_subagents` 归 Readonly；沿既有registry与review，不添加工具内确认或新的审批UI。孩子的父信目标由scope固定，Web直接输入与模型父信来源由内核装配，不接受任意sender/target；HTTP沿Bot owner鉴权，descriptor不保存密钥。可继续能力与旧记录兼容见[子代理](subagents.md)。
+
+## 当前实例资料入口
+
+资料 `profile set --self` 只接名字、简介、时区和生成头像 seed，可组合更新；persona、group 与运行预算仍沿独立业务。运行接口校验当前 loopback Host、非浏览器调用和规范 root，不把旧 `XBOT_BOT` 当 self 身份。完整输入先规范化，冲突只读预检并在提交锁内复核；后期 IO 错误保实际部分回执，客户端输出后非 0，不静默改写其它实例。头像是独立原始字节请求，最多 1 MiB；profile JSON 与回包仍各最多 64 KiB，不传图片 base64、服务端文件路径或复杂元数据 header。具体字段与 source/Web 区分见 [API](../API.md#本机-cli-profile-操作)。
 
 ## MCP CLI 与研究只读
 
@@ -112,7 +116,7 @@ WantedBy=multi-user.target
 - **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；`routine_delete` 是 Bot 自己的排期，不算数据删除。
 - **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。用户自己 Bot 之间的消息不算对外发送。
 - **代理门**：`tools` 的 search、describe 归 `readonly`；call 在 agent 层转发成被调用的工具，确认卡、拒绝表和决定记录都用那个工具的名字和参数，跟直接调用一模一样，代理门本身不增加确认，也不能绕开确认（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。
-- **self_edit**：`bot_propose_persona`/`bot_update_profile` 在 permissions on 时确认；`bot_update_profile` 默认 permissions off 直接落盘，含 `avatar_seed` 也没有预览确认卡例外；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时确认。
+- **self_edit**：严格测试/评测内核仍按 `bot_propose_persona` 分类审核职责修改；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时按自改审核。资料更新已经由当前实例 CLI 领域入口承接，旧 profile 模型工具没有注册、Known 或专用审批卡入口；生产默认放行与现有 persona/group 规则保持。
 - **记忆文件夹**（记忆 v2 批 3）：不可信回合里 `write_file`/`edit_file` 写进任何 `bots/*/memory/` 或 `people/*/memory/` 都确认；可信回合不弹卡，但内核持目录锁校验（`memory.md` ≤ 4 KiB、日志只能在当月文件末尾按格式追加、索引和锁文件不许写、文件夹内不许符号链接），违规就恢复原文件并把原因告诉模型。`remember`/`forget` 工具已拿掉。
 - **只读不动**：`read_file`、列表、搜索、只看不发的检查、`list_secrets` 不弹确认卡。
 - **决定留痕**：每个 Bot 一份 `bots/<name>/decisions.jsonl`（0600），每次决定追加一条，写允许、拒绝或过期，以及工具、摘要和时间；时间写本地时间加时区偏移（RFC3339，例如 `2026-10-16T09:30:00+08:00`），不写 UTC；摘要先过脱敏，不落真值。
@@ -127,7 +131,7 @@ WantedBy=multi-user.target
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
 | `shell` | `bash`、`sh`、`zsh`、`powershell`、`cmd`、`git-bash` | 删除或对外发送，`keys:true`，或触及保险箱/密钥路径 |
-| `self_edit` | `bot_propose_persona`、`bot_update_profile`、`write_file`、`edit_file` | permissions on 时 persona/profile 自改；触及保险箱/密钥路径始终确认 |
+| `self_edit` | `bot_propose_persona`、`write_file`、`edit_file` | 严格测试/评测模式的职责修改及 persona/profile 文件自改；触及保险箱/密钥路径沿原规则 |
 
 完成标准：
 1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明，也不依赖工具自己的 `Confirm`；工具自己的 `Confirm` 只给出摘要。

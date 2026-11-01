@@ -12,18 +12,24 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 )
 
 // referenceSources returns the Bot's library followed by the shared workspace.
-func (k *Kernel) referenceSources() ([]referenceSource, error) {
-	private, err := filepath.Abs(filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "memory"))
+func (k *Kernel) referenceSources() (sources []referenceSource, err error) {
+	err = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { sources, err = referenceSourcesFor(current); return err })
+	return
+}
+
+func referenceSourcesFor(current *bot.Bot) ([]referenceSource, error) {
+	private, err := filepath.Abs(filepath.Join(bot.Dir(current.Root, current.Name()), "memory"))
 	if err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(private, 0700); err != nil {
 		return nil, err
 	}
-	shared, err := filepath.Abs(filepath.Join(k.Bot.Root, "memory"))
+	shared, err := filepath.Abs(filepath.Join(current.Root, "memory"))
 	if err != nil {
 		return nil, err
 	}
@@ -53,20 +59,24 @@ func referenceSkip(name string, privateRoot bool) bool {
 }
 
 // referenceText publishes each source independently through the existing environment.
-func (k *Kernel) referenceText() (string, error) {
-	sources, err := k.referenceSources()
-	if err != nil {
-		return "", err
-	}
-	var parts []string
-	for _, source := range sources {
-		text, _, err := referenceSourceText(source)
+func (k *Kernel) referenceText() (text string, err error) {
+	err = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		sources, err := referenceSourcesFor(current)
 		if err != nil {
-			return "", err
+			return err
 		}
-		parts = append(parts, text)
-	}
-	return strings.Join(parts, "\n\n"), nil
+		var parts []string
+		for _, source := range sources {
+			part, _, err := referenceSourceText(source)
+			if err != nil {
+				return err
+			}
+			parts = append(parts, part)
+		}
+		text = strings.Join(parts, "\n\n")
+		return nil
+	})
+	return
 }
 
 func referenceSourceText(source referenceSource) (string, bool, error) {
@@ -145,88 +155,91 @@ func referenceContract(source referenceSource) string {
 // referenceKeywords reads only frontmatter, and bounds the scan independently of
 // the default index. The root files are already present in that index.
 func (k *Kernel) referenceKeywords(text string, provided map[string]bool) []string {
-	sources, err := k.referenceSources()
-	if err != nil {
-		return nil
-	}
-	text = strings.ToLower(text)
 	var matches []string
-	var bytesRead int64
-	var pathsBytes int
-	for _, source := range sources {
-		_, rootIndexed, err := referenceSourceText(source)
+	_ = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		sources, err := referenceSourcesFor(current)
 		if err != nil {
-			continue
+			return err
 		}
-		dir := source.dir
-		_ = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return nil
-			}
-			if path != dir && (referenceSkip(entry.Name(), source.private && filepath.Dir(path) == dir) || entry.Type()&os.ModeSymlink != 0) {
-				if entry.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if entry.IsDir() || (rootIndexed && filepath.Dir(path) == dir) || !strings.EqualFold(filepath.Ext(path), ".md") || provided[path] {
-				return nil
-			}
-			if bytesRead >= 4<<20 || pathsBytes >= 1024 {
-				return fs.SkipAll
-			}
-			f, err := os.Open(path)
+		text = strings.ToLower(text)
+		var bytesRead int64
+		var pathsBytes int
+		for _, source := range sources {
+			_, rootIndexed, err := referenceSourceText(source)
 			if err != nil {
-				return nil
+				continue
 			}
-			limit := min(int64(64<<10), int64(4<<20)-bytesRead)
-			reader := &io.LimitedReader{R: f, N: limit}
-			scanner := bufio.NewScanner(reader)
-			var front strings.Builder
-			first, closed := true, false
-			for scanner.Scan() {
-				line := strings.TrimSuffix(scanner.Text(), "\r")
-				if first {
-					first = false
-					if line != "---" {
+			dir := source.dir
+			_ = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return nil
+				}
+				if path != dir && (referenceSkip(entry.Name(), source.private && filepath.Dir(path) == dir) || entry.Type()&os.ModeSymlink != 0) {
+					if entry.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if entry.IsDir() || (rootIndexed && filepath.Dir(path) == dir) || !strings.EqualFold(filepath.Ext(path), ".md") || provided[path] {
+					return nil
+				}
+				if bytesRead >= 4<<20 || pathsBytes >= 1024 {
+					return fs.SkipAll
+				}
+				f, err := os.Open(path)
+				if err != nil {
+					return nil
+				}
+				limit := min(int64(64<<10), int64(4<<20)-bytesRead)
+				reader := &io.LimitedReader{R: f, N: limit}
+				scanner := bufio.NewScanner(reader)
+				var front strings.Builder
+				first, closed := true, false
+				for scanner.Scan() {
+					line := strings.TrimSuffix(scanner.Text(), "\r")
+					if first {
+						first = false
+						if line != "---" {
+							break
+						}
+						continue
+					}
+					if line == "---" {
+						closed = true
 						break
 					}
-					continue
+					front.WriteString(line)
+					front.WriteByte('\n')
 				}
-				if line == "---" {
-					closed = true
-					break
+				_ = f.Close()
+				bytesRead += limit - reader.N
+				if !closed {
+					return nil
 				}
-				front.WriteString(line)
-				front.WriteByte('\n')
-			}
-			_ = f.Close()
-			bytesRead += limit - reader.N
-			if !closed {
-				return nil
-			}
 
-			var meta struct {
-				Keywords []string `yaml:"keywords"`
-			}
-			if yaml.Unmarshal([]byte(front.String()), &meta) != nil {
-				return nil
-			}
-			for _, keyword := range meta.Keywords {
-				keyword = strings.ToLower(strings.TrimSpace(keyword))
-				if keyword != "" && strings.Contains(text, keyword) {
-					if pathsBytes+len(path)+1 > 1024 {
-						return fs.SkipAll
-					}
-					matches = append(matches, path)
-					pathsBytes += len(path) + 1
-					provided[path] = true
-					break
+				var meta struct {
+					Keywords []string `yaml:"keywords"`
 				}
-			}
-			return nil
-		})
-	}
+				if yaml.Unmarshal([]byte(front.String()), &meta) != nil {
+					return nil
+				}
+				for _, keyword := range meta.Keywords {
+					keyword = strings.ToLower(strings.TrimSpace(keyword))
+					if keyword != "" && strings.Contains(text, keyword) {
+						if pathsBytes+len(path)+1 > 1024 {
+							return fs.SkipAll
+						}
+						matches = append(matches, path)
+						pathsBytes += len(path) + 1
+						provided[path] = true
+						break
+					}
+				}
+				return nil
+			})
+		}
+		return nil
+	})
 	return matches
 }
 

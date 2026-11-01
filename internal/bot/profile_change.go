@@ -219,6 +219,27 @@ func (b *Bot) ApplyProfileChange(normalized ProfileChange) (current *Bot, result
 				actual = to
 				result.AppliedFields = append([]string{"name"}, result.AppliedFields...)
 				migrateShellJobs(Dir(b.Root, from), Dir(b.Root, to))
+				// A cold process reads this existing cwd file with only the new
+				// identity available. Rebase its internal prefixes at the move,
+				// preserving external project directories and truthful late errors.
+				cwdPath := filepath.Join(Dir(b.Root, to), "cwd")
+				data, cwdErr := os.ReadFile(cwdPath)
+				if cwdErr == nil {
+					cwd := strings.TrimSpace(string(data))
+					nextCwd := cwd
+					for _, pair := range [][2]string{{Dir(b.Root, from), Dir(b.Root, to)}, {work.BotDir(b.Root, from), work.BotDir(b.Root, to)}} {
+						rel, relErr := filepath.Rel(pair[0], nextCwd)
+						if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+							nextCwd = filepath.Join(pair[1], rel)
+						}
+					}
+					if nextCwd != cwd {
+						cwdErr = fsutil.WriteAtomic(cwdPath, []byte(nextCwd+"\n"), 0600)
+					}
+				}
+				if !errors.Is(cwdErr, os.ErrNotExist) {
+					operationErr = errors.Join(operationErr, cwdErr)
+				}
 			}
 			result.Name, result.Moved = actual, moved
 			// Reload without migration or relocking the same config inode. The

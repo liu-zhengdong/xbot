@@ -495,7 +495,20 @@ func checkoutTask(ctx context.Context, task Task, current func(func(Task) error)
 		if err := os.MkdirAll(task.WorkDir, 0700); err != nil {
 			return err
 		}
-		cmd = exec.CommandContext(ctx, "git", "clone", "--", task.Repo, ".")
+		// Git recognizes a colon before any slash as a remote locator. Keep
+		// URL/SCP syntax intact; local relative paths keep the process cwd
+		// identity they had before clone started inside the target directory.
+		repo := task.Repo
+		colon, slash := strings.IndexByte(repo, ':'), strings.IndexByte(repo, '/')
+		local := colon < 0 || slash >= 0 && slash < colon || filepath.VolumeName(repo) != ""
+		if !filepath.IsAbs(repo) && local {
+			var err error
+			repo, err = filepath.Abs(repo)
+			if err != nil {
+				return err
+			}
+		}
+		cmd = exec.CommandContext(ctx, "git", "clone", "--", repo, ".")
 		cmd.Dir = task.WorkDir
 		cmd.Stderr = &stderr
 		return cmd.Start()

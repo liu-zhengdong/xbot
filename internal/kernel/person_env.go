@@ -29,5 +29,5 @@ func (k *Kernel) personText(ctx context.Context, ev link.Event) (string, error) 
 			personFacts = append(personFacts, fact)
 		}
 	}
-	return clipMemory(renderMemoryPaths(memory.Resolve(memory.Visible(personFacts, k.Bot.Name(), ev.Sender)), nil, paths)), nil
+	return clipMemory(renderMemoryPaths(memory.Resolve(memory.Visible(personFacts, k.currentName(), ev.Sender)), nil, paths)), nil
 }

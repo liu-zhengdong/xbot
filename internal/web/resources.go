@@ -8,6 +8,7 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
+	"xbot/internal/peer"
 )
 
 type kernelEntry struct {
@@ -141,6 +142,9 @@ func (s *Server) renameResourcesLocked(name string, change bot.ProfileChange, en
 		b, err = bot.Load(s.Root, name)
 		if err == nil {
 			_, result, err = b.ApplyProfileChange(change)
+			if result.Moved {
+				err = errors.Join(err, peer.RenameMember(s.Root, name, result.Name))
+			}
 		}
 	}
 	if !result.Moved {
@@ -184,6 +188,7 @@ func (s *Server) applyProfileRuntime(name string, change bot.ProfileChange) (val
 	if actual == "" {
 		actual = name
 	}
+	value = cliops.Profile{Name: actual, Scope: "runtime", PreviousName: result.PreviousName, Moved: result.Moved, AppliedFields: result.AppliedFields, Applied: result.Moved || len(result.AppliedFields) > 0}
 	b, snapshotErr := bot.Load(s.Root, actual)
 	err = errors.Join(err, snapshotErr)
 	if b != nil {

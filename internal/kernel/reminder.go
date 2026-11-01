@@ -17,6 +17,7 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/code"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -334,13 +335,14 @@ const reminderKeep = 48
 // rewriting the file is picked up on the next lookup. Compaction rewrites the
 // file when the live window no longer needs the older lines.
 type reminderLog struct {
-	mu     sync.Mutex
-	path   string
-	notes  []Reminder
-	loaded bool
-	size   int64
-	mtime  time.Time
-	redact func(string) string
+	mu       sync.Mutex
+	path     string
+	notes    []Reminder
+	loaded   bool
+	size     int64
+	mtime    time.Time
+	redact   func(string) string
+	withPath func(func(string) error) error
 }
 
 func (l *reminderLog) setRedact(fn func(string) string) {
@@ -380,7 +382,19 @@ func (l *reminderLog) all() ([]Reminder, error) {
 // load reads the sidecar when it has not been read, or when size or mtime
 // changed since the last read. The caller holds l.mu. Stat and the read share
 // one shared file lock so a concurrent append cannot land between them.
+func (l *reminderLog) pathIO(fn func(string) error) error {
+	if l.withPath != nil {
+		return l.withPath(fn)
+	}
+	return fn(l.path)
+}
+
 func (l *reminderLog) load() error {
+	return l.pathIO(func(path string) error { return l.loadPath(path) })
+}
+
+func (l *reminderLog) loadPath(path string) error {
+	l.path = path
 	if l.path == "" {
 		l.loaded = true
 		return nil
@@ -460,20 +474,22 @@ func (l *reminderLog) Append(seq int, kind, text string, at time.Time) error {
 	n := Reminder{Seq: seq, Kind: kind, Text: text, At: at}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if err := l.load(); err != nil {
-		return err
-	}
-	l.notes = append(l.notes, n)
-	if l.path == "" {
-		return nil
-	}
-	if err := fsutil.AppendJSONL(l.path, n); err != nil {
-		return err
-	}
-	// Another writer may have appended between our cached read and this write.
-	// Drop the cache and read the file back under its lock.
-	l.loaded = false
-	return l.load()
+	return l.pathIO(func(path string) error {
+		if err := l.loadPath(path); err != nil {
+			return err
+		}
+		l.notes = append(l.notes, n)
+		if path == "" {
+			return nil
+		}
+		if err := fsutil.AppendJSONL(path, n); err != nil {
+			return err
+		}
+		// Another writer may have appended between our cached read and this write.
+		// Drop the cache and read the file back under its lock.
+		l.loaded = false
+		return l.loadPath(path)
+	})
 }
 
 // Compact drops reminders that belong to transcript lines the next request
@@ -489,21 +505,23 @@ func (c *Channel) Compact(minSeq int) error {
 func (l *reminderLog) compact(minSeq int) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if err := l.load(); err != nil {
-		return err
-	}
-	if len(l.notes) <= reminderKeep {
-		return nil
-	}
-	next := trimReminders(l.notes, minSeq)
-	if len(next) == len(l.notes) {
-		return nil
-	}
-	l.notes = next
-	if l.path == "" {
-		return nil
-	}
-	return l.rewrite()
+	return l.pathIO(func(path string) error {
+		if err := l.loadPath(path); err != nil {
+			return err
+		}
+		if len(l.notes) <= reminderKeep {
+			return nil
+		}
+		next := trimReminders(l.notes, minSeq)
+		if len(next) == len(l.notes) {
+			return nil
+		}
+		l.notes = next
+		if path == "" {
+			return nil
+		}
+		return l.rewritePath(path)
+	})
 }
 
 func trimReminders(notes []Reminder, minSeq int) []Reminder {
@@ -524,8 +542,8 @@ func trimReminders(notes []Reminder, minSeq int) []Reminder {
 	return out
 }
 
-func (l *reminderLog) rewrite() error {
-	tmp := l.path + ".next"
+func (l *reminderLog) rewritePath(path string) error {
+	tmp := path + ".next"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -547,18 +565,18 @@ func (l *reminderLog) rewrite() error {
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, l.path); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
 	l.loaded = false
-	return l.load()
+	return l.loadPath(path)
 }
 
 func (k *Kernel) reminderPath() string {
 	if k == nil || k.Bot == nil {
 		return ""
 	}
-	return filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "reminders.jsonl")
+	return filepath.Join(bot.Dir(k.Bot.Root, k.currentName()), "reminders.jsonl")
 }
 
 func (k *Kernel) reminders() *Channel {
@@ -566,6 +584,11 @@ func (k *Kernel) reminders() *Channel {
 	defer k.loadMu.Unlock()
 	if k.channel == nil {
 		k.channel = newChannel(k.reminderPath())
+		k.channel.log.withPath = func(fn func(string) error) error {
+			return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+				return fn(filepath.Join(bot.Dir(current.Root, current.Name()), "reminders.jsonl"))
+			})
+		}
 	}
 	k.channel.log.setRedact(k.redactor())
 	return k.channel
@@ -771,22 +794,25 @@ func (k *Kernel) memoryCapacityTrigger(ev link.Event) func(time.Time, []Reminder
 		if k.Memory == nil || k.Bot == nil {
 			return ""
 		}
-		paths := []string{filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "memory", "memory.md")}
-		if personEvent(ev) {
-			paths = append(paths, filepath.Join(k.Bot.Root, "people", ev.Sender, "memory", "memory.md"))
-		}
 		var notes []string
-		for _, path := range paths {
-			st, err := os.Stat(path)
-			if err != nil || st.Size()*100 < memory.ProfileBytes*85 {
-				continue
+		_ = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			paths := []string{filepath.Join(bot.Dir(current.Root, current.Name()), "memory", "memory.md")}
+			if personEvent(ev) {
+				paths = append(paths, filepath.Join(k.Bot.Root, "people", ev.Sender, "memory", "memory.md"))
 			}
-			state := "将满"
-			if st.Size() >= memory.ProfileBytes {
-				state = "已满"
+			for _, path := range paths {
+				st, err := os.Stat(path)
+				if err != nil || st.Size()*100 < memory.ProfileBytes*85 {
+					continue
+				}
+				state := "将满"
+				if st.Size() >= memory.ProfileBytes {
+					state = "已满"
+				}
+				notes = append(notes, fmt.Sprintf("记忆%s（%s：当前 %d / 上限 %d 字节），先整理或删旧再写：合并重复事实、删除过时内容，细节可移到日志或资料文件。", state, path, st.Size(), memory.ProfileBytes))
 			}
-			notes = append(notes, fmt.Sprintf("记忆%s（%s：当前 %d / 上限 %d 字节），先整理或删旧再写：合并重复事实、删除过时内容，细节可移到日志或资料文件。", state, path, st.Size(), memory.ProfileBytes))
-		}
+			return nil
+		})
 		if len(notes) == 0 {
 			return ""
 		}

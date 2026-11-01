@@ -501,7 +501,7 @@ Message冷续两段：owners→Local→storage→WithCurrentIO读currentdir/状�
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
-- 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
+- profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已实现于 feature 分支，当前合同见本份“批 profile 完整等价”，现状已提炼 atlas；独立 RenameEntry 在 94f34c67 通过并封存，Atomic/Resources/Avatar/Browser 仍待完整产品验收与最终增量审计，未合 main/日用。普通字段、avatar_seed 与 MCP 已绿证据继续复用，不重做整批。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。

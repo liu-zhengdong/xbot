@@ -59,7 +59,7 @@ func (k *Kernel) memoryFolder(path string) (dir string, scope memory.Scope, own 
 	case "people":
 		scope, own = memory.ScopePerson, true
 	case "bots":
-		scope, own = memory.ScopeBot, memoryPathCase(norm.NFC.String(parts[1])) == memoryPathCase(norm.NFC.String(k.Bot.Name()))
+		scope, own = memory.ScopeBot, memoryPathCase(norm.NFC.String(parts[1])) == memoryPathCase(norm.NFC.String(k.currentName()))
 	default:
 		return
 	}

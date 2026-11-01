@@ -7,6 +7,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
@@ -28,11 +29,30 @@ func (k *Kernel) RecallHistory(query string) (string, error) {
 // RecallHistoryBot searches a transcript. An empty name, or this bot's name, searches this bot.
 // Another bot is allowed only when it shares an owner. The text is then untrusted data from that bot.
 func (k *Kernel) RecallHistoryBot(query, name string) (string, error) {
-	target, foreign, err := k.historyBot(name)
-	if err != nil {
-		return "", err
-	}
-	seqs, err := target.Search(query, recallLimit)
+	var target *bot.Bot
+	var foreign bool
+	var entries []bot.Entry
+	var seqs []int
+	err := k.withHistoryBot(name, func(b *bot.Bot, other bool) error {
+		target, foreign = b, other
+		var err error
+		seqs, err = b.Search(query, recallLimit)
+		if err != nil {
+			return err
+		}
+		for _, seq := range seqs {
+			part, err := b.Slice(seq, seq)
+			if err != nil {
+				return err
+			}
+			if len(part) == 0 {
+				entries = append(entries, bot.Entry{})
+				continue
+			}
+			entries = append(entries, part[0])
+		}
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
@@ -40,15 +60,8 @@ func (k *Kernel) RecallHistoryBot(query, name string) (string, error) {
 		return k.presentHistory("no matching transcript lines", target.Name(), foreign, recallCap), nil
 	}
 	var b strings.Builder
-	for _, seq := range seqs {
-		part, err := target.Slice(seq, seq)
-		if err != nil {
-			return "", err
-		}
-		if len(part) == 0 {
-			continue
-		}
-		e := part[0]
+	for i, e := range entries {
+		seq := seqs[i]
 		if e.IsForkMark() {
 			continue
 		}
@@ -71,18 +84,33 @@ func (k *Kernel) Expand(from, to int) (string, error) {
 
 // ExpandBot returns raw transcript text. The bot rules match RecallHistoryBot.
 func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
-	target, foreign, err := k.historyBot(name)
-	if err != nil {
-		return "", err
-	}
-	n, err := target.Count()
-	if err != nil {
-		return "", err
-	}
-	if from < 1 || to < from || to > n {
-		return "", fmt.Errorf("expand: range %d-%d outside 1-%d", from, to, n)
-	}
-	entries, err := target.Slice(from, to)
+	var target *bot.Bot
+	var foreign bool
+	var entries []bot.Entry
+	err := k.withHistoryBot(name, func(b *bot.Bot, other bool) error {
+		target, foreign = b, other
+		n, err := b.Count()
+		if err != nil {
+			return err
+		}
+		if from < 1 || to < from || to > n {
+			return fmt.Errorf("expand: range %d-%d outside 1-%d", from, to, n)
+		}
+		entries, err = b.Slice(from, to)
+		if err != nil {
+			return err
+		}
+		for i, entry := range entries {
+			if entry.IsForkMark() {
+				continue
+			}
+			entries[i], err = b.HydrateLimit(entry, expandCap)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
@@ -91,11 +119,13 @@ func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
 		if e.IsForkMark() {
 			continue
 		}
-		e, err = target.HydrateLimit(e, expandCap)
-		if err != nil {
-			return "", err
+		var note string
+		if foreign {
+			note = k.withLineNoteIn(target, e.Message.Role, e.Message.Text(), e.Images, e.Audios)
+		} else {
+			note = k.withLineNote(e.Message.Role, e.Message.Text(), e.Images, e.Audios)
 		}
-		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, k.withLineNoteIn(target, e.Message.Role, e.Message.Text(), e.Images, e.Audios))
+		fmt.Fprintf(&b, "# seq %d %s\n%s\n", from+i, e.Message.Role, note)
 		if blob := toolBlob(e.Message); blob != "" && e.Message.Text() == "" {
 			b.WriteString(blob)
 			b.WriteByte('\n')
@@ -104,18 +134,18 @@ func (k *Kernel) ExpandBot(name string, from, to int) (string, error) {
 	return k.presentHistory(b.String(), target.Name(), foreign, expandCap), nil
 }
 
-// historyBot resolves an optional bot name. foreign is true when the transcript is not this bot's.
-func (k *Kernel) historyBot(name string) (*bot.Bot, bool, error) {
+// Self transcript IO stays on one route through index/read/close. Another
+// Bot still requires the original same-owner check and is never self-rerouted.
+func (k *Kernel) withHistoryBot(name string, fn func(*bot.Bot, bool) error) error {
 	name = strings.TrimSpace(name)
-	if name == "" || name == k.Bot.Name() {
-		return k.Bot, false, nil
+	if name == "" || name == k.currentName() {
+		return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { return fn(current, false) })
 	}
 	other, err := bot.Load(k.Bot.Root, name)
 	if err != nil || !peer.SameOwner(k.Bot, other) {
-		// Missing bots, other owners, and group ids are the same answer.
-		return nil, false, fmt.Errorf("history: %w", bot.ErrNotFound)
+		return fmt.Errorf("history: %w", bot.ErrNotFound)
 	}
-	return other, true, nil
+	return fn(other, true)
 }
 
 func (k *Kernel) presentHistory(body, botName string, foreign bool, cap int) string {
