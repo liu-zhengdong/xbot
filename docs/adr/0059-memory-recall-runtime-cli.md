@@ -1,14 +1,14 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0059 可见记忆文件检索沿原 source CLI
 
 ## 边界与实际caller
 
-TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建Proposed，当前只母路线与本ADR，不产品/测试/入口红。具体形状见 [母路线](../dev/cli-platform-entry.md#批-memory-recall具体合同待单次窄核)。命令选独立 `"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]` 和离线help；cmd实际grep无旧recall入口，eval memory-recall只是场景名。查询可缺或空，原Run虽schema必填query却允许无token返回no matches，不增加非空领域前提。scope/since按原字串传递，不Trim/casefold；raw与escaped JSON各≤1MiB。
+TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建Proposed，afd6单次实际SHAPE通过后Accepted，沿该具体形状实施。具体形状见 [母路线](../dev/cli-platform-entry.md#批-memory-recall具体合同pass实施中)。命令选独立 `"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]` 和离线help；cmd实际grep无旧recall入口，eval memory-recall只是场景名。查询可缺或空，原Run虽schema必填query却允许无token返回no matches，不增加非空领域前提。scope/since按原字串传递，不Trim/casefold；raw与escaped JSON各≤1MiB。
 
 ## 两种实际结构
 

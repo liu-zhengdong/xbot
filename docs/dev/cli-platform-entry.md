@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall合同afd6单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -615,9 +615,9 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父已收doc与pure独立commits整合，复用原三有效phase未重三已绿或旧族。下一Recall仅下方具体合同，未开代码。
 
-## 批 memory-recall：具体合同待单次窄核
+## 批 memory-recall：具体合同PASS，实施中
 
-L档，TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建 [Proposed ADR0059](../adr/0059-memory-recall-runtime-cli.md)。当前only两docs，不code/test/猜入口红。Experience3/Fork7/Message6/Group5/Persona-control-Bot-profile-routine-skillsMCP/三旧审批有效证据封，不重整旧Memory/Context/文件守护，不借本刀改person/projectscope或新服务。
+L档，TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)；afd6单次实际SHAPE已PASS/Accepted，pure63f489fd/sourceafd6/fullvalidation0361bfaec6768d482c06c4e0d982eb74bea2cfc0真实Source NativeShell entry保原CallID unknown command红.97s/package2.737s封，开始原scanner/source完整消费链实施。Experience3/Fork7/Message6/Group5/Persona-control-Bot-profile-routine-skillsMCP/三旧审批有效证据封，不重整旧Memory/Context/文件守护，不借本刀改person/projectscope或新服务。
 
 ### Caller与实际两种形状
 
@@ -665,7 +665,7 @@ PUBLIC mockopenai RECALL_PERSON一个native producer与sawRecall进度门、eval
 
 SINGLE实际SHAPE后才0d固定最窄真实caller入口红；首compiled EARLY真实owner输入/人物目录+Bot自由与dated文件→实际NativeShell live source prepared人物→原scanner→完整path:line正文→read_file全文，不假Kernelctx/手写Owner行/新prod flags。Scope空UNION/bot/person/人物KindBotGroup无person、time.Local since/自由mtime/原命中20-200runes和剩余/4MiB-2000caps、控制中文/深路径输出双32K必要artifact/完整redaction，另真实KindBot Inbox/noPerson同cut继续。首不借经历NoCallID门/空Owner默认制造假上下文。
 
-作者ctx单位：u1/u2另latest轮次不改变原source人物、真实Localchild按实际prepared而非reviewpolicyPerson推断、SA首Owner/KindBotGroup优先、nilapprover、missing/finished/foreign/nonShell/cancel与缺frozen拒；这些不冒独立。真实scopeLock阻塞扫描并取得current route后，profile rename按现IO顺序等待、释放后完整扫描/移动与artifact归当前workspace、旧BOTS+WORK不复活；无测试专用setter/网络持锁/CAS。既有两个dateFS锁/symlink/inode/budget最小affected once，publicmock/eval仅actual新caller相关case一次，其它旧族封。只退recall wrapper/Known/index与memory工具注册组iff确空，不删Link/Event/Memory器官/4KiB文件守卫/context四门/detail。当前only两docs，产品/编译/业务/audit/0059Accepted/入口红均未run，Root4USERdocs/ownerSSE/guard/main/push日用不动。
+作者ctx单位：u1/u2另latest轮次不改变原source人物、真实Localchild按实际prepared而非reviewpolicyPerson推断、SA首Owner/KindBotGroup优先、nilapprover、missing/finished/foreign/nonShell/cancel与缺frozen拒；这些不冒独立。真实scopeLock阻塞扫描并取得current route后，profile rename按现IO顺序等待、释放后完整扫描/移动与artifact归当前workspace、旧BOTS+WORK不复活；无测试专用setter/网络持锁/CAS。既有两个dateFS锁/symlink/inode/budget最小affected once，publicmock/eval仅actual新caller相关case一次，其它旧族封。只退recall wrapper/Known/index与memory工具注册组iff确空，不删Link/Event/Memory器官/4KiB文件守卫/context四门/detail。afd6单次SHAPE PASS/0059Accepted，63f入口红.97s/package2.737s封。首source唯一scanner-currentIO-frozenhandler与CLI已完整接通，FIRST ONLYgo build cliops/kernel/cmd PASSexit0、无cases无时长假报，先交0d真实人物/文件检索全文链once，不等全部新tests/retire/首反馈；wrapper首candidate已薄适配暂保、其Known/index/组/指引及actualmock-eval窄迁后续本刀同cut完成，不冒全验。Root4USERdocs/ownerSSE/guard/main/push日用不动。
 
 ## 还没做的
 
