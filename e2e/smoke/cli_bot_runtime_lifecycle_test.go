@@ -123,7 +123,7 @@ func TestCLIBotRuntimeCreatePolicyAndHostDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.Provider != "deepseek" || cfg.Model != "smoke" || cfg.Role != "" || cfg.BackgroundMaxTime != 0 || cfg.Persona != "Host deletion lifecycle duty." || !slices.Equal(cfg.Owners, owners) || !slices.Equal(cfg.Links, sourceLinks) {
-		t.Fatal("create inherited source binding/role/budget or lost complete owners/links")
+		t.Fatalf("created binding=%s/%s role=%q budget=%d personaMatch=%t ownersMatch=%t ownerCount=%d/%d linksMatch=%t linkCount=%d/%d", cfg.Provider, cfg.Model, cfg.Role, cfg.BackgroundMaxTime, cfg.Persona == "Host deletion lifecycle duty.", slices.Equal(cfg.Owners, owners), len(cfg.Owners), len(owners), slices.Equal(cfg.Links, sourceLinks), len(cfg.Links), len(sourceLinks))
 	}
 
 	const nonPrimary = "CLI_BOT_POLICY_NON_PRIMARY"

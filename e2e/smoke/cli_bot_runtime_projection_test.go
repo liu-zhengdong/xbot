@@ -201,7 +201,7 @@ func TestCLIBotRuntimeListInfoProjectionCurrentRoute(t *testing.T) {
 	}
 	for index, result := range results[1:] {
 		if !strings.HasPrefix(result, "exit 0\n") {
-			t.Fatalf("actual projection read %d failed", index)
+			t.Fatalf("actual projection read %d failed: %.1024q", index, result)
 		}
 		output := commandOutput(result)
 		if len(output) == 0 || len(output) > 32<<10 {
