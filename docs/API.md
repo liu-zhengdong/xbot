@@ -13,6 +13,12 @@
 - 不存在的 Bot，或这个登录用户不是 owner，统一 404 `{"error":"not found"}`。
 - 未登录 401 `{"error":"unauthorized"}`。
 
+## 本机 CLI profile 操作
+
+这组接口位于当前 Kernel 的独立回环 `XBOT_ENDPOINT`，不是网页 `--http` 端口；serve、桌面和独立 chat 同协议。只支持 `GET/PATCH /v1/profile`，不经 messages/events 或对话处理锁。调用须无浏览器 Origin/Fetch-Site，Host 为该回环端口，`X-XBot-Root` 为规范数据根；根不匹配 409。身份是该入口绑定的 Bot，不接收另一个 Bot 名，也不作为主人认证或隔离承诺。
+
+PATCH JSON 为可选字符串 `description`、`timezone`，至少一项，空字符串清除；未知字段、多份 JSON、非法值或超限返回非 2xx。请求/响应各最多 64 KiB。成功回 `{name,description,timezone,scope:"runtime",applied}`，GET 的 applied 为 false，PATCH 为 true；失败为 `{error}`。配置保存后通过现有活轮次 Sink 发送 `profile` SSE `{name}`，网页再读原资料接口；不新增 Inbox 类型。入口随宿主/任务生命周期关闭，旧地址不可用时 CLI 非 0，不另启 Kernel 或静默离线改文件。
+
 ## 设备静态壳
 
 `GET /api/ui/static/<path>` 要求用户认证（pipe 复用 `AuthorizeOwner`）。与本机静态路由同源：设置 `XBOT_DEV_STATIC` 时只读该配置目录内的真实文件（拒绝符号链接越界），否则读内嵌 `static/`。扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。

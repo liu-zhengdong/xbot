@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-11-01 @ feature/vault-global-shared (rename/delete preserve global vault; delete migrates legacy bucket); 2026-10-30 @ dbda0b60 + feature/routine-skills (Timer→Inbox→Kernel scripted tests)
+verified: 2026-11-01 @ c3cd3f0c (ordinary profile merge, readback and concurrent save)
 ---
 # 多 Bot
 
@@ -35,6 +35,12 @@ verified: 2026-11-01 @ feature/vault-global-shared (rename/delete preserve globa
 ### 技能启停持久化
 
 `DisableSkill` / `EnableSkill` 在现有 config.json 文件锁内读取最新配置、修改 `disabled_skills`、原子保存，重复调用不增加条目。其它配置保存保留磁盘上的技能开关；内核列举与读取技能实时读取这份名单，因此已加载的 Bot 也会感知自装范围和设置页后续启停。
+
+## 运行时普通资料
+
+在主线、本机可写子代理或本机编码任务的 Shell 中，使用当前二进制 `XBOT_BIN` 执行 `profile show --self --json` 或 `profile set --self --description TEXT --timezone ZONE --json`。`--self` 由活运行入口绑定当前 Bot，`XBOT_BOT` 只是诊断名；数据根来自 `XBOT_ROOT`，显式根与入口不匹配会失败。成功 JSON 含 `name/description/timezone/scope:"runtime"/applied`，stdout 不混启动信息；入口不可达明确失败，不另启内核或回落写文件。显式名字且没有 endpoint 的旧 CLI 保留离线配置语义；`--help` 离线退出 0。
+
+简介/时区与旧工具、网页 PATCH 共用 `ApplyProfile`：已有 config 文件锁内读最新配置、合并显式字段、原子保存；内存只发布受独立锁保护的普通资料快照，旧配置副本保存其它设置时保留磁盘上最新普通资料。`--self show` 现读普通字段，所以网页 PATCH 的独立 Bot 副本更新也能读回；普通更新不重建 Kernel 或中断 Jobs。头像、改名、persona 和运行预算尚不支持此运行时 set，旧工具/离线 CLI 仍在，未整族退役。research 只读分类和远端 runner 回连均未覆盖。
 
 ## 人设组成与提示词边界
 

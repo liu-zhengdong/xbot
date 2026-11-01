@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**路线已确认，开始批 0/1**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料首刀分支端到端通过，待合入；后续批次未实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -8,7 +8,7 @@
 - MCP 的管理、发现、查看说明和调用都由 `xbot mcp …` 提供；模型按需读帮助和 schema，不常驻注入整套 MCP 或平台管理工具。
 - **退役 Link 作为统一能力接入抽象**，包括模型侧 `links` 管理入口；不是只把 `links` 工具改名。
 - **保留 Event → Inbox → 唤醒这条线**：外部消息、定时器、Webhook、文件监听、MCP 通知和任务完成仍沿已有路径投递。
-- 本文规划迁移路径，不修改现有产品行为、Accepted ADR 或 guard 旅程。实现时先打通最窄端到端，再按能力切换并删除旧入口。
+- 本文保留整体迁移路线，已实施范围仅批 0/1 普通资料首刀；不改旧 Accepted ADR 正文或 guard 旅程。后续继续先打通最窄端到端，再按能力切换并删除旧入口。
 
 ## 问题与边界
 
@@ -111,7 +111,7 @@ Agent → Shell → xbot CLI ─┐
 
 **调用用法**：Agent 的每种本机 Shell 获得 `XBOT_BIN`（当前可执行文件绝对路径）、`XBOT_ROOT`（规范绝对数据根）、`XBOT_ENDPOINT`（当前活 Kernel 的本机操作地址）、`XBOT_BOT`（用于诊断的启动名字）。模型先读 `"$XBOT_BIN" profile --help`，再执行 `"$XBOT_BIN" profile show --self --json` 或 `"$XBOT_BIN" profile set --self --description '维护 XBot' --timezone Asia/Shanghai --json`。CLI 根缺省采用 `XBOT_ROOT`；显式 `--root` 与 endpoint 的规范根不一致必须失败。`--self` 的权威身份是 endpoint 所绑定的活 Kernel，不能以环境里的名字加载另一个 Bot；因此旧工具改名后 endpoint 仍指同一个 Kernel，后续新 Shell 刷新诊断名。帮助离线退出 0；运行操作不可达非 0，不落回文件写入。已有显式名字的离线 CLI 保留并在帮助中写明；带 endpoint 的普通 profile 操作走活入口，未覆盖 flags 明确拒绝组合。
 
-**两种结构不同的方案**：A：复用 serve 网页 API + chat 新建完整 web.Server。好处是重用登录，代价是 chat 被迫装配用户/网页/对话调度，且容易重入 messages 的处理锁。B（选用）：每个已装配 Kernel 在原进程内开一个仅回环随机端口的窄 HTTP handler，仅有 `GET/PATCH /v1/profile`，无通用 action dispatcher、无新 Agent 循环。绑定当前 Kernel，避免实例注册表/UUID/别名数据库；serve、桌面和 chat 全部经既有 openKernel 装配，Kernel.Close 关闭 listener。接受每活 Bot 一个小 listener，换来无路由登记表和跨 chat/serve 同协议；后续批次若出现真正的实例级共享操作再提升所有权，当前不建平台总线。
+**两种结构不同的方案**：A：复用 serve 网页 API + chat 新建完整 web.Server。好处是重用登录，代价是 chat 被迫装配用户/网页/对话调度，且容易重入 messages 的处理锁。B（选用）：每个已装配 Kernel 在原进程内开一个仅回环随机端口的窄 HTTP handler，仅有 `GET/PATCH /v1/profile`，无通用 action dispatcher、无新 Agent 循环。绑定当前 Kernel，避免实例注册表/UUID/别名数据库；serve、桌面和 chat 全部经既有 openKernel 装配，Kernel.Close 按下述任务寿命请求退役入口，宿主退出与显式淘汰强制关闭。接受每活 Bot 一个小 listener，换来无路由登记表和跨 chat/serve 同协议；后续批次若出现真正的实例级共享操作再提升所有权，当前不建平台总线。
 
 **最小 IPC**：HTTP JSON 请求/响应上限各 64 KiB（低于 1 MiB）；请求带 `X-XBot-Root`，服务端核对规范根；只监听 127.0.0.1，拒绝浏览器 Origin，不在 URL/输出放密钥。endpoint 是同用户本机定位信息，不作为主人认证或隔离承诺。结果固定为 `{name, description, timezone, scope:"runtime", applied:true}`（show 无 applied 或为 false）；业务失败非 2xx，CLI stdout 仅一条可解析 JSON，stderr 是诊断。关闭或旧 endpoint 必须失败。CLI 保留显式离线入口，不声称它是热更新。
 
@@ -127,11 +127,11 @@ Agent → Shell → xbot CLI ─┐
 
 **独立冒烟可观测接口**：真二进制 serve/chat + scripted 模型发出 Shell 命令，stdout 可直接解析上述 JSON；GET 列表/详情核对磁盘与当前资料；用下一次模型请求的环境时间/指纹核对活 Kernel 已感知；保持 SSE 尚未结束，收到 profile 提示后打开现有编辑资料表单观察新简介，API 核对时区；自然短轮同样立即刷新资料，不仅依赖收尾；双 root 并跑确认另一实例没改变；显式 root mismatch、无 endpoint、非法 timezone 都返回非 0 且不改资料；旧工具仍可换头像/改名。实现方不改独立 smoke 期望。最小验证先 CLIops、bot、CLI、Kernel 的相关测试，随后独立真入口及一个代表浏览器场景；不全仓、不三遍、不真模型。
 
-**待复核重点**：每活 Kernel listener 在所有持有路径上是否关闭；指针式普通资料快照及文件合并的锁覆盖是否准确；Sink 变更通知是否在解业务锁后发送、随插话移交，并覆盖长轮与自然短轮。独立冒烟由非实现方拥有：`e2e/smoke/cli_profile_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。复核完成前不改产品代码。
+**复核与进度**：2026-11-01 独立设计审计与主管复核放行批 0/1；产品提交 `07f17164`，按独立代码审计命中的短命 Kernel 后台寿命问题修复为 `fe7e1f83`，coding 队列交接与跨活句柄同步增量为 `c3cd3f0c`。定向真实业务、保留头像浏览器行为与 race 已通过，独立真二进制验证由非实现方运行，尚不宣称全部路线完成。独立冒烟为 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。
 
 ## 对照回顾
 
-回顾范围：已读候选清单索引全文、164 份候选文件名和直接相关正文；核对以下 atlas、ADR、guard 与正在做的设计。候选中其余 UI、供应商、评测、设备扩张条目按主题检查冲突面，不纳入本路线实现；开编码前再核对届时有效的候选状态和逐项依赖，不把本表当作所有候选正文已审计的证明。
+回顾范围：候选索引全文、164 份候选 metadata/title 逐条、直接相关 44 篇全文与其余 120 篇主题筛查已由独立研究方核对，未新增阻止批 0/1 的前置；不是宣称全部 164 篇正文逐字读过。人用终端 PATH 的 P3 不等于本批 XBOT_BIN 已完成它；环境实体暂不开、多 Provider/子代理人工排期不阻塞首刀。旧搜索 Link/禁 hosted、expand/load/schema 旧描述和默认写跑先问方向与当前 atlas/ADR 不一致，本批不执行、不改候选状态。头像即时刷新、改名 Jobs 连续性保持；research/runner 缺口明示。下表核对 atlas、ADR、guard 与正在做的设计，不把无关 UI、供应商、评测、设备扩张条目纳入实现。
 
 | 现有要求 / 来源 | 关系与处理 |
 | --- | --- |
@@ -163,9 +163,9 @@ Agent → Shell → xbot CLI ─┐
 4. **入口替换**：主线与各执行路径按 CLI 使用能力；旧平台工具、索引和 schema 从请求消失，未迁移基础能力仍可用。跨平台命令参数/文件/错误行为以当前实际支持的平台检查。
 5. **回归与收益**：按批选择受影响旅程一次。上下文入口切换时检查前缀稳定和长程约束；测调用额外 IPC p95、首次/复用会话耗时及代表任务总 token，沿用 IPC < 5ms 等现有预算，不预先承诺更快/更省。
 
-**冒烟用例**：待写；按上述纵向路径扩展 `e2e/smoke/`，不新增只检查源码文字的测试。
+**冒烟用例**：独立验证方的 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 与 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望；未移入 guard。
 
-**级别**：规划稿；尚未已合入、端到端通过或主人日用通过。
+**级别**：普通 description/timezone 首刀的分支真入口端到端通过（独立 serve 双 root、chat、长/短轮浏览器及 serve.Pass 本机后台），整条路线仍在实施；尚未合入或主人日用通过。
 
 ## 接受的代价与待定细节
 
@@ -177,9 +177,9 @@ Agent → Shell → xbot CLI ─┐
 
 ## 还没做的
 
-- 按主人已确认的路线与验证基线实施；编码前补候选依赖核对、正式替代 ADR、实施设计第三方审。
-- 批 0 的实例/身份/帮助与运行入口契约、实际操作及入站依赖清单。
-- profile 自操作端到端，补齐头像/改名与即时 UI 刷新。
+- 完成首刀增量独立审计与合入；主人日用验收尚未开始。批 0/1 的实施设计/候选依赖核对和 ADR 0043 已通过独立复核，不重复走设计审批。
+- 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
+- profile 的头像/改名完整运行时 CLI 与组合更新；在真正覆盖前保留旧工具和原头像即时刷新，未整族移除。
 - MCP 管理、发现、调用、通知、生命周期与慢调用的 CLI 通路。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
