@@ -47,7 +47,7 @@ func TestCLIProfileFullRuntimeAtomic(t *testing.T) {
 	srv.PatchBot("Worker", map[string]any{"description": "before full profile", "timezone": "UTC", "avatar_seed": "Worker#original", "persona": "FULL_PERSONA_BEFORE"})
 	cliProfileMustRun(t, srv.env, "--root", srv.Root, "profile", "avatar", "Worker", "--file", cliAvatarPNG(t))
 	status, _ := cliFullAPI(t, srv, http.MethodPost, "/api/bots/Worker/mcp", map[string]any{"name": "runtime-fixture", "url": peer.server.URL + "/full-atomic"})
-	if status != http.StatusCreated {
+	if status != http.StatusOK {
 		t.Fatalf("install actual MCP fixture: HTTP %d", status)
 	}
 	cliFullSend(t, srv, "Worker", "FULL_ATOMIC_WARM")
