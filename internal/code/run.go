@@ -156,13 +156,15 @@ func (l *Link) wake() {
 func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 	defer run.cancel()
 	defer func() {
-		l.mu.Lock()
-		delete(l.live, task.ID)
-		l.mu.Unlock()
 		cur, err := l.rec.Get(task.ID)
 		if err != nil || cur.Status != StatusRunning {
 			l.wake()
 		}
+		// Keep the finishing task live until wake has launched its successor.
+		// Concurrent retirement must never see an empty set between queued tasks.
+		l.mu.Lock()
+		delete(l.live, task.ID)
+		l.mu.Unlock()
 		// wake drains the existing queue before endpoint ownership is released.
 		// No code/path/record lock is held while notifying the host.
 		if l.onIdle != nil && !l.HasLiveTasks() {

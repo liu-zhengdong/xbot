@@ -78,6 +78,11 @@ func Start(root string, profile func(*Update) (Profile, error)) (*Server, error)
 	mux.HandleFunc("/v1/profile", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fail := func(code int, message string) {
+			// Validation errors can quote a large invalid timezone. Keep even
+			// their escaped JSON comfortably inside the response budget.
+			if len(message) > 4096 {
+				message = message[:4096] + "…"
+			}
 			w.WriteHeader(code)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 		}

@@ -30,16 +30,28 @@ func TestRetiredRuntimeFollowsLocalTaskLifetime(t *testing.T) {
 			k.WorkDir = t.TempDir()
 			k.Dispatch, k.Permissive, k.AllowBackground = true, true, true
 			ready, release := make(chan struct{}), make(chan struct{})
-			var releaseOnce sync.Once
+			nextReady, nextRelease := make(chan struct{}), make(chan struct{})
+			var releaseOnce, nextReleaseOnce sync.Once
 			defer releaseOnce.Do(func() { close(release) })
-			checked := make(chan error, 1)
-			var step atomic.Int32
+			defer nextReleaseOnce.Do(func() { close(nextRelease) })
+			checked := make(chan error, 2)
+			var steps [2]atomic.Int32
 			var endpoint string
 			p := providerFunc(func(ctx context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
-				if step.Add(1) == 1 {
-					close(ready)
+				index := 0
+				if len(req.Messages) > 1 && strings.Contains(req.Messages[1].Text(), "queued successor") {
+					index = 1
+				}
+				if steps[index].Add(1) == 1 {
+					gate := release
+					if index == 0 {
+						close(ready)
+					} else {
+						close(nextReady)
+						gate = nextRelease
+					}
 					select {
-					case <-release:
+					case <-gate:
 					case <-ctx.Done():
 						return provider.Message{}, ctx.Err()
 					}
@@ -95,6 +107,17 @@ func TestRetiredRuntimeFollowsLocalTaskLifetime(t *testing.T) {
 			case <-time.After(2 * time.Second):
 				t.Fatal("task did not enter model gate")
 			}
+			if kind == "coding" {
+				args, _ := json.Marshal(map[string]any{"work_dir": k.WorkDir, "goal": "queued successor", "max_steps": 3, "timeout_sec": 5})
+				for _, tool := range coding.Tools() {
+					if tool.Name() == "code_start" {
+						out, err := tool.Run(ctx, args)
+						if err != nil || !strings.HasPrefix(out, "queued ") {
+							t.Fatalf("second task did not queue: %q %v", out, err)
+						}
+					}
+				}
+			}
 			if err := k.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -110,6 +133,27 @@ func TestRetiredRuntimeFollowsLocalTaskLifetime(t *testing.T) {
 				}
 			case <-time.After(3 * time.Second):
 				t.Fatal("child shell did not finish")
+			}
+			if kind == "coding" {
+				select {
+				case <-nextReady:
+				case <-time.After(2 * time.Second):
+					t.Fatal("queued successor did not start")
+				}
+				// Retirement may run concurrently with a code queue handoff.
+				k.retireOperations()
+				if _, err := cliops.Call(ctx, endpoint, k.Bot.Root, nil); err != nil {
+					t.Fatalf("queue handoff lost endpoint: %v", err)
+				}
+				nextReleaseOnce.Do(func() { close(nextRelease) })
+				select {
+				case err := <-checked:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("queued successor shell did not finish")
+				}
 			}
 			deadline := time.NewTimer(2 * time.Second)
 			defer deadline.Stop()

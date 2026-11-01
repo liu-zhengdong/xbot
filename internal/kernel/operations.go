@@ -173,6 +173,14 @@ func (k *Kernel) profileOperation(update *cliops.Update) (cliops.Profile, error)
 func (k *Kernel) publishProfile(b *bot.Bot) {
 	if value, ok := liveTurns.Load(botKey(b)); ok {
 		live := value.(*liveTurn)
+		// A later serve pass or web turn may own another loaded handle for the
+		// same Bot. Refresh that existing live kernel before its next environment
+		// sample. The saving kernel's operation lock has already been released.
+		live.k.operations.mu.Lock()
+		_ = live.k.Bot.RefreshProfile()
+		live.k.operations.mu.Unlock()
+		// Persistence already succeeded. A deleted/unreadable target must not
+		// turn that success into a failed-save receipt; the UI still rereads it.
 		if sink := live.t.sinkNow(); sink != nil && sink.OnProfile != nil {
 			sink.OnProfile(b.Name())
 		}
