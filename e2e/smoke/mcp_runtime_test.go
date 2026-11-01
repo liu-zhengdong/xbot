@@ -174,6 +174,7 @@ func TestMCPRuntimeCLIEntry(t *testing.T) {
 	)
 	srv := Start(t, &Stub{srv: model.server})
 	srv.CreateBot("Worker", "Independent MCP runtime CLI entry acceptance.")
+	srv.CreateBot("DoorPeer", "Independent peer for the existing non-MCP Tools call.")
 	srv.Send("Worker", cue)
 	results := model.results(cue)
 	added := mcpRuntimeReply(t, results[0])
@@ -225,8 +226,8 @@ func TestMCPRuntimeCLIEntry(t *testing.T) {
 	if first.Count != 1 || second.Count != 2 || first.Session != second.Session {
 		t.Fatalf("real CLI calls did not borrow one session: %+v %+v", first, second)
 	}
-	if !strings.Contains(results[6], "Worker") {
-		t.Fatal("non-MCP Tools call stopped working after MCP adapter retirement")
+	if !strings.Contains(results[6], "DoorPeer") {
+		t.Fatalf("non-MCP Tools call did not list the explicit other Bot: %s", results[6])
 	}
 	mcpRuntimeNoSchemas(t, model, cue, callerForeground)
 	t.Log("real source CLI add/list/tools/describe/exact-name call passed; diagnostic Bot name did not route self; non-MCP Tools call remains functional")
