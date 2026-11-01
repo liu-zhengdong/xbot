@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ 3816c3bb (runtime profile and avatar seed; named environment sender semantics retained)
+verified: 2026-11-01 @ 90e5918b (merged runtime profile/avatar snapshots and named sender environment checks)
 ---
 # 内核：Link、Event、收件箱
 

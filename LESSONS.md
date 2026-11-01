@@ -90,6 +90,10 @@
 
 - **后台仍在使用的运行入口不能随主轮结束释放，队列交接也必须保持连续持有。** 原因：serve.Pass 结束时关闭 Kernel，仍活的本机子代理随后得到空 XBOT_BIN；编码任务先从 live 删除再启动已排队任务，又会让退役检查误判空闲。复用原执行集合，真正空闲后释放，服务退出强制关闭，不另建任务账本。守护：`TestCLIProfileServeBackground` 在 `07f17164` 真二进制 exit 127、`fe7e1f83` 转绿；`TestRetiredRuntimeFollowsLocalTaskLifetime` 覆盖本机子代理和编码任务。Seen 1×（2026-11-01）。
 
+## 配置与兼容
+
+- **新增 fresh 读取时，消费到的字段要延续已有 Loader 的归一化。** 原因：头像读取直接解磁盘 config，遗漏 Load 对缺 name 使用目录名的既有回退，使受支持旧 Bot 的模板名字、seed 和生成器输入变空。复用归一化规则，不扩大到未使用字段。守护：`TestOldConfigWithoutAvatar` 的缺 name、模板与生成器断言在 `0053145b` 红、`3816c3bb` 定向 race 绿，并保留改名不换脸检查。Seen 1×（2026-11-01）。
+
 ## 界面交互
 
 - **消息投影里的头像和装饰必须稳定，分页锚点不能依赖会重播的位移动画。** 头像 SVG 的递增 ID 会让未变消息比较失败并替换播放器；display 切页重播 4px 动画会使历史位置偏移。守护：`TestTranscriptIncrementalBrowser`、`TestVoiceChatBrowser`、`TestChatTabsPreserveChatBrowser`、`TestTranscriptWindowVisibleTailBrowser` 与真实 serve 的 `TestChatTabsJourney`。Seen 1×（2026-11-01）。

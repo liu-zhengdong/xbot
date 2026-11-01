@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料首刀已合入本地 main；avatar_seed 切片分支真入口通过、旧配置兼容增量定向通过，待主 Agent 收口合入；其余批次未实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料与 avatar_seed 切片已合入本地 main、所测真入口通过；改名、MCP 与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -129,7 +129,7 @@ Agent → Shell → xbot CLI ─┐
 
 **复核约束**：后续扩展沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md) 的身份、锁和生命周期边界，先复核具体设计，再扩大产品范围；已完成的验证记录见 [MILESTONES](../MILESTONES.md)。独立冒烟为 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。
 
-## 批 1 下一刀：avatar_seed 实施设计（2026-11-01，独立结构审计 PASS 后实施）
+## 批 1 avatar_seed 实施约束（2026-11-01，独立结构审计通过）
 
 **范围与用法**：在既有入口上支持 `"$XBOT_BIN" profile set --self --avatar-seed '周报#3' --json`，可与 `--description/--timezone` 同次提交；`show/set --json` 加 `avatar`、`avatar_seed` 元数据，不返回图片。seed 仍沿 `ValidAvatarSeed`（trim 后 1–80 字符、无标记/引号/控制符）校验，非法组合整次不写。当前 endpoint/root/self、Sink 通知、后台入口寿命与生产放行语义不变。上传/clear 暂无 runtime 协议，旧 `profile avatar <name> --file/--clear` 在存在 endpoint 时明确拒绝，并写明只有无 endpoint 的人用离线入口；不能借旧命令绕过热操作。
 
@@ -181,7 +181,7 @@ Agent → Shell → xbot CLI ─┐
 
 **冒烟用例**：独立验证方的 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 与 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望；未移入 guard。
 
-**级别**：普通 description/timezone 首刀已合入本地 main，所测真入口端到端通过（独立 serve 双 root、chat、长/短轮浏览器及 serve.Pass 本机后台）；整条路线仍在实施，主人日用尚未验收。
+**级别**：普通 description/timezone 与 avatar_seed 已合入本地 main，所测真入口端到端通过；最终兼容增量有定向红绿/race 证据，版本归属见 [MILESTONES](../MILESTONES.md)。整条路线仍在实施，主人日用尚未验收。
 
 ## 接受的代价与待定细节
 
@@ -195,7 +195,7 @@ Agent → Shell → xbot CLI ─┐
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
-- avatar_seed 切片最后兼容增量审核与合入（分支独立真入口已通过）；头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。
+- 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
 - MCP 管理、发现、调用、通知、生命周期与慢调用的 CLI 通路。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。

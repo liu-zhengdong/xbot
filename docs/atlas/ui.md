@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ f5b6702e (independent avatar streaming refresh; concurrent tab and memory presentation changes retained)
+verified: 2026-11-01 @ 90e5918b (avatar browser evidence reused; concurrent tab and memory presentation changes retained)
 
 ---
 # 网页界面
