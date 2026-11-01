@@ -180,6 +180,12 @@ func (m *cliProfileModel) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if sawTool(req, "send_message_to_user") {
+		// The terminal's existing printer shows final model text on stdout;
+		// the owner delivery itself is also recorded through the real tool.
+		streamText(w, []string{cue + " completed"})
+		return
+	}
 	streamOwner(w, req, cue+" completed")
 }
 
@@ -280,6 +286,10 @@ func TestCLIProfileServeIsolation(t *testing.T) {
 		srv.PatchBot("Worker", map[string]any{"description": "before", "timezone": "UTC"})
 	}
 	const show = `"$XBOT_BIN" profile show --self --json`
+	canonicalBinary, err := filepath.EvalSymlinks(xbotBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, item := range []struct {
 		cue, description, otherRoot string
 	}{
@@ -287,7 +297,7 @@ func TestCLIProfileServeIsolation(t *testing.T) {
 		{"CLI_SELF_SECOND", "second instance saved", first.Root},
 	} {
 		model.add(item.cue, 7,
-			`test "$XBOT_BIN" = `+shellQuote(xbotBinary)+` && `+show,
+			`test "$XBOT_BIN" = `+shellQuote(canonicalBinary)+` && `+show,
 			`"$XBOT_BIN" profile set --self --description `+shellQuote(item.description)+` --timezone Asia/Tokyo --json`,
 			show,
 			`"$XBOT_BIN" profile set --self --description rejected-partial-change --timezone Invalid/Nowhere --json`,
