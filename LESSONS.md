@@ -99,6 +99,8 @@
 
 ## 界面交互
 
+- **滚动回归要比较可见文字的屏幕位置，并真正结束 SSE。** 只检查 scrollTop 或文本存在，会漏掉控件增高与临时回复收工后补头像／名字的位移；本次长回复逐字 Range 坐标在旧布局实测下移 34px。守护：`TestChatStickSettlementBrowser`、`TestChatStickHistoryNoticeBrowser`、`TestChatStickQuoteBrowser`，分别验证持久历史／临时正文收工保位、轮询控件／失败提示保锚和引用解除跟随，均有命中缺陷的先红证据。Seen 1×（2026-11-01）。
+
 - **新增前端模块必须接真实Server资源路由，组件夹具成功不能替代真入口。** 原因：子代理模块已嵌入并被index引用，组件fixture直接载入脚本因此通过；真实serve没有/subagents.js与/subagents.css路由，Tab选中后create undefined且空白。修复复用现有s.static，不新增第二资源来源。守护：`TestContinuableSubagentBinary` 用真实二进制+Chrome读原孩子工具结果并发反馈，`62dfada8` 诊断命中、`113c8a2f` 补路由后配合完成态可见控件驱动于 `2595697f` 转绿；只修夹具定位或补静态文件文字断言不能守住本缺口。Seen 1×（2026-11-01）。
 
 - **消息投影里的头像和装饰必须稳定，分页锚点不能依赖会重播的位移动画。** 头像 SVG 的递增 ID 会让未变消息比较失败并替换播放器；display 切页重播 4px 动画会使历史位置偏移。守护：`TestTranscriptIncrementalBrowser`、`TestVoiceChatBrowser`、`TestChatTabsPreserveChatBrowser`、`TestTranscriptWindowVisibleTailBrowser` 与真实 serve 的 `TestChatTabsJourney`。Seen 1×（2026-11-01）。

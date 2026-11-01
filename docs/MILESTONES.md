@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 聊天收消息与回复收尾保阅读位置
+
+- S 档，按用户日用反馈修复突然跳位，产品提交 `7e2f9ec5`。SSE 送达就用正式气泡布局，避免结束时补头像／名字；收工单独对账，不被上翻时的后台轮询冻结跳过；分页／轮询控件和失败提示变高保可见消息锚，引用跳转明确解除 stick。沿用已有回到最新入口，不新增未读悬浮组件。连续窗口合并保留历史，有缺口沿旧规则不静默拼接。
+- 三个新增 Chrome 回归先红：上翻收工留下临时行、轮询失败提示移动阅读锚、近底引用被布局跟随拉回。追加逐字 Range 检查另复现临时长回复收工下移 34px，统一送达布局后绿。`TestChatStick*Browser` 四项最终通过（7.81/12.37/6.38/1.03s），包含贴底跟随、历史和刚到长正文的阅读位置、扩窗回短尾、返回最新后继续收主动消息；既有追加／prepend 锚偏移实测 0px，20帧墙钟样本 p95 18ms，仅作有限样本，不代表稳定60fps。
+- 相关 ChatStream、TranscriptIncremental（含无 validator）、TranscriptWindow、VoiceCluster 已通过；ChatTabsPreserve 与 LiveBubbleSplit 初跑暴露夹具未持久化已送达回复和旧 `.trace` 定位，按真实持久契约／现行 explorer 修正后仅两项复跑通过（1.841s），原行为断言保留。共11项浏览器场景通过；独立只读增量复审 PASS，未重复测试。
+- 真实二进制、serve、HTTP、磁盘与 Chrome 的 `TestChatTabsJourney` 13.78s通过，模型为 scripted；截图在 `~/.xbot-build/ui-shots/chat-scroll-20261101/`，目视查看深色桌面与浅色390px聊天场景。JS语法、相关包vet、diff与atlas审计通过（审计保留既有非致命提示）；运行8788的 app.js/app.css 与工作区内容一致，来源 dev-static，刷新载入，无需重启服务。
+- 级别：本地 main 已合入，相关自动端到端通过，待用户日用。Not run：全仓、真实模型、跨平台原生WebView、物理60fps和用户日用；不push、不发版、不自动刷新或重启日用实例。
+
 ## 2026-11-01 重开窗口恢复上次 Bot
 
 - S 档。原先选择只写 sessionStorage，关闭窗口后丢失；打开 Bot 现在同时持久保存到 localStorage，刷新仍优先用本窗口选择，新窗口恢复上次打开的 Bot。已删除 Bot 沿主 Bot、列表首项回退，账号退出清除持久记录；没有新增设置或视觉变化。现状见 [网页界面](atlas/ui.md)。
