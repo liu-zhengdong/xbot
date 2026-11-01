@@ -77,12 +77,23 @@ func TestCLIExperienceRuntimeSourceConsumers(t *testing.T) {
 				latestSeq = seq
 			}
 		}
-		if e.Message.Role == "tool" && strings.Contains(e.Message.Text(), "EXPERIENCE_FULL_TOOL_END") {
-			bodySeq = seq
+		if e.Message.Role == "tool" {
+			// Original transcript spills tool results past4KiB. Its stored preview
+			// cannot identify a marker at the end of the actual complete blob.
+			full, err := actual.HydrateLimit(e, 64<<10)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(full.Message.Text(), "EXPERIENCE_FULL_TOOL_END") {
+				bodySeq = seq
+				if e.Blob == "" {
+					t.Fatal("large real tool result did not exercise original transcript blob storage")
+				}
+			}
 		}
 		return nil
 	}); err != nil || firstSeq <= 0 || latestSeq <= firstSeq || bodySeq <= latestSeq {
-		t.Fatal("actual later owner turn and full native tool body were not persisted distinctly from the original prepared turn")
+		t.Fatalf("actual later owner turn/full tool body was not distinct: first=%d latest=%d body=%d err=%v", firstSeq, latestSeq, bodySeq, err)
 	}
 	tailBefore, err := actual.Count()
 	if err != nil {
