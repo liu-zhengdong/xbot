@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作已实现，五项所测独立端到端分阶段通过，父集成待收；其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -582,6 +582,74 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 ## Bot四操作切片已提炼
 
 ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态状态、primary管理、实际partial及原审批/四模型门退役已经提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0052](../adr/0052-bot-runtime-cli.md)。首链d7、完整519增量与作者/独立各自精确phase及当前验收/合入级别只记 [MILESTONES](../MILESTONES.md)，不留完整合同重复副本。原pin/primary/fork/persona/rolebudget、peers消息/群及以下其余路线未借本刀迁移；主人cli-message-bot/SSE/send设计不在本刀内。
+
+## 批 pin/primary：置顶与主身份转交（具体合同待窄核）
+
+L档，基线main ac519c8d；只有本节与新 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md) 是下一具体切片，0053 glob空后建Proposed。上一Bot四操作已真实合main；不重该族五phase/routine6/skills/profile/MCP。独立最窄pin红b860b672dd2070c854f247d93ba3b6fdaa663f59在mainac/validation4ea58a066dc36293074f4f3783af20f0be89f71b：实际root Primary+APIpeer/source非空owner交集、真Native Shell BIN pin Peer --self FAIL.68s/package2.050s旧single-arg usage，源diff0；封存不重，不给合法空Links加前提。
+
+### Caller、旧CLI与本刀范围
+
+```sh
+"$XBOT_BIN" pin NAME --self [--json]
+"$XBOT_BIN" unpin NAME --self [--json]
+"$XBOT_BIN" primary set NAME --self [--json]
+"$XBOT_BIN" pin --help
+"$XBOT_BIN" primary --help
+```
+
+self只选原source endpoint/ref，不是target；NAME trim后精确本地名，无remote管理/alias/批量patch。沿当前XBOT_BIN/规范ROOT/ENDPOINT，XBOT_BOT仅诊断。纯ParseBotRuntime扩充pin/unpin/primary三形状，main在resolveRoot/EnsureDefault/BindLegacy/HoldKeys前分流，已有list/info/new/delete分支不另一套parser。新动作runtime须self；primary runtime只set NAME，不新增读口。无选择符的原有效离线pin NAME/unpin NAME恰一arg、primary零argensureSeed打印、primary set NAME恰set+name原样交旧cmd函数，不因env有endpoint而强改；help不root/default/init/no endpoint，识别--分隔且其后不把字面self/help当flag。未知/重复flag、坏arity、runtime primary没set/target均纯语法拒；选runtime后missing endpoint/root mismatch不回落离线。
+
+不包括persona（全Bot self、全文32KiB/file/stdin/SelfEdit/nextwake下一刀）、卡、role/budget、fork、消息/群、连接器、Link最终退役；主人独立cli-message-bot owner-SSE/send文档只读避冲突。两动作原Normal，不引新许可卡或runtimeApprovalSource/Intent；原Shell gate/机器策略独立不绕。无管理Event/Inbox/wake，无新K/Resource/session/primary缓存/任务授权表或通用Bot patch。
+
+### 实际语义与对照回顾
+
+- 原pin_bot{name,pinned}/set_primary{name}只在当前primary registry登记，Run再fresh核root primary==Resources当前source名；不是publish时取一次A资格。目标为self或peer.VisibleBots非空owner交集本地Bot（共享有交集可见，foreign/orphan不可见），不使用Host Info owner视图或全root目录，不把remote目录当管理对象。self虽被VisibleBots排除仍显式允许。
+- pin/unpin沿原SetPinned→SaveConfig。primary也能unpin；不发明永久置顶限制。self完整短IO走原Resources当前route，非self按原可见检查后Load目标/SetPinned；保SaveConfig现合并的普通profile/rolebudget/技能/卡规则，不CLI raw覆盖配置，不改变其既有内存Pinned赋值先于Save失败的语义，不发明回滚。
+- SetPrimary原primary.lock内ValidateName/Load target→WriteAtomic primary.json→若目标未pinned再SetPinned(true)。后段失败指针已真转交，不能只error就称未转交；同目标self也会写指针/确保pinned，因此applied定义为主指针本次写成，不伪称每次都发生A→B身份变更。只确保新target pinned，不unpin旧A，不改Owners/Links/persona/provider/model/role/budget/卡/历史。
+- ADR0019生产无许可卡与现Normal保持，ADR0021只追加串/环境/插话原线不扩管理通知；ADR0052已有Bot typed listener/guard/准确formatter预算可复用。六条现guard的模型fake、追加历史、原消息/后台/资料改名/主身份保护均保，不改旅程步骤/guard。源当前route不取旧K.Bot名字或锁外旧路径做实际self IO；host/跨K/模型/SSE与既有审批回调不包进route。
+
+### 两个结构与选定形状
+
+A：仿原离线cmd直接Load(target)→SetPinned/SetPrimary，或按诊断XBOT_BOT再newK/root primary。类型少，但管理范围和source身份改变，旧A永久有资格/新B需新K/错诊断名，无法延续当前source权限；淘汰。B：原BotHandlers加两个typed小操作、现parser/transport上扩动作，原source ref每次复核资格，原物理方法保写点；选择B。接受primary原两段partial换来不造事务/rollback/新锁框架；接受短提交点回执而非新权限token，下一操作仍看真实primary文件。没有要由未来索引/缓存才能成立的访问路径。
+
+```go
+// internal/cliops；沿现BotHandlers扩充两个字段，不新增控制分派总线。
+type BotPin struct { Name string; Pinned bool }
+type BotPinReply struct {
+    Name string `json:"name"`; Pinned bool `json:"pinned"`
+    Applied bool `json:"applied"`; Stage string `json:"stage"`; Error string `json:"error,omitempty"`
+}
+type BotPrimaryReply struct {
+    Name string `json:"name"`; Primary string `json:"primary,omitempty"`
+    Applied bool `json:"applied"`; Stage string `json:"stage"`; Error string `json:"error,omitempty"`
+}
+// BotHandlers加：
+// Pin func(context.Context, BotPin) (BotPinReply,error)
+// Primary func(context.Context, string) (BotPrimaryReply,error)
+// 调用方用现endpoint/root；普通Normal小写操作不要求CallID/header/approver。
+pin, err := cliops.CallBotPin(ctx, endpoint, root, cliops.BotPin{Name:"B",Pinned:false})
+transfer, err := cliops.CallBotPrimary(ctx, endpoint, root, "B")
+// transfer.Applied=true时，即使err!=nil，transfer.Primary仍为已写成的B，不能拿A身份盲重试。
+```
+
+两个client分别PUT `/v1/bot/pin?name=NAME&pinned=true|false` 与PUT `/v1/bot/primary?name=NAME`，沿同原loopback/Host/browser/root guard；不用大正文/args-file/stdin。查询边界一次核必填name与显式单个pinned=true/false，内部只流BotPin typed值（unpin=false不借缺字段默认），主身份只name。沿原Bot请求上限1MiB/HTTP回包64KiB，不新协议限额/代理/重试。短回执同FormatBotPin/FormatBotPrimary纯函数被server预算与CLI实际打印共用，整JSON+newline及准确human都≤现Shell32KiB；没有全文数据所以不复制大结果artifact/20MiB逻辑，不提高全Shell预算或靠截断伪成功。客户端partial先真实输出再非0。
+
+Kernel.BotHandlers沿原原source/Resource lease增加Pin/Primary回调，始终绑定原身份、每次操作才核当前primary+可见性；不能按StartOps时非primary省掉B handlers，不能给当时primary A缓存永久资格。当前source短IO快照取name/root，self写在当前route，实际SetPrimary沿原root锁方法；保持原检查与写法，不新跨source事务或host表。A原endpoint仍A，primary转B不改A endpoint/Bot identity；A下一pin/unpin/primary/new/delete必须fresh失权，B既有endpoint下一同类操作fresh得权，无需newK/ref/wake。两旧native退后B不会再得到已退schema；其资格以实际CLI行为证明。
+
+### 提交事实与错误阶段
+
+保现bot.SetPrimary(root,name) error签名及所有原caller，只在原写点加 `bot.PrimaryCommitError{Applied bool;Stage string;Err error}`，Error/Unwrap保持原cause/errors.Is。setPrimaryLocked非法名validation/Load目标target/marshal或primary.json写primary阶段未提交Applied=false；primary.lock进入失败由handler归primary false。primary.json WriteAtomic成功就是Applied=true边界，随后SetPinned错误包pin/true；成功complete/true。EnsurePrimary继续原方法，不把原seed/Load潜在其它副作用说成全root零写。无SetPrimary第二实现、stat后推/字符串猜阶段/回滚/新reservedname。
+
+PinReply的pinned是这次显式请求值；applied=true只原SaveConfig已成功，成功stage=complete，保存失败config/false，资格/可见/纯值错误validation/false，不把内存改过等同盘已改。PrimaryReply.name为trim请求目标，primary仅在主指针本次已实际写成时设为同目标（包括stage=pin/error）；未提交省略primary，applied=false。例：`{"name":"B","primary":"B","applied":true,"stage":"pin","error":"..."}`明确A已转交/B为该次提交的primary、置顶未完成，不是给A继续管理的grant。即使target=self也按已写成事实回，不编no-op/changed。无权/可见失败不执行本次SetPinned/SetPrimary；既有Load初始化/迁移不包装成全root零写承诺，低层原保护及字段合并仍原实现。下一请求读实际pointer，不能把receipt缓存当永久权力。
+
+### 怎样算对、退役与交接
+
+1. 24只对本具体合同/0053作一次actual SHAPE PASS后立即实现首compiled，交0d ONLY真实root primary A+非空owner交集B的source Shell pin B→unpin B（实际config Pinned变化）→primary set B→actualpointer B/pinned true/旧A pin不强制改变→A原endpoint下一管理拒且无副作用→B原endpoint下一管理有权；名字取实际source，不硬造K/身份，Links空合法不加强制。旧最窄pin红与已封族不重。
+2. 补实际primary后段pin写失败（目标原unpinned/config锁或真FS错误、不能mock回执），pointer确B/receipt primary=B+applied=true/stagepin+非0，A资格已失/B资格真实获得；不清pointer回滚。补same-primary/primary可unpin、self+sharedlocal/foreign/orphan/remote拒、非主source每次复核、原config除requestedPinned的已支持字段保持及旧primary不unpin。局部单位只命中真实写点；独立按真实original entry装配后验证，不将disk改当live update。
+3. pureparser/早分流/help/legacy原有效arity、--literal/root mismatch/缺endpoint不离线、typed短ACK boolfalse/阶段/error与双格式含newline32K；research仅新增help，pin/unpin/primaryset/offlineprimary全拒且解释器前零副作用。无额外proofartifact框架。
+4. 同cut仅pinBotTool/setPrimaryTool及空bots registry组/Known/索引schema指引退役；保isPrimary及其它仍在用的原helper/权限错误，不借刀删persona/fork/消息群。主线/子模型definition/index实际无两旧名。既有独立Bot readonly中曾刻意保pin原native的断言已过期，由独立owner仅迁受影响断言到当前CLI，不产品方编辑独立cli_bot_runtime_*或重五组；其它driver保有效行为，纯文档不跑产品测试。
+
+本次只合同commit→父交24单次窄核，不写产品/测试/不提前Accepted；通过后再分文件实现，首可编译交一次固定真实A→B链，继续实际边界而不等首链停工。不新概念审、不母路线旧族整轮审核、whole packages/matrix/真模型/日用/跨平台/性能矩阵；不动root/main、用户dirty docs、guard、push或发版。
 
 ## 还没做的
 
