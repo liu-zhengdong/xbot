@@ -40,9 +40,9 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
 const shot=new URLSearchParams(location.search).get('shot');
 const stop=name=>{if(shot===name){document.body.dataset.testResult='passed';return true}return false};
 (async()=>{
- await waitFor(()=>!$('#head-chip').disabled&&!$('#shell').hidden,'app did not boot');
- $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');
- [...document.querySelectorAll('#panel [role=tab]')].find(b=>b.textContent==='任务').click();
+ await waitFor(()=>!$('#shell').hidden,'app did not boot');
+ await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel did not open');
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(b=>b.textContent==='任务').click();
  await waitFor(()=>$('.hook-empty'),'webhook empty state missing');
  assert($('.hook-section h4').textContent.startsWith('Webhook'),'section title');
  assert($('.task-view').lastElementChild===$('.hook-section'),'webhook section is not last in the task tab');

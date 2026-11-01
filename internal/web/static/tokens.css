@@ -110,3 +110,27 @@ html[data-theme="dark"]{
   --chat-paragraph-gap:9px; --voice-dot:10px;
   --voice-pulse:1100ms;
 }
+
+/* Approved chat workspace: identity, navigation and one reading surface. */
+:root {
+  --workspace-head:88px; --workspace-tabs:60px; --workspace-tab-height:38px;
+  --workspace-thread:800px; --workspace-reading:944px; --workspace-gutter:32px;
+  --workspace-memory-left:1.8fr; --workspace-control:34px; --workspace-avatar:36px;
+  --workspace-menu:252px; --workspace-menu-height:60dvh; --workspace-heading:30px; --workspace-space:48px;
+  --workspace-focus-width:2px; --workspace-disabled-opacity:.5;
+  --workspace-shell-caption:32px; --workspace-mac-caption:28px;
+  --workspace-line:1.85; --workspace-heading-line:1.4; --workspace-input-line:1.6;
+  --workspace-user-max:86%; --workspace-user-max-mobile:95%; --x-icon-stroke:1.8; --workspace-weight:550; --workspace-input-height:60px;
+  --x-font:"Segoe UI","Noto Sans SC","PingFang SC","XBot SC",sans-serif;
+  --x-user-bubble:var(--x-fill-1); --x-user-bubble-text:var(--x-text);
+  --x-user-code:var(--x-fill-2); --x-user-sel:var(--x-fill-3);
+  --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
+}
+html[data-theme="dark"] {
+  --x-user-bubble:var(--x-fill-1); --x-user-bubble-text:var(--x-text);
+  --x-user-code:var(--x-fill-2); --x-user-sel:var(--x-fill-3);
+  --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
+}
+@media(min-width:1600px) { :root { --workspace-thread:860px; --workspace-reading:1040px; } }
+@media(max-width:1100px) { :root { --workspace-gutter:24px; --workspace-memory-left:1.5fr; } }
+@media(max-width:767px) { :root { --workspace-gutter:16px; } }

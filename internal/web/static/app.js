@@ -63,10 +63,10 @@
     preview: {},
     previewAt: {},
     listSig: "",
-    tab: "details",
+    tab: "chat",
+    panelError: false,
     panelData: null,
     inboxData: null,
-    panelTouched: false,
     editOpen: false,
     messages: [],
     traceOpen: {},
@@ -116,6 +116,7 @@
     document.documentElement.setAttribute("data-theme", theme);
     $("theme-color")?.setAttribute("content", theme === "dark" ? "#161618" : "#ffffff");
     $("settings-theme").value = themeMode;
+    $("workspace-theme").replaceChildren(icon(theme === "dark" ? "sun" : "moon"));
     try { localStorage.setItem("xbot-theme", themeMode); } catch (e) {}
     if (inApp) api("/api/app/theme", { method: "POST", body: { theme } }).catch(() => {});
   }
@@ -609,7 +610,7 @@
     closeStp();
     closeShots();
     panel.classList.remove("open");
-    $("panel-scrim").hidden = true;
+    panel.hidden = true;
     $("head-chip").classList.remove("on");
     $("head-chip").setAttribute("aria-expanded", "false");
     state.sel = null;
@@ -883,6 +884,11 @@
     "refresh-cw": '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
     "book-open": '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3a6 6 0 0 1 6 4 6 6 0 0 1 6-4h3a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-4a5 5 0 0 0-5 3 5 5 0 0 0-5-3z"/>',
     "message-circle-question": '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    "message-circle": '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/>',
+    brain: '<path d="M12 18V5a3 3 0 0 0-5.8-1 4 4 0 0 0-3.3 6.2 4 4 0 0 0 .6 7.2A4 4 0 1 0 12 18Zm0 0V5a3 3 0 0 1 5.8-1 4 4 0 0 1 3.3 6.2 4 4 0 0 1-.6 7.2A4 4 0 1 1 12 18Z"/><path d="M8 8c0 2-1 3-3 3m14 0c-2 0-3-1-3-3M7 15c2 0 3 1 3 3m4 0c0-2 1-3 3-3"/>',
+    "git-branch": '<circle cx="6" cy="5" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="19" r="2"/><path d="M6 7v10m2-3h5a5 5 0 0 0 5-5V8"/>',
+    layers: '<path d="m12 3 10 5-10 5L2 8Zm-10 9 10 5 10-5M2 16l10 5 10-5"/>',
+    inbox: '<path d="M4 4h16l2 10v6H2v-6Zm-2 10h6l2 3h4l2-3h6"/>',
     "list-checks": '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
     "file-text": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/>',
     chart: '<path d="M3 3v18h18M8 16v-4M13 16V8M18 16V5"/>',
@@ -991,14 +997,12 @@
     return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 120 120" data-kind="glyph"><rect width="120" height="120" style="fill:var(--av-bg,#dcdce0)"/><g style="fill:var(--av-ink,#1a1a1a)">${g}</g></svg>`;
   }
 
-  // The glyph markup is numbers only, so parsing it is safe. Parsing keeps
-  // the <svg> in the SVG namespace; two on one page are told apart by index.
-  let glyphCount = 0;
+  // The glyph has no fragment references or definitions. Keep identical
+  // markup for the same face so transcript projection comparisons stay stable.
   function glyphSVG(name) {
     const doc = new DOMParser().parseFromString(glyph(name), "image/svg+xml");
     if (!doc.documentElement || doc.documentElement.nodeName !== "svg") return null;
     const svg = document.importNode(doc.documentElement, true);
-    svg.setAttribute("id", "xbot-glyph-" + ++glyphCount);
     svg.setAttribute("aria-hidden", "true");
     return svg;
   }
@@ -3287,23 +3291,29 @@
     appendMessageBubbles(body, displayText(text), pasted, audios, true);
     if (!say) window.XBotProviders.decorate(body, m.parts);
     bindMessageMenu(row, m, said);
-    row.append(body);
+    const speaker = el("div", "chat-speaker");
+    speaker.append(avatar(who || state.sel?.id || "", paintOf(who || state.sel?.id), "xs"), el("span", "", niceName(who || state.sel?.id)));
+    row.append(speaker, body);
+    const copy = el("button", "ghost chat-copy"); copy.type = "button"; copy.setAttribute("aria-label", "复制回复"); copy.append(icon("copy"));
+    copy.addEventListener("click", async () => { if (!await copyText(messageContents.get(row)?.text || said, copy)) showToast("复制失败，请重试"); });
+    row.append(copy);
     addBubbleTime(row, m.time);
     return row;
   }
 
   // Scroll state belongs to the reader, not to transient layout geometry.
   const threadStick = (() => {
-    let sticking = true, frame = 0, lastTop = 0, observed = null;
+    let sticking = true, frame = 0, lastTop = 0, observed = null, paused = false, savedTop = 0, savedAnchor = null;
     const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
     function position(top) { thread.scrollTop = top; lastTop = thread.scrollTop; }
     function follow() {
+      if (paused) return;
       // Input can move the viewport before its scroll event is delivered.
       if (thread.scrollTop < lastTop && !nearBottom()) sticking = false;
       if (sticking && !state.peer) position(thread.scrollHeight);
     }
     function schedule() {
-      if (frame || !sticking || state.peer) return;
+      if (paused || frame || !sticking || state.peer) return;
       frame = requestAnimationFrame(() => { frame = 0; follow(); });
     }
     const resize = new ResizeObserver(schedule);
@@ -3320,6 +3330,16 @@
     }
     return {
       get sticking() { return sticking; },
+      get paused() { return paused; },
+      pause() {
+        if (paused) return;
+        savedTop = thread.scrollTop; savedAnchor = sticking ? null : threadStick.anchor();
+        paused = true; if (frame) cancelAnimationFrame(frame); frame = 0;
+      },
+      resume() {
+        if (!paused) return;
+        paused = false; position(savedTop); threadStick.restore(savedAnchor); savedAnchor = null; schedule();
+      },
       reset() { sticking = true; lastTop = thread.scrollTop; schedule(); },
       release() { sticking = false; },
       changed,
@@ -3328,10 +3348,10 @@
       anchor() {
         const box = thread.getBoundingClientRect();
         const row = [...thread.querySelectorAll('.msg[data-transcript-key]')].find(row => row.getBoundingClientRect().bottom > box.top);
-        return row ? { row, top: row.getBoundingClientRect().top } : null;
+        return row ? { row, top: row.getBoundingClientRect().top - box.top } : null;
       },
       restore(anchor) {
-        if (anchor?.row.isConnected) position(thread.scrollTop + anchor.row.getBoundingClientRect().top - anchor.top);
+        if (!paused && anchor?.row.isConnected) position(thread.scrollTop + anchor.row.getBoundingClientRect().top - thread.getBoundingClientRect().top - anchor.top);
       },
       locate(row) {
         sticking = false;
@@ -3339,7 +3359,7 @@
         lastTop = thread.scrollTop;
       },
       scrolled() {
-        if (state.peer) return;
+        if (paused || state.peer) return;
         const top = thread.scrollTop;
         if (top < lastTop && !nearBottom()) sticking = false;
         else if (!sticking && top > lastTop && nearBottom()) {
@@ -4064,13 +4084,6 @@
       // A context menu opens at the pointer and flips inward at the edges.
       ({left, top} = messageMenuPosition(point.x, point.y, width, height, innerWidth, innerHeight));
       menu.style.transformOrigin = Math.max(0, Math.min(width, point.x - left)) + "px " + Math.max(0, Math.min(height, point.y - top)) + "px";
-    } else if (side === "panel") {
-      // Menus opened from the panel stay inside it: left edge on the action
-      // row's line, 220 wide, dropping from the button.
-      const p = $("panel").getBoundingClientRect();
-      left = p.left + 12;
-      top = r.bottom + 6;
-      if (left + width > p.right - 12) left = Math.max(8, p.right - 12 - width);
     } else {
       left = side === "left" ? r.left - width - 6 : r.right - width;
       if (left < 8) left = Math.min(window.innerWidth - width - 8, r.right + 6);
@@ -4240,7 +4253,7 @@
     for (const g of state.groups) {
       const btn = listButton(g.id, lineForGroup(g), state.sel && state.sel.type === "group" && state.sel.id === g.id, false, null, false, niceName(g.name || g.id));
       btn.addEventListener("click", () => {
-        if (state.sel && state.sel.type === "group" && state.sel.id === g.id && !state.peer) return;
+        if (state.sel && state.sel.type === "group" && state.sel.id === g.id && !state.peer) { selectWorkspaceTab("chat"); return; }
         selectGroup(g.id);
       });
       roster.append(btn);
@@ -4335,6 +4348,9 @@
     setTip(titleEl, slug && slug !== shown ? slug : "");
     $("head-chip").disabled = !state.sel;
     document.title = shown + " · XBot";
+    renderWorkspaceTabs();
+    syncPanelChrome();
+    paintWorkspaceIdentity();
   }
 
   function leavePeer() {
@@ -4345,6 +4361,8 @@
     if (main) main.classList.remove("peer");
     const back = $("back");
     if (back) back.hidden = true;
+    renderWorkspaceTabs();
+    syncPanelChrome();
   }
 
   function pairSep() {
@@ -4592,11 +4610,14 @@
   // at: the first event's time, so the view opens at the run that was clicked.
   async function openPeer(a, b, at) {
     if (!a || !b || a === b || state.streaming) return;
+    selectWorkspaceTab("chat");
     clearQuote();
     $("chat-search").hidden = true;
     $("history-search-panel").hidden = true;
     state.peer = { a: a, b: b, returnTop: state.peer?.returnTop ?? thread.scrollTop, at: at || "", remote: !!splitPeer(b).device, list: [], more: false, cursor: null, mock: false };
     paintPeerHeader(a, b);
+    renderWorkspaceTabs();
+    syncPanelChrome();
     await loadPeer(null);
   }
 
@@ -4636,6 +4657,14 @@
   }
 
   function resetConversation() {
+    state.tab = "chat";
+    state.panelError = false;
+    document.getElementById("workspace-chat").hidden = false;
+    threadStick.resume();
+    panel.hidden = true;
+    panel.classList.remove("open");
+    closeWorkspaceMore();
+    renderWorkspaceTabs();
     cancelRecording();stopVoice();
     $("mic").hidden = state.sel?.type !== "bot";
     closeMessageMenu();
@@ -4672,7 +4701,7 @@
     ++state.panelLoad;
     thread.replaceChildren();
     showThreadCover();
-    panelBody.replaceChildren(el("div", "muted", "正在加载"));
+    panelBody.replaceChildren();
     closePanelMenu();
   }
 
@@ -4761,11 +4790,22 @@
   // Clicking the conversation that is already open keeps its live reply and
   // pending or failed sends instead of resetting it.
   function pickBot(name) {
-    if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) return;
+    if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) { selectWorkspaceTab("chat"); return; }
     return selectBot(name);
   }
 
+  function saveConversationDraft() {
+    if (state.sel && !state.peer) {
+      const key = "xbot-draft:" + (state.sel.type === "group" ? "group:" : "") + state.sel.id;
+      try { sessionStorage.setItem(key, composerText(input)); } catch (e) {}
+    }
+    composerSet("");
+    composerRefreshHeight();
+    syncComposer();
+  }
+
   async function selectBot(name) {
+    saveConversationDraft();
     leavePeer();
     clearQuote();
     state.sel = { type: "bot", id: name };
@@ -4780,7 +4820,7 @@
       }
     } catch (e) {}
     state.sig = "";
-    state.tab = state.tab || "details";
+    state.tab = "chat";
     state.editOpen = false;
     closeDrawer();
     setHeader(name);
@@ -4794,10 +4834,11 @@
       if (state.sel === selection) setStatus("通知未能标为已读，请重试。", true);
     });
     await loadThread();
-    if (state.sel === selection && panel.classList.contains("open") && !state.panelData) await loadPanel();
+    if (state.sel === selection && !state.panelData) await loadPanel();
   }
 
   async function selectGroup(id) {
+    saveConversationDraft();
     leavePeer();
     clearQuote();
     state.sel = { type: "group", id: id };
@@ -4976,8 +5017,10 @@
   historyButtons.newer.addEventListener("click", () => loadThread("newer"));
   historyButtons.latest.addEventListener("click", () => loadThread("latest"));
   $("chat-search").addEventListener("click", () => {
+    const fromOtherPage = state.tab !== "chat";
+    if (fromOtherPage) selectWorkspaceTab("chat");
     const panel = $("history-search-panel");
-    panel.hidden = !panel.hidden;
+    panel.hidden = fromOtherPage ? false : !panel.hidden;
     $("chat-search").setAttribute("aria-expanded", String(!panel.hidden));
     if (!panel.hidden) $("history-search").focus();
   });
@@ -4995,6 +5038,7 @@
   });
   let lastHistoryTop = 0;
   thread.addEventListener("scroll", () => {
+    if (threadStick.paused) return;
     threadStick.scrolled();
     const movingUp = thread.scrollTop < lastHistoryTop;
     lastHistoryTop = thread.scrollTop;
@@ -5044,28 +5088,140 @@
     return row;
   }
 
-  const TABS = [["details", "详情"], ["library", "记忆"], ["computer", "任务"], ["trace", "轨迹"], ["context", "上下文"], ["inbox", "收件箱"]];
-
-  function tabBar() {
-    const bar = el("div", "tabs");
-    bar.setAttribute("role", "tablist");
-    for (const pair of TABS) {
-      if (pair[0] === "inbox" && state.sel?.type !== "bot") continue;
-      const btn = el("button", state.tab === pair[0] ? "on" : "", pair[1]);
-      if (pair[0] === "inbox" && state.sel?.type === "bot" && state.inboxData?.pending_count) btn.append(el("span", "inbox-count", " " + state.inboxData.pending_count));
-      btn.type = "button";
-      btn.setAttribute("role", "tab");
-      btn.setAttribute("aria-selected", state.tab === pair[0] ? "true" : "false");
-      btn.addEventListener("click", () => {
-        state.tab = pair[0];
-        paintPanel();
-        if (pair[0] === "inbox" && state.sel?.type === "bot") loadInbox();
-        if (pair[0] === "trace" && state.sel?.type === "bot") loadPanel();
-      });
-      bar.append(btn);
+  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"]];
+  const hiddenWorkspaceTabs = new Set();
+  try { for (const id of JSON.parse(localStorage.getItem("xbot-workspace-hidden") || "[]")) if (id !== "chat") hiddenWorkspaceTabs.add(id); } catch (e) {}
+  function availableWorkspaceTabs() { return state.sel?.type === "bot" && !state.peer ? TABS : TABS.slice(0, 1); }
+  function renderWorkspaceTabs() {
+    const host = $("workspace-tabs");
+    const available = availableWorkspaceTabs().filter(([id]) => !hiddenWorkspaceTabs.has(id));
+    const ids = new Set(available.map(([id]) => id));
+    for (const node of [...host.children]) if (!ids.has(node.dataset.tab)) node.remove();
+    for (const [id, label, glyph] of available) {
+      let button = host.querySelector('[data-tab="' + id + '"]');
+      if (!button) {
+        button = el("button", "workspace-tab"); button.type = "button"; button.dataset.tab = id;
+        button.id = "workspace-tab-" + id; button.setAttribute("role", "tab");
+        button.setAttribute("aria-controls", id === "chat" ? "workspace-chat" : "workspace-view-" + id);
+        button.append(icon(glyph), document.createTextNode(label));
+        button.addEventListener("click", () => selectWorkspaceTab(id));
+        const index = TABS.findIndex(([key]) => key === id);
+        const next = [...host.children].find(node => TABS.findIndex(([key]) => key === node.dataset.tab) > index);
+        host.insertBefore(button, next || null);
+      }
+      button.setAttribute("aria-selected", String(state.tab === id));
+      button.tabIndex = state.tab === id || (state.tab === "details" && id === "chat") ? 0 : -1;
+      if (id !== "chat") workspaceView(id);
     }
-    return bar;
+    $("workspace-more").disabled = !state.sel || !!state.peer;
+    $("head-chip").setAttribute("aria-label", state.sel?.type === "group" ? "群组资料与成员" : "Bot 资料与模型");
+    $("head-chip").setAttribute("aria-expanded", String(state.tab === "details"));
   }
+  function workspaceView(id) {
+    let body = $("workspace-view-" + id);
+    if (!body) {
+      body = el("section", "tab-body workspace-view"); body.id = "workspace-view-" + id;
+      body.setAttribute("role", "tabpanel"); body.tabIndex = 0;
+      if (id === "details") body.setAttribute("aria-label", "资料");
+      else body.setAttribute("aria-labelledby", "workspace-tab-" + id);
+      body.hidden = true;
+      panelBody.append(body);
+    }
+    return body;
+  }
+  function closeWorkspaceMore(focus = false) {
+    $("workspace-more-menu").hidden = true;
+    $("workspace-more").setAttribute("aria-expanded", "false");
+    if (focus) $("workspace-more").focus();
+  }
+  function renderWorkspaceMore() {
+    const menu = $("workspace-more-menu");
+    const focused = document.activeElement?.dataset.option;
+    menu.replaceChildren(el("p", "workspace-menu-title", "顶部显示"));
+    for (const [id, label, glyph] of availableWorkspaceTabs()) {
+      const button = el("button", "workspace-menu-option"); button.type = "button"; button.dataset.option = id;
+      const shown = !hiddenWorkspaceTabs.has(id);
+      button.setAttribute("aria-pressed", String(shown)); button.disabled = id === "chat";
+      button.append(icon(glyph), el("span", "", label));
+      if (id === "chat") button.append(el("small", "", "固定")); else if (shown) button.append(icon("check"));
+      button.addEventListener("click", () => {
+        if (hiddenWorkspaceTabs.has(id)) hiddenWorkspaceTabs.delete(id); else hiddenWorkspaceTabs.add(id);
+        if (state.tab === id && hiddenWorkspaceTabs.has(id)) selectWorkspaceTab("chat", false, true);
+        try { localStorage.setItem("xbot-workspace-hidden", JSON.stringify([...hiddenWorkspaceTabs])); } catch (e) {}
+        renderWorkspaceTabs(); renderWorkspaceMore();
+        menu.querySelector('[data-option="' + id + '"]')?.focus();
+      });
+      menu.append(button);
+    }
+    const profile = el("button", "workspace-menu-option", state.sel?.type === "group" ? "群组资料与成员" : "Bot 资料与模型");
+    profile.type = "button"; profile.prepend(icon("info"));
+    profile.addEventListener("click", () => selectWorkspaceTab("details", true)); menu.append(profile);
+    if (focused) menu.querySelector('[data-option="' + focused + '"]')?.focus();
+  }
+  function selectWorkspaceTab(id, focus = false, keepMenu = false) {
+    if (!state.sel || (state.peer && id !== "chat")) return;
+    if (id !== "details" && !availableWorkspaceTabs().some(([key]) => key === id)) id = "chat";
+    const chat = $("workspace-chat");
+    if (state.tab !== "chat") workspaceView(state.tab).savedScrollTop = panelBody.scrollTop;
+    if (id !== "chat" && state.tab === "chat") threadStick.pause();
+    state.tab = id;
+    // Indirect navigation (busy status/context use) reveals its destination.
+    if (hiddenWorkspaceTabs.delete(id)) {
+      try { localStorage.setItem("xbot-workspace-hidden", JSON.stringify([...hiddenWorkspaceTabs])); } catch (e) {}
+    }
+    chat.hidden = id !== "chat";
+    panel.hidden = id === "chat";
+    panel.classList.toggle("open", id !== "chat");
+    if (!keepMenu) closeWorkspaceMore();
+    renderWorkspaceTabs();
+    paintPanel();
+    // Restore after identity, navigation and context controls have their final layout.
+    if (id === "chat") threadStick.resume();
+    if (id !== "chat") panelBody.scrollTop = workspaceView(id).savedScrollTop || 0;
+    if (focus) ($("workspace-tab-" + id) || workspaceView(id)).focus({preventScroll:true});
+    if (id !== "chat") {
+      if (!state.panelData || state.panelError === id || id === "context" || id === "trace") loadPanel();
+      else if (id === "inbox") loadInbox();
+    }
+  }
+  $("workspace-tabs").addEventListener("keydown", ev => {
+    const tabs = [...$("workspace-tabs").querySelectorAll('[role="tab"]')];
+    let at = tabs.indexOf(document.activeElement);
+    if (ev.key === "ArrowRight") at = (at + 1) % tabs.length;
+    else if (ev.key === "ArrowLeft") at = (at - 1 + tabs.length) % tabs.length;
+    else if (ev.key === "Home") at = 0;
+    else if (ev.key === "End") at = tabs.length - 1;
+    else return;
+    ev.preventDefault(); selectWorkspaceTab(tabs[at].dataset.tab, true);
+    tabs[at].scrollIntoView({block:"nearest", inline:"nearest"});
+  });
+  $("workspace-more").addEventListener("click", () => {
+    const open = $("workspace-more-menu").hidden;
+    renderWorkspaceMore(); $("workspace-more-menu").hidden = !open;
+    $("workspace-more").setAttribute("aria-expanded", String(open));
+  });
+  $("workspace-more").addEventListener("keydown", ev => {
+    if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") return;
+    ev.preventDefault(); ev.stopPropagation(); renderWorkspaceMore();
+    $("workspace-more-menu").hidden = false; $("workspace-more").setAttribute("aria-expanded", "true");
+    const items = $("workspace-more-menu").querySelectorAll("button:not(:disabled)");
+    (ev.key === "ArrowDown" ? items[0] : items[items.length - 1])?.focus();
+  });
+  // Capture before an option rebuilds its children during the click.
+  document.addEventListener("click", ev => {
+    if (!ev.target.closest(".workspace-more-wrap")) closeWorkspaceMore();
+  }, true);
+  document.addEventListener("keydown", ev => {
+    if ($("workspace-more-menu").hidden) return;
+    if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); closeWorkspaceMore(true); }
+    else if (ev.key === "ArrowDown" || ev.key === "ArrowUp" || ev.key === "Home" || ev.key === "End") {
+      const items = [...$("workspace-more-menu").querySelectorAll("button:not(:disabled)")];
+      let at = items.indexOf(document.activeElement);
+      at = ev.key === "Home" ? 0 : ev.key === "End" ? items.length - 1 : (at + (ev.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      ev.preventDefault(); items[at]?.focus();
+    } else if (ev.key === "Tab") closeWorkspaceMore(true);
+  });
+  $("workspace-theme").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
 
   function hero(name, desc, paint, pin) {
     const box = el("div", "hero");
@@ -5153,7 +5309,7 @@
 
   // Polling preserves both the edit button focus and an open sidebar menu.
   function syncPanelChrome() {
-    const bot = state.sel && state.sel.type === "bot";
+    const bot = state.sel && state.sel.type === "bot" && !state.peer;
     // A repaint for the same bot (polling, status) must not close an open menu.
     if (bot && chromeBot === state.sel.id) return;
     const row = $("panel-actions");
@@ -5163,7 +5319,12 @@
     chromeBot = bot ? state.sel.id : "";
     if (!bot) return;
     const edit = panelAct("pencil", "编辑资料");
-    edit.addEventListener("click", () => openProfile(state.panelData || {}));
+    edit.addEventListener("click", async () => {
+      const selection = state.sel;
+      if (!state.panelData) await loadPanel();
+      if (state.sel === selection && state.panelData) openProfile(state.panelData);
+      else if (state.sel === selection) selectWorkspaceTab("details");
+    });
     row.append(edit);
   }
 
@@ -5499,77 +5660,59 @@
     });
   }
 
-  // The fixed head has a name above its identity line. Only the body scrolls.
-  function renderPanelHead(name, paint, sub, pinned = false) {
-    const ident = $("panel-ident");
-    ident.replaceChildren();
-    ident.hidden = false;
-    ident.append(avatar(name, paint, "lg"));
-    const who = el("div", "tx");
-    who.append(el("b", "", niceName(name) || "Bot"));
-    if (sub) {
-      const line = el("div", "sub");
-      if (pinned) line.append(icon("pin"));
-      line.append(el("span", "model", sub));
-      who.append(line);
-    }
-    ident.append(who);
-    const tabs = $("panel-tabs");
-    tabs.replaceChildren(tabBar());
-    tabs.hidden = false;
-    const active = tabs.querySelector("[aria-selected=true]");
-    if (active) tabs.scrollLeft = Math.max(0, active.offsetLeft + active.offsetWidth - tabs.clientWidth + 16);
+  function paintWorkspaceIdentity() {
+    const line = $("workspace-subtitle");
+    const bot = state.panelData;
+    const group = state.sel?.type === "group" && state.groups.find(g => g.id === state.sel.id);
+    line.textContent = group ? (group.members || []).length + " 个成员" : bot?.name === state.sel?.id ? (bot.model || "未绑定模型") : "";
+    line.hidden = !line.textContent || !!state.peer;
   }
 
   function paintPanel() {
-    const tasks = panelBody.querySelector(".task-view");
-    if (tasks && state.sel?.type === "bot" && state.tab === "computer" && tasks.dataset.bot === state.sel.id) {
-      syncTaskView(tasks, state.panelData || {name: state.sel.id});
-      paintContextBar(); syncPanelChrome(); return;
-    }
-    panelBody.replaceChildren();
-    paintContextBar();
-    if (!state.sel) {
-      $("panel-ident").hidden = true;
-      $("panel-tabs").replaceChildren();
-      syncPanelChrome();
+    paintWorkspaceIdentity(); syncPanelChrome(); paintContextBar();
+    for (const body of panelBody.children) body.hidden = body.id !== "workspace-view-" + state.tab;
+    if (!state.sel || state.tab === "chat" || state.peer) return;
+    const body = workspaceView(state.tab); body.hidden = false;
+    if (state.panelError === state.tab) {
+      // Failed refreshes must not destroy an editor or its unsaved draft.
+      if (!body.querySelector(":scope > .workspace-error")) body.prepend(workspaceError("页面加载失败", loadPanel));
       return;
     }
+    body.querySelector(":scope > .workspace-error")?.remove();
     if (state.sel.type === "group") {
-      const g = state.groups.find((x) => x.id === state.sel.id) || { name: state.sel.id, members: [] };
-      renderPanelHead(g.name || g.id, null, (g.members || []).length + " 个成员");
-      const body = el("div", "tab-body");
-      if (state.tab === "library") {
-        body.append(el("p", "hint", "还没有记住任何事。对它说「记住……」就会出现在这里"));
-      } else if (state.tab === "computer") {
-        body.append(el("p", "hint", "没有任务"));
-      } else if (state.tab === "trace") {
-        body.append(el("p", "hint", "没有轨迹"));
-      } else if (state.tab === "context") {
-        body.append(el("p", "hint", "群组没有上下文"));
-      } else if (state.tab === "inbox") {
-        body.append(el("p", "hint", "群组没有收件箱"));
-      } else {
-        const s = section("成员");
-        s.append(el("p", "", (g.members || []).map(niceName).join("、") || "没有成员"));
-        body.append(s);
+      const group = state.groups.find(g => g.id === state.sel.id) || {members:[]};
+      const key = JSON.stringify(group);
+      if (body.renderKey !== key) {
+        const members = section("成员"); members.append(el("p", "", (group.members || []).map(niceName).join("、") || "没有成员"));
+        body.replaceChildren(workspaceHeading("群组资料"), members); body.renderKey = key;
       }
-      panelBody.append(body);
-      syncPanelChrome();
       return;
     }
-    const data = state.panelData || { name: state.sel.id };
-    const sub = (data.primary ? "主 Bot · " : "") + (data.model || "未绑定模型");
-    renderPanelHead(data.name || state.sel.id, paintOfBot(data), sub, data.pinned);
-    syncPanelChrome();
-    const body = el("div", "tab-body");
-    if (state.tab === "library") body.append(libraryView(data));
-    else if (state.tab === "computer") body.append(computerView(data));
-    else if (state.tab === "trace") body.append(traceView());
-    else if (state.tab === "context") body.append(contextView(data));
-    else if (state.tab === "inbox") body.append(inboxView());
-    else body.append(detailsView(data));
-    panelBody.append(body);
+    const data = state.panelData || {name:state.sel.id};
+    const tasks = body.querySelector(".task-view");
+    if (tasks && state.tab === "computer") { syncTaskView(tasks, data); return; }
+    const memory = body.querySelector(".memory-view");
+    if (memory && state.tab === "library") { libraryView(data, memory); return; }
+    const key = JSON.stringify(state.tab === "library" ? data.memory : state.tab === "trace" ? [state.traceMessages, state.traceOpen, state.traceOut, state.traceThink] : state.tab === "context" ? [state.ctxSnap, state.ctxStep, state.ctxMenu, state.ctxOpen, state.ctxRaw] : state.tab === "inbox" ? state.inboxData : [data, modelHits(data), state.ctxSnap?.ceiling, state.ctxSnap?.target]);
+    if (body.renderKey === key || taskSelected(body)) return;
+    body.renderKey = key;
+    const label = TABS.find(([id]) => id === state.tab)?.[1] || "Bot 资料";
+    let content;
+    if (state.tab === "library") content = libraryView(data);
+    else if (state.tab === "computer") content = computerView(data);
+    else if (state.tab === "trace") content = traceView();
+    else if (state.tab === "context") content = contextView(data);
+    else if (state.tab === "inbox") content = inboxView();
+    else content = detailsView(data);
+    body.replaceChildren(workspaceHeading(label), content);
+    queuePathLayout();
+  }
+  function workspaceHeading(label) { const head = el("div", "workspace-view-heading"); head.append(el("h2", "", label)); return head; }
+  function workspaceError(label, retry) {
+    const view = el("div", "workspace-error"); view.setAttribute("role", "status");
+    const button = el("button", "secondary", "重试"); button.type = "button";
+    button.addEventListener("click", async () => { button.disabled = true; await retry(); button.disabled = false; });
+    view.append(el("p", "", label), button); return view;
   }
 
   async function loadInbox() {
@@ -5591,7 +5734,7 @@
     view.append(el("p", "hint", "叫醒这个 Bot 的外部消息"));
     const data = state.inboxData;
     if (!data) { view.append(el("p", "hint", "正在加载…")); return view; }
-    if (data.error) { view.append(el("p", "hint", "收件箱加载失败")); return view; }
+    if (data.error) { view.append(workspaceError("收件箱加载失败", loadInbox)); return view; }
     if (!data.items.length) {
       view.append(el("p", "inbox-empty-title", "还没有收到外部消息"), el("p", "hint", "Webhook、定时、其他 Bot 等叫醒时会出现在这里"));
       return view;
@@ -5821,6 +5964,7 @@
   function contextView(data) {
     const wrap = el("div", "ctx");
     const snap = state.ctxSnap;
+    if (snap?.error) { wrap.append(workspaceError("上下文加载失败", loadPanel)); return wrap; }
     if (snap === null) {
       wrap.append(el("p", "hint", "正在读取……"));
       return wrap;
@@ -6029,7 +6173,7 @@
       band.append(tick);
     }
     bar.append(label, band, el("span", "mono", ctxK(used) + " / " + ctxK(hard)));
-    bar.addEventListener("click", () => { state.tab = "context"; paintPanel(); });
+    bar.addEventListener("click", () => selectWorkspaceTab("context"));
     host.append(bar);
   }
 
@@ -6075,70 +6219,98 @@
     return wrap;
   }
 
-  function libraryView(data) {
-    const view = el("div", "memory-view");
+  function libraryView(data, view = el("div", "memory-view")) {
     const memory = data.memory;
-    if (!memory) { view.append(el("p", "hint", "正在加载…")); return view; }
-    view.append(el("h3", "memory-heading", "常驻"));
+    view.memoryData = memory;
+    if (!memory) { view.replaceChildren(el("p", "hint", "正在加载…")); return view; }
+    let documents = view.querySelector(".memory-documents");
+    if (!documents) {
+      documents = el("div", "memory-documents");
+      const experiences = el("section", "memory-experiences");
+      const error = el("p", "memory-page-error"); error.hidden = true;
+      experiences.append(el("h3", "memory-heading", "经历"), el("div", "memory-experience-list"), error);
+      view.replaceChildren(documents, experiences, el("footer", "memory-footer"));
+    }
     for (const [kind, label] of [["person", "关于你"], ["bot", "关于本 Bot"]]) {
       const doc = memory[kind];
-      const section = el("section", "memory-document");
-      const head = el("div", "memory-document-head");
-      head.append(el("h4", "", label));
+      let section = documents.querySelector('[data-memory="' + kind + '"]');
+      if (!section) { section = el("section", "memory-document"); section.dataset.memory = kind; documents.append(section); }
+      const key = JSON.stringify(doc || null);
+      if (section.memoryKey === key) continue;
+      section.memoryKey = key;
+      const head = el("div", "memory-document-head"); head.append(el("h4", "", label));
       if (doc && !doc.empty) head.append(memoryFileLink(data.name, kind, "打开文件", doc.path));
-      section.append(head);
+      section.replaceChildren(head);
       if (!doc || doc.empty) section.append(el("p", "hint memory-empty", "还没有常驻记忆"));
       else { const body = el("div", "prose memory-markdown"); appendMarkdown(body, doc.markdown); section.append(body); }
-      view.append(section);
     }
-    const experiences = el("section", "memory-experiences");
-    experiences.append(el("h3", "memory-heading", "经历"));
-    const rows = el("div", "memory-experience-list");
-    const append = (items) => {
-      for (const item of items) {
-        const row = el("details", "memory-experience");
+    // Retain all already-read experiences once paging starts. New first-page
+    // entries can push a previous first-page entry beyond the server window.
+    const pages = view.memoryPages || (view.memoryPages = {items:new Map(), paged:false, before:null});
+    const first = memory.experiences || {items:[]};
+    if (!first.items.length) { pages.items.clear(); pages.paged = false; }
+    if (!pages.paged) { pages.items.clear(); pages.before = first.next_before; }
+    for (const item of first.items) pages.items.set(item.id || item.created_at, item);
+    const items = new Map(pages.items);
+    const rows = view.querySelector(".memory-experience-list");
+    const prior = new Map([...rows.querySelectorAll(".memory-experience")].map(row => [row.dataset.experience, row]));
+    let next = rows.firstElementChild;
+    for (const item of [...items.values()].sort((a,b) => b.created_at.localeCompare(a.created_at) || (b.id || 0) - (a.id || 0))) {
+      const id = String(item.id || item.created_at);
+      const row = prior.get(id) || el("details", "memory-experience"); prior.delete(id);
+      row.dataset.experience = id;
+      const key = JSON.stringify(item);
+      if (row.memoryKey !== key) {
+        row.memoryKey = key;
         const head = el("summary");
         const at = new Date(item.created_at);
         const time = el("time", "", Number.isNaN(at.getTime()) ? item.created_at : at.toLocaleString([], {year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false}));
         time.dateTime = item.created_at;
         head.append(time, el("span", "memory-summary", item.summary || ""), icon("chevron"));
-        row.append(head);
+        row.replaceChildren(head);
         if (item.focus) row.append(el("p", "memory-focus", item.focus));
         if (item.segment) row.append(el("p", "memory-segment", item.segment));
-        rows.append(row);
       }
-    };
-    const first = memory.experiences || {items:[]};
-    append(first.items);
-    if (!first.items.length) rows.append(el("p", "hint memory-empty", "还没有经历"));
-    experiences.append(rows);
-    let before = first.next_before;
-    if (before) {
-      const earlier = el("button", "memory-earlier", "更早的经历");
-      earlier.type = "button";
-      const error = el("p", "memory-page-error"); error.hidden = true;
+      if (row !== next) rows.insertBefore(row, next);
+      next = row.nextElementSibling;
+    }
+    for (const row of prior.values()) row.remove();
+    const empty = rows.querySelector(".memory-empty");
+    if (items.size) empty?.remove();
+    else if (!empty) rows.append(el("p", "hint memory-empty", "还没有经历"));
+    const experiences = view.querySelector(".memory-experiences"), error = view.querySelector(".memory-page-error");
+    let earlier = experiences.querySelector(".memory-earlier");
+    if (!pages.before) { earlier?.remove(); error.hidden = true; }
+    else if (!earlier) {
+      earlier = el("button", "memory-earlier", "更早的经历"); earlier.type = "button";
       earlier.addEventListener("click", async () => {
         const selection = state.sel;
         earlier.disabled = true; error.hidden = true;
+        // The in-flight page starts before the current first-page boundary.
+        // Keep that boundary row even if a poll shifts the first page now.
+        pages.paged = true;
         try {
-          const page = await api("/api/bots/" + encodeURIComponent(data.name) + "/experiences?before=" + before);
-          if (state.sel !== selection || !view.isConnected) return;
-          append(page.items); before = page.next_before;
-          if (!before) earlier.remove();
+          const page = await api("/api/bots/" + encodeURIComponent(data.name) + "/experiences?before=" + pages.before);
+          if (state.sel !== selection || !view.isConnected || !view.memoryData?.experiences?.items?.length) return;
+          for (const item of page.items) pages.items.set(item.id || item.created_at, item);
+          pages.paged = true; pages.before = page.next_before;
+          libraryView({name:data.name, memory:view.memoryData}, view);
         } catch (e) {
           if (state.sel !== selection || !view.isConnected) return;
           error.textContent = "经历加载失败，请重试"; error.hidden = false;
         } finally { earlier.disabled = false; }
       });
-      experiences.append(earlier, error);
+      experiences.insertBefore(earlier, error);
     }
-    view.append(experiences);
-    const footer = el("footer", "memory-footer");
-    if (memory.month_log && !memory.month_log.empty) {
-      const link = memoryFileLink(data.name, "month-log", "打开本月流水", memory.month_log.path);
-      link.classList.add("memory-log"); footer.append(link);
-    } else footer.append(el("span", "", "本月还没有流水"));
-    view.append(footer);
+    const footer = view.querySelector(".memory-footer");
+    const logKey = JSON.stringify(memory.month_log || null);
+    if (footer.memoryKey !== logKey) {
+      footer.memoryKey = logKey;
+      if (memory.month_log && !memory.month_log.empty) {
+        const link = memoryFileLink(data.name, "month-log", "打开本月流水", memory.month_log.path);
+        link.classList.add("memory-log"); footer.replaceChildren(link);
+      } else footer.replaceChildren(el("span", "", "本月还没有流水"));
+    }
     return view;
   }
 
@@ -6261,7 +6433,7 @@
     host.replaceChildren();
     if (!agents.length) return;
     const row = el("button", "wrow"); row.type = "button"; row.title = "打开任务";
-    row.addEventListener("click", () => { state.tab = "computer"; rememberPanel(true); panelOpen(true); paintPanel(); });
+    row.addEventListener("click", () => selectWorkspaceTab("computer"));
     const stack = el("span", "work-stack");
     for (const ag of agents.slice(0, 3)) stack.append(taskAvatar(ag, "xs"));
     if (agents.length > 3) stack.append(el("span", "", "+" + (agents.length - 3)));
@@ -6305,12 +6477,12 @@
     if (!selection || selection.type !== "bot" || state.peer) { paintWorkStatus(); return; }
     const data = await fetchBotProfile(selection.id);
     if (state.sel !== selection) return;
-    const prior = state.panelData;
     state.panelData = data;
     paintWorkStatus();
     const root = panelBody.querySelector(".task-view");
     if (root && state.tab === "computer") syncTaskView(root, data);
-    else if (prior && state.tab === "details" && JSON.stringify(prior.routines) !== JSON.stringify(data.routines)) paintPanel();
+    else if (state.tab !== "chat") paintPanel();
+    paintWorkspaceIdentity();
     updateWorkTimes();
   }
 
@@ -6714,17 +6886,23 @@
   async function loadTrace() {
     const selection = state.sel;
     if (selection?.type !== "bot" || state.tab !== "trace" || !panel.classList.contains("open")) return;
-    const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript", {
-      credentials:"same-origin", headers:selection.traceETag ? {"If-None-Match":selection.traceETag} : {},
-    });
-    if (res.status === 304 || state.sel !== selection) return;
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "request failed");
-    if (state.sel !== selection) return;
-    selection.traceETag = res.headers.get("ETag");
-    if (sameTranscriptValue(state.traceMessages || [], data.messages || [])) return;
-    state.traceMessages = data.messages || [];
-    if (state.tab === "trace" && panel.classList.contains("open")) paintPanel();
+    try {
+      const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript", {
+        credentials:"same-origin", headers:selection.traceETag ? {"If-None-Match":selection.traceETag} : {},
+      });
+      if (res.status === 304 || state.sel !== selection) return;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "request failed");
+      if (state.sel !== selection) return;
+      selection.traceETag = res.headers.get("ETag");
+      if (sameTranscriptValue(state.traceMessages || [], data.messages || [])) return;
+      state.traceMessages = data.messages || [];
+      if (state.tab === "trace") paintPanel();
+    } catch (e) {
+      if (state.sel !== selection || state.tab !== "trace") return;
+      state.panelError = "trace";
+      paintPanel();
+    }
   }
 
   async function loadPanel() {
@@ -6732,16 +6910,18 @@
     if (state.sel.type === "group") { state.panelData = null; paintPanel(); return; }
     const selection = state.sel;
     const request = ++state.panelLoad;
+    const targetTab = state.tab;
     try {
       const [data, snap, inbox, transcript] = await Promise.all([
         fetchBotProfile(selection.id),
-        api("/api/bots/" + encodeURIComponent(selection.id) + "/context").catch(() => ({ requests: [] })),
+        api("/api/bots/" + encodeURIComponent(selection.id) + "/context").catch(() => ({ error: true })),
         api("/api/bots/" + encodeURIComponent(selection.id) + "/inbox").catch(() => ({ error: true })),
         state.tab === "trace" ? api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript") : Promise.resolve(null),
       ]);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
+      state.panelError = false;
       if (transcript) state.traceMessages = transcript.messages || [];
       state.inboxData = inbox;
       state.ctxSnap = snap;
@@ -6749,7 +6929,8 @@
       paintWorkStatus();
     } catch (e) {
       if (state.sel === selection && request === state.panelLoad) {
-        panelBody.replaceChildren(el("div", "muted", "连不上 XBot"));
+        state.panelError = targetTab;
+        paintPanel();
       }
     }
   }
@@ -7178,9 +7359,7 @@
   function syncBackdrop() {
     const drawer = window.innerWidth < 768 && sidebar.classList.contains("open");
     backdrop.hidden = !drawer;
-    // The panel is a drawer over the card at every width (#243), so it always
-    // covers part of the conversation. The exposed conversation closes it.
-    $("panel-scrim").hidden = !(panel.classList.contains("open") && !drawer);
+
   }
 
   async function refreshLists() {
@@ -8155,6 +8334,7 @@
 
   function closePops() {
     closeMessageMenu();
+    closeWorkspaceMore();
     closeAccount();
     closeNewMenu();
     closePanelMenu();
@@ -8215,7 +8395,7 @@
     state.listSig = "";
     try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
   }
-  const SIDE = { min: 240, max: 360, def: 280, snap: 200, rail: 72 };
+  const SIDE = { min: 210, max: 360, def: 232, snap: 200, rail: 72 };
   function readSide() {
     try {
       const saved = JSON.parse(localStorage.getItem("xbot.side") || "{}");
@@ -8265,35 +8445,8 @@
     $("account-menu").hidden = !open;
     $("account").setAttribute("aria-expanded", open ? "true" : "false");
   });
-  function rememberPanel(open) {
-    state.panelTouched = true;
-    try { localStorage.setItem("xbot-panel-open", String(open)); } catch (e) {}
-  }
-  $("panel-scrim").addEventListener("click", () => {
-    closePops();
-    rememberPanel(false);
-    panelOpen(false);
-  });
-
-  $("menu").addEventListener("click", () => {
-    sidebar.classList.add("open");
-    if (window.innerWidth < 768 && panel.classList.contains("open")) {
-      rememberPanel(false);
-      panel.classList.remove("open");
-      $("head-chip").classList.remove("on");
-      $("head-chip").setAttribute("aria-expanded", "false");
-    }
-    syncBackdrop();
-  });
-
-  backdrop.addEventListener("click", () => {
-    state.panelTouched = true;
-    sidebar.classList.remove("open");
-    panel.classList.remove("open");
-    $("head-chip").classList.remove("on");
-    $("head-chip").setAttribute("aria-expanded", "false");
-    backdrop.hidden = true;
-  });
+  $("menu").addEventListener("click", () => { sidebar.classList.add("open"); syncBackdrop(); });
+  backdrop.addEventListener("click", () => { sidebar.classList.remove("open"); syncBackdrop(); });
 
   $("back").addEventListener("click", () => { closePeer(); });
   $("peer-close").addEventListener("click", () => { closePeer(); });
@@ -8307,42 +8460,12 @@
   });
 
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
-  function panelOpen(open) {
-    panel.classList.toggle("open", open);
-    $("head-chip").classList.toggle("on", open);
-    $("head-chip").setAttribute("aria-expanded", open ? "true" : "false");
-    $("head-chip").setAttribute("aria-label", open ? "收起信息" : "打开信息");
-    setTip($("head-chip"), (open ? "收起信息" : "打开信息") + (isMac ? "  ⌘\\" : "  Ctrl+\\"));
-    syncBackdrop();
-  }
-
-  $("head-chip").addEventListener("click", async () => {
-    const open = !panel.classList.contains("open");
-    rememberPanel(open);
-    panelOpen(open);
-    if (open && window.innerWidth < 768) sidebar.classList.remove("open");
-    if (open) {
-      try { await loadPanel(); } catch (e) { setStatus(visibleError(e), true); }
-    }
+  $("head-chip").addEventListener("click", () => selectWorkspaceTab(state.tab === "details" ? "chat" : "details"));
+  document.addEventListener("keydown", ev => {
+    if (!$("setpage").hidden || ev.key !== "\\" || !(ev.metaKey || ev.ctrlKey) || ev.altKey || ev.shiftKey) return;
+    ev.preventDefault(); selectWorkspaceTab(state.tab === "chat" ? "details" : "chat");
   });
-
-  document.addEventListener("keydown", (ev) => {
-    if (!$("setpage").hidden) return;
-    if (ev.key !== "\\" || !(ev.metaKey || ev.ctrlKey) || ev.altKey || ev.shiftKey) return;
-    ev.preventDefault();
-    const open = !panel.classList.contains("open");
-    rememberPanel(open);
-    panelOpen(open);
-    if (open) loadPanel().catch(() => {});
-  });
-
-  // The remote conversation is a full panel at z-index 12; this drawer sits at
-  // 30, so it would cover its header and composer. Close it when one opens.
-  window.addEventListener("xbot:remote-open", () => {
-    if (!panel.classList.contains("open")) return;
-    rememberPanel(false);
-    panelOpen(false);
-  });
+  window.addEventListener("xbot:remote-open", () => selectWorkspaceTab("chat"));
 
   let settingsOpener = null;
   let settingsSection = "general";
@@ -8753,9 +8876,8 @@
     if (state.replyTo) { clearQuote(); return; }
     if (!$("account-menu").hidden) { closePops(); return; }
     if (panel.classList.contains("open")) {
-      rememberPanel(false);
       closePops();
-      panelOpen(false);
+      selectWorkspaceTab("chat", true);
     }
     sidebar.classList.remove("open");
     syncBackdrop();
@@ -8950,18 +9072,7 @@
     syncPanelDefault();
   }
 
-  function syncPanelDefault() {
-    if (state.panelTouched) return;
-    let preference = null;
-    try { preference = localStorage.getItem("xbot-panel-open"); } catch (e) {}
-    // The panel is a drawer over the conversation now (#243), so it starts
-    // closed everywhere: nothing is hidden until the owner asks for it. Only
-    // an explicit "true" from a previous session opens it again.
-    const wide = preference === "true";
-    const was = panel.classList.contains("open");
-    panelOpen(wide);
-    if (wide && !was) loadPanel().catch(() => {});
-  }
+  function syncPanelDefault() { renderWorkspaceTabs(); }
 
   syncSidebar();
   initTheme(); // in the app this also tells the window which theme to use

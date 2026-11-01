@@ -363,8 +363,10 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep
  const thread=$('#thread');$('#thread [data-seq="70"]').scrollIntoView({block:'center',behavior:'instant'});await sleep(30);
  const oldTop=thread.scrollTop,oldY=$('#thread [data-seq="70"]').getBoundingClientRect().top;
  $('#thread button[data-peer]').click();await waitFor(()=>thread.textContent.includes('peer-only-review-marker'),'peer opened');
+ assert(!$('#composer').checkVisibility()&&$('#peer-close').checkVisibility(),'read-only exchange exposes composer or hides close');
  $('#peer-close').click();
  await waitFor(()=>!thread.textContent.includes('peer-only-review-marker')&&$('#thread [data-transcript-key]'),'closing peer from historical window left peer DOM under owner chat');
+ assert($('#composer').checkVisibility(),'peer close did not restore composer');
  assert($('#thread [data-seq="70"]')&&!$('#thread [data-seq="420"]'),'peer close did not restore the historical window');
  assert(!$('#history-older').hidden&&!$('#history-newer').hidden&&!$('#history-latest').hidden,'peer close lost historical navigation');
  assert(Math.abs(thread.scrollTop-oldTop)<4&&Math.abs($('#thread [data-seq="70"]').getBoundingClientRect().top-oldY)<4,'peer close lost historical reading position');

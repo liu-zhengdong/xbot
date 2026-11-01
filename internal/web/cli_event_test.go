@@ -21,11 +21,15 @@ type cliEventModel struct {
 	messages []provider.Message
 	notify   bool
 	calls    int
+	started  chan struct{}
 }
 
 func (m *cliEventModel) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	m.messages = append(m.messages, req.Messages...)
 	m.calls++
+	if m.calls == 1 && m.started != nil {
+		close(m.started)
+	}
 	if m.notify && m.calls == 1 {
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "say", Type: "function", Function: provider.FunctionCall{Name: "send_message_to_user", Arguments: `{"text":"visible report"}`}}})}, nil
 	}
@@ -162,8 +166,8 @@ func TestCLIEventVisibleNotification(t *testing.T) {
 // A queue-mode post must come back before the bot answers, and the event must
 // still land in the inbox so a later drain can answer it.
 func TestCLIEventQueue(t *testing.T) {
-	s, ui, cookie, _ := questionServer(t, time.Second)
-	model := &cliEventModel{}
+	s, ui, cookie, b := questionServer(t, time.Second)
+	model := &cliEventModel{started: make(chan struct{})}
 	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
@@ -182,18 +186,23 @@ func TestCLIEventQueue(t *testing.T) {
 	if res.StatusCode != 200 || !strings.Contains(string(raw), `"queued":"true"`) || strings.Contains(string(raw), "event: done") {
 		t.Fatalf("status %d body %s", res.StatusCode, raw)
 	}
-	// The wake runs in the background: wait for it to pick the event up, so the
-	// test does not race the drain (and the temp dir cleanup).
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		for _, m := range model.messages {
-			if strings.Contains(m.Text(), "queued ping") {
-				return
-			}
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("queued event never reached the model")
-		}
-		time.Sleep(20 * time.Millisecond)
+	// Wait for the worker to enter the provider, then join its kernel gate.
+	// Seeing model input alone does not mean its durable writes have finished.
+	select {
+	case <-model.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("queued event never reached the model")
 	}
+	_, gate, err := s.kernel(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate.Lock()
+	defer gate.Unlock()
+	for _, m := range model.messages {
+		if strings.Contains(m.Text(), "queued ping") {
+			return
+		}
+	}
+	t.Fatal("queued event absent from completed model input")
 }

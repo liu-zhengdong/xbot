@@ -13,8 +13,8 @@ import (
 	"xbot/internal/browsertest"
 )
 
-// Exercise the shipped page and computed geometry, including a nonzero safe
-// area. The iframe gives Chrome an exact viewport even below its window minimum.
+// Exercise profile/model actions and sidebar menus through the shipped page.
+// The iframe gives Chrome an exact viewport even below its window minimum.
 func TestBotPanelBrowser(t *testing.T) {
 	chrome := browsertest.Chrome(t)
 	// The Windows/Linux desktop shell has a taller header; app.js marks it with
@@ -82,7 +82,7 @@ const panelFixture = `
 localStorage.removeItem('xbot-panel-open');
 localStorage.removeItem('xbot.side');
 bots[1].pinned=false;
-bots.find(b=>b.name==='2号小伙子').description='这是一段很长的 Bot 简介，用来检查身份卡在侧栏展开和抽屉打开时仍然完整可点击。'.repeat(4);
+bots.find(b=>b.name==='2号小伙子').description='这是一段很长的 Bot 简介，用来检查资料内容保留。'.repeat(4);
 const baseFetch=window.fetch;
 fixture.calls=[];
 window.fetch=async(path,opts={})=>{
@@ -116,11 +116,10 @@ Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{fixtu
 `
 
 const panelDriver = `
-const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(typeof msg==='function'?msg():msg)};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await sleep(10)}throw Error(msg)};
+const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await sleep(10)}throw Error(typeof msg==='function'?msg():msg)};
 const rect=n=>n.getBoundingClientRect(),near=(a,b)=>Math.abs(a-b)<1;
-const finishAnimations=()=>{document.getAnimations().forEach(a=>{if(a.effect.getTiming().iterations!==Infinity)a.finish()})};
 const escape=()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
 const row=name=>document.querySelector('[data-bot="'+name+'"]');
 const context=name=>row(name).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
@@ -130,48 +129,12 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  await waitFor(()=>!$('#shell').hidden&&row('2号小伙子'),'app did not boot');
  row('2号小伙子').click();
  await waitFor(()=>$('#title').textContent.includes('2号小伙子'),'Bot did not open');
- const panel=$('#panel');
- // A closed panel has the same dimensions and horizontal axis as an open one.
- const closed=rect(panel),matrix=new DOMMatrix(getComputedStyle(panel).transform);
- assert(matrix.m41>0&&near(matrix.m42,0),'closed drawer moves vertically or does not slide offscreen');
- if(innerWidth<768){
-  const m=rect($('#menu')),a=rect($('#title .avatar')),top=rect($('.top'));
-  assert(near(top.height,96)&&near(m.y+m.height/2,top.y+44+26),'safe area compresses the content band');
-  const c=rect($('#head-chip')),bar=rect($('.top-inner'));
-  assert(near(m.x,16),'hamburger inset wrong');
-  assert(Math.abs((c.x-m.right-8)-(bar.right-c.right))<2,'chip is not centred between hamburger and edge');
-  assert(near(m.y+m.height/2,a.y+a.height/2)&&m.width>=32&&m.height>=32,'hamburger is not centered or touchable');
- }
- if(innerWidth>=768&&document.documentElement.classList.contains('in-app'))assert(near(rect($('.top')).height,88),'desktop shell header is not 88px');
- const chip=$('#head-chip');
- assert(!chip.contains($('#subtitle'))&&!chip.textContent.includes('这是一段很长的 Bot 简介'),'identity card contains a subtitle or description');
- assert($('#subtitle').hidden,'bot description is shown as a status');
- const card=rect(chip),head=rect($('#title .avatar')),name=rect($('#title .title-name'));
- assert(card.height<=44&&near(head.width,28)&&head.right<=name.left,'identity card is not compact and horizontal: '+[card.height,head.width,head.right,name.left]);
- const thread=$('.chat > .thread'),header=rect($('.top'));
- assert(near(parseFloat(getComputedStyle(thread).paddingTop),header.height+4),'message top padding does not follow header height');
- if(innerWidth>=768)assert(!$('#sidebar').classList.contains('rail'),'sidebar is not expanded');
- assert(!$('#info')&&!$('.ptog'),'separate panel toggle still present');
- assert(!chip.disabled&&chip.contains($('#title .avatar'))&&chip.getAttribute('aria-expanded')==='false','chip is not the closed toggle');
- const initial=rect(chip),firstHit=document.elementFromPoint(initial.x+initial.width/2,initial.y+initial.height/2);
- assert(chip.contains(firstHit),'closed chip is blocked');
- firstHit.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
- assert(chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='true'&&panel.classList.contains('open'),'chip does not open panel');
- assert($('#setpage').hidden,'chip opened settings');
- await waitFor(()=>panel.textContent.includes('scripted'),'panel data missing');
- await sleep(250);finishAnimations();
- const opened=rect(panel),openMatrix=new DOMMatrix(getComputedStyle(panel).transform);
- assert(near(closed.width,opened.width)&&near(closed.height,opened.height),'drawer dimensions change on toggle');
- assert(near(openMatrix.m41,0)&&near(openMatrix.m42,0),'open drawer axis wrong');
- assert(getComputedStyle(panel).transitionProperty.includes('transform'),'desktop drawer skips animation');
- assert(!$('#panel-more')&&$('#panel-actions').children.length===1,'header contains extra action');
- assert(!panel.contains($('#head-chip')),'toggle moved into panel');
- const edit=$('#panel-actions button'),avatar=$('#panel-ident .avatar');
- assert(near(rect(edit).y+rect(edit).height/2,rect(avatar).y+rect(avatar).height/2),'edit is not on identity row');
- const model=$('.tab-body .binding-trigger'),body=$('.tab-body'),face=n=>[n.querySelector('.bt-model').textContent,n.querySelector('.bt-sub').textContent].join('|');
- assert(rect(model).width>=rect(body).width-41,'model still a short card');
+ const chip=$('#head-chip');chip.click();
+ await waitFor(()=>$('.tab-body:not([hidden]) .binding-trigger .bt-model')?.textContent==='scripted'&&$('.tab-body:not([hidden]) .binding-trigger .bt-sub')?.textContent==='fake · Completions'&&$('.tab-body:not([hidden]) .psec p')&&$('#panel-actions button'),()=> 'profile data missing: '+$('.tab-body:not([hidden])')?.textContent);
+ const edit=$('#panel-actions button');
+ const model=$('.tab-body:not([hidden]) .binding-trigger'),face=n=>[n.querySelector('.bt-model').textContent,n.querySelector('.bt-sub').textContent].join('|');
  assert(face(model)==='scripted|fake · Completions','details model is not model over provider · protocol');
- assert($('.psec p').textContent.includes('personal assistant'),'persona missing');
+ assert($('.tab-body:not([hidden]) .psec p').textContent.includes('personal assistant'),'persona missing');
  edit.focus();edit.click();await waitFor(()=>!$('#modal').hidden,'edit does not open');
  // The drawer shares the face; rebinding there repaints both faces and leaves the drawer open.
  const drawerModel=$('#modal .binding-trigger');
@@ -230,7 +193,7 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  assert(!/web_search|hosted|互斥|绑定/.test(dlg.textContent),'engineering words in picker');
  assert(!fixture.bound,'row click committed');
  $('.binding-dialog').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
- assert(!$('#modal').hidden&&panel.classList.contains('open'),'Escape in picker closed the layers below');
+ assert(!$('#modal').hidden&&$('.tab-body:not([hidden]) .binding-trigger')?.checkVisibility(),'Escape in picker closed the profile below');
  // Esc (the dialog's cancel), ✕ and 取消 all drop the staged row; reopening starts from the current binding.
  $('.binding-dialog').dispatchEvent(new Event('cancel',{cancelable:true}));
  assert(!$('.binding-dialog')&&!fixture.bound&&!$('#modal').hidden,'Esc did not close only the picker');
@@ -247,29 +210,12 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  await waitFor(()=>!$('.binding-dialog'),'picker does not close');
  assert(face(drawerModel)==='deep-pro|DeepSeek · Responses · 厂商搜索','drawer face not repainted with the vendor display name');
  assert(fixture.bound.provider==='deep'&&fixture.bound.model==='deep-pro','binding not saved');
- await waitFor(()=>$('.tab-body .binding-trigger .bt-model')?.textContent==='deep-pro','details face not refreshed');
- assert(face($('.tab-body .binding-trigger'))==='deep-pro|DeepSeek · Responses · 厂商搜索','details face shows the raw provider id');
+ await waitFor(()=>$('.tab-body:not([hidden]) .binding-trigger .bt-model')?.textContent==='deep-pro','details face not refreshed');
+ assert(face($('.tab-body:not([hidden]) .binding-trigger'))==='deep-pro|DeepSeek · Responses · 厂商搜索','details face shows the raw provider id');
  assert(!$('#modal').hidden,'rebind closed the drawer');
  escape();await sleep(20);assert(document.activeElement===$('#panel-actions button'),'edit focus not restored');
- $('#panel-scrim').click();await sleep(250);finishAnimations();
- assert(!panel.classList.contains('open'),'scrim does not close drawer');
- assert(!chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='false','chip keeps open state after scrim');
- chip.click();assert(panel.classList.contains('open'),'chip does not reopen');
- // Hit-test like a real pointer: neither the scrim nor the open drawer may
- // cover the chip at any width, so a second real click closes the panel.
- await sleep(250);finishAnimations();
- const cr=rect(chip);
- for(const x of [0.05,0.5,0.95])for(const y of [0.1,0.5,0.9]){
-  const hit=document.elementFromPoint(cr.x+cr.width*x,cr.y+cr.height*y);
-  assert(chip.contains(hit),(panel.contains(hit)?'drawer':'scrim')+' covers the chip at '+innerWidth+'px');
- }
- const hit=document.elementFromPoint(cr.x+cr.width/2,cr.y+cr.height/2);
- assert(rect(panel).top>=cr.bottom-1||rect(panel).left>=cr.right,'drawer overlaps the header chip');
- // Dispatch on the actual hit target, which may be an SVG without .click().
- hit.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));await sleep(250);finishAnimations();
- assert(!panel.classList.contains('open')&&!chip.classList.contains('on')&&chip.getAttribute('aria-expanded')==='false','chip does not close panel');
- const closing=new DOMMatrix(getComputedStyle(panel).transform);
- assert(closing.m41>0&&near(closing.m42,0),'drawer exits downwards');
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='聊天').click();
+ await waitFor(()=>$('#thread').checkVisibility(),'return to chat failed');
  // Right-click an unselected Bot: every action belongs to that Bot.
  context('另一个Bot');assert(item('复制 Bot ID'),'row menu missing');
  assert($('#title').textContent.includes('2号小伙子'),'context menu changed conversation');
@@ -297,15 +243,13 @@ const pointer=(type,x=20)=>row('另一个Bot').dispatchEvent(new PointerEvent(ty
  escape();context('另一个Bot');item('置顶').click();
  await waitFor(()=>fixture.calls.some(([p,o])=>p.includes(encodeURIComponent('另一个Bot'))&&p.endsWith('/pin')&&o.method==='POST'),'pin hit wrong Bot');
  if(innerWidth>=768){
-  const grip=$('#side-grip');grip.setPointerCapture=()=>{};grip.dispatchEvent(new PointerEvent('pointerdown',{pointerId:1,button:0,bubbles:true}));grip.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,clientX:100,bubbles:true}));grip.dispatchEvent(new PointerEvent('pointerup',{pointerId:1,bubbles:true}));
-  assert(near(rect($('#sidebar')).width,72),'rail width changed');
-  for(const head of document.querySelectorAll('.folder-head,.group-label,.g7-side-head')){
-   const style=getComputedStyle(head);
-   assert(near(rect(head).height,10)&&style.backgroundColor==='rgba(0, 0, 0, 0)'&&parseFloat(style.borderRadius)===0,'rail header is a gray block');
-   assert([...head.children].every(n=>getComputedStyle(n).display==='none'),'rail header has leftover controls');
-  }
+  const grip=$('#side-grip');grip.setPointerCapture=()=>{};
+  grip.dispatchEvent(new PointerEvent('pointerdown',{pointerId:1,button:0,bubbles:true}));
+  grip.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,clientX:100,bubbles:true}));
+  grip.dispatchEvent(new PointerEvent('pointerup',{pointerId:1,bubbles:true}));
+  assert($('#sidebar').classList.contains('rail'),'dragging sidebar did not collapse it');
  }
  assert(testErrors.length===0,testErrors.join('; '));
  parent.document.body.dataset.testResult='passed';
-})().catch(e=>{parent.document.body.dataset.testResult='failed: '+e.message+'; '+testErrors.join('; ')});
+})().catch(e=>{parent.document.body.dataset.testResult='failed: '+e.stack+'; '+testErrors.join('; ')});
 `

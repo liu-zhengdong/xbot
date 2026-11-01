@@ -54,8 +54,8 @@ const openGenerated=async()=>{
  assert($('#thread .gallery img').dataset.deliveryUrl.endsWith('/paste/'+imageID),'gallery did not use existing paste route');
  const shot=new URLSearchParams(location.search).get('shot');
  if(shot==='reply'){document.body.dataset.testResult='passed';return}
- $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel missing');
- [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='轨迹').click();
+ await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel missing');
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='轨迹').click();
  await waitFor(()=>$('.trace-row'),'generation absent from ordinary trace');
  $('.trace-row').click();
  assert($('.trace-call-name').textContent==='image_generation','wrong trace call');

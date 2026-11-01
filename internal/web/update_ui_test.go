@@ -1,72 +1,68 @@
 package web
 
 import (
-	"strings"
+	"os/exec"
 	"testing"
 )
 
-// The update control is one small pill in the header, invisible until a newer
-// version has downloaded. It must not become a second notification surface:
-// only "ready" and "manual" show it, and a click is what installs.
+// Exercise the public update control, including installation failure and the
+// installer route, without starting a real updater or navigating off the page.
 func TestUpdateButtonContract(t *testing.T) {
-	for file, want := range map[string][]string{
-		"index.html": {
-			`<button id="update" class="update-btn" type="button" hidden>`,
-			`<span class="update-label">更新</span>`,
-		},
-		"app.css": {
-			`.update-btn[hidden]{display:none}`,
-			// Narrow phones: the version does not fit beside the title.
-			`@media (max-width:480px){.update-btn .update-label{display:none}`,
-			`@media (prefers-reduced-motion:reduce){.update-btn.busy svg{animation:none}}`,
-			`transition:background-color 120ms ease`,
-		},
-		"app.js": {
-			`api("/api/update/install", { method: "POST" })`,
-			`updateState.state === "ready" || updateState.state === "manual"`,
-			`if (!document.hidden) refreshUpdate().catch(() => {});`,
-		},
-	} {
-		data, err := staticFS.ReadFile("static/" + file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, w := range want {
-			if !strings.Contains(string(data), w) {
-				t.Errorf("%s missing %s", file, w)
-			}
-		}
-	}
+	runChatStreamBrowser(t, chatStreamFixture+`
+let updateOffer={state:'checking',latest:'v1.2.3'},updateInstalls=0,updateDownloads=[],updateFail=true,updateRestartPolls=0;
+const updateFetch=window.fetch;
+window.open=(...args)=>updateDownloads.push(args);
+window.fetch=async(path,opts={})=>{
+ if(path==='/api/update')return json(updateOffer);
+ if(path==='/api/update/install'){updateInstalls++;return updateFail?new Response('{"error":"scripted install failure"}',{status:409,headers:{'Content-Type':'application/json'}}):json({status:'ok'})}
+ if(path==='/api/session'&&updateInstalls===2)updateRestartPolls++;
+ return updateFetch(path,opts);
+};
+`, `
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await sleep(10)}throw Error(msg)};
+const refresh=()=>document.dispatchEvent(new Event('visibilitychange'));
+(async()=>{
+ await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('.thread-loading-cover'),'boot');
+ const control=$('#update');assert(control&&!control.checkVisibility(),'checking update interrupted chat');
+ const inner=$('#thread .thread-inner');
+ updateOffer.state='ready';refresh();await waitFor(()=>control.checkVisibility(),'ready update unreachable');
+ assert(!$('#thread').contains(control),'update control entered conversation');
+ const r=control.getBoundingClientRect();assert(control.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),'update click is blocked');
+ control.click();await waitFor(()=>updateInstalls===1&&!control.disabled,'install did not POST or recover from failure');
+ assert(control.checkVisibility()&&updateDownloads.length===0,'ready install incorrectly downloaded');
+ updateOffer={state:'manual',latest:'v1.2.4',download:'https://example.test/xbot-installer'};refresh();
+ await waitFor(()=>control.querySelector('.update-label')?.textContent==='下载新版','manual state did not refresh');
+ control.click();await waitFor(()=>updateDownloads.length===1,'manual update did not open installer');
+ assert(updateDownloads[0][0]===updateOffer.download&&updateDownloads[0][1]==='_blank'&&updateDownloads[0][2]==='noopener','wrong installer target');
+ assert(updateInstalls===1,'manual update tried server install');
+ updateOffer.state='current';refresh();await waitFor(()=>!control.checkVisibility(),'current update stays visible');
+ assert($('#thread .thread-inner')===inner,'update refresh replaced chat');
+ updateOffer.state='ready';updateFail=false;refresh();await waitFor(()=>control.checkVisibility(),'ready retry unreachable');
+ control.click();await waitFor(()=>updateInstalls===2&&updateRestartPolls>0,'successful install did not poll restarted server');
+ assert(control.disabled,'pending restart allows duplicate installation');
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>document.body.dataset.testResult='failed: '+e.message);
+`)
 }
 
-// Nothing that shows the control may also change the conversation: it is a
-// header pill, not a card in the thread.
-func TestUpdateButtonIsNotInTheThread(t *testing.T) {
-	data, err := staticFS.ReadFile("static/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	html := string(data)
-	thread := html[strings.Index(html, `<div id="thread"`):]
-	thread = thread[:strings.Index(thread, `<div class="dock">`)]
-	if strings.Contains(thread, "update-btn") {
-		t.Fatal("the update control is rendered inside the conversation")
-	}
-}
-
-// The restart poll compares versions the way /api/session reports them: no
-// leading v, nothing after "+". A tag with build metadata must not wait out
-// the whole minute.
+// A metadata-bearing release tag must recognize the version reported by the
+// restarted server; a successful reply from the old process must keep polling.
 func TestRestartPollNormalizesVersions(t *testing.T) {
-	data, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(data)
-	if !strings.Contains(js, `want = shortVersion(want);`) {
-		t.Fatal("waitForRestart does not normalize the version it waits for")
-	}
-	if !strings.Contains(js, `split("+")[0]`) {
-		t.Fatal("shortVersion keeps the build metadata, which /api/session strips")
+	src := readStatic(t, "static/app.js")
+	script := `const assert=require('node:assert/strict');
+let pending=[],reloads=0,version='1.2.2';
+const location={reload(){reloads++}},setTimeout=fn=>pending.push(fn);
+const fetch=async()=>({ok:true,json:async()=>({version})});
+` + "function shortVersion(v) {" + functionBody(t, src, "function shortVersion(v) {") +
+		"\nfunction waitForRestart(want) {" + functionBody(t, src, "function waitForRestart(want) {") + `
+(async()=>{
+ waitForRestart('v1.2.3+build.7');assert.equal(pending.length,1);
+ await pending.shift()();assert.equal(reloads,0);assert.equal(pending.length,1);
+ version='1.2.3';await pending.shift()();assert.equal(reloads,1);assert.equal(pending.length,0);
+})().catch(e=>{console.error(e);process.exitCode=1});`
+	if out, err := exec.Command("node", "-e", script).CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }

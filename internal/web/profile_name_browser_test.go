@@ -25,7 +25,9 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
   if(/^\/api\/bots\/[^/]+$/.test(path)&&(opts.method||'GET')==='GET'){const v=await res.json();return json({...v,persona_card:bound})}
   return res;
  };
- $('#head-chip').click();
+ $('#workspace-more').click();
+ const profileEntry=[...document.querySelectorAll('#workspace-more-menu button')].find(n=>n.textContent.includes('资料'));
+ assert(profileEntry&&profileEntry.checkVisibility(),'profile entry missing');profileEntry.click();
  await waitFor(()=>$('#panel-actions button'),'edit action missing');
  $('#panel-actions button').click();
  await waitFor(()=>!$('#modal').hidden&&$('#modal-fields input'),'profile did not open');
@@ -55,10 +57,12 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
  assert(body.name==='名字热修验证'&&body.description==='保留简介与人设卡','wrong saved fields');
  assert(body.persona==='管周报和排期，不碰线上。','duty not saved');
  assert(Object.keys(body).sort().join(',')==='description,name,persona','save changed unrelated fields');
- // The save reloads the panel: 职责 first, then the picked card by name only.
- const cardSec=()=>[...document.querySelectorAll('.psec')].find(n=>n.querySelector('h4')?.textContent==='人设卡');
+ // Renaming selects the Bot's chat by design; re-enter its public profile.
+ await waitFor(()=>!$('#head-chip').disabled,'renamed Bot profile unavailable');$('#head-chip').click();
+ // The refreshed profile shows 职责 first, then the picked card by name only.
+ const cardSec=()=>[...document.querySelectorAll('.tab-body:not([hidden]) .psec')].find(n=>n.querySelector('h4')?.textContent==='人设卡');
  await waitFor(()=>cardSec()?.textContent.includes('碎嘴群友'),'details lack the picked card');
- const heads=[...document.querySelectorAll('.psec h4')].map(n=>n.textContent);
+ const heads=[...document.querySelectorAll('.tab-body:not([hidden]) .psec h4')].map(n=>n.textContent);
  assert(heads.indexOf('职责')>=0&&heads.indexOf('职责')<heads.indexOf('人设卡'),'details must show 职责 before 人设卡');
  assert(!heads.includes('人设'),'details still label the duty 人设');
  assert(!cardSec().querySelector('select')&&!cardSec().textContent.includes('爱接梗爱接梗'),'details must show the card name only');

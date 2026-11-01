@@ -30,7 +30,8 @@ const screenshot=async(p,theme,name)=>{if(shots){const dir=path.join(shots,theme
      const sizes=await p.evaluate(()=>{
       const cells=[...document.querySelectorAll('#thread .gallery .thumb')];
       const single=cells[4].getBoundingClientRect();
-      const column=document.querySelector('#thread .thread-inner').getBoundingClientRect().width;
+      const columnNode=document.querySelector('#thread .thread-inner'),columnStyle=getComputedStyle(columnNode);
+      const column=columnNode.clientWidth-parseFloat(columnStyle.paddingLeft)-parseFloat(columnStyle.paddingRight);
       return {column,single:single.width,height:single.height,multi:cells.slice(0,4).map(c=>({width:c.getBoundingClientRect().width,top:c.getBoundingClientRect().top}))};
      });
      assert.ok(Math.abs(sizes.single-sizes.column/3)<2,JSON.stringify(sizes));

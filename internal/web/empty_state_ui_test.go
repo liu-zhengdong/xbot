@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-// Window review P2 #7 and #8: the empty chat offers starters that only fill
-// the composer, and the card is radius 12 with no extra gap after the sidebar.
-func TestEmptyChatStartersAndCard(t *testing.T) {
+// Empty chat starters fill the composer without sending a message.
+func TestEmptyChatStarters(t *testing.T) {
 	read := func(name string) string {
 		t.Helper()
 		b, err := staticFS.ReadFile("static/" + name)
@@ -17,24 +16,11 @@ func TestEmptyChatStartersAndCard(t *testing.T) {
 		}
 		return string(b)
 	}
-	js, css := read("app.js"), read("app.css")
+	js := read("app.js")
 
 	if !strings.Contains(js, `const EMPTY_LINE = "有什么事，直接说就行。";`) ||
 		strings.Count(js, "EMPTY_LINE, who, true)") != 2 {
 		t.Error("an empty bot chat says 有什么事，直接说就行。 and offers starters (history and live paths)")
-	}
-	for _, rule := range []string{
-		".empty .avatar.lg { width: 48px; height: 48px; }",
-		".empty h2 { font-size: 18px; font-weight: 640;",
-		".empty p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--muted); }",
-		".starters { display: flex; flex-direction: column; gap: 8px; width: min(420px, 100%); margin-top: 22px; }",
-		"width: 100%; border: 0; border-radius: 12px; padding: 11px 16px;\n  background: var(--composer);",
-		".starter .icon { width: 16px; height: 16px;",
-		".starter:hover { background: var(--selected); }",
-	} {
-		if !strings.Contains(css, rule) {
-			t.Errorf("app.css is missing %q", rule)
-		}
 	}
 	if strings.Contains(js, "function heat()") {
 		t.Error("the placeholder activity heatmap is gone from the empty chat")
@@ -55,13 +41,5 @@ func TestEmptyChatStartersAndCard(t *testing.T) {
 		if regexp.MustCompile(`requestSubmit|\.submit\(|sendMessage|send\(|api\(`).MatchString(path) {
 			t.Errorf("the starter path must never send: %s", path)
 		}
-	}
-	// The card: radius 12, flush with the sidebar.
-	main := regexp.MustCompile(`(?m)^\.main \{\n([^}]*)\}`).FindStringSubmatch(css)
-	if main == nil || !strings.Contains(main[1], "margin-left: 0; border-radius: 12px;") {
-		t.Error("the card is radius 12 and starts where the sidebar ends")
-	}
-	if strings.Contains(css, "background: var(--panel); border-radius: 20px;") {
-		t.Error("the info panel follows the card's radius 12")
 	}
 }

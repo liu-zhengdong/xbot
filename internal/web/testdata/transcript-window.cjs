@@ -63,12 +63,11 @@ const assert = (ok, message) => { if (!ok) throw Error(message); };
       await page.locator('#history-latest').click();
       await row(180).waitFor();
       assert(rawRequests.length===0,'main-column journey read raw transcript');
-      await page.locator('#head-chip').click();
       const traceResponse=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/transcript'));
       await page.getByRole('tab',{name:'轨迹',exact:true}).click();
       await traceResponse;
       assert(rawRequests.length>0,'trace stopped reading transcript');
-      await page.locator('#head-chip').click();
+      await page.getByRole('tab',{name:'聊天',exact:true}).click();
       for(const width of [640,390]) {
         await page.setViewportSize({width,height:900});
         await page.locator('#chat-search').click();

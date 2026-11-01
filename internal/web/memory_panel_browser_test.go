@@ -38,8 +38,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('.thread-loading-cover'),'boot');
- $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel');
- const memoryTab=()=>[...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='记忆');
+ await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel');
+ const memoryTab=()=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='记忆');
  memoryTab().click();await waitFor(()=>$('.memory-view'),'memory view');
  await sleep(300);
  document.getAnimations().filter(a=>a.effect?.target===$('#panel')).forEach(a=>a.finish());
@@ -69,7 +69,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
  memoryData.person.empty=true;memoryData.person.markdown='';memoryData.bot.empty=true;memoryData.bot.markdown='';memoryData.experiences={items:[]};memoryData.month_log.empty=true;
  // Changing tabs uses the latest panel DTO, without a private memory cache.
  document.dispatchEvent(new Event('visibilitychange'));await sleep(250);
- [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='详情').click();memoryTab().click();
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='聊天').click();memoryTab().click();
  await waitFor(()=>$('.memory-empty'),'empty state missing');
  assert(!$('.memory-experience')&&!$('.memory-file')&&!$('.memory-log'),'missing files still actionable');
  if(shot==='empty'){document.body.dataset.testResult='passed';return}

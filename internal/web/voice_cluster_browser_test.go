@@ -19,7 +19,8 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 const check=(row,label)=>{
- const parts=[...row.firstElementChild.children].filter(n=>n.matches('.bubble,.bot-bubble')),text=parts[0],voice=parts[1];
+ const content=row.querySelector(row.matches('.user')?':scope > .bubble-col':':scope > .body');
+ const parts=[...content.children].filter(n=>n.matches('.bubble,.bot-bubble')),text=parts[0],voice=parts[1];
  assert(parts.length===2,label+': expected text + audio/caption, got '+parts.length);
  assert(text.querySelectorAll('p').length===3&&text.textContent.includes('Tingting'),label+': paragraphs not in one bubble');
  assert(voice.querySelectorAll('audio').length===1&&voice.querySelector('.v-caption')?.textContent==='短句版。',label+': caption not attached');

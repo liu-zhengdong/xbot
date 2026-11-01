@@ -88,6 +88,8 @@
 
 ## 界面交互
 
+- **消息投影里的头像和装饰必须稳定，分页锚点不能依赖会重播的位移动画。** 头像 SVG 的递增 ID 会让未变消息比较失败并替换播放器；display 切页重播 4px 动画会使历史位置偏移。守护：`TestTranscriptIncrementalBrowser`、`TestVoiceChatBrowser`、`TestChatTabsPreserveChatBrowser`、`TestTranscriptWindowVisibleTailBrowser` 与真实 serve 的 `TestChatTabsJourney`。Seen 1×（2026-11-01）。
+
 - **后端扩窗必须一起验前端合并上限，至少用两页扩展后的 raw 规模测保尾和锚点。** 110 raw小夹具未触300行裁切，真实约200 raw两页把打开时的最新泡裁掉；控件高度也必须计入锚点校正。守护：`TestTranscriptWindowVisibleTailBrowser`（两页各300 raw、25泡、旧裁切先红）及 `TestTranscriptWindowLargeMergeBrowser`（800行触顶仍保尾并提示搜索）。Seen 1×（2026-10-31）。
 
 - **图片手势要用真实浏览器输入验证。** Pointer capture 会把 click/dblclick 重定向到容器；触屏双击还可能附带合成 dblclick。按图片实际边界判点击、避免重复缩放，并验证取消手势后下一次空白点击仍能关闭。守护：`internal/web/testdata/chat-image-viewer.cjs`。Seen 1×（2026-10-27）。

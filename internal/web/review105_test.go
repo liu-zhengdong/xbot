@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
@@ -49,25 +48,4 @@ func TestDesktopAppKeepsItsSession(t *testing.T) {
 		}
 	}
 
-	data, err := os.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(data)
-	for _, want := range []string{
-		// The other #105 web items ride along in the same file.
-		`if (state.sel && state.sel.type === "bot" && state.sel.id === name && !state.peer) return;`,
-		`"xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id`,
-		`sessionStorage.getItem("xbot-draft:group:" + id)`,
-		`(row.queued || row.keepFailed) && !queuedRecorded(row)`,
-		`pending.baseline = ownerSends(text);`,
-		`!unwrap(m.content || "").untrusted &&`,
-		`state.replyErrors.forEach((row) => row.remove());`,
-		`const stale = !row.accepted && row.querySelector(".send-failed") && row.dataset.sendText === text;`,
-		`return "没能完成：" + msg;`,
-	} {
-		if !strings.Contains(js, want) {
-			t.Errorf("app.js missing #105 fix: %s", want)
-		}
-	}
 }

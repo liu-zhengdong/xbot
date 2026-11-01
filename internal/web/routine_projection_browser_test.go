@@ -27,9 +27,9 @@ const waitFor=async(fn,label)=>{for(let i=0;i<1000;i++){if(fn())return;await sle
  const chat=$('#thread').textContent;
  for(const record of ['早报','看看新闻','巡检','检查服务','周报','错过','叫我出发','定时','timer','SILENT','没什么要说的'])
   if(chat.includes(record))throw Error('chat shows routine record: '+record);
- $('#head-chip').click();
- await waitFor(()=>[...document.querySelectorAll('#panel [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
- [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='任务').click();
+
+ await waitFor(()=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='任务').click();
  await waitFor(()=>$('.task-record.finished')&&$('.task-routine'),'task tab');
  const finished=[...document.querySelectorAll('.task-record.finished')];
  if(finished.length!==1||!finished[0].textContent.includes('检查任务'))throw Error('finished list should hold only the subagent: '+finished.map(n=>n.textContent).join(' | '));

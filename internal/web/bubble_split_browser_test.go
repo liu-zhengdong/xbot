@@ -16,7 +16,7 @@ fixture.messages[bots[0].name]=[quoted,{...message('assistant',splitText),reply_
   if(bot){
    const bubbles=bot.querySelectorAll('.bot-bubble');
    if(bubbles.length!==1||bubbles[0].querySelectorAll('p').length!==3||!bubbles[0].textContent.includes('第一段第二行。'))throw Error('legacy paragraphs not combined');
-   if(bot.querySelectorAll('.quote-block').length!==1||!bot.firstElementChild.firstElementChild.matches('.quote-block'))throw Error('legacy quote misplaced');
+   if(bot.querySelectorAll('.quote-block').length!==1||!bot.querySelector(':scope > .body').firstElementChild.matches('.quote-block'))throw Error('legacy quote misplaced');
    document.body.dataset.testResult='passed';return;
   }
   await new Promise(r=>setTimeout(r,10));
@@ -68,8 +68,9 @@ const check=(row,label)=>{
  assert(parts[0].querySelectorAll('p').length===3&&parts[0].textContent.includes('第三段。'),label+': paragraphs not combined');
  const images=[...row.querySelectorAll('.gallery')];
  assert(images.length===1&&images[0].querySelectorAll('img').length===2&&!images[0].closest('.bubble,.bot-bubble'),label+': image gallery not isolated');
- const quote=row.querySelectorAll('.quote-block');assert(quote.length===1&&quote[0]===row.firstElementChild.firstElementChild,label+': quote repeated or misplaced');
- const nodes=[...row.firstElementChild.children].filter(n=>n.matches('.bubble,.bot-bubble,.gallery'));
+ const content=row.querySelector(row.matches('.user')?':scope > .bubble-col':':scope > .body');
+ const quote=row.querySelectorAll('.quote-block');assert(quote.length===1&&quote[0]===content.firstElementChild,label+': quote repeated or misplaced');
+ const nodes=[...content.children].filter(n=>n.matches('.bubble,.bot-bubble,.gallery'));
  for(let i=1;i<nodes.length;i++){const a=nodes[i-1].getBoundingClientRect(),b=nodes[i].getBoundingClientRect();assert(b.top>a.bottom,label+': bubbles touch or overlap')}
 };
 (async()=>{

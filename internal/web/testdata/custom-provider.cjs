@@ -15,7 +15,7 @@ const shot=async(p,theme,name)=>{const dir=path.join(cfg.shots,theme);fs.mkdirSy
    const p=await context.newPage(),errors=[],calls=[];
    p.on('pageerror',e=>errors.push(e.message));
    p.on('request',r=>{if(r.url().startsWith(cfg.url+'/api/providers'))calls.push({method:r.method(),path:new URL(r.url()).pathname})});
-   await p.addInitScript(theme=>{localStorage.setItem('xbot-theme',theme);localStorage.setItem('xbot-panel-open','true')},theme);
+   await p.addInitScript(theme=>{localStorage.setItem('xbot-theme',theme);localStorage.removeItem('xbot-panel-open')},theme);
    const api=async(method,route,data)=>{const res=await context.request.fetch(cfg.url+route,{method,data});assert.ok(res.ok(),method+' '+route+' HTTP '+res.status());return res.json()};
    try {
     await p.goto(cfg.url+'/#login-code');
@@ -95,6 +95,7 @@ const shot=async(p,theme,name)=>{const dir=path.join(cfg.shots,theme);fs.mkdirSy
     data=await api('GET','/api/providers');row=data.providers.find(x=>x.name===name);assert.equal(row.base_url,editedBase);assert.equal(row.display_name,edited);assert.equal(row.protocol,'responses');
     await p.locator('#settings-close').click();
     await p.locator('#roster [data-bot="custom-browser"]').click();
+    await p.locator('#head-chip').click();
     await p.locator('.binding-trigger:visible').first().click();
     const dialog=p.locator('dialog.binding-dialog');await dialog.waitFor();
     await dialog.locator('.binding-section').filter({has:p.locator('.binding-heading',{hasText:edited})}).getByRole('radio').filter({hasText:'runtime-custom-browser'}).click();

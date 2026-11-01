@@ -38,9 +38,9 @@ const assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const waitFor=async(fn,label)=>{for(let i=0;i<1100;i++){if(fn())return;await sleep(10)}throw Error('timed out: '+label)};
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&!$('.thread-loading-cover'),'boot');
- $('#head-chip').click();
- await waitFor(()=>[...document.querySelectorAll('#panel [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
- [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='任务').click();
+
+ await waitFor(()=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='任务').click();
  await waitFor(()=>document.querySelectorAll('.task-routine').length===2,'routines');
  if(new URLSearchParams(location.search).has('shot')){document.body.dataset.testResult='passed';return}
  const card=$('[data-routine=r1]'), trigger=card.querySelector('.routine-skills-summary');

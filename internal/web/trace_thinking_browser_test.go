@@ -26,9 +26,8 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&!$('.thread-loading-cover')&&$('#roster .item[data-bot="'+bots[0].name+'"]'),'app did not boot');
  assert(!$('#thread').textContent.includes('先列目录'),'thinking entered conversation');
- await waitFor(()=>!$('#head-chip').disabled,'header chip stayed disabled');
- $('#head-chip').click();await waitFor(()=>$('#panel [role=tab]'),'panel did not open');
- [...document.querySelectorAll('#panel [role=tab]')].find(n=>n.textContent==='轨迹').click();
+ await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel did not open');
+ [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='轨迹').click();
  await waitFor(()=>document.querySelectorAll('.trace-row').length===2,'trace rows missing');
  assert(!$('.trace-think'),'thinking shown before expanding');
  document.querySelectorAll('.trace-row').forEach(n=>n.click());
