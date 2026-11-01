@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search合同6e54单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -609,60 +609,11 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 本刀仅退fork_bot与确已空的peers工具注册组，保Link/Event其它职责、oldnative历史与bg_插话分支修复；原Memory/Compactor/ctx resolver、oldoffline/WebFork与OwnerSSE边界不扩。source997冻结，父已收最终docs与纯独立commits集成本地main，复用原七有效phase未重已绿首链、六后项或旧族。其余native/platform/EventLink沿未完成路线继续，下一族仅以下经历record/search具体合同，未开代码。
 
-## 批 experience：具体合同PASS，实施中
+## 批 experience：经历两操作已提炼，待父集成
 
-L档，TRUE Fork main06daa397后仅迁experience_record与experience_search；0058先glob空再建 [Proposed ADR0058](../adr/0058-experience-runtime-cli.md)。6e54具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，[0058](../adr/0058-experience-runtime-cli.md) Accepted；pure86d51596/source6e54/fullvalidationa639d399真实NativeShell entry unknown command红.95s/package2.479s封。正接首compiled原source消费链，之后同cutartifact/currentRename/FSerrNull/两门退役，不等首反馈停；Fork7/Message6/Group5/Persona-control-Bot-profile-routine-skillsMCP/三旧审批等有效证据封存不重，不把本刀扩成Memory/Context或全局DuckDB教训库。
+仅经历record/search两门；三项所测独立端到端及全部必要SHAPE/增量静态通过，父集成待收、未main/未主人日用。协议已提炼 [API](../API.md#经历记录与检索运行时-cli)、[内核](../atlas/kernel.md#经历记录与检索实例入口)、[记忆](../atlas/memory.md)，[ADR0058](../adr/0058-experience-runtime-cli.md) Accepted；精确source/validation phase、私夹具失败因果与作者证据留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/原cap/partial字段。
 
-### 选定caller与实际两种结构
-
-```sh
-"$XBOT_BIN" experience record --self --summary TEXT [--focus TEXT] [--from N] [--to N] [--json]
-"$XBOT_BIN" experience record --self --summary-file FILE|- [--focus TEXT|--focus-file FILE|-] [--from N] [--to N] [--json]
-"$XBOT_BIN" experience search --self [--query TEXT|--query-file FILE|-] [--limit N] [--json]
-"$XBOT_BIN" experience --help
-"$XBOT_BIN" experience record --help
-"$XBOT_BIN" experience search --help
-```
-
-record的summary/summary-file恰一、focus/focus-file至多一，组合可任一summary形式配任一focus形式；stdin至多一个字段。纯ParseExperienceRuntime(args不含noun)→{Action,Summary,SummaryFile,Focus,FocusFile,From,To,Query,QueryFile,Limit,Self,JSON,Help}；无位置参数/别名，重复未知flag/坏数字syntax/多stdin/缺self拒；按arity消费literal --help/--、help离线，main早resolveRoot/default/legacy分流。实际cmdgrep无experience旧noun，不破旧arity/OwnerSSE。raw每输入max+1及最终escaped typedJSON各≤1MiB，不先截正文再trim；summary领域Trim非空≤2KiB、focus仅Trim不加独立cap，query保原空白分支/BM25输入，不抄Web512B限制。--from/to为原int（0默认与历史负数边界不顺手修）；limit任意可解析int前送原函数，≤0或>8原默认8。
-
-A离线SQL/MD直写或Web Store.Page借壳会绕原操作时rangeDigest/Clock/currentRename/env与最近2000BM25/6KiB语义，淘汰。B既有cliops.Handlers加Experiences *ExperienceHandlers两callback→原source k.RecordExperience/SearchExperiences与现有currentIO/Clock/Store，选B。无需MemorySession/newKernel/源登记表/metaAction/通用artifact框架。不套外层withCurrentIO再调用内部已持route的原方法。
-
-source仅原listener/规范Root/XBOT_ENDPOINT识别，XBOT_BOT诊断，失败不Load/newK；所有Bot含非primary可用、不附主人/person/project scope资格。原Record/Search忽略ctx，不借fork强加MandatoryLiveCallID或preparedTurn.fromSeq；CallExperienceRecord/Search无CallID参数，缺/旧CallID不改变源领域许可。Normal record不调用approvalIntent、不加card、不要求approver函数，原Shell自身gate独立。search只读语义保；ctx仅作为既有HTTP/操作租约/结果文件调用生命周期，不把现primitive改成prepared上下文协议/事务取消承诺。
-
-### 底接口、typed回包与原语义预算
-
-```go
-type ExperienceRecord struct { Summary string `json:"summary"`; Focus string `json:"focus,omitempty"`; From int `json:"from,omitempty"`; To int `json:"to,omitempty"` }
-type ExperienceSearch struct { Query string `json:"query,omitempty"`; Limit int `json:"limit,omitempty"` }
-type ExperienceRecordReply struct { ID int64 `json:"id,omitempty"`; From int `json:"from"`; To int `json:"to"`; Recorded *bool `json:"recorded"`; Error string `json:"error,omitempty"` }
-type ExperienceSearchReply struct { Text string `json:"text,omitempty"`; File string `json:"file,omitempty"`; Access string `json:"access,omitempty"`; Bytes int64 `json:"bytes,omitempty"`; Error string `json:"error,omitempty"` }
-type ExperienceHandlers struct {
-    Record func(context.Context,ExperienceRecord)(ExperienceRecordReply,error)
-    Search func(context.Context,ExperienceSearch)(ExperienceSearchReply,error)
-}
-// existing Handlers.Experiences = k.ExperienceHandlers()
-r, err := cliops.CallExperienceRecord(ctx,endpoint,root,cliops.ExperienceRecord{Summary:"Fixed deployment",Focus:"deploy"})
-s, err := cliops.CallExperienceSearch(ctx,endpoint,root,cliops.ExperienceSearch{Query:"deployment",Limit:8})
-```
-
-POST `/v1/experience/record` 单对象{summary,focus?,from?,to?}、POST `/v1/experience/search` 单对象{query?,limit?}，严格unknown/非对象/EOF/query拒，沿原loopback/Host/browser/root guard/request1MiB/HTTP64KiB。直接两callback，不另套metaAction envelope。record就原e,err映射：nil才Recorded=true；任意error为null（未确认，不保证库/row零副作用），保原返回e实际ID/From/To（即使error中已带），不stat/错误字串猜提交，不加StoreWithResult/transaction/自动重试/去重。ACK只ID/range/确认，不回显summary/focus/segment全文、不造MemoryOwnReceipt/假旧toolcall配对/普通RoleUser新账。
-
-search的Text必须原SearchExperiences直接返回的presentHistory语义文本，空库原no matching experiences；空query最新，有query原最近2000池BM25，limit原默认8与原6KiB cap/原时间格式和seq-detail提示保持。无typedRows/Count从string反解析，不倒rawFocus或用WebPage全库literal替换。原presentHistory先脱敏再clip6KiB；source回包再沿既有持有secret脱敏与展示预算，DB原内容/格式不因此改写。
-
-纯FormatExperienceRecord/Search与整JSONNL各≤原Shell32KiB，source/CLI共享准确formatter；CLI先打印事实回包再非0。6KiB搜索文本实际JSON控制字符/HTML转义可>32KiB，必要时沿既有work.WriteResult保存完整该Text JSON回包，File/Access=local/Bytes沿现有样式、0600、≤20MiB；不是补回被原6KiB剪掉的raw records。先预检最终metadata JSONNL/human，再短currentIO取当前source workspace写完整artifact，不提前旧name路径晚写，不外持route进Search/Record。artifact写错明确非0无假File，不截一部分搜索伪完整/抬cap或新artifact框架，record展示错误也保实际ID/range/Recorded确认。
-
-### 实际写读与消费链、怎样算对
-
-READ actual internal/kernel/experience.go1-354（Record125/Search168/Env43/lastOwner62/digest80/detail224）、internal/experience/experience.go36-205（ONEINSERT与LastInsertID/exists/Page）、history.present151、Web memory_panel112/app6358、work.Result17与现Bot project68。原Record summaryTrim/2KiB→操作时currentCount n→to0=n→from0在to前最近200行取最新非Internal/ForkMark的RoleUser（不限定OriginOwner/新person资格）→原范围检查→k.now/FocusTrim→首200行原segment→currentExperienceIO Store.Add唯一INSERT/LastInsertId。空transcript0/0合法；不把默认界换成preparedturn；原to<0宽容/Store nullSeq历史不借CLI修。digest每行160B/合计约600B，跳Internal/Fork/ToolRESULT、保event-fence抽正文与user:/assistant:/[tools: names]词法，不问模型。missingDB搜索/Latest/Page/Get通过exists不建库；已有DB read原open可CREATEIFNOTEXISTS/WAL，不承诺readonly全root零bytes。
-
-真实consumer不能漏：DB id-created_at-summary-focus-from_seq-to_seq-segment所有原列与值保，Web Page仍全库字面包含/英文忽略大小写-created_at/id分页（512B q/40page各自原约束），app6358解析原segment user:/assistant:/[tools:]并保原文展示。下一既有environment字段experience count/latestID+200Bsummary沿原差异采样；读错保已经发布旧值、不新Inbox/waker/Memory ownWriteReceipt；原detail seq或experience+0based锚仍取真实完整ToolBody/Hydrate64KiB，不改/不新跨Bot detail。无原native字符串专用重建器，历史literal保。
-
-单次实际SHAPE后0d固定最窄真实source record caller红；首可编译原链early一次：真实非primary/staleBOT source Shell→record→SQLite全部列/原Web字段及segment投影→下一真实provider原env count/latest→search最新/有query BM25→live detail rawseq与experience+offset全文ToolBody。无模型调用（nil Provider/Compactor领域仍可）、无强CallID；当前op default最新用户行需故意区别prepared轮次、内部/Tool结果排除且显式from/to保，原READ不创建空库。
-
-同cut后续最窄验证：summary2048/2049与20Ktrim、focusFILE大输入不强加cap、raw/escaped1M、literalflag/staleRoot/endpoint、limit0负数>8回8/2000候选与Web全库不同；构造6KiB文本使JSON转义>32K，准确human也算、完整原语义Text artifact可读/脱敏/currentRename旧BOTS+WORK不复活，真实artifact路径失败非0。Add真实SQLite/FS错误仅未确认，原可能建库/插入不assert零副作用；不为LastInsertId单点强造全局可变hook/事务框架。env DB读错保旧差异、无额外Event/waker。只retire两wrapper/registry/Known/index/guide；memory组仍有recall，Context四工具与detail/Link.Tools NIL安装图不动；research仅help/search self、summary/query值literal--help不冒recordhelp。必要oldmixed只迁实际依赖，不整族，作者ctx/各种source合同不冒独立。
-
-6e54单次实际SHAPE已PASS/0058Accepted，86d入口红.95s/package2.479s封；现first compiled生产链已接原两方法与回包（go build cliops/kernel/cmd通过，无业务cases），先交0d原SQL-Web-env-search-detail真实消费链once，继续artifact-readonly-retire同cut不等首反馈停。作者完整新tests待统一最小once；两native wrapper首candidate暂保待本刀退门，不冒实现全验。Root4USERdocs/ownerSSE/guard/main/push日用不动；MemoryRecall需原senderperson ctx留后刀，Context不并行混。
+原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父收doc与pure独立commits后整合，不重三已绿或旧族。下一Recall必须等TRUE Experience main后才另定具体合同，不在此预写0059/开第二代码面。
 
 ## 还没做的
 
@@ -670,7 +621,7 @@ READ actual internal/kernel/experience.go1-354（Record125/Search168/Env43/lastO
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search仅以上具体合同，连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search三项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

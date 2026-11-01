@@ -8,7 +8,7 @@ date: 2026-11-02
 
 ## 范围与调用方
 
-TRUE Fork main06daa397后，仅迁experience_record与experience_search；不混Memory Recall/person资格、Context Compact/History/Expand/Detail、全库新服务或全局DuckDB教训库。0058先glob空后新建，6e54具体合同单次SHAPE通过后Accepted，沿该形状实施。协议与验收见 [母路线](../dev/cli-platform-entry.md#批-experience具体合同pass实施中)。cmd/xbot实际grep无experience旧noun；选独立 `experience record --self (--summary TEXT|--summary-file FILE|-) [--focus TEXT|--focus-file FILE|-] [--from N] [--to N] [--json]`、`experience search --self [--query TEXT|--query-file FILE|-] [--limit N] [--json]` 及离线help。字段值按arity消费literal flags/--，stdin至多一个字段；不改既有有效CLI或ownerSSE。
+TRUE Fork main06daa397后，仅迁experience_record与experience_search；不混Memory Recall/person资格、Context Compact/History/Expand/Detail、全库新服务或全局DuckDB教训库。0058先glob空后新建，6e54具体合同单次SHAPE通过后Accepted，沿该形状实施。实际协议见 [API](../API.md#经历记录与检索运行时-cli)，精确证据见 [MILESTONES](../MILESTONES.md)，未迁族留 [母路线](../dev/cli-platform-entry.md)。cmd/xbot实际grep无experience旧noun；选独立 `experience record --self (--summary TEXT|--summary-file FILE|-) [--focus TEXT|--focus-file FILE|-] [--from N] [--to N] [--json]`、`experience search --self [--query TEXT|--query-file FILE|-] [--limit N] [--json]` 及离线help。字段值按arity消费literal flags/--，stdin至多一个字段；不改既有有效CLI或ownerSSE。
 
 ## 两种实际结构
 
