@@ -299,12 +299,12 @@ func TestCLIProfileFullRuntimeResources(t *testing.T) {
 	if status != 200 || json.Unmarshal(raw, &receipt) != nil || receipt.ID != id {
 		t.Fatalf("live original Local could not be steered through its moved route: HTTP %d", status)
 	}
-	mcpRuntimeWait(t, steered, 10*time.Second, "steer did not reach the same held active child")
 	model.base.add("FULL_TIMER_WAKE")
 	srv.Advance(70 * time.Second)
 	cliFullOneInbox(t, srv, "MovedWorker", "timer", "timer", "", "FULL_TIMER_WAKE")
 	release()
 	jobGate.allow()
+	mcpRuntimeWait(t, steered, 10*time.Second, "accepted steer was not consumed at the next real original-child step")
 	WaitFor(t, 12*time.Second, "original Local first completion in moved directory", func() (bool, string) {
 		a := cliFullAgent(t, srv, "MovedWorker", id)
 		return a.Status == "done", a.Status
