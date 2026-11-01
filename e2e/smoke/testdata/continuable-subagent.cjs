@@ -8,6 +8,8 @@ const cfg = JSON.parse(fs.readFileSync(0, 'utf8'));
 
 (async () => {
   const browser = await chromium.launch({executablePath: cfg.chrome, headless: true});
+  let page;
+  const diagnostic = {errors: [], profiles: []};
   try {
     const context = await browser.newContext({viewport: {width: 1440, height: 900}, deviceScaleFactor: 2, colorScheme: 'light'});
     await context.addCookies(cfg.cookies.map(cookie => ({name: cookie.Name, value: cookie.Value, url: cfg.url})));
@@ -16,16 +18,20 @@ const cfg = JSON.parse(fs.readFileSync(0, 'utf8'));
       localStorage.setItem('xbot-theme', 'light');
       localStorage.removeItem('xbot-workspace-hidden');
     }, cfg.bot);
-    const page = await context.newPage();
+    page = await context.newPage();
     page.setDefaultTimeout(15000);
-    const errors = [], messages = [], transcriptResponses = [], artifacts = [];
+    const errors = diagnostic.errors, messages = [], transcriptResponses = [], artifacts = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
       const route = new URL(request.url()).pathname;
       if (request.method() === 'POST' && route.endsWith('/messages')) messages.push({route, body: request.postDataJSON()});
     });
     page.on('response', response => {
-      if (new URL(response.url()).pathname === '/api/bots/' + encodeURIComponent(cfg.bot) + '/agents/' + cfg.id + '/transcript') transcriptResponses.push(response);
+      const route = new URL(response.url()).pathname;
+      if (route === '/api/bots/' + encodeURIComponent(cfg.bot) + '/agents/' + cfg.id + '/transcript') transcriptResponses.push(response);
+      if (route === '/api/bots/' + encodeURIComponent(cfg.bot) && response.request().method() === 'GET') {
+        response.json().then(data => diagnostic.profiles.push({httpStatus: response.status(), count: (data.agents || []).length, agents: (data.agents || []).map(child => ({id: child.id, status: child.status}))})).catch(() => diagnostic.profiles.push({httpStatus: response.status(), unreadable: true}));
+      }
     });
     const tab = name => page.locator('#workspace-tabs').getByRole('tab', {name, exact: true});
     const panelID = async () => tab('子代理').getAttribute('aria-controls');
@@ -92,6 +98,28 @@ const cfg = JSON.parse(fs.readFileSync(0, 'utf8'));
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({status: response.status(), receipt, artifacts}));
     await context.close();
+  } catch (error) {
+    if (page && !page.isClosed()) {
+      const view = await page.evaluate(() => {
+        const root = document.getElementById('workspace-view-agents');
+        return {
+          url: location.origin + location.pathname,
+          title: document.querySelector('#title')?.textContent,
+          tabs: [...document.querySelectorAll('#workspace-tabs [role=tab]')].map(tab => ({name: tab.textContent, selected: tab.getAttribute('aria-selected')})),
+          rootVisible: root?.checkVisibility(),
+          overviewHidden: root?.querySelector('.sa-overview')?.hidden,
+          childTitles: [...(root?.querySelectorAll('h2') || [])].filter(node => node.checkVisibility()).map(node => node.textContent),
+          rows: [...(root?.querySelectorAll('[data-agent]') || [])].map(node => ({id: node.dataset.agent, visible: node.checkVisibility(), role: node.getAttribute('role')})),
+          visibleText: root?.innerText?.slice(0, 1200)
+        };
+      });
+      console.error('CHILD_UI_DIAGNOSTIC ' + JSON.stringify({...diagnostic, view}));
+      if (cfg.artifacts) {
+        fs.mkdirSync(cfg.artifacts, {recursive: true});
+        await page.screenshot({path: path.join(cfg.artifacts, 'continuable-subagent-failure.png'), animations: 'disabled'});
+      }
+    }
+    throw error;
   } finally {
     await browser.close();
   }

@@ -187,7 +187,13 @@ const selectOutput=(root,marker)=>{
  if(editor.setSelectionRange)assert(editor.selectionStart===3&&editor.selectionEnd===11,'poll changed input selection');
  else assert(document.getSelection().toString()===selectionText,'poll changed contenteditable selection');
  await revealEvidence(primaryPanel,'ACCEPT_TOOL_OUTPUT_ALPHA');
- const outputNode=selectOutput(primaryPanel,'ACCEPT_TOOL_OUTPUT_ALPHA'),selectionReads=childAcceptance.profiles[childAcceptance.primary]||0;
+ // Reading tool output leaves the editor. Restrict the Range to the paired
+ // result detail, rather than the model conclusion carrying the same marker.
+ editor.blur();
+ const evidence=primaryPanel.querySelector('aside[aria-label="记录详情"]');
+ assert(visible(evidence),'selected tool detail is not visible');
+ const outputNode=selectOutput(evidence,'ACCEPT_TOOL_OUTPUT_ALPHA'),selectionReads=childAcceptance.profiles[childAcceptance.primary]||0;
+ assert(document.getSelection().toString()==='ACCEPT_TOOL_OUTPUT_ALPHA','fixture did not establish the intended tool-result selection');
  await waitFor(()=>(childAcceptance.profiles[childAcceptance.primary]||0)>=selectionReads+2,'two polls with selected tool output');
  assert(outputNode.isConnected&&document.getSelection().toString()==='ACCEPT_TOOL_OUTPUT_ALPHA','poll replaced selected child tool evidence');
  assert(inputText(editor)===childDraft,'record polling cleared the unsent child draft');
