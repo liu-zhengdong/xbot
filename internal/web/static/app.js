@@ -5558,7 +5558,7 @@
         const selection = state.sel;
         subagentsView = window.XBotSubagents.create({
           bot:selection.id, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress,
-          taskAvatar, taskValue, taskSelected, sameValue:sameTranscriptValue, visibleError,
+          taskAvatar, taskValue, taskSelected, updateTaskNotable, sameValue:sameTranscriptValue, visibleError,
           current:() => state.sel === selection && !state.peer,
           backParent:() => selectWorkspaceTab("chat"),
           traceAdapter:{project:traceEvents, sync:syncTraceDetail},

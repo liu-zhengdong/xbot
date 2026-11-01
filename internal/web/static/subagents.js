@@ -23,7 +23,7 @@
   }
 
   function create(options) {
-    const {bot, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress, taskAvatar, taskValue, taskSelected, sameValue, backParent, current, visibleError} = options;
+    const {bot, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress, taskAvatar, taskValue, taskSelected, updateTaskNotable, sameValue, backParent, current, visibleError} = options;
     const root = el("div", "subagents-view"), overview = el("div", "sa-overview"), childHost = el("div", "sa-child-host");
     const rows = new Map(), groups = new Map();
     let tasks = [], child = null, disposed = false;
@@ -62,6 +62,7 @@
       write(n.send, c.sending ? "发送中…" : "发送");
       write(n.result, t.result_path || ""); n.resultRow.hidden = !t.result_path;
       write(n.identityState, statusText(t));
+      updateTaskNotable(n.view, ACTIVE.includes(t.status) ? [] : (t.notable || []));
     }
     function update(data) {
       tasks = (data.agents || []).filter(isChild);
@@ -124,14 +125,14 @@
       const titleRow = el("div", "sa-title-row"), titleBox = el("div", "sa-title-copy"), title = el("h2"), meta = el("p"), type = el("span", "ty"), status = el("span"), step = el("p", "sa-child-step");
       meta.append(type, status); titleBox.append(title, meta);
       const stop = button("", "secondary sa-stop", "square"), stopLabel = el("span"); stop.append(stopLabel); stop.onclick = () => stopChild(c);
-      titleRow.append(taskAvatar(task), titleBox, stop); head.append(breadcrumb, titleRow, step);
+      titleRow.append(taskAvatar(task), titleBox, stop); head.append(breadcrumb, titleRow, step, el("div", "task-notable"));
       const main = el("div", "sa-record-workspace"), column = el("div", "sa-main"), toolbar = el("div", "sa-record-toolbar"), searchBox = el("label", "sa-search"), search = el("input");
       search.type = "search"; search.placeholder = "搜索已加载记录"; search.setAttribute("aria-label", "搜索已加载的子代理记录"); searchBox.append(icon("search"), search);
       search.oninput = () => { if (!c.composing) { c.query = search.value; syncRecords(c); } };
       search.oncompositionstart = () => { c.composing = true; }; search.oncompositionend = () => { c.composing = false; c.query = search.value; syncRecords(c); };
       const identity = el("details", "sa-identity"), summary = el("summary"); summary.setAttribute("aria-label", "任务信息"); summary.append(icon("ellipsis"));
       const facts = el("div", "sa-identity-pop"), resultRow = el("div"), result = el("code"), identityState = el("span"); resultRow.append(el("span", "", "结果文件"), result);
-      facts.append(el("span", "", "任务编号"), el("code", "", id), el("span", "", "所属 Bot"), el("b", "", bot), el("span", "", "状态"), identityState, resultRow); identity.append(summary, facts);
+      facts.append(el("span", "", "任务编号"), el("code", "", id), el("span", "", "所属 Bot"), el("b", "", bot), el("span", "", "状态"), identityState, resultRow, el("div", "task-notable-details")); identity.append(summary, facts);
       toolbar.append(el("span", "sa-caption", "对话与工具"), searchBox, identity);
       const records = el("div", "sa-records"), inner = el("div", "sa-records-inner"), older = button("更早的记录", "text-btn sa-older"), list = el("div", "sa-record-list"), empty = el("p", "sa-no-records", "正在读取…"), range = el("p", "sa-range");
       older.hidden = true; older.onclick = () => load(c, "before"); inner.append(older, list, empty, range); records.append(inner);
