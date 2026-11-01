@@ -159,17 +159,35 @@ func TestCLIPeerMessageRuntimeLocalSource(t *testing.T) {
 	const observe = "CLI_PEER_RECIPIENT_OBSERVATION"
 	model.base.add(observe)
 	cliSkillSend(t, srv, target, observe)
-	requests := model.requests(observe)
-	fullSeen := false
-	for _, req := range requests {
+	// absorbInbox appends real Bot user messages after the owner input. The
+	// latest user may therefore be the Inbox event, not the observation cue.
+	// Inspect only actual target system requests instead of that cue selector.
+	fullSeen, targetRequests := false, 0
+	model.mu.Lock()
+	for _, raw := range model.raw {
+		var req stubRequest
+		if json.Unmarshal(raw, &req) != nil {
+			continue
+		}
+		isTarget := false
+		for _, msg := range req.Messages {
+			if msg.Role == "system" && strings.Contains(msg.Content, "BOTNAME="+target) {
+				isTarget = true
+			}
+		}
+		if !isTarget {
+			continue
+		}
+		targetRequests++
 		for _, msg := range req.Messages {
 			if msg.Role == "user" && strings.Contains(msg.Content, body) && strings.Contains(msg.Content, "bot:"+source) {
 				fullSeen = true
 			}
 		}
 	}
+	model.mu.Unlock()
 	if !fullSeen {
-		t.Fatal("actual target model context did not consume complete untrusted source event")
+		t.Fatalf("actual target model context did not consume complete untrusted source event; target_requests=%d", targetRequests)
 	}
 	var visible cliPeerMessageReply
 	cliBotDecode(t, run("CLI_PEER_SHARED_ACCEPT", `"$XBOT_BIN" peer-message `+shared+` --self --text SHARED_OWNER_ACCEPTED --json`), &visible)
