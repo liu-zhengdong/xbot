@@ -100,7 +100,7 @@ func cliBotForkPartialCall(t *testing.T, srv *Server, model *cliBotForkModel, so
 	archive := append([]cliBotForkArchiveRequest(nil), model.archive...)
 	model.mu.Unlock()
 	if len(archive) != 1 || len(archive[0].Tools) != 0 || archive[0].Model == "" {
-		t.Fatal("partial fork did not use one original nonstream no-tools compaction Chat request")
+		t.Fatal("partial fork did not use one original no-tools compaction Chat request")
 	}
 	var input strings.Builder
 	for _, message := range archive[0].Messages {
