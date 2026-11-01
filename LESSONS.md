@@ -88,6 +88,8 @@
 
 ## 运行态与后台
 
+- **被调用者接 current IO 后，还要用实际装配后的旧调用方守住 Reload、延迟 Ack 和附属文件。** 原因：Kernel/Timer 方法已接新路由，原 proc 仍拿旧 Inbox 做 Reload/Ack，Web cleanup 保存旧 box，missed-watermark 又直接用旧 Timer.Dir；已成功的新任务随后复活旧目录。短 IO 取当前对象，Handle/SSE/回调与 flock 等待保持锁外，不以删除空旧锁或更新旧 K 指针遮盖。守护：`TestProcRetainedInboxFollowsHandleRename` 的实际 Drain/Run 与 Timer 后半先红后 race1.830s；`TestProfileInboxAckAfterHandleRename`、`TestProfileAbsorbedReplyUsesCurrentInboxAndTranscript` 真 HTTP 先红后 race2.315s；`43e97b41`/`93ff94e1`。继续原 Run 的下一真实 Timer 后，另命中 handle 与 closeDangling.OpenTools 旧存储，`0121ad6d` 同后半 race2.021s；生产 chatConfig 四实际 callbacks 的下一输入/通知/回放也以真红到 race2.005s 修于 `63762ae5`，不以首事件后立刻 cancel 冒领下一事件已验证。Seen 1×（2026-11-01）。
+
 - **跨目录改名的原调用要持真实文件资源，不能让退出闭包再开旧绝对路径。** 原因：组合改名已成功，Shell 的 cwd trap 仍打开旧 marker，stderr 混进同一次 JSON 回执；继承已打开 marker 的 inode、当前路径短段创建/清理，才能同时保 cwd 与严格输出。冷恢复还须在初始化 scope 前按 descriptor 原身份重基；只在最终保存 request 时改路径已经太晚。守护：`TestShellCwdMarkerFollowsRenameThroughOpenFile`、`TestProfileRestoreRebasesDescriptorBeforeScopeInitialization`、`TestProfileChangePersistsCurrentCwdForColdProcess`；独立 RenameEntry 在 `5ed71e5a` 红、`94f34c67` 绿。Seen 1×（2026-11-01）。
 - **已提交的事实必须先构成回执，后续 refresh 或重新打开资源失败不能把它抹成纯错误。** 原因：实际 name/config 已保存，坏 Inbox 导致 route closed，原快照读取返回零值，CLI 与原 SSE 都漏掉已发生的移动；先保 name/previous_name/moved/applied_fields，再追加刷新错误并按同 live value 通知。守护：`TestProfileCommittedReceiptAndNoticeSurviveClosedInboxRoute`，`94f34c67` 定向通过；未宣称任意多文件 IO 全事务。Seen 1×（2026-11-01）。
 

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ 748ea940
+verified: 2026-11-01 @ 63762ae5
 ---
 # 内核：Link、Event、收件箱
 
@@ -30,7 +30,7 @@ runtime 改名沿 source operations→host index→code.Move→exec owners/Local
 
 code/exec/Jobs mover 全部返回、route/storage/owners 锁释放后，只把 liveTurns 原表中同 Resources 且仍打开的实际 value 迁到新 key，收尾按保存的 key 与 value 清理，不登记所有旧 K。资料发布在 source/host/route 业务锁外调用当前 Sink，事件带 `{name,previous_name?}`；先从当前 Resources 复制显示快照到活 K，不读其旧路径，不异步替换旧 `K.Bot` 或改写它的 Provider/role/budget 快照。普通资料、头像与部分成功也沿同一通知口，不通过 Inbox 伪装用户消息。
 
-`WithCurrentIO` 与当前目录闭包把路径选择和完整短 IO 放在同一 route 内，已接入 Bot/Inbox、Timer routine、code 记录/卡片/终态投递及 exec 子记录等写口；取出旧路径再锁外写不属于这条保证。内部 Bot/work 前缀的 cwd/scope 跟随改名，外部自定义目录保留。此范围不能推及全部记忆、媒体或提醒接口；网络、Join、Sink 和跨 K 回调不持 route。
+`WithCurrentIO` 与当前目录闭包把路径选择和完整短 IO 放在同一 route 内，已接入 Bot/Inbox、Timer routine、code 记录/卡片/终态投递及 exec 子记录等写口；取出旧路径再锁外写不属于这条保证。原 proc Run/Drain 的 Reload/Head/Ack/Wait 取值、Timer 投递和 Web 共享消息/CLI event 的延迟 Ack 也沿同 ref 取当前 Inbox；原 chat 下一输入、Count/回放与通知读/已读同样接当前存储，打印和交互回调在锁外。下一事件的 handle 协调 inode 在当前 route 内打开、flock 在锁外等；dangling 恢复也只读取当前 transcript，Handle/等待/SSE 保持在锁外。Timer 在实际 StartOperations 发布前重绑当前 K，missed 水印读写及打开锁 inode 同样跟随当前目录，flock 等待与计算/投递在 route 外。WorkDir 的原目录来源不随 UseBot 配置刷新改变；内部 Bot/work 的逻辑与物理同一前缀均可重基，cwd/scope、冷 descriptor 与新进程 cwd 跟随改名，外部自定义目录和相对 Repo 保留。此范围不能推及全部记忆、媒体或提醒接口；网络、Join、Sink 和跨 K 回调不持 route。
 
 删除初始保护检查立即放 primary 锁，暂闭新准入后在全资源锁外取消/join；最终复用原 Jobs.Move(sameDir) 的元数据锁→route→primary 作物理删除 fence。删前失败恢复同对象准入；已 RemoveAll 而后续密钥清理失败仍终态关闭。
 

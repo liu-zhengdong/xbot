@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ 748ea940
+verified: 2026-11-01 @ 63762ae5
 ---
 # 安全：保险箱与权限表
 
