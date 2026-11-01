@@ -411,11 +411,17 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 	cmd.Env = req.Env
 	cmd.Stdout = lv.w
 	cmd.Stderr = lv.w
-	if err := cmd.Start(); err != nil {
+	var startErr error
+	if req.StartIO != nil {
+		startErr = req.StartIO(func(current string) error { cmd.Dir = current; return cmd.Start() })
+	} else {
+		startErr = cmd.Start()
+	}
+	if startErr != nil {
 		if req.onStart != nil {
 			req.onStart()
 		}
-		return "", err
+		return "", startErr
 	}
 	lv.mu.Lock()
 	lv.cmd = cmd

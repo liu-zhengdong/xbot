@@ -16,6 +16,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
@@ -129,11 +130,11 @@ func (k *Kernel) ownerWaiting(t *turn) bool {
 	if k.Inbox == nil {
 		return false
 	}
-	if err := k.Inbox.Reload(); err != nil {
+	if err := k.reloadCurrentInbox(); err != nil {
 		return false
 	}
 	owners := k.Bot.Config().Owners
-	for _, ev := range k.Inbox.Pending() {
+	for _, ev := range k.pendingCurrentEvents() {
 		if ev.ID == "" || ev.ID == t.turnEvent {
 			continue
 		}
@@ -178,7 +179,7 @@ func (k *Kernel) tryForkLocked(t *turn) bool {
 	}
 	id := newBranchID()
 	// Holding t.mu keeps the turn's own writes out until the marker is down.
-	if _, err := k.Bot.AppendFork(id, t.fromSeq, t.task); err != nil {
+	if _, err := k.appendCurrentFork(id, t.fromSeq, t.task); err != nil {
 		return false
 	}
 	t.branch = id
@@ -232,17 +233,21 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	// The same result file owns both the complete conclusion and control
 	// diagnostics. Only bounded excerpts enter the main-line event.
 	brief, _ := clip.Bytes(details, 512)
-	report, err := exec.ResultText(k.Bot.AgentDir(id), full, line)
-	text := heading + brief + "\n" + report
-	if err == nil {
-		text, err = exec.PreviewResult(filepath.Join(k.Bot.AgentDir(id), "result.txt"), text, line)
-	}
+	var text string
+	err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		report, err := exec.ResultText(b.AgentDir(id), full, line)
+		text = heading + brief + "\n" + report
+		if err == nil {
+			text, err = exec.PreviewResult(filepath.Join(b.AgentDir(id), "result.txt"), text, line)
+		}
+		return err
+	})
 	if err != nil {
 		status = "failed"
 		text = fmt.Sprintf("后台任务 %s 结束：%s，%d 步。%s\n保存后台结果失败：%s\n%s", id, status, steps, brief, err, line)
 		text, _ = clip.Bytes(text, 4096)
 	}
-	_, _ = k.Bot.AppendForkEnd(id, status, steps)
+	_, _ = k.appendCurrentForkEnd(id, status, steps)
 	k.writeForkMeta(t, status)
 	k.dropScope(id)
 	k.bgMu.Lock()
@@ -256,7 +261,7 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 	if k.Inbox == nil {
 		return
 	}
-	_ = k.Inbox.Post(link.Event{
+	_ = k.postCurrentEvent(link.Event{
 		ID:        "ev_" + id + "_end",
 		Source:    link.SourceSubagent,
 		Type:      "fork_end",
@@ -268,10 +273,6 @@ func (k *Kernel) finishBackground(t *turn, produced []provider.Message, runErr e
 }
 
 func (k *Kernel) writeForkMeta(t *turn, status string) {
-	dir := filepath.Join(filepath.Dir(k.Bot.OutboxPath()), "agents", t.branch)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return
-	}
 	pid, start := tools.CurrentProcess()
 	raw, err := json.Marshal(map[string]any{
 		"pid": pid, "proc_start": start, "id": t.branch, "mode": "fork-turn", "status": status, "task": t.task,
@@ -281,7 +282,13 @@ func (k *Kernel) writeForkMeta(t *turn, status string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600)
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		dir := b.AgentDir(t.branch)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0600)
+	})
 }
 
 func newBranchID() string {
@@ -418,10 +425,10 @@ func (k *Kernel) Queue() []QueueItem {
 	}
 	k.bgMu.Unlock()
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	if full && k.Inbox != nil && k.Inbox.Reload() == nil {
+	if full && k.Inbox != nil && k.reloadCurrentInbox() == nil {
 		owners := k.Bot.Config().Owners
 		cur := k.curTurn()
-		for _, ev := range k.Inbox.Pending() {
+		for _, ev := range k.pendingCurrentEvents() {
 			if ev.ID == "" || ev.ID == cur.turnEvent || !link.OwnerTrusted(ev.Source, ev.Sender, owners) {
 				continue
 			}
@@ -493,7 +500,7 @@ func (k *Kernel) cancelQueued(cid string) (string, error) {
 	// A slot item is an owner message still in the inbox.
 	for _, q := range k.Queue() {
 		if q.ID == cid && q.Reason == "slot" {
-			if err := k.Inbox.Ack(cid); err != nil {
+			if err := k.ackCurrentEvent(cid); err != nil {
 				return "", err
 			}
 			return "cancelled " + cid, nil

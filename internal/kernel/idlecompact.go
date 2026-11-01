@@ -45,15 +45,15 @@ func (k *Kernel) MaybeIdleCompact(now time.Time) {
 	if err := k.CheckBindingIdle(); err != nil {
 		return
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil || n == 0 {
 		return
 	}
-	tail, err := k.Bot.Slice(n, n)
+	tail, err := k.currentSlice(n, n)
 	if err != nil || len(tail) != 1 || tail[0].Time.IsZero() || now.Sub(tail[0].Time) < after {
 		return
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return
 	}

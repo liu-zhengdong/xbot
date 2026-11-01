@@ -800,7 +800,7 @@ func TestRenameKeepsToolJobsWorking(t *testing.T) {
 	}
 }
 
-// bot_update_profile renames inside a live kernel. The job set follows the
+// The runtime profile domain renames inside a live kernel. The job set follows the
 // bot to the new directory, so tool calls later in the same turn do not write
 // back into the old one.
 func TestShellJobsFollowRename(t *testing.T) {
@@ -832,16 +832,14 @@ func TestShellJobsFollowRename(t *testing.T) {
 	}
 }
 
-// The real self-rename: bot_update_profile is itself a running job in the old
-// directory when it moves the bot. Its completion lands in the new directory,
+// A runtime profile operation runs inside a job in the old directory when it
+// moves the bot. Its completion lands in the new directory,
 // the old bot directory is not recreated, and the same turn keeps working.
 func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools, link.NamePersona)
 	root := b.Root
 	now := time.Unix(1_700_000_000, 0).UTC()
 	p := &scripted{resps: []provider.Message{
-		toolCall("expand", "expand_tool_group", `{"group":"bot_profile"}`),
-		toolCall("rename", "bot_update_profile", `{"name":"grace"}`),
 		toolCall("say", "send_message_to_user", mustArgs(t, map[string]string{"text": "改名以后还能说话"})),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
@@ -851,6 +849,26 @@ func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
 		Now:   func() time.Time { return now },
 	}
 	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
+	next := "grace"
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: &next})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := k.shellJobs()
+	receipt := before.RunCall(context.Background(), tools.CallRequest{Name: "profile_runtime", Run: func(context.Context) tools.CallResult {
+		result, err := k.ApplyProfileChange(change)
+		raw, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			return tools.CallResult{Err: marshalErr}
+		}
+		return tools.CallResult{Text: string(raw), Err: err}
+	}})
+	if receipt.Err != nil || !strings.Contains(receipt.Text, `"name":"grace"`) {
+		t.Fatalf("runtime receipt: %+v", receipt)
+	}
+	if k.shellJobs() != before {
+		t.Fatal("runtime rename replaced the job table")
+	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "改名叫 grace", now)); err != nil {
 		t.Fatal(err)
 	}
@@ -858,7 +876,7 @@ func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
 		t.Fatalf("bot %q, results %q", k.Bot.Name(), bodies(t, k))
 	}
 	got := bodies(t, k)
-	if len(got) < 3 || !strings.Contains(got[1], "profile saved") || !strings.Contains(got[2], "sent to the owner's chat") {
+	if len(got) == 0 || !strings.Contains(got[len(got)-1], "sent to the owner's chat") {
 		t.Fatalf("tool results %q", got)
 	}
 	if _, err := os.Stat(bot.Dir(root, "ada")); !os.IsNotExist(err) {

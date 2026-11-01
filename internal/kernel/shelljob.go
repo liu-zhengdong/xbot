@@ -100,6 +100,7 @@ func (k *Kernel) attachShell() {
 // bindShellRuntime is shared by mounted and scoped (subagent) shells.
 func (k *Kernel) bindShellRuntime(sh *tools.Shell) {
 	sh.BindEnvironment(k.CLIEnvironment)
+	sh.BindStartIO(k.withShellStartIO)
 	sh.BindMarkerIO(func(fn func(string) error) error {
 		return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
 			dir := filepath.Join(bot.Dir(b.Root, b.Name()), "cwd-markers")

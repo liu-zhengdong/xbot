@@ -16,7 +16,7 @@ func (r *turnRun) validateReply(req provider.Request, msg provider.Message) erro
 		return nil
 	}
 	required := false
-	err := r.k.Bot.Walk(r.t.fromSeq, 0, func(_ int, e bot.Entry) error {
+	err := r.k.currentWalk(r.t.fromSeq, 0, func(_ int, e bot.Entry) error {
 		if e.Branch != "" || e.IsInternal() || e.EventID == "" || e.Message.Role != provider.RoleUser {
 			return nil
 		}

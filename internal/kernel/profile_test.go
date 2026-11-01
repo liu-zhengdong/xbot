@@ -16,7 +16,6 @@ import (
 	"xbot/internal/notify"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
-	"xbot/internal/review"
 	"xbot/internal/work"
 )
 
@@ -78,297 +77,6 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 	last := updates[len(updates)-1]
 	if !strings.Contains(last, `"profile":`) || strings.Contains(last, "persona: updated") || strings.Contains(last, "Be brief") || strings.Contains(last, "项目笔记") {
 		t.Fatalf("profile diff: %s", last)
-	}
-}
-
-func TestUpdateProfileNeedsConfirmationPermissionsOn(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NamePersona)
-	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
-	now := t0
-	call := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-		ID: "c1", Type: "function",
-		Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: `{"description":"中文笔记"}`},
-	}})}
-	// A denied call cannot be retried with the same arguments. The later
-	// approval uses a different update.
-	call2 := provider.Message{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-		ID: "c2", Type: "function",
-		Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: `{"description":"中文笔记","timezone":"UTC"}`},
-	}})}
-	p := &scripted{resps: []provider.Message{
-		toolCall("expand-profile", "expand_tool_group", `{"group":"bot_profile"}`),
-		call,
-		{Role: provider.RoleAssistant, Content: provider.TextContent("denied-done")},
-		call2,
-		{Role: provider.RoleAssistant, Content: provider.TextContent("saved")},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("next")},
-	}}
-	approved := false
-	k := &Kernel{
-		Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4,
-		Now: func() time.Time { return now },
-		Approve: func(_ context.Context, name, summary string) (bool, error) {
-			if name != "bot_update_profile" || !strings.Contains(summary, "中文") {
-				t.Fatalf("confirm %s %s", name, summary)
-			}
-			return approved, nil
-		},
-	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it", t0)); err != nil {
-		t.Fatal(err)
-	}
-	if b.Config().Description != "" || b.Config().Proactivity != "" {
-		t.Fatalf("denied profile applied: %+v", b.Config())
-	}
-	entries, err := b.Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !transcriptHas(entries, "denied by user") {
-		t.Fatal("missing denial")
-	}
-	approved = true
-	now = t0.Add(5 * time.Minute)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change it again", t0.Add(time.Minute))); err != nil {
-		t.Fatal(err)
-	}
-	if b.Config().Description != "中文笔记" || b.Config().Timezone != "UTC" || b.Config().Proactivity != "" {
-		t.Fatalf("profile %+v", b.Config())
-	}
-	now = t0.Add(10 * time.Minute)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "third", t0.Add(2*time.Minute))); err != nil {
-		t.Fatal(err)
-	}
-	prefix := p.reqs[len(p.reqs)-1].Messages[0].Text()
-	if strings.Contains(prefix, "中文笔记") || strings.Contains(prefix, "Proactivity:") {
-		t.Fatal(prefix)
-	}
-	updates := envUpdates(t, b)
-	last := strings.Join(updates, "\n")
-	if !strings.Contains(last, `"profile":`) || strings.Contains(last, "中文") {
-		t.Fatalf("env %s", last)
-	}
-}
-
-func TestUpdateProfileAvatarConfirmationPermissionsOn(t *testing.T) {
-	testUpdateProfileAvatar(t, false)
-}
-
-func TestUpdateProfileAvatarDirectPermissive(t *testing.T) {
-	testUpdateProfileAvatar(t, true)
-}
-
-func testUpdateProfileAvatar(t *testing.T, permissive bool) {
-	for _, tc := range []struct {
-		name, args, description, renamed string
-		allow                            bool
-	}{
-		{name: "deny", args: `{"description":"笔记助手","avatar_seed":"Ada#2"}`},
-		{name: "no approver", args: `{"avatar_seed":"Ada#2"}`, allow: true},
-		{name: "avatar only", args: `{"avatar_seed":"Ada#2"}`, allow: true},
-		{name: "with description", args: `{"description":"笔记助手","avatar_seed":"Ada#2"}`, description: "笔记助手", allow: true},
-		{name: "all fields", args: `{"name":"renamed","description":"笔记助手","timezone":"UTC","avatar_seed":" Ada#2 "}`, description: "笔记助手", renamed: "renamed", allow: true},
-	} {
-		if (permissive && !tc.allow) || (!permissive && tc.name == "no approver") {
-			continue
-		}
-		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal, link.NamePersona)
-			png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 7}
-			if err := b.SetAvatar(png, "image/png"); err != nil {
-				t.Fatal(err)
-			}
-			before := profileAvatarFiles(t, b)
-			other, err := bot.Create(b.Root, "other", "Other bot.", nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			otherBefore := profileAvatarFiles(t, other)
-			// Through the tools door: describe, then call by id.
-			call := toolCall("avatar", "tools", `{"action":"call","id":"bot_update_profile","args":`+tc.args+`}`)
-			p := &scripted{resps: []provider.Message{
-				toolCall("describe-profile", "tools", `{"action":"describe","id":"bot_update_profile"}`),
-				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-				call, {Role: provider.RoleAssistant, Content: provider.TextContent("done again")},
-			}}
-			confirms := 0
-			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive}
-			k.Approve = func(_ context.Context, name, summary string) (bool, error) {
-				confirms++
-				if name != "bot_update_profile" || !strings.Contains(summary, `avatar_seed "Ada#2"`) {
-					t.Errorf("confirmation %s %s", name, summary)
-				}
-				if tc.description != "" && !strings.Contains(summary, `description "笔记助手"`) {
-					t.Errorf("description missing from shared card: %s", summary)
-				}
-				if title, _ := review.CardText(name, json.RawMessage(tc.args), summary, "local"); title != "修改档案" {
-					t.Errorf("card title %q", title)
-				}
-				if confirms == 1 && !reflect.DeepEqual(profileAvatarFiles(t, k.Bot), before) {
-					t.Error("profile or upload changed before confirmation")
-				}
-				return tc.allow, nil
-			}
-			if tc.name == "no approver" {
-				k.Approve = nil
-			}
-			started := time.Now()
-			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "给自己换个头像", started)); err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("scripted avatar turn: %s", time.Since(started))
-			// describe puts the schema in a result; tools[] never changes.
-			if !strings.Contains(p.reqs[1].Messages[len(p.reqs[1].Messages)-1].Text(), `"avatar_seed"`) {
-				t.Fatal("describe did not return the schema")
-			}
-			for _, req := range p.reqs {
-				if hasDef(req.Tools, "bot_update_profile") || !reflect.DeepEqual(toolNamesOf(req.Tools), toolNamesOf(p.reqs[0].Tools)) {
-					t.Fatalf("tools[] changed: %v", toolNamesOf(req.Tools))
-				}
-			}
-			wantConfirms := 1
-			if permissive {
-				wantConfirms = 0
-			}
-			if confirms != wantConfirms {
-				t.Fatalf("confirmation count %d, want %d", confirms, wantConfirms)
-			}
-			if tc.allow {
-				loaded, err := bot.Load(b.Root, k.Bot.Name())
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, current := range []*bot.Bot{k.Bot, loaded} {
-					if av, seed := current.AvatarState(); av != bot.AvatarGenerated || seed != "Ada#2" {
-						t.Fatalf("avatar state %q %q", av, seed)
-					}
-					if current.Config().Description != tc.description {
-						t.Fatalf("description %q", current.Config().Description)
-					}
-				}
-				if tc.renamed != "" && (loaded.Name() != tc.renamed || loaded.Config().Timezone != "UTC") {
-					t.Fatalf("combined rename/timezone not applied: %+v", loaded.Config())
-				}
-				after := profileAvatarFiles(t, loaded)
-				if _, ok := after["avatar"]; ok {
-					t.Fatal("upload was not removed")
-				}
-				if _, ok := after["avatar.mime"]; ok {
-					t.Fatal("upload MIME was not removed")
-				}
-				// Repeating the same update preserves stored state.
-				if err := k.Handle(context.Background(), link.TerminalEvent("u1", "再用同一头像", time.Now())); err != nil {
-					t.Fatal(err)
-				}
-				if confirms != 2*wantConfirms || !reflect.DeepEqual(profileAvatarFiles(t, k.Bot), after) {
-					t.Fatal("repeated update changed stored profile or unexpected confirmation count")
-				}
-			} else {
-				if !reflect.DeepEqual(profileAvatarFiles(t, b), before) {
-					t.Fatal("denied update changed profile or upload")
-				}
-				if av, _ := b.AvatarState(); av != bot.AvatarCustom {
-					t.Fatal("denied update changed in-memory avatar")
-				}
-				entries, err := b.Entries()
-				if err != nil || !transcriptHas(entries, "denied by user") {
-					t.Fatalf("missing denial: %v", err)
-				}
-			}
-			if !reflect.DeepEqual(profileAvatarFiles(t, other), otherBefore) {
-				t.Fatal("another bot was changed")
-			}
-		})
-	}
-}
-
-func TestUpdateProfileAvatarRejectsInvalid(t *testing.T) {
-	testUpdateProfileAvatarRejectsInvalid(t, false)
-}
-
-func TestUpdateProfileAvatarRejectsInvalidPermissive(t *testing.T) {
-	testUpdateProfileAvatarRejectsInvalid(t, true)
-}
-
-func testUpdateProfileAvatarRejectsInvalid(t *testing.T, permissive bool) {
-	cases := []struct{ name, args, want string }{
-		{"number", `{"avatar_seed":3}`, "must be a string"},
-		{"boolean", `{"avatar_seed":true}`, "must be a string"},
-		{"array", `{"avatar_seed":[]}`, "must be a string"},
-		{"object", `{"avatar_seed":{}}`, "must be a string"},
-		{"null", `{"avatar_seed":null}`, "invalid avatar_seed"},
-		{"cross bot target", `{"avatar_seed":"Ada#2","target":"other"}`, "unknown field"},
-		{"cross bot name", `{"avatar_seed":"Ada#2","bot":"other"}`, "unknown field"},
-		{"upload", `{"avatar":"custom"}`, "unknown field"},
-	}
-	for _, seed := range []string{"", " ", "<x>", "a\"b", "a'b", "a&b", "a`b", "a\nb", "a\x00b", strings.Repeat("a", 81), strings.Repeat("周", 81)} {
-		raw, err := json.Marshal(map[string]string{"avatar_seed": seed, "description": "must not apply"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		cases = append(cases, struct{ name, args, want string }{seed, string(raw), "invalid avatar_seed"})
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal, link.NamePersona)
-			if err := b.SetAvatar([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, "image/png"); err != nil {
-				t.Fatal(err)
-			}
-			before := profileAvatarFiles(t, b)
-			p := &scripted{resps: []provider.Message{
-				toolCall("expand-profile", "expand_tool_group", `{"group":"bot_profile"}`),
-				{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-					ID: "bad-avatar", Type: "function", Function: provider.FunctionCall{Name: "bot_update_profile", Arguments: tc.args},
-				}})},
-				{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-			}}
-			confirms := 0
-			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Persona{}}, MaxSteps: 4, Permissive: permissive,
-				Approve: func(context.Context, string, string) (bool, error) { confirms++; return true, nil },
-			}
-			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "change avatar", time.Now())); err != nil {
-				t.Fatal(err)
-			}
-			entries, err := b.Entries()
-			if err != nil || !transcriptHas(entries, tc.want) {
-				t.Fatalf("missing tool error %q: %v", tc.want, err)
-			}
-			if _, err := (profileTool{k}).Run(context.Background(), json.RawMessage(tc.args)); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Run must also validate: %v", err)
-			}
-			if confirms != 0 || !reflect.DeepEqual(profileAvatarFiles(t, b), before) {
-				t.Fatal("invalid update asked for confirmation or changed profile/upload")
-			}
-		})
-	}
-}
-
-func TestUpdateProfileAvatarSeedBoundary(t *testing.T) {
-	for _, seed := range []string{"XBot#3", " 周报#2 ", strings.Repeat("周", 80)} {
-		raw, _ := json.Marshal(map[string]string{"avatar_seed": seed})
-		need, summary, err := (reviewedTool{Tool: profileTool{}}).Confirm(raw)
-		if err != nil || !need || !strings.Contains(summary, `avatar_seed "`+strings.TrimSpace(seed)+`"`) {
-			t.Fatalf("valid seed %q: need=%v summary=%s err=%v", seed, need, summary, err)
-		}
-	}
-}
-
-func TestUpdateProfileAvatarSchema(t *testing.T) {
-	raw, err := json.Marshal((profileTool{}).Parameters())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var schema struct {
-		Properties map[string]struct{ Type string }
-	}
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		t.Fatal(err)
-	}
-	if len(schema.Properties) != 4 || schema.Properties["avatar_seed"].Type != "string" {
-		t.Fatalf("expected four profile fields including string avatar_seed: %s", raw)
-	}
-	if review.ClassOf("bot_update_profile") != review.SelfEdit {
-		t.Fatal("profile avatar must remain SelfEdit")
 	}
 }
 
@@ -508,6 +216,46 @@ func TestRenameUpdatesPrimaryWorkAndGroup(t *testing.T) {
 	}
 }
 
+func TestRenameDomainReportsPeerFailureAfterActualMove(t *testing.T) {
+	for _, conflict := range []bool{false, true} {
+		t.Run(map[bool]string{false: "peer failure after move", true: "target conflict before peer"}[conflict], func(t *testing.T) {
+			root := t.TempDir()
+			if _, err := bot.Create(root, "old", "fixture", nil); err != nil {
+				t.Fatal(err)
+			}
+			if conflict {
+				if _, err := bot.Create(root, "next", "occupied", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A group-list IO error follows the physical commit, and cannot
+			// replace a predictable destination-conflict error.
+			if err := os.WriteFile(filepath.Join(root, "groups"), []byte("not a directory"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			current, moved, err := renameBotResult(root, "old", " next ")
+			if conflict {
+				if !errors.Is(err, bot.ErrExists) || moved {
+					t.Fatalf("conflict outcome: %v %v", moved, err)
+				}
+				if _, err := bot.Load(root, "old"); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || !moved || current == nil || current.Name() != "next" {
+				t.Fatalf("partial move: %v %v %v", current, moved, err)
+			}
+			if _, err := os.Stat(bot.Dir(root, "old")); !os.IsNotExist(err) {
+				t.Fatalf("old route revived: %v", err)
+			}
+			if _, err := bot.Load(root, "next"); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func transcriptHas(entries []bot.Entry, text string) bool {
 	for _, e := range entries {
 		if strings.Contains(e.Message.Text(), text) {
@@ -517,37 +265,68 @@ func transcriptHas(entries []bot.Entry, text string) bool {
 	return false
 }
 
-func TestProfileRejectsRemovedStyleFields(t *testing.T) {
-	for _, field := range []string{"tone", "length", "emoji", "language", "quiet_start", "quiet_end"} {
-		if _, _, _, err := parseProfileArgs(json.RawMessage(`{"` + field + `":"old"}`)); err == nil {
-			t.Fatalf("removed field %s accepted", field)
-		}
-	}
-}
-
-func TestUpdateProfileSavedReceipt(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NamePersona)
-	tool := profileTool{&Kernel{Bot: b}}
-	output, err := tool.Run(context.Background(), json.RawMessage(`{"avatar_seed":"Ada#4","description":"笔记助手"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := bot.Load(b.Root, b.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, seed := loaded.AvatarState(); seed != "Ada#4" || loaded.Config().Description != "笔记助手" {
-		t.Fatalf("saved receipt precedes persistence: %+v", loaded.Config())
-	}
-	if !strings.HasPrefix(output, "profile saved") || !strings.Contains(output, "已换好") {
-		t.Fatalf("receipt must acknowledge the completed save: %q", output)
-	}
-	for _, text := range []string{output, tool.Description(), link.Blurb(link.NamePersona)} {
-		if !(strings.Contains(text, "immediately") && strings.Contains(text, "sidebar")) && !(strings.Contains(text, "当面刷新") && strings.Contains(text, "侧栏")) {
-			t.Fatalf("profile guidance lacks current-conversation refresh: %s", text)
-		}
-		if strings.Contains(text, "next wake") || strings.Contains(text, "下次唤醒") {
-			t.Fatalf("profile guidance postpones a completed save: %s", text)
-		}
+func TestProfileDomainAvatarKeepsOtherBotAndRepeat(t *testing.T) {
+	for _, mode := range []string{"avatar", "description", "rename"} {
+		t.Run(mode, func(t *testing.T) {
+			b := testBot(t, link.NameTerminal, link.NamePersona)
+			if err := b.SetAvatar([]byte("\x89PNG\r\n\x1a\nold"), "image/png"); err != nil {
+				t.Fatal(err)
+			}
+			other, err := bot.Create(b.Root, "other", "Other bot.", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			otherBefore := profileAvatarFiles(t, other)
+			name, description, zone, seed := "renamed", "笔记助手", "UTC", "Ada#2"
+			change := bot.ProfileChange{AvatarSeed: &seed}
+			if mode != "avatar" {
+				change.Description = &description
+			}
+			if mode == "rename" {
+				change.Name, change.Timezone = &name, &zone
+			}
+			change, err = bot.ValidateProfileChange(change)
+			if err != nil {
+				t.Fatal(err)
+			}
+			k := &Kernel{Bot: b}
+			receipt, err := k.ApplyProfileChange(change)
+			if err != nil || !receipt.Applied || receipt.AvatarSeed != seed {
+				t.Fatalf("domain receipt: %+v %v", receipt, err)
+			}
+			loaded, err := bot.Load(b.Root, receipt.Name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if av, got := loaded.AvatarState(); av != bot.AvatarGenerated || got != seed {
+				t.Fatalf("avatar %q %q", av, got)
+			}
+			wantDescription := ""
+			if mode != "avatar" {
+				wantDescription = description
+			}
+			if loaded.Config().Description != wantDescription || receipt.Description != wantDescription {
+				t.Fatalf("description: %+v", loaded.Config())
+			}
+			if mode == "rename" && (receipt.Name != name || loaded.Config().Timezone != zone || !receipt.Moved) {
+				t.Fatalf("combined fields: %+v %+v", receipt, loaded.Config())
+			}
+			after := profileAvatarFiles(t, loaded)
+			if _, ok := after["avatar"]; ok {
+				t.Fatal("upload was not removed")
+			}
+			if _, ok := after["avatar.mime"]; ok {
+				t.Fatal("upload MIME was not removed")
+			}
+			if _, err := k.ApplyProfileChange(change); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(after, profileAvatarFiles(t, k.Bot)) {
+				t.Fatal("repeating the typed update changed persisted state")
+			}
+			if !reflect.DeepEqual(otherBefore, profileAvatarFiles(t, other)) {
+				t.Fatal("another bot changed")
+			}
+		})
 	}
 }

@@ -61,11 +61,6 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	if needsCard(t, k, "restart_xbot", `{}`) {
 		t.Error("restart asked with the cards off")
 	}
-	for _, args := range []string{`{"avatar_seed":"XBot#3"}`, `{"description":"笔记助手"}`, `{"description":"笔记助手","avatar_seed":"XBot#3"}`} {
-		if needsCard(t, k, "bot_update_profile", args) {
-			t.Errorf("profile update %s asked with permissions off", args)
-		}
-	}
 	// The machine switch and the guard on outside turns are off too.
 	k.Machine = func() (string, error) { return "ask", nil }
 	if needsCard(t, k, "sh", `{"description":"Verify the scenario behavior","command":"ls"}`) {
@@ -191,8 +186,8 @@ func TestLivePermissionSwitch(t *testing.T) {
 		if got := needsCard(t, k, "delete_file", `{"path":"a.txt"}`); got {
 			t.Fatalf("delete needsCard=%v, on=%v", got, on)
 		}
-		for _, tool := range []string{"http_request", "mcp_x_send", "bot_update_profile", "sh"} {
-			if needsCard(t, k, tool, `{"method":"POST","command":"rm a.txt","avatar_seed":"XBot#3"}`) {
+		for _, tool := range []string{"http_request", "mcp_x_send", "bot_propose_persona", "sh"} {
+			if needsCard(t, k, tool, `{"method":"POST","command":"rm a.txt","text":"new persona"}`) {
 				t.Fatalf("%s asked with permissions on=%v", tool, on)
 			}
 		}

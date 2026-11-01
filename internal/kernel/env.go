@@ -12,6 +12,7 @@ import (
 	"xbot/internal/clock"
 	"xbot/internal/code"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 )
@@ -111,7 +112,9 @@ func (k *Kernel) locationName() (*time.Location, string) {
 	name := "UTC"
 	loc := time.UTC
 	if k != nil && k.Bot != nil {
-		if tz := strings.TrimSpace(k.Bot.Config().Timezone); tz != "" {
+		var timezone string
+		_ = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { _, timezone = current.ProfileValues(); return nil })
+		if tz := strings.TrimSpace(timezone); tz != "" {
 			loaded, err := time.LoadLocation(tz)
 			if err == nil {
 				loc = loaded
@@ -307,7 +310,12 @@ func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskE
 			}
 			continue
 		}
-		meta, err := exec.ReadMeta(k.Bot.AgentDir(old.ID))
+		var meta exec.Meta
+		err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			var err error
+			meta, err = exec.ReadMeta(current.AgentDir(old.ID))
+			return err
+		})
 		if err != nil || ((meta.Status == "running" || meta.Status == "queued") && !tools.SameProcess(meta.PID, meta.ProcStart)) {
 			// Reuse recovery's process proof even if writing its terminal meta
 			// failed; a readable but stale "running" record is not live work.

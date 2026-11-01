@@ -11,9 +11,11 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/code"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
+	"xbot/internal/link"
 )
 
-const cliProfileGuide = `资料（简介、时区、生成头像 seed）优先通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；换头像用 profile set --self --avatar-seed；改名仍用现有 profile 工具。MCP 管理、发现和调用使用同一当前二进制的 mcp --help，再以 --self --json 执行 list/tools/describe/call；工具用远端原名，产物 file 是本机工作区相对路径；不要经 tools/links 加载 MCP schema。`
+const cliProfileGuide = `资料全部通过当前实例 CLI：在 Shell 用 XBOT_BIN 指向的二进制先执行 profile --help，再以 --self --json show/set；set 可组合 --name/--description/--timezone/--avatar-seed，avatar --file/--clear 是独立动作。改名后原 endpoint 继续认同一 Bot，XBOT_BOT 只作诊断；失败回执若已 moved/applied，要按实际结果继续，别盲重试。persona/group 仍原独立入口。MCP 同用 mcp --help 与 --self --json 的 list/tools/describe/call，工具用远端原名，本机产物 file 不经 tools/links 载入 schema。`
 
 func (k *Kernel) cliProfileGuide() string {
 	k.operations.mu.Lock()
@@ -64,6 +66,7 @@ func (k *Kernel) StartOperations() error {
 	}
 	k.operations.server, k.operations.binary, k.operations.root = server, binary, root
 	for _, item := range k.snapshotLinks() {
+		k.bindCurrentPaths(item)
 		if coding, ok := item.(*code.Link); ok {
 			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
 		}
@@ -168,6 +171,17 @@ func (k *Kernel) UseBot(b *bot.Bot) {
 	k.operations.mu.Lock()
 	k.Bot = b
 	k.operations.mu.Unlock()
+}
+
+func (k *Kernel) bindCurrentPaths(item link.Link) {
+	if coding, ok := item.(*code.Link); ok {
+		coding.UseCurrentIO(k.withCurrentIO)
+	}
+	if timer, ok := item.(*link.Timer); ok && timer.WithDirectoryIO == nil {
+		timer.WithDirectoryIO = func(fn func(string) error) error {
+			return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return fn(b.RoutineDir()) })
+		}
+	}
 }
 
 // CLIEnvironment takes identity at command start, so an old profile-tool rename

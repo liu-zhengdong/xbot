@@ -46,11 +46,11 @@ func (k *Kernel) closeDangling(reason string, skipRunning bool) error {
 			minSeq = t.CallSeq
 		}
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return err
 	}
-	span, err := k.Bot.Slice(minSeq, n)
+	span, err := k.currentSlice(minSeq, n)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (k *Kernel) closeDangling(reason string, skipRunning bool) error {
 			Branch:  branches[tc.ID],
 			Message: DanglingResult(tc, reason),
 		}
-		if err := k.Bot.Append(e); err != nil {
+		if err := k.appendCurrentEntry(e); err != nil {
 			return err
 		}
 	}
@@ -86,7 +86,7 @@ func (k *Kernel) danglingReason() string {
 	if k == nil || k.Bot == nil {
 		return DangleInterrupt
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return DangleInterrupt
 	}

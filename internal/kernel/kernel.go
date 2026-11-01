@@ -546,11 +546,11 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 	if k.Inbox == nil {
 		return nil, nil
 	}
-	if err := k.Inbox.Reload(); err != nil {
+	if err := k.reloadCurrentInbox(); err != nil {
 		return nil, err
 	}
 	var out []provider.Message
-	for _, ev := range k.Inbox.Pending() {
+	for _, ev := range k.pendingCurrentEvents() {
 		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
@@ -568,7 +568,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 				return nil, err
 			}
 			if turnDone(span, 0) {
-				if err := k.Inbox.Ack(ev.ID); err != nil {
+				if err := k.ackCurrentEvent(ev.ID); err != nil {
 					return nil, err
 				}
 				continue
@@ -581,7 +581,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		}
 		msg.Seq = seq
 		out = append(out, msg)
-		if err := k.Inbox.Ack(ev.ID); err != nil {
+		if err := k.ackCurrentEvent(ev.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -590,7 +590,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 
 func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	if k.Selector != nil {
-		p, err := k.Selector.Select(ctx, provider.Hint{Bot: k.Bot.Name()})
+		p, err := k.Selector.Select(ctx, provider.Hint{Bot: k.currentName()})
 		return k.searchProvider(p), err
 	}
 	if k.Provider == nil {
@@ -631,7 +631,7 @@ func (k *Kernel) rulesText() (string, error) {
 }
 
 func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
-	persona, err := k.Bot.ComposedPersona()
+	persona, err := k.currentComposedPersona()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -651,7 +651,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
-	lines, err := k.Bot.UncoveredLines(st.Blocks)
+	lines, err := k.currentUncoveredLines(st.Blocks)
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -725,7 +725,7 @@ func (k *Kernel) newestReminderSeq(blocks []bot.SummaryBlock) (int, error) {
 	if k == nil || k.Bot == nil {
 		return 0, nil
 	}
-	lines, err := k.Bot.UncoveredLines(blocks)
+	lines, err := k.currentUncoveredLines(blocks)
 	if err != nil {
 		return 0, err
 	}
@@ -733,11 +733,13 @@ func (k *Kernel) newestReminderSeq(blocks []bot.SummaryBlock) (int, error) {
 }
 
 func (k *Kernel) pendingNotes() int {
-	notes, err := notify.Open(k.Bot.OutboxPath()).Unread()
-	if err != nil {
-		return 0
-	}
-	return len(notes)
+	count := 0
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		notes, err := notify.Open(b.OutboxPath()).Unread()
+		count = len(notes)
+		return err
+	})
+	return count
 }
 
 // memoryPerson is the sender only when they are a person.
@@ -829,7 +831,7 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 			}
 			return path
 		}
-		dir := filepath.Join(k.Bot.Root, "bots", k.Bot.Name(), "memory")
+		dir := filepath.Join(k.Bot.Root, "bots", k.currentName(), "memory")
 		paths[memory.ScopeBot] = shown(filepath.Join(dir, "memory.md")) + "; " + shown(filepath.Join(dir, "log")) + "/"
 		if personID != "" {
 			paths[memory.ScopePerson] = shown(filepath.Join(k.Bot.Root, "people", personID, "memory", "memory.md"))
@@ -838,7 +840,7 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	if counter, ok := k.Memory.(interface {
 		LogCount(memory.Scope, string, string) (int, error)
 	}); ok && ctx.Value(publishedMemoryRead{}) == nil {
-		total, err := counter.LogCount(memory.ScopeBot, k.Bot.Name(), "")
+		total, err := counter.LogCount(memory.ScopeBot, k.currentName(), "")
 		if err != nil {
 			return "", err
 		}
@@ -854,7 +856,7 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 	if k.Memory == nil {
 		return nil, nil, nil
 	}
-	botName := k.Bot.Name()
+	botName := k.currentName()
 	var personFacts []memory.Fact
 	// External senders such as webhook:github are not person ids. Bot memory still loads.
 	if memory.ValidID(personID) {
@@ -894,7 +896,7 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 					if ev.Time.IsZero() {
 						ev.Time = time.Now().UTC()
 					}
-					return k.Inbox.Post(ev)
+					return k.postCurrentEvent(ev)
 				})
 			}(em)
 		}

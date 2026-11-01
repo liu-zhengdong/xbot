@@ -125,7 +125,7 @@ func writeResource(ty agenttype.Type, cwd string) string {
 
 // dispatchMemory is the memory snapshot of this turn's view, or empty.
 func (k *Kernel) dispatchMemory(ctx context.Context) string {
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return ""
 	}

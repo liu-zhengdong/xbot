@@ -315,7 +315,7 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 		}
 	}
 	if stop {
-		_ = r.k.Bot.LogTrace(bot.TraceStop, reason, r.k.now())
+		_ = r.k.logCurrentTrace(bot.TraceStop, reason)
 	}
 	return join.String(), stop, reason
 }

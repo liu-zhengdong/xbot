@@ -88,6 +88,7 @@ type RunRequest struct {
 	CwdFile     string
 	CwdHandle   *os.File
 	CwdCleanup  func()
+	StartIO     func(func(string) error) error
 	OnCwd       func(string)
 	OnExit      func()
 }

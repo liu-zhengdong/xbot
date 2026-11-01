@@ -24,7 +24,7 @@ func TestOrgansMountAndRegisterWithoutGrants(t *testing.T) {
 			t.Errorf("organ %s is not mounted", organ.ID)
 		}
 	}
-	for _, name := range []string{"recall", "experience_record", "bot_update_profile", "routine_create", "recall_history", "list_bots", "ask_user", "spawn", "read_skill", "write_skill", "read_file", "web_fetch", "desktop_click", "code_start"} {
+	for _, name := range []string{"recall", "experience_record", "bot_propose_persona", "routine_create", "recall_history", "list_bots", "ask_user", "spawn", "read_skill", "write_skill", "read_file", "web_fetch", "desktop_click", "code_start"} {
 		if !registered(k, name) {
 			t.Errorf("native tool %s is not registered", name)
 		}

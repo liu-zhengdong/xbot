@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -47,11 +48,11 @@ func (k *Kernel) RecoverInterrupted() {
 	if k.AllowFork && live > 0 {
 		return
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil || n == 0 {
 		return
 	}
-	entries, err := k.Bot.Slice(1, n)
+	entries, err := k.currentSlice(1, n)
 	if err != nil {
 		return
 	}
@@ -80,7 +81,8 @@ func (k *Kernel) RecoverInterrupted() {
 		if running {
 			continue
 		}
-		meta := readForkMeta(k.Bot.AgentDir(id))
+		var meta forkMetaFile
+		_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { meta = readForkMeta(b.AgentDir(id)); return nil })
 		if tools.SameProcess(meta.PID, meta.ProcStart) {
 			continue
 		}
@@ -94,7 +96,7 @@ func (k *Kernel) RecoverInterrupted() {
 		if steps == 0 && meta.Steps > 0 {
 			steps = meta.Steps
 		}
-		if _, err := k.Bot.AppendForkEnd(id, bot.ForkInterrupted, steps); err != nil {
+		if _, err := k.appendCurrentForkEnd(id, bot.ForkInterrupted, steps); err != nil {
 			continue
 		}
 		started := meta.Started
@@ -106,7 +108,7 @@ func (k *Kernel) RecoverInterrupted() {
 			continue
 		}
 		text := fmt.Sprintf("后台任务 %s 因进程重启中断，做到第 %d 步。任务：%s。没有自动续跑，需要的话重新交代。", id, steps, task)
-		_ = k.Inbox.Post(link.Event{
+		_ = k.postCurrentEvent(link.Event{
 			ID:        "ev_" + id + "_end",
 			Source:    link.SourceSubagent,
 			Type:      "fork_end",

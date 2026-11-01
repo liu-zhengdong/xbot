@@ -9,6 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clip"
+	"xbot/internal/inbox"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
 )
@@ -227,7 +228,7 @@ func (k *Kernel) Status() BotStatus {
 	if k == nil || k.Bot == nil {
 		return st
 	}
-	st.Bot = k.Bot.Name()
+	st.Bot = k.currentName()
 	now := k.now()
 	t := k.curTurn()
 	t.mu.Lock()
@@ -249,7 +250,7 @@ func (k *Kernel) Status() BotStatus {
 	if active, ok := k.execSnapshot().(interface{ ActiveCount() int }); ok {
 		st.Agents = active.ActiveCount()
 	}
-	st.Todo = TodoSummary(k.Bot)
+	_ = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { st.Todo = TodoSummary(current); return nil })
 	if use, ok := k.tokenSnap(); ok {
 		st.Tokens = &use
 	}
@@ -274,7 +275,9 @@ func (k *Kernel) Status() BotStatus {
 		st.Since = statusStamp(when)
 	default:
 		st.State = StateIdle
-		preview, at := tailMessage(k.Bot)
+		var preview string
+		var at time.Time
+		_ = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { preview, at = tailMessage(current); return nil })
 		st.LastMessage = preview
 		if at.IsZero() {
 			at = now
@@ -415,7 +418,7 @@ func (k *Kernel) localStatuses() []BotStatus {
 		return out
 	}
 	out = append(out, k.Status())
-	others, err := peer.VisibleBots(k.Bot.Root, k.Bot.Name())
+	others, err := peer.VisibleBots(k.Bot.Root, k.currentName())
 	if err != nil {
 		return out
 	}
@@ -450,7 +453,7 @@ func (k *Kernel) BotSteps(name string, n int) []Step {
 	if k.Statuses != nil {
 		return k.Statuses.BotSteps(name, n)
 	}
-	if k.Bot != nil && name == k.Bot.Name() {
+	if k.Bot != nil && name == k.currentName() {
 		return k.Steps(n)
 	}
 	return nil

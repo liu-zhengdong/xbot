@@ -3,7 +3,42 @@ package kernel
 import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
+	"xbot/internal/link"
 )
+
+func (k *Kernel) postCurrentEvent(event link.Event) error {
+	return k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return box.Post(event) })
+}
+func (k *Kernel) reloadCurrentInbox() error {
+	return k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return box.Reload() })
+}
+func (k *Kernel) pendingCurrentEvents() (events []link.Event) {
+	_ = k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { events = box.Pending(); return nil })
+	return
+}
+func (k *Kernel) ackCurrentEvent(id string) error {
+	return k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return box.Ack(id) })
+}
+
+func (k *Kernel) currentPersona() (text string, err error) {
+	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { text, err = b.ReadPersona(); return err })
+	return
+}
+func (k *Kernel) currentComposedPersona() (text string, err error) {
+	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { text, err = b.ComposedPersona(); return err })
+	return
+}
+func (k *Kernel) currentUncoveredLines(blocks []bot.SummaryBlock) (lines []bot.SeqEntry, err error) {
+	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { lines, err = b.UncoveredLines(blocks); return err })
+	return
+}
+func (k *Kernel) logCurrentUsage(trace bot.Trace) error {
+	return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return b.LogUsage(trace) })
+}
+func (k *Kernel) logCurrentTrace(kind, reason string) error {
+	at := k.now()
+	return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return b.LogTrace(kind, reason, at) })
+}
 
 func (k *Kernel) currentState() (st bot.State, err error) {
 	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { st, err = b.LoadState(); return err })

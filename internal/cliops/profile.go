@@ -19,6 +19,9 @@ import (
 
 const maxBody = 64 << 10
 
+// MaxAvatarBody is the raw upload limit, separate from JSON profile metadata.
+const MaxAvatarBody = 1 << 20
+
 // Caller identifies one existing runtime. Bot is diagnostic; Endpoint owns self.
 type Caller struct{ Binary, Root, Endpoint, Bot string }
 
@@ -125,6 +128,39 @@ func Start(root string, handlers Handlers) (*Server, error) {
 		value, err := handlers.Profile(update)
 		writeProfile(w, value, err)
 	})
+	mux.HandleFunc("/v1/profile/avatar", func(w http.ResponseWriter, r *http.Request) {
+		fail := func(code int, message string) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+		}
+		if handlers.ProfileAvatar == nil {
+			fail(http.StatusNotFound, "profile avatar unavailable")
+			return
+		}
+		clear := r.Method == http.MethodDelete
+		if r.Method != http.MethodPost && !clear {
+			fail(http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxAvatarBody))
+		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				fail(http.StatusRequestEntityTooLarge, "profile avatar: upload exceeds 1 MiB")
+			} else {
+				fail(http.StatusBadRequest, "invalid avatar request")
+			}
+			return
+		}
+		if clear && len(data) != 0 {
+			fail(http.StatusBadRequest, "profile avatar: clear does not accept an upload")
+			return
+		}
+		// MIME comes from the domain's sniff of these bytes, never Content-Type.
+		value, err := handlers.ProfileAvatar(data, clear)
+		writeProfile(w, value, err)
+	})
 	mux.HandleFunc("/v1/mcp/", func(w http.ResponseWriter, r *http.Request) {
 		if handlers.MCP == nil {
 			http.NotFound(w, r)
@@ -196,16 +232,9 @@ func (s *Server) Close() error {
 // data from disk or falls back to another instance on failure.
 func Call(ctx context.Context, endpoint, root string, update *Update) (Profile, error) {
 	var result Profile
-	if endpoint == "" {
-		return result, errors.New("profile: no runtime endpoint; --self requires an active XBot shell")
-	}
-	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
-		return result, errors.New("profile: invalid local runtime endpoint")
-	}
-	root, err = CanonicalRoot(root)
+	root, err := profileRoot(endpoint, root)
 	if err != nil {
-		return result, fmt.Errorf("profile: data root: %w", err)
+		return result, err
 	}
 	method := http.MethodGet
 	var body io.Reader
@@ -226,6 +255,54 @@ func Call(ctx context.Context, endpoint, root string, update *Update) (Profile, 
 	}
 	req.Header.Set("X-XBot-Root", root)
 	req.Header.Set("Content-Type", "application/json")
+	return callProfile(req)
+}
+
+// CallAvatar streams one bounded raw upload, or sends an empty DELETE for clear.
+// It uses the same source identity, response budget and partial DTO as Call.
+func CallAvatar(ctx context.Context, endpoint, root string, data io.Reader, clear bool) (Profile, error) {
+	root, err := profileRoot(endpoint, root)
+	if err != nil {
+		return Profile{}, err
+	}
+	method := http.MethodPost
+	var body io.Reader
+	if clear {
+		method = http.MethodDelete
+	} else {
+		if data == nil {
+			return Profile{}, errors.New("profile avatar: upload requires data")
+		}
+		body = io.LimitReader(data, MaxAvatarBody+1)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint+"/v1/profile/avatar", body)
+	if err != nil {
+		return Profile{}, err
+	}
+	req.Header.Set("X-XBot-Root", root)
+	if !clear {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	return callProfile(req)
+}
+
+func profileRoot(endpoint, root string) (string, error) {
+	if endpoint == "" {
+		return "", errors.New("profile: no runtime endpoint; --self requires an active XBot shell")
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
+		return "", errors.New("profile: invalid local runtime endpoint")
+	}
+	root, err = CanonicalRoot(root)
+	if err != nil {
+		return "", fmt.Errorf("profile: data root: %w", err)
+	}
+	return root, nil
+}
+
+func callProfile(req *http.Request) (Profile, error) {
+	var result Profile
 	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	defer client.CloseIdleConnections()
 	resp, err := client.Do(req)

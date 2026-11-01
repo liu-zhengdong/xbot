@@ -52,6 +52,7 @@ type Shell struct {
 	afterDir    func(context.Context, string) (kept, notice string)
 	markerDir   string
 	markerIO    func(func(string) error) error
+	startIO     func(context.Context, func(string) error) error
 	localSudo   func() (vault.Backend, error)
 	environment func([]string) []string
 }
@@ -91,6 +92,15 @@ func (s *Shell) BindMarkerIO(fn func(func(string) error) error) {
 	defer s.sessMu.Unlock()
 	if s.markerIO == nil {
 		s.markerIO = fn
+	}
+}
+
+// BindStartIO holds the current-path fence only through the actual local Start.
+func (s *Shell) BindStartIO(fn func(context.Context, func(string) error) error) {
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
+	if s.startIO == nil {
+		s.startIO = fn
 	}
 }
 
@@ -370,6 +380,13 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		}
 		return "", err
 	}
+	s.sessMu.Lock()
+	startIO := s.startIO
+	s.sessMu.Unlock()
+	var startProcess func(func(string) error) error
+	if startIO != nil {
+		startProcess = func(start func(string) error) error { return startIO(ctx, start) }
+	}
 	// The shared Jobs runner owns the wait for every command.
 	var out string
 	if s.Jobs != nil {
@@ -388,6 +405,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			CwdFile:     marker,
 			CwdHandle:   markerHandle,
 			CwdCleanup:  markerCleanup,
+			StartIO:     startProcess,
 			OnCwd: func(got string) {
 				if cwdCh == nil || got == "" {
 					return
@@ -407,7 +425,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		if markerHandle != nil {
 			files = []*os.File{markerHandle}
 		}
-		out, err = runInterpreterCommand(ctx, s.interpreter, command, timeout, s.maxOutput(), dir, env, files...)
+		out, err = runInterpreterCommandIO(ctx, s.interpreter, command, timeout, s.maxOutput(), dir, env, startProcess, files...)
 		if sudoStore != nil {
 			out = sudoStore.MaskTruncated(sudoStore.Redact(out))
 		}
@@ -652,6 +670,9 @@ func runCommand(ctx context.Context, command string, timeout time.Duration, maxO
 }
 
 func runInterpreterCommand(ctx context.Context, in interpreter, command string, timeout time.Duration, maxOut int, dir string, env []string, files ...*os.File) (string, error) {
+	return runInterpreterCommandIO(ctx, in, command, timeout, maxOut, dir, env, nil, files...)
+}
+func runInterpreterCommandIO(ctx context.Context, in interpreter, command string, timeout time.Duration, maxOut int, dir string, env []string, startIO func(func(string) error) error, files ...*os.File) (string, error) {
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := in.command(tctx, command)
@@ -666,7 +687,15 @@ func runInterpreterCommand(ctx context.Context, in interpreter, command string, 
 	out := &capWriter{max: maxOut}
 	cmd.Stdout = out
 	cmd.Stderr = out
-	err := cmd.Run()
+	var err error
+	if startIO != nil {
+		err = startIO(func(current string) error { cmd.Dir = current; return cmd.Start() })
+	} else {
+		err = cmd.Start()
+	}
+	if err == nil {
+		err = cmd.Wait()
+	}
 	text, truncated := out.String()
 	text = clip.Valid(text)
 	text = strings.TrimRight(text, "\n")

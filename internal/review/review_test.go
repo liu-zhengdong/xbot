@@ -34,7 +34,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"write_file":          SelfEdit,
 		"edit_file":           SelfEdit,
 		"bot_propose_persona": SelfEdit,
-		"bot_update_profile":  SelfEdit,
 		"routine_create":      Normal,
 		"routine_update":      Normal,
 		"routine_delete":      Normal,
@@ -56,6 +55,15 @@ func TestTableHasEveryClass(t *testing.T) {
 		if got := ClassOf(name); got != class {
 			t.Fatalf("%s class %q want %q", name, got, class)
 		}
+	}
+}
+
+func TestRetiredProfileUnknownPersonaStillSelfEdit(t *testing.T) {
+	if Known("bot_update_profile") || ClassOf("bot_update_profile") != Normal {
+		t.Fatal("retired profile tool retains an executable policy entry")
+	}
+	if !Known("bot_propose_persona") || ClassOf("bot_propose_persona") != SelfEdit || !NeedsOwner("bot_propose_persona", json.RawMessage(`{}`)) {
+		t.Fatal("persona action lost its existing review classification")
 	}
 }
 
@@ -185,7 +193,7 @@ func TestLinksInstallAndRemoveAsk(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
-	for _, name := range []string{"bot_propose_persona", "bot_update_profile"} {
+	for _, name := range []string{"bot_propose_persona"} {
 		if !need(t, name, `{}`) {
 			t.Fatalf("%s did not ask", name)
 		}

@@ -225,6 +225,31 @@ func (k *Kernel) workspace() string {
 	return filepath.Clean(wd)
 }
 
+// withShellStartIO keeps a prepared cwd current through the actual local fork,
+// then releases both locks before process waiting or any user code.
+func (k *Kernel) withShellStartIO(ctx context.Context, start func(string) error) error {
+	scope := scopeOf(ctx)
+	k.cwd.mu.Lock()
+	defer k.cwd.mu.Unlock()
+	k.ensureLoadedLocked()
+	return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		k.rebaseCwdLocked(b)
+		dir := k.cwd.dir
+		if scope != "" {
+			dir = k.cwd.extra[scope]
+		}
+		if dir == "" {
+			dir = k.currentWorkspaceFor(b)
+		}
+		if current, ok := cleanDir(dir); ok {
+			dir = current
+		} else {
+			dir = k.currentWorkspaceFor(b)
+		}
+		return start(dir)
+	})
+}
+
 // Only paths within the old Bot/workspace move; external working directories
 // remain intact. These helpers do not acquire route recursively.
 func rebasePath(path, previous, next string) string {

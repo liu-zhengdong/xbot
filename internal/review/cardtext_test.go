@@ -86,11 +86,6 @@ func TestCardText(t *testing.T) {
 			wantT: "修改职责", wantSub: "",
 		},
 		{
-			name: "update profile", tool: "bot_update_profile",
-			args: `{"name":"Ada"}`, summary: "update profile: name",
-			wantT: "修改档案", wantSub: "",
-		},
-		{
 			name: "delete file", tool: "delete_file",
 			args: `{"path":"/tmp/x"}`, summary: "delete /tmp/x",
 			wantT: "删除文件", wantSub: "",

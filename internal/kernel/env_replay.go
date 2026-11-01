@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/person"
@@ -251,7 +252,7 @@ func environmentBasis(st bot.State, msgs []provider.Message) string {
 	return shortHash(st.MemSnap + "\n" + strings.Join(parts, "\n"))
 }
 func (k *Kernel) visibleEnvironment(st bot.State) (environment, error) {
-	lines, err := k.Bot.UncoveredLines(st.Blocks)
+	lines, err := k.currentUncoveredLines(st.Blocks)
 	if err != nil {
 		return environment{}, err
 	}
@@ -291,7 +292,8 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	for key, value := range prev.Fields {
 		next.Fields[key] = value
 	}
-	paths, err := k.Bot.Paths()
+	var paths bot.TracePaths
+	err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { var err error; paths, err = b.Paths(); return err })
 	if err != nil {
 		return next, err
 	}
@@ -307,14 +309,19 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		switch key {
 		case "persona":
 			// Duty and card are named apart, so a picked card never hides the duty.
-			v, err = k.Bot.ReadPersona()
+			v, err = k.currentPersona()
 			label := "职责"
 			if v == bot.DefaultPersona {
 				label = "默认职责"
 			}
 			v = label + " " + shortHash(v)
-			if c, ok := k.Bot.PickedCard(); ok {
-				v += "；人设卡 " + c.Name + " " + shortHash(c.Body)
+			if err == nil {
+				err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+					if c, ok := b.PickedCard(); ok {
+						v += "；人设卡 " + c.Name + " " + shortHash(c.Body)
+					}
+					return nil
+				})
 			}
 		case "rules":
 			v, err = k.rulesText()

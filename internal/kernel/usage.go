@@ -156,7 +156,7 @@ func (k *Kernel) noteCallUsage(tr *turn, req provider.Request, msg provider.Mess
 			rec.HostedTool = p.Hosted.Name
 		}
 	}
-	_ = k.Bot.LogUsage(rec)
+	_ = k.logCurrentUsage(rec)
 }
 
 // noteCompactUsage records one summary call's usage, tagged so a cost count
@@ -175,7 +175,7 @@ func (k *Kernel) noteSideUsage(call string, turn int, req provider.Request, msg 
 	}
 	u := observedUsage(req, msg)
 	billed := u.Billable()
-	_ = k.Bot.LogUsage(bot.Trace{
+	_ = k.logCurrentUsage(bot.Trace{
 		Time:          k.now(),
 		Reason:        usageReason(u.Estimated),
 		Prompt:        billed.PromptTokens,

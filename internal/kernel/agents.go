@@ -38,7 +38,7 @@ func (k *Kernel) ensureExec() exec.Executor {
 					loc = exec.NewLocal(exec.Limits{MaxConcurrent: k.forkCap(), MaxSteps: maxStepsGuard, Timeout: k.maxTypeBudget()})
 					loc.ToolsFor = k.toolsFor
 					loc.Wrap = k.wrapSub
-					loc.AgentsDir = k.Bot.AgentsDir()
+					_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { loc.AgentsDir = b.AgentsDir(); return nil })
 					loc.Restore = k.restoreSubagent
 					loc.ProviderFor = k.subagentProvider
 					loc.CurrentCWD = func(req exec.StartRequest) string { return k.cwdScope(req.ID) }
@@ -89,9 +89,9 @@ type modelExecutor struct {
 }
 
 func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) (exec.Task, error) {
-	req.Workspace = e.k.WorkDir
+	req.Workspace = e.k.workspace()
 	if jobs := e.k.shellJobs(); jobs != nil {
-		req.JobDir = jobs.Dir
+		req.JobDir = jobs.Directory()
 	}
 	if req.Descriptor == nil && req.Mode != exec.ModeFork {
 		_, overlay, err := e.k.modelOverlay()
@@ -123,7 +123,7 @@ func (k *Kernel) boundProvider() provider.Provider {
 		return k.searchProvider(k.Provider)
 	}
 	if k.Selector != nil {
-		p, err := k.Selector.Select(context.Background(), provider.Hint{Bot: k.Bot.Name()})
+		p, err := k.Selector.Select(context.Background(), provider.Hint{Bot: k.currentName()})
 		if err == nil {
 			return k.searchProvider(p)
 		}
@@ -195,7 +195,7 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 func (k *Kernel) scopeTools(scope string) []tools.Tool {
 	var shells []tools.Tool
 	for _, sh := range tools.NewShells() {
-		sh.Dir = k.WorkDir
+		sh.Dir = k.workspace()
 		sh.Shared = k.SharedDir
 		sh.BindJobs(k.shellJobs())
 		sh.BindSession(
@@ -222,13 +222,13 @@ func (k *Kernel) scopeTools(scope string) []tools.Tool {
 		}
 		return k.cwdScope(scope)
 	}
-	read := &tools.ReadFile{Root: k.WorkDir}
-	write := &tools.WriteFile{Root: k.WorkDir}
-	edit := &tools.EditFile{Root: k.WorkDir}
+	read := &tools.ReadFile{Root: k.workspace()}
+	write := &tools.WriteFile{Root: k.workspace()}
+	edit := &tools.EditFile{Root: k.workspace()}
 	read.BindRoot(root)
 	write.BindRoot(root)
 	edit.BindRoot(root)
-	view := &tools.ViewImage{Root: k.WorkDir}
+	view := &tools.ViewImage{Root: k.workspace()}
 	view.BindRoot(root)
 	view.Allowed = k.allowedRoots
 	fetch := &tools.WebFetch{}
@@ -271,7 +271,7 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 			// id to another turn. Only old one-shot events clean up here.
 			k.dropScope(ev.AgentID)
 		}
-		if k.Inbox == nil || ev.AgentID == "" || ev.Kind == "" {
+		if ev.AgentID == "" || ev.Kind == "" {
 			continue
 		}
 		if k.Dispatch && ev.Kind == exec.EvProgress {
@@ -284,20 +284,22 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 		if at.IsZero() {
 			at = k.now()
 		}
-		err := k.Inbox.Post(link.Event{
-			ID:        ev.ID,
-			Source:    link.SourceSubagent,
-			Type:      ev.Kind,
-			Content:   ev.Text,
-			Sender:    ev.AgentID,
-			Time:      at,
-			Untrusted: true,
+		var wake *bot.Bot
+		err := k.withCurrentIO(func(current *bot.Bot, box *inbox.Inbox) error {
+			if box == nil {
+				return nil
+			}
+			err := box.Post(link.Event{ID: ev.ID, Source: link.SourceSubagent, Type: ev.Kind, Content: ev.Text, Sender: ev.AgentID, Time: at, Untrusted: true})
+			if err == nil {
+				wake = current
+			}
+			return err
 		})
-		if err == nil && k.Dispatch && k.Bot != nil {
-			// The result is the owner's to hear now, not on the next serve
-			// pass: wake the bot, as for a late card decision.
-			if v, ok := wakers.Load(k.Bot.Root); ok {
-				v.(func(*bot.Bot))(k.Bot)
+		if err == nil && k.Dispatch && wake != nil {
+			// Post is fenced to the current Inbox; waking may acquire the host
+			// or executor, so it runs only after the route has been released.
+			if v, ok := wakers.Load(wake.Root); ok {
+				v.(func(*bot.Bot))(wake)
 			}
 		}
 	}
@@ -313,7 +315,7 @@ func (k *Kernel) endpoint() (exec.Endpoint, error) {
 }
 
 func (k *Kernel) forkMessages(ctx context.Context) ([]provider.Message, error) {
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return nil, err
 	}
@@ -354,11 +356,16 @@ func (k *Kernel) spawn(ctx context.Context, task, mode string, maxSteps int) (st
 	k.adoptScope(ctx, id)
 	req := exec.StartRequest{
 		ID:       id,
-		Bot:      k.Bot.Name(),
+		Bot:      k.currentName(),
 		Task:     task,
 		Mode:     mode,
 		MaxSteps: maxSteps,
-		Dir:      k.Bot.AgentDir(id),
+	}
+	if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		req.Bot, req.Dir = current.Name(), current.AgentDir(id)
+		return nil
+	}); err != nil {
+		return "", err
 	}
 	if mode == exec.ModeFork {
 		fork, err := k.forkMessages(ctx)
@@ -417,7 +424,11 @@ func (k *Kernel) control(ctx context.Context, id, kind, text string) (string, er
 	if kind != exec.KindCancel && strings.TrimSpace(text) == "" {
 		return "", errors.New("exec: text is empty")
 	}
-	if _, err := exec.ReadDescriptor(k.Bot.AgentDir(id)); err == nil {
+	descriptorErr := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		_, err := exec.ReadDescriptor(current.AgentDir(id))
+		return err
+	})
+	if descriptorErr == nil {
 		switch kind {
 		case exec.KindSteer, exec.KindQueue:
 			task, err := k.MessageSubagent(ctx, id, text, kind)
@@ -590,7 +601,13 @@ func (t readSubTool) Run(_ context.Context, args json.RawMessage) (string, error
 	if !execID(in.ID) {
 		return "", fmt.Errorf("exec: bad id %q", in.ID)
 	}
-	meta, n, err := exec.ReadStatus(t.k.Bot.AgentDir(in.ID))
+	var meta exec.Meta
+	var n int
+	err := t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		meta, n, err = exec.ReadStatus(current.AgentDir(in.ID))
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
@@ -625,7 +642,13 @@ func (t expandSubTool) Run(_ context.Context, args json.RawMessage) (string, err
 	if !execID(in.ID) {
 		return "", fmt.Errorf("exec: bad id %q", in.ID)
 	}
-	return exec.Expand(t.k.Bot.AgentDir(in.ID), in.From, in.To)
+	var text string
+	err := t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		text, err = exec.Expand(current.AgentDir(in.ID), in.From, in.To)
+		return err
+	})
+	return text, err
 }
 
 func parseControl(args json.RawMessage) (string, string, error) {
