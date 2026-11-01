@@ -2570,6 +2570,18 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .kvrow .k{width:72px;color:var(--x-faint);flex:none}.kvrow .v{flex:1;min-width:0;font-family:var(--x-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #settings-version-status{color:var(--x-muted);font-size:12px;white-space:nowrap}
 .kvrow button.v{border:0;padding:0;background:transparent;color:var(--x-muted);text-align:right;cursor:pointer}.kvrow button.v:hover{color:var(--x-text)}
+.about-note{margin-inline:var(--x-s6)}
+.about-restart{margin-top:var(--x-s6)}
+.about-restart-row{display:flex;align-items:center;gap:var(--x-s6);padding:var(--x-s5) var(--x-s6);color:var(--x-text-2);font-size:var(--x-fs-ui);line-height:1.5}
+.about-restart-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:var(--x-s1)}
+.about-restart-description{font-size:var(--x-fs-label);color:var(--x-faint)}
+.about-restart-button{display:inline-flex;align-items:center;justify-content:center;gap:var(--x-s2);height:var(--x-s9);padding:0 var(--x-s5);border:0;border-radius:var(--x-r-sm);background:var(--x-warning);color:var(--x-on-warning);font:inherit;font-size:var(--x-fs-sm);font-weight:600;white-space:nowrap;cursor:pointer;transition:opacity var(--dur-press),transform var(--dur-press)}
+.about-restart-button .icon{width:var(--x-restart-icon);height:var(--x-restart-icon)}
+.about-restart-button:hover:not(:disabled){opacity:.88}
+.about-restart-button:active:not(:disabled){transform:scale(var(--press-scale))}
+.about-restart-button:disabled{opacity:.6;cursor:default}
+.about-restart-error{margin:var(--x-s3) var(--x-s6) 0;color:var(--x-danger);font-size:var(--x-fs-label);line-height:1.6}
+@media(prefers-reduced-motion:reduce){.about-restart-button{transition:opacity var(--dur-motion-reduced)}.about-restart-button:active:not(:disabled){transform:none}}
 .setnav button{width:100%;border:0;background:transparent;text-align:left;font:inherit;font-size:13.5px}
 .setpage .ic{stroke-width:1.8;flex:none}
 .setpage .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:8px;height:32px;padding:0 13px;font:inherit;font-size:13px;background:var(--x-fill-2);color:var(--x-text);white-space:nowrap}

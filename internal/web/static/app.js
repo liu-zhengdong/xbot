@@ -8644,6 +8644,7 @@
       state.version = session.version || "";
       state.tip = session.tip || "";
       state.app = !!session.app;
+      state.canRestart = !!session.can_restart;
       syncDevicesSession(session);
       renderMe();
       showApp();
@@ -8814,6 +8815,7 @@
     window.XBotVault?.unmount();
     $("settings-theme").value = themeMode;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = aboutVersion();
+    $("settings-restart-row").hidden = !state.canRestart;
     if (opening) page.focus({ preventScroll: true });
     else if (settingsNarrow.matches && !home) $("settings-back").focus({ preventScroll: true });
     if (home) return;
@@ -8924,6 +8926,25 @@
     }
   });
   function aboutVersion() { return (state.version || "dev") + (state.tip ? " · " + state.tip : ""); }
+
+  $("settings-restart").prepend(icon("refresh"));
+  $("settings-restart").addEventListener("click", async () => {
+    const button = $("settings-restart"), label = $("settings-restart-label"), error = $("settings-restart-error");
+    if (button.disabled) return;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    label.textContent = "正在重启…";
+    error.hidden = true;
+    try {
+      await api("/api/app/restart", {method: "POST"});
+    } catch (err) {
+      error.textContent = "重启失败，" + visibleError(err, "请重试。");
+      error.hidden = false;
+      button.disabled = false;
+      button.setAttribute("aria-busy", "false");
+      label.textContent = "重启";
+    }
+  });
 
   $("settings-version").addEventListener("click", async (ev) => {
     if (await copyText(ev.currentTarget.textContent)) {
@@ -9451,6 +9472,7 @@
     state.version = (data && data.version) || "";
     state.tip = (data && data.tip) || "";
     state.app = !!data.app;
+    state.canRestart = !!data.can_restart;
     syncDevicesSession(data);
     if (data.needs_key) await showSetup(data.key_host || "");
     renderMe();
