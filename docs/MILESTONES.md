@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 MCP 2a 设计与独立 core 机械子步
+
+- L 档，沿已确认 CLI 路线在同份 [dev](dev/cli-platform-entry.md) 补 2a 调用方、两种结构与实际锁/回调/关闭接缝，新增 [ADR 0045](adr/0045-process-owned-mcp-sessions.md)（Proposed）。完整进程 owner/共享 Jobs/通知/取消接线仍待整体具体结构 PASS；没有提前做 2b CLI/退 schema 或完整 runtime rename。
+- 已单独获准的纯机械子步提交 `e4313fc3`：现 client/stdio/HTTP/diagnostics/config 与有效协议测试移到 internal/mcp，Link 保模型与 Event 投影/薄委托；core 仅 stdlib+fsutil。Provider predicate 由 Link 动态注入，lazy owner/Close、Secret fallback、HTTP 15s 与同步取消行为未改。不把此子步描述为 MCP 2a 完成。
+- 一次定向 19 项 core/Link 测试通过（11+8，3.324/3.124s）、两包 vet/格式/diff 通过；额外 `go test ./cmd/xbot -run '^$'` 编译通过（0.230s，不执行产品用例）。仅复用这批证据，不全仓重跑。
+- 实施前自有最小红分别命中旧实现：source 解释器调用尚在 gate 内而退休关闭端口（3.215s）；同 HTTP session A 长 POST 阻塞时，B cancel 等 A 响应（1.838s）。只新增自有 fixture，不改独立 E2E 文件；它们是待 owner/取消实施的红，不冒称真实 CLI/独立入口已通过。
+- 级别：仅 feature 分支机械提交/设计草图与红证据；未合 main、未独立验收、未日用。Not run：新 runtime 生命周期绿验收、完整 suite/三遍、真实模型/服务、跨平台与无关旅程；未 push/发版/改运行实例。
+
 ## 2026-11-01 移除 Tab 内重复大标题
 
 - S 档，按用户截图要求删除记忆、轨迹、任务、上下文、收件箱等主视图内重复的页面标题和标题占位，页面名称由顶部标签表达；内容分区标题和操作保留。同步删除无用的标题 CSS 与字号/行高 token。实现 `b519fffb`。
