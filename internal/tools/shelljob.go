@@ -137,6 +137,9 @@ func NewJobs(dir string) *Jobs {
 	return &Jobs{Dir: dir, jobs: map[string]*live{}}
 }
 
+// Directory reads the current directory while concurrent Move holds dirMu.
+func (j *Jobs) Directory() string { return j.dir() }
+
 // dir is Dir read under dirMu, since Move can change it while calls run.
 func (j *Jobs) dir() string {
 	j.dirMu.RLock()
